@@ -113,7 +113,7 @@ func main() {
 
 Go가 설치되어 있는 것을 확인해 주세요 ([download](https://go.dev/dl/)). 버전 1.14 또는 그 이상이어야 합니다.
 
-Initialize your project by creating a folder and then running `go mod init github.com/your/repo` ([learn more](https://go.dev/blog/using-go-modules)) inside the folder. Then install Fiber with the [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
+폴더를 생성하여 당신의 프로젝트를 초기화하고, 폴더 안에서 `go mod init github.com/your/repo` ([learn more](https://go.dev/blog/using-go-modules)) 를 실행하세요. 그리고 [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) 명령어로 Fiber를 설치하세요:
 
 ```bash
 go get -u github.com/gofiber/fiber/v2
@@ -144,7 +144,7 @@ Fiber는 인터넷에서 가장 인기있는 웹 프레임워크인 Express에�
 우리는 **어떤한** 작업, **마감일정**, 개발자의 **기술**이던간에 **빠르고**, **유연하고**, **익숙한** Go 웹 프레임워크를 만들기 위해 사용자들의 [이슈들](https://github.com/gofiber/fiber/issues)을(그리고 모든 인터넷을 통해) **듣고 있습니다**! Express가 자바스크립트 세계에서 하는 것 처럼요.
 
 ## ⚠️ 한계점
-* Fiber는 unsafe 패키지를 사용하기 때문에 최신 Go버전과 호환되지 않을 수 있습니다.Fiber 2.29.0은 Go 버전 1.14에서 1.19로 테스트되고 있습니다.
+* Fiber는 unsafe 패키지를 사용하기 때문에 최신 Go버전과 호환되지 않을 수 있습니다.Fiber 2.40.0은 Go 버전 1.16에서 1.19로 테스트되고 있습니다.
 * Fiber는 net/http 인터페이스와 호환되지 않습니다.즉, gqlgen이나 go-swagger 등 net/http 생태계의 일부인 프로젝트를 사용할 수 없습니다.
 
 ## 👀 예제
@@ -661,13 +661,17 @@ Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Contributors](
 
 **Third-party library licenses**
 
--   [schema](https://github.com/gorilla/schema/blob/master/LICENSE)
--   [isatty](https://github.com/mattn/go-isatty/blob/master/LICENSE)
--   [fasthttp](https://github.com/valyala/fasthttp/blob/master/LICENSE)
 -   [colorable](https://github.com/mattn/go-colorable/blob/master/LICENSE)
--   [fasttemplate](https://github.com/valyala/fasttemplate/blob/master/LICENSE)
+-   [isatty](https://github.com/mattn/go-isatty/blob/master/LICENSE)
+-   [runewidth](https://github.com/mattn/go-runewidth/blob/master/LICENSE)
+-   [fasthttp](https://github.com/valyala/fasthttp/blob/master/LICENSE)
 -   [bytebufferpool](https://github.com/valyala/bytebufferpool/blob/master/LICENSE)
+-   [dictpool](https://github.com/savsgio/dictpool/blob/master/LICENSE)
+-   [fasttemplate](https://github.com/valyala/fasttemplate/blob/master/LICENSE)
+-   [fwd](https://github.com/philhofer/fwd/blob/master/LICENSE.md)
+-   [go-ole](https://github.com/go-ole/go-ole/blob/master/LICENSE)
 -   [gopsutil](https://github.com/shirou/gopsutil/blob/master/LICENSE)
--   [go-ole](https://github.com/go-ole/go-ole)
--   [wmi](https://github.com/StackExchange/wmi)
--   [dictpool](https://github.com/savsgio/dictpool)
+-   [msgp](https://github.com/tinylib/msgp/blob/master/LICENSE)
+-   [schema](https://github.com/gorilla/schema/blob/master/LICENSE)
+-   [uuid](https://github.com/google/uuid/blob/master/LICENSE)
+-   [wmi](https://github.com/StackExchange/wmi/blob/master/LICENSE)

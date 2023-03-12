@@ -143,7 +143,7 @@ Fiber è **ispirato** da Express, il web framework più popolare su internet. Ab
 
 ## ⚠️ Limitazioni
 
-* Dato che Fiber utilizza unsafe, la libreria non sempre potrebbe essere compatibile con l'ultima versione di Go. Fiber 2.29.0 è stato testato con la versioni 1.14 alla 1.19 di Go.
+* Dato che Fiber utilizza unsafe, la libreria non sempre potrebbe essere compatibile con l'ultima versione di Go. Fiber 2.40.0 è stato testato con la versioni 1.16 alla 1.19 di Go.
 * Fiber non è compatibile con le interfacce net/http. Questo significa che non è possibile utilizzare progetti come qglgen, go-swagger, o altri che fanno parte dell'ecosistema net/http.
 
 ## 👀 Esempi
@@ -681,13 +681,17 @@ Copyright (c) 2019-ora [Fenny](https://github.com/fenny) e [Contributors](https:
 
 **Licenze di Terze parti **
 
--   [schema](https://github.com/gorilla/schema/blob/master/LICENSE)
--   [isatty](https://github.com/mattn/go-isatty/blob/master/LICENSE)
--   [fasthttp](https://github.com/valyala/fasthttp/blob/master/LICENSE)
 -   [colorable](https://github.com/mattn/go-colorable/blob/master/LICENSE)
--   [fasttemplate](https://github.com/valyala/fasttemplate/blob/master/LICENSE)
+-   [isatty](https://github.com/mattn/go-isatty/blob/master/LICENSE)
+-   [runewidth](https://github.com/mattn/go-runewidth/blob/master/LICENSE)
+-   [fasthttp](https://github.com/valyala/fasthttp/blob/master/LICENSE)
 -   [bytebufferpool](https://github.com/valyala/bytebufferpool/blob/master/LICENSE)
+-   [dictpool](https://github.com/savsgio/dictpool/blob/master/LICENSE)
+-   [fasttemplate](https://github.com/valyala/fasttemplate/blob/master/LICENSE)
+-   [fwd](https://github.com/philhofer/fwd/blob/master/LICENSE.md)
+-   [go-ole](https://github.com/go-ole/go-ole/blob/master/LICENSE)
 -   [gopsutil](https://github.com/shirou/gopsutil/blob/master/LICENSE)
--   [go-ole](https://github.com/go-ole/go-ole)
--   [wmi](https://github.com/StackExchange/wmi)
--   [dictpool](https://github.com/savsgio/dictpool)
+-   [msgp](https://github.com/tinylib/msgp/blob/master/LICENSE)
+-   [schema](https://github.com/gorilla/schema/blob/master/LICENSE)
+-   [uuid](https://github.com/google/uuid/blob/master/LICENSE)
+-   [wmi](https://github.com/StackExchange/wmi/blob/master/LICENSE)

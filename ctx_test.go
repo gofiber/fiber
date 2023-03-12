@@ -17,7 +17,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"mime/multipart"
 	"net/http/httptest"
 	"net/url"
@@ -32,7 +31,6 @@ import (
 
 	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
 	"github.com/gofiber/fiber/v2/internal/storage/memory"
-	"github.com/gofiber/fiber/v2/internal/template/html"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
 )
@@ -671,7 +669,7 @@ func Test_Ctx_UserContext_Multiple_Requests(t *testing.T) {
 			utils.AssertEqual(t, nil, err, "Unexpected error from response")
 			utils.AssertEqual(t, StatusOK, resp.StatusCode, "context.Context returned from c.UserContext() is reused")
 
-			b, err := ioutil.ReadAll(resp.Body)
+			b, err := io.ReadAll(resp.Body)
 			utils.AssertEqual(t, nil, err, "Unexpected error from reading response body")
 			utils.AssertEqual(t, fmt.Sprintf("resp_%d_returned", i), string(b), "response text incorrect")
 		})
@@ -1138,7 +1136,7 @@ func Test_Ctx_PortInHandler(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "0", string(body))
 }
@@ -1536,7 +1534,7 @@ func Test_Ctx_ClientHelloInfo(t *testing.T) {
 
 	// Test without TLS handler
 	resp, _ := app.Test(httptest.NewRequest(MethodGet, "/ServerName", nil))
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, []byte("ClientHelloInfo is nil"), body)
 
 	// Test with TLS Handler
@@ -1552,17 +1550,17 @@ func Test_Ctx_ClientHelloInfo(t *testing.T) {
 
 	// Test ServerName
 	resp, _ = app.Test(httptest.NewRequest(MethodGet, "/ServerName", nil))
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, []byte("example.golang"), body)
 
 	// Test SignatureSchemes
 	resp, _ = app.Test(httptest.NewRequest(MethodGet, "/SignatureSchemes", nil))
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, "["+strconv.Itoa(PSSWithSHA256)+"]", string(body))
 
 	// Test SupportedVersions
 	resp, _ = app.Test(httptest.NewRequest(MethodGet, "/SupportedVersions", nil))
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, "["+strconv.Itoa(VersionTLS13)+"]", string(body))
 }
 
@@ -2115,14 +2113,14 @@ func Test_Ctx_SaveFile(t *testing.T) {
 		fh, err := c.FormFile("file")
 		utils.AssertEqual(t, nil, err)
 
-		tempFile, err := ioutil.TempFile(os.TempDir(), "test-")
+		tempFile, err := os.CreateTemp(os.TempDir(), "test-")
 		utils.AssertEqual(t, nil, err)
 
 		defer os.Remove(tempFile.Name())
 		err = c.SaveFile(fh, tempFile.Name())
 		utils.AssertEqual(t, nil, err)
 
-		bs, err := ioutil.ReadFile(tempFile.Name())
+		bs, err := os.ReadFile(tempFile.Name())
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, "hello world", string(bs))
 		return nil
@@ -2266,7 +2264,7 @@ func Test_Ctx_Download(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	defer f.Close()
 
-	expect, err := ioutil.ReadAll(f)
+	expect, err := io.ReadAll(f)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, expect, c.Response().Body())
 	utils.AssertEqual(t, `attachment; filename="Awesome+File%21"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
@@ -2284,7 +2282,7 @@ func Test_Ctx_SendFile(t *testing.T) {
 	f, err := os.Open("./ctx.go")
 	utils.AssertEqual(t, nil, err)
 	defer f.Close()
-	expectFileContent, err := ioutil.ReadAll(f)
+	expectFileContent, err := io.ReadAll(f)
 	utils.AssertEqual(t, nil, err)
 	// fetch file info for the not modified test case
 	fI, err := os.Stat("./ctx.go")
@@ -2800,58 +2798,6 @@ func Test_Ctx_Render(t *testing.T) {
 	utils.AssertEqual(t, false, err == nil)
 }
 
-// go test -run Test_Ctx_Render_Mount
-func Test_Ctx_Render_Mount(t *testing.T) {
-	t.Parallel()
-
-	sub := New(Config{
-		Views: html.New("./.github/testdata/template", ".gohtml"),
-	})
-
-	sub.Get("/:name", func(ctx *Ctx) error {
-		return ctx.Render("hello_world", Map{
-			"Name": ctx.Params("name"),
-		})
-	})
-
-	app := New()
-	app.Mount("/hello", sub)
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/hello/a", nil))
-	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-
-	body, err := ioutil.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "<h1>Hello a!</h1>", string(body))
-}
-
-func Test_Ctx_Render_MountGroup(t *testing.T) {
-	t.Parallel()
-
-	micro := New(Config{
-		Views: html.New("./.github/testdata/template", ".gohtml"),
-	})
-
-	micro.Get("/doe", func(c *Ctx) error {
-		return c.Render("hello_world", Map{
-			"Name": "doe",
-		})
-	})
-
-	app := New()
-	v1 := app.Group("/v1")
-	v1.Mount("/john", micro)
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
-
-	body, err := ioutil.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "<h1>Hello doe!</h1>", string(body))
-}
-
 func Test_Ctx_RenderWithoutLocals(t *testing.T) {
 	t.Parallel()
 	app := New(Config{
@@ -3157,6 +3103,7 @@ func Test_Ctx_RestartRoutingWithChangedPathAndCatchAll(t *testing.T) {
 
 type testTemplateEngine struct {
 	templates *template.Template
+	path      string
 }
 
 func (t *testTemplateEngine) Render(w io.Writer, name string, bind interface{}, layout ...string) error {
@@ -3168,7 +3115,10 @@ func (t *testTemplateEngine) Render(w io.Writer, name string, bind interface{}, 
 }
 
 func (t *testTemplateEngine) Load() error {
-	t.templates = template.Must(template.ParseGlob("./.github/testdata/*.tmpl"))
+	if t.path == "" {
+		t.path = "testdata"
+	}
+	t.templates = template.Must(template.ParseGlob("./.github/" + t.path + "/*.tmpl"))
 	return nil
 }
 
@@ -3335,7 +3285,7 @@ func Test_Ctx_Render_Engine_Error(t *testing.T) {
 func Test_Ctx_Render_Go_Template(t *testing.T) {
 	t.Parallel()
 
-	file, err := ioutil.TempFile(os.TempDir(), "fiber")
+	file, err := os.CreateTemp(os.TempDir(), "fiber")
 	utils.AssertEqual(t, nil, err)
 	defer os.Remove(file.Name())
 

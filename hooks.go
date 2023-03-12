@@ -8,6 +8,7 @@ type OnGroupNameHandler = OnGroupHandler
 type OnListenHandler = func() error
 type OnShutdownHandler = OnListenHandler
 type OnForkHandler = func(int) error
+type OnMountHandler = func(*App) error
 
 // Hooks is a struct to use it with App.
 type Hooks struct {
@@ -22,6 +23,7 @@ type Hooks struct {
 	onListen    []OnListenHandler
 	onShutdown  []OnShutdownHandler
 	onFork      []OnForkHandler
+	onMount     []OnMountHandler
 }
 
 func newHooks(app *App) *Hooks {
@@ -34,6 +36,7 @@ func newHooks(app *App) *Hooks {
 		onListen:    make([]OnListenHandler, 0),
 		onShutdown:  make([]OnShutdownHandler, 0),
 		onFork:      make([]OnForkHandler, 0),
+		onMount:     make([]OnMountHandler, 0),
 	}
 }
 
@@ -94,7 +97,22 @@ func (h *Hooks) OnFork(handler ...OnForkHandler) {
 	h.app.mutex.Unlock()
 }
 
+// OnMount is a hook to execute user function after mounting process.
+// The mount event is fired when sub-app is mounted on a parent app. The parent app is passed as a parameter.
+// It works for app and group mounting.
+func (h *Hooks) OnMount(handler ...OnMountHandler) {
+	h.app.mutex.Lock()
+	h.onMount = append(h.onMount, handler...)
+	h.app.mutex.Unlock()
+}
+
 func (h *Hooks) executeOnRouteHooks(route Route) error {
+	// Check mounting
+	if h.app.mountFields.mountPath != "" {
+		route.path = h.app.mountFields.mountPath + route.path
+		route.Path = route.path
+	}
+
 	for _, v := range h.onRoute {
 		if err := v(route); err != nil {
 			return err
@@ -105,6 +123,12 @@ func (h *Hooks) executeOnRouteHooks(route Route) error {
 }
 
 func (h *Hooks) executeOnNameHooks(route Route) error {
+	// Check mounting
+	if h.app.mountFields.mountPath != "" {
+		route.path = h.app.mountFields.mountPath + route.path
+		route.Path = route.path
+	}
+
 	for _, v := range h.onName {
 		if err := v(route); err != nil {
 			return err
@@ -115,6 +139,11 @@ func (h *Hooks) executeOnNameHooks(route Route) error {
 }
 
 func (h *Hooks) executeOnGroupHooks(group Group) error {
+	// Check mounting
+	if h.app.mountFields.mountPath != "" {
+		group.Prefix = h.app.mountFields.mountPath + group.Prefix
+	}
+
 	for _, v := range h.onGroup {
 		if err := v(group); err != nil {
 			return err
@@ -125,6 +154,11 @@ func (h *Hooks) executeOnGroupHooks(group Group) error {
 }
 
 func (h *Hooks) executeOnGroupNameHooks(group Group) error {
+	// Check mounting
+	if h.app.mountFields.mountPath != "" {
+		group.Prefix = h.app.mountFields.mountPath + group.Prefix
+	}
+
 	for _, v := range h.onGroupName {
 		if err := v(group); err != nil {
 			return err
@@ -154,4 +188,14 @@ func (h *Hooks) executeOnForkHooks(pid int) {
 	for _, v := range h.onFork {
 		_ = v(pid)
 	}
+}
+
+func (h *Hooks) executeOnMountHooks(app *App) error {
+	for _, v := range h.onMount {
+		if err := v(app); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

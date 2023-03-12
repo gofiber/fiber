@@ -13,7 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"mime/multipart"
 	"net"
 	"net/http"
@@ -164,7 +163,7 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	c.pathOriginal = app.getString(fctx.URI().PathOriginal())
 	// Set method
 	c.method = app.getString(fctx.Request.Header.Method())
-	c.methodINT = methodInt(c.method)
+	c.methodINT = app.methodInt(c.method)
 	// Attach *fasthttp.RequestCtx to ctx
 	c.fasthttp = fctx
 	// reset base uri
@@ -888,9 +887,9 @@ func (c *Ctx) Links(link ...string) {
 	bytebufferpool.Put(bb)
 }
 
-// Locals makes it possible to pass interface{} values under string keys scoped to the request
+// Locals makes it possible to pass interface{} values under keys scoped to the request
 // and therefore available to all following routes that match the request.
-func (c *Ctx) Locals(key string, value ...interface{}) (val interface{}) {
+func (c *Ctx) Locals(key interface{}, value ...interface{}) (val interface{}) {
 	if len(value) == 0 {
 		return c.fasthttp.UserValue(key)
 	}
@@ -907,7 +906,7 @@ func (c *Ctx) Location(path string) {
 func (c *Ctx) Method(override ...string) string {
 	if len(override) > 0 {
 		method := utils.ToUpper(override[0])
-		mINT := methodInt(method)
+		mINT := c.app.methodInt(method)
 		if mINT == -1 {
 			return c.method
 		}
@@ -1041,28 +1040,25 @@ func (c *Ctx) Path(override ...string) string {
 }
 
 // Protocol contains the request protocol string: http or https for TLS requests.
-// Use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
+// Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
 func (c *Ctx) Protocol() string {
 	if c.fasthttp.IsTLS() {
 		return "https"
 	}
-	scheme := "http"
 	if !c.IsProxyTrusted() {
-		return scheme
+		return "http"
 	}
+
+	scheme := "http"
 	c.fasthttp.Request.Header.VisitAll(func(key, val []byte) {
 		if len(key) < 12 {
-			return // X-Forwarded-
-		} else if bytes.HasPrefix(key, []byte("X-Forwarded-")) {
-			v := c.app.getString(val)
-			if bytes.Equal(key, []byte(HeaderXForwardedProto)) {
-				commaPos := strings.Index(v, ",")
-				if commaPos != -1 {
-					scheme = v[:commaPos]
-				} else {
-					scheme = v
-				}
-			} else if bytes.Equal(key, []byte(HeaderXForwardedProtocol)) {
+			return // Neither "X-Forwarded-" nor "X-Url-Scheme"
+		}
+		switch {
+		case bytes.HasPrefix(key, []byte("X-Forwarded-")):
+			if bytes.Equal(key, []byte(HeaderXForwardedProto)) ||
+				bytes.Equal(key, []byte(HeaderXForwardedProtocol)) {
+				v := c.app.getString(val)
 				commaPos := strings.Index(v, ",")
 				if commaPos != -1 {
 					scheme = v[:commaPos]
@@ -1072,7 +1068,8 @@ func (c *Ctx) Protocol() string {
 			} else if bytes.Equal(key, []byte(HeaderXForwardedSsl)) && bytes.Equal(val, []byte("on")) {
 				scheme = "https"
 			}
-		} else if bytes.Equal(key, []byte(HeaderXUrlScheme)) {
+
+		case bytes.Equal(key, []byte(HeaderXUrlScheme)):
 			scheme = c.app.getString(val)
 		}
 	})
@@ -1384,11 +1381,13 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	// Pass-locals-to-views & bind
+	// Pass-locals-to-views, bind, appListKeys
 	c.renderExtensions(bind)
 
-	rendered := false
-	for prefix, app := range c.app.appList {
+	var rendered bool
+	for i := len(c.app.mountFields.appListKeys) - 1; i >= 0; i-- {
+		prefix := c.app.mountFields.appListKeys[i]
+		app := c.app.mountFields.appList[prefix]
 		if prefix == "" || strings.Contains(c.OriginalURL(), prefix) {
 			if len(layouts) == 0 && app.config.ViewsLayout != "" {
 				layouts = []string{
@@ -1454,6 +1453,10 @@ func (c *Ctx) renderExtensions(bind interface{}) {
 			})
 		}
 	}
+
+	if len(c.app.mountFields.appListKeys) == 0 {
+		c.app.generateAppListKeys()
+	}
 }
 
 // Route returns the matched Route struct.
@@ -1483,7 +1486,7 @@ func (c *Ctx) SaveFileToStorage(fileheader *multipart.FileHeader, path string, s
 		return err
 	}
 
-	content, err := ioutil.ReadAll(file)
+	content, err := io.ReadAll(file)
 	if err != nil {
 		return err
 	}
@@ -1491,9 +1494,9 @@ func (c *Ctx) SaveFileToStorage(fileheader *multipart.FileHeader, path string, s
 	return storage.Set(path, content, 0)
 }
 
-// Secure returns a boolean property, that is true, if a TLS connection is established.
+// Secure returns whether a secure connection was established.
 func (c *Ctx) Secure() bool {
-	return c.fasthttp.IsTLS()
+	return c.Protocol() == "https"
 }
 
 // Send sets the HTTP response body without copying it.

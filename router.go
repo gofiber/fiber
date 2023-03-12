@@ -52,6 +52,7 @@ type Route struct {
 	root        bool        // Path equals '/'
 	path        string      // Prettified path
 	routeParser routeParser // Parameter parser
+	group       *Group      // Group instance. used for routes in groups
 
 	// Public fields
 	Method   string    `json:"method"` // HTTP method
@@ -138,7 +139,7 @@ func (app *App) next(c *Ctx) (match bool, err error) {
 
 	// If no match, scan stack again if other methods match the request
 	// Moved from app.handler because middleware may break the route chain
-	if !c.matched && methodExist(c) {
+	if !c.matched && app.methodExist(c) {
 		err = ErrMethodNotAllowed
 	}
 	return
@@ -211,11 +212,11 @@ func (app *App) copyRoute(route *Route) *Route {
 	}
 }
 
-func (app *App) register(method, pathRaw string, handlers ...Handler) Router {
+func (app *App) register(method, pathRaw string, group *Group, handlers ...Handler) Router {
 	// Uppercase HTTP methods
 	method = utils.ToUpper(method)
 	// Check if the HTTP method is valid unless it's USE
-	if method != methodUse && methodInt(method) == -1 {
+	if method != methodUse && app.methodInt(method) == -1 {
 		panic(fmt.Sprintf("add: invalid http method %s\n", method))
 	}
 	// A route requires atleast one ctx handler
@@ -262,6 +263,9 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) Router {
 		routeParser: parsedPretty,
 		Params:      parsedRaw.params,
 
+		// Group data
+		group: group,
+
 		// Public data
 		Path:     pathRaw,
 		Method:   method,
@@ -273,7 +277,7 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) Router {
 	// Middleware route matches all HTTP methods
 	if isUse {
 		// Add route to all HTTP methods stack
-		for _, m := range intMethod {
+		for _, m := range app.config.RequestMethods {
 			// Create a route copy to avoid duplicates during compression
 			r := route
 			app.addRoute(m, &r)
@@ -423,9 +427,15 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 	return app
 }
 
-func (app *App) addRoute(method string, route *Route) {
+func (app *App) addRoute(method string, route *Route, isMounted ...bool) {
+	// Check mounted routes
+	var mounted bool
+	if len(isMounted) > 0 {
+		mounted = isMounted[0]
+	}
+
 	// Get unique HTTP method identifier
-	m := methodInt(method)
+	m := app.methodInt(method)
 
 	// prevent identically route registration
 	l := len(app.stack[m])
@@ -441,12 +451,15 @@ func (app *App) addRoute(method string, route *Route) {
 		app.routesRefreshed = true
 	}
 
-	app.mutex.Lock()
-	app.latestRoute = route
-	if err := app.hooks.executeOnRouteHooks(*route); err != nil {
-		panic(err)
+	// Execute onRoute hooks & change latestRoute if not adding mounted route
+	if !mounted {
+		app.mutex.Lock()
+		app.latestRoute = route
+		if err := app.hooks.executeOnRouteHooks(*route); err != nil {
+			panic(err)
+		}
+		app.mutex.Unlock()
 	}
-	app.mutex.Unlock()
 }
 
 // buildTree build the prefix tree from the previously registered routes
@@ -454,8 +467,9 @@ func (app *App) buildTree() *App {
 	if !app.routesRefreshed {
 		return app
 	}
+
 	// loop all the methods and stacks and create the prefix tree
-	for m := range intMethod {
+	for m := range app.config.RequestMethods {
 		tsMap := make(map[string][]*Route)
 		for _, route := range app.stack[m] {
 			treePath := ""
@@ -467,8 +481,9 @@ func (app *App) buildTree() *App {
 		}
 		app.treeStack[m] = tsMap
 	}
+
 	// loop the methods and tree stacks and add global stack and sort everything
-	for m := range intMethod {
+	for m := range app.config.RequestMethods {
 		tsMap := app.treeStack[m]
 		for treePart := range tsMap {
 			if treePart != "" {

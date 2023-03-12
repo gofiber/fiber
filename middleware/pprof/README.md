@@ -24,6 +24,16 @@ After you initiate your Fiber app, you can use the following possibilities:
 app.Use(pprof.New())
 ```
 
+In systems where you have multiple ingress endpoints, it is common to add a URL prefix, like so:
+
+```go
+// Default middleware
+app.Use(pprof.New(pprof.Config{Prefix: "/endpoint-prefix"}))
+```
+
+This prefix will be added to the default path of "/debug/pprof/", for a resulting URL of:
+"/endpoint-prefix/debug/pprof/".
+
 ## Config
 
 ```go
@@ -33,6 +43,13 @@ type Config struct {
 	//
 	// Optional. Default: nil
 	Next func(c *fiber.Ctx) bool
+
+	// Prefix defines a URL prefix added before "/debug/pprof".
+	// Note that it should start with (but not end with) a slash.
+	// Example: "/federated-fiber"
+	//
+	// Optional. Default: ""
+	Prefix string
 }
 ```
 

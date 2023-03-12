@@ -3,15 +3,13 @@ package recover
 import (
 	"fmt"
 	"os"
-	"runtime"
+	"runtime/debug"
 
 	"github.com/gofiber/fiber/v2"
 )
 
-func defaultStackTraceHandler(c *fiber.Ctx, e interface{}) {
-	buf := make([]byte, defaultStackTraceBufLen)
-	buf = buf[:runtime.Stack(buf, false)]
-	_, _ = os.Stderr.WriteString(fmt.Sprintf("panic: %v\n%s\n", e, buf))
+func defaultStackTraceHandler(_ *fiber.Ctx, e interface{}) {
+	_, _ = os.Stderr.WriteString(fmt.Sprintf("panic: %v\n%s\n", e, debug.Stack()))
 }
 
 // New creates a new middleware handler

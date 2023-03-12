@@ -144,7 +144,7 @@ Fiber **受到** 網路上最流行的 Web 框架 ExpressJS**啟發**，結合 E
 有什麼問題請發[issues](https://github.com/gofiber/fiber/issues)或加入 Discord [channel](https://gofiber.io/discord)討論，我們想要創造**快速**、**彈性**、**友善**的社群給**任何人**使用！就像 Express 那樣。
 
 ## 限制
-* 由於 Fiber 使用了 unsafe，該庫可能並不總是與最新的 Go 版本兼容。 Fiber 2.29.0 已經用 Go 版本 1.14 到 1.19 進行了測試。
+* 由於 Fiber 使用了 unsafe，該庫可能並不總是與最新的 Go 版本兼容。 Fiber 2.40.0 已經用 Go 版本 1.16 到 1.19 進行了測試。
 * Fiber 與 net/http 接口不兼容。 這意味著您將無法使用 gqlgen、go-swagger 或任何其他屬於 net/http 生態系統的項目。
 
 ## 👀 範例
@@ -657,13 +657,17 @@ Fiber 是一個以贊助維生的開源專案，像是: 網域、gitbook、netli
 
 **Third-party library licenses**
 
--   [schema](https://github.com/gorilla/schema/blob/master/LICENSE)
--   [isatty](https://github.com/mattn/go-isatty/blob/master/LICENSE)
--   [fasthttp](https://github.com/valyala/fasthttp/blob/master/LICENSE)
 -   [colorable](https://github.com/mattn/go-colorable/blob/master/LICENSE)
--   [fasttemplate](https://github.com/valyala/fasttemplate/blob/master/LICENSE)
+-   [isatty](https://github.com/mattn/go-isatty/blob/master/LICENSE)
+-   [runewidth](https://github.com/mattn/go-runewidth/blob/master/LICENSE)
+-   [fasthttp](https://github.com/valyala/fasthttp/blob/master/LICENSE)
 -   [bytebufferpool](https://github.com/valyala/bytebufferpool/blob/master/LICENSE)
+-   [dictpool](https://github.com/savsgio/dictpool/blob/master/LICENSE)
+-   [fasttemplate](https://github.com/valyala/fasttemplate/blob/master/LICENSE)
+-   [fwd](https://github.com/philhofer/fwd/blob/master/LICENSE.md)
+-   [go-ole](https://github.com/go-ole/go-ole/blob/master/LICENSE)
 -   [gopsutil](https://github.com/shirou/gopsutil/blob/master/LICENSE)
--   [go-ole](https://github.com/go-ole/go-ole)
--   [wmi](https://github.com/StackExchange/wmi)
--   [dictpool](https://github.com/savsgio/dictpool)
+-   [msgp](https://github.com/tinylib/msgp/blob/master/LICENSE)
+-   [schema](https://github.com/gorilla/schema/blob/master/LICENSE)
+-   [uuid](https://github.com/google/uuid/blob/master/LICENSE)
+-   [wmi](https://github.com/StackExchange/wmi/blob/master/LICENSE)
