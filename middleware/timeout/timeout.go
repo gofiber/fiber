@@ -3,7 +3,7 @@ package timeout
 import (
 	"context"
 	"errors"
-	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -15,7 +15,7 @@ var once sync.Once
 // New wraps a handler and aborts the process of the handler if the timeout is reached
 func New(handler fiber.Handler, timeout time.Duration) fiber.Handler {
 	once.Do(func() {
-		fmt.Println("[Warning] timeout contains data race issues, not ready for production!")
+		log.Printf("[Warning] timeout contains data race issues, not ready for production!")
 	})
 
 	if timeout <= 0 {
@@ -28,9 +28,13 @@ func New(handler fiber.Handler, timeout time.Duration) fiber.Handler {
 
 		go func() {
 			defer func() {
-				_ = recover()
+				if err := recover(); err != nil {
+					log.Printf("[Warning] recover error %v", err)
+				}
 			}()
-			_ = handler(ctx)
+			if err := handler(ctx); err != nil {
+				log.Printf("[Warning] handler error %v", err)
+			}
 			ch <- struct{}{}
 		}()
 
