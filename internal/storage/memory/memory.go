@@ -139,5 +139,7 @@ func (s *Storage) gc() {
 
 // Return database client
 func (s *Storage) Conn() map[string]entry {
+	s.mux.RLock()
+	defer s.mux.RUnlock()
 	return s.db
 }
