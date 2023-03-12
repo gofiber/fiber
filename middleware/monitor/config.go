@@ -41,7 +41,7 @@ type Config struct {
 	// ChartJsURL for specify ChartJS library  path or URL . also you can use relative path
 	//
 	// Optional. Default: https://cdn.jsdelivr.net/npm/chart.js@2.9/dist/Chart.bundle.min.js
-	ChartJsURL string
+	ChartJsURL string // TODO: Rename to "ChartJSURL" in v3
 
 	index string
 }
@@ -50,27 +50,38 @@ var ConfigDefault = Config{
 	Title:      defaultTitle,
 	Refresh:    defaultRefresh,
 	FontURL:    defaultFontURL,
-	ChartJsURL: defaultChartJsURL,
+	ChartJsURL: defaultChartJSURL,
 	CustomHead: defaultCustomHead,
 	APIOnly:    false,
 	Next:       nil,
-	index: newIndex(viewBag{defaultTitle, defaultRefresh, defaultFontURL, defaultChartJsURL,
-		defaultCustomHead}),
+	index: newIndex(viewBag{
+		defaultTitle,
+		defaultRefresh,
+		defaultFontURL,
+		defaultChartJSURL,
+		defaultCustomHead,
+	}),
 }
 
 func configDefault(config ...Config) Config {
 	// Users can change ConfigDefault.Title/Refresh which then
 	// become incompatible with ConfigDefault.index
-	if ConfigDefault.Title != defaultTitle || ConfigDefault.Refresh != defaultRefresh ||
-		ConfigDefault.FontURL != defaultFontURL || ConfigDefault.ChartJsURL != defaultChartJsURL ||
+	if ConfigDefault.Title != defaultTitle ||
+		ConfigDefault.Refresh != defaultRefresh ||
+		ConfigDefault.FontURL != defaultFontURL ||
+		ConfigDefault.ChartJsURL != defaultChartJSURL ||
 		ConfigDefault.CustomHead != defaultCustomHead {
-
 		if ConfigDefault.Refresh < minRefresh {
 			ConfigDefault.Refresh = minRefresh
 		}
 		// update default index with new default title/refresh
-		ConfigDefault.index = newIndex(viewBag{ConfigDefault.Title,
-			ConfigDefault.Refresh, ConfigDefault.FontURL, ConfigDefault.ChartJsURL, ConfigDefault.CustomHead})
+		ConfigDefault.index = newIndex(viewBag{
+			ConfigDefault.Title,
+			ConfigDefault.Refresh,
+			ConfigDefault.FontURL,
+			ConfigDefault.ChartJsURL,
+			ConfigDefault.CustomHead,
+		})
 	}
 
 	// Return default config if nothing provided
@@ -94,7 +105,7 @@ func configDefault(config ...Config) Config {
 	}
 
 	if cfg.ChartJsURL == "" {
-		cfg.ChartJsURL = defaultChartJsURL
+		cfg.ChartJsURL = defaultChartJSURL
 	}
 	if cfg.Refresh < minRefresh {
 		cfg.Refresh = minRefresh
@@ -112,8 +123,8 @@ func configDefault(config ...Config) Config {
 	cfg.index = newIndex(viewBag{
 		title:      cfg.Title,
 		refresh:    cfg.Refresh,
-		fontUrl:    cfg.FontURL,
-		chartJsUrl: cfg.ChartJsURL,
+		fontURL:    cfg.FontURL,
+		chartJSURL: cfg.ChartJsURL,
 		customHead: cfg.CustomHead,
 	})
 

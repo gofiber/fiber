@@ -1,0 +1,197 @@
+# Created based on v1.51.0
+# NOTE: Keep this in sync with the version in .github/workflows/linter.yml
+
+run:
+  modules-download-mode: readonly
+  skip-dirs-use-default: false
+  skip-dirs:
+    - internal
+
+output:
+  sort-results: true
+
+linters-settings:
+  errcheck:
+     check-type-assertions: true
+     check-blank: true
+     disable-default-exclusions: true
+
+  errchkjson:
+    report-no-exported: true
+
+  exhaustive:
+    default-signifies-exhaustive: true
+
+  forbidigo:
+    forbid:
+      - ^(fmt\.Print(|f|ln)|print|println)$
+      - 'http\.Default(Client|Transport)'
+      # TODO: Eventually enable these patterns
+      # - 'time\.Sleep'
+      # - 'panic'
+
+  gocritic:
+    disabled-checks:
+      - ifElseChain
+
+  gofumpt:
+    module-path: github.com/gofiber/fiber
+    extra-rules: true
+
+  gosec:
+    config:
+      global:
+        audit: true
+
+  govet:
+    check-shadowing: true
+    enable-all: true
+    disable:
+      - shadow
+      - fieldalignment
+      - loopclosure
+
+  grouper:
+    import-require-single-import: true
+    import-require-grouping: true
+
+  misspell:
+    locale: US
+
+  nolintlint:
+    require-explanation: true
+    require-specific: true
+
+  nonamedreturns:
+    report-error-in-defer: true
+
+  predeclared:
+    q: true
+
+  promlinter:
+    strict: true
+
+  revive:
+    enable-all-rules: true
+    rules:
+      # Provided by gomnd linter
+      - name: add-constant
+        disabled: true
+      - name: argument-limit
+        disabled: true
+      # Provided by bidichk
+      - name: banned-characters
+        disabled: true
+      - name: cognitive-complexity
+        disabled: true
+      - name: cyclomatic
+        disabled: true
+      - name: early-return
+        severity: warning
+        disabled: true
+      - name: exported
+        disabled: true
+      - name: file-header
+        disabled: true
+      - name: function-result-limit
+        disabled: true
+      - name: function-length
+        disabled: true
+      - name: line-length-limit
+        disabled: true
+      - name: max-public-structs
+        disabled: true
+      - name: modifies-parameter
+        disabled: true
+      - name: nested-structs
+        disabled: true
+      - name: package-comments
+        disabled: true
+
+  stylecheck:
+    checks:
+      - all
+      - -ST1000
+      - -ST1020
+      - -ST1021
+      - -ST1022
+
+  tagliatelle:
+    case:
+      rules:
+        json: snake
+
+  #tenv:
+  #  all: true
+
+  #unparam:
+  #  check-exported: true
+
+  wrapcheck:
+    ignorePackageGlobs:
+      - github.com/gofiber/fiber/*
+      - github.com/valyala/fasthttp
+
+issues:
+   exclude-use-default: false
+
+linters:
+  enable:
+    - asasalint
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - containedctx
+    - contextcheck
+    - depguard
+    - dogsled
+    - durationcheck
+    - errcheck
+    - errchkjson
+    - errname
+    - errorlint
+    - execinquery
+    - exhaustive
+    - exportloopref
+    - forbidigo
+    - forcetypeassert
+    - goconst
+    - gocritic
+    - gofmt
+    - gofumpt
+    - goimports
+    - gomoddirectives
+    - goprintffuncname
+    - gosec
+    - gosimple
+    - govet
+    - grouper
+    - loggercheck
+    - misspell
+    - nakedret
+    - nilerr
+    - nilnil
+    - noctx
+    - nolintlint
+    - nonamedreturns
+    - nosprintfhostport
+    - predeclared
+    - promlinter
+    - reassign
+    - revive
+    - rowserrcheck
+    - sqlclosecheck
+    - staticcheck
+    - stylecheck
+    - tagliatelle
+    # - testpackage # TODO: Enable once https://github.com/gofiber/fiber/issues/2252 is implemented
+    - thelper
+    # - tparallel # TODO: Enable once https://github.com/gofiber/fiber/issues/2254 is implemented
+    - typecheck
+    - unconvert
+    - unparam
+    - unused
+    - usestdlibvars
+    - wastedassign
+    - whitespace
+    - wrapcheck

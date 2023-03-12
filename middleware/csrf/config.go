@@ -1,7 +1,7 @@
 package csrf
 
 import (
-	"fmt"
+	"log"
 	"net/textproto"
 	"strings"
 	"time"
@@ -80,13 +80,13 @@ type Config struct {
 	// Optional. Default: utils.UUID
 	KeyGenerator func() string
 
-	// Deprecated, please use Expiration
+	// Deprecated: Please use Expiration
 	CookieExpires time.Duration
 
-	// Deprecated, please use Cookie* related fields
+	// Deprecated: Please use Cookie* related fields
 	Cookie *fiber.Cookie
 
-	// Deprecated, please use KeyLookup
+	// Deprecated: Please use KeyLookup
 	TokenLookup string
 
 	// ErrorHandler is executed when an error is returned from fiber.Handler.
@@ -116,7 +116,7 @@ var ConfigDefault = Config{
 }
 
 // default ErrorHandler that process return error from fiber.Handler
-var defaultErrorHandler = func(c *fiber.Ctx, err error) error {
+func defaultErrorHandler(_ *fiber.Ctx, _ error) error {
 	return fiber.ErrForbidden
 }
 
@@ -132,15 +132,15 @@ func configDefault(config ...Config) Config {
 
 	// Set default values
 	if cfg.TokenLookup != "" {
-		fmt.Println("[CSRF] TokenLookup is deprecated, please use KeyLookup")
+		log.Printf("[CSRF] TokenLookup is deprecated, please use KeyLookup\n")
 		cfg.KeyLookup = cfg.TokenLookup
 	}
 	if int(cfg.CookieExpires.Seconds()) > 0 {
-		fmt.Println("[CSRF] CookieExpires is deprecated, please use Expiration")
+		log.Printf("[CSRF] CookieExpires is deprecated, please use Expiration\n")
 		cfg.Expiration = cfg.CookieExpires
 	}
 	if cfg.Cookie != nil {
-		fmt.Println("[CSRF] Cookie is deprecated, please use Cookie* related fields")
+		log.Printf("[CSRF] Cookie is deprecated, please use Cookie* related fields\n")
 		if cfg.Cookie.Name != "" {
 			cfg.CookieName = cfg.Cookie.Name
 		}
@@ -178,7 +178,8 @@ func configDefault(config ...Config) Config {
 	// Generate the correct extractor to get the token from the correct location
 	selectors := strings.Split(cfg.KeyLookup, ":")
 
-	if len(selectors) != 2 {
+	const numParts = 2
+	if len(selectors) != numParts {
 		panic("[CSRF] KeyLookup must in the form of <source>:<key>")
 	}
 

@@ -1,3 +1,4 @@
+//nolint:wrapcheck // We must not wrap errors in tests
 package fiber
 
 import (
@@ -19,6 +20,7 @@ import (
 
 	"github.com/gofiber/fiber/v2/internal/tlstest"
 	"github.com/gofiber/fiber/v2/utils"
+
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
@@ -256,6 +258,7 @@ func Test_Client_UserAgent(t *testing.T) {
 	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
 
 	t.Run("default", func(t *testing.T) {
+		t.Parallel()
 		for i := 0; i < 5; i++ {
 			a := Get("http://example.com")
 
@@ -270,6 +273,7 @@ func Test_Client_UserAgent(t *testing.T) {
 	})
 
 	t.Run("custom", func(t *testing.T) {
+		t.Parallel()
 		for i := 0; i < 5; i++ {
 			c := AcquireClient()
 			c.UserAgent = "ua"
@@ -289,11 +293,14 @@ func Test_Client_UserAgent(t *testing.T) {
 }
 
 func Test_Client_Agent_Set_Or_Add_Headers(t *testing.T) {
+	t.Parallel()
 	handler := func(c *Ctx) error {
 		c.Request().Header.VisitAll(func(key, value []byte) {
 			if k := string(key); k == "K1" || k == "K2" {
-				_, _ = c.Write(key)
-				_, _ = c.Write(value)
+				_, err := c.Write(key)
+				utils.AssertEqual(t, nil, err)
+				_, err = c.Write(value)
+				utils.AssertEqual(t, nil, err)
 			}
 		})
 		return nil
@@ -314,6 +321,7 @@ func Test_Client_Agent_Set_Or_Add_Headers(t *testing.T) {
 }
 
 func Test_Client_Agent_Connection_Close(t *testing.T) {
+	t.Parallel()
 	handler := func(c *Ctx) error {
 		if c.Request().Header.ConnectionClose() {
 			return c.SendString("close")
@@ -329,6 +337,7 @@ func Test_Client_Agent_Connection_Close(t *testing.T) {
 }
 
 func Test_Client_Agent_UserAgent(t *testing.T) {
+	t.Parallel()
 	handler := func(c *Ctx) error {
 		return c.Send(c.Request().Header.UserAgent())
 	}
@@ -342,6 +351,7 @@ func Test_Client_Agent_UserAgent(t *testing.T) {
 }
 
 func Test_Client_Agent_Cookie(t *testing.T) {
+	t.Parallel()
 	handler := func(c *Ctx) error {
 		return c.SendString(
 			c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3") + c.Cookies("k4"))
@@ -359,6 +369,7 @@ func Test_Client_Agent_Cookie(t *testing.T) {
 }
 
 func Test_Client_Agent_Referer(t *testing.T) {
+	t.Parallel()
 	handler := func(c *Ctx) error {
 		return c.Send(c.Request().Header.Referer())
 	}
@@ -372,6 +383,7 @@ func Test_Client_Agent_Referer(t *testing.T) {
 }
 
 func Test_Client_Agent_ContentType(t *testing.T) {
+	t.Parallel()
 	handler := func(c *Ctx) error {
 		return c.Send(c.Request().Header.ContentType())
 	}
@@ -413,6 +425,7 @@ func Test_Client_Agent_Host(t *testing.T) {
 }
 
 func Test_Client_Agent_QueryString(t *testing.T) {
+	t.Parallel()
 	handler := func(c *Ctx) error {
 		return c.Send(c.Request().URI().QueryString())
 	}
@@ -426,6 +439,7 @@ func Test_Client_Agent_QueryString(t *testing.T) {
 }
 
 func Test_Client_Agent_BasicAuth(t *testing.T) {
+	t.Parallel()
 	handler := func(c *Ctx) error {
 		// Get authorization header
 		auth := c.Get(HeaderAuthorization)
@@ -445,6 +459,7 @@ func Test_Client_Agent_BasicAuth(t *testing.T) {
 }
 
 func Test_Client_Agent_BodyString(t *testing.T) {
+	t.Parallel()
 	handler := func(c *Ctx) error {
 		return c.Send(c.Request().Body())
 	}
@@ -457,6 +472,7 @@ func Test_Client_Agent_BodyString(t *testing.T) {
 }
 
 func Test_Client_Agent_Body(t *testing.T) {
+	t.Parallel()
 	handler := func(c *Ctx) error {
 		return c.Send(c.Request().Body())
 	}
@@ -469,6 +485,7 @@ func Test_Client_Agent_Body(t *testing.T) {
 }
 
 func Test_Client_Agent_BodyStream(t *testing.T) {
+	t.Parallel()
 	handler := func(c *Ctx) error {
 		return c.Send(c.Request().Body())
 	}
@@ -531,6 +548,7 @@ func Test_Client_Agent_Dest(t *testing.T) {
 	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
 
 	t.Run("small dest", func(t *testing.T) {
+		t.Parallel()
 		dest := []byte("de")
 
 		a := Get("http://example.com")
@@ -546,6 +564,7 @@ func Test_Client_Agent_Dest(t *testing.T) {
 	})
 
 	t.Run("enough dest", func(t *testing.T) {
+		t.Parallel()
 		dest := []byte("foobar")
 
 		a := Get("http://example.com")
@@ -566,25 +585,26 @@ type readErrorConn struct {
 	net.Conn
 }
 
-func (r *readErrorConn) Read(p []byte) (int, error) {
+func (*readErrorConn) Read(_ []byte) (int, error) {
 	return 0, fmt.Errorf("error")
 }
 
-func (r *readErrorConn) Write(p []byte) (int, error) {
+func (*readErrorConn) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func (r *readErrorConn) Close() error {
+func (*readErrorConn) Close() error {
 	return nil
 }
 
-func (r *readErrorConn) LocalAddr() net.Addr {
+func (*readErrorConn) LocalAddr() net.Addr {
 	return nil
 }
 
-func (r *readErrorConn) RemoteAddr() net.Addr {
+func (*readErrorConn) RemoteAddr() net.Addr {
 	return nil
 }
+
 func Test_Client_Agent_RetryIf(t *testing.T) {
 	t.Parallel()
 
@@ -622,6 +642,7 @@ func Test_Client_Agent_RetryIf(t *testing.T) {
 }
 
 func Test_Client_Agent_Json(t *testing.T) {
+	t.Parallel()
 	handler := func(c *Ctx) error {
 		utils.AssertEqual(t, MIMEApplicationJSON, string(c.Request().Header.ContentType()))
 
@@ -636,6 +657,7 @@ func Test_Client_Agent_Json(t *testing.T) {
 }
 
 func Test_Client_Agent_Json_Error(t *testing.T) {
+	t.Parallel()
 	a := Get("http://example.com").
 		JSONEncoder(json.Marshal).
 		JSON(complex(1, 1))
@@ -648,6 +670,7 @@ func Test_Client_Agent_Json_Error(t *testing.T) {
 }
 
 func Test_Client_Agent_XML(t *testing.T) {
+	t.Parallel()
 	handler := func(c *Ctx) error {
 		utils.AssertEqual(t, MIMEApplicationXML, string(c.Request().Header.ContentType()))
 
@@ -662,6 +685,7 @@ func Test_Client_Agent_XML(t *testing.T) {
 }
 
 func Test_Client_Agent_XML_Error(t *testing.T) {
+	t.Parallel()
 	a := Get("http://example.com").
 		XML(complex(1, 1))
 
@@ -673,6 +697,7 @@ func Test_Client_Agent_XML_Error(t *testing.T) {
 }
 
 func Test_Client_Agent_Form(t *testing.T) {
+	t.Parallel()
 	handler := func(c *Ctx) error {
 		utils.AssertEqual(t, MIMEApplicationForm, string(c.Request().Header.ContentType()))
 
@@ -763,7 +788,10 @@ func Test_Client_Agent_MultipartForm_SendFiles(t *testing.T) {
 		buf := make([]byte, fh1.Size)
 		f, err := fh1.Open()
 		utils.AssertEqual(t, nil, err)
-		defer func() { _ = f.Close() }()
+		defer func() {
+			err := f.Close()
+			utils.AssertEqual(t, nil, err)
+		}()
 		_, err = f.Read(buf)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, "form file", string(buf))
@@ -811,13 +839,16 @@ func checkFormFile(t *testing.T, fh *multipart.FileHeader, filename string) {
 	basename := filepath.Base(filename)
 	utils.AssertEqual(t, fh.Filename, basename)
 
-	b1, err := os.ReadFile(filename)
+	b1, err := os.ReadFile(filename) //nolint:gosec // We're in a test so reading user-provided files by name is fine
 	utils.AssertEqual(t, nil, err)
 
 	b2 := make([]byte, fh.Size)
 	f, err := fh.Open()
 	utils.AssertEqual(t, nil, err)
-	defer func() { _ = f.Close() }()
+	defer func() {
+		err := f.Close()
+		utils.AssertEqual(t, nil, err)
+	}()
 	_, err = f.Read(b2)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, b1, b2)
@@ -856,6 +887,7 @@ func Test_Client_Agent_SendFile_Error(t *testing.T) {
 }
 
 func Test_Client_Debug(t *testing.T) {
+	t.Parallel()
 	handler := func(c *Ctx) error {
 		return c.SendString("debug")
 	}
@@ -870,7 +902,7 @@ func Test_Client_Debug(t *testing.T) {
 
 	str := output.String()
 
-	utils.AssertEqual(t, true, strings.Contains(str, "Connected to example.com(pipe)"))
+	utils.AssertEqual(t, true, strings.Contains(str, "Connected to example.com(InmemoryListener)"))
 	utils.AssertEqual(t, true, strings.Contains(str, "GET / HTTP/1.1"))
 	utils.AssertEqual(t, true, strings.Contains(str, "User-Agent: fiber"))
 	utils.AssertEqual(t, true, strings.Contains(str, "Host: example.com\r\n\r\n"))
@@ -941,6 +973,7 @@ func Test_Client_Agent_InsecureSkipVerify(t *testing.T) {
 	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
 	utils.AssertEqual(t, nil, err)
 
+	//nolint:gosec // We're in a test so using old ciphers is fine
 	serverTLSConf := &tls.Config{
 		Certificates: []tls.Certificate{cer},
 	}
@@ -1016,6 +1049,7 @@ func Test_Client_Agent_MaxRedirectsCount(t *testing.T) {
 	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
 
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
 		a := Get("http://example.com?foo").
 			MaxRedirectsCount(1)
 
@@ -1029,6 +1063,7 @@ func Test_Client_Agent_MaxRedirectsCount(t *testing.T) {
 	})
 
 	t.Run("error", func(t *testing.T) {
+		t.Parallel()
 		a := Get("http://example.com").
 			MaxRedirectsCount(1)
 
@@ -1093,6 +1128,7 @@ func Test_Client_Agent_Struct(t *testing.T) {
 	})
 
 	t.Run("error", func(t *testing.T) {
+		t.Parallel()
 		a := Get("http://example.com/error")
 
 		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
@@ -1108,11 +1144,12 @@ func Test_Client_Agent_Struct(t *testing.T) {
 	})
 
 	t.Run("nil jsonDecoder", func(t *testing.T) {
+		t.Parallel()
 		a := AcquireAgent()
 		defer ReleaseAgent(a)
 		defer a.ConnectionClose()
 		request := a.Request()
-		request.Header.SetMethod("GET")
+		request.Header.SetMethod(MethodGet)
 		request.SetRequestURI("http://example.com")
 		err := a.Parse()
 		utils.AssertEqual(t, nil, err)
@@ -1134,13 +1171,8 @@ func Test_Client_Agent_Parse(t *testing.T) {
 	utils.AssertEqual(t, nil, a.Parse())
 }
 
-func Test_AddMissingPort_TLS(t *testing.T) {
-	addr := addMissingPort("example.com", true)
-	utils.AssertEqual(t, "example.com:443", addr)
-}
-
 func testAgent(t *testing.T, handler Handler, wrapAgent func(agent *Agent), excepted string, count ...int) {
-	t.Parallel()
+	t.Helper()
 
 	ln := fasthttputil.NewInmemoryListener()
 
@@ -1178,8 +1210,8 @@ type errorMultipartWriter struct {
 	count int
 }
 
-func (e *errorMultipartWriter) Boundary() string           { return "myBoundary" }
-func (e *errorMultipartWriter) SetBoundary(_ string) error { return nil }
+func (*errorMultipartWriter) Boundary() string           { return "myBoundary" }
+func (*errorMultipartWriter) SetBoundary(_ string) error { return nil }
 func (e *errorMultipartWriter) CreateFormFile(_, _ string) (io.Writer, error) {
 	if e.count == 0 {
 		e.count++
@@ -1187,8 +1219,8 @@ func (e *errorMultipartWriter) CreateFormFile(_, _ string) (io.Writer, error) {
 	}
 	return errorWriter{}, nil
 }
-func (e *errorMultipartWriter) WriteField(_, _ string) error { return errors.New("WriteField error") }
-func (e *errorMultipartWriter) Close() error                 { return errors.New("Close error") }
+func (*errorMultipartWriter) WriteField(_, _ string) error { return errors.New("WriteField error") }
+func (*errorMultipartWriter) Close() error                 { return errors.New("Close error") }
 
 type errorWriter struct{}
 

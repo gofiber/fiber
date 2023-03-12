@@ -19,7 +19,7 @@ import (
 	"sync/atomic"
 	"unicode"
 
-	googleuuid "github.com/gofiber/fiber/v2/internal/uuid"
+	googleuuid "github.com/google/uuid"
 )
 
 const (
@@ -30,6 +30,10 @@ const (
 // Copyright © 2014, Roger Peppe
 // github.com/rogpeppe/fastuuid
 // All rights reserved.
+
+const (
+	emptyUUID = "00000000-0000-0000-0000-000000000000"
+)
 
 var (
 	uuidSeed    [24]byte
@@ -48,7 +52,7 @@ func UUID() string {
 		uuidCounter = binary.LittleEndian.Uint64(uuidSeed[:8])
 	})
 	if atomic.LoadUint64(&uuidCounter) <= 0 {
-		return "00000000-0000-0000-0000-000000000000"
+		return emptyUUID
 	}
 	// first 8 bytes differ, taking a slice of the first 16 bytes
 	x := atomic.AddUint64(&uuidCounter, 1)
@@ -147,7 +151,8 @@ func ConvertToBytes(humanReadableString string) int {
 		// convert multiplier char to lowercase and check if exists in units slice
 		index := bytes.IndexByte(unitsSlice, toLowerTable[humanReadableString[unitPrefixPos]])
 		if index != -1 {
-			size *= math.Pow(1000, float64(index+1))
+			const bytesPerKB = 1000
+			size *= math.Pow(bytesPerKB, float64(index+1))
 		}
 	}
 

@@ -1,7 +1,6 @@
 package cors
 
 import (
-	"net/http"
 	"strconv"
 	"strings"
 
@@ -113,11 +112,11 @@ func New(config ...Config) fiber.Handler {
 
 		// Check allowed origins
 		for _, o := range allowOrigins {
-			if o == "*" && cfg.AllowCredentials {
-				allowOrigin = origin
+			if o == "*" {
+				allowOrigin = "*"
 				break
 			}
-			if o == "*" || o == origin {
+			if o == origin {
 				allowOrigin = o
 				break
 			}
@@ -128,7 +127,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Simple request
-		if c.Method() != http.MethodOptions {
+		if c.Method() != fiber.MethodOptions {
 			c.Vary(fiber.HeaderOrigin)
 			c.Set(fiber.HeaderAccessControlAllowOrigin, allowOrigin)
 

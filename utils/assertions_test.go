@@ -4,7 +4,9 @@
 
 package utils
 
-import "testing"
+import (
+	"testing"
+)
 
 func Test_AssertEqual(t *testing.T) {
 	t.Parallel()

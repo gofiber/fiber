@@ -164,8 +164,8 @@ func NewProcess(pid int32) (*Process, error) {
 	if !exists {
 		return p, ErrorProcessNotRunning
 	}
-	p.CreateTime()
-	return p, nil
+	_, err = p.CreateTime()
+	return p, err
 }
 
 func PidExists(pid int32) (bool, error) {

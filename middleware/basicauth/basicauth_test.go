@@ -1,22 +1,21 @@
 package basicauth
 
 import (
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http/httptest"
 	"testing"
 
-	b64 "encoding/base64"
-
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
+
 	"github.com/valyala/fasthttp"
 )
 
 // go test -run Test_BasicAuth_Next
 func Test_BasicAuth_Next(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New(Config{
 		Next: func(_ *fiber.Ctx) bool {
@@ -24,7 +23,7 @@ func Test_BasicAuth_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
 }
@@ -40,6 +39,7 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 		},
 	}))
 
+	//nolint:forcetypeassert,errcheck // TODO: Do not force-type assert
 	app.Get("/testauth", func(c *fiber.Ctx) error {
 		username := c.Locals("username").(string)
 		password := c.Locals("password").(string)
@@ -75,9 +75,9 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 
 	for _, tt := range tests {
 		// Base64 encode credentials for http auth header
-		creds := b64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", tt.username, tt.password)))
+		creds := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", tt.username, tt.password)))
 
-		req := httptest.NewRequest("GET", "/testauth", nil)
+		req := httptest.NewRequest(fiber.MethodGet, "/testauth", nil)
 		req.Header.Add("Authorization", "Basic "+creds)
 		resp, err := app.Test(req)
 		utils.AssertEqual(t, nil, err)
@@ -109,9 +109,39 @@ func Benchmark_Middleware_BasicAuth(b *testing.B) {
 	h := app.Handler()
 
 	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.SetMethod("GET")
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
 	fctx.Request.SetRequestURI("/")
 	fctx.Request.Header.Set(fiber.HeaderAuthorization, "basic am9objpkb2U=") // john:doe
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		h(fctx)
+	}
+
+	utils.AssertEqual(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
+}
+
+// go test -v -run=^$ -bench=Benchmark_Middleware_BasicAuth -benchmem -count=4
+func Benchmark_Middleware_BasicAuth_Upper(b *testing.B) {
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Users: map[string]string{
+			"john": "doe",
+		},
+	}))
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusTeapot)
+	})
+
+	h := app.Handler()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
+	fctx.Request.SetRequestURI("/")
+	fctx.Request.Header.Set(fiber.HeaderAuthorization, "Basic am9objpkb2U=") // john:doe
 
 	b.ReportAllocs()
 	b.ResetTimer()

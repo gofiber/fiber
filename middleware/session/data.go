@@ -6,8 +6,6 @@ import (
 
 // go:generate msgp
 // msgp -file="data.go" -o="data_msgp.go" -tests=false -unexported
-// don't forget to replace the msgp import path to:
-// "github.com/gofiber/fiber/v2/internal/msgp"
 type data struct {
 	sync.RWMutex
 	Data map[string]interface{}
@@ -22,7 +20,7 @@ var dataPool = sync.Pool{
 }
 
 func acquireData() *data {
-	return dataPool.Get().(*data)
+	return dataPool.Get().(*data) //nolint:forcetypeassert // We store nothing else in the pool
 }
 
 func (d *data) Reset() {

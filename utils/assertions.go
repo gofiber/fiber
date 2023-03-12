@@ -16,7 +16,7 @@ import (
 )
 
 // AssertEqual checks if values are equal
-func AssertEqual(tb testing.TB, expected, actual interface{}, description ...string) {
+func AssertEqual(tb testing.TB, expected, actual interface{}, description ...string) { //nolint:thelper // TODO: Verify if tb can be nil
 	if tb != nil {
 		tb.Helper()
 	}
@@ -43,14 +43,15 @@ func AssertEqual(tb testing.TB, expected, actual interface{}, description ...str
 	_, file, line, _ := runtime.Caller(1)
 
 	var buf bytes.Buffer
-	w := tabwriter.NewWriter(&buf, 0, 0, 5, ' ', 0)
-	fmt.Fprintf(w, "\nTest:\t%s", testName)
-	fmt.Fprintf(w, "\nTrace:\t%s:%d", filepath.Base(file), line)
+	const pad = 5
+	w := tabwriter.NewWriter(&buf, 0, 0, pad, ' ', 0)
+	_, _ = fmt.Fprintf(w, "\nTest:\t%s", testName)
+	_, _ = fmt.Fprintf(w, "\nTrace:\t%s:%d", filepath.Base(file), line)
 	if len(description) > 0 {
-		fmt.Fprintf(w, "\nDescription:\t%s", description[0])
+		_, _ = fmt.Fprintf(w, "\nDescription:\t%s", description[0])
 	}
-	fmt.Fprintf(w, "\nExpect:\t%v\t(%s)", expected, aType)
-	fmt.Fprintf(w, "\nResult:\t%v\t(%s)", actual, bType)
+	_, _ = fmt.Fprintf(w, "\nExpect:\t%v\t(%s)", expected, aType)
+	_, _ = fmt.Fprintf(w, "\nResult:\t%v\t(%s)", actual, bType)
 
 	result := ""
 	if err := w.Flush(); err != nil {
@@ -62,6 +63,6 @@ func AssertEqual(tb testing.TB, expected, actual interface{}, description ...str
 	if tb != nil {
 		tb.Fatal(result)
 	} else {
-		log.Fatal(result)
+		log.Fatal(result) //nolint:revive // tb might be nil, so we need a fallback
 	}
 }

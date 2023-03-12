@@ -30,6 +30,9 @@ type Config struct {
 }
 
 // ConfigDefault is the default config
+// It uses a fast UUID generator which will expose the number of
+// requests made to the server. To conceal this value for better
+// privacy, use the "utils.UUIDv4" generator.
 var ConfigDefault = Config{
 	Next:       nil,
 	Header:     fiber.HeaderXRequestID,

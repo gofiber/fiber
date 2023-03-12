@@ -5,12 +5,8 @@ import (
 	"hash/crc32"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
-)
 
-var (
-	normalizedHeaderETag = []byte("Etag")
-	weakPrefix           = []byte("W/")
+	"github.com/valyala/bytebufferpool"
 )
 
 // New creates a new middleware handler
@@ -18,32 +14,38 @@ func New(config ...Config) fiber.Handler {
 	// Set default config
 	cfg := configDefault(config...)
 
-	crc32q := crc32.MakeTable(0xD5828281)
+	var (
+		normalizedHeaderETag = []byte("Etag")
+		weakPrefix           = []byte("W/")
+	)
+
+	const crcPol = 0xD5828281
+	crc32q := crc32.MakeTable(crcPol)
 
 	// Return new handler
-	return func(c *fiber.Ctx) (err error) {
+	return func(c *fiber.Ctx) error {
 		// Don't execute middleware if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()
 		}
 
 		// Return err if next handler returns one
-		if err = c.Next(); err != nil {
-			return
+		if err := c.Next(); err != nil {
+			return err
 		}
 
 		// Don't generate ETags for invalid responses
 		if c.Response().StatusCode() != fiber.StatusOK {
-			return
+			return nil
 		}
 		body := c.Response().Body()
 		// Skips ETag if no response body is present
 		if len(body) == 0 {
-			return
+			return nil
 		}
 		// Skip ETag if header is already present
 		if c.Response().Header.PeekBytes(normalizedHeaderETag) != nil {
-			return
+			return nil
 		}
 
 		// Generate ETag for response
@@ -52,14 +54,14 @@ func New(config ...Config) fiber.Handler {
 
 		// Enable weak tag
 		if cfg.Weak {
-			_, _ = bb.Write(weakPrefix)
+			_, _ = bb.Write(weakPrefix) //nolint:errcheck // This will never fail
 		}
 
-		_ = bb.WriteByte('"')
+		_ = bb.WriteByte('"') //nolint:errcheck // This will never fail
 		bb.B = appendUint(bb.Bytes(), uint32(len(body)))
-		_ = bb.WriteByte('-')
+		_ = bb.WriteByte('-') //nolint:errcheck // This will never fail
 		bb.B = appendUint(bb.Bytes(), crc32.Checksum(body, crc32q))
-		_ = bb.WriteByte('"')
+		_ = bb.WriteByte('"') //nolint:errcheck // This will never fail
 
 		etag := bb.Bytes()
 
@@ -78,7 +80,7 @@ func New(config ...Config) fiber.Handler {
 			// W/1 != W/2 || W/1 != 2
 			c.Response().Header.SetCanonical(normalizedHeaderETag, etag)
 
-			return
+			return nil
 		}
 
 		if bytes.Contains(clientEtag, etag) {
@@ -90,7 +92,7 @@ func New(config ...Config) fiber.Handler {
 		// 1 != 2
 		c.Response().Header.SetCanonical(normalizedHeaderETag, etag)
 
-		return
+		return nil
 	}
 }
 
