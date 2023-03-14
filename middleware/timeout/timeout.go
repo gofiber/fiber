@@ -12,7 +12,10 @@ import (
 
 var once sync.Once
 
-// New wraps a handler and aborts the process of the handler if the timeout is reached
+// New wraps a handler and aborts the process of the handler if the timeout is reached.
+//
+// Deprecated: This implementation contains data race issues. Use NewWithContext instead.
+// Find documentation and sample usage on https://docs.gofiber.io/api/middleware/timeout
 func New(handler fiber.Handler, timeout time.Duration) fiber.Handler {
 	once.Do(func() {
 		log.Printf("[Warning] timeout contains data race issues, not ready for production!")
