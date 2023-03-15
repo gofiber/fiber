@@ -133,7 +133,7 @@ func main() {
 
 ## ⚙️ התקנה
 
-Make sure you have Go installed ([download](https://go.dev/dl/)). Version `1.16` or higher is required.
+Make sure you have Go installed ([download](https://go.dev/dl/)). Version `1.17` or higher is required.
 
 Initialize your project by creating a folder and then running `go mod init github.com/your/repo` ([learn more](https://go.dev/blog/using-go-modules)) inside the folder. Then install Fiber with the [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
 
@@ -190,7 +190,7 @@ Fiber נוצרה **בהשראת** Express, ה-web framework הפופולרית �
 <div dir="rtl">
 
 ## ⚠️ Limitations
-* Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber 2.40.0 has been tested with Go versions 1.16 to 1.20.
+* Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber 2.40.0 has been tested with Go versions 1.17 to 1.20.
 * Fiber is not compatible with net/http interfaces. This means you will not be able to use projects like gqlgen, go-swagger, or any others which are part of the net/http ecosystem.
 
 ## 👀 דוגמאות

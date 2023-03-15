@@ -133,7 +133,7 @@ func main() {
 <br>
 <p align="center">
 <div dir="rtl">
-مطمئن شوید Go را نصب (<a href="https://go.dev/dl/">دانلود</a>) کرده اید. نسخه 1.16 یا بیشتر مورد نیاز است.<br>
+مطمئن شوید Go را نصب (<a href="https://go.dev/dl/">دانلود</a>) کرده اید. نسخه 1.17 یا بیشتر مورد نیاز است.<br>
 پروژه خود را با ساختن یک پوشه و سپس اجرای <code>go mod init github.com/your/repo</code> داخل پوشه (<a href="https://go.dev/blog/using-go-modules">یادگیری بیشتر</a>) راه اندازی کنید. سپس Fiber را با دستور <code><a href="https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them">go get</a></code> نصب کنید :
 <div dir="rtl">
 <br>
@@ -185,7 +185,7 @@ Fiber از Express <b>الهام گرفته</b>, که محبوب ترین فری
 </p>
 
 ## ⚠️ محدودیت ها
-* به دلیل استفاده ناامن از Fiber, ممکن است کتابخانه همیشه با آخرین نسخه Go سازگار نباشد. Fiber 2.40.0 با زبان گو نسخه 1.16 تا 1.20 تست شده است.
+* به دلیل استفاده ناامن از Fiber, ممکن است کتابخانه همیشه با آخرین نسخه Go سازگار نباشد. Fiber 2.40.0 با زبان گو نسخه 1.17 تا 1.20 تست شده است.
 * فریمورک Fiber با پکیج net/http سازگار نیست. این بدان معناست شما نمی توانید از پکیج های مانند go-swagger, gqlgen یا سایر پروژه هایی که بخشی از اکوسیستم net/http هستند استفاده کنید.
 
 <br>

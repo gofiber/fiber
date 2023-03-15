@@ -114,7 +114,7 @@ func main() {
 
 ## ⚙️ Установка
 
-Убедитесь, что Go установлен ([скачать](https://go.dev/dl/)). Требуется версия `1.16` или выше.
+Убедитесь, что Go установлен ([скачать](https://go.dev/dl/)). Требуется версия `1.17` или выше.
 
 Инициализируйте проект, создав папку, а затем запустив `go mod init github.com/your/repo` ([подробнее](https://go.dev/blog/using-go-modules)) внутри этой папки. Далее, установите Fiber с помощью команды [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
 
@@ -147,7 +147,7 @@ Fiber **вдохновлен** Express, самым популярным веб �
 Мы **прислушиваемся** к нашим пользователям в [issues](https://github.com/gofiber/fiber/issues), Discord [канале](https://gofiber.io/discord) _и в остальном Интернете_, чтобы создать **быстрый**, **гибкий** и **дружелюбный** веб фреймворк на Go для **любых** задач, **дедлайнов** и **уровней** разработчиков! Как это делает Express в мире JavaScript.
 
 ## ⚠️ Limitations
-* Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber 2.40.0 has been tested with Go versions 1.16 to 1.20.
+* Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber 2.40.0 has been tested with Go versions 1.17 to 1.20.
 * Fiber is not compatible with net/http interfaces. This means you will not be able to use projects like gqlgen, go-swagger, or any others which are part of the net/http ecosystem.
 
 ## 👀 Примеры

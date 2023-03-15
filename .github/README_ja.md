@@ -115,7 +115,7 @@ func main() {
 
 ## ⚙️ インストール
 
-Go がインストールされていることを確認してください ([ダウンロード](https://go.dev/dl/)). バージョン `1.16` またはそれ以上であることが必要です。
+Go がインストールされていることを確認してください ([ダウンロード](https://go.dev/dl/)). バージョン `1.17` またはそれ以上であることが必要です。
 
 フォルダを作成し、フォルダ内で `go mod init github.com/your/repo` ([learn more](https://go.dev/blog/using-go-modules)) を実行してプロジェクトを初期化してください。その後、 Fiber を以下の [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) コマンドでインストールしてください。
 
@@ -150,7 +150,7 @@ Fiber は人気の高い Web フレームワークである Expressjs に**イ�
 
 ## ⚠️ 制限事項
 
--   Fiber は unsafe パッケージを使用しているため、最新の Go バージョンと互換性がない場合があります。Fiber 2.40.0 は、Go のバージョン 1.16 から 1.20 でテストされています。
+-   Fiber は unsafe パッケージを使用しているため、最新の Go バージョンと互換性がない場合があります。Fiber 2.40.0 は、Go のバージョン 1.17 から 1.20 でテストされています。
 -   Fiber は net/http インターフェースと互換性がありません。つまり、gqlgen や go-swagger など、net/http のエコシステムの一部であるプロジェクトを使用することができません。
 
 ## 👀 例

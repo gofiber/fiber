@@ -13,7 +13,7 @@ These docs are for **Fiber v2**, which was released on **September 15th, 2020**.
 
 ### Installation
 
-First of all, [download](https://go.dev/dl/) and install Go. `1.16` or higher is required.
+First of all, [download](https://go.dev/dl/) and install Go. `1.17` or higher is required.
 
 Installation is done using the [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
 
