@@ -16,7 +16,10 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 		// Get id from request, else we generate one
-		rid := c.Get(cfg.Header, cfg.Generator())
+		rid := c.Get(cfg.Header)
+		if rid == "" {
+			rid = cfg.Generator()
+		}
 
 		// Set new id to response header
 		c.Set(cfg.Header, rid)
