@@ -1083,7 +1083,7 @@ func (app *App) startupProcess() *App {
 
 	// add routes of sub-apps
 	app.mountFields.subAppsRoutesAdded.Do(func() {
-		// TODO: go through the stack and remove the app and merge with the other routes
+		// TODO #2233: go through the stack and remove the app and merge with the other routes
 		app.appendSubAppLists(app.mountFields.appList)
 		app.addSubAppsRoutes(app.mountFields.appList)
 		app.generateAppListKeys()
