@@ -273,7 +273,6 @@ func captureOutput(f func()) string {
 }
 
 func Test_App_Master_Process_Show_Startup_Message(t *testing.T) {
-	t.Parallel()
 	startupMessage := captureOutput(func() {
 		New(Config{Prefork: true}).
 			startupMessage(":3000", true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10))
@@ -286,7 +285,6 @@ func Test_App_Master_Process_Show_Startup_Message(t *testing.T) {
 }
 
 func Test_App_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
-	t.Parallel()
 	app := New(Config{Prefork: true, AppName: "Test App v1.0.1"})
 	startupMessage := captureOutput(func() {
 		app.startupMessage(":3000", true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10))
@@ -296,7 +294,6 @@ func Test_App_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
 }
 
 func Test_App_Master_Process_Show_Startup_MessageWithAppNameNonAscii(t *testing.T) {
-	t.Parallel()
 	appName := "Serveur de vérification des données"
 	app := New(Config{Prefork: true, AppName: appName})
 	startupMessage := captureOutput(func() {

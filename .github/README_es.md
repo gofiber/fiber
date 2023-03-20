@@ -114,7 +114,7 @@ Estas pruebas son realizadas por [TechEmpower](https://www.techempower.com/bench
 
 ## ⚙️ Instalación
 
-Asegúrese de tener instalado Go ([descargar](https://go.dev/dl/)). Versión `1.16` o superior.
+Asegúrese de tener instalado Go ([descargar](https://go.dev/dl/)). Versión `1.17` o superior.
 
 Arranque su proyecto creando una nueva carpeta y ejecutando `go mod init github.com/your/repo` ([mas información](https://go.dev/blog/using-go-modules)) dentro del mismo directorio. Después instale Fiber mediante el comando [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
 
@@ -145,7 +145,7 @@ Los nuevos gophers que hacen el cambio de [Node.js](https://nodejs.org/en/about/
 Fiber está **inspirado** en Expressjs, el framework web más popular en Internet. Combinamos la **facilidad** de Express y **el rendimiento bruto** de Go. Si alguna vez ha implementado una aplicación web en Node.js ( _utilizando Express.js o similar_ ), muchos métodos y principios le parecerán **muy comunes** .
 
 ## ⚠️ Limitantes
-* Debido a que Fiber utiliza unsafe, la biblioteca no siempre será compatible con la última versión de Go. Fiber 2.40.0 ha sido probado con las versiones de Go 1.16 a 1.20.
+* Debido a que Fiber utiliza unsafe, la biblioteca no siempre será compatible con la última versión de Go. Fiber 2.40.0 ha sido probado con las versiones de Go 1.17 a 1.20.
 * Fiber no es compatible con interfaces net/http. Esto significa que no lo podrá usar en proyectos como qglgen, go-swagger, u otros que son parte del ecosistema net/http.
 
 ## 👀 Ejemplos
