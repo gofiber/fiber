@@ -145,7 +145,7 @@ func (app *App) MountPath() string
 
 ```go title="Examples"
 func main() {
-	app := fiber.New(h
+	app := fiber.New()
 	one := fiber.New()
 	two := fiber.New()
 	three := fiber.New()
