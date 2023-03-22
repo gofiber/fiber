@@ -145,10 +145,10 @@ func (app *App) MountPath() string
 
 ```go title="Examples"
 func main() {
-	app := New()
-	one := New()
-	two := New()
-	three := New()
+	app := fiber.New()
+	one := fiber.New()
+	two := fiber.New()
+	three := fiber.New()
 
 	two.Mount("/three", three)
 	one.Mount("/two", two)
