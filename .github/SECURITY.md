@@ -20,7 +20,7 @@ The table below shows the supported versions for Fiber which include security up
 
 **DO NOT CREATE AN ISSUE** to report a security problem. Instead, please
 send us an e-mail at `team@gofiber.io` or join our discord server via
-[this invite link](https://discord.gg/bSnH7db) and send a private message
+[this invite link](https://gofiber.io/discord) and send a private message
 to Fenny or any of the maintainers.
 
 <a name="contact"></a>
