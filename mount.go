@@ -126,8 +126,8 @@ func (app *App) appendSubAppLists(appList map[string]*App, parent ...string) {
 	}
 }
 
-// addSubAppsRoutes adds routes of sub apps nestedly when to start the server
-func (app *App) addSubAppsRoutes(appList map[string]*App, parent ...string) {
+// processSubAppsRoutes adds routes of sub apps nestedly when to start the server
+func (app *App) processSubAppsRoutes(appList map[string]*App, parent ...string) {
 	for prefix, subApp := range appList {
 		// skip real app
 		if prefix == "" {

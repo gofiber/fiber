@@ -102,7 +102,6 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) boo
 }
 
 func (app *App) next(c *Ctx) (bool, error) {
-	// TODO #2233: try to use the sub router app and his match function -> recursion
 	// Get stack length
 	tree, ok := app.treeStack[c.methodINT][c.treePath]
 	if !ok {
@@ -227,7 +226,6 @@ func (*App) copyRoute(route *Route) *Route {
 }
 
 func (app *App) register(method, pathRaw string, group *Group, handlers ...Handler) Router {
-	// TODO #2233: rename group instance to a router instance and inject the app in case of a mounting process
 	// Uppercase HTTP methods
 	method = utils.ToUpper(method)
 	// Check if the HTTP method is valid unless it's USE
@@ -258,7 +256,6 @@ func (app *App) register(method, pathRaw string, group *Group, handlers ...Handl
 	if !app.config.StrictRouting && len(pathPretty) > 1 {
 		pathPretty = utils.TrimRight(pathPretty, '/')
 	}
-	// TODO #2233: inject the router sub app as use
 	// Is layer a middleware?
 	isUse := method == methodUse
 	// Is path a direct wildcard?
@@ -282,8 +279,6 @@ func (app *App) register(method, pathRaw string, group *Group, handlers ...Handl
 		routeParser: parsedPretty,
 		Params:      parsedRaw.params,
 
-		// TODO: #2233: use group property
-		// TODO #2233: rename group to router
 		// Group data
 		group: group,
 
@@ -293,7 +288,6 @@ func (app *App) register(method, pathRaw string, group *Group, handlers ...Handl
 		Handlers: handlers,
 	}
 	// Increment global handler count
-	// #2233 correct handler Count at the end
 	atomic.AddUint32(&app.handlersCount, uint32(len(handlers)))
 
 	// Middleware route matches all HTTP methods
@@ -451,7 +445,6 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 }
 
 func (app *App) addRoute(method string, route *Route, isMounted ...bool) {
-	// TODO #2233: accept rout or router(app)
 	// Check mounted routes
 	var mounted bool
 	if len(isMounted) > 0 {
