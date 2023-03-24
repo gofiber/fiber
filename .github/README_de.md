@@ -114,7 +114,7 @@ Diese Tests wurden von [TechEmpower](https://www.techempower.com/benchmarks/#sec
 
 ## ⚙️ Installation
 
-Stelle sicher, dass du Go installiert hast ([Download hier](https://go.dev/dl/)). Version `1.16` oder neuer wird zu der Nutzung Fibers benötigt.
+Stelle sicher, dass du Go installiert hast ([Download hier](https://go.dev/dl/)). Version `1.17` oder neuer wird zu der Nutzung Fibers benötigt.
 
 Erstelle ein neues Project, indem du zunächst einen neuen Ordner erstellst und dort in diesem Ordner `go mod init github.com/dein/repo` ausführst ([hier mehr dazu](https://go.dev/blog/using-go-modules)). Daraufhin kannst du Fiber mit dem [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) Kommandozeilenbefehl installieren:
 
@@ -145,7 +145,7 @@ Neue Gopher, welche von [Node.js](https://nodejs.org/en/about/) zu [Go](https://
 Fiber ist **inspiriert** von Express.js, dem beliebtesten Web-Framework im Internet. Wir haben die **Leichtigkeit** von Express und die **Rohleistung** von Go kombiniert. Wenn du jemals eine Webanwendung mit Node.js implementiert hast (_mit Express.js oder ähnlichem_), werden dir viele Methoden und Prinzipien **sehr vertraut** vorkommen.
 
 ## ⚠️ Limitations
-* Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber 2.40.0 has been tested with Go versions 1.16 to 1.20.
+* Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber 2.40.0 has been tested with Go versions 1.17 to 1.20.
 * Fiber is not compatible with net/http interfaces. This means you will not be able to use projects like gqlgen, go-swagger, or any others which are part of the net/http ecosystem.
 
 ## 👀 Beispiele

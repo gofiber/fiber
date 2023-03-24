@@ -51,7 +51,7 @@ app.Use(New(Config{
         return time.Second * time.Duration(newCacheTime)
     },
     KeyGenerator: func(c *fiber.Ctx) string {
-        return c.Path()
+		return utils.CopyString(c.Path())
     }
 }))
 
@@ -75,6 +75,13 @@ type Config struct {
     //
     // Optional. Default: 1 * time.Minute
     Expiration time.Duration
+
+	// CacheHeader header on response header, indicate cache status, with the following possible return value
+	//
+	// hit, miss, unreachable
+	//
+	// Optional. Default: X-Cache
+	CacheHeader string
 
     // CacheControl enables client side caching if set to true
     //
@@ -125,6 +132,7 @@ type Config struct {
 var ConfigDefault = Config{
     Next:         nil,
     Expiration:   1 * time.Minute,
+	CacheHeader:  "X-Cache",
     CacheControl: false,
     KeyGenerator: func(c *fiber.Ctx) string {
         return utils.CopyString(c.Path())

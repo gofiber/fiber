@@ -114,7 +114,7 @@ Pengukuran ini dilakukan oleh [TechEmpower](https://www.techempower.com/benchmar
 
 ## ⚙️ Instalasi
 
-Pastikan kamu sudah menginstalasi Golang ([unduh](https://go.dev/dl/)). Dengan versi `1.16` atau lebih tinggi [ Direkomendasikan ].
+Pastikan kamu sudah menginstalasi Golang ([unduh](https://go.dev/dl/)). Dengan versi `1.17` atau lebih tinggi [ Direkomendasikan ].
 
 Inisialisasi proyek kamu dengan membuat folder lalu jalankan `go mod init github.com/nama-kamu/repo` ([belajar lebih banyak](https://go.dev/blog/using-go-modules)) di dalam folder. Kemudian instal Fiber dengan perintah [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
 
@@ -148,7 +148,7 @@ Kami **mendengarkan** para pengguna di [GitHub Issues](https://github.com/gofibe
 
 ## ⚠️ Limitasi
 
-* Karena penggunaan Fiber yang tidak aman, perpustakaan mungkin tidak selalu kompatibel dengan versi Go terbaru. Fiber 2.40.0 telah diuji dengan Go versi 1.16 hingga 1.20.
+* Karena penggunaan Fiber yang tidak aman, perpustakaan mungkin tidak selalu kompatibel dengan versi Go terbaru. Fiber 2.40.0 telah diuji dengan Go versi 1.17 hingga 1.20.
 * Fiber tidak kompatibel dengan antarmuka net/http. Ini berarti kamu tidak akan dapat menggunakan proyek seperti gqlgen, go-swagger, atau lainnya yang merupakan bagian dari ekosistem net/http.
 
 ## 👀 Contoh

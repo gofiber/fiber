@@ -614,6 +614,14 @@ app.Get("/", func(c *fiber.Ctx) error {
 })
 ```
 
+When registering the proxy request header in the fiber app, the ip address of the header is returned [(Fiber configuration)](fiber.md#config)
+
+```go
+app := fiber.New(fiber.Config{
+  ProxyHeader: fiber.HeaderXForwardedFor,
+})
+```
+
 ## IPs
 
 Returns an array of IP addresses specified in the [X-Forwarded-For](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For) request header.

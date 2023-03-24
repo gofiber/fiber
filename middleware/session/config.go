@@ -46,6 +46,11 @@ type Config struct {
 	// Optional. Default value "Lax".
 	CookieSameSite string
 
+	// Decides whether cookie should last for only the browser sesison.
+	// Ignores Expiration if set to true
+	// Optional. Default value false.
+	CookieSessionOnly bool
+
 	// KeyGenerator generates the session key.
 	// Optional. Default value utils.UUIDv4
 	KeyGenerator func() string

@@ -114,7 +114,7 @@ Bu testler [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r1
 
 ## ⚙️ Kurulum
 
-Go'nun `1.16` sürümü ([indir](https://go.dev/dl/)) veya daha yüksek bir sürüm gerekli.
+Go'nun `1.17` sürümü ([indir](https://go.dev/dl/)) veya daha yüksek bir sürüm gerekli.
 
 Bir dizin oluşturup dizinin içinde `go mod init github.com/your/repo` komutunu yazarak projenizi geliştirmeye başlayın ([daha fazla öğren](https://go.dev/blog/using-go-modules)). Ardından Fiber'ı kurmak için [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) komutunu çalıştırın:
 
@@ -146,7 +146,7 @@ Fiber, internet üzerinde en popüler web framework'ü olan Express'ten **esinle
 
 ## ⚠️ Sınırlamalar
 
--   Fiber unsafe kullanımı sebebiyle Go'nun son sürümüyle her zaman uyumlu olmayabilir. Fiber 2.40.0, Go 1.16 ile 1.20 sürümleriyle test edildi.
+-   Fiber unsafe kullanımı sebebiyle Go'nun son sürümüyle her zaman uyumlu olmayabilir. Fiber 2.40.0, Go 1.17 ile 1.20 sürümleriyle test edildi.
 -   Fiber net/http arabirimiyle uyumlu değildir. Yani gqlgen veya go-swagger gibi net/http ekosisteminin parçası olan projeleri kullanamazsınız.
 
 ## 👀 Örnekler
@@ -603,7 +603,7 @@ Harici olarak barındırılan middlewareların modüllerinin listesi. Bu middlew
 | [redirect](https://github.com/gofiber/redirect)   | Yönlendirme middleware  'ı.                                                                                                                                               |
 | [rewrite](https://github.com/gofiber/rewrite)     | Rewrite middleware, sağlanan kurallara göre URL yolunu yeniden yazar. Geriye dönük uyumluluk için veya yalnızca daha temiz ve daha açıklayıcı bağlantılar oluşturmak için yardımcı olabilir. |
 | [storage](https://github.com/gofiber/storage)     | Fiber'in Storage yapısını destekleyen birçok storage driver'ı verir. Bu sayede depolama gerektiren Fiber middlewarelarında kolaylıkla kullanılabilir.                                                   |
-| [template](https://github.com/gofiber/template)   | Bu paket, Fiber `v2.x.x`, Go sürüm 1.16 veya üzeri gerekli olduğunda kullanılabilecek 9 template motoru içerir.                                                                             |
+| [template](https://github.com/gofiber/template)   | Bu paket, Fiber `v2.x.x`, Go sürüm 1.17 veya üzeri gerekli olduğunda kullanılabilecek 9 template motoru içerir.                                                                             |
 | [websocket](https://github.com/gofiber/websocket) | Yereller desteğiyle Fiber için Fasthttp WebSocket'a dayalıdır!                                                                                                                               |
 
 ## 🕶️ Awesome Listesi

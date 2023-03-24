@@ -61,19 +61,20 @@ type Config struct {
     // the locals for a specific request.
     //
     // Optional. Default: requestid
-    ContextKey string
+    ContextKey interface{}
 }
 ```
 
 ## Default Config
+The default config uses a fast UUID generator which will expose the number of
+requests made to the server. To conceal this value for better privacy, use the
+`utils.UUIDv4` generator.
 
 ```go
 var ConfigDefault = Config{
     Next:       nil,
     Header:     fiber.HeaderXRequestID,
-    Generator:  func() string {
-        return utils.UUID()
-    },
-    ContextKey: "requestid"
+	Generator:  utils.UUID,
+	ContextKey: "requestid",
 }
 ```
