@@ -1082,6 +1082,68 @@ app.Get("/", func(c *fiber.Ctx) error {
 > _Returned value is only valid within the handler. Do not store any references.  
 > Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
 
+## QueryBool
+
+This property is an object containing a property for each query boolean parameter in the route, you could pass an optional default value that will be returned if the query key does not exist.
+
+
+:::caution
+Please note if that parameter is not in the request, true will be returned.
+If the parameter is not a boolean, it is still tried to be converted and usually returned as true.
+:::
+
+```go title="Signature"
+func (c *Ctx) QueryBool(key string, defaultValue ...bool) bool
+```
+
+```go title="Example"
+// GET http://example.com/?name=alex&want_pizza=false&id=
+
+app.Get("/", func(c *fiber.Ctx) error {
+    c.QueryBool("want_pizza")       // false
+	c.QueryBool("want_pizza", true) // false
+    c.QueryBool("alex")             // true
+    c.QueryBool("alex", false)      // false
+    c.QueryBool("id")               // true
+    c.QueryBool("id", false)        // false
+
+  // ...
+})
+```
+
+
+## QueryFloat
+
+This property is an object containing a property for each query float64 parameter in the route, you could pass an optional default value that will be returned if the query key does not exist.
+
+:::caution
+Please note if that parameter is not in the request, zero will be returned.
+If the parameter is not a number, it is still tried to be converted and usually returned as 1.
+:::
+
+:::info
+Defaults to the float64 zero \(`0`\), if the param **doesn't** exist.
+:::
+
+```go title="Signature"
+func (c *Ctx) QueryFloat(key string, defaultValue ...float64) float64
+```
+
+```go title="Example"
+// GET http://example.com/?name=alex&amount=32.23&id=
+
+app.Get("/", func(c *fiber.Ctx) error {
+    c.QueryFloat("amount")      // 32.23
+    c.QueryFloat("amount", 3)   // 32.23
+    c.QueryFloat("name", 1)     // 1
+    c.QueryFloat("name")        // 0
+    c.QueryFloat("id", 3)       // 3
+
+  // ...
+})
+```
+
+
 ## QueryInt
 
 This property is an object containing a property for each query integer parameter in the route, you could pass an optional default value that will be returned if the query key does not exist.
@@ -1104,10 +1166,10 @@ func (c *Ctx) QueryInt(key string, defaultValue ...int) int
 // GET http://example.com/?name=alex&wanna_cake=2&id=
 
 app.Get("/", func(c *fiber.Ctx) error {
-    QueryInt("wanna_cake", 1) // 2
-    QueryInt("name", 1)       // 1
-    QueryInt("id", 1)         // 1
-    QueryInt("id")            // 0
+    c.QueryInt("wanna_cake", 1) // 2
+    c.QueryInt("name", 1)       // 1
+    c.QueryInt("id", 1)         // 1
+    c.QueryInt("id")            // 0
 
   // ...
 })
