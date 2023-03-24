@@ -8,7 +8,7 @@ Filesystem middleware for [Fiber](https://github.com/gofiber/fiber) that enables
 :::caution
 **`:params` & `:optionals?` within the prefix path are not supported!**
 
-**To handle paths with spaces (or other url encoded values) make sure to set `fiber.Config{ UnescapePath: true}`**
+**To handle paths with spaces (or other url encoded values) make sure to set `fiber.Config{ UnescapePath: true }`**
 :::
 
 ### Table of Contents
@@ -40,7 +40,7 @@ After you initiate your Fiber app, you can use the following possibilities:
 ```go
 // Provide a minimal config
 app.Use(filesystem.New(filesystem.Config{
-    Root: http.Dir("./assets")
+	Root: http.Dir("./assets"),
 }))
 
 // Or extend your config for customization
@@ -51,6 +51,54 @@ app.Use(filesystem.New(filesystem.Config{
     NotFoundFile: "404.html",
     MaxAge:       3600,
 }))
+```
+
+
+> If your environment (Go 1.16+) supports it, we recommend using Go Embed instead of the other solutions listed as this one is native to Go and the easiest to use.
+
+### embed
+
+[Embed](https://golang.org/pkg/embed/) is the native method to embed files in a Golang excecutable. Introduced in Go 1.16.
+
+```go
+package main
+
+import (
+	"embed"
+	"io/fs"
+	"log"
+	"net/http"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/filesystem"
+)
+
+// Embed a single file
+//go:embed index.html
+var f embed.FS
+
+// Embed a directory
+//go:embed static/*
+var embedDirStatic embed.FS
+
+func main() {
+	app := fiber.New()
+
+	app.Use("/", filesystem.New(filesystem.Config{
+		Root: http.FS(f),
+	}))
+
+	// Access file "image.png" under `static/` directory via URL: `http://<server>/static/image.png`.
+	// Without `PathPrefix`, you have to access it via URL:
+	// `http://<server>/static/static/image.png`.
+	app.Use("/static", filesystem.New(filesystem.Config{
+		Root: http.FS(embedDirStatic),
+		PathPrefix: "static",
+		Browse: true,
+	}))
+
+	log.Fatal(app.Listen(":3000"))
+}
 ```
 
 ## pkger
@@ -72,7 +120,7 @@ func main() {
 
     app.Use("/assets", filesystem.New(filesystem.Config{
         Root: pkger.Dir("/assets"),
-    })
+	}))
 
     log.Fatal(app.Listen(":3000"))
 }
@@ -97,7 +145,7 @@ func main() {
 
     app.Use("/assets", filesystem.New(filesystem.Config{
         Root: packr.New("Assets Box", "/assets"),
-    })
+	}))
 
     log.Fatal(app.Listen(":3000"))
 }
@@ -122,7 +170,7 @@ func main() {
 
     app.Use("/assets", filesystem.New(filesystem.Config{
         Root: rice.MustFindBox("assets").HTTPBox(),
-    })
+	}))
 
     log.Fatal(app.Listen(":3000"))
 }
@@ -147,7 +195,7 @@ func main() {
 
     app.Use("/assets", filesystem.New(filesystem.Config{
         Root: myEmbeddedFiles.HTTP,
-    })
+	}))
 
     log.Fatal(app.Listen(":3000"))
 }
@@ -201,6 +249,14 @@ type Config struct {
     // Required. Default: nil
     Root http.FileSystem `json:"-"`
 
+	// PathPrefix defines a prefix to be added to a filepath when
+	// reading a file from the FileSystem.
+	//
+	// Use when using Go 1.16 embed.FS
+	//
+	// Optional. Default ""
+	PathPrefix string `json:"path_prefix"`
+
     // Enable directory browsing.
     //
     // Optional. Default: false
@@ -230,6 +286,7 @@ type Config struct {
 var ConfigDefault = Config{
     Next:   nil,
     Root:   nil,
+	PathPrefix: "",
     Browse: false,
     Index:  "/index.html",
     MaxAge: 0,

@@ -3,10 +3,18 @@ id: limiter
 title: Limiter
 ---
 
-Limiter middleware for [Fiber](https://github.com/gofiber/fiber) used to limit repeated requests to public APIs and/or endpoints such as password reset etc. Also useful for API clients, web crawling, or other tasks that need to be throttled.
+Limiter middleware for [Fiber](https://github.com/gofiber/fiber) that is used to limit repeat requests to public APIs and/or endpoints such as password reset. It is also useful for API clients, web crawling, or other tasks that need to be throttled.
 
 :::note
+
+This middleware uses our [Storage](https://github.com/gofiber/storage) package to support various databases through a single interface. The default configuration for this middleware saves data to memory, see the examples below for other databases.
+
+:::
+
+:::note
+
 This module does not share state with other processes/servers by default.
+
 :::
 
 ## Signatures
@@ -69,6 +77,17 @@ weightOfPreviousWindpw = previous window's amount request * (whenNewWindow / Exp
 rate = weightOfPreviousWindpw + current window's amount request.
 ```
 
+## Custom Storage/Database
+
+You can use any storage from our [storage](https://github.com/gofiber/storage/) package.
+
+```go
+storage := sqlite3.New() // From github.com/gofiber/storage/sqlite3
+app.Use(limiter.New(limiter.Config{
+	Storage: storage,
+}))
+```
+
 ## Config
 
 ```go
@@ -79,7 +98,7 @@ type Config struct {
     // Optional. Default: nil
     Next func(c *fiber.Ctx) bool
 
-    // Max number of recent connections during `Expiration` seconds before sending a 429 response
+	// Max number of recent connections during `Duration` seconds before sending a 429 response
     //
     // Default: 5
     Max int

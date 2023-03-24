@@ -3,7 +3,17 @@ id: csrf
 title: CSRF
 ---
 
-CSRF middleware for [Fiber](https://github.com/gofiber/fiber) that provides [Cross-site request forgery](https://en.wikipedia.org/wiki/Cross-site_request_forgery) protection by passing a csrf token via cookies. This cookie value will be used to compare against the client csrf token on requests, other than those defined as "safe" by RFC7231 \(GET, HEAD, OPTIONS, or TRACE\). When the csrf token is invalid, this middleware will return the `fiber.ErrForbidden` error. When no `_csrf` cookie is set, or the token has expired, a new token will be generated and `_csrf` cookie set.
+CSRF middleware for [Fiber](https://github.com/gofiber/fiber) that provides [Cross-site request forgery](https://en.wikipedia.org/wiki/Cross-site_request_forgery) protection by passing a csrf token via cookies. This cookie value will be used to compare against the client csrf token on requests, other than those defined as "safe" by RFC7231 \(GET, HEAD, OPTIONS, or TRACE\). When the csrf token is invalid, this middleware will return the `fiber.ErrForbidden` error. 
+
+CSRF Tokens are generated on GET requests. You can retrieve the CSRF token with `c.Locals(contextKey)`, where `contextKey` is the string you set in the config (see Custom Config below).
+
+When no `csrf_` cookie is set, or the token has expired, a new token will be generated and `csrf_` cookie set.
+
+:::note
+
+This middleware uses our [Storage](https://github.com/gofiber/storage) package to support various databases through a single interface. The default configuration for this middleware saves data to memory, see the examples below for other databases._
+
+:::
 
 ## Signatures
 
@@ -32,7 +42,7 @@ app.Use(csrf.New())
 app.Use(csrf.New(csrf.Config{
     KeyLookup:      "header:X-Csrf-Token",
     CookieName:     "csrf_",
-    CookieSameSite: "Strict",
+	CookieSameSite: "Lax",
     Expiration:     1 * time.Hour,
     KeyGenerator:   utils.UUID,
     Extractor:      func(c *fiber.Ctx) (string, error) { ... },
@@ -66,7 +76,7 @@ type Config struct {
     KeyLookup string
 
     // Name of the session cookie. This cookie will store session key.
-    // Optional. Default value "_csrf".
+	// Optional. Default value "csrf_".
     CookieName string
 
     // Domain of the CSRF cookie.
@@ -133,4 +143,15 @@ var ConfigDefault = Config{
     Expiration:     1 * time.Hour,
     KeyGenerator:   utils.UUID,
 }
+```
+
+### Custom Storage/Database
+
+You can use any storage from our [storage](https://github.com/gofiber/storage/) package.
+
+```go
+storage := sqlite3.New() // From github.com/gofiber/storage/sqlite3
+app.Use(csrf.New(csrf.Config{
+	Storage: storage,
+}))
 ```
