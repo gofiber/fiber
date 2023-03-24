@@ -93,7 +93,7 @@ func (app *App) methodExist(ctx *Ctx) bool {
 			continue
 		}
 		// Reset stack index
-		ctx.indexRoute = -1
+		indexRoute := -1
 		tree, ok := ctx.app.treeStack[i][ctx.treePath]
 		if !ok {
 			tree = ctx.app.treeStack[i][""]
@@ -101,11 +101,11 @@ func (app *App) methodExist(ctx *Ctx) bool {
 		// Get stack length
 		lenr := len(tree) - 1
 		// Loop over the route stack starting from previous index
-		for ctx.indexRoute < lenr {
+		for indexRoute < lenr {
 			// Increment route index
-			ctx.indexRoute++
+			indexRoute++
 			// Get *Route
-			route := tree[ctx.indexRoute]
+			route := tree[indexRoute]
 			// Skip use routes
 			if route.use {
 				continue

@@ -640,12 +640,10 @@ func Benchmark_Router_Next(b *testing.B) {
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		c.indexRoute = -1
 		res, err = app.next(c)
 	}
 	utils.AssertEqual(b, nil, err)
 	utils.AssertEqual(b, true, res)
-	utils.AssertEqual(b, 4, c.indexRoute)
 }
 
 // go test -v ./... -run=^$ -bench=Benchmark_Route_Match -benchmem -count=4

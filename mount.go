@@ -36,22 +36,25 @@ func newMountFields(app *App) *mountFields {
 // compose them as a single service using Mount. The fiber's error handler and
 // any of the fiber's sub apps are added to the application's error handlers
 // to be invoked on errors that happen within the prefix route.
-func (app *App) Mount(prefix string, fiber *App) Router {
+func (app *App) Mount(prefix string, subApp *App) Router {
 	prefix = strings.TrimRight(prefix, "/")
 	if prefix == "" {
 		prefix = "/"
 	}
 
 	// Support for configs of mounted-apps and sub-mounted-apps
-	for mountedPrefixes, subApp := range fiber.mountFields.appList {
+	for mountedPrefixes, subApp := range subApp.mountFields.appList {
 		path := getGroupPath(prefix, mountedPrefixes)
 
 		subApp.mountFields.mountPath = path
 		app.mountFields.appList[path] = subApp
 	}
 
+	grp := &Group{Prefix: prefix, app: subApp}
+	app.register(methodUse, prefix, grp)
+
 	// Execute onMount hooks
-	if err := fiber.hooks.executeOnMountHooks(app); err != nil {
+	if err := subApp.hooks.executeOnMountHooks(app); err != nil {
 		panic(err)
 	}
 
@@ -136,13 +139,14 @@ func (app *App) addSubAppsRoutes(appList map[string]*App, parent ...string) {
 		}
 
 		// add routes
-		stack := subApp.stack
-		for m := range stack {
-			for r := range stack[m] {
-				route := app.copyRoute(stack[m][r])
-				app.addRoute(route.Method, app.addPrefixToRoute(prefix, route), true)
-			}
-		}
+		//stack := subApp.stack
+		//for m := range stack {
+		//	for r := range stack[m] {
+		//		route := app.copyRoute(stack[m][r])
+		//		app.addRoute(route.Method, app.addPrefixToRoute(prefix, route), true)
+		//	}
+		//}
+		subApp.startupProcess()
 
 		atomic.AddUint32(&app.handlersCount, subApp.handlersCount)
 	}

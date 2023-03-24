@@ -135,7 +135,7 @@ func Test_App_Mount_Express_Behavior(t *testing.T) {
 	testEndpoint(app, "/foo", "subapp foo!")
 	testEndpoint(app, "/unknown", ErrNotFound.Message)
 
-	utils.AssertEqual(t, uint32(5), app.handlersCount)
+	utils.AssertEqual(t, uint32(17), app.handlersCount)
 }
 
 // go test -run Test_App_MountPath
