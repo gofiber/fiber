@@ -1111,7 +1111,6 @@ app.Get("/", func(c *fiber.Ctx) error {
 })
 ```
 
-
 ## QueryFloat
 
 This property is an object containing a property for each query float64 parameter in the route, you could pass an optional default value that will be returned if the query key does not exist.
@@ -1174,9 +1173,6 @@ app.Get("/", func(c *fiber.Ctx) error {
   // ...
 })
 ```
-
-> _Returned value is only valid within the handler. Do not store any references.  
-> Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
 
 ## QueryParser
 
