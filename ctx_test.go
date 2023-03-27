@@ -66,14 +66,27 @@ func Benchmark_Ctx_Accepts(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
-	c.Request().Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9")
-	var res string
-	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		res = c.Accepts(".xml")
+	acceptHeader := "text/html,application/xhtml+xml,application/xml;q=0.9"
+	c.Request().Header.Set("Accept", acceptHeader)
+	acceptValues := [][]string{
+		{".xml"},
+		{"json", "xml"},
+		{"application/json", "application/xml"},
 	}
-	utils.AssertEqual(b, ".xml", res)
+	expectedResults := []string{".xml", "xml", "application/xml"}
+
+	for i := 0; i < len(acceptValues); i++ {
+		b.Run(fmt.Sprintf("run-%#v", acceptValues[i]), func(bb *testing.B) {
+			var res string
+			bb.ReportAllocs()
+			bb.ResetTimer()
+
+			for n := 0; n < bb.N; n++ {
+				res = c.Accepts(acceptValues[i]...)
+			}
+			utils.AssertEqual(bb, expectedResults[i], res)
+		})
+	}
 }
 
 // go test -run Test_Ctx_Accepts_EmptyAccept
