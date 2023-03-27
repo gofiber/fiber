@@ -197,73 +197,22 @@ func (app *App) ReleaseCtx(c *Ctx) {
 
 // Accepts checks if the specified extensions or content types are acceptable.
 func (c *Ctx) Accepts(offers ...string) string {
-	if len(offers) == 0 {
-		return ""
-	}
-	header := c.Get(HeaderAccept)
-	if header == "" {
-		return offers[0]
-	}
-
-	spec, commaPos := "", 0
-	for len(header) > 0 && commaPos != -1 {
-		commaPos = strings.IndexByte(header, ',')
-		if commaPos != -1 {
-			spec = utils.Trim(header[:commaPos], ' ')
-		} else {
-			spec = utils.TrimLeft(header, ' ')
-		}
-		if factorSign := strings.IndexByte(spec, ';'); factorSign != -1 {
-			spec = spec[:factorSign]
-		}
-
-		var mimetype string
-		for _, offer := range offers {
-			if len(offer) == 0 {
-				continue
-				// Accept: */*
-			} else if spec == "*/*" {
-				return offer
-			}
-
-			if strings.IndexByte(offer, '/') != -1 {
-				mimetype = offer // MIME type
-			} else {
-				mimetype = utils.GetMIME(offer) // extension
-			}
-
-			if spec == mimetype {
-				// Accept: <MIME_type>/<MIME_subtype>
-				return offer
-			}
-
-			s := strings.IndexByte(mimetype, '/')
-			// Accept: <MIME_type>/*
-			if strings.HasPrefix(spec, mimetype[:s]) && (spec[s:] == "/*" || mimetype[s:] == "/*") {
-				return offer
-			}
-		}
-		if commaPos != -1 {
-			header = header[commaPos+1:]
-		}
-	}
-
-	return ""
+	return getOffer(c.Get(HeaderAccept), acceptsOfferType, offers...)
 }
 
 // AcceptsCharsets checks if the specified charset is acceptable.
 func (c *Ctx) AcceptsCharsets(offers ...string) string {
-	return getOffer(c.Get(HeaderAcceptCharset), offers...)
+	return getOffer(c.Get(HeaderAcceptCharset), acceptsOffer, offers...)
 }
 
 // AcceptsEncodings checks if the specified encoding is acceptable.
 func (c *Ctx) AcceptsEncodings(offers ...string) string {
-	return getOffer(c.Get(HeaderAcceptEncoding), offers...)
+	return getOffer(c.Get(HeaderAcceptEncoding), acceptsOffer, offers...)
 }
 
 // AcceptsLanguages checks if the specified language is acceptable.
 func (c *Ctx) AcceptsLanguages(offers ...string) string {
-	return getOffer(c.Get(HeaderAcceptLanguage), offers...)
+	return getOffer(c.Get(HeaderAcceptLanguage), acceptsOffer, offers...)
 }
 
 // App returns the *App reference to the instance of the Fiber application
