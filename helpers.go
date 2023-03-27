@@ -218,7 +218,7 @@ func getGroupPath(prefix, path string) string {
 // acceptsOffer This function determines if an offer matches a given specification.
 // It checks if the specification ends with a '*' or if the offer has the prefix of the specification.
 // Returns true if the offer matches the specification, false otherwise.
-func acceptsOffer(spec string, offer string) bool {
+func acceptsOffer(spec, offer string) bool {
 	if len(spec) >= 1 && spec[len(spec)-1] == '*' {
 		return true
 	} else if strings.HasPrefix(spec, offer) {
@@ -232,7 +232,7 @@ func acceptsOffer(spec string, offer string) bool {
 // It gets the MIME type of the offer (either from the offer itself or by its file extension).
 // It checks if the offer MIME type matches the specification MIME type or if the specification is of the form <MIME_type>/* and the offer MIME type has the same MIME type.
 // Returns true if the offer type matches the specification, false otherwise.
-func acceptsOfferType(spec string, offerType string) bool {
+func acceptsOfferType(spec, offerType string) bool {
 	// Accept: */*
 	if spec == "*/*" {
 		return true
@@ -260,7 +260,7 @@ func acceptsOfferType(spec string, offerType string) bool {
 }
 
 // getOffer return valid offer for header negotiation
-func getOffer(header string, isAccepted func(spec string, offer string) bool, offers ...string) string {
+func getOffer(header string, isAccepted func(spec, offer string) bool, offers ...string) string {
 	if len(offers) == 0 {
 		return ""
 	} else if header == "" {
