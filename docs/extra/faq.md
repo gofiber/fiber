@@ -65,3 +65,7 @@ Yes, we have our own [Discord ](https://gofiber.io/discord)server, where we hang
 If you have questions or just want to have a chat, feel free to join us via this **&gt;** [**invite link**](https://gofiber.io/discord) **&lt;**.
 
 ![](/img/support-discord.png)
+
+## Does fiber support sub domain routing ?
+
+Yes we do, please refer to this issue on github for more info https://github.com/gofiber/fiber/issues/750
