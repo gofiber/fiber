@@ -1100,12 +1100,12 @@ func (c *Ctx) QueryBool(key string, defaultValue ...bool) bool
 // GET http://example.com/?name=alex&want_pizza=false&id=
 
 app.Get("/", func(c *fiber.Ctx) error {
-    c.QueryBool("want_pizza")       // false
+    c.QueryBool("want_pizza")           // false
 	c.QueryBool("want_pizza", true) // false
-    c.QueryBool("name")             // false
-    c.QueryBool("name", true)      // true
-    c.QueryBool("id")               // false
-    c.QueryBool("id", true)        // true
+    c.QueryBool("name")                 // false
+    c.QueryBool("name", true)           // true
+    c.QueryBool("id")                   // false
+    c.QueryBool("id", true)             // true
 
   // ...
 })
