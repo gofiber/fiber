@@ -14,6 +14,12 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c *fiber.Ctx) bool
 
+	// AllowOriginsFunc defines a function that will set the 'access-control-allow-origin'
+	// response header to the 'origin' request header when returned true.
+	//
+	// Optional. Default: nil
+	AllowOriginsFunc func(origin string) bool
+
 	// AllowOrigin defines a list of origins that may access the resource.
 	//
 	// Optional. Default value "*"
@@ -54,8 +60,9 @@ type Config struct {
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next:         nil,
-	AllowOrigins: "*",
+	Next:             nil,
+	AllowOriginsFunc: nil,
+	AllowOrigins:     "*",
 	AllowMethods: strings.Join([]string{
 		fiber.MethodGet,
 		fiber.MethodPost,
@@ -123,6 +130,15 @@ func New(config ...Config) fiber.Handler {
 			if matchSubdomain(origin, o) {
 				allowOrigin = origin
 				break
+			}
+		}
+
+		// Run AllowOriginsFunc if the logic for
+		// handling the value in 'AllowOrigins' does
+		// not result in allowOrigin being set.
+		if allowOrigin == "" && cfg.AllowOriginsFunc != nil {
+			if cfg.AllowOriginsFunc(origin) {
+				allowOrigin = origin
 			}
 		}
 

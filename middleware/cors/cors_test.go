@@ -2,6 +2,7 @@ package cors
 
 import (
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
@@ -241,4 +242,55 @@ func Test_CORS_Next(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
+}
+
+func Test_CORS_AllowOriginsFunc(t *testing.T) {
+	t.Parallel()
+	// New fiber instance
+	app := fiber.New()
+	app.Use("/", New(Config{
+		AllowOrigins: "http://example-1.com",
+		AllowOriginsFunc: func(origin string) bool {
+			return strings.Contains(origin, "example-2")
+		},
+	}))
+
+	// Get handler pointer
+	handler := app.Handler()
+
+	// Make request with disallowed origin
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.SetRequestURI("/")
+	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://google.com")
+
+	// Perform request
+	handler(ctx)
+
+	// Allow-Origin header should be "" because http://google.com does not satisfy http://*.example.com
+	utils.AssertEqual(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+
+	// Make request with allowed origin
+	ctx.Request.SetRequestURI("/")
+	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://example-1.com")
+
+	handler(ctx)
+
+	utils.AssertEqual(t, "http://example-1.com", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+
+	// Make request with allowed origin
+	ctx.Request.SetRequestURI("/")
+	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://example-2.com")
+
+	handler(ctx)
+
+	utils.AssertEqual(t, "http://example-2.com", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
 }
