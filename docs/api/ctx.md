@@ -1088,8 +1088,8 @@ This property is an object containing a property for each query boolean paramete
 
 
 :::caution
-Please note if that parameter is not in the request, true will be returned.
-If the parameter is not a boolean, it is still tried to be converted and usually returned as true.
+Please note if that parameter is not in the request, false will be returned.
+If the parameter is not a boolean, it is still tried to be converted and usually returned as false.
 :::
 
 ```go title="Signature"
@@ -1100,12 +1100,12 @@ func (c *Ctx) QueryBool(key string, defaultValue ...bool) bool
 // GET http://example.com/?name=alex&want_pizza=false&id=
 
 app.Get("/", func(c *fiber.Ctx) error {
-    c.QueryBool("want_pizza")       // false
+    c.QueryBool("want_pizza")           // false
 	c.QueryBool("want_pizza", true) // false
-    c.QueryBool("alex")             // true
-    c.QueryBool("alex", false)      // false
-    c.QueryBool("id")               // true
-    c.QueryBool("id", false)        // false
+    c.QueryBool("name")                 // false
+    c.QueryBool("name", true)           // true
+    c.QueryBool("id")                   // false
+    c.QueryBool("id", true)             // true
 
   // ...
 })

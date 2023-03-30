@@ -2179,10 +2179,10 @@ func Test_Ctx_QueryBool(t *testing.T) {
 
 	utils.AssertEqual(t, false, c.QueryBool("want_pizza"))
 	utils.AssertEqual(t, false, c.QueryBool("want_pizza", true))
-	utils.AssertEqual(t, true, c.QueryBool("name"))
-	utils.AssertEqual(t, false, c.QueryBool("name", false))
-	utils.AssertEqual(t, true, c.QueryBool("id"))
-	utils.AssertEqual(t, false, c.QueryBool("id", false))
+	utils.AssertEqual(t, false, c.QueryBool("name"))
+	utils.AssertEqual(t, true, c.QueryBool("name", true))
+	utils.AssertEqual(t, false, c.QueryBool("id"))
+	utils.AssertEqual(t, true, c.QueryBool("id", true))
 }
 
 func Test_Ctx_QueryFloat(t *testing.T) {

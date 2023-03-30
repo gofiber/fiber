@@ -1081,17 +1081,17 @@ func (c *Ctx) QueryInt(key string, defaultValue ...int) int {
 //	Get /?name=alex&want_pizza=false&id=
 //	QueryBool("want_pizza") == false
 //	QueryBool("want_pizza", true) == false
-//	QueryBool("alex") == true
-//	QueryBool("alex", false) == false
-//	QueryBool("id") == true
-//	QueryBool("id", false) == false
+//	QueryBool("name") == false
+//	QueryBool("name", true) == true
+//	QueryBool("id") == false
+//	QueryBool("id", true) == true
 func (c *Ctx) QueryBool(key string, defaultValue ...bool) bool {
 	value, err := strconv.ParseBool(c.app.getString(c.fasthttp.QueryArgs().Peek(key)))
 	if err != nil {
 		if len(defaultValue) > 0 {
 			return defaultValue[0]
 		}
-		return true
+		return false
 	}
 	return value
 }
