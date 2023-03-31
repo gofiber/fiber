@@ -65,3 +65,75 @@ Yes, we have our own [Discord ](https://gofiber.io/discord)server, where we hang
 If you have questions or just want to have a chat, feel free to join us via this **&gt;** [**invite link**](https://gofiber.io/discord) **&lt;**.
 
 ![](/img/support-discord.png)
+
+## Does fiber support sub domain routing ?
+
+Yes we do, here are some examples: 
+This example works v2
+```go
+package main
+
+import (
+	"log"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/logger"
+)
+
+type Host struct {
+	Fiber *fiber.App
+}
+
+func main() {
+	// Hosts
+	hosts := map[string]*Host{}
+	//-----
+	// API
+	//-----
+	api := fiber.New()
+	api.Use(logger.New(logger.Config{
+		Format: "[${ip}]:${port} ${status} - ${method} ${path}\n",
+	}))
+	hosts["api.localhost:3000"] = &Host{api}
+	api.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("API")
+	})
+	//------
+	// Blog
+	//------
+	blog := fiber.New()
+	blog.Use(logger.New(logger.Config{
+		Format: "[${ip}]:${port} ${status} - ${method} ${path}\n",
+	}))
+	hosts["blog.localhost:3000"] = &Host{blog}
+	blog.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("Blog")
+	})
+	//---------
+	// Website
+	//---------
+	site := fiber.New()
+	site.Use(logger.New(logger.Config{
+		Format: "[${ip}]:${port} ${status} - ${method} ${path}\n",
+	}))
+
+	hosts["localhost:3000"] = &Host{site}
+	site.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("Website")
+	})
+	// Server
+	app := fiber.New()
+	app.Use(func(c *fiber.Ctx) error {
+		host := hosts[c.Hostname()]
+		if host == nil {
+			return c.SendStatus(fiber.StatusNotFound)
+		} else {
+			host.Fiber.Handler()(c.Context())
+			return nil
+		}
+	})
+	log.Fatal(app.Listen(":3000"))
+}
+```
+If more information is needed, please refer to this issue https://github.com/gofiber/fiber/issues/750 or let us know on our Discord **&gt;** [**invite link**](https://gofiber.io/discord) **&lt;**.
+![](/img/support-discord.png)
