@@ -75,7 +75,7 @@ package main
 
 import (
 	"log"
-    "github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware"
 )
 
@@ -127,15 +127,15 @@ func main() {
 
 	// Server
 	app := fiber.New()
-    app.Use(func(c *fiber.Ctx) error {
-        host := hosts[c.Hostname()]
-        if host == nil {
-            return c.SendStatus(fiber.StatusNotFound)
-        } else {
-            host.Fiber.Handler()(c.Context())
-            return nil
-        }
-    })
+	app.Use(func(c *fiber.Ctx) error {
+        	host := hosts[c.Hostname()]
+        	if host == nil {
+            		return c.SendStatus(fiber.StatusNotFound)
+        	} else {
+            		host.Fiber.Handler()(c.Context())
+            		return nil
+		}
+    	})
 	log.Fatal(app.Listen(":3000"))
 }
 ```
