@@ -135,5 +135,4 @@ func main() {
 	log.Fatal(app.Listen(":3000"))
 }
 ```
-If more information is needed, please refer to this issue https://github.com/gofiber/fiber/issues/750 or let us know on our Discord **&gt;** [**invite link**](https://gofiber.io/discord) **&lt;**.
-![](/img/support-discord.png)
+If more information is needed, please refer to this issue https://github.com/gofiber/fiber/issues/750
