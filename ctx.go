@@ -83,6 +83,7 @@ func SetParserDecoder(parserConfig ParserConfig) {
 type Ctx struct {
 	app                 *App                 // Reference to *App
 	route               *Route               // Reference to *Route
+	indexRoute          int                  // Index of the current route
 	indexHandler        int                  // Index of the current handler
 	method              string               // HTTP method
 	methodINT           int                  // HTTP method INT equivalent
@@ -163,7 +164,8 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	}
 	// Set app reference
 	c.app = app
-	// Reset handler index
+	// Reset route and handler index
+	c.indexRoute = -1
 	c.indexHandler = 0
 	// Reset matched flag
 	c.matched = false
@@ -916,6 +918,7 @@ func (c *Ctx) Next() error {
 // RestartRouting instead of going to the next handler. This may be useful after
 // changing the request path. Note that handlers might be executed again.
 func (c *Ctx) RestartRouting() error {
+	c.indexRoute = -1
 	_, err := c.app.next(c)
 	return err
 }

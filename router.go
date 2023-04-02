@@ -108,15 +108,14 @@ func (app *App) next(c *Ctx) (bool, error) {
 		tree = app.treeStack[c.methodINT][""]
 	}
 	lenr := len(tree) - 1
-	indexRoute := -1
 
 	// Loop over the route stack starting from previous index
-	for indexRoute < lenr {
+	for c.indexRoute < lenr {
 		// Increment route index
-		indexRoute++
+		c.indexRoute++
 
 		// Get *Route
-		route := tree[indexRoute]
+		route := tree[c.indexRoute]
 
 		var match bool
 		var err error
