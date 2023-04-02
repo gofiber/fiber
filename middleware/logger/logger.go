@@ -171,6 +171,7 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
+		var err error
 		// Loop over template parts execute dynamic parts and add fixed parts to the buffer
 		for i, logFunc := range logFunChain {
 			if logFunc == nil {
