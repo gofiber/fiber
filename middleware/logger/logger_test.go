@@ -275,6 +275,9 @@ func Test_Logger_Data_Race(t *testing.T) {
 	defer bytebufferpool.Put(buf)
 
 	app.Use(New(ConfigDefault))
+	app.Use(New(Config{
+		Format: "${time} | ${pid} | ${locals:requestid} | ${status} | ${latency} | ${method} | ${path}\n",
+	}))
 
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.SendString("hello")
