@@ -223,9 +223,9 @@ func Test_Utils_Parse_Address(t *testing.T) {
 
 func Test_Utils_GetOffset(t *testing.T) {
 	t.Parallel()
-	utils.AssertEqual(t, "", getOffer("hello"))
-	utils.AssertEqual(t, "1", getOffer("", "1"))
-	utils.AssertEqual(t, "", getOffer("2", "1"))
+	utils.AssertEqual(t, "", getOffer("hello", acceptsOffer))
+	utils.AssertEqual(t, "1", getOffer("", acceptsOffer, "1"))
+	utils.AssertEqual(t, "", getOffer("2", acceptsOffer, "1"))
 }
 
 func Test_Utils_TestConn_Deadline(t *testing.T) {

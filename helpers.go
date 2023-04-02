@@ -215,36 +215,82 @@ func getGroupPath(prefix, path string) string {
 	return utils.TrimRight(prefix, '/') + path
 }
 
-// return valid offer for header negotiation
-func getOffer(header string, offers ...string) string {
+// acceptsOffer This function determines if an offer matches a given specification.
+// It checks if the specification ends with a '*' or if the offer has the prefix of the specification.
+// Returns true if the offer matches the specification, false otherwise.
+func acceptsOffer(spec, offer string) bool {
+	if len(spec) >= 1 && spec[len(spec)-1] == '*' {
+		return true
+	} else if strings.HasPrefix(spec, offer) {
+		return true
+	}
+	return false
+}
+
+// acceptsOfferType This function determines if an offer type matches a given specification.
+// It checks if the specification is equal to */* (i.e., all types are accepted).
+// It gets the MIME type of the offer (either from the offer itself or by its file extension).
+// It checks if the offer MIME type matches the specification MIME type or if the specification is of the form <MIME_type>/* and the offer MIME type has the same MIME type.
+// Returns true if the offer type matches the specification, false otherwise.
+func acceptsOfferType(spec, offerType string) bool {
+	// Accept: */*
+	if spec == "*/*" {
+		return true
+	}
+
+	var mimetype string
+	if strings.IndexByte(offerType, '/') != -1 {
+		mimetype = offerType // MIME type
+	} else {
+		mimetype = utils.GetMIME(offerType) // extension
+	}
+
+	if spec == mimetype {
+		// Accept: <MIME_type>/<MIME_subtype>
+		return true
+	}
+
+	s := strings.IndexByte(mimetype, '/')
+	// Accept: <MIME_type>/*
+	if strings.HasPrefix(spec, mimetype[:s]) && (spec[s:] == "/*" || mimetype[s:] == "/*") {
+		return true
+	}
+
+	return false
+}
+
+// getOffer return valid offer for header negotiation
+func getOffer(header string, isAccepted func(spec, offer string) bool, offers ...string) string {
 	if len(offers) == 0 {
 		return ""
 	} else if header == "" {
 		return offers[0]
 	}
 
-	spec, commaPos := "", 0
-	for len(header) > 0 && commaPos != -1 {
-		commaPos = strings.IndexByte(header, ',')
-		if commaPos != -1 {
-			spec = utils.Trim(header[:commaPos], ' ')
-		} else {
-			spec = header
+	for _, offer := range offers {
+		if len(offer) == 0 {
+			continue
 		}
-		if factorSign := strings.IndexByte(spec, ';'); factorSign != -1 {
-			spec = spec[:factorSign]
-		}
+		spec, commaPos := "", 0
+		for len(header) > 0 && commaPos != -1 {
+			commaPos = strings.IndexByte(header, ',')
+			if commaPos != -1 {
+				spec = utils.Trim(header[:commaPos], ' ')
+			} else {
+				spec = utils.TrimLeft(header, ' ')
+			}
+			if factorSign := strings.IndexByte(spec, ';'); factorSign != -1 {
+				spec = spec[:factorSign]
+			}
 
-		for _, offer := range offers {
-			// has star prefix
-			if len(spec) >= 1 && spec[len(spec)-1] == '*' {
-				return offer
-			} else if strings.HasPrefix(spec, offer) {
+			// isAccepted if the current offer is accepted
+			if isAccepted(spec, offer) {
 				return offer
 			}
-		}
-		if commaPos != -1 {
-			header = header[commaPos+1:]
+
+			if commaPos != -1 {
+				header = header[commaPos+1:]
+			}
 		}
 	}
 
