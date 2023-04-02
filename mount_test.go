@@ -88,6 +88,7 @@ func Test_App_Mount_Nested(t *testing.T) {
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
 	utils.AssertEqual(t, uint32(6), app.handlersCount)
+	utils.AssertEqual(t, uint32(6), app.routesCount)
 }
 
 // go test -run Test_App_Mount_Express_Behavior
@@ -136,6 +137,7 @@ func Test_App_Mount_Express_Behavior(t *testing.T) {
 	testEndpoint(app, "/unknown", ErrNotFound.Message)
 
 	utils.AssertEqual(t, uint32(17), app.handlersCount)
+	utils.AssertEqual(t, uint32(17), app.routesCount)
 }
 
 // go test -run Test_App_MountPath

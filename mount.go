@@ -50,8 +50,9 @@ func (app *App) Mount(prefix string, subApp *App) Router {
 		app.mountFields.appList[path] = subApp
 	}
 
-	grp := &Group{Prefix: prefix, app: subApp}
-	app.register(methodUse, prefix, grp)
+	// register mounted group
+	mountGroup := &Group{Prefix: prefix, app: subApp}
+	app.register(methodUse, prefix, mountGroup)
 
 	// Execute onMount hooks
 	if err := subApp.hooks.executeOnMountHooks(app); err != nil {
@@ -64,7 +65,7 @@ func (app *App) Mount(prefix string, subApp *App) Router {
 // Mount attaches another app instance as a sub-router along a routing path.
 // It's very useful to split up a large API as many independent routers and
 // compose them as a single service using Mount.
-func (grp *Group) Mount(prefix string, fiber *App) Router {
+func (grp *Group) Mount(prefix string, subApp *App) Router {
 	groupPath := getGroupPath(grp.Prefix, prefix)
 	groupPath = strings.TrimRight(groupPath, "/")
 	if groupPath == "" {
@@ -72,15 +73,19 @@ func (grp *Group) Mount(prefix string, fiber *App) Router {
 	}
 
 	// Support for configs of mounted-apps and sub-mounted-apps
-	for mountedPrefixes, subApp := range fiber.mountFields.appList {
+	for mountedPrefixes, subApp := range subApp.mountFields.appList {
 		path := getGroupPath(groupPath, mountedPrefixes)
 
 		subApp.mountFields.mountPath = path
 		grp.app.mountFields.appList[path] = subApp
 	}
 
+	// register mounted group
+	mountGroup := &Group{Prefix: groupPath, app: subApp}
+	grp.app.register(methodUse, groupPath, mountGroup)
+
 	// Execute onMount hooks
-	if err := fiber.hooks.executeOnMountHooks(grp.app); err != nil {
+	if err := subApp.hooks.executeOnMountHooks(grp.app); err != nil {
 		panic(err)
 	}
 
@@ -133,21 +138,39 @@ func (app *App) processSubAppsRoutes(appList map[string]*App, parent ...string) 
 		if prefix == "" {
 			continue
 		}
-
-		if len(parent) > 0 {
-			prefix = getGroupPath(parent[0], prefix)
-		}
-
-		// add routes
-		//stack := subApp.stack
-		//for m := range stack {
-		//	for r := range stack[m] {
-		//		route := app.copyRoute(stack[m][r])
-		//		app.addRoute(route.Method, app.addPrefixToRoute(prefix, route), true)
-		//	}
-		//}
 		subApp.startupProcess()
-
 		atomic.AddUint32(&app.handlersCount, subApp.handlersCount)
+		atomic.AddUint32(&app.routesCount, subApp.routesCount)
 	}
+
+	// go through your own stack - TODO: follow the solution to use the sub app matching , router.go:next()
+	for m := range app.stack {
+		for i, route := range app.stack[m] {
+			// search for mounted apps
+			if !route.mount {
+				continue
+			}
+
+			subRoutes := make([]*Route, len(route.group.app.stack[m]))
+			for j, subAppRoute := range route.group.app.stack[m] {
+				subAppRouteClone := app.copyRoute(subAppRoute)
+				app.addPrefixToRoute(route.path, subAppRouteClone)
+				subRoutes[j] = subAppRouteClone
+			}
+
+			if i+1 < len(app.stack[m]) {
+				app.stack[m] = append(app.stack[m][:i], append(subRoutes, app.stack[m][i+1:]...)...)
+			} else {
+				app.stack[m] = append(app.stack[m][:i], subRoutes...)
+			}
+
+			atomic.AddUint32(&app.routesCount, uint32(len(subRoutes)))
+
+			//subAppRouteClone.pos = atomic.AddUint32(&app.routesCount, 1)
+			// TODO: correct route.pos, app.routesCount, app.handlerCount
+			app.routesRefreshed = true
+		}
+	}
+
+	return
 }

@@ -122,10 +122,13 @@ func (app *App) next(c *Ctx) (bool, error) {
 		var err error
 		// Check if it matches the request path
 		if route.mount {
+			continue
+			// TODO: use inner matching for mounted groups
+			// -> check performance and allocations
 			// #2233 - create the detection path and path for the matching inside and pass it from outside into the next method ?
 			// create path objects containing the values, create them using the configDependentPaths method and store the initial in the cdx
 			// path objects come from a syncPool so that they do not create allocations
-			match, err = route.group.app.next(c)
+			//match, err = route.group.app.next(c)
 		} else {
 			match = route.match(c.detectionPath, c.path, &c.values)
 		}
@@ -217,6 +220,9 @@ func (*App) copyRoute(route *Route) *Route {
 		path:        route.path,
 		routeParser: route.routeParser,
 		Params:      route.Params,
+
+		// misc
+		pos: route.pos,
 
 		// Public data
 		Path:     route.Path,
