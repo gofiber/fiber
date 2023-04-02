@@ -166,11 +166,9 @@ func (app *App) processSubAppsRoutes(appList map[string]*App, parent ...string) 
 
 			atomic.AddUint32(&app.routesCount, uint32(len(subRoutes)))
 
-			//subAppRouteClone.pos = atomic.AddUint32(&app.routesCount, 1)
+			// subAppRouteClone.pos = atomic.AddUint32(&app.routesCount, 1)
 			// TODO: correct route.pos, app.routesCount, app.handlerCount
 			app.routesRefreshed = true
 		}
 	}
-
-	return
 }
