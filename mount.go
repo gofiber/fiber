@@ -153,6 +153,7 @@ func (app *App) processSubAppsRoutes() {
 		if prefix == "" {
 			continue
 		}
+		// TODO: do it only once
 		if subApp.hasMountedApps() {
 			subApp.processSubAppsRoutes()
 		}
