@@ -97,6 +97,21 @@ func (app *App) MountPath() string {
 	return app.mountFields.mountPath
 }
 
+func (app *App) hasMountedApps() bool {
+	return len(app.mountFields.appList) > 1
+}
+
+func (app *App) mountStartupProcess() {
+	if app.hasMountedApps() {
+		// add routes of sub-apps
+		app.mountFields.subAppsRoutesAdded.Do(func() {
+			app.appendSubAppLists(app.mountFields.appList)
+			app.processSubAppsRoutes()
+			app.generateAppListKeys()
+		})
+	}
+}
+
 // generateAppListKeys generates app list keys for Render, should work after appendSubAppLists
 func (app *App) generateAppListKeys() {
 	for key := range app.mountFields.appList {
@@ -131,44 +146,75 @@ func (app *App) appendSubAppLists(appList map[string]*App, parent ...string) {
 	}
 }
 
-// processSubAppsRoutes adds routes of sub apps nestedly when to start the server
-func (app *App) processSubAppsRoutes(appList map[string]*App, parent ...string) {
-	for prefix, subApp := range appList {
+// processSubAppsRoutes adds routes of sub-apps recursively when the server is started
+func (app *App) processSubAppsRoutes() {
+	for prefix, subApp := range app.mountFields.appList {
 		// skip real app
 		if prefix == "" {
 			continue
 		}
-		subApp.startupProcess()
-		atomic.AddUint32(&app.handlersCount, subApp.handlersCount)
-		atomic.AddUint32(&app.routesCount, subApp.routesCount)
+		if subApp.hasMountedApps() {
+			subApp.processSubAppsRoutes()
+		}
 	}
-
-	// go through your own stack - TODO: follow the solution to use the sub app matching , router.go:next()
+	var handlersCount uint32 = 0
+	// Iterate over the stack of the parent app
+	// TODO: follow the solution to use the sub app matching , router.go:next()
 	for m := range app.stack {
-		for i, route := range app.stack[m] {
-			// search for mounted apps
+		// Keep track of the position shift caused by adding routes for mounted apps
+		var positionShift uint32 = 0
+		// Iterate over each route in the stack
+		stackLen := len(app.stack[m])
+		for i := 0; i < stackLen; i++ {
+			route := app.stack[m][i]
+			// Check if the route has a mounted app
 			if !route.mount {
+				// If not, update the route's position and continue
+				route.pos += positionShift
+				if !route.use {
+					atomic.AddUint32(&handlersCount, uint32(len(route.Handlers)))
+				} else if route.use && m == 0 {
+					atomic.AddUint32(&handlersCount, uint32(len(route.Handlers)))
+				}
 				continue
 			}
 
+			// Update the position shift to account for the mounted app's routes
+			positionShift = route.pos
+
+			// Create a slice to hold the sub-app's routes
 			subRoutes := make([]*Route, len(route.group.app.stack[m]))
+
+			// Iterate over the sub-app's routes
 			for j, subAppRoute := range route.group.app.stack[m] {
+				// Clone the sub-app's route
 				subAppRouteClone := app.copyRoute(subAppRoute)
+
+				// Add the parent route's path as a prefix to the sub-app's route
 				app.addPrefixToRoute(route.path, subAppRouteClone)
+
+				// Add the cloned sub-app's route to the slice of sub-app routes
 				subRoutes[j] = subAppRouteClone
 			}
 
+			// Insert the sub-app's routes into the parent app's stack
 			if i+1 < len(app.stack[m]) {
 				app.stack[m] = append(app.stack[m][:i], append(subRoutes, app.stack[m][i+1:]...)...)
 			} else {
 				app.stack[m] = append(app.stack[m][:i], subRoutes...)
 			}
 
+			// Decrease the parent app's route count to account for the mounted app's original route
+			atomic.AddUint32(&app.routesCount, ^uint32(0))
+			i--
+			// Increase the parent app's route count to account for the sub-app's routes
 			atomic.AddUint32(&app.routesCount, uint32(len(subRoutes)))
 
-			// subAppRouteClone.pos = atomic.AddUint32(&app.routesCount, 1)
-			// TODO: correct route.pos, app.routesCount, app.handlerCount
+			// Mark the parent app's routes as refreshed
 			app.routesRefreshed = true
+			// update stackLen after appending subRoutes to app.stack[m]
+			stackLen = len(app.stack[m])
 		}
 	}
+	atomic.StoreUint32(&app.handlersCount, handlersCount)
 }

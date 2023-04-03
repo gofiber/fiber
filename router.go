@@ -301,11 +301,11 @@ func (app *App) register(method, pathRaw string, group *Group, handlers ...Handl
 		for _, m := range app.config.RequestMethods {
 			// Create a route copy to avoid duplicates during compression
 			r := route
-			app.addRoute(m, &r)
+			app.addRoute(m, &r, isMount)
 		}
 	} else {
 		// Add route to stack
-		app.addRoute(method, &route)
+		app.addRoute(method, &route, isMount)
 	}
 	return app
 }
