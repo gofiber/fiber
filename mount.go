@@ -158,12 +158,12 @@ func (app *App) processSubAppsRoutes() {
 			subApp.processSubAppsRoutes()
 		}
 	}
-	var handlersCount uint32 = 0
+	var handlersCount uint32
 	// Iterate over the stack of the parent app
 	// TODO: follow the solution to use the sub app matching , router.go:next()
 	for m := range app.stack {
 		// Keep track of the position shift caused by adding routes for mounted apps
-		var positionShift uint32 = 0
+		var positionShift uint32
 		// Iterate over each route in the stack
 		stackLen := len(app.stack[m])
 		for i := 0; i < stackLen; i++ {
