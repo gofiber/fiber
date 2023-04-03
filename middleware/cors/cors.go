@@ -1,6 +1,7 @@
 package cors
 
 import (
+	"log"
 	"strconv"
 	"strings"
 
@@ -93,6 +94,11 @@ func New(config ...Config) fiber.Handler {
 		if cfg.AllowOrigins == "" {
 			cfg.AllowOrigins = ConfigDefault.AllowOrigins
 		}
+	}
+
+	// Warning logs if both AllowOrigins and AllowOriginsFunc are set
+	if cfg.AllowOrigins != "" && cfg.AllowOriginsFunc != nil {
+		log.Printf("[CORS] - [Warning] Both 'AllowOrigins' and 'AllowOriginsFunc' have been defined.\n")
 	}
 
 	// Convert string to slice
