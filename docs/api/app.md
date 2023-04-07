@@ -145,19 +145,19 @@ func (app *App) MountPath() string
 
 ```go title="Examples"
 func main() {
-	app := fiber.New()
-	one := fiber.New()
-	two := fiber.New()
-	three := fiber.New()
+ app := fiber.New()
+ one := fiber.New()
+ two := fiber.New()
+ three := fiber.New()
 
-	two.Mount("/three", three)
-	one.Mount("/two", two)
-	app.Mount("/one", one)
-  
-	one.MountPath()   // "/one"
-	two.MountPath()   // "/one/two"
-	three.MountPath() // "/one/two/three"
-	app.MountPath()   // ""
+ two.Mount("/three", three)
+ one.Mount("/two", two)
+ app.Mount("/one", one)
+
+ one.MountPath()   // "/one"
+ two.MountPath()   // "/one/two"
+ three.MountPath() // "/one/two/three"
+ app.MountPath()   // ""
 }
 ```
 
@@ -236,9 +236,12 @@ Shutdown gracefully shuts down the server without interrupting any active connec
 
 ShutdownWithTimeout will forcefully close any active connections after the timeout expires.
 
+ShutdownWithContext shuts down the server including by force if the context's deadline is exceeded.
+
 ```go
 func (app *App) Shutdown() error
 func (app *App) ShutdownWithTimeout(timeout time.Duration) error
+func (app *App) ShutdownWithContext(ctx context.Context) error
 ```
 
 ## HandlersCount
@@ -420,12 +423,12 @@ func main() {
     app := fiber.New()
 
     app.Get("/", handler).Name("index")
-    
+
     data, _ := json.MarshalIndent(app.GetRoute("index"), "", "  ")
-	fmt.Print(string(data))
+ fmt.Print(string(data))
 
 
-	app.Listen(":3000")
+ app.Listen(":3000")
 
 }
 ```
@@ -448,14 +451,15 @@ func (app *App) GetRoutes(filterUseOption ...bool) []Route
 ```
 
 When filterUseOption equal to true, it will filter the routes registered by the middleware.
+
 ```go title="Examples"
 func main() {
-	app := fiber.New()
-	app.Post("/", func (c *fiber.Ctx) error {
-		return c.SendString("Hello, World!")
-	}).Name("index")
-	data, _ := json.MarshalIndent(app.GetRoutes(true), "", "  ")
-	fmt.Print(string(data))
+ app := fiber.New()
+ app.Post("/", func (c *fiber.Ctx) error {
+  return c.SendString("Hello, World!")
+ }).Name("index")
+ data, _ := json.MarshalIndent(app.GetRoutes(true), "", "  ")
+ fmt.Print(string(data))
 }
 ```
 
@@ -495,7 +499,7 @@ func (app *App) Listen(addr string) error
 ```
 
 ```go title="Examples"
-// Listen on port :8080 
+// Listen on port :8080
 app.Listen(":8080")
 
 // Custom host
@@ -562,12 +566,12 @@ Using `ListenMutualTLS` defaults to the following config \( use `Listener` to pr
 
 ```go title="Default \*tls.Config"
 &tls.Config{
-	MinVersion: tls.VersionTLS12,
-	ClientAuth: tls.RequireAndVerifyClientCert,
-	ClientCAs:  clientCertPool,
-	Certificates: []tls.Certificate{
-		cert,
-	},
+ MinVersion: tls.VersionTLS12,
+ ClientAuth: tls.RequireAndVerifyClientCert,
+ ClientCAs:  clientCertPool,
+ Certificates: []tls.Certificate{
+  cert,
+ },
 }
 ```
 
@@ -587,12 +591,12 @@ Using `ListenMutualTLSWithCertificate` defaults to the following config \( use `
 
 ```go title="Default \*tls.Config"
 &tls.Config{
-	MinVersion: tls.VersionTLS12,
-	ClientAuth: tls.RequireAndVerifyClientCert,
-	ClientCAs:  clientCertPool,
-	Certificates: []tls.Certificate{
-		cert,
-	},
+ MinVersion: tls.VersionTLS12,
+ ClientAuth: tls.RequireAndVerifyClientCert,
+ ClientCAs:  clientCertPool,
+ Certificates: []tls.Certificate{
+  cert,
+ },
 }
 ```
 
