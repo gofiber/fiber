@@ -847,7 +847,7 @@ func (app *App) HandlersCount() uint32 {
 //
 // Shutdown does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
 func (app *App) Shutdown() error {
-	return app.shutdownWithContext(context.Background())
+	return app.ShutdownWithContext(context.Background())
 }
 
 // ShutdownWithTimeout gracefully shuts down the server without interrupting any active connections. However, if the timeout is exceeded,
@@ -860,11 +860,15 @@ func (app *App) Shutdown() error {
 func (app *App) ShutdownWithTimeout(timeout time.Duration) error {
 	ctx, cancelFunc := context.WithTimeout(context.Background(), timeout)
 	defer cancelFunc()
-	return app.shutdownWithContext(ctx)
+	return app.ShutdownWithContext(ctx)
 }
 
-// shutdownWithContext shuts down the server including by force if the context's deadline is exceeded.
-func (app *App) shutdownWithContext(ctx context.Context) error {
+// ShutdownWithContext shuts down the server including by force if the context's deadline is exceeded.
+//
+// Make sure the program doesn't exit and waits instead for ShutdownWithTimeout to return.
+//
+// ShutdownWithContext does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
+func (app *App) ShutdownWithContext(ctx context.Context) error {
 	if app.hooks != nil {
 		defer app.hooks.executeOnShutdownHooks()
 	}
