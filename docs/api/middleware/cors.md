@@ -35,16 +35,18 @@ app.Use(cors.New(cors.Config{
 }))
 ```
 
-Using the `AllowOriginsFunc` function. In this example any origin that contains `://localhost` will be allowed via CORS.
+Using the `AllowOriginsFunc` function. In this example any origin will be allowed via CORS.
 
 For example, if a browser running on `http://localhost:3000` sends a request, this will be accepted and the `access-control-allow-origin` response header will be set to `http://localhost:3000`.
+
+**Note: Using this feature is discouraged in production and it's best practice to explicitly set CORS origins via `AllowOrigins`.**
 
 ```go
 app.Use(cors.New())
 
 app.Use(cors.New(cors.Config{
     AllowOriginsFunc: func(origin string) bool {
-        return strings.Contains(origin, "://localhost")
+        return os.Getenv("ENVIRONMENT") == "development"
     },
 }))
 ```
@@ -61,6 +63,9 @@ type Config struct {
 
 	// AllowOriginsFunc defines a function that will set the 'access-control-allow-origin'
 	// response header to the 'origin' request header when returned true.
+	// 
+	// Note: Using this feature is discouraged in production and it's best practice to explicitly
+	// set CORS origins via 'AllowOrigins'
 	//
 	// Optional. Default: nil
 	AllowOriginsFunc func(origin string) bool
