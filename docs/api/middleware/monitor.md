@@ -84,7 +84,7 @@ type Config struct {
 	// ChartJsURL for specify ChartJS library  path or URL . also you can use relative path
 	//
 	// Optional. Default: https://cdn.jsdelivr.net/npm/chart.js@2.9/dist/Chart.bundle.min.js
-	ChartJsURL string // TODO: Rename to "ChartJSURL" in v3
+	ChartJsURL string
 
 	index string
 }
