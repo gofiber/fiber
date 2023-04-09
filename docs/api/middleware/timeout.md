@@ -3,7 +3,7 @@ id: timeout
 title: Timeout
 ---
 
-Timeout middleware for [Fiber](https://github.com/gofiber/fiber). As a `fiber.Handler` wrapper, it creates a context with `context.WithTimeout` and pass it in `UserContext`. 
+Timeout middleware for [Fiber](https://github.com/gofiber/fiber). As a `fiber.Handler` wrapper, it creates a context with `context.WithTimeout` and passes it in `UserContext`. 
 
 If the context passed executions (eg. DB ops, Http calls) takes longer than the given duration to return, the timeout error is set and forwarded to the centralized `ErrorHandler`.
 
@@ -26,11 +26,12 @@ import (
 )
 ```
 
-Sample timeout middleware usage:
+After you initiate your Fiber app, you can use the following possibilities:
 
 ```go
 func main() {
 	app := fiber.New()
+
 	h := func(c *fiber.Ctx) error {
 		sleepTime, _ := time.ParseDuration(c.Params("sleepTime") + "ms")
 		if err := sleepWithContext(c.UserContext(), sleepTime); err != nil {
@@ -40,7 +41,8 @@ func main() {
 	}
 
 	app.Get("/foo/:sleepTime", timeout.New(h, 2*time.Second))
-	_ = app.Listen(":3000")
+
+	app.Listen(":3000")
 }
 
 func sleepWithContext(ctx context.Context, d time.Duration) error {
@@ -86,7 +88,8 @@ func main() {
 	}
 
 	app.Get("/foo/:sleepTime", timeout.New(h, 2*time.Second, ErrFooTimeOut))
-	_ = app.Listen(":3000")
+
+	app.Listen(":3000")
 }
 
 func sleepWithContextWithCustomError(ctx context.Context, d time.Duration) error {
@@ -125,6 +128,7 @@ func main() {
 	}
 
 	app.Get("/foo", timeout.New(handler, 10*time.Second))
+	
 	app.Listen(":3000")
 }
 ```

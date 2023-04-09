@@ -29,12 +29,10 @@ func (s *Session) Keys() []string
 ```
 
 :::caution
-
 Storing `interface{}` values are limited to built-ins Go types.
-
 :::
 
-### Examples
+## Examples
 Import the middleware package that is part of the Fiber web framework
 ```go
 import (
@@ -43,16 +41,13 @@ import (
 )
 ```
 
-Then create a Fiber app with `app := fiber.New()`.
-
-### Default Configuration
+After you initiate your Fiber app, you can use the following possibilities:
 
 ```go
+// Initialize default config
 // This stores all of your app's sessions
-// Default middleware config
 store := session.New()
 
-// This panic will be caught by the middleware
 app.Get("/", func(c *fiber.Ctx) error {
     // Get session from storage
     sess, err := store.Get(c)
@@ -89,19 +84,6 @@ app.Get("/", func(c *fiber.Ctx) error {
 })
 ```
 
-### Custom Storage/Database
-
-You can use any storage from our [storage](https://github.com/gofiber/storage/) package.
-
-```go
-storage := sqlite3.New() // From github.com/gofiber/storage/sqlite3
-store := session.New(session.Config{
-	Storage: storage,
-})
-```
-
-To use the store, see the above example.
-
 ## Config
 
 ```go
@@ -121,23 +103,23 @@ type Config struct {
 	// Optional. Default value "cookie:session_id".
 	KeyLookup string
 
-	// Domain of the cookie.
+	// Domain of the CSRF cookie.
 	// Optional. Default value "".
 	CookieDomain string
 
-	// Path of the cookie.
+	// Path of the CSRF cookie.
 	// Optional. Default value "".
 	CookiePath string
 
-	// Indicates if cookie is secure.
+	// Indicates if CSRF cookie is secure.
 	// Optional. Default value false.
 	CookieSecure bool
 
-	// Indicates if cookie is HTTP only.
+	// Indicates if CSRF cookie is HTTP only.
 	// Optional. Default value false.
 	CookieHTTPOnly bool
 
-	// Sets the cookie SameSite attribute.
+	// Value of SameSite cookie.
 	// Optional. Default value "Lax".
 	CookieSameSite string
 
@@ -147,14 +129,14 @@ type Config struct {
 	CookieSessionOnly bool
 
 	// KeyGenerator generates the session key.
-	// Optional. Default value utils.UUID
+	// Optional. Default value utils.UUIDv4
 	KeyGenerator func() string
 
 	// Deprecated: Please use KeyLookup
 	CookieName string
 
 	// Source defines where to obtain the session id
-	source      Source
+	source Source
 
 	// The session name
 	sessionName string
@@ -167,6 +149,31 @@ type Config struct {
 var ConfigDefault = Config{
 	Expiration:   24 * time.Hour,
 	KeyLookup:    "cookie:session_id",
-	KeyGenerator: utils.UUID,
+	KeyGenerator: utils.UUIDv4,
+	source:       "cookie",
+	sessionName:  "session_id",
 }
 ```
+
+## Constants
+
+```go
+const (
+	SourceCookie   Source = "cookie"
+	SourceHeader   Source = "header"
+	SourceURLQuery Source = "query"
+)
+```
+
+### Custom Storage/Database
+
+You can use any storage from our [storage](https://github.com/gofiber/storage/) package.
+
+```go
+storage := sqlite3.New() // From github.com/gofiber/storage/sqlite3
+store := session.New(session.Config{
+	Storage: storage,
+})
+```
+
+To use the store, see the [Examples](#examples).

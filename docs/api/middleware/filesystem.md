@@ -11,20 +11,20 @@ Filesystem middleware for [Fiber](https://github.com/gofiber/fiber) that enables
 **To handle paths with spaces (or other url encoded values) make sure to set `fiber.Config{ UnescapePath: true }`**
 :::
 
-### Table of Contents
+## Table of Contents
 
 * [Signatures](filesystem.md#signatures)
 * [Examples](filesystem.md#examples)
 * [Config](filesystem.md#config)
 * [Default Config](filesystem.md#default-config)
 
-### Signatures
+## Signatures
 
 ```go
 func New(config Config) fiber.Handler
 ```
 
-### Examples
+## Examples
 
 Import the middleware package that is part of the Fiber web framework
 
@@ -56,7 +56,7 @@ app.Use(filesystem.New(filesystem.Config{
 
 > If your environment (Go 1.16+) supports it, we recommend using Go Embed instead of the other solutions listed as this one is native to Go and the easiest to use.
 
-### embed
+## embed
 
 [Embed](https://golang.org/pkg/embed/) is the native method to embed files in a Golang excecutable. Introduced in Go 1.16.
 
@@ -233,7 +233,7 @@ func main() {
 }
 ```
 
-### Config
+## Config
 
 ```go
 // Config defines the config for middleware.
@@ -280,7 +280,7 @@ type Config struct {
 }
 ```
 
-### Default Config
+## Default Config
 
 ```go
 var ConfigDefault = Config{

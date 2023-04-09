@@ -13,7 +13,7 @@ func New(config ...Config) fiber.Handler
 
 ## Examples
 
-First import the middleware from Fiber,
+Import the middleware package that is part of the Fiber web framework
 
 ```go
 import (
@@ -22,19 +22,13 @@ import (
 )
 ```
 
-Then create a Fiber app with `app := fiber.New()`.
-
-**Note**: You need to provide a path to use envvar middleware.
-
-### Default Config
+After you initiate your Fiber app, you can use the following possibilities:
 
 ```go
+// Initialize default config
 app.Use("/expose/envvars", envvar.New())
-```
 
-### Custom Config
-
-```go
+// Or extend your config for customization
 app.Use("/expose/envvars", envvar.New(
 	envvar.Config{
 		ExportVars:  map[string]string{"testKey": "", "testDefaultKey": "testDefaultVal"},
@@ -43,7 +37,11 @@ app.Use("/expose/envvars", envvar.New(
 )
 ```
 
-### Response
+:::note
+You will need to provide a path to use the envvar middleware.
+:::
+
+## Response
 
 Http response contract:
 ```
