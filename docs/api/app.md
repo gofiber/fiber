@@ -236,9 +236,12 @@ Shutdown gracefully shuts down the server without interrupting any active connec
 
 ShutdownWithTimeout will forcefully close any active connections after the timeout expires.
 
+ShutdownWithContext shuts down the server including by force if the context's deadline is exceeded.
+
 ```go
 func (app *App) Shutdown() error
 func (app *App) ShutdownWithTimeout(timeout time.Duration) error
+func (app *App) ShutdownWithContext(ctx context.Context) error
 ```
 
 ## HandlersCount
