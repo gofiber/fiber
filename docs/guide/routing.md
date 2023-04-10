@@ -283,3 +283,5 @@ func main() {
   log.Fatal(app.Listen(":3000"))
 }
 ```
+
+More information about this in our [Grouping Guide](./grouping.md)
