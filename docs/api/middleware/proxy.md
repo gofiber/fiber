@@ -193,7 +193,6 @@ type Config struct {
 ## Default Config
 
 ```go
-// ConfigDefault is the default config
 var ConfigDefault = Config{
     Next:           nil,
     ModifyRequest:  nil,

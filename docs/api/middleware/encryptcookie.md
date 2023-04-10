@@ -29,7 +29,10 @@ import (
 After you initiate your Fiber app, you can use the following possibilities:
 
 ```go
-// Default middleware config
+// Provide a minimal config
+// `Key` must be a 32 character string. It's used to encrypt the values, so make sure it is random and keep it secret.
+// You can run `openssl rand -base64 32` or call `encryptcookie.GenerateKey()` to create a random key for you.
+// Make sure not to set `Key` to `encryptcookie.GenerateKey()` because that will create a new key every run.
 app.Use(encryptcookie.New(encryptcookie.Config{
     Key: "secret-thirty-2-character-string",
 }))
@@ -52,6 +55,7 @@ app.Post("/", func(c *fiber.Ctx) error {
 ## Config
 
 ```go
+// Config defines the config for middleware.
 type Config struct {
     // Next defines a function to skip this middleware when returned true.
     //
@@ -84,12 +88,13 @@ type Config struct {
 ## Default Config
 
 ```go
-// `Key` must be a 32 character string. It's used to encrpyt the values, so make sure it is random and keep it secret.
-// You can run `openssl rand -base64 32` or call `encryptcookie.GenerateKey()` to create a random key for you.
-// Make sure not to set `Key` to `encryptcookie.GenerateKey()` because that will create a new key every run.
-app.Use(encryptcookie.New(encryptcookie.Config{
-    Key: "secret-thirty-2-character-string",
-}))
+var ConfigDefault = Config{
+	Next:      nil,
+	Except:    []string{"csrf_"},
+	Key:       "",
+	Encryptor: EncryptCookie,
+	Decryptor: DecryptCookie,
+}
 ```
 
 ## Usage of CSRF and Encryptcookie Middlewares with Custom Cookie Names

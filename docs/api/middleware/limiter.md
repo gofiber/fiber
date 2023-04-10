@@ -6,15 +6,11 @@ title: Limiter
 Limiter middleware for [Fiber](https://github.com/gofiber/fiber) that is used to limit repeat requests to public APIs and/or endpoints such as password reset. It is also useful for API clients, web crawling, or other tasks that need to be throttled.
 
 :::note
-
 This middleware uses our [Storage](https://github.com/gofiber/storage) package to support various databases through a single interface. The default configuration for this middleware saves data to memory, see the examples below for other databases.
-
 :::
 
 :::note
-
 This module does not share state with other processes/servers by default.
-
 :::
 
 ## Signatures
@@ -37,7 +33,7 @@ import (
 After you initiate your Fiber app, you can use the following possibilities:
 
 ```go
-// Default middleware config
+// Initialize default config
 app.Use(limiter.New())
 
 // Or extend your config for customization
@@ -75,17 +71,6 @@ This means that every window will take into account the previous window(if there
 ```
 weightOfPreviousWindpw = previous window's amount request * (whenNewWindow / Expiration)
 rate = weightOfPreviousWindpw + current window's amount request.
-```
-
-## Custom Storage/Database
-
-You can use any storage from our [storage](https://github.com/gofiber/storage/) package.
-
-```go
-storage := sqlite3.New() // From github.com/gofiber/storage/sqlite3
-app.Use(limiter.New(limiter.Config{
-	Storage: storage,
-}))
 ```
 
 ## Config
@@ -144,7 +129,9 @@ type Config struct {
 }
 ```
 
+:::note
 A custom store can be used if it implements the `Storage` interface - more details and an example can be found in `store.go`.
+:::
 
 ## Default Config
 
@@ -162,4 +149,15 @@ var ConfigDefault = Config{
     SkipSuccessfulRequests: false,
     LimiterMiddleware: FixedWindow{},
 }
+```
+
+### Custom Storage/Database
+
+You can use any storage from our [storage](https://github.com/gofiber/storage/) package.
+
+```go
+storage := sqlite3.New() // From github.com/gofiber/storage/sqlite3
+app.Use(limiter.New(limiter.Config{
+	Storage: storage,
+}))
 ```

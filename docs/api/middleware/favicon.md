@@ -29,7 +29,7 @@ import (
 After you initiate your Fiber app, you can use the following possibilities:
 
 ```go
-// Provide a minimal config
+// Initialize default config
 app.Use(favicon.New())
 
 // Or extend your config for customization
@@ -76,10 +76,9 @@ type Config struct {
 
 ```go
 var ConfigDefault = Config{
-    Next:         nil,
-    File:         "",
-    URL:          "/favicon.ico",
-    FileSystem:   nil,
-    CacheControl: "public, max-age=31536000",
+	Next:         nil,
+	File:         "",
+	URL:          fPath,
+	CacheControl: "public, max-age=31536000",
 }
 ```

@@ -25,7 +25,7 @@ import (
 After you initiate your Fiber app, you can use the following possibilities:
 
 ```go
-// Default middleware config
+// Initialize default config
 app.Use(requestid.New())
 
 // Or extend your config for customization
