@@ -107,10 +107,10 @@ func (app *App) next(c *Ctx) (bool, error) {
 	if !ok {
 		tree = app.treeStack[c.methodINT][""]
 	}
-	lenr := len(tree) - 1
+	lenTree := len(tree) - 1
 
 	// Loop over the route stack starting from previous index
-	for c.indexRoute < lenr {
+	for c.indexRoute < lenTree {
 		// Increment route index
 		c.indexRoute++
 
@@ -119,17 +119,12 @@ func (app *App) next(c *Ctx) (bool, error) {
 
 		var match bool
 		var err error
-		// Check if it matches the request path
+		// skip for mounted apps
 		if route.mount {
 			continue
-			// TODO: use inner matching for mounted groups
-			// -> check performance and allocations
-			// #2233 - create the detection path and path for the matching inside and pass it from outside into the next method ?
-			// create path objects containing the values, create them using the configDependentPaths method and store the initial in the cdx
-			// path objects come from a syncPool so that they do not create allocations
-			// match, err = route.group.app.next(c)
 		}
 
+		// Check if it matches the request path
 		match = route.match(c.detectionPath, c.path, &c.values)
 		if !match {
 			// No match, next route

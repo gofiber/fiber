@@ -19,6 +19,8 @@ type mountFields struct {
 	appListKeys []string
 	// check added routes of sub-apps
 	subAppsRoutesAdded sync.Once
+	// check mounted sub-apps
+	subAppsProcessed sync.Once
 	// Prefix of app if it was mounted
 	mountPath string
 }
@@ -104,10 +106,13 @@ func (app *App) hasMountedApps() bool {
 func (app *App) mountStartupProcess() {
 	if app.hasMountedApps() {
 		// add routes of sub-apps
-		app.mountFields.subAppsRoutesAdded.Do(func() {
+		app.mountFields.subAppsProcessed.Do(func() {
 			app.appendSubAppLists(app.mountFields.appList)
-			app.processSubAppsRoutes()
 			app.generateAppListKeys()
+		})
+
+		app.mountFields.subAppsRoutesAdded.Do(func() {
+			app.processSubAppsRoutes()
 		})
 	}
 }
@@ -153,14 +158,15 @@ func (app *App) processSubAppsRoutes() {
 		if prefix == "" {
 			continue
 		}
-		// TODO: do it only once
+		// process the inner routes
 		if subApp.hasMountedApps() {
-			subApp.processSubAppsRoutes()
+			subApp.mountFields.subAppsRoutesAdded.Do(func() {
+				subApp.processSubAppsRoutes()
+			})
 		}
 	}
 	var handlersCount uint32
 	// Iterate over the stack of the parent app
-	// TODO: follow the solution to use the sub app matching , router.go:next()
 	for m := range app.stack {
 		// Keep track of the position shift caused by adding routes for mounted apps
 		var positionShift uint32
@@ -172,9 +178,7 @@ func (app *App) processSubAppsRoutes() {
 			if !route.mount {
 				// If not, update the route's position and continue
 				route.pos += positionShift
-				if !route.use {
-					atomic.AddUint32(&handlersCount, uint32(len(route.Handlers)))
-				} else if route.use && m == 0 {
+				if !route.use || (route.use && m == 0) {
 					atomic.AddUint32(&handlersCount, uint32(len(route.Handlers)))
 				}
 				continue
