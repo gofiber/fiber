@@ -28,19 +28,16 @@ import (
 After you initiate your Fiber app, you can use the following possibilities:
 
 ```go
-// Default middleware
+// Initialize default config
 app.Use(pprof.New())
-```
 
-In systems where you have multiple ingress endpoints, it is common to add a URL prefix, like so:
+// Or extend your config for customization
 
-```go
-// Default middleware
+// For example, in systems where you have multiple ingress endpoints, it is common to add a URL prefix, like so:
 app.Use(pprof.New(pprof.Config{Prefix: "/endpoint-prefix"}))
-```
 
-This prefix will be added to the default path of "/debug/pprof/", for a resulting URL of:
-"/endpoint-prefix/debug/pprof/".
+// This prefix will be added to the default path of "/debug/pprof/", for a resulting URL of: "/endpoint-prefix/debug/pprof/".
+```
 
 ## Config
 

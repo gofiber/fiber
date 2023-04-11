@@ -11,34 +11,27 @@ Expvar middleware for [Fiber](https://github.com/gofiber/fiber) that serves via 
 func New() fiber.Handler
 ```
 
-## Example
+## Examples
 
-Import the expvar package that is part of the Fiber web framework
+Import the middleware package that is part of the Fiber web framework
 
 ```go
-package main
-
 import (
-    "expvar"
-    "fmt"
-
-    "github.com/gofiber/fiber/v2"
-    expvarmw "github.com/gofiber/fiber/v2/middleware/expvar"
+  "github.com/gofiber/fiber/v2"
+  expvarmw "github.com/gofiber/fiber/v2/middleware/expvar"
 )
+```
 
+After you initiate your Fiber app, you can use the following possibilities:
+```go
 var count = expvar.NewInt("count")
 
-func main() {
-    app := fiber.New()
-    app.Use(expvarmw.New())
-    app.Get("/", func(c *fiber.Ctx) error {
-        count.Add(1)
+app.Use(expvarmw.New())
+app.Get("/", func(c *fiber.Ctx) error {
+    count.Add(1)
 
-        return c.SendString(fmt.Sprintf("hello expvar count %d", count.Value()))
-    })
-
-    fmt.Println(app.Listen(":3000"))
-}
+    return c.SendString(fmt.Sprintf("hello expvar count %d", count.Value()))
+})
 ```
 
 Visit path `/debug/vars` to see all vars and use query `r=key` to filter exposed variables.

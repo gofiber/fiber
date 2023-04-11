@@ -15,7 +15,7 @@ func New(config ...Config) fiber.Handler
 
 ## Examples
 
-First import the middleware from Fiber,
+Import the middleware package that is part of the Fiber web framework
 
 ```go
 import (
@@ -24,7 +24,7 @@ import (
 )
 ```
 
-Then create a Fiber app with `app := fiber.New()`.
+After you initiate your Fiber app, you can use the following possibilities:
 
 ### Default Config
 
@@ -44,6 +44,7 @@ app.Use(idempotency.New(idempotency.Config{
 ### Config
 
 ```go
+// Config defines the config for middleware.
 type Config struct {
 	// Next defines a function to skip this middleware when returned true.
 	//
@@ -81,7 +82,7 @@ type Config struct {
 }
 ```
 
-### Default Config
+## Default Config
 
 ```go
 var ConfigDefault = Config{

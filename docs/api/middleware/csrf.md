@@ -10,9 +10,7 @@ CSRF Tokens are generated on GET requests. You can retrieve the CSRF token with 
 When no `csrf_` cookie is set, or the token has expired, a new token will be generated and `csrf_` cookie set.
 
 :::note
-
-This middleware uses our [Storage](https://github.com/gofiber/storage) package to support various databases through a single interface. The default configuration for this middleware saves data to memory, see the examples below for other databases._
-
+This middleware uses our [Storage](https://github.com/gofiber/storage) package to support various databases through a single interface. The default configuration for this middleware saves data to memory, see the examples below for other databases.
 :::
 
 ## Signatures
@@ -49,7 +47,9 @@ app.Use(csrf.New(csrf.Config{
 }))
 ```
 
-Note: KeyLookup will be ignored if Extractor is explicitly set.
+:::note
+KeyLookup will be ignored if Extractor is explicitly set.
+:::
 
 ## Config
 
@@ -137,12 +137,22 @@ type Config struct {
 
 ```go
 var ConfigDefault = Config{
-    KeyLookup:      "header:X-Csrf-Token",
-    CookieName:     "csrf_",
-    CookieSameSite: "Lax",
-    Expiration:     1 * time.Hour,
-    KeyGenerator:   utils.UUID,
+	KeyLookup:      "header:" + HeaderName,
+	CookieName:     "csrf_",
+	CookieSameSite: "Lax",
+	Expiration:     1 * time.Hour,
+	KeyGenerator:   utils.UUID,
+	ErrorHandler:   defaultErrorHandler,
+	Extractor:      CsrfFromHeader(HeaderName),
 }
+```
+
+## Constants
+
+```go
+const (
+    HeaderName = "X-Csrf-Token"
+)
 ```
 
 ### Custom Storage/Database

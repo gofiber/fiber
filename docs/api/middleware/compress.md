@@ -25,10 +25,10 @@ import (
 After you initiate your Fiber app, you can use the following possibilities:
 
 ```go
-// Default middleware config
+// Initialize default config
 app.Use(compress.New())
 
-// Provide a custom compression level
+// Or extend your config for customization
 app.Use(compress.New(compress.Config{
     Level: compress.LevelBestSpeed, // 1
 }))
@@ -52,7 +52,7 @@ type Config struct {
     // Optional. Default: nil
     Next func(c *fiber.Ctx) bool
 
-    // CompressLevel determines the compression algoritm
+    // Level determines the compression algoritm
     //
     // Optional. Default: LevelDefault
     // LevelDisabled:         -1

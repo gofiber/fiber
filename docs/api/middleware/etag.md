@@ -24,20 +24,16 @@ import (
 
 After you initiate your Fiber app, you can use the following possibilities:
 
-### Default Config
-
 ```go
+// Initialize default config
 app.Use(etag.New())
 
 // Get / receives Etag: "13-1831710635" in response header
 app.Get("/", func(c *fiber.Ctx) error {
     return c.SendString("Hello, World!")
 })
-```
 
-### Custom Config
-
-```go
+// Or extend your config for customization
 app.Use(etag.New(etag.Config{
     Weak: true,
 }))

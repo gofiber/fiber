@@ -4,6 +4,10 @@ title: 🎭 Grouping
 sidebar_position: 2
 ---
 
+:::info
+In general, the Group functionality in Fiber behaves similarly to ExpressJS. Groups are declared virtually and all routes declared within the group are flattened into a single list with a prefix, which is then checked by the framework in the order it was declared. This means that the behavior of Group in Fiber is identical to that of ExpressJS.
+:::
+
 ## Paths
 
 Like **Routing**, groups can also have paths that belong to a cluster.
