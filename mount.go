@@ -99,10 +99,12 @@ func (app *App) MountPath() string {
 	return app.mountFields.mountPath
 }
 
+// hasMountedApps Checks if there are any mounted apps in the current application.
 func (app *App) hasMountedApps() bool {
 	return len(app.mountFields.appList) > 1
 }
 
+// mountStartupProcess Handles the startup process of mounted apps by appending sub-app routes, generating app list keys, and processing sub-app routes.
 func (app *App) mountStartupProcess() {
 	if app.hasMountedApps() {
 		// add routes of sub-apps
@@ -110,7 +112,7 @@ func (app *App) mountStartupProcess() {
 			app.appendSubAppLists(app.mountFields.appList)
 			app.generateAppListKeys()
 		})
-
+		// adds the routes of the sub-apps to the current application.
 		app.mountFields.subAppsRoutesAdded.Do(func() {
 			app.processSubAppsRoutes()
 		})
