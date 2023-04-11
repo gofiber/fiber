@@ -19,24 +19,24 @@ func New() fiber.Handler
 ```
 
 ### Examples
-Import the middleware package and assign it to a route.
+Import the middleware package that is part of the Fiber web framework
+
 ```go
-package main
-
 import (
-    "log"
-
-    "github.com/gofiber/fiber/v2"
-    "github.com/gofiber/fiber/v2/middleware/monitor"
+  "github.com/gofiber/fiber/v2"
+  "github.com/gofiber/fiber/v2/middleware/favicon"
 )
+```
 
-func main() {
-    app := fiber.New()
+After you initiate your Fiber app, you can use the following possibilities:
+```go
+// Initialize default config (Assign the middleware to /metrics)
+app.Get("/metrics", monitor.New())
 
-    app.Get("/metrics", monitor.New(monitor.Config{Title: "MyService Metrics Page"}))
-
-    log.Fatal(app.Listen(":3000"))
-}
+// Or extend your config for customization
+// Assign the middleware to /metrics
+// and change the Title to `MyService Metrics Page`
+app.Get("/metrics", monitor.New(monitor.Config{Title: "MyService Metrics Page"}))
 ```
 You can also access the API endpoint with
 `curl -X GET -H "Accept: application/json" http://localhost:3000/metrics` which returns:
@@ -51,42 +51,42 @@ You can also access the API endpoint with
 ```go
 // Config defines the config for middleware.
 type Config struct {
-    // Metrics page title
-    //
-    // Optional. Default: "Fiber Monitor"
-    Title string
+	// Metrics page title
+	//
+	// Optional. Default: "Fiber Monitor"
+	Title string
 
-    // Refresh period
-    //
-    // Optional. Default: 3 seconds
-    Refresh time.Duration
+	// Refresh period
+	//
+	// Optional. Default: 3 seconds
+	Refresh time.Duration
 
-    // Whether the service should expose only the monitoring API.
-    //
-    // Optional. Default: false
-    APIOnly bool
+	// Whether the service should expose only the monitoring API.
+	//
+	// Optional. Default: false
+	APIOnly bool
 
-    // Next defines a function to skip this middleware when returned true.
-    //
-    // Optional. Default: nil
-    Next func(c *fiber.Ctx) bool
+	// Next defines a function to skip this middleware when returned true.
+	//
+	// Optional. Default: nil
+	Next func(c *fiber.Ctx) bool
 
-    // Custom HTML Code to Head Section(Before End)
-    //
-    // Optional. Default: empty
-    CustomHead string
+	// Custom HTML Code to Head Section(Before End)
+	//
+	// Optional. Default: empty
+	CustomHead string
 
-    // FontURL for specify font resource path or URL . also you can use relative path
-    //
-    // Optional. Default: https://fonts.googleapis.com/css2?family=Roboto:wght@400;900&display=swap
+	// FontURL for specify font resource path or URL . also you can use relative path
+	//
+	// Optional. Default: https://fonts.googleapis.com/css2?family=Roboto:wght@400;900&display=swap
+	FontURL string
 
-    FontURL string
-    // ChartJsURL for specify ChartJS library  path or URL . also you can use relative path
+	// ChartJsURL for specify ChartJS library  path or URL . also you can use relative path
 	//
 	// Optional. Default: https://cdn.jsdelivr.net/npm/chart.js@2.9/dist/Chart.bundle.min.js
-
 	ChartJsURL string
 
+	index string
 }
 ```
 
@@ -94,13 +94,19 @@ type Config struct {
 
 ```go
 var ConfigDefault = Config{
-	Title:   "Fiber Monitor",
-	Refresh: 3 * time.Second,
-	APIOnly: false,
-	Next:    nil,
-	CustomHead:"",
-	FontURL:"https://fonts.googleapis.com/css2?family=Roboto:wght@400;900&display=swap",
-	ChartJsURL:"https://cdn.jsdelivr.net/npm/chart.js@2.9/dist/Chart.bundle.min.js"
-
+	Title:      defaultTitle,
+	Refresh:    defaultRefresh,
+	FontURL:    defaultFontURL,
+	ChartJsURL: defaultChartJSURL,
+	CustomHead: defaultCustomHead,
+	APIOnly:    false,
+	Next:       nil,
+	index: newIndex(viewBag{
+		defaultTitle,
+		defaultRefresh,
+		defaultFontURL,
+		defaultChartJSURL,
+		defaultCustomHead,
+	}),
 }
 ```

@@ -25,7 +25,7 @@ import (
 After you initiate your Fiber app, you can use the following possibilities:
 
 ```go
-// Default config
+// Initialize default config
 app.Use(cors.New())
 
 // Or extend your config for customization
@@ -113,13 +113,20 @@ type Config struct {
 
 ```go
 var ConfigDefault = Config{
-    Next:             nil,
-    AllowOriginsFunc: nil,
-    AllowOrigins:     "*",
-    AllowMethods:     "GET,POST,HEAD,PUT,DELETE,PATCH",
-    AllowHeaders:     "",
-    AllowCredentials: false,
-    ExposeHeaders:    "",
-    MaxAge:           0,
+	Next:         nil,
+	AllowOriginsFunc: nil,
+	AllowOrigins: "*",
+	AllowMethods: strings.Join([]string{
+		fiber.MethodGet,
+		fiber.MethodPost,
+		fiber.MethodHead,
+		fiber.MethodPut,
+		fiber.MethodDelete,
+		fiber.MethodPatch,
+	}, ","),
+	AllowHeaders:     "",
+	AllowCredentials: false,
+	ExposeHeaders:    "",
+	MaxAge:           0,
 }
 ```

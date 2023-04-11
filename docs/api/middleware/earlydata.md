@@ -24,7 +24,7 @@ func New(config ...Config) fiber.Handler
 
 ## Examples
 
-First import the middleware from Fiber,
+Import the middleware package that is part of the Fiber web framework
 
 ```go
 import (
@@ -33,26 +33,23 @@ import (
 )
 ```
 
-Then create a Fiber app with `app := fiber.New()`.
-
-### Default Config
+After you initiate your Fiber app, you can use the following possibilities:
 
 ```go
+// Initialize default config
 app.Use(earlydata.New())
-```
 
-### Custom Config
-
-```go
+// Or extend your config for customization
 app.Use(earlydata.New(earlydata.Config{
 	Error: fiber.ErrTooEarly,
 	// ...
 }))
 ```
 
-### Config
+## Config
 
 ```go
+// Config defines the config for middleware.
 type Config struct {
 	// Next defines a function to skip this middleware when returned true.
 	//
@@ -76,12 +73,12 @@ type Config struct {
 }
 ```
 
-### Default Config
+## Default Config
 
 ```go
 var ConfigDefault = Config{
 	IsEarlyData: func(c *fiber.Ctx) bool {
-		return c.Get("Early-Data") == "1"
+		return c.Get(DefaultHeaderName) == DefaultHeaderTrueValue
 	},
 
 	AllowEarlyData: func(c *fiber.Ctx) bool {
@@ -90,4 +87,13 @@ var ConfigDefault = Config{
 
 	Error: fiber.ErrTooEarly,
 }
+```
+
+## Constants
+
+```go
+const (
+	DefaultHeaderName      = "Early-Data"
+	DefaultHeaderTrueValue = "1"
+)
 ```

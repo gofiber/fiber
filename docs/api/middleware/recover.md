@@ -25,10 +25,10 @@ import (
 After you initiate your Fiber app, you can use the following possibilities:
 
 ```go
-// Default middleware config
+// Initialize default config
 app.Use(recover.New())
 
-// This panic will be catch by the middleware
+// This panic will be caught by the middleware
 app.Get("/", func(c *fiber.Ctx) error {
     panic("I'm an error")
 })

@@ -5,12 +5,12 @@ title: Skip
 
 Skip middleware for [Fiber](https://github.com/gofiber/fiber) that skips a wrapped handler if a predicate is true.
 
-### Signatures
+## Signatures
 ```go
 func New(handler fiber.Handler, exclude func(c *fiber.Ctx) bool) fiber.Handler
 ```
 
-### Examples
+## Examples
 Import the middleware package that is part of the Fiber web framework
 ```go
 import (
@@ -20,6 +20,27 @@ import (
 ```
 
 After you initiate your Fiber app, you can use the following possibilities:
+
 ```go
-app.Use(skip.New(handler, func(ctx *fiber.Ctx) bool { return ctx.Method() == fiber.MethodOptions }))
+func main() {
+	app := fiber.New()
+
+	app.Use(skip.New(BasicHandler, func(ctx *fiber.Ctx) bool {
+		return ctx.Method() == fiber.MethodGet
+	}))
+
+	app.Get("/", func(ctx *fiber.Ctx) error {
+		return ctx.SendString("It was a GET request!")
+	})
+
+	app.Listen(":3000")
+}
+
+func BasicHandler(ctx *fiber.Ctx) error {
+	return ctx.SendString("It was not a GET request!")
+}
 ```
+
+:::tip
+app.Use will handle requests from any route, and any method. In the example above, it will only skip if the method is GET.
+:::

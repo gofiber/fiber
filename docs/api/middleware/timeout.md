@@ -3,9 +3,22 @@ id: timeout
 title: Timeout
 ---
 
-Timeout middleware for [Fiber](https://github.com/gofiber/fiber). As a `fiber.Handler` wrapper, it creates a context with `context.WithTimeout` and pass it in `UserContext`. 
+There exist two distinct implementations of timeout middleware [Fiber](https://github.com/gofiber/fiber).
 
+**New**
+
+Wraps a `fiber.Handler` with a timeout. If the handler takes longer than the given duration to return, the timeout error is set and forwarded to the centralized [ErrorHandler](https://docs.gofiber.io/error-handling).
+
+:::caution
+This has been deprecated since it raises race conditions.
+:::
+
+**NewWithContext**
+
+As a `fiber.Handler` wrapper, it creates a context with `context.WithTimeout` and pass it in `UserContext`. 
+ 
 If the context passed executions (eg. DB ops, Http calls) takes longer than the given duration to return, the timeout error is set and forwarded to the centralized `ErrorHandler`.
+
 
 It does not cancel long running executions. Underlying executions must handle timeout by using `context.Context` parameter.
 
@@ -13,6 +26,8 @@ It does not cancel long running executions. Underlying executions must handle ti
 
 ```go
 func New(handler fiber.Handler, timeout time.Duration, timeoutErrors ...error) fiber.Handler
+
+func NewWithContext(handler fiber.Handler, timeout time.Duration, timeoutErrors ...error) fiber.Handler
 ```
 
 ## Examples
@@ -26,11 +41,12 @@ import (
 )
 ```
 
-Sample timeout middleware usage:
+After you initiate your Fiber app, you can use the following possibilities:
 
 ```go
 func main() {
 	app := fiber.New()
+
 	h := func(c *fiber.Ctx) error {
 		sleepTime, _ := time.ParseDuration(c.Params("sleepTime") + "ms")
 		if err := sleepWithContext(c.UserContext(), sleepTime); err != nil {
@@ -40,7 +56,8 @@ func main() {
 	}
 
 	app.Get("/foo/:sleepTime", timeout.New(h, 2*time.Second))
-	_ = app.Listen(":3000")
+
+	app.Listen(":3000")
 }
 
 func sleepWithContext(ctx context.Context, d time.Duration) error {
@@ -85,8 +102,8 @@ func main() {
 		return nil
 	}
 
-	app.Get("/foo/:sleepTime", timeout.New(h, 2*time.Second, ErrFooTimeOut))
-	_ = app.Listen(":3000")
+	app.Get("/foo/:sleepTime", timeout.NewWithContext(h, 2*time.Second, ErrFooTimeOut))
+	app.Listen(":3000")
 }
 
 func sleepWithContextWithCustomError(ctx context.Context, d time.Duration) error {
@@ -124,7 +141,7 @@ func main() {
 		return nil
 	}
 
-	app.Get("/foo", timeout.New(handler, 10*time.Second))
+	app.Get("/foo", timeout.NewWithContext(handler, 10*time.Second))
 	app.Listen(":3000")
 }
 ```
