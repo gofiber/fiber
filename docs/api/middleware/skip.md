@@ -33,7 +33,7 @@ func main() {
 		return ctx.SendString("It was a GET request!")
 	})
 
-	app.Listen(":3000")
+	log.Fatal(app.Listen(":3000"))
 }
 
 func BasicHandler(ctx *fiber.Ctx) error {

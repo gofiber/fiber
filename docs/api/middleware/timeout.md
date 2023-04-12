@@ -56,8 +56,7 @@ func main() {
 	}
 
 	app.Get("/foo/:sleepTime", timeout.New(h, 2*time.Second))
-
-	app.Listen(":3000")
+	log.Fatal(app.Listen(":3000"))
 }
 
 func sleepWithContext(ctx context.Context, d time.Duration) error {
@@ -103,7 +102,7 @@ func main() {
 	}
 
 	app.Get("/foo/:sleepTime", timeout.NewWithContext(h, 2*time.Second, ErrFooTimeOut))
-	app.Listen(":3000")
+	log.Fatal(app.Listen(":3000"))
 }
 
 func sleepWithContextWithCustomError(ctx context.Context, d time.Duration) error {
@@ -142,6 +141,6 @@ func main() {
 	}
 
 	app.Get("/foo", timeout.NewWithContext(handler, 10*time.Second))
-	app.Listen(":3000")
+	log.Fatal(app.Listen(":3000"))
 }
 ```
