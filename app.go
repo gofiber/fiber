@@ -1085,12 +1085,7 @@ func (app *App) startupProcess() *App {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
-	// add routes of sub-apps
-	app.mountFields.subAppsRoutesAdded.Do(func() {
-		app.appendSubAppLists(app.mountFields.appList)
-		app.addSubAppsRoutes(app.mountFields.appList)
-		app.generateAppListKeys()
-	})
+	app.mountStartupProcess()
 
 	// build route tree stack
 	app.buildTree()

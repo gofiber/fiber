@@ -46,9 +46,11 @@ type Router interface {
 
 // Route is a struct that holds all metadata for each registered handler.
 type Route struct {
+	// always keep in sync with the copy method "app.copyRoute"
 	// Data for routing
 	pos         uint32      // Position in stack -> important for the sort of the matched routes
 	use         bool        // USE matches path prefixes
+	mount       bool        // Indicated a mounted app on a specific route
 	star        bool        // Path equals '*'
 	root        bool        // Path equals '/'
 	path        string      // Prettified path
@@ -105,18 +107,25 @@ func (app *App) next(c *Ctx) (bool, error) {
 	if !ok {
 		tree = app.treeStack[c.methodINT][""]
 	}
-	lenr := len(tree) - 1
+	lenTree := len(tree) - 1
 
 	// Loop over the route stack starting from previous index
-	for c.indexRoute < lenr {
+	for c.indexRoute < lenTree {
 		// Increment route index
 		c.indexRoute++
 
 		// Get *Route
 		route := tree[c.indexRoute]
 
+		var match bool
+		var err error
+		// skip for mounted apps
+		if route.mount {
+			continue
+		}
+
 		// Check if it matches the request path
-		match := route.match(c.detectionPath, c.path, &c.values)
+		match = route.match(c.detectionPath, c.path, &c.values)
 		if !match {
 			// No match, next route
 			continue
@@ -131,7 +140,9 @@ func (app *App) next(c *Ctx) (bool, error) {
 
 		// Execute first handler of route
 		c.indexHandler = 0
-		err := route.Handlers[0](c)
+		if len(route.Handlers) > 0 {
+			err = route.Handlers[0](c)
+		}
 		return match, err // Stop scanning the stack
 	}
 
@@ -194,14 +205,18 @@ func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
 func (*App) copyRoute(route *Route) *Route {
 	return &Route{
 		// Router booleans
-		use:  route.use,
-		star: route.star,
-		root: route.root,
+		use:   route.use,
+		mount: route.mount,
+		star:  route.star,
+		root:  route.root,
 
 		// Path data
 		path:        route.path,
 		routeParser: route.routeParser,
 		Params:      route.Params,
+
+		// misc
+		pos: route.pos,
 
 		// Public data
 		Path:     route.Path,
@@ -217,8 +232,10 @@ func (app *App) register(method, pathRaw string, group *Group, handlers ...Handl
 	if method != methodUse && app.methodInt(method) == -1 {
 		panic(fmt.Sprintf("add: invalid http method %s\n", method))
 	}
+	// is mounted app
+	isMount := group != nil && group.app != app
 	// A route requires atleast one ctx handler
-	if len(handlers) == 0 {
+	if len(handlers) == 0 && !isMount {
 		panic(fmt.Sprintf("missing handler in route: %s\n", pathRaw))
 	}
 	// Cannot have an empty path
@@ -252,9 +269,10 @@ func (app *App) register(method, pathRaw string, group *Group, handlers ...Handl
 	// Create route metadata without pointer
 	route := Route{
 		// Router booleans
-		use:  isUse,
-		star: isStar,
-		root: isRoot,
+		use:   isUse,
+		mount: isMount,
+		star:  isStar,
+		root:  isRoot,
 
 		// Path data
 		path:        RemoveEscapeChar(pathPretty),
@@ -278,11 +296,11 @@ func (app *App) register(method, pathRaw string, group *Group, handlers ...Handl
 		for _, m := range app.config.RequestMethods {
 			// Create a route copy to avoid duplicates during compression
 			r := route
-			app.addRoute(m, &r)
+			app.addRoute(m, &r, isMount)
 		}
 	} else {
 		// Add route to stack
-		app.addRoute(method, &route)
+		app.addRoute(method, &route, isMount)
 	}
 	return app
 }
@@ -438,7 +456,7 @@ func (app *App) addRoute(method string, route *Route, isMounted ...bool) {
 
 	// prevent identically route registration
 	l := len(app.stack[m])
-	if l > 0 && app.stack[m][l-1].Path == route.Path && route.use == app.stack[m][l-1].use {
+	if l > 0 && app.stack[m][l-1].Path == route.Path && route.use == app.stack[m][l-1].use && !route.mount && !app.stack[m][l-1].mount {
 		preRoute := app.stack[m][l-1]
 		preRoute.Handlers = append(preRoute.Handlers, route.Handlers...)
 	} else {
