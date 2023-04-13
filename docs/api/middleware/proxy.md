@@ -96,7 +96,7 @@ app.Get("/proxy", func(c *fiber.Ctx) error {
 
 // Make proxy requests, timeout a minute from now
 app.Get("/proxy", func(c *fiber.Ctx) error {
-    if err := DoDeadline(c, "http://localhost", time.Now().Add(time.Minute)); err != nil {
+    if err := proxy.DoDeadline(c, "http://localhost", time.Now().Add(time.Minute)); err != nil {
         return err
     }
     // Remove Server header from response
