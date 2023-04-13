@@ -132,14 +132,20 @@ func (app *App) generateAppListKeys() {
 
 // appendSubAppLists supports nested for sub apps
 func (app *App) appendSubAppLists(appList map[string]*App, parent ...string) {
+	// Optimize: Cache parent prefix
+	parentPrefix := ""
+	if len(parent) > 0 {
+		parentPrefix = parent[0]
+	}
+
 	for prefix, subApp := range appList {
 		// skip real app
 		if prefix == "" {
 			continue
 		}
 
-		if len(parent) > 0 {
-			prefix = getGroupPath(parent[0], prefix)
+		if parentPrefix != "" {
+			prefix = getGroupPath(parentPrefix, prefix)
 		}
 
 		if _, ok := app.mountFields.appList[prefix]; !ok {
@@ -181,7 +187,7 @@ func (app *App) processSubAppsRoutes() {
 				// If not, update the route's position and continue
 				route.pos += positionShift
 				if !route.use || (route.use && m == 0) {
-					atomic.AddUint32(&handlersCount, uint32(len(route.Handlers)))
+					handlersCount += uint32(len(route.Handlers))
 				}
 				continue
 			}
@@ -205,11 +211,11 @@ func (app *App) processSubAppsRoutes() {
 			}
 
 			// Insert the sub-app's routes into the parent app's stack
-			if i+1 < len(app.stack[m]) {
-				app.stack[m] = append(app.stack[m][:i], append(subRoutes, app.stack[m][i+1:]...)...)
-			} else {
-				app.stack[m] = append(app.stack[m][:i], subRoutes...)
-			}
+			newStack := make([]*Route, len(app.stack[m])+len(subRoutes)-1)
+			copy(newStack[:i], app.stack[m][:i])
+			copy(newStack[i:i+len(subRoutes)], subRoutes)
+			copy(newStack[i+len(subRoutes):], app.stack[m][i+1:])
+			app.stack[m] = newStack
 
 			// Decrease the parent app's route count to account for the mounted app's original route
 			atomic.AddUint32(&app.routesCount, ^uint32(0))
