@@ -94,7 +94,7 @@
   <b>Fiber</b> <a href="https://go.dev/doc/">Go</a> dili üçün ən sürətli HTTP aparıcısı <a href="https://github.com/valyala/fasthttp">Fasthttp</a> və <a href="https://github.com/expressjs/express">Express</a> kitabxanasına bənzər arxitektura üzərində qurulmuş <b>web framework'dür</b>. <b>Sıfır yaddaş ayrılması(zero-memory allocation)</b> və performans nəzərə alınmaqla birlikdə development prosesini <b>sürətləndirmək</b> və <b>asanlaşdırmaq</b> üçün qurulmuşdur.
 </p>
 
-## ⚡️ Sürətli Başlanğıc
+## ⚡️ Sürətli Başlanğıc 
 
 ```go
 package main
