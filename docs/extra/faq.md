@@ -30,6 +30,36 @@ app.Use(func(c *fiber.Ctx) error {
 })
 ```
 
+## How can i use live reload ?
+
+[Air](https://github.com/cosmtrek/air) is a handy tool that automatically restarts your Go applications whenever the source code changes, making your development process faster and more efficient.
+
+To use Air in a Fiber project, follow these steps:
+
+1. Install Air by downloading the appropriate binary for your operating system from the GitHub release page or by building the tool directly from source.
+2. Create a configuration file for Air in your project directory. This file can be named, for example, .air.toml or air.conf. Here's a sample configuration file that works with Fiber:
+```toml
+# .air.toml
+root = "."
+tmp_dir = "tmp"
+[build]
+  cmd = "go build -o ./tmp/main ."
+  bin = "./tmp/main"
+  delay = 1000 # ms
+  exclude_dir = ["assets", "tmp", "vendor"]
+  include_ext = ["go", "tpl", "tmpl", "html"]
+  exclude_regex = ["_test\\.go"]
+```
+3. Start your Fiber application using Air by running the following command in the terminal:
+```sh
+air
+```
+
+As you make changes to your source code, Air will detect them and automatically restart the application.
+
+A complete example demonstrating the use of Air with Fiber can be found in the [Fiber Recipes repository](https://github.com/gofiber/recipes/tree/master/air). This example shows how to configure and use Air in a Fiber project to create an efficient development environment.
+
+
 ## How do I set up an error handler?
 
 To override the default error handler, you can override the default when providing a [Config](../api/fiber.md#config) when initiating a new [Fiber instance](../api/fiber.md#new).
