@@ -26,7 +26,6 @@ It does not cancel long running executions. Underlying executions must handle ti
 
 ```go
 func New(handler fiber.Handler, timeout time.Duration, timeoutErrors ...error) fiber.Handler
-
 func NewWithContext(handler fiber.Handler, timeout time.Duration, timeoutErrors ...error) fiber.Handler
 ```
 
