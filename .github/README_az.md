@@ -288,19 +288,19 @@ func main() {
 ```
 
 <details>
-  <summary>📚 Daha çox misalllar (ingiliscə)</summary>
+  <summary>📚 Daha çox misalllar</summary>
 
-### Views engines
+### Baxış mühərriki (View Engine)
 
 📖 [Config](https://docs.gofiber.io/api/fiber#config)
-📖 [Engines](https://github.com/gofiber/template)
+📖 [Mühərriklər](https://github.com/gofiber/template)
 📖 [Render](https://docs.gofiber.io/api/ctx#render)
 
-Fiber defaults to the [html/template](https://pkg.go.dev/html/template/) when no view engine is set.
+Fiber baxış mühərriki təyin edilmədikdə [html/template-in](https://pkg.go.dev/html/template/) default formasını alır.
 
-If you want to execute partials or use a different engine like [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) or [pug](https://github.com/Joker/jade) etc..
+Əgər siz partial-ı və ya müxtəlif tipdə olan mühərrikləri istifadə etmək istəyirsinizsə, o zaman [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache), [pug](https://github.com/Joker/jade) və s. kimi misallara baxa bilərsiniz.
 
-Checkout our [Template](https://github.com/gofiber/template) package that support multiple view engines.
+Çoxsaylı baxış mühərriklərini dəstəkləyən [template](https://github.com/gofiber/template) package-ə göstərilən link vasitəsilə nəzərdən keçirə bilərsiniz.
 
 ```go
 package main
@@ -311,12 +311,12 @@ import (
 )
 
 func main() {
-    // You can setup Views engine before initiation app:
+    // Baxış mühərrikini tətbiqi başlatzmadan əvvəl quraşdıra bilərsiniz:
     app := fiber.New(fiber.Config{
         Views: pug.New("./views", ".pug"),
     })
 
-    // And now, you can call template `./views/home.pug` like this:
+    // Və indi `./views/home.pug` template-i bu şəkildə çağıra bilərsiniz:
     app.Get("/", func(c *fiber.Ctx) error {
         return c.Render("home", fiber.Map{
             "title": "Homepage",
@@ -328,7 +328,7 @@ func main() {
 }
 ```
 
-### Grouping routes into chains
+### Route-ın zəncirlərdə qruplaşdırılması
 
 📖 [Group](https://docs.gofiber.io/api/app#group)
 
@@ -411,7 +411,7 @@ func main() {
 }
 ```
 
-Check CORS by passing any domain in `Origin` header:
+"Origin" başlığında istənilən domeni keçməklə CORS-un yoxlanması:
 
 ```bash
 curl -H "Origin: http://example.com" --verbose http://localhost:3000
@@ -435,7 +435,7 @@ func main() {
         return c.SendString("Welcome!")
     })
 
-    // Last middleware to match anything
+    // Sonuncu middleware-in hər şeyə uyğunlaşdırılması
     app.Use(func(c *fiber.Ctx) error {
         return c.SendStatus(404)
         // => 404 "Not Found"
@@ -475,7 +475,7 @@ func main() {
 }
 ```
 
-### WebSocket Upgrade
+### WebSocket-in təkminləşdirilməsi (upgrade)
 
 📖 [Websocket](https://github.com/gofiber/websocket)
 
@@ -550,7 +550,7 @@ func main() {
 }
 ```
 
-### Recover Middleware
+### Middleware-in Bərpası
 
 📖 [Recover](https://docs.gofiber.io/api/middleware/recover)
 
