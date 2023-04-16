@@ -1517,7 +1517,7 @@ func (*Ctx) SaveFile(fileheader *multipart.FileHeader, path string) error {
 }
 
 // SaveFileToStorage saves any multipart file to an external storage system.
-func (*Ctx) SaveFileToStorage(fileheader *multipart.FileHeader, path string, storage Storage) error {
+func (*Ctx) SaveFileToStorage(fileheader *multipart.FileHeader, path string, storage StorageSetter) error {
 	file, err := fileheader.Open()
 	if err != nil {
 		return fmt.Errorf("failed to open: %w", err)
