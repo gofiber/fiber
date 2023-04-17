@@ -470,6 +470,12 @@ var DefaultMethods = []string{
 
 // DefaultErrorHandler that process return errors from handlers
 func DefaultErrorHandler(c *Ctx, err error) error {
+	var netError net.Error
+	if errors.As(err, &netError) {
+		// 502 - Bad Gateway
+		err = ErrBadGateway
+	}
+
 	code := StatusInternalServerError
 	var e *Error
 	if errors.As(err, &e) {
