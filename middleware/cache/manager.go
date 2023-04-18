@@ -4,7 +4,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/internal/memory"
 )
 
@@ -25,10 +24,10 @@ type item struct {
 type manager struct {
 	pool    sync.Pool
 	memory  *memory.Storage
-	storage fiber.Storage
+	storage Storage
 }
 
-func newManager(storage fiber.Storage) *manager {
+func newManager(storage Storage) *manager {
 	// Create new storage handler
 	manager := &manager{
 		pool: sync.Pool{

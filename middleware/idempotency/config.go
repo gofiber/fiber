@@ -45,7 +45,14 @@ type Config struct {
 	// Storage stores response data by idempotency key.
 	//
 	// Optional. Default: an in-memory storage for this process only.
-	Storage fiber.Storage
+	Storage Storage
+}
+
+// Storage interface for communicating with different database/key-value
+// providers
+type Storage interface {
+	fiber.StorageGetter
+	fiber.StorageSetter
 }
 
 // ConfigDefault is the default config

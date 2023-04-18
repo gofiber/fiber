@@ -64,10 +64,10 @@ type Config struct {
 	// Optional. Default: 1 * time.Hour
 	Expiration time.Duration
 
-	// Store is used to store the state of the middleware
+	// Storage is used to store the state of the middleware
 	//
 	// Optional. Default: memory.New()
-	Storage fiber.Storage
+	Storage Storage
 
 	// Context key to store generated CSRF token into context.
 	// If left empty, token will not be stored in context.
@@ -100,6 +100,15 @@ type Config struct {
 	//
 	// Optional. Default will create an Extractor based on KeyLookup.
 	Extractor func(c *fiber.Ctx) (string, error)
+}
+
+// Storage interface containing only the methods required to interact with a target storage
+type Storage interface {
+	fiber.StorageGetter
+	fiber.StorageSetter
+	fiber.StorageCloser
+	fiber.StorageDeleter
+	fiber.StorageResetter
 }
 
 const HeaderName = "X-Csrf-Token"
