@@ -97,7 +97,7 @@ func New(config ...Config) fiber.Handler {
 	}
 
 	// Warning logs if both AllowOrigins and AllowOriginsFunc are set
-	if cfg.AllowOrigins != "" && cfg.AllowOriginsFunc != nil {
+	if cfg.AllowOrigins != ConfigDefault.AllowOrigins && cfg.AllowOriginsFunc != nil {
 		log.Printf("[CORS] - [Warning] Both 'AllowOrigins' and 'AllowOriginsFunc' have been defined.\n")
 	}
 
@@ -142,7 +142,7 @@ func New(config ...Config) fiber.Handler {
 		// Run AllowOriginsFunc if the logic for
 		// handling the value in 'AllowOrigins' does
 		// not result in allowOrigin being set.
-		if allowOrigin == "" && cfg.AllowOriginsFunc != nil {
+		if (allowOrigin == "" || allowOrigin == ConfigDefault.AllowOrigins) && cfg.AllowOriginsFunc != nil {
 			if cfg.AllowOriginsFunc(origin) {
 				allowOrigin = origin
 			}
