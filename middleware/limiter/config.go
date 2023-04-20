@@ -51,7 +51,7 @@ type Config struct {
 	// Store is used to store the state of the middleware
 	//
 	// Default: an in memory store for this process only
-	Storage Storage
+	Storage storage
 
 	// LimiterMiddleware is the struct that implements a limiter middleware.
 	//
@@ -68,8 +68,8 @@ type Config struct {
 	Key func(*fiber.Ctx) string
 }
 
-// Storage interface containing only the methods required to interact with a target storage
-type Storage interface {
+// storage interface containing only the methods required to interact with a target storage
+type storage interface {
 	fiber.StorageGetter
 	fiber.StorageSetter
 	fiber.StorageCloser

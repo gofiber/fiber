@@ -67,7 +67,7 @@ type Config struct {
 	// Storage is used to store the state of the middleware
 	//
 	// Optional. Default: memory.New()
-	Storage Storage
+	Storage storage
 
 	// Context key to store generated CSRF token into context.
 	// If left empty, token will not be stored in context.
@@ -102,8 +102,8 @@ type Config struct {
 	Extractor func(c *fiber.Ctx) (string, error)
 }
 
-// Storage interface containing only the methods required to interact with a target storage
-type Storage interface {
+// storage interface containing only the methods required to interact with a target storage
+type storage interface {
 	fiber.StorageGetter
 	fiber.StorageSetter
 	fiber.StorageCloser

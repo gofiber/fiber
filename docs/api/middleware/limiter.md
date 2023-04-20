@@ -120,7 +120,7 @@ type Config struct {
     // Store is used to store the state of the middleware
     //
     // Default: an in memory store for this process only
-    Storage Storage
+    Storage storage
 
     // LimiterMiddleware is the struct that implements limiter middleware.
     //

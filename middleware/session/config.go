@@ -18,7 +18,7 @@ type Config struct {
 
 	// Storage interface to store the session data
 	// Optional. Default value memory.New()
-	Storage Storage
+	Storage storage
 
 	// KeyLookup is a string in the form of "<source>:<name>" that is used
 	// to extract session id from the request.
@@ -67,8 +67,8 @@ type Config struct {
 
 type Source string
 
-// Storage interface containing only the methods required to interact with a target storage
-type Storage interface {
+// storage interface containing only the methods required to interact with a target storage
+type storage interface {
 	fiber.StorageGetter
 	fiber.StorageSetter
 	fiber.StorageCloser

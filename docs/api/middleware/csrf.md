@@ -111,7 +111,7 @@ type Config struct {
     // Store is used to store the state of the middleware
     //
     // Optional. Default: memory.New()
-    Storage Storage
+    Storage storage
 
     // Context key to store generated CSRF token into context.
     // If left empty, token will not be stored in context.

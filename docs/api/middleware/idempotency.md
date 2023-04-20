@@ -78,7 +78,7 @@ type Config struct {
 	// Storage stores response data by idempotency key.
 	//
 	// Optional. Default: an in-memory storage for this process only.
-	Storage Storage
+	Storage storage
 }
 ```
 

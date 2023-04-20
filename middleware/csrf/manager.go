@@ -16,10 +16,10 @@ type item struct{}
 type manager struct {
 	pool    sync.Pool
 	memory  *memory.Storage
-	storage Storage
+	storage storage
 }
 
-func newManager(storage Storage) *manager {
+func newManager(s storage) *manager {
 	// Create new storage handler
 	manager := &manager{
 		pool: sync.Pool{
@@ -28,9 +28,9 @@ func newManager(storage Storage) *manager {
 			},
 		},
 	}
-	if storage != nil {
+	if s != nil {
 		// Use provided storage if provided
-		manager.storage = storage
+		manager.storage = s
 	} else {
 		// Fallback too memory storage
 		manager.memory = memory.New()

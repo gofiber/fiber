@@ -47,7 +47,7 @@ type Config struct {
 	// Store is used to store the state of the middleware
 	//
 	// Default: an in memory store for this process only
-	Storage Storage
+	Storage storage
 
 	// Deprecated: Use Storage instead
 	Store fiber.Storage
@@ -74,8 +74,8 @@ type Config struct {
 	Methods []string
 }
 
-// Storage interface containing only the methods required to interact with a target storage
-type Storage interface {
+// storage interface containing only the methods required to interact with a target storage
+type storage interface {
 	fiber.StorageGetter
 	fiber.StorageSetter
 	fiber.StorageDeleter

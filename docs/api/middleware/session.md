@@ -95,7 +95,7 @@ type Config struct {
 
 	// Storage interface to store the session data
 	// Optional. Default value memory.New()
-	Storage Storage
+	Storage storage
 
 	// KeyLookup is a string in the form of "<source>:<name>" that is used
 	// to extract session id from the request.
