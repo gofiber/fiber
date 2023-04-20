@@ -71,6 +71,12 @@ Fiber provides an error handler by default. For a standard error, the response i
 ```go title="Example"
 // Default error handler
 var DefaultErrorHandler = func(c *fiber.Ctx, err error) error {
+    // Handle internal network errors
+    var netError net.Error
+    if errors.As(err, &netError) {
+        // 502 - Bad Gateway
+        err = ErrBadGateway
+    }
     // Status code defaults to 500
     code := fiber.StatusInternalServerError
 
