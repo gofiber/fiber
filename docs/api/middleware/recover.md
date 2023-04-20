@@ -49,6 +49,11 @@ type Config struct {
     // Optional. Default: false
     EnableStackTrace bool
 
+	// SkipResponseError disable showing panics in response body
+	//
+	// Optional. Default: false
+	SkipResponseError bool
+
     // StackTraceHandler defines a function to handle stack trace
     //
     // Optional. Default: defaultStackTraceHandler
@@ -62,6 +67,7 @@ type Config struct {
 var ConfigDefault = Config{
     Next:              nil,
     EnableStackTrace:  false,
+	SkipResponseError: false,
     StackTraceHandler: defaultStackTraceHandler,
 }
 ```
