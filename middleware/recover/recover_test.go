@@ -1,6 +1,7 @@
 package recover //nolint:predeclared // TODO: Rename to some non-builtin
 
 import (
+	"io"
 	"net/http/httptest"
 	"testing"
 
@@ -58,4 +59,28 @@ func Test_Recover_EnableStackTrace(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/panic", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusInternalServerError, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, []byte("Hi, I'm an error!"), body)
+}
+
+func Test_Recover_SkipResponseError(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New(Config{
+		SkipResponseError: true,
+	}))
+
+	app.Get("/panic", func(c *fiber.Ctx) error {
+		panic("Hi, I'm an error!")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/panic", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, []byte{}, body)
 }

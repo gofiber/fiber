@@ -31,6 +31,10 @@ func New(config ...Config) fiber.Handler {
 					cfg.StackTraceHandler(c, r)
 				}
 
+				if cfg.SkipResponseError {
+					return
+				}
+
 				var ok bool
 				if err, ok = r.(error); !ok {
 					// Set error that will call the global error handler
