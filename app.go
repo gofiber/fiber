@@ -1052,13 +1052,18 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 	c := app.AcquireCtx(fctx)
 	defer app.ReleaseCtx(c)
 
-	var errNetOP *net.OpError
+	var (
+		errNetOP *net.OpError
+		netErr   net.Error
+	)
 
 	switch {
 	case errors.As(err, new(*fasthttp.ErrSmallBuffer)):
 		err = ErrRequestHeaderFieldsTooLarge
 	case errors.As(err, &errNetOP) && errNetOP.Timeout():
 		err = ErrRequestTimeout
+	case errors.As(err, &netErr):
+		err = ErrBadGateway
 	case errors.Is(err, fasthttp.ErrBodyTooLarge):
 		err = ErrRequestEntityTooLarge
 	case errors.Is(err, fasthttp.ErrGetOnly):
