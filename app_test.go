@@ -268,6 +268,20 @@ func Test_App_serverErrorHandler_Internal_Error(t *testing.T) {
 	utils.AssertEqual(t, c.fasthttp.Response.StatusCode(), StatusBadRequest)
 }
 
+func Test_App_serverErrorHandler_Network_Error(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	app.serverErrorHandler(c.fasthttp, &net.DNSError{
+		Err:       "test error",
+		Name:      "test host",
+		IsTimeout: false,
+	})
+	utils.AssertEqual(t, string(c.fasthttp.Response.Body()), utils.StatusMessage(StatusBadGateway))
+	utils.AssertEqual(t, c.fasthttp.Response.StatusCode(), StatusBadGateway)
+}
+
 func Test_App_Nested_Params(t *testing.T) {
 	t.Parallel()
 	app := New()

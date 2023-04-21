@@ -470,12 +470,6 @@ var DefaultMethods = []string{
 
 // DefaultErrorHandler that process return errors from handlers
 func DefaultErrorHandler(c *Ctx, err error) error {
-	var netErr net.Error
-	if errors.As(err, &netErr) {
-		// 502 - Bad Gateway
-		err = ErrBadGateway
-	}
-
 	code := StatusInternalServerError
 	var e *Error
 	if errors.As(err, &e) {
@@ -1054,13 +1048,18 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 	c := app.AcquireCtx(fctx)
 	defer app.ReleaseCtx(c)
 
-	var errNetOP *net.OpError
+	var (
+		errNetOP *net.OpError
+		netErr   net.Error
+	)
 
 	switch {
 	case errors.As(err, new(*fasthttp.ErrSmallBuffer)):
 		err = ErrRequestHeaderFieldsTooLarge
 	case errors.As(err, &errNetOP) && errNetOP.Timeout():
 		err = ErrRequestTimeout
+	case errors.As(err, &netErr):
+		err = ErrBadGateway
 	case errors.Is(err, fasthttp.ErrBodyTooLarge):
 		err = ErrRequestEntityTooLarge
 	case errors.Is(err, fasthttp.ErrGetOnly):
