@@ -92,7 +92,7 @@ func New(config ...Config) fiber.Handler {
 		}
 		defer func() {
 			if err := cfg.Lock.Unlock(key); err != nil {
-				log.Printf("middleware/idempotency: failed to unlock key %q: %v", key, err)
+				log.Printf("[IDEMPOTENCY] - [Error] failed to unlock key %q: %v", key, err)
 			}
 		}()
 

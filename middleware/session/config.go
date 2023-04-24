@@ -97,7 +97,7 @@ func configDefault(config ...Config) Config {
 		cfg.Expiration = ConfigDefault.Expiration
 	}
 	if cfg.CookieName != "" {
-		log.Printf("[session] CookieName is deprecated, please use KeyLookup\n")
+		log.Printf("[SESSION] - [Warning] CookieName is deprecated, please use KeyLookup\n")
 		cfg.KeyLookup = fmt.Sprintf("cookie:%s", cfg.CookieName)
 	}
 	if cfg.KeyLookup == "" {

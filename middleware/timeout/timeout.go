@@ -18,7 +18,7 @@ var once sync.Once
 // Find documentation and sample usage on https://docs.gofiber.io/api/middleware/timeout
 func New(handler fiber.Handler, timeout time.Duration) fiber.Handler {
 	once.Do(func() {
-		log.Printf("[Warning] timeout contains data race issues, not ready for production!")
+		log.Printf("[TIMEOUT] - [Warning] timeout contains data race issues, not ready for production!")
 	})
 
 	if timeout <= 0 {
@@ -32,11 +32,11 @@ func New(handler fiber.Handler, timeout time.Duration) fiber.Handler {
 		go func() {
 			defer func() {
 				if err := recover(); err != nil {
-					log.Printf("[Warning] recover error %v", err)
+					log.Printf("[TIMEOUT] - [Warning] recover error %v", err)
 				}
 			}()
 			if err := handler(ctx); err != nil {
-				log.Printf("[Warning] handler error %v", err)
+				log.Printf("[TIMEOUT] - [Warning] handler error %v", err)
 			}
 			ch <- struct{}{}
 		}()

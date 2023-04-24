@@ -17,7 +17,7 @@ import (
 
 // New is deprecated
 func New(config Config) fiber.Handler {
-	log.Printf("proxy.New is deprecated, please use proxy.Balancer instead\n")
+	log.Printf("[PROXY] - [Warning] proxy.New is deprecated, please use proxy.Balancer instead\n")
 	return Balancer(config)
 }
 
