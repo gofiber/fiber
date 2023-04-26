@@ -14,7 +14,7 @@ labels:
             title: '\b(bumb|bdependencies)\b'
     -   label: '✏️ Feature'
         matcher:
-            title: '\b(feature|create|implement|add)\b'
+            title: '\b(feature|feat|create|implement|add)\b'
     -   label: '🤔 Question'
         matcher:
             title: '\b(question|how)\b'
