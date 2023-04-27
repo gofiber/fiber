@@ -249,13 +249,13 @@ type Config struct {
     // Required. Default: nil
     Root http.FileSystem `json:"-"`
 
-	// PathPrefix defines a prefix to be added to a filepath when
-	// reading a file from the FileSystem.
-	//
-	// Use when using Go 1.16 embed.FS
-	//
-	// Optional. Default ""
-	PathPrefix string `json:"path_prefix"`
+    // PathPrefix defines a prefix to be added to a filepath when
+    // reading a file from the FileSystem.
+    //
+    // Use when using Go 1.16 embed.FS
+    //
+    // Optional. Default ""
+    PathPrefix string `json:"path_prefix"`
 
     // Enable directory browsing.
     //
@@ -277,6 +277,12 @@ type Config struct {
     //
     // Optional. Default: ""
     NotFoundFile string `json:"not_found_file"`
+    
+    // The value for the Content-Type HTTP-header
+    // that is set on the file response
+    //
+    // Optional. Default: ""
+    ContentTypeCharset string `json:"content_type_charset"`
 }
 ```
 
@@ -286,9 +292,10 @@ type Config struct {
 var ConfigDefault = Config{
     Next:   nil,
     Root:   nil,
-	PathPrefix: "",
+    PathPrefix: "",
     Browse: false,
     Index:  "/index.html",
     MaxAge: 0,
+    ContentTypeCharset: "",
 }
 ```
