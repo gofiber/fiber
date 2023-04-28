@@ -1,0 +1,40 @@
+/* This is a comment 
+    spanning multiple lines */
+body {
+    font-family: Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
+    color: #333;
+    background-color: #fff;
+  }
+  
+  /* This is a single-line comment */
+  h1 {
+    font-size: 32px;
+    margin-bottom: 10px;
+  }
+  
+  @media only screen and (max-width: 768px) {
+    /* This is a nested comment */
+    body {
+      font-size: 14px;
+      line-height: 1.3;
+    }
+  
+    h1 {
+      font-size: 24px;
+      margin-bottom: 5px;
+    }
+  }
+  
+  @media only screen and (max-width: 480px) {
+    body {
+      font-size: 12px;
+      line-height: 1.2;
+    }
+  
+    h1 {
+      font-size: 20px;
+      margin-bottom: 5px;
+    }
+  }  

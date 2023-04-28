@@ -1,6 +1,8 @@
 package minify
 
-import "github.com/gofiber/fiber/v2"
+import (
+	"github.com/gofiber/fiber/v2"
+)
 
 // Config defines the config for middleware.
 type Config struct {
@@ -38,16 +40,13 @@ type Config struct {
 	Method Method
 }
 
-// Method is a string representation of minify route method
-type Method string
-
 type MinifyHTMLOptions struct {
 	// boolean value that indicates whether scripts inside the HTML should be minified or not.
-	// Optional. Default: true
+	// Optional. Default: false
 	MinifyScripts bool
 
 	// boolean value that indicates whether styles inside the HTML should be minified or not.
-	// Optional. Default: true
+	// Optional. Default: false
 	MinifyStyles bool
 
 	// ExcludeURLs is a slice of strings that contains URLs that should be excluded from minification.
@@ -70,6 +69,9 @@ type MinifyJSOptions struct {
 	ExcludeScripts []string
 }
 
+// Method is a string representation of minify route method
+type Method string
+
 // Represents minify method that will be used in the middleware
 const (
 	GET  Method = "GET"
@@ -83,8 +85,8 @@ var ConfigDefault = Config{
 	Next:       nil,
 	MinifyHTML: true,
 	MinifyHTMLOptions: MinifyHTMLOptions{
-		MinifyScripts: true,
-		MinifyStyles:  true,
+		MinifyScripts: false,
+		MinifyStyles:  false,
 		ExcludeURLs:   nil,
 	},
 	MinifyCSS: false,
@@ -113,7 +115,7 @@ func configDefault(config ...Config) Config {
 		cfg.Method = ConfigDefault.Method
 	}
 
-	if equalMinifyHTMLOptions(cfg.MinifyHTMLOptions, MinifyHTMLOptions{}) {
+	if equalMinifyHTMLOptions(cfg.MinifyHTMLOptions, &MinifyHTMLOptions{}) {
 		cfg.MinifyHTMLOptions = ConfigDefault.MinifyHTMLOptions
 	}
 
@@ -128,7 +130,7 @@ func configDefault(config ...Config) Config {
 }
 
 // Helper function to compare MinifyHTMLOptions
-func equalMinifyHTMLOptions(a, b MinifyHTMLOptions) bool {
+func equalMinifyHTMLOptions(a MinifyHTMLOptions, b *MinifyHTMLOptions) bool {
 	return a.MinifyScripts == b.MinifyScripts &&
 		a.MinifyStyles == b.MinifyStyles &&
 		equalStringSlices(a.ExcludeURLs, b.ExcludeURLs)

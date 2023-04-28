@@ -34,7 +34,7 @@ func New(config ...Config) fiber.Handler {
 		contentType := string(c.Response().Header.ContentType())
 
 		// check if content type has text/html from text/html; charset=utf-8
-		if strings.Contains(contentType, "text/html") || strings.Contains(contentType, "text/css") || strings.Contains(contentType, "text/javascript") {
+		if strings.Contains(contentType, "text/html") || strings.Contains(contentType, "text/css") || strings.Contains(contentType, "text/javascript") || strings.Contains(contentType, "application/javascript") {
 			// the response body has a supported content type, minify it
 			if strings.Contains(contentType, "text/html") {
 				if cfg.MinifyHTML {
@@ -44,10 +44,18 @@ func New(config ...Config) fiber.Handler {
 						return nil
 					}
 					// set the options for minification
-					opt := &Options{
-						MinifyScripts: cfg.MinifyHTMLOptions.MinifyScripts,
-						MinifyStyles:  cfg.MinifyHTMLOptions.MinifyStyles,
+					var (
+						minifyScripts bool = true
+						minifyStyles  bool = cfg.MinifyHTMLOptions.MinifyStyles
+					)
+					if !cfg.MinifyHTMLOptions.MinifyScripts {
+						minifyScripts = false
 					}
+					opt := &Options{
+						MinifyScripts: minifyScripts,
+						MinifyStyles:  minifyStyles,
+					}
+
 					// Minify HTML response
 					minifiedHTML, err := htmlMinify(c.Response().Body(), opt)
 					if err != nil {
@@ -70,7 +78,7 @@ func New(config ...Config) fiber.Handler {
 				}
 			}
 			// the response body has a text/javascript content type, minify it
-			if strings.Contains(contentType, "text/javascript") {
+			if strings.Contains(contentType, "text/javascript") || strings.Contains(contentType, "application/javascript") {
 				if cfg.MinifyJS {
 					// check if the path is in the list of paths to exclude from minification
 					exclude := excludeMinify(cfg.MinifyJSOptions.ExcludeScripts, c.Path())

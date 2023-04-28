@@ -1,0 +1,5 @@
+; https://editorconfig.org/
+root = true
+
+[.github/testdata2/*]
+end_of_line = unset
