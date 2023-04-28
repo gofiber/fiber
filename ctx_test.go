@@ -2593,6 +2593,14 @@ func Test_Ctx_JSON(t *testing.T) {
 	utils.AssertEqual(t, `{"Age":20,"Name":"Grame"}`, string(c.Response().Body()))
 	utils.AssertEqual(t, "application/json", string(c.Response().Header.Peek("content-type")))
 
+	err = c.JSON(Map{ // map has no order
+		"Name": "Grame",
+		"Age":  20,
+	}, "application/problem+json; charset=utf-8")
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, `{"Age":20,"Name":"Grame"}`, string(c.Response().Body()))
+	utils.AssertEqual(t, "application/problem+json; charset=utf-8", string(c.Response().Header.Peek("content-type")))
+
 	testEmpty := func(v interface{}, r string) {
 		err := c.JSON(v)
 		utils.AssertEqual(t, nil, err)

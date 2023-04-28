@@ -683,14 +683,15 @@ app.Get("/", func(c *fiber.Ctx) error {
 
 ## JSON
 
-Converts any **interface** or **string** to JSON using the [goccy/go-json](https://github.com/goccy/go-json) package.
+Converts any **interface** or **string** to JSON.
 
 :::info
-JSON also sets the content header to **application/json**.
+JSON sets the content header to **application/json**
+Unless specified otherwise with contentType
 :::
 
 ```go title="Signature"
-func (c *Ctx) JSON(data interface{}) error
+func (c *Ctx) JSON(data interface{}, contentType ...string) error
 ```
 
 ```go title="Example"
@@ -715,6 +716,13 @@ app.Get("/json", func(c *fiber.Ctx) error {
     "age": 20,
   })
   // => Content-Type: application/json
+  // => "{"name": "Grame", "age": 20}"
+
+  return c.JSON(fiber.Map{
+    "name": "Grame",
+    "age": 20,
+  }, "application/problem+json; charset=utf-8")
+  // => Content-Type: application/problem+json; charset=utf-8
   // => "{"name": "Grame", "age": 20}"
 })
 ```

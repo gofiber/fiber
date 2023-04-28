@@ -789,14 +789,19 @@ func (c *Ctx) Is(extension string) bool {
 // Array and slice values encode as JSON arrays,
 // except that []byte encodes as a base64-encoded string,
 // and a nil slice encodes as the null JSON value.
-// This method also sets the content header to application/json.
-func (c *Ctx) JSON(data interface{}) error {
+// This method also sets the content header to application/json
+// Unless specified otherwise with contentType
+func (c *Ctx) JSON(data interface{}, contentType ...string) error {
 	raw, err := c.app.config.JSONEncoder(data)
 	if err != nil {
 		return err
 	}
 	c.fasthttp.Response.SetBodyRaw(raw)
-	c.fasthttp.Response.Header.SetContentType(MIMEApplicationJSON)
+	if len(contentType) > 0 {
+		c.fasthttp.Response.Header.SetContentType(contentType[0])
+	} else {
+		c.fasthttp.Response.Header.SetContentType(MIMEApplicationJSON)
+	}
 	return nil
 }
 
