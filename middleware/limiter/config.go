@@ -95,15 +95,15 @@ func configDefault(config ...Config) Config {
 
 	// Set default values
 	if int(cfg.Duration.Seconds()) > 0 {
-		log.Printf("[LIMITER] - [Warning] Duration is deprecated, please use Expiration\n")
+		log.Printf("[Warning] - [LIMITER] Duration is deprecated, please use Expiration\n")
 		cfg.Expiration = cfg.Duration
 	}
 	if cfg.Key != nil {
-		log.Printf("[LIMITER] - [Warning] Key is deprecated, please us KeyGenerator\n")
+		log.Printf("[Warning] - [LIMITER] Key is deprecated, please us KeyGenerator\n")
 		cfg.KeyGenerator = cfg.Key
 	}
 	if cfg.Store != nil {
-		log.Printf("[LIMITER] - [Warning] Store is deprecated, please use Storage\n")
+		log.Printf("[Warning] - [LIMITER] Store is deprecated, please use Storage\n")
 		cfg.Storage = cfg.Store
 	}
 	if cfg.Next == nil {

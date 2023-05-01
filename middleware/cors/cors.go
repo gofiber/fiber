@@ -98,7 +98,7 @@ func New(config ...Config) fiber.Handler {
 
 	// Warning logs if both AllowOrigins and AllowOriginsFunc are set
 	if cfg.AllowOrigins != ConfigDefault.AllowOrigins && cfg.AllowOriginsFunc != nil {
-		log.Printf("[CORS] - [Warning] Both 'AllowOrigins' and 'AllowOriginsFunc' have been defined.\n")
+		log.Printf("[Warning] - [CORS] Both 'AllowOrigins' and 'AllowOriginsFunc' have been defined.\n")
 	}
 
 	// Convert string to slice
