@@ -132,15 +132,15 @@ func configDefault(config ...Config) Config {
 
 	// Set default values
 	if cfg.TokenLookup != "" {
-		log.Printf("[CSRF] TokenLookup is deprecated, please use KeyLookup\n")
+		log.Printf("[CSRF] - [Warning] TokenLookup is deprecated, please use KeyLookup\n")
 		cfg.KeyLookup = cfg.TokenLookup
 	}
 	if int(cfg.CookieExpires.Seconds()) > 0 {
-		log.Printf("[CSRF] CookieExpires is deprecated, please use Expiration\n")
+		log.Printf("[CSRF] - [Warning] CookieExpires is deprecated, please use Expiration\n")
 		cfg.Expiration = cfg.CookieExpires
 	}
 	if cfg.Cookie != nil {
-		log.Printf("[CSRF] Cookie is deprecated, please use Cookie* related fields\n")
+		log.Printf("[CSRF] - [Warning] Cookie is deprecated, please use Cookie* related fields\n")
 		if cfg.Cookie.Name != "" {
 			cfg.CookieName = cfg.Cookie.Name
 		}

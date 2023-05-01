@@ -102,11 +102,11 @@ func configDefault(config ...Config) Config {
 
 	// Set default values
 	if cfg.Store != nil {
-		log.Printf("[CACHE] Store is deprecated, please use Storage\n")
+		log.Printf("[CACHE] - [Warning] Store is deprecated, please use Storage\n")
 		cfg.Storage = cfg.Store
 	}
 	if cfg.Key != nil {
-		log.Printf("[CACHE] Key is deprecated, please use KeyGenerator\n")
+		log.Printf("[CACHE] - [Warning] Key is deprecated, please use KeyGenerator\n")
 		cfg.KeyGenerator = cfg.Key
 	}
 	if cfg.Next == nil {

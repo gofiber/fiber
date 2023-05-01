@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -112,7 +113,7 @@ func (e *Engine) Debug(enabled bool) *Engine {
 
 // Parse is deprecated, please use Load() instead
 func (e *Engine) Parse() error {
-	fmt.Println("Parse() is deprecated, please use Load() instead.")
+	log.Println("[Warning] Parse() is deprecated, please use Load() instead.")
 	return e.Load()
 }
 
@@ -169,7 +170,7 @@ func (e *Engine) Load() error {
 		}
 		// Debugging
 		if e.debug {
-			fmt.Printf("views: parsed template: %s\n", name)
+			log.Printf("views: parsed template: %s\n", name)
 		}
 		return err
 	}
