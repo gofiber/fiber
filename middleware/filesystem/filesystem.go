@@ -53,16 +53,23 @@ type Config struct {
 	//
 	// Optional. Default: ""
 	NotFoundFile string `json:"not_found_file"`
+
+	// The value for the Content-Type HTTP-header
+	// that is set on the file response
+	//
+	// Optional. Default: ""
+	ContentTypeCharset string `json:"content_type_charset"`
 }
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next:       nil,
-	Root:       nil,
-	PathPrefix: "",
-	Browse:     false,
-	Index:      "/index.html",
-	MaxAge:     0,
+	Next:               nil,
+	Root:               nil,
+	PathPrefix:         "",
+	Browse:             false,
+	Index:              "/index.html",
+	MaxAge:             0,
+	ContentTypeCharset: "",
 }
 
 // New creates a new middleware handler.
@@ -176,7 +183,11 @@ func New(config ...Config) fiber.Handler {
 		contentLength := int(stat.Size())
 
 		// Set Content Type header
-		c.Type(getFileExtension(stat.Name()))
+		if cfg.ContentTypeCharset == "" {
+			c.Type(getFileExtension(stat.Name()))
+		} else {
+			c.Type(getFileExtension(stat.Name()), cfg.ContentTypeCharset)
+		}
 
 		// Set Last Modified header
 		if !modTime.IsZero() {
