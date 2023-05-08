@@ -62,7 +62,7 @@ func New(config ...Config) fiber.Handler {
 }
 
 // keyFromHeader returns a function that extracts api key from the request header.
-func keyFromHeader(header string, authScheme string) func(c *fiber.Ctx) (string, error) {
+func keyFromHeader(header, authScheme string) func(c *fiber.Ctx) (string, error) {
 	return func(c *fiber.Ctx) (string, error) {
 		auth := c.Get(header)
 		l := len(authScheme)
