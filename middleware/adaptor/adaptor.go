@@ -1,7 +1,7 @@
 package adaptor
 
 import (
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"reflect"
@@ -72,7 +72,11 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 			}
 			CopyContextToFiberContext(r.Context(), c.Context())
 		})
-		_ = HTTPHandler(mw(nextHandler))(c)
+
+		if err := HTTPHandler(mw(nextHandler))(c); err != nil {
+			return err
+		}
+
 		if next {
 			return c.Next()
 		}
@@ -102,13 +106,18 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		defer fasthttp.ReleaseRequest(req)
 		// Convert net/http -> fasthttp request
 		if r.Body != nil {
-			body, err := ioutil.ReadAll(r.Body)
+			body, err := io.ReadAll(r.Body)
 			if err != nil {
 				http.Error(w, utils.StatusMessage(fiber.StatusInternalServerError), fiber.StatusInternalServerError)
 				return
 			}
+
 			req.Header.SetContentLength(len(body))
-			_, _ = req.BodyWriter().Write(body)
+			_, err = req.BodyWriter().Write(body)
+			if err != nil {
+				http.Error(w, utils.StatusMessage(fiber.StatusInternalServerError), fiber.StatusInternalServerError)
+				return
+			}
 		}
 		req.Header.SetMethod(r.Method)
 		req.SetRequestURI(r.RequestURI)
@@ -118,7 +127,7 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 				req.Header.Set(key, v)
 			}
 		}
-		if _, _, err := net.SplitHostPort(r.RemoteAddr); err != nil && err.(*net.AddrError).Err == "missing port in address" {
+		if _, _, err := net.SplitHostPort(r.RemoteAddr); err != nil && err.(*net.AddrError).Err == "missing port in address" { //nolint:errorlint, forcetypeassert // overlinting
 			r.RemoteAddr = net.JoinHostPort(r.RemoteAddr, "80")
 		}
 		remoteAddr, err := net.ResolveTCPAddr("tcp", r.RemoteAddr)
@@ -137,7 +146,7 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			// Execute fiber Ctx
 			err := h[0](ctx)
 			if err != nil {
-				_ = app.Config().ErrorHandler(ctx, err)
+				_ = app.Config().ErrorHandler(ctx, err) //nolint:errcheck // not needed
 			}
 		} else {
 			// Execute fasthttp Ctx though app.Handler
@@ -149,6 +158,6 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			w.Header().Add(string(k), string(v))
 		})
 		w.WriteHeader(fctx.Response.StatusCode())
-		_, _ = w.Write(fctx.Response.Body())
+		_, _ = w.Write(fctx.Response.Body()) //nolint:errcheck // not needed
 	}
 }

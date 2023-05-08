@@ -14,6 +14,13 @@ var (
 	ErrMissingOrMalformedAPIKey = errors.New("missing or malformed API Key")
 )
 
+const (
+	query  = "query"
+	form   = "form"
+	param  = "param"
+	cookie = "cookie"
+)
+
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Init config
@@ -23,13 +30,13 @@ func New(config ...Config) fiber.Handler {
 	parts := strings.Split(cfg.KeyLookup, ":")
 	extractor := keyFromHeader(parts[1], cfg.AuthScheme)
 	switch parts[0] {
-	case "query":
+	case query:
 		extractor = keyFromQuery(parts[1])
-	case "form":
+	case form:
 		extractor = keyFromForm(parts[1])
-	case "param":
+	case param:
 		extractor = keyFromParam(parts[1])
-	case "cookie":
+	case cookie:
 		extractor = keyFromCookie(parts[1])
 	}
 

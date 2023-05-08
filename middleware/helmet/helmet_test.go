@@ -17,7 +17,7 @@ func Test_Default(t *testing.T) {
 		return c.SendString("Hello, World!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "0", resp.Header.Get(fiber.HeaderXXSSProtection))
 	utils.AssertEqual(t, "nosniff", resp.Header.Get(fiber.HeaderXContentTypeOptions))
@@ -61,7 +61,7 @@ func Test_CustomValues_AllHeaders(t *testing.T) {
 		return c.SendString("Hello, World!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
 	// Assertions for custom header values
 	utils.AssertEqual(t, "0", resp.Header.Get(fiber.HeaderXXSSProtection))
@@ -106,7 +106,7 @@ func Test_RealWorldValues_AllHeaders(t *testing.T) {
 		return c.SendString("Hello, World!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
 	// Assertions for real-world header values
 	utils.AssertEqual(t, "0", resp.Header.Get(fiber.HeaderXXSSProtection))
@@ -141,11 +141,11 @@ func Test_Next(t *testing.T) {
 		return c.SendString("Skipped!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "no-referrer", resp.Header.Get(fiber.HeaderReferrerPolicy))
 
-	resp, err = app.Test(httptest.NewRequest("GET", "/next", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/next", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "", resp.Header.Get(fiber.HeaderReferrerPolicy))
 }
@@ -161,7 +161,7 @@ func Test_ContentSecurityPolicy(t *testing.T) {
 		return c.SendString("Hello, World!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "default-src 'none'", resp.Header.Get(fiber.HeaderContentSecurityPolicy))
 }
@@ -178,7 +178,7 @@ func Test_ContentSecurityPolicyReportOnly(t *testing.T) {
 		return c.SendString("Hello, World!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "default-src 'none'", resp.Header.Get(fiber.HeaderContentSecurityPolicyReportOnly))
 	utils.AssertEqual(t, "", resp.Header.Get(fiber.HeaderContentSecurityPolicy))
@@ -195,7 +195,7 @@ func Test_PermissionsPolicy(t *testing.T) {
 		return c.SendString("Hello, World!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "microphone=()", resp.Header.Get(fiber.HeaderPermissionsPolicy))
 }

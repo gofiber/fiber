@@ -1,10 +1,10 @@
+//nolint:bodyclose, contextcheck, revive // Much easier to just ignore memory leaks in tests
 package adaptor
 
 import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
@@ -67,8 +67,7 @@ func Test_HTTPHandler(t *testing.T) {
 		if r.RemoteAddr != expectedRemoteAddr {
 			t.Fatalf("unexpected remoteAddr %q. Expecting %q", r.RemoteAddr, expectedRemoteAddr)
 		}
-		body, err := ioutil.ReadAll(r.Body)
-		r.Body.Close()
+		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			t.Fatalf("unexpected error when reading request body: %s", err)
 		}
@@ -103,7 +102,7 @@ func Test_HTTPHandler(t *testing.T) {
 	req.Header.SetMethod(expectedMethod)
 	req.SetRequestURI(expectedRequestURI)
 	req.Header.SetHost(expectedHost)
-	req.BodyWriter().Write([]byte(expectedBody)) // nolint:errcheck
+	req.BodyWriter().Write([]byte(expectedBody)) //nolint:errcheck, gosec // not needed
 	for k, v := range expectedHeader {
 		req.Header.Set(k, v)
 	}
@@ -117,7 +116,10 @@ func Test_HTTPHandler(t *testing.T) {
 	ctx := app.AcquireCtx(&fctx)
 	defer app.ReleaseCtx(ctx)
 
-	fiberH(ctx)
+	err = fiberH(ctx)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
 
 	if callsCount != 1 {
 		t.Fatalf("unexpected callsCount: %d. Expecting 1", callsCount)
@@ -151,7 +153,6 @@ var (
 )
 
 func Test_HTTPMiddleware(t *testing.T) {
-
 	tests := []struct {
 		name       string
 		url        string
@@ -196,18 +197,29 @@ func Test_HTTPMiddleware(t *testing.T) {
 	app.Use(HTTPMiddleware(nethttpMW))
 	app.Post("/", func(c *fiber.Ctx) error {
 		value := c.Context().Value(TestContextKey)
+		val, ok := value.(string)
+		if !ok {
+			t.Error("unexpected error on type-assertion")
+		}
 		if value != nil {
-			c.Set("context_okay", value.(string))
+			c.Set("context_okay", val)
 		}
 		value = c.Context().Value(TestContextSecondKey)
 		if value != nil {
-			c.Set("context_second_okay", value.(string))
+			val, ok := value.(string)
+			if !ok {
+				t.Error("unexpected error on type-assertion")
+			}
+			c.Set("context_second_okay", val)
 		}
 		return c.SendStatus(fiber.StatusOK)
 	})
 
 	for _, tt := range tests {
-		req, _ := http.NewRequest(tt.method, tt.url, nil)
+		req, err := http.NewRequestWithContext(context.Background(), tt.method, tt.url, nil)
+		if err != nil {
+			t.Fatalf(`%s: %s`, t.Name(), err)
+		}
 		resp, err := app.Test(req)
 		if err != nil {
 			t.Fatalf(`%s: %s`, t.Name(), err)
@@ -217,15 +229,18 @@ func Test_HTTPMiddleware(t *testing.T) {
 		}
 	}
 
-	req, _ := http.NewRequest("POST", "/", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodPost, "/", nil)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
 	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
 	}
-	if string(resp.Header.Get("context_okay")) != "okay" {
+	if resp.Header.Get("context_okay") != "okay" {
 		t.Fatalf(`%s: Header context_okay: got %v - expected %v`, t.Name(), resp.Header.Get("context_okay"), "okay")
 	}
-	if string(resp.Header.Get("context_second_okay")) != "okay" {
+	if resp.Header.Get("context_second_okay") != "okay" {
 		t.Fatalf(`%s: Header context_second_okay: got %v - expected %v`, t.Name(), resp.Header.Get("context_second_okay"), "okay")
 	}
 }
@@ -247,6 +262,8 @@ func Test_FiberAppDefaultPort(t *testing.T) {
 }
 
 func testFiberToHandlerFunc(t *testing.T, checkDefaultPort bool, app ...*fiber.App) {
+	t.Helper()
+
 	expectedMethod := fiber.MethodPost
 	expectedRequestURI := "/foo/bar?baz=123"
 	expectedBody := "body 123 foo bar baz"

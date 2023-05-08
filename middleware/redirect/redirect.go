@@ -15,8 +15,8 @@ func New(config ...Config) fiber.Handler {
 	// Initialize
 	cfg.rulesRegex = map[*regexp.Regexp]string{}
 	for k, v := range cfg.Rules {
-		k = strings.Replace(k, "*", "(.*)", -1)
-		k = k + "$"
+		k = strings.ReplaceAll(k, "*", "(.*)")
+		k += "$"
 		cfg.rulesRegex[regexp.MustCompile(k)] = v
 	}
 

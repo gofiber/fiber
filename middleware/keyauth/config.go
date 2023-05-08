@@ -1,6 +1,10 @@
 package keyauth
 
-import "github.com/gofiber/fiber/v2"
+import (
+	"errors"
+
+	"github.com/gofiber/fiber/v2"
+)
 
 // Config defines the config for middleware.
 type Config struct {
@@ -46,7 +50,7 @@ var ConfigDefault = Config{
 		return c.Next()
 	},
 	ErrorHandler: func(c *fiber.Ctx, err error) error {
-		if err == ErrMissingOrMalformedAPIKey {
+		if errors.Is(err, ErrMissingOrMalformedAPIKey) {
 			return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
 		}
 		return c.Status(fiber.StatusUnauthorized).SendString("Invalid or expired API Key")

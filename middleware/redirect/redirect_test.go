@@ -1,6 +1,8 @@
+//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package redirect
 
 import (
+	"context"
 	"net/http"
 	"testing"
 
@@ -105,7 +107,8 @@ func Test_Redirect(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req, _ := http.NewRequest("GET", tt.url, nil)
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tt.url, nil)
+			utils.AssertEqual(t, err, nil)
 			req.Header.Set("Location", "github.com/gofiber/redirect")
 			resp, err := app.Test(req)
 
@@ -117,7 +120,7 @@ func Test_Redirect(t *testing.T) {
 }
 
 func Test_Next(t *testing.T) {
-	//Case 1 : Next function always returns true
+	// Case 1 : Next function always returns true
 	app := *fiber.New()
 	app.Use(New(Config{
 		Next: func(*fiber.Ctx) bool {
@@ -133,13 +136,14 @@ func Test_Next(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	req, _ := http.NewRequest("GET", "/default", nil)
-	resp, err := app.Test(req)
-
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", nil)
 	utils.AssertEqual(t, err, nil)
+	resp, err := app.Test(req)
+	utils.AssertEqual(t, err, nil)
+
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 
-	//Case 2 : Next function always returns false
+	// Case 2 : Next function always returns false
 	app = *fiber.New()
 	app.Use(New(Config{
 		Next: func(*fiber.Ctx) bool {
@@ -151,10 +155,11 @@ func Test_Next(t *testing.T) {
 		StatusCode: fiber.StatusMovedPermanently,
 	}))
 
-	req, _ = http.NewRequest("GET", "/default", nil)
-	resp, err = app.Test(req)
-
+	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", nil)
 	utils.AssertEqual(t, err, nil)
+	resp, err = app.Test(req)
+	utils.AssertEqual(t, err, nil)
+
 	utils.AssertEqual(t, fiber.StatusMovedPermanently, resp.StatusCode)
 	utils.AssertEqual(t, "google.com", resp.Header.Get("Location"))
 }
@@ -171,9 +176,9 @@ func Test_NoRules(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	req, _ := http.NewRequest("GET", "/default", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", nil)
+	utils.AssertEqual(t, err, nil)
 	resp, err := app.Test(req)
-
 	utils.AssertEqual(t, err, nil)
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 
@@ -184,9 +189,9 @@ func Test_NoRules(t *testing.T) {
 		StatusCode: fiber.StatusMovedPermanently,
 	}))
 
-	req, _ = http.NewRequest("GET", "/default", nil)
+	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", nil)
+	utils.AssertEqual(t, err, nil)
 	resp, err = app.Test(req)
-
 	utils.AssertEqual(t, err, nil)
 	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
 }
@@ -197,7 +202,8 @@ func Test_DefaultConfig(t *testing.T) {
 
 	app.Use(New())
 
-	req, _ := http.NewRequest("GET", "/default", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", nil)
+	utils.AssertEqual(t, err, nil)
 	resp, err := app.Test(req)
 
 	utils.AssertEqual(t, err, nil)
@@ -211,7 +217,8 @@ func Test_DefaultConfig(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	req, _ = http.NewRequest("GET", "/default", nil)
+	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", nil)
+	utils.AssertEqual(t, err, nil)
 	resp, err = app.Test(req)
 
 	utils.AssertEqual(t, err, nil)
@@ -230,7 +237,8 @@ func Test_RegexRules(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	req, _ := http.NewRequest("GET", "/default", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", nil)
+	utils.AssertEqual(t, err, nil)
 	resp, err := app.Test(req)
 
 	utils.AssertEqual(t, err, nil)
@@ -249,7 +257,8 @@ func Test_RegexRules(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	req, _ = http.NewRequest("GET", "/default", nil)
+	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", nil)
+	utils.AssertEqual(t, err, nil)
 	resp, err = app.Test(req)
 
 	utils.AssertEqual(t, err, nil)

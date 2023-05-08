@@ -1,6 +1,8 @@
+//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package rewrite
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -60,9 +62,12 @@ func Test_Rewrite(t *testing.T) {
 		return c.SendString("Rewrite Successful")
 	})
 
-	req, _ := http.NewRequest("GET", "/old", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/old", nil)
+	utils.AssertEqual(t, err, nil)
 	resp, err := app.Test(req)
-	body, _ := io.ReadAll(resp.Body)
+	utils.AssertEqual(t, err, nil)
+	body, err := io.ReadAll(resp.Body)
+	utils.AssertEqual(t, err, nil)
 	bodyString := string(body)
 
 	utils.AssertEqual(t, err, nil)
@@ -84,9 +89,12 @@ func Test_Rewrite(t *testing.T) {
 		return c.SendString("Rewrite Successful")
 	})
 
-	req, _ = http.NewRequest("GET", "/old", nil)
+	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/old", nil)
+	utils.AssertEqual(t, err, nil)
 	resp, err = app.Test(req)
-	body, _ = io.ReadAll(resp.Body)
+	utils.AssertEqual(t, err, nil)
+	body, err = io.ReadAll(resp.Body)
+	utils.AssertEqual(t, err, nil)
 	bodyString = string(body)
 
 	utils.AssertEqual(t, err, nil)
@@ -105,9 +113,12 @@ func Test_Rewrite(t *testing.T) {
 		return c.SendString(fmt.Sprintf("User ID: %s, Order ID: %s", c.Params("userID"), c.Params("orderID")))
 	})
 
-	req, _ = http.NewRequest("GET", "/users/123/orders/456", nil)
+	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/users/123/orders/456", nil)
+	utils.AssertEqual(t, err, nil)
 	resp, err = app.Test(req)
-	body, _ = io.ReadAll(resp.Body)
+	utils.AssertEqual(t, err, nil)
+	body, err = io.ReadAll(resp.Body)
+	utils.AssertEqual(t, err, nil)
 	bodyString = string(body)
 
 	utils.AssertEqual(t, err, nil)
@@ -130,9 +141,12 @@ func Test_Rewrite(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	req, _ = http.NewRequest("GET", "/not-matching-any-rule", nil)
+	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/not-matching-any-rule", nil)
+	utils.AssertEqual(t, err, nil)
 	resp, err = app.Test(req)
-	body, _ = io.ReadAll(resp.Body)
+	utils.AssertEqual(t, err, nil)
+	body, err = io.ReadAll(resp.Body)
+	utils.AssertEqual(t, err, nil)
 	bodyString = string(body)
 
 	utils.AssertEqual(t, err, nil)
@@ -151,11 +165,9 @@ func Test_Rewrite(t *testing.T) {
 		return c.SendString(fmt.Sprintf("User ID: %s, Order ID: %s", c.Params("userID"), c.Params("orderID")))
 	})
 
-	req, _ = http.NewRequest("GET", "/not-matching-any-rule", nil)
+	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/not-matching-any-rule", nil)
+	utils.AssertEqual(t, err, nil)
 	resp, err = app.Test(req)
-	body, _ = io.ReadAll(resp.Body)
-	bodyString = string(body)
-
 	utils.AssertEqual(t, err, nil)
 	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
 }
