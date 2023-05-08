@@ -11,13 +11,6 @@ Filesystem middleware for [Fiber](https://github.com/gofiber/fiber) that enables
 **To handle paths with spaces (or other url encoded values) make sure to set `fiber.Config{ UnescapePath: true }`**
 :::
 
-## Table of Contents
-
-* [Signatures](filesystem.md#signatures)
-* [Examples](filesystem.md#examples)
-* [Config](filesystem.md#config)
-* [Default Config](filesystem.md#default-config)
-
 ## Signatures
 
 ```go
