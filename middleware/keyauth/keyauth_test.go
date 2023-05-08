@@ -73,7 +73,7 @@ func TestAuthSources(t *testing.T) {
 				})
 
 				var route string
-				if authSource == "param" {
+				if authSource == param {
 					route = test.route + ":" + test.authTokenName
 					app.Use(route, authMiddleware)
 				} else {

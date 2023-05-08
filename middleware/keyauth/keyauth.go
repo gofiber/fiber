@@ -9,10 +9,8 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-var (
-	// When there is no request of the key thrown ErrMissingOrMalformedAPIKey
-	ErrMissingOrMalformedAPIKey = errors.New("missing or malformed API Key")
-)
+// When there is no request of the key thrown ErrMissingOrMalformedAPIKey
+var ErrMissingOrMalformedAPIKey = errors.New("missing or malformed API Key")
 
 const (
 	query  = "query"
