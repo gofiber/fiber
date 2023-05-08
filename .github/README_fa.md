@@ -712,6 +712,11 @@ func main() {
 | [session](https://github.com/gofiber/fiber/tree/master/middleware/session)             |برای ذخیره و مدیریت شناسه کاربری یا session بازدید کنندگان استفاده .میشود|
 | [skip](https://github.com/gofiber/fiber/tree/master/middleware/skip)                   |این میدلور میتواند با استفاده از شرط های تعیین شده درخواست هایی را نادیده بگیرد.|
 | [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)             |این میدلور محدودیت زمانی ای را برای درخواست ها تنظیم میکند، در صورتی که محدودیت به پایان برسد ErrorHandler صدا زده میشود.|
+| [keyauth](https://github.com/gofiber/keyauth)     | Key auth middleware provides a key based authentication.                                                                                                            |
+| [redirect](https://github.com/gofiber/redirect)   | Redirect middleware                                                                                                                                                 |
+| [rewrite](https://github.com/gofiber/rewrite)     | Rewrite middleware rewrites the URL path based on provided rules. It can be helpful for backward compatibility or just creating cleaner and more descriptive links. |
+| [adaptor](https://github.com/gofiber/adaptor)     | Converter for net/http handlers to/from Fiber request handlers, special thanks to @arsmn!                                                                           |
+| [helmet](https://github.com/gofiber/helmet)       | Helps secure your apps by setting various HTTP headers.                                                                                                             |
 
 </div>
 </br></br>
@@ -728,12 +733,7 @@ func main() {
 
 | Middleware                                        | توضیحات                                                                                                                                                             |
 | :------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [adaptor](https://github.com/gofiber/adaptor)     | Converter for net/http handlers to/from Fiber request handlers, special thanks to @arsmn!                                                                           |
-| [helmet](https://github.com/gofiber/helmet)       | Helps secure your apps by setting various HTTP headers.                                                                                                             |
 | [jwt](https://github.com/gofiber/jwt)             | JWT returns a JSON Web Token \(JWT\) auth middleware.                                                                                                               |
-| [keyauth](https://github.com/gofiber/keyauth)     | Key auth middleware provides a key based authentication.                                                                                                            |
-| [redirect](https://github.com/gofiber/redirect)   | Redirect middleware                                                                                                                                                 |
-| [rewrite](https://github.com/gofiber/rewrite)     | Rewrite middleware rewrites the URL path based on provided rules. It can be helpful for backward compatibility or just creating cleaner and more descriptive links. |
 | [storage](https://github.com/gofiber/storage)     | Premade storage drivers that implement the Storage interface, designed to be used with various Fiber middlewares.                                                   |
 | [template](https://github.com/gofiber/template)   | This package contains 8 template engines that can be used with Fiber `v1.10.x` Go version 1.13 or higher is required.                                               |
 | [websocket](https://github.com/gofiber/websocket) | Based on Fasthttp WebSocket for Fiber with Locals support!                                                                                                          |

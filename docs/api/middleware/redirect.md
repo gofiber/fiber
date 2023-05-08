@@ -3,6 +3,8 @@ id: redirect
 title: Redirect
 ---
 
+Redirection middleware for Fiber.
+
 ## Signatures
 
 ```go

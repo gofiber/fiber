@@ -3,6 +3,9 @@ id: rewrite
 title: Rewrite
 ---
 
+Rewrite middleware rewrites the URL path based on provided rules. It can be helpful for backward compatibility or just creating cleaner and more descriptive links.
+
+
 ## Signatures
 
 ```go

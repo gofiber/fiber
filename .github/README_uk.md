@@ -632,6 +632,11 @@ func main() {
 | [session](https://github.com/gofiber/fiber/tree/master/middleware/session)             | Middleware для сеансів. ПРИМІТКА: Цей middleware використовує наш пакет зберігання.                                                                                              |
 | [skip](https://github.com/gofiber/fiber/tree/master/middleware/skip)                   | Middleware який пропускає упакований обробник, якщо предикат є істинним.                                                                                                         |
 | [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)             | Додає максимальний час для запиту та пересилає до ErrorHandler, якщо його перевищено.                                                                                            |
+| [keyauth](https://github.com/gofiber/keyauth)     | Middleware для автентифікації по ключам.                                                                              |
+| [redirect](https://github.com/gofiber/redirect)   | Middleware для перенаправлення.                                                                                       |
+| [rewrite](https://github.com/gofiber/rewrite)     | Middleware для перезапису URL-адреси на основі наданих правил.                                                        |
+| [adaptor](https://github.com/gofiber/adaptor)     | Конвентор для обробників net/http до/з обробників запитів Fiber, особлива подяка @arsmn!                              |
+| [helmet](https://github.com/gofiber/helmet)       | Допомагає захистити ваші програми, встановлюючи різні заголовки HTTP.                                                 |
 
 ## 🧬 Зовнішні Middleware
 
@@ -639,12 +644,7 @@ func main() {
 
 | Middleware                                        | Опис                                                                                                                  |
 | :------------------------------------------------ | :-------------------------------------------------------------------------------------------------------------------- |
-| [adaptor](https://github.com/gofiber/adaptor)     | Конвентор для обробників net/http до/з обробників запитів Fiber, особлива подяка @arsmn!                              |
-| [helmet](https://github.com/gofiber/helmet)       | Допомагає захистити ваші програми, встановлюючи різні заголовки HTTP.                                                 |
 | [jwt](https://github.com/gofiber/jwt)             | JWT повертає middleware автентифікації JSON Web Token \(JWT\).                                                        |
-| [keyauth](https://github.com/gofiber/keyauth)     | Middleware для автентифікації по ключам.                                                                              |
-| [redirect](https://github.com/gofiber/redirect)   | Middleware для перенаправлення.                                                                                       |
-| [rewrite](https://github.com/gofiber/rewrite)     | Middleware для перезапису URL-адреси на основі наданих правил.                                                        |
 | [storage](https://github.com/gofiber/storage)     | Драйвер зберігання який може використовуватися в різних middleware.                                                   |
 | [template](https://github.com/gofiber/template)   | Цей пакет містить 8 модулів шаблонів, які можна використовувати з Fiber `v1.10.x` Потрібно версія Go 1.13 або новішу. |
 | [websocket](https://github.com/gofiber/websocket) | На основі Fasthttp WebSocket для Fiber з підтримкою місцевих користувачів!                                            |

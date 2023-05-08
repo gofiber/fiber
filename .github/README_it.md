@@ -623,6 +623,11 @@ Qui una lista dei middleware inclusi con Fiber.
 | [session](https://github.com/gofiber/fiber/tree/master/middleware/session)             | Middleware per sessioni. NOTA: Questo middleware usa il nostro Storage package.                                                                                                          |
 | [skip](https://github.com/gofiber/fiber/tree/master/middleware/skip)                   | Middleware che salta un wrapped handler se un predicate è vero.                                                                                                                          |
 | [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)             | Aggiunge un tempo massimo per una richiesta e lo manda a ErrorHandler se si supera.                                                                                                      |
+| [keyauth](https://github.com/gofiber/keyauth)     | Usa auth basato su chiavi.                                                                                                            |
+| [redirect](https://github.com/gofiber/redirect)   | Middleware per reinderizzare                                                                                                                                                 |
+| [rewrite](https://github.com/gofiber/rewrite)     | Riscrive la path all URL con le regole date. Può essere di aiuto per compatibilità o per creare link puliti e più descrittivi. |
+| [adaptor](https://github.com/gofiber/adaptor)     | Converte gli handler net/http a/da i request handlers di Fiber, grazie tante a @arsmn!                                                                           |
+| [helmet](https://github.com/gofiber/helmet)       | Aiuta a mettere sicurezza alla tua app usando vari header HTTP.                                                                                                             |
 
 ## 🧬 Middleware Esterni
 
@@ -630,12 +635,7 @@ La lista dei moduli middleware hostati esternamente e mantenuti dal [team di Fib
 
 | Middleware                                        | Descrizione                                                                                                                                                         |
 | :------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [adaptor](https://github.com/gofiber/adaptor)     | Converte gli handler net/http a/da i request handlers di Fiber, grazie tante a @arsmn!                                                                           |
-| [helmet](https://github.com/gofiber/helmet)       | Aiuta a mettere sicurezza alla tua app usando vari header HTTP.                                                                                                             |
 | [jwt](https://github.com/gofiber/jwt)             | Usa JSON Web Token \(JWT\) auth.                                                                                                               |
-| [keyauth](https://github.com/gofiber/keyauth)     | Usa auth basato su chiavi.                                                                                                            |
-| [redirect](https://github.com/gofiber/redirect)   | Middleware per reinderizzare                                                                                                                                                 |
-| [rewrite](https://github.com/gofiber/rewrite)     | Riscrive la path all URL con le regole date. Può essere di aiuto per compatibilità o per creare link puliti e più descrittivi. |
 | [storage](https://github.com/gofiber/storage)     | Dirver di storage che implementa la interfaccia Storage, fatto per essere usato con vari Fiber middleware.                                                   |
 | [template](https://github.com/gofiber/template)   | Questo pachetto contiene 8 motori template che possono essere usati con Fiber `v1.10.x`. Versione di go neccesaria: 1.13+.                                               |
 | [websocket](https://github.com/gofiber/websocket) | Basato su Fasthttp WebSocket per Fiber con supporto per Locals!                                                                                                          |

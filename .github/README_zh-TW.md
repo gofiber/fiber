@@ -636,6 +636,11 @@ func main() {
 | [session](https://github.com/gofiber/fiber/tree/master/middleware/session)             | 連線階段中介模組。注意：這個中介模組有用到我們的 Storage 套件。                                                                                                            |
 | [skip](https://github.com/gofiber/fiber/tree/master/middleware/skip)                   | 略過中介模組，會在條件成立時略過封裝過的處理常式。                                                                                                                         |
 | [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)             | 為請求加上最長時限，並在逾時後轉送至錯誤處理常式 (ErrorHandler)。                                                                                                          |
+| [keyauth](https://github.com/gofiber/keyauth)     | Key auth 中介模組提供以金鑰為基礎的認證模式。                                                          |
+| [redirect](https://github.com/gofiber/redirect)   | 用來重新導向的中介模組。                                                                               |
+| [rewrite](https://github.com/gofiber/rewrite)     | 重寫 (Rewrite) 中介模組：根據提供規則重寫 URL 路徑，適合用來向後相容，或者是製作更乾淨且更好懂的連結。 |
+| [adaptor](https://github.com/gofiber/adaptor)     | 將 net/http 處理常式轉換至 Fiber 處理常式，或者是反著做。特別感謝 @arsmn！                             |
+| [helmet](https://github.com/gofiber/helmet)       | 透過設定多種 HTTP 標頭，協助保護您應用程式的安全。                                                     |
 
 ## 🧬 外掛中介模組
 
@@ -643,12 +648,7 @@ func main() {
 
 | 中介模組                                          | 描述                                                                                                   |
 | :------------------------------------------------ | :----------------------------------------------------------------------------------------------------- |
-| [adaptor](https://github.com/gofiber/adaptor)     | 將 net/http 處理常式轉換至 Fiber 處理常式，或者是反著做。特別感謝 @arsmn！                             |
-| [helmet](https://github.com/gofiber/helmet)       | 透過設定多種 HTTP 標頭，協助保護您應用程式的安全。                                                     |
 | [jwt](https://github.com/gofiber/jwt)             | JWT 回傳 JSON Web Token \(JWT\) 認證中介模組。                                                         |
-| [keyauth](https://github.com/gofiber/keyauth)     | Key auth 中介模組提供以金鑰為基礎的認證模式。                                                          |
-| [redirect](https://github.com/gofiber/redirect)   | 用來重新導向的中介模組。                                                                               |
-| [rewrite](https://github.com/gofiber/rewrite)     | 重寫 (Rewrite) 中介模組：根據提供規則重寫 URL 路徑，適合用來向後相容，或者是製作更乾淨且更好懂的連結。 |
 | [storage](https://github.com/gofiber/storage)     | 已經做好，實作 Storage 介面的儲存區驅動模組，設計用來與各種 Fiber 中介模組搭配使用。                   |
 | [template](https://github.com/gofiber/template)   | 本套件包含 8 種樣板引擎，可以和 Fiber `v1.10.x` 一起使用。需要 Go 1.13 或更新版本。                    |
 | [websocket](https://github.com/gofiber/websocket) | 適用於 Fiber，建基於 Fasthttp 的 WebSocket。支援本機空間 (Locals)！                                    |

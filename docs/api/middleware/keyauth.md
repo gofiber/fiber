@@ -3,6 +3,8 @@ id: keyauth
 title: Keyauth
 ---
 
+Key auth middleware provides a key based authentication.
+
 ## Signatures
 
 ```go

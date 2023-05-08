@@ -3,6 +3,8 @@ id: helmet
 title: Helmet
 ---
 
+Helmet middleware helps secure your apps by setting various HTTP headers.
+
 ## Signatures
 
 ```go
