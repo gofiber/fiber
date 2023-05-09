@@ -31,7 +31,7 @@ jobs:
         path: ./cache
         key: ${{ runner.os }}-benchmark
     - name: Save Benchmark Results
-      uses: benchmark-action/github-action-benchmark@v1
+      uses: benchmark-action/github-action-benchmark@v1.16.2
       with:
         tool: 'go'
         output-file-path: output.txt
