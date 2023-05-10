@@ -154,9 +154,9 @@ Fiber **вдохновлен** Express, самым популярным веб �
 
 Мы **прислушиваемся** к нашим пользователям в [issues](https://github.com/gofiber/fiber/issues), Discord [канале](https://gofiber.io/discord) _и в остальном Интернете_, чтобы создать **быстрый**, **гибкий** и **дружелюбный** веб фреймворк на Go для **любых** задач, **дедлайнов** и **уровней** разработчиков! Как это делает Express в мире JavaScript.
 
-## ⚠️ Limitations
-* Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber 2.40.0 has been tested with Go versions 1.17 to 1.20.
-* Fiber is not compatible with net/http interfaces. This means you will not be able to use projects like gqlgen, go-swagger, or any others which are part of the net/http ecosystem.
+## ⚠️ Ограничения
+* Из-за того, что Fiber использует пакет unsafe, библиотека не всегда может быть совместима с последней версией Go.  Fiber 2.40.0 был протестирован с версиями Go от 1.17 до 1.20.
+* Fiber не совместим с интерфейсами net/http.  Это означает, что вы не сможете использовать такие проекты, как gqlgen, go-swagger или любые другие, которые являются частью экосистемы net/http.
 
 ## 👀 Примеры
 
@@ -621,9 +621,9 @@ func main() {
 | [template](https://github.com/gofiber/template)   | This package contains 8 template engines that can be used with Fiber `v1.10.x` Go version 1.13 or higher is required.                                               |
 | [websocket](https://github.com/gofiber/websocket) | Based on Fasthttp WebSocket for Fiber with Locals support!                                                                                                          |
 
-## 🕶️ Awesome List
+## 🕶️ Полезный список
 
-For more articles, middlewares, examples or tools check our [awesome list](https://github.com/gofiber/awesome-fiber).
+Дополнительные статьи, middleware, примеры или инструменты смотри в нашем [полезном списке](https://github.com/gofiber/awesome-fiber).
 
 ## 👍 Помощь проекту
 
@@ -669,9 +669,9 @@ Fiber — это проект с открытым исходным кодом, �
 
 <img src="https://starchart.cc/gofiber/fiber.svg" alt="Stargazers over time" style="max-width: 100%">
 
-## ⚠️ License
+## ⚠️ Лицензия
 
-Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Contributors](https://github.com/gofiber/fiber/graphs/contributors). `Fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE). Official logo was created by [Vic Shóstak](https://github.com/koddr) and distributed under [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) license (CC BY-SA 4.0 International).
+Copyright (c) 2019-настоящее время [Fenny](https://github.com/fenny) и [Контрибьютеры](https://github.com/gofiber/fiber/graphs/contributors). `Fiber` -  это свободное программное обсепечение с открытым исходным кодом лицензированное под [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE). Официальный логотип создан [Vic Shóstak](https://github.com/koddr) и распространяется под [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) лицензией (CC BY-SA 4.0 International).
 
 **Third-party library licenses**
 
