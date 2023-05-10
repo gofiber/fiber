@@ -605,6 +605,11 @@ func main() {
 | [session](https://github.com/gofiber/fiber/tree/master/middleware/session)             | Session 中间件. 注意: 此中间件使用了我们的存储包.                                                                        |
 | [skip](https://github.com/gofiber/fiber/tree/master/middleware/skip)                   | Skip 中间件会在判断条为 true 时忽略此次请求                                                                            |
 | [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)             | 添加请求的最大时间，如果超时则发送给ErrorHandler 进行处理.                                                                   |
+| [adaptor](https://github.com/gofiber/adaptor)     | net/http 处理程序与 Fiber 请求处理程序之间的转换器，特别感谢 @arsmn！                                             |
+| [helmet](https://github.com/gofiber/helmet)       | 通过设置各种 HTTP 头帮助保护您的应用程序                                                                    |
+| [keyauth](https://github.com/gofiber/keyauth)     | Key auth 中间件提供基于密钥的身份验证                                                                    |
+| [redirect](https://github.com/gofiber/redirect)   | 用于重定向请求的中间件                                                                                |
+| [rewrite](https://github.com/gofiber/rewrite)     | Rewrite 中间件根据提供的规则重写URL路径。它有助于向后兼容或者创建更清晰、更具描述性的链接                                         |
 
 ## 🧬 外部中间件
 
@@ -612,12 +617,7 @@ func main() {
 
 | 中间件                                               | 描述                                                                                         |
 |:--------------------------------------------------|:-------------------------------------------------------------------------------------------|
-| [adaptor](https://github.com/gofiber/adaptor)     | net/http 处理程序与 Fiber 请求处理程序之间的转换器，特别感谢 @arsmn！                                             |
-| [helmet](https://github.com/gofiber/helmet)       | 通过设置各种 HTTP 头帮助保护您的应用程序                                                                    |
 | [jwt](https://github.com/gofiber/jwt)             | JWT 返回一个 JSON Web Token\(JWT\) 身份验证中间件                                                     |
-| [keyauth](https://github.com/gofiber/keyauth)     | Key auth 中间件提供基于密钥的身份验证                                                                    |
-| [redirect](https://github.com/gofiber/redirect)   | 用于重定向请求的中间件                                                                                |
-| [rewrite](https://github.com/gofiber/rewrite)     | Rewrite 中间件根据提供的规则重写URL路径。它有助于向后兼容或者创建更清晰、更具描述性的链接                                         |
 | [storage](https://github.com/gofiber/storage)     | 包含实现 Storage 接口的数据库驱动，它的设计旨在配合 fiber 的其他中间件来进行使用                                           |
 | [template](https://github.com/gofiber/template)   | 该中间件包含 8 个模板引擎，可与 Fiber `v1.10.x` Go 1.13或更高版本一起使用                                         |
 | [websocket](https://github.com/gofiber/websocket) | 基于 Fasthttp WebSocket for Fiber 实现，支持使用 [Locals](https://docs.gofiber.io/api/ctx#locals) ！ |

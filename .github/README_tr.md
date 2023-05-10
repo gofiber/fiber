@@ -597,6 +597,11 @@ Fiber'a dahil edilen middlewareların bir listesi aşağıda verilmiştir.
 | [session](https://github.com/gofiber/fiber/tree/master/middleware/session)             | Session için middleware. NOTE: Bu middleware Fiber'in Storage yapısını kullanır.                                                                                                       |
 | [skip](https://github.com/gofiber/fiber/tree/master/middleware/skip)                   | Skip middleware'ı verilen koşul `true` olduğunda handler'ı atlar ve işlemez.                                                                                                           |
 | [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)             | Bir request için maksimum süre ekler ve aşılırsa ErrorHandler'a iletir.                                                                                                                |
+| [keyauth](https://github.com/gofiber/keyauth)     | Key auth middleware, key tabanlı bir authentication sağlar.                                                                                                                                  |
+| [redirect](https://github.com/gofiber/redirect)   | Yönlendirme middleware  'ı.                                                                                                                                               |
+| [rewrite](https://github.com/gofiber/rewrite)     | Rewrite middleware, sağlanan kurallara göre URL yolunu yeniden yazar. Geriye dönük uyumluluk için veya yalnızca daha temiz ve daha açıklayıcı bağlantılar oluşturmak için yardımcı olabilir. |
+| [adaptor](https://github.com/gofiber/adaptor)     | Fiber request handlerdan net/http handlerları için dönüştürücü, @arsmn'a özel teşekkürler!                                                                                                   |
+| [helmet](https://github.com/gofiber/helmet)       | Çeşitli HTTP headerları ayarlayarak uygulamalarınızın güvenliğini sağlamaya yardımcı olur.                                                                                                   |
 
 ## 🧬 Harici Middlewarelar
 
@@ -604,12 +609,7 @@ Harici olarak barındırılan middlewareların modüllerinin listesi. Bu middlew
 
 | Middleware                                        | Açıklama                                                                                                                                                                                     |
 | :------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [adaptor](https://github.com/gofiber/adaptor)     | Fiber request handlerdan net/http handlerları için dönüştürücü, @arsmn'a özel teşekkürler!                                                                                                   |
-| [helmet](https://github.com/gofiber/helmet)       | Çeşitli HTTP headerları ayarlayarak uygulamalarınızın güvenliğini sağlamaya yardımcı olur.                                                                                                   |
 | [jwt](https://github.com/gofiber/jwt)             | JWT, bir JSON Web Token \(JWT\) yetkilendirmesi döndüren middleware.                                                                                                                         |
-| [keyauth](https://github.com/gofiber/keyauth)     | Key auth middleware, key tabanlı bir authentication sağlar.                                                                                                                                  |
-| [redirect](https://github.com/gofiber/redirect)   | Yönlendirme middleware  'ı.                                                                                                                                               |
-| [rewrite](https://github.com/gofiber/rewrite)     | Rewrite middleware, sağlanan kurallara göre URL yolunu yeniden yazar. Geriye dönük uyumluluk için veya yalnızca daha temiz ve daha açıklayıcı bağlantılar oluşturmak için yardımcı olabilir. |
 | [storage](https://github.com/gofiber/storage)     | Fiber'in Storage yapısını destekleyen birçok storage driver'ı verir. Bu sayede depolama gerektiren Fiber middlewarelarında kolaylıkla kullanılabilir.                                                   |
 | [template](https://github.com/gofiber/template)   | Bu paket, Fiber `v2.x.x`, Go sürüm 1.17 veya üzeri gerekli olduğunda kullanılabilecek 9 template motoru içerir.                                                                             |
 | [websocket](https://github.com/gofiber/websocket) | Yereller desteğiyle Fiber için Fasthttp WebSocket'a dayalıdır!                                                                                                                               |
