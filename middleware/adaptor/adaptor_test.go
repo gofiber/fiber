@@ -7,11 +7,13 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"reflect"
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
 )
 
@@ -459,4 +461,27 @@ func (w *netHTTPResponseWriter) WriteHeader(statusCode int) {
 func (w *netHTTPResponseWriter) Write(p []byte) (int, error) {
 	w.body = append(w.body, p...)
 	return len(p), nil
+}
+
+func Test_ConvertRequest(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	app.Get("/test", func(c *fiber.Ctx) error {
+		httpReq, err := ConvertRequest(c, false)
+		if err != nil {
+			return err
+		}
+
+		return c.SendString("Request URL: " + httpReq.URL.String())
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test?hello=world&another=test", http.NoBody))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, http.StatusOK, resp.StatusCode, "Status code")
+
+	body, err := io.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "Request URL: /test?hello=world&another=test", string(body))
 }
