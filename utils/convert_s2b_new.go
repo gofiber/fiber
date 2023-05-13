@@ -8,8 +8,6 @@ import (
 )
 
 // UnsafeBytes returns a byte pointer without allocation.
-//
-//nolint:gosec // unsafe is used for better performance here
 func UnsafeBytes(s string) []byte {
 	return unsafe.Slice(unsafe.StringData(s), len(s))
 }
