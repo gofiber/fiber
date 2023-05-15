@@ -27,6 +27,16 @@ func HTTPHandler(h http.Handler) fiber.Handler {
 	}
 }
 
+// ConvertRequest converts a fiber.Ctx to an http.Request.
+// forServer should be set to true when the http.Request is going to be passed to a http.Handler.
+func ConvertRequest(c *fiber.Ctx, forServer bool) (*http.Request, error) {
+	var req http.Request
+	if err := fasthttpadaptor.ConvertRequest(c.Context(), &req, forServer); err != nil {
+		return nil, err //nolint:wrapcheck // This must not be wrapped
+	}
+	return &req, nil
+}
+
 // CopyContextToFiberContext copies the values of context.Context to a fasthttp.RequestCtx
 func CopyContextToFiberContext(context interface{}, requestContext *fasthttp.RequestCtx) {
 	contextValues := reflect.ValueOf(context).Elem()
