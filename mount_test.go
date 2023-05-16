@@ -104,7 +104,7 @@ func Test_App_Mount_Express_Behavior(t *testing.T) {
 		utils.AssertEqual(t, nil, err, "app.Test(req)")
 		body, err := io.ReadAll(resp.Body)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, expectedBody, string(body), "Response body")
+		utils.AssertEqual(t, expectedBody, string(body), "Unexpected response body")
 	}
 
 	app := New()
@@ -148,32 +148,61 @@ func Test_App_Mount_RoutePositions(t *testing.T) {
 		utils.AssertEqual(t, nil, err, "app.Test(req)")
 		body, err := io.ReadAll(resp.Body)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, expectedBody, string(body), "Response body")
+		utils.AssertEqual(t, expectedBody, string(body), "Unexpected response body")
 	}
 
 	app := New()
-	app.Use(func(c *Ctx) error {
-		return c.Next()
-	})
-	app.Mount("/subApp1", New())
-	app.Use(func(c *Ctx) error {
-		return c.Next()
-	})
-	app.Get("/bar", func(c *Ctx) error {
-		return c.SendString("ok")
-	})
-	app.Use(func(c *Ctx) error {
-		c.Locals("world", "hello")
-		return c.Next()
-	})
+	subApp1 := New()
 	subApp2 := New()
-	methods := subApp2.Group("/subApp2")
-	methods.Get("/world", func(c *Ctx) error {
-		return c.SendString(c.Locals("world").(string))
-	})
-	app.Mount("", subApp2)
+	// app setup
+	{
+		app.Use(func(c *Ctx) error {
+			// set initial value
+			c.Locals("world", "world")
+			return c.Next()
+		})
+		app.Mount("/subApp1", subApp1)
+		app.Use(func(c *Ctx) error {
+			return c.Next()
+		})
+		app.Get("/bar", func(c *Ctx) error {
+			return c.SendString("ok")
+		})
+		app.Use(func(c *Ctx) error {
+			// is overwritten in case the positioning is not correct
+			c.Locals("world", "hello")
+			return c.Next()
+		})
+		methods := subApp2.Group("/subApp2")
+		methods.Get("/world", func(c *Ctx) error {
+			return c.SendString(c.Locals("world").(string))
+		})
+		app.Mount("", subApp2)
+	}
 
 	testEndpoint(app, "/subApp2/world", "hello")
+
+	routeStackGET := app.Stack()[0]
+	utils.AssertEqual(t, true, routeStackGET[0].use)
+	utils.AssertEqual(t, "/", routeStackGET[0].path)
+
+	utils.AssertEqual(t, true, routeStackGET[1].use)
+	utils.AssertEqual(t, "/", routeStackGET[1].path)
+	utils.AssertEqual(t, true, routeStackGET[0].pos < routeStackGET[1].pos, "wrong position of route 0")
+
+	utils.AssertEqual(t, false, routeStackGET[2].use)
+	utils.AssertEqual(t, "/bar", routeStackGET[2].path)
+	utils.AssertEqual(t, true, routeStackGET[1].pos < routeStackGET[2].pos, "wrong position of route 1")
+
+	utils.AssertEqual(t, true, routeStackGET[3].use)
+	utils.AssertEqual(t, "/", routeStackGET[3].path)
+	utils.AssertEqual(t, true, routeStackGET[2].pos < routeStackGET[3].pos, "wrong position of route 2")
+
+	utils.AssertEqual(t, false, routeStackGET[4].use)
+	utils.AssertEqual(t, "/subapp2/world", routeStackGET[4].path)
+	utils.AssertEqual(t, true, routeStackGET[3].pos < routeStackGET[4].pos, "wrong position of route 3")
+
+	utils.AssertEqual(t, 5, len(routeStackGET))
 }
 
 // go test -run Test_App_MountPath
