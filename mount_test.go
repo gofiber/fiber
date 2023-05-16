@@ -175,7 +175,11 @@ func Test_App_Mount_RoutePositions(t *testing.T) {
 		})
 		methods := subApp2.Group("/subApp2")
 		methods.Get("/world", func(c *Ctx) error {
-			return c.SendString(c.Locals("world").(string))
+			v, ok := c.Locals("world").(string)
+			if !ok {
+				panic("unexpected data type")
+			}
+			return c.SendString(v)
 		})
 		app.Mount("", subApp2)
 	}
