@@ -140,6 +140,42 @@ func Test_App_Mount_Express_Behavior(t *testing.T) {
 	utils.AssertEqual(t, uint32(16+9), app.routesCount)
 }
 
+// go test -run Test_App_Mount_RoutePositions
+func Test_App_Mount_RoutePositions(t *testing.T) {
+	t.Parallel()
+	testEndpoint := func(app *App, route, expectedBody string) {
+		resp, err := app.Test(httptest.NewRequest(MethodGet, route, nil))
+		utils.AssertEqual(t, nil, err, "app.Test(req)")
+		body, err := io.ReadAll(resp.Body)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, expectedBody, string(body), "Response body")
+	}
+
+	app := New()
+	app.Use(func(c *Ctx) error {
+		return c.Next()
+	})
+	app.Mount("/subApp1", New())
+	app.Use(func(c *Ctx) error {
+		return c.Next()
+	})
+	app.Get("/bar", func(c *Ctx) error {
+		return c.SendString("ok")
+	})
+	app.Use(func(c *Ctx) error {
+		c.Locals("world", "hello")
+		return c.Next()
+	})
+	subApp2 := New()
+	methods := subApp2.Group("/subApp2")
+	methods.Get("/world", func(c *Ctx) error {
+		return c.SendString(c.Locals("world").(string))
+	})
+	app.Mount("", subApp2)
+
+	testEndpoint(app, "/subApp2/world", "hello")
+}
+
 // go test -run Test_App_MountPath
 func Test_App_MountPath(t *testing.T) {
 	t.Parallel()
