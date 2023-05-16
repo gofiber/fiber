@@ -89,7 +89,6 @@ func Test_Pprof_Index_WithPrefix(t *testing.T) {
 }
 
 func Test_Pprof_Subs(t *testing.T) {
-	t.Parallel()
 	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 
 	app.Use(New())
@@ -104,6 +103,7 @@ func Test_Pprof_Subs(t *testing.T) {
 	}
 
 	for _, sub := range subs {
+		sub := sub
 		t.Run(sub, func(t *testing.T) {
 			t.Parallel()
 			target := "/debug/pprof/" + sub
@@ -133,6 +133,7 @@ func Test_Pprof_Subs_WithPrefix(t *testing.T) {
 	}
 
 	for _, sub := range subs {
+		sub := sub
 		t.Run(sub, func(t *testing.T) {
 			t.Parallel()
 			target := "/federated-fiber/debug/pprof/" + sub

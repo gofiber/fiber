@@ -53,6 +53,7 @@ func Test_Compress_Different_Level(t *testing.T) {
 	t.Parallel()
 	levels := []Level{LevelBestSpeed, LevelBestCompression}
 	for _, level := range levels {
+		level := level
 		t.Run(fmt.Sprintf("level %d", level), func(t *testing.T) {
 			t.Parallel()
 			app := fiber.New()
