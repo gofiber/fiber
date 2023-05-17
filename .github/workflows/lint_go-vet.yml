@@ -1,0 +1,24 @@
+name: lint_go-vet
+on:
+  push:
+    branches:
+      - master
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  go-vet:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v4
+        with:
+          cache: false # setup-go v4 caches by default
+          # NOTE: Keep this in sync with the version from go.mod
+          go-version: "1.20.x"
+      - name: go-vet
+        run: go vet -v $(go list ./... | grep -v internal) # TODO: Also run against internal dir
