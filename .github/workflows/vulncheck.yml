@@ -27,9 +27,9 @@ jobs:
       - name: Install Go
         uses: actions/setup-go@v4
         with:
+          cache: false # setup-go v4 caches by default
           go-version: "stable"
           check-latest: true
-          cache: false
 
       - name: Install Govulncheck
         run: go install golang.org/x/vuln/cmd/govulncheck@latest

@@ -29,6 +29,7 @@ jobs:
       - name: Install Go
         uses: actions/setup-go@v4
         with:
+          cache: false # setup-go v4 caches by default
           go-version: ${{ matrix.go-version }}
 
       - name: Run Test
