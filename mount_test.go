@@ -100,12 +100,12 @@ func Test_App_Mount_Express_Behavior(t *testing.T) {
 			return c.SendString(body)
 		}
 	}
-	testEndpoint := func(app *App, route, expectedBody string, statusCode int) {
+	testEndpoint := func(app *App, route, expectedBody string, expectedStatusCode int) {
 		resp, err := app.Test(httptest.NewRequest(MethodGet, route, http.NoBody))
 		utils.AssertEqual(t, nil, err, "app.Test(req)")
 		body, err := io.ReadAll(resp.Body)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, statusCode, resp.StatusCode, "Status code")
+		utils.AssertEqual(t, expectedStatusCode, resp.StatusCode, "Status code")
 		utils.AssertEqual(t, expectedBody, string(body), "Unexpected response body")
 	}
 
