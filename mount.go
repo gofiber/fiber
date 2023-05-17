@@ -174,26 +174,23 @@ func (app *App) processSubAppsRoutes() {
 		}
 	}
 	var handlersCount uint32
+	var routePos uint32
 	// Iterate over the stack of the parent app
 	for m := range app.stack {
-		// Keep track of the position shift caused by adding routes for mounted apps
-		var positionShift uint32
 		// Iterate over each route in the stack
 		stackLen := len(app.stack[m])
 		for i := 0; i < stackLen; i++ {
 			route := app.stack[m][i]
 			// Check if the route has a mounted app
 			if !route.mount {
+				routePos++
 				// If not, update the route's position and continue
-				route.pos += positionShift
+				route.pos = routePos
 				if !route.use || (route.use && m == 0) {
 					handlersCount += uint32(len(route.Handlers))
 				}
 				continue
 			}
-
-			// Update the position shift to account for the mounted app's routes
-			positionShift = route.pos
 
 			// Create a slice to hold the sub-app's routes
 			subRoutes := make([]*Route, len(route.group.app.stack[m]))
