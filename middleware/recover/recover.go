@@ -9,7 +9,7 @@ import (
 )
 
 func defaultStackTraceHandler(_ *fiber.Ctx, e interface{}) {
-	_, _ = os.Stderr.WriteString(fmt.Sprintf("panic: %v\n%s\n", e, debug.Stack())) //nolint:errcheck // This will never fail
+	_, _ = fmt.Fprintf(os.Stderr, "panic: %v\n%s\n", e, debug.Stack())
 }
 
 // New creates a new middleware handler

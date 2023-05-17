@@ -1,7 +1,7 @@
 package log
 
 import (
-	"log"
+	"log" //nolint:depguard // stdlib log is only allowed through this package
 	"os"
 	"testing"
 
@@ -9,11 +9,13 @@ import (
 )
 
 func Test_DefaultSystemLogger(t *testing.T) {
+	t.Parallel()
 	defaultL := DefaultLogger()
 	utils.AssertEqual(t, logger, defaultL)
 }
 
 func Test_SetLogger(t *testing.T) {
+	t.Parallel()
 	setLog := &defaultLogger{
 		stdlog: log.New(os.Stderr, "", log.LstdFlags|log.Lshortfile|log.Lmicroseconds),
 		depth:  6,

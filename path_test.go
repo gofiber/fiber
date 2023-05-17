@@ -212,6 +212,7 @@ func Benchmark_Path_matchParams(t *testing.B) {
 	benchCaseFn := func(testCollection routeCaseCollection) {
 		parser := parseRoute(testCollection.pattern)
 		for _, c := range testCollection.testCases {
+			c := c
 			var matchRes bool
 			state := "match"
 			if !c.match {
@@ -241,6 +242,7 @@ func Benchmark_Path_matchParams(t *testing.B) {
 func Benchmark_RoutePatternMatch(t *testing.B) {
 	benchCaseFn := func(testCollection routeCaseCollection) {
 		for _, c := range testCollection.testCases {
+			c := c
 			// skip all cases for partial checks
 			if c.partialCheck {
 				continue

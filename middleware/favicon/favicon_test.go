@@ -27,19 +27,19 @@ func Test_Middleware_Favicon(t *testing.T) {
 	})
 
 	// Skip Favicon middleware
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/favicon.ico", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/favicon.ico", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, fiber.StatusNoContent, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodOptions, "/favicon.ico", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodOptions, "/favicon.ico", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodPut, "/favicon.ico", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodPut, "/favicon.ico", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, fiber.StatusMethodNotAllowed, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, strings.Join([]string{fiber.MethodGet, fiber.MethodHead, fiber.MethodOptions}, ", "), resp.Header.Get(fiber.HeaderAllow))
@@ -72,7 +72,7 @@ func Test_Middleware_Favicon_Found(t *testing.T) {
 		return nil
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/favicon.ico", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/favicon.ico", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
@@ -81,6 +81,7 @@ func Test_Middleware_Favicon_Found(t *testing.T) {
 
 // go test -run Test_Custom_Favicon_Url
 func Test_Custom_Favicon_Url(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	const customURL = "/favicon.svg"
 	app.Use(New(Config{
@@ -92,7 +93,7 @@ func Test_Custom_Favicon_Url(t *testing.T) {
 		return nil
 	})
 
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, customURL, nil))
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, customURL, http.NoBody))
 
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode, "Status code")
@@ -101,6 +102,8 @@ func Test_Custom_Favicon_Url(t *testing.T) {
 
 // go test -run Test_Custom_Favicon_Data
 func Test_Custom_Favicon_Data(t *testing.T) {
+	t.Parallel()
+
 	data, err := os.ReadFile("../../.github/testdata/favicon.ico")
 	if err != nil {
 		t.Fatal(err)
@@ -116,7 +119,7 @@ func Test_Custom_Favicon_Data(t *testing.T) {
 		return nil
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/favicon.ico", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/favicon.ico", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
@@ -151,7 +154,7 @@ func Test_Middleware_Favicon_FileSystem(t *testing.T) {
 		FileSystem: mockFS{},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/favicon.ico", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/favicon.ico", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
@@ -168,7 +171,7 @@ func Test_Middleware_Favicon_CacheControl(t *testing.T) {
 		File:         "../../.github/testdata/favicon.ico",
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/favicon.ico", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/favicon.ico", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
@@ -204,7 +207,7 @@ func Test_Favicon_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
 }

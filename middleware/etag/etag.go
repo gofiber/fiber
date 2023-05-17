@@ -54,14 +54,14 @@ func New(config ...Config) fiber.Handler {
 
 		// Enable weak tag
 		if cfg.Weak {
-			_, _ = bb.Write(weakPrefix) //nolint:errcheck // This will never fail
+			_, _ = bb.Write(weakPrefix) //nolint:errcheck,gosec // This will never fail
 		}
 
-		_ = bb.WriteByte('"') //nolint:errcheck // This will never fail
+		_ = bb.WriteByte('"') //nolint:errcheck,gosec // This will never fail
 		bb.B = appendUint(bb.Bytes(), uint32(len(body)))
-		_ = bb.WriteByte('-') //nolint:errcheck // This will never fail
+		_ = bb.WriteByte('-') //nolint:errcheck,gosec // This will never fail
 		bb.B = appendUint(bb.Bytes(), crc32.Checksum(body, crc32q))
-		_ = bb.WriteByte('"') //nolint:errcheck // This will never fail
+		_ = bb.WriteByte('"') //nolint:errcheck,gosec // This will never fail
 
 		etag := bb.Bytes()
 

@@ -250,6 +250,7 @@ func Test_Hook_OnListenPrefork(t *testing.T) {
 	utils.AssertEqual(t, "ready", buf.String())
 }
 
+//nolint:paralleltest // TODO: Must be run sequentially due to global testPreforkMaster and testOnPrefork var.
 func Test_Hook_OnHook(t *testing.T) {
 	app := New()
 

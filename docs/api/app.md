@@ -153,7 +153,7 @@ func main() {
 	two.Mount("/three", three)
 	one.Mount("/two", two)
 	app.Mount("/one", one)
-  
+
 	one.MountPath()   // "/one"
 	two.MountPath()   // "/one/two"
 	three.MountPath() // "/one/two/three"
@@ -423,7 +423,7 @@ func main() {
     app := fiber.New()
 
     app.Get("/", handler).Name("index")
-    
+
     data, _ := json.MarshalIndent(app.GetRoute("index"), "", "  ")
 	fmt.Print(string(data))
 
@@ -498,7 +498,7 @@ func (app *App) Listen(addr string) error
 ```
 
 ```go title="Examples"
-// Listen on port :8080 
+// Listen on port :8080
 app.Listen(":8080")
 
 // Custom host
@@ -635,7 +635,7 @@ app.Get("/", func(c *fiber.Ctx) error {
 })
 
 // http.Request
-req := httptest.NewRequest("GET", "http://google.com", nil)
+req := httptest.NewRequest("GET", "http://google.com", http.NoBody)
 req.Header.Set("X-Custom-Header", "hi")
 
 // http.Response

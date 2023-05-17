@@ -11,6 +11,8 @@ import (
 )
 
 func Test_Redirect(t *testing.T) {
+	t.Parallel()
+
 	app := *fiber.New()
 
 	app.Use(New(Config{
@@ -106,8 +108,10 @@ func Test_Redirect(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tt.url, nil)
+			t.Parallel()
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tt.url, http.NoBody)
 			utils.AssertEqual(t, err, nil)
 			req.Header.Set("Location", "github.com/gofiber/redirect")
 			resp, err := app.Test(req)
@@ -120,6 +124,7 @@ func Test_Redirect(t *testing.T) {
 }
 
 func Test_Next(t *testing.T) {
+	t.Parallel()
 	// Case 1 : Next function always returns true
 	app := *fiber.New()
 	app.Use(New(Config{
@@ -136,7 +141,7 @@ func Test_Next(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", http.NoBody)
 	utils.AssertEqual(t, err, nil)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, err, nil)
@@ -155,7 +160,7 @@ func Test_Next(t *testing.T) {
 		StatusCode: fiber.StatusMovedPermanently,
 	}))
 
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", nil)
+	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", http.NoBody)
 	utils.AssertEqual(t, err, nil)
 	resp, err = app.Test(req)
 	utils.AssertEqual(t, err, nil)
@@ -165,6 +170,7 @@ func Test_Next(t *testing.T) {
 }
 
 func Test_NoRules(t *testing.T) {
+	t.Parallel()
 	// Case 1: No rules with default route defined
 	app := *fiber.New()
 
@@ -176,7 +182,7 @@ func Test_NoRules(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", http.NoBody)
 	utils.AssertEqual(t, err, nil)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, err, nil)
@@ -189,7 +195,7 @@ func Test_NoRules(t *testing.T) {
 		StatusCode: fiber.StatusMovedPermanently,
 	}))
 
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", nil)
+	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", http.NoBody)
 	utils.AssertEqual(t, err, nil)
 	resp, err = app.Test(req)
 	utils.AssertEqual(t, err, nil)
@@ -197,12 +203,13 @@ func Test_NoRules(t *testing.T) {
 }
 
 func Test_DefaultConfig(t *testing.T) {
+	t.Parallel()
 	// Case 1: Default config and no default route
 	app := *fiber.New()
 
 	app.Use(New())
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", http.NoBody)
 	utils.AssertEqual(t, err, nil)
 	resp, err := app.Test(req)
 
@@ -217,7 +224,7 @@ func Test_DefaultConfig(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", nil)
+	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", http.NoBody)
 	utils.AssertEqual(t, err, nil)
 	resp, err = app.Test(req)
 
@@ -226,6 +233,7 @@ func Test_DefaultConfig(t *testing.T) {
 }
 
 func Test_RegexRules(t *testing.T) {
+	t.Parallel()
 	// Case 1: Rules regex is empty
 	app := *fiber.New()
 	app.Use(New(Config{
@@ -237,7 +245,7 @@ func Test_RegexRules(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", http.NoBody)
 	utils.AssertEqual(t, err, nil)
 	resp, err := app.Test(req)
 
@@ -257,7 +265,7 @@ func Test_RegexRules(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", nil)
+	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", http.NoBody)
 	utils.AssertEqual(t, err, nil)
 	resp, err = app.Test(req)
 

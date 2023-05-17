@@ -119,9 +119,11 @@ func Test_FileSystem(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
+
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, tt.url, nil))
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, tt.url, http.NoBody))
 			utils.AssertEqual(t, nil, err)
 			utils.AssertEqual(t, tt.statusCode, resp.StatusCode)
 
@@ -144,7 +146,7 @@ func Test_FileSystem_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
 }
@@ -157,7 +159,7 @@ func Test_FileSystem_NonGetAndHead(t *testing.T) {
 		Root: http.Dir("../../.github/testdata/fs"),
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/test", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/test", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 404, resp.StatusCode)
 }
@@ -170,7 +172,7 @@ func Test_FileSystem_Head(t *testing.T) {
 		Root: http.Dir("../../.github/testdata/fs"),
 	}))
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodHead, "/test", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodHead, "/test", http.NoBody)
 	utils.AssertEqual(t, nil, err)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err)
@@ -185,7 +187,7 @@ func Test_FileSystem_NoRoot(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(New())
-	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 }
 
@@ -197,7 +199,7 @@ func Test_FileSystem_UsingParam(t *testing.T) {
 		return SendFile(c, http.Dir("../../.github/testdata/fs"), c.Params("path")+".html")
 	})
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodHead, "/index", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodHead, "/index", http.NoBody)
 	utils.AssertEqual(t, nil, err)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err)
@@ -212,7 +214,7 @@ func Test_FileSystem_UsingParam_NonFile(t *testing.T) {
 		return SendFile(c, http.Dir("../../.github/testdata/fs"), c.Params("path")+".html")
 	})
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodHead, "/template", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodHead, "/template", http.NoBody)
 	utils.AssertEqual(t, nil, err)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err)
@@ -227,7 +229,7 @@ func Test_FileSystem_UsingContentTypeCharset(t *testing.T) {
 		ContentTypeCharset: "UTF-8",
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 200, resp.StatusCode)
 	utils.AssertEqual(t, "text/html; charset=UTF-8", resp.Header.Get("Content-Type"))

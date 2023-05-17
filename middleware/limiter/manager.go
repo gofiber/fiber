@@ -8,8 +8,7 @@ import (
 	"github.com/gofiber/fiber/v2/internal/memory"
 )
 
-// go:generate msgp
-// msgp -file="manager.go" -o="manager_msgp.go" -tests=false -unexported
+//go:generate msgp -o=manager_msgp.go -io=false -unexported
 type item struct {
 	currHits int
 	prevHits int
@@ -82,7 +81,7 @@ func (m *manager) get(key string) *item {
 func (m *manager) set(key string, it *item, exp time.Duration) {
 	if m.storage != nil {
 		if raw, err := it.MarshalMsg(nil); err == nil {
-			_ = m.storage.Set(key, raw, exp) //nolint:errcheck // TODO: Handle error here
+			_ = m.storage.Set(key, raw, exp) //nolint:errcheck,gosec // TODO: Handle error here
 		}
 		// we can release data because it's serialized to database
 		m.release(it)

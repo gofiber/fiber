@@ -89,6 +89,7 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 		//              ts         e.exp   End sample window   End next window
 		//               <------------>
 		// 				   resetInSec
+		//
 		// resetInSec = e.exp - ts - time until end of current window.
 		// duration + expiration = end of next window.
 		// Because we don't want to garbage collect in the middle of a window

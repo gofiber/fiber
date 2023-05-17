@@ -37,7 +37,7 @@ const (
 // ByteSize returns a human-readable byte string of the form 10M, 12.5K, and so forth.
 // The unit that results in the smallest number greater than or equal to 1 is always chosen.
 func ByteSize(bytes uint64) string {
-	unit := ""
+	var unit string
 	value := float64(bytes)
 	switch {
 	case bytes >= uExabyte:
@@ -106,7 +106,7 @@ func ToString(arg interface{}, timeFormat ...string) string {
 		if len(timeFormat) > 0 {
 			return v.Format(timeFormat[0])
 		}
-		return v.Format("2006-01-02 15:04:05")
+		return v.Format(time.DateTime)
 	case reflect.Value:
 		return ToString(v.Interface(), timeFormat...)
 	case fmt.Stringer:

@@ -3,7 +3,7 @@ package log
 import (
 	"bytes"
 	"context"
-	"log"
+	"log" //nolint:depguard // stdlib log is only allowed through this package
 	"os"
 	"testing"
 
@@ -12,7 +12,7 @@ import (
 
 const work = "work"
 
-func initDefaultLogger() {
+func init() {
 	logger = &defaultLogger{
 		stdlog: log.New(os.Stderr, "", 0),
 		depth:  4,
@@ -28,9 +28,8 @@ func (w *byteSliceWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+//nolint:paralleltest // TODO: Must be run sequentially due to overwriting the default output global
 func Test_DefaultLogger(t *testing.T) {
-	initDefaultLogger()
-
 	var w byteSliceWriter
 	SetOutput(&w)
 
@@ -48,9 +47,8 @@ func Test_DefaultLogger(t *testing.T) {
 		"[Panic] work panic\n", string(w.b))
 }
 
+//nolint:paralleltest // TODO: Must be run sequentially due to overwriting the default output global
 func Test_DefaultFormatLogger(t *testing.T) {
-	initDefaultLogger()
-
 	var w byteSliceWriter
 	SetOutput(&w)
 
@@ -69,9 +67,8 @@ func Test_DefaultFormatLogger(t *testing.T) {
 		"[Panic] work panic\n", string(w.b))
 }
 
+//nolint:paralleltest // TODO: Must be run sequentially due to overwriting the default output global
 func Test_CtxLogger(t *testing.T) {
-	initDefaultLogger()
-
 	var w byteSliceWriter
 	SetOutput(&w)
 
@@ -93,6 +90,8 @@ func Test_CtxLogger(t *testing.T) {
 }
 
 func Test_LogfKeyAndValues(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name          string
 		level         Level
@@ -143,7 +142,9 @@ func Test_LogfKeyAndValues(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			var buf bytes.Buffer
 			l := &defaultLogger{
 				stdlog: log.New(&buf, "", 0),
@@ -157,6 +158,8 @@ func Test_LogfKeyAndValues(t *testing.T) {
 }
 
 func Test_SetLevel(t *testing.T) {
+	t.Parallel()
+
 	setLogger := &defaultLogger{
 		stdlog: log.New(os.Stderr, "", log.LstdFlags|log.Lshortfile|log.Lmicroseconds),
 		depth:  4,

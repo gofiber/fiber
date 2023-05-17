@@ -1,14 +1,16 @@
 package adaptor
 
 import (
+	"errors"
 	"io"
 	"net"
 	"net/http"
 	"reflect"
-	"unsafe"
+	"unsafe" //nolint:depguard // unsafe is used for copying
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
+
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttpadaptor"
 )
@@ -45,11 +47,11 @@ func CopyContextToFiberContext(context interface{}, requestContext *fasthttp.Req
 		var lastKey interface{}
 		for i := 0; i < contextValues.NumField(); i++ {
 			reflectValue := contextValues.Field(i)
-			/* #nosec */
-			reflectValue = reflect.NewAt(reflectValue.Type(), unsafe.Pointer(reflectValue.UnsafeAddr())).Elem()
+			reflectValue = reflect.NewAt(reflectValue.Type(), unsafe.Pointer(reflectValue.UnsafeAddr())).Elem() //nolint:gosec // unsafe is used for copying
 
 			reflectField := contextKeys.Field(i)
 
+			//nolint:gocritic // Easier to do with if-else chain
 			if reflectField.Name == "noCopy" {
 				break
 			} else if reflectField.Name == "Context" {
@@ -137,8 +139,11 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 				req.Header.Set(key, v)
 			}
 		}
-		if _, _, err := net.SplitHostPort(r.RemoteAddr); err != nil && err.(*net.AddrError).Err == "missing port in address" { //nolint:errorlint, forcetypeassert // overlinting
-			r.RemoteAddr = net.JoinHostPort(r.RemoteAddr, "80")
+		if _, _, err := net.SplitHostPort(r.RemoteAddr); err != nil {
+			var netAddrErr *net.AddrError
+			if errors.As(err, &netAddrErr) && netAddrErr.Err == "missing port in address" {
+				r.RemoteAddr = net.JoinHostPort(r.RemoteAddr, "80")
+			}
 		}
 		remoteAddr, err := net.ResolveTCPAddr("tcp", r.RemoteAddr)
 		if err != nil {
@@ -156,7 +161,7 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			// Execute fiber Ctx
 			err := h[0](ctx)
 			if err != nil {
-				_ = app.Config().ErrorHandler(ctx, err) //nolint:errcheck // not needed
+				_ = app.Config().ErrorHandler(ctx, err) //nolint:errcheck,gosec // not needed
 			}
 		} else {
 			// Execute fasthttp Ctx though app.Handler
@@ -168,6 +173,6 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			w.Header().Add(string(k), string(v))
 		})
 		w.WriteHeader(fctx.Response.StatusCode())
-		_, _ = w.Write(fctx.Response.Body()) //nolint:errcheck // not needed
+		_, _ = w.Write(fctx.Response.Body()) //nolint:errcheck,gosec // not needed
 	}
 }

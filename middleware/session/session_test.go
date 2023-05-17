@@ -241,6 +241,7 @@ func Test_Session_Save(t *testing.T) {
 	t.Parallel()
 
 	t.Run("save to cookie", func(t *testing.T) {
+		t.Parallel()
 		// session store
 		store := New()
 		// fiber instance
@@ -260,6 +261,7 @@ func Test_Session_Save(t *testing.T) {
 	})
 
 	t.Run("save to header", func(t *testing.T) {
+		t.Parallel()
 		// session store
 		store := New(Config{
 			KeyLookup: "header:session_id",
@@ -468,10 +470,11 @@ func Test_Session_Regenerate(t *testing.T) {
 	// fiber instance
 	app := fiber.New()
 	t.Run("set fresh to be true when regenerating a session", func(t *testing.T) {
+		t.Parallel()
 		// session store
 		store := New()
 		// a random session uuid
-		originalSessionUUIDString := ""
+		var originalSessionUUIDString string
 		// fiber context
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(ctx)
@@ -516,7 +519,7 @@ func Benchmark_Session(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			sess, _ := store.Get(c) //nolint:errcheck // We're inside a benchmark
+			sess, _ := store.Get(c) //nolint:errcheck,gosec // We're inside a benchmark
 			sess.Set("john", "doe")
 			err = sess.Save()
 		}
@@ -531,7 +534,7 @@ func Benchmark_Session(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			sess, _ := store.Get(c) //nolint:errcheck // We're inside a benchmark
+			sess, _ := store.Get(c) //nolint:errcheck,gosec // We're inside a benchmark
 			sess.Set("john", "doe")
 			err = sess.Save()
 		}

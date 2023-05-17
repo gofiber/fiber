@@ -13,6 +13,7 @@ import (
 )
 
 func Test_New(t *testing.T) {
+	t.Parallel()
 	// Test with no config
 	m := New()
 
@@ -47,6 +48,7 @@ func Test_New(t *testing.T) {
 }
 
 func Test_Rewrite(t *testing.T) {
+	t.Parallel()
 	// Case 1: Next function always returns true
 	app := fiber.New()
 	app.Use(New(Config{
@@ -62,7 +64,7 @@ func Test_Rewrite(t *testing.T) {
 		return c.SendString("Rewrite Successful")
 	})
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/old", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/old", http.NoBody)
 	utils.AssertEqual(t, err, nil)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, err, nil)
@@ -89,7 +91,7 @@ func Test_Rewrite(t *testing.T) {
 		return c.SendString("Rewrite Successful")
 	})
 
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/old", nil)
+	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/old", http.NoBody)
 	utils.AssertEqual(t, err, nil)
 	resp, err = app.Test(req)
 	utils.AssertEqual(t, err, nil)
@@ -113,7 +115,7 @@ func Test_Rewrite(t *testing.T) {
 		return c.SendString(fmt.Sprintf("User ID: %s, Order ID: %s", c.Params("userID"), c.Params("orderID")))
 	})
 
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/users/123/orders/456", nil)
+	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/users/123/orders/456", http.NoBody)
 	utils.AssertEqual(t, err, nil)
 	resp, err = app.Test(req)
 	utils.AssertEqual(t, err, nil)
@@ -141,7 +143,7 @@ func Test_Rewrite(t *testing.T) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/not-matching-any-rule", nil)
+	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/not-matching-any-rule", http.NoBody)
 	utils.AssertEqual(t, err, nil)
 	resp, err = app.Test(req)
 	utils.AssertEqual(t, err, nil)
@@ -165,7 +167,7 @@ func Test_Rewrite(t *testing.T) {
 		return c.SendString(fmt.Sprintf("User ID: %s, Order ID: %s", c.Params("userID"), c.Params("orderID")))
 	})
 
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/not-matching-any-rule", nil)
+	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/not-matching-any-rule", http.NoBody)
 	utils.AssertEqual(t, err, nil)
 	resp, err = app.Test(req)
 	utils.AssertEqual(t, err, nil)

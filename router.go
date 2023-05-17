@@ -164,7 +164,7 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) { //revive:disable-line:confu
 
 	// handle invalid http method directly
 	if c.methodINT == -1 {
-		_ = c.Status(StatusBadRequest).SendString("Invalid http method") //nolint:errcheck // It is fine to ignore the error here
+		_ = c.Status(StatusBadRequest).SendString("Invalid http method") //nolint:errcheck,gosec // It is fine to ignore the error here
 		return
 	}
 
@@ -172,7 +172,7 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) { //revive:disable-line:confu
 	match, err := app.next(c)
 	if err != nil {
 		if catch := c.app.ErrorHandler(c, err); catch != nil {
-			_ = c.SendStatus(StatusInternalServerError) //nolint:errcheck // It is fine to ignore the error here
+			_ = c.SendStatus(StatusInternalServerError) //nolint:errcheck,gosec // It is fine to ignore the error here
 		}
 		// TODO: Do we need to return here?
 	}

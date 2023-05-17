@@ -908,10 +908,10 @@ func (app *App) Hooks() *Hooks {
 }
 
 // Test is used for internal debugging by passing a *http.Request.
-// Timeout is optional and defaults to 1s, -1 will disable it completely.
+// Timeout is optional and defaults to 10s, -1 will disable it completely.
 func (app *App) Test(req *http.Request, msTimeout ...int) (*http.Response, error) {
 	// Set timeout
-	timeout := 1000
+	timeout := int((10 * time.Second) / time.Millisecond)
 	if len(msTimeout) > 0 {
 		timeout = msTimeout[0]
 	}
@@ -984,7 +984,6 @@ func (app *App) Test(req *http.Request, msTimeout ...int) (*http.Response, error
 type disableLogger struct{}
 
 func (*disableLogger) Printf(_ string, _ ...interface{}) {
-	// fmt.Println(fmt.Sprintf(format, args...))
 }
 
 func (app *App) init() *App {
@@ -1092,7 +1091,7 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 
 	if catch := app.ErrorHandler(c, err); catch != nil {
 		log.Errorf("serverErrorHandler: failed to call ErrorHandler: %v", catch)
-		_ = c.SendStatus(StatusInternalServerError) //nolint:errcheck // It is fine to ignore the error here
+		_ = c.SendStatus(StatusInternalServerError) //nolint:errcheck,gosec // It is fine to ignore the error here
 		return
 	}
 }

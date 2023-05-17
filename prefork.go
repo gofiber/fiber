@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2/log"
+
 	"github.com/valyala/fasthttp/reuseport"
 )
 
@@ -146,7 +147,7 @@ func watchMaster() {
 		// and waits for it to exit
 		p, err := os.FindProcess(os.Getppid())
 		if err == nil {
-			_, _ = p.Wait() //nolint:errcheck // It is fine to ignore the error here
+			_, _ = p.Wait() //nolint:errcheck,gosec // It is fine to ignore the error here
 		}
 		os.Exit(1) //nolint:revive // Calling os.Exit is fine here in the prefork
 	}

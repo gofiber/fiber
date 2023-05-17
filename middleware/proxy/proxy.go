@@ -118,6 +118,8 @@ var lock sync.RWMutex
 //
 //nolint:stylecheck,revive // TODO: Rename to "WithTLSConfig" in v3
 func WithTlsConfig(tlsConfig *tls.Config) {
+	lock.Lock()
+	defer lock.Unlock()
 	client.TLSConfig = tlsConfig
 }
 

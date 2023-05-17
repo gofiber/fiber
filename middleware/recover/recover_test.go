@@ -1,6 +1,8 @@
+//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package recover //nolint:predeclared // TODO: Rename to some non-builtin
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -24,7 +26,7 @@ func Test_Recover(t *testing.T) {
 		panic("Hi, I'm an error!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/panic", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/panic", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusTeapot, resp.StatusCode)
 }
@@ -39,7 +41,7 @@ func Test_Recover_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
 }
@@ -55,7 +57,7 @@ func Test_Recover_EnableStackTrace(t *testing.T) {
 		panic("Hi, I'm an error!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/panic", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/panic", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusInternalServerError, resp.StatusCode)
 }

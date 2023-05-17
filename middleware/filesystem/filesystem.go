@@ -219,7 +219,6 @@ func New(config ...Config) fiber.Handler {
 	}
 }
 
-// SendFile ...
 func SendFile(c *fiber.Ctx, filesystem http.FileSystem, path string) error {
 	file, err := filesystem.Open(path)
 	if err != nil {

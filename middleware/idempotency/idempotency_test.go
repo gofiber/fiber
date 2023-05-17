@@ -44,7 +44,7 @@ func Test_Idempotency(t *testing.T) {
 				if !isIdempotent {
 					return errors.New("request with unsafe HTTP method should be idempotent if X-Idempotency-Key request header is set")
 				}
-			} else {
+			} else { //nolint:gocritic // False positive
 				// No request header
 				if isIdempotent {
 					return errors.New("request with unsafe HTTP method should not be idempotent if X-Idempotency-Key request header is not set")

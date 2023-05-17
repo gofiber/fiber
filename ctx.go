@@ -223,9 +223,9 @@ func (c *Ctx) Append(field string, values ...string) {
 		return
 	}
 	h := c.app.getString(c.fasthttp.Response.Header.Peek(field))
-	originalH := h
+	originalH := h //nolint:ifshort // False positive
 	for _, value := range values {
-		if len(h) == 0 {
+		if h == "" {
 			h = value
 		} else if h != value && !strings.HasPrefix(h, value+",") && !strings.HasSuffix(h, " "+value) &&
 			!strings.Contains(h, " "+value+",") {
@@ -726,10 +726,9 @@ func (c *Ctx) extractIPsFromHeader(header string) []string {
 
 	ipsFound := make([]string, 0, estimatedCount)
 
-	i := 0
+	var i int
 	j := -1
 
-iploop:
 	for {
 		var v4, v6 bool
 
@@ -758,7 +757,7 @@ iploop:
 		if c.app.config.EnableIPValidation {
 			// Skip validation if IP is clearly not IPv4/IPv6, otherwise validate without allocations
 			if (!v6 && !v4) || (v6 && !utils.IsIPv6(s)) || (v4 && !utils.IsIPv4(s)) {
-				continue iploop
+				continue
 			}
 		}
 
@@ -776,10 +775,9 @@ func (c *Ctx) extractIPFromHeader(header string) string {
 	if c.app.config.EnableIPValidation {
 		headerValue := c.Get(header)
 
-		i := 0
+		var i int
 		j := -1
 
-	iploop:
 		for {
 			var v4, v6 bool
 
@@ -807,7 +805,7 @@ func (c *Ctx) extractIPFromHeader(header string) string {
 
 			if c.app.config.EnableIPValidation {
 				if (!v6 && !v4) || (v6 && !utils.IsIPv6(s)) || (v4 && !utils.IsIPv4(s)) {
-					continue iploop
+					continue
 				}
 			}
 
@@ -901,11 +899,11 @@ func (c *Ctx) Links(link ...string) {
 	bb := bytebufferpool.Get()
 	for i := range link {
 		if i%2 == 0 {
-			_ = bb.WriteByte('<')          //nolint:errcheck // This will never fail
-			_, _ = bb.WriteString(link[i]) //nolint:errcheck // This will never fail
-			_ = bb.WriteByte('>')          //nolint:errcheck // This will never fail
+			_ = bb.WriteByte('<')          //nolint:errcheck,gosec // This will never fail
+			_, _ = bb.WriteString(link[i]) //nolint:errcheck,gosec // This will never fail
+			_ = bb.WriteByte('>')          //nolint:errcheck,gosec // This will never fail
 		} else {
-			_, _ = bb.WriteString(`; rel="` + link[i] + `",`) //nolint:errcheck // This will never fail
+			_, _ = bb.WriteString(`; rel="` + link[i] + `",`) //nolint:errcheck,gosec // This will never fail
 		}
 	}
 	c.setCanonical(HeaderLink, utils.TrimRight(c.app.getString(bb.Bytes()), ','))
@@ -1002,7 +1000,7 @@ func (c *Ctx) Params(key string, defaultValue ...string) string {
 		}
 		if c.route.Params[i] == key || (!c.app.config.CaseSensitive && utils.EqualFold(c.route.Params[i], key)) {
 			// in case values are not here
-			if len(c.values) <= i || len(c.values[i]) == 0 {
+			if len(c.values) <= i || c.values[i] == "" {
 				break
 			}
 			return c.values[i]
@@ -1466,10 +1464,10 @@ func (c *Ctx) RedirectToRoute(routeName string, params Map, status ...int) error
 
 		i := 1
 		for k, v := range queries {
-			_, _ = queryText.WriteString(k + "=" + v) //nolint:errcheck // This will never fail
+			_, _ = queryText.WriteString(k + "=" + v) //nolint:errcheck,gosec // This will never fail
 
 			if i != len(queries) {
-				_, _ = queryText.WriteString("&") //nolint:errcheck // This will never fail
+				_, _ = queryText.WriteString("&") //nolint:errcheck,gosec // This will never fail
 			}
 			i++
 		}
@@ -1672,7 +1670,7 @@ func (c *Ctx) SendFile(file string, compress ...bool) error {
 		c.fasthttp.Request.Header.Del(HeaderAcceptEncoding)
 	}
 	// copy of https://github.com/valyala/fasthttp/blob/7cc6f4c513f9e0d3686142e0a1a5aa2f76b3194a/fs.go#L103-L121 with small adjustments
-	if len(file) == 0 || !filepath.IsAbs(file) {
+	if file == "" || !filepath.IsAbs(file) {
 		// extend relative path to absolute path
 		hasTrailingSlash := len(file) > 0 && (file[len(file)-1] == '/' || file[len(file)-1] == '\\')
 

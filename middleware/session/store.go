@@ -43,19 +43,18 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 	loadData := true
 
 	id := s.getSessionID(c)
-
-	if len(id) == 0 {
+	if id == "" {
 		fresh = true
 		var err error
 		if id, err = s.responseCookies(c); err != nil {
 			return nil, err
 		}
-	}
 
-	// If no key exist, create new one
-	if len(id) == 0 {
-		loadData = false
-		id = s.KeyGenerator()
+		// If key still doesn't exist, create new one
+		if id == "" {
+			loadData = false
+			id = s.KeyGenerator()
+		}
 	}
 
 	// Create session object
@@ -68,8 +67,12 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 	// Fetch existing data
 	if loadData {
 		raw, err := s.Storage.Get(id)
+		if err != nil {
+			return nil, err
+		}
+
 		// Unmarshal if we found data
-		if raw != nil && err == nil {
+		if raw != nil {
 			mux.Lock()
 			defer mux.Unlock()
 			_, _ = sess.byteBuffer.Write(raw) //nolint:errcheck // This will never fail
@@ -78,8 +81,6 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 			if err != nil {
 				return nil, fmt.Errorf("failed to decode session data: %w", err)
 			}
-		} else if err != nil {
-			return nil, err
 		} else {
 			// both raw and err is nil, which means id is not in the storage
 			sess.fresh = true

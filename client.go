@@ -188,8 +188,7 @@ func (a *Agent) Parse() error {
 	uri := a.req.URI()
 
 	var isTLS bool
-	scheme := uri.Scheme()
-	if bytes.Equal(scheme, []byte(schemeHTTPS)) {
+	if scheme := uri.Scheme(); bytes.Equal(scheme, []byte(schemeHTTPS)) {
 		isTLS = true
 	} else if !bytes.Equal(scheme, []byte(schemeHTTP)) {
 		return fmt.Errorf("unsupported protocol %q. http and https are supported", scheme)
@@ -210,7 +209,7 @@ func (a *Agent) Parse() error {
 	return nil
 }
 
-/************************** Header Setting **************************/
+/* ************************* Header Setting ************************* */
 
 // Set sets the given 'key: value' header.
 //
@@ -376,9 +375,9 @@ func (a *Agent) ContentTypeBytes(contentType []byte) *Agent {
 	return a
 }
 
-/************************** End Header Setting **************************/
+/* ************************* End Header Setting ************************* */
 
-/************************** URI Setting **************************/
+/* ************************* URI Setting ************************* */
 
 // Host sets host for the URI.
 func (a *Agent) Host(host string) *Agent {
@@ -424,9 +423,9 @@ func (a *Agent) BasicAuthBytes(username, password []byte) *Agent {
 	return a
 }
 
-/************************** End URI Setting **************************/
+/* ************************* End URI Setting ************************* */
 
-/************************** Request Setting **************************/
+/* ************************* Request Setting ************************* */
 
 // BodyString sets request body.
 func (a *Agent) BodyString(bodyString string) *Agent {
@@ -618,9 +617,9 @@ func (a *Agent) MultipartForm(args *Args) *Agent {
 	return a
 }
 
-/************************** End Request Setting **************************/
+/* ************************* End Request Setting ************************* */
 
-/************************** Agent Setting **************************/
+/* ************************* Agent Setting ************************* */
 
 // Debug mode enables logging request and response detail
 func (a *Agent) Debug(w ...io.Writer) *Agent {
@@ -722,12 +721,12 @@ func (a *Agent) RetryIf(retryIf RetryIfFunc) *Agent {
 	return a
 }
 
-/************************** End Agent Setting **************************/
+/* ************************* End Agent Setting ************************* */
 
 // Bytes returns the status code, bytes body and errors of url.
 //
 // it's not safe to use Agent after calling [Agent.Bytes]
-func (a *Agent) Bytes() (int, []byte, []error) {
+func (a *Agent) Bytes() (int, []byte, []error) { //nolint:gocritic // No need for named returns as we simply wrap a.bytes()
 	defer a.release()
 	return a.bytes()
 }
@@ -785,18 +784,18 @@ func (a *Agent) bytes() (code int, body []byte, errs []error) { //nolint:nonamed
 
 func printDebugInfo(req *Request, resp *Response, w io.Writer) {
 	msg := fmt.Sprintf("Connected to %s(%s)\r\n\r\n", req.URI().Host(), resp.RemoteAddr())
-	_, _ = w.Write(utils.UnsafeBytes(msg)) //nolint:errcheck // This will never fail
-	_, _ = req.WriteTo(w)                  //nolint:errcheck // This will never fail
-	_, _ = resp.WriteTo(w)                 //nolint:errcheck // This will never fail
+	_, _ = w.Write(utils.UnsafeBytes(msg)) //nolint:errcheck,gosec // This will never fail
+	_, _ = req.WriteTo(w)                  //nolint:errcheck,gosec // This will never fail
+	_, _ = resp.WriteTo(w)                 //nolint:errcheck,gosec // This will never fail
 }
 
 // String returns the status code, string body and errors of url.
 //
 // it's not safe to use Agent after calling [Agent.String]
-func (a *Agent) String() (int, string, []error) {
+func (a *Agent) String() (int, string, []error) { //nolint:gocritic // No need for named returns as we simply wrap a.bytes()
 	defer a.release()
-	code, body, errs := a.bytes()
 	// TODO: There might be a data race here on body. Maybe use utils.CopyBytes on it?
+	code, body, errs := a.bytes()
 
 	return code, utils.UnsafeString(body), errs
 }
@@ -805,7 +804,7 @@ func (a *Agent) String() (int, string, []error) {
 // And bytes body will be unmarshalled to given v.
 //
 // it's not safe to use Agent after calling [Agent.Struct]
-func (a *Agent) Struct(v interface{}) (int, []byte, []error) {
+func (a *Agent) Struct(v interface{}) (int, []byte, []error) { //nolint:gocritic // No need for named returns as we simply wrap a.bytes()
 	defer a.release()
 
 	code, body, errs := a.bytes()

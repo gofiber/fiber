@@ -1,6 +1,8 @@
+//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package requestid
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -19,14 +21,14 @@ func Test_RequestID(t *testing.T) {
 		return c.SendString("Hello, World 👋!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 
 	reqid := resp.Header.Get(fiber.HeaderXRequestID)
 	utils.AssertEqual(t, 36, len(reqid))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Add(fiber.HeaderXRequestID, reqid)
 
 	resp, err = app.Test(req)
@@ -45,7 +47,7 @@ func Test_RequestID_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, resp.Header.Get(fiber.HeaderXRequestID), "")
 	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
@@ -73,7 +75,7 @@ func Test_RequestID_Locals(t *testing.T) {
 		return c.Next()
 	})
 
-	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, reqID, ctxVal)
 }

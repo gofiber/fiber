@@ -21,7 +21,6 @@ const (
 
 func appWithConfig(t *testing.T, c *fiber.Config) *fiber.App {
 	t.Helper()
-	t.Parallel()
 
 	var app *fiber.App
 	if c == nil {
@@ -65,18 +64,16 @@ func appWithConfig(t *testing.T, c *fiber.Config) *fiber.App {
 	})
 
 	{
-		{
-			handler := func(c *fiber.Ctx) error {
-				if !c.Locals(localsKeyTestValid).(bool) { //nolint:forcetypeassert // We store nothing else in the pool
-					return errors.New("handler called even though validation failed")
-				}
-
-				return nil
+		handler := func(c *fiber.Ctx) error {
+			if !c.Locals(localsKeyTestValid).(bool) { //nolint:forcetypeassert // We store nothing else in the pool
+				return errors.New("handler called even though validation failed")
 			}
 
-			app.Get("/", handler)
-			app.Post("/", handler)
+			return nil
 		}
+
+		app.Get("/", handler)
+		app.Post("/", handler)
 	}
 
 	return app
@@ -167,21 +164,25 @@ func Test_EarlyData(t *testing.T) {
 	}
 
 	t.Run("empty config", func(t *testing.T) {
+		t.Parallel()
 		app := appWithConfig(t, nil)
 		trustedRun(t, app)
 	})
 	t.Run("default config", func(t *testing.T) {
+		t.Parallel()
 		app := appWithConfig(t, &fiber.Config{})
 		trustedRun(t, app)
 	})
 
 	t.Run("config with EnableTrustedProxyCheck", func(t *testing.T) {
+		t.Parallel()
 		app := appWithConfig(t, &fiber.Config{
 			EnableTrustedProxyCheck: true,
 		})
 		untrustedRun(t, app)
 	})
 	t.Run("config with EnableTrustedProxyCheck and trusted TrustedProxies", func(t *testing.T) {
+		t.Parallel()
 		app := appWithConfig(t, &fiber.Config{
 			EnableTrustedProxyCheck: true,
 			TrustedProxies: []string{

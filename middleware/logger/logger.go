@@ -26,7 +26,7 @@ func New(config ...Config) fiber.Handler {
 	// Get timezone location
 	tz, err := time.LoadLocation(cfg.TimeZone)
 	if err != nil || tz == nil {
-		cfg.timeZoneLocation = time.Local
+		cfg.timeZoneLocation = time.Local //nolint:gosmopolitan // Default time zone
 	} else {
 		cfg.timeZoneLocation = tz
 	}
@@ -125,7 +125,7 @@ func New(config ...Config) fiber.Handler {
 		// Manually call error handler
 		if chainErr != nil {
 			if err := errHandler(c, chainErr); err != nil {
-				_ = c.SendStatus(fiber.StatusInternalServerError) //nolint:errcheck // TODO: Explain why we ignore the error here
+				_ = c.SendStatus(fiber.StatusInternalServerError) //nolint:errcheck,gosec // TODO: Explain why we ignore the error here
 			}
 		}
 
@@ -145,36 +145,36 @@ func New(config ...Config) fiber.Handler {
 				if chainErr != nil {
 					formatErr = colors.Red + " | " + chainErr.Error() + colors.Reset
 				}
-				_, _ = buf.WriteString( //nolint:errcheck // This will never fail
-					fmt.Sprintf("%s |%s %3d %s| %13v | %15s |%s %-7s %s| %-"+errPaddingStr+"s %s\n",
-						timestamp.Load().(string),
-						statusColor(c.Response().StatusCode(), colors), c.Response().StatusCode(), colors.Reset,
-						data.Stop.Sub(data.Start),
-						c.IP(),
-						methodColor(c.Method(), colors), c.Method(), colors.Reset,
-						c.Path(),
-						formatErr,
-					),
+				_, _ = fmt.Fprintf(
+					buf,
+					"%s |%s %3d %s| %13v | %15s |%s %-7s %s| %-"+errPaddingStr+"s %s\n",
+					timestamp.Load().(string),
+					statusColor(c.Response().StatusCode(), colors), c.Response().StatusCode(), colors.Reset,
+					data.Stop.Sub(data.Start),
+					c.IP(),
+					methodColor(c.Method(), colors), c.Method(), colors.Reset,
+					c.Path(),
+					formatErr,
 				)
 			} else {
 				if chainErr != nil {
 					formatErr = " | " + chainErr.Error()
 				}
-				_, _ = buf.WriteString( //nolint:errcheck // This will never fail
-					fmt.Sprintf("%s | %3d | %13v | %15s | %-7s | %-"+errPaddingStr+"s %s\n",
-						timestamp.Load().(string),
-						c.Response().StatusCode(),
-						data.Stop.Sub(data.Start),
-						c.IP(),
-						c.Method(),
-						c.Path(),
-						formatErr,
-					),
+				_, _ = fmt.Fprintf(
+					buf,
+					"%s | %3d | %13v | %15s | %-7s | %-"+errPaddingStr+"s %s\n",
+					timestamp.Load().(string),
+					c.Response().StatusCode(),
+					data.Stop.Sub(data.Start),
+					c.IP(),
+					c.Method(),
+					c.Path(),
+					formatErr,
 				)
 			}
 
 			// Write buffer to output
-			_, _ = cfg.Output.Write(buf.Bytes()) //nolint:errcheck // This will never fail
+			_, _ = cfg.Output.Write(buf.Bytes()) //nolint:errcheck,gosec // This will never fail
 
 			if cfg.Done != nil {
 				cfg.Done(c, buf.Bytes())
@@ -190,11 +190,12 @@ func New(config ...Config) fiber.Handler {
 		var err error
 		// Loop over template parts execute dynamic parts and add fixed parts to the buffer
 		for i, logFunc := range logFunChain {
-			if logFunc == nil {
-				_, _ = buf.Write(templateChain[i]) //nolint:errcheck // This will never fail
-			} else if templateChain[i] == nil {
+			switch {
+			case logFunc == nil:
+				_, _ = buf.Write(templateChain[i]) //nolint:errcheck,gosec // This will never fail
+			case templateChain[i] == nil:
 				_, err = logFunc(buf, c, data, "")
-			} else {
+			default:
 				_, err = logFunc(buf, c, data, utils.UnsafeString(templateChain[i]))
 			}
 			if err != nil {
@@ -204,7 +205,7 @@ func New(config ...Config) fiber.Handler {
 
 		// Also write errors to the buffer
 		if err != nil {
-			_, _ = buf.WriteString(err.Error()) //nolint:errcheck // This will never fail
+			_, _ = buf.WriteString(err.Error()) //nolint:errcheck,gosec // This will never fail
 		}
 		mu.Lock()
 		// Write buffer to output

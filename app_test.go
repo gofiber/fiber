@@ -36,7 +36,7 @@ func testEmptyHandler(_ *Ctx) error {
 func testStatus200(t *testing.T, app *App, url, method string) {
 	t.Helper()
 
-	req := httptest.NewRequest(method, url, nil)
+	req := httptest.NewRequest(method, url, http.NoBody)
 
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
@@ -66,39 +66,39 @@ func Test_App_MethodNotAllowed(t *testing.T) {
 
 	app.Options("/", testEmptyHandler)
 
-	resp, err := app.Test(httptest.NewRequest(MethodPost, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodPost, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 200, resp.StatusCode)
 	utils.AssertEqual(t, "", resp.Header.Get(HeaderAllow))
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 405, resp.StatusCode)
 	utils.AssertEqual(t, "POST, OPTIONS", resp.Header.Get(HeaderAllow))
 
-	resp, err = app.Test(httptest.NewRequest(MethodPatch, "/", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodPatch, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 405, resp.StatusCode)
 	utils.AssertEqual(t, "POST, OPTIONS", resp.Header.Get(HeaderAllow))
 
-	resp, err = app.Test(httptest.NewRequest(MethodPut, "/", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodPut, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 405, resp.StatusCode)
 	utils.AssertEqual(t, "POST, OPTIONS", resp.Header.Get(HeaderAllow))
 
 	app.Get("/", testEmptyHandler)
 
-	resp, err = app.Test(httptest.NewRequest(MethodTrace, "/", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodTrace, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 405, resp.StatusCode)
 	utils.AssertEqual(t, "GET, HEAD, POST, OPTIONS", resp.Header.Get(HeaderAllow))
 
-	resp, err = app.Test(httptest.NewRequest(MethodPatch, "/", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodPatch, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 405, resp.StatusCode)
 	utils.AssertEqual(t, "GET, HEAD, POST, OPTIONS", resp.Header.Get(HeaderAllow))
 
-	resp, err = app.Test(httptest.NewRequest(MethodPut, "/", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodPut, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 405, resp.StatusCode)
 	utils.AssertEqual(t, "GET, HEAD, POST, OPTIONS", resp.Header.Get(HeaderAllow))
@@ -114,7 +114,7 @@ func Test_App_Custom_Middleware_404_Should_Not_SetMethodNotAllowed(t *testing.T)
 
 	app.Post("/", testEmptyHandler)
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 404, resp.StatusCode)
 
@@ -124,7 +124,7 @@ func Test_App_Custom_Middleware_404_Should_Not_SetMethodNotAllowed(t *testing.T)
 
 	g.Post("/", testEmptyHandler)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/with-next", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/with-next", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 404, resp.StatusCode)
 }
@@ -140,7 +140,7 @@ func Test_App_ServerErrorHandler_SmallReadBuffer(t *testing.T) {
 		panic(errors.New("should never called"))
 	})
 
-	request := httptest.NewRequest(MethodGet, "/", nil)
+	request := httptest.NewRequest(MethodGet, "/", http.NoBody)
 	logHeaderSlice := make([]string, 5000)
 	request.Header.Set("Very-Long-Header", strings.Join(logHeaderSlice, "-"))
 	_, err := app.Test(request)
@@ -166,7 +166,7 @@ func Test_App_Errors(t *testing.T) {
 		return errors.New("hi, i'm an error")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 500, resp.StatusCode, "Status code")
 
@@ -192,7 +192,7 @@ func Test_App_ErrorHandler_Custom(t *testing.T) {
 		return errors.New("hi, i'm an error")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
@@ -222,7 +222,7 @@ func Test_App_ErrorHandler_HandlerStack(t *testing.T) {
 		return errors.New("0: GET error")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 500, resp.StatusCode, "Status code")
 
@@ -248,7 +248,7 @@ func Test_App_ErrorHandler_RouteStack(t *testing.T) {
 		return errors.New("0: GET error") // [1] return to USE
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 500, resp.StatusCode, "Status code")
 
@@ -299,7 +299,7 @@ func Test_App_Nested_Params(t *testing.T) {
 		return c.Status(200).Send([]byte("Good job"))
 	})
 
-	req := httptest.NewRequest(MethodGet, "/test/john/test/doe", nil)
+	req := httptest.NewRequest(MethodGet, "/test/john/test/doe", http.NoBody)
 	resp, err := app.Test(req)
 
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
@@ -326,15 +326,15 @@ func Test_App_Use_Params(t *testing.T) {
 		return nil
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/prefix/john", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/prefix/john", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/john/doe", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/john/doe", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
@@ -363,7 +363,7 @@ func Test_App_Use_UnescapedPath(t *testing.T) {
 		return nil
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/cR%C3%A9eR/%D8%A7%D8%AE%D8%AA%D8%A8%D8%A7%D8%B1", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/cR%C3%A9eR/%D8%A7%D8%AE%D8%AA%D8%A8%D8%A7%D8%B1", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
@@ -373,7 +373,7 @@ func Test_App_Use_UnescapedPath(t *testing.T) {
 	utils.AssertEqual(t, "اختبار", app.getString(body))
 
 	// with lowercase letters
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er/%D8%A7%D8%AE%D8%AA%D8%A8%D8%A7%D8%B1", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er/%D8%A7%D8%AE%D8%AA%D8%A8%D8%A7%D8%B1", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusNotFound, resp.StatusCode, "Status code")
 }
@@ -387,19 +387,19 @@ func Test_App_Use_CaseSensitive(t *testing.T) {
 	})
 
 	// wrong letters in the requested route -> 404
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/AbC", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/AbC", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusNotFound, resp.StatusCode, "Status code")
 
 	// right letters in the requrested route -> 200
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/abc", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/abc", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
 	// check the detected path when the case insensitive recognition is activated
 	app.config.CaseSensitive = false
 	// check the case sensitive feature
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/AbC", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/AbC", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
@@ -423,22 +423,22 @@ func Test_App_Not_Use_StrictRouting(t *testing.T) {
 	})
 
 	// wrong path in the requested route -> 404
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/abc/", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/abc/", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
 	// right path in the requrested route -> 200
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/abc", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/abc", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
 	// wrong path with group in the requested route -> 404
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
 	// right path with group in the requrested route -> 200
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo/", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo/", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
@@ -456,7 +456,7 @@ func Test_App_Use_MultiplePrefix(t *testing.T) {
 		return c.SendString(c.Path())
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/john", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/john", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
@@ -464,7 +464,7 @@ func Test_App_Use_MultiplePrefix(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "/john", string(body))
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/doe", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/doe", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
@@ -472,7 +472,7 @@ func Test_App_Use_MultiplePrefix(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "/doe", string(body))
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test/john", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test/john", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
@@ -480,7 +480,7 @@ func Test_App_Use_MultiplePrefix(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "/test/john", string(body))
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test/doe", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test/doe", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
@@ -503,22 +503,22 @@ func Test_App_Use_StrictRouting(t *testing.T) {
 	})
 
 	// wrong path in the requested route -> 404
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/abc/", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/abc/", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusNotFound, resp.StatusCode, "Status code")
 
 	// right path in the requrested route -> 200
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/abc", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/abc", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
 	// wrong path with group in the requested route -> 404
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusNotFound, resp.StatusCode, "Status code")
 
 	// right path with group in the requrested route -> 200
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo/", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo/", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
@@ -538,15 +538,15 @@ func Test_App_Add_Method_Test(t *testing.T) {
 
 	app.Add("JOHN", "/doe", testEmptyHandler)
 
-	resp, err := app.Test(httptest.NewRequest("JOHN", "/doe", nil))
+	resp, err := app.Test(httptest.NewRequest("JOHN", "/doe", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/doe", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/doe", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusMethodNotAllowed, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest("UNKNOWN", "/doe", nil))
+	resp, err = app.Test(httptest.NewRequest("UNKNOWN", "/doe", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusBadRequest, resp.StatusCode, "Status code")
 
@@ -564,7 +564,7 @@ func Test_App_GETOnly(t *testing.T) {
 		return c.SendString("Hello 👋!")
 	})
 
-	req := httptest.NewRequest(MethodPost, "/", nil)
+	req := httptest.NewRequest(MethodPost, "/", http.NoBody)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusMethodNotAllowed, resp.StatusCode, "Status code")
@@ -584,7 +584,7 @@ func Test_App_Use_Params_Group(t *testing.T) {
 		return nil
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/prefix/john/doe/test", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/prefix/john/doe/test", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 }
@@ -601,7 +601,7 @@ func Test_App_Chaining(t *testing.T) {
 	// check handler count for registered HEAD route
 	utils.AssertEqual(t, 5, len(app.stack[app.methodInt(MethodHead)][0].Handlers), "app.Test(req)")
 
-	req := httptest.NewRequest(MethodPost, "/john", nil)
+	req := httptest.NewRequest(MethodPost, "/john", http.NoBody)
 
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
@@ -611,7 +611,7 @@ func Test_App_Chaining(t *testing.T) {
 		return c.SendStatus(203)
 	})
 
-	req = httptest.NewRequest(MethodGet, "/test", nil)
+	req = httptest.NewRequest(MethodGet, "/test", http.NoBody)
 
 	resp, err = app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
@@ -623,24 +623,24 @@ func Test_App_Order(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) error {
-		_, err := c.Write([]byte("1"))
+		_, err := c.WriteString("1")
 		utils.AssertEqual(t, nil, err)
 		return c.Next()
 	})
 
 	app.All("/test", func(c *Ctx) error {
-		_, err := c.Write([]byte("2"))
+		_, err := c.WriteString("2")
 		utils.AssertEqual(t, nil, err)
 		return c.Next()
 	})
 
 	app.Use(func(c *Ctx) error {
-		_, err := c.Write([]byte("3"))
+		_, err := c.WriteString("3")
 		utils.AssertEqual(t, nil, err)
 		return nil
 	})
 
-	req := httptest.NewRequest(MethodGet, "/test", nil)
+	req := httptest.NewRequest(MethodGet, "/test", http.NoBody)
 
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
@@ -858,7 +858,7 @@ func Test_App_Static_Index_Default(t *testing.T) {
 	app.Static("", "./.github/")
 	app.Static("test", "", Static{Index: "index.html"})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
@@ -868,7 +868,7 @@ func Test_App_Static_Index_Default(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, strings.Contains(string(body), "Hello, World!"))
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/not-found", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/not-found", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 404, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
@@ -886,7 +886,7 @@ func Test_App_Static_Direct(t *testing.T) {
 
 	app.Static("/", "./.github")
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/index.html", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/index.html", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
@@ -896,7 +896,7 @@ func Test_App_Static_Direct(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, strings.Contains(string(body), "Hello, World!"))
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/testdata/testRoutes.json", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/testdata/testRoutes.json", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
@@ -915,7 +915,7 @@ func Test_App_Static_MaxAge(t *testing.T) {
 
 	app.Static("/", "./.github", Static{MaxAge: 100})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/index.html", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/index.html", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
@@ -935,11 +935,11 @@ func Test_App_Static_Custom_CacheControl(t *testing.T) {
 		return nil
 	}})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/index.html", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/index.html", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, "no-cache, no-store, must-revalidate", resp.Header.Get(HeaderCacheControl), "CacheControl Control")
 
-	respNormal, errNormal := app.Test(httptest.NewRequest(MethodGet, "/config.yml", nil))
+	respNormal, errNormal := app.Test(httptest.NewRequest(MethodGet, "/config.yml", http.NoBody))
 	utils.AssertEqual(t, nil, errNormal, "app.Test(req)")
 	utils.AssertEqual(t, "", respNormal.Header.Get(HeaderCacheControl), "CacheControl Control")
 }
@@ -953,7 +953,7 @@ func Test_App_Static_Download(t *testing.T) {
 
 	app.Static("/fiber.png", "./.github/testdata/fs/img/fiber.png", Static{Download: true})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/fiber.png", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/fiber.png", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
@@ -973,7 +973,7 @@ func Test_App_Static_Group(t *testing.T) {
 
 	grp.Static("/v2", "./.github/index.html")
 
-	req := httptest.NewRequest(MethodGet, "/v1/v2", nil)
+	req := httptest.NewRequest(MethodGet, "/v1/v2", http.NoBody)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
@@ -984,7 +984,7 @@ func Test_App_Static_Group(t *testing.T) {
 	grp = app.Group("/v2")
 	grp.Static("/v3*", "./.github/index.html")
 
-	req = httptest.NewRequest(MethodGet, "/v2/v3/john/doe", nil)
+	req = httptest.NewRequest(MethodGet, "/v2/v3/john/doe", http.NoBody)
 	resp, err = app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
@@ -998,7 +998,7 @@ func Test_App_Static_Wildcard(t *testing.T) {
 
 	app.Static("*", "./.github/index.html")
 
-	req := httptest.NewRequest(MethodGet, "/yesyes/john/doe", nil)
+	req := httptest.NewRequest(MethodGet, "/yesyes/john/doe", http.NoBody)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
@@ -1016,7 +1016,7 @@ func Test_App_Static_Prefix_Wildcard(t *testing.T) {
 
 	app.Static("/test/*", "./.github/index.html")
 
-	req := httptest.NewRequest(MethodGet, "/test/john/doe", nil)
+	req := httptest.NewRequest(MethodGet, "/test/john/doe", http.NoBody)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
@@ -1025,7 +1025,7 @@ func Test_App_Static_Prefix_Wildcard(t *testing.T) {
 
 	app.Static("/my/nameisjohn*", "./.github/index.html")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/my/nameisjohn/no/its/not", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/my/nameisjohn/no/its/not", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
@@ -1041,7 +1041,7 @@ func Test_App_Static_Prefix(t *testing.T) {
 	app := New()
 	app.Static("/john", "./.github")
 
-	req := httptest.NewRequest(MethodGet, "/john/index.html", nil)
+	req := httptest.NewRequest(MethodGet, "/john/index.html", http.NoBody)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
@@ -1050,7 +1050,7 @@ func Test_App_Static_Prefix(t *testing.T) {
 
 	app.Static("/prefix", "./.github/testdata")
 
-	req = httptest.NewRequest(MethodGet, "/prefix/index.html", nil)
+	req = httptest.NewRequest(MethodGet, "/prefix/index.html", http.NoBody)
 	resp, err = app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
@@ -1059,7 +1059,7 @@ func Test_App_Static_Prefix(t *testing.T) {
 
 	app.Static("/single", "./.github/testdata/testRoutes.json")
 
-	req = httptest.NewRequest(MethodGet, "/single", nil)
+	req = httptest.NewRequest(MethodGet, "/single", http.NoBody)
 	resp, err = app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
@@ -1072,7 +1072,7 @@ func Test_App_Static_Trailing_Slash(t *testing.T) {
 	app := New()
 	app.Static("/john", "./.github")
 
-	req := httptest.NewRequest(MethodGet, "/john/", nil)
+	req := httptest.NewRequest(MethodGet, "/john/", http.NoBody)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
@@ -1081,7 +1081,7 @@ func Test_App_Static_Trailing_Slash(t *testing.T) {
 
 	app.Static("/john_without_index", "./.github/testdata/fs/css")
 
-	req = httptest.NewRequest(MethodGet, "/john_without_index/", nil)
+	req = httptest.NewRequest(MethodGet, "/john_without_index/", http.NoBody)
 	resp, err = app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 404, resp.StatusCode, "Status code")
@@ -1090,14 +1090,14 @@ func Test_App_Static_Trailing_Slash(t *testing.T) {
 
 	app.Static("/john/", "./.github")
 
-	req = httptest.NewRequest(MethodGet, "/john/", nil)
+	req = httptest.NewRequest(MethodGet, "/john/", http.NoBody)
 	resp, err = app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
 	utils.AssertEqual(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 
-	req = httptest.NewRequest(MethodGet, "/john", nil)
+	req = httptest.NewRequest(MethodGet, "/john", http.NoBody)
 	resp, err = app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
@@ -1106,7 +1106,7 @@ func Test_App_Static_Trailing_Slash(t *testing.T) {
 
 	app.Static("/john_without_index/", "./.github/testdata/fs/css")
 
-	req = httptest.NewRequest(MethodGet, "/john_without_index/", nil)
+	req = httptest.NewRequest(MethodGet, "/john_without_index/", http.NoBody)
 	resp, err = app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 404, resp.StatusCode, "Status code")
@@ -1130,7 +1130,7 @@ func Test_App_Static_Next(t *testing.T) {
 
 	t.Run("app.Static is skipped: invoking Get handler", func(t *testing.T) {
 		t.Parallel()
-		req := httptest.NewRequest(MethodGet, "/", nil)
+		req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 		req.Header.Set("X-Custom-Header", "skip")
 		resp, err := app.Test(req)
 		utils.AssertEqual(t, nil, err)
@@ -1145,7 +1145,7 @@ func Test_App_Static_Next(t *testing.T) {
 
 	t.Run("app.Static is not skipped: serving index.html", func(t *testing.T) {
 		t.Parallel()
-		req := httptest.NewRequest(MethodGet, "/", nil)
+		req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 		req.Header.Set("X-Custom-Header", "don't skip")
 		resp, err := app.Test(req)
 		utils.AssertEqual(t, nil, err)
@@ -1177,7 +1177,7 @@ func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
 	})
 
 	// match get route
-	req := httptest.NewRequest(MethodGet, "/foobar", nil)
+	req := httptest.NewRequest(MethodGet, "/foobar", http.NoBody)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
@@ -1190,7 +1190,7 @@ func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
 	utils.AssertEqual(t, "FOO_BAR", string(body))
 
 	// match static route
-	req = httptest.NewRequest(MethodGet, "/tesbar", nil)
+	req = httptest.NewRequest(MethodGet, "/tesbar", http.NoBody)
 	resp, err = app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
@@ -1263,16 +1263,14 @@ func Test_App_Group(t *testing.T) {
 	api := grp.Group("/v1")
 	api.Post("/", dummyHandler)
 
-	resp, err := app.Test(httptest.NewRequest(MethodPost, "/test/v1/", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodPost, "/test/v1/", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
-	// utils.AssertEqual(t, "/test/v1", resp.Header.Get("Location"), "Location")
 
 	api.Get("/users", dummyHandler)
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test/v1/UsErS", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test/v1/UsErS", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
-	// utils.AssertEqual(t, "/test/v1/users", resp.Header.Get("Location"), "Location")
 }
 
 func Test_App_Route(t *testing.T) {
@@ -1316,11 +1314,11 @@ func Test_App_Route(t *testing.T) {
 		grp.Get("/users", dummyHandler)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodPost, "/test/v1/", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodPost, "/test/v1/", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test/v1/UsErS", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test/v1/UsErS", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 }
@@ -1358,7 +1356,7 @@ func Test_App_Next_Method(t *testing.T) {
 		return err
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 404, resp.StatusCode, "Status code")
 }
@@ -1413,7 +1411,7 @@ func Test_Test_Timeout(t *testing.T) {
 
 	app.Get("/", testEmptyHandler)
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil), -1)
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody), -1)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
@@ -1422,7 +1420,7 @@ func Test_Test_Timeout(t *testing.T) {
 		return nil
 	})
 
-	_, err = app.Test(httptest.NewRequest(MethodGet, "/timeout", nil), 20)
+	_, err = app.Test(httptest.NewRequest(MethodGet, "/timeout", http.NoBody), 20)
 	utils.AssertEqual(t, true, err != nil, "app.Test(req)")
 }
 
@@ -1627,7 +1625,7 @@ func Test_App_Error_In_Fasthttp_Server(t *testing.T) {
 	}
 	app.server.GetOnly = true
 
-	resp, err := app.Test(httptest.NewRequest(MethodPost, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodPost, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 500, resp.StatusCode)
 }
@@ -1638,13 +1636,13 @@ func Test_App_New_Test_Parallel(t *testing.T) {
 	t.Run("Test_App_New_Test_Parallel_1", func(t *testing.T) {
 		t.Parallel()
 		app := New(Config{Immutable: true})
-		_, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+		_, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
 		utils.AssertEqual(t, nil, err)
 	})
 	t.Run("Test_App_New_Test_Parallel_2", func(t *testing.T) {
 		t.Parallel()
 		app := New(Config{Immutable: true})
-		_, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+		_, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
 		utils.AssertEqual(t, nil, err)
 	})
 }
@@ -1805,6 +1803,7 @@ func TestApp_GetRoutes(t *testing.T) {
 }
 
 func Test_Middleware_Route_Naming_With_Use(t *testing.T) {
+	t.Parallel()
 	named := "named"
 	app := New()
 

@@ -18,6 +18,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net"
+	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -82,6 +83,7 @@ func Benchmark_Ctx_Accepts(b *testing.B) {
 	expectedResults := []string{".xml", "xml", "application/xml"}
 
 	for i := 0; i < len(acceptValues); i++ {
+		i := i
 		b.Run(fmt.Sprintf("run-%#v", acceptValues[i]), func(bb *testing.B) {
 			var res string
 			bb.ReportAllocs()
@@ -378,6 +380,7 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 	for _, testObject := range tests {
 		tCase := testObject // Duplicate object to ensure it will be unique across all runs
 		t.Run(tCase.name, func(t *testing.T) {
+			t.Parallel()
 			app := New()
 			c := app.AcquireCtx(&fasthttp.RequestCtx{})
 			defer app.ReleaseCtx(c)
@@ -475,17 +478,15 @@ func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
 				)
 
 				// deflate
-				{
-					writer = zlib.NewWriter(&buf)
-					if _, err = writer.Write(data); err != nil {
-						return nil, encodingErr
-					}
-					if err = writer.Flush(); err != nil {
-						return nil, encodingErr
-					}
-					if err = writer.Close(); err != nil {
-						return nil, encodingErr
-					}
+				writer = zlib.NewWriter(&buf)
+				if _, err = writer.Write(data); err != nil {
+					return nil, encodingErr
+				}
+				if err = writer.Flush(); err != nil {
+					return nil, encodingErr
+				}
+				if err = writer.Close(); err != nil {
+					return nil, encodingErr
 				}
 
 				data = make([]byte, buf.Len())
@@ -493,17 +494,15 @@ func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
 				buf.Reset()
 
 				// gzip
-				{
-					writer = gzip.NewWriter(&buf)
-					if _, err = writer.Write(data); err != nil {
-						return nil, encodingErr
-					}
-					if err = writer.Flush(); err != nil {
-						return nil, encodingErr
-					}
-					if err = writer.Close(); err != nil {
-						return nil, encodingErr
-					}
+				writer = gzip.NewWriter(&buf)
+				if _, err = writer.Write(data); err != nil {
+					return nil, encodingErr
+				}
+				if err = writer.Flush(); err != nil {
+					return nil, encodingErr
+				}
+				if err = writer.Close(); err != nil {
+					return nil, encodingErr
 				}
 
 				return buf.Bytes(), nil
@@ -512,6 +511,7 @@ func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
 	}
 
 	for _, ct := range compressionTests {
+		ct := ct
 		b.Run(ct.contentEncoding, func(b *testing.B) {
 			app := New()
 			const input = "john=doe"
@@ -540,7 +540,7 @@ func Test_Ctx_BodyParser(t *testing.T) {
 	defer app.ReleaseCtx(c)
 
 	type Demo struct {
-		Name string `json:"name" xml:"name" form:"name" query:"name"`
+		Name string `form:"name" json:"name" query:"name" xml:"name"`
 	}
 
 	{
@@ -626,20 +626,21 @@ func Test_Ctx_ParamParser(t *testing.T) {
 		utils.AssertEqual(t, uint(222), d.RoleID)
 		return nil
 	})
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/test1/111/role/222", nil))
+	_, err := app.Test(httptest.NewRequest(MethodGet, "/test1/111/role/222", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 
-	_, err = app.Test(httptest.NewRequest(MethodGet, "/test2/111/role/222", nil))
+	_, err = app.Test(httptest.NewRequest(MethodGet, "/test2/111/role/222", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 }
 
 // go test -run Test_Ctx_BodyParser_WithSetParserDecoder
+//
+//nolint:paralleltest // TODO: Must be run sequentially due to using SetParserDecoder which must not be called concurrently.
 func Test_Ctx_BodyParser_WithSetParserDecoder(t *testing.T) {
-	t.Parallel()
 	type CustomTime time.Time
 
 	timeConverter := func(value string) reflect.Value {
-		if v, err := time.Parse("2006-01-02", value); err == nil {
+		if v, err := time.Parse(time.DateOnly, value); err == nil {
 			return reflect.ValueOf(v)
 		}
 		return reflect.Value{}
@@ -704,7 +705,7 @@ func Benchmark_Ctx_BodyParser_JSON(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		_ = c.BodyParser(d) //nolint:errcheck // It is fine to ignore the error here as we check it once further below
+		_ = c.BodyParser(d) //nolint:errcheck,gosec // It is fine to ignore the error here as we check it once further below
 	}
 	utils.AssertEqual(b, nil, c.BodyParser(d))
 	utils.AssertEqual(b, "john", d.Name)
@@ -728,7 +729,7 @@ func Benchmark_Ctx_BodyParser_XML(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		_ = c.BodyParser(d) //nolint:errcheck // It is fine to ignore the error here as we check it once further below
+		_ = c.BodyParser(d) //nolint:errcheck,gosec // It is fine to ignore the error here as we check it once further below
 	}
 	utils.AssertEqual(b, nil, c.BodyParser(d))
 	utils.AssertEqual(b, "john", d.Name)
@@ -752,7 +753,7 @@ func Benchmark_Ctx_BodyParser_Form(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		_ = c.BodyParser(d) //nolint:errcheck // It is fine to ignore the error here as we check it once further below
+		_ = c.BodyParser(d) //nolint:errcheck,gosec // It is fine to ignore the error here as we check it once further below
 	}
 	utils.AssertEqual(b, nil, c.BodyParser(d))
 	utils.AssertEqual(b, "john", d.Name)
@@ -777,7 +778,7 @@ func Benchmark_Ctx_BodyParser_MultipartForm(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		_ = c.BodyParser(d) //nolint:errcheck // It is fine to ignore the error here as we check it once further below
+		_ = c.BodyParser(d) //nolint:errcheck,gosec // It is fine to ignore the error here as we check it once further below
 	}
 	utils.AssertEqual(b, nil, c.BodyParser(d))
 	utils.AssertEqual(b, "john", d.Name)
@@ -795,15 +796,20 @@ func Test_Ctx_Context(t *testing.T) {
 
 // go test -run Test_Ctx_UserContext
 func Test_Ctx_UserContext(t *testing.T) {
+	t.Parallel()
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	t.Cleanup(func() {
+		app.ReleaseCtx(c)
+	})
 
 	t.Run("Nil_Context", func(t *testing.T) {
+		t.Parallel()
 		ctx := c.UserContext()
 		utils.AssertEqual(t, ctx, context.Background())
 	})
 	t.Run("ValueContext", func(t *testing.T) {
+		t.Parallel()
 		testKey := struct{}{}
 		testValue := "Test Value"
 		ctx := context.WithValue(context.Background(), testKey, testValue)
@@ -848,8 +854,11 @@ func Test_Ctx_UserContext_Multiple_Requests(t *testing.T) {
 
 	// Consecutive Requests
 	for i := 1; i <= 10; i++ {
+		i := i
 		t.Run(fmt.Sprintf("request_%d", i), func(t *testing.T) {
-			resp, err := app.Test(httptest.NewRequest(MethodGet, fmt.Sprintf("/?input=%d", i), nil))
+			t.Parallel()
+
+			resp, err := app.Test(httptest.NewRequest(MethodGet, fmt.Sprintf("/?input=%d", i), http.NoBody))
 
 			utils.AssertEqual(t, nil, err, "Unexpected error from response")
 			utils.AssertEqual(t, StatusOK, resp.StatusCode, "context.Context returned from c.UserContext() is reused")
@@ -1415,7 +1424,7 @@ func Test_Ctx_PortInHandler(t *testing.T) {
 		return c.SendString(c.Port())
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/port", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/port", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
@@ -1766,7 +1775,7 @@ func Test_Ctx_Locals(t *testing.T) {
 		utils.AssertEqual(t, "doe", c.Locals("john"))
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
@@ -1817,7 +1826,7 @@ func Test_Ctx_ClientHelloInfo(t *testing.T) {
 	})
 
 	// Test without TLS handler
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/ServerName", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/ServerName", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
@@ -1835,21 +1844,21 @@ func Test_Ctx_ClientHelloInfo(t *testing.T) {
 	}}
 
 	// Test ServerName
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/ServerName", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/ServerName", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	body, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, []byte("example.golang"), body)
 
 	// Test SignatureSchemes
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/SignatureSchemes", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/SignatureSchemes", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	body, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "["+strconv.Itoa(pssWithSHA256)+"]", string(body))
 
 	// Test SupportedVersions
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/SupportedVersions", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/SupportedVersions", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	body, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
@@ -1963,23 +1972,23 @@ func Test_Ctx_Params(t *testing.T) {
 		utils.AssertEqual(t, "first", c.Params("Id"))
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2/im/a/cookie", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2/im/a/cookie", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test3/1111/blafasel/2222", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test3/1111/blafasel/2222", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test4", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test4", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test5/first/second", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test5/first/second", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
@@ -1997,11 +2006,11 @@ func Test_Ctx_Params_Case_Sensitive(t *testing.T) {
 		utils.AssertEqual(t, "second", c.Params("Id"))
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2/first/second", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2/first/second", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
@@ -2027,19 +2036,19 @@ func Test_Ctx_AllParams(t *testing.T) {
 		return nil
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2/im/a/cookie", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2/im/a/cookie", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test3/1111/blafasel/2222", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test3/1111/blafasel/2222", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test4", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test4", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
@@ -2153,7 +2162,7 @@ func Test_Ctx_Path(t *testing.T) {
 		utils.AssertEqual(t, "/اختبار/", c.Path("/%D8%A7%D8%AE%D8%AA%D8%A8%D8%A7%D8%B1/"))
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/specialChars/cr%C3%A9er", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/specialChars/cr%C3%A9er", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
@@ -2420,7 +2429,7 @@ func Test_Ctx_Route(t *testing.T) {
 		utils.AssertEqual(t, "/test", c.Route().Path)
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
@@ -2440,7 +2449,7 @@ func Test_Ctx_RouteNormalized(t *testing.T) {
 		utils.AssertEqual(t, "/test", c.Route().Path)
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "//test", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "//test", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusNotFound, resp.StatusCode, "Status code")
 }
@@ -2678,7 +2687,7 @@ func Test_Ctx_SendFile_404(t *testing.T) {
 		return err
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, StatusNotFound, resp.StatusCode)
 }
@@ -2714,13 +2723,16 @@ func Test_Ctx_SendFile_Immutable(t *testing.T) {
 	}
 
 	for _, endpoint := range endpointsForTest {
+		endpoint := endpoint
 		t.Run(endpoint, func(t *testing.T) {
+			t.Parallel()
+
 			// 1st try
-			resp, err := app.Test(httptest.NewRequest(MethodGet, endpoint, nil))
+			resp, err := app.Test(httptest.NewRequest(MethodGet, endpoint, http.NoBody))
 			utils.AssertEqual(t, nil, err)
 			utils.AssertEqual(t, StatusOK, resp.StatusCode)
 			// 2nd try
-			resp, err = app.Test(httptest.NewRequest(MethodGet, endpoint, nil))
+			resp, err = app.Test(httptest.NewRequest(MethodGet, endpoint, http.NoBody))
 			utils.AssertEqual(t, nil, err)
 			utils.AssertEqual(t, StatusOK, resp.StatusCode)
 		})
@@ -2738,9 +2750,9 @@ func Test_Ctx_SendFile_RestoreOriginalURL(t *testing.T) {
 		return err
 	})
 
-	_, err1 := app.Test(httptest.NewRequest(MethodGet, "/?test=true", nil))
+	_, err1 := app.Test(httptest.NewRequest(MethodGet, "/?test=true", http.NoBody))
 	// second request required to confirm with zero allocation
-	_, err2 := app.Test(httptest.NewRequest(MethodGet, "/?test=true", nil))
+	_, err2 := app.Test(httptest.NewRequest(MethodGet, "/?test=true", http.NoBody))
 
 	utils.AssertEqual(t, nil, err1)
 	utils.AssertEqual(t, nil, err2)
@@ -2960,7 +2972,7 @@ func Test_Ctx_Next(t *testing.T) {
 		c.Set("X-Next-Result", "Works")
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/test", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/test", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, "Works", resp.Header.Get("X-Next-Result"))
@@ -2975,7 +2987,7 @@ func Test_Ctx_Next_Error(t *testing.T) {
 		return ErrNotFound
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/test", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/test", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusNotFound, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, "Works", resp.Header.Get("X-Next-Result"))
@@ -3139,7 +3151,7 @@ func Test_Ctx_Render(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 
 	buf := bytebufferpool.Get()
-	_, _ = buf.WriteString("overwrite") //nolint:errcheck // This will never fail
+	_, _ = buf.WriteString("overwrite") //nolint:errcheck,gosec // This will never fail
 	defer bytebufferpool.Put(buf)
 
 	utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
@@ -3164,7 +3176,7 @@ func Test_Ctx_RenderWithoutLocals(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 
 	buf := bytebufferpool.Get()
-	_, _ = buf.WriteString("overwrite") //nolint:errcheck // This will never fail
+	_, _ = buf.WriteString("overwrite") //nolint:errcheck,gosec // This will never fail
 	defer bytebufferpool.Put(buf)
 
 	utils.AssertEqual(t, "<h1><no value></h1>", string(c.Response().Body()))
@@ -3183,7 +3195,7 @@ func Test_Ctx_RenderWithLocals(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 
 	buf := bytebufferpool.Get()
-	_, _ = buf.WriteString("overwrite") //nolint:errcheck // This will never fail
+	_, _ = buf.WriteString("overwrite") //nolint:errcheck,gosec // This will never fail
 	defer bytebufferpool.Put(buf)
 
 	utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
@@ -3204,7 +3216,7 @@ func Test_Ctx_RenderWithBind(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 
 	buf := bytebufferpool.Get()
-	_, _ = buf.WriteString("overwrite") //nolint:errcheck // This will never fail
+	_, _ = buf.WriteString("overwrite") //nolint:errcheck,gosec // This will never fail
 	defer bytebufferpool.Put(buf)
 
 	utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
@@ -3226,7 +3238,7 @@ func Test_Ctx_RenderWithOverwrittenBind(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 
 	buf := bytebufferpool.Get()
-	_, _ = buf.WriteString("overwrite") //nolint:errcheck // This will never fail
+	_, _ = buf.WriteString("overwrite") //nolint:errcheck,gosec // This will never fail
 	defer bytebufferpool.Put(buf)
 
 	utils.AssertEqual(t, "<h1>Hello from Fiber!</h1>", string(c.Response().Body()))
@@ -3422,7 +3434,7 @@ func Test_Ctx_RestartRouting(t *testing.T) {
 		}
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, 3, calls, "Number of calls")
@@ -3447,7 +3459,7 @@ func Test_Ctx_RestartRoutingWithChangedPath(t *testing.T) {
 		return nil
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/old", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/old", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, executedOldHandler, "Executed old handler")
@@ -3470,7 +3482,7 @@ func Test_Ctx_RestartRoutingWithChangedPathAndCatchAll(t *testing.T) {
 		return ErrNotFound
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/old", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/old", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
@@ -3681,7 +3693,7 @@ func Test_Ctx_Render_Go_Template(t *testing.T) {
 		utils.AssertEqual(t, nil, err)
 	}()
 
-	_, err = file.Write([]byte("template"))
+	_, err = file.WriteString("template")
 	utils.AssertEqual(t, nil, err)
 
 	err = file.Close()
@@ -3902,9 +3914,9 @@ func Test_Ctx_Write(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
-	_, err := c.Write([]byte("Hello, "))
+	_, err := c.Write([]byte("Hello, ")) //nolint:gocritic // We explicitly want to test the Write func
 	utils.AssertEqual(t, nil, err)
-	_, err = c.Write([]byte("World!"))
+	_, err = c.Write([]byte("World!")) //nolint:gocritic // We explicitly want to test the Write func
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "Hello, World!", string(c.Response().Body()))
 }
@@ -4178,12 +4190,13 @@ func Test_Ctx_QueryParser_WithoutSplitting(t *testing.T) {
 }
 
 // go test -run Test_Ctx_QueryParser_WithSetParserDecoder -v
+//
+//nolint:paralleltest // TODO: Must be run sequentially due to using SetParserDecoder which must not be called concurrently.
 func Test_Ctx_QueryParser_WithSetParserDecoder(t *testing.T) {
-	t.Parallel()
 	type NonRFCTime time.Time
 
 	nonRFCConverter := func(value string) reflect.Value {
-		if v, err := time.Parse("2006-01-02", value); err == nil {
+		if v, err := time.Parse(time.DateOnly, value); err == nil {
 			return reflect.ValueOf(v)
 		}
 		return reflect.Value{}
@@ -4215,14 +4228,14 @@ func Test_Ctx_QueryParser_WithSetParserDecoder(t *testing.T) {
 	c.Request().Header.SetContentType("")
 	q := new(NonRFCTimeInput)
 
-	c.Request().URI().SetQueryString("date=2021-04-10&title=CustomDateTest&Body=October")
+	c.Request().URI().SetQueryString("date=2021-04-10&title=CustomDateTest&Body=HelloWorld")
 	utils.AssertEqual(t, nil, c.QueryParser(q))
 	utils.AssertEqual(t, "CustomDateTest", q.Title)
 	date := fmt.Sprintf("%v", q.Date)
 	utils.AssertEqual(t, "{0 63753609600 <nil>}", date)
-	utils.AssertEqual(t, "October", q.Body)
+	utils.AssertEqual(t, "HelloWorld", q.Body)
 
-	c.Request().URI().SetQueryString("date=2021-04-10&title&Body=October")
+	c.Request().URI().SetQueryString("date=2021-04-10&title&Body=HelloWorld")
 	q = &NonRFCTimeInput{
 		Title: "Existing title",
 		Body:  "Existing Body",
@@ -4433,12 +4446,13 @@ func Test_Ctx_ReqHeaderParser_WithoutSplitting(t *testing.T) {
 }
 
 // go test -run Test_Ctx_ReqHeaderParser_WithSetParserDecoder -v
+//
+//nolint:paralleltest // TODO: Must be run sequentially due to using SetParserDecoder which must not be called concurrently.
 func Test_Ctx_ReqHeaderParser_WithSetParserDecoder(t *testing.T) {
-	t.Parallel()
 	type NonRFCTime time.Time
 
 	nonRFCConverter := func(value string) reflect.Value {
-		if v, err := time.Parse("2006-01-02", value); err == nil {
+		if v, err := time.Parse(time.DateOnly, value); err == nil {
 			return reflect.ValueOf(v)
 		}
 		return reflect.Value{}
@@ -4472,13 +4486,13 @@ func Test_Ctx_ReqHeaderParser_WithSetParserDecoder(t *testing.T) {
 
 	c.Request().Header.Add("Date", "2021-04-10")
 	c.Request().Header.Add("Title", "CustomDateTest")
-	c.Request().Header.Add("Body", "October")
+	c.Request().Header.Add("Body", "HelloWorld")
 
 	utils.AssertEqual(t, nil, c.ReqHeaderParser(r))
 	utils.AssertEqual(t, "CustomDateTest", r.Title)
 	date := fmt.Sprintf("%v", r.Date)
 	utils.AssertEqual(t, "{0 63753609600 <nil>}", date)
-	utils.AssertEqual(t, "October", r.Body)
+	utils.AssertEqual(t, "HelloWorld", r.Body)
 
 	c.Request().Header.Add("Title", "")
 	r = &NonRFCTimeInput{
@@ -4666,7 +4680,6 @@ func Benchmark_Ctx_QueryParser_Comma(b *testing.B) {
 	}
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
-	// c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
 	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football")
 	q := new(Query)
 	b.ReportAllocs()
@@ -4731,10 +4744,10 @@ func Test_Ctx_BodyStreamWriter(t *testing.T) {
 	if err := resp.Read(br); err != nil {
 		t.Fatalf("Error when reading response: %s", err)
 	}
-	body := string(resp.Body())
-	expectedBody := "body writer line 1\nbody writer line 2\n"
-	if body != expectedBody {
-		t.Fatalf("unexpected body: %q. Expecting %q", body, expectedBody)
+
+	got, want := string(resp.Body()), "body writer line 1\nbody writer line 2\n"
+	if got != want {
+		t.Fatalf("unexpected body: %q. Expecting %q", got, want)
 	}
 }
 
@@ -4780,8 +4793,6 @@ func TestCtx_ParamsInt(t *testing.T) {
 	// For the user id I will use the number 1111, so I should be able to get the number
 	// 1111 from the Ctx
 	app.Get("/test/:user", func(c *Ctx) error {
-		// utils.AssertEqual(t, "john", c.Params("user"))
-
 		num, err := c.ParamsInt("user")
 
 		// Check the number matches
@@ -4800,8 +4811,6 @@ func TestCtx_ParamsInt(t *testing.T) {
 	// In this test case, there will be a bad request where the expected number is NOT
 	// a number in the path
 	app.Get("/testnoint/:user", func(c *Ctx) error {
-		// utils.AssertEqual(t, "john", c.Params("user"))
-
 		num, err := c.ParamsInt("user")
 
 		// Check the number matches
@@ -4820,8 +4829,6 @@ func TestCtx_ParamsInt(t *testing.T) {
 	// For the user id I will use the number 2222, so I should be able to get the number
 	// 2222 from the Ctx even when the default value is specified
 	app.Get("/testignoredefault/:user", func(c *Ctx) error {
-		// utils.AssertEqual(t, "john", c.Params("user"))
-
 		num, err := c.ParamsInt("user", 1111)
 
 		// Check the number matches
@@ -4840,8 +4847,6 @@ func TestCtx_ParamsInt(t *testing.T) {
 	// In this test case, there will be a bad request where the expected number is NOT
 	// a number in the path, default value of 1111 should be used instead
 	app.Get("/testdefault/:user", func(c *Ctx) error {
-		// utils.AssertEqual(t, "john", c.Params("user"))
-
 		num, err := c.ParamsInt("user", 1111)
 
 		// Check the number matches
@@ -4857,16 +4862,16 @@ func TestCtx_ParamsInt(t *testing.T) {
 		return nil
 	})
 
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/test/1111", nil))
+	_, err := app.Test(httptest.NewRequest(MethodGet, "/test/1111", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 
-	_, err = app.Test(httptest.NewRequest(MethodGet, "/testnoint/xd", nil))
+	_, err = app.Test(httptest.NewRequest(MethodGet, "/testnoint/xd", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 
-	_, err = app.Test(httptest.NewRequest(MethodGet, "/testignoredefault/2222", nil))
+	_, err = app.Test(httptest.NewRequest(MethodGet, "/testignoredefault/2222", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 
-	_, err = app.Test(httptest.NewRequest(MethodGet, "/testdefault/xd", nil))
+	_, err = app.Test(httptest.NewRequest(MethodGet, "/testdefault/xd", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 }
 
@@ -5051,9 +5056,9 @@ func Test_Ctx_RepeatParserWithSameStruct(t *testing.T) {
 	defer app.ReleaseCtx(c)
 
 	type Request struct {
-		QueryParam  string `query:"query_param"`
-		HeaderParam string `reqHeader:"header_param"`
-		BodyParam   string `json:"body_param" xml:"body_param" form:"body_param"`
+		QueryParam  string `                                    query:"query_param"`
+		HeaderParam string `                                                        reqHeader:"header_param"`
+		BodyParam   string `form:"body_param" json:"body_param"                                              xml:"body_param"`
 	}
 
 	r := new(Request)
@@ -5068,7 +5073,7 @@ func Test_Ctx_RepeatParserWithSameStruct(t *testing.T) {
 
 	var gzipJSON bytes.Buffer
 	w := gzip.NewWriter(&gzipJSON)
-	_, _ = w.Write([]byte(`{"body_param":"body_param"}`)) //nolint:errcheck // This will never fail
+	_, _ = w.Write([]byte(`{"body_param":"body_param"}`)) //nolint:errcheck,gosec // This will never fail
 	err := w.Close()
 	utils.AssertEqual(t, nil, err)
 	c.Request().Header.SetContentType(MIMEApplicationJSON)

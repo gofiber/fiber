@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
@@ -41,7 +42,7 @@ func Test_Route_Match_SameLength(t *testing.T) {
 		return c.SendString(c.Params("param"))
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/:param", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/:param", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
@@ -50,7 +51,7 @@ func Test_Route_Match_SameLength(t *testing.T) {
 	utils.AssertEqual(t, ":param", app.getString(body))
 
 	// with param
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
@@ -68,7 +69,7 @@ func Test_Route_Match_Star(t *testing.T) {
 		return c.SendString(c.Params("*"))
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/*", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/*", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
@@ -77,7 +78,7 @@ func Test_Route_Match_Star(t *testing.T) {
 	utils.AssertEqual(t, "*", app.getString(body))
 
 	// with param
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
@@ -116,7 +117,7 @@ func Test_Route_Match_Root(t *testing.T) {
 		return c.SendString("root")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
@@ -136,7 +137,7 @@ func Test_Route_Match_Parser(t *testing.T) {
 	app.Get("/Foobar/*", func(c *Ctx) error {
 		return c.SendString(c.Params("*"))
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo/bar", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo/bar", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
@@ -145,7 +146,7 @@ func Test_Route_Match_Parser(t *testing.T) {
 	utils.AssertEqual(t, "bar", app.getString(body))
 
 	// with star
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/Foobar/test", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/Foobar/test", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
@@ -163,7 +164,7 @@ func Test_Route_Match_Middleware(t *testing.T) {
 		return c.SendString(c.Params("*"))
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo/*", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo/*", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
@@ -172,7 +173,7 @@ func Test_Route_Match_Middleware(t *testing.T) {
 	utils.AssertEqual(t, "*", app.getString(body))
 
 	// with param
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo/bar/fasel", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo/bar/fasel", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
@@ -190,7 +191,7 @@ func Test_Route_Match_UnescapedPath(t *testing.T) {
 		return c.SendString("test")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
@@ -198,13 +199,13 @@ func Test_Route_Match_UnescapedPath(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, "test", app.getString(body))
 	// without special chars
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/créer", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/créer", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
 	// check deactivated behavior
 	app.config.UnescapePath = false
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusNotFound, resp.StatusCode, "Status code")
 }
@@ -228,7 +229,7 @@ func Test_Route_Match_WithEscapeChar(t *testing.T) {
 	})
 
 	// check static route
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/some/resource/name:customVerb", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/some/resource/name:customVerb", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
@@ -237,7 +238,7 @@ func Test_Route_Match_WithEscapeChar(t *testing.T) {
 	utils.AssertEqual(t, "static", app.getString(body))
 
 	// check group route
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/v2/:firstVerb/:customVerb", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/v2/:firstVerb/:customVerb", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
@@ -246,7 +247,7 @@ func Test_Route_Match_WithEscapeChar(t *testing.T) {
 	utils.AssertEqual(t, "group", app.getString(body))
 
 	// check param route
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/v3/awesome/name:customVerb", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/v3/awesome/name:customVerb", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
@@ -264,7 +265,7 @@ func Test_Route_Match_Middleware_HasPrefix(t *testing.T) {
 		return c.SendString("middleware")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo/bar", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo/bar", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
@@ -282,7 +283,7 @@ func Test_Route_Match_Middleware_Root(t *testing.T) {
 		return c.SendString("middleware")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/everything", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/everything", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
@@ -360,11 +361,11 @@ func Test_Route_Static_Root(t *testing.T) {
 		Browse: true,
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/style.css", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/style.css", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
@@ -375,11 +376,11 @@ func Test_Route_Static_Root(t *testing.T) {
 	app = New()
 	app.Static("/", dir)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 404, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/style.css", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/style.css", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
@@ -397,15 +398,15 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 		Browse: true,
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/static", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/static", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/style.css", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/style.css", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
@@ -418,15 +419,15 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 		Browse: true,
 	})
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/style.css", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/style.css", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
@@ -437,15 +438,15 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 	app = New()
 	app.Static("/static", dir)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 404, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 404, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/style.css", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/style.css", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
@@ -456,15 +457,15 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 	app = New()
 	app.Static("/static/", dir)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 404, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 404, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/style.css", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/style.css", http.NoBody))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
@@ -474,6 +475,7 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 }
 
 func Test_Router_NotFound(t *testing.T) {
+	t.Parallel()
 	app := New()
 	app.Use(func(c *Ctx) error {
 		return c.Next()
@@ -491,6 +493,7 @@ func Test_Router_NotFound(t *testing.T) {
 }
 
 func Test_Router_NotFound_HTML_Inject(t *testing.T) {
+	t.Parallel()
 	app := New()
 	app.Use(func(c *Ctx) error {
 		return c.Next()
@@ -507,9 +510,11 @@ func Test_Router_NotFound_HTML_Inject(t *testing.T) {
 	utils.AssertEqual(t, "Cannot DELETE /does/not/exist&lt;script&gt;alert(&#39;foo&#39;);&lt;/script&gt;", string(c.Response.Body()))
 }
 
+/*
 //////////////////////////////////////////////
 ///////////////// BENCHMARKS /////////////////
 //////////////////////////////////////////////
+*/
 
 func registerDummyRoutes(app *App) {
 	h := func(c *Ctx) error {

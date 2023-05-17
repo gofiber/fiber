@@ -57,7 +57,7 @@ func (h *indexedHeap) pushInternal(entry heapEntry) {
 
 // Returns index to track entry
 func (h *indexedHeap) put(key string, exp uint64, bytes uint) int {
-	idx := 0
+	var idx int
 	if len(h.entries) < h.maxidx {
 		// Steal index from previously removed entry
 		// capacity > size is guaranteed

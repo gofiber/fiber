@@ -6,28 +6,17 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"os"
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
 )
 
+//nolint:paralleltest // Test is using t.Setenv which can't be run in parallel
 func TestEnvVarStructWithExportVarsExcludeVars(t *testing.T) {
-	err := os.Setenv("testKey", "testEnvValue")
-	utils.AssertEqual(t, nil, err)
-	err = os.Setenv("anotherEnvKey", "anotherEnvVal")
-	utils.AssertEqual(t, nil, err)
-	err = os.Setenv("excludeKey", "excludeEnvValue")
-	utils.AssertEqual(t, nil, err)
-	defer func() {
-		err := os.Unsetenv("testKey")
-		utils.AssertEqual(t, nil, err)
-		err = os.Unsetenv("anotherEnvKey")
-		utils.AssertEqual(t, nil, err)
-		err = os.Unsetenv("excludeKey")
-		utils.AssertEqual(t, nil, err)
-	}()
+	t.Setenv("testKey", "testEnvValue")
+	t.Setenv("anotherEnvKey", "anotherEnvVal")
+	t.Setenv("excludeKey", "excludeEnvValue")
 
 	vars := newEnvVar(Config{
 		ExportVars:  map[string]string{"testKey": "", "testDefaultKey": "testDefaultVal"},
@@ -40,13 +29,9 @@ func TestEnvVarStructWithExportVarsExcludeVars(t *testing.T) {
 	utils.AssertEqual(t, vars.Vars["anotherEnvKey"], "")
 }
 
+//nolint:paralleltest // Test is using t.Setenv which can't be run in parallel
 func TestEnvVarHandler(t *testing.T) {
-	err := os.Setenv("testKey", "testVal")
-	utils.AssertEqual(t, nil, err)
-	defer func() {
-		err := os.Unsetenv("testKey")
-		utils.AssertEqual(t, nil, err)
-	}()
+	t.Setenv("testKey", "testVal")
 
 	expectedEnvVarResponse, err := json.Marshal(
 		struct {
@@ -61,7 +46,7 @@ func TestEnvVarHandler(t *testing.T) {
 		ExportVars: map[string]string{"testKey": ""},
 	}))
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://localhost/envvars", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://localhost/envvars", http.NoBody)
 	utils.AssertEqual(t, nil, err)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err)
@@ -73,6 +58,8 @@ func TestEnvVarHandler(t *testing.T) {
 }
 
 func TestEnvVarHandlerNotMatched(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 	app.Use("/envvars", New(Config{
 		ExportVars: map[string]string{"testKey": ""},
@@ -83,7 +70,7 @@ func TestEnvVarHandlerNotMatched(t *testing.T) {
 		return nil
 	})
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://localhost/another-path", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://localhost/another-path", http.NoBody)
 	utils.AssertEqual(t, nil, err)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err)
@@ -94,18 +81,14 @@ func TestEnvVarHandlerNotMatched(t *testing.T) {
 	utils.AssertEqual(t, []byte("OK"), respBody)
 }
 
+//nolint:paralleltest // Test is using t.Setenv which can't be run in parallel
 func TestEnvVarHandlerDefaultConfig(t *testing.T) {
-	err := os.Setenv("testEnvKey", "testEnvVal")
-	utils.AssertEqual(t, nil, err)
-	defer func() {
-		err := os.Unsetenv("testEnvKey")
-		utils.AssertEqual(t, nil, err)
-	}()
+	t.Setenv("testEnvKey", "testEnvVal")
 
 	app := fiber.New()
 	app.Use("/envvars", New())
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://localhost/envvars", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://localhost/envvars", http.NoBody)
 	utils.AssertEqual(t, nil, err)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err)
@@ -120,31 +103,32 @@ func TestEnvVarHandlerDefaultConfig(t *testing.T) {
 }
 
 func TestEnvVarHandlerMethod(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 	app.Use("/envvars", New())
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodPost, "http://localhost/envvars", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodPost, "http://localhost/envvars", http.NoBody)
 	utils.AssertEqual(t, nil, err)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusMethodNotAllowed, resp.StatusCode)
 }
 
+//nolint:paralleltest // Test is using t.Setenv which can't be run in parallel
 func TestEnvVarHandlerSpecialValue(t *testing.T) {
-	testEnvKey := "testEnvKey"
-	fakeBase64 := "testBase64:TQ=="
-	err := os.Setenv(testEnvKey, fakeBase64)
-	utils.AssertEqual(t, nil, err)
-	defer func() {
-		err := os.Unsetenv(testEnvKey)
-		utils.AssertEqual(t, nil, err)
-	}()
+	const (
+		testEnvKey = "testEnvKey"
+		fakeBase64 = "testBase64:TQ=="
+	)
+
+	t.Setenv(testEnvKey, fakeBase64)
 
 	app := fiber.New()
 	app.Use("/envvars", New())
 	app.Use("/envvars/export", New(Config{ExportVars: map[string]string{testEnvKey: ""}}))
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://localhost/envvars", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://localhost/envvars", http.NoBody)
 	utils.AssertEqual(t, nil, err)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err)
@@ -157,7 +141,7 @@ func TestEnvVarHandlerSpecialValue(t *testing.T) {
 	val := envVars.Vars[testEnvKey]
 	utils.AssertEqual(t, fakeBase64, val)
 
-	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://localhost/envvars/export", nil)
+	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://localhost/envvars/export", http.NoBody)
 	utils.AssertEqual(t, nil, err)
 	resp, err = app.Test(req)
 	utils.AssertEqual(t, nil, err)

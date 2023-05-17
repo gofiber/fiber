@@ -20,6 +20,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/gofiber/fiber/v2/log"
+
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
 	"github.com/mattn/go-runewidth"
@@ -98,7 +99,7 @@ func (app *App) Listen(addr string) error {
 //	app.ListenTLS(":8080", "./cert.pem", "./cert.key")
 func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	// Check for valid cert/key path
-	if len(certFile) == 0 || len(keyFile) == 0 {
+	if certFile == "" || keyFile == "" {
 		return errors.New("tls: provide a valid cert or key path")
 	}
 
@@ -166,7 +167,7 @@ func (app *App) ListenTLSWithCertificate(addr string, cert tls.Certificate) erro
 //	app.ListenMutualTLS(":8080", "./cert.pem", "./cert.key", "./client.pem")
 func (app *App) ListenMutualTLS(addr, certFile, keyFile, clientCertFile string) error {
 	// Check for valid cert/key path
-	if len(certFile) == 0 || len(keyFile) == 0 {
+	if certFile == "" || keyFile == "" {
 		return errors.New("tls: provide a valid cert or key path")
 	}
 
@@ -254,7 +255,7 @@ func (app *App) prepareListenData(addr string, isTLS bool) ListenData { //revive
 }
 
 // startupMessage prepares the startup message with the handler number, port, address and other information
-func (app *App) startupMessage(addr string, isTLS bool, pids string) { //nolint: revive // Accepting a bool param named isTLS if fine here
+func (app *App) startupMessage(addr string, isTLS bool, pids string) { //nolint:revive // Accepting a bool param named isTLS if fine here
 	// ignore child processes
 	if IsChild() {
 		return
@@ -423,6 +424,7 @@ func (app *App) startupMessage(addr string, isTLS bool, pids string) { //nolint:
 	splitMainLogo := strings.Split(mainLogo, "\n")
 	splitChildPidsLogo := strings.Split(childPidsLogo, "\n")
 
+	//nolint:ifshort // False positive
 	mainLen := len(splitMainLogo)
 	childLen := len(splitChildPidsLogo)
 
@@ -497,5 +499,5 @@ func (app *App) printRoutesMessage() {
 		_, _ = fmt.Fprintf(w, "%s%s\t%s| %s%s\t%s| %s%s\t%s| %s%s%s\n", colors.Blue, route.method, colors.White, colors.Green, route.path, colors.White, colors.Cyan, route.name, colors.White, colors.Yellow, route.handlers, colors.Reset)
 	}
 
-	_ = w.Flush() //nolint:errcheck // It is fine to ignore the error here
+	_ = w.Flush() //nolint:errcheck,gosec // It is fine to ignore the error here
 }

@@ -8,7 +8,7 @@ import (
 // but without check for IPv6 case and without returning net.IP slice, whereby IsIPv4 makes no allocations.
 func IsIPv4(s string) bool {
 	for i := 0; i < net.IPv4len; i++ {
-		if len(s) == 0 {
+		if s == "" {
 			return false
 		}
 
@@ -19,9 +19,9 @@ func IsIPv4(s string) bool {
 			s = s[1:]
 		}
 
-		n, ci := 0, 0
+		var n, ci int
 
-		for ci = 0; ci < len(s) && '0' <= s[ci] && s[ci] <= '9'; ci++ {
+		for ; ci < len(s) && '0' <= s[ci] && s[ci] <= '9'; ci++ {
 			n = n*10 + int(s[ci]-'0')
 			if n >= 0xFF {
 				return false
@@ -35,7 +35,7 @@ func IsIPv4(s string) bool {
 		s = s[ci:]
 	}
 
-	return len(s) == 0
+	return s == ""
 }
 
 // IsIPv6 works the same way as net.ParseIP,
@@ -48,7 +48,7 @@ func IsIPv6(s string) bool {
 		ellipsis = 0
 		s = s[2:]
 		// Might be only ellipsis
-		if len(s) == 0 {
+		if s == "" {
 			return true
 		}
 	}
@@ -57,9 +57,10 @@ func IsIPv6(s string) bool {
 	i := 0
 	for i < net.IPv6len {
 		// Hex number.
-		n, ci := 0, 0
+		var n, ci int
 
-		for ci = 0; ci < len(s); ci++ {
+		for ; ci < len(s); ci++ {
+			//nolint:gocritic // This code is more readable without a switch statement
 			if '0' <= s[ci] && s[ci] <= '9' {
 				n *= 16
 				n += int(s[ci] - '0')
@@ -102,7 +103,7 @@ func IsIPv6(s string) bool {
 
 		// Stop at end of string.
 		s = s[ci:]
-		if len(s) == 0 {
+		if s == "" {
 			break
 		}
 
@@ -119,14 +120,14 @@ func IsIPv6(s string) bool {
 			}
 			ellipsis = i
 			s = s[1:]
-			if len(s) == 0 { // can be at end
+			if s == "" { // can be at end
 				break
 			}
 		}
 	}
 
 	// Must have used entire string.
-	if len(s) != 0 {
+	if s != "" {
 		return false
 	}
 

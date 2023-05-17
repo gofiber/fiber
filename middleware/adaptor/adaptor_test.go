@@ -1,4 +1,4 @@
-//nolint:bodyclose, contextcheck, revive // Much easier to just ignore memory leaks in tests
+//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package adaptor
 
 import (
@@ -14,10 +14,13 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
+
 	"github.com/valyala/fasthttp"
 )
 
 func Test_HTTPHandler(t *testing.T) {
+	t.Parallel()
+
 	expectedMethod := fiber.MethodPost
 	expectedProto := "HTTP/1.1"
 	expectedProtoMajor := 1
@@ -93,7 +96,7 @@ func Test_HTTPHandler(t *testing.T) {
 		w.Header().Set("Header1", "value1")
 		w.Header().Set("Header2", "value2")
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "request body is %q", body)
+		_, _ = fmt.Fprintf(w, "request body is %q", body)
 	}
 	fiberH := HTTPHandlerFunc(http.HandlerFunc(nethttpH))
 	fiberH = setFiberContextValueMiddleware(fiberH, expectedContextKey, expectedContextValue)
@@ -104,7 +107,7 @@ func Test_HTTPHandler(t *testing.T) {
 	req.Header.SetMethod(expectedMethod)
 	req.SetRequestURI(expectedRequestURI)
 	req.Header.SetHost(expectedHost)
-	req.BodyWriter().Write([]byte(expectedBody)) //nolint:errcheck, gosec // not needed
+	_, _ = req.BodyWriter().Write([]byte(expectedBody)) //nolint:errcheck,gosec // not needed
 	for k, v := range expectedHeader {
 		req.Header.Set(k, v)
 	}
@@ -155,6 +158,8 @@ var (
 )
 
 func Test_HTTPMiddleware(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name       string
 		url        string
@@ -188,8 +193,8 @@ func Test_HTTPMiddleware(t *testing.T) {
 				return
 			}
 			r = r.WithContext(context.WithValue(r.Context(), TestContextKey, "okay"))
-			r = r.WithContext(context.WithValue(r.Context(), TestContextSecondKey, "not_okay"))
-			r = r.WithContext(context.WithValue(r.Context(), TestContextSecondKey, "okay"))
+			r = r.WithContext(context.WithValue(r.Context(), TestContextSecondKey, "not_okay")) //nolint:contextcheck // False positive
+			r = r.WithContext(context.WithValue(r.Context(), TestContextSecondKey, "okay"))     //nolint:contextcheck // False positive
 
 			next.ServeHTTP(w, r)
 		})
@@ -218,7 +223,7 @@ func Test_HTTPMiddleware(t *testing.T) {
 	})
 
 	for _, tt := range tests {
-		req, err := http.NewRequestWithContext(context.Background(), tt.method, tt.url, nil)
+		req, err := http.NewRequestWithContext(context.Background(), tt.method, tt.url, http.NoBody)
 		if err != nil {
 			t.Fatalf(`%s: %s`, t.Name(), err)
 		}
@@ -231,7 +236,7 @@ func Test_HTTPMiddleware(t *testing.T) {
 		}
 	}
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodPost, "/", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodPost, "/", http.NoBody)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
 	}
@@ -248,22 +253,26 @@ func Test_HTTPMiddleware(t *testing.T) {
 }
 
 func Test_FiberHandler(t *testing.T) {
+	t.Parallel()
 	testFiberToHandlerFunc(t, false)
 }
 
 func Test_FiberApp(t *testing.T) {
+	t.Parallel()
 	testFiberToHandlerFunc(t, false, fiber.New())
 }
 
 func Test_FiberHandlerDefaultPort(t *testing.T) {
+	t.Parallel()
 	testFiberToHandlerFunc(t, true)
 }
 
 func Test_FiberAppDefaultPort(t *testing.T) {
+	t.Parallel()
 	testFiberToHandlerFunc(t, true, fiber.New())
 }
 
-func testFiberToHandlerFunc(t *testing.T, checkDefaultPort bool, app ...*fiber.App) {
+func testFiberToHandlerFunc(t *testing.T, checkDefaultPort bool, app ...*fiber.App) { //nolint:revive // Accepting a bool param is fine here
 	t.Helper()
 
 	expectedMethod := fiber.MethodPost
@@ -323,8 +332,11 @@ func testFiberToHandlerFunc(t *testing.T, checkDefaultPort bool, app ...*fiber.A
 		c.Set("Header1", "value1")
 		c.Set("Header2", "value2")
 		c.Status(fiber.StatusBadRequest)
-		_, err := c.Write([]byte(fmt.Sprintf("request body is %q", body)))
-		return err
+
+		if _, err := fmt.Fprintf(c, "request body is %q", body); err != nil {
+			return fmt.Errorf("failed to write: %w", err)
+		}
+		return nil
 	}
 
 	var handlerFunc http.HandlerFunc
@@ -379,6 +391,8 @@ func setFiberContextValueMiddleware(next fiber.Handler, key string, value interf
 }
 
 func Test_FiberHandler_RequestNilBody(t *testing.T) {
+	t.Parallel()
+
 	expectedMethod := fiber.MethodGet
 	expectedRequestURI := "/foo/bar"
 	expectedContentLength := 0
@@ -397,7 +411,7 @@ func Test_FiberHandler_RequestNilBody(t *testing.T) {
 			t.Fatalf("unexpected contentLength %d. Expecting %d", contentLength, expectedContentLength)
 		}
 
-		_, err := c.Write([]byte("request body is nil"))
+		_, err := c.WriteString("request body is nil")
 		return err
 	}
 	nethttpH := FiberHandler(fiberH)

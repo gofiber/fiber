@@ -1,6 +1,8 @@
+//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package helmet
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -9,6 +11,8 @@ import (
 )
 
 func Test_Default(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Use(New())
@@ -17,7 +21,7 @@ func Test_Default(t *testing.T) {
 		return c.SendString("Hello, World!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "0", resp.Header.Get(fiber.HeaderXXSSProtection))
 	utils.AssertEqual(t, "nosniff", resp.Header.Get(fiber.HeaderXContentTypeOptions))
@@ -35,6 +39,8 @@ func Test_Default(t *testing.T) {
 }
 
 func Test_CustomValues_AllHeaders(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -61,7 +67,7 @@ func Test_CustomValues_AllHeaders(t *testing.T) {
 		return c.SendString("Hello, World!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	// Assertions for custom header values
 	utils.AssertEqual(t, "0", resp.Header.Get(fiber.HeaderXXSSProtection))
@@ -80,6 +86,8 @@ func Test_CustomValues_AllHeaders(t *testing.T) {
 }
 
 func Test_RealWorldValues_AllHeaders(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -106,7 +114,7 @@ func Test_RealWorldValues_AllHeaders(t *testing.T) {
 		return c.SendString("Hello, World!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	// Assertions for real-world header values
 	utils.AssertEqual(t, "0", resp.Header.Get(fiber.HeaderXXSSProtection))
@@ -125,6 +133,8 @@ func Test_RealWorldValues_AllHeaders(t *testing.T) {
 }
 
 func Test_Next(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -141,16 +151,18 @@ func Test_Next(t *testing.T) {
 		return c.SendString("Skipped!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "no-referrer", resp.Header.Get(fiber.HeaderReferrerPolicy))
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/next", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/next", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "", resp.Header.Get(fiber.HeaderReferrerPolicy))
 }
 
 func Test_ContentSecurityPolicy(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -161,12 +173,14 @@ func Test_ContentSecurityPolicy(t *testing.T) {
 		return c.SendString("Hello, World!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "default-src 'none'", resp.Header.Get(fiber.HeaderContentSecurityPolicy))
 }
 
 func Test_ContentSecurityPolicyReportOnly(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -178,13 +192,15 @@ func Test_ContentSecurityPolicyReportOnly(t *testing.T) {
 		return c.SendString("Hello, World!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "default-src 'none'", resp.Header.Get(fiber.HeaderContentSecurityPolicyReportOnly))
 	utils.AssertEqual(t, "", resp.Header.Get(fiber.HeaderContentSecurityPolicy))
 }
 
 func Test_PermissionsPolicy(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -195,7 +211,7 @@ func Test_PermissionsPolicy(t *testing.T) {
 		return c.SendString("Hello, World!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "microphone=()", resp.Header.Get(fiber.HeaderPermissionsPolicy))
 }

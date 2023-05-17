@@ -9,7 +9,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"io"
-	"log"
+	"log" //nolint:depguard // stdlib log used for testing only
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,6 +38,8 @@ func Test_App_Listen(t *testing.T) {
 }
 
 // go test -run Test_App_Listen_Prefork
+//
+//nolint:paralleltest // TODO: Must be run sequentially due to global testPreforkMaster var.
 func Test_App_Listen_Prefork(t *testing.T) {
 	testPreforkMaster = true
 
@@ -65,6 +67,8 @@ func Test_App_ListenTLS(t *testing.T) {
 }
 
 // go test -run Test_App_ListenTLS_Prefork
+//
+//nolint:paralleltest // TODO: Must be run sequentially due to global testPreforkMaster var.
 func Test_App_ListenTLS_Prefork(t *testing.T) {
 	testPreforkMaster = true
 
@@ -95,6 +99,8 @@ func Test_App_ListenMutualTLS(t *testing.T) {
 }
 
 // go test -run Test_App_ListenMutualTLS_Prefork
+//
+//nolint:paralleltest // TODO: Must be run sequentially due to global testPreforkMaster var.
 func Test_App_ListenMutualTLS_Prefork(t *testing.T) {
 	testPreforkMaster = true
 
@@ -168,6 +174,8 @@ func Test_App_ListenTLSWithCertificate(t *testing.T) {
 }
 
 // go test -run Test_App_ListenTLSWithCertificate_Prefork
+//
+//nolint:paralleltest // TODO: Must be run sequentially due to global testPreforkMaster var.
 func Test_App_ListenTLSWithCertificate_Prefork(t *testing.T) {
 	testPreforkMaster = true
 
@@ -214,6 +222,8 @@ func Test_App_ListenMutualTLSWithCertificate(t *testing.T) {
 }
 
 // go test -run Test_App_ListenMutualTLS_Prefork
+//
+//nolint:paralleltest // TODO: Must be run sequentially due to global testPreforkMaster var.
 func Test_App_ListenMutualTLSWithCertificate_Prefork(t *testing.T) {
 	testPreforkMaster = true
 
@@ -241,16 +251,18 @@ func captureOutput(f func()) string {
 	if err != nil {
 		panic(err)
 	}
+
 	stdout := os.Stdout
 	stderr := os.Stderr
 	defer func() {
-		os.Stdout = stdout
-		os.Stderr = stderr
+		os.Stdout = stdout //nolint:reassign // TODO: Don't reassign
+		os.Stderr = stderr //nolint:reassign // TODO: Don't reassign
 		log.SetOutput(os.Stderr)
 	}()
-	os.Stdout = writer
-	os.Stderr = writer
+	os.Stdout = writer //nolint:reassign // TODO: Don't reassign
+	os.Stderr = writer //nolint:reassign // TODO: Don't reassign
 	log.SetOutput(writer)
+
 	out := make(chan string)
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
@@ -272,6 +284,7 @@ func captureOutput(f func()) string {
 	return <-out
 }
 
+//nolint:paralleltest // TODO: Must be run sequentially due to the use of captureOutput func which overwrites os.Std globals
 func Test_App_Master_Process_Show_Startup_Message(t *testing.T) {
 	startupMessage := captureOutput(func() {
 		New(Config{Prefork: true}).
@@ -284,6 +297,7 @@ func Test_App_Master_Process_Show_Startup_Message(t *testing.T) {
 	utils.AssertEqual(t, true, strings.Contains(startupMessage, "Prefork ........ Enabled"))
 }
 
+//nolint:paralleltest // TODO: Must be run sequentially due to the use of captureOutput func which overwrites os.Std globals
 func Test_App_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
 	app := New(Config{Prefork: true, AppName: "Test App v1.0.1"})
 	startupMessage := captureOutput(func() {
@@ -293,6 +307,7 @@ func Test_App_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
 	utils.AssertEqual(t, true, strings.Contains(startupMessage, app.Config().AppName))
 }
 
+//nolint:paralleltest // TODO: Must be run sequentially due to the use of captureOutput func which overwrites os.Std globals
 func Test_App_Master_Process_Show_Startup_MessageWithAppNameNonAscii(t *testing.T) {
 	appName := "Serveur de vérification des données"
 	app := New(Config{Prefork: true, AppName: appName})
@@ -302,8 +317,8 @@ func Test_App_Master_Process_Show_Startup_MessageWithAppNameNonAscii(t *testing.
 	utils.AssertEqual(t, true, strings.Contains(startupMessage, "│        Serveur de vérification des données        │"))
 }
 
+//nolint:paralleltest // TODO: Must be run sequentially due to the use of captureOutput func which overwrites os.Std globals
 func Test_App_print_Route(t *testing.T) {
-	t.Parallel()
 	app := New(Config{EnablePrintRoutes: true})
 	app.Get("/", emptyHandler).Name("routeName")
 	printRoutesMessage := captureOutput(func() {
@@ -315,8 +330,8 @@ func Test_App_print_Route(t *testing.T) {
 	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "routeName"))
 }
 
+//nolint:paralleltest // TODO: Must be run sequentially due to the use of captureOutput func which overwrites os.Std globals
 func Test_App_print_Route_with_group(t *testing.T) {
-	t.Parallel()
 	app := New(Config{EnablePrintRoutes: true})
 	app.Get("/", emptyHandler)
 

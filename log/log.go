@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
+	"log" //nolint:depguard // stdlib log is only allowed through this package
 	"os"
 )
 

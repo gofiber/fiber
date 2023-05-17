@@ -1,7 +1,9 @@
+//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package encryptcookie
 
 import (
 	"encoding/base64"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -93,7 +95,7 @@ func Test_Encrypt_Cookie_Next(t *testing.T) {
 		return nil
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "SomeThing", resp.Cookies()[0].Value)
 }

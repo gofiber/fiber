@@ -4,7 +4,7 @@
 package utils
 
 import (
-	"unsafe"
+	"unsafe" //nolint:depguard // unsafe is used for better performance
 )
 
 // UnsafeString returns a string pointer without allocation

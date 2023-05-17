@@ -58,7 +58,7 @@ func New(config ...Config) fiber.Handler {
 
 	// Start routine to update statistics
 	once.Do(func() {
-		p, _ := process.NewProcess(int32(os.Getpid())) //nolint:errcheck // TODO: Handle error
+		p, _ := process.NewProcess(int32(os.Getpid())) //nolint:errcheck,gosec // TODO: Handle error
 
 		updateStatistics(p)
 
@@ -93,7 +93,7 @@ func New(config ...Config) fiber.Handler {
 			data.OS.TotalRAM, _ = monitOSTotalRAM.Load().(uint64)
 			data.OS.LoadAvg, _ = monitOSLoadAvg.Load().(float64)
 			data.OS.Conns, _ = monitOSConns.Load().(int)
-			mutex.Unlock()
+			defer mutex.Unlock()
 			return c.Status(fiber.StatusOK).JSON(data)
 		}
 		c.Set(fiber.HeaderContentType, fiber.MIMETextHTMLCharsetUTF8)

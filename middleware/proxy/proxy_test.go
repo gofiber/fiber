@@ -1,3 +1,4 @@
+//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package proxy
 
 import (
@@ -5,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -74,7 +76,7 @@ func Test_Proxy_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
 }
@@ -87,7 +89,7 @@ func Test_Proxy(t *testing.T) {
 		return c.SendStatus(fiber.StatusTeapot)
 	})
 
-	resp, err := target.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), 2000)
+	resp, err := target.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody), 2000)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusTeapot, resp.StatusCode)
 
@@ -95,7 +97,7 @@ func Test_Proxy(t *testing.T) {
 
 	app.Use(Balancer(Config{Servers: []string{addr}}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = addr
 	resp, err = app.Test(req)
 	utils.AssertEqual(t, nil, err)
@@ -184,7 +186,7 @@ func Test_Proxy_Forward(t *testing.T) {
 
 	app.Use(Forward("http://" + addr))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 
@@ -244,7 +246,7 @@ func Test_Proxy_Modify_Response(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 
@@ -271,7 +273,7 @@ func Test_Proxy_Modify_Request(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 
@@ -295,7 +297,7 @@ func Test_Proxy_Timeout_Slow_Server(t *testing.T) {
 		Timeout: 3 * time.Second,
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), 5000)
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody), 5000)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 
@@ -319,7 +321,7 @@ func Test_Proxy_With_Timeout(t *testing.T) {
 		Timeout: 100 * time.Millisecond,
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), 2000)
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody), 2000)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusInternalServerError, resp.StatusCode)
 
@@ -341,7 +343,7 @@ func Test_Proxy_Buffer_Size_Response(t *testing.T) {
 	app := fiber.New()
 	app.Use(Balancer(Config{Servers: []string{addr}}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusInternalServerError, resp.StatusCode)
 
@@ -351,7 +353,7 @@ func Test_Proxy_Buffer_Size_Response(t *testing.T) {
 		ReadBufferSize: 1024 * 8,
 	}))
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 }
@@ -367,7 +369,7 @@ func Test_Proxy_Do_RestoreOriginalURL(t *testing.T) {
 	app.Get("/test", func(c *fiber.Ctx) error {
 		return Do(c, "http://"+addr)
 	})
-	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
+	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
 	utils.AssertEqual(t, nil, err1)
 	utils.AssertEqual(t, "/test", resp.Request.URL.String())
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
@@ -384,7 +386,7 @@ func Test_Proxy_Do_WithRealURL(t *testing.T) {
 		return Do(c, "https://www.google.com")
 	})
 
-	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
+	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
 	utils.AssertEqual(t, nil, err1)
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 	utils.AssertEqual(t, "/test", resp.Request.URL.String())
@@ -401,7 +403,7 @@ func Test_Proxy_Do_WithRedirect(t *testing.T) {
 		return Do(c, "https://google.com")
 	})
 
-	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
+	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
 	utils.AssertEqual(t, nil, err1)
 	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
@@ -417,7 +419,7 @@ func Test_Proxy_DoRedirects_RestoreOriginalURL(t *testing.T) {
 		return DoRedirects(c, "http://google.com", 1)
 	})
 
-	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
+	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
 	utils.AssertEqual(t, nil, err1)
 	_, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
@@ -433,7 +435,7 @@ func Test_Proxy_DoRedirects_TooManyRedirects(t *testing.T) {
 		return DoRedirects(c, "http://google.com", 0)
 	})
 
-	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
+	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
 	utils.AssertEqual(t, nil, err1)
 	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
@@ -455,7 +457,7 @@ func Test_Proxy_DoTimeout_RestoreOriginalURL(t *testing.T) {
 		return DoTimeout(c, "http://"+addr, time.Second)
 	})
 
-	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
+	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
 	utils.AssertEqual(t, nil, err1)
 	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
@@ -478,7 +480,7 @@ func Test_Proxy_DoTimeout_Timeout(t *testing.T) {
 		return DoTimeout(c, "http://"+addr, time.Second)
 	})
 
-	_, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
+	_, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody), int((1*time.Second)/time.Millisecond))
 	utils.AssertEqual(t, errors.New("test: timeout error 1000ms"), err1)
 }
 
@@ -495,7 +497,7 @@ func Test_Proxy_DoDeadline_RestoreOriginalURL(t *testing.T) {
 		return DoDeadline(c, "http://"+addr, time.Now().Add(time.Second))
 	})
 
-	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
+	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody))
 	utils.AssertEqual(t, nil, err1)
 	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
@@ -518,7 +520,7 @@ func Test_Proxy_DoDeadline_PastDeadline(t *testing.T) {
 		return DoDeadline(c, "http://"+addr, time.Now().Add(time.Second))
 	})
 
-	_, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
+	_, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody), int((1*time.Second)/time.Millisecond))
 	utils.AssertEqual(t, errors.New("test: timeout error 1000ms"), err1)
 }
 
@@ -543,7 +545,7 @@ func Test_Proxy_Do_HTTP_Prefix_URL(t *testing.T) {
 		return nil
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/http://"+addr, nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/http://"+addr, http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	s, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
@@ -607,7 +609,7 @@ func Test_ProxyBalancer_Custom_Client(t *testing.T) {
 		return c.SendStatus(fiber.StatusTeapot)
 	})
 
-	resp, err := target.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), 2000)
+	resp, err := target.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody), 2000)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusTeapot, resp.StatusCode)
 
@@ -624,7 +626,7 @@ func Test_ProxyBalancer_Custom_Client(t *testing.T) {
 		Timeout: time.Second,
 	}}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Host = addr
 	resp, err = app.Test(req)
 	utils.AssertEqual(t, nil, err)
@@ -678,7 +680,7 @@ func Test_Proxy_Balancer_Forward_Local(t *testing.T) {
 
 	app.Use(BalancerForward([]string{addr}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 

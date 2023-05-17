@@ -1,9 +1,11 @@
+//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package monitor
 
 import (
 	"bytes"
 	"fmt"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -21,7 +23,7 @@ func Test_Monitor_405(t *testing.T) {
 
 	app.Use("/", New())
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 405, resp.StatusCode)
 }
@@ -33,7 +35,7 @@ func Test_Monitor_Html(t *testing.T) {
 
 	// defaults
 	app.Get("/", New())
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 200, resp.StatusCode)
@@ -49,7 +51,7 @@ func Test_Monitor_Html(t *testing.T) {
 	// custom config
 	conf := Config{Title: "New " + defaultTitle, Refresh: defaultRefresh + time.Second}
 	app.Get("/custom", New(conf))
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/custom", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/custom", http.NoBody))
 
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 200, resp.StatusCode)
@@ -70,7 +72,7 @@ func Test_Monitor_Html_CustomCodes(t *testing.T) {
 
 	// defaults
 	app.Get("/", New())
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 200, resp.StatusCode)
@@ -92,7 +94,7 @@ func Test_Monitor_Html_CustomCodes(t *testing.T) {
 		CustomHead: `<style>body{background:#fff}</style>`,
 	}
 	app.Get("/custom", New(conf))
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/custom", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/custom", http.NoBody))
 
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 200, resp.StatusCode)
@@ -118,7 +120,7 @@ func Test_Monitor_JSON(t *testing.T) {
 
 	app.Get("/", New())
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set(fiber.HeaderAccept, fiber.MIMEApplicationJSON)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err)
@@ -171,20 +173,22 @@ func Test_Monitor_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 404, resp.StatusCode)
 }
 
 // go test -run Test_Monitor_APIOnly -race
 func Test_Monitor_APIOnly(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Get("/", New(Config{
 		APIOnly: true,
 	}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set(fiber.HeaderAccept, fiber.MIMEApplicationJSON)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err)

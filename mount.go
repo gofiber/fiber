@@ -168,9 +168,7 @@ func (app *App) processSubAppsRoutes() {
 		}
 		// process the inner routes
 		if subApp.hasMountedApps() {
-			subApp.mountFields.subAppsRoutesAdded.Do(func() {
-				subApp.processSubAppsRoutes()
-			})
+			subApp.mountFields.subAppsRoutesAdded.Do(subApp.processSubAppsRoutes)
 		}
 	}
 	var handlersCount uint32

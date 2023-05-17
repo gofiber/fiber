@@ -1,9 +1,11 @@
+//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package basicauth
 
 import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -23,7 +25,7 @@ func Test_BasicAuth_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
 }
@@ -39,10 +41,15 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 		},
 	}))
 
-	//nolint:forcetypeassert,errcheck // TODO: Do not force-type assert
 	app.Get("/testauth", func(c *fiber.Ctx) error {
-		username := c.Locals("username").(string)
-		password := c.Locals("password").(string)
+		username, ok := c.Locals("username").(string)
+		if !ok {
+			t.Fatal("missing username")
+		}
+		password, ok := c.Locals("password").(string)
+		if !ok {
+			t.Fatal("missing password")
+		}
 
 		return c.SendString(username + password)
 	})
@@ -77,7 +84,7 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 		// Base64 encode credentials for http auth header
 		creds := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", tt.username, tt.password)))
 
-		req := httptest.NewRequest(fiber.MethodGet, "/testauth", nil)
+		req := httptest.NewRequest(fiber.MethodGet, "/testauth", http.NoBody)
 		req.Header.Add("Authorization", "Basic "+creds)
 		resp, err := app.Test(req)
 		utils.AssertEqual(t, nil, err)

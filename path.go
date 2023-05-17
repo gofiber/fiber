@@ -14,6 +14,7 @@ import (
 	"unicode"
 
 	"github.com/gofiber/fiber/v2/utils"
+
 	"github.com/google/uuid"
 )
 
@@ -177,7 +178,7 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 func parseRoute(pattern string) routeParser {
 	parser := routeParser{}
 
-	part := ""
+	var part string
 	for len(pattern) > 0 {
 		nextParamPosition := findNextParamPosition(pattern)
 		// handle the parameter part
@@ -475,7 +476,7 @@ func splitNonEscaped(s, sep string) []string {
 }
 
 // getMatch parses the passed url and tries to match it against the route segments and determine the parameter positions
-func (routeParser *routeParser) getMatch(detectionPath, path string, params *[maxParams]string, partialCheck bool) bool { //nolint: revive // Accepting a bool param is fine here
+func (routeParser *routeParser) getMatch(detectionPath, path string, params *[maxParams]string, partialCheck bool) bool { //nolint:revive // Accepting a bool param is fine here
 	var i, paramsIterator, partLen int
 	for _, segment := range routeParser.segs {
 		partLen = len(detectionPath)
@@ -572,11 +573,13 @@ func findGreedyParamLen(s string, searchCount int, segment *routeSegment) int {
 	// check all from right to left segments
 	for i := segment.PartCount; i > 0 && searchCount > 0; i-- {
 		searchCount--
-		if constPosition := strings.LastIndex(s, segment.ComparePart); constPosition != -1 {
-			s = s[:constPosition]
-		} else {
+
+		constPosition := strings.LastIndex(s, segment.ComparePart)
+		if constPosition == -1 {
 			break
 		}
+
+		s = s[:constPosition]
 	}
 
 	return len(s)
@@ -641,7 +644,7 @@ func getParamConstraintType(constraintPart string) TypeConstraint {
 	}
 }
 
-//nolint:errcheck // TODO: Properly check _all_ errors in here, log them & immediately return
+//nolint:errcheck,gosec // TODO: Properly check _all_ errors in here, log them & immediately return
 func (c *Constraint) CheckConstraint(param string) bool {
 	var err error
 	var num int

@@ -17,6 +17,8 @@ import (
 const CorrectKey = "specials: !$%,.#\"!?~`<>@$^*(){}[]|/\\123"
 
 func TestAuthSources(t *testing.T) {
+	t.Parallel()
+
 	// define test cases
 	testSources := []string{"header", "cookie", "query", "param", "form"}
 
@@ -55,7 +57,9 @@ func TestAuthSources(t *testing.T) {
 	}
 
 	for _, authSource := range testSources {
+		authSource := authSource
 		t.Run(authSource, func(t *testing.T) {
+			t.Parallel()
 			for _, test := range tests {
 				// setup the fiber endpoint
 				// note that if UnescapePath: false (the default)
@@ -87,26 +91,29 @@ func TestAuthSources(t *testing.T) {
 
 				// construct the test HTTP request
 				var req *http.Request
-				req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, test.route, nil)
+				req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, test.route, http.NoBody)
 				utils.AssertEqual(t, err, nil)
 
 				// setup the apikey for the different auth schemes
-				if authSource == "header" {
+				switch authSource {
+				case "header":
 					req.Header.Set(test.authTokenName, test.APIKey)
-				} else if authSource == "cookie" {
+
+				case "cookie":
 					req.Header.Set("Cookie", test.authTokenName+"="+test.APIKey)
-				} else if authSource == "query" || authSource == "form" {
+
+				case "query", "form":
 					q := req.URL.Query()
 					q.Add(test.authTokenName, test.APIKey)
 					req.URL.RawQuery = q.Encode()
-				} else if authSource == "param" {
+
+				case "param":
 					r := req.URL.Path
 					r += url.PathEscape(test.APIKey)
 					req.URL.Path = r
 				}
 
 				res, err := app.Test(req, -1)
-
 				utils.AssertEqual(t, nil, err, test.description)
 
 				// test the body of the request
@@ -132,6 +139,8 @@ func TestAuthSources(t *testing.T) {
 }
 
 func TestMultipleKeyAuth(t *testing.T) {
+	t.Parallel()
+
 	// setup the fiber endpoint
 	app := fiber.New()
 
@@ -242,7 +251,7 @@ func TestMultipleKeyAuth(t *testing.T) {
 	// run the tests
 	for _, test := range tests {
 		var req *http.Request
-		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, test.route, nil)
+		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, test.route, http.NoBody)
 		utils.AssertEqual(t, err, nil)
 		if test.APIKey != "" {
 			req.Header.Set("key", test.APIKey)
@@ -263,6 +272,8 @@ func TestMultipleKeyAuth(t *testing.T) {
 }
 
 func TestCustomSuccessAndFailureHandlers(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -287,7 +298,7 @@ func TestCustomSuccessAndFailureHandlers(t *testing.T) {
 	})
 
 	// Create a request without an API key and send it to the app
-	res, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	res, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, err, nil)
 
 	// Read the response body into a string
@@ -299,7 +310,7 @@ func TestCustomSuccessAndFailureHandlers(t *testing.T) {
 	utils.AssertEqual(t, string(body), "API key is invalid and request was handled by custom error handler")
 
 	// Create a request with a valid API key in the Authorization header
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", CorrectKey))
 
 	// Send the request to the app
@@ -316,6 +327,8 @@ func TestCustomSuccessAndFailureHandlers(t *testing.T) {
 }
 
 func TestCustomNextFunc(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -336,7 +349,7 @@ func TestCustomNextFunc(t *testing.T) {
 	})
 
 	// Create a request with the "/allowed" path and send it to the app
-	req := httptest.NewRequest(fiber.MethodGet, "/allowed", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/allowed", http.NoBody)
 	res, err := app.Test(req)
 	utils.AssertEqual(t, err, nil)
 
@@ -349,7 +362,7 @@ func TestCustomNextFunc(t *testing.T) {
 	utils.AssertEqual(t, string(body), "API key is valid and request was allowed by custom filter")
 
 	// Create a request with a different path and send it to the app without correct key
-	req = httptest.NewRequest(fiber.MethodGet, "/not-allowed", nil)
+	req = httptest.NewRequest(fiber.MethodGet, "/not-allowed", http.NoBody)
 	res, err = app.Test(req)
 	utils.AssertEqual(t, err, nil)
 
@@ -362,7 +375,7 @@ func TestCustomNextFunc(t *testing.T) {
 	utils.AssertEqual(t, string(body), ErrMissingOrMalformedAPIKey.Error())
 
 	// Create a request with a different path and send it to the app with correct key
-	req = httptest.NewRequest(fiber.MethodGet, "/not-allowed", nil)
+	req = httptest.NewRequest(fiber.MethodGet, "/not-allowed", http.NoBody)
 	req.Header.Add("Authorization", fmt.Sprintf("Basic %s", CorrectKey))
 
 	res, err = app.Test(req)
@@ -378,6 +391,8 @@ func TestCustomNextFunc(t *testing.T) {
 }
 
 func TestAuthSchemeToken(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -396,7 +411,7 @@ func TestAuthSchemeToken(t *testing.T) {
 	})
 
 	// Create a request with a valid API key in the "Token" Authorization header
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Add("Authorization", fmt.Sprintf("Token %s", CorrectKey))
 
 	// Send the request to the app
@@ -413,6 +428,8 @@ func TestAuthSchemeToken(t *testing.T) {
 }
 
 func TestAuthSchemeBasic(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -432,7 +449,7 @@ func TestAuthSchemeBasic(t *testing.T) {
 	})
 
 	// Create a request without an API key and  Send the request to the app
-	res, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	res, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, err, nil)
 
 	// Read the response body into a string
@@ -444,7 +461,7 @@ func TestAuthSchemeBasic(t *testing.T) {
 	utils.AssertEqual(t, string(body), ErrMissingOrMalformedAPIKey.Error())
 
 	// Create a request with a valid API key in the "Authorization" header using the "Basic" scheme
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Add("Authorization", fmt.Sprintf("Basic %s", CorrectKey))
 
 	// Send the request to the app

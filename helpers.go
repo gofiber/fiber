@@ -16,7 +16,7 @@ import (
 	"reflect"
 	"strings"
 	"time"
-	"unsafe"
+	"unsafe" //nolint:depguard // unsafe is used for better performance
 
 	"github.com/gofiber/fiber/v2/log"
 	"github.com/gofiber/fiber/v2/utils"
@@ -87,7 +87,6 @@ func readContent(rf io.ReaderFrom, name string) (int64, error) {
 // quoteString escape special characters in a given string
 func (app *App) quoteString(raw string) string {
 	bb := bytebufferpool.Get()
-	// quoted := string(fasthttp.AppendQuotedArg(bb.B, getBytes(raw)))
 	quoted := app.getString(fasthttp.AppendQuotedArg(bb.B, app.getBytes(raw)))
 	bytebufferpool.Put(bb)
 	return quoted
@@ -154,7 +153,7 @@ func uniqueRouteStack(stack []*Route) []*Route {
 
 // defaultString returns the value or a default value if it is set
 func defaultString(value string, defaultValue []string) string {
-	if len(value) == 0 && len(defaultValue) > 0 {
+	if value == "" && len(defaultValue) > 0 {
 		return defaultValue[0]
 	}
 	return value
@@ -163,7 +162,7 @@ func defaultString(value string, defaultValue []string) string {
 const normalizedHeaderETag = "Etag"
 
 // Generate and set ETag header to response
-func setETag(c *Ctx, weak bool) { //nolint: revive // Accepting a bool param is fine here
+func setETag(c *Ctx, weak bool) { //nolint:revive // Accepting a bool param is fine here
 	// Don't generate ETags for invalid responses
 	if c.fasthttp.Response.StatusCode() != StatusOK {
 		return
@@ -214,7 +213,7 @@ func setETag(c *Ctx, weak bool) { //nolint: revive // Accepting a bool param is 
 }
 
 func getGroupPath(prefix, path string) string {
-	if len(path) == 0 {
+	if path == "" {
 		return prefix
 	}
 
@@ -315,7 +314,8 @@ func getOffer(header string, isAccepted func(spec, offer string) bool, offers ..
 
 	// Parse header and get accepted types with their quality and specificity
 	// See: https://www.rfc-editor.org/rfc/rfc9110#name-content-negotiation-fields
-	spec, commaPos, order := "", 0, 0
+	var spec string
+	var commaPos, order int
 	acceptedTypes := make([]acceptedType, 0, 20)
 	for len(header) > 0 {
 		order++
@@ -346,24 +346,24 @@ func getOffer(header string, isAccepted func(spec, offer string) bool, offers ..
 		// Skip if quality is 0.0
 		// See: https://www.rfc-editor.org/rfc/rfc9110#quality.values
 		if quality == 0.0 {
-			if commaPos != -1 {
-				header = header[commaPos+1:]
-			} else {
+			if commaPos == -1 {
 				break
 			}
+			header = header[commaPos+1:]
 			continue
 		}
 
 		// Get specificity
-		specificity := 0
+		var specificity int
 		// check for wildcard this could be a mime */* or a wildcard character *
-		if spec == "*/*" || spec == "*" {
+		switch {
+		case spec == "*/*", spec == "*":
 			specificity = 1
-		} else if strings.HasSuffix(spec, "/*") {
+		case strings.HasSuffix(spec, "/*"):
 			specificity = 2
-		} else if strings.IndexByte(spec, '/') != -1 {
+		case strings.IndexByte(spec, '/') != -1:
 			specificity = 3
-		} else {
+		default:
 			specificity = 4
 		}
 
@@ -371,11 +371,11 @@ func getOffer(header string, isAccepted func(spec, offer string) bool, offers ..
 		acceptedTypes = append(acceptedTypes, acceptedType{spec, quality, specificity, order})
 
 		// Next
-		if commaPos != -1 {
-			header = header[commaPos+1:]
-		} else {
+		if commaPos == -1 {
 			break
 		}
+
+		header = header[commaPos+1:]
 	}
 
 	if len(acceptedTypes) > 1 {
@@ -386,7 +386,7 @@ func getOffer(header string, isAccepted func(spec, offer string) bool, offers ..
 	// Find the first offer that matches the accepted types
 	for _, acceptedType := range acceptedTypes {
 		for _, offer := range offers {
-			if len(offer) == 0 {
+			if offer == "" {
 				continue
 			}
 			if isAccepted(acceptedType.spec, offer) {
@@ -845,7 +845,7 @@ const (
 	HeaderTrailer                 = "Trailer"
 	HeaderTransferEncoding        = "Transfer-Encoding"
 	HeaderSecWebSocketAccept      = "Sec-WebSocket-Accept"
-	HeaderSecWebSocketExtensions  = "Sec-WebSocket-Extensions"
+	HeaderSecWebSocketExtensions  = "Sec-WebSocket-Extensions" //nolint:gosec // False positive
 	HeaderSecWebSocketKey         = "Sec-WebSocket-Key"
 	HeaderSecWebSocketProtocol    = "Sec-WebSocket-Protocol"
 	HeaderSecWebSocketVersion     = "Sec-WebSocket-Version"

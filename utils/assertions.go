@@ -7,7 +7,6 @@ package utils
 import (
 	"bytes"
 	"fmt"
-	"log"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -53,16 +52,16 @@ func AssertEqual(tb testing.TB, expected, actual interface{}, description ...str
 	_, _ = fmt.Fprintf(w, "\nExpect:\t%v\t(%s)", expected, aType)
 	_, _ = fmt.Fprintf(w, "\nResult:\t%v\t(%s)", actual, bType)
 
-	result := ""
+	var result string
 	if err := w.Flush(); err != nil {
 		result = err.Error()
 	} else {
 		result = buf.String()
 	}
 
-	if tb != nil {
-		tb.Fatal(result)
-	} else {
-		log.Fatal(result) //nolint:revive // tb might be nil, so we need a fallback
+	// If we don't have a tb, panic instead
+	if tb == nil {
+		panic(result)
 	}
+	tb.Fatal(result)
 }

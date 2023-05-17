@@ -1,5 +1,7 @@
 // Special thanks to @codemicro for moving this to fiber core
 // Original middleware: github.com/codemicro/fiber-cache
+//
+//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package cache
 
 import (
@@ -7,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"strconv"
@@ -35,10 +38,10 @@ func Test_Cache_CacheControl(t *testing.T) {
 		return c.SendString("Hello, World!")
 	})
 
-	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "public, max-age=10", resp.Header.Get(fiber.HeaderCacheControl))
 }
@@ -53,7 +56,7 @@ func Test_Cache_Expired(t *testing.T) {
 		return c.SendString(fmt.Sprintf("%d", time.Now().UnixNano()))
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
@@ -61,7 +64,7 @@ func Test_Cache_Expired(t *testing.T) {
 	// Sleep until the cache is expired
 	time.Sleep(3 * time.Second)
 
-	respCached, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	respCached, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	bodyCached, err := io.ReadAll(respCached.Body)
 	utils.AssertEqual(t, nil, err)
@@ -71,7 +74,7 @@ func Test_Cache_Expired(t *testing.T) {
 	}
 
 	// Next response should be also cached
-	respCachedNextRound, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	respCachedNextRound, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	bodyCachedNextRound, err := io.ReadAll(respCachedNextRound.Body)
 	utils.AssertEqual(t, nil, err)
@@ -92,11 +95,11 @@ func Test_Cache(t *testing.T) {
 		return c.SendString(now)
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err)
 
-	cachedReq := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	cachedReq := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	cachedResp, err := app.Test(cachedReq)
 	utils.AssertEqual(t, nil, err)
 
@@ -120,7 +123,7 @@ func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
 	})
 
 	// Request id = 1
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err)
 	body, err := io.ReadAll(resp.Body)
@@ -130,7 +133,7 @@ func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
 	// Response cached, entry id = 1
 
 	// Request id = 2 without Cache-Control: no-cache
-	cachedReq := httptest.NewRequest(fiber.MethodGet, "/?id=2", nil)
+	cachedReq := httptest.NewRequest(fiber.MethodGet, "/?id=2", http.NoBody)
 	cachedResp, err := app.Test(cachedReq)
 	utils.AssertEqual(t, nil, err)
 	cachedBody, err := io.ReadAll(cachedResp.Body)
@@ -140,7 +143,7 @@ func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
 	// Response not cached, returns cached response, entry id = 1
 
 	// Request id = 2 with Cache-Control: no-cache
-	noCacheReq := httptest.NewRequest(fiber.MethodGet, "/?id=2", nil)
+	noCacheReq := httptest.NewRequest(fiber.MethodGet, "/?id=2", http.NoBody)
 	noCacheReq.Header.Set(fiber.HeaderCacheControl, noCache)
 	noCacheResp, err := app.Test(noCacheReq)
 	utils.AssertEqual(t, nil, err)
@@ -152,7 +155,7 @@ func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
 
 	/* Check Test_Cache_WithETagAndNoCacheRequestDirective */
 	// Request id = 2 with Cache-Control: no-cache again
-	noCacheReq1 := httptest.NewRequest(fiber.MethodGet, "/?id=2", nil)
+	noCacheReq1 := httptest.NewRequest(fiber.MethodGet, "/?id=2", http.NoBody)
 	noCacheReq1.Header.Set(fiber.HeaderCacheControl, noCache)
 	noCacheResp1, err := app.Test(noCacheReq1)
 	utils.AssertEqual(t, nil, err)
@@ -163,7 +166,7 @@ func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
 	// Response cached, returns updated response, entry = 2
 
 	// Request id = 1 without Cache-Control: no-cache
-	cachedReq1 := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	cachedReq1 := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	cachedResp1, err := app.Test(cachedReq1)
 	utils.AssertEqual(t, nil, err)
 	cachedBody1, err := io.ReadAll(cachedResp1.Body)
@@ -188,7 +191,7 @@ func Test_Cache_WithETagAndNoCacheRequestDirective(t *testing.T) {
 	})
 
 	// Request id = 1
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, cacheMiss, resp.Header.Get("X-Cache"))
@@ -199,7 +202,7 @@ func Test_Cache_WithETagAndNoCacheRequestDirective(t *testing.T) {
 	etagToken := resp.Header.Get("Etag")
 
 	// Request id = 2 with ETag but without Cache-Control: no-cache
-	cachedReq := httptest.NewRequest(fiber.MethodGet, "/?id=2", nil)
+	cachedReq := httptest.NewRequest(fiber.MethodGet, "/?id=2", http.NoBody)
 	cachedReq.Header.Set(fiber.HeaderIfNoneMatch, etagToken)
 	cachedResp, err := app.Test(cachedReq)
 	utils.AssertEqual(t, nil, err)
@@ -208,7 +211,7 @@ func Test_Cache_WithETagAndNoCacheRequestDirective(t *testing.T) {
 	// Response not cached, returns cached response, entry id = 1, status not modified
 
 	// Request id = 2 with ETag and Cache-Control: no-cache
-	noCacheReq := httptest.NewRequest(fiber.MethodGet, "/?id=2", nil)
+	noCacheReq := httptest.NewRequest(fiber.MethodGet, "/?id=2", http.NoBody)
 	noCacheReq.Header.Set(fiber.HeaderCacheControl, noCache)
 	noCacheReq.Header.Set(fiber.HeaderIfNoneMatch, etagToken)
 	noCacheResp, err := app.Test(noCacheReq)
@@ -221,7 +224,7 @@ func Test_Cache_WithETagAndNoCacheRequestDirective(t *testing.T) {
 	etagToken = noCacheResp.Header.Get("Etag")
 
 	// Request id = 2 with ETag and Cache-Control: no-cache again
-	noCacheReq1 := httptest.NewRequest(fiber.MethodGet, "/?id=2", nil)
+	noCacheReq1 := httptest.NewRequest(fiber.MethodGet, "/?id=2", http.NoBody)
 	noCacheReq1.Header.Set(fiber.HeaderCacheControl, noCache)
 	noCacheReq1.Header.Set(fiber.HeaderIfNoneMatch, etagToken)
 	noCacheResp1, err := app.Test(noCacheReq1)
@@ -231,7 +234,7 @@ func Test_Cache_WithETagAndNoCacheRequestDirective(t *testing.T) {
 	// Response cached, returns updated response, entry id = 2, status not modified
 
 	// Request id = 1 without ETag and Cache-Control: no-cache
-	cachedReq1 := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	cachedReq1 := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	cachedResp1, err := app.Test(cachedReq1)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, cacheHit, cachedResp1.Header.Get("X-Cache"))
@@ -251,7 +254,7 @@ func Test_Cache_WithNoStoreRequestDirective(t *testing.T) {
 	})
 
 	// Request id = 2
-	noStoreReq := httptest.NewRequest(fiber.MethodGet, "/?id=2", nil)
+	noStoreReq := httptest.NewRequest(fiber.MethodGet, "/?id=2", http.NoBody)
 	noStoreReq.Header.Set(fiber.HeaderCacheControl, noStore)
 	noStoreResp, err := app.Test(noStoreReq)
 	utils.AssertEqual(t, nil, err)
@@ -278,7 +281,7 @@ func Test_Cache_WithSeveralRequests(t *testing.T) {
 	for runs := 0; runs < 10; runs++ {
 		for i := 0; i < 10; i++ {
 			func(id int) {
-				rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, fmt.Sprintf("/%d", id), nil))
+				rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, fmt.Sprintf("/%d", id), http.NoBody))
 				utils.AssertEqual(t, nil, err)
 
 				defer func(body io.ReadCloser) {
@@ -311,11 +314,11 @@ func Test_Cache_Invalid_Expiration(t *testing.T) {
 		return c.SendString(now)
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err)
 
-	cachedReq := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	cachedReq := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	cachedResp, err := app.Test(cachedReq)
 	utils.AssertEqual(t, nil, err)
 
@@ -342,25 +345,25 @@ func Test_Cache_Get(t *testing.T) {
 		return c.SendString(c.Query("cache"))
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/?cache=123", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/?cache=123", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "123", string(body))
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodPost, "/?cache=12345", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodPost, "/?cache=12345", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	body, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "12345", string(body))
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/get?cache=123", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/get?cache=123", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	body, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "123", string(body))
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/get?cache=12345", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/get?cache=12345", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	body, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
@@ -384,25 +387,25 @@ func Test_Cache_Post(t *testing.T) {
 		return c.SendString(c.Query("cache"))
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/?cache=123", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/?cache=123", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "123", string(body))
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodPost, "/?cache=12345", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodPost, "/?cache=12345", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	body, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "123", string(body))
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/get?cache=123", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/get?cache=123", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	body, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "123", string(body))
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/get?cache=12345", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/get?cache=12345", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	body, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
@@ -420,14 +423,14 @@ func Test_Cache_NothingToCache(t *testing.T) {
 		return c.SendString(time.Now().String())
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 
 	time.Sleep(500 * time.Millisecond)
 
-	respCached, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	respCached, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	bodyCached, err := io.ReadAll(respCached.Body)
 	utils.AssertEqual(t, nil, err)
@@ -457,22 +460,22 @@ func Test_Cache_CustomNext(t *testing.T) {
 		return c.Status(fiber.StatusInternalServerError).SendString(time.Now().String())
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 
-	respCached, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	respCached, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	bodyCached, err := io.ReadAll(respCached.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, bytes.Equal(body, bodyCached))
 	utils.AssertEqual(t, true, respCached.Header.Get(fiber.HeaderCacheControl) != "")
 
-	_, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/error", nil))
+	_, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/error", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 
-	errRespCached, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/error", nil))
+	errRespCached, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/error", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, errRespCached.Header.Get(fiber.HeaderCacheControl) == "")
 }
@@ -491,7 +494,7 @@ func Test_CustomKey(t *testing.T) {
 		return c.SendString("hi")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	_, err := app.Test(req)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, called)
@@ -517,7 +520,7 @@ func Test_CustomExpiration(t *testing.T) {
 		return c.SendString(now)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, called)
 	utils.AssertEqual(t, 1, newCacheTime)
@@ -525,7 +528,7 @@ func Test_CustomExpiration(t *testing.T) {
 	// Sleep until the cache is expired
 	time.Sleep(1 * time.Second)
 
-	cachedResp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	cachedResp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 
 	body, err := io.ReadAll(resp.Body)
@@ -538,7 +541,7 @@ func Test_CustomExpiration(t *testing.T) {
 	}
 
 	// Next response should be cached
-	cachedRespNextRound, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	cachedRespNextRound, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	cachedBodyNextRound, err := io.ReadAll(cachedRespNextRound.Body)
 	utils.AssertEqual(t, nil, err)
@@ -561,12 +564,12 @@ func Test_AdditionalE2EResponseHeaders(t *testing.T) {
 		return c.SendString("hi")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "foobar", resp.Header.Get("X-Foobar"))
 
-	req = httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req = httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	resp, err = app.Test(req)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "foobar", resp.Header.Get("X-Foobar"))
@@ -596,19 +599,19 @@ func Test_CacheHeader(t *testing.T) {
 		return c.Status(fiber.StatusInternalServerError).SendString(time.Now().String())
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, cacheMiss, resp.Header.Get("X-Cache"))
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, cacheHit, resp.Header.Get("X-Cache"))
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodPost, "/?cache=12345", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodPost, "/?cache=12345", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, cacheUnreachable, resp.Header.Get("X-Cache"))
 
-	errRespCached, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/error", nil))
+	errRespCached, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/error", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, cacheUnreachable, errRespCached.Header.Get("X-Cache"))
 }
@@ -624,12 +627,12 @@ func Test_Cache_WithHead(t *testing.T) {
 		return c.SendString(now)
 	})
 
-	req := httptest.NewRequest(fiber.MethodHead, "/", nil)
+	req := httptest.NewRequest(fiber.MethodHead, "/", http.NoBody)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, cacheMiss, resp.Header.Get("X-Cache"))
 
-	cachedReq := httptest.NewRequest(fiber.MethodHead, "/", nil)
+	cachedReq := httptest.NewRequest(fiber.MethodHead, "/", http.NoBody)
 	cachedResp, err := app.Test(cachedReq)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, cacheHit, cachedResp.Header.Get("X-Cache"))
@@ -651,28 +654,28 @@ func Test_Cache_WithHeadThenGet(t *testing.T) {
 		return c.SendString(c.Query("cache"))
 	})
 
-	headResp, err := app.Test(httptest.NewRequest(fiber.MethodHead, "/?cache=123", nil))
+	headResp, err := app.Test(httptest.NewRequest(fiber.MethodHead, "/?cache=123", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	headBody, err := io.ReadAll(headResp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "", string(headBody))
 	utils.AssertEqual(t, cacheMiss, headResp.Header.Get("X-Cache"))
 
-	headResp, err = app.Test(httptest.NewRequest(fiber.MethodHead, "/?cache=123", nil))
+	headResp, err = app.Test(httptest.NewRequest(fiber.MethodHead, "/?cache=123", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	headBody, err = io.ReadAll(headResp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "", string(headBody))
 	utils.AssertEqual(t, cacheHit, headResp.Header.Get("X-Cache"))
 
-	getResp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/?cache=123", nil))
+	getResp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/?cache=123", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	getBody, err := io.ReadAll(getResp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "123", string(getBody))
 	utils.AssertEqual(t, cacheMiss, getResp.Header.Get("X-Cache"))
 
-	getResp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/?cache=123", nil))
+	getResp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/?cache=123", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	getBody, err = io.ReadAll(getResp.Body)
 	utils.AssertEqual(t, nil, err)
@@ -693,7 +696,7 @@ func Test_CustomCacheHeader(t *testing.T) {
 		return c.SendString("Hello, World!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, cacheMiss, resp.Header.Get("Cache-Status"))
 }
@@ -740,7 +743,7 @@ func Test_Cache_MaxBytesOrder(t *testing.T) {
 	}
 
 	for idx, tcase := range cases {
-		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, tcase[0], nil))
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, tcase[0], http.NoBody))
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, tcase[1], rsp.Header.Get("X-Cache"), fmt.Sprintf("Case %v", idx))
 	}
@@ -775,7 +778,7 @@ func Test_Cache_MaxBytesSizes(t *testing.T) {
 	}
 
 	for idx, tcase := range cases {
-		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, tcase[0], nil))
+		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, tcase[0], http.NoBody))
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, tcase[1], rsp.Header.Get("X-Cache"), fmt.Sprintf("Case %v", idx))
 	}
@@ -788,7 +791,7 @@ func Benchmark_Cache(b *testing.B) {
 	app.Use(New())
 
 	app.Get("/demo", func(c *fiber.Ctx) error {
-		data, _ := os.ReadFile("../../.github/README.md") //nolint:errcheck // We're inside a benchmark
+		data, _ := os.ReadFile("../../.github/README.md") //nolint:errcheck,gosec // We're inside a benchmark
 		return c.Status(fiber.StatusTeapot).Send(data)
 	})
 
@@ -818,7 +821,7 @@ func Benchmark_Cache_Storage(b *testing.B) {
 	}))
 
 	app.Get("/demo", func(c *fiber.Ctx) error {
-		data, _ := os.ReadFile("../../.github/README.md") //nolint:errcheck // We're inside a benchmark
+		data, _ := os.ReadFile("../../.github/README.md") //nolint:errcheck,gosec // We're inside a benchmark
 		return c.Status(fiber.StatusTeapot).Send(data)
 	})
 
@@ -875,6 +878,7 @@ func Benchmark_Cache_MaxSize(b *testing.B) {
 	cases := []uint{0, math.MaxUint32, 100}
 	names := []string{"Disabled", "Unlim", "LowBounded"}
 	for i, size := range cases {
+		size := size
 		b.Run(names[i], func(b *testing.B) {
 			app := fiber.New()
 			app.Use(New(Config{MaxBytes: size}))

@@ -14,12 +14,12 @@ import (
 	"github.com/gofiber/fiber/v2/utils"
 )
 
+//nolint:paralleltest // TODO: Must be run sequentially due to global testPreforkMaster var and using t.Setenv.
 func Test_App_Prefork_Child_Process(t *testing.T) {
 	// Reset test var
 	testPreforkMaster = true
 
-	setupIsChild(t)
-	defer teardownIsChild(t)
+	t.Setenv(envPreforkChildKey, envPreforkChildVal)
 
 	app := New()
 
@@ -49,6 +49,7 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 	utils.AssertEqual(t, nil, app.prefork(NetworkTCP4, "127.0.0.1:", config))
 }
 
+//nolint:paralleltest // TODO: Must be run sequentially due to global testPreforkMaster var.
 func Test_App_Prefork_Master_Process(t *testing.T) {
 	// Reset test var
 	testPreforkMaster = true
@@ -70,17 +71,19 @@ func Test_App_Prefork_Master_Process(t *testing.T) {
 	dummyChildCmd.Store("")
 }
 
+//nolint:paralleltest // TODO: Must be run sequentially due to overwriting of os.Std globals and using t.Setenv
 func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
-	setupIsChild(t)
-	defer teardownIsChild(t)
+	t.Setenv(envPreforkChildKey, envPreforkChildVal)
 
 	rescueStdout := os.Stdout
-	defer func() { os.Stdout = rescueStdout }()
+	defer func() {
+		os.Stdout = rescueStdout //nolint:reassign // TODO: Don't reassign
+	}()
 
 	r, w, err := os.Pipe()
 	utils.AssertEqual(t, nil, err)
 
-	os.Stdout = w
+	os.Stdout = w //nolint:reassign // TODO: Don't reassign
 
 	New().startupProcess().startupMessage(":3000", false, "")
 
@@ -89,16 +92,4 @@ func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
 	out, err := io.ReadAll(r)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 0, len(out))
-}
-
-func setupIsChild(t *testing.T) {
-	t.Helper()
-
-	utils.AssertEqual(t, nil, os.Setenv(envPreforkChildKey, envPreforkChildVal))
-}
-
-func teardownIsChild(t *testing.T) {
-	t.Helper()
-
-	utils.AssertEqual(t, nil, os.Setenv(envPreforkChildKey, ""))
 }
