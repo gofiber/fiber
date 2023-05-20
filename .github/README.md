@@ -587,11 +587,11 @@ import (
 )
 
 func main() {
-    app := fiber.New(fiber.Config{
-        EnableTrustedProxyCheck: true,
-        TrustedProxies: []string{"0.0.0.0", "1.1.1.1/30"}, // IP address or IP address range
-        ProxyHeader: fiber.HeaderXForwardedFor},
-    })
+	  app := fiber.New(fiber.Config{
+		  EnableTrustedProxyCheck: true,
+		  TrustedProxies: []string{"0.0.0.0", "1.1.1.1/30"}, // IP address or IP address range
+		  ProxyHeader: fiber.HeaderXForwardedFor,
+	  })
 
     // ...
 
