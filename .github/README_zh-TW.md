@@ -598,7 +598,7 @@ func main() {
     app := fiber.New(fiber.Config{
         EnableTrustedProxyCheck: true,
         TrustedProxies: []string{"0.0.0.0", "1.1.1.1/30"}, // IP 地址或 IP 地址區間
-        ProxyHeader: fiber.HeaderXForwardedFor},
+        ProxyHeader: fiber.HeaderXForwardedFor,
     })
 
     // ...
