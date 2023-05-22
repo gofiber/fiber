@@ -5,7 +5,7 @@ go 1.20
 require (
 	github.com/google/uuid v1.3.0
 	github.com/mattn/go-colorable v0.1.13
-	github.com/mattn/go-isatty v0.0.18
+	github.com/mattn/go-isatty v0.0.19
 	github.com/mattn/go-runewidth v0.0.14
 	github.com/savsgio/dictpool v0.0.0-20221023140959-7bf2e61cea94
 	github.com/tinylib/msgp v1.1.8
