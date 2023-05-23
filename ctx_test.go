@@ -3838,6 +3838,26 @@ func Benchmark_Ctx_SendString_B(b *testing.B) {
 	utils.AssertEqual(b, []byte("Hello, world!"), c.Response().Body())
 }
 
+func Test_Ctx_Queries(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football&favouriteDrinks=milo,coke,pepsi&alloc=&no=1")
+
+	queries, err := c.Queries()
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "1", queries["id"])
+	utils.AssertEqual(t, "tom", queries["name"])
+	utils.AssertEqual(t, "basketball,football", queries["hobby"])
+	utils.AssertEqual(t, "milo,coke,pepsi", queries["favouriteDrinks"])
+	utils.AssertEqual(t, "", queries["alloc"])
+	utils.AssertEqual(t, "1", queries["no"])
+}
+
 // go test -run Test_Ctx_QueryParser -v
 func Test_Ctx_QueryParser(t *testing.T) {
 	t.Parallel()

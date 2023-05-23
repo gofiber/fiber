@@ -16,6 +16,7 @@ import (
 	"mime/multipart"
 	"net"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -1052,6 +1053,26 @@ func (c *Ctx) Protocol() string {
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (c *Ctx) Query(key string, defaultValue ...string) string {
 	return defaultString(c.app.getString(c.fasthttp.QueryArgs().Peek(key)), defaultValue)
+}
+
+// Queries returns a map of query parameters and their values.
+// It returns an error if the query string is not valid.
+func (c *Ctx) Queries() (map[string]string, error) {
+	queryRaw := c.fasthttp.QueryArgs().String()
+	queries, err := url.ParseQuery(queryRaw)
+	if err != nil {
+		return nil, err
+	}
+
+	m := make(map[string]string)
+
+	for k := range queries {
+		for v := range queries[k] {
+			m[k] = queries[k][v]
+		}
+	}
+
+	return m, nil
 }
 
 // QueryInt returns integer value of key string parameter in the url.
