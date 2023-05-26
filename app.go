@@ -609,12 +609,17 @@ func (app *App) SetTLSHandler(tlsHandler *TLSHandler) {
 // Name Assign name to specific route.
 func (app *App) Name(name string) Router {
 	app.mutex.Lock()
-
-	latestGroup := app.latestRoute.group
-	if latestGroup != nil {
-		app.latestRoute.Name = latestGroup.name + name
-	} else {
-		app.latestRoute.Name = name
+	for _, routes := range app.stack {
+		for _, route := range routes {
+			latestGroup := app.latestRoute.group
+			if latestGroup != nil {
+				app.latestRoute.Name = latestGroup.name + name
+			} else {
+				if route.Path == app.latestRoute.path {
+					route.Name = name
+				}
+			}
+		}
 	}
 
 	if err := app.hooks.executeOnNameHooks(*app.latestRoute); err != nil {

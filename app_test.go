@@ -1803,3 +1803,31 @@ func TestApp_GetRoutes(t *testing.T) {
 		utils.AssertEqual(t, name, route.Name)
 	}
 }
+
+func TestRouteName(t *testing.T) {
+	home, named := "home", "named"
+	app := New()
+
+	app.Use(func(c *Ctx) error {
+		return c.Next()
+	}).Name(home)
+
+	app.Get("/unnamed", func(c *Ctx) error {
+		return c.Next()
+	})
+
+	app.Post("/named", func(c *Ctx) error {
+		return c.Next()
+	}).Name(named)
+
+	for _, route := range app.GetRoutes() {
+		switch route.Path {
+		case "/":
+			utils.AssertEqual(t, route.Name, home)
+		case "/unnamed":
+			utils.AssertEqual(t, route.Name, "")
+		case "named":
+			utils.AssertEqual(t, route.Name, named)
+		}
+	}
+}
