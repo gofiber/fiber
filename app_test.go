@@ -1805,12 +1805,8 @@ func TestApp_GetRoutes(t *testing.T) {
 }
 
 func Test_Middleware_Route_Name(t *testing.T) {
-	home, named := "home", "named"
+	named := "named"
 	app := New()
-
-	app.Use(func(c *Ctx) error {
-		return c.Next()
-	}).Name(home)
 
 	app.Get("/unnamed", func(c *Ctx) error {
 		return c.Next()
@@ -1820,10 +1816,30 @@ func Test_Middleware_Route_Name(t *testing.T) {
 		return c.Next()
 	}).Name(named)
 
+	app.Use(func(c *Ctx) error {
+		return c.Next()
+	}) // no name - logging MW
+
+	app.Use(func(c *Ctx) error {
+		return c.Next()
+	}).Name("corsMW")
+
+	app.Use(func(c *Ctx) error {
+		return c.Next()
+	}).Name("compressMW")
+
+	app.Use(func(c *Ctx) error {
+		return c.Next()
+	}) // no name - cache MW
+
+	for _, route := range app.GetRoutes() {
+		fmt.Printf("Path: %s, Method: %s, Name: %s\n", route.Path, route.Method, route.Name)
+	}
+
 	for _, route := range app.GetRoutes() {
 		switch route.Path {
 		case "/":
-			utils.AssertEqual(t, route.Name, home)
+			utils.AssertEqual(t, route.Name, "compressMW")
 		case "/unnamed":
 			utils.AssertEqual(t, route.Name, "")
 		case "named":
