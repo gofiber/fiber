@@ -611,15 +611,15 @@ func (app *App) Name(name string) Router {
 	app.mutex.Lock()
 	for _, routes := range app.stack {
 		for _, route := range routes {
-			latestGroup := app.latestRoute.group
-			if latestGroup != nil {
-				app.latestRoute.Name = latestGroup.name + name
-			} else {
-				if route.Path == app.latestRoute.path {
-					route.Name = name
-				}
+			if route.Path == app.latestRoute.path {
+				route.Name = name
 			}
 		}
+	}
+
+	latestGroup := app.latestRoute.group
+	if latestGroup != nil {
+		app.latestRoute.Name = latestGroup.name + name
 	}
 
 	if err := app.hooks.executeOnNameHooks(*app.latestRoute); err != nil {

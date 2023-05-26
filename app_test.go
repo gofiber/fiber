@@ -1804,7 +1804,7 @@ func TestApp_GetRoutes(t *testing.T) {
 	}
 }
 
-func TestRouteName(t *testing.T) {
+func Test_Middleware_Route_Name(t *testing.T) {
 	home, named := "home", "named"
 	app := New()
 
