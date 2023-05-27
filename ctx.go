@@ -1071,9 +1071,9 @@ func (c *Ctx) Queries() (map[string]string, error) {
 
 	m := make(map[string]string)
 
-	for k := range queries {
-		for v := range queries[k] {
-			m[k] = queries[k][v]
+	for k, v := range queries {
+		if len(v) > 0 {
+			m[k] = v[len(v)-1]
 		}
 	}
 
