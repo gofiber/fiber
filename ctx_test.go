@@ -3866,6 +3866,11 @@ func Test_Ctx_Queries(t *testing.T) {
 	utils.AssertEqual(t, "milo,coke,pepsi", queries["favouriteDrinks"])
 	utils.AssertEqual(t, "", queries["alloc"])
 	utils.AssertEqual(t, "1", queries["no"])
+
+	c.Request().URI().SetQueryString(" ?&=#+%!<>#\"{}|\\^[]`☺\t:/@$'()*,;")
+	queries, err = c.Queries()
+	utils.AssertEqual(t, "failed to parse query: invalid semicolon separator in query", err.Error())
+	utils.AssertEqual(t, 0, len(queries))
 }
 
 // go test -run Test_Ctx_QueryParser -v
