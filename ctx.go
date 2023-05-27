@@ -1061,7 +1061,7 @@ func (c *Ctx) Queries() (map[string]string, error) {
 	queryRaw := c.fasthttp.QueryArgs().String()
 	queryRaw, err := url.QueryUnescape(queryRaw)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse query: %w", err)
+		return nil, fmt.Errorf("failed to unscape query: %w", err)
 	}
 
 	queries, err := url.ParseQuery(queryRaw)
