@@ -3856,6 +3856,16 @@ func Test_Ctx_Queries(t *testing.T) {
 	utils.AssertEqual(t, "milo,coke,pepsi", queries["favouriteDrinks"])
 	utils.AssertEqual(t, "", queries["alloc"])
 	utils.AssertEqual(t, "1", queries["no"])
+
+	c.Request().URI().SetQueryString("id%3D1%26name%3Dtom%26hobby%3Dbasketball%2Cfootball%26favouriteDrinks%3Dmilo%2Ccoke%2Cpepsi%26alloc%3D%26no%3D1")
+	queries, err = c.Queries()
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "1", queries["id"])
+	utils.AssertEqual(t, "tom", queries["name"])
+	utils.AssertEqual(t, "basketball,football", queries["hobby"])
+	utils.AssertEqual(t, "milo,coke,pepsi", queries["favouriteDrinks"])
+	utils.AssertEqual(t, "", queries["alloc"])
+	utils.AssertEqual(t, "1", queries["no"])
 }
 
 // go test -run Test_Ctx_QueryParser -v
