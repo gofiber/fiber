@@ -1059,6 +1059,11 @@ func (c *Ctx) Query(key string, defaultValue ...string) string {
 // It returns an error if the query string is not valid.
 func (c *Ctx) Queries() (map[string]string, error) {
 	queryRaw := c.fasthttp.QueryArgs().String()
+	queryRaw, err := url.QueryUnescape(queryRaw)
+	if err != nil {
+		return nil, err
+	}
+
 	queries, err := url.ParseQuery(queryRaw)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse query: %w", err)
