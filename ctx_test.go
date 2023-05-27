@@ -3838,6 +3838,7 @@ func Benchmark_Ctx_SendString_B(b *testing.B) {
 	utils.AssertEqual(b, []byte("Hello, world!"), c.Response().Body())
 }
 
+// go test -run Test_Ctx_Queries -v
 func Test_Ctx_Queries(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -3871,6 +3872,23 @@ func Test_Ctx_Queries(t *testing.T) {
 	queries, err = c.Queries()
 	utils.AssertEqual(t, "failed to parse query: invalid semicolon separator in query", err.Error())
 	utils.AssertEqual(t, 0, len(queries))
+}
+
+// go test -v  -run=^$ -bench=BenchmarkTest_Ctx_Queries -benchmem -count=4
+func BenchmarkTest_Ctx_Queries(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	b.ReportAllocs()
+	b.ResetTimer()
+	c.Request().URI().SetQueryString("id%3D1%26name%3Dtom%26hobby%3Dbasketball%2Cfootball%26favouriteDrinks%3Dmilo%2Ccoke%2Cpepsi%26alloc%3D%26no%3D1")
+
+	var err error
+	for n := 0; n < b.N; n++ {
+		_, err = c.Queries()
+	}
+
+	utils.AssertEqual(b, nil, err)
 }
 
 // go test -run Test_Ctx_QueryParser -v
