@@ -797,7 +797,7 @@ func (c *Ctx) JSON(data interface{}) error {
 	}
 	c.fasthttp.Response.SetBodyRaw(raw)
 	c.fasthttp.Response.Header.SetContentType(MIMEApplicationJSON)
-	raw = nil
+	raw = nil  //nolint:ineffassign
 	return nil
 }
 
