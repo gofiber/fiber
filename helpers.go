@@ -295,7 +295,9 @@ func getOffer(header string, isAccepted func(spec, offer string) bool, offers ..
 		if factorSign := strings.IndexByte(spec, ';'); factorSign != -1 {
 			factor := utils.Trim(spec[factorSign+1:], ' ')
 			if strings.HasPrefix(factor, "q=") {
-				quality, _ = strconv.ParseFloat(factor[2:], 64)
+				if q, err := strconv.ParseFloat(factor[2:], 64); err != nil {
+					quality = q
+				}
 			}
 			spec = spec[:factorSign]
 		}
