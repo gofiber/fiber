@@ -275,7 +275,8 @@ func getOffer(header string, isAccepted func(spec, offer string) bool, offers ..
 		specificity int
 	}
 
-	// Parse header
+	// Parse header and get accepted types with their quality and specificity
+	// See: https://www.rfc-editor.org/rfc/rfc9110#name-content-negotiation-fields
 	spec, commaPos := "", 0
 	acceptedTypes := make([]acceptedType, 0)
 	for len(header) > 0 {
@@ -300,8 +301,9 @@ func getOffer(header string, isAccepted func(spec, offer string) bool, offers ..
 			spec = spec[:factorSign]
 		}
 
+		// Skip if quality is 0.0
+		// See: https://www.rfc-editor.org/rfc/rfc9110#quality.values
 		if quality == 0.0 {
-			// Skip this spec
 			if commaPos != -1 {
 				header = header[commaPos+1:]
 			} else {
