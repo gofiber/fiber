@@ -337,16 +337,24 @@ func getOffer(header string, isAccepted func(spec, offer string) bool, offers ..
 
 	// Sort accepted types by quality and specificity
 	if len(acceptedTypes) > 1 {
-		// Insertion sort
 		for i := 1; i < len(acceptedTypes); i++ {
-			for j := i; j > 0; j-- {
-				if acceptedTypes[j-1].quality < acceptedTypes[j].quality {
-					acceptedTypes[j-1], acceptedTypes[j] = acceptedTypes[j], acceptedTypes[j-1]
-				} else if acceptedTypes[j-1].quality == acceptedTypes[j].quality && acceptedTypes[j-1].specificity < acceptedTypes[j].specificity {
-					acceptedTypes[j-1], acceptedTypes[j] = acceptedTypes[j], acceptedTypes[j-1]
+			swap := false
+			lo, hi := 0, i-1
+			for lo <= hi {
+				mid := (lo + hi) / 2
+				if acceptedTypes[i].quality > acceptedTypes[mid].quality ||
+					(acceptedTypes[i].quality == acceptedTypes[mid].quality && acceptedTypes[i].specificity > acceptedTypes[mid].specificity) {
+					lo = mid + 1
 				} else {
-					break
+					hi = mid - 1
 				}
+			}
+			for j := i; j > lo; j-- {
+				acceptedTypes[j-1], acceptedTypes[j] = acceptedTypes[j], acceptedTypes[j-1]
+				swap = true
+			}
+			if !swap {
+				break
 			}
 		}
 	}
