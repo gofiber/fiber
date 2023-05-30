@@ -15,7 +15,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -278,7 +277,7 @@ func getOffer(header string, isAccepted func(spec, offer string) bool, offers ..
 	// Parse header and get accepted types with their quality and specificity
 	// See: https://www.rfc-editor.org/rfc/rfc9110#name-content-negotiation-fields
 	spec, commaPos := "", 0
-	acceptedTypes := make([]acceptedType, 0)
+	acceptedTypes := make([]acceptedType, 0, 20)
 	for len(header) > 0 {
 		// Skip spaces
 		header = utils.TrimLeft(header, ' ')
@@ -337,27 +336,15 @@ func getOffer(header string, isAccepted func(spec, offer string) bool, offers ..
 	}
 
 	// Sort accepted types by quality and specificity
-	if len(acceptedTypes) > 20 {
-		sort.SliceStable(acceptedTypes, func(i, j int) bool {
-			if acceptedTypes[i].quality == acceptedTypes[j].quality {
-				return acceptedTypes[i].specificity > acceptedTypes[j].specificity
-			}
-			return acceptedTypes[i].quality > acceptedTypes[j].quality
-		})
-	} else if len(acceptedTypes) > 1 {
+	if len(acceptedTypes) > 1 {
 		// Insertion sort
-		changes := false
 		for i := 1; i < len(acceptedTypes); i++ {
 			for j := i; j > 0; j-- {
 				if acceptedTypes[j-1].quality < acceptedTypes[j].quality {
 					acceptedTypes[j-1], acceptedTypes[j] = acceptedTypes[j], acceptedTypes[j-1]
-					changes = true
 				} else if acceptedTypes[j-1].quality == acceptedTypes[j].quality && acceptedTypes[j-1].specificity < acceptedTypes[j].specificity {
 					acceptedTypes[j-1], acceptedTypes[j] = acceptedTypes[j], acceptedTypes[j-1]
-					changes = true
-				}
-
-				if !changes {
+				} else {
 					break
 				}
 			}
