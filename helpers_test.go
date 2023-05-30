@@ -221,7 +221,7 @@ func Test_Utils_Parse_Address(t *testing.T) {
 	}
 }
 
-func Test_GetOffer(t *testing.T) {
+func Test_Utils_GetOffer(t *testing.T) {
 	t.Parallel()
 	utils.AssertEqual(t, "", getOffer("hello", acceptsOffer))
 	utils.AssertEqual(t, "1", getOffer("", acceptsOffer, "1"))
