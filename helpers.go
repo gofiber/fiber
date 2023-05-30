@@ -300,7 +300,7 @@ func getOffer(header string, isAccepted func(spec, offer string) bool, offers ..
 			spec = spec[:factorSign]
 		}
 
-		if quality == 0 {
+		if quality == 0.0 {
 			// Skip this spec
 			if commaPos != -1 {
 				header = header[commaPos+1:]
