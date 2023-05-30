@@ -272,13 +272,16 @@ func getOffer(header string, isAccepted func(spec, offer string) bool, offers ..
 		spec        string
 		quality     float64
 		specificity int
+		order       int
 	}
 
 	// Parse header and get accepted types with their quality and specificity
 	// See: https://www.rfc-editor.org/rfc/rfc9110#name-content-negotiation-fields
-	spec, commaPos := "", 0
+	spec, commaPos, order := "", 0, 0
 	acceptedTypes := make([]acceptedType, 0, 20)
 	for len(header) > 0 {
+		order++
+
 		// Skip spaces
 		header = utils.TrimLeft(header, ' ')
 
@@ -295,7 +298,7 @@ func getOffer(header string, isAccepted func(spec, offer string) bool, offers ..
 		if factorSign := strings.IndexByte(spec, ';'); factorSign != -1 {
 			factor := utils.Trim(spec[factorSign+1:], ' ')
 			if strings.HasPrefix(factor, "q=") {
-				if q, err := strconv.ParseFloat(factor[2:], 64); err != nil {
+				if q, err := strconv.ParseFloat(factor[2:], 64); err == nil {
 					quality = q
 				}
 			}
@@ -327,7 +330,7 @@ func getOffer(header string, isAccepted func(spec, offer string) bool, offers ..
 		}
 
 		// Add to accepted types
-		acceptedTypes = append(acceptedTypes, acceptedType{spec, quality, specificity})
+		acceptedTypes = append(acceptedTypes, acceptedType{spec, quality, specificity, order})
 
 		// Next
 		if commaPos != -1 {
@@ -337,15 +340,16 @@ func getOffer(header string, isAccepted func(spec, offer string) bool, offers ..
 		}
 	}
 
-	// Sort accepted types by quality and specificity
+	// Sort accepted types by quality and specificity, preserving order of equal elements
 	if len(acceptedTypes) > 1 {
 		for i := 1; i < len(acceptedTypes); i++ {
 			swap := false
 			lo, hi := 0, i-1
 			for lo <= hi {
 				mid := (lo + hi) / 2
-				if acceptedTypes[i].quality > acceptedTypes[mid].quality ||
-					(acceptedTypes[i].quality == acceptedTypes[mid].quality && acceptedTypes[i].specificity > acceptedTypes[mid].specificity) {
+				if acceptedTypes[i].quality < acceptedTypes[mid].quality ||
+					(acceptedTypes[i].quality == acceptedTypes[mid].quality && acceptedTypes[i].specificity < acceptedTypes[mid].specificity) ||
+					(acceptedTypes[i].quality == acceptedTypes[mid].quality && acceptedTypes[i].specificity == acceptedTypes[mid].specificity && acceptedTypes[i].order > acceptedTypes[mid].order) {
 					lo = mid + 1
 				} else {
 					hi = mid - 1
