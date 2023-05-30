@@ -15,6 +15,8 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unsafe"
@@ -267,29 +269,97 @@ func getOffer(header string, isAccepted func(spec, offer string) bool, offers ..
 		return offers[0]
 	}
 
-	for _, offer := range offers {
-		if len(offer) == 0 {
-			continue
+	type acceptedType struct {
+		spec        string
+		quality     float64
+		specificity int
+	}
+
+	// Parse header
+	spec, commaPos := "", 0
+	acceptedTypes := make([]acceptedType, 0)
+	for len(header) > 0 {
+		// Skip spaces
+		header = utils.TrimLeft(header, ' ')
+
+		// Get spec
+		commaPos = strings.IndexByte(header, ',')
+		if commaPos != -1 {
+			spec = utils.Trim(header[:commaPos], ' ')
+		} else {
+			spec = utils.TrimLeft(header, ' ')
 		}
-		spec, commaPos := "", 0
-		for len(header) > 0 && commaPos != -1 {
-			commaPos = strings.IndexByte(header, ',')
-			if commaPos != -1 {
-				spec = utils.Trim(header[:commaPos], ' ')
-			} else {
-				spec = utils.TrimLeft(header, ' ')
-			}
-			if factorSign := strings.IndexByte(spec, ';'); factorSign != -1 {
-				spec = spec[:factorSign]
-			}
 
-			// isAccepted if the current offer is accepted
-			if isAccepted(spec, offer) {
+		// Get quality
+		quality := 1.0
+		if factorSign := strings.IndexByte(spec, ';'); factorSign != -1 {
+			factor := utils.Trim(spec[factorSign+1:], ' ')
+			if strings.HasPrefix(factor, "q=") {
+				quality, _ = strconv.ParseFloat(factor[2:], 64)
+			}
+			spec = spec[:factorSign]
+		}
+
+		// Get specificity
+		specificity := 0
+		// check for wildcard this could be a mime */* or a wildcard character *
+		if spec == "*/*" || spec == "*" {
+			specificity = 1
+		} else if strings.HasSuffix(spec, "/*") {
+			specificity = 2
+		} else if strings.IndexByte(spec, '/') != -1 {
+			specificity = 3
+		} else {
+			specificity = 4
+		}
+
+		// Add to accepted types
+		acceptedTypes = append(acceptedTypes, acceptedType{spec, quality, specificity})
+
+		// Next
+		if commaPos != -1 {
+			header = header[commaPos+1:]
+		} else {
+			break
+		}
+	}
+
+	// Sort accepted types by quality and specificity
+	if len(acceptedTypes) > 6 {
+		sort.SliceStable(acceptedTypes, func(i, j int) bool {
+			if acceptedTypes[i].quality == acceptedTypes[j].quality {
+				return acceptedTypes[i].specificity > acceptedTypes[j].specificity
+			}
+			return acceptedTypes[i].quality > acceptedTypes[j].quality
+		})
+	} else if len(acceptedTypes) > 1 {
+		// Insertion sort
+		changes := false
+		for i := 1; i < len(acceptedTypes); i++ {
+			for j := i; j > 0; j-- {
+				if acceptedTypes[j-1].quality < acceptedTypes[j].quality {
+					acceptedTypes[j-1], acceptedTypes[j] = acceptedTypes[j], acceptedTypes[j-1]
+					changes = true
+				} else if acceptedTypes[j-1].quality == acceptedTypes[j].quality && acceptedTypes[j-1].specificity < acceptedTypes[j].specificity {
+					acceptedTypes[j-1], acceptedTypes[j] = acceptedTypes[j], acceptedTypes[j-1]
+					changes = true
+				}
+
+				if !changes {
+					break
+				}
+			}
+		}
+	}
+
+	// Find the first offer that matches the accepted types
+	for _, acceptedType := range acceptedTypes {
+		for _, offer := range offers {
+			if len(offer) == 0 {
+				continue
+			}
+			if isAccepted(acceptedType.spec, offer) {
 				return offer
-			}
-
-			if commaPos != -1 {
-				header = header[commaPos+1:]
 			}
 		}
 	}
