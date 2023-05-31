@@ -16,7 +16,6 @@ import (
 	"mime/multipart"
 	"net"
 	"net/http"
-	"net/url"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -1056,28 +1055,13 @@ func (c *Ctx) Query(key string, defaultValue ...string) string {
 }
 
 // Queries returns a map of query parameters and their values.
-// It returns an error if the query string is not valid.
-func (c *Ctx) Queries() (map[string]string, error) {
-	queryRaw := c.fasthttp.QueryArgs().String()
-	queryRaw, err := url.QueryUnescape(queryRaw)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unscape query: %w", err)
-	}
+func (c *Ctx) Queries() map[string]string {
+	m := make(map[string]string, c.Context().QueryArgs().Len())
+	c.Context().QueryArgs().VisitAll(func(key, value []byte) {
+		m[string(key)] = string(value)
+	})
 
-	queries, err := url.ParseQuery(queryRaw)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse query: %w", err)
-	}
-
-	m := make(map[string]string)
-
-	for k, v := range queries {
-		if len(v) > 0 {
-			m[k] = v[len(v)-1]
-		}
-	}
-
-	return m, nil
+	return m
 }
 
 // QueryInt returns integer value of key string parameter in the url.

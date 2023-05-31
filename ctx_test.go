@@ -3849,29 +3849,13 @@ func Test_Ctx_Queries(t *testing.T) {
 	c.Request().Header.SetContentType("")
 	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football&favouriteDrinks=milo,coke,pepsi&alloc=&no=1")
 
-	queries, err := c.Queries()
-	utils.AssertEqual(t, nil, err)
+	queries := c.Queries()
 	utils.AssertEqual(t, "1", queries["id"])
 	utils.AssertEqual(t, "tom", queries["name"])
 	utils.AssertEqual(t, "basketball,football", queries["hobby"])
 	utils.AssertEqual(t, "milo,coke,pepsi", queries["favouriteDrinks"])
 	utils.AssertEqual(t, "", queries["alloc"])
 	utils.AssertEqual(t, "1", queries["no"])
-
-	c.Request().URI().SetQueryString("id%3D1%26name%3Dtom%26hobby%3Dbasketball%2Cfootball%26favouriteDrinks%3Dmilo%2Ccoke%2Cpepsi%26alloc%3D%26no%3D1")
-	queries, err = c.Queries()
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "1", queries["id"])
-	utils.AssertEqual(t, "tom", queries["name"])
-	utils.AssertEqual(t, "basketball,football", queries["hobby"])
-	utils.AssertEqual(t, "milo,coke,pepsi", queries["favouriteDrinks"])
-	utils.AssertEqual(t, "", queries["alloc"])
-	utils.AssertEqual(t, "1", queries["no"])
-
-	c.Request().URI().SetQueryString(" ?&=#+%!<>#\"{}|\\^[]`☺\t:/@$'()*,;")
-	queries, err = c.Queries()
-	utils.AssertEqual(t, "failed to parse query: invalid semicolon separator in query", err.Error())
-	utils.AssertEqual(t, 0, len(queries))
 }
 
 // go test -v  -run=^$ -bench=BenchmarkTest_Ctx_Queries -benchmem -count=4
@@ -3881,14 +3865,19 @@ func BenchmarkTest_Ctx_Queries(b *testing.B) {
 	defer app.ReleaseCtx(c)
 	b.ReportAllocs()
 	b.ResetTimer()
-	c.Request().URI().SetQueryString("id%3D1%26name%3Dtom%26hobby%3Dbasketball%2Cfootball%26favouriteDrinks%3Dmilo%2Ccoke%2Cpepsi%26alloc%3D%26no%3D1")
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football&favouriteDrinks=milo,coke,pepsi&alloc=&no=1")
 
-	var err error
+	var queries map[string]string
 	for n := 0; n < b.N; n++ {
-		_, err = c.Queries()
+		queries = c.Queries()
 	}
 
-	utils.AssertEqual(b, nil, err)
+	utils.AssertEqual(b, "1", queries["id"])
+	utils.AssertEqual(b, "tom", queries["name"])
+	utils.AssertEqual(b, "basketball,football", queries["hobby"])
+	utils.AssertEqual(b, "milo,coke,pepsi", queries["favouriteDrinks"])
+	utils.AssertEqual(b, "", queries["alloc"])
+	utils.AssertEqual(b, "1", queries["no"])
 }
 
 // go test -run Test_Ctx_QueryParser -v
