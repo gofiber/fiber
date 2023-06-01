@@ -597,7 +597,7 @@ func (c *Ctx) GetRespHeader(key string, defaultValue ...string) string {
 func (c *Ctx) GetReqHeaders() map[string]string {
 	headers := make(map[string]string)
 	c.Request().Header.VisitAll(func(k, v []byte) {
-		headers[string(k)] = c.app.getString(v)
+		headers[c.app.getString(k)] = c.app.getString(v)
 	})
 
 	return headers
@@ -609,7 +609,7 @@ func (c *Ctx) GetReqHeaders() map[string]string {
 func (c *Ctx) GetRespHeaders() map[string]string {
 	headers := make(map[string]string)
 	c.Response().Header.VisitAll(func(k, v []byte) {
-		headers[string(k)] = c.app.getString(v)
+		headers[c.app.getString(k)] = c.app.getString(v)
 	})
 
 	return headers
