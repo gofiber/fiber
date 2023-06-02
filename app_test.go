@@ -1846,10 +1846,6 @@ func Test_Middleware_Route_Naming_With_Use(t *testing.T) {
 	})
 
 	for _, route := range app.GetRoutes() {
-		fmt.Printf("Path: %s, Method: %s, Name: %s\n", route.Path, route.Method, route.Name)
-	}
-
-	for _, route := range app.GetRoutes() {
 		switch route.Path {
 		case "/":
 			utils.AssertEqual(t, "compressMW", route.Name)

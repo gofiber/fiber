@@ -162,7 +162,6 @@ func Test_Hook_OnGroupName(t *testing.T) {
 
 	utils.AssertEqual(t, "x.", buf.String())
 	utils.AssertEqual(t, "x.test", buf2.String())
-
 }
 
 func Test_Hook_OnGroupName_Error(t *testing.T) {
