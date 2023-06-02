@@ -1835,8 +1835,7 @@ func Test_Middleware_Route_Naming_With_Use(t *testing.T) {
 	grp := app.Group("/pages").Name("pages.")
 	grp.Use(func(c *Ctx) error {
 		return c.Next()
-	})
-	app.Name("csrfMW") // TODO: This should be done by using group's Name method. But it just working for group naming.
+	}).Name("csrfMW")
 
 	grp.Get("/home", func(c *Ctx) error {
 		return c.Next()

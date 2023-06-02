@@ -225,7 +225,7 @@ func (*App) copyRoute(route *Route) *Route {
 	}
 }
 
-func (app *App) register(method, pathRaw string, group *Group, handlers ...Handler) Router {
+func (app *App) register(method, pathRaw string, group *Group, handlers ...Handler) {
 	// Uppercase HTTP methods
 	method = utils.ToUpper(method)
 	// Check if the HTTP method is valid unless it's USE
@@ -302,10 +302,9 @@ func (app *App) register(method, pathRaw string, group *Group, handlers ...Handl
 		// Add route to stack
 		app.addRoute(method, &route, isMount)
 	}
-	return app
 }
 
-func (app *App) registerStatic(prefix, root string, config ...Static) Router {
+func (app *App) registerStatic(prefix, root string, config ...Static) {
 	// For security we want to restrict to the current work directory.
 	if root == "" {
 		root = "."
@@ -441,7 +440,6 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 	app.addRoute(MethodGet, &route)
 	// Add HEAD route
 	app.addRoute(MethodHead, &route)
-	return app
 }
 
 func (app *App) addRoute(method string, route *Route, isMounted ...bool) {
