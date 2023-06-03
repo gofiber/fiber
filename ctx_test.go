@@ -3847,7 +3847,7 @@ func Test_Ctx_Queries(t *testing.T) {
 
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
-	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football&favouriteDrinks=milo,coke,pepsi&alloc=&no=1")
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football&favouriteDrinks=milo,coke,pepsi&alloc=&no=1&field1=value1&field1=value2&field2=value3&list_a=1&list_a=2&list_a=3&list_b[]=1&list_b[]=2&list_b[]=3&list_c=1,2,3")
 
 	queries := c.Queries()
 	utils.AssertEqual(t, "1", queries["id"])
@@ -3856,6 +3856,11 @@ func Test_Ctx_Queries(t *testing.T) {
 	utils.AssertEqual(t, "milo,coke,pepsi", queries["favouriteDrinks"])
 	utils.AssertEqual(t, "", queries["alloc"])
 	utils.AssertEqual(t, "1", queries["no"])
+	utils.AssertEqual(t, "value2", queries["field1"])
+	utils.AssertEqual(t, "value3", queries["field2"])
+	utils.AssertEqual(t, "3", queries["list_a"])
+	utils.AssertEqual(t, "3", queries["list_b[]"])
+	utils.AssertEqual(t, "1,2,3", queries["list_c"])
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_Queries -benchmem -count=4
