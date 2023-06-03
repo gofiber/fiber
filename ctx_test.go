@@ -3858,8 +3858,8 @@ func Test_Ctx_Queries(t *testing.T) {
 	utils.AssertEqual(t, "1", queries["no"])
 }
 
-// go test -v  -run=^$ -bench=BenchmarkTest_Ctx_Queries -benchmem -count=4
-func BenchmarkTest_Ctx_Queries(b *testing.B) {
+// go test -v  -run=^$ -bench=Benchmark_Ctx_Queries -benchmem -count=4
+func Benchmark_Ctx_Queries(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
