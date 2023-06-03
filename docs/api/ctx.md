@@ -1094,12 +1094,34 @@ func (c *Ctx) Queries() (map[string]string, error)
 // GET http://example.com/?name=alex&want_pizza=false&id=
 
 app.Get("/", func(c *fiber.Ctx) error {
-	m := c.Queries()
-	m["name"] // "alex"
-	m["want_pizza"] // "false"
-	m["id"] // ""
-  // ...
+m := c.Queries()
+m["name"] // "alex"
+m["want_pizza"] // "false"
+m["id"] // ""
+// ...
 })
+```
+
+```go title="Example"
+// GET http://example.com/?field1=value1&field1=value2&field2=value3
+
+app.Get("/", func (c *fiber.Ctx) error {
+	m := c.Queries()
+	m["field1"] // "value2"
+	m["field2"] // value3
+})
+```
+
+```go title="Example"
+// GET http://example.com/?list_a=1&list_a=2&list_a=3&list_b[]=1&list_b[]=2&list_b[]=3&list_c=1,2,3
+
+app.Get("/", func(c *fiber.Ctx) error {
+	m := c.Queries()
+    m["list_a"] // "3"
+    m["list_b[]"] // "3"
+    m["list_c"] // "1,2,3"
+})
+
 ```
 
 ## QueryBool
