@@ -1060,7 +1060,6 @@ func (c *Ctx) Queries() map[string]string {
 	c.Context().QueryArgs().VisitAll(func(key, value []byte) {
 		m[c.app.getString(key)] = c.app.getString(value)
 	})
-
 	return m
 }
 
