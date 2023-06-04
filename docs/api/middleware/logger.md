@@ -80,56 +80,66 @@ app.Use(logger.New(logger.Config{
 		}
 	},
 }))
+
+// Disable colors when outputting to default format
+app.Use(logger.New(logger.Config{
+    DisableColors: true,
+}))
 ```
 
 ## Config
 ```go
 // Config defines the config for middleware.
 type Config struct {
-	// Next defines a function to skip this middleware when returned true.
-	//
-	// Optional. Default: nil
-	Next func(c *fiber.Ctx) bool
-
-	// Done is a function that is called after the log string for a request is written to Output,
-	// and pass the log string as parameter.
-	//
-	// Optional. Default: nil
-	Done func(c *fiber.Ctx, logString []byte)
-
-	// tagFunctions defines the custom tag action
-	//
-	// Optional. Default: map[string]LogFunc
-	CustomTags map[string]LogFunc
-
-	// Format defines the logging tags
-	//
-	// Optional. Default: [${time}] ${status} - ${latency} ${method} ${path}\n
-	Format string
-
-	// TimeFormat https://programming.guide/go/format-parse-string-time-date-example.html
-	//
-	// Optional. Default: 15:04:05
-	TimeFormat string
-
-	// TimeZone can be specified, such as "UTC" and "America/New_York" and "Asia/Chongqing", etc
-	//
-	// Optional. Default: "Local"
-	TimeZone string
-
-	// TimeInterval is the delay before the timestamp is updated
-	//
-	// Optional. Default: 500 * time.Millisecond
-	TimeInterval time.Duration
-
-	// Output is a writer where logs are written
-	//
-	// Default: os.Stdout
-	Output io.Writer
-
-	enableColors     bool
-	enableLatency    bool
-	timeZoneLocation *time.Location
+    // Next defines a function to skip this middleware when returned true.
+    //
+    // Optional. Default: nil
+    Next func(c *fiber.Ctx) bool
+    
+    // Done is a function that is called after the log string for a request is written to Output,
+    // and pass the log string as parameter.
+    //
+    // Optional. Default: nil
+    Done func(c *fiber.Ctx, logString []byte)
+    
+    // tagFunctions defines the custom tag action
+    //
+    // Optional. Default: map[string]LogFunc
+    CustomTags map[string]LogFunc
+    
+    // Format defines the logging tags
+    //
+    // Optional. Default: [${time}] ${status} - ${latency} ${method} ${path}\n
+    Format string
+    
+    // TimeFormat https://programming.guide/go/format-parse-string-time-date-example.html
+    //
+    // Optional. Default: 15:04:05
+    TimeFormat string
+    
+    // TimeZone can be specified, such as "UTC" and "America/New_York" and "Asia/Chongqing", etc
+    //
+    // Optional. Default: "Local"
+    TimeZone string
+    
+    // TimeInterval is the delay before the timestamp is updated
+    //
+    // Optional. Default: 500 * time.Millisecond
+    TimeInterval time.Duration
+    
+    // Output is a writer where logs are written
+    //
+    // Default: os.Stdout
+    Output io.Writer
+    
+    // DisableColors defines if the logs output should be colorized
+    //
+    // Default: false
+    DisableColors bool
+    
+    enableColors     bool
+    enableLatency    bool
+    timeZoneLocation *time.Location
 }
 type LogFunc func(buf logger.Buffer, c *fiber.Ctx, data *logger.Data, extraParam string) (int, error)
 ```
@@ -143,7 +153,7 @@ var ConfigDefault = Config{
 	TimeZone:     "Local",
 	TimeInterval: 500 * time.Millisecond,
 	Output:       os.Stdout,
-	enableColors: true,
+    DisableColors: true,
 }
 ```
 
