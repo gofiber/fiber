@@ -83,7 +83,7 @@ app.Use(logger.New(logger.Config{
 
 // Disable colors when outputting to default format
 app.Use(logger.New(logger.Config{
-    DisableColors: true,
+    EnableColors: false,
 }))
 ```
 
@@ -132,12 +132,10 @@ type Config struct {
     // Default: os.Stdout
     Output io.Writer
     
-    // DisableColors defines if the logs output should be colorized
+    // EnableColors defines if the logs output should be colorized
     //
-    // Default: false
-    DisableColors bool
-    
-    enableColors     bool
+    // Default: true
+    EnableColors     bool
     enableLatency    bool
     timeZoneLocation *time.Location
 }
@@ -153,7 +151,7 @@ var ConfigDefault = Config{
 	TimeZone:     "Local",
 	TimeInterval: 500 * time.Millisecond,
 	Output:       os.Stdout,
-    DisableColors: true,
+    EnableColors: true,
 }
 ```
 

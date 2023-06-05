@@ -155,8 +155,8 @@ func Test_Logger_ErrorOutput_WithoutColor(t *testing.T) {
 	o := new(fakeOutput)
 	app := fiber.New()
 	app.Use(New(Config{
-		Output:        o,
-		DisableColors: true,
+		Output:       o,
+		EnableColors: false,
 	}))
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))

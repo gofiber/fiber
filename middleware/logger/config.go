@@ -51,12 +51,10 @@ type Config struct {
 	// Default: os.Stdout
 	Output io.Writer
 
-	// DisableColors defines if the logs output should be colorized
+	// EnableColors defines if the logs output should be colorized
 	//
-	// Default: false
-	DisableColors bool
-
-	enableColors     bool
+	// Default: true
+	EnableColors     bool
 	enableLatency    bool
 	timeZoneLocation *time.Location
 }
@@ -91,7 +89,7 @@ var ConfigDefault = Config{
 	TimeZone:     "Local",
 	TimeInterval: 500 * time.Millisecond,
 	Output:       os.Stdout,
-	enableColors: false,
+	EnableColors: true,
 }
 
 // Helper function to set default values
@@ -127,8 +125,8 @@ func configDefault(config ...Config) Config {
 		cfg.Output = ConfigDefault.Output
 	}
 
-	if !cfg.DisableColors && cfg.Output == ConfigDefault.Output {
-		cfg.enableColors = true
+	if cfg.Output == ConfigDefault.Output {
+		cfg.EnableColors = true
 	}
 
 	return cfg
