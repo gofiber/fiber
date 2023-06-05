@@ -139,6 +139,9 @@ func Test_Hook_OnGroupName(t *testing.T) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
+	buf2 := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf2)
+
 	app.Hooks().OnGroupName(func(g Group) error {
 		_, err := buf.WriteString(g.name)
 		utils.AssertEqual(t, nil, err)
@@ -146,11 +149,19 @@ func Test_Hook_OnGroupName(t *testing.T) {
 		return nil
 	})
 
+	app.Hooks().OnName(func(r Route) error {
+		_, err := buf2.WriteString(r.Name)
+		utils.AssertEqual(t, nil, err)
+
+		return nil
+	})
+
 	grp := app.Group("/x").Name("x.")
-	grp.Get("/test", testSimpleHandler)
+	grp.Get("/test", testSimpleHandler).Name("test")
 	grp.Get("/test2", testSimpleHandler)
 
 	utils.AssertEqual(t, "x.", buf.String())
+	utils.AssertEqual(t, "x.test", buf2.String())
 }
 
 func Test_Hook_OnGroupName_Error(t *testing.T) {

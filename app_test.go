@@ -1803,3 +1803,62 @@ func TestApp_GetRoutes(t *testing.T) {
 		utils.AssertEqual(t, name, route.Name)
 	}
 }
+
+func Test_Middleware_Route_Naming_With_Use(t *testing.T) {
+	named := "named"
+	app := New()
+
+	app.Get("/unnamed", func(c *Ctx) error {
+		return c.Next()
+	})
+
+	app.Post("/named", func(c *Ctx) error {
+		return c.Next()
+	}).Name(named)
+
+	app.Use(func(c *Ctx) error {
+		return c.Next()
+	}) // no name - logging MW
+
+	app.Use(func(c *Ctx) error {
+		return c.Next()
+	}).Name("corsMW")
+
+	app.Use(func(c *Ctx) error {
+		return c.Next()
+	}).Name("compressMW")
+
+	app.Use(func(c *Ctx) error {
+		return c.Next()
+	}) // no name - cache MW
+
+	grp := app.Group("/pages").Name("pages.")
+	grp.Use(func(c *Ctx) error {
+		return c.Next()
+	}).Name("csrfMW")
+
+	grp.Get("/home", func(c *Ctx) error {
+		return c.Next()
+	}).Name("home")
+
+	grp.Get("/unnamed", func(c *Ctx) error {
+		return c.Next()
+	})
+
+	for _, route := range app.GetRoutes() {
+		switch route.Path {
+		case "/":
+			utils.AssertEqual(t, "compressMW", route.Name)
+		case "/unnamed":
+			utils.AssertEqual(t, "", route.Name)
+		case "named":
+			utils.AssertEqual(t, named, route.Name)
+		case "/pages":
+			utils.AssertEqual(t, "pages.csrfMW", route.Name)
+		case "/pages/home":
+			utils.AssertEqual(t, "pages.home", route.Name)
+		case "/pages/unnamed":
+			utils.AssertEqual(t, "", route.Name)
+		}
+	}
+}
