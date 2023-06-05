@@ -149,6 +149,23 @@ func (o *fakeOutput) Write([]byte) (int, error) {
 	return 0, errors.New("fake output")
 }
 
+// go test -run Test_Logger_ErrorOutput_WithoutColor
+func Test_Logger_ErrorOutput_WithoutColor(t *testing.T) {
+	t.Parallel()
+	o := new(fakeOutput)
+	app := fiber.New()
+	app.Use(New(Config{
+		Output:        o,
+		DisableColors: true,
+	}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
+
+	utils.AssertEqual(t, 1, int(*o))
+}
+
 // go test -run Test_Logger_ErrorOutput
 func Test_Logger_ErrorOutput(t *testing.T) {
 	t.Parallel()
@@ -162,7 +179,7 @@ func Test_Logger_ErrorOutput(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
 
-	utils.AssertEqual(t, 2, int(*o))
+	utils.AssertEqual(t, 1, int(*o))
 }
 
 // go test -run Test_Logger_All
@@ -501,4 +518,20 @@ func Test_Logger_ByteSent_Streaming(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 	utils.AssertEqual(t, "0 0 200", buf.String())
+}
+
+// go test -run Test_Logger_EnableColors
+func Test_Logger_EnableColors(t *testing.T) {
+	t.Parallel()
+	o := new(fakeOutput)
+	app := fiber.New()
+	app.Use(New(Config{
+		Output: o,
+	}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
+
+	utils.AssertEqual(t, 1, int(*o))
 }

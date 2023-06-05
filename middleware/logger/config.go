@@ -3,7 +3,6 @@ package logger
 import (
 	"io"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -52,6 +51,11 @@ type Config struct {
 	// Default: os.Stdout
 	Output io.Writer
 
+	// DisableColors defines if the logs output should be colorized
+	//
+	// Default: false
+	DisableColors bool
+
 	enableColors     bool
 	enableLatency    bool
 	timeZoneLocation *time.Location
@@ -87,18 +91,7 @@ var ConfigDefault = Config{
 	TimeZone:     "Local",
 	TimeInterval: 500 * time.Millisecond,
 	Output:       os.Stdout,
-	enableColors: true,
-}
-
-// Function to check if the logger format is compatible for coloring
-func checkColorEnable(format string) bool {
-	validTemplates := []string{"${status}", "${method}"}
-	for _, template := range validTemplates {
-		if strings.Contains(format, template) {
-			return true
-		}
-	}
-	return false
+	enableColors: false,
 }
 
 // Helper function to set default values
@@ -121,7 +114,6 @@ func configDefault(config ...Config) Config {
 	if cfg.Format == "" {
 		cfg.Format = ConfigDefault.Format
 	}
-
 	if cfg.TimeZone == "" {
 		cfg.TimeZone = ConfigDefault.TimeZone
 	}
@@ -135,8 +127,7 @@ func configDefault(config ...Config) Config {
 		cfg.Output = ConfigDefault.Output
 	}
 
-	// Enable colors if no custom format or output is given
-	if cfg.Output == ConfigDefault.Output && checkColorEnable(cfg.Format) {
+	if !cfg.DisableColors && cfg.Output == ConfigDefault.Output {
 		cfg.enableColors = true
 	}
 
