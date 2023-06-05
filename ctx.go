@@ -1072,7 +1072,7 @@ func (c *Ctx) Query(key string, defaultValue ...string) string {
 func (c *Ctx) Queries() map[string]string {
 	m := make(map[string]string, c.Context().QueryArgs().Len())
 	c.Context().QueryArgs().VisitAll(func(key, value []byte) {
-		m[string(key)] = string(value)
+		m[c.app.getString(key)] = c.app.getString(value)
 	})
 	return m
 }
