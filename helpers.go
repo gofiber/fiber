@@ -271,9 +271,6 @@ func acceptsOfferType(spec, offerType string) bool {
 
 // getOffer return valid offer for header negotiation
 func getOffer(header string, isAccepted func(spec, offer string) bool, offers ...string) string {
-	if isAccepted == nil {
-		return ""
-	}
 	if len(offers) == 0 {
 		return ""
 	}
