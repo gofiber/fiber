@@ -609,18 +609,23 @@ func (app *App) SetTLSHandler(tlsHandler *TLSHandler) {
 // Name Assign name to specific route.
 func (app *App) Name(name string) Router {
 	app.mutex.Lock()
+	defer app.mutex.Unlock()
 
-	latestGroup := app.latestRoute.group
-	if latestGroup != nil {
-		app.latestRoute.Name = latestGroup.name + name
-	} else {
-		app.latestRoute.Name = name
+	for _, routes := range app.stack {
+		for _, route := range routes {
+			if route.Path == app.latestRoute.path {
+				route.Name = name
+
+				if route.group != nil {
+					route.Name = route.group.name + route.Name
+				}
+			}
+		}
 	}
 
 	if err := app.hooks.executeOnNameHooks(*app.latestRoute); err != nil {
 		panic(err)
 	}
-	app.mutex.Unlock()
 
 	return app
 }
@@ -754,12 +759,16 @@ func (app *App) Patch(path string, handlers ...Handler) Router {
 
 // Add allows you to specify a HTTP method to register a route
 func (app *App) Add(method, path string, handlers ...Handler) Router {
-	return app.register(method, path, nil, handlers...)
+	app.register(method, path, nil, handlers...)
+
+	return app
 }
 
 // Static will create a file server serving static files
 func (app *App) Static(prefix, root string, config ...Static) Router {
-	return app.registerStatic(prefix, root, config...)
+	app.registerStatic(prefix, root, config...)
+
+	return app
 }
 
 // All will register the handler on all HTTP methods
