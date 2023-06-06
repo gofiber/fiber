@@ -15,7 +15,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strconv"
 	"strings"
 	"time"
 	"unsafe"
@@ -298,7 +297,7 @@ func getOffer(header string, isAccepted func(spec, offer string) bool, offers ..
 		if factorSign := strings.IndexByte(spec, ';'); factorSign != -1 {
 			factor := utils.Trim(spec[factorSign+1:], ' ')
 			if strings.HasPrefix(factor, "q=") {
-				if q, err := strconv.ParseFloat(factor[2:], 64); err == nil {
+				if q, err := fasthttp.ParseUfloat([]byte(factor[2:])); err == nil {
 					quality = q
 				}
 			}
