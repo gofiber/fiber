@@ -88,11 +88,13 @@ func Test_Utils_GetOffer(t *testing.T) {
 func Benchmark_Utils_GetOffer(b *testing.B) {
 	headers := []string{
 		"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+		"application/json",
 		"utf-8, iso-8859-1;q=0.5",
 		"gzip, deflate",
 	}
 	offers := [][]string{
-		{"application/xml", "application/json"},
+		{"text/html", "application/xml", "application/xml+xhtml"},
+		{"application/json"},
 		{"utf-8"},
 		{"deflate"},
 	}
@@ -101,6 +103,37 @@ func Benchmark_Utils_GetOffer(b *testing.B) {
 			getOffer(header, acceptsOfferType, offers[i]...)
 		}
 	}
+}
+
+func Test_Utils_SortAcceptedTypes(t *testing.T) {
+	t.Parallel()
+	acceptedTypes := []acceptedType{
+		{spec: "text/html", quality: 1, specificity: 3, order: 0},
+		{spec: "text/*", quality: 0.5, specificity: 2, order: 1},
+		{spec: "*/*", quality: 0.1, specificity: 1, order: 2},
+		{spec: "application/json", quality: 0.999, specificity: 3, order: 3},
+		{spec: "application/xml", quality: 1, specificity: 3, order: 4},
+		{spec: "application/pdf", quality: 1, specificity: 3, order: 5},
+		{spec: "image/png", quality: 1, specificity: 3, order: 6},
+		{spec: "image/jpeg", quality: 1, specificity: 3, order: 7},
+		{spec: "image/*", quality: 1, specificity: 2, order: 8},
+		{spec: "image/gif", quality: 1, specificity: 3, order: 9},
+		{spec: "text/plain", quality: 1, specificity: 3, order: 10},
+	}
+	sortAcceptedTypes(&acceptedTypes)
+	utils.AssertEqual(t, acceptedTypes, []acceptedType{
+		{spec: "text/html", quality: 1, specificity: 3, order: 0},
+		{spec: "application/xml", quality: 1, specificity: 3, order: 4},
+		{spec: "application/pdf", quality: 1, specificity: 3, order: 5},
+		{spec: "image/png", quality: 1, specificity: 3, order: 6},
+		{spec: "image/jpeg", quality: 1, specificity: 3, order: 7},
+		{spec: "image/gif", quality: 1, specificity: 3, order: 9},
+		{spec: "text/plain", quality: 1, specificity: 3, order: 10},
+		{spec: "image/*", quality: 1, specificity: 2, order: 8},
+		{spec: "application/json", quality: 0.999, specificity: 3, order: 3},
+		{spec: "text/*", quality: 0.5, specificity: 2, order: 1},
+		{spec: "*/*", quality: 0.1, specificity: 1, order: 2},
+	})
 }
 
 // go test -v -run=^$ -bench=Benchmark_Utils_SortAcceptedTypes_Sorted -benchmem -count=4
@@ -124,7 +157,7 @@ func Benchmark_Utils_SortAcceptedTypes_Unsorted(b *testing.B) {
 		acceptedTypes[0] = acceptedType{spec: "text/html", quality: 1, specificity: 3, order: 0}
 		acceptedTypes[1] = acceptedType{spec: "text/*", quality: 0.5, specificity: 2, order: 1}
 		acceptedTypes[2] = acceptedType{spec: "*/*", quality: 0.1, specificity: 1, order: 2}
-		acceptedTypes[3] = acceptedType{spec: "application/json", quality: 1, specificity: 3, order: 3}
+		acceptedTypes[3] = acceptedType{spec: "application/json", quality: 0.999, specificity: 3, order: 3}
 		acceptedTypes[4] = acceptedType{spec: "application/xml", quality: 1, specificity: 3, order: 4}
 		acceptedTypes[5] = acceptedType{spec: "application/pdf", quality: 1, specificity: 3, order: 5}
 		acceptedTypes[6] = acceptedType{spec: "image/png", quality: 1, specificity: 3, order: 6}
@@ -134,17 +167,19 @@ func Benchmark_Utils_SortAcceptedTypes_Unsorted(b *testing.B) {
 		acceptedTypes[10] = acceptedType{spec: "text/plain", quality: 1, specificity: 3, order: 10}
 		sortAcceptedTypes(&acceptedTypes)
 	}
-	utils.AssertEqual(b, "text/html", acceptedTypes[0].spec)
-	utils.AssertEqual(b, "application/json", acceptedTypes[1].spec)
-	utils.AssertEqual(b, "application/xml", acceptedTypes[2].spec)
-	utils.AssertEqual(b, "application/pdf", acceptedTypes[3].spec)
-	utils.AssertEqual(b, "image/png", acceptedTypes[4].spec)
-	utils.AssertEqual(b, "image/jpeg", acceptedTypes[5].spec)
-	utils.AssertEqual(b, "image/gif", acceptedTypes[6].spec)
-	utils.AssertEqual(b, "text/plain", acceptedTypes[7].spec)
-	utils.AssertEqual(b, "image/*", acceptedTypes[8].spec)
-	utils.AssertEqual(b, "text/*", acceptedTypes[9].spec)
-	utils.AssertEqual(b, "*/*", acceptedTypes[10].spec)
+	utils.AssertEqual(b, acceptedTypes, []acceptedType{
+		{spec: "text/html", quality: 1, specificity: 3, order: 0},
+		{spec: "application/xml", quality: 1, specificity: 3, order: 4},
+		{spec: "application/pdf", quality: 1, specificity: 3, order: 5},
+		{spec: "image/png", quality: 1, specificity: 3, order: 6},
+		{spec: "image/jpeg", quality: 1, specificity: 3, order: 7},
+		{spec: "image/gif", quality: 1, specificity: 3, order: 9},
+		{spec: "text/plain", quality: 1, specificity: 3, order: 10},
+		{spec: "image/*", quality: 1, specificity: 2, order: 8},
+		{spec: "application/json", quality: 0.999, specificity: 3, order: 3},
+		{spec: "text/*", quality: 0.5, specificity: 2, order: 1},
+		{spec: "*/*", quality: 0.1, specificity: 1, order: 2},
+	})
 }
 
 // go test -v -run=^$ -bench=Benchmark_App_ETag -benchmem -count=4
