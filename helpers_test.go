@@ -72,8 +72,10 @@ func Test_Utils_GetOffer(t *testing.T) {
 	utils.AssertEqual(t, "", getOffer("text/html", acceptsOfferType))
 	utils.AssertEqual(t, "", getOffer("text/html", acceptsOfferType, "application/json"))
 	utils.AssertEqual(t, "", getOffer("text/html;q=0", acceptsOfferType, "text/html"))
+	utils.AssertEqual(t, "", getOffer("application/json, */*; q=0", acceptsOfferType, "image/png"))
 	utils.AssertEqual(t, "application/xml", getOffer("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", acceptsOfferType, "application/xml", "application/json"))
 	utils.AssertEqual(t, "text/html", getOffer("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", acceptsOfferType, "text/html"))
+	utils.AssertEqual(t, "application/pdf", getOffer("text/plain;q=0,application/pdf;q=0.9,*/*;q=0.000", acceptsOfferType, "application/pdf", "application/json"))
 	utils.AssertEqual(t, "application/pdf", getOffer("text/plain;q=0,application/pdf;q=0.9,*/*;q=0.000", acceptsOfferType, "application/pdf", "application/json"))
 
 	utils.AssertEqual(t, "", getOffer("utf-8, iso-8859-1;q=0.5", acceptsOffer))
