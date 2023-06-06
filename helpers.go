@@ -25,6 +25,16 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// acceptType is a struct that holds the parsed value of an Accept header
+// along with quality, specificity, and order.
+// used for sorting accept headers.
+type acceptedType struct {
+	spec        string
+	quality     float64
+	specificity int
+	order       int
+}
+
 // getTLSConfig returns a net listener's tls config
 func getTLSConfig(ln net.Listener) *tls.Config {
 	// Get listener type
@@ -261,17 +271,14 @@ func acceptsOfferType(spec, offerType string) bool {
 
 // getOffer return valid offer for header negotiation
 func getOffer(header string, isAccepted func(spec, offer string) bool, offers ...string) string {
+	if isAccepted == nil {
+		return ""
+	}
 	if len(offers) == 0 {
 		return ""
-	} else if header == "" {
-		return offers[0]
 	}
-
-	type acceptedType struct {
-		spec        string
-		quality     float64
-		specificity int
-		order       int
+	if header == "" {
+		return offers[0]
 	}
 
 	// Parse header and get accepted types with their quality and specificity
@@ -339,29 +346,9 @@ func getOffer(header string, isAccepted func(spec, offer string) bool, offers ..
 		}
 	}
 
-	// Sort accepted types by quality and specificity, preserving order of equal elements
 	if len(acceptedTypes) > 1 {
-		for i := 1; i < len(acceptedTypes); i++ {
-			swap := false
-			lo, hi := 0, i-1
-			for lo <= hi {
-				mid := (lo + hi) / 2
-				if acceptedTypes[i].quality < acceptedTypes[mid].quality ||
-					(acceptedTypes[i].quality == acceptedTypes[mid].quality && acceptedTypes[i].specificity < acceptedTypes[mid].specificity) ||
-					(acceptedTypes[i].quality == acceptedTypes[mid].quality && acceptedTypes[i].specificity == acceptedTypes[mid].specificity && acceptedTypes[i].order > acceptedTypes[mid].order) {
-					lo = mid + 1
-				} else {
-					hi = mid - 1
-				}
-			}
-			for j := i; j > lo; j-- {
-				acceptedTypes[j-1], acceptedTypes[j] = acceptedTypes[j], acceptedTypes[j-1]
-				swap = true
-			}
-			if !swap {
-				break
-			}
-		}
+		// Sort accepted types by quality and specificity, preserving order of equal elements
+		sortAcceptedTypes(&acceptedTypes)
 	}
 
 	// Find the first offer that matches the accepted types
@@ -377,6 +364,35 @@ func getOffer(header string, isAccepted func(spec, offer string) bool, offers ..
 	}
 
 	return ""
+}
+
+// sortAcceptedTypes sorts accepted types by quality and specificity, preserving order of equal elements
+//
+// Parameters are not supported, they are ignored when sorting by specificity.
+//
+// See: https://www.rfc-editor.org/rfc/rfc9110#name-content-negotiation-fields
+func sortAcceptedTypes(at *[]acceptedType) {
+	if at == nil || len(*at) < 2 {
+		return
+	}
+	acceptedTypes := *at
+
+	for i := 1; i < len(acceptedTypes); i++ {
+		lo, hi := 0, i-1
+		for lo <= hi {
+			mid := (lo + hi) / 2
+			if acceptedTypes[i].quality < acceptedTypes[mid].quality ||
+				(acceptedTypes[i].quality == acceptedTypes[mid].quality && acceptedTypes[i].specificity < acceptedTypes[mid].specificity) ||
+				(acceptedTypes[i].quality == acceptedTypes[mid].quality && acceptedTypes[i].specificity == acceptedTypes[mid].specificity && acceptedTypes[i].order > acceptedTypes[mid].order) {
+				lo = mid + 1
+			} else {
+				hi = mid - 1
+			}
+		}
+		for j := i; j > lo; j-- {
+			acceptedTypes[j-1], acceptedTypes[j] = acceptedTypes[j], acceptedTypes[j-1]
+		}
+	}
 }
 
 func matchEtag(s, etag string) bool {
