@@ -1121,7 +1121,29 @@ app.Get("/", func(c *fiber.Ctx) error {
     m["list_b[]"] // "3"
     m["list_c"] // "1,2,3"
 })
+```
 
+```go title="Example"
+// GET /api/posts?filters.author.name=John&filters.category.name=Technology
+
+app.Get("/", func(c *fiber.Ctx) error {
+	m := c.Queies()
+	m["filters.author.name"] // John
+	m["filters.category.name"] // Technology
+ })
+```
+
+```go title="Example"
+// GET /api/posts?tags=apple,orange,banana&filters[tags]=apple,orange,banana&filters[category][name]=fruits&filters.tags=apple,orange,banana&filters.category.name=fruits
+
+app.Get("/", func(c *fiber.Ctx) error {
+	m := c.Queries()
+	m["tags"] // apple,orange,banana
+	m["filters[tags]"] // apple,orange,banana
+	m["filters[category][name]"] // fruits
+	m["filters.tags"] // apple,orange,banana
+	m["filters.category.name"] // fruits
+})
 ```
 
 ## QueryBool
