@@ -45,7 +45,7 @@ func Test_Ctx_Accepts(t *testing.T) {
 	utils.AssertEqual(t, "", c.Accepts())
 	utils.AssertEqual(t, ".xml", c.Accepts(".xml"))
 	utils.AssertEqual(t, "", c.Accepts(".john"))
-	utils.AssertEqual(t, "application/xhtml+xml", c.Accepts("application/xml", "application/xml+rss", "application/yml", "application/xhtml+xml"), "must use client-preferred mime type")
+	utils.AssertEqual(t, "application/xhtml+xml", c.Accepts("application/xml", "application/xml+rss", "application/yaml", "application/xhtml+xml"), "must use client-preferred mime type")
 
 	c.Request().Header.Set(HeaderAccept, "application/json, text/plain, */*;q=0")
 	utils.AssertEqual(t, "", c.Accepts("html"), "must treat */*;q=0 as not acceptable")
