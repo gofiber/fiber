@@ -674,6 +674,28 @@ func main() {
 }
 ```
 
+### Using Trusted Proxy
+
+📖 [Config](https://docs.gofiber.io/api/fiber#config)
+
+```go
+import (
+    "github.com/gofiber/fiber/v2"
+    "github.com/gofiber/fiber/v2/middleware/recover"
+)
+
+func main() {
+    app := fiber.New(fiber.Config{
+        EnableTrustedProxyCheck: true,
+        TrustedProxies: []string{"0.0.0.0", "1.1.1.1/30"}, // IP address or IP address range
+        ProxyHeader: fiber.HeaderXForwardedFor,
+    })
+
+    // ...
+
+    log.Fatal(app.Listen(":3000"))
+}
+```
 </div>
 
 </details>
