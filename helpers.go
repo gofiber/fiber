@@ -25,6 +25,16 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// acceptType is a struct that holds the parsed value of an Accept header
+// along with quality, specificity, and order.
+// used for sorting accept headers.
+type acceptedType struct {
+	spec        string
+	quality     float64
+	specificity int
+	order       int
+}
+
 // getTLSConfig returns a net listener's tls config
 func getTLSConfig(ln net.Listener) *tls.Config {
 	// Get listener type
@@ -263,38 +273,123 @@ func acceptsOfferType(spec, offerType string) bool {
 func getOffer(header string, isAccepted func(spec, offer string) bool, offers ...string) string {
 	if len(offers) == 0 {
 		return ""
-	} else if header == "" {
+	}
+	if header == "" {
 		return offers[0]
 	}
 
-	for _, offer := range offers {
-		if len(offer) == 0 {
-			continue
+	// Parse header and get accepted types with their quality and specificity
+	// See: https://www.rfc-editor.org/rfc/rfc9110#name-content-negotiation-fields
+	spec, commaPos, order := "", 0, 0
+	acceptedTypes := make([]acceptedType, 0, 20)
+	for len(header) > 0 {
+		order++
+
+		// Skip spaces
+		header = utils.TrimLeft(header, ' ')
+
+		// Get spec
+		commaPos = strings.IndexByte(header, ',')
+		if commaPos != -1 {
+			spec = utils.Trim(header[:commaPos], ' ')
+		} else {
+			spec = utils.TrimLeft(header, ' ')
 		}
-		spec, commaPos := "", 0
-		for len(header) > 0 && commaPos != -1 {
-			commaPos = strings.IndexByte(header, ',')
-			if commaPos != -1 {
-				spec = utils.Trim(header[:commaPos], ' ')
-			} else {
-				spec = utils.TrimLeft(header, ' ')
-			}
-			if factorSign := strings.IndexByte(spec, ';'); factorSign != -1 {
-				spec = spec[:factorSign]
-			}
 
-			// isAccepted if the current offer is accepted
-			if isAccepted(spec, offer) {
-				return offer
+		// Get quality
+		quality := 1.0
+		if factorSign := strings.IndexByte(spec, ';'); factorSign != -1 {
+			factor := utils.Trim(spec[factorSign+1:], ' ')
+			if strings.HasPrefix(factor, "q=") {
+				if q, err := fasthttp.ParseUfloat(utils.UnsafeBytes(factor[2:])); err == nil {
+					quality = q
+				}
 			}
+			spec = spec[:factorSign]
+		}
 
+		// Skip if quality is 0.0
+		// See: https://www.rfc-editor.org/rfc/rfc9110#quality.values
+		if quality == 0.0 {
 			if commaPos != -1 {
 				header = header[commaPos+1:]
+			} else {
+				break
+			}
+			continue
+		}
+
+		// Get specificity
+		specificity := 0
+		// check for wildcard this could be a mime */* or a wildcard character *
+		if spec == "*/*" || spec == "*" {
+			specificity = 1
+		} else if strings.HasSuffix(spec, "/*") {
+			specificity = 2
+		} else if strings.IndexByte(spec, '/') != -1 {
+			specificity = 3
+		} else {
+			specificity = 4
+		}
+
+		// Add to accepted types
+		acceptedTypes = append(acceptedTypes, acceptedType{spec, quality, specificity, order})
+
+		// Next
+		if commaPos != -1 {
+			header = header[commaPos+1:]
+		} else {
+			break
+		}
+	}
+
+	if len(acceptedTypes) > 1 {
+		// Sort accepted types by quality and specificity, preserving order of equal elements
+		sortAcceptedTypes(&acceptedTypes)
+	}
+
+	// Find the first offer that matches the accepted types
+	for _, acceptedType := range acceptedTypes {
+		for _, offer := range offers {
+			if len(offer) == 0 {
+				continue
+			}
+			if isAccepted(acceptedType.spec, offer) {
+				return offer
 			}
 		}
 	}
 
 	return ""
+}
+
+// sortAcceptedTypes sorts accepted types by quality and specificity, preserving order of equal elements
+//
+// Parameters are not supported, they are ignored when sorting by specificity.
+//
+// See: https://www.rfc-editor.org/rfc/rfc9110#name-content-negotiation-fields
+func sortAcceptedTypes(at *[]acceptedType) {
+	if at == nil || len(*at) < 2 {
+		return
+	}
+	acceptedTypes := *at
+
+	for i := 1; i < len(acceptedTypes); i++ {
+		lo, hi := 0, i-1
+		for lo <= hi {
+			mid := (lo + hi) / 2
+			if acceptedTypes[i].quality < acceptedTypes[mid].quality ||
+				(acceptedTypes[i].quality == acceptedTypes[mid].quality && acceptedTypes[i].specificity < acceptedTypes[mid].specificity) ||
+				(acceptedTypes[i].quality == acceptedTypes[mid].quality && acceptedTypes[i].specificity == acceptedTypes[mid].specificity && acceptedTypes[i].order > acceptedTypes[mid].order) {
+				lo = mid + 1
+			} else {
+				hi = mid - 1
+			}
+		}
+		for j := i; j > lo; j-- {
+			acceptedTypes[j-1], acceptedTypes[j] = acceptedTypes[j], acceptedTypes[j-1]
+		}
+	}
 }
 
 func matchEtag(s, etag string) bool {

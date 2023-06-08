@@ -24,15 +24,27 @@ func (c *Ctx) AcceptsLanguages(offers ...string) string
 ```
 
 ```go title="Example"
-// Accept: text/*, application/json
+// Accept: text/html, application/json; q=0.8, text/plain; q=0.5; charset="utf-8"
 
 app.Get("/", func(c *fiber.Ctx) error {
   c.Accepts("html")             // "html"
   c.Accepts("text/html")        // "text/html"
   c.Accepts("json", "text")     // "json"
   c.Accepts("application/json") // "application/json"
+  c.Accepts("text/plain", "application/json") // "application/json", due to quality
   c.Accepts("image/png")        // ""
   c.Accepts("png")              // ""
+  // ...
+})
+```
+
+```go title="Example 2"
+// Accept: text/html, text/*, application/json, */*; q=0
+
+app.Get("/", func(c *fiber.Ctx) error {
+  c.Accepts("text/plain", "application/json") // "application/json", due to specificity
+  c.Accepts("application/json", "text/html") // "text/html", due to first match
+  c.Accepts("image/png")        // "", due to */* without q factor 0 is Not Acceptable
   // ...
 })
 ```
