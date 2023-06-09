@@ -19,3 +19,5 @@ jobs:
     steps:
     - name: Run govulncheck
       uses: golang/govulncheck-action@v0.1.0
+      with:
+        go-version-input: 1.20.x
