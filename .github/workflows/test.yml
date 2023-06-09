@@ -48,4 +48,4 @@ jobs:
       with:
         max_attempts: 3
         timeout_minutes: 15
-        command: go test ./... -v -race
+        command: go test ./... -v -race -count=1
