@@ -126,6 +126,12 @@ func (app *App) prefork(network, addr string, tlsConfig *tls.Config) error {
 		}()
 	}
 
+	// Run onListen hooks
+	// Hooks have to be run here as different as non-prefork mode due to they should run as child or master
+	if err := app.hooks.executeOnListenHooks(); err != nil {
+		panic(err)
+	}
+
 	// Print startup message
 	if !app.config.DisableStartupMessage {
 		app.startupMessage(addr, tlsConfig != nil, ","+strings.Join(pids, ","))
