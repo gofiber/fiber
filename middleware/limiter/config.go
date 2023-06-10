@@ -1,10 +1,10 @@
 package limiter
 
 import (
-	"log"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/log"
 )
 
 // Config defines the config for middleware.
@@ -95,15 +95,15 @@ func configDefault(config ...Config) Config {
 
 	// Set default values
 	if int(cfg.Duration.Seconds()) > 0 {
-		log.Printf("[Warning] - [LIMITER] Duration is deprecated, please use Expiration\n")
+		log.Warn("[LIMITER] Duration is deprecated, please use Expiration")
 		cfg.Expiration = cfg.Duration
 	}
 	if cfg.Key != nil {
-		log.Printf("[Warning] - [LIMITER] Key is deprecated, please us KeyGenerator\n")
+		log.Warn("[LIMITER] Key is deprecated, please us KeyGenerator")
 		cfg.KeyGenerator = cfg.Key
 	}
 	if cfg.Store != nil {
-		log.Printf("[Warning] - [LIMITER] Store is deprecated, please use Storage\n")
+		log.Warn("[LIMITER] Store is deprecated, please use Storage")
 		cfg.Storage = cfg.Store
 	}
 	if cfg.Next == nil {

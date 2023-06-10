@@ -2,11 +2,11 @@ package session
 
 import (
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/log"
 	"github.com/gofiber/fiber/v2/utils"
 )
 
@@ -97,7 +97,7 @@ func configDefault(config ...Config) Config {
 		cfg.Expiration = ConfigDefault.Expiration
 	}
 	if cfg.CookieName != "" {
-		log.Printf("[Warning] - [SESSION] CookieName is deprecated, please use KeyLookup\n")
+		log.Warn("[SESSION] CookieName is deprecated, please use KeyLookup")
 		cfg.KeyLookup = fmt.Sprintf("cookie:%s", cfg.CookieName)
 	}
 	if cfg.KeyLookup == "" {

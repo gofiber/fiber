@@ -1,7 +1,7 @@
 package fiber
 
 import (
-	"log"
+	"github.com/gofiber/fiber/v2/log"
 )
 
 // OnRouteHandler Handlers define a function to create hooks for Fiber.
@@ -194,7 +194,7 @@ func (h *Hooks) executeOnListenHooks(listenData ListenData) error {
 func (h *Hooks) executeOnShutdownHooks() {
 	for _, v := range h.onShutdown {
 		if err := v(); err != nil {
-			log.Printf("failed to call shutdown hook: %v\n", err)
+			log.Errorf("failed to call shutdown hook: %v", err)
 		}
 	}
 }
@@ -202,7 +202,7 @@ func (h *Hooks) executeOnShutdownHooks() {
 func (h *Hooks) executeOnForkHooks(pid int) {
 	for _, v := range h.onFork {
 		if err := v(pid); err != nil {
-			log.Printf("failed to call fork hook: %v\n", err)
+			log.Errorf("failed to call fork hook: %v", err)
 		}
 	}
 }

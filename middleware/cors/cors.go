@@ -1,11 +1,11 @@
 package cors
 
 import (
-	"log"
 	"strconv"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/log"
 )
 
 // Config defines the config for middleware.
@@ -98,7 +98,7 @@ func New(config ...Config) fiber.Handler {
 
 	// Warning logs if both AllowOrigins and AllowOriginsFunc are set
 	if cfg.AllowOrigins != ConfigDefault.AllowOrigins && cfg.AllowOriginsFunc != nil {
-		log.Printf("[Warning] - [CORS] Both 'AllowOrigins' and 'AllowOriginsFunc' have been defined.\n")
+		log.Warn("[CORS] Both 'AllowOrigins' and 'AllowOriginsFunc' have been defined.")
 	}
 
 	// Convert string to slice
