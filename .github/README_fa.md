@@ -674,6 +674,28 @@ func main() {
 }
 ```
 
+### Using Trusted Proxy
+
+📖 [Config](https://docs.gofiber.io/api/fiber#config)
+
+```go
+import (
+    "github.com/gofiber/fiber/v2"
+    "github.com/gofiber/fiber/v2/middleware/recover"
+)
+
+func main() {
+    app := fiber.New(fiber.Config{
+        EnableTrustedProxyCheck: true,
+        TrustedProxies: []string{"0.0.0.0", "1.1.1.1/30"}, // IP address or IP address range
+        ProxyHeader: fiber.HeaderXForwardedFor,
+    })
+
+    // ...
+
+    log.Fatal(app.Listen(":3000"))
+}
+```
 </div>
 
 </details>
@@ -712,11 +734,11 @@ func main() {
 | [session](https://github.com/gofiber/fiber/tree/master/middleware/session)             |برای ذخیره و مدیریت شناسه کاربری یا session بازدید کنندگان استفاده .میشود|
 | [skip](https://github.com/gofiber/fiber/tree/master/middleware/skip)                   |این میدلور میتواند با استفاده از شرط های تعیین شده درخواست هایی را نادیده بگیرد.|
 | [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)             |این میدلور محدودیت زمانی ای را برای درخواست ها تنظیم میکند، در صورتی که محدودیت به پایان برسد ErrorHandler صدا زده میشود.|
-| [keyauth](https://github.com/gofiber/keyauth)     | Key auth middleware provides a key based authentication.                                                                                                            |
-| [redirect](https://github.com/gofiber/redirect)   | Redirect middleware                                                                                                                                                 |
-| [rewrite](https://github.com/gofiber/rewrite)     | Rewrite middleware rewrites the URL path based on provided rules. It can be helpful for backward compatibility or just creating cleaner and more descriptive links. |
+| [keyauth](https://github.com/gofiber/keyauth)     | این میدلور احراز هویت مبتنی بر کلید را فراهم می کند.                                                                                                            |
+| [redirect](https://github.com/gofiber/redirect)   | برای ریدایرکت کردن از این میدلور میتوانید استفاده کنید.                                                                                                                                                 |
+| [rewrite](https://github.com/gofiber/rewrite)     | مسیر URL را براساس قوانین مشخص شده بازنویسی می کند. این میتواند برای سازگاری با ورژن های قبلی یا برای ساخت لینک های تمیز تر  و توصیفی تر مفید باشد. |
 | [adaptor](https://github.com/gofiber/adaptor)     | Converter for net/http handlers to/from Fiber request handlers, special thanks to @arsmn!                                                                           |
-| [helmet](https://github.com/gofiber/helmet)       | Helps secure your apps by setting various HTTP headers.                                                                                                             |
+| [helmet](https://github.com/gofiber/helmet)       | با استفاده از HTTP هدر های مختلف به ایمن سازی برنامه شما کمک می کند.                                                                                                             |
 
 </div>
 </br></br>
@@ -740,7 +762,7 @@ func main() {
 
 ## 🕶️ Awesome List
 
-For more articles, middlewares, examples or tools check our [awesome list](https://github.com/gofiber/awesome-fiber).
+ [awesome list](https://github.com/gofiber/awesome-fiber) برای مقاله، میدلور، مثال ها و ابزار های بیشتر لطفا از این لینک بازدید کنید
 
 </br>
 

@@ -139,6 +139,9 @@ func Test_Hook_OnGroupName(t *testing.T) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
+	buf2 := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf2)
+
 	app.Hooks().OnGroupName(func(g Group) error {
 		_, err := buf.WriteString(g.name)
 		utils.AssertEqual(t, nil, err)
@@ -146,11 +149,19 @@ func Test_Hook_OnGroupName(t *testing.T) {
 		return nil
 	})
 
+	app.Hooks().OnName(func(r Route) error {
+		_, err := buf2.WriteString(r.Name)
+		utils.AssertEqual(t, nil, err)
+
+		return nil
+	})
+
 	grp := app.Group("/x").Name("x.")
-	grp.Get("/test", testSimpleHandler)
+	grp.Get("/test", testSimpleHandler).Name("test")
 	grp.Get("/test2", testSimpleHandler)
 
 	utils.AssertEqual(t, "x.", buf.String())
+	utils.AssertEqual(t, "x.test", buf2.String())
 }
 
 func Test_Hook_OnGroupName_Error(t *testing.T) {
@@ -192,6 +203,32 @@ func Test_Hook_OnListen(t *testing.T) {
 	t.Parallel()
 	app := New(Config{
 		DisableStartupMessage: true,
+	})
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app.Hooks().OnListen(func() error {
+		_, err := buf.WriteString("ready")
+		utils.AssertEqual(t, nil, err)
+
+		return nil
+	})
+
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
+	utils.AssertEqual(t, nil, app.Listen(":9000"))
+
+	utils.AssertEqual(t, "ready", buf.String())
+}
+
+func Test_Hook_OnListenPrefork(t *testing.T) {
+	t.Parallel()
+	app := New(Config{
+		DisableStartupMessage: true,
+		Prefork:               true,
 	})
 
 	buf := bytebufferpool.Get()
