@@ -28,7 +28,7 @@ import (
 // Listener can be used to pass a custom listener.
 func (app *App) Listener(ln net.Listener) error {
 	// prepare the server for the start
-	app.startupProcess()
+	app.startupProcess(app.prepareListenData(ln.Addr().String(), getTLSConfig(ln) != nil))
 
 	// Print startup message
 	if !app.config.DisableStartupMessage {
@@ -66,7 +66,7 @@ func (app *App) Listen(addr string) error {
 	}
 
 	// prepare the server for the start
-	app.startupProcess()
+	app.startupProcess(app.prepareListenData(ln.Addr().String(), false))
 
 	// Print startup message
 	if !app.config.DisableStartupMessage {
@@ -128,7 +128,7 @@ func (app *App) ListenTLSWithCertificate(addr string, cert tls.Certificate) erro
 	}
 
 	// prepare the server for the start
-	app.startupProcess()
+	app.startupProcess(app.prepareListenData(ln.Addr().String(), getTLSConfig(ln) != nil))
 
 	// Print startup message
 	if !app.config.DisableStartupMessage {
@@ -200,7 +200,7 @@ func (app *App) ListenMutualTLSWithCertificate(addr string, cert tls.Certificate
 	}
 
 	// prepare the server for the start
-	app.startupProcess()
+	app.startupProcess(app.prepareListenData(ln.Addr().String(), getTLSConfig(ln) != nil))
 
 	// Print startup message
 	if !app.config.DisableStartupMessage {
@@ -217,6 +217,29 @@ func (app *App) ListenMutualTLSWithCertificate(addr string, cert tls.Certificate
 
 	// Start listening
 	return app.server.Serve(ln)
+}
+
+// prepareListenData create an slice of ListenData
+func (app *App) prepareListenData(addr string, tls bool) ListenData {
+	host, port := parseAddr(addr)
+	if host == "" {
+		if app.config.Network == NetworkTCP6 {
+			host = "[::1]"
+		} else {
+			host = "0.0.0.0"
+		}
+	}
+
+	scheme := schemeHTTP
+	if tls {
+		scheme = schemeHTTPS
+	}
+
+	return ListenData{
+		Host: host,
+		Port: port,
+		TLS:  scheme,
+	}
 }
 
 // startupMessage prepares the startup message with the handler number, port, address and other information
