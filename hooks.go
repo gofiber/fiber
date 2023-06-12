@@ -10,7 +10,7 @@ type (
 	OnNameHandler      = OnRouteHandler
 	OnGroupHandler     = func(Group) error
 	OnGroupNameHandler = OnGroupHandler
-	OnListenHandler    = func(listenData ...ListenData) error
+	OnListenHandler    = func(listenData ListenData) error
 	OnShutdownHandler  = func() error
 	OnForkHandler      = func(int) error
 	OnMountHandler     = func(*App) error
@@ -181,9 +181,9 @@ func (h *Hooks) executeOnGroupNameHooks(group Group) error {
 	return nil
 }
 
-func (h *Hooks) executeOnListenHooks(listenData ...ListenData) error {
+func (h *Hooks) executeOnListenHooks(listenData ListenData) error {
 	for _, v := range h.onListen {
-		if err := v(listenData...); err != nil {
+		if err := v(listenData); err != nil {
 			return err
 		}
 	}
