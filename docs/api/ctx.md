@@ -1094,6 +1094,70 @@ app.Get("/", func(c *fiber.Ctx) error {
 > _Returned value is only valid within the handler. Do not store any references.  
 > Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
 
+## Queries
+
+Queries is a function that returns an object containing a property for each query string parameter in the route.
+
+```go title="Signature"
+func (c *Ctx) Queries() (map[string]string, error)
+```
+
+```go title="Example"
+// GET http://example.com/?name=alex&want_pizza=false&id=
+
+app.Get("/", func(c *fiber.Ctx) error {
+m := c.Queries()
+m["name"] // "alex"
+m["want_pizza"] // "false"
+m["id"] // ""
+// ...
+})
+```
+
+```go title="Example"
+// GET http://example.com/?field1=value1&field1=value2&field2=value3
+
+app.Get("/", func (c *fiber.Ctx) error {
+	m := c.Queries()
+	m["field1"] // "value2"
+	m["field2"] // value3
+})
+```
+
+```go title="Example"
+// GET http://example.com/?list_a=1&list_a=2&list_a=3&list_b[]=1&list_b[]=2&list_b[]=3&list_c=1,2,3
+
+app.Get("/", func(c *fiber.Ctx) error {
+	m := c.Queries()
+    m["list_a"] // "3"
+    m["list_b[]"] // "3"
+    m["list_c"] // "1,2,3"
+})
+```
+
+```go title="Example"
+// GET /api/posts?filters.author.name=John&filters.category.name=Technology
+
+app.Get("/", func(c *fiber.Ctx) error {
+	m := c.Queies()
+	m["filters.author.name"] // John
+	m["filters.category.name"] // Technology
+ })
+```
+
+```go title="Example"
+// GET /api/posts?tags=apple,orange,banana&filters[tags]=apple,orange,banana&filters[category][name]=fruits&filters.tags=apple,orange,banana&filters.category.name=fruits
+
+app.Get("/", func(c *fiber.Ctx) error {
+	m := c.Queries()
+	m["tags"] // apple,orange,banana
+	m["filters[tags]"] // apple,orange,banana
+	m["filters[category][name]"] // fruits
+	m["filters.tags"] // apple,orange,banana
+	m["filters.category.name"] // fruits
+})
+```
+
 ## QueryBool
 
 This property is an object containing a property for each query boolean parameter in the route, you could pass an optional default value that will be returned if the query key does not exist.

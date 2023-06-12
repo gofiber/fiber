@@ -3842,6 +3842,78 @@ func Benchmark_Ctx_SendString_B(b *testing.B) {
 	utils.AssertEqual(b, []byte("Hello, world!"), c.Response().Body())
 }
 
+// go test -run Test_Ctx_Queries -v
+func Test_Ctx_Queries(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football&favouriteDrinks=milo,coke,pepsi&alloc=&no=1&field1=value1&field1=value2&field2=value3&list_a=1&list_a=2&list_a=3&list_b[]=1&list_b[]=2&list_b[]=3&list_c=1,2,3")
+
+	queries := c.Queries()
+	utils.AssertEqual(t, "1", queries["id"])
+	utils.AssertEqual(t, "tom", queries["name"])
+	utils.AssertEqual(t, "basketball,football", queries["hobby"])
+	utils.AssertEqual(t, "milo,coke,pepsi", queries["favouriteDrinks"])
+	utils.AssertEqual(t, "", queries["alloc"])
+	utils.AssertEqual(t, "1", queries["no"])
+	utils.AssertEqual(t, "value2", queries["field1"])
+	utils.AssertEqual(t, "value3", queries["field2"])
+	utils.AssertEqual(t, "3", queries["list_a"])
+	utils.AssertEqual(t, "3", queries["list_b[]"])
+	utils.AssertEqual(t, "1,2,3", queries["list_c"])
+
+	c.Request().URI().SetQueryString("filters.author.name=John&filters.category.name=Technology&filters[customer][name]=Alice&filters[status]=pending")
+
+	queries = c.Queries()
+	utils.AssertEqual(t, "John", queries["filters.author.name"])
+	utils.AssertEqual(t, "Technology", queries["filters.category.name"])
+	utils.AssertEqual(t, "Alice", queries["filters[customer][name]"])
+	utils.AssertEqual(t, "pending", queries["filters[status]"])
+
+	c.Request().URI().SetQueryString("tags=apple,orange,banana&filters[tags]=apple,orange,banana&filters[category][name]=fruits&filters.tags=apple,orange,banana&filters.category.name=fruits")
+
+	queries = c.Queries()
+	utils.AssertEqual(t, "apple,orange,banana", queries["tags"])
+	utils.AssertEqual(t, "apple,orange,banana", queries["filters[tags]"])
+	utils.AssertEqual(t, "fruits", queries["filters[category][name]"])
+	utils.AssertEqual(t, "apple,orange,banana", queries["filters.tags"])
+	utils.AssertEqual(t, "fruits", queries["filters.category.name"])
+
+	c.Request().URI().SetQueryString("filters[tags][0]=apple&filters[tags][1]=orange&filters[tags][2]=banana&filters[category][name]=fruits")
+
+	queries = c.Queries()
+	utils.AssertEqual(t, "apple", queries["filters[tags][0]"])
+	utils.AssertEqual(t, "orange", queries["filters[tags][1]"])
+	utils.AssertEqual(t, "banana", queries["filters[tags][2]"])
+	utils.AssertEqual(t, "fruits", queries["filters[category][name]"])
+}
+
+// go test -v  -run=^$ -bench=Benchmark_Ctx_Queries -benchmem -count=4
+func Benchmark_Ctx_Queries(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	b.ReportAllocs()
+	b.ResetTimer()
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football&favouriteDrinks=milo,coke,pepsi&alloc=&no=1")
+
+	var queries map[string]string
+	for n := 0; n < b.N; n++ {
+		queries = c.Queries()
+	}
+
+	utils.AssertEqual(b, "1", queries["id"])
+	utils.AssertEqual(b, "tom", queries["name"])
+	utils.AssertEqual(b, "basketball,football", queries["hobby"])
+	utils.AssertEqual(b, "milo,coke,pepsi", queries["favouriteDrinks"])
+	utils.AssertEqual(b, "", queries["alloc"])
+	utils.AssertEqual(b, "1", queries["no"])
+}
+
 // go test -run Test_Ctx_QueryParser -v
 func Test_Ctx_QueryParser(t *testing.T) {
 	t.Parallel()

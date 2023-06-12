@@ -1054,6 +1054,35 @@ func (c *Ctx) Query(key string, defaultValue ...string) string {
 	return defaultString(c.app.getString(c.fasthttp.QueryArgs().Peek(key)), defaultValue)
 }
 
+// Queries returns a map of query parameters and their values.
+//
+// GET /?name=alex&wanna_cake=2&id=
+// Queries()["name"] == "alex"
+// Queries()["wanna_cake"] == "2"
+// Queries()["id"] == ""
+//
+// GET /?field1=value1&field1=value2&field2=value3
+// Queries()["field1"] == "value2"
+// Queries()["field2"] == "value3"
+//
+// GET /?list_a=1&list_a=2&list_a=3&list_b[]=1&list_b[]=2&list_b[]=3&list_c=1,2,3
+// Queries()["list_a"] == "3"
+// Queries()["list_b[]"] == "3"
+// Queries()["list_c"] == "1,2,3"
+//
+// GET /api/search?filters.author.name=John&filters.category.name=Technology&filters[customer][name]=Alice&filters[status]=pending
+// Queries()["filters.author.name"] == "John"
+// Queries()["filters.category.name"] == "Technology"
+// Queries()["filters[customer][name]"] == "Alice"
+// Queries()["filters[status]"] == "pending"
+func (c *Ctx) Queries() map[string]string {
+	m := make(map[string]string, c.Context().QueryArgs().Len())
+	c.Context().QueryArgs().VisitAll(func(key, value []byte) {
+		m[c.app.getString(key)] = c.app.getString(value)
+	})
+	return m
+}
+
 // QueryInt returns integer value of key string parameter in the url.
 // Default to empty or invalid key is 0.
 //
