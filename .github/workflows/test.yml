@@ -21,28 +21,12 @@ jobs:
         platform: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.platform }}
     steps:
+    - name: Fetch Repository
+      uses: actions/checkout@v3
     - name: Install Go
       uses: actions/setup-go@v4
       with:
         go-version: ${{ matrix.go-version }}
-    - name: Setup Golang caches
-      uses: actions/cache@v3
-      with:
-          # In order:
-          # * Module download cache
-          # * Build cache (Linux)
-          # * Build cache (Mac)
-          # * Build cache (Windows)
-          path: |
-              ~/go/pkg/mod
-              ~/.cache/go-build
-              ~/Library/Caches/go-build
-              ~\AppData\Local\go-build
-          key: ${{ runner.os }}-go-${{ matrix.go-version }}-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-              ${{ runner.os }}-go-${{ matrix.go-version }}-
-    - name: Fetch Repository
-      uses: actions/checkout@v3
     - name: Run Test
       uses: nick-fields/retry@v2
       with:
