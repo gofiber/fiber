@@ -208,7 +208,7 @@ func Test_Hook_OnListen(t *testing.T) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	app.Hooks().OnListen(func() error {
+	app.Hooks().OnListen(func(listenData ListenData) error {
 		_, err := buf.WriteString("ready")
 		utils.AssertEqual(t, nil, err)
 
@@ -234,7 +234,7 @@ func Test_Hook_OnListenPrefork(t *testing.T) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	app.Hooks().OnListen(func() error {
+	app.Hooks().OnListen(func(listenData ListenData) error {
 		_, err := buf.WriteString("ready")
 		utils.AssertEqual(t, nil, err)
 
