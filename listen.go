@@ -28,10 +28,10 @@ import (
 // Listener can be used to pass a custom listener.
 func (app *App) Listener(ln net.Listener) error {
 	// prepare the server for the start
-	app.startupProcess(app.prepareListenData(ln.Addr().String(), getTLSConfig(ln) != nil))
+	app.startupProcess()
 
 	// run hooks
-	app.runOnListenHooks()
+	app.runOnListenHooks(app.prepareListenData(ln.Addr().String(), getTLSConfig(ln) != nil))
 
 	// Print startup message
 	if !app.config.DisableStartupMessage {
@@ -69,10 +69,10 @@ func (app *App) Listen(addr string) error {
 	}
 
 	// prepare the server for the start
-	app.startupProcess(app.prepareListenData(ln.Addr().String(), false))
+	app.startupProcess()
 
 	// run hooks
-	app.runOnListenHooks()
+	app.runOnListenHooks(app.prepareListenData(ln.Addr().String(), false))
 
 	// Print startup message
 	if !app.config.DisableStartupMessage {
@@ -134,10 +134,10 @@ func (app *App) ListenTLSWithCertificate(addr string, cert tls.Certificate) erro
 	}
 
 	// prepare the server for the start
-	app.startupProcess(app.prepareListenData(ln.Addr().String(), getTLSConfig(ln) != nil))
+	app.startupProcess()
 
 	// run hooks
-	app.runOnListenHooks()
+	app.runOnListenHooks(app.prepareListenData(ln.Addr().String(), getTLSConfig(ln) != nil))
 
 	// Print startup message
 	if !app.config.DisableStartupMessage {
@@ -209,10 +209,10 @@ func (app *App) ListenMutualTLSWithCertificate(addr string, cert tls.Certificate
 	}
 
 	// prepare the server for the start
-	app.startupProcess(app.prepareListenData(ln.Addr().String(), getTLSConfig(ln) != nil))
+	app.startupProcess()
 
 	// run hooks
-	app.runOnListenHooks()
+	app.runOnListenHooks(app.prepareListenData(ln.Addr().String(), getTLSConfig(ln) != nil))
 
 	// Print startup message
 	if !app.config.DisableStartupMessage {
