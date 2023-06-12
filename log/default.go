@@ -14,6 +14,10 @@ type defaultLogger struct {
 	depth  int
 }
 
+func (l *defaultLogger) Log(level Level, keyvals ...interface{}) {
+	l.logf(level, nil, keyvals...)
+}
+
 // logf logs a message at a given level in the default logger.
 // when the level is fatal, it will exit the program.
 func (l *defaultLogger) logf(lv Level, format *string, v ...interface{}) {

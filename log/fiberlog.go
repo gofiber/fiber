@@ -5,37 +5,66 @@ import (
 	"io"
 )
 
+// Log calls the default logger's Log method.
+//
+// When using the extensions in gofiber/contrib, for the parameter `keyvals`,
+// the first parameter will be filled with `msg` and the rest of the parameters will be filled into the field as key-value
+func Log(level Level, keyvals ...interface{}) {
+	logger.Log(level, keyvals...)
+}
+
 // Fatal calls the default logger's Fatal method and then os.Exit(1).
+//
+// When using the log extensions in gofiber/contrib,
+// the first parameter will be filled in with `msg` and the rest of the parameters will be filled in as key-values in the field
 func Fatal(v ...interface{}) {
 	logger.Fatal(v...)
 }
 
 // Error calls the default logger's Error method.
+//
+// When using the log extensions in gofiber/contrib,
+// the first parameter will be filled in with `msg` and the rest of the parameters will be filled in as key-values in the field
 func Error(v ...interface{}) {
 	logger.Error(v...)
 }
 
 // Warn calls the default logger's Warn method.
+//
+// When using the log extensions in gofiber/contrib,
+// the first parameter will be filled in with `msg` and the rest of the parameters will be filled in as key-values in the field
 func Warn(v ...interface{}) {
 	logger.Warn(v...)
 }
 
 // Info calls the default logger's Info method.
+//
+// When using the log extensions in gofiber/contrib,
+// the first parameter will be filled in with `msg` and the rest of the parameters will be filled in as key-values in the field
 func Info(v ...interface{}) {
 	logger.Info(v...)
 }
 
 // Debug calls the default logger's Debug method.
+//
+// When using the log extensions in gofiber/contrib,
+// the first parameter will be filled in with `msg` and the rest of the parameters will be filled in as key-values in the field
 func Debug(v ...interface{}) {
 	logger.Debug(v...)
 }
 
 // Trace calls the default logger's Trace method.
+//
+// When using the log extensions in gofiber/contrib,
+// the first parameter will be filled in with `msg` and the rest of the parameters will be filled in as key-values in the field
 func Trace(v ...interface{}) {
 	logger.Trace(v...)
 }
 
 // Panic calls the default logger's Panic method.
+//
+// When using the log extensions in gofiber/contrib,
+// the first parameter will be filled in with `msg` and the rest of the parameters will be filled in as key-values in the field
 func Panic(v ...interface{}) {
 	logger.Panic(v...)
 }

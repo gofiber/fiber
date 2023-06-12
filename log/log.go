@@ -59,6 +59,7 @@ type AllLogger interface {
 	FormatLogger
 	CtxLogger
 	ControlLogger
+	Log(level Level, keyvals ...interface{})
 }
 
 // Level defines the priority of a log message.
