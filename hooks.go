@@ -36,7 +36,7 @@ type Hooks struct {
 type ListenData struct {
 	Host string
 	Port string
-	TLS  string
+	TLS  bool
 }
 
 func newHooks(app *App) *Hooks {
