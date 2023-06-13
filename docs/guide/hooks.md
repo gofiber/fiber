@@ -139,7 +139,7 @@ app.Hooks().OnListen(func(listenData fiber.ListenData) error {
   if (fiber.IsChild()) {
 	  return
   }
-  fmt.Println(listenData.TLS + "://" + listenData.Host + ":" + listenData.Port)
+  log.Println(listenData.TLS + "://" + listenData.Host + ":" + listenData.Port)
   return nil
 })
 
