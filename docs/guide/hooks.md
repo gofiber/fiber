@@ -136,7 +136,7 @@ app := fiber.New(fiber.Config{
 })
 
 app.Hooks().OnListen(func(listenData fiber.ListenData) error {
-  if (fiber.IsChild()) {
+  if fiber.IsChild() {
 	  return nil
   }
   scheme := "http"
