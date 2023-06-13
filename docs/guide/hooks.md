@@ -139,7 +139,11 @@ app.Hooks().OnListen(func(listenData fiber.ListenData) error {
   if (fiber.IsChild()) {
 	  return nil
   }
-  log.Println(listenData.TLS + "://" + listenData.Host + ":" + listenData.Port)
+  scheme := "http"
+  if data.TLS {
+    scheme = "https"
+  }
+  log.Println(scheme + "://" + listenData.Host + ":" + listenData.Port)
   return nil
 })
 
