@@ -246,15 +246,10 @@ func (app *App) prepareListenData(addr string, tls bool) ListenData {
 		}
 	}
 
-	scheme := schemeHTTP
-	if tls {
-		scheme = schemeHTTPS
-	}
-
 	return ListenData{
 		Host: host,
 		Port: port,
-		TLS:  scheme,
+		TLS:  tls,
 	}
 }
 
