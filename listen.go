@@ -254,7 +254,7 @@ func (app *App) prepareListenData(addr string, isTls bool) ListenData {
 }
 
 // startupMessage prepares the startup message with the handler number, port, address and other information
-func (app *App) startupMessage(addr string, isTls bool, pids string) { //nolint: revive // Accepting a bool param is fine here
+func (app *App) startupMessage(addr string, isTls bool, pids string) {
 	// ignore child processes
 	if IsChild() {
 		return
