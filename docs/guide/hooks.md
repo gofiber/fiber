@@ -24,9 +24,9 @@ type OnRouteHandler = func(Route) error
 type OnNameHandler = OnRouteHandler
 type OnGroupHandler = func(Group) error
 type OnGroupNameHandler = OnGroupHandler
-type OnListenHandler = func() error
+type OnListenHandler = func(ListenData) error
 type OnForkHandler = func(int) error
-type OnShutdownHandler = OnListenHandler
+type OnShutdownHandler = func() error
 type OnMountHandler = func(*App) error
 ```
 
@@ -125,6 +125,14 @@ OnListen is a hook to execute user functions on Listen, ListenTLS, Listener.
 
 ```go title="Signature"
 func (app *App) OnListen(handler ...OnListenHandler)
+```
+
+```go title="Example"
+app.Hooks().OnListen(func(listenData fiber.ListenData) error {
+  fiber.IsChild()
+  fmt.Println(listenData.TLS + "://" + listenData.Host + ":" + listenData.Port)
+  return nil
+})
 ```
 
 ## OnFork
