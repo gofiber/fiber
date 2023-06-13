@@ -10,7 +10,7 @@ type (
 	OnNameHandler      = OnRouteHandler
 	OnGroupHandler     = func(Group) error
 	OnGroupNameHandler = OnGroupHandler
-	OnListenHandler    = func(listenData ListenData) error
+	OnListenHandler    = func(ListenData) error
 	OnShutdownHandler  = func() error
 	OnForkHandler      = func(int) error
 	OnMountHandler     = func(*App) error
