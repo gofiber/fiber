@@ -127,12 +127,21 @@ OnListen is a hook to execute user functions on Listen, ListenTLS, Listener.
 func (app *App) OnListen(handler ...OnListenHandler)
 ```
 
-```go title="Example"
+<Tabs>
+<TabItem value="onlisten-example" label="OnListen Example">
+
+```go
+app := fiber.New(fiber.Config{
+  DisableStartupMessage: true,
+})
+
 app.Hooks().OnListen(func(listenData fiber.ListenData) error {
   fiber.IsChild()
   fmt.Println(listenData.TLS + "://" + listenData.Host + ":" + listenData.Port)
   return nil
 })
+
+app.Listen(":5000")
 ```
 
 ## OnFork
