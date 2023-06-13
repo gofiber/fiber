@@ -224,6 +224,32 @@ func Test_Hook_OnListen(t *testing.T) {
 	utils.AssertEqual(t, "ready", buf.String())
 }
 
+func Test_Hook_OnListenPrefork(t *testing.T) {
+	t.Parallel()
+	app := New(Config{
+		DisableStartupMessage: true,
+		Prefork:               true,
+	})
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app.Hooks().OnListen(func() error {
+		_, err := buf.WriteString("ready")
+		utils.AssertEqual(t, nil, err)
+
+		return nil
+	})
+
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
+	utils.AssertEqual(t, nil, app.Listen(":9000"))
+
+	utils.AssertEqual(t, "ready", buf.String())
+}
+
 func Test_Hook_OnHook(t *testing.T) {
 	app := New()
 

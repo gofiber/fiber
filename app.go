@@ -1092,10 +1092,6 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 
 // startupProcess Is the method which executes all the necessary processes just before the start of the server.
 func (app *App) startupProcess() *App {
-	if err := app.hooks.executeOnListenHooks(); err != nil {
-		panic(err)
-	}
-
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
@@ -1105,4 +1101,11 @@ func (app *App) startupProcess() *App {
 	app.buildTree()
 
 	return app
+}
+
+// Run onListen hooks. If they return an error, panic.
+func (app *App) runOnListenHooks() {
+	if err := app.hooks.executeOnListenHooks(); err != nil {
+		panic(err)
+	}
 }

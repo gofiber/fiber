@@ -30,6 +30,9 @@ func (app *App) Listener(ln net.Listener) error {
 	// prepare the server for the start
 	app.startupProcess()
 
+	// run hooks
+	app.runOnListenHooks()
+
 	// Print startup message
 	if !app.config.DisableStartupMessage {
 		app.startupMessage(ln.Addr().String(), getTLSConfig(ln) != nil, "")
@@ -67,6 +70,9 @@ func (app *App) Listen(addr string) error {
 
 	// prepare the server for the start
 	app.startupProcess()
+
+	// run hooks
+	app.runOnListenHooks()
 
 	// Print startup message
 	if !app.config.DisableStartupMessage {
@@ -129,6 +135,9 @@ func (app *App) ListenTLSWithCertificate(addr string, cert tls.Certificate) erro
 
 	// prepare the server for the start
 	app.startupProcess()
+
+	// run hooks
+	app.runOnListenHooks()
 
 	// Print startup message
 	if !app.config.DisableStartupMessage {
@@ -201,6 +210,9 @@ func (app *App) ListenMutualTLSWithCertificate(addr string, cert tls.Certificate
 
 	// prepare the server for the start
 	app.startupProcess()
+
+	// run hooks
+	app.runOnListenHooks()
 
 	// Print startup message
 	if !app.config.DisableStartupMessage {
