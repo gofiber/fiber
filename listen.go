@@ -236,7 +236,7 @@ func (app *App) ListenMutualTLSWithCertificate(addr string, cert tls.Certificate
 }
 
 // prepareListenData create an slice of ListenData
-func (app *App) prepareListenData(addr string, isTls bool) ListenData {
+func (app *App) prepareListenData(addr string, isTLS bool) ListenData {
 	host, port := parseAddr(addr)
 	if host == "" {
 		if app.config.Network == NetworkTCP6 {
@@ -249,12 +249,12 @@ func (app *App) prepareListenData(addr string, isTls bool) ListenData {
 	return ListenData{
 		Host: host,
 		Port: port,
-		TLS:  isTls,
+		TLS:  isTLS,
 	}
 }
 
 // startupMessage prepares the startup message with the handler number, port, address and other information
-func (app *App) startupMessage(addr string, isTls bool, pids string) {
+func (app *App) startupMessage(addr string, isTLS bool, pids string) {
 	// ignore child processes
 	if IsChild() {
 		return
@@ -321,7 +321,7 @@ func (app *App) startupMessage(addr string, isTls bool, pids string) {
 	}
 
 	scheme := schemeHTTP
-	if isTls {
+	if isTLS {
 		scheme = schemeHTTPS
 	}
 
