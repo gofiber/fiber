@@ -25,6 +25,10 @@ import (
 	"github.com/mattn/go-runewidth"
 )
 
+const (
+	globalIpv4Addr = "0.0.0.0"
+)
+
 // Listener can be used to pass a custom listener.
 func (app *App) Listener(ln net.Listener) error {
 	// prepare the server for the start
@@ -238,7 +242,7 @@ func (app *App) prepareListenData(addr string, tls bool) ListenData {
 		if app.config.Network == NetworkTCP6 {
 			host = "[::1]"
 		} else {
-			host = "0.0.0.0"
+			host = globalIpv4Addr
 		}
 	}
 
@@ -317,7 +321,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) { //nolint: r
 		if app.config.Network == NetworkTCP6 {
 			host = "[::1]"
 		} else {
-			host = "0.0.0.0"
+			host = globalIpv4Addr
 		}
 	}
 
@@ -343,7 +347,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) { //nolint: r
 	}
 	mainLogo += " │ " + centerValue("Fiber v"+Version, lineLen) + " │\n"
 
-	if host == "0.0.0.0" {
+	if host == globalIpv4Addr {
 		mainLogo += " │ " + center(fmt.Sprintf("%s://127.0.0.1:%s", scheme, port), lineLen) + " │\n" +
 			" │ " + center(fmt.Sprintf("(bound on host 0.0.0.0 and port %s)", port), lineLen) + " │\n"
 	} else {
