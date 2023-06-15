@@ -589,7 +589,7 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 	if strings.Contains(ipAddress, "/") {
 		_, ipNet, err := net.ParseCIDR(ipAddress)
 		if err != nil {
-			log.Warn("IP range %q could not be parsed: %v", ipAddress, err)
+			log.Warnf("IP range %q could not be parsed: %v", ipAddress, err)
 		} else {
 			app.config.trustedProxyRanges = append(app.config.trustedProxyRanges, ipNet)
 		}
