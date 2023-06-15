@@ -152,7 +152,7 @@ func SetOutput(w io.Writer) {
 }
 
 // SetLevel sets the level of logs below which logs will not be output.
-// The default logger and system logger level is LevelTrace.
+// The default logger is LevelTrace.
 // Note that this method is not concurrent-safe.
 func SetLevel(lv Level) {
 	logger.SetLevel(lv)
