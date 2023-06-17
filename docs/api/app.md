@@ -655,3 +655,26 @@ Hooks is a method to return [hooks](../guide/hooks.md) property.
 ```go title="Signature"
 func (app *App) Hooks() *Hooks
 ```
+
+## Liveness And Readiness Checks
+
+Fiber comes with an out of the box way of implementing your liveness and readiness checking, when creating a new app, you can pass your own handlers for liveness and readiness checks:
+
+```go title="Examples"
+// Create route with GET method for test:
+app := fiber.New(fiber.Config{
+  IsLive: func (c *fiber.Ctx) bool {
+    return true
+  },
+  IsLiveEndpoint: "/liveness",
+  IsReady: func (c *fiber.Ctx) bool {
+    return serviceA.Ready() && serviceB.Ready() && ...
+  }
+  IsReadyEndpoint: "/readiness",
+})
+
+// Listen on port :8080 
+app.Listen(":8080")
+```
+
+The endpoint values default to `/liveness` and `/readiness`. Both functions are optional, the liveness endpoint will return `true` right when the server is up and running but the readiness endpoint will not answer any requests if an `IsReady` function isn't provided.
