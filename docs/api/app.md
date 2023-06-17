@@ -666,15 +666,15 @@ app := fiber.New(fiber.Config{
   IsLive: func (c *fiber.Ctx) bool {
     return true
   },
-  IsLiveEndpoint: "/liveness",
+  IsLiveEndpoint: "/livez",
   IsReady: func (c *fiber.Ctx) bool {
     return serviceA.Ready() && serviceB.Ready() && ...
   }
-  IsReadyEndpoint: "/readiness",
+  IsReadyEndpoint: "/readyz",
 })
 
 // Listen on port :8080 
 app.Listen(":8080")
 ```
 
-The endpoint values default to `/healthz` for liveness and `/readyz` for readiness. Both functions are optional, the liveness endpoint will return `true` right when the server is up and running but the readiness endpoint will not answer any requests if an `IsReady` function isn't provided.
+The endpoint values default to `/livez` for liveness and `/readyz` for readiness. Both functions are optional, the liveness endpoint will return `true` right when the server is up and running but the readiness endpoint will not answer any requests if an `IsReady` function isn't provided.
