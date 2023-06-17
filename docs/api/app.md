@@ -677,4 +677,4 @@ app := fiber.New(fiber.Config{
 app.Listen(":8080")
 ```
 
-The endpoint values default to `/liveness` and `/readiness`. Both functions are optional, the liveness endpoint will return `true` right when the server is up and running but the readiness endpoint will not answer any requests if an `IsReady` function isn't provided.
+The endpoint values default to `/healthz` for liveness and `/readyz` for readiness. Both functions are optional, the liveness endpoint will return `true` right when the server is up and running but the readiness endpoint will not answer any requests if an `IsReady` function isn't provided.

@@ -476,8 +476,8 @@ const (
 	DefaultReadBufferSize       = 4096
 	DefaultWriteBufferSize      = 4096
 	DefaultCompressedFileSuffix = ".fiber.gz"
-	DefaultLivenessEndpoint     = "/liveness"
-	DefaultReadinessEndpoint    = "/readiness"
+	DefaultLivenessEndpoint     = "/healthz"
+	DefaultReadinessEndpoint    = "/readyz"
 )
 
 var DefaultHealthFunction = func(c *Ctx) bool { return true }

@@ -1866,7 +1866,7 @@ func Test_Middleware_Route_Naming_With_Use(t *testing.T) {
 func Test_Default_Liveness_Probe(t *testing.T) {
 	app := New()
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/liveness", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/healthz", nil))
 
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 200, resp.StatusCode)
@@ -1889,7 +1889,7 @@ func Test_Default_Readiness_Probe(t *testing.T) {
 		IsReady: func(c *Ctx) bool { return true },
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/readiness", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/readyz", nil))
 
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 200, resp.StatusCode)
