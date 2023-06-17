@@ -1862,3 +1862,47 @@ func Test_Middleware_Route_Naming_With_Use(t *testing.T) {
 		}
 	}
 }
+
+func Test_Default_Liveness_Probe(t *testing.T) {
+	app := New()
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/liveness", nil))
+
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 200, resp.StatusCode)
+}
+
+func Test_Custom_Liveness_Probe(t *testing.T) {
+	app := New(Config{
+		IsLive:         func(c *Ctx) bool { return true },
+		IsLiveEndpoint: "/live",
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/live", nil))
+
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 200, resp.StatusCode)
+}
+
+func Test_Default_Readiness_Probe(t *testing.T) {
+	app := New(Config{
+		IsReady: func(c *Ctx) bool { return true },
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/readiness", nil))
+
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 200, resp.StatusCode)
+}
+
+func Test_Custom_Readiness_Probe(t *testing.T) {
+	app := New(Config{
+		IsReady:         func(c *Ctx) bool { return true },
+		IsReadyEndpoint: "/ready",
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/ready", nil))
+
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 200, resp.StatusCode)
+}
