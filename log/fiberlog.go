@@ -5,66 +5,37 @@ import (
 	"io"
 )
 
-// Log calls the default logger's Log method.
-//
-// When using the extensions in gofiber/contrib, for the parameter `keyvals`,
-// the first parameter will be filled with `msg` and the rest of the parameters will be filled into the field as key-value
-func Log(level Level, keyvals ...interface{}) {
-	logger.Log(level, keyvals...)
-}
-
 // Fatal calls the default logger's Fatal method and then os.Exit(1).
-//
-// When using the log extensions in gofiber/contrib,
-// the first parameter will be filled in with `msg` and the rest of the parameters will be filled in as key-values in the field
 func Fatal(v ...interface{}) {
 	logger.Fatal(v...)
 }
 
 // Error calls the default logger's Error method.
-//
-// When using the log extensions in gofiber/contrib,
-// the first parameter will be filled in with `msg` and the rest of the parameters will be filled in as key-values in the field
 func Error(v ...interface{}) {
 	logger.Error(v...)
 }
 
 // Warn calls the default logger's Warn method.
-//
-// When using the log extensions in gofiber/contrib,
-// the first parameter will be filled in with `msg` and the rest of the parameters will be filled in as key-values in the field
 func Warn(v ...interface{}) {
 	logger.Warn(v...)
 }
 
 // Info calls the default logger's Info method.
-//
-// When using the log extensions in gofiber/contrib,
-// the first parameter will be filled in with `msg` and the rest of the parameters will be filled in as key-values in the field
 func Info(v ...interface{}) {
 	logger.Info(v...)
 }
 
 // Debug calls the default logger's Debug method.
-//
-// When using the log extensions in gofiber/contrib,
-// the first parameter will be filled in with `msg` and the rest of the parameters will be filled in as key-values in the field
 func Debug(v ...interface{}) {
 	logger.Debug(v...)
 }
 
 // Trace calls the default logger's Trace method.
-//
-// When using the log extensions in gofiber/contrib,
-// the first parameter will be filled in with `msg` and the rest of the parameters will be filled in as key-values in the field
 func Trace(v ...interface{}) {
 	logger.Trace(v...)
 }
 
 // Panic calls the default logger's Panic method.
-//
-// When using the log extensions in gofiber/contrib,
-// the first parameter will be filled in with `msg` and the rest of the parameters will be filled in as key-values in the field
 func Panic(v ...interface{}) {
 	logger.Panic(v...)
 }
@@ -102,6 +73,48 @@ func Tracef(format string, v ...interface{}) {
 // Panicf calls the default logger's Tracef method.
 func Panicf(format string, v ...interface{}) {
 	logger.Panicf(format, v...)
+}
+
+// Tracew logs a message with some additional context. The variadic key-value
+// pairs are treated as they are in With.
+func Tracew(msg string, keysAndValues ...interface{}) {
+	logger.Tracew(msg, keysAndValues...)
+}
+
+// Debugw logs a message with some additional context. The variadic key-value
+// pairs are treated as they are in With.
+func Debugw(msg string, keysAndValues ...interface{}) {
+	logger.Debugw(msg, keysAndValues...)
+}
+
+// Infow logs a message with some additional context. The variadic key-value
+// pairs are treated as they are in With.
+func Infow(msg string, keysAndValues ...interface{}) {
+	logger.Infow(msg, keysAndValues...)
+}
+
+// Warnw logs a message with some additional context. The variadic key-value
+// pairs are treated as they are in With.
+func Warnw(msg string, keysAndValues ...interface{}) {
+	logger.Warnw(msg, keysAndValues...)
+}
+
+// Errorw logs a message with some additional context. The variadic key-value
+// pairs are treated as they are in With.
+func Errorw(msg string, keysAndValues ...interface{}) {
+	logger.Errorw(msg, keysAndValues...)
+}
+
+// Fatalw logs a message with some additional context. The variadic key-value
+// pairs are treated as they are in With.
+func Fatalw(msg string, keysAndValues ...interface{}) {
+	logger.Fatalw(msg, keysAndValues...)
+}
+
+// Panicw logs a message with some additional context. The variadic key-value
+// pairs are treated as they are in With.
+func Panicw(msg string, keysAndValues ...interface{}) {
+	logger.Panicw(msg, keysAndValues...)
 }
 
 // CtxFatalf calls the default logger's CtxFatalf method and then os.Exit(1).

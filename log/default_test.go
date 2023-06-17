@@ -1,6 +1,7 @@
 package log
 
 import (
+	"bytes"
 	"context"
 	"log"
 	"os"
@@ -89,6 +90,70 @@ func Test_CtxLogger(t *testing.T) {
 		"[Warn] work may fail\n"+
 		"[Error] work failed\n"+
 		"[Panic] work panic\n", string(w.b))
+}
+
+func TestLogfKeyAndValues(t *testing.T) {
+	tests := []struct {
+		name          string
+		level         Level
+		format        string
+		fmtArgs       []interface{}
+		keysAndValues []interface{}
+		wantOutput    string
+	}{
+		{
+			name:          "test logf with debug level and key-values",
+			level:         LevelDebug,
+			format:        "",
+			fmtArgs:       nil,
+			keysAndValues: []interface{}{"name", "Bob", "age", 30},
+			wantOutput:    "[Debug] name=Bob age=30\n",
+		},
+		{
+			name:          "test logf with info level and key-values",
+			level:         LevelInfo,
+			format:        "",
+			fmtArgs:       nil,
+			keysAndValues: []interface{}{"status", "ok", "code", 200},
+			wantOutput:    "[Info] status=ok code=200\n",
+		},
+		{
+			name:          "test logf with warn level and key-values",
+			level:         LevelWarn,
+			format:        "",
+			fmtArgs:       nil,
+			keysAndValues: []interface{}{"error", "not found", "id", 123},
+			wantOutput:    "[Warn] error=not found id=123\n",
+		},
+		{
+			name:          "test logf with format and key-values",
+			level:         LevelWarn,
+			format:        "test",
+			fmtArgs:       nil,
+			keysAndValues: []interface{}{"error", "not found", "id", 123},
+			wantOutput:    "[Warn] test error=not found id=123\n",
+		},
+		{
+			name:          "test logf with one key",
+			level:         LevelWarn,
+			format:        "",
+			fmtArgs:       nil,
+			keysAndValues: []interface{}{"error"},
+			wantOutput:    "[Warn] error=KEYVALS UNPAIRED\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			l := &defaultLogger{
+				stdlog: log.New(&buf, "", 0),
+				level:  tt.level,
+				depth:  4,
+			}
+			l.log(tt.level, tt.format, tt.fmtArgs, tt.keysAndValues)
+			utils.AssertEqual(t, tt.wantOutput, buf.String())
+		})
+	}
 }
 
 func Test_SetLevel(t *testing.T) {
