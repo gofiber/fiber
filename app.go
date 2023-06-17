@@ -628,9 +628,11 @@ func New(config ...Config) *App {
 
 	if app.config.IsReady != nil {
 		app.Get(app.config.IsReadyEndpoint, ProbeCheckerHandler(app.config.IsReady))
+		app.Options(app.config.IsReadyEndpoint, ProbeCheckerHandler(app.config.IsReady))
 	}
 
 	app.Get(app.config.IsLiveEndpoint, ProbeCheckerHandler(app.config.IsLive))
+	app.Options(app.config.IsLiveEndpoint, ProbeCheckerHandler(app.config.IsLive))
 
 	// Return app
 	return app
