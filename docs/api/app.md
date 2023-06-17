@@ -677,4 +677,6 @@ app := fiber.New(fiber.Config{
 app.Listen(":8080")
 ```
 
-The endpoint values default to `/livez` for liveness and `/readyz` for readiness. Both functions are optional, the liveness endpoint will return `true` right when the server is up and running but the readiness endpoint will not answer any requests if an `IsReady` function isn't provided.
+The endpoint values default to `/livez` for liveness and `/readyz` for readiness. Both functions are optional, the liveness endpoint will return `true` right when the server is up and running but the readiness endpoint will not answer any requests if an `IsReady` function isn't provided. 
+
+The HTTP status returned to the containerized environment are: 200 OK if the checker function returns true and 503 Service Unavailable if the checker function returns false.
