@@ -1,4 +1,3 @@
-//nolint:errcheck // we don't care about the error here
 package log
 
 import (
@@ -28,10 +27,10 @@ func (l *defaultLogger) privateLog(lv Level, fmtArgs []interface{}) {
 	}
 	level := lv.toString()
 	buf := bytebufferpool.Get()
-	_, _ = buf.WriteString(level)
-	buf.WriteString(fmt.Sprint(fmtArgs...))
+	_, _ = buf.WriteString(level)                  //nolint:errcheck // It is fine to ignore the error
+	_, _ = buf.WriteString(fmt.Sprint(fmtArgs...)) //nolint:errcheck // It is fine to ignore the error
 
-	_ = l.stdlog.Output(l.depth, buf.String())
+	_ = l.stdlog.Output(l.depth, buf.String()) //nolint:errcheck // It is fine to ignore the error
 	buf.Reset()
 	bytebufferpool.Put(buf)
 	if lv == LevelFatal {
@@ -47,14 +46,14 @@ func (l *defaultLogger) privateLogf(lv Level, format string, fmtArgs []interface
 	}
 	level := lv.toString()
 	buf := bytebufferpool.Get()
-	_, _ = buf.WriteString(level)
+	_, _ = buf.WriteString(level) //nolint:errcheck // It is fine to ignore the error
 
 	if len(fmtArgs) > 0 {
-		_, _ = fmt.Fprintf(buf, format, fmtArgs...)
+		_, _ = fmt.Fprintf(buf, format, fmtArgs...) //nolint:errcheck // It is fine to ignore the error
 	} else {
-		_, _ = fmt.Fprint(buf, fmtArgs...)
+		_, _ = fmt.Fprint(buf, fmtArgs...) //nolint:errcheck // It is fine to ignore the error
 	}
-	_ = l.stdlog.Output(l.depth, buf.String())
+	_ = l.stdlog.Output(l.depth, buf.String()) //nolint:errcheck // It is fine to ignore the error
 	buf.Reset()
 	bytebufferpool.Put(buf)
 	if lv == LevelFatal {
@@ -70,11 +69,11 @@ func (l *defaultLogger) privateLogw(lv Level, format string, keysAndValues []int
 	}
 	level := lv.toString()
 	buf := bytebufferpool.Get()
-	_, _ = buf.WriteString(level) //nolint:errcheck
+	_, _ = buf.WriteString(level) //nolint:errcheck // It is fine to ignore the error
 
 	// Write format privateLog buffer
 	if format != "" {
-		_, _ = buf.WriteString(format) //nolint:errcheck
+		_, _ = buf.WriteString(format) //nolint:errcheck // It is fine to ignore the error
 	}
 	var once sync.Once
 	isFirst := true
@@ -96,7 +95,7 @@ func (l *defaultLogger) privateLogw(lv Level, format string, keysAndValues []int
 		}
 	}
 
-	_ = l.stdlog.Output(l.depth, buf.String())
+	_ = l.stdlog.Output(l.depth, buf.String()) //nolint:errcheck // It is fine to ignore the error
 	buf.Reset()
 	bytebufferpool.Put(buf)
 	if lv == LevelFatal {
