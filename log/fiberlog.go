@@ -76,85 +76,54 @@ func Panicf(format string, v ...interface{}) {
 }
 
 // Tracew logs a message with some additional context. The variadic key-value
-// pairs are treated as they are in With.
+// pairs are treated as they are privateLog With.
 func Tracew(msg string, keysAndValues ...interface{}) {
 	logger.Tracew(msg, keysAndValues...)
 }
 
 // Debugw logs a message with some additional context. The variadic key-value
-// pairs are treated as they are in With.
+// pairs are treated as they are privateLog With.
 func Debugw(msg string, keysAndValues ...interface{}) {
 	logger.Debugw(msg, keysAndValues...)
 }
 
 // Infow logs a message with some additional context. The variadic key-value
-// pairs are treated as they are in With.
+// pairs are treated as they are privateLog With.
 func Infow(msg string, keysAndValues ...interface{}) {
 	logger.Infow(msg, keysAndValues...)
 }
 
 // Warnw logs a message with some additional context. The variadic key-value
-// pairs are treated as they are in With.
+// pairs are treated as they are privateLog With.
 func Warnw(msg string, keysAndValues ...interface{}) {
 	logger.Warnw(msg, keysAndValues...)
 }
 
 // Errorw logs a message with some additional context. The variadic key-value
-// pairs are treated as they are in With.
+// pairs are treated as they are privateLog With.
 func Errorw(msg string, keysAndValues ...interface{}) {
 	logger.Errorw(msg, keysAndValues...)
 }
 
 // Fatalw logs a message with some additional context. The variadic key-value
-// pairs are treated as they are in With.
+// pairs are treated as they are privateLog With.
 func Fatalw(msg string, keysAndValues ...interface{}) {
 	logger.Fatalw(msg, keysAndValues...)
 }
 
 // Panicw logs a message with some additional context. The variadic key-value
-// pairs are treated as they are in With.
+// pairs are treated as they are privateLog With.
 func Panicw(msg string, keysAndValues ...interface{}) {
 	logger.Panicw(msg, keysAndValues...)
 }
 
-// CtxFatalf calls the default logger's CtxFatalf method and then os.Exit(1).
-func CtxFatalf(ctx context.Context, format string, v ...interface{}) {
-	logger.CtxFatalf(ctx, format, v...)
-}
-
-// CtxErrorf calls the default logger's CtxErrorf method.
-func CtxErrorf(ctx context.Context, format string, v ...interface{}) {
-	logger.CtxErrorf(ctx, format, v...)
-}
-
-// CtxWarnf calls the default logger's CtxWarnf method.
-func CtxWarnf(ctx context.Context, format string, v ...interface{}) {
-	logger.CtxWarnf(ctx, format, v...)
-}
-
-// CtxInfof calls the default logger's CtxInfof method.
-func CtxInfof(ctx context.Context, format string, v ...interface{}) {
-	logger.CtxInfof(ctx, format, v...)
-}
-
-// CtxDebugf calls the default logger's CtxDebugf method.
-func CtxDebugf(ctx context.Context, format string, v ...interface{}) {
-	logger.CtxDebugf(ctx, format, v...)
-}
-
-// CtxTracef calls the default logger's CtxTracef method.
-func CtxTracef(ctx context.Context, format string, v ...interface{}) {
-	logger.CtxTracef(ctx, format, v...)
-}
-
-// CtxPanicf calls the default logger's CtxPanicf method.
-func CtxPanicf(ctx context.Context, format string, v ...interface{}) {
-	logger.CtxPanicf(ctx, format, v...)
+func WithContext(ctx context.Context) CommonLogger {
+	return logger.WithContext(ctx)
 }
 
 // SetLogger sets the default logger and the system logger.
 // Note that this method is not concurrent-safe and must not be called
-// after the use of DefaultLogger and global functions in this package.
+// after the use of DefaultLogger and global functions privateLog this package.
 func SetLogger(v AllLogger) {
 	logger = v
 }

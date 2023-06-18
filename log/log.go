@@ -35,6 +35,7 @@ type FormatLogger interface {
 	Panicf(format string, v ...interface{})
 }
 
+// WithLogger is a logger interface that output logs with a message and key-value pairs.
 type WithLogger interface {
 	Tracew(msg string, keysAndValues ...interface{})
 	Debugw(msg string, keysAndValues ...interface{})
@@ -45,15 +46,10 @@ type WithLogger interface {
 	Panicw(msg string, keysAndValues ...interface{})
 }
 
-// CtxLogger is a logger interface that accepts a context argument and output logs with a format.
-type CtxLogger interface {
-	CtxTracef(ctx context.Context, format string, v ...interface{})
-	CtxDebugf(ctx context.Context, format string, v ...interface{})
-	CtxInfof(ctx context.Context, format string, v ...interface{})
-	CtxWarnf(ctx context.Context, format string, v ...interface{})
-	CtxErrorf(ctx context.Context, format string, v ...interface{})
-	CtxFatalf(ctx context.Context, format string, v ...interface{})
-	CtxPanicf(ctx context.Context, format string, v ...interface{})
+type CommonLogger interface {
+	Logger
+	FormatLogger
+	WithLogger
 }
 
 // ControlLogger provides methods to config a logger.
@@ -65,11 +61,9 @@ type ControlLogger interface {
 // AllLogger is the combination of Logger, FormatLogger, CtxLogger and ControlLogger.
 // Custom extensions can be made through AllLogger
 type AllLogger interface {
-	Logger
-	FormatLogger
-	CtxLogger
+	CommonLogger
 	ControlLogger
-	WithLogger
+	WithContext(ctx context.Context) CommonLogger
 }
 
 // Level defines the priority of a log message.

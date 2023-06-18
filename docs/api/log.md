@@ -10,7 +10,7 @@ We can use logs to observe program behavior, diagnose problems, or configure cor
 And defining a well structured log can improve search efficiency and facilitate handling of problems.
 
 Fiber provides a default way to print logs in the standard output. 
-It also provides several global functions, such as `log.Info`, `log.Errorf`, `log.CtxTracef`, etc. 
+It also provides several global functions, such as `log.Info`, `log.Errorf`, `log.Warnw`, etc. 
 
 ## Log levels
 
@@ -31,12 +31,16 @@ const (
 Fiber provides the `AllLogger` interface for adapting the various log libraries.
 
 ```go
+type CommonLogger interface {
+    Logger
+    FormatLogger
+    WithLogger
+}
+
 type AllLogger interface {
-	Logger
-	FormatLogger
-	CtxLogger
+	CommonLogger
 	ControlLogger
-	Log(level Level, keyvals ...interface{}) error
+	WithLogger
 }
 ```
 
@@ -63,10 +67,14 @@ log.Errorf("%s, we have a problem.", "Master Shifu")
 log.Fatalf("So Long, and Thanks for All the %s.", "banana")
 ```
 
-Use the underlying Log interface to print key and value.
+Print a message with the key and value, or `KEYVALS UNPAIRED` if the key and value are not a pair.
 
 ```go
-log.Log(log.LevelInfo, "key1", "value1")
+log.Debugw("", "Hello", "boy")
+log.Infow("", "number", 233)
+log.Warnw("", "job", "boss")
+log.Errorw("", "name", "Master Shifu")
+log.Fatalw("", "fruit", "banana")
 ```
 
 ## Global log
@@ -92,7 +100,6 @@ var _ log.AllLogger = (*customLogger)(nil)
 
 type customLogger struct {
 	stdlog *log.Logger
-	level  fiber.Level
 }
 
 // ...
@@ -104,10 +111,18 @@ fiberlog.SetLogger(customLogger)
 `log.SetLevel` sets the level of logs below which logs will not be output.
 The default logger is LevelTrace.
 
-Note that this method is not concurrent-safe.
+Note that this method is not **concurrent-safe**.
 
 ```go
 import "github.com/gofiber/fiber/v2/log"
 
 log.SetLevel(log.LevelInfo)
+```
+
+## Bind context
+Set the context, using the following method will return a `CommonLogger` instance bound to the specified context
+```go
+
+commonLogger := log.WithContext(ctx)
+commonLogger.Info("info")
 ```

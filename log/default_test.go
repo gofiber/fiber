@@ -77,12 +77,12 @@ func Test_CtxLogger(t *testing.T) {
 
 	ctx := context.Background()
 
-	CtxTracef(ctx, "trace %s", work)
-	CtxDebugf(ctx, "received %s order", work)
-	CtxInfof(ctx, "starting %s", work)
-	CtxWarnf(ctx, "%s may fail", work)
-	CtxErrorf(ctx, "%s failed", work)
-	CtxPanicf(ctx, "%s panic", work)
+	WithContext(ctx).Tracef("trace %s", work)
+	WithContext(ctx).Debugf("received %s order", work)
+	WithContext(ctx).Infof("starting %s", work)
+	WithContext(ctx).Warnf("%s may fail", work)
+	WithContext(ctx).Errorf("%s failed", work)
+	WithContext(ctx).Panicf("%s panic", work)
 
 	utils.AssertEqual(t, "[Trace] trace work\n"+
 		"[Debug] received work order\n"+
@@ -92,7 +92,7 @@ func Test_CtxLogger(t *testing.T) {
 		"[Panic] work panic\n", string(w.b))
 }
 
-func TestLogfKeyAndValues(t *testing.T) {
+func Test_LogfKeyAndValues(t *testing.T) {
 	tests := []struct {
 		name          string
 		level         Level
@@ -150,7 +150,7 @@ func TestLogfKeyAndValues(t *testing.T) {
 				level:  tt.level,
 				depth:  4,
 			}
-			l.log(tt.level, tt.format, tt.fmtArgs, tt.keysAndValues)
+			l.privateLogw(tt.level, tt.format, tt.keysAndValues)
 			utils.AssertEqual(t, tt.wantOutput, buf.String())
 		})
 	}
