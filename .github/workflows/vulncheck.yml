@@ -1,3 +1,5 @@
+name: Run govulncheck
+
 on:
     push:
         branches:
@@ -12,12 +14,22 @@ on:
           - '**'
           - '!docs/**'
           - '!**.md'
-name: Vulnerability Check
+
 jobs:
-  Security:
+  govulncheck-check:
     runs-on: ubuntu-latest
+    env:
+      GO111MODULE: on
     steps:
-    - name: Run govulncheck
-      uses: golang/govulncheck-action@v0.1.0
+    - name: Fetch Repository
+      uses: actions/checkout@v3
+    - name: Install Go
+      uses: actions/setup-go@v4
       with:
-        go-version-input: 1.20.x
+        go-version: 'stable'
+        check-latest: true
+        cache: false
+    - name: Install Govulncheck
+      run: go install golang.org/x/vuln/cmd/govulncheck@latest
+    - name: Run Govulncheck
+      run: govulncheck ./...
