@@ -1112,7 +1112,7 @@ app.Get("/", func(c *fiber.Ctx) error {
 // GET /api/posts?filters.author.name=John&filters.category.name=Technology
 
 app.Get("/", func(c *fiber.Ctx) error {
-	m := c.Queies()
+	m := c.Queries()
 	m["filters.author.name"] // John
 	m["filters.category.name"] // Technology
 })
