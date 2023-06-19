@@ -25,13 +25,17 @@ import (
 	"github.com/mattn/go-runewidth"
 )
 
+const (
+	globalIpv4Addr = "0.0.0.0"
+)
+
 // Listener can be used to pass a custom listener.
 func (app *App) Listener(ln net.Listener) error {
 	// prepare the server for the start
 	app.startupProcess()
 
 	// run hooks
-	app.runOnListenHooks()
+	app.runOnListenHooks(app.prepareListenData(ln.Addr().String(), getTLSConfig(ln) != nil))
 
 	// Print startup message
 	if !app.config.DisableStartupMessage {
@@ -72,7 +76,7 @@ func (app *App) Listen(addr string) error {
 	app.startupProcess()
 
 	// run hooks
-	app.runOnListenHooks()
+	app.runOnListenHooks(app.prepareListenData(ln.Addr().String(), false))
 
 	// Print startup message
 	if !app.config.DisableStartupMessage {
@@ -137,7 +141,7 @@ func (app *App) ListenTLSWithCertificate(addr string, cert tls.Certificate) erro
 	app.startupProcess()
 
 	// run hooks
-	app.runOnListenHooks()
+	app.runOnListenHooks(app.prepareListenData(ln.Addr().String(), getTLSConfig(ln) != nil))
 
 	// Print startup message
 	if !app.config.DisableStartupMessage {
@@ -212,7 +216,7 @@ func (app *App) ListenMutualTLSWithCertificate(addr string, cert tls.Certificate
 	app.startupProcess()
 
 	// run hooks
-	app.runOnListenHooks()
+	app.runOnListenHooks(app.prepareListenData(ln.Addr().String(), getTLSConfig(ln) != nil))
 
 	// Print startup message
 	if !app.config.DisableStartupMessage {
@@ -231,8 +235,26 @@ func (app *App) ListenMutualTLSWithCertificate(addr string, cert tls.Certificate
 	return app.server.Serve(ln)
 }
 
+// prepareListenData create an slice of ListenData
+func (app *App) prepareListenData(addr string, isTLS bool) ListenData { //revive:disable-line:flag-parameter // Accepting a bool param named isTLS if fine here
+	host, port := parseAddr(addr)
+	if host == "" {
+		if app.config.Network == NetworkTCP6 {
+			host = "[::1]"
+		} else {
+			host = globalIpv4Addr
+		}
+	}
+
+	return ListenData{
+		Host: host,
+		Port: port,
+		TLS:  isTLS,
+	}
+}
+
 // startupMessage prepares the startup message with the handler number, port, address and other information
-func (app *App) startupMessage(addr string, tls bool, pids string) { //nolint: revive // Accepting a bool param is fine here
+func (app *App) startupMessage(addr string, isTLS bool, pids string) { //nolint: revive // Accepting a bool param named isTLS if fine here
 	// ignore child processes
 	if IsChild() {
 		return
@@ -294,12 +316,12 @@ func (app *App) startupMessage(addr string, tls bool, pids string) { //nolint: r
 		if app.config.Network == NetworkTCP6 {
 			host = "[::1]"
 		} else {
-			host = "0.0.0.0"
+			host = globalIpv4Addr
 		}
 	}
 
 	scheme := schemeHTTP
-	if tls {
+	if isTLS {
 		scheme = schemeHTTPS
 	}
 
@@ -320,7 +342,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) { //nolint: r
 	}
 	mainLogo += " │ " + centerValue("Fiber v"+Version, lineLen) + " │\n"
 
-	if host == "0.0.0.0" {
+	if host == globalIpv4Addr {
 		mainLogo += " │ " + center(fmt.Sprintf("%s://127.0.0.1:%s", scheme, port), lineLen) + " │\n" +
 			" │ " + center(fmt.Sprintf("(bound on host 0.0.0.0 and port %s)", port), lineLen) + " │\n"
 	} else {

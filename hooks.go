@@ -10,8 +10,8 @@ type (
 	OnNameHandler      = OnRouteHandler
 	OnGroupHandler     = func(Group) error
 	OnGroupNameHandler = OnGroupHandler
-	OnListenHandler    = func() error
-	OnShutdownHandler  = OnListenHandler
+	OnListenHandler    = func(ListenData) error
+	OnShutdownHandler  = func() error
 	OnForkHandler      = func(int) error
 	OnMountHandler     = func(*App) error
 )
@@ -30,6 +30,13 @@ type Hooks struct {
 	onShutdown  []OnShutdownHandler
 	onFork      []OnForkHandler
 	onMount     []OnMountHandler
+}
+
+// ListenData is a struct to use it with OnListenHandler
+type ListenData struct {
+	Host string
+	Port string
+	TLS  bool
 }
 
 func newHooks(app *App) *Hooks {
@@ -174,9 +181,9 @@ func (h *Hooks) executeOnGroupNameHooks(group Group) error {
 	return nil
 }
 
-func (h *Hooks) executeOnListenHooks() error {
+func (h *Hooks) executeOnListenHooks(listenData ListenData) error {
 	for _, v := range h.onListen {
-		if err := v(); err != nil {
+		if err := v(listenData); err != nil {
 			return err
 		}
 	}
