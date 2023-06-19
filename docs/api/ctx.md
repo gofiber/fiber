@@ -1067,33 +1067,6 @@ app.Get("/", func(c *fiber.Ctx) error {
 })
 ```
 
-## Query
-
-This property is an object containing a property for each query string parameter in the route, you could pass an optional default value that will be returned if the query key does not exist.
-
-:::info
-If there is **no** query string, it returns an **empty string**.
-:::
-
-```go title="Signature"
-func (c *Ctx) Query(key string, defaultValue ...string) string
-```
-
-```go title="Example"
-// GET http://example.com/?order=desc&brand=nike
-
-app.Get("/", func(c *fiber.Ctx) error {
-  c.Query("order")         // "desc"
-  c.Query("brand")         // "nike"
-  c.Query("empty", "nike") // "nike"
-
-  // ...
-})
-```
-
-> _Returned value is only valid within the handler. Do not store any references.  
-> Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
-
 ## Queries
 
 Queries is a function that returns an object containing a property for each query string parameter in the route.
@@ -1129,9 +1102,9 @@ app.Get("/", func (c *fiber.Ctx) error {
 
 app.Get("/", func(c *fiber.Ctx) error {
 	m := c.Queries()
-    m["list_a"] // "3"
-    m["list_b[]"] // "3"
-    m["list_c"] // "1,2,3"
+	m["list_a"] // "3"
+	m["list_b[]"] // "3"
+	m["list_c"] // "1,2,3"
 })
 ```
 
@@ -1157,6 +1130,33 @@ app.Get("/", func(c *fiber.Ctx) error {
 	m["filters.category.name"] // fruits
 })
 ```
+
+## Query
+
+This property is an object containing a property for each query string parameter in the route, you could pass an optional default value that will be returned if the query key does not exist.
+
+:::info
+If there is **no** query string, it returns an **empty string**.
+:::
+
+```go title="Signature"
+func (c *Ctx) Query(key string, defaultValue ...string) string
+```
+
+```go title="Example"
+// GET http://example.com/?order=desc&brand=nike
+
+app.Get("/", func(c *fiber.Ctx) error {
+  c.Query("order")         // "desc"
+  c.Query("brand")         // "nike"
+  c.Query("empty", "nike") // "nike"
+
+  // ...
+})
+```
+
+> _Returned value is only valid within the handler. Do not store any references.  
+> Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
 
 ## QueryBool
 
