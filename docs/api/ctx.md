@@ -1106,11 +1106,11 @@ func (c *Ctx) Queries() (map[string]string, error)
 // GET http://example.com/?name=alex&want_pizza=false&id=
 
 app.Get("/", func(c *fiber.Ctx) error {
-m := c.Queries()
-m["name"] // "alex"
-m["want_pizza"] // "false"
-m["id"] // ""
-// ...
+	m := c.Queries()
+	m["name"] // "alex"
+	m["want_pizza"] // "false"
+	m["id"] // ""
+	// ...
 })
 ```
 
