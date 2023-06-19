@@ -236,7 +236,7 @@ func (app *App) ListenMutualTLSWithCertificate(addr string, cert tls.Certificate
 }
 
 // prepareListenData create an slice of ListenData
-func (app *App) prepareListenData(addr string, isTLS bool) ListenData { //nolint: revive // Accepting a bool param named isTLS if fine here
+func (app *App) prepareListenData(addr string, isTLS bool) ListenData { //revive:disable-line:flag-parameter // Accepting a bool param named isTLS if fine here
 	host, port := parseAddr(addr)
 	if host == "" {
 		if app.config.Network == NetworkTCP6 {
