@@ -38,9 +38,9 @@ type CommonLogger interface {
 }
 
 type AllLogger interface {
-	CommonLogger
-	ControlLogger
-	WithLogger
+    CommonLogger
+    ControlLogger
+    WithLogger
 }
 ```
 
@@ -99,7 +99,7 @@ import (
 var _ log.AllLogger = (*customLogger)(nil)
 
 type customLogger struct {
-	stdlog *log.Logger
+    stdlog *log.Logger
 }
 
 // ...
@@ -118,11 +118,39 @@ import "github.com/gofiber/fiber/v2/log"
 
 log.SetLevel(log.LevelInfo)
 ```
+## Set output
 
+`log.SetOutput` sets the output destination of the logger. The default logger types the log in the console.
+
+```go
+var logger AllLogger = &defaultLogger{
+    stdlog: log.New(os.Stderr, "", log.LstdFlags|log.Lshortfile|log.Lmicroseconds),
+    depth:  4,
+}
+```
+
+Set the output destination to the file.
+
+```go
+// Output to ./test.log file
+f, err := os.OpenFile("test.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+if err != nil {
+    return
+}
+log.SetOutput(f)
+```
+Set the output destination to the console and file.
+
+```go
+// Output to ./test.log file
+file, _ := os.OpenFile("test.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+iw := io.MultiWriter(os.Stdout, file)
+log.SetOutput(iw)
+```
 ## Bind context
 Set the context, using the following method will return a `CommonLogger` instance bound to the specified context
 ```go
-
 commonLogger := log.WithContext(ctx)
 commonLogger.Info("info")
 ```
+
