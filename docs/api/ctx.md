@@ -1115,7 +1115,7 @@ app.Get("/", func(c *fiber.Ctx) error {
 	m := c.Queies()
 	m["filters.author.name"] // John
 	m["filters.category.name"] // Technology
- })
+})
 ```
 
 ```go title="Example"
