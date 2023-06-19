@@ -150,6 +150,9 @@ app.Hooks().OnListen(func(listenData fiber.ListenData) error {
 app.Listen(":5000")
 ```
 
+</TabItem>
+</Tabs>
+
 ## OnFork
 
 OnFork is a hook to execute user functions on Fork.
