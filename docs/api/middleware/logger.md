@@ -153,7 +153,7 @@ var ConfigDefault = Config{
 	TimeZone:     "Local",
 	TimeInterval: 500 * time.Millisecond,
 	Output:       os.Stdout,
-    DisableColors: true,
+    DisableColors: false,
 }
 ```
 
