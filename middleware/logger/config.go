@@ -92,6 +92,7 @@ var ConfigDefault = Config{
 	TimeInterval:  500 * time.Millisecond,
 	Output:        os.Stdout,
 	DisableColors: false,
+	enableColors:  true,
 }
 
 // Helper function to set default values
