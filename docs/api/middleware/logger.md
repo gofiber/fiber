@@ -15,8 +15,8 @@ Import the middleware package that is part of the Fiber web framework
 
 ```go
 import (
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/logger"
+    "github.com/gofiber/fiber/v2"
+    "github.com/gofiber/fiber/v2/middleware/logger"
 )
 ```
 
@@ -34,51 +34,51 @@ app.Use(logger.New())
 // Or extend your config for customization
 // Logging remote IP and Port
 app.Use(logger.New(logger.Config{
-	Format: "[${ip}]:${port} ${status} - ${method} ${path}\n",
+    Format: "[${ip}]:${port} ${status} - ${method} ${path}\n",
 }))
 
 // Logging Request ID
 app.Use(requestid.New())
 app.Use(logger.New(logger.Config{
-	// For more options, see the Config section
-	Format: "${pid} ${locals:requestid} ${status} - ${method} ${path}​\n",
+    // For more options, see the Config section
+    Format: "${pid} ${locals:requestid} ${status} - ${method} ${path}​\n",
 }))
 
 // Changing TimeZone & TimeFormat
 app.Use(logger.New(logger.Config{
-	Format:     "${pid} ${status} - ${method} ${path}\n",
-	TimeFormat: "02-Jan-2006",
-	TimeZone:   "America/New_York",
+    Format:     "${pid} ${status} - ${method} ${path}\n",
+    TimeFormat: "02-Jan-2006",
+    TimeZone:   "America/New_York",
 }))
 
 // Custom File Writer
 file, err := os.OpenFile("./123.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 if err != nil {
-	log.Fatalf("error opening file: %v", err)
+    log.Fatalf("error opening file: %v", err)
 }
 defer file.Close()
 app.Use(logger.New(logger.Config{
-	Output: file,
+    Output: file,
 }))
 
 // Add Custom Tags
 app.Use(logger.New(logger.Config{
-	CustomTags: map[string]logger.LogFunc{
-		"custom_tag": func(output logger.Buffer, c *fiber.Ctx, data *logger.Data, extraParam string) (int, error) {
-			return output.WriteString("it is a custom tag")
-		},
-	},
+    CustomTags: map[string]logger.LogFunc{
+        "custom_tag": func(output logger.Buffer, c *fiber.Ctx, data *logger.Data, extraParam string) (int, error) {
+            return output.WriteString("it is a custom tag")
+        },
+    },
 }))
 
 // Callback after log is written
 app.Use(logger.New(logger.Config{
-	TimeFormat: time.RFC3339Nano,
-	TimeZone:   "Asia/Shanghai",
-	Done: func(c *fiber.Ctx, logString []byte) {
-		if c.Response().StatusCode() != fiber.StatusOK {
-			reporter.SendToSlack(logString) 
-		}
-	},
+    TimeFormat: time.RFC3339Nano,
+    TimeZone:   "Asia/Shanghai",
+    Done: func(c *fiber.Ctx, logString []byte) {
+        if c.Response().StatusCode() != fiber.StatusOK {
+            reporter.SendToSlack(logString) 
+        }
+    },
 }))
 
 // Disable colors when outputting to default format
@@ -146,13 +146,13 @@ type LogFunc func(buf logger.Buffer, c *fiber.Ctx, data *logger.Data, extraParam
 ## Default Config
 ```go
 var ConfigDefault = Config{
-	Next:         nil,
-	Done:         nil,
-	Format:       "[${time}] ${status} - ${latency} ${method} ${path}\n",
-	TimeFormat:   "15:04:05",
-	TimeZone:     "Local",
-	TimeInterval: 500 * time.Millisecond,
-	Output:       os.Stdout,
+    Next:         nil,
+    Done:         nil,
+    Format:       "[${time}] ${status} - ${latency} ${method} ${path}\n",
+    TimeFormat:   "15:04:05",
+    TimeZone:     "Local",
+    TimeInterval: 500 * time.Millisecond,
+    Output:       os.Stdout,
     DisableColors: false,
 }
 ```
