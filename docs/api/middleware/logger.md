@@ -146,13 +146,13 @@ type LogFunc func(buf logger.Buffer, c *fiber.Ctx, data *logger.Data, extraParam
 ## Default Config
 ```go
 var ConfigDefault = Config{
-    Next:         nil,
-    Done:         nil,
-    Format:       "[${time}] ${status} - ${latency} ${method} ${path}\n",
-    TimeFormat:   "15:04:05",
-    TimeZone:     "Local",
-    TimeInterval: 500 * time.Millisecond,
-    Output:       os.Stdout,
+    Next:          nil,
+    Done:          nil,
+    Format:        "[${time}] ${status} - ${latency} ${method} ${path}\n",
+    TimeFormat:    "15:04:05",
+    TimeZone:      "Local",
+    TimeInterval:  500 * time.Millisecond,
+    Output:        os.Stdout,
     DisableColors: false,
 }
 ```
