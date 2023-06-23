@@ -1718,7 +1718,7 @@ app.Get("/", func(c *fiber.Ctx) error {
 
 ## SetParserDecoder
 
-Allow you to config BodyParser/QueryParser decoder, base on schema's options, providing possibility to add custom type for pausing.
+Allow you to config BodyParser/QueryParser decoder, base on schema's options, providing possibility to add custom type for parsing.
 
 ```go title="Signature"
 func SetParserDecoder(parserConfig fiber.ParserConfig{
