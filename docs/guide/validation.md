@@ -20,16 +20,16 @@ package main
 import (
 	"fmt"
 	"log"
+	"strings"
+
 	"github.com/go-playground/validator"
 	"github.com/gofiber/fiber/v2"
 )
 
 type (
     User struct{
-        // Name -> Required field, min 5 char long max 20
-        Name          string `validate:"required,min=5,max=20"` 
-        // Age -> Required field, and client needs to implement our 'teener' tag format which we'll see later
-        Age           int    `validate:"required,teener"` 
+        Name          string `validate:"required,min=5,max=20"` // Required field, min 5 char long max 20
+        Age           int    `validate:"required,teener"` // Required field, and client needs to implement our 'teener' tag format which we'll see later
     }
 
     ErrorResponse struct {
@@ -39,16 +39,13 @@ type (
         Value       interface{}
     }
 
-    ValidationFunction = func(interface{}) *ErrorResponse
-
     XValidator struct {
         validator *validator.Validate
     }
 
 	GlobalErrorHandlerResp struct {
-		Success bool 	`json:"success"` // Tells us about if there went off something wrong
-		Message string 	`json:"message"` // Message holds a nice custom formatted error message-
-                                        // -which we'll see later below
+		Success bool 	`json:"success"`
+		Message string 	`json:"message"`
 	}
 )
 
@@ -56,19 +53,20 @@ type (
 // for more information see: https://github.com/go-playground/validator
 var validate = validator.New()
 
-func(v XValidator) Validate(data interface{}) *ErrorResponse{
-	error_ := &ErrorResponse{}
+func(v XValidator) Validate(data interface{}) []ErrorResponse{
+	error_ := []ErrorResponse{}
 
 	err := validate.Struct(data); if err != nil {
 		for _, err := range err.(validator.ValidationErrors) {
 			// In this case data object is actually holding the User struct 
+			var elem ErrorResponse
 
-			error_.FailedField = err.Field() // Export struct field name
-			error_.Tag = err.Tag() // Export struct tag
-			error_.Value = err.Value() // Export field value, convert it to string
-			error_.Error = true // When ErrorResponse.Error is true it means there was an error
+			elem.FailedField = err.Field() // Export struct field name
+			elem.Tag = err.Tag() // Export struct tag
+			elem.Value = err.Value() // Export field value, convert it to string
+			elem.Error = true // When ErrorResponse.Error is true it means there was an error
 
-			break // It is better for performance to directly break and return one single error instead of all
+			error_ = append(error_, elem)	
 		}
 	}
 
@@ -103,14 +101,22 @@ func main() {
 		}
 		
 		// Validation
-		if err := Validator_.Validate(user); err.Error {
+		if err := Validator_.Validate(user); len(err) > 0 && err[0].Error {
+			errMsg := make([]string,0)
+			
+			for _, v := range err {
+				errMsg = append(errMsg, fmt.Sprintf(
+					"[%s]: '%v' | Needs to implement '%s'",
+					v.FailedField,
+					v.Value,
+					v.Tag,
+				))
+			}
+
+			fmt.Println(strings.Join(errMsg, "\n"))
 			return &fiber.Error{
 				Code: fiber.ErrBadRequest.Code,
-				Message: fmt.Sprintf("[%s]: '%v' | Needs to implement '%s'",
-					err.FailedField,
-					err.Value,
-					err.Tag,
-				),
+				Message: strings.Join(errMsg, " and "),
 			}
 		}
 
@@ -132,7 +138,7 @@ OUTPUT
 
 	Response:
 
-	{"success":false,"message":"[Name]: '' | Needs to implement 'required'"}
+	{"success":false,"message":"[Name]: '' | Needs to implement 'required' and [Age]: '0' | Needs to implement 'required'"}
 
 [2]
 	Request:
@@ -151,14 +157,12 @@ OUTPUT
 	{"success":false,"message":"[Age]: '0' | Needs to implement 'required'"}
 
 [4]
-    Request:
+	Request:
 
-	GET http://127.0.0.1:3000/?name=efdal&age=
+	GET http://127.0.0.1:3000/?name=efdal&age=18
 
 	Response:
-	    Hello, World! 
-	    (success)
-
+	Hello, World!
 
 **/
 ```
