@@ -54,7 +54,7 @@ type (
 var validate = validator.New()
 
 func(v XValidator) Validate(data interface{}) []ErrorResponse{
-	error_ := []ErrorResponse{}
+	Error := []ErrorResponse{}
 
 	err := validate.Struct(data); if err != nil {
 		for _, err := range err.(validator.ValidationErrors) {
@@ -66,15 +66,15 @@ func(v XValidator) Validate(data interface{}) []ErrorResponse{
 			elem.Value = err.Value() // Export field value, convert it to string
 			elem.Error = true // When ErrorResponse.Error is true it means there was an error
 
-			error_ = append(error_, elem)	
+			Error = append(Error, elem)	
 		}
 	}
 
-	return error_
+	return Error
 }
 
 func main() {
-	Validator_ := &XValidator{
+	Validator := &XValidator{
 		validator: validate,
 	}
     app := fiber.New(fiber.Config{
@@ -89,7 +89,7 @@ func main() {
 
 
 	// Custom struct validation tag format
-	Validator_.validator.RegisterValidation("teener",func(fl validator.FieldLevel) bool {
+	Validator.validator.RegisterValidation("teener",func(fl validator.FieldLevel) bool {
 		// User.Age needs to fit our needs, 12-18 years old.
 		return fl.Field().Int() >= 12 && fl.Field().Int() <= 18
 	})
@@ -101,7 +101,7 @@ func main() {
 		}
 		
 		// Validation
-		if err := Validator_.Validate(user); len(err) > 0 && err[0].Error {
+		if err := Validator.Validate(user); len(err) > 0 && err[0].Error {
 			errMsg := make([]string,0)
 			
 			for _, v := range err {
@@ -164,4 +164,5 @@ OUTPUT
 	Hello, World!
 
 **/
+
 ```
