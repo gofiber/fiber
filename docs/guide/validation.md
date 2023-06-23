@@ -113,7 +113,6 @@ func main() {
 				))
 			}
 
-			fmt.Println(strings.Join(errMsg, "\n"))
 			return &fiber.Error{
 				Code: fiber.ErrBadRequest.Code,
 				Message: strings.Join(errMsg, " and "),
