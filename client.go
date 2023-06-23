@@ -380,7 +380,7 @@ func (a *Agent) ContentTypeBytes(contentType []byte) *Agent {
 
 /************************** URI Setting **************************/
 
-// Host sets host for the uri.
+// Host sets host for the URI.
 func (a *Agent) Host(host string) *Agent {
 	a.req.URI().SetHost(host)
 
