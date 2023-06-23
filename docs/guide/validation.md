@@ -102,10 +102,10 @@ func main() {
 		
 		// Validation
 		if err := Validator.Validate(user); len(err) > 0 && err[0].Error {
-			errMsg := make([]string,0)
+			errMsgs := make([]string,0)
 			
 			for _, v := range err {
-				errMsg = append(errMsg, fmt.Sprintf(
+				errMsgs = append(errMsgs, fmt.Sprintf(
 					"[%s]: '%v' | Needs to implement '%s'",
 					v.FailedField,
 					v.Value,
@@ -115,7 +115,7 @@ func main() {
 
 			return &fiber.Error{
 				Code: fiber.ErrBadRequest.Code,
-				Message: strings.Join(errMsg, " and "),
+				Message: strings.Join(errMsgs, " and "),
 			}
 		}
 
