@@ -150,5 +150,15 @@ OUTPUT
 	Response:
 	{"success":false,"message":"[Age]: '0' | Needs to implement 'required'"}
 
+[4]
+    Request:
+
+	GET http://127.0.0.1:3000/?name=efdal&age=
+
+	Response:
+	    Hello, World! 
+	    (success)
+
+
 **/
 ```
