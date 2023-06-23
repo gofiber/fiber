@@ -904,7 +904,7 @@ func (c *Ctx) Next() error {
 	// Increment handler index
 	c.indexHandler++
 	var err error
-	// Did we executed all route handlers?
+	// Did we execute all route handlers?
 	if c.indexHandler < len(c.route.Handlers) {
 		// Continue route stack
 		err = c.route.Handlers[c.indexHandler](c)

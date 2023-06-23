@@ -27,7 +27,7 @@ func HTTPHandler(h http.Handler) fiber.Handler {
 	}
 }
 
-// ConvertRequest converts a fiber.Ctx to an http.Request.
+// ConvertRequest converts a fiber.Ctx to a http.Request.
 // forServer should be set to true when the http.Request is going to be passed to a http.Handler.
 func ConvertRequest(c *fiber.Ctx, forServer bool) (*http.Request, error) {
 	var req http.Request
