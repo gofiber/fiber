@@ -56,15 +56,15 @@ var validate = validator.New()
 func(v XValidator) Validate(data interface{}) []ErrorResponse{
 	Error := []ErrorResponse{}
 
-	err := validate.Struct(data); if err != nil {
-		for _, err := range err.(validator.ValidationErrors) {
+	errs := validate.Struct(data); if errs != nil {
+		for _, err := range errs.(validator.ValidationErrors) {
 			// In this case data object is actually holding the User struct 
 			var elem ErrorResponse
 
 			elem.FailedField = err.Field() // Export struct field name
 			elem.Tag = err.Tag() // Export struct tag
-			elem.Value = err.Value() // Export field value, convert it to string
-			elem.Error = true // When ErrorResponse.Error is true it means there was an error
+			elem.Value = err.Value() // Export field value
+			elem.Error = true 
 
 			Error = append(Error, elem)	
 		}
@@ -101,15 +101,15 @@ func main() {
 		}
 		
 		// Validation
-		if err := Validator.Validate(user); len(err) > 0 && err[0].Error {
+		if errs := Validator.Validate(user); len(errs) > 0 && errs[0].Error {
 			errMsgs := make([]string,0)
 			
-			for _, v := range err {
+			for _, err := range errs {
 				errMsgs = append(errMsgs, fmt.Sprintf(
 					"[%s]: '%v' | Needs to implement '%s'",
-					v.FailedField,
-					v.Value,
-					v.Tag,
+					err.FailedField,
+					err.Value,
+					err.Tag,
 				))
 			}
 
