@@ -78,50 +78,50 @@ type Client struct {
 	JSONDecoder utils.JSONUnmarshal
 }
 
-// Get returns a agent with http method GET.
+// Get returns an agent with http method GET.
 func Get(url string) *Agent { return defaultClient.Get(url) }
 
-// Get returns a agent with http method GET.
+// Get returns an agent with http method GET.
 func (c *Client) Get(url string) *Agent {
 	return c.createAgent(MethodGet, url)
 }
 
-// Head returns a agent with http method HEAD.
+// Head returns an agent with http method HEAD.
 func Head(url string) *Agent { return defaultClient.Head(url) }
 
-// Head returns a agent with http method GET.
+// Head returns an agent with http method GET.
 func (c *Client) Head(url string) *Agent {
 	return c.createAgent(MethodHead, url)
 }
 
-// Post sends POST request to the given url.
+// Post sends POST request to the given URL.
 func Post(url string) *Agent { return defaultClient.Post(url) }
 
-// Post sends POST request to the given url.
+// Post sends POST request to the given URL.
 func (c *Client) Post(url string) *Agent {
 	return c.createAgent(MethodPost, url)
 }
 
-// Put sends PUT request to the given url.
+// Put sends PUT request to the given URL.
 func Put(url string) *Agent { return defaultClient.Put(url) }
 
-// Put sends PUT request to the given url.
+// Put sends PUT request to the given URL.
 func (c *Client) Put(url string) *Agent {
 	return c.createAgent(MethodPut, url)
 }
 
-// Patch sends PATCH request to the given url.
+// Patch sends PATCH request to the given URL.
 func Patch(url string) *Agent { return defaultClient.Patch(url) }
 
-// Patch sends PATCH request to the given url.
+// Patch sends PATCH request to the given URL.
 func (c *Client) Patch(url string) *Agent {
 	return c.createAgent(MethodPatch, url)
 }
 
-// Delete sends DELETE request to the given url.
+// Delete sends DELETE request to the given URL.
 func Delete(url string) *Agent { return defaultClient.Delete(url) }
 
-// Delete sends DELETE request to the given url.
+// Delete sends DELETE request to the given URL.
 func (c *Client) Delete(url string) *Agent {
 	return c.createAgent(MethodDelete, url)
 }
@@ -801,7 +801,7 @@ func (a *Agent) String() (int, string, []error) {
 	return code, utils.UnsafeString(body), errs
 }
 
-// Struct returns the status code, bytes body and errors of url.
+// Struct returns the status code, bytes body and errors of URL.
 // And bytes body will be unmarshalled to given v.
 //
 // it's not safe to use Agent after calling [Agent.Struct]
@@ -889,7 +889,7 @@ func AcquireClient() *Client {
 
 // ReleaseClient returns c acquired via AcquireClient to client pool.
 //
-// It is forbidden accessing req and/or its' members after returning
+// It is forbidden accessing req and/or it's members after returning
 // it to client pool.
 func ReleaseClient(c *Client) {
 	c.UserAgent = ""
@@ -913,9 +913,9 @@ func AcquireAgent() *Agent {
 	return a
 }
 
-// ReleaseAgent returns a acquired via AcquireAgent to Agent pool.
+// ReleaseAgent returns an acquired via AcquireAgent to Agent pool.
 //
-// It is forbidden accessing req and/or its' members after returning
+// It is forbidden accessing req and/or it's members after returning
 // it to Agent pool.
 func ReleaseAgent(a *Agent) {
 	a.reset()
@@ -942,7 +942,7 @@ func AcquireResponse() *Response {
 
 // ReleaseResponse return resp acquired via AcquireResponse to response pool.
 //
-// It is forbidden accessing resp and/or its' members after returning
+// It is forbidden accessing resp and/or it's members after returning
 // it to response pool.
 // Copy from fasthttp
 func ReleaseResponse(resp *Response) {

@@ -184,7 +184,7 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) { //revive:disable-line:confu
 func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
 	prefixedPath := getGroupPath(prefix, route.Path)
 	prettyPath := prefixedPath
-	// Case sensitive routing, all to lowercase
+	// Case-sensitive routing, all to lowercase
 	if !app.config.CaseSensitive {
 		prettyPath = utils.ToLower(prettyPath)
 	}
@@ -248,7 +248,7 @@ func (app *App) register(method, pathRaw string, group *Group, handlers ...Handl
 	}
 	// Create a stripped path in-case sensitive / trailing slashes
 	pathPretty := pathRaw
-	// Case sensitive routing, all to lowercase
+	// Case-sensitive routing, all to lowercase
 	if !app.config.CaseSensitive {
 		pathPretty = utils.ToLower(pathPretty)
 	}
@@ -305,7 +305,7 @@ func (app *App) register(method, pathRaw string, group *Group, handlers ...Handl
 }
 
 func (app *App) registerStatic(prefix, root string, config ...Static) {
-	// For security we want to restrict to the current work directory.
+	// For security, we want to restrict to the current work directory.
 	if root == "" {
 		root = "."
 	}
@@ -317,7 +317,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 	if prefix[0] != '/' {
 		prefix = "/" + prefix
 	}
-	// in case sensitive routing, all to lowercase
+	// in case-sensitive routing, all to lowercase
 	if !app.config.CaseSensitive {
 		prefix = utils.ToLower(prefix)
 	}

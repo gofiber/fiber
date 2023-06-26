@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
-	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -19,6 +18,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/gofiber/fiber/v2/log"
 	"github.com/gofiber/fiber/v2/utils"
 
 	"github.com/valyala/bytebufferpool"
@@ -75,7 +75,7 @@ func readContent(rf io.ReaderFrom, name string) (int64, error) {
 	}
 	defer func() {
 		if err = f.Close(); err != nil {
-			log.Printf("Error closing file: %s\n", err)
+			log.Errorf("Error closing file: %s", err)
 		}
 	}()
 	if n, err := rf.ReadFrom(f); err != nil {
@@ -192,7 +192,7 @@ func setETag(c *Ctx, weak bool) { //nolint: revive // Accepting a bool param is 
 		if clientEtag[2:] == etag || clientEtag[2:] == etag[2:] {
 			// W/1 == 1 || W/1 == W/1
 			if err := c.SendStatus(StatusNotModified); err != nil {
-				log.Printf("setETag: failed to SendStatus: %v\n", err)
+				log.Errorf("setETag: failed to SendStatus: %v", err)
 			}
 			c.fasthttp.ResetBody()
 			return
@@ -204,7 +204,7 @@ func setETag(c *Ctx, weak bool) { //nolint: revive // Accepting a bool param is 
 	if strings.Contains(clientEtag, etag) {
 		// 1 == 1
 		if err := c.SendStatus(StatusNotModified); err != nil {
-			log.Printf("setETag: failed to SendStatus: %v\n", err)
+			log.Errorf("setETag: failed to SendStatus: %v", err)
 		}
 		c.fasthttp.ResetBody()
 		return
