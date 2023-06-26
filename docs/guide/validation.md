@@ -8,11 +8,11 @@ sidebar_position: 5
 
 Fiber can make _great_ use of the validator package to ensure correct validation of data to store.
 
-* [Official validator Github page \(Installation, use, examples..\).](https://github.com/go-playground/validator)
+- [Official validator Github page \(Installation, use, examples..\).](https://github.com/go-playground/validator)
 
 You can find the detailed descriptions of the _validations_ used in the fields contained on the structs below:
 
-* [Detailed docs](https://pkg.go.dev/github.com/go-playground/validator?tab=doc)
+- [Detailed docs](https://pkg.go.dev/github.com/go-playground/validator?tab=doc)
 
 ```go title="Validation Example"
 package main
@@ -58,15 +58,15 @@ func(v XValidator) Validate(data interface{}) []ErrorResponse{
 
 	errs := validate.Struct(data); if errs != nil {
 		for _, err := range errs.(validator.ValidationErrors) {
-			// In this case data object is actually holding the User struct 
+			// In this case data object is actually holding the User struct
 			var elem ErrorResponse
 
 			elem.FailedField = err.Field() // Export struct field name
 			elem.Tag = err.Tag() // Export struct tag
 			elem.Value = err.Value() // Export field value
-			elem.Error = true 
+			elem.Error = true
 
-			Error = append(Error, elem)	
+			Error = append(Error, elem)
 		}
 	}
 
@@ -77,7 +77,8 @@ func main() {
 	Validator := &XValidator{
 		validator: validate,
 	}
-    app := fiber.New(fiber.Config{
+
+	app := fiber.New(fiber.Config{
 		// Global custom error handler
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
 			return c.Status(fiber.StatusBadRequest).JSON(GlobalErrorHandlerResp{
@@ -99,11 +100,11 @@ func main() {
 			Name: c.Query("name"),
 			Age: c.QueryInt("age"),
 		}
-		
+
 		// Validation
 		if errs := Validator.Validate(user); len(errs) > 0 && errs[0].Error {
 			errMsgs := make([]string,0)
-			
+
 			for _, err := range errs {
 				errMsgs = append(errMsgs, fmt.Sprintf(
 					"[%s]: '%v' | Needs to implement '%s'",
@@ -131,37 +132,37 @@ func main() {
 OUTPUT
 
 [1]
-	Request:
+Request:
 
-	GET http://127.0.0.1:3000/
+GET http://127.0.0.1:3000/
 
-	Response:
+Response:
 
-	{"success":false,"message":"[Name]: '' | Needs to implement 'required' and [Age]: '0' | Needs to implement 'required'"}
+{"success":false,"message":"[Name]: '' | Needs to implement 'required' and [Age]: '0' | Needs to implement 'required'"}
 
 [2]
-	Request:
+Request:
 
-	GET http://127.0.0.1:3000/?name=efdal&age=9
+GET http://127.0.0.1:3000/?name=efdal&age=9
 
-	Response:
-	{"success":false,"message":"[Age]: '9' | Needs to implement 'teener'"}
+Response:
+{"success":false,"message":"[Age]: '9' | Needs to implement 'teener'"}
 
 [3]
-	Request:
+Request:
 
-	GET http://127.0.0.1:3000/?name=efdal&age=
+GET http://127.0.0.1:3000/?name=efdal&age=
 
-	Response:
-	{"success":false,"message":"[Age]: '0' | Needs to implement 'required'"}
+Response:
+{"success":false,"message":"[Age]: '0' | Needs to implement 'required'"}
 
 [4]
-	Request:
+Request:
 
-	GET http://127.0.0.1:3000/?name=efdal&age=18
+GET http://127.0.0.1:3000/?name=efdal&age=18
 
-	Response:
-	Hello, World!
+Response:
+Hello, World!
 
 **/
 
