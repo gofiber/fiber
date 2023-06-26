@@ -1,10 +1,10 @@
 package cache
 
 import (
-	"log"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/log"
 	"github.com/gofiber/fiber/v2/utils"
 )
 
@@ -102,11 +102,11 @@ func configDefault(config ...Config) Config {
 
 	// Set default values
 	if cfg.Store != nil {
-		log.Printf("[Warning] - [CACHE] Store is deprecated, please use Storage\n")
+		log.Warn("[CACHE] Store is deprecated, please use Storage")
 		cfg.Storage = cfg.Store
 	}
 	if cfg.Key != nil {
-		log.Printf("[Warning] - [CACHE] Key is deprecated, please use KeyGenerator\n")
+		log.Warn("[CACHE] Key is deprecated, please use KeyGenerator")
 		cfg.KeyGenerator = cfg.Key
 	}
 	if cfg.Next == nil {

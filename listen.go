@@ -9,7 +9,6 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -20,6 +19,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/gofiber/fiber/v2/log"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
 	"github.com/mattn/go-runewidth"
@@ -49,7 +49,7 @@ func (app *App) Listener(ln net.Listener) error {
 
 	// Prefork is not supported for custom listeners
 	if app.config.Prefork {
-		log.Printf("[Warning] Prefork isn't supported for custom listeners.\n")
+		log.Warn("Prefork isn't supported for custom listeners.")
 	}
 
 	// Start listening

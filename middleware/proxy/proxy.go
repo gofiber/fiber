@@ -3,13 +3,13 @@ package proxy
 import (
 	"bytes"
 	"crypto/tls"
-	"log"
 	"net/url"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/log"
 	"github.com/gofiber/fiber/v2/utils"
 
 	"github.com/valyala/fasthttp"
@@ -17,7 +17,7 @@ import (
 
 // New is deprecated
 func New(config Config) fiber.Handler {
-	log.Printf("[Warning] - [PROXY] proxy.New is deprecated, please use proxy.Balancer instead\n")
+	log.Warn("[PROXY] proxy.New is deprecated, please use proxy.Balancer instead")
 	return Balancer(config)
 }
 
