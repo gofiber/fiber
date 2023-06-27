@@ -15,7 +15,6 @@ You can find the detailed descriptions of the _validations_ used in the fields c
 - [Detailed docs](https://pkg.go.dev/github.com/go-playground/validator?tab=doc)
 
 ```go title="Validation Example"
-
 package main
 
 import (
