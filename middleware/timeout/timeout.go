@@ -3,9 +3,10 @@ package timeout
 import (
 	"context"
 	"errors"
-	"log"
 	"sync"
 	"time"
+
+	"github.com/gofiber/fiber/v2/log"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -18,7 +19,7 @@ var once sync.Once
 // Find documentation and sample usage on https://docs.gofiber.io/api/middleware/timeout
 func New(handler fiber.Handler, timeout time.Duration) fiber.Handler {
 	once.Do(func() {
-		log.Printf("[Warning] - [TIMEOUT] timeout contains data race issues, not ready for production!")
+		log.Warn("[TIMEOUT] timeout contains data race issues, not ready for production!")
 	})
 
 	if timeout <= 0 {
@@ -32,11 +33,11 @@ func New(handler fiber.Handler, timeout time.Duration) fiber.Handler {
 		go func() {
 			defer func() {
 				if err := recover(); err != nil {
-					log.Printf("[Warning] - [TIMEOUT] recover error %v", err)
+					log.Errorf("[TIMEOUT] recover error %v", err)
 				}
 			}()
 			if err := handler(ctx); err != nil {
-				log.Printf("[Warning] - [TIMEOUT] handler error %v", err)
+				log.Errorf("[TIMEOUT] handler error %v", err)
 			}
 			ch <- struct{}{}
 		}()

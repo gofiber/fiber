@@ -1,12 +1,12 @@
 package csrf
 
 import (
-	"log"
 	"net/textproto"
 	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/log"
 	"github.com/gofiber/fiber/v2/utils"
 )
 
@@ -132,15 +132,15 @@ func configDefault(config ...Config) Config {
 
 	// Set default values
 	if cfg.TokenLookup != "" {
-		log.Printf("[Warning] - [CSRF] TokenLookup is deprecated, please use KeyLookup\n")
+		log.Warn("[CSRF] TokenLookup is deprecated, please use KeyLookup")
 		cfg.KeyLookup = cfg.TokenLookup
 	}
 	if int(cfg.CookieExpires.Seconds()) > 0 {
-		log.Printf("[Warning] - [CSRF] CookieExpires is deprecated, please use Expiration\n")
+		log.Warn("[CSRF] CookieExpires is deprecated, please use Expiration")
 		cfg.Expiration = cfg.CookieExpires
 	}
 	if cfg.Cookie != nil {
-		log.Printf("[Warning] - [CSRF] Cookie is deprecated, please use Cookie* related fields\n")
+		log.Warn("[CSRF] Cookie is deprecated, please use Cookie* related fields")
 		if cfg.Cookie.Name != "" {
 			cfg.CookieName = cfg.Cookie.Name
 		}
