@@ -54,7 +54,7 @@ type (
 var validate = validator.New()
 
 func (v XValidator) Validate(data interface{}) []ErrorResponse {
-	Error := []ErrorResponse{}
+	validationErrors := []ErrorResponse{}
 
 	errs := validate.Struct(data)
 	if errs != nil {
@@ -67,11 +67,11 @@ func (v XValidator) Validate(data interface{}) []ErrorResponse {
 			elem.Value = err.Value()       // Export field value
 			elem.Error = true
 
-			Error = append(Error, elem)
+			validationErrors = append(validationErrors, elem)
 		}
 	}
 
-	return Error
+	return validationErrors
 }
 
 func main() {
