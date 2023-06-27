@@ -1076,7 +1076,7 @@ app.Get("/", func(c *fiber.Ctx) error {
 Queries is a function that returns an object containing a property for each query string parameter in the route.
 
 ```go title="Signature"
-func (c *Ctx) Queries() (map[string]string, error)
+func (c *Ctx) Queries() map[string]string
 ```
 
 ```go title="Example"
