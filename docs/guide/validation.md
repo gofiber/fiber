@@ -75,7 +75,7 @@ func (v XValidator) Validate(data interface{}) []ErrorResponse {
 }
 
 func main() {
-	Validator := &XValidator{
+	myValidator := &XValidator{
 		validator: validate,
 	}
 
@@ -90,7 +90,7 @@ func main() {
 	})
 
 	// Custom struct validation tag format
-	Validator.validator.RegisterValidation("teener", func(fl validator.FieldLevel) bool {
+	myValidator.validator.RegisterValidation("teener", func(fl validator.FieldLevel) bool {
 		// User.Age needs to fit our needs, 12-18 years old.
 		return fl.Field().Int() >= 12 && fl.Field().Int() <= 18
 	})
@@ -102,7 +102,7 @@ func main() {
 		}
 
 		// Validation
-		if errs := Validator.Validate(user); len(errs) > 0 && errs[0].Error {
+		if errs := myValidator.Validate(user); len(errs) > 0 && errs[0].Error {
 			errMsgs := make([]string, 0)
 
 			for _, err := range errs {
@@ -164,6 +164,5 @@ Response:
 Hello, World!
 
 **/
-
 
 ```
