@@ -35,9 +35,6 @@ const Version = "2.46.0"
 // Handler defines a function to serve HTTP requests.
 type Handler = func(*Ctx) error
 
-// ProbeChecker defines a function to check liveness or readiness of the application
-type ProbeChecker = func(*Ctx) bool
-
 // Map is a shortcut for map[string]interface{}, useful for JSON returns
 type Map map[string]interface{}
 
@@ -393,26 +390,6 @@ type Config struct {
 	//
 	// Optional. Default: DefaultMethods
 	RequestMethods []string
-
-	// Config for liveness probe of the container engine being used
-	//
-	// Optional. Default: func(c *Ctx) bool { return true }
-	IsLive ProbeChecker
-
-	// HTTP endpoint of the liveness probe
-	//
-	// Optional. Default: /livez
-	IsLiveEndpoint string
-
-	// Config for readiness probe of the container engine being used
-	//
-	// Optional. Default: nil
-	IsReady ProbeChecker
-
-	// HTTP endpoint of the readiness probe
-	//
-	// Optional. Default: /readyz
-	IsReadyEndpoint string
 }
 
 // Static defines configuration options when defining static assets.
@@ -479,8 +456,6 @@ const (
 	DefaultLivenessEndpoint     = "/livez"
 	DefaultReadinessEndpoint    = "/readyz"
 )
-
-var DefaultLiveFunc = func(c *Ctx) bool { return true }
 
 // HTTP methods enabled by default
 var DefaultMethods = []string{
@@ -591,15 +566,6 @@ func New(config ...Config) *App {
 	if len(app.config.RequestMethods) == 0 {
 		app.config.RequestMethods = DefaultMethods
 	}
-	if app.config.IsLiveEndpoint == "" {
-		app.config.IsLiveEndpoint = DefaultLivenessEndpoint
-	}
-	if app.config.IsReadyEndpoint == "" {
-		app.config.IsReadyEndpoint = DefaultReadinessEndpoint
-	}
-	if app.config.IsLive == nil {
-		app.config.IsLive = DefaultLiveFunc
-	}
 
 	app.config.trustedProxiesMap = make(map[string]struct{}, len(app.config.TrustedProxies))
 	for _, ipAddress := range app.config.TrustedProxies {
@@ -616,26 +582,8 @@ func New(config ...Config) *App {
 	// Init app
 	app.init()
 
-	if app.config.IsReady != nil {
-		app.Get(app.config.IsReadyEndpoint, probeCheckerHandler(app.config.IsReady))
-		app.Options(app.config.IsReadyEndpoint, probeCheckerHandler(app.config.IsReady))
-	}
-
-	app.Get(app.config.IsLiveEndpoint, probeCheckerHandler(app.config.IsLive))
-	app.Options(app.config.IsLiveEndpoint, probeCheckerHandler(app.config.IsLive))
-
 	// Return app
 	return app
-}
-
-func probeCheckerHandler(checker ProbeChecker) Handler {
-	return func(c *Ctx) error {
-		if checker(c) {
-			return c.SendStatus(StatusOK)
-		}
-
-		return c.SendStatus(StatusServiceUnavailable)
-	}
 }
 
 // Adds an ip address to trustedProxyRanges or trustedProxiesMap based on whether it is an IP range or not
