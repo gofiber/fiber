@@ -24,4 +24,4 @@ jobs:
         run: ./.github/scripts/sync_docs.sh
         env:
           EVENT: ${{ github.event_name }}
-          TOKEN: ${{ secrets.TOKEN }}
+          TOKEN: ${{ secrets.DOC_SYNC_TOKEN }}
