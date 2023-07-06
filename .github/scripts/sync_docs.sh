@@ -17,8 +17,8 @@ if [[ $EVENT == "push" ]]; then
 
     if [[ $log_output != "" ]]; then
         git clone https://${TOKEN}@${REPO_URL} fiber-docs
-        cp -a docs/* fiber-docs/docs
-        
+        cp -a docs/* fiber-docs/docs/core
+
         # Push changes for next docs
         cd fiber-docs/ || return
         git add .
@@ -31,7 +31,7 @@ elif [[ $EVENT == "release" ]]; then
     # Push changes for stable docs
     git clone https://${TOKEN}@${REPO_URL} fiber-docs
     cd fiber-docs/ || return
-    cp -a docs/* versioned_docs/version-${MAJOR_VERSION}.x
+    cp -a docs/core/* versioned_docs/version-${MAJOR_VERSION}.x
     git add .
     git commit -m "Sync docs for ${latest_tag} release"
     git push https://${TOKEN}@${REPO_URL}
