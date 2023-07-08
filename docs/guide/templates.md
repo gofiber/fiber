@@ -48,16 +48,17 @@ app.Get("/", func(c *fiber.Ctx) error {
 
 ## Engines
 
-Fiber team maintains [templates](https://github.com/gofiber/template) package that provides wrappers for multiple template engines:
+Fiber team maintains [templates](https://docs.gofiber.io/template) package that provides wrappers for multiple template engines:
 
-* [html](https://github.com/gofiber/template/tree/master/html)
-* [ace](https://github.com/gofiber/template/tree/master/ace)
-* [amber](https://github.com/gofiber/template/tree/master/amber)
-* [django](https://github.com/gofiber/template/tree/master/django)
-* [handlebars](https://github.com/gofiber/template/tree/master/handlebars)
-* [jet](https://github.com/gofiber/template/tree/master/jet)
-* [mustache](https://github.com/gofiber/template/tree/master/mustache)
-* [pug](https://github.com/gofiber/template/tree/master/pug)
+* [ace](https://docs.gofiber.io/template/ace/)
+* [amber](https://docs.gofiber.io/template/amber/)
+* [django](https://docs.gofiber.io/template/django/)
+* [handlebars](https://docs.gofiber.io/template/handlebars)
+* [html](https://docs.gofiber.io/template/html)
+* [jet](https://docs.gofiber.io/template/jet)
+* [mustache](https://docs.gofiber.io/template/mustache)
+* [pug](https://docs.gofiber.io/template/pug)
+* [slim](https://docs.gofiber.io/template/pug)
 
 <Tabs>
 <TabItem value="example" label="Example">

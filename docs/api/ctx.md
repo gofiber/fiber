@@ -1406,7 +1406,7 @@ app.Get("/back", func(c *fiber.Ctx) error {
 
 ## Render
 
-Renders a view with data and sends a `text/html` response. By default `Render` uses the default [**Go Template engine**](https://pkg.go.dev/html/template/). If you want to use another View engine, please take a look at our [**Template middleware**](https://github.com/gofiber/template).
+Renders a view with data and sends a `text/html` response. By default `Render` uses the default [**Go Template engine**](https://pkg.go.dev/html/template/). If you want to use another View engine, please take a look at our [**Template middleware**](https://docs.gofiber.io/template).
 
 ```go title="Signature"
 func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error
