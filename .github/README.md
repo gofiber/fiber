@@ -1,11 +1,9 @@
 <p align="center">
   <a href="https://gofiber.io">
-  
-  <picture>
-    <source height="125" media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/gofiber/docs/master/static/img/logo-dark.svg">
-    <img height="125" alt="Fiber" src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/logo.svg">
-  </picture>
-  
+    <picture>
+      <source height="125" media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/gofiber/docs/master/static/img/logo-dark.svg">
+      <img height="125" alt="Fiber" src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/logo.svg">
+    </picture>
   </a>
   <br>
   <!-- base64 flags are available at https://www.phoca.cz/cssflags/ -->
