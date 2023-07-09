@@ -19,14 +19,13 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 2
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
 
-            - name: Setup Node.js environment
-              uses: actions/setup-node@v3
-              with:
-                node-version: '18'
-
-            - name: Install JQ
-              run: sudo apt-get install jq
+      - name: Install JQ
+        run: sudo apt-get install jq
 
       - name: Sync docs
         run: ./.github/scripts/sync_docs.sh
