@@ -8,7 +8,7 @@ on:
     paths:
       - 'docs/**'
   release:
-    types: [published]
+    types: [ published ]
 
 jobs:
   sync-docs:
@@ -20,8 +20,17 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 2
 
+            - name: Setup Node.js environment
+              uses: actions/setup-node@v3
+              with:
+                node-version: '18'
+
+            - name: Install JQ
+              run: sudo apt-get install jq
+
       - name: Sync docs
         run: ./.github/scripts/sync_docs.sh
         env:
           EVENT: ${{ github.event_name }}
+          TAG_NAME: ${{ github.ref_name }}
           TOKEN: ${{ secrets.DOC_SYNC_TOKEN }}
