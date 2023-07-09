@@ -15,7 +15,7 @@ func (*cookieBinding) Name() string {
 }
 
 func (b *cookieBinding) Bind(reqCtx *fasthttp.RequestCtx, out any) error {
-	data := make(map[string][]string)
+	data := map[string][]string{}
 	var err error
 
 	reqCtx.Request.Header.VisitAllCookie(func(key, val []byte) {
@@ -26,11 +26,15 @@ func (b *cookieBinding) Bind(reqCtx *fasthttp.RequestCtx, out any) error {
 		k := utils.UnsafeString(key)
 		v := utils.UnsafeString(val)
 
-		if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
+		sliceDetected := strings.Contains(v, ",")
+
+		if sliceDetected && equalFieldType(out, reflect.Slice, k) {
 			values := strings.Split(v, ",")
+			tempSlice := data[k]
 			for i := 0; i < len(values); i++ {
-				data[k] = append(data[k], values[i])
+				tempSlice = append(tempSlice, values[i])
 			}
+			data[k] = tempSlice
 		} else {
 			data[k] = append(data[k], v)
 		}
