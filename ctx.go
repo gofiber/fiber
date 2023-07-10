@@ -1490,8 +1490,11 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 func (c *Ctx) renderExtensions(bind interface{}) {
 	if bindMap, ok := bind.(Map); ok {
 		// Bind view map
-		c.viewBindMap.Range(func(key, value any) bool {
-			keyValue := key.(string)
+		c.viewBindMap.Range(func(key, value interface{}) bool {
+			keyValue, ok := key.(string)
+			if !ok {
+				return true
+			}
 			if _, ok := bindMap[keyValue]; !ok {
 				bindMap[keyValue] = value
 			}
