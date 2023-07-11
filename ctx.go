@@ -27,7 +27,6 @@ import (
 	"github.com/gofiber/fiber/v2/internal/schema"
 	"github.com/gofiber/fiber/v2/utils"
 
-	"github.com/savsgio/dictpool"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 )
@@ -97,7 +96,7 @@ type Ctx struct {
 	values              [maxParams]string    // Route parameter values
 	fasthttp            *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	matched             bool                 // Non use route matched
-	viewBindMap         *dictpool.Dict       // Default view map to bind template engine
+	viewBindMap         sync.Map             // Default view map to bind template engine
 }
 
 // TLSHandler object
@@ -188,10 +187,7 @@ func (app *App) ReleaseCtx(c *Ctx) {
 	// Reset values
 	c.route = nil
 	c.fasthttp = nil
-	if c.viewBindMap != nil {
-		dictpool.ReleaseDict(c.viewBindMap)
-		c.viewBindMap = nil
-	}
+	c.viewBindMap = sync.Map{}
 	app.pool.Put(c)
 }
 
@@ -1353,13 +1349,9 @@ func (c *Ctx) Redirect(location string, status ...int) error {
 // Variables are read by the Render method and may be overwritten.
 func (c *Ctx) Bind(vars Map) error {
 	// init viewBindMap - lazy map
-	if c.viewBindMap == nil {
-		c.viewBindMap = dictpool.AcquireDict()
-	}
 	for k, v := range vars {
-		c.viewBindMap.Set(k, v)
+		c.viewBindMap.Store(k, v)
 	}
-
 	return nil
 }
 
@@ -1498,14 +1490,16 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 func (c *Ctx) renderExtensions(bind interface{}) {
 	if bindMap, ok := bind.(Map); ok {
 		// Bind view map
-		if c.viewBindMap != nil {
-			for _, v := range c.viewBindMap.D {
-				// make sure key does not exist already
-				if _, ok := bindMap[v.Key]; !ok {
-					bindMap[v.Key] = v.Value
-				}
+		c.viewBindMap.Range(func(key, value interface{}) bool {
+			keyValue, ok := key.(string)
+			if !ok {
+				return true
 			}
-		}
+			if _, ok := bindMap[keyValue]; !ok {
+				bindMap[keyValue] = value
+			}
+			return true
+		})
 
 		// Check if the PassLocalsToViews option is enabled (by default it is disabled)
 		if c.app.config.PassLocalsToViews {
