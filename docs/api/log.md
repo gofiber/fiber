@@ -1,10 +1,9 @@
 ---
 id: log
-title: Log
+title: 📃 Log
 description: Fiber's built-in log package
-sidebar_position: 8
+sidebar_position: 6
 ---
-## Log
 
 We can use logs to observe program behavior, diagnose problems, or configure corresponding alarms.
 And defining a well structured log can improve search efficiency and facilitate handling of problems.
