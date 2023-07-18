@@ -58,7 +58,7 @@ Fiber team maintains [templates](https://docs.gofiber.io/template) package that 
 * [jet](https://docs.gofiber.io/template/jet)
 * [mustache](https://docs.gofiber.io/template/mustache)
 * [pug](https://docs.gofiber.io/template/pug)
-* [slim](https://docs.gofiber.io/template/pug)
+* [slim](https://docs.gofiber.io/template/slim)
 
 <Tabs>
 <TabItem value="example" label="Example">
