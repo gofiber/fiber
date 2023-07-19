@@ -76,16 +76,17 @@ We have a dedicated page explaining how error handling works in Fiber, see [Erro
 
 ## Which template engines does Fiber support?
 
-Fiber currently supports 8 template engines in our [gofiber/template](https://github.com/gofiber/template) middleware:
+Fiber currently supports 9 template engines in our [gofiber/template](https://docs.gofiber.io/template/) middleware:
 
-* [Ace](https://github.com/yosssi/ace)
-* [Amber](https://github.com/eknkc/amber)
-* [Django](https://github.com/flosch/pongo2)
-* [Handlebars](https://github.com/aymerick/raymond)
-* [HTML](https://pkg.go.dev/html/template/)
-* [Jet](https://github.com/CloudyKit/jet)
-* [Mustache](https://github.com/cbroglie/mustache)
-* [Pug](https://github.com/Joker/jade)
+* [ace](https://docs.gofiber.io/template/ace/)
+* [amber](https://docs.gofiber.io/template/amber/)
+* [django](https://docs.gofiber.io/template/django/)
+* [handlebars](https://docs.gofiber.io/template/handlebars)
+* [html](https://docs.gofiber.io/template/html)
+* [jet](https://docs.gofiber.io/template/jet)
+* [mustache](https://docs.gofiber.io/template/mustache)
+* [pug](https://docs.gofiber.io/template/pug)
+* [slim](https://docs.gofiber.io/template/pug)
 
 To learn more about using Templates in Fiber, see [Templates](../guide/templates.md).
 

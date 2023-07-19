@@ -14,7 +14,6 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -24,13 +23,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gofiber/fiber/v2/log"
 	"github.com/gofiber/fiber/v2/utils"
 
 	"github.com/valyala/fasthttp"
 )
 
 // Version of current fiber package
-const Version = "2.46.0"
+const Version = "2.48.0"
 
 // Handler defines a function to serve HTTP requests.
 type Handler = func(*Ctx) error
@@ -521,7 +521,7 @@ func New(config ...Config) *App {
 
 	if app.config.ETag {
 		if !IsChild() {
-			log.Printf("[Warning] Config.ETag is deprecated since v2.0.6, please use 'middleware/etag'.\n")
+			log.Warn("Config.ETag is deprecated since v2.0.6, please use 'middleware/etag'.")
 		}
 	}
 
@@ -589,7 +589,7 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 	if strings.Contains(ipAddress, "/") {
 		_, ipNet, err := net.ParseCIDR(ipAddress)
 		if err != nil {
-			log.Printf("[Warning] IP range %q could not be parsed: %v\n", ipAddress, err)
+			log.Warnf("IP range %q could not be parsed: %v", ipAddress, err)
 		} else {
 			app.config.trustedProxyRanges = append(app.config.trustedProxyRanges, ipNet)
 		}
@@ -987,7 +987,7 @@ func (app *App) init() *App {
 	// Only load templates if a view engine is specified
 	if app.config.Views != nil {
 		if err := app.config.Views.Load(); err != nil {
-			log.Printf("[Warning]: failed to load views: %v\n", err)
+			log.Warnf("failed to load views: %v", err)
 		}
 	}
 
@@ -1084,7 +1084,7 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 	}
 
 	if catch := app.ErrorHandler(c, err); catch != nil {
-		log.Printf("serverErrorHandler: failed to call ErrorHandler: %v\n", catch)
+		log.Errorf("serverErrorHandler: failed to call ErrorHandler: %v", catch)
 		_ = c.SendStatus(StatusInternalServerError) //nolint:errcheck // It is fine to ignore the error here
 		return
 	}
@@ -1104,8 +1104,8 @@ func (app *App) startupProcess() *App {
 }
 
 // Run onListen hooks. If they return an error, panic.
-func (app *App) runOnListenHooks() {
-	if err := app.hooks.executeOnListenHooks(); err != nil {
+func (app *App) runOnListenHooks(listenData ListenData) {
+	if err := app.hooks.executeOnListenHooks(listenData); err != nil {
 		panic(err)
 	}
 }

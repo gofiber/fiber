@@ -84,14 +84,15 @@ type LogFunc func(output Buffer, c *fiber.Ctx, data *Data, extraParam string) (i
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next:         nil,
-	Done:         nil,
-	Format:       "[${time}] ${status} - ${latency} ${method} ${path}\n",
-	TimeFormat:   "15:04:05",
-	TimeZone:     "Local",
-	TimeInterval: 500 * time.Millisecond,
-	Output:       os.Stdout,
-	enableColors: false,
+	Next:          nil,
+	Done:          nil,
+	Format:        "[${time}] ${status} - ${latency} ${method} ${path}\n",
+	TimeFormat:    "15:04:05",
+	TimeZone:      "Local",
+	TimeInterval:  500 * time.Millisecond,
+	Output:        os.Stdout,
+	DisableColors: false,
+	enableColors:  true,
 }
 
 // Helper function to set default values
