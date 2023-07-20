@@ -564,6 +564,9 @@ Returns the HTTP response headers.
 func (c *Ctx) GetRespHeaders() map[string]string
 ```
 
+> _Returned value is only valid within the handler. Do not store any references.  
+> Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
+
 ## GetRouteURL
 
 Generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
