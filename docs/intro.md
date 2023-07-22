@@ -184,9 +184,9 @@ app.Listen(":3000")
 Now, you can load the files that are in the `./public` directory:
 
 ```bash
-http://localhost:8080/hello.html
-http://localhost:8080/js/jquery.js
-http://localhost:8080/css/style.css
+http://localhost:3000/hello.html
+http://localhost:3000/js/jquery.js
+http://localhost:3000/css/style.css
 ```
 
 ### Note
