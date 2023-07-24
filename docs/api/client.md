@@ -19,6 +19,7 @@ func (c *Client) Patch(url string) *Agent
 func (c *Client) Delete(url string) *Agent
 ```
 
+
 ## ✨ Agent
 
 `Agent` is built on top of FastHTTP's [`HostClient`](https://github.com/valyala/fasthttp/blob/master/client.go#L603) which has lots of convenient helper methods such as dedicated methods for request methods.
