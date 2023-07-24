@@ -1,7 +1,8 @@
 ---
 id: session
-title: Session
 ---
+
+# Session
 
 Session middleware for [Fiber](https://github.com/gofiber/fiber).
 
@@ -86,62 +87,19 @@ app.Get("/", func(c *fiber.Ctx) error {
 
 ## Config
 
-```go
-// Config defines the config for middleware.
-type Config struct {
-	// Allowed session duration
-	// Optional. Default value 24 * time.Hour
-	Expiration time.Duration
-
-	// Storage interface to store the session data
-	// Optional. Default value memory.New()
-	Storage fiber.Storage
-
-	// KeyLookup is a string in the form of "<source>:<name>" that is used
-	// to extract session id from the request.
-	// Possible values: "header:<name>", "query:<name>" or "cookie:<name>"
-	// Optional. Default value "cookie:session_id".
-	KeyLookup string
-
-	// Domain of the CSRF cookie.
-	// Optional. Default value "".
-	CookieDomain string
-
-	// Path of the CSRF cookie.
-	// Optional. Default value "".
-	CookiePath string
-
-	// Indicates if CSRF cookie is secure.
-	// Optional. Default value false.
-	CookieSecure bool
-
-	// Indicates if CSRF cookie is HTTP only.
-	// Optional. Default value false.
-	CookieHTTPOnly bool
-
-	// Value of SameSite cookie.
-	// Optional. Default value "Lax".
-	CookieSameSite string
-
-	// Decides whether cookie should last for only the browser sesison.
-	// Ignores Expiration if set to true
-	// Optional. Default value false.
-	CookieSessionOnly bool
-
-	// KeyGenerator generates the session key.
-	// Optional. Default value utils.UUIDv4
-	KeyGenerator func() string
-
-	// Deprecated: Please use KeyLookup
-	CookieName string
-
-	// Source defines where to obtain the session id
-	source Source
-
-	// The session name
-	sessionName string
-}
-```
+| Property                | Type            | Description                                                                                                 | Default               |
+|:------------------------|:----------------|:------------------------------------------------------------------------------------------------------------|:----------------------|
+| Expiration              | `time.Duration` | Allowed session duration.                                                                                   | `24 * time.Hour`      |
+| Storage                 | `fiber.Storage` | Storage interface to store the session data.                                                                | `memory.New()`        |
+| KeyLookup               | `string`        | KeyLookup is a string in the form of "<source>:<name>" that is used to extract session id from the request. | `"cookie:session_id"` |
+| CookieDomain            | `string`        | Domain of the cookie.                                                                                       | `""`                  |
+| CookiePath              | `string`        | Path of the cookie.                                                                                         | `""`                  |
+| CookieSecure            | `bool`          | Indicates if cookie is secure.                                                                              | `false`               |
+| CookieHTTPOnly          | `bool`          | Indicates if cookie is HTTP only.                                                                           | `false`               |
+| CookieSameSite          | `string`        | Value of SameSite cookie.                                                                                   | `"Lax"`               |
+| CookieSessionOnly       | `bool`          | Decides whether cookie should last for only the browser session. Ignores Expiration if set to true.         | `false`               |
+| KeyGenerator            | `func() string` | KeyGenerator generates the session key.                                                                     | `utils.UUIDv4`        |
+| CookieName (Deprecated) | `string`        | Deprecated: Please use KeyLookup. The session name.                                                         | `""`                  |
 
 ## Default Config
 

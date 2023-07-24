@@ -1,7 +1,8 @@
 ---
 id: encryptcookie
-title: Encrypt Cookie
 ---
+
+# Encrypt Cookie
 
 Encrypt middleware for [Fiber](https://github.com/gofiber/fiber) which encrypts cookie values. Note: this middleware does not encrypt cookie names.
 
@@ -54,36 +55,13 @@ app.Post("/", func(c *fiber.Ctx) error {
 
 ## Config
 
-```go
-// Config defines the config for middleware.
-type Config struct {
-    // Next defines a function to skip this middleware when returned true.
-    //
-    // Optional. Default: nil
-    Next func(c *fiber.Ctx) bool
-
-    // Array of cookie keys that should not be encrypted.
-    //
-    // Optional. Default: ["csrf_"]
-    Except []string
-
-	// Base64 encoded unique key to encode & decode cookies.
-	//
-	// Required. The key should be 32 bytes of random data in base64-encoded form.
-	// You may run `openssl rand -base64 32` or use `encryptcookie.GenerateKey()` to generate a new key.
-	Key string
-
-	// Custom function to encrypt cookies.
-	//
-	// Optional. Default: EncryptCookie
-	Encryptor func(decryptedString, key string) (string, error)
-
-	// Custom function to decrypt cookies.
-	//
-	// Optional. Default: DecryptCookie
-	Decryptor func(encryptedString, key string) (string, error)
-}
-```
+| Property  | Type                                                | Description                                                                                         | Default                      |
+|:----------|:----------------------------------------------------|:----------------------------------------------------------------------------------------------------|:-----------------------------|
+| Next      | `func(*fiber.Ctx) bool`                             | Next defines a function to skip this middleware when returned true.                                 | `nil`                        |
+| Except    | `[]string`                                          | Array of cookie keys that should not be encrypted.                                                  | `[]`                         |
+| Key       | `string`                                            | Base64 encoded unique key to encode & decode cookies. Required. Key length should be 32 characters. | (No default, required field) |
+| Encryptor | `func(decryptedString, key string) (string, error)` | Custom function to encrypt cookies.                                                                 | `EncryptCookie`              |
+| Decryptor | `func(encryptedString, key string) (string, error)` | Custom function to decrypt cookies.                                                                 | `DecryptCookie`              |
 
 ## Default Config
 

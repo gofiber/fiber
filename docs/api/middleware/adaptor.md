@@ -1,7 +1,8 @@
 ---
 id: adaptor
-title: Adaptor
 ---
+
+# Adaptor
 
 Converter for net/http handlers to/from Fiber request handlers, special thanks to [@arsmn](https://github.com/arsmn)!
 

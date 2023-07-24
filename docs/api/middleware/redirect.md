@@ -1,7 +1,8 @@
 ---
 id: redirect
-title: Redirect
 ---
+
+# Redirect
 
 Redirection middleware for Fiber.
 
@@ -52,30 +53,11 @@ curl http://localhost:3000/old/hello
 
 ## Config
 
-```go
-// Config defines the config for middleware.
-type Config struct {
-	// Filter defines a function to skip middleware.
-	// Optional. Default: nil
-	Next func(*fiber.Ctx) bool
-
-	// Rules defines the URL path rewrite rules. The values captured in asterisk can be
-	// retrieved by index e.g. $1, $2 and so on.
-	// Required. Example:
-	// "/old":              "/new",
-	// "/api/*":            "/$1",
-	// "/js/*":             "/public/javascripts/$1",
-	// "/users/*/orders/*": "/user/$1/order/$2",
-	Rules map[string]string
-
-	// The status code when redirecting
-	// This is ignored if Redirect is disabled
-	// Optional. Default: 302 (fiber.StatusFound)
-	StatusCode int
-
-	rulesRegex map[*regexp.Regexp]string
-}
-```
+| Property   | Type                    | Description                                                                                                                | Default                |
+|:-----------|:------------------------|:---------------------------------------------------------------------------------------------------------------------------|:-----------------------|
+| Next       | `func(*fiber.Ctx) bool` | Filter defines a function to skip middleware.                                                                              | `nil`                  |
+| Rules      | `map[string]string`     | Rules defines the URL path rewrite rules. The values captured in asterisk can be retrieved by index e.g. $1, $2 and so on. | Required               |
+| StatusCode | `int`                   | The status code when redirecting. This is ignored if Redirect is disabled.                                                 | 302 Temporary Redirect |
 
 ## Default Config
 

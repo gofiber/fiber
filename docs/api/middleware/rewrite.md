@@ -1,16 +1,23 @@
 ---
 id: rewrite
-title: Rewrite
 ---
 
-Rewrite middleware rewrites the URL path based on provided rules. It can be helpful for backward compatibility or just creating cleaner and more descriptive links.
+# Rewrite
 
+Rewrite middleware rewrites the URL path based on provided rules. It can be helpful for backward compatibility or just creating cleaner and more descriptive links.
 
 ## Signatures
 
 ```go
 func New(config ...Config) fiber.Handler
 ```
+
+## Config
+
+| Property | Type                    | Description                                                                                          | Default    |
+|:---------|:------------------------|:-----------------------------------------------------------------------------------------------------|:-----------|
+| Next     | `func(*fiber.Ctx) bool` | Next defines a function to skip middleware.                                                          | `nil`      |
+| Rules    | `map[string]string`     | Rules defines the URL path rewrite rules. The values captured in asterisk can be retrieved by index. | (Required) |
 
 ### Examples
 ```go
