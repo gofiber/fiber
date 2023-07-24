@@ -19,7 +19,7 @@ func (c *Client) Patch(url string) *Agent
 func (c *Client) Delete(url string) *Agent
 ```
 
-Here we can see a little example to simulate a proxy using our methods `*fiber.Agent`
+Here we present a brief example demonstrating the simulation of a proxy using our `*fiber.Agent` methods.
 ```go
 // Get something
 func getSomething(c *fiber.Ctx) (err error) {
