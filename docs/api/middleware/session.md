@@ -91,7 +91,7 @@ app.Get("/", func(c *fiber.Ctx) error {
 |:------------------------|:----------------|:------------------------------------------------------------------------------------------------------------|:----------------------|
 | Expiration              | `time.Duration` | Allowed session duration.                                                                                   | `24 * time.Hour`      |
 | Storage                 | `fiber.Storage` | Storage interface to store the session data.                                                                | `memory.New()`        |
-| KeyLookup               | `string`        | KeyLookup is a string in the form of "<source>:<name>" that is used to extract session id from the request. | `"cookie:session_id"` |
+| KeyLookup               | `string`        | KeyLookup is a string in the form of "`<source>:<name>`" that is used to extract session id from the request. | `"cookie:session_id"` |
 | CookieDomain            | `string`        | Domain of the cookie.                                                                                       | `""`                  |
 | CookiePath              | `string`        | Path of the cookie.                                                                                         | `""`                  |
 | CookieSecure            | `bool`          | Indicates if cookie is secure.                                                                              | `false`               |
