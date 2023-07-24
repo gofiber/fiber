@@ -1,7 +1,8 @@
 ---
 id: proxy
-title: Proxy
 ---
+
+# Proxy
 
 Proxy middleware for [Fiber](https://github.com/gofiber/fiber) that allows you to proxy requests to multiple servers.
 
@@ -140,55 +141,17 @@ app.Use(proxy.BalancerForward([]string{
 
 ## Config
 
-```go
-// Config defines the config for middleware.
-type Config struct {
-    // Next defines a function to skip this middleware when returned true.
-    //
-    // Optional. Default: nil
-    Next func(c *fiber.Ctx) bool
-
-    // Servers defines a list of <scheme>://<host> HTTP servers,
-    //
-    // which are used in a round-robin manner.
-    // i.e.: "https://foobar.com, http://www.foobar.com"
-    //
-    // Required
-    Servers []string
-
-    // ModifyRequest allows you to alter the request
-    //
-    // Optional. Default: nil
-    ModifyRequest fiber.Handler
-
-    // ModifyResponse allows you to alter the response
-    //
-    // Optional. Default: nil
-    ModifyResponse fiber.Handler
-    
-    // Timeout is the request timeout used when calling the proxy client
-    //
-    // Optional. Default: 1 second
-    Timeout time.Duration
-
-    // Per-connection buffer size for requests' reading.
-    // This also limits the maximum header size.
-    // Increase this buffer if your clients send multi-KB RequestURIs
-    // and/or multi-KB headers (for example, BIG cookies).
-    ReadBufferSize int
-       
-    // Per-connection buffer size for responses' writing.
-    WriteBufferSize int
-
-    // tls config for the http client.
-    TlsConfig *tls.Config 
-    
-    // Client is custom client when client config is complex. 
-    // Note that Servers, Timeout, WriteBufferSize, ReadBufferSize and TlsConfig 
-    // will not be used if the client are set.
-    Client *fasthttp.LBClient
-}
-```
+| Property        | Type                                           | Description                                                                                                                                                                                                    | Default         |
+|:----------------|:-----------------------------------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:----------------|
+| Next            | `func(*fiber.Ctx) bool`                        | Next defines a function to skip this middleware when returned true.                                                                                                                                            | `nil`           |
+| Servers         | `[]string`                                     | Servers defines a list of <scheme>://<host> HTTP servers, which are used in a round-robin manner. i.e.: "https://foobar.com, http://www.foobar.com"                                                            | (Required)      |
+| ModifyRequest   | `fiber.Handler`                                | ModifyRequest allows you to alter the request.                                                                                                                                                                 | `nil`           |
+| ModifyResponse  | `fiber.Handler`                                | ModifyResponse allows you to alter the response.                                                                                                                                                               | `nil`           |
+| Timeout         | `time.Duration`                                | Timeout is the request timeout used when calling the proxy client.                                                                                                                                             | 1 second        |
+| ReadBufferSize  | `int`                                          | Per-connection buffer size for requests' reading. This also limits the maximum header size. Increase this buffer if your clients send multi-KB RequestURIs and/or multi-KB headers (for example, BIG cookies). | (Not specified) |
+| WriteBufferSize | `int`                                          | Per-connection buffer size for responses' writing.                                                                                                                                                             | (Not specified) |
+| TlsConfig       | `*tls.Config` (or `*fasthttp.TLSConfig` in v3) | TLS config for the HTTP client.                                                                                                                                                                                | `nil`           |
+| Client          | `*fasthttp.LBClient`                           | Client is a custom client when client config is complex.                                                                                                                                                       | `nil`           |
 
 ## Default Config
 

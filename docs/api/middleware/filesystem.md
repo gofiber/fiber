@@ -1,7 +1,8 @@
 ---
 id: filesystem
-title: FileSystem
 ---
+
+# FileSystem
 
 Filesystem middleware for [Fiber](https://github.com/gofiber/fiber) that enables you to serve files from a directory.
 
@@ -228,56 +229,16 @@ func main() {
 
 ## Config
 
-```go
-// Config defines the config for middleware.
-type Config struct {
-    // Next defines a function to skip this middleware when returned true.
-    //
-    // Optional. Default: nil
-    Next func(c *fiber.Ctx) bool
-
-    // Root is a FileSystem that provides access
-    // to a collection of files and directories.
-    //
-    // Required. Default: nil
-    Root http.FileSystem `json:"-"`
-
-    // PathPrefix defines a prefix to be added to a filepath when
-    // reading a file from the FileSystem.
-    //
-    // Use when using Go 1.16 embed.FS
-    //
-    // Optional. Default ""
-    PathPrefix string `json:"path_prefix"`
-
-    // Enable directory browsing.
-    //
-    // Optional. Default: false
-    Browse bool `json:"browse"`
-
-    // Index file for serving a directory.
-    //
-    // Optional. Default: "index.html"
-    Index string `json:"index"`
-
-    // The value for the Cache-Control HTTP-header
-    // that is set on the file response. MaxAge is defined in seconds.
-    //
-    // Optional. Default value 0.
-    MaxAge    int `json:"max_age"`
-
-    // File to return if path is not found. Useful for SPA's.
-    //
-    // Optional. Default: ""
-    NotFoundFile string `json:"not_found_file"`
-    
-    // The value for the Content-Type HTTP-header
-    // that is set on the file response
-    //
-    // Optional. Default: ""
-    ContentTypeCharset string `json:"content_type_charset"`
-}
-```
+| Property           | Type                    | Description                                                                                                 | Default      |
+|:-------------------|:------------------------|:------------------------------------------------------------------------------------------------------------|:-------------|
+| Next               | `func(*fiber.Ctx) bool` | Next defines a function to skip this middleware when returned true.                                         | `nil`        |
+| Root               | `http.FileSystem`       | Root is a FileSystem that provides access to a collection of files and directories.                         | `nil`        |
+| PathPrefix         | `string`                | PathPrefix defines a prefix to be added to a filepath when reading a file from the FileSystem.              | ""           |
+| Browse             | `bool`                  | Enable directory browsing.                                                                                  | `false`      |
+| Index              | `string`                | Index file for serving a directory.                                                                         | "index.html" |
+| MaxAge             | `int`                   | The value for the Cache-Control HTTP-header that is set on the file response. MaxAge is defined in seconds. | 0            |
+| NotFoundFile       | `string`                | File to return if the path is not found. Useful for SPA's.                                                  | ""           |
+| ContentTypeCharset | `string`                | The value for the Content-Type HTTP-header that is set on the file response.                                | ""           |
 
 ## Default Config
 

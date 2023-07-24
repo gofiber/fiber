@@ -1,7 +1,8 @@
 ---
 id: compress
-title: Compress
 ---
+
+# Compress
 
 Compression middleware for [Fiber](https://github.com/gofiber/fiber) that will compress the response using `gzip`, `deflate` and `brotli` compression depending on the [Accept-Encoding](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept-Encoding) header.
 
@@ -44,24 +45,19 @@ app.Use(compress.New(compress.Config{
 
 ## Config
 
-```go
-// Config defines the config for middleware.
-type Config struct {
-    // Next defines a function to skip this middleware when returned true.
-    //
-    // Optional. Default: nil
-    Next func(c *fiber.Ctx) bool
+### Config
 
-    // Level determines the compression algoritm
-    //
-    // Optional. Default: LevelDefault
-    // LevelDisabled:         -1
-    // LevelDefault:          0
-    // LevelBestSpeed:        1
-    // LevelBestCompression:  2
-    Level int
-}
-```
+| Property | Type                    | Description                                                         | Default            |
+|:---------|:------------------------|:--------------------------------------------------------------------|:-------------------|
+| Next     | `func(*fiber.Ctx) bool` | Next defines a function to skip this middleware when returned true. | `nil`              |
+| Level    | `Level`                 | Level determines the compression algorithm.                         | `LevelDefault (0)` |
+
+Possible values for the "Level" field are:
+
+- `LevelDisabled (-1)`: Compression is disabled.
+- `LevelDefault (0)`: Default compression level.
+- `LevelBestSpeed (1)`: Best compression speed.
+- `LevelBestCompression (2)`: Best compression.
 
 ## Default Config
 

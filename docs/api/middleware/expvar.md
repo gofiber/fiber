@@ -1,7 +1,8 @@
 ---
 id: expvar
-title: ExpVar
 ---
+
+# ExpVar
 
 Expvar middleware for [Fiber](https://github.com/gofiber/fiber) that serves via its HTTP server runtime exposed variants in the JSON format. The package is typically only imported for the side effect of registering its HTTP handlers. The handled path is `/debug/vars`.
 
@@ -58,15 +59,9 @@ curl 127.0.0.1:3000/debug/vars?r=c
 
 ## Config
 
-```go
-// Config defines the config for middleware.
-type Config struct {    
-    // Next defines a function to skip this middleware when returned true.
-    //
-    // Optional. Default: nil
-    Next func(c *fiber.Ctx) bool
-}
-```
+| Property | Type                    | Description                                                         | Default |
+|:---------|:------------------------|:--------------------------------------------------------------------|:--------|
+| Next     | `func(*fiber.Ctx) bool` | Next defines a function to skip this middleware when returned true. | `nil`   |
 
 ## Default Config
 

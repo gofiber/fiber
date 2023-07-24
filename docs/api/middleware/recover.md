@@ -1,7 +1,8 @@
 ---
 id: recover
-title: Recover
 ---
+
+# Recover
 
 Recover middleware for [Fiber](https://github.com/gofiber/fiber) that recovers from panics anywhere in the stack chain and handles the control to the centralized [ErrorHandler](https://docs.gofiber.io/guide/error-handling).
 
@@ -36,25 +37,11 @@ app.Get("/", func(c *fiber.Ctx) error {
 
 ## Config
 
-```go
-// Config defines the config for middleware.
-type Config struct {
-    // Next defines a function to skip this middleware when returned true.
-    //
-    // Optional. Default: nil
-    Next func(c *fiber.Ctx) bool
-
-    // EnableStackTrace enables handling stack trace
-    //
-    // Optional. Default: false
-    EnableStackTrace bool
-
-    // StackTraceHandler defines a function to handle stack trace
-    //
-    // Optional. Default: defaultStackTraceHandler
-    StackTraceHandler func(c *fiber.Ctx, e interface{})
-}
-```
+| Property          | Type                            | Description                                                         | Default                  |
+|:------------------|:--------------------------------|:--------------------------------------------------------------------|:-------------------------|
+| Next              | `func(*fiber.Ctx) bool`         | Next defines a function to skip this middleware when returned true. | `nil`                    |
+| EnableStackTrace  | `bool`                          | EnableStackTrace enables handling stack trace.                      | `false`                  |
+| StackTraceHandler | `func(*fiber.Ctx, interface{})` | StackTraceHandler defines a function to handle stack trace.         | defaultStackTraceHandler |
 
 ## Default Config
 

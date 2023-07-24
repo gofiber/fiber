@@ -1,7 +1,8 @@
 ---
 id: limiter
-title: Limiter
 ---
+
+# Limiter
 
 Limiter middleware for [Fiber](https://github.com/gofiber/fiber) that is used to limit repeat requests to public APIs and/or endpoints such as password reset. It is also useful for API clients, web crawling, or other tasks that need to be throttled.
 
@@ -75,59 +76,20 @@ rate = weightOfPreviousWindpw + current window's amount request.
 
 ## Config
 
-```go
-// Config defines the config for middleware.
-type Config struct {
-    // Next defines a function to skip this middleware when returned true.
-    //
-    // Optional. Default: nil
-    Next func(c *fiber.Ctx) bool
-
-	// Max number of recent connections during `Duration` seconds before sending a 429 response
-    //
-    // Default: 5
-    Max int
-
-    // KeyGenerator allows you to generate custom keys, by default c.IP() is used
-    //
-    // Default: func(c *fiber.Ctx) string {
-    //   return c.IP()
-    // }
-    KeyGenerator func(*fiber.Ctx) string
-
-    // Expiration is the time on how long to keep records of requests in memory
-    //
-    // Default: 1 * time.Minute
-    Expiration time.Duration
-
-    // LimitReached is called when a request hits the limit
-    //
-    // Default: func(c *fiber.Ctx) error {
-    //   return c.SendStatus(fiber.StatusTooManyRequests)
-    // }
-    LimitReached fiber.Handler
-
-    // When set to true, requests with StatusCode >= 400 won't be counted.
-    //
-    // Default: false
-    SkipFailedRequests bool
-
-    // When set to true, requests with StatusCode < 400 won't be counted.
-    //
-    // Default: false
-    SkipSuccessfulRequests bool
-
-    // Store is used to store the state of the middleware
-    //
-    // Default: an in memory store for this process only
-    Storage fiber.Storage
-
-    // LimiterMiddleware is the struct that implements limiter middleware.
-    //
-    // Default: a new Fixed Window Rate Limiter
-    LimiterMiddleware LimiterHandler
-}
-```
+| Property               | Type                      | Description                                                                                 | Default                                  |
+|:-----------------------|:--------------------------|:--------------------------------------------------------------------------------------------|:-----------------------------------------|
+| Next                   | `func(*fiber.Ctx) bool`   | Next defines a function to skip this middleware when returned true.                         | `nil`                                    |
+| Max                    | `int`                     | Max number of recent connections during `Expiration` seconds before sending a 429 response. | 5                                        |
+| KeyGenerator           | `func(*fiber.Ctx) string` | KeyGenerator allows you to generate custom keys, by default c.IP() is used.                 | A function using c.IP() as the default   |
+| Expiration             | `time.Duration`           | Expiration is the time on how long to keep records of requests in memory.                   | 1 * time.Minute                          |
+| LimitReached           | `fiber.Handler`           | LimitReached is called when a request hits the limit.                                       | A function sending 429 response          |
+| SkipFailedRequests     | `bool`                    | When set to true, requests with StatusCode >= 400 won't be counted.                         | false                                    |
+| SkipSuccessfulRequests | `bool`                    | When set to true, requests with StatusCode < 400 won't be counted.                          | false                                    |
+| Storage                | `fiber.Storage`           | Store is used to store the state of the middleware.                                         | An in-memory store for this process only |
+| LimiterMiddleware      | `LimiterHandler`          | LimiterMiddleware is the struct that implements a limiter middleware.                       | A new Fixed Window Rate Limiter          |
+| Duration (Deprecated)  | `time.Duration`           | Deprecated: Use Expiration instead                                                          | -                                        |
+| Store (Deprecated)     | `fiber.Storage`           | Deprecated: Use Storage instead                                                             | -                                        |
+| Key (Deprecated)       | `func(*fiber.Ctx) string` | Deprecated: Use KeyGenerator instead                                                        | -                                        |
 
 :::note
 A custom store can be used if it implements the `Storage` interface - more details and an example can be found in `store.go`.

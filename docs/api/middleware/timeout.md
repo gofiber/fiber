@@ -1,7 +1,8 @@
 ---
 id: timeout
-title: Timeout
 ---
+
+# Timeout
 
 There exist two distinct implementations of timeout middleware [Fiber](https://github.com/gofiber/fiber).
 

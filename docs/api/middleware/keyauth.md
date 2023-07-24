@@ -1,7 +1,8 @@
 ---
 id: keyauth
-title: Keyauth
 ---
+
+# Keyauth
 
 Key auth middleware provides a key based authentication.
 
@@ -212,45 +213,15 @@ curl --header "Authorization: Bearer my-super-secret-key"  http://localhost:3000
 
 ## Config
 
-```go
-// Config defines the config for middleware.
-type Config struct {
-	// Next defines a function to skip middleware.
-	// Optional. Default: nil
-	Next func(*fiber.Ctx) bool
-
-	// SuccessHandler defines a function which is executed for a valid key.
-	// Optional. Default: nil
-	SuccessHandler fiber.Handler
-
-	// ErrorHandler defines a function which is executed for an invalid key.
-	// It may be used to define a custom error.
-	// Optional. Default: 401 Invalid or expired key
-	ErrorHandler fiber.ErrorHandler
-
-	// KeyLookup is a string in the form of "<source>:<name>" that is used
-	// to extract key from the request.
-	// Optional. Default value "header:Authorization".
-	// Possible values:
-	// - "header:<name>"
-	// - "query:<name>"
-	// - "form:<name>"
-	// - "param:<name>"
-	// - "cookie:<name>"
-	KeyLookup string
-
-	// AuthScheme to be used in the Authorization header.
-	// Optional. Default value "Bearer".
-	AuthScheme string
-
-	// Validator is a function to validate key.
-	Validator func(*fiber.Ctx, string) (bool, error)
-
-	// Context key to store the bearertoken from the token into context.
-	// Optional. Default: "token".
-	ContextKey string
-}
-```
+| Property       | Type                                     | Description                                                                                          | Default                       |
+|:---------------|:-----------------------------------------|:-----------------------------------------------------------------------------------------------------|:------------------------------|
+| Next           | `func(*fiber.Ctx) bool`                  | Next defines a function to skip this middleware when returned true.                                  | `nil`                         |
+| SuccessHandler | `fiber.Handler`                          | SuccessHandler defines a function which is executed for a valid key.                                 | `nil`                         |
+| ErrorHandler   | `fiber.ErrorHandler`                     | ErrorHandler defines a function which is executed for an invalid key.                                | `401 Invalid or expired key`  |
+| KeyLookup      | `string`                                 | KeyLookup is a string in the form of "<source>:<name>" that is used to extract key from the request. | "header:Authorization"        |
+| AuthScheme     | `string`                                 | AuthScheme to be used in the Authorization header.                                                   | "Bearer"                      |
+| Validator      | `func(*fiber.Ctx, string) (bool, error)` | Validator is a function to validate the key.                                                         | A function for key validation |
+| ContextKey     | `string`                                 | Context key to store the bearer token from the token into context.                                   | "token"                       |
 
 ## Default Config
 

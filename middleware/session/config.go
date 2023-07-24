@@ -26,19 +26,19 @@ type Config struct {
 	// Optional. Default value "cookie:session_id".
 	KeyLookup string
 
-	// Domain of the CSRF cookie.
+	// Domain of the cookie.
 	// Optional. Default value "".
 	CookieDomain string
 
-	// Path of the CSRF cookie.
+	// Path of the cookie.
 	// Optional. Default value "".
 	CookiePath string
 
-	// Indicates if CSRF cookie is secure.
+	// Indicates if cookie is secure.
 	// Optional. Default value false.
 	CookieSecure bool
 
-	// Indicates if CSRF cookie is HTTP only.
+	// Indicates if cookie is HTTP only.
 	// Optional. Default value false.
 	CookieHTTPOnly bool
 

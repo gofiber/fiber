@@ -1,7 +1,8 @@
 ---
 id: envvar
-title: EnvVar
 ---
+
+# EnvVar
 
 EnvVar middleware for [Fiber](https://github.com/gofiber/fiber) that can be used to expose environment variables with various options.
 
@@ -56,16 +57,10 @@ Http response contract:
 
 ## Config
 
-```go
-// Config defines the config for middleware.
-type Config struct {
-    // ExportVars specifies the environment variables that should export
-    ExportVars map[string]string
-    // ExcludeVars specifies the environment variables that should not export
-    ExcludeVars map[string]string
-}
-
-```
+| Property    | Type                | Description                                                                  | Default |
+|:------------|:--------------------|:-----------------------------------------------------------------------------|:--------|
+| ExportVars  | `map[string]string` | ExportVars specifies the environment variables that should be exported.      | `nil`   |
+| ExcludeVars | `map[string]string` | ExcludeVars specifies the environment variables that should not be exported. | `nil`   |
 
 ## Default Config
 

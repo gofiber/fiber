@@ -1,7 +1,8 @@
 ---
 id: idempotency
-title: Idempotency
 ---
+
+# Idempotency
 
 Idempotency middleware for [Fiber](https://github.com/gofiber/fiber) allows for fault-tolerant APIs where duplicate requests — for example due to networking issues on the client-side — do not erroneously cause the same action performed multiple times on the server-side.
 
@@ -43,44 +44,15 @@ app.Use(idempotency.New(idempotency.Config{
 
 ### Config
 
-```go
-// Config defines the config for middleware.
-type Config struct {
-	// Next defines a function to skip this middleware when returned true.
-	//
-	// Optional. Default: a function which skips the middleware on safe HTTP request method.
-	Next func(c *fiber.Ctx) bool
-
-	// Lifetime is the maximum lifetime of an idempotency key.
-	//
-	// Optional. Default: 30 * time.Minute
-	Lifetime time.Duration
-
-	// KeyHeader is the name of the header that contains the idempotency key.
-	//
-	// Optional. Default: X-Idempotency-Key
-	KeyHeader string
-	// KeyHeaderValidate defines a function to validate the syntax of the idempotency header.
-	//
-	// Optional. Default: a function which ensures the header is 36 characters long (the size of an UUID).
-	KeyHeaderValidate func(string) error
-
-	// KeepResponseHeaders is a list of headers that should be kept from the original response.
-	//
-	// Optional. Default: nil (to keep all headers)
-	KeepResponseHeaders []string
-
-	// Lock locks an idempotency key.
-	//
-	// Optional. Default: an in-memory locker for this process only.
-	Lock Locker
-
-	// Storage stores response data by idempotency key.
-	//
-	// Optional. Default: an in-memory storage for this process only.
-	Storage fiber.Storage
-}
-```
+| Property            | Type                    | Description                                                                              | Default                        |
+|:--------------------|:------------------------|:-----------------------------------------------------------------------------------------|:-------------------------------|
+| Next                | `func(*fiber.Ctx) bool` | Next defines a function to skip this middleware when returned true.                      | A function for safe methods    |
+| Lifetime            | `time.Duration`         | Lifetime is the maximum lifetime of an idempotency key.                                  | 30 * time.Minute               |
+| KeyHeader           | `string`                | KeyHeader is the name of the header that contains the idempotency key.                   | "X-Idempotency-Key"            |
+| KeyHeaderValidate   | `func(string) error`    | KeyHeaderValidate defines a function to validate the syntax of the idempotency header.   | A function for UUID validation |
+| KeepResponseHeaders | `[]string`              | KeepResponseHeaders is a list of headers that should be kept from the original response. | nil (keep all headers)         |
+| Lock                | `Locker`                | Lock locks an idempotency key.                                                           | An in-memory locker            |
+| Storage             | `fiber.Storage`         | Storage stores response data by idempotency key.                                         | An in-memory storage           |
 
 ## Default Config
 
