@@ -19,8 +19,48 @@ func (c *Client) Patch(url string) *Agent
 func (c *Client) Delete(url string) *Agent
 ```
 
-## ✨ Agent
+Here we present a brief example demonstrating the simulation of a proxy using our `*fiber.Agent` methods.
+```go
+// Get something
+func getSomething(c *fiber.Ctx) (err error) {
+	agent := fiber.Get("<URL>")
+	statusCode, body, errs := agent.Bytes()
+	if len(errs) > 0 {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"errs": errs,
+		})
+	}
 
+	var something fiber.Map
+	err = json.Unmarshal(body, &something)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"err": err,
+		})
+	}
+
+	return c.Status(statusCode).JSON(something)
+}
+
+// Post something
+func createSomething(c *fiber.Ctx) (err error) {
+	agent := fiber.Post("<URL>")
+	agent.Body(c.Body()) // set body received by request
+	statusCode, body, errs := agent.Bytes()
+	if len(errs) > 0 {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"errs": errs,
+		})
+	}
+
+    // pass status code and body received by the proxy
+	return c.Status(statusCode).Send(body)
+}
+```
+Based on this short example, we can perceive that using the `*fiber.Client` is very straightforward and intuitive.
+
+
+## ✨ Agent
 `Agent` is built on top of FastHTTP's [`HostClient`](https://github.com/valyala/fasthttp/blob/master/client.go#L603) which has lots of convenient helper methods such as dedicated methods for request methods.
 
 ### Parse
