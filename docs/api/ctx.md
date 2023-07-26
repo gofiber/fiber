@@ -709,7 +709,7 @@ app.Get("/", func(c *fiber.Ctx) error {
 
 ## JSON
 
-Converts any **interface** or **string** to JSON using the [goccy/go-json](https://github.com/goccy/go-json) package.
+Converts any **interface** or **string** to JSON using the [encoding/json](https://pkg.go.dev/encoding/json) package.
 
 :::info
 JSON also sets the content header to **application/json**.
