@@ -9,6 +9,7 @@ import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
+	"compress/zlib"
 	"context"
 	"crypto/tls"
 	"encoding/xml"
@@ -344,26 +345,104 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Body_With_Compression -benchmem -count=4
 func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-	c.Request().Header.Set("Content-Encoding", "gzip")
-	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
-	_, err := gz.Write([]byte("john=doe"))
-	utils.AssertEqual(b, nil, err)
-	err = gz.Flush()
-	utils.AssertEqual(b, nil, err)
-	err = gz.Close()
-	utils.AssertEqual(b, nil, err)
-
-	c.Request().SetBody(buf.Bytes())
-
-	for i := 0; i < b.N; i++ {
-		_ = c.Body()
+	type compressionTest struct {
+		contentEncoding string
+		compressWriter  func([]byte) ([]byte, error)
 	}
 
-	utils.AssertEqual(b, []byte("john=doe"), c.Body())
+	compressionTests := []compressionTest{
+		{
+			contentEncoding: "gzip",
+			compressWriter: func(data []byte) ([]byte, error) {
+				var buf bytes.Buffer
+				writer := gzip.NewWriter(&buf)
+				_, err := writer.Write(data)
+				if err != nil {
+					return nil, err
+				}
+				if err = errors.Join(writer.Flush(), writer.Close()); err != nil {
+					return nil, err
+				}
+				return buf.Bytes(), nil
+			},
+		},
+		{
+			contentEncoding: "deflate",
+			compressWriter: func(data []byte) ([]byte, error) {
+				var buf bytes.Buffer
+				writer := zlib.NewWriter(&buf)
+				if _, err := writer.Write(data); err != nil {
+					return nil, err
+				}
+				if err := errors.Join(writer.Flush(), writer.Close()); err != nil {
+					return nil, err
+				}
+
+				return buf.Bytes(), nil
+			},
+		},
+		{
+			contentEncoding: "gzip,deflate",
+			compressWriter: func(data []byte) ([]byte, error) {
+				var (
+					buf    bytes.Buffer
+					writer interface {
+						io.WriteCloser
+						Flush() error
+					}
+					err error
+				)
+
+				// deflate
+				{
+					writer = zlib.NewWriter(&buf)
+					if _, err = writer.Write(data); err != nil {
+						return nil, err
+					}
+					if err = errors.Join(writer.Flush(), writer.Close()); err != nil {
+						return nil, err
+					}
+				}
+
+				data = make([]byte, buf.Len())
+				copy(data, buf.Bytes())
+				buf.Reset()
+
+				// gzip
+				{
+					writer = gzip.NewWriter(&buf)
+					if _, err = writer.Write(data); err != nil {
+						return nil, err
+					}
+					if err = errors.Join(writer.Flush(), writer.Close()); err != nil {
+						return nil, err
+					}
+				}
+
+				return buf.Bytes(), nil
+			},
+		},
+	}
+
+	for _, ct := range compressionTests {
+		b.Run(ct.contentEncoding, func(b *testing.B) {
+			app := New()
+			const input = "john=doe"
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(c)
+
+			c.Request().Header.Set("Content-Encoding", ct.contentEncoding)
+			compressedBody, err := ct.compressWriter([]byte(input))
+			utils.AssertEqual(b, nil, err)
+
+			c.Request().SetBody(compressedBody)
+			for i := 0; i < b.N; i++ {
+				_ = c.Body()
+			}
+
+			utils.AssertEqual(b, []byte(input), c.Body())
+		})
+	}
 }
 
 // go test -run Test_Ctx_BodyParser
