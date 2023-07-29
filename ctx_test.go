@@ -324,6 +324,21 @@ func Test_Ctx_Body(t *testing.T) {
 	utils.AssertEqual(t, []byte("john=doe"), c.Body())
 }
 
+func Benchmark_Ctx_Body(b *testing.B) {
+	const input = "john=doe"
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	c.Request().SetBody([]byte(input))
+	for i := 0; i < b.N; i++ {
+		_ = c.Body()
+	}
+
+	utils.AssertEqual(b, []byte(input), c.Body())
+}
+
 // go test -run Test_Ctx_Body_With_Compression
 func Test_Ctx_Body_With_Compression(t *testing.T) {
 	t.Parallel()
