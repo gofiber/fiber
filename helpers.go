@@ -269,6 +269,50 @@ func acceptsOfferType(spec, offerType string) bool {
 	return false
 }
 
+func getEncodingList(headerValue string, encodings ...string) (orderedEncoding []string) {
+	if len(encodings) == 0 || headerValue == "" {
+		return nil
+	}
+	orderedEncoding = make([]string, 0, len(encodings))
+
+	var (
+		index             int
+		character         rune
+		lastElementEndsAt uint8 = 0
+		foundEncodings          = make([]string, 0, len(encodings))
+	)
+	for index, character = range headerValue {
+		if character == ',' {
+			foundEncodings = append(
+				foundEncodings,
+				strings.TrimLeft(headerValue[lastElementEndsAt:index], " "),
+			)
+			lastElementEndsAt = uint8(index + 1)
+		}
+	}
+
+	if lastElementEndsAt < uint8(index) {
+		foundEncodings = append(
+			foundEncodings,
+			strings.TrimLeft(headerValue[lastElementEndsAt:], " "),
+		)
+	}
+
+	if len(foundEncodings) == 0 {
+		orderedEncoding = []string{headerValue}
+	}
+
+	orderedEncoding = make([]string, 0, len(encodings))
+	for _, foundEnc := range foundEncodings {
+		for _, toCheck := range encodings {
+			if foundEnc == toCheck {
+				orderedEncoding = append(orderedEncoding, foundEnc)
+			}
+		}
+	}
+	return
+}
+
 // getOffer return valid offer for header negotiation
 func getOffer(header string, isAccepted func(spec, offer string) bool, offers ...string) string {
 	if len(offers) == 0 {

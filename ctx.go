@@ -260,33 +260,59 @@ func (c *Ctx) BaseURL() string {
 	return c.baseURI
 }
 
-// Body contains the raw body submitted in a POST request.
+// BodyRaw contains the raw body submitted in a POST request.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
-func (c *Ctx) Body() []byte {
-	var err error
-	var encoding string
-	var body []byte
-	// faster than peek
-	c.Request().Header.VisitAll(func(key, value []byte) {
-		if c.app.getString(key) == HeaderContentEncoding {
-			encoding = c.app.getString(value)
-		}
-	})
+func (c *Ctx) BodyRaw() []byte {
+	return c.fasthttp.Request.Body()
+}
 
-	switch encoding {
-	case StrGzip:
-		body, err = c.fasthttp.Request.BodyGunzip()
-	case StrBr, StrBrotli:
-		body, err = c.fasthttp.Request.BodyUnbrotli()
-	case StrDeflate:
-		body, err = c.fasthttp.Request.BodyInflate()
-	default:
-		body = c.fasthttp.Request.Body()
+// Body contains the raw body submitted in a POST request.
+// This method will decompress the body if the 'Content-Encoding' header is provided.
+// It returns the original (or decompressed) body data which is valid only within the handler.
+// Don't store direct references to the returned data.
+// If you need to keep the body's data later, make a copy or use the Immutable option.
+func (c *Ctx) Body() (body []byte) {
+	var (
+		err          error
+		originalBody []byte
+	)
+	encodingOrder := getEncodingList(
+		c.Get(HeaderContentEncoding), StrGzip, StrBr, StrBrotli, StrDeflate,
+	)
+
+	if len(encodingOrder) == 0 {
+		return c.fasthttp.Request.Body()
 	}
 
-	if err != nil {
-		return []byte(err.Error())
+	for index, encoding := range encodingOrder {
+		switch encoding {
+		case StrGzip:
+			body, err = c.fasthttp.Request.BodyGunzip()
+		case StrBr, StrBrotli:
+			body, err = c.fasthttp.Request.BodyUnbrotli()
+		case StrDeflate:
+			body, err = c.fasthttp.Request.BodyInflate()
+		default:
+			return
+		}
+
+		if err != nil {
+			return []byte(err.Error())
+		}
+
+		if index < len(encodingOrder)-1 {
+			if originalBody == nil {
+				tempBody := c.fasthttp.Request.Body()
+				originalBody = make([]byte, len(tempBody))
+				copy(originalBody, tempBody)
+			}
+			c.fasthttp.Request.SetBodyRaw(body)
+		}
+	}
+
+	if originalBody != nil {
+		c.fasthttp.Request.SetBodyRaw(originalBody)
 	}
 
 	return body
