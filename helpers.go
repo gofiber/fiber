@@ -269,48 +269,34 @@ func acceptsOfferType(spec, offerType string) bool {
 	return false
 }
 
-func getEncodingList(headerValue string, encodings ...string) (orderedEncoding []string) {
-	if len(encodings) == 0 || headerValue == "" {
+func getSplicedStrList(headerValue string, dst []string) []string {
+	if headerValue == "" {
 		return nil
 	}
-	orderedEncoding = make([]string, 0, len(encodings))
 
 	var (
 		index             int
 		character         rune
 		lastElementEndsAt uint8 = 0
-		foundEncodings          = make([]string, 0, len(encodings))
+		insertIndex       int
 	)
-	for index, character = range headerValue {
-		if character == ',' {
-			foundEncodings = append(
-				foundEncodings,
-				strings.TrimLeft(headerValue[lastElementEndsAt:index], " "),
-			)
-			lastElementEndsAt = uint8(index + 1)
-		}
-	}
-
-	if lastElementEndsAt < uint8(index) {
-		foundEncodings = append(
-			foundEncodings,
-			strings.TrimLeft(headerValue[lastElementEndsAt:], " "),
-		)
-	}
-
-	if len(foundEncodings) == 0 {
-		orderedEncoding = []string{headerValue}
-	}
-
-	orderedEncoding = make([]string, 0, len(encodings))
-	for _, foundEnc := range foundEncodings {
-		for _, toCheck := range encodings {
-			if foundEnc == toCheck {
-				orderedEncoding = append(orderedEncoding, foundEnc)
+	for index, character = range headerValue + "$" {
+		if character == ',' || index == len(headerValue) {
+			if insertIndex >= len(dst) {
+				oldSlice := dst
+				dst = make([]string, len(dst)+(len(dst)>>1)+2)
+				copy(dst, oldSlice)
 			}
+			dst[insertIndex] = strings.TrimLeft(headerValue[lastElementEndsAt:index], " ")
+			lastElementEndsAt = uint8(index + 1)
+			insertIndex += 1
 		}
 	}
-	return
+
+	if len(dst) > insertIndex {
+		dst = dst[:insertIndex]
+	}
+	return dst
 }
 
 // getOffer return valid offer for header negotiation

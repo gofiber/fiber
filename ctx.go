@@ -274,12 +274,11 @@ func (c *Ctx) BodyRaw() []byte {
 // If you need to keep the body's data later, make a copy or use the Immutable option.
 func (c *Ctx) Body() (body []byte) {
 	var (
-		err          error
-		originalBody []byte
+		err           error
+		originalBody  []byte
+		encodingOrder = []string{"", "", ""}
 	)
-	encodingOrder := getEncodingList(
-		c.Get(HeaderContentEncoding), StrGzip, StrBr, StrBrotli, StrDeflate,
-	)
+	encodingOrder = getSplicedStrList(c.Get(HeaderContentEncoding), encodingOrder)
 
 	if len(encodingOrder) == 0 {
 		return c.fasthttp.Request.Body()
