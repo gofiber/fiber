@@ -365,18 +365,21 @@ func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
 		compressWriter  func([]byte) ([]byte, error)
 	}
 
+	encodingErr := errors.New("failed to encoding data")
 	compressionTests := []compressionTest{
 		{
 			contentEncoding: "gzip",
 			compressWriter: func(data []byte) ([]byte, error) {
 				var buf bytes.Buffer
 				writer := gzip.NewWriter(&buf)
-				_, err := writer.Write(data)
-				if err != nil {
-					return nil, err
+				if _, err := writer.Write(data); err != nil {
+					return nil, encodingErr
 				}
-				if err = errors.Join(writer.Flush(), writer.Close()); err != nil {
-					return nil, err
+				if err := writer.Flush(); err != nil {
+					return nil, encodingErr
+				}
+				if err := writer.Close(); err != nil {
+					return nil, encodingErr
 				}
 				return buf.Bytes(), nil
 			},
@@ -387,12 +390,14 @@ func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
 				var buf bytes.Buffer
 				writer := zlib.NewWriter(&buf)
 				if _, err := writer.Write(data); err != nil {
-					return nil, err
+					return nil, encodingErr
 				}
-				if err := errors.Join(writer.Flush(), writer.Close()); err != nil {
-					return nil, err
+				if err := writer.Flush(); err != nil {
+					return nil, encodingErr
 				}
-
+				if err := writer.Close(); err != nil {
+					return nil, encodingErr
+				}
 				return buf.Bytes(), nil
 			},
 		},
@@ -412,10 +417,13 @@ func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
 				{
 					writer = zlib.NewWriter(&buf)
 					if _, err = writer.Write(data); err != nil {
-						return nil, err
+						return nil, encodingErr
 					}
-					if err = errors.Join(writer.Flush(), writer.Close()); err != nil {
-						return nil, err
+					if err = writer.Flush(); err != nil {
+						return nil, encodingErr
+					}
+					if err = writer.Close(); err != nil {
+						return nil, encodingErr
 					}
 				}
 
@@ -427,10 +435,13 @@ func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
 				{
 					writer = gzip.NewWriter(&buf)
 					if _, err = writer.Write(data); err != nil {
-						return nil, err
+						return nil, encodingErr
 					}
-					if err = errors.Join(writer.Flush(), writer.Close()); err != nil {
-						return nil, err
+					if err = writer.Flush(); err != nil {
+						return nil, encodingErr
+					}
+					if err = writer.Close(); err != nil {
+						return nil, encodingErr
 					}
 				}
 

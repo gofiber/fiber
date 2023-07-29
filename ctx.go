@@ -272,11 +272,11 @@ func (c *Ctx) BodyRaw() []byte {
 // It returns the original (or decompressed) body data which is valid only within the handler.
 // Don't store direct references to the returned data.
 // If you need to keep the body's data later, make a copy or use the Immutable option.
-func (c *Ctx) Body() (body []byte) {
+func (c *Ctx) Body() []byte {
 	var (
-		err           error
-		originalBody  []byte
-		encodingOrder = []string{"", "", ""}
+		err                error
+		body, originalBody []byte
+		encodingOrder      = []string{"", "", ""}
 	)
 
 	// Split and get the encodings list, in order to attend the
@@ -295,7 +295,7 @@ func (c *Ctx) Body() (body []byte) {
 		case StrDeflate:
 			body, err = c.fasthttp.Request.BodyInflate()
 		default:
-			return
+			return body
 		}
 
 		if err != nil {

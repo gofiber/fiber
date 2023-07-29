@@ -282,7 +282,7 @@ func getSplicedStrList(headerValue string, dst []string) []string {
 	var (
 		index             int
 		character         rune
-		lastElementEndsAt uint8 = 0
+		lastElementEndsAt uint8
 		insertIndex       int
 	)
 	for index, character = range headerValue + "$" {
@@ -294,7 +294,7 @@ func getSplicedStrList(headerValue string, dst []string) []string {
 			}
 			dst[insertIndex] = utils.TrimLeft(headerValue[lastElementEndsAt:index], ' ')
 			lastElementEndsAt = uint8(index + 1)
-			insertIndex += 1
+			insertIndex++
 		}
 	}
 
