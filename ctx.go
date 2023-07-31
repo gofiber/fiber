@@ -295,13 +295,18 @@ func (c *Ctx) Body() []byte {
 		case StrDeflate:
 			body, err = c.fasthttp.Request.BodyInflate()
 		default:
-			return body
+			if len(encodingOrder) == 1 {
+				return c.fasthttp.Request.Body()
+			}
+			break
 		}
 
 		if err != nil {
-			return []byte(err.Error())
+			body = []byte(err.Error())
+			break
 		}
 
+		// Only execute body raw update if it has a next iteration to try to decode
 		if index < len(encodingOrder)-1 {
 			if originalBody == nil {
 				tempBody := c.fasthttp.Request.Body()
