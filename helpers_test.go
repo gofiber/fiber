@@ -128,6 +128,11 @@ func Test_Utils_GetSplicedStrList(t *testing.T) {
 			headerValue:  "",
 			expectedList: nil,
 		},
+		{
+			description:  "has a comma without element",
+			headerValue:  "gzip,",
+			expectedList: []string{"gzip", ""},
+		},
 	}
 
 	for _, tc := range testCases {

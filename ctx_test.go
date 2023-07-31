@@ -342,64 +342,124 @@ func Benchmark_Ctx_Body(b *testing.B) {
 // go test -run Test_Ctx_Body_With_Compression
 func Test_Ctx_Body_With_Compression(t *testing.T) {
 	t.Parallel()
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-	c.Request().Header.Set("Content-Encoding", "gzip")
-	var b bytes.Buffer
-	gz := gzip.NewWriter(&b)
-	_, err := gz.Write([]byte("john=doe"))
-	utils.AssertEqual(t, nil, err)
-	err = gz.Flush()
-	utils.AssertEqual(t, nil, err)
-	err = gz.Close()
-	utils.AssertEqual(t, nil, err)
-	c.Request().SetBody(b.Bytes())
-	utils.AssertEqual(t, []byte("john=doe"), c.Body())
+	tests := []struct {
+		name            string
+		contentEncoding string
+		body            []byte
+		expectedBody    []byte
+	}{
+		{
+			name:            "gzip",
+			contentEncoding: "gzip",
+			body:            []byte("john=doe"),
+			expectedBody:    []byte("john=doe"),
+		},
+		{
+			name:            "unsupported_encoding",
+			contentEncoding: "undefined",
+			body:            []byte("keeps_ORIGINAL"),
+			expectedBody:    []byte("keeps_ORIGINAL"),
+		},
+		{
+			name:            "gzip then unsupported",
+			contentEncoding: "gzip, undefined",
+			body:            []byte("Go, be gzipped"),
+			expectedBody:    []byte("Go, be gzipped"),
+		},
+		{
+			name:            "invalid_deflate",
+			contentEncoding: "gzip,deflate",
+			body:            []byte("I'm not correctly compressed"),
+			expectedBody:    []byte(zlib.ErrHeader.Error()),
+		},
+	}
+
+	for _, testObject := range tests {
+		tCase := testObject // Duplicate object to ensure it will be unique across all runs
+		t.Run(tCase.name, func(t *testing.T) {
+			app := New()
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(c)
+			c.Request().Header.Set("Content-Encoding", tCase.contentEncoding)
+
+			if strings.Contains(tCase.contentEncoding, "gzip") {
+				var b bytes.Buffer
+				gz := gzip.NewWriter(&b)
+				_, err := gz.Write(tCase.body)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err = gz.Flush(); err != nil {
+					t.Fatal(err)
+				}
+				if err = gz.Close(); err != nil {
+					t.Fatal(err)
+				}
+				tCase.body = b.Bytes()
+			}
+
+			c.Request().SetBody(tCase.body)
+			body := c.Body()
+			utils.AssertEqual(t, tCase.expectedBody, body)
+
+			// Check if body raw is the same as previous before decompression
+			utils.AssertEqual(
+				t, tCase.body, c.Request().Body(),
+				"Body raw must be the same as set before",
+			)
+		})
+	}
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Body_With_Compression -benchmem -count=4
 func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
-	type compressionTest struct {
+	encodingErr := errors.New("failed to encoding data")
+
+	var (
+		compressGzip = func(data []byte) ([]byte, error) {
+			var buf bytes.Buffer
+			writer := gzip.NewWriter(&buf)
+			if _, err := writer.Write(data); err != nil {
+				return nil, encodingErr
+			}
+			if err := writer.Flush(); err != nil {
+				return nil, encodingErr
+			}
+			if err := writer.Close(); err != nil {
+				return nil, encodingErr
+			}
+			return buf.Bytes(), nil
+		}
+		compressDeflate = func(data []byte) ([]byte, error) {
+			var buf bytes.Buffer
+			writer := zlib.NewWriter(&buf)
+			if _, err := writer.Write(data); err != nil {
+				return nil, encodingErr
+			}
+			if err := writer.Flush(); err != nil {
+				return nil, encodingErr
+			}
+			if err := writer.Close(); err != nil {
+				return nil, encodingErr
+			}
+			return buf.Bytes(), nil
+		}
+	)
+	compressionTests := []struct {
 		contentEncoding string
 		compressWriter  func([]byte) ([]byte, error)
-	}
-
-	encodingErr := errors.New("failed to encoding data")
-	compressionTests := []compressionTest{
+	}{
 		{
 			contentEncoding: "gzip",
-			compressWriter: func(data []byte) ([]byte, error) {
-				var buf bytes.Buffer
-				writer := gzip.NewWriter(&buf)
-				if _, err := writer.Write(data); err != nil {
-					return nil, encodingErr
-				}
-				if err := writer.Flush(); err != nil {
-					return nil, encodingErr
-				}
-				if err := writer.Close(); err != nil {
-					return nil, encodingErr
-				}
-				return buf.Bytes(), nil
-			},
+			compressWriter:  compressGzip,
+		},
+		{
+			contentEncoding: "gzip,invalid",
+			compressWriter:  compressGzip,
 		},
 		{
 			contentEncoding: "deflate",
-			compressWriter: func(data []byte) ([]byte, error) {
-				var buf bytes.Buffer
-				writer := zlib.NewWriter(&buf)
-				if _, err := writer.Write(data); err != nil {
-					return nil, encodingErr
-				}
-				if err := writer.Flush(); err != nil {
-					return nil, encodingErr
-				}
-				if err := writer.Close(); err != nil {
-					return nil, encodingErr
-				}
-				return buf.Bytes(), nil
-			},
+			compressWriter:  compressDeflate,
 		},
 		{
 			contentEncoding: "gzip,deflate",
