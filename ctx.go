@@ -267,6 +267,51 @@ func (c *Ctx) BodyRaw() []byte {
 	return c.fasthttp.Request.Body()
 }
 
+func (c *Ctx) tryDecodeBodyInOrder(
+	originalBody *[]byte,
+	encodings []string,
+) ([]byte, uint8, error) {
+	var (
+		err             error
+		body            []byte
+		decodesRealized uint8
+	)
+
+	for index, encoding := range encodings {
+		decodesRealized++
+		switch encoding {
+		case StrGzip:
+			body, err = c.fasthttp.Request.BodyGunzip()
+		case StrBr, StrBrotli:
+			body, err = c.fasthttp.Request.BodyUnbrotli()
+		case StrDeflate:
+			body, err = c.fasthttp.Request.BodyInflate()
+		default:
+			decodesRealized--
+			if len(encodings) == 1 {
+				body = c.fasthttp.Request.Body()
+			}
+			return body, decodesRealized, nil
+		}
+
+		if err != nil {
+			return nil, decodesRealized, err
+		}
+
+		// Only execute body raw update if it has a next iteration to try to decode
+		if index < len(encodings)-1 && decodesRealized > 0 {
+			if index == 0 {
+				tempBody := c.fasthttp.Request.Body()
+				*originalBody = make([]byte, len(tempBody))
+				copy(*originalBody, tempBody)
+			}
+			c.fasthttp.Request.SetBodyRaw(body)
+		}
+	}
+
+	return body, decodesRealized, nil
+}
+
 // Body contains the raw body submitted in a POST request.
 // This method will decompress the body if the 'Content-Encoding' header is provided.
 // It returns the original (or decompressed) body data which is valid only within the handler.
@@ -286,39 +331,15 @@ func (c *Ctx) Body() []byte {
 		return c.fasthttp.Request.Body()
 	}
 
-	for index, encoding := range encodingOrder {
-		switch encoding {
-		case StrGzip:
-			body, err = c.fasthttp.Request.BodyGunzip()
-		case StrBr, StrBrotli:
-			body, err = c.fasthttp.Request.BodyUnbrotli()
-		case StrDeflate:
-			body, err = c.fasthttp.Request.BodyInflate()
-		default:
-			if len(encodingOrder) == 1 {
-				return c.fasthttp.Request.Body()
-			}
-			break
-		}
+	var decodesRealized uint8
+	body, decodesRealized, err = c.tryDecodeBodyInOrder(&originalBody, encodingOrder)
 
-		if err != nil {
-			body = []byte(err.Error())
-			break
-		}
-
-		// Only execute body raw update if it has a next iteration to try to decode
-		if index < len(encodingOrder)-1 {
-			if originalBody == nil {
-				tempBody := c.fasthttp.Request.Body()
-				originalBody = make([]byte, len(tempBody))
-				copy(originalBody, tempBody)
-			}
-			c.fasthttp.Request.SetBodyRaw(body)
-		}
-	}
-
-	if originalBody != nil {
+	// Ensure that the body will be the original
+	if originalBody != nil && decodesRealized > 0 {
 		c.fasthttp.Request.SetBodyRaw(originalBody)
+	}
+	if err != nil {
+		return []byte(err.Error())
 	}
 
 	return body
