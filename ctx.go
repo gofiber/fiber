@@ -321,12 +321,20 @@ func (c *Ctx) Body() []byte {
 	var (
 		err                error
 		body, originalBody []byte
+		headerEncoding     string
 		encodingOrder      = []string{"", "", ""}
 	)
 
+	// faster than peek
+	c.Request().Header.VisitAll(func(key, value []byte) {
+		if c.app.getString(key) == HeaderContentEncoding {
+			headerEncoding = c.app.getString(value)
+		}
+	})
+
 	// Split and get the encodings list, in order to attend the
 	// rule defined at: https://www.rfc-editor.org/rfc/rfc9110#section-8.4-5
-	encodingOrder = getSplicedStrList(c.Get(HeaderContentEncoding), encodingOrder)
+	encodingOrder = getSplicedStrList(headerEncoding, encodingOrder)
 	if len(encodingOrder) == 0 {
 		return c.fasthttp.Request.Body()
 	}
