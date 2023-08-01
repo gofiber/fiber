@@ -57,13 +57,13 @@ Fiber provides similar functions for the other accept headers.
 // Accept-Language: en;q=0.8, nl, ru
 
 app.Get("/", func(c *fiber.Ctx) error {
-  c.AcceptsCharsets("utf-16", "iso-8859-1") 
+  c.AcceptsCharsets("utf-16", "iso-8859-1")
   // "iso-8859-1"
 
-  c.AcceptsEncodings("compress", "br") 
+  c.AcceptsEncodings("compress", "br")
   // "compress"
 
-  c.AcceptsLanguages("pt", "nl", "ru") 
+  c.AcceptsLanguages("pt", "nl", "ru")
   // "nl"
   // ...
 })
@@ -171,6 +171,7 @@ app.Get("/", func(c *fiber.Ctx) error {
 ```
 
 ## Bind
+
 Add vars to default view var map binding to template engine.
 Variables are read by the Render method and may be overwritten.
 
@@ -190,12 +191,12 @@ app.Get("/", func(c *fiber.Ctx) error {
 })
 ```
 
-## Body
+## BodyRaw
 
 Returns the raw request **body**.
 
 ```go title="Signature"
-func (c *Ctx) Body() []byte
+func (c *Ctx) BodyRaw() []byte
 ```
 
 ```go title="Example"
@@ -203,6 +204,26 @@ func (c *Ctx) Body() []byte
 
 app.Post("/", func(c *fiber.Ctx) error {
   // Get raw body from POST request:
+  return c.Send(c.BodyRaw()) // []byte("user=john")
+})
+```
+
+> _Returned value is only valid within the handler. Do not store any references.  
+> Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
+
+## Body
+
+As per the header `Content-Encoding`, this method will try to perform a file decompression from the **body** bytes. In case no `Content-Encoding` header is sent, it will perform as [BodyRaw](#bodyraw).
+
+```go title="Signature"
+func (c *Ctx) Body() []byte
+```
+
+```go title="Example"
+// echo 'user=john' | gzip | curl -v -i --data-binary @- -H "Content-Encoding: gzip" http://localhost:8080
+
+app.Post("/", func(c *fiber.Ctx) error {
+  // Decompress body from POST request based on the Content-Encoding and return the raw content:
   return c.Send(c.Body()) // []byte("user=john")
 })
 ```
@@ -216,13 +237,13 @@ Binds the request body to a struct.
 
 It is important to specify the correct struct tag based on the content type to be parsed. For example, if you want to parse a JSON body with a field called Pass, you would use a struct field of `json:"pass"`.
 
-| content-type | struct tag |
-|---|---|
-| `application/x-www-form-urlencoded` | form |
-| `multipart/form-data` | form |
-| `application/json` | json |
-| `application/xml` | xml |
-| `text/xml` | xml |
+| content-type                        | struct tag |
+| ----------------------------------- | ---------- |
+| `application/x-www-form-urlencoded` | form       |
+| `multipart/form-data`               | form       |
+| `application/json`                  | json       |
+| `application/xml`                   | xml        |
+| `text/xml`                          | xml        |
 
 ```go title="Signature"
 func (c *Ctx) BodyParser(out interface{}) error
@@ -693,6 +714,7 @@ app.Get("/", func(c *fiber.Ctx) error {
 ## IsFromLocal
 
 Returns true if request came from localhost
+
 ```go title="Signature"
 func (c *Ctx) IsFromLocal() bool {
 ```
@@ -837,7 +859,7 @@ app.Post("/", func(c *fiber.Ctx) error {
   c.Location("http://example.com")
 
   c.Location("/foo/bar")
-  
+
   return nil
 })
 ```
@@ -1024,6 +1046,7 @@ app.Get("/user/:id", func(c *fiber.Ctx) error {
 This method is equivalent of using `atoi` with ctx.Params
 
 ## ParamsParser
+
 This method is similar to BodyParser, but for path parameters. It is important to use the struct tag "params". For example, if you want to parse a path parameter with a field called Pass, you would use a struct field of params:"pass"
 
 ```go title="Signature"
@@ -1034,7 +1057,7 @@ func (c *Ctx) ParamsParser(out interface{}) error
 // GET http://example.com/user/111
 app.Get("/user/:id", func(c *fiber.Ctx) error {
   param := struct {ID uint `params:"id"`}{}
-       
+
   c.ParamsParser(&param) // "{"id": 111}"
 
   // ...
@@ -1176,7 +1199,6 @@ app.Get("/", func(c *fiber.Ctx) error {
 
 This property is an object containing a property for each query boolean parameter in the route, you could pass an optional default value that will be returned if the query key does not exist.
 
-
 :::caution
 Please note if that parameter is not in the request, false will be returned.
 If the parameter is not a boolean, it is still tried to be converted and usually returned as false.
@@ -1232,11 +1254,9 @@ app.Get("/", func(c *fiber.Ctx) error {
 })
 ```
 
-
 ## QueryInt
 
 This property is an object containing a property for each query integer parameter in the route, you could pass an optional default value that will be returned if the query key does not exist.
-
 
 :::caution
 Please note if that parameter is not in the request, zero will be returned.
@@ -1522,7 +1542,7 @@ func (c *Ctx) Route() *Route
 app.Get("/hello/:name", func(c *fiber.Ctx) error {
   r := c.Route()
   fmt.Println(r.Method, r.Path, r.Params, r.Handlers)
-  // GET /hello/:name handler [name] 
+  // GET /hello/:name handler [name]
 
   // ...
 })
@@ -1768,7 +1788,7 @@ var timeConverter = func(value string) reflect.Value {
 customTime := fiber.ParserType{
   Customtype: CustomTime{},
   Converter:  timeConverter,
-} 
+}
 
 // Add setting to the Decoder
 fiber.SetParserDecoder(fiber.ParserConfig{
@@ -1803,7 +1823,6 @@ app.Get("/query", func(c *fiber.Ctx) error {
 // curl -X GET "http://localhost:3000/query?title=title&body=body&date=2021-10-20"
 
 ```
-
 
 ## SetUserContext
 
@@ -2020,7 +2039,7 @@ XML also sets the content header to **application/xml**.
 :::
 
 ```go title="Signature"
-func (c *Ctx) XML(data interface{}) error 
+func (c *Ctx) XML(data interface{}) error
 ```
 
 ```go title="Example"
