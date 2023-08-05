@@ -1,9 +1,10 @@
 package filesystem
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -143,11 +144,11 @@ func New(config ...Config) fiber.Handler {
 			path = utils.TrimRight(path, '/')
 		}
 		file, err := cfg.Root.Open(path)
-		if err != nil && os.IsNotExist(err) && cfg.NotFoundFile != "" {
+		if err != nil && errors.Is(err, fs.ErrNotExist) && cfg.NotFoundFile != "" {
 			file, err = cfg.Root.Open(cfg.NotFoundFile)
 		}
 		if err != nil {
-			if os.IsNotExist(err) {
+			if errors.Is(err, fs.ErrNotExist) {
 				return c.Status(fiber.StatusNotFound).Next()
 			}
 			return fmt.Errorf("failed to open: %w", err)
@@ -217,10 +218,10 @@ func New(config ...Config) fiber.Handler {
 }
 
 // SendFile ...
-func SendFile(c *fiber.Ctx, fs http.FileSystem, path string) error {
-	file, err := fs.Open(path)
+func SendFile(c *fiber.Ctx, filesystem http.FileSystem, path string) error {
+	file, err := filesystem.Open(path)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return fiber.ErrNotFound
 		}
 		return fmt.Errorf("failed to open: %w", err)
@@ -234,7 +235,7 @@ func SendFile(c *fiber.Ctx, fs http.FileSystem, path string) error {
 	// Serve index if path is directory
 	if stat.IsDir() {
 		indexPath := utils.TrimRight(path, '/') + ConfigDefault.Index
-		index, err := fs.Open(indexPath)
+		index, err := filesystem.Open(indexPath)
 		if err == nil {
 			indexStat, err := index.Stat()
 			if err == nil {
