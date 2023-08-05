@@ -90,7 +90,7 @@ func (r *Redirect) Status(code int) *Redirect {
 // They will be sent as a cookie.
 // You can get them by using: Redirect().Messages(), Redirect().Message()
 // Note: You must use escape char before using ',' and ':' chars to avoid wrong parsing.
-func (r *Redirect) With(key string, value string) *Redirect {
+func (r *Redirect) With(key, value string) *Redirect {
 	r.messages = append(r.messages, key+CookieDataAssigner+value)
 
 	return r
@@ -290,9 +290,10 @@ func (r *Redirect) setFlash() {
 	r.c.ClearCookie(FlashCookieName)
 }
 
-func parseMessage(raw string) (key string, value string) {
+func parseMessage(raw string) (string, string) { //nolint: revive // not necessary
 	if i := findNextNonEscapedCharsetPosition(raw, []byte(CookieDataAssigner)); i != -1 {
 		return RemoveEscapeChar(raw[:i]), RemoveEscapeChar(raw[i+1:])
 	}
+
 	return RemoveEscapeChar(raw), ""
 }

@@ -98,7 +98,7 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) boo
 	return false
 }
 
-func (app *App) nextCustom(c CustomCtx) (bool, error) {
+func (app *App) nextCustom(c CustomCtx) (bool, error) { //nolint: unparam // bool param might be useful for testing
 	// Get stack length
 	tree, ok := app.treeStack[c.getMethodINT()][c.getTreePath()]
 	if !ok {
@@ -204,10 +204,17 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 	// Handler for default ctxs
 	var c CustomCtx
+	var ok bool
 	if app.newCtxFunc != nil {
-		c = app.AcquireCtx().(CustomCtx)
+		c, ok = app.AcquireCtx().(CustomCtx)
+		if !ok {
+			panic(fmt.Errorf("failed to type-assert to CustomCtx"))
+		}
 	} else {
-		c = app.AcquireCtx().(*DefaultCtx)
+		c, ok = app.AcquireCtx().(*DefaultCtx)
+		if !ok {
+			panic(fmt.Errorf("failed to type-assert to *DefaultCtx"))
+		}
 	}
 	c.Reset(rctx)
 	defer app.ReleaseCtx(c)

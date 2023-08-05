@@ -112,7 +112,6 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 	bytebufferpool.Put(buf)
 
 	return nil
-
 }
 
 // run something before returning the handler

@@ -313,7 +313,7 @@ type Ctx interface {
 	SendStream(stream io.Reader, size ...int) error
 
 	// Set sets the response's HTTP header field to the specified key, value.
-	Set(key string, val string)
+	Set(key, val string)
 
 	// Subdomains returns a string slice of subdomains in the domain name of the request.
 	// The subdomain offset, which defaults to 2, is used for determining the beginning of the subdomain segments.

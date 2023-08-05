@@ -145,7 +145,6 @@ func Test_Logger_ErrorTimeZone(t *testing.T) {
 type fakeOutput int
 
 func (o *fakeOutput) Write([]byte) (int, error) {
-	fmt.Print(*o)
 	*o++
 	return 0, errors.New("fake output")
 }

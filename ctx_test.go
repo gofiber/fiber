@@ -616,7 +616,7 @@ func Benchmark_Ctx_Format(b *testing.B) {
 // go test -v -run=^$ -bench=Benchmark_Ctx_Format_HTML -benchmem -count=4
 func Benchmark_Ctx_Format_HTML(b *testing.B) {
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{}) //nolint:errcheck, forcetypeassert // not needed
+	c := app.NewCtx(&fasthttp.RequestCtx{})
 
 	c.Request().Header.Set("Accept", "text/html")
 	b.ReportAllocs()
@@ -633,7 +633,7 @@ func Benchmark_Ctx_Format_HTML(b *testing.B) {
 // go test -v -run=^$ -bench=Benchmark_Ctx_Format_JSON -benchmem -count=4
 func Benchmark_Ctx_Format_JSON(b *testing.B) {
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{}) //nolint:errcheck, forcetypeassert // not needed
+	c := app.NewCtx(&fasthttp.RequestCtx{})
 
 	c.Request().Header.Set("Accept", "application/json")
 	b.ReportAllocs()
@@ -650,7 +650,7 @@ func Benchmark_Ctx_Format_JSON(b *testing.B) {
 // go test -v -run=^$ -bench=Benchmark_Ctx_Format_XML -benchmem -count=4
 func Benchmark_Ctx_Format_XML(b *testing.B) {
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{}) //nolint:errcheck, forcetypeassert // not needed
+	c := app.NewCtx(&fasthttp.RequestCtx{})
 
 	c.Request().Header.Set("Accept", "application/xml")
 	b.ReportAllocs()
@@ -1679,7 +1679,7 @@ func Test_Ctx_Params_Case_Sensitive(t *testing.T) {
 // go test -v -run=^$ -bench=Benchmark_Ctx_Params -benchmem -count=4
 func Benchmark_Ctx_Params(b *testing.B) {
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	c.route = &Route{
 		Params: []string{
@@ -2412,7 +2412,7 @@ func Test_Ctx_JSONP(t *testing.T) {
 // go test -v  -run=^$ -bench=Benchmark_Ctx_JSONP -benchmem -count=4
 func Benchmark_Ctx_JSONP(b *testing.B) {
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	type SomeStruct struct {
 		Name string
@@ -2437,7 +2437,7 @@ func Benchmark_Ctx_JSONP(b *testing.B) {
 func Test_Ctx_XML(t *testing.T) {
 	t.Parallel()
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	require.True(t, c.JSON(complex(1, 1)) != nil)
 
@@ -2470,7 +2470,7 @@ func Test_Ctx_XML(t *testing.T) {
 // go test -run=^$ -bench=Benchmark_Ctx_XML -benchmem -count=4
 func Benchmark_Ctx_XML(b *testing.B) {
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 	type SomeStruct struct {
 		Name string `xml:"Name"`
 		Age  uint8  `xml:"Age"`
@@ -2509,7 +2509,7 @@ func Test_Ctx_Links(t *testing.T) {
 // go test -v  -run=^$ -bench=Benchmark_Ctx_Links -benchmem -count=4
 func Benchmark_Ctx_Links(b *testing.B) {
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -2935,7 +2935,7 @@ func Benchmark_Ctx_Render_Engine(b *testing.B) {
 // go test -v -run=^$ -bench=Benchmark_Ctx_Get_Location_From_Route -benchmem -count=4
 func Benchmark_Ctx_Get_Location_From_Route(b *testing.B) {
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	app.Get("/user/:name", func(c Ctx) error {
 		return c.SendString(c.Params("name"))
@@ -3235,7 +3235,7 @@ func Benchmark_Ctx_Type(b *testing.B) {
 // go test -v  -run=^$ -bench=Benchmark_Ctx_Type_Charset -benchmem -count=4
 func Benchmark_Ctx_Type_Charset(b *testing.B) {
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -3260,7 +3260,7 @@ func Test_Ctx_Vary(t *testing.T) {
 // go test -v  -run=^$ -bench=Benchmark_Ctx_Vary -benchmem -count=4
 func Benchmark_Ctx_Vary(b *testing.B) {
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -3313,7 +3313,7 @@ func Test_Ctx_Writef(t *testing.T) {
 // go test -v -run=^$ -bench=Benchmark_Ctx_Writef -benchmem -count=4
 func Benchmark_Ctx_Writef(b *testing.B) {
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	world := "World!"
 	b.ReportAllocs()

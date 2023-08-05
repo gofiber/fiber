@@ -415,7 +415,7 @@ func Test_Proxy_Do_WithRedirect(t *testing.T) {
 		return Do(c, "https://google.com")
 	})
 
-	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
+	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), 1500)
 	require.Equal(t, nil, err1)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -447,7 +447,7 @@ func Test_Proxy_DoRedirects_TooManyRedirects(t *testing.T) {
 		return DoRedirects(c, "http://google.com", 0)
 	})
 
-	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
+	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), 1500)
 	require.Equal(t, nil, err1)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)

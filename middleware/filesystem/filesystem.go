@@ -169,8 +169,6 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		if err != nil {
-			fmt.Print("test")
-			fmt.Print(err)
 			if errors.Is(err, fs.ErrNotExist) {
 				return c.Status(fiber.StatusNotFound).Next()
 			}

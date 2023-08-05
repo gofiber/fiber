@@ -293,7 +293,7 @@ func (app *App) printMessages(cfg ListenConfig, ln net.Listener) {
 }
 
 // prepareListenData create an slice of ListenData
-func (app *App) prepareListenData(addr string, isTLS bool, cfg ListenConfig) ListenData { //revive:disable-line:flag-parameter // Accepting a bool param named isTLS if fine here
+func (*App) prepareListenData(addr string, isTLS bool, cfg ListenConfig) ListenData { //revive:disable-line:flag-parameter // Accepting a bool param named isTLS if fine here
 	host, port := parseAddr(addr)
 	if host == "" {
 		if cfg.ListenerNetwork == NetworkTCP6 {
@@ -311,7 +311,7 @@ func (app *App) prepareListenData(addr string, isTLS bool, cfg ListenConfig) Lis
 }
 
 // startupMessage prepares the startup message with the handler number, port, address and other information
-func (app *App) startupMessage(addr string, enableTLS bool, pids string, cfg ListenConfig) { //nolint:revive TODO: Check CertKeyFile instead of control-flag.
+func (app *App) startupMessage(addr string, isTLS bool, pids string, cfg ListenConfig) { //nolint: revive // Accepting a bool param named isTLS if fine here
 	// ignore child processes
 	if IsChild() {
 		return
@@ -330,7 +330,7 @@ func (app *App) startupMessage(addr string, enableTLS bool, pids string, cfg Lis
 	}
 
 	scheme := schemeHTTP
-	if enableTLS {
+	if isTLS {
 		scheme = schemeHTTPS
 	}
 
