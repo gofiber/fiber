@@ -6,9 +6,11 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
+
 	"github.com/valyala/fasthttp"
 )
 
@@ -131,16 +133,53 @@ func Forward(addr string, clients ...*fasthttp.Client) fiber.Handler {
 // Do performs the given http request and fills the given http response.
 // This method can be used within a fiber.Handler
 func Do(c fiber.Ctx, addr string, clients ...*fasthttp.Client) error {
+	return doAction(c, addr, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response) error {
+		return cli.Do(req, resp)
+	}, clients...)
+}
+
+// DoRedirects performs the given http request and fills the given http response, following up to maxRedirectsCount redirects.
+// When the redirect count exceeds maxRedirectsCount, ErrTooManyRedirects is returned.
+// This method can be used within a fiber.Handler
+func DoRedirects(c fiber.Ctx, addr string, maxRedirectsCount int, clients ...*fasthttp.Client) error {
+	return doAction(c, addr, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response) error {
+		return cli.DoRedirects(req, resp, maxRedirectsCount)
+	}, clients...)
+}
+
+// DoDeadline performs the given request and waits for response until the given deadline.
+// This method can be used within a fiber.Handler
+func DoDeadline(c fiber.Ctx, addr string, deadline time.Time, clients ...*fasthttp.Client) error {
+	return doAction(c, addr, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response) error {
+		return cli.DoDeadline(req, resp, deadline)
+	}, clients...)
+}
+
+// DoTimeout performs the given request and waits for response during the given timeout duration.
+// This method can be used within a fiber.Handler
+func DoTimeout(c fiber.Ctx, addr string, timeout time.Duration, clients ...*fasthttp.Client) error {
+	return doAction(c, addr, func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response) error {
+		return cli.DoTimeout(req, resp, timeout)
+	}, clients...)
+}
+
+func doAction(
+	c fiber.Ctx,
+	addr string,
+	action func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response) error,
+	clients ...*fasthttp.Client,
+) error {
 	var cli *fasthttp.Client
+
+	// set local or global client
 	if len(clients) != 0 {
-		// Set local client
 		cli = clients[0]
 	} else {
-		// Set global client
 		lock.RLock()
 		cli = client
 		lock.RUnlock()
 	}
+
 	req := c.Request()
 	res := c.Response()
 	originalURL := utils.CopyString(c.OriginalURL())
@@ -149,14 +188,13 @@ func Do(c fiber.Ctx, addr string, clients ...*fasthttp.Client) error {
 	copiedURL := utils.CopyString(addr)
 	req.SetRequestURI(copiedURL)
 	// NOTE: if req.isTLS is true, SetRequestURI keeps the scheme as https.
-	// issue reference:
-	// https://github.com/gofiber/fiber/issues/1762
+	// Reference: https://github.com/gofiber/fiber/issues/1762
 	if scheme := getScheme(utils.UnsafeBytes(copiedURL)); len(scheme) > 0 {
 		req.URI().SetSchemeBytes(scheme)
 	}
 
 	req.Header.Del(fiber.HeaderConnection)
-	if err := cli.Do(req, res); err != nil {
+	if err := action(cli, req, res); err != nil {
 		return err
 	}
 	res.Header.Del(fiber.HeaderConnection)

@@ -237,6 +237,29 @@ type Ctx interface {
 	//	QueryInt("id") == 0
 	QueryInt(key string, defaultValue ...int) int
 
+	// QueryBool returns bool value of key string parameter in the url.
+	// Default to empty or invalid key is true.
+	//
+	//	Get /?name=alex&want_pizza=false&id=
+	//	QueryBool("want_pizza") == false
+	//	QueryBool("want_pizza", true) == false
+	//	QueryBool("name") == false
+	//	QueryBool("name", true) == true
+	//	QueryBool("id") == false
+	//	QueryBool("id", true) == true
+	QueryBool(key string, defaultValue ...bool) bool
+
+	// QueryFloat returns float64 value of key string parameter in the url.
+	// Default to empty or invalid key is 0.
+	//
+	//	GET /?name=alex&amount=32.23&id=
+	//	QueryFloat("amount") = 32.23
+	//	QueryFloat("amount", 3) = 32.23
+	//	QueryFloat("name", 1) = 1
+	//	QueryFloat("name") = 0
+	//	QueryFloat("id", 3) = 3
+	QueryFloat(key string, defaultValue ...float64) float64
+
 	// Range returns a struct containing the type and a slice of ranges.
 	Range(size int) (rangeData Range, err error)
 

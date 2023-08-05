@@ -47,10 +47,10 @@ func TestEnvVarHandler(t *testing.T) {
 	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://localhost/envvars", nil)
 	require.NoError(t, err)
 	resp, err := app.Test(req)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 
 	respBody, err := io.ReadAll(resp.Body)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 
 	require.Equal(t, expectedEnvVarResponse, respBody)
 }
@@ -69,10 +69,10 @@ func TestEnvVarHandlerNotMatched(t *testing.T) {
 	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://localhost/another-path", nil)
 	require.NoError(t, err)
 	resp, err := app.Test(req)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 
 	respBody, err := io.ReadAll(resp.Body)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 
 	require.Equal(t, []byte("OK"), respBody)
 }
@@ -86,10 +86,10 @@ func TestEnvVarHandlerDefaultConfig(t *testing.T) {
 	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://localhost/envvars", nil)
 	require.NoError(t, err)
 	resp, err := app.Test(req)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 
 	respBody, err := io.ReadAll(resp.Body)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 
 	var envVars EnvVar
 	require.Equal(t, nil, json.Unmarshal(respBody, &envVars))
@@ -104,7 +104,7 @@ func TestEnvVarHandlerMethod(t *testing.T) {
 	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodPost, "http://localhost/envvars", nil)
 	require.NoError(t, err)
 	resp, err := app.Test(req)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusMethodNotAllowed, resp.StatusCode)
 }
 
@@ -133,10 +133,10 @@ func TestEnvVarHandlerSpecialValue(t *testing.T) {
 	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://localhost/envvars/export", nil)
 	require.NoError(t, err)
 	resp, err = app.Test(req)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 
 	respBody, err = io.ReadAll(resp.Body)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 
 	var envVarsExport EnvVar
 	require.Equal(t, nil, json.Unmarshal(respBody, &envVarsExport))

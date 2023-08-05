@@ -18,8 +18,6 @@ var mu sync.Mutex
 
 // default logger for fiber
 func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
-	var err error
-
 	// Alias colors
 	colors := c.App().Config().ColorScheme
 
@@ -27,25 +25,40 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 	buf := bytebufferpool.Get()
 
 	// Default output when no custom Format or io.Writer is given
-	if cfg.enableColors && cfg.Format == defaultFormat {
+	if cfg.Format == defaultFormat {
 		// Format error if exist
 		formatErr := ""
-		if data.ChainErr != nil {
-			formatErr = colors.Red + " | " + data.ChainErr.Error() + colors.Reset
+		if cfg.enableColors {
+			if data.ChainErr != nil {
+				formatErr = colors.Red + " | " + data.ChainErr.Error() + colors.Reset
+			}
+			_, _ = buf.WriteString( //nolint:errcheck // This will never fail
+				fmt.Sprintf("%s |%s %3d %s| %7v | %15s |%s %-7s %s| %-"+data.ErrPaddingStr+"s %s\n",
+					data.Timestamp.Load().(string),
+					statusColor(c.Response().StatusCode(), colors), c.Response().StatusCode(), colors.Reset,
+					data.Stop.Sub(data.Start).Round(time.Millisecond),
+					c.IP(),
+					methodColor(c.Method(), colors), c.Method(), colors.Reset,
+					c.Path(),
+					formatErr,
+				),
+			)
+		} else {
+			if data.ChainErr != nil {
+				formatErr = " | " + data.ChainErr.Error()
+			}
+			_, _ = buf.WriteString( //nolint:errcheck // This will never fail
+				fmt.Sprintf("%s | %3d | %7v | %15s | %-7s | %-"+data.ErrPaddingStr+"s %s\n",
+					data.Timestamp.Load().(string),
+					c.Response().StatusCode(),
+					data.Stop.Sub(data.Start).Round(time.Millisecond),
+					c.IP(),
+					c.Method(),
+					c.Path(),
+					formatErr,
+				),
+			)
 		}
-
-		// Format log to buffer
-		_, _ = buf.WriteString( //nolint:errcheck // This will never fail
-			fmt.Sprintf("%s |%s %3d %s| %7v | %15s |%s %-7s %s| %-"+data.ErrPaddingStr+"s %s\n",
-				data.Timestamp.Load().(string),
-				statusColor(c.Response().StatusCode(), colors), c.Response().StatusCode(), colors.Reset,
-				data.Stop.Sub(data.Start).Round(time.Millisecond),
-				c.IP(),
-				methodColor(c.Method(), colors), c.Method(), colors.Reset,
-				c.Path(),
-				formatErr,
-			),
-		)
 
 		// Write buffer to output
 		_, _ = cfg.Output.Write(buf.Bytes()) //nolint:errcheck // This will never fail
@@ -61,6 +74,7 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 		return nil
 	}
 
+	var err error
 	// Loop over template parts execute dynamic parts and add fixed parts to the buffer
 	for i, logFunc := range data.LogFuncChain {
 		if logFunc == nil {
@@ -98,6 +112,7 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 	bytebufferpool.Put(buf)
 
 	return nil
+
 }
 
 // run something before returning the handler

@@ -12,12 +12,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// go test -run Test_Timeout
-func Test_Timeout(t *testing.T) {
+// go test -run Test_WithContextTimeout
+func Test_WithContextTimeout(t *testing.T) {
 	t.Parallel()
 	// fiber instance
 	app := fiber.New()
-	h := New(func(c fiber.Ctx) error {
+	h := NewWithContext(func(c fiber.Ctx) error {
 		sleepTime, err := time.ParseDuration(c.Params("sleepTime") + "ms")
 		require.NoError(t, err)
 		if err := sleepWithContext(c.UserContext(), sleepTime, context.DeadlineExceeded); err != nil {
@@ -44,12 +44,12 @@ func Test_Timeout(t *testing.T) {
 
 var ErrFooTimeOut = errors.New("foo context canceled")
 
-// go test -run Test_TimeoutWithCustomError
-func Test_TimeoutWithCustomError(t *testing.T) {
+// go test -run Test_WithContextTimeoutWithCustomError
+func Test_WithContextTimeoutWithCustomError(t *testing.T) {
 	t.Parallel()
 	// fiber instance
 	app := fiber.New()
-	h := New(func(c fiber.Ctx) error {
+	h := NewWithContext(func(c fiber.Ctx) error {
 		sleepTime, err := time.ParseDuration(c.Params("sleepTime") + "ms")
 		require.NoError(t, err)
 		if err := sleepWithContext(c.UserContext(), sleepTime, ErrFooTimeOut); err != nil {

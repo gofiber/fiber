@@ -647,6 +647,14 @@ func (*readErrorConn) RemoteAddr() net.Addr {
 	return nil
 }
 
+func (*readErrorConn) SetReadDeadline(_ time.Time) error {
+	return nil
+}
+
+func (*readErrorConn) SetWriteDeadline(_ time.Time) error {
+	return nil
+}
+
 func Test_Client_Agent_RetryIf(t *testing.T) {
 	t.Parallel()
 

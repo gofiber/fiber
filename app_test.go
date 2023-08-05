@@ -23,6 +23,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gofiber/utils/v2"
+
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttputil"
@@ -249,7 +251,7 @@ func Test_App_ErrorHandler_RouteStack(t *testing.T) {
 	require.Equal(t, 500, resp.StatusCode, "Status code")
 
 	body, err := io.ReadAll(resp.Body)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, "1: USE error", string(body))
 }
 
@@ -262,6 +264,20 @@ func Test_App_serverErrorHandler_Internal_Error(t *testing.T) {
 	app.serverErrorHandler(c.fasthttp, errors.New(msg))
 	require.Equal(t, string(c.fasthttp.Response.Body()), msg)
 	require.Equal(t, c.fasthttp.Response.StatusCode(), StatusBadRequest)
+}
+
+func Test_App_serverErrorHandler_Network_Error(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+
+	app.serverErrorHandler(c.fasthttp, &net.DNSError{
+		Err:       "test error",
+		Name:      "test host",
+		IsTimeout: false,
+	})
+	require.Equal(t, string(c.fasthttp.Response.Body()), utils.StatusMessage(StatusBadGateway))
+	require.Equal(t, c.fasthttp.Response.StatusCode(), StatusBadGateway)
 }
 
 func Test_App_Nested_Params(t *testing.T) {
@@ -777,6 +793,53 @@ func Test_App_ShutdownWithTimeout(t *testing.T) {
 	timer := time.NewTimer(time.Second * 5)
 	select {
 	case <-timer.C:
+		t.Fatal("idle connections not closed on shutdown")
+	case err := <-shutdownErr:
+		if err == nil || !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("unexpected err %v. Expecting %v", err, context.DeadlineExceeded)
+		}
+	}
+}
+
+func Test_App_ShutdownWithContext(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/", func(ctx Ctx) error {
+		time.Sleep(5 * time.Second)
+		return ctx.SendString("body")
+	})
+
+	ln := fasthttputil.NewInmemoryListener()
+
+	go func() {
+		require.Equal(t, nil, app.Listener(ln))
+	}()
+
+	time.Sleep(1 * time.Second)
+
+	go func() {
+		conn, err := ln.Dial()
+		if err != nil {
+			t.Errorf("unexepcted error: %v", err)
+		}
+
+		if _, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: google.com\r\n\r\n")); err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	}()
+
+	time.Sleep(1 * time.Second)
+
+	shutdownErr := make(chan error)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
+		shutdownErr <- app.ShutdownWithContext(ctx)
+	}()
+
+	select {
+	case <-time.After(5 * time.Second):
 		t.Fatal("idle connections not closed on shutdown")
 	case err := <-shutdownErr:
 		if err == nil || !errors.Is(err, context.DeadlineExceeded) {
@@ -1322,7 +1385,7 @@ func Test_Test_Timeout(t *testing.T) {
 		return nil
 	})
 
-	_, err = app.Test(httptest.NewRequest(MethodGet, "/timeout", nil), 20*time.Millisecond)
+	_, err = app.Test(httptest.NewRequest(MethodGet, "/timeout", nil), 20)
 	require.True(t, err != nil, "app.Test(req)")
 }
 
@@ -1534,13 +1597,13 @@ func Test_App_New_Test_Parallel(t *testing.T) {
 		t.Parallel()
 		app := New(Config{Immutable: true})
 		_, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
-		require.Equal(t, nil, err)
+		require.NoError(t, err)
 	})
 	t.Run("Test_App_New_Test_Parallel_2", func(t *testing.T) {
 		t.Parallel()
 		app := New(Config{Immutable: true})
 		_, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
-		require.Equal(t, nil, err)
+		require.NoError(t, err)
 	})
 }
 
@@ -1696,5 +1759,64 @@ func TestApp_GetRoutes(t *testing.T) {
 		name, ok := methodMap[route.Path]
 		require.Equal(t, true, ok)
 		require.Equal(t, name, route.Name)
+	}
+}
+
+func Test_Middleware_Route_Naming_With_Use(t *testing.T) {
+	named := "named"
+	app := New()
+
+	app.Get("/unnamed", func(c Ctx) error {
+		return c.Next()
+	})
+
+	app.Post("/named", func(c Ctx) error {
+		return c.Next()
+	}).Name(named)
+
+	app.Use(func(c Ctx) error {
+		return c.Next()
+	}) // no name - logging MW
+
+	app.Use(func(c Ctx) error {
+		return c.Next()
+	}).Name("corsMW")
+
+	app.Use(func(c Ctx) error {
+		return c.Next()
+	}).Name("compressMW")
+
+	app.Use(func(c Ctx) error {
+		return c.Next()
+	}) // no name - cache MW
+
+	grp := app.Group("/pages").Name("pages.")
+	grp.Use(func(c Ctx) error {
+		return c.Next()
+	}).Name("csrfMW")
+
+	grp.Get("/home", func(c Ctx) error {
+		return c.Next()
+	}).Name("home")
+
+	grp.Get("/unnamed", func(c Ctx) error {
+		return c.Next()
+	})
+
+	for _, route := range app.GetRoutes() {
+		switch route.Path {
+		case "/":
+			require.Equal(t, "compressMW", route.Name)
+		case "/unnamed":
+			require.Equal(t, "", route.Name)
+		case "named":
+			require.Equal(t, named, route.Name)
+		case "/pages":
+			require.Equal(t, "pages.csrfMW", route.Name)
+		case "/pages/home":
+			require.Equal(t, "pages.home", route.Name)
+		case "/pages/unnamed":
+			require.Equal(t, "", route.Name)
+		}
 	}
 }

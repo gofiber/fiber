@@ -1,11 +1,9 @@
-// 🚀 Fiber is an Express inspired web framework written in Go with 💖
-// 📌 API Documentation: https://fiber.wiki
-// 📝 Github Repository: https://github.com/gofiber/fiber
 // Special thanks to Echo: https://github.com/labstack/echo/blob/master/middleware/key_auth.go
 package keyauth
 
 import (
 	"errors"
+	"net/url"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
@@ -14,99 +12,36 @@ import (
 // When there is no request of the key thrown ErrMissingOrMalformedAPIKey
 var ErrMissingOrMalformedAPIKey = errors.New("missing or malformed API Key")
 
-type Config struct {
-	// Filter defines a function to skip middleware.
-	// Optional. Default: nil
-	Filter func(fiber.Ctx) bool
+const (
+	query  = "query"
+	form   = "form"
+	param  = "param"
+	cookie = "cookie"
+)
 
-	// SuccessHandler defines a function which is executed for a valid key.
-	// Optional. Default: nil
-	SuccessHandler fiber.Handler
-
-	// ErrorHandler defines a function which is executed for an invalid key.
-	// It may be used to define a custom error.
-	// Optional. Default: 401 Invalid or expired key
-	ErrorHandler fiber.ErrorHandler
-
-	// KeyLookup is a string in the form of "<source>:<name>" that is used
-	// to extract key from the request.
-	// Optional. Default value "header:Authorization".
-	// Possible values:
-	// - "header:<name>"
-	// - "query:<name>"
-	// - "form:<name>"
-	// - "param:<name>"
-	// - "cookie:<name>"
-	KeyLookup string
-
-	// AuthScheme to be used in the Authorization header.
-	// Optional. Default value "Bearer".
-	AuthScheme string
-
-	// Validator is a function to validate key.
-	// Optional. Default: nil
-	Validator func(fiber.Ctx, string) (bool, error)
-
-	// Context key to store the bearertoken from the token into context.
-	// Optional. Default: "token".
-	ContextKey string
-}
-
-// New ...
+// New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Init config
-	var cfg Config
-	if len(config) > 0 {
-		cfg = config[0]
-	}
-
-	if cfg.SuccessHandler == nil {
-		cfg.SuccessHandler = func(c fiber.Ctx) error {
-			return c.Next()
-		}
-	}
-	if cfg.ErrorHandler == nil {
-		cfg.ErrorHandler = func(c fiber.Ctx, err error) error {
-			if errors.Is(err, ErrMissingOrMalformedAPIKey) {
-				return c.Status(fiber.StatusBadRequest).SendString(err.Error())
-			}
-			return c.Status(fiber.StatusUnauthorized).SendString("Invalid or expired API Key")
-		}
-	}
-	if cfg.KeyLookup == "" {
-		cfg.KeyLookup = "header:" + fiber.HeaderAuthorization
-		// set AuthScheme as "Bearer" only if KeyLookup is set to default.
-		if cfg.AuthScheme == "" {
-			cfg.AuthScheme = "Bearer"
-		}
-	}
-	if cfg.Validator == nil {
-		cfg.Validator = func(c fiber.Ctx, t string) (bool, error) {
-			return true, nil
-		}
-	}
-	if cfg.ContextKey == "" {
-		cfg.ContextKey = "token"
-	}
+	cfg := configDefault(config...)
 
 	// Initialize
 	parts := strings.Split(cfg.KeyLookup, ":")
 	extractor := keyFromHeader(parts[1], cfg.AuthScheme)
 	switch parts[0] {
-	case "query":
+	case query:
 		extractor = keyFromQuery(parts[1])
-	case "form":
+	case form:
 		extractor = keyFromForm(parts[1])
-	case "param":
+	case param:
 		extractor = keyFromParam(parts[1])
-	case "cookie":
+	case cookie:
 		extractor = keyFromCookie(parts[1])
 	}
 
 	// Return middleware handler
 	return func(c fiber.Ctx) error {
 		// Filter request to skip middleware
-		if cfg.Filter != nil && cfg.Filter(c) {
+		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()
 		}
 
@@ -127,7 +62,7 @@ func New(config ...Config) fiber.Handler {
 }
 
 // keyFromHeader returns a function that extracts api key from the request header.
-func keyFromHeader(header string, authScheme string) func(c fiber.Ctx) (string, error) {
+func keyFromHeader(header, authScheme string) func(c fiber.Ctx) (string, error) {
 	return func(c fiber.Ctx) (string, error) {
 		auth := c.Get(header)
 		l := len(authScheme)
@@ -166,8 +101,8 @@ func keyFromForm(param string) func(c fiber.Ctx) (string, error) {
 // keyFromParam returns a function that extracts api key from the url param string.
 func keyFromParam(param string) func(c fiber.Ctx) (string, error) {
 	return func(c fiber.Ctx) (string, error) {
-		key := c.Params(param)
-		if key == "" {
+		key, err := url.PathUnescape(c.Params(param))
+		if err != nil {
 			return "", ErrMissingOrMalformedAPIKey
 		}
 		return key, nil

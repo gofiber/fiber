@@ -46,7 +46,7 @@ type routeSegment struct {
 
 // different special routing signs
 const (
-	wildcardParam                byte = '*'  // indicates a optional greedy parameter
+	wildcardParam                byte = '*'  // indicates an optional greedy parameter
 	plusParam                    byte = '+'  // indicates a required greedy parameter
 	optionalParam                byte = '?'  // concludes a parameter by name and makes it optional
 	paramStarterChar             byte = ':'  // start character for a parameter with name
@@ -139,7 +139,7 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 
 	patternPretty := pattern
 
-	// Case sensitive routing, all to lowercase
+	// Case-sensitive routing, all to lowercase
 	if !config.CaseSensitive {
 		patternPretty = utils.ToLower(patternPretty)
 		path = utils.ToLower(path)
@@ -229,7 +229,7 @@ func addParameterMetaInfo(segs []*routeSegment) []*routeSegment {
 		// check how often the compare part is in the following const parts
 		if segs[i].IsParam {
 			// check if parameter segments are directly after each other and if one of them is greedy
-			// in case the next parameter or the current parameter is not a wildcard its not greedy, we only want one character
+			// in case the next parameter or the current parameter is not a wildcard it's not greedy, we only want one character
 			if segLen > i+1 && !segs[i].IsGreedy && segs[i+1].IsParam && !segs[i+1].IsGreedy {
 				segs[i].Length = 1
 			}
@@ -484,7 +484,7 @@ func (routeParser *routeParser) getMatch(detectionPath, path string, params *[ma
 		if !segment.IsParam {
 			i = segment.Length
 			// is optional part or the const part must match with the given string
-			// check if the end of the segment is a optional slash
+			// check if the end of the segment is an optional slash
 			if segment.HasOptionalSlash && partLen == i-1 && detectionPath == segment.Const[:i-1] {
 				i--
 			} else if !(i <= partLen && detectionPath[:i] == segment.Const) {

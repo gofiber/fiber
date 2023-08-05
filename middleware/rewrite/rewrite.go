@@ -1,7 +1,3 @@
-// 🚀 Fiber is an Express inspired web framework written in Go with 💖
-// 📌 API Documentation: https://fiber.wiki
-// 📝 Github Repository: https://github.com/gofiber/fiber
-
 package rewrite
 
 import (
@@ -12,43 +8,12 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-// Config ...
-type Config struct {
-	// Filter defines a function to skip middleware.
-	// Optional. Default: nil
-	Filter func(fiber.Ctx) bool
-	// Rules defines the URL path rewrite rules. The values captured in asterisk can be
-	// retrieved by index e.g. $1, $2 and so on.
-	// Required. Example:
-	// "/old":              "/new",
-	// "/api/*":            "/$1",
-	// "/js/*":             "/public/javascripts/$1",
-	// "/users/*/orders/*": "/user/$1/order/$2",
-	Rules map[string]string
-	// // Redirect determns if the client should be redirected
-	// // By default this is disabled and urls are rewritten on the server
-	// // Optional. Default: false
-	// Redirect bool
-	// // The status code when redirecting
-	// // This is ignored if Redirect is disabled
-	// // Optional. Default: 302 Temporary Redirect
-	// StatusCode int
-	rulesRegex map[*regexp.Regexp]string
-}
-
-// New ...
+// New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
-	// Init config
-	var cfg Config
-	if len(config) > 0 {
-		cfg = config[0]
-	}
-	// if cfg.StatusCode == 0 {
-	// 	cfg.StatusCode = 302 // Temporary Redirect
-	// }
-	cfg = config[0]
-	cfg.rulesRegex = map[*regexp.Regexp]string{}
+	cfg := configDefault(config...)
+
 	// Initialize
+	cfg.rulesRegex = map[*regexp.Regexp]string{}
 	for k, v := range cfg.Rules {
 		k = strings.ReplaceAll(k, "*", "(.*)")
 		k += "$"
@@ -56,8 +21,8 @@ func New(config ...Config) fiber.Handler {
 	}
 	// Middleware function
 	return func(c fiber.Ctx) error {
-		// Filter request to skip middleware
-		if cfg.Filter != nil && cfg.Filter(c) {
+		// Next request to skip middleware
+		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()
 		}
 		// Rewrite

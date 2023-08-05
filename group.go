@@ -11,17 +11,26 @@ import (
 
 // Group struct
 type Group struct {
-	app         *App
-	parentGroup *Group
-	name        string
+	app             *App
+	parentGroup     *Group
+	name            string
+	anyRouteDefined bool
 
 	Prefix string
 }
 
-// Name Assign name to specific route.
+// Name Assign name to specific route or group itself.
+//
+// If this method is used before any route added to group, it'll set group name and OnGroupNameHook will be used.
+// Otherwise, it'll set route name and OnName hook will be used.
 func (grp *Group) Name(name string) Router {
-	grp.app.mutex.Lock()
+	if grp.anyRouteDefined {
+		grp.app.Name(name)
 
+		return grp
+	}
+
+	grp.app.mutex.Lock()
 	if grp.parentGroup != nil {
 		grp.name = grp.parentGroup.name + name
 	} else {
@@ -91,6 +100,10 @@ func (grp *Group) Use(args ...any) Router {
 		grp.app.register([]string{methodUse}, getGroupPath(grp.Prefix, prefix), grp, nil, handlers...)
 	}
 
+	if !grp.anyRouteDefined {
+		grp.anyRouteDefined = true
+	}
+
 	return grp
 }
 
@@ -149,12 +162,22 @@ func (grp *Group) Patch(path string, handler Handler, middleware ...Handler) Rou
 
 // Add allows you to specify multiple HTTP methods to register a route.
 func (grp *Group) Add(methods []string, path string, handler Handler, middleware ...Handler) Router {
-	return grp.app.register(methods, getGroupPath(grp.Prefix, path), grp, handler, middleware...)
+	grp.app.register(methods, getGroupPath(grp.Prefix, path), grp, handler, middleware...)
+	if !grp.anyRouteDefined {
+		grp.anyRouteDefined = true
+	}
+
+	return grp
 }
 
 // Static will create a file server serving static files
 func (grp *Group) Static(prefix, root string, config ...Static) Router {
-	return grp.app.registerStatic(getGroupPath(grp.Prefix, prefix), root, config...)
+	grp.app.registerStatic(getGroupPath(grp.Prefix, prefix), root, config...)
+	if !grp.anyRouteDefined {
+		grp.anyRouteDefined = true
+	}
+
+	return grp
 }
 
 // All will register the handler on all HTTP methods
@@ -170,7 +193,7 @@ func (grp *Group) All(path string, handler Handler, middleware ...Handler) Route
 func (grp *Group) Group(prefix string, handlers ...Handler) Router {
 	prefix = getGroupPath(grp.Prefix, prefix)
 	if len(handlers) > 0 {
-		_ = grp.app.register([]string{methodUse}, prefix, grp, nil, handlers...)
+		grp.app.register([]string{methodUse}, prefix, grp, nil, handlers...)
 	}
 
 	// Create new group

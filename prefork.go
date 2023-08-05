@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"os/exec"
@@ -14,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/gofiber/fiber/v2/log"
 	"github.com/valyala/fasthttp/reuseport"
 )
 
@@ -84,7 +84,7 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg ListenConfig) er
 		for _, proc := range childs {
 			if err := proc.Process.Kill(); err != nil {
 				if !errors.Is(err, os.ErrProcessDone) {
-					log.Printf("prefork: failed to kill child: %v\n", err)
+					log.Errorf("prefork: failed to kill child: %v", err)
 				}
 			}
 		}
@@ -133,6 +133,10 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg ListenConfig) er
 			channel <- child{pid, cmd.Wait()}
 		}()
 	}
+
+	// Run onListen hooks
+	// Hooks have to be run here as different as non-prefork mode due to they should run as child or master
+	app.runOnListenHooks(app.prepareListenData(addr, tlsConfig != nil, cfg))
 
 	// Print startup message
 	if !cfg.DisableStartupMessage {

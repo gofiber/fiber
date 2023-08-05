@@ -43,6 +43,10 @@ func Test_Ctx_Accepts(t *testing.T) {
 	require.Equal(t, "", c.Accepts())
 	require.Equal(t, ".xml", c.Accepts(".xml"))
 	require.Equal(t, "", c.Accepts(".john"))
+	require.Equal(t, "application/xhtml+xml", c.Accepts("application/xml", "application/xml+rss", "application/yaml", "application/xhtml+xml"), "must use client-preferred mime type")
+
+	c.Request().Header.Set(HeaderAccept, "application/json, text/plain, */*;q=0")
+	require.Equal(t, "", c.Accepts("html"), "must treat */*;q=0 as not acceptable")
 
 	c.Request().Header.Set(HeaderAccept, "text/*, application/json")
 	require.Equal(t, "html", c.Accepts("html"))
@@ -62,16 +66,29 @@ func Test_Ctx_Accepts(t *testing.T) {
 // go test -v -run=^$ -bench=Benchmark_Ctx_Accepts -benchmem -count=4
 func Benchmark_Ctx_Accepts(b *testing.B) {
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	c.Request().Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9")
-	var res string
-	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		res = c.Accepts(".xml")
+	acceptHeader := "text/html,application/xhtml+xml,application/xml;q=0.9"
+	c.Request().Header.Set("Accept", acceptHeader)
+	acceptValues := [][]string{
+		{".xml"},
+		{"json", "xml"},
+		{"application/json", "application/xml"},
 	}
-	require.Equal(b, ".xml", res)
+	expectedResults := []string{".xml", "xml", "application/xml"}
+
+	for i := 0; i < len(acceptValues); i++ {
+		b.Run(fmt.Sprintf("run-%#v", acceptValues[i]), func(bb *testing.B) {
+			var res string
+			bb.ReportAllocs()
+			bb.ResetTimer()
+
+			for n := 0; n < bb.N; n++ {
+				res = c.Accepts(acceptValues[i]...)
+			}
+			require.Equal(bb, expectedResults[i], res)
+		})
+	}
 }
 
 type customCtx struct {
@@ -493,6 +510,14 @@ func Test_Ctx_Cookie(t *testing.T) {
 	cookie.SessionOnly = true
 	cookie.Expires = expire
 	cookie.MaxAge = 10000
+	c.Cookie(cookie)
+	require.Equal(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
+
+	expect = "username=john; path=/; secure; SameSite=None"
+	// should remove expires and max-age headers when no expire and no MaxAge (default time)
+	cookie.SessionOnly = false
+	cookie.Expires = time.Time{}
+	cookie.MaxAge = 0
 	c.Cookie(cookie)
 	require.Equal(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
 }
@@ -1647,7 +1672,7 @@ func Test_Ctx_Params_Case_Sensitive(t *testing.T) {
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2/first/second", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
@@ -1903,6 +1928,36 @@ func Test_Ctx_QueryInt(t *testing.T) {
 	require.Equal(t, 1, c.QueryInt("search", 1))
 	require.Equal(t, 0, c.QueryInt("id"))
 	require.Equal(t, 2, c.QueryInt("id", 2))
+}
+
+func Test_Ctx_QueryBool(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	c.Request().URI().SetQueryString("name=alex&want_pizza=false&id=")
+
+	require.Equal(t, false, c.QueryBool("want_pizza"))
+	require.Equal(t, false, c.QueryBool("want_pizza", true))
+	require.Equal(t, false, c.QueryBool("name"))
+	require.Equal(t, true, c.QueryBool("name", true))
+	require.Equal(t, false, c.QueryBool("id"))
+	require.Equal(t, true, c.QueryBool("id", true))
+}
+
+func Test_Ctx_QueryFloat(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	c.Request().URI().SetQueryString("name=alex&amount=32.23&id=")
+
+	require.Equal(t, 32.23, c.QueryFloat("amount"))
+	require.Equal(t, 32.23, c.QueryFloat("amount", 3.123))
+	require.Equal(t, 87.123, c.QueryFloat("name", 87.123))
+	require.Equal(t, float64(0), c.QueryFloat("name"))
+	require.Equal(t, 12.87, c.QueryFloat("id", 12.87))
+	require.Equal(t, float64(0), c.QueryFloat("id"))
 }
 
 // go test -run Test_Ctx_Range
@@ -2610,7 +2665,7 @@ func Test_Ctx_RenderWithOverwrittenBind(t *testing.T) {
 	_, _ = buf.WriteString("overwrite") //nolint:errcheck // This will never fail
 	defer bytebufferpool.Put(buf)
 
-	require.Equal(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
+	require.Equal(t, "<h1>Hello from Fiber!</h1>", string(c.Response().Body()))
 }
 
 func Test_Ctx_RenderWithBindVarsLocals(t *testing.T) {
@@ -3474,16 +3529,16 @@ func TestCtx_ParamsInt(t *testing.T) {
 	})
 
 	_, err := app.Test(httptest.NewRequest(MethodGet, "/test/1111", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 
 	_, err = app.Test(httptest.NewRequest(MethodGet, "/testnoint/xd", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 
 	_, err = app.Test(httptest.NewRequest(MethodGet, "/testignoredefault/2222", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 
 	_, err = app.Test(httptest.NewRequest(MethodGet, "/testdefault/xd", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 }
 
 // go test -run Test_Ctx_GetRespHeader

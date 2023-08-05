@@ -196,8 +196,12 @@ func (s *Session) setSession() {
 		fcookie.SetValue(s.id)
 		fcookie.SetPath(s.config.CookiePath)
 		fcookie.SetDomain(s.config.CookieDomain)
-		fcookie.SetMaxAge(int(s.exp.Seconds()))
-		fcookie.SetExpire(time.Now().Add(s.exp))
+		// Cookies are also session cookies if they do not specify the Expires or Max-Age attribute.
+		// refer: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie
+		if !s.config.CookieSessionOnly {
+			fcookie.SetMaxAge(int(s.exp.Seconds()))
+			fcookie.SetExpire(time.Now().Add(s.exp))
+		}
 		fcookie.SetSecure(s.config.CookieSecure)
 		fcookie.SetHTTPOnly(s.config.CookieHTTPOnly)
 

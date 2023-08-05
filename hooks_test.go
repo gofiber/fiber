@@ -138,6 +138,9 @@ func Test_Hook_OnGroupName(t *testing.T) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
+	buf2 := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf2)
+
 	app.Hooks().OnGroupName(func(g Group) error {
 		_, err := buf.WriteString(g.name)
 		require.NoError(t, nil, err)
@@ -145,11 +148,19 @@ func Test_Hook_OnGroupName(t *testing.T) {
 		return nil
 	})
 
+	app.Hooks().OnName(func(r Route) error {
+		_, err := buf2.WriteString(r.Name)
+		require.NoError(t, err)
+
+		return nil
+	})
+
 	grp := app.Group("/x").Name("x.")
-	grp.Get("/test", testSimpleHandler)
+	grp.Get("/test", testSimpleHandler).Name("test")
 	grp.Get("/test2", testSimpleHandler)
 
 	require.Equal(t, "x.", buf.String())
+	require.Equal(t, "x.test", buf2.String())
 }
 
 func Test_Hook_OnGroupName_Error(t *testing.T) {
@@ -195,7 +206,30 @@ func Test_Hook_OnListen(t *testing.T) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	app.Hooks().OnListen(func() error {
+	app.Hooks().OnListen(func(listenData ListenData) error {
+		_, err := buf.WriteString("ready")
+		require.NoError(t, err)
+
+		return nil
+	})
+
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+		require.Equal(t, nil, app.Shutdown())
+	}()
+	require.Equal(t, nil, app.Listen(":9000"))
+
+	require.Equal(t, "ready", buf.String())
+}
+
+func Test_Hook_OnListenPrefork(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app.Hooks().OnListen(func(listenData ListenData) error {
 		_, err := buf.WriteString("ready")
 		require.NoError(t, nil, err)
 
@@ -207,7 +241,7 @@ func Test_Hook_OnListen(t *testing.T) {
 		require.Nil(t, app.Shutdown())
 	}()
 
-	require.Nil(t, app.Listen(":9000", ListenConfig{DisableStartupMessage: true}))
+	require.Nil(t, app.Listen(":9000", ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
 	require.Equal(t, "ready", buf.String())
 }
 

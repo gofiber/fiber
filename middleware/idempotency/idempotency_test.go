@@ -87,7 +87,7 @@ func Test_Idempotency(t *testing.T) {
 		if idempotencyKey != "" {
 			req.Header.Set("X-Idempotency-Key", idempotencyKey)
 		}
-		resp, err := app.Test(req, 3*lifetime)
+		resp, err := app.Test(req, 3*int(lifetime.Milliseconds()))
 		require.NoError(t, err)
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)

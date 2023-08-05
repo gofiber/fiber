@@ -2,10 +2,10 @@ package idempotency
 
 import (
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 )
 
@@ -92,7 +92,7 @@ func New(config ...Config) fiber.Handler {
 		}
 		defer func() {
 			if err := cfg.Lock.Unlock(key); err != nil {
-				log.Printf("middleware/idempotency: failed to unlock key %q: %v", key, err)
+				log.Errorf("[IDEMPOTENCY] failed to unlock key %q: %v", key, err)
 			}
 		}()
 

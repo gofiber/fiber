@@ -9,7 +9,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -20,6 +19,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/gofiber/fiber/v3/log"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
 )
@@ -31,6 +31,10 @@ var figletFiberText = `
   / /_  / / __ \/ _ \/ ___/
  / __/ / / /_/ /  __/ /    
 /_/   /_/_.___/\___/_/     %s`
+
+const (
+	globalIpv4Addr = "0.0.0.0"
+)
 
 // ListenConfig is a struct to customize startup of Fiber.
 //
@@ -200,6 +204,9 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 	// prepare the server for the start
 	app.startupProcess()
 
+	// run hooks
+	app.runOnListenHooks(app.prepareListenData(ln.Addr().String(), getTLSConfig(ln) != nil, cfg))
+
 	// Print startup message & routes
 	app.printMessages(cfg, ln)
 
@@ -229,6 +236,9 @@ func (app *App) Listener(ln net.Listener, config ...ListenConfig) error {
 	// prepare the server for the start
 	app.startupProcess()
 
+	// run hooks
+	app.runOnListenHooks(app.prepareListenData(ln.Addr().String(), getTLSConfig(ln) != nil, cfg))
+
 	// Print startup message & routes
 	app.printMessages(cfg, ln)
 
@@ -241,7 +251,7 @@ func (app *App) Listener(ln net.Listener, config ...ListenConfig) error {
 
 	// Prefork is not supported for custom listeners
 	if cfg.EnablePrefork {
-		log.Print("[Warning] Prefork isn't supported for custom listeners.")
+		log.Warn("Prefork isn't supported for custom listeners.")
 	}
 
 	return app.server.Serve(ln)
@@ -282,6 +292,24 @@ func (app *App) printMessages(cfg ListenConfig, ln net.Listener) {
 	}
 }
 
+// prepareListenData create an slice of ListenData
+func (app *App) prepareListenData(addr string, isTLS bool, cfg ListenConfig) ListenData { //revive:disable-line:flag-parameter // Accepting a bool param named isTLS if fine here
+	host, port := parseAddr(addr)
+	if host == "" {
+		if cfg.ListenerNetwork == NetworkTCP6 {
+			host = "[::1]"
+		} else {
+			host = globalIpv4Addr
+		}
+	}
+
+	return ListenData{
+		Host: host,
+		Port: port,
+		TLS:  isTLS,
+	}
+}
+
 // startupMessage prepares the startup message with the handler number, port, address and other information
 func (app *App) startupMessage(addr string, enableTLS bool, pids string, cfg ListenConfig) { //nolint:revive TODO: Check CertKeyFile instead of control-flag.
 	// ignore child processes
@@ -297,7 +325,7 @@ func (app *App) startupMessage(addr string, enableTLS bool, pids string, cfg Lis
 		if cfg.ListenerNetwork == NetworkTCP6 {
 			host = "[::1]"
 		} else {
-			host = "0.0.0.0"
+			host = globalIpv4Addr
 		}
 	}
 
@@ -416,10 +444,10 @@ func (app *App) printRoutesMessage() {
 		return routes[i].path < routes[j].path
 	})
 
-	_, _ = fmt.Fprintf(w, "%smethod\t%s| %spath\t%s| %sname\t%s| %shandlers\n", colors.Blue, colors.White, colors.Green, colors.White, colors.Cyan, colors.White, colors.Yellow)
-	_, _ = fmt.Fprintf(w, "%s------\t%s| %s----\t%s| %s----\t%s| %s--------\n", colors.Blue, colors.White, colors.Green, colors.White, colors.Cyan, colors.White, colors.Yellow)
+	_, _ = fmt.Fprintf(w, "%smethod\t%s| %spath\t%s| %sname\t%s| %shandlers\t%s\n", colors.Blue, colors.White, colors.Green, colors.White, colors.Cyan, colors.White, colors.Yellow, colors.Reset)
+	_, _ = fmt.Fprintf(w, "%s------\t%s| %s----\t%s| %s----\t%s| %s--------\t%s\n", colors.Blue, colors.White, colors.Green, colors.White, colors.Cyan, colors.White, colors.Yellow, colors.Reset)
 	for _, route := range routes {
-		_, _ = fmt.Fprintf(w, "%s%s\t%s| %s%s\t%s| %s%s\t%s| %s%s\n", colors.Blue, route.method, colors.White, colors.Green, route.path, colors.White, colors.Cyan, route.name, colors.White, colors.Yellow, route.handlers)
+		_, _ = fmt.Fprintf(w, "%s%s\t%s| %s%s\t%s| %s%s\t%s| %s%s%s\n", colors.Blue, route.method, colors.White, colors.Green, route.path, colors.White, colors.Cyan, route.name, colors.White, colors.Yellow, route.handlers, colors.Reset)
 	}
 
 	_ = w.Flush() //nolint:errcheck // It is fine to ignore the error here

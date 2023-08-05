@@ -120,3 +120,33 @@ func Benchmark_Middleware_BasicAuth(b *testing.B) {
 
 	require.Equal(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
 }
+
+// go test -v -run=^$ -bench=Benchmark_Middleware_BasicAuth -benchmem -count=4
+func Benchmark_Middleware_BasicAuth_Upper(b *testing.B) {
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Users: map[string]string{
+			"john": "doe",
+		},
+	}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusTeapot)
+	})
+
+	h := app.Handler()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
+	fctx.Request.SetRequestURI("/")
+	fctx.Request.Header.Set(fiber.HeaderAuthorization, "Basic am9objpkb2U=") // john:doe
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		h(fctx)
+	}
+
+	require.Equal(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
+}
