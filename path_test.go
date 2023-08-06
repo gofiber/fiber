@@ -195,6 +195,17 @@ func Test_Utils_RemoveEscapeChar(t *testing.T) {
 	utils.AssertEqual(t, "noEscapeChar", res)
 }
 
+func Benchmark_Utils_RemoveEscapeChar(b *testing.B) {
+	b.ReportAllocs()
+	b.ResetTimer()
+	var res string
+	for n := 0; n < b.N; n++ {
+		res = RemoveEscapeChar(":test\\:bla")
+	}
+
+	utils.AssertEqual(b, ":test:bla", res)
+}
+
 // go test -race -run Test_Path_matchParams
 func Benchmark_Path_matchParams(t *testing.B) {
 	var ctxParams [maxParams]string

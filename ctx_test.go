@@ -3917,7 +3917,7 @@ func Benchmark_Ctx_Queries(b *testing.B) {
 // go test -run Test_Ctx_QueryParser -v
 func Test_Ctx_QueryParser(t *testing.T) {
 	t.Parallel()
-	app := New()
+	app := New(Config{EnableSplittingOnParsers: true})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 	type Query struct {
@@ -3936,6 +3936,11 @@ func Test_Ctx_QueryParser(t *testing.T) {
 	q = new(Query)
 	utils.AssertEqual(t, nil, c.QueryParser(q))
 	utils.AssertEqual(t, 2, len(q.Hobby))
+
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball\\,football")
+	q = new(Query)
+	utils.AssertEqual(t, nil, c.QueryParser(q))
+	utils.AssertEqual(t, 1, len(q.Hobby))
 
 	c.Request().URI().SetQueryString("id=1&name=tom&hobby=scoccer&hobby=basketball,football")
 	q = new(Query)
@@ -3986,6 +3991,29 @@ func Test_Ctx_QueryParser(t *testing.T) {
 	c.Request().URI().SetQueryString("data[]=john&data[]=doe")
 	utils.AssertEqual(t, nil, c.QueryParser(aq))
 	utils.AssertEqual(t, 2, len(aq.Data))
+}
+
+// go test -run Test_Ctx_QueryParser -v
+func Test_Ctx_QueryParser_WithoutSplitting(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	type Query struct {
+		ID    int
+		Name  string
+		Hobby []string
+	}
+
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football")
+	q := new(Query)
+	utils.AssertEqual(t, nil, c.QueryParser(q))
+	utils.AssertEqual(t, 1, len(q.Hobby))
+
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=scoccer&hobby=basketball,football")
+	q = new(Query)
+	utils.AssertEqual(t, nil, c.QueryParser(q))
+	utils.AssertEqual(t, 2, len(q.Hobby))
 }
 
 // go test -run Test_Ctx_QueryParser_WithSetParserDecoder -v
@@ -4146,7 +4174,7 @@ func Test_Ctx_QueryParser_Schema(t *testing.T) {
 // go test -run Test_Ctx_ReqHeaderParser -v
 func Test_Ctx_ReqHeaderParser(t *testing.T) {
 	t.Parallel()
-	app := New()
+	app := New(Config{EnableSplittingOnParsers: true})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 	type Header struct {
@@ -4169,6 +4197,12 @@ func Test_Ctx_ReqHeaderParser(t *testing.T) {
 	q = new(Header)
 	utils.AssertEqual(t, nil, c.ReqHeaderParser(q))
 	utils.AssertEqual(t, 3, len(q.Hobby))
+
+	c.Request().Header.Del("hobby")
+	c.Request().Header.Add("Hobby", "golang\\,fiber\\,go,fiber")
+	q = new(Header)
+	utils.AssertEqual(t, nil, c.ReqHeaderParser(q))
+	utils.AssertEqual(t, 2, len(q.Hobby))
 
 	empty := new(Header)
 	c.Request().Header.Del("hobby")
@@ -4213,6 +4247,34 @@ func Test_Ctx_ReqHeaderParser(t *testing.T) {
 	rh := new(RequiredHeader)
 	c.Request().Header.Del("name")
 	utils.AssertEqual(t, "failed to decode: name is empty", c.ReqHeaderParser(rh).Error())
+}
+
+// go test -run Test_Ctx_ReqHeaderParser -v
+func Test_Ctx_ReqHeaderParser_WithoutSplitting(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	type Header struct {
+		ID    int
+		Name  string
+		Hobby []string
+	}
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+
+	c.Request().Header.Add("id", "1")
+	c.Request().Header.Add("Name", "John Doe")
+	c.Request().Header.Add("Hobby", "golang,fiber")
+	q := new(Header)
+	utils.AssertEqual(t, nil, c.ReqHeaderParser(q))
+	utils.AssertEqual(t, 1, len(q.Hobby))
+
+	c.Request().Header.Del("hobby")
+	c.Request().Header.Add("Hobby", "golang,fiber,go")
+	q = new(Header)
+	utils.AssertEqual(t, nil, c.ReqHeaderParser(q))
+	utils.AssertEqual(t, 1, len(q.Hobby))
 }
 
 // go test -run Test_Ctx_ReqHeaderParser_WithSetParserDecoder -v
@@ -4439,7 +4501,7 @@ func Benchmark_Ctx_parseQuery(b *testing.B) {
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_QueryParser_Comma -benchmem -count=4
 func Benchmark_Ctx_QueryParser_Comma(b *testing.B) {
-	app := New()
+	app := New(Config{EnableSplittingOnParsers: true})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 	type Query struct {
@@ -4465,7 +4527,7 @@ func Benchmark_Ctx_QueryParser_Comma(b *testing.B) {
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_ReqHeaderParser -benchmem -count=4
 func Benchmark_Ctx_ReqHeaderParser(b *testing.B) {
-	app := New()
+	app := New(Config{EnableSplittingOnParsers: true})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 	type ReqHeader struct {

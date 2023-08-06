@@ -335,13 +335,13 @@ func (c *Ctx) BodyParser(out interface{}) error {
 				k, err = parseParamSquareBrackets(k)
 			}
 
-			if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
-				values := strings.Split(v, ",")
+			if findNextNonEscapedCharsetPosition(v, []byte(",")) != -1 && equalFieldType(out, reflect.Slice, k) && c.app.config.EnableSplittingOnParsers {
+				values := splitNonEscaped(v, ",")
 				for i := 0; i < len(values); i++ {
-					data[k] = append(data[k], values[i])
+					data[k] = append(data[k], RemoveEscapeChar(values[i]))
 				}
 			} else {
-				data[k] = append(data[k], v)
+				data[k] = append(data[k], RemoveEscapeChar(v))
 			}
 		})
 
@@ -1159,13 +1159,13 @@ func (c *Ctx) QueryParser(out interface{}) error {
 			k, err = parseParamSquareBrackets(k)
 		}
 
-		if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
-			values := strings.Split(v, ",")
+		if findNextNonEscapedCharsetPosition(v, []byte(",")) != -1 && equalFieldType(out, reflect.Slice, k) && c.app.config.EnableSplittingOnParsers {
+			values := splitNonEscaped(v, ",")
 			for i := 0; i < len(values); i++ {
-				data[k] = append(data[k], values[i])
+				data[k] = append(data[k], RemoveEscapeChar(values[i]))
 			}
 		} else {
-			data[k] = append(data[k], v)
+			data[k] = append(data[k], RemoveEscapeChar(v))
 		}
 	})
 
@@ -1208,13 +1208,14 @@ func (c *Ctx) ReqHeaderParser(out interface{}) error {
 		k := c.app.getString(key)
 		v := c.app.getString(val)
 
-		if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
-			values := strings.Split(v, ",")
+		if findNextNonEscapedCharsetPosition(v, []byte(",")) != -1 && equalFieldType(out, reflect.Slice, k) && c.app.config.EnableSplittingOnParsers {
+			values := splitNonEscaped(v, ",")
 			for i := 0; i < len(values); i++ {
-				data[k] = append(data[k], values[i])
+				data[k] = append(data[k], RemoveEscapeChar(values[i]))
 			}
 		} else {
-			data[k] = append(data[k], v)
+			//fmt.Println(v)
+			data[k] = append(data[k], RemoveEscapeChar(v))
 		}
 	})
 

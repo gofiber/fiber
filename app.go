@@ -390,6 +390,15 @@ type Config struct {
 	//
 	// Optional. Default: DefaultMethods
 	RequestMethods []string
+
+	// EnableSplittingOnParsers splits the query/body/header parameters by comma when it's true.
+	// For example, you can use it to parse multiple values from a query parameter like this:
+	//   /api?foo=bar,baz == foo[]=bar&foo[]=baz
+	// If there is an escape character before the comma, parsers won't split it like the example below:
+	//   /api?foo=bar\,baz == foo=bar,baz
+	//
+	// Optional. Default: false
+	EnableSplittingOnParsers bool `json:"enable_splitting_on_parsers"`
 }
 
 // Static defines configuration options when defining static assets.
