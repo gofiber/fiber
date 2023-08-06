@@ -116,11 +116,7 @@ func New(config ...Config) fiber.Handler {
 			Body: utils.CopyBytes(c.Response().Body()),
 		}
 		{
-			headers := make(map[string]string)
-			if err := c.Bind().RespHeader(headers); err != nil {
-				return fmt.Errorf("failed to bind to response headers: %w", err)
-			}
-
+			headers := c.GetRespHeaders()
 			if cfg.KeepResponseHeaders == nil {
 				// Keep all
 				res.Headers = headers

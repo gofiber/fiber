@@ -385,12 +385,6 @@ type Config struct {
 	// Optional. Default: DefaultColors
 	ColorScheme Colors `json:"color_scheme"`
 
-	// If you want to validate header/form/query... automatically when to bind, you can define struct validator.
-	// Fiber doesn't have default validator, so it'll skip validator step if you don't use any validator.
-	//
-	// Default: nil
-	StructValidator StructValidator
-
 	// RequestMethods provides customizibility for HTTP methods. You can add/remove methods as you wish.
 	//
 	// Optional. Default: DefaultMethods
@@ -724,8 +718,6 @@ func (app *App) Use(args ...any) Router {
 
 		app.register([]string{methodUse}, prefix, nil, nil, handlers...)
 	}
-
-	app.register([]string{methodUse}, prefix, nil, handlers...)
 
 	return app
 }
