@@ -3,7 +3,6 @@ package limiter
 import (
 	"strconv"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -44,7 +43,7 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 		e := manager.get(key)
 
 		// Get timestamp
-		ts := uint64(atomic.LoadUint32(&utils.Timestamp))
+		ts := uint64(utils.Timestamp())
 
 		// Set expiration if entry does not exist
 		if e.exp == 0 {
@@ -117,9 +116,13 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 		// Check for SkipFailedRequests and SkipSuccessfulRequests
 		if (cfg.SkipSuccessfulRequests && c.Response().StatusCode() < fiber.StatusBadRequest) ||
 			(cfg.SkipFailedRequests && c.Response().StatusCode() >= fiber.StatusBadRequest) {
+			// Lock entry
 			mux.Lock()
+			e = manager.get(key)
 			e.currHits--
 			remaining++
+			manager.set(key, e, cfg.Expiration)
+			// Unlock entry
 			mux.Unlock()
 		}
 

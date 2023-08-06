@@ -9,7 +9,8 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
-//go:generate msgp -o=manager_msgp.go -io=false -unexported
+// go:generate msgp
+// msgp -file="manager.go" -o="manager_msgp.go" -tests=false -unexported
 type item struct{}
 
 //msgp:ignore manager
@@ -38,74 +39,23 @@ func newManager(storage fiber.Storage) *manager {
 	return manager
 }
 
-// acquire returns an *entry from the sync.Pool
-func (m *manager) acquire() *item {
-	return m.pool.Get().(*item)
-}
-
-// release and reset *entry to sync.Pool
-func (m *manager) release(e *item) {
-	// don't release item if we using memory storage
-	if m.storage != nil {
-		return
-	}
-	m.pool.Put(e)
-}
-
-// get data from storage or memory
-func (m *manager) get(key string) (it *item) {
-	if m.storage != nil {
-		it = m.acquire()
-		if raw, _ := m.storage.Get(key); raw != nil {
-			if _, err := it.UnmarshalMsg(raw); err != nil {
-				return
-			}
-		}
-		return
-	}
-	if it, _ = m.memory.Get(key).(*item); it == nil {
-		it = m.acquire()
-	}
-	return
-}
-
 // get raw data from storage or memory
-func (m *manager) getRaw(key string) (raw []byte) {
+func (m *manager) getRaw(key string) []byte {
+	var raw []byte
 	if m.storage != nil {
-		raw, _ = m.storage.Get(key)
+		raw, _ = m.storage.Get(key) //nolint:errcheck // TODO: Do not ignore error
 	} else {
-		raw, _ = m.memory.Get(key).([]byte)
+		raw, _ = m.memory.Get(key).([]byte) //nolint:errcheck // TODO: Do not ignore error
 	}
-	return
-}
-
-// set data to storage or memory
-func (m *manager) set(key string, it *item, exp time.Duration) {
-	if m.storage != nil {
-		if raw, err := it.MarshalMsg(nil); err == nil {
-			_ = m.storage.Set(key, raw, exp)
-		}
-	} else {
-		// the key is crucial in crsf and sometimes a reference to another value which can be reused later(pool/unsafe values concept), so a copy is made here
-		m.memory.Set(utils.CopyString(key), it, exp)
-	}
+	return raw
 }
 
 // set data to storage or memory
 func (m *manager) setRaw(key string, raw []byte, exp time.Duration) {
 	if m.storage != nil {
-		_ = m.storage.Set(key, raw, exp)
+		_ = m.storage.Set(key, raw, exp) //nolint:errcheck // TODO: Do not ignore error
 	} else {
 		// the key is crucial in crsf and sometimes a reference to another value which can be reused later(pool/unsafe values concept), so a copy is made here
 		m.memory.Set(utils.CopyString(key), raw, exp)
-	}
-}
-
-// delete data from storage or memory
-func (m *manager) delete(key string) {
-	if m.storage != nil {
-		_ = m.storage.Delete(key)
-	} else {
-		m.memory.Delete(key)
 	}
 }

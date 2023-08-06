@@ -48,6 +48,8 @@ func New(config ...Config) fiber.Handler {
 	var (
 		once       sync.Once
 		errHandler fiber.ErrorHandler
+
+		dataPool = sync.Pool{New: func() interface{} { return new(Data) }}
 	)
 
 	// Err padding
@@ -66,7 +68,7 @@ func New(config ...Config) fiber.Handler {
 	}
 
 	// Return new handler
-	return func(c fiber.Ctx) (err error) {
+	return func(c fiber.Ctx) error {
 		// Don't execute middleware if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()
@@ -89,7 +91,7 @@ func New(config ...Config) fiber.Handler {
 		})
 
 		// Logger data
-		data := DataPool.Get().(*Data)
+		data := dataPool.Get().(*Data) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
 		// no need for a reset, as long as we always override everything
 		data.Pid = pid
 		data.ErrPaddingStr = errPaddingStr
@@ -97,7 +99,7 @@ func New(config ...Config) fiber.Handler {
 		data.TemplateChain = templateChain
 		data.LogFuncChain = logFunChain
 		// put data back in the pool
-		defer DataPool.Put(data)
+		defer dataPool.Put(data)
 
 		// Set latency start time
 		if cfg.enableLatency {
@@ -111,7 +113,7 @@ func New(config ...Config) fiber.Handler {
 		// Manually call error handler
 		if chainErr != nil {
 			if err := errHandler(c, chainErr); err != nil {
-				_ = c.SendStatus(fiber.StatusInternalServerError)
+				_ = c.SendStatus(fiber.StatusInternalServerError) //nolint:errcheck // TODO: Explain why we ignore the error here
 			}
 		}
 
@@ -121,10 +123,6 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Logger instance & update some logger data fields
-		if err = cfg.LoggerFunc(c, data, cfg); err != nil {
-			return err
-		}
-
-		return nil
+		return cfg.LoggerFunc(c, data, cfg)
 	}
 }

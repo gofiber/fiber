@@ -11,7 +11,8 @@ import (
 // go test -run Test_Memory -v -race
 
 func Test_Memory(t *testing.T) {
-	var store = New()
+	t.Parallel()
+	store := New()
 	var (
 		key     = "john"
 		val any = []byte("doe")
@@ -75,7 +76,6 @@ func Benchmark_Memory(b *testing.B) {
 			}
 			for _, key := range keys {
 				d.Delete(key)
-
 			}
 		}
 	})

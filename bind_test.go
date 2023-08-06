@@ -1,3 +1,4 @@
+//nolint:wrapcheck,tagliatelle,bodyclose // We must not wrap errors in tests
 package fiber
 
 import (

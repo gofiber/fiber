@@ -7,6 +7,7 @@ package fiber
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"sync"
@@ -196,7 +197,7 @@ type Ctx interface {
 	// Next executes the next method in the stack that matches the current route.
 	Next() (err error)
 
-	// RestartRouting instead of going to the next handler. This may be usefull after
+	// RestartRouting instead of going to the next handler. This may be useful after
 	// changing the request path. Note that handlers might be executed again.
 	RestartRouting() error
 
@@ -236,6 +237,39 @@ type Ctx interface {
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting to use the value outside the Handler.
 	Query(key string, defaultValue ...string) string
+
+	// QueryInt returns integer value of key string parameter in the url.
+	// Default to empty or invalid key is 0.
+	//
+	//	GET /?name=alex&wanna_cake=2&id=
+	//	QueryInt("wanna_cake", 1) == 2
+	//	QueryInt("name", 1) == 1
+	//	QueryInt("id", 1) == 1
+	//	QueryInt("id") == 0
+	QueryInt(key string, defaultValue ...int) int
+
+	// QueryBool returns bool value of key string parameter in the url.
+	// Default to empty or invalid key is true.
+	//
+	//	Get /?name=alex&want_pizza=false&id=
+	//	QueryBool("want_pizza") == false
+	//	QueryBool("want_pizza", true) == false
+	//	QueryBool("name") == false
+	//	QueryBool("name", true) == true
+	//	QueryBool("id") == false
+	//	QueryBool("id", true) == true
+	QueryBool(key string, defaultValue ...bool) bool
+
+	// QueryFloat returns float64 value of key string parameter in the url.
+	// Default to empty or invalid key is 0.
+	//
+	//	GET /?name=alex&amount=32.23&id=
+	//	QueryFloat("amount") = 32.23
+	//	QueryFloat("amount", 3) = 32.23
+	//	QueryFloat("name", 1) = 1
+	//	QueryFloat("name") = 0
+	//	QueryFloat("id", 3) = 3
+	QueryFloat(key string, defaultValue ...float64) float64
 
 	// Range returns a struct containing the type and a slice of ranges.
 	Range(size int) (rangeData Range, err error)
@@ -290,7 +324,7 @@ type Ctx interface {
 	SendStream(stream io.Reader, size ...int) error
 
 	// Set sets the response's HTTP header field to the specified key, value.
-	Set(key string, val string)
+	Set(key, val string)
 
 	// Subdomains returns a string slice of subdomains in the domain name of the request.
 	// The subdomain offset, which defaults to 2, is used for determining the beginning of the subdomain segments.
@@ -418,7 +452,11 @@ func (app *App) NewCtx(fctx *fasthttp.RequestCtx) Ctx {
 
 // AcquireCtx retrieves a new Ctx from the pool.
 func (app *App) AcquireCtx() Ctx {
-	return app.pool.Get().(Ctx)
+	ctx, ok := app.pool.Get().(Ctx)
+	if !ok {
+		panic(fmt.Errorf("failed to type-assert to Ctx"))
+	}
+	return ctx
 }
 
 // ReleaseCtx releases the ctx back into the pool.

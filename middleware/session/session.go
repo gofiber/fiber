@@ -3,6 +3,7 @@ package session
 import (
 	"bytes"
 	"encoding/gob"
+	"fmt"
 	"sync"
 	"time"
 
@@ -28,7 +29,7 @@ var sessionPool = sync.Pool{
 }
 
 func acquireSession() *Session {
-	s := sessionPool.Get().(*Session)
+	s := sessionPool.Get().(*Session) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
 	if s.data == nil {
 		s.data = acquireData()
 	}
@@ -153,7 +154,7 @@ func (s *Session) Save() error {
 	encCache := gob.NewEncoder(s.byteBuffer)
 	err := encCache.Encode(&s.data.Data)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to encode data: %w", err)
 	}
 
 	// copy the data in buffer
@@ -195,8 +196,12 @@ func (s *Session) setSession() {
 		fcookie.SetValue(s.id)
 		fcookie.SetPath(s.config.CookiePath)
 		fcookie.SetDomain(s.config.CookieDomain)
-		fcookie.SetMaxAge(int(s.exp.Seconds()))
-		fcookie.SetExpire(time.Now().Add(s.exp))
+		// Cookies are also session cookies if they do not specify the Expires or Max-Age attribute.
+		// refer: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie
+		if !s.config.CookieSessionOnly {
+			fcookie.SetMaxAge(int(s.exp.Seconds()))
+			fcookie.SetExpire(time.Now().Add(s.exp))
+		}
 		fcookie.SetSecure(s.config.CookieSecure)
 		fcookie.SetHTTPOnly(s.config.CookieHTTPOnly)
 

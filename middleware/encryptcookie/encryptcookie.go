@@ -41,12 +41,12 @@ func New(config ...Config) fiber.Handler {
 				cookieValue.SetKeyBytes(key)
 				if c.Response().Header.Cookie(&cookieValue) {
 					encryptedValue, err := cfg.Encryptor(string(cookieValue.Value()), cfg.Key)
-					if err == nil {
-						cookieValue.SetValue(encryptedValue)
-						c.Response().Header.SetCookie(&cookieValue)
-					} else {
+					if err != nil {
 						panic(err)
 					}
+
+					cookieValue.SetValue(encryptedValue)
+					c.Response().Header.SetCookie(&cookieValue)
 				}
 			}
 		})

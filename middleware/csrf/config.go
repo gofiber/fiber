@@ -106,7 +106,7 @@ var ConfigDefault = Config{
 }
 
 // default ErrorHandler that process return error from fiber.Handler
-var defaultErrorHandler = func(c fiber.Ctx, err error) error {
+func defaultErrorHandler(_ fiber.Ctx, _ error) error {
 	return fiber.ErrForbidden
 }
 
@@ -143,7 +143,8 @@ func configDefault(config ...Config) Config {
 	// Generate the correct extractor to get the token from the correct location
 	selectors := strings.Split(cfg.KeyLookup, ":")
 
-	if len(selectors) != 2 {
+	const numParts = 2
+	if len(selectors) != numParts {
 		panic("[CSRF] KeyLookup must in the form of <source>:<key>")
 	}
 

@@ -1,6 +1,5 @@
 {
-  "testRoutes": [
-    {
+  "test_routes": [{
       "method": "GET",
       "path": "/authorizations"
     },
@@ -957,8 +956,7 @@
       "path": "/user/keys/1337"
     }
   ],
-  "githubAPI": [
-    {
+  "github_api": [{
       "method": "GET",
       "path": "/authorizations"
     },

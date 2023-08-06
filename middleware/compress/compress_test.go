@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
@@ -25,6 +24,7 @@ func init() {
 
 // go test -run Test_Compress_Gzip
 func Test_Compress_Gzip(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New())
@@ -34,7 +34,7 @@ func Test_Compress_Gzip(t *testing.T) {
 		return c.Send(filedata)
 	})
 
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	req.Header.Set("Accept-Encoding", "gzip")
 
 	resp, err := app.Test(req)
@@ -50,9 +50,11 @@ func Test_Compress_Gzip(t *testing.T) {
 
 // go test -run Test_Compress_Different_Level
 func Test_Compress_Different_Level(t *testing.T) {
+	t.Parallel()
 	levels := []Level{LevelBestSpeed, LevelBestCompression}
 	for _, level := range levels {
 		t.Run(fmt.Sprintf("level %d", level), func(t *testing.T) {
+			t.Parallel()
 			app := fiber.New()
 
 			app.Use(New(Config{Level: level}))
@@ -62,7 +64,7 @@ func Test_Compress_Different_Level(t *testing.T) {
 				return c.Send(filedata)
 			})
 
-			req := httptest.NewRequest("GET", "/", nil)
+			req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 			req.Header.Set("Accept-Encoding", "gzip")
 
 			resp, err := app.Test(req)
@@ -79,6 +81,7 @@ func Test_Compress_Different_Level(t *testing.T) {
 }
 
 func Test_Compress_Deflate(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New())
@@ -87,7 +90,7 @@ func Test_Compress_Deflate(t *testing.T) {
 		return c.Send(filedata)
 	})
 
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	req.Header.Set("Accept-Encoding", "deflate")
 
 	resp, err := app.Test(req)
@@ -102,6 +105,7 @@ func Test_Compress_Deflate(t *testing.T) {
 }
 
 func Test_Compress_Brotli(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New())
@@ -110,10 +114,10 @@ func Test_Compress_Brotli(t *testing.T) {
 		return c.Send(filedata)
 	})
 
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	req.Header.Set("Accept-Encoding", "br")
 
-	resp, err := app.Test(req, 10*time.Second)
+	resp, err := app.Test(req, 10000)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.Equal(t, "br", resp.Header.Get(fiber.HeaderContentEncoding))
@@ -125,6 +129,7 @@ func Test_Compress_Brotli(t *testing.T) {
 }
 
 func Test_Compress_Disabled(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New(Config{Level: LevelDisabled}))
@@ -133,7 +138,7 @@ func Test_Compress_Disabled(t *testing.T) {
 		return c.Send(filedata)
 	})
 
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	req.Header.Set("Accept-Encoding", "br")
 
 	resp, err := app.Test(req)
@@ -148,6 +153,7 @@ func Test_Compress_Disabled(t *testing.T) {
 }
 
 func Test_Compress_Next_Error(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New())
@@ -156,7 +162,7 @@ func Test_Compress_Next_Error(t *testing.T) {
 		return errors.New("next error")
 	})
 
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	req.Header.Set("Accept-Encoding", "gzip")
 
 	resp, err := app.Test(req)
@@ -171,6 +177,7 @@ func Test_Compress_Next_Error(t *testing.T) {
 
 // go test -run Test_Compress_Next
 func Test_Compress_Next(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{
 		Next: func(_ fiber.Ctx) bool {
@@ -178,7 +185,7 @@ func Test_Compress_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }

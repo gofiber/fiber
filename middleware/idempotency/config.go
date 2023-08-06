@@ -9,9 +9,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 )
 
-var (
-	ErrInvalidIdempotencyKey = errors.New("invalid idempotency key")
-)
+var ErrInvalidIdempotencyKey = errors.New("invalid idempotency key")
 
 // Config defines the config for middleware.
 type Config struct {

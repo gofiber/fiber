@@ -3,7 +3,6 @@ package logger
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/gofiber/fiber/v3"
 )
@@ -91,6 +90,9 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return appendInt(output, len(c.Request().Body()))
 		},
 		TagBytesSent: func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (int, error) {
+			if c.Response().Header.ContentLength() < 0 {
+				return appendInt(output, 0)
+			}
 			return appendInt(output, len(c.Response().Body()))
 		},
 		TagRoute: func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (int, error) {
@@ -193,11 +195,11 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return output.WriteString(data.Pid)
 		},
 		TagLatency: func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (int, error) {
-			latency := data.Stop.Sub(data.Start).Round(time.Millisecond)
+			latency := data.Stop.Sub(data.Start)
 			return output.WriteString(fmt.Sprintf("%7v", latency))
 		},
 		TagTime: func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (int, error) {
-			return output.WriteString(data.Timestamp.Load().(string))
+			return output.WriteString(data.Timestamp.Load().(string)) //nolint:forcetypeassert // We always store a string in here
 		},
 	}
 	// merge with custom tags from user

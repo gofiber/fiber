@@ -1,6 +1,8 @@
 package filesystem
 
 import (
+	"errors"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"os"
@@ -56,19 +58,30 @@ type Config struct {
 	//
 	// Optional. Default: ""
 	NotFoundFile string `json:"not_found_file"`
+
+	// The value for the Content-Type HTTP-header
+	// that is set on the file response
+	//
+	// Optional. Default: ""
+	ContentTypeCharset string `json:"content_type_charset"`
 }
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next:       nil,
-	Root:       nil,
-	PathPrefix: ".",
-	Browse:     false,
-	Index:      "/index.html",
-	MaxAge:     0,
+	Next:               nil,
+	Root:               nil,
+	PathPrefix:         ".",
+	Browse:             false,
+	Index:              "/index.html",
+	MaxAge:             0,
+	ContentTypeCharset: "",
 }
 
-// New creates a new middleware handler
+// New creates a new middleware handler.
+//
+// filesystem does not handle url encoded values (for example spaces)
+// on it's own. If you need that functionality, set "UnescapePath"
+// in fiber.Config
 func New(config ...Config) fiber.Handler {
 	// Set default config
 	cfg := ConfigDefault
@@ -110,7 +123,7 @@ func New(config ...Config) fiber.Handler {
 	cacheControlStr := "public, max-age=" + strconv.Itoa(cfg.MaxAge)
 
 	// Return new handler
-	return func(c fiber.Ctx) (err error) {
+	return func(c fiber.Ctx) error {
 		// Don't execute middleware if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()
@@ -149,21 +162,22 @@ func New(config ...Config) fiber.Handler {
 			path = strings.TrimRight(path, "/")
 		}
 
-		file, err = openFile(cfg.Root, path)
+		file, err := openFile(cfg.Root, path)
 
-		if err != nil && os.IsNotExist(err) && cfg.NotFoundFile != "" {
+		if err != nil && errors.Is(err, fs.ErrNotExist) && cfg.NotFoundFile != "" {
 			file, err = openFile(cfg.Root, cfg.NotFoundFile)
 		}
 
 		if err != nil {
-			if os.IsNotExist(err) {
+			if errors.Is(err, fs.ErrNotExist) {
 				return c.Status(fiber.StatusNotFound).Next()
 			}
-			return
+			return fmt.Errorf("failed to open: %w", err)
 		}
 
-		if stat, err = file.Stat(); err != nil {
-			return
+		stat, err = file.Stat()
+		if err != nil {
+			return fmt.Errorf("failed to stat: %w", err)
 		}
 
 		// Serve index if path is directory
@@ -194,7 +208,11 @@ func New(config ...Config) fiber.Handler {
 		contentLength := int(stat.Size())
 
 		// Set Content Type header
-		c.Type(getFileExtension(stat.Name()))
+		if cfg.ContentTypeCharset == "" {
+			c.Type(getFileExtension(stat.Name()))
+		} else {
+			c.Type(getFileExtension(stat.Name()), cfg.ContentTypeCharset)
+		}
 
 		// Set Last Modified header
 		if !modTime.IsZero() {
@@ -219,7 +237,7 @@ func New(config ...Config) fiber.Handler {
 			c.Response().SkipBody = true
 			c.Response().Header.SetContentLength(contentLength)
 			if err := file.Close(); err != nil {
-				return err
+				return fmt.Errorf("failed to close: %w", err)
 			}
 			return nil
 		}
@@ -229,7 +247,7 @@ func New(config ...Config) fiber.Handler {
 }
 
 // SendFile ...
-func SendFile(c fiber.Ctx, filesystem fs.FS, path string) (err error) {
+func SendFile(c fiber.Ctx, filesystem fs.FS, path string) error {
 	var (
 		file fs.File
 		stat os.FileInfo
@@ -237,16 +255,17 @@ func SendFile(c fiber.Ctx, filesystem fs.FS, path string) (err error) {
 
 	path = filepath.Join(".", filepath.Clean("/"+path))
 
-	file, err = openFile(filesystem, path)
+	file, err := openFile(filesystem, path)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return fiber.ErrNotFound
 		}
-		return err
+		return fmt.Errorf("failed to open: %w", err)
 	}
 
-	if stat, err = file.Stat(); err != nil {
-		return err
+	stat, err = file.Stat()
+	if err != nil {
+		return fmt.Errorf("failed to stat: %w", err)
 	}
 
 	// Serve index if path is directory
@@ -289,7 +308,7 @@ func SendFile(c fiber.Ctx, filesystem fs.FS, path string) (err error) {
 		c.Response().SkipBody = true
 		c.Response().Header.SetContentLength(contentLength)
 		if err := file.Close(); err != nil {
-			return err
+			return fmt.Errorf("failed to close: %w", err)
 		}
 		return nil
 	}
