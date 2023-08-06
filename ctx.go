@@ -103,73 +103,22 @@ type Views interface {
 
 // Accepts checks if the specified extensions or content types are acceptable.
 func (c *DefaultCtx) Accepts(offers ...string) string {
-	if len(offers) == 0 {
-		return ""
-	}
-	header := c.Get(HeaderAccept)
-	if header == "" {
-		return offers[0]
-	}
-
-	spec, commaPos := "", 0
-	for len(header) > 0 && commaPos != -1 {
-		commaPos = strings.IndexByte(header, ',')
-		if commaPos != -1 {
-			spec = strings.TrimLeft(header[:commaPos], " ")
-		} else {
-			spec = strings.TrimLeft(header, " ")
-		}
-		if factorSign := strings.IndexByte(spec, ';'); factorSign != -1 {
-			spec = spec[:factorSign]
-		}
-
-		var mimetype string
-		for _, offer := range offers {
-			if len(offer) == 0 {
-				continue
-				// Accept: */*
-			} else if spec == "*/*" {
-				return offer
-			}
-
-			if strings.IndexByte(offer, '/') != -1 {
-				mimetype = offer // MIME type
-			} else {
-				mimetype = utils.GetMIME(offer) // extension
-			}
-
-			if spec == mimetype {
-				// Accept: <MIME_type>/<MIME_subtype>
-				return offer
-			}
-
-			s := strings.IndexByte(mimetype, '/')
-			// Accept: <MIME_type>/*
-			if strings.HasPrefix(spec, mimetype[:s]) && (spec[s:] == "/*" || mimetype[s:] == "/*") {
-				return offer
-			}
-		}
-		if commaPos != -1 {
-			header = header[commaPos+1:]
-		}
-	}
-
-	return ""
+	return getOffer(c.Get(HeaderAccept), acceptsOfferType, offers...)
 }
 
 // AcceptsCharsets checks if the specified charset is acceptable.
 func (c *DefaultCtx) AcceptsCharsets(offers ...string) string {
-	return getOffer(c.Get(HeaderAcceptCharset), offers...)
+	return getOffer(c.Get(HeaderAcceptCharset), acceptsOffer, offers...)
 }
 
 // AcceptsEncodings checks if the specified encoding is acceptable.
 func (c *DefaultCtx) AcceptsEncodings(offers ...string) string {
-	return getOffer(c.Get(HeaderAcceptEncoding), offers...)
+	return getOffer(c.Get(HeaderAcceptEncoding), acceptsOffer, offers...)
 }
 
 // AcceptsLanguages checks if the specified language is acceptable.
 func (c *DefaultCtx) AcceptsLanguages(offers ...string) string {
-	return getOffer(c.Get(HeaderAcceptLanguage), offers...)
+	return getOffer(c.Get(HeaderAcceptLanguage), acceptsOffer, offers...)
 }
 
 // App returns the *App reference to the instance of the Fiber application
@@ -775,7 +724,7 @@ func (c *DefaultCtx) Next() error {
 	// Increment handler index
 	c.indexHandler++
 	var err error
-	// Did we executed all route handlers?
+	// Did we execute all route handlers?
 	if c.indexHandler < len(c.route.Handlers) {
 		// Continue route stack
 		err = c.route.Handlers[c.indexHandler](c)
@@ -920,6 +869,35 @@ func (c *DefaultCtx) Query(key string, defaultValue ...string) string {
 	return defaultString(c.app.getString(c.fasthttp.QueryArgs().Peek(key)), defaultValue)
 }
 
+// Queries returns a map of query parameters and their values.
+//
+// GET /?name=alex&wanna_cake=2&id=
+// Queries()["name"] == "alex"
+// Queries()["wanna_cake"] == "2"
+// Queries()["id"] == ""
+//
+// GET /?field1=value1&field1=value2&field2=value3
+// Queries()["field1"] == "value2"
+// Queries()["field2"] == "value3"
+//
+// GET /?list_a=1&list_a=2&list_a=3&list_b[]=1&list_b[]=2&list_b[]=3&list_c=1,2,3
+// Queries()["list_a"] == "3"
+// Queries()["list_b[]"] == "3"
+// Queries()["list_c"] == "1,2,3"
+//
+// GET /api/search?filters.author.name=John&filters.category.name=Technology&filters[customer][name]=Alice&filters[status]=pending
+// Queries()["filters.author.name"] == "John"
+// Queries()["filters.category.name"] == "Technology"
+// Queries()["filters[customer][name]"] == "Alice"
+// Queries()["filters[status]"] == "pending"
+func (c *DefaultCtx) Queries() map[string]string {
+	m := make(map[string]string, c.Context().QueryArgs().Len())
+	c.Context().QueryArgs().VisitAll(func(key, value []byte) {
+		m[c.app.getString(key)] = c.app.getString(value)
+	})
+	return m
+}
+
 // QueryInt returns integer value of key string parameter in the url.
 // Default to empty or invalid key is 0.
 //
@@ -938,6 +916,48 @@ func (c *DefaultCtx) QueryInt(key string, defaultValue ...int) int {
 		return 0
 	}
 
+	return value
+}
+
+// QueryBool returns bool value of key string parameter in the url.
+// Default to empty or invalid key is true.
+//
+//	Get /?name=alex&want_pizza=false&id=
+//	QueryBool("want_pizza") == false
+//	QueryBool("want_pizza", true) == false
+//	QueryBool("name") == false
+//	QueryBool("name", true) == true
+//	QueryBool("id") == false
+//	QueryBool("id", true) == true
+func (c *DefaultCtx) QueryBool(key string, defaultValue ...bool) bool {
+	value, err := strconv.ParseBool(c.app.getString(c.fasthttp.QueryArgs().Peek(key)))
+	if err != nil {
+		if len(defaultValue) > 0 {
+			return defaultValue[0]
+		}
+		return false
+	}
+	return value
+}
+
+// QueryFloat returns float64 value of key string parameter in the url.
+// Default to empty or invalid key is 0.
+//
+//	GET /?name=alex&amount=32.23&id=
+//	QueryFloat("amount") = 32.23
+//	QueryFloat("amount", 3) = 32.23
+//	QueryFloat("name", 1) = 1
+//	QueryFloat("name") = 0
+//	QueryFloat("id", 3) = 3
+func (c *DefaultCtx) QueryFloat(key string, defaultValue ...float64) float64 {
+	// use strconv.ParseFloat to convert the param to a float or return zero and an error.
+	value, err := strconv.ParseFloat(c.app.getString(c.fasthttp.QueryArgs().Peek(key)), 64)
+	if err != nil {
+		if len(defaultValue) > 0 {
+			return defaultValue[0]
+		}
+		return 0
+	}
 	return value
 }
 
@@ -1009,7 +1029,6 @@ func (c *DefaultCtx) BindVars(vars Map) error {
 	for k, v := range vars {
 		c.viewBindMap.Store(k, v)
 	}
-
 	return nil
 }
 
@@ -1106,28 +1125,31 @@ func (c *DefaultCtx) Render(name string, bind Map, layouts ...string) error {
 	return nil
 }
 
-func (c *DefaultCtx) renderExtensions(bind Map) {
-	// Bind view map
-	c.viewBindMap.Range(func(key, value any) bool {
-		keyS, ok := key.(string)
-		if !ok {
-			panic(fmt.Errorf("failed to type-assert to string"))
-		}
-		bind[keyS] = value
-
-		return true
-	})
-
-	// Check if the PassLocalsToViews option is enabled (by default it is disabled)
-	if c.app.config.PassLocalsToViews {
-		// Loop through each local and set it in the map
-		c.fasthttp.VisitUserValues(func(key []byte, val any) {
-			// check if bindMap doesn't contain the key
-			if _, ok := bind[utils.UnsafeString(key)]; !ok {
-				// Set the key and value in the bindMap
-				bind[utils.UnsafeString(key)] = val
+func (c *DefaultCtx) renderExtensions(bind interface{}) {
+	if bindMap, ok := bind.(Map); ok {
+		// Bind view map
+		c.viewBindMap.Range(func(key, value interface{}) bool {
+			keyValue, ok := key.(string)
+			if !ok {
+				return true
 			}
+			if _, ok := bindMap[keyValue]; !ok {
+				bindMap[keyValue] = value
+			}
+			return true
 		})
+
+		// Check if the PassLocalsToViews option is enabled (by default it is disabled)
+		if c.app.config.PassLocalsToViews {
+			// Loop through each local and set it in the map
+			c.fasthttp.VisitUserValues(func(key []byte, val interface{}) {
+				// check if bindMap doesn't contain the key
+				if _, ok := bindMap[c.app.getString(key)]; !ok {
+					// Set the key and value in the bindMap
+					bindMap[c.app.getString(key)] = val
+				}
+			})
+		}
 	}
 
 	if len(c.app.mountFields.appListKeys) == 0 {

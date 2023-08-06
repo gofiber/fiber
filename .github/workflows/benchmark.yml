@@ -1,11 +1,24 @@
-on: [push]
+on:
+  push:
+    branches:
+      - master
+      - main
+    paths:
+      - '**'
+      - '!docs/**'
+      - '!**.md'
+  pull_request:
+    paths:
+      - '**'
+      - '!docs/**'
+      - '!**.md'
 name: Benchmark
 jobs:
   Compare:
     runs-on: ubuntu-latest
     steps:
     - name: Install Go
-      uses: actions/setup-go@v3
+      uses: actions/setup-go@v4
       with:
         go-version: 1.20.x
     - name: Fetch Repository
@@ -19,13 +32,17 @@ jobs:
         # TODO: reactivate it later -> when v3 is the stable one
         key: ${{ runner.os }}-benchmark-v3
     - name: Save Benchmark Results
-      uses: rhysd/github-action-benchmark@v1
+      uses: benchmark-action/github-action-benchmark@v1.16.2
       with:
         tool: 'go'
         output-file-path: output.txt
         github-token: ${{ secrets.BENCHMARK_TOKEN }}
         benchmark-data-dir-path: 'benchmarks'
         fail-on-alert: true
-        comment-on-alert: true
+        comment-on-alert: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+        # Enable Job Summary for PRs - deactivated because of issues
+        #summary-always: ${{ github.event_name != 'push' && github.event_name != 'workflow_dispatch' }}
         # TODO: reactivate it later -> when v3 is the stable one
+        #auto-push: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
         auto-push: false
+        save-data-file: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}

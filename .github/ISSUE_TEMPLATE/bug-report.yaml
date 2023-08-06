@@ -10,15 +10,15 @@ body:
       value: |
         ### Notice
         **This repository is not related to external or third-part Fiber modules. If you have a problem with them, open an issue under their repos. If you think the problem is related to Fiber, open the issue here.**
-        - Dont't forget you can ask your questions on our [Discord server](https://gofiber.io/discord).
-        - If you think Fiber doesn't have a nice feature that you think, open the issue with **✏️ Feature Request** template.
+        - Don't forget you can ask your questions in our [Discord server](https://gofiber.io/discord).
+        - If you have a suggestion for a Fiber feature you would like to see, open the issue with the **✏️ Feature Request** template.
         - Write your issue with clear and understandable English.
   - type: textarea
     id: description
     attributes:
       label: "Bug Description"
       description: "A clear and detailed description of what the bug is."
-      placeholder: "Explain your problem as clear and detailed."
+      placeholder: "Explain your problem clearly and in detail."
     validations:
       required: true
   - type: textarea
@@ -39,7 +39,7 @@ body:
     id: expected-behavior
     attributes:
       label: Expected Behavior
-      description: "A clear and detailed description of what you think should happens."
+      description: "A clear and detailed description of what you think should happen."
       placeholder: "Tell us what Fiber should normally do."
     validations:
       required: true
@@ -56,7 +56,7 @@ body:
     attributes:
       label: "Code Snippet (optional)"
       description: "For some issues, we need to know some parts of your code."
-      placeholder: "Share a code you think related to the issue."
+      placeholder: "Share a code snippet that you think is related to the issue."
       render: go
       value: |
         package main

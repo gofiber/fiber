@@ -149,6 +149,23 @@ func (o *fakeOutput) Write([]byte) (int, error) {
 	return 0, errors.New("fake output")
 }
 
+// go test -run Test_Logger_ErrorOutput_WithoutColor
+func Test_Logger_ErrorOutput_WithoutColor(t *testing.T) {
+	t.Parallel()
+	o := new(fakeOutput)
+	app := fiber.New()
+	app.Use(New(Config{
+		Output:        o,
+		DisableColors: true,
+	}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+
+	require.Equal(t, 1, int(*o))
+}
+
 // go test -run Test_Logger_ErrorOutput
 func Test_Logger_ErrorOutput(t *testing.T) {
 	t.Parallel()
@@ -161,8 +178,7 @@ func Test_Logger_ErrorOutput(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
-
-	require.Equal(t, 2, int(*o))
+	require.Equal(t, 1, int(*o))
 }
 
 // go test -run Test_Logger_All
@@ -274,7 +290,10 @@ func Test_Logger_Data_Race(t *testing.T) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	app.Use(New())
+	app.Use(New(ConfigDefault))
+	app.Use(New(Config{
+		Format: "${time} | ${pid} | ${locals:requestid} | ${status} | ${latency} | ${method} | ${path}\n",
+	}))
 
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("hello")
@@ -500,4 +519,20 @@ func Test_Logger_ByteSent_Streaming(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, "0 0 200", buf.String())
+}
+
+// go test -run Test_Logger_EnableColors
+func Test_Logger_EnableColors(t *testing.T) {
+	t.Parallel()
+	o := new(fakeOutput)
+	app := fiber.New()
+	app.Use(New(Config{
+		Output: o,
+	}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+
+	require.Equal(t, 1, int(*o))
 }

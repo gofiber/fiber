@@ -15,6 +15,128 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+func Test_Utils_GetOffer(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, "", getOffer("hello", acceptsOffer))
+	require.Equal(t, "1", getOffer("", acceptsOffer, "1"))
+	require.Equal(t, "", getOffer("2", acceptsOffer, "1"))
+
+	require.Equal(t, "", getOffer("", acceptsOfferType))
+	require.Equal(t, "", getOffer("text/html", acceptsOfferType))
+	require.Equal(t, "", getOffer("text/html", acceptsOfferType, "application/json"))
+	require.Equal(t, "", getOffer("text/html;q=0", acceptsOfferType, "text/html"))
+	require.Equal(t, "", getOffer("application/json, */*; q=0", acceptsOfferType, "image/png"))
+	require.Equal(t, "application/xml", getOffer("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", acceptsOfferType, "application/xml", "application/json"))
+	require.Equal(t, "text/html", getOffer("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", acceptsOfferType, "text/html"))
+	require.Equal(t, "application/pdf", getOffer("text/plain;q=0,application/pdf;q=0.9,*/*;q=0.000", acceptsOfferType, "application/pdf", "application/json"))
+	require.Equal(t, "application/pdf", getOffer("text/plain;q=0,application/pdf;q=0.9,*/*;q=0.000", acceptsOfferType, "application/pdf", "application/json"))
+
+	require.Equal(t, "", getOffer("utf-8, iso-8859-1;q=0.5", acceptsOffer))
+	require.Equal(t, "", getOffer("utf-8, iso-8859-1;q=0.5", acceptsOffer, "ascii"))
+	require.Equal(t, "utf-8", getOffer("utf-8, iso-8859-1;q=0.5", acceptsOffer, "utf-8"))
+	require.Equal(t, "iso-8859-1", getOffer("utf-8;q=0, iso-8859-1;q=0.5", acceptsOffer, "utf-8", "iso-8859-1"))
+
+	require.Equal(t, "deflate", getOffer("gzip, deflate", acceptsOffer, "deflate"))
+	require.Equal(t, "", getOffer("gzip, deflate;q=0", acceptsOffer, "deflate"))
+}
+
+func Benchmark_Utils_GetOffer(b *testing.B) {
+	headers := []string{
+		"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+		"application/json",
+		"utf-8, iso-8859-1;q=0.5",
+		"gzip, deflate",
+	}
+	offers := [][]string{
+		{"text/html", "application/xml", "application/xml+xhtml"},
+		{"application/json"},
+		{"utf-8"},
+		{"deflate"},
+	}
+	for n := 0; n < b.N; n++ {
+		for i, header := range headers {
+			getOffer(header, acceptsOfferType, offers[i]...)
+		}
+	}
+}
+
+func Test_Utils_SortAcceptedTypes(t *testing.T) {
+	t.Parallel()
+	acceptedTypes := []acceptedType{
+		{spec: "text/html", quality: 1, specificity: 3, order: 0},
+		{spec: "text/*", quality: 0.5, specificity: 2, order: 1},
+		{spec: "*/*", quality: 0.1, specificity: 1, order: 2},
+		{spec: "application/json", quality: 0.999, specificity: 3, order: 3},
+		{spec: "application/xml", quality: 1, specificity: 3, order: 4},
+		{spec: "application/pdf", quality: 1, specificity: 3, order: 5},
+		{spec: "image/png", quality: 1, specificity: 3, order: 6},
+		{spec: "image/jpeg", quality: 1, specificity: 3, order: 7},
+		{spec: "image/*", quality: 1, specificity: 2, order: 8},
+		{spec: "image/gif", quality: 1, specificity: 3, order: 9},
+		{spec: "text/plain", quality: 1, specificity: 3, order: 10},
+	}
+	sortAcceptedTypes(&acceptedTypes)
+	require.Equal(t, acceptedTypes, []acceptedType{
+		{spec: "text/html", quality: 1, specificity: 3, order: 0},
+		{spec: "application/xml", quality: 1, specificity: 3, order: 4},
+		{spec: "application/pdf", quality: 1, specificity: 3, order: 5},
+		{spec: "image/png", quality: 1, specificity: 3, order: 6},
+		{spec: "image/jpeg", quality: 1, specificity: 3, order: 7},
+		{spec: "image/gif", quality: 1, specificity: 3, order: 9},
+		{spec: "text/plain", quality: 1, specificity: 3, order: 10},
+		{spec: "image/*", quality: 1, specificity: 2, order: 8},
+		{spec: "application/json", quality: 0.999, specificity: 3, order: 3},
+		{spec: "text/*", quality: 0.5, specificity: 2, order: 1},
+		{spec: "*/*", quality: 0.1, specificity: 1, order: 2},
+	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_Utils_SortAcceptedTypes_Sorted -benchmem -count=4
+func Benchmark_Utils_SortAcceptedTypes_Sorted(b *testing.B) {
+	acceptedTypes := make([]acceptedType, 3)
+	for n := 0; n < b.N; n++ {
+		acceptedTypes[0] = acceptedType{spec: "text/html", quality: 1, specificity: 1, order: 0}
+		acceptedTypes[1] = acceptedType{spec: "text/*", quality: 0.5, specificity: 1, order: 1}
+		acceptedTypes[2] = acceptedType{spec: "*/*", quality: 0.1, specificity: 1, order: 2}
+		sortAcceptedTypes(&acceptedTypes)
+	}
+	require.Equal(b, "text/html", acceptedTypes[0].spec)
+	require.Equal(b, "text/*", acceptedTypes[1].spec)
+	require.Equal(b, "*/*", acceptedTypes[2].spec)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Utils_SortAcceptedTypes_Unsorted -benchmem -count=4
+func Benchmark_Utils_SortAcceptedTypes_Unsorted(b *testing.B) {
+	acceptedTypes := make([]acceptedType, 11)
+	for n := 0; n < b.N; n++ {
+		acceptedTypes[0] = acceptedType{spec: "text/html", quality: 1, specificity: 3, order: 0}
+		acceptedTypes[1] = acceptedType{spec: "text/*", quality: 0.5, specificity: 2, order: 1}
+		acceptedTypes[2] = acceptedType{spec: "*/*", quality: 0.1, specificity: 1, order: 2}
+		acceptedTypes[3] = acceptedType{spec: "application/json", quality: 0.999, specificity: 3, order: 3}
+		acceptedTypes[4] = acceptedType{spec: "application/xml", quality: 1, specificity: 3, order: 4}
+		acceptedTypes[5] = acceptedType{spec: "application/pdf", quality: 1, specificity: 3, order: 5}
+		acceptedTypes[6] = acceptedType{spec: "image/png", quality: 1, specificity: 3, order: 6}
+		acceptedTypes[7] = acceptedType{spec: "image/jpeg", quality: 1, specificity: 3, order: 7}
+		acceptedTypes[8] = acceptedType{spec: "image/*", quality: 1, specificity: 2, order: 8}
+		acceptedTypes[9] = acceptedType{spec: "image/gif", quality: 1, specificity: 3, order: 9}
+		acceptedTypes[10] = acceptedType{spec: "text/plain", quality: 1, specificity: 3, order: 10}
+		sortAcceptedTypes(&acceptedTypes)
+	}
+	require.Equal(b, acceptedTypes, []acceptedType{
+		{spec: "text/html", quality: 1, specificity: 3, order: 0},
+		{spec: "application/xml", quality: 1, specificity: 3, order: 4},
+		{spec: "application/pdf", quality: 1, specificity: 3, order: 5},
+		{spec: "image/png", quality: 1, specificity: 3, order: 6},
+		{spec: "image/jpeg", quality: 1, specificity: 3, order: 7},
+		{spec: "image/gif", quality: 1, specificity: 3, order: 9},
+		{spec: "text/plain", quality: 1, specificity: 3, order: 10},
+		{spec: "image/*", quality: 1, specificity: 2, order: 8},
+		{spec: "application/json", quality: 0.999, specificity: 3, order: 3},
+		{spec: "text/*", quality: 0.5, specificity: 2, order: 1},
+		{spec: "*/*", quality: 0.1, specificity: 1, order: 2},
+	})
+}
+
 func Test_Utils_UniqueRouteStack(t *testing.T) {
 	t.Parallel()
 	route1 := &Route{}
@@ -106,12 +228,6 @@ func Test_Utils_Parse_Address(t *testing.T) {
 		require.Equal(t, c.host, host, "addr host")
 		require.Equal(t, c.port, port, "addr port")
 	}
-}
-
-func Test_Utils_GetOffset(t *testing.T) {
-	require.Equal(t, "", getOffer("hello"))
-	require.Equal(t, "1", getOffer("", "1"))
-	require.Equal(t, "", getOffer("2", "1"))
 }
 
 func Test_Utils_TestConn_Deadline(t *testing.T) {

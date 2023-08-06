@@ -1,7 +1,7 @@
 package fiber
 
 import (
-	"log"
+	"github.com/gofiber/fiber/v2/log"
 )
 
 // OnRouteHandler Handlers define a function to create hooks for Fiber.
@@ -10,8 +10,8 @@ type (
 	OnNameHandler      = OnRouteHandler
 	OnGroupHandler     = func(Group) error
 	OnGroupNameHandler = OnGroupHandler
-	OnListenHandler    = func() error
-	OnShutdownHandler  = OnListenHandler
+	OnListenHandler    = func(ListenData) error
+	OnShutdownHandler  = func() error
 	OnForkHandler      = func(int) error
 	OnMountHandler     = func(*App) error
 )
@@ -30,6 +30,13 @@ type Hooks struct {
 	onShutdown  []OnShutdownHandler
 	onFork      []OnForkHandler
 	onMount     []OnMountHandler
+}
+
+// ListenData is a struct to use it with OnListenHandler
+type ListenData struct {
+	Host string
+	Port string
+	TLS  bool
 }
 
 func newHooks(app *App) *Hooks {
@@ -174,9 +181,9 @@ func (h *Hooks) executeOnGroupNameHooks(group Group) error {
 	return nil
 }
 
-func (h *Hooks) executeOnListenHooks() error {
+func (h *Hooks) executeOnListenHooks(listenData ListenData) error {
 	for _, v := range h.onListen {
-		if err := v(); err != nil {
+		if err := v(listenData); err != nil {
 			return err
 		}
 	}
@@ -187,7 +194,7 @@ func (h *Hooks) executeOnListenHooks() error {
 func (h *Hooks) executeOnShutdownHooks() {
 	for _, v := range h.onShutdown {
 		if err := v(); err != nil {
-			log.Printf("failed to call shutdown hook: %v\n", err)
+			log.Errorf("failed to call shutdown hook: %v", err)
 		}
 	}
 }
@@ -195,7 +202,7 @@ func (h *Hooks) executeOnShutdownHooks() {
 func (h *Hooks) executeOnForkHooks(pid int) {
 	for _, v := range h.onFork {
 		if err := v(pid); err != nil {
-			log.Printf("failed to call fork hook: %v\n", err)
+			log.Errorf("failed to call fork hook: %v", err)
 		}
 	}
 }

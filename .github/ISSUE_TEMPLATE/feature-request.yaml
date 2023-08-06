@@ -9,15 +9,15 @@ body:
     attributes:
       value: |
         ### Notice
-        - Dont't forget you can ask your questions on our [Discord server](https://gofiber.io/discord).
-        - If you think this is just a bug, open the issue with **☢️ Bug Report** template.
+        - Don't forget you can ask your questions in our [Discord server](https://gofiber.io/discord).
+        - If you think this is just a bug, open the issue with the **☢️ Bug Report** template.
         - Write your issue with clear and understandable English.
   - type: textarea
     id: description
     attributes:
       label: "Feature Description"
-      description: "A clear and detailed description of the feature we need to do."
-      placeholder: "Explain your feature as clear and detailed."
+      description: "A clear and detailed description of the feature you would like to see added."
+      placeholder: "Explain your feature clearly, and in detail."
     validations:
       required: true
   - type: textarea
@@ -31,7 +31,7 @@ body:
     attributes:
       label: "Code Snippet (optional)"
       description: "Code snippet may be really helpful to describe some features."
-      placeholder: "Share a code to explain the feature better."
+      placeholder: "Share a code snippet to explain the feature better."
       render: go
       value: |
         package main

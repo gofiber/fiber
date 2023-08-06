@@ -2,6 +2,7 @@ package cors
 
 import (
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -75,7 +76,7 @@ func Test_CORS_Wildcard(t *testing.T) {
 	handler(ctx)
 
 	// Check result
-	require.Equal(t, "localhost", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+	require.Equal(t, "*", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
 	require.Equal(t, "true", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowCredentials)))
 	require.Equal(t, "3600", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlMaxAge)))
 	require.Equal(t, "Authentication", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)))
@@ -240,4 +241,95 @@ func Test_CORS_Next(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+}
+
+func Test_CORS_AllowOriginsAndAllowOriginsFunc(t *testing.T) {
+	t.Parallel()
+	// New fiber instance
+	app := fiber.New()
+	app.Use("/", New(Config{
+		AllowOrigins: "http://example-1.com",
+		AllowOriginsFunc: func(origin string) bool {
+			return strings.Contains(origin, "example-2")
+		},
+	}))
+
+	// Get handler pointer
+	handler := app.Handler()
+
+	// Make request with disallowed origin
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.SetRequestURI("/")
+	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://google.com")
+
+	// Perform request
+	handler(ctx)
+
+	// Allow-Origin header should be "" because http://google.com does not satisfy http://example-1.com or 'strings.Contains(origin, "example-2")'
+	require.Equal(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+
+	// Make request with allowed origin
+	ctx.Request.SetRequestURI("/")
+	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://example-1.com")
+
+	handler(ctx)
+
+	require.Equal(t, "http://example-1.com", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+
+	// Make request with allowed origin
+	ctx.Request.SetRequestURI("/")
+	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://example-2.com")
+
+	handler(ctx)
+
+	require.Equal(t, "http://example-2.com", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+}
+
+func Test_CORS_AllowOriginsFunc(t *testing.T) {
+	t.Parallel()
+	// New fiber instance
+	app := fiber.New()
+	app.Use("/", New(Config{
+		AllowOriginsFunc: func(origin string) bool {
+			return strings.Contains(origin, "example-2")
+		},
+	}))
+
+	// Get handler pointer
+	handler := app.Handler()
+
+	// Make request with disallowed origin
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.SetRequestURI("/")
+	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://google.com")
+
+	// Perform request
+	handler(ctx)
+
+	// Allow-Origin header should be "*" because http://google.com does not satisfy 'strings.Contains(origin, "example-2")'
+	// and AllowOrigins has not been set so the default "*" is used
+	require.Equal(t, "*", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+
+	// Make request with allowed origin
+	ctx.Request.SetRequestURI("/")
+	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://example-2.com")
+
+	handler(ctx)
+
+	// Allow-Origin header should be "http://example-2.com"
+	require.Equal(t, "http://example-2.com", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
 }

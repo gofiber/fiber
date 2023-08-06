@@ -1577,7 +1577,7 @@ func Test_Bind_StructValidator(t *testing.T) {
 
 	rq := new(simpleQuery)
 	c.Request().URI().SetQueryString("name=efe")
-	require.Equal(t, "you should have entered right name!", c.Bind().Query(rq).Error())
+	require.Equal(t, "you should have entered right name", c.Bind().Query(rq).Error())
 
 	rq = new(simpleQuery)
 	c.Request().URI().SetQueryString("name=john")

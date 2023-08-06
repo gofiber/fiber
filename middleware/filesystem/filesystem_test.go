@@ -234,3 +234,18 @@ func Test_FileSystem_UsingParam_NonFile(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 404, resp.StatusCode)
 }
+
+func Test_FileSystem_UsingContentTypeCharset(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New(Config{
+		Root:               os.DirFS("../../.github/testdata/fs"),
+		Index:              "index.html",
+		ContentTypeCharset: "UTF-8",
+	}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
+	require.Equal(t, "text/html; charset=UTF-8", resp.Header.Get("Content-Type"))
+}

@@ -1,6 +1,11 @@
 <p align="center">
   <a href="https://gofiber.io">
-    <img alt="Fiber" height="125" src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/logo.svg">
+  
+  <picture>
+    <source height="125" media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/gofiber/docs/master/static/img/logo-dark.svg">
+    <img height="125" alt="Fiber" src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/logo.svg">
+  </picture>
+  
   </a>
   <br>
   <!-- base64 flags are available at https://www.phoca.cz/cssflags/ -->
@@ -54,6 +59,9 @@
    </a>
    <a href="https://github.com/gofiber/fiber/blob/master/.github/README_uk.md">
     <img height="20px" src="https://img.shields.io/badge/UK-flag.svg?color=555555&style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIiB2ZXJzaW9uPSIxLjEiIGlkPSJMYXllcl8xIiB4PSIwcHgiIHk9IjBweCIgdmlld0JveD0iMCAwIDU1LjIgMzguNCIgc3R5bGU9ImVuYWJsZS1iYWNrZ3JvdW5kOm5ldyAwIDAgNTUuMiAzOC40IiB4bWw6c3BhY2U9InByZXNlcnZlIj48c3R5bGUgdHlwZT0idGV4dC9jc3MiPjwhW0NEQVRBWwoJLnN0MHtmaWxsOiNGRkQ1MDA7fQoJLnN0MXtmaWxsOiMwMDVCQkI7fQpdXT48L3N0eWxlPjxnPjxwYXRoIGNsYXNzPSJzdDEiIGQ9Ik0zLjAzLDBoNDkuMTNjMS42NywwLDMuMDMsMS4zNiwzLjAzLDMuMDN2MzIuMzNjMCwxLjY3LTEuMzcsMy4wMy0zLjAzLDMuMDNIMy4wM0MxLjM3LDM4LjQsMCwzNy4wNCwwLDM1LjM3IFYzLjAzQzAsMS4zNiwxLjM3LDAsMy4wMywwTDMuMDMsMHoiLz48cGF0aCBjbGFzcz0ic3QwIiBkPSJNMCwxOS4yaDU1LjJ2MTYuMTdjMCwxLjY3LTEuMzcsMy4wMy0zLjAzLDMuMDNIMy4wM0MxLjM3LDM4LjQsMCwzNy4wNCwwLDM1LjM3VjE5LjJMMCwxOS4yeiIvPjwvZz48L3N2Zz4=">
+  </a>
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_az.md">
+    <img height="20px" src="https://img.shields.io/badge/AZ-flag.svg?color=555555&style=flat-square&logo=data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4NCjxzdmcgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI2MDAiPg0KPHJlY3Qgd2lkdGg9IjEyMDAiIGhlaWdodD0iNjAwIiBmaWxsPSIjNTA5ZTJmIi8+DQo8cmVjdCB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI0MDAiIGZpbGw9IiNlZjMzNDAiLz4NCjxyZWN0IHdpZHRoPSIxMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iIzAwYjVlMiIvPg0KPGNpcmNsZSBjeD0iNTcwIiBjeT0iMzAwIiByPSI5MCIgZmlsbD0iI2ZmZiIvPg0KPGNpcmNsZSBjeD0iNTkwIiBjeT0iMzAwIiByPSI3NSIgZmlsbD0iI2VmMzM0MCIvPg0KPHBhdGggZD0iTTY3MCAyNTBsOS41NjcgMjYuOTAzIDI1Ljc4OC0xMi4yNTgtMTIuMjU4IDI1Ljc4OEw3MjAgMzAwbC0yNi45MDMgOS41NjcgMTIuMjU4IDI1Ljc4OC0yNS43ODgtMTIuMjU4TDY3MCAzNTBsLTkuNTY3LTI2LjkwMy0yNS43ODggMTIuMjU4IDEyLjI1OC0yNS43ODhMNjIwIDMwMGwyNi45MDMtOS41NjctMTIuMjU4LTI1Ljc4OCAyNS43ODggMTIuMjU4eiIgZmlsbD0iI2ZmZiIvPg0KPC9zdmc+">
   </a>
   <br>
   <a href="https://pkg.go.dev/github.com/gofiber/fiber/v3#pkg-overview">
@@ -114,7 +122,7 @@ Bu testler [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r1
 
 ## ⚙️ Kurulum
 
-Go'nun `1.16` sürümü ([indir](https://go.dev/dl/)) veya daha yüksek bir sürüm gerekli.
+Go'nun `1.17` sürümü ([indir](https://go.dev/dl/)) veya daha yüksek bir sürüm gerekli.
 
 Bir dizin oluşturup dizinin içinde `go mod init github.com/your/repo` komutunu yazarak projenizi geliştirmeye başlayın ([daha fazla öğren](https://go.dev/blog/using-go-modules)). Ardından Fiber'ı kurmak için [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) komutunu çalıştırın:
 
@@ -124,7 +132,7 @@ go get -u github.com/gofiber/fiber/v3
 
 ## 🎯 Özellikler
 
--   Güçlü [routing](https://docs.gofiber.io/routing)
+-   Güçlü [routing](https://docs.gofiber.io/guide/routing)
 -   [Statik dosya](https://docs.gofiber.io/api/app#static) sunumu
 -   Olağanüstü [performans](https://docs.gofiber.io/extra/benchmarks)
 -   [Düşük bellek](https://docs.gofiber.io/extra/benchmarks) kullanımı
@@ -146,7 +154,7 @@ Fiber, internet üzerinde en popüler web framework'ü olan Express'ten **esinle
 
 ## ⚠️ Sınırlamalar
 
--   Fiber unsafe kullanımı sebebiyle Go'nun son sürümüyle her zaman uyumlu olmayabilir. Fiber 2.40.0, Go 1.16 ile 1.20 sürümleriyle test edildi.
+-   Fiber unsafe kullanımı sebebiyle Go'nun son sürümüyle her zaman uyumlu olmayabilir. Fiber 2.40.0, Go 1.17 ile 1.20 sürümleriyle test edildi.
 -   Fiber net/http arabirimiyle uyumlu değildir. Yani gqlgen veya go-swagger gibi net/http ekosisteminin parçası olan projeleri kullanamazsınız.
 
 ## 👀 Örnekler
@@ -434,7 +442,7 @@ func main() {
 
 ### JSON Yanıtları
 
-📖 [JSON](https://docs.gofiber.io/ctx#json)
+📖 [JSON](https://docs.gofiber.io/api/ctx#json)
 
 ```go
 type User struct {
@@ -589,6 +597,11 @@ Fiber'a dahil edilen middlewareların bir listesi aşağıda verilmiştir.
 | [session](https://github.com/gofiber/fiber/tree/master/middleware/session)             | Session için middleware. NOTE: Bu middleware Fiber'in Storage yapısını kullanır.                                                                                                       |
 | [skip](https://github.com/gofiber/fiber/tree/master/middleware/skip)                   | Skip middleware'ı verilen koşul `true` olduğunda handler'ı atlar ve işlemez.                                                                                                           |
 | [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)             | Bir request için maksimum süre ekler ve aşılırsa ErrorHandler'a iletir.                                                                                                                |
+| [keyauth](https://github.com/gofiber/keyauth)     | Key auth middleware, key tabanlı bir authentication sağlar.                                                                                                                                  |
+| [redirect](https://github.com/gofiber/redirect)   | Yönlendirme middleware  'ı.                                                                                                                                               |
+| [rewrite](https://github.com/gofiber/rewrite)     | Rewrite middleware, sağlanan kurallara göre URL yolunu yeniden yazar. Geriye dönük uyumluluk için veya yalnızca daha temiz ve daha açıklayıcı bağlantılar oluşturmak için yardımcı olabilir. |
+| [adaptor](https://github.com/gofiber/adaptor)     | Fiber request handlerdan net/http handlerları için dönüştürücü, @arsmn'a özel teşekkürler!                                                                                                   |
+| [helmet](https://github.com/gofiber/helmet)       | Çeşitli HTTP headerları ayarlayarak uygulamalarınızın güvenliğini sağlamaya yardımcı olur.                                                                                                   |
 
 ## 🧬 Harici Middlewarelar
 
@@ -596,14 +609,9 @@ Harici olarak barındırılan middlewareların modüllerinin listesi. Bu middlew
 
 | Middleware                                        | Açıklama                                                                                                                                                                                     |
 | :------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [adaptor](https://github.com/gofiber/adaptor)     | Fiber request handlerdan net/http handlerları için dönüştürücü, @arsmn'a özel teşekkürler!                                                                                                   |
-| [helmet](https://github.com/gofiber/helmet)       | Çeşitli HTTP headerları ayarlayarak uygulamalarınızın güvenliğini sağlamaya yardımcı olur.                                                                                                   |
 | [jwt](https://github.com/gofiber/jwt)             | JWT, bir JSON Web Token \(JWT\) yetkilendirmesi döndüren middleware.                                                                                                                         |
-| [keyauth](https://github.com/gofiber/keyauth)     | Key auth middleware, key tabanlı bir authentication sağlar.                                                                                                                                  |
-| [redirect](https://github.com/gofiber/redirect)   | Yönlendirme middleware  'ı.                                                                                                                                               |
-| [rewrite](https://github.com/gofiber/rewrite)     | Rewrite middleware, sağlanan kurallara göre URL yolunu yeniden yazar. Geriye dönük uyumluluk için veya yalnızca daha temiz ve daha açıklayıcı bağlantılar oluşturmak için yardımcı olabilir. |
 | [storage](https://github.com/gofiber/storage)     | Fiber'in Storage yapısını destekleyen birçok storage driver'ı verir. Bu sayede depolama gerektiren Fiber middlewarelarında kolaylıkla kullanılabilir.                                                   |
-| [template](https://github.com/gofiber/template)   | Bu paket, Fiber `v2.x.x`, Go sürüm 1.16 veya üzeri gerekli olduğunda kullanılabilecek 9 template motoru içerir.                                                                             |
+| [template](https://github.com/gofiber/template)   | Bu paket, Fiber `v2.x.x`, Go sürüm 1.17 veya üzeri gerekli olduğunda kullanılabilecek 9 template motoru içerir.                                                                             |
 | [websocket](https://github.com/gofiber/websocket) | Yereller desteğiyle Fiber için Fasthttp WebSocket'a dayalıdır!                                                                                                                               |
 
 ## 🕶️ Awesome Listesi
@@ -662,7 +670,6 @@ Telif (c) 2019-günümüz [Fenny](https://github.com/fenny) ve [katkıda bulunan
 -   [runewidth](https://github.com/mattn/go-runewidth/blob/master/LICENSE)
 -   [fasthttp](https://github.com/valyala/fasthttp/blob/master/LICENSE)
 -   [bytebufferpool](https://github.com/valyala/bytebufferpool/blob/master/LICENSE)
--   [dictpool](https://github.com/savsgio/dictpool/blob/master/LICENSE)
 -   [fwd](https://github.com/philhofer/fwd/blob/master/LICENSE.md)
 -   [go-ole](https://github.com/go-ole/go-ole/blob/master/LICENSE)
 -   [gopsutil](https://github.com/shirou/gopsutil/blob/master/LICENSE)
