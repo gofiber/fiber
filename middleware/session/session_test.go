@@ -287,6 +287,7 @@ func Test_Session_Save_Expiration(t *testing.T) {
 	t.Parallel()
 
 	t.Run("save to cookie", func(t *testing.T) {
+		const sessionDuration = 5 * time.Second
 		t.Parallel()
 		// session store
 		store := New()
@@ -302,7 +303,7 @@ func Test_Session_Save_Expiration(t *testing.T) {
 		sess.Set("name", "john")
 
 		// expire this session in 5 seconds
-		sess.SetExpiry(time.Second * 5)
+		sess.SetExpiry(sessionDuration)
 
 		// save session
 		err = sess.Save()
@@ -314,7 +315,7 @@ func Test_Session_Save_Expiration(t *testing.T) {
 		utils.AssertEqual(t, "john", sess.Get("name"))
 
 		// just to make sure the session has been expired
-		time.Sleep(time.Second * 5)
+		time.Sleep(sessionDuration + (10 * time.Millisecond))
 
 		// here you should get a new session
 		sess, err = store.Get(ctx)

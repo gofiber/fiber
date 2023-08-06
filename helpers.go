@@ -269,6 +269,41 @@ func acceptsOfferType(spec, offerType string) bool {
 	return false
 }
 
+// getSplicedStrList function takes a string and a string slice as an argument, divides the string into different
+// elements divided by ',' and stores these elements in the string slice.
+// It returns the populated string slice as an output.
+//
+// If the given slice hasn't enough space, it will allocate more and return.
+func getSplicedStrList(headerValue string, dst []string) []string {
+	if headerValue == "" {
+		return nil
+	}
+
+	var (
+		index             int
+		character         rune
+		lastElementEndsAt uint8
+		insertIndex       int
+	)
+	for index, character = range headerValue + "$" {
+		if character == ',' || index == len(headerValue) {
+			if insertIndex >= len(dst) {
+				oldSlice := dst
+				dst = make([]string, len(dst)+(len(dst)>>1)+2)
+				copy(dst, oldSlice)
+			}
+			dst[insertIndex] = utils.TrimLeft(headerValue[lastElementEndsAt:index], ' ')
+			lastElementEndsAt = uint8(index + 1)
+			insertIndex++
+		}
+	}
+
+	if len(dst) > insertIndex {
+		dst = dst[:insertIndex]
+	}
+	return dst
+}
+
 // getOffer return valid offer for header negotiation
 func getOffer(header string, isAccepted func(spec, offer string) bool, offers ...string) string {
 	if len(offers) == 0 {

@@ -107,6 +107,53 @@ func Benchmark_Utils_GetOffer(b *testing.B) {
 	}
 }
 
+func Test_Utils_GetSplicedStrList(t *testing.T) {
+	testCases := []struct {
+		description  string
+		headerValue  string
+		expectedList []string
+	}{
+		{
+			description:  "normal case",
+			headerValue:  "gzip, deflate,br",
+			expectedList: []string{"gzip", "deflate", "br"},
+		},
+		{
+			description:  "no matter the value",
+			headerValue:  "   gzip,deflate, br, zip",
+			expectedList: []string{"gzip", "deflate", "br", "zip"},
+		},
+		{
+			description:  "headerValue is empty",
+			headerValue:  "",
+			expectedList: nil,
+		},
+		{
+			description:  "has a comma without element",
+			headerValue:  "gzip,",
+			expectedList: []string{"gzip", ""},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			dst := make([]string, 10)
+			result := getSplicedStrList(tc.headerValue, dst)
+			utils.AssertEqual(t, tc.expectedList, result)
+		})
+	}
+}
+
+func Benchmark_Utils_GetSplicedStrList(b *testing.B) {
+	destination := make([]string, 5)
+	result := destination
+	const input = "deflate, gzip,br,brotli"
+	for n := 0; n < b.N; n++ {
+		result = getSplicedStrList(input, destination)
+	}
+	utils.AssertEqual(b, []string{"deflate", "gzip", "br", "brotli"}, result)
+}
+
 func Test_Utils_SortAcceptedTypes(t *testing.T) {
 	t.Parallel()
 	acceptedTypes := []acceptedType{
