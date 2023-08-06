@@ -700,10 +700,12 @@ func Test_Proxy_Domain_Forward_Local(t *testing.T) {
 	go func() { require.NoError(t, app.Listener(ln)) }()
 	go func() { require.NoError(t, app1.Listener(ln1)) }()
 
-	code, body, errs := fiber.Get("http://" + localDomain + "/test?query_test=true").String()
-	require.Equal(t, 0, len(errs))
-	require.Equal(t, fiber.StatusOK, code)
-	require.Equal(t, "test_local_client:true", body)
+	resp, err := fiberClient.Get("http://" + localDomain + "/test?query_test=true")
+	defer resp.Close()
+
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode())
+	require.Equal(t, "test_local_client:true", string(resp.Body()))
 }
 
 // go test -run Test_Proxy_Balancer_Forward_Local
