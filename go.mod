@@ -10,7 +10,7 @@ require (
 	github.com/tinylib/msgp v1.1.8
 	github.com/valyala/bytebufferpool v1.0.0
 	github.com/valyala/fasthttp v1.48.0
-	golang.org/x/sys v0.10.0
+	golang.org/x/sys v0.11.0
 )
 
 require (
