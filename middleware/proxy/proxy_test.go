@@ -596,9 +596,11 @@ func Test_Proxy_Forward_Global_Client(t *testing.T) {
 		}))
 	}()
 
+	time.Sleep(1 * time.Second)
+
 	resp, err := fiberClient.AcquireClient().
 		R().
-		Get("https://" + addr)
+		Get("http://" + addr)
 
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode())
@@ -629,9 +631,11 @@ func Test_Proxy_Forward_Local_Client(t *testing.T) {
 		}))
 	}()
 
+	time.Sleep(1 * time.Second)
+
 	resp, err := fiberClient.AcquireClient().
 		R().
-		Get("https://" + addr)
+		Get("http://" + addr)
 
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode())
