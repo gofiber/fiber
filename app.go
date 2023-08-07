@@ -613,12 +613,14 @@ func (app *App) Name(name string) Router {
 
 	for _, routes := range app.stack {
 		for _, route := range routes {
-			if route.Path == app.latestRoute.path && route.Method == app.latestRoute.Method {
-				route.Name = name
-
-				if route.group != nil {
-					route.Name = route.group.name + route.Name
+			if app.latestRoute.group == route.group {
+				if route.Path == app.latestRoute.path {
+					app.addRouteName(route, name)
 				}
+			}
+
+			if route.Path == app.latestRoute.path && route.Method == app.latestRoute.Method {
+				app.addRouteName(route, name)
 			}
 		}
 	}
@@ -1107,5 +1109,13 @@ func (app *App) startupProcess() *App {
 func (app *App) runOnListenHooks(listenData ListenData) {
 	if err := app.hooks.executeOnListenHooks(listenData); err != nil {
 		panic(err)
+	}
+}
+
+func (app *App) addRouteName(route *Route, name string) {
+	route.Name = name
+
+	if route.group != nil {
+		route.Name = route.group.name + route.Name
 	}
 }
