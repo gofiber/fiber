@@ -1,37 +1,44 @@
 name-template: 'v$RESOLVED_VERSION'
 tag-template: 'v$RESOLVED_VERSION'
 categories:
-    - title: '🚀 New'
-      labels:
-          - '✏️ Feature'
-    - title: '🧹 Updates'
-      labels:
-          - '🧹 Updates'
-          - '🤖 Dependencies'
-    - title: '🐛 Fixes'
-      labels:
-          - '☢️ Bug'
-    - title: '📚 Documentation'
-      labels:
-          - '📒 Documentation'
+  - title: '❗ Breaking Changes'
+    labels:
+      - '❗ BreakingChange'
+  - title: '🚀 New'
+    labels:
+      - '✏️ Feature'
+  - title: '🧹 Updates'
+    labels:
+      - '🧹 Updates'
+      - '🤖 Dependencies'
+  - title: '🐛 Fixes'
+    labels:
+      - '☢️ Bug'
+  - title: '📚 Documentation'
+    labels:
+      - '📒 Documentation'
 change-template: '- $TITLE (#$NUMBER)'
 change-title-escapes: '\<*_&' # You can add # and @ to disable mentions, and add ` to disable code blocks.
+exclude-contributors:
+  - dependabot
+  - dependabot[bot]
 version-resolver:
-    major:
-        labels:
-            - 'major'
-    minor:
-        labels:
-            - 'minor'
-            - '✏️ Feature'
-    patch:
-        labels:
-            - 'patch'
-            - '📒 Documentation'
-            - '☢️ Bug'
-            - '🤖 Dependencies'
-            - '🧹 Updates'
-    default: patch
+  major:
+    labels:
+      - 'major'
+      - '❗ BreakingChange'
+  minor:
+    labels:
+      - 'minor'
+      - '✏️ Feature'
+  patch:
+    labels:
+      - 'patch'
+      - '📒 Documentation'
+      - '☢️ Bug'
+      - '🤖 Dependencies'
+      - '🧹 Updates'
+  default: patch
 template: |
     $CHANGES
 
