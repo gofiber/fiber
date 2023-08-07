@@ -244,7 +244,7 @@ func newEntry(c *fasthttp.Cookie, now time.Time, path []byte) (*entry, bool) {
 	e := acquireEntry()
 
 	e.Key = utils.CopyBytes(c.Key())
-
+	fmt.Println(c.Path())
 	if len(c.Path()) != 0 || c.Path()[0] != '/' {
 		e.Path = utils.CopyBytes(path)
 	} else {

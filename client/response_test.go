@@ -252,12 +252,13 @@ func Test_Response_Save(t *testing.T) {
 		}()
 
 		file, err := os.Open("./test/tmp.json")
+		defer file.Close()
+
 		require.NoError(t, err)
 
 		data, err := io.ReadAll(file)
 		require.NoError(t, err)
 		require.Equal(t, "{\"status\":\"success\"}", string(data))
-		file.Close()
 	})
 
 	t.Run("io.Writer", func(t *testing.T) {

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -298,10 +299,8 @@ func logger(c *Client, resp *Response, req *Request) (err error) {
 		return
 	}
 
-	logger := c.Logger()
-
-	logger.Debugf("%s\n", req.RawRequest.String())
-	logger.Debugf("%s\n", resp.RawResponse.String())
+	log.Debugf("%s\n", req.RawRequest.String())
+	log.Debugf("%s\n", resp.RawResponse.String())
 
 	return
 }

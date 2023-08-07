@@ -324,6 +324,12 @@ func (r *Request) DelPathParams(key ...string) *Request {
 	return r
 }
 
+// ResetPathParams deletes all path params.
+func (r *Request) ResetPathParams() *Request {
+	r.path.Reset()
+	return r
+}
+
 // SetJSON method sets json body in request.
 func (r *Request) SetJSON(v any) *Request {
 	r.body = v

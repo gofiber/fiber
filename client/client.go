@@ -6,6 +6,8 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/xml"
+	"github.com/gofiber/fiber/v3/log"
+	"github.com/gofiber/utils/v2"
 	"io"
 	"net/url"
 	"os"
@@ -14,7 +16,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
 
@@ -239,6 +240,8 @@ func (c *Client) SetRootCertificateFromString(pem string) *Client {
 func (c *Client) SetProxyURL(proxyURL string) *Client {
 	pUrl, err := url.Parse(proxyURL)
 	if err != nil {
+		log.Errorf("%v", err)
+
 		return c
 	}
 	c.proxyURL = pUrl.String()
@@ -471,21 +474,6 @@ func (c *Client) DelCookies(key ...string) *Client {
 // Also it can be overridden at request level timeout options.
 func (c *Client) SetTimeout(t time.Duration) *Client {
 	c.timeout = t
-	return c
-}
-
-func (c *Client) Logger() Logger {
-	if c.logger == nil {
-		return &disableLogger{}
-	}
-
-	return c.logger
-}
-
-// SetLogger set logger field in client.
-// The logger would output relate info with request.
-func (c *Client) SetLogger(logger Logger) *Client {
-	c.logger = logger
 	return c
 }
 

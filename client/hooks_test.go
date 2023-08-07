@@ -1,11 +1,14 @@
 package client
 
 import (
+	"bytes"
 	"encoding/xml"
+	"github.com/gofiber/fiber/v3/log"
 	"io"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
@@ -424,6 +427,17 @@ func Test_Parser_Request_Body(t *testing.T) {
 		require.Equal(t, "ball=cricle+and+square", string(req.RawRequest.Body()))
 	})
 
+	t.Run("form data body error", func(t *testing.T) {
+		client := AcquireClient()
+		req := AcquireRequest().
+			SetFormDatas(map[string]string{
+				"": "",
+			})
+
+		err := parserRequestBody(client, req)
+		require.NoError(t, err)
+	})
+
 	t.Run("file body", func(t *testing.T) {
 		client := AcquireClient()
 		req := AcquireRequest().
@@ -457,4 +471,78 @@ func Test_Parser_Request_Body(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, []byte("hello world"), req.RawRequest.Body())
 	})
+
+	t.Run("raw body error", func(t *testing.T) {
+		client := AcquireClient()
+		req := AcquireRequest().
+			SetRawBody([]byte("hello world"))
+
+		req.body = nil
+
+		err := parserRequestBody(client, req)
+		require.ErrorIs(t, err, ErrBodyType)
+	})
+}
+
+func Test_Client_Logger_Debug(t *testing.T) {
+	app := fiber.New()
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("response")
+	})
+
+	go func() {
+		require.Nil(t, app.Listen(":3000", fiber.ListenConfig{
+			DisableStartupMessage: true,
+		}))
+	}()
+
+	defer func(app *fiber.App) {
+		_ = app.Shutdown()
+	}(app)
+
+	time.Sleep(1 * time.Second)
+
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+
+	client := AcquireClient()
+	client.Debug()
+
+	resp, err := client.Get("http://localhost:3000")
+	defer resp.Close()
+
+	require.NoError(t, err)
+	require.Contains(t, buf.String(), "Host: localhost:3000")
+	require.Contains(t, buf.String(), "Content-Length: 8")
+}
+
+func Test_Client_Logger_DisableDebug(t *testing.T) {
+	app := fiber.New()
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("response")
+	})
+
+	go func() {
+		require.Nil(t, app.Listen(":3000", fiber.ListenConfig{
+			DisableStartupMessage: true,
+		}))
+	}()
+
+	defer func(app *fiber.App) {
+		_ = app.Shutdown()
+	}(app)
+
+	time.Sleep(1 * time.Second)
+
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+
+	client := AcquireClient()
+	client.DisableDebug()
+
+	resp, err := client.Get("http://localhost:3000")
+	defer resp.Close()
+
+	require.NoError(t, err)
+	require.Len(t, buf.String(), 0)
 }

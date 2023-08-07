@@ -1,12 +1,18 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"fmt"
+	"github.com/gofiber/fiber/v3/addon/retry"
+	"github.com/gofiber/fiber/v3/log"
+	"io"
 	"net"
+	"os"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/tlstest"
@@ -813,36 +819,6 @@ func Test_Client_PathParam_With_Server(t *testing.T) {
 	require.Equal(t, "ok", resp.String())
 }
 
-// func Test_Client_Cert(t *testing.T) {
-// 	t.Parallel()
-
-// 	serverTLSConf, clientTLSConf, err := tlstest.GetTLSConfigs()
-// 	require.Nil(t, err)
-
-// 	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-// 	require.Nil(t, err)
-
-// 	ln = tls.NewListener(ln, serverTLSConf)
-
-// 	app := fiber.New()
-// 	app.Get("/", func(c fiber.Ctx) error {
-// 		return c.SendString("tls")
-// 	})
-
-// 	go func() {
-// 		require.Nil(t, nil, app.Listener(ln, fiber.ListenConfig{
-// 			DisableStartupMessage: true,
-// 		}))
-// 	}()
-
-// 	client := AcquireClient().SetCertificates(clientTLSConf.Certificates...)
-// 	resp, err := client.Get("https://" + ln.Addr().String())
-
-// 	require.Nil(t, err)
-// 	require.Equal(t, fiber.StatusOK, resp.StatusCode())
-// 	require.Equal(t, "tls", resp.String())
-// }
-
 func Test_Client_TLS(t *testing.T) {
 	t.Parallel()
 
@@ -872,6 +848,67 @@ func Test_Client_TLS(t *testing.T) {
 	require.Equal(t, clientTLSConf, client.TLSConfig())
 	require.Equal(t, fiber.StatusOK, resp.StatusCode())
 	require.Equal(t, "tls", resp.String())
+}
+
+func Test_Client_TLS_Empty_TLSConfig(t *testing.T) {
+	t.Parallel()
+
+	serverTLSConf, clientTLSConf, err := tlstest.GetTLSConfigs()
+	require.Nil(t, err)
+
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	require.Nil(t, err)
+
+	ln = tls.NewListener(ln, serverTLSConf)
+
+	app := fiber.New()
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("tls")
+	})
+
+	go func() {
+		require.Nil(t, app.Listener(ln, fiber.ListenConfig{
+			DisableStartupMessage: true,
+		}))
+	}()
+
+	client := AcquireClient()
+	resp, err := client.Get("https://" + ln.Addr().String())
+
+	require.Error(t, err)
+	require.NotEqual(t, clientTLSConf, client.TLSConfig())
+	require.Nil(t, resp)
+}
+
+func Test_Client_SetCertificates(t *testing.T) {
+	t.Parallel()
+
+	serverTLSConf, _, err := tlstest.GetTLSConfigs()
+	require.Nil(t, err)
+
+	client := AcquireClient().SetCertificates(serverTLSConf.Certificates...)
+	require.Equal(t, 1, len(client.tlsConfig.Certificates))
+}
+
+func Test_Client_SetRootCertificate(t *testing.T) {
+	t.Parallel()
+
+	client := AcquireClient().SetRootCertificate("../.github/testdata/ssl.pem")
+	require.NotNil(t, client.tlsConfig.RootCAs)
+}
+
+func Test_Client_SetRootCertificateFromString(t *testing.T) {
+	t.Parallel()
+
+	file, err := os.Open("../.github/testdata/ssl.pem")
+	defer func() { _ = file.Close() }()
+	require.NoError(t, err)
+
+	pem, err := io.ReadAll(file)
+	require.NoError(t, err)
+
+	client := AcquireClient().SetRootCertificateFromString(string(pem))
+	require.NotNil(t, client.tlsConfig.RootCAs)
 }
 
 func Test_Client_R(t *testing.T) {
@@ -968,70 +1005,125 @@ func Test_Set_Config_To_Request(t *testing.T) {
 		require.Equal(t, "v1", req.Param("k1")[0])
 	})
 
-	// t.Run("set ctx", func(t *testing.T) {
-	// 	key := struct{}{}
+	t.Run("set cookies", func(t *testing.T) {
+		req := AcquireRequest()
 
-	// 	ctx := context.Background()
-	// 	ctx = context.WithValue(ctx, key, "v1")
+		setConfigToRequest(req, Config{Cookie: map[string]string{
+			"k1": "v1",
+		}})
 
-	// 	req := AcquireRequest()
+		require.Equal(t, "v1", req.Cookie("k1"))
+	})
 
-	// 	setConfigToRequest(req, Config{Ctx: ctx})
+	t.Run("set pathparam", func(t *testing.T) {
+		req := AcquireRequest()
 
-	// 	require.Equal(t, "v1", req.Context().Value(key))
-	// })
+		setConfigToRequest(req, Config{PathParam: map[string]string{
+			"k1": "v1",
+		}})
 
-	// t.Run("set ctx", func(t *testing.T) {
-	// 	key := struct{}{}
+		require.Equal(t, "v1", req.PathParam("k1"))
+	})
 
-	// 	ctx := context.Background()
-	// 	ctx = context.WithValue(ctx, key, "v1")
+	t.Run("set timeout", func(t *testing.T) {
+		req := AcquireRequest()
 
-	// 	req := AcquireRequest()
+		setConfigToRequest(req, Config{Timeout: 1 * time.Second})
 
-	// 	setConfigToRequest(req, Config{Ctx: ctx})
+		require.Equal(t, 1*time.Second, req.Timeout())
+	})
 
-	// 	require.Equal(t, "v1", req.Context().Value(key))
-	// })
+	t.Run("set maxredirects", func(t *testing.T) {
+		req := AcquireRequest()
 
-	// t.Run("set ctx", func(t *testing.T) {
-	// 	key := struct{}{}
+		setConfigToRequest(req, Config{MaxRedirects: 1})
 
-	// 	ctx := context.Background()
-	// 	ctx = context.WithValue(ctx, key, "v1")
+		require.Equal(t, 1, req.MaxRedirects())
+	})
 
-	// 	req := AcquireRequest()
+	t.Run("set body", func(t *testing.T) {
+		req := AcquireRequest()
 
-	// 	setConfigToRequest(req, Config{Ctx: ctx})
+		setConfigToRequest(req, Config{Body: "test"})
 
-	// 	require.Equal(t, "v1", req.Context().Value(key))
-	// })
+		require.Equal(t, "test", req.body)
+	})
 
-	// t.Run("set ctx", func(t *testing.T) {
-	// 	key := struct{}{}
+	t.Run("set file", func(t *testing.T) {
+		req := AcquireRequest()
 
-	// 	ctx := context.Background()
-	// 	ctx = context.WithValue(ctx, key, "v1")
+		setConfigToRequest(req, Config{File: []*File{
+			{
+				name: "test",
+				path: "path",
+			},
+		}})
 
-	// 	req := AcquireRequest()
+		require.Equal(t, "path", req.File("test").path)
+	})
+}
 
-	// 	setConfigToRequest(req, Config{Ctx: ctx})
+func Test_Client_SetProxyURL(t *testing.T) {
+	t.Parallel()
 
-	// 	require.Equal(t, "v1", req.Context().Value(key))
-	// })
+	app, dial, start := createHelperServer(t)
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("hello world")
+	})
 
-	// t.Run("set ctx", func(t *testing.T) {
-	// 	key := struct{}{}
+	go start()
 
-	// 	ctx := context.Background()
-	// 	ctx = context.WithValue(ctx, key, "v1")
+	defer func(app *fiber.App) {
+		_ = app.Shutdown()
+	}(app)
 
-	// 	req := AcquireRequest()
+	time.Sleep(1 * time.Second)
 
-	// 	setConfigToRequest(req, Config{Ctx: ctx})
+	t.Run("success", func(t *testing.T) {
+		client := AcquireClient()
+		client.SetProxyURL("http://test.com")
+		_, err := client.Get("http://localhost:3000", Config{Dial: dial})
 
-	// 	require.Equal(t, "v1", req.Context().Value(key))
-	// })
+		require.NoError(t, err)
+	})
+
+	t.Run("wrong url", func(t *testing.T) {
+		var buf bytes.Buffer
+		log.SetOutput(&buf)
+
+		client := AcquireClient()
+		client.SetProxyURL(":this is not a url")
+		_, err := client.Get("http://localhost:3000", Config{Dial: dial})
+
+		require.Contains(t, buf.String(), "missing protocol scheme")
+		require.NoError(t, err)
+	})
+
+	t.Run("error", func(t *testing.T) {
+		client := AcquireClient()
+		client.SetProxyURL("htgdftp://test.com")
+		_, err := client.Get("http://localhost:3000", Config{Dial: dial})
+
+		require.Error(t, err)
+	})
+}
+
+func Test_Client_SetRetryConfig(t *testing.T) {
+	t.Parallel()
+
+	retryConfig := &retry.Config{
+		InitialInterval: 1 * time.Second,
+		MaxRetryCount:   3,
+	}
+
+	core, client, req := newCore(), AcquireClient(), AcquireRequest()
+	req.SetURL("http://example.com")
+	client.SetRetryConfig(retryConfig)
+	_, err := core.execute(context.Background(), client, req)
+
+	require.NoError(t, err)
+	require.Equal(t, retryConfig.InitialInterval, client.RetryConfig().InitialInterval)
+	require.Equal(t, retryConfig.MaxRetryCount, client.RetryConfig().MaxRetryCount)
 }
 
 func Benchmark_Client_Request(b *testing.B) {

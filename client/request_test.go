@@ -388,6 +388,20 @@ func Test_Request_PathParam(t *testing.T) {
 		require.Equal(t, "", req.PathParam("foo"))
 		require.Equal(t, "foo", req.PathParam("bar"))
 	})
+
+	t.Run("clear path params", func(t *testing.T) {
+		req := AcquireRequest().
+			SetPathParams(map[string]string{
+				"foo": "bar",
+				"bar": "foo",
+			})
+		require.Equal(t, "bar", req.PathParam("foo"))
+		require.Equal(t, "foo", req.PathParam("bar"))
+
+		req.ResetPathParams()
+		require.Equal(t, "", req.PathParam("foo"))
+		require.Equal(t, "", req.PathParam("bar"))
+	})
 }
 
 func Test_Request_FormData(t *testing.T) {
@@ -522,6 +536,8 @@ func Test_Request_File(t *testing.T) {
 		require.Equal(t, "../.github/index.html", req.File("index.html").path)
 		require.Equal(t, "../.github/index.html", req.FileByPath("../.github/index.html").path)
 		require.Equal(t, "tmp.txt", req.File("tmp.txt").name)
+		require.Nil(t, req.File("tmp2.txt"))
+		require.Nil(t, req.FileByPath("tmp2.txt"))
 	})
 
 	t.Run("add file by reader", func(t *testing.T) {
@@ -1184,6 +1200,14 @@ func Test_Request_MaxRedirects(t *testing.T) {
 
 		require.Nil(t, resp)
 		require.Equal(t, "too many redirects detected when doing the request", err.Error())
+	})
+
+	t.Run("MaxRedirects", func(t *testing.T) {
+		req := AcquireRequest().
+			SetDial(func(addr string) (net.Conn, error) { return ln.Dial() }).
+			SetMaxRedirects(3)
+
+		require.Equal(t, req.MaxRedirects(), 3)
 	})
 }
 

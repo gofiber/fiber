@@ -2,7 +2,9 @@ package client
 
 import (
 	"bytes"
+	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -83,9 +85,9 @@ func (r *Response) Save(v any) error {
 		file := filepath.Clean(p)
 		dir := filepath.Dir(file)
 
-		// create director
+		// create directory
 		if _, err := os.Stat(dir); err != nil {
-			if !os.IsNotExist(err) {
+			if !errors.Is(err, fs.ErrNotExist) {
 				return err
 			}
 

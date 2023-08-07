@@ -87,6 +87,31 @@ func TestHasDotSuffix(t *testing.T) {
 	}
 }
 
+var canonicalHostTests = map[string]string{
+	"www.example.com":         "www.example.com",
+	"WWW.EXAMPLE.COM":         "www.example.com",
+	"wWw.eXAmple.CoM":         "www.example.com",
+	"www.example.com:80":      "www.example.com",
+	"192.168.0.10":            "192.168.0.10",
+	"192.168.0.5:8080":        "192.168.0.5",
+	"2001:4860:0:2001::68":    "2001:4860:0:2001::68",
+	"[2001:4860:0:::68]:8080": "2001:4860:0:::68",
+	"www.bücher.de":           "www.xn--bcher-kva.de",
+	"www.example.com.":        "www.example.com",
+	// TODO: Fix canonicalHost so that all of the following malformed
+	// domain names trigger an error. (This list is not exhaustive, e.g.
+	// malformed internationalized domain names are missing.)
+	".":                       "",
+	"..":                      ".",
+	"...":                     "..",
+	".net":                    ".net",
+	".net.":                   ".net",
+	"a..":                     "a.",
+	"b.a..":                   "b.a.",
+	"weird.stuff...":          "weird.stuff..",
+	"[bad.unmatched.bracket:": "error",
+}
+
 var jarKeyTests = map[string]string{
 	"foo.www.example.com": "example.com",
 	"www.example.com":     "example.com",
