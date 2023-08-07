@@ -613,7 +613,7 @@ func (app *App) Name(name string) Router {
 
 	for _, routes := range app.stack {
 		for _, route := range routes {
-			if route.Path == app.latestRoute.path {
+			if route.Path == app.latestRoute.path && route.Method == app.latestRoute.Method {
 				route.Name = name
 
 				if route.group != nil {
