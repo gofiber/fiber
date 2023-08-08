@@ -158,7 +158,7 @@ go get -u github.com/gofiber/fiber/v2
 - [Підтримка WebSocket](https://github.com/gofiber/websocket)
 - [Server-Sent Events](https://github.com/gofiber/recipes/tree/master/sse)
 - [Обмежувач швидкості](https://docs.gofiber.io/api/middleware/limiter)
-- Документація доступна [18 мовами](https://docs.gofiber.io/)
+- Документація доступна [19 мовами](https://docs.gofiber.io/)
 - І багато іншого, [відвідайте наш Wiki](https://docs.gofiber.io/)
 
 ## 💡 Філософія

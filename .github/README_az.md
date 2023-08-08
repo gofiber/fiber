@@ -128,7 +128,6 @@ Bu testlər [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r
 
 Go dilinin `1.17` və ya daha yuxarı versiyanın [yükləndiyindən](https://go.dev/dl/) əmin olun.
 
-
 Bir qovluq yaratdıqdan sonra, `go mod init github.com/your/repo` komandasını eyni qovluğun daxilində işə salaraq layihənizi başladın ([go modulları haqqında əlavə bilgilər](https://go.dev/blog/using-go-modules)). Növbəti addım olaraq Fiber-i [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) komandasını işlədərək yükləyin:
 
 ```bash
@@ -148,7 +147,7 @@ go get -u github.com/gofiber/fiber/v2
 -   [WebSocket dəstəyi](https://github.com/gofiber/websocket)
 -   [Server-Sent events](https://github.com/gofiber/recipes/tree/master/sse)
 -   [Rate Limiter](https://docs.gofiber.io/api/middleware/limiter)
--   [18 dildə](https://docs.gofiber.io/) mövcudluğu
+-   [19 dildə](https://docs.gofiber.io/) mövcudluğu
 
 Daha ətraflı məlumat üçün [rəsmi sənədləşməyə](https://docs.gofiber.io/) baxış keçirə bilərsiniz.
 
@@ -161,8 +160,9 @@ Fiber internet üzərində olan ən məşhur web framework-lərdən biri olan Ex
 Biz istifadəçilərdən gələn [issue-a](https://github.com/gofiber/fiber/issues), Discord [kanalımıza](https://gofiber.io/discord) və bütün interneti əhatə edən vasitələrdən gələn rəyləri nəzərə alırıq. Bunun nəzdində, biz sürətli və rahat şəkildə hər bir tapşırığın səviyyəsinə uyğun olan — dostcasına bir Go web framework-ü olmağı hədəfləmişik (Express-in JavaScript dünyasında etdiyi kimi).
 
 ## ⚠️ Limitlər
-* Fiber unsafe prinsiplərə əsaslanaraq çalışdığından, o hər zaman Go-nun son versiyası ilə uyğunlaşmaya bilər. Buna görə də, Fiber 2.40.0 — Go 1.17 və 1.20 versiyaları ilə test edilərək saz vəziyyətə gətirilmişdir.
-* Fiber net/http interfeysləri ilə uyğun deyil. Yəni gqlgen, go-swagger kimi net/http ekosisteminin parçası olan layihələri istifadə edə bilməzsiniz.
+
+-   Fiber unsafe prinsiplərə əsaslanaraq çalışdığından, o hər zaman Go-nun son versiyası ilə uyğunlaşmaya bilər. Buna görə də, Fiber 2.40.0 — Go 1.17 və 1.20 versiyaları ilə test edilərək saz vəziyyətə gətirilmişdir.
+-   Fiber net/http interfeysləri ilə uyğun deyil. Yəni gqlgen, go-swagger kimi net/http ekosisteminin parçası olan layihələri istifadə edə bilməzsiniz.
 
 ## 👀 Misallar
 
@@ -607,45 +607,45 @@ func main() {
 
 Aşağıda Fiber-in daxilində olan middleware-lər siyahı şəklində göstərilmişdir.
 
-| Middleware                                                                             | Açıqlama                                                                                                                                                                  |
-|:---------------------------------------------------------------------------------------|:-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| [basicauth](https://github.com/gofiber/fiber/tree/master/middleware/basicauth)         | Sadə bir auth middleware-dir və HTTP Basic Auth yaratmaq üçün istifadə olunur. Keçərli vəsiqə (credentials) bilgiləri üçün sonrakı handler-i, əksik və ya keçərsiz vəsiqə bilgiləri üçün 401 qaytarır.      |
-| [cache](https://github.com/gofiber/fiber/tree/master/middleware/cache)                 | Response-ı dayandırır və keşə yerləşdirir.                                                                                                                                                |
-| [compress](https://github.com/gofiber/fiber/tree/master/middleware/compress)           | Fiber üçün sıxışdırma (compression) middleware-dir. Default olaraq `deflate`, `gzip` və `brotli` dəstəkləyir.                                                                                     |
-| [cors](https://github.com/gofiber/fiber/tree/master/middleware/cors)                   | Çeşidli seçimlərlə başlanğıclar arası mənbə paylaşımı (CORS) aktivləşdirir.                                                                                                         |
-| [csrf](https://github.com/gofiber/fiber/tree/master/middleware/csrf)                   | CSRF exploit-dən qorunmasını təmin edir.                                                                                                                                                   |
-| [encryptcookie](https://github.com/gofiber/fiber/tree/master/middleware/encryptcookie) | Encrypt middleware-i cookie dəyərlərini şifrələyir.                                                                                                                       |
-| [envvar](https://github.com/gofiber/fiber/tree/master/middleware/envvar)               | Environment dəyərlərini göstərilən config-ə görə təyin edir.                                                                                                             |
-| [etag](https://github.com/gofiber/fiber/tree/master/middleware/etag)                   | Keşlərin daha səmərəli istifadəsinə və bant genişliyinə qənaət etməyə imkan verən ETag middleware-i; məzmun dəyişməyibsə veb serverin response-nı təkrar göndərməsinin qarşısını alır.                |
-| [expvar](https://github.com/gofiber/fiber/tree/master/middleware/expvar)               | Expvar middleware, HTTP serverlərinin bəzi runtime dəyərlərini JSON formatında göstərir.                                                                               |
-| [favicon](https://github.com/gofiber/fiber/tree/master/middleware/favicon)             | Əgər faylın yolu (path) göstərilmişdirsə, artıq loglarda olan favicon-u yox sayıb onu saxlanan depodan götürür.                                                                                                    |
-| [filesystem](https://github.com/gofiber/fiber/tree/master/middleware/filesystem)       | Fiber üçün fayl sistem middleware-i. Alireza Salary-ə xüsusi təşəkkürlər.                                                                                                 |
-| [limiter](https://github.com/gofiber/fiber/tree/master/middleware/limiter)             | Fiber üçün rate limitləyən middleware. Açıq API-ə və ya şifrə yeniləmə kimi endpoint-ə yönəlik təkrarlanan request-in qarşısını alır.                                                  |
-| [logger](https://github.com/gofiber/fiber/tree/master/middleware/logger)               | HTTP istək/cavab (request/response) logger-i.                                                                                                                                               |
-| [monitor](https://github.com/gofiber/fiber/tree/master/middleware/monitor)             | Monitor middleware-i serverin metriklərini report edər ("Express-status-monitor"-dan qaynaqlanıb).                                                                                           |
-| [pprof](https://github.com/gofiber/fiber/tree/master/middleware/pprof)                 | Matthew Lee-yə xüsusi təşəkkürlər \(@mthli\).                                                                                                                                      |
-| [proxy](https://github.com/gofiber/fiber/tree/master/middleware/proxy)                 | Birdən çox server-ə proxy istəyi göndərməyiniz üçündür.                                                                                                                          |
-| [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover)             | Recover middleware-i stack chain-ni hər hansı bir yerindəki paniklərdən qurtulmasına kömək edir və kontrolu mərkəzləşdirilmiş [ErrorHandler-ə](https://docs.gofiber.io/guide/error-handling) ötürür.|
-| [requestid](https://github.com/gofiber/fiber/tree/master/middleware/requestid)         | Hər request üçün ayrı request id yaradır.                                                                                                                                         |
-| [session](https://github.com/gofiber/fiber/tree/master/middleware/session)             | Session üçün middleware. Qeyd: Bu middleware Fiber-in öz storage struktrunu istifadə edir.                                                                                                            |
-| [skip](https://github.com/gofiber/fiber/tree/master/middleware/skip)                   | Skip middleware-i verilən şərt true olduğu halda handler-i görməyərək üstündən ötüb keçir.                                                                                                         |
-| [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)             | Bir request üçün maksimum vaxt əlavə edir. Əgər arada fasilə yaranarsa, onda proses məhz ErrorHandler-ə göndərilərək icra edilir.                                                                                                |
-| [keyauth](https://github.com/gofiber/keyauth)     | Key giriş middleware-i, key əsaslı bir authentication metodudur. |
-| [redirect](https://github.com/gofiber/redirect)   | Yönləndirmə üçün middleware. |
-| [rewrite](https://github.com/gofiber/rewrite)     | Rewrite middleware-i verilən qanunlara əsasən URL yolunu (path) yenidən yazır. Geri dönüşün icrası üçün uyğunluq təşkil edən təsviri linklərin yaradılması üçün nəzərdə tutulmuşdur. |
-| [adaptor](https://github.com/gofiber/adaptor)     | Fiber request handler-dən net/http handler-ə çevirici. @arsmn-ə xüsusi təşəkkürlər! |
-| [helmet](https://github.com/gofiber/helmet)       | Fərqli HTTP header istifadə edərək tətbiqi daha təhlükəsiz saxlamağa kömək edir. |
+| Middleware                                                                             | Açıqlama                                                                                                                                                                                               |
+| :------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [basicauth](https://github.com/gofiber/fiber/tree/master/middleware/basicauth)         | Sadə bir auth middleware-dir və HTTP Basic Auth yaratmaq üçün istifadə olunur. Keçərli vəsiqə (credentials) bilgiləri üçün sonrakı handler-i, əksik və ya keçərsiz vəsiqə bilgiləri üçün 401 qaytarır. |
+| [cache](https://github.com/gofiber/fiber/tree/master/middleware/cache)                 | Response-ı dayandırır və keşə yerləşdirir.                                                                                                                                                             |
+| [compress](https://github.com/gofiber/fiber/tree/master/middleware/compress)           | Fiber üçün sıxışdırma (compression) middleware-dir. Default olaraq `deflate`, `gzip` və `brotli` dəstəkləyir.                                                                                          |
+| [cors](https://github.com/gofiber/fiber/tree/master/middleware/cors)                   | Çeşidli seçimlərlə başlanğıclar arası mənbə paylaşımı (CORS) aktivləşdirir.                                                                                                                            |
+| [csrf](https://github.com/gofiber/fiber/tree/master/middleware/csrf)                   | CSRF exploit-dən qorunmasını təmin edir.                                                                                                                                                               |
+| [encryptcookie](https://github.com/gofiber/fiber/tree/master/middleware/encryptcookie) | Encrypt middleware-i cookie dəyərlərini şifrələyir.                                                                                                                                                    |
+| [envvar](https://github.com/gofiber/fiber/tree/master/middleware/envvar)               | Environment dəyərlərini göstərilən config-ə görə təyin edir.                                                                                                                                           |
+| [etag](https://github.com/gofiber/fiber/tree/master/middleware/etag)                   | Keşlərin daha səmərəli istifadəsinə və bant genişliyinə qənaət etməyə imkan verən ETag middleware-i; məzmun dəyişməyibsə veb serverin response-nı təkrar göndərməsinin qarşısını alır.                 |
+| [expvar](https://github.com/gofiber/fiber/tree/master/middleware/expvar)               | Expvar middleware, HTTP serverlərinin bəzi runtime dəyərlərini JSON formatında göstərir.                                                                                                               |
+| [favicon](https://github.com/gofiber/fiber/tree/master/middleware/favicon)             | Əgər faylın yolu (path) göstərilmişdirsə, artıq loglarda olan favicon-u yox sayıb onu saxlanan depodan götürür.                                                                                        |
+| [filesystem](https://github.com/gofiber/fiber/tree/master/middleware/filesystem)       | Fiber üçün fayl sistem middleware-i. Alireza Salary-ə xüsusi təşəkkürlər.                                                                                                                              |
+| [limiter](https://github.com/gofiber/fiber/tree/master/middleware/limiter)             | Fiber üçün rate limitləyən middleware. Açıq API-ə və ya şifrə yeniləmə kimi endpoint-ə yönəlik təkrarlanan request-in qarşısını alır.                                                                  |
+| [logger](https://github.com/gofiber/fiber/tree/master/middleware/logger)               | HTTP istək/cavab (request/response) logger-i.                                                                                                                                                          |
+| [monitor](https://github.com/gofiber/fiber/tree/master/middleware/monitor)             | Monitor middleware-i serverin metriklərini report edər ("Express-status-monitor"-dan qaynaqlanıb).                                                                                                     |
+| [pprof](https://github.com/gofiber/fiber/tree/master/middleware/pprof)                 | Matthew Lee-yə xüsusi təşəkkürlər \(@mthli\).                                                                                                                                                          |
+| [proxy](https://github.com/gofiber/fiber/tree/master/middleware/proxy)                 | Birdən çox server-ə proxy istəyi göndərməyiniz üçündür.                                                                                                                                                |
+| [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover)             | Recover middleware-i stack chain-ni hər hansı bir yerindəki paniklərdən qurtulmasına kömək edir və kontrolu mərkəzləşdirilmiş [ErrorHandler-ə](https://docs.gofiber.io/guide/error-handling) ötürür.   |
+| [requestid](https://github.com/gofiber/fiber/tree/master/middleware/requestid)         | Hər request üçün ayrı request id yaradır.                                                                                                                                                              |
+| [session](https://github.com/gofiber/fiber/tree/master/middleware/session)             | Session üçün middleware. Qeyd: Bu middleware Fiber-in öz storage struktrunu istifadə edir.                                                                                                             |
+| [skip](https://github.com/gofiber/fiber/tree/master/middleware/skip)                   | Skip middleware-i verilən şərt true olduğu halda handler-i görməyərək üstündən ötüb keçir.                                                                                                             |
+| [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)             | Bir request üçün maksimum vaxt əlavə edir. Əgər arada fasilə yaranarsa, onda proses məhz ErrorHandler-ə göndərilərək icra edilir.                                                                      |
+| [keyauth](https://github.com/gofiber/keyauth)                                          | Key giriş middleware-i, key əsaslı bir authentication metodudur.                                                                                                                                       |
+| [redirect](https://github.com/gofiber/redirect)                                        | Yönləndirmə üçün middleware.                                                                                                                                                                           |
+| [rewrite](https://github.com/gofiber/rewrite)                                          | Rewrite middleware-i verilən qanunlara əsasən URL yolunu (path) yenidən yazır. Geri dönüşün icrası üçün uyğunluq təşkil edən təsviri linklərin yaradılması üçün nəzərdə tutulmuşdur.                   |
+| [adaptor](https://github.com/gofiber/adaptor)                                          | Fiber request handler-dən net/http handler-ə çevirici. @arsmn-ə xüsusi təşəkkürlər!                                                                                                                    |
+| [helmet](https://github.com/gofiber/helmet)                                            | Fərqli HTTP header istifadə edərək tətbiqi daha təhlükəsiz saxlamağa kömək edir.                                                                                                                       |
 
 ## 🧬 Xarici Middleware
 
 [Fiber komandası](https://github.com/orgs/gofiber/people) tərəfindən dəstəklənən və inkişaf etdirilən middleware-in siyahısı.
 
-| Middleware                                        | Description                                                                                                                                                         |
-| :------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [jwt](https://github.com/gofiber/jwt)             | JWT, JSON Web Token(JWT) girişi qaytaran bir middleware-dir. |
+| Middleware                                        | Description                                                                                                                                                        |
+| :------------------------------------------------ | :----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [jwt](https://github.com/gofiber/jwt)             | JWT, JSON Web Token(JWT) girişi qaytaran bir middleware-dir.                                                                                                       |
 | [storage](https://github.com/gofiber/storage)     | Fiber-in Storage arxitekturasını dəstəkləyən bir sıra storage driver verir. Bu sayədə storage-ə ehtiyac duyan Fiber middleware-də rahatlıqla istifadə oluna bilər. |
-| [template](https://github.com/gofiber/template)   | Bu paket, Fiber `v1.10.x`, Go versiyası 1.13 və ya daha yuxarı olduqda istifadə oluna bilər. 8 template mühərriki var. |
-| [websocket](https://github.com/gofiber/websocket) | Yerlilərin dəstəyi ilə WebSocket-ə əsaslanan Fiber üçün Fasthttp. |
+| [template](https://github.com/gofiber/template)   | Bu paket, Fiber `v1.10.x`, Go versiyası 1.13 və ya daha yuxarı olduqda istifadə oluna bilər. 8 template mühərriki var.                                             |
+| [websocket](https://github.com/gofiber/websocket) | Yerlilərin dəstəyi ilə WebSocket-ə əsaslanan Fiber üçün Fasthttp.                                                                                                  |
 
 ## 🕶️ Möhtəşəm Siyahı
 
@@ -664,26 +664,26 @@ Aşağıda Fiber-in daxilində olan middleware-lər siyahı şəklində göstər
 
 Fiber açıq qaynaqlı bir layihə olduğu üçün, gəlirlərini yalnız ianələr vasitəsilə təmin edir və bu da domain adı, gitbook, netlify, serverless hosting xərcləri üçün istifadə olunur. Belə olduğu halda, Fiber-ə ən yaxşı dəstək elə bizim üçün ☕ [**bir kofe almaqdan gələ bilər**](https://buymeacoff.ee/fenny).
 
-|                                                            | İstifadəçi                                             | İanə |
-| :--------------------------------------------------------- | :----------------------------------------------- | :------- |
-| ![](https://avatars.githubusercontent.com/u/204341?s=25)   | [@destari](https://github.com/destari)           | ☕ x 10  |
-| ![](https://avatars.githubusercontent.com/u/63164982?s=25) | [@dembygenesis](https://github.com/dembygenesis) | ☕ x 5   |
-| ![](https://avatars.githubusercontent.com/u/56607882?s=25) | [@thomasvvugt](https://github.com/thomasvvugt)   | ☕ x 5   |
-| ![](https://avatars.githubusercontent.com/u/27820675?s=25) | [@hendratommy](https://github.com/hendratommy)   | ☕ x 5   |
-| ![](https://avatars.githubusercontent.com/u/1094221?s=25)  | [@ekaputra07](https://github.com/ekaputra07)     | ☕ x 5   |
-| ![](https://avatars.githubusercontent.com/u/194590?s=25)   | [@jorgefuertes](https://github.com/jorgefuertes) | ☕ x 5   |
-| ![](https://avatars.githubusercontent.com/u/186637?s=25)   | [@candidosales](https://github.com/candidosales) | ☕ x 5   |
-| ![](https://avatars.githubusercontent.com/u/29659953?s=25) | [@l0nax](https://github.com/l0nax)               | ☕ x 3   |
-| ![](https://avatars.githubusercontent.com/u/635852?s=25)   | [@bihe](https://github.com/bihe)                 | ☕ x 3   |
-| ![](https://avatars.githubusercontent.com/u/307334?s=25)   | [@justdave](https://github.com/justdave)         | ☕ x 3   |
-| ![](https://avatars.githubusercontent.com/u/11155743?s=25) | [@koddr](https://github.com/koddr)               | ☕ x 1   |
-| ![](https://avatars.githubusercontent.com/u/29042462?s=25) | [@lapolinar](https://github.com/lapolinar)       | ☕ x 1   |
-| ![](https://avatars.githubusercontent.com/u/2978730?s=25)  | [@diegowifi](https://github.com/diegowifi)       | ☕ x 1   |
-| ![](https://avatars.githubusercontent.com/u/44171355?s=25) | [@ssimk0](https://github.com/ssimk0)             | ☕ x 1   |
-| ![](https://avatars.githubusercontent.com/u/5638101?s=25)  | [@raymayemir](https://github.com/raymayemir)     | ☕ x 1   |
-| ![](https://avatars.githubusercontent.com/u/619996?s=25)   | [@melkorm](https://github.com/melkorm)           | ☕ x 1   |
-| ![](https://avatars.githubusercontent.com/u/31022056?s=25) | [@marvinjwendt](https://github.com/marvinjwendt) | ☕ x 1   |
-| ![](https://avatars.githubusercontent.com/u/31921460?s=25) | [@toishy](https://github.com/toishy)             | ☕ x 1   |
+|                                                            | İstifadəçi                                       | İanə    |
+| :--------------------------------------------------------- | :----------------------------------------------- | :------ |
+| ![](https://avatars.githubusercontent.com/u/204341?s=25)   | [@destari](https://github.com/destari)           | ☕ x 10 |
+| ![](https://avatars.githubusercontent.com/u/63164982?s=25) | [@dembygenesis](https://github.com/dembygenesis) | ☕ x 5  |
+| ![](https://avatars.githubusercontent.com/u/56607882?s=25) | [@thomasvvugt](https://github.com/thomasvvugt)   | ☕ x 5  |
+| ![](https://avatars.githubusercontent.com/u/27820675?s=25) | [@hendratommy](https://github.com/hendratommy)   | ☕ x 5  |
+| ![](https://avatars.githubusercontent.com/u/1094221?s=25)  | [@ekaputra07](https://github.com/ekaputra07)     | ☕ x 5  |
+| ![](https://avatars.githubusercontent.com/u/194590?s=25)   | [@jorgefuertes](https://github.com/jorgefuertes) | ☕ x 5  |
+| ![](https://avatars.githubusercontent.com/u/186637?s=25)   | [@candidosales](https://github.com/candidosales) | ☕ x 5  |
+| ![](https://avatars.githubusercontent.com/u/29659953?s=25) | [@l0nax](https://github.com/l0nax)               | ☕ x 3  |
+| ![](https://avatars.githubusercontent.com/u/635852?s=25)   | [@bihe](https://github.com/bihe)                 | ☕ x 3  |
+| ![](https://avatars.githubusercontent.com/u/307334?s=25)   | [@justdave](https://github.com/justdave)         | ☕ x 3  |
+| ![](https://avatars.githubusercontent.com/u/11155743?s=25) | [@koddr](https://github.com/koddr)               | ☕ x 1  |
+| ![](https://avatars.githubusercontent.com/u/29042462?s=25) | [@lapolinar](https://github.com/lapolinar)       | ☕ x 1  |
+| ![](https://avatars.githubusercontent.com/u/2978730?s=25)  | [@diegowifi](https://github.com/diegowifi)       | ☕ x 1  |
+| ![](https://avatars.githubusercontent.com/u/44171355?s=25) | [@ssimk0](https://github.com/ssimk0)             | ☕ x 1  |
+| ![](https://avatars.githubusercontent.com/u/5638101?s=25)  | [@raymayemir](https://github.com/raymayemir)     | ☕ x 1  |
+| ![](https://avatars.githubusercontent.com/u/619996?s=25)   | [@melkorm](https://github.com/melkorm)           | ☕ x 1  |
+| ![](https://avatars.githubusercontent.com/u/31022056?s=25) | [@marvinjwendt](https://github.com/marvinjwendt) | ☕ x 1  |
+| ![](https://avatars.githubusercontent.com/u/31921460?s=25) | [@toishy](https://github.com/toishy)             | ☕ x 1  |
 
 ## ‎‍💻 Koda Töhfə Verənlər
 

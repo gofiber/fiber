@@ -157,7 +157,7 @@ go get -u github.com/gofiber/fiber/v2
 -   [支援 WebSocket](https://github.com/gofiber/websocket)
 -   [Server-Sent Events](https://github.com/gofiber/recipes/tree/master/sse)
 -   支援[速率限制](https://docs.gofiber.io/api/middleware/limiter)
--   有 [18 門語言](https://docs.gofiber.io/)的翻譯
+-   有 [19 門語言](https://docs.gofiber.io/)的翻譯
 -   還有很多功能，[開始探索 Fiber](https://docs.gofiber.io/)
 
 ## 💡 設計哲學

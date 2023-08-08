@@ -175,7 +175,7 @@ go get -u github.com/gofiber/fiber/v2
 -   [پشتیبانی از وب سوکت](https://github.com/gofiber/websocket)
 -   [Server-Sent events](https://github.com/gofiber/recipes/tree/master/sse)
 -   قابلیت [Rate Limiter](https://docs.gofiber.io/api/middleware/limiter)
--   ترجمه در [18 زبان](https://docs.gofiber.io/)
+-   ترجمه در [19 زبان](https://docs.gofiber.io/)
 -   و امکانات بیشتر, [دیدن در داکیومنت](https://docs.gofiber.io/)
 
 </br>

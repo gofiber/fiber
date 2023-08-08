@@ -146,7 +146,7 @@ go get -u github.com/gofiber/fiber/v2
 -   [WebSocket desteği](https://github.com/gofiber/websocket)
 -   [Server-Sent eventler](https://github.com/gofiber/recipes/tree/master/sse)
 -   [Rate Limiter](https://docs.gofiber.io/api/middleware/limiter)
--   [18 dilde](https://docs.gofiber.io/) mevcut
+-   [19 dilde](https://docs.gofiber.io/) mevcut
 -   Ve daha fazlası, [Fiber'ı keşfet](https://docs.gofiber.io/)
 
 ## 💡 Felsefe
