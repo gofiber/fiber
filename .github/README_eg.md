@@ -639,9 +639,9 @@ Here is a list of middleware that are included within the Fiber framework.
 | [redirect](https://github.com/gofiber/redirect)   | Redirect middleware                                                                                                                                                 |
 | [keyauth](https://github.com/gofiber/keyauth)     | Key auth middleware provides a key based authentication.                                                                                                            |
 
-## 🧬 External Middleware
+## 🧬 ميدلوير خارجي
 
-List of externally hosted middleware modules and maintained by the [Fiber team](https://github.com/orgs/gofiber/people).
+لستة ميدلويرز خارجية بتطور من [تيم فايبر](https://github.com/orgs/gofiber/people).
 
 | Middleware                                        | Description                                                                                                           |
 | :------------------------------------------------ | :-------------------------------------------------------------------------------------------------------------------- |
