@@ -108,8 +108,6 @@ var lock sync.RWMutex
 // WithTLSConfig update http client with a user specified tls.config
 // This function should be called before Do and Forward.
 // Deprecated: use WithClient instead.
-//
-//nolint:stylecheck,revive
 func WithTLSConfig(tlsConfig *tls.Config) {
 	client.TLSConfig = tlsConfig
 }
