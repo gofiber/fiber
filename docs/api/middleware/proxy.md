@@ -42,8 +42,8 @@ After you initiate your Fiber app, you can use the following possibilities:
 
 ```go
 // if target https site uses a self-signed certificate, you should
-// call WithTlsConfig before Do and Forward
-proxy.WithTlsConfig(&tls.Config{
+// call WithTLSConfig before Do and Forward
+proxy.WithTLSConfig(&tls.Config{
     InsecureSkipVerify: true,
 })
 // if you need to use global self-custom client, you should use proxy.WithClient.
