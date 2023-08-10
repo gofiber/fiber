@@ -247,8 +247,6 @@ func Test_Logger_WithLatency(t *testing.T) {
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 
-		fmt.Println("|", buff.String(), "|")
-
 		// Assert that the log output contains the expected latency value in the current time unit
 		bb := buff.Bytes()
 		unit := bb[len(bb)-len(tu.unit):]
