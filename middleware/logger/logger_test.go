@@ -205,6 +205,60 @@ func Test_Logger_All(t *testing.T) {
 	utils.AssertEqual(t, expected, buf.String())
 }
 
+// go test -run Test_Logger_WithLatency
+func Test_Logger_WithLatency(t *testing.T) {
+	t.Parallel()
+	buff := bytebufferpool.Get()
+	defer bytebufferpool.Put(buff)
+	app := fiber.New()
+	logger := New(Config{
+		Output: buff,
+		Format: "${latency}",
+	})
+	app.Use(logger)
+
+	// Define a list of time units to test
+	timeUnits := []struct {
+		unit string
+		div  time.Duration
+	}{
+		// {"ns", time.Nanosecond}, // TODO: Nano seconds are too fast to test
+		{"µs", time.Microsecond},
+		{"ms", time.Millisecond},
+		{"s", time.Second},
+	}
+
+	// Initialize a new time unit
+	sleepDuration := 1 * time.Nanosecond
+
+	// Define a test route that sleeps
+	app.Get("/test", func(c *fiber.Ctx) error {
+		time.Sleep(sleepDuration)
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	// Loop through each time unit and assert that the log output contains the expected latency value
+	for _, tu := range timeUnits {
+		// Update the sleep duration for the next iteration
+		sleepDuration = 1 * tu.div
+
+		// Create a new HTTP request to the test route
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), int(2*time.Second))
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+
+		fmt.Println("|", buff.String(), "|")
+
+		// Assert that the log output contains the expected latency value in the current time unit
+		bb := buff.Bytes()
+		unit := bb[len(bb)-len(tu.unit):]
+		utils.AssertEqual(t, string(unit), tu.unit)
+
+		// Reset the buffer
+		buff.Reset()
+	}
+}
+
 // go test -run Test_Query_Params
 func Test_Query_Params(t *testing.T) {
 	t.Parallel()

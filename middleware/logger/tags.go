@@ -192,7 +192,7 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 		},
 		TagLatency: func(output Buffer, c *fiber.Ctx, data *Data, extraParam string) (int, error) {
 			latency := data.Stop.Sub(data.Start)
-			return output.WriteString(fmt.Sprintf("%7v", latency))
+			return output.WriteString(fmt.Sprintf("%13v", latency))
 		},
 		TagTime: func(output Buffer, c *fiber.Ctx, data *Data, extraParam string) (int, error) {
 			return output.WriteString(data.Timestamp.Load().(string)) //nolint:forcetypeassert // We always store a string in here
