@@ -104,8 +104,8 @@ func Test_Proxy(t *testing.T) {
 	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
 }
 
-// go test -run Test_Proxy_Balancer_WithTlsConfig
-func Test_Proxy_Balancer_WithTlsConfig(t *testing.T) {
+// go test -run Test_Proxy_Balancer_WithTLSConfig
+func Test_Proxy_Balancer_WithTLSConfig(t *testing.T) {
 	t.Parallel()
 
 	serverTLSConf, _, err := tlstest.GetTLSConfigs()
@@ -144,8 +144,8 @@ func Test_Proxy_Balancer_WithTlsConfig(t *testing.T) {
 	require.Equal(t, "tls balancer", body)
 }
 
-// go test -run Test_Proxy_Forward_WithTlsConfig_To_Http
-func Test_Proxy_Forward_WithTlsConfig_To_Http(t *testing.T) {
+// go test -run Test_Proxy_Forward_WithTLSConfig_To_Http
+func Test_Proxy_Forward_WithTLSConfig_To_Http(t *testing.T) {
 	t.Parallel()
 
 	_, targetAddr := createProxyTestServer(t, func(c fiber.Ctx) error {
@@ -203,8 +203,8 @@ func Test_Proxy_Forward(t *testing.T) {
 	require.Equal(t, "forwarded", string(b))
 }
 
-// go test -run Test_Proxy_Forward_WithTlsConfig
-func Test_Proxy_Forward_WithTlsConfig(t *testing.T) {
+// go test -run Test_Proxy_Forward_WithTLSConfig
+func Test_Proxy_Forward_WithTLSConfig(t *testing.T) {
 	t.Parallel()
 
 	serverTLSConf, _, err := tlstest.GetTLSConfigs()
@@ -225,7 +225,7 @@ func Test_Proxy_Forward_WithTlsConfig(t *testing.T) {
 	clientTLSConf := &tls.Config{InsecureSkipVerify: true} //nolint:gosec // We're in a test func, so this is fine
 
 	// disable certificate verification
-	WithTlsConfig(clientTLSConf)
+	WithTLSConfig(clientTLSConf)
 	app.Use(Forward("https://" + addr + "/tlsfwd"))
 
 	go func() {
