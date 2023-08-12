@@ -3937,11 +3937,6 @@ func Test_Ctx_QueryParser(t *testing.T) {
 	utils.AssertEqual(t, nil, c.QueryParser(q))
 	utils.AssertEqual(t, 2, len(q.Hobby))
 
-	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball\\,football")
-	q = new(Query)
-	utils.AssertEqual(t, nil, c.QueryParser(q))
-	utils.AssertEqual(t, 1, len(q.Hobby))
-
 	c.Request().URI().SetQueryString("id=1&name=tom&hobby=scoccer&hobby=basketball,football")
 	q = new(Query)
 	utils.AssertEqual(t, nil, c.QueryParser(q))
@@ -4197,12 +4192,6 @@ func Test_Ctx_ReqHeaderParser(t *testing.T) {
 	q = new(Header)
 	utils.AssertEqual(t, nil, c.ReqHeaderParser(q))
 	utils.AssertEqual(t, 3, len(q.Hobby))
-
-	c.Request().Header.Del("hobby")
-	c.Request().Header.Add("Hobby", "golang\\,fiber\\,go,fiber")
-	q = new(Header)
-	utils.AssertEqual(t, nil, c.ReqHeaderParser(q))
-	utils.AssertEqual(t, 2, len(q.Hobby))
 
 	empty := new(Header)
 	c.Request().Header.Del("hobby")

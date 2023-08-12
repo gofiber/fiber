@@ -335,13 +335,13 @@ func (c *Ctx) BodyParser(out interface{}) error {
 				k, err = parseParamSquareBrackets(k)
 			}
 
-			if findNextNonEscapedCharsetPosition(v, []byte(",")) != -1 && equalFieldType(out, reflect.Slice, k) && c.app.config.EnableSplittingOnParsers {
-				values := splitNonEscaped(v, ",")
+			if c.app.config.EnableSplittingOnParsers && strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
+				values := strings.Split(v, ",")
 				for i := 0; i < len(values); i++ {
-					data[k] = append(data[k], RemoveEscapeChar(values[i]))
+					data[k] = append(data[k], values[i])
 				}
 			} else {
-				data[k] = append(data[k], RemoveEscapeChar(v))
+				data[k] = append(data[k], v)
 			}
 		})
 
@@ -1159,13 +1159,13 @@ func (c *Ctx) QueryParser(out interface{}) error {
 			k, err = parseParamSquareBrackets(k)
 		}
 
-		if findNextNonEscapedCharsetPosition(v, []byte(",")) != -1 && equalFieldType(out, reflect.Slice, k) && c.app.config.EnableSplittingOnParsers {
-			values := splitNonEscaped(v, ",")
+		if c.app.config.EnableSplittingOnParsers && strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
+			values := strings.Split(v, ",")
 			for i := 0; i < len(values); i++ {
-				data[k] = append(data[k], RemoveEscapeChar(values[i]))
+				data[k] = append(data[k], values[i])
 			}
 		} else {
-			data[k] = append(data[k], RemoveEscapeChar(v))
+			data[k] = append(data[k], v)
 		}
 	})
 
@@ -1208,14 +1208,13 @@ func (c *Ctx) ReqHeaderParser(out interface{}) error {
 		k := c.app.getString(key)
 		v := c.app.getString(val)
 
-		if findNextNonEscapedCharsetPosition(v, []byte(",")) != -1 && equalFieldType(out, reflect.Slice, k) && c.app.config.EnableSplittingOnParsers {
-			values := splitNonEscaped(v, ",")
+		if c.app.config.EnableSplittingOnParsers && strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
+			values := strings.Split(v, ",")
 			for i := 0; i < len(values); i++ {
-				data[k] = append(data[k], RemoveEscapeChar(values[i]))
+				data[k] = append(data[k], values[i])
 			}
 		} else {
-			//fmt.Println(v)
-			data[k] = append(data[k], RemoveEscapeChar(v))
+			data[k] = append(data[k], v)
 		}
 	})
 
