@@ -35,15 +35,19 @@ type Config struct {
 	IsReadyEndpoint string
 }
 
-var DefaultLiveFunc = func(c *fiber.Ctx) bool { return true }
-
 const (
 	DefaultLivenessEndpoint  = "/livez"
 	DefaultReadinessEndpoint = "/readyz"
 )
 
+func defaultLiveFunc(c *fiber.Ctx) bool { return true }
+
 func probeCheckerHandler(checker ProbeChecker) fiber.Handler {
 	return func(c *fiber.Ctx) error {
+		if checker == nil {
+			return c.Next()
+		}
+
 		if checker(c) {
 			return c.SendStatus(fiber.StatusOK)
 		}
@@ -63,25 +67,17 @@ func checkRoute(path string, config *Config) string {
 	}
 }
 
-func New(config *Config) fiber.Handler {
-	if config.IsLiveEndpoint == "" {
-		config.IsLiveEndpoint = DefaultLivenessEndpoint
-	}
-	if config.IsReadyEndpoint == "" {
-		config.IsReadyEndpoint = DefaultReadinessEndpoint
-	}
-	if config.IsLive == nil {
-		config.IsLive = DefaultLiveFunc
-	}
+func New(config ...Config) fiber.Handler {
+	cfg := defaultConfig(config...)
 
-	var checkers = map[string]fiber.Handler{
-		"liveness":  probeCheckerHandler(config.IsLive),
-		"readiness": probeCheckerHandler(config.IsReady),
+	checkers := map[string]fiber.Handler{
+		"liveness":  probeCheckerHandler(cfg.IsLive),
+		"readiness": probeCheckerHandler(cfg.IsReady),
 	}
 
 	return func(c *fiber.Ctx) error {
 		route := c.Route()
-		routeType := checkRoute(route.Path, config)
+		routeType := checkRoute(route.Path, &cfg)
 
 		if routeType != "" || route.Method != fiber.MethodGet {
 			handler, ok := checkers[routeType]
@@ -95,4 +91,28 @@ func New(config *Config) fiber.Handler {
 
 		return c.Next()
 	}
+}
+
+func defaultConfig(config ...Config) Config {
+	if len(config) < 1 {
+		return Config{
+			IsLive:          defaultLiveFunc,
+			IsLiveEndpoint:  DefaultLivenessEndpoint,
+			IsReadyEndpoint: DefaultReadinessEndpoint,
+		}
+	}
+
+	cfg := config[0]
+
+	if cfg.IsLiveEndpoint == "" {
+		cfg.IsLiveEndpoint = DefaultLivenessEndpoint
+	}
+	if cfg.IsReadyEndpoint == "" {
+		cfg.IsReadyEndpoint = DefaultReadinessEndpoint
+	}
+	if cfg.IsLive == nil {
+		cfg.IsLive = defaultLiveFunc
+	}
+
+	return cfg
 }
