@@ -40,7 +40,7 @@ const (
 	DefaultReadinessEndpoint = "/readyz"
 )
 
-func defaultLiveFunc(c *fiber.Ctx) bool { return true }
+func defaultLiveFunc(*fiber.Ctx) bool { return true }
 
 func probeCheckerHandler(checker ProbeChecker) fiber.Handler {
 	return func(c *fiber.Ctx) error {
