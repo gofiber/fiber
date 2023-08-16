@@ -146,10 +146,10 @@ func New(config ...Config) fiber.Handler {
 					formatErr = colors.Red + " | " + chainErr.Error() + colors.Reset
 				}
 				_, _ = buf.WriteString( //nolint:errcheck // This will never fail
-					fmt.Sprintf("%s |%s %3d %s| %7v | %15s |%s %-7s %s| %-"+errPaddingStr+"s %s\n",
+					fmt.Sprintf("%s |%s %3d %s| %13v | %15s |%s %-7s %s| %-"+errPaddingStr+"s %s\n",
 						timestamp.Load().(string),
 						statusColor(c.Response().StatusCode(), colors), c.Response().StatusCode(), colors.Reset,
-						data.Stop.Sub(data.Start).Round(time.Millisecond),
+						data.Stop.Sub(data.Start),
 						c.IP(),
 						methodColor(c.Method(), colors), c.Method(), colors.Reset,
 						c.Path(),
@@ -161,10 +161,10 @@ func New(config ...Config) fiber.Handler {
 					formatErr = " | " + chainErr.Error()
 				}
 				_, _ = buf.WriteString( //nolint:errcheck // This will never fail
-					fmt.Sprintf("%s | %3d | %7v | %15s | %-7s | %-"+errPaddingStr+"s %s\n",
+					fmt.Sprintf("%s | %3d | %13v | %15s | %-7s | %-"+errPaddingStr+"s %s\n",
 						timestamp.Load().(string),
 						c.Response().StatusCode(),
-						data.Stop.Sub(data.Start).Round(time.Millisecond),
+						data.Stop.Sub(data.Start),
 						c.IP(),
 						c.Method(),
 						c.Path(),
