@@ -199,10 +199,8 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 		},
 	}
 	// merge with custom tags from user
-	if cfg.CustomTags != nil {
-		for k, v := range cfg.CustomTags {
-			tagFunctions[k] = v
-		}
+	for k, v := range cfg.CustomTags {
+		tagFunctions[k] = v
 	}
 
 	return tagFunctions
