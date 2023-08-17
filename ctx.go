@@ -1906,3 +1906,8 @@ func (c *Ctx) IsFromLocal() bool {
 	}
 	return c.isLocalHost(ips[0])
 }
+
+// Sets the body to nil and ends the request.
+func (c *Ctx) End() error {
+	return c.Send(nil)
+}

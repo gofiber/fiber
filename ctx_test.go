@@ -4971,3 +4971,27 @@ func Test_Ctx_RepeatParserWithSameStruct(t *testing.T) {
 	testDecodeParser(MIMEApplicationForm, "body_param=body_param")
 	testDecodeParser(MIMEMultipartForm+`;boundary="b"`, "--b\r\nContent-Disposition: form-data; name=\"body_param\"\r\n\r\nbody_param\r\n--b--")
 }
+
+// go test -run Test_Ctx_End
+func Test_Ctx_End(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	utils.AssertEqual(t, nil, c.End())
+}
+
+// go test -v  -run=^$ -bench=Benchmark_Ctx_End -benchmem -count=4
+func Benchmark_Ctx_End(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	var err error
+	for n := 0; n < b.N; n++ {
+		err = c.End()
+	}
+	utils.AssertEqual(b, nil, err)
+}
