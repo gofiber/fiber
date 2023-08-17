@@ -1733,6 +1733,20 @@ app.Get("/not-found", func(c *fiber.Ctx) error {
 })
 ```
 
+## End
+
+An alias for `c.Send(nil)`. Sets the HTTP response body to `nil` and ends the request.
+
+```go title="Signature"
+func (c *Ctx) End() error
+```
+
+```go title="Example"
+app.Get("/", func(c *fiber.Ctx) error {
+  return c.End() // => "Empty response"
+})
+```
+
 ## Set
 
 Sets the response’s HTTP header field to the specified `key`, `value`.
