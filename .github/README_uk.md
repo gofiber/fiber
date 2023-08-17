@@ -68,9 +68,9 @@
   </a>
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_az.md">
     <img height="20px" src="https://img.shields.io/badge/AZ-flag.svg?color=555555&style=flat-square&logo=data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4NCjxzdmcgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI2MDAiPg0KPHJlY3Qgd2lkdGg9IjEyMDAiIGhlaWdodD0iNjAwIiBmaWxsPSIjNTA5ZTJmIi8+DQo8cmVjdCB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI0MDAiIGZpbGw9IiNlZjMzNDAiLz4NCjxyZWN0IHdpZHRoPSIxMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iIzAwYjVlMiIvPg0KPGNpcmNsZSBjeD0iNTcwIiBjeT0iMzAwIiByPSI5MCIgZmlsbD0iI2ZmZiIvPg0KPGNpcmNsZSBjeD0iNTkwIiBjeT0iMzAwIiByPSI3NSIgZmlsbD0iI2VmMzM0MCIvPg0KPHBhdGggZD0iTTY3MCAyNTBsOS41NjcgMjYuOTAzIDI1Ljc4OC0xMi4yNTgtMTIuMjU4IDI1Ljc4OEw3MjAgMzAwbC0yNi45MDMgOS41NjcgMTIuMjU4IDI1Ljc4OC0yNS43ODgtMTIuMjU4TDY3MCAzNTBsLTkuNTY3LTI2LjkwMy0yNS43ODggMTIuMjU4IDEyLjI1OC0yNS43ODhMNjIwIDMwMGwyNi45MDMtOS41NjctMTIuMjU4LTI1Ljc4OCAyNS43ODggMTIuMjU4eiIgZmlsbD0iI2ZmZiIvPg0KPC9zdmc+">
-    <a href="https://github.com/gofiber/fiber/blob/master/.github/README_eg.md">
-    <img height="20px" src="https://img.shields.io/badge/EG-flag.svg?color=555555&style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjRweCIgaGVpZ2h0PSI2NHB4IiB2aWV3Qm94PSIwIDAgMzYgMzYiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIGFyaWEtaGlkZGVuPSJ0cnVlIiByb2xlPSJpbWciIGNsYXNzPSJpY29uaWZ5IGljb25pZnktLXR3ZW1vamkiIHByZXNlcnZlQXNwZWN0UmF0aW89InhNaWRZTWlkIG1lZXQiIGZpbGw9IiMwMDAwMDAiPjxnIGlkPSJTVkdSZXBvX2JnQ2FycmllciIgc3Ryb2tlLXdpZHRoPSIwIj48L2c+PGcgaWQ9IlNWR1JlcG9fdHJhY2VyQ2FycmllciIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48L2c+PGcgaWQ9IlNWR1JlcG9faWNvbkNhcnJpZXIiPjxwYXRoIGZpbGw9IiMxNDE0MTQiIGQ9Ik0zNiAyN2E0IDQgMCAwIDEtNCA0SDRhNCA0IDAgMCAxLTQtNFY5YTQgNCAwIDAgMSA0LTRoMjhhNCA0IDAgMCAxIDQgNHYxOHoiPjwvcGF0aD48cGF0aCBmaWxsPSIjRUVFIiBkPSJNMCAxM2gzNnYxMEgweiI+PC9wYXRoPjxwYXRoIGZpbGw9IiNDRTEyMjUiIGQ9Ik0zMiA1SDRhNCA0IDAgMCAwLTQgNHY0aDM2VjlhNCA0IDAgMCAwLTQtNHoiPjwvcGF0aD48cGF0aCBmaWxsPSIjQkY5MzAwIiBkPSJNMTQuNzUgMjEuNTYycy4wMTYuMjUuMjM0LjM3NWMwIDAtLjA2Mi4xODguMTcyLjI5N2MuMjM0LjEwOSAxLjA3OC4yODEgMi41NDcuMjgxczIuMjk3LS4xNTYgMi41MTYtLjI2NmMuMjE5LS4xMDkuMjM0LS4zNTkuMjM0LS4zNTlzLjIzNC0uMTI1LjIxOS0uMjgxYy0uMDE2LS4xNTYtLjMyOC0uMzI4LS4zMjgtLjMyOHMtLjA3OC0uMjAzLS4yOTctLjI4MWMtLjIxOS0uMDc4LS45MjIuMzQ0LTIuMjY2LjI4MWMtMS4zNDQtLjA2Mi0yLjEwOS0uMjY2LTIuMzU5LS4yNWMtLjI1LjAxNi0uMzU5LjI2Ni0uMzU5LjI2NnMtLjI4Mi4xMjUtLjMxMy4yNjV6Ij48L3BhdGg+PHBhdGggZmlsbD0iI0VFRSIgZD0iTTE0LjkyMiAyMS41NDdjLS4wMTMuMDkzLjE4OC4yOTcuMTg4LjI5N3MwIC4yMzQuMjAzLjI5N3MxLjAzMS4yMTkgMi4zNzUuMjAzYzEuMzQ0LS4wMTYgMi4yOTctLjA5NCAyLjQwNi0uMTg4Yy4xMDktLjA5NC4yMDMtLjI5Ny4yMDMtLjI5N3MuMjE5LS4xNTYuMjAzLS4yODFzLS4zMjgtLjIwMy0uMzI4LS4yMDNzLS4wODgtLjE4OC0uMTkyLS4yNjZzLS43NzYuMzEyLTIuMjE0LjMxMmMtMS40MDcgMC0yLjIxOS0uMzQ0LTIuMzU5LS4zMjhjLS4xNDEuMDE2LS4yMzQuMjgxLS4yMzQuMjgxcy0uMjM1LjA2NC0uMjUxLjE3M3oiPjwvcGF0aD48cGF0aCBmaWxsPSIjQkY5MzAwIiBkPSJNMjAuODU5IDE1LjQ4NHMtLjAzMS0uNzM0LS43MDMtLjY0MWMtLjY3Mi4wOTQtLjcxOS40MjItMS40MzguNWwtLjE0OC4wMTRhMy4xOTIgMy4xOTIgMCAwIDEtLjE5Ni0xLjAxNGMwLS40NjkuMTQxLS42NzItLjM0NC0uOTA2Yy0uNDg0LS4yMzQtLjU3OC0uMDE2LS41NzgtLjAxNnMtLjM3NS0uMTg4LS41NDctLjA0N2MtLjE3Mi4xNDEtLjA3OC41IDAgLjM5MWMuMDc4LS4xMDkuMzkxLjIwMy4zOTEuMjAzYy4xMDYuNTE5LS4xOTUgMS4wODEtLjQwMSAxLjM5NGMtLjA3MS0uMDA3LS4xMjgtLjAxLS4yMDgtLjAxOWMtLjcxOS0uMDc4LS43NjYtLjQwNi0xLjQzOC0uNWMtLjY3Mi0uMDk0LS43MDMuNjQxLS43MDMuNjQxbC0uMjY2IDUuNjcybC41NDctLjQyMmwuMDAzLS4wNjdsMS4xMzgtMS4wMTFsLjE5LS4xOWwtLjQ3MSAxLjM3N3MtLjcxOS0uMDQ3LS41MTYuNTMxYzAgMCAuMTA5LS4zMjguMjk3LS4yNjZzLjczNC4yMDMuNzM0LjIwM2wuMTg4LjI5N2wuMjM0LS4yMTlsLjczNC0uMDMxcy4yMzQuMDYyLjIxOS4yNjZhLjQ0Ni40NDYgMCAwIDAgLjAzNy0uMjgzbC4yMjEtLjAxNWEuNDQ1LjQ0NSAwIDAgMCAuMDM0LjI5OWMtLjAxNi0uMjAzLjIxOS0uMjY2LjIxOS0uMjY2bC43MzQuMDMxbC4yMzUuMjE5bC4xODgtLjI5N3MuNTQ2LS4xNDEuNzMzLS4yMDNzLjI5Ny4yNjYuMjk3LjI2NmMuMjAzLS41NzgtLjUxNi0uNTMxLS41MTYtLjUzMWwtLjQ0OS0xLjMxM2wuMTI2LjEyNmwxLjEzOCAxLjAxMWwuMDAzLjA2N2wuNTQ3LjQyMmwtLjI2NS01LjY3M3ptLTMuMTA3IDMuNDM4Yy0xLjEyNy0uNjk2LTEuMjItMi40NTMtMS4yMi0yLjQ1M3MuNjk3LS4wMzYgMS4yMDMtLjM5MWMuNDU2LjQwNSAxLjIzNC4zNTkgMS4yMzQuMzU5cy0uMDUzIDEuNzY0LTEuMjE3IDIuNDg1em0yLjU3Ni0zLjY1NmwtLjk1My45MDZsLS4xNi4wNjRjLS4xNjQuMDA2LS45NjIuMDA4LTEuNDY1LS40MzljLS42MjUuNDM4LTEuNDg0LjQ2OS0xLjQ4NC40NjlsLS4xMzMtLjA1M2wtMS4wNTUtLjk0N2wtLjI3Ny4xMTRjLjAxMi0uMTEzLjA3NC0uMzY3LjQxOC0uMzE3Yy41NjQuMDgxLjc5Ny4zOTEgMS4zOTEuNDUzbC4xNjguMDE3bC0uMDU5LjA3NmMuMDkyIDAgLjIyOC0uMDI3LjMyOC0uMDQ5bC4xMTMuMDExbC0uMDUxLjE3OGMuMDgtLjAyNC4xOTYtLjA5My4yOTEtLjE1NGwuMjYuMDI1bC4wNTkuMDgybC4xOTgtLjA5OWwuMTMzLS4wMTNjLjExNS4wNjcuMjc5LjEyNy4yNzkuMTI3bC4wMzEtLjE1NmMuMTQxLjA5NC4zNzUuMDk0LjM3NS4wOTRjLS4wMjctLjAyMi0uMDU0LS4wNzgtLjA4Mi0uMTI2bC4xNDQtLjAxNWMuNTk0LS4wNjIuODI2LS4zNzIgMS4zOTEtLjQ1M2MuMzQ0LS4wNDkuNDA2LjIwNC40MTguMzE3bC0uMjc4LS4xMTJ6Ij48L3BhdGg+PHBhdGggZmlsbD0iI0VFRSIgZD0iTTE3LjM3NSAxOC44OTFsLS41NjMgMi4xNGwtLjkzNy0uMTg3bC45NjktMi43NXptLjY5OSAwbC41NjIgMi4xNGwuOTM4LS4xODdsLS45NjktMi43NXoiPjwvcGF0aD48cGF0aCBmaWxsPSIjQkY5MzAwIiBkPSJNMTYuNzY2IDE2LjY0MXMuMDc4LjkwNi40ODQgMS42MDl2LTEuODEycy0uMjY2LjE1Ni0uNDg0LjIwM3ptMS45NTMuMDMxcy0uMDc4LjkwNi0uNDg0IDEuNjA5di0xLjgxMmMtLjAwMSAwIC4yNjUuMTU2LjQ4NC4yMDN6Ij48L3BhdGg+PHBhdGggZmlsbD0iI0VFRSIgZD0iTTE2Ljk1MyAxMy41NzhzLjEwOS0uMTA5LjQyMi4xMDljLjIwMy4xNDIuMzgzLjI1LjM4My4yNXMuMTI4LS4xMzUuMzE2LS4xMDRjLjE4OC4wMzEuMDgzLjI5Mi4xMTQuODM4Yy4wMzEuNTQ3LjI1Ljc4MS4yNS43ODFsLS4yNjYtLjE1NmwuMDE2LjE3MmwtLjI5Ny0uMTQxbC0uMTQxLjIwM2wtLjE0MS0uMjE5bC0uMjI4LjEzOWwtLjA2OS0uMTg2bC0uMjY2LjE0MXMuMzkxLS40ODQuNDIyLTEuMDE2Yy4wMDktLjE1OS0uMDMxLS41MTYtLjAzMS0uNTE2cy0uMjQ5LS4zMTEtLjQ4NC0uMjk1eiI+PC9wYXRoPjxwYXRoIGZpbGw9IiNCRjkzMDAiIGQ9Ik0xNS41NDcgMjEuNjU2Yy0uMTc5LjEwNy0uMTA5LjE3MiAwIC4yMTlzLjc2NS4xMjYgMi4wOTQuMTU2YzEuMzU5LjAzMSAyLjIwMy0uMTI1IDIuMzEyLS4xODhjLjEwOS0uMDYyLjEyNS0uMTcyLS4wNjItLjIwM2MtLjE4OC0uMDMxLTEuMTI1LjEyNS0yLjI2Ni4xMjVjLTEuNDA2LjAwMS0yLS4xNTYtMi4wNzgtLjEwOXoiPjwvcGF0aD48L2c+PC9zdmc+">
   </a>
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_eg.md">
+    <img height="20px" src="https://img.shields.io/badge/EG-flag.svg?color=555555&style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMTgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiA8Zz4KICA8dGl0bGU+TGF5ZXIgMTwvdGl0bGU+CiAgPHJlY3Qgc3Ryb2tlPSIjMDAwIiBmaWxsPSIjZmZmZmZmIiB5PSI1LjkzMDMxIiB3aWR0aD0iMjQuMDM4NTEiIGhlaWdodD0iNi4xMjUiIGlkPSJzdmdfMiIgc3Ryb2tlLXdpZHRoPSIwIiB4PSItMC4wMzUzOSIvPgogIDxyZWN0IGZpbGw9IiNiNTA5MDkiIHk9Ii0wLjAwOTI2IiB3aWR0aD0iMjQuMDM4NTEiIGhlaWdodD0iNi4wMDk2MyIgaWQ9InN2Z18xIiBzdHJva2Utd2lkdGg9IjAiIHg9Ii0wLjAzNTM5IiBzdHJva2U9IiMwMDAiLz4KICA8cmVjdCBmaWxsPSIjMDAwMDAwIiB5PSIxMi4wNTM0NCIgd2lkdGg9IjI0LjAzODUxIiBoZWlnaHQ9IjYuMDA5NjMiIGlkPSJzdmdfMyIgc3Ryb2tlLXdpZHRoPSIwIiB4PSItMC4wMzUzOSIgc3Ryb2tlPSIjMDAwIi8+CiAgPGcgaWQ9InN2Z182IiBzdHJva2U9Im51bGwiPgogICA8cmVjdCBmaWxsPSIjZTBiMzM4IiBzdHJva2Utd2lkdGg9IjAiIHg9IjEwLjAwMzQyIiB5PSI4LjA1MTgzIiB3aWR0aD0iMy45NjA4OSIgaGVpZ2h0PSIzLjE5NjAzIiBpZD0ic3ZnXzQiIHN0cm9rZT0iIzAwMCIvPgogICA8cmVjdCBmaWxsPSIjZTBiMzM4IiBzdHJva2Utd2lkdGg9IjAiIHg9IjExLjUzMzE0IiB5PSI2LjgyMjU5IiB3aWR0aD0iMC45MDE0NCIgaGVpZ2h0PSIxLjI4Mzg3IiBpZD0ic3ZnXzUiIHN0cm9rZT0iIzAwMCIvPgogIDwvZz4KIDwvZz4KCjwvc3ZnPg==">     
   </a>
   <br>
   <a href="https://pkg.go.dev/github.com/gofiber/fiber/v2#pkg-overview">
@@ -147,19 +147,19 @@ go get -u github.com/gofiber/fiber/v2
 
 ## 🎯 Особливості
 
-- Надійна [маршрутизація](https://docs.gofiber.io/routing)
-- Доступ до [статичних файлів](https://docs.gofiber.io/api/app#static)
-- Екстремальна [продуктивність](https://docs.gofiber.io/extra/benchmarks)
-- [Низький обсяг споживання пам'яті](https://docs.gofiber.io/extra/benchmarks)
-- [Кінцеві точки API](https://docs.gofiber.io/api/ctx)
-- [Middleware](https://docs.gofiber.io/middleware) та підтримка [Next](https://docs.gofiber.io/api/ctx#next)
-- [Швидке](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) програмування на стороні сервера
-- [Двигуни шаблонів](https://github.com/gofiber/template)
-- [Підтримка WebSocket](https://github.com/gofiber/websocket)
-- [Server-Sent Events](https://github.com/gofiber/recipes/tree/master/sse)
-- [Обмежувач швидкості](https://docs.gofiber.io/api/middleware/limiter)
-- Документація доступна [19 мовами](https://docs.gofiber.io/)
-- І багато іншого, [відвідайте наш Wiki](https://docs.gofiber.io/)
+-   Надійна [маршрутизація](https://docs.gofiber.io/routing)
+-   Доступ до [статичних файлів](https://docs.gofiber.io/api/app#static)
+-   Екстремальна [продуктивність](https://docs.gofiber.io/extra/benchmarks)
+-   [Низький обсяг споживання пам'яті](https://docs.gofiber.io/extra/benchmarks)
+-   [Кінцеві точки API](https://docs.gofiber.io/api/ctx)
+-   [Middleware](https://docs.gofiber.io/middleware) та підтримка [Next](https://docs.gofiber.io/api/ctx#next)
+-   [Швидке](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) програмування на стороні сервера
+-   [Двигуни шаблонів](https://github.com/gofiber/template)
+-   [Підтримка WebSocket](https://github.com/gofiber/websocket)
+-   [Server-Sent Events](https://github.com/gofiber/recipes/tree/master/sse)
+-   [Обмежувач швидкості](https://docs.gofiber.io/api/middleware/limiter)
+-   Документація доступна [19 мовами](https://docs.gofiber.io/)
+-   І багато іншого, [відвідайте наш Wiki](https://docs.gofiber.io/)
 
 ## 💡 Філософія
 
@@ -171,8 +171,8 @@ Fiber **натхненний** Express, найпопулярнішим веб-ф
 
 ## ⚠️ Обмеження
 
-- Через те, що Fiber використовує unsafe, бібліотека не завжди може бути сумісною з останньою версією Go. Fiber 2.40.0 було протестовано з Go версій 1.17 до 1.20.
-- Fiber не сумісний з інтерфейсами net/http. Це означає, що ви не зможете використовувати такі проекти, як gqlgen, go-swagger або будь-які інші, які є частиною екосистеми net/http.
+-   Через те, що Fiber використовує unsafe, бібліотека не завжди може бути сумісною з останньою версією Go. Fiber 2.40.0 було протестовано з Go версій 1.17 до 1.20.
+-   Fiber не сумісний з інтерфейсами net/http. Це означає, що ви не зможете використовувати такі проекти, як gqlgen, go-swagger або будь-які інші, які є частиною екосистеми net/http.
 
 ## 👀 Приклади
 
@@ -307,7 +307,7 @@ func main() {
 
 Fiber за умовчанням використовує [html/template](https://pkg.go.dev/html/template/), якщо жодного двигуна не було вказано.
 
-Якщо ви хочете виконати частково або використовувати інший двигун, наприклад [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache]( https://github.com/cbroglie/mustache) або [jade](https://github.com/Joker/jade), тощо.
+Якщо ви хочете виконати частково або використовувати інший двигун, наприклад [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) або [jade](https://github.com/Joker/jade), тощо.
 
 Перегляньте наш пакет [Шаблон](https://github.com/gofiber/template), який підтримує кілька двигунів перегляду.
 
@@ -613,7 +613,7 @@ func main() {
 Ось список middleware, яке входить до складу Fiber фреймворку.
 
 | Middleware                                                                             | Опис                                                                                                                                                                             |
-|:---------------------------------------------------------------------------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| :------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [basicauth](https://github.com/gofiber/fiber/tree/master/middleware/basicauth)         | Middleware який забезпечує базову автентифікацію по HTTP.                                                                                                                        |
 | [cache](https://github.com/gofiber/fiber/tree/master/middleware/cache)                 | Middleware який перехоплює та кешує відповіді                                                                                                                                    |
 | [compress](https://github.com/gofiber/fiber/tree/master/middleware/compress)           | стиснення для Fiber, воно за замовчуванням підтримує `deflate`, `gzip` і `brotli`.                                                                                               |
@@ -635,11 +635,11 @@ func main() {
 | [session](https://github.com/gofiber/fiber/tree/master/middleware/session)             | Middleware для сеансів. ПРИМІТКА: Цей middleware використовує наш пакет зберігання.                                                                                              |
 | [skip](https://github.com/gofiber/fiber/tree/master/middleware/skip)                   | Middleware який пропускає упакований обробник, якщо предикат є істинним.                                                                                                         |
 | [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)             | Додає максимальний час для запиту та пересилає до ErrorHandler, якщо його перевищено.                                                                                            |
-| [keyauth](https://github.com/gofiber/keyauth)     | Middleware для автентифікації по ключам.                                                                              |
-| [redirect](https://github.com/gofiber/redirect)   | Middleware для перенаправлення.                                                                                       |
-| [rewrite](https://github.com/gofiber/rewrite)     | Middleware для перезапису URL-адреси на основі наданих правил.                                                        |
-| [adaptor](https://github.com/gofiber/adaptor)     | Конвентор для обробників net/http до/з обробників запитів Fiber, особлива подяка @arsmn!                              |
-| [helmet](https://github.com/gofiber/helmet)       | Допомагає захистити ваші програми, встановлюючи різні заголовки HTTP.                                                 |
+| [keyauth](https://github.com/gofiber/keyauth)                                          | Middleware для автентифікації по ключам.                                                                                                                                         |
+| [redirect](https://github.com/gofiber/redirect)                                        | Middleware для перенаправлення.                                                                                                                                                  |
+| [rewrite](https://github.com/gofiber/rewrite)                                          | Middleware для перезапису URL-адреси на основі наданих правил.                                                                                                                   |
+| [adaptor](https://github.com/gofiber/adaptor)                                          | Конвентор для обробників net/http до/з обробників запитів Fiber, особлива подяка @arsmn!                                                                                         |
+| [helmet](https://github.com/gofiber/helmet)                                            | Допомагає захистити ваші програми, встановлюючи різні заголовки HTTP.                                                                                                            |
 
 ## 🧬 Зовнішні Middleware
 
@@ -671,24 +671,24 @@ Fiber – це проект із відкритим вихідним кодом,
 
 |                                                            | Користувач                                       | Пожертвування |
 | :--------------------------------------------------------- | :----------------------------------------------- | :------------ |
-| ![](https://avatars.githubusercontent.com/u/204341?s=25)   | [@destari](https://github.com/destari)           | ☕ x 10        |
-| ![](https://avatars.githubusercontent.com/u/63164982?s=25) | [@dembygenesis](https://github.com/dembygenesis) | ☕ x 5         |
-| ![](https://avatars.githubusercontent.com/u/56607882?s=25) | [@thomasvvugt](https://github.com/thomasvvugt)   | ☕ x 5         |
-| ![](https://avatars.githubusercontent.com/u/27820675?s=25) | [@hendratommy](https://github.com/hendratommy)   | ☕ x 5         |
-| ![](https://avatars.githubusercontent.com/u/1094221?s=25)  | [@ekaputra07](https://github.com/ekaputra07)     | ☕ x 5         |
-| ![](https://avatars.githubusercontent.com/u/194590?s=25)   | [@jorgefuertes](https://github.com/jorgefuertes) | ☕ x 5         |
-| ![](https://avatars.githubusercontent.com/u/186637?s=25)   | [@candidosales](https://github.com/candidosales) | ☕ x 5         |
-| ![](https://avatars.githubusercontent.com/u/29659953?s=25) | [@l0nax](https://github.com/l0nax)               | ☕ x 3         |
-| ![](https://avatars.githubusercontent.com/u/635852?s=25)   | [@bihe](https://github.com/bihe)                 | ☕ x 3         |
-| ![](https://avatars.githubusercontent.com/u/307334?s=25)   | [@justdave](https://github.com/justdave)         | ☕ x 3         |
-| ![](https://avatars.githubusercontent.com/u/11155743?s=25) | [@koddr](https://github.com/koddr)               | ☕ x 1         |
-| ![](https://avatars.githubusercontent.com/u/29042462?s=25) | [@lapolinar](https://github.com/lapolinar)       | ☕ x 1         |
-| ![](https://avatars.githubusercontent.com/u/2978730?s=25)  | [@diegowifi](https://github.com/diegowifi)       | ☕ x 1         |
-| ![](https://avatars.githubusercontent.com/u/44171355?s=25) | [@ssimk0](https://github.com/ssimk0)             | ☕ x 1         |
-| ![](https://avatars.githubusercontent.com/u/5638101?s=25)  | [@raymayemir](https://github.com/raymayemir)     | ☕ x 1         |
-| ![](https://avatars.githubusercontent.com/u/619996?s=25)   | [@melkorm](https://github.com/melkorm)           | ☕ x 1         |
-| ![](https://avatars.githubusercontent.com/u/31022056?s=25) | [@marvinjwendt](https://github.com/marvinjwendt) | ☕ x 1         |
-| ![](https://avatars.githubusercontent.com/u/31921460?s=25) | [@toishy](https://github.com/toishy)             | ☕ x 1         |
+| ![](https://avatars.githubusercontent.com/u/204341?s=25)   | [@destari](https://github.com/destari)           | ☕ x 10       |
+| ![](https://avatars.githubusercontent.com/u/63164982?s=25) | [@dembygenesis](https://github.com/dembygenesis) | ☕ x 5        |
+| ![](https://avatars.githubusercontent.com/u/56607882?s=25) | [@thomasvvugt](https://github.com/thomasvvugt)   | ☕ x 5        |
+| ![](https://avatars.githubusercontent.com/u/27820675?s=25) | [@hendratommy](https://github.com/hendratommy)   | ☕ x 5        |
+| ![](https://avatars.githubusercontent.com/u/1094221?s=25)  | [@ekaputra07](https://github.com/ekaputra07)     | ☕ x 5        |
+| ![](https://avatars.githubusercontent.com/u/194590?s=25)   | [@jorgefuertes](https://github.com/jorgefuertes) | ☕ x 5        |
+| ![](https://avatars.githubusercontent.com/u/186637?s=25)   | [@candidosales](https://github.com/candidosales) | ☕ x 5        |
+| ![](https://avatars.githubusercontent.com/u/29659953?s=25) | [@l0nax](https://github.com/l0nax)               | ☕ x 3        |
+| ![](https://avatars.githubusercontent.com/u/635852?s=25)   | [@bihe](https://github.com/bihe)                 | ☕ x 3        |
+| ![](https://avatars.githubusercontent.com/u/307334?s=25)   | [@justdave](https://github.com/justdave)         | ☕ x 3        |
+| ![](https://avatars.githubusercontent.com/u/11155743?s=25) | [@koddr](https://github.com/koddr)               | ☕ x 1        |
+| ![](https://avatars.githubusercontent.com/u/29042462?s=25) | [@lapolinar](https://github.com/lapolinar)       | ☕ x 1        |
+| ![](https://avatars.githubusercontent.com/u/2978730?s=25)  | [@diegowifi](https://github.com/diegowifi)       | ☕ x 1        |
+| ![](https://avatars.githubusercontent.com/u/44171355?s=25) | [@ssimk0](https://github.com/ssimk0)             | ☕ x 1        |
+| ![](https://avatars.githubusercontent.com/u/5638101?s=25)  | [@raymayemir](https://github.com/raymayemir)     | ☕ x 1        |
+| ![](https://avatars.githubusercontent.com/u/619996?s=25)   | [@melkorm](https://github.com/melkorm)           | ☕ x 1        |
+| ![](https://avatars.githubusercontent.com/u/31022056?s=25) | [@marvinjwendt](https://github.com/marvinjwendt) | ☕ x 1        |
+| ![](https://avatars.githubusercontent.com/u/31921460?s=25) | [@toishy](https://github.com/toishy)             | ☕ x 1        |
 
 ## ‎‍💻 Автори коду
 
@@ -704,15 +704,15 @@ Fiber – це проект із відкритим вихідним кодом,
 
 **Ліцензії сторонніх бібліотек**
 
-- [colorable](https://github.com/mattn/go-colorable/blob/master/LICENSE)
-- [isatty](https://github.com/mattn/go-isatty/blob/master/LICENSE)
-- [runewidth](https://github.com/mattn/go-runewidth/blob/master/LICENSE)
-- [fasthttp](https://github.com/valyala/fasthttp/blob/master/LICENSE)
-- [bytebufferpool](https://github.com/valyala/bytebufferpool/blob/master/LICENSE)
-- [fwd](https://github.com/philhofer/fwd/blob/master/LICENSE.md)
-- [go-ole](https://github.com/go-ole/go-ole/blob/master/LICENSE)
-- [gopsutil](https://github.com/shirou/gopsutil/blob/master/LICENSE)
-- [msgp](https://github.com/tinylib/msgp/blob/master/LICENSE)
-- [schema](https://github.com/gorilla/schema/blob/master/LICENSE)
-- [uuid](https://github.com/google/uuid/blob/master/LICENSE)
-- [wmi](https://github.com/StackExchange/wmi/blob/master/LICENSE)
+-   [colorable](https://github.com/mattn/go-colorable/blob/master/LICENSE)
+-   [isatty](https://github.com/mattn/go-isatty/blob/master/LICENSE)
+-   [runewidth](https://github.com/mattn/go-runewidth/blob/master/LICENSE)
+-   [fasthttp](https://github.com/valyala/fasthttp/blob/master/LICENSE)
+-   [bytebufferpool](https://github.com/valyala/bytebufferpool/blob/master/LICENSE)
+-   [fwd](https://github.com/philhofer/fwd/blob/master/LICENSE.md)
+-   [go-ole](https://github.com/go-ole/go-ole/blob/master/LICENSE)
+-   [gopsutil](https://github.com/shirou/gopsutil/blob/master/LICENSE)
+-   [msgp](https://github.com/tinylib/msgp/blob/master/LICENSE)
+-   [schema](https://github.com/gorilla/schema/blob/master/LICENSE)
+-   [uuid](https://github.com/google/uuid/blob/master/LICENSE)
+-   [wmi](https://github.com/StackExchange/wmi/blob/master/LICENSE)
