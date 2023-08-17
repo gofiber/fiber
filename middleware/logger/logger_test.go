@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -205,8 +206,34 @@ func Test_Logger_All(t *testing.T) {
 	utils.AssertEqual(t, expected, buf.String())
 }
 
+func getLatencyTimeUnits() []struct {
+	unit string
+	div  time.Duration
+} {
+	// windows does not support µs sleep precision
+	// https://github.com/golang/go/issues/29485
+	if runtime.GOOS == "windows" {
+		return []struct {
+			unit string
+			div  time.Duration
+		}{
+			{"ms", time.Millisecond},
+			{"s", time.Second},
+		}
+	}
+	return []struct {
+		unit string
+		div  time.Duration
+	}{
+		{"µs", time.Microsecond},
+		{"ms", time.Millisecond},
+		{"s", time.Second},
+	}
+}
+
 // go test -run Test_Logger_WithLatency
 func Test_Logger_WithLatency(t *testing.T) {
+	t.Parallel()
 	buff := bytebufferpool.Get()
 	defer bytebufferpool.Put(buff)
 	app := fiber.New()
@@ -217,15 +244,7 @@ func Test_Logger_WithLatency(t *testing.T) {
 	app.Use(logger)
 
 	// Define a list of time units to test
-	timeUnits := []struct {
-		unit string
-		div  time.Duration
-	}{
-		// {"ns", time.Nanosecond}, // TODO: Nano seconds are too fast to test
-		{"µs", time.Microsecond},
-		{"ms", time.Millisecond},
-		{"s", time.Second},
-	}
+	timeUnits := getLatencyTimeUnits()
 
 	// Initialize a new time unit
 	sleepDuration := 1 * time.Nanosecond
@@ -256,6 +275,7 @@ func Test_Logger_WithLatency(t *testing.T) {
 
 // go test -run Test_Logger_WithLatency_DefaultFormat
 func Test_Logger_WithLatency_DefaultFormat(t *testing.T) {
+	t.Parallel()
 	buff := bytebufferpool.Get()
 	defer bytebufferpool.Put(buff)
 	app := fiber.New()
@@ -265,15 +285,7 @@ func Test_Logger_WithLatency_DefaultFormat(t *testing.T) {
 	app.Use(logger)
 
 	// Define a list of time units to test
-	timeUnits := []struct {
-		unit string
-		div  time.Duration
-	}{
-		// {"ns", time.Nanosecond}, // TODO: Nano seconds are too fast to test
-		{"µs", time.Microsecond},
-		{"ms", time.Millisecond},
-		{"s", time.Second},
-	}
+	timeUnits := getLatencyTimeUnits()
 
 	// Initialize a new time unit
 	sleepDuration := 1 * time.Nanosecond
