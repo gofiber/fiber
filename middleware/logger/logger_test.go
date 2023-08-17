@@ -207,7 +207,6 @@ func Test_Logger_All(t *testing.T) {
 
 // go test -run Test_Logger_WithLatency
 func Test_Logger_WithLatency(t *testing.T) {
-	t.Parallel()
 	buff := bytebufferpool.Get()
 	defer bytebufferpool.Put(buff)
 	app := fiber.New()
@@ -257,7 +256,6 @@ func Test_Logger_WithLatency(t *testing.T) {
 
 // go test -run Test_Logger_WithLatency_DefaultFormat
 func Test_Logger_WithLatency_DefaultFormat(t *testing.T) {
-	t.Parallel()
 	buff := bytebufferpool.Get()
 	defer bytebufferpool.Put(buff)
 	app := fiber.New()
