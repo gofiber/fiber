@@ -16,6 +16,11 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c *fiber.Ctx) bool
 
+	// Raw data of the favicon file
+	//
+	// Optional. Default: nil
+	Data []byte `json:"-"`
+
 	// File holds the path to an actual favicon that will be cached
 	//
 	// Optional. Default: ""
@@ -83,7 +88,11 @@ func New(config ...Config) fiber.Handler {
 		icon    []byte
 		iconLen string
 	)
-	if cfg.File != "" {
+	if cfg.Data != nil {
+		// use the provided favicon data
+		icon = cfg.Data
+		iconLen = strconv.Itoa(len(cfg.Data))
+	} else if cfg.File != "" {
 		// read from configured filesystem if present
 		if cfg.FileSystem != nil {
 			f, err := cfg.FileSystem.Open(cfg.File)
