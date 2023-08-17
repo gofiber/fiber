@@ -99,6 +99,30 @@ func Test_Custom_Favicon_Url(t *testing.T) {
 	utils.AssertEqual(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
 }
 
+// go test -run Test_Custom_Favicon_Data
+func Test_Custom_Favicon_Data(t *testing.T) {
+	data, err := os.ReadFile("../../.github/testdata/favicon.ico")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Data: data,
+	}))
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		return nil
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/favicon.ico", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
+	utils.AssertEqual(t, "public, max-age=31536000", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
+}
+
 // mockFS wraps local filesystem for the purposes of
 // Test_Middleware_Favicon_FileSystem located below
 // TODO use os.Dir if fiber upgrades to 1.16
