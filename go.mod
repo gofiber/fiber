@@ -1,6 +1,6 @@
 module github.com/gofiber/fiber/v2
 
-go 1.20
+go 1.21
 
 require (
 	github.com/google/uuid v1.3.0
@@ -15,7 +15,7 @@ require (
 
 require (
 	github.com/andybalholm/brotli v1.0.5 // indirect
-	github.com/klauspost/compress v1.16.3 // indirect
+	github.com/klauspost/compress v1.16.7 // indirect
 	github.com/philhofer/fwd v1.1.2 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
 	github.com/valyala/tcplisten v1.0.0 // indirect

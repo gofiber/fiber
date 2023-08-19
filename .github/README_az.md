@@ -161,7 +161,7 @@ Biz istifadəçilərdən gələn [issue-a](https://github.com/gofiber/fiber/issu
 
 ## ⚠️ Limitlər
 
--   Fiber unsafe prinsiplərə əsaslanaraq çalışdığından, o hər zaman Go-nun son versiyası ilə uyğunlaşmaya bilər. Buna görə də, Fiber 2.40.0 — Go 1.17 və 1.20 versiyaları ilə test edilərək saz vəziyyətə gətirilmişdir.
+-   Fiber unsafe prinsiplərə əsaslanaraq çalışdığından, o hər zaman Go-nun son versiyası ilə uyğunlaşmaya bilər. Buna görə də, Fiber 2.40.0 — Go 1.17 və 1.21 versiyaları ilə test edilərək saz vəziyyətə gətirilmişdir.
 -   Fiber net/http interfeysləri ilə uyğun deyil. Yəni gqlgen, go-swagger kimi net/http ekosisteminin parçası olan layihələri istifadə edə bilməzsiniz.
 
 ## 👀 Misallar
