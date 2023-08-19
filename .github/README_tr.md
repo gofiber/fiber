@@ -157,7 +157,7 @@ Fiber, internet üzerinde en popüler web framework'ü olan Express'ten **esinle
 
 ## ⚠️ Sınırlamalar
 
--   Fiber unsafe kullanımı sebebiyle Go'nun son sürümüyle her zaman uyumlu olmayabilir. Fiber 2.40.0, Go 1.17 ile 1.20 sürümleriyle test edildi.
+-   Fiber unsafe kullanımı sebebiyle Go'nun son sürümüyle her zaman uyumlu olmayabilir. Fiber 2.40.0, Go 1.17 ile 1.21 sürümleriyle test edildi.
 -   Fiber net/http arabirimiyle uyumlu değildir. Yani gqlgen veya go-swagger gibi net/http ekosisteminin parçası olan projeleri kullanamazsınız.
 
 ## 👀 Örnekler
