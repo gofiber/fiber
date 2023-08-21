@@ -396,7 +396,7 @@ func (c *Ctx) BodyParser(out interface{}) error {
 				k, err = parseParamSquareBrackets(k)
 			}
 
-			if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
+			if c.app.config.EnableSplittingOnParsers && strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
 				values := strings.Split(v, ",")
 				for i := 0; i < len(values); i++ {
 					data[k] = append(data[k], values[i])
@@ -1220,7 +1220,7 @@ func (c *Ctx) QueryParser(out interface{}) error {
 			k, err = parseParamSquareBrackets(k)
 		}
 
-		if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
+		if c.app.config.EnableSplittingOnParsers && strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
 			values := strings.Split(v, ",")
 			for i := 0; i < len(values); i++ {
 				data[k] = append(data[k], values[i])
@@ -1269,7 +1269,7 @@ func (c *Ctx) ReqHeaderParser(out interface{}) error {
 		k := c.app.getString(key)
 		v := c.app.getString(val)
 
-		if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
+		if c.app.config.EnableSplittingOnParsers && strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
 			values := strings.Split(v, ",")
 			for i := 0; i < len(values); i++ {
 				data[k] = append(data[k], values[i])
