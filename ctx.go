@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -1430,7 +1431,7 @@ func (c *Ctx) getLocationFromRoute(route Route, params Map) (string, error) {
 
 		for key, val := range params {
 			isSame := key == segment.ParamName || (!c.app.config.CaseSensitive && utils.EqualFold(key, segment.ParamName))
-			isGreedy := segment.IsGreedy && len(key) == 1 && isInCharset(key[0], greedyParameters)
+			isGreedy := segment.IsGreedy && len(key) == 1 && slices.Contains(greedyParameters, key[0])
 			if isSame || isGreedy {
 				_, err := buf.WriteString(utils.ToString(val))
 				if err != nil {
