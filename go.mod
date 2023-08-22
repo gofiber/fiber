@@ -3,7 +3,7 @@ module github.com/gofiber/fiber/v2
 go 1.21
 
 require (
-	github.com/google/uuid v1.3.0
+	github.com/google/uuid v1.3.1
 	github.com/mattn/go-colorable v0.1.13
 	github.com/mattn/go-isatty v0.0.19
 	github.com/mattn/go-runewidth v0.0.15
