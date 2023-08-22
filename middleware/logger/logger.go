@@ -139,39 +139,32 @@ func New(config ...Config) fiber.Handler {
 
 		// Default output when no custom Format or io.Writer is given
 		if cfg.Format == ConfigDefault.Format {
-			// Format error if exist
+			// Format error if it exists
 			formatErr := ""
-			if cfg.enableColors {
-				if chainErr != nil {
+			if chainErr != nil {
+				if cfg.enableColors {
 					formatErr = colors.Red + " | " + chainErr.Error() + colors.Reset
-				}
-				_, _ = buf.WriteString( //nolint:errcheck // This will never fail
-					fmt.Sprintf("%s |%s %3d %s| %13v | %15s |%s %-7s %s| %-"+errPaddingStr+"s %s\n",
-						timestamp.Load().(string),
-						statusColor(c.Response().StatusCode(), colors), c.Response().StatusCode(), colors.Reset,
-						data.Stop.Sub(data.Start),
-						c.IP(),
-						methodColor(c.Method(), colors), c.Method(), colors.Reset,
-						c.Path(),
-						formatErr,
-					),
-				)
-			} else {
-				if chainErr != nil {
+				} else {
 					formatErr = " | " + chainErr.Error()
 				}
-				_, _ = buf.WriteString( //nolint:errcheck // This will never fail
-					fmt.Sprintf("%s | %3d | %13v | %15s | %-7s | %-"+errPaddingStr+"s %s\n",
-						timestamp.Load().(string),
-						c.Response().StatusCode(),
-						data.Stop.Sub(data.Start),
-						c.IP(),
-						c.Method(),
-						c.Path(),
-						formatErr,
-					),
-				)
 			}
+
+			// Construct the log format
+			logFormat := "%s |%s %3d %s| %7v | %15s |%s %-7s %s| %-" + errPaddingStr + "s %s\n"
+			if !cfg.enableColors {
+				logFormat = "%s | %3d | %7v | %15s | %-7s | %-" + errPaddingStr + "s %s\n"
+			}
+
+			// Write log entry to buffer
+			_, _ = buf.WriteString(fmt.Sprintf(logFormat,
+				timestamp.Load().(string),
+				statusColor(c.Response().StatusCode(), colors), c.Response().StatusCode(), colors.Reset,
+				data.Stop.Sub(data.Start).Round(time.Millisecond),
+				c.IP(),
+				methodColor(c.Method(), colors), c.Method(), colors.Reset,
+				c.Path(),
+				formatErr,
+			)) //nolint:errcheck // This will never fail
 
 			// Write buffer to output
 			_, _ = cfg.Output.Write(buf.Bytes()) //nolint:errcheck // This will never fail
