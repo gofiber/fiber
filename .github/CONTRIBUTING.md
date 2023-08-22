@@ -1,6 +1,6 @@
 # Contributing
 
-When contributing to this repository, please first discuss the change you wish to make via our [Discord](https://gofiber.io/discord) server, by creating an [issue](https://github.com/gofiber/fiber/issues) or any other method with the owners of this repository before making a change.
+Before making any changes to this repository, we kindly request you to initiate discussions for proposed changes that do not yet have an associated [issue](https://github.com/gofiber/fiber/issues). Please use our [Discord](https://gofiber.io/discord) server to initiate these discussions. For [issue](https://github.com/gofiber/fiber/issues) that already exist, you may proceed with discussions using our [issue](https://github.com/gofiber/fiber/issues) tracker or any other suitable method, in consultation with the repository owners. Your collaboration is greatly appreciated.
 
 Please note: we have a [code of conduct](https://github.com/gofiber/fiber/blob/master/.github/CODE_OF_CONDUCT.md), please follow it in all your interactions with the `Fiber` project.
 
