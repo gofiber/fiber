@@ -1887,9 +1887,10 @@ func (c *Ctx) IsProxyTrusted() bool {
 	return false
 }
 
+var localHosts = [...]string{"127.0.0.1", "0.0.0.0", "::1"}
+
 // IsLocalHost will return true if address is a localhost address.
 func (*Ctx) isLocalHost(address string) bool {
-	localHosts := []string{"127.0.0.1", "0.0.0.0", "::1"}
 	for _, h := range localHosts {
 		if strings.Contains(address, h) {
 			return true
