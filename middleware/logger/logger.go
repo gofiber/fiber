@@ -58,6 +58,10 @@ func New(config ...Config) fiber.Handler {
 		errHandler fiber.ErrorHandler
 
 		dataPool = sync.Pool{New: func() interface{} { return new(Data) }}
+
+		methodColorFmt string
+		statusCodeFmt  string
+		colorReset     string
 	)
 
 	// If colors are enabled, check terminal compatibility
@@ -151,20 +155,22 @@ func New(config ...Config) fiber.Handler {
 
 			// Construct the log format
 			logFormat := "%s |%s %3d %s| %7v | %15s |%s %-7s %s| %-" + errPaddingStr + "s %s\n"
-			if !cfg.enableColors {
-				logFormat = "%s | %3d | %7v | %15s | %-7s | %-" + errPaddingStr + "s %s\n"
-			}
 
-			// Write log entry to buffer
-			_, _ = buf.WriteString(fmt.Sprintf(logFormat,
+			if cfg.enableColors {
+				colorReset = colors.Reset
+				statusCodeFmt = statusColor(c.Response().StatusCode(), colors)
+				methodColorFmt = methodColor(c.Method(), colors)
+			}
+			_, _ = buf.WriteString(fmt.Sprintf( //nolint:errcheck // This will never fail
+				logFormat,
 				timestamp.Load().(string),
-				statusColor(c.Response().StatusCode(), colors), c.Response().StatusCode(), colors.Reset,
-				data.Stop.Sub(data.Start).Round(time.Millisecond),
+				statusCodeFmt, c.Response().StatusCode(), colorReset,
+				data.Stop.Sub(data.Start),
 				c.IP(),
-				methodColor(c.Method(), colors), c.Method(), colors.Reset,
+				methodColorFmt, c.Method(), colorReset,
 				c.Path(),
 				formatErr,
-			)) //nolint:errcheck // This will never fail
+			))
 
 			// Write buffer to output
 			_, _ = cfg.Output.Write(buf.Bytes()) //nolint:errcheck // This will never fail
