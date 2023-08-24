@@ -67,13 +67,13 @@ const (
 
 // from sys/proc.h
 const (
-	SIDL    = 1 /* Process being created by fork. */
-	SRUN    = 2 /* Currently runnable. */
-	SSLEEP  = 3 /* Sleeping on an address. */
-	SSTOP   = 4 /* Process debugging or suspension. */
-	SZOMB   = 5 /* Awaiting collection by parent. */
-	SDEAD   = 6 /* Thread is almost gone */
-	SONPROC = 7 /* Thread is currently on a CPU. */
+	SIDL    = iota + 1 /* Process being created by fork. */
+	SRUN               /* Currently runnable. */
+	SSLEEP             /* Sleeping on an address. */
+	SSTOP              /* Process debugging or suspension. */
+	SZOMB              /* Awaiting a collection by parent. */
+	SDEAD              /* Thread is almost gone */
+	SONPROC            /* Thread is currently on a CPU. */
 )
 
 // Basic types

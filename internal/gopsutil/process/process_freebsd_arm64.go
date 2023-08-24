@@ -29,13 +29,13 @@ const (
 )
 
 const (
-	SIDL   = 1
-	SRUN   = 2
-	SSLEEP = 3
-	SSTOP  = 4
-	SZOMB  = 5
-	SWAIT  = 6
-	SLOCK  = 7
+	SIDL = iota + 1
+	SRUN
+	SSLEEP
+	SSTOP
+	SZOMB
+	SWAIT
+	SLOCK
 )
 
 type (

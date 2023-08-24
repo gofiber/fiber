@@ -91,22 +91,22 @@ type PageFaultsStat struct {
 // Resource limit constants are from /usr/include/x86_64-linux-gnu/bits/resource.h
 // from libc6-dev package in Ubuntu 16.10
 const (
-	RLIMIT_CPU        int32 = 0
-	RLIMIT_FSIZE      int32 = 1
-	RLIMIT_DATA       int32 = 2
-	RLIMIT_STACK      int32 = 3
-	RLIMIT_CORE       int32 = 4
-	RLIMIT_RSS        int32 = 5
-	RLIMIT_NPROC      int32 = 6
-	RLIMIT_NOFILE     int32 = 7
-	RLIMIT_MEMLOCK    int32 = 8
-	RLIMIT_AS         int32 = 9
-	RLIMIT_LOCKS      int32 = 10
-	RLIMIT_SIGPENDING int32 = 11
-	RLIMIT_MSGQUEUE   int32 = 12
-	RLIMIT_NICE       int32 = 13
-	RLIMIT_RTPRIO     int32 = 14
-	RLIMIT_RTTIME     int32 = 15
+	RLIMIT_CPU int32 = iota
+	RLIMIT_FSIZE
+	RLIMIT_DATA
+	RLIMIT_STACK
+	RLIMIT_CORE
+	RLIMIT_RSS
+	RLIMIT_NPROC
+	RLIMIT_NOFILE
+	RLIMIT_MEMLOCK
+	RLIMIT_AS
+	RLIMIT_LOCKS
+	RLIMIT_SIGPENDING
+	RLIMIT_MSGQUEUE
+	RLIMIT_NICE
+	RLIMIT_RTPRIO
+	RLIMIT_RTTIME
 )
 
 func (p Process) String() string {
@@ -288,7 +288,7 @@ func (p *Process) MemoryPercentWithContext(ctx context.Context) (float32, error)
 	}
 	used := processMemory.RSS
 
-	return (100 * float32(used) / float32(total)), nil
+	return 100 * float32(used) / float32(total), nil
 }
 
 // CPU_Percent returns how many percent of the CPU time this process uses
