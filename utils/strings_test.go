@@ -215,3 +215,35 @@ func Test_EqualFold(t *testing.T) {
 	res = EqualFold("/MY4/NAME/IS/:PARAM/*", "/my4/nAME/IS/:param/*")
 	AssertEqual(t, true, res)
 }
+
+func Test_Reverse(t *testing.T) {
+	t.Parallel()
+
+	res := Reverse("abcde")
+	AssertEqual(t, "edcba", res)
+
+	res = Reverse("abcd")
+	AssertEqual(t, "dcba", res)
+
+	res = Reverse("a")
+	AssertEqual(t, "a", res)
+
+	res = Reverse("")
+	AssertEqual(t, "", res)
+}
+
+func Test_Contain(t *testing.T) {
+	t.Parallel()
+
+	res := Contain([]string{"a", "b", "c", "d"}, "b")
+	AssertEqual(t, true, res)
+
+	res = Contain([]string{"a,b,c,d"}, "e")
+	AssertEqual(t, false, res)
+
+	res = Contain([]string{}, "a")
+	AssertEqual(t, false, res)
+
+	res = Contain([]string{"a"}, "")
+	AssertEqual(t, false, res)
+}

@@ -73,3 +73,26 @@ func EqualFold(b, s string) bool {
 	}
 	return true
 }
+
+// Reverse reverse target string
+func Reverse(s string) string {
+	rs := []rune(s)
+
+	for head, tail := 0, len(rs)-1; head < tail; head, tail = head+1, tail-1 {
+		rs[head], rs[tail] = rs[tail], rs[head]
+	}
+
+	return string(rs)
+}
+
+// Contain checks if the target string is contained in the strs
+func Contain(strs []string, s string) bool {
+
+	for _, str := range strs {
+		if str == s {
+			return true
+		}
+	}
+
+	return false
+}
