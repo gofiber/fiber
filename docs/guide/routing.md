@@ -262,6 +262,13 @@ app.Get("/", func(c *fiber.Ctx) error {
 
 `Use` method path is a **mount**, or **prefix** path, and limits middleware to only apply to any paths requested that begin with it.
 
+### Constraints on Adding Routes Dynamically
+
+:::warning
+Adding routes dynamically after the application has started is not supported due to design and performance considerations. Make sure to define all your routes before the application starts.
+:::
+
+
 ## Grouping
 
 If you have many endpoints, you can organize your routes using `Group`.
