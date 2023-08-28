@@ -159,7 +159,7 @@ Fiber는 인터넷에서 가장 인기있는 웹 프레임워크인 Express에�
 
 ## ⚠️ 한계점
 
--   Fiber는 unsafe 패키지를 사용하기 때문에 최신 Go버전과 호환되지 않을 수 있습니다.Fiber 2.40.0은 Go 버전 1.17에서 1.21로 테스트되고 있습니다.
+-   Fiber는 unsafe 패키지를 사용하기 때문에 최신 Go버전과 호환되지 않을 수 있습니다. Fiber 2.40.0은 Go 버전 1.17부터 1.21까지 테스트되고 있습니다.
 -   Fiber는 net/http 인터페이스와 호환되지 않습니다.즉, gqlgen이나 go-swagger 등 net/http 생태계의 일부인 프로젝트를 사용할 수 없습니다.
 
 ## 👀 예제
@@ -637,9 +637,9 @@ For more articles, middlewares, examples or tools check our [awesome list](https
 3. [Medium](https://medium.com/), [Dev.to](https://dev.to/) 또는 개인 블로그에 리뷰 또는 튜토리얼을 작성하세요.
 4. Support the project by donating a [cup of coffee](https://buymeacoff.ee/fenny).
 
-## ☕ Supporters
+## ☕ 후원자
 
-Fiber is an open source project that runs on donations to pay the bills e.g. our domain name, gitbook, netlify and serverless hosting. If you want to support Fiber, you can ☕ [**buy a coffee here**](https://buymeacoff.ee/fenny).
+Fiber는 오픈소스 프로젝트로, 기부를 통해 도메인 이름, gitbook, netlify, 서버리스 호스팅 등의 비용을 충당하고 있습니다. Fiber를 후원하고 싶다면 ☕ [**여기서 커피를 사주세요**](https://buymeacoff.ee/fenny).
 
 |                                                            | User                                             | Donation |
 | :--------------------------------------------------------- | :----------------------------------------------- | :------- |
