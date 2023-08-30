@@ -64,7 +64,7 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return output.WriteString(c.Port())
 		},
 		TagIP: func(output Buffer, c *fiber.Ctx, data *Data, extraParam string) (int, error) {
-			return output.WriteString(c.IP())
+			return output.WriteString(fmt.Sprintf("%15s", c.IP()))
 		},
 		TagIPs: func(output Buffer, c *fiber.Ctx, data *Data, extraParam string) (int, error) {
 			return output.WriteString(c.Get(fiber.HeaderXForwardedFor))
