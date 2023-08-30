@@ -382,18 +382,17 @@ func (c *Ctx) BodyParser(out interface{}) error {
 	}
 	if strings.HasPrefix(ctype, MIMEApplicationForm) {
 		data := make(map[string][]string)
-		var err error
 
 		c.fasthttp.PostArgs().VisitAll(func(key, val []byte) {
-			if err != nil {
-				return
-			}
-
 			k := c.app.getString(key)
 			v := c.app.getString(val)
 
 			if strings.Contains(k, "[") {
+				var err error
 				k, err = parseParamSquareBrackets(k)
+				if err != nil {
+					return
+				}
 			}
 
 			if c.app.config.EnableSplittingOnParsers && strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
@@ -1206,18 +1205,17 @@ func (c *Ctx) QueryFloat(key string, defaultValue ...float64) float64 {
 // QueryParser binds the query string to a struct.
 func (c *Ctx) QueryParser(out interface{}) error {
 	data := make(map[string][]string)
-	var err error
 
 	c.fasthttp.QueryArgs().VisitAll(func(key, val []byte) {
-		if err != nil {
-			return
-		}
-
 		k := c.app.getString(key)
 		v := c.app.getString(val)
 
 		if strings.Contains(k, "[") {
+			var err error
 			k, err = parseParamSquareBrackets(k)
+			if err != nil {
+				return
+			}
 		}
 
 		if c.app.config.EnableSplittingOnParsers && strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
@@ -1229,10 +1227,6 @@ func (c *Ctx) QueryParser(out interface{}) error {
 			data[k] = append(data[k], v)
 		}
 	})
-
-	if err != nil {
-		return err
-	}
 
 	return c.parseToStruct(queryTag, out, data)
 }
