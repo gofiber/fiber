@@ -231,6 +231,25 @@ func getLatencyTimeUnits() []struct {
 	}
 }
 
+// go test -run Test_Logger_LenTagIP
+func Test_Logger_LenTagIP(t *testing.T) {
+	t.Parallel()
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Format: "${ip}",
+		Output: buf,
+	}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
+
+	utils.AssertEqual(t, 15, len(buf.String()))
+}
+
 // go test -run Test_Logger_WithLatency
 func Test_Logger_WithLatency(t *testing.T) {
 	t.Parallel()
