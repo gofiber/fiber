@@ -72,6 +72,9 @@
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_eg.md">
     <img height="20px" src="https://img.shields.io/badge/EG-flag.svg?color=555555&style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMTgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiA8Zz4KICA8dGl0bGU+TGF5ZXIgMTwvdGl0bGU+CiAgPHJlY3Qgc3Ryb2tlPSIjMDAwIiBmaWxsPSIjZmZmZmZmIiB5PSI1LjkzMDMxIiB3aWR0aD0iMjQuMDM4NTEiIGhlaWdodD0iNi4xMjUiIGlkPSJzdmdfMiIgc3Ryb2tlLXdpZHRoPSIwIiB4PSItMC4wMzUzOSIvPgogIDxyZWN0IGZpbGw9IiNiNTA5MDkiIHk9Ii0wLjAwOTI2IiB3aWR0aD0iMjQuMDM4NTEiIGhlaWdodD0iNi4wMDk2MyIgaWQ9InN2Z18xIiBzdHJva2Utd2lkdGg9IjAiIHg9Ii0wLjAzNTM5IiBzdHJva2U9IiMwMDAiLz4KICA8cmVjdCBmaWxsPSIjMDAwMDAwIiB5PSIxMi4wNTM0NCIgd2lkdGg9IjI0LjAzODUxIiBoZWlnaHQ9IjYuMDA5NjMiIGlkPSJzdmdfMyIgc3Ryb2tlLXdpZHRoPSIwIiB4PSItMC4wMzUzOSIgc3Ryb2tlPSIjMDAwIi8+CiAgPGcgaWQ9InN2Z182IiBzdHJva2U9Im51bGwiPgogICA8cmVjdCBmaWxsPSIjZTBiMzM4IiBzdHJva2Utd2lkdGg9IjAiIHg9IjEwLjAwMzQyIiB5PSI4LjA1MTgzIiB3aWR0aD0iMy45NjA4OSIgaGVpZ2h0PSIzLjE5NjAzIiBpZD0ic3ZnXzQiIHN0cm9rZT0iIzAwMCIvPgogICA8cmVjdCBmaWxsPSIjZTBiMzM4IiBzdHJva2Utd2lkdGg9IjAiIHg9IjExLjUzMzE0IiB5PSI2LjgyMjU5IiB3aWR0aD0iMC45MDE0NCIgaGVpZ2h0PSIxLjI4Mzg3IiBpZD0ic3ZnXzUiIHN0cm9rZT0iIzAwMCIvPgogIDwvZz4KIDwvZz4KCjwvc3ZnPg==">
   </a>
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_pl.md">
+    <img height="20px" src="https://img.shields.io/badge/PL-flag.svg?color=555555&style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjgwIDgwMCI+DQo8cGF0aCBmaWxsPSIjZTllOGU3IiBkPSJtMCwwaDEyODB2NDAwaC0xMjgweiIvPg0KPHBhdGggZmlsbD0iI2Q0MjEzZCIgZD0ibTAsNDAwaDEyODB2NDAwaC0xMjgweiIvPg0KPC9zdmc+DQo=">
+  </a>
   <br>
   <a href="https://pkg.go.dev/github.com/gofiber/fiber/v2#pkg-overview">
     <img src="https://img.shields.io/badge/%F0%9F%93%9A%20godoc-pkg-00ACD7.svg?color=00ACD7&style=flat-square">
