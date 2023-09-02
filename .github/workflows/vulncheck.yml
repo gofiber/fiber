@@ -1,19 +1,19 @@
 name: Run govulncheck
 
 on:
-    push:
-        branches:
-            - master
-            - main
-        paths:
-          - '**'
-          - '!docs/**'
-          - '!**.md'
-    pull_request:
-        paths:
-          - '**'
-          - '!docs/**'
-          - '!**.md'
+  push:
+    branches:
+      - master
+      - main
+    paths:
+      - "**"
+      - "!docs/**"
+      - "!**.md"
+  pull_request:
+    paths:
+      - "**"
+      - "!docs/**"
+      - "!**.md"
 
 jobs:
   govulncheck-check:
@@ -21,15 +21,18 @@ jobs:
     env:
       GO111MODULE: on
     steps:
-    - name: Fetch Repository
-      uses: actions/checkout@v3
-    - name: Install Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: 'stable'
-        check-latest: true
-        cache: false
-    - name: Install Govulncheck
-      run: go install golang.org/x/vuln/cmd/govulncheck@latest
-    - name: Run Govulncheck
-      run: govulncheck ./...
+      - name: Fetch Repository
+        uses: actions/checkout@v3
+
+      - name: Install Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "stable"
+          check-latest: true
+          cache: false
+
+      - name: Install Govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Run Govulncheck
+        run: govulncheck ./...

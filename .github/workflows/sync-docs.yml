@@ -1,4 +1,4 @@
-name: 'Sync docs'
+name: "Sync docs"
 
 on:
   push:
@@ -6,9 +6,9 @@ on:
       - master
       - main
     paths:
-      - 'docs/**'
+      - "docs/**"
   release:
-    types: [ published ]
+    types: [published]
 
 jobs:
   sync-docs:
@@ -19,13 +19,11 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 2
+
       - name: Setup Node.js environment
         uses: actions/setup-node@v3
         with:
-          node-version: '18'
-
-      - name: Install JQ
-        run: sudo apt-get install jq
+          node-version: "18"
 
       - name: Sync docs
         run: ./.github/scripts/sync_docs.sh
