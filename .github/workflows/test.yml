@@ -4,14 +4,15 @@ on:
       - master
       - main
     paths:
-      - '**'
-      - '!docs/**'
-      - '!**.md'
+      - "**"
+      - "!docs/**"
+      - "!**.md"
   pull_request:
     paths:
-      - '**'
-      - '!docs/**'
-      - '!**.md'
+      - "**"
+      - "!docs/**"
+      - "!**.md"
+
 name: Test
 jobs:
   Build:
@@ -21,15 +22,17 @@ jobs:
         platform: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.platform }}
     steps:
-    - name: Fetch Repository
-      uses: actions/checkout@v3
-    - name: Install Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: ${{ matrix.go-version }}
-    - name: Run Test
-      uses: nick-fields/retry@v2
-      with:
-        max_attempts: 3
-        timeout_minutes: 15
-        command: go test ./... -v -race -count=1
+      - name: Fetch Repository
+        uses: actions/checkout@v3
+
+      - name: Install Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ matrix.go-version }}
+
+      - name: Run Test
+        uses: nick-fields/retry@v2
+        with:
+          max_attempts: 3
+          timeout_minutes: 15
+          command: go test ./... -v -race -count=1

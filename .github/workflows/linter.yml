@@ -9,16 +9,19 @@ on:
   pull_request:
 permissions:
   contents: read
+
 jobs:
   golangci:
     name: lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+
       - uses: actions/setup-go@v4
         with:
           # NOTE: Keep this in sync with the version from go.mod
-          go-version: 1.21.x
+          go-version: "1.20.x"
+
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v3
         with:
