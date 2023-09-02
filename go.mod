@@ -9,7 +9,7 @@ require (
 	github.com/mattn/go-runewidth v0.0.15
 	github.com/tinylib/msgp v1.1.8
 	github.com/valyala/bytebufferpool v1.0.0
-	github.com/valyala/fasthttp v1.48.0
+	github.com/valyala/fasthttp v1.49.0
 	golang.org/x/sys v0.11.0
 )
 
