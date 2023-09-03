@@ -659,6 +659,20 @@ func (c *Ctx) GetReqHeaders() map[string]string {
 
 	return headers
 }
+// The issue with GetReqHeaders is it formats keys with the first letter
+// capitalized. This function returns the raw headers as a string map.
+// The keys are not formatted by default
+func (c *Ctx) GetRawReqHeaderMap() map[string]string {
+	headerStr := string(c.Request().Header.RawHeaders())
+	headers := make(map[string]string)
+	for _, header := range strings.Split(headerStr, "\r\n") {
+		if header != "" {
+			headerSplit := strings.Split(header, ": ")
+			headers[headerSplit[0]] = headerSplit[1]
+		}
+	}
+	return headers
+}
 
 // GetRespHeaders returns the HTTP response headers.
 // Returned value is only valid within the handler. Do not store any references.
