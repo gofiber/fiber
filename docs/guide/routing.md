@@ -23,16 +23,16 @@ Route paths, combined with a request method, define the endpoints at which reque
 
 ```go
 // This route path will match requests to the root route, "/":
-app.Get(`/`, func(c *fiber.Ctx) error {
+app.Get("/", func(c *fiber.Ctx) error {
       return c.SendString("root")
 })
 
 // This route path will match requests to "/about":
-app.Get(`/about`, func(c *fiber.Ctx) error {
+app.Get"`/about", func(c *fiber.Ctx) error {
     return c.SendString("about")
 })`
 // This route path will match requests to "/random.txt":
-app.Get(`/random.txt`, func(c *fiber.Ctx) error {
+app.Get("/random.txt", func(c *fiber.Ctx) error {
     return c.SendString("random.txt")
 })
 ```
@@ -58,28 +58,28 @@ The routing also offers the possibility to use optional parameters, for the name
 
 ```go
 // Parameters
-app.Get(`/user/:name/books/:title`, func(c *fiber.Ctx) error {
+app.Get("/user/:name/books/:title", func(c *fiber.Ctx) error {
     fmt.Fprintf(c, "%s\n", c.Params("name"))
     fmt.Fprintf(c, "%s\n", c.Params("title"))
     return nil
 })
 // Plus - greedy - not optional
-app.Get(`/user/+`, func(c *fiber.Ctx) error {
+app.Get("/user/+", func(c *fiber.Ctx) error {
     return c.SendString(c.Params("+"))
 })
 
 // Optional parameter
-app.Get(`/user/:name?`, func(c *fiber.Ctx) error {
+app.Get("/user/:name?", func(c *fiber.Ctx) error {
     return c.SendString(c.Params("name"))
 })
 
 // Wildcard - greedy - optional
-app.Get(`/user/*`, func(c *fiber.Ctx) error {
+app.Get("/user/*", func(c *fiber.Ctx) error {
     return c.SendString(c.Params("*"))
 })
 
 // This route path will match requests to "/v1/some/resource/name:customVerb", since the parameter character is escaped
-app.Get(`/v1/some/resource/name\\:customVerb`, func(c *fiber.Ctx) error {
+app.Get(`/v1/some/resource/name\:customVerb`, func(c *fiber.Ctx) error {
     return c.SendString("Hello, Community")
 })
 ```
@@ -94,7 +94,7 @@ All special parameter characters can also be escaped with `"\\"` and lose their 
 
 ```go
 // http://localhost:3000/plantae/prunus.persica
-app.Get(`/plantae/:genus.:species`, func(c *fiber.Ctx) error {
+app.Get("/plantae/:genus.:species", func(c *fiber.Ctx) error {
     fmt.Fprintf(c, "%s.%s\n", c.Params("genus"), c.Params("species"))
     return nil // prunus.persica
 })
@@ -102,7 +102,7 @@ app.Get(`/plantae/:genus.:species`, func(c *fiber.Ctx) error {
 
 ```go
 // http://localhost:3000/flights/LAX-SFO
-app.Get(`/flights/:from-:to`, func(c *fiber.Ctx) error {
+app.Get("/flights/:from-:to", func(c *fiber.Ctx) error {
     fmt.Fprintf(c, "%s-%s\n", c.Params("from"), c.Params("to"))
     return nil // LAX-SFO
 })
@@ -112,7 +112,7 @@ Our intelligent router recognizes that the introductory parameter characters sho
 
 ```go
 // http://localhost:3000/shop/product/color:blue/size:xs
-app.Get(`/shop/product/color::color/size::size`, func(c *fiber.Ctx) error {
+app.Get("/shop/product/color::color/size::size", func(c *fiber.Ctx) error {
     fmt.Fprintf(c, "%s:%s\n", c.Params("color"), c.Params("size"))
     return nil // blue:xs
 })
@@ -123,19 +123,19 @@ In addition, several parameters in a row and several unnamed parameter character
 ```go
 // GET /@v1
 // Params: "sign" -> "@", "param" -> "v1"
-app.Get(`/:sign:param`, handler)
+app.Get("/:sign:param", handler)
 
 // GET /api-v1
 // Params: "name" -> "v1" 
-app.Get(`/api-:name`, handler)
+app.Get("/api-:name", handler)
 
 // GET /customer/v1/cart/proxy
 // Params: "*1" -> "customer/", "*2" -> "/cart"
-app.Get(`/*v1*/proxy`, handler)
+app.Get("/*v1*/proxy", handler)
 
 // GET /v1/brand/4/shop/blue/xs
 // Params: "*1" -> "brand/4", "*2" -> "blue/xs"
-app.Get(`/v1/*/shop/*`, handler)
+app.Get("/v1/*/shop/*", handler)
 ```
 
 We have adapted the routing strongly to the express routing, but currently without the possibility of the regular expressions, because they are quite slow. The possibilities can be tested with version 0.1.7 \(express 4\) in the online [Express route tester](http://forbeslindesay.github.io/express-route-tester/).
@@ -169,7 +169,7 @@ Constraints aren't validation for parameters. If constraint aren't valid for par
 <TabItem value="single-constraint" label="Single Constraint">
 
 ```go
-app.Get(`/:test<min(5)>`, func(c *fiber.Ctx) error {
+app.Get("/:test<min(5)>", func(c *fiber.Ctx) error {
   return c.SendString(c.Params("test"))
 })
 
@@ -184,7 +184,7 @@ app.Get(`/:test<min(5)>`, func(c *fiber.Ctx) error {
 
 You can use `;` for multiple constraints.
 ```go
-app.Get(`/:test<min(100);maxLen(5)>`, func(c *fiber.Ctx) error {
+app.Get("/:test<min(100);maxLen(5)>", func(c *fiber.Ctx) error {
   return c.SendString(c.Params("test"))
 })
 
@@ -202,7 +202,7 @@ app.Get(`/:test<min(100);maxLen(5)>`, func(c *fiber.Ctx) error {
 
 Fiber precompiles regex query when to register routes. So there're no performance overhead for regex constraint.
 ```go
-app.Get(`/:date<regex(\\d{4}-\\d{2}-\\d{2})}>`, func(c *fiber.Ctx) error {
+app.Get(`/:date<regex(\d{4}-\d{2}-\d{2})}>`, func(c *fiber.Ctx) error {
   return c.SendString(c.Params("date"))
 })
 
@@ -228,7 +228,7 @@ You should use `\\` before routing-specific characters when to use datetime cons
 You can impose constraints on optional parameters as well.
 
 ```go
-app.Get(`/:test<int>?`, func(c *fiber.Ctx) error {
+app.Get("/:test<int>?", func(c *fiber.Ctx) error {
   return c.SendString(c.Params("test"))
 })
 // curl -X GET http://localhost:3000/42
@@ -254,7 +254,7 @@ app.Use(func(c *fiber.Ctx) error {
   return c.Next()
 })
 
-app.Get(`/`, func(c *fiber.Ctx) error {
+app.Get("/", func(c *fiber.Ctx) error {
   return c.SendString("Hello, World!")
 })
 ```
@@ -272,12 +272,12 @@ func main() {
   api := app.Group("/api", middleware) // /api
 
   v1 := api.Group("/v1", middleware)   // /api/v1
-  v1.Get(`/list`, handler)             // /api/v1/list
-  v1.Get(`/user`, handler)             // /api/v1/user
+  v1.Get("/list", handler)             // /api/v1/list
+  v1.Get("/user", handler)             // /api/v1/user
 
   v2 := api.Group("/v2", middleware)   // /api/v2
-  v2.Get(`/list`, handler)             // /api/v2/list
-  v2.Get(`/user`, handler)             // /api/v2/user
+  v2.Get("/list", handler)             // /api/v2/list
+  v2.Get("/user", handler)             // /api/v2/user
 
   log.Fatal(app.Listen(":3000"))
 }
