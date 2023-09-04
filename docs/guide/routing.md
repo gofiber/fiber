@@ -31,6 +31,7 @@ app.Get("/", func(c *fiber.Ctx) error {
 app.Get("/about", func(c *fiber.Ctx) error {
     return c.SendString("about")
 })
+
 // This route path will match requests to "/random.txt":
 app.Get("/random.txt", func(c *fiber.Ctx) error {
     return c.SendString("random.txt")
