@@ -80,7 +80,7 @@ app.Get("/user/*", func(c *fiber.Ctx) error {
 })
 
 // This route path will match requests to "/v1/some/resource/name:customVerb", since the parameter character is escaped
-app.Get("/v1/some/resource/name\\:customVerb", func(c *fiber.Ctx) error {
+app.Get(`/v1/some/resource/name\:customVerb`, func(c *fiber.Ctx) error {
     return c.SendString("Hello, Community")
 })
 ```
@@ -90,7 +90,7 @@ Since the hyphen \(`-`\) and the dot \(`.`\) are interpreted literally, they can
 :::
 
 :::info
-All special parameter characters can also be escaped with `"\\"` and lose their value, so you can use them in the route if you want, like in the custom methods of the [google api design guide](https://cloud.google.com/apis/design/custom_methods).
+All special parameter characters can also be escaped with `"\\"` and lose their value, so you can use them in the route if you want, like in the custom methods of the [google api design guide](https://cloud.google.com/apis/design/custom_methods). It's recommended to use backticks `` ` `` because in go's regex documentation, they always use backticks to make sure it is unambiguous and the escape character doesn't interfere with regex patterns in an unexpected way.
 :::
 
 ```go
@@ -203,7 +203,7 @@ app.Get("/:test<min(100);maxLen(5)>", func(c *fiber.Ctx) error {
 
 Fiber precompiles regex query when to register routes. So there're no performance overhead for regex constraint.
 ```go
-app.Get("/:date<regex(\\d{4}-\\d{2}-\\d{2})}>", func(c *fiber.Ctx) error {
+app.Get(`/:date<regex(\d{4}-\d{2}-\d{2})}>`, func(c *fiber.Ctx) error {
   return c.SendString(c.Params("date"))
 })
 
