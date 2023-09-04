@@ -28,9 +28,9 @@ app.Get("/", func(c *fiber.Ctx) error {
 })
 
 // This route path will match requests to "/about":
-app.Get"`/about", func(c *fiber.Ctx) error {
+app.Get("/about", func(c *fiber.Ctx) error {
     return c.SendString("about")
-})`
+})
 // This route path will match requests to "/random.txt":
 app.Get("/random.txt", func(c *fiber.Ctx) error {
     return c.SendString("random.txt")
@@ -89,7 +89,7 @@ Since the hyphen \(`-`\) and the dot \(`.`\) are interpreted literally, they can
 :::
 
 :::info
-All special parameter characters can also be escaped with `"\\"` and lose their value, so you can use them in the route if you want, like in the custom methods of the [google api design guide](https://cloud.google.com/apis/design/custom_methods). It's recommended to use backticks `` because in go's regex documentation, they always use backticks to make sure it is unambiguous and the escape character doesn't interfere with regex patterns in an unexpected way.
+All special parameter characters can also be escaped with `"\\"` and lose their value, so you can use them in the route if you want, like in the custom methods of the [google api design guide](https://cloud.google.com/apis/design/custom_methods). It's recommended to use backticks `` ` `` because in go's regex documentation, they always use backticks to make sure it is unambiguous and the escape character doesn't interfere with regex patterns in an unexpected way.
 :::
 
 ```go
