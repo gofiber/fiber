@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -4918,57 +4919,126 @@ func Test_Ctx_GetReqHeaders(t *testing.T) {
 	})
 }
 
-// go test -run Test_Ctx_IsFromLocal
-func Test_Ctx_IsFromLocal(t *testing.T) {
+// go test -run Test_Ctx_IsFromLocal_X_Forwarded
+func Test_Ctx_IsFromLocal_X_Forwarded(t *testing.T) {
 	t.Parallel()
-	// Test "0.0.0.0", "127.0.0.1" and "::1".
+	// Test unset X-Forwarded-For header.
 	{
 		app := New()
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(c)
-		utils.AssertEqual(t, true, c.IsFromLocal())
+		// fasthttp returns "0.0.0.0" as IP as there is no remote address.
+		utils.AssertEqual(t, "0.0.0.0", c.IP())
+		utils.AssertEqual(t, false, c.IsFromLocal())
 	}
-	// This is a test for "0.0.0.0"
-	{
-		app := New()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		c.Request().Header.Set(HeaderXForwardedFor, "0.0.0.0")
-		defer app.ReleaseCtx(c)
-		utils.AssertEqual(t, true, c.IsFromLocal())
-	}
-
-	// This is a test for "127.0.0.1"
+	// Test when setting X-Forwarded-For header to localhost "127.0.0.1"
 	{
 		app := New()
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1")
 		defer app.ReleaseCtx(c)
-		utils.AssertEqual(t, true, c.IsFromLocal())
+		utils.AssertEqual(t, false, c.IsFromLocal())
 	}
-
-	// This is a test for "localhost"
-	{
-		app := New()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(c)
-		utils.AssertEqual(t, true, c.IsFromLocal())
-	}
-
-	// This is testing "::1", it is the compressed format IPV6 loopback address 0:0:0:0:0:0:0:1.
-	// It is the equivalent of the IPV4 address 127.0.0.1.
+	// Test when setting X-Forwarded-For header to localhost "::1"
 	{
 		app := New()
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		c.Request().Header.Set(HeaderXForwardedFor, "::1")
 		defer app.ReleaseCtx(c)
-		utils.AssertEqual(t, true, c.IsFromLocal())
+		utils.AssertEqual(t, false, c.IsFromLocal())
 	}
-
+	// Test when setting X-Forwarded-For to full localhost IPv6 address "0:0:0:0:0:0:0:1"
+	{
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().Header.Set(HeaderXForwardedFor, "0:0:0:0:0:0:0:1")
+		defer app.ReleaseCtx(c)
+		utils.AssertEqual(t, false, c.IsFromLocal())
+	}
+	// Test for a random IP address.
 	{
 		app := New()
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		c.Request().Header.Set(HeaderXForwardedFor, "93.46.8.90")
 		defer app.ReleaseCtx(c)
+		utils.AssertEqual(t, false, c.IsFromLocal())
+	}
+}
+
+// go test -run Test_Ctx_IsFromLocal_RemoteAddr
+func Test_Ctx_IsFromLocal_RemoteAddr(t *testing.T) {
+	t.Parallel()
+
+	localIPv4 := net.Addr(&net.TCPAddr{IP: net.ParseIP("127.0.0.1")})
+	localIPv6 := net.Addr(&net.TCPAddr{IP: net.ParseIP("::1")})
+	localIPv6long := net.Addr(&net.TCPAddr{IP: net.ParseIP("0:0:0:0:0:0:0:1")})
+
+	zeroIPv4 := net.Addr(&net.TCPAddr{IP: net.IPv4zero})
+
+	someIPv4 := net.Addr(&net.TCPAddr{IP: net.ParseIP("93.46.8.90")})
+	someIPv6 := net.Addr(&net.TCPAddr{IP: net.ParseIP("2001:0db8:85a3:0000:0000:8a2e:0370:7334")})
+
+	// Test for the case fasthttp remoteAddr is set to "127.0.0.1".
+	{
+		app := New()
+		fastCtx := &fasthttp.RequestCtx{}
+		fastCtx.SetRemoteAddr(localIPv4)
+		c := app.AcquireCtx(fastCtx)
+		defer app.ReleaseCtx(c)
+
+		utils.AssertEqual(t, "127.0.0.1", c.IP())
+		utils.AssertEqual(t, true, c.IsFromLocal())
+	}
+	// Test for the case fasthttp remoteAddr is set to "::1".
+	{
+		app := New()
+		fastCtx := &fasthttp.RequestCtx{}
+		fastCtx.SetRemoteAddr(localIPv6)
+		c := app.AcquireCtx(fastCtx)
+		defer app.ReleaseCtx(c)
+		utils.AssertEqual(t, "::1", c.IP())
+		utils.AssertEqual(t, true, c.IsFromLocal())
+	}
+	// Test for the case fasthttp remoteAddr is set to "0:0:0:0:0:0:0:1".
+	{
+		app := New()
+		fastCtx := &fasthttp.RequestCtx{}
+		fastCtx.SetRemoteAddr(localIPv6long)
+		c := app.AcquireCtx(fastCtx)
+		defer app.ReleaseCtx(c)
+		// fasthttp should return "::1" for "0:0:0:0:0:0:0:1".
+		// otherwise IsFromLocal() will break.
+		utils.AssertEqual(t, "::1", c.IP())
+		utils.AssertEqual(t, true, c.IsFromLocal())
+	}
+	// Test for the case fasthttp remoteAddr is set to "0.0.0.0".
+	{
+		app := New()
+		fastCtx := &fasthttp.RequestCtx{}
+		fastCtx.SetRemoteAddr(zeroIPv4)
+		c := app.AcquireCtx(fastCtx)
+		defer app.ReleaseCtx(c)
+		utils.AssertEqual(t, "0.0.0.0", c.IP())
+		utils.AssertEqual(t, false, c.IsFromLocal())
+	}
+	// Test for the case fasthttp remoteAddr is set to "93.46.8.90".
+	{
+		app := New()
+		fastCtx := &fasthttp.RequestCtx{}
+		fastCtx.SetRemoteAddr(someIPv4)
+		c := app.AcquireCtx(fastCtx)
+		defer app.ReleaseCtx(c)
+		utils.AssertEqual(t, "93.46.8.90", c.IP())
+		utils.AssertEqual(t, false, c.IsFromLocal())
+	}
+	// Test for the case fasthttp remoteAddr is set to "2001:0db8:85a3:0000:0000:8a2e:0370:7334".
+	{
+		app := New()
+		fastCtx := &fasthttp.RequestCtx{}
+		fastCtx.SetRemoteAddr(someIPv6)
+		c := app.AcquireCtx(fastCtx)
+		defer app.ReleaseCtx(c)
+		utils.AssertEqual(t, "2001:db8:85a3::8a2e:370:7334", c.IP())
 		utils.AssertEqual(t, false, c.IsFromLocal())
 	}
 }
