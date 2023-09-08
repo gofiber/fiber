@@ -640,7 +640,7 @@ func Test_Ctx_BodyParser_WithSetParserDecoder(t *testing.T) {
 	type CustomTime time.Time
 
 	timeConverter := func(value string) reflect.Value {
-		if v, err := time.Parse(time.DateOnly, value); err == nil {
+		if v, err := time.Parse("2006-01-02", value); err == nil {
 			return reflect.ValueOf(v)
 		}
 		return reflect.Value{}
@@ -4196,7 +4196,7 @@ func Test_Ctx_QueryParser_WithSetParserDecoder(t *testing.T) {
 	type NonRFCTime time.Time
 
 	nonRFCConverter := func(value string) reflect.Value {
-		if v, err := time.Parse(time.DateOnly, value); err == nil {
+		if v, err := time.Parse("2006-01-02", value); err == nil {
 			return reflect.ValueOf(v)
 		}
 		return reflect.Value{}
@@ -4452,7 +4452,7 @@ func Test_Ctx_ReqHeaderParser_WithSetParserDecoder(t *testing.T) {
 	type NonRFCTime time.Time
 
 	nonRFCConverter := func(value string) reflect.Value {
-		if v, err := time.Parse(time.DateOnly, value); err == nil {
+		if v, err := time.Parse("2006-01-02", value); err == nil {
 			return reflect.ValueOf(v)
 		}
 		return reflect.Value{}

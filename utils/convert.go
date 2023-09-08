@@ -106,7 +106,7 @@ func ToString(arg interface{}, timeFormat ...string) string {
 		if len(timeFormat) > 0 {
 			return v.Format(timeFormat[0])
 		}
-		return v.Format(time.DateTime)
+		return v.Format("2006-01-02 15:04:05")
 	case reflect.Value:
 		return ToString(v.Interface(), timeFormat...)
 	case fmt.Stringer:

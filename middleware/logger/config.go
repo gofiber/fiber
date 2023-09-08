@@ -87,7 +87,7 @@ var ConfigDefault = Config{
 	Next:          nil,
 	Done:          nil,
 	Format:        "[${time}] ${status} - ${latency} ${method} ${path}\n",
-	TimeFormat:    time.TimeOnly,
+	TimeFormat:    "15:04:05",
 	TimeZone:      "Local",
 	TimeInterval:  500 * time.Millisecond,
 	Output:        os.Stdout,
