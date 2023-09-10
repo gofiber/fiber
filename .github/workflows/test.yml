@@ -33,8 +33,4 @@ jobs:
           go-version: ${{ matrix.go-version }}
 
       - name: Run Test
-        uses: nick-fields/retry@v2
-        with:
-          max_attempts: 3
-          timeout_minutes: 15
-          command: go test -v -race ./...
+        run: go test -v -race ./...
