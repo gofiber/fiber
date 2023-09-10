@@ -14,8 +14,8 @@ func Test_DefaultSystemLogger(t *testing.T) {
 	utils.AssertEqual(t, logger, defaultL)
 }
 
+//nolint:paralleltest // TODO: Must be run sequentially due to overwriting the default logger global
 func Test_SetLogger(t *testing.T) {
-	t.Parallel()
 	setLog := &defaultLogger{
 		stdlog: log.New(os.Stderr, "", log.LstdFlags|log.Lshortfile|log.Lmicroseconds),
 		depth:  6,
