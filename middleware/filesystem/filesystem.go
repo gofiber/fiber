@@ -180,6 +180,8 @@ func New(config ...Config) fiber.Handler {
 			return fiber.ErrForbidden
 		}
 
+		c.Status(fiber.StatusOK)
+
 		modTime := stat.ModTime()
 		contentLength := int(stat.Size())
 
