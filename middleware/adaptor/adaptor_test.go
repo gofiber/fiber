@@ -505,7 +505,7 @@ func Benchmark_FiberHandlerFunc_1MB(b *testing.B) {
 
 	// Replace the empty Body with our buffer
 	r.Body = io.NopCloser(bodyBuffer)
-	defer r.Body.Close()
+	defer r.Body.Close() //nolint:errcheck // not needed
 
 	// Create recorder
 	w := httptest.NewRecorder()
@@ -533,7 +533,7 @@ func Benchmark_FiberHandlerFunc_10MB(b *testing.B) {
 
 	// Replace the empty Body with our buffer
 	r.Body = io.NopCloser(bodyBuffer)
-	defer r.Body.Close()
+	defer r.Body.Close() //nolint:errcheck // not needed
 
 	// Create recorder
 	w := httptest.NewRecorder()
@@ -561,7 +561,7 @@ func Benchmark_FiberHandlerFunc_50MB(b *testing.B) {
 
 	// Replace the empty Body with our buffer
 	r.Body = io.NopCloser(bodyBuffer)
-	defer r.Body.Close()
+	defer r.Body.Close() //nolint:errcheck // not needed
 
 	// Create recorder
 	w := httptest.NewRecorder()
