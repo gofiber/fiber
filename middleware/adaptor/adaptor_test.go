@@ -2,6 +2,7 @@
 package adaptor
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -484,4 +485,89 @@ func Test_ConvertRequest(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "Request URL: /test?hello=world&another=test", string(body))
+}
+
+// Benchmark for FiberHandlerFunc
+func Benchmark_FiberHandlerFunc_1MB(b *testing.B) {
+	fiberH := func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	}
+	handlerFunc := FiberHandlerFunc(fiberH)
+
+	// Create body content
+	bodyContent := make([]byte, 1*1024*1024)
+	bodyBuffer := bytes.NewBuffer(bodyContent)
+
+	r := http.Request{
+		Method: http.MethodPost,
+		Body:   http.NoBody,
+	}
+
+	// Replace the empty Body with our buffer
+	r.Body = io.NopCloser(bodyBuffer)
+	defer r.Body.Close() //nolint:errcheck // not needed
+
+	// Create recorder
+	w := httptest.NewRecorder()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		handlerFunc.ServeHTTP(w, &r)
+	}
+}
+
+func Benchmark_FiberHandlerFunc_10MB(b *testing.B) {
+	fiberH := func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	}
+	handlerFunc := FiberHandlerFunc(fiberH)
+
+	// Create body content
+	bodyContent := make([]byte, 10*1024*1024)
+	bodyBuffer := bytes.NewBuffer(bodyContent)
+
+	r := http.Request{
+		Method: http.MethodPost,
+		Body:   http.NoBody,
+	}
+
+	// Replace the empty Body with our buffer
+	r.Body = io.NopCloser(bodyBuffer)
+	defer r.Body.Close() //nolint:errcheck // not needed
+
+	// Create recorder
+	w := httptest.NewRecorder()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		handlerFunc.ServeHTTP(w, &r)
+	}
+}
+
+func Benchmark_FiberHandlerFunc_50MB(b *testing.B) {
+	fiberH := func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	}
+	handlerFunc := FiberHandlerFunc(fiberH)
+
+	// Create body content
+	bodyContent := make([]byte, 50*1024*1024)
+	bodyBuffer := bytes.NewBuffer(bodyContent)
+
+	r := http.Request{
+		Method: http.MethodPost,
+		Body:   http.NoBody,
+	}
+
+	// Replace the empty Body with our buffer
+	r.Body = io.NopCloser(bodyBuffer)
+	defer r.Body.Close() //nolint:errcheck // not needed
+
+	// Create recorder
+	w := httptest.NewRecorder()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		handlerFunc.ServeHTTP(w, &r)
+	}
 }
