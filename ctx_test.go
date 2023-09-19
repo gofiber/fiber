@@ -4127,7 +4127,7 @@ func Test_Ctx_QueryParser(t *testing.T) {
 	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football&favouriteDrinks=milo,coke,pepsi&alloc=&no=1")
 	q2 := new(Query2)
 	q2.Bool = true
-	q2.Name = "hello world"
+	q2.Name = "hello world 1"
 	utils.AssertEqual(t, nil, c.QueryParser(q2))
 	utils.AssertEqual(t, "basketball,football", q2.Hobby)
 	utils.AssertEqual(t, true, q2.Bool)
@@ -4201,7 +4201,7 @@ func Test_Ctx_QueryParserUsingTag(t *testing.T) {
 	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football&favouriteDrinks=milo,coke,pepsi&alloc=&no=1")
 	q2 := new(Query2)
 	q2.Bool = true
-	q2.Name = "hello world"
+	q2.Name = "hello world 2"
 	utils.AssertEqual(t, nil, c.QueryParser(q2))
 	utils.AssertEqual(t, "basketball,football", q2.Hobby)
 	utils.AssertEqual(t, true, q2.Bool)
@@ -4459,7 +4459,7 @@ func Test_Ctx_ReqHeaderParser(t *testing.T) {
 
 	h2 := new(Header2)
 	h2.Bool = true
-	h2.Name = "hello world"
+	h2.Name = "hello world 3"
 	utils.AssertEqual(t, nil, c.ReqHeaderParser(h2))
 	utils.AssertEqual(t, "go,fiber", h2.Hobby)
 	utils.AssertEqual(t, true, h2.Bool)
@@ -4534,7 +4534,7 @@ func Test_Ctx_ReqHeaderParserUsingTag(t *testing.T) {
 
 	h2 := new(Header2)
 	h2.Bool = true
-	h2.Name = "hello world"
+	h2.Name = "hello world 4"
 	utils.AssertEqual(t, nil, c.ReqHeaderParser(h2))
 	utils.AssertEqual(t, "go,fiber", h2.Hobby)
 	utils.AssertEqual(t, true, h2.Bool)

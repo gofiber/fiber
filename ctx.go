@@ -1300,7 +1300,7 @@ func (*Ctx) parseToStruct(aliasTag string, out interface{}, data map[string][]st
 	return nil
 }
 
-func equalFieldType(out interface{}, kind reflect.Kind, key string, tag string) bool {
+func equalFieldType(out interface{}, kind reflect.Kind, key, tag string) bool {
 	// Get type of interface
 	outTyp := reflect.TypeOf(out).Elem()
 	key = utils.ToLower(key)
