@@ -4127,7 +4127,81 @@ func Test_Ctx_QueryParser(t *testing.T) {
 	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football&favouriteDrinks=milo,coke,pepsi&alloc=&no=1")
 	q2 := new(Query2)
 	q2.Bool = true
-	q2.Name = "hello world"
+	q2.Name = "hello world 1"
+	utils.AssertEqual(t, nil, c.QueryParser(q2))
+	utils.AssertEqual(t, "basketball,football", q2.Hobby)
+	utils.AssertEqual(t, true, q2.Bool)
+	utils.AssertEqual(t, "tom", q2.Name) // check value get overwritten
+	utils.AssertEqual(t, []string{"milo", "coke", "pepsi"}, q2.FavouriteDrinks)
+	var nilSlice []string
+	utils.AssertEqual(t, nilSlice, q2.Empty)
+	utils.AssertEqual(t, []string{""}, q2.Alloc)
+	utils.AssertEqual(t, []int64{1}, q2.No)
+
+	type RequiredQuery struct {
+		Name string `query:"name,required"`
+	}
+	rq := new(RequiredQuery)
+	c.Request().URI().SetQueryString("")
+	utils.AssertEqual(t, "failed to decode: name is empty", c.QueryParser(rq).Error())
+
+	type ArrayQuery struct {
+		Data []string
+	}
+	aq := new(ArrayQuery)
+	c.Request().URI().SetQueryString("data[]=john&data[]=doe")
+	utils.AssertEqual(t, nil, c.QueryParser(aq))
+	utils.AssertEqual(t, 2, len(aq.Data))
+}
+
+// go test -run Test_Ctx_QueryParserUsingTag -v
+func Test_Ctx_QueryParserUsingTag(t *testing.T) {
+	t.Parallel()
+	app := New(Config{EnableSplittingOnParsers: true})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	type Query struct {
+		ID    int      `query:"id"`
+		Name  string   `query:"name"`
+		Hobby []string `query:"hobby"`
+	}
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
+	q := new(Query)
+	utils.AssertEqual(t, nil, c.QueryParser(q))
+	utils.AssertEqual(t, 2, len(q.Hobby))
+
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football")
+	q = new(Query)
+	utils.AssertEqual(t, nil, c.QueryParser(q))
+	utils.AssertEqual(t, 2, len(q.Hobby))
+
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=scoccer&hobby=basketball,football")
+	q = new(Query)
+	utils.AssertEqual(t, nil, c.QueryParser(q))
+	utils.AssertEqual(t, 3, len(q.Hobby))
+
+	empty := new(Query)
+	c.Request().URI().SetQueryString("")
+	utils.AssertEqual(t, nil, c.QueryParser(empty))
+	utils.AssertEqual(t, 0, len(empty.Hobby))
+
+	type Query2 struct {
+		Bool            bool     `query:"bool"`
+		ID              int      `query:"id"`
+		Name            string   `query:"name"`
+		Hobby           string   `query:"hobby"`
+		FavouriteDrinks []string `query:"favouriteDrinks"`
+		Empty           []string `query:"empty"`
+		Alloc           []string `query:"alloc"`
+		No              []int64  `query:"no"`
+	}
+
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football&favouriteDrinks=milo,coke,pepsi&alloc=&no=1")
+	q2 := new(Query2)
+	q2.Bool = true
+	q2.Name = "hello world 2"
 	utils.AssertEqual(t, nil, c.QueryParser(q2))
 	utils.AssertEqual(t, "basketball,football", q2.Hobby)
 	utils.AssertEqual(t, true, q2.Bool)
@@ -4385,7 +4459,82 @@ func Test_Ctx_ReqHeaderParser(t *testing.T) {
 
 	h2 := new(Header2)
 	h2.Bool = true
-	h2.Name = "hello world"
+	h2.Name = "hello world 3"
+	utils.AssertEqual(t, nil, c.ReqHeaderParser(h2))
+	utils.AssertEqual(t, "go,fiber", h2.Hobby)
+	utils.AssertEqual(t, true, h2.Bool)
+	utils.AssertEqual(t, "Jane Doe", h2.Name) // check value get overwritten
+	utils.AssertEqual(t, []string{"milo", "coke", "pepsi"}, h2.FavouriteDrinks)
+	var nilSlice []string
+	utils.AssertEqual(t, nilSlice, h2.Empty)
+	utils.AssertEqual(t, []string{""}, h2.Alloc)
+	utils.AssertEqual(t, []int64{1}, h2.No)
+
+	type RequiredHeader struct {
+		Name string `reqHeader:"name,required"`
+	}
+	rh := new(RequiredHeader)
+	c.Request().Header.Del("name")
+	utils.AssertEqual(t, "failed to decode: name is empty", c.ReqHeaderParser(rh).Error())
+}
+
+// go test -run Test_Ctx_ReqHeaderParserUsingTag -v
+func Test_Ctx_ReqHeaderParserUsingTag(t *testing.T) {
+	t.Parallel()
+	app := New(Config{EnableSplittingOnParsers: true})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	type Header struct {
+		ID      int      `reqHeader:"id"`
+		Name    string   `reqHeader:"name"`
+		Hobby   []string `reqHeader:"hobby"`
+		Address []string `reqHeader:"x-secure-address"`
+	}
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+
+	c.Request().Header.Add("id", "1")
+	c.Request().Header.Add("Name", "John Doe")
+	c.Request().Header.Add("Hobby", "golang,fiber")
+	c.Request().Header.Add("x-secure-address", "1st,2st")
+	q := new(Header)
+	utils.AssertEqual(t, nil, c.ReqHeaderParser(q))
+	utils.AssertEqual(t, 2, len(q.Hobby))
+	utils.AssertEqual(t, 2, len(q.Address))
+
+	c.Request().Header.Del("hobby")
+	c.Request().Header.Add("Hobby", "golang,fiber,go")
+	q = new(Header)
+	utils.AssertEqual(t, nil, c.ReqHeaderParser(q))
+	utils.AssertEqual(t, 3, len(q.Hobby))
+
+	empty := new(Header)
+	c.Request().Header.Del("hobby")
+	utils.AssertEqual(t, nil, c.QueryParser(empty))
+	utils.AssertEqual(t, 0, len(empty.Hobby))
+
+	type Header2 struct {
+		Bool            bool     `reqHeader:"bool"`
+		ID              int      `reqHeader:"id"`
+		Name            string   `reqHeader:"name"`
+		Hobby           string   `reqHeader:"hobby"`
+		FavouriteDrinks []string `reqHeader:"favouriteDrinks"`
+		Empty           []string `reqHeader:"empty"`
+		Alloc           []string `reqHeader:"alloc"`
+		No              []int64  `reqHeader:"no"`
+	}
+
+	c.Request().Header.Add("id", "2")
+	c.Request().Header.Add("Name", "Jane Doe")
+	c.Request().Header.Del("hobby")
+	c.Request().Header.Add("Hobby", "go,fiber")
+	c.Request().Header.Add("favouriteDrinks", "milo,coke,pepsi")
+	c.Request().Header.Add("alloc", "")
+	c.Request().Header.Add("no", "1")
+
+	h2 := new(Header2)
+	h2.Bool = true
+	h2.Name = "hello world 4"
 	utils.AssertEqual(t, nil, c.ReqHeaderParser(h2))
 	utils.AssertEqual(t, "go,fiber", h2.Hobby)
 	utils.AssertEqual(t, true, h2.Bool)
@@ -4574,28 +4723,104 @@ func Test_Ctx_ReqHeaderParser_Schema(t *testing.T) {
 	utils.AssertEqual(t, 0, n.Next.Value)
 }
 
-func Test_Ctx_EqualFieldType(t *testing.T) {
+// go test -run Test_Ctx_EqualFieldTypeOfRequestQuery
+func Test_Ctx_EqualFieldTypeOfRequestQuery(t *testing.T) {
 	t.Parallel()
 	var out int
-	utils.AssertEqual(t, false, equalFieldType(&out, reflect.Int, "key"))
+	utils.AssertEqual(t, false, equalFieldType(&out, reflect.Int, "key", queryTag))
 
 	var dummy struct{ f string }
-	utils.AssertEqual(t, false, equalFieldType(&dummy, reflect.String, "key"))
+	utils.AssertEqual(t, false, equalFieldType(&dummy, reflect.String, "key", queryTag))
 
 	var dummy2 struct{ f string }
-	utils.AssertEqual(t, false, equalFieldType(&dummy2, reflect.String, "f"))
+	utils.AssertEqual(t, false, equalFieldType(&dummy2, reflect.String, "f", queryTag))
 
 	var user struct {
 		Name    string
 		Address string `query:"address"`
 		Age     int    `query:"AGE"`
 	}
-	utils.AssertEqual(t, true, equalFieldType(&user, reflect.String, "name"))
-	utils.AssertEqual(t, true, equalFieldType(&user, reflect.String, "Name"))
-	utils.AssertEqual(t, true, equalFieldType(&user, reflect.String, "address"))
-	utils.AssertEqual(t, true, equalFieldType(&user, reflect.String, "Address"))
-	utils.AssertEqual(t, true, equalFieldType(&user, reflect.Int, "AGE"))
-	utils.AssertEqual(t, true, equalFieldType(&user, reflect.Int, "age"))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.String, "name", queryTag))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.String, "Name", queryTag))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.String, "address", queryTag))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.String, "Address", queryTag))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.Int, "AGE", queryTag))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.Int, "age", queryTag))
+}
+
+// go test -run Test_Ctx_EqualFieldTypeOfRequestHeader
+func Test_Ctx_EqualFieldTypeOfRequestHeader(t *testing.T) {
+	t.Parallel()
+	var out int
+	utils.AssertEqual(t, false, equalFieldType(&out, reflect.Int, "key", reqHeaderTag))
+
+	var dummy struct{ f string }
+	utils.AssertEqual(t, false, equalFieldType(&dummy, reflect.String, "key", reqHeaderTag))
+
+	var dummy2 struct{ f string }
+	utils.AssertEqual(t, false, equalFieldType(&dummy2, reflect.String, "f", reqHeaderTag))
+
+	var user struct {
+		Name    string
+		Address string `reqHeader:"address"`
+		Age     int    `reqHeader:"AGE"`
+	}
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.String, "name", reqHeaderTag))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.String, "Name", reqHeaderTag))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.String, "address", reqHeaderTag))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.String, "Address", reqHeaderTag))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.Int, "AGE", reqHeaderTag))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.Int, "age", reqHeaderTag))
+}
+
+// go test -run Test_Ctx_EqualFieldTypeOfRequestBody
+func Test_Ctx_EqualFieldTypeOfRequestBody(t *testing.T) {
+	t.Parallel()
+	var out int
+	utils.AssertEqual(t, false, equalFieldType(&out, reflect.Int, "key", bodyTag))
+
+	var dummy struct{ f string }
+	utils.AssertEqual(t, false, equalFieldType(&dummy, reflect.String, "key", bodyTag))
+
+	var dummy2 struct{ f string }
+	utils.AssertEqual(t, false, equalFieldType(&dummy2, reflect.String, "f", bodyTag))
+
+	var user struct {
+		Name    string
+		Address string `form:"address"`
+		Age     int    `form:"AGE"`
+	}
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.String, "name", bodyTag))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.String, "Name", bodyTag))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.String, "address", bodyTag))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.String, "Address", bodyTag))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.Int, "AGE", bodyTag))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.Int, "age", bodyTag))
+}
+
+// go test -run Test_Ctx_EqualFieldTypeOfRequestParams
+func Test_Ctx_EqualFieldTypeOfRequestParams(t *testing.T) {
+	t.Parallel()
+	var out int
+	utils.AssertEqual(t, false, equalFieldType(&out, reflect.Int, "key", paramsTag))
+
+	var dummy struct{ f string }
+	utils.AssertEqual(t, false, equalFieldType(&dummy, reflect.String, "key", paramsTag))
+
+	var dummy2 struct{ f string }
+	utils.AssertEqual(t, false, equalFieldType(&dummy2, reflect.String, "f", paramsTag))
+
+	var user struct {
+		Name    string
+		Address string `params:"address"`
+		Age     int    `params:"AGE"`
+	}
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.String, "name", paramsTag))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.String, "Name", paramsTag))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.String, "address", paramsTag))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.String, "Address", paramsTag))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.Int, "AGE", paramsTag))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.Int, "age", paramsTag))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_QueryParser -benchmem -count=4

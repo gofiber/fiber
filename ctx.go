@@ -396,7 +396,7 @@ func (c *Ctx) BodyParser(out interface{}) error {
 				k, err = parseParamSquareBrackets(k)
 			}
 
-			if c.app.config.EnableSplittingOnParsers && strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
+			if c.app.config.EnableSplittingOnParsers && strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k, bodyTag) {
 				values := strings.Split(v, ",")
 				for i := 0; i < len(values); i++ {
 					data[k] = append(data[k], values[i])
@@ -1220,7 +1220,7 @@ func (c *Ctx) QueryParser(out interface{}) error {
 			k, err = parseParamSquareBrackets(k)
 		}
 
-		if c.app.config.EnableSplittingOnParsers && strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
+		if c.app.config.EnableSplittingOnParsers && strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k, queryTag) {
 			values := strings.Split(v, ",")
 			for i := 0; i < len(values); i++ {
 				data[k] = append(data[k], values[i])
@@ -1269,7 +1269,7 @@ func (c *Ctx) ReqHeaderParser(out interface{}) error {
 		k := c.app.getString(key)
 		v := c.app.getString(val)
 
-		if c.app.config.EnableSplittingOnParsers && strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
+		if c.app.config.EnableSplittingOnParsers && strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k, reqHeaderTag) {
 			values := strings.Split(v, ",")
 			for i := 0; i < len(values); i++ {
 				data[k] = append(data[k], values[i])
@@ -1300,7 +1300,7 @@ func (*Ctx) parseToStruct(aliasTag string, out interface{}, data map[string][]st
 	return nil
 }
 
-func equalFieldType(out interface{}, kind reflect.Kind, key string) bool {
+func equalFieldType(out interface{}, kind reflect.Kind, key, tag string) bool {
 	// Get type of interface
 	outTyp := reflect.TypeOf(out).Elem()
 	key = utils.ToLower(key)
@@ -1327,7 +1327,7 @@ func equalFieldType(out interface{}, kind reflect.Kind, key string) bool {
 			continue
 		}
 		// Get tag from field if exist
-		inputFieldName := typeField.Tag.Get(queryTag)
+		inputFieldName := typeField.Tag.Get(tag)
 		if inputFieldName == "" {
 			inputFieldName = typeField.Name
 		} else {
