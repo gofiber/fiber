@@ -749,7 +749,7 @@ iploop:
 			j++
 		}
 
-		for i < j && headerValue[i] == ' ' {
+		for i < j && (headerValue[i] == ' ' || headerValue[i] == ',') {
 			i++
 		}
 
