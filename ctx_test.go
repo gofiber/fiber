@@ -5318,35 +5318,25 @@ func Test_Ctx_RepeatParserWithSameStruct(t *testing.T) {
 	testDecodeParser(MIMEMultipartForm+`;boundary="b"`, "--b\r\nContent-Disposition: form-data; name=\"body_param\"\r\n\r\nbody_param\r\n--b--")
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_extractIPsFromHeader -benchmem -count=4
-func Benchmark_Ctx_extractIPsFromHeader(b *testing.B) {
+// go test -run Test_Ctx_extractIPsFromHeader -v
+func Test_Ctx_extractIPsFromHeader(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 	c.Request().Header.Set("x-forwarded-for", "1.1.1.1,8.8.8.8 , /n, \n,1.1, a.c, 6.,6., , a,,42.118.81.169,10.0.137.108")
-	var res string
-	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		ips := c.IPs()
-		res = ips[len(ips)-2]
-	}
-	utils.AssertEqual(b, "42.118.81.169", res)
+	ips := c.IPs()
+	res := ips[len(ips)-2]
+	utils.AssertEqual(t, "42.118.81.169", res)
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_extractIPsFromHeader_EnableValidateIp -benchmem -count=4
-func Benchmark_Ctx_extractIPsFromHeader_EnableValidateIp(b *testing.B) {
+// go test -run Test_Ctx_extractIPsFromHeader -v
+func Test_Ctx_extractIPsFromHeader_EnableValidateIp(t *testing.T) {
 	app := New()
 	app.config.EnableIPValidation = true
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 	c.Request().Header.Set("x-forwarded-for", "1.1.1.1,8.8.8.8 , /n, \n,1.1, a.c, 6.,6., , a,,42.118.81.169,10.0.137.108")
-	var res string
-	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		ips := c.IPs()
-		res = ips[len(ips)-2]
-	}
-	utils.AssertEqual(b, "42.118.81.169", res)
+	ips := c.IPs()
+	res := ips[len(ips)-2]
+	utils.AssertEqual(t, "42.118.81.169", res)
 }
