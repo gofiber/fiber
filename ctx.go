@@ -417,8 +417,8 @@ func (c *Ctx) parseFormBody(args *fasthttp.Args, out interface{}) (map[string][]
 			return
 		}
 
-		k := string(key)
-		v := string(val)
+		k := c.app.getString(key)
+		v := c.app.getString(val)
 
 		if strings.Contains(k, "[") {
 			k, err = parseParamSquareBrackets(k)
