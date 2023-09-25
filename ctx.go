@@ -942,7 +942,7 @@ func (c *Ctx) Method(override ...string) string {
 		// Provided override does not valid HTTP method, no override, return current method
 		return c.method
 	}
-	
+
 	c.method = method
 	c.methodINT = mINT
 	return c.method
