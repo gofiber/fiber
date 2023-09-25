@@ -12,6 +12,7 @@ import (
 	"compress/zlib"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -571,6 +572,7 @@ func Test_Ctx_BodyParser(t *testing.T) {
 	}
 
 	testDecodeParser(MIMEApplicationJSON, `{"name":"john"}`)
+	testDecodeParser(MIMETextXML, `<Demo><name>john</name></Demo>`)
 	testDecodeParser(MIMEApplicationXML, `<Demo><name>john</name></Demo>`)
 	testDecodeParser(MIMEApplicationForm, "name=john")
 	testDecodeParser(MIMEMultipartForm+`;boundary="b"`, "--b\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\njohn\r\n--b--")
@@ -708,6 +710,76 @@ func Benchmark_Ctx_BodyParser_JSON(b *testing.B) {
 	}
 	utils.AssertEqual(b, nil, c.BodyParser(d))
 	utils.AssertEqual(b, "john", d.Name)
+}
+
+// go test -run Test_Ctx_BodyParser_NDJSON
+func Test_Ctx_BodyParser_NDJSON(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	type Demo struct {
+		Name string `json:"name" xml:"name" form:"name" query:"name"`
+	}
+
+	c.Request().Reset()
+	c.Request().Header.SetContentType(MIMEApplicationXNDJSON)
+	c.Request().SetBody([]byte(""))
+	c.Request().Header.SetContentLength(len(c.Body()))
+	var out []Demo
+	utils.AssertEqual(t, true, c.BodyParser(&out) != nil)
+
+	c.Request().Reset()
+	c.Request().Header.SetContentType(MIMEApplicationXNDJSON)
+	c.Request().SetBody([]byte("{\"name\":\"john\"}"))
+	c.Request().Header.SetContentLength(len(c.Body()))
+	var out2 []Demo
+	utils.AssertEqual(t, nil, c.BodyParser(&out2))
+	utils.AssertEqual(t, 1, len(out2))
+	utils.AssertEqual(t, "john", out2[0].Name)
+
+	c.Request().Reset()
+	c.Request().Header.SetContentType(MIMEApplicationXNDJSON)
+	c.Request().SetBody([]byte("{\"name\":\"john\"}\n"))
+	c.Request().Header.SetContentLength(len(c.Body()))
+	var out3 []Demo
+	utils.AssertEqual(t, nil, c.BodyParser(&out3))
+	utils.AssertEqual(t, 1, len(out3))
+	utils.AssertEqual(t, "john", out3[0].Name)
+
+	c.Request().Reset()
+	c.Request().Header.SetContentType(MIMEApplicationXNDJSON)
+	c.Request().SetBody([]byte("{\"name\":\"john\"}\n{\"name\":\"doe\"}\n"))
+	c.Request().Header.SetContentLength(len(c.Body()))
+	var errType Demo
+	utils.AssertEqual(t, true, c.BodyParser(errType) != nil)
+	var out4 []Demo
+	utils.AssertEqual(t, nil, c.BodyParser(&out4))
+	utils.AssertEqual(t, 2, len(out4))
+	utils.AssertEqual(t, "john", out4[0].Name)
+	utils.AssertEqual(t, "doe", out4[1].Name)
+
+	c.Request().Reset()
+	c.Request().Header.SetContentType(MIMEApplicationXNDJSON)
+	c.Request().SetBody([]byte("{\"name\":\"john\\n doe\"}"))
+	c.Request().Header.SetContentLength(len(c.Body()))
+	var out5 []Demo
+	utils.AssertEqual(t, nil, c.BodyParser(&out5))
+	utils.AssertEqual(t, 1, len(out5))
+	utils.AssertEqual(t, true, strings.Index(out5[0].Name, "\n") > 0)
+
+	c.Request().Reset()
+	c.Request().Header.SetContentType(MIMEApplicationXNDJSON)
+	demo := Demo{Name: "john\n doe"}
+	data, err := json.Marshal(demo)
+	utils.AssertEqual(t, nil, err)
+	c.Request().SetBody(data)
+	c.Request().Header.SetContentLength(len(c.Body()))
+	var out6 []Demo
+	utils.AssertEqual(t, nil, c.BodyParser(&out6))
+	utils.AssertEqual(t, 1, len(out6))
+	utils.AssertEqual(t, true, strings.Index(out6[0].Name, "\n") > 0)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_BodyParser_XML -benchmem -count=4

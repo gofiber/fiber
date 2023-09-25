@@ -55,6 +55,8 @@ var (
 	decoderPoolMap = map[string]*sync.Pool{}
 	// tags is used to classify parser's pool
 	tags = []string{queryTag, bodyTag, reqHeaderTag, paramsTag}
+	// find the new line when parsing the body using method BodyParser with type application/x-ndjson
+	delimiterEnter = []byte("\n")
 )
 
 func init() {
@@ -373,56 +375,112 @@ func decoderBuilder(parserConfig ParserConfig) interface{} {
 func (c *Ctx) BodyParser(out interface{}) error {
 	// Get content-type
 	ctype := utils.ToLower(c.app.getString(c.fasthttp.Request.Header.ContentType()))
-
 	ctype = utils.ParseVendorSpecificContentType(ctype)
 
 	// Parse body accordingly
-	if strings.HasPrefix(ctype, MIMEApplicationJSON) {
+	switch {
+	case strings.HasPrefix(ctype, MIMEApplicationJSON):
 		return c.app.config.JSONDecoder(c.Body(), out)
-	}
-	if strings.HasPrefix(ctype, MIMEApplicationForm) {
-		data := make(map[string][]string)
-		var err error
-
-		c.fasthttp.PostArgs().VisitAll(func(key, val []byte) {
-			if err != nil {
-				return
-			}
-
-			k := c.app.getString(key)
-			v := c.app.getString(val)
-
-			if strings.Contains(k, "[") {
-				k, err = parseParamSquareBrackets(k)
-			}
-
-			if c.app.config.EnableSplittingOnParsers && strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k, bodyTag) {
-				values := strings.Split(v, ",")
-				for i := 0; i < len(values); i++ {
-					data[k] = append(data[k], values[i])
-				}
-			} else {
-				data[k] = append(data[k], v)
-			}
-		})
-
+	case strings.HasPrefix(ctype, MIMEApplicationForm):
+		data, err := c.parseFormBody(c.fasthttp.PostArgs(), out)
+		if err != nil {
+			return err
+		}
 		return c.parseToStruct(bodyTag, out, data)
-	}
-	if strings.HasPrefix(ctype, MIMEMultipartForm) {
+	case strings.HasPrefix(ctype, MIMEMultipartForm):
 		data, err := c.fasthttp.MultipartForm()
 		if err != nil {
 			return err
 		}
 		return c.parseToStruct(bodyTag, out, data.Value)
-	}
-	if strings.HasPrefix(ctype, MIMETextXML) || strings.HasPrefix(ctype, MIMEApplicationXML) {
+	case strings.HasPrefix(ctype, MIMETextXML), strings.HasPrefix(ctype, MIMEApplicationXML):
 		if err := xml.Unmarshal(c.Body(), out); err != nil {
 			return fmt.Errorf("failed to unmarshal: %w", err)
 		}
 		return nil
+	case strings.HasPrefix(ctype, MIMEApplicationXNDJSON):
+		return c.parseXNDJSONBody(out)
+	default: // No suitable content type found
+		return ErrUnprocessableEntity
 	}
-	// No suitable content type found
-	return ErrUnprocessableEntity
+}
+
+// parseFormBody binds the request body to a struct.
+// It supports decoding the following content types based on the Content-Type header: application/x-ndjson
+// return error if the data is not an array
+func (c *Ctx) parseFormBody(args *fasthttp.Args, out interface{}) (map[string][]string, error) {
+	data := make(map[string][]string)
+	var err error
+
+	args.VisitAll(func(key, val []byte) {
+		if err != nil {
+			return
+		}
+
+		k := string(key)
+		v := string(val)
+
+		if strings.Contains(k, "[") {
+			k, err = parseParamSquareBrackets(k)
+		}
+
+		if c.app.config.EnableSplittingOnParsers && strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k, bodyTag) {
+			values := strings.Split(v, ",")
+			for i := 0; i < len(values); i++ {
+				data[k] = append(data[k], values[i])
+			}
+		} else {
+			data[k] = append(data[k], v)
+		}
+	})
+
+	return data, err
+}
+
+// parseXNDJSONBody binds the request body to an array struct.
+// It supports decoding the following content types based on the Content-Type header: application/x-ndjson
+// return error if the data is not an array
+func (c *Ctx) parseXNDJSONBody(out interface{}) error {
+	// validate output type is array using reflect
+	outValue := reflect.ValueOf(out)
+	if outValue.Kind() != reflect.Ptr || outValue.IsNil() {
+		return fmt.Errorf("output must be a non-nil pointer")
+	}
+	outPtrValue := outValue.Elem()
+	if !outPtrValue.CanSet() {
+		return fmt.Errorf("cannot set value for output")
+	}
+
+	outType := outPtrValue.Type()
+	if outType.Kind() != reflect.Slice && outType.Kind() != reflect.Array {
+		return fmt.Errorf("output type must be an array")
+	}
+
+	body := c.Body()
+	length := bytes.Count(body, delimiterEnter)
+
+	if length > 0 {
+		sliceValue := reflect.MakeSlice(outType, 0, length)
+		for _, v := range bytes.Split(body, delimiterEnter) {
+			if len(v) > 0 {
+				targetSlice := reflect.New(outType.Elem()).Interface()
+				err := c.app.config.JSONDecoder(v, targetSlice)
+				if err != nil {
+					return err
+				}
+				sliceValue = reflect.Append(sliceValue, reflect.ValueOf(targetSlice).Elem())
+			}
+		}
+		outPtrValue.Set(sliceValue)
+	} else {
+		targetSlice := reflect.New(outType.Elem()).Interface()
+		err := c.app.config.JSONDecoder(body, targetSlice)
+		if err != nil {
+			return err
+		}
+		outPtrValue.Set(reflect.Append(outPtrValue, reflect.ValueOf(targetSlice).Elem()))
+	}
+	return nil
 }
 
 // ClearCookie expires a specific cookie by key on the client side.
