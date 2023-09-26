@@ -927,17 +927,24 @@ func (c *Ctx) Location(path string) {
 	c.setCanonical(HeaderLocation, path)
 }
 
-// Method contains a string corresponding to the HTTP method of the request: GET, POST, PUT and so on.
+// Method returns the HTTP request method for the context, optionally overridden by the provided argument.
+// If no override is given or if the provided override is not a valid HTTP method, it returns the current method from the context.
+// Otherwise, it updates the context's method and returns the overridden method as a string.
 func (c *Ctx) Method(override ...string) string {
-	if len(override) > 0 {
-		method := utils.ToUpper(override[0])
-		mINT := c.app.methodInt(method)
-		if mINT == -1 {
-			return c.method
-		}
-		c.method = method
-		c.methodINT = mINT
+	if len(override) == 0 {
+		// Nothing to override, just return current method from context
+		return c.method
 	}
+
+	method := utils.ToUpper(override[0])
+	mINT := c.app.methodInt(method)
+	if mINT == -1 {
+		// Provided override does not valid HTTP method, no override, return current method
+		return c.method
+	}
+
+	c.method = method
+	c.methodINT = mINT
 	return c.method
 }
 
