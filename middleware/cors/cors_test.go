@@ -27,6 +27,20 @@ func Test_CORS_Empty_Config(t *testing.T) {
 	testDefaultOrEmptyConfig(t, app)
 }
 
+func Test_CORS_Negative_MaxAge(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{MaxAge: -1}))
+
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderOrigin, "localhost")
+	app.Handler()(ctx)
+
+	utils.AssertEqual(t, "0", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlMaxAge)))
+}
+
 func testDefaultOrEmptyConfig(t *testing.T, app *fiber.App) {
 	t.Helper()
 
