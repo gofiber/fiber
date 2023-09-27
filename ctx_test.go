@@ -5117,12 +5117,39 @@ func Test_Ctx_GetRespHeaders(t *testing.T) {
 
 	c.Set("test", "Hello, World 👋!")
 	c.Set("foo", "bar")
+	c.Response().Header.Set("multi", "one")
+	c.Response().Header.Add("multi", "two")
 	c.Response().Header.Set(HeaderContentType, "application/json")
 
-	utils.AssertEqual(t, c.GetRespHeaders(), map[string]string{
-		"Content-Type": "application/json",
-		"Foo":          "bar",
-		"Test":         "Hello, World 👋!",
+	utils.AssertEqual(t, c.GetRespHeaders(), map[string][]string{
+		"Content-Type": {"application/json"},
+		"Foo":          {"bar"},
+		"Multi":        {"one", "two"},
+		"Test":         {"Hello, World 👋!"},
+	})
+}
+
+func Benchmark_Ctx_GetRespHeaders(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	c.Response().Header.Set("test", "Hello, World 👋!")
+	c.Response().Header.Set("foo", "bar")
+	c.Response().Header.Set(HeaderContentType, "application/json")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	var headers map[string][]string
+	for n := 0; n < b.N; n++ {
+		headers = c.GetRespHeaders()
+	}
+
+	utils.AssertEqual(b, headers, map[string][]string{
+		"Content-Type": {"application/json"},
+		"Foo":          {"bar"},
+		"Test":         {"Hello, World 👋!"},
 	})
 }
 
@@ -5135,12 +5162,39 @@ func Test_Ctx_GetReqHeaders(t *testing.T) {
 
 	c.Request().Header.Set("test", "Hello, World 👋!")
 	c.Request().Header.Set("foo", "bar")
+	c.Request().Header.Set("multi", "one")
+	c.Request().Header.Add("multi", "two")
 	c.Request().Header.Set(HeaderContentType, "application/json")
 
-	utils.AssertEqual(t, c.GetReqHeaders(), map[string]string{
-		"Content-Type": "application/json",
-		"Foo":          "bar",
-		"Test":         "Hello, World 👋!",
+	utils.AssertEqual(t, c.GetReqHeaders(), map[string][]string{
+		"Content-Type": {"application/json"},
+		"Foo":          {"bar"},
+		"Test":         {"Hello, World 👋!"},
+		"Multi":        {"one", "two"},
+	})
+}
+
+func Benchmark_Ctx_GetReqHeaders(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	c.Request().Header.Set("test", "Hello, World 👋!")
+	c.Request().Header.Set("foo", "bar")
+	c.Request().Header.Set(HeaderContentType, "application/json")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	var headers map[string][]string
+	for n := 0; n < b.N; n++ {
+		headers = c.GetReqHeaders()
+	}
+
+	utils.AssertEqual(b, headers, map[string][]string{
+		"Content-Type": {"application/json"},
+		"Foo":          {"bar"},
+		"Test":         {"Hello, World 👋!"},
 	})
 }
 
