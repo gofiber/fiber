@@ -18,7 +18,10 @@ func (z *response) MarshalMsg(b []byte) (o []byte, err error) {
 	o = msgp.AppendMapHeader(o, uint32(len(z.Headers)))
 	for za0001, za0002 := range z.Headers {
 		o = msgp.AppendString(o, za0001)
-		o = msgp.AppendString(o, za0002)
+		o = msgp.AppendArrayHeader(o, uint32(len(za0002)))
+		for za0003 := range za0002 {
+			o = msgp.AppendString(o, za0002[za0003])
+		}
 	}
 	// string "b"
 	o = append(o, 0xa1, 0x62)
@@ -58,7 +61,7 @@ func (z *response) UnmarshalMsg(bts []byte) (o []byte, err error) {
 				return
 			}
 			if z.Headers == nil {
-				z.Headers = make(map[string]string, zb0002)
+				z.Headers = make(map[string][]string, zb0002)
 			} else if len(z.Headers) > 0 {
 				for key := range z.Headers {
 					delete(z.Headers, key)
@@ -66,17 +69,30 @@ func (z *response) UnmarshalMsg(bts []byte) (o []byte, err error) {
 			}
 			for zb0002 > 0 {
 				var za0001 string
-				var za0002 string
+				var za0002 []string
 				zb0002--
 				za0001, bts, err = msgp.ReadStringBytes(bts)
 				if err != nil {
 					err = msgp.WrapError(err, "Headers")
 					return
 				}
-				za0002, bts, err = msgp.ReadStringBytes(bts)
+				var zb0003 uint32
+				zb0003, bts, err = msgp.ReadArrayHeaderBytes(bts)
 				if err != nil {
 					err = msgp.WrapError(err, "Headers", za0001)
 					return
+				}
+				if cap(za0002) >= int(zb0003) {
+					za0002 = (za0002)[:zb0003]
+				} else {
+					za0002 = make([]string, zb0003)
+				}
+				for za0003 := range za0002 {
+					za0002[za0003], bts, err = msgp.ReadStringBytes(bts)
+					if err != nil {
+						err = msgp.WrapError(err, "Headers", za0001, za0003)
+						return
+					}
 				}
 				z.Headers[za0001] = za0002
 			}
@@ -104,7 +120,10 @@ func (z *response) Msgsize() (s int) {
 	if z.Headers != nil {
 		for za0001, za0002 := range z.Headers {
 			_ = za0002
-			s += msgp.StringPrefixSize + len(za0001) + msgp.StringPrefixSize + len(za0002)
+			s += msgp.StringPrefixSize + len(za0001) + msgp.ArrayHeaderSize
+			for za0003 := range za0002 {
+				s += msgp.StringPrefixSize + len(za0002[za0003])
+			}
 		}
 	}
 	s += 2 + msgp.BytesPrefixSize + len(z.Body)
