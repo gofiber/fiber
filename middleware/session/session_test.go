@@ -496,9 +496,8 @@ func Test_Session_Regenerate(t *testing.T) {
 		err = acquiredSession.Regenerate()
 		utils.AssertEqual(t, nil, err)
 
-		if acquiredSession.ID() == originalSessionUUIDString {
-			t.Fatal("regenerate should generate another different id")
-		}
+		utils.AssertEqual(t, false, acquiredSession.ID() == originalSessionUUIDString)
+
 		// acquiredSession.fresh should be true after regenerating
 		utils.AssertEqual(t, true, acquiredSession.Fresh())
 	})

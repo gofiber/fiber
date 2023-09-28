@@ -82,8 +82,6 @@ func TestStore_Get(t *testing.T) {
 		acquiredSession, err := store.Get(ctx)
 		utils.AssertEqual(t, err, nil)
 
-		if acquiredSession.ID() != unexpectedID {
-			t.Fatal("server should not accept the unexpectedID which is not in the store")
-		}
+		utils.AssertEqual(t, unexpectedID, acquiredSession.ID())
 	})
 }

@@ -755,9 +755,7 @@ func Test_App_Shutdown(t *testing.T) {
 		t.Parallel()
 		app := &App{}
 		if err := app.Shutdown(); err != nil {
-			if err.Error() != "shutdown: server is not running" {
-				t.Fatal()
-			}
+			utils.AssertEqual(t, "shutdown: server is not running", err.Error())
 		}
 	})
 }

@@ -102,9 +102,7 @@ func Test_Custom_Favicon_Url(t *testing.T) {
 // go test -run Test_Custom_Favicon_Data
 func Test_Custom_Favicon_Data(t *testing.T) {
 	data, err := os.ReadFile("../../.github/testdata/favicon.ico")
-	if err != nil {
-		t.Fatal(err)
-	}
+	utils.AssertEqual(t, nil, err)
 
 	app := fiber.New()
 
