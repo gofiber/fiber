@@ -3189,7 +3189,6 @@ func Test_Ctx_RenderWithLocals(t *testing.T) {
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
 	})
-
 }
 
 func Test_Ctx_RenderWithBind(t *testing.T) {
