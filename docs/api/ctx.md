@@ -554,7 +554,7 @@ app.Get("/", func(c *fiber.Ctx) error {
 Returns the HTTP request headers.
 
 ```go title="Signature"
-func (c *Ctx) GetReqHeaders() map[string]string
+func (c *Ctx) GetReqHeaders() map[string][]string
 ```
 
 > _Returned value is only valid within the handler. Do not store any references.  
@@ -589,7 +589,7 @@ app.Get("/", func(c *fiber.Ctx) error {
 Returns the HTTP response headers.
 
 ```go title="Signature"
-func (c *Ctx) GetRespHeaders() map[string]string
+func (c *Ctx) GetRespHeaders() map[string][]string
 ```
 
 > _Returned value is only valid within the handler. Do not store any references.  

@@ -651,10 +651,11 @@ func (c *Ctx) GetRespHeader(key string, defaultValue ...string) string {
 // GetReqHeaders returns the HTTP request headers.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
-func (c *Ctx) GetReqHeaders() map[string]string {
-	headers := make(map[string]string)
+func (c *Ctx) GetReqHeaders() map[string][]string {
+	headers := make(map[string][]string)
 	c.Request().Header.VisitAll(func(k, v []byte) {
-		headers[c.app.getString(k)] = c.app.getString(v)
+		key := c.app.getString(k)
+		headers[key] = append(headers[key], c.app.getString(v))
 	})
 
 	return headers
@@ -663,10 +664,11 @@ func (c *Ctx) GetReqHeaders() map[string]string {
 // GetRespHeaders returns the HTTP response headers.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
-func (c *Ctx) GetRespHeaders() map[string]string {
-	headers := make(map[string]string)
+func (c *Ctx) GetRespHeaders() map[string][]string {
+	headers := make(map[string][]string)
 	c.Response().Header.VisitAll(func(k, v []byte) {
-		headers[c.app.getString(k)] = c.app.getString(v)
+		key := c.app.getString(k)
+		headers[key] = append(headers[key], c.app.getString(v))
 	})
 
 	return headers
