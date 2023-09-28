@@ -1505,6 +1505,11 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
+	// Initialize empty bind map if bind is nil
+	if bind == nil {
+		bind = make(Map)
+	}
+
 	// Pass-locals-to-views, bind, appListKeys
 	c.renderExtensions(bind)
 

@@ -3136,10 +3136,6 @@ func Test_Ctx_Render(t *testing.T) {
 	})
 	utils.AssertEqual(t, nil, err)
 
-	buf := bytebufferpool.Get()
-	_, _ = buf.WriteString("overwrite") //nolint:errcheck // This will never fail
-	defer bytebufferpool.Put(buf)
-
 	utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
 
 	err = c.Render("./.github/testdata/template-non-exists.html", nil)
@@ -3155,16 +3151,12 @@ func Test_Ctx_RenderWithoutLocals(t *testing.T) {
 		PassLocalsToViews: false,
 	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
 
 	c.Locals("Title", "Hello, World!")
-	defer app.ReleaseCtx(c)
+
 	err := c.Render("./.github/testdata/index.tmpl", Map{})
 	utils.AssertEqual(t, nil, err)
-
-	buf := bytebufferpool.Get()
-	_, _ = buf.WriteString("overwrite") //nolint:errcheck // This will never fail
-	defer bytebufferpool.Put(buf)
-
 	utils.AssertEqual(t, "<h1><no value></h1>", string(c.Response().Body()))
 }
 
@@ -3173,18 +3165,28 @@ func Test_Ctx_RenderWithLocals(t *testing.T) {
 	app := New(Config{
 		PassLocalsToViews: true,
 	})
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	c.Locals("Title", "Hello, World!")
-	defer app.ReleaseCtx(c)
-	err := c.Render("./.github/testdata/index.tmpl", Map{})
-	utils.AssertEqual(t, nil, err)
+	t.Run("EmptyBind", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
 
-	buf := bytebufferpool.Get()
-	_, _ = buf.WriteString("overwrite") //nolint:errcheck // This will never fail
-	defer bytebufferpool.Put(buf)
+		c.Locals("Title", "Hello, World!")
+		err := c.Render("./.github/testdata/index.tmpl", Map{})
 
-	utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
+	})
+
+	t.Run("NilBind", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+
+		c.Locals("Title", "Hello, World!")
+		err := c.Render("./.github/testdata/index.tmpl", nil)
+
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
+	})
 }
 
 func Test_Ctx_RenderWithBind(t *testing.T) {
