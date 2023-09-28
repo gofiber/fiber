@@ -386,16 +386,15 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 			if strings.Contains(tCase.contentEncoding, "gzip") {
 				var b bytes.Buffer
 				gz := gzip.NewWriter(&b)
+
 				_, err := gz.Write(tCase.body)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if err = gz.Flush(); err != nil {
-					t.Fatal(err)
-				}
-				if err = gz.Close(); err != nil {
-					t.Fatal(err)
-				}
+				utils.AssertEqual(t, nil, err)
+
+				err = gz.Flush()
+				utils.AssertEqual(t, nil, err)
+
+				err = gz.Close()
+				utils.AssertEqual(t, nil, err)
 				tCase.body = b.Bytes()
 			}
 
@@ -619,9 +618,8 @@ func Test_Ctx_ParamParser(t *testing.T) {
 			RoleID uint `params:"roleId"`
 		}
 		d := new(Demo)
-		if err := ctx.ParamsParser(d); err != nil {
-			t.Fatal(err)
-		}
+
+		utils.AssertEqual(t, nil, ctx.ParamsParser(d))
 		utils.AssertEqual(t, uint(111), d.UserID)
 		utils.AssertEqual(t, uint(222), d.RoleID)
 		return nil
@@ -4946,21 +4944,17 @@ func Test_Ctx_BodyStreamWriter(t *testing.T) {
 		}
 		fmt.Fprintf(w, "body writer line 2\n")
 	})
-	if !ctx.IsBodyStream() {
-		t.Fatal("IsBodyStream must return true")
-	}
+
+	utils.AssertEqual(t, true, ctx.IsBodyStream())
 
 	s := ctx.Response.String()
 	br := bufio.NewReader(bytes.NewBufferString(s))
 	var resp fasthttp.Response
-	if err := resp.Read(br); err != nil {
-		t.Fatalf("Error when reading response: %s", err)
-	}
+	utils.AssertEqual(t, nil, resp.Read(br))
+
 	body := string(resp.Body())
 	expectedBody := "body writer line 1\nbody writer line 2\n"
-	if body != expectedBody {
-		t.Fatalf("unexpected body: %q. Expecting %q", body, expectedBody)
-	}
+	utils.AssertEqual(t, expectedBody, body)
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_BodyStreamWriter -benchmem -count=4
@@ -5010,14 +5004,10 @@ func TestCtx_ParamsInt(t *testing.T) {
 		num, err := c.ParamsInt("user")
 
 		// Check the number matches
-		if num != 1111 {
-			t.Fatalf("Expected number 1111 from the path, got %d", num)
-		}
+		utils.AssertEqual(t, 1111, num)
 
 		// Check no errors are returned, because we want NO errors in this one
-		if err != nil {
-			t.Fatalf("Expected nil error for 1111 test, got " + err.Error())
-		}
+		utils.AssertEqual(t, nil, err)
 
 		return nil
 	})
@@ -5030,14 +5020,10 @@ func TestCtx_ParamsInt(t *testing.T) {
 		num, err := c.ParamsInt("user")
 
 		// Check the number matches
-		if num != 0 {
-			t.Fatalf("Expected number 0 from the path, got %d", num)
-		}
+		utils.AssertEqual(t, 0, num)
 
 		// Check an error is returned, because we want NO errors in this one
-		if err == nil {
-			t.Fatal("Expected non nil error for bad req test, got nil")
-		}
+		utils.AssertEqual(t, true, err != nil)
 
 		return nil
 	})
@@ -5050,14 +5036,10 @@ func TestCtx_ParamsInt(t *testing.T) {
 		num, err := c.ParamsInt("user", 1111)
 
 		// Check the number matches
-		if num != 2222 {
-			t.Fatalf("Expected number 2222 from the path, got %d", num)
-		}
+		utils.AssertEqual(t, 2222, num)
 
 		// Check no errors are returned, because we want NO errors in this one
-		if err != nil {
-			t.Fatalf("Expected nil error for 2222 test, got " + err.Error())
-		}
+		utils.AssertEqual(t, nil, err)
 
 		return nil
 	})
@@ -5070,14 +5052,10 @@ func TestCtx_ParamsInt(t *testing.T) {
 		num, err := c.ParamsInt("user", 1111)
 
 		// Check the number matches
-		if num != 1111 {
-			t.Fatalf("Expected number 1111 from the path, got %d", num)
-		}
+		utils.AssertEqual(t, 1111, num)
 
 		// Check an error is returned, because we want NO errors in this one
-		if err != nil {
-			t.Fatalf("Expected nil error for 1111 test, got " + err.Error())
-		}
+		utils.AssertEqual(t, nil, err)
 
 		return nil
 	})

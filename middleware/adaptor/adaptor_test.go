@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"reflect"
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
@@ -34,61 +33,33 @@ func Test_HTTPHandler(t *testing.T) {
 		"XXX-Remote-Addr": "123.43.4543.345",
 	}
 	expectedURL, err := url.ParseRequestURI(expectedRequestURI)
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
+	utils.AssertEqual(t, nil, err)
+
 	expectedContextKey := "contextKey"
 	expectedContextValue := "contextValue"
 
 	callsCount := 0
 	nethttpH := func(w http.ResponseWriter, r *http.Request) {
 		callsCount++
-		if r.Method != expectedMethod {
-			t.Fatalf("unexpected method %q. Expecting %q", r.Method, expectedMethod)
-		}
-		if r.Proto != expectedProto {
-			t.Fatalf("unexpected proto %q. Expecting %q", r.Proto, expectedProto)
-		}
-		if r.ProtoMajor != expectedProtoMajor {
-			t.Fatalf("unexpected protoMajor %d. Expecting %d", r.ProtoMajor, expectedProtoMajor)
-		}
-		if r.ProtoMinor != expectedProtoMinor {
-			t.Fatalf("unexpected protoMinor %d. Expecting %d", r.ProtoMinor, expectedProtoMinor)
-		}
-		if r.RequestURI != expectedRequestURI {
-			t.Fatalf("unexpected requestURI %q. Expecting %q", r.RequestURI, expectedRequestURI)
-		}
-		if r.ContentLength != int64(expectedContentLength) {
-			t.Fatalf("unexpected contentLength %d. Expecting %d", r.ContentLength, expectedContentLength)
-		}
-		if len(r.TransferEncoding) != 0 {
-			t.Fatalf("unexpected transferEncoding %q. Expecting []", r.TransferEncoding)
-		}
-		if r.Host != expectedHost {
-			t.Fatalf("unexpected host %q. Expecting %q", r.Host, expectedHost)
-		}
-		if r.RemoteAddr != expectedRemoteAddr {
-			t.Fatalf("unexpected remoteAddr %q. Expecting %q", r.RemoteAddr, expectedRemoteAddr)
-		}
+		utils.AssertEqual(t, expectedMethod, r.Method, "Method")
+		utils.AssertEqual(t, expectedProto, r.Proto, "Proto")
+		utils.AssertEqual(t, expectedProtoMajor, r.ProtoMajor, "ProtoMajor")
+		utils.AssertEqual(t, expectedProtoMinor, r.ProtoMinor, "ProtoMinor")
+		utils.AssertEqual(t, expectedRequestURI, r.RequestURI, "RequestURI")
+		utils.AssertEqual(t, expectedContentLength, int(r.ContentLength), "ContentLength")
+		utils.AssertEqual(t, 0, len(r.TransferEncoding), "TransferEncoding")
+		utils.AssertEqual(t, expectedHost, r.Host, "Host")
+		utils.AssertEqual(t, expectedRemoteAddr, r.RemoteAddr, "RemoteAddr")
+
 		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			t.Fatalf("unexpected error when reading request body: %s", err)
-		}
-		if string(body) != expectedBody {
-			t.Fatalf("unexpected body %q. Expecting %q", body, expectedBody)
-		}
-		if !reflect.DeepEqual(r.URL, expectedURL) {
-			t.Fatalf("unexpected URL: %#v. Expecting %#v", r.URL, expectedURL)
-		}
-		if r.Context().Value(expectedContextKey) != expectedContextValue {
-			t.Fatalf("unexpected context value for key %q. Expecting %q", expectedContextKey, expectedContextValue)
-		}
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, expectedBody, string(body), "Body")
+		utils.AssertEqual(t, expectedURL, r.URL, "URL")
+		utils.AssertEqual(t, expectedContextValue, r.Context().Value(expectedContextKey), "Context")
 
 		for k, expectedV := range expectedHeader {
 			v := r.Header.Get(k)
-			if v != expectedV {
-				t.Fatalf("unexpected header value %q for key %q. Expecting %q", v, k, expectedV)
-			}
+			utils.AssertEqual(t, expectedV, v, "Header")
 		}
 
 		w.Header().Set("Header1", "value1")
@@ -111,37 +82,24 @@ func Test_HTTPHandler(t *testing.T) {
 	}
 
 	remoteAddr, err := net.ResolveTCPAddr("tcp", expectedRemoteAddr)
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
+	utils.AssertEqual(t, nil, err)
+
 	fctx.Init(&req, remoteAddr, nil)
 	app := fiber.New()
 	ctx := app.AcquireCtx(&fctx)
 	defer app.ReleaseCtx(ctx)
 
 	err = fiberH(ctx)
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-
-	if callsCount != 1 {
-		t.Fatalf("unexpected callsCount: %d. Expecting 1", callsCount)
-	}
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 1, callsCount, "callsCount")
 
 	resp := &fctx.Response
-	if resp.StatusCode() != fiber.StatusBadRequest {
-		t.Fatalf("unexpected statusCode: %d. Expecting %d", resp.StatusCode(), fiber.StatusBadRequest)
-	}
-	if string(resp.Header.Peek("Header1")) != "value1" {
-		t.Fatalf("unexpected header value: %q. Expecting %q", resp.Header.Peek("Header1"), "value1")
-	}
-	if string(resp.Header.Peek("Header2")) != "value2" {
-		t.Fatalf("unexpected header value: %q. Expecting %q", resp.Header.Peek("Header2"), "value2")
-	}
+	utils.AssertEqual(t, http.StatusBadRequest, resp.StatusCode(), "StatusCode")
+	utils.AssertEqual(t, "value1", string(resp.Header.Peek("Header1")), "Header1")
+	utils.AssertEqual(t, "value2", string(resp.Header.Peek("Header2")), "Header2")
+
 	expectedResponseBody := fmt.Sprintf("request body is %q", expectedBody)
-	if string(resp.Body()) != expectedResponseBody {
-		t.Fatalf("unexpected response body %q. Expecting %q", resp.Body(), expectedResponseBody)
-	}
+	utils.AssertEqual(t, expectedResponseBody, string(resp.Body()), "Body")
 }
 
 type contextKey string
@@ -220,32 +178,20 @@ func Test_HTTPMiddleware(t *testing.T) {
 
 	for _, tt := range tests {
 		req, err := http.NewRequestWithContext(context.Background(), tt.method, tt.url, nil)
-		if err != nil {
-			t.Fatalf(`%s: %s`, t.Name(), err)
-		}
+		utils.AssertEqual(t, nil, err)
+
 		resp, err := app.Test(req)
-		if err != nil {
-			t.Fatalf(`%s: %s`, t.Name(), err)
-		}
-		if resp.StatusCode != tt.statusCode {
-			t.Fatalf(`%s: StatusCode: got %v - expected %v`, t.Name(), resp.StatusCode, tt.statusCode)
-		}
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, tt.statusCode, resp.StatusCode, "StatusCode")
 	}
 
 	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodPost, "/", nil)
-	if err != nil {
-		t.Fatalf(`%s: %s`, t.Name(), err)
-	}
+	utils.AssertEqual(t, nil, err)
+
 	resp, err := app.Test(req)
-	if err != nil {
-		t.Fatalf(`%s: %s`, t.Name(), err)
-	}
-	if resp.Header.Get("context_okay") != "okay" {
-		t.Fatalf(`%s: Header context_okay: got %v - expected %v`, t.Name(), resp.Header.Get("context_okay"), "okay")
-	}
-	if resp.Header.Get("context_second_okay") != "okay" {
-		t.Fatalf(`%s: Header context_second_okay: got %v - expected %v`, t.Name(), resp.Header.Get("context_second_okay"), "okay")
-	}
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, resp.Header.Get("context_okay"), "okay")
+	utils.AssertEqual(t, resp.Header.Get("context_second_okay"), "okay")
 }
 
 func Test_FiberHandler(t *testing.T) {
@@ -282,43 +228,24 @@ func testFiberToHandlerFunc(t *testing.T, checkDefaultPort bool, app ...*fiber.A
 		"XXX-Remote-Addr": "123.43.4543.345",
 	}
 	expectedURL, err := url.ParseRequestURI(expectedRequestURI)
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
+	utils.AssertEqual(t, nil, err)
 
 	callsCount := 0
 	fiberH := func(c *fiber.Ctx) error {
 		callsCount++
-		if c.Method() != expectedMethod {
-			t.Fatalf("unexpected method %q. Expecting %q", c.Method(), expectedMethod)
-		}
-		if string(c.Context().RequestURI()) != expectedRequestURI {
-			t.Fatalf("unexpected requestURI %q. Expecting %q", string(c.Context().RequestURI()), expectedRequestURI)
-		}
-		contentLength := c.Context().Request.Header.ContentLength()
-		if contentLength != expectedContentLength {
-			t.Fatalf("unexpected contentLength %d. Expecting %d", contentLength, expectedContentLength)
-		}
-		if c.Hostname() != expectedHost {
-			t.Fatalf("unexpected host %q. Expecting %q", c.Hostname(), expectedHost)
-		}
-		remoteAddr := c.Context().RemoteAddr().String()
-		if remoteAddr != expectedRemoteAddr {
-			t.Fatalf("unexpected remoteAddr %q. Expecting %q", remoteAddr, expectedRemoteAddr)
-		}
+		utils.AssertEqual(t, expectedMethod, c.Method(), "Method")
+		utils.AssertEqual(t, expectedRequestURI, string(c.Context().RequestURI()), "RequestURI")
+		utils.AssertEqual(t, expectedContentLength, c.Context().Request.Header.ContentLength(), "ContentLength")
+		utils.AssertEqual(t, expectedHost, c.Hostname(), "Host")
+		utils.AssertEqual(t, expectedRemoteAddr, c.Context().RemoteAddr().String(), "RemoteAddr")
+
 		body := string(c.Body())
-		if body != expectedBody {
-			t.Fatalf("unexpected body %q. Expecting %q", body, expectedBody)
-		}
-		if c.OriginalURL() != expectedURL.String() {
-			t.Fatalf("unexpected URL: %#v. Expecting %#v", c.OriginalURL(), expectedURL)
-		}
+		utils.AssertEqual(t, expectedBody, body, "Body")
+		utils.AssertEqual(t, expectedURL.String(), c.OriginalURL(), "URL")
 
 		for k, expectedV := range expectedHeader {
 			v := c.Get(k)
-			if v != expectedV {
-				t.Fatalf("unexpected header value %q for key %q. Expecting %q", v, k, expectedV)
-			}
+			utils.AssertEqual(t, expectedV, v, "Header")
 		}
 
 		c.Set("Header1", "value1")
@@ -357,19 +284,12 @@ func testFiberToHandlerFunc(t *testing.T, checkDefaultPort bool, app ...*fiber.A
 	var w netHTTPResponseWriter
 	handlerFunc.ServeHTTP(&w, &r)
 
-	if w.StatusCode() != http.StatusBadRequest {
-		t.Fatalf("unexpected statusCode: %d. Expecting %d", w.StatusCode(), http.StatusBadRequest)
-	}
-	if w.Header().Get("Header1") != "value1" {
-		t.Fatalf("unexpected header value: %q. Expecting %q", w.Header().Get("Header1"), "value1")
-	}
-	if w.Header().Get("Header2") != "value2" {
-		t.Fatalf("unexpected header value: %q. Expecting %q", w.Header().Get("Header2"), "value2")
-	}
+	utils.AssertEqual(t, http.StatusBadRequest, w.StatusCode(), "StatusCode")
+	utils.AssertEqual(t, "value1", w.Header().Get("Header1"), "Header1")
+	utils.AssertEqual(t, "value2", w.Header().Get("Header2"), "Header2")
+
 	expectedResponseBody := fmt.Sprintf("request body is %q", expectedBody)
-	if string(w.body) != expectedResponseBody {
-		t.Fatalf("unexpected response body %q. Expecting %q", string(w.body), expectedResponseBody)
-	}
+	utils.AssertEqual(t, expectedResponseBody, string(w.body), "Body")
 }
 
 func setFiberContextValueMiddleware(next fiber.Handler, key string, value interface{}) fiber.Handler {
@@ -387,16 +307,9 @@ func Test_FiberHandler_RequestNilBody(t *testing.T) {
 	callsCount := 0
 	fiberH := func(c *fiber.Ctx) error {
 		callsCount++
-		if c.Method() != expectedMethod {
-			t.Fatalf("unexpected method %q. Expecting %q", c.Method(), expectedMethod)
-		}
-		if string(c.Request().RequestURI()) != expectedRequestURI {
-			t.Fatalf("unexpected requestURI %q. Expecting %q", string(c.Request().RequestURI()), expectedRequestURI)
-		}
-		contentLength := c.Request().Header.ContentLength()
-		if contentLength != expectedContentLength {
-			t.Fatalf("unexpected contentLength %d. Expecting %d", contentLength, expectedContentLength)
-		}
+		utils.AssertEqual(t, expectedMethod, c.Method(), "Method")
+		utils.AssertEqual(t, expectedRequestURI, string(c.Context().RequestURI()), "RequestURI")
+		utils.AssertEqual(t, expectedContentLength, c.Context().Request.Header.ContentLength(), "ContentLength")
 
 		_, err := c.Write([]byte("request body is nil"))
 		return err
@@ -412,9 +325,7 @@ func Test_FiberHandler_RequestNilBody(t *testing.T) {
 	nethttpH.ServeHTTP(&w, &r)
 
 	expectedResponseBody := "request body is nil"
-	if string(w.body) != expectedResponseBody {
-		t.Fatalf("unexpected response body %q. Expecting %q", string(w.body), expectedResponseBody)
-	}
+	utils.AssertEqual(t, expectedResponseBody, string(w.body), "Body")
 }
 
 type netHTTPBody struct {
