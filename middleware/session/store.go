@@ -140,3 +140,11 @@ func (s *Store) responseCookies(c *fiber.Ctx) (string, error) {
 func (s *Store) Reset() error {
 	return s.Storage.Reset()
 }
+
+// Delete deletes a session by its id
+func (s *Store) Delete(id string) error {
+	if len(id) == 0 {
+		return fmt.Errorf("session id cannot be empty")
+	}
+	return s.Storage.Delete(id)
+}

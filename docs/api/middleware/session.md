@@ -16,6 +16,7 @@ This middleware uses our [Storage](https://github.com/gofiber/storage) package t
 func New(config ...Config) *Store
 func (s *Store) RegisterType(i interface{})
 func (s *Store) Get(c *fiber.Ctx) (*Session, error)
+func (s *Store) Delete(id string) error
 func (s *Store) Reset() error
 
 func (s *Session) Get(key string) interface{}
