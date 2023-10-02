@@ -85,3 +85,34 @@ func TestStore_Get(t *testing.T) {
 		utils.AssertEqual(t, unexpectedID, acquiredSession.ID())
 	})
 }
+
+// go test -run TestStore_DeleteSession
+func TestStore_DeleteSession(t *testing.T) {
+	t.Parallel()
+	// fiber instance
+	app := fiber.New()
+	// session store
+	store := New()
+
+	// fiber context
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	// Create a new session
+	session, err := store.Get(ctx)
+	utils.AssertEqual(t, err, nil)
+
+	// Save the session ID
+	sessionID := session.ID()
+
+	// Delete the session
+	err = store.Delete(sessionID)
+	utils.AssertEqual(t, err, nil)
+
+	// Try to get the session again
+	session, err = store.Get(ctx)
+	utils.AssertEqual(t, err, nil)
+
+	// The session ID should be different now, because the old session was deleted
+	utils.AssertEqual(t, session.ID() == sessionID, false)
+}

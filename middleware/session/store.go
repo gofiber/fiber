@@ -2,6 +2,7 @@ package session
 
 import (
 	"encoding/gob"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -11,6 +12,9 @@ import (
 
 	"github.com/valyala/fasthttp"
 )
+
+// ErrEmptySessionID is an error that occurs when the session ID is empty.
+var ErrEmptySessionID = errors.New("session id cannot be empty")
 
 type Store struct {
 	Config
@@ -139,4 +143,12 @@ func (s *Store) responseCookies(c *fiber.Ctx) (string, error) {
 // Reset will delete all session from the storage
 func (s *Store) Reset() error {
 	return s.Storage.Reset()
+}
+
+// Delete deletes a session by its id.
+func (s *Store) Delete(id string) error {
+	if id == "" {
+		return ErrEmptySessionID
+	}
+	return s.Storage.Delete(id)
 }
