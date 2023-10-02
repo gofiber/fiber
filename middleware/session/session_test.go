@@ -324,11 +324,11 @@ func Test_Session_Save_Expiration(t *testing.T) {
 	})
 }
 
-// go test -run Test_Session_Reset
-func Test_Session_Reset(t *testing.T) {
+// go test -run Test_Session_Destroy
+func Test_Session_Destroy(t *testing.T) {
 	t.Parallel()
 
-	t.Run("reset from cookie", func(t *testing.T) {
+	t.Run("destroy from cookie", func(t *testing.T) {
 		t.Parallel()
 		// session store
 		store := New()
@@ -347,7 +347,7 @@ func Test_Session_Reset(t *testing.T) {
 		utils.AssertEqual(t, nil, name)
 	})
 
-	t.Run("reset from header", func(t *testing.T) {
+	t.Run("destroy from header", func(t *testing.T) {
 		t.Parallel()
 		// session store
 		store := New(Config{
@@ -459,6 +459,75 @@ func Test_Session_Deletes_Single_Key(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, false, sess.Fresh())
 	utils.AssertEqual(t, nil, sess.Get("id"))
+}
+
+// go test -run Test_Session_Reset
+func Test_Session_Reset(t *testing.T) {
+	t.Parallel()
+	// fiber instance
+	app := fiber.New()
+
+	// session store
+	store := New()
+
+	// fiber context
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	t.Run("reset session data and id, and set fresh to be true", func(t *testing.T) {
+		// a random session uuid
+		originalSessionUUIDString := ""
+
+		// now the session is in the storage
+		freshSession, err := store.Get(ctx)
+		utils.AssertEqual(t, nil, err)
+
+		originalSessionUUIDString = freshSession.ID()
+
+		// set a value
+		freshSession.Set("name", "fenny")
+		freshSession.Set("email", "fenny@example.com")
+
+		err = freshSession.Save()
+		utils.AssertEqual(t, nil, err)
+
+		// set cookie
+		ctx.Request().Header.SetCookie(store.sessionName, originalSessionUUIDString)
+
+		// as the session is in the storage, session.fresh should be false
+		acquiredSession, err := store.Get(ctx)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, false, acquiredSession.Fresh())
+
+		err = acquiredSession.Reset()
+		utils.AssertEqual(t, nil, err)
+
+		utils.AssertEqual(t, false, acquiredSession.ID() == originalSessionUUIDString)
+
+		// acquiredSession.fresh should be true after resetting
+		utils.AssertEqual(t, true, acquiredSession.Fresh())
+
+		// Check that the session data has been reset
+		keys := acquiredSession.Keys()
+		utils.AssertEqual(t, []string{}, keys)
+
+		// Set a new value for 'name' and check that it's updated
+		acquiredSession.Set("name", "john")
+		utils.AssertEqual(t, "john", acquiredSession.Get("name"))
+		utils.AssertEqual(t, nil, acquiredSession.Get("email"))
+
+		// Save after resetting
+		err = acquiredSession.Save()
+		utils.AssertEqual(t, nil, err)
+
+		// Check that the session id is not in the header or cookie anymore
+		utils.AssertEqual(t, "", string(ctx.Response().Header.Peek(store.sessionName)))
+		utils.AssertEqual(t, "", string(ctx.Request().Header.Peek(store.sessionName)))
+
+		// But the new session id should be in the header or cookie
+		utils.AssertEqual(t, acquiredSession.ID(), string(ctx.Response().Header.Peek(store.sessionName)))
+		utils.AssertEqual(t, acquiredSession.ID(), string(ctx.Request().Header.Peek(store.sessionName)))
+	})
 }
 
 // go test -run Test_Session_Regenerate

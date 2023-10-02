@@ -23,6 +23,7 @@ func (s *Session) Get(key string) interface{}
 func (s *Session) Set(key string, val interface{})
 func (s *Session) Delete(key string)
 func (s *Session) Destroy() error
+func (s *Session) Reset() error
 func (s *Session) Regenerate() error
 func (s *Session) Save() error
 func (s *Session) Fresh() bool
