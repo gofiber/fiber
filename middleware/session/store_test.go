@@ -100,26 +100,19 @@ func TestStore_DeleteSession(t *testing.T) {
 
 	// Create a new session
 	session, err := store.Get(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
+	utils.AssertEqual(t, err, nil)
 
 	// Save the session ID
 	sessionID := session.ID()
 
 	// Delete the session
-	if err := store.Delete(sessionID); err != nil {
-		t.Fatal(err)
-	}
+	err = store.Delete(sessionID)
+	utils.AssertEqual(t, err, nil)
 
 	// Try to get the session again
 	session, err = store.Get(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
+	utils.AssertEqual(t, err, nil)
 
 	// The session ID should be different now, because the old session was deleted
-	if session.ID() == sessionID {
-		t.Errorf("The session was not deleted, the session ID is still the same")
-	}
+	utils.AssertEqual(t, session.ID() == sessionID, false)
 }
