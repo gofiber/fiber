@@ -481,7 +481,7 @@ func (c *Ctx) Cookie(cookie *Cookie) {
 
 	switch utils.ToLower(cookie.SameSite) {
 	case CookieSameSiteStrictMode:
-		fcookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)
+		fcookie.SetSameSite(fasthttp.zCookieSameSiteStrictMode)
 	case CookieSameSiteNoneMode:
 		fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
 	case CookieSameSiteDisabled:
