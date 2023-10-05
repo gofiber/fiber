@@ -2857,7 +2857,7 @@ func Test_Ctx_JSONP(t *testing.T) {
 			"Age":  20,
 		})
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, `callback(["custom","json"])`, string(c.Response().Body()))
+		utils.AssertEqual(t, `callback(["custom","json"]);`, string(c.Response().Body()))
 		utils.AssertEqual(t, "text/javascript; charset=utf-8", string(c.Response().Header.Peek("content-type")))
 	})
 }
