@@ -1008,6 +1008,35 @@ func Test_Ctx_CookieParserUsingTag(t *testing.T) {
 
 }
 
+// go test - run Benchmark_Ctx_CookieParser -v
+func Benchmark_Ctx_CookieParser(b *testing.B) {
+	app := New(Config{EnableSplittingOnParsers: true})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	type Cook struct {
+		ID       int      `cookie:"id"`
+		Name     string   `cookie:"name"`
+		Courses  []string `cookie:"courses"`
+		Enrolled bool     `cookie:"student"`
+		Fees     float32  `cookie:"fee"`
+		Grades   []uint8  `cookie:"score"`
+	}
+	cookie1 := new(Cook)
+	cookie1.Name = "Joseph"
+
+	c.Request().Header.Set("Cookie", "id=1")
+	c.Request().Header.Set("Cookie", "name=Joey")
+	c.Request().Header.Set("Cookie", "courses=maths,english, chemistry, physics")
+	c.Request().Header.Set("Cookie", "student=true")
+	c.Request().Header.Set("Cookie", "fee=45.78")
+	c.Request().Header.Set("Cookie", "score=7,6,10")
+
+	// Run the function b.N times
+	for i := 0; i < b.N; i++ {
+		_ = c.CookieParser(cookie1)
+	}
+}
+
 // go test -run Test_Ctx_Cookies
 func Test_Ctx_Cookies(t *testing.T) {
 	t.Parallel()
