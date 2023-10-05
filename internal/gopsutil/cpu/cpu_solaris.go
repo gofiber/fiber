@@ -52,7 +52,7 @@ func TimesWithContext(ctx context.Context, percpu bool) ([]TimesStat, error) {
 	user := make(map[float64]float64)
 	kern := make(map[float64]float64)
 	iowt := make(map[float64]float64)
-	//swap := make(map[float64]float64)
+	// swap := make(map[float64]float64)
 	kstatSysOut, err := invoke.CommandWithContext(ctx, kstatSys, "-p", "cpu_stat:*:*:/^idle$|^user$|^kernel$|^iowait$|^swap$/")
 	if err != nil {
 		return nil, fmt.Errorf("cannot execute kstat: %s", err)

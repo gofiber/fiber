@@ -26,8 +26,7 @@ type MemoryMapsStat struct {
 	Swap         uint64 `json:"swap"`
 }
 
-type MemoryInfoExStat struct {
-}
+type MemoryInfoExStat struct{}
 
 func pidsWithContext(ctx context.Context) ([]int32, error) {
 	return []int32{}, common.ErrNotImplementedError
@@ -63,6 +62,7 @@ func (p *Process) Ppid() (int32, error) {
 func (p *Process) PpidWithContext(ctx context.Context) (int32, error) {
 	return 0, common.ErrNotImplementedError
 }
+
 func (p *Process) Name() (string, error) {
 	return p.NameWithContext(context.Background())
 }
@@ -70,9 +70,11 @@ func (p *Process) Name() (string, error) {
 func (p *Process) NameWithContext(ctx context.Context) (string, error) {
 	return "", common.ErrNotImplementedError
 }
+
 func (p *Process) Tgid() (int32, error) {
 	return 0, common.ErrNotImplementedError
 }
+
 func (p *Process) Exe() (string, error) {
 	return p.ExeWithContext(context.Background())
 }
@@ -80,6 +82,7 @@ func (p *Process) Exe() (string, error) {
 func (p *Process) ExeWithContext(ctx context.Context) (string, error) {
 	return "", common.ErrNotImplementedError
 }
+
 func (p *Process) Cmdline() (string, error) {
 	return p.CmdlineWithContext(context.Background())
 }
@@ -87,6 +90,7 @@ func (p *Process) Cmdline() (string, error) {
 func (p *Process) CmdlineWithContext(ctx context.Context) (string, error) {
 	return "", common.ErrNotImplementedError
 }
+
 func (p *Process) CmdlineSlice() ([]string, error) {
 	return p.CmdlineSliceWithContext(context.Background())
 }
@@ -98,6 +102,7 @@ func (p *Process) CmdlineSliceWithContext(ctx context.Context) ([]string, error)
 func (p *Process) createTimeWithContext(ctx context.Context) (int64, error) {
 	return 0, common.ErrNotImplementedError
 }
+
 func (p *Process) Cwd() (string, error) {
 	return p.CwdWithContext(context.Background())
 }
@@ -105,6 +110,7 @@ func (p *Process) Cwd() (string, error) {
 func (p *Process) CwdWithContext(ctx context.Context) (string, error) {
 	return "", common.ErrNotImplementedError
 }
+
 func (p *Process) Parent() (*Process, error) {
 	return p.ParentWithContext(context.Background())
 }
@@ -112,6 +118,7 @@ func (p *Process) Parent() (*Process, error) {
 func (p *Process) ParentWithContext(ctx context.Context) (*Process, error) {
 	return nil, common.ErrNotImplementedError
 }
+
 func (p *Process) Status() (string, error) {
 	return p.StatusWithContext(context.Background())
 }
@@ -119,6 +126,7 @@ func (p *Process) Status() (string, error) {
 func (p *Process) StatusWithContext(ctx context.Context) (string, error) {
 	return "", common.ErrNotImplementedError
 }
+
 func (p *Process) Foreground() (bool, error) {
 	return p.ForegroundWithContext(context.Background())
 }
@@ -126,6 +134,7 @@ func (p *Process) Foreground() (bool, error) {
 func (p *Process) ForegroundWithContext(ctx context.Context) (bool, error) {
 	return false, common.ErrNotImplementedError
 }
+
 func (p *Process) Uids() ([]int32, error) {
 	return p.UidsWithContext(context.Background())
 }
@@ -133,6 +142,7 @@ func (p *Process) Uids() ([]int32, error) {
 func (p *Process) UidsWithContext(ctx context.Context) ([]int32, error) {
 	return []int32{}, common.ErrNotImplementedError
 }
+
 func (p *Process) Gids() ([]int32, error) {
 	return p.GidsWithContext(context.Background())
 }
@@ -144,6 +154,7 @@ func (p *Process) GidsWithContext(ctx context.Context) ([]int32, error) {
 func (p *Process) GroupsWithContext(ctx context.Context) ([]int32, error) {
 	return []int32{}, common.ErrNotImplementedError
 }
+
 func (p *Process) Terminal() (string, error) {
 	return p.TerminalWithContext(context.Background())
 }
@@ -151,6 +162,7 @@ func (p *Process) Terminal() (string, error) {
 func (p *Process) TerminalWithContext(ctx context.Context) (string, error) {
 	return "", common.ErrNotImplementedError
 }
+
 func (p *Process) Nice() (int32, error) {
 	return p.NiceWithContext(context.Background())
 }
@@ -158,6 +170,7 @@ func (p *Process) Nice() (int32, error) {
 func (p *Process) NiceWithContext(ctx context.Context) (int32, error) {
 	return 0, common.ErrNotImplementedError
 }
+
 func (p *Process) IOnice() (int32, error) {
 	return p.IOniceWithContext(context.Background())
 }
@@ -165,6 +178,7 @@ func (p *Process) IOnice() (int32, error) {
 func (p *Process) IOniceWithContext(ctx context.Context) (int32, error) {
 	return 0, common.ErrNotImplementedError
 }
+
 func (p *Process) Rlimit() ([]RlimitStat, error) {
 	return p.RlimitWithContext(context.Background())
 }
@@ -172,6 +186,7 @@ func (p *Process) Rlimit() ([]RlimitStat, error) {
 func (p *Process) RlimitWithContext(ctx context.Context) ([]RlimitStat, error) {
 	return nil, common.ErrNotImplementedError
 }
+
 func (p *Process) RlimitUsage(gatherUsed bool) ([]RlimitStat, error) {
 	return p.RlimitUsageWithContext(context.Background(), gatherUsed)
 }
@@ -179,6 +194,7 @@ func (p *Process) RlimitUsage(gatherUsed bool) ([]RlimitStat, error) {
 func (p *Process) RlimitUsageWithContext(ctx context.Context, gatherUsed bool) ([]RlimitStat, error) {
 	return nil, common.ErrNotImplementedError
 }
+
 func (p *Process) IOCounters() (*IOCountersStat, error) {
 	return p.IOCountersWithContext(context.Background())
 }
@@ -186,6 +202,7 @@ func (p *Process) IOCounters() (*IOCountersStat, error) {
 func (p *Process) IOCountersWithContext(ctx context.Context) (*IOCountersStat, error) {
 	return nil, common.ErrNotImplementedError
 }
+
 func (p *Process) NumCtxSwitches() (*NumCtxSwitchesStat, error) {
 	return p.NumCtxSwitchesWithContext(context.Background())
 }
@@ -193,6 +210,7 @@ func (p *Process) NumCtxSwitches() (*NumCtxSwitchesStat, error) {
 func (p *Process) NumCtxSwitchesWithContext(ctx context.Context) (*NumCtxSwitchesStat, error) {
 	return nil, common.ErrNotImplementedError
 }
+
 func (p *Process) NumFDs() (int32, error) {
 	return p.NumFDsWithContext(context.Background())
 }
@@ -200,6 +218,7 @@ func (p *Process) NumFDs() (int32, error) {
 func (p *Process) NumFDsWithContext(ctx context.Context) (int32, error) {
 	return 0, common.ErrNotImplementedError
 }
+
 func (p *Process) NumThreads() (int32, error) {
 	return p.NumThreadsWithContext(context.Background())
 }
@@ -207,6 +226,7 @@ func (p *Process) NumThreads() (int32, error) {
 func (p *Process) NumThreadsWithContext(ctx context.Context) (int32, error) {
 	return 0, common.ErrNotImplementedError
 }
+
 func (p *Process) Threads() (map[int32]*cpu.TimesStat, error) {
 	return p.ThreadsWithContext(context.Background())
 }
@@ -214,6 +234,7 @@ func (p *Process) Threads() (map[int32]*cpu.TimesStat, error) {
 func (p *Process) ThreadsWithContext(ctx context.Context) (map[int32]*cpu.TimesStat, error) {
 	return nil, common.ErrNotImplementedError
 }
+
 func (p *Process) Times() (*cpu.TimesStat, error) {
 	return p.TimesWithContext(context.Background())
 }
@@ -221,6 +242,7 @@ func (p *Process) Times() (*cpu.TimesStat, error) {
 func (p *Process) TimesWithContext(ctx context.Context) (*cpu.TimesStat, error) {
 	return nil, common.ErrNotImplementedError
 }
+
 func (p *Process) CPUAffinity() ([]int32, error) {
 	return p.CPUAffinityWithContext(context.Background())
 }
@@ -228,6 +250,7 @@ func (p *Process) CPUAffinity() ([]int32, error) {
 func (p *Process) CPUAffinityWithContext(ctx context.Context) ([]int32, error) {
 	return nil, common.ErrNotImplementedError
 }
+
 func (p *Process) MemoryInfo() (*MemoryInfoStat, error) {
 	return p.MemoryInfoWithContext(context.Background())
 }
@@ -235,6 +258,7 @@ func (p *Process) MemoryInfo() (*MemoryInfoStat, error) {
 func (p *Process) MemoryInfoWithContext(ctx context.Context) (*MemoryInfoStat, error) {
 	return nil, common.ErrNotImplementedError
 }
+
 func (p *Process) MemoryInfoEx() (*MemoryInfoExStat, error) {
 	return p.MemoryInfoExWithContext(context.Background())
 }
@@ -242,12 +266,15 @@ func (p *Process) MemoryInfoEx() (*MemoryInfoExStat, error) {
 func (p *Process) MemoryInfoExWithContext(ctx context.Context) (*MemoryInfoExStat, error) {
 	return nil, common.ErrNotImplementedError
 }
+
 func (p *Process) PageFaults() (*PageFaultsStat, error) {
 	return p.PageFaultsWithContext(context.Background())
 }
+
 func (p *Process) PageFaultsWithContext(ctx context.Context) (*PageFaultsStat, error) {
 	return nil, common.ErrNotImplementedError
 }
+
 func (p *Process) Children() ([]*Process, error) {
 	return p.ChildrenWithContext(context.Background())
 }
@@ -255,6 +282,7 @@ func (p *Process) Children() ([]*Process, error) {
 func (p *Process) ChildrenWithContext(ctx context.Context) ([]*Process, error) {
 	return nil, common.ErrNotImplementedError
 }
+
 func (p *Process) OpenFiles() ([]OpenFilesStat, error) {
 	return p.OpenFilesWithContext(context.Background())
 }
@@ -262,6 +290,7 @@ func (p *Process) OpenFiles() ([]OpenFilesStat, error) {
 func (p *Process) OpenFilesWithContext(ctx context.Context) ([]OpenFilesStat, error) {
 	return []OpenFilesStat{}, common.ErrNotImplementedError
 }
+
 func (p *Process) Connections() ([]net.ConnectionStat, error) {
 	return p.ConnectionsWithContext(context.Background())
 }
@@ -293,6 +322,7 @@ func (p *Process) MemoryMaps(grouped bool) (*[]MemoryMapsStat, error) {
 func (p *Process) MemoryMapsWithContext(ctx context.Context, grouped bool) (*[]MemoryMapsStat, error) {
 	return nil, common.ErrNotImplementedError
 }
+
 func (p *Process) SendSignal(sig syscall.Signal) error {
 	return p.SendSignalWithContext(context.Background(), sig)
 }
@@ -300,6 +330,7 @@ func (p *Process) SendSignal(sig syscall.Signal) error {
 func (p *Process) SendSignalWithContext(ctx context.Context, sig syscall.Signal) error {
 	return common.ErrNotImplementedError
 }
+
 func (p *Process) Suspend() error {
 	return p.SuspendWithContext(context.Background())
 }
@@ -307,6 +338,7 @@ func (p *Process) Suspend() error {
 func (p *Process) SuspendWithContext(ctx context.Context) error {
 	return common.ErrNotImplementedError
 }
+
 func (p *Process) Resume() error {
 	return p.ResumeWithContext(context.Background())
 }
@@ -314,6 +346,7 @@ func (p *Process) Resume() error {
 func (p *Process) ResumeWithContext(ctx context.Context) error {
 	return common.ErrNotImplementedError
 }
+
 func (p *Process) Terminate() error {
 	return p.TerminateWithContext(context.Background())
 }
@@ -321,6 +354,7 @@ func (p *Process) Terminate() error {
 func (p *Process) TerminateWithContext(ctx context.Context) error {
 	return common.ErrNotImplementedError
 }
+
 func (p *Process) Kill() error {
 	return p.KillWithContext(context.Background())
 }
@@ -328,6 +362,7 @@ func (p *Process) Kill() error {
 func (p *Process) KillWithContext(ctx context.Context) error {
 	return common.ErrNotImplementedError
 }
+
 func (p *Process) Username() (string, error) {
 	return p.UsernameWithContext(context.Background())
 }

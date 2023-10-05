@@ -89,8 +89,10 @@ var (
 	CLSID_COMTestScalarClass = NewGUID("{865B85C5-0334-4AC6-9EF6-AACEC8FC5E86}")
 )
 
-const hextable = "0123456789ABCDEF"
-const emptyGUID = "{00000000-0000-0000-0000-000000000000}"
+const (
+	hextable  = "0123456789ABCDEF"
+	emptyGUID = "{00000000-0000-0000-0000-000000000000}"
+)
 
 // GUID is Windows API specific GUID type.
 //
@@ -177,7 +179,7 @@ func decodeHexUint16(src []byte) (value uint16, ok bool) {
 	return
 }
 
-func decodeHexByte64(s1 []byte, s2 []byte) (value [8]byte, ok bool) {
+func decodeHexByte64(s1, s2 []byte) (value [8]byte, ok bool) {
 	var ok1, ok2, ok3, ok4, ok5, ok6, ok7, ok8 bool
 	value[0], ok1 = decodeHexByte(s1[0], s1[1])
 	value[1], ok2 = decodeHexByte(s1[2], s1[3])
@@ -269,7 +271,7 @@ func putByteHex(dst, src []byte) {
 // IsEqualGUID compares two GUID.
 //
 // Not constant time comparison.
-func IsEqualGUID(guid1 *GUID, guid2 *GUID) bool {
+func IsEqualGUID(guid1, guid2 *GUID) bool {
 	return guid1.Data1 == guid2.Data1 &&
 		guid1.Data2 == guid2.Data2 &&
 		guid1.Data3 == guid2.Data3 &&

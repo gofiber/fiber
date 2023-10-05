@@ -235,7 +235,6 @@ func FilterCountersWithContext(ctx context.Context) ([]FilterStat, error) {
 	maxfile := common.HostProc("sys/net/netfilter/nf_conntrack_max")
 
 	count, err := common.ReadInts(countfile)
-
 	if err != nil {
 		return nil, err
 	}
@@ -333,21 +332,25 @@ var kindTCP4 = netConnectionKindType{
 	sockType: syscall.SOCK_STREAM,
 	filename: "tcp",
 }
+
 var kindTCP6 = netConnectionKindType{
 	family:   syscall.AF_INET6,
 	sockType: syscall.SOCK_STREAM,
 	filename: "tcp6",
 }
+
 var kindUDP4 = netConnectionKindType{
 	family:   syscall.AF_INET,
 	sockType: syscall.SOCK_DGRAM,
 	filename: "udp",
 }
+
 var kindUDP6 = netConnectionKindType{
 	family:   syscall.AF_INET6,
 	sockType: syscall.SOCK_DGRAM,
 	filename: "udp6",
 }
+
 var kindUNIX = netConnectionKindType{
 	family:   syscall.AF_UNIX,
 	filename: "unix",
@@ -749,7 +752,6 @@ func parseIPv6HexString(src []byte) (net.IP, error) {
 }
 
 func processInet(file string, kind netConnectionKindType, inodes map[string][]inodeMap, filterPid int32) ([]connTmp, error) {
-
 	if strings.HasSuffix(file, "6") && !common.PathExists(file) {
 		// IPv6 not supported, return empty.
 		return []connTmp{}, nil
@@ -873,7 +875,7 @@ func processUnix(file string, kind netConnectionKindType, inodes map[string][]in
 	return ret, nil
 }
 
-func updateMap(src map[string][]inodeMap, add map[string][]inodeMap) map[string][]inodeMap {
+func updateMap(src, add map[string][]inodeMap) map[string][]inodeMap {
 	for key, value := range add {
 		a, exists := src[key]
 		if !exists {

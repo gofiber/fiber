@@ -190,7 +190,7 @@ func SwapMemoryWithContext(ctx context.Context) (*SwapMemoryStat, error) {
 		Free:  uint64(sysinfo.Freeswap) * uint64(sysinfo.Unit),
 	}
 	ret.Used = ret.Total - ret.Free
-	//check Infinity
+	// check Infinity
 	if ret.Total != 0 {
 		ret.UsedPercent = float64(ret.Total-ret.Free) / float64(ret.Total) * 100.0
 	} else {
@@ -253,7 +253,6 @@ func calcuateAvailVmem(ret *VirtualMemoryStat, retEx *VirtualMemoryExStat) uint6
 
 	fn := common.HostProc("zoneinfo")
 	lines, err := common.ReadLines(fn)
-
 	if err != nil {
 		return ret.Free + ret.Cached // fallback under kernel 2.6.13
 	}
@@ -266,7 +265,6 @@ func calcuateAvailVmem(ret *VirtualMemoryStat, retEx *VirtualMemoryExStat) uint6
 
 		if strings.HasPrefix(fields[0], "low") {
 			lowValue, err := strconv.ParseUint(fields[1], 10, 64)
-
 			if err != nil {
 				lowValue = 0
 			}

@@ -103,7 +103,6 @@ func IOCountersWithContext(ctx context.Context, pernic bool) ([]IOCountersStat, 
 		return getIOCountersAll(iocounters)
 	}
 	return iocounters, nil
-
 }
 
 // NetIOCountersByFile is an method which is added just a compatibility for linux.
@@ -187,7 +186,7 @@ var portMatch = regexp.MustCompile(`(.*)\.(\d+)$`)
 
 // This function only works for netstat returning addresses with a "."
 // before the port (0.0.0.0.22 instead of 0.0.0.0:22).
-func parseNetstatAddr(local string, remote string, family uint32) (laddr Addr, raddr Addr, err error) {
+func parseNetstatAddr(local, remote string, family uint32) (laddr, raddr Addr, err error) {
 	parse := func(l string) (Addr, error) {
 		matches := portMatch.FindStringSubmatch(l)
 		if matches == nil {
@@ -287,7 +286,7 @@ func hasCorrectInetProto(kind, proto string) bool {
 	return false
 }
 
-func parseNetstatA(output string, kind string) ([]ConnectionStat, error) {
+func parseNetstatA(output, kind string) ([]ConnectionStat, error) {
 	var ret []ConnectionStat
 	lines := strings.Split(string(output), "\n")
 
@@ -336,7 +335,6 @@ func parseNetstatA(output string, kind string) ([]ConnectionStat, error) {
 	}
 
 	return ret, nil
-
 }
 
 func Connections(kind string) ([]ConnectionStat, error) {
@@ -344,7 +342,6 @@ func Connections(kind string) ([]ConnectionStat, error) {
 }
 
 func ConnectionsWithContext(ctx context.Context, kind string) ([]ConnectionStat, error) {
-
 	args := []string{"-na"}
 	switch strings.ToLower(kind) {
 	default:
@@ -368,7 +365,6 @@ func ConnectionsWithContext(ctx context.Context, kind string) ([]ConnectionStat,
 		return nil, err
 	}
 	out, err := invoke.CommandWithContext(ctx, netstat, args...)
-
 	if err != nil {
 		return nil, err
 	}
@@ -379,7 +375,6 @@ func ConnectionsWithContext(ctx context.Context, kind string) ([]ConnectionStat,
 	}
 
 	return ret, nil
-
 }
 
 func ConnectionsMax(kind string, max int) ([]ConnectionStat, error) {

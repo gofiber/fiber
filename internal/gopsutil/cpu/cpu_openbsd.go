@@ -118,7 +118,7 @@ func TimesWithContext(ctx context.Context, percpu bool) ([]TimesStat, error) {
 			j *= 2
 		}
 
-		var cpuTimes = make([]int32, CPUStates)
+		cpuTimes := make([]int32, CPUStates)
 		var mib []int32
 		if percpu {
 			mib = []int32{CTLKern, KernCptime2, int32(j)}

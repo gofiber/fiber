@@ -20,11 +20,9 @@ import (
 )
 
 // MemoryInfoExStat is different between OSes
-type MemoryInfoExStat struct {
-}
+type MemoryInfoExStat struct{}
 
-type MemoryMapsStat struct {
-}
+type MemoryMapsStat struct{}
 
 func pidsWithContext(ctx context.Context) ([]int32, error) {
 	var ret []int32
@@ -52,6 +50,7 @@ func (p *Process) PpidWithContext(ctx context.Context) (int32, error) {
 
 	return k.Ppid, nil
 }
+
 func (p *Process) Name() (string, error) {
 	return p.NameWithContext(context.Background())
 }
@@ -80,9 +79,11 @@ func (p *Process) NameWithContext(ctx context.Context) (string, error) {
 
 	return name, nil
 }
+
 func (p *Process) Tgid() (int32, error) {
 	return 0, common.ErrNotImplementedError
 }
+
 func (p *Process) Exe() (string, error) {
 	return p.ExeWithContext(context.Background())
 }
@@ -139,6 +140,7 @@ func (p *Process) CmdlineSliceWithContext(ctx context.Context) ([]string, error)
 func (p *Process) createTimeWithContext(ctx context.Context) (int64, error) {
 	return 0, common.ErrNotImplementedError
 }
+
 func (p *Process) Cwd() (string, error) {
 	return p.CwdWithContext(context.Background())
 }
@@ -146,6 +148,7 @@ func (p *Process) Cwd() (string, error) {
 func (p *Process) CwdWithContext(ctx context.Context) (string, error) {
 	return "", common.ErrNotImplementedError
 }
+
 func (p *Process) Parent() (*Process, error) {
 	return p.ParentWithContext(context.Background())
 }
@@ -153,6 +156,7 @@ func (p *Process) Parent() (*Process, error) {
 func (p *Process) ParentWithContext(ctx context.Context) (*Process, error) {
 	return p, common.ErrNotImplementedError
 }
+
 func (p *Process) Status() (string, error) {
 	return p.StatusWithContext(context.Background())
 }
@@ -217,6 +221,7 @@ func (p *Process) UidsWithContext(ctx context.Context) ([]int32, error) {
 
 	return uids, nil
 }
+
 func (p *Process) Gids() ([]int32, error) {
 	return p.GidsWithContext(context.Background())
 }
@@ -246,6 +251,7 @@ func (p *Process) GroupsWithContext(ctx context.Context) ([]int32, error) {
 
 	return groups, nil
 }
+
 func (p *Process) Terminal() (string, error) {
 	return p.TerminalWithContext(context.Background())
 }
@@ -265,6 +271,7 @@ func (p *Process) TerminalWithContext(ctx context.Context) (string, error) {
 
 	return termmap[ttyNr], nil
 }
+
 func (p *Process) Nice() (int32, error) {
 	return p.NiceWithContext(context.Background())
 }
@@ -276,6 +283,7 @@ func (p *Process) NiceWithContext(ctx context.Context) (int32, error) {
 	}
 	return int32(k.Nice), nil
 }
+
 func (p *Process) IOnice() (int32, error) {
 	return p.IOniceWithContext(context.Background())
 }
@@ -283,6 +291,7 @@ func (p *Process) IOnice() (int32, error) {
 func (p *Process) IOniceWithContext(ctx context.Context) (int32, error) {
 	return 0, common.ErrNotImplementedError
 }
+
 func (p *Process) Rlimit() ([]RlimitStat, error) {
 	return p.RlimitWithContext(context.Background())
 }
@@ -291,6 +300,7 @@ func (p *Process) RlimitWithContext(ctx context.Context) ([]RlimitStat, error) {
 	var rlimit []RlimitStat
 	return rlimit, common.ErrNotImplementedError
 }
+
 func (p *Process) RlimitUsage(gatherUsed bool) ([]RlimitStat, error) {
 	return p.RlimitUsageWithContext(context.Background(), gatherUsed)
 }
@@ -299,6 +309,7 @@ func (p *Process) RlimitUsageWithContext(ctx context.Context, gatherUsed bool) (
 	var rlimit []RlimitStat
 	return rlimit, common.ErrNotImplementedError
 }
+
 func (p *Process) IOCounters() (*IOCountersStat, error) {
 	return p.IOCountersWithContext(context.Background())
 }
@@ -313,6 +324,7 @@ func (p *Process) IOCountersWithContext(ctx context.Context) (*IOCountersStat, e
 		WriteCount: uint64(k.Rusage.Oublock),
 	}, nil
 }
+
 func (p *Process) NumCtxSwitches() (*NumCtxSwitchesStat, error) {
 	return p.NumCtxSwitchesWithContext(context.Background())
 }
@@ -320,6 +332,7 @@ func (p *Process) NumCtxSwitches() (*NumCtxSwitchesStat, error) {
 func (p *Process) NumCtxSwitchesWithContext(ctx context.Context) (*NumCtxSwitchesStat, error) {
 	return nil, common.ErrNotImplementedError
 }
+
 func (p *Process) NumFDs() (int32, error) {
 	return p.NumFDsWithContext(context.Background())
 }
@@ -327,6 +340,7 @@ func (p *Process) NumFDs() (int32, error) {
 func (p *Process) NumFDsWithContext(ctx context.Context) (int32, error) {
 	return 0, common.ErrNotImplementedError
 }
+
 func (p *Process) NumThreads() (int32, error) {
 	return p.NumThreadsWithContext(context.Background())
 }
@@ -339,6 +353,7 @@ func (p *Process) NumThreadsWithContext(ctx context.Context) (int32, error) {
 
 	return k.Numthreads, nil
 }
+
 func (p *Process) Threads() (map[int32]*cpu.TimesStat, error) {
 	return p.ThreadsWithContext(context.Background())
 }
@@ -347,6 +362,7 @@ func (p *Process) ThreadsWithContext(ctx context.Context) (map[int32]*cpu.TimesS
 	ret := make(map[int32]*cpu.TimesStat)
 	return ret, common.ErrNotImplementedError
 }
+
 func (p *Process) Times() (*cpu.TimesStat, error) {
 	return p.TimesWithContext(context.Background())
 }
@@ -362,6 +378,7 @@ func (p *Process) TimesWithContext(ctx context.Context) (*cpu.TimesStat, error) 
 		System: float64(k.Rusage.Stime.Sec) + float64(k.Rusage.Stime.Usec)/1000000,
 	}, nil
 }
+
 func (p *Process) CPUAffinity() ([]int32, error) {
 	return p.CPUAffinityWithContext(context.Background())
 }
@@ -369,6 +386,7 @@ func (p *Process) CPUAffinity() ([]int32, error) {
 func (p *Process) CPUAffinityWithContext(ctx context.Context) ([]int32, error) {
 	return nil, common.ErrNotImplementedError
 }
+
 func (p *Process) MemoryInfo() (*MemoryInfoStat, error) {
 	return p.MemoryInfoWithContext(context.Background())
 }
@@ -389,6 +407,7 @@ func (p *Process) MemoryInfoWithContext(ctx context.Context) (*MemoryInfoStat, e
 		VMS: uint64(k.Size),
 	}, nil
 }
+
 func (p *Process) MemoryInfoEx() (*MemoryInfoExStat, error) {
 	return p.MemoryInfoExWithContext(context.Background())
 }

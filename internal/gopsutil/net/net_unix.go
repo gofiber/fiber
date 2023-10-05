@@ -81,7 +81,6 @@ func ConnectionsPidWithContext(ctx context.Context, kind string, pid int32) ([]C
 		}
 		n, err := parseNetLine(rr)
 		if err != nil {
-
 			continue
 		}
 
@@ -152,7 +151,7 @@ func parseNetLine(line string) (ConnectionStat, error) {
 	return n, nil
 }
 
-func parseNetAddr(line string) (laddr Addr, raddr Addr, err error) {
+func parseNetAddr(line string) (laddr, raddr Addr, err error) {
 	parse := func(l string) (Addr, error) {
 		host, port, err := net.SplitHostPort(l)
 		if err != nil {
