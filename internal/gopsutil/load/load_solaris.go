@@ -1,5 +1,4 @@
 //go:build solaris
-// +build solaris
 
 package load
 

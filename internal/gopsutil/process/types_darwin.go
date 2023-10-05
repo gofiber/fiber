@@ -6,7 +6,6 @@
 // - all pointer in ExternProc to uint64
 
 //go:build ignore
-// +build ignore
 
 /*
 Input to cgo -godefs.

@@ -1,5 +1,4 @@
 //go:build 386 || arm
-// +build 386 arm
 
 package ole
 
