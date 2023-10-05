@@ -177,7 +177,7 @@ func StringFromIID(iid *GUID) (str string, err error) {
 }
 
 // CreateInstance of single uninitialized object with GUID.
-func CreateInstance(clsid *GUID, iid *GUID) (unk *IUnknown, err error) {
+func CreateInstance(clsid, iid *GUID) (unk *IUnknown, err error) {
 	if iid == nil {
 		iid = IID_IUnknown
 	}
@@ -194,7 +194,7 @@ func CreateInstance(clsid *GUID, iid *GUID) (unk *IUnknown, err error) {
 }
 
 // GetActiveObject retrieves pointer to active object.
-func GetActiveObject(clsid *GUID, iid *GUID) (unk *IUnknown, err error) {
+func GetActiveObject(clsid, iid *GUID) (unk *IUnknown, err error) {
 	if iid == nil {
 		iid = IID_IUnknown
 	}
@@ -316,7 +316,7 @@ func CreateDispTypeInfo(idata *INTERFACEDATA) (pptinfo *IUnknown, err error) {
 }
 
 // copyMemory moves location of a block of memory.
-func copyMemory(dest unsafe.Pointer, src unsafe.Pointer, length uint32) {
+func copyMemory(dest, src unsafe.Pointer, length uint32) {
 	procCopyMemory.Call(uintptr(dest), uintptr(src), uintptr(length))
 }
 
@@ -330,7 +330,7 @@ func GetUserDefaultLCID() (lcid uint32) {
 // GetMessage in message queue from runtime.
 //
 // This function appears to block. PeekMessage does not block.
-func GetMessage(msg *Msg, hwnd uint32, MsgFilterMin uint32, MsgFilterMax uint32) (ret int32, err error) {
+func GetMessage(msg *Msg, hwnd, MsgFilterMin, MsgFilterMax uint32) (ret int32, err error) {
 	r0, _, err := procGetMessageW.Call(uintptr(unsafe.Pointer(msg)), uintptr(hwnd), uintptr(MsgFilterMin), uintptr(MsgFilterMax))
 	ret = int32(r0)
 	return

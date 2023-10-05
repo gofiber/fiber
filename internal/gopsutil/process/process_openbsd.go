@@ -13,19 +13,18 @@ import (
 	"strings"
 	"unsafe"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/gofiber/fiber/v2/internal/gopsutil/common"
 	cpu "github.com/gofiber/fiber/v2/internal/gopsutil/cpu"
 	mem "github.com/gofiber/fiber/v2/internal/gopsutil/mem"
 	net "github.com/gofiber/fiber/v2/internal/gopsutil/net"
-	"golang.org/x/sys/unix"
 )
 
 // MemoryInfoExStat is different between OSes
-type MemoryInfoExStat struct {
-}
+type MemoryInfoExStat struct{}
 
-type MemoryMapsStat struct {
-}
+type MemoryMapsStat struct{}
 
 func pidsWithContext(ctx context.Context) ([]int32, error) {
 	var ret []int32
@@ -53,6 +52,7 @@ func (p *Process) PpidWithContext(ctx context.Context) (int32, error) {
 
 	return k.Ppid, nil
 }
+
 func (p *Process) Name() (string, error) {
 	return p.NameWithContext(context.Background())
 }
@@ -81,9 +81,11 @@ func (p *Process) NameWithContext(ctx context.Context) (string, error) {
 
 	return name, nil
 }
+
 func (p *Process) Tgid() (int32, error) {
 	return 0, common.ErrNotImplementedError
 }
+
 func (p *Process) Exe() (string, error) {
 	return p.ExeWithContext(context.Background())
 }
@@ -99,7 +101,6 @@ func (p *Process) CmdlineSlice() ([]string, error) {
 func (p *Process) CmdlineSliceWithContext(ctx context.Context) ([]string, error) {
 	mib := []int32{CTLKern, KernProcArgs, p.Pid, KernProcArgv}
 	buf, _, err := common.CallSyscall(mib)
-
 	if err != nil {
 		return nil, err
 	}
@@ -134,6 +135,7 @@ func (p *Process) CmdlineWithContext(ctx context.Context) (string, error) {
 func (p *Process) createTimeWithContext(ctx context.Context) (int64, error) {
 	return 0, common.ErrNotImplementedError
 }
+
 func (p *Process) Cwd() (string, error) {
 	return p.CwdWithContext(context.Background())
 }
@@ -141,6 +143,7 @@ func (p *Process) Cwd() (string, error) {
 func (p *Process) CwdWithContext(ctx context.Context) (string, error) {
 	return "", common.ErrNotImplementedError
 }
+
 func (p *Process) Parent() (*Process, error) {
 	return p.ParentWithContext(context.Background())
 }
@@ -148,6 +151,7 @@ func (p *Process) Parent() (*Process, error) {
 func (p *Process) ParentWithContext(ctx context.Context) (*Process, error) {
 	return p, common.ErrNotImplementedError
 }
+
 func (p *Process) Status() (string, error) {
 	return p.StatusWithContext(context.Background())
 }
@@ -173,6 +177,7 @@ func (p *Process) StatusWithContext(ctx context.Context) (string, error) {
 
 	return s, nil
 }
+
 func (p *Process) Foreground() (bool, error) {
 	return p.ForegroundWithContext(context.Background())
 }
@@ -190,6 +195,7 @@ func (p *Process) ForegroundWithContext(ctx context.Context) (bool, error) {
 	}
 	return strings.IndexByte(string(out), '+') != -1, nil
 }
+
 func (p *Process) Uids() ([]int32, error) {
 	return p.UidsWithContext(context.Background())
 }
@@ -206,6 +212,7 @@ func (p *Process) UidsWithContext(ctx context.Context) ([]int32, error) {
 
 	return uids, nil
 }
+
 func (p *Process) Gids() ([]int32, error) {
 	return p.GidsWithContext(context.Background())
 }
@@ -221,6 +228,7 @@ func (p *Process) GidsWithContext(ctx context.Context) ([]int32, error) {
 
 	return gids, nil
 }
+
 func (p *Process) GroupsWithContext(ctx context.Context) ([]int32, error) {
 	k, err := p.getKProc()
 	if err != nil {
@@ -229,6 +237,7 @@ func (p *Process) GroupsWithContext(ctx context.Context) ([]int32, error) {
 
 	return k.Groups, nil
 }
+
 func (p *Process) Terminal() (string, error) {
 	return p.TerminalWithContext(context.Background())
 }
@@ -248,6 +257,7 @@ func (p *Process) TerminalWithContext(ctx context.Context) (string, error) {
 
 	return termmap[ttyNr], nil
 }
+
 func (p *Process) Nice() (int32, error) {
 	return p.NiceWithContext(context.Background())
 }
@@ -259,6 +269,7 @@ func (p *Process) NiceWithContext(ctx context.Context) (int32, error) {
 	}
 	return int32(k.Nice), nil
 }
+
 func (p *Process) IOnice() (int32, error) {
 	return p.IOniceWithContext(context.Background())
 }
@@ -266,6 +277,7 @@ func (p *Process) IOnice() (int32, error) {
 func (p *Process) IOniceWithContext(ctx context.Context) (int32, error) {
 	return 0, common.ErrNotImplementedError
 }
+
 func (p *Process) Rlimit() ([]RlimitStat, error) {
 	return p.RlimitWithContext(context.Background())
 }
@@ -274,6 +286,7 @@ func (p *Process) RlimitWithContext(ctx context.Context) ([]RlimitStat, error) {
 	var rlimit []RlimitStat
 	return rlimit, common.ErrNotImplementedError
 }
+
 func (p *Process) RlimitUsage(gatherUsed bool) ([]RlimitStat, error) {
 	return p.RlimitUsageWithContext(context.Background(), gatherUsed)
 }
@@ -282,6 +295,7 @@ func (p *Process) RlimitUsageWithContext(ctx context.Context, gatherUsed bool) (
 	var rlimit []RlimitStat
 	return rlimit, common.ErrNotImplementedError
 }
+
 func (p *Process) IOCounters() (*IOCountersStat, error) {
 	return p.IOCountersWithContext(context.Background())
 }
@@ -296,6 +310,7 @@ func (p *Process) IOCountersWithContext(ctx context.Context) (*IOCountersStat, e
 		WriteCount: uint64(k.Uru_oublock),
 	}, nil
 }
+
 func (p *Process) NumCtxSwitches() (*NumCtxSwitchesStat, error) {
 	return p.NumCtxSwitchesWithContext(context.Background())
 }
@@ -303,6 +318,7 @@ func (p *Process) NumCtxSwitches() (*NumCtxSwitchesStat, error) {
 func (p *Process) NumCtxSwitchesWithContext(ctx context.Context) (*NumCtxSwitchesStat, error) {
 	return nil, common.ErrNotImplementedError
 }
+
 func (p *Process) NumFDs() (int32, error) {
 	return p.NumFDsWithContext(context.Background())
 }
@@ -310,6 +326,7 @@ func (p *Process) NumFDs() (int32, error) {
 func (p *Process) NumFDsWithContext(ctx context.Context) (int32, error) {
 	return 0, common.ErrNotImplementedError
 }
+
 func (p *Process) NumThreads() (int32, error) {
 	return p.NumThreadsWithContext(context.Background())
 }
@@ -318,6 +335,7 @@ func (p *Process) NumThreadsWithContext(ctx context.Context) (int32, error) {
 	/* not supported, just return 1 */
 	return 1, nil
 }
+
 func (p *Process) Threads() (map[int32]*cpu.TimesStat, error) {
 	return p.ThreadsWithContext(context.Background())
 }
@@ -326,6 +344,7 @@ func (p *Process) ThreadsWithContext(ctx context.Context) (map[int32]*cpu.TimesS
 	ret := make(map[int32]*cpu.TimesStat)
 	return ret, common.ErrNotImplementedError
 }
+
 func (p *Process) Times() (*cpu.TimesStat, error) {
 	return p.TimesWithContext(context.Background())
 }
@@ -341,6 +360,7 @@ func (p *Process) TimesWithContext(ctx context.Context) (*cpu.TimesStat, error) 
 		System: float64(k.Ustime_sec) + float64(k.Ustime_usec)/1000000,
 	}, nil
 }
+
 func (p *Process) CPUAffinity() ([]int32, error) {
 	return p.CPUAffinityWithContext(context.Background())
 }
@@ -348,6 +368,7 @@ func (p *Process) CPUAffinity() ([]int32, error) {
 func (p *Process) CPUAffinityWithContext(ctx context.Context) ([]int32, error) {
 	return nil, common.ErrNotImplementedError
 }
+
 func (p *Process) MemoryInfo() (*MemoryInfoStat, error) {
 	return p.MemoryInfoWithContext(context.Background())
 }
@@ -368,6 +389,7 @@ func (p *Process) MemoryInfoWithContext(ctx context.Context) (*MemoryInfoStat, e
 			uint64(k.Vm_ssize),
 	}, nil
 }
+
 func (p *Process) MemoryInfoEx() (*MemoryInfoExStat, error) {
 	return p.MemoryInfoExWithContext(context.Background())
 }
@@ -453,7 +475,6 @@ func ProcessesWithContext(ctx context.Context) ([]*Process, error) {
 	results := []*Process{}
 
 	buf, length, err := CallKernProcSyscall(KernProcAll, 0)
-
 	if err != nil {
 		return results, err
 	}
@@ -506,11 +527,11 @@ func (p *Process) getKProcWithContext(ctx context.Context) (*KinfoProc, error) {
 	return &k, nil
 }
 
-func CallKernProcSyscall(op int32, arg int32) ([]byte, uint64, error) {
+func CallKernProcSyscall(op, arg int32) ([]byte, uint64, error) {
 	return CallKernProcSyscallWithContext(context.Background(), op, arg)
 }
 
-func CallKernProcSyscallWithContext(ctx context.Context, op int32, arg int32) ([]byte, uint64, error) {
+func CallKernProcSyscallWithContext(ctx context.Context, op, arg int32) ([]byte, uint64, error) {
 	mib := []int32{CTLKern, KernProc, op, arg, sizeOfKinfoProc, 0}
 	mibptr := unsafe.Pointer(&mib[0])
 	miblen := uint64(len(mib))

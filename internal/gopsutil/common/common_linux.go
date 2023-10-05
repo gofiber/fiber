@@ -60,7 +60,6 @@ func NumProcs() (uint64, error) {
 }
 
 func BootTimeWithContext(ctx context.Context) (uint64, error) {
-
 	system, role, err := Virtualization()
 	if err != nil {
 		return 0, err
@@ -191,7 +190,6 @@ func VirtualizationWithContext(ctx context.Context) (string, string, error) {
 	if PathExists(filepath.Join(filename, "self", "status")) {
 		contents, err := ReadLines(filepath.Join(filename, "self", "status"))
 		if err == nil {
-
 			if StringsContains(contents, "s_context:") ||
 				StringsContains(contents, "VxID:") {
 				system = "linux-vserver"
@@ -240,7 +238,7 @@ func VirtualizationWithContext(ctx context.Context) (string, string, error) {
 	return system, role, nil
 }
 
-func GetOSRelease() (platform string, version string, err error) {
+func GetOSRelease() (platform, version string, err error) {
 	contents, err := ReadLines(HostEtc("os-release"))
 	if err != nil {
 		return "", "", nil // return empty

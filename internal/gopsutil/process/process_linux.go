@@ -14,10 +14,11 @@ import (
 	"strconv"
 	"strings"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/gofiber/fiber/v2/internal/gopsutil/common"
 	"github.com/gofiber/fiber/v2/internal/gopsutil/cpu"
 	"github.com/gofiber/fiber/v2/internal/gopsutil/net"
-	"golang.org/x/sys/unix"
 )
 
 var PageSize = uint64(os.Getpagesize())
@@ -332,7 +333,7 @@ func (p *Process) RlimitUsageWithContext(ctx context.Context, gatherUsed bool) (
 		case RLIMIT_AS:
 			rs.Used = uint64(p.memInfo.VMS)
 		case RLIMIT_LOCKS:
-			//TODO we can get the used value from /proc/$pid/locks. But linux doesn't enforce it, so not a high priority.
+			// TODO we can get the used value from /proc/$pid/locks. But linux doesn't enforce it, so not a high priority.
 		case RLIMIT_SIGPENDING:
 			rs.Used = p.sigInfo.PendingProcess
 		case RLIMIT_NICE:
@@ -477,7 +478,6 @@ func (p *Process) PageFaultsWithContext(ctx context.Context) (*PageFaultsStat, e
 		return nil, err
 	}
 	return pageFaults, nil
-
 }
 
 // Children returns a slice of Process of the process.
@@ -571,7 +571,7 @@ func (p *Process) MemoryMapsWithContext(ctx context.Context, grouped bool) (*[]M
 	lines := strings.Split(string(contents), "\n")
 
 	// function of parsing a block
-	getBlock := func(first_line []string, block []string) (MemoryMapsStat, error) {
+	getBlock := func(first_line, block []string) (MemoryMapsStat, error) {
 		m := MemoryMapsStat{}
 		m.Path = first_line[len(first_line)-1]
 
@@ -703,7 +703,7 @@ func (p *Process) fillFromLimitsWithContext(ctx context.Context) ([]RlimitStat, 
 		// Remove last item from string
 		str = str[:len(str)-1]
 
-		//Now last item is a Soft limit
+		// Now last item is a Soft limit
 		statItem.Soft, err = limitToInt(str[len(str)-1])
 		if err != nil {
 			return nil, err
@@ -711,7 +711,7 @@ func (p *Process) fillFromLimitsWithContext(ctx context.Context) ([]RlimitStat, 
 		// Remove last item from string
 		str = str[:len(str)-1]
 
-		//The rest is a stats name
+		// The rest is a stats name
 		resourceName := strings.Join(str, " ")
 		switch resourceName {
 		case "Max cpu time":

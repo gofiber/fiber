@@ -56,7 +56,7 @@ func dispRelease(this *ole.IUnknown) int32 {
 	return pthis.ref
 }
 
-func dispGetIDsOfNames(this *ole.IUnknown, iid *ole.GUID, wnames []*uint16, namelen int, lcid int, pdisp []int32) uintptr {
+func dispGetIDsOfNames(this *ole.IUnknown, iid *ole.GUID, wnames []*uint16, namelen, lcid int, pdisp []int32) uintptr {
 	pthis := (*stdDispatch)(unsafe.Pointer(this))
 	names := make([]string, len(wnames))
 	for i := 0; i < len(names); i++ {

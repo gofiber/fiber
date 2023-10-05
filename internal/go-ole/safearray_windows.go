@@ -32,8 +32,8 @@ var (
 	procSafeArrayUnaccessData      = modoleaut32.NewProc("SafeArrayUnaccessData")
 	procSafeArrayUnlock            = modoleaut32.NewProc("SafeArrayUnlock")
 	procSafeArrayPutElement        = modoleaut32.NewProc("SafeArrayPutElement")
-	//procSafeArrayRedim             = modoleaut32.NewProc("SafeArrayRedim") // TODO
-	//procSafeArraySetIID            = modoleaut32.NewProc("SafeArraySetIID") // TODO
+	// procSafeArrayRedim             = modoleaut32.NewProc("SafeArrayRedim") // TODO
+	// procSafeArraySetIID            = modoleaut32.NewProc("SafeArraySetIID") // TODO
 	procSafeArrayGetRecordInfo = modoleaut32.NewProc("SafeArrayGetRecordInfo")
 	procSafeArraySetRecordInfo = modoleaut32.NewProc("SafeArraySetRecordInfo")
 )
@@ -101,7 +101,7 @@ func safeArrayCopy(original *SafeArray) (safearray *SafeArray, err error) {
 // safeArrayCopyData duplicates SafeArray into another SafeArray object.
 //
 // AKA: SafeArrayCopyData in Windows API.
-func safeArrayCopyData(original *SafeArray, duplicate *SafeArray) (err error) {
+func safeArrayCopyData(original, duplicate *SafeArray) (err error) {
 	err = convertHresultToError(
 		procSafeArrayCopyData.Call(
 			uintptr(unsafe.Pointer(original)),

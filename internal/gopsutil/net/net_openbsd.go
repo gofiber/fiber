@@ -17,8 +17,9 @@ import (
 
 var portMatch = regexp.MustCompile(`(.*)\.(\d+)$`)
 
-func ParseNetstat(output string, mode string,
-	iocs map[string]IOCountersStat) error {
+func ParseNetstat(output, mode string,
+	iocs map[string]IOCountersStat,
+) error {
 	lines := strings.Split(output, "\n")
 
 	exists := make([]string, 0, len(lines)-1)
@@ -220,7 +221,7 @@ func parseNetstatLine(line string) (ConnectionStat, error) {
 	return n, nil
 }
 
-func parseNetstatAddr(local string, remote string, family uint32) (laddr Addr, raddr Addr, err error) {
+func parseNetstatAddr(local, remote string, family uint32) (laddr, raddr Addr, err error) {
 	parse := func(l string) (Addr, error) {
 		matches := portMatch.FindStringSubmatch(l)
 		if matches == nil {
@@ -299,7 +300,6 @@ func ConnectionsWithContext(ctx context.Context, kind string) ([]ConnectionStat,
 		return nil, err
 	}
 	out, err := invoke.CommandWithContext(ctx, netstat, args...)
-
 	if err != nil {
 		return nil, err
 	}

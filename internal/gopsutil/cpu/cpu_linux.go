@@ -37,7 +37,7 @@ func Times(percpu bool) ([]TimesStat, error) {
 
 func TimesWithContext(ctx context.Context, percpu bool) ([]TimesStat, error) {
 	filename := common.HostProc("stat")
-	var lines = []string{}
+	lines := []string{}
 	if percpu {
 		statlines, err := common.ReadLines(filename)
 		if err != nil || len(statlines) < 2 {
@@ -314,7 +314,7 @@ func CountsWithContext(ctx context.Context, logical bool) (int, error) {
 	}
 	// physical cores
 	// https://github.com/giampaolo/psutil/blob/122174a10b75c9beebe15f6c07dcf3afbe3b120d/psutil/_pslinux.py#L621-L629
-	var threadSiblingsLists = make(map[string]bool)
+	threadSiblingsLists := make(map[string]bool)
 	if files, err := filepath.Glob(common.HostSys("devices/system/cpu/cpu[0-9]*/topology/thread_siblings_list")); err == nil {
 		for _, file := range files {
 			lines, err := common.ReadLines(file)

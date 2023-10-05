@@ -24,7 +24,7 @@ type PROCESS_MEMORY_COUNTERS struct {
 
 func queryPebAddress(procHandle syscall.Handle, is32BitProcess bool) uint64 {
 	if is32BitProcess {
-		//we are on a 32-bit process reading an external 32-bit process
+		// we are on a 32-bit process reading an external 32-bit process
 		var info processBasicInformation32
 
 		ret, _, _ := common.ProcNtQueryInformationProcess.Call(
@@ -38,8 +38,8 @@ func queryPebAddress(procHandle syscall.Handle, is32BitProcess bool) uint64 {
 			return uint64(info.PebBaseAddress)
 		}
 	} else {
-		//we are on a 32-bit process reading an external 64-bit process
-		if common.ProcNtWow64QueryInformationProcess64.Find() == nil { //avoid panic
+		// we are on a 32-bit process reading an external 64-bit process
+		if common.ProcNtWow64QueryInformationProcess64.Find() == nil { // avoid panic
 			var info processBasicInformation64
 
 			ret, _, _ := common.ProcNtWow64QueryInformationProcess64.Call(
@@ -55,7 +55,7 @@ func queryPebAddress(procHandle syscall.Handle, is32BitProcess bool) uint64 {
 		}
 	}
 
-	//return 0 on error
+	// return 0 on error
 	return 0
 }
 
@@ -76,19 +76,19 @@ func readProcessMemory(h syscall.Handle, is32BitProcess bool, address uint64, si
 			return buffer[:read]
 		}
 	} else {
-		//reading a 64-bit process from a 32-bit one
-		if common.ProcNtWow64ReadVirtualMemory64.Find() == nil { //avoid panic
+		// reading a 64-bit process from a 32-bit one
+		if common.ProcNtWow64ReadVirtualMemory64.Find() == nil { // avoid panic
 			var read uint64
 
 			buffer := make([]byte, size)
 
 			ret, _, _ := common.ProcNtWow64ReadVirtualMemory64.Call(
 				uintptr(h),
-				uintptr(address&0xFFFFFFFF), //the call expects a 64-bit value
+				uintptr(address&0xFFFFFFFF), // the call expects a 64-bit value
 				uintptr(address>>32),
 				uintptr(unsafe.Pointer(&buffer[0])),
-				uintptr(size), //the call expects a 64-bit value
-				uintptr(0),    //but size is 32-bit so pass zero as the high dword
+				uintptr(size), // the call expects a 64-bit value
+				uintptr(0),    // but size is 32-bit so pass zero as the high dword
 				uintptr(unsafe.Pointer(&read)),
 			)
 			if int(ret) >= 0 && read > 0 {
@@ -97,6 +97,6 @@ func readProcessMemory(h syscall.Handle, is32BitProcess bool, address uint64, si
 		}
 	}
 
-	//if we reach here, an error happened
+	// if we reach here, an error happened
 	return nil
 }

@@ -107,5 +107,4 @@ func allCPUTimes() ([]TimesStat, error) {
 	}
 
 	return []TimesStat{c}, nil
-
 }

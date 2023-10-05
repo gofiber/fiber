@@ -11,10 +11,11 @@ import (
 	"syscall"
 	"unsafe"
 
+	"golang.org/x/sys/windows"
+
 	"github.com/gofiber/fiber/v2/internal/gopsutil/common"
 	cpu "github.com/gofiber/fiber/v2/internal/gopsutil/cpu"
 	net "github.com/gofiber/fiber/v2/internal/gopsutil/net"
-	"golang.org/x/sys/windows"
 )
 
 var (
@@ -76,11 +77,9 @@ type systemInfo struct {
 }
 
 // Memory_info_ex is different between OSes
-type MemoryInfoExStat struct {
-}
+type MemoryInfoExStat struct{}
 
-type MemoryMapsStat struct {
-}
+type MemoryMapsStat struct{}
 
 // ioCounters is an equivalent representation of IO_COUNTERS in the Windows API.
 // https://docs.microsoft.com/windows/win32/api/winnt/ns-winnt-io_counters
@@ -128,8 +127,10 @@ type winTokenPriviledges struct {
 	Privileges     [1]winLUIDAndAttributes
 }
 
-type winLong int32
-type winDWord uint32
+type (
+	winLong  int32
+	winDWord uint32
+)
 
 func init() {
 	var systemInfo systemInfo
@@ -194,7 +195,6 @@ func pidsWithContext(ctx context.Context) ([]int32, error) {
 		return ret, nil
 
 	}
-
 }
 
 func PidExistsWithContext(ctx context.Context, pid int32) (bool, error) {
@@ -337,6 +337,7 @@ func (p *Process) Cwd() (string, error) {
 func (p *Process) CwdWithContext(ctx context.Context) (string, error) {
 	return "", common.ErrNotImplementedError
 }
+
 func (p *Process) Parent() (*Process, error) {
 	return p.ParentWithContext(context.Background())
 }
@@ -349,6 +350,7 @@ func (p *Process) ParentWithContext(ctx context.Context) (*Process, error) {
 
 	return NewProcess(ppid)
 }
+
 func (p *Process) Status() (string, error) {
 	return p.StatusWithContext(context.Background())
 }
@@ -401,6 +403,7 @@ func (p *Process) UidsWithContext(ctx context.Context) ([]int32, error) {
 
 	return uids, common.ErrNotImplementedError
 }
+
 func (p *Process) Gids() ([]int32, error) {
 	return p.GidsWithContext(context.Background())
 }
@@ -414,6 +417,7 @@ func (p *Process) GroupsWithContext(ctx context.Context) ([]int32, error) {
 	var groups []int32
 	return groups, common.ErrNotImplementedError
 }
+
 func (p *Process) Terminal() (string, error) {
 	return p.TerminalWithContext(context.Background())
 }
@@ -455,6 +459,7 @@ func (p *Process) NiceWithContext(ctx context.Context) (int32, error) {
 	}
 	return priority, nil
 }
+
 func (p *Process) IOnice() (int32, error) {
 	return p.IOniceWithContext(context.Background())
 }
@@ -462,6 +467,7 @@ func (p *Process) IOnice() (int32, error) {
 func (p *Process) IOniceWithContext(ctx context.Context) (int32, error) {
 	return 0, common.ErrNotImplementedError
 }
+
 func (p *Process) Rlimit() ([]RlimitStat, error) {
 	return p.RlimitWithContext(context.Background())
 }
@@ -471,6 +477,7 @@ func (p *Process) RlimitWithContext(ctx context.Context) ([]RlimitStat, error) {
 
 	return rlimit, common.ErrNotImplementedError
 }
+
 func (p *Process) RlimitUsage(gatherUsed bool) ([]RlimitStat, error) {
 	return p.RlimitUsageWithContext(context.Background(), gatherUsed)
 }
@@ -505,6 +512,7 @@ func (p *Process) IOCountersWithContext(ctx context.Context) (*IOCountersStat, e
 
 	return stats, nil
 }
+
 func (p *Process) NumCtxSwitches() (*NumCtxSwitchesStat, error) {
 	return p.NumCtxSwitchesWithContext(context.Background())
 }
@@ -512,6 +520,7 @@ func (p *Process) NumCtxSwitches() (*NumCtxSwitchesStat, error) {
 func (p *Process) NumCtxSwitchesWithContext(ctx context.Context) (*NumCtxSwitchesStat, error) {
 	return nil, common.ErrNotImplementedError
 }
+
 func (p *Process) NumFDs() (int32, error) {
 	return p.NumFDsWithContext(context.Background())
 }
@@ -519,6 +528,7 @@ func (p *Process) NumFDs() (int32, error) {
 func (p *Process) NumFDsWithContext(ctx context.Context) (int32, error) {
 	return 0, common.ErrNotImplementedError
 }
+
 func (p *Process) NumThreads() (int32, error) {
 	return p.NumThreadsWithContext(context.Background())
 }
@@ -530,6 +540,7 @@ func (p *Process) NumThreadsWithContext(ctx context.Context) (int32, error) {
 	}
 	return ret, nil
 }
+
 func (p *Process) Threads() (map[int32]*cpu.TimesStat, error) {
 	return p.ThreadsWithContext(context.Background())
 }
@@ -538,6 +549,7 @@ func (p *Process) ThreadsWithContext(ctx context.Context) (map[int32]*cpu.TimesS
 	ret := make(map[int32]*cpu.TimesStat)
 	return ret, common.ErrNotImplementedError
 }
+
 func (p *Process) Times() (*cpu.TimesStat, error) {
 	return p.TimesWithContext(context.Background())
 }
@@ -565,6 +577,7 @@ func (p *Process) TimesWithContext(ctx context.Context) (*cpu.TimesStat, error) 
 		System: kernel,
 	}, nil
 }
+
 func (p *Process) CPUAffinity() ([]int32, error) {
 	return p.CPUAffinityWithContext(context.Background())
 }
@@ -572,6 +585,7 @@ func (p *Process) CPUAffinity() ([]int32, error) {
 func (p *Process) CPUAffinityWithContext(ctx context.Context) ([]int32, error) {
 	return nil, common.ErrNotImplementedError
 }
+
 func (p *Process) MemoryInfo() (*MemoryInfoStat, error) {
 	return p.MemoryInfoWithContext(context.Background())
 }
@@ -589,6 +603,7 @@ func (p *Process) MemoryInfoWithContext(ctx context.Context) (*MemoryInfoStat, e
 
 	return ret, nil
 }
+
 func (p *Process) MemoryInfoEx() (*MemoryInfoExStat, error) {
 	return p.MemoryInfoExWithContext(context.Background())
 }
@@ -878,7 +893,7 @@ func is32BitProcess(procHandle syscall.Handle) bool {
 			return true
 		}
 	} else {
-		//if the OS does not support the call, we fallback into the bitness of the app
+		// if the OS does not support the call, we fallback into the bitness of the app
 		if unsafe.Sizeof(wow64) == 4 {
 			return true
 		}
@@ -919,7 +934,7 @@ func getProcessCommandLine(pid int32) (string, error) {
 		procIs32Bits = is32BitProcess(syscall.Handle(h))
 
 	default:
-		//for other unknown platforms, we rely on process platform
+		// for other unknown platforms, we rely on process platform
 		if unsafe.Sizeof(processorArchitecture) == 8 {
 			procIs32Bits = false
 		}
@@ -937,17 +952,17 @@ func getProcessCommandLine(pid int32) (string, error) {
 		}
 		userProcParams := uint64(buf[0]) | (uint64(buf[1]) << 8) | (uint64(buf[2]) << 16) | (uint64(buf[3]) << 24)
 
-		//read CommandLine field from PRTL_USER_PROCESS_PARAMETERS
+		// read CommandLine field from PRTL_USER_PROCESS_PARAMETERS
 		remoteCmdLine := readProcessMemory(syscall.Handle(h), procIs32Bits, userProcParams+uint64(64), 8)
 		if len(remoteCmdLine) != 8 {
 			return "", errors.New("cannot read cmdline field")
 		}
 
-		//remoteCmdLine is actually a UNICODE_STRING32
-		//the first two bytes has the length
+		// remoteCmdLine is actually a UNICODE_STRING32
+		// the first two bytes has the length
 		cmdLineLength := uint(remoteCmdLine[0]) | (uint(remoteCmdLine[1]) << 8)
 		if cmdLineLength > 0 {
-			//and, at offset 4, is the pointer to the buffer
+			// and, at offset 4, is the pointer to the buffer
 			bufferAddress := uint32(remoteCmdLine[4]) | (uint32(remoteCmdLine[5]) << 8) |
 				(uint32(remoteCmdLine[6]) << 16) | (uint32(remoteCmdLine[7]) << 24)
 
@@ -966,17 +981,17 @@ func getProcessCommandLine(pid int32) (string, error) {
 		userProcParams := uint64(buf[0]) | (uint64(buf[1]) << 8) | (uint64(buf[2]) << 16) | (uint64(buf[3]) << 24) |
 			(uint64(buf[4]) << 32) | (uint64(buf[5]) << 40) | (uint64(buf[6]) << 48) | (uint64(buf[7]) << 56)
 
-		//read CommandLine field from PRTL_USER_PROCESS_PARAMETERS
+		// read CommandLine field from PRTL_USER_PROCESS_PARAMETERS
 		remoteCmdLine := readProcessMemory(syscall.Handle(h), procIs32Bits, userProcParams+uint64(112), 16)
 		if len(remoteCmdLine) != 16 {
 			return "", errors.New("cannot read cmdline field")
 		}
 
-		//remoteCmdLine is actually a UNICODE_STRING64
-		//the first two bytes has the length
+		// remoteCmdLine is actually a UNICODE_STRING64
+		// the first two bytes has the length
 		cmdLineLength := uint(remoteCmdLine[0]) | (uint(remoteCmdLine[1]) << 8)
 		if cmdLineLength > 0 {
-			//and, at offset 8, is the pointer to the buffer
+			// and, at offset 8, is the pointer to the buffer
 			bufferAddress := uint64(remoteCmdLine[8]) | (uint64(remoteCmdLine[9]) << 8) |
 				(uint64(remoteCmdLine[10]) << 16) | (uint64(remoteCmdLine[11]) << 24) |
 				(uint64(remoteCmdLine[12]) << 32) | (uint64(remoteCmdLine[13]) << 40) |
@@ -991,7 +1006,7 @@ func getProcessCommandLine(pid int32) (string, error) {
 		}
 	}
 
-	//if we reach here, we have no command line
+	// if we reach here, we have no command line
 	return "", nil
 }
 

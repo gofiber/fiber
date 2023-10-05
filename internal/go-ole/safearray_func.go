@@ -51,7 +51,7 @@ func safeArrayCopy(original *SafeArray) (*SafeArray, error) {
 // safeArrayCopyData duplicates SafeArray into another SafeArray object.
 //
 // AKA: SafeArrayCopyData in Windows API.
-func safeArrayCopyData(original *SafeArray, duplicate *SafeArray) error {
+func safeArrayCopyData(original, duplicate *SafeArray) error {
 	return NewError(E_NOTIMPL)
 }
 

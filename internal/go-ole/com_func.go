@@ -92,12 +92,12 @@ func StringFromIID(iid *GUID) (string, error) {
 }
 
 // CreateInstance of single uninitialized object with GUID.
-func CreateInstance(clsid *GUID, iid *GUID) (*IUnknown, error) {
+func CreateInstance(clsid, iid *GUID) (*IUnknown, error) {
 	return nil, NewError(E_NOTIMPL)
 }
 
 // GetActiveObject retrieves pointer to active object.
-func GetActiveObject(clsid *GUID, iid *GUID) (*IUnknown, error) {
+func GetActiveObject(clsid, iid *GUID) (*IUnknown, error) {
 	return nil, NewError(E_NOTIMPL)
 }
 
@@ -150,7 +150,7 @@ func CreateDispTypeInfo(idata *INTERFACEDATA) (*IUnknown, error) {
 }
 
 // copyMemory moves location of a block of memory.
-func copyMemory(dest unsafe.Pointer, src unsafe.Pointer, length uint32) {}
+func copyMemory(dest, src unsafe.Pointer, length uint32) {}
 
 // GetUserDefaultLCID retrieves current user default locale.
 func GetUserDefaultLCID() uint32 {
@@ -160,7 +160,7 @@ func GetUserDefaultLCID() uint32 {
 // GetMessage in message queue from runtime.
 //
 // This function appears to block. PeekMessage does not block.
-func GetMessage(msg *Msg, hwnd uint32, MsgFilterMin uint32, MsgFilterMax uint32) (int32, error) {
+func GetMessage(msg *Msg, hwnd, MsgFilterMin, MsgFilterMax uint32) (int32, error) {
 	return int32(0), NewError(E_NOTIMPL)
 }
 

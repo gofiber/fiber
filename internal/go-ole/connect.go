@@ -44,8 +44,8 @@ func (c *Connection) Release() {
 
 // Load COM object from list of programIDs or strings.
 func (c *Connection) Load(names ...string) (errors []error) {
-	var tempErrors = make([]error, len(names))
-	var numErrors = 0
+	tempErrors := make([]error, len(names))
+	numErrors := 0
 	for _, name := range names {
 		err := c.Create(name)
 		if err != nil {

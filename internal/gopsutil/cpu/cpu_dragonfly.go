@@ -11,18 +11,21 @@ import (
 	"strings"
 	"unsafe"
 
-	"github.com/gofiber/fiber/v2/internal/gopsutil/common"
 	"golang.org/x/sys/unix"
+
+	"github.com/gofiber/fiber/v2/internal/gopsutil/common"
 )
 
-var ClocksPerSec = float64(128)
-var cpuMatch = regexp.MustCompile(`^CPU:`)
-var originMatch = regexp.MustCompile(`Origin\s*=\s*"(.+)"\s+Id\s*=\s*(.+)\s+Stepping\s*=\s*(.+)`)
-var featuresMatch = regexp.MustCompile(`Features=.+<(.+)>`)
-var featuresMatch2 = regexp.MustCompile(`Features2=[a-f\dx]+<(.+)>`)
-var cpuEnd = regexp.MustCompile(`^Trying to mount root`)
-var cpuTimesSize int
-var emptyTimes cpuTimes
+var (
+	ClocksPerSec   = float64(128)
+	cpuMatch       = regexp.MustCompile(`^CPU:`)
+	originMatch    = regexp.MustCompile(`Origin\s*=\s*"(.+)"\s+Id\s*=\s*(.+)\s+Stepping\s*=\s*(.+)`)
+	featuresMatch  = regexp.MustCompile(`Features=.+<(.+)>`)
+	featuresMatch2 = regexp.MustCompile(`Features2=[a-f\dx]+<(.+)>`)
+	cpuEnd         = regexp.MustCompile(`^Trying to mount root`)
+	cpuTimesSize   int
+	emptyTimes     cpuTimes
+)
 
 func init() {
 	getconf, err := exec.LookPath("getconf")

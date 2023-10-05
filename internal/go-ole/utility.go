@@ -93,7 +93,7 @@ func lpOleStrLen(p *uint16) (length int64) {
 }
 
 // convertHresultToError converts syscall to error, if call is unsuccessful.
-func convertHresultToError(hr uintptr, r2 uintptr, ignore error) (err error) {
+func convertHresultToError(hr, r2 uintptr, ignore error) (err error) {
 	if hr != 0 {
 		err = NewError(hr)
 	}
