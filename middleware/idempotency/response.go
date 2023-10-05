@@ -1,5 +1,6 @@
 package idempotency
 
+//go:generate go install -v github.com/tinylib/msgp/...@latest
 //go:generate msgp -o=response_msgp.go -io=false -unexported
 type response struct {
 	StatusCode int `msg:"sc"`
