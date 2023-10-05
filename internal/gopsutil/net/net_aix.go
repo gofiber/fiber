@@ -1,5 +1,4 @@
 //go:build aix
-// +build aix
 
 package net
 

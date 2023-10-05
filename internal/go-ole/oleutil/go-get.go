@@ -2,6 +2,5 @@
 // no buildable Go source files in ...
 //
 //go:build !windows
-// +build !windows
 
 package oleutil
