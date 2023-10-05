@@ -428,14 +428,10 @@ app.Get("/", func(c *fiber.Ctx) error {
         }
 
         log.Println(p.Name)     // Joseph
-        log.Println(p.Age)     // 23
-        log.Println(p.Job) // true
-
-        // ...
+        log.Println(p.Age)      // 23
+        log.Println(p.Job)      // true
 })
 // Run tests with the following curl command
-
-// curl "http://localhost:3000/?name=john&pass=doe&products=shoe,hat"
 // curl.exe --cookie "name=Joseph; age=23; job=true" http://localhost:8000/
 ```
 
