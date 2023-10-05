@@ -14,11 +14,12 @@ import (
 	"strings"
 	"unsafe"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/gofiber/fiber/v2/internal/gopsutil/common"
 	cpu "github.com/gofiber/fiber/v2/internal/gopsutil/cpu"
 	mem "github.com/gofiber/fiber/v2/internal/gopsutil/mem"
 	net "github.com/gofiber/fiber/v2/internal/gopsutil/net"
-	"golang.org/x/sys/unix"
 )
 
 // MemoryInfoExStat is different between OSes

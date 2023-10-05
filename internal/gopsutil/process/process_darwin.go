@@ -15,10 +15,11 @@ import (
 	"time"
 	"unsafe"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/gofiber/fiber/v2/internal/gopsutil/common"
 	"github.com/gofiber/fiber/v2/internal/gopsutil/cpu"
 	"github.com/gofiber/fiber/v2/internal/gopsutil/net"
-	"golang.org/x/sys/unix"
 )
 
 // copied from sys/sysctl.h

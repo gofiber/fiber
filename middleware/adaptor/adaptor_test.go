@@ -12,9 +12,10 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/valyala/fasthttp"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
-	"github.com/valyala/fasthttp"
 )
 
 func Test_HTTPHandler(t *testing.T) {

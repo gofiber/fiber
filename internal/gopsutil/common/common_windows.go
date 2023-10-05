@@ -11,8 +11,9 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/gofiber/fiber/v2/internal/wmi"
 	"golang.org/x/sys/windows"
+
+	"github.com/gofiber/fiber/v2/internal/wmi"
 )
 
 // for double values

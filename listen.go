@@ -19,10 +19,11 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/gofiber/fiber/v2/log"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
 	"github.com/mattn/go-runewidth"
+
+	"github.com/gofiber/fiber/v2/log"
 )
 
 const (

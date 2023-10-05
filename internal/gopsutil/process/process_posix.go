@@ -15,8 +15,9 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/gofiber/fiber/v2/internal/gopsutil/common"
 	"golang.org/x/sys/unix"
+
+	"github.com/gofiber/fiber/v2/internal/gopsutil/common"
 )
 
 // POSIX

@@ -11,8 +11,9 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/gofiber/fiber/v2/internal/gopsutil/common"
 	"golang.org/x/sys/windows"
+
+	"github.com/gofiber/fiber/v2/internal/gopsutil/common"
 )
 
 var (

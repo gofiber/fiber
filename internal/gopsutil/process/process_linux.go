@@ -15,10 +15,11 @@ import (
 	"strconv"
 	"strings"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/gofiber/fiber/v2/internal/gopsutil/common"
 	"github.com/gofiber/fiber/v2/internal/gopsutil/cpu"
 	"github.com/gofiber/fiber/v2/internal/gopsutil/net"
-	"golang.org/x/sys/unix"
 )
 
 var PageSize = uint64(os.Getpagesize())

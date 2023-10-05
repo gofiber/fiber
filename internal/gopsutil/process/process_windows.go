@@ -12,10 +12,11 @@ import (
 	"syscall"
 	"unsafe"
 
+	"golang.org/x/sys/windows"
+
 	"github.com/gofiber/fiber/v2/internal/gopsutil/common"
 	cpu "github.com/gofiber/fiber/v2/internal/gopsutil/cpu"
 	net "github.com/gofiber/fiber/v2/internal/gopsutil/net"
-	"golang.org/x/sys/windows"
 )
 
 var (
