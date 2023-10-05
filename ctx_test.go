@@ -2771,6 +2771,26 @@ func Test_Ctx_JSON(t *testing.T) {
 	testEmpty("", `""`)
 	testEmpty(0, "0")
 	testEmpty([]int{}, "[]")
+
+	t.Run("custom json encoder", func(t *testing.T) {
+		t.Parallel()
+
+		app := New(Config{
+			JSONEncoder: func(v interface{}) ([]byte, error) {
+				return []byte(`["custom","json"]`), nil
+			},
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+
+		err := c.JSON(Map{ // map has no order
+			"Name": "Grame",
+			"Age":  20,
+		})
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, `["custom","json"]`, string(c.Response().Body()))
+		utils.AssertEqual(t, "application/json", string(c.Response().Header.Peek("content-type")))
+	})
 }
 
 // go test -run=^$ -bench=Benchmark_Ctx_JSON -benchmem -count=4
@@ -2820,6 +2840,26 @@ func Test_Ctx_JSONP(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, `john({"Age":20,"Name":"Grame"});`, string(c.Response().Body()))
 	utils.AssertEqual(t, "text/javascript; charset=utf-8", string(c.Response().Header.Peek("content-type")))
+
+	t.Run("custom json encoder", func(t *testing.T) {
+		t.Parallel()
+
+		app := New(Config{
+			JSONEncoder: func(v interface{}) ([]byte, error) {
+				return []byte(`["custom","json"]`), nil
+			},
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+
+		err := c.JSONP(Map{ // map has no order
+			"Name": "Grame",
+			"Age":  20,
+		})
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, `callback(["custom","json"]);`, string(c.Response().Body()))
+		utils.AssertEqual(t, "text/javascript; charset=utf-8", string(c.Response().Header.Peek("content-type")))
+	})
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_JSONP -benchmem -count=4
@@ -2879,6 +2919,33 @@ func Test_Ctx_XML(t *testing.T) {
 	testEmpty("", `<string></string>`)
 	testEmpty(0, "<int>0</int>")
 	testEmpty([]int{}, "")
+
+	t.Run("custom xml encoder", func(t *testing.T) {
+		t.Parallel()
+
+		app := New(Config{
+			XMLEncoder: func(v interface{}) ([]byte, error) {
+				return []byte(`<custom>xml</custom>`), nil
+			},
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+
+		type xmlResult struct {
+			XMLName xml.Name `xml:"Users"`
+			Names   []string `xml:"Names"`
+			Ages    []int    `xml:"Ages"`
+		}
+
+		err := c.XML(xmlResult{
+			Names: []string{"Grame", "John"},
+			Ages:  []int{1, 12, 20},
+		})
+
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, `<custom>xml</custom>`, string(c.Response().Body()))
+		utils.AssertEqual(t, "application/xml", string(c.Response().Header.Peek("content-type")))
+	})
 }
 
 // go test -run=^$ -bench=Benchmark_Ctx_XML -benchmem -count=4

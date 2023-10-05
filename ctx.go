@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -863,9 +862,9 @@ func (c *Ctx) JSON(data interface{}) error {
 // This method is identical to JSON, except that it opts-in to JSONP callback support.
 // By default, the callback name is simply callback.
 func (c *Ctx) JSONP(data interface{}, callback ...string) error {
-	raw, err := json.Marshal(data)
+	raw, err := c.app.config.JSONEncoder(data)
 	if err != nil {
-		return fmt.Errorf("failed to marshal: %w", err)
+		return err
 	}
 
 	var result, cb string
