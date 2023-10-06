@@ -254,6 +254,8 @@ func SendFile(c *fiber.Ctx, filesystem http.FileSystem, path string) error {
 		return fiber.ErrForbidden
 	}
 
+	c.Status(fiber.StatusOK)
+
 	modTime := stat.ModTime()
 	contentLength := int(stat.Size())
 
