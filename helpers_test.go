@@ -77,6 +77,28 @@ func Test_Utils_GetOffer(t *testing.T) {
 	utils.AssertEqual(t, "text/html", getOffer("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", acceptsOfferType, "text/html"))
 	utils.AssertEqual(t, "application/pdf", getOffer("text/plain;q=0,application/pdf;q=0.9,*/*;q=0.000", acceptsOfferType, "application/pdf", "application/json"))
 	utils.AssertEqual(t, "application/pdf", getOffer("text/plain;q=0,application/pdf;q=0.9,*/*;q=0.000", acceptsOfferType, "application/pdf", "application/json"))
+	utils.AssertEqual(t, "text/plain;a=1", getOffer("text/plain;a=1", acceptsOfferType, "text/plain;a=1"))
+	utils.AssertEqual(t, "", getOffer("text/plain;a=1;b=2", acceptsOfferType, "text/plain;b=2"))
+
+	// Spaces, quotes, out of order params, and case insensitivity
+	utils.AssertEqual(t, "text/plain", getOffer("text/plain  ", acceptsOfferType, "text/plain"))
+	utils.AssertEqual(t, "text/plain", getOffer("text/plain;q=0.4  ", acceptsOfferType, "text/plain"))
+	utils.AssertEqual(t, "text/plain", getOffer("text/plain;q=0.4  ;", acceptsOfferType, "text/plain"))
+	utils.AssertEqual(t, "text/plain", getOffer("text/plain;q=0.4  ; p=foo", acceptsOfferType, "text/plain"))
+	utils.AssertEqual(t, "text/plain;b=2;a=1", getOffer("text/plain ;a=1;b=2", acceptsOfferType, "text/plain;b=2;a=1"))
+	utils.AssertEqual(t, "text/plain;a=1", getOffer("text/plain;   a=1   ", acceptsOfferType, "text/plain;a=1"))
+	utils.AssertEqual(t, `text/plain;a="1;b=2\",text/plain"`, getOffer(`text/plain;a="1;b=2\",text/plain";q=0.9`, acceptsOfferType, `text/plain;a=1;b=2`, `text/plain;a="1;b=2\",text/plain"`))
+	utils.AssertEqual(t, "text/plain;A=CAPS", getOffer(`text/plain;a="caPs"`, acceptsOfferType, "text/plain;A=CAPS"))
+
+	// Priority
+	utils.AssertEqual(t, "text/plain", getOffer("text/plain", acceptsOfferType, "text/plain", "text/plain;a=1"))
+	utils.AssertEqual(t, "text/plain;a=1", getOffer("text/plain", acceptsOfferType, "text/plain;a=1", "text/plain"))
+	utils.AssertEqual(t, "text/plain;a=1", getOffer("text/plain,text/plain;a=1", acceptsOfferType, "text/plain", "text/plain;a=1"))
+	utils.AssertEqual(t, "text/plain", getOffer("text/plain;q=0.899,text/plain;a=1;q=0.898", acceptsOfferType, "text/plain", "text/plain;a=1"))
+	utils.AssertEqual(t, "text/plain;a=1;b=2", getOffer("text/plain,text/plain;a=1,text/plain;a=1;b=2", acceptsOfferType, "text/plain", "text/plain;a=1", "text/plain;a=1;b=2"))
+
+	// Takes the last value specified
+	utils.AssertEqual(t, "text/plain;a=1;b=2", getOffer("text/plain;a=1;b=1;B=2", acceptsOfferType, "text/plain;a=1;b=1", "text/plain;a=1;b=2"))
 
 	utils.AssertEqual(t, "", getOffer("utf-8, iso-8859-1;q=0.5", acceptsOffer))
 	utils.AssertEqual(t, "", getOffer("utf-8, iso-8859-1;q=0.5", acceptsOffer, "ascii"))
@@ -87,6 +109,7 @@ func Test_Utils_GetOffer(t *testing.T) {
 	utils.AssertEqual(t, "", getOffer("gzip, deflate;q=0", acceptsOffer, "deflate"))
 }
 
+// go test -v -run=^$ -bench=Benchmark_Utils_GetOffer -benchmem -count=4
 func Benchmark_Utils_GetOffer(b *testing.B) {
 	headers := []string{
 		"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -104,6 +127,175 @@ func Benchmark_Utils_GetOffer(b *testing.B) {
 		for i, header := range headers {
 			getOffer(header, acceptsOfferType, offers[i]...)
 		}
+	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_Utils_GetOffer_WithParams -benchmem -count=4
+func Benchmark_Utils_GetOffer_WithParams(b *testing.B) {
+	headers := []string{
+		"text/html;p=1,application/xhtml+xml;p=1;b=2,application/xml;a=2;q=0.9,*/*;q=0.8",
+		"application/json; version=1",
+		"utf-8, iso-8859-1;q=0.5",
+	}
+	offers := [][]string{
+		{"text/html;p=1", "application/xml;a=2", "application/xml+xhtml; p=1; b=2"},
+		{"application/json; version=2"},
+		{`utf-8;charset="utf-16"`},
+	}
+	for n := 0; n < b.N; n++ {
+		for i, header := range headers {
+			getOffer(header, acceptsOfferType, offers[i]...)
+		}
+	}
+}
+
+func Test_Utils_ForEachParameter(t *testing.T) {
+	expectedParams := [][]string{
+		{"foo", "1"},
+		{"bar", `20tw,b\\\"b;sack o`},
+	}
+	n := 0
+	forEachParameter(`  ;  foo=1  ;   bar="20tw,b\\\"b;sack o" ; action=skip `, func(p, v string) bool {
+		utils.AssertEqual(t, expectedParams[n][0], p)
+		utils.AssertEqual(t, expectedParams[n][1], v)
+		n++
+		return p != "bar"
+	})
+	// Check that we exited on the second parameter (bar)
+	utils.AssertEqual(t, 2, n)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Utils_ForEachParameter -benchmem -count=4
+func Benchmark_Utils_ForEachParameter(b *testing.B) {
+	for n := 0; n < b.N; n++ {
+		forEachParameter(`  ;  josua=1  ;   vermant="20tw\",bob;sack o" ; version=1; foo=bar;  `, func(s1, s2 string) bool {
+			return true
+		})
+	}
+}
+
+func Test_Utils_ParamsMatch(t *testing.T) {
+	testCases := []struct {
+		description string
+		accept      string
+		offer       string
+		match       bool
+	}{
+		{
+			description: "empty accept and offer",
+			accept:      "",
+			offer:       "",
+			match:       true,
+		},
+		{
+			description: "accept is empty, offer has params",
+			accept:      "",
+			offer:       ";foo=bar",
+			match:       true,
+		},
+		{
+			description: "offer is empty, accept has params",
+			accept:      ";foo=bar",
+			offer:       "",
+			match:       false,
+		},
+		{
+			description: "accept has extra parameters",
+			accept:      ";foo=bar;a=1",
+			offer:       ";foo=bar",
+			match:       false,
+		},
+		{
+			description: "matches regardless of order",
+			accept:      "; a=1; b=2",
+			offer:       ";b=2;a=1",
+			match:       true,
+		},
+		{
+			description: "case insensitive",
+			accept:      ";ParaM=FoO",
+			offer:       ";pAram=foO",
+			match:       true,
+		},
+		{
+			description: "ignores q",
+			accept:      ";q=0.42",
+			offer:       "",
+			match:       true,
+		},
+	}
+
+	for _, tc := range testCases {
+		utils.AssertEqual(t, tc.match, paramsMatch(tc.accept, tc.offer), tc.description)
+	}
+}
+
+func Benchmark_Utils_ParamsMatch(b *testing.B) {
+	var match bool
+	for n := 0; n < b.N; n++ {
+		match = paramsMatch(`; appLe=orange; param="foo"`, `;param=foo; apple=orange`)
+	}
+	utils.AssertEqual(b, true, match)
+}
+
+func Test_Utils_AcceptsOfferType(t *testing.T) {
+	testCases := []struct {
+		description string
+		spec        string
+		specParams  string
+		offerType   string
+		accepts     bool
+	}{
+		{
+			description: "no params, matching",
+			spec:        "application/json",
+			offerType:   "application/json",
+			accepts:     true,
+		},
+		{
+			description: "no params, mismatch",
+			spec:        "application/json",
+			offerType:   "application/xml",
+			accepts:     false,
+		},
+		{
+			description: "params match",
+			spec:        "application/json",
+			specParams:  `; format=foo; version=1`,
+			offerType:   "application/json;version=1;format=foo;q=0.1",
+			accepts:     true,
+		},
+		{
+			description: "spec has extra params",
+			spec:        "text/html",
+			specParams:  "; charset=utf-8",
+			offerType:   "text/html",
+			accepts:     false,
+		},
+		{
+			description: "offer has extra params",
+			spec:        "text/html",
+			offerType:   "text/html;charset=utf-8",
+			accepts:     true,
+		},
+		{
+			description: "ignores optional whitespace",
+			spec:        "application/json",
+			specParams:  `;format=foo; version=1`,
+			offerType:   "application/json;  version=1 ;    format=foo   ",
+			accepts:     true,
+		},
+		{
+			description: "ignores optional whitespace",
+			spec:        "application/json",
+			specParams:  `;format="foo bar"; version=1`,
+			offerType:   `application/json;version="1";format="foo bar"`,
+			accepts:     true,
+		},
+	}
+	for _, tc := range testCases {
+		accepts := acceptsOfferType(tc.spec, tc.offerType, tc.specParams)
+		utils.AssertEqual(t, tc.accepts, accepts, tc.description)
 	}
 }
 
@@ -147,7 +339,7 @@ func Test_Utils_GetSplicedStrList(t *testing.T) {
 func Benchmark_Utils_GetSplicedStrList(b *testing.B) {
 	destination := make([]string, 5)
 	result := destination
-	const input = "deflate, gzip,br,brotli"
+	const input = `deflate, gzip,br,brotli`
 	for n := 0; n < b.N; n++ {
 		result = getSplicedStrList(input, destination)
 	}
@@ -168,6 +360,7 @@ func Test_Utils_SortAcceptedTypes(t *testing.T) {
 		{spec: "image/*", quality: 1, specificity: 2, order: 8},
 		{spec: "image/gif", quality: 1, specificity: 3, order: 9},
 		{spec: "text/plain", quality: 1, specificity: 3, order: 10},
+		{spec: "application/json", quality: 0.999, specificity: 3, params: ";a=1", order: 11},
 	}
 	sortAcceptedTypes(&acceptedTypes)
 	utils.AssertEqual(t, acceptedTypes, []acceptedType{
@@ -179,6 +372,7 @@ func Test_Utils_SortAcceptedTypes(t *testing.T) {
 		{spec: "image/gif", quality: 1, specificity: 3, order: 9},
 		{spec: "text/plain", quality: 1, specificity: 3, order: 10},
 		{spec: "image/*", quality: 1, specificity: 2, order: 8},
+		{spec: "application/json", quality: 0.999, specificity: 3, params: ";a=1", order: 11},
 		{spec: "application/json", quality: 0.999, specificity: 3, order: 3},
 		{spec: "text/*", quality: 0.5, specificity: 2, order: 1},
 		{spec: "*/*", quality: 0.1, specificity: 1, order: 2},
