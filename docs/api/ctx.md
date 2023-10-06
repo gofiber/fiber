@@ -1710,6 +1710,10 @@ app.Get("/file-with-url-chars", func(c *fiber.Ctx) error {
 })
 ```
 
+:::info
+For sending files from embedded file system [this functionality](./middleware/filesystem.md#sendfile) can be used
+:::
+
 ## SendStatus
 
 Sets the status code and the correct status message in the body, if the response body is **empty**.
