@@ -156,6 +156,22 @@ func Test_LogfKeyAndValues(t *testing.T) {
 	}
 }
 
+func Test_WithContextCaller(t *testing.T) {
+	logger = &defaultLogger{
+		stdlog: log.New(os.Stderr, "", log.Lshortfile),
+		depth:  4,
+	}
+
+	var w byteSliceWriter
+	SetOutput(&w)
+	ctx := context.TODO()
+
+	WithContext(ctx).Info("")
+	Info("")
+
+	utils.AssertEqual(t, "default_test.go:169: [Info] \ndefault_test.go:170: [Info] \n", string(w.b))
+}
+
 func Test_SetLevel(t *testing.T) {
 	setLogger := &defaultLogger{
 		stdlog: log.New(os.Stderr, "", log.LstdFlags|log.Lshortfile|log.Lmicroseconds),
