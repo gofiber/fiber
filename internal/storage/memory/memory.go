@@ -137,9 +137,9 @@ func (s *Storage) gc() {
 	}
 }
 
-// Return database client
-func (s *Storage) Conn() map[string]entry {
-	s.mux.RLock()
-	defer s.mux.RUnlock()
-	return s.db
+// ConnLocked can be used to access the underlying db in a thread-safe manner.
+func (s *Storage) ConnLocked(f func(map[string]entry)) {
+	s.mux.Lock()
+	defer s.mux.Unlock()
+	f(s.db)
 }

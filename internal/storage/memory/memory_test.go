@@ -124,9 +124,39 @@ func Test_Storage_Memory_Close(t *testing.T) {
 	utils.AssertEqual(t, nil, testStore.Close())
 }
 
-func Test_Storage_Memory_Conn(t *testing.T) {
+func Test_Storage_Memory_ConnLocked(t *testing.T) {
 	t.Parallel()
-	utils.AssertEqual(t, true, testStore.Conn() != nil)
+	assertConn := func(db map[string]entry) {
+		utils.AssertEqual(t, true, db != nil)
+	}
+	testStore.ConnLocked(assertConn)
+}
+
+func Test_Storage_Memory_ConnLocked_Race(t *testing.T) {
+	key := "test_race"
+	done := make(chan bool)
+	read := func(db map[string]entry) {
+		_ = db[key]
+	}
+	write := func(db map[string]entry) {
+		db[key] = entry{}
+	}
+	doUntilDone := func(fn func(map[string]entry)) {
+		for {
+			select {
+			case <-done:
+				return
+			default:
+				testStore.ConnLocked(fn)
+			}
+		}
+	}
+
+	go doUntilDone(read)
+	go doUntilDone(write)
+
+	time.Sleep(100 * time.Millisecond)
+	done <- true
 }
 
 // go test -v -run=^$ -bench=Benchmark_Storage_Memory -benchmem -count=4
