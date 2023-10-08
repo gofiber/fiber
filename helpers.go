@@ -625,7 +625,7 @@ const (
 	MIMEApplicationJavaScriptCharsetUTF8 = "application/javascript; charset=utf-8"
 )
 
-// HTTP status codes were copied from were copied from net/http with the following updates:
+// HTTP status codes were copied from net/http with the following updates:
 // - Rename StatusNonAuthoritativeInfo to StatusNonAuthoritativeInformation
 // - Add StatusSwitchProxy (306)
 // NOTE: Keep this list in sync with statusMessage
