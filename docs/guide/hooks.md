@@ -1,6 +1,6 @@
 ---
 id: hooks
-title: 🪝 Hooks
+title: 🎣 Hooks
 sidebar_position: 6
 ---
 
