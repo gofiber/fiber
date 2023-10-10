@@ -77,7 +77,14 @@ var ConfigDefault = Config{
 func configDefault(config ...Config) Config {
 	// Return default config if nothing provided
 	if len(config) < 1 {
-		return ConfigDefault
+		cfg := ConfigDefault
+
+		cfg.Lock = NewMemoryLock()
+		cfg.Storage = memory.New(memory.Config{
+			GCInterval: cfg.Lifetime / 2, // Half the lifetime interval
+		})
+
+		return cfg
 	}
 
 	// Override default config
