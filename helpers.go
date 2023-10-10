@@ -625,7 +625,7 @@ const (
 	MIMEApplicationJavaScriptCharsetUTF8 = "application/javascript; charset=utf-8"
 )
 
-// HTTP status codes were copied from https://github.com/nginx/nginx/blob/67d2a9541826ecd5db97d604f23460210fd3e517/conf/mime.types with the following updates:
+// HTTP status codes were copied from net/http with the following updates:
 // - Rename StatusNonAuthoritativeInfo to StatusNonAuthoritativeInformation
 // - Add StatusSwitchProxy (306)
 // NOTE: Keep this list in sync with statusMessage
