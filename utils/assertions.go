@@ -53,7 +53,7 @@ func AssertEqual(tb testing.TB, expected, actual interface{}, description ...str
 	_, _ = fmt.Fprintf(w, "\nExpect:\t%v\t(%s)", expected, aType)
 	_, _ = fmt.Fprintf(w, "\nResult:\t%v\t(%s)", actual, bType)
 
-	result := ""
+	var result string
 	if err := w.Flush(); err != nil {
 		result = err.Error()
 	} else {

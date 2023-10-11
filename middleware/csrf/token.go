@@ -1,6 +1,8 @@
 package csrf
 
-import "time"
+import (
+	"time"
+)
 
 type Token struct {
 	Key        string    `json:"key"`
