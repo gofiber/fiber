@@ -38,22 +38,23 @@ const (
 // maxParams defines the maximum number of parameters per route.
 const maxParams = 30
 
-// Some constants for BodyParser, QueryParser and ReqHeaderParser.
+// Some constants for BodyParser, QueryParser, CookieParser and ReqHeaderParser.
 const (
 	queryTag     = "query"
 	reqHeaderTag = "reqHeader"
 	bodyTag      = "form"
 	paramsTag    = "params"
+	cookieTag    = "cookie"
 )
 
 // userContextKey define the key name for storing context.Context in *fasthttp.RequestCtx
 const userContextKey = "__local_user_context__"
 
 var (
-	// decoderPoolMap helps to improve BodyParser's, QueryParser's and ReqHeaderParser's performance
+	// decoderPoolMap helps to improve BodyParser's, QueryParser's, CookieParser's and ReqHeaderParser's performance
 	decoderPoolMap = map[string]*sync.Pool{}
 	// tags is used to classify parser's pool
-	tags = []string{queryTag, bodyTag, reqHeaderTag, paramsTag}
+	tags = []string{queryTag, bodyTag, reqHeaderTag, paramsTag, cookieTag}
 )
 
 func init() {
@@ -500,6 +501,40 @@ func (c *Ctx) Cookie(cookie *Cookie) {
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (c *Ctx) Cookies(key string, defaultValue ...string) string {
 	return defaultString(c.app.getString(c.fasthttp.Request.Header.Cookie(key)), defaultValue)
+}
+
+// CookieParser is used to bind cookies to a struct
+func (c *Ctx) CookieParser(out interface{}) error {
+	data := make(map[string][]string)
+	var err error
+
+	// loop through all cookies
+	c.fasthttp.Request.Header.VisitAllCookie(func(key, val []byte) {
+		if err != nil {
+			return
+		}
+
+		k := c.app.getString(key)
+		v := c.app.getString(val)
+
+		if strings.Contains(k, "[") {
+			k, err = parseParamSquareBrackets(k)
+		}
+
+		if c.app.config.EnableSplittingOnParsers && strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k, cookieTag) {
+			values := strings.Split(v, ",")
+			for i := 0; i < len(values); i++ {
+				data[k] = append(data[k], values[i])
+			}
+		} else {
+			data[k] = append(data[k], v)
+		}
+	})
+	if err != nil {
+		return err
+	}
+
+	return c.parseToStruct(cookieTag, out, data)
 }
 
 // Download transfers the file from path as an attachment.

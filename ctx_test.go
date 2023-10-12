@@ -928,6 +928,152 @@ func Benchmark_Ctx_Cookie(b *testing.B) {
 	utils.AssertEqual(b, "John=Doe; path=/; SameSite=Lax", app.getString(c.Response().Header.Peek("Set-Cookie")))
 }
 
+// go test -run Test_Ctx_CookieParser -v
+func Test_Ctx_CookieParser(t *testing.T) {
+	t.Parallel()
+	app := New(Config{EnableSplittingOnParsers: true})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	type Cookie struct {
+		Name    string
+		Class   int
+		Courses []string
+	}
+	c.Request().Header.Set("Cookie", "name=doe")
+	c.Request().Header.Set("Cookie", "class=100")
+	c.Request().Header.Set("Cookie", "courses=maths,english")
+	cookie := new(Cookie)
+
+	// correct test cases
+	utils.AssertEqual(t, nil, c.CookieParser(cookie))
+	utils.AssertEqual(t, "doe", cookie.Name)
+	utils.AssertEqual(t, 100, cookie.Class)
+	utils.AssertEqual(t, 2, len(cookie.Courses))
+
+	// wrong test cases
+	empty := new(Cookie)
+	c.Request().Header.Set("Cookie", "name")
+	c.Request().Header.Set("Cookie", "class")
+	c.Request().Header.Set("Cookie", "courses")
+	utils.AssertEqual(t, nil, c.CookieParser(cookie))
+	utils.AssertEqual(t, "", empty.Name)
+	utils.AssertEqual(t, 0, empty.Class)
+	utils.AssertEqual(t, 0, len(empty.Courses))
+}
+
+// go test -run Test_Ctx_CookieParserUsingTag -v
+func Test_Ctx_CookieParserUsingTag(t *testing.T) {
+	t.Parallel()
+	app := New(Config{EnableSplittingOnParsers: true})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	type Cook struct {
+		ID       int      `cookie:"id"`
+		Name     string   `cookie:"name"`
+		Courses  []string `cookie:"courses"`
+		Enrolled bool     `cookie:"student"`
+		Fees     float32  `cookie:"fee"`
+		Grades   []uint8  `cookie:"score"`
+	}
+	cookie1 := new(Cook)
+	cookie1.Name = "Joseph"
+	utils.AssertEqual(t, "Joseph", cookie1.Name)
+
+	c.Request().Header.Set("Cookie", "id=1")
+	c.Request().Header.Set("Cookie", "name=Joey")
+	c.Request().Header.Set("Cookie", "courses=maths,english, chemistry, physics")
+	c.Request().Header.Set("Cookie", "student=true")
+	c.Request().Header.Set("Cookie", "fee=45.78")
+	c.Request().Header.Set("Cookie", "score=7,6,10")
+	utils.AssertEqual(t, nil, c.CookieParser(cookie1))
+	utils.AssertEqual(t, "Joey", cookie1.Name)
+	utils.AssertEqual(t, true, cookie1.Enrolled)
+	utils.AssertEqual(t, float32(45.78), cookie1.Fees)
+	utils.AssertEqual(t, []uint8{7, 6, 10}, cookie1.Grades)
+
+	type RequiredCookie struct {
+		House string `cookie:"house,required"`
+	}
+	rc := new(RequiredCookie)
+	utils.AssertEqual(t, "failed to decode: house is empty", c.CookieParser(rc).Error())
+
+	type ArrayCookie struct {
+		Dates []int
+	}
+
+	ac := new(ArrayCookie)
+	c.Request().Header.Set("Cookie", "dates[]=7,6,10")
+	utils.AssertEqual(t, nil, c.CookieParser(ac))
+	utils.AssertEqual(t, 3, len(ac.Dates))
+}
+
+// go test -run Test_Ctx_CookieParserSchema -v
+func Test_Ctx_CookieParser_Schema(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	type result struct {
+		Maths   int `cookie:"maths"`
+		English int `cookie:"english"`
+	}
+	type resStruct struct {
+		Name   string `cookie:"name"`
+		Age    int    `cookie:"age"`
+		Result result `cookie:"result"`
+	}
+	res := &resStruct{
+		Name: "Joseph",
+		Age:  10,
+		Result: result{
+			Maths:   10,
+			English: 10,
+		},
+	}
+
+	// set cookie
+	c.Request().Header.Set("Cookie", "name=Joseph")
+	c.Request().Header.Set("Cookie", "age=10")
+	c.Request().Header.Set("Cookie", "result.maths=10")
+	c.Request().Header.Set("Cookie", "result.english=10")
+	hR := new(resStruct)
+	r := c.CookieParser(hR)
+
+	utils.AssertEqual(t, nil, r)
+	utils.AssertEqual(t, *res, *hR)
+}
+
+// go test -run Benchmark_Ctx_CookieParser -v
+func Benchmark_Ctx_CookieParser(b *testing.B) {
+	app := New(Config{EnableSplittingOnParsers: true})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	type Cook struct {
+		ID       int      `cookie:"id"`
+		Name     string   `cookie:"name"`
+		Courses  []string `cookie:"courses"`
+		Enrolled bool     `cookie:"student"`
+		Fees     float32  `cookie:"fee"`
+		Grades   []uint8  `cookie:"score"`
+	}
+	cookie1 := new(Cook)
+	cookie1.Name = "Joseph"
+
+	c.Request().Header.Set("Cookie", "id=1")
+	c.Request().Header.Set("Cookie", "name=Joey")
+	c.Request().Header.Set("Cookie", "courses=maths,english, chemistry, physics")
+	c.Request().Header.Set("Cookie", "student=true")
+	c.Request().Header.Set("Cookie", "fee=45.78")
+	c.Request().Header.Set("Cookie", "score=7,6,10")
+
+	var err error
+	// Run the function b.N times
+	for i := 0; i < b.N; i++ {
+		err = c.CookieParser(cookie1)
+	}
+	utils.AssertEqual(b, nil, err)
+}
+
 // go test -run Test_Ctx_Cookies
 func Test_Ctx_Cookies(t *testing.T) {
 	t.Parallel()
