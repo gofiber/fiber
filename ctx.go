@@ -509,6 +509,7 @@ func (c *Ctx) CookieParser(out interface{}) error {
 	data := make(map[string][]string)
 	var err error
 
+	// loop through all cookies
 	c.fasthttp.Request.Header.VisitAllCookie(func(key, val []byte) {
 		if err != nil {
 			return

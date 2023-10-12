@@ -435,8 +435,6 @@ app.Get("/", func(c *fiber.Ctx) error {
 // curl.exe --cookie "name=Joseph; age=23; job=true" http://localhost:8000/
 ```
 
-
-
 ## Cookies
 
 Get cookie value by key, you could pass an optional default value that will be returned if the cookie key does not exist.
