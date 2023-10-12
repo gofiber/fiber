@@ -1066,12 +1066,12 @@ func Benchmark_Ctx_CookieParser(b *testing.B) {
 	c.Request().Header.Set("Cookie", "fee=45.78")
 	c.Request().Header.Set("Cookie", "score=7,6,10")
 
+	var err error
 	// Run the function b.N times
-	var r error
 	for i := 0; i < b.N; i++ {
-		r = c.CookieParser(cookie1)
+		err = c.CookieParser(cookie1)
 	}
-	utils.AssertEqual(b, nil, r)
+	utils.AssertEqual(b, nil, err)
 }
 
 // go test -run Test_Ctx_Cookies
