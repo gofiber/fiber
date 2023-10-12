@@ -1005,7 +1005,6 @@ func Test_Ctx_CookieParserUsingTag(t *testing.T) {
 	c.Request().Header.Set("Cookie", "dates[]=7,6,10")
 	utils.AssertEqual(t, nil, c.CookieParser(ac))
 	utils.AssertEqual(t, 3, len(ac.Dates))
-
 }
 
 // go test -run Test_Ctx_CookieParserSchema -v
@@ -1038,10 +1037,10 @@ func Test_Ctx_CookieParser_Schema(t *testing.T) {
 	c.Request().Header.Set("Cookie", "result.maths=10")
 	c.Request().Header.Set("Cookie", "result.english=10")
 	hR := new(resStruct)
-	c.CookieParser(hR)
+	r := c.CookieParser(hR)
 
+	utils.AssertEqual(t, nil, r)
 	utils.AssertEqual(t, *res, *hR)
-	t.Log(*hR)
 }
 
 // go test -run Benchmark_Ctx_CookieParser -v
@@ -1068,9 +1067,11 @@ func Benchmark_Ctx_CookieParser(b *testing.B) {
 	c.Request().Header.Set("Cookie", "score=7,6,10")
 
 	// Run the function b.N times
+	var r error
 	for i := 0; i < b.N; i++ {
-		_ = c.CookieParser(cookie1)
+		r = c.CookieParser(cookie1)
 	}
+	utils.AssertEqual(b, nil, r)
 }
 
 // go test -run Test_Ctx_Cookies
