@@ -961,7 +961,7 @@ func Test_Ctx_CookieParser(t *testing.T) {
 	utils.AssertEqual(t, 0, len(empty.Courses))
 }
 
-// go test - run Test_Ctx_CookieParserUsingTag -v
+// go test -run Test_Ctx_CookieParserUsingTag -v
 func Test_Ctx_CookieParserUsingTag(t *testing.T) {
 	t.Parallel()
 	app := New(Config{EnableSplittingOnParsers: true})
@@ -1008,7 +1008,43 @@ func Test_Ctx_CookieParserUsingTag(t *testing.T) {
 
 }
 
-// go test - run Benchmark_Ctx_CookieParser -v
+// go test -run Test_Ctx_CookieParserSchema -v
+func Test_Ctx_CookieParser_Schema(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	type result struct {
+		Maths   int `cookie:"maths"`
+		English int `cookie:"english"`
+	}
+	type resStruct struct {
+		Name   string `cookie:"name"`
+		Age    int    `cookie:"age"`
+		Result result `cookie:"result"`
+	}
+	res := &resStruct{
+		Name: "Joseph",
+		Age:  10,
+		Result: result{
+			Maths:   10,
+			English: 10,
+		},
+	}
+
+	// set cookie
+	c.Request().Header.Set("Cookie", "name=Joseph")
+	c.Request().Header.Set("Cookie", "age=10")
+	c.Request().Header.Set("Cookie", "result.maths=10")
+	c.Request().Header.Set("Cookie", "result.english=10")
+	hR := new(resStruct)
+	c.CookieParser(hR)
+
+	utils.AssertEqual(t, *res, *hR)
+	t.Log(*hR)
+}
+
+// go test -run Benchmark_Ctx_CookieParser -v
 func Benchmark_Ctx_CookieParser(b *testing.B) {
 	app := New(Config{EnableSplittingOnParsers: true})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
