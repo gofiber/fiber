@@ -1860,3 +1860,50 @@ func Test_Middleware_Route_Naming_With_Use(t *testing.T) {
 		}
 	}
 }
+
+func Test_Route_Naming_Issue_2671(t *testing.T) {
+	app := New()
+
+	app.Get("/", emptyHandler).Name("index")
+	utils.AssertEqual(t, "/", app.GetRoute("index").Path)
+
+	app.Get("/a/:a_id", emptyHandler).Name("a")
+	utils.AssertEqual(t, "/a/:a_id", app.GetRoute("a").Path)
+
+	app.Post("/b/:bId", emptyHandler).Name("b")
+	utils.AssertEqual(t, "/b/:bId", app.GetRoute("b").Path)
+
+	c := app.Group("/c")
+	c.Get("", emptyHandler).Name("c.get")
+	utils.AssertEqual(t, "/c", app.GetRoute("c.get").Path)
+
+	c.Post("", emptyHandler).Name("c.post")
+	utils.AssertEqual(t, "/c", app.GetRoute("c.post").Path)
+
+	c.Get("/d", emptyHandler).Name("c.get.d")
+	utils.AssertEqual(t, "/c/d", app.GetRoute("c.get.d").Path)
+
+	d := app.Group("/d/:d_id")
+	d.Get("", emptyHandler).Name("d.get")
+	utils.AssertEqual(t, "/d/:d_id", app.GetRoute("d.get").Path)
+
+	d.Post("", emptyHandler).Name("d.post")
+	utils.AssertEqual(t, "/d/:d_id", app.GetRoute("d.post").Path)
+
+	e := app.Group("/e/:eId")
+	e.Get("", emptyHandler).Name("e.get")
+	utils.AssertEqual(t, "/e/:eId", app.GetRoute("e.get").Path)
+
+	e.Post("", emptyHandler).Name("e.post")
+	utils.AssertEqual(t, "/e/:eId", app.GetRoute("e.post").Path)
+
+	e.Get("f", emptyHandler).Name("e.get.f")
+	utils.AssertEqual(t, "/e/:eId/f", app.GetRoute("e.get.f").Path)
+
+	postGroup := app.Group("/post/:postId")
+	postGroup.Get("", emptyHandler).Name("post.get")
+	utils.AssertEqual(t, "/post/:postId", app.GetRoute("post.get").Path)
+
+	postGroup.Post("", emptyHandler).Name("post.update")
+	utils.AssertEqual(t, "/post/:postId", app.GetRoute("post.update").Path)
+}
