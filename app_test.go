@@ -1458,7 +1458,6 @@ func (invalidView) Render(io.Writer, string, interface{}, ...string) error { pan
 
 // go test -run Test_App_Init_Error_View
 func Test_App_Init_Error_View(t *testing.T) {
-	t.Parallel()
 	app := New(Config{Views: invalidView{}})
 
 	defer func() {
@@ -1618,7 +1617,6 @@ func Test_App_Server(t *testing.T) {
 }
 
 func Test_App_Error_In_Fasthttp_Server(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.config.ErrorHandler = func(ctx *Ctx, err error) error {
 		return errors.New("fake error")
