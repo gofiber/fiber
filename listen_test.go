@@ -303,7 +303,6 @@ func Test_App_Master_Process_Show_Startup_MessageWithAppNameNonAscii(t *testing.
 }
 
 func Test_App_print_Route(t *testing.T) {
-	t.Parallel()
 	app := New(Config{EnablePrintRoutes: true})
 	app.Get("/", emptyHandler).Name("routeName")
 	printRoutesMessage := captureOutput(func() {
@@ -316,7 +315,6 @@ func Test_App_print_Route(t *testing.T) {
 }
 
 func Test_App_print_Route_with_group(t *testing.T) {
-	t.Parallel()
 	app := New(Config{EnablePrintRoutes: true})
 	app.Get("/", emptyHandler)
 
