@@ -104,8 +104,9 @@ type TLSHandler struct {
 	clientHelloInfo *tls.ClientHelloInfo
 }
 
-// GetClientInfo Callback function to set CHI
-// TODO: Why is this a getter which sets stuff?
+// GetClientInfo Callback function to set ClientHelloInfo
+// Must comply with the method structure of https://cs.opensource.google/go/go/+/refs/tags/go1.20:src/crypto/tls/common.go;l=554-563
+// Since we overlay the method of the tls config in the listener method
 func (t *TLSHandler) GetClientInfo(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	t.clientHelloInfo = info
 	return nil, nil //nolint:nilnil // Not returning anything useful here is probably fine
