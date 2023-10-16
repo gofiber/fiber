@@ -42,9 +42,19 @@ When using this method, pre-sessions are required and will be created if a sessi
 
 When using this middleware, it is recommended that you serve your pages over HTTPS, that the `CookieSecure` option is set to `true`, and that the `CookieSameSite` option is set to `Lax` or `Strict`. This will ensure that the cookie is only sent over HTTPS and that it is not sent on requests from external sites.
 
+:::note
+Cookie prefixes __Host- and __Secure- can be used to further secure the cookie. However, these prefixes are not supported by all browsers and there are some other limitations. See [MDN#Set-Cookie#cookie_prefixes](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie#cookie_prefixes) for more information.
+
+To use these prefixes, set the `CookieName` option to `__Host-csrf_` or `__Secure-csrf_`.
+:::
+
 ### Referer Checking
 
 For HTTPS requests, this middleware performs strict referer checking. This means that even if a subdomain can set or modify cookies on your domain, it can’t force a user to post to your application since that request won’t come from your own exact domain.
+
+:::warning
+Referer checking is required for https requests protected by CSRF. All modern browsers will automatically include the Referer header in requests, including those made with the JS Fetch API. However, if you are using this middleware with a custom client you must ensure that the client sends a valid Referer header.
+:::
 
 ### Token Lifecycle
 

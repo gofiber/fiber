@@ -2,6 +2,7 @@ package csrf
 
 import (
 	"errors"
+	"net/url"
 	"reflect"
 	"time"
 
@@ -63,10 +64,10 @@ func New(config ...Config) fiber.Handler {
 			cookieToken := c.Cookies(cfg.CookieName)
 
 			if cookieToken != "" {
-				rawToken := getTokenFromStorage(c, cookieToken, cfg, sessionManager, storageManager)
+				raw := getRawFromStorage(c, cookieToken, cfg, sessionManager, storageManager)
 
-				if rawToken != nil {
-					token = string(rawToken)
+				if raw != nil {
+					token = cookieToken // Token is valid, safe to set it
 				}
 			}
 		default:
@@ -92,13 +93,13 @@ func New(config ...Config) fiber.Handler {
 			// If not using CsrfFromCookie extractor, check that the token matches the cookie
 			// This is to prevent CSRF attacks by using a Double Submit Cookie method
 			// Useful when we do not have access to the users Session
-			if !isCsrfFromCookie(cfg.Extractor) && extractedToken != c.Cookies(cfg.CookieName) {
+			if !isCsrfFromCookie(cfg.Extractor) && !compareStrings(extractedToken, c.Cookies(cfg.CookieName)) {
 				return cfg.ErrorHandler(c, ErrTokenInvalid)
 			}
 
-			rawToken := getTokenFromStorage(c, extractedToken, cfg, sessionManager, storageManager)
+			raw := getRawFromStorage(c, extractedToken, cfg, sessionManager, storageManager)
 
-			if rawToken == nil {
+			if raw == nil {
 				// If token is not in storage, expire the cookie
 				expireCSRFCookie(c, cfg)
 				// and return an error
@@ -108,7 +109,7 @@ func New(config ...Config) fiber.Handler {
 				// If token is single use, delete it from storage
 				deleteTokenFromStorage(c, extractedToken, cfg, sessionManager, storageManager)
 			} else {
-				token = string(rawToken)
+				token = extractedToken // Token is valid, safe to set it
 			}
 		}
 
@@ -137,9 +138,9 @@ func New(config ...Config) fiber.Handler {
 	}
 }
 
-// getTokenFromStorage returns the raw token from the storage
+// getRawFromStorage returns the raw value from the storage for the given token
 // returns nil if the token does not exist, is expired or is invalid
-func getTokenFromStorage(c *fiber.Ctx, token string, cfg Config, sessionManager *sessionManager, storageManager *storageManager) []byte {
+func getRawFromStorage(c *fiber.Ctx, token string, cfg Config, sessionManager *sessionManager, storageManager *storageManager) []byte {
 	if cfg.Session != nil {
 		return sessionManager.getRaw(c, token, dummyValue)
 	}
@@ -223,8 +224,15 @@ func refererMatchesHost(c *fiber.Ctx) error {
 	if referer == "" {
 		return ErrNoReferer
 	}
-	if referer != c.Protocol()+"://"+c.Hostname() {
+
+	refererURL, err := url.Parse(referer)
+	if err != nil {
 		return ErrBadReferer
 	}
+
+	if refererURL.Scheme+"://"+refererURL.Host != c.Protocol()+"://"+c.Hostname() {
+		return ErrBadReferer
+	}
+
 	return nil
 }
