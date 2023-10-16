@@ -132,8 +132,6 @@ It's recommended to use this middleware with [fiber/middleware/session](https://
 
 ## Config
 
-### Config
-
 | Property          | Type                               | Description                                                                                                                                                                                                                                                                                  | Default                      |
 |:------------------|:-----------------------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:-----------------------------|
 | Next              | `func(*fiber.Ctx) bool`            | Next defines a function to skip this middleware when returned true.                                                                                                                                                                                                                          | `nil`                        |
