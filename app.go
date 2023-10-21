@@ -624,9 +624,7 @@ func (app *App) Name(name string) Router {
 				(app.latestRoute.Method == MethodGet && route.Method == MethodHead)
 
 			if route.Path == app.latestRoute.Path && isMethodValid {
-
 				route.Name = name
-
 				if route.group != nil {
 					route.Name = route.group.name + route.Name
 				}
