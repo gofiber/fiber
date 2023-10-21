@@ -1922,4 +1922,13 @@ func Test_Route_Naming_Issue_2671_2685(t *testing.T) {
 
 	addUser = app.GetRoute("add-user")
 	utils.AssertEqual(t, addUser.Path, "/users")
+
+	app.Get("/simple-route", emptyHandler).Name("simple-route")
+	app.Head("/simple-route", emptyHandler).Name("simple-route2")
+
+	sRoute := app.GetRoute("simple-route")
+	utils.AssertEqual(t, sRoute.Path, "/simple-route")
+
+	sRoute2 := app.GetRoute("simple-route2")
+	utils.AssertEqual(t, sRoute2.Path, "/simple-route")
 }
