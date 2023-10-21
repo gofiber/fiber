@@ -1859,7 +1859,7 @@ func Test_Middleware_Route_Naming_With_Use(t *testing.T) {
 	}
 }
 
-func Test_Route_Naming_Issue_2671(t *testing.T) {
+func Test_Route_Naming_Issue_2671_2685(t *testing.T) {
 	app := New()
 
 	app.Get("/", emptyHandler).Name("index")
@@ -1904,4 +1904,22 @@ func Test_Route_Naming_Issue_2671(t *testing.T) {
 
 	postGroup.Post("", emptyHandler).Name("post.update")
 	utils.AssertEqual(t, "/post/:postId", app.GetRoute("post.update").Path)
+
+	app.Get("/users", nil).Name("get-users")
+	app.Post("/users", nil).Name("add-user")
+	getUsers := app.GetRoute("get-users")
+	utils.AssertEqual(t, getUsers.Path, "/users")
+
+	addUser := app.GetRoute("add-user")
+	utils.AssertEqual(t, addUser.Path, "/users")
+
+	newGrp := app.Group("/name-test")
+
+	newGrp.Get("/users", nil).Name("get-users")
+	newGrp.Post("/users", nil).Name("add-user")
+	getUsers = app.GetRoute("get-users")
+	utils.AssertEqual(t, getUsers.Path, "/users")
+
+	addUser = app.GetRoute("add-user")
+	utils.AssertEqual(t, addUser.Path, "/users")
 }
