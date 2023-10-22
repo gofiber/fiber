@@ -500,7 +500,8 @@ func forEachParameter(params string, functor func(string, string) bool) {
 //	"^" / "_" / "`" / "|" / "~" / DIGIT / ALPHA
 //
 // See: https://www.rfc-editor.org/rfc/rfc9110#section-5.6.2
-// Function copied from net/textproto/reader.go
+// Function copied from net/textproto:
+// https://github.com/golang/go/blob/master/src/net/textproto/reader.go#L663
 func validHeaderFieldByte(c byte) bool {
 	// mask is a 128-bit bitmap with 1s for allowed bytes,
 	// so that the byte c can be tested with a shift and an and.
