@@ -1905,6 +1905,7 @@ func Test_Route_Naming_Issue_2671_2685(t *testing.T) {
 	postGroup.Post("", emptyHandler).Name("post.update")
 	utils.AssertEqual(t, "/post/:postId", app.GetRoute("post.update").Path)
 
+	// Add testcase for routes use the same PATH on different methods
 	app.Get("/users", nil).Name("get-users")
 	app.Post("/users", nil).Name("add-user")
 	getUsers := app.GetRoute("get-users")
@@ -1913,8 +1914,8 @@ func Test_Route_Naming_Issue_2671_2685(t *testing.T) {
 	addUser := app.GetRoute("add-user")
 	utils.AssertEqual(t, addUser.Path, "/users")
 
+	// Add testcase for routes use the same PATH on different methods (for groups)
 	newGrp := app.Group("/name-test")
-
 	newGrp.Get("/users", nil).Name("get-users")
 	newGrp.Post("/users", nil).Name("add-user")
 	getUsers = app.GetRoute("get-users")
@@ -1923,6 +1924,7 @@ func Test_Route_Naming_Issue_2671_2685(t *testing.T) {
 	addUser = app.GetRoute("add-user")
 	utils.AssertEqual(t, addUser.Path, "/users")
 
+	// Add testcase for HEAD route naming
 	app.Get("/simple-route", emptyHandler).Name("simple-route")
 	app.Head("/simple-route", emptyHandler).Name("simple-route2")
 
