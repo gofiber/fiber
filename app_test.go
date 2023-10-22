@@ -1916,13 +1916,13 @@ func Test_Route_Naming_Issue_2671_2685(t *testing.T) {
 
 	// Add testcase for routes use the same PATH on different methods (for groups)
 	newGrp := app.Group("/name-test")
-	newGrp.Get("/users", nil).Name("get-users")
-	newGrp.Post("/users", nil).Name("add-user")
-	getUsers = app.GetRoute("get-users")
-	utils.AssertEqual(t, getUsers.Path, "/users")
+	newGrp.Get("/users", nil).Name("grp-get-users")
+	newGrp.Post("/users", nil).Name("grp-add-user")
+	getUsers = app.GetRoute("grp-get-users")
+	utils.AssertEqual(t, getUsers.Path, "/name-test/users")
 
-	addUser = app.GetRoute("add-user")
-	utils.AssertEqual(t, addUser.Path, "/users")
+	addUser = app.GetRoute("grp-add-user")
+	utils.AssertEqual(t, addUser.Path, "/name-test/users")
 
 	// Add testcase for HEAD route naming
 	app.Get("/simple-route", emptyHandler).Name("simple-route")
