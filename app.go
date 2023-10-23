@@ -620,9 +620,11 @@ func (app *App) Name(name string) Router {
 
 	for _, routes := range app.stack {
 		for _, route := range routes {
-			if route.Path == app.latestRoute.Path {
-				route.Name = name
+			isMethodValid := route.Method == app.latestRoute.Method || app.latestRoute.use ||
+				(app.latestRoute.Method == MethodGet && route.Method == MethodHead)
 
+			if route.Path == app.latestRoute.Path && isMethodValid {
+				route.Name = name
 				if route.group != nil {
 					route.Name = route.group.name + route.Name
 				}
