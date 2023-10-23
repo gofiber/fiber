@@ -47,7 +47,7 @@ type Router interface {
 
 // Route is a struct that holds all metadata for each registered handler.
 type Route struct {
-	// always keep in sync with the copy method "app.copyRoute"
+	// ### important: always keep in sync with the copy method "app.copyRoute" ###
 	// Data for routing
 	pos         uint32      // Position in stack -> important for the sort of the matched routes
 	use         bool        // USE matches path prefixes
@@ -214,13 +214,14 @@ func (*App) copyRoute(route *Route) *Route {
 		// Path data
 		path:        route.path,
 		routeParser: route.routeParser,
-		Params:      route.Params,
 
 		// misc
 		pos: route.pos,
 
 		// Public data
 		Path:     route.Path,
+		Params:   route.Params,
+		Name:     route.Name,
 		Method:   route.Method,
 		Handlers: route.Handlers,
 	}

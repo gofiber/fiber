@@ -400,6 +400,79 @@ func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
 	utils.AssertEqual(t, "hi, i'm a custom sub sub fiber error", string(b), "Third fiber Response body")
 }
 
+// go test -run Test_Mount_Route_Names
+func Test_Mount_Route_Names(t *testing.T) {
+	// create sub-app with 2 handlers:
+	subApp1 := New()
+	subApp1.Get("/users", func(c *Ctx) error {
+		url, err := c.GetRouteURL("add-user", Map{})
+		utils.AssertEqual(t, err, nil)
+		utils.AssertEqual(t, url, "/app1/users", "handler: app1.add-user") // the prefix is /app1 because of the mount
+		// if subApp1 is not mounted, expected url just /users
+		return nil
+	}).Name("get-users")
+	subApp1.Post("/users", func(c *Ctx) error {
+		route := c.App().GetRoute("get-users")
+		utils.AssertEqual(t, route.Method, MethodGet, "handler: app1.get-users method")
+		utils.AssertEqual(t, route.Path, "/app1/users", "handler: app1.get-users path")
+		return nil
+	}).Name("add-user")
+
+	// create sub-app with 2 handlers inside a group:
+	subApp2 := New()
+	app2Grp := subApp2.Group("/users").Name("users.")
+	app2Grp.Get("", nil).Name("get")
+	app2Grp.Post("", nil).Name("add")
+
+	// put both sub-apps into root app
+	rootApp := New()
+	_ = rootApp.Mount("/app1", subApp1)
+	_ = rootApp.Mount("/app2", subApp2)
+
+	rootApp.startupProcess()
+
+	// take route directly from sub-app
+	route := subApp1.GetRoute("get-users")
+	utils.AssertEqual(t, route.Method, MethodGet)
+	utils.AssertEqual(t, route.Path, "/users")
+
+	route = subApp1.GetRoute("add-user")
+	utils.AssertEqual(t, route.Method, MethodPost)
+	utils.AssertEqual(t, route.Path, "/users")
+
+	// take route directly from sub-app with group
+	route = subApp2.GetRoute("users.get")
+	utils.AssertEqual(t, route.Method, MethodGet)
+	utils.AssertEqual(t, route.Path, "/users")
+
+	route = subApp2.GetRoute("users.add")
+	utils.AssertEqual(t, route.Method, MethodPost)
+	utils.AssertEqual(t, route.Path, "/users")
+
+	// take route from root app (using names of sub-apps)
+	route = rootApp.GetRoute("add-user")
+	utils.AssertEqual(t, route.Method, MethodPost)
+	utils.AssertEqual(t, route.Path, "/app1/users")
+
+	route = rootApp.GetRoute("users.add")
+	utils.AssertEqual(t, route.Method, MethodPost)
+	utils.AssertEqual(t, route.Path, "/app2/users")
+
+	// GetRouteURL inside handler
+	req := httptest.NewRequest(MethodGet, "/app1/users", nil)
+	resp, err := rootApp.Test(req)
+
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
+	// ctx.App().GetRoute() inside handler
+	req = httptest.NewRequest(MethodPost, "/app1/users", nil)
+	resp, err = rootApp.Test(req)
+
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+}
+
 // go test -run Test_Ctx_Render_Mount
 func Test_Ctx_Render_Mount(t *testing.T) {
 	t.Parallel()
