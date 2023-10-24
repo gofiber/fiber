@@ -537,6 +537,61 @@ agent.SetResponse(resp)
 ReleaseResponse(resp)
 ```
 
+<details><summary>Example handling for response values</summary>
+
+```go title="Example handling response"
+// Create a Fiber HTTP client agent
+agent := fiber.Get("https://httpbin.org/get")
+
+// Acquire a response object to store the result
+resp := fiber.AcquireResponse()
+agent.SetResponse(resp)
+
+// Perform the HTTP GET request
+code, body, errs := agent.String()
+if errs != nil {
+    // Handle any errors that occur during the request
+    panic(errs)
+}
+
+// Print the HTTP response code and body
+fmt.Println("Response Code:", code)
+fmt.Println("Response Body:", body)
+
+// Visit and print all the headers in the response
+resp.Header.VisitAll(func(key, value []byte) {
+    fmt.Println("Header", string(key), "value", string(value))
+})
+
+// Release the response to free up resources
+fiber.ReleaseResponse(resp)
+```
+
+Output:
+```txt title="Output"
+Response Code: 200
+Response Body: {
+  "args": {}, 
+  "headers": {
+    "Host": "httpbin.org", 
+    "User-Agent": "fiber", 
+    "X-Amzn-Trace-Id": "Root=1-653763d0-2555d5ba3838f1e9092f9f72"
+  }, 
+  "origin": "83.137.191.1", 
+  "url": "https://httpbin.org/get"
+}
+
+Header Content-Length value 226
+Header Content-Type value application/json
+Header Server value gunicorn/19.9.0
+Header Date value Tue, 24 Oct 2023 06:27:28 GMT
+Header Connection value keep-alive
+Header Access-Control-Allow-Origin value *
+Header Access-Control-Allow-Credentials value true
+```
+
+</details>
+
 ### Dest
 
 Dest sets custom dest. The contents of dest will be replaced by the response body, if the dest is too small a new slice will be allocated.
