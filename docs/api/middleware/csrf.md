@@ -4,7 +4,7 @@ id: csrf
 
 # CSRF
 
-The CSRF middleware for [Fiber](https://github.com/gofiber/fiber) provides protection against [Cross-Site Request Forgery](https://en.wikipedia.org/wiki/Cross-site_request_forgery) (CSRF) attacks using tokens. These tokens verify requests made using methods other than those defined as "safe" by [RFC9110#section-9.2.1](https://datatracker.ietf.org/doc/html/rfc9110.html#section-9.2.1) (Safe-Methods: GET, HEAD, OPTIONS, or TRACE). If a potential attack is detected this middleware will, by default, return a 403 Forbidden error.
+The CSRF middleware for [Fiber](https://github.com/gofiber/fiber) provides protection against [Cross-Site Request Forgery](https://en.wikipedia.org/wiki/Cross-site_request_forgery) (CSRF) attacks using tokens. These tokens verify requests made using methods other than those defined as "safe" by [RFC9110#section-9.2.1](https://datatracker.ietf.org/doc/html/rfc9110.html#section-9.2.1) (Safe-Methods: GET, HEAD, OPTIONS, and TRACE). If a potential attack is detected this middleware will, by default, return a 403 Forbidden error.
 
 This middleware can be used with or without a user session and offers two token validation patterns. In addition, it implements strict referer checking for HTTPS requests, ensuring the security of your application. For HTTPS requests, even if a subdomain can set or modify cookies on your domain, it can't force a user to post to your application since that request won't come from your own exact domain.
 
