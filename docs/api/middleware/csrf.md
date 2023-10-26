@@ -10,7 +10,7 @@ This middleware can be used with or without a user session and offers two token 
 
 ## Token Generation
 
-CSRF tokens are generated on 'safe' requests or when the existing token has expired or hasn't been set yet. If `SingleUseToken` is `true`, a new token is generated after each use. Retrieve the CSRF token using `c.Locals(contextKey)`, where `contextKey` is defined in the configuration.
+CSRF tokens are generated on 'safe' requests and when the existing token has expired or hasn't been set yet. If `SingleUseToken` is `true`, a new token is generated after each use. Retrieve the CSRF token using `c.Locals(contextKey)`, where `contextKey` is defined in the configuration.
 
 ## Security Considerations
 
