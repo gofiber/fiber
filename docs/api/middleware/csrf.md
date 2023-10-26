@@ -24,7 +24,9 @@ Never use 'safe' methods to mutate data, for example, never use a GET request to
 
 #### Double Submit Cookie Pattern (Default)
 
-In the default configuration, the middleware generates and stores tokens using the `fiber.Storage` interface. These tokens are not associated with a user session, and a Double Submit Cookie pattern is used to validate the token. The token is stored in a cookie and sent as a header on requests. The middleware compares the cookie value with the header value to validate the token. This is a secure method as cookies are not accessible to JavaScript and cannot be read by an attacker.
+In the default configuration, the middleware generates and stores tokens using the `fiber.Storage` interface. These tokens are not associated with a user session, and a Double Submit Cookie pattern is used to validate the token. The token is stored in a cookie and sent as a header on requests. The middleware compares the cookie value with the header value to validate the token. This is a secure pattern that does not require a user session.
+
+When using this pattern, it's important to delete the token when the authorization status changes, see: [Token Lifecycle](#token-lifecycle) for more information.
 
 :::caution
 When using this method, it's important to set the `CookieSameSite` option to `Lax` or `Strict` and ensure that the Extractor is not `CsrfFromCookie`, and KeyLookup is not `cookie:<name>`.
@@ -37,6 +39,8 @@ When using this pattern, this middleware uses our [Storage](https://github.com/g
 #### Synchronizer Token Pattern (Session)
 
 When using this middleware with a user session, the middleware can be configured to store the token in the session. This method is recommended when using a user session, as it is generally more secure than the Double Submit Cookie Pattern.
+
+When using this pattern it's important to regenerate the session when the authorization status changes, this will also delete the token. See: [Token Lifecycle](#token-lifecycle) for more information.
 
 :::caution
 When using this method, pre-sessions are required and will be created if a session is not already present. This means the middleware will create a session for every safe request, even if the request does not require a session. Therefore, the existence of a session should not be used to indicate that a user is logged in or authenticated; a session value should be used for this purpose.
@@ -75,7 +79,7 @@ Using `SingleUseToken` comes with usability trade-offs and is not enabled by def
 
 #### Deleting Tokens
 
-When the authorization status changes, the CSRF token should be deleted, and a new one generated. This can be done by calling `handler.DeleteToken(c)`.
+When the authorization status changes, the CSRF token MUST be deleted, and a new one generated. This can be done by calling `handler.DeleteToken(c)`.
 
 ```go
 if handler, ok := app.AcquireCtx(ctx).Locals(ConfigDefault.HandlerContextKey).(*CSRFHandler); ok {
