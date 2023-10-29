@@ -81,6 +81,6 @@ func New(config ...Config) fiber.Handler {
 			}
 		}
 
-		return nil
+		return c.Next()
 	}
 }
