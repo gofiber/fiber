@@ -629,7 +629,7 @@ Daha fazla yazı, middleware, örnek veya araç için [awesome list](https://git
 Eğer **teşekkür etmek** veya `Fiber`'ın aktif geliştirilmesini desteklemek istiyorsanız:
 
 1. Projeye [yıldız](https://github.com/gofiber/fiber/stargazers) verebilirsiniz.
-2. [Twitter hesabınızdan](https://twitter.com/intent/tweet?text=Fiber%20is%20an%20Express%20inspired%20%23web%20%23framework%20built%20on%20top%20of%20Fasthttp%2C%20the%20fastest%20HTTP%20engine%20for%20%23Go.%20Designed%20to%20ease%20things%20up%20for%20%23fast%20development%20with%20zero%20memory%20allocation%20and%20%23performance%20in%20mind%20%F0%9F%9A%80%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber) proje hakkında tweet atabilirsiniz.
+2. [𝕏 (Twitter) hesabınızdan](https://x.com/intent/tweet?text=Fiber%20is%20an%20Express%20inspired%20%23web%20%23framework%20built%20on%20top%20of%20Fasthttp%2C%20the%20fastest%20HTTP%20engine%20for%20%23Go.%20Designed%20to%20ease%20things%20up%20for%20%23fast%20development%20with%20zero%20memory%20allocation%20and%20%23performance%20in%20mind%20%F0%9F%9A%80%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber) proje hakkında tweet atabilirsiniz.
 3. [Medium](https://medium.com/), [Dev.to](https://dev.to/) veya kişisel blogunuz üzerinden bir inceleme veya eğitici yazı yazabilirsiniz.
 4. Projeye [bir fincan kahve](https://buymeacoff.ee/fenny) bağışlayarak destek olabilirsiniz.
 
