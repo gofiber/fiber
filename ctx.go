@@ -1347,6 +1347,7 @@ func (*Ctx) parseToStruct(aliasTag string, out interface{}, data map[string][]st
 }
 
 func tagHandlers(field reflect.Value, tagValue string) {
+	//nolint:exhaustive // We don't need to handle all types
 	switch field.Kind() {
 	case reflect.String:
 		if field.String() == "" {
