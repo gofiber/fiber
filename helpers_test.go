@@ -150,19 +150,106 @@ func Benchmark_Utils_GetOffer_WithParams(b *testing.B) {
 }
 
 func Test_Utils_ForEachParameter(t *testing.T) {
-	expectedParams := [][]string{
-		{"foo", "1"},
-		{"bar", `20tw,b\\\"b;sack o`},
+	testCases := []struct {
+		description    string
+		paramStr       string
+		expectedParams [][]string
+	}{
+		{
+			description: "empty input",
+			paramStr:    ``,
+		},
+		{
+			description: "no parameters",
+			paramStr:    `; `,
+		},
+		{
+			description: "naked equals",
+			paramStr:    `; = `,
+		},
+		{
+			description: "no value",
+			paramStr:    `;s=`,
+		},
+		{
+			description: "no name",
+			paramStr:    `;=bar`,
+		},
+		{
+			description: "illegal characters in name",
+			paramStr:    `; foo@bar=baz`,
+		},
+		{
+			description: "value starts with illegal characters",
+			paramStr:    `; foo=@baz; param=val`,
+		},
+		{
+			description: "unterminated quoted value",
+			paramStr:    `; foo="bar`,
+		},
+		{
+			description: "illegal character after value terminates parsing",
+			paramStr:    `; foo=bar@baz; param=val`,
+			expectedParams: [][]string{
+				{"foo", "bar"},
+			},
+		},
+		{
+			description: "parses parameters",
+			paramStr:    `; foo=bar; PARAM=BAZ`,
+			expectedParams: [][]string{
+				{"foo", "bar"},
+				{"PARAM", "BAZ"},
+			},
+		},
+		{
+			description: "stops parsing when functor returns false",
+			paramStr:    `; foo=bar; end=baz; extra=unparsed`,
+			expectedParams: [][]string{
+				{"foo", "bar"},
+				{"end", "baz"},
+			},
+		},
+		{
+			description: "stops parsing when encountering a non-parameter string",
+			paramStr:    `; foo=bar; gzip; param=baz`,
+			expectedParams: [][]string{
+				{"foo", "bar"},
+			},
+		},
+		{
+			description: "quoted string with escapes and special characters",
+			// Note: the sequence \\\" is effectively an escaped backslash \\ and
+			// an escaped double quote \"
+			paramStr: `;foo="20t\w,b\\\"b;s=k o"`,
+			expectedParams: [][]string{
+				{"foo", `20t\w,b\\\"b;s=k o`},
+			},
+		},
+		{
+			description: "complex",
+			paramStr:    `  ;  foo=1  ; bar="\"value\"";  end="20tw,b\\\"b;s=k o" ; action=skip `,
+			expectedParams: [][]string{
+				{"foo", "1"},
+				{"bar", `\"value\"`},
+				{"end", `20tw,b\\\"b;s=k o`},
+			},
+		},
 	}
-	n := 0
-	forEachParameter(`  ;  foo=1  ;   bar="20tw,b\\\"b;sack o" ; action=skip `, func(p, v string) bool {
-		utils.AssertEqual(t, expectedParams[n][0], p)
-		utils.AssertEqual(t, expectedParams[n][1], v)
-		n++
-		return p != "bar"
-	})
+	for _, tc := range testCases {
+		n := 0
+		forEachParameter(tc.paramStr, func(p, v string) bool {
+			utils.AssertEqual(t, true, n < len(tc.expectedParams), "Received more parameters than expected: "+p+"="+v)
+			utils.AssertEqual(t, tc.expectedParams[n][0], p, tc.description)
+			utils.AssertEqual(t, tc.expectedParams[n][1], v, tc.description)
+			n++
+
+			// Stop parsing at the first parameter called "end"
+			return p != "end"
+		})
+		utils.AssertEqual(t, len(tc.expectedParams), n, tc.description+": number of parameters differs")
+	}
 	// Check that we exited on the second parameter (bar)
-	utils.AssertEqual(t, 2, n)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Utils_ForEachParameter -benchmem -count=4
