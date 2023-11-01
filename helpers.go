@@ -285,6 +285,10 @@ func acceptsOfferType(spec, offerType, specParams string) bool {
 // To align with the behavior of res.format from Express, the order of parameters is
 // ignored, and if a parameter is specified twice in the incoming Accept, the last
 // provided value is given precedence.
+// In the case of quoted values, RFC 9110 says that we must treat any character escaped
+// by a backslash as equivalent to the character itself (e.g., "a\aa" is equivalent to "aaa").
+// For the sake of simplicity, we forgo this and compare the value as-is. Besides, it would
+// be highly unusual for a client to escape something other than a double quote or backslash.
 // See https://www.rfc-editor.org/rfc/rfc9110#name-parameters
 func paramsMatch(specParamStr, offerParams string) bool {
 	if specParamStr == "" {
