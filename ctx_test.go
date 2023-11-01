@@ -4441,6 +4441,104 @@ func Test_Ctx_QueryParserUsingTag(t *testing.T) {
 	utils.AssertEqual(t, 2, len(aq.Data))
 }
 
+// go test -run Test_Ctx_QueryParserWithDefaultValues -v
+func Test_Ctx_QueryParserWithDefaultValues(t *testing.T) {
+	t.Parallel()
+	app := New(Config{EnableSplittingOnParsers: true})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	type Query struct {
+		IntValue    int       `query:"intValue" default:"10"`
+		IntSlice    []int     `query:"intSlice"`
+		StringValue string    `query:"stringValue" default:"defaultStr"`
+		StringSlice []string  `query:"stringSlice"`
+		BoolValue   bool      `query:"boolValue" default:"true"`
+		BoolSlice   []bool    `query:"boolSlice"`
+		FloatValue  float64   `query:"floatValue" default:"3.14"`
+		FloatSlice  []float64 `query:"floatSlice"`
+	}
+
+	// Test with multiple values
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+	c.Request().URI().SetQueryString("intValue=20&intSlice=1,2,3&stringValue=test&stringSlice=a,b,c&boolValue=false&boolSlice=true,false,true&floatValue=6.28&floatSlice=1.1,2.2,3.3")
+	cq := new(Query)
+	utils.AssertEqual(t, nil, c.QueryParser(cq))
+	utils.AssertEqual(t, 20, cq.IntValue)
+	utils.AssertEqual(t, 3, len(cq.IntSlice))
+	utils.AssertEqual(t, "test", cq.StringValue)
+	utils.AssertEqual(t, 3, len(cq.StringSlice))
+	utils.AssertEqual(t, false, cq.BoolValue)
+	utils.AssertEqual(t, 3, len(cq.BoolSlice))
+	utils.AssertEqual(t, 6.28, cq.FloatValue)
+	utils.AssertEqual(t, 3, len(cq.FloatSlice))
+
+	// Test with missing values (should use defaults)
+	c.Request().URI().SetQueryString("intSlice=4,5,6&stringSlice=d,e,f&boolSlice=false,true,false&floatSlice=4.4,5.5,6.6")
+	cq = new(Query)
+	utils.AssertEqual(t, nil, c.QueryParser(cq))
+	utils.AssertEqual(t, 10, cq.IntValue) // default value
+	utils.AssertEqual(t, 3, len(cq.IntSlice))
+	utils.AssertEqual(t, "defaultStr", cq.StringValue) // default value
+	utils.AssertEqual(t, 3, len(cq.StringSlice))
+	utils.AssertEqual(t, true, cq.BoolValue) // default value
+	utils.AssertEqual(t, 3, len(cq.BoolSlice))
+	utils.AssertEqual(t, 3.14, cq.FloatValue) // default value
+	utils.AssertEqual(t, 3, len(cq.FloatSlice))
+
+	// Test with empty query string
+	empty := new(Query)
+	c.Request().URI().SetQueryString("")
+	utils.AssertEqual(t, nil, c.QueryParser(empty))
+	utils.AssertEqual(t, 10, empty.IntValue)              // default value
+	utils.AssertEqual(t, "defaultStr", empty.StringValue) // default value
+	utils.AssertEqual(t, true, empty.BoolValue)           // default value
+	utils.AssertEqual(t, 3.14, empty.FloatValue)          // default value
+	utils.AssertEqual(t, 0, len(empty.IntSlice))
+	utils.AssertEqual(t, 0, len(empty.StringSlice))
+	utils.AssertEqual(t, 0, len(empty.BoolSlice))
+	utils.AssertEqual(t, 0, len(empty.FloatSlice))
+	type Query2 struct {
+		Bool            bool     `query:"bool"`
+		ID              int      `query:"id"`
+		Name            string   `query:"name"`
+		Hobby           string   `query:"hobby"`
+		FavouriteDrinks []string `query:"favouriteDrinks"`
+		Empty           []string `query:"empty"`
+		Alloc           []string `query:"alloc"`
+		No              []int64  `query:"no"`
+	}
+
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football&favouriteDrinks=milo,coke,pepsi&alloc=&no=1")
+	q2 := new(Query2)
+	q2.Bool = true
+	q2.Name = "hello world 2"
+	utils.AssertEqual(t, nil, c.QueryParser(q2))
+	utils.AssertEqual(t, "basketball,football", q2.Hobby)
+	utils.AssertEqual(t, true, q2.Bool)
+	utils.AssertEqual(t, "tom", q2.Name) // check value get overwritten
+	utils.AssertEqual(t, []string{"milo", "coke", "pepsi"}, q2.FavouriteDrinks)
+	var nilSlice []string
+	utils.AssertEqual(t, nilSlice, q2.Empty)
+	utils.AssertEqual(t, []string{""}, q2.Alloc)
+	utils.AssertEqual(t, []int64{1}, q2.No)
+
+	type RequiredQuery struct {
+		Name string `query:"name,required"`
+	}
+	rq := new(RequiredQuery)
+	c.Request().URI().SetQueryString("")
+	utils.AssertEqual(t, "failed to decode: name is empty", c.QueryParser(rq).Error())
+
+	type ArrayQuery struct {
+		Data []string
+	}
+	aq := new(ArrayQuery)
+	c.Request().URI().SetQueryString("data[]=john&data[]=doe")
+	utils.AssertEqual(t, nil, c.QueryParser(aq))
+	utils.AssertEqual(t, 2, len(aq.Data))
+}
+
 // go test -run Test_Ctx_QueryParser -v
 func Test_Ctx_QueryParser_WithoutSplitting(t *testing.T) {
 	t.Parallel()
@@ -5059,6 +5157,62 @@ func Benchmark_Ctx_QueryParser(b *testing.B) {
 	}
 	utils.AssertEqual(b, nil, err)
 	utils.AssertEqual(b, nil, c.QueryParser(q))
+}
+
+// go test -v  -run=^$ -bench=Benchmark_Ctx_QueryParser -benchmem -count=4
+func Benchmark_Ctx_QueryParserWithDefaultValues(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	// Query struct with 2 default values
+	type Query struct {
+		ID    int    `default:"4"`
+		Name  string `default:"john"`
+		Hobby []string
+	}
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+	c.Request().URI().SetQueryString("hobby=basketball&hobby=football")
+	q := new(Query)
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	var err error
+	for n := 0; n < b.N; n++ {
+		err = c.QueryParser(q)
+	}
+
+	utils.AssertEqual(b, nil, err)
+	utils.AssertEqual(b, nil, c.QueryParser(q))
+
+}
+
+// go test -v  -run=^$ -bench=Benchmark_Ctx_QueryParserWithDefaultValuesForSlices -benchmem -count=4
+func Benchmark_Ctx_QueryParserWithDefaultValuesForSlices(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	// Query struct slices with default values
+	type Query2 struct {
+		ID    int
+		Name  string
+		Hobby []int `default:"1,2,3"`
+	}
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+	c.Request().URI().SetQueryString("hobby=1&hobby=2")
+	q2 := new(Query2)
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	var err2 error
+	for n := 0; n < b.N; n++ {
+		err2 = c.QueryParser(q2)
+	}
+	utils.AssertEqual(b, nil, err2)
+	utils.AssertEqual(b, nil, c.QueryParser(q2))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_parseQuery -benchmem -count=4
