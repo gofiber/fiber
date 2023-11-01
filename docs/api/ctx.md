@@ -583,7 +583,7 @@ app.Get("/", func(c *fiber.Ctx) error {
 
 ## GetReqHeaders
 
-Returns the HTTP request headers.
+Returns the HTTP request headers as a map. Since a header can be set multiple times in a single request, the values of the map are slices of strings containing all the different values of the header.
 
 ```go title="Signature"
 func (c *Ctx) GetReqHeaders() map[string][]string
@@ -618,7 +618,7 @@ app.Get("/", func(c *fiber.Ctx) error {
 
 ## GetRespHeaders
 
-Returns the HTTP response headers.
+Returns the HTTP response headers as a map. Since a header can be set multiple times in a single request, the values of the map are slices of strings containing all the different values of the header.
 
 ```go title="Signature"
 func (c *Ctx) GetRespHeaders() map[string][]string
