@@ -5159,7 +5159,7 @@ func Benchmark_Ctx_QueryParser(b *testing.B) {
 	utils.AssertEqual(b, nil, c.QueryParser(q))
 }
 
-// go test -v  -run=^$ -bench=Benchmark_Ctx_QueryParser -benchmem -count=4
+// go test -v  -run=^$ -bench=Benchmark_Ctx_QueryParserWithDefaultValues -benchmem -count=4
 func Benchmark_Ctx_QueryParserWithDefaultValues(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -5185,7 +5185,6 @@ func Benchmark_Ctx_QueryParserWithDefaultValues(b *testing.B) {
 
 	utils.AssertEqual(b, nil, err)
 	utils.AssertEqual(b, nil, c.QueryParser(q))
-
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_QueryParserWithDefaultValuesForSlices -benchmem -count=4

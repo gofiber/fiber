@@ -1278,7 +1278,7 @@ func (c *Ctx) QueryParser(out interface{}) error {
 		return err
 	}
 
-	c.setDefaultValues(out)
+	setDefaultValues(out)
 
 	return c.parseToStruct(queryTag, out, data)
 }
@@ -1379,6 +1379,7 @@ func tagHandlers(field reflect.Value, tagValue string) {
 func setDefaultForSlice(field reflect.Value, tagValue string, kind reflect.Kind) {
 	items := strings.Split(tagValue, ",")
 	for _, item := range items {
+		//nolint:exhaustive // We don't need to handle all types
 		switch kind {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 			if i, err := strconv.ParseInt(item, 10, 64); err == nil {
@@ -1408,7 +1409,7 @@ func getFieldsWithDefaultTag(t reflect.Type) []reflect.StructField {
 	return fields
 }
 
-func (c *Ctx) setDefaultValues(out interface{}) {
+func setDefaultValues(out interface{}) {
 	val := reflect.ValueOf(out).Elem()
 	typ := val.Type()
 
