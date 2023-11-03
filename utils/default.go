@@ -38,17 +38,29 @@ func tagHandlers(field reflect.Value, tagValue string) {
 
 func setDefaultForSlice(field reflect.Value, tagValue string, kind reflect.Kind) {
 	items := strings.Split(tagValue, ",")
-	for _, item := range items {
-		//nolint:exhaustive // We don't need to handle all types
-		switch kind {
-		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+
+	if len(items) == 0 {
+		return
+	}
+
+	// if first item is string, then all items are string type
+	if kind == reflect.String {
+		for _, item := range items {
+			field.Set(reflect.Append(field, reflect.ValueOf(item)))
+		}
+		return
+	}
+
+	// if first item is int, then all items are int type
+	if kind == reflect.Int || kind == reflect.Int8 || kind == reflect.Int16 || kind == reflect.Int32 || kind == reflect.Int64 {
+		for _, item := range items {
 			if i, err := strconv.ParseInt(item, 10, 64); err == nil {
 				field.Set(reflect.Append(field, reflect.ValueOf(int(i))))
 			}
-		case reflect.String:
-			field.Set(reflect.Append(field, reflect.ValueOf(item)))
 		}
+		return
 	}
+
 }
 
 var structCache = make(map[reflect.Type][]reflect.StructField)
