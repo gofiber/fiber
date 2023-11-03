@@ -144,6 +144,12 @@ type Config struct {
 	// Default: false
 	CaseSensitive bool `json:"case_sensitive"`
 
+	// When set to true, this will add a default value tag support to all parsers.
+	// This will allow you to set default values for query, path, and body parameters.
+	//
+	// Default: false
+	DefaultValueParser bool `json:"default_value_parser"`
+
 	// When set to true, this relinquishes the 0-allocation promise in certain
 	// cases in order to access the handler values (e.g. request bodies) in an
 	// immutable fashion so that these values are available even if you return
