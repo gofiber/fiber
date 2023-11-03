@@ -1278,7 +1278,9 @@ func (c *Ctx) QueryParser(out interface{}) error {
 		return err
 	}
 
-	utils.SetDefaultValues(out)
+	if c.app.config.DefaultValueParser {
+		utils.SetDefaultValues(out)
+	}
 
 	return c.parseToStruct(queryTag, out, data)
 }

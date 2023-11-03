@@ -5161,7 +5161,7 @@ func Benchmark_Ctx_QueryParser(b *testing.B) {
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_QueryParserWithDefaultValues -benchmem -count=4
 func Benchmark_Ctx_QueryParserWithDefaultValues(b *testing.B) {
-	app := New()
+	app := New(Config{DefaultValueParser: true})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 
