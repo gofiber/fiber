@@ -115,10 +115,13 @@ func (t *TLSHandler) GetClientInfo(info *tls.ClientHelloInfo) (*tls.Certificate,
 // Range data for c.Range
 type Range struct {
 	Type   string
-	Ranges []struct {
-		Start int
-		End   int
-	}
+	Ranges []RangeSet
+}
+
+// RangeSet represents a single content range from a request.
+type RangeSet struct {
+	Start int
+	End   int
 }
 
 // Cookie data for c.Cookie
@@ -1392,25 +1395,44 @@ var (
 
 // Range returns a struct containing the type and a slice of ranges.
 func (c *Ctx) Range(size int) (Range, error) {
-	var rangeData Range
+	var (
+		rangeData Range
+		ranges    string
+	)
 	rangeStr := c.Get(HeaderRange)
-	if rangeStr == "" || !strings.Contains(rangeStr, "=") {
+
+	i := strings.IndexByte(rangeStr, '=')
+	if i == -1 || strings.Contains(rangeStr[i+1:], "=") {
 		return rangeData, ErrRangeMalformed
 	}
-	data := strings.Split(rangeStr, "=")
-	const expectedDataParts = 2
-	if len(data) != expectedDataParts {
-		return rangeData, ErrRangeMalformed
-	}
-	rangeData.Type = data[0]
-	arr := strings.Split(data[1], ",")
-	for i := 0; i < len(arr); i++ {
-		item := strings.Split(arr[i], "-")
-		if len(item) == 1 {
+	rangeData.Type = rangeStr[:i]
+	ranges = rangeStr[i+1:]
+
+	var (
+		singleRange string
+		moreRanges  = ranges
+	)
+	for moreRanges != "" {
+		singleRange = moreRanges
+		if i := strings.IndexByte(moreRanges, ','); i >= 0 {
+			singleRange = moreRanges[:i]
+			moreRanges = moreRanges[i+1:]
+		} else {
+			moreRanges = ""
+		}
+
+		var (
+			startStr, endStr string
+			i                int
+		)
+		if i = strings.IndexByte(singleRange, '-'); i == -1 {
 			return rangeData, ErrRangeMalformed
 		}
-		start, startErr := strconv.Atoi(item[0])
-		end, endErr := strconv.Atoi(item[1])
+		startStr = singleRange[:i]
+		endStr = singleRange[i+1:]
+
+		start, startErr := fasthttp.ParseUint(utils.UnsafeBytes(startStr))
+		end, endErr := fasthttp.ParseUint(utils.UnsafeBytes(endStr))
 		if startErr != nil { // -nnn
 			start = size - end
 			end = size - 1
