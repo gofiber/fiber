@@ -95,37 +95,59 @@ func TestTagHandlers(t *testing.T) {
 		})
 	}
 }
-
 func TestSetDefaultForSlice(t *testing.T) {
 	tests := []struct {
 		name     string
 		field    reflect.Value
 		tagValue string
-		kind     reflect.Kind
+		elemType reflect.Type
 		expected interface{}
 	}{
 		{
 			name:     "Slice of strings with default value",
 			field:    reflect.ValueOf(new([]string)).Elem(),
 			tagValue: "apple,banana",
-			kind:     reflect.String,
+			elemType: reflect.TypeOf(""),
 			expected: []string{"apple", "banana"},
 		},
 		{
 			name:     "Slice of ints with default value",
 			field:    reflect.ValueOf(new([]int)).Elem(),
 			tagValue: "1,2,3",
-			kind:     reflect.Int,
+			elemType: reflect.TypeOf(0),
 			expected: []int{1, 2, 3},
+		},
+		{
+			name:     "Slice of string pointers with default value",
+			field:    reflect.ValueOf(new([]*string)).Elem(),
+			tagValue: "apple,banana",
+			elemType: reflect.TypeOf(new(*string)).Elem(),
+			expected: []*string{str("apple"), str("banana")},
+		},
+		{
+			name:     "Slice of int pointers with default value",
+			field:    reflect.ValueOf(new([]*int)).Elem(),
+			tagValue: "1,2,3",
+			elemType: reflect.TypeOf(new(*int)).Elem(),
+			expected: []*int{ptr(1), ptr(2), ptr(3)},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			setDefaultForSlice(tt.field, tt.tagValue, tt.kind)
+			setDefaultForSlice(tt.field, tt.tagValue, tt.elemType)
 			if !reflect.DeepEqual(tt.field.Interface(), tt.expected) {
 				t.Errorf("got %v, want %v", tt.field.Interface(), tt.expected)
 			}
 		})
 	}
+}
+
+// ptr is a helper function to take the address of a string.
+func ptr(s int) *int {
+	return &s
+}
+
+func str(s string) *string {
+	return &s
 }

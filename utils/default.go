@@ -32,35 +32,43 @@ func tagHandlers(field reflect.Value, tagValue string) {
 			}
 		}
 	case reflect.Slice:
-		setDefaultForSlice(field, tagValue, field.Type().Elem().Kind())
+		setDefaultForSlice(field, tagValue, field.Type().Elem())
 	}
 }
 
-func setDefaultForSlice(field reflect.Value, tagValue string, kind reflect.Kind) {
+func setDefaultForSlice(field reflect.Value, tagValue string, elemType reflect.Type) {
 	items := strings.Split(tagValue, ",")
+	slice := reflect.MakeSlice(reflect.SliceOf(elemType), 0, len(items))
+	for _, item := range items {
+		var val reflect.Value
+		switch elemType.Kind() {
+		case reflect.Ptr:
+			elemKind := elemType.Elem().Kind()
+			switch elemKind {
+			case reflect.String:
+				strVal := item
+				val = reflect.ValueOf(&strVal)
+			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+				if intVal, err := strconv.ParseInt(item, 10, 64); err == nil {
+					intPtr := reflect.New(elemType.Elem())
+					intPtr.Elem().SetInt(intVal)
+					val = intPtr
+				}
 
-	if len(items) == 0 {
-		return
-	}
-
-	// if first item is string, then all items are string type
-	if kind == reflect.String {
-		for _, item := range items {
-			field.Set(reflect.Append(field, reflect.ValueOf(item)))
-		}
-		return
-	}
-
-	// if first item is int, then all items are int type
-	if kind == reflect.Int || kind == reflect.Int8 || kind == reflect.Int16 || kind == reflect.Int32 || kind == reflect.Int64 {
-		for _, item := range items {
-			if i, err := strconv.ParseInt(item, 10, 64); err == nil {
-				field.Set(reflect.Append(field, reflect.ValueOf(int(i))))
+			}
+		case reflect.String:
+			val = reflect.ValueOf(item)
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			if intVal, err := strconv.ParseInt(item, 10, 64); err == nil {
+				val = reflect.ValueOf(int(intVal))
 			}
 		}
-		return
+		if val.IsValid() {
+			slice = reflect.Append(slice, val)
+		}
 	}
 
+	field.Set(slice)
 }
 
 var structCache = make(map[reflect.Type][]reflect.StructField)

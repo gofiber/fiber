@@ -1327,6 +1327,10 @@ func (c *Ctx) ReqHeaderParser(out interface{}) error {
 		}
 	})
 
+	if c.app.config.DefaultValueParser {
+		utils.SetDefaultValues(out)
+	}
+
 	return c.parseToStruct(reqHeaderTag, out, data)
 }
 
