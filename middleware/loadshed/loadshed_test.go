@@ -18,13 +18,23 @@ func (m *MockCPUPercentGetter) PercentWithContext(_ context.Context, _ time.Dura
 	return m.MockedPercentage, nil
 }
 
+func ReturnOK(c *fiber.Ctx) error {
+	return c.SendStatus(fiber.StatusOK)
+}
+
 func Test_Loadshed_LowerThreshold(t *testing.T) {
 	app := fiber.New()
 
 	mockGetter := &MockCPUPercentGetter{MockedPercentage: []float64{89.0}}
-	cfg := ConfigDefault
-	cfg.Getter = mockGetter
+	var cfg Config
+	cfg.Criteria = &CPULoadCriteria{
+		LowerThreshold: 0.90,
+		UpperThreshold: 0.95,
+		Interval:       time.Second,
+		Getter:         mockGetter,
+	}
 	app.Use(New(cfg))
+	app.Get("/", ReturnOK)
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
@@ -39,9 +49,15 @@ func Test_Loadshed_MiddleValue(t *testing.T) {
 	app := fiber.New()
 
 	mockGetter := &MockCPUPercentGetter{MockedPercentage: []float64{93.0}}
-	cfg := ConfigDefault
-	cfg.Getter = mockGetter
+	var cfg Config
+	cfg.Criteria = &CPULoadCriteria{
+		LowerThreshold: 0.90,
+		UpperThreshold: 0.95,
+		Interval:       time.Second,
+		Getter:         mockGetter,
+	}
 	app.Use(New(cfg))
+	app.Get("/", ReturnOK)
 
 	rejectedCount := 0
 	acceptedCount := 0
@@ -68,9 +84,15 @@ func Test_Loadshed_UpperThreshold(t *testing.T) {
 	app := fiber.New()
 
 	mockGetter := &MockCPUPercentGetter{MockedPercentage: []float64{96.0}}
-	cfg := ConfigDefault
-	cfg.Getter = mockGetter
+	var cfg Config
+	cfg.Criteria = &CPULoadCriteria{
+		LowerThreshold: 0.90,
+		UpperThreshold: 0.95,
+		Interval:       time.Second,
+		Getter:         mockGetter,
+	}
 	app.Use(New(cfg))
+	app.Get("/", ReturnOK)
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
