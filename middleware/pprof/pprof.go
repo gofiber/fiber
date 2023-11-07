@@ -85,6 +85,8 @@ func New(config ...Config) fiber.Handler {
 
 // cutPrefix is a copy of [strings.CutPrefix] added in Go 1.20.
 // Remove this function when we drop support for Go 1.19.
+//
+//nolint:nonamedreturns // Align with its original form in std.
 func cutPrefix(s, prefix string) (after string, found bool) {
 	if !strings.HasPrefix(s, prefix) {
 		return s, false
