@@ -74,7 +74,7 @@ func New(config ...Config) fiber.Handler {
 			// Assume that anything not defined as 'safe' by RFC7231 needs protection
 
 			// Enforce an origin check for HTTPS connections.
-			if c.Protocol() == "https" {
+			if c.Scheme() == "https" {
 				if err := refererMatchesHost(c); err != nil {
 					return cfg.ErrorHandler(c, err)
 				}
@@ -230,7 +230,7 @@ func refererMatchesHost(c fiber.Ctx) error {
 		return ErrBadReferer
 	}
 
-	if refererURL.Scheme+"://"+refererURL.Host != c.Protocol()+"://"+c.Hostname() {
+	if refererURL.Scheme+"://"+refererURL.Host != c.Scheme()+"://"+c.Host() {
 		return ErrBadReferer
 	}
 

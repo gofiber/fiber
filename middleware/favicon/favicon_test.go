@@ -1,11 +1,10 @@
+//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package favicon
 
 import (
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -80,7 +79,7 @@ func Test_Middleware_Favicon_Found(t *testing.T) {
 }
 
 // go test -run Test_Custom_Favicon_Url
-func Test_Custom_Favicon_Url(t *testing.T) {
+func Test_Custom_Favicon_URL(t *testing.T) {
 	app := fiber.New()
 	const customURL = "/favicon.svg"
 	app.Use(New(Config{
@@ -119,24 +118,6 @@ func Test_Custom_Favicon_Data(t *testing.T) {
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
 	utils.AssertEqual(t, "public, max-age=31536000", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
-}
-
-// mockFS wraps local filesystem for the purposes of
-// Test_Middleware_Favicon_FileSystem located below
-// TODO use os.Dir if fiber upgrades to 1.16
-type mockFS struct{}
-
-func (mockFS) Open(name string) (http.File, error) {
-	if name == "/" {
-		name = "."
-	} else {
-		name = strings.TrimPrefix(name, "/")
-	}
-	file, err := os.Open(name) //nolint:gosec // We're in a test func, so this is fine
-	if err != nil {
-		return nil, fmt.Errorf("failed to open: %w", err)
-	}
-	return file, nil
 }
 
 // go test -run Test_Middleware_Favicon_FileSystem
@@ -205,24 +186,4 @@ func Test_Favicon_Next(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
-}
-
-// go test -run Test_Custom_Favicon_URL
-func Test_Custom_Favicon_URL(t *testing.T) {
-	app := fiber.New()
-	const customURL = "/favicon.svg"
-	app.Use(New(Config{
-		File: "../../.github/testdata/favicon.ico",
-		URL:  customURL,
-	}))
-
-	app.Get("/", func(c fiber.Ctx) error {
-		return nil
-	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, customURL, nil))
-
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
-	require.Equal(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
 }
