@@ -41,9 +41,11 @@ func setDefaultForSlice(field reflect.Value, tagValue string, elemType reflect.T
 	slice := reflect.MakeSlice(reflect.SliceOf(elemType), 0, len(items))
 	for _, item := range items {
 		var val reflect.Value
+		//nolint:exhaustive // We don't need to handle all types
 		switch elemType.Kind() {
 		case reflect.Ptr:
 			elemKind := elemType.Elem().Kind()
+			//nolint:exhaustive // We don't need to handle all types
 			switch elemKind {
 			case reflect.String:
 				strVal := item
@@ -54,13 +56,12 @@ func setDefaultForSlice(field reflect.Value, tagValue string, elemType reflect.T
 					intPtr.Elem().SetInt(intVal)
 					val = intPtr
 				}
-
 			}
 		case reflect.String:
 			val = reflect.ValueOf(item)
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 			if intVal, err := strconv.ParseInt(item, 10, 64); err == nil {
-				val = reflect.ValueOf(int(intVal))
+				val = reflect.ValueOf(int64(intVal))
 			}
 		}
 		if val.IsValid() {

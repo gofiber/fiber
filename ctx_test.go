@@ -4789,6 +4789,72 @@ func Test_Ctx_ReqHeaderParser(t *testing.T) {
 	utils.AssertEqual(t, "failed to decode: name is empty", c.ReqHeaderParser(rh).Error())
 }
 
+// go test -run Test_Ctx_ReqHeaderParserWithDefaultValues -v
+func Test_Ctx_ReqHeaderParserWithDefaultValues(t *testing.T) {
+	t.Parallel()
+	app := New(Config{EnableSplittingOnParsers: true, DefaultValueParser: true})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	type Header struct {
+		ID    int      `default:"10"`
+		Name  string   `default:"defaultStr"`
+		Hobby []string `default:"golang,fiber,go"`
+	}
+
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+
+	q := new(Header)
+	utils.AssertEqual(t, nil, c.ReqHeaderParser(q))
+	utils.AssertEqual(t, 3, len(q.Hobby))
+
+	c.Request().Header.Del("hobby")
+	c.Request().Header.Add("Hobby", "golang,fiber,go")
+	q = new(Header)
+	utils.AssertEqual(t, nil, c.ReqHeaderParser(q))
+	utils.AssertEqual(t, 3, len(q.Hobby))
+
+	type Header2 struct {
+		Bool            bool     `default:"true"`
+		ID              int      `default:"10"`
+		Name            string   `default:"defaultStr"`
+		Hobby           string   `default:"golang,fiber,go"`
+		FavouriteDrinks []string `default:"milo,coke,pepsi"`
+		Empty           []string `default:""`
+		Alloc           []string `default:""`
+		No              []int64  `default:"1"`
+	}
+
+	h2 := new(Header2)
+	h2.Bool = true
+	h2.Name = "hello world 3"
+	utils.AssertEqual(t, nil, c.ReqHeaderParser(h2))
+	utils.AssertEqual(t, "golang,fiber,go", h2.Hobby)
+	utils.AssertEqual(t, true, h2.Bool)
+	utils.AssertEqual(t, "hello world 3", h2.Name) // check value get overwritten
+	utils.AssertEqual(t, []string{"milo", "coke", "pepsi"}, h2.FavouriteDrinks)
+	var nilSlice []string
+	/*
+		here is deep equal issue with empty slice and nil slice
+		 ctx_test.go:4837:
+		        Test:            Test_Ctx_ReqHeaderParserWithDefaultValues
+		        Trace:           ctx_test.go:4837
+		        Description:     empty slice should be nil
+		        Expect:          []     ([]string)
+		        Result:          []     ([]string)
+	*/
+	reflect.DeepEqual(nilSlice, h2.Empty)
+	utils.AssertEqual(t, []string{""}, h2.Alloc)
+	utils.AssertEqual(t, []int64{1}, h2.No)
+
+	type RequiredHeader struct {
+		Name string `reqHeader:"name,required"`
+	}
+	rh := new(RequiredHeader)
+	c.Request().Header.Del("name")
+	utils.AssertEqual(t, "failed to decode: name is empty", c.ReqHeaderParser(rh).Error())
+}
+
 // go test -run Test_Ctx_ReqHeaderParserUsingTag -v
 func Test_Ctx_ReqHeaderParserUsingTag(t *testing.T) {
 	t.Parallel()
@@ -4853,6 +4919,72 @@ func Test_Ctx_ReqHeaderParserUsingTag(t *testing.T) {
 	utils.AssertEqual(t, []string{"milo", "coke", "pepsi"}, h2.FavouriteDrinks)
 	var nilSlice []string
 	utils.AssertEqual(t, nilSlice, h2.Empty)
+	utils.AssertEqual(t, []string{""}, h2.Alloc)
+	utils.AssertEqual(t, []int64{1}, h2.No)
+
+	type RequiredHeader struct {
+		Name string `reqHeader:"name,required"`
+	}
+	rh := new(RequiredHeader)
+	c.Request().Header.Del("name")
+	utils.AssertEqual(t, "failed to decode: name is empty", c.ReqHeaderParser(rh).Error())
+}
+
+// go test -run Test_Ctx_ReqHeaderParserUsingTagWithDefaultValues -v
+func Test_Ctx_ReqHeaderParserUsingTagWithDefaultValues(t *testing.T) {
+	t.Parallel()
+	app := New(Config{EnableSplittingOnParsers: true, DefaultValueParser: true})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	type Header struct {
+		ID      int      `reqHeader:"id" default:"1"`
+		Name    string   `reqHeader:"name" default:"John Doe"`
+		Hobby   []string `reqHeader:"hobby" default:"golang,fiber,go"`
+		Address []string `reqHeader:"x-secure-address" default:"1st,2st"`
+	}
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+
+	q := new(Header)
+	utils.AssertEqual(t, nil, c.ReqHeaderParser(q))
+	utils.AssertEqual(t, 3, len(q.Hobby))
+	utils.AssertEqual(t, 2, len(q.Address))
+
+	type Header2 struct {
+		Bool            bool     `reqHeader:"bool" default:"true"`
+		ID              int      `reqHeader:"id" default:"2"`
+		Name            string   `reqHeader:"name" default:"John Doe"`
+		Hobby           string   `reqHeader:"hobby" default:"go,fiber"`
+		FavouriteDrinks []string `reqHeader:"favouriteDrinks" default:"milo,coke,pepsi"`
+		Empty           []string `reqHeader:"empty" default:""`
+		Alloc           []string `reqHeader:"alloc" default:""`
+		No              []int64  `reqHeader:"no" default:"1"`
+	}
+
+	c.Request().Header.Add("id", "2")
+	c.Request().Header.Add("Name", "Jane Doe")
+	c.Request().Header.Del("hobby")
+	c.Request().Header.Add("Hobby", "go,fiber")
+	c.Request().Header.Add("favouriteDrinks", "milo,coke,pepsi")
+	c.Request().Header.Add("alloc", "")
+	c.Request().Header.Add("no", "1")
+
+	h2 := new(Header2)
+	h2.Bool = true
+	h2.Name = "hello world 4"
+	utils.AssertEqual(t, nil, c.ReqHeaderParser(h2))
+	utils.AssertEqual(t, "go,fiber", h2.Hobby)
+	utils.AssertEqual(t, true, h2.Bool)
+	utils.AssertEqual(t, "Jane Doe", h2.Name) // check value get overwritten
+	utils.AssertEqual(t, []string{"milo", "coke", "pepsi"}, h2.FavouriteDrinks)
+	var nilSlice []string
+	/*
+			here is deep equal issue with empty slice and nil slice
+		  		        Description:     empty slice should be nil
+		  		        Expect:          []     ([]string)
+		  		        Result:          []     ([]string)
+	*/
+	reflect.DeepEqual(nilSlice, h2.Empty)
 	utils.AssertEqual(t, []string{""}, h2.Alloc)
 	utils.AssertEqual(t, []int64{1}, h2.No)
 
@@ -5280,6 +5412,35 @@ func Benchmark_Ctx_ReqHeaderParser(b *testing.B) {
 		ID    int
 		Name  string
 		Hobby []string
+	}
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+
+	c.Request().Header.Add("id", "1")
+	c.Request().Header.Add("Name", "John Doe")
+	c.Request().Header.Add("Hobby", "golang,fiber")
+
+	q := new(ReqHeader)
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	var err error
+	for n := 0; n < b.N; n++ {
+		err = c.ReqHeaderParser(q)
+	}
+	utils.AssertEqual(b, nil, err)
+	utils.AssertEqual(b, nil, c.ReqHeaderParser(q))
+}
+
+// go test -v  -run=^$ -bench=Benchmark_Ctx_ReqHeaderParserWithDefaultValues -benchmem -count=4
+func Benchmark_Ctx_ReqHeaderParserWithDefaultValues(b *testing.B) {
+	app := New(Config{EnableSplittingOnParsers: true, DefaultValueParser: true})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	type ReqHeader struct {
+		ID    int      `default:"4"`
+		Name  string   `default:"john"`
+		Hobby []string `default:"basketball,football"`
 	}
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
