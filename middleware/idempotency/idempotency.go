@@ -45,8 +45,10 @@ func New(config ...Config) fiber.Handler {
 
 			_ = c.Status(res.StatusCode)
 
-			for header, val := range res.Headers {
-				c.Set(header, val)
+			for header, vals := range res.Headers {
+				for _, val := range vals {
+					c.Context().Response.Header.Add(header, val)
+				}
 			}
 
 			if len(res.Body) != 0 {
@@ -116,7 +118,7 @@ func New(config ...Config) fiber.Handler {
 			Body: utils.CopyBytes(c.Response().Body()),
 		}
 		{
-			headers := make(map[string]string)
+			headers := make(map[string][]string)
 			if err := c.Bind().RespHeader(headers); err != nil {
 				return fmt.Errorf("failed to bind to response headers: %w", err)
 			}
@@ -126,7 +128,7 @@ func New(config ...Config) fiber.Handler {
 				res.Headers = headers
 			} else {
 				// Filter
-				res.Headers = make(map[string]string)
+				res.Headers = make(map[string][]string)
 				for h := range headers {
 					if _, ok := keepResponseHeadersMap[utils.ToLower(h)]; ok {
 						res.Headers[h] = headers[h]

@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/gofiber/fiber/v2/utils"
+	"github.com/stretchr/testify/require"
 )
 
 const work = "work"
@@ -40,7 +40,7 @@ func Test_DefaultLogger(t *testing.T) {
 	Warn("work may fail")
 	Error("work failed")
 	Panic("work panic")
-	utils.AssertEqual(t, "[Trace] trace work\n"+
+	require.Equal(t, "[Trace] trace work\n"+
 		"[Debug] received work order\n"+
 		"[Info] starting work\n"+
 		"[Warn] work may fail\n"+
@@ -61,7 +61,7 @@ func Test_DefaultFormatLogger(t *testing.T) {
 	Errorf("%s failed", work)
 	Panicf("%s panic", work)
 
-	utils.AssertEqual(t, "[Trace] trace work\n"+
+	require.Equal(t, "[Trace] trace work\n"+
 		"[Debug] received work order\n"+
 		"[Info] starting work\n"+
 		"[Warn] work may fail\n"+
@@ -84,7 +84,7 @@ func Test_CtxLogger(t *testing.T) {
 	WithContext(ctx).Errorf("%s failed", work)
 	WithContext(ctx).Panicf("%s panic", work)
 
-	utils.AssertEqual(t, "[Trace] trace work\n"+
+	require.Equal(t, "[Trace] trace work\n"+
 		"[Debug] received work order\n"+
 		"[Info] starting work\n"+
 		"[Warn] work may fail\n"+
@@ -151,9 +151,25 @@ func Test_LogfKeyAndValues(t *testing.T) {
 				depth:  4,
 			}
 			l.privateLogw(tt.level, tt.format, tt.keysAndValues)
-			utils.AssertEqual(t, tt.wantOutput, buf.String())
+			require.Equal(t, tt.wantOutput, buf.String())
 		})
 	}
+}
+
+func Test_WithContextCaller(t *testing.T) {
+	logger = &defaultLogger{
+		stdlog: log.New(os.Stderr, "", log.Lshortfile),
+		depth:  4,
+	}
+
+	var w byteSliceWriter
+	SetOutput(&w)
+	ctx := context.TODO()
+
+	WithContext(ctx).Info("")
+	Info("")
+
+	require.Equal(t, "default_test.go:169: [Info] \ndefault_test.go:170: [Info] \n", string(w.b))
 }
 
 func Test_SetLevel(t *testing.T) {
@@ -163,34 +179,34 @@ func Test_SetLevel(t *testing.T) {
 	}
 
 	setLogger.SetLevel(LevelTrace)
-	utils.AssertEqual(t, LevelTrace, setLogger.level)
-	utils.AssertEqual(t, LevelTrace.toString(), setLogger.level.toString())
+	require.Equal(t, LevelTrace, setLogger.level)
+	require.Equal(t, LevelTrace.toString(), setLogger.level.toString())
 
 	setLogger.SetLevel(LevelDebug)
-	utils.AssertEqual(t, LevelDebug, setLogger.level)
-	utils.AssertEqual(t, LevelDebug.toString(), setLogger.level.toString())
+	require.Equal(t, LevelDebug, setLogger.level)
+	require.Equal(t, LevelDebug.toString(), setLogger.level.toString())
 
 	setLogger.SetLevel(LevelInfo)
-	utils.AssertEqual(t, LevelInfo, setLogger.level)
-	utils.AssertEqual(t, LevelInfo.toString(), setLogger.level.toString())
+	require.Equal(t, LevelInfo, setLogger.level)
+	require.Equal(t, LevelInfo.toString(), setLogger.level.toString())
 
 	setLogger.SetLevel(LevelWarn)
-	utils.AssertEqual(t, LevelWarn, setLogger.level)
-	utils.AssertEqual(t, LevelWarn.toString(), setLogger.level.toString())
+	require.Equal(t, LevelWarn, setLogger.level)
+	require.Equal(t, LevelWarn.toString(), setLogger.level.toString())
 
 	setLogger.SetLevel(LevelError)
-	utils.AssertEqual(t, LevelError, setLogger.level)
-	utils.AssertEqual(t, LevelError.toString(), setLogger.level.toString())
+	require.Equal(t, LevelError, setLogger.level)
+	require.Equal(t, LevelError.toString(), setLogger.level.toString())
 
 	setLogger.SetLevel(LevelFatal)
-	utils.AssertEqual(t, LevelFatal, setLogger.level)
-	utils.AssertEqual(t, LevelFatal.toString(), setLogger.level.toString())
+	require.Equal(t, LevelFatal, setLogger.level)
+	require.Equal(t, LevelFatal.toString(), setLogger.level.toString())
 
 	setLogger.SetLevel(LevelPanic)
-	utils.AssertEqual(t, LevelPanic, setLogger.level)
-	utils.AssertEqual(t, LevelPanic.toString(), setLogger.level.toString())
+	require.Equal(t, LevelPanic, setLogger.level)
+	require.Equal(t, LevelPanic.toString(), setLogger.level.toString())
 
 	setLogger.SetLevel(8)
-	utils.AssertEqual(t, 8, int(setLogger.level))
-	utils.AssertEqual(t, "[?8] ", setLogger.level.toString())
+	require.Equal(t, 8, int(setLogger.level))
+	require.Equal(t, "[?8] ", setLogger.level.toString())
 }

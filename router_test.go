@@ -456,6 +456,40 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 	require.True(t, strings.Contains(app.getString(body), "color"))
 }
 
+func Test_Router_NotFound(t *testing.T) {
+	app := New()
+	app.Use(func(c Ctx) error {
+		return c.Next()
+	})
+	appHandler := app.Handler()
+	c := &fasthttp.RequestCtx{}
+
+	c.Request.Header.SetMethod("DELETE")
+	c.URI().SetPath("/this/route/does/not/exist")
+
+	appHandler(c)
+
+	require.Equal(t, 404, c.Response.StatusCode())
+	require.Equal(t, "Cannot DELETE /this/route/does/not/exist", string(c.Response.Body()))
+}
+
+func Test_Router_NotFound_HTML_Inject(t *testing.T) {
+	app := New()
+	app.Use(func(c Ctx) error {
+		return c.Next()
+	})
+	appHandler := app.Handler()
+	c := &fasthttp.RequestCtx{}
+
+	c.Request.Header.SetMethod("DELETE")
+	c.URI().SetPath("/does/not/exist<script>alert('foo');</script>")
+
+	appHandler(c)
+
+	require.Equal(t, 404, c.Response.StatusCode())
+	require.Equal(t, "Cannot DELETE /does/not/exist&lt;script&gt;alert(&#39;foo&#39;);&lt;/script&gt;", string(c.Response.Body()))
+}
+
 //////////////////////////////////////////////
 ///////////////// BENCHMARKS /////////////////
 //////////////////////////////////////////////

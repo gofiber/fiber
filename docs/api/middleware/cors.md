@@ -6,6 +6,10 @@ id: cors
 
 CORS middleware for [Fiber](https://github.com/gofiber/fiber) that can be used to enable [Cross-Origin Resource Sharing](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) with various options.
 
+The middleware conforms to the `access-control-allow-origin` specification by parsing `AllowOrigins`. First, the middleware checks if there is a matching allowed origin for the requesting 'origin' header. If there is a match, it returns exactly one matching domain from the list of allowed origins.
+
+For more control, `AllowOriginsFunc` can be used to programatically determine if an origin is allowed. If no match was found in `AllowOrigins` and if `AllowOriginsFunc` returns true then the 'access-control-allow-origin' response header is set to the 'origin' request header.
+
 ## Signatures
 
 ```go
@@ -54,16 +58,16 @@ app.Use(cors.New(cors.Config{
 
 ## Config
 
-| Property         | Type                       | Description                                                                                                                                            | Default                            |
-|:-----------------|:---------------------------|:-------------------------------------------------------------------------------------------------------------------------------------------------------|:-----------------------------------|
-| Next             | `func(*fiber.Ctx) bool`    | Next defines a function to skip this middleware when returned true.                                                                                    | `nil`                              |
-| AllowOriginsFunc | `func(origin string) bool` | AllowOriginsFunc defines a function that will set the 'access-control-allow-origin' response header to the 'origin' request header when returned true. | `nil`                              |
-| AllowOrigins     | `string`                   | AllowOrigin defines a list of origins that may access the resource.                                                                                    | `"*"`                              |
-| AllowMethods     | `string`                   | AllowMethods defines a list methods allowed when accessing the resource. This is used in response to a preflight request.                              | `"GET,POST,HEAD,PUT,DELETE,PATCH"` |
-| AllowHeaders     | `string`                   | AllowHeaders defines a list of request headers that can be used when making the actual request. This is in response to a preflight request.            | `""`                               |
-| AllowCredentials | `bool`                     | AllowCredentials indicates whether or not the response to the request can be exposed when the credentials flag is true.                                | `false`                            |
-| ExposeHeaders    | `string`                   | ExposeHeaders defines a whitelist headers that clients are allowed to access.                                                                          | `""`                               |
-| MaxAge           | `int`                      | MaxAge indicates how long (in seconds) the results of a preflight request can be cached.                                                               | `0`                                |
+| Property         | Type                       | Description                                                                                                                                                                                                                                                                                                           | Default                            |
+|:-----------------|:---------------------------|:----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:-----------------------------------|
+| Next             | `func(*fiber.Ctx) bool`    | Next defines a function to skip this middleware when returned true.                                                                                                                                                                                                                                                   | `nil`                              |
+| AllowOriginsFunc | `func(origin string) bool` | AllowOriginsFunc defines a function that will set the 'access-control-allow-origin' response header to the 'origin' request header when returned true.                                                                                                                                                                | `nil`                              |
+| AllowOrigins     | `string`                   | AllowOrigin defines a comma separated list of origins that may access the resource.                                                                                                                                                                                                                                   | `"*"`                              |
+| AllowMethods     | `string`                   | AllowMethods defines a list of methods allowed when accessing the resource. This is used in response to a preflight request.                                                                                                                                                                                          | `"GET,POST,HEAD,PUT,DELETE,PATCH"` |
+| AllowHeaders     | `string`                   | AllowHeaders defines a list of request headers that can be used when making the actual request. This is in response to a preflight request.                                                                                                                                                                           | `""`                               |
+| AllowCredentials | `bool`                     | AllowCredentials indicates whether or not the response to the request can be exposed when the credentials flag is true.                                                                                                                                                                                               | `false`                            |
+| ExposeHeaders    | `string`                   | ExposeHeaders defines a whitelist headers that clients are allowed to access.                                                                                                                                                                                                                                         | `""`                               |
+| MaxAge           | `int`                      | MaxAge indicates how long (in seconds) the results of a preflight request can be cached. If you pass MaxAge 0, Access-Control-Max-Age header will not be added and browser will use 5 seconds by default. To disable caching completely, pass MaxAge value negative. It will set the Access-Control-Max-Age header 0. | `0`                                |
 
 ## Default Config
 

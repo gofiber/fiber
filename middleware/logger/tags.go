@@ -102,14 +102,14 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return output.Write(c.Response().Body())
 		},
 		TagReqHeaders: func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (int, error) {
-			out := make(map[string]string, 0)
+			out := make(map[string][]string, 0)
 			if err := c.Bind().Header(&out); err != nil {
 				return 0, err
 			}
 
 			reqHeaders := make([]string, 0)
 			for k, v := range out {
-				reqHeaders = append(reqHeaders, k+"="+v)
+				reqHeaders = append(reqHeaders, k+"="+strings.Join(v, ","))
 			}
 			return output.Write([]byte(strings.Join(reqHeaders, "&")))
 		},
@@ -180,14 +180,14 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 		TagStatus: func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (int, error) {
 			if cfg.enableColors {
 				colors := c.App().Config().ColorScheme
-				return output.WriteString(fmt.Sprintf("%s %3d %s", statusColor(c.Response().StatusCode(), colors), c.Response().StatusCode(), colors.Reset))
+				return output.WriteString(fmt.Sprintf("%s%3d%s", statusColor(c.Response().StatusCode(), colors), c.Response().StatusCode(), colors.Reset))
 			}
 			return appendInt(output, c.Response().StatusCode())
 		},
 		TagMethod: func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (int, error) {
 			if cfg.enableColors {
 				colors := c.App().Config().ColorScheme
-				return output.WriteString(fmt.Sprintf("%s %-7s %s", methodColor(c.Method(), colors), c.Method(), colors.Reset))
+				return output.WriteString(fmt.Sprintf("%s%s%s", methodColor(c.Method(), colors), c.Method(), colors.Reset))
 			}
 			return output.WriteString(c.Method())
 		},
@@ -196,17 +196,15 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 		},
 		TagLatency: func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (int, error) {
 			latency := data.Stop.Sub(data.Start)
-			return output.WriteString(fmt.Sprintf("%7v", latency))
+			return output.WriteString(fmt.Sprintf("%13v", latency))
 		},
 		TagTime: func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (int, error) {
 			return output.WriteString(data.Timestamp.Load().(string)) //nolint:forcetypeassert // We always store a string in here
 		},
 	}
 	// merge with custom tags from user
-	if cfg.CustomTags != nil {
-		for k, v := range cfg.CustomTags {
-			tagFunctions[k] = v
-		}
+	for k, v := range cfg.CustomTags {
+		tagFunctions[k] = v
 	}
 
 	return tagFunctions

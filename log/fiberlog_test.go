@@ -5,12 +5,12 @@ import (
 	"os"
 	"testing"
 
-	"github.com/gofiber/fiber/v2/utils"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_DefaultSystemLogger(t *testing.T) {
 	defaultL := DefaultLogger()
-	utils.AssertEqual(t, logger, defaultL)
+	require.Equal(t, logger, defaultL)
 }
 
 func Test_SetLogger(t *testing.T) {
@@ -20,5 +20,5 @@ func Test_SetLogger(t *testing.T) {
 	}
 
 	SetLogger(setLog)
-	utils.AssertEqual(t, logger, setLog)
+	require.Equal(t, logger, setLog)
 }

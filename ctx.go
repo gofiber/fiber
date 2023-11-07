@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -65,8 +64,9 @@ type TLSHandler struct {
 	clientHelloInfo *tls.ClientHelloInfo
 }
 
-// GetClientInfo Callback function to set CHI
-// TODO: Why is this a getter which sets stuff?
+// GetClientInfo Callback function to set ClientHelloInfo
+// Must comply with the method structure of https://cs.opensource.google/go/go/+/refs/tags/go1.20:src/crypto/tls/common.go;l=554-563
+// Since we overlay the method of the tls config in the listener method
 func (t *TLSHandler) GetClientInfo(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	t.clientHelloInfo = info
 	return nil, nil //nolint:nilnil // Not returning anything useful here is probably fine
@@ -170,31 +170,92 @@ func (c *DefaultCtx) BaseURL() string {
 	return c.baseURI
 }
 
-// Body contains the raw body submitted in a POST request.
+// BodyRaw contains the raw body submitted in a POST request.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
+func (c *DefaultCtx) BodyRaw() []byte {
+	return c.fasthttp.Request.Body()
+}
+
+func (c *DefaultCtx) tryDecodeBodyInOrder(
+	originalBody *[]byte,
+	encodings []string,
+) ([]byte, uint8, error) {
+	var (
+		err             error
+		body            []byte
+		decodesRealized uint8
+	)
+
+	for index, encoding := range encodings {
+		decodesRealized++
+		switch encoding {
+		case StrGzip:
+			body, err = c.fasthttp.Request.BodyGunzip()
+		case StrBr, StrBrotli:
+			body, err = c.fasthttp.Request.BodyUnbrotli()
+		case StrDeflate:
+			body, err = c.fasthttp.Request.BodyInflate()
+		default:
+			decodesRealized--
+			if len(encodings) == 1 {
+				body = c.fasthttp.Request.Body()
+			}
+			return body, decodesRealized, nil
+		}
+
+		if err != nil {
+			return nil, decodesRealized, err
+		}
+
+		// Only execute body raw update if it has a next iteration to try to decode
+		if index < len(encodings)-1 && decodesRealized > 0 {
+			if index == 0 {
+				tempBody := c.fasthttp.Request.Body()
+				*originalBody = make([]byte, len(tempBody))
+				copy(*originalBody, tempBody)
+			}
+			c.fasthttp.Request.SetBodyRaw(body)
+		}
+	}
+
+	return body, decodesRealized, nil
+}
+
+// Body contains the raw body submitted in a POST request.
+// This method will decompress the body if the 'Content-Encoding' header is provided.
+// It returns the original (or decompressed) body data which is valid only within the handler.
+// Don't store direct references to the returned data.
+// If you need to keep the body's data later, make a copy or use the Immutable option.
 func (c *DefaultCtx) Body() []byte {
-	var err error
-	var encoding string
-	var body []byte
+	var (
+		err                error
+		body, originalBody []byte
+		headerEncoding     string
+		encodingOrder      = []string{"", "", ""}
+	)
+
 	// faster than peek
 	c.Request().Header.VisitAll(func(key, value []byte) {
 		if c.app.getString(key) == HeaderContentEncoding {
-			encoding = c.app.getString(value)
+			headerEncoding = c.app.getString(value)
 		}
 	})
 
-	switch encoding {
-	case StrGzip:
-		body, err = c.fasthttp.Request.BodyGunzip()
-	case StrBr, StrBrotli:
-		body, err = c.fasthttp.Request.BodyUnbrotli()
-	case StrDeflate:
-		body, err = c.fasthttp.Request.BodyInflate()
-	default:
-		body = c.fasthttp.Request.Body()
+	// Split and get the encodings list, in order to attend the
+	// rule defined at: https://www.rfc-editor.org/rfc/rfc9110#section-8.4-5
+	encodingOrder = getSplicedStrList(headerEncoding, encodingOrder)
+	if len(encodingOrder) == 0 {
+		return c.fasthttp.Request.Body()
 	}
 
+	var decodesRealized uint8
+	body, decodesRealized, err = c.tryDecodeBodyInOrder(&originalBody, encodingOrder)
+
+	// Ensure that the body will be the original
+	if originalBody != nil && decodesRealized > 0 {
+		c.fasthttp.Request.SetBodyRaw(originalBody)
+	}
 	if err != nil {
 		return []byte(err.Error())
 	}
@@ -512,7 +573,7 @@ iploop:
 			j++
 		}
 
-		for i < j && headerValue[i] == ' ' {
+		for i < j && (headerValue[i] == ' ' || headerValue[i] == ',') {
 			i++
 		}
 
@@ -624,9 +685,9 @@ func (c *DefaultCtx) JSON(data any) error {
 // This method is identical to JSON, except that it opts-in to JSONP callback support.
 // By default, the callback name is simply callback.
 func (c *DefaultCtx) JSONP(data any, callback ...string) error {
-	raw, err := json.Marshal(data)
+	raw, err := c.app.config.JSONEncoder(data)
 	if err != nil {
-		return fmt.Errorf("failed to marshal: %w", err)
+		return err
 	}
 
 	var result, cb string
@@ -690,17 +751,24 @@ func (c *DefaultCtx) Location(path string) {
 	c.setCanonical(HeaderLocation, path)
 }
 
-// Method contains a string corresponding to the HTTP method of the request: GET, POST, PUT and so on.
+// Method returns the HTTP request method for the context, optionally overridden by the provided argument.
+// If no override is given or if the provided override is not a valid HTTP method, it returns the current method from the context.
+// Otherwise, it updates the context's method and returns the overridden method as a string.
 func (c *DefaultCtx) Method(override ...string) string {
-	if len(override) > 0 {
-		method := utils.ToUpper(override[0])
-		mINT := c.app.methodInt(method)
-		if mINT == -1 {
-			return c.method
-		}
-		c.method = method
-		c.methodINT = mINT
+	if len(override) == 0 {
+		// Nothing to override, just return current method from context
+		return c.method
 	}
+
+	method := utils.ToUpper(override[0])
+	mINT := c.app.methodInt(method)
+	if mINT == -1 {
+		// Provided override does not valid HTTP method, no override, return current method
+		return c.method
+	}
+
+	c.method = method
+	c.methodINT = mINT
 	return c.method
 }
 
@@ -1072,6 +1140,11 @@ func (c *DefaultCtx) Render(name string, bind Map, layouts ...string) error {
 	// Get new buffer from pool
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
+
+	// Initialize empty bind map if bind is nil
+	if bind == nil {
+		bind = make(Map)
+	}
 
 	// Pass-locals-to-views, bind, appListKeys
 	c.renderExtensions(bind)
@@ -1467,11 +1540,12 @@ func (c *DefaultCtx) IsProxyTrusted() bool {
 	return false
 }
 
+var localHosts = [...]string{"127.0.0.1", "::1"}
+
 // IsLocalHost will return true if address is a localhost address.
 func (*DefaultCtx) isLocalHost(address string) bool {
-	localHosts := []string{"127.0.0.1", "0.0.0.0", "::1"}
 	for _, h := range localHosts {
-		if strings.Contains(address, h) {
+		if address == h {
 			return true
 		}
 	}
@@ -1480,11 +1554,7 @@ func (*DefaultCtx) isLocalHost(address string) bool {
 
 // IsFromLocal will return true if request came from local.
 func (c *DefaultCtx) IsFromLocal() bool {
-	ips := c.IPs()
-	if len(ips) == 0 {
-		ips = append(ips, c.IP())
-	}
-	return c.isLocalHost(ips[0])
+	return c.isLocalHost(c.fasthttp.RemoteIP().String())
 }
 
 // You can bind body, cookie, headers etc. into the map, map slice, struct easily by using Binding method.

@@ -281,6 +281,7 @@ func Test_Session_Save_Expiration(t *testing.T) {
 	t.Parallel()
 
 	t.Run("save to cookie", func(t *testing.T) {
+		const sessionDuration = 5 * time.Second
 		t.Parallel()
 		// session store
 		store := New()
@@ -297,7 +298,7 @@ func Test_Session_Save_Expiration(t *testing.T) {
 		sess.Set("name", "john")
 
 		// expire this session in 5 seconds
-		sess.SetExpiry(time.Second * 5)
+		sess.SetExpiry(sessionDuration)
 
 		// save session
 		err = sess.Save()
@@ -309,7 +310,7 @@ func Test_Session_Save_Expiration(t *testing.T) {
 		require.Equal(t, "john", sess.Get("name"))
 
 		// just to make sure the session has been expired
-		time.Sleep(time.Second * 5)
+		time.Sleep(sessionDuration + (10 * time.Millisecond))
 
 		// here you should get a new session
 		sess, err = store.Get(ctx)
@@ -318,11 +319,11 @@ func Test_Session_Save_Expiration(t *testing.T) {
 	})
 }
 
-// go test -run Test_Session_Reset
-func Test_Session_Reset(t *testing.T) {
+// go test -run Test_Session_Destroy
+func Test_Session_Destroy(t *testing.T) {
 	t.Parallel()
 
-	t.Run("reset from cookie", func(t *testing.T) {
+	t.Run("destroy from cookie", func(t *testing.T) {
 		t.Parallel()
 		// session store
 		store := New()
@@ -341,7 +342,7 @@ func Test_Session_Reset(t *testing.T) {
 		require.Nil(t, name)
 	})
 
-	t.Run("reset from header", func(t *testing.T) {
+	t.Run("destroy from header", func(t *testing.T) {
 		t.Parallel()
 		// session store
 		store := New(Config{
@@ -452,6 +453,74 @@ func Test_Session_Deletes_Single_Key(t *testing.T) {
 	require.Nil(t, sess.Get("id"))
 }
 
+// go test -run Test_Session_Reset
+func Test_Session_Reset(t *testing.T) {
+	t.Parallel()
+	// fiber instance
+	app := fiber.New()
+
+	// session store
+	store := New()
+
+	// fiber context
+	ctx := app.NewCtx(&fasthttp.RequestCtx{})
+
+	t.Run("reset session data and id, and set fresh to be true", func(t *testing.T) {
+		// a random session uuid
+		originalSessionUUIDString := ""
+
+		// now the session is in the storage
+		freshSession, err := store.Get(ctx)
+		require.NoError(t, err)
+
+		originalSessionUUIDString = freshSession.ID()
+
+		// set a value
+		freshSession.Set("name", "fenny")
+		freshSession.Set("email", "fenny@example.com")
+
+		err = freshSession.Save()
+		require.NoError(t, err)
+
+		// set cookie
+		ctx.Request().Header.SetCookie(store.sessionName, originalSessionUUIDString)
+
+		// as the session is in the storage, session.fresh should be false
+		acquiredSession, err := store.Get(ctx)
+		require.NoError(t, err)
+		require.False(t, acquiredSession.Fresh())
+
+		err = acquiredSession.Reset()
+		require.NoError(t, err)
+
+		require.False(t, acquiredSession.ID() == originalSessionUUIDString)
+
+		// acquiredSession.fresh should be true after resetting
+		require.True(t, acquiredSession.Fresh())
+
+		// Check that the session data has been reset
+		keys := acquiredSession.Keys()
+		require.Equal(t, []string{}, keys)
+
+		// Set a new value for 'name' and check that it's updated
+		acquiredSession.Set("name", "john")
+		require.Equal(t, "john", acquiredSession.Get("name"))
+		require.Nil(t, acquiredSession.Get("email"))
+
+		// Save after resetting
+		err = acquiredSession.Save()
+		require.NoError(t, err)
+
+		// Check that the session id is not in the header or cookie anymore
+		require.Equal(t, "", string(ctx.Response().Header.Peek(store.sessionName)))
+		require.Equal(t, "", string(ctx.Request().Header.Peek(store.sessionName)))
+
+		// But the new session id should be in the header or cookie
+		require.Equal(t, acquiredSession.ID(), string(ctx.Response().Header.Peek(store.sessionName)))
+		require.Equal(t, acquiredSession.ID(), string(ctx.Request().Header.Peek(store.sessionName)))
+	})
+}
+
 // go test -run Test_Session_Regenerate
 // Regression: https://github.com/gofiber/fiber/issues/1395
 func Test_Session_Regenerate(t *testing.T) {
@@ -486,9 +555,8 @@ func Test_Session_Regenerate(t *testing.T) {
 		err = acquiredSession.Regenerate()
 		require.NoError(t, err)
 
-		if acquiredSession.ID() == originalSessionUUIDString {
-			t.Fatal("regenerate should generate another different id")
-		}
+		require.False(t, acquiredSession.ID() == originalSessionUUIDString)
+
 		// acquiredSession.fresh should be true after regenerating
 		require.True(t, acquiredSession.Fresh())
 	})

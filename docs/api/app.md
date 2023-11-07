@@ -643,7 +643,7 @@ resp, _ := app.Test(req)
 
 // Do something with results:
 if resp.StatusCode == fiber.StatusOK {
-  body, _ := ioutil.ReadAll(resp.Body)
+  body, _ := io.ReadAll(resp.Body)
   fmt.Println(string(body)) // => Hello, World!
 }
 ```

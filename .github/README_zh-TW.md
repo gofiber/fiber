@@ -69,6 +69,12 @@
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_az.md">
     <img height="20px" src="https://img.shields.io/badge/AZ-flag.svg?color=555555&style=flat-square&logo=data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4NCjxzdmcgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI2MDAiPg0KPHJlY3Qgd2lkdGg9IjEyMDAiIGhlaWdodD0iNjAwIiBmaWxsPSIjNTA5ZTJmIi8+DQo8cmVjdCB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI0MDAiIGZpbGw9IiNlZjMzNDAiLz4NCjxyZWN0IHdpZHRoPSIxMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iIzAwYjVlMiIvPg0KPGNpcmNsZSBjeD0iNTcwIiBjeT0iMzAwIiByPSI5MCIgZmlsbD0iI2ZmZiIvPg0KPGNpcmNsZSBjeD0iNTkwIiBjeT0iMzAwIiByPSI3NSIgZmlsbD0iI2VmMzM0MCIvPg0KPHBhdGggZD0iTTY3MCAyNTBsOS41NjcgMjYuOTAzIDI1Ljc4OC0xMi4yNTgtMTIuMjU4IDI1Ljc4OEw3MjAgMzAwbC0yNi45MDMgOS41NjcgMTIuMjU4IDI1Ljc4OC0yNS43ODgtMTIuMjU4TDY3MCAzNTBsLTkuNTY3LTI2LjkwMy0yNS43ODggMTIuMjU4IDEyLjI1OC0yNS43ODhMNjIwIDMwMGwyNi45MDMtOS41NjctMTIuMjU4LTI1Ljc4OCAyNS43ODggMTIuMjU4eiIgZmlsbD0iI2ZmZiIvPg0KPC9zdmc+">
   </a>
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_eg.md">
+    <img height="20px" src="https://img.shields.io/badge/EG-flag.svg?color=555555&style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMTgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiA8Zz4KICA8dGl0bGU+TGF5ZXIgMTwvdGl0bGU+CiAgPHJlY3Qgc3Ryb2tlPSIjMDAwIiBmaWxsPSIjZmZmZmZmIiB5PSI1LjkzMDMxIiB3aWR0aD0iMjQuMDM4NTEiIGhlaWdodD0iNi4xMjUiIGlkPSJzdmdfMiIgc3Ryb2tlLXdpZHRoPSIwIiB4PSItMC4wMzUzOSIvPgogIDxyZWN0IGZpbGw9IiNiNTA5MDkiIHk9Ii0wLjAwOTI2IiB3aWR0aD0iMjQuMDM4NTEiIGhlaWdodD0iNi4wMDk2MyIgaWQ9InN2Z18xIiBzdHJva2Utd2lkdGg9IjAiIHg9Ii0wLjAzNTM5IiBzdHJva2U9IiMwMDAiLz4KICA8cmVjdCBmaWxsPSIjMDAwMDAwIiB5PSIxMi4wNTM0NCIgd2lkdGg9IjI0LjAzODUxIiBoZWlnaHQ9IjYuMDA5NjMiIGlkPSJzdmdfMyIgc3Ryb2tlLXdpZHRoPSIwIiB4PSItMC4wMzUzOSIgc3Ryb2tlPSIjMDAwIi8+CiAgPGcgaWQ9InN2Z182IiBzdHJva2U9Im51bGwiPgogICA8cmVjdCBmaWxsPSIjZTBiMzM4IiBzdHJva2Utd2lkdGg9IjAiIHg9IjEwLjAwMzQyIiB5PSI4LjA1MTgzIiB3aWR0aD0iMy45NjA4OSIgaGVpZ2h0PSIzLjE5NjAzIiBpZD0ic3ZnXzQiIHN0cm9rZT0iIzAwMCIvPgogICA8cmVjdCBmaWxsPSIjZTBiMzM4IiBzdHJva2Utd2lkdGg9IjAiIHg9IjExLjUzMzE0IiB5PSI2LjgyMjU5IiB3aWR0aD0iMC45MDE0NCIgaGVpZ2h0PSIxLjI4Mzg3IiBpZD0ic3ZnXzUiIHN0cm9rZT0iIzAwMCIvPgogIDwvZz4KIDwvZz4KCjwvc3ZnPg==">
+  </a>
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_pl.md">
+    <img height="20px" src="https://img.shields.io/badge/PL-flag.svg?color=555555&style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjgwIDgwMCI+DQo8cGF0aCBmaWxsPSIjZTllOGU3IiBkPSJtMCwwaDEyODB2NDAwaC0xMjgweiIvPg0KPHBhdGggZmlsbD0iI2Q0MjEzZCIgZD0ibTAsNDAwaDEyODB2NDAwaC0xMjgweiIvPg0KPC9zdmc+DQo=">
+  </a>
   <br>
   <a href="https://pkg.go.dev/github.com/gofiber/fiber/v3#pkg-overview">
     <img src="https://img.shields.io/badge/%F0%9F%93%9A%20godoc-pkg-00ACD7.svg?color=00ACD7&style=flat-square">
@@ -154,7 +160,7 @@ go get -u github.com/gofiber/fiber/v3
 -   [支援 WebSocket](https://github.com/gofiber/websocket)
 -   [Server-Sent Events](https://github.com/gofiber/recipes/tree/master/sse)
 -   支援[速率限制](https://docs.gofiber.io/api/middleware/limiter)
--   有 [18 門語言](https://docs.gofiber.io/)的翻譯
+-   有 [19 門語言](https://docs.gofiber.io/)的翻譯
 -   還有很多功能，[開始探索 Fiber](https://docs.gofiber.io/)
 
 ## 💡 設計哲學
@@ -167,7 +173,7 @@ Fiber **啟發自** Express——網際網路上最知名的 Web 框架，我們
 
 ## ⚠️ 限制
 
--   由於 Fiber 有用到 Unsafe，本函式庫有時可能無法相容最新版的 Go 語言。Fiber 2.40.0 已在 Go 1.17 至 1.20 的版本測試過。
+-   由於 Fiber 有用到 Unsafe，本函式庫有時可能無法相容最新版的 Go 語言。Fiber 2.40.0 已在 Go 1.17 至 1.21 的版本測試過。
 -   Fiber 不相容 net/http 的介面，意味著您無法使用像是 gqlgen、go-swagger 或其他任何屬於 net/http 生態系統的專案。
 
 ## 👀 範例
@@ -636,22 +642,22 @@ func main() {
 | [session](https://github.com/gofiber/fiber/tree/master/middleware/session)             | 連線階段中介模組。注意：這個中介模組有用到我們的 Storage 套件。                                                                                                            |
 | [skip](https://github.com/gofiber/fiber/tree/master/middleware/skip)                   | 略過中介模組，會在條件成立時略過封裝過的處理常式。                                                                                                                         |
 | [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)             | 為請求加上最長時限，並在逾時後轉送至錯誤處理常式 (ErrorHandler)。                                                                                                          |
-| [keyauth](https://github.com/gofiber/keyauth)     | Key auth 中介模組提供以金鑰為基礎的認證模式。                                                          |
-| [redirect](https://github.com/gofiber/redirect)   | 用來重新導向的中介模組。                                                                               |
-| [rewrite](https://github.com/gofiber/rewrite)     | 重寫 (Rewrite) 中介模組：根據提供規則重寫 URL 路徑，適合用來向後相容，或者是製作更乾淨且更好懂的連結。 |
-| [adaptor](https://github.com/gofiber/adaptor)     | 將 net/http 處理常式轉換至 Fiber 處理常式，或者是反著做。特別感謝 @arsmn！                             |
-| [helmet](https://github.com/gofiber/helmet)       | 透過設定多種 HTTP 標頭，協助保護您應用程式的安全。                                                     |
+| [keyauth](https://github.com/gofiber/keyauth)                                          | Key auth 中介模組提供以金鑰為基礎的認證模式。                                                                                                                              |
+| [redirect](https://github.com/gofiber/redirect)                                        | 用來重新導向的中介模組。                                                                                                                                                   |
+| [rewrite](https://github.com/gofiber/rewrite)                                          | 重寫 (Rewrite) 中介模組：根據提供規則重寫 URL 路徑，適合用來向後相容，或者是製作更乾淨且更好懂的連結。                                                                     |
+| [adaptor](https://github.com/gofiber/adaptor)                                          | 將 net/http 處理常式轉換至 Fiber 處理常式，或者是反著做。特別感謝 @arsmn！                                                                                                 |
+| [helmet](https://github.com/gofiber/helmet)                                            | 透過設定多種 HTTP 標頭，協助保護您應用程式的安全。                                                                                                                         |
 
 ## 🧬 外掛中介模組
 
 這裡列出由 [Fiber 團隊](https://github.com/orgs/gofiber/people) 維護、存放在外部的中介模組。
 
-| 中介模組                                          | 描述                                                                                                   |
-| :------------------------------------------------ | :----------------------------------------------------------------------------------------------------- |
-| [jwt](https://github.com/gofiber/jwt)             | JWT 回傳 JSON Web Token \(JWT\) 認證中介模組。                                                         |
-| [storage](https://github.com/gofiber/storage)     | 已經做好，實作 Storage 介面的儲存區驅動模組，設計用來與各種 Fiber 中介模組搭配使用。                   |
-| [template](https://github.com/gofiber/template)   | 本套件包含 8 種樣板引擎，可以和 Fiber `v1.10.x` 一起使用。需要 Go 1.13 或更新版本。                    |
-| [websocket](https://github.com/gofiber/websocket) | 適用於 Fiber，建基於 Fasthttp 的 WebSocket。支援本機空間 (Locals)！                                    |
+| 中介模組                                          | 描述                                                                                 |
+| :------------------------------------------------ | :----------------------------------------------------------------------------------- |
+| [jwt](https://github.com/gofiber/jwt)             | JWT 回傳 JSON Web Token \(JWT\) 認證中介模組。                                       |
+| [storage](https://github.com/gofiber/storage)     | 已經做好，實作 Storage 介面的儲存區驅動模組，設計用來與各種 Fiber 中介模組搭配使用。 |
+| [template](https://github.com/gofiber/template)   | 本套件包含 8 種樣板引擎，可以和 Fiber `v1.10.x` 一起使用。需要 Go 1.13 或更新版本。  |
+| [websocket](https://github.com/gofiber/websocket) | 適用於 Fiber，建基於 Fasthttp 的 WebSocket。支援本機空間 (Locals)！                  |
 
 ## 🕶️ Awesome List
 
@@ -662,7 +668,7 @@ func main() {
 如果您想和我們 **道謝**，或者是支持 `Fiber` 繼續積極開發下去（也可以兩個都做）：
 
 1. 送給專案一顆 [GitHub 星星](https://github.com/gofiber/fiber/stargazers)。
-2. [在您的 Twitter 上](https://twitter.com/intent/tweet?text=Fiber%20is%20an%20Express%20inspired%20%23web%20%23framework%20built%20on%20top%20of%20Fasthttp%2C%20the%20fastest%20HTTP%20engine%20for%20%23Go.%20Designed%20to%20ease%20things%20up%20for%20%23fast%20development%20with%20zero%20memory%20allocation%20and%20%23performance%20in%20mind%20%F0%9F%9A%80%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber)發出關於本專案的推文。
+2. [在您的 𝕏 (Twitter) 上](https://x.com/intent/tweet?text=Fiber%20is%20an%20Express%20inspired%20%23web%20%23framework%20built%20on%20top%20of%20Fasthttp%2C%20the%20fastest%20HTTP%20engine%20for%20%23Go.%20Designed%20to%20ease%20things%20up%20for%20%23fast%20development%20with%20zero%20memory%20allocation%20and%20%23performance%20in%20mind%20%F0%9F%9A%80%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber)發出關於本專案的推文。
 3. 在 [Medium](https://medium.com/)、[Dev.to](https://dev.to/) 或者是個人部落格上寫下評論或教學。
 4. 捐專案 [一杯咖啡的費用](https://buymeacoff.ee/fenny) 以示支持。
 

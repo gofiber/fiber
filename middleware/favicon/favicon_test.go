@@ -1,14 +1,18 @@
 package favicon
 
 import (
+	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/utils"
 )
 
 // go test -run Test_Middleware_Favicon
@@ -69,11 +73,70 @@ func Test_Middleware_Favicon_Found(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/favicon.ico", nil))
-
-	require.NoError(t, err, "app.Test(req)")
+	require.NoError(t, nil, err, "app.Test(req)")
 	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
 	require.Equal(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
 	require.Equal(t, "public, max-age=31536000", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
+}
+
+// go test -run Test_Custom_Favicon_Url
+func Test_Custom_Favicon_Url(t *testing.T) {
+	app := fiber.New()
+	const customURL = "/favicon.svg"
+	app.Use(New(Config{
+		File: "../../.github/testdata/favicon.ico",
+		URL:  customURL,
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return nil
+	})
+
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, customURL, nil))
+
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
+}
+
+// go test -run Test_Custom_Favicon_Data
+func Test_Custom_Favicon_Data(t *testing.T) {
+	data, err := os.ReadFile("../../.github/testdata/favicon.ico")
+	utils.AssertEqual(t, nil, err)
+
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Data: data,
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return nil
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/favicon.ico", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
+	utils.AssertEqual(t, "public, max-age=31536000", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
+}
+
+// mockFS wraps local filesystem for the purposes of
+// Test_Middleware_Favicon_FileSystem located below
+// TODO use os.Dir if fiber upgrades to 1.16
+type mockFS struct{}
+
+func (mockFS) Open(name string) (http.File, error) {
+	if name == "/" {
+		name = "."
+	} else {
+		name = strings.TrimPrefix(name, "/")
+	}
+	file, err := os.Open(name) //nolint:gosec // We're in a test func, so this is fine
+	if err != nil {
+		return nil, fmt.Errorf("failed to open: %w", err)
+	}
+	return file, nil
 }
 
 // go test -run Test_Middleware_Favicon_FileSystem

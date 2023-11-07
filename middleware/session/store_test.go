@@ -81,8 +81,36 @@ func TestStore_Get(t *testing.T) {
 		acquiredSession, err := store.Get(ctx)
 		require.NoError(t, err)
 
-		if acquiredSession.ID() != unexpectedID {
-			t.Fatal("server should not accept the unexpectedID which is not in the store")
-		}
+		require.Equal(t, unexpectedID, acquiredSession.ID())
 	})
+}
+
+// go test -run TestStore_DeleteSession
+func TestStore_DeleteSession(t *testing.T) {
+	t.Parallel()
+	// fiber instance
+	app := fiber.New()
+	// session store
+	store := New()
+
+	// fiber context
+	ctx := app.NewCtx(&fasthttp.RequestCtx{})
+
+	// Create a new session
+	session, err := store.Get(ctx)
+	require.NoError(t, err)
+
+	// Save the session ID
+	sessionID := session.ID()
+
+	// Delete the session
+	err = store.Delete(sessionID)
+	require.NoError(t, err)
+
+	// Try to get the session again
+	session, err = store.Get(ctx)
+	require.NoError(t, err)
+
+	// The session ID should be different now, because the old session was deleted
+	require.Equal(t, session.ID() == sessionID, false)
 }

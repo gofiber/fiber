@@ -116,14 +116,9 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		defer fasthttp.ReleaseRequest(req)
 		// Convert net/http -> fasthttp request
 		if r.Body != nil {
-			body, err := io.ReadAll(r.Body)
-			if err != nil {
-				http.Error(w, utils.StatusMessage(fiber.StatusInternalServerError), fiber.StatusInternalServerError)
-				return
-			}
+			n, err := io.Copy(req.BodyWriter(), r.Body)
+			req.Header.SetContentLength(int(n))
 
-			req.Header.SetContentLength(len(body))
-			_, err = req.BodyWriter().Write(body)
 			if err != nil {
 				http.Error(w, utils.StatusMessage(fiber.StatusInternalServerError), fiber.StatusInternalServerError)
 				return

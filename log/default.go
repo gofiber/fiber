@@ -188,7 +188,11 @@ func (l *defaultLogger) Panicw(msg string, keysAndValues ...interface{}) {
 }
 
 func (l *defaultLogger) WithContext(_ context.Context) CommonLogger {
-	return l
+	return &defaultLogger{
+		stdlog: l.stdlog,
+		level:  l.level,
+		depth:  l.depth - 1,
+	}
 }
 
 func (l *defaultLogger) SetLevel(level Level) {

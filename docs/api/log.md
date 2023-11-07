@@ -80,7 +80,7 @@ log.Fatalw("", "fruit", "banana")
 If you are in a project and just want to use a simple log function that can be printed at any time in the global, we provide a global log.
 
 ```go
-import "github.com/gofiber/fiber/v2/log"
+import "github.com/gofiber/fiber/v3/log"
 
 log.Info("info")
 log.Warn("warn")
@@ -92,7 +92,7 @@ You can also find an already implemented adaptation under contrib, or use your o
 ```go
 import (
     "log"
-    fiberlog "github.com/gofiber/fiber/v2/log"
+    fiberlog "github.com/gofiber/fiber/v3/log"
 )
 
 var _ log.AllLogger = (*customLogger)(nil)
@@ -113,7 +113,7 @@ The default logger is LevelTrace.
 Note that this method is not **concurrent-safe**.
 
 ```go
-import "github.com/gofiber/fiber/v2/log"
+import "github.com/gofiber/fiber/v3/log"
 
 log.SetLevel(log.LevelInfo)
 ```

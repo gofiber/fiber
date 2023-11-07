@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"sync"
-	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
@@ -33,10 +32,10 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 				formatErr = colors.Red + " | " + data.ChainErr.Error() + colors.Reset
 			}
 			_, _ = buf.WriteString( //nolint:errcheck // This will never fail
-				fmt.Sprintf("%s |%s %3d %s| %7v | %15s |%s %-7s %s| %-"+data.ErrPaddingStr+"s %s\n",
+				fmt.Sprintf("%s |%s %3d %s| %13v | %15s |%s %-7s %s| %-"+data.ErrPaddingStr+"s %s\n",
 					data.Timestamp.Load().(string),
 					statusColor(c.Response().StatusCode(), colors), c.Response().StatusCode(), colors.Reset,
-					data.Stop.Sub(data.Start).Round(time.Millisecond),
+					data.Stop.Sub(data.Start),
 					c.IP(),
 					methodColor(c.Method(), colors), c.Method(), colors.Reset,
 					c.Path(),
@@ -48,10 +47,10 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 				formatErr = " | " + data.ChainErr.Error()
 			}
 			_, _ = buf.WriteString( //nolint:errcheck // This will never fail
-				fmt.Sprintf("%s | %3d | %7v | %15s | %-7s | %-"+data.ErrPaddingStr+"s %s\n",
+				fmt.Sprintf("%s | %3d | %13v | %15s | %-7s | %-"+data.ErrPaddingStr+"s %s\n",
 					data.Timestamp.Load().(string),
 					c.Response().StatusCode(),
-					data.Stop.Sub(data.Start).Round(time.Millisecond),
+					data.Stop.Sub(data.Start),
 					c.IP(),
 					c.Method(),
 					c.Path(),

@@ -399,6 +399,79 @@ func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
 	require.Equal(t, "hi, i'm a custom sub sub fiber error", string(b), "Third fiber Response body")
 }
 
+// go test -run Test_Mount_Route_Names
+func Test_Mount_Route_Names(t *testing.T) {
+	// create sub-app with 2 handlers:
+	subApp1 := New()
+	subApp1.Get("/users", func(c Ctx) error {
+		url, err := c.GetRouteURL("add-user", Map{})
+		require.Equal(t, err, nil)
+		require.Equal(t, url, "/app1/users", "handler: app1.add-user") // the prefix is /app1 because of the mount
+		// if subApp1 is not mounted, expected url just /users
+		return nil
+	}).Name("get-users")
+	subApp1.Post("/users", func(c Ctx) error {
+		route := c.App().GetRoute("get-users")
+		require.Equal(t, route.Method, MethodGet, "handler: app1.get-users method")
+		require.Equal(t, route.Path, "/app1/users", "handler: app1.get-users path")
+		return nil
+	}).Name("add-user")
+
+	// create sub-app with 2 handlers inside a group:
+	subApp2 := New()
+	app2Grp := subApp2.Group("/users").Name("users.")
+	app2Grp.Get("", emptyHandler).Name("get")
+	app2Grp.Post("", emptyHandler).Name("add")
+
+	// put both sub-apps into root app
+	rootApp := New()
+	_ = rootApp.Use("/app1", subApp1)
+	_ = rootApp.Use("/app2", subApp2)
+
+	rootApp.startupProcess()
+
+	// take route directly from sub-app
+	route := subApp1.GetRoute("get-users")
+	require.Equal(t, route.Method, MethodGet)
+	require.Equal(t, route.Path, "/users")
+
+	route = subApp1.GetRoute("add-user")
+	require.Equal(t, route.Method, MethodPost)
+	require.Equal(t, route.Path, "/users")
+
+	// take route directly from sub-app with group
+	route = subApp2.GetRoute("users.get")
+	require.Equal(t, route.Method, MethodGet)
+	require.Equal(t, route.Path, "/users")
+
+	route = subApp2.GetRoute("users.add")
+	require.Equal(t, route.Method, MethodPost)
+	require.Equal(t, route.Path, "/users")
+
+	// take route from root app (using names of sub-apps)
+	route = rootApp.GetRoute("add-user")
+	require.Equal(t, route.Method, MethodPost)
+	require.Equal(t, route.Path, "/app1/users")
+
+	route = rootApp.GetRoute("users.add")
+	require.Equal(t, route.Method, MethodPost)
+	require.Equal(t, route.Path, "/app2/users")
+
+	// GetRouteURL inside handler
+	req := httptest.NewRequest(MethodGet, "/app1/users", nil)
+	resp, err := rootApp.Test(req)
+
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	// ctx.App().GetRoute() inside handler
+	req = httptest.NewRequest(MethodPost, "/app1/users", nil)
+	resp, err = rootApp.Test(req)
+
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+}
+
 // go test -run Test_Ctx_Render_Mount
 func Test_Ctx_Render_Mount(t *testing.T) {
 	t.Parallel()

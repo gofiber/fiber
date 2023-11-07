@@ -36,12 +36,15 @@ elif [ "$EVENT" == "release" ]; then
 
   # Check if contrib_versions.json exists and modify it if required
   if [[ -f $VERSION_FILE ]]; then
-    jq --arg new_version "$new_version" 'del(.[] | select(. == $new_version))' $VERSION_FILE >temp.json && mv temp.json $VERSION_FILE
-    jq -S . ${VERSION_FILE} >temp.json && mv temp.json ${VERSION_FILE}
+    jq --arg new_version "$new_version" 'del(.[] | select(. == $new_version))' $VERSION_FILE > temp.json && mv temp.json $VERSION_FILE
   fi
 
   # Run docusaurus versioning command
   $DOCUSAURUS_COMMAND "${new_version}"
+
+  if [[ -f $VERSION_FILE ]]; then
+    jq 'sort | reverse' ${VERSION_FILE} > temp.json && mv temp.json ${VERSION_FILE}
+  fi
 fi
 
 # Push changes

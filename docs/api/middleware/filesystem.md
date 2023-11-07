@@ -253,3 +253,48 @@ var ConfigDefault = Config{
     ContentTypeCharset: "",
 }
 ```
+
+## Utils
+
+### SendFile
+
+Serves a file from an [HTTP file system](https://pkg.go.dev/net/http#FileSystem) at the specified path.
+
+```go title="Signature" title="Signature"
+func SendFile(c *fiber.Ctx, filesystem http.FileSystem, path string) error
+```
+Import the middleware package that is part of the Fiber web framework
+
+```go
+import (
+    "github.com/gofiber/fiber/v2"
+    "github.com/gofiber/fiber/v2/middleware/filesystem"
+)
+```
+
+```go title="Example"
+// Define a route to serve a specific file
+app.Get("/download", func(c *fiber.Ctx) error {
+    // Serve the file using SendFile function
+    err := filesystem.SendFile(c, http.Dir("your/filesystem/root"), "path/to/your/file.txt")
+    if err != nil {
+        // Handle the error, e.g., return a 404 Not Found response
+        return c.Status(fiber.StatusNotFound).SendString("File not found")
+    }
+    
+    return nil
+})
+```
+
+```go title="Example"
+// Serve static files from the "build" directory using Fiber's built-in middleware.
+app.Use("/", filesystem.New(filesystem.Config{
+    Root:       http.FS(f),         // Specify the root directory for static files.
+    PathPrefix: "build",            // Define the path prefix where static files are served.
+}))
+
+// For all other routes (wildcard "*"), serve the "index.html" file from the "build" directory.
+app.Use("*", func(ctx *fiber.Ctx) error {
+    return filesystem.SendFile(ctx, http.FS(f), "build/index.html")
+})
+```

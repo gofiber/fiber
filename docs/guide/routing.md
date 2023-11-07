@@ -80,7 +80,7 @@ app.Get("/user/*", func(c *fiber.Ctx) error {
 })
 
 // This route path will match requests to "/v1/some/resource/name:customVerb", since the parameter character is escaped
-app.Get("/v1/some/resource/name\\:customVerb", func(c *fiber.Ctx) error {
+app.Get(`/v1/some/resource/name\:customVerb`, func(c *fiber.Ctx) error {
     return c.SendString("Hello, Community")
 })
 ```
@@ -90,7 +90,7 @@ Since the hyphen \(`-`\) and the dot \(`.`\) are interpreted literally, they can
 :::
 
 :::info
-All special parameter characters can also be escaped with `"\\"` and lose their value, so you can use them in the route if you want, like in the custom methods of the [google api design guide](https://cloud.google.com/apis/design/custom_methods).
+All special parameter characters can also be escaped with `"\\"` and lose their value, so you can use them in the route if you want, like in the custom methods of the [google api design guide](https://cloud.google.com/apis/design/custom_methods). It's recommended to use backticks `` ` `` because in go's regex documentation, they always use backticks to make sure it is unambiguous and the escape character doesn't interfere with regex patterns in an unexpected way.
 :::
 
 ```go
@@ -162,7 +162,7 @@ Constraints aren't validation for parameters. If constraint aren't valid for par
 | range(min,max)    | :age<range(18,120)\>                 | 91 (Integer value must be at least 18 but no more than 120)                                 |
 | alpha             | :name<alpha\>                        | Rick (String must consist of one or more alphabetical characters, a-z and case-insensitive) |
 | datetime          | :dob<datetime(2006\\\\-01\\\\-02)\>  | 2005-11-01                                                                                  |
-| regex(expression) | :date<regex(\\d{4}-\\d{2}-\\d{2})}\> | 2022-08-27 (Must match regular expression)                                                  |
+| regex(expression) | :date<regex(\\d{4}-\\d{2}-\\d{2})\> | 2022-08-27 (Must match regular expression)                                                  |
 
 **Examples**
 
@@ -203,7 +203,7 @@ app.Get("/:test<min(100);maxLen(5)>", func(c *fiber.Ctx) error {
 
 Fiber precompiles regex query when to register routes. So there're no performance overhead for regex constraint.
 ```go
-app.Get("/:date<regex(\\d{4}-\\d{2}-\\d{2})}>", func(c *fiber.Ctx) error {
+app.Get(`/:date<regex(\d{4}-\d{2}-\d{2})>`, func(c *fiber.Ctx) error {
   return c.SendString(c.Params("date"))
 })
 
@@ -261,6 +261,13 @@ app.Get("/", func(c *fiber.Ctx) error {
 ```
 
 `Use` method path is a **mount**, or **prefix** path, and limits middleware to only apply to any paths requested that begin with it.
+
+### Constraints on Adding Routes Dynamically
+
+:::caution
+Adding routes dynamically after the application has started is not supported due to design and performance considerations. Make sure to define all your routes before the application starts.
+:::
+
 
 ## Grouping
 
