@@ -1554,6 +1554,35 @@ app.Get("/", func(c *fiber.Ctx) error {
 // curl "http://localhost:3000/" -H "name: john" -H "pass: doe" -H "products: shoe,hat"
 ```
 
+### Default Values with ReqHeaderParser
+You can also assign default values to struct fields if the request header is not provided in the request. To do this, use the default struct tag alongside the reqHeader tag.
+
+```go title="WithDefaultValues"
+type PersonWithDefaults struct {
+    Name     string     `reqHeader:"name" default:"DefaultName"`
+    Pass     string     `reqHeader:"pass" default:"DefaultPass"`
+    Products []string   `reqHeader:"products" default:"defaultProduct1,defaultProduct2"`
+}
+
+app.Get("/defaults", func(c *fiber.Ctx) error {
+        p := new(PersonWithDefaults)
+
+        if err := c.ReqHeaderParser(p); err != nil {
+            return err
+        }
+
+        log.Println(p.Name)     // Will print "DefaultName" if name is not provided in the request header
+        log.Println(p.Pass)     // Will print "DefaultPass" if pass is not provided in the request header
+        log.Println(p.Products) // Will print [defaultProduct1, defaultProduct2] if products is not provided in the request header
+
+        // ...
+})
+// Run tests with the following curl command
+
+// curl "http://localhost:3000/defaults"
+// This will use the default values since no request headers are provided
+
+```
 ## Response
 
 Response return the [\*fasthttp.Response](https://godoc.org/github.com/valyala/fasthttp#Response) pointer
