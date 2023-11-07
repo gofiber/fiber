@@ -49,6 +49,37 @@ app.Get("/", func(c *fiber.Ctx) error {
 })
 ```
 
+Media-Type parameters are supported.
+
+```go title="Example 3"
+// Accept: text/plain, application/json; version=1; foo=bar
+
+app.Get("/", func(c *fiber.Ctx) error {
+  // Extra parameters in the accept are ignored
+  c.Accepts("text/plain;format=flowed") // "text/plain;format=flowed"
+  
+  // An offer must contain all parameters present in the Accept type
+  c.Accepts("application/json") // ""
+
+  // Parameter order and capitalization does not matter. Quotes on values are stripped.
+  c.Accepts(`application/json;foo="bar";VERSION=1`) // "application/json;foo="bar";VERSION=1"
+})
+```
+
+```go title="Example 4"
+// Accept: text/plain;format=flowed;q=0.9, text/plain
+// i.e., "I prefer text/plain;format=flowed less than other forms of text/plain"
+app.Get("/", func(c *fiber.Ctx) error {
+  // Beware: the order in which offers are listed matters.
+  // Although the client specified they prefer not to receive format=flowed,
+  // the text/plain Accept matches with "text/plain;format=flowed" first, so it is returned.
+  c.Accepts("text/plain;format=flowed", "text/plain") // "text/plain;format=flowed"
+
+  // Here, things behave as expected:
+  c.Accepts("text/plain", "text/plain;format=flowed") // "text/plain"
+})
+```
+
 Fiber provides similar functions for the other accept headers.
 
 ```go
