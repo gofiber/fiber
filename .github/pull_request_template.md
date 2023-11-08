@@ -5,6 +5,8 @@ Explain the *details* for making this change. What existing problem does the pul
 
 Fixes # (issue)
 
+:warning: **For changes specific to v3, please switch to the [v3 Pull Request Template](?template=v3-changes.md).**
+
 ## Type of change
 
 Please delete options that are not relevant.
