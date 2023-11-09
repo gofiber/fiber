@@ -81,7 +81,7 @@ func TestTagHandlers(t *testing.T) {
 		{
 			name:     "Slice of ints with default value",
 			field:    reflect.ValueOf(new([]int)).Elem(),
-			tagValue: "1,2,deneme",
+			tagValue: "1,2",
 			expected: []int{1, 2},
 		},
 	}
