@@ -2565,8 +2565,8 @@ func Benchmark_Ctx_Range(b *testing.B) {
 		{"bytes=500-1000", 500, 999},
 		{"bytes=0-700,800-1000", 0, 700},
 	}
-	for _, tc := range testCases {
 
+	for _, tc := range testCases {
 		b.Run(tc.str, func(b *testing.B) {
 			c.Request().Header.Set(HeaderRange, tc.str)
 			var (
