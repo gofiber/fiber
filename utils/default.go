@@ -61,7 +61,7 @@ func setDefaultForSlice(field reflect.Value, tagValue string, elemType reflect.T
 			val = reflect.ValueOf(item)
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 			if intVal, err := strconv.ParseInt(item, 10, 64); err == nil {
-				val = reflect.ValueOf(int64(intVal))
+				val = reflect.ValueOf(intVal)
 			}
 		}
 		if val.IsValid() {
