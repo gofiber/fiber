@@ -218,7 +218,7 @@ func Test_Limiter_Sliding_Window_No_Skip_Choices(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 429, resp.StatusCode)
 
-	time.Sleep(4 * time.Second)
+	time.Sleep(4*time.Second + 500*time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
 	utils.AssertEqual(t, nil, err)
@@ -258,7 +258,7 @@ func Test_Limiter_Sliding_Window_Custom_Storage_No_Skip_Choices(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 429, resp.StatusCode)
 
-	time.Sleep(4 * time.Second)
+	time.Sleep(4*time.Second + 500*time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
 	utils.AssertEqual(t, nil, err)
@@ -373,7 +373,7 @@ func Test_Limiter_Sliding_Window_Skip_Failed_Requests(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 429, resp.StatusCode)
 
-	time.Sleep(4 * time.Second)
+	time.Sleep(4*time.Second + 500*time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
 	utils.AssertEqual(t, nil, err)
@@ -412,7 +412,7 @@ func Test_Limiter_Sliding_Window_Custom_Storage_Skip_Failed_Requests(t *testing.
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 429, resp.StatusCode)
 
-	time.Sleep(4 * time.Second)
+	time.Sleep(4*time.Second + 500*time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
 	utils.AssertEqual(t, nil, err)
@@ -533,7 +533,7 @@ func Test_Limiter_Sliding_Window_Skip_Successful_Requests(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 429, resp.StatusCode)
 
-	time.Sleep(4 * time.Second)
+	time.Sleep(4*time.Second + 500*time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
 	utils.AssertEqual(t, nil, err)
@@ -574,7 +574,7 @@ func Test_Limiter_Sliding_Window_Custom_Storage_Skip_Successful_Requests(t *test
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 429, resp.StatusCode)
 
-	time.Sleep(4 * time.Second)
+	time.Sleep(4*time.Second + 500*time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
 	utils.AssertEqual(t, nil, err)
