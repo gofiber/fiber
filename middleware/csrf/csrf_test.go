@@ -186,7 +186,7 @@ func Test_CSRF_ExpiredToken(t *testing.T) {
 	utils.AssertEqual(t, 200, ctx.Response.StatusCode())
 
 	// Wait for the token to expire
-	time.Sleep(1 * time.Second)
+	time.Sleep(1250 * time.Millisecond)
 
 	// Expired CSRF token
 	ctx.Request.Reset()
