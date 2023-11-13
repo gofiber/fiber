@@ -574,6 +574,9 @@ func Test_Ctx_BodyParser(t *testing.T) {
 	testDecodeParser(MIMEApplicationForm, "name=john")
 	testDecodeParser(MIMEMultipartForm+`;boundary="b"`, "--b\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\njohn\r\n--b--")
 
+	// Ensure JSON extension MIME type gets parsed as JSON
+	testDecodeParser("application/problem+json", `{"name":"john"}`)
+
 	testDecodeParserError := func(contentType, body string) {
 		c.Request().Header.SetContentType(contentType)
 		c.Request().SetBody([]byte(body))
@@ -695,6 +698,30 @@ func Benchmark_Ctx_BodyParser_JSON(b *testing.B) {
 	body := []byte(`{"name":"john"}`)
 	c.Request().SetBody(body)
 	c.Request().Header.SetContentType(MIMEApplicationJSON)
+	c.Request().Header.SetContentLength(len(body))
+	d := new(Demo)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		_ = c.BodyParser(d) //nolint:errcheck // It is fine to ignore the error here as we check it once further below
+	}
+	utils.AssertEqual(b, nil, c.BodyParser(d))
+	utils.AssertEqual(b, "john", d.Name)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_BodyParser_JSON_Extension -benchmem -count=4
+func Benchmark_Ctx_BodyParser_JSON_Extension(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	type Demo struct {
+		Name string `json:"name"`
+	}
+	body := []byte(`{"name":"john"}`)
+	c.Request().SetBody(body)
+	c.Request().Header.SetContentType("application/problem+json")
 	c.Request().Header.SetContentLength(len(body))
 	d := new(Demo)
 
@@ -2927,6 +2954,7 @@ func Test_Ctx_JSON(t *testing.T) {
 
 	utils.AssertEqual(t, true, c.JSON(complex(1, 1)) != nil)
 
+	// Test without ctype
 	err := c.JSON(Map{ // map has no order
 		"Name": "Grame",
 		"Age":  20,
@@ -2934,6 +2962,15 @@ func Test_Ctx_JSON(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, `{"Age":20,"Name":"Grame"}`, string(c.Response().Body()))
 	utils.AssertEqual(t, "application/json", string(c.Response().Header.Peek("content-type")))
+
+	// Test with ctype
+	err = c.JSON(Map{ // map has no order
+		"Name": "Grame",
+		"Age":  20,
+	}, "application/problem+json")
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, `{"Age":20,"Name":"Grame"}`, string(c.Response().Body()))
+	utils.AssertEqual(t, "application/problem+json", string(c.Response().Header.Peek("content-type")))
 
 	testEmpty := func(v interface{}, r string) {
 		err := c.JSON(v)
@@ -2988,6 +3025,30 @@ func Benchmark_Ctx_JSON(b *testing.B) {
 	}
 	utils.AssertEqual(b, nil, err)
 	utils.AssertEqual(b, `{"Name":"Grame","Age":20}`, string(c.Response().Body()))
+}
+
+// go test -run=^$ -bench=Benchmark_Ctx_JSON_Ctype -benchmem -count=4
+func Benchmark_Ctx_JSON_Ctype(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	type SomeStruct struct {
+		Name string
+		Age  uint8
+	}
+	data := SomeStruct{
+		Name: "Grame",
+		Age:  20,
+	}
+	var err error
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		err = c.JSON(data, "application/problem+json")
+	}
+	utils.AssertEqual(b, nil, err)
+	utils.AssertEqual(b, `{"Name":"Grame","Age":20}`, string(c.Response().Body()))
+	utils.AssertEqual(b, "application/problem+json", string(c.Response().Header.Peek("content-type")))
 }
 
 // go test -run Test_Ctx_JSONP

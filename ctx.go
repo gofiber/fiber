@@ -373,6 +373,7 @@ func decoderBuilder(parserConfig ParserConfig) interface{} {
 // BodyParser binds the request body to a struct.
 // It supports decoding the following content types based on the Content-Type header:
 // application/json, application/xml, application/x-www-form-urlencoded, multipart/form-data
+// All JSON extenstion mime types are supported (eg. application/problem+json)
 // If none of the content types above are matched, it will return a ErrUnprocessableEntity error
 func (c *Ctx) BodyParser(out interface{}) error {
 	// Get content-type
@@ -380,8 +381,14 @@ func (c *Ctx) BodyParser(out interface{}) error {
 
 	ctype = utils.ParseVendorSpecificContentType(ctype)
 
+	// Only use ctype string up to and excluding byte ';'
+	ctypeEnd := strings.IndexByte(ctype, ';')
+	if ctypeEnd != -1 {
+		ctype = ctype[:ctypeEnd]
+	}
+
 	// Parse body accordingly
-	if strings.HasPrefix(ctype, MIMEApplicationJSON) {
+	if strings.HasSuffix(ctype, "json") {
 		return c.app.config.JSONDecoder(c.Body(), out)
 	}
 	if strings.HasPrefix(ctype, MIMEApplicationForm) {
@@ -886,14 +893,20 @@ func (c *Ctx) Is(extension string) bool {
 // Array and slice values encode as JSON arrays,
 // except that []byte encodes as a base64-encoded string,
 // and a nil slice encodes as the null JSON value.
-// This method also sets the content header to application/json.
-func (c *Ctx) JSON(data interface{}) error {
+// If the ctype parameter is given, this method will set the
+// Content-Type header equal to ctype. If ctype is not given,
+// The Content-Type header will be set to application/json.
+func (c *Ctx) JSON(data interface{}, ctype ...string) error {
 	raw, err := c.app.config.JSONEncoder(data)
 	if err != nil {
 		return err
 	}
 	c.fasthttp.Response.SetBodyRaw(raw)
-	c.fasthttp.Response.Header.SetContentType(MIMEApplicationJSON)
+	if len(ctype) > 0 {
+		c.fasthttp.Response.Header.SetContentType(ctype[0])
+	} else {
+		c.fasthttp.Response.Header.SetContentType(MIMEApplicationJSON)
+	}
 	return nil
 }
 

@@ -797,11 +797,11 @@ app.Get("/", func(c *fiber.Ctx) error {
 Converts any **interface** or **string** to JSON using the [encoding/json](https://pkg.go.dev/encoding/json) package.
 
 :::info
-JSON also sets the content header to **application/json**.
+JSON also sets the content header to the `ctype` parameter. If no `ctype` is passed in, the header is set to **application/json**.
 :::
 
 ```go title="Signature"
-func (c *Ctx) JSON(data interface{}) error
+func (c *Ctx) JSON(data interface{}, ctype ...string) error
 ```
 
 ```go title="Example"
@@ -827,6 +827,22 @@ app.Get("/json", func(c *fiber.Ctx) error {
   })
   // => Content-Type: application/json
   // => "{"name": "Grame", "age": 20}"
+
+  return c.JSON(fiber.Map{
+    "type": "https://example.com/probs/out-of-credit",
+    "title": "You do not have enough credit.",
+    "status": 403,
+    "detail": "Your current balance is 30, but that costs 50.",
+    "instance": "/account/12345/msgs/abc",
+  }, "application/problem+json")
+  // => Content-Type: application/problem+json
+  // => "{
+  // =>     "type": "https://example.com/probs/out-of-credit",
+  // =>     "title": "You do not have enough credit.",
+  // =>     "status": 403,
+  // =>     "detail": "Your current balance is 30, but that costs 50.",
+  // =>     "instance": "/account/12345/msgs/abc",
+  // => }"
 })
 ```
 
