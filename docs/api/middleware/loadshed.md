@@ -45,7 +45,7 @@ func main() {
 }
 ```
 
-# Config
+## Config
 
 The LoadShed middleware in Fiber offers various configuration options to tailor the load shedding behavior according to the needs of your application.
 
@@ -54,15 +54,15 @@ The LoadShed middleware in Fiber offers various configuration options to tailor 
 | Next     | `func(*fiber.Ctx) bool` | Function to skip this middleware when returned true. | `nil`                   |
 | Criteria | `LoadCriteria`          | Interface for defining load shedding criteria.       | `&CPULoadCriteria{...}` |
 
-# LoadCriteria
+## LoadCriteria
 
 LoadCriteria is an interface in the LoadShed middleware that defines the criteria for determining when to shed load in the system. Different implementations of this interface can use various metrics and algorithms to decide when and how to shed incoming requests to maintain system performance.
 
-## CPULoadCriteria
+### CPULoadCriteria
 
 `CPULoadCriteria` is an implementation of the `LoadCriteria` interface, using CPU load as the metric for determining whether to shed requests.
 
-### Properties
+#### Properties
 
 | Property       | Type               | Description                                                                                                                           |
 | :------------- | :----------------- | :------------------------------------------------------------------------------------------------------------------------------------ |
@@ -71,7 +71,7 @@ LoadCriteria is an interface in the LoadShed middleware that defines the criteri
 | Interval       | `time.Duration`    | The time interval over which the CPU usage is averaged for decision making.                                                           |
 | Getter         | `CPUPercentGetter` | Interface to retrieve CPU usage percentages.                                                                                          |
 
-### How It Works
+#### How It Works
 
 `CPULoadCriteria` determines the load on the system based on CPU usage and decides whether to shed incoming requests. It operates on the following principles:
 
