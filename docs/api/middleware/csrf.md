@@ -28,7 +28,7 @@ Never use 'safe' methods to mutate data, for example, never use a GET request to
 
 By default, the middleware generates and stores tokens using the `fiber.Storage` interface. These tokens are not linked to any particular user session, and they are validated using the Double Submit Cookie pattern. The token is stored in a cookie, and then sent as a header on requests. The middleware compares the cookie value with the header value to validate the token. This is a secure pattern that does not require a user session.
 
-When the authorization status changes, the previously issued token UST be deleted, and a new one generated. See [Token Lifecycle](#token-lifecycle) [Deleting Tokens](#deleting-tokens) for more information.
+When the authorization status changes, the previously issued token MUST be deleted, and a new one generated. See [Token Lifecycle](#token-lifecycle) [Deleting Tokens](#deleting-tokens) for more information.
 
 :::caution
 When using this pattern, it's important to set the `CookieSameSite` option to `Lax` or `Strict` and ensure that the Extractor is not `CsrfFromCookie`, and KeyLookup is not `cookie:<name>`.
