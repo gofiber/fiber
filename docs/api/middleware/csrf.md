@@ -6,13 +6,13 @@ id: csrf
 
 The CSRF middleware for [Fiber](https://github.com/gofiber/fiber) provides protection against [Cross-Site Request Forgery](https://en.wikipedia.org/wiki/Cross-site_request_forgery) (CSRF) attacks. Requests made using methods other than those defined as 'safe' by [RFC9110#section-9.2.1](https://datatracker.ietf.org/doc/html/rfc9110.html#section-9.2.1) (GET, HEAD, OPTIONS, and TRACE) are validated using tokens. If a potential attack is detected, the middleware will return a default 403 Forbidden error.
 
-This middleware offers two [Token Validation Patterns](#token-validation-patterns), [Double Submit Cookie Pattern](#double-submit-cookie-pattern-default) and [Synchronizer Token Pattern (Session)](#synchronizer-token-pattern-session).
+This middleware offers two [Token Validation Patterns](#token-validation-patterns), [Double Submit Cookie Pattern](#double-submit-cookie-pattern-default) and [Synchronizer Token Pattern (with Session)](#synchronizer-token-pattern-session).
 
 As a [Defense In Depth](#defense-in-depth) measure, this middleware performs [Referer Checking](#referer-checking) for HTTPS requests.
 
 ## Token Generation
 
-CSRF tokens are generated on 'safe' requests and when the existing token has expired or hasn't been set yet. If `SingleUseToken` is `true`, a new token is generated after each use. Retrieve the CSRF token using `c.Locals(contextKey)`, where `contextKey` is defined in the configuration.
+CSRF tokens are generated on 'safe' requests and when the existing token has expired or hasn't been set yet. If `SingleUseToken` is `true`, a new token is generated after each use. Retrieve the CSRF token using `c.Locals(contextKey)`, where `contextKey` is defined within the configuration.
 
 ## Security Considerations
 
@@ -28,7 +28,7 @@ Never use 'safe' methods to mutate data, for example, never use a GET request to
 
 By default, the middleware generates and stores tokens using the `fiber.Storage` interface. These tokens are not linked to any particular user session, and they are validated using the Double Submit Cookie pattern. The token is stored in a cookie, and then sent as a header on requests. The middleware compares the cookie value with the header value to validate the token. This is a secure pattern that does not require a user session.
 
-Tokens are used to verify the identity of a user and provide access to resources. When the authorization status changes, the previously issued token MUST be deleted the token to ensure that it cannot be used to access resources. See [Token Lifecycle](#token-lifecycle) for more information.
+When the authorization status changes, the previously issued token MUST be deleted the token to ensure that it cannot be used to access resources. See [Token Lifecycle](#token-lifecycle) for more information.
 
 :::caution
 When using this pattern, it's important to set the `CookieSameSite` option to `Lax` or `Strict` and ensure that the Extractor is not `CsrfFromCookie`, and KeyLookup is not `cookie:<name>`.
@@ -38,9 +38,9 @@ When using this pattern, it's important to set the `CookieSameSite` option to `L
 When using this pattern, this middleware uses our [Storage](https://github.com/gofiber/storage) package to support various databases through a single interface. The default configuration for Storage saves data to memory. See [Custom Storage/Database](#custom-storagedatabase) for customizing the storage.
 :::
 
-#### Synchronizer Token Pattern (Session)
+#### Synchronizer Token Pattern (with Session)
 
-When using this middleware with a user session, the middleware can be configured to store the token in the session. This method is recommended when using a user session, as it is generally more secure than the Double Submit Cookie Pattern.
+When using this middleware with a user session, the middleware can be configured to store the token within the session. This method is recommended when using a user session, as it is generally more secure than the Double Submit Cookie Pattern.
 
 When using this pattern it's important to regenerate the session when the authorization status changes, this will also delete the token. See: [Token Lifecycle](#token-lifecycle) for more information.
 
@@ -149,8 +149,8 @@ app.Use(csrf.New(csrf.Config{
 | SingleUseToken    | `bool`                             | SingleUseToken indicates if the CSRF token be destroyed and a new one generated on each use. (See TokenLifecycle)                                                                                                                                                                            | false                        |
 | Storage           | `fiber.Storage`                    | Store is used to store the state of the middleware.                                                                                                                                                                                                                                          | `nil`                        |
 | Session           | `*session.Store`                   | Session is used to store the state of the middleware. Overrides Storage if set.                                                                                                                                                                                                              | `nil`                        |
-| SessionKey        | `string`                           | SessionKey is the key used to store the token in the session.                                                                                                                                                                                                                                | "fiber.csrf.token"           |
-| ContextKey        | `string`                           | Context key to store the generated CSRF token into the context. If left empty, the token will not be stored in the context.                                                                                                                                                                  | ""                           |
+| SessionKey        | `string`                           | SessionKey is the key used to store the token within the session.                                                                                                                                                                                                                                | "fiber.csrf.token"           |
+| ContextKey        | `string`                           | Context key to store the generated CSRF token into the context. If left empty, the token will not be stored within the context.                                                                                                                                                                  | ""                           |
 | KeyGenerator      | `func() string`                    | KeyGenerator creates a new CSRF token.                                                                                                                                                                                                                                                       | utils.UUID                   |
 | CookieExpires     | `time.Duration` (Deprecated)       | Deprecated: Please use Expiration.                                                                                                                                                                                                                                                           | 0                            |
 | Cookie            | `*fiber.Cookie` (Deprecated)       | Deprecated: Please use Cookie* related fields.                                                                                                                                                                                                                                               | `nil`                        |
@@ -177,7 +177,7 @@ var ConfigDefault = Config{
 
 ### Recommended Config (with session)
 
-It's recommended to use this middleware with [fiber/middleware/session](https://docs.gofiber.io/api/middleware/session) to store the CSRF token in the session. This is generally more secure than the default configuration.
+It's recommended to use this middleware with [fiber/middleware/session](https://docs.gofiber.io/api/middleware/session) to store the CSRF token within the session. This is generally more secure than the default configuration.
 
 ```go
 var ConfigDefault = Config{
