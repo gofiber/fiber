@@ -63,7 +63,9 @@ To use these prefixes, set the `CookieName` option to `__Host-csrf_` or `__Secur
 For HTTPS requests, this middleware performs strict referer checking. Even if a subdomain can set or modify cookies on your domain, it can't force a user to post to your application since that request won't come from your own exact domain.
 
 :::caution
-When HTTPS requests are protected by CSRF, referer checking is always carried out. The Referer header is automatically included in requests by most modern browsers, including those made using the JS Fetch API. However, if you're making use of this middleware with a custom client, it's important to ensure that the client sends a valid Referer header.
+When HTTPS requests are protected by CSRF, referer checking is always carried out.
+
+The Referer header is automatically included in requests by all modern browsers, including those made using the JS Fetch API. However, if you're making use of this middleware with a custom client, it's important to ensure that the client sends a valid Referer header.
 :::
 
 
