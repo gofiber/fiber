@@ -280,7 +280,7 @@ func Test_CSRF_MultiUseToken(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		KeyLookup: "header:X-CSRF-Token",
+		KeyLookup: "header:X-Csrf-Token",
 	}))
 
 	app.Post("/", func(c *fiber.Ctx) error {
@@ -292,7 +292,7 @@ func Test_CSRF_MultiUseToken(t *testing.T) {
 
 	// Invalid CSRF token
 	ctx.Request.Header.SetMethod(fiber.MethodPost)
-	ctx.Request.Header.Set("X-CSRF-Token", "johndoe")
+	ctx.Request.Header.Set("X-Csrf-Token", "johndoe")
 	h(ctx)
 	utils.AssertEqual(t, 403, ctx.Response.StatusCode())
 
@@ -307,7 +307,7 @@ func Test_CSRF_MultiUseToken(t *testing.T) {
 	ctx.Request.Reset()
 	ctx.Response.Reset()
 	ctx.Request.Header.SetMethod(fiber.MethodPost)
-	ctx.Request.Header.Set("X-CSRF-Token", token)
+	ctx.Request.Header.Set("X-Csrf-Token", token)
 	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
 	h(ctx)
 	newToken := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))

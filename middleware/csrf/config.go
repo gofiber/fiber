@@ -29,7 +29,7 @@ type Config struct {
 	//
 	// Ignored if an Extractor is explicitly set.
 	//
-	// Optional. Default: "header:X-CSRF-Token"
+	// Optional. Default: "header:X-Csrf-Token"
 	KeyLookup string
 
 	// Name of the session cookie. This cookie will store session key.
