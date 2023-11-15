@@ -797,7 +797,7 @@ app.Get("/", func(c *fiber.Ctx) error {
 Converts any **interface** or **string** to JSON using the [encoding/json](https://pkg.go.dev/encoding/json) package.
 
 :::info
-JSON also sets the content header to the `ctype` parameter. If no `ctype` is passed in, the header is set to **application/json**.
+JSON also sets the content header to the `ctype` parameter. If no `ctype` is passed in, the header is set to `application/json`.
 :::
 
 ```go title="Signature"
