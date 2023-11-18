@@ -57,7 +57,7 @@ func configDefault(config ...Config) Config {
 	if cfg.Generator == nil {
 		cfg.Generator = ConfigDefault.Generator
 	}
-	if cfg.ContextKey == "" {
+	if cfg.ContextKey == nil || cfg.ContextKey == "" {
 		cfg.ContextKey = ConfigDefault.ContextKey
 	}
 	return cfg
