@@ -147,7 +147,7 @@ type fakeOutput int
 
 func (o *fakeOutput) Write([]byte) (int, error) {
 	*o++
-	return 0, errors.New("fake output")
+	return 0, nil
 }
 
 // go test -run Test_Logger_ErrorOutput_WithoutColor

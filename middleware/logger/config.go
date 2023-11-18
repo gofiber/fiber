@@ -28,7 +28,7 @@ type Config struct {
 
 	// Format defines the logging tags
 	//
-	// Optional. Default: [${time}] ${status} - ${latency} ${method} ${path}\n
+	// Optional. Default: ${time} | ${status} | ${latency} | ${ip} | ${method} | ${path}
 	Format string
 
 	// TimeFormat https://programming.guide/go/format-parse-string-time-date-example.html
@@ -86,7 +86,7 @@ type LogFunc func(output Buffer, c *fiber.Ctx, data *Data, extraParam string) (i
 var ConfigDefault = Config{
 	Next:          nil,
 	Done:          nil,
-	Format:        "[${time}] ${status} - ${latency} ${method} ${path}\n",
+	Format:        "${time} | ${status} | ${latency} | ${ip} | ${method} | ${path}\n",
 	TimeFormat:    "15:04:05",
 	TimeZone:      "Local",
 	TimeInterval:  500 * time.Millisecond,
