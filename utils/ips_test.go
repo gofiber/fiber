@@ -14,6 +14,7 @@ func Test_IsIPv4(t *testing.T) {
 
 	AssertEqual(t, true, IsIPv4("174.23.33.100"))
 	AssertEqual(t, true, IsIPv4("127.0.0.1"))
+	AssertEqual(t, true, IsIPv4("127.255.255.255"))
 	AssertEqual(t, true, IsIPv4("0.0.0.0"))
 
 	AssertEqual(t, false, IsIPv4(".0.0.0"))

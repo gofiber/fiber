@@ -23,7 +23,7 @@ func IsIPv4(s string) bool {
 
 		for ci = 0; ci < len(s) && '0' <= s[ci] && s[ci] <= '9'; ci++ {
 			n = n*10 + int(s[ci]-'0')
-			if n >= 0xFF {
+			if n > 0xFF {
 				return false
 			}
 		}
