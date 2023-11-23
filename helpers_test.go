@@ -111,41 +111,89 @@ func Test_Utils_GetOffer(t *testing.T) {
 
 // go test -v -run=^$ -bench=Benchmark_Utils_GetOffer -benchmem -count=4
 func Benchmark_Utils_GetOffer(b *testing.B) {
-	headers := []string{
-		"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-		"application/json",
-		"utf-8, iso-8859-1;q=0.5",
-		"gzip, deflate",
+	testCases := []struct {
+		description string
+		accept      string
+		offers      []string
+	}{
+		{
+			description: "simple",
+			accept:      "application/json",
+			offers:      []string{"application/json"},
+		},
+		{
+			description: "6 offers",
+			accept:      "text/plain",
+			offers:      []string{"junk/a", "junk/b", "junk/c", "junk/d", "junk/e", "text/plain"},
+		},
+		{
+			description: "1 parameter",
+			accept:      "application/json; version=1",
+			offers:      []string{"application/json;version=1"},
+		},
+		{
+			description: "2 parameters",
+			accept:      "application/json; version=1; foo=bar",
+			offers:      []string{"application/json;version=1;foo=bar"},
+		},
+		{
+			// 1 alloc:
+			// The implementation uses a slice of length 2 allocated on the stack,
+			// so a third parameters causes a heap allocation.
+			description: "3 parameters",
+			accept:      "application/json; version=1; foo=bar; charset=utf-8",
+			offers:      []string{"application/json;version=1;foo=bar;charset=utf-8"},
+		},
+		{
+			description: "10 parameters",
+			accept:      "text/plain;a=1;b=2;c=3;d=4;e=5;f=6;g=7;h=8;i=9;j=10",
+			offers:      []string{"text/plain;a=1;b=2;c=3;d=4;e=5;f=6;g=7;h=8;i=9;j=10"},
+		},
+		{
+			description: "6 offers w/params",
+			accept:      "text/plain; format=flowed",
+			offers: []string{
+				"junk/a;a=b",
+				"junk/b;b=c",
+				"junk/c;c=d",
+				"text/plain; format=justified",
+				"text/plain; format=flat",
+				"text/plain; format=flowed",
+			},
+		},
+		{
+			description: "mime extension",
+			accept:      "utf-8, iso-8859-1;q=0.5",
+			offers:      []string{"utf-8"},
+		},
+		{
+			description: "mime extension",
+			accept:      "utf-8, iso-8859-1;q=0.5",
+			offers:      []string{"iso-8859-1"},
+		},
+		{
+			description: "mime extension",
+			accept:      "utf-8, iso-8859-1;q=0.5",
+			offers:      []string{"iso-8859-1", "utf-8"},
+		},
+		{
+			description: "mime extension",
+			accept:      "gzip, deflate",
+			offers:      []string{"deflate"},
+		},
+		{
+			description: "web browser",
+			accept:      "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+			offers:      []string{"text/html", "application/xml", "application/xml+xhtml"},
+		},
 	}
-	offers := [][]string{
-		{"text/html", "application/xml", "application/xml+xhtml"},
-		{"application/json"},
-		{"utf-8"},
-		{"deflate"},
-	}
-	for n := 0; n < b.N; n++ {
-		for i, header := range headers {
-			getOffer(header, acceptsOfferType, offers[i]...)
-		}
-	}
-}
 
-// go test -v -run=^$ -bench=Benchmark_Utils_GetOffer_WithParams -benchmem -count=4
-func Benchmark_Utils_GetOffer_WithParams(b *testing.B) {
-	headers := []string{
-		"text/html;p=1,application/xhtml+xml;p=1;b=2,application/xml;a=2;q=0.9,*/*;q=0.8",
-		"application/json; version=1",
-		"utf-8, iso-8859-1;q=0.5",
-	}
-	offers := [][]string{
-		{"text/html;p=1", "application/xml;a=2", "application/xml+xhtml; p=1; b=2"},
-		{"application/json; version=2"},
-		{`utf-8;charset="utf-16"`},
-	}
-	for n := 0; n < b.N; n++ {
-		for i, header := range headers {
-			getOffer(header, acceptsOfferType, offers[i]...)
-		}
+	for _, tc := range testCases {
+		b.Run(tc.description, func(b *testing.B) {
+			for n := 0; n < b.N; n++ {
+				getOffer(tc.accept, acceptsOfferType, tc.offers...)
+			}
+		})
 	}
 }
 
