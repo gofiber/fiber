@@ -45,7 +45,7 @@ app.Use(requestid.New(requestid.Config{
 | Next       | `func(*fiber.Ctx) bool` | Next defines a function to skip this middleware when returned true.                               | `nil`          |
 | Header     | `string`                | Header is the header key where to get/set the unique request ID.                                  | "X-Request-ID" |
 | Generator  | `func() string`         | Generator defines a function to generate the unique identifier.                                   | utils.UUID     |
-| ContextKey | `interface{}`           | ContextKey defines the key used when storing the request ID in the locals for a specific request. | "requestid"    |
+| ContextKey | `string`                | ContextKey defines the key used when storing the request ID in the locals for a specific request. | "requestid"    |
 
 ## Default Config
 The default config uses a fast UUID generator which will expose the number of
