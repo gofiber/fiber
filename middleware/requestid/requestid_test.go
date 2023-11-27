@@ -55,21 +55,20 @@ func Test_RequestID_Next(t *testing.T) {
 func Test_RequestID_Locals(t *testing.T) {
 	t.Parallel()
 	reqID := "ThisIsARequestId"
-	type ContextKey int
-	const requestContextKey ContextKey = iota
+	ctxKey := "ThisIsAContextKey"
 
 	app := fiber.New()
 	app.Use(New(Config{
 		Generator: func() string {
 			return reqID
 		},
-		ContextKey: requestContextKey,
+		ContextKey: ctxKey,
 	}))
 
 	var ctxVal string
 
 	app.Use(func(c *fiber.Ctx) error {
-		ctxVal = c.Locals(requestContextKey).(string) //nolint:forcetypeassert,errcheck // We always store a string in here
+		ctxVal = c.Locals(ctxKey).(string) //nolint:forcetypeassert,errcheck // We always store a string in here
 		return c.Next()
 	})
 

@@ -26,7 +26,7 @@ type Config struct {
 	// the locals for a specific request.
 	//
 	// Optional. Default: requestid
-	ContextKey interface{}
+	ContextKey string
 }
 
 // ConfigDefault is the default config
