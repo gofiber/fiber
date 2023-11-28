@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"math"
 	"reflect"
 	"strconv"
 	"strings"
@@ -63,13 +64,21 @@ func setDefaultForSlice(field reflect.Value, tagValue string, elemType reflect.T
 			if intVal, err := strconv.ParseInt(item, 10, 64); err == nil {
 				switch elemType.Kind() {
 				case reflect.Int:
-					val = reflect.ValueOf(int(intVal))
+					if intVal >= int64(math.MinInt) && intVal <= int64(math.MaxInt) {
+						val = reflect.ValueOf(int(intVal))
+					}
 				case reflect.Int8:
-					val = reflect.ValueOf(int8(intVal))
+					if intVal >= int64(math.MinInt8) && intVal <= int64(math.MaxInt8) {
+						val = reflect.ValueOf(int8(intVal))
+					}
 				case reflect.Int16:
-					val = reflect.ValueOf(int16(intVal))
+					if intVal >= int64(math.MinInt16) && intVal <= int64(math.MaxInt16) {
+						val = reflect.ValueOf(int16(intVal))
+					}
 				case reflect.Int32:
-					val = reflect.ValueOf(int32(intVal))
+					if intVal >= int64(math.MinInt32) && intVal <= int64(math.MaxInt32) {
+						val = reflect.ValueOf(int32(intVal))
+					}
 				case reflect.Int64:
 					val = reflect.ValueOf(intVal)
 				}
