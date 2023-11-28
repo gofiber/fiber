@@ -506,6 +506,10 @@ func (c *Ctx) Cookies(key string, defaultValue ...string) string {
 
 // CookieParser is used to bind cookies to a struct
 func (c *Ctx) CookieParser(out interface{}) error {
+	if c.app.config.DefaultValueParser {
+		utils.SetDefaultValues(out)
+	}
+
 	data := make(map[string][]string)
 	var err error
 
@@ -1249,6 +1253,10 @@ func (c *Ctx) QueryFloat(key string, defaultValue ...float64) float64 {
 
 // QueryParser binds the query string to a struct.
 func (c *Ctx) QueryParser(out interface{}) error {
+	if c.app.config.DefaultValueParser {
+		utils.SetDefaultValues(out)
+	}
+
 	data := make(map[string][]string)
 	var err error
 
@@ -1276,10 +1284,6 @@ func (c *Ctx) QueryParser(out interface{}) error {
 
 	if err != nil {
 		return err
-	}
-
-	if c.app.config.DefaultValueParser {
-		utils.SetDefaultValues(out)
 	}
 
 	return c.parseToStruct(queryTag, out, data)
@@ -1312,6 +1316,10 @@ func parseParamSquareBrackets(k string) (string, error) {
 
 // ReqHeaderParser binds the request header strings to a struct.
 func (c *Ctx) ReqHeaderParser(out interface{}) error {
+	if c.app.config.DefaultValueParser {
+		utils.SetDefaultValues(out)
+	}
+
 	data := make(map[string][]string)
 	c.fasthttp.Request.Header.VisitAll(func(key, val []byte) {
 		k := c.app.getString(key)
@@ -1326,10 +1334,6 @@ func (c *Ctx) ReqHeaderParser(out interface{}) error {
 			data[k] = append(data[k], v)
 		}
 	})
-
-	if c.app.config.DefaultValueParser {
-		utils.SetDefaultValues(out)
-	}
 
 	return c.parseToStruct(reqHeaderTag, out, data)
 }
