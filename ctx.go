@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -370,10 +371,60 @@ func (c *DefaultCtx) Response() *fasthttp.Response {
 	return &c.fasthttp.Response
 }
 
+type Fmt struct {
+	MediaType string
+	Handler   func(Ctx) error
+}
+
 // Format performs content-negotiation on the Accept HTTP header.
+// It uses Accepts to select a proper format and calls the matching
+// user-provided handler function.
+// If no accepted format is found, and a format with MediaType "default" is given,
+// that default handler is called. If no format is found and no default is given,
+// StatusNotAcceptable is sent.
+func (c *DefaultCtx) Format(handlers ...Fmt) error {
+	if len(handlers) == 0 {
+		panic("Format requires at least one handler")
+	}
+
+	if c.Get(HeaderAccept) == "" {
+		c.Response().Header.SetContentType(handlers[0].MediaType)
+		return handlers[0].Handler(c)
+	}
+
+	types := make([]string, 0, 8)
+	var defaultHandler Handler
+	for _, h := range handlers {
+		if h.MediaType == "default" {
+			defaultHandler = h.Handler
+			continue
+		}
+		types = append(types, h.MediaType)
+	}
+	accept := c.Accepts(types...)
+
+	if accept == "" {
+		if defaultHandler == nil {
+			return c.SendStatus(StatusNotAcceptable)
+		}
+		return defaultHandler(c)
+	}
+
+	for _, h := range handlers {
+		if h.MediaType == accept {
+			c.Response().Header.SetContentType(h.MediaType)
+			return h.Handler(c)
+		}
+	}
+
+	// unreachable code
+	panic(errors.New("fiber: an Accept was found but no handler was called - please file a bug report"))
+}
+
+// AutoFormat performs content-negotiation on the Accept HTTP header.
 // It uses Accepts to select a proper format.
 // If the header is not specified or there is no proper format, text/plain is used.
-func (c *DefaultCtx) Format(body any) error {
+func (c *DefaultCtx) AutoFormat(body any) error {
 	// Get accepted content type
 	accept := c.Accepts("html", "json", "txt", "xml")
 	// Set accepted content type
