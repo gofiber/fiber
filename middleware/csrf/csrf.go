@@ -129,7 +129,7 @@ func New(config ...Config) fiber.Handler {
 		c.Vary(fiber.HeaderCookie)
 
 		// Store the token in the context if a context key is specified
-		if cfg.ContextKey != "" {
+		if cfg.ContextKey != nil {
 			c.Locals(cfg.ContextKey, token)
 		}
 

@@ -41,7 +41,7 @@ type Config struct {
 
 	// Context key to store the bearertoken from the token into context.
 	// Optional. Default: "token".
-	ContextKey string
+	ContextKey interface{}
 }
 
 // ConfigDefault is the default config
@@ -87,7 +87,7 @@ func configDefault(config ...Config) Config {
 	if cfg.Validator == nil {
 		panic("fiber: keyauth middleware requires a validator function")
 	}
-	if cfg.ContextKey == "" {
+	if cfg.ContextKey == nil {
 		cfg.ContextKey = ConfigDefault.ContextKey
 	}
 
