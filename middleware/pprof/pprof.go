@@ -1,6 +1,7 @@
 package pprof
 
 import (
+	"github.com/felixge/fgprof"
 	"net/http/pprof"
 	"strings"
 
@@ -27,6 +28,7 @@ func New(config ...Config) fiber.Handler {
 		pprofHeap         = fasthttpadaptor.NewFastHTTPHandlerFunc(pprof.Handler("heap").ServeHTTP)
 		pprofMutex        = fasthttpadaptor.NewFastHTTPHandlerFunc(pprof.Handler("mutex").ServeHTTP)
 		pprofThreadcreate = fasthttpadaptor.NewFastHTTPHandlerFunc(pprof.Handler("threadcreate").ServeHTTP)
+		fgprof            = fasthttpadaptor.NewFastHTTPHandlerFunc(fgprof.Handler().ServeHTTP)
 	)
 
 	// Construct actual prefix
@@ -69,6 +71,8 @@ func New(config ...Config) fiber.Handler {
 			pprofMutex(c.Context())
 		case "/threadcreate":
 			pprofThreadcreate(c.Context())
+		case "/fgprof":
+			fgprof(c.Context())
 		default:
 			// pprof index only works with trailing slash
 			if strings.HasSuffix(path, "/") {

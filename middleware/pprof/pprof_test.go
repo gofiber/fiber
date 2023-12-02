@@ -95,14 +95,14 @@ func Test_Pprof_Subs(t *testing.T) {
 
 	subs := []string{
 		"cmdline", "profile", "symbol", "trace", "allocs", "block",
-		"goroutine", "heap", "mutex", "threadcreate",
+		"goroutine", "heap", "mutex", "threadcreate", "fgprof",
 	}
 
 	for _, sub := range subs {
 		sub := sub
 		t.Run(sub, func(t *testing.T) {
 			target := "/debug/pprof/" + sub
-			if sub == "profile" {
+			if sub == "profile" || sub == "fgprof" {
 				target += "?seconds=1"
 			}
 			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, target, nil), 5000)
@@ -123,14 +123,14 @@ func Test_Pprof_Subs_WithPrefix(t *testing.T) {
 
 	subs := []string{
 		"cmdline", "profile", "symbol", "trace", "allocs", "block",
-		"goroutine", "heap", "mutex", "threadcreate",
+		"goroutine", "heap", "mutex", "threadcreate", "fgprof",
 	}
 
 	for _, sub := range subs {
 		sub := sub
 		t.Run(sub, func(t *testing.T) {
 			target := "/federated-fiber/debug/pprof/" + sub
-			if sub == "profile" {
+			if sub == "profile" || sub == "fgprof" {
 				target += "?seconds=1"
 			}
 			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, target, nil), 5000)
