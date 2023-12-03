@@ -112,8 +112,8 @@ func Test_Redirect(t *testing.T) {
 		},
 		{
 			name:       "redirect with query params",
-			url:        "/params?quary=abc",
-			redirectTo: "/with_params?quary=abc",
+			url:        "/params?query=abc",
+			redirectTo: "/with_params?query=abc",
 			statusCode: fiber.StatusMovedPermanently,
 		},
 	}
