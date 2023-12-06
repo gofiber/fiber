@@ -82,8 +82,8 @@ var ConfigDefault = Config{
 }
 ```
 
-## Usage With Other Middlewares That Modify Cookies
-Place the encryptcookie middleware before any other middleware that modifies cookies. For example, if you are using the CSRF middleware, ensure that the encryptcookie middleware is placed before it. Failure to do so may prevent the CSRF middleware from reading the encrypted cookie.
+## Usage With Other Middlewares That Reads Or Modify Cookies
+Place the encryptcookie middleware before any other middleware that reads or modifies cookies. For example, if you are using the CSRF middleware, ensure that the encryptcookie middleware is placed before it. Failure to do so may prevent the CSRF middleware from reading the encrypted cookie.
 
 You may also choose to exclude certain cookies from encryption. For instance, if you are using the CSRF middleware with a frontend framework like Angular, and the framework reads the token from a cookie, you should exclude that cookie from encryption. This can be achieved by adding the cookie name to the Except array in the configuration:
 
