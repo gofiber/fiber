@@ -93,8 +93,9 @@ app.Use(encryptcookie.New(encryptcookie.Config{
 	Except: []string{csrf.ConfigDefault.CookieName}, // exclude CSRF cookie
 }))
 app.Use(csrf.New(csrf.Config{
-	KeyLookup:      "form:test",
-	CookieHTTPOnly: false,
+	KeyLookup:      "header:" + csrf.HeaderName,
+	CookieSameSite: "Lax",
 	CookieSecure:   true,
+	CookieHTTPOnly: false,
 }))
 ```
