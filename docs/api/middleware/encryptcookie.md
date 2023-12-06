@@ -62,7 +62,7 @@ Make sure not to set `Key` to `encryptcookie.GenerateKey()` because that will cr
 
 ## Config
 
-| Property  | Type                                                | Description                                                                                         | Default                      |
+| Property  | Type                                                | Description                                                                                           | Default                      |
 |:----------|:----------------------------------------------------|:------------------------------------------------------------------------------------------------------|:-----------------------------|
 | Next      | `func(*fiber.Ctx) bool`                             | A function to skip this middleware when returned true.                                                | `nil`                        |
 | Except    | `[]string`                                          | Array of cookie keys that should not be encrypted.                                                    | `[]`                         |
