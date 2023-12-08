@@ -97,7 +97,7 @@ app.Use(logger.New(logger.Config{
 | Next             | `func(*fiber.Ctx) bool`    | Next defines a function to skip this middleware when returned true.                                                              | `nil`                                                  |
 | Done             | `func(*fiber.Ctx, []byte)` | Done is a function that is called after the log string for a request is written to Output, and pass the log string as parameter. | `nil`                                                  |
 | CustomTags       | `map[string]LogFunc`       | tagFunctions defines the custom tag action.                                                                                      | `map[string]LogFunc`                                   |
-| Format           | `string`                   | Format defines the logging tags.                                                                                                 | `[${time}] ${status} - ${latency} ${method} ${path}\n` |
+| Format           | `string`                   | Format defines the logging tags.                                                                                                 | `[${time}] ${ip} ${status} - ${latency} ${method} ${path}\n` |
 | TimeFormat       | `string`                   | TimeFormat defines the time format for log timestamps.                                                                           | `15:04:05`                                             |
 | TimeZone         | `string`                   | TimeZone can be specified, such as "UTC" and "America/New_York" and "Asia/Chongqing", etc                                        | `"Local"`                                              |
 | TimeInterval     | `time.Duration`            | TimeInterval is the delay before the timestamp is updated.                                                                       | `500 * time.Millisecond`                               |
@@ -112,7 +112,7 @@ app.Use(logger.New(logger.Config{
 var ConfigDefault = Config{
     Next:          nil,
     Done:          nil,
-    Format:        "[${time}] ${status} - ${latency} ${method} ${path}\n",
+    Format:        "[${time}] ${ip} ${status} - ${latency} ${method} ${path}\n",
     TimeFormat:    "15:04:05",
     TimeZone:      "Local",
     TimeInterval:  500 * time.Millisecond,
