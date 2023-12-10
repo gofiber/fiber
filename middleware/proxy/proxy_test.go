@@ -253,7 +253,7 @@ func Test_Proxy_Modify_Response(t *testing.T) {
 	app.Use(Balancer(Config{
 		Servers: []string{addr},
 		ModifyResponse: func(c fiber.Ctx) error {
-			c.Response().SetStatusCode(fiber.StatusOK)
+			c.Res().FastHTTP().SetStatusCode(fiber.StatusOK)
 			return c.SendString("modified response")
 		},
 	}))
@@ -348,7 +348,7 @@ func Test_Proxy_Buffer_Size_Response(t *testing.T) {
 
 	_, addr := createProxyTestServer(t, func(c fiber.Ctx) error {
 		long := strings.Join(make([]string, 5000), "-")
-		c.Set("Very-Long-Header", long)
+		c.Res().Set("Very-Long-Header", long)
 		return c.SendString("ok")
 	})
 
@@ -553,7 +553,7 @@ func Test_Proxy_Do_HTTP_Prefix_URL(t *testing.T) {
 		if err := Do(c, url); err != nil {
 			return err
 		}
-		c.Response().Header.Del(fiber.HeaderServer)
+		c.Res().FastHTTP().Header.Del(fiber.HeaderServer)
 		return nil
 	})
 

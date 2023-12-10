@@ -466,7 +466,7 @@ func DefaultErrorHandler(c Ctx, err error) error {
 	if errors.As(err, &e) {
 		code = e.Code
 	}
-	c.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
+	c.Res().Set(HeaderContentType, MIMETextPlainCharsetUTF8)
 	return c.Status(code).SendString(err.Error())
 }
 

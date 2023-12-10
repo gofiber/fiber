@@ -20,47 +20,47 @@ func New(config ...Config) fiber.Handler {
 
 		// Set headers
 		if cfg.XSSProtection != "" {
-			c.Set(fiber.HeaderXXSSProtection, cfg.XSSProtection)
+			c.Res().Set(fiber.HeaderXXSSProtection, cfg.XSSProtection)
 		}
 
 		if cfg.ContentTypeNosniff != "" {
-			c.Set(fiber.HeaderXContentTypeOptions, cfg.ContentTypeNosniff)
+			c.Res().Set(fiber.HeaderXContentTypeOptions, cfg.ContentTypeNosniff)
 		}
 
 		if cfg.XFrameOptions != "" {
-			c.Set(fiber.HeaderXFrameOptions, cfg.XFrameOptions)
+			c.Res().Set(fiber.HeaderXFrameOptions, cfg.XFrameOptions)
 		}
 
 		if cfg.CrossOriginEmbedderPolicy != "" {
-			c.Set("Cross-Origin-Embedder-Policy", cfg.CrossOriginEmbedderPolicy)
+			c.Res().Set("Cross-Origin-Embedder-Policy", cfg.CrossOriginEmbedderPolicy)
 		}
 
 		if cfg.CrossOriginOpenerPolicy != "" {
-			c.Set("Cross-Origin-Opener-Policy", cfg.CrossOriginOpenerPolicy)
+			c.Res().Set("Cross-Origin-Opener-Policy", cfg.CrossOriginOpenerPolicy)
 		}
 
 		if cfg.CrossOriginResourcePolicy != "" {
-			c.Set("Cross-Origin-Resource-Policy", cfg.CrossOriginResourcePolicy)
+			c.Res().Set("Cross-Origin-Resource-Policy", cfg.CrossOriginResourcePolicy)
 		}
 
 		if cfg.OriginAgentCluster != "" {
-			c.Set("Origin-Agent-Cluster", cfg.OriginAgentCluster)
+			c.Res().Set("Origin-Agent-Cluster", cfg.OriginAgentCluster)
 		}
 
 		if cfg.ReferrerPolicy != "" {
-			c.Set("Referrer-Policy", cfg.ReferrerPolicy)
+			c.Res().Set("Referrer-Policy", cfg.ReferrerPolicy)
 		}
 
 		if cfg.XDNSPrefetchControl != "" {
-			c.Set("X-DNS-Prefetch-Control", cfg.XDNSPrefetchControl)
+			c.Res().Set("X-DNS-Prefetch-Control", cfg.XDNSPrefetchControl)
 		}
 
 		if cfg.XDownloadOptions != "" {
-			c.Set("X-Download-Options", cfg.XDownloadOptions)
+			c.Res().Set("X-Download-Options", cfg.XDownloadOptions)
 		}
 
 		if cfg.XPermittedCrossDomain != "" {
-			c.Set("X-Permitted-Cross-Domain-Policies", cfg.XPermittedCrossDomain)
+			c.Res().Set("X-Permitted-Cross-Domain-Policies", cfg.XPermittedCrossDomain)
 		}
 
 		// Handle HSTS headers
@@ -72,21 +72,21 @@ func New(config ...Config) fiber.Handler {
 			if cfg.HSTSPreloadEnabled {
 				subdomains = fmt.Sprintf("%s; preload", subdomains)
 			}
-			c.Set(fiber.HeaderStrictTransportSecurity, fmt.Sprintf("max-age=%d%s", cfg.HSTSMaxAge, subdomains))
+			c.Res().Set(fiber.HeaderStrictTransportSecurity, fmt.Sprintf("max-age=%d%s", cfg.HSTSMaxAge, subdomains))
 		}
 
 		// Handle Content-Security-Policy headers
 		if cfg.ContentSecurityPolicy != "" {
 			if cfg.CSPReportOnly {
-				c.Set(fiber.HeaderContentSecurityPolicyReportOnly, cfg.ContentSecurityPolicy)
+				c.Res().Set(fiber.HeaderContentSecurityPolicyReportOnly, cfg.ContentSecurityPolicy)
 			} else {
-				c.Set(fiber.HeaderContentSecurityPolicy, cfg.ContentSecurityPolicy)
+				c.Res().Set(fiber.HeaderContentSecurityPolicy, cfg.ContentSecurityPolicy)
 			}
 		}
 
 		// Handle Permissions-Policy headers
 		if cfg.PermissionPolicy != "" {
-			c.Set(fiber.HeaderPermissionsPolicy, cfg.PermissionPolicy)
+			c.Res().Set(fiber.HeaderPermissionsPolicy, cfg.PermissionPolicy)
 		}
 
 		return c.Next()

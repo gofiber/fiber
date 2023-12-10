@@ -115,7 +115,7 @@ func Test_Logger_Done(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{
 		Done: func(c fiber.Ctx, logString []byte) {
-			if c.Response().StatusCode() == fiber.StatusOK {
+			if c.Res().FastHTTP().StatusCode() == fiber.StatusOK {
 				_, err := buf.Write(logString)
 				require.NoError(t, err)
 			}
@@ -459,7 +459,7 @@ func Benchmark_Logger(b *testing.B) {
 			Output: io.Discard,
 		}))
 		app.Get("/", func(c fiber.Ctx) error {
-			c.Set("test", "test")
+			c.Res().Set("test", "test")
 			return c.SendString("Hello, World!")
 		})
 		benchSetup(bb, app)
@@ -483,7 +483,7 @@ func Benchmark_Logger(b *testing.B) {
 			Output: io.Discard,
 		}))
 		app.Get("/", func(c fiber.Ctx) error {
-			c.Set("test", "test")
+			c.Res().Set("test", "test")
 			return c.SendString("Hello, World!")
 		})
 		benchSetup(bb, app)
@@ -608,8 +608,8 @@ func Test_Logger_ByteSent_Streaming(t *testing.T) {
 	}))
 
 	app.Get("/", func(c fiber.Ctx) error {
-		c.Set("Connection", "keep-alive")
-		c.Set("Transfer-Encoding", "chunked")
+		c.Res().Set("Connection", "keep-alive")
+		c.Res().Set("Transfer-Encoding", "chunked")
 		c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
 			var i int
 			for {

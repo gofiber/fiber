@@ -923,7 +923,7 @@ func Test_App_Static_Custom_CacheControl(t *testing.T) {
 
 	app.Static("/", "./.github", Static{ModifyResponse: func(c Ctx) error {
 		if strings.Contains(c.GetRespHeader("Content-Type"), "text/html") {
-			c.Response().Header.Set("Cache-Control", "no-cache, no-store, must-revalidate")
+			c.Res().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 		}
 		return nil
 	}})
@@ -956,7 +956,7 @@ func Test_App_Static_Group(t *testing.T) {
 	app := New()
 
 	grp := app.Group("/v1", func(c Ctx) error {
-		c.Set("Test-Header", "123")
+		c.Res().Set("Test-Header", "123")
 		return c.Next()
 	})
 
@@ -1147,7 +1147,7 @@ func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
 
 	// middleware
 	app.Use(func(c Ctx) error {
-		c.Set("TestHeader", "TestValue")
+		c.Res().Set("TestHeader", "TestValue")
 		return c.Next()
 	})
 	// routes with the same length

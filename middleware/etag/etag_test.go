@@ -207,7 +207,7 @@ func testETagCustomEtag(t *testing.T, headerIfNoneMatch, matched bool) { //nolin
 	app.Use(New())
 
 	app.Get("/", func(c fiber.Ctx) error {
-		c.Set(fiber.HeaderETag, `"custom"`)
+		c.Res().Set(fiber.HeaderETag, `"custom"`)
 		if bytes.Equal(c.Request().Header.Peek(fiber.HeaderIfNoneMatch), []byte(`"custom"`)) {
 			return c.SendStatus(fiber.StatusNotModified)
 		}
@@ -248,7 +248,7 @@ func Test_ETag_CustomEtagPut(t *testing.T) {
 	app.Use(New())
 
 	app.Put("/", func(c fiber.Ctx) error {
-		c.Set(fiber.HeaderETag, `"custom"`)
+		c.Res().Set(fiber.HeaderETag, `"custom"`)
 		if !bytes.Equal(c.Request().Header.Peek(fiber.HeaderIfMatch), []byte(`"custom"`)) {
 			return c.SendStatus(fiber.StatusPreconditionFailed)
 		}

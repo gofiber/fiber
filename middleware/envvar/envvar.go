@@ -39,7 +39,7 @@ func New(config ...Config) fiber.Handler {
 		if err != nil {
 			return c.Status(fiber.StatusInternalServerError).SendString(err.Error())
 		}
-		c.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSONCharsetUTF8)
+		c.Res().Set(fiber.HeaderContentType, fiber.MIMEApplicationJSONCharsetUTF8)
 		return c.Send(varsByte)
 	}
 }

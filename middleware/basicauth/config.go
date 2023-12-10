@@ -91,7 +91,7 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.Unauthorized == nil {
 		cfg.Unauthorized = func(c fiber.Ctx) error {
-			c.Set(fiber.HeaderWWWAuthenticate, "basic realm="+cfg.Realm)
+			c.Res().Set(fiber.HeaderWWWAuthenticate, "basic realm="+cfg.Realm)
 			return c.SendStatus(fiber.StatusUnauthorized)
 		}
 	}

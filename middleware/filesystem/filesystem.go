@@ -218,7 +218,7 @@ func New(config ...Config) fiber.Handler {
 
 		// Set Last Modified header
 		if !modTime.IsZero() {
-			c.Set(fiber.HeaderLastModified, modTime.UTC().Format(http.TimeFormat))
+			c.Res().Set(fiber.HeaderLastModified, modTime.UTC().Format(http.TimeFormat))
 		}
 
 		// Sets the response Content-Disposition header to attachment if the Download option is true and if it's a file
@@ -228,16 +228,16 @@ func New(config ...Config) fiber.Handler {
 
 		if method == fiber.MethodGet {
 			if cfg.MaxAge > 0 {
-				c.Set(fiber.HeaderCacheControl, cacheControlStr)
+				c.Res().Set(fiber.HeaderCacheControl, cacheControlStr)
 			}
-			c.Response().SetBodyStream(file, contentLength)
+			c.Res().FastHTTP().SetBodyStream(file, contentLength)
 			return nil
 		}
 		if method == fiber.MethodHead {
 			c.Request().ResetBody()
 			// Fasthttp should skipbody by default if HEAD?
-			c.Response().SkipBody = true
-			c.Response().Header.SetContentLength(contentLength)
+			c.Res().FastHTTP().SkipBody = true
+			c.Res().FastHTTP().Header.SetContentLength(contentLength)
 			if err := file.Close(); err != nil {
 				return fmt.Errorf("failed to close: %w", err)
 			}
@@ -300,19 +300,19 @@ func SendFile(c fiber.Ctx, filesystem fs.FS, path string) error {
 
 	// Set Last Modified header
 	if !modTime.IsZero() {
-		c.Set(fiber.HeaderLastModified, modTime.UTC().Format(http.TimeFormat))
+		c.Res().Set(fiber.HeaderLastModified, modTime.UTC().Format(http.TimeFormat))
 	}
 
 	method := c.Method()
 	if method == fiber.MethodGet {
-		c.Response().SetBodyStream(file, contentLength)
+		c.Res().FastHTTP().SetBodyStream(file, contentLength)
 		return nil
 	}
 	if method == fiber.MethodHead {
 		c.Request().ResetBody()
 		// Fasthttp should skipbody by default if HEAD?
-		c.Response().SkipBody = true
-		c.Response().Header.SetContentLength(contentLength)
+		c.Res().FastHTTP().SkipBody = true
+		c.Res().FastHTTP().Header.SetContentLength(contentLength)
 		if err := file.Close(); err != nil {
 			return fmt.Errorf("failed to close: %w", err)
 		}

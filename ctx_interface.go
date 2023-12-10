@@ -84,10 +84,10 @@ type Ctx interface {
 	// https://godoc.org/github.com/valyala/fasthttp#Request
 	Request() *fasthttp.Request
 
-	// Response return the *fasthttp.Response object
+	// Res return the *fasthttp.Res object
 	// This allows you to use all fasthttp response methods
-	// https://godoc.org/github.com/valyala/fasthttp#Response
-	Response() *fasthttp.Response
+	// https://godoc.org/github.com/valyala/fasthttp#Res
+	Res() *Res
 
 	// Format performs content-negotiation on the Accept HTTP header.
 	// It uses Accepts to select a proper format.
@@ -335,9 +335,6 @@ type Ctx interface {
 	// SendStream sets response body stream and optional body size.
 	SendStream(stream io.Reader, size ...int) error
 
-	// Set sets the response's HTTP header field to the specified key, value.
-	Set(key, val string)
-
 	// Subdomains returns a string slice of subdomains in the domain name of the request.
 	// The subdomain offset, which defaults to 2, is used for determining the beginning of the subdomain segments.
 	Subdomains(offset ...int) []string
@@ -482,6 +479,10 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 
 	// Attach *fasthttp.RequestCtx to ctx
 	c.fasthttp = fctx
+	c.res = &Res{
+		app:      c.app,
+		fasthttp: &fctx.Response,
+	}
 
 	// reset base uri
 	c.baseURI = ""
@@ -499,6 +500,7 @@ func (c *DefaultCtx) release() {
 	c.route = nil
 	c.fasthttp = nil
 	c.bind = nil
+	c.res = nil
 	c.redirectionMessages = c.redirectionMessages[:0]
 	c.viewBindMap = sync.Map{}
 	if c.redirect != nil {
@@ -514,6 +516,10 @@ func (c *DefaultCtx) setReq(fctx *fasthttp.RequestCtx) {
 
 	// Attach *fasthttp.RequestCtx to ctx
 	c.fasthttp = fctx
+	c.res = &Res{
+		app:      c.app,
+		fasthttp: &fctx.Response,
+	}
 
 	// Set method
 	c.method = c.app.getString(fctx.Request.Header.Method())

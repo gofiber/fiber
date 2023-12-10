@@ -30,7 +30,7 @@ func Test_Compress_Gzip(t *testing.T) {
 	app.Use(New())
 
 	app.Get("/", func(c fiber.Ctx) error {
-		c.Set(fiber.HeaderContentType, fiber.MIMETextPlainCharsetUTF8)
+		c.Res().Set(fiber.HeaderContentType, fiber.MIMETextPlainCharsetUTF8)
 		return c.Send(filedata)
 	})
 
@@ -61,7 +61,7 @@ func Test_Compress_Different_Level(t *testing.T) {
 			app.Use(New(Config{Level: level}))
 
 			app.Get("/", func(c fiber.Ctx) error {
-				c.Set(fiber.HeaderContentType, fiber.MIMETextPlainCharsetUTF8)
+				c.Res().Set(fiber.HeaderContentType, fiber.MIMETextPlainCharsetUTF8)
 				return c.Send(filedata)
 			})
 

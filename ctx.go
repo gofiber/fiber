@@ -52,6 +52,7 @@ type DefaultCtx struct {
 	pathOriginal        string               // Original HTTP path
 	values              [maxParams]string    // Route parameter values
 	fasthttp            *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
+	res                 *Res                 // Response object
 	matched             bool                 // Non use route matched
 	viewBindMap         sync.Map             // Default view map to bind template engine
 	bind                *Bind                // Default bind reference
@@ -143,7 +144,7 @@ func (c *DefaultCtx) Append(field string, values ...string) {
 		}
 	}
 	if originalH != h {
-		c.Set(field, h)
+		c.Res().Set(field, h)
 	}
 }
 
@@ -363,11 +364,9 @@ func (c *DefaultCtx) Request() *fasthttp.Request {
 	return &c.fasthttp.Request
 }
 
-// Response return the *fasthttp.Response object
-// This allows you to use all fasthttp response methods
-// https://godoc.org/github.com/valyala/fasthttp#Response
-func (c *DefaultCtx) Response() *fasthttp.Response {
-	return &c.fasthttp.Response
+// Res returns the response object for the current context
+func (c *DefaultCtx) Res() *Res {
+	return c.res
 }
 
 // Format performs content-negotiation on the Accept HTTP header.
@@ -1391,11 +1390,6 @@ func (c *DefaultCtx) SendStream(stream io.Reader, size ...int) error {
 	}
 
 	return nil
-}
-
-// Set sets the response's HTTP header field to the specified key, value.
-func (c *DefaultCtx) Set(key, val string) {
-	c.fasthttp.Response.Header.Set(key, val)
 }
 
 func (c *DefaultCtx) setCanonical(key, val string) {

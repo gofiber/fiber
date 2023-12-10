@@ -540,21 +540,21 @@ func Test_Bind_RespHeader(t *testing.T) {
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
 
-	c.Response().Header.Add("id", "1")
-	c.Response().Header.Add("Name", "John Doe")
-	c.Response().Header.Add("Hobby", "golang,fiber")
+	c.Res().Append("id", "1")
+	c.Res().Append("Name", "John Doe")
+	c.Res().Append("Hobby", "golang,fiber")
 	q := new(Header)
 	require.Nil(t, c.Bind().RespHeader(q))
 	require.Equal(t, 2, len(q.Hobby))
 
-	c.Response().Header.Del("hobby")
-	c.Response().Header.Add("Hobby", "golang,fiber,go")
+	c.Res().FastHTTP().Header.Del("hobby")
+	c.Res().Append("Hobby", "golang,fiber,go")
 	q = new(Header)
 	require.Nil(t, c.Bind().RespHeader(q))
 	require.Equal(t, 3, len(q.Hobby))
 
 	empty := new(Header)
-	c.Response().Header.Del("hobby")
+	c.Res().FastHTTP().Header.Del("hobby")
 	require.Nil(t, c.Bind().Query(empty))
 	require.Equal(t, 0, len(empty.Hobby))
 
@@ -569,13 +569,13 @@ func Test_Bind_RespHeader(t *testing.T) {
 		No              []int64
 	}
 
-	c.Response().Header.Add("id", "2")
-	c.Response().Header.Add("Name", "Jane Doe")
-	c.Response().Header.Del("hobby")
-	c.Response().Header.Add("Hobby", "go,fiber")
-	c.Response().Header.Add("favouriteDrinks", "milo,coke,pepsi")
-	c.Response().Header.Add("alloc", "")
-	c.Response().Header.Add("no", "1")
+	c.Res().Append("id", "2")
+	c.Res().Append("Name", "Jane Doe")
+	c.Res().FastHTTP().Header.Del("hobby")
+	c.Res().Append("Hobby", "go,fiber")
+	c.Res().Append("favouriteDrinks", "milo,coke,pepsi")
+	c.Res().Append("alloc", "")
+	c.Res().Append("no", "1")
 
 	h2 := new(Header2)
 	h2.Bool = true
@@ -594,7 +594,7 @@ func Test_Bind_RespHeader(t *testing.T) {
 		Name string `respHeader:"name,required"`
 	}
 	rh := new(RequiredHeader)
-	c.Response().Header.Del("name")
+	c.Res().FastHTTP().Header.Del("name")
 	require.Equal(t, "name is empty", c.Bind().RespHeader(rh).Error())
 }
 
@@ -608,21 +608,21 @@ func Test_Bind_RespHeader_Map(t *testing.T) {
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
 
-	c.Response().Header.Add("id", "1")
-	c.Response().Header.Add("Name", "John Doe")
-	c.Response().Header.Add("Hobby", "golang,fiber")
+	c.Res().Append("id", "1")
+	c.Res().Append("Name", "John Doe")
+	c.Res().Append("Hobby", "golang,fiber")
 	q := make(map[string][]string, 0)
 	require.Nil(t, c.Bind().RespHeader(&q))
 	require.Equal(t, 2, len(q["Hobby"]))
 
-	c.Response().Header.Del("hobby")
-	c.Response().Header.Add("Hobby", "golang,fiber,go")
+	c.Res().FastHTTP().Header.Del("hobby")
+	c.Res().Append("Hobby", "golang,fiber,go")
 	q = make(map[string][]string, 0)
 	require.Nil(t, c.Bind().RespHeader(&q))
 	require.Equal(t, 3, len(q["Hobby"]))
 
 	empty := make(map[string][]string, 0)
-	c.Response().Header.Del("hobby")
+	c.Res().FastHTTP().Header.Del("hobby")
 	require.Nil(t, c.Bind().Query(&empty))
 	require.Equal(t, 0, len(empty["Hobby"]))
 }
@@ -790,9 +790,9 @@ func Benchmark_Bind_RespHeader(b *testing.B) {
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
 
-	c.Response().Header.Add("id", "1")
-	c.Response().Header.Add("Name", "John Doe")
-	c.Response().Header.Add("Hobby", "golang,fiber")
+	c.Res().Append("id", "1")
+	c.Res().Append("Name", "John Doe")
+	c.Res().Append("Hobby", "golang,fiber")
 
 	q := new(ReqHeader)
 	b.ReportAllocs()
@@ -812,9 +812,9 @@ func Benchmark_Bind_RespHeader_Map(b *testing.B) {
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
 
-	c.Response().Header.Add("id", "1")
-	c.Response().Header.Add("Name", "John Doe")
-	c.Response().Header.Add("Hobby", "golang,fiber")
+	c.Res().Append("id", "1")
+	c.Res().Append("Name", "John Doe")
+	c.Res().Append("Hobby", "golang,fiber")
 
 	q := make(map[string][]string)
 	b.ReportAllocs()
@@ -1541,7 +1541,7 @@ func Test_Bind_Must(t *testing.T) {
 	rq := new(RequiredQuery)
 	c.Request().URI().SetQueryString("")
 	err := c.Bind().Must().Query(rq)
-	require.Equal(t, StatusBadRequest, c.Response().StatusCode())
+	require.Equal(t, StatusBadRequest, c.Res().FastHTTP().StatusCode())
 	require.Equal(t, "Bad request: name is empty", err.Error())
 }
 

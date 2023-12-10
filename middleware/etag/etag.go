@@ -34,16 +34,16 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Don't generate ETags for invalid responses
-		if c.Response().StatusCode() != fiber.StatusOK {
+		if c.Res().FastHTTP().StatusCode() != fiber.StatusOK {
 			return nil
 		}
-		body := c.Response().Body()
+		body := c.Res().FastHTTP().Body()
 		// Skips ETag if no response body is present
 		if len(body) == 0 {
 			return nil
 		}
 		// Skip ETag if header is already present
-		if c.Response().Header.PeekBytes(normalizedHeaderETag) != nil {
+		if c.Res().Get(string(normalizedHeaderETag)) != "" {
 			return nil
 		}
 
@@ -77,7 +77,7 @@ func New(config ...Config) fiber.Handler {
 				return c.SendStatus(fiber.StatusNotModified)
 			}
 			// W/1 != W/2 || W/1 != 2
-			c.Response().Header.SetCanonical(normalizedHeaderETag, etag)
+			c.Res().FastHTTP().Header.SetCanonical(normalizedHeaderETag, etag)
 
 			return nil
 		}
@@ -89,7 +89,7 @@ func New(config ...Config) fiber.Handler {
 			return c.SendStatus(fiber.StatusNotModified)
 		}
 		// 1 != 2
-		c.Response().Header.SetCanonical(normalizedHeaderETag, etag)
+		c.Res().FastHTTP().Header.SetCanonical(normalizedHeaderETag, etag)
 
 		return nil
 	}

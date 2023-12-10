@@ -34,19 +34,19 @@ func New(config ...Config) fiber.Handler {
 		err := c.Next()
 
 		// Encrypt response cookies
-		c.Response().Header.VisitAllCookie(func(key, value []byte) {
+		c.Res().FastHTTP().Header.VisitAllCookie(func(key, value []byte) {
 			keyString := string(key)
 			if !isDisabled(keyString, cfg.Except) {
 				cookieValue := fasthttp.Cookie{}
 				cookieValue.SetKeyBytes(key)
-				if c.Response().Header.Cookie(&cookieValue) {
+				if c.Res().FastHTTP().Header.Cookie(&cookieValue) {
 					encryptedValue, err := cfg.Encryptor(string(cookieValue.Value()), cfg.Key)
 					if err != nil {
 						panic(err)
 					}
 
 					cookieValue.SetValue(encryptedValue)
-					c.Response().Header.SetCookie(&cookieValue)
+					c.Res().FastHTTP().Header.SetCookie(&cookieValue)
 				}
 			}
 		})

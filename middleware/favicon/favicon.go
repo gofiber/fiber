@@ -128,16 +128,16 @@ func New(config ...Config) fiber.Handler {
 			} else {
 				c.Status(fiber.StatusOK)
 			}
-			c.Set(fiber.HeaderAllow, hAllow)
-			c.Set(fiber.HeaderContentLength, hZero)
+			c.Res().Set(fiber.HeaderAllow, hAllow)
+			c.Res().Set(fiber.HeaderContentLength, hZero)
 			return nil
 		}
 
 		// Serve cached favicon
 		if len(icon) > 0 {
-			c.Set(fiber.HeaderContentLength, iconLen)
-			c.Set(fiber.HeaderContentType, hType)
-			c.Set(fiber.HeaderCacheControl, cfg.CacheControl)
+			c.Res().Set(fiber.HeaderContentLength, iconLen)
+			c.Res().Set(fiber.HeaderContentType, hType)
+			c.Res().Set(fiber.HeaderCacheControl, cfg.CacheControl)
 			return c.Status(fiber.StatusOK).Send(icon)
 		}
 

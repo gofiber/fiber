@@ -34,7 +34,8 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 			_, _ = buf.WriteString( //nolint:errcheck // This will never fail
 				fmt.Sprintf("%s |%s %3d %s| %13v | %15s |%s %-7s %s| %-"+data.ErrPaddingStr+"s %s\n",
 					data.Timestamp.Load().(string),
-					statusColor(c.Response().StatusCode(), colors), c.Response().StatusCode(), colors.Reset,
+					statusColor(c.Res().FastHTTP().StatusCode(), colors),
+					c.Res().FastHTTP().StatusCode(), colors.Reset,
 					data.Stop.Sub(data.Start),
 					c.IP(),
 					methodColor(c.Method(), colors), c.Method(), colors.Reset,
@@ -49,7 +50,7 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 			_, _ = buf.WriteString( //nolint:errcheck // This will never fail
 				fmt.Sprintf("%s | %3d | %13v | %15s | %-7s | %-"+data.ErrPaddingStr+"s %s\n",
 					data.Timestamp.Load().(string),
-					c.Response().StatusCode(),
+					c.Res().FastHTTP().StatusCode(),
 					data.Stop.Sub(data.Start),
 					c.IP(),
 					c.Method(),

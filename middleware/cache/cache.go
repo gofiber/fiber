@@ -104,7 +104,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		if !isExists {
-			c.Set(cfg.CacheHeader, cacheUnreachable)
+			c.Res().Set(cfg.CacheHeader, cacheUnreachable)
 			return c.Next()
 		}
 
@@ -135,22 +135,22 @@ func New(config ...Config) fiber.Handler {
 				e.body = manager.getRaw(key + "_body")
 			}
 			// Set response headers from cache
-			c.Response().SetBodyRaw(e.body)
-			c.Response().SetStatusCode(e.status)
-			c.Response().Header.SetContentTypeBytes(e.ctype)
+			c.Res().FastHTTP().SetBodyRaw(e.body)
+			c.Res().FastHTTP().SetStatusCode(e.status)
+			c.Res().FastHTTP().Header.SetContentTypeBytes(e.ctype)
 			if len(e.cencoding) > 0 {
-				c.Response().Header.SetBytesV(fiber.HeaderContentEncoding, e.cencoding)
+				c.Res().FastHTTP().Header.SetBytesV(fiber.HeaderContentEncoding, e.cencoding)
 			}
 			for k, v := range e.headers {
-				c.Response().Header.SetBytesV(k, v)
+				c.Res().FastHTTP().Header.SetBytesV(k, v)
 			}
 			// Set Cache-Control header if enabled
 			if cfg.CacheControl {
 				maxAge := strconv.FormatUint(e.exp-ts, 10)
-				c.Set(fiber.HeaderCacheControl, "public, max-age="+maxAge)
+				c.Res().Set(fiber.HeaderCacheControl, "public, max-age="+maxAge)
 			}
 
-			c.Set(cfg.CacheHeader, cacheHit)
+			c.Res().Set(cfg.CacheHeader, cacheHit)
 
 			mux.Unlock()
 
@@ -172,14 +172,14 @@ func New(config ...Config) fiber.Handler {
 
 		// Don't cache response if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
-			c.Set(cfg.CacheHeader, cacheUnreachable)
+			c.Res().Set(cfg.CacheHeader, cacheUnreachable)
 			return nil
 		}
 
 		// Don't try to cache if body won't fit into cache
-		bodySize := uint(len(c.Response().Body()))
+		bodySize := uint(len(c.Res().FastHTTP().Body()))
 		if cfg.MaxBytes > 0 && bodySize > cfg.MaxBytes {
-			c.Set(cfg.CacheHeader, cacheUnreachable)
+			c.Res().Set(cfg.CacheHeader, cacheUnreachable)
 			return nil
 		}
 
@@ -193,16 +193,16 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Cache response
-		e.body = utils.CopyBytes(c.Response().Body())
-		e.status = c.Response().StatusCode()
-		e.ctype = utils.CopyBytes(c.Response().Header.ContentType())
-		e.cencoding = utils.CopyBytes(c.Response().Header.Peek(fiber.HeaderContentEncoding))
+		e.body = utils.CopyBytes(c.Res().FastHTTP().Body())
+		e.status = c.Res().FastHTTP().StatusCode()
+		e.ctype = utils.CopyBytes(c.Res().FastHTTP().Header.ContentType())
+		e.cencoding = utils.CopyBytes(c.Res().FastHTTP().Header.Peek(fiber.HeaderContentEncoding))
 
 		// Store all response headers
 		// (more: https://datatracker.ietf.org/doc/html/rfc2616#section-13.5.1)
 		if cfg.StoreResponseHeaders {
 			e.headers = make(map[string][]byte)
-			c.Response().Header.VisitAll(
+			c.Res().FastHTTP().Header.VisitAll(
 				func(key, value []byte) {
 					// create real copy
 					keyS := string(key)
@@ -239,7 +239,7 @@ func New(config ...Config) fiber.Handler {
 			manager.set(key, e, expiration)
 		}
 
-		c.Set(cfg.CacheHeader, cacheMiss)
+		c.Res().Set(cfg.CacheHeader, cacheMiss)
 
 		// Finish response
 		return nil

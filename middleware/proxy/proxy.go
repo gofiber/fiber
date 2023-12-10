@@ -64,7 +64,7 @@ func Balancer(config Config) fiber.Handler {
 
 		// Set request and response
 		req := c.Request()
-		res := c.Response()
+		res := c.Res()
 
 		// Don't proxy "Connection" header
 		req.Header.Del(fiber.HeaderConnection)
@@ -79,12 +79,12 @@ func Balancer(config Config) fiber.Handler {
 		req.SetRequestURI(utils.UnsafeString(req.RequestURI()))
 
 		// Forward request
-		if err := lbc.Do(req, res); err != nil {
+		if err := lbc.Do(req, res.FastHTTP()); err != nil {
 			return err
 		}
 
 		// Don't proxy "Connection" header
-		res.Header.Del(fiber.HeaderConnection)
+		res.FastHTTP().Header.Del(fiber.HeaderConnection)
 
 		// Modify response
 		if cfg.ModifyResponse != nil {
@@ -179,7 +179,7 @@ func doAction(
 	}
 
 	req := c.Request()
-	res := c.Response()
+	res := c.Res()
 	originalURL := utils.CopyString(c.OriginalURL())
 	defer req.SetRequestURI(originalURL)
 
@@ -192,10 +192,10 @@ func doAction(
 	}
 
 	req.Header.Del(fiber.HeaderConnection)
-	if err := action(cli, req, res); err != nil {
+	if err := action(cli, req, res.FastHTTP()); err != nil {
 		return err
 	}
-	res.Header.Del(fiber.HeaderConnection)
+	res.FastHTTP().Header.Del(fiber.HeaderConnection)
 	return nil
 }
 

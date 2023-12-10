@@ -163,7 +163,7 @@ func Test_HTTPMiddleware(t *testing.T) {
 			t.Error("unexpected error on type-assertion")
 		}
 		if value != nil {
-			c.Set("context_okay", val)
+			c.Res().Set("context_okay", val)
 		}
 		value = c.Context().Value(TestContextSecondKey)
 		if value != nil {
@@ -171,7 +171,7 @@ func Test_HTTPMiddleware(t *testing.T) {
 			if !ok {
 				t.Error("unexpected error on type-assertion")
 			}
-			c.Set("context_second_okay", val)
+			c.Res().Set("context_second_okay", val)
 		}
 		return c.SendStatus(fiber.StatusOK)
 	})
@@ -248,8 +248,8 @@ func testFiberToHandlerFunc(t *testing.T, checkDefaultPort bool, app ...*fiber.A
 			require.Equal(t, expectedV, v, "Header")
 		}
 
-		c.Set("Header1", "value1")
-		c.Set("Header2", "value2")
+		c.Res().Set("Header1", "value1")
+		c.Res().Set("Header2", "value2")
 		c.Status(fiber.StatusBadRequest)
 		_, err := c.Write([]byte(fmt.Sprintf("request body is %q", body)))
 		return err

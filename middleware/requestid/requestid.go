@@ -22,7 +22,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Set new id to response header
-		c.Set(cfg.Header, rid)
+		c.Res().Set(cfg.Header, rid)
 
 		// Add the request ID to locals
 		c.Locals(cfg.ContextKey, rid)

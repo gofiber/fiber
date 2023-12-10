@@ -90,16 +90,16 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return appendInt(output, len(c.Request().Body()))
 		},
 		TagBytesSent: func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (int, error) {
-			if c.Response().Header.ContentLength() < 0 {
+			if c.Res().FastHTTP().Header.ContentLength() < 0 {
 				return appendInt(output, 0)
 			}
-			return appendInt(output, len(c.Response().Body()))
+			return appendInt(output, len(c.Res().FastHTTP().Body()))
 		},
 		TagRoute: func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (int, error) {
 			return output.WriteString(c.Route().Path)
 		},
 		TagResBody: func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (int, error) {
-			return output.Write(c.Response().Body())
+			return output.Write(c.Res().FastHTTP().Body())
 		},
 		TagReqHeaders: func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (int, error) {
 			out := make(map[string][]string, 0)
@@ -180,9 +180,9 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 		TagStatus: func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (int, error) {
 			if cfg.enableColors {
 				colors := c.App().Config().ColorScheme
-				return output.WriteString(fmt.Sprintf("%s%3d%s", statusColor(c.Response().StatusCode(), colors), c.Response().StatusCode(), colors.Reset))
+				return output.WriteString(fmt.Sprintf("%s%3d%s", statusColor(c.Res().FastHTTP().StatusCode(), colors), c.Res().FastHTTP().StatusCode(), colors.Reset))
 			}
-			return appendInt(output, c.Response().StatusCode())
+			return appendInt(output, c.Res().FastHTTP().StatusCode())
 		},
 		TagMethod: func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (int, error) {
 			if cfg.enableColors {

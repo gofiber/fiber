@@ -154,13 +154,13 @@ func New(config ...Config) fiber.Handler {
 		// Simple request
 		if c.Method() != fiber.MethodOptions {
 			c.Vary(fiber.HeaderOrigin)
-			c.Set(fiber.HeaderAccessControlAllowOrigin, allowOrigin)
+			c.Res().Set(fiber.HeaderAccessControlAllowOrigin, allowOrigin)
 
 			if cfg.AllowCredentials {
-				c.Set(fiber.HeaderAccessControlAllowCredentials, "true")
+				c.Res().Set(fiber.HeaderAccessControlAllowCredentials, "true")
 			}
 			if exposeHeaders != "" {
-				c.Set(fiber.HeaderAccessControlExposeHeaders, exposeHeaders)
+				c.Res().Set(fiber.HeaderAccessControlExposeHeaders, exposeHeaders)
 			}
 			return c.Next()
 		}
@@ -169,29 +169,29 @@ func New(config ...Config) fiber.Handler {
 		c.Vary(fiber.HeaderOrigin)
 		c.Vary(fiber.HeaderAccessControlRequestMethod)
 		c.Vary(fiber.HeaderAccessControlRequestHeaders)
-		c.Set(fiber.HeaderAccessControlAllowOrigin, allowOrigin)
-		c.Set(fiber.HeaderAccessControlAllowMethods, allowMethods)
+		c.Res().Set(fiber.HeaderAccessControlAllowOrigin, allowOrigin)
+		c.Res().Set(fiber.HeaderAccessControlAllowMethods, allowMethods)
 
 		// Set Allow-Credentials if set to true
 		if cfg.AllowCredentials {
-			c.Set(fiber.HeaderAccessControlAllowCredentials, "true")
+			c.Res().Set(fiber.HeaderAccessControlAllowCredentials, "true")
 		}
 
 		// Set Allow-Headers if not empty
 		if allowHeaders != "" {
-			c.Set(fiber.HeaderAccessControlAllowHeaders, allowHeaders)
+			c.Res().Set(fiber.HeaderAccessControlAllowHeaders, allowHeaders)
 		} else {
 			h := c.Get(fiber.HeaderAccessControlRequestHeaders)
 			if h != "" {
-				c.Set(fiber.HeaderAccessControlAllowHeaders, h)
+				c.Res().Set(fiber.HeaderAccessControlAllowHeaders, h)
 			}
 		}
 
 		// Set MaxAge is set
 		if cfg.MaxAge > 0 {
-			c.Set(fiber.HeaderAccessControlMaxAge, maxAge)
+			c.Res().Set(fiber.HeaderAccessControlMaxAge, maxAge)
 		} else if cfg.MaxAge < 0 {
-			c.Set(fiber.HeaderAccessControlMaxAge, "0")
+			c.Res().Set(fiber.HeaderAccessControlMaxAge, "0")
 		}
 
 		// Send 204 No Content
