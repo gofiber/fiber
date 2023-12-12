@@ -59,9 +59,13 @@ func IsZeroValue(x interface{}) bool {
 			if rv.IsNil() {
 				return true
 			}
-			return reflect.DeepEqual(v, reflect.Zero(reflect.TypeOf(v)).Interface())
+			return reflectDeepEqual(rv.Elem().Interface())
 		default:
-			return reflect.DeepEqual(v, reflect.Zero(reflect.TypeOf(v)).Interface())
+			return reflectDeepEqual(v)
 		}
 	}
+}
+
+func reflectDeepEqual(x interface{}) bool {
+	return reflect.DeepEqual(x, reflect.Zero(reflect.TypeOf(x)).Interface())
 }
