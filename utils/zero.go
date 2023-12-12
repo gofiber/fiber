@@ -6,7 +6,7 @@ import (
 
 // IsZeroValue reports whether x is the zero value for its type.
 //
-// For basic types, error and slices of basic types, it uses a fast path
+// For basic types and error it uses a fast path
 // that does not use reflection.
 //
 // For all other types, it uses reflection.
