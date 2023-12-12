@@ -6,8 +6,10 @@ import (
 
 // IsZeroValue reports whether x is the zero value for its type.
 //
-// For basic types and slices of basic types, it uses a fast path without reflection.
-// For other types, it uses reflection which is slower.
+// For basic types, error and slices of basic types, it uses a fast path
+// that does not use reflection.
+//
+// For all other types, it uses reflection.
 func IsZeroValue(x interface{}) bool {
 	// Fast path for basic types
 	switch v := x.(type) {
@@ -47,6 +49,8 @@ func IsZeroValue(x interface{}) bool {
 		return v == 0+0i
 	case string:
 		return v == ""
+	case error:
+		return v == nil
 	case []bool:
 		return len(v) == 0
 	case []int:
@@ -81,8 +85,28 @@ func IsZeroValue(x interface{}) bool {
 		return len(v) == 0
 	case []string:
 		return len(v) == 0
+	case []error:
+		return len(v) == 0
 	default:
 		// Slow path using reflection
-		return reflect.DeepEqual(x, reflect.Zero(reflect.TypeOf(x)).Interface())
+		rv := reflect.ValueOf(v)
+		switch rv.Kind() {
+		case reflect.Slice, reflect.Map, reflect.Array:
+			return rv.Len() == 0
+		case reflect.Struct:
+			for i := 0; i < rv.NumField(); i++ {
+				if !IsZeroValue(rv.Field(i).Interface()) {
+					return false
+				}
+			}
+			return true
+		case reflect.Ptr:
+			if rv.IsNil() {
+				return true
+			}
+			return IsZeroValue(rv.Elem().Interface())
+		default:
+			return reflect.DeepEqual(v, reflect.Zero(reflect.TypeOf(v)).Interface())
+		}
 	}
 }
