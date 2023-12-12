@@ -7,7 +7,7 @@ import (
 // IsZeroValue reports whether x is the zero value for its type.
 //
 // For basic types and slices of basic types, it uses a fast path without reflection.
-// For other types, it uses reflection.
+// For other types, it uses reflection which is slower.
 func IsZeroValue(x interface{}) bool {
 	// Fast path for basic types
 	switch v := x.(type) {
