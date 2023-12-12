@@ -51,60 +51,15 @@ func IsZeroValue(x interface{}) bool {
 		return v == ""
 	case error:
 		return v == nil
-	case []bool:
-		return len(v) == 0
-	case []int:
-		return len(v) == 0
-	case []int8:
-		return len(v) == 0
-	case []int16:
-		return len(v) == 0
-	case []int32:
-		return len(v) == 0
-	case []int64:
-		return len(v) == 0
-	case []uint:
-		return len(v) == 0
-	case []uint8:
-		return len(v) == 0
-	case []uint16:
-		return len(v) == 0
-	case []uint32:
-		return len(v) == 0
-	case []uint64:
-		return len(v) == 0
-	case []uintptr:
-		return len(v) == 0
-	case []float32:
-		return len(v) == 0
-	case []float64:
-		return len(v) == 0
-	case []complex64:
-		return len(v) == 0
-	case []complex128:
-		return len(v) == 0
-	case []string:
-		return len(v) == 0
-	case []error:
-		return len(v) == 0
 	default:
 		// Slow path using reflection
 		rv := reflect.ValueOf(v)
 		switch rv.Kind() {
-		case reflect.Slice, reflect.Map, reflect.Array:
-			return rv.Len() == 0
-		case reflect.Struct:
-			for i := 0; i < rv.NumField(); i++ {
-				if !IsZeroValue(rv.Field(i).Interface()) {
-					return false
-				}
-			}
-			return true
 		case reflect.Ptr:
 			if rv.IsNil() {
 				return true
 			}
-			return IsZeroValue(rv.Elem().Interface())
+			return reflect.DeepEqual(v, reflect.Zero(reflect.TypeOf(v)).Interface())
 		default:
 			return reflect.DeepEqual(v, reflect.Zero(reflect.TypeOf(v)).Interface())
 		}
