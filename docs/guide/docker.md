@@ -1,7 +1,7 @@
 ---
 id: docker
-title: 🚢 Build docker image
-description: Build simple docker image that you can use on the production
+title: 🐳 Build docker image
+description: Build a simple docker image that can be used in production.
 sidebar_position: 8
 ---
 
@@ -48,7 +48,7 @@ func main() {
 		return c.SendString("Hello, World!")
 	})
 
-	app.Listen(":4000")
+	app.Listen(":3000")
 }
 ```
 
@@ -63,20 +63,20 @@ touch Dockerfile
 For the image we will use [Distroless](https://github.com/GoogleContainerTools/distroless) docker image, in the file we should add following content:
 
 ```bash title="~/example/Dockerfile"
-FROM golang:1.21-alpine as base
+FROM golang:1.21 as build
 
 WORKDIR /app
 COPY . .
 
 RUN go mod download && go mod verify
-RUN GOOS=linux GOARCH=amd64 go build -o /server .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /server .
 
 FROM gcr.io/distroless/static-debian12
-COPY --from=base /server .
+COPY --from=build /server .
 
 ENV SOME_VAR=foo
 
-EXPOSE 4000
+EXPOSE 3000
 CMD ["./server"]
 ```
 
@@ -105,10 +105,10 @@ docker build -t <your_docker_image_tag> .
 
 Now you can run you docker image by the command:
 ```bash
-docker run -p 4000:4000 <your_docker_image_tag>
+docker run -p 3000:3000 <your_docker_image_tag>
 ```
 
 And open in the browser:
 ```
-http://localhost:4000/
+http://localhost:3000/
 ```
