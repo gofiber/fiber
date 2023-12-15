@@ -41,5 +41,4 @@ Before you submit your pull request, please make sure you meet these requirement
 
 ## Commit Formatting
 
-Please use emojis in commit messages for an easy way to identify the purpose or intention of a commit. You can refer to the emoji cheatsheet here: https://gitmoji.carloscuesta.me/
-
+Please use emojis in commit messages for an easy way to identify the purpose or intention of a commit. Check out the emoji cheatsheet here: [CONTRIBUTING.md](https://github.com/gofiber/fiber/blob/master/.github/CONTRIBUTING.md#pull-requests-or-commits)

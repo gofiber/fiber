@@ -636,7 +636,6 @@ func Test_Ctx_ParamParser(t *testing.T) {
 
 // go test -run Test_Ctx_BodyParser_WithSetParserDecoder
 func Test_Ctx_BodyParser_WithSetParserDecoder(t *testing.T) {
-	t.Parallel()
 	type CustomTime time.Time
 
 	timeConverter := func(value string) reflect.Value {
@@ -4555,7 +4554,6 @@ func Test_Ctx_QueryParser_WithoutSplitting(t *testing.T) {
 
 // go test -run Test_Ctx_QueryParser_WithSetParserDecoder -v
 func Test_Ctx_QueryParser_WithSetParserDecoder(t *testing.T) {
-	t.Parallel()
 	type NonRFCTime time.Time
 
 	nonRFCConverter := func(value string) reflect.Value {
@@ -4885,7 +4883,6 @@ func Test_Ctx_ReqHeaderParser_WithoutSplitting(t *testing.T) {
 
 // go test -run Test_Ctx_ReqHeaderParser_WithSetParserDecoder -v
 func Test_Ctx_ReqHeaderParser_WithSetParserDecoder(t *testing.T) {
-	t.Parallel()
 	type NonRFCTime time.Time
 
 	nonRFCConverter := func(value string) reflect.Value {

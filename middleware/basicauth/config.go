@@ -44,12 +44,12 @@ type Config struct {
 	// ContextUser is the key to store the username in Locals
 	//
 	// Optional. Default: "username"
-	ContextUsername string
+	ContextUsername interface{}
 
 	// ContextPass is the key to store the password in Locals
 	//
 	// Optional. Default: "password"
-	ContextPassword string
+	ContextPassword interface{}
 }
 
 // ConfigDefault is the default config
@@ -95,10 +95,10 @@ func configDefault(config ...Config) Config {
 			return c.SendStatus(fiber.StatusUnauthorized)
 		}
 	}
-	if cfg.ContextUsername == "" {
+	if cfg.ContextUsername == nil {
 		cfg.ContextUsername = ConfigDefault.ContextUsername
 	}
-	if cfg.ContextPassword == "" {
+	if cfg.ContextPassword == nil {
 		cfg.ContextPassword = ConfigDefault.ContextPassword
 	}
 	return cfg

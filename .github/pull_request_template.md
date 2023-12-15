@@ -30,4 +30,4 @@ Please delete options that are not relevant.
 
 ## Commit formatting:
 
-Use emojis on commit messages so it provides an easy way of identifying the purpose or intention of a commit. Check out the emoji cheatsheet here: https://gitmoji.carloscuesta.me/
+Use emojis on commit messages so it provides an easy way of identifying the purpose or intention of a commit. Check out the emoji cheatsheet here: [CONTRIBUTING.md](https://github.com/gofiber/fiber/blob/master/.github/CONTRIBUTING.md#pull-requests-or-commits)

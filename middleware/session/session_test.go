@@ -503,6 +503,7 @@ func Test_Session_Reset(t *testing.T) {
 		utils.AssertEqual(t, nil, err)
 
 		utils.AssertEqual(t, false, acquiredSession.ID() == originalSessionUUIDString)
+		utils.AssertEqual(t, false, acquiredSession.ID() == "")
 
 		// acquiredSession.fresh should be true after resetting
 		utils.AssertEqual(t, true, acquiredSession.Fresh())
@@ -523,10 +524,6 @@ func Test_Session_Reset(t *testing.T) {
 		// Check that the session id is not in the header or cookie anymore
 		utils.AssertEqual(t, "", string(ctx.Response().Header.Peek(store.sessionName)))
 		utils.AssertEqual(t, "", string(ctx.Request().Header.Peek(store.sessionName)))
-
-		// But the new session id should be in the header or cookie
-		utils.AssertEqual(t, acquiredSession.ID(), string(ctx.Response().Header.Peek(store.sessionName)))
-		utils.AssertEqual(t, acquiredSession.ID(), string(ctx.Request().Header.Peek(store.sessionName)))
 	})
 }
 

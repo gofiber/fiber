@@ -36,7 +36,8 @@ func Test_HTTPHandler(t *testing.T) {
 	expectedURL, err := url.ParseRequestURI(expectedRequestURI)
 	utils.AssertEqual(t, nil, err)
 
-	expectedContextKey := "contextKey"
+	type contextKeyType string
+	expectedContextKey := contextKeyType("contextKey")
 	expectedContextValue := "contextValue"
 
 	callsCount := 0
@@ -293,7 +294,7 @@ func testFiberToHandlerFunc(t *testing.T, checkDefaultPort bool, app ...*fiber.A
 	utils.AssertEqual(t, expectedResponseBody, string(w.body), "Body")
 }
 
-func setFiberContextValueMiddleware(next fiber.Handler, key string, value interface{}) fiber.Handler {
+func setFiberContextValueMiddleware(next fiber.Handler, key, value interface{}) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		c.Locals(key, value)
 		return next(c)
