@@ -29,12 +29,12 @@ go get github.com/gofiber/fiber/v2
 
 ## Step 2 - Hello world
 
-To start we shold create `main.go` file:
+To start we should create `main.go` file:
 ```bash title="~/example"
 touch main.go
 ```
 
-Next we should add following content to our file:
+Next we need to add the following content to our file:
 
 ```go title="~/app/main.go"
 package main
@@ -103,7 +103,7 @@ docker build -t <your_docker_image_tag> .
 
 ## Step 5 - profit
 
-Now you can run you docker image by the command:
+Now you can run the docker image using the command:
 ```bash
 docker run -p 3000:3000 <your_docker_image_tag>
 ```
