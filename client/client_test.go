@@ -595,6 +595,106 @@ func Test_Client_Cookie_With_Server(t *testing.T) {
 	testClient(t, handler, wrapAgent, "v1v2v3")
 }
 
+func Test_Client_CookieJar(t *testing.T) {
+	handler := func(c fiber.Ctx) error {
+		return c.SendString(
+			c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3"))
+	}
+
+	jar := AcquireCookieJar()
+	defer ReleaseCookieJar(jar)
+
+	jar.SetKeyValue("example.com", "k1", "v1")
+	jar.SetKeyValue("example.com", "k2", "v2")
+	jar.SetKeyValue("example", "k3", "v3")
+
+	wrapAgent := func(c *Client) {
+		c.SetCookieJar(jar)
+	}
+	testClient(t, handler, wrapAgent, "v1v2")
+}
+
+func Test_Client_CookieJar_Response(t *testing.T) {
+	t.Run("without expiration", func(t *testing.T) {
+		handler := func(c fiber.Ctx) error {
+			c.Cookie(&fiber.Cookie{
+				Name:  "k4",
+				Value: "v4",
+			})
+			return c.SendString(
+				c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3"))
+		}
+
+		jar := AcquireCookieJar()
+		defer ReleaseCookieJar(jar)
+
+		jar.SetKeyValue("example.com", "k1", "v1")
+		jar.SetKeyValue("example.com", "k2", "v2")
+		jar.SetKeyValue("example", "k3", "v3")
+
+		wrapAgent := func(c *Client) {
+			c.SetCookieJar(jar)
+		}
+		testClient(t, handler, wrapAgent, "v1v2")
+
+		require.Len(t, jar.getCookiesByHost("example.com"), 3)
+	})
+
+	t.Run("with expiration", func(t *testing.T) {
+		handler := func(c fiber.Ctx) error {
+			c.Cookie(&fiber.Cookie{
+				Name:    "k4",
+				Value:   "v4",
+				Expires: time.Now().Add(1 * time.Nanosecond),
+			})
+			return c.SendString(
+				c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3"))
+		}
+
+		jar := AcquireCookieJar()
+		defer ReleaseCookieJar(jar)
+
+		jar.SetKeyValue("example.com", "k1", "v1")
+		jar.SetKeyValue("example.com", "k2", "v2")
+		jar.SetKeyValue("example", "k3", "v3")
+
+		wrapAgent := func(c *Client) {
+			c.SetCookieJar(jar)
+		}
+		testClient(t, handler, wrapAgent, "v1v2")
+
+		require.Len(t, jar.getCookiesByHost("example.com"), 2)
+	})
+
+	t.Run("override cookie value", func(t *testing.T) {
+		handler := func(c fiber.Ctx) error {
+			c.Cookie(&fiber.Cookie{
+				Name:  "k1",
+				Value: "v2",
+			})
+			return c.SendString(
+				c.Cookies("k1") + c.Cookies("k2"))
+		}
+
+		jar := AcquireCookieJar()
+		defer ReleaseCookieJar(jar)
+
+		jar.SetKeyValue("example.com", "k1", "v1")
+		jar.SetKeyValue("example.com", "k2", "v2")
+
+		wrapAgent := func(c *Client) {
+			c.SetCookieJar(jar)
+		}
+		testClient(t, handler, wrapAgent, "v1v2")
+
+		for _, cookie := range jar.getCookiesByHost("example.com") {
+			if string(cookie.Key()) == "k1" {
+				require.Equal(t, "v2", string(cookie.Value()))
+			}
+		}
+	})
+}
+
 func Test_Client_Referer(t *testing.T) {
 	handler := func(c fiber.Ctx) error {
 		return c.Send(c.Request().Header.Referer())

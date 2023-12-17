@@ -88,7 +88,7 @@ type Client struct {
 	xmlMarshal    utils.XMLMarshal
 	xmlUnmarshal  utils.XMLUnmarshal
 
-	jar *jar
+	cookieJar *CookieJar
 
 	// tls config
 	tlsConfig *tls.Config
@@ -489,15 +489,9 @@ func (c *Client) DisableDebug() *Client {
 	return c
 }
 
-// enable cookie jar
-func (c *Client) EnableJar() *Client {
-	c.jar = newJar()
-	return c
-}
-
-// disable cookie jar
-func (c *Client) DisableJar() *Client {
-	c.jar = nil
+// SetCookieJar sets cookie jar in client instance.
+func (c *Client) SetCookieJar(cookieJar *CookieJar) *Client {
+	c.cookieJar = cookieJar
 	return c
 }
 
