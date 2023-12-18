@@ -851,34 +851,6 @@ func Test_Request_Referer_With_Server(t *testing.T) {
 	testRequest(t, handler, wrapAgent, "http://referer.com")
 }
 
-// func Test_Client_Agent_Host(t *testing.T) {
-// 	t.Parallel()
-
-// 	ln := fasthttputil.NewInmemoryListener()
-
-// 	app := fiber.New(fiber.Config{DisableStartupMessage: true})
-
-// 	app.Get("/", func(c fiber.Ctx) error {
-// 		return c.SendString(c.Hostname())
-// 	})
-
-// 	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
-
-// 	a := Get("http://1.1.1.1:8080").
-// 		Host("example.com").
-// 		HostBytes([]byte("example.com"))
-
-// 	utils.AssertEqual(t, "1.1.1.1:8080", a.HostClient.Addr)
-
-// 	a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
-
-// 	code, body, errs := a.String()
-
-// 	utils.AssertEqual(t, fiber.StatusOK, code)
-// 	utils.AssertEqual(t, "example.com", body)
-// 	utils.AssertEqual(t, 0, len(errs))
-// }
-
 func Test_Request_QueryString_With_Server(t *testing.T) {
 	handler := func(c fiber.Ctx) error {
 		return c.Send(c.Request().URI().QueryString())
@@ -1362,5 +1334,180 @@ func Test_SetValWithStruct(t *testing.T) {
 		}
 		SetValWithStruct(p, "param", 5)
 		require.Equal(t, 0, p.Len())
+	})
+}
+
+func Benchmark_SetValWithStruct(b *testing.B) {
+	// test SetValWithStruct vai QueryParam struct.
+	type args struct {
+		unexport  int
+		TInt      int
+		TString   string
+		TFloat    float64
+		TBool     bool
+		TSlice    []string
+		TIntSlice []int `param:"int_slice"`
+	}
+
+	b.Run("the struct should be applied", func(b *testing.B) {
+		p := &QueryParam{
+			Args: fasthttp.AcquireArgs(),
+		}
+
+		b.ReportAllocs()
+		b.StartTimer()
+
+		for i := 0; i < b.N; i++ {
+			SetValWithStruct(p, "param", args{
+				unexport:  5,
+				TInt:      5,
+				TString:   "string",
+				TFloat:    3.1,
+				TBool:     false,
+				TSlice:    []string{"foo", "bar"},
+				TIntSlice: []int{1, 2},
+			})
+		}
+
+		require.Equal(b, "", string(p.Peek("unexport")))
+		require.Equal(b, []byte("5"), p.Peek("TInt"))
+		require.Equal(b, []byte("string"), p.Peek("TString"))
+		require.Equal(b, []byte("3.1"), p.Peek("TFloat"))
+		require.Equal(b, "", string(p.Peek("TBool")))
+		require.True(b, func() bool {
+			for _, v := range p.PeekMulti("TSlice") {
+				if string(v) == "foo" {
+					return true
+				}
+			}
+			return false
+		}())
+
+		require.True(b, func() bool {
+			for _, v := range p.PeekMulti("TSlice") {
+				if string(v) == "bar" {
+					return true
+				}
+			}
+			return false
+		}())
+
+		require.True(b, func() bool {
+			for _, v := range p.PeekMulti("int_slice") {
+				if string(v) == "1" {
+					return true
+				}
+			}
+			return false
+		}())
+
+		require.True(b, func() bool {
+			for _, v := range p.PeekMulti("int_slice") {
+				if string(v) == "2" {
+					return true
+				}
+			}
+			return false
+		}())
+
+	})
+
+	b.Run("the pointer of a struct should be applied", func(b *testing.B) {
+		p := &QueryParam{
+			Args: fasthttp.AcquireArgs(),
+		}
+
+		b.ReportAllocs()
+		b.StartTimer()
+
+		for i := 0; i < b.N; i++ {
+			SetValWithStruct(p, "param", &args{
+				TInt:      5,
+				TString:   "string",
+				TFloat:    3.1,
+				TBool:     true,
+				TSlice:    []string{"foo", "bar"},
+				TIntSlice: []int{1, 2},
+			})
+		}
+
+		require.Equal(b, []byte("5"), p.Peek("TInt"))
+		require.Equal(b, []byte("string"), p.Peek("TString"))
+		require.Equal(b, []byte("3.1"), p.Peek("TFloat"))
+		require.Equal(b, "true", string(p.Peek("TBool")))
+		require.True(b, func() bool {
+			for _, v := range p.PeekMulti("TSlice") {
+				if string(v) == "foo" {
+					return true
+				}
+			}
+			return false
+		}())
+
+		require.True(b, func() bool {
+			for _, v := range p.PeekMulti("TSlice") {
+				if string(v) == "bar" {
+					return true
+				}
+			}
+			return false
+		}())
+
+		require.True(b, func() bool {
+			for _, v := range p.PeekMulti("int_slice") {
+				if string(v) == "1" {
+					return true
+				}
+			}
+			return false
+		}())
+
+		require.True(b, func() bool {
+			for _, v := range p.PeekMulti("int_slice") {
+				if string(v) == "2" {
+					return true
+				}
+			}
+			return false
+		}())
+
+	})
+
+	b.Run("the zero val should be ignore", func(b *testing.B) {
+		p := &QueryParam{
+			Args: fasthttp.AcquireArgs(),
+		}
+
+		b.ReportAllocs()
+		b.StartTimer()
+
+		for i := 0; i < b.N; i++ {
+			SetValWithStruct(p, "param", &args{
+				TInt:    0,
+				TString: "",
+				TFloat:  0.0,
+			})
+		}
+
+		require.Equal(b, "", string(p.Peek("TInt")))
+		require.Equal(b, "", string(p.Peek("TString")))
+		require.Equal(b, "", string(p.Peek("TFloat")))
+		require.Equal(b, 0, len(p.PeekMulti("TSlice")))
+		require.Equal(b, 0, len(p.PeekMulti("int_slice")))
+	})
+
+	b.Run("error type should ignore", func(b *testing.B) {
+		p := &QueryParam{
+			Args: fasthttp.AcquireArgs(),
+		}
+
+		b.ReportAllocs()
+		b.StartTimer()
+
+		for i := 0; i < b.N; i++ {
+			SetValWithStruct(p, "param", 5)
+		}
+
+		require.Equal(b, 0, p.Len())
 	})
 }
