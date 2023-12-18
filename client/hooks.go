@@ -66,7 +66,7 @@ func parserRequestURL(c *Client, req *Request) error {
 	// whether the URL starts with the protocol
 	uri := splitUrl[0]
 	if !protocolCheck.MatchString(uri) {
-		uri = c.baseUrl + uri
+		uri = c.baseURL + uri
 		if !protocolCheck.MatchString(uri) {
 			return ErrURLFormat
 		}
@@ -271,6 +271,7 @@ func parserRequestBody(c *Client, req *Request) error {
 			return ErrBodyType
 		}
 	}
+
 	return nil
 }
 

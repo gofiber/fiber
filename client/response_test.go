@@ -2,8 +2,11 @@ package client
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/xml"
+	"github.com/gofiber/fiber/v3/internal/tlstest"
 	"io"
+	"net"
 	"os"
 	"testing"
 
@@ -104,9 +107,38 @@ func Test_Response_Protocol(t *testing.T) {
 		resp.Close()
 	})
 
-	// TODO: add https test after support https
 	t.Run("https", func(t *testing.T) {
 		t.Parallel()
+
+		serverTLSConf, clientTLSConf, err := tlstest.GetTLSConfigs()
+		require.Nil(t, err)
+
+		ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+		require.Nil(t, err)
+
+		ln = tls.NewListener(ln, serverTLSConf)
+
+		app := fiber.New()
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString(c.Scheme())
+		})
+
+		go func() {
+			require.Nil(t, app.Listener(ln, fiber.ListenConfig{
+				DisableStartupMessage: true,
+			}))
+		}()
+
+		client := AcquireClient()
+		resp, err := client.SetTLSConfig(clientTLSConf).Get("https://" + ln.Addr().String())
+
+		require.Nil(t, err)
+		require.Equal(t, clientTLSConf, client.TLSConfig())
+		require.Equal(t, fiber.StatusOK, resp.StatusCode())
+		require.Equal(t, "https", resp.String())
+		require.Equal(t, "HTTP/1.1", resp.Protocol())
+
+		resp.Close()
 	})
 }
 
@@ -248,13 +280,16 @@ func Test_Response_Save(t *testing.T) {
 				return
 			}
 
-			os.RemoveAll("./test")
+			err := os.RemoveAll("./test")
+			require.NoError(t, err)
 		}()
 
 		file, err := os.Open("./test/tmp.json")
-		defer file.Close()
-
 		require.NoError(t, err)
+		defer func(file *os.File) {
+			err := file.Close()
+			require.NoError(t, err)
+		}(file)
 
 		data, err := io.ReadAll(file)
 		require.NoError(t, err)

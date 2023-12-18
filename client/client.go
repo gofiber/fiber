@@ -6,15 +6,17 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/xml"
-	"github.com/gofiber/fiber/v3/log"
-	"github.com/gofiber/utils/v2"
+	"fmt"
 	"io"
-	"net/url"
+	urlPkg "net/url"
 	"os"
 	"path/filepath"
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/gofiber/fiber/v3/log"
+	"github.com/gofiber/utils/v2"
 
 	"github.com/valyala/fasthttp"
 )
@@ -41,13 +43,13 @@ var _ (Logger) = (*disableLogger)(nil)
 // All logs are turned off by default.
 type disableLogger struct{}
 
-func (*disableLogger) Errorf(format string, args ...any) {}
+func (*disableLogger) Errorf(_ string, _ ...any) {}
 
-func (*disableLogger) Warnf(format string, args ...any) {}
+func (*disableLogger) Warnf(_ string, _ ...any) {}
 
-func (*disableLogger) Infof(format string, args ...any) {}
+func (*disableLogger) Infof(_ string, _ ...any) {}
 
-func (*disableLogger) Debugf(format string, args ...any) {}
+func (*disableLogger) Debugf(_ string, _ ...any) {}
 
 // The Client is used to create a Fiber Client with
 // client-level settings that apply to all requests
@@ -58,7 +60,7 @@ func (*disableLogger) Debugf(format string, args ...any) {}
 type Client struct {
 	mu sync.RWMutex
 
-	baseUrl   string
+	baseURL   string
 	userAgent string
 	referer   string
 	header    *Header
@@ -209,7 +211,9 @@ func (c *Client) SetRootCertificate(path string) *Client {
 	if err != nil {
 		return c
 	}
-	defer func() { _ = file.Close() }()
+	defer func() {
+		_ = file.Close() //nolint:errcheck // It is fine to ignore the error here
+	}()
 	pem, err := io.ReadAll(file)
 	if err != nil {
 		return c
@@ -238,13 +242,13 @@ func (c *Client) SetRootCertificateFromString(pem string) *Client {
 
 // SetProxyURL sets proxy url in client. It will apply via core to hostclient.
 func (c *Client) SetProxyURL(proxyURL string) *Client {
-	pUrl, err := url.Parse(proxyURL)
+	pURL, err := urlPkg.Parse(proxyURL)
 	if err != nil {
 		log.Errorf("%v", err)
 
 		return c
 	}
-	c.proxyURL = pUrl.String()
+	c.proxyURL = pURL.String()
 
 	return c
 }
@@ -264,12 +268,12 @@ func (c *Client) SetRetryConfig(config *RetryConfig) *Client {
 
 // BaseURL returns baseurl in Client instance.
 func (c *Client) BaseURL() string {
-	return c.baseUrl
+	return c.baseURL
 }
 
 // Set baseUrl which is prefix of real url.
 func (c *Client) SetBaseURL(url string) *Client {
-	c.baseUrl = url
+	c.baseURL = url
 	return c
 }
 
@@ -282,7 +286,7 @@ func (c *Client) Header(key string) []string {
 
 // AddHeader method adds a single header field and its value in the client instance.
 // These headers will be applied to all requests raised from this client instance.
-// Also it can be overridden at request level header options.
+// Also, it can be overridden at request level header options.
 func (c *Client) AddHeader(key, val string) *Client {
 	c.header.Add(key, val)
 	return c
@@ -553,7 +557,7 @@ func (c *Client) Patch(url string, cfg ...Config) (*Response, error) {
 
 // Reset clear Client object
 func (c *Client) Reset() {
-	c.baseUrl = ""
+	c.baseURL = ""
 	c.timeout = 0
 	c.userAgent = ""
 	c.referer = ""
@@ -691,7 +695,12 @@ func init() {
 // The returned Client object may be returned to the pool with ReleaseClient when no longer needed.
 // This allows reducing GC load.
 func AcquireClient() *Client {
-	return clientPool.Get().(*Client)
+	client, ok := clientPool.Get().(*Client)
+	if !ok {
+		panic(fmt.Errorf("failed to type-assert to *Client"))
+	}
+
+	return client
 }
 
 // ReleaseClient returns the object acquired via AcquireClient to the pool.

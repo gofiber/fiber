@@ -5,14 +5,15 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"github.com/gofiber/fiber/v3/addon/retry"
-	"github.com/gofiber/fiber/v3/log"
 	"io"
 	"net"
 	"os"
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/gofiber/fiber/v3/addon/retry"
+	"github.com/gofiber/fiber/v3/log"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/tlstest"
@@ -497,8 +498,8 @@ func Test_Client_Header_With_Server(t *testing.T) {
 	handler := func(c fiber.Ctx) error {
 		c.Request().Header.VisitAll(func(key, value []byte) {
 			if k := string(key); k == "K1" || k == "K2" {
-				_, _ = c.Write(key)
-				_, _ = c.Write(value)
+				_, _ = c.Write(key)   //nolint:errcheck // It is fine to ignore the error here
+				_, _ = c.Write(value) //nolint:errcheck // It is fine to ignore the error here
 			}
 		})
 		return nil
@@ -829,8 +830,8 @@ func Test_Client_QueryParam(t *testing.T) {
 
 func Test_Client_QueryParam_With_Server(t *testing.T) {
 	handler := func(c fiber.Ctx) error {
-		c.WriteString(c.Query("k1"))
-		c.WriteString(c.Query("k2"))
+		_, _ = c.WriteString(c.Query("k1")) //nolint:errcheck // It is fine to ignore the error here
+		_, _ = c.WriteString(c.Query("k2")) //nolint:errcheck // It is fine to ignore the error here
 
 		return nil
 	}

@@ -42,11 +42,11 @@ func (cj *CookieJar) Get(uri *fasthttp.URI) []*fasthttp.Cookie {
 		return nil
 	}
 
-	return cj.get(uri.Host(), uri.Path())
+	return cj.getByHostAndPath(uri.Host(), uri.Path())
 }
 
 // get returns the cookies stored from a specific host and path.
-func (cj *CookieJar) get(host, path []byte) []*fasthttp.Cookie {
+func (cj *CookieJar) getByHostAndPath(host, path []byte) []*fasthttp.Cookie {
 	if cj.hostCookies == nil {
 		return nil
 	}
@@ -108,7 +108,7 @@ func (cj *CookieJar) Set(uri *fasthttp.URI, cookies ...*fasthttp.Cookie) {
 		return
 	}
 
-	cj.set(uri.Host(), cookies...)
+	cj.SetByHost(uri.Host(), cookies...)
 }
 
 // SetByHost sets cookies for a specific host.
@@ -116,10 +116,6 @@ func (cj *CookieJar) Set(uri *fasthttp.URI, cookies ...*fasthttp.Cookie) {
 //
 // CookieJar keeps a copy of the cookies, so the parsed cookies can be released safely.
 func (cj *CookieJar) SetByHost(host []byte, cookies ...*fasthttp.Cookie) {
-	cj.set(host, cookies...)
-}
-
-func (cj *CookieJar) set(host []byte, cookies ...*fasthttp.Cookie) {
 	hostStr := utils.UnsafeString(host)
 
 	cj.mu.Lock()
@@ -168,14 +164,14 @@ func (cj *CookieJar) setKeyValue(host string, key, value []byte) {
 	c.SetKeyBytes(key)
 	c.SetValueBytes(value)
 
-	cj.set(utils.UnsafeBytes(host), c)
+	cj.SetByHost(utils.UnsafeBytes(host), c)
 }
 
 // dumpCookiesToReq dumps the stored cookies to the request.
 func (cj *CookieJar) dumpCookiesToReq(req *fasthttp.Request) {
 	uri := req.URI()
 
-	cookies := cj.get(uri.Host(), uri.Path())
+	cookies := cj.getByHostAndPath(uri.Host(), uri.Path())
 	for _, cookie := range cookies {
 		req.Header.SetCookieBytesKV(cookie.Key(), cookie.Value())
 	}
