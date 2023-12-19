@@ -87,6 +87,8 @@ type Error struct {
 // App denotes the Fiber application.
 type App struct {
 	mutex sync.Mutex
+
+	// TODO: Keep structure for processing ? tree router also possible ?
 	// Route stack divided by HTTP methods
 	stack [][]*Route
 	// Route stack divided by HTTP methods and route prefixes
@@ -97,6 +99,7 @@ type App struct {
 	routesCount uint32
 	// Amount of registered handlers
 	handlersCount uint32
+
 	// Ctx pool
 	pool sync.Pool
 	// Fasthttp server
@@ -554,6 +557,7 @@ func New(config ...Config) *App {
 		app.handleTrustedProxy(ipAddress)
 	}
 
+	// TODO: move to interchanable router class
 	// Create router stack
 	app.stack = make([][]*Route, len(app.config.RequestMethods))
 	app.treeStack = make([]map[string][]*Route, len(app.config.RequestMethods))
@@ -641,6 +645,7 @@ func (app *App) GetRoute(name string) Route {
 	return Route{}
 }
 
+// TODO: part of the router api for the interchangeable class
 // GetRoutes Get all routes. When filterUseOption equal to true, it will filter the routes registered by the middleware.
 func (app *App) GetRoutes(filterUseOption ...bool) []Route {
 	var rs []Route

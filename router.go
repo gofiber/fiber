@@ -107,6 +107,7 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) { //nolint: unparam // boo
 	}
 	lenr := len(tree) - 1
 
+	//region TODO: interface for this part which loop over the routes and make the matching
 	// Loop over the route stack starting from previous index
 	for c.getIndexRoute() < lenr {
 		// Increment route index
@@ -135,6 +136,7 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) { //nolint: unparam // boo
 		err := route.Handlers[0](c)
 		return match, err // Stop scanning the stack
 	}
+	//endregion
 
 	// If c.Next() does not match, return 404
 	err := NewError(StatusNotFound, "Cannot "+c.Method()+" "+c.getPathOriginal())
@@ -291,6 +293,7 @@ func (*App) copyRoute(route *Route) *Route {
 	}
 }
 
+// TODO: make it changeable -> api for outside
 func (app *App) register(methods []string, pathRaw string, group *Group, handler Handler, middleware ...Handler) {
 	handlers := middleware
 	if handler != nil {
@@ -515,6 +518,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 	app.addRoute(MethodHead, &route)
 }
 
+// TODO: add to registering module
 func (app *App) addRoute(method string, route *Route, isMounted ...bool) {
 	// Check mounted routes
 	var mounted bool
