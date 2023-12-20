@@ -3,12 +3,13 @@
 // 📌 API Documentation: https://docs.gofiber.io
 
 //nolint:bodyclose // Much easier to just ignore memory leaks in tests
-package fiber
+package routing
 
 import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/gofiber/fiber/v3"
 	"io"
 	"net/http/httptest"
 	"os"
@@ -35,13 +36,13 @@ func init() {
 func Test_Route_Match_SameLength(t *testing.T) {
 	t.Parallel()
 
-	app := New()
+	app := fiber.New()
 
-	app.Get("/:param", func(c Ctx) error {
+	app.Get("/:param", func(c fiber.Ctx) error {
 		return c.SendString(c.Params("param"))
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/:param", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/:param", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
@@ -50,7 +51,7 @@ func Test_Route_Match_SameLength(t *testing.T) {
 	require.Equal(t, ":param", app.getString(body))
 
 	// with param
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
@@ -62,13 +63,13 @@ func Test_Route_Match_SameLength(t *testing.T) {
 func Test_Route_Match_Star(t *testing.T) {
 	t.Parallel()
 
-	app := New()
+	app := fiber.New()
 
-	app.Get("/*", func(c Ctx) error {
+	app.Get("/*", func(c fiber.Ctx) error {
 		return c.SendString(c.Params("*"))
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/*", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/*", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
@@ -77,7 +78,7 @@ func Test_Route_Match_Star(t *testing.T) {
 	require.Equal(t, "*", app.getString(body))
 
 	// with param
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
@@ -91,32 +92,32 @@ func Test_Route_Match_Star(t *testing.T) {
 		path:        "/*",
 		routeParser: routeParser{},
 	}
-	params := [maxParams]string{}
+	params := [fiber.maxParams]string{}
 	match := route.match("", "", &params)
 	require.True(t, match)
-	require.Equal(t, [maxParams]string{}, params)
+	require.Equal(t, [fiber.maxParams]string{}, params)
 
 	// with parameter
 	match = route.match("/favicon.ico", "/favicon.ico", &params)
 	require.True(t, match)
-	require.Equal(t, [maxParams]string{"favicon.ico"}, params)
+	require.Equal(t, [fiber.maxParams]string{"favicon.ico"}, params)
 
 	// without parameter again
 	match = route.match("", "", &params)
 	require.True(t, match)
-	require.Equal(t, [maxParams]string{}, params)
+	require.Equal(t, [fiber.maxParams]string{}, params)
 }
 
 func Test_Route_Match_Root(t *testing.T) {
 	t.Parallel()
 
-	app := New()
+	app := fiber.New()
 
-	app.Get("/", func(c Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("root")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
@@ -128,15 +129,15 @@ func Test_Route_Match_Root(t *testing.T) {
 func Test_Route_Match_Parser(t *testing.T) {
 	t.Parallel()
 
-	app := New()
+	app := fiber.New()
 
-	app.Get("/foo/:ParamName", func(c Ctx) error {
+	app.Get("/foo/:ParamName", func(c fiber.Ctx) error {
 		return c.SendString(c.Params("ParamName"))
 	})
-	app.Get("/Foobar/*", func(c Ctx) error {
+	app.Get("/Foobar/*", func(c fiber.Ctx) error {
 		return c.SendString(c.Params("*"))
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo/bar", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/foo/bar", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
@@ -145,7 +146,7 @@ func Test_Route_Match_Parser(t *testing.T) {
 	require.Equal(t, "bar", app.getString(body))
 
 	// with star
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/Foobar/test", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/Foobar/test", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
@@ -157,13 +158,13 @@ func Test_Route_Match_Parser(t *testing.T) {
 func Test_Route_Match_Middleware(t *testing.T) {
 	t.Parallel()
 
-	app := New()
+	app := fiber.New()
 
-	app.Use("/foo/*", func(c Ctx) error {
+	app.Use("/foo/*", func(c fiber.Ctx) error {
 		return c.SendString(c.Params("*"))
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo/*", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/foo/*", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
@@ -172,7 +173,7 @@ func Test_Route_Match_Middleware(t *testing.T) {
 	require.Equal(t, "*", app.getString(body))
 
 	// with param
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo/bar/fasel", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/foo/bar/fasel", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
@@ -184,71 +185,71 @@ func Test_Route_Match_Middleware(t *testing.T) {
 func Test_Route_Match_UnescapedPath(t *testing.T) {
 	t.Parallel()
 
-	app := New(Config{UnescapePath: true})
+	app := fiber.New(fiber.Config{UnescapePath: true})
 
-	app.Use("/créer", func(c Ctx) error {
+	app.Use("/créer", func(c fiber.Ctx) error {
 		return c.SendString("test")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/cr%C3%A9er", nil))
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, "test", app.getString(body))
 	// without special chars
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/créer", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/créer", nil))
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
 
 	// check deactivated behavior
 	app.config.UnescapePath = false
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/cr%C3%A9er", nil))
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode, "Status code")
 }
 
 func Test_Route_Match_WithEscapeChar(t *testing.T) {
 	t.Parallel()
 
-	app := New()
+	app := fiber.New()
 	// static route and escaped part
-	app.Get("/v1/some/resource/name\\:customVerb", func(c Ctx) error {
+	app.Get("/v1/some/resource/name\\:customVerb", func(c fiber.Ctx) error {
 		return c.SendString("static")
 	})
 	// group route
 	group := app.Group("/v2/\\:firstVerb")
-	group.Get("/\\:customVerb", func(c Ctx) error {
+	group.Get("/\\:customVerb", func(c fiber.Ctx) error {
 		return c.SendString("group")
 	})
 	// route with resource param and escaped part
-	app.Get("/v3/:resource/name\\:customVerb", func(c Ctx) error {
+	app.Get("/v3/:resource/name\\:customVerb", func(c fiber.Ctx) error {
 		return c.SendString(c.Params("resource"))
 	})
 
 	// check static route
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/some/resource/name:customVerb", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/v1/some/resource/name:customVerb", nil))
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, "static", app.getString(body))
 
 	// check group route
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/v2/:firstVerb/:customVerb", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/v2/:firstVerb/:customVerb", nil))
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, "group", app.getString(body))
 
 	// check param route
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/v3/awesome/name:customVerb", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/v3/awesome/name:customVerb", nil))
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
@@ -258,13 +259,13 @@ func Test_Route_Match_WithEscapeChar(t *testing.T) {
 func Test_Route_Match_Middleware_HasPrefix(t *testing.T) {
 	t.Parallel()
 
-	app := New()
+	app := fiber.New()
 
-	app.Use("/foo", func(c Ctx) error {
+	app.Use("/foo", func(c fiber.Ctx) error {
 		return c.SendString("middleware")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo/bar", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/foo/bar", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
@@ -276,13 +277,13 @@ func Test_Route_Match_Middleware_HasPrefix(t *testing.T) {
 func Test_Route_Match_Middleware_Root(t *testing.T) {
 	t.Parallel()
 
-	app := New()
+	app := fiber.New()
 
-	app.Use("/", func(c Ctx) error {
+	app.Use("/", func(c fiber.Ctx) error {
 		return c.SendString("middleware")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/everything", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/everything", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
@@ -294,7 +295,7 @@ func Test_Route_Match_Middleware_Root(t *testing.T) {
 func Test_Router_Register_Missing_Handler(t *testing.T) {
 	t.Parallel()
 
-	app := New()
+	app := fiber.New()
 	defer func() {
 		if err := recover(); err != nil {
 			require.Equal(t, "missing handler/middleware in route: /doe\n", fmt.Sprintf("%v", err))
@@ -306,48 +307,48 @@ func Test_Router_Register_Missing_Handler(t *testing.T) {
 func Test_Ensure_Router_Interface_Implementation(t *testing.T) {
 	t.Parallel()
 
-	var app interface{} = (*App)(nil)
-	_, ok := app.(Router)
+	var app interface{} = (*fiber.App)(nil)
+	_, ok := app.(ExpressjsRouterI)
 	require.True(t, ok)
 
 	var group any = (*Group)(nil)
-	_, ok = group.(Router)
+	_, ok = group.(ExpressjsRouterI)
 	require.True(t, ok)
 }
 
 func Test_Router_Handler_Catch_Error(t *testing.T) {
 	t.Parallel()
 
-	app := New()
-	app.config.ErrorHandler = func(c Ctx, err error) error {
+	app := fiber.New()
+	app.config.ErrorHandler = func(c fiber.Ctx, err error) error {
 		return errors.New("fake error")
 	}
 
-	app.Get("/", func(c Ctx) error {
-		return ErrForbidden
+	app.Get("/", func(c fiber.Ctx) error {
+		return fiber.ErrForbidden
 	})
 
 	c := &fasthttp.RequestCtx{}
 
 	app.Handler()(c)
 
-	require.Equal(t, StatusInternalServerError, c.Response.Header.StatusCode())
+	require.Equal(t, fiber.StatusInternalServerError, c.Response.Header.StatusCode())
 }
 
 func Test_Route_Static_Root(t *testing.T) {
 	t.Parallel()
 
 	dir := "./.github/testdata/fs/css"
-	app := New()
-	app.Static("/", dir, Static{
+	app := fiber.New()
+	app.Static("/", dir, fiber.Static{
 		Browse: true,
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/style.css", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/style.css", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
@@ -355,14 +356,14 @@ func Test_Route_Static_Root(t *testing.T) {
 	require.NoError(t, err, "app.Test(req)")
 	require.True(t, strings.Contains(app.getString(body), "color"))
 
-	app = New()
+	app = fiber.New()
 	app.Static("/", dir)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 404, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/style.css", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/style.css", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
@@ -375,20 +376,20 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 	t.Parallel()
 
 	dir := "./.github/testdata/fs/css"
-	app := New()
-	app.Static("/static", dir, Static{
+	app := fiber.New()
+	app.Static("/static", dir, fiber.Static{
 		Browse: true,
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/static", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/static", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static/", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/style.css", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static/style.css", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
@@ -396,20 +397,20 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 	require.NoError(t, err, "app.Test(req)")
 	require.True(t, strings.Contains(app.getString(body), "color"))
 
-	app = New()
-	app.Static("/static/", dir, Static{
+	app = fiber.New()
+	app.Static("/static/", dir, fiber.Static{
 		Browse: true,
 	})
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static/", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/style.css", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static/style.css", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
@@ -417,18 +418,18 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 	require.NoError(t, err, "app.Test(req)")
 	require.True(t, strings.Contains(app.getString(body), "color"))
 
-	app = New()
+	app = fiber.New()
 	app.Static("/static", dir)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 404, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static/", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 404, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/style.css", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static/style.css", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
@@ -436,18 +437,18 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 	require.NoError(t, err, "app.Test(req)")
 	require.True(t, strings.Contains(app.getString(body), "color"))
 
-	app = New()
+	app = fiber.New()
 	app.Static("/static/", dir)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 404, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static/", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 404, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/style.css", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static/style.css", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
@@ -457,8 +458,8 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 }
 
 func Test_Router_NotFound(t *testing.T) {
-	app := New()
-	app.Use(func(c Ctx) error {
+	app := fiber.New()
+	app.Use(func(c fiber.Ctx) error {
 		return c.Next()
 	})
 	appHandler := app.Handler()
@@ -474,8 +475,8 @@ func Test_Router_NotFound(t *testing.T) {
 }
 
 func Test_Router_NotFound_HTML_Inject(t *testing.T) {
-	app := New()
-	app.Use(func(c Ctx) error {
+	app := fiber.New()
+	app.Use(func(c fiber.Ctx) error {
 		return c.Next()
 	})
 	appHandler := app.Handler()
@@ -494,8 +495,8 @@ func Test_Router_NotFound_HTML_Inject(t *testing.T) {
 ///////////////// BENCHMARKS /////////////////
 //////////////////////////////////////////////
 
-func registerDummyRoutes(app *App) {
-	h := func(c Ctx) error {
+func registerDummyRoutes(app *fiber.App) {
+	h := func(c fiber.Ctx) error {
 		return nil
 	}
 	for _, r := range routesFixture.GithubAPI {
@@ -505,8 +506,8 @@ func registerDummyRoutes(app *App) {
 
 // go test -v -run=^$ -bench=Benchmark_App_MethodNotAllowed -benchmem -count=4
 func Benchmark_App_MethodNotAllowed(b *testing.B) {
-	app := New()
-	h := func(c Ctx) error {
+	app := fiber.New()
+	h := func(c fiber.Ctx) error {
 		return c.SendString("Hello World!")
 	}
 	app.All("/this/is/a/", h)
@@ -523,14 +524,14 @@ func Benchmark_App_MethodNotAllowed(b *testing.B) {
 	}
 	b.StopTimer()
 	require.Equal(b, 405, c.Response.StatusCode())
-	require.Equal(b, MethodGet, string(c.Response.Header.Peek("Allow")))
-	require.Equal(b, utils.StatusMessage(StatusMethodNotAllowed), string(c.Response.Body()))
+	require.Equal(b, fiber.MethodGet, string(c.Response.Header.Peek("Allow")))
+	require.Equal(b, utils.StatusMessage(fiber.StatusMethodNotAllowed), string(c.Response.Body()))
 }
 
 // go test -v ./... -run=^$ -bench=Benchmark_Router_NotFound -benchmem -count=4
 func Benchmark_Router_NotFound(b *testing.B) {
-	app := New()
-	app.Use(func(c Ctx) error {
+	app := fiber.New()
+	app.Use(func(c fiber.Ctx) error {
 		return c.Next()
 	})
 	registerDummyRoutes(app)
@@ -550,7 +551,7 @@ func Benchmark_Router_NotFound(b *testing.B) {
 
 // go test -v ./... -run=^$ -bench=Benchmark_Router_Handler -benchmem -count=4
 func Benchmark_Router_Handler(b *testing.B) {
-	app := New()
+	app := fiber.New()
 	registerDummyRoutes(app)
 	appHandler := app.Handler()
 
@@ -567,7 +568,7 @@ func Benchmark_Router_Handler(b *testing.B) {
 }
 
 func Benchmark_Router_Handler_Strict_Case(b *testing.B) {
-	app := New(Config{
+	app := fiber.New(fiber.Config{
 		StrictRouting: true,
 		CaseSensitive: true,
 	})
@@ -588,8 +589,8 @@ func Benchmark_Router_Handler_Strict_Case(b *testing.B) {
 
 // go test -v ./... -run=^$ -bench=Benchmark_Router_Chain -benchmem -count=4
 func Benchmark_Router_Chain(b *testing.B) {
-	app := New()
-	handler := func(c Ctx) error {
+	app := fiber.New()
+	handler := func(c fiber.Ctx) error {
 		return c.Next()
 	}
 	app.Get("/", handler, handler, handler, handler, handler, handler)
@@ -598,7 +599,7 @@ func Benchmark_Router_Chain(b *testing.B) {
 
 	c := &fasthttp.RequestCtx{}
 
-	c.Request.Header.SetMethod(MethodGet)
+	c.Request.Header.SetMethod(fiber.MethodGet)
 	c.URI().SetPath("/")
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
@@ -608,8 +609,8 @@ func Benchmark_Router_Chain(b *testing.B) {
 
 // go test -v ./... -run=^$ -bench=Benchmark_Router_WithCompression -benchmem -count=4
 func Benchmark_Router_WithCompression(b *testing.B) {
-	app := New()
-	handler := func(c Ctx) error {
+	app := fiber.New()
+	handler := func(c fiber.Ctx) error {
 		return c.Next()
 	}
 	app.Get("/", handler)
@@ -622,7 +623,7 @@ func Benchmark_Router_WithCompression(b *testing.B) {
 	appHandler := app.Handler()
 	c := &fasthttp.RequestCtx{}
 
-	c.Request.Header.SetMethod(MethodGet)
+	c.Request.Header.SetMethod(fiber.MethodGet)
 	c.URI().SetPath("/")
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
@@ -633,7 +634,7 @@ func Benchmark_Router_WithCompression(b *testing.B) {
 // go test -run=^$ -bench=Benchmark_Startup_Process -benchmem -count=9
 func Benchmark_Startup_Process(b *testing.B) {
 	for n := 0; n < b.N; n++ {
-		app := New()
+		app := fiber.New()
 		registerDummyRoutes(app)
 		app.startupProcess()
 	}
@@ -641,7 +642,7 @@ func Benchmark_Startup_Process(b *testing.B) {
 
 // go test -v ./... -run=^$ -bench=Benchmark_Router_Next -benchmem -count=4
 func Benchmark_Router_Next(b *testing.B) {
-	app := New()
+	app := fiber.New()
 	registerDummyRoutes(app)
 	app.startupProcess()
 
@@ -652,7 +653,7 @@ func Benchmark_Router_Next(b *testing.B) {
 	var res bool
 	var err error
 
-	c := app.NewCtx(request).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.NewCtx(request).(*fiber.DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
@@ -667,7 +668,7 @@ func Benchmark_Router_Next(b *testing.B) {
 // go test -v ./... -run=^$ -bench=Benchmark_Route_Match -benchmem -count=4
 func Benchmark_Route_Match(b *testing.B) {
 	var match bool
-	var params [maxParams]string
+	var params [fiber.maxParams]string
 
 	parsed := parseRoute("/user/keys/:id")
 	route := &Route{
@@ -681,7 +682,7 @@ func Benchmark_Route_Match(b *testing.B) {
 		Path:   "/user/keys/:id",
 		Method: "DELETE",
 	}
-	route.Handlers = append(route.Handlers, func(c Ctx) error {
+	route.Handlers = append(route.Handlers, func(c fiber.Ctx) error {
 		return nil
 	})
 	b.ResetTimer()
@@ -696,7 +697,7 @@ func Benchmark_Route_Match(b *testing.B) {
 // go test -v ./... -run=^$ -bench=Benchmark_Route_Match_Star -benchmem -count=4
 func Benchmark_Route_Match_Star(b *testing.B) {
 	var match bool
-	var params [maxParams]string
+	var params [fiber.maxParams]string
 
 	parsed := parseRoute("/*")
 	route := &Route{
@@ -710,7 +711,7 @@ func Benchmark_Route_Match_Star(b *testing.B) {
 		Path:   "/user/keys/bla",
 		Method: "DELETE",
 	}
-	route.Handlers = append(route.Handlers, func(c Ctx) error {
+	route.Handlers = append(route.Handlers, func(c fiber.Ctx) error {
 		return nil
 	})
 	b.ResetTimer()
@@ -726,7 +727,7 @@ func Benchmark_Route_Match_Star(b *testing.B) {
 // go test -v ./... -run=^$ -bench=Benchmark_Route_Match_Root -benchmem -count=4
 func Benchmark_Route_Match_Root(b *testing.B) {
 	var match bool
-	var params [maxParams]string
+	var params [fiber.maxParams]string
 
 	parsed := parseRoute("/")
 	route := &Route{
@@ -740,7 +741,7 @@ func Benchmark_Route_Match_Root(b *testing.B) {
 		Path:   "/",
 		Method: "DELETE",
 	}
-	route.Handlers = append(route.Handlers, func(c Ctx) error {
+	route.Handlers = append(route.Handlers, func(c fiber.Ctx) error {
 		return nil
 	})
 
@@ -756,7 +757,7 @@ func Benchmark_Route_Match_Root(b *testing.B) {
 
 // go test -v ./... -run=^$ -bench=Benchmark_Router_Handler_CaseSensitive -benchmem -count=4
 func Benchmark_Router_Handler_CaseSensitive(b *testing.B) {
-	app := New()
+	app := fiber.New()
 	app.config.CaseSensitive = true
 	registerDummyRoutes(app)
 	appHandler := app.Handler()
@@ -775,10 +776,10 @@ func Benchmark_Router_Handler_CaseSensitive(b *testing.B) {
 
 // go test -v ./... -run=^$ -bench=Benchmark_Router_Handler_Unescape -benchmem -count=4
 func Benchmark_Router_Handler_Unescape(b *testing.B) {
-	app := New()
+	app := fiber.New()
 	app.config.UnescapePath = true
 	registerDummyRoutes(app)
-	app.Delete("/créer", func(c Ctx) error {
+	app.Delete("/créer", func(c fiber.Ctx) error {
 		return nil
 	})
 
@@ -786,7 +787,7 @@ func Benchmark_Router_Handler_Unescape(b *testing.B) {
 
 	c := &fasthttp.RequestCtx{}
 
-	c.Request.Header.SetMethod(MethodDelete)
+	c.Request.Header.SetMethod(fiber.MethodDelete)
 	c.URI().SetPath("/cr%C3%A9er")
 
 	b.ResetTimer()
@@ -799,7 +800,7 @@ func Benchmark_Router_Handler_Unescape(b *testing.B) {
 
 // go test -run=^$ -bench=Benchmark_Router_Handler_StrictRouting -benchmem -count=4
 func Benchmark_Router_Handler_StrictRouting(b *testing.B) {
-	app := New()
+	app := fiber.New()
 	app.config.CaseSensitive = true
 	registerDummyRoutes(app)
 	appHandler := app.Handler()
@@ -818,7 +819,7 @@ func Benchmark_Router_Handler_StrictRouting(b *testing.B) {
 
 // go test -run=^$ -bench=Benchmark_Router_Github_API -benchmem -count=16
 func Benchmark_Router_Github_API(b *testing.B) {
-	app := New()
+	app := fiber.New()
 	registerDummyRoutes(app)
 	app.startupProcess()
 
@@ -833,7 +834,7 @@ func Benchmark_Router_Github_API(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			c.URI().SetPath(routesFixture.TestRoutes[i].Path)
 
-			ctx := app.AcquireCtx().(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+			ctx := app.AcquireCtx().(*fiber.DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 			ctx.Reset(c)
 
 			match, err = app.next(ctx)

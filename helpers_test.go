@@ -6,6 +6,7 @@ package fiber
 
 import (
 	"fmt"
+	"github.com/gofiber/fiber/v3/routing"
 	"strings"
 	"testing"
 	"time"
@@ -467,17 +468,17 @@ func Benchmark_Utils_SortAcceptedTypes_Unsorted(b *testing.B) {
 
 func Test_Utils_UniqueRouteStack(t *testing.T) {
 	t.Parallel()
-	route1 := &Route{}
-	route2 := &Route{}
-	route3 := &Route{}
+	route1 := &routing.Route{}
+	route2 := &routing.Route{}
+	route3 := &routing.Route{}
 	require.Equal(
 		t,
-		[]*Route{
+		[]*routing.Route{
 			route1,
 			route2,
 			route3,
 		},
-		uniqueRouteStack([]*Route{
+		uniqueRouteStack([]*routing.Route{
 			route1,
 			route1,
 			route1,
@@ -610,7 +611,7 @@ func Benchmark_SlashRecognition(b *testing.B) {
 	b.Run("indexBytes", func(b *testing.B) {
 		result = false
 		for i := 0; i < b.N; i++ {
-			if strings.IndexByte(search, slashDelimiter) != -1 {
+			if strings.IndexByte(search, routing.slashDelimiter) != -1 {
 				result = true
 			}
 		}
@@ -618,7 +619,7 @@ func Benchmark_SlashRecognition(b *testing.B) {
 	})
 	b.Run("forEach", func(b *testing.B) {
 		result = false
-		c := int32(slashDelimiter)
+		c := int32(routing.slashDelimiter)
 		for i := 0; i < b.N; i++ {
 			for _, b := range search {
 				if b == c {
@@ -631,7 +632,7 @@ func Benchmark_SlashRecognition(b *testing.B) {
 	})
 	b.Run("IndexRune", func(b *testing.B) {
 		result = false
-		c := int32(slashDelimiter)
+		c := int32(routing.slashDelimiter)
 		for i := 0; i < b.N; i++ {
 			result = IndexRune(search, c)
 		}

@@ -2,10 +2,11 @@
 // 📝 Github Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
-package fiber
+package routing
 
 import (
 	"fmt"
+	"github.com/gofiber/fiber/v3"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -137,7 +138,7 @@ func Test_Path_parseRoute(t *testing.T) {
 // go test -race -run Test_Path_matchParams
 func Test_Path_matchParams(t *testing.T) {
 	t.Parallel()
-	var ctxParams [maxParams]string
+	var ctxParams [fiber.maxParams]string
 	testCaseFn := func(testCollection routeCaseCollection) {
 		parser := parseRoute(testCollection.pattern)
 		for _, c := range testCollection.testCases {
@@ -208,7 +209,7 @@ func Benchmark_Utils_RemoveEscapeChar(b *testing.B) {
 
 // go test -race -run Test_Path_matchParams
 func Benchmark_Path_matchParams(t *testing.B) {
-	var ctxParams [maxParams]string
+	var ctxParams [fiber.maxParams]string
 	benchCaseFn := func(testCollection routeCaseCollection) {
 		parser := parseRoute(testCollection.pattern)
 		for _, c := range testCollection.testCases {

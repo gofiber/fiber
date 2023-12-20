@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"github.com/gofiber/fiber/v3/routing"
 	"sort"
 	"strings"
 	"sync"
@@ -38,7 +39,7 @@ func newMountFields(app *App) *mountFields {
 // compose them as a single service using Mount. The fiber's error handler and
 // any of the fiber's sub apps are added to the application's error handlers
 // to be invoked on errors that happen within the prefix route.
-func (app *App) mount(prefix string, subApp *App) Router {
+func (app *App) mount(prefix string, subApp *App) routing.ExpressjsRouterI {
 	prefix = strings.TrimRight(prefix, "/")
 	if prefix == "" {
 		prefix = "/"
@@ -53,7 +54,7 @@ func (app *App) mount(prefix string, subApp *App) Router {
 	}
 
 	// register mounted group
-	mountGroup := &Group{Prefix: prefix, app: subApp}
+	mountGroup := &routing.Group{Prefix: prefix, app: subApp}
 	app.register([]string{methodUse}, prefix, mountGroup, nil)
 
 	// Execute onMount hooks
@@ -67,7 +68,7 @@ func (app *App) mount(prefix string, subApp *App) Router {
 // Mount attaches another app instance as a sub-router along a routing path.
 // It's very useful to split up a large API as many independent routers and
 // compose them as a single service using Mount.
-func (grp *Group) mount(prefix string, subApp *App) Router {
+func (grp *routing.Group) mount(prefix string, subApp *App) routing.ExpressjsRouterI {
 	groupPath := getGroupPath(grp.Prefix, prefix)
 	groupPath = strings.TrimRight(groupPath, "/")
 	if groupPath == "" {
@@ -83,7 +84,7 @@ func (grp *Group) mount(prefix string, subApp *App) Router {
 	}
 
 	// register mounted group
-	mountGroup := &Group{Prefix: groupPath, app: subApp}
+	mountGroup := &routing.Group{Prefix: groupPath, app: subApp}
 	grp.app.register([]string{methodUse}, groupPath, mountGroup, nil)
 
 	// Execute onMount hooks
@@ -193,7 +194,7 @@ func (app *App) processSubAppsRoutes() {
 			}
 
 			// Create a slice to hold the sub-app's routes
-			subRoutes := make([]*Route, len(route.group.app.stack[m]))
+			subRoutes := make([]*routing.Route, len(route.group.app.stack[m]))
 
 			// Iterate over the sub-app's routes
 			for j, subAppRoute := range route.group.app.stack[m] {
@@ -208,7 +209,7 @@ func (app *App) processSubAppsRoutes() {
 			}
 
 			// Insert the sub-app's routes into the parent app's stack
-			newStack := make([]*Route, len(app.stack[m])+len(subRoutes)-1)
+			newStack := make([]*routing.Route, len(app.stack[m])+len(subRoutes)-1)
 			copy(newStack[:i], app.stack[m][:i])
 			copy(newStack[i:i+len(subRoutes)], subRoutes)
 			copy(newStack[i+len(subRoutes):], app.stack[m][i+1:])

@@ -4,9 +4,10 @@
 // ⚠️ This path parser was inspired by ucarion/urlpath (MIT License).
 // 💖 Maintained and modified for Fiber by @renewerner87
 
-package fiber
+package routing
 
 import (
+	"github.com/gofiber/fiber/v3"
 	"regexp"
 	"strconv"
 	"strings"
@@ -115,11 +116,12 @@ var (
 )
 
 // RoutePatternMatch checks if a given path matches a Fiber route pattern.
-func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
+func RoutePatternMatch(path, pattern string, cfg ...fiber.Config) bool {
 	// See logic in (*Route).match and (*App).register
-	var ctxParams [maxParams]string
+	var ctxParams [fiber.maxParams]string
 
-	config := Config{}
+	// TODO: extract this from the function
+	config := fiber.Config{}
 	if len(cfg) > 0 {
 		config = cfg[0]
 	}
@@ -476,7 +478,7 @@ func splitNonEscaped(s, sep string) []string {
 }
 
 // getMatch parses the passed url and tries to match it against the route segments and determine the parameter positions
-func (routeParser *routeParser) getMatch(detectionPath, path string, params *[maxParams]string, partialCheck bool) bool { //nolint: revive // Accepting a bool param is fine here
+func (routeParser *routeParser) getMatch(detectionPath, path string, params *[fiber.maxParams]string, partialCheck bool) bool { //nolint: revive // Accepting a bool param is fine here
 	var i, paramsIterator, partLen int
 	for _, segment := range routeParser.segs {
 		partLen = len(detectionPath)
@@ -609,33 +611,33 @@ func RemoveEscapeChar(word string) string {
 
 func getParamConstraintType(constraintPart string) TypeConstraint {
 	switch constraintPart {
-	case ConstraintInt:
+	case fiber.ConstraintInt:
 		return intConstraint
-	case ConstraintBool:
+	case fiber.ConstraintBool:
 		return boolConstraint
-	case ConstraintFloat:
+	case fiber.ConstraintFloat:
 		return floatConstraint
-	case ConstraintAlpha:
+	case fiber.ConstraintAlpha:
 		return alphaConstraint
-	case ConstraintGUID:
+	case fiber.ConstraintGUID:
 		return guidConstraint
-	case ConstraintMinLen, ConstraintMinLenLower:
+	case fiber.ConstraintMinLen, fiber.ConstraintMinLenLower:
 		return minLenConstraint
-	case ConstraintMaxLen, ConstraintMaxLenLower:
+	case fiber.ConstraintMaxLen, fiber.ConstraintMaxLenLower:
 		return maxLenConstraint
-	case ConstraintLen:
+	case fiber.ConstraintLen:
 		return lenConstraint
-	case ConstraintBetweenLen, ConstraintBetweenLenLower:
+	case fiber.ConstraintBetweenLen, fiber.ConstraintBetweenLenLower:
 		return betweenLenConstraint
-	case ConstraintMin:
+	case fiber.ConstraintMin:
 		return minConstraint
-	case ConstraintMax:
+	case fiber.ConstraintMax:
 		return maxConstraint
-	case ConstraintRange:
+	case fiber.ConstraintRange:
 		return rangeConstraint
-	case ConstraintDatetime:
+	case fiber.ConstraintDatetime:
 		return datetimeConstraint
-	case ConstraintRegex:
+	case fiber.ConstraintRegex:
 		return regexConstraint
 	default:
 		return noConstraint

@@ -15,6 +15,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"github.com/gofiber/fiber/v3/routing"
 	"io"
 	"mime/multipart"
 	"net"
@@ -1843,7 +1844,7 @@ func Benchmark_Ctx_Params(b *testing.B) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
-	c.route = &Route{
+	c.route = &routing.Route{
 		Params: []string{
 			"param1", "param2", "param3", "param4",
 		},

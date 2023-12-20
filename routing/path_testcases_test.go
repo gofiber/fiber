@@ -2,7 +2,7 @@
 // 📝 Github Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
-package fiber
+package routing
 
 import (
 	"strings"

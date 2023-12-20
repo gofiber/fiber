@@ -14,6 +14,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"github.com/gofiber/fiber/v3/routing"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -85,14 +86,14 @@ type Error struct {
 }
 
 // App denotes the Fiber application.
-type App struct {
+type App[TRouter Router] struct {
 	mutex sync.Mutex
 
 	// TODO: Keep structure for processing ? tree router also possible ?
 	// Route stack divided by HTTP methods
-	stack [][]*Route
+	stack [][]*routing.Route
 	// Route stack divided by HTTP methods and route prefixes
-	treeStack []map[string][]*Route
+	treeStack []map[string][]*routing.Route
 	// contains the information if the route stack has been changed to build the optimized tree
 	routesRefreshed bool
 	// Amount of registered routes
@@ -113,7 +114,7 @@ type App struct {
 	// Hooks
 	hooks *Hooks
 	// Latest route & group
-	latestRoute *Route
+	latestRoute *routing.Route
 	// newCtxFunc
 	newCtxFunc func(app *App) CustomCtx
 	// custom binders
@@ -483,14 +484,20 @@ func DefaultErrorHandler(c Ctx, err error) error {
 //	    Prefork: true,
 //	    ServerHeader: "Fiber",
 //	})
-func New(config ...Config) *App {
+func New(config ...Config) *App[routing.ExpressjsRouter] {
+	// Return app
+	return NewWithRouter[routing.ExpressjsRouter](&routing.ExpressjsRouter{}, config)
+}
+
+func NewWithRouter[TRouter Router](router TRouter, config ...Config) *App[TRouter] {
+	// TODO: add router to app
 	// Create a new app
-	app := &App{
+	app := &App[TRouter]{
 		// Create config
 		config:        Config{},
 		getBytes:      utils.UnsafeBytes,
 		getString:     utils.UnsafeString,
-		latestRoute:   &Route{},
+		latestRoute:   &routing.Route{},
 		customBinders: []CustomBinder{},
 	}
 
@@ -559,8 +566,8 @@ func New(config ...Config) *App {
 
 	// TODO: move to interchanable router class
 	// Create router stack
-	app.stack = make([][]*Route, len(app.config.RequestMethods))
-	app.treeStack = make([]map[string][]*Route, len(app.config.RequestMethods))
+	app.stack = make([][]*routing.Route, len(app.config.RequestMethods))
+	app.treeStack = make([]map[string][]*routing.Route, len(app.config.RequestMethods))
 
 	// Override colors
 	app.config.ColorScheme = defaultColors(app.config.ColorScheme)
@@ -607,7 +614,7 @@ func (app *App) SetTLSHandler(tlsHandler *TLSHandler) {
 }
 
 // Name Assign name to specific route.
-func (app *App) Name(name string) Router {
+func (app *App) Name(name string) routing.ExpressjsRouterI {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
@@ -633,7 +640,7 @@ func (app *App) Name(name string) Router {
 }
 
 // GetRoute Get route by name
-func (app *App) GetRoute(name string) Route {
+func (app *App) GetRoute(name string) routing.Route {
 	for _, routes := range app.stack {
 		for _, route := range routes {
 			if route.Name == name {
@@ -642,13 +649,13 @@ func (app *App) GetRoute(name string) Route {
 		}
 	}
 
-	return Route{}
+	return routing.Route{}
 }
 
 // TODO: part of the router api for the interchangeable class
 // GetRoutes Get all routes. When filterUseOption equal to true, it will filter the routes registered by the middleware.
-func (app *App) GetRoutes(filterUseOption ...bool) []Route {
-	var rs []Route
+func (app *App) GetRoutes(filterUseOption ...bool) []routing.Route {
+	var rs []routing.Route
 	var filterUse bool
 	if len(filterUseOption) != 0 {
 		filterUse = filterUseOption[0]
@@ -685,7 +692,7 @@ func (app *App) GetRoutes(filterUseOption ...bool) []Route {
 //		app.Use("/mounted-path", subApp)
 //
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
-func (app *App) Use(args ...any) Router {
+func (app *App) Use(args ...any) routing.ExpressjsRouterI {
 	var prefix string
 	var subApp *App
 	var prefixes []string
@@ -724,73 +731,73 @@ func (app *App) Use(args ...any) Router {
 
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
-func (app *App) Get(path string, handler Handler, middleware ...Handler) Router {
+func (app *App) Get(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
 	return app.Add([]string{MethodGet}, path, handler, middleware...)
 }
 
 // Head registers a route for HEAD methods that asks for a response identical
 // to that of a GET request, but without the response body.
-func (app *App) Head(path string, handler Handler, middleware ...Handler) Router {
+func (app *App) Head(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
 	return app.Add([]string{MethodHead}, path, handler, middleware...)
 }
 
 // Post registers a route for POST methods that is used to submit an entity to the
 // specified resource, often causing a change in state or side effects on the server.
-func (app *App) Post(path string, handler Handler, middleware ...Handler) Router {
+func (app *App) Post(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
 	return app.Add([]string{MethodPost}, path, handler, middleware...)
 }
 
 // Put registers a route for PUT methods that replaces all current representations
 // of the target resource with the request payload.
-func (app *App) Put(path string, handler Handler, middleware ...Handler) Router {
+func (app *App) Put(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
 	return app.Add([]string{MethodPut}, path, handler, middleware...)
 }
 
 // Delete registers a route for DELETE methods that deletes the specified resource.
-func (app *App) Delete(path string, handler Handler, middleware ...Handler) Router {
+func (app *App) Delete(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
 	return app.Add([]string{MethodDelete}, path, handler, middleware...)
 }
 
 // Connect registers a route for CONNECT methods that establishes a tunnel to the
 // server identified by the target resource.
-func (app *App) Connect(path string, handler Handler, middleware ...Handler) Router {
+func (app *App) Connect(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
 	return app.Add([]string{MethodConnect}, path, handler, middleware...)
 }
 
 // Options registers a route for OPTIONS methods that is used to describe the
 // communication options for the target resource.
-func (app *App) Options(path string, handler Handler, middleware ...Handler) Router {
+func (app *App) Options(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
 	return app.Add([]string{MethodOptions}, path, handler, middleware...)
 }
 
 // Trace registers a route for TRACE methods that performs a message loop-back
 // test along the path to the target resource.
-func (app *App) Trace(path string, handler Handler, middleware ...Handler) Router {
+func (app *App) Trace(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
 	return app.Add([]string{MethodTrace}, path, handler, middleware...)
 }
 
 // Patch registers a route for PATCH methods that is used to apply partial
 // modifications to a resource.
-func (app *App) Patch(path string, handler Handler, middleware ...Handler) Router {
+func (app *App) Patch(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
 	return app.Add([]string{MethodPatch}, path, handler, middleware...)
 }
 
 // Add allows you to specify multiple HTTP methods to register a route.
-func (app *App) Add(methods []string, path string, handler Handler, middleware ...Handler) Router {
+func (app *App) Add(methods []string, path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
 	app.register(methods, path, nil, handler, middleware...)
 
 	return app
 }
 
 // Static will create a file server serving static files
-func (app *App) Static(prefix, root string, config ...Static) Router {
+func (app *App) Static(prefix, root string, config ...Static) routing.ExpressjsRouterI {
 	app.registerStatic(prefix, root, config...)
 
 	return app
 }
 
 // All will register the handler on all HTTP methods
-func (app *App) All(path string, handler Handler, middleware ...Handler) Router {
+func (app *App) All(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
 	return app.Add(app.config.RequestMethods, path, handler, middleware...)
 }
 
@@ -798,8 +805,8 @@ func (app *App) All(path string, handler Handler, middleware ...Handler) Router 
 //
 //	api := app.Group("/api")
 //	api.Get("/users", handler)
-func (app *App) Group(prefix string, handlers ...Handler) Router {
-	grp := &Group{Prefix: prefix, app: app}
+func (app *App) Group(prefix string, handlers ...Handler) routing.ExpressjsRouterI {
+	grp := &routing.Group{Prefix: prefix, app: app}
 	if len(handlers) > 0 {
 		app.register([]string{methodUse}, prefix, grp, nil, handlers...)
 	}
@@ -812,9 +819,9 @@ func (app *App) Group(prefix string, handlers ...Handler) Router {
 
 // Route is used to define routes with a common prefix inside the common function.
 // Uses Group method to define new sub-router.
-func (app *App) Route(path string) Register {
+func (app *App) Route(path string) routing.Register {
 	// Create new route
-	route := &Registering{app: app, path: path}
+	route := &routing.Registering{app: app, path: path}
 
 	return route
 }
@@ -849,7 +856,7 @@ func (app *App) Handler() fasthttp.RequestHandler { //revive:disable-line:confus
 }
 
 // Stack returns the raw router stack.
-func (app *App) Stack() [][]*Route {
+func (app *App) Stack() [][]*routing.Route {
 	return app.stack
 }
 

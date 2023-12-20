@@ -2,16 +2,17 @@
 // 🤖 Github Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
-package fiber
+package routing
 
 import (
 	"fmt"
+	"github.com/gofiber/fiber/v3"
 	"reflect"
 )
 
 // Group struct
 type Group struct {
-	app             *App
+	app             *fiber.App
 	parentGroup     *Group
 	name            string
 	anyRouteDefined bool
@@ -23,7 +24,7 @@ type Group struct {
 //
 // If this method is used before any route added to group, it'll set group name and OnGroupNameHook will be used.
 // Otherwise, it'll set route name and OnName hook will be used.
-func (grp *Group) Name(name string) Router {
+func (grp *Group) Name(name string) ExpressjsRouterI {
 	if grp.anyRouteDefined {
 		grp.app.Name(name)
 
@@ -66,21 +67,21 @@ func (grp *Group) Name(name string) Router {
 //		app.Use("/mounted-path", subApp)
 //
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
-func (grp *Group) Use(args ...any) Router {
-	var subApp *App
+func (grp *Group) Use(args ...any) ExpressjsRouterI {
+	var subApp *fiber.App
 	var prefix string
 	var prefixes []string
-	var handlers []Handler
+	var handlers []fiber.Handler
 
 	for i := 0; i < len(args); i++ {
 		switch arg := args[i].(type) {
 		case string:
 			prefix = arg
-		case *App:
+		case *fiber.App:
 			subApp = arg
 		case []string:
 			prefixes = arg
-		case Handler:
+		case fiber.Handler:
 			handlers = append(handlers, arg)
 		default:
 			panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
@@ -97,7 +98,7 @@ func (grp *Group) Use(args ...any) Router {
 			return grp
 		}
 
-		grp.app.register([]string{methodUse}, getGroupPath(grp.Prefix, prefix), grp, nil, handlers...)
+		grp.app.register([]string{fiber.methodUse}, fiber.getGroupPath(grp.Prefix, prefix), grp, nil, handlers...)
 	}
 
 	if !grp.anyRouteDefined {
@@ -109,60 +110,60 @@ func (grp *Group) Use(args ...any) Router {
 
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
-func (grp *Group) Get(path string, handler Handler, middleware ...Handler) Router {
-	return grp.Add([]string{MethodGet}, path, handler, middleware...)
+func (grp *Group) Get(path string, handler fiber.Handler, middleware ...fiber.Handler) ExpressjsRouterI {
+	return grp.Add([]string{fiber.MethodGet}, path, handler, middleware...)
 }
 
 // Head registers a route for HEAD methods that asks for a response identical
 // to that of a GET request, but without the response body.
-func (grp *Group) Head(path string, handler Handler, middleware ...Handler) Router {
-	return grp.Add([]string{MethodHead}, path, handler, middleware...)
+func (grp *Group) Head(path string, handler fiber.Handler, middleware ...fiber.Handler) ExpressjsRouterI {
+	return grp.Add([]string{fiber.MethodHead}, path, handler, middleware...)
 }
 
 // Post registers a route for POST methods that is used to submit an entity to the
 // specified resource, often causing a change in state or side effects on the server.
-func (grp *Group) Post(path string, handler Handler, middleware ...Handler) Router {
-	return grp.Add([]string{MethodPost}, path, handler, middleware...)
+func (grp *Group) Post(path string, handler fiber.Handler, middleware ...fiber.Handler) ExpressjsRouterI {
+	return grp.Add([]string{fiber.MethodPost}, path, handler, middleware...)
 }
 
 // Put registers a route for PUT methods that replaces all current representations
 // of the target resource with the request payload.
-func (grp *Group) Put(path string, handler Handler, middleware ...Handler) Router {
-	return grp.Add([]string{MethodPut}, path, handler, middleware...)
+func (grp *Group) Put(path string, handler fiber.Handler, middleware ...fiber.Handler) ExpressjsRouterI {
+	return grp.Add([]string{fiber.MethodPut}, path, handler, middleware...)
 }
 
 // Delete registers a route for DELETE methods that deletes the specified resource.
-func (grp *Group) Delete(path string, handler Handler, middleware ...Handler) Router {
-	return grp.Add([]string{MethodDelete}, path, handler, middleware...)
+func (grp *Group) Delete(path string, handler fiber.Handler, middleware ...fiber.Handler) ExpressjsRouterI {
+	return grp.Add([]string{fiber.MethodDelete}, path, handler, middleware...)
 }
 
 // Connect registers a route for CONNECT methods that establishes a tunnel to the
 // server identified by the target resource.
-func (grp *Group) Connect(path string, handler Handler, middleware ...Handler) Router {
-	return grp.Add([]string{MethodConnect}, path, handler, middleware...)
+func (grp *Group) Connect(path string, handler fiber.Handler, middleware ...fiber.Handler) ExpressjsRouterI {
+	return grp.Add([]string{fiber.MethodConnect}, path, handler, middleware...)
 }
 
 // Options registers a route for OPTIONS methods that is used to describe the
 // communication options for the target resource.
-func (grp *Group) Options(path string, handler Handler, middleware ...Handler) Router {
-	return grp.Add([]string{MethodOptions}, path, handler, middleware...)
+func (grp *Group) Options(path string, handler fiber.Handler, middleware ...fiber.Handler) ExpressjsRouterI {
+	return grp.Add([]string{fiber.MethodOptions}, path, handler, middleware...)
 }
 
 // Trace registers a route for TRACE methods that performs a message loop-back
 // test along the path to the target resource.
-func (grp *Group) Trace(path string, handler Handler, middleware ...Handler) Router {
-	return grp.Add([]string{MethodTrace}, path, handler, middleware...)
+func (grp *Group) Trace(path string, handler fiber.Handler, middleware ...fiber.Handler) ExpressjsRouterI {
+	return grp.Add([]string{fiber.MethodTrace}, path, handler, middleware...)
 }
 
 // Patch registers a route for PATCH methods that is used to apply partial
 // modifications to a resource.
-func (grp *Group) Patch(path string, handler Handler, middleware ...Handler) Router {
-	return grp.Add([]string{MethodPatch}, path, handler, middleware...)
+func (grp *Group) Patch(path string, handler fiber.Handler, middleware ...fiber.Handler) ExpressjsRouterI {
+	return grp.Add([]string{fiber.MethodPatch}, path, handler, middleware...)
 }
 
 // Add allows you to specify multiple HTTP methods to register a route.
-func (grp *Group) Add(methods []string, path string, handler Handler, middleware ...Handler) Router {
-	grp.app.register(methods, getGroupPath(grp.Prefix, path), grp, handler, middleware...)
+func (grp *Group) Add(methods []string, path string, handler fiber.Handler, middleware ...fiber.Handler) ExpressjsRouterI {
+	grp.app.register(methods, fiber.getGroupPath(grp.Prefix, path), grp, handler, middleware...)
 	if !grp.anyRouteDefined {
 		grp.anyRouteDefined = true
 	}
@@ -171,8 +172,8 @@ func (grp *Group) Add(methods []string, path string, handler Handler, middleware
 }
 
 // Static will create a file server serving static files
-func (grp *Group) Static(prefix, root string, config ...Static) Router {
-	grp.app.registerStatic(getGroupPath(grp.Prefix, prefix), root, config...)
+func (grp *Group) Static(prefix, root string, config ...fiber.Static) ExpressjsRouterI {
+	grp.app.registerStatic(fiber.getGroupPath(grp.Prefix, prefix), root, config...)
 	if !grp.anyRouteDefined {
 		grp.anyRouteDefined = true
 	}
@@ -181,7 +182,7 @@ func (grp *Group) Static(prefix, root string, config ...Static) Router {
 }
 
 // All will register the handler on all HTTP methods
-func (grp *Group) All(path string, handler Handler, middleware ...Handler) Router {
+func (grp *Group) All(path string, handler fiber.Handler, middleware ...fiber.Handler) ExpressjsRouterI {
 	_ = grp.Add(grp.app.config.RequestMethods, path, handler, middleware...)
 	return grp
 }
@@ -190,10 +191,10 @@ func (grp *Group) All(path string, handler Handler, middleware ...Handler) Route
 //
 //	api := app.Group("/api")
 //	api.Get("/users", handler)
-func (grp *Group) Group(prefix string, handlers ...Handler) Router {
-	prefix = getGroupPath(grp.Prefix, prefix)
+func (grp *Group) Group(prefix string, handlers ...fiber.Handler) ExpressjsRouterI {
+	prefix = fiber.getGroupPath(grp.Prefix, prefix)
 	if len(handlers) > 0 {
-		grp.app.register([]string{methodUse}, prefix, grp, nil, handlers...)
+		grp.app.register([]string{fiber.methodUse}, prefix, grp, nil, handlers...)
 	}
 
 	// Create new group
@@ -209,7 +210,7 @@ func (grp *Group) Group(prefix string, handlers ...Handler) Router {
 // Uses Group method to define new sub-router.
 func (grp *Group) Route(path string) Register {
 	// Create new group
-	register := &Registering{app: grp.app, path: getGroupPath(grp.Prefix, path)}
+	register := &Registering{app: grp.app, path: fiber.getGroupPath(grp.Prefix, path)}
 
 	return register
 }

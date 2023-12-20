@@ -2,13 +2,14 @@ package fiber
 
 import (
 	"github.com/gofiber/fiber/v3/log"
+	"github.com/gofiber/fiber/v3/routing"
 )
 
 // OnRouteHandler Handlers define a function to create hooks for Fiber.
 type (
-	OnRouteHandler     = func(Route) error
+	OnRouteHandler     = func(routing.Route) error
 	OnNameHandler      = OnRouteHandler
-	OnGroupHandler     = func(Group) error
+	OnGroupHandler     = func(routing.Group) error
 	OnGroupNameHandler = OnGroupHandler
 	OnListenHandler    = func(ListenData) error
 	OnShutdownHandler  = func() error
@@ -119,7 +120,7 @@ func (h *Hooks) OnMount(handler ...OnMountHandler) {
 	h.app.mutex.Unlock()
 }
 
-func (h *Hooks) executeOnRouteHooks(route Route) error {
+func (h *Hooks) executeOnRouteHooks(route routing.Route) error {
 	// Check mounting
 	if h.app.mountFields.mountPath != "" {
 		route.path = h.app.mountFields.mountPath + route.path
@@ -135,7 +136,7 @@ func (h *Hooks) executeOnRouteHooks(route Route) error {
 	return nil
 }
 
-func (h *Hooks) executeOnNameHooks(route Route) error {
+func (h *Hooks) executeOnNameHooks(route routing.Route) error {
 	// Check mounting
 	if h.app.mountFields.mountPath != "" {
 		route.path = h.app.mountFields.mountPath + route.path
@@ -151,7 +152,7 @@ func (h *Hooks) executeOnNameHooks(route Route) error {
 	return nil
 }
 
-func (h *Hooks) executeOnGroupHooks(group Group) error {
+func (h *Hooks) executeOnGroupHooks(group routing.Group) error {
 	// Check mounting
 	if h.app.mountFields.mountPath != "" {
 		group.Prefix = h.app.mountFields.mountPath + group.Prefix
@@ -166,7 +167,7 @@ func (h *Hooks) executeOnGroupHooks(group Group) error {
 	return nil
 }
 
-func (h *Hooks) executeOnGroupNameHooks(group Group) error {
+func (h *Hooks) executeOnGroupNameHooks(group routing.Group) error {
 	// Check mounting
 	if h.app.mountFields.mountPath != "" {
 		group.Prefix = h.app.mountFields.mountPath + group.Prefix

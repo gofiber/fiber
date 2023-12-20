@@ -6,6 +6,7 @@ package fiber
 
 import (
 	"fmt"
+	"github.com/gofiber/fiber/v3/routing"
 	"strings"
 	"sync"
 
@@ -277,7 +278,7 @@ func (r *Redirect) setFlash() {
 
 	var commaPos int
 	for {
-		commaPos = findNextNonEscapedCharsetPosition(cookieValue, []byte(CookieDataSeparator))
+		commaPos = routing.findNextNonEscapedCharsetPosition(cookieValue, []byte(CookieDataSeparator))
 		if commaPos != -1 {
 			r.c.redirectionMessages = append(r.c.redirectionMessages, strings.Trim(cookieValue[:commaPos], " "))
 			cookieValue = cookieValue[commaPos+1:]
@@ -291,9 +292,9 @@ func (r *Redirect) setFlash() {
 }
 
 func parseMessage(raw string) (string, string) { //nolint: revive // not necessary
-	if i := findNextNonEscapedCharsetPosition(raw, []byte(CookieDataAssigner)); i != -1 {
-		return RemoveEscapeChar(raw[:i]), RemoveEscapeChar(raw[i+1:])
+	if i := routing.findNextNonEscapedCharsetPosition(raw, []byte(CookieDataAssigner)); i != -1 {
+		return routing.RemoveEscapeChar(raw[:i]), routing.RemoveEscapeChar(raw[i+1:])
 	}
 
-	return RemoveEscapeChar(raw), ""
+	return routing.RemoveEscapeChar(raw), ""
 }

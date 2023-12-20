@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"github.com/gofiber/fiber/v3/routing"
 	"io"
 	"mime/multipart"
 	"net"
@@ -38,7 +39,7 @@ const userContextKey = "__local_user_context__"
 
 type DefaultCtx struct {
 	app                 *App                 // Reference to *App
-	route               *Route               // Reference to *Route
+	route               *routing.Route       // Reference to *Route
 	indexRoute          int                  // Index of the current route
 	indexHandler        int                  // Index of the current handler
 	method              string               // HTTP method
@@ -1101,7 +1102,7 @@ func (c *DefaultCtx) BindVars(vars Map) error {
 }
 
 // getLocationFromRoute get URL location from route using parameters
-func (c *DefaultCtx) getLocationFromRoute(route Route, params Map) (string, error) {
+func (c *DefaultCtx) getLocationFromRoute(route routing.Route, params Map) (string, error) {
 	buf := bytebufferpool.Get()
 	for _, segment := range route.routeParser.segs {
 		if !segment.IsParam {
@@ -1114,7 +1115,7 @@ func (c *DefaultCtx) getLocationFromRoute(route Route, params Map) (string, erro
 
 		for key, val := range params {
 			isSame := key == segment.ParamName || (!c.app.config.CaseSensitive && utils.EqualFold(key, segment.ParamName))
-			isGreedy := segment.IsGreedy && len(key) == 1 && isInCharset(key[0], greedyParameters)
+			isGreedy := segment.IsGreedy && len(key) == 1 && routing.isInCharset(key[0], routing.greedyParameters)
 			if isSame || isGreedy {
 				_, err := buf.WriteString(utils.ToString(val))
 				if err != nil {
@@ -1231,10 +1232,10 @@ func (c *DefaultCtx) renderExtensions(bind interface{}) {
 }
 
 // Route returns the matched Route struct.
-func (c *DefaultCtx) Route() *Route {
+func (c *DefaultCtx) Route() *routing.Route {
 	if c.route == nil {
 		// Fallback for fasthttp error handler
-		return &Route{
+		return &routing.Route{
 			path:     c.pathOriginal,
 			Path:     c.pathOriginal,
 			Method:   c.method,

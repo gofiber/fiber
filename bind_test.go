@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/gofiber/fiber/v3/routing"
 	"net/http/httptest"
 	"reflect"
 	"testing"
@@ -1133,7 +1134,7 @@ func Benchmark_Bind_URI(b *testing.B) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
-	c.route = &Route{
+	c.route = &routing.Route{
 		Params: []string{
 			"param1", "param2", "param3", "param4",
 		},
@@ -1170,7 +1171,7 @@ func Benchmark_Bind_URI_Map(b *testing.B) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
-	c.route = &Route{
+	c.route = &routing.Route{
 		Params: []string{
 			"param1", "param2", "param3", "param4",
 		},

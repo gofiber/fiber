@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"fmt"
+	"github.com/gofiber/fiber/v3/routing"
 	"io"
 	"net"
 	"os"
@@ -183,9 +184,9 @@ func (app *App) methodExistCustom(c CustomCtx) bool {
 }
 
 // uniqueRouteStack drop all not unique routes from the slice
-func uniqueRouteStack(stack []*Route) []*Route {
-	var unique []*Route
-	m := make(map[*Route]int)
+func uniqueRouteStack(stack []*routing.Route) []*routing.Route {
+	var unique []*routing.Route
+	m := make(map[*routing.Route]int)
 	for _, v := range stack {
 		if _, ok := m[v]; !ok {
 			// Unique key found. Record position and collect

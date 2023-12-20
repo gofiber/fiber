@@ -3,6 +3,7 @@ package fiber
 import (
 	"errors"
 	"fmt"
+	"github.com/gofiber/fiber/v3/routing"
 	"testing"
 	"time"
 
@@ -18,7 +19,7 @@ func Test_Hook_OnRoute(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	app.Hooks().OnRoute(func(r Route) error {
+	app.Hooks().OnRoute(func(r routing.Route) error {
 		require.Equal(t, "", r.Name)
 
 		return nil
@@ -38,13 +39,13 @@ func Test_Hook_OnRoute_Mount(t *testing.T) {
 	subApp := New()
 	app.Use("/sub", subApp)
 
-	subApp.Hooks().OnRoute(func(r Route) error {
+	subApp.Hooks().OnRoute(func(r routing.Route) error {
 		require.Equal(t, "/sub/test", r.Path)
 
 		return nil
 	})
 
-	app.Hooks().OnRoute(func(r Route) error {
+	app.Hooks().OnRoute(func(r routing.Route) error {
 		require.Equal(t, "/", r.Path)
 
 		return nil
@@ -61,7 +62,7 @@ func Test_Hook_OnName(t *testing.T) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	app.Hooks().OnName(func(r Route) error {
+	app.Hooks().OnName(func(r routing.Route) error {
 		_, err := buf.WriteString(r.Name)
 		require.NoError(t, nil, err)
 
@@ -88,7 +89,7 @@ func Test_Hook_OnName_Error(t *testing.T) {
 		}
 	}()
 
-	app.Hooks().OnName(func(r Route) error {
+	app.Hooks().OnName(func(r routing.Route) error {
 		return errors.New("unknown error")
 	})
 
@@ -102,7 +103,7 @@ func Test_Hook_OnGroup(t *testing.T) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	app.Hooks().OnGroup(func(g Group) error {
+	app.Hooks().OnGroup(func(g routing.Group) error {
 		_, err := buf.WriteString(g.Prefix)
 		require.NoError(t, nil, err)
 		return nil
@@ -120,7 +121,7 @@ func Test_Hook_OnGroup_Mount(t *testing.T) {
 	micro := New()
 	micro.Use("/john", app)
 
-	app.Hooks().OnGroup(func(g Group) error {
+	app.Hooks().OnGroup(func(g routing.Group) error {
 		require.Equal(t, "/john/v1", g.Prefix)
 		return nil
 	})
@@ -141,14 +142,14 @@ func Test_Hook_OnGroupName(t *testing.T) {
 	buf2 := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf2)
 
-	app.Hooks().OnGroupName(func(g Group) error {
+	app.Hooks().OnGroupName(func(g routing.Group) error {
 		_, err := buf.WriteString(g.name)
 		require.NoError(t, nil, err)
 
 		return nil
 	})
 
-	app.Hooks().OnName(func(r Route) error {
+	app.Hooks().OnName(func(r routing.Route) error {
 		_, err := buf2.WriteString(r.Name)
 		require.NoError(t, err)
 
@@ -172,7 +173,7 @@ func Test_Hook_OnGroupName_Error(t *testing.T) {
 		}
 	}()
 
-	app.Hooks().OnGroupName(func(g Group) error {
+	app.Hooks().OnGroupName(func(g routing.Group) error {
 		return errors.New("unknown error")
 	})
 
