@@ -546,7 +546,7 @@ If the Accept header is **not** specified, the first handler will be used.
 :::
 
 ```go title="Signature"
-func (c *Ctx) Format(handlers ...Fmt) error
+func (c *Ctx) Format(handlers ...ResFmt) error
 ```
 
 ```go title="Example"
@@ -555,13 +555,13 @@ func (c *Ctx) Format(handlers ...Fmt) error
 // Accept: application/xml => Not Acceptable
 app.Get("/no-default", func(c fiber.Ctx) error {
   return c.Format(
-    fiber.Fmt{"application/json", func(c fiber.Ctx) error {
+    fiber.ResFmt{"application/json", func(c fiber.Ctx) error {
       return c.JSON(fiber.Map{
         "command": "eat",
         "subject": "fruit",
       })
     }},
-    fiber.Fmt{"text/plain", func(c fiber.Ctx) error {
+    fiber.ResFmt{"text/plain", func(c fiber.Ctx) error {
       return c.SendString("Eat Fruit!")
     }},
   )
@@ -575,7 +575,7 @@ app.Get("/default", func(c fiber.Ctx) error {
     return c.SendString("Eat Fruit!")
   }
 
-  handlers := []fiber.Fmt{
+  handlers := []fiber.ResFmt{
     {"application/json", func(c fiber.Ctx) error {
       return c.JSON(fiber.Map{
         "command": "eat",

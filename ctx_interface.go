@@ -95,7 +95,7 @@ type Ctx interface {
 	// If no accepted format is found, and a format with MediaType "default" is given,
 	// that default handler is called. If no format is found and no default is given,
 	// StatusNotAcceptable is sent.
-	Format(handlers ...Fmt) error
+	Format(handlers ...ResFmt) error
 
 	// AutoFormat performs content-negotiation on the Accept HTTP header.
 	// It uses Accepts to select a proper format.

@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -100,6 +99,12 @@ type Cookie struct {
 type Views interface {
 	Load() error
 	Render(io.Writer, string, any, ...string) error
+}
+
+// ResFmt associates a Content Type to a fiber.Handler for c.Format
+type ResFmt struct {
+	MediaType string
+	Handler   func(Ctx) error
 }
 
 // Accepts checks if the specified extensions or content types are acceptable.
@@ -371,27 +376,28 @@ func (c *DefaultCtx) Response() *fasthttp.Response {
 	return &c.fasthttp.Response
 }
 
-type Fmt struct {
-	MediaType string
-	Handler   func(Ctx) error
-}
-
 // Format performs content-negotiation on the Accept HTTP header.
 // It uses Accepts to select a proper format and calls the matching
 // user-provided handler function.
 // If no accepted format is found, and a format with MediaType "default" is given,
 // that default handler is called. If no format is found and no default is given,
 // StatusNotAcceptable is sent.
-func (c *DefaultCtx) Format(handlers ...Fmt) error {
+func (c *DefaultCtx) Format(handlers ...ResFmt) error {
 	if len(handlers) == 0 {
-		panic("Format requires at least one handler")
+		return ErrNoHandlers
 	}
+
+	c.Vary(HeaderAccept)
 
 	if c.Get(HeaderAccept) == "" {
 		c.Response().Header.SetContentType(handlers[0].MediaType)
 		return handlers[0].Handler(c)
 	}
 
+	// Using an int literal as the slice capacity allows for the slice to be
+	// allocated on the stack. The number was chosen arbitrarily as an
+	// approximation of the maximum number of content types a user might handle.
+	// If the user goes over, it just causes allocations, so it's not a problem.
 	types := make([]string, 0, 8)
 	var defaultHandler Handler
 	for _, h := range handlers {
@@ -417,8 +423,7 @@ func (c *DefaultCtx) Format(handlers ...Fmt) error {
 		}
 	}
 
-	// unreachable code
-	panic(errors.New("fiber: an Accept was found but no handler was called - please file a bug report"))
+	return fmt.Errorf("%w: format: an Accept was found but no handler was called", errUnreachable)
 }
 
 // AutoFormat performs content-negotiation on the Accept HTTP header.

@@ -719,11 +719,11 @@ func Test_Ctx_Format(t *testing.T) {
 
 	// set `accepted` to whatever media type was chosen by Format
 	var accepted string
-	formatHandlers := func(types ...string) []Fmt {
-		fmts := []Fmt{}
+	formatHandlers := func(types ...string) []ResFmt {
+		fmts := []ResFmt{}
 		for _, t := range types {
 			t := utils.CopyString(t)
-			fmts = append(fmts, Fmt{t, func(c Ctx) error {
+			fmts = append(fmts, ResFmt{t, func(c Ctx) error {
 				accepted = t
 				return nil
 			}})
@@ -745,11 +745,11 @@ func Test_Ctx_Format(t *testing.T) {
 	require.NotEqual(t, StatusNotAcceptable, c.Response().StatusCode())
 
 	myError := errors.New("this is an error")
-	err = c.Format(Fmt{"text/html", func(c Ctx) error { return myError }})
+	err = c.Format(ResFmt{"text/html", func(c Ctx) error { return myError }})
 	require.ErrorIs(t, err, myError)
 
 	c.Request().Header.Set(HeaderAccept, "application/json")
-	err = c.Format(Fmt{"text/html", func(c Ctx) error { return c.SendStatus(StatusOK) }})
+	err = c.Format(ResFmt{"text/html", func(c Ctx) error { return c.SendStatus(StatusOK) }})
 	require.Equal(t, StatusNotAcceptable, c.Response().StatusCode())
 	require.NoError(t, err)
 
@@ -758,9 +758,8 @@ func Test_Ctx_Format(t *testing.T) {
 	require.Equal(t, "text/html", c.GetRespHeader(HeaderContentType))
 	require.NoError(t, err)
 
-	require.Panics(t, func() {
-		err = c.Format()
-	})
+	err = c.Format()
+	require.ErrorIs(t, err, ErrNoHandlers)
 }
 
 func Benchmark_Ctx_Format(b *testing.B) {
@@ -780,17 +779,17 @@ func Benchmark_Ctx_Format(b *testing.B) {
 	b.Run("with arg allocation", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			err = c.Format(
-				Fmt{"application/xml", fail},
-				Fmt{"text/html", fail},
-				Fmt{"text/plain;format=fixed", fail},
-				Fmt{"text/plain;format=flowed", ok},
+				ResFmt{"application/xml", fail},
+				ResFmt{"text/html", fail},
+				ResFmt{"text/plain;format=fixed", fail},
+				ResFmt{"text/plain;format=flowed", ok},
 			)
 		}
 		require.NoError(b, err)
 	})
 
 	b.Run("pre-allocated args", func(b *testing.B) {
-		offers := []Fmt{
+		offers := []ResFmt{
 			{"application/xml", fail},
 			{"text/html", fail},
 			{"text/plain;format=fixed", fail},
@@ -804,7 +803,7 @@ func Benchmark_Ctx_Format(b *testing.B) {
 
 	c.Request().Header.Set("Accept", "text/plain")
 	b.Run("text/plain", func(b *testing.B) {
-		offers := []Fmt{
+		offers := []ResFmt{
 			{"application/xml", fail},
 			{"text/plain", ok},
 		}
@@ -816,7 +815,7 @@ func Benchmark_Ctx_Format(b *testing.B) {
 
 	c.Request().Header.Set("Accept", "json")
 	b.Run("json", func(b *testing.B) {
-		offers := []Fmt{
+		offers := []ResFmt{
 			{"xml", fail},
 			{"html", fail},
 			{"json", ok},
