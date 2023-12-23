@@ -65,7 +65,7 @@ func setDefaultForSlice(field reflect.Value, tagValue string, elemType reflect.T
 			if intVal, err := strconv.ParseInt(item, 10, 64); err == nil {
 				switch elemType.Kind() {
 				case reflect.Int:
-					if strconv.IntSize == 64 || (intVal >= int64(math.MinInt32) && intVal <= int64(math.MaxInt32)) {
+					if strconv.IntSize == 64 && (intVal >= int64(math.MinInt32) && intVal <= int64(math.MaxInt32)) {
 						val = reflect.ValueOf(int(intVal))
 					}
 				case reflect.Int8:
