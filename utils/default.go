@@ -86,7 +86,6 @@ func setDefaultForSlice(field reflect.Value, tagValue string, elemType reflect.T
 			}
 		}
 		if val.IsValid() {
-
 			slice = reflect.Append(slice, val)
 		}
 	}
@@ -94,8 +93,10 @@ func setDefaultForSlice(field reflect.Value, tagValue string, elemType reflect.T
 	field.Set(slice)
 }
 
-var mu sync.Mutex
-var structCache = make(map[reflect.Type][]reflect.StructField)
+var (
+	mu          sync.Mutex
+	structCache = make(map[reflect.Type][]reflect.StructField)
+)
 
 func getFieldsWithDefaultTag(t reflect.Type) []reflect.StructField {
 	if fields, ok := structCache[t]; ok {

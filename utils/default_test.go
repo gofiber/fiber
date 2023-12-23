@@ -95,6 +95,7 @@ func TestTagHandlers(t *testing.T) {
 		})
 	}
 }
+
 func TestSetDefaultForSlice(t *testing.T) {
 	tests := []struct {
 		name     string
