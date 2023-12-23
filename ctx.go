@@ -1029,6 +1029,22 @@ func (c *DefaultCtx) QueryFloat(key string, defaultValue ...float64) float64 {
 	return value
 }
 
+// QueryParser try to parser a given string into a given type.
+//
+//	GET /?id=01827964-1320-47b4-b2fa-c67fa9c39bed
+//	QueryParser("id", uuid.Parse) = uuid.UUID("01827964-1320-47b4-b2fa-c67fa9c39bed")
+func QueryParser[T any](c Ctx, key string, parser func(string) (T, error), defaultValue ...T) (T, error) {
+	result, err := parser(c.Query(key))
+	if err != nil {
+		if len(defaultValue) > 0 {
+			return defaultValue[0], nil
+		}
+		var empty T
+		return empty, err
+	}
+	return result, nil
+}
+
 // Range returns a struct containing the type and a slice of ranges.
 func (c *DefaultCtx) Range(size int) (Range, error) {
 	var rangeData Range

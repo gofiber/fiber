@@ -15,6 +15,8 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
 	"io"
 	"mime/multipart"
 	"net"
@@ -3953,4 +3955,28 @@ func Test_Ctx_extractIPsFromHeader_EnableValidateIp(t *testing.T) {
 	ips := c.IPs()
 	res := ips[len(ips)-2]
 	require.Equal(t, "42.118.81.169", res)
+}
+
+func Test_QueryParser(t *testing.T) {
+	app := New()
+	t.Run("Parse UUID correctly", func(t *testing.T) {
+		c := app.NewCtx(&fasthttp.RequestCtx{})
+		originalID := uuid.New()
+		c.Request().URI().SetQueryString("id=" + originalID.String())
+		result, err := QueryParser(c, "id", uuid.Parse)
+		assert.Nil(t, err)
+		assert.Equal(t, originalID, result)
+	})
+	t.Run("Parse UUID fails", func(t *testing.T) {
+		c := app.NewCtx(&fasthttp.RequestCtx{})
+		_, err := QueryParser(c, "id", uuid.Parse)
+		assert.NotNil(t, err)
+	})
+	t.Run("Parse UUID fails - Use default value", func(t *testing.T) {
+		c := app.NewCtx(&fasthttp.RequestCtx{})
+		defaultID := uuid.New()
+		result, err := QueryParser(c, "id", uuid.Parse, defaultID)
+		assert.Nil(t, err)
+		assert.Equal(t, defaultID, result)
+	})
 }
