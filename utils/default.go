@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 func tagHandlers(field reflect.Value, tagValue string) {
@@ -93,6 +94,7 @@ func setDefaultForSlice(field reflect.Value, tagValue string, elemType reflect.T
 	field.Set(slice)
 }
 
+var mu sync.Mutex
 var structCache = make(map[reflect.Type][]reflect.StructField)
 
 func getFieldsWithDefaultTag(t reflect.Type) []reflect.StructField {
@@ -107,7 +109,11 @@ func getFieldsWithDefaultTag(t reflect.Type) []reflect.StructField {
 			fields = append(fields, field)
 		}
 	}
+
+	mu.Lock()
 	structCache[t] = fields
+	mu.Unlock()
+
 	return fields
 }
 
