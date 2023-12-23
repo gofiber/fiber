@@ -3,6 +3,7 @@ package probechecker
 import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
+	"github.com/valyala/fasthttp"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -86,4 +87,24 @@ func Test_ProbeChecker_NilChecker(t *testing.T) {
 	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/readyz", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusNotFound, req.StatusCode)
+}
+
+func Benchmark_ProbeChecker(b *testing.B) {
+	app := fiber.New()
+
+	app.Use(New())
+
+	h := app.Handler()
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
+	fctx.Request.SetRequestURI("/livez")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		h(fctx)
+	}
+
+	utils.AssertEqual(b, fiber.StatusOK, fctx.Response.Header.StatusCode())
 }
