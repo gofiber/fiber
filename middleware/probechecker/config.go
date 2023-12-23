@@ -4,6 +4,11 @@ import "github.com/gofiber/fiber/v2"
 
 // Config is the config struct for the probechecker middleware
 type Config struct {
+	// Next defines a function to skip this middleware when returned true.
+	//
+	// Optional. Default: nil
+	Next func(c *fiber.Ctx) bool
+
 	// Config for liveness probe of the container engine being used
 	//
 	// Optional. Default: func(c *Ctx) bool { return true }
@@ -46,6 +51,10 @@ func defaultConfig(config ...Config) Config {
 	}
 
 	cfg := config[0]
+
+	if cfg.Next == nil {
+		cfg.Next = ConfigDefault.Next
+	}
 
 	if cfg.IsLive == nil {
 		cfg.IsLive = defaultLiveFunc

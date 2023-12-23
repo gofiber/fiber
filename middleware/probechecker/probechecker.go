@@ -1,8 +1,6 @@
 package probechecker
 
 import (
-	"fmt"
-
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -26,37 +24,27 @@ func probeCheckerHandler(checker ProbeChecker) fiber.Handler {
 	}
 }
 
-func checkRoute(path string, config *Config) string {
-	switch path {
-	case DefaultLivenessEndpoint, config.IsLiveEndpoint:
-		return "liveness"
-	case DefaultReadinessEndpoint, config.IsReadyEndpoint:
-		return "readiness"
-	default:
-		return ""
-	}
-}
-
 func New(config ...Config) fiber.Handler {
 	cfg := defaultConfig(config...)
 
-	checkers := map[string]fiber.Handler{
-		"liveness":  probeCheckerHandler(cfg.IsLive),
-		"readiness": probeCheckerHandler(cfg.IsReady),
-	}
+	isLiveHandler := probeCheckerHandler(cfg.IsLive)
+	isReadyHandler := probeCheckerHandler(cfg.IsReady)
 
 	return func(c *fiber.Ctx) error {
-		route := c.Route()
-		routeType := checkRoute(route.Path, &cfg)
+		// Don't execute middleware if Next returns true
+		if cfg.Next != nil && cfg.Next(c) {
+			return c.Next()
+		}
 
-		if routeType != "" || route.Method != fiber.MethodGet {
-			handler, ok := checkers[routeType]
+		if c.Method() != fiber.MethodGet {
+			return c.Next()
+		}
 
-			if !ok {
-				return fmt.Errorf("routeType of %s not found in checkers", routeType)
-			}
-
-			return handler(c)
+		switch c.Path() {
+		case cfg.IsReadyEndpoint:
+			return isReadyHandler(c)
+		case cfg.IsLiveEndpoint:
+			return isLiveHandler(c)
 		}
 
 		return c.Next()

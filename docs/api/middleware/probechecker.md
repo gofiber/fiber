@@ -34,42 +34,65 @@ app.Use(probechecker.New())
 
 // Initialize with custom config
 app.Use(
-	probechecker.New(
-		IsLive: func (c *fiber.Ctx) bool {
-    	return true
-  	},
-  	IsLiveEndpoint: "/livez",
-  	IsReady: func (c *fiber.Ctx) bool {
-	    return serviceA.Ready() && serviceB.Ready() && ...
-	  }
-	  IsReadyEndpoint: "/readyz",
-	)
-)
+    probechecker.New(Config{
+        IsLive: func(c *fiber.Ctx) bool {
+            return true
+        },
+        IsLiveEndpoint: "/live",
+		IsReady: func (c *fiber.Ctx) bool {
+            return serviceA.Ready() && serviceB.Ready() && ...
+        },
+        IsReadyEndpoint: "/ready",
+}))
 
 ```
 
 ## Config
 
 ```go
+// Config is the config struct for the probechecker middleware
 type Config struct {
-	// Config for liveness probe of the container engine being used
-	//
-	// Optional. Default: func(c *Ctx) bool { return true }
-	IsLive ProbeChecker
+    // Next defines a function to skip this middleware when returned true.
+    //
+    // Optional. Default: nil
+    Next func(c *fiber.Ctx) bool
 
-	// HTTP endpoint of the liveness probe
-	//
-	// Optional. Default: /livez
-	IsLiveEndpoint string
+    // Config for liveness probe of the container engine being used
+    //
+    // Optional. Default: func(c *Ctx) bool { return true }
+    IsLive ProbeChecker
 
-	// Config for readiness probe of the container engine being used
-	//
-	// Optional. Default: nil
-	IsReady ProbeChecker
+    // HTTP endpoint of the liveness probe
+    //
+    // Optional. Default: /livez
+    IsLiveEndpoint string
 
-	// HTTP endpoint of the readiness probe
-	//
-	// Optional. Default: /readyz
-	IsReadyEndpoint string
+    // Config for readiness probe of the container engine being used
+    //
+    // Optional. Default: nil
+    IsReady ProbeChecker
+
+    // HTTP endpoint of the readiness probe
+    //
+    // Optional. Default: /readyz
+    IsReadyEndpoint string
+}
+```
+
+## Default Config
+
+```go
+const (
+    DefaultLivenessEndpoint  = "/livez"
+    DefaultReadinessEndpoint = "/readyz"
+)
+
+func defaultLiveFunc(*fiber.Ctx) bool { return true }
+
+// ConfigDefault is the default config
+var ConfigDefault = Config{
+    IsLive:          defaultLiveFunc,
+    IsLiveEndpoint:  DefaultLivenessEndpoint,
+    IsReadyEndpoint: DefaultReadinessEndpoint,
 }
 ```
