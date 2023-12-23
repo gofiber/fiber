@@ -453,8 +453,6 @@ const (
 	DefaultReadBufferSize       = 4096
 	DefaultWriteBufferSize      = 4096
 	DefaultCompressedFileSuffix = ".fiber.gz"
-	DefaultLivenessEndpoint     = "/livez"
-	DefaultReadinessEndpoint    = "/readyz"
 )
 
 // HTTP methods enabled by default
