@@ -4544,7 +4544,7 @@ func Test_Ctx_QueryParserUsingTag(t *testing.T) {
 // go test -run Test_Ctx_QueryParserWithDefaultValues -v
 func Test_Ctx_QueryParserWithDefaultValues(t *testing.T) {
 	t.Parallel()
-	app := New(Config{EnableSplittingOnParsers: true})
+	app := New(Config{DefaultValueParser: true, EnableSplittingOnParsers: true})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 	type Query struct {
