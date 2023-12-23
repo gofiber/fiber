@@ -12,36 +12,6 @@ type ProbeChecker func(*fiber.Ctx) bool
 // ProbeCheckerHandler defines a function that returns a ProbeChecker
 type ProbeCheckerHandler func(ProbeChecker) fiber.Handler
 
-// Config is the config struct for the probechecker middleware
-type Config struct {
-	// Config for liveness probe of the container engine being used
-	//
-	// Optional. Default: func(c *Ctx) bool { return true }
-	IsLive ProbeChecker
-
-	// HTTP endpoint of the liveness probe
-	//
-	// Optional. Default: /livez
-	IsLiveEndpoint string
-
-	// Config for readiness probe of the container engine being used
-	//
-	// Optional. Default: nil
-	IsReady ProbeChecker
-
-	// HTTP endpoint of the readiness probe
-	//
-	// Optional. Default: /readyz
-	IsReadyEndpoint string
-}
-
-const (
-	DefaultLivenessEndpoint  = "/livez"
-	DefaultReadinessEndpoint = "/readyz"
-)
-
-func defaultLiveFunc(*fiber.Ctx) bool { return true }
-
 func probeCheckerHandler(checker ProbeChecker) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		if checker == nil {
@@ -91,28 +61,4 @@ func New(config ...Config) fiber.Handler {
 
 		return c.Next()
 	}
-}
-
-func defaultConfig(config ...Config) Config {
-	if len(config) < 1 {
-		return Config{
-			IsLive:          defaultLiveFunc,
-			IsLiveEndpoint:  DefaultLivenessEndpoint,
-			IsReadyEndpoint: DefaultReadinessEndpoint,
-		}
-	}
-
-	cfg := config[0]
-
-	if cfg.IsLiveEndpoint == "" {
-		cfg.IsLiveEndpoint = DefaultLivenessEndpoint
-	}
-	if cfg.IsReadyEndpoint == "" {
-		cfg.IsReadyEndpoint = DefaultReadinessEndpoint
-	}
-	if cfg.IsLive == nil {
-		cfg.IsLive = defaultLiveFunc
-	}
-
-	return cfg
 }
