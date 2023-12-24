@@ -1,12 +1,13 @@
 package healthcheck
 
 import (
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/utils"
-	"github.com/valyala/fasthttp"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/utils"
+	"github.com/valyala/fasthttp"
 )
 
 func Test_HealthCheck(t *testing.T) {

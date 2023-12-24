@@ -1,6 +1,8 @@
 package healthcheck
 
-import "github.com/gofiber/fiber/v2"
+import (
+	"github.com/gofiber/fiber/v2"
+)
 
 // Config is the config struct for the healthcheck middleware
 type Config struct {
