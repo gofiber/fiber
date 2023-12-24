@@ -1,16 +1,16 @@
-package probechecker
+package healthcheck
 
 import (
 	"github.com/gofiber/fiber/v2"
 )
 
-// ProbeChecker defines a function to check liveness or readiness of the application
-type ProbeChecker func(*fiber.Ctx) bool
+// HealthChecker defines a function to check liveness or readiness of the application
+type HealthChecker func(*fiber.Ctx) bool
 
 // ProbeCheckerHandler defines a function that returns a ProbeChecker
-type ProbeCheckerHandler func(ProbeChecker) fiber.Handler
+type HealthCheckerHandler func(HealthChecker) fiber.Handler
 
-func probeCheckerHandler(checker ProbeChecker) fiber.Handler {
+func healthCheckerHandler(checker HealthChecker) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		if checker == nil {
 			return c.Next()
@@ -27,8 +27,8 @@ func probeCheckerHandler(checker ProbeChecker) fiber.Handler {
 func New(config ...Config) fiber.Handler {
 	cfg := defaultConfig(config...)
 
-	isLiveHandler := probeCheckerHandler(cfg.IsLive)
-	isReadyHandler := probeCheckerHandler(cfg.IsReady)
+	isLiveHandler := healthCheckerHandler(cfg.IsLive)
+	isReadyHandler := healthCheckerHandler(cfg.IsReady)
 
 	return func(c *fiber.Ctx) error {
 		// Don't execute middleware if Next returns true

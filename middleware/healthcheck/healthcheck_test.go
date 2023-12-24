@@ -1,4 +1,4 @@
-package probechecker
+package healthcheck
 
 import (
 	"github.com/gofiber/fiber/v2"
@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func Test_ProbeChecker(t *testing.T) {
+func Test_HealthCheck(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
@@ -59,7 +59,7 @@ func Test_ProbeChecker(t *testing.T) {
 	utils.AssertEqual(t, fiber.StatusOK, req.StatusCode)
 }
 
-func Test_ProbeChecker_Next(t *testing.T) {
+func Test_HealthCheck_Next(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
@@ -75,7 +75,7 @@ func Test_ProbeChecker_Next(t *testing.T) {
 	utils.AssertEqual(t, fiber.StatusNotFound, req.StatusCode)
 }
 
-func Test_ProbeChecker_NilChecker(t *testing.T) {
+func Test_HealthCheck_NilChecker(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
@@ -89,7 +89,7 @@ func Test_ProbeChecker_NilChecker(t *testing.T) {
 	utils.AssertEqual(t, fiber.StatusNotFound, req.StatusCode)
 }
 
-func Benchmark_ProbeChecker(b *testing.B) {
+func Benchmark_HealthCheck(b *testing.B) {
 	app := fiber.New()
 
 	app.Use(New())

@@ -1,6 +1,6 @@
 ---
-id: probecheker
-title: probecheker
+id: healthcheck
+title: healthcheck
 ---
 
 Liveness and readiness probes middleware for [Fiber](https://github.com/gofiber/fiber) that provides two endpoints for checking the health and ready state of any HTTP application.
@@ -22,7 +22,7 @@ Import the middleware package that is part of the Fiber web framework
 ```go
 import (
   "github.com/gofiber/fiber/v2"
-  "github.com/gofiber/fiber/v2/middleware/probechecker"
+  "github.com/gofiber/fiber/v2/middleware/healthcheck"
 )
 ```
 
@@ -50,7 +50,7 @@ app.Use(
 ## Config
 
 ```go
-// Config is the config struct for the probechecker middleware
+// Config is the config struct for the healthcheck middleware
 type Config struct {
     // Next defines a function to skip this middleware when returned true.
     //
@@ -60,7 +60,7 @@ type Config struct {
     // Config for liveness probe of the container engine being used
     //
     // Optional. Default: func(c *Ctx) bool { return true }
-    IsLive ProbeChecker
+    IsLive HealthChecker
 
     // HTTP endpoint of the liveness probe
     //
@@ -70,7 +70,7 @@ type Config struct {
     // Config for readiness probe of the container engine being used
     //
     // Optional. Default: nil
-    IsReady ProbeChecker
+    IsReady HealthChecker
 
     // HTTP endpoint of the readiness probe
     //

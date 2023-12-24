@@ -1,8 +1,8 @@
-package probechecker
+package healthcheck
 
 import "github.com/gofiber/fiber/v2"
 
-// Config is the config struct for the probechecker middleware
+// Config is the config struct for the healthcheck middleware
 type Config struct {
 	// Next defines a function to skip this middleware when returned true.
 	//
@@ -12,7 +12,7 @@ type Config struct {
 	// Config for liveness probe of the container engine being used
 	//
 	// Optional. Default: func(c *Ctx) bool { return true }
-	IsLive ProbeChecker
+	IsLive HealthChecker
 
 	// HTTP endpoint of the liveness probe
 	//
@@ -22,7 +22,7 @@ type Config struct {
 	// Config for readiness probe of the container engine being used
 	//
 	// Optional. Default: nil
-	IsReady ProbeChecker
+	IsReady HealthChecker
 
 	// HTTP endpoint of the readiness probe
 	//
@@ -44,7 +44,7 @@ var ConfigDefault = Config{
 	IsReadyEndpoint: DefaultReadinessEndpoint,
 }
 
-// defaultConfig returns a default config for the probechecker middleware.
+// defaultConfig returns a default config for the healthcheck middleware.
 func defaultConfig(config ...Config) Config {
 	if len(config) < 1 {
 		return ConfigDefault
