@@ -874,6 +874,39 @@ func Test_Ctx_AutoFormat(t *testing.T) {
 	require.Equal(t, `Hello, World!`, string(c.Response().Body()))
 }
 
+func Test_Ctx_AutoFormat_Struct(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	type Message struct {
+		Recipients []string
+		Sender     string `xml:"sender,attr"`
+		Urgency    int    `xml:"urgency,attr"`
+	}
+	data := Message{
+		Recipients: []string{"Alice", "Bob"},
+		Sender:     "Carol",
+		Urgency:    3,
+	}
+
+	c.Request().Header.Set(HeaderAccept, MIMEApplicationJSON)
+	err := c.AutoFormat(data)
+	require.NoError(t, err)
+	require.Equal(t,
+		`{"Recipients":["Alice","Bob"],"Sender":"Carol","Urgency":3}`,
+		string(c.Response().Body()),
+	)
+
+	c.Request().Header.Set(HeaderAccept, MIMEApplicationXML)
+	err = c.AutoFormat(data)
+	require.NoError(t, err)
+	require.Equal(t,
+		`<Message sender="Carol" urgency="3"><Recipients>Alice</Recipients><Recipients>Bob</Recipients></Message>`,
+		string(c.Response().Body()),
+	)
+}
+
 // go test -v -run=^$ -bench=Benchmark_Ctx_AutoFormat -benchmem -count=4
 func Benchmark_Ctx_AutoFormat(b *testing.B) {
 	app := New()
