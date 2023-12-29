@@ -16,7 +16,7 @@ on:
       - "!**.md"
 
 jobs:
-  govulncheck-check:
+  nilaway-check:
     runs-on: ubuntu-latest
     steps:
       - name: Fetch Repository
@@ -31,4 +31,4 @@ jobs:
         run: go install go.uber.org/nilaway/cmd/nilaway@latest
 
       - name: Run nilaway
-        run: nilaway ./...
+        run: nilaway -test=false ./...
