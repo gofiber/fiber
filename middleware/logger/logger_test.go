@@ -498,10 +498,9 @@ func Test_Response_Header(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(requestid.New(requestid.Config{
-		Next:       nil,
-		Header:     fiber.HeaderXRequestID,
-		Generator:  func() string { return "Hello fiber!" },
-		ContextKey: "requestid",
+		Next:      nil,
+		Header:    fiber.HeaderXRequestID,
+		Generator: func() string { return "Hello fiber!" },
 	}))
 	app.Use(New(Config{
 		Format: "${respHeader:X-Request-ID}",
