@@ -12,6 +12,8 @@ Refer to https://datatracker.ietf.org/doc/html/draft-ietf-httpapi-idempotency-ke
 
 ```go
 func New(config ...Config) fiber.Handler
+func IsFromCache(c fiber.Ctx) bool
+func WasPutToCache(c fiber.Ctx) bool
 ```
 
 ## Examples

@@ -33,8 +33,12 @@ const (
 // maxParams defines the maximum number of parameters per route.
 const maxParams = 30
 
+// The contextKey type is unexported to prevent collisions with context keys defined in
+// other packages.
+type contextKey int
+
 // userContextKey define the key name for storing context.Context in *fasthttp.RequestCtx
-const userContextKey = "__local_user_context__"
+const userContextKey contextKey = 0 // __local_user_context__
 
 type DefaultCtx struct {
 	app                 *App                 // Reference to *App

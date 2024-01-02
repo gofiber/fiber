@@ -21,12 +21,6 @@ type Config struct {
 	//
 	// Optional. Default: utils.UUID
 	Generator func() string
-
-	// ContextKey defines the key used when storing the request ID in
-	// the locals for a specific request.
-	//
-	// Optional. Default: requestid
-	ContextKey interface{}
 }
 
 // ConfigDefault is the default config
@@ -34,10 +28,9 @@ type Config struct {
 // requests made to the server. To conceal this value for better
 // privacy, use the "utils.UUIDv4" generator.
 var ConfigDefault = Config{
-	Next:       nil,
-	Header:     fiber.HeaderXRequestID,
-	Generator:  utils.UUID,
-	ContextKey: "requestid",
+	Next:      nil,
+	Header:    fiber.HeaderXRequestID,
+	Generator: utils.UUID,
 }
 
 // Helper function to set default values
@@ -56,9 +49,6 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.Generator == nil {
 		cfg.Generator = ConfigDefault.Generator
-	}
-	if cfg.ContextKey == "" {
-		cfg.ContextKey = ConfigDefault.ContextKey
 	}
 	return cfg
 }

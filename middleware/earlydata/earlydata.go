@@ -4,10 +4,15 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
+// The contextKey type is unexported to prevent collisions with context keys defined in
+// other packages.
+type contextKey int
+
 const (
-	localsKeyAllowed = "earlydata_allowed"
+	localsKeyAllowed contextKey = 0 // earlydata_allowed
 )
 
+// IsEarlyData returns true if the request is an early-data request
 func IsEarly(c fiber.Ctx) bool {
 	return c.Locals(localsKeyAllowed) != nil
 }

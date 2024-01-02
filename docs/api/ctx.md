@@ -895,13 +895,23 @@ func (c *Ctx) Locals(key interface{}, value ...interface{}) interface{}
 ```
 
 ```go title="Example"
+
+// key is an unexported type for keys defined in this package.
+// This prevents collisions with keys defined in other packages.
+type key int
+
+// userKey is the key for user.User values in Contexts. It is
+// unexported; clients use user.NewContext and user.FromContext
+// instead of using this key directly.
+var userKey key
+
 app.Use(func(c *fiber.Ctx) error {
-  c.Locals("user", "admin")
+  c.Locals(userKey, "admin")
   return c.Next()
 })
 
 app.Get("/admin", func(c *fiber.Ctx) error {
-  if c.Locals("user") == "admin" {
+  if c.Locals(userKey) == "admin" {
     return c.Status(fiber.StatusOK).SendString("Welcome, admin!")
   }
   return c.SendStatus(fiber.StatusForbidden)

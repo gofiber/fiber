@@ -21,6 +21,7 @@ Safe HTTP methods — `GET`, `HEAD`, `OPTIONS` and `TRACE` — should not modify
 
 ```go
 func New(config ...Config) fiber.Handler
+func IsEarlyData(c fiber.Ctx) bool
 ```
 
 ## Examples

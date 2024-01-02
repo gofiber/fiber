@@ -39,8 +39,8 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 	}))
 
 	app.Get("/testauth", func(c fiber.Ctx) error {
-		username := c.Locals("username").(string) //nolint:errcheck, forcetypeassert // not needed
-		password := c.Locals("password").(string) //nolint:errcheck, forcetypeassert // not needed
+		username := UsernameFromContext(c)
+		password := PasswordFromContext(c)
 
 		return c.SendString(username + password)
 	})
