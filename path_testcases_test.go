@@ -713,6 +713,14 @@ func init() {
 					{url: "/api/v1/", params: []string{""}, match: true},
 				},
 			},
+			{
+				pattern: "/api/v1/:param<ulid>",
+				testCases: []routeTestCase{
+					{url: "/api/v1/entity", params: nil, match: false},
+					{url: "/api/v1/8728382", params: nil, match: false},
+					{url: "/api/v1/01HK7H9ZE5BFMK348CPYP14S0Z", params: []string{"01HK7H9ZE5BFMK348CPYP14S0Z"}, match: true},
+				},
+			},
 		}...,
 	)
 }

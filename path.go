@@ -14,6 +14,7 @@ import (
 	"unicode"
 
 	"github.com/google/uuid"
+	"github.com/oklog/ulid/v2"
 
 	"github.com/gofiber/fiber/v2/utils"
 )
@@ -86,6 +87,7 @@ const (
 	maxConstraint
 	rangeConstraint
 	regexConstraint
+	ulidConstraint
 )
 
 // list of possible parameter and segment delimiter
@@ -637,6 +639,8 @@ func getParamConstraintType(constraintPart string) TypeConstraint {
 		return datetimeConstraint
 	case ConstraintRegex:
 		return regexConstraint
+	case ConstraintUlid:
+		return ulidConstraint
 	default:
 		return noConstraint
 	}
@@ -734,6 +738,8 @@ func (c *Constraint) CheckConstraint(param string) bool {
 		if match := c.RegexCompiler.MatchString(param); !match {
 			return false
 		}
+	case ulidConstraint:
+		_, err = ulid.Parse(param)
 	}
 
 	return err == nil

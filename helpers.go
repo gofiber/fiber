@@ -1141,6 +1141,7 @@ const (
 	ConstraintRange           = "range"
 	ConstraintDatetime        = "datetime"
 	ConstraintRegex           = "regex"
+	ConstraintUlid            = "ulid"
 )
 
 func IndexRune(str string, needle int32) bool {

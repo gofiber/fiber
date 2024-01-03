@@ -162,7 +162,8 @@ Constraints aren't validation for parameters. If constraint aren't valid for par
 | range(min,max)    | :age<range(18,120)\>                 | 91 (Integer value must be at least 18 but no more than 120)                                 |
 | alpha             | :name<alpha\>                        | Rick (String must consist of one or more alphabetical characters, a-z and case-insensitive) |
 | datetime          | :dob<datetime(2006\\\\-01\\\\-02)\>  | 2005-11-01                                                                                  |
-| regex(expression) | :date<regex(\\d{4}-\\d{2}-\\d{2})\> | 2022-08-27 (Must match regular expression)                                                  |
+| regex(expression) | :date<regex(\\d{4}-\\d{2}-\\d{2})\>  | 2022-08-27 (Must match regular expression)                                                  |
+| ulid              | :id<ulid\>                           | 01HK7H9ZE5BFMK348CPYP14S0Z                                                                  |
 
 **Examples**
 
