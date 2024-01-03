@@ -19,17 +19,17 @@ type Config struct {
 	// HTTP endpoint of the liveness probe
 	//
 	// Optional. Default: /livez
-	IsLiveEndpoint string
+	LivenessEndpoint string
 
 	// Config for readiness probe of the container engine being used
 	//
-	// Optional. Default: nil
+	// Optional. Default: func(c *Ctx) bool { return false }
 	IsReady HealthChecker
 
 	// HTTP endpoint of the readiness probe
 	//
 	// Optional. Default: /readyz
-	IsReadyEndpoint string
+	ReadinessEndpoint string
 }
 
 const (
@@ -37,13 +37,15 @@ const (
 	DefaultReadinessEndpoint = "/readyz"
 )
 
-func defaultLiveFunc(*fiber.Ctx) bool { return true }
+func defaultLivenessFunc(*fiber.Ctx) bool { return true }
+func defaultReadinessFunc(*fiber.Ctx) bool { return false }
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	IsLive:          defaultLiveFunc,
-	IsLiveEndpoint:  DefaultLivenessEndpoint,
-	IsReadyEndpoint: DefaultReadinessEndpoint,
+	IsLive:          defaultLivenessFunc,
+	IsReady:         defaultReadinessFunc,
+	LivenessEndpoint:  DefaultLivenessEndpoint,
+	ReadinessEndpoint: DefaultReadinessEndpoint,
 }
 
 // defaultConfig returns a default config for the healthcheck middleware.
@@ -59,15 +61,19 @@ func defaultConfig(config ...Config) Config {
 	}
 
 	if cfg.IsLive == nil {
-		cfg.IsLive = defaultLiveFunc
+		cfg.IsLive = defaultLivenessFunc
 	}
 
-	if cfg.IsLiveEndpoint == "" {
-		cfg.IsLiveEndpoint = DefaultLivenessEndpoint
+	if cfg.IsReady == nil {
+		cfg.IsReady = defaultReadinessFunc
 	}
 
-	if cfg.IsReadyEndpoint == "" {
-		cfg.IsReadyEndpoint = DefaultReadinessEndpoint
+	if cfg.LivenessEndpoint == "" {
+		cfg.LivenessEndpoint = DefaultLivenessEndpoint
+	}
+
+	if cfg.ReadinessEndpoint == "" {
+		cfg.ReadinessEndpoint = DefaultReadinessEndpoint
 	}
 
 	return cfg

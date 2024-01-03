@@ -25,7 +25,7 @@ func Test_HealthCheck(t *testing.T) {
 		IsLive: func(c *fiber.Ctx) bool {
 			return true
 		},
-		IsLiveEndpoint: "/live",
+		LivenessEndpoint: "/live",
 		IsReady: func(c *fiber.Ctx) bool {
 			select {
 			case <-c1:
@@ -34,7 +34,7 @@ func Test_HealthCheck(t *testing.T) {
 				return false
 			}
 		},
-		IsReadyEndpoint: "/ready",
+		ReadinessEndpoint: "/ready",
 	}))
 
 	// Live should return 200 with GET request

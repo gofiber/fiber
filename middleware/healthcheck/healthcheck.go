@@ -41,9 +41,9 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		switch c.Path() {
-		case cfg.IsReadyEndpoint:
+		case cfg.ReadinessEndpoint:
 			return isReadyHandler(c)
-		case cfg.IsLiveEndpoint:
+		case cfg.LivenessEndpoint:
 			return isLiveHandler(c)
 		}
 
