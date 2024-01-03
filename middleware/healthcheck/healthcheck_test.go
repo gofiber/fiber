@@ -10,7 +10,22 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-func Test_HealthCheck(t *testing.T) {
+func Test_HealthCheck_Default(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New())
+
+	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/readyz", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusOK, req.StatusCode)
+
+	req, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/livez", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusOK, req.StatusCode)
+}
+
+func Test_HealthCheck_Custom(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
@@ -22,11 +37,11 @@ func Test_HealthCheck(t *testing.T) {
 	}()
 
 	app.Use(New(Config{
-		IsLive: func(c *fiber.Ctx) bool {
+		LivenessProbe: func(c *fiber.Ctx) bool {
 			return true
 		},
 		LivenessEndpoint: "/live",
-		IsReady: func(c *fiber.Ctx) bool {
+		ReadinessProbe: func(c *fiber.Ctx) bool {
 			select {
 			case <-c1:
 				return true
@@ -44,6 +59,11 @@ func Test_HealthCheck(t *testing.T) {
 
 	// Live should return 404 with POST request
 	req, err = app.Test(httptest.NewRequest(fiber.MethodPost, "/live", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusNotFound, req.StatusCode)
+
+	// Ready should return 404 with POST request
+	req, err = app.Test(httptest.NewRequest(fiber.MethodPost, "/ready", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusNotFound, req.StatusCode)
 
@@ -72,20 +92,6 @@ func Test_HealthCheck_Next(t *testing.T) {
 	}))
 
 	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/livez", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusNotFound, req.StatusCode)
-}
-
-func Test_HealthCheck_NilChecker(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-
-	app.Use(New(Config{
-		IsReady: nil,
-	}))
-
-	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/readyz", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusNotFound, req.StatusCode)
 }

@@ -9,11 +9,11 @@ Liveness and readiness probes middleware for [Fiber](https://github.com/gofiber/
 
 - **Liveness Probe**: Checks if the server is up and running.
   - **Default Endpoint**: `/livez`
-  - **Behavior**: Returns `true` immediately when the server is operational.
+  - **Behavior**: By default returns `true` immediately when the server is operational.
 
 - **Readiness Probe**: Assesses if the application is ready to handle requests.
   - **Default Endpoint**: `/readyz`
-  - **Behavior**: Requires an `IsReady` function implementation. Without this function, the endpoint does not respond.
+  - **Behavior**: By default returns `true` immediately when the server is operational.
 
 - **HTTP Status Codes**:
   - `200 OK`: Returned when the checker function evaluates to `true`.
@@ -43,11 +43,11 @@ app.Use(healthcheck.New())
 **Custom Configuration**:
 ```go
 app.Use(healthcheck.New(healthcheck.Config{
-    IsLive: func(c *fiber.Ctx) bool {
+    LivenessProbe: func(c *fiber.Ctx) bool {
         return true
     },
     LivenessEndpoint: "/live",
-    IsReady: func(c *fiber.Ctx) bool {
+    ReadinessProbe: func(c *fiber.Ctx) bool {
         return serviceA.Ready() && serviceB.Ready() && ...
     },
     ReadinessEndpoint: "/ready",
@@ -59,20 +59,35 @@ app.Use(healthcheck.New(healthcheck.Config{
 The `Config` struct offers the following customization options:
 ```go
 type Config struct {
-    // Function to skip middleware. Optional. Default: nil
-    Next func(c *fiber.Ctx) bool
+	// Next defines a function to skip this middleware when returned true.
+	//
+	// Optional. Default: nil
+	Next func(c *fiber.Ctx) bool
 
-    // Liveness probe configuration. Optional. Default: Always true
-    IsLive HealthChecker
+	// Function to be used for checking the liveness of the application.
+	// Returns true if the application is running and false if it is not.
+	// The liveness probe is typically used to indicate if the application is in a state where
+	// it can handle requests (e.g., the server is up and running).
+	//
+	// Optional. Default: func(c *fiber.Ctx) bool { return true }
+	LivenessProbe HealthChecker
 
-    // Liveness probe HTTP endpoint. Optional. Default: "/livez"
-    LivenessEndpoint string
+	// HTTP endpoint at which the liveness probe will be available.
+	//
+	// Optional. Default: "/livez"
+	LivenessEndpoint string
 
-    // Readiness probe configuration. Optional. Default: nil
-    IsReady HealthChecker
+	// Function to be used for checking the readiness of the application.
+	// Returns true if the application is ready to process requests and false otherwise.
+	// The readiness probe typically checks if all necessary services, databases, and other dependencies
+	// are available for the application to function correctly.
+	//
+	// Optional. Default: func(c *fiber.Ctx) bool { return true }
+	ReadinessProbe HealthChecker
 
-    // Readiness probe HTTP endpoint. Optional. Default: "/readyz"
-    ReadinessEndpoint string
+	// HTTP endpoint at which the readiness probe will be available.
+	// Optional. Default: "/readyz"
+	ReadinessEndpoint string
 }
 ```
 
@@ -80,11 +95,20 @@ type Config struct {
 
 The default configuration is defined as follows:
 ```go
-func defaultLivenessFunc(*fiber.Ctx) bool { return true }
+const (
+	DefaultLivenessEndpoint  = "/livez"
+	DefaultReadinessEndpoint = "/readyz"
+)
 
+func defaultLivenessProbe(*fiber.Ctx) bool { return true }
+
+func defaultReadinessProbe(*fiber.Ctx) bool { return true }
+
+// ConfigDefault is the default config
 var ConfigDefault = Config{
-    IsLive:            defaultLivenessFunc,
-    LivenessEndpoint:  "/livez",
-    ReadinessEndpoint: "/readyz",
+	LivenessProbe:     defaultLivenessProbe,
+	ReadinessProbe:    defaultReadinessProbe,
+	LivenessEndpoint:  DefaultLivenessEndpoint,
+	ReadinessEndpoint: DefaultReadinessEndpoint,
 }
 ```

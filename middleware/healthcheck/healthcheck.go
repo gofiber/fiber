@@ -27,8 +27,8 @@ func healthCheckerHandler(checker HealthChecker) fiber.Handler {
 func New(config ...Config) fiber.Handler {
 	cfg := defaultConfig(config...)
 
-	isLiveHandler := healthCheckerHandler(cfg.IsLive)
-	isReadyHandler := healthCheckerHandler(cfg.IsReady)
+	isLiveHandler := healthCheckerHandler(cfg.LivenessProbe)
+	isReadyHandler := healthCheckerHandler(cfg.ReadinessProbe)
 
 	return func(c *fiber.Ctx) error {
 		// Don't execute middleware if Next returns true
