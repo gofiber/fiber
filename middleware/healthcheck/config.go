@@ -38,12 +38,10 @@ const (
 )
 
 func defaultLivenessFunc(*fiber.Ctx) bool { return true }
-func defaultReadinessFunc(*fiber.Ctx) bool { return false }
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
 	IsLive:          defaultLivenessFunc,
-	IsReady:         defaultReadinessFunc,
 	LivenessEndpoint:  DefaultLivenessEndpoint,
 	ReadinessEndpoint: DefaultReadinessEndpoint,
 }
@@ -62,10 +60,6 @@ func defaultConfig(config ...Config) Config {
 
 	if cfg.IsLive == nil {
 		cfg.IsLive = defaultLivenessFunc
-	}
-
-	if cfg.IsReady == nil {
-		cfg.IsReady = defaultReadinessFunc
 	}
 
 	if cfg.LivenessEndpoint == "" {
