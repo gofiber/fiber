@@ -140,7 +140,9 @@ app.Use(csrf.New(csrf.Config{
 KeyLookup will be ignored if Extractor is explicitly set.
 :::
 
-Getting the CSRF token:
+Getting the CSRF token in a handler:
+
+```go
 
 ```go
 func handler(c *fiber.Ctx) error {
@@ -153,7 +155,11 @@ func handler(c *fiber.Ctx) error {
     if cfg == nil {
         panic("csrf middleware handler has no config")
     }
-    formKey := strings.Split(cfg.KeyLookup, ":")[0]
+	if !strings.Contains(cfg.KeyLookup, ":") {
+        panic("invalid KeyLookup format")
+    }
+    formKey := strings.Split(cfg.KeyLookup, ":")[1]
+	
     tmpl := fmt.Sprintf(`<form action="/post" method="POST">
         <input type="hidden" name="%s" value="%s">
         <input type="text" name="message">
