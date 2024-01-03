@@ -11,10 +11,9 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c *fiber.Ctx) bool
 
-	// Function to be used for checking the liveness of the application.
-	// Returns true if the application is running and false if it is not.
-	// The liveness probe is typically used to indicate if the application is in a state where
-	// it can handle requests (e.g., the server is up and running).
+	// Function used for checking the liveness of the application. Returns true if the application
+	// is running and false if it is not. The liveness probe is typically used to indicate if
+	// the application is in a state where it can handle requests (e.g., the server is up and running).
 	//
 	// Optional. Default: func(c *fiber.Ctx) bool { return true }
 	LivenessProbe HealthChecker
@@ -24,10 +23,9 @@ type Config struct {
 	// Optional. Default: "/livez"
 	LivenessEndpoint string
 
-	// Function to be used for checking the readiness of the application.
-	// Returns true if the application is ready to process requests and false otherwise.
-	// The readiness probe typically checks if all necessary services, databases, and other dependencies
-	// are available for the application to function correctly.
+	// Function used for checking the readiness of the application. Returns true if the application
+	// is ready to process requests and false otherwise. The readiness probe typically checks if all necessary
+	// services, databases, and other dependencies are available for the application to function correctly.
 	//
 	// Optional. Default: func(c *fiber.Ctx) bool { return true }
 	ReadinessProbe HealthChecker
