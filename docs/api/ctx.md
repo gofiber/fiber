@@ -313,6 +313,10 @@ app.Post("/", func(c *fiber.Ctx) error {
 // curl -X POST "http://localhost:3000/?name=john&pass=doe"
 ```
 
+:::note
+It supports the `DefaultValueParser` feature, which allows for the assignment of default values to struct fields when specific request parameters are missing. For more details, see the [default values documentation](./fiber.md#default-values).
+:::
+
 > _Returned value is only valid within the handler. Do not store any references.  
 > Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
 
@@ -465,6 +469,13 @@ app.Get("/", func(c *fiber.Ctx) error {
 // Run tests with the following curl command
 // curl.exe --cookie "name=Joseph; age=23; job=true" http://localhost:8000/
 ```
+
+:::note
+It supports the `DefaultValueParser` feature, which allows for the assignment of default values to struct fields when specific request parameters are missing. For more details, see the [default values documentation](./fiber.md#default-values).
+:::
+
+> _Returned value is only valid within the handler. Do not store any references.  
+> Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
 
 ## Cookies
 
@@ -1126,7 +1137,7 @@ This method is equivalent of using `atoi` with ctx.Params
 
 ## ParamsParser
 
-This method is similar to BodyParser, but for path parameters. It is important to use the struct tag "params". For example, if you want to parse a path parameter with a field called Pass, you would use a struct field of params:"pass"
+This method is similar to [BodyParser](ctx.md#bodyparser), but for path parameters. It is important to use the struct tag "params". For example, if you want to parse a path parameter with a field called Pass, you would use a struct field of params:"pass"
 
 ```go title="Signature"
 func (c *Ctx) ParamsParser(out interface{}) error
@@ -1143,6 +1154,13 @@ app.Get("/user/:id", func(c *fiber.Ctx) error {
 })
 
 ```
+
+:::note
+It supports the `DefaultValueParser` feature, which allows for the assignment of default values to struct fields when specific request parameters are missing. For more details, see the [default values documentation](./fiber.md#default-values).
+:::
+
+> _Returned value is only valid within the handler. Do not store any references.  
+> Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
 
 ## Path
 
@@ -1398,35 +1416,12 @@ app.Get("/", func(c *fiber.Ctx) error {
 // curl "http://localhost:3000/?name=john&pass=doe&products=shoe,hat"
 ```
 
-### Default Values with QueryParser
-You can also assign default values to struct fields if the query parameter is not provided in the request. To do this, use the default struct tag alongside the query tag.
+:::note
+It supports the `DefaultValueParser` feature, which allows for the assignment of default values to struct fields when specific request parameters are missing. For more details, see the [default values documentation](./fiber.md#default-values).
+:::
 
-```go title="WithDefaultValues"
-type PersonWithDefaults struct {
-    Name     string     `query:"name" default:"DefaultName"`
-    Pass     string     `query:"pass" default:"DefaultPass"`
-    Products []string   `query:"products" default:"defaultProduct1,defaultProduct2"`
-}
-
-app.Get("/defaults", func(c *fiber.Ctx) error {
-        p := new(PersonWithDefaults)
-
-        if err := c.QueryParser(p); err != nil {
-            return err
-        }
-
-        log.Println(p.Name)     // Will print "DefaultName" if name is not provided in the query
-        log.Println(p.Pass)     // Will print "DefaultPass" if pass is not provided in the query
-        log.Println(p.Products) // Will print [defaultProduct1, defaultProduct2] if products is not provided in the query
-
-        // ...
-})
-// Run tests with the following curl command
-
-// curl "http://localhost:3000/defaults"
-// This will use the default values since no query parameters are provided
-
-```
+> _Returned value is only valid within the handler. Do not store any references.  
+> Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
 
 ## Range
 
@@ -1601,35 +1596,13 @@ app.Get("/", func(c *fiber.Ctx) error {
 // curl "http://localhost:3000/" -H "name: john" -H "pass: doe" -H "products: shoe,hat"
 ```
 
-### Default Values with ReqHeaderParser
-You can also assign default values to struct fields if the request header is not provided in the request. To do this, use the default struct tag alongside the reqHeader tag.
+:::note
+It supports the `DefaultValueParser` feature, which allows for the assignment of default values to struct fields when specific request parameters are missing. For more details, see the [default values documentation](./fiber.md#default-values).
+:::
 
-```go title="WithDefaultValues"
-type PersonWithDefaults struct {
-    Name     string     `reqHeader:"name" default:"DefaultName"`
-    Pass     string     `reqHeader:"pass" default:"DefaultPass"`
-    Products []string   `reqHeader:"products" default:"defaultProduct1,defaultProduct2"`
-}
+> _Returned value is only valid within the handler. Do not store any references.  
+> Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
 
-app.Get("/defaults", func(c *fiber.Ctx) error {
-        p := new(PersonWithDefaults)
-
-        if err := c.ReqHeaderParser(p); err != nil {
-            return err
-        }
-
-        log.Println(p.Name)     // Will print "DefaultName" if name is not provided in the request header
-        log.Println(p.Pass)     // Will print "DefaultPass" if pass is not provided in the request header
-        log.Println(p.Products) // Will print [defaultProduct1, defaultProduct2] if products is not provided in the request header
-
-        // ...
-})
-// Run tests with the following curl command
-
-// curl "http://localhost:3000/defaults"
-// This will use the default values since no request headers are provided
-
-```
 ## Response
 
 Response return the [\*fasthttp.Response](https://godoc.org/github.com/valyala/fasthttp#Response) pointer

@@ -37,7 +37,7 @@ app := fiber.New(fiber.Config{
 // ...
 ```
 
-**Config fields**
+### Config fields
 
 | Property                     | Type                                                              | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Default                                                                  |
 |------------------------------|-------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------|
@@ -82,6 +82,43 @@ app := fiber.New(fiber.Config{
 | WriteBufferSize              | `int`                                                             | Per-connection buffer size for responses' writing.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | `4096`                                                                   |
 | WriteTimeout                 | `time.Duration`                                                   | The maximum duration before timing out writes of the response. The default timeout is unlimited.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | `nil`                                                                    |
 | XMLEncoder                   | `utils.XMLMarshal`                                                | Allowing for flexibility in using another XML library for encoding.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | `xml.Marshal`                                                            |
+
+
+#### Default Values
+
+This [config](#config-fields) feature `DefaultValueParser` enables you to assign default values to struct fields for situations where certain parameters are missing in requests. The `default` struct tag can be utilized across various parsers, including [BodyParser](ctx.md#BodyParser), [CookieParser](ctx.md#CookieParser), [QueryParser](ctx.md#QueryParser), [ParamsParser](ctx.md#ParamsParser), and [ReqHeaderParser](ctx.md#ReqHeaderParser). This tag works in tandem with the respective parser tag to ensure default values are set when specific parameters are not provided.
+
+```go title="WithDefaultValues"
+// Example demonstrating the use of default values in query parser
+type PersonWithDefaults struct {
+    Name     string     `query:"name" default:"DefaultName"`
+    Pass     string     `query:"pass" default:"DefaultPass"`
+    Products []string   `query:"products" default:"defaultProduct1,defaultProduct2"`
+}
+
+app := fiber.New(fiber.Config{
+    DefaultValueParser: true,
+})
+
+app.Get("/defaults", func(c *fiber.Ctx) error {
+        p := new(PersonWithDefaults)
+
+        if err := c.QueryParser(p); err != nil {
+            return err
+        }
+
+        log.Println(p.Name)     // Will print "DefaultName" if name is not provided in the query
+        log.Println(p.Pass)     // Will print "DefaultPass" if pass is not provided in the query
+        log.Println(p.Products) // Will print [defaultProduct1, defaultProduct2] if products is not provided in the query
+
+        // ...
+})
+// Run tests with the following curl command
+
+// curl "http://localhost:3000/defaults"
+// This will use the default values since no query parameters are provided
+
+```
 
 ## NewError
 
