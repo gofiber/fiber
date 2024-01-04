@@ -76,6 +76,7 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 			c.Request().Header.SetMethod(r.Method)
 			c.Request().SetRequestURI(r.RequestURI)
 			c.Request().SetHost(r.Host)
+			c.Request().Header.SetHost(r.Host)
 			for key, val := range r.Header {
 				for _, v := range val {
 					c.Request().Header.Set(key, v)
@@ -128,6 +129,7 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		req.Header.SetMethod(r.Method)
 		req.SetRequestURI(r.RequestURI)
 		req.SetHost(r.Host)
+		req.Header.SetHost(r.Host)
 		for key, val := range r.Header {
 			for _, v := range val {
 				req.Header.Set(key, v)

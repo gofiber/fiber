@@ -221,7 +221,7 @@ curl --header "Authorization: Bearer my-super-secret-key"  http://localhost:3000
 | KeyLookup      | `string`                                 | KeyLookup is a string in the form of "`<source>:<name>`" that is used to extract key from the request. | "header:Authorization"        |
 | AuthScheme     | `string`                                 | AuthScheme to be used in the Authorization header.                                                   | "Bearer"                      |
 | Validator      | `func(*fiber.Ctx, string) (bool, error)` | Validator is a function to validate the key.                                                         | A function for key validation |
-| ContextKey     | `string`                                 | Context key to store the bearer token from the token into context.                                   | "token"                       |
+| ContextKey     | `interface{}`                            | Context key to store the bearer token from the token into context.                                   | "token"                       |
 
 ## Default Config
 

@@ -205,7 +205,7 @@ func main() {
 
   app.Route("/test", func(api fiber.Router) {
       api.Get("/foo", handler).Name("foo") // /test/foo (name: test.foo)
-    api.Get("/bar", handler).Name("bar") // /test/bar (name: test.bar)
+      api.Get("/bar", handler).Name("bar") // /test/bar (name: test.bar)
   }, "test.")
 
   log.Fatal(app.Listen(":3000"))

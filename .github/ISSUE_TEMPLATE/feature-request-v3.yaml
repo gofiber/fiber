@@ -1,0 +1,74 @@
+name: "📝 Feature Proposal for v3"
+title: "📝 [v3 Proposal]: "
+description: Propose a feature or improvement for Fiber v3.
+labels: ["📝 Proposal", "v3"]
+
+body:
+  - type: markdown
+    id: notice
+    attributes:
+      value: |
+        ### Notice
+        - For questions, join our [Discord server](https://gofiber.io/discord).
+        - Please write in clear, understandable English.
+        - Ensure your proposal aligns with Express design principles and HTTP RFC standards.
+        - Describe features expected to remain stable and not require changes in the foreseeable future.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: "Feature Proposal Description"
+      description: "A clear and detailed description of the feature you are proposing for Fiber v3. How should it work, and what API endpoints and methods would it involve?"
+      placeholder: "Describe your feature proposal clearly and in detail, including API endpoints and methods."
+    validations:
+      required: true
+
+  - type: textarea
+    id: express-alignment
+    attributes:
+      label: "Alignment with Express API"
+      description: "Explain how your proposal aligns with the design and API of Express.js. Provide comparative examples if possible."
+      placeholder: "Outline how the feature aligns with Express.js design principles and API standards."
+    validations:
+      required: true
+
+  - type: textarea
+    id: standards-compliance
+    attributes:
+      label: "HTTP RFC Standards Compliance"
+      description: "Confirm that the feature complies with HTTP RFC standards, and describe any relevant aspects."
+      placeholder: "Detail how the feature adheres to HTTP RFC standards."
+    validations:
+      required: true
+
+  - type: textarea
+    id: stability
+    attributes:
+      label: "API Stability"
+      description: "Discuss the expected stability of the feature and its API. How do you ensure that it will not require changes or deprecations in the near future?"
+      placeholder: "Describe measures taken to ensure the feature's API stability over time."
+    validations:
+      required: true
+
+  - type: textarea
+    id: examples
+    attributes:
+      label: "Feature Examples"
+      description: "Provide concrete examples and code snippets to illustrate how the proposed feature should function."
+      placeholder: "Share code snippets that exemplify the proposed feature and its usage."
+      render: go
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: "Checklist:"
+      description: "By submitting this issue, you confirm that:"
+      options:
+        - label: "I agree to follow Fiber's [Code of Conduct](https://github.com/gofiber/fiber/blob/master/.github/CODE_OF_CONDUCT.md)."
+          required: true
+        - label: "I have searched for existing issues that describe my proposal before opening this one."
+          required: true
+        - label: "I understand that a proposal that does not meet these guidelines may be closed without explanation."
+          required: true

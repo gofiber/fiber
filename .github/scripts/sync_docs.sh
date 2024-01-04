@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -e
 
 # Some env variables
 BRANCH="master"

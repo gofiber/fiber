@@ -5,6 +5,8 @@ Explain the *details* for making this change. What existing problem does the pul
 
 Fixes # (issue)
 
+:warning: **For changes specific to v3, please switch to the [v3 Pull Request Template](?template=v3-changes.md).**
+
 ## Type of change
 
 Please delete options that are not relevant.
@@ -28,4 +30,4 @@ Please delete options that are not relevant.
 
 ## Commit formatting:
 
-Use emojis on commit messages so it provides an easy way of identifying the purpose or intention of a commit. Check out the emoji cheatsheet here: https://gitmoji.carloscuesta.me/
+Use emojis on commit messages so it provides an easy way of identifying the purpose or intention of a commit. Check out the emoji cheatsheet here: [CONTRIBUTING.md](https://github.com/gofiber/fiber/blob/master/.github/CONTRIBUTING.md#pull-requests-or-commits)

@@ -574,6 +574,9 @@ func Test_Ctx_BodyParser(t *testing.T) {
 	testDecodeParser(MIMEApplicationForm, "name=john")
 	testDecodeParser(MIMEMultipartForm+`;boundary="b"`, "--b\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\njohn\r\n--b--")
 
+	// Ensure JSON extension MIME type gets parsed as JSON
+	testDecodeParser("application/problem+json", `{"name":"john"}`)
+
 	testDecodeParserError := func(contentType, body string) {
 		c.Request().Header.SetContentType(contentType)
 		c.Request().SetBody([]byte(body))
@@ -633,7 +636,6 @@ func Test_Ctx_ParamParser(t *testing.T) {
 
 // go test -run Test_Ctx_BodyParser_WithSetParserDecoder
 func Test_Ctx_BodyParser_WithSetParserDecoder(t *testing.T) {
-	t.Parallel()
 	type CustomTime time.Time
 
 	timeConverter := func(value string) reflect.Value {
@@ -695,6 +697,30 @@ func Benchmark_Ctx_BodyParser_JSON(b *testing.B) {
 	body := []byte(`{"name":"john"}`)
 	c.Request().SetBody(body)
 	c.Request().Header.SetContentType(MIMEApplicationJSON)
+	c.Request().Header.SetContentLength(len(body))
+	d := new(Demo)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		_ = c.BodyParser(d) //nolint:errcheck // It is fine to ignore the error here as we check it once further below
+	}
+	utils.AssertEqual(b, nil, c.BodyParser(d))
+	utils.AssertEqual(b, "john", d.Name)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_BodyParser_JSON_Extension -benchmem -count=4
+func Benchmark_Ctx_BodyParser_JSON_Extension(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	type Demo struct {
+		Name string `json:"name"`
+	}
+	body := []byte(`{"name":"john"}`)
+	c.Request().SetBody(body)
+	c.Request().Header.SetContentType("application/problem+json")
 	c.Request().Header.SetContentLength(len(body))
 	d := new(Demo)
 
@@ -2621,39 +2647,67 @@ func Test_Ctx_Range(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 
-	var (
-		result Range
-		err    error
-	)
-
-	_, err = c.Range(1000)
-	utils.AssertEqual(t, true, err != nil)
-
-	c.Request().Header.Set(HeaderRange, "bytes=500")
-	_, err = c.Range(1000)
-	utils.AssertEqual(t, true, err != nil)
-
-	c.Request().Header.Set(HeaderRange, "bytes=500=")
-	_, err = c.Range(1000)
-	utils.AssertEqual(t, true, err != nil)
-
-	c.Request().Header.Set(HeaderRange, "bytes=500-300")
-	_, err = c.Range(1000)
-	utils.AssertEqual(t, true, err != nil)
-
-	testRange := func(header string, start, end int) {
+	testRange := func(header string, ranges ...RangeSet) {
 		c.Request().Header.Set(HeaderRange, header)
-		result, err = c.Range(1000)
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "bytes", result.Type)
-		utils.AssertEqual(t, start, result.Ranges[0].Start)
-		utils.AssertEqual(t, end, result.Ranges[0].End)
+		result, err := c.Range(1000)
+		if len(ranges) == 0 {
+			utils.AssertEqual(t, true, err != nil)
+		} else {
+			utils.AssertEqual(t, "bytes", result.Type)
+			utils.AssertEqual(t, true, err == nil)
+		}
+		utils.AssertEqual(t, len(ranges), len(result.Ranges))
+		for i := range ranges {
+			utils.AssertEqual(t, ranges[i], result.Ranges[i])
+		}
 	}
 
-	testRange("bytes=a-700", 300, 999)
-	testRange("bytes=500-b", 500, 999)
-	testRange("bytes=500-1000", 500, 999)
-	testRange("bytes=500-700", 500, 700)
+	testRange("bytes=500")
+	testRange("bytes=")
+	testRange("bytes=500=")
+	testRange("bytes=500-300")
+	testRange("bytes=a-700", RangeSet{300, 999})
+	testRange("bytes=500-b", RangeSet{500, 999})
+	testRange("bytes=500-1000", RangeSet{500, 999})
+	testRange("bytes=500-700", RangeSet{500, 700})
+	testRange("bytes=0-0,2-1000", RangeSet{0, 0}, RangeSet{2, 999})
+	testRange("bytes=0-99,450-549,-100", RangeSet{0, 99}, RangeSet{450, 549}, RangeSet{900, 999})
+	testRange("bytes=500-700,601-999", RangeSet{500, 700}, RangeSet{601, 999})
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_Range -benchmem -count=4
+func Benchmark_Ctx_Range(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	testCases := []struct {
+		str   string
+		start int
+		end   int
+	}{
+		{"bytes=-700", 300, 999},
+		{"bytes=500-", 500, 999},
+		{"bytes=500-1000", 500, 999},
+		{"bytes=0-700,800-1000", 0, 700},
+	}
+
+	for _, tc := range testCases {
+		b.Run(tc.str, func(b *testing.B) {
+			c.Request().Header.Set(HeaderRange, tc.str)
+			var (
+				result Range
+				err    error
+			)
+			for n := 0; n < b.N; n++ {
+				result, err = c.Range(1000)
+			}
+			utils.AssertEqual(b, nil, err)
+			utils.AssertEqual(b, "bytes", result.Type)
+			utils.AssertEqual(b, tc.start, result.Ranges[0].Start)
+			utils.AssertEqual(b, tc.end, result.Ranges[0].End)
+		})
+	}
 }
 
 // go test -run Test_Ctx_Route
@@ -2999,6 +3053,7 @@ func Test_Ctx_JSON(t *testing.T) {
 
 	utils.AssertEqual(t, true, c.JSON(complex(1, 1)) != nil)
 
+	// Test without ctype
 	err := c.JSON(Map{ // map has no order
 		"Name": "Grame",
 		"Age":  20,
@@ -3006,6 +3061,15 @@ func Test_Ctx_JSON(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, `{"Age":20,"Name":"Grame"}`, string(c.Response().Body()))
 	utils.AssertEqual(t, "application/json", string(c.Response().Header.Peek("content-type")))
+
+	// Test with ctype
+	err = c.JSON(Map{ // map has no order
+		"Name": "Grame",
+		"Age":  20,
+	}, "application/problem+json")
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, `{"Age":20,"Name":"Grame"}`, string(c.Response().Body()))
+	utils.AssertEqual(t, "application/problem+json", string(c.Response().Header.Peek("content-type")))
 
 	testEmpty := func(v interface{}, r string) {
 		err := c.JSON(v)
@@ -3060,6 +3124,30 @@ func Benchmark_Ctx_JSON(b *testing.B) {
 	}
 	utils.AssertEqual(b, nil, err)
 	utils.AssertEqual(b, `{"Name":"Grame","Age":20}`, string(c.Response().Body()))
+}
+
+// go test -run=^$ -bench=Benchmark_Ctx_JSON_Ctype -benchmem -count=4
+func Benchmark_Ctx_JSON_Ctype(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	type SomeStruct struct {
+		Name string
+		Age  uint8
+	}
+	data := SomeStruct{
+		Name: "Grame",
+		Age:  20,
+	}
+	var err error
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		err = c.JSON(data, "application/problem+json")
+	}
+	utils.AssertEqual(b, nil, err)
+	utils.AssertEqual(b, `{"Name":"Grame","Age":20}`, string(c.Response().Body()))
+	utils.AssertEqual(b, "application/problem+json", string(c.Response().Header.Peek("content-type")))
 }
 
 // go test -run Test_Ctx_JSONP
@@ -4664,7 +4752,6 @@ func Test_Ctx_QueryParser_WithoutSplitting(t *testing.T) {
 
 // go test -run Test_Ctx_QueryParser_WithSetParserDecoder -v
 func Test_Ctx_QueryParser_WithSetParserDecoder(t *testing.T) {
-	t.Parallel()
 	type NonRFCTime time.Time
 
 	nonRFCConverter := func(value string) reflect.Value {
@@ -5126,7 +5213,6 @@ func Test_Ctx_ReqHeaderParser_WithoutSplitting(t *testing.T) {
 
 // go test -run Test_Ctx_ReqHeaderParser_WithSetParserDecoder -v
 func Test_Ctx_ReqHeaderParser_WithSetParserDecoder(t *testing.T) {
-	t.Parallel()
 	type NonRFCTime time.Time
 
 	nonRFCConverter := func(value string) reflect.Value {

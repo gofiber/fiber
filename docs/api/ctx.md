@@ -49,6 +49,37 @@ app.Get("/", func(c *fiber.Ctx) error {
 })
 ```
 
+Media-Type parameters are supported.
+
+```go title="Example 3"
+// Accept: text/plain, application/json; version=1; foo=bar
+
+app.Get("/", func(c *fiber.Ctx) error {
+  // Extra parameters in the accept are ignored
+  c.Accepts("text/plain;format=flowed") // "text/plain;format=flowed"
+  
+  // An offer must contain all parameters present in the Accept type
+  c.Accepts("application/json") // ""
+
+  // Parameter order and capitalization does not matter. Quotes on values are stripped.
+  c.Accepts(`application/json;foo="bar";VERSION=1`) // "application/json;foo="bar";VERSION=1"
+})
+```
+
+```go title="Example 4"
+// Accept: text/plain;format=flowed;q=0.9, text/plain
+// i.e., "I prefer text/plain;format=flowed less than other forms of text/plain"
+app.Get("/", func(c *fiber.Ctx) error {
+  // Beware: the order in which offers are listed matters.
+  // Although the client specified they prefer not to receive format=flowed,
+  // the text/plain Accept matches with "text/plain;format=flowed" first, so it is returned.
+  c.Accepts("text/plain;format=flowed", "text/plain") // "text/plain;format=flowed"
+
+  // Here, things behave as expected:
+  c.Accepts("text/plain", "text/plain;format=flowed") // "text/plain"
+})
+```
+
 Fiber provides similar functions for the other accept headers.
 
 ```go
@@ -583,7 +614,7 @@ app.Get("/", func(c *fiber.Ctx) error {
 
 ## GetReqHeaders
 
-Returns the HTTP request headers.
+Returns the HTTP request headers as a map. Since a header can be set multiple times in a single request, the values of the map are slices of strings containing all the different values of the header.
 
 ```go title="Signature"
 func (c *Ctx) GetReqHeaders() map[string][]string
@@ -618,7 +649,7 @@ app.Get("/", func(c *fiber.Ctx) error {
 
 ## GetRespHeaders
 
-Returns the HTTP response headers.
+Returns the HTTP response headers as a map. Since a header can be set multiple times in a single request, the values of the map are slices of strings containing all the different values of the header.
 
 ```go title="Signature"
 func (c *Ctx) GetRespHeaders() map[string][]string
@@ -766,11 +797,11 @@ app.Get("/", func(c *fiber.Ctx) error {
 Converts any **interface** or **string** to JSON using the [encoding/json](https://pkg.go.dev/encoding/json) package.
 
 :::info
-JSON also sets the content header to **application/json**.
+JSON also sets the content header to the `ctype` parameter. If no `ctype` is passed in, the header is set to `application/json`.
 :::
 
 ```go title="Signature"
-func (c *Ctx) JSON(data interface{}) error
+func (c *Ctx) JSON(data interface{}, ctype ...string) error
 ```
 
 ```go title="Example"
@@ -796,6 +827,22 @@ app.Get("/json", func(c *fiber.Ctx) error {
   })
   // => Content-Type: application/json
   // => "{"name": "Grame", "age": 20}"
+
+  return c.JSON(fiber.Map{
+    "type": "https://example.com/probs/out-of-credit",
+    "title": "You do not have enough credit.",
+    "status": 403,
+    "detail": "Your current balance is 30, but that costs 50.",
+    "instance": "/account/12345/msgs/abc",
+  }, "application/problem+json")
+  // => Content-Type: application/problem+json
+  // => "{
+  // =>     "type": "https://example.com/probs/out-of-credit",
+  // =>     "title": "You do not have enough credit.",
+  // =>     "status": 403,
+  // =>     "detail": "Your current balance is 30, but that costs 50.",
+  // =>     "instance": "/account/12345/msgs/abc",
+  // => }"
 })
 ```
 

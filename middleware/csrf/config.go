@@ -29,7 +29,7 @@ type Config struct {
 	//
 	// Ignored if an Extractor is explicitly set.
 	//
-	// Optional. Default: "header:X-CSRF-Token"
+	// Optional. Default: "header:X-Csrf-Token"
 	KeyLookup string
 
 	// Name of the session cookie. This cookie will store session key.
@@ -93,7 +93,7 @@ type Config struct {
 	// If left empty, token will not be stored in context.
 	//
 	// Optional. Default: ""
-	ContextKey string
+	ContextKey interface{}
 
 	// KeyGenerator creates a new CSRF token
 	//
@@ -124,7 +124,7 @@ type Config struct {
 	// HandlerContextKey is used to store the CSRF Handler into context
 	//
 	// Default: "fiber.csrf.handler"
-	HandlerContextKey string
+	HandlerContextKey interface{}
 }
 
 const HeaderName = "X-Csrf-Token"
@@ -204,7 +204,7 @@ func configDefault(config ...Config) Config {
 	if cfg.SessionKey == "" {
 		cfg.SessionKey = ConfigDefault.SessionKey
 	}
-	if cfg.HandlerContextKey == "" {
+	if cfg.HandlerContextKey == nil {
 		cfg.HandlerContextKey = ConfigDefault.HandlerContextKey
 	}
 
