@@ -23,6 +23,16 @@ type CSRFHandler struct {
 	storageManager *storageManager
 }
 
+// The contextKey type is unexported to prevent collisions with context keys defined in
+// other packages.
+type contextKey int
+
+// The keys for the values in context
+const (
+	tokenKey contextKey = iota
+	handlerKey
+)
+
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config
@@ -47,14 +57,12 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		// Store the CSRF handler in the context if a context key is specified
-		if cfg.HandlerContextKey != "" {
-			c.Locals(cfg.HandlerContextKey, &CSRFHandler{
-				config:         &cfg,
-				sessionManager: sessionManager,
-				storageManager: storageManager,
-			})
-		}
+		// Store the CSRF handler in the context
+		c.Locals(handlerKey, &CSRFHandler{
+			config:         &cfg,
+			sessionManager: sessionManager,
+			storageManager: storageManager,
+		})
 
 		var token string
 
@@ -128,14 +136,32 @@ func New(config ...Config) fiber.Handler {
 		// Tell the browser that a new header value is generated
 		c.Vary(fiber.HeaderCookie)
 
-		// Store the token in the context if a context key is specified
-		if cfg.ContextKey != "" {
-			c.Locals(cfg.ContextKey, token)
-		}
+		// Store the token in the context
+		c.Locals(tokenKey, token)
 
 		// Continue stack
 		return c.Next()
 	}
+}
+
+// TokenFromContext returns the token found in the context
+// returns an empty string if the token does not exist
+func TokenFromContext(c fiber.Ctx) string {
+	token, ok := c.Locals(tokenKey).(string)
+	if !ok {
+		return ""
+	}
+	return token
+}
+
+// HandlerFromContext returns the CSRFHandler found in the context
+// returns nil if the handler does not exist
+func HandlerFromContext(c fiber.Ctx) *CSRFHandler {
+	handler, ok := c.Locals(handlerKey).(*CSRFHandler)
+	if !ok {
+		return nil
+	}
+	return handler
 }
 
 // getRawFromStorage returns the raw value from the storage for the given token

@@ -10,7 +10,7 @@ This middleware can be used with or without a user session and offers two token 
 
 ## Token Generation
 
-CSRF tokens are generated on 'safe' requests and when the existing token has expired or hasn't been set yet. If `SingleUseToken` is `true`, a new token is generated after each use. Retrieve the CSRF token using `c.Locals(contextKey)`, where `contextKey` is defined in the configuration.
+CSRF tokens are generated on 'safe' requests and when the existing token has expired or hasn't been set yet. If `SingleUseToken` is `true`, a new token is generated after each use. Retrieve the CSRF token using `csrf.TokenFromContext(c)`.
 
 ## Security Considerations
 
@@ -82,7 +82,8 @@ Using `SingleUseToken` comes with usability trade-offs and is not enabled by def
 When the authorization status changes, the CSRF token MUST be deleted, and a new one generated. This can be done by calling `handler.DeleteToken(c)`.
 
 ```go
-if handler, ok := app.AcquireCtx(ctx).Locals(ConfigDefault.HandlerContextKey).(*CSRFHandler); ok {
+handler := csrf.HandlerFromContext(ctx)
+if handler != nil {
     if err := handler.DeleteToken(app.AcquireCtx(ctx)); err != nil {
         // handle error
     }
@@ -101,6 +102,10 @@ It's important to note that the token is sent as a header on every request. If y
 
 ```go
 func New(config ...Config) fiber.Handler
+func TokenFromContext(c *fiber.Ctx) string
+func HandlerFromContext(c *fiber.Ctx) *Handler
+
+func (h *Handler) DeleteToken(c *fiber.Ctx) error
 ```
 
 ## Examples
@@ -135,6 +140,36 @@ app.Use(csrf.New(csrf.Config{
 KeyLookup will be ignored if Extractor is explicitly set.
 :::
 
+Getting the CSRF token in a handler:
+
+```go
+
+```go
+func handler(c *fiber.Ctx) error {
+    handler := csrf.HandlerFromContext(c)
+    token := csrf.TokenFromContext(c)
+    if handler == nil {
+        panic("csrf middleware handler not registered")
+    }
+    cfg := handler.Config
+    if cfg == nil {
+        panic("csrf middleware handler has no config")
+    }
+	if !strings.Contains(cfg.KeyLookup, ":") {
+        panic("invalid KeyLookup format")
+    }
+    formKey := strings.Split(cfg.KeyLookup, ":")[1]
+	
+    tmpl := fmt.Sprintf(`<form action="/post" method="POST">
+        <input type="hidden" name="%s" value="%s">
+        <input type="text" name="message">
+        <input type="submit" value="Submit">
+    </form>`, formKey, token)
+    c.Set("Content-Type", "text/html")
+    return c.SendString(tmpl)
+}
+```
+
 ## Config
 
 | Property          | Type                               | Description                                                                                                                                                                                                                                                                                  | Default                      |
@@ -152,15 +187,10 @@ KeyLookup will be ignored if Extractor is explicitly set.
 | SingleUseToken    | `bool`                             | SingleUseToken indicates if the CSRF token be destroyed and a new one generated on each use. (See TokenLifecycle)                                                                                                                                                                            | false                        |
 | Storage           | `fiber.Storage`                    | Store is used to store the state of the middleware.                                                                                                                                                                                                                                          | `nil`                        |
 | Session           | `*session.Store`                   | Session is used to store the state of the middleware. Overrides Storage if set.                                                                                                                                                                                                              | `nil`                        |
-| SessionKey        | `string`                           | SessionKey is the key used to store the token in the session.                                                                                                                                                                                                                                | "fiber.csrf.token"           |
-| ContextKey        | `string`                           | Context key to store the generated CSRF token into the context. If left empty, the token will not be stored in the context.                                                                                                                                                                  | ""                           |
+| SessionKey        | `string`                           | SessionKey is the key used to store the token in the session.                                                                                                                                                                                                                                | "csrfToken"                  |
 | KeyGenerator      | `func() string`                    | KeyGenerator creates a new CSRF token.                                                                                                                                                                                                                                                       | utils.UUID                   |
-| CookieExpires     | `time.Duration` (Deprecated)       | Deprecated: Please use Expiration.                                                                                                                                                                                                                                                           | 0                            |
-| Cookie            | `*fiber.Cookie` (Deprecated)       | Deprecated: Please use Cookie* related fields.                                                                                                                                                                                                                                               | `nil`                        |
-| TokenLookup       | `string` (Deprecated)              | Deprecated: Please use KeyLookup.                                                                                                                                                                                                                                                            | ""                           |
 | ErrorHandler      | `fiber.ErrorHandler`               | ErrorHandler is executed when an error is returned from fiber.Handler.                                                                                                                                                                                                                       | DefaultErrorHandler          |
 | Extractor         | `func(*fiber.Ctx) (string, error)` | Extractor returns the CSRF token. If set, this will be used in place of an Extractor based on KeyLookup.                                                                                                                                                                                     | Extractor based on KeyLookup |
-| HandlerContextKey | `string`                           | HandlerContextKey is used to store the CSRF Handler into context.                                                                                                                                                                                                                            | "fiber.csrf.handler"         |
 
 ### Default Config
 
@@ -173,8 +203,7 @@ var ConfigDefault = Config{
 	KeyGenerator:      utils.UUIDv4,
 	ErrorHandler:      defaultErrorHandler,
 	Extractor:         CsrfFromHeader(HeaderName),
-	SessionKey:        "fiber.csrf.token",
-	HandlerContextKey: "fiber.csrf.handler",
+	SessionKey:        "csrfToken",
 }
 ```
 
@@ -194,8 +223,7 @@ var ConfigDefault = Config{
 	ErrorHandler:      defaultErrorHandler,
 	Extractor:         CsrfFromHeader(HeaderName),
 	Session:           session.Store,
-	SessionKey:        "fiber.csrf.token",
-	HandlerContextKey: "fiber.csrf.handler",
+	SessionKey:        "csrfToken",
 }
 ```
 

@@ -10,6 +10,7 @@ RequestID middleware for [Fiber](https://github.com/gofiber/fiber) that adds an 
 
 ```go
 func New(config ...Config) fiber.Handler
+func FromContext(c *fiber.Ctx) string
 ```
 
 ## Examples
@@ -38,6 +39,16 @@ app.Use(requestid.New(requestid.Config{
 }))
 ```
 
+Getting the request ID
+
+```go
+func handler(c *fiber.Ctx) error {
+    id := requestid.FromContext(c)
+    log.Printf("Request ID: %s", id)
+    return c.SendString("Hello, World!")
+}
+```
+
 ## Config
 
 | Property   | Type                    | Description                                                                                       | Default        |
@@ -45,7 +56,6 @@ app.Use(requestid.New(requestid.Config{
 | Next       | `func(*fiber.Ctx) bool` | Next defines a function to skip this middleware when returned true.                               | `nil`          |
 | Header     | `string`                | Header is the header key where to get/set the unique request ID.                                  | "X-Request-ID" |
 | Generator  | `func() string`         | Generator defines a function to generate the unique identifier.                                   | utils.UUID     |
-| ContextKey | `interface{}`           | ContextKey defines the key used when storing the request ID in the locals for a specific request. | "requestid"    |
 
 ## Default Config
 The default config uses a fast UUID generator which will expose the number of
@@ -57,6 +67,5 @@ var ConfigDefault = Config{
     Next:       nil,
     Header:     fiber.HeaderXRequestID,
 	Generator:  utils.UUID,
-	ContextKey: "requestid",
 }
 ```

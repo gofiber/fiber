@@ -86,28 +86,13 @@ type Config struct {
 
 	// SessionKey is the key used to store the token in the session
 	//
-	// Default: "fiber.csrf.token"
+	// Default: "csrfToken"
 	SessionKey string
-
-	// Context key to store generated CSRF token into context.
-	// If left empty, token will not be stored in context.
-	//
-	// Optional. Default: ""
-	ContextKey string
 
 	// KeyGenerator creates a new CSRF token
 	//
 	// Optional. Default: utils.UUID
 	KeyGenerator func() string
-
-	// Deprecated: Please use Expiration
-	CookieExpires time.Duration
-
-	// Deprecated: Please use Cookie* related fields
-	Cookie *fiber.Cookie
-
-	// Deprecated: Please use KeyLookup
-	TokenLookup string
 
 	// ErrorHandler is executed when an error is returned from fiber.Handler.
 	//
@@ -120,26 +105,20 @@ type Config struct {
 	//
 	// Optional. Default will create an Extractor based on KeyLookup.
 	Extractor func(c fiber.Ctx) (string, error)
-
-	// HandlerContextKey is used to store the CSRF Handler into context
-	//
-	// Default: "fiber.csrf.handler"
-	HandlerContextKey string
 }
 
 const HeaderName = "X-Csrf-Token"
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	KeyLookup:         "header:" + HeaderName,
-	CookieName:        "csrf_",
-	CookieSameSite:    "Lax",
-	Expiration:        1 * time.Hour,
-	KeyGenerator:      utils.UUIDv4,
-	ErrorHandler:      defaultErrorHandler,
-	Extractor:         CsrfFromHeader(HeaderName),
-	SessionKey:        "fiber.csrf.token",
-	HandlerContextKey: "fiber.csrf.handler",
+	KeyLookup:      "header:" + HeaderName,
+	CookieName:     "csrf_",
+	CookieSameSite: "Lax",
+	Expiration:     1 * time.Hour,
+	KeyGenerator:   utils.UUIDv4,
+	ErrorHandler:   defaultErrorHandler,
+	Extractor:      CsrfFromHeader(HeaderName),
+	SessionKey:     "csrfToken",
 }
 
 // default ErrorHandler that process return error from fiber.Handler
@@ -158,31 +137,6 @@ func configDefault(config ...Config) Config {
 	cfg := config[0]
 
 	// Set default values
-	if cfg.TokenLookup != "" {
-		log.Warn("[CSRF] TokenLookup is deprecated, please use KeyLookup")
-		cfg.KeyLookup = cfg.TokenLookup
-	}
-	if int(cfg.CookieExpires.Seconds()) > 0 {
-		log.Warn("[CSRF] CookieExpires is deprecated, please use Expiration")
-		cfg.Expiration = cfg.CookieExpires
-	}
-	if cfg.Cookie != nil {
-		log.Warn("[CSRF] Cookie is deprecated, please use Cookie* related fields")
-		if cfg.Cookie.Name != "" {
-			cfg.CookieName = cfg.Cookie.Name
-		}
-		if cfg.Cookie.Domain != "" {
-			cfg.CookieDomain = cfg.Cookie.Domain
-		}
-		if cfg.Cookie.Path != "" {
-			cfg.CookiePath = cfg.Cookie.Path
-		}
-		cfg.CookieSecure = cfg.Cookie.Secure
-		cfg.CookieHTTPOnly = cfg.Cookie.HTTPOnly
-		if cfg.Cookie.SameSite != "" {
-			cfg.CookieSameSite = cfg.Cookie.SameSite
-		}
-	}
 	if cfg.KeyLookup == "" {
 		cfg.KeyLookup = ConfigDefault.KeyLookup
 	}
@@ -203,9 +157,6 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.SessionKey == "" {
 		cfg.SessionKey = ConfigDefault.SessionKey
-	}
-	if cfg.HandlerContextKey == "" {
-		cfg.HandlerContextKey = ConfigDefault.HandlerContextKey
 	}
 
 	// Generate the correct extractor to get the token from the correct location
