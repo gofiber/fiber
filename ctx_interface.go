@@ -90,9 +90,19 @@ type Ctx interface {
 	Response() *fasthttp.Response
 
 	// Format performs content-negotiation on the Accept HTTP header.
+	// It uses Accepts to select a proper format and calls the matching
+	// user-provided handler function.
+	// If no accepted format is found, and a format with MediaType "default" is given,
+	// that default handler is called. If no format is found and no default is given,
+	// StatusNotAcceptable is sent.
+	Format(handlers ...ResFmt) error
+
+	// AutoFormat performs content-negotiation on the Accept HTTP header.
 	// It uses Accepts to select a proper format.
+	// The supported content types are text/html, text/plain, application/json, and application/xml.
+	// For more flexible content negotiation, use Format.
 	// If the header is not specified or there is no proper format, text/plain is used.
-	Format(body any) error
+	AutoFormat(body any) error
 
 	// FormFile returns the first file by key from a MultipartForm.
 	FormFile(key string) (*multipart.FileHeader, error)

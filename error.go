@@ -7,6 +7,10 @@ import (
 	"github.com/gofiber/fiber/v3/internal/schema"
 )
 
+// Wrap and return this for unreachable code if panicking is undesirable (i.e., in a handler).
+// Unexported because users will hopefully never need to see it.
+var errUnreachable = stdErrors.New("fiber: unreachable code, please create an issue at github.com/gofiber/fiber")
+
 // Graceful shutdown errors
 var (
 	ErrGracefulTimeout = stdErrors.New("shutdown: graceful timeout has been reached, exiting")
@@ -25,6 +29,12 @@ var (
 
 // Binder errors
 var ErrCustomBinderNotFound = stdErrors.New("binder: custom binder not found, please be sure to enter the right name")
+
+// Format errors
+var (
+	// ErrNoHandlers is returned when c.Format is called with no arguments.
+	ErrNoHandlers = stdErrors.New("format: at least one handler is required, but none were set")
+)
 
 // gorilla/schema errors
 type (

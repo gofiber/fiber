@@ -184,6 +184,47 @@ app.Get("/", func(c *fiber.Ctx) error {
 })
 ```
 
+## AutoFormat
+
+Performs content-negotiation on the [Accept](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept) HTTP header. It uses [Accepts](ctx.md#accepts) to select a proper format.
+The supported content types are `text/html`, `text/plain`, `application/json`, and `application/xml`.
+For more flexible content negotiation, use [Format](ctx.md#format).
+
+
+:::info
+If the header is **not** specified or there is **no** proper format, **text/plain** is used.
+:::
+
+```go title="Signature"
+func (c *Ctx) AutoFormat(body any) error
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  // Accept: text/plain
+  c.AutoFormat("Hello, World!")
+  // => Hello, World!
+
+  // Accept: text/html
+  c.AutoFormat("Hello, World!")
+  // => <p>Hello, World!</p>
+
+  type User struct {
+    Name string
+  }
+  user := User{"John Doe"}
+
+  // Accept: application/json
+  c.AutoFormat(user)
+  // => {"Name":"John Doe"}
+
+  // Accept: application/xml
+  c.AutoFormat(user)
+  // => <User><Name>John Doe</Name></User>
+  // ..
+})
+```
+
 ## BaseURL
 
 Returns the base URL \(**protocol** + **host**\) as a `string`.
@@ -510,30 +551,54 @@ app.Get("/", func(c *fiber.Ctx) error {
 
 ## Format
 
-Performs content-negotiation on the [Accept](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept) HTTP header. It uses [Accepts](ctx.md#accepts) to select a proper format.
+Performs content-negotiation on the [Accept](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept) HTTP header. It uses [Accepts](ctx.md#accepts) to select a proper format from the supplied offers. A default handler can be provided by setting the `MediaType` to `"default"`. If no offers match and no default is provided, a 406 (Not Acceptable) response is sent. The Content-Type is automatically set when a handler is selected.
 
 :::info
-If the header is **not** specified or there is **no** proper format, **text/plain** is used.
+If the Accept header is **not** specified, the first handler will be used.
 :::
 
 ```go title="Signature"
-func (c *Ctx) Format(body interface{}) error
+func (c *Ctx) Format(handlers ...ResFmt) error
 ```
 
 ```go title="Example"
-app.Get("/", func(c *fiber.Ctx) error {
-  // Accept: text/plain
-  c.Format("Hello, World!")
-  // => Hello, World!
+// Accept: application/json => {"command":"eat","subject":"fruit"}
+// Accept: text/plain => Eat Fruit!
+// Accept: application/xml => Not Acceptable
+app.Get("/no-default", func(c fiber.Ctx) error {
+  return c.Format(
+    fiber.ResFmt{"application/json", func(c fiber.Ctx) error {
+      return c.JSON(fiber.Map{
+        "command": "eat",
+        "subject": "fruit",
+      })
+    }},
+    fiber.ResFmt{"text/plain", func(c fiber.Ctx) error {
+      return c.SendString("Eat Fruit!")
+    }},
+  )
+})
 
-  // Accept: text/html
-  c.Format("Hello, World!")
-  // => <p>Hello, World!</p>
+// Accept: application/json => {"command":"eat","subject":"fruit"}
+// Accept: text/plain => Eat Fruit!
+// Accept: application/xml => Eat Fruit!
+app.Get("/default", func(c fiber.Ctx) error {
+  textHandler := func(c fiber.Ctx) error {
+    return c.SendString("Eat Fruit!")
+  }
 
-  // Accept: application/json
-  c.Format("Hello, World!")
-  // => "Hello, World!"
-  // ..
+  handlers := []fiber.ResFmt{
+    {"application/json", func(c fiber.Ctx) error {
+      return c.JSON(fiber.Map{
+        "command": "eat",
+        "subject": "fruit",
+      })
+    }},
+    {"text/plain", textHandler},
+    {"default", textHandler},
+  }
+
+  return c.Format(handlers...)
 })
 ```
 

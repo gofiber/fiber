@@ -717,49 +717,198 @@ func Test_Ctx_Format(t *testing.T) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
+	// set `accepted` to whatever media type was chosen by Format
+	var accepted string
+	formatHandlers := func(types ...string) []ResFmt {
+		fmts := []ResFmt{}
+		for _, t := range types {
+			t := utils.CopyString(t)
+			fmts = append(fmts, ResFmt{t, func(c Ctx) error {
+				accepted = t
+				return nil
+			}})
+		}
+		return fmts
+	}
+
+	c.Request().Header.Set(HeaderAccept, `text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7`)
+	err := c.Format(formatHandlers("application/xhtml+xml", "application/xml", "foo/bar")...)
+	require.Equal(t, "application/xhtml+xml", accepted)
+	require.Equal(t, "application/xhtml+xml", c.GetRespHeader(HeaderContentType))
+	require.NoError(t, err)
+	require.NotEqual(t, StatusNotAcceptable, c.Response().StatusCode())
+
+	err = c.Format(formatHandlers("foo/bar;a=b")...)
+	require.Equal(t, "foo/bar;a=b", accepted)
+	require.Equal(t, "foo/bar;a=b", c.GetRespHeader(HeaderContentType))
+	require.NoError(t, err)
+	require.NotEqual(t, StatusNotAcceptable, c.Response().StatusCode())
+
+	myError := errors.New("this is an error")
+	err = c.Format(ResFmt{"text/html", func(c Ctx) error { return myError }})
+	require.ErrorIs(t, err, myError)
+
+	c.Request().Header.Set(HeaderAccept, "application/json")
+	err = c.Format(ResFmt{"text/html", func(c Ctx) error { return c.SendStatus(StatusOK) }})
+	require.Equal(t, StatusNotAcceptable, c.Response().StatusCode())
+	require.NoError(t, err)
+
+	err = c.Format(formatHandlers("text/html", "default")...)
+	require.Equal(t, "default", accepted)
+	require.Equal(t, "text/html", c.GetRespHeader(HeaderContentType))
+	require.NoError(t, err)
+
+	err = c.Format()
+	require.ErrorIs(t, err, ErrNoHandlers)
+}
+
+func Benchmark_Ctx_Format(b *testing.B) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.Set(HeaderAccept, "application/json,text/plain; format=flowed; q=0.9")
+
+	fail := func(_ Ctx) error {
+		require.FailNow(b, "Wrong type chosen")
+		return errors.New("Wrong type chosen")
+	}
+	ok := func(_ Ctx) error {
+		return nil
+	}
+
+	var err error
+	b.Run("with arg allocation", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			err = c.Format(
+				ResFmt{"application/xml", fail},
+				ResFmt{"text/html", fail},
+				ResFmt{"text/plain;format=fixed", fail},
+				ResFmt{"text/plain;format=flowed", ok},
+			)
+		}
+		require.NoError(b, err)
+	})
+
+	b.Run("pre-allocated args", func(b *testing.B) {
+		offers := []ResFmt{
+			{"application/xml", fail},
+			{"text/html", fail},
+			{"text/plain;format=fixed", fail},
+			{"text/plain;format=flowed", ok},
+		}
+		for n := 0; n < b.N; n++ {
+			err = c.Format(offers...)
+		}
+		require.NoError(b, err)
+	})
+
+	c.Request().Header.Set("Accept", "text/plain")
+	b.Run("text/plain", func(b *testing.B) {
+		offers := []ResFmt{
+			{"application/xml", fail},
+			{"text/plain", ok},
+		}
+		for n := 0; n < b.N; n++ {
+			err = c.Format(offers...)
+		}
+		require.NoError(b, err)
+	})
+
+	c.Request().Header.Set("Accept", "json")
+	b.Run("json", func(b *testing.B) {
+		offers := []ResFmt{
+			{"xml", fail},
+			{"html", fail},
+			{"json", ok},
+		}
+		for n := 0; n < b.N; n++ {
+			err = c.Format(offers...)
+		}
+		require.NoError(b, err)
+	})
+}
+
+// go test -run Test_Ctx_AutoFormat
+func Test_Ctx_AutoFormat(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
 	c.Request().Header.Set(HeaderAccept, MIMETextPlain)
-	err := c.Format([]byte("Hello, World!"))
+	err := c.AutoFormat([]byte("Hello, World!"))
 	require.NoError(t, err)
 	require.Equal(t, "Hello, World!", string(c.Response().Body()))
 
 	c.Request().Header.Set(HeaderAccept, MIMETextHTML)
-	err = c.Format("Hello, World!")
+	err = c.AutoFormat("Hello, World!")
 	require.NoError(t, err)
 	require.Equal(t, "<p>Hello, World!</p>", string(c.Response().Body()))
 
 	c.Request().Header.Set(HeaderAccept, MIMEApplicationJSON)
-	err = c.Format("Hello, World!")
+	err = c.AutoFormat("Hello, World!")
 	require.NoError(t, err)
 	require.Equal(t, `"Hello, World!"`, string(c.Response().Body()))
 
 	c.Request().Header.Set(HeaderAccept, MIMETextPlain)
-	err = c.Format(complex(1, 1))
+	err = c.AutoFormat(complex(1, 1))
 	require.NoError(t, err)
 	require.Equal(t, "(1+1i)", string(c.Response().Body()))
 
 	c.Request().Header.Set(HeaderAccept, MIMEApplicationXML)
-	err = c.Format("Hello, World!")
+	err = c.AutoFormat("Hello, World!")
 	require.NoError(t, err)
 	require.Equal(t, `<string>Hello, World!</string>`, string(c.Response().Body()))
 
-	err = c.Format(complex(1, 1))
+	err = c.AutoFormat(complex(1, 1))
 	require.Error(t, err)
 
 	c.Request().Header.Set(HeaderAccept, MIMETextPlain)
-	err = c.Format(Map{})
+	err = c.AutoFormat(Map{})
 	require.NoError(t, err)
 	require.Equal(t, "map[]", string(c.Response().Body()))
 
 	type broken string
 	c.Request().Header.Set(HeaderAccept, "broken/accept")
 	require.NoError(t, err)
-	err = c.Format(broken("Hello, World!"))
+	err = c.AutoFormat(broken("Hello, World!"))
 	require.NoError(t, err)
 	require.Equal(t, `Hello, World!`, string(c.Response().Body()))
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Format -benchmem -count=4
-func Benchmark_Ctx_Format(b *testing.B) {
+func Test_Ctx_AutoFormat_Struct(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	type Message struct {
+		Recipients []string
+		Sender     string `xml:"sender,attr"`
+		Urgency    int    `xml:"urgency,attr"`
+	}
+	data := Message{
+		Recipients: []string{"Alice", "Bob"},
+		Sender:     "Carol",
+		Urgency:    3,
+	}
+
+	c.Request().Header.Set(HeaderAccept, MIMEApplicationJSON)
+	err := c.AutoFormat(data)
+	require.NoError(t, err)
+	require.Equal(t,
+		`{"Recipients":["Alice","Bob"],"Sender":"Carol","Urgency":3}`,
+		string(c.Response().Body()),
+	)
+
+	c.Request().Header.Set(HeaderAccept, MIMEApplicationXML)
+	err = c.AutoFormat(data)
+	require.NoError(t, err)
+	require.Equal(t,
+		`<Message sender="Carol" urgency="3"><Recipients>Alice</Recipients><Recipients>Bob</Recipients></Message>`,
+		string(c.Response().Body()),
+	)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_AutoFormat -benchmem -count=4
+func Benchmark_Ctx_AutoFormat(b *testing.B) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
@@ -769,14 +918,14 @@ func Benchmark_Ctx_Format(b *testing.B) {
 
 	var err error
 	for n := 0; n < b.N; n++ {
-		err = c.Format("Hello, World!")
+		err = c.AutoFormat("Hello, World!")
 	}
 	require.NoError(b, err)
 	require.Equal(b, `Hello, World!`, string(c.Response().Body()))
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Format_HTML -benchmem -count=4
-func Benchmark_Ctx_Format_HTML(b *testing.B) {
+// go test -v -run=^$ -bench=Benchmark_Ctx_AutoFormat_HTML -benchmem -count=4
+func Benchmark_Ctx_AutoFormat_HTML(b *testing.B) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
@@ -786,14 +935,14 @@ func Benchmark_Ctx_Format_HTML(b *testing.B) {
 
 	var err error
 	for n := 0; n < b.N; n++ {
-		err = c.Format("Hello, World!")
+		err = c.AutoFormat("Hello, World!")
 	}
 	require.NoError(b, err)
 	require.Equal(b, "<p>Hello, World!</p>", string(c.Response().Body()))
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Format_JSON -benchmem -count=4
-func Benchmark_Ctx_Format_JSON(b *testing.B) {
+// go test -v -run=^$ -bench=Benchmark_Ctx_AutoFormat_JSON -benchmem -count=4
+func Benchmark_Ctx_AutoFormat_JSON(b *testing.B) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
@@ -803,14 +952,14 @@ func Benchmark_Ctx_Format_JSON(b *testing.B) {
 
 	var err error
 	for n := 0; n < b.N; n++ {
-		err = c.Format("Hello, World!")
+		err = c.AutoFormat("Hello, World!")
 	}
 	require.NoError(b, err)
 	require.Equal(b, `"Hello, World!"`, string(c.Response().Body()))
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Format_XML -benchmem -count=4
-func Benchmark_Ctx_Format_XML(b *testing.B) {
+// go test -v -run=^$ -bench=Benchmark_Ctx_AutoFormat_XML -benchmem -count=4
+func Benchmark_Ctx_AutoFormat_XML(b *testing.B) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
@@ -820,7 +969,7 @@ func Benchmark_Ctx_Format_XML(b *testing.B) {
 
 	var err error
 	for n := 0; n < b.N; n++ {
-		err = c.Format("Hello, World!")
+		err = c.AutoFormat("Hello, World!")
 	}
 	require.NoError(b, err)
 	require.Equal(b, `<string>Hello, World!</string>`, string(c.Response().Body()))
