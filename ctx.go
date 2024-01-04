@@ -376,6 +376,9 @@ func decoderBuilder(parserConfig ParserConfig) interface{} {
 // All JSON extenstion mime types are supported (eg. application/problem+json)
 // If none of the content types above are matched, it will return a ErrUnprocessableEntity error
 func (c *Ctx) BodyParser(out interface{}) error {
+	if c.app.config.DefaultValueParser {
+		utils.SetDefaultValues(out)
+	}
 	// Get content-type
 	ctype := utils.ToLower(c.app.getString(c.fasthttp.Request.Header.ContentType()))
 
@@ -1088,6 +1091,10 @@ func (c *Ctx) AllParams() map[string]string {
 
 // ParamsParser binds the param string to a struct.
 func (c *Ctx) ParamsParser(out interface{}) error {
+	if c.app.config.DefaultValueParser {
+		utils.SetDefaultValues(out)
+	}
+
 	params := make(map[string][]string, len(c.route.Params))
 	for _, param := range c.route.Params {
 		params[param] = append(params[param], c.Params(param))

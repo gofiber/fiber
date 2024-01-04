@@ -36,6 +36,10 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+const (
+	cookieName = "Joseph"
+)
+
 // go test -run Test_Ctx_Accepts
 func Test_Ctx_Accepts(t *testing.T) {
 	t.Parallel()
@@ -1032,8 +1036,8 @@ func Test_Ctx_CookieParserUsingTag(t *testing.T) {
 		Grades   []uint8  `cookie:"score"`
 	}
 	cookie1 := new(Cook)
-	cookie1.Name = "Joseph"
-	utils.AssertEqual(t, "Joseph", cookie1.Name)
+	cookie1.Name = cookieName
+	utils.AssertEqual(t, cookieName, cookie1.Name)
 
 	c.Request().Header.Set("Cookie", "id=1")
 	c.Request().Header.Set("Cookie", "name=Joey")
@@ -1077,8 +1081,8 @@ func Test_Ctx_CookieParserUsingTagWithDefaultValues(t *testing.T) {
 		Grades   []uint8  `cookie:"score"`
 	}
 	cookie1 := new(Cook)
-	cookie1.Name = "Joseph"
-	utils.AssertEqual(t, "Joseph", cookie1.Name)
+	cookie1.Name = cookieName
+	utils.AssertEqual(t, cookieName, cookie1.Name)
 
 	c.Request().Header.Set("Cookie", "name=Joey")
 	c.Request().Header.Set("Cookie", "courses=maths,english, chemistry, physics")
@@ -1121,7 +1125,7 @@ func Test_Ctx_CookieParser_Schema(t *testing.T) {
 		Result result `cookie:"result"`
 	}
 	res := &resStruct{
-		Name: "Joseph",
+		Name: cookieName,
 		Age:  10,
 		Result: result{
 			Maths:   10,
@@ -1155,7 +1159,7 @@ func Benchmark_Ctx_CookieParser(b *testing.B) {
 		Grades   []uint8  `cookie:"score"`
 	}
 	cookie1 := new(Cook)
-	cookie1.Name = "Joseph"
+	cookie1.Name = cookieName
 
 	c.Request().Header.Set("Cookie", "id=1")
 	c.Request().Header.Set("Cookie", "name=Joey")
@@ -1185,7 +1189,7 @@ func Benchmark_Ctx_CookieParserWithDefaultValues(b *testing.B) {
 		Grades   []uint8  `cookie:"score"`
 	}
 	cookie1 := new(Cook)
-	cookie1.Name = "Joseph"
+	cookie1.Name = cookieName
 
 	c.Request().Header.Set("Cookie", "name=Joey")
 	c.Request().Header.Set("Cookie", "student=true")
