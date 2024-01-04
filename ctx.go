@@ -376,9 +376,6 @@ func decoderBuilder(parserConfig ParserConfig) interface{} {
 // All JSON extenstion mime types are supported (eg. application/problem+json)
 // If none of the content types above are matched, it will return a ErrUnprocessableEntity error
 func (c *Ctx) BodyParser(out interface{}) error {
-	if c.app.config.DefaultValueParser {
-		utils.SetDefaultValues(out)
-	}
 	// Get content-type
 	ctype := utils.ToLower(c.app.getString(c.fasthttp.Request.Header.ContentType()))
 
@@ -391,11 +388,9 @@ func (c *Ctx) BodyParser(out interface{}) error {
 	}
 
 	// Parse body accordingly
-	if strings.HasSuffix(ctype, "json") {
-		return c.app.config.JSONDecoder(c.Body(), out)
-	}
-	if strings.HasPrefix(ctype, MIMEApplicationForm) {
-		data := make(map[string][]string)
+	switch {
+	case strings.HasPrefix(ctype, MIMEApplicationForm):
+		formBody := make(map[string][]string)
 		var err error
 
 		c.fasthttp.PostArgs().VisitAll(func(key, val []byte) {
@@ -413,28 +408,37 @@ func (c *Ctx) BodyParser(out interface{}) error {
 			if c.app.config.EnableSplittingOnParsers && strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k, bodyTag) {
 				values := strings.Split(v, ",")
 				for i := 0; i < len(values); i++ {
-					data[k] = append(data[k], values[i])
+					formBody[k] = append(formBody[k], values[i])
 				}
 			} else {
-				data[k] = append(data[k], v)
+				formBody[k] = append(formBody[k], v)
 			}
 		})
 
-		return c.parseToStruct(bodyTag, out, data)
-	}
-	if strings.HasPrefix(ctype, MIMEMultipartForm) {
-		data, err := c.fasthttp.MultipartForm()
+		return c.parseToStruct(bodyTag, out, formBody)
+	case strings.HasPrefix(ctype, MIMEMultipartForm):
+		multipartBody, err := c.fasthttp.MultipartForm()
 		if err != nil {
 			return err
 		}
-		return c.parseToStruct(bodyTag, out, data.Value)
-	}
-	if strings.HasPrefix(ctype, MIMETextXML) || strings.HasPrefix(ctype, MIMEApplicationXML) {
-		if err := xml.Unmarshal(c.Body(), out); err != nil {
-			return fmt.Errorf("failed to unmarshal: %w", err)
+		return c.parseToStruct(bodyTag, out, multipartBody.Value)
+	// part for custom parser -> not the schema parser
+	default:
+		if c.app.config.DefaultValueParser {
+			utils.SetDefaultValues(out)
 		}
-		return nil
+
+		switch {
+		case strings.HasPrefix(ctype, MIMETextXML), strings.HasPrefix(ctype, MIMEApplicationXML):
+			if err := xml.Unmarshal(c.Body(), out); err != nil {
+				return fmt.Errorf("failed to unmarshal: %w", err)
+			}
+			return nil
+		case strings.HasSuffix(ctype, "json"):
+			return c.app.config.JSONDecoder(c.Body(), out)
+		}
 	}
+
 	// No suitable content type found
 	return ErrUnprocessableEntity
 }
@@ -519,10 +523,6 @@ func (c *Ctx) Cookies(key string, defaultValue ...string) string {
 
 // CookieParser is used to bind cookies to a struct
 func (c *Ctx) CookieParser(out interface{}) error {
-	if c.app.config.DefaultValueParser {
-		utils.SetDefaultValues(out)
-	}
-
 	data := make(map[string][]string)
 	var err error
 
@@ -1091,10 +1091,6 @@ func (c *Ctx) AllParams() map[string]string {
 
 // ParamsParser binds the param string to a struct.
 func (c *Ctx) ParamsParser(out interface{}) error {
-	if c.app.config.DefaultValueParser {
-		utils.SetDefaultValues(out)
-	}
-
 	params := make(map[string][]string, len(c.route.Params))
 	for _, param := range c.route.Params {
 		params[param] = append(params[param], c.Params(param))
@@ -1276,10 +1272,6 @@ func (c *Ctx) QueryFloat(key string, defaultValue ...float64) float64 {
 
 // QueryParser binds the query string to a struct.
 func (c *Ctx) QueryParser(out interface{}) error {
-	if c.app.config.DefaultValueParser {
-		utils.SetDefaultValues(out)
-	}
-
 	data := make(map[string][]string)
 	var err error
 
@@ -1339,10 +1331,6 @@ func parseParamSquareBrackets(k string) (string, error) {
 
 // ReqHeaderParser binds the request header strings to a struct.
 func (c *Ctx) ReqHeaderParser(out interface{}) error {
-	if c.app.config.DefaultValueParser {
-		utils.SetDefaultValues(out)
-	}
-
 	data := make(map[string][]string)
 	c.fasthttp.Request.Header.VisitAll(func(key, val []byte) {
 		k := c.app.getString(key)
@@ -1361,7 +1349,10 @@ func (c *Ctx) ReqHeaderParser(out interface{}) error {
 	return c.parseToStruct(reqHeaderTag, out, data)
 }
 
-func (*Ctx) parseToStruct(aliasTag string, out interface{}, data map[string][]string) error {
+func (c *Ctx) parseToStruct(aliasTag string, out interface{}, data map[string][]string) error {
+	if c.app.config.DefaultValueParser {
+		utils.SetDefaultValues(out)
+	}
 	// Get decoder from pool
 	schemaDecoder, ok := decoderPoolMap[aliasTag].Get().(*schema.Decoder)
 	if !ok {

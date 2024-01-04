@@ -991,34 +991,170 @@ func Test_Ctx_CookieParser(t *testing.T) {
 	utils.AssertEqual(t, 0, len(empty.Courses))
 }
 
-func Test_Ctx_CookieParserWithDefaultParser(t *testing.T) {
+func Test_Ctx_ParserWithDefaultValues(t *testing.T) {
 	t.Parallel()
+	// setup
 	app := New(Config{EnableSplittingOnParsers: true, DefaultValueParser: true})
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-	type Cookie struct {
-		Name    string ` default:"doe"`
-		Class   int    `default:"10"`
-		Courses []string
+
+	type TestStruct struct {
+		Name             string
+		Class            int
+		NameWithDefault  string `json:"name2" xml:"Name2" form:"name2" cookie:"name2" query:"name2" params:"name2" reqHeader:"name2" default:"doe"`
+		ClassWithDefault int    `json:"class2" xml:"Class2" form:"class2" cookie:"class2" query:"class2" params:"class2" reqHeader:"class2" default:"10"`
 	}
-	c.Request().Header.Set("Cookie", "courses=maths,english")
-	cookie := new(Cookie)
 
-	// correct test cases
-	utils.AssertEqual(t, nil, c.CookieParser(cookie))
-	utils.AssertEqual(t, "doe", cookie.Name)
-	utils.AssertEqual(t, 10, cookie.Class)
-	utils.AssertEqual(t, 2, len(cookie.Courses))
+	withValues := func(tt *testing.T, actionFn func(c *Ctx, testStruct *TestStruct) error) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		testStruct := new(TestStruct)
 
-	// wrong test cases
-	empty := new(Cookie)
-	c.Request().Header.Set("Cookie", "name")
-	c.Request().Header.Set("Cookie", "class")
-	c.Request().Header.Set("Cookie", "courses")
-	utils.AssertEqual(t, nil, c.CookieParser(cookie))
-	utils.AssertEqual(t, "", empty.Name)
-	utils.AssertEqual(t, 0, empty.Class)
-	utils.AssertEqual(t, 0, len(empty.Courses))
+		utils.AssertEqual(tt, nil, actionFn(c, testStruct))
+		utils.AssertEqual(tt, "foo", testStruct.Name)
+		utils.AssertEqual(tt, 111, testStruct.Class)
+		utils.AssertEqual(tt, "bar", testStruct.NameWithDefault)
+		utils.AssertEqual(tt, 222, testStruct.ClassWithDefault)
+	}
+	withoutValues := func(tt *testing.T, actionFn func(c *Ctx, testStruct *TestStruct) error) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		testStruct := new(TestStruct)
+
+		utils.AssertEqual(tt, nil, actionFn(c, testStruct))
+		utils.AssertEqual(tt, "", testStruct.Name)
+		utils.AssertEqual(tt, 0, testStruct.Class)
+		utils.AssertEqual(tt, "doe", testStruct.NameWithDefault)
+		utils.AssertEqual(tt, 10, testStruct.ClassWithDefault)
+	}
+
+	t.Run("BodyParser:xml", func(tt *testing.T) {
+		tt.Run("withValues", func(ttt *testing.T) {
+			withValues(ttt, func(c *Ctx, testStruct *TestStruct) error {
+				c.Request().Header.SetContentType(MIMEApplicationXML)
+				c.Request().SetBody([]byte(`<TestStruct><Name>foo</Name><Class>111</Class><Name2>bar</Name2><Class2>222</Class2></TestStruct>`))
+				return c.BodyParser(testStruct)
+			})
+		})
+		tt.Run("withoutValues", func(ttt *testing.T) {
+			withoutValues(ttt, func(c *Ctx, testStruct *TestStruct) error {
+				c.Request().Header.SetContentType(MIMEApplicationXML)
+				c.Request().SetBody([]byte(`<TestStruct></TestStruct>`))
+				return c.BodyParser(testStruct)
+			})
+		})
+	})
+	t.Run("BodyParser:form", func(tt *testing.T) {
+		tt.Run("withValues", func(ttt *testing.T) {
+			withValues(ttt, func(c *Ctx, testStruct *TestStruct) error {
+				c.Request().Header.SetContentType(MIMEApplicationForm)
+				c.Request().SetBody([]byte(`name=foo&class=111&name2=bar&class2=222`))
+				return c.BodyParser(testStruct)
+			})
+		})
+		tt.Run("withoutValues", func(ttt *testing.T) {
+			withoutValues(ttt, func(c *Ctx, testStruct *TestStruct) error {
+				c.Request().Header.SetContentType(MIMEApplicationForm)
+				c.Request().SetBody([]byte(``))
+
+				return c.BodyParser(testStruct)
+			})
+		})
+	})
+	t.Run("BodyParser:json", func(tt *testing.T) {
+		tt.Run("withValues", func(ttt *testing.T) {
+			withValues(ttt, func(c *Ctx, testStruct *TestStruct) error {
+				c.Request().Header.SetContentType(MIMEApplicationJSON)
+				c.Request().SetBody([]byte(`{"name":"foo","class":111,"name2":"bar","class2":222}`))
+				return c.BodyParser(testStruct)
+			})
+		})
+		tt.Run("withoutValues", func(ttt *testing.T) {
+			withoutValues(ttt, func(c *Ctx, testStruct *TestStruct) error {
+				c.Request().Header.SetContentType(MIMEApplicationJSON)
+				c.Request().SetBody([]byte(`{}`))
+
+				return c.BodyParser(testStruct)
+			})
+		})
+	})
+	t.Run("BodyParser:multiform", func(tt *testing.T) {
+		tt.Run("withValues", func(ttt *testing.T) {
+			withValues(ttt, func(c *Ctx, testStruct *TestStruct) error {
+				body := []byte("--b\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\nfoo\r\n--b\r\nContent-Disposition: form-data; name=\"class\"\r\n\r\n111\r\n--b\r\nContent-Disposition: form-data; name=\"name2\"\r\n\r\nbar\r\n--b\r\nContent-Disposition: form-data; name=\"class2\"\r\n\r\n222\r\n--b--")
+				c.Request().SetBody(body)
+				c.Request().Header.SetContentType(MIMEMultipartForm + `;boundary="b"`)
+				c.Request().Header.SetContentLength(len(body))
+				return c.BodyParser(testStruct)
+			})
+		})
+		tt.Run("withoutValues", func(ttt *testing.T) {
+			withoutValues(ttt, func(c *Ctx, testStruct *TestStruct) error {
+				body := []byte("--b\n\n--b--")
+				c.Request().SetBody(body)
+				c.Request().Header.SetContentType(MIMEMultipartForm + `;boundary="b"`)
+				c.Request().Header.SetContentLength(len(body))
+
+				return c.BodyParser(testStruct)
+			})
+		})
+	})
+	t.Run("CookieParser", func(tt *testing.T) {
+		tt.Run("withValues", func(ttt *testing.T) {
+			withValues(ttt, func(c *Ctx, testStruct *TestStruct) error {
+				c.Request().Header.Set("Cookie", "name=foo;name2=bar;class=111;class2=222")
+				return c.CookieParser(testStruct)
+			})
+		})
+		tt.Run("withoutValues", func(ttt *testing.T) {
+			withoutValues(ttt, func(c *Ctx, testStruct *TestStruct) error {
+				return c.CookieParser(testStruct)
+			})
+		})
+	})
+	t.Run("QueryParser", func(tt *testing.T) {
+		tt.Run("withValues", func(ttt *testing.T) {
+			withValues(ttt, func(c *Ctx, testStruct *TestStruct) error {
+				c.Request().URI().SetQueryString("name=foo&name2=bar&class=111&class2=222")
+				return c.QueryParser(testStruct)
+			})
+		})
+		tt.Run("withoutValues", func(ttt *testing.T) {
+			withoutValues(ttt, func(c *Ctx, testStruct *TestStruct) error {
+				return c.QueryParser(testStruct)
+			})
+		})
+	})
+	t.Run("ParamsParser", func(tt *testing.T) {
+		tt.Run("withValues", func(ttt *testing.T) {
+			withValues(ttt, func(c *Ctx, testStruct *TestStruct) error {
+				c.route = &Route{Params: []string{"name", "name2", "class", "class2"}}
+				c.values = [30]string{"foo", "bar", "111", "222"}
+				return c.ParamsParser(testStruct)
+			})
+		})
+		tt.Run("withoutValues", func(ttt *testing.T) {
+			withoutValues(ttt, func(c *Ctx, testStruct *TestStruct) error {
+				c.route = &Route{Params: []string{}}
+				c.values = [30]string{}
+				return c.ParamsParser(testStruct)
+			})
+		})
+	})
+	t.Run("ReqHeaderParser", func(tt *testing.T) {
+		tt.Run("withValues", func(ttt *testing.T) {
+			withValues(ttt, func(c *Ctx, testStruct *TestStruct) error {
+				c.Request().Header.Add("name", "foo")
+				c.Request().Header.Add("name2", "bar")
+				c.Request().Header.Add("class", "111")
+				c.Request().Header.Add("class2", "222")
+				return c.ReqHeaderParser(testStruct)
+			})
+		})
+		tt.Run("withoutValues", func(ttt *testing.T) {
+			withoutValues(ttt, func(c *Ctx, testStruct *TestStruct) error {
+				return c.ReqHeaderParser(testStruct)
+			})
+		})
+	})
 }
 
 // go test -run Test_Ctx_CookieParserUsingTag -v
@@ -1044,48 +1180,6 @@ func Test_Ctx_CookieParserUsingTag(t *testing.T) {
 	c.Request().Header.Set("Cookie", "courses=maths,english, chemistry, physics")
 	c.Request().Header.Set("Cookie", "student=true")
 	c.Request().Header.Set("Cookie", "fee=45.78")
-	c.Request().Header.Set("Cookie", "score=7,6,10")
-	utils.AssertEqual(t, nil, c.CookieParser(cookie1))
-	utils.AssertEqual(t, "Joey", cookie1.Name)
-	utils.AssertEqual(t, true, cookie1.Enrolled)
-	utils.AssertEqual(t, float32(45.78), cookie1.Fees)
-	utils.AssertEqual(t, []uint8{7, 6, 10}, cookie1.Grades)
-
-	type RequiredCookie struct {
-		House string `cookie:"house,required"`
-	}
-	rc := new(RequiredCookie)
-	utils.AssertEqual(t, "failed to decode: house is empty", c.CookieParser(rc).Error())
-
-	type ArrayCookie struct {
-		Dates []int
-	}
-
-	ac := new(ArrayCookie)
-	c.Request().Header.Set("Cookie", "dates[]=7,6,10")
-	utils.AssertEqual(t, nil, c.CookieParser(ac))
-	utils.AssertEqual(t, 3, len(ac.Dates))
-}
-
-func Test_Ctx_CookieParserUsingTagWithDefaultValues(t *testing.T) {
-	t.Parallel()
-	app := New(Config{EnableSplittingOnParsers: true, DefaultValueParser: true})
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-	type Cook struct {
-		ID       int      `cookie:"id"  default:"10"`
-		Name     string   `cookie:"name"`
-		Courses  []string `cookie:"courses"`
-		Enrolled bool     `cookie:"student" default:"true"`
-		Fees     float32  `cookie:"fee"  default:"45.78"`
-		Grades   []uint8  `cookie:"score"`
-	}
-	cookie1 := new(Cook)
-	cookie1.Name = cookieName
-	utils.AssertEqual(t, cookieName, cookie1.Name)
-
-	c.Request().Header.Set("Cookie", "name=Joey")
-	c.Request().Header.Set("Cookie", "courses=maths,english, chemistry, physics")
 	c.Request().Header.Set("Cookie", "score=7,6,10")
 	utils.AssertEqual(t, nil, c.CookieParser(cookie1))
 	utils.AssertEqual(t, "Joey", cookie1.Name)
@@ -1176,32 +1270,31 @@ func Benchmark_Ctx_CookieParser(b *testing.B) {
 	utils.AssertEqual(b, nil, err)
 }
 
-func Benchmark_Ctx_CookieParserWithDefaultValues(b *testing.B) {
-	app := New(Config{EnableSplittingOnParsers: true})
+func Benchmark_Ctx_BodyParserJsonWithDefaultValues(b *testing.B) {
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	app := New(Config{DefaultValueParser: true})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
-	type Cook struct {
-		ID       int      `cookie:"id" default:"10"`
-		Name     string   `cookie:"name"`
-		Courses  []string `cookie:"courses" default:"maths,english, chemistry, physics"`
-		Enrolled bool     `cookie:"student"`
-		Fees     float32  `cookie:"fee"`
-		Grades   []uint8  `cookie:"score"`
+	type TestStruct struct {
+		Name                   string
+		NameWithDefault        string `json:"name2" default:"doe"`
+		NameWithDefaultNoValue string `json:"name3" default:"doe"`
 	}
-	cookie1 := new(Cook)
-	cookie1.Name = cookieName
-
-	c.Request().Header.Set("Cookie", "name=Joey")
-	c.Request().Header.Set("Cookie", "student=true")
-	c.Request().Header.Set("Cookie", "fee=45.78")
-	c.Request().Header.Set("Cookie", "score=7,6,10")
+	c.Request().Header.SetContentType(MIMEApplicationJSON)
+	c.Request().SetBody([]byte(`{"name":"foo","name2":"bar"}`))
 
 	var err error
+	testStruct := new(TestStruct)
 	// Run the function b.N times
 	for i := 0; i < b.N; i++ {
-		err = c.CookieParser(cookie1)
+		err = c.BodyParser(testStruct)
 	}
 	utils.AssertEqual(b, nil, err)
+	utils.AssertEqual(b, "foo", testStruct.Name)
+	utils.AssertEqual(b, "bar", testStruct.NameWithDefault)
+	utils.AssertEqual(b, "doe", testStruct.NameWithDefaultNoValue)
 }
 
 // go test -run Test_Ctx_Cookies
@@ -4633,104 +4726,6 @@ func Test_Ctx_QueryParserUsingTag(t *testing.T) {
 	utils.AssertEqual(t, 2, len(aq.Data))
 }
 
-// go test -run Test_Ctx_QueryParserWithDefaultValues -v
-func Test_Ctx_QueryParserWithDefaultValues(t *testing.T) {
-	t.Parallel()
-	app := New(Config{DefaultValueParser: true, EnableSplittingOnParsers: true})
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-	type Query struct {
-		IntValue    int       `query:"intValue" default:"10"`
-		IntSlice    []int     `query:"intSlice"`
-		StringValue string    `query:"stringValue" default:"defaultStr"`
-		StringSlice []string  `query:"stringSlice"`
-		BoolValue   bool      `query:"boolValue" default:"true"`
-		BoolSlice   []bool    `query:"boolSlice"`
-		FloatValue  float64   `query:"floatValue" default:"3.14"`
-		FloatSlice  []float64 `query:"floatSlice"`
-	}
-
-	// Test with multiple values
-	c.Request().SetBody([]byte(``))
-	c.Request().Header.SetContentType("")
-	c.Request().URI().SetQueryString("intValue=20&intSlice=1,2,3&stringValue=test&stringSlice=a,b,c&boolValue=false&boolSlice=true,false,true&floatValue=6.28&floatSlice=1.1,2.2,3.3")
-	cq := new(Query)
-	utils.AssertEqual(t, nil, c.QueryParser(cq))
-	utils.AssertEqual(t, 20, cq.IntValue)
-	utils.AssertEqual(t, 3, len(cq.IntSlice))
-	utils.AssertEqual(t, "test", cq.StringValue)
-	utils.AssertEqual(t, 3, len(cq.StringSlice))
-	utils.AssertEqual(t, false, cq.BoolValue)
-	utils.AssertEqual(t, 3, len(cq.BoolSlice))
-	utils.AssertEqual(t, 6.28, cq.FloatValue)
-	utils.AssertEqual(t, 3, len(cq.FloatSlice))
-
-	// Test with missing values (should use defaults)
-	c.Request().URI().SetQueryString("intSlice=4,5,6&stringSlice=d,e,f&boolSlice=false,true,false&floatSlice=4.4,5.5,6.6")
-	cq = new(Query)
-	utils.AssertEqual(t, nil, c.QueryParser(cq))
-	utils.AssertEqual(t, 10, cq.IntValue) // default value
-	utils.AssertEqual(t, 3, len(cq.IntSlice))
-	utils.AssertEqual(t, "defaultStr", cq.StringValue) // default value
-	utils.AssertEqual(t, 3, len(cq.StringSlice))
-	utils.AssertEqual(t, true, cq.BoolValue) // default value
-	utils.AssertEqual(t, 3, len(cq.BoolSlice))
-	utils.AssertEqual(t, 3.14, cq.FloatValue) // default value
-	utils.AssertEqual(t, 3, len(cq.FloatSlice))
-
-	// Test with empty query string
-	empty := new(Query)
-	c.Request().URI().SetQueryString("")
-	utils.AssertEqual(t, nil, c.QueryParser(empty))
-	utils.AssertEqual(t, 10, empty.IntValue)              // default value
-	utils.AssertEqual(t, "defaultStr", empty.StringValue) // default value
-	utils.AssertEqual(t, true, empty.BoolValue)           // default value
-	utils.AssertEqual(t, 3.14, empty.FloatValue)          // default value
-	utils.AssertEqual(t, 0, len(empty.IntSlice))
-	utils.AssertEqual(t, 0, len(empty.StringSlice))
-	utils.AssertEqual(t, 0, len(empty.BoolSlice))
-	utils.AssertEqual(t, 0, len(empty.FloatSlice))
-	type Query2 struct {
-		Bool            bool     `query:"bool"`
-		ID              int      `query:"id"`
-		Name            string   `query:"name"`
-		Hobby           string   `query:"hobby"`
-		FavouriteDrinks []string `query:"favouriteDrinks"`
-		Empty           []string `query:"empty"`
-		Alloc           []string `query:"alloc"`
-		No              []int64  `query:"no"`
-	}
-
-	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football&favouriteDrinks=milo,coke,pepsi&alloc=&no=1")
-	q2 := new(Query2)
-	q2.Bool = true
-	q2.Name = "hello world 2"
-	utils.AssertEqual(t, nil, c.QueryParser(q2))
-	utils.AssertEqual(t, "basketball,football", q2.Hobby)
-	utils.AssertEqual(t, true, q2.Bool)
-	utils.AssertEqual(t, "tom", q2.Name) // check value get overwritten
-	utils.AssertEqual(t, []string{"milo", "coke", "pepsi"}, q2.FavouriteDrinks)
-	var nilSlice []string
-	utils.AssertEqual(t, nilSlice, q2.Empty)
-	utils.AssertEqual(t, []string{""}, q2.Alloc)
-	utils.AssertEqual(t, []int64{1}, q2.No)
-
-	type RequiredQuery struct {
-		Name string `query:"name,required"`
-	}
-	rq := new(RequiredQuery)
-	c.Request().URI().SetQueryString("")
-	utils.AssertEqual(t, "failed to decode: name is empty", c.QueryParser(rq).Error())
-
-	type ArrayQuery struct {
-		Data []string
-	}
-	aq := new(ArrayQuery)
-	c.Request().URI().SetQueryString("data[]=john&data[]=doe")
-	utils.AssertEqual(t, nil, c.QueryParser(aq))
-	utils.AssertEqual(t, 2, len(aq.Data))
-}
-
 // go test -run Test_Ctx_QueryParser -v
 func Test_Ctx_QueryParser_WithoutSplitting(t *testing.T) {
 	t.Parallel()
@@ -4980,72 +4975,6 @@ func Test_Ctx_ReqHeaderParser(t *testing.T) {
 	utils.AssertEqual(t, "failed to decode: name is empty", c.ReqHeaderParser(rh).Error())
 }
 
-// go test -run Test_Ctx_ReqHeaderParserWithDefaultValues -v
-func Test_Ctx_ReqHeaderParserWithDefaultValues(t *testing.T) {
-	t.Parallel()
-	app := New(Config{EnableSplittingOnParsers: true, DefaultValueParser: true})
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-	type Header struct {
-		ID    int      `default:"10"`
-		Name  string   `default:"defaultStr"`
-		Hobby []string `default:"golang,fiber,go"`
-	}
-
-	c.Request().SetBody([]byte(``))
-	c.Request().Header.SetContentType("")
-
-	q := new(Header)
-	utils.AssertEqual(t, nil, c.ReqHeaderParser(q))
-	utils.AssertEqual(t, 3, len(q.Hobby))
-
-	c.Request().Header.Del("hobby")
-	c.Request().Header.Add("Hobby", "golang,fiber,go")
-	q = new(Header)
-	utils.AssertEqual(t, nil, c.ReqHeaderParser(q))
-	utils.AssertEqual(t, 3, len(q.Hobby))
-
-	type Header2 struct {
-		Bool            bool     `default:"true"`
-		ID              int      `default:"10"`
-		Name            string   `default:"defaultStr"`
-		Hobby           string   `default:"golang,fiber,go"`
-		FavouriteDrinks []string `default:"milo,coke,pepsi"`
-		Empty           []string `default:""`
-		Alloc           []string `default:""`
-		No              []int64  `default:"1"`
-	}
-
-	h2 := new(Header2)
-	h2.Bool = true
-	h2.Name = "hello world 3"
-	utils.AssertEqual(t, nil, c.ReqHeaderParser(h2))
-	utils.AssertEqual(t, "golang,fiber,go", h2.Hobby)
-	utils.AssertEqual(t, true, h2.Bool)
-	utils.AssertEqual(t, "hello world 3", h2.Name) // check value get overwritten
-	utils.AssertEqual(t, []string{"milo", "coke", "pepsi"}, h2.FavouriteDrinks)
-	var nilSlice []string
-	/*
-		here is deep equal issue with empty slice and nil slice
-		 ctx_test.go:4837:
-		        Test:            Test_Ctx_ReqHeaderParserWithDefaultValues
-		        Trace:           ctx_test.go:4837
-		        Description:     empty slice should be nil
-		        Expect:          []     ([]string)
-		        Result:          []     ([]string)
-	*/
-	reflect.DeepEqual(nilSlice, h2.Empty)
-	utils.AssertEqual(t, []string{""}, h2.Alloc)
-	utils.AssertEqual(t, []int64{1}, h2.No)
-
-	type RequiredHeader struct {
-		Name string `reqHeader:"name,required"`
-	}
-	rh := new(RequiredHeader)
-	c.Request().Header.Del("name")
-	utils.AssertEqual(t, "failed to decode: name is empty", c.ReqHeaderParser(rh).Error())
-}
-
 // go test -run Test_Ctx_ReqHeaderParserUsingTag -v
 func Test_Ctx_ReqHeaderParserUsingTag(t *testing.T) {
 	t.Parallel()
@@ -5110,72 +5039,6 @@ func Test_Ctx_ReqHeaderParserUsingTag(t *testing.T) {
 	utils.AssertEqual(t, []string{"milo", "coke", "pepsi"}, h2.FavouriteDrinks)
 	var nilSlice []string
 	utils.AssertEqual(t, nilSlice, h2.Empty)
-	utils.AssertEqual(t, []string{""}, h2.Alloc)
-	utils.AssertEqual(t, []int64{1}, h2.No)
-
-	type RequiredHeader struct {
-		Name string `reqHeader:"name,required"`
-	}
-	rh := new(RequiredHeader)
-	c.Request().Header.Del("name")
-	utils.AssertEqual(t, "failed to decode: name is empty", c.ReqHeaderParser(rh).Error())
-}
-
-// go test -run Test_Ctx_ReqHeaderParserUsingTagWithDefaultValues -v
-func Test_Ctx_ReqHeaderParserUsingTagWithDefaultValues(t *testing.T) {
-	t.Parallel()
-	app := New(Config{EnableSplittingOnParsers: true, DefaultValueParser: true})
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-	type Header struct {
-		ID      int      `reqHeader:"id" default:"1"`
-		Name    string   `reqHeader:"name" default:"John Doe"`
-		Hobby   []string `reqHeader:"hobby" default:"golang,fiber,go"`
-		Address []string `reqHeader:"x-secure-address" default:"1st,2st"`
-	}
-	c.Request().SetBody([]byte(``))
-	c.Request().Header.SetContentType("")
-
-	q := new(Header)
-	utils.AssertEqual(t, nil, c.ReqHeaderParser(q))
-	utils.AssertEqual(t, 3, len(q.Hobby))
-	utils.AssertEqual(t, 2, len(q.Address))
-
-	type Header2 struct {
-		Bool            bool     `reqHeader:"bool" default:"true"`
-		ID              int      `reqHeader:"id" default:"2"`
-		Name            string   `reqHeader:"name" default:"John Doe"`
-		Hobby           string   `reqHeader:"hobby" default:"go,fiber"`
-		FavouriteDrinks []string `reqHeader:"favouriteDrinks" default:"milo,coke,pepsi"`
-		Empty           []string `reqHeader:"empty" default:""`
-		Alloc           []string `reqHeader:"alloc" default:""`
-		No              []int64  `reqHeader:"no" default:"1"`
-	}
-
-	c.Request().Header.Add("id", "2")
-	c.Request().Header.Add("Name", "Jane Doe")
-	c.Request().Header.Del("hobby")
-	c.Request().Header.Add("Hobby", "go,fiber")
-	c.Request().Header.Add("favouriteDrinks", "milo,coke,pepsi")
-	c.Request().Header.Add("alloc", "")
-	c.Request().Header.Add("no", "1")
-
-	h2 := new(Header2)
-	h2.Bool = true
-	h2.Name = "hello world 4"
-	utils.AssertEqual(t, nil, c.ReqHeaderParser(h2))
-	utils.AssertEqual(t, "go,fiber", h2.Hobby)
-	utils.AssertEqual(t, true, h2.Bool)
-	utils.AssertEqual(t, "Jane Doe", h2.Name) // check value get overwritten
-	utils.AssertEqual(t, []string{"milo", "coke", "pepsi"}, h2.FavouriteDrinks)
-	var nilSlice []string
-	/*
-			here is deep equal issue with empty slice and nil slice
-		  		        Description:     empty slice should be nil
-		  		        Expect:          []     ([]string)
-		  		        Result:          []     ([]string)
-	*/
-	reflect.DeepEqual(nilSlice, h2.Empty)
 	utils.AssertEqual(t, []string{""}, h2.Alloc)
 	utils.AssertEqual(t, []int64{1}, h2.No)
 
@@ -5481,61 +5344,6 @@ func Benchmark_Ctx_QueryParser(b *testing.B) {
 	utils.AssertEqual(b, nil, c.QueryParser(q))
 }
 
-// go test -v  -run=^$ -bench=Benchmark_Ctx_QueryParserWithDefaultValues -benchmem -count=4
-func Benchmark_Ctx_QueryParserWithDefaultValues(b *testing.B) {
-	app := New(Config{DefaultValueParser: true})
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-
-	// Query struct with 2 default values
-	type Query struct {
-		ID    int    `default:"4"`
-		Name  string `default:"john"`
-		Hobby []string
-	}
-	c.Request().SetBody([]byte(``))
-	c.Request().Header.SetContentType("")
-	c.Request().URI().SetQueryString("hobby=basketball&hobby=football")
-	q := new(Query)
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	var err error
-	for n := 0; n < b.N; n++ {
-		err = c.QueryParser(q)
-	}
-
-	utils.AssertEqual(b, nil, err)
-	utils.AssertEqual(b, nil, c.QueryParser(q))
-}
-
-// go test -v  -run=^$ -bench=Benchmark_Ctx_QueryParserWithDefaultValuesForSlices -benchmem -count=4
-func Benchmark_Ctx_QueryParserWithDefaultValuesForSlices(b *testing.B) {
-	app := New(Config{DefaultValueParser: true})
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-
-	// Query struct slices with default values
-	type Query2 struct {
-		ID    int
-		Name  string
-		Hobby []int `default:"1,2,3"`
-	}
-	c.Request().SetBody([]byte(``))
-	c.Request().Header.SetContentType("")
-	c.Request().URI().SetQueryString("hobby=1&hobby=2")
-	q2 := new(Query2)
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	var err2 error
-	for n := 0; n < b.N; n++ {
-		err2 = c.QueryParser(q2)
-	}
-	utils.AssertEqual(b, nil, err2)
-	utils.AssertEqual(b, nil, c.QueryParser(q2))
-}
-
 // go test -v  -run=^$ -bench=Benchmark_Ctx_parseQuery -benchmem -count=4
 func Benchmark_Ctx_parseQuery(b *testing.B) {
 	app := New()
@@ -5602,35 +5410,6 @@ func Benchmark_Ctx_ReqHeaderParser(b *testing.B) {
 		ID    int
 		Name  string
 		Hobby []string
-	}
-	c.Request().SetBody([]byte(``))
-	c.Request().Header.SetContentType("")
-
-	c.Request().Header.Add("id", "1")
-	c.Request().Header.Add("Name", "John Doe")
-	c.Request().Header.Add("Hobby", "golang,fiber")
-
-	q := new(ReqHeader)
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	var err error
-	for n := 0; n < b.N; n++ {
-		err = c.ReqHeaderParser(q)
-	}
-	utils.AssertEqual(b, nil, err)
-	utils.AssertEqual(b, nil, c.ReqHeaderParser(q))
-}
-
-// go test -v  -run=^$ -bench=Benchmark_Ctx_ReqHeaderParserWithDefaultValues -benchmem -count=4
-func Benchmark_Ctx_ReqHeaderParserWithDefaultValues(b *testing.B) {
-	app := New(Config{EnableSplittingOnParsers: true, DefaultValueParser: true})
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-	type ReqHeader struct {
-		ID    int      `default:"4"`
-		Name  string   `default:"john"`
-		Hobby []string `default:"basketball,football"`
 	}
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
