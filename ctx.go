@@ -1093,7 +1093,10 @@ func (c *Ctx) AllParams() map[string]string {
 func (c *Ctx) ParamsParser(out interface{}) error {
 	params := make(map[string][]string, len(c.route.Params))
 	for _, param := range c.route.Params {
-		params[param] = append(params[param], c.Params(param))
+		value := c.Params(param)
+		if value != "" {
+			params[param] = append(params[param], value)
+		}
 	}
 	return c.parseToStruct(paramsTag, out, params)
 }

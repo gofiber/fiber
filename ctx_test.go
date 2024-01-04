@@ -1134,9 +1134,16 @@ func Test_Ctx_ParserWithDefaultValues(t *testing.T) {
 			})
 		})
 		tt.Run("withoutValues", func(t *testing.T) {
+			// no params declared in route
 			withoutValues(t, func(c *Ctx, testStruct *TestStruct) error {
 				c.route = &Route{Params: []string{}}
 				c.values = [30]string{}
+				return c.ParamsParser(testStruct)
+			})
+			// no values for route
+			withoutValues(t, func(c *Ctx, testStruct *TestStruct) error {
+				c.route = &Route{Params: []string{"name", "name2", "class", "class2"}}
+				c.values = [30]string{"", "", "", ""}
 				return c.ParamsParser(testStruct)
 			})
 		})
