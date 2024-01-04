@@ -1003,39 +1003,41 @@ func Test_Ctx_ParserWithDefaultValues(t *testing.T) {
 		ClassWithDefault int    `json:"class2" xml:"Class2" form:"class2" cookie:"class2" query:"class2" params:"class2" reqHeader:"class2" default:"10"`
 	}
 
-	withValues := func(tt *testing.T, actionFn func(c *Ctx, testStruct *TestStruct) error) {
+	withValues := func(t *testing.T, actionFn func(c *Ctx, testStruct *TestStruct) error) {
+		t.Helper()
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(c)
 		testStruct := new(TestStruct)
 
-		utils.AssertEqual(tt, nil, actionFn(c, testStruct))
-		utils.AssertEqual(tt, "foo", testStruct.Name)
-		utils.AssertEqual(tt, 111, testStruct.Class)
-		utils.AssertEqual(tt, "bar", testStruct.NameWithDefault)
-		utils.AssertEqual(tt, 222, testStruct.ClassWithDefault)
+		utils.AssertEqual(t, nil, actionFn(c, testStruct))
+		utils.AssertEqual(t, "foo", testStruct.Name)
+		utils.AssertEqual(t, 111, testStruct.Class)
+		utils.AssertEqual(t, "bar", testStruct.NameWithDefault)
+		utils.AssertEqual(t, 222, testStruct.ClassWithDefault)
 	}
-	withoutValues := func(tt *testing.T, actionFn func(c *Ctx, testStruct *TestStruct) error) {
+	withoutValues := func(t *testing.T, actionFn func(c *Ctx, testStruct *TestStruct) error) {
+		t.Helper()
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(c)
 		testStruct := new(TestStruct)
 
-		utils.AssertEqual(tt, nil, actionFn(c, testStruct))
-		utils.AssertEqual(tt, "", testStruct.Name)
-		utils.AssertEqual(tt, 0, testStruct.Class)
-		utils.AssertEqual(tt, "doe", testStruct.NameWithDefault)
-		utils.AssertEqual(tt, 10, testStruct.ClassWithDefault)
+		utils.AssertEqual(t, nil, actionFn(c, testStruct))
+		utils.AssertEqual(t, "", testStruct.Name)
+		utils.AssertEqual(t, 0, testStruct.Class)
+		utils.AssertEqual(t, "doe", testStruct.NameWithDefault)
+		utils.AssertEqual(t, 10, testStruct.ClassWithDefault)
 	}
 
-	t.Run("BodyParser:xml", func(tt *testing.T) {
-		tt.Run("withValues", func(ttt *testing.T) {
-			withValues(ttt, func(c *Ctx, testStruct *TestStruct) error {
+	t.Run("BodyParser:xml", func(t *testing.T) {
+		t.Run("withValues", func(t *testing.T) {
+			withValues(t, func(c *Ctx, testStruct *TestStruct) error {
 				c.Request().Header.SetContentType(MIMEApplicationXML)
 				c.Request().SetBody([]byte(`<TestStruct><Name>foo</Name><Class>111</Class><Name2>bar</Name2><Class2>222</Class2></TestStruct>`))
 				return c.BodyParser(testStruct)
 			})
 		})
-		tt.Run("withoutValues", func(ttt *testing.T) {
-			withoutValues(ttt, func(c *Ctx, testStruct *TestStruct) error {
+		t.Run("withoutValues", func(t *testing.T) {
+			withoutValues(t, func(c *Ctx, testStruct *TestStruct) error {
 				c.Request().Header.SetContentType(MIMEApplicationXML)
 				c.Request().SetBody([]byte(`<TestStruct></TestStruct>`))
 				return c.BodyParser(testStruct)
@@ -1043,15 +1045,15 @@ func Test_Ctx_ParserWithDefaultValues(t *testing.T) {
 		})
 	})
 	t.Run("BodyParser:form", func(tt *testing.T) {
-		tt.Run("withValues", func(ttt *testing.T) {
-			withValues(ttt, func(c *Ctx, testStruct *TestStruct) error {
+		tt.Run("withValues", func(t *testing.T) {
+			withValues(t, func(c *Ctx, testStruct *TestStruct) error {
 				c.Request().Header.SetContentType(MIMEApplicationForm)
 				c.Request().SetBody([]byte(`name=foo&class=111&name2=bar&class2=222`))
 				return c.BodyParser(testStruct)
 			})
 		})
-		tt.Run("withoutValues", func(ttt *testing.T) {
-			withoutValues(ttt, func(c *Ctx, testStruct *TestStruct) error {
+		tt.Run("withoutValues", func(t *testing.T) {
+			withoutValues(t, func(c *Ctx, testStruct *TestStruct) error {
 				c.Request().Header.SetContentType(MIMEApplicationForm)
 				c.Request().SetBody([]byte(``))
 
@@ -1060,15 +1062,15 @@ func Test_Ctx_ParserWithDefaultValues(t *testing.T) {
 		})
 	})
 	t.Run("BodyParser:json", func(tt *testing.T) {
-		tt.Run("withValues", func(ttt *testing.T) {
-			withValues(ttt, func(c *Ctx, testStruct *TestStruct) error {
+		tt.Run("withValues", func(t *testing.T) {
+			withValues(t, func(c *Ctx, testStruct *TestStruct) error {
 				c.Request().Header.SetContentType(MIMEApplicationJSON)
 				c.Request().SetBody([]byte(`{"name":"foo","class":111,"name2":"bar","class2":222}`))
 				return c.BodyParser(testStruct)
 			})
 		})
-		tt.Run("withoutValues", func(ttt *testing.T) {
-			withoutValues(ttt, func(c *Ctx, testStruct *TestStruct) error {
+		tt.Run("withoutValues", func(t *testing.T) {
+			withoutValues(t, func(c *Ctx, testStruct *TestStruct) error {
 				c.Request().Header.SetContentType(MIMEApplicationJSON)
 				c.Request().SetBody([]byte(`{}`))
 
@@ -1077,8 +1079,8 @@ func Test_Ctx_ParserWithDefaultValues(t *testing.T) {
 		})
 	})
 	t.Run("BodyParser:multiform", func(tt *testing.T) {
-		tt.Run("withValues", func(ttt *testing.T) {
-			withValues(ttt, func(c *Ctx, testStruct *TestStruct) error {
+		tt.Run("withValues", func(t *testing.T) {
+			withValues(t, func(c *Ctx, testStruct *TestStruct) error {
 				body := []byte("--b\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\nfoo\r\n--b\r\nContent-Disposition: form-data; name=\"class\"\r\n\r\n111\r\n--b\r\nContent-Disposition: form-data; name=\"name2\"\r\n\r\nbar\r\n--b\r\nContent-Disposition: form-data; name=\"class2\"\r\n\r\n222\r\n--b--")
 				c.Request().SetBody(body)
 				c.Request().Header.SetContentType(MIMEMultipartForm + `;boundary="b"`)
@@ -1086,8 +1088,8 @@ func Test_Ctx_ParserWithDefaultValues(t *testing.T) {
 				return c.BodyParser(testStruct)
 			})
 		})
-		tt.Run("withoutValues", func(ttt *testing.T) {
-			withoutValues(ttt, func(c *Ctx, testStruct *TestStruct) error {
+		tt.Run("withoutValues", func(t *testing.T) {
+			withoutValues(t, func(c *Ctx, testStruct *TestStruct) error {
 				body := []byte("--b\n\n--b--")
 				c.Request().SetBody(body)
 				c.Request().Header.SetContentType(MIMEMultipartForm + `;boundary="b"`)
@@ -1098,41 +1100,41 @@ func Test_Ctx_ParserWithDefaultValues(t *testing.T) {
 		})
 	})
 	t.Run("CookieParser", func(tt *testing.T) {
-		tt.Run("withValues", func(ttt *testing.T) {
-			withValues(ttt, func(c *Ctx, testStruct *TestStruct) error {
+		tt.Run("withValues", func(t *testing.T) {
+			withValues(t, func(c *Ctx, testStruct *TestStruct) error {
 				c.Request().Header.Set("Cookie", "name=foo;name2=bar;class=111;class2=222")
 				return c.CookieParser(testStruct)
 			})
 		})
-		tt.Run("withoutValues", func(ttt *testing.T) {
-			withoutValues(ttt, func(c *Ctx, testStruct *TestStruct) error {
+		tt.Run("withoutValues", func(t *testing.T) {
+			withoutValues(t, func(c *Ctx, testStruct *TestStruct) error {
 				return c.CookieParser(testStruct)
 			})
 		})
 	})
 	t.Run("QueryParser", func(tt *testing.T) {
-		tt.Run("withValues", func(ttt *testing.T) {
-			withValues(ttt, func(c *Ctx, testStruct *TestStruct) error {
+		tt.Run("withValues", func(t *testing.T) {
+			withValues(t, func(c *Ctx, testStruct *TestStruct) error {
 				c.Request().URI().SetQueryString("name=foo&name2=bar&class=111&class2=222")
 				return c.QueryParser(testStruct)
 			})
 		})
-		tt.Run("withoutValues", func(ttt *testing.T) {
-			withoutValues(ttt, func(c *Ctx, testStruct *TestStruct) error {
+		tt.Run("withoutValues", func(t *testing.T) {
+			withoutValues(t, func(c *Ctx, testStruct *TestStruct) error {
 				return c.QueryParser(testStruct)
 			})
 		})
 	})
 	t.Run("ParamsParser", func(tt *testing.T) {
-		tt.Run("withValues", func(ttt *testing.T) {
-			withValues(ttt, func(c *Ctx, testStruct *TestStruct) error {
+		tt.Run("withValues", func(t *testing.T) {
+			withValues(t, func(c *Ctx, testStruct *TestStruct) error {
 				c.route = &Route{Params: []string{"name", "name2", "class", "class2"}}
 				c.values = [30]string{"foo", "bar", "111", "222"}
 				return c.ParamsParser(testStruct)
 			})
 		})
-		tt.Run("withoutValues", func(ttt *testing.T) {
-			withoutValues(ttt, func(c *Ctx, testStruct *TestStruct) error {
+		tt.Run("withoutValues", func(t *testing.T) {
+			withoutValues(t, func(c *Ctx, testStruct *TestStruct) error {
 				c.route = &Route{Params: []string{}}
 				c.values = [30]string{}
 				return c.ParamsParser(testStruct)
@@ -1140,8 +1142,8 @@ func Test_Ctx_ParserWithDefaultValues(t *testing.T) {
 		})
 	})
 	t.Run("ReqHeaderParser", func(tt *testing.T) {
-		tt.Run("withValues", func(ttt *testing.T) {
-			withValues(ttt, func(c *Ctx, testStruct *TestStruct) error {
+		tt.Run("withValues", func(t *testing.T) {
+			withValues(t, func(c *Ctx, testStruct *TestStruct) error {
 				c.Request().Header.Add("name", "foo")
 				c.Request().Header.Add("name2", "bar")
 				c.Request().Header.Add("class", "111")
@@ -1149,8 +1151,8 @@ func Test_Ctx_ParserWithDefaultValues(t *testing.T) {
 				return c.ReqHeaderParser(testStruct)
 			})
 		})
-		tt.Run("withoutValues", func(ttt *testing.T) {
-			withoutValues(ttt, func(c *Ctx, testStruct *TestStruct) error {
+		tt.Run("withoutValues", func(t *testing.T) {
+			withoutValues(t, func(c *Ctx, testStruct *TestStruct) error {
 				return c.ReqHeaderParser(testStruct)
 			})
 		})
