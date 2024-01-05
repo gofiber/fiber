@@ -1,7 +1,8 @@
 ---
 id: healthcheck
-title: healthcheck
 ---
+
+# Health Check
 
 Liveness and readiness probes middleware for [Fiber](https://github.com/gofiber/fiber) that provides two endpoints for checking the liveness and readiness state of HTTP applications.
 
@@ -27,7 +28,7 @@ func New(config Config) fiber.Handler
 
 ## Examples
 
-Import the middleware package that is part of the Fiber web framework
+Import the middleware package that is part of the [Fiber](https://github.com/gofiber/fiber) web framework
 ```go
 import (
     "github.com/gofiber/fiber/v2"
@@ -35,7 +36,7 @@ import (
 )
 ```
 
-After you initiate your Fiber app, you can use the following possibilities:
+After you initiate your [Fiber](https://github.com/gofiber/fiber) app, you can use the following possibilities:
 
 ```go
 // Provide a minimal config
