@@ -8,7 +8,19 @@ import (
 	"sync"
 )
 
+var (
+	mu          sync.RWMutex
+	structCache = make(map[reflect.Type][]reflect.StructField)
+)
+
+const (
+	tagName = "default"
+)
+
 func tagHandlers(field reflect.Value, tagValue string) {
+	mu.Lock()
+	defer mu.Unlock()
+
 	//nolint:exhaustive // We don't need to handle all types
 	switch field.Kind() {
 	case reflect.String:
@@ -39,6 +51,9 @@ func tagHandlers(field reflect.Value, tagValue string) {
 }
 
 func setDefaultForSlice(field reflect.Value, tagValue string, elemType reflect.Type) {
+	mu.Lock()
+	defer mu.Unlock()
+
 	items := strings.Split(tagValue, ",")
 	slice := reflect.MakeSlice(reflect.SliceOf(elemType), 0, len(items))
 	for _, item := range items {
@@ -93,39 +108,37 @@ func setDefaultForSlice(field reflect.Value, tagValue string, elemType reflect.T
 	field.Set(slice)
 }
 
-var (
-	mu          sync.Mutex
-	structCache = make(map[reflect.Type][]reflect.StructField)
-)
-
 func getFieldsWithDefaultTag(t reflect.Type) []reflect.StructField {
-	if fields, ok := structCache[t]; ok {
+	mu.RLock()
+	fields, ok := structCache[t]
+	mu.RUnlock()
+	if ok {
 		return fields
 	}
 
-	var fields []reflect.StructField
+	var newFields []reflect.StructField
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
-		if _, ok := field.Tag.Lookup("default"); ok {
-			fields = append(fields, field)
+		if _, ok := field.Tag.Lookup(tagName); ok {
+			newFields = append(newFields, field)
 		}
 	}
 
 	mu.Lock()
-	structCache[t] = fields
+	structCache[t] = newFields
 	mu.Unlock()
 
-	return fields
+	return newFields
 }
 
 func SetDefaultValues(out interface{}) {
-	val := reflect.ValueOf(out).Elem()
-	typ := val.Type()
+	elem := reflect.ValueOf(out).Elem()
+	typ := elem.Type()
 
 	fields := getFieldsWithDefaultTag(typ)
 	for _, fieldInfo := range fields {
-		field := val.FieldByName(fieldInfo.Name)
-		tagValue := fieldInfo.Tag.Get("default")
+		field := elem.FieldByName(fieldInfo.Name)
+		tagValue := fieldInfo.Tag.Get(tagName)
 		tagHandlers(field, tagValue)
 	}
 }

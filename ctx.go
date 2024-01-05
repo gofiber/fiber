@@ -389,6 +389,21 @@ func (c *Ctx) BodyParser(out interface{}) error {
 
 	// Parse body accordingly
 	switch {
+	case strings.HasSuffix(ctype, "json"):
+		if c.app.config.DefaultValueParser {
+			utils.SetDefaultValues(out)
+		}
+		return c.app.config.JSONDecoder(c.Body(), out)
+
+	case strings.HasPrefix(ctype, MIMETextXML), strings.HasPrefix(ctype, MIMEApplicationXML):
+		if c.app.config.DefaultValueParser {
+			utils.SetDefaultValues(out)
+		}
+		if err := xml.Unmarshal(c.Body(), out); err != nil {
+			return fmt.Errorf("failed to unmarshal: %w", err)
+		}
+		return nil
+
 	case strings.HasPrefix(ctype, MIMEApplicationForm):
 		formBody := make(map[string][]string)
 		var err error
@@ -414,29 +429,15 @@ func (c *Ctx) BodyParser(out interface{}) error {
 				formBody[k] = append(formBody[k], v)
 			}
 		})
-
 		return c.parseToStruct(bodyTag, out, formBody)
+
 	case strings.HasPrefix(ctype, MIMEMultipartForm):
 		multipartBody, err := c.fasthttp.MultipartForm()
 		if err != nil {
 			return err
 		}
 		return c.parseToStruct(bodyTag, out, multipartBody.Value)
-	// part for custom parser -> not the schema parser
-	default:
-		if c.app.config.DefaultValueParser {
-			utils.SetDefaultValues(out)
-		}
 
-		switch {
-		case strings.HasPrefix(ctype, MIMETextXML), strings.HasPrefix(ctype, MIMEApplicationXML):
-			if err := xml.Unmarshal(c.Body(), out); err != nil {
-				return fmt.Errorf("failed to unmarshal: %w", err)
-			}
-			return nil
-		case strings.HasSuffix(ctype, "json"):
-			return c.app.config.JSONDecoder(c.Body(), out)
-		}
 	}
 
 	// No suitable content type found

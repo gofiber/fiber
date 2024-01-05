@@ -33,15 +33,57 @@ func TestSetDefaultValues(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			SetDefaultValues(tt.input)
-			if !reflect.DeepEqual(tt.input, tt.expected) {
-				t.Errorf("got %v, want %v", tt.input, tt.expected)
-			}
+			AssertEqual(t, tt.input, tt.expected, "SetDefaultValues failed")
 		})
 	}
 }
 
+type TestSecondLevelStruct struct {
+	Word   string `default:"Bar"`
+	Number int    `default:"42"`
+}
+
+type TestFirstLevelStruct struct {
+	Word       string `default:"Foo"`
+	Number     int    `default:"42"`
+	DeepStruct *TestSecondLevelStruct
+	DeepSlice  []*TestSecondLevelStruct
+}
+
+func TestDeepSetDefaultValues(t *testing.T) {
+	t.Parallel()
+	subject := &TestFirstLevelStruct{DeepStruct: &TestSecondLevelStruct{}, DeepSlice: []*TestSecondLevelStruct{&TestSecondLevelStruct{}, &TestSecondLevelStruct{}}}
+	SetDefaultValues(subject)
+
+	AssertEqual(
+		t,
+		&TestFirstLevelStruct{
+			Word:   "Foo",
+			Number: 42,
+			DeepStruct: &TestSecondLevelStruct{
+				Word:   "Bar",
+				Number: 42,
+			},
+			DeepSlice: []*TestSecondLevelStruct{
+				&TestSecondLevelStruct{
+					Word:   "Bar",
+					Number: 42,
+				},
+				&TestSecondLevelStruct{
+					Word:   "Bar",
+					Number: 42,
+				},
+			},
+		},
+		subject,
+		"SetDefaultValues failed",
+	)
+}
+
 func TestTagHandlers(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		field    reflect.Value
@@ -88,15 +130,15 @@ func TestTagHandlers(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			tagHandlers(tt.field, tt.tagValue)
-			if !reflect.DeepEqual(tt.field.Interface(), tt.expected) {
-				t.Errorf("got %v, want %v", tt.field.Interface(), tt.expected)
-			}
+			AssertEqual(t, tt.field.Interface(), tt.expected, "tagHandlers failed")
 		})
 	}
 }
 
 func TestSetDefaultForSlice(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		field    reflect.Value
@@ -136,10 +178,9 @@ func TestSetDefaultForSlice(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			setDefaultForSlice(tt.field, tt.tagValue, tt.elemType)
-			if !reflect.DeepEqual(tt.field.Interface(), tt.expected) {
-				t.Errorf("got %v, want %v", tt.field.Interface(), tt.expected)
-			}
+			AssertEqual(t, tt.field.Interface(), tt.expected, "setDefaultForSlice failed")
 		})
 	}
 }
