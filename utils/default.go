@@ -51,8 +51,9 @@ func tagHandlers(field reflect.Value, tagValue string) {
 }
 
 func setDefaultForSlice(field reflect.Value, tagValue string, elemType reflect.Type) {
-	mu.Lock()
-	defer mu.Unlock()
+	// TODO: produce deadlock because of mutex hirachy
+	//mu.Lock()
+	//defer mu.Unlock()
 
 	items := strings.Split(tagValue, ",")
 	slice := reflect.MakeSlice(reflect.SliceOf(elemType), 0, len(items))
