@@ -1,7 +1,7 @@
-name: "\U0001F680 Feature Request"
-title: "\U0001F680 [Feature]: "
-description: Suggest an idea to improve this project.
-labels: ["✏️ Feature"]
+name: "📝 Feature Proposal"
+title: "📝 [Proposal]: "
+description: Propose a feature or improvement for Fiber.
+labels: ["📝 Proposal", "✏️ Feature", "v3"]
 
 body:
   - type: markdown
@@ -9,43 +9,55 @@ body:
     attributes:
       value: |
         ### Notice
-        - Don't forget you can ask your questions in our [Discord server](https://gofiber.io/discord).
-        - If you think this is just a bug, open the issue with the **☢️ Bug Report** template.
-        - Write your issue with clear and understandable English.
+        - For questions, join our [Discord server](https://gofiber.io/discord).
+        - Please write in clear, understandable English.
+        - Ensure your proposal aligns with Express design principles and HTTP RFC standards.
+        - Describe features expected to remain stable and not require changes in the foreseeable future.
   - type: textarea
     id: description
     attributes:
-      label: "Feature Description"
-      description: "A clear and detailed description of the feature you would like to see added."
-      placeholder: "Explain your feature clearly, and in detail."
+      label: "Feature Proposal Description"
+      description: "A clear and detailed description of the feature you are proposing for Fiber v3. How should it work, and what API endpoints and methods would it involve?"
+      placeholder: "Describe your feature proposal clearly and in detail, including API endpoints and methods."
+    validations:
+      required: true
+
+  - type: textarea
+    id: express-alignment
+    attributes:
+      label: "Alignment with Express API"
+      description: "Explain how your proposal aligns with the design and API of Express.js. Provide comparative examples if possible."
+      placeholder: "Outline how the feature aligns with Express.js design principles and API standards."
+    validations:
+      required: true
+
+  - type: textarea
+    id: standards-compliance
+    attributes:
+      label: "HTTP RFC Standards Compliance"
+      description: "Confirm that the feature complies with HTTP RFC standards, and describe any relevant aspects."
+      placeholder: "Detail how the feature adheres to HTTP RFC standards."
     validations:
       required: true
   - type: textarea
-    id: additional-context
+    id: stability
     attributes:
-      label: "Additional Context (optional)"
-      description: "If you have something else to describe, write them here."
-      placeholder: "Write here what you can describe differently."
+      label: "API Stability"
+      description: "Discuss the expected stability of the feature and its API. How do you ensure that it will not require changes or deprecations in the near future?"
+      placeholder: "Describe measures taken to ensure the feature's API stability over time."
+    validations:
+      required: true
+
   - type: textarea
-    id: snippet
+    id: examples
     attributes:
-      label: "Code Snippet (optional)"
-      description: "Code snippet may be really helpful to describe some features."
-      placeholder: "Share a code snippet to explain the feature better."
+      label: "Feature Examples"
+      description: "Provide concrete examples and code snippets to illustrate how the proposed feature should function."
+      placeholder: "Share code snippets that exemplify the proposed feature and its usage."
       render: go
-      value: |
-        package main
+    validations:
+      required: true
 
-        import "github.com/gofiber/fiber/v3"
-        import "log"
-
-        func main() {
-          app := fiber.New()
-
-          // An example to describe the feature
-
-          log.Fatal(app.Listen(":3000"))
-        }
   - type: checkboxes
     id: terms
     attributes:
@@ -54,7 +66,7 @@ body:
       options:
         - label: "I agree to follow Fiber's [Code of Conduct](https://github.com/gofiber/fiber/blob/master/.github/CODE_OF_CONDUCT.md)."
           required: true
-        - label: "I have checked for existing issues that describe my suggestion prior to opening this one."
+        - label: "I have searched for existing issues that describe my proposal before opening this one."
           required: true
-        - label: "I understand that improperly formatted feature requests may be closed without explanation."
+        - label: "I understand that a proposal that does not meet these guidelines may be closed without explanation."
           required: true

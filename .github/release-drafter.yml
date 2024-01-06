@@ -1,5 +1,11 @@
 name-template: 'v$RESOLVED_VERSION'
 tag-template: 'v$RESOLVED_VERSION'
+commitish: refs/heads/main
+filter-by-commitish: true
+include-labels:
+  - 'v3'
+exclude-labels:
+  - 'v2'
 categories:
   - title: '❗ Breaking Changes'
     labels:
@@ -7,13 +13,16 @@ categories:
   - title: '🚀 New'
     labels:
       - '✏️ Feature'
+      - '📝 Proposal'
   - title: '🧹 Updates'
     labels:
       - '🧹 Updates'
-      - '🤖 Dependencies'
   - title: '🐛 Fixes'
     labels:
       - '☢️ Bug'
+  - title: '🛠️ Maintenance'
+    labels:
+      - '🤖 Dependencies'
   - title: '📚 Documentation'
     labels:
       - '📒 Documentation'
@@ -31,6 +40,7 @@ version-resolver:
     labels:
       - 'minor'
       - '✏️ Feature'
+      - '📝 Proposal'
   patch:
     labels:
       - 'patch'

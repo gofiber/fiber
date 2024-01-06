@@ -5,7 +5,6 @@ on:
     branches:
       - master
       - main
-      - v3-beta
     paths:
       - "**"
       - "!docs/**"
