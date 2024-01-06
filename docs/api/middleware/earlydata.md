@@ -84,16 +84,16 @@ var ConfigDefault = Config{
 =======
 | Property       | Type                    | Description                                                                          | Default                                                |
 |:---------------|:------------------------|:-------------------------------------------------------------------------------------|:-------------------------------------------------------|
-| Next           | `func(*fiber.Ctx) bool` | Next defines a function to skip this middleware when returned true.                  | `nil`                                                  |
-| IsEarlyData    | `func(*fiber.Ctx) bool` | IsEarlyData returns whether the request is an early-data request.                    | Function checking if "Early-Data" header equals "1"    |
-| AllowEarlyData | `func(*fiber.Ctx) bool` | AllowEarlyData returns whether the early-data request should be allowed or rejected. | Function rejecting on unsafe and allowing safe methods |
+| Next           | `func(fiber.Ctx) bool` | Next defines a function to skip this middleware when returned true.                  | `nil`                                                  |
+| IsEarlyData    | `func(fiber.Ctx) bool` | IsEarlyData returns whether the request is an early-data request.                    | Function checking if "Early-Data" header equals "1"    |
+| AllowEarlyData | `func(fiber.Ctx) bool` | AllowEarlyData returns whether the early-data request should be allowed or rejected. | Function rejecting on unsafe and allowing safe methods |
 | Error          | `error`                 | Error is returned in case an early-data request is rejected.                         | `fiber.ErrTooEarly`                                    |
 
 ## Default Config
 
 ```go
 var ConfigDefault = Config{
-	IsEarlyData: func(c *fiber.Ctx) bool {
+	IsEarlyData: func(c fiber.Ctx) bool {
 		return c.Get(DefaultHeaderName) == DefaultHeaderTrueValue
 >>>>>>> origin/master:docs/api/middleware/earlydata.md
 	},

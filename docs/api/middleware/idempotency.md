@@ -48,7 +48,7 @@ app.Use(idempotency.New(idempotency.Config{
 
 | Property            | Type                    | Description                                                                              | Default                        |
 |:--------------------|:------------------------|:-----------------------------------------------------------------------------------------|:-------------------------------|
-| Next                | `func(*fiber.Ctx) bool` | Next defines a function to skip this middleware when returned true.                      | A function for safe methods    |
+| Next                | `func(fiber.Ctx) bool` | Next defines a function to skip this middleware when returned true.                      | A function for safe methods    |
 | Lifetime            | `time.Duration`         | Lifetime is the maximum lifetime of an idempotency key.                                  | 30 * time.Minute               |
 | KeyHeader           | `string`                | KeyHeader is the name of the header that contains the idempotency key.                   | "X-Idempotency-Key"            |
 | KeyHeaderValidate   | `func(string) error`    | KeyHeaderValidate defines a function to validate the syntax of the idempotency header.   | A function for UUID validation |
@@ -60,7 +60,7 @@ app.Use(idempotency.New(idempotency.Config{
 
 ```go
 var ConfigDefault = Config{
-	Next: func(c *fiber.Ctx) bool {
+	Next: func(c fiber.Ctx) bool {
 		// Skip middleware if the request was done using a safe HTTP method
 		return fiber.IsMethodSafe(c.Method())
 	},

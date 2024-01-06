@@ -33,10 +33,10 @@ func main() {
     StatusCode: 301,
   }))
   
-  app.Get("/new", func(c *fiber.Ctx) error {
+  app.Get("/new", func(c fiber.Ctx) error {
     return c.SendString("Hello, World!")
   })
-  app.Get("/new/*", func(c *fiber.Ctx) error {
+  app.Get("/new/*", func(c fiber.Ctx) error {
     return c.SendString("Wildcard: " + c.Params("*"))
   })
   
@@ -55,7 +55,7 @@ curl http://localhost:3000/old/hello
 
 | Property   | Type                    | Description                                                                                                                | Default                |
 |:-----------|:------------------------|:---------------------------------------------------------------------------------------------------------------------------|:-----------------------|
-| Next       | `func(*fiber.Ctx) bool` | Filter defines a function to skip middleware.                                                                              | `nil`                  |
+| Next       | `func(fiber.Ctx) bool` | Filter defines a function to skip middleware.                                                                              | `nil`                  |
 | Rules      | `map[string]string`     | Rules defines the URL path rewrite rules. The values captured in asterisk can be retrieved by index e.g. $1, $2 and so on. | Required               |
 | StatusCode | `int`                   | The status code when redirecting. This is ignored if Redirect is disabled.                                                 | 302 Temporary Redirect |
 

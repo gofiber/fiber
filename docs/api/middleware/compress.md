@@ -40,7 +40,7 @@ app.Use(compress.New(compress.Config{
 
 // Skip middleware for specific routes
 app.Use(compress.New(compress.Config{
-  Next:  func(c *fiber.Ctx) bool {
+  Next:  func(c fiber.Ctx) bool {
     return c.Path() == "/dont_compress"
   },
   Level: compress.LevelBestSpeed, // 1
@@ -53,7 +53,7 @@ app.Use(compress.New(compress.Config{
 
 | Property | Type                    | Description                                                         | Default            |
 |:---------|:------------------------|:--------------------------------------------------------------------|:-------------------|
-| Next     | `func(*fiber.Ctx) bool` | Next defines a function to skip this middleware when returned true. | `nil`              |
+| Next     | `func(fiber.Ctx) bool` | Next defines a function to skip this middleware when returned true. | `nil`              |
 | Level    | `Level`                 | Level determines the compression algorithm.                         | `LevelDefault (0)` |
 
 Possible values for the "Level" field are:

@@ -65,7 +65,7 @@ app.Use(logger.New(logger.Config{
 // Add Custom Tags
 app.Use(logger.New(logger.Config{
     CustomTags: map[string]logger.LogFunc{
-        "custom_tag": func(output logger.Buffer, c *fiber.Ctx, data *logger.Data, extraParam string) (int, error) {
+        "custom_tag": func(output logger.Buffer, c fiber.Ctx, data *logger.Data, extraParam string) (int, error) {
             return output.WriteString("it is a custom tag")
         },
     },
@@ -75,7 +75,7 @@ app.Use(logger.New(logger.Config{
 app.Use(logger.New(logger.Config{
     TimeFormat: time.RFC3339Nano,
     TimeZone:   "Asia/Shanghai",
-    Done: func(c *fiber.Ctx, logString []byte) {
+    Done: func(c fiber.Ctx, logString []byte) {
         if c.Response().StatusCode() != fiber.StatusOK {
             reporter.SendToSlack(logString) 
         }
@@ -94,8 +94,8 @@ app.Use(logger.New(logger.Config{
 
 | Property         | Type                       | Description                                                                                                                      | Default                                                |
 |:-----------------|:---------------------------|:---------------------------------------------------------------------------------------------------------------------------------|:-------------------------------------------------------|
-| Next             | `func(*fiber.Ctx) bool`    | Next defines a function to skip this middleware when returned true.                                                              | `nil`                                                  |
-| Done             | `func(*fiber.Ctx, []byte)` | Done is a function that is called after the log string for a request is written to Output, and pass the log string as parameter. | `nil`                                                  |
+| Next             | `func(fiber.Ctx) bool`    | Next defines a function to skip this middleware when returned true.                                                              | `nil`                                                  |
+| Done             | `func(fiber.Ctx, []byte)` | Done is a function that is called after the log string for a request is written to Output, and pass the log string as parameter. | `nil`                                                  |
 | CustomTags       | `map[string]LogFunc`       | tagFunctions defines the custom tag action.                                                                                      | `map[string]LogFunc`                                   |
 | Format           | `string`                   | Format defines the logging tags.                                                                                                 | `[${time}] ${status} - ${latency} ${method} ${path}\n` |
 | TimeFormat       | `string`                   | TimeFormat defines the time format for log timestamps.                                                                           | `15:04:05`                                             |

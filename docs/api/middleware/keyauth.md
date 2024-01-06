@@ -29,7 +29,7 @@ var (
 	apiKey = "correct horse battery staple"
 )
 
-func validateAPIKey(c *fiber.Ctx, key string) (bool, error) {
+func validateAPIKey(c fiber.Ctx, key string) (bool, error) {
 	hashedAPIKey := sha256.Sum256([]byte(apiKey))
 	hashedKey := sha256.Sum256([]byte(key))
 
@@ -48,7 +48,7 @@ func main() {
 		Validator:  validateAPIKey,
 	}))
 
-		app.Get("/", func(c *fiber.Ctx) error {
+		app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Successfully authenticated!")
 	})
 
@@ -97,7 +97,7 @@ var (
 	}
 )
 
-func validateAPIKey(c *fiber.Ctx, key string) (bool, error) {
+func validateAPIKey(c fiber.Ctx, key string) (bool, error) {
 	hashedAPIKey := sha256.Sum256([]byte(apiKey))
 	hashedKey := sha256.Sum256([]byte(key))
 
@@ -107,7 +107,7 @@ func validateAPIKey(c *fiber.Ctx, key string) (bool, error) {
 	return false, keyauth.ErrMissingOrMalformedAPIKey
 }
 
-func authFilter(c *fiber.Ctx) bool {
+func authFilter(c fiber.Ctx) bool {
 	originalURL := strings.ToLower(c.OriginalURL())
 
 	for _, pattern := range protectedURLs {
@@ -127,13 +127,13 @@ func main() {
 		Validator: validateAPIKey,
 	}))
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Welcome")
 	})
-	app.Get("/authenticated", func(c *fiber.Ctx) error {
+	app.Get("/authenticated", func(c fiber.Ctx) error {
 		return c.SendString("Successfully authenticated!")
 	})
-	app.Get("/auth2", func(c *fiber.Ctx) error {
+	app.Get("/auth2", func(c fiber.Ctx) error {
 		return c.SendString("Successfully authenticated 2!")
 	})
 
@@ -177,7 +177,7 @@ func main() {
 	app := fiber.New()
 
 	authMiddleware := keyauth.New(keyauth.Config{
-		Validator:  func(c *fiber.Ctx, key string) (bool, error) {
+		Validator:  func(c fiber.Ctx, key string) (bool, error) {
 			hashedAPIKey := sha256.Sum256([]byte(apiKey))
 			hashedKey := sha256.Sum256([]byte(key))
 
@@ -188,11 +188,11 @@ func main() {
 		},
 	})
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Welcome")
 	})
 
-	app.Get("/allowed",  authMiddleware, func(c *fiber.Ctx) error {
+	app.Get("/allowed",  authMiddleware, func(c fiber.Ctx) error {
 		return c.SendString("Successfully authenticated!")
 	})
 
@@ -216,21 +216,21 @@ curl --header "Authorization: Bearer my-super-secret-key"  http://localhost:3000
 
 | Property       | Type                                     | Description                                                                                            | Default                       |
 |:---------------|:-----------------------------------------|:-------------------------------------------------------------------------------------------------------|:------------------------------|
-| Next           | `func(*fiber.Ctx) bool`                  | Next defines a function to skip this middleware when returned true.                                    | `nil`                         |
+| Next           | `func(fiber.Ctx) bool`                  | Next defines a function to skip this middleware when returned true.                                    | `nil`                         |
 | SuccessHandler | `fiber.Handler`                          | SuccessHandler defines a function which is executed for a valid key.                                   | `nil`                         |
 | ErrorHandler   | `fiber.ErrorHandler`                     | ErrorHandler defines a function which is executed for an invalid key.                                  | `401 Invalid or expired key`  |
 | KeyLookup      | `string`                                 | KeyLookup is a string in the form of "`<source>:<name>`" that is used to extract key from the request. | "header:Authorization"        |
 | AuthScheme     | `string`                                 | AuthScheme to be used in the Authorization header.                                                     | "Bearer"                      |
-| Validator      | `func(*fiber.Ctx, string) (bool, error)` | Validator is a function to validate the key.                                                           | A function for key validation |
+| Validator      | `func(fiber.Ctx, string) (bool, error)` | Validator is a function to validate the key.                                                           | A function for key validation |
 
 ## Default Config
 
 ```go
 var ConfigDefault = Config{
-	SuccessHandler: func(c *fiber.Ctx) error {
+	SuccessHandler: func(c fiber.Ctx) error {
 		return c.Next()
 	},
-	ErrorHandler: func(c *fiber.Ctx, err error) error {
+	ErrorHandler: func(c fiber.Ctx, err error) error {
 		if err == ErrMissingOrMalformedAPIKey {
 			return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
 		}

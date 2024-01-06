@@ -15,7 +15,7 @@ This middleware uses our [Storage](https://github.com/gofiber/storage) package t
 ```go
 func New(config ...Config) *Store
 func (s *Store) RegisterType(i interface{})
-func (s *Store) Get(c *fiber.Ctx) (*Session, error)
+func (s *Store) Get(c fiber.Ctx) (*Session, error)
 func (s *Store) Delete(id string) error
 func (s *Store) Reset() error
 
@@ -51,7 +51,7 @@ After you initiate your Fiber app, you can use the following possibilities:
 // This stores all of your app's sessions
 store := session.New()
 
-app.Get("/", func(c *fiber.Ctx) error {
+app.Get("/", func(c fiber.Ctx) error {
     // Get session from storage
     sess, err := store.Get(c)
     if err != nil {

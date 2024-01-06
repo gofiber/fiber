@@ -25,7 +25,7 @@ If you're using v2.32.0 or later, all you need to do is to implement a custom er
 If you're using v2.31.0 or earlier, the error handler will not capture 404 errors. Instead, you need to add a middleware function at the very bottom of the stack \(below all other functions\) to handle a 404 response:
 
 ```go title="Example"
-app.Use(func(c *fiber.Ctx) error {
+app.Use(func(c fiber.Ctx) error {
     return c.Status(fiber.StatusNotFound).SendString("Sorry can't find that!")
 })
 ```
@@ -66,7 +66,7 @@ To override the default error handler, you can override the default when providi
 
 ```go title="Example"
 app := fiber.New(fiber.Config{
-    ErrorHandler: func(c *fiber.Ctx, err error) error {
+    ErrorHandler: func(c fiber.Ctx, err error) error {
         return c.Status(fiber.StatusInternalServerError).SendString(err.Error())
     },
 })
@@ -126,7 +126,7 @@ func main() {
 		Format: "[${ip}]:${port} ${status} - ${method} ${path}\n",
 	}))
 	hosts["api.localhost:3000"] = &Host{api}
-	api.Get("/", func(c *fiber.Ctx) error {
+	api.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("API")
 	})
 	//------
@@ -137,7 +137,7 @@ func main() {
 		Format: "[${ip}]:${port} ${status} - ${method} ${path}\n",
 	}))
 	hosts["blog.localhost:3000"] = &Host{blog}
-	blog.Get("/", func(c *fiber.Ctx) error {
+	blog.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Blog")
 	})
 	//---------
@@ -149,12 +149,12 @@ func main() {
 	}))
 
 	hosts["localhost:3000"] = &Host{site}
-	site.Get("/", func(c *fiber.Ctx) error {
+	site.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Website")
 	})
 	// Server
 	app := fiber.New()
-	app.Use(func(c *fiber.Ctx) error {
+	app.Use(func(c fiber.Ctx) error {
 		host := hosts[c.Hostname()]
 		if host == nil {
 			return c.SendStatus(fiber.StatusNotFound)

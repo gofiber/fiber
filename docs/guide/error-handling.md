@@ -19,7 +19,7 @@ It’s essential to ensure that Fiber catches all errors that occur while runnin
 <TabItem value="example" label="Example">
 
 ```go
-app.Get("/", func(c *fiber.Ctx) error {
+app.Get("/", func(c fiber.Ctx) error {
     // Pass error to Fiber
     return c.SendFile("file-does-not-exist")
 })
@@ -44,7 +44,7 @@ func main() {
 
     app.Use(recover.New())
 
-    app.Get("/", func(c *fiber.Ctx) error {
+    app.Get("/", func(c fiber.Ctx) error {
         panic("This panic is caught by fiber")
     })
 
@@ -55,7 +55,7 @@ func main() {
 You could use Fiber's custom error struct to pass an additional `status code` using `fiber.NewError()`. It's optional to pass a message; if this is left empty, it will default to the status code message \(`404` equals `Not Found`\).
 
 ```go title="Example"
-app.Get("/", func(c *fiber.Ctx) error {
+app.Get("/", func(c fiber.Ctx) error {
     // 503 Service Unavailable
     return fiber.ErrServiceUnavailable
 
@@ -70,7 +70,7 @@ Fiber provides an error handler by default. For a standard error, the response i
 
 ```go title="Example"
 // Default error handler
-var DefaultErrorHandler = func(c *fiber.Ctx, err error) error {
+var DefaultErrorHandler = func(c fiber.Ctx, err error) error {
     // Status code defaults to 500
     code := fiber.StatusInternalServerError
 
@@ -100,7 +100,7 @@ The following example shows how to display error pages for different types of er
 // Create a new fiber instance with custom config
 app := fiber.New(fiber.Config{
     // Override default error handler
-    ErrorHandler: func(ctx *fiber.Ctx, err error) error {
+    ErrorHandler: func(ctx fiber.Ctx, err error) error {
         // Status code defaults to 500
         code := fiber.StatusInternalServerError
 

@@ -26,7 +26,7 @@ func main() {
 
   app.Use(helmet.New())
 
-  app.Get("/", func(c *fiber.Ctx) error {
+  app.Get("/", func(c fiber.Ctx) error {
     return c.SendString("Welcome!")
   })
 
@@ -44,7 +44,7 @@ curl -I http://localhost:3000
 
 | Property                  | Type                    | Description                                 | Default          |
 |:--------------------------|:------------------------|:--------------------------------------------|:-----------------|
-| Next                      | `func(*fiber.Ctx) bool` | Next defines a function to skip middleware. | `nil`            |
+| Next                      | `func(fiber.Ctx) bool` | Next defines a function to skip middleware. | `nil`            |
 | XSSProtection             | `string`                | XSSProtection                               | "0"              |
 | ContentTypeNosniff        | `string`                | ContentTypeNosniff                          | "nosniff"        |
 | XFrameOptions             | `string`                | XFrameOptions                               | "SAMEORIGIN"     |

@@ -16,7 +16,7 @@ func New(config ...Config) fiber.Handler
 
 | Property | Type                    | Description                                                                                          | Default    |
 |:---------|:------------------------|:-----------------------------------------------------------------------------------------------------|:-----------|
-| Next     | `func(*fiber.Ctx) bool` | Next defines a function to skip middleware.                                                          | `nil`      |
+| Next     | `func(fiber.Ctx) bool` | Next defines a function to skip middleware.                                                          | `nil`      |
 | Rules    | `map[string]string`     | Rules defines the URL path rewrite rules. The values captured in asterisk can be retrieved by index. | (Required) |
 
 ### Examples
@@ -38,10 +38,10 @@ func main() {
     },
   }))
   
-  app.Get("/new", func(c *fiber.Ctx) error {
+  app.Get("/new", func(c fiber.Ctx) error {
     return c.SendString("Hello, World!")
   })
-  app.Get("/new/*", func(c *fiber.Ctx) error {
+  app.Get("/new/*", func(c fiber.Ctx) error {
     return c.SendString("Wildcard: " + c.Params("*"))
   })
   
