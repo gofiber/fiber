@@ -14,7 +14,6 @@ import (
 	"net"
 	"net/http"
 	"path/filepath"
-	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -1030,71 +1029,84 @@ func (c *DefaultCtx) QueryFloat(key string, defaultValue ...float64) float64 {
 	return value
 }
 
-// QueryParser parses a query parameter value from the given context and returns it as the specified type.
+// Query parses a query parameter value from the given context and returns it as the specified type.
 // The function supports parsing integers, booleans, floats, and strings.
 //
 // Default to empty or invalid key is 0.
 //
 //	GET /?name=alex&wanna_cake=2&id=
-//	QueryParser[int]("wanna_cake", 1) == 2
-//	QueryParser[int]("name", 1) == 1
-//	QueryParser[int]("id", 1) == 1
-//	QueryParser[int]("id") == 0
+//	Query[int]("wanna_cake", 1) == 2
+//	Query[int]("name", 1) == 1
+//	Query[int]("id", 1) == 1
+//	Query[int]("id") == 0
 //
 // Default to empty or invalid key is true.
 //
 //	Get /?name=alex&want_pizza=false&id=
-//	QueryParser[bool]("want_pizza") == false
-//	QueryParser[bool]("want_pizza", true) == false
-//	QueryParser[bool]("name") == false
-//	QueryParser[bool]("name", true) == true
-//	QueryParser[bool]("id") == false
-//	QueryParser[bool]("id", true) == true
+//	Query[bool]("want_pizza") == false
+//	Query[bool]("want_pizza", true) == false
+//	Query[bool]("name") == false
+//	Query[bool]("name", true) == true
+//	Query[bool]("id") == false
+//	Query[bool]("id", true) == true
 //
 // Default to empty or invalid key is 0.
 //
 //	GET /?name=alex&amount=32.23&id=
-//	QueryParser[float64]("amount") = 32.23
-//	QueryParser[float64]("amount", 3) = 32.23
-//	QueryParser[float64]("name", 1) = 1
-//	QueryParser[float64]("name") = 0
-//	QueryParser[float64]("id", 3) = 3
+//	Query[float64]("amount") = 32.23
+//	Query[float64]("amount", 3) = 32.23
+//	Query[float64]("name", 1) = 1
+//	Query[float64]("name") = 0
+//	Query[float64]("id", 3) = 3
 //
 // If the generic type is not written explicitly, the function will try to infer the type from the default value.
 // If the default value is not provided, the function will return the zero value of the type.
 //
 //	GET /?name=alex&wanna_cake=2&id=
 //	QueryParser("wanna_cake", 1) == 2
-func QueryParser[T any](c Ctx, key string, defaultValue ...T) T {
+func Query[V string | bool | float64 | int](c Ctx, key string, defaultValue ...V) V {
 	ctx := c.(*DefaultCtx)
-	var result T
-	var err error
+	var v V
+	q := ctx.app.getString(ctx.fasthttp.QueryArgs().Peek(key))
 
-	if reflect.TypeOf(result).Kind() == reflect.Int {
-		var v any
-		v, err = strconv.Atoi(ctx.app.getString(ctx.fasthttp.QueryArgs().Peek(key)))
-		result = v.(T)
-	} else if reflect.TypeOf(result).Kind() == reflect.Bool {
-		var v any
-		v, err = strconv.ParseBool(ctx.app.getString(ctx.fasthttp.QueryArgs().Peek(key)))
-		result = v.(T)
-	} else if reflect.TypeOf(result).Kind() == reflect.Float64 {
-		var v any
-		v, err = strconv.ParseFloat(ctx.app.getString(ctx.fasthttp.QueryArgs().Peek(key)), 64)
-		result = v.(T)
-	} else {
-		var v any
-		v = ctx.app.getString(ctx.fasthttp.QueryArgs().Peek(key))
-		result = v.(T)
-	}
-
-	if err != nil {
-		if len(defaultValue) > 0 {
-			return defaultValue[0]
+	if _, ok := any(v).(int); ok {
+		result, err := strconv.Atoi(q)
+		if err != nil {
+			if len(defaultValue) > 0 {
+				return defaultValue[0]
+			}
+			return any(0).(V)
 		}
+		return any(result).(V)
 	}
 
-	return result
+	if _, ok := any(v).(float64); ok {
+		result, err := strconv.ParseFloat(q, 64)
+		if err != nil {
+			if len(defaultValue) > 0 {
+				return defaultValue[0]
+			}
+			return any(float64(0)).(V)
+		}
+		return any(result).(V)
+	}
+
+	if _, ok := any(v).(bool); ok {
+		result, err := strconv.ParseBool(q)
+		if err != nil {
+			if len(defaultValue) > 0 {
+				return defaultValue[0]
+			}
+			return any(false).(V)
+		}
+		return any(result).(V)
+	}
+
+	if q == "" && len(defaultValue) > 0 {
+		return defaultValue[0]
+	}
+
+	return any(q).(V)
 }
 
 // Range returns a struct containing the type and a slice of ranges.

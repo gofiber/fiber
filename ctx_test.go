@@ -2098,12 +2098,12 @@ func Test_Ctx_QueryParserInt(t *testing.T) {
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
 	c.Request().URI().SetQueryString("search=john&age=20")
-	require.Equal(t, 0, QueryParser[int](c, "foo"))
-	require.Equal(t, 20, QueryParser[int](c, "age", 12))
-	require.Equal(t, 0, QueryParser[int](c, "search"))
-	require.Equal(t, 1, QueryParser[int](c, "search", 1))
-	require.Equal(t, 0, QueryParser[int](c, "id"))
-	require.Equal(t, 2, QueryParser[int](c, "id", 2))
+	require.Equal(t, 0, Query[int](c, "foo"))
+	require.Equal(t, 20, Query[int](c, "age", 12))
+	require.Equal(t, 0, Query[int](c, "search"))
+	require.Equal(t, 1, Query[int](c, "search", 1))
+	require.Equal(t, 0, Query[int](c, "id"))
+	require.Equal(t, 2, Query[int](c, "id", 2))
 }
 
 func Test_Ctx_QueryBool(t *testing.T) {
@@ -2128,12 +2128,12 @@ func Test_Ctx_QueryParserBool(t *testing.T) {
 
 	c.Request().URI().SetQueryString("name=alex&want_pizza=false&id=")
 
-	require.Equal(t, false, QueryParser[bool](c, "want_pizza"))
-	require.Equal(t, false, QueryParser[bool](c, "want_pizza", true))
-	require.Equal(t, false, QueryParser[bool](c, "name"))
-	require.Equal(t, true, QueryParser[bool](c, "name", true))
-	require.Equal(t, false, QueryParser[bool](c, "id"))
-	require.Equal(t, true, QueryParser[bool](c, "id", true))
+	require.Equal(t, false, Query[bool](c, "want_pizza"))
+	require.Equal(t, false, Query[bool](c, "want_pizza", true))
+	require.Equal(t, false, Query[bool](c, "name"))
+	require.Equal(t, true, Query[bool](c, "name", true))
+	require.Equal(t, false, Query[bool](c, "id"))
+	require.Equal(t, true, Query[bool](c, "id", true))
 }
 
 func Test_Ctx_QueryFloat(t *testing.T) {
@@ -2158,12 +2158,27 @@ func Test_Ctx_QueryParserFloat(t *testing.T) {
 
 	c.Request().URI().SetQueryString("name=alex&amount=32.23&id=")
 
-	require.Equal(t, 32.23, QueryParser[float64](c, "amount"))
-	require.Equal(t, 32.23, QueryParser[float64](c, "amount", 3.123))
-	require.Equal(t, 87.123, QueryParser[float64](c, "name", 87.123))
-	require.Equal(t, float64(0), QueryParser[float64](c, "name"))
-	require.Equal(t, 12.87, QueryParser[float64](c, "id", 12.87))
-	require.Equal(t, float64(0), QueryParser[float64](c, "id"))
+	require.Equal(t, 32.23, Query[float64](c, "amount"))
+	require.Equal(t, 32.23, Query[float64](c, "amount", 3.123))
+	require.Equal(t, 87.123, Query[float64](c, "name", 87.123))
+	require.Equal(t, float64(0), Query[float64](c, "name"))
+	require.Equal(t, 12.87, Query[float64](c, "id", 12.87))
+	require.Equal(t, float64(0), Query[float64](c, "id"))
+}
+
+func Test_Ctx_QueryParserString(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	c.Request().URI().SetQueryString("name=alex&amount=32.23&id=")
+
+	require.Equal(t, "alex", Query[string](c, "name"))
+	require.Equal(t, "alex", Query[string](c, "name", "john"))
+	require.Equal(t, "32.23", Query[string](c, "amount"))
+	require.Equal(t, "32.23", Query[string](c, "amount", "3.123"))
+	require.Equal(t, "", Query[string](c, "id"))
+	require.Equal(t, "12.87", Query[string](c, "id", "12.87"))
 }
 
 // go test -run Test_Ctx_Range
