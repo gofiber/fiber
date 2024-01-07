@@ -1065,48 +1065,52 @@ func (c *DefaultCtx) QueryFloat(key string, defaultValue ...float64) float64 {
 //	GET /?name=alex&wanna_cake=2&id=
 //	Query("wanna_cake", 1) == 2
 func Query[V string | bool | float64 | int](c Ctx, key string, defaultValue ...V) V {
-	ctx := c.(*DefaultCtx)
+	ctx, ok := c.(*DefaultCtx)
+	if !ok {
+		panic("invalid context")
+	}
 	var v V
 	q := ctx.app.getString(ctx.fasthttp.QueryArgs().Peek(key))
 
-	if _, ok := any(v).(int); ok {
+	switch any(v).(type) {
+	case int:
 		result, err := strconv.Atoi(q)
 		if err != nil {
 			if len(defaultValue) > 0 {
 				return defaultValue[0]
 			}
-			return any(0).(V)
+			result = 0
 		}
 		return any(result).(V)
-	}
-
-	if _, ok := any(v).(float64); ok {
+	case float64:
 		result, err := strconv.ParseFloat(q, 64)
 		if err != nil {
 			if len(defaultValue) > 0 {
 				return defaultValue[0]
 			}
-			return any(float64(0)).(V)
+			result = 0
 		}
 		return any(result).(V)
-	}
-
-	if _, ok := any(v).(bool); ok {
+	case bool:
 		result, err := strconv.ParseBool(q)
 		if err != nil {
 			if len(defaultValue) > 0 {
 				return defaultValue[0]
 			}
-			return any(false).(V)
+			result = false
 		}
 		return any(result).(V)
+	case string:
+		if q == "" && len(defaultValue) > 0 {
+			return defaultValue[0]
+		}
+		return any(q).(V)
+	default:
+		if len(defaultValue) > 0 {
+			return defaultValue[0]
+		}
+		return v
 	}
-
-	if q == "" && len(defaultValue) > 0 {
-		return defaultValue[0]
-	}
-
-	return any(q).(V)
 }
 
 // Range returns a struct containing the type and a slice of ranges.
