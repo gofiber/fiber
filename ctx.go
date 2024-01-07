@@ -1064,10 +1064,10 @@ func (c *DefaultCtx) QueryFloat(key string, defaultValue ...float64) float64 {
 //
 //	GET /?name=alex&wanna_cake=2&id=
 //	Query("wanna_cake", 1) == 2
-func Query[V string | bool | float64 | int](c Ctx, key string, defaultValue ...V) V {
+func Query[V QueryType](c Ctx, key string, defaultValue ...V) V {
 	ctx, ok := c.(*DefaultCtx)
 	if !ok {
-		panic("invalid context")
+		panic(fmt.Errorf("failed to type-assert to *DefaultCtx"))
 	}
 	var v V
 	q := ctx.app.getString(ctx.fasthttp.QueryArgs().Peek(key))
@@ -1111,6 +1111,10 @@ func Query[V string | bool | float64 | int](c Ctx, key string, defaultValue ...V
 		}
 		return v
 	}
+}
+
+type QueryType interface {
+	int | float64 | bool | string
 }
 
 // Range returns a struct containing the type and a slice of ranges.
