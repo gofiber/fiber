@@ -1063,7 +1063,7 @@ func (c *DefaultCtx) QueryFloat(key string, defaultValue ...float64) float64 {
 // If the default value is not provided, the function will return the zero value of the type.
 //
 //	GET /?name=alex&wanna_cake=2&id=
-//	QueryParser("wanna_cake", 1) == 2
+//	Query("wanna_cake", 1) == 2
 func Query[V string | bool | float64 | int](c Ctx, key string, defaultValue ...V) V {
 	ctx := c.(*DefaultCtx)
 	var v V
