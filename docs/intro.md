@@ -79,7 +79,7 @@ Embedded below is essentially the most straightforward **Fiber** app you can cre
 ```go
 package main
 
-import "github.com/gofiber/fiber/v2"
+import "github.com/gofiber/fiber/v3"
 
 func main() {
 	app := fiber.New()
