@@ -8,16 +8,16 @@ An online API documentation with examples so you can start building web apps wit
 
 **Fiber** is an [Express](https://github.com/expressjs/express) inspired **web framework** built on top of [Fasthttp](https://github.com/valyala/fasthttp), the **fastest** HTTP engine for [Go](https://go.dev/doc/). Designed to **ease** things up for **fast** development with **zero memory allocation** and **performance** in mind.
 
-These docs are for **Fiber v2**, which was released on **September 15th, 2020**.
+These docs are for **Fiber v3**, which was released on **March XX, 2024**.
 
 ### Installation
 
-First of all, [download](https://go.dev/dl/) and install Go. `1.17` or higher is required.
+First of all, [download](https://go.dev/dl/) and install Go. `1.21` or higher is required.
 
 Installation is done using the [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
 
 ```bash
-go get github.com/gofiber/fiber/v2
+go get github.com/gofiber/fiber/v3
 ```
 
 ### Zero Allocation
