@@ -39,7 +39,7 @@ The `Render` method is linked to the [**ctx.Render\(\)**](../api/ctx.md#render) 
 If the Fiber config option `PassLocalsToViews` is enabled, then all locals set using `ctx.Locals(key, value)` will be passed to the template.
 
 ```go
-app.Get("/", func(c *fiber.Ctx) error {
+app.Get("/", func(c fiber.Ctx) error {
     return c.Render("index", fiber.Map{
         "hello": "world",
     });
@@ -82,7 +82,7 @@ func main() {
     app := fiber.New(fiber.Config{
         Views: engine,
     })
-    app.Get("/", func(c *fiber.Ctx) error {
+    app.Get("/", func(c fiber.Ctx) error {
         // Render index template
         return c.Render("index", fiber.Map{
             "Title": "Hello, World!",

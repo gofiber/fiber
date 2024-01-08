@@ -102,10 +102,10 @@ It's important to note that the token is sent as a header on every request. If y
 
 ```go
 func New(config ...Config) fiber.Handler
-func TokenFromContext(c *fiber.Ctx) string
-func HandlerFromContext(c *fiber.Ctx) *Handler
+func TokenFromContext(c fiber.Ctx) string
+func HandlerFromContext(c fiber.Ctx) *Handler
 
-func (h *Handler) DeleteToken(c *fiber.Ctx) error
+func (h *Handler) DeleteToken(c fiber.Ctx) error
 ```
 
 ## Examples
@@ -132,7 +132,7 @@ app.Use(csrf.New(csrf.Config{
 	CookieSameSite: "Lax",
     Expiration:     1 * time.Hour,
     KeyGenerator:   utils.UUIDv4,
-    Extractor:      func(c *fiber.Ctx) (string, error) { ... },
+    Extractor:      func(c fiber.Ctx) (string, error) { ... },
 }))
 ```
 
@@ -145,7 +145,7 @@ Getting the CSRF token in a handler:
 ```go
 
 ```go
-func handler(c *fiber.Ctx) error {
+func handler(c fiber.Ctx) error {
     handler := csrf.HandlerFromContext(c)
     token := csrf.TokenFromContext(c)
     if handler == nil {
@@ -174,7 +174,7 @@ func handler(c *fiber.Ctx) error {
 
 | Property          | Type                               | Description                                                                                                                                                                                                                                                                                  | Default                      |
 |:------------------|:-----------------------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:-----------------------------|
-| Next              | `func(*fiber.Ctx) bool`            | Next defines a function to skip this middleware when returned true.                                                                                                                                                                                                                          | `nil`                        |
+| Next              | `func(fiber.Ctx) bool`            | Next defines a function to skip this middleware when returned true.                                                                                                                                                                                                                          | `nil`                        |
 | KeyLookup         | `string`                           | KeyLookup is a string in the form of "`<source>:<key>`" that is used to create an Extractor that extracts the token from the request. Possible values: "`header:<name>`", "`query:<name>`", "`param:<name>`", "`form:<name>`", "`cookie:<name>`". Ignored if an Extractor is explicitly set. | "header:X-CSRF-Token"        |
 | CookieName        | `string`                           | Name of the csrf cookie. This cookie will store the csrf key.                                                                                                                                                                                                                                | "csrf_"                      |
 | CookieDomain      | `string`                           | Domain of the CSRF cookie.                                                                                                                                                                                                                                                                   | ""                           |
@@ -190,7 +190,7 @@ func handler(c *fiber.Ctx) error {
 | SessionKey        | `string`                           | SessionKey is the key used to store the token in the session.                                                                                                                                                                                                                                | "csrfToken"                  |
 | KeyGenerator      | `func() string`                    | KeyGenerator creates a new CSRF token.                                                                                                                                                                                                                                                       | utils.UUID                   |
 | ErrorHandler      | `fiber.ErrorHandler`               | ErrorHandler is executed when an error is returned from fiber.Handler.                                                                                                                                                                                                                       | DefaultErrorHandler          |
-| Extractor         | `func(*fiber.Ctx) (string, error)` | Extractor returns the CSRF token. If set, this will be used in place of an Extractor based on KeyLookup.                                                                                                                                                                                     | Extractor based on KeyLookup |
+| Extractor         | `func(fiber.Ctx) (string, error)` | Extractor returns the CSRF token. If set, this will be used in place of an Extractor based on KeyLookup.                                                                                                                                                                                     | Extractor based on KeyLookup |
 
 ### Default Config
 
@@ -256,7 +256,7 @@ Example, returning a JSON response for API requests and rendering an error page 
 
 ```go
 app.Use(csrf.New(csrf.Config{
-	ErrorHandler: func(c *fiber.Ctx, err error) error {
+	ErrorHandler: func(c fiber.Ctx, err error) error {
 		accepts := c.Accepts("html", "json")
 		path := c.Path()
 		if accepts == "json" || strings.HasPrefix(path, "/api/") {

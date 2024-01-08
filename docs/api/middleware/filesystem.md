@@ -231,7 +231,7 @@ func main() {
 
 | Property           | Type                    | Description                                                                                                 | Default      |
 |:-------------------|:------------------------|:------------------------------------------------------------------------------------------------------------|:-------------|
-| Next               | `func(*fiber.Ctx) bool` | Next defines a function to skip this middleware when returned true.                                         | `nil`        |
+| Next               | `func(fiber.Ctx) bool` | Next defines a function to skip this middleware when returned true.                                         | `nil`        |
 | Root               | `http.FileSystem`       | Root is a FileSystem that provides access to a collection of files and directories.                         | `nil`        |
 | PathPrefix         | `string`                | PathPrefix defines a prefix to be added to a filepath when reading a file from the FileSystem.              | ""           |
 | Browse             | `bool`                  | Enable directory browsing.                                                                                  | `false`      |
@@ -261,7 +261,7 @@ var ConfigDefault = Config{
 Serves a file from an [HTTP file system](https://pkg.go.dev/net/http#FileSystem) at the specified path.
 
 ```go title="Signature" title="Signature"
-func SendFile(c *fiber.Ctx, filesystem http.FileSystem, path string) error
+func SendFile(c fiber.Ctx, filesystem http.FileSystem, path string) error
 ```
 Import the middleware package that is part of the Fiber web framework
 
@@ -274,7 +274,7 @@ import (
 
 ```go title="Example"
 // Define a route to serve a specific file
-app.Get("/download", func(c *fiber.Ctx) error {
+app.Get("/download", func(c fiber.Ctx) error {
     // Serve the file using SendFile function
     err := filesystem.SendFile(c, http.Dir("your/filesystem/root"), "path/to/your/file.txt")
     if err != nil {
@@ -294,7 +294,7 @@ app.Use("/", filesystem.New(filesystem.Config{
 }))
 
 // For all other routes (wildcard "*"), serve the "index.html" file from the "build" directory.
-app.Use("*", func(ctx *fiber.Ctx) error {
+app.Use("*", func(ctx fiber.Ctx) error {
     return filesystem.SendFile(ctx, http.FS(f), "build/index.html")
 })
 ```

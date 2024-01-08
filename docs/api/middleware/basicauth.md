@@ -10,8 +10,8 @@ Basic Authentication middleware for [Fiber](https://github.com/gofiber/fiber) th
 
 ```go
 func New(config Config) fiber.Handler
-func UsernameFromContext(c *fiber.Ctx) string
-func PasswordFromContext(c *fiber.Ctx) string
+func UsernameFromContext(c fiber.Ctx) string
+func PasswordFromContext(c fiber.Ctx) string
 ```
 
 ## Examples
@@ -52,7 +52,7 @@ app.Use(basicauth.New(basicauth.Config{
         }
         return false
     },
-    Unauthorized: func(c *fiber.Ctx) error {
+    Unauthorized: func(c fiber.Ctx) error {
         return c.SendFile("./unauthorized.html")
     },
 }))
@@ -61,7 +61,7 @@ app.Use(basicauth.New(basicauth.Config{
 Getting the username and password
 
 ```go
-func handler(c *fiber.Ctx) error {
+func handler(c fiber.Ctx) error {
     username := basicauth.UsernameFromContext(c)
     password := basicauth.PasswordFromContext(c)
     log.Printf("Username: %s Password: %s", username, password)
@@ -73,7 +73,7 @@ func handler(c *fiber.Ctx) error {
 
 | Property        | Type                        | Description                                                                                                                                                           | Default               |
 |:----------------|:----------------------------|:----------------------------------------------------------------------------------------------------------------------------------------------------------------------|:----------------------|
-| Next            | `func(*fiber.Ctx) bool`     | Next defines a function to skip this middleware when returned true.                                                                                                   | `nil`                 |
+| Next            | `func(fiber.Ctx) bool`     | Next defines a function to skip this middleware when returned true.                                                                                                   | `nil`                 |
 | Users           | `map[string]string`         | Users defines the allowed credentials.                                                                                                                                | `map[string]string{}` |
 | Realm           | `string`                    | Realm is a string to define the realm attribute of BasicAuth. The realm identifies the system to authenticate against and can be used by clients to save credentials. | `"Restricted"`        |
 | Authorizer      | `func(string, string) bool` | Authorizer defines a function to check the credentials. It will be called with a username and password and is expected to return true or false to indicate approval.  | `nil`                 |

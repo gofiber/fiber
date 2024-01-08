@@ -50,7 +50,7 @@ func main() {
 	h := func(c fiber.Ctx) error {
 =======
 
-	h := func(c *fiber.Ctx) error {
+	h := func(c fiber.Ctx) error {
 >>>>>>> origin/master:docs/api/middleware/timeout.md
 		sleepTime, _ := time.ParseDuration(c.Params("sleepTime") + "ms")
 		if err := sleepWithContext(c.UserContext(), sleepTime); err != nil {
@@ -130,7 +130,7 @@ func main() {
 	app := fiber.New()
 	db, _ := gorm.Open(postgres.Open("postgres://localhost/foodb"), &gorm.Config{})
 
-	handler := func(ctx *fiber.Ctx) error {
+	handler := func(ctx fiber.Ctx) error {
 		tran := db.WithContext(ctx.UserContext()).Begin()
 		
 		if tran = tran.Exec("SELECT pg_sleep(50)"); tran.Error != nil {

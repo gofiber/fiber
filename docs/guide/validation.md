@@ -81,7 +81,7 @@ func main() {
 
 	app := fiber.New(fiber.Config{
 		// Global custom error handler
-		ErrorHandler: func(c *fiber.Ctx, err error) error {
+		ErrorHandler: func(c fiber.Ctx, err error) error {
 			return c.Status(fiber.StatusBadRequest).JSON(GlobalErrorHandlerResp{
 				Success: false,
 				Message: err.Error(),
@@ -95,7 +95,7 @@ func main() {
 		return fl.Field().Int() >= 12 && fl.Field().Int() <= 18
 	})
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		user := &User{
 			Name: c.Query("name"),
 			Age:  c.QueryInt("age"),

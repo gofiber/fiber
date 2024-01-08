@@ -22,7 +22,7 @@ func (c *Client) Delete(url string) *Agent
 Here we present a brief example demonstrating the simulation of a proxy using our `*fiber.Agent` methods.
 ```go
 // Get something
-func getSomething(c *fiber.Ctx) (err error) {
+func getSomething(c fiber.Ctx) (err error) {
 	agent := fiber.Get("<URL>")
 	statusCode, body, errs := agent.Bytes()
 	if len(errs) > 0 {
@@ -43,7 +43,7 @@ func getSomething(c *fiber.Ctx) (err error) {
 }
 
 // Post something
-func createSomething(c *fiber.Ctx) (err error) {
+func createSomething(c fiber.Ctx) (err error) {
 	agent := fiber.Post("<URL>")
 	agent.Body(c.Body()) // set body received by request
 	statusCode, body, errs := agent.Bytes()
