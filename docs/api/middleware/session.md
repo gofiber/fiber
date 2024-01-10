@@ -29,6 +29,7 @@ func (s *Session) Save() error
 func (s *Session) Fresh() bool
 func (s *Session) ID() string
 func (s *Session) Keys() []string
+func (s *Session) SetExpiry(exp time.Duration)
 ```
 
 :::caution
