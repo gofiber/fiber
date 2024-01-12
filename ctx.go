@@ -31,8 +31,8 @@ const (
 	schemeHTTPS = "https"
 )
 
-// maxParams defines the maximum number of parameters per route.
-const maxParams = 30
+// MaxParams defines the maximum number of parameters per route.
+const MaxParams = 30
 
 // The contextKey type is unexported to prevent collisions with context keys defined in
 // other packages.
@@ -55,7 +55,7 @@ type DefaultCtx struct {
 	detectionPathBuffer []byte               // HTTP detectionPath buffer
 	treePath            string               // Path for the search in the tree
 	pathOriginal        string               // Original HTTP path
-	values              [maxParams]string    // Route parameter values
+	values              [MaxParams]string    // Route parameter values
 	fasthttp            *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	matched             bool                 // Non use route matched
 	viewBindMap         sync.Map             // Default view map to bind template engine
@@ -850,6 +850,7 @@ func (c *DefaultCtx) ClientHelloInfo() *tls.ClientHelloInfo {
 	return nil
 }
 
+// TODO adjust for new Routing
 // Next executes the next method in the stack that matches the current route.
 func (c *DefaultCtx) Next() error {
 	// Increment handler index

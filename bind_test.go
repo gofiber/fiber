@@ -1139,7 +1139,7 @@ func Benchmark_Bind_URI(b *testing.B) {
 			"param1", "param2", "param3", "param4",
 		},
 	}
-	c.values = [maxParams]string{
+	c.values = [MaxParams]string{
 		"john", "doe", "is", "awesome",
 	}
 
@@ -1176,7 +1176,7 @@ func Benchmark_Bind_URI_Map(b *testing.B) {
 			"param1", "param2", "param3", "param4",
 		},
 	}
-	c.values = [maxParams]string{
+	c.values = [MaxParams]string{
 		"john", "doe", "is", "awesome",
 	}
 

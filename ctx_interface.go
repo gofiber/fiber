@@ -423,7 +423,7 @@ type CustomCtx interface {
 	getTreePath() string
 	getDetectionPath() string
 	getPathOriginal() string
-	getValues() *[maxParams]string
+	getValues() *[MaxParams]string
 	getMatched() bool
 	setIndexHandler(handler int)
 	setIndexRoute(route int)
@@ -555,7 +555,7 @@ func (c *DefaultCtx) getPathOriginal() string {
 	return c.pathOriginal
 }
 
-func (c *DefaultCtx) getValues() *[maxParams]string {
+func (c *DefaultCtx) getValues() *[MaxParams]string {
 	return &c.values
 }
 

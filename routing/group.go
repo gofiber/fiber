@@ -12,12 +12,17 @@ import (
 
 // Group struct
 type Group struct {
-	app             *fiber.App
+	app             *fiber.App[fiber.Router]
 	parentGroup     *Group
 	name            string
 	anyRouteDefined bool
 
 	Prefix string
+	fiber.IGroup
+}
+
+func (grp *Group) GetPrefix() string {
+	return grp.Prefix
 }
 
 // Name Assign name to specific route or group itself.

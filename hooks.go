@@ -14,13 +14,13 @@ type (
 	OnListenHandler    = func(ListenData) error
 	OnShutdownHandler  = func() error
 	OnForkHandler      = func(int) error
-	OnMountHandler     = func(*App) error
+	OnMountHandler     = func(*App[Router]) error
 )
 
 // Hooks is a struct to use it with App.
 type Hooks struct {
 	// Embed app
-	app *App
+	app *App[Router]
 
 	// Hooks
 	onRoute     []OnRouteHandler
@@ -40,7 +40,7 @@ type ListenData struct {
 	TLS  bool
 }
 
-func newHooks(app *App) *Hooks {
+func newHooks(app *App[Router]) *Hooks {
 	return &Hooks{
 		app:         app,
 		onRoute:     make([]OnRouteHandler, 0),
@@ -120,7 +120,7 @@ func (h *Hooks) OnMount(handler ...OnMountHandler) {
 	h.app.mutex.Unlock()
 }
 
-func (h *Hooks) executeOnRouteHooks(route routing.Route) error {
+func (h *Hooks) executeOnRouteHooks(route Route) error {
 	// Check mounting
 	if h.app.mountFields.mountPath != "" {
 		route.path = h.app.mountFields.mountPath + route.path
@@ -136,7 +136,7 @@ func (h *Hooks) executeOnRouteHooks(route routing.Route) error {
 	return nil
 }
 
-func (h *Hooks) executeOnNameHooks(route routing.Route) error {
+func (h *Hooks) executeOnNameHooks(route Route) error {
 	// Check mounting
 	if h.app.mountFields.mountPath != "" {
 		route.path = h.app.mountFields.mountPath + route.path
@@ -208,7 +208,7 @@ func (h *Hooks) executeOnForkHooks(pid int) {
 	}
 }
 
-func (h *Hooks) executeOnMountHooks(app *App) error {
+func (h *Hooks) executeOnMountHooks(app *App[Router]) error {
 	for _, v := range h.onMount {
 		if err := v(app); err != nil {
 			return err

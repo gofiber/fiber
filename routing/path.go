@@ -478,7 +478,7 @@ func splitNonEscaped(s, sep string) []string {
 }
 
 // getMatch parses the passed url and tries to match it against the route segments and determine the parameter positions
-func (routeParser *routeParser) getMatch(detectionPath, path string, params *[fiber.maxParams]string, partialCheck bool) bool { //nolint: revive // Accepting a bool param is fine here
+func (routeParser *routeParser) getMatch(detectionPath, path string, params *[fiber.MaxParams]string, partialCheck bool) bool { //nolint: revive // Accepting a bool param is fine here
 	var i, paramsIterator, partLen int
 	for _, segment := range routeParser.segs {
 		partLen = len(detectionPath)

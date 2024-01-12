@@ -89,11 +89,9 @@ type Error struct {
 type App[TRouter Router] struct {
 	mutex sync.Mutex
 
-	// TODO: Keep structure for processing ? tree router also possible ?
-	// Route stack divided by HTTP methods
-	stack [][]*routing.Route
-	// Route stack divided by HTTP methods and route prefixes
-	treeStack []map[string][]*routing.Route
+	// Router
+	router TRouter
+
 	// contains the information if the route stack has been changed to build the optimized tree
 	routesRefreshed bool
 	// Amount of registered routes
@@ -509,10 +507,10 @@ func NewWithRouter[TRouter Router](router TRouter, config ...Config) *App[TRoute
 	}
 
 	// Define hooks
-	app.hooks = newHooks(app)
+	app.hooks = newHooks(app[TRouter])
 
 	// Define mountFields
-	app.mountFields = newMountFields(app)
+	app.mountFields = newMountFields(app[TRouter])
 
 	// Override config if provided
 	if len(config) > 0 {
@@ -563,11 +561,6 @@ func NewWithRouter[TRouter Router](router TRouter, config ...Config) *App[TRoute
 	for _, ipAddress := range app.config.TrustedProxies {
 		app.handleTrustedProxy(ipAddress)
 	}
-
-	// TODO: move to interchanable router class
-	// Create router stack
-	app.stack = make([][]*routing.Route, len(app.config.RequestMethods))
-	app.treeStack = make([]map[string][]*routing.Route, len(app.config.RequestMethods))
 
 	// Override colors
 	app.config.ColorScheme = defaultColors(app.config.ColorScheme)

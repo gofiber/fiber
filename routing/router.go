@@ -19,8 +19,19 @@ import (
 )
 
 type ExpressjsRouter struct {
+	// Route stack divided by HTTP methods
+	stack [][]*Route
+	// Route stack divided by HTTP methods and route prefixes
+	treeStack []map[string][]*Route
 	ExpressjsRouterI
 	fiber.Router
+}
+
+func New(RequestMethods []string) *ExpressjsRouter {
+	return &ExpressjsRouter{
+		stack:     make([][]*Route, len(RequestMethods)),
+		treeStack: make([]map[string][]*Route, len(RequestMethods)),
+	}
 }
 
 // FindNextHandler is a method that find the next handler in the stack
@@ -67,16 +78,11 @@ type Route struct {
 	routeParser routeParser // Parameter parser
 	group       *Group      // Group instance. used for routes in groups
 
-	// Public fields
-	Method string `json:"method"` // HTTP method
-	Name   string `json:"name"`   // Route's name
-	//nolint:revive // Having both a Path (uppercase) and a path (lowercase) is fine
-	Path     string          `json:"path"`   // Original registered route path
-	Params   []string        `json:"params"` // Case sensitive param keys
-	Handlers []fiber.Handler `json:"-"`      // Ctx handlers
+	// TODO: check it
+	fiber.Route
 }
 
-func (r *Route) match(detectionPath, path string, params *[fiber.maxParams]string) bool {
+func (r *Route) match(detectionPath, path string, params *[fiber.MaxParams]string) bool {
 	// root detectionPath check
 	if r.root && detectionPath == "/" {
 		return true
