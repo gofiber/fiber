@@ -12,9 +12,13 @@ import (
 // Inspired by https://datatracker.ietf.org/doc/html/draft-ietf-httpapi-idempotency-key-header-02
 // and https://github.com/penguin-statistics/backend-next/blob/f2f7d5ba54fc8a58f168d153baa17b2ad4a14e45/internal/pkg/middlewares/idempotency.go
 
+// The contextKey type is unexported to prevent collisions with context keys defined in
+// other packages.
+type contextKey int
+
 const (
-	localsKeyIsFromCache   = "idempotency_isfromcache"
-	localsKeyWasPutToCache = "idempotency_wasputtocache"
+	localsKeyIsFromCache contextKey = iota //
+	localsKeyWasPutToCache
 )
 
 func IsFromCache(c fiber.Ctx) bool {

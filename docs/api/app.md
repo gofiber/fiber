@@ -127,7 +127,7 @@ func main() {
     micro := fiber.New()
     app.Mount("/john", micro) // GET /john/doe -> 200 OK
 
-    micro.Get("/doe", func(c *fiber.Ctx) error {
+    micro.Get("/doe", func(c fiber.Ctx) error {
         return c.SendStatus(fiber.StatusOK)
     })
 
@@ -261,7 +261,7 @@ func (app *App) Stack() [][]*Route
 ```
 
 ```go title="Examples"
-var handler = func(c *fiber.Ctx) error { return nil }
+var handler = func(c fiber.Ctx) error { return nil }
 
 func main() {
     app := fiber.New()
@@ -315,7 +315,7 @@ func (app *App) Name(name string) Router
 ```
 
 ```go title="Examples"
-var handler = func(c *fiber.Ctx) error { return nil }
+var handler = func(c fiber.Ctx) error { return nil }
 
 func main() {
     app := fiber.New()
@@ -417,7 +417,7 @@ func (app *App) GetRoute(name string) Route
 ```
 
 ```go title="Examples"
-var handler = func(c *fiber.Ctx) error { return nil }
+var handler = func(c fiber.Ctx) error { return nil }
 
 func main() {
     app := fiber.New()
@@ -454,7 +454,7 @@ When filterUseOption equal to true, it will filter the routes registered by the 
 ```go title="Examples"
 func main() {
 	app := fiber.New()
-	app.Post("/", func (c *fiber.Ctx) error {
+	app.Post("/", func (c fiber.Ctx) error {
 		return c.SendString("Hello, World!")
 	}).Name("index")
 	data, _ := json.MarshalIndent(app.GetRoutes(true), "", "  ")
@@ -627,7 +627,7 @@ func (app *App) Test(req *http.Request, msTimeout ...int) (*http.Response, error
 
 ```go title="Examples"
 // Create route with GET method for test:
-app.Get("/", func(c *fiber.Ctx) error {
+app.Get("/", func(c fiber.Ctx) error {
   fmt.Println(c.BaseURL())              // => http://google.com
   fmt.Println(c.Get("X-Custom-Header")) // => hi
 

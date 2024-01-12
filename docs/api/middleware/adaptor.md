@@ -15,7 +15,7 @@ Converter for net/http handlers to/from Fiber request handlers, special thanks t
 | FiberHandler | `FiberHandler(h fiber.Handler) http.Handler` | fiber.Handler -> http.Handler
 | FiberHandlerFunc | `FiberHandlerFunc(h fiber.Handler) http.HandlerFunc` | fiber.Handler -> http.HandlerFunc
 | FiberApp | `FiberApp(app *fiber.App) http.HandlerFunc` | Fiber app -> http.HandlerFunc
-| ConvertRequest | `ConvertRequest(c *fiber.Ctx, forServer bool) (*http.Request, error)` | fiber.Ctx -> http.Request
+| ConvertRequest | `ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error)` | fiber.Ctx -> http.Request
 | CopyContextToFiberContext | `CopyContextToFiberContext(context interface{}, requestContext *fasthttp.RequestCtx)` | context.Context -> fasthttp.RequestCtx
 
 ## Examples
@@ -28,8 +28,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/adaptor"
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/adaptor"
 )
 
 func main() {
@@ -63,8 +63,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/adaptor"
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/adaptor"
 )
 
 func main() {
@@ -93,8 +93,8 @@ package main
 import (
 	"net/http"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/adaptor"
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/adaptor"
 )
 
 func main() {
@@ -108,7 +108,7 @@ func main() {
 	http.ListenAndServe(":3000", nil)
 }
 
-func greet(c *fiber.Ctx) error {
+func greet(c fiber.Ctx) error {
 	return c.SendString("Hello World!")
 }
 ```
@@ -120,8 +120,8 @@ package main
 import (
 	"net/http"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/adaptor"
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/adaptor"
 )
 
 func main() {
@@ -133,7 +133,7 @@ func main() {
 	http.ListenAndServe(":3000", adaptor.FiberApp(app))
 }
 
-func greet(c *fiber.Ctx) error {
+func greet(c fiber.Ctx) error {
 	return c.SendString("Hello World!")
 }
 ```
@@ -145,8 +145,8 @@ package main
 import (
 	"net/http"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/adaptor"
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/adaptor"
 )
 
 func main() {
@@ -158,7 +158,7 @@ func main() {
 	http.ListenAndServe(":3000", adaptor.FiberApp(app))
 }
 
-func greetWithHTTPReq(c *fiber.Ctx) error {
+func greetWithHTTPReq(c fiber.Ctx) error {
 	httpReq, err := adaptor.ConvertRequest(c, false)
 	if err != nil {
 		return err

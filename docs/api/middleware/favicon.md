@@ -22,8 +22,8 @@ Import the middleware package that is part of the Fiber web framework
 
 ```go
 import (
-  "github.com/gofiber/fiber/v2"
-  "github.com/gofiber/fiber/v2/middleware/favicon"
+  "github.com/gofiber/fiber/v3"
+  "github.com/gofiber/fiber/v3/middleware/favicon"
 )
 ```
 
@@ -44,7 +44,7 @@ app.Use(favicon.New(favicon.Config{
 
 | Property     | Type                    | Description                                                                      | Default                    |
 |:-------------|:------------------------|:---------------------------------------------------------------------------------|:---------------------------|
-| Next         | `func(*fiber.Ctx) bool` | Next defines a function to skip this middleware when returned true.              | `nil`                      |
+| Next         | `func(fiber.Ctx) bool` | Next defines a function to skip this middleware when returned true.              | `nil`                      |
 | Data         | `[]byte`                | Raw data of the favicon file. This can be used instead of `File`.                | `nil`                      |
 | File         | `string`                | File holds the path to an actual favicon that will be cached.                    | ""                         |
 | URL          | `string`                | URL for favicon handler.                                                         | "/favicon.ico"             |

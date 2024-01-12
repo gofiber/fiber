@@ -4,6 +4,15 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
+// The contextKey type is unexported to prevent collisions with context keys defined in
+// other packages.
+type contextKey int
+
+// The keys for the values in context
+const (
+	requestIDKey contextKey = iota
+)
+
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config
@@ -25,9 +34,18 @@ func New(config ...Config) fiber.Handler {
 		c.Set(cfg.Header, rid)
 
 		// Add the request ID to locals
-		c.Locals(cfg.ContextKey, rid)
+		c.Locals(requestIDKey, rid)
 
 		// Continue stack
 		return c.Next()
 	}
+}
+
+// FromContext returns the request ID from context.
+// If there is no request ID, an empty string is returned.
+func FromContext(c fiber.Ctx) string {
+	if rid, ok := c.Locals(requestIDKey).(string); ok {
+		return rid
+	}
+	return ""
 }

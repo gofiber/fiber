@@ -16,7 +16,7 @@ Since Fiber v2.32.0, we use **encoding/json** as default json library due to sta
 ```go title="Example"
 package main
 
-import "github.com/gofiber/fiber/v2"
+import "github.com/gofiber/fiber/v3"
 import "github.com/goccy/go-json"
 
 func main() {
