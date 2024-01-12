@@ -1081,7 +1081,11 @@ func Query[V QueryType](c Ctx, key string, defaultValue ...V) V {
 			}
 			result = 0
 		}
-		return any(result).(V)
+		v, ok = any(result).(V)
+		if !ok {
+			panic(fmt.Errorf("failed to type-assert to %T", v))
+		}
+		return v
 	case float64:
 		result, err := strconv.ParseFloat(q, 64)
 		if err != nil {
@@ -1090,7 +1094,11 @@ func Query[V QueryType](c Ctx, key string, defaultValue ...V) V {
 			}
 			result = 0
 		}
-		return any(result).(V)
+		v, ok = any(result).(V)
+		if !ok {
+			panic(fmt.Errorf("failed to type-assert to %T", v))
+		}
+		return v
 	case bool:
 		result, err := strconv.ParseBool(q)
 		if err != nil {
@@ -1099,12 +1107,20 @@ func Query[V QueryType](c Ctx, key string, defaultValue ...V) V {
 			}
 			result = false
 		}
-		return any(result).(V)
+		v, ok = any(result).(V)
+		if !ok {
+			panic(fmt.Errorf("failed to type-assert to %T", v))
+		}
+		return v
 	case string:
 		if q == "" && len(defaultValue) > 0 {
 			return defaultValue[0]
 		}
-		return any(q).(V)
+		v, ok = any(q).(V)
+		if !ok {
+			panic(fmt.Errorf("failed to type-assert to %T", v))
+		}
+		return v
 	default:
 		if len(defaultValue) > 0 {
 			return defaultValue[0]
