@@ -2078,6 +2078,20 @@ func Test_Ctx_Query(t *testing.T) {
 	require.Equal(t, "default", Query[string](c, "unknown", "default"))
 }
 
+// go test -v -run=^$ -bench=Benchmark_Ctx_Query -benchmem -count=4
+func Benchmark_Ctx_Query(b *testing.B) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c.Request().URI().SetQueryString("search=john&age=8")
+	var res string
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		res = Query[string](c, "search")
+	}
+	require.Equal(b, "john", res)
+}
+
 // go test -run Test_Ctx_QuerySignedInt
 func Test_Ctx_QuerySignedInt(t *testing.T) {
 	t.Parallel()
@@ -2126,6 +2140,20 @@ func Test_Ctx_QuerySignedInt(t *testing.T) {
 	require.Equal(t, int64(2), Query[int64](c, "id", 2))
 }
 
+// go test -v -run=^$ -bench=Benchmark_Ctx_QuerySignedInt -benchmem -count=4
+func Benchmark_Ctx_QuerySignedInt(b *testing.B) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c.Request().URI().SetQueryString("search=john&age=8")
+	var res int
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		res = Query[int](c, "age")
+	}
+	require.Equal(b, 8, res)
+}
+
 // go test -run Test_Ctx_QueryBoundarySignedInt
 func Test_Ctx_QueryBoundarySignedInt(t *testing.T) {
 	t.Parallel()
@@ -2170,6 +2198,20 @@ func Test_Ctx_QueryBoundarySignedInt(t *testing.T) {
 	c.Request().URI().SetQueryString(q)
 	require.Equal(t, int64(-9223372036854775808), Query[int64](c, "minus"))
 	require.Equal(t, int64(9223372036854775807), Query[int64](c, "plus"))
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_QueryBoundarySignedInt -benchmem -count=4
+func Benchmark_Ctx_QueryBoundarySignedInt(b *testing.B) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c.Request().URI().SetQueryString("search=john&age=8")
+	var res int
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		res = Query[int](c, "age")
+	}
+	require.Equal(b, 8, res)
 }
 
 // go test -run Test_Ctx_QueryUnsignedInt
@@ -2220,6 +2262,20 @@ func Test_Ctx_QueryUnsignedInt(t *testing.T) {
 	require.Equal(t, uint64(2), Query[uint64](c, "id", 2))
 }
 
+// go test -v -run=^$ -bench=Benchmark_Ctx_QueryUnsignedInt -benchmem -count=4
+func Benchmark_Ctx_QueryUnsignedInt(b *testing.B) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c.Request().URI().SetQueryString("search=john&age=8")
+	var res uint
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		res = Query[uint](c, "age")
+	}
+	require.Equal(b, uint(8), res)
+}
+
 // go test -run Test_Ctx_QueryBoundaryUnsignedInt
 func Test_Ctx_QueryBoundaryUnsignedInt(t *testing.T) {
 	t.Parallel()
@@ -2266,6 +2322,20 @@ func Test_Ctx_QueryBoundaryUnsignedInt(t *testing.T) {
 	require.Equal(t, uint64(18446744073709551615), Query[uint64](c, "plus"))
 }
 
+// go test -v -run=^$ -bench=Benchmark_Ctx_QueryBoundaryUnsignedInt -benchmem -count=4
+func Benchmark_Ctx_QueryBoundaryUnsignedInt(b *testing.B) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c.Request().URI().SetQueryString("search=john&age=8")
+	var res uint
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		res = Query[uint](c, "age")
+	}
+	require.Equal(b, uint(8), res)
+}
+
 // go test -run Test_Ctx_QueryFloat
 func Test_Ctx_QueryFloat(t *testing.T) {
 	t.Parallel()
@@ -2291,6 +2361,20 @@ func Test_Ctx_QueryFloat(t *testing.T) {
 	require.Equal(t, float64(0), Query[float64](c, "id"))
 }
 
+// go test -v -run=^$ -bench=Benchmark_Ctx_QueryFloat -benchmem -count=4
+func Benchmark_Ctx_QueryFloat(b *testing.B) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c.Request().URI().SetQueryString("search=john&age=8")
+	var res float32
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		res = Query[float32](c, "age")
+	}
+	require.Equal(b, float32(8), res)
+}
+
 // go test -run Test_Ctx_QueryBool
 func Test_Ctx_QueryBool(t *testing.T) {
 	t.Parallel()
@@ -2305,6 +2389,20 @@ func Test_Ctx_QueryBool(t *testing.T) {
 	require.Equal(t, true, Query[bool](c, "name", true))
 	require.Equal(t, false, Query[bool](c, "id"))
 	require.Equal(t, true, Query[bool](c, "id", true))
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_QueryBool -benchmem -count=4
+func Benchmark_Ctx_QueryBool(b *testing.B) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c.Request().URI().SetQueryString("search=john&age=8")
+	var res bool
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		res = Query[bool](c, "age")
+	}
+	require.Equal(b, false, res)
 }
 
 // go test -run Test_Ctx_QueryString
@@ -2323,6 +2421,20 @@ func Test_Ctx_QueryString(t *testing.T) {
 	require.Equal(t, "12.87", Query[string](c, "id", "12.87"))
 }
 
+// go test -v -run=^$ -bench=Benchmark_Ctx_QueryString -benchmem -count=4
+func Benchmark_Ctx_QueryString(b *testing.B) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c.Request().URI().SetQueryString("search=john&age=8")
+	var res string
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		res = Query[string](c, "age")
+	}
+	require.Equal(b, "8", res)
+}
+
 // go test -run Test_Ctx_QueryBytes
 func Test_Ctx_QueryBytes(t *testing.T) {
 	t.Parallel()
@@ -2337,6 +2449,20 @@ func Test_Ctx_QueryBytes(t *testing.T) {
 	require.Equal(t, []byte("32.23"), Query[[]byte](c, "amount", []byte("3.123")))
 	require.Equal(t, []byte(""), Query[[]byte](c, "id"))
 	require.Equal(t, []byte("12.87"), Query[[]byte](c, "id", []byte("12.87")))
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_QueryBytes -benchmem -count=4
+func Benchmark_Ctx_QueryBytes(b *testing.B) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c.Request().URI().SetQueryString("search=john&age=8")
+	var res []byte
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		res = Query[[]byte](c, "age")
+	}
+	require.Equal(b, []byte("8"), res)
 }
 
 // go test -run Test_Ctx_QueryWithoutGenericDataType
@@ -2377,6 +2503,20 @@ func Test_Ctx_QueryWithoutGenericDataType(t *testing.T) {
 	require.Equal(t, false, Query(c, "unknown", false))
 	require.Equal(t, []byte("alex"), Query(c, "name", []byte("john")))
 	require.Equal(t, []byte("john"), Query(c, "unknown", []byte("john")))
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_QueryWithoutGenericDataType -benchmem -count=4
+func Benchmark_Ctx_QueryWithoutGenericDataType(b *testing.B) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c.Request().URI().SetQueryString("search=john&age=8")
+	var res int
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		res = Query(c, "age", 3)
+	}
+	require.Equal(b, 8, res)
 }
 
 // go test -run Test_Ctx_Range
