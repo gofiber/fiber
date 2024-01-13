@@ -609,7 +609,7 @@ func Test_Ctx_UserContext_Multiple_Requests(t *testing.T) {
 			return c.SendStatus(StatusInternalServerError)
 		}
 
-		input := utils.CopyString(c.Query("input", "NO_VALUE"))
+		input := utils.CopyString(Query(c, "input", "NO_VALUE"))
 		ctx = context.WithValue(ctx, testKey, fmt.Sprintf("%s_%s", testValue, input))
 		c.SetUserContext(ctx)
 
@@ -2072,56 +2072,227 @@ func Test_Ctx_Query(t *testing.T) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	c.Request().URI().SetQueryString("search=john&age=20")
-	require.Equal(t, "john", c.Query("search"))
-	require.Equal(t, "20", c.Query("age"))
-	require.Equal(t, "default", c.Query("unknown", "default"))
+	c.Request().URI().SetQueryString("search=john&age=8")
+	require.Equal(t, "john", Query[string](c, "search"))
+	require.Equal(t, "8", Query[string](c, "age"))
+	require.Equal(t, "default", Query[string](c, "unknown", "default"))
 }
 
-func Test_Ctx_QueryInt(t *testing.T) {
+// go test -run Test_Ctx_QuerySignedInt
+func Test_Ctx_QuerySignedInt(t *testing.T) {
 	t.Parallel()
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	c.Request().URI().SetQueryString("search=john&age=20&id=")
-	require.Equal(t, 0, c.QueryInt("foo"))
-	require.Equal(t, 20, c.QueryInt("age", 12))
-	require.Equal(t, 0, c.QueryInt("search"))
-	require.Equal(t, 1, c.QueryInt("search", 1))
-	require.Equal(t, 0, c.QueryInt("id"))
-	require.Equal(t, 2, c.QueryInt("id", 2))
-}
-
-func Test_Ctx_QueryParserInt(t *testing.T) {
-	t.Parallel()
-	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
-
-	c.Request().URI().SetQueryString("search=john&age=20")
+	c.Request().URI().SetQueryString("search=john&age=8")
+	// int
 	require.Equal(t, 0, Query[int](c, "foo"))
-	require.Equal(t, 20, Query[int](c, "age", 12))
+	require.Equal(t, 8, Query[int](c, "age", 12))
 	require.Equal(t, 0, Query[int](c, "search"))
 	require.Equal(t, 1, Query[int](c, "search", 1))
 	require.Equal(t, 0, Query[int](c, "id"))
 	require.Equal(t, 2, Query[int](c, "id", 2))
+
+	// int8
+	require.Equal(t, int8(0), Query[int8](c, "foo"))
+	require.Equal(t, int8(8), Query[int8](c, "age", 12))
+	require.Equal(t, int8(0), Query[int8](c, "search"))
+	require.Equal(t, int8(1), Query[int8](c, "search", 1))
+	require.Equal(t, int8(0), Query[int8](c, "id"))
+	require.Equal(t, int8(2), Query[int8](c, "id", 2))
+
+	// int16
+	require.Equal(t, int16(0), Query[int16](c, "foo"))
+	require.Equal(t, int16(8), Query[int16](c, "age", 12))
+	require.Equal(t, int16(0), Query[int16](c, "search"))
+	require.Equal(t, int16(1), Query[int16](c, "search", 1))
+	require.Equal(t, int16(0), Query[int16](c, "id"))
+	require.Equal(t, int16(2), Query[int16](c, "id", 2))
+
+	// int32
+	require.Equal(t, int32(0), Query[int32](c, "foo"))
+	require.Equal(t, int32(8), Query[int32](c, "age", 12))
+	require.Equal(t, int32(0), Query[int32](c, "search"))
+	require.Equal(t, int32(1), Query[int32](c, "search", 1))
+	require.Equal(t, int32(0), Query[int32](c, "id"))
+	require.Equal(t, int32(2), Query[int32](c, "id", 2))
+
+	// int64
+	require.Equal(t, int64(0), Query[int64](c, "foo"))
+	require.Equal(t, int64(8), Query[int64](c, "age", 12))
+	require.Equal(t, int64(0), Query[int64](c, "search"))
+	require.Equal(t, int64(1), Query[int64](c, "search", 1))
+	require.Equal(t, int64(0), Query[int64](c, "id"))
+	require.Equal(t, int64(2), Query[int64](c, "id", 2))
 }
 
-func Test_Ctx_QueryBool(t *testing.T) {
+// go test -run Test_Ctx_QueryBoundarySignedInt
+func Test_Ctx_QueryBoundarySignedInt(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+	var q string
+
+	// int
+	q = fmt.Sprintf("minus=%s&plus=%s&minus_over=%s&plus_over=%s", "2147483647", "-2147483648", "-2147483649", "2147483648")
+	c.Request().URI().SetQueryString(q)
+	require.Equal(t, 2147483647, Query[int](c, "minus"))
+	require.Equal(t, -2147483648, Query[int](c, "plus"))
+	require.Equal(t, 0, Query[int](c, "minus_over"))
+	require.Equal(t, 0, Query[int](c, "plus_over"))
+
+	// int8
+	q = fmt.Sprintf("minus=%s&plus=%s&minus_over=%s&plus_over=%s", "127", "-128", "-129", "128")
+	c.Request().URI().SetQueryString(q)
+	require.Equal(t, int8(127), Query[int8](c, "minus"))
+	require.Equal(t, int8(-128), Query[int8](c, "plus"))
+	require.Equal(t, int8(0), Query[int8](c, "minus_over"))
+	require.Equal(t, int8(0), Query[int8](c, "plus_over"))
+
+	// int16
+	q = fmt.Sprintf("minus=%s&plus=%s&minus_over=%s&plus_over=%s", "32767", "-32768", "-32769", "32768")
+	c.Request().URI().SetQueryString(q)
+	require.Equal(t, int16(32767), Query[int16](c, "minus"))
+	require.Equal(t, int16(-32768), Query[int16](c, "plus"))
+	require.Equal(t, int16(0), Query[int16](c, "minus_over"))
+	require.Equal(t, int16(0), Query[int16](c, "plus_over"))
+
+	// int32
+	q = fmt.Sprintf("minus=%s&plus=%s&minus_over=%s&plus_over=%s", "2147483647", "-2147483648", "-2147483649", "2147483648")
+	c.Request().URI().SetQueryString(q)
+	require.Equal(t, int32(2147483647), Query[int32](c, "minus"))
+	require.Equal(t, int32(-2147483648), Query[int32](c, "plus"))
+	require.Equal(t, int32(0), Query[int32](c, "minus_over"))
+	require.Equal(t, int32(0), Query[int32](c, "plus_over"))
+
+	// int64
+	q = fmt.Sprintf("minus=%s&plus=%s", "-9223372036854775808", "9223372036854775807")
+	c.Request().URI().SetQueryString(q)
+	require.Equal(t, int64(-9223372036854775808), Query[int64](c, "minus"))
+	require.Equal(t, int64(9223372036854775807), Query[int64](c, "plus"))
+}
+
+// go test -run Test_Ctx_QueryUnsignedInt
+func Test_Ctx_QueryUnsignedInt(t *testing.T) {
 	t.Parallel()
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	c.Request().URI().SetQueryString("name=alex&want_pizza=false&id=")
+	c.Request().URI().SetQueryString("search=john&age=8")
+	// uint
+	require.Equal(t, uint(0), Query[uint](c, "foo"))
+	require.Equal(t, uint(8), Query[uint](c, "age", 12))
+	require.Equal(t, uint(0), Query[uint](c, "search"))
+	require.Equal(t, uint(1), Query[uint](c, "search", 1))
+	require.Equal(t, uint(0), Query[uint](c, "id"))
+	require.Equal(t, uint(2), Query[uint](c, "id", 2))
 
-	require.Equal(t, false, c.QueryBool("want_pizza"))
-	require.Equal(t, false, c.QueryBool("want_pizza", true))
-	require.Equal(t, false, c.QueryBool("name"))
-	require.Equal(t, true, c.QueryBool("name", true))
-	require.Equal(t, false, c.QueryBool("id"))
-	require.Equal(t, true, c.QueryBool("id", true))
+	// uint8
+	require.Equal(t, uint8(0), Query[uint8](c, "foo"))
+	require.Equal(t, uint8(8), Query[uint8](c, "age", 12))
+	require.Equal(t, uint8(0), Query[uint8](c, "search"))
+	require.Equal(t, uint8(1), Query[uint8](c, "search", 1))
+	require.Equal(t, uint8(0), Query[uint8](c, "id"))
+	require.Equal(t, uint8(2), Query[uint8](c, "id", 2))
+
+	// uint16
+	require.Equal(t, uint16(0), Query[uint16](c, "foo"))
+	require.Equal(t, uint16(8), Query[uint16](c, "age", 12))
+	require.Equal(t, uint16(0), Query[uint16](c, "search"))
+	require.Equal(t, uint16(1), Query[uint16](c, "search", 1))
+	require.Equal(t, uint16(0), Query[uint16](c, "id"))
+	require.Equal(t, uint16(2), Query[uint16](c, "id", 2))
+
+	// uint32
+	require.Equal(t, uint32(0), Query[uint32](c, "foo"))
+	require.Equal(t, uint32(8), Query[uint32](c, "age", 12))
+	require.Equal(t, uint32(0), Query[uint32](c, "search"))
+	require.Equal(t, uint32(1), Query[uint32](c, "search", 1))
+	require.Equal(t, uint32(0), Query[uint32](c, "id"))
+	require.Equal(t, uint32(2), Query[uint32](c, "id", 2))
+
+	// uint64
+	require.Equal(t, uint64(0), Query[uint64](c, "foo"))
+	require.Equal(t, uint64(8), Query[uint64](c, "age", 12))
+	require.Equal(t, uint64(0), Query[uint64](c, "search"))
+	require.Equal(t, uint64(1), Query[uint64](c, "search", 1))
+	require.Equal(t, uint64(0), Query[uint64](c, "id"))
+	require.Equal(t, uint64(2), Query[uint64](c, "id", 2))
 }
 
-func Test_Ctx_QueryParserBool(t *testing.T) {
+// go test -run Test_Ctx_QueryBoundaryUnsignedInt
+func Test_Ctx_QueryBoundaryUnsignedInt(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+	var q string
+
+	// uint
+	q = fmt.Sprintf("minus=%s&plus=%s&minus_over=%s&plus_over=%s", "0", "4294967295", "4294967296", "4294967297")
+	c.Request().URI().SetQueryString(q)
+	require.Equal(t, uint(0), Query[uint](c, "minus"))
+	require.Equal(t, uint(4294967295), Query[uint](c, "plus"))
+	require.Equal(t, uint(0), Query[uint](c, "minus_over"))
+	require.Equal(t, uint(0), Query[uint](c, "plus_over"))
+
+	// uint8
+	q = fmt.Sprintf("minus=%s&plus=%s&minus_over=%s&plus_over=%s", "0", "255", "256", "257")
+	c.Request().URI().SetQueryString(q)
+	require.Equal(t, uint8(0), Query[uint8](c, "minus"))
+	require.Equal(t, uint8(255), Query[uint8](c, "plus"))
+	require.Equal(t, uint8(0), Query[uint8](c, "minus_over"))
+	require.Equal(t, uint8(0), Query[uint8](c, "plus_over"))
+
+	// uint16
+	q = fmt.Sprintf("minus=%s&plus=%s&minus_over=%s&plus_over=%s", "0", "65535", "65536", "65537")
+	c.Request().URI().SetQueryString(q)
+	require.Equal(t, uint16(0), Query[uint16](c, "minus"))
+	require.Equal(t, uint16(65535), Query[uint16](c, "plus"))
+	require.Equal(t, uint16(0), Query[uint16](c, "minus_over"))
+	require.Equal(t, uint16(0), Query[uint16](c, "plus_over"))
+
+	// uint32
+	q = fmt.Sprintf("minus=%s&plus=%s&minus_over=%s&plus_over=%s", "0", "4294967295", "4294967296", "4294967297")
+	c.Request().URI().SetQueryString(q)
+	require.Equal(t, uint32(0), Query[uint32](c, "minus"))
+	require.Equal(t, uint32(4294967295), Query[uint32](c, "plus"))
+	require.Equal(t, uint32(0), Query[uint32](c, "minus_over"))
+	require.Equal(t, uint32(0), Query[uint32](c, "plus_over"))
+
+	// uint64
+	q = fmt.Sprintf("minus=%s&plus=%s", "0", "18446744073709551615")
+	c.Request().URI().SetQueryString(q)
+	require.Equal(t, uint64(0), Query[uint64](c, "minus"))
+	require.Equal(t, uint64(18446744073709551615), Query[uint64](c, "plus"))
+}
+
+// go test -run Test_Ctx_QueryFloat
+func Test_Ctx_QueryFloat(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	c.Request().URI().SetQueryString("name=alex&amount=32.23&id=")
+
+	// float32
+	require.Equal(t, float32(32.23), Query[float32](c, "amount"))
+	require.Equal(t, float32(32.23), Query[float32](c, "amount", 3.123))
+	require.Equal(t, float32(87.123), Query[float32](c, "name", 87.123))
+	require.Equal(t, float32(0), Query[float32](c, "name"))
+	require.Equal(t, float32(12.87), Query[float32](c, "id", 12.87))
+	require.Equal(t, float32(0), Query[float32](c, "id"))
+
+	// float64
+	require.Equal(t, 32.23, Query[float64](c, "amount"))
+	require.Equal(t, 32.23, Query[float64](c, "amount", 3.123))
+	require.Equal(t, 87.123, Query[float64](c, "name", 87.123))
+	require.Equal(t, float64(0), Query[float64](c, "name"))
+	require.Equal(t, 12.87, Query[float64](c, "id", 12.87))
+	require.Equal(t, float64(0), Query[float64](c, "id"))
+}
+
+// go test -run Test_Ctx_QueryBool
+func Test_Ctx_QueryBool(t *testing.T) {
 	t.Parallel()
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
@@ -2136,37 +2307,8 @@ func Test_Ctx_QueryParserBool(t *testing.T) {
 	require.Equal(t, true, Query[bool](c, "id", true))
 }
 
-func Test_Ctx_QueryFloat(t *testing.T) {
-	t.Parallel()
-	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
-
-	c.Request().URI().SetQueryString("name=alex&amount=32.23&id=")
-
-	require.Equal(t, 32.23, c.QueryFloat("amount"))
-	require.Equal(t, 32.23, c.QueryFloat("amount", 3.123))
-	require.Equal(t, 87.123, c.QueryFloat("name", 87.123))
-	require.Equal(t, float64(0), c.QueryFloat("name"))
-	require.Equal(t, 12.87, c.QueryFloat("id", 12.87))
-	require.Equal(t, float64(0), c.QueryFloat("id"))
-}
-
-func Test_Ctx_QueryParserFloat(t *testing.T) {
-	t.Parallel()
-	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
-
-	c.Request().URI().SetQueryString("name=alex&amount=32.23&id=")
-
-	require.Equal(t, 32.23, Query[float64](c, "amount"))
-	require.Equal(t, 32.23, Query[float64](c, "amount", 3.123))
-	require.Equal(t, 87.123, Query[float64](c, "name", 87.123))
-	require.Equal(t, float64(0), Query[float64](c, "name"))
-	require.Equal(t, 12.87, Query[float64](c, "id", 12.87))
-	require.Equal(t, float64(0), Query[float64](c, "id"))
-}
-
-func Test_Ctx_QueryParserString(t *testing.T) {
+// go test -run Test_Ctx_QueryString
+func Test_Ctx_QueryString(t *testing.T) {
 	t.Parallel()
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
@@ -2179,6 +2321,62 @@ func Test_Ctx_QueryParserString(t *testing.T) {
 	require.Equal(t, "32.23", Query[string](c, "amount", "3.123"))
 	require.Equal(t, "", Query[string](c, "id"))
 	require.Equal(t, "12.87", Query[string](c, "id", "12.87"))
+}
+
+// go test -run Test_Ctx_QueryBytes
+func Test_Ctx_QueryBytes(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	c.Request().URI().SetQueryString("name=alex&amount=32.23&id=")
+
+	require.Equal(t, []byte("alex"), Query[[]byte](c, "name"))
+	require.Equal(t, []byte("alex"), Query[[]byte](c, "name", []byte("john")))
+	require.Equal(t, []byte("32.23"), Query[[]byte](c, "amount"))
+	require.Equal(t, []byte("32.23"), Query[[]byte](c, "amount", []byte("3.123")))
+	require.Equal(t, []byte(""), Query[[]byte](c, "id"))
+	require.Equal(t, []byte("12.87"), Query[[]byte](c, "id", []byte("12.87")))
+}
+
+// go test -run Test_Ctx_QueryWithoutGenericDataType
+func Test_Ctx_QueryWithoutGenericDataType(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	c.Request().URI().SetQueryString("name=alex&amount=32.23&isAgent=true&id=32")
+
+	require.Equal(t, "alex", Query(c, "name", "john"))
+	require.Equal(t, "john", Query(c, "unknown", "john"))
+	require.Equal(t, 32, Query(c, "id", 3))
+	require.Equal(t, 3, Query(c, "unknown", 3))
+	require.Equal(t, int8(32), Query(c, "id", int8(3)))
+	require.Equal(t, int8(3), Query(c, "unknown", int8(3)))
+	require.Equal(t, int16(32), Query(c, "id", int16(3)))
+	require.Equal(t, int16(3), Query(c, "unknown", int16(3)))
+	require.Equal(t, int32(32), Query(c, "id", int32(3)))
+	require.Equal(t, int32(3), Query(c, "unknown", int32(3)))
+	require.Equal(t, int64(32), Query(c, "id", int64(3)))
+	require.Equal(t, int64(3), Query(c, "unknown", int64(3)))
+	require.Equal(t, uint(32), Query(c, "id", uint(3)))
+	require.Equal(t, uint(3), Query(c, "unknown", uint(3)))
+	require.Equal(t, uint8(32), Query(c, "id", uint8(3)))
+	require.Equal(t, uint8(3), Query(c, "unknown", uint8(3)))
+	require.Equal(t, uint16(32), Query(c, "id", uint16(3)))
+	require.Equal(t, uint16(3), Query(c, "unknown", uint16(3)))
+	require.Equal(t, uint32(32), Query(c, "id", uint32(3)))
+	require.Equal(t, uint32(3), Query(c, "unknown", uint32(3)))
+	require.Equal(t, uint64(32), Query(c, "id", uint64(3)))
+	require.Equal(t, uint64(3), Query(c, "unknown", uint64(3)))
+	require.Equal(t, 32.23, Query(c, "amount", 3.123))
+	require.Equal(t, 3.123, Query(c, "unknown", 3.123))
+	require.Equal(t, float32(32.23), Query(c, "amount", float32(3.123)))
+	require.Equal(t, float32(3.123), Query(c, "unknown", float32(3.123)))
+	require.Equal(t, true, Query(c, "isAgent", false))
+	require.Equal(t, false, Query(c, "unknown", false))
+	require.Equal(t, []byte("alex"), Query(c, "name", []byte("john")))
+	require.Equal(t, []byte("john"), Query(c, "unknown", []byte("john")))
 }
 
 // go test -run Test_Ctx_Range
