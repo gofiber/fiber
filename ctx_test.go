@@ -2277,39 +2277,67 @@ func Test_Ctx_Range(t *testing.T) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	var (
-		result Range
-		err    error
-	)
-
-	_, err = c.Range(1000)
-	require.True(t, err != nil)
-
-	c.Request().Header.Set(HeaderRange, "bytes=500")
-	_, err = c.Range(1000)
-	require.True(t, err != nil)
-
-	c.Request().Header.Set(HeaderRange, "bytes=500=")
-	_, err = c.Range(1000)
-	require.True(t, err != nil)
-
-	c.Request().Header.Set(HeaderRange, "bytes=500-300")
-	_, err = c.Range(1000)
-	require.True(t, err != nil)
-
-	testRange := func(header string, start, end int) {
+	testRange := func(header string, ranges ...RangeSet) {
 		c.Request().Header.Set(HeaderRange, header)
-		result, err = c.Range(1000)
-		require.NoError(t, err)
-		require.Equal(t, "bytes", result.Type)
-		require.Equal(t, start, result.Ranges[0].Start)
-		require.Equal(t, end, result.Ranges[0].End)
+		result, err := c.Range(1000)
+		if len(ranges) == 0 {
+			require.Error(t, err)
+		} else {
+			require.Equal(t, "bytes", result.Type)
+			require.NoError(t, err)
+		}
+		require.Equal(t, len(ranges), len(result.Ranges))
+		for i := range ranges {
+			require.Equal(t, ranges[i], result.Ranges[i])
+		}
 	}
 
-	testRange("bytes=a-700", 300, 999)
-	testRange("bytes=500-b", 500, 999)
-	testRange("bytes=500-1000", 500, 999)
-	testRange("bytes=500-700", 500, 700)
+	testRange("bytes=500")
+	testRange("bytes=")
+	testRange("bytes=500=")
+	testRange("bytes=500-300")
+	testRange("bytes=a-700", RangeSet{300, 999})
+	testRange("bytes=500-b", RangeSet{500, 999})
+	testRange("bytes=500-1000", RangeSet{500, 999})
+	testRange("bytes=500-700", RangeSet{500, 700})
+	testRange("bytes=0-0,2-1000", RangeSet{0, 0}, RangeSet{2, 999})
+	testRange("bytes=0-99,450-549,-100", RangeSet{0, 99}, RangeSet{450, 549}, RangeSet{900, 999})
+	testRange("bytes=500-700,601-999", RangeSet{500, 700}, RangeSet{601, 999})
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_Range -benchmem -count=4
+func Benchmark_Ctx_Range(b *testing.B) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	testCases := []struct {
+		str   string
+		start int
+		end   int
+	}{
+		{"bytes=-700", 300, 999},
+		{"bytes=500-", 500, 999},
+		{"bytes=500-1000", 500, 999},
+		{"bytes=0-700,800-1000", 0, 700},
+	}
+
+	for _, tc := range testCases {
+		b.Run(tc.str, func(b *testing.B) {
+			c.Request().Header.Set(HeaderRange, tc.str)
+			var (
+				result Range
+				err    error
+			)
+			for n := 0; n < b.N; n++ {
+				result, err = c.Range(1000)
+			}
+			require.NoError(b, err)
+			require.Equal(b, "bytes", result.Type)
+			require.Equal(b, tc.start, result.Ranges[0].Start)
+			require.Equal(b, tc.end, result.Ranges[0].End)
+		})
+	}
 }
 
 // go test -run Test_Ctx_Route
@@ -2652,6 +2680,7 @@ func Test_Ctx_JSON(t *testing.T) {
 
 	require.True(t, c.JSON(complex(1, 1)) != nil)
 
+	// Test without ctype
 	err := c.JSON(Map{ // map has no order
 		"Name": "Grame",
 		"Age":  20,
@@ -2660,7 +2689,16 @@ func Test_Ctx_JSON(t *testing.T) {
 	require.Equal(t, `{"Age":20,"Name":"Grame"}`, string(c.Response().Body()))
 	require.Equal(t, "application/json", string(c.Response().Header.Peek("content-type")))
 
-	testEmpty := func(v any, r string) {
+	// Test with ctype
+	err = c.JSON(Map{ // map has no order
+		"Name": "Grame",
+		"Age":  20,
+	}, "application/problem+json")
+	require.NoError(t, err)
+	require.Equal(t, `{"Age":20,"Name":"Grame"}`, string(c.Response().Body()))
+	require.Equal(t, "application/problem+json", string(c.Response().Header.Peek("content-type")))
+
+	testEmpty := func(v interface{}, r string) {
 		err := c.JSON(v)
 		require.NoError(t, err)
 		require.Equal(t, r, string(c.Response().Body()))
@@ -2712,6 +2750,30 @@ func Benchmark_Ctx_JSON(b *testing.B) {
 	}
 	require.NoError(b, err)
 	require.Equal(b, `{"Name":"Grame","Age":20}`, string(c.Response().Body()))
+}
+
+// go test -run=^$ -bench=Benchmark_Ctx_JSON_Ctype -benchmem -count=4
+func Benchmark_Ctx_JSON_Ctype(b *testing.B) {
+	app := New()
+	// TODO: Check extra allocs because of the interface stuff
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	type SomeStruct struct {
+		Name string
+		Age  uint8
+	}
+	data := SomeStruct{
+		Name: "Grame",
+		Age:  20,
+	}
+	var err error
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		err = c.JSON(data, "application/problem+json")
+	}
+	require.NoError(b, err)
+	require.Equal(b, `{"Name":"Grame","Age":20}`, string(c.Response().Body()))
+	require.Equal(b, "application/problem+json", string(c.Response().Header.Peek("content-type")))
 }
 
 // go test -run Test_Ctx_JSONP

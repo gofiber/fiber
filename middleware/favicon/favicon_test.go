@@ -11,7 +11,6 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/utils"
 )
 
 // go test -run Test_Middleware_Favicon
@@ -93,15 +92,15 @@ func Test_Custom_Favicon_URL(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(http.MethodGet, customURL, nil))
 
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode, "Status code")
-	utils.AssertEqual(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
+	require.Equal(t, nil, err, "app.Test(req)")
+	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
+	require.Equal(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
 }
 
 // go test -run Test_Custom_Favicon_Data
 func Test_Custom_Favicon_Data(t *testing.T) {
 	data, err := os.ReadFile("../../.github/testdata/favicon.ico")
-	utils.AssertEqual(t, nil, err)
+	require.Equal(t, nil, err)
 
 	app := fiber.New()
 
@@ -114,10 +113,10 @@ func Test_Custom_Favicon_Data(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/favicon.ico", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode, "Status code")
-	utils.AssertEqual(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
-	utils.AssertEqual(t, "public, max-age=31536000", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
+	require.Equal(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
+	require.Equal(t, "public, max-age=31536000", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
 }
 
 // go test -run Test_Middleware_Favicon_FileSystem

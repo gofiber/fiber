@@ -268,10 +268,10 @@ agent.BodyStream(strings.NewReader("body=stream"), -1)
 
 ### JSON
 
-JSON sends a JSON request by setting the Content-Type header to `application/json`.
+JSON sends a JSON request by setting the Content-Type header to the `ctype` parameter. If no `ctype` is passed in, the header is set to `application/json`.
 
 ```go title="Signature"
-func (a *Agent) JSON(v interface{}) *Agent
+func (a *Agent) JSON(v interface{}, ctype ...string) *Agent
 ```
 
 ```go title="Example"

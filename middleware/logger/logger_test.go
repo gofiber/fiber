@@ -17,7 +17,6 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/requestid"
-	"github.com/gofiber/fiber/v3/utils"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
@@ -303,14 +302,14 @@ func Test_Logger_WithLatency_DefaultFormat(t *testing.T) {
 
 		// Create a new HTTP request to the test route
 		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), int(2*time.Second))
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 		// Assert that the log output contains the expected latency value in the current time unit
 		// parse out the latency value from the log output
 		latency := bytes.Split(buff.Bytes(), []byte(" | "))[2]
 		// Assert that the latency value is in the current time unit
-		utils.AssertEqual(t, bytes.HasSuffix(latency, []byte(tu.unit)), true, fmt.Sprintf("Expected latency to be in %s, got %s", tu.unit, latency))
+		require.Equal(t, bytes.HasSuffix(latency, []byte(tu.unit)), true, fmt.Sprintf("Expected latency to be in %s, got %s", tu.unit, latency))
 
 		// Reset the buffer
 		buff.Reset()

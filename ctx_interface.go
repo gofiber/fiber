@@ -164,8 +164,10 @@ type Ctx interface {
 	// Array and slice values encode as JSON arrays,
 	// except that []byte encodes as a base64-encoded string,
 	// and a nil slice encodes as the null JSON value.
-	// This method also sets the content header to application/json.
-	JSON(data any) error
+	// If the ctype parameter is given, this method will set the
+	// Content-Type header equal to ctype. If ctype is not given,
+	// The Content-Type header will be set to application/json.
+	JSON(data any, ctype ...string) error
 
 	// JSONP sends a JSON response with JSONP support.
 	// This method is identical to JSON, except that it opts-in to JSONP callback support.
