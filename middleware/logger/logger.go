@@ -49,7 +49,7 @@ func New(config ...Config) fiber.Handler {
 		once       sync.Once
 		errHandler fiber.ErrorHandler
 
-		dataPool = sync.Pool{New: func() interface{} { return new(Data) }}
+		dataPool = sync.Pool{New: func() any { return new(Data) }}
 	)
 
 	// Err padding

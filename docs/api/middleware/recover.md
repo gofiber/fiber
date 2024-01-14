@@ -41,7 +41,7 @@ app.Get("/", func(c fiber.Ctx) error {
 |:------------------|:--------------------------------|:--------------------------------------------------------------------|:-------------------------|
 | Next              | `func(fiber.Ctx) bool`         | Next defines a function to skip this middleware when returned true. | `nil`                    |
 | EnableStackTrace  | `bool`                          | EnableStackTrace enables handling stack trace.                      | `false`                  |
-| StackTraceHandler | `func(fiber.Ctx, interface{})` | StackTraceHandler defines a function to handle stack trace.         | defaultStackTraceHandler |
+| StackTraceHandler | `func(fiber.Ctx, any)` | StackTraceHandler defines a function to handle stack trace.         | defaultStackTraceHandler |
 
 ## Default Config
 

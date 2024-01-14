@@ -306,7 +306,7 @@ func Test_Router_Register_Missing_Handler(t *testing.T) {
 func Test_Ensure_Router_Interface_Implementation(t *testing.T) {
 	t.Parallel()
 
-	var app interface{} = (*App)(nil)
+	var app any = (*App)(nil)
 	_, ok := app.(Router)
 	require.True(t, ok)
 

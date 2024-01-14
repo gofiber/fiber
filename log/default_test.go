@@ -97,8 +97,8 @@ func Test_LogfKeyAndValues(t *testing.T) {
 		name          string
 		level         Level
 		format        string
-		fmtArgs       []interface{}
-		keysAndValues []interface{}
+		fmtArgs       []any
+		keysAndValues []any
 		wantOutput    string
 	}{
 		{
@@ -106,7 +106,7 @@ func Test_LogfKeyAndValues(t *testing.T) {
 			level:         LevelDebug,
 			format:        "",
 			fmtArgs:       nil,
-			keysAndValues: []interface{}{"name", "Bob", "age", 30},
+			keysAndValues: []any{"name", "Bob", "age", 30},
 			wantOutput:    "[Debug] name=Bob age=30\n",
 		},
 		{
@@ -114,7 +114,7 @@ func Test_LogfKeyAndValues(t *testing.T) {
 			level:         LevelInfo,
 			format:        "",
 			fmtArgs:       nil,
-			keysAndValues: []interface{}{"status", "ok", "code", 200},
+			keysAndValues: []any{"status", "ok", "code", 200},
 			wantOutput:    "[Info] status=ok code=200\n",
 		},
 		{
@@ -122,7 +122,7 @@ func Test_LogfKeyAndValues(t *testing.T) {
 			level:         LevelWarn,
 			format:        "",
 			fmtArgs:       nil,
-			keysAndValues: []interface{}{"error", "not found", "id", 123},
+			keysAndValues: []any{"error", "not found", "id", 123},
 			wantOutput:    "[Warn] error=not found id=123\n",
 		},
 		{
@@ -130,7 +130,7 @@ func Test_LogfKeyAndValues(t *testing.T) {
 			level:         LevelWarn,
 			format:        "test",
 			fmtArgs:       nil,
-			keysAndValues: []interface{}{"error", "not found", "id", 123},
+			keysAndValues: []any{"error", "not found", "id", 123},
 			wantOutput:    "[Warn] test error=not found id=123\n",
 		},
 		{
@@ -138,7 +138,7 @@ func Test_LogfKeyAndValues(t *testing.T) {
 			level:         LevelWarn,
 			format:        "",
 			fmtArgs:       nil,
-			keysAndValues: []interface{}{"error"},
+			keysAndValues: []any{"error"},
 			wantOutput:    "[Warn] error=KEYVALS UNPAIRED\n",
 		},
 	}

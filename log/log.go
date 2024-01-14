@@ -15,35 +15,35 @@ var logger AllLogger = &defaultLogger{
 
 // Logger is a logger interface that provides logging function with levels.
 type Logger interface {
-	Trace(v ...interface{})
-	Debug(v ...interface{})
-	Info(v ...interface{})
-	Warn(v ...interface{})
-	Error(v ...interface{})
-	Fatal(v ...interface{})
-	Panic(v ...interface{})
+	Trace(v ...any)
+	Debug(v ...any)
+	Info(v ...any)
+	Warn(v ...any)
+	Error(v ...any)
+	Fatal(v ...any)
+	Panic(v ...any)
 }
 
 // FormatLogger is a logger interface that output logs with a format.
 type FormatLogger interface {
-	Tracef(format string, v ...interface{})
-	Debugf(format string, v ...interface{})
-	Infof(format string, v ...interface{})
-	Warnf(format string, v ...interface{})
-	Errorf(format string, v ...interface{})
-	Fatalf(format string, v ...interface{})
-	Panicf(format string, v ...interface{})
+	Tracef(format string, v ...any)
+	Debugf(format string, v ...any)
+	Infof(format string, v ...any)
+	Warnf(format string, v ...any)
+	Errorf(format string, v ...any)
+	Fatalf(format string, v ...any)
+	Panicf(format string, v ...any)
 }
 
 // WithLogger is a logger interface that output logs with a message and key-value pairs.
 type WithLogger interface {
-	Tracew(msg string, keysAndValues ...interface{})
-	Debugw(msg string, keysAndValues ...interface{})
-	Infow(msg string, keysAndValues ...interface{})
-	Warnw(msg string, keysAndValues ...interface{})
-	Errorw(msg string, keysAndValues ...interface{})
-	Fatalw(msg string, keysAndValues ...interface{})
-	Panicw(msg string, keysAndValues ...interface{})
+	Tracew(msg string, keysAndValues ...any)
+	Debugw(msg string, keysAndValues ...any)
+	Infow(msg string, keysAndValues ...any)
+	Warnw(msg string, keysAndValues ...any)
+	Errorw(msg string, keysAndValues ...any)
+	Fatalw(msg string, keysAndValues ...any)
+	Panicw(msg string, keysAndValues ...any)
 }
 
 type CommonLogger interface {
