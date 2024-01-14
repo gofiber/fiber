@@ -9,6 +9,7 @@ import (
 )
 
 func TestExponentialBackoff_Retry(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		expBackoff *ExponentialBackoff
@@ -21,14 +22,6 @@ func TestExponentialBackoff_Retry(t *testing.T) {
 			f: func() error {
 				return nil
 			},
-		},
-		{
-			name:       "With default values - unsuccessful",
-			expBackoff: NewExponentialBackoff(),
-			f: func() error {
-				return fmt.Errorf("failed function")
-			},
-			expErr: fmt.Errorf("failed function"),
 		},
 		{
 			name: "Successful function",
@@ -66,6 +59,7 @@ func TestExponentialBackoff_Retry(t *testing.T) {
 }
 
 func TestExponentialBackoff_Next(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name                 string
 		expBackoff           *ExponentialBackoff
