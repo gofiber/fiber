@@ -2698,7 +2698,7 @@ func Test_Ctx_JSON(t *testing.T) {
 	require.Equal(t, `{"Age":20,"Name":"Grame"}`, string(c.Response().Body()))
 	require.Equal(t, "application/problem+json", string(c.Response().Header.Peek("content-type")))
 
-	testEmpty := func(v interface{}, r string) {
+	testEmpty := func(v any, r string) {
 		err := c.JSON(v)
 		require.NoError(t, err)
 		require.Equal(t, r, string(c.Response().Body()))
@@ -2713,7 +2713,7 @@ func Test_Ctx_JSON(t *testing.T) {
 		t.Parallel()
 
 		app := New(Config{
-			JSONEncoder: func(v interface{}) ([]byte, error) {
+			JSONEncoder: func(v any) ([]byte, error) {
 				return []byte(`["custom","json"]`), nil
 			},
 		})
@@ -2804,7 +2804,7 @@ func Test_Ctx_JSONP(t *testing.T) {
 		t.Parallel()
 
 		app := New(Config{
-			JSONEncoder: func(v interface{}) ([]byte, error) {
+			JSONEncoder: func(v any) ([]byte, error) {
 				return []byte(`["custom","json"]`), nil
 			},
 		})
@@ -2881,7 +2881,7 @@ func Test_Ctx_XML(t *testing.T) {
 		t.Parallel()
 
 		app := New(Config{
-			XMLEncoder: func(v interface{}) ([]byte, error) {
+			XMLEncoder: func(v any) ([]byte, error) {
 				return []byte(`<custom>xml</custom>`), nil
 			},
 		})

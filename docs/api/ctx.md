@@ -318,7 +318,7 @@ It is important to specify the correct struct tag based on the content type to b
 | `text/xml`                          | xml        |
 
 ```go title="Signature"
-func (c *Ctx) BodyParser(out interface{}) error
+func (c *Ctx) BodyParser(out any) error
 ```
 
 ```go title="Example"
@@ -481,7 +481,7 @@ This method is similar to [BodyParser](ctx.md#bodyparser), but for cookie parame
 It is important to use the struct tag "cookie". For example, if you want to parse a cookie with a field called Age, you would use a struct field of `cookie:"age"`.
 
 ```go title="Signature"
-func (c *Ctx) CookieParser(out interface{}) error
+func (c *Ctx) CookieParser(out any) error
 ```
 
 ```go title="Example"
@@ -866,7 +866,7 @@ JSON also sets the content header to the `ctype` parameter. If no `ctype` is pas
 :::
 
 ```go title="Signature"
-func (c *Ctx) JSON(data interface{}, ctype ...string) error
+func (c *Ctx) JSON(data any, ctype ...string) error
 ```
 
 ```go title="Example"
@@ -918,7 +918,7 @@ Sends a JSON response with JSONP support. This method is identical to [JSON](ctx
 Override this by passing a **named string** in the method.
 
 ```go title="Signature"
-func (c *Ctx) JSONP(data interface{}, callback ...string) error
+func (c *Ctx) JSONP(data any, callback ...string) error
 ```
 
 ```go title="Example"
@@ -972,7 +972,7 @@ This is useful if you want to pass some **specific** data to the next middleware
 :::
 
 ```go title="Signature"
-func (c *Ctx) Locals(key interface{}, value ...interface{}) interface{}
+func (c *Ctx) Locals(key any, value ...any) any
 ```
 
 ```go title="Example"
@@ -1204,7 +1204,7 @@ This method is equivalent of using `atoi` with ctx.Params
 This method is similar to BodyParser, but for path parameters. It is important to use the struct tag "params". For example, if you want to parse a path parameter with a field called Pass, you would use a struct field of params:"pass"
 
 ```go title="Signature"
-func (c *Ctx) ParamsParser(out interface{}) error
+func (c *Ctx) ParamsParser(out any) error
 ```
 
 ```go title="Example"
@@ -1444,7 +1444,7 @@ This method is similar to [BodyParser](ctx.md#bodyparser), but for query paramet
 It is important to use the struct tag "query". For example, if you want to parse a query parameter with a field called Pass, you would use a struct field of `query:"pass"`.
 
 ```go title="Signature"
-func (c *Ctx) QueryParser(out interface{}) error
+func (c *Ctx) QueryParser(out any) error
 ```
 
 ```go title="Example"
@@ -1593,7 +1593,7 @@ app.Get("/back", func(c fiber.Ctx) error {
 Renders a view with data and sends a `text/html` response. By default `Render` uses the default [**Go Template engine**](https://pkg.go.dev/html/template/). If you want to use another View engine, please take a look at our [**Template middleware**](https://docs.gofiber.io/template).
 
 ```go title="Signature"
-func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error
+func (c *Ctx) Render(name string, bind any, layouts ...string) error
 ```
 
 ## Request
@@ -1617,7 +1617,7 @@ This method is similar to [BodyParser](ctx.md#bodyparser), but for request heade
 It is important to use the struct tag "reqHeader". For example, if you want to parse a request header with a field called Pass, you would use a struct field of `reqHeader:"pass"`.
 
 ```go title="Signature"
-func (c *Ctx) ReqHeaderParser(out interface{}) error
+func (c *Ctx) ReqHeaderParser(out any) error
 ```
 
 ```go title="Example"
@@ -1916,7 +1916,7 @@ Allow you to config BodyParser/QueryParser decoder, base on schema's options, pr
 func SetParserDecoder(parserConfig fiber.ParserConfig{
   IgnoreUnknownKeys bool,
   ParserType        []fiber.ParserType{
-      Customtype interface{},
+      Customtype any,
       Converter  func(string) reflect.Value,
   },
   ZeroEmpty         bool,
@@ -2142,7 +2142,7 @@ app.Get("/", func(c fiber.Ctx) error {
 Writef adopts the string with variables
 
 ```go title="Signature"
-func (c *Ctx) Writef(f string, a ...interface{}) (n int, err error)
+func (c *Ctx) Writef(f string, a ...any) (n int, err error)
 ```
 
 ```go title="Example"
@@ -2197,7 +2197,7 @@ XML also sets the content header to **application/xml**.
 :::
 
 ```go title="Signature"
-func (c *Ctx) XML(data interface{}) error
+func (c *Ctx) XML(data any) error
 ```
 
 ```go title="Example"

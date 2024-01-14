@@ -36,7 +36,7 @@ type (
 		Error       bool
 		FailedField string
 		Tag         string
-		Value       interface{}
+		Value       any
 	}
 
 	XValidator struct {
@@ -53,7 +53,7 @@ type (
 // for more information see: https://github.com/go-playground/validator
 var validate = validator.New()
 
-func (v XValidator) Validate(data interface{}) []ErrorResponse {
+func (v XValidator) Validate(data any) []ErrorResponse {
 	validationErrors := []ErrorResponse{}
 
 	errs := validate.Struct(data)

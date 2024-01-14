@@ -1288,10 +1288,10 @@ func (c *DefaultCtx) Render(name string, bind Map, layouts ...string) error {
 	return nil
 }
 
-func (c *DefaultCtx) renderExtensions(bind interface{}) {
+func (c *DefaultCtx) renderExtensions(bind any) {
 	if bindMap, ok := bind.(Map); ok {
 		// Bind view map
-		c.viewBindMap.Range(func(key, value interface{}) bool {
+		c.viewBindMap.Range(func(key, value any) bool {
 			keyValue, ok := key.(string)
 			if !ok {
 				return true
@@ -1305,7 +1305,7 @@ func (c *DefaultCtx) renderExtensions(bind interface{}) {
 		// Check if the PassLocalsToViews option is enabled (by default it is disabled)
 		if c.app.config.PassLocalsToViews {
 			// Loop through each local and set it in the map
-			c.fasthttp.VisitUserValues(func(key []byte, val interface{}) {
+			c.fasthttp.VisitUserValues(func(key []byte, val any) {
 				// check if bindMap doesn't contain the key
 				if _, ok := bindMap[c.app.getString(key)]; !ok {
 					// Set the key and value in the bindMap

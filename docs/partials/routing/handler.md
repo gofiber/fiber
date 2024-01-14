@@ -40,7 +40,7 @@ app.Post("/api/register", func(c fiber.Ctx) error {
 **Use** can be used for middleware packages and prefix catchers. These routes will only match the beginning of each path i.e. `/john` will match `/john/doe`, `/johnnnnn` etc
 
 ```go title="Signature"
-func (app *App) Use(args ...interface{}) Router
+func (app *App) Use(args ...any) Router
 ```
 
 ```go title="Examples"

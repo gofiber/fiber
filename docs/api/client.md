@@ -271,7 +271,7 @@ agent.BodyStream(strings.NewReader("body=stream"), -1)
 JSON sends a JSON request by setting the Content-Type header to the `ctype` parameter. If no `ctype` is passed in, the header is set to `application/json`.
 
 ```go title="Signature"
-func (a *Agent) JSON(v interface{}, ctype ...string) *Agent
+func (a *Agent) JSON(v any, ctype ...string) *Agent
 ```
 
 ```go title="Example"
@@ -284,7 +284,7 @@ agent.JSON(fiber.Map{"success": true})
 XML sends an XML request by setting the Content-Type header to `application/xml`.
 
 ```go title="Signature"
-func (a *Agent) XML(v interface{}) *Agent
+func (a *Agent) XML(v any) *Agent
 ```
 
 ```go title="Example"
@@ -636,7 +636,7 @@ code, body, errs := agent.String()
 Struct returns the status code, bytes body and errors of url. And bytes body will be unmarshalled to given v.
 
 ```go title="Signature"
-func (a *Agent) Struct(v interface{}) (code int, body []byte, errs []error)
+func (a *Agent) Struct(v any) (code int, body []byte, errs []error)
 ```
 
 ```go title="Example"

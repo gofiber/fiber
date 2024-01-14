@@ -16,7 +16,7 @@ Converter for net/http handlers to/from Fiber request handlers, special thanks t
 | FiberHandlerFunc | `FiberHandlerFunc(h fiber.Handler) http.HandlerFunc` | fiber.Handler -> http.HandlerFunc
 | FiberApp | `FiberApp(app *fiber.App) http.HandlerFunc` | Fiber app -> http.HandlerFunc
 | ConvertRequest | `ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error)` | fiber.Ctx -> http.Request
-| CopyContextToFiberContext | `CopyContextToFiberContext(context interface{}, requestContext *fasthttp.RequestCtx)` | context.Context -> fasthttp.RequestCtx
+| CopyContextToFiberContext | `CopyContextToFiberContext(context any, requestContext *fasthttp.RequestCtx)` | context.Context -> fasthttp.RequestCtx
 
 ## Examples
 

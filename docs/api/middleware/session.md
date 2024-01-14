@@ -14,13 +14,13 @@ This middleware uses our [Storage](https://github.com/gofiber/storage) package t
 
 ```go
 func New(config ...Config) *Store
-func (s *Store) RegisterType(i interface{})
+func (s *Store) RegisterType(i any)
 func (s *Store) Get(c fiber.Ctx) (*Session, error)
 func (s *Store) Delete(id string) error
 func (s *Store) Reset() error
 
-func (s *Session) Get(key string) interface{}
-func (s *Session) Set(key string, val interface{})
+func (s *Session) Get(key string) any
+func (s *Session) Set(key string, val any)
 func (s *Session) Delete(key string)
 func (s *Session) Destroy() error
 func (s *Session) Reset() error
@@ -33,7 +33,7 @@ func (s *Session) SetExpiry(exp time.Duration)
 ```
 
 :::caution
-Storing `interface{}` values are limited to built-ins Go types.
+Storing `any` values are limited to built-ins Go types.
 :::
 
 ## Examples

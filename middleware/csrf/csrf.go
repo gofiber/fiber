@@ -238,7 +238,7 @@ func (handler *CSRFHandler) DeleteToken(c fiber.Ctx) error {
 }
 
 // isCsrfFromCookie checks if the extractor is set to ExtractFromCookie
-func isCsrfFromCookie(extractor interface{}) bool {
+func isCsrfFromCookie(extractor any) bool {
 	return reflect.ValueOf(extractor).Pointer() == reflect.ValueOf(CsrfFromCookie).Pointer()
 }
 
