@@ -1184,7 +1184,7 @@ func Query[V QueryType](c Ctx, key string, defaultValue ...V) V {
 		if q == "" && len(defaultValue) > 0 {
 			return defaultValue[0]
 		}
-		return assertValueType[V, []byte]([]byte(q))
+		return assertValueType[V, []byte](utils.UnsafeBytes(q))
 	default:
 		if len(defaultValue) > 0 {
 			return defaultValue[0]

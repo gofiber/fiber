@@ -1346,14 +1346,15 @@ the query string, the function will return the defaultValue if available. Otherw
 according to the specified data type.:::
 
 ```go title="Example"
-// GET /?search=john&age=8&verified=true
+// GET /?search=john&age=8&verified=true&float=3.14
 
 app.Get("/", func(c fiber.Ctx) error {
-  name := Query[string]("search") // Returns "john"
-  age := Query[int]("age") // Returns 8
-  age8 := Query[int8]("age") // Returns 8
-  verified := Query[bool]("verified") // Returns true
-  unknown := Query[string]("unknown", "default") // Returns "default" because the query parameter "unknown" is not found
+  name := fiber.Query[string]("search") // Returns "john"
+  age := fiber.Query[int]("age") // Returns 8
+  age8 := fiber.Query[int8]("age") // Returns 8
+  verified := fiber.Query[bool]("verified") // Returns true
+  qFloat := fiber.Query[float32]("float") // Returns 3.14
+  unknown := fiber.Query[string]("unknown", "default") // Returns "default" because the query parameter "unknown" is not found
 })
 ```
 
@@ -1361,13 +1362,15 @@ There's an additional utility of the Query function when a defaultValue is provi
 specify the generic type as the function will infer it from the defaultValue. See the example below:
 
 ```go title="Example"
-// GET /?search=john&age=8&verified=true
+// GET /?search=john&age=8&verified=true&float=3.14
 
 app.Get("/", func(c fiber.Ctx) error {
-  name := Query("search", "default") // Returns "john"
-  age := Query("age", 0) // Returns 8
-  verified := Query("verified", false) // Returns true
-  unknown := Query("unknown", "default") // Returns "default" because the query parameter "unknown" is not found
+  name := fiber.Query("search", "default") // Returns "john"
+  age := fiber.Query("age", 0) // Returns int(8)
+  age8 := fiber.Query("age", int8(0)) // Returns int8(8)
+  verified := fiber.Query("verified", false) // Returns true
+  qFloat := fiber.Query("float", 0.0) // Returns 3.14
+  unknown := fiber.Query("unknown", "default") // Returns "default" because the query parameter "unknown" is not found
 })
 ```
 
