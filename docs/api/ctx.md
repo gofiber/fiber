@@ -1349,11 +1349,11 @@ according to the specified data type.:::
 // GET /?search=john&age=8&verified=true
 
 app.Get("/", func(c fiber.Ctx) error {
-  name := c.Query[string]("search") // Returns "john"
-  age := c.Query[int]("age") // Returns 8
-  age8 := c.Query[int8]("age") // Returns 8
-  verified := c.Query[bool]("verified") // Returns true
-  unknown := c.Query[string]("unknown", "default") // Returns "default" because the query parameter "unknown" is not found
+  name := Query[string]("search") // Returns "john"
+  age := Query[int]("age") // Returns 8
+  age8 := Query[int8]("age") // Returns 8
+  verified := Query[bool]("verified") // Returns true
+  unknown := Query[string]("unknown", "default") // Returns "default" because the query parameter "unknown" is not found
 })
 ```
 
@@ -1364,10 +1364,10 @@ specify the generic type as the function will infer it from the defaultValue. Se
 // GET /?search=john&age=8&verified=true
 
 app.Get("/", func(c fiber.Ctx) error {
-  name := c.Query("search", "default") // Returns "john"
-  age := c.Query("age", 0) // Returns 8
-  verified := c.Query("verified", false) // Returns true
-  unknown := c.Query("unknown", "default") // Returns "default" because the query parameter "unknown" is not found
+  name := Query("search", "default") // Returns "john"
+  age := Query("age", 0) // Returns 8
+  verified := Query("verified", false) // Returns true
+  unknown := Query("unknown", "default") // Returns "default" because the query parameter "unknown" is not found
 })
 ```
 
