@@ -31,7 +31,7 @@ func main() {
   }))
   
   app.Get("/", func(c fiber.Ctx) error {
-    token, _ := c.Locals("my_token").(string)
+    token := c.TokenFromContext(c) // "" is returned if not found
     return c.SendString(token)
   })
   

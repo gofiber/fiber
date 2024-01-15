@@ -292,7 +292,7 @@ func testFiberToHandlerFunc(t *testing.T, checkDefaultPort bool, app ...*fiber.A
 	require.Equal(t, expectedResponseBody, string(w.body), "Body")
 }
 
-func setFiberContextValueMiddleware(next fiber.Handler, key string, value interface{}) fiber.Handler {
+func setFiberContextValueMiddleware(next fiber.Handler, key string, value any) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		c.Locals(key, value)
 		return next(c)

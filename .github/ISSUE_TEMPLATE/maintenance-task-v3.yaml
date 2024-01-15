@@ -1,0 +1,54 @@
+name: "🧹 v3 Maintenance Task"
+title: "🧹 [v3 Maintenance]: "
+description: Describe a maintenance task for the v3 of the Fiber project.
+labels: ["🧹 Updates", "v3"]
+
+body:
+  - type: markdown
+    id: notice
+    attributes:
+      value: |
+        ### Notice
+        - Before submitting a maintenance task, please check if a similar task has already been filed.
+        - Clearly outline the purpose of the maintenance task and its impact on the project.
+        - Use clear and understandable English.
+
+  - type: textarea
+    id: task-description
+    attributes:
+      label: "Maintenance Task Description"
+      description: "Provide a detailed description of the maintenance task. Include any specific areas of the codebase that require attention, and the desired outcomes of this task."
+      placeholder: "Detail the maintenance task, specifying what needs to be done and why it is necessary."
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: "Impact on the Project"
+      description: "Explain the impact this maintenance will have on the project. Include benefits and potential risks if applicable."
+      placeholder: "Describe how completing this task will benefit the project, or the risks of not addressing it."
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: "Additional Context (optional)"
+      description: "Any additional information or context regarding the maintenance task that might be helpful."
+      placeholder: "Provide any additional information that may be relevant to the task at hand."
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: "Checklist:"
+      description: "Please confirm the following:"
+      options:
+        - label: "I have confirmed that this maintenance task is currently not being addressed."
+          required: true
+        - label: "I understand that this task will be evaluated by the maintainers and prioritized accordingly."
+          required: true
+        - label: "I am available to provide further information if needed."
+          required: true

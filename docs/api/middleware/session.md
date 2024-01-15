@@ -14,13 +14,13 @@ This middleware uses our [Storage](https://github.com/gofiber/storage) package t
 
 ```go
 func New(config ...Config) *Store
-func (s *Store) RegisterType(i interface{})
-func (s *Store) Get(c *fiber.Ctx) (*Session, error)
+func (s *Store) RegisterType(i any)
+func (s *Store) Get(c fiber.Ctx) (*Session, error)
 func (s *Store) Delete(id string) error
 func (s *Store) Reset() error
 
-func (s *Session) Get(key string) interface{}
-func (s *Session) Set(key string, val interface{})
+func (s *Session) Get(key string) any
+func (s *Session) Set(key string, val any)
 func (s *Session) Delete(key string)
 func (s *Session) Destroy() error
 func (s *Session) Reset() error
@@ -29,18 +29,19 @@ func (s *Session) Save() error
 func (s *Session) Fresh() bool
 func (s *Session) ID() string
 func (s *Session) Keys() []string
+func (s *Session) SetExpiry(exp time.Duration)
 ```
 
 :::caution
-Storing `interface{}` values are limited to built-ins Go types.
+Storing `any` values are limited to built-ins Go types.
 :::
 
 ## Examples
 Import the middleware package that is part of the Fiber web framework
 ```go
 import (
-  "github.com/gofiber/fiber/v2"
-  "github.com/gofiber/fiber/v2/middleware/session"
+  "github.com/gofiber/fiber/v3"
+  "github.com/gofiber/fiber/v3/middleware/session"
 )
 ```
 
@@ -51,7 +52,7 @@ After you initiate your Fiber app, you can use the following possibilities:
 // This stores all of your app's sessions
 store := session.New()
 
-app.Get("/", func(c *fiber.Ctx) error {
+app.Get("/", func(c fiber.Ctx) error {
     // Get session from storage
     sess, err := store.Get(c)
     if err != nil {

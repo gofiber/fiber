@@ -40,27 +40,15 @@ type Config struct {
 	//
 	// Optional. Default: nil
 	Unauthorized fiber.Handler
-
-	// ContextUser is the key to store the username in Locals
-	//
-	// Optional. Default: "username"
-	ContextUsername string
-
-	// ContextPass is the key to store the password in Locals
-	//
-	// Optional. Default: "password"
-	ContextPassword string
 }
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next:            nil,
-	Users:           map[string]string{},
-	Realm:           "Restricted",
-	Authorizer:      nil,
-	Unauthorized:    nil,
-	ContextUsername: "username",
-	ContextPassword: "password",
+	Next:         nil,
+	Users:        map[string]string{},
+	Realm:        "Restricted",
+	Authorizer:   nil,
+	Unauthorized: nil,
 }
 
 // Helper function to set default values
@@ -94,12 +82,6 @@ func configDefault(config ...Config) Config {
 			c.Set(fiber.HeaderWWWAuthenticate, "basic realm="+cfg.Realm)
 			return c.SendStatus(fiber.StatusUnauthorized)
 		}
-	}
-	if cfg.ContextUsername == "" {
-		cfg.ContextUsername = ConfigDefault.ContextUsername
-	}
-	if cfg.ContextPassword == "" {
-		cfg.ContextPassword = ConfigDefault.ContextPassword
 	}
 	return cfg
 }

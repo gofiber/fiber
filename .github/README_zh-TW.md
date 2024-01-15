@@ -211,7 +211,7 @@ func main() {
     })
 
     // GET /john
-    app.Get("/:name", func(c *fiber.Ctx) error {
+    app.Get("/:name", func(c fiber.Ctx) error {
         msg := fmt.Sprintf("哈囉，%s 👋!", c.Params("name"))
         return c.SendString(msg) // => 哈囉，john 👋!
     })
