@@ -1238,7 +1238,7 @@ generic and capable of handling query param values of various data types. The fu
 the current request, the query string key, and an optional defaultValue.
 
 ```go title="Signature"
-func (c *Ctx) Query(key string, defaultValue ...string) string
+func Query[V QueryType](c Ctx, key string, defaultValue ...V) V
 ```
 
 This function operates by:
