@@ -97,8 +97,8 @@ func main() {
 
 	app.Get("/", func(c fiber.Ctx) error {
 		user := &User{
-			Name: c.Query("name"),
-			Age:  c.QueryInt("age"),
+			Name: fiber.Query[string](c, "name"),
+			Age:  fiber.Query[int](c, "age"),
 		}
 
 		// Validation

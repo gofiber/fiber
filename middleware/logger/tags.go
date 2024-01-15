@@ -157,7 +157,7 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return output.WriteString(c.GetRespHeader(extraParam))
 		},
 		TagQuery: func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (int, error) {
-			return output.WriteString(c.Query(extraParam))
+			return output.WriteString(fiber.Query[string](c, extraParam))
 		},
 		TagForm: func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (int, error) {
 			return output.WriteString(c.FormValue(extraParam))

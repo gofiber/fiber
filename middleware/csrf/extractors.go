@@ -61,7 +61,7 @@ func CsrfFromHeader(param string) func(c fiber.Ctx) (string, error) {
 // csrfFromQuery returns a function that extracts token from the query string.
 func CsrfFromQuery(param string) func(c fiber.Ctx) (string, error) {
 	return func(c fiber.Ctx) (string, error) {
-		token := c.Query(param)
+		token := fiber.Query[string](c, param)
 		if token == "" {
 			return "", ErrMissingQuery
 		}

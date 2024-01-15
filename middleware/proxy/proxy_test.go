@@ -666,7 +666,7 @@ func Test_Proxy_Domain_Forward_Local(t *testing.T) {
 	app1 := fiber.New()
 
 	app1.Get("/test", func(c fiber.Ctx) error {
-		return c.SendString("test_local_client:" + c.Query("query_test"))
+		return c.SendString("test_local_client:" + fiber.Query[string](c, "query_test"))
 	})
 
 	proxyAddr := ln.Addr().String()
