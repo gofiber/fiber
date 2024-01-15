@@ -2221,9 +2221,14 @@ func Test_Ctx_Query(t *testing.T) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	c.Request().URI().SetQueryString("search=john&age=8")
+	c.Request().URI().SetQueryString("search=john&age=20")
+	require.Equal(t, "john", c.Query("search"))
+	require.Equal(t, "20", c.Query("age"))
+	require.Equal(t, "default", c.Query("unknown", "default"))
+
+	// test with generic
 	require.Equal(t, "john", Query[string](c, "search"))
-	require.Equal(t, "8", Query[string](c, "age"))
+	require.Equal(t, "20", Query[string](c, "age"))
 	require.Equal(t, "default", Query[string](c, "unknown", "default"))
 }
 
@@ -2596,7 +2601,7 @@ func Test_Ctx_QueryBytes(t *testing.T) {
 	require.Equal(t, []byte("alex"), Query[[]byte](c, "name", []byte("john")))
 	require.Equal(t, []byte("32.23"), Query[[]byte](c, "amount"))
 	require.Equal(t, []byte("32.23"), Query[[]byte](c, "amount", []byte("3.123")))
-	require.Equal(t, []byte(""), Query[[]byte](c, "id"))
+	require.Equal(t, []byte(nil), Query[[]byte](c, "id"))
 	require.Equal(t, []byte("12.87"), Query[[]byte](c, "id", []byte("12.87")))
 }
 

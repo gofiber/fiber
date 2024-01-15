@@ -255,6 +255,13 @@ type Ctx interface {
 	// Queries()["filters[status]"] == "pending"
 	Queries() map[string]string
 
+	// Query returns the query string parameter in the url.
+	// Defaults to empty string "" if the query doesn't exist.
+	// If a default value is given, it will return that value if the query doesn't exist.
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting to use the value outside the Handler.
+	Query(key string, defaultValue ...string) string
+
 	// Range returns a struct containing the type and a slice of ranges.
 	Range(size int) (rangeData Range, err error)
 

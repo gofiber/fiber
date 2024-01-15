@@ -1324,55 +1324,30 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ## Query
 
-The Query function is a versatile method used to retrieve the value of a query parameter from a request URI. The function is 
-generic and capable of handling query param values of various data types. The function uses the context (c) object representing 
-the current request, the query string key, and an optional defaultValue.
+This property is an object containing a property for each query string parameter in the route, you could pass an optional default value that will be returned if the query key does not exist.
+
+:::info
+If there is **no** query string, it returns an **empty string**.
+:::
 
 ```go title="Signature"
-func Query[V QueryType](c Ctx, key string, defaultValue ...V) V
+func (c *Ctx) Query(key string, defaultValue ...string) string
 ```
 
-This function operates by:
-
-1. Checking if the passed context object from the request conforms to the Ctx interface type.
-2. Retrieving the raw value from the query parameter using the supplied key in the request URI.
-3. Attempting to parse the raw value from the query parameter based on the specified type parameter V. If the parsing 
-fails, the function checks if a defaultValue is present. If so, this defaultValue is returned.
-4. Returning the successfully parsed value.
-
-:::info For each supported data type (int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64,
-bool, string, and []byte), if the query string key cannot be parsed into the given data type or the key does not exist in 
-the query string, the function will return the defaultValue if available. Otherwise, it will return an empty/zero value 
-according to the specified data type.:::
-
 ```go title="Example"
-// GET /?search=john&age=8&verified=true&float=3.14
+// GET http://example.com/?order=desc&brand=nike
 
-app.Get("/", func(c fiber.Ctx) error {
-  name := fiber.Query[string]("search") // Returns "john"
-  age := fiber.Query[int]("age") // Returns 8
-  age8 := fiber.Query[int8]("age") // Returns 8
-  verified := fiber.Query[bool]("verified") // Returns true
-  qFloat := fiber.Query[float32]("float") // Returns 3.14
-  unknown := fiber.Query[string]("unknown", "default") // Returns "default" because the query parameter "unknown" is not found
+app.Get("/", func(c *fiber.Ctx) error {
+  c.Query("order")         // "desc"
+  c.Query("brand")         // "nike"
+  c.Query("empty", "nike") // "nike"
+
+  // ...
 })
 ```
 
-There's an additional utility of the Query function when a defaultValue is provided. In such cases, you may choose not to 
-specify the generic type as the function will infer it from the defaultValue. See the example below:
-
-```go title="Example"
-// GET /?search=john&age=8&verified=true&float=3.14
-
-app.Get("/", func(c fiber.Ctx) error {
-  name := fiber.Query("search", "default") // Returns "john"
-  age := fiber.Query("age", 0) // Returns int(8)
-  age8 := fiber.Query("age", int8(0)) // Returns int8(8)
-  verified := fiber.Query("verified", false) // Returns true
-  qFloat := fiber.Query("float", 0.0) // Returns 3.14
-  unknown := fiber.Query("unknown", "default") // Returns "default" because the query parameter "unknown" is not found
-})
-```
+> _Returned value is only valid within the handler. Do not store any references.  
+> Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
 
 ## QueryParser
 

@@ -999,6 +999,15 @@ func (c *DefaultCtx) Protocol() string {
 	return utils.UnsafeString(c.fasthttp.Request.Header.Protocol())
 }
 
+// Query returns the query string parameter in the url.
+// Defaults to empty string "" if the query doesn't exist.
+// If a default value is given, it will return that value if the query doesn't exist.
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting to use the value outside the Handler.
+func (c *DefaultCtx) Query(key string, defaultValue ...string) string {
+	return defaultString(c.app.getString(c.fasthttp.QueryArgs().Peek(key)), defaultValue)
+}
+
 // Queries returns a map of query parameters and their values.
 //
 // GET /?name=alex&wanna_cake=2&id=
