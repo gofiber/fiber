@@ -195,7 +195,7 @@ linters:
     - tagliatelle
     # - testpackage # TODO: Enable once https://github.com/gofiber/fiber/issues/2252 is implemented
     - thelper
-    # - tparallel # TODO: Enable once https://github.com/gofiber/fiber/issues/2254 is implemented
+    - tparallel
     - typecheck
     - unconvert
     - unparam

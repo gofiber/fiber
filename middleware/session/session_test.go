@@ -235,6 +235,7 @@ func Test_Session_Save(t *testing.T) {
 	t.Parallel()
 
 	t.Run("save to cookie", func(t *testing.T) {
+		t.Parallel()
 		// session store
 		store := New()
 		// fiber instance
@@ -254,6 +255,7 @@ func Test_Session_Save(t *testing.T) {
 	})
 
 	t.Run("save to header", func(t *testing.T) {
+		t.Parallel()
 		// session store
 		store := New(Config{
 			KeyLookup: "header:session_id",
@@ -466,6 +468,7 @@ func Test_Session_Reset(t *testing.T) {
 	ctx := app.NewCtx(&fasthttp.RequestCtx{})
 
 	t.Run("reset session data and id, and set fresh to be true", func(t *testing.T) {
+		t.Parallel()
 		// a random session uuid
 		originalSessionUUIDString := ""
 
@@ -524,6 +527,7 @@ func Test_Session_Regenerate(t *testing.T) {
 	// fiber instance
 	app := fiber.New()
 	t.Run("set fresh to be true when regenerating a session", func(t *testing.T) {
+		t.Parallel()
 		// session store
 		store := New()
 		// a random session uuid

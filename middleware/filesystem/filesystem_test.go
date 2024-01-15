@@ -122,6 +122,7 @@ func Test_FileSystem(t *testing.T) {
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, tt.url, nil))
 			require.NoError(t, err)
 			require.Equal(t, tt.statusCode, resp.StatusCode)
