@@ -59,13 +59,13 @@ package main
 import (
 	"fmt"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 func main() {
 	app := fiber.New()
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString(c.Route().Name)
 	}).Name("index")
 
@@ -81,11 +81,11 @@ func main() {
 		return nil
 	})
 
-	app.Get("/add/user", func(c *fiber.Ctx) error {
+	app.Get("/add/user", func(c fiber.Ctx) error {
 		return c.SendString(c.Route().Name)
 	}).Name("addUser")
 
-	app.Delete("/destroy/user", func(c *fiber.Ctx) error {
+	app.Delete("/destroy/user", func(c fiber.Ctx) error {
 		return c.SendString(c.Route().Name)
 	}).Name("destroyUser")
 
@@ -186,7 +186,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 func main() {

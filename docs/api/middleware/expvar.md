@@ -18,8 +18,8 @@ Import the middleware package that is part of the Fiber web framework
 
 ```go
 import (
-  "github.com/gofiber/fiber/v2"
-  expvarmw "github.com/gofiber/fiber/v2/middleware/expvar"
+  "github.com/gofiber/fiber/v3"
+  expvarmw "github.com/gofiber/fiber/v3/middleware/expvar"
 )
 ```
 
@@ -28,7 +28,7 @@ After you initiate your Fiber app, you can use the following possibilities:
 var count = expvar.NewInt("count")
 
 app.Use(expvarmw.New())
-app.Get("/", func(c *fiber.Ctx) error {
+app.Get("/", func(c fiber.Ctx) error {
     count.Add(1)
 
     return c.SendString(fmt.Sprintf("hello expvar count %d", count.Value()))
@@ -61,7 +61,7 @@ curl 127.0.0.1:3000/debug/vars?r=c
 
 | Property | Type                    | Description                                                         | Default |
 |:---------|:------------------------|:--------------------------------------------------------------------|:--------|
-| Next     | `func(*fiber.Ctx) bool` | Next defines a function to skip this middleware when returned true. | `nil`   |
+| Next     | `func(fiber.Ctx) bool` | Next defines a function to skip this middleware when returned true. | `nil`   |
 
 ## Default Config
 

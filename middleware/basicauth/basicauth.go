@@ -8,6 +8,16 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
+// The contextKey type is unexported to prevent collisions with context keys defined in
+// other packages.
+type contextKey int
+
+// The keys for the values in context
+const (
+	usernameKey contextKey = iota
+	passwordKey
+)
+
 // New creates a new middleware handler
 func New(config Config) fiber.Handler {
 	// Set default config
@@ -49,12 +59,32 @@ func New(config Config) fiber.Handler {
 		password := creds[index+1:]
 
 		if cfg.Authorizer(username, password) {
-			c.Locals(cfg.ContextUsername, username)
-			c.Locals(cfg.ContextPassword, password)
+			c.Locals(usernameKey, username)
+			c.Locals(passwordKey, password)
 			return c.Next()
 		}
 
 		// Authentication failed
 		return cfg.Unauthorized(c)
 	}
+}
+
+// UsernameFromContext returns the username found in the context
+// returns an empty string if the username does not exist
+func UsernameFromContext(c fiber.Ctx) string {
+	username, ok := c.Locals(usernameKey).(string)
+	if !ok {
+		return ""
+	}
+	return username
+}
+
+// PasswordFromContext returns the password found in the context
+// returns an empty string if the password does not exist
+func PasswordFromContext(c fiber.Ctx) string {
+	password, ok := c.Locals(passwordKey).(string)
+	if !ok {
+		return ""
+	}
+	return password
 }

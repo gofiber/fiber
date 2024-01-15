@@ -514,10 +514,6 @@ func Test_Session_Reset(t *testing.T) {
 		// Check that the session id is not in the header or cookie anymore
 		require.Equal(t, "", string(ctx.Response().Header.Peek(store.sessionName)))
 		require.Equal(t, "", string(ctx.Request().Header.Peek(store.sessionName)))
-
-		// But the new session id should be in the header or cookie
-		require.Equal(t, acquiredSession.ID(), string(ctx.Response().Header.Peek(store.sessionName)))
-		require.Equal(t, acquiredSession.ID(), string(ctx.Request().Header.Peek(store.sessionName)))
 	})
 }
 

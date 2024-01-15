@@ -33,8 +33,12 @@ const (
 // maxParams defines the maximum number of parameters per route.
 const maxParams = 30
 
+// The contextKey type is unexported to prevent collisions with context keys defined in
+// other packages.
+type contextKey int
+
 // userContextKey define the key name for storing context.Context in *fasthttp.RequestCtx
-const userContextKey = "__local_user_context__"
+const userContextKey contextKey = 0 // __local_user_context__
 
 type DefaultCtx struct {
 	app                 *App                 // Reference to *App
@@ -75,10 +79,13 @@ func (t *TLSHandler) GetClientInfo(info *tls.ClientHelloInfo) (*tls.Certificate,
 // Range data for c.Range
 type Range struct {
 	Type   string
-	Ranges []struct {
-		Start int
-		End   int
-	}
+	Ranges []RangeSet
+}
+
+// RangeSet represents a single content range from a request.
+type RangeSet struct {
+	Start int
+	End   int
 }
 
 // Cookie data for c.Cookie
@@ -99,6 +106,12 @@ type Cookie struct {
 type Views interface {
 	Load() error
 	Render(io.Writer, string, any, ...string) error
+}
+
+// ResFmt associates a Content Type to a fiber.Handler for c.Format
+type ResFmt struct {
+	MediaType string
+	Handler   func(Ctx) error
 }
 
 // Accepts checks if the specified extensions or content types are acceptable.
@@ -371,9 +384,61 @@ func (c *DefaultCtx) Response() *fasthttp.Response {
 }
 
 // Format performs content-negotiation on the Accept HTTP header.
+// It uses Accepts to select a proper format and calls the matching
+// user-provided handler function.
+// If no accepted format is found, and a format with MediaType "default" is given,
+// that default handler is called. If no format is found and no default is given,
+// StatusNotAcceptable is sent.
+func (c *DefaultCtx) Format(handlers ...ResFmt) error {
+	if len(handlers) == 0 {
+		return ErrNoHandlers
+	}
+
+	c.Vary(HeaderAccept)
+
+	if c.Get(HeaderAccept) == "" {
+		c.Response().Header.SetContentType(handlers[0].MediaType)
+		return handlers[0].Handler(c)
+	}
+
+	// Using an int literal as the slice capacity allows for the slice to be
+	// allocated on the stack. The number was chosen arbitrarily as an
+	// approximation of the maximum number of content types a user might handle.
+	// If the user goes over, it just causes allocations, so it's not a problem.
+	types := make([]string, 0, 8)
+	var defaultHandler Handler
+	for _, h := range handlers {
+		if h.MediaType == "default" {
+			defaultHandler = h.Handler
+			continue
+		}
+		types = append(types, h.MediaType)
+	}
+	accept := c.Accepts(types...)
+
+	if accept == "" {
+		if defaultHandler == nil {
+			return c.SendStatus(StatusNotAcceptable)
+		}
+		return defaultHandler(c)
+	}
+
+	for _, h := range handlers {
+		if h.MediaType == accept {
+			c.Response().Header.SetContentType(h.MediaType)
+			return h.Handler(c)
+		}
+	}
+
+	return fmt.Errorf("%w: format: an Accept was found but no handler was called", errUnreachable)
+}
+
+// AutoFormat performs content-negotiation on the Accept HTTP header.
 // It uses Accepts to select a proper format.
+// The supported content types are text/html, text/plain, application/json, and application/xml.
+// For more flexible content negotiation, use Format.
 // If the header is not specified or there is no proper format, text/plain is used.
-func (c *DefaultCtx) Format(body any) error {
+func (c *DefaultCtx) AutoFormat(body any) error {
 	// Get accepted content type
 	accept := c.Accepts("html", "json", "txt", "xml")
 	// Set accepted content type
@@ -670,14 +735,20 @@ func (c *DefaultCtx) Is(extension string) bool {
 // Array and slice values encode as JSON arrays,
 // except that []byte encodes as a base64-encoded string,
 // and a nil slice encodes as the null JSON value.
-// This method also sets the content header to application/json.
-func (c *DefaultCtx) JSON(data any) error {
+// If the ctype parameter is given, this method will set the
+// Content-Type header equal to ctype. If ctype is not given,
+// The Content-Type header will be set to application/json.
+func (c *DefaultCtx) JSON(data any, ctype ...string) error {
 	raw, err := c.app.config.JSONEncoder(data)
 	if err != nil {
 		return err
 	}
 	c.fasthttp.Response.SetBodyRaw(raw)
-	c.fasthttp.Response.Header.SetContentType(MIMEApplicationJSON)
+	if len(ctype) > 0 {
+		c.fasthttp.Response.Header.SetContentType(ctype[0])
+	} else {
+		c.fasthttp.Response.Header.SetContentType(MIMEApplicationJSON)
+	}
 	return nil
 }
 
@@ -1152,25 +1223,44 @@ type QueryTypeFloat interface {
 
 // Range returns a struct containing the type and a slice of ranges.
 func (c *DefaultCtx) Range(size int) (Range, error) {
-	var rangeData Range
+	var (
+		rangeData Range
+		ranges    string
+	)
 	rangeStr := c.Get(HeaderRange)
-	if rangeStr == "" || !strings.Contains(rangeStr, "=") {
+
+	i := strings.IndexByte(rangeStr, '=')
+	if i == -1 || strings.Contains(rangeStr[i+1:], "=") {
 		return rangeData, ErrRangeMalformed
 	}
-	data := strings.Split(rangeStr, "=")
-	const expectedDataParts = 2
-	if len(data) != expectedDataParts {
-		return rangeData, ErrRangeMalformed
-	}
-	rangeData.Type = data[0]
-	arr := strings.Split(data[1], ",")
-	for i := 0; i < len(arr); i++ {
-		item := strings.Split(arr[i], "-")
-		if len(item) == 1 {
+	rangeData.Type = rangeStr[:i]
+	ranges = rangeStr[i+1:]
+
+	var (
+		singleRange string
+		moreRanges  = ranges
+	)
+	for moreRanges != "" {
+		singleRange = moreRanges
+		if i := strings.IndexByte(moreRanges, ','); i >= 0 {
+			singleRange = moreRanges[:i]
+			moreRanges = moreRanges[i+1:]
+		} else {
+			moreRanges = ""
+		}
+
+		var (
+			startStr, endStr string
+			i                int
+		)
+		if i = strings.IndexByte(singleRange, '-'); i == -1 {
 			return rangeData, ErrRangeMalformed
 		}
-		start, startErr := strconv.Atoi(item[0])
-		end, endErr := strconv.Atoi(item[1])
+		startStr = singleRange[:i]
+		endStr = singleRange[i+1:]
+
+		start, startErr := fasthttp.ParseUint(utils.UnsafeBytes(startStr))
+		end, endErr := fasthttp.ParseUint(utils.UnsafeBytes(endStr))
 		if startErr != nil { // -nnn
 			start = size - end
 			end = size - 1
@@ -1319,10 +1409,10 @@ func (c *DefaultCtx) Render(name string, bind Map, layouts ...string) error {
 	return nil
 }
 
-func (c *DefaultCtx) renderExtensions(bind interface{}) {
+func (c *DefaultCtx) renderExtensions(bind any) {
 	if bindMap, ok := bind.(Map); ok {
 		// Bind view map
-		c.viewBindMap.Range(func(key, value interface{}) bool {
+		c.viewBindMap.Range(func(key, value any) bool {
 			keyValue, ok := key.(string)
 			if !ok {
 				return true
@@ -1336,7 +1426,7 @@ func (c *DefaultCtx) renderExtensions(bind interface{}) {
 		// Check if the PassLocalsToViews option is enabled (by default it is disabled)
 		if c.app.config.PassLocalsToViews {
 			// Loop through each local and set it in the map
-			c.fasthttp.VisitUserValues(func(key []byte, val interface{}) {
+			c.fasthttp.VisitUserValues(func(key []byte, val any) {
 				// check if bindMap doesn't contain the key
 				if _, ok := bindMap[c.app.getString(key)]; !ok {
 					// Set the key and value in the bindMap

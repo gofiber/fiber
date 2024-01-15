@@ -1,7 +1,7 @@
-name: "📝 Feature Proposal"
-title: "📝 [Proposal]: "
-description: Propose a feature or improvement for Fiber.
-labels: ["📝 Proposal", "✏️ Feature", "v3"]
+name: "📝 Feature Proposal for v3"
+title: "📝 [v3 Proposal]: "
+description: Propose a feature or improvement for Fiber v3.
+labels: ["📝 Proposal", "v3"]
 
 body:
   - type: markdown
@@ -13,6 +13,7 @@ body:
         - Please write in clear, understandable English.
         - Ensure your proposal aligns with Express design principles and HTTP RFC standards.
         - Describe features expected to remain stable and not require changes in the foreseeable future.
+
   - type: textarea
     id: description
     attributes:
@@ -39,6 +40,7 @@ body:
       placeholder: "Detail how the feature adheres to HTTP RFC standards."
     validations:
       required: true
+
   - type: textarea
     id: stability
     attributes:

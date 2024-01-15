@@ -27,12 +27,12 @@ func (app *App) All(path string, handlers ...Handler) Router
 
 ```go title="Examples"
 // Simple GET handler
-app.Get("/api/list", func(c *fiber.Ctx) error {
+app.Get("/api/list", func(c fiber.Ctx) error {
   return c.SendString("I'm a GET request!")
 })
 
 // Simple POST handler
-app.Post("/api/register", func(c *fiber.Ctx) error {
+app.Post("/api/register", func(c fiber.Ctx) error {
   return c.SendString("I'm a POST request!")
 })
 ```
@@ -40,30 +40,30 @@ app.Post("/api/register", func(c *fiber.Ctx) error {
 **Use** can be used for middleware packages and prefix catchers. These routes will only match the beginning of each path i.e. `/john` will match `/john/doe`, `/johnnnnn` etc
 
 ```go title="Signature"
-func (app *App) Use(args ...interface{}) Router
+func (app *App) Use(args ...any) Router
 ```
 
 ```go title="Examples"
 // Match any request
-app.Use(func(c *fiber.Ctx) error {
+app.Use(func(c fiber.Ctx) error {
     return c.Next()
 })
 
 // Match request starting with /api
-app.Use("/api", func(c *fiber.Ctx) error {
+app.Use("/api", func(c fiber.Ctx) error {
     return c.Next()
 })
 
 // Match requests starting with /api or /home (multiple-prefix support)
-app.Use([]string{"/api", "/home"}, func(c *fiber.Ctx) error {
+app.Use([]string{"/api", "/home"}, func(c fiber.Ctx) error {
     return c.Next()
 })
 
 // Attach multiple handlers 
-app.Use("/api", func(c *fiber.Ctx) error {
+app.Use("/api", func(c fiber.Ctx) error {
   c.Set("X-Custom-Header", random.String(32))
     return c.Next()
-}, func(c *fiber.Ctx) error {
+}, func(c fiber.Ctx) error {
     return c.Next()
 })
 ```

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
+set -e
 
 # Some env variables
-BRANCH="master"
+BRANCH="main"
 REPO_URL="github.com/gofiber/docs.git"
 AUTHOR_EMAIL="github-actions[bot]@users.noreply.github.com"
 AUTHOR_USERNAME="github-actions[bot]"

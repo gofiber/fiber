@@ -88,7 +88,7 @@ type Config struct {
 =======
 | Property  | Type                                                | Description                                                                                         | Default                      |
 |:----------|:----------------------------------------------------|:----------------------------------------------------------------------------------------------------|:-----------------------------|
-| Next      | `func(*fiber.Ctx) bool`                             | Next defines a function to skip this middleware when returned true.                                 | `nil`                        |
+| Next      | `func(fiber.Ctx) bool`                             | Next defines a function to skip this middleware when returned true.                                 | `nil`                        |
 | Except    | `[]string`                                          | Array of cookie keys that should not be encrypted.                                                  | `[]`                         |
 | Key       | `string`                                            | Base64 encoded unique key to encode & decode cookies. Required. Key length should be 32 characters. | (No default, required field) |
 | Encryptor | `func(decryptedString, key string) (string, error)` | Custom function to encrypt cookies.                                                                 | `EncryptCookie`              |

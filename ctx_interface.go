@@ -90,9 +90,19 @@ type Ctx interface {
 	Response() *fasthttp.Response
 
 	// Format performs content-negotiation on the Accept HTTP header.
+	// It uses Accepts to select a proper format and calls the matching
+	// user-provided handler function.
+	// If no accepted format is found, and a format with MediaType "default" is given,
+	// that default handler is called. If no format is found and no default is given,
+	// StatusNotAcceptable is sent.
+	Format(handlers ...ResFmt) error
+
+	// AutoFormat performs content-negotiation on the Accept HTTP header.
 	// It uses Accepts to select a proper format.
+	// The supported content types are text/html, text/plain, application/json, and application/xml.
+	// For more flexible content negotiation, use Format.
 	// If the header is not specified or there is no proper format, text/plain is used.
-	Format(body any) error
+	AutoFormat(body any) error
 
 	// FormFile returns the first file by key from a MultipartForm.
 	FormFile(key string) (*multipart.FileHeader, error)
@@ -154,8 +164,10 @@ type Ctx interface {
 	// Array and slice values encode as JSON arrays,
 	// except that []byte encodes as a base64-encoded string,
 	// and a nil slice encodes as the null JSON value.
-	// This method also sets the content header to application/json.
-	JSON(data any) error
+	// If the ctype parameter is given, this method will set the
+	// Content-Type header equal to ctype. If ctype is not given,
+	// The Content-Type header will be set to application/json.
+	JSON(data any, ctype ...string) error
 
 	// JSONP sends a JSON response with JSONP support.
 	// This method is identical to JSON, except that it opts-in to JSONP callback support.
