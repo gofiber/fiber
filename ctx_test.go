@@ -405,6 +405,7 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 	for _, testObject := range tests {
 		tCase := testObject // Duplicate object to ensure it will be unique across all runs
 		t.Run(tCase.name, func(t *testing.T) {
+			t.Parallel()
 			app := New()
 			c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 			c.Request().Header.Set("Content-Encoding", tCase.contentEncoding)
@@ -567,14 +568,17 @@ func Test_Ctx_Context(t *testing.T) {
 
 // go test -run Test_Ctx_UserContext
 func Test_Ctx_UserContext(t *testing.T) {
+	t.Parallel()
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
 	t.Run("Nil_Context", func(t *testing.T) {
+		t.Parallel()
 		ctx := c.UserContext()
 		require.Equal(t, ctx, context.Background())
 	})
 	t.Run("ValueContext", func(t *testing.T) {
+		t.Parallel()
 		testKey := struct{}{}
 		testValue := "Test Value"
 		ctx := context.WithValue(context.Background(), testKey, testValue)
@@ -618,7 +622,9 @@ func Test_Ctx_UserContext_Multiple_Requests(t *testing.T) {
 
 	// Consecutive Requests
 	for i := 1; i <= 10; i++ {
+		i := i
 		t.Run(fmt.Sprintf("request_%d", i), func(t *testing.T) {
+			t.Parallel()
 			resp, err := app.Test(httptest.NewRequest(MethodGet, fmt.Sprintf("/?input=%d", i), nil))
 
 			require.NoError(t, err, "Unexpected error from response")
@@ -2640,7 +2646,9 @@ func Test_Ctx_SendFile_Immutable(t *testing.T) {
 	}
 
 	for _, endpoint := range endpointsForTest {
+		endpoint := endpoint
 		t.Run(endpoint, func(t *testing.T) {
+			t.Parallel()
 			// 1st try
 			resp, err := app.Test(httptest.NewRequest(MethodGet, endpoint, nil))
 			require.NoError(t, err)
@@ -3041,6 +3049,7 @@ func Test_Ctx_RenderWithLocals(t *testing.T) {
 	})
 
 	t.Run("EmptyBind", func(t *testing.T) {
+		t.Parallel()
 		c := app.NewCtx(&fasthttp.RequestCtx{})
 
 		c.Locals("Title", "Hello, World!")
@@ -3051,6 +3060,7 @@ func Test_Ctx_RenderWithLocals(t *testing.T) {
 	})
 
 	t.Run("NilBind", func(t *testing.T) {
+		t.Parallel()
 		c := app.NewCtx(&fasthttp.RequestCtx{})
 
 		c.Locals("Title", "Hello, World!")

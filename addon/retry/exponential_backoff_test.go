@@ -51,7 +51,9 @@ func TestExponentialBackoff_Retry(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := tt.expBackoff.Retry(tt.f)
 			require.Equal(t, tt.expErr, err)
 		})
@@ -104,7 +106,9 @@ func TestExponentialBackoff_Next(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			for i := 0; i < tt.expBackoff.MaxRetryCount; i++ {
 				next := tt.expBackoff.next()
 				if next < tt.expNextTimeIntervals[i] || next > tt.expNextTimeIntervals[i]+1*time.Second {
