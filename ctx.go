@@ -1066,59 +1066,33 @@ func Query[V QueryType](c Ctx, key string, defaultValue ...V) V {
 	var v V
 	q := ctx.app.getString(ctx.fasthttp.QueryArgs().Peek(key))
 
-	handleDefault := func(err error, converter func() V) V {
-		if err != nil {
-			if len(defaultValue) > 0 {
-				return defaultValue[0]
-			}
-			return v
-		}
-		return converter()
-	}
-
-	parseInt := func(bitSize int, converter func(int64) V) V {
-		result, err := strconv.ParseInt(q, 10, bitSize)
-		return handleDefault(err, func() V { return converter(result) })
-	}
-
-	parseUint := func(bitSize int, converter func(uint64) V) V {
-		result, err := strconv.ParseUint(q, 10, bitSize)
-		return handleDefault(err, func() V { return converter(result) })
-	}
-
-	parseFloat := func(bitSize int, converter func(float64) V) V {
-		result, err := strconv.ParseFloat(q, bitSize)
-		return handleDefault(err, func() V { return converter(result) })
-	}
-
 	switch any(v).(type) {
 	case int:
-		return parseInt(32, func(i int64) V { return assertValueType[V, int](int(i)) })
+		return queryParseInt[V](q, 32, func(i int64) V { return assertValueType[V, int](int(i)) }, defaultValue...)
 	case int8:
-		return parseInt(8, func(i int64) V { return assertValueType[V, int8](int8(i)) })
+		return queryParseInt[V](q, 8, func(i int64) V { return assertValueType[V, int8](int8(i)) }, defaultValue...)
 	case int16:
-		return parseInt(16, func(i int64) V { return assertValueType[V, int16](int16(i)) })
+		return queryParseInt[V](q, 16, func(i int64) V { return assertValueType[V, int16](int16(i)) }, defaultValue...)
 	case int32:
-		return parseInt(32, func(i int64) V { return assertValueType[V, int32](int32(i)) })
+		return queryParseInt[V](q, 32, func(i int64) V { return assertValueType[V, int32](int32(i)) }, defaultValue...)
 	case int64:
-		return parseInt(64, func(i int64) V { return assertValueType[V, int64](i) })
+		return queryParseInt[V](q, 64, func(i int64) V { return assertValueType[V, int64](i) }, defaultValue...)
 	case uint:
-		return parseUint(32, func(i uint64) V { return assertValueType[V, uint](uint(i)) })
+		return queryParseUint[V](q, 32, func(i uint64) V { return assertValueType[V, uint](uint(i)) }, defaultValue...)
 	case uint8:
-		return parseUint(8, func(i uint64) V { return assertValueType[V, uint8](uint8(i)) })
+		return queryParseUint[V](q, 8, func(i uint64) V { return assertValueType[V, uint8](uint8(i)) }, defaultValue...)
 	case uint16:
-		return parseUint(16, func(i uint64) V { return assertValueType[V, uint16](uint16(i)) })
+		return queryParseUint[V](q, 16, func(i uint64) V { return assertValueType[V, uint16](uint16(i)) }, defaultValue...)
 	case uint32:
-		return parseUint(32, func(i uint64) V { return assertValueType[V, uint32](uint32(i)) })
+		return queryParseUint[V](q, 32, func(i uint64) V { return assertValueType[V, uint32](uint32(i)) }, defaultValue...)
 	case uint64:
-		return parseUint(64, func(i uint64) V { return assertValueType[V, uint64](i) })
+		return queryParseUint[V](q, 64, func(i uint64) V { return assertValueType[V, uint64](i) }, defaultValue...)
 	case float32:
-		return parseFloat(32, func(i float64) V { return assertValueType[V, float32](float32(i)) })
+		return queryParseFloat[V](q, 32, func(i float64) V { return assertValueType[V, float32](float32(i)) }, defaultValue...)
 	case float64:
-		return parseFloat(64, func(i float64) V { return assertValueType[V, float64](i) })
+		return queryParseFloat[V](q, 64, func(i float64) V { return assertValueType[V, float64](i) }, defaultValue...)
 	case bool:
-		result, err := strconv.ParseBool(q)
-		return handleDefault(err, func() V { return assertValueType[V, bool](result) })
+		return queryParseBool[V](q, func(b bool) V { return assertValueType[V, bool](b) }, defaultValue...)
 	case string:
 		if q == "" && len(defaultValue) > 0 {
 			return defaultValue[0]
