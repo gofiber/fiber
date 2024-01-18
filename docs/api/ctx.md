@@ -1337,7 +1337,7 @@ func (c *Ctx) Query(key string, defaultValue ...string) string
 ```go title="Example"
 // GET http://example.com/?order=desc&brand=nike
 
-app.Get("/", func(c *fiber.Ctx) error {
+app.Get("/", func(c fiber.Ctx) error {
   c.Query("order")         // "desc"
   c.Query("brand")         // "nike"
   c.Query("empty", "nike") // "nike"
@@ -1348,6 +1348,43 @@ app.Get("/", func(c *fiber.Ctx) error {
 
 > _Returned value is only valid within the handler. Do not store any references.  
 > Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
+
+In certain scenarios, it can be useful to have an alternative approach to handle different types of query parameters, not 
+just strings. This can be achieved using a generic Query function known as `Query[V QueryType](c Ctx, key string, defaultValue ...V) V`. 
+This function is capable of parsing a query string and returning a value of a type that is assumed and specified by `V QueryType`.
+
+Here is the signature for the generic Query function:
+
+```go title="Signature"
+func Query[V QueryType](c Ctx, key string, defaultValue ...V) V
+```
+
+Consider this example:
+
+```go title="Example"
+// GET http://example.com/?page=1&brand=nike&new=true
+
+app.Get("/", func(c fiber.Ctx) error {
+  fiber.Query[int](c, "page")     // 1
+  fiber.Query[string](c, "brand") // "nike"
+  fiber.Query[bool](c, "new")     // true
+
+  // ...
+})
+```
+
+In this case, `Query[V QueryType](c Ctx, key string, defaultValue ...V) V` can retrieve 'page' as an integer, 'brand' 
+as a string, and 'new' as a boolean. The function uses the appropriate parsing function for each specified type to ensure 
+the correct type is returned. This simplifies the retrieval process of different types of query parameters, making your 
+controller actions cleaner.
+
+The generic Query function supports returning the following data types based on V QueryType:
+- Integer: int, int8, int16, int32, int64
+- Unsigned integer: uint, uint8, uint16, uint32, uint64
+- Floating-point numbers: float32, float64
+- Boolean: bool
+- String: string
+- Byte array: []byte
 
 ## QueryParser
 
