@@ -110,7 +110,7 @@ func (s *Store) getSessionID(c fiber.Ctx) string {
 	}
 
 	if s.source == SourceURLQuery {
-		id = c.Query(s.sessionName)
+		id = fiber.Query[string](c, s.sessionName)
 		if len(id) > 0 {
 			return utils.CopyString(id)
 		}

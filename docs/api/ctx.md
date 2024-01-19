@@ -1349,94 +1349,42 @@ app.Get("/", func(c fiber.Ctx) error {
 > _Returned value is only valid within the handler. Do not store any references.  
 > Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
 
-## QueryBool
+In certain scenarios, it can be useful to have an alternative approach to handle different types of query parameters, not 
+just strings. This can be achieved using a generic Query function known as `Query[V QueryType](c Ctx, key string, defaultValue ...V) V`. 
+This function is capable of parsing a query string and returning a value of a type that is assumed and specified by `V QueryType`.
 
-This property is an object containing a property for each query boolean parameter in the route, you could pass an optional default value that will be returned if the query key does not exist.
-
-:::caution
-Please note if that parameter is not in the request, false will be returned.
-If the parameter is not a boolean, it is still tried to be converted and usually returned as false.
-:::
+Here is the signature for the generic Query function:
 
 ```go title="Signature"
-func (c *Ctx) QueryBool(key string, defaultValue ...bool) bool
+func Query[V QueryType](c Ctx, key string, defaultValue ...V) V
 ```
 
+Consider this example:
+
 ```go title="Example"
-// GET http://example.com/?name=alex&want_pizza=false&id=
+// GET http://example.com/?page=1&brand=nike&new=true
 
 app.Get("/", func(c fiber.Ctx) error {
-    c.QueryBool("want_pizza")           // false
-	c.QueryBool("want_pizza", true) // false
-    c.QueryBool("name")                 // false
-    c.QueryBool("name", true)           // true
-    c.QueryBool("id")                   // false
-    c.QueryBool("id", true)             // true
+  fiber.Query[int](c, "page")     // 1
+  fiber.Query[string](c, "brand") // "nike"
+  fiber.Query[bool](c, "new")     // true
 
   // ...
 })
 ```
 
-## QueryFloat
+In this case, `Query[V QueryType](c Ctx, key string, defaultValue ...V) V` can retrieve 'page' as an integer, 'brand' 
+as a string, and 'new' as a boolean. The function uses the appropriate parsing function for each specified type to ensure 
+the correct type is returned. This simplifies the retrieval process of different types of query parameters, making your 
+controller actions cleaner.
 
-This property is an object containing a property for each query float64 parameter in the route, you could pass an optional default value that will be returned if the query key does not exist.
-
-:::caution
-Please note if that parameter is not in the request, zero will be returned.
-If the parameter is not a number, it is still tried to be converted and usually returned as 1.
-:::
-
-:::info
-Defaults to the float64 zero \(`0`\), if the param **doesn't** exist.
-:::
-
-```go title="Signature"
-func (c *Ctx) QueryFloat(key string, defaultValue ...float64) float64
-```
-
-```go title="Example"
-// GET http://example.com/?name=alex&amount=32.23&id=
-
-app.Get("/", func(c fiber.Ctx) error {
-    c.QueryFloat("amount")      // 32.23
-    c.QueryFloat("amount", 3)   // 32.23
-    c.QueryFloat("name", 1)     // 1
-    c.QueryFloat("name")        // 0
-    c.QueryFloat("id", 3)       // 3
-
-  // ...
-})
-```
-
-## QueryInt
-
-This property is an object containing a property for each query integer parameter in the route, you could pass an optional default value that will be returned if the query key does not exist.
-
-:::caution
-Please note if that parameter is not in the request, zero will be returned.
-If the parameter is not a number, it is still tried to be converted and usually returned as 1.
-:::
-
-:::info
-Defaults to the integer zero \(`0`\), if the param **doesn't** exist.
-:::
-
-```go title="Signature"
-func (c *Ctx) QueryInt(key string, defaultValue ...int) int
-```
-
-```go title="Example"
-// GET http://example.com/?name=alex&wanna_cake=2&id=
-
-app.Get("/", func(c fiber.Ctx) error {
-    c.QueryInt("wanna_cake", 1) // 2
-    c.QueryInt("name", 1)       // 1
-    c.QueryInt("id", 1)         // 1
-    c.QueryInt("id")            // 0
-
-  // ...
-})
-```
+The generic Query function supports returning the following data types based on V QueryType:
+- Integer: int, int8, int16, int32, int64
+- Unsigned integer: uint, uint8, uint16, uint32, uint64
+- Floating-point numbers: float32, float64
+- Boolean: bool
+- String: string
+- Byte array: []byte
 
 ## QueryParser
 

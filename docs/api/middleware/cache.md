@@ -36,7 +36,7 @@ app.Use(cache.New())
 // Or extend your config for customization
 app.Use(cache.New(cache.Config{
     Next: func(c fiber.Ctx) bool {
-        return c.Query("noCache") == "true"
+        return fiber.Query[bool](c, "noCache")
     },
     Expiration: 30 * time.Minute,
     CacheControl: true,

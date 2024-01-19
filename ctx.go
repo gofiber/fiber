@@ -1005,7 +1005,7 @@ func (c *DefaultCtx) Protocol() string {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (c *DefaultCtx) Query(key string, defaultValue ...string) string {
-	return defaultString(c.app.getString(c.fasthttp.QueryArgs().Peek(key)), defaultValue)
+	return Query[string](c, key, defaultValue...)
 }
 
 // Queries returns a map of query parameters and their values.
@@ -1037,67 +1037,98 @@ func (c *DefaultCtx) Queries() map[string]string {
 	return m
 }
 
-// QueryInt returns integer value of key string parameter in the url.
-// Default to empty or invalid key is 0.
+// Query Retrieves the value of a query parameter from the request's URI.
+// The function is generic and can handle query parameter values of different types.
+// It takes the following parameters:
+// - c: The context object representing the current request.
+// - key: The name of the query parameter.
+// - defaultValue: (Optional) The default value to return in case the query parameter is not found or cannot be parsed.
+// The function performs the following steps:
+//  1. Type-asserts the context object to *DefaultCtx.
+//  2. Retrieves the raw query parameter value from the request's URI.
+//  3. Parses the raw value into the appropriate type based on the generic type parameter V.
+//     If parsing fails, the function checks if a default value is provided. If so, it returns the default value.
+//  4. Returns the parsed value.
 //
-//	GET /?name=alex&wanna_cake=2&id=
-//	QueryInt("wanna_cake", 1) == 2
-//	QueryInt("name", 1) == 1
-//	QueryInt("id", 1) == 1
-//	QueryInt("id") == 0
-func (c *DefaultCtx) QueryInt(key string, defaultValue ...int) int {
-	// Use Atoi to convert the param to an int or return zero and an error
-	value, err := strconv.Atoi(c.app.getString(c.fasthttp.QueryArgs().Peek(key)))
-	if err != nil {
+// If the generic type cannot be matched to a supported type, the function returns the default value (if provided) or the zero value of type V.
+//
+// Example usage:
+//
+//	GET /?search=john&age=8
+//	name := Query[string](c, "search") // Returns "john"
+//	age := Query[int](c, "age") // Returns 8
+//	unknown := Query[string](c, "unknown", "default") // Returns "default" since the query parameter "unknown" is not found
+func Query[V QueryType](c Ctx, key string, defaultValue ...V) V {
+	ctx, ok := c.(*DefaultCtx)
+	if !ok {
+		panic(fmt.Errorf("failed to type-assert to *DefaultCtx"))
+	}
+	var v V
+	q := ctx.app.getString(ctx.fasthttp.QueryArgs().Peek(key))
+
+	switch any(v).(type) {
+	case int:
+		return queryParseInt[V](q, 32, func(i int64) V { return assertValueType[V, int](int(i)) }, defaultValue...)
+	case int8:
+		return queryParseInt[V](q, 8, func(i int64) V { return assertValueType[V, int8](int8(i)) }, defaultValue...)
+	case int16:
+		return queryParseInt[V](q, 16, func(i int64) V { return assertValueType[V, int16](int16(i)) }, defaultValue...)
+	case int32:
+		return queryParseInt[V](q, 32, func(i int64) V { return assertValueType[V, int32](int32(i)) }, defaultValue...)
+	case int64:
+		return queryParseInt[V](q, 64, func(i int64) V { return assertValueType[V, int64](i) }, defaultValue...)
+	case uint:
+		return queryParseUint[V](q, 32, func(i uint64) V { return assertValueType[V, uint](uint(i)) }, defaultValue...)
+	case uint8:
+		return queryParseUint[V](q, 8, func(i uint64) V { return assertValueType[V, uint8](uint8(i)) }, defaultValue...)
+	case uint16:
+		return queryParseUint[V](q, 16, func(i uint64) V { return assertValueType[V, uint16](uint16(i)) }, defaultValue...)
+	case uint32:
+		return queryParseUint[V](q, 32, func(i uint64) V { return assertValueType[V, uint32](uint32(i)) }, defaultValue...)
+	case uint64:
+		return queryParseUint[V](q, 64, func(i uint64) V { return assertValueType[V, uint64](i) }, defaultValue...)
+	case float32:
+		return queryParseFloat[V](q, 32, func(i float64) V { return assertValueType[V, float32](float32(i)) }, defaultValue...)
+	case float64:
+		return queryParseFloat[V](q, 64, func(i float64) V { return assertValueType[V, float64](i) }, defaultValue...)
+	case bool:
+		return queryParseBool[V](q, func(b bool) V { return assertValueType[V, bool](b) }, defaultValue...)
+	case string:
+		if q == "" && len(defaultValue) > 0 {
+			return defaultValue[0]
+		}
+		return assertValueType[V, string](q)
+	case []byte:
+		if q == "" && len(defaultValue) > 0 {
+			return defaultValue[0]
+		}
+		return assertValueType[V, []byte](ctx.app.getBytes(q))
+	default:
 		if len(defaultValue) > 0 {
 			return defaultValue[0]
 		}
-		return 0
+		return v
 	}
-
-	return value
 }
 
-// QueryBool returns bool value of key string parameter in the url.
-// Default to empty or invalid key is true.
-//
-//	Get /?name=alex&want_pizza=false&id=
-//	QueryBool("want_pizza") == false
-//	QueryBool("want_pizza", true) == false
-//	QueryBool("name") == false
-//	QueryBool("name", true) == true
-//	QueryBool("id") == false
-//	QueryBool("id", true) == true
-func (c *DefaultCtx) QueryBool(key string, defaultValue ...bool) bool {
-	value, err := strconv.ParseBool(c.app.getString(c.fasthttp.QueryArgs().Peek(key)))
-	if err != nil {
-		if len(defaultValue) > 0 {
-			return defaultValue[0]
-		}
-		return false
-	}
-	return value
+type QueryType interface {
+	QueryTypeInteger | QueryTypeFloat | bool | string | []byte
 }
 
-// QueryFloat returns float64 value of key string parameter in the url.
-// Default to empty or invalid key is 0.
-//
-//	GET /?name=alex&amount=32.23&id=
-//	QueryFloat("amount") = 32.23
-//	QueryFloat("amount", 3) = 32.23
-//	QueryFloat("name", 1) = 1
-//	QueryFloat("name") = 0
-//	QueryFloat("id", 3) = 3
-func (c *DefaultCtx) QueryFloat(key string, defaultValue ...float64) float64 {
-	// use strconv.ParseFloat to convert the param to a float or return zero and an error.
-	value, err := strconv.ParseFloat(c.app.getString(c.fasthttp.QueryArgs().Peek(key)), 64)
-	if err != nil {
-		if len(defaultValue) > 0 {
-			return defaultValue[0]
-		}
-		return 0
-	}
-	return value
+type QueryTypeInteger interface {
+	QueryTypeIntegerSigned | QueryTypeIntegerUnsigned
+}
+
+type QueryTypeIntegerSigned interface {
+	int | int8 | int16 | int32 | int64
+}
+
+type QueryTypeIntegerUnsigned interface {
+	uint | uint8 | uint16 | uint32 | uint64
+}
+
+type QueryTypeFloat interface {
+	float32 | float64
 }
 
 // Range returns a struct containing the type and a slice of ranges.
