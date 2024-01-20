@@ -76,7 +76,7 @@ func Test_HTTPHandler(t *testing.T) {
 	req.Header.SetMethod(expectedMethod)
 	req.SetRequestURI(expectedRequestURI)
 	req.Header.SetHost(expectedHost)
-	req.BodyWriter().Write([]byte(expectedBody)) //nolint:errcheck, gosec // not needed
+	req.BodyWriter().Write([]byte(expectedBody)) //nolint:errcheck // not needed
 	for k, v := range expectedHeader {
 		req.Header.Set(k, v)
 	}
