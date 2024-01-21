@@ -467,14 +467,14 @@ func Test_Cache_CustomNext(t *testing.T) {
 	bodyCached, err := io.ReadAll(respCached.Body)
 	require.NoError(t, err)
 	require.True(t, bytes.Equal(body, bodyCached))
-	require.True(t, respCached.Header.Get(fiber.HeaderCacheControl) != "")
+	require.NotEmpty(t, respCached.Header.Get(fiber.HeaderCacheControl))
 
 	_, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/error", nil))
 	require.NoError(t, err)
 
 	errRespCached, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/error", nil))
 	require.NoError(t, err)
-	require.True(t, errRespCached.Header.Get(fiber.HeaderCacheControl) == "")
+	require.Empty(t, errRespCached.Header.Get(fiber.HeaderCacheControl))
 }
 
 func Test_CustomKey(t *testing.T) {
@@ -809,7 +809,7 @@ func Benchmark_Cache(b *testing.B) {
 	}
 
 	require.Equal(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
-	require.True(b, len(fctx.Response.Body()) > 30000)
+	require.Greater(b, len(fctx.Response.Body()), 30000)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Cache_Storage -benchmem -count=4
@@ -839,7 +839,7 @@ func Benchmark_Cache_Storage(b *testing.B) {
 	}
 
 	require.Equal(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
-	require.True(b, len(fctx.Response.Body()) > 30000)
+	require.Greater(b, len(fctx.Response.Body()), 30000)
 }
 
 func Benchmark_Cache_AdditionalHeaders(b *testing.B) {

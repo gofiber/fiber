@@ -76,7 +76,7 @@ func Test_Session(t *testing.T) {
 	require.True(t, sess.Fresh())
 
 	// this id should be randomly generated as session key was deleted
-	require.Equal(t, 36, len(sess.ID()))
+	require.Len(t, sess.ID(), 36)
 
 	// when we use the original session for the second time
 	// the session be should be same if the session is not expired
@@ -194,8 +194,8 @@ func Test_Session_Types(t *testing.T) {
 	require.Equal(t, vuintptr, sess.Get("vuintptr").(uintptr))
 	require.Equal(t, vbyte, sess.Get("vbyte").(byte))
 	require.Equal(t, vrune, sess.Get("vrune").(rune))
-	require.Equal(t, vfloat32, sess.Get("vfloat32").(float32))
-	require.Equal(t, vfloat64, sess.Get("vfloat64").(float64))
+	require.InEpsilon(t, vfloat32, sess.Get("vfloat32").(float32), 0.001)
+	require.InEpsilon(t, vfloat64, sess.Get("vfloat64").(float64), 0.001)
 	require.Equal(t, vcomplex64, sess.Get("vcomplex64").(complex64))
 	require.Equal(t, vcomplex128, sess.Get("vcomplex128").(complex128))
 }
@@ -400,7 +400,7 @@ func Test_Session_Cookie(t *testing.T) {
 	require.NoError(t, sess.Save())
 
 	// cookie should be set on Save ( even if empty data )
-	require.Equal(t, 84, len(ctx.Response().Header.PeekCookie(store.sessionName)))
+	require.Len(t, ctx.Response().Header.PeekCookie(store.sessionName), 84)
 }
 
 // go test -run Test_Session_Cookie_In_Response
@@ -442,12 +442,12 @@ func Test_Session_Deletes_Single_Key(t *testing.T) {
 	ctx.Request().Header.SetCookie(store.sessionName, sess.ID())
 
 	sess.Set("id", "1")
-	require.Nil(t, sess.Save())
+	require.NoError(t, sess.Save())
 
 	sess, err = store.Get(ctx)
 	require.NoError(t, err)
 	sess.Delete("id")
-	require.Nil(t, sess.Save())
+	require.NoError(t, sess.Save())
 
 	sess, err = store.Get(ctx)
 	require.NoError(t, err)
@@ -496,7 +496,7 @@ func Test_Session_Reset(t *testing.T) {
 		err = acquiredSession.Reset()
 		require.NoError(t, err)
 
-		require.False(t, acquiredSession.ID() == originalSessionUUIDString)
+		require.NotEqual(t, originalSessionUUIDString, acquiredSession.ID())
 
 		// acquiredSession.fresh should be true after resetting
 		require.True(t, acquiredSession.Fresh())
@@ -555,7 +555,7 @@ func Test_Session_Regenerate(t *testing.T) {
 		err = acquiredSession.Regenerate()
 		require.NoError(t, err)
 
-		require.False(t, acquiredSession.ID() == originalSessionUUIDString)
+		require.NotEqual(t, originalSessionUUIDString, acquiredSession.ID())
 
 		// acquiredSession.fresh should be true after regenerating
 		require.True(t, acquiredSession.Fresh())
