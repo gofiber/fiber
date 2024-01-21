@@ -60,6 +60,8 @@ func (*disableLogger) Debugf(_ string, _ ...any) {}
 type Client struct {
 	mu sync.RWMutex
 
+	host *fasthttp.HostClient
+
 	baseURL   string
 	userAgent string
 	referer   string
@@ -132,6 +134,17 @@ func (c *Client) AddResponseHook(h ...ResponseHook) *Client {
 	defer c.mu.Unlock()
 
 	c.userResponseHooks = append(c.userResponseHooks, h...)
+	return c
+}
+
+// HostClient returns host client in client.
+func (c *Client) HostClient() *fasthttp.HostClient {
+	return c.host
+}
+
+// SetHostClient sets host client in client.
+func (c *Client) SetHostClient(host *fasthttp.HostClient) *Client {
+	c.host = host
 	return c
 }
 
@@ -663,6 +676,7 @@ var (
 	clientPool       = &sync.Pool{
 		New: func() any {
 			return &Client{
+				host: &fasthttp.HostClient{},
 				header: &Header{
 					RequestHeader: &fasthttp.RequestHeader{},
 				},

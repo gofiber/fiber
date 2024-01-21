@@ -52,8 +52,6 @@ func addMissingPort(addr string, isTLS bool) string {
 // `core` stores middleware and plugin definitions,
 // and defines the execution process
 type core struct {
-	host *fasthttp.HostClient
-
 	client *Client
 	req    *Request
 	ctx    context.Context
@@ -92,21 +90,23 @@ func (c *core) execFunc() (*Response, error) {
 	cfg := c.getRetryConfig()
 
 	go func() {
+		c.client.mu.Lock()
+
 		var err error
 		respv := fasthttp.AcquireResponse()
 		if cfg != nil {
 			err = retry.NewExponentialBackoff(*cfg).Retry(func() error {
 				if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
-					return c.host.DoRedirects(reqv, respv, c.req.maxRedirects)
+					return c.client.host.DoRedirects(reqv, respv, c.req.maxRedirects)
 				}
 
-				return c.host.Do(reqv, respv)
+				return c.client.host.Do(reqv, respv)
 			})
 		} else {
 			if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
-				err = c.host.DoRedirects(reqv, respv, c.req.maxRedirects)
+				err = c.client.host.DoRedirects(reqv, respv, c.req.maxRedirects)
 			} else {
-				err = c.host.Do(reqv, respv)
+				err = c.client.host.Do(reqv, respv)
 			}
 		}
 		defer func() {
@@ -122,6 +122,7 @@ func (c *core) execFunc() (*Response, error) {
 			respv.CopyTo(resp.RawResponse)
 			errCh <- nil
 		}
+		c.client.mu.Unlock()
 	}()
 
 	select {
@@ -200,12 +201,16 @@ func (c *core) timeout() context.CancelFunc {
 
 // dial set dial in host.
 func (c *core) dial() {
-	c.host.Dial = c.req.dial
+	c.client.mu.Lock()
+	c.client.host.Dial = c.req.dial
+	c.client.mu.Unlock()
 }
 
 // tls sets tls config.
 func (c *core) tls() {
-	c.host.TLSConfig = c.client.tlsConfig.Clone()
+	c.client.mu.Lock()
+	c.client.host.TLSConfig = c.client.tlsConfig.Clone()
+	c.client.mu.Unlock()
 }
 
 // proxy set proxy in host.
@@ -224,8 +229,10 @@ func (c *core) proxy() error {
 		return ErrNotSupportSchema
 	}
 
-	c.host.Addr = addMissingPort(string(rawUri.Host()), isTLS)
-	c.host.IsTLS = isTLS
+	c.client.mu.Lock()
+	c.client.host.Addr = addMissingPort(string(rawUri.Host()), isTLS)
+	c.client.host.IsTLS = isTLS
+	c.client.mu.Unlock()
 
 	return nil
 }
@@ -298,9 +305,7 @@ func releaseErrChan(ch chan error) {
 
 // newCore returns an empty core object.
 func newCore() (c *core) {
-	c = &core{
-		host: &fasthttp.HostClient{},
-	}
+	c = &core{}
 
 	return
 }

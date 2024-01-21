@@ -75,14 +75,15 @@ func Test_Exec_Func(t *testing.T) {
 
 	t.Run("normal request", func(t *testing.T) {
 		core, client, req := newCore(), AcquireClient(), AcquireRequest()
-		core.host.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
-		req.RawRequest.SetRequestURI("http://example.com/normal")
-
 		core.ctx = context.Background()
 		core.client = client
 		core.req = req
 
+		core.client.host.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+		req.RawRequest.SetRequestURI("http://example.com/normal")
+
 		resp, err := core.execFunc()
+		fmt.Print(string(resp.Body()))
 		require.NoError(t, err)
 		require.Equal(t, 200, resp.RawResponse.StatusCode())
 		require.Equal(t, "example.com", string(resp.RawResponse.Body()))
@@ -90,12 +91,12 @@ func Test_Exec_Func(t *testing.T) {
 
 	t.Run("the request return an error", func(t *testing.T) {
 		core, client, req := newCore(), AcquireClient(), AcquireRequest()
-		core.host.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
-		req.RawRequest.SetRequestURI("http://example.com/return-error")
-
 		core.ctx = context.Background()
 		core.client = client
 		core.req = req
+
+		core.client.host.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+		req.RawRequest.SetRequestURI("http://example.com/return-error")
 
 		resp, err := core.execFunc()
 
@@ -106,16 +107,15 @@ func Test_Exec_Func(t *testing.T) {
 
 	t.Run("the request timeout", func(t *testing.T) {
 		core, client, req := newCore(), AcquireClient(), AcquireRequest()
-
-		core.host.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
-		req.RawRequest.SetRequestURI("http://example.com/hang-up")
-
 		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 		defer cancel()
 
 		core.ctx = ctx
 		core.client = client
 		core.req = req
+
+		core.client.host.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+		req.RawRequest.SetRequestURI("http://example.com/hang-up")
 
 		_, err := core.execFunc()
 

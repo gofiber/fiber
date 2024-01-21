@@ -14,6 +14,7 @@ import (
 
 	"github.com/gofiber/fiber/v3/addon/retry"
 	"github.com/gofiber/fiber/v3/log"
+	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/tlstest"
@@ -107,6 +108,20 @@ func Test_Client_SetBaseURL(t *testing.T) {
 	client := AcquireClient().SetBaseURL("http://example.com")
 
 	require.Equal(t, "http://example.com", client.BaseURL())
+}
+
+func Test_Client_SetHostClient(t *testing.T) {
+	t.Parallel()
+
+	hostClient := &fasthttp.HostClient{}
+	hostClient.Name = "test"
+
+	client := AcquireClient()
+	defer ReleaseClient(client)
+
+	client.SetHostClient(hostClient)
+
+	require.Equal(t, "test", client.HostClient().Name)
 }
 
 func Test_Client_Invalid_URL(t *testing.T) {
@@ -1236,7 +1251,6 @@ func Benchmark_Client_Request(b *testing.B) {
 	go start()
 
 	b.ResetTimer()
-	b.ReportAllocs()
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {

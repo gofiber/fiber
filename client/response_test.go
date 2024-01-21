@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/xml"
-	"github.com/gofiber/fiber/v3/internal/tlstest"
 	"io"
 	"net"
 	"os"
 	"testing"
+
+	"github.com/gofiber/fiber/v3/internal/tlstest"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
