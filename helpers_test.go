@@ -240,7 +240,7 @@ func Test_Utils_ForEachParameter(t *testing.T) {
 	for _, tc := range testCases {
 		n := 0
 		forEachParameter(tc.paramStr, func(p, v string) bool {
-			require.Equal(t, true, n < len(tc.expectedParams), "Received more parameters than expected: "+p+"="+v)
+			require.Less(t, n, len(tc.expectedParams), "Received more parameters than expected: "+p+"="+v)
 			require.Equal(t, tc.expectedParams[n][0], p, tc.description)
 			require.Equal(t, tc.expectedParams[n][1], v, tc.description)
 			n++
@@ -248,7 +248,7 @@ func Test_Utils_ForEachParameter(t *testing.T) {
 			// Stop parsing at the first parameter called "end"
 			return p != "end"
 		})
-		require.Equal(t, len(tc.expectedParams), n, tc.description+": number of parameters differs")
+		require.Len(t, tc.expectedParams, n, tc.description+": number of parameters differs")
 	}
 	// Check that we exited on the second parameter (bar)
 }
@@ -323,7 +323,7 @@ func Benchmark_Utils_ParamsMatch(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		match = paramsMatch(`; appLe=orange; param="foo"`, `;param=foo; apple=orange`)
 	}
-	require.Equal(b, true, match)
+	require.True(b, match)
 }
 
 func Test_Utils_AcceptsOfferType(t *testing.T) {
@@ -451,7 +451,7 @@ func Test_Utils_SortAcceptedTypes(t *testing.T) {
 		{spec: "application/json", quality: 0.999, specificity: 3, params: ";a=1", order: 11},
 	}
 	sortAcceptedTypes(&acceptedTypes)
-	require.Equal(t, acceptedTypes, []acceptedType{
+	require.Equal(t, []acceptedType{
 		{spec: "text/html", quality: 1, specificity: 3, order: 0},
 		{spec: "application/xml", quality: 1, specificity: 3, order: 4},
 		{spec: "application/pdf", quality: 1, specificity: 3, order: 5},
@@ -464,7 +464,7 @@ func Test_Utils_SortAcceptedTypes(t *testing.T) {
 		{spec: "application/json", quality: 0.999, specificity: 3, order: 3},
 		{spec: "text/*", quality: 0.5, specificity: 2, order: 1},
 		{spec: "*/*", quality: 0.1, specificity: 1, order: 2},
-	})
+	}, acceptedTypes)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Utils_SortAcceptedTypes_Sorted -benchmem -count=4
@@ -498,7 +498,7 @@ func Benchmark_Utils_SortAcceptedTypes_Unsorted(b *testing.B) {
 		acceptedTypes[10] = acceptedType{spec: "text/plain", quality: 1, specificity: 3, order: 10}
 		sortAcceptedTypes(&acceptedTypes)
 	}
-	require.Equal(b, acceptedTypes, []acceptedType{
+	require.Equal(b, []acceptedType{
 		{spec: "text/html", quality: 1, specificity: 3, order: 0},
 		{spec: "application/xml", quality: 1, specificity: 3, order: 4},
 		{spec: "application/pdf", quality: 1, specificity: 3, order: 5},
@@ -510,7 +510,7 @@ func Benchmark_Utils_SortAcceptedTypes_Unsorted(b *testing.B) {
 		{spec: "application/json", quality: 0.999, specificity: 3, order: 3},
 		{spec: "text/*", quality: 0.5, specificity: 2, order: 1},
 		{spec: "*/*", quality: 0.1, specificity: 1, order: 2},
-	})
+	}, acceptedTypes)
 }
 
 func Test_Utils_UniqueRouteStack(t *testing.T) {
@@ -609,9 +609,9 @@ func Test_Utils_Parse_Address(t *testing.T) {
 func Test_Utils_TestConn_Deadline(t *testing.T) {
 	t.Parallel()
 	conn := &testConn{}
-	require.Nil(t, conn.SetDeadline(time.Time{}))
-	require.Nil(t, conn.SetReadDeadline(time.Time{}))
-	require.Nil(t, conn.SetWriteDeadline(time.Time{}))
+	require.NoError(t, conn.SetDeadline(time.Time{}))
+	require.NoError(t, conn.SetReadDeadline(time.Time{}))
+	require.NoError(t, conn.SetWriteDeadline(time.Time{}))
 }
 
 func Test_Utils_IsNoCache(t *testing.T) {

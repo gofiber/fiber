@@ -12,7 +12,6 @@ import (
 	"io"
 	"net/http/httptest"
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/gofiber/utils/v2"
@@ -353,7 +352,7 @@ func Test_Route_Static_Root(t *testing.T) {
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.True(t, strings.Contains(app.getString(body), "color"))
+	require.Contains(t, app.getString(body), "color")
 
 	app = New()
 	app.Static("/", dir)
@@ -368,7 +367,7 @@ func Test_Route_Static_Root(t *testing.T) {
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.True(t, strings.Contains(app.getString(body), "color"))
+	require.Contains(t, app.getString(body), "color")
 }
 
 func Test_Route_Static_HasPrefix(t *testing.T) {
@@ -394,7 +393,7 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.True(t, strings.Contains(app.getString(body), "color"))
+	require.Contains(t, app.getString(body), "color")
 
 	app = New()
 	app.Static("/static/", dir, Static{
@@ -415,7 +414,7 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.True(t, strings.Contains(app.getString(body), "color"))
+	require.Contains(t, app.getString(body), "color")
 
 	app = New()
 	app.Static("/static", dir)
@@ -434,7 +433,7 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.True(t, strings.Contains(app.getString(body), "color"))
+	require.Contains(t, app.getString(body), "color")
 
 	app = New()
 	app.Static("/static/", dir)
@@ -453,7 +452,7 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.True(t, strings.Contains(app.getString(body), "color"))
+	require.Contains(t, app.getString(body), "color")
 }
 
 func Test_Router_NotFound(t *testing.T) {
