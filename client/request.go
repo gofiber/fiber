@@ -6,7 +6,6 @@ import (
 	"io"
 	"path/filepath"
 	"reflect"
-	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -159,15 +158,13 @@ func (r *Request) SetHeaders(h map[string]string) *Request {
 }
 
 // Param method returns params value via key,
-// this method will visit all field in the query param,
-// then sort them.
+// this method will visit all field in the query param.
 func (r *Request) Param(key string) []string {
 	res := []string{}
 	tmp := r.params.PeekMulti(key)
 	for _, v := range tmp {
 		res = append(res, utils.UnsafeString(v))
 	}
-	sort.Strings(res)
 
 	return res
 }
@@ -363,15 +360,13 @@ func (r *Request) resetBody(t bodyType) {
 }
 
 // FormData method returns form data value via key,
-// this method will visit all field in the form data,
-// then sort them.
+// this method will visit all field in the form data.
 func (r *Request) FormData(key string) []string {
 	res := []string{}
 	tmp := r.formData.PeekMulti(key)
 	for _, v := range tmp {
 		res = append(res, utils.UnsafeString(v))
 	}
-	sort.Strings(res)
 
 	return res
 }
@@ -585,7 +580,6 @@ func (h *Header) PeekMultiple(key string) []string {
 			res = append(res, utils.UnsafeString(value))
 		}
 	})
-	sort.Strings(res)
 
 	return res
 }

@@ -6,12 +6,12 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	urlPkg "net/url"
 	"os"
 	"path/filepath"
-	"sort"
 	"sync"
 	"time"
 
@@ -20,6 +20,9 @@ import (
 
 	"github.com/valyala/fasthttp"
 )
+
+var ErrInvalidProxyURL = errors.New("invalid proxy url scheme")
+var ErrFailedToAppendCert = errors.New("failed to append certificate")
 
 // Define the logger interface so that users can
 // use different log implements to output logs.
@@ -222,21 +225,25 @@ func (c *Client) SetRootCertificate(path string) *Client {
 	cleanPath := filepath.Clean(path)
 	file, err := os.Open(cleanPath)
 	if err != nil {
-		return c
+		log.Errorf("client: %v", err)
 	}
 	defer func() {
 		_ = file.Close() //nolint:errcheck // It is fine to ignore the error here
 	}()
+
 	pem, err := io.ReadAll(file)
 	if err != nil {
-		return c
+		log.Errorf("client: %v", err)
 	}
 
 	config := c.TLSConfig()
 	if config.RootCAs == nil {
 		config.RootCAs = x509.NewCertPool()
 	}
-	config.RootCAs.AppendCertsFromPEM(pem)
+
+	if !config.RootCAs.AppendCertsFromPEM(pem) {
+		log.Errorf("client: %v", ErrFailedToAppendCert)
+	}
 
 	return c
 }
@@ -248,7 +255,10 @@ func (c *Client) SetRootCertificateFromString(pem string) *Client {
 	if config.RootCAs == nil {
 		config.RootCAs = x509.NewCertPool()
 	}
-	config.RootCAs.AppendCertsFromPEM([]byte(pem))
+
+	if !config.RootCAs.AppendCertsFromPEM([]byte(pem)) {
+		log.Errorf("client: %v", ErrFailedToAppendCert)
+	}
 
 	return c
 }
@@ -257,10 +267,15 @@ func (c *Client) SetRootCertificateFromString(pem string) *Client {
 func (c *Client) SetProxyURL(proxyURL string) *Client {
 	pURL, err := urlPkg.Parse(proxyURL)
 	if err != nil {
-		log.Errorf("%v", err)
-
+		log.Errorf("client: %v", err)
 		return c
 	}
+
+	if pURL.Scheme != "http" && pURL.Scheme != "https" {
+		log.Errorf("client: %v", ErrInvalidProxyURL)
+		return c
+	}
+
 	c.proxyURL = pURL.String()
 
 	return c
@@ -330,15 +345,13 @@ func (c *Client) SetHeaders(h map[string]string) *Client {
 }
 
 // Param method returns params value via key,
-// this method will visit all field in the query param,
-// then sort them.
+// this method will visit all field in the query param.
 func (c *Client) Param(key string) []string {
 	res := []string{}
 	tmp := c.params.PeekMulti(key)
 	for _, v := range tmp {
 		res = append(res, utils.UnsafeString(v))
 	}
-	sort.Strings(res)
 
 	return res
 }
