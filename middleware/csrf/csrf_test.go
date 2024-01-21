@@ -83,8 +83,8 @@ func Test_CSRF_WithSession(t *testing.T) {
 
 	// get session
 	sess, err := store.Get(app.NewCtx(ctx))
-	require.Equal(t, nil, err)
-	require.Equal(t, true, sess.Fresh())
+	require.NoError(t, err)
+	require.True(t, sess.Fresh())
 
 	// the session string is no longer be 123
 	newSessionIDString := sess.ID()
@@ -216,8 +216,8 @@ func Test_CSRF_ExpiredToken_WithSession(t *testing.T) {
 
 	// get session
 	sess, err := store.Get(app.NewCtx(ctx))
-	require.Equal(t, nil, err)
-	require.Equal(t, true, sess.Fresh())
+	require.NoError(t, err)
+	require.True(t, sess.Fresh())
 
 	// get session id
 	newSessionIDString := sess.ID()
@@ -747,8 +747,8 @@ func Test_CSRF_DeleteToken_WithSession(t *testing.T) {
 
 	// get session
 	sess, err := store.Get(app.NewCtx(ctx))
-	require.Equal(t, nil, err)
-	require.Equal(t, true, sess.Fresh())
+	require.NoError(t, err)
+	require.True(t, sess.Fresh())
 
 	// the session string is no longer be 123
 	newSessionIDString := sess.ID()

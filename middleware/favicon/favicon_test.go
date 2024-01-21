@@ -71,7 +71,7 @@ func Test_Middleware_Favicon_Found(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/favicon.ico", nil))
-	require.NoError(t, nil, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
 	require.Equal(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
 	require.Equal(t, "public, max-age=31536000", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
@@ -92,7 +92,7 @@ func Test_Custom_Favicon_URL(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(http.MethodGet, customURL, nil))
 
-	require.Equal(t, nil, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
 	require.Equal(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
 }
@@ -100,7 +100,7 @@ func Test_Custom_Favicon_URL(t *testing.T) {
 // go test -run Test_Custom_Favicon_Data
 func Test_Custom_Favicon_Data(t *testing.T) {
 	data, err := os.ReadFile("../../.github/testdata/favicon.ico")
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 
 	app := fiber.New()
 

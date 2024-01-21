@@ -47,7 +47,7 @@ func Test_HTTPHandler(t *testing.T) {
 		require.Equal(t, expectedProtoMinor, r.ProtoMinor, "ProtoMinor")
 		require.Equal(t, expectedRequestURI, r.RequestURI, "RequestURI")
 		require.Equal(t, expectedContentLength, int(r.ContentLength), "ContentLength")
-		require.Equal(t, 0, len(r.TransferEncoding), "TransferEncoding")
+		require.Empty(t, r.TransferEncoding, "TransferEncoding")
 		require.Equal(t, expectedHost, r.Host, "Host")
 		require.Equal(t, expectedRemoteAddr, r.RemoteAddr, "RemoteAddr")
 
@@ -190,8 +190,8 @@ func Test_HTTPMiddleware(t *testing.T) {
 
 	resp, err := app.Test(req)
 	require.NoError(t, err)
-	require.Equal(t, resp.Header.Get("context_okay"), "okay")
-	require.Equal(t, resp.Header.Get("context_second_okay"), "okay")
+	require.Equal(t, "okay", resp.Header.Get("context_okay"))
+	require.Equal(t, "okay", resp.Header.Get("context_second_okay"))
 }
 
 func Test_FiberHandler(t *testing.T) {
@@ -390,7 +390,7 @@ func Test_ConvertRequest(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test?hello=world&another=test", http.NoBody))
-	require.Equal(t, nil, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
 
 	body, err := io.ReadAll(resp.Body)

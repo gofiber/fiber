@@ -112,5 +112,5 @@ func TestStore_DeleteSession(t *testing.T) {
 	require.NoError(t, err)
 
 	// The session ID should be different now, because the old session was deleted
-	require.Equal(t, session.ID() == sessionID, false)
+	require.NotEqual(t, sessionID, session.ID())
 }
