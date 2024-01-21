@@ -108,11 +108,11 @@ func Test_Redirect(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tt.url, nil)
-			require.Equal(t, err, nil)
+			require.NoError(t, err)
 			req.Header.Set("Location", "github.com/gofiber/redirect")
 			resp, err := app.Test(req)
 
-			require.Equal(t, err, nil)
+			require.NoError(t, err)
 			require.Equal(t, tt.statusCode, resp.StatusCode)
 			require.Equal(t, tt.redirectTo, resp.Header.Get("Location"))
 		})
@@ -137,9 +137,9 @@ func Test_Next(t *testing.T) {
 	})
 
 	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", nil)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 	resp, err := app.Test(req)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
@@ -156,9 +156,9 @@ func Test_Next(t *testing.T) {
 	}))
 
 	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", nil)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 	resp, err = app.Test(req)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	require.Equal(t, fiber.StatusMovedPermanently, resp.StatusCode)
 	require.Equal(t, "google.com", resp.Header.Get("Location"))
@@ -177,9 +177,9 @@ func Test_NoRules(t *testing.T) {
 	})
 
 	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", nil)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 	resp, err := app.Test(req)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 	// Case 2: No rules and no default route defined
@@ -190,9 +190,9 @@ func Test_NoRules(t *testing.T) {
 	}))
 
 	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", nil)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 	resp, err = app.Test(req)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
 
@@ -203,10 +203,10 @@ func Test_DefaultConfig(t *testing.T) {
 	app.Use(New())
 
 	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", nil)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 	resp, err := app.Test(req)
 
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 
 	// Case 2: Default config and default route
@@ -218,10 +218,10 @@ func Test_DefaultConfig(t *testing.T) {
 	})
 
 	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", nil)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 	resp, err = app.Test(req)
 
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
 
@@ -238,10 +238,10 @@ func Test_RegexRules(t *testing.T) {
 	})
 
 	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", nil)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 	resp, err := app.Test(req)
 
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 	// Case 2: Rules regex map contains valid regex and well-formed replacement URLs
@@ -258,26 +258,21 @@ func Test_RegexRules(t *testing.T) {
 	})
 
 	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/default", nil)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 	resp, err = app.Test(req)
 
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusMovedPermanently, resp.StatusCode)
 	require.Equal(t, "google.com", resp.Header.Get("Location"))
 
 	// Case 3: Test invalid regex throws panic
-	defer func() {
-		if r := recover(); r != nil {
-			t.Log("Recovered from invalid regex: ", r)
-		}
-	}()
-
 	app = *fiber.New()
-	app.Use(New(Config{
-		Rules: map[string]string{
-			"(": "google.com",
-		},
-		StatusCode: fiber.StatusMovedPermanently,
-	}))
-	t.Error("Expected panic, got nil")
+	require.Panics(t, func() {
+		app.Use(New(Config{
+			Rules: map[string]string{
+				"(": "google.com",
+			},
+			StatusCode: fiber.StatusMovedPermanently,
+		}))
+	})
 }

@@ -217,7 +217,7 @@ func Test_Limiter_Sliding_Window_No_Skip_Choices(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
-	time.Sleep(4 * time.Second)
+	time.Sleep(4*time.Second + 500*time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
 	require.NoError(t, err)
@@ -257,7 +257,7 @@ func Test_Limiter_Sliding_Window_Custom_Storage_No_Skip_Choices(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
-	time.Sleep(4 * time.Second)
+	time.Sleep(4*time.Second + 500*time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
 	require.NoError(t, err)
@@ -372,7 +372,7 @@ func Test_Limiter_Sliding_Window_Skip_Failed_Requests(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
-	time.Sleep(4 * time.Second)
+	time.Sleep(4*time.Second + 500*time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
 	require.NoError(t, err)
@@ -411,7 +411,7 @@ func Test_Limiter_Sliding_Window_Custom_Storage_Skip_Failed_Requests(t *testing.
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
-	time.Sleep(4 * time.Second)
+	time.Sleep(4*time.Second + 500*time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
 	require.NoError(t, err)
@@ -532,7 +532,7 @@ func Test_Limiter_Sliding_Window_Skip_Successful_Requests(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
-	time.Sleep(4 * time.Second)
+	time.Sleep(4*time.Second + 500*time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
 	require.NoError(t, err)
@@ -573,7 +573,7 @@ func Test_Limiter_Sliding_Window_Custom_Storage_Skip_Successful_Requests(t *test
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
-	time.Sleep(4 * time.Second)
+	time.Sleep(4*time.Second + 500*time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
 	require.NoError(t, err)

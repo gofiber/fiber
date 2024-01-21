@@ -13,8 +13,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gofiber/fiber/v2/log"
 	"github.com/valyala/fasthttp/reuseport"
+
+	"github.com/gofiber/fiber/v3/log"
 )
 
 const (

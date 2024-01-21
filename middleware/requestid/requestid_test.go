@@ -24,7 +24,7 @@ func Test_RequestID(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 	reqid := resp.Header.Get(fiber.HeaderXRequestID)
-	require.Equal(t, 36, len(reqid))
+	require.Len(t, reqid, 36)
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	req.Header.Add(fiber.HeaderXRequestID, reqid)
@@ -47,29 +47,26 @@ func Test_RequestID_Next(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
-	require.Equal(t, resp.Header.Get(fiber.HeaderXRequestID), "")
+	require.Empty(t, resp.Header.Get(fiber.HeaderXRequestID))
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
 
 // go test -run Test_RequestID_Locals
-func Test_RequestID_Locals(t *testing.T) {
+func Test_RequestID_FromContext(t *testing.T) {
 	t.Parallel()
 	reqID := "ThisIsARequestId"
-	type ContextKey int
-	const requestContextKey ContextKey = iota
 
 	app := fiber.New()
 	app.Use(New(Config{
 		Generator: func() string {
 			return reqID
 		},
-		ContextKey: requestContextKey,
 	}))
 
 	var ctxVal string
 
 	app.Use(func(c fiber.Ctx) error {
-		ctxVal = c.Locals(requestContextKey).(string) //nolint:forcetypeassert,errcheck // We always store a string in here
+		ctxVal = FromContext(c)
 		return c.Next()
 	})
 

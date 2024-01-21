@@ -90,9 +90,19 @@ type Ctx interface {
 	Response() *fasthttp.Response
 
 	// Format performs content-negotiation on the Accept HTTP header.
+	// It uses Accepts to select a proper format and calls the matching
+	// user-provided handler function.
+	// If no accepted format is found, and a format with MediaType "default" is given,
+	// that default handler is called. If no format is found and no default is given,
+	// StatusNotAcceptable is sent.
+	Format(handlers ...ResFmt) error
+
+	// AutoFormat performs content-negotiation on the Accept HTTP header.
 	// It uses Accepts to select a proper format.
+	// The supported content types are text/html, text/plain, application/json, and application/xml.
+	// For more flexible content negotiation, use Format.
 	// If the header is not specified or there is no proper format, text/plain is used.
-	Format(body any) error
+	AutoFormat(body any) error
 
 	// FormFile returns the first file by key from a MultipartForm.
 	FormFile(key string) (*multipart.FileHeader, error)
@@ -154,8 +164,10 @@ type Ctx interface {
 	// Array and slice values encode as JSON arrays,
 	// except that []byte encodes as a base64-encoded string,
 	// and a nil slice encodes as the null JSON value.
-	// This method also sets the content header to application/json.
-	JSON(data any) error
+	// If the ctype parameter is given, this method will set the
+	// Content-Type header equal to ctype. If ctype is not given,
+	// The Content-Type header will be set to application/json.
+	JSON(data any, ctype ...string) error
 
 	// JSONP sends a JSON response with JSONP support.
 	// This method is identical to JSON, except that it opts-in to JSONP callback support.
@@ -220,45 +232,35 @@ type Ctx interface {
 	// Protocol returns the HTTP protocol of request: HTTP/1.1 and HTTP/2.
 	Protocol() string
 
+	// Queries returns a map of query parameters and their values.
+	//
+	// GET /?name=alex&wanna_cake=2&id=
+	// Queries()["name"] == "alex"
+	// Queries()["wanna_cake"] == "2"
+	// Queries()["id"] == ""
+	//
+	// GET /?field1=value1&field1=value2&field2=value3
+	// Queries()["field1"] == "value2"
+	// Queries()["field2"] == "value3"
+	//
+	// GET /?list_a=1&list_a=2&list_a=3&list_b[]=1&list_b[]=2&list_b[]=3&list_c=1,2,3
+	// Queries()["list_a"] == "3"
+	// Queries()["list_b[]"] == "3"
+	// Queries()["list_c"] == "1,2,3"
+	//
+	// GET /api/search?filters.author.name=John&filters.category.name=Technology&filters[customer][name]=Alice&filters[status]=pending
+	// Queries()["filters.author.name"] == "John"
+	// Queries()["filters.category.name"] == "Technology"
+	// Queries()["filters[customer][name]"] == "Alice"
+	// Queries()["filters[status]"] == "pending"
+	Queries() map[string]string
+
 	// Query returns the query string parameter in the url.
 	// Defaults to empty string "" if the query doesn't exist.
 	// If a default value is given, it will return that value if the query doesn't exist.
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting to use the value outside the Handler.
 	Query(key string, defaultValue ...string) string
-
-	// QueryInt returns integer value of key string parameter in the url.
-	// Default to empty or invalid key is 0.
-	//
-	//	GET /?name=alex&wanna_cake=2&id=
-	//	QueryInt("wanna_cake", 1) == 2
-	//	QueryInt("name", 1) == 1
-	//	QueryInt("id", 1) == 1
-	//	QueryInt("id") == 0
-	QueryInt(key string, defaultValue ...int) int
-
-	// QueryBool returns bool value of key string parameter in the url.
-	// Default to empty or invalid key is true.
-	//
-	//	Get /?name=alex&want_pizza=false&id=
-	//	QueryBool("want_pizza") == false
-	//	QueryBool("want_pizza", true) == false
-	//	QueryBool("name") == false
-	//	QueryBool("name", true) == true
-	//	QueryBool("id") == false
-	//	QueryBool("id", true) == true
-	QueryBool(key string, defaultValue ...bool) bool
-
-	// QueryFloat returns float64 value of key string parameter in the url.
-	// Default to empty or invalid key is 0.
-	//
-	//	GET /?name=alex&amount=32.23&id=
-	//	QueryFloat("amount") = 32.23
-	//	QueryFloat("amount", 3) = 32.23
-	//	QueryFloat("name", 1) = 1
-	//	QueryFloat("name") = 0
-	//	QueryFloat("id", 3) = 3
-	QueryFloat(key string, defaultValue ...float64) float64
 
 	// Range returns a struct containing the type and a slice of ranges.
 	Range(size int) (rangeData Range, err error)

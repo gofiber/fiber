@@ -38,11 +38,11 @@ func ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error) {
 }
 
 // CopyContextToFiberContext copies the values of context.Context to a fasthttp.RequestCtx
-func CopyContextToFiberContext(context interface{}, requestContext *fasthttp.RequestCtx) {
+func CopyContextToFiberContext(context any, requestContext *fasthttp.RequestCtx) {
 	contextValues := reflect.ValueOf(context).Elem()
 	contextKeys := reflect.TypeOf(context).Elem()
 	if contextKeys.Kind() == reflect.Struct {
-		var lastKey interface{}
+		var lastKey any
 		for i := 0; i < contextValues.NumField(); i++ {
 			reflectValue := contextValues.Field(i)
 			/* #nosec */
@@ -116,14 +116,9 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		defer fasthttp.ReleaseRequest(req)
 		// Convert net/http -> fasthttp request
 		if r.Body != nil {
-			body, err := io.ReadAll(r.Body)
-			if err != nil {
-				http.Error(w, utils.StatusMessage(fiber.StatusInternalServerError), fiber.StatusInternalServerError)
-				return
-			}
+			n, err := io.Copy(req.BodyWriter(), r.Body)
+			req.Header.SetContentLength(int(n))
 
-			req.Header.SetContentLength(len(body))
-			_, err = req.BodyWriter().Write(body)
 			if err != nil {
 				http.Error(w, utils.StatusMessage(fiber.StatusInternalServerError), fiber.StatusInternalServerError)
 				return

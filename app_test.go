@@ -754,9 +754,7 @@ func Test_App_Shutdown(t *testing.T) {
 		t.Parallel()
 		app := &App{}
 		if err := app.Shutdown(); err != nil {
-			if err.Error() != "shutdown: server is not running" {
-				t.Fatal()
-			}
+			require.Equal(t, "shutdown: server is not running", err.Error())
 		}
 	})
 }
@@ -1422,7 +1420,6 @@ func (invalidView) Render(io.Writer, string, any, ...string) error { panic("impl
 
 // go test -run Test_App_Init_Error_View
 func Test_App_Init_Error_View(t *testing.T) {
-	t.Parallel()
 	app := New(Config{Views: invalidView{}})
 
 	defer func() {
@@ -1578,7 +1575,6 @@ func Test_App_Server(t *testing.T) {
 }
 
 func Test_App_Error_In_Fasthttp_Server(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.config.ErrorHandler = func(c Ctx, err error) error {
 		return errors.New("fake error")
@@ -1819,4 +1815,80 @@ func Test_Middleware_Route_Naming_With_Use(t *testing.T) {
 			require.Equal(t, "", route.Name)
 		}
 	}
+}
+
+func Test_Route_Naming_Issue_2671_2685(t *testing.T) {
+	app := New()
+
+	app.Get("/", emptyHandler).Name("index")
+	require.Equal(t, "/", app.GetRoute("index").Path)
+
+	app.Get("/a/:a_id", emptyHandler).Name("a")
+	require.Equal(t, "/a/:a_id", app.GetRoute("a").Path)
+
+	app.Post("/b/:bId", emptyHandler).Name("b")
+	require.Equal(t, "/b/:bId", app.GetRoute("b").Path)
+
+	c := app.Group("/c")
+	c.Get("", emptyHandler).Name("c.get")
+	require.Equal(t, "/c", app.GetRoute("c.get").Path)
+
+	c.Post("", emptyHandler).Name("c.post")
+	require.Equal(t, "/c", app.GetRoute("c.post").Path)
+
+	c.Get("/d", emptyHandler).Name("c.get.d")
+	require.Equal(t, "/c/d", app.GetRoute("c.get.d").Path)
+
+	d := app.Group("/d/:d_id")
+	d.Get("", emptyHandler).Name("d.get")
+	require.Equal(t, "/d/:d_id", app.GetRoute("d.get").Path)
+
+	d.Post("", emptyHandler).Name("d.post")
+	require.Equal(t, "/d/:d_id", app.GetRoute("d.post").Path)
+
+	e := app.Group("/e/:eId")
+	e.Get("", emptyHandler).Name("e.get")
+	require.Equal(t, "/e/:eId", app.GetRoute("e.get").Path)
+
+	e.Post("", emptyHandler).Name("e.post")
+	require.Equal(t, "/e/:eId", app.GetRoute("e.post").Path)
+
+	e.Get("f", emptyHandler).Name("e.get.f")
+	require.Equal(t, "/e/:eId/f", app.GetRoute("e.get.f").Path)
+
+	postGroup := app.Group("/post/:postId")
+	postGroup.Get("", emptyHandler).Name("post.get")
+	require.Equal(t, "/post/:postId", app.GetRoute("post.get").Path)
+
+	postGroup.Post("", emptyHandler).Name("post.update")
+	require.Equal(t, "/post/:postId", app.GetRoute("post.update").Path)
+
+	// Add testcase for routes use the same PATH on different methods
+	app.Get("/users", emptyHandler).Name("get-users")
+	app.Post("/users", emptyHandler).Name("add-user")
+	getUsers := app.GetRoute("get-users")
+	require.Equal(t, getUsers.Path, "/users")
+
+	addUser := app.GetRoute("add-user")
+	require.Equal(t, addUser.Path, "/users")
+
+	// Add testcase for routes use the same PATH on different methods (for groups)
+	newGrp := app.Group("/name-test")
+	newGrp.Get("/users", emptyHandler).Name("grp-get-users")
+	newGrp.Post("/users", emptyHandler).Name("grp-add-user")
+	getUsers = app.GetRoute("grp-get-users")
+	require.Equal(t, getUsers.Path, "/name-test/users")
+
+	addUser = app.GetRoute("grp-add-user")
+	require.Equal(t, addUser.Path, "/name-test/users")
+
+	// Add testcase for HEAD route naming
+	app.Get("/simple-route", emptyHandler).Name("simple-route")
+	app.Head("/simple-route", emptyHandler).Name("simple-route2")
+
+	sRoute := app.GetRoute("simple-route")
+	require.Equal(t, sRoute.Path, "/simple-route")
+
+	sRoute2 := app.GetRoute("simple-route2")
+	require.Equal(t, sRoute2.Path, "/simple-route")
 }

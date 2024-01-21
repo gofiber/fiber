@@ -6,6 +6,7 @@ package fiber
 
 import (
 	"fmt"
+	"html"
 	"sort"
 	"strconv"
 	"strings"
@@ -43,7 +44,7 @@ type Router interface {
 
 // Route is a struct that holds all metadata for each registered handler.
 type Route struct {
-	// always keep in sync with the copy method "app.copyRoute"
+	// ### important: always keep in sync with the copy method "app.copyRoute" ###
 	// Data for routing
 	pos         uint32      // Position in stack -> important for the sort of the matched routes
 	use         bool        // USE matches path prefixes
@@ -192,7 +193,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 	}
 
 	// If c.Next() does not match, return 404
-	err := NewError(StatusNotFound, "Cannot "+c.method+" "+c.pathOriginal)
+	err := NewError(StatusNotFound, "Cannot "+c.method+" "+html.EscapeString(c.pathOriginal))
 	if !c.matched && app.methodExist(c) {
 		// If no match, scan stack again if other methods match the request
 		// Moved from app.handler because middleware may break the route chain
@@ -277,13 +278,14 @@ func (*App) copyRoute(route *Route) *Route {
 		// Path data
 		path:        route.path,
 		routeParser: route.routeParser,
-		Params:      route.Params,
 
 		// misc
 		pos: route.pos,
 
 		// Public data
 		Path:     route.Path,
+		Params:   route.Params,
+		Name:     route.Name,
 		Method:   route.Method,
 		Handlers: route.Handlers,
 	}

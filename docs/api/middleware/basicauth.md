@@ -10,6 +10,8 @@ Basic Authentication middleware for [Fiber](https://github.com/gofiber/fiber) th
 
 ```go
 func New(config Config) fiber.Handler
+func UsernameFromContext(c fiber.Ctx) string
+func PasswordFromContext(c fiber.Ctx) string
 ```
 
 ## Examples
@@ -18,8 +20,8 @@ Import the middleware package that is part of the Fiber web framework
 
 ```go
 import (
-  "github.com/gofiber/fiber/v2"
-  "github.com/gofiber/fiber/v2/middleware/basicauth"
+  "github.com/gofiber/fiber/v3"
+  "github.com/gofiber/fiber/v3/middleware/basicauth"
 )
 ```
 
@@ -50,25 +52,32 @@ app.Use(basicauth.New(basicauth.Config{
         }
         return false
     },
-    Unauthorized: func(c *fiber.Ctx) error {
+    Unauthorized: func(c fiber.Ctx) error {
         return c.SendFile("./unauthorized.html")
     },
-    ContextUsername: "_user",
-    ContextPassword: "_pass",
 }))
+```
+
+Getting the username and password
+
+```go
+func handler(c fiber.Ctx) error {
+    username := basicauth.UsernameFromContext(c)
+    password := basicauth.PasswordFromContext(c)
+    log.Printf("Username: %s Password: %s", username, password)
+    return c.SendString("Hello, " + username)
+}
 ```
 
 ## Config
 
 | Property        | Type                        | Description                                                                                                                                                           | Default               |
 |:----------------|:----------------------------|:----------------------------------------------------------------------------------------------------------------------------------------------------------------------|:----------------------|
-| Next            | `func(*fiber.Ctx) bool`     | Next defines a function to skip this middleware when returned true.                                                                                                   | `nil`                 |
+| Next            | `func(fiber.Ctx) bool`     | Next defines a function to skip this middleware when returned true.                                                                                                   | `nil`                 |
 | Users           | `map[string]string`         | Users defines the allowed credentials.                                                                                                                                | `map[string]string{}` |
 | Realm           | `string`                    | Realm is a string to define the realm attribute of BasicAuth. The realm identifies the system to authenticate against and can be used by clients to save credentials. | `"Restricted"`        |
 | Authorizer      | `func(string, string) bool` | Authorizer defines a function to check the credentials. It will be called with a username and password and is expected to return true or false to indicate approval.  | `nil`                 |
 | Unauthorized    | `fiber.Handler`             | Unauthorized defines the response body for unauthorized responses.                                                                                                    | `nil`                 |
-| ContextUsername | `string`                    | ContextUsername is the key to store the username in Locals.                                                                                                           | `"username"`          |
-| ContextPassword | `string`                    | ContextPassword is the key to store the password in Locals.                                                                                                           | `"password"`          |
 
 ## Default Config
 
@@ -79,7 +88,5 @@ var ConfigDefault = Config{
     Realm:           "Restricted",
     Authorizer:      nil,
     Unauthorized:    nil,
-    ContextUsername: "username",
-    ContextPassword: "password",
 }
 ```

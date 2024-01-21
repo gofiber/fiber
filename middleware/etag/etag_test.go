@@ -124,7 +124,7 @@ func testETagNewEtag(t *testing.T, headerIfNoneMatch, matched bool) { //nolint:r
 		require.Equal(t, fiber.StatusNotModified, resp.StatusCode)
 		b, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
-		require.Equal(t, 0, len(b))
+		require.Empty(t, b)
 	}
 }
 
@@ -178,7 +178,7 @@ func testETagWeakEtag(t *testing.T, headerIfNoneMatch, matched bool) { //nolint:
 		require.Equal(t, fiber.StatusNotModified, resp.StatusCode)
 		b, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
-		require.Equal(t, 0, len(b))
+		require.Empty(t, b)
 	}
 }
 
@@ -236,7 +236,7 @@ func testETagCustomEtag(t *testing.T, headerIfNoneMatch, matched bool) { //nolin
 		require.Equal(t, fiber.StatusNotModified, resp.StatusCode)
 		b, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
-		require.Equal(t, 0, len(b))
+		require.Empty(t, b)
 	}
 }
 

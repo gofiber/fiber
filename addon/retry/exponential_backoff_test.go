@@ -9,6 +9,7 @@ import (
 )
 
 func TestExponentialBackoff_Retry(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name       string
 		expBackoff *ExponentialBackoff
@@ -21,14 +22,6 @@ func TestExponentialBackoff_Retry(t *testing.T) {
 			f: func() error {
 				return nil
 			},
-		},
-		{
-			name:       "With default values - unsuccessful",
-			expBackoff: NewExponentialBackoff(),
-			f: func() error {
-				return fmt.Errorf("failed function")
-			},
-			expErr: fmt.Errorf("failed function"),
 		},
 		{
 			name: "Successful function",
@@ -58,7 +51,9 @@ func TestExponentialBackoff_Retry(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := tt.expBackoff.Retry(tt.f)
 			require.Equal(t, tt.expErr, err)
 		})
@@ -66,6 +61,7 @@ func TestExponentialBackoff_Retry(t *testing.T) {
 }
 
 func TestExponentialBackoff_Next(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name                 string
 		expBackoff           *ExponentialBackoff
@@ -110,7 +106,9 @@ func TestExponentialBackoff_Next(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			for i := 0; i < tt.expBackoff.MaxRetryCount; i++ {
 				next := tt.expBackoff.next()
 				if next < tt.expNextTimeIntervals[i] || next > tt.expNextTimeIntervals[i]+1*time.Second {

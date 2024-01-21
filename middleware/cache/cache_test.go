@@ -116,7 +116,7 @@ func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
 	app.Use(New())
 
 	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString(c.Query("id", "1"))
+		return c.SendString(fiber.Query(c, "id", "1"))
 	})
 
 	// Request id = 1
@@ -184,7 +184,7 @@ func Test_Cache_WithETagAndNoCacheRequestDirective(t *testing.T) {
 	)
 
 	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString(c.Query("id", "1"))
+		return c.SendString(fiber.Query(c, "id", "1"))
 	})
 
 	// Request id = 1
@@ -247,7 +247,7 @@ func Test_Cache_WithNoStoreRequestDirective(t *testing.T) {
 	app.Use(New())
 
 	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString(c.Query("id", "1"))
+		return c.SendString(fiber.Query(c, "id", "1"))
 	})
 
 	// Request id = 2
@@ -335,11 +335,11 @@ func Test_Cache_Get(t *testing.T) {
 	app.Use(New())
 
 	app.Post("/", func(c fiber.Ctx) error {
-		return c.SendString(c.Query("cache"))
+		return c.SendString(fiber.Query[string](c, "cache"))
 	})
 
 	app.Get("/get", func(c fiber.Ctx) error {
-		return c.SendString(c.Query("cache"))
+		return c.SendString(fiber.Query[string](c, "cache"))
 	})
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/?cache=123", nil))
@@ -377,11 +377,11 @@ func Test_Cache_Post(t *testing.T) {
 	}))
 
 	app.Post("/", func(c fiber.Ctx) error {
-		return c.SendString(c.Query("cache"))
+		return c.SendString(fiber.Query[string](c, "cache"))
 	})
 
 	app.Get("/get", func(c fiber.Ctx) error {
-		return c.SendString(c.Query("cache"))
+		return c.SendString(fiber.Query[string](c, "cache"))
 	})
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/?cache=123", nil))
@@ -467,14 +467,14 @@ func Test_Cache_CustomNext(t *testing.T) {
 	bodyCached, err := io.ReadAll(respCached.Body)
 	require.NoError(t, err)
 	require.True(t, bytes.Equal(body, bodyCached))
-	require.True(t, respCached.Header.Get(fiber.HeaderCacheControl) != "")
+	require.NotEmpty(t, respCached.Header.Get(fiber.HeaderCacheControl))
 
 	_, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/error", nil))
 	require.NoError(t, err)
 
 	errRespCached, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/error", nil))
 	require.NoError(t, err)
-	require.True(t, errRespCached.Header.Get(fiber.HeaderCacheControl) == "")
+	require.Empty(t, errRespCached.Header.Get(fiber.HeaderCacheControl))
 }
 
 func Test_CustomKey(t *testing.T) {
@@ -589,7 +589,7 @@ func Test_CacheHeader(t *testing.T) {
 	})
 
 	app.Post("/", func(c fiber.Ctx) error {
-		return c.SendString(c.Query("cache"))
+		return c.SendString(fiber.Query[string](c, "cache"))
 	})
 
 	app.Get("/error", func(c fiber.Ctx) error {
@@ -650,7 +650,7 @@ func Test_Cache_WithHeadThenGet(t *testing.T) {
 	app.Use(New())
 
 	handler := func(c fiber.Ctx) error {
-		return c.SendString(c.Query("cache"))
+		return c.SendString(fiber.Query[string](c, "cache"))
 	}
 	app.Route("/").Get(handler).Head(handler)
 
@@ -809,7 +809,7 @@ func Benchmark_Cache(b *testing.B) {
 	}
 
 	require.Equal(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
-	require.True(b, len(fctx.Response.Body()) > 30000)
+	require.Greater(b, len(fctx.Response.Body()), 30000)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Cache_Storage -benchmem -count=4
@@ -839,7 +839,7 @@ func Benchmark_Cache_Storage(b *testing.B) {
 	}
 
 	require.Equal(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
-	require.True(b, len(fctx.Response.Body()) > 30000)
+	require.Greater(b, len(fctx.Response.Body()), 30000)
 }
 
 func Benchmark_Cache_AdditionalHeaders(b *testing.B) {

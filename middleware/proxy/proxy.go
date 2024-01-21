@@ -105,12 +105,10 @@ var client = &fasthttp.Client{
 
 var lock sync.RWMutex
 
-// WithTlsConfig update http client with a user specified tls.config
+// WithTLSConfig update http client with a user specified tls.config
 // This function should be called before Do and Forward.
 // Deprecated: use WithClient instead.
-//
-//nolint:stylecheck,revive // TODO: Rename to "WithTLSConfig" in v3
-func WithTlsConfig(tlsConfig *tls.Config) {
+func WithTLSConfig(tlsConfig *tls.Config) {
 	client.TLSConfig = tlsConfig
 }
 

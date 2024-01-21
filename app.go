@@ -23,7 +23,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gofiber/fiber/v2/log"
+	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 
 	"github.com/valyala/fasthttp"
@@ -374,6 +374,13 @@ type Config struct {
 	//
 	// Optional. Default: DefaultMethods
 	RequestMethods []string
+
+	// EnableSplittingOnParsers splits the query/body/header parameters by comma when it's true.
+	// For example, you can use it to parse multiple values from a query parameter like this:
+	//   /api?foo=bar,baz == foo[]=bar&foo[]=baz
+	//
+	// Optional. Default: false
+	EnableSplittingOnParsers bool `json:"enable_splitting_on_parsers"`
 }
 
 // Static defines configuration options when defining static assets.
@@ -602,9 +609,11 @@ func (app *App) Name(name string) Router {
 
 	for _, routes := range app.stack {
 		for _, route := range routes {
-			if route.Path == app.latestRoute.path {
-				route.Name = name
+			isMethodValid := route.Method == app.latestRoute.Method || app.latestRoute.use ||
+				(app.latestRoute.Method == MethodGet && route.Method == MethodHead)
 
+			if route.Path == app.latestRoute.Path && isMethodValid {
+				route.Name = name
 				if route.group != nil {
 					route.Name = route.group.name + route.Name
 				}

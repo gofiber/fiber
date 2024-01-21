@@ -1,31 +1,44 @@
 ## Description
 
-Please include a summary of the change and which issue is fixed. Please also include relevant motivation and context. List any dependencies that are required for this change. 
-Explain the *details* for making this change. What existing problem does the pull request solve?
+Please provide a clear and concise description of the changes you've made and the problem they address. Include the purpose of the change, any relevant issues it solves, and the benefits it brings to the project. If this change introduces new features or adjustments, highlight them here.
 
-Fixes # (issue)
+Related to # (issue)
 
-## Type of change
+## Changes Introduced
+
+List the new features or adjustments introduced in this pull request. Provide details on benchmarks, documentation updates, changelog entries, and if applicable, the migration guide.
+
+- [ ] Benchmarks: Describe any performance benchmarks and improvements related to the changes.
+- [ ] Documentation Update: Detail the updates made to the documentation and links to the changed files.
+- [ ] Changelog/What's New: Include a summary of the additions for the upcoming release notes.
+- [ ] Migration Guide: If necessary, provide a guide or steps for users to migrate their existing code to accommodate these changes.
+- [ ] API Alignment with Express: Explain how the changes align with the Express API.
+- [ ] API Longevity: Discuss the steps taken to ensure that the new or updated APIs are consistent and not prone to breaking changes.
+- [ ] Examples: Provide examples demonstrating the new features or changes in action.
+
+## Type of Change
 
 Please delete options that are not relevant.
 
-- [ ] Bug fix (non-breaking change which fixes an issue)
 - [ ] New feature (non-breaking change which adds functionality)
-- [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
-- [ ] This change requires a documentation update
+- [ ] Enhancement (improvement to existing features and functionality)
+- [ ] Documentation update (changes to documentation)
+- [ ] Performance improvement (non-breaking change which improves efficiency)
+- [ ] Code consistency (non-breaking change which improves code reliability and robustness)
 
-## Checklist:
+## Checklist
 
-- [ ] For new functionalities I follow the inspiration of the express js framework and built them similar in usage
-- [ ] I have performed a self-review of my own code
-- [ ] I have commented my code, particularly in hard-to-understand areas
-- [ ] I have made corresponding changes to the documentation - /docs/ directory for https://docs.gofiber.io/
-- [ ] I have added tests that prove my fix is effective or that my feature works
-- [ ] New and existing unit tests pass locally with my changes
-- [ ] If new dependencies exist, I have checked that they are really necessary and agreed with the maintainers/community (we want to have as few dependencies as possible)
-- [ ] I tried to make my code as fast as possible with as few allocations as possible
-- [ ] For new code I have written benchmarks so that they can be analyzed and improved
+Before you submit your pull request, please make sure you meet these requirements:
 
-## Commit formatting:
+- [ ] Followed the inspiration of the Express.js framework for new functionalities, making them similar in usage.
+- [ ] Conducted a self-review of the code and provided comments for complex or critical parts.
+- [ ] Updated the documentation in the `/docs/` directory for [Fiber's documentation](https://docs.gofiber.io/).
+- [ ] Added or updated unit tests to validate the effectiveness of the changes or new features.
+- [ ] Ensured that new and existing unit tests pass locally with the changes.
+- [ ] Verified that any new dependencies are essential and have been agreed upon by the maintainers/community.
+- [ ] Aimed for optimal performance with minimal allocations in the new code.
+- [ ] Provided benchmarks for the new code to analyze and improve upon.
 
-Use emojis on commit messages so it provides an easy way of identifying the purpose or intention of a commit. Check out the emoji cheatsheet here: https://gitmoji.carloscuesta.me/
+## Commit Formatting
+
+Please use emojis in commit messages for an easy way to identify the purpose or intention of a commit. Check out the emoji cheatsheet here: [CONTRIBUTING.md](https://github.com/gofiber/fiber/blob/master/.github/CONTRIBUTING.md#pull-requests-or-commits)
