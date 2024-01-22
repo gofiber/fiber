@@ -25,14 +25,14 @@ import (
 func Test_Listen(t *testing.T) {
 	app := New()
 
-	require.False(t, app.Listen(":99999") == nil)
+	require.Error(t, app.Listen(":99999"))
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.Nil(t, app.Shutdown())
+		require.NoError(t, app.Shutdown())
 	}()
 
-	require.Nil(t, app.Listen(":4003", ListenConfig{DisableStartupMessage: true}))
+	require.NoError(t, app.Listen(":4003", ListenConfig{DisableStartupMessage: true}))
 }
 
 // go test -run Test_Listen_Graceful_Shutdown
@@ -103,7 +103,7 @@ func Test_Listen_Prefork(t *testing.T) {
 
 	app := New()
 
-	require.Nil(t, app.Listen(":99999", ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
+	require.NoError(t, app.Listen(":99999", ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
 }
 
 // go test -run Test_Listen_TLS
@@ -111,17 +111,17 @@ func Test_Listen_TLS(t *testing.T) {
 	app := New()
 
 	// invalid port
-	require.False(t, app.Listen(":99999", ListenConfig{
+	require.Error(t, app.Listen(":99999", ListenConfig{
 		CertFile:    "./.github/testdata/ssl.pem",
 		CertKeyFile: "./.github/testdata/ssl.key",
-	}) == nil)
+	}))
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.Nil(t, app.Shutdown())
+		require.NoError(t, app.Shutdown())
 	}()
 
-	require.Nil(t, app.Listen(":0", ListenConfig{
+	require.NoError(t, app.Listen(":0", ListenConfig{
 		CertFile:    "./.github/testdata/ssl.pem",
 		CertKeyFile: "./.github/testdata/ssl.key",
 	}))
@@ -134,19 +134,19 @@ func Test_Listen_TLS_Prefork(t *testing.T) {
 	app := New()
 
 	// invalid key file content
-	require.False(t, app.Listen(":0", ListenConfig{
+	require.Error(t, app.Listen(":0", ListenConfig{
 		DisableStartupMessage: true,
 		EnablePrefork:         true,
 		CertFile:              "./.github/testdata/ssl.pem",
 		CertKeyFile:           "./.github/testdata/template.tmpl",
-	}) == nil)
+	}))
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.Nil(t, app.Shutdown())
+		require.NoError(t, app.Shutdown())
 	}()
 
-	require.Nil(t, app.Listen(":99999", ListenConfig{
+	require.NoError(t, app.Listen(":99999", ListenConfig{
 		DisableStartupMessage: true,
 		EnablePrefork:         true,
 		CertFile:              "./.github/testdata/ssl.pem",
@@ -159,18 +159,18 @@ func Test_Listen_MutualTLS(t *testing.T) {
 	app := New()
 
 	// invalid port
-	require.False(t, app.Listen(":99999", ListenConfig{
+	require.Error(t, app.Listen(":99999", ListenConfig{
 		CertFile:       "./.github/testdata/ssl.pem",
 		CertKeyFile:    "./.github/testdata/ssl.key",
 		CertClientFile: "./.github/testdata/ca-chain.cert.pem",
-	}) == nil)
+	}))
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.Nil(t, app.Shutdown())
+		require.NoError(t, app.Shutdown())
 	}()
 
-	require.Nil(t, app.Listen(":0", ListenConfig{
+	require.NoError(t, app.Listen(":0", ListenConfig{
 		CertFile:       "./.github/testdata/ssl.pem",
 		CertKeyFile:    "./.github/testdata/ssl.key",
 		CertClientFile: "./.github/testdata/ca-chain.cert.pem",
@@ -184,20 +184,20 @@ func Test_Listen_MutualTLS_Prefork(t *testing.T) {
 	app := New()
 
 	// invalid key file content
-	require.False(t, app.Listen(":0", ListenConfig{
+	require.Error(t, app.Listen(":0", ListenConfig{
 		DisableStartupMessage: true,
 		EnablePrefork:         true,
 		CertFile:              "./.github/testdata/ssl.pem",
 		CertKeyFile:           "./.github/testdata/template.html",
 		CertClientFile:        "./.github/testdata/ca-chain.cert.pem",
-	}) == nil)
+	}))
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.Nil(t, app.Shutdown())
+		require.NoError(t, app.Shutdown())
 	}()
 
-	require.Nil(t, app.Listen(":99999", ListenConfig{
+	require.NoError(t, app.Listen(":99999", ListenConfig{
 		DisableStartupMessage: true,
 		EnablePrefork:         true,
 		CertFile:              "./.github/testdata/ssl.pem",
@@ -212,11 +212,11 @@ func Test_Listener(t *testing.T) {
 
 	go func() {
 		time.Sleep(500 * time.Millisecond)
-		require.Nil(t, app.Shutdown())
+		require.NoError(t, app.Shutdown())
 	}()
 
 	ln := fasthttputil.NewInmemoryListener()
-	require.Nil(t, app.Listener(ln))
+	require.NoError(t, app.Listener(ln))
 }
 
 func Test_App_Listener_TLS_Listener(t *testing.T) {
@@ -237,10 +237,10 @@ func Test_App_Listener_TLS_Listener(t *testing.T) {
 
 	go func() {
 		time.Sleep(time.Millisecond * 500)
-		require.Nil(t, app.Shutdown())
+		require.NoError(t, app.Shutdown())
 	}()
 
-	require.Nil(t, app.Listener(ln))
+	require.NoError(t, app.Listener(ln))
 }
 
 // go test -run Test_Listen_TLSConfigFunc
@@ -250,10 +250,10 @@ func Test_Listen_TLSConfigFunc(t *testing.T) {
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.Nil(t, app.Shutdown())
+		require.NoError(t, app.Shutdown())
 	}()
 
-	require.Nil(t, app.Listen(":0", ListenConfig{
+	require.NoError(t, app.Listen(":0", ListenConfig{
 		DisableStartupMessage: true,
 		TLSConfigFunc: func(tlsConfig *tls.Config) {
 			callTLSConfig = true
@@ -272,10 +272,10 @@ func Test_Listen_ListenerAddrFunc(t *testing.T) {
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.Nil(t, app.Shutdown())
+		require.NoError(t, app.Shutdown())
 	}()
 
-	require.Nil(t, app.Listen(":0", ListenConfig{
+	require.NoError(t, app.Listen(":0", ListenConfig{
 		DisableStartupMessage: true,
 		ListenerAddrFunc: func(addr net.Addr) {
 			network = addr.Network()
@@ -294,19 +294,20 @@ func Test_Listen_BeforeServeFunc(t *testing.T) {
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.Nil(t, app.Shutdown())
+		require.NoError(t, app.Shutdown())
 	}()
 
-	require.Equal(t, errors.New("test"), app.Listen(":0", ListenConfig{
+	wantErr := errors.New("test")
+	require.ErrorIs(t, app.Listen(":0", ListenConfig{
 		DisableStartupMessage: true,
 		BeforeServeFunc: func(fiber *App) error {
 			handlers = fiber.HandlersCount()
 
-			return errors.New("test")
+			return wantErr
 		},
-	}))
+	}), wantErr)
 
-	require.Equal(t, uint32(0), handlers)
+	require.Zero(t, handlers)
 }
 
 // go test -run Test_Listen_ListenerNetwork
@@ -316,10 +317,10 @@ func Test_Listen_ListenerNetwork(t *testing.T) {
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.Nil(t, app.Shutdown())
+		require.NoError(t, app.Shutdown())
 	}()
 
-	require.Nil(t, app.Listen(":0", ListenConfig{
+	require.NoError(t, app.Listen(":0", ListenConfig{
 		DisableStartupMessage: true,
 		ListenerNetwork:       NetworkTCP6,
 		ListenerAddrFunc: func(addr net.Addr) {
@@ -327,14 +328,14 @@ func Test_Listen_ListenerNetwork(t *testing.T) {
 		},
 	}))
 
-	require.True(t, strings.Contains(network, "[::]:"))
+	require.Contains(t, network, "[::]:")
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.Nil(t, app.Shutdown())
+		require.NoError(t, app.Shutdown())
 	}()
 
-	require.Nil(t, app.Listen(":0", ListenConfig{
+	require.NoError(t, app.Listen(":0", ListenConfig{
 		DisableStartupMessage: true,
 		ListenerNetwork:       NetworkTCP4,
 		ListenerAddrFunc: func(addr net.Addr) {
@@ -342,7 +343,7 @@ func Test_Listen_ListenerNetwork(t *testing.T) {
 		},
 	}))
 
-	require.True(t, strings.Contains(network, "0.0.0.0:"))
+	require.Contains(t, network, "0.0.0.0:")
 }
 
 // go test -run Test_Listen_Master_Process_Show_Startup_Message
@@ -356,11 +357,11 @@ func Test_Listen_Master_Process_Show_Startup_Message(t *testing.T) {
 			startupMessage(":3000", true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10), cfg)
 	})
 	colors := Colors{}
-	require.True(t, strings.Contains(startupMessage, "https://127.0.0.1:3000"))
-	require.True(t, strings.Contains(startupMessage, "(bound on host 0.0.0.0 and port 3000)"))
-	require.True(t, strings.Contains(startupMessage, "Child PIDs"))
-	require.True(t, strings.Contains(startupMessage, "11111, 22222, 33333, 44444, 55555, 60000"))
-	require.True(t, strings.Contains(startupMessage, fmt.Sprintf("Prefork: %sEnabled%s", colors.Blue, colors.Reset)))
+	require.Contains(t, startupMessage, "https://127.0.0.1:3000")
+	require.Contains(t, startupMessage, "(bound on host 0.0.0.0 and port 3000)")
+	require.Contains(t, startupMessage, "Child PIDs")
+	require.Contains(t, startupMessage, "11111, 22222, 33333, 44444, 55555, 60000")
+	require.Contains(t, startupMessage, fmt.Sprintf("Prefork: %sEnabled%s", colors.Blue, colors.Reset))
 }
 
 // go test -run Test_Listen_Master_Process_Show_Startup_MessageWithAppName
@@ -374,7 +375,7 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
 		app.startupMessage(":3000", true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10), cfg)
 	})
 	require.Equal(t, "Test App v3.0.0", app.Config().AppName)
-	require.True(t, strings.Contains(startupMessage, app.Config().AppName))
+	require.Contains(t, startupMessage, app.Config().AppName)
 }
 
 // go test -run Test_Listen_Master_Process_Show_Startup_MessageWithAppNameNonAscii
@@ -389,7 +390,7 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithAppNameNonAscii(t *testi
 	startupMessage := captureOutput(func() {
 		app.startupMessage(":3000", false, "", cfg)
 	})
-	require.True(t, strings.Contains(startupMessage, "Serveur de vérification des données"))
+	require.Contains(t, startupMessage, "Serveur de vérification des données")
 }
 
 // go test -run Test_Listen_Master_Process_Show_Startup_MessageWithDisabledPreforkAndCustomEndpoint
@@ -404,10 +405,10 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithDisabledPreforkAndCustom
 		app.startupMessage("server.com:8081", true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 5), cfg)
 	})
 	colors := Colors{}
-	require.True(t, strings.Contains(startupMessage, fmt.Sprintf("%sINFO%s", colors.Green, colors.Reset)))
-	require.True(t, strings.Contains(startupMessage, fmt.Sprintf("%s%s%s", colors.Blue, appName, colors.Reset)))
-	require.True(t, strings.Contains(startupMessage, fmt.Sprintf("%s%s%s", colors.Blue, "https://server.com:8081", colors.Reset)))
-	require.True(t, strings.Contains(startupMessage, fmt.Sprintf("Prefork: %sDisabled%s", colors.Red, colors.Reset)))
+	require.Contains(t, startupMessage, fmt.Sprintf("%sINFO%s", colors.Green, colors.Reset))
+	require.Contains(t, startupMessage, fmt.Sprintf("%s%s%s", colors.Blue, appName, colors.Reset))
+	require.Contains(t, startupMessage, fmt.Sprintf("%s%s%s", colors.Blue, "https://server.com:8081", colors.Reset))
+	require.Contains(t, startupMessage, fmt.Sprintf("Prefork: %sDisabled%s", colors.Red, colors.Reset))
 }
 
 // go test -run Test_Listen_Print_Route
@@ -417,10 +418,10 @@ func Test_Listen_Print_Route(t *testing.T) {
 	printRoutesMessage := captureOutput(func() {
 		app.printRoutesMessage()
 	})
-	require.True(t, strings.Contains(printRoutesMessage, MethodGet))
-	require.True(t, strings.Contains(printRoutesMessage, "/"))
-	require.True(t, strings.Contains(printRoutesMessage, "emptyHandler"))
-	require.True(t, strings.Contains(printRoutesMessage, "routeName"))
+	require.Contains(t, printRoutesMessage, MethodGet)
+	require.Contains(t, printRoutesMessage, "/")
+	require.Contains(t, printRoutesMessage, "emptyHandler")
+	require.Contains(t, printRoutesMessage, "routeName")
 }
 
 // go test -run Test_Listen_Print_Route_With_Group
@@ -437,14 +438,14 @@ func Test_Listen_Print_Route_With_Group(t *testing.T) {
 		app.printRoutesMessage()
 	})
 
-	require.True(t, strings.Contains(printRoutesMessage, MethodGet))
-	require.True(t, strings.Contains(printRoutesMessage, "/"))
-	require.True(t, strings.Contains(printRoutesMessage, "emptyHandler"))
-	require.True(t, strings.Contains(printRoutesMessage, "/v1/test"))
-	require.True(t, strings.Contains(printRoutesMessage, "POST"))
-	require.True(t, strings.Contains(printRoutesMessage, "/v1/test/fiber"))
-	require.True(t, strings.Contains(printRoutesMessage, "PUT"))
-	require.True(t, strings.Contains(printRoutesMessage, "/v1/test/fiber/*"))
+	require.Contains(t, printRoutesMessage, MethodGet)
+	require.Contains(t, printRoutesMessage, "/")
+	require.Contains(t, printRoutesMessage, "emptyHandler")
+	require.Contains(t, printRoutesMessage, "/v1/test")
+	require.Contains(t, printRoutesMessage, "POST")
+	require.Contains(t, printRoutesMessage, "/v1/test/fiber")
+	require.Contains(t, printRoutesMessage, "PUT")
+	require.Contains(t, printRoutesMessage, "/v1/test/fiber/*")
 }
 
 func captureOutput(f func()) string {

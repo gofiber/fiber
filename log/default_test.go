@@ -62,14 +62,16 @@ func Test_DefaultFormatLogger(t *testing.T) {
 	Infof("starting %s", work)
 	Warnf("%s may fail", work)
 	Errorf("%s failed", work)
-	Panicf("%s panic", work)
+
+	require.Panics(t, func() {
+		Panicf("%s panic", work)
+	})
 
 	require.Equal(t, "[Trace] trace work\n"+
 		"[Debug] received work order\n"+
 		"[Info] starting work\n"+
 		"[Warn] work may fail\n"+
-		"[Error] work failed\n"+
-		"[Panic] work panic\n", string(w.b))
+		"[Error] work failed\n", string(w.b))
 }
 
 func Test_CtxLogger(t *testing.T) {
@@ -85,14 +87,16 @@ func Test_CtxLogger(t *testing.T) {
 	WithContext(ctx).Infof("starting %s", work)
 	WithContext(ctx).Warnf("%s may fail", work)
 	WithContext(ctx).Errorf("%s failed", work)
-	WithContext(ctx).Panicf("%s panic", work)
+
+	require.Panics(t, func() {
+		WithContext(ctx).Panicf("%s panic", work)
+	})
 
 	require.Equal(t, "[Trace] trace work\n"+
 		"[Debug] received work order\n"+
 		"[Info] starting work\n"+
 		"[Warn] work may fail\n"+
-		"[Error] work failed\n"+
-		"[Panic] work panic\n", string(w.b))
+		"[Error] work failed\n", string(w.b))
 }
 
 func Test_LogfKeyAndValues(t *testing.T) {
@@ -172,7 +176,7 @@ func Test_WithContextCaller(t *testing.T) {
 	WithContext(ctx).Info("")
 	Info("")
 
-	require.Equal(t, "default_test.go:169: [Info] \ndefault_test.go:170: [Info] \n", string(w.b))
+	require.Equal(t, "default_test.go:176: [Info] \ndefault_test.go:177: [Info] \n", string(w.b))
 }
 
 func Test_SetLevel(t *testing.T) {

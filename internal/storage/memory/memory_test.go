@@ -69,7 +69,7 @@ func Test_Storage_Memory_Get_Expired(t *testing.T) {
 
 	result, err := testStore.Get(key)
 	require.NoError(t, err)
-	require.Equal(t, true, len(result) == 0)
+	require.Empty(t, result)
 }
 
 func Test_Storage_Memory_Get_NotExist(t *testing.T) {
@@ -77,7 +77,7 @@ func Test_Storage_Memory_Get_NotExist(t *testing.T) {
 
 	result, err := testStore.Get("notexist")
 	require.NoError(t, err)
-	require.Equal(t, true, len(result) == 0)
+	require.Empty(t, result)
 }
 
 func Test_Storage_Memory_Delete(t *testing.T) {
@@ -95,7 +95,7 @@ func Test_Storage_Memory_Delete(t *testing.T) {
 
 	result, err := testStore.Get(key)
 	require.NoError(t, err)
-	require.Equal(t, true, len(result) == 0)
+	require.Empty(t, result)
 }
 
 func Test_Storage_Memory_Reset(t *testing.T) {
@@ -113,11 +113,11 @@ func Test_Storage_Memory_Reset(t *testing.T) {
 
 	result, err := testStore.Get("john1")
 	require.NoError(t, err)
-	require.Equal(t, true, len(result) == 0)
+	require.Empty(t, result)
 
 	result, err = testStore.Get("john2")
 	require.NoError(t, err)
-	require.Equal(t, true, len(result) == 0)
+	require.Empty(t, result)
 }
 
 func Test_Storage_Memory_Close(t *testing.T) {
@@ -127,7 +127,7 @@ func Test_Storage_Memory_Close(t *testing.T) {
 
 func Test_Storage_Memory_Conn(t *testing.T) {
 	t.Parallel()
-	require.True(t, testStore.Conn() != nil)
+	require.NotNil(t, testStore.Conn())
 }
 
 // go test -v -run=^$ -bench=Benchmark_Storage_Memory -benchmem -count=4

@@ -326,8 +326,8 @@ func Test_Redirect_Request(t *testing.T) {
 		req.SetRequestURI("http://example.com" + tc.URL)
 		req.Header.SetCookie(FlashCookieName, tc.CookieValue)
 		err := client.DoRedirects(req, resp, 1)
-		require.NoError(t, err)
 
+		require.NoError(t, err)
 		require.Equal(t, tc.ExpectedBody, string(resp.Body()))
 		require.Equal(t, tc.ExpectedStatusCode, resp.StatusCode())
 	}
