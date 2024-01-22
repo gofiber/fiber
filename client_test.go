@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/gofiber/fiber/v3/internal/tlstest"
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
@@ -35,7 +37,7 @@ func Test_Client_Invalid_URL(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, app.Listener(ln, ListenConfig{
+		require.NoError(t, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -47,8 +49,9 @@ func Test_Client_Invalid_URL(t *testing.T) {
 	_, body, errs := a.String()
 
 	require.Equal(t, "", body)
-	require.Equal(t, 1, len(errs))
-	require.Equal(t, "missing required Host header in request", errs[0].Error())
+	require.Len(t, errs, 1)
+	require.Error(t, errs[0],
+		`Expected error "missing required Host header in request"`)
 }
 
 func Test_Client_Unsupported_Protocol(t *testing.T) {
@@ -59,9 +62,8 @@ func Test_Client_Unsupported_Protocol(t *testing.T) {
 	_, body, errs := a.String()
 
 	require.Equal(t, "", body)
-	require.Equal(t, 1, len(errs))
-	require.Equal(t, `unsupported protocol "ftp". http and https are supported`,
-		errs[0].Error())
+	require.Len(t, errs, 1)
+	require.ErrorContains(t, errs[0], `unsupported protocol "ftp". http and https are supported`)
 }
 
 func Test_Client_Get(t *testing.T) {
@@ -76,7 +78,7 @@ func Test_Client_Get(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, app.Listener(ln, ListenConfig{
+		require.NoError(t, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -90,7 +92,7 @@ func Test_Client_Get(t *testing.T) {
 
 		require.Equal(t, StatusOK, code)
 		require.Equal(t, "example.com", body)
-		require.Equal(t, 0, len(errs))
+		require.Empty(t, errs)
 	}
 }
 
@@ -106,7 +108,7 @@ func Test_Client_Head(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, app.Listener(ln, ListenConfig{
+		require.NoError(t, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -119,7 +121,7 @@ func Test_Client_Head(t *testing.T) {
 
 		require.Equal(t, StatusAccepted, code)
 		require.Equal(t, "", body)
-		require.Equal(t, 0, len(errs))
+		require.Empty(t, errs)
 	}
 }
 
@@ -136,7 +138,7 @@ func Test_Client_Post(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, app.Listener(ln, ListenConfig{
+		require.NoError(t, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -155,7 +157,7 @@ func Test_Client_Post(t *testing.T) {
 
 		require.Equal(t, StatusCreated, code)
 		require.Equal(t, "bar", body)
-		require.Equal(t, 0, len(errs))
+		require.Empty(t, errs)
 
 		ReleaseArgs(args)
 	}
@@ -173,7 +175,7 @@ func Test_Client_Put(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, app.Listener(ln, ListenConfig{
+		require.NoError(t, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -192,7 +194,7 @@ func Test_Client_Put(t *testing.T) {
 
 		require.Equal(t, StatusOK, code)
 		require.Equal(t, "bar", body)
-		require.Equal(t, 0, len(errs))
+		require.Empty(t, errs)
 
 		ReleaseArgs(args)
 	}
@@ -210,7 +212,7 @@ func Test_Client_Patch(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, nil, app.Listener(ln, ListenConfig{
+		require.NoError(t, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -229,7 +231,7 @@ func Test_Client_Patch(t *testing.T) {
 
 		require.Equal(t, StatusOK, code)
 		require.Equal(t, "bar", body)
-		require.Equal(t, 0, len(errs))
+		require.Empty(t, errs)
 
 		ReleaseArgs(args)
 	}
@@ -248,7 +250,7 @@ func Test_Client_Delete(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, app.Listener(ln, ListenConfig{
+		require.NoError(t, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -264,7 +266,7 @@ func Test_Client_Delete(t *testing.T) {
 
 		require.Equal(t, StatusNoContent, code)
 		require.Equal(t, "", body)
-		require.Equal(t, 0, len(errs))
+		require.Empty(t, errs)
 
 		ReleaseArgs(args)
 	}
@@ -282,7 +284,7 @@ func Test_Client_UserAgent(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, nil, app.Listener(ln, ListenConfig{
+		require.NoError(t, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -298,7 +300,7 @@ func Test_Client_UserAgent(t *testing.T) {
 
 			require.Equal(t, StatusOK, code)
 			require.Equal(t, defaultUserAgent, body)
-			require.Equal(t, 0, len(errs))
+			require.Empty(t, errs)
 		}
 	})
 
@@ -316,7 +318,7 @@ func Test_Client_UserAgent(t *testing.T) {
 
 			require.Equal(t, StatusOK, code)
 			require.Equal(t, "ua", body)
-			require.Equal(t, 0, len(errs))
+			require.Empty(t, errs)
 			ReleaseClient(c)
 		}
 	})
@@ -438,7 +440,7 @@ func Test_Client_Agent_Host(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, app.Listener(ln, ListenConfig{
+		require.NoError(t, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -455,7 +457,7 @@ func Test_Client_Agent_Host(t *testing.T) {
 
 	require.Equal(t, StatusOK, code)
 	require.Equal(t, "example.com", body)
-	require.Equal(t, 0, len(errs))
+	require.Empty(t, errs)
 }
 
 func Test_Client_Agent_QueryString(t *testing.T) {
@@ -543,7 +545,7 @@ func Test_Client_Agent_Custom_Response(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, app.Listener(ln, ListenConfig{
+		require.NoError(t, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -556,7 +558,7 @@ func Test_Client_Agent_Custom_Response(t *testing.T) {
 		req.Header.SetMethod(MethodGet)
 		req.SetRequestURI("http://example.com")
 
-		require.Nil(t, a.Parse())
+		require.NoError(t, a.Parse())
 
 		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
 
@@ -566,7 +568,7 @@ func Test_Client_Agent_Custom_Response(t *testing.T) {
 		require.Equal(t, StatusOK, code)
 		require.Equal(t, "custom", body)
 		require.Equal(t, "custom", string(resp.Body()))
-		require.Equal(t, 0, len(errs))
+		require.Empty(t, errs)
 
 		ReleaseResponse(resp)
 	}
@@ -584,7 +586,7 @@ func Test_Client_Agent_Dest(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, nil, app.Listener(ln, ListenConfig{
+		require.NoError(t, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -602,7 +604,7 @@ func Test_Client_Agent_Dest(t *testing.T) {
 		require.Equal(t, StatusOK, code)
 		require.Equal(t, "dest", body)
 		require.Equal(t, "de", string(dest))
-		require.Equal(t, 0, len(errs))
+		require.Empty(t, errs)
 	})
 
 	t.Run("enough dest", func(t *testing.T) {
@@ -618,7 +620,7 @@ func Test_Client_Agent_Dest(t *testing.T) {
 		require.Equal(t, StatusOK, code)
 		require.Equal(t, "dest", body)
 		require.Equal(t, "destar", string(dest))
-		require.Equal(t, 0, len(errs))
+		require.Empty(t, errs)
 	})
 }
 
@@ -663,7 +665,7 @@ func Test_Client_Agent_RetryIf(t *testing.T) {
 	app := New()
 
 	go func() {
-		require.Nil(t, app.Listener(ln, ListenConfig{
+		require.NoError(t, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -691,8 +693,8 @@ func Test_Client_Agent_RetryIf(t *testing.T) {
 	}
 
 	_, _, errs := a.String()
-	require.Equal(t, dialsCount, 4)
-	require.Equal(t, 0, len(errs))
+	require.Equal(t, 4, dialsCount)
+	require.Empty(t, errs)
 }
 
 func Test_Client_Agent_Json(t *testing.T) {
@@ -733,8 +735,9 @@ func Test_Client_Agent_Json_Error(t *testing.T) {
 	_, body, errs := a.String()
 
 	require.Equal(t, "", body)
-	require.Equal(t, 1, len(errs))
-	require.Equal(t, "json: unsupported type: complex128", errs[0].Error())
+	require.Len(t, errs, 1)
+	wantErr := new(json.UnsupportedTypeError)
+	require.ErrorAs(t, errs[0], &wantErr)
 }
 
 func Test_Client_Agent_XML(t *testing.T) {
@@ -758,10 +761,10 @@ func Test_Client_Agent_XML_Error(t *testing.T) {
 		XML(complex(1, 1))
 
 	_, body, errs := a.String()
-
 	require.Equal(t, "", body)
-	require.Equal(t, 1, len(errs))
-	require.Equal(t, "xml: unsupported type: complex128", errs[0].Error())
+	require.Len(t, errs, 1)
+	wantErr := new(xml.UnsupportedTypeError)
+	require.ErrorAs(t, errs[0], &wantErr)
 }
 
 func Test_Client_Agent_Form(t *testing.T) {
@@ -803,7 +806,7 @@ func Test_Client_Agent_MultipartForm(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, nil, app.Listener(ln, ListenConfig{
+		require.NoError(t, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -822,7 +825,7 @@ func Test_Client_Agent_MultipartForm(t *testing.T) {
 
 	require.Equal(t, StatusOK, code)
 	require.Equal(t, "--myBoundary\r\nContent-Disposition: form-data; name=\"foo\"\r\n\r\nbar\r\n--myBoundary--\r\n", body)
-	require.Equal(t, 0, len(errs))
+	require.Empty(t, errs)
 	ReleaseArgs(args)
 }
 
@@ -840,7 +843,7 @@ func Test_Client_Agent_MultipartForm_Errors(t *testing.T) {
 	a.FileData(ff1, ff2).
 		MultipartForm(args)
 
-	require.Equal(t, 4, len(a.errs))
+	require.Len(t, a.errs, 4)
 	ReleaseArgs(args)
 }
 
@@ -856,7 +859,7 @@ func Test_Client_Agent_MultipartForm_SendFiles(t *testing.T) {
 
 		fh1, err := c.FormFile("field1")
 		require.NoError(t, err)
-		require.Equal(t, fh1.Filename, "name")
+		require.Equal(t, "name", fh1.Filename)
 		buf := make([]byte, fh1.Size)
 		f, err := fh1.Open()
 		require.NoError(t, err)
@@ -880,7 +883,7 @@ func Test_Client_Agent_MultipartForm_SendFiles(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, nil, app.Listener(ln, ListenConfig{
+		require.NoError(t, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -903,7 +906,7 @@ func Test_Client_Agent_MultipartForm_SendFiles(t *testing.T) {
 
 		require.Equal(t, StatusOK, code)
 		require.Equal(t, "multipart form files", body)
-		require.Equal(t, 0, len(errs))
+		require.Empty(t, errs)
 
 		ReleaseFormFile(ff)
 	}
@@ -948,8 +951,8 @@ func Test_Client_Agent_Multipart_Invalid_Boundary(t *testing.T) {
 		Boundary("*").
 		MultipartForm(nil)
 
-	require.Equal(t, 1, len(a.errs))
-	require.Equal(t, "mime: invalid boundary character", a.errs[0].Error())
+	require.Len(t, a.errs, 1)
+	require.ErrorContains(t, a.errs[0], "mime: invalid boundary character")
 }
 
 func Test_Client_Agent_SendFile_Error(t *testing.T) {
@@ -958,8 +961,8 @@ func Test_Client_Agent_SendFile_Error(t *testing.T) {
 	a := Post("http://example.com").
 		SendFile("non-exist-file!", "")
 
-	require.Equal(t, 1, len(a.errs))
-	require.True(t, strings.Contains(a.errs[0].Error(), "open non-exist-file!"))
+	require.Len(t, a.errs, 1)
+	require.ErrorIs(t, a.errs[0], os.ErrNotExist)
 }
 
 func Test_Client_Debug(t *testing.T) {
@@ -978,12 +981,12 @@ func Test_Client_Debug(t *testing.T) {
 
 	str := output.String()
 
-	require.True(t, strings.Contains(str, "Connected to example.com(InmemoryListener)"))
-	require.True(t, strings.Contains(str, "GET / HTTP/1.1"))
-	require.True(t, strings.Contains(str, "User-Agent: fiber"))
-	require.True(t, strings.Contains(str, "Host: example.com\r\n\r\n"))
-	require.True(t, strings.Contains(str, "HTTP/1.1 200 OK"))
-	require.True(t, strings.Contains(str, "Content-Type: text/plain; charset=utf-8\r\nContent-Length: 5\r\n\r\ndebug"))
+	require.Contains(t, str, "Connected to example.com(InmemoryListener)")
+	require.Contains(t, str, "GET / HTTP/1.1")
+	require.Contains(t, str, "User-Agent: fiber")
+	require.Contains(t, str, "Host: example.com\r\n\r\n")
+	require.Contains(t, str, "HTTP/1.1 200 OK")
+	require.Contains(t, str, "Content-Type: text/plain; charset=utf-8\r\nContent-Length: 5\r\n\r\ndebug")
 }
 
 func Test_Client_Agent_Timeout(t *testing.T) {
@@ -999,7 +1002,7 @@ func Test_Client_Agent_Timeout(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, nil, app.Listener(ln, ListenConfig{
+		require.NoError(t, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -1012,8 +1015,8 @@ func Test_Client_Agent_Timeout(t *testing.T) {
 	_, body, errs := a.String()
 
 	require.Equal(t, "", body)
-	require.Equal(t, 1, len(errs))
-	require.Equal(t, "timeout", errs[0].Error())
+	require.Len(t, errs, 1)
+	require.ErrorIs(t, errs[0], fasthttp.ErrTimeout)
 }
 
 func Test_Client_Agent_Reuse(t *testing.T) {
@@ -1028,7 +1031,7 @@ func Test_Client_Agent_Reuse(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, nil, app.Listener(ln, ListenConfig{
+		require.NoError(t, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -1042,13 +1045,13 @@ func Test_Client_Agent_Reuse(t *testing.T) {
 
 	require.Equal(t, StatusOK, code)
 	require.Equal(t, "reuse", body)
-	require.Equal(t, 0, len(errs))
+	require.Empty(t, errs)
 
 	code, body, errs = a.String()
 
 	require.Equal(t, StatusOK, code)
 	require.Equal(t, "reuse", body)
-	require.Equal(t, 0, len(errs))
+	require.Empty(t, errs)
 }
 
 func Test_Client_Agent_InsecureSkipVerify(t *testing.T) {
@@ -1074,7 +1077,7 @@ func Test_Client_Agent_InsecureSkipVerify(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, nil, app.Listener(ln, ListenConfig{
+		require.NoError(t, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -1084,7 +1087,7 @@ func Test_Client_Agent_InsecureSkipVerify(t *testing.T) {
 		InsecureSkipVerify().
 		String()
 
-	require.Equal(t, 0, len(errs))
+	require.Empty(t, errs)
 	require.Equal(t, StatusOK, code)
 	require.Equal(t, "ignore tls", body)
 }
@@ -1107,7 +1110,7 @@ func Test_Client_Agent_TLS(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, nil, app.Listener(ln, ListenConfig{
+		require.NoError(t, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -1116,7 +1119,7 @@ func Test_Client_Agent_TLS(t *testing.T) {
 		TLSConfig(clientTLSConf).
 		String()
 
-	require.Equal(t, 0, len(errs))
+	require.Empty(t, errs)
 	require.Equal(t, StatusOK, code)
 	require.Equal(t, "tls", body)
 }
@@ -1139,7 +1142,7 @@ func Test_Client_Agent_MaxRedirectsCount(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, nil, app.Listener(ln, ListenConfig{
+		require.NoError(t, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -1155,7 +1158,7 @@ func Test_Client_Agent_MaxRedirectsCount(t *testing.T) {
 
 		require.Equal(t, 200, code)
 		require.Equal(t, "redirect", body)
-		require.Equal(t, 0, len(errs))
+		require.Empty(t, errs)
 	})
 
 	t.Run("error", func(t *testing.T) {
@@ -1168,8 +1171,8 @@ func Test_Client_Agent_MaxRedirectsCount(t *testing.T) {
 		_, body, errs := a.String()
 
 		require.Equal(t, "", body)
-		require.Equal(t, 1, len(errs))
-		require.Equal(t, "too many redirects detected when doing the request", errs[0].Error())
+		require.Len(t, errs, 1)
+		require.ErrorIs(t, errs[0], fasthttp.ErrTooManyRedirects)
 	})
 }
 
@@ -1189,7 +1192,7 @@ func Test_Client_Agent_Struct(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, nil, app.Listener(ln, ListenConfig{
+		require.NoError(t, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -1207,7 +1210,7 @@ func Test_Client_Agent_Struct(t *testing.T) {
 
 		require.Equal(t, StatusOK, code)
 		require.Equal(t, `{"success":true}`, string(body))
-		require.Equal(t, 0, len(errs))
+		require.Empty(t, errs)
 		require.True(t, d.Success)
 	})
 
@@ -1215,15 +1218,17 @@ func Test_Client_Agent_Struct(t *testing.T) {
 		t.Parallel()
 		a := Get("http://example.com")
 
+		errPre := errors.New("pre errors")
+
 		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
-		a.errs = append(a.errs, errors.New("pre errors"))
+		a.errs = append(a.errs, errPre)
 
 		var d data
 		_, body, errs := a.Struct(&d)
 
 		require.Equal(t, "", string(body))
-		require.Equal(t, 1, len(errs))
-		require.Equal(t, "pre errors", errs[0].Error())
+		require.Len(t, errs, 1)
+		require.ErrorIs(t, errs[0], errPre)
 		require.False(t, d.Success)
 	})
 
@@ -1239,8 +1244,10 @@ func Test_Client_Agent_Struct(t *testing.T) {
 
 		require.Equal(t, StatusOK, code)
 		require.Equal(t, `{"success"`, string(body))
-		require.Equal(t, 1, len(errs))
-		require.Equal(t, "unexpected end of JSON input", errs[0].Error())
+		require.Len(t, errs, 1)
+		wantErr := new(json.SyntaxError)
+		require.ErrorAs(t, errs[0], &wantErr)
+		require.EqualValues(t, 10, wantErr.Offset)
 	})
 
 	t.Run("nil jsonDecoder", func(t *testing.T) {
@@ -1258,7 +1265,7 @@ func Test_Client_Agent_Struct(t *testing.T) {
 		code, body, errs := a.Struct(&d)
 		require.Equal(t, StatusOK, code)
 		require.Equal(t, `{"success":true}`, string(body))
-		require.Equal(t, 0, len(errs))
+		require.Empty(t, errs)
 		require.True(t, d.Success)
 	})
 }
@@ -1268,7 +1275,7 @@ func Test_Client_Agent_Parse(t *testing.T) {
 
 	a := Get("https://example.com:10443")
 
-	require.Nil(t, a.Parse())
+	require.NoError(t, a.Parse())
 }
 
 func testAgent(t *testing.T, handler Handler, wrapAgent func(agent *Agent), excepted string, count ...int) {
@@ -1281,7 +1288,7 @@ func testAgent(t *testing.T, handler Handler, wrapAgent func(agent *Agent), exce
 	app.Get("/", handler)
 
 	go func() {
-		require.Nil(t, nil, app.Listener(ln, ListenConfig{
+		require.NoError(t, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -1302,7 +1309,7 @@ func testAgent(t *testing.T, handler Handler, wrapAgent func(agent *Agent), exce
 
 		require.Equal(t, StatusOK, code)
 		require.Equal(t, excepted, body)
-		require.Equal(t, 0, len(errs))
+		require.Empty(t, errs)
 	}
 }
 

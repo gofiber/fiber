@@ -34,6 +34,8 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+const epsilon = 0.001
+
 // go test -run Test_Ctx_Accepts
 func Test_Ctx_Accepts(t *testing.T) {
 	t.Parallel()
@@ -995,7 +997,7 @@ func Test_Ctx_FormFile(t *testing.T) {
 		f, err := fh.Open()
 		require.NoError(t, err)
 		defer func() {
-			require.Equal(t, nil, f.Close())
+			require.NoError(t, f.Close())
 		}()
 
 		b := new(bytes.Buffer)
@@ -1036,8 +1038,8 @@ func Test_Ctx_FormValue(t *testing.T) {
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
-	require.Nil(t, writer.WriteField("name", "john"))
-	require.Nil(t, writer.Close())
+	require.NoError(t, writer.WriteField("name", "john"))
+	require.NoError(t, writer.Close())
 
 	req := httptest.NewRequest(MethodPost, "/test", body)
 	req.Header.Set("Content-Type", fmt.Sprintf("multipart/form-data; boundary=%s", writer.Boundary()))
@@ -1550,11 +1552,11 @@ func Test_Ctx_IPs(t *testing.T) {
 
 	// empty header
 	c.Request().Header.Set(HeaderXForwardedFor, "")
-	require.Equal(t, 0, len(c.IPs()))
+	require.Empty(t, c.IPs())
 
 	// missing header
 	c.Request()
-	require.Equal(t, 0, len(c.IPs()))
+	require.Empty(t, c.IPs())
 }
 
 func Test_Ctx_IPs_With_IP_Validation(t *testing.T) {
@@ -1586,11 +1588,11 @@ func Test_Ctx_IPs_With_IP_Validation(t *testing.T) {
 
 	// empty header
 	c.Request().Header.Set(HeaderXForwardedFor, "")
-	require.Equal(t, 0, len(c.IPs()))
+	require.Empty(t, c.IPs())
 
 	// missing header
 	c.Request()
-	require.Equal(t, 0, len(c.IPs()))
+	require.Empty(t, c.IPs())
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_IPs -benchmem -count=4
@@ -1875,7 +1877,7 @@ func Test_Ctx_MultipartForm(t *testing.T) {
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 
-	require.Nil(t, writer.WriteField("name", "john"))
+	require.NoError(t, writer.WriteField("name", "john"))
 	require.NoError(t, writer.Close())
 
 	req := httptest.NewRequest(MethodPost, "/test", body)
@@ -2505,20 +2507,20 @@ func Test_Ctx_QueryFloat(t *testing.T) {
 	c.Request().URI().SetQueryString("name=alex&amount=32.23&id=")
 
 	// float32
-	require.Equal(t, float32(32.23), Query[float32](c, "amount"))
-	require.Equal(t, float32(32.23), Query[float32](c, "amount", 3.123))
-	require.Equal(t, float32(87.123), Query[float32](c, "name", 87.123))
-	require.Equal(t, float32(0), Query[float32](c, "name"))
-	require.Equal(t, float32(12.87), Query[float32](c, "id", 12.87))
-	require.Equal(t, float32(0), Query[float32](c, "id"))
+	require.InEpsilon(t, float32(32.23), Query[float32](c, "amount"), epsilon)
+	require.InEpsilon(t, float32(32.23), Query[float32](c, "amount", 3.123), epsilon)
+	require.InEpsilon(t, float32(87.123), Query[float32](c, "name", 87.123), epsilon)
+	require.InDelta(t, float32(0), Query[float32](c, "name"), 0)
+	require.InEpsilon(t, float32(12.87), Query[float32](c, "id", 12.87), epsilon)
+	require.InDelta(t, float32(0), Query[float32](c, "id"), 0)
 
 	// float64
-	require.Equal(t, 32.23, Query[float64](c, "amount"))
-	require.Equal(t, 32.23, Query[float64](c, "amount", 3.123))
-	require.Equal(t, 87.123, Query[float64](c, "name", 87.123))
-	require.Equal(t, float64(0), Query[float64](c, "name"))
-	require.Equal(t, 12.87, Query[float64](c, "id", 12.87))
-	require.Equal(t, float64(0), Query[float64](c, "id"))
+	require.InEpsilon(t, 32.23, Query[float64](c, "amount"), epsilon)
+	require.InEpsilon(t, 32.23, Query[float64](c, "amount", 3.123), epsilon)
+	require.InEpsilon(t, 87.123, Query[float64](c, "name", 87.123), epsilon)
+	require.InDelta(t, float64(0), Query[float64](c, "name"), 0)
+	require.InEpsilon(t, 12.87, Query[float64](c, "id", 12.87), epsilon)
+	require.InDelta(t, float64(0), Query[float64](c, "id"), 0)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_QueryFloat -benchmem -count=4
@@ -2532,7 +2534,7 @@ func Benchmark_Ctx_QueryFloat(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		res = Query[float32](c, "age")
 	}
-	require.Equal(b, float32(8), res)
+	require.InEpsilon(b, float32(8), res, epsilon)
 }
 
 // go test -run Test_Ctx_QueryBool
@@ -2543,12 +2545,12 @@ func Test_Ctx_QueryBool(t *testing.T) {
 
 	c.Request().URI().SetQueryString("name=alex&want_pizza=false&id=")
 
-	require.Equal(t, false, Query[bool](c, "want_pizza"))
-	require.Equal(t, false, Query[bool](c, "want_pizza", true))
-	require.Equal(t, false, Query[bool](c, "name"))
-	require.Equal(t, true, Query[bool](c, "name", true))
-	require.Equal(t, false, Query[bool](c, "id"))
-	require.Equal(t, true, Query[bool](c, "id", true))
+	require.False(t, Query[bool](c, "want_pizza"))
+	require.False(t, Query[bool](c, "want_pizza", true))
+	require.False(t, Query[bool](c, "name"))
+	require.True(t, Query[bool](c, "name", true))
+	require.False(t, Query[bool](c, "id"))
+	require.True(t, Query[bool](c, "id", true))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_QueryBool -benchmem -count=4
@@ -2562,7 +2564,7 @@ func Benchmark_Ctx_QueryBool(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		res = Query[bool](c, "age")
 	}
-	require.Equal(b, false, res)
+	require.False(b, res)
 }
 
 // go test -run Test_Ctx_QueryString
@@ -2655,12 +2657,12 @@ func Test_Ctx_QueryWithoutGenericDataType(t *testing.T) {
 	require.Equal(t, uint32(3), Query(c, "unknown", uint32(3)))
 	require.Equal(t, uint64(32), Query(c, "id", uint64(3)))
 	require.Equal(t, uint64(3), Query(c, "unknown", uint64(3)))
-	require.Equal(t, 32.23, Query(c, "amount", 3.123))
-	require.Equal(t, 3.123, Query(c, "unknown", 3.123))
-	require.Equal(t, float32(32.23), Query(c, "amount", float32(3.123)))
-	require.Equal(t, float32(3.123), Query(c, "unknown", float32(3.123)))
-	require.Equal(t, true, Query(c, "isAgent", false))
-	require.Equal(t, false, Query(c, "unknown", false))
+	require.InEpsilon(t, 32.23, Query(c, "amount", 3.123), epsilon)
+	require.InEpsilon(t, 3.123, Query(c, "unknown", 3.123), epsilon)
+	require.InEpsilon(t, float32(32.23), Query(c, "amount", float32(3.123)), epsilon)
+	require.InEpsilon(t, float32(3.123), Query(c, "unknown", float32(3.123)), epsilon)
+	require.True(t, Query(c, "isAgent", false))
+	require.False(t, Query(c, "unknown", false))
 	require.Equal(t, []byte("alex"), Query(c, "name", []byte("john")))
 	require.Equal(t, []byte("john"), Query(c, "unknown", []byte("john")))
 }
@@ -2764,7 +2766,7 @@ func Test_Ctx_Route(t *testing.T) {
 
 	require.Equal(t, "/", c.Route().Path)
 	require.Equal(t, MethodGet, c.Route().Method)
-	require.Equal(t, 0, len(c.Route().Handlers))
+	require.Empty(t, c.Route().Handlers)
 }
 
 // go test -run Test_Ctx_RouteNormalized
@@ -2929,8 +2931,8 @@ func Test_Ctx_ClearCookie(t *testing.T) {
 	c.Request().Header.Set(HeaderCookie, "test1=dummy")
 	c.Request().Header.Set(HeaderCookie, "test2=dummy")
 	c.ClearCookie()
-	require.True(t, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "test1=; expires="))
-	require.True(t, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "test2=; expires="))
+	require.Contains(t, string(c.Response().Header.Peek(HeaderSetCookie)), "test1=; expires=")
+	require.Contains(t, string(c.Response().Header.Peek(HeaderSetCookie)), "test2=; expires=")
 }
 
 // go test -race -run Test_Ctx_Download
@@ -2939,7 +2941,7 @@ func Test_Ctx_Download(t *testing.T) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	require.Equal(t, nil, c.Download("ctx.go", "Awesome File!"))
+	require.NoError(t, c.Download("ctx.go", "Awesome File!"))
 
 	f, err := os.Open("./ctx.go")
 	require.NoError(t, err)
@@ -2965,7 +2967,7 @@ func Test_Ctx_SendFile(t *testing.T) {
 	f, err := os.Open("./ctx.go")
 	require.NoError(t, err)
 	defer func() {
-		require.NoError(t, nil, f.Close())
+		require.NoError(t, f.Close())
 	}()
 	expectFileContent, err := io.ReadAll(f)
 	require.NoError(t, err)
@@ -3008,7 +3010,7 @@ func Test_Ctx_SendFile_404(t *testing.T) {
 	app := New()
 	app.Get("/", func(c Ctx) error {
 		err := c.SendFile(filepath.FromSlash("john_dow.go/"))
-		require.False(t, err == nil)
+		require.Error(t, err)
 		return err
 	})
 
@@ -3078,8 +3080,8 @@ func Test_Ctx_SendFile_RestoreOriginalURL(t *testing.T) {
 	// second request required to confirm with zero allocation
 	_, err2 := app.Test(httptest.NewRequest(MethodGet, "/?test=true", nil))
 
-	require.Nil(t, err1)
-	require.Nil(t, err2)
+	require.NoError(t, err1)
+	require.NoError(t, err2)
 }
 
 // go test -run Test_Ctx_JSON
@@ -3088,7 +3090,7 @@ func Test_Ctx_JSON(t *testing.T) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	require.True(t, c.JSON(complex(1, 1)) != nil)
+	require.Error(t, c.JSON(complex(1, 1)))
 
 	// Test without ctype
 	err := c.JSON(Map{ // map has no order
@@ -3192,7 +3194,7 @@ func Test_Ctx_JSONP(t *testing.T) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	require.True(t, c.JSONP(complex(1, 1)) != nil)
+	require.Error(t, c.JSONP(complex(1, 1)))
 
 	err := c.JSONP(Map{
 		"Name": "Grame",
@@ -3260,7 +3262,7 @@ func Test_Ctx_XML(t *testing.T) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
-	require.True(t, c.JSON(complex(1, 1)) != nil)
+	require.Error(t, c.JSON(complex(1, 1)))
 
 	type xmlResult struct {
 		XMLName xml.Name `xml:"Users"`
@@ -3424,10 +3426,10 @@ func Test_Ctx_Render(t *testing.T) {
 	require.Equal(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
 
 	err = c.Render("./.github/testdata/template-non-exists.html", nil)
-	require.False(t, err == nil)
+	require.Error(t, err)
 
 	err = c.Render("./.github/testdata/template-invalid.html", nil)
-	require.False(t, err == nil)
+	require.Error(t, err)
 }
 
 func Test_Ctx_RenderWithoutLocals(t *testing.T) {
@@ -3732,7 +3734,7 @@ func (t *testTemplateEngine) Load() error {
 func Test_Ctx_Render_Engine(t *testing.T) {
 	t.Parallel()
 	engine := &testTemplateEngine{}
-	require.Equal(t, nil, engine.Load())
+	require.NoError(t, engine.Load())
 	app := New()
 	app.config.Views = engine
 	c := app.NewCtx(&fasthttp.RequestCtx{})
@@ -3748,7 +3750,7 @@ func Test_Ctx_Render_Engine(t *testing.T) {
 func Test_Ctx_Render_Engine_With_View_Layout(t *testing.T) {
 	t.Parallel()
 	engine := &testTemplateEngine{}
-	require.Equal(t, nil, engine.Load())
+	require.NoError(t, engine.Load())
 	app := New(Config{ViewsLayout: "main.tmpl"})
 	app.config.Views = engine
 	c := app.NewCtx(&fasthttp.RequestCtx{})
@@ -3796,7 +3798,7 @@ func Benchmark_Ctx_Get_Location_From_Route(b *testing.B) {
 	}
 
 	require.Equal(b, "/user/fiber", location)
-	require.Equal(b, nil, err)
+	require.NoError(b, err)
 }
 
 // go test -run Test_Ctx_Get_Location_From_Route_name
@@ -3892,7 +3894,7 @@ func Test_Ctx_Render_Engine_Error(t *testing.T) {
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
 	err := c.Render("index.tmpl", nil)
-	require.False(t, err == nil)
+	require.Error(t, err)
 }
 
 // go test -run Test_Ctx_Render_Go_Template
@@ -4014,11 +4016,11 @@ func Test_Ctx_Set_Splitter(t *testing.T) {
 
 	c.Set("Location", "foo\r\nSet-Cookie:%20SESSIONID=MaliciousValue\r\n")
 	h := string(c.Response().Header.Peek("Location"))
-	require.False(t, strings.Contains(h, "\r\n"), h)
+	require.NotContains(t, h, "\r\n")
 
 	c.Set("Location", "foo\nSet-Cookie:%20SESSIONID=MaliciousValue\n")
 	h = string(c.Response().Header.Peek("Location"))
-	require.False(t, strings.Contains(h, "\n"), h)
+	require.NotContains(t, h, "\n")
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_Set -benchmem -count=4
@@ -4143,7 +4145,7 @@ func Benchmark_Ctx_Write(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		_, err = c.Write(byt)
 	}
-	require.Equal(b, nil, err)
+	require.NoError(b, err)
 }
 
 // go test -run Test_Ctx_Writef
@@ -4171,7 +4173,7 @@ func Benchmark_Ctx_Writef(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		_, err = c.Writef("Hello, %s", world)
 	}
-	require.Equal(b, nil, err)
+	require.NoError(b, err)
 }
 
 // go test -run Test_Ctx_WriteString
@@ -4313,12 +4315,12 @@ func Test_Ctx_BodyStreamWriter(t *testing.T) {
 		fmt.Fprintf(w, "body writer line 2\n")
 	})
 
-	require.Equal(t, true, ctx.IsBodyStream())
+	require.True(t, ctx.IsBodyStream())
 
 	s := ctx.Response.String()
 	br := bufio.NewReader(bytes.NewBufferString(s))
 	var resp fasthttp.Response
-	require.Equal(t, nil, resp.Read(br))
+	require.NoError(t, resp.Read(br))
 
 	body := string(resp.Body())
 	expectedBody := "body writer line 1\nbody writer line 2\n"
@@ -4344,7 +4346,7 @@ func Benchmark_Ctx_BodyStreamWriter(b *testing.B) {
 			}
 		})
 	}
-	require.Equal(b, nil, err)
+	require.NoError(b, err)
 }
 
 func Test_Ctx_String(t *testing.T) {
@@ -4374,7 +4376,7 @@ func TestCtx_ParamsInt(t *testing.T) {
 		require.Equal(t, 1111, num)
 
 		// Check no errors are returned, because we want NO errors in this one
-		require.Equal(t, nil, err)
+		require.NoError(t, err)
 
 		return nil
 	})
@@ -4390,7 +4392,7 @@ func TestCtx_ParamsInt(t *testing.T) {
 		require.Equal(t, 0, num)
 
 		// Check an error is returned, because we want NO errors in this one
-		require.Equal(t, true, err != nil)
+		require.Error(t, err)
 
 		return nil
 	})
@@ -4406,7 +4408,7 @@ func TestCtx_ParamsInt(t *testing.T) {
 		require.Equal(t, 2222, num)
 
 		// Check no errors are returned, because we want NO errors in this one
-		require.Equal(t, nil, err)
+		require.NoError(t, err)
 
 		return nil
 	})
@@ -4422,7 +4424,7 @@ func TestCtx_ParamsInt(t *testing.T) {
 		require.Equal(t, 1111, num)
 
 		// Check an error is returned, because we want NO errors in this one
-		require.Equal(t, nil, err)
+		require.NoError(t, err)
 
 		return nil
 	})
@@ -4506,7 +4508,7 @@ func Test_Ctx_IsFromLocal_RemoteAddr(t *testing.T) {
 		c := app.NewCtx(fastCtx)
 
 		require.Equal(t, "127.0.0.1", c.IP())
-		require.Equal(t, true, c.IsFromLocal())
+		require.True(t, c.IsFromLocal())
 	}
 	// Test for the case fasthttp remoteAddr is set to "::1".
 	{
@@ -4515,7 +4517,7 @@ func Test_Ctx_IsFromLocal_RemoteAddr(t *testing.T) {
 		fastCtx.SetRemoteAddr(localIPv6)
 		c := app.NewCtx(fastCtx)
 		require.Equal(t, "::1", c.IP())
-		require.Equal(t, true, c.IsFromLocal())
+		require.True(t, c.IsFromLocal())
 	}
 	// Test for the case fasthttp remoteAddr is set to "0:0:0:0:0:0:0:1".
 	{
@@ -4526,7 +4528,7 @@ func Test_Ctx_IsFromLocal_RemoteAddr(t *testing.T) {
 		// fasthttp should return "::1" for "0:0:0:0:0:0:0:1".
 		// otherwise IsFromLocal() will break.
 		require.Equal(t, "::1", c.IP())
-		require.Equal(t, true, c.IsFromLocal())
+		require.True(t, c.IsFromLocal())
 	}
 	// Test for the case fasthttp remoteAddr is set to "0.0.0.0".
 	{
@@ -4535,7 +4537,7 @@ func Test_Ctx_IsFromLocal_RemoteAddr(t *testing.T) {
 		fastCtx.SetRemoteAddr(zeroIPv4)
 		c := app.NewCtx(fastCtx)
 		require.Equal(t, "0.0.0.0", c.IP())
-		require.Equal(t, false, c.IsFromLocal())
+		require.False(t, c.IsFromLocal())
 	}
 	// Test for the case fasthttp remoteAddr is set to "93.46.8.90".
 	{
@@ -4544,7 +4546,7 @@ func Test_Ctx_IsFromLocal_RemoteAddr(t *testing.T) {
 		fastCtx.SetRemoteAddr(someIPv4)
 		c := app.NewCtx(fastCtx)
 		require.Equal(t, "93.46.8.90", c.IP())
-		require.Equal(t, false, c.IsFromLocal())
+		require.False(t, c.IsFromLocal())
 	}
 	// Test for the case fasthttp remoteAddr is set to "2001:0db8:85a3:0000:0000:8a2e:0370:7334".
 	{
@@ -4553,7 +4555,7 @@ func Test_Ctx_IsFromLocal_RemoteAddr(t *testing.T) {
 		fastCtx.SetRemoteAddr(someIPv6)
 		c := app.NewCtx(fastCtx)
 		require.Equal(t, "2001:db8:85a3::8a2e:370:7334", c.IP())
-		require.Equal(t, false, c.IsFromLocal())
+		require.False(t, c.IsFromLocal())
 	}
 }
 

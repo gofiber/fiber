@@ -325,7 +325,7 @@ func Test_Redirect_Request(t *testing.T) {
 
 		require.Equal(t, tc.ExpectedStatusCode, code)
 		require.Equal(t, tc.ExpectedBody, body)
-		require.Equal(t, tc.ExceptedErrsLen, len(errs))
+		require.Len(t, errs, tc.ExceptedErrsLen)
 	}
 }
 

@@ -26,7 +26,7 @@ func Test_App_Mount(t *testing.T) {
 	app := New()
 	app.Use("/john", micro)
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/john/doe", http.NoBody))
-	require.Equal(t, nil, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.Equal(t, uint32(1), app.handlersCount)
 }
@@ -76,15 +76,15 @@ func Test_App_Mount_Nested(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/one/doe", http.NoBody))
-	require.Equal(t, nil, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/one/two/nested", http.NoBody))
-	require.Equal(t, nil, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/one/two/three/test", http.NoBody))
-	require.Equal(t, nil, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
 	require.Equal(t, uint32(3), app.handlersCount)
@@ -101,7 +101,7 @@ func Test_App_Mount_Express_Behavior(t *testing.T) {
 	}
 	testEndpoint := func(app *App, route, expectedBody string, expectedStatusCode int) {
 		resp, err := app.Test(httptest.NewRequest(MethodGet, route, http.NoBody))
-		require.Equal(t, nil, err, "app.Test(req)")
+		require.NoError(t, err, "app.Test(req)")
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
 		require.Equal(t, expectedStatusCode, resp.StatusCode, "Status code")
@@ -146,7 +146,7 @@ func Test_App_Mount_RoutePositions(t *testing.T) {
 	t.Parallel()
 	testEndpoint := func(app *App, route, expectedBody string) {
 		resp, err := app.Test(httptest.NewRequest(MethodGet, route, http.NoBody))
-		require.Equal(t, nil, err, "app.Test(req)")
+		require.NoError(t, err, "app.Test(req)")
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
 		require.Equal(t, StatusOK, resp.StatusCode, "Status code")
@@ -189,26 +189,26 @@ func Test_App_Mount_RoutePositions(t *testing.T) {
 	testEndpoint(app, "/subApp2/world", "hello")
 
 	routeStackGET := app.Stack()[0]
-	require.Equal(t, true, routeStackGET[0].use)
+	require.True(t, routeStackGET[0].use)
 	require.Equal(t, "/", routeStackGET[0].path)
 
-	require.Equal(t, true, routeStackGET[1].use)
+	require.True(t, routeStackGET[1].use)
 	require.Equal(t, "/", routeStackGET[1].path)
-	require.Equal(t, true, routeStackGET[0].pos < routeStackGET[1].pos, "wrong position of route 0")
+	require.Less(t, routeStackGET[0].pos, routeStackGET[1].pos, "wrong position of route 0")
 
-	require.Equal(t, false, routeStackGET[2].use)
+	require.False(t, routeStackGET[2].use)
 	require.Equal(t, "/bar", routeStackGET[2].path)
-	require.Equal(t, true, routeStackGET[1].pos < routeStackGET[2].pos, "wrong position of route 1")
+	require.Less(t, routeStackGET[1].pos, routeStackGET[2].pos, "wrong position of route 1")
 
-	require.Equal(t, true, routeStackGET[3].use)
+	require.True(t, routeStackGET[3].use)
 	require.Equal(t, "/", routeStackGET[3].path)
-	require.Equal(t, true, routeStackGET[2].pos < routeStackGET[3].pos, "wrong position of route 2")
+	require.Less(t, routeStackGET[2].pos, routeStackGET[3].pos, "wrong position of route 2")
 
-	require.Equal(t, false, routeStackGET[4].use)
+	require.False(t, routeStackGET[4].use)
 	require.Equal(t, "/subapp2/world", routeStackGET[4].path)
-	require.Equal(t, true, routeStackGET[3].pos < routeStackGET[4].pos, "wrong position of route 3")
+	require.Less(t, routeStackGET[3].pos, routeStackGET[4].pos, "wrong position of route 3")
 
-	require.Equal(t, 5, len(routeStackGET))
+	require.Len(t, routeStackGET, 5)
 }
 
 // go test -run Test_App_MountPath
@@ -282,7 +282,7 @@ func Test_App_Group_Mount(t *testing.T) {
 	v1.Use("/john", micro)
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", http.NoBody))
-	require.Equal(t, nil, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.Equal(t, uint32(1), app.handlersCount)
 }
@@ -383,19 +383,19 @@ func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
 	app.Use("/api", fiber)
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/sub", http.NoBody))
-	require.Equal(t, nil, err, "/api/sub req")
+	require.NoError(t, err, "/api/sub req")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
 	b, err := io.ReadAll(resp.Body)
-	require.Equal(t, nil, err, "iotuil.ReadAll()")
+	require.NoError(t, err, "iotuil.ReadAll()")
 	require.Equal(t, "hi, i'm a custom sub fiber error", string(b), "Response body")
 
 	resp2, err := app.Test(httptest.NewRequest(MethodGet, "/api/sub/third", http.NoBody))
-	require.Equal(t, nil, err, "/api/sub/third req")
+	require.NoError(t, err, "/api/sub/third req")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
 	b, err = io.ReadAll(resp2.Body)
-	require.Equal(t, nil, err, "iotuil.ReadAll()")
+	require.NoError(t, err, "iotuil.ReadAll()")
 	require.Equal(t, "hi, i'm a custom sub sub fiber error", string(b), "Third fiber Response body")
 }
 
@@ -405,15 +405,15 @@ func Test_Mount_Route_Names(t *testing.T) {
 	subApp1 := New()
 	subApp1.Get("/users", func(c Ctx) error {
 		url, err := c.GetRouteURL("add-user", Map{})
-		require.Equal(t, err, nil)
-		require.Equal(t, url, "/app1/users", "handler: app1.add-user") // the prefix is /app1 because of the mount
+		require.NoError(t, err)
+		require.Equal(t, "/app1/users", url, "handler: app1.add-user") // the prefix is /app1 because of the mount
 		// if subApp1 is not mounted, expected url just /users
 		return nil
 	}).Name("get-users")
 	subApp1.Post("/users", func(c Ctx) error {
 		route := c.App().GetRoute("get-users")
-		require.Equal(t, route.Method, MethodGet, "handler: app1.get-users method")
-		require.Equal(t, route.Path, "/app1/users", "handler: app1.get-users path")
+		require.Equal(t, MethodGet, route.Method, "handler: app1.get-users method")
+		require.Equal(t, "/app1/users", route.Path, "handler: app1.get-users path")
 		return nil
 	}).Name("add-user")
 
@@ -432,30 +432,30 @@ func Test_Mount_Route_Names(t *testing.T) {
 
 	// take route directly from sub-app
 	route := subApp1.GetRoute("get-users")
-	require.Equal(t, route.Method, MethodGet)
-	require.Equal(t, route.Path, "/users")
+	require.Equal(t, MethodGet, route.Method)
+	require.Equal(t, "/users", route.Path)
 
 	route = subApp1.GetRoute("add-user")
-	require.Equal(t, route.Method, MethodPost)
-	require.Equal(t, route.Path, "/users")
+	require.Equal(t, MethodPost, route.Method)
+	require.Equal(t, "/users", route.Path)
 
 	// take route directly from sub-app with group
 	route = subApp2.GetRoute("users.get")
-	require.Equal(t, route.Method, MethodGet)
-	require.Equal(t, route.Path, "/users")
+	require.Equal(t, MethodGet, route.Method)
+	require.Equal(t, "/users", route.Path)
 
 	route = subApp2.GetRoute("users.add")
-	require.Equal(t, route.Method, MethodPost)
-	require.Equal(t, route.Path, "/users")
+	require.Equal(t, MethodPost, route.Method)
+	require.Equal(t, "/users", route.Path)
 
 	// take route from root app (using names of sub-apps)
 	route = rootApp.GetRoute("add-user")
-	require.Equal(t, route.Method, MethodPost)
-	require.Equal(t, route.Path, "/app1/users")
+	require.Equal(t, MethodPost, route.Method)
+	require.Equal(t, "/app1/users", route.Path)
 
 	route = rootApp.GetRoute("users.add")
-	require.Equal(t, route.Method, MethodPost)
-	require.Equal(t, route.Path, "/app2/users")
+	require.Equal(t, MethodPost, route.Method)
+	require.Equal(t, "/app2/users", route.Path)
 
 	// GetRouteURL inside handler
 	req := httptest.NewRequest(MethodGet, "/app1/users", nil)
@@ -495,7 +495,7 @@ func Test_Ctx_Render_Mount(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/hello/a", http.NoBody))
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
-	require.Equal(t, nil, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -551,7 +551,7 @@ func Test_Ctx_Render_Mount_ParentOrSubHasViews(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/hello/world/a", http.NoBody))
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
-	require.Equal(t, nil, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -559,7 +559,7 @@ func Test_Ctx_Render_Mount_ParentOrSubHasViews(t *testing.T) {
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
-	require.Equal(t, nil, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -567,7 +567,7 @@ func Test_Ctx_Render_Mount_ParentOrSubHasViews(t *testing.T) {
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/hello/bruh/moment", http.NoBody))
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
-	require.Equal(t, nil, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -596,7 +596,7 @@ func Test_Ctx_Render_MountGroup(t *testing.T) {
 	v1.Use("/john", micro)
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", http.NoBody))
-	require.Equal(t, nil, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
 	body, err := io.ReadAll(resp.Body)
