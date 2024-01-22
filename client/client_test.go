@@ -1,7 +1,6 @@
 package client
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -13,7 +12,6 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3/addon/retry"
-	"github.com/gofiber/fiber/v3/log"
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3"
@@ -1204,35 +1202,21 @@ func Test_Client_SetProxyURL(t *testing.T) {
 	})
 
 	t.Run("wrong url", func(t *testing.T) {
-		var buf bytes.Buffer
-		log.SetOutput(&buf)
-
 		client := AcquireClient()
-		client.SetProxyURL(":this is not a url")
-		_, err := client.Get("http://localhost:3000", Config{Dial: dial})
+		defer ReleaseClient(client)
 
-		require.Contains(t, buf.String(), "missing protocol scheme")
-		require.NoError(t, err)
-	})
-
-	t.Run("wrong url scheme", func(t *testing.T) {
-		var buf bytes.Buffer
-		log.SetOutput(&buf)
-
-		client := AcquireClient()
-		client.SetProxyURL("x://test.com")
-		_, err := client.Get("http://localhost:3000", Config{Dial: dial})
-
-		require.Contains(t, buf.String(), "client: invalid proxy url scheme")
-		require.NoError(t, err)
+		require.Panics(t, func() {
+			client.SetProxyURL(":this is not a url")
+		})
 	})
 
 	t.Run("error", func(t *testing.T) {
 		client := AcquireClient()
-		client.SetProxyURL("htgdftp://test.com")
-		_, err := client.Get("http://localhost:3000", Config{Dial: dial})
+		defer ReleaseClient(client)
 
-		require.Error(t, err)
+		require.Panics(t, func() {
+			client.SetProxyURL("htgdftp://test.com")
+		})
 	})
 }
 

@@ -24,36 +24,6 @@ import (
 var ErrInvalidProxyURL = errors.New("invalid proxy url scheme")
 var ErrFailedToAppendCert = errors.New("failed to append certificate")
 
-// Define the logger interface so that users can
-// use different log implements to output logs.
-type Logger interface {
-	// The log with error level
-	Errorf(format string, v ...any)
-
-	// The log with warn level
-	Warnf(format string, v ...any)
-
-	// The log with info level
-	Infof(format string, v ...any)
-
-	// The log with debug level
-	Debugf(format string, v ...any)
-}
-
-var _ (Logger) = (*disableLogger)(nil)
-
-// Implement a Logger interface.
-// All logs are turned off by default.
-type disableLogger struct{}
-
-func (*disableLogger) Errorf(_ string, _ ...any) {}
-
-func (*disableLogger) Warnf(_ string, _ ...any) {}
-
-func (*disableLogger) Infof(_ string, _ ...any) {}
-
-func (*disableLogger) Debugf(_ string, _ ...any) {}
-
 // The Client is used to create a Fiber Client with
 // client-level settings that apply to all requests
 // raise from the client.
@@ -73,8 +43,7 @@ type Client struct {
 	cookies   *Cookie
 	path      *PathParam
 
-	debug  bool
-	logger Logger
+	debug bool
 
 	timeout time.Duration
 
@@ -225,7 +194,7 @@ func (c *Client) SetRootCertificate(path string) *Client {
 	cleanPath := filepath.Clean(path)
 	file, err := os.Open(cleanPath)
 	if err != nil {
-		log.Errorf("client: %v", err)
+		log.Panicf("client: %v", err)
 	}
 	defer func() {
 		_ = file.Close() //nolint:errcheck // It is fine to ignore the error here
@@ -233,7 +202,7 @@ func (c *Client) SetRootCertificate(path string) *Client {
 
 	pem, err := io.ReadAll(file)
 	if err != nil {
-		log.Errorf("client: %v", err)
+		log.Panicf("client: %v", err)
 	}
 
 	config := c.TLSConfig()
@@ -242,7 +211,7 @@ func (c *Client) SetRootCertificate(path string) *Client {
 	}
 
 	if !config.RootCAs.AppendCertsFromPEM(pem) {
-		log.Errorf("client: %v", ErrFailedToAppendCert)
+		log.Panicf("client: %v", ErrFailedToAppendCert)
 	}
 
 	return c
@@ -257,7 +226,7 @@ func (c *Client) SetRootCertificateFromString(pem string) *Client {
 	}
 
 	if !config.RootCAs.AppendCertsFromPEM([]byte(pem)) {
-		log.Errorf("client: %v", ErrFailedToAppendCert)
+		log.Panicf("client: %v", ErrFailedToAppendCert)
 	}
 
 	return c
@@ -267,12 +236,12 @@ func (c *Client) SetRootCertificateFromString(pem string) *Client {
 func (c *Client) SetProxyURL(proxyURL string) *Client {
 	pURL, err := urlPkg.Parse(proxyURL)
 	if err != nil {
-		log.Errorf("client: %v", err)
+		log.Panicf("client: %v", err)
 		return c
 	}
 
 	if pURL.Scheme != "http" && pURL.Scheme != "https" {
-		log.Errorf("client: %v", ErrInvalidProxyURL)
+		log.Panicf("client: %v", ErrInvalidProxyURL)
 		return c
 	}
 
@@ -698,7 +667,6 @@ var (
 				},
 				cookies: &Cookie{},
 				path:    &PathParam{},
-				logger:  &disableLogger{},
 
 				userRequestHooks:     []RequestHook{},
 				builtinRequestHooks:  []RequestHook{parserRequestURL, parserRequestHeader, parserRequestBody},

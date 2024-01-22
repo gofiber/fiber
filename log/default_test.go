@@ -39,13 +39,16 @@ func Test_DefaultLogger(t *testing.T) {
 	Info("starting work")
 	Warn("work may fail")
 	Error("work failed")
-	Panic("work panic")
+
+	require.Panics(t, func() {
+		Panic("work panic")
+	})
+
 	require.Equal(t, "[Trace] trace work\n"+
 		"[Debug] received work order\n"+
 		"[Info] starting work\n"+
 		"[Warn] work may fail\n"+
-		"[Error] work failed\n"+
-		"[Panic] work panic\n", string(w.b))
+		"[Error] work failed\n", string(w.b))
 }
 
 func Test_DefaultFormatLogger(t *testing.T) {
