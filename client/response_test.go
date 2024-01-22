@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v3/internal/tlstest"
 
@@ -266,6 +267,7 @@ func Test_Response_Save(t *testing.T) {
 	})
 
 	go start()
+	time.Sleep(300 * time.Millisecond)
 
 	t.Run("file path", func(t *testing.T) {
 		resp, err := AcquireRequest().

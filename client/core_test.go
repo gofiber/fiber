@@ -73,6 +73,8 @@ func Test_Exec_Func(t *testing.T) {
 		require.Nil(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}))
 	}()
 
+	time.Sleep(300 * time.Millisecond)
+
 	t.Run("normal request", func(t *testing.T) {
 		core, client, req := newCore(), AcquireClient(), AcquireRequest()
 		core.ctx = context.Background()

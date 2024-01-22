@@ -594,7 +594,9 @@ func Test_Request_Get(t *testing.T) {
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString(c.Hostname())
 	})
+
 	go start()
+	time.Sleep(100 * time.Millisecond)
 
 	for i := 0; i < 5; i++ {
 		req := AcquireRequest().SetDial(ln)
@@ -615,7 +617,9 @@ func Test_Request_Post(t *testing.T) {
 		return c.Status(fiber.StatusCreated).
 			SendString(c.FormValue("foo"))
 	})
+
 	go start()
+	time.Sleep(100 * time.Millisecond)
 
 	for i := 0; i < 5; i++ {
 		resp, err := AcquireRequest().
@@ -639,6 +643,7 @@ func Test_Request_Head(t *testing.T) {
 	})
 
 	go start()
+	time.Sleep(100 * time.Millisecond)
 
 	for i := 0; i < 5; i++ {
 		resp, err := AcquireRequest().
@@ -661,6 +666,7 @@ func Test_Request_Put(t *testing.T) {
 	})
 
 	go start()
+	time.Sleep(100 * time.Millisecond)
 
 	for i := 0; i < 5; i++ {
 		resp, err := AcquireRequest().
@@ -686,6 +692,7 @@ func Test_Request_Delete(t *testing.T) {
 	})
 
 	go start()
+	time.Sleep(100 * time.Millisecond)
 
 	for i := 0; i < 5; i++ {
 		resp, err := AcquireRequest().
@@ -711,6 +718,7 @@ func Test_Request_Options(t *testing.T) {
 	})
 
 	go start()
+	time.Sleep(100 * time.Millisecond)
 
 	for i := 0; i < 5; i++ {
 		resp, err := AcquireRequest().
@@ -736,6 +744,7 @@ func Test_Request_Send(t *testing.T) {
 	})
 
 	go start()
+	time.Sleep(100 * time.Millisecond)
 
 	for i := 0; i < 5; i++ {
 		resp, err := AcquireRequest().
@@ -762,6 +771,7 @@ func Test_Request_Patch(t *testing.T) {
 	})
 
 	go start()
+	time.Sleep(100 * time.Millisecond)
 
 	for i := 0; i < 5; i++ {
 		resp, err := AcquireRequest().
