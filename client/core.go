@@ -164,8 +164,8 @@ func (c *core) preHooks() error {
 
 // Exec response hooks
 func (c *core) afterHooks(resp *Response) error {
-	c.client.mu.RLock()
-	defer c.client.mu.RUnlock()
+	c.client.mu.Lock()
+	defer c.client.mu.Unlock()
 
 	for _, f := range c.client.builtinResponseHooks {
 		err := f(c.client, resp, c.req)
