@@ -178,6 +178,62 @@ func Test_App_Errors(t *testing.T) {
 	}
 }
 
+type customConstraint struct{}
+
+func (c *customConstraint) Name() string {
+	return "test"
+}
+
+func (c *customConstraint) Execute(param string, args ...string) bool {
+	if param == "test" && len(args) == 1 && args[0] == "test" {
+		return true
+	}
+
+	if len(args) == 0 && param == "c" {
+		return true
+	}
+
+	return false
+}
+
+func Test_App_CustomConstraint(t *testing.T) {
+	app := New()
+	app.RegisterCustomConstraint(&customConstraint{})
+
+	app.Get("/test/:param<test(test)>", func(c Ctx) error {
+		return c.SendString("test")
+	})
+
+	app.Get("/test2/:param<test>", func(c Ctx) error {
+		return c.SendString("test")
+	})
+
+	app.Get("/test3/:param<test()>", func(c Ctx) error {
+		return c.SendString("test")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/test", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test/test2", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 404, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2/c", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2/cc", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 404, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test3/cc", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+
+}
+
 func Test_App_ErrorHandler_Custom(t *testing.T) {
 	t.Parallel()
 	app := New(Config{

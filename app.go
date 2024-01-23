@@ -121,6 +121,8 @@ type App struct {
 	mountFields *mountFields
 	// Indicates if the value was explicitly configured
 	configured Config
+	// customConstraints is a list of external constraints
+	customConstraints []CustomConstraint
 }
 
 // Config is a struct holding the server settings.
@@ -586,6 +588,11 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 // Note: It doesn't allow adding new methods, only customizing exist methods.
 func (app *App) NewCtxFunc(function func(app *App) CustomCtx) {
 	app.newCtxFunc = function
+}
+
+// RegisterCustomConstraint allows to register custom constraint.
+func (app *App) RegisterCustomConstraint(constraint CustomConstraint) {
+	app.customConstraints = append(app.customConstraints, constraint)
 }
 
 // You can register custom binders to use as Bind().Custom("name").

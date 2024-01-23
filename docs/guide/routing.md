@@ -240,6 +240,56 @@ app.Get("/:test<int>?", func(c fiber.Ctx) error {
 // Cannot GET /7.0
 ```
 
+**Custom Constraint Example**
+
+Custom constraints can be added to Fiber using the `app.RegisterCustomConstraint` method. Your constraints have to be compatible with the `CustomConstraint` interface.
+
+```go
+// CustomConstraint is an interface for custom constraints
+type CustomConstraint interface {
+	// Name returns the name of the constraint.
+	// This name is used in the constraint matching.
+	Name() string
+
+	// Execute executes the constraint.
+	// It returns true if the constraint is matched and right.
+	// param is the parameter value to check.
+	// args are the constraint arguments.
+	Execute(param string, args ...string) bool
+}
+```
+
+You can check the example below:
+
+```go
+type UlidConstraint struct {
+	fiber.CustomConstraint
+}
+
+func (*UlidConstraint) Name() string {
+	return "ulid"
+}
+
+func (*UlidConstraint) Execute(param string, args ...string) bool {
+	_, err := ulid.Parse(param)
+	return err == nil
+}
+
+func main() {
+	app := fiber.New()
+	app.RegisterCustomConstraint(&UlidConstraint{})
+
+	app.Get("/login/:id<ulid>", func(c fiber.Ctx) error {
+		return c.SendString("...")
+	})
+
+	app.Listen(":3000")
+
+	// /login/01HK7H9ZE5BFMK348CPYP14S0Z -> 200
+	// /login/12345 -> 404
+}
+```
+
 ## Middleware
 
 Functions that are designed to make changes to the request or response are called **middleware functions**. The [Next](../api/ctx.md#next) is a **Fiber** router function, when called, executes the **next** function that **matches** the current route.
