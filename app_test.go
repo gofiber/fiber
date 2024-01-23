@@ -180,7 +180,7 @@ func Test_App_Errors(t *testing.T) {
 
 type customConstraint struct{}
 
-func (c *customConstraint) Name() string {
+func (*customConstraint) Name() string {
 	return "test"
 }
 
@@ -231,7 +231,6 @@ func Test_App_CustomConstraint(t *testing.T) {
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test3/cc", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-
 }
 
 func Test_App_ErrorHandler_Custom(t *testing.T) {
