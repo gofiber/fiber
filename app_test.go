@@ -184,7 +184,7 @@ func (*customConstraint) Name() string {
 	return "test"
 }
 
-func (c *customConstraint) Execute(param string, args ...string) bool {
+func (*customConstraint) Execute(param string, args ...string) bool {
 	if param == "test" && len(args) == 1 && args[0] == "test" {
 		return true
 	}
@@ -230,7 +230,7 @@ func Test_App_CustomConstraint(t *testing.T) {
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test3/cc", nil))
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
+	require.Equal(t, 404, resp.StatusCode, "Status code")
 }
 
 func Test_App_ErrorHandler_Custom(t *testing.T) {
