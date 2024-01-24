@@ -41,7 +41,7 @@ const (
 // TODO: Add timeout for graceful shutdown.
 type ListenConfig struct {
 	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only)
-	// WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chose.
+	// WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chosen.
 	//
 	// Default: NetworkTCP4
 	ListenerNetwork string `json:"listener_network"`
