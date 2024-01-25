@@ -2,8 +2,7 @@
 // 🤖 Github Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
-//nolint:bodyclose // Much easier to just ignore memory leaks in tests
-//nolint:goconst // No need to create a constant for a test
+//nolint:bodyclose, goconst // Much easier to just ignore memory leaks in tests
 package fiber
 
 import (
