@@ -244,6 +244,9 @@ app.Get("/:test<int>?", func(c fiber.Ctx) error {
 
 Custom constraints can be added to Fiber using the `app.RegisterCustomConstraint` method. Your constraints have to be compatible with the `CustomConstraint` interface.
 
+It is a good idea to add external constraints to your project once you want to add more specific rules to your routes. 
+For example, you can add a constraint to check if a parameter is a valid ULID.
+
 ```go
 // CustomConstraint is an interface for custom constraints
 type CustomConstraint interface {
