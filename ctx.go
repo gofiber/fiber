@@ -187,6 +187,9 @@ func (c *DefaultCtx) BaseURL() string {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (c *DefaultCtx) BodyRaw() []byte {
+	if c.app.config.Immutable {
+		return utils.CopyBytes(c.fasthttp.Request.Body())
+	}
 	return c.fasthttp.Request.Body()
 }
 
@@ -259,6 +262,9 @@ func (c *DefaultCtx) Body() []byte {
 	// rule defined at: https://www.rfc-editor.org/rfc/rfc9110#section-8.4-5
 	encodingOrder = getSplicedStrList(headerEncoding, encodingOrder)
 	if len(encodingOrder) == 0 {
+		if c.app.config.Immutable {
+			return utils.CopyBytes(c.fasthttp.Request.Body())
+		}
 		return c.fasthttp.Request.Body()
 	}
 
@@ -273,6 +279,9 @@ func (c *DefaultCtx) Body() []byte {
 		return []byte(err.Error())
 	}
 
+	if c.app.config.Immutable {
+		return utils.CopyBytes(body)
+	}
 	return body
 }
 
