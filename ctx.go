@@ -1222,7 +1222,7 @@ func (c *Ctx) QueryInt(key string, defaultValue ...int) int {
 }
 
 // QueryBool returns bool value of key string parameter in the url.
-// Default to empty or invalid key is true.
+// Default to empty or invalid key is false.
 //
 //	Get /?name=alex&want_pizza=false&id=
 //	QueryBool("want_pizza") == false
