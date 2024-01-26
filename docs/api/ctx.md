@@ -1022,9 +1022,6 @@ return nil
 })
 ````
 
-Keep in mind, you will need Go 1.18 or later to take advantage of generics. Also, be aware of the types you pass into 
-the generic function. A runtime panic will occur if the type does not match the expected type.
-
 Make sure to understand and correctly implement the Locals method in both its standard and generic form for better control 
 over route-specific data within your application.
 
