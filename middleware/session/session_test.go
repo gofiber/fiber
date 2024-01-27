@@ -91,8 +91,6 @@ func Test_Session(t *testing.T) {
 }
 
 // go test -run Test_Session_Types
-//
-//nolint:forcetypeassert // TODO: Do not force-type assert
 func Test_Session_Types(t *testing.T) {
 	t.Parallel()
 
@@ -178,26 +176,85 @@ func Test_Session_Types(t *testing.T) {
 	require.False(t, sess.Fresh())
 
 	// get value
-	require.Equal(t, vuser, sess.Get("vuser").(User))
-	require.Equal(t, vbool, sess.Get("vbool").(bool))
-	require.Equal(t, vstring, sess.Get("vstring").(string))
-	require.Equal(t, vint, sess.Get("vint").(int))
-	require.Equal(t, vint8, sess.Get("vint8").(int8))
-	require.Equal(t, vint16, sess.Get("vint16").(int16))
-	require.Equal(t, vint32, sess.Get("vint32").(int32))
-	require.Equal(t, vint64, sess.Get("vint64").(int64))
-	require.Equal(t, vuint, sess.Get("vuint").(uint))
-	require.Equal(t, vuint8, sess.Get("vuint8").(uint8))
-	require.Equal(t, vuint16, sess.Get("vuint16").(uint16))
-	require.Equal(t, vuint32, sess.Get("vuint32").(uint32))
-	require.Equal(t, vuint64, sess.Get("vuint64").(uint64))
-	require.Equal(t, vuintptr, sess.Get("vuintptr").(uintptr))
-	require.Equal(t, vbyte, sess.Get("vbyte").(byte))
-	require.Equal(t, vrune, sess.Get("vrune").(rune))
-	require.InEpsilon(t, vfloat32, sess.Get("vfloat32").(float32), 0.001)
-	require.InEpsilon(t, vfloat64, sess.Get("vfloat64").(float64), 0.001)
-	require.Equal(t, vcomplex64, sess.Get("vcomplex64").(complex64))
-	require.Equal(t, vcomplex128, sess.Get("vcomplex128").(complex128))
+	vuserResult, ok := sess.Get("vuser").(User)
+	require.True(t, ok)
+	require.Equal(t, vuser, vuserResult)
+
+	vboolResult, ok := sess.Get("vbool").(bool)
+	require.True(t, ok)
+	require.Equal(t, vbool, vboolResult)
+
+	vstringResult, ok := sess.Get("vstring").(string)
+	require.True(t, ok)
+	require.Equal(t, vstring, vstringResult)
+
+	vintResult, ok := sess.Get("vint").(int)
+	require.True(t, ok)
+	require.Equal(t, vint, vintResult)
+
+	vint8Result, ok := sess.Get("vint8").(int8)
+	require.True(t, ok)
+	require.Equal(t, vint8, vint8Result)
+
+	vint16Result, ok := sess.Get("vint16").(int16)
+	require.True(t, ok)
+	require.Equal(t, vint16, vint16Result)
+
+	vint32Result, ok := sess.Get("vint32").(int32)
+	require.True(t, ok)
+	require.Equal(t, vint32, vint32Result)
+
+	vint64Result, ok := sess.Get("vint64").(int64)
+	require.True(t, ok)
+	require.Equal(t, vint64, vint64Result)
+
+	vuintResult, ok := sess.Get("vuint").(uint)
+	require.True(t, ok)
+	require.Equal(t, vuint, vuintResult)
+
+	vuint8Result, ok := sess.Get("vuint8").(uint8)
+	require.True(t, ok)
+	require.Equal(t, vuint8, vuint8Result)
+
+	vuint16Result, ok := sess.Get("vuint16").(uint16)
+	require.True(t, ok)
+	require.Equal(t, vuint16, vuint16Result)
+
+	vuint32Result, ok := sess.Get("vuint32").(uint32)
+	require.True(t, ok)
+	require.Equal(t, vuint32, vuint32Result)
+
+	vuint64Result, ok := sess.Get("vuint64").(uint64)
+	require.True(t, ok)
+	require.Equal(t, vuint64, vuint64Result)
+
+	vuintptrResult, ok := sess.Get("vuintptr").(uintptr)
+	require.True(t, ok)
+	require.Equal(t, vuintptr, vuintptrResult)
+
+	vbyteResult, ok := sess.Get("vbyte").(byte)
+	require.True(t, ok)
+	require.Equal(t, vbyte, vbyteResult)
+
+	vruneResult, ok := sess.Get("vrune").(rune)
+	require.True(t, ok)
+	require.Equal(t, vrune, vruneResult)
+
+	vfloat32Result, ok := sess.Get("vfloat32").(float32)
+	require.True(t, ok)
+	require.InEpsilon(t, vfloat32, vfloat32Result, 0.001)
+
+	vfloat64Result, ok := sess.Get("vfloat64").(float64)
+	require.True(t, ok)
+	require.InEpsilon(t, vfloat64, vfloat64Result, 0.001)
+
+	vcomplex64Result, ok := sess.Get("vcomplex64").(complex64)
+	require.True(t, ok)
+	require.Equal(t, vcomplex64, vcomplex64Result)
+
+	vcomplex128Result, ok := sess.Get("vcomplex128").(complex128)
+	require.True(t, ok)
+	require.Equal(t, vcomplex128, vcomplex128Result)
 }
 
 // go test -run Test_Session_Store_Reset
