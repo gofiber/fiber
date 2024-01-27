@@ -1009,16 +1009,16 @@ func Locals[V any](c Ctx, key any, value ...any) V
 
 ```go title="Example"
 app.Use(func(c Ctx) error {
-    fiber.Locals[string](c, "john", "doe")
-    fiber.Locals[int](c, "age", 18)
-    fiber.Locals[bool](c, "isHuman", true)
-    return c.Next()
+  fiber.Locals[string](c, "john", "doe")
+  fiber.Locals[int](c, "age", 18)
+  fiber.Locals[bool](c, "isHuman", true)
+  return c.Next()
 })
 app.Get("/test", func(c Ctx) error {
-	fiber.Locals[string](c, "john")     // "doe"
-    fiber.Locals[int](c, "age")         // 18
-    fiber.Locals[bool](c, "isHuman")    // true
-return nil
+  fiber.Locals[string](c, "john")     // "doe"
+  fiber.Locals[int](c, "age")         // 18
+  fiber.Locals[bool](c, "isHuman")    // true
+  return nil
 })
 ````
 
