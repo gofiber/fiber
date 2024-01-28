@@ -36,6 +36,10 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+const (
+	cookieName = "Joseph"
+)
+
 // go test -run Test_Ctx_Accepts
 func Test_Ctx_Accepts(t *testing.T) {
 	t.Parallel()
@@ -987,6 +991,205 @@ func Test_Ctx_CookieParser(t *testing.T) {
 	utils.AssertEqual(t, 0, len(empty.Courses))
 }
 
+func Test_Ctx_ParserWithDefaultValues(t *testing.T) {
+	t.Parallel()
+	// setup
+	app := New(Config{EnableSplittingOnParsers: true, DefaultValueParser: true})
+
+	type TestStruct struct {
+		Name             string
+		Class            int
+		NameWithDefault  string `json:"name2" xml:"Name2" form:"name2" cookie:"name2" query:"name2" params:"name2" reqHeader:"name2" default:"doe"`
+		ClassWithDefault int    `json:"class2" xml:"Class2" form:"class2" cookie:"class2" query:"class2" params:"class2" reqHeader:"class2" default:"10"`
+	}
+
+	withValues := func(t *testing.T, actionFn func(c *Ctx, testStruct *TestStruct) error) {
+		t.Helper()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		testStruct := new(TestStruct)
+
+		utils.AssertEqual(t, nil, actionFn(c, testStruct))
+		utils.AssertEqual(t, "foo", testStruct.Name)
+		utils.AssertEqual(t, 111, testStruct.Class)
+		utils.AssertEqual(t, "bar", testStruct.NameWithDefault)
+		utils.AssertEqual(t, 222, testStruct.ClassWithDefault)
+	}
+	withoutValues := func(t *testing.T, actionFn func(c *Ctx, testStruct *TestStruct) error) {
+		t.Helper()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		testStruct := new(TestStruct)
+
+		utils.AssertEqual(t, nil, actionFn(c, testStruct))
+		utils.AssertEqual(t, "", testStruct.Name)
+		utils.AssertEqual(t, 0, testStruct.Class)
+		utils.AssertEqual(t, "doe", testStruct.NameWithDefault)
+		utils.AssertEqual(t, 10, testStruct.ClassWithDefault)
+	}
+
+	t.Run("BodyParser:xml", func(t *testing.T) {
+		t.Parallel()
+		t.Run("withValues", func(t *testing.T) {
+			t.Parallel()
+			withValues(t, func(c *Ctx, testStruct *TestStruct) error {
+				c.Request().Header.SetContentType(MIMEApplicationXML)
+				c.Request().SetBody([]byte(`<TestStruct><Name>foo</Name><Class>111</Class><Name2>bar</Name2><Class2>222</Class2></TestStruct>`))
+				return c.BodyParser(testStruct)
+			})
+		})
+		t.Run("withoutValues", func(t *testing.T) {
+			t.Parallel()
+			withoutValues(t, func(c *Ctx, testStruct *TestStruct) error {
+				c.Request().Header.SetContentType(MIMEApplicationXML)
+				c.Request().SetBody([]byte(`<TestStruct></TestStruct>`))
+				return c.BodyParser(testStruct)
+			})
+		})
+	})
+	t.Run("BodyParser:form", func(t *testing.T) {
+		t.Parallel()
+		t.Run("withValues", func(t *testing.T) {
+			t.Parallel()
+			withValues(t, func(c *Ctx, testStruct *TestStruct) error {
+				c.Request().Header.SetContentType(MIMEApplicationForm)
+				c.Request().SetBody([]byte(`name=foo&class=111&name2=bar&class2=222`))
+				return c.BodyParser(testStruct)
+			})
+		})
+		t.Run("withoutValues", func(t *testing.T) {
+			t.Parallel()
+			withoutValues(t, func(c *Ctx, testStruct *TestStruct) error {
+				c.Request().Header.SetContentType(MIMEApplicationForm)
+				c.Request().SetBody([]byte(``))
+
+				return c.BodyParser(testStruct)
+			})
+		})
+	})
+	t.Run("BodyParser:json", func(t *testing.T) {
+		t.Parallel()
+		t.Run("withValues", func(t *testing.T) {
+			t.Parallel()
+			withValues(t, func(c *Ctx, testStruct *TestStruct) error {
+				c.Request().Header.SetContentType(MIMEApplicationJSON)
+				c.Request().SetBody([]byte(`{"name":"foo","class":111,"name2":"bar","class2":222}`))
+				return c.BodyParser(testStruct)
+			})
+		})
+		t.Run("withoutValues", func(t *testing.T) {
+			t.Parallel()
+			withoutValues(t, func(c *Ctx, testStruct *TestStruct) error {
+				c.Request().Header.SetContentType(MIMEApplicationJSON)
+				c.Request().SetBody([]byte(`{}`))
+
+				return c.BodyParser(testStruct)
+			})
+		})
+	})
+	t.Run("BodyParser:multiform", func(t *testing.T) {
+		t.Parallel()
+		t.Run("withValues", func(t *testing.T) {
+			t.Parallel()
+			withValues(t, func(c *Ctx, testStruct *TestStruct) error {
+				body := []byte("--b\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\nfoo\r\n--b\r\nContent-Disposition: form-data; name=\"class\"\r\n\r\n111\r\n--b\r\nContent-Disposition: form-data; name=\"name2\"\r\n\r\nbar\r\n--b\r\nContent-Disposition: form-data; name=\"class2\"\r\n\r\n222\r\n--b--")
+				c.Request().SetBody(body)
+				c.Request().Header.SetContentType(MIMEMultipartForm + `;boundary="b"`)
+				c.Request().Header.SetContentLength(len(body))
+				return c.BodyParser(testStruct)
+			})
+		})
+		t.Run("withoutValues", func(t *testing.T) {
+			t.Parallel()
+			withoutValues(t, func(c *Ctx, testStruct *TestStruct) error {
+				body := []byte("--b\n\n--b--")
+				c.Request().SetBody(body)
+				c.Request().Header.SetContentType(MIMEMultipartForm + `;boundary="b"`)
+				c.Request().Header.SetContentLength(len(body))
+
+				return c.BodyParser(testStruct)
+			})
+		})
+	})
+	t.Run("CookieParser", func(t *testing.T) {
+		t.Parallel()
+		t.Run("withValues", func(t *testing.T) {
+			t.Parallel()
+			withValues(t, func(c *Ctx, testStruct *TestStruct) error {
+				c.Request().Header.Set("Cookie", "name=foo;name2=bar;class=111;class2=222")
+				return c.CookieParser(testStruct)
+			})
+		})
+		t.Run("withoutValues", func(t *testing.T) {
+			t.Parallel()
+			withoutValues(t, func(c *Ctx, testStruct *TestStruct) error {
+				return c.CookieParser(testStruct)
+			})
+		})
+	})
+	t.Run("QueryParser", func(t *testing.T) {
+		t.Parallel()
+		t.Run("withValues", func(t *testing.T) {
+			t.Parallel()
+			withValues(t, func(c *Ctx, testStruct *TestStruct) error {
+				c.Request().URI().SetQueryString("name=foo&name2=bar&class=111&class2=222")
+				return c.QueryParser(testStruct)
+			})
+		})
+		t.Run("withoutValues", func(t *testing.T) {
+			t.Parallel()
+			withoutValues(t, func(c *Ctx, testStruct *TestStruct) error {
+				return c.QueryParser(testStruct)
+			})
+		})
+	})
+	t.Run("ParamsParser", func(t *testing.T) {
+		t.Parallel()
+		t.Run("withValues", func(t *testing.T) {
+			t.Parallel()
+			withValues(t, func(c *Ctx, testStruct *TestStruct) error {
+				c.route = &Route{Params: []string{"name", "name2", "class", "class2"}}
+				c.values = [30]string{"foo", "bar", "111", "222"}
+				return c.ParamsParser(testStruct)
+			})
+		})
+		t.Run("withoutValues", func(t *testing.T) {
+			t.Parallel()
+			// no params declared in route
+			withoutValues(t, func(c *Ctx, testStruct *TestStruct) error {
+				c.route = &Route{Params: []string{}}
+				c.values = [30]string{}
+				return c.ParamsParser(testStruct)
+			})
+			// no values for route
+			withoutValues(t, func(c *Ctx, testStruct *TestStruct) error {
+				c.route = &Route{Params: []string{"name", "name2", "class", "class2"}}
+				c.values = [30]string{"", "", "", ""}
+				return c.ParamsParser(testStruct)
+			})
+		})
+	})
+	t.Run("ReqHeaderParser", func(t *testing.T) {
+		t.Parallel()
+		t.Run("withValues", func(t *testing.T) {
+			t.Parallel()
+			withValues(t, func(c *Ctx, testStruct *TestStruct) error {
+				c.Request().Header.Add("name", "foo")
+				c.Request().Header.Add("name2", "bar")
+				c.Request().Header.Add("class", "111")
+				c.Request().Header.Add("class2", "222")
+				return c.ReqHeaderParser(testStruct)
+			})
+		})
+		t.Run("withoutValues", func(t *testing.T) {
+			t.Parallel()
+			withoutValues(t, func(c *Ctx, testStruct *TestStruct) error {
+				return c.ReqHeaderParser(testStruct)
+			})
+		})
+	})
+}
+
 // go test -run Test_Ctx_CookieParserUsingTag -v
 func Test_Ctx_CookieParserUsingTag(t *testing.T) {
 	t.Parallel()
@@ -1002,8 +1205,8 @@ func Test_Ctx_CookieParserUsingTag(t *testing.T) {
 		Grades   []uint8  `cookie:"score"`
 	}
 	cookie1 := new(Cook)
-	cookie1.Name = "Joseph"
-	utils.AssertEqual(t, "Joseph", cookie1.Name)
+	cookie1.Name = cookieName
+	utils.AssertEqual(t, cookieName, cookie1.Name)
 
 	c.Request().Header.Set("Cookie", "id=1")
 	c.Request().Header.Set("Cookie", "name=Joey")
@@ -1049,7 +1252,7 @@ func Test_Ctx_CookieParser_Schema(t *testing.T) {
 		Result result `cookie:"result"`
 	}
 	res := &resStruct{
-		Name: "Joseph",
+		Name: cookieName,
 		Age:  10,
 		Result: result{
 			Maths:   10,
@@ -1083,7 +1286,7 @@ func Benchmark_Ctx_CookieParser(b *testing.B) {
 		Grades   []uint8  `cookie:"score"`
 	}
 	cookie1 := new(Cook)
-	cookie1.Name = "Joseph"
+	cookie1.Name = cookieName
 
 	c.Request().Header.Set("Cookie", "id=1")
 	c.Request().Header.Set("Cookie", "name=Joey")
@@ -1098,6 +1301,33 @@ func Benchmark_Ctx_CookieParser(b *testing.B) {
 		err = c.CookieParser(cookie1)
 	}
 	utils.AssertEqual(b, nil, err)
+}
+
+func Benchmark_Ctx_BodyParserJsonWithDefaultValues(b *testing.B) {
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	app := New(Config{DefaultValueParser: true})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	type TestStruct struct {
+		Name                   string
+		NameWithDefault        string `json:"name2" default:"doe"`
+		NameWithDefaultNoValue string `json:"name3" default:"doe"`
+	}
+	c.Request().Header.SetContentType(MIMEApplicationJSON)
+	c.Request().SetBody([]byte(`{"name":"foo","name2":"bar"}`))
+
+	var err error
+	testStruct := new(TestStruct)
+	// Run the function b.N times
+	for i := 0; i < b.N; i++ {
+		err = c.BodyParser(testStruct)
+	}
+	utils.AssertEqual(b, nil, err)
+	utils.AssertEqual(b, "foo", testStruct.Name)
+	utils.AssertEqual(b, "bar", testStruct.NameWithDefault)
+	utils.AssertEqual(b, "doe", testStruct.NameWithDefaultNoValue)
 }
 
 // go test -run Test_Ctx_Cookies

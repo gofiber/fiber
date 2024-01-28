@@ -388,11 +388,24 @@ func (c *Ctx) BodyParser(out interface{}) error {
 	}
 
 	// Parse body accordingly
-	if strings.HasSuffix(ctype, "json") {
+	switch {
+	case strings.HasSuffix(ctype, "json"):
+		if c.app.config.DefaultValueParser {
+			utils.SetDefaultValues(out)
+		}
 		return c.app.config.JSONDecoder(c.Body(), out)
-	}
-	if strings.HasPrefix(ctype, MIMEApplicationForm) {
-		data := make(map[string][]string)
+
+	case strings.HasPrefix(ctype, MIMETextXML), strings.HasPrefix(ctype, MIMEApplicationXML):
+		if c.app.config.DefaultValueParser {
+			utils.SetDefaultValues(out)
+		}
+		if err := xml.Unmarshal(c.Body(), out); err != nil {
+			return fmt.Errorf("failed to unmarshal: %w", err)
+		}
+		return nil
+
+	case strings.HasPrefix(ctype, MIMEApplicationForm):
+		formBody := make(map[string][]string)
 		var err error
 
 		c.fasthttp.PostArgs().VisitAll(func(key, val []byte) {
@@ -410,28 +423,23 @@ func (c *Ctx) BodyParser(out interface{}) error {
 			if c.app.config.EnableSplittingOnParsers && strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k, bodyTag) {
 				values := strings.Split(v, ",")
 				for i := 0; i < len(values); i++ {
-					data[k] = append(data[k], values[i])
+					formBody[k] = append(formBody[k], values[i])
 				}
 			} else {
-				data[k] = append(data[k], v)
+				formBody[k] = append(formBody[k], v)
 			}
 		})
+		return c.parseToStruct(bodyTag, out, formBody)
 
-		return c.parseToStruct(bodyTag, out, data)
-	}
-	if strings.HasPrefix(ctype, MIMEMultipartForm) {
-		data, err := c.fasthttp.MultipartForm()
+	case strings.HasPrefix(ctype, MIMEMultipartForm):
+		multipartBody, err := c.fasthttp.MultipartForm()
 		if err != nil {
 			return err
 		}
-		return c.parseToStruct(bodyTag, out, data.Value)
+		return c.parseToStruct(bodyTag, out, multipartBody.Value)
+
 	}
-	if strings.HasPrefix(ctype, MIMETextXML) || strings.HasPrefix(ctype, MIMEApplicationXML) {
-		if err := xml.Unmarshal(c.Body(), out); err != nil {
-			return fmt.Errorf("failed to unmarshal: %w", err)
-		}
-		return nil
-	}
+
 	// No suitable content type found
 	return ErrUnprocessableEntity
 }
@@ -1086,7 +1094,10 @@ func (c *Ctx) AllParams() map[string]string {
 func (c *Ctx) ParamsParser(out interface{}) error {
 	params := make(map[string][]string, len(c.route.Params))
 	for _, param := range c.route.Params {
-		params[param] = append(params[param], c.Params(param))
+		value := c.Params(param)
+		if value != "" {
+			params[param] = append(params[param], value)
+		}
 	}
 	return c.parseToStruct(paramsTag, out, params)
 }
@@ -1342,7 +1353,10 @@ func (c *Ctx) ReqHeaderParser(out interface{}) error {
 	return c.parseToStruct(reqHeaderTag, out, data)
 }
 
-func (*Ctx) parseToStruct(aliasTag string, out interface{}, data map[string][]string) error {
+func (c *Ctx) parseToStruct(aliasTag string, out interface{}, data map[string][]string) error {
+	if c.app.config.DefaultValueParser {
+		utils.SetDefaultValues(out)
+	}
 	// Get decoder from pool
 	schemaDecoder, ok := decoderPoolMap[aliasTag].Get().(*schema.Decoder)
 	if !ok {
