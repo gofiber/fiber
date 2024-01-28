@@ -820,14 +820,10 @@ func (c *DefaultCtx) Locals(key any, value ...any) any {
 // Locals function utilizing Go's generics feature.
 // This function allows for manipulating and retrieving local values within a request context with a more specific data type.
 func Locals[V any](c Ctx, key any, value ...any) V {
-	ctx, ok := c.(*DefaultCtx)
+	v, ok := c.Locals(key, value...).(V)
 	if !ok {
-		panic(fmt.Errorf("failed to type-assert to *DefaultCtx"))
-	}
-	var v V
-	v, ok = ctx.Locals(key, value...).(V)
-	if !ok {
-		panic(fmt.Errorf("failed to type-assert to %T", v))
+		// return zero value of type V
+		return v
 	}
 	return v
 }
