@@ -363,6 +363,8 @@ func Benchmark_Ctx_Body(b *testing.B) {
 	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	c.Request().SetBody([]byte(input))
+	b.ReportAllocs()
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = c.Body()
 	}
@@ -390,6 +392,9 @@ func Benchmark_Ctx_Body_Immutable(b *testing.B) {
 	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	c.Request().SetBody([]byte(input))
+	b.ReportAllocs()
+	b.ResetTimer()
+
 	for i := 0; i < b.N; i++ {
 		_ = c.Body()
 	}
@@ -437,78 +442,6 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 		t.Run(tCase.name, func(t *testing.T) {
 			t.Parallel()
 			app := New()
-			c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
-			c.Request().Header.Set("Content-Encoding", tCase.contentEncoding)
-
-			if strings.Contains(tCase.contentEncoding, "gzip") {
-				var b bytes.Buffer
-				gz := gzip.NewWriter(&b)
-
-				_, err := gz.Write(tCase.body)
-				require.NoError(t, err)
-
-				err = gz.Flush()
-				require.NoError(t, err)
-
-				err = gz.Close()
-				require.NoError(t, err)
-				tCase.body = b.Bytes()
-			}
-
-			c.Request().SetBody(tCase.body)
-			body := c.Body()
-			require.Equal(t, tCase.expectedBody, body)
-
-			// Check if body raw is the same as previous before decompression
-			require.Equal(
-				t, tCase.body, c.Request().Body(),
-				"Body raw must be the same as set before",
-			)
-		})
-	}
-}
-
-// go test -run Test_Ctx_Body_With_Compression_Immutable
-func Test_Ctx_Body_With_Compression_Immutable(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name            string
-		contentEncoding string
-		body            []byte
-		expectedBody    []byte
-	}{
-		{
-			name:            "gzip",
-			contentEncoding: "gzip",
-			body:            []byte("john=doe"),
-			expectedBody:    []byte("john=doe"),
-		},
-		{
-			name:            "unsupported_encoding",
-			contentEncoding: "undefined",
-			body:            []byte("keeps_ORIGINAL"),
-			expectedBody:    []byte("keeps_ORIGINAL"),
-		},
-		{
-			name:            "gzip then unsupported",
-			contentEncoding: "gzip, undefined",
-			body:            []byte("Go, be gzipped"),
-			expectedBody:    []byte("Go, be gzipped"),
-		},
-		{
-			name:            "invalid_deflate",
-			contentEncoding: "gzip,deflate",
-			body:            []byte("I'm not correctly compressed"),
-			expectedBody:    []byte(zlib.ErrHeader.Error()),
-		},
-	}
-
-	for _, testObject := range tests {
-		tCase := testObject // Duplicate object to ensure it will be unique across all runs
-		t.Run(tCase.name, func(t *testing.T) {
-			t.Parallel()
-			app := New()
-			app.config.Immutable = true
 			c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 			c.Request().Header.Set("Content-Encoding", tCase.contentEncoding)
 
@@ -639,6 +572,8 @@ func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
 		},
 	}
 
+	b.ReportAllocs()
+	b.ResetTimer()
 	for _, ct := range compressionTests {
 		b.Run(ct.contentEncoding, func(b *testing.B) {
 			app := New()
@@ -655,6 +590,78 @@ func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
 			}
 
 			require.Equal(b, []byte(input), c.Body())
+		})
+	}
+}
+
+// go test -run Test_Ctx_Body_With_Compression_Immutable
+func Test_Ctx_Body_With_Compression_Immutable(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name            string
+		contentEncoding string
+		body            []byte
+		expectedBody    []byte
+	}{
+		{
+			name:            "gzip",
+			contentEncoding: "gzip",
+			body:            []byte("john=doe"),
+			expectedBody:    []byte("john=doe"),
+		},
+		{
+			name:            "unsupported_encoding",
+			contentEncoding: "undefined",
+			body:            []byte("keeps_ORIGINAL"),
+			expectedBody:    []byte("keeps_ORIGINAL"),
+		},
+		{
+			name:            "gzip then unsupported",
+			contentEncoding: "gzip, undefined",
+			body:            []byte("Go, be gzipped"),
+			expectedBody:    []byte("Go, be gzipped"),
+		},
+		{
+			name:            "invalid_deflate",
+			contentEncoding: "gzip,deflate",
+			body:            []byte("I'm not correctly compressed"),
+			expectedBody:    []byte(zlib.ErrHeader.Error()),
+		},
+	}
+
+	for _, testObject := range tests {
+		tCase := testObject // Duplicate object to ensure it will be unique across all runs
+		t.Run(tCase.name, func(t *testing.T) {
+			t.Parallel()
+			app := New()
+			app.config.Immutable = true
+			c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+			c.Request().Header.Set("Content-Encoding", tCase.contentEncoding)
+
+			if strings.Contains(tCase.contentEncoding, "gzip") {
+				var b bytes.Buffer
+				gz := gzip.NewWriter(&b)
+
+				_, err := gz.Write(tCase.body)
+				require.NoError(t, err)
+
+				err = gz.Flush()
+				require.NoError(t, err)
+
+				err = gz.Close()
+				require.NoError(t, err)
+				tCase.body = b.Bytes()
+			}
+
+			c.Request().SetBody(tCase.body)
+			body := c.Body()
+			require.Equal(t, tCase.expectedBody, body)
+
+			// Check if body raw is the same as previous before decompression
+			require.Equal(
+				t, tCase.body, c.Request().Body(),
+				"Body raw must be the same as set before",
+			)
 		})
 	}
 }
@@ -758,6 +765,8 @@ func Benchmark_Ctx_Body_With_Compression_Immutable(b *testing.B) {
 		},
 	}
 
+	b.ReportAllocs()
+	b.ResetTimer()
 	for _, ct := range compressionTests {
 		b.Run(ct.contentEncoding, func(b *testing.B) {
 			app := New()
