@@ -819,11 +819,16 @@ func (c *DefaultCtx) Locals(key any, value ...any) any {
 
 // Locals function utilizing Go's generics feature.
 // This function allows for manipulating and retrieving local values within a request context with a more specific data type.
-func Locals[V any](c Ctx, key any, value ...any) V {
-	v, ok := c.Locals(key, value...).(V)
+func Locals[V any](c Ctx, key any, value ...V) V {
+	var v V
+	var ok bool
+	if len(value) == 0 {
+		v, ok = c.Locals(key).(V)
+	} else {
+		v, ok = c.Locals(key, value[0]).(V)
+	}
 	if !ok {
-		// return zero value of type V
-		return v
+		return v // return zero of type V
 	}
 	return v
 }
