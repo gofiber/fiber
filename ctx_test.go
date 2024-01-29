@@ -1757,6 +1757,51 @@ func Test_Ctx_Locals(t *testing.T) {
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
+// go test -run Test_Ctx_Locals_Generic
+func Test_Ctx_Locals_Generic(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Use(func(c Ctx) error {
+		Locals[string](c, "john", "doe")
+		Locals[int](c, "age", 18)
+		Locals[bool](c, "isHuman", true)
+		return c.Next()
+	})
+	app.Get("/test", func(c Ctx) error {
+		require.Equal(t, "doe", Locals[string](c, "john"))
+		require.Equal(t, 18, Locals[int](c, "age"))
+		require.Equal(t, true, Locals[bool](c, "isHuman"))
+		require.Equal(t, 0, Locals[int](c, "isHuman"))
+		return nil
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+}
+
+// go test -run Test_Ctx_Locals_GenericCustomStruct
+func Test_Ctx_Locals_GenericCustomStruct(t *testing.T) {
+	t.Parallel()
+
+	type User struct {
+		name string
+		age  int
+	}
+
+	app := New()
+	app.Use(func(c Ctx) error {
+		Locals[User](c, "user", User{"john", 18})
+		return c.Next()
+	})
+	app.Use("/test", func(c Ctx) error {
+		require.Equal(t, User{"john", 18}, Locals[User](c, "user"))
+		return nil
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+}
+
 // go test -run Test_Ctx_Method
 func Test_Ctx_Method(t *testing.T) {
 	t.Parallel()

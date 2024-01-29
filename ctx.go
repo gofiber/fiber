@@ -817,6 +817,22 @@ func (c *DefaultCtx) Locals(key any, value ...any) any {
 	return value[0]
 }
 
+// Locals function utilizing Go's generics feature.
+// This function allows for manipulating and retrieving local values within a request context with a more specific data type.
+func Locals[V any](c Ctx, key any, value ...V) V {
+	var v V
+	var ok bool
+	if len(value) == 0 {
+		v, ok = c.Locals(key).(V)
+	} else {
+		v, ok = c.Locals(key, value[0]).(V)
+	}
+	if !ok {
+		return v // return zero of type V
+	}
+	return v
+}
+
 // Location sets the response Location HTTP header to the specified path parameter.
 func (c *DefaultCtx) Location(path string) {
 	c.setCanonical(HeaderLocation, path)
