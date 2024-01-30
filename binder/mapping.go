@@ -136,7 +136,7 @@ func parseParamSquareBrackets(k string) (string, error) {
 	for i, b := range kbytes {
 		if b == '[' && kbytes[i+1] != ']' {
 			if err := bb.WriteByte('.'); err != nil {
-				return "", err //nolint:wrapchec,wrapcheck // unnecessary to wrap it
+				return "", err //nolint:wrapcheck // unnecessary to wrap it
 			}
 		}
 
@@ -145,7 +145,7 @@ func parseParamSquareBrackets(k string) (string, error) {
 		}
 
 		if err := bb.WriteByte(b); err != nil {
-			return "", err //nolint:wrapchec,wrapcheck // unnecessary to wrap it
+			return "", err //nolint:wrapcheck // unnecessary to wrap it
 		}
 	}
 
