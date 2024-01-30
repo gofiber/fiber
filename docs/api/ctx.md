@@ -1004,7 +1004,7 @@ An alternative version of the Locals method that takes advantage of Go's generic
 allows for the manipulation and retrieval of local values within a request's context with a more specific data type.
 
 ```go title="Signature"
-func Locals[V any](c Ctx, key any, value ...any) V
+func Locals[V any](c Ctx, key any, value ...V) V
 ```
 
 ```go title="Example"
