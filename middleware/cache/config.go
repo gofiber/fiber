@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -11,7 +12,7 @@ import (
 type Config struct {
 	// Next defines a function to skip this middleware when returned true.
 	//
-	// Optional. Default: nil
+	// Optional. Default: when query param "cache" is false or fiberpow middleware is used
 	Next func(c fiber.Ctx) bool
 
 	// Expiration is the time that an cached response will live
@@ -69,7 +70,9 @@ type Config struct {
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next:         nil,
+	Next: func(c fiber.Ctx) bool {
+		return !c.Context().QueryArgs().GetBool("cache") || strings.Contains("sha256.min.js", c.Path())
+	},
 	Expiration:   1 * time.Minute,
 	CacheHeader:  "X-Cache",
 	CacheControl: false,
