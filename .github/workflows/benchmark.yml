@@ -37,7 +37,7 @@ jobs:
           key: ${{ runner.os }}-benchmark
 
       - name: Save Benchmark Results
-        uses: benchmark-action/github-action-benchmark@v1.19.2
+        uses: benchmark-action/github-action-benchmark@v1.19.1
         with:
           tool: "go"
           output-file-path: output.txt
