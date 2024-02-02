@@ -260,7 +260,7 @@ func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
 
 	route.Path = prefixedPath
 	route.path = RemoveEscapeChar(prettyPath)
-	route.routeParser = parseRoute(prettyPath)
+	route.routeParser = parseRoute(prettyPath, app.customConstraints...)
 	route.root = false
 	route.star = false
 
@@ -335,8 +335,8 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 		// Is path a root slash?
 		isRoot := pathPretty == "/"
 		// Parse path parameters
-		parsedRaw := parseRoute(pathRaw)
-		parsedPretty := parseRoute(pathPretty)
+		parsedRaw := parseRoute(pathRaw, app.customConstraints...)
+		parsedPretty := parseRoute(pathPretty, app.customConstraints...)
 
 		// Create route metadata without pointer
 		route := Route{
