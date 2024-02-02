@@ -280,7 +280,7 @@ func (app *fiber.App) addPrefixToRoute(prefix string, route *Route) *Route {
 
 	route.Path = prefixedPath
 	route.path = RemoveEscapeChar(prettyPath)
-	route.routeParser = parseRoute(prettyPath)
+	route.routeParser = parseRoute(prettyPath, app.customConstraints...)
 	route.root = false
 	route.star = false
 

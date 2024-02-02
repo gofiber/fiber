@@ -123,6 +123,7 @@ type App[TRouter Router] struct {
 	mountFields *mountFields
 	// Indicates if the value was explicitly configured
 	configured Config
+	// TODO: move it to the router interface `router.RegisterCustomConstraint`
 	// customConstraints is a list of external constraints
 	customConstraints []CustomConstraint
 }
@@ -594,6 +595,7 @@ func (app *App) NewCtxFunc(function func(app *App) CustomCtx) {
 	app.newCtxFunc = function
 }
 
+// TODO: move it to our Router interface `router.RegisterCustomConstraint`
 // RegisterCustomConstraint allows to register custom constraint.
 func (app *App) RegisterCustomConstraint(constraint CustomConstraint) {
 	app.customConstraints = append(app.customConstraints, constraint)
