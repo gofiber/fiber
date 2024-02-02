@@ -83,8 +83,8 @@ func Test_CSRF_WithSession(t *testing.T) {
 
 	// get session
 	sess, err := store.Get(app.NewCtx(ctx))
-	require.Equal(t, nil, err)
-	require.Equal(t, true, sess.Fresh())
+	require.NoError(t, err)
+	require.True(t, sess.Fresh())
 
 	// the session string is no longer be 123
 	newSessionIDString := sess.ID()
@@ -186,7 +186,7 @@ func Test_CSRF_ExpiredToken(t *testing.T) {
 	require.Equal(t, 200, ctx.Response.StatusCode())
 
 	// Wait for the token to expire
-	time.Sleep(1 * time.Second)
+	time.Sleep(1250 * time.Millisecond)
 
 	// Expired CSRF token
 	ctx.Request.Reset()
@@ -216,8 +216,8 @@ func Test_CSRF_ExpiredToken_WithSession(t *testing.T) {
 
 	// get session
 	sess, err := store.Get(app.NewCtx(ctx))
-	require.Equal(t, nil, err)
-	require.Equal(t, true, sess.Fresh())
+	require.NoError(t, err)
+	require.True(t, sess.Fresh())
 
 	// get session id
 	newSessionIDString := sess.ID()
@@ -280,7 +280,7 @@ func Test_CSRF_MultiUseToken(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		KeyLookup: "header:X-CSRF-Token",
+		KeyLookup: "header:X-Csrf-Token",
 	}))
 
 	app.Post("/", func(c fiber.Ctx) error {
@@ -292,7 +292,7 @@ func Test_CSRF_MultiUseToken(t *testing.T) {
 
 	// Invalid CSRF token
 	ctx.Request.Header.SetMethod(fiber.MethodPost)
-	ctx.Request.Header.Set("X-CSRF-Token", "johndoe")
+	ctx.Request.Header.Set("X-Csrf-Token", "johndoe")
 	h(ctx)
 	require.Equal(t, 403, ctx.Response.StatusCode())
 
@@ -307,7 +307,7 @@ func Test_CSRF_MultiUseToken(t *testing.T) {
 	ctx.Request.Reset()
 	ctx.Response.Reset()
 	ctx.Request.Header.SetMethod(fiber.MethodPost)
-	ctx.Request.Header.Set("X-CSRF-Token", token)
+	ctx.Request.Header.Set("X-Csrf-Token", token)
 	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
 	h(ctx)
 	newToken := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
@@ -747,8 +747,8 @@ func Test_CSRF_DeleteToken_WithSession(t *testing.T) {
 
 	// get session
 	sess, err := store.Get(app.NewCtx(ctx))
-	require.Equal(t, nil, err)
-	require.Equal(t, true, sess.Fresh())
+	require.NoError(t, err)
+	require.True(t, sess.Fresh())
 
 	// the session string is no longer be 123
 	newSessionIDString := sess.ID()

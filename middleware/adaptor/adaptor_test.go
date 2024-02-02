@@ -47,7 +47,7 @@ func Test_HTTPHandler(t *testing.T) {
 		require.Equal(t, expectedProtoMinor, r.ProtoMinor, "ProtoMinor")
 		require.Equal(t, expectedRequestURI, r.RequestURI, "RequestURI")
 		require.Equal(t, expectedContentLength, int(r.ContentLength), "ContentLength")
-		require.Equal(t, 0, len(r.TransferEncoding), "TransferEncoding")
+		require.Empty(t, r.TransferEncoding, "TransferEncoding")
 		require.Equal(t, expectedHost, r.Host, "Host")
 		require.Equal(t, expectedRemoteAddr, r.RemoteAddr, "RemoteAddr")
 
@@ -76,7 +76,7 @@ func Test_HTTPHandler(t *testing.T) {
 	req.Header.SetMethod(expectedMethod)
 	req.SetRequestURI(expectedRequestURI)
 	req.Header.SetHost(expectedHost)
-	req.BodyWriter().Write([]byte(expectedBody)) //nolint:errcheck, gosec // not needed
+	req.BodyWriter().Write([]byte(expectedBody)) //nolint:errcheck // not needed
 	for k, v := range expectedHeader {
 		req.Header.Set(k, v)
 	}
@@ -190,8 +190,8 @@ func Test_HTTPMiddleware(t *testing.T) {
 
 	resp, err := app.Test(req)
 	require.NoError(t, err)
-	require.Equal(t, resp.Header.Get("context_okay"), "okay")
-	require.Equal(t, resp.Header.Get("context_second_okay"), "okay")
+	require.Equal(t, "okay", resp.Header.Get("context_okay"))
+	require.Equal(t, "okay", resp.Header.Get("context_second_okay"))
 }
 
 func Test_FiberHandler(t *testing.T) {
@@ -292,7 +292,7 @@ func testFiberToHandlerFunc(t *testing.T, checkDefaultPort bool, app ...*fiber.A
 	require.Equal(t, expectedResponseBody, string(w.body), "Body")
 }
 
-func setFiberContextValueMiddleware(next fiber.Handler, key string, value interface{}) fiber.Handler {
+func setFiberContextValueMiddleware(next fiber.Handler, key string, value any) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		c.Locals(key, value)
 		return next(c)
@@ -390,7 +390,7 @@ func Test_ConvertRequest(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test?hello=world&another=test", http.NoBody))
-	require.Equal(t, nil, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
 
 	body, err := io.ReadAll(resp.Body)

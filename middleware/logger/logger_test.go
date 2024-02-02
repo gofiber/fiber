@@ -17,7 +17,6 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/requestid"
-	"github.com/gofiber/fiber/v3/utils"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
@@ -128,7 +127,7 @@ func Test_Logger_Done(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.True(t, buf.Len() > 0)
+	require.Greater(t, buf.Len(), 0)
 }
 
 // go test -run Test_Logger_ErrorTimeZone
@@ -266,7 +265,8 @@ func Test_Logger_WithLatency(t *testing.T) {
 		require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 		// Assert that the log output contains the expected latency value in the current time unit
-		require.Equal(t, bytes.HasSuffix(buff.Bytes(), []byte(tu.unit)), true, fmt.Sprintf("Expected latency to be in %s, got %s", tu.unit, buff.String()))
+		require.True(t, bytes.HasSuffix(buff.Bytes(), []byte(tu.unit)),
+			fmt.Sprintf("Expected latency to be in %s, got %s", tu.unit, buff.String()))
 
 		// Reset the buffer
 		buff.Reset()
@@ -303,14 +303,15 @@ func Test_Logger_WithLatency_DefaultFormat(t *testing.T) {
 
 		// Create a new HTTP request to the test route
 		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), int(2*time.Second))
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 		// Assert that the log output contains the expected latency value in the current time unit
 		// parse out the latency value from the log output
 		latency := bytes.Split(buff.Bytes(), []byte(" | "))[2]
 		// Assert that the latency value is in the current time unit
-		utils.AssertEqual(t, bytes.HasSuffix(latency, []byte(tu.unit)), true, fmt.Sprintf("Expected latency to be in %s, got %s", tu.unit, latency))
+		require.True(t, bytes.HasSuffix(latency, []byte(tu.unit)),
+			fmt.Sprintf("Expected latency to be in %s, got %s", tu.unit, latency))
 
 		// Reset the buffer
 		buff.Reset()
@@ -425,9 +426,9 @@ func Test_Logger_Data_Race(t *testing.T) {
 	resp2, err2 = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	wg.Wait()
 
-	require.Nil(t, err1)
+	require.NoError(t, err1)
 	require.Equal(t, fiber.StatusOK, resp1.StatusCode)
-	require.Nil(t, err2)
+	require.NoError(t, err2)
 	require.Equal(t, fiber.StatusOK, resp2.StatusCode)
 }
 

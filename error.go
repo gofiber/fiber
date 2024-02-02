@@ -1,19 +1,19 @@
 package fiber
 
 import (
-	errors "encoding/json"
-	stdErrors "errors"
+	"encoding/json"
+	"errors"
 
 	"github.com/gofiber/fiber/v3/internal/schema"
 )
 
 // Wrap and return this for unreachable code if panicking is undesirable (i.e., in a handler).
 // Unexported because users will hopefully never need to see it.
-var errUnreachable = stdErrors.New("fiber: unreachable code, please create an issue at github.com/gofiber/fiber")
+var errUnreachable = errors.New("fiber: unreachable code, please create an issue at github.com/gofiber/fiber")
 
 // Graceful shutdown errors
 var (
-	ErrGracefulTimeout = stdErrors.New("shutdown: graceful timeout has been reached, exiting")
+	ErrGracefulTimeout = errors.New("shutdown: graceful timeout has been reached, exiting")
 )
 
 // Fiber redirection errors
@@ -23,17 +23,17 @@ var (
 
 // Range errors
 var (
-	ErrRangeMalformed     = stdErrors.New("range: malformed range header string")
-	ErrRangeUnsatisfiable = stdErrors.New("range: unsatisfiable range")
+	ErrRangeMalformed     = errors.New("range: malformed range header string")
+	ErrRangeUnsatisfiable = errors.New("range: unsatisfiable range")
 )
 
 // Binder errors
-var ErrCustomBinderNotFound = stdErrors.New("binder: custom binder not found, please be sure to enter the right name")
+var ErrCustomBinderNotFound = errors.New("binder: custom binder not found, please be sure to enter the right name")
 
 // Format errors
 var (
 	// ErrNoHandlers is returned when c.Format is called with no arguments.
-	ErrNoHandlers = stdErrors.New("format: at least one handler is required, but none were set")
+	ErrNoHandlers = errors.New("format: at least one handler is required, but none were set")
 )
 
 // gorilla/schema errors
@@ -52,21 +52,21 @@ type (
 type (
 	// An InvalidUnmarshalError describes an invalid argument passed to Unmarshal.
 	// (The argument to Unmarshal must be a non-nil pointer.)
-	InvalidUnmarshalError = errors.InvalidUnmarshalError
+	InvalidUnmarshalError = json.InvalidUnmarshalError
 
 	// A MarshalerError represents an error from calling a MarshalJSON or MarshalText method.
-	MarshalerError = errors.MarshalerError
+	MarshalerError = json.MarshalerError
 
 	// A SyntaxError is a description of a JSON syntax error.
-	SyntaxError = errors.SyntaxError
+	SyntaxError = json.SyntaxError
 
 	// An UnmarshalTypeError describes a JSON value that was
 	// not appropriate for a value of a specific Go type.
-	UnmarshalTypeError = errors.UnmarshalTypeError
+	UnmarshalTypeError = json.UnmarshalTypeError
 
 	// An UnsupportedTypeError is returned by Marshal when attempting
 	// to encode an unsupported value type.
-	UnsupportedTypeError = errors.UnsupportedTypeError
+	UnsupportedTypeError = json.UnsupportedTypeError
 
-	UnsupportedValueError = errors.UnsupportedValueError
+	UnsupportedValueError = json.UnsupportedValueError
 )

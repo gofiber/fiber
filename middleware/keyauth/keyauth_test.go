@@ -88,7 +88,7 @@ func TestAuthSources(t *testing.T) {
 				// construct the test HTTP request
 				var req *http.Request
 				req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, test.route, nil)
-				require.Equal(t, err, nil)
+				require.NoError(t, err)
 
 				// setup the apikey for the different auth schemes
 				if authSource == "header" {
@@ -107,7 +107,7 @@ func TestAuthSources(t *testing.T) {
 
 				res, err := app.Test(req, -1)
 
-				require.Equal(t, nil, err, test.description)
+				require.NoError(t, err, test.description)
 
 				// test the body of the request
 				body, err := io.ReadAll(res.Body)
@@ -121,11 +121,11 @@ func TestAuthSources(t *testing.T) {
 				require.Equal(t, test.expectedCode, res.StatusCode, test.description)
 
 				// body
-				require.Equal(t, nil, err, test.description)
+				require.NoError(t, err, test.description)
 				require.Equal(t, test.expectedBody, string(body), test.description)
 
 				err = res.Body.Close()
-				require.Equal(t, err, nil)
+				require.NoError(t, err)
 			}
 		})
 	}
@@ -243,21 +243,21 @@ func TestMultipleKeyAuth(t *testing.T) {
 	for _, test := range tests {
 		var req *http.Request
 		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, test.route, nil)
-		require.Equal(t, err, nil)
+		require.NoError(t, err)
 		if test.APIKey != "" {
 			req.Header.Set("key", test.APIKey)
 		}
 
 		res, err := app.Test(req, -1)
 
-		require.Equal(t, nil, err, test.description)
+		require.NoError(t, err, test.description)
 
 		// test the body of the request
 		body, err := io.ReadAll(res.Body)
 		require.Equal(t, test.expectedCode, res.StatusCode, test.description)
 
 		// body
-		require.Equal(t, nil, err, test.description)
+		require.NoError(t, err, test.description)
 		require.Equal(t, test.expectedBody, string(body), test.description)
 	}
 }
@@ -288,15 +288,15 @@ func TestCustomSuccessAndFailureHandlers(t *testing.T) {
 
 	// Create a request without an API key and send it to the app
 	res, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	// Read the response body into a string
 	body, err := io.ReadAll(res.Body)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	// Check that the response has the expected status code and body
-	require.Equal(t, res.StatusCode, http.StatusUnauthorized)
-	require.Equal(t, string(body), "API key is invalid and request was handled by custom error handler")
+	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
+	require.Equal(t, "API key is invalid and request was handled by custom error handler", string(body))
 
 	// Create a request with a valid API key in the Authorization header
 	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
@@ -304,15 +304,15 @@ func TestCustomSuccessAndFailureHandlers(t *testing.T) {
 
 	// Send the request to the app
 	res, err = app.Test(req)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	// Read the response body into a string
 	body, err = io.ReadAll(res.Body)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	// Check that the response has the expected status code and body
-	require.Equal(t, res.StatusCode, http.StatusOK)
-	require.Equal(t, string(body), "API key is valid and request was handled by custom success handler")
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	require.Equal(t, "API key is valid and request was handled by custom success handler", string(body))
 }
 
 func TestCustomNextFunc(t *testing.T) {
@@ -338,27 +338,27 @@ func TestCustomNextFunc(t *testing.T) {
 	// Create a request with the "/allowed" path and send it to the app
 	req := httptest.NewRequest(fiber.MethodGet, "/allowed", nil)
 	res, err := app.Test(req)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	// Read the response body into a string
 	body, err := io.ReadAll(res.Body)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	// Check that the response has the expected status code and body
-	require.Equal(t, res.StatusCode, http.StatusOK)
-	require.Equal(t, string(body), "API key is valid and request was allowed by custom filter")
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	require.Equal(t, "API key is valid and request was allowed by custom filter", string(body))
 
 	// Create a request with a different path and send it to the app without correct key
 	req = httptest.NewRequest(fiber.MethodGet, "/not-allowed", nil)
 	res, err = app.Test(req)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	// Read the response body into a string
 	body, err = io.ReadAll(res.Body)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	// Check that the response has the expected status code and body
-	require.Equal(t, res.StatusCode, http.StatusUnauthorized)
+	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
 	require.Equal(t, string(body), ErrMissingOrMalformedAPIKey.Error())
 
 	// Create a request with a different path and send it to the app with correct key
@@ -366,14 +366,14 @@ func TestCustomNextFunc(t *testing.T) {
 	req.Header.Add("Authorization", fmt.Sprintf("Basic %s", CorrectKey))
 
 	res, err = app.Test(req)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	// Read the response body into a string
 	body, err = io.ReadAll(res.Body)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	// Check that the response has the expected status code and body
-	require.Equal(t, res.StatusCode, http.StatusUnauthorized)
+	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
 	require.Equal(t, string(body), ErrMissingOrMalformedAPIKey.Error())
 }
 
@@ -401,15 +401,15 @@ func TestAuthSchemeToken(t *testing.T) {
 
 	// Send the request to the app
 	res, err := app.Test(req)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	// Read the response body into a string
 	body, err := io.ReadAll(res.Body)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	// Check that the response has the expected status code and body
-	require.Equal(t, res.StatusCode, http.StatusOK)
-	require.Equal(t, string(body), "API key is valid")
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	require.Equal(t, "API key is valid", string(body))
 }
 
 func TestAuthSchemeBasic(t *testing.T) {
@@ -433,14 +433,14 @@ func TestAuthSchemeBasic(t *testing.T) {
 
 	// Create a request without an API key and  Send the request to the app
 	res, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	// Read the response body into a string
 	body, err := io.ReadAll(res.Body)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	// Check that the response has the expected status code and body
-	require.Equal(t, res.StatusCode, http.StatusUnauthorized)
+	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
 	require.Equal(t, string(body), ErrMissingOrMalformedAPIKey.Error())
 
 	// Create a request with a valid API key in the "Authorization" header using the "Basic" scheme
@@ -449,13 +449,13 @@ func TestAuthSchemeBasic(t *testing.T) {
 
 	// Send the request to the app
 	res, err = app.Test(req)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	// Read the response body into a string
 	body, err = io.ReadAll(res.Body)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	// Check that the response has the expected status code and body
-	require.Equal(t, res.StatusCode, http.StatusOK)
-	require.Equal(t, string(body), "API key is valid")
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	require.Equal(t, "API key is valid", string(body))
 }

@@ -165,8 +165,10 @@ type Ctx interface {
 	// Array and slice values encode as JSON arrays,
 	// except that []byte encodes as a base64-encoded string,
 	// and a nil slice encodes as the null JSON value.
-	// This method also sets the content header to application/json.
-	JSON(data any) error
+	// If the ctype parameter is given, this method will set the
+	// Content-Type header equal to ctype. If ctype is not given,
+	// The Content-Type header will be set to application/json.
+	JSON(data any, ctype ...string) error
 
 	// JSONP sends a JSON response with JSONP support.
 	// This method is identical to JSON, except that it opts-in to JSONP callback support.
@@ -231,13 +233,6 @@ type Ctx interface {
 	// Protocol returns the HTTP protocol of request: HTTP/1.1 and HTTP/2.
 	Protocol() string
 
-	// Query returns the query string parameter in the url.
-	// Defaults to empty string "" if the query doesn't exist.
-	// If a default value is given, it will return that value if the query doesn't exist.
-	// Returned value is only valid within the handler. Do not store any references.
-	// Make copies or use the Immutable setting to use the value outside the Handler.
-	Query(key string, defaultValue ...string) string
-
 	// Queries returns a map of query parameters and their values.
 	//
 	// GET /?name=alex&wanna_cake=2&id=
@@ -261,38 +256,12 @@ type Ctx interface {
 	// Queries()["filters[status]"] == "pending"
 	Queries() map[string]string
 
-	// QueryInt returns integer value of key string parameter in the url.
-	// Default to empty or invalid key is 0.
-	//
-	//	GET /?name=alex&wanna_cake=2&id=
-	//	QueryInt("wanna_cake", 1) == 2
-	//	QueryInt("name", 1) == 1
-	//	QueryInt("id", 1) == 1
-	//	QueryInt("id") == 0
-	QueryInt(key string, defaultValue ...int) int
-
-	// QueryBool returns bool value of key string parameter in the url.
-	// Default to empty or invalid key is true.
-	//
-	//	Get /?name=alex&want_pizza=false&id=
-	//	QueryBool("want_pizza") == false
-	//	QueryBool("want_pizza", true) == false
-	//	QueryBool("name") == false
-	//	QueryBool("name", true) == true
-	//	QueryBool("id") == false
-	//	QueryBool("id", true) == true
-	QueryBool(key string, defaultValue ...bool) bool
-
-	// QueryFloat returns float64 value of key string parameter in the url.
-	// Default to empty or invalid key is 0.
-	//
-	//	GET /?name=alex&amount=32.23&id=
-	//	QueryFloat("amount") = 32.23
-	//	QueryFloat("amount", 3) = 32.23
-	//	QueryFloat("name", 1) = 1
-	//	QueryFloat("name") = 0
-	//	QueryFloat("id", 3) = 3
-	QueryFloat(key string, defaultValue ...float64) float64
+	// Query returns the query string parameter in the url.
+	// Defaults to empty string "" if the query doesn't exist.
+	// If a default value is given, it will return that value if the query doesn't exist.
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting to use the value outside the Handler.
+	Query(key string, defaultValue ...string) string
 
 	// Range returns a struct containing the type and a slice of ranges.
 	Range(size int) (rangeData Range, err error)

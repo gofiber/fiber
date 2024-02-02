@@ -22,10 +22,10 @@ func TestEnvVarStructWithExportVarsExcludeVars(t *testing.T) {
 		ExcludeVars: map[string]string{"excludeKey": ""},
 	})
 
-	require.Equal(t, vars.Vars["testKey"], "testEnvValue")
-	require.Equal(t, vars.Vars["testDefaultKey"], "testDefaultVal")
-	require.Equal(t, vars.Vars["excludeKey"], "")
-	require.Equal(t, vars.Vars["anotherEnvKey"], "")
+	require.Equal(t, "testEnvValue", vars.Vars["testKey"])
+	require.Equal(t, "testDefaultVal", vars.Vars["testDefaultKey"])
+	require.Equal(t, "", vars.Vars["excludeKey"])
+	require.Equal(t, "", vars.Vars["anotherEnvKey"])
 }
 
 func TestEnvVarHandler(t *testing.T) {
@@ -92,7 +92,7 @@ func TestEnvVarHandlerDefaultConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	var envVars EnvVar
-	require.Equal(t, nil, json.Unmarshal(respBody, &envVars))
+	require.NoError(t, json.Unmarshal(respBody, &envVars))
 	val := envVars.Vars["testEnvKey"]
 	require.Equal(t, "testEnvVal", val)
 }
@@ -126,7 +126,7 @@ func TestEnvVarHandlerSpecialValue(t *testing.T) {
 	require.NoError(t, err)
 
 	var envVars EnvVar
-	require.Equal(t, nil, json.Unmarshal(respBody, &envVars))
+	require.NoError(t, json.Unmarshal(respBody, &envVars))
 	val := envVars.Vars[testEnvKey]
 	require.Equal(t, fakeBase64, val)
 
@@ -139,7 +139,7 @@ func TestEnvVarHandlerSpecialValue(t *testing.T) {
 	require.NoError(t, err)
 
 	var envVarsExport EnvVar
-	require.Equal(t, nil, json.Unmarshal(respBody, &envVarsExport))
+	require.NoError(t, json.Unmarshal(respBody, &envVarsExport))
 	val = envVarsExport.Vars[testEnvKey]
 	require.Equal(t, fakeBase64, val)
 }

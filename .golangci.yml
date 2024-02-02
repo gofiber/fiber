@@ -39,18 +39,20 @@ linters-settings:
     extra-rules: true
 
   gosec:
+    excludes:
+      - G104
     config:
       global:
         audit: true
   
   depguard:
-    include-go-root: true
-    packages:
-      - flag
-      - io/ioutil
-    packages-with-error-message:
-      - flag: '`flag` package is only allowed in main.go'
-      - io/ioutil: '`io/ioutil` package is deprecated, use the `io` and `os` package instead'
+    rules:
+      main:
+        deny:
+          - pkg: flag
+            desc: '`flag` package is only allowed in main.go'
+          - pkg: io/ioutil
+            desc: '`io/ioutil` package is deprecated, use the `io` and `os` package instead'
 
   govet:
     check-shadowing: true
@@ -93,6 +95,8 @@ linters-settings:
         disabled: true
       - name: cognitive-complexity
         disabled: true
+      - name: comment-spacings
+        disabled: true # TODO https://github.com/gofiber/fiber/issues/2816
       - name: cyclomatic
         disabled: true
       - name: early-return
@@ -100,6 +104,8 @@ linters-settings:
         disabled: true
       - name: exported
         disabled: true
+        arguments:
+          - disableStutteringCheck # TODO https://github.com/gofiber/fiber/issues/2816
       - name: file-header
         disabled: true
       - name: function-result-limit
@@ -116,6 +122,8 @@ linters-settings:
         disabled: true
       - name: package-comments
         disabled: true
+      - name: unchecked-type-assertion
+        disabled: true # TODO https://github.com/gofiber/fiber/issues/2816
 
   stylecheck:
     checks:
@@ -164,7 +172,8 @@ linters:
     - exportloopref
     - forbidigo
     - forcetypeassert
-    - goconst
+    # - gochecksumtype # TODO https://github.com/gofiber/fiber/issues/2816
+    # - goconst # TODO https://github.com/gofiber/fiber/issues/2816
     - gocritic
     - gofmt
     - gofumpt
@@ -173,9 +182,12 @@ linters:
     - goprintffuncname
     - gosec
     - gosimple
+    # - gosmopolitan # TODO https://github.com/gofiber/fiber/issues/2816
     - govet
     - grouper
+    # - inamedparam # TODO https://github.com/gofiber/fiber/issues/2816
     - loggercheck
+    # - mirror # TODO https://github.com/gofiber/fiber/issues/2816
     - misspell
     - nakedret
     - nilerr
@@ -184,6 +196,7 @@ linters:
     - nolintlint
     - nonamedreturns
     - nosprintfhostport
+    # - perfsprint # TODO https://github.com/gofiber/fiber/issues/2816
     - predeclared
     - promlinter
     - reassign
@@ -192,16 +205,18 @@ linters:
     - sqlclosecheck
     - staticcheck
     - stylecheck
+    # - tagalign # TODO https://github.com/gofiber/fiber/issues/2816
     - tagliatelle
+    - testifylint
     # - testpackage # TODO: Enable once https://github.com/gofiber/fiber/issues/2252 is implemented
     - thelper
-    # - tparallel # TODO: Enable once https://github.com/gofiber/fiber/issues/2254 is implemented
+    - tparallel
     - typecheck
     - unconvert
     - unparam
     - unused
     - usestdlibvars
-    - wastedassign
+    # - wastedassign # TODO https://github.com/gofiber/fiber/issues/2816
     - whitespace
     - wrapcheck
     - tenv

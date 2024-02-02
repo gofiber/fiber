@@ -13,7 +13,6 @@ import (
 	"io"
 	"net/http/httptest"
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/gofiber/utils/v2"
@@ -307,7 +306,7 @@ func Test_Router_Register_Missing_Handler(t *testing.T) {
 func Test_Ensure_Router_Interface_Implementation(t *testing.T) {
 	t.Parallel()
 
-	var app interface{} = (*fiber.App)(nil)
+	var app any = (*fiber.App)(nil)
 	_, ok := app.(ExpressjsRouterI)
 	require.True(t, ok)
 
@@ -354,7 +353,7 @@ func Test_Route_Static_Root(t *testing.T) {
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.True(t, strings.Contains(app.getString(body), "color"))
+	require.Contains(t, app.getString(body), "color")
 
 	app = fiber.New()
 	app.Static("/", dir)
@@ -369,7 +368,7 @@ func Test_Route_Static_Root(t *testing.T) {
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.True(t, strings.Contains(app.getString(body), "color"))
+	require.Contains(t, app.getString(body), "color")
 }
 
 func Test_Route_Static_HasPrefix(t *testing.T) {
@@ -395,7 +394,7 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.True(t, strings.Contains(app.getString(body), "color"))
+	require.Contains(t, app.getString(body), "color")
 
 	app = fiber.New()
 	app.Static("/static/", dir, fiber.Static{
@@ -416,7 +415,7 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.True(t, strings.Contains(app.getString(body), "color"))
+	require.Contains(t, app.getString(body), "color")
 
 	app = fiber.New()
 	app.Static("/static", dir)
@@ -435,7 +434,7 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.True(t, strings.Contains(app.getString(body), "color"))
+	require.Contains(t, app.getString(body), "color")
 
 	app = fiber.New()
 	app.Static("/static/", dir)
@@ -454,7 +453,7 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.True(t, strings.Contains(app.getString(body), "color"))
+	require.Contains(t, app.getString(body), "color")
 }
 
 func Test_Router_NotFound(t *testing.T) {

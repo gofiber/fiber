@@ -24,7 +24,7 @@ func Test_RequestID(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 	reqid := resp.Header.Get(fiber.HeaderXRequestID)
-	require.Equal(t, 36, len(reqid))
+	require.Len(t, reqid, 36)
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	req.Header.Add(fiber.HeaderXRequestID, reqid)
@@ -47,7 +47,7 @@ func Test_RequestID_Next(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
-	require.Equal(t, resp.Header.Get(fiber.HeaderXRequestID), "")
+	require.Empty(t, resp.Header.Get(fiber.HeaderXRequestID))
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
 

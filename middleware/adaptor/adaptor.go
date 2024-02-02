@@ -38,11 +38,11 @@ func ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error) {
 }
 
 // CopyContextToFiberContext copies the values of context.Context to a fasthttp.RequestCtx
-func CopyContextToFiberContext(context interface{}, requestContext *fasthttp.RequestCtx) {
+func CopyContextToFiberContext(context any, requestContext *fasthttp.RequestCtx) {
 	contextValues := reflect.ValueOf(context).Elem()
 	contextKeys := reflect.TypeOf(context).Elem()
 	if contextKeys.Kind() == reflect.Struct {
-		var lastKey interface{}
+		var lastKey any
 		for i := 0; i < contextValues.NumField(); i++ {
 			reflectValue := contextValues.Field(i)
 			/* #nosec */

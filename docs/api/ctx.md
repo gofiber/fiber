@@ -318,7 +318,7 @@ It is important to specify the correct struct tag based on the content type to b
 | `text/xml`                          | xml        |
 
 ```go title="Signature"
-func (c *Ctx) BodyParser(out interface{}) error
+func (c *Ctx) BodyParser(out any) error
 ```
 
 ```go title="Example"
@@ -481,7 +481,7 @@ This method is similar to [BodyParser](ctx.md#bodyparser), but for cookie parame
 It is important to use the struct tag "cookie". For example, if you want to parse a cookie with a field called Age, you would use a struct field of `cookie:"age"`.
 
 ```go title="Signature"
-func (c *Ctx) CookieParser(out interface{}) error
+func (c *Ctx) CookieParser(out any) error
 ```
 
 ```go title="Example"
@@ -862,11 +862,11 @@ app.Get("/", func(c fiber.Ctx) error {
 Converts any **interface** or **string** to JSON using the [encoding/json](https://pkg.go.dev/encoding/json) package.
 
 :::info
-JSON also sets the content header to **application/json**.
+JSON also sets the content header to the `ctype` parameter. If no `ctype` is passed in, the header is set to `application/json`.
 :::
 
 ```go title="Signature"
-func (c *Ctx) JSON(data interface{}) error
+func (c *Ctx) JSON(data any, ctype ...string) error
 ```
 
 ```go title="Example"
@@ -892,6 +892,22 @@ app.Get("/json", func(c fiber.Ctx) error {
   })
   // => Content-Type: application/json
   // => "{"name": "Grame", "age": 20}"
+
+  return c.JSON(fiber.Map{
+    "type": "https://example.com/probs/out-of-credit",
+    "title": "You do not have enough credit.",
+    "status": 403,
+    "detail": "Your current balance is 30, but that costs 50.",
+    "instance": "/account/12345/msgs/abc",
+  }, "application/problem+json")
+  // => Content-Type: application/problem+json
+  // => "{
+  // =>     "type": "https://example.com/probs/out-of-credit",
+  // =>     "title": "You do not have enough credit.",
+  // =>     "status": 403,
+  // =>     "detail": "Your current balance is 30, but that costs 50.",
+  // =>     "instance": "/account/12345/msgs/abc",
+  // => }"
 })
 ```
 
@@ -902,7 +918,7 @@ Sends a JSON response with JSONP support. This method is identical to [JSON](ctx
 Override this by passing a **named string** in the method.
 
 ```go title="Signature"
-func (c *Ctx) JSONP(data interface{}, callback ...string) error
+func (c *Ctx) JSONP(data any, callback ...string) error
 ```
 
 ```go title="Example"
@@ -956,7 +972,7 @@ This is useful if you want to pass some **specific** data to the next middleware
 :::
 
 ```go title="Signature"
-func (c *Ctx) Locals(key interface{}, value ...interface{}) interface{}
+func (c *Ctx) Locals(key any, value ...any) any
 ```
 
 ```go title="Example"
@@ -983,6 +999,31 @@ app.Get("/admin", func(c fiber.Ctx) error {
 
 })
 ```
+
+An alternative version of the Locals method that takes advantage of Go's generics feature is also available. This version 
+allows for the manipulation and retrieval of local values within a request's context with a more specific data type.
+
+```go title="Signature"
+func Locals[V any](c Ctx, key any, value ...V) V
+```
+
+```go title="Example"
+app.Use(func(c Ctx) error {
+  fiber.Locals[string](c, "john", "doe")
+  fiber.Locals[int](c, "age", 18)
+  fiber.Locals[bool](c, "isHuman", true)
+  return c.Next()
+})
+app.Get("/test", func(c Ctx) error {
+  fiber.Locals[string](c, "john")     // "doe"
+  fiber.Locals[int](c, "age")         // 18
+  fiber.Locals[bool](c, "isHuman")    // true
+  return nil
+})
+````
+
+Make sure to understand and correctly implement the Locals method in both its standard and generic form for better control 
+over route-specific data within your application.
 
 ## Location
 
@@ -1188,7 +1229,7 @@ This method is equivalent of using `atoi` with ctx.Params
 This method is similar to BodyParser, but for path parameters. It is important to use the struct tag "params". For example, if you want to parse a path parameter with a field called Pass, you would use a struct field of params:"pass"
 
 ```go title="Signature"
-func (c *Ctx) ParamsParser(out interface{}) error
+func (c *Ctx) ParamsParser(out any) error
 ```
 
 ```go title="Example"
@@ -1333,94 +1374,42 @@ app.Get("/", func(c fiber.Ctx) error {
 > _Returned value is only valid within the handler. Do not store any references.  
 > Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
 
-## QueryBool
+In certain scenarios, it can be useful to have an alternative approach to handle different types of query parameters, not 
+just strings. This can be achieved using a generic Query function known as `Query[V QueryType](c Ctx, key string, defaultValue ...V) V`. 
+This function is capable of parsing a query string and returning a value of a type that is assumed and specified by `V QueryType`.
 
-This property is an object containing a property for each query boolean parameter in the route, you could pass an optional default value that will be returned if the query key does not exist.
-
-:::caution
-Please note if that parameter is not in the request, false will be returned.
-If the parameter is not a boolean, it is still tried to be converted and usually returned as false.
-:::
+Here is the signature for the generic Query function:
 
 ```go title="Signature"
-func (c *Ctx) QueryBool(key string, defaultValue ...bool) bool
+func Query[V QueryType](c Ctx, key string, defaultValue ...V) V
 ```
 
+Consider this example:
+
 ```go title="Example"
-// GET http://example.com/?name=alex&want_pizza=false&id=
+// GET http://example.com/?page=1&brand=nike&new=true
 
 app.Get("/", func(c fiber.Ctx) error {
-    c.QueryBool("want_pizza")           // false
-	c.QueryBool("want_pizza", true) // false
-    c.QueryBool("name")                 // false
-    c.QueryBool("name", true)           // true
-    c.QueryBool("id")                   // false
-    c.QueryBool("id", true)             // true
+  fiber.Query[int](c, "page")     // 1
+  fiber.Query[string](c, "brand") // "nike"
+  fiber.Query[bool](c, "new")     // true
 
   // ...
 })
 ```
 
-## QueryFloat
+In this case, `Query[V QueryType](c Ctx, key string, defaultValue ...V) V` can retrieve 'page' as an integer, 'brand' 
+as a string, and 'new' as a boolean. The function uses the appropriate parsing function for each specified type to ensure 
+the correct type is returned. This simplifies the retrieval process of different types of query parameters, making your 
+controller actions cleaner.
 
-This property is an object containing a property for each query float64 parameter in the route, you could pass an optional default value that will be returned if the query key does not exist.
-
-:::caution
-Please note if that parameter is not in the request, zero will be returned.
-If the parameter is not a number, it is still tried to be converted and usually returned as 1.
-:::
-
-:::info
-Defaults to the float64 zero \(`0`\), if the param **doesn't** exist.
-:::
-
-```go title="Signature"
-func (c *Ctx) QueryFloat(key string, defaultValue ...float64) float64
-```
-
-```go title="Example"
-// GET http://example.com/?name=alex&amount=32.23&id=
-
-app.Get("/", func(c fiber.Ctx) error {
-    c.QueryFloat("amount")      // 32.23
-    c.QueryFloat("amount", 3)   // 32.23
-    c.QueryFloat("name", 1)     // 1
-    c.QueryFloat("name")        // 0
-    c.QueryFloat("id", 3)       // 3
-
-  // ...
-})
-```
-
-## QueryInt
-
-This property is an object containing a property for each query integer parameter in the route, you could pass an optional default value that will be returned if the query key does not exist.
-
-:::caution
-Please note if that parameter is not in the request, zero will be returned.
-If the parameter is not a number, it is still tried to be converted and usually returned as 1.
-:::
-
-:::info
-Defaults to the integer zero \(`0`\), if the param **doesn't** exist.
-:::
-
-```go title="Signature"
-func (c *Ctx) QueryInt(key string, defaultValue ...int) int
-```
-
-```go title="Example"
-// GET http://example.com/?name=alex&wanna_cake=2&id=
-
-app.Get("/", func(c fiber.Ctx) error {
-    c.QueryInt("wanna_cake", 1) // 2
-    c.QueryInt("name", 1)       // 1
-    c.QueryInt("id", 1)         // 1
-    c.QueryInt("id")            // 0
-
-  // ...
-})
-```
+The generic Query function supports returning the following data types based on V QueryType:
+- Integer: int, int8, int16, int32, int64
+- Unsigned integer: uint, uint8, uint16, uint32, uint64
+- Floating-point numbers: float32, float64
+- Boolean: bool
+- String: string
+- Byte array: []byte
 
 ## QueryParser
 
@@ -1428,7 +1417,7 @@ This method is similar to [BodyParser](ctx.md#bodyparser), but for query paramet
 It is important to use the struct tag "query". For example, if you want to parse a query parameter with a field called Pass, you would use a struct field of `query:"pass"`.
 
 ```go title="Signature"
-func (c *Ctx) QueryParser(out interface{}) error
+func (c *Ctx) QueryParser(out any) error
 ```
 
 ```go title="Example"
@@ -1577,7 +1566,7 @@ app.Get("/back", func(c fiber.Ctx) error {
 Renders a view with data and sends a `text/html` response. By default `Render` uses the default [**Go Template engine**](https://pkg.go.dev/html/template/). If you want to use another View engine, please take a look at our [**Template middleware**](https://docs.gofiber.io/template).
 
 ```go title="Signature"
-func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error
+func (c *Ctx) Render(name string, bind any, layouts ...string) error
 ```
 
 ## Request
@@ -1601,7 +1590,7 @@ This method is similar to [BodyParser](ctx.md#bodyparser), but for request heade
 It is important to use the struct tag "reqHeader". For example, if you want to parse a request header with a field called Pass, you would use a struct field of `reqHeader:"pass"`.
 
 ```go title="Signature"
-func (c *Ctx) ReqHeaderParser(out interface{}) error
+func (c *Ctx) ReqHeaderParser(out any) error
 ```
 
 ```go title="Example"
@@ -1900,7 +1889,7 @@ Allow you to config BodyParser/QueryParser decoder, base on schema's options, pr
 func SetParserDecoder(parserConfig fiber.ParserConfig{
   IgnoreUnknownKeys bool,
   ParserType        []fiber.ParserType{
-      Customtype interface{},
+      Customtype any,
       Converter  func(string) reflect.Value,
   },
   ZeroEmpty         bool,
@@ -2126,7 +2115,7 @@ app.Get("/", func(c fiber.Ctx) error {
 Writef adopts the string with variables
 
 ```go title="Signature"
-func (c *Ctx) Writef(f string, a ...interface{}) (n int, err error)
+func (c *Ctx) Writef(f string, a ...any) (n int, err error)
 ```
 
 ```go title="Example"
@@ -2181,7 +2170,7 @@ XML also sets the content header to **application/xml**.
 :::
 
 ```go title="Signature"
-func (c *Ctx) XML(data interface{}) error
+func (c *Ctx) XML(data any) error
 ```
 
 ```go title="Example"

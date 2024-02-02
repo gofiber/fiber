@@ -4,9 +4,11 @@ id: csrf
 
 # CSRF
 
-The CSRF middleware for [Fiber](https://github.com/gofiber/fiber) provides protection against [Cross-Site Request Forgery](https://en.wikipedia.org/wiki/Cross-site_request_forgery) (CSRF) attacks using tokens. These tokens verify requests made using methods other than those defined as "safe" by [RFC9110#section-9.2.1](https://datatracker.ietf.org/doc/html/rfc9110.html#section-9.2.1) (Safe-Methods: GET, HEAD, OPTIONS, and TRACE). If a potential attack is detected this middleware will, by default, return a 403 Forbidden error.
+The CSRF middleware for [Fiber](https://github.com/gofiber/fiber) provides protection against [Cross-Site Request Forgery](https://en.wikipedia.org/wiki/Cross-site_request_forgery) (CSRF) attacks. Requests made using methods other than those defined as 'safe' by [RFC9110#section-9.2.1](https://datatracker.ietf.org/doc/html/rfc9110.html#section-9.2.1) (GET, HEAD, OPTIONS, and TRACE) are validated using tokens. If a potential attack is detected, the middleware will return a default 403 Forbidden error.
 
-This middleware can be used with or without a user session and offers two token validation patterns. In addition, it implements strict referer checking for HTTPS requests, ensuring the security of your application. For HTTPS requests, even if a subdomain can set or modify cookies on your domain, it can't force a user to post to your application since that request won't come from your own exact domain.
+This middleware offers two [Token Validation Patterns](#token-validation-patterns): the [Double Submit Cookie Pattern (default)](#double-submit-cookie-pattern-default), and the [Synchronizer Token Pattern (with Session)](#synchronizer-token-pattern-session).
+
+As a [Defense In Depth](#defense-in-depth) measure, this middleware performs [Referer Checking](#referer-checking) for HTTPS requests.
 
 ## Token Generation
 
@@ -24,26 +26,26 @@ Never use 'safe' methods to mutate data, for example, never use a GET request to
 
 #### Double Submit Cookie Pattern (Default)
 
-In the default configuration, the middleware generates and stores tokens using the `fiber.Storage` interface. These tokens are not associated with a user session, and a Double Submit Cookie pattern is used to validate the token. The token is stored in a cookie and sent as a header on requests. The middleware compares the cookie value with the header value to validate the token. This is a secure pattern that does not require a user session.
+By default, the middleware generates and stores tokens using the `fiber.Storage` interface. These tokens are not linked to any particular user session, and they are validated using the Double Submit Cookie pattern. The token is stored in a cookie, and then sent as a header on requests. The middleware compares the cookie value with the header value to validate the token. This is a secure pattern that does not require a user session.
 
-When using this pattern, it's important to delete the token when the authorization status changes, see: [Token Lifecycle](#token-lifecycle) for more information.
+When the authorization status changes, the previously issued token MUST be deleted, and a new one generated. See [Token Lifecycle](#token-lifecycle) [Deleting Tokens](#deleting-tokens) for more information.
 
 :::caution
-When using this method, it's important to set the `CookieSameSite` option to `Lax` or `Strict` and ensure that the Extractor is not `CsrfFromCookie`, and KeyLookup is not `cookie:<name>`.
+When using this pattern, it's important to set the `CookieSameSite` option to `Lax` or `Strict` and ensure that the Extractor is not `CsrfFromCookie`, and KeyLookup is not `cookie:<name>`.
 :::
 
 :::note
 When using this pattern, this middleware uses our [Storage](https://github.com/gofiber/storage) package to support various databases through a single interface. The default configuration for Storage saves data to memory. See [Custom Storage/Database](#custom-storagedatabase) for customizing the storage.
 :::
 
-#### Synchronizer Token Pattern (Session)
+#### Synchronizer Token Pattern (with Session)
 
-When using this middleware with a user session, the middleware can be configured to store the token in the session. This method is recommended when using a user session, as it is generally more secure than the Double Submit Cookie Pattern.
+When using this middleware with a user session, the middleware can be configured to store the token within the session. This method is recommended when using a user session, as it is generally more secure than the Double Submit Cookie Pattern.
 
 When using this pattern it's important to regenerate the session when the authorization status changes, this will also delete the token. See: [Token Lifecycle](#token-lifecycle) for more information.
 
 :::caution
-When using this method, pre-sessions are required and will be created if a session is not already present. This means the middleware will create a session for every safe request, even if the request does not require a session. Therefore, the existence of a session should not be used to indicate that a user is logged in or authenticated; a session value should be used for this purpose.
+Pre-sessions are required and will be created automatically if not present. Use a session value to indicate authentication instead of relying on presence of a session.
 :::
 
 ### Defense In Depth
@@ -51,7 +53,7 @@ When using this method, pre-sessions are required and will be created if a sessi
 When using this middleware, it's recommended to serve your pages over HTTPS, set the `CookieSecure` option to `true`, and set the `CookieSameSite` option to `Lax` or `Strict`. This ensures that the cookie is only sent over HTTPS and not on requests from external sites.
 
 :::note
-Cookie prefixes __Host- and __Secure- can be used to further secure the cookie. However, these prefixes are not supported by all browsers and there are some other limitations. See [MDN#Set-Cookie#cookie_prefixes](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie#cookie_prefixes) for more information.
+Cookie prefixes `__Host-` and `__Secure-` can be used to further secure the cookie. Note that these prefixes are not supported by all browsers and there are other limitations. See [MDN#Set-Cookie#cookie_prefixes](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie#cookie_prefixes) for more information.
 
 To use these prefixes, set the `CookieName` option to `__Host-csrf_` or `__Secure-csrf_`.
 :::
@@ -61,7 +63,9 @@ To use these prefixes, set the `CookieName` option to `__Host-csrf_` or `__Secur
 For HTTPS requests, this middleware performs strict referer checking. Even if a subdomain can set or modify cookies on your domain, it can't force a user to post to your application since that request won't come from your own exact domain.
 
 :::caution
-Referer checking is required for https requests protected by CSRF. All modern browsers will automatically include the Referer header in requests, including those made with the JS Fetch API. However, if you are using this middleware with a custom client you must ensure that the client sends a valid Referer header.
+When HTTPS requests are protected by CSRF, referer checking is always carried out.
+
+The Referer header is automatically included in requests by all modern browsers, including those made using the JS Fetch API. However, if you're making use of this middleware with a custom client, it's important to ensure that the client sends a valid Referer header.
 :::
 
 
@@ -74,7 +78,7 @@ Tokens are valid until they expire or until they are deleted. By default, tokens
 By default, tokens may be used multiple times. If you want to delete the token after it has been used, you can set the `SingleUseToken` option to `true`. This will delete the token after it has been used, and a new token will be generated on the next request.
 
 :::info
-Using `SingleUseToken` comes with usability trade-offs and is not enabled by default. It can interfere with the user experience if the user has multiple tabs open or uses the back button.
+Using `SingleUseToken` comes with usability trade-offs and is not enabled by default. For example, it can interfere with the user experience if the user has multiple tabs open or uses the back button.
 :::
 
 #### Deleting Tokens
@@ -209,13 +213,14 @@ var ConfigDefault = Config{
 
 ### Recommended Config (with session)
 
-It's recommended to use this middleware with [fiber/middleware/session](https://docs.gofiber.io/api/middleware/session) to store the CSRF token in the session. This is generally more secure than the default configuration.
+It's recommended to use this middleware with [fiber/middleware/session](https://docs.gofiber.io/api/middleware/session) to store the CSRF token within the session. This is generally more secure than the default configuration.
 
 ```go
 var ConfigDefault = Config{
 	KeyLookup:         "header:" + HeaderName,
-	CookieName:        "csrf_",
+	CookieName:        "__Host-csrf_",
 	CookieSameSite:    "Lax",
+	CookieSecure:	   true,
 	CookieSessionOnly: true,
 	CookieHTTPOnly:    true,
 	Expiration:        1 * time.Hour,
@@ -246,7 +251,7 @@ The CSRF middleware utilizes a set of sentinel errors to handle various scenario
 - `ErrNoReferer`: Indicates that the referer was not supplied.
 - `ErrBadReferer`: Indicates that the referer is invalid.
 
-If you are using the default error handler, it will return a 403 Forbidden error for any of these errors without providing any additional information to the client.
+If you use the default error handler, the client will receive a 403 Forbidden error without any additional information.
 
 ## Custom Error Handler
 

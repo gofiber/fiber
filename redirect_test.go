@@ -325,7 +325,7 @@ func Test_Redirect_Request(t *testing.T) {
 
 		require.Equal(t, tc.ExpectedStatusCode, code)
 		require.Equal(t, tc.ExpectedBody, body)
-		require.Equal(t, tc.ExceptedErrsLen, len(errs))
+		require.Len(t, errs, tc.ExceptedErrsLen)
 	}
 }
 
@@ -342,7 +342,7 @@ func Benchmark_Redirect_Route(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		c.Redirect().Route("user", RedirectConfig{ //nolint:errcheck,gosec,revive // we don't need to handle error here
+		c.Redirect().Route("user", RedirectConfig{ //nolint:errcheck,revive // we don't need to handle error here
 			Params: Map{
 				"name": "fiber",
 			},
@@ -366,7 +366,7 @@ func Benchmark_Redirect_Route_WithQueries(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		c.Redirect().Route("user", RedirectConfig{ //nolint:errcheck,gosec,revive // we don't need to handle error here
+		c.Redirect().Route("user", RedirectConfig{ //nolint:errcheck,revive // we don't need to handle error here
 			Params: Map{
 				"name": "fiber",
 			},
@@ -395,7 +395,7 @@ func Benchmark_Redirect_Route_WithFlashMessages(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		c.Redirect().With("success", "1").With("message", "test").Route("user") //nolint:errcheck,gosec,revive // we don't need to handle error here
+		c.Redirect().With("success", "1").With("message", "test").Route("user") //nolint:errcheck,revive // we don't need to handle error here
 	}
 
 	require.Equal(b, 302, c.Response().StatusCode())

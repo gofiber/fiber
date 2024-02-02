@@ -80,10 +80,13 @@ func (t *TLSHandler) GetClientInfo(info *tls.ClientHelloInfo) (*tls.Certificate,
 // Range data for c.Range
 type Range struct {
 	Type   string
-	Ranges []struct {
-		Start int
-		End   int
-	}
+	Ranges []RangeSet
+}
+
+// RangeSet represents a single content range from a request.
+type RangeSet struct {
+	Start int
+	End   int
 }
 
 // Cookie data for c.Cookie
@@ -185,6 +188,9 @@ func (c *DefaultCtx) BaseURL() string {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (c *DefaultCtx) BodyRaw() []byte {
+	if c.app.config.Immutable {
+		return utils.CopyBytes(c.fasthttp.Request.Body())
+	}
 	return c.fasthttp.Request.Body()
 }
 
@@ -257,6 +263,9 @@ func (c *DefaultCtx) Body() []byte {
 	// rule defined at: https://www.rfc-editor.org/rfc/rfc9110#section-8.4-5
 	encodingOrder = getSplicedStrList(headerEncoding, encodingOrder)
 	if len(encodingOrder) == 0 {
+		if c.app.config.Immutable {
+			return utils.CopyBytes(c.fasthttp.Request.Body())
+		}
 		return c.fasthttp.Request.Body()
 	}
 
@@ -271,6 +280,9 @@ func (c *DefaultCtx) Body() []byte {
 		return []byte(err.Error())
 	}
 
+	if c.app.config.Immutable {
+		return utils.CopyBytes(body)
+	}
 	return body
 }
 
@@ -733,14 +745,20 @@ func (c *DefaultCtx) Is(extension string) bool {
 // Array and slice values encode as JSON arrays,
 // except that []byte encodes as a base64-encoded string,
 // and a nil slice encodes as the null JSON value.
-// This method also sets the content header to application/json.
-func (c *DefaultCtx) JSON(data any) error {
+// If the ctype parameter is given, this method will set the
+// Content-Type header equal to ctype. If ctype is not given,
+// The Content-Type header will be set to application/json.
+func (c *DefaultCtx) JSON(data any, ctype ...string) error {
 	raw, err := c.app.config.JSONEncoder(data)
 	if err != nil {
 		return err
 	}
 	c.fasthttp.Response.SetBodyRaw(raw)
-	c.fasthttp.Response.Header.SetContentType(MIMEApplicationJSON)
+	if len(ctype) > 0 {
+		c.fasthttp.Response.Header.SetContentType(ctype[0])
+	} else {
+		c.fasthttp.Response.Header.SetContentType(MIMEApplicationJSON)
+	}
 	return nil
 }
 
@@ -807,6 +825,22 @@ func (c *DefaultCtx) Locals(key any, value ...any) any {
 	}
 	c.fasthttp.SetUserValue(key, value[0])
 	return value[0]
+}
+
+// Locals function utilizing Go's generics feature.
+// This function allows for manipulating and retrieving local values within a request context with a more specific data type.
+func Locals[V any](c Ctx, key any, value ...V) V {
+	var v V
+	var ok bool
+	if len(value) == 0 {
+		v, ok = c.Locals(key).(V)
+	} else {
+		v, ok = c.Locals(key, value[0]).(V)
+	}
+	if !ok {
+		return v // return zero of type V
+	}
+	return v
 }
 
 // Location sets the response Location HTTP header to the specified path parameter.
@@ -998,7 +1032,7 @@ func (c *DefaultCtx) Protocol() string {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (c *DefaultCtx) Query(key string, defaultValue ...string) string {
-	return defaultString(c.app.getString(c.fasthttp.QueryArgs().Peek(key)), defaultValue)
+	return Query[string](c, key, defaultValue...)
 }
 
 // Queries returns a map of query parameters and their values.
@@ -1030,90 +1064,140 @@ func (c *DefaultCtx) Queries() map[string]string {
 	return m
 }
 
-// QueryInt returns integer value of key string parameter in the url.
-// Default to empty or invalid key is 0.
+// Query Retrieves the value of a query parameter from the request's URI.
+// The function is generic and can handle query parameter values of different types.
+// It takes the following parameters:
+// - c: The context object representing the current request.
+// - key: The name of the query parameter.
+// - defaultValue: (Optional) The default value to return in case the query parameter is not found or cannot be parsed.
+// The function performs the following steps:
+//  1. Type-asserts the context object to *DefaultCtx.
+//  2. Retrieves the raw query parameter value from the request's URI.
+//  3. Parses the raw value into the appropriate type based on the generic type parameter V.
+//     If parsing fails, the function checks if a default value is provided. If so, it returns the default value.
+//  4. Returns the parsed value.
 //
-//	GET /?name=alex&wanna_cake=2&id=
-//	QueryInt("wanna_cake", 1) == 2
-//	QueryInt("name", 1) == 1
-//	QueryInt("id", 1) == 1
-//	QueryInt("id") == 0
-func (c *DefaultCtx) QueryInt(key string, defaultValue ...int) int {
-	// Use Atoi to convert the param to an int or return zero and an error
-	value, err := strconv.Atoi(c.app.getString(c.fasthttp.QueryArgs().Peek(key)))
-	if err != nil {
+// If the generic type cannot be matched to a supported type, the function returns the default value (if provided) or the zero value of type V.
+//
+// Example usage:
+//
+//	GET /?search=john&age=8
+//	name := Query[string](c, "search") // Returns "john"
+//	age := Query[int](c, "age") // Returns 8
+//	unknown := Query[string](c, "unknown", "default") // Returns "default" since the query parameter "unknown" is not found
+func Query[V QueryType](c Ctx, key string, defaultValue ...V) V {
+	ctx, ok := c.(*DefaultCtx)
+	if !ok {
+		panic(fmt.Errorf("failed to type-assert to *DefaultCtx"))
+	}
+	var v V
+	q := ctx.app.getString(ctx.fasthttp.QueryArgs().Peek(key))
+
+	switch any(v).(type) {
+	case int:
+		return queryParseInt[V](q, 32, func(i int64) V { return assertValueType[V, int](int(i)) }, defaultValue...)
+	case int8:
+		return queryParseInt[V](q, 8, func(i int64) V { return assertValueType[V, int8](int8(i)) }, defaultValue...)
+	case int16:
+		return queryParseInt[V](q, 16, func(i int64) V { return assertValueType[V, int16](int16(i)) }, defaultValue...)
+	case int32:
+		return queryParseInt[V](q, 32, func(i int64) V { return assertValueType[V, int32](int32(i)) }, defaultValue...)
+	case int64:
+		return queryParseInt[V](q, 64, func(i int64) V { return assertValueType[V, int64](i) }, defaultValue...)
+	case uint:
+		return queryParseUint[V](q, 32, func(i uint64) V { return assertValueType[V, uint](uint(i)) }, defaultValue...)
+	case uint8:
+		return queryParseUint[V](q, 8, func(i uint64) V { return assertValueType[V, uint8](uint8(i)) }, defaultValue...)
+	case uint16:
+		return queryParseUint[V](q, 16, func(i uint64) V { return assertValueType[V, uint16](uint16(i)) }, defaultValue...)
+	case uint32:
+		return queryParseUint[V](q, 32, func(i uint64) V { return assertValueType[V, uint32](uint32(i)) }, defaultValue...)
+	case uint64:
+		return queryParseUint[V](q, 64, func(i uint64) V { return assertValueType[V, uint64](i) }, defaultValue...)
+	case float32:
+		return queryParseFloat[V](q, 32, func(i float64) V { return assertValueType[V, float32](float32(i)) }, defaultValue...)
+	case float64:
+		return queryParseFloat[V](q, 64, func(i float64) V { return assertValueType[V, float64](i) }, defaultValue...)
+	case bool:
+		return queryParseBool[V](q, func(b bool) V { return assertValueType[V, bool](b) }, defaultValue...)
+	case string:
+		if q == "" && len(defaultValue) > 0 {
+			return defaultValue[0]
+		}
+		return assertValueType[V, string](q)
+	case []byte:
+		if q == "" && len(defaultValue) > 0 {
+			return defaultValue[0]
+		}
+		return assertValueType[V, []byte](ctx.app.getBytes(q))
+	default:
 		if len(defaultValue) > 0 {
 			return defaultValue[0]
 		}
-		return 0
+		return v
 	}
-
-	return value
 }
 
-// QueryBool returns bool value of key string parameter in the url.
-// Default to empty or invalid key is true.
-//
-//	Get /?name=alex&want_pizza=false&id=
-//	QueryBool("want_pizza") == false
-//	QueryBool("want_pizza", true) == false
-//	QueryBool("name") == false
-//	QueryBool("name", true) == true
-//	QueryBool("id") == false
-//	QueryBool("id", true) == true
-func (c *DefaultCtx) QueryBool(key string, defaultValue ...bool) bool {
-	value, err := strconv.ParseBool(c.app.getString(c.fasthttp.QueryArgs().Peek(key)))
-	if err != nil {
-		if len(defaultValue) > 0 {
-			return defaultValue[0]
-		}
-		return false
-	}
-	return value
+type QueryType interface {
+	QueryTypeInteger | QueryTypeFloat | bool | string | []byte
 }
 
-// QueryFloat returns float64 value of key string parameter in the url.
-// Default to empty or invalid key is 0.
-//
-//	GET /?name=alex&amount=32.23&id=
-//	QueryFloat("amount") = 32.23
-//	QueryFloat("amount", 3) = 32.23
-//	QueryFloat("name", 1) = 1
-//	QueryFloat("name") = 0
-//	QueryFloat("id", 3) = 3
-func (c *DefaultCtx) QueryFloat(key string, defaultValue ...float64) float64 {
-	// use strconv.ParseFloat to convert the param to a float or return zero and an error.
-	value, err := strconv.ParseFloat(c.app.getString(c.fasthttp.QueryArgs().Peek(key)), 64)
-	if err != nil {
-		if len(defaultValue) > 0 {
-			return defaultValue[0]
-		}
-		return 0
-	}
-	return value
+type QueryTypeInteger interface {
+	QueryTypeIntegerSigned | QueryTypeIntegerUnsigned
+}
+
+type QueryTypeIntegerSigned interface {
+	int | int8 | int16 | int32 | int64
+}
+
+type QueryTypeIntegerUnsigned interface {
+	uint | uint8 | uint16 | uint32 | uint64
+}
+
+type QueryTypeFloat interface {
+	float32 | float64
 }
 
 // Range returns a struct containing the type and a slice of ranges.
 func (c *DefaultCtx) Range(size int) (Range, error) {
-	var rangeData Range
+	var (
+		rangeData Range
+		ranges    string
+	)
 	rangeStr := c.Get(HeaderRange)
-	if rangeStr == "" || !strings.Contains(rangeStr, "=") {
+
+	i := strings.IndexByte(rangeStr, '=')
+	if i == -1 || strings.Contains(rangeStr[i+1:], "=") {
 		return rangeData, ErrRangeMalformed
 	}
-	data := strings.Split(rangeStr, "=")
-	const expectedDataParts = 2
-	if len(data) != expectedDataParts {
-		return rangeData, ErrRangeMalformed
-	}
-	rangeData.Type = data[0]
-	arr := strings.Split(data[1], ",")
-	for i := 0; i < len(arr); i++ {
-		item := strings.Split(arr[i], "-")
-		if len(item) == 1 {
+	rangeData.Type = rangeStr[:i]
+	ranges = rangeStr[i+1:]
+
+	var (
+		singleRange string
+		moreRanges  = ranges
+	)
+	for moreRanges != "" {
+		singleRange = moreRanges
+		if i := strings.IndexByte(moreRanges, ','); i >= 0 {
+			singleRange = moreRanges[:i]
+			moreRanges = moreRanges[i+1:]
+		} else {
+			moreRanges = ""
+		}
+
+		var (
+			startStr, endStr string
+			i                int
+		)
+		if i = strings.IndexByte(singleRange, '-'); i == -1 {
 			return rangeData, ErrRangeMalformed
 		}
-		start, startErr := strconv.Atoi(item[0])
-		end, endErr := strconv.Atoi(item[1])
+		startStr = singleRange[:i]
+		endStr = singleRange[i+1:]
+
+		start, startErr := fasthttp.ParseUint(utils.UnsafeBytes(startStr))
+		end, endErr := fasthttp.ParseUint(utils.UnsafeBytes(endStr))
 		if startErr != nil { // -nnn
 			start = size - end
 			end = size - 1
@@ -1262,10 +1346,10 @@ func (c *DefaultCtx) Render(name string, bind Map, layouts ...string) error {
 	return nil
 }
 
-func (c *DefaultCtx) renderExtensions(bind interface{}) {
+func (c *DefaultCtx) renderExtensions(bind any) {
 	if bindMap, ok := bind.(Map); ok {
 		// Bind view map
-		c.viewBindMap.Range(func(key, value interface{}) bool {
+		c.viewBindMap.Range(func(key, value any) bool {
 			keyValue, ok := key.(string)
 			if !ok {
 				return true
@@ -1279,7 +1363,7 @@ func (c *DefaultCtx) renderExtensions(bind interface{}) {
 		// Check if the PassLocalsToViews option is enabled (by default it is disabled)
 		if c.app.config.PassLocalsToViews {
 			// Loop through each local and set it in the map
-			c.fasthttp.VisitUserValues(func(key []byte, val interface{}) {
+			c.fasthttp.VisitUserValues(func(key []byte, val any) {
 				// check if bindMap doesn't contain the key
 				if _, ok := bindMap[c.app.getString(key)]; !ok {
 					// Set the key and value in the bindMap

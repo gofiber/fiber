@@ -98,7 +98,7 @@ func keyFromHeader(header, authScheme string) func(c fiber.Ctx) (string, error) 
 // keyFromQuery returns a function that extracts api key from the query string.
 func keyFromQuery(param string) func(c fiber.Ctx) (string, error) {
 	return func(c fiber.Ctx) (string, error) {
-		key := c.Query(param)
+		key := fiber.Query[string](c, param)
 		if key == "" {
 			return "", ErrMissingOrMalformedAPIKey
 		}

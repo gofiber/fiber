@@ -76,7 +76,7 @@ func Test_Session(t *testing.T) {
 	require.True(t, sess.Fresh())
 
 	// this id should be randomly generated as session key was deleted
-	require.Equal(t, 36, len(sess.ID()))
+	require.Len(t, sess.ID(), 36)
 
 	// when we use the original session for the second time
 	// the session be should be same if the session is not expired
@@ -91,8 +91,6 @@ func Test_Session(t *testing.T) {
 }
 
 // go test -run Test_Session_Types
-//
-//nolint:forcetypeassert // TODO: Do not force-type assert
 func Test_Session_Types(t *testing.T) {
 	t.Parallel()
 
@@ -178,26 +176,85 @@ func Test_Session_Types(t *testing.T) {
 	require.False(t, sess.Fresh())
 
 	// get value
-	require.Equal(t, vuser, sess.Get("vuser").(User))
-	require.Equal(t, vbool, sess.Get("vbool").(bool))
-	require.Equal(t, vstring, sess.Get("vstring").(string))
-	require.Equal(t, vint, sess.Get("vint").(int))
-	require.Equal(t, vint8, sess.Get("vint8").(int8))
-	require.Equal(t, vint16, sess.Get("vint16").(int16))
-	require.Equal(t, vint32, sess.Get("vint32").(int32))
-	require.Equal(t, vint64, sess.Get("vint64").(int64))
-	require.Equal(t, vuint, sess.Get("vuint").(uint))
-	require.Equal(t, vuint8, sess.Get("vuint8").(uint8))
-	require.Equal(t, vuint16, sess.Get("vuint16").(uint16))
-	require.Equal(t, vuint32, sess.Get("vuint32").(uint32))
-	require.Equal(t, vuint64, sess.Get("vuint64").(uint64))
-	require.Equal(t, vuintptr, sess.Get("vuintptr").(uintptr))
-	require.Equal(t, vbyte, sess.Get("vbyte").(byte))
-	require.Equal(t, vrune, sess.Get("vrune").(rune))
-	require.Equal(t, vfloat32, sess.Get("vfloat32").(float32))
-	require.Equal(t, vfloat64, sess.Get("vfloat64").(float64))
-	require.Equal(t, vcomplex64, sess.Get("vcomplex64").(complex64))
-	require.Equal(t, vcomplex128, sess.Get("vcomplex128").(complex128))
+	vuserResult, ok := sess.Get("vuser").(User)
+	require.True(t, ok)
+	require.Equal(t, vuser, vuserResult)
+
+	vboolResult, ok := sess.Get("vbool").(bool)
+	require.True(t, ok)
+	require.Equal(t, vbool, vboolResult)
+
+	vstringResult, ok := sess.Get("vstring").(string)
+	require.True(t, ok)
+	require.Equal(t, vstring, vstringResult)
+
+	vintResult, ok := sess.Get("vint").(int)
+	require.True(t, ok)
+	require.Equal(t, vint, vintResult)
+
+	vint8Result, ok := sess.Get("vint8").(int8)
+	require.True(t, ok)
+	require.Equal(t, vint8, vint8Result)
+
+	vint16Result, ok := sess.Get("vint16").(int16)
+	require.True(t, ok)
+	require.Equal(t, vint16, vint16Result)
+
+	vint32Result, ok := sess.Get("vint32").(int32)
+	require.True(t, ok)
+	require.Equal(t, vint32, vint32Result)
+
+	vint64Result, ok := sess.Get("vint64").(int64)
+	require.True(t, ok)
+	require.Equal(t, vint64, vint64Result)
+
+	vuintResult, ok := sess.Get("vuint").(uint)
+	require.True(t, ok)
+	require.Equal(t, vuint, vuintResult)
+
+	vuint8Result, ok := sess.Get("vuint8").(uint8)
+	require.True(t, ok)
+	require.Equal(t, vuint8, vuint8Result)
+
+	vuint16Result, ok := sess.Get("vuint16").(uint16)
+	require.True(t, ok)
+	require.Equal(t, vuint16, vuint16Result)
+
+	vuint32Result, ok := sess.Get("vuint32").(uint32)
+	require.True(t, ok)
+	require.Equal(t, vuint32, vuint32Result)
+
+	vuint64Result, ok := sess.Get("vuint64").(uint64)
+	require.True(t, ok)
+	require.Equal(t, vuint64, vuint64Result)
+
+	vuintptrResult, ok := sess.Get("vuintptr").(uintptr)
+	require.True(t, ok)
+	require.Equal(t, vuintptr, vuintptrResult)
+
+	vbyteResult, ok := sess.Get("vbyte").(byte)
+	require.True(t, ok)
+	require.Equal(t, vbyte, vbyteResult)
+
+	vruneResult, ok := sess.Get("vrune").(rune)
+	require.True(t, ok)
+	require.Equal(t, vrune, vruneResult)
+
+	vfloat32Result, ok := sess.Get("vfloat32").(float32)
+	require.True(t, ok)
+	require.InEpsilon(t, vfloat32, vfloat32Result, 0.001)
+
+	vfloat64Result, ok := sess.Get("vfloat64").(float64)
+	require.True(t, ok)
+	require.InEpsilon(t, vfloat64, vfloat64Result, 0.001)
+
+	vcomplex64Result, ok := sess.Get("vcomplex64").(complex64)
+	require.True(t, ok)
+	require.Equal(t, vcomplex64, vcomplex64Result)
+
+	vcomplex128Result, ok := sess.Get("vcomplex128").(complex128)
+	require.True(t, ok)
+	require.Equal(t, vcomplex128, vcomplex128Result)
 }
 
 // go test -run Test_Session_Store_Reset
@@ -235,6 +292,7 @@ func Test_Session_Save(t *testing.T) {
 	t.Parallel()
 
 	t.Run("save to cookie", func(t *testing.T) {
+		t.Parallel()
 		// session store
 		store := New()
 		// fiber instance
@@ -254,6 +312,7 @@ func Test_Session_Save(t *testing.T) {
 	})
 
 	t.Run("save to header", func(t *testing.T) {
+		t.Parallel()
 		// session store
 		store := New(Config{
 			KeyLookup: "header:session_id",
@@ -398,7 +457,7 @@ func Test_Session_Cookie(t *testing.T) {
 	require.NoError(t, sess.Save())
 
 	// cookie should be set on Save ( even if empty data )
-	require.Equal(t, 84, len(ctx.Response().Header.PeekCookie(store.sessionName)))
+	require.Len(t, ctx.Response().Header.PeekCookie(store.sessionName), 84)
 }
 
 // go test -run Test_Session_Cookie_In_Response
@@ -440,12 +499,12 @@ func Test_Session_Deletes_Single_Key(t *testing.T) {
 	ctx.Request().Header.SetCookie(store.sessionName, sess.ID())
 
 	sess.Set("id", "1")
-	require.Nil(t, sess.Save())
+	require.NoError(t, sess.Save())
 
 	sess, err = store.Get(ctx)
 	require.NoError(t, err)
 	sess.Delete("id")
-	require.Nil(t, sess.Save())
+	require.NoError(t, sess.Save())
 
 	sess, err = store.Get(ctx)
 	require.NoError(t, err)
@@ -466,6 +525,7 @@ func Test_Session_Reset(t *testing.T) {
 	ctx := app.NewCtx(&fasthttp.RequestCtx{})
 
 	t.Run("reset session data and id, and set fresh to be true", func(t *testing.T) {
+		t.Parallel()
 		// a random session uuid
 		originalSessionUUIDString := ""
 
@@ -493,7 +553,7 @@ func Test_Session_Reset(t *testing.T) {
 		err = acquiredSession.Reset()
 		require.NoError(t, err)
 
-		require.False(t, acquiredSession.ID() == originalSessionUUIDString)
+		require.NotEqual(t, originalSessionUUIDString, acquiredSession.ID())
 
 		// acquiredSession.fresh should be true after resetting
 		require.True(t, acquiredSession.Fresh())
@@ -514,10 +574,6 @@ func Test_Session_Reset(t *testing.T) {
 		// Check that the session id is not in the header or cookie anymore
 		require.Equal(t, "", string(ctx.Response().Header.Peek(store.sessionName)))
 		require.Equal(t, "", string(ctx.Request().Header.Peek(store.sessionName)))
-
-		// But the new session id should be in the header or cookie
-		require.Equal(t, acquiredSession.ID(), string(ctx.Response().Header.Peek(store.sessionName)))
-		require.Equal(t, acquiredSession.ID(), string(ctx.Request().Header.Peek(store.sessionName)))
 	})
 }
 
@@ -528,6 +584,7 @@ func Test_Session_Regenerate(t *testing.T) {
 	// fiber instance
 	app := fiber.New()
 	t.Run("set fresh to be true when regenerating a session", func(t *testing.T) {
+		t.Parallel()
 		// session store
 		store := New()
 		// a random session uuid
@@ -555,7 +612,7 @@ func Test_Session_Regenerate(t *testing.T) {
 		err = acquiredSession.Regenerate()
 		require.NoError(t, err)
 
-		require.False(t, acquiredSession.ID() == originalSessionUUIDString)
+		require.NotEqual(t, originalSessionUUIDString, acquiredSession.ID())
 
 		// acquiredSession.fresh should be true after regenerating
 		require.True(t, acquiredSession.Fresh())

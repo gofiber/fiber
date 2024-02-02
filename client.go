@@ -459,12 +459,16 @@ func (a *Agent) BodyStream(bodyStream io.Reader, bodySize int) *Agent {
 }
 
 // JSON sends a JSON request.
-func (a *Agent) JSON(v any) *Agent {
+func (a *Agent) JSON(v any, ctype ...string) *Agent {
 	if a.jsonEncoder == nil {
 		a.jsonEncoder = json.Marshal
 	}
 
-	a.req.Header.SetContentType(MIMEApplicationJSON)
+	if len(ctype) > 0 {
+		a.req.Header.SetContentType(ctype[0])
+	} else {
+		a.req.Header.SetContentType(MIMEApplicationJSON)
+	}
 
 	if body, err := a.jsonEncoder(v); err != nil {
 		a.errs = append(a.errs, err)
