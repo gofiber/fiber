@@ -2,6 +2,7 @@ package logger
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"sync"
 
@@ -60,7 +61,7 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 		}
 
 		// Write buffer to output
-		_, _ = cfg.Output.Write(buf.Bytes()) //nolint:errcheck // This will never fail
+		writeLog(cfg.Output, buf.Bytes())
 
 		if cfg.Done != nil {
 			cfg.Done(c, buf.Bytes())
@@ -92,15 +93,9 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 	if err != nil {
 		_, _ = buf.WriteString(err.Error()) //nolint:errcheck // This will never fail
 	}
+
 	mu.Lock()
-	// Write buffer to output
-	if _, err := cfg.Output.Write(buf.Bytes()); err != nil {
-		// Write error to output
-		if _, err := cfg.Output.Write([]byte(err.Error())); err != nil {
-			// There is something wrong with the given io.Writer
-			_, _ = fmt.Fprintf(os.Stderr, "Failed to write to log, %v\n", err)
-		}
-	}
+	writeLog(cfg.Output, buf.Bytes())
 	mu.Unlock()
 
 	if cfg.Done != nil {
@@ -128,4 +123,15 @@ func appendInt(output Buffer, v int) (int, error) {
 	old := output.Len()
 	output.Set(fasthttp.AppendUint(output.Bytes(), v))
 	return output.Len() - old, nil
+}
+
+// writeLog writes a msg to w, printing a warning to stderr if the log fails.
+func writeLog(w io.Writer, msg []byte) {
+	if _, err := w.Write(msg); err != nil {
+		// Write error to output
+		if _, err := w.Write([]byte(err.Error())); err != nil {
+			// There is something wrong with the given io.Writer
+			_, _ = fmt.Fprintf(os.Stderr, "Failed to write to log, %v\n", err)
+		}
+	}
 }
