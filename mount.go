@@ -15,7 +15,7 @@ import (
 // Put fields related to mounting.
 type mountFields struct {
 	// Mounted and main apps
-	appList map[string]*App
+	appList map[string]*App[Router]
 	// Ordered keys of apps (sorted by key length for Render)
 	appListKeys []string
 	// check added routes of sub-apps

@@ -114,7 +114,7 @@ type App[TRouter Router] struct {
 	// Latest route & group
 	latestRoute *routing.Route
 	// newCtxFunc
-	newCtxFunc func(app *App) CustomCtx
+	newCtxFunc func(app *App[TRouter]) CustomCtx
 	// custom binders
 	customBinders []CustomBinder
 	// TLS handler
@@ -375,6 +375,7 @@ type Config struct {
 	// Default: nil
 	StructValidator StructValidator
 
+	// TODO: move it to the router instance
 	// RequestMethods provides customizibility for HTTP methods. You can add/remove methods as you wish.
 	//
 	// Optional. Default: DefaultMethods
@@ -485,13 +486,13 @@ func DefaultErrorHandler(c Ctx, err error) error {
 //	    Prefork: true,
 //	    ServerHeader: "Fiber",
 //	})
-func New(config ...Config) *App[routing.ExpressjsRouter] {
+func New(config ...Config) *App[*routing.ExpressjsRouter] {
 	// Return app
-	return NewWithRouter[routing.ExpressjsRouter](&routing.ExpressjsRouter{}, config)
+	// TODO: use the router new method
+	return NewWithRouter[*routing.ExpressjsRouter](&routing.ExpressjsRouter{}, config...)
 }
 
 func NewWithRouter[TRouter Router](router TRouter, config ...Config) *App[TRouter] {
-	// TODO: add router to app
 	// Create a new app
 	app := &App[TRouter]{
 		// Create config
@@ -500,6 +501,7 @@ func NewWithRouter[TRouter Router](router TRouter, config ...Config) *App[TRoute
 		getString:     utils.UnsafeString,
 		latestRoute:   &routing.Route{},
 		customBinders: []CustomBinder{},
+		router:        router,
 	}
 
 	// Create Ctx pool
@@ -510,10 +512,10 @@ func NewWithRouter[TRouter Router](router TRouter, config ...Config) *App[TRoute
 	}
 
 	// Define hooks
-	app.hooks = newHooks(app[TRouter])
+	app.hooks = newHooks(app)
 
 	// Define mountFields
-	app.mountFields = newMountFields(app[TRouter])
+	app.mountFields = newMountFields(app)
 
 	// Override config if provided
 	if len(config) > 0 {
@@ -575,8 +577,12 @@ func NewWithRouter[TRouter Router](router TRouter, config ...Config) *App[TRoute
 	return app
 }
 
+func (app *App[TRouter]) Router() TRouter {
+	return app.router
+}
+
 // Adds an ip address to trustedProxyRanges or trustedProxiesMap based on whether it is an IP range or not
-func (app *App) handleTrustedProxy(ipAddress string) {
+func (app *App[TRouter]) handleTrustedProxy(ipAddress string) {
 	if strings.Contains(ipAddress, "/") {
 		_, ipNet, err := net.ParseCIDR(ipAddress)
 		if err != nil {
@@ -591,24 +597,24 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 
 // NewCtxFunc allows to customize ctx methods as we want.
 // Note: It doesn't allow adding new methods, only customizing exist methods.
-func (app *App) NewCtxFunc(function func(app *App) CustomCtx) {
+func (app *App[TRouter]) NewCtxFunc(function func(app *App[TRouter]) CustomCtx) {
 	app.newCtxFunc = function
 }
 
 // TODO: move it to our Router interface `router.RegisterCustomConstraint`
 // RegisterCustomConstraint allows to register custom constraint.
-func (app *App) RegisterCustomConstraint(constraint CustomConstraint) {
+func (app *App[TRouter]) RegisterCustomConstraint(constraint CustomConstraint) {
 	app.customConstraints = append(app.customConstraints, constraint)
 }
 
 // You can register custom binders to use as Bind().Custom("name").
 // They should be compatible with CustomBinder interface.
-func (app *App) RegisterCustomBinder(binder CustomBinder) {
+func (app *App[TRouter]) RegisterCustomBinder(binder CustomBinder) {
 	app.customBinders = append(app.customBinders, binder)
 }
 
 // You can use SetTLSHandler to use ClientHelloInfo when using TLS with Listener.
-func (app *App) SetTLSHandler(tlsHandler *TLSHandler) {
+func (app *App[TRouter]) SetTLSHandler(tlsHandler *TLSHandler) {
 	// Attach the tlsHandler to the config
 	app.mutex.Lock()
 	app.tlsHandler = tlsHandler
@@ -616,7 +622,7 @@ func (app *App) SetTLSHandler(tlsHandler *TLSHandler) {
 }
 
 // Name Assign name to specific route.
-func (app *App) Name(name string) routing.ExpressjsRouterI {
+func (app *App[TRouter]) Name(name string) routing.ExpressjsRouterI {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
@@ -642,7 +648,7 @@ func (app *App) Name(name string) routing.ExpressjsRouterI {
 }
 
 // GetRoute Get route by name
-func (app *App) GetRoute(name string) routing.Route {
+func (app *App[TRouter]) GetRoute(name string) routing.Route {
 	for _, routes := range app.stack {
 		for _, route := range routes {
 			if route.Name == name {
@@ -656,7 +662,7 @@ func (app *App) GetRoute(name string) routing.Route {
 
 // TODO: part of the router api for the interchangeable class
 // GetRoutes Get all routes. When filterUseOption equal to true, it will filter the routes registered by the middleware.
-func (app *App) GetRoutes(filterUseOption ...bool) []routing.Route {
+func (app *App[TRouter]) GetRoutes(filterUseOption ...bool) []routing.Route {
 	var rs []routing.Route
 	var filterUse bool
 	if len(filterUseOption) != 0 {
@@ -694,9 +700,9 @@ func (app *App) GetRoutes(filterUseOption ...bool) []routing.Route {
 //		app.Use("/mounted-path", subApp)
 //
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
-func (app *App) Use(args ...any) routing.ExpressjsRouterI {
+func (app *App[TRouter]) Use(args ...any) routing.ExpressjsRouterI {
 	var prefix string
-	var subApp *App
+	var subApp *App[TRouter]
 	var prefixes []string
 	var handlers []Handler
 
@@ -733,73 +739,73 @@ func (app *App) Use(args ...any) routing.ExpressjsRouterI {
 
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
-func (app *App) Get(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
+func (app *App[TRouter]) Get(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
 	return app.Add([]string{MethodGet}, path, handler, middleware...)
 }
 
 // Head registers a route for HEAD methods that asks for a response identical
 // to that of a GET request, but without the response body.
-func (app *App) Head(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
+func (app *App[TRouter]) Head(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
 	return app.Add([]string{MethodHead}, path, handler, middleware...)
 }
 
 // Post registers a route for POST methods that is used to submit an entity to the
 // specified resource, often causing a change in state or side effects on the server.
-func (app *App) Post(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
+func (app *App[TRouter]) Post(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
 	return app.Add([]string{MethodPost}, path, handler, middleware...)
 }
 
 // Put registers a route for PUT methods that replaces all current representations
 // of the target resource with the request payload.
-func (app *App) Put(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
+func (app *App[TRouter]) Put(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
 	return app.Add([]string{MethodPut}, path, handler, middleware...)
 }
 
 // Delete registers a route for DELETE methods that deletes the specified resource.
-func (app *App) Delete(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
+func (app *App[TRouter]) Delete(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
 	return app.Add([]string{MethodDelete}, path, handler, middleware...)
 }
 
 // Connect registers a route for CONNECT methods that establishes a tunnel to the
 // server identified by the target resource.
-func (app *App) Connect(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
+func (app *App[TRouter]) Connect(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
 	return app.Add([]string{MethodConnect}, path, handler, middleware...)
 }
 
 // Options registers a route for OPTIONS methods that is used to describe the
 // communication options for the target resource.
-func (app *App) Options(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
+func (app *App[TRouter]) Options(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
 	return app.Add([]string{MethodOptions}, path, handler, middleware...)
 }
 
 // Trace registers a route for TRACE methods that performs a message loop-back
 // test along the path to the target resource.
-func (app *App) Trace(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
+func (app *App[TRouter]) Trace(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
 	return app.Add([]string{MethodTrace}, path, handler, middleware...)
 }
 
 // Patch registers a route for PATCH methods that is used to apply partial
 // modifications to a resource.
-func (app *App) Patch(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
+func (app *App[TRouter]) Patch(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
 	return app.Add([]string{MethodPatch}, path, handler, middleware...)
 }
 
 // Add allows you to specify multiple HTTP methods to register a route.
-func (app *App) Add(methods []string, path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
+func (app *App[TRouter]) Add(methods []string, path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
 	app.register(methods, path, nil, handler, middleware...)
 
 	return app
 }
 
 // Static will create a file server serving static files
-func (app *App) Static(prefix, root string, config ...Static) routing.ExpressjsRouterI {
+func (app *App[TRouter]) Static(prefix, root string, config ...Static) routing.ExpressjsRouterI {
 	app.registerStatic(prefix, root, config...)
 
 	return app
 }
 
 // All will register the handler on all HTTP methods
-func (app *App) All(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
+func (app *App[TRouter]) All(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
 	return app.Add(app.config.RequestMethods, path, handler, middleware...)
 }
 
@@ -807,7 +813,7 @@ func (app *App) All(path string, handler Handler, middleware ...Handler) routing
 //
 //	api := app.Group("/api")
 //	api.Get("/users", handler)
-func (app *App) Group(prefix string, handlers ...Handler) routing.ExpressjsRouterI {
+func (app *App[TRouter]) Group(prefix string, handlers ...Handler) routing.ExpressjsRouterI {
 	grp := &routing.Group{Prefix: prefix, app: app}
 	if len(handlers) > 0 {
 		app.register([]string{methodUse}, prefix, grp, nil, handlers...)
@@ -821,7 +827,7 @@ func (app *App) Group(prefix string, handlers ...Handler) routing.ExpressjsRoute
 
 // Route is used to define routes with a common prefix inside the common function.
 // Uses Group method to define new sub-router.
-func (app *App) Route(path string) routing.Register {
+func (app *App[TRouter]) Route(path string) routing.Register {
 	// Create new route
 	route := &routing.Registering{app: app, path: path}
 
@@ -846,24 +852,26 @@ func NewError(code int, message ...string) *Error {
 }
 
 // Config returns the app config as value ( read-only ).
-func (app *App) Config() Config {
+func (app *App[TRouter]) Config() Config {
 	return app.config
 }
 
 // Handler returns the server handler.
-func (app *App) Handler() fasthttp.RequestHandler { //revive:disable-line:confusing-naming // Having both a Handler() (uppercase) and a handler() (lowercase) is fine. TODO: Use nolint:revive directive instead. See https://github.com/golangci/golangci-lint/issues/3476
+func (app *App[TRouter]) Handler() fasthttp.RequestHandler { //revive:disable-line:confusing-naming // Having both a Handler() (uppercase) and a handler() (lowercase) is fine. TODO: Use nolint:revive directive instead. See https://github.com/golangci/golangci-lint/issues/3476
 	// prepare the server for the start
 	app.startupProcess()
 	return app.requestHandler
 }
 
+// TODO: move to router
 // Stack returns the raw router stack.
-func (app *App) Stack() [][]*routing.Route {
+func (app *App[TRouter]) Stack() [][]*routing.Route {
 	return app.stack
 }
 
+// TODO: move to router
 // HandlersCount returns the amount of registered handlers.
-func (app *App) HandlersCount() uint32 {
+func (app *App[TRouter]) HandlersCount() uint32 {
 	return app.handlersCount
 }
 
@@ -873,7 +881,7 @@ func (app *App) HandlersCount() uint32 {
 // Make sure the program doesn't exit and waits instead for Shutdown to return.
 //
 // Shutdown does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
-func (app *App) Shutdown() error {
+func (app *App[TRouter]) Shutdown() error {
 	return app.ShutdownWithContext(context.Background())
 }
 
@@ -884,7 +892,7 @@ func (app *App) Shutdown() error {
 // Make sure the program doesn't exit and waits instead for ShutdownWithTimeout to return.
 //
 // ShutdownWithTimeout does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
-func (app *App) ShutdownWithTimeout(timeout time.Duration) error {
+func (app *App[TRouter]) ShutdownWithTimeout(timeout time.Duration) error {
 	ctx, cancelFunc := context.WithTimeout(context.Background(), timeout)
 	defer cancelFunc()
 	return app.ShutdownWithContext(ctx)
@@ -895,7 +903,7 @@ func (app *App) ShutdownWithTimeout(timeout time.Duration) error {
 // Make sure the program doesn't exit and waits instead for ShutdownWithTimeout to return.
 //
 // ShutdownWithContext does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
-func (app *App) ShutdownWithContext(ctx context.Context) error {
+func (app *App[TRouter]) ShutdownWithContext(ctx context.Context) error {
 	if app.hooks != nil {
 		// TODO: check should be defered?
 		app.hooks.executeOnShutdownHooks()
@@ -910,18 +918,18 @@ func (app *App) ShutdownWithContext(ctx context.Context) error {
 }
 
 // Server returns the underlying fasthttp server
-func (app *App) Server() *fasthttp.Server {
+func (app *App[TRouter]) Server() *fasthttp.Server {
 	return app.server
 }
 
 // Hooks returns the hook struct to register hooks.
-func (app *App) Hooks() *Hooks {
+func (app *App[TRouter]) Hooks() *Hooks {
 	return app.hooks
 }
 
 // Test is used for internal debugging by passing a *http.Request.
 // Timeout is optional and defaults to 1s, -1 will disable it completely.
-func (app *App) Test(req *http.Request, msTimeout ...int) (*http.Response, error) {
+func (app *App[TRouter]) Test(req *http.Request, msTimeout ...int) (*http.Response, error) {
 	// Set timeout
 	timeout := 1000
 	if len(msTimeout) > 0 {
@@ -999,7 +1007,7 @@ func (*disableLogger) Printf(_ string, _ ...any) {
 	// fmt.Println(fmt.Sprintf(format, args...))
 }
 
-func (app *App) init() *App {
+func (app *App[TRouter]) init() *App[TRouter] {
 	// lock application
 	app.mutex.Lock()
 
@@ -1047,7 +1055,7 @@ func (app *App) init() *App {
 // sub fibers by their prefixes and if it finds a match, it uses that
 // error handler. Otherwise it uses the configured error handler for
 // the app, which if not set is the DefaultErrorHandler.
-func (app *App) ErrorHandler(ctx Ctx, err error) error {
+func (app *App[TRouter]) ErrorHandler(ctx Ctx, err error) error {
 	var (
 		mountedErrHandler  ErrorHandler
 		mountedPrefixParts int
@@ -1076,7 +1084,7 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error {
 // serverErrorHandler is a wrapper around the application's error handler method
 // user for the fasthttp server configuration. It maps a set of fasthttp errors to fiber
 // errors before calling the application's error handler method.
-func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
+func (app *App[TRouter]) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 	// Acquire Ctx with fasthttp request from pool
 	c, ok := app.AcquireCtx().(*DefaultCtx)
 	if !ok {
@@ -1116,7 +1124,7 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 }
 
 // startupProcess Is the method which executes all the necessary processes just before the start of the server.
-func (app *App) startupProcess() *App {
+func (app *App[TRouter]) startupProcess() *App[TRouter] {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
@@ -1129,7 +1137,7 @@ func (app *App) startupProcess() *App {
 }
 
 // Run onListen hooks. If they return an error, panic.
-func (app *App) runOnListenHooks(listenData ListenData) {
+func (app *App[TRouter]) runOnListenHooks(listenData ListenData) {
 	if err := app.hooks.executeOnListenHooks(listenData); err != nil {
 		panic(err)
 	}

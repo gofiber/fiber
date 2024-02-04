@@ -3,6 +3,8 @@ package fiber
 type Router interface {
 	FindNextHandler(method string, path string) Handler
 	GetAllRoutes() []any // TODO: specific routes ?
+	// TODO: Add contrains function ? or just in expressjs router
+	// TODO: add mount function for the merge of the routers
 }
 
 type Route struct {

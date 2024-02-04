@@ -133,7 +133,7 @@ var (
 // RoutePatternMatch checks if a given path matches a Fiber route pattern.
 func RoutePatternMatch(path, pattern string, cfg ...fiber.Config) bool {
 	// See logic in (*Route).match and (*App).register
-	var ctxParams [fiber.maxParams]string
+	var ctxParams [fiber.MaxParams]string
 
 	// TODO: extract this from the function
 	config := fiber.Config{}

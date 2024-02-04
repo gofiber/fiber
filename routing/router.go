@@ -35,8 +35,12 @@ func New(RequestMethods []string) *ExpressjsRouter {
 }
 
 // FindNextHandler is a method that find the next handler in the stack
-func (router *ExpressjsRouter) FindNextHandler() fiber.Handler {
+func (router *ExpressjsRouter) FindNextHandler(method string, path string) fiber.Handler {
 	// TODO: implement this
+	return nil
+}
+
+func (router *ExpressjsRouter) GetAllRoutes() []any {
 	return nil
 }
 
