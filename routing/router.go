@@ -226,50 +226,6 @@ func (app *fiber.App) next(c *fiber.DefaultCtx) (bool, error) {
 	return false, err
 }
 
-func (app *fiber.App) requestHandler(rctx *fasthttp.RequestCtx) {
-	// Handler for default ctxs
-	var c fiber.CustomCtx
-	var ok bool
-	if app.newCtxFunc != nil {
-		c, ok = app.AcquireCtx().(fiber.CustomCtx)
-		if !ok {
-			panic(fmt.Errorf("failed to type-assert to CustomCtx"))
-		}
-	} else {
-		c, ok = app.AcquireCtx().(*fiber.DefaultCtx)
-		if !ok {
-			panic(fmt.Errorf("failed to type-assert to *DefaultCtx"))
-		}
-	}
-	c.Reset(rctx)
-	defer app.ReleaseCtx(c)
-
-	// handle invalid http method directly
-	if app.methodInt(c.Method()) == -1 {
-		_ = c.SendStatus(fiber.StatusNotImplemented) //nolint:errcheck // Always return nil
-		return
-	}
-
-	// check flash messages
-	if strings.Contains(utils.UnsafeString(c.Request().Header.RawHeaders()), fiber.FlashCookieName) {
-		c.Redirect().setFlash()
-	}
-
-	// Find match in stack
-	var err error
-	if app.newCtxFunc != nil {
-		_, err = app.nextCustom(c)
-	} else {
-		_, err = app.next(c.(*fiber.DefaultCtx))
-	}
-	if err != nil {
-		if catch := c.App().ErrorHandler(c, err); catch != nil {
-			_ = c.SendStatus(fiber.StatusInternalServerError) //nolint:errcheck // It is fine to ignore the error here
-		}
-		// TODO: Do we need to return here?
-	}
-}
-
 func (app *fiber.App) addPrefixToRoute(prefix string, route *Route) *Route {
 	prefixedPath := fiber.getGroupPath(prefix, route.Path)
 	prettyPath := prefixedPath
