@@ -544,22 +544,22 @@ func Test_Utils_UniqueRouteStack(t *testing.T) {
 
 func Test_Utils_getGroupPath(t *testing.T) {
 	t.Parallel()
-	res := getGroupPath("/v1", "/")
+	res := GetGroupPath("/v1", "/")
 	require.Equal(t, "/v1/", res)
 
-	res = getGroupPath("/v1/", "/")
+	res = GetGroupPath("/v1/", "/")
 	require.Equal(t, "/v1/", res)
 
-	res = getGroupPath("/", "/")
+	res = GetGroupPath("/", "/")
 	require.Equal(t, "/", res)
 
-	res = getGroupPath("/v1/api/", "/")
+	res = GetGroupPath("/v1/api/", "/")
 	require.Equal(t, "/v1/api/", res)
 
-	res = getGroupPath("/v1/api", "group")
+	res = GetGroupPath("/v1/api", "group")
 	require.Equal(t, "/v1/api/group", res)
 
-	res = getGroupPath("/v1/api", "")
+	res = GetGroupPath("/v1/api", "")
 	require.Equal(t, "/v1/api", res)
 }
 
@@ -568,10 +568,10 @@ func Test_Utils_getGroupPath(t *testing.T) {
 func Benchmark_Utils_getGroupPath(b *testing.B) {
 	var res string
 	for n := 0; n < b.N; n++ {
-		_ = getGroupPath("/v1/long/path/john/doe", "/why/this/name/is/so/awesome")
-		_ = getGroupPath("/v1", "/")
-		_ = getGroupPath("/v1", "/api")
-		res = getGroupPath("/v1", "/api/register/:project")
+		_ = GetGroupPath("/v1/long/path/john/doe", "/why/this/name/is/so/awesome")
+		_ = GetGroupPath("/v1", "/")
+		_ = GetGroupPath("/v1", "/api")
+		res = GetGroupPath("/v1", "/api/register/:project")
 	}
 	require.Equal(b, "/v1/api/register/:project", res)
 }

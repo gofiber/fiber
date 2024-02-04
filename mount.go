@@ -47,7 +47,7 @@ func (app *App[Router]) mount(prefix string, subApp *App[Router]) routing.Expres
 
 	// Support for configs of mounted-apps and sub-mounted-apps
 	for mountedPrefixes, subApp := range subApp.mountFields.appList {
-		path := getGroupPath(prefix, mountedPrefixes)
+		path := GetGroupPath(prefix, mountedPrefixes)
 
 		subApp.mountFields.mountPath = path
 		app.mountFields.appList[path] = subApp
@@ -69,7 +69,7 @@ func (app *App[Router]) mount(prefix string, subApp *App[Router]) routing.Expres
 // It's very useful to split up a large API as many independent routers and
 // compose them as a single service using Mount.
 func (grp *routing.Group) mount(prefix string, subApp *App[Router]) routing.ExpressjsRouterI {
-	groupPath := getGroupPath(grp.Prefix, prefix)
+	groupPath := GetGroupPath(grp.Prefix, prefix)
 	groupPath = strings.TrimRight(groupPath, "/")
 	if groupPath == "" {
 		groupPath = "/"
@@ -77,7 +77,7 @@ func (grp *routing.Group) mount(prefix string, subApp *App[Router]) routing.Expr
 
 	// Support for configs of mounted-apps and sub-mounted-apps
 	for mountedPrefixes, subApp := range subApp.mountFields.appList {
-		path := getGroupPath(groupPath, mountedPrefixes)
+		path := GetGroupPath(groupPath, mountedPrefixes)
 
 		subApp.mountFields.mountPath = path
 		grp.app.mountFields.appList[path] = subApp
@@ -146,7 +146,7 @@ func (app *App[Router]) appendSubAppLists(appList map[string]*App[Router], paren
 		}
 
 		if parentPrefix != "" {
-			prefix = getGroupPath(parentPrefix, prefix)
+			prefix = GetGroupPath(parentPrefix, prefix)
 		}
 
 		if _, ok := app.mountFields.appList[prefix]; !ok {
@@ -202,7 +202,7 @@ func (app *App[Router]) processSubAppsRoutes() {
 				subAppRouteClone := app.copyRoute(subAppRoute)
 
 				// Add the parent route's path as a prefix to the sub-app's route
-				app.addPrefixToRoute(route.path, subAppRouteClone)
+				app.router.ConfigureRoute(app.config, route.path, subAppRouteClone)
 
 				// Add the cloned sub-app's route to the slice of sub-app routes
 				subRoutes[j] = subAppRouteClone

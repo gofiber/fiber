@@ -207,7 +207,7 @@ func defaultString(value string, defaultValue []string) string {
 	return value
 }
 
-func getGroupPath(prefix, path string) string {
+func GetGroupPath(prefix, path string) string {
 	if len(path) == 0 {
 		return prefix
 	}

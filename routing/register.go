@@ -30,7 +30,7 @@ var _ (Register) = (*Registering)(nil)
 
 // Registering struct
 type Registering struct {
-	app *fiber.App
+	app *fiber.App[fiber.Router]
 
 	path string
 }

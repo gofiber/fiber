@@ -8,9 +8,36 @@ import (
 
 type Router interface {
 	FindNextHandler(method string, path string) Handler
+	ConfigureRoute(config Config, prefix string, route Route) Route
+	CopyRoute(route Route) Route
 	GetAllRoutes() []any // TODO: specific routes ?
 	// TODO: Add contrains function ? or just in expressjs router
 	// TODO: add mount function for the merge of the routers
+}
+
+// CommonRouterI defines all router handle interface, including app and group router.
+type CommonRouterI interface {
+	Use(args ...any) CommonRouterI
+
+	Get(path string, handler Handler, middleware ...Handler) CommonRouterI
+	Head(path string, handler Handler, middleware ...Handler) CommonRouterI
+	Post(path string, handler Handler, middleware ...Handler) CommonRouterI
+	Put(path string, handler Handler, middleware ...Handler) CommonRouterI
+	Delete(path string, handler Handler, middleware ...Handler) CommonRouterI
+	Connect(path string, handler Handler, middleware ...Handler) CommonRouterI
+	Options(path string, handler Handler, middleware ...Handler) CommonRouterI
+	Trace(path string, handler Handler, middleware ...Handler) CommonRouterI
+	Patch(path string, handler Handler, middleware ...Handler) CommonRouterI
+
+	Add(methods []string, path string, handler Handler, middleware ...Handler) CommonRouterI
+	Static(prefix, root string, config ...Static) CommonRouterI
+	All(path string, handler Handler, middleware ...Handler) CommonRouterI
+
+	Group(prefix string, handlers ...Handler) CommonRouterI
+
+	Route(path string) routing.Register
+
+	Name(name string) CommonRouterI
 }
 
 type Route struct {
@@ -35,14 +62,9 @@ type Group struct {
 	IGroup
 }
 
-// TODO: move it to our Router interface `router.RegisterCustomConstraint`
-// RegisterCustomConstraint allows to register custom constraint.
-func (app *App[TRouter]) RegisterCustomConstraint(constraint CustomConstraint) {
-	app.customConstraints = append(app.customConstraints, constraint)
-}
-
 // Name Assign name to specific route.
-func (app *App[TRouter]) Name(name string) routing.ExpressjsRouterI {
+func (app *App[TRouter]) Name(name string) CommonRouterI {
+	app.checkDefaultRouter()
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
@@ -69,6 +91,7 @@ func (app *App[TRouter]) Name(name string) routing.ExpressjsRouterI {
 
 // GetRoute Get route by name
 func (app *App[TRouter]) GetRoute(name string) routing.Route {
+	app.checkDefaultRouter()
 	for _, routes := range app.stack {
 		for _, route := range routes {
 			if route.Name == name {
@@ -83,6 +106,7 @@ func (app *App[TRouter]) GetRoute(name string) routing.Route {
 // TODO: part of the router api for the interchangeable class
 // GetRoutes Get all routes. When filterUseOption equal to true, it will filter the routes registered by the middleware.
 func (app *App[TRouter]) GetRoutes(filterUseOption ...bool) []routing.Route {
+	app.checkDefaultRouter()
 	var rs []routing.Route
 	var filterUse bool
 	if len(filterUseOption) != 0 {
@@ -120,7 +144,8 @@ func (app *App[TRouter]) GetRoutes(filterUseOption ...bool) []routing.Route {
 //		app.Use("/mounted-path", subApp)
 //
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
-func (app *App[TRouter]) Use(args ...any) routing.ExpressjsRouterI {
+func (app *App[TRouter]) Use(args ...any) CommonRouterI {
+	app.checkDefaultRouter()
 	var prefix string
 	var subApp *App[TRouter]
 	var prefixes []string
@@ -159,73 +184,84 @@ func (app *App[TRouter]) Use(args ...any) routing.ExpressjsRouterI {
 
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
-func (app *App[TRouter]) Get(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
+func (app *App[TRouter]) Get(path string, handler Handler, middleware ...Handler) CommonRouterI {
+	app.checkDefaultRouter()
 	return app.Add([]string{MethodGet}, path, handler, middleware...)
 }
 
 // Head registers a route for HEAD methods that asks for a response identical
 // to that of a GET request, but without the response body.
-func (app *App[TRouter]) Head(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
+func (app *App[TRouter]) Head(path string, handler Handler, middleware ...Handler) CommonRouterI {
+	app.checkDefaultRouter()
 	return app.Add([]string{MethodHead}, path, handler, middleware...)
 }
 
 // Post registers a route for POST methods that is used to submit an entity to the
 // specified resource, often causing a change in state or side effects on the server.
-func (app *App[TRouter]) Post(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
+func (app *App[TRouter]) Post(path string, handler Handler, middleware ...Handler) CommonRouterI {
+	app.checkDefaultRouter()
 	return app.Add([]string{MethodPost}, path, handler, middleware...)
 }
 
 // Put registers a route for PUT methods that replaces all current representations
 // of the target resource with the request payload.
-func (app *App[TRouter]) Put(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
+func (app *App[TRouter]) Put(path string, handler Handler, middleware ...Handler) CommonRouterI {
+	app.checkDefaultRouter()
 	return app.Add([]string{MethodPut}, path, handler, middleware...)
 }
 
 // Delete registers a route for DELETE methods that deletes the specified resource.
-func (app *App[TRouter]) Delete(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
+func (app *App[TRouter]) Delete(path string, handler Handler, middleware ...Handler) CommonRouterI {
+	app.checkDefaultRouter()
 	return app.Add([]string{MethodDelete}, path, handler, middleware...)
 }
 
 // Connect registers a route for CONNECT methods that establishes a tunnel to the
 // server identified by the target resource.
-func (app *App[TRouter]) Connect(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
+func (app *App[TRouter]) Connect(path string, handler Handler, middleware ...Handler) CommonRouterI {
+	app.checkDefaultRouter()
 	return app.Add([]string{MethodConnect}, path, handler, middleware...)
 }
 
 // Options registers a route for OPTIONS methods that is used to describe the
 // communication options for the target resource.
-func (app *App[TRouter]) Options(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
+func (app *App[TRouter]) Options(path string, handler Handler, middleware ...Handler) CommonRouterI {
+	app.checkDefaultRouter()
 	return app.Add([]string{MethodOptions}, path, handler, middleware...)
 }
 
 // Trace registers a route for TRACE methods that performs a message loop-back
 // test along the path to the target resource.
-func (app *App[TRouter]) Trace(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
+func (app *App[TRouter]) Trace(path string, handler Handler, middleware ...Handler) CommonRouterI {
+	app.checkDefaultRouter()
 	return app.Add([]string{MethodTrace}, path, handler, middleware...)
 }
 
 // Patch registers a route for PATCH methods that is used to apply partial
 // modifications to a resource.
-func (app *App[TRouter]) Patch(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
+func (app *App[TRouter]) Patch(path string, handler Handler, middleware ...Handler) CommonRouterI {
+	app.checkDefaultRouter()
 	return app.Add([]string{MethodPatch}, path, handler, middleware...)
 }
 
 // Add allows you to specify multiple HTTP methods to register a route.
-func (app *App[TRouter]) Add(methods []string, path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
+func (app *App[TRouter]) Add(methods []string, path string, handler Handler, middleware ...Handler) CommonRouterI {
+	app.checkDefaultRouter()
 	app.register(methods, path, nil, handler, middleware...)
 
 	return app
 }
 
 // Static will create a file server serving static files
-func (app *App[TRouter]) Static(prefix, root string, config ...Static) routing.ExpressjsRouterI {
+func (app *App[TRouter]) Static(prefix, root string, config ...Static) CommonRouterI {
 	app.registerStatic(prefix, root, config...)
 
 	return app
 }
 
 // All will register the handler on all HTTP methods
-func (app *App[TRouter]) All(path string, handler Handler, middleware ...Handler) routing.ExpressjsRouterI {
+func (app *App[TRouter]) All(path string, handler Handler, middleware ...Handler) CommonRouterI {
+	app.checkDefaultRouter()
 	return app.Add(app.config.RequestMethods, path, handler, middleware...)
 }
 
@@ -233,7 +269,8 @@ func (app *App[TRouter]) All(path string, handler Handler, middleware ...Handler
 //
 //	api := app.Group("/api")
 //	api.Get("/users", handler)
-func (app *App[TRouter]) Group(prefix string, handlers ...Handler) routing.ExpressjsRouterI {
+func (app *App[TRouter]) Group(prefix string, handlers ...Handler) CommonRouterI {
+	app.checkDefaultRouter()
 	grp := &routing.Group{Prefix: prefix, app: app}
 	if len(handlers) > 0 {
 		app.register([]string{methodUse}, prefix, grp, nil, handlers...)
@@ -264,4 +301,11 @@ func (app *App[TRouter]) Stack() [][]*routing.Route {
 // HandlersCount returns the amount of registered handlers.
 func (app *App[TRouter]) HandlersCount() uint32 {
 	return app.handlersCount
+}
+
+func (app *App[TRouter]) checkDefaultRouter() {
+	_, ok := any(app.router).(CommonRouterI)
+	if !ok {
+		panic("Router is not the default router, pls use the app.Router() method for interactions with other routers")
+	}
 }

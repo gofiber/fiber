@@ -124,8 +124,7 @@ type App[TRouter Router] struct {
 	// Indicates if the value was explicitly configured
 	configured Config
 	// TODO: move it to the router interface `router.RegisterCustomConstraint`
-	// customConstraints is a list of external constraints
-	customConstraints []CustomConstraint
+
 }
 
 // Config is a struct holding the server settings.
@@ -580,6 +579,10 @@ func NewWithRouter[TRouter Router](router TRouter, config ...Config) *App[TRoute
 
 func (app *App[TRouter]) Router() TRouter {
 	return app.router
+}
+
+func (app *App[TRouter]) Config() Config {
+	return app.config
 }
 
 // Adds an ip address to trustedProxyRanges or trustedProxiesMap based on whether it is an IP range or not

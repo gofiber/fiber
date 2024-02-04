@@ -23,7 +23,10 @@ type ExpressjsRouter struct {
 	stack [][]*Route
 	// Route stack divided by HTTP methods and route prefixes
 	treeStack []map[string][]*Route
-	ExpressjsRouterI
+	// customConstraints is a list of external constraints
+	customConstraints []CustomConstraint
+
+	fiber.CommonRouterI
 	fiber.Router
 }
 
@@ -44,30 +47,14 @@ func (router *ExpressjsRouter) GetAllRoutes() []any {
 	return nil
 }
 
-// ExpressjsRouterI defines all router handle interface, including app and group router.
-type ExpressjsRouterI interface {
-	Use(args ...any) ExpressjsRouterI
+//region Customer ExpressjsRouter methods
 
-	Get(path string, handler fiber.Handler, middleware ...fiber.Handler) ExpressjsRouterI
-	Head(path string, handler fiber.Handler, middleware ...fiber.Handler) ExpressjsRouterI
-	Post(path string, handler fiber.Handler, middleware ...fiber.Handler) ExpressjsRouterI
-	Put(path string, handler fiber.Handler, middleware ...fiber.Handler) ExpressjsRouterI
-	Delete(path string, handler fiber.Handler, middleware ...fiber.Handler) ExpressjsRouterI
-	Connect(path string, handler fiber.Handler, middleware ...fiber.Handler) ExpressjsRouterI
-	Options(path string, handler fiber.Handler, middleware ...fiber.Handler) ExpressjsRouterI
-	Trace(path string, handler fiber.Handler, middleware ...fiber.Handler) ExpressjsRouterI
-	Patch(path string, handler fiber.Handler, middleware ...fiber.Handler) ExpressjsRouterI
-
-	Add(methods []string, path string, handler fiber.Handler, middleware ...fiber.Handler) ExpressjsRouterI
-	Static(prefix, root string, config ...fiber.Static) ExpressjsRouterI
-	All(path string, handler fiber.Handler, middleware ...fiber.Handler) ExpressjsRouterI
-
-	Group(prefix string, handlers ...fiber.Handler) ExpressjsRouterI
-
-	Route(path string) Register
-
-	Name(name string) ExpressjsRouterI
+// RegisterCustomConstraint allows to register custom constraint.
+func (router *ExpressjsRouter) RegisterCustomConstraint(constraint CustomConstraint) {
+	router.customConstraints = append(router.customConstraints, constraint)
 }
+
+//endregion
 
 // Route is a struct that holds all metadata for each registered handler.
 type Route struct {
@@ -81,6 +68,14 @@ type Route struct {
 	path        string      // Prettified path
 	routeParser routeParser // Parameter parser
 	group       *Group      // Group instance. used for routes in groups
+
+	// Public fields
+	Method string `json:"method"` // HTTP method
+	Name   string `json:"name"`   // Route's name
+	//nolint:revive // Having both a Path (uppercase) and a path (lowercase) is fine
+	Path     string          `json:"path"`   // Original registered route path
+	Params   []string        `json:"params"` // Case sensitive param keys
+	Handlers []fiber.Handler `json:"-"`      // Ctx handlers
 
 	// TODO: check it
 	fiber.Route
@@ -226,30 +221,30 @@ func (app *fiber.App) next(c *fiber.DefaultCtx) (bool, error) {
 	return false, err
 }
 
-func (app *fiber.App) addPrefixToRoute(prefix string, route *Route) *Route {
-	prefixedPath := fiber.getGroupPath(prefix, route.Path)
+func (router *ExpressjsRouter) ConfigureRoute(config fiber.Config, prefix string, route *Route) *Route {
+	prefixedPath := fiber.GetGroupPath(prefix, route.Path)
 	prettyPath := prefixedPath
 	// Case-sensitive routing, all to lowercase
-	if !app.config.CaseSensitive {
+	if !config.CaseSensitive {
 		prettyPath = utils.ToLower(prettyPath)
 	}
 	// Strict routing, remove trailing slashes
-	if !app.config.StrictRouting && len(prettyPath) > 1 {
+	if !config.StrictRouting && len(prettyPath) > 1 {
 		prettyPath = strings.TrimRight(prettyPath, "/")
 	}
 
 	route.Path = prefixedPath
 	route.path = RemoveEscapeChar(prettyPath)
-	route.routeParser = parseRoute(prettyPath, app.customConstraints...)
+	route.routeParser = parseRoute(prettyPath, router.customConstraints...)
 	route.root = false
 	route.star = false
 
 	return route
 }
 
-func (*fiber.App) copyRoute(route *Route) *Route {
+func (router *ExpressjsRouter) CopyRoute(route *Route) *Route {
 	return &Route{
-		// ExpressjsRouterI booleans
+		// CommonRouterI booleans
 		use:   route.use,
 		mount: route.mount,
 		star:  route.star,
@@ -321,7 +316,7 @@ func (app *fiber.App) register(methods []string, pathRaw string, group *Group, h
 
 		// Create route metadata without pointer
 		route := Route{
-			// ExpressjsRouterI booleans
+			// CommonRouterI booleans
 			use:   isUse,
 			mount: isMount,
 			star:  isStar,
@@ -479,7 +474,7 @@ func (app *fiber.App) registerStatic(prefix, root string, config ...fiber.Static
 
 	// Create route metadata without pointer
 	route := Route{
-		// ExpressjsRouterI booleans
+		// CommonRouterI booleans
 		use:  true,
 		root: isRoot,
 		path: prefix,

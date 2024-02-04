@@ -42,10 +42,13 @@ type contextKey int
 const userContextKey contextKey = 0 // __local_user_context__
 
 type DefaultCtx struct {
-	app                 *App                 // Reference to *App
-	route               *routing.Route       // Reference to *Route
-	indexRoute          int                  // Index of the current route
-	indexHandler        int                  // Index of the current handler
+	app   *App           // Reference to *App
+	route *routing.Route // Reference to *Route
+
+	// TODO: how to handle this ?
+	indexRoute   int // Index of the current route
+	indexHandler int // Index of the current handler
+
 	method              string               // HTTP method
 	methodINT           int                  // HTTP method INT equivalent
 	baseURI             string               // HTTP base uri
