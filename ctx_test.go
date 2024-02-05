@@ -4853,3 +4853,46 @@ func Test_Ctx_extractIPsFromHeader_EnableValidateIp(t *testing.T) {
 	res := ips[len(ips)-2]
 	require.Equal(t, "42.118.81.169", res)
 }
+
+// go test -run Test_Ctx_GetRespHeaders
+func Test_Ctx_GetRespHeaders(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	c.Set("test", "Hello, World 👋!")
+	c.Set("foo", "bar")
+	c.Response().Header.Set("multi", "one")
+	c.Response().Header.Add("multi", "two")
+	c.Response().Header.Set(HeaderContentType, "application/json")
+
+	require.Equal(t, c.GetRespHeaders(), map[string][]string{
+		"Content-Type": {"application/json"},
+		"Foo":          {"bar"},
+		"Multi":        {"one", "two"},
+		"Test":         {"Hello, World 👋!"},
+	})
+}
+
+func Benchmark_Ctx_GetRespHeaders(b *testing.B) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	c.Response().Header.Set("test", "Hello, World 👋!")
+	c.Response().Header.Set("foo", "bar")
+	c.Response().Header.Set(HeaderContentType, "application/json")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	var headers map[string][]string
+	for n := 0; n < b.N; n++ {
+		headers = c.GetRespHeaders()
+	}
+
+	require.Equal(b, headers, map[string][]string{
+		"Content-Type": {"application/json"},
+		"Foo":          {"bar"},
+		"Test":         {"Hello, World 👋!"},
+	})
+}

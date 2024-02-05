@@ -134,6 +134,11 @@ type Ctx interface {
 	// Make copies or use the Immutable setting instead.
 	GetRespHeader(key string, defaultValue ...string) string
 
+	// GetRespHeaders returns the HTTP response headers.
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting instead.
+	GetRespHeaders() map[string][]string
+
 	// Host contains the host derived from the X-Forwarded-Host or Host HTTP header.
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.

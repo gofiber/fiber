@@ -560,6 +560,18 @@ func (c *DefaultCtx) GetRespHeader(key string, defaultValue ...string) string {
 	return defaultString(c.app.getString(c.fasthttp.Response.Header.Peek(key)), defaultValue)
 }
 
+// GetRespHeaders returns the HTTP response headers.
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting instead.
+func (c *DefaultCtx) GetRespHeaders() map[string][]string {
+	headers := make(map[string][]string)
+	c.Response().Header.VisitAll(func(k, v []byte) {
+		key := c.app.getString(k)
+		headers[key] = append(headers[key], c.app.getString(v))
+	})
+	return headers
+}
+
 // Host contains the host derived from the X-Forwarded-Host or Host HTTP header.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
