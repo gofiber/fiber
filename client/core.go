@@ -218,14 +218,14 @@ func (c *core) tls() {
 
 // proxy set proxy in host.
 func (c *core) proxy() error {
-	rawUri := c.req.RawRequest.URI()
+	rawURI := c.req.RawRequest.URI()
 	if c.client.proxyURL != "" {
-		rawUri = fasthttp.AcquireURI()
-		rawUri.Update(c.client.proxyURL)
-		defer fasthttp.ReleaseURI(rawUri)
+		rawURI = fasthttp.AcquireURI()
+		rawURI.Update(c.client.proxyURL)
+		defer fasthttp.ReleaseURI(rawURI)
 	}
 
-	isTLS, scheme := false, rawUri.Scheme()
+	isTLS, scheme := false, rawURI.Scheme()
 	if bytes.Equal(httpsBytes, scheme) {
 		isTLS = true
 	} else if !bytes.Equal(httpBytes, scheme) {
@@ -233,7 +233,7 @@ func (c *core) proxy() error {
 	}
 
 	c.client.mu.Lock()
-	c.client.host.Addr = addMissingPort(string(rawUri.Host()), isTLS)
+	c.client.host.Addr = addMissingPort(string(rawURI.Host()), isTLS)
 	c.client.host.IsTLS = isTLS
 	c.client.mu.Unlock()
 
@@ -310,7 +310,7 @@ func releaseErrChan(ch chan error) {
 func newCore() (c *core) {
 	c = &core{}
 
-	return
+	return c
 }
 
 var (
