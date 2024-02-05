@@ -32,9 +32,9 @@ func (l *defaultLogger) privateLog(lv Level, fmtArgs []any) {
 
 	if lv == LevelPanic {
 		panic(buf.String())
-	} else {
-		_ = l.stdlog.Output(l.depth, buf.String()) //nolint:errcheck // It is fine to ignore the error
 	}
+
+	_ = l.stdlog.Output(l.depth, buf.String()) //nolint:errcheck // It is fine to ignore the error
 
 	buf.Reset()
 	bytebufferpool.Put(buf)
@@ -61,9 +61,9 @@ func (l *defaultLogger) privateLogf(lv Level, format string, fmtArgs []any) {
 
 	if lv == LevelPanic {
 		panic(buf.String())
-	} else {
-		_ = l.stdlog.Output(l.depth, buf.String()) //nolint:errcheck // It is fine to ignore the error
 	}
+
+	_ = l.stdlog.Output(l.depth, buf.String()) //nolint:errcheck // It is fine to ignore the error
 
 	buf.Reset()
 	bytebufferpool.Put(buf)
@@ -108,9 +108,9 @@ func (l *defaultLogger) privateLogw(lv Level, format string, keysAndValues []any
 
 	if lv == LevelPanic {
 		panic(buf.String())
-	} else {
-		_ = l.stdlog.Output(l.depth, buf.String()) //nolint:errcheck // It is fine to ignore the error
 	}
+
+	_ = l.stdlog.Output(l.depth, buf.String()) //nolint:errcheck // It is fine to ignore the error
 
 	buf.Reset()
 	bytebufferpool.Put(buf)

@@ -277,7 +277,7 @@ func parserRequestBody(c *Client, req *Request) error {
 }
 
 // parserResponseHeader will parse the response header and store it in the response
-func parserResponseCookie(c *Client, resp *Response, req *Request) (err error) {
+func parserResponseCookie(c *Client, resp *Response, req *Request) error {
 	resp.RawResponse.Header.VisitAllCookie(func(key, value []byte) {
 		cookie := fasthttp.AcquireCookie()
 		_ = cookie.ParseBytes(value)
@@ -288,20 +288,20 @@ func parserResponseCookie(c *Client, resp *Response, req *Request) (err error) {
 
 	// store cookies to jar
 	if c.cookieJar != nil {
-		c.cookieJar.getCookiesFromResp(req.RawRequest.URI().Host(), req.RawRequest.URI().Path(), resp.RawResponse)
+		c.cookieJar.parseCookiesFromResp(req.RawRequest.URI().Host(), req.RawRequest.URI().Path(), resp.RawResponse)
 	}
 
-	return
+	return nil
 }
 
 // logger is a response hook that logs the request and response
-func logger(c *Client, resp *Response, req *Request) (err error) {
+func logger(c *Client, resp *Response, req *Request) error {
 	if !c.debug {
-		return
+		return nil
 	}
 
 	log.Debugf("%s\n", req.RawRequest.String())
 	log.Debugf("%s\n", resp.RawResponse.String())
 
-	return
+	return nil
 }

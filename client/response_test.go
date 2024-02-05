@@ -94,6 +94,7 @@ func Test_Response_Protocol(t *testing.T) {
 	t.Parallel()
 
 	t.Run("http", func(t *testing.T) {
+		t.Parallel()
 		app, ln, start := createHelperServer(t)
 		app.Get("/", func(c fiber.Ctx) error {
 			return c.SendString("foo")
@@ -113,10 +114,10 @@ func Test_Response_Protocol(t *testing.T) {
 		t.Parallel()
 
 		serverTLSConf, clientTLSConf, err := tlstest.GetTLSConfigs()
-		require.Nil(t, err)
+		require.NoError(t, err)
 
 		ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-		require.Nil(t, err)
+		require.NoError(t, err)
 
 		ln = tls.NewListener(ln, serverTLSConf)
 
@@ -126,7 +127,7 @@ func Test_Response_Protocol(t *testing.T) {
 		})
 
 		go func() {
-			require.Nil(t, app.Listener(ln, fiber.ListenConfig{
+			require.NoError(t, app.Listener(ln, fiber.ListenConfig{
 				DisableStartupMessage: true,
 			}))
 		}()
@@ -134,7 +135,7 @@ func Test_Response_Protocol(t *testing.T) {
 		client := AcquireClient()
 		resp, err := client.SetTLSConfig(clientTLSConf).Get("https://" + ln.Addr().String())
 
-		require.Nil(t, err)
+		require.NoError(t, err)
 		require.Equal(t, clientTLSConf, client.TLSConfig())
 		require.Equal(t, fiber.StatusOK, resp.StatusCode())
 		require.Equal(t, "https", resp.String())
@@ -202,6 +203,7 @@ func Test_Response_Body(t *testing.T) {
 	go start()
 
 	t.Run("raw body", func(t *testing.T) {
+		t.Parallel()
 		resp, err := AcquireRequest().
 			SetDial(ln).
 			Get("http://example.com")
@@ -212,6 +214,7 @@ func Test_Response_Body(t *testing.T) {
 	})
 
 	t.Run("string body", func(t *testing.T) {
+		t.Parallel()
 		resp, err := AcquireRequest().
 			SetDial(ln).
 			Get("http://example.com")
@@ -222,6 +225,7 @@ func Test_Response_Body(t *testing.T) {
 	})
 
 	t.Run("json body", func(t *testing.T) {
+		t.Parallel()
 		type body struct {
 			Status string `json:"status"`
 		}
@@ -240,6 +244,7 @@ func Test_Response_Body(t *testing.T) {
 	})
 
 	t.Run("xml body", func(t *testing.T) {
+		t.Parallel()
 		type body struct {
 			Name   xml.Name `xml:"status"`
 			Status string   `xml:"name"`
@@ -260,7 +265,7 @@ func Test_Response_Body(t *testing.T) {
 }
 
 func Test_Response_Save(t *testing.T) {
-
+	t.Parallel()
 	app, ln, start := createHelperServer(t)
 	app.Get("/json", func(c fiber.Ctx) error {
 		return c.SendString("{\"status\":\"success\"}")
@@ -270,6 +275,7 @@ func Test_Response_Save(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 
 	t.Run("file path", func(t *testing.T) {
+		t.Parallel()
 		resp, err := AcquireRequest().
 			SetDial(ln).
 			Get("http://example.com/json")
@@ -300,6 +306,7 @@ func Test_Response_Save(t *testing.T) {
 	})
 
 	t.Run("io.Writer", func(t *testing.T) {
+		t.Parallel()
 		resp, err := AcquireRequest().
 			SetDial(ln).
 			Get("http://example.com/json")
@@ -314,6 +321,7 @@ func Test_Response_Save(t *testing.T) {
 	})
 
 	t.Run("error type", func(t *testing.T) {
+		t.Parallel()
 		resp, err := AcquireRequest().
 			SetDial(ln).
 			Get("http://example.com/json")

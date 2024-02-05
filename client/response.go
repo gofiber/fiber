@@ -93,7 +93,7 @@ func (r *Response) Save(v any) error {
 				return err
 			}
 
-			if err = os.MkdirAll(dir, 0750); err != nil {
+			if err = os.MkdirAll(dir, 0o750); err != nil {
 				return err
 			}
 		}
@@ -166,8 +166,12 @@ var responsePool = &sync.Pool{
 //
 // The returned response may be returned to the pool with ReleaseResponse when no longer needed.
 // This allows reducing GC load.
-func AcquireResponse() (resp *Response) {
-	return responsePool.Get().(*Response)
+func AcquireResponse() *Response {
+	resp, ok := responsePool.Get().(*Response)
+	if !ok {
+		panic("unexpected type from responsePool.Get()")
+	}
+	return resp
 }
 
 // ReleaseResponse returns the object acquired via AcquireResponse to the pool.

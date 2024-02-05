@@ -24,12 +24,12 @@ func createHelperServer(t testing.TB, config ...fiber.Config) (*fiber.App, func(
 	return app, func(addr string) (net.Conn, error) {
 			return ln.Dial()
 		}, func() {
-			require.Nil(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}))
+			require.NoError(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}))
 		}
 }
 
 func testRequest(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Request), excepted string, count ...int) {
-	t.Parallel()
+	t.Helper()
 
 	app, ln, start := createHelperServer(t)
 	app.Get("/", handler)
@@ -54,7 +54,7 @@ func testRequest(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Requ
 }
 
 func testRequestFail(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Request), excepted error, count ...int) {
-	t.Parallel()
+	t.Helper()
 
 	app, ln, start := createHelperServer(t)
 	app.Get("/", handler)
@@ -76,7 +76,7 @@ func testRequestFail(t *testing.T, handler fiber.Handler, wrapAgent func(agent *
 }
 
 func testClient(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Client), excepted string, count ...int) {
-	t.Parallel()
+	t.Helper()
 
 	app, ln, start := createHelperServer(t)
 	app.Get("/", handler)

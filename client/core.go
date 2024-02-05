@@ -193,10 +193,8 @@ func (c *core) timeout() context.CancelFunc {
 
 	if c.req.timeout > 0 {
 		c.ctx, cancel = context.WithTimeout(c.ctx, c.req.timeout)
-	} else {
-		if c.client.timeout > 0 {
-			c.ctx, cancel = context.WithTimeout(c.ctx, c.client.timeout)
-		}
+	} else if c.client.timeout > 0 {
+		c.ctx, cancel = context.WithTimeout(c.ctx, c.client.timeout)
 	}
 
 	return cancel
@@ -307,8 +305,8 @@ func releaseErrChan(ch chan error) {
 }
 
 // newCore returns an empty core object.
-func newCore() (c *core) {
-	c = &core{}
+func newCore() *core {
+	c := &core{}
 
 	return c
 }

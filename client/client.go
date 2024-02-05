@@ -9,7 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	urlPkg "net/url"
+	urlpkg "net/url"
 	"os"
 	"path/filepath"
 	"sync"
@@ -21,8 +21,10 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-var ErrInvalidProxyURL = errors.New("invalid proxy url scheme")
-var ErrFailedToAppendCert = errors.New("failed to append certificate")
+var (
+	ErrInvalidProxyURL    = errors.New("invalid proxy url scheme")
+	ErrFailedToAppendCert = errors.New("failed to append certificate")
+)
 
 // The Client is used to create a Fiber Client with
 // client-level settings that apply to all requests
@@ -234,7 +236,7 @@ func (c *Client) SetRootCertificateFromString(pem string) *Client {
 
 // SetProxyURL sets proxy url in client. It will apply via core to hostclient.
 func (c *Client) SetProxyURL(proxyURL string) *Client {
-	pURL, err := urlPkg.Parse(proxyURL)
+	pURL, err := urlpkg.Parse(proxyURL)
 	if err != nil {
 		log.Panicf("client: %v", err)
 		return c

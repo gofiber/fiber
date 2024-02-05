@@ -2,17 +2,18 @@ package client
 
 import (
 	"bytes"
-	"github.com/stretchr/testify/require"
-	"github.com/valyala/fasthttp"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 )
 
 func checkKeyValue(t *testing.T, cj *CookieJar, cookie *fasthttp.Cookie, uri *fasthttp.URI, n int) {
 	t.Helper()
 
 	cs := cj.Get(uri)
-	require.True(t, len(cs) >= n)
+	require.GreaterOrEqual(t, len(cs), n)
 
 	c := cs[n-1]
 	require.NotNil(t, c)
@@ -74,7 +75,7 @@ func TestCookieJarGet(t *testing.T) {
 	}
 
 	cookies = cj.Get(uri11)
-	require.Len(t, cookies, 0)
+	require.Empty(t, cookies)
 
 	cookies = cj.Get(uri2)
 	require.Len(t, cookies, 2)
@@ -112,7 +113,7 @@ func TestCookieJarGetExpired(t *testing.T) {
 	cj.Set(uri1, c1)
 
 	cookies := cj.Get(uri1)
-	require.Len(t, cookies, 0)
+	require.Empty(t, cookies)
 }
 
 func TestCookieJarSet(t *testing.T) {
@@ -205,7 +206,7 @@ func TestCookieJarGetFromResponse(t *testing.T) {
 	res.Header.SetCookie(c3)
 
 	cj := &CookieJar{}
-	cj.getCookiesFromResp(host, nil, res)
+	cj.parseCookiesFromResp(host, nil, res)
 
 	cookies := cj.Get(uri)
 	require.Len(t, cookies, 3)

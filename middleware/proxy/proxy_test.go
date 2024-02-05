@@ -3,15 +3,16 @@ package proxy
 import (
 	"crypto/tls"
 	"errors"
-	"github.com/gofiber/fiber/v3"
-	fiberClient "github.com/gofiber/fiber/v3/client"
-	"github.com/stretchr/testify/require"
 	"io"
 	"net"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/gofiber/fiber/v3"
+	clientpkg "github.com/gofiber/fiber/v3/client"
+	"github.com/stretchr/testify/require"
 
 	"github.com/gofiber/fiber/v3/internal/tlstest"
 	"github.com/valyala/fasthttp"
@@ -137,8 +138,8 @@ func Test_Proxy_Balancer_WithTlsConfig(t *testing.T) {
 		}))
 	}()
 
-	client := fiberClient.AcquireClient()
-	defer fiberClient.ReleaseClient(client)
+	client := clientpkg.AcquireClient()
+	defer clientpkg.ReleaseClient(client)
 	client.SetTLSConfig(clientTLSConf)
 
 	resp, err := client.Get("https://" + addr + "/tlsbalancer")
@@ -176,10 +177,10 @@ func Test_Proxy_Forward_WithTlsConfig_To_Http(t *testing.T) {
 		}))
 	}()
 
-	client := fiberClient.AcquireClient()
-	defer fiberClient.ReleaseClient(client)
+	client := clientpkg.AcquireClient()
+	defer clientpkg.ReleaseClient(client)
 	client.SetTimeout(5 * time.Second)
-	client.TLSConfig().InsecureSkipVerify = true //nolint:gosec // We're in a test func, so this is fine
+	client.TLSConfig().InsecureSkipVerify = true
 
 	resp, err := client.Get("https://" + proxyAddr)
 	require.NoError(t, err)
@@ -242,8 +243,8 @@ func Test_Proxy_Forward_WithClient_TLSConfig(t *testing.T) {
 		}))
 	}()
 
-	client := fiberClient.AcquireClient()
-	defer fiberClient.ReleaseClient(client)
+	client := clientpkg.AcquireClient()
+	defer clientpkg.ReleaseClient(client)
 	client.SetTLSConfig(clientTLSConf)
 
 	resp, err := client.Get("https://" + addr)
@@ -482,7 +483,7 @@ func Test_Proxy_DoTimeout_RestoreOriginalURL(t *testing.T) {
 	})
 
 	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
-	require.NoError(t, nil, err1)
+	require.NotErrorIs(t, nil, err1)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "proxied", string(body))
@@ -598,8 +599,8 @@ func Test_Proxy_Forward_Global_Client(t *testing.T) {
 		}))
 	}()
 
-	client := fiberClient.AcquireClient()
-	defer fiberClient.ReleaseClient(client)
+	client := clientpkg.AcquireClient()
+	defer clientpkg.ReleaseClient(client)
 
 	resp, err := client.Get("http://" + addr)
 	require.NoError(t, err)
@@ -631,8 +632,8 @@ func Test_Proxy_Forward_Local_Client(t *testing.T) {
 		}))
 	}()
 
-	client := fiberClient.AcquireClient()
-	defer fiberClient.ReleaseClient(client)
+	client := clientpkg.AcquireClient()
+	defer clientpkg.ReleaseClient(client)
 
 	resp, err := client.Get("http://" + addr)
 	require.NoError(t, err)
@@ -710,8 +711,8 @@ func Test_Proxy_Domain_Forward_Local(t *testing.T) {
 		}))
 	}()
 
-	client := fiberClient.AcquireClient()
-	defer fiberClient.ReleaseClient(client)
+	client := clientpkg.AcquireClient()
+	defer clientpkg.ReleaseClient(client)
 
 	resp, err := client.Get("http://" + localDomain + "/test?query_test=true")
 	require.NoError(t, err)
@@ -739,5 +740,5 @@ func Test_Proxy_Balancer_Forward_Local(t *testing.T) {
 	b, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 
-	require.Equal(t, string(b), "forwarded")
+	require.Equal(t, "forwarded", string(b))
 }

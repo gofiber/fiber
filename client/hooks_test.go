@@ -3,18 +3,20 @@ package client
 import (
 	"bytes"
 	"encoding/xml"
-	"github.com/gofiber/fiber/v3/log"
 	"io"
 	"net/url"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/gofiber/fiber/v3/log"
+
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
 )
 
 func Test_Rand_String(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		args int
@@ -26,8 +28,9 @@ func Test_Rand_String(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := randString(tt.args)
-			require.Equal(t, 16, len(got))
+			require.Len(t, got, 16)
 		})
 	}
 }
@@ -36,6 +39,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 	t.Parallel()
 
 	t.Run("client baseurl should be set", func(t *testing.T) {
+		t.Parallel()
 		client := AcquireClient().SetBaseURL("http://example.com/api")
 		req := AcquireRequest().SetURL("")
 
@@ -45,6 +49,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 	})
 
 	t.Run("request url should be set", func(t *testing.T) {
+		t.Parallel()
 		client := AcquireClient()
 		req := AcquireRequest().SetURL("http://example.com/api")
 
@@ -54,6 +59,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 	})
 
 	t.Run("the request url will override baseurl with protocol", func(t *testing.T) {
+		t.Parallel()
 		client := AcquireClient().SetBaseURL("http://example.com/api")
 		req := AcquireRequest().SetURL("http://example.com/api/v1")
 
@@ -63,6 +69,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 	})
 
 	t.Run("the request url should be append after baseurl without protocol", func(t *testing.T) {
+		t.Parallel()
 		client := AcquireClient().SetBaseURL("http://example.com/api")
 		req := AcquireRequest().SetURL("/v1")
 
@@ -72,6 +79,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 	})
 
 	t.Run("the url is error", func(t *testing.T) {
+		t.Parallel()
 		client := AcquireClient().SetBaseURL("example.com/api")
 		req := AcquireRequest().SetURL("/v1")
 
@@ -80,6 +88,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 	})
 
 	t.Run("the path param from client", func(t *testing.T) {
+		t.Parallel()
 		client := AcquireClient().
 			SetBaseURL("http://example.com/api/:id").
 			SetPathParam("id", "5")
@@ -91,6 +100,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 	})
 
 	t.Run("the path param from request", func(t *testing.T) {
+		t.Parallel()
 		client := AcquireClient().
 			SetBaseURL("http://example.com/api/:id/:name").
 			SetPathParam("id", "5")
@@ -108,6 +118,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 	})
 
 	t.Run("the path param from request and client", func(t *testing.T) {
+		t.Parallel()
 		client := AcquireClient().
 			SetBaseURL("http://example.com/api/:id/:name").
 			SetPathParam("id", "5")
@@ -125,6 +136,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 	})
 
 	t.Run("query params from client should be set", func(t *testing.T) {
+		t.Parallel()
 		client := AcquireClient().
 			SetParam("foo", "bar")
 		req := AcquireRequest().SetURL("http://example.com/api/v1")
@@ -135,6 +147,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 	})
 
 	t.Run("query params from request should be set", func(t *testing.T) {
+		t.Parallel()
 		client := AcquireClient()
 		req := AcquireRequest().
 			SetURL("http://example.com/api/v1").
@@ -146,6 +159,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 	})
 
 	t.Run("query params should be merged", func(t *testing.T) {
+		t.Parallel()
 		client := AcquireClient().
 			SetParam("bar", "foo1")
 		req := AcquireRequest().
@@ -177,6 +191,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 	t.Parallel()
 
 	t.Run("client header should be set", func(t *testing.T) {
+		t.Parallel()
 		client := AcquireClient().
 			SetHeaders(map[string]string{
 				fiber.HeaderContentType: "application/json",
@@ -190,6 +205,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 	})
 
 	t.Run("request header should be set", func(t *testing.T) {
+		t.Parallel()
 		client := AcquireClient()
 
 		req := AcquireRequest().
@@ -203,6 +219,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 	})
 
 	t.Run("request header should override client header", func(t *testing.T) {
+		t.Parallel()
 		client := AcquireClient().
 			SetHeader(fiber.HeaderContentType, "application/xml")
 
@@ -215,6 +232,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 	})
 
 	t.Run("auto set json header", func(t *testing.T) {
+		t.Parallel()
 		type jsonData struct {
 			Name string `json:"name"`
 		}
@@ -230,6 +248,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 	})
 
 	t.Run("auto set xml header", func(t *testing.T) {
+		t.Parallel()
 		type xmlData struct {
 			XMLName xml.Name `xml:"body"`
 			Name    string   `xml:"name"`
@@ -246,6 +265,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 	})
 
 	t.Run("auto set form data header", func(t *testing.T) {
+		t.Parallel()
 		client := AcquireClient()
 		req := AcquireRequest().
 			SetFormDatas(map[string]string{
@@ -259,6 +279,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 	})
 
 	t.Run("auto set file header", func(t *testing.T) {
+		t.Parallel()
 		client := AcquireClient()
 		req := AcquireRequest().
 			AddFileWithReader("hello", io.NopCloser(strings.NewReader("world"))).
@@ -271,6 +292,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 	})
 
 	t.Run("ua should have default value", func(t *testing.T) {
+		t.Parallel()
 		client := AcquireClient()
 		req := AcquireRequest()
 
@@ -280,6 +302,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 	})
 
 	t.Run("ua in client should be set", func(t *testing.T) {
+		t.Parallel()
 		client := AcquireClient().SetUserAgent("foo")
 		req := AcquireRequest()
 
@@ -289,6 +312,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 	})
 
 	t.Run("ua in request should have higher level", func(t *testing.T) {
+		t.Parallel()
 		client := AcquireClient().SetUserAgent("foo")
 		req := AcquireRequest().SetUserAgent("bar")
 
@@ -298,6 +322,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 	})
 
 	t.Run("referer in client should be set", func(t *testing.T) {
+		t.Parallel()
 		client := AcquireClient().SetReferer("https://example.com")
 		req := AcquireRequest()
 
@@ -307,6 +332,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 	})
 
 	t.Run("referer in request should have higher level", func(t *testing.T) {
+		t.Parallel()
 		client := AcquireClient().SetReferer("http://example.com")
 		req := AcquireRequest().SetReferer("https://example.com")
 
@@ -316,6 +342,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 	})
 
 	t.Run("client cookie should be set", func(t *testing.T) {
+		t.Parallel()
 		client := AcquireClient().
 			SetCookie("foo", "bar").
 			SetCookies(map[string]string{
@@ -334,6 +361,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 	})
 
 	t.Run("request cookie should be set", func(t *testing.T) {
+		t.Parallel()
 		type cookies struct {
 			Foo string `cookie:"foo"`
 			Bar int    `cookie:"bar"`
@@ -355,6 +383,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 	})
 
 	t.Run("request cookie will override client cookie", func(t *testing.T) {
+		t.Parallel()
 		type cookies struct {
 			Foo string `cookie:"foo"`
 			Bar int    `cookie:"bar"`
@@ -385,6 +414,7 @@ func Test_Parser_Request_Body(t *testing.T) {
 	t.Parallel()
 
 	t.Run("json body", func(t *testing.T) {
+		t.Parallel()
 		type jsonData struct {
 			Name string `json:"name"`
 		}
@@ -400,6 +430,7 @@ func Test_Parser_Request_Body(t *testing.T) {
 	})
 
 	t.Run("xml body", func(t *testing.T) {
+		t.Parallel()
 		type xmlData struct {
 			XMLName xml.Name `xml:"body"`
 			Name    string   `xml:"name"`
@@ -416,6 +447,7 @@ func Test_Parser_Request_Body(t *testing.T) {
 	})
 
 	t.Run("form data body", func(t *testing.T) {
+		t.Parallel()
 		client := AcquireClient()
 		req := AcquireRequest().
 			SetFormDatas(map[string]string{
@@ -428,6 +460,7 @@ func Test_Parser_Request_Body(t *testing.T) {
 	})
 
 	t.Run("form data body error", func(t *testing.T) {
+		t.Parallel()
 		client := AcquireClient()
 		req := AcquireRequest().
 			SetFormDatas(map[string]string{
@@ -439,6 +472,7 @@ func Test_Parser_Request_Body(t *testing.T) {
 	})
 
 	t.Run("file body", func(t *testing.T) {
+		t.Parallel()
 		client := AcquireClient()
 		req := AcquireRequest().
 			AddFileWithReader("hello", io.NopCloser(strings.NewReader("world")))
@@ -450,6 +484,7 @@ func Test_Parser_Request_Body(t *testing.T) {
 	})
 
 	t.Run("file and form data", func(t *testing.T) {
+		t.Parallel()
 		client := AcquireClient()
 		req := AcquireRequest().
 			AddFileWithReader("hello", io.NopCloser(strings.NewReader("world"))).
@@ -463,6 +498,7 @@ func Test_Parser_Request_Body(t *testing.T) {
 	})
 
 	t.Run("raw body", func(t *testing.T) {
+		t.Parallel()
 		client := AcquireClient()
 		req := AcquireRequest().
 			SetRawBody([]byte("hello world"))
@@ -473,6 +509,7 @@ func Test_Parser_Request_Body(t *testing.T) {
 	})
 
 	t.Run("raw body error", func(t *testing.T) {
+		t.Parallel()
 		client := AcquireClient()
 		req := AcquireRequest().
 			SetRawBody([]byte("hello world"))
@@ -485,13 +522,14 @@ func Test_Parser_Request_Body(t *testing.T) {
 }
 
 func Test_Client_Logger_Debug(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("response")
 	})
 
 	go func() {
-		require.Nil(t, app.Listen(":3000", fiber.ListenConfig{
+		require.NoError(t, app.Listen(":3000", fiber.ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -517,13 +555,14 @@ func Test_Client_Logger_Debug(t *testing.T) {
 }
 
 func Test_Client_Logger_DisableDebug(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("response")
 	})
 
 	go func() {
-		require.Nil(t, app.Listen(":3000", fiber.ListenConfig{
+		require.NoError(t, app.Listen(":3000", fiber.ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()

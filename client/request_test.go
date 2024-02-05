@@ -79,25 +79,28 @@ func Test_Request_Header(t *testing.T) {
 	t.Parallel()
 
 	t.Run("add header", func(t *testing.T) {
+		t.Parallel()
 		req := AcquireRequest()
 		req.AddHeader("foo", "bar").AddHeader("foo", "fiber")
 
 		res := req.Header("foo")
-		require.Equal(t, 2, len(res))
+		require.Len(t, res, 2)
 		require.Equal(t, "bar", res[0])
 		require.Equal(t, "fiber", res[1])
 	})
 
 	t.Run("set header", func(t *testing.T) {
+		t.Parallel()
 		req := AcquireRequest()
 		req.AddHeader("foo", "bar").SetHeader("foo", "fiber")
 
 		res := req.Header("foo")
-		require.Equal(t, 1, len(res))
+		require.Len(t, res, 1)
 		require.Equal(t, "fiber", res[0])
 	})
 
 	t.Run("add headers", func(t *testing.T) {
+		t.Parallel()
 		req := AcquireRequest()
 		req.SetHeader("foo", "bar").
 			AddHeaders(map[string][]string{
@@ -106,17 +109,18 @@ func Test_Request_Header(t *testing.T) {
 			})
 
 		res := req.Header("foo")
-		require.Equal(t, 3, len(res))
+		require.Len(t, res, 3)
 		require.Equal(t, "bar", res[0])
 		require.Equal(t, "buaa", res[1])
 		require.Equal(t, "fiber", res[2])
 
 		res = req.Header("bar")
-		require.Equal(t, 1, len(res))
+		require.Len(t, res, 1)
 		require.Equal(t, "foo", res[0])
 	})
 
 	t.Run("set headers", func(t *testing.T) {
+		t.Parallel()
 		req := AcquireRequest()
 		req.SetHeader("foo", "bar").
 			SetHeaders(map[string]string{
@@ -125,11 +129,11 @@ func Test_Request_Header(t *testing.T) {
 			})
 
 		res := req.Header("foo")
-		require.Equal(t, 1, len(res))
+		require.Len(t, res, 1)
 		require.Equal(t, "fiber", res[0])
 
 		res = req.Header("bar")
-		require.Equal(t, 1, len(res))
+		require.Len(t, res, 1)
 		require.Equal(t, "foo", res[0])
 	})
 }
@@ -138,25 +142,28 @@ func Test_Request_QueryParam(t *testing.T) {
 	t.Parallel()
 
 	t.Run("add param", func(t *testing.T) {
+		t.Parallel()
 		req := AcquireRequest()
 		req.AddParam("foo", "bar").AddParam("foo", "fiber")
 
 		res := req.Param("foo")
-		require.Equal(t, 2, len(res))
+		require.Len(t, res, 2)
 		require.Equal(t, "bar", res[0])
 		require.Equal(t, "fiber", res[1])
 	})
 
 	t.Run("set param", func(t *testing.T) {
+		t.Parallel()
 		req := AcquireRequest()
 		req.AddParam("foo", "bar").SetParam("foo", "fiber")
 
 		res := req.Param("foo")
-		require.Equal(t, 1, len(res))
+		require.Len(t, res, 1)
 		require.Equal(t, "fiber", res[0])
 	})
 
 	t.Run("add params", func(t *testing.T) {
+		t.Parallel()
 		req := AcquireRequest()
 		req.SetParam("foo", "bar").
 			AddParams(map[string][]string{
@@ -165,17 +172,18 @@ func Test_Request_QueryParam(t *testing.T) {
 			})
 
 		res := req.Param("foo")
-		require.Equal(t, 3, len(res))
+		require.Len(t, res, 3)
 		require.Equal(t, "bar", res[0])
 		require.Equal(t, "buaa", res[1])
 		require.Equal(t, "fiber", res[2])
 
 		res = req.Param("bar")
-		require.Equal(t, 1, len(res))
+		require.Len(t, res, 1)
 		require.Equal(t, "foo", res[0])
 	})
 
 	t.Run("set headers", func(t *testing.T) {
+		t.Parallel()
 		req := AcquireRequest()
 		req.SetParam("foo", "bar").
 			SetParams(map[string]string{
@@ -184,11 +192,11 @@ func Test_Request_QueryParam(t *testing.T) {
 			})
 
 		res := req.Param("foo")
-		require.Equal(t, 1, len(res))
+		require.Len(t, res, 1)
 		require.Equal(t, "fiber", res[0])
 
 		res = req.Param("bar")
-		require.Equal(t, 1, len(res))
+		require.Len(t, res, 1)
 		require.Equal(t, "foo", res[0])
 	})
 
@@ -214,31 +222,32 @@ func Test_Request_QueryParam(t *testing.T) {
 			TIntSlice: []int{1, 2},
 		})
 
-		require.Equal(t, 0, len(p.Param("unexport")))
+		require.Empty(t, p.Param("unexport"))
 
-		require.Equal(t, 1, len(p.Param("TInt")))
+		require.Len(t, p.Param("TInt"), 1)
 		require.Equal(t, "5", p.Param("TInt")[0])
 
-		require.Equal(t, 1, len(p.Param("TString")))
+		require.Len(t, p.Param("TString"), 1)
 		require.Equal(t, "string", p.Param("TString")[0])
 
-		require.Equal(t, 1, len(p.Param("TFloat")))
+		require.Len(t, p.Param("TFloat"), 1)
 		require.Equal(t, "3.1", p.Param("TFloat")[0])
 
-		require.Equal(t, 1, len(p.Param("TBool")))
+		require.Len(t, p.Param("TBool"), 1)
 
 		tslice := p.Param("TSlice")
-		require.Equal(t, 2, len(tslice))
+		require.Len(t, tslice, 2)
 		require.Equal(t, "bar", tslice[0])
 		require.Equal(t, "foo", tslice[1])
 
 		tint := p.Param("TSlice")
-		require.Equal(t, 2, len(tint))
+		require.Len(t, tint, 2)
 		require.Equal(t, "bar", tint[0])
 		require.Equal(t, "foo", tint[1])
 	})
 
 	t.Run("del params", func(t *testing.T) {
+		t.Parallel()
 		req := AcquireRequest()
 		req.SetParam("foo", "bar").
 			SetParams(map[string]string{
@@ -247,10 +256,10 @@ func Test_Request_QueryParam(t *testing.T) {
 			}).DelParams("foo", "bar")
 
 		res := req.Param("foo")
-		require.Equal(t, 0, len(res))
+		require.Empty(t, res)
 
 		res = req.Param("bar")
-		require.Equal(t, 0, len(res))
+		require.Empty(t, res)
 	})
 }
 
@@ -278,6 +287,7 @@ func Test_Request_Cookie(t *testing.T) {
 	t.Parallel()
 
 	t.Run("set cookie", func(t *testing.T) {
+		t.Parallel()
 		req := AcquireRequest().
 			SetCookie("foo", "bar")
 		require.Equal(t, "bar", req.Cookie("foo"))
@@ -287,6 +297,7 @@ func Test_Request_Cookie(t *testing.T) {
 	})
 
 	t.Run("set cookies", func(t *testing.T) {
+		t.Parallel()
 		req := AcquireRequest().
 			SetCookies(map[string]string{
 				"foo": "bar",
@@ -303,6 +314,7 @@ func Test_Request_Cookie(t *testing.T) {
 	})
 
 	t.Run("set cookies with struct", func(t *testing.T) {
+		t.Parallel()
 		type args struct {
 			CookieInt    int    `cookie:"int"`
 			CookieString string `cookie:"string"`
@@ -318,6 +330,7 @@ func Test_Request_Cookie(t *testing.T) {
 	})
 
 	t.Run("del cookies", func(t *testing.T) {
+		t.Parallel()
 		req := AcquireRequest().
 			SetCookies(map[string]string{
 				"foo": "bar",
@@ -336,6 +349,7 @@ func Test_Request_PathParam(t *testing.T) {
 	t.Parallel()
 
 	t.Run("set path param", func(t *testing.T) {
+		t.Parallel()
 		req := AcquireRequest().
 			SetPathParam("foo", "bar")
 		require.Equal(t, "bar", req.PathParam("foo"))
@@ -345,6 +359,7 @@ func Test_Request_PathParam(t *testing.T) {
 	})
 
 	t.Run("set path params", func(t *testing.T) {
+		t.Parallel()
 		req := AcquireRequest().
 			SetPathParams(map[string]string{
 				"foo": "bar",
@@ -361,6 +376,7 @@ func Test_Request_PathParam(t *testing.T) {
 	})
 
 	t.Run("set path params with struct", func(t *testing.T) {
+		t.Parallel()
 		type args struct {
 			CookieInt    int    `path:"int"`
 			CookieString string `path:"string"`
@@ -376,6 +392,7 @@ func Test_Request_PathParam(t *testing.T) {
 	})
 
 	t.Run("del path params", func(t *testing.T) {
+		t.Parallel()
 		req := AcquireRequest().
 			SetPathParams(map[string]string{
 				"foo": "bar",
@@ -390,6 +407,7 @@ func Test_Request_PathParam(t *testing.T) {
 	})
 
 	t.Run("clear path params", func(t *testing.T) {
+		t.Parallel()
 		req := AcquireRequest().
 			SetPathParams(map[string]string{
 				"foo": "bar",
@@ -408,25 +426,28 @@ func Test_Request_FormData(t *testing.T) {
 	t.Parallel()
 
 	t.Run("add form data", func(t *testing.T) {
+		t.Parallel()
 		req := AcquireRequest()
 		req.AddFormData("foo", "bar").AddFormData("foo", "fiber")
 
 		res := req.FormData("foo")
-		require.Equal(t, 2, len(res))
+		require.Len(t, res, 2)
 		require.Equal(t, "bar", res[0])
 		require.Equal(t, "fiber", res[1])
 	})
 
 	t.Run("set param", func(t *testing.T) {
+		t.Parallel()
 		req := AcquireRequest()
 		req.AddFormData("foo", "bar").SetFormData("foo", "fiber")
 
 		res := req.FormData("foo")
-		require.Equal(t, 1, len(res))
+		require.Len(t, res, 1)
 		require.Equal(t, "fiber", res[0])
 	})
 
 	t.Run("add params", func(t *testing.T) {
+		t.Parallel()
 		req := AcquireRequest()
 		req.SetFormData("foo", "bar").
 			AddFormDatas(map[string][]string{
@@ -435,17 +456,18 @@ func Test_Request_FormData(t *testing.T) {
 			})
 
 		res := req.FormData("foo")
-		require.Equal(t, 3, len(res))
+		require.Len(t, res, 3)
 		require.Equal(t, "bar", res[0])
 		require.Equal(t, "buaa", res[1])
 		require.Equal(t, "fiber", res[2])
 
 		res = req.FormData("bar")
-		require.Equal(t, 1, len(res))
+		require.Len(t, res, 1)
 		require.Equal(t, "foo", res[0])
 	})
 
 	t.Run("set headers", func(t *testing.T) {
+		t.Parallel()
 		req := AcquireRequest()
 		req.SetFormData("foo", "bar").
 			SetFormDatas(map[string]string{
@@ -454,11 +476,11 @@ func Test_Request_FormData(t *testing.T) {
 			})
 
 		res := req.FormData("foo")
-		require.Equal(t, 1, len(res))
+		require.Len(t, res, 1)
 		require.Equal(t, "fiber", res[0])
 
 		res = req.FormData("bar")
-		require.Equal(t, 1, len(res))
+		require.Len(t, res, 1)
 		require.Equal(t, "foo", res[0])
 	})
 
@@ -484,32 +506,32 @@ func Test_Request_FormData(t *testing.T) {
 			TIntSlice: []int{1, 2},
 		})
 
-		require.Equal(t, 0, len(p.FormData("unexport")))
+		require.Empty(t, p.FormData("unexport"))
 
-		require.Equal(t, 1, len(p.FormData("TInt")))
+		require.Len(t, p.FormData("TInt"), 1)
 		require.Equal(t, "5", p.FormData("TInt")[0])
 
-		require.Equal(t, 1, len(p.FormData("TString")))
+		require.Len(t, p.FormData("TString"), 1)
 		require.Equal(t, "string", p.FormData("TString")[0])
 
-		require.Equal(t, 1, len(p.FormData("TFloat")))
+		require.Len(t, p.FormData("TFloat"), 1)
 		require.Equal(t, "3.1", p.FormData("TFloat")[0])
 
-		require.Equal(t, 1, len(p.FormData("TBool")))
+		require.Len(t, p.FormData("TBool"), 1)
 
 		tslice := p.FormData("TSlice")
-		require.Equal(t, 2, len(tslice))
+		require.Len(t, tslice, 2)
 		require.Equal(t, "bar", tslice[0])
 		require.Equal(t, "foo", tslice[1])
 
 		tint := p.FormData("TSlice")
-		require.Equal(t, 2, len(tint))
+		require.Len(t, tint, 2)
 		require.Equal(t, "bar", tint[0])
 		require.Equal(t, "foo", tint[1])
-
 	})
 
 	t.Run("del params", func(t *testing.T) {
+		t.Parallel()
 		req := AcquireRequest()
 		req.SetFormData("foo", "bar").
 			SetFormDatas(map[string]string{
@@ -518,10 +540,10 @@ func Test_Request_FormData(t *testing.T) {
 			}).DelFormDatas("foo", "bar")
 
 		res := req.FormData("foo")
-		require.Equal(t, 0, len(res))
+		require.Empty(t, res)
 
 		res = req.FormData("bar")
-		require.Equal(t, 0, len(res))
+		require.Empty(t, res)
 	})
 }
 
@@ -529,6 +551,7 @@ func Test_Request_File(t *testing.T) {
 	t.Parallel()
 
 	t.Run("add file", func(t *testing.T) {
+		t.Parallel()
 		req := AcquireRequest().
 			AddFile("../.github/index.html").
 			AddFiles(AcquireFile(SetFileName("tmp.txt")))
@@ -541,6 +564,7 @@ func Test_Request_File(t *testing.T) {
 	})
 
 	t.Run("add file by reader", func(t *testing.T) {
+		t.Parallel()
 		req := AcquireRequest().
 			AddFileWithReader("tmp.txt", io.NopCloser(strings.NewReader("world")))
 
@@ -552,6 +576,7 @@ func Test_Request_File(t *testing.T) {
 	})
 
 	t.Run("add files", func(t *testing.T) {
+		t.Parallel()
 		req := AcquireRequest().
 			AddFiles(AcquireFile(SetFileName("tmp.txt")), AcquireFile(SetFileName("foo.txt")))
 
@@ -681,6 +706,7 @@ func Test_Request_Put(t *testing.T) {
 		resp.Close()
 	}
 }
+
 func Test_Request_Delete(t *testing.T) {
 	t.Parallel()
 
@@ -788,6 +814,7 @@ func Test_Request_Patch(t *testing.T) {
 }
 
 func Test_Request_Header_With_Server(t *testing.T) {
+	t.Parallel()
 	handler := func(c fiber.Ctx) error {
 		c.Request().Header.VisitAll(func(key, value []byte) {
 			if k := string(key); k == "K1" || k == "K2" {
@@ -821,10 +848,12 @@ func Test_Request_UserAgent_With_Server(t *testing.T) {
 	}
 
 	t.Run("default", func(t *testing.T) {
+		t.Parallel()
 		testRequest(t, handler, func(agent *Request) {}, defaultUserAgent, 5)
 	})
 
 	t.Run("custom", func(t *testing.T) {
+		t.Parallel()
 		testRequest(t, handler, func(agent *Request) {
 			agent.SetUserAgent("ua")
 		}, "ua", 5)
@@ -832,6 +861,7 @@ func Test_Request_UserAgent_With_Server(t *testing.T) {
 }
 
 func Test_Request_Cookie_With_Server(t *testing.T) {
+	t.Parallel()
 	handler := func(c fiber.Ctx) error {
 		return c.SendString(
 			c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3") + c.Cookies("k4"))
@@ -850,6 +880,7 @@ func Test_Request_Cookie_With_Server(t *testing.T) {
 }
 
 func Test_Request_Referer_With_Server(t *testing.T) {
+	t.Parallel()
 	handler := func(c fiber.Ctx) error {
 		return c.Send(c.Request().Header.Referer())
 	}
@@ -862,6 +893,7 @@ func Test_Request_Referer_With_Server(t *testing.T) {
 }
 
 func Test_Request_QueryString_With_Server(t *testing.T) {
+	t.Parallel()
 	handler := func(c fiber.Ctx) error {
 		return c.Send(c.Request().URI().QueryString())
 	}
@@ -898,6 +930,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 	t.Parallel()
 
 	t.Run("json body", func(t *testing.T) {
+		t.Parallel()
 		testRequest(t,
 			func(c fiber.Ctx) error {
 				require.Equal(t, "application/json", string(c.Request().Header.ContentType()))
@@ -913,6 +946,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 	})
 
 	t.Run("xml body", func(t *testing.T) {
+		t.Parallel()
 		testRequest(t,
 			func(c fiber.Ctx) error {
 				require.Equal(t, "application/xml", string(c.Request().Header.ContentType()))
@@ -931,6 +965,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 	})
 
 	t.Run("formdata", func(t *testing.T) {
+		t.Parallel()
 		testRequest(t,
 			func(c fiber.Ctx) error {
 				require.Equal(t, fiber.MIMEApplicationForm, string(c.Request().Header.ContentType()))
@@ -972,7 +1007,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 				SetFileReader(io.NopCloser(strings.NewReader("world"))),
 			))
 
-		require.Equal(t, req.Boundary(), "myBoundary")
+		require.Equal(t, "myBoundary", req.Boundary())
 
 		resp, err := req.Post("http://exmaple.com")
 		require.NoError(t, err)
@@ -993,7 +1028,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 
 			fh1, err := c.FormFile("field1")
 			require.NoError(t, err)
-			require.Equal(t, fh1.Filename, "name")
+			require.Equal(t, "name", fh1.Filename)
 			buf := make([]byte, fh1.Size)
 			f, err := fh1.Open()
 			require.NoError(t, err)
@@ -1065,6 +1100,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 	})
 
 	t.Run("raw body", func(t *testing.T) {
+		t.Parallel()
 		testRequest(t,
 			func(c fiber.Ctx) error {
 				return c.SendString(string(c.Request().Body()))
@@ -1078,7 +1114,9 @@ func Test_Request_Body_With_Server(t *testing.T) {
 }
 
 func Test_Request_Error_Body_With_Server(t *testing.T) {
+	t.Parallel()
 	t.Run("json error", func(t *testing.T) {
+		t.Parallel()
 		testRequestFail(t,
 			func(c fiber.Ctx) error {
 				return c.SendString("")
@@ -1091,6 +1129,7 @@ func Test_Request_Error_Body_With_Server(t *testing.T) {
 	})
 
 	t.Run("xml error", func(t *testing.T) {
+		t.Parallel()
 		testRequestFail(t,
 			func(c fiber.Ctx) error {
 				return c.SendString("")
@@ -1157,9 +1196,10 @@ func Test_Request_MaxRedirects(t *testing.T) {
 		return c.SendString("redirect")
 	})
 
-	go func() { require.Equal(t, nil, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})) }()
+	go func() { require.NoError(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})) }()
 
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
 		resp, err := AcquireRequest().
 			SetDial(func(addr string) (net.Conn, error) { return ln.Dial() }).
 			SetMaxRedirects(1).
@@ -1175,6 +1215,7 @@ func Test_Request_MaxRedirects(t *testing.T) {
 	})
 
 	t.Run("error", func(t *testing.T) {
+		t.Parallel()
 		resp, err := AcquireRequest().
 			SetDial(func(addr string) (net.Conn, error) { return ln.Dial() }).
 			SetMaxRedirects(1).
@@ -1208,6 +1249,7 @@ func Test_SetValWithStruct(t *testing.T) {
 	}
 
 	t.Run("the struct should be applied", func(t *testing.T) {
+		t.Parallel()
 		p := &QueryParam{
 			Args: fasthttp.AcquireArgs(),
 		}
@@ -1262,10 +1304,10 @@ func Test_SetValWithStruct(t *testing.T) {
 			}
 			return false
 		}())
-
 	})
 
 	t.Run("the pointer of a struct should be applied", func(t *testing.T) {
+		t.Parallel()
 		p := &QueryParam{
 			Args: fasthttp.AcquireArgs(),
 		}
@@ -1318,10 +1360,10 @@ func Test_SetValWithStruct(t *testing.T) {
 			}
 			return false
 		}())
-
 	})
 
 	t.Run("the zero val should be ignore", func(t *testing.T) {
+		t.Parallel()
 		p := &QueryParam{
 			Args: fasthttp.AcquireArgs(),
 		}
@@ -1334,11 +1376,12 @@ func Test_SetValWithStruct(t *testing.T) {
 		require.Equal(t, "", string(p.Peek("TInt")))
 		require.Equal(t, "", string(p.Peek("TString")))
 		require.Equal(t, "", string(p.Peek("TFloat")))
-		require.Equal(t, 0, len(p.PeekMulti("TSlice")))
-		require.Equal(t, 0, len(p.PeekMulti("int_slice")))
+		require.Empty(t, p.PeekMulti("TSlice"))
+		require.Empty(t, p.PeekMulti("int_slice"))
 	})
 
 	t.Run("error type should ignore", func(t *testing.T) {
+		t.Parallel()
 		p := &QueryParam{
 			Args: fasthttp.AcquireArgs(),
 		}
@@ -1419,7 +1462,6 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 			}
 			return false
 		}())
-
 	})
 
 	b.Run("the pointer of a struct should be applied", func(b *testing.B) {
@@ -1480,7 +1522,6 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 			}
 			return false
 		}())
-
 	})
 
 	b.Run("the zero val should be ignore", func(b *testing.B) {

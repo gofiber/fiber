@@ -3,15 +3,16 @@ package client
 
 import (
 	"bytes"
-	"github.com/gofiber/utils/v2"
-	"github.com/valyala/fasthttp"
 	"net"
 	"sync"
 	"time"
+
+	"github.com/gofiber/utils/v2"
+	"github.com/valyala/fasthttp"
 )
 
 var cookieJarPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return &CookieJar{}
 	},
 }
@@ -178,8 +179,8 @@ func (cj *CookieJar) dumpCookiesToReq(req *fasthttp.Request) {
 	}
 }
 
-// getCookiesFromResp parses the response cookies and stores them.
-func (cj *CookieJar) getCookiesFromResp(host, path []byte, resp *fasthttp.Response) {
+// parseCookiesFromResp parses the response cookies and stores them.
+func (cj *CookieJar) parseCookiesFromResp(host, path []byte, resp *fasthttp.Response) {
 	hostStr := utils.UnsafeString(host)
 
 	cj.mu.Lock()
