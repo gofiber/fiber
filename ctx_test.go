@@ -4866,12 +4866,12 @@ func Test_Ctx_GetRespHeaders(t *testing.T) {
 	c.Response().Header.Add("multi", "two")
 	c.Response().Header.Set(HeaderContentType, "application/json")
 
-	require.Equal(t, c.GetRespHeaders(), map[string][]string{
+	require.Equal(t, map[string][]string{
 		"Content-Type": {"application/json"},
 		"Foo":          {"bar"},
 		"Multi":        {"one", "two"},
 		"Test":         {"Hello, World 👋!"},
-	})
+	}, c.GetRespHeaders())
 }
 
 func Benchmark_Ctx_GetRespHeaders(b *testing.B) {
@@ -4890,11 +4890,11 @@ func Benchmark_Ctx_GetRespHeaders(b *testing.B) {
 		headers = c.GetRespHeaders()
 	}
 
-	require.Equal(b, headers, map[string][]string{
+	require.Equal(b, map[string][]string{
 		"Content-Type": {"application/json"},
 		"Foo":          {"bar"},
 		"Test":         {"Hello, World 👋!"},
-	})
+	}, headers)
 }
 
 // go test -run Test_Ctx_GetReqHeaders
@@ -4909,12 +4909,12 @@ func Test_Ctx_GetReqHeaders(t *testing.T) {
 	c.Request().Header.Add("multi", "two")
 	c.Request().Header.Set(HeaderContentType, "application/json")
 
-	require.Equal(t, c.GetReqHeaders(), map[string][]string{
+	require.Equal(t, map[string][]string{
 		"Content-Type": {"application/json"},
 		"Foo":          {"bar"},
 		"Test":         {"Hello, World 👋!"},
 		"Multi":        {"one", "two"},
-	})
+	}, c.GetReqHeaders())
 }
 
 func Benchmark_Ctx_GetReqHeaders(b *testing.B) {
@@ -4933,9 +4933,9 @@ func Benchmark_Ctx_GetReqHeaders(b *testing.B) {
 		headers = c.GetReqHeaders()
 	}
 
-	require.Equal(b, headers, map[string][]string{
+	require.Equal(b, map[string][]string{
 		"Content-Type": {"application/json"},
 		"Foo":          {"bar"},
 		"Test":         {"Hello, World 👋!"},
-	})
+	}, headers)
 }
