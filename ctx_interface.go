@@ -139,6 +139,11 @@ type Ctx interface {
 	// Make copies or use the Immutable setting instead.
 	GetRespHeaders() map[string][]string
 
+	// GetReqHeaders returns the HTTP request headers.
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting instead.
+	GetReqHeaders() map[string][]string
+
 	// Host contains the host derived from the X-Forwarded-Host or Host HTTP header.
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.

@@ -572,6 +572,18 @@ func (c *DefaultCtx) GetRespHeaders() map[string][]string {
 	return headers
 }
 
+// GetReqHeaders returns the HTTP request headers.
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting instead.
+func (c *DefaultCtx) GetReqHeaders() map[string][]string {
+	headers := make(map[string][]string)
+	c.Request().Header.VisitAll(func(k, v []byte) {
+		key := c.app.getString(k)
+		headers[key] = append(headers[key], c.app.getString(v))
+	})
+	return headers
+}
+
 // Host contains the host derived from the X-Forwarded-Host or Host HTTP header.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
