@@ -15,7 +15,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// Implementing this interface allows data to
+// WithStruct Implementing this interface allows data to
 // be stored from a struct via reflect.
 type WithStruct interface {
 	Add(string, string)
@@ -35,6 +35,7 @@ const (
 	rawBody
 )
 
+// Request is a struct which contains the request data.
 type Request struct {
 	url       string
 	method    string
@@ -62,7 +63,7 @@ type Request struct {
 	RawRequest *fasthttp.Request
 }
 
-// Set HostClient dial, this method for unit test,
+// SetDial set HostClient dial, this method for unit test,
 // maybe don't use it.
 func (r *Request) SetDial(f fasthttp.DialFunc) *Request {
 	r.dial = f
@@ -160,7 +161,7 @@ func (r *Request) SetHeaders(h map[string]string) *Request {
 // Param method returns params value via key,
 // this method will visit all field in the query param.
 func (r *Request) Param(key string) []string {
-	res := []string{}
+	var res []string
 	tmp := r.params.PeekMulti(key)
 	for _, v := range tmp {
 		res = append(res, utils.UnsafeString(v))
@@ -197,7 +198,7 @@ func (r *Request) SetParams(m map[string]string) *Request {
 	return r
 }
 
-// SetParamWithStruct method sets multiple param fields and its values at one go in the request instance.
+// SetParamsWithStruct method sets multiple param fields and its values at one go in the request instance.
 // It will override param which set in client instance.
 func (r *Request) SetParamsWithStruct(v any) *Request {
 	r.params.SetParamsWithStruct(v)
@@ -308,7 +309,7 @@ func (r *Request) SetPathParams(m map[string]string) *Request {
 	return r
 }
 
-// SetParamsWithStruct method sets multiple path param fields and its values at one go in the request instance.
+// SetPathParamsWithStruct method sets multiple path param fields and its values at one go in the request instance.
 // It will override path param which set in client instance.
 func (r *Request) SetPathParamsWithStruct(v any) *Request {
 	r.path.SetParamsWithStruct(v)
@@ -362,7 +363,7 @@ func (r *Request) resetBody(t bodyType) {
 // FormData method returns form data value via key,
 // this method will visit all field in the form data.
 func (r *Request) FormData(key string) []string {
-	res := []string{}
+	var res []string
 	tmp := r.formData.PeekMulti(key)
 	for _, v := range tmp {
 		res = append(res, utils.UnsafeString(v))
@@ -430,7 +431,7 @@ func (r *Request) File(name string) *File {
 	return nil
 }
 
-// File returns file ptr store in request obj by path.
+// FileByPath returns file ptr store in request obj by path.
 func (r *Request) FileByPath(path string) *File {
 	for _, v := range r.files {
 		if v.path == path {
@@ -457,7 +458,7 @@ func (r *Request) AddFileWithReader(name string, reader io.ReadCloser) *Request 
 	return r
 }
 
-// AddFile method adds multiple file fields
+// AddFiles method adds multiple file fields
 // and its value in the request instance via File instance.
 func (r *Request) AddFiles(files ...*File) *Request {
 	r.files = append(r.files, files...)
@@ -496,37 +497,37 @@ func (r *Request) checkClient() {
 	}
 }
 
-// Send get request.
+// Get Send get request.
 func (r *Request) Get(url string) (*Response, error) {
 	return r.SetURL(url).SetMethod(fiber.MethodGet).Send()
 }
 
-// Send post request.
+// Post Send post request.
 func (r *Request) Post(url string) (*Response, error) {
 	return r.SetURL(url).SetMethod(fiber.MethodPost).Send()
 }
 
-// Send head request.
+// Head Send head request.
 func (r *Request) Head(url string) (*Response, error) {
 	return r.SetURL(url).SetMethod(fiber.MethodHead).Send()
 }
 
-// Send put request.
+// Put Send put request.
 func (r *Request) Put(url string) (*Response, error) {
 	return r.SetURL(url).SetMethod(fiber.MethodPut).Send()
 }
 
-// Send Delete request.
+// Delete Send Delete request.
 func (r *Request) Delete(url string) (*Response, error) {
 	return r.SetURL(url).SetMethod(fiber.MethodDelete).Send()
 }
 
-// Send Options request.
+// Options Send Options request.
 func (r *Request) Options(url string) (*Response, error) {
 	return r.SetURL(url).SetMethod(fiber.MethodOptions).Send()
 }
 
-// Send patch request.
+// Patch Send patch request.
 func (r *Request) Patch(url string) (*Response, error) {
 	return r.SetURL(url).SetMethod(fiber.MethodPatch).Send()
 }
@@ -573,7 +574,7 @@ type Header struct {
 
 // PeekMultiple methods returns multiple field in header with same key.
 func (h *Header) PeekMultiple(key string) []string {
-	res := []string{}
+	var res []string
 	byteKey := []byte(key)
 	h.RequestHeader.VisitAll(func(key, value []byte) {
 		if bytes.EqualFold(key, byteKey) {
@@ -852,28 +853,32 @@ func ReleaseRequest(req *Request) {
 
 var filePool sync.Pool
 
-// The methods as follows is used by AcquireFile method.
+// SetFileFunc The methods as follows is used by AcquireFile method.
 // You can set file field via these method.
 type SetFileFunc func(f *File)
 
+// SetFileName method sets file name.
 func SetFileName(n string) SetFileFunc {
 	return func(f *File) {
 		f.SetName(n)
 	}
 }
 
+// SetFileFieldName method sets key of file in the body.
 func SetFileFieldName(p string) SetFileFunc {
 	return func(f *File) {
 		f.SetFieldName(p)
 	}
 }
 
+// SetFilePath method set file path.
 func SetFilePath(p string) SetFileFunc {
 	return func(f *File) {
 		f.SetPath(p)
 	}
 }
 
+// SetFileReader method can receive a io.ReadCloser
 func SetFileReader(r io.ReadCloser) SetFileFunc {
 	return func(f *File) {
 		f.SetReader(r)
@@ -909,7 +914,7 @@ func ReleaseFile(f *File) {
 	filePool.Put(f)
 }
 
-// Set some values using structs.
+// SetValWithStruct Set some values using structs.
 // `p` is a structure that implements the WithStruct interface,
 // The field name can be specified by `tagName`.
 // `v` is a struct include some data.

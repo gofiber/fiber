@@ -14,6 +14,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// Response is the result of a request. This object is used to access the response data.
 type Response struct {
 	client  *Client
 	request *Request
@@ -79,6 +80,7 @@ func (r *Response) XML(v any) error {
 	return r.client.xmlUnmarshal(r.Body(), v)
 }
 
+// Save method will save the body to a file or io.Writer.
 func (r *Response) Save(v any) error {
 	switch p := v.(type) {
 	case string:

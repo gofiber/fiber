@@ -57,6 +57,7 @@ type core struct {
 	ctx    context.Context
 }
 
+// getRetryConfig returns the retry configuration of the client.
 func (c *core) getRetryConfig() *RetryConfig {
 	c.client.mu.RLock()
 	defer c.client.mu.RUnlock()
@@ -74,6 +75,8 @@ func (c *core) getRetryConfig() *RetryConfig {
 	}
 }
 
+// execFunc is the core function of the client.
+// It sends the request and receives the response.
 func (c *core) execFunc() (*Response, error) {
 	resp := AcquireResponse()
 	resp.setClient(c.client)
@@ -140,7 +143,7 @@ func (c *core) execFunc() (*Response, error) {
 	}
 }
 
-// Exec request hook
+// preHooks Exec request hook
 func (c *core) preHooks() error {
 	c.client.mu.RLock()
 	defer c.client.mu.RUnlock()
@@ -162,7 +165,7 @@ func (c *core) preHooks() error {
 	return nil
 }
 
-// Exec response hooks
+// afterHooks Exec response hooks
 func (c *core) afterHooks(resp *Response) error {
 	c.client.mu.Lock()
 	defer c.client.mu.Unlock()

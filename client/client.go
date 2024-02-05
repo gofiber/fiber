@@ -81,12 +81,12 @@ func (c *Client) R() *Request {
 	return AcquireRequest().SetClient(c)
 }
 
-// Request returns user-defined request hooks.
+// RequestHook Request returns user-defined request hooks.
 func (c *Client) RequestHook() []RequestHook {
 	return c.userRequestHooks
 }
 
-// Add user-defined request hooks.
+// AddRequestHook Add user-defined request hooks.
 func (c *Client) AddRequestHook(h ...RequestHook) *Client {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -100,7 +100,7 @@ func (c *Client) ResponseHook() []ResponseHook {
 	return c.userResponseHooks
 }
 
-// Add user-defined response hooks.
+// AddResponseHook Add user-defined response hooks.
 func (c *Client) AddResponseHook(h ...ResponseHook) *Client {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -125,7 +125,7 @@ func (c *Client) JSONMarshal() utils.JSONMarshal {
 	return c.jsonMarshal
 }
 
-// Set json encoder.
+// SetJSONMarshal Set json encoder.
 func (c *Client) SetJSONMarshal(f utils.JSONMarshal) *Client {
 	c.jsonMarshal = f
 	return c
@@ -147,7 +147,7 @@ func (c *Client) XMLMarshal() utils.XMLMarshal {
 	return c.xmlMarshal
 }
 
-// Set xml encoder.
+// SetXMLMarshal Set xml encoder.
 func (c *Client) SetXMLMarshal(f utils.XMLMarshal) *Client {
 	c.xmlMarshal = f
 	return c
@@ -158,7 +158,7 @@ func (c *Client) XMLUnmarshal() utils.XMLUnmarshal {
 	return c.xmlUnmarshal
 }
 
-// Set xml decoder.
+// SetXMLUnmarshal Set xml decoder.
 func (c *Client) SetXMLUnmarshal(f utils.XMLUnmarshal) *Client {
 	c.xmlUnmarshal = f
 	return c
@@ -250,6 +250,7 @@ func (c *Client) SetProxyURL(proxyURL string) *Client {
 	return c
 }
 
+// RetryConfig returns retry config in client.
 func (c *Client) RetryConfig() *RetryConfig {
 	return c.retryConfig
 }
@@ -268,7 +269,7 @@ func (c *Client) BaseURL() string {
 	return c.baseURL
 }
 
-// Set baseUrl which is prefix of real url.
+// SetBaseURL Set baseUrl which is prefix of real url.
 func (c *Client) SetBaseURL(url string) *Client {
 	c.baseURL = url
 	return c
@@ -291,7 +292,7 @@ func (c *Client) AddHeader(key, val string) *Client {
 
 // SetHeader method sets a single header field and its value in the client instance.
 // These headers will be applied to all requests raised from this client instance.
-// Also it can be overridden at request level header options.
+// Also, it can be overridden at request level header options.
 func (c *Client) SetHeader(key, val string) *Client {
 	c.header.Set(key, val)
 	return c
@@ -327,7 +328,7 @@ func (c *Client) Param(key string) []string {
 
 // AddParam method adds a single query param field and its value in the client instance.
 // These params will be applied to all requests raised from this client instance.
-// Also it can be overridden at request level param options.
+// Also, it can be overridden at request level param options.
 func (c *Client) AddParam(key, val string) *Client {
 	c.params.Add(key, val)
 	return c
@@ -335,7 +336,7 @@ func (c *Client) AddParam(key, val string) *Client {
 
 // SetParam method sets a single query param field and its value in the client instance.
 // These params will be applied to all requests raised from this client instance.
-// Also it can be overridden at request level param options.
+// Also, it can be overridden at request level param options.
 func (c *Client) SetParam(key, val string) *Client {
 	c.params.Set(key, val)
 	return c
@@ -470,7 +471,7 @@ func (c *Client) DelCookies(key ...string) *Client {
 
 // SetTimeout method sets timeout val in client instance.
 // This value will be applied to all requests raised from this client instance.
-// Also it can be overridden at request level timeout options.
+// Also, it can be overridden at request level timeout options.
 func (c *Client) SetTimeout(t time.Duration) *Client {
 	c.timeout = t
 	return c
@@ -494,7 +495,7 @@ func (c *Client) SetCookieJar(cookieJar *CookieJar) *Client {
 	return c
 }
 
-// Get provide a API like axios which send get request.
+// Get provide an API like axios which send get request.
 func (c *Client) Get(url string, cfg ...Config) (*Response, error) {
 	req := AcquireRequest().SetClient(c)
 	setConfigToRequest(req, cfg...)
@@ -502,7 +503,7 @@ func (c *Client) Get(url string, cfg ...Config) (*Response, error) {
 	return req.Get(url)
 }
 
-// Post provide a API like axios which send post request.
+// Post provide an API like axios which send post request.
 func (c *Client) Post(url string, cfg ...Config) (*Response, error) {
 	req := AcquireRequest().SetClient(c)
 	setConfigToRequest(req, cfg...)
@@ -518,7 +519,7 @@ func (c *Client) Head(url string, cfg ...Config) (*Response, error) {
 	return req.Head(url)
 }
 
-// Put provide a API like axios which send put request.
+// Put provide an API like axios which send put request.
 func (c *Client) Put(url string, cfg ...Config) (*Response, error) {
 	req := AcquireRequest().SetClient(c)
 	setConfigToRequest(req, cfg...)
@@ -526,7 +527,7 @@ func (c *Client) Put(url string, cfg ...Config) (*Response, error) {
 	return req.Put(url)
 }
 
-// Delete provide a API like axios which send delete request.
+// Delete provide an API like axios which send delete request.
 func (c *Client) Delete(url string, cfg ...Config) (*Response, error) {
 	req := AcquireRequest().SetClient(c)
 	setConfigToRequest(req, cfg...)
@@ -534,7 +535,7 @@ func (c *Client) Delete(url string, cfg ...Config) (*Response, error) {
 	return req.Delete(url)
 }
 
-// Options provide a API like axios which send options request.
+// Options provide an API like axios which send options request.
 func (c *Client) Options(url string, cfg ...Config) (*Response, error) {
 	req := AcquireRequest().SetClient(c)
 	setConfigToRequest(req, cfg...)
@@ -542,7 +543,7 @@ func (c *Client) Options(url string, cfg ...Config) (*Response, error) {
 	return req.Options(url)
 }
 
-// Patch provide a API like axios which send patch request.
+// Patch provide an API like axios which send patch request.
 func (c *Client) Patch(url string, cfg ...Config) (*Response, error) {
 	req := AcquireRequest().SetClient(c)
 	setConfigToRequest(req, cfg...)
@@ -588,7 +589,7 @@ type Config struct {
 	Dial fasthttp.DialFunc
 }
 
-// Set the parameters passed via Config to Request.
+// setConfigToRequest Set the parameters passed via Config to Request.
 func setConfigToRequest(req *Request, config ...Config) {
 	if len(config) == 0 {
 		return
@@ -681,6 +682,7 @@ var (
 	}
 )
 
+// init acquire a default client.
 func init() {
 	defaultClient = AcquireClient()
 }
@@ -706,7 +708,7 @@ func ReleaseClient(c *Client) {
 	clientPool.Put(c)
 }
 
-// Get default client.
+// C get default client.
 func C() *Client {
 	return defaultClient
 }

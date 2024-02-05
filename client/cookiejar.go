@@ -159,6 +159,7 @@ func (cj *CookieJar) SetKeyValueBytes(host string, key, value []byte) {
 	cj.setKeyValue(host, key, value)
 }
 
+// setKeyValue sets a cookie by key and value for a specific host.
 func (cj *CookieJar) setKeyValue(host string, key, value []byte) {
 	c := fasthttp.AcquireCookie()
 	c.SetKeyBytes(key)

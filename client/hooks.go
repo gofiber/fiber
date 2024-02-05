@@ -32,6 +32,7 @@ var (
 	letterIdxMax  = 63 / letterIdxBits   // # of letter indices fitting in 63 bits
 )
 
+// randString returns a random string with n length
 func randString(n int) string {
 	b := make([]byte, n)
 	length := len(letterBytes)
@@ -275,6 +276,7 @@ func parserRequestBody(c *Client, req *Request) error {
 	return nil
 }
 
+// parserResponseHeader will parse the response header and store it in the response
 func parserResponseCookie(c *Client, resp *Response, req *Request) (err error) {
 	resp.RawResponse.Header.VisitAllCookie(func(key, value []byte) {
 		cookie := fasthttp.AcquireCookie()
@@ -292,6 +294,7 @@ func parserResponseCookie(c *Client, resp *Response, req *Request) (err error) {
 	return
 }
 
+// logger is a response hook that logs the request and response
 func logger(c *Client, resp *Response, req *Request) (err error) {
 	if !c.debug {
 		return
