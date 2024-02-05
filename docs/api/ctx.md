@@ -1000,6 +1000,31 @@ app.Get("/admin", func(c fiber.Ctx) error {
 })
 ```
 
+An alternative version of the Locals method that takes advantage of Go's generics feature is also available. This version 
+allows for the manipulation and retrieval of local values within a request's context with a more specific data type.
+
+```go title="Signature"
+func Locals[V any](c Ctx, key any, value ...V) V
+```
+
+```go title="Example"
+app.Use(func(c Ctx) error {
+  fiber.Locals[string](c, "john", "doe")
+  fiber.Locals[int](c, "age", 18)
+  fiber.Locals[bool](c, "isHuman", true)
+  return c.Next()
+})
+app.Get("/test", func(c Ctx) error {
+  fiber.Locals[string](c, "john")     // "doe"
+  fiber.Locals[int](c, "age")         // 18
+  fiber.Locals[bool](c, "isHuman")    // true
+  return nil
+})
+````
+
+Make sure to understand and correctly implement the Locals method in both its standard and generic form for better control 
+over route-specific data within your application.
+
 ## Location
 
 Sets the response [Location](https://developer.mozilla.org/ru/docs/Web/HTTP/Headers/Location) HTTP header to the specified path parameter.

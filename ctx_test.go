@@ -355,6 +355,7 @@ func Test_Ctx_Body(t *testing.T) {
 	require.Equal(t, []byte("john=doe"), c.Body())
 }
 
+// go test -v -run=^$ -bench=Benchmark_Ctx_Body -benchmem -count=4
 func Benchmark_Ctx_Body(b *testing.B) {
 	const input = "john=doe"
 
@@ -362,6 +363,38 @@ func Benchmark_Ctx_Body(b *testing.B) {
 	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	c.Request().SetBody([]byte(input))
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = c.Body()
+	}
+
+	require.Equal(b, []byte(input), c.Body())
+}
+
+// go test -run Test_Ctx_Body_Immutable
+func Test_Ctx_Body_Immutable(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.config.Immutable = true
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+
+	c.Request().SetBody([]byte("john=doe"))
+	require.Equal(t, []byte("john=doe"), c.Body())
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_Body_Immutable -benchmem -count=4
+func Benchmark_Ctx_Body_Immutable(b *testing.B) {
+	const input = "john=doe"
+
+	app := New()
+	app.config.Immutable = true
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+
+	c.Request().SetBody([]byte(input))
+	b.ReportAllocs()
+	b.ResetTimer()
+
 	for i := 0; i < b.N; i++ {
 		_ = c.Body()
 	}
@@ -539,9 +572,205 @@ func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
 		},
 	}
 
+	b.ReportAllocs()
+	b.ResetTimer()
 	for _, ct := range compressionTests {
 		b.Run(ct.contentEncoding, func(b *testing.B) {
 			app := New()
+			const input = "john=doe"
+			c := app.NewCtx(&fasthttp.RequestCtx{})
+
+			c.Request().Header.Set("Content-Encoding", ct.contentEncoding)
+			compressedBody, err := ct.compressWriter([]byte(input))
+			require.NoError(b, err)
+
+			c.Request().SetBody(compressedBody)
+			for i := 0; i < b.N; i++ {
+				_ = c.Body()
+			}
+
+			require.Equal(b, []byte(input), c.Body())
+		})
+	}
+}
+
+// go test -run Test_Ctx_Body_With_Compression_Immutable
+func Test_Ctx_Body_With_Compression_Immutable(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name            string
+		contentEncoding string
+		body            []byte
+		expectedBody    []byte
+	}{
+		{
+			name:            "gzip",
+			contentEncoding: "gzip",
+			body:            []byte("john=doe"),
+			expectedBody:    []byte("john=doe"),
+		},
+		{
+			name:            "unsupported_encoding",
+			contentEncoding: "undefined",
+			body:            []byte("keeps_ORIGINAL"),
+			expectedBody:    []byte("keeps_ORIGINAL"),
+		},
+		{
+			name:            "gzip then unsupported",
+			contentEncoding: "gzip, undefined",
+			body:            []byte("Go, be gzipped"),
+			expectedBody:    []byte("Go, be gzipped"),
+		},
+		{
+			name:            "invalid_deflate",
+			contentEncoding: "gzip,deflate",
+			body:            []byte("I'm not correctly compressed"),
+			expectedBody:    []byte(zlib.ErrHeader.Error()),
+		},
+	}
+
+	for _, testObject := range tests {
+		tCase := testObject // Duplicate object to ensure it will be unique across all runs
+		t.Run(tCase.name, func(t *testing.T) {
+			t.Parallel()
+			app := New()
+			app.config.Immutable = true
+			c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+			c.Request().Header.Set("Content-Encoding", tCase.contentEncoding)
+
+			if strings.Contains(tCase.contentEncoding, "gzip") {
+				var b bytes.Buffer
+				gz := gzip.NewWriter(&b)
+
+				_, err := gz.Write(tCase.body)
+				require.NoError(t, err)
+
+				err = gz.Flush()
+				require.NoError(t, err)
+
+				err = gz.Close()
+				require.NoError(t, err)
+				tCase.body = b.Bytes()
+			}
+
+			c.Request().SetBody(tCase.body)
+			body := c.Body()
+			require.Equal(t, tCase.expectedBody, body)
+
+			// Check if body raw is the same as previous before decompression
+			require.Equal(
+				t, tCase.body, c.Request().Body(),
+				"Body raw must be the same as set before",
+			)
+		})
+	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_Body_With_Compression_Immutable -benchmem -count=4
+func Benchmark_Ctx_Body_With_Compression_Immutable(b *testing.B) {
+	encodingErr := errors.New("failed to encoding data")
+
+	var (
+		compressGzip = func(data []byte) ([]byte, error) {
+			var buf bytes.Buffer
+			writer := gzip.NewWriter(&buf)
+			if _, err := writer.Write(data); err != nil {
+				return nil, encodingErr
+			}
+			if err := writer.Flush(); err != nil {
+				return nil, encodingErr
+			}
+			if err := writer.Close(); err != nil {
+				return nil, encodingErr
+			}
+			return buf.Bytes(), nil
+		}
+		compressDeflate = func(data []byte) ([]byte, error) {
+			var buf bytes.Buffer
+			writer := zlib.NewWriter(&buf)
+			if _, err := writer.Write(data); err != nil {
+				return nil, encodingErr
+			}
+			if err := writer.Flush(); err != nil {
+				return nil, encodingErr
+			}
+			if err := writer.Close(); err != nil {
+				return nil, encodingErr
+			}
+			return buf.Bytes(), nil
+		}
+	)
+	compressionTests := []struct {
+		contentEncoding string
+		compressWriter  func([]byte) ([]byte, error)
+	}{
+		{
+			contentEncoding: "gzip",
+			compressWriter:  compressGzip,
+		},
+		{
+			contentEncoding: "gzip,invalid",
+			compressWriter:  compressGzip,
+		},
+		{
+			contentEncoding: "deflate",
+			compressWriter:  compressDeflate,
+		},
+		{
+			contentEncoding: "gzip,deflate",
+			compressWriter: func(data []byte) ([]byte, error) {
+				var (
+					buf    bytes.Buffer
+					writer interface {
+						io.WriteCloser
+						Flush() error
+					}
+					err error
+				)
+
+				// deflate
+				{
+					writer = zlib.NewWriter(&buf)
+					if _, err = writer.Write(data); err != nil {
+						return nil, encodingErr
+					}
+					if err = writer.Flush(); err != nil {
+						return nil, encodingErr
+					}
+					if err = writer.Close(); err != nil {
+						return nil, encodingErr
+					}
+				}
+
+				data = make([]byte, buf.Len())
+				copy(data, buf.Bytes())
+				buf.Reset()
+
+				// gzip
+				{
+					writer = gzip.NewWriter(&buf)
+					if _, err = writer.Write(data); err != nil {
+						return nil, encodingErr
+					}
+					if err = writer.Flush(); err != nil {
+						return nil, encodingErr
+					}
+					if err = writer.Close(); err != nil {
+						return nil, encodingErr
+					}
+				}
+
+				return buf.Bytes(), nil
+			},
+		},
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for _, ct := range compressionTests {
+		b.Run(ct.contentEncoding, func(b *testing.B) {
+			app := New()
+			app.config.Immutable = true
 			const input = "john=doe"
 			c := app.NewCtx(&fasthttp.RequestCtx{})
 
@@ -1750,6 +1979,51 @@ func Test_Ctx_Locals(t *testing.T) {
 	})
 	app.Get("/test", func(c Ctx) error {
 		require.Equal(t, "doe", c.Locals("john"))
+		return nil
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+}
+
+// go test -run Test_Ctx_Locals_Generic
+func Test_Ctx_Locals_Generic(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Use(func(c Ctx) error {
+		Locals[string](c, "john", "doe")
+		Locals[int](c, "age", 18)
+		Locals[bool](c, "isHuman", true)
+		return c.Next()
+	})
+	app.Get("/test", func(c Ctx) error {
+		require.Equal(t, "doe", Locals[string](c, "john"))
+		require.Equal(t, 18, Locals[int](c, "age"))
+		require.True(t, Locals[bool](c, "isHuman"))
+		require.Equal(t, 0, Locals[int](c, "isHuman"))
+		return nil
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+}
+
+// go test -run Test_Ctx_Locals_GenericCustomStruct
+func Test_Ctx_Locals_GenericCustomStruct(t *testing.T) {
+	t.Parallel()
+
+	type User struct {
+		name string
+		age  int
+	}
+
+	app := New()
+	app.Use(func(c Ctx) error {
+		Locals[User](c, "user", User{"john", 18})
+		return c.Next()
+	})
+	app.Use("/test", func(c Ctx) error {
+		require.Equal(t, User{"john", 18}, Locals[User](c, "user"))
 		return nil
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))

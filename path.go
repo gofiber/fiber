@@ -65,9 +65,24 @@ const (
 type TypeConstraint int16
 
 type Constraint struct {
-	ID            TypeConstraint
-	RegexCompiler *regexp.Regexp
-	Data          []string
+	ID                TypeConstraint
+	RegexCompiler     *regexp.Regexp
+	Data              []string
+	Name              string
+	customConstraints []CustomConstraint
+}
+
+// CustomConstraint is an interface for custom constraints
+type CustomConstraint interface {
+	// Name returns the name of the constraint.
+	// This name is used in the constraint matching.
+	Name() string
+
+	// Execute executes the constraint.
+	// It returns true if the constraint is matched and right.
+	// param is the parameter value to check.
+	// args are the constraint arguments.
+	Execute(param string, args ...string) bool
 }
 
 const (
@@ -175,15 +190,14 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 
 // parseRoute analyzes the route and divides it into segments for constant areas and parameters,
 // this information is needed later when assigning the requests to the declared routes
-func parseRoute(pattern string) routeParser {
+func parseRoute(pattern string, customConstraints ...CustomConstraint) routeParser {
 	parser := routeParser{}
-
 	part := ""
 	for len(pattern) > 0 {
 		nextParamPosition := findNextParamPosition(pattern)
 		// handle the parameter part
 		if nextParamPosition == 0 {
-			processedPart, seg := parser.analyseParameterPart(pattern)
+			processedPart, seg := parser.analyseParameterPart(pattern, customConstraints...)
 			parser.params, parser.segs, part = append(parser.params, seg.ParamName), append(parser.segs, seg), processedPart
 		} else {
 			processedPart, seg := parser.analyseConstantPart(pattern, nextParamPosition)
@@ -284,7 +298,7 @@ func (*routeParser) analyseConstantPart(pattern string, nextParamPosition int) (
 }
 
 // analyseParameterPart find the parameter end and create the route segment
-func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *routeSegment) {
+func (routeParser *routeParser) analyseParameterPart(pattern string, customConstraints ...CustomConstraint) (string, *routeSegment) {
 	isWildCard := pattern[0] == wildcardParam
 	isPlusParam := pattern[0] == plusParam
 
@@ -332,7 +346,9 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *r
 			// Assign constraint
 			if start != -1 && end != -1 {
 				constraint := &Constraint{
-					ID: getParamConstraintType(c[:start]),
+					ID:                getParamConstraintType(c[:start]),
+					Name:              c[:start],
+					customConstraints: customConstraints,
 				}
 
 				// remove escapes from data
@@ -355,8 +371,10 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *r
 				constraints = append(constraints, constraint)
 			} else {
 				constraints = append(constraints, &Constraint{
-					ID:   getParamConstraintType(c),
-					Data: []string{},
+					ID:                getParamConstraintType(c),
+					Data:              []string{},
+					Name:              c,
+					customConstraints: customConstraints,
 				})
 			}
 		}
@@ -666,7 +684,11 @@ func (c *Constraint) CheckConstraint(param string) bool {
 	// check constraints
 	switch c.ID {
 	case noConstraint:
-		// Nothing to check
+		for _, cc := range c.customConstraints {
+			if cc.Name() == c.Name {
+				return cc.Execute(param, c.Data...)
+			}
+		}
 	case intConstraint:
 		_, err = strconv.Atoi(param)
 	case boolConstraint:
