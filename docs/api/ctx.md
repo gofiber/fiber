@@ -1403,7 +1403,7 @@ app.Get("/", func(c *fiber.Ctx) error {
 ```
 
 :::info
-For more parser settings please look here [Config](fiber.md#Config)
+For more parser settings please look here [Config](fiber.md#config)
 :::
 
 ## Range
