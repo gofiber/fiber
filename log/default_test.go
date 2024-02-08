@@ -223,7 +223,7 @@ func Test_WithContextCaller(t *testing.T) {
 	WithContext(ctx).Info("")
 	Info("")
 
-	require.Equal(t, "default_test.go:169: [Info] \ndefault_test.go:170: [Info] \n", string(w.b))
+	require.Equal(t, "default_test.go:223: [Info] \ndefault_test.go:224: [Info] \n", string(w.b))
 }
 
 func Test_SetLevel(t *testing.T) {
