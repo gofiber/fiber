@@ -156,6 +156,60 @@ func Test_LogfKeyAndValues(t *testing.T) {
 	}
 }
 
+func BenchmarkLogfKeyAndValues(b *testing.B) {
+	tests := []struct {
+		name          string
+		level         Level
+		format        string
+		keysAndValues []any
+	}{
+		{
+			name:          "test logf with debug level and key-values",
+			level:         LevelDebug,
+			format:        "",
+			keysAndValues: []any{"name", "Bob", "age", 30},
+		},
+		{
+			name:          "test logf with info level and key-values",
+			level:         LevelInfo,
+			format:        "",
+			keysAndValues: []any{"status", "ok", "code", 200},
+		},
+		{
+			name:          "test logf with warn level and key-values",
+			level:         LevelWarn,
+			format:        "",
+			keysAndValues: []any{"error", "not found", "id", 123},
+		},
+		{
+			name:          "test logf with format and key-values",
+			level:         LevelWarn,
+			format:        "test",
+			keysAndValues: []any{"error", "not found", "id", 123},
+		},
+		{
+			name:          "test logf with one key",
+			level:         LevelWarn,
+			format:        "",
+			keysAndValues: []any{"error"},
+		},
+	}
+
+	for _, tt := range tests {
+		b.Run(tt.name, func(b *testing.B) {
+			var buf bytes.Buffer
+			l := &defaultLogger{
+				stdlog: log.New(&buf, "", 0),
+				level:  tt.level,
+				depth:  4,
+			}
+			for i := 0; i < b.N; i++ {
+				l.privateLogw(tt.level, tt.format, tt.keysAndValues)
+			}
+		})
+	}
+}
+
 func Test_WithContextCaller(t *testing.T) {
 	logger = &defaultLogger{
 		stdlog: log.New(os.Stderr, "", log.Lshortfile),
@@ -169,7 +223,7 @@ func Test_WithContextCaller(t *testing.T) {
 	WithContext(ctx).Info("")
 	Info("")
 
-	require.Equal(t, "default_test.go:169: [Info] \ndefault_test.go:170: [Info] \n", string(w.b))
+	require.Equal(t, "default_test.go:223: [Info] \ndefault_test.go:224: [Info] \n", string(w.b))
 }
 
 func Test_SetLevel(t *testing.T) {

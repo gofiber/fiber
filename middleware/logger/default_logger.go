@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
@@ -47,17 +48,50 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 			if data.ChainErr != nil {
 				formatErr = " | " + data.ChainErr.Error()
 			}
-			_, _ = buf.WriteString( //nolint:errcheck // This will never fail
-				fmt.Sprintf("%s | %3d | %13v | %15s | %-7s | %-"+data.ErrPaddingStr+"s %s\n",
-					data.Timestamp.Load().(string),
-					c.Response().StatusCode(),
-					data.Stop.Sub(data.Start),
-					c.IP(),
-					c.Method(),
-					c.Path(),
-					formatErr,
-				),
-			)
+
+			// Helper function to append fixed-width string with padding
+			fixedWidth := func(s string, width int, rightAlign bool) {
+				if rightAlign {
+					for i := len(s); i < width; i++ {
+						_ = buf.WriteByte(' ') //nolint:errcheck // It is fine to ignore the error
+					}
+					_, _ = buf.WriteString(s) //nolint:errcheck // It is fine to ignore the error
+				} else {
+					_, _ = buf.WriteString(s) //nolint:errcheck // It is fine to ignore the error
+					for i := len(s); i < width; i++ {
+						_ = buf.WriteByte(' ') //nolint:errcheck // It is fine to ignore the error
+					}
+				}
+			}
+
+			// Timestamp
+			_, _ = buf.WriteString(data.Timestamp.Load().(string)) //nolint:errcheck // It is fine to ignore the error
+			_, _ = buf.WriteString(" | ")                          //nolint:errcheck // It is fine to ignore the error
+
+			// Status Code with 3 fixed width, right aligned
+			fixedWidth(strconv.Itoa(c.Response().StatusCode()), 3, true)
+			_, _ = buf.WriteString(" | ") //nolint:errcheck // It is fine to ignore the error
+
+			// Duration with 13 fixed width, right aligned
+			fixedWidth(data.Stop.Sub(data.Start).String(), 13, true)
+			_, _ = buf.WriteString(" | ") //nolint:errcheck // It is fine to ignore the error
+
+			// Client IP with 15 fixed width, right aligned
+			fixedWidth(c.IP(), 15, true)
+			_, _ = buf.WriteString(" | ") //nolint:errcheck // It is fine to ignore the error
+
+			// HTTP Method with 7 fixed width, left aligned
+			fixedWidth(c.Method(), 7, false)
+			_, _ = buf.WriteString(" | ") //nolint:errcheck // It is fine to ignore the error
+
+			// Path with dynamic padding for error message, left aligned
+			errPadding, _ := strconv.Atoi(data.ErrPaddingStr) //nolint:errcheck // It is fine to ignore the error
+			fixedWidth(c.Path(), errPadding, false)
+
+			// Error message
+			_, _ = buf.WriteString(" ")       //nolint:errcheck // It is fine to ignore the error
+			_, _ = buf.WriteString(formatErr) //nolint:errcheck // It is fine to ignore the error
+			_, _ = buf.WriteString("\n")      //nolint:errcheck // It is fine to ignore the error
 		}
 
 		// Write buffer to output

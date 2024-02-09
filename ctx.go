@@ -1605,14 +1605,39 @@ func (c *DefaultCtx) Status(status int) Ctx {
 //
 // The returned value may be useful for logging.
 func (c *DefaultCtx) String() string {
-	return fmt.Sprintf(
-		"#%016X - %s <-> %s - %s %s",
-		c.fasthttp.ID(),
-		c.fasthttp.LocalAddr(),
-		c.fasthttp.RemoteAddr(),
-		c.fasthttp.Request.Header.Method(),
-		c.fasthttp.URI().FullURI(),
-	)
+	// Get buffer from pool
+	buf := bytebufferpool.Get()
+
+	// Start with the ID, converting it to a hex string without fmt.Sprintf
+	buf.WriteByte('#') //nolint:errcheck // It is fine to ignore the error
+	// Convert ID to hexadecimal
+	id := strconv.FormatUint(c.fasthttp.ID(), 16)
+	// Pad with leading zeros to ensure 16 characters
+	for i := 0; i < (16 - len(id)); i++ {
+		buf.WriteByte('0') //nolint:errcheck // It is fine to ignore the error
+	}
+	buf.WriteString(id)    //nolint:errcheck // It is fine to ignore the error
+	buf.WriteString(" - ") //nolint:errcheck // It is fine to ignore the error
+
+	// Add local and remote addresses directly
+	buf.WriteString(c.fasthttp.LocalAddr().String())  //nolint:errcheck // It is fine to ignore the error
+	buf.WriteString(" <-> ")                          //nolint:errcheck // It is fine to ignore the error
+	buf.WriteString(c.fasthttp.RemoteAddr().String()) //nolint:errcheck // It is fine to ignore the error
+	buf.WriteString(" - ")                            //nolint:errcheck // It is fine to ignore the error
+
+	// Add method and URI
+	buf.Write(c.fasthttp.Request.Header.Method()) //nolint:errcheck // It is fine to ignore the error
+	buf.WriteByte(' ')                            //nolint:errcheck // It is fine to ignore the error
+	buf.Write(c.fasthttp.URI().FullURI())         //nolint:errcheck // It is fine to ignore the error
+
+	// Allocate string
+	str := buf.String()
+
+	// Reset buffer
+	buf.Reset()
+	bytebufferpool.Put(buf)
+
+	return str
 }
 
 // Type sets the Content-Type HTTP header to the MIME type specified by the file extension.
