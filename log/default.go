@@ -6,8 +6,8 @@ import (
 	"io"
 	"log"
 	"os"
-	"sync"
 
+	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
 )
 
@@ -86,8 +86,6 @@ func (l *defaultLogger) privateLogw(lv Level, format string, keysAndValues []any
 	if format != "" {
 		_, _ = buf.WriteString(format) //nolint:errcheck // It is fine to ignore the error
 	}
-	var once sync.Once
-	isFirst := true
 	// Write keys and values privateLog buffer
 	if len(keysAndValues) > 0 {
 		if (len(keysAndValues) & 1) == 1 {
@@ -95,14 +93,12 @@ func (l *defaultLogger) privateLogw(lv Level, format string, keysAndValues []any
 		}
 
 		for i := 0; i < len(keysAndValues); i += 2 {
-			if format == "" && isFirst {
-				once.Do(func() {
-					_, _ = fmt.Fprintf(buf, "%s=%v", keysAndValues[i], keysAndValues[i+1])
-					isFirst = false
-				})
-				continue
+			if i > 0 || format != "" {
+				_ = buf.WriteByte(' ') //nolint:errcheck // It is fine to ignore the error
 			}
-			_, _ = fmt.Fprintf(buf, " %s=%v", keysAndValues[i], keysAndValues[i+1])
+			_, _ = buf.WriteString(keysAndValues[i].(string))          //nolint:errcheck // It is fine to ignore the error
+			_ = buf.WriteByte('=')                                     //nolint:errcheck // It is fine to ignore the error
+			_, _ = buf.WriteString(utils.ToString(keysAndValues[i+1])) //nolint:errcheck // It is fine to ignore the error
 		}
 	}
 

@@ -4631,6 +4631,20 @@ func Test_Ctx_String(t *testing.T) {
 	require.Equal(t, "#0000000000000000 - 0.0.0.0:0 <-> 0.0.0.0:0 - GET http:///", c.String())
 }
 
+// go test -v  -run=^$ -bench=Benchmark_Ctx_String -benchmem -count=4
+func Benchmark_Ctx_String(b *testing.B) {
+	var str string
+	app := New()
+	ctx := app.NewCtx(&fasthttp.RequestCtx{})
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		str = ctx.String()
+	}
+	require.Equal(b, "#0000000000000000 - 0.0.0.0:0 <-> 0.0.0.0:0 - GET http:///", str)
+}
+
 func TestCtx_ParamsInt(t *testing.T) {
 	// Create a test context and set some strings (or params)
 	// create a fake app to be used within this test
@@ -4852,4 +4866,90 @@ func Test_Ctx_extractIPsFromHeader_EnableValidateIp(t *testing.T) {
 	ips := c.IPs()
 	res := ips[len(ips)-2]
 	require.Equal(t, "42.118.81.169", res)
+}
+
+// go test -run Test_Ctx_GetRespHeaders
+func Test_Ctx_GetRespHeaders(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	c.Set("test", "Hello, World 👋!")
+	c.Set("foo", "bar")
+	c.Response().Header.Set("multi", "one")
+	c.Response().Header.Add("multi", "two")
+	c.Response().Header.Set(HeaderContentType, "application/json")
+
+	require.Equal(t, map[string][]string{
+		"Content-Type": {"application/json"},
+		"Foo":          {"bar"},
+		"Multi":        {"one", "two"},
+		"Test":         {"Hello, World 👋!"},
+	}, c.GetRespHeaders())
+}
+
+func Benchmark_Ctx_GetRespHeaders(b *testing.B) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	c.Response().Header.Set("test", "Hello, World 👋!")
+	c.Response().Header.Set("foo", "bar")
+	c.Response().Header.Set(HeaderContentType, "application/json")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	var headers map[string][]string
+	for n := 0; n < b.N; n++ {
+		headers = c.GetRespHeaders()
+	}
+
+	require.Equal(b, map[string][]string{
+		"Content-Type": {"application/json"},
+		"Foo":          {"bar"},
+		"Test":         {"Hello, World 👋!"},
+	}, headers)
+}
+
+// go test -run Test_Ctx_GetReqHeaders
+func Test_Ctx_GetReqHeaders(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	c.Request().Header.Set("test", "Hello, World 👋!")
+	c.Request().Header.Set("foo", "bar")
+	c.Request().Header.Set("multi", "one")
+	c.Request().Header.Add("multi", "two")
+	c.Request().Header.Set(HeaderContentType, "application/json")
+
+	require.Equal(t, map[string][]string{
+		"Content-Type": {"application/json"},
+		"Foo":          {"bar"},
+		"Test":         {"Hello, World 👋!"},
+		"Multi":        {"one", "two"},
+	}, c.GetReqHeaders())
+}
+
+func Benchmark_Ctx_GetReqHeaders(b *testing.B) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	c.Request().Header.Set("test", "Hello, World 👋!")
+	c.Request().Header.Set("foo", "bar")
+	c.Request().Header.Set(HeaderContentType, "application/json")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	var headers map[string][]string
+	for n := 0; n < b.N; n++ {
+		headers = c.GetReqHeaders()
+	}
+
+	require.Equal(b, map[string][]string{
+		"Content-Type": {"application/json"},
+		"Foo":          {"bar"},
+		"Test":         {"Hello, World 👋!"},
+	}, headers)
 }
