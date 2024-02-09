@@ -6,7 +6,6 @@ import (
 	"os"
 	"strconv"
 	"sync"
-	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
@@ -74,7 +73,7 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 			_, _ = buf.WriteString(" | ") //nolint:errcheck // It is fine to ignore the error
 
 			// Duration with 13 fixed width, right aligned
-			fixedWidth(time.Duration(data.Stop.Sub(data.Start)).String(), 13, true)
+			fixedWidth(data.Stop.Sub(data.Start).String(), 13, true)
 			_, _ = buf.WriteString(" | ") //nolint:errcheck // It is fine to ignore the error
 
 			// Client IP with 15 fixed width, right aligned
@@ -93,18 +92,6 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 			_, _ = buf.WriteString(" ")       //nolint:errcheck // It is fine to ignore the error
 			_, _ = buf.WriteString(formatErr) //nolint:errcheck // It is fine to ignore the error
 			_, _ = buf.WriteString("\n")      //nolint:errcheck // It is fine to ignore the error
-
-			// _, _ = buf.WriteString( //nolint:errcheck // This will never fail
-			// 	fmt.Sprintf("%s | %3d | %13v | %15s | %-7s | %-"+data.ErrPaddingStr+"s %s\n",
-			// 		data.Timestamp.Load().(string),
-			// 		c.Response().StatusCode(),
-			// 		data.Stop.Sub(data.Start),
-			// 		c.IP(),
-			// 		c.Method(),
-			// 		c.Path(),
-			// 		formatErr,
-			// 	),
-			// )
 		}
 
 		// Write buffer to output

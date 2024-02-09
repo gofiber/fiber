@@ -1611,7 +1611,7 @@ func (c *DefaultCtx) String() string {
 	// Start with the ID, converting it to a hex string without fmt.Sprintf
 	buf.WriteByte('#') //nolint:errcheck // It is fine to ignore the error
 	// Convert ID to hexadecimal
-	id := strconv.FormatUint(uint64(c.fasthttp.ID()), 16)
+	id := strconv.FormatUint(c.fasthttp.ID(), 16)
 	// Pad with leading zeros to ensure 16 characters
 	for i := 0; i < (16 - len(id)); i++ {
 		buf.WriteByte('0') //nolint:errcheck // It is fine to ignore the error
