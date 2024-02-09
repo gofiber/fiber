@@ -6,12 +6,12 @@ package fiber
 
 import (
 	"crypto/tls"
-	"io/ioutil"
+	"io"
 	"os"
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v2/utils"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_App_Prefork_Child_Process(t *testing.T) {
@@ -23,29 +23,30 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 
 	app := New()
 
-	err := app.prefork("invalid", nil)
-	utils.AssertEqual(t, false, err == nil)
+	err := app.prefork("invalid", nil, listenConfigDefault())
+	require.Error(t, err)
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		utils.AssertEqual(t, nil, app.Shutdown())
+		require.NoError(t, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.prefork("[::]:", nil))
+	require.NoError(t, app.prefork("[::1]:", nil, ListenConfig{ListenerNetwork: NetworkTCP6}))
 
 	// Create tls certificate
 	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
 	if err != nil {
-		utils.AssertEqual(t, nil, err)
+		require.NoError(t, err)
 	}
+	//nolint:gosec // We're in a test so using old ciphers is fine
 	config := &tls.Config{Certificates: []tls.Certificate{cer}}
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		utils.AssertEqual(t, nil, app.Shutdown())
+		require.NoError(t, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.prefork("127.0.0.1:", config))
+	require.NoError(t, app.prefork("127.0.0.1:", config, listenConfigDefault()))
 }
 
 func Test_App_Prefork_Master_Process(t *testing.T) {
@@ -56,15 +57,17 @@ func Test_App_Prefork_Master_Process(t *testing.T) {
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		utils.AssertEqual(t, nil, app.Shutdown())
+		require.NoError(t, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.prefork(":3000", nil))
+	require.NoError(t, app.prefork(":3000", nil, listenConfigDefault()))
 
-	dummyChildCmd = "invalid"
+	dummyChildCmd.Store("invalid")
 
-	err := app.prefork("127.0.0.1:", nil)
-	utils.AssertEqual(t, false, err == nil)
+	err := app.prefork("127.0.0.1:", nil, listenConfigDefault())
+	require.Error(t, err)
+
+	dummyChildCmd.Store("go")
 }
 
 func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
@@ -75,23 +78,27 @@ func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
 	defer func() { os.Stdout = rescueStdout }()
 
 	r, w, err := os.Pipe()
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	os.Stdout = w
 
-	New().startupMessage(":3000", false, "")
+	New().startupProcess().startupMessage(":3000", false, "", listenConfigDefault())
 
-	utils.AssertEqual(t, nil, w.Close())
+	require.NoError(t, w.Close())
 
-	out, err := ioutil.ReadAll(r)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, 0, len(out))
+	out, err := io.ReadAll(r)
+	require.NoError(t, err)
+	require.Empty(t, out)
 }
 
 func setupIsChild(t *testing.T) {
-	utils.AssertEqual(t, nil, os.Setenv(envPreforkChildKey, envPreforkChildVal))
+	t.Helper()
+
+	require.NoError(t, os.Setenv(envPreforkChildKey, envPreforkChildVal))
 }
 
 func teardownIsChild(t *testing.T) {
-	utils.AssertEqual(t, nil, os.Setenv(envPreforkChildKey, ""))
+	t.Helper()
+
+	require.NoError(t, os.Setenv(envPreforkChildKey, ""))
 }

@@ -1,0 +1,33 @@
+name: "Sync docs"
+
+on:
+  push:
+    branches:
+      - master
+      - main
+    paths:
+      - "docs/**"
+  release:
+    types: [published]
+
+jobs:
+  sync-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 2
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+
+      - name: Sync docs
+        run: ./.github/scripts/sync_docs.sh
+        env:
+          EVENT: ${{ github.event_name }}
+          TAG_NAME: ${{ github.ref_name }}
+          TOKEN: ${{ secrets.DOC_SYNC_TOKEN }}

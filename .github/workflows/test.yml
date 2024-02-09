@@ -1,18 +1,38 @@
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      - master
+      - main
+    paths:
+      - "**"
+      - "!docs/**"
+      - "!**.md"
+  pull_request:
+    paths:
+      - "**"
+      - "!docs/**"
+      - "!**.md"
+
 name: Test
 jobs:
   Build:
     strategy:
       matrix:
-        go-version: [1.14.x, 1.15.x]
-        platform: [ubuntu-latest, windows-latest]
+        go-version: [1.20.x, 1.21.x, 1.22.x]
+        platform: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.platform }}
     steps:
-    - name: Install Go
-      uses: actions/setup-go@v1
-      with:
-        go-version: ${{ matrix.go-version }}
-    - name: Fetch Repository
-      uses: actions/checkout@v2
-    - name: Run Test
-      run: go test ./... -v -race
+      - name: Fetch Repository
+        uses: actions/checkout@v4
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+
+      - name: Run Test
+        uses: nick-fields/retry@v3
+        with:
+          max_attempts: 3
+          timeout_minutes: 15
+          command: go test ./... -v -race -count=1

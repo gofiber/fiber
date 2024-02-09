@@ -2,26 +2,27 @@
 // 📃 Github Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
+//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package fiber
-
-// go test -v ./... -run=^$ -bench=Benchmark_Router -benchmem -count=2
 
 import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http/httptest"
+	"os"
 	"testing"
 
-	"github.com/gofiber/fiber/v2/utils"
+	"github.com/gofiber/utils/v2"
+	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
 
-var routesFixture = routeJSON{}
+var routesFixture routeJSON
 
 func init() {
-	dat, err := ioutil.ReadFile("./.github/testdata/testRoutes.json")
+	dat, err := os.ReadFile("./.github/testdata/testRoutes.json")
 	if err != nil {
 		panic(err)
 	}
@@ -31,53 +32,57 @@ func init() {
 }
 
 func Test_Route_Match_SameLength(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 
-	app.Get("/:param", func(c *Ctx) error {
+	app.Get("/:param", func(c Ctx) error {
 		return c.SendString(c.Params("param"))
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/:param", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
 
-	body, err := ioutil.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, ":param", getString(body))
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, ":param", app.getString(body))
 
 	// with param
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
 
-	body, err = ioutil.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "test", getString(body))
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, "test", app.getString(body))
 }
 
 func Test_Route_Match_Star(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 
-	app.Get("/*", func(c *Ctx) error {
+	app.Get("/*", func(c Ctx) error {
 		return c.SendString(c.Params("*"))
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/*", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
 
-	body, err := ioutil.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "*", getString(body))
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, "*", app.getString(body))
 
 	// with param
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
 
-	body, err = ioutil.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "test", getString(body))
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, "test", app.getString(body))
 
 	// without parameter
 	route := Route{
@@ -87,196 +92,401 @@ func Test_Route_Match_Star(t *testing.T) {
 	}
 	params := [maxParams]string{}
 	match := route.match("", "", &params)
-	utils.AssertEqual(t, true, match)
-	utils.AssertEqual(t, [maxParams]string{}, params)
+	require.True(t, match)
+	require.Equal(t, [maxParams]string{}, params)
 
 	// with parameter
 	match = route.match("/favicon.ico", "/favicon.ico", &params)
-	utils.AssertEqual(t, true, match)
-	utils.AssertEqual(t, [maxParams]string{"favicon.ico"}, params)
+	require.True(t, match)
+	require.Equal(t, [maxParams]string{"favicon.ico"}, params)
 
 	// without parameter again
 	match = route.match("", "", &params)
-	utils.AssertEqual(t, true, match)
-	utils.AssertEqual(t, [maxParams]string{}, params)
+	require.True(t, match)
+	require.Equal(t, [maxParams]string{}, params)
 }
 
 func Test_Route_Match_Root(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 
-	app.Get("/", func(c *Ctx) error {
+	app.Get("/", func(c Ctx) error {
 		return c.SendString("root")
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
 
-	body, err := ioutil.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "root", getString(body))
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, "root", app.getString(body))
 }
 
 func Test_Route_Match_Parser(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 
-	app.Get("/foo/:ParamName", func(c *Ctx) error {
+	app.Get("/foo/:ParamName", func(c Ctx) error {
 		return c.SendString(c.Params("ParamName"))
 	})
-	app.Get("/Foobar/*", func(c *Ctx) error {
+	app.Get("/Foobar/*", func(c Ctx) error {
 		return c.SendString(c.Params("*"))
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo/bar", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
 
-	body, err := ioutil.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "bar", getString(body))
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, "bar", app.getString(body))
 
 	// with star
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/Foobar/test", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
 
-	body, err = ioutil.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "test", getString(body))
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, "test", app.getString(body))
 }
 
 func Test_Route_Match_Middleware(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 
-	app.Use("/foo/*", func(c *Ctx) error {
+	app.Use("/foo/*", func(c Ctx) error {
 		return c.SendString(c.Params("*"))
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo/*", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
 
-	body, err := ioutil.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "*", getString(body))
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, "*", app.getString(body))
 
 	// with param
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo/bar/fasel", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
 
-	body, err = ioutil.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "bar/fasel", getString(body))
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, "bar/fasel", app.getString(body))
 }
 
 func Test_Route_Match_UnescapedPath(t *testing.T) {
+	t.Parallel()
+
 	app := New(Config{UnescapePath: true})
 
-	app.Use("/créer", func(c *Ctx) error {
+	app.Use("/créer", func(c Ctx) error {
 		return c.SendString("test")
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
-	body, err := ioutil.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "test", getString(body))
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, "test", app.getString(body))
 	// without special chars
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/créer", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
 	// check deactivated behavior
 	app.config.UnescapePath = false
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, StatusNotFound, resp.StatusCode, "Status code")
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
+}
+
+func Test_Route_Match_WithEscapeChar(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	// static route and escaped part
+	app.Get("/v1/some/resource/name\\:customVerb", func(c Ctx) error {
+		return c.SendString("static")
+	})
+	// group route
+	group := app.Group("/v2/\\:firstVerb")
+	group.Get("/\\:customVerb", func(c Ctx) error {
+		return c.SendString("group")
+	})
+	// route with resource param and escaped part
+	app.Get("/v3/:resource/name\\:customVerb", func(c Ctx) error {
+		return c.SendString(c.Params("resource"))
+	})
+
+	// check static route
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/some/resource/name:customVerb", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, "static", app.getString(body))
+
+	// check group route
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/v2/:firstVerb/:customVerb", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, "group", app.getString(body))
+
+	// check param route
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/v3/awesome/name:customVerb", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, "awesome", app.getString(body))
 }
 
 func Test_Route_Match_Middleware_HasPrefix(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 
-	app.Use("/foo", func(c *Ctx) error {
+	app.Use("/foo", func(c Ctx) error {
 		return c.SendString("middleware")
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo/bar", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
 
-	body, err := ioutil.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "middleware", getString(body))
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, "middleware", app.getString(body))
 }
 
 func Test_Route_Match_Middleware_Root(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 
-	app.Use("/", func(c *Ctx) error {
+	app.Use("/", func(c Ctx) error {
 		return c.SendString("middleware")
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/everything", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
 
-	body, err := ioutil.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "middleware", getString(body))
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, "middleware", app.getString(body))
 }
 
 func Test_Router_Register_Missing_Handler(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 	defer func() {
 		if err := recover(); err != nil {
-			utils.AssertEqual(t, "missing handler in route: /doe\n", fmt.Sprintf("%v", err))
+			require.Equal(t, "missing handler/middleware in route: /doe\n", fmt.Sprintf("%v", err))
 		}
 	}()
-	app.register("USE", "/doe")
+	app.register([]string{"USE"}, "/doe", nil, nil)
 }
 
 func Test_Ensure_Router_Interface_Implementation(t *testing.T) {
-	var app interface{} = (*App)(nil)
+	t.Parallel()
+
+	var app any = (*App)(nil)
 	_, ok := app.(Router)
-	utils.AssertEqual(t, true, ok)
+	require.True(t, ok)
 
-	var group interface{} = (*Group)(nil)
+	var group any = (*Group)(nil)
 	_, ok = group.(Router)
-	utils.AssertEqual(t, true, ok)
-}
-
-func Test_Router_Handler_SetETag(t *testing.T) {
-	app := New()
-	app.config.ETag = true
-
-	app.Get("/", func(c *Ctx) error {
-		return c.SendString("Hello, World!")
-	})
-
-	c := &fasthttp.RequestCtx{}
-
-	app.handler(c)
-
-	utils.AssertEqual(t, `"13-1831710635"`, string(c.Response.Header.Peek(HeaderETag)))
+	require.True(t, ok)
 }
 
 func Test_Router_Handler_Catch_Error(t *testing.T) {
+	t.Parallel()
+
 	app := New()
-	app.config.ErrorHandler = func(ctx *Ctx, err error) error {
+	app.config.ErrorHandler = func(c Ctx, err error) error {
 		return errors.New("fake error")
 	}
 
-	app.Get("/", func(c *Ctx) error {
+	app.Get("/", func(c Ctx) error {
 		return ErrForbidden
 	})
 
 	c := &fasthttp.RequestCtx{}
 
-	app.handler(c)
+	app.Handler()(c)
 
-	utils.AssertEqual(t, StatusInternalServerError, c.Response.Header.StatusCode())
+	require.Equal(t, StatusInternalServerError, c.Response.Header.StatusCode())
+}
+
+func Test_Route_Static_Root(t *testing.T) {
+	t.Parallel()
+
+	dir := "./.github/testdata/fs/css"
+	app := New()
+	app.Static("/", dir, Static{
+		Browse: true,
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/style.css", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err, "app.Test(req)")
+	require.Contains(t, app.getString(body), "color")
+
+	app = New()
+	app.Static("/", dir)
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 404, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/style.css", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err, "app.Test(req)")
+	require.Contains(t, app.getString(body), "color")
+}
+
+func Test_Route_Static_HasPrefix(t *testing.T) {
+	t.Parallel()
+
+	dir := "./.github/testdata/fs/css"
+	app := New()
+	app.Static("/static", dir, Static{
+		Browse: true,
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/static", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/style.css", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err, "app.Test(req)")
+	require.Contains(t, app.getString(body), "color")
+
+	app = New()
+	app.Static("/static/", dir, Static{
+		Browse: true,
+	})
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/style.css", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err, "app.Test(req)")
+	require.Contains(t, app.getString(body), "color")
+
+	app = New()
+	app.Static("/static", dir)
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 404, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 404, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/style.css", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err, "app.Test(req)")
+	require.Contains(t, app.getString(body), "color")
+
+	app = New()
+	app.Static("/static/", dir)
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 404, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 404, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/style.css", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err, "app.Test(req)")
+	require.Contains(t, app.getString(body), "color")
+}
+
+func Test_Router_NotFound(t *testing.T) {
+	app := New()
+	app.Use(func(c Ctx) error {
+		return c.Next()
+	})
+	appHandler := app.Handler()
+	c := &fasthttp.RequestCtx{}
+
+	c.Request.Header.SetMethod("DELETE")
+	c.URI().SetPath("/this/route/does/not/exist")
+
+	appHandler(c)
+
+	require.Equal(t, 404, c.Response.StatusCode())
+	require.Equal(t, "Cannot DELETE /this/route/does/not/exist", string(c.Response.Body()))
+}
+
+func Test_Router_NotFound_HTML_Inject(t *testing.T) {
+	app := New()
+	app.Use(func(c Ctx) error {
+		return c.Next()
+	})
+	appHandler := app.Handler()
+	c := &fasthttp.RequestCtx{}
+
+	c.Request.Header.SetMethod("DELETE")
+	c.URI().SetPath("/does/not/exist<script>alert('foo');</script>")
+
+	appHandler(c)
+
+	require.Equal(t, 404, c.Response.StatusCode())
+	require.Equal(t, "Cannot DELETE /does/not/exist&lt;script&gt;alert(&#39;foo&#39;);&lt;/script&gt;", string(c.Response.Body()))
 }
 
 //////////////////////////////////////////////
@@ -284,22 +494,23 @@ func Test_Router_Handler_Catch_Error(t *testing.T) {
 //////////////////////////////////////////////
 
 func registerDummyRoutes(app *App) {
-	h := func(c *Ctx) error {
+	h := func(c Ctx) error {
 		return nil
 	}
 	for _, r := range routesFixture.GithubAPI {
-		app.Add(r.Method, r.Path, h)
+		app.Add([]string{r.Method}, r.Path, h)
 	}
 }
 
 // go test -v -run=^$ -bench=Benchmark_App_MethodNotAllowed -benchmem -count=4
 func Benchmark_App_MethodNotAllowed(b *testing.B) {
 	app := New()
-	h := func(c *Ctx) error {
+	h := func(c Ctx) error {
 		return c.SendString("Hello World!")
 	}
 	app.All("/this/is/a/", h)
 	app.Get("/this/is/a/dummy/route/oke", h)
+	appHandler := app.Handler()
 	c := &fasthttp.RequestCtx{}
 
 	c.Request.Header.SetMethod("DELETE")
@@ -307,21 +518,22 @@ func Benchmark_App_MethodNotAllowed(b *testing.B) {
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		app.handler(c)
+		appHandler(c)
 	}
 	b.StopTimer()
-	utils.AssertEqual(b, 405, c.Response.StatusCode())
-	utils.AssertEqual(b, "GET, HEAD", string(c.Response.Header.Peek("Allow")))
-	utils.AssertEqual(b, utils.StatusMessage(StatusMethodNotAllowed), string(c.Response.Body()))
+	require.Equal(b, 405, c.Response.StatusCode())
+	require.Equal(b, MethodGet, string(c.Response.Header.Peek("Allow")))
+	require.Equal(b, utils.StatusMessage(StatusMethodNotAllowed), string(c.Response.Body()))
 }
 
 // go test -v ./... -run=^$ -bench=Benchmark_Router_NotFound -benchmem -count=4
 func Benchmark_Router_NotFound(b *testing.B) {
 	app := New()
-	app.Use(func(c *Ctx) error {
+	app.Use(func(c Ctx) error {
 		return c.Next()
 	})
 	registerDummyRoutes(app)
+	appHandler := app.Handler()
 	c := &fasthttp.RequestCtx{}
 
 	c.Request.Header.SetMethod("DELETE")
@@ -329,16 +541,17 @@ func Benchmark_Router_NotFound(b *testing.B) {
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		app.handler(c)
+		appHandler(c)
 	}
-	utils.AssertEqual(b, 404, c.Response.StatusCode())
-	utils.AssertEqual(b, "Cannot DELETE /this/route/does/not/exist", string(c.Response.Body()))
+	require.Equal(b, 404, c.Response.StatusCode())
+	require.Equal(b, "Cannot DELETE /this/route/does/not/exist", string(c.Response.Body()))
 }
 
 // go test -v ./... -run=^$ -bench=Benchmark_Router_Handler -benchmem -count=4
 func Benchmark_Router_Handler(b *testing.B) {
 	app := New()
 	registerDummyRoutes(app)
+	appHandler := app.Handler()
 
 	c := &fasthttp.RequestCtx{}
 
@@ -348,7 +561,7 @@ func Benchmark_Router_Handler(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		app.handler(c)
+		appHandler(c)
 	}
 }
 
@@ -358,6 +571,7 @@ func Benchmark_Router_Handler_Strict_Case(b *testing.B) {
 		CaseSensitive: true,
 	})
 	registerDummyRoutes(app)
+	appHandler := app.Handler()
 
 	c := &fasthttp.RequestCtx{}
 
@@ -367,32 +581,34 @@ func Benchmark_Router_Handler_Strict_Case(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		app.handler(c)
+		appHandler(c)
 	}
 }
 
 // go test -v ./... -run=^$ -bench=Benchmark_Router_Chain -benchmem -count=4
 func Benchmark_Router_Chain(b *testing.B) {
 	app := New()
-	handler := func(c *Ctx) error {
+	handler := func(c Ctx) error {
 		return c.Next()
 	}
 	app.Get("/", handler, handler, handler, handler, handler, handler)
 
+	appHandler := app.Handler()
+
 	c := &fasthttp.RequestCtx{}
 
-	c.Request.Header.SetMethod("GET")
+	c.Request.Header.SetMethod(MethodGet)
 	c.URI().SetPath("/")
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		app.handler(c)
+		appHandler(c)
 	}
 }
 
 // go test -v ./... -run=^$ -bench=Benchmark_Router_WithCompression -benchmem -count=4
 func Benchmark_Router_WithCompression(b *testing.B) {
 	app := New()
-	handler := func(c *Ctx) error {
+	handler := func(c Ctx) error {
 		return c.Next()
 	}
 	app.Get("/", handler)
@@ -402,13 +618,23 @@ func Benchmark_Router_WithCompression(b *testing.B) {
 	app.Get("/", handler)
 	app.Get("/", handler)
 
+	appHandler := app.Handler()
 	c := &fasthttp.RequestCtx{}
 
-	c.Request.Header.SetMethod("GET")
+	c.Request.Header.SetMethod(MethodGet)
 	c.URI().SetPath("/")
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		app.handler(c)
+		appHandler(c)
+	}
+}
+
+// go test -run=^$ -bench=Benchmark_Startup_Process -benchmem -count=9
+func Benchmark_Startup_Process(b *testing.B) {
+	for n := 0; n < b.N; n++ {
+		app := New()
+		registerDummyRoutes(app)
+		app.startupProcess()
 	}
 }
 
@@ -416,6 +642,7 @@ func Benchmark_Router_WithCompression(b *testing.B) {
 func Benchmark_Router_Next(b *testing.B) {
 	app := New()
 	registerDummyRoutes(app)
+	app.startupProcess()
 
 	request := &fasthttp.RequestCtx{}
 
@@ -424,17 +651,16 @@ func Benchmark_Router_Next(b *testing.B) {
 	var res bool
 	var err error
 
-	c := app.AcquireCtx(request)
-	defer app.ReleaseCtx(c)
+	c := app.NewCtx(request).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		c.indexRoute = -1
 		res, err = app.next(c)
 	}
-	utils.AssertEqual(b, nil, err)
-	utils.AssertEqual(b, true, res)
-	utils.AssertEqual(b, 4, c.indexRoute)
+	require.NoError(b, err)
+	require.True(b, res)
+	require.Equal(b, 4, c.indexRoute)
 }
 
 // go test -v ./... -run=^$ -bench=Benchmark_Route_Match -benchmem -count=4
@@ -454,7 +680,7 @@ func Benchmark_Route_Match(b *testing.B) {
 		Path:   "/user/keys/:id",
 		Method: "DELETE",
 	}
-	route.Handlers = append(route.Handlers, func(c *Ctx) error {
+	route.Handlers = append(route.Handlers, func(c Ctx) error {
 		return nil
 	})
 	b.ResetTimer()
@@ -462,8 +688,8 @@ func Benchmark_Route_Match(b *testing.B) {
 		match = route.match("/user/keys/1337", "/user/keys/1337", &params)
 	}
 
-	utils.AssertEqual(b, true, match)
-	utils.AssertEqual(b, []string{"1337"}, params[0:len(parsed.params)])
+	require.True(b, match)
+	require.Equal(b, []string{"1337"}, params[0:len(parsed.params)])
 }
 
 // go test -v ./... -run=^$ -bench=Benchmark_Route_Match_Star -benchmem -count=4
@@ -483,7 +709,7 @@ func Benchmark_Route_Match_Star(b *testing.B) {
 		Path:   "/user/keys/bla",
 		Method: "DELETE",
 	}
-	route.Handlers = append(route.Handlers, func(c *Ctx) error {
+	route.Handlers = append(route.Handlers, func(c Ctx) error {
 		return nil
 	})
 	b.ResetTimer()
@@ -492,8 +718,8 @@ func Benchmark_Route_Match_Star(b *testing.B) {
 		match = route.match("/user/keys/bla", "/user/keys/bla", &params)
 	}
 
-	utils.AssertEqual(b, true, match)
-	utils.AssertEqual(b, []string{"user/keys/bla"}, params[0:len(parsed.params)])
+	require.True(b, match)
+	require.Equal(b, []string{"user/keys/bla"}, params[0:len(parsed.params)])
 }
 
 // go test -v ./... -run=^$ -bench=Benchmark_Route_Match_Root -benchmem -count=4
@@ -513,7 +739,7 @@ func Benchmark_Route_Match_Root(b *testing.B) {
 		Path:   "/",
 		Method: "DELETE",
 	}
-	route.Handlers = append(route.Handlers, func(c *Ctx) error {
+	route.Handlers = append(route.Handlers, func(c Ctx) error {
 		return nil
 	})
 
@@ -523,8 +749,8 @@ func Benchmark_Route_Match_Root(b *testing.B) {
 		match = route.match("/", "/", &params)
 	}
 
-	utils.AssertEqual(b, true, match)
-	utils.AssertEqual(b, []string{}, params[0:len(parsed.params)])
+	require.True(b, match)
+	require.Equal(b, []string{}, params[0:len(parsed.params)])
 }
 
 // go test -v ./... -run=^$ -bench=Benchmark_Router_Handler_CaseSensitive -benchmem -count=4
@@ -532,6 +758,7 @@ func Benchmark_Router_Handler_CaseSensitive(b *testing.B) {
 	app := New()
 	app.config.CaseSensitive = true
 	registerDummyRoutes(app)
+	appHandler := app.Handler()
 
 	c := &fasthttp.RequestCtx{}
 
@@ -541,7 +768,7 @@ func Benchmark_Router_Handler_CaseSensitive(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		app.handler(c)
+		appHandler(c)
 	}
 }
 
@@ -550,9 +777,11 @@ func Benchmark_Router_Handler_Unescape(b *testing.B) {
 	app := New()
 	app.config.UnescapePath = true
 	registerDummyRoutes(app)
-	app.Delete("/créer", func(c *Ctx) error {
+	app.Delete("/créer", func(c Ctx) error {
 		return nil
 	})
+
+	appHandler := app.Handler()
 
 	c := &fasthttp.RequestCtx{}
 
@@ -563,7 +792,7 @@ func Benchmark_Router_Handler_Unescape(b *testing.B) {
 
 	for n := 0; n < b.N; n++ {
 		c.URI().SetPath("/cr%C3%A9er")
-		app.handler(c)
+		appHandler(c)
 	}
 }
 
@@ -572,6 +801,7 @@ func Benchmark_Router_Handler_StrictRouting(b *testing.B) {
 	app := New()
 	app.config.CaseSensitive = true
 	registerDummyRoutes(app)
+	appHandler := app.Handler()
 
 	c := &fasthttp.RequestCtx{}
 
@@ -581,7 +811,7 @@ func Benchmark_Router_Handler_StrictRouting(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		app.handler(c)
+		appHandler(c)
 	}
 }
 
@@ -589,6 +819,7 @@ func Benchmark_Router_Handler_StrictRouting(b *testing.B) {
 func Benchmark_Router_Github_API(b *testing.B) {
 	app := New()
 	registerDummyRoutes(app)
+	app.startupProcess()
 
 	c := &fasthttp.RequestCtx{}
 	var match bool
@@ -600,21 +831,25 @@ func Benchmark_Router_Github_API(b *testing.B) {
 		c.Request.Header.SetMethod(routesFixture.TestRoutes[i].Method)
 		for n := 0; n < b.N; n++ {
 			c.URI().SetPath(routesFixture.TestRoutes[i].Path)
-			ctx := app.AcquireCtx(c)
+
+			ctx := app.AcquireCtx().(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+			ctx.Reset(c)
+
 			match, err = app.next(ctx)
 			app.ReleaseCtx(ctx)
 		}
-		utils.AssertEqual(b, nil, err)
-		utils.AssertEqual(b, true, match)
-	}
 
+		require.NoError(b, err)
+		require.True(b, match)
+	}
 }
 
 type testRoute struct {
 	Method string `json:"method"`
 	Path   string `json:"path"`
 }
+
 type routeJSON struct {
-	TestRoutes []testRoute `json:"testRoutes"`
-	GithubAPI  []testRoute `json:"githubAPI"`
+	TestRoutes []testRoute `json:"test_routes"`
+	GithubAPI  []testRoute `json:"github_api"`
 }

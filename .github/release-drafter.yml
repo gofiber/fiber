@@ -1,0 +1,57 @@
+name-template: 'v$RESOLVED_VERSION'
+tag-template: 'v$RESOLVED_VERSION'
+commitish: refs/heads/main
+filter-by-commitish: true
+include-labels:
+  - 'v3'
+exclude-labels:
+  - 'v2'
+categories:
+  - title: '❗ Breaking Changes'
+    labels:
+      - '❗ BreakingChange'
+  - title: '🚀 New'
+    labels:
+      - '✏️ Feature'
+      - '📝 Proposal'
+  - title: '🧹 Updates'
+    labels:
+      - '🧹 Updates'
+  - title: '🐛 Fixes'
+    labels:
+      - '☢️ Bug'
+  - title: '🛠️ Maintenance'
+    labels:
+      - '🤖 Dependencies'
+  - title: '📚 Documentation'
+    labels:
+      - '📒 Documentation'
+change-template: '- $TITLE (#$NUMBER)'
+change-title-escapes: '\<*_&' # You can add # and @ to disable mentions, and add ` to disable code blocks.
+exclude-contributors:
+  - dependabot
+  - dependabot[bot]
+version-resolver:
+  major:
+    labels:
+      - 'major'
+      - '❗ BreakingChange'
+  minor:
+    labels:
+      - 'minor'
+      - '✏️ Feature'
+      - '📝 Proposal'
+  patch:
+    labels:
+      - 'patch'
+      - '📒 Documentation'
+      - '☢️ Bug'
+      - '🤖 Dependencies'
+      - '🧹 Updates'
+  default: patch
+template: |
+    $CHANGES
+
+    **Full Changelog**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...v$RESOLVED_VERSION
+
+    Thank you $CONTRIBUTORS for making this update possible.

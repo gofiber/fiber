@@ -1,10 +1,12 @@
 package favicon
 
 import (
-	"io/ioutil"
+	"io"
+	"io/fs"
+	"os"
 	"strconv"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 // Config defines the config for middleware.
@@ -12,27 +14,45 @@ type Config struct {
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
-	Next func(c *fiber.Ctx) bool
+	Next func(c fiber.Ctx) bool
+
+	// Raw data of the favicon file
+	//
+	// Optional. Default: nil
+	Data []byte `json:"-"`
 
 	// File holds the path to an actual favicon that will be cached
 	//
 	// Optional. Default: ""
-	File string
+	File string `json:"file"`
+
+	// URL for favicon handler
+	//
+	// Optional. Default: "/favicon.ico"
+	URL string `json:"url"`
+
+	// FileSystem is an optional alternate filesystem to search for the favicon in.
+	// An example of this could be an embedded or network filesystem
+	//
+	// Optional. Default: nil
+	FileSystem fs.FS `json:"-"`
 
 	// CacheControl defines how the Cache-Control header in the response should be set
 	//
 	// Optional. Default: "public, max-age=31536000"
-	CacheControl string
+	CacheControl string `json:"cache_control"`
 }
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
 	Next:         nil,
 	File:         "",
+	URL:          fPath,
 	CacheControl: "public, max-age=31536000",
 }
 
 const (
+	fPath  = "/favicon.ico"
 	hType  = "image/x-icon"
 	hAllow = "GET, HEAD, OPTIONS"
 	hZero  = "0"
@@ -51,6 +71,9 @@ func New(config ...Config) fiber.Handler {
 		if cfg.Next == nil {
 			cfg.Next = ConfigDefault.Next
 		}
+		if cfg.URL == "" {
+			cfg.URL = ConfigDefault.URL
+		}
 		if cfg.File == "" {
 			cfg.File = ConfigDefault.File
 		}
@@ -65,22 +88,36 @@ func New(config ...Config) fiber.Handler {
 		icon    []byte
 		iconLen string
 	)
-	if cfg.File != "" {
-		if icon, err = ioutil.ReadFile(cfg.File); err != nil {
+	if cfg.Data != nil {
+		// use the provided favicon data
+		icon = cfg.Data
+		iconLen = strconv.Itoa(len(cfg.Data))
+	} else if cfg.File != "" {
+		// read from configured filesystem if present
+		if cfg.FileSystem != nil {
+			f, err := cfg.FileSystem.Open(cfg.File)
+			if err != nil {
+				panic(err)
+			}
+			if icon, err = io.ReadAll(f); err != nil {
+				panic(err)
+			}
+		} else if icon, err = os.ReadFile(cfg.File); err != nil {
 			panic(err)
 		}
+
 		iconLen = strconv.Itoa(len(icon))
 	}
 
 	// Return new handler
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		// Don't execute middleware if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()
 		}
 
 		// Only respond to favicon requests
-		if len(c.Path()) != 12 || c.Path() != "/favicon.ico" {
+		if c.Path() != cfg.URL {
 			return c.Next()
 		}
 

@@ -1,8 +1,8 @@
 package requestid
 
 import (
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/utils"
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/utils/v2"
 )
 
 // Config defines the config for middleware.
@@ -10,7 +10,7 @@ type Config struct {
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
-	Next func(c *fiber.Ctx) bool
+	Next func(c fiber.Ctx) bool
 
 	// Header is the header key where to get/set the unique request ID
 	//
@@ -21,20 +21,16 @@ type Config struct {
 	//
 	// Optional. Default: utils.UUID
 	Generator func() string
-
-	// ContextKey defines the key used when storing the request ID in
-	// the locals for a specific request.
-	//
-	// Optional. Default: requestid
-	ContextKey string
 }
 
 // ConfigDefault is the default config
+// It uses a fast UUID generator which will expose the number of
+// requests made to the server. To conceal this value for better
+// privacy, use the "utils.UUIDv4" generator.
 var ConfigDefault = Config{
-	Next:       nil,
-	Header:     fiber.HeaderXRequestID,
-	Generator:  utils.UUID,
-	ContextKey: "requestid",
+	Next:      nil,
+	Header:    fiber.HeaderXRequestID,
+	Generator: utils.UUID,
 }
 
 // Helper function to set default values
@@ -53,9 +49,6 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.Generator == nil {
 		cfg.Generator = ConfigDefault.Generator
-	}
-	if cfg.ContextKey == "" {
-		cfg.ContextKey = ConfigDefault.ContextKey
 	}
 	return cfg
 }

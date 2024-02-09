@@ -3,45 +3,54 @@ package filesystem
 import (
 	"fmt"
 	"html"
-	"net/http"
-	"os"
+	"io/fs"
 	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
-func getFileExtension(path string) string {
-	n := strings.LastIndexByte(path, '.')
+func getFileExtension(p string) string {
+	n := strings.LastIndexByte(p, '.')
 	if n < 0 {
 		return ""
 	}
-	return path[n:]
+	return p[n:]
 }
 
-func dirList(c *fiber.Ctx, f http.File) error {
-	fileinfos, err := f.Readdir(-1)
+func dirList(c fiber.Ctx, f fs.File) error {
+	ff, ok := f.(fs.ReadDirFile)
+	if !ok {
+		return fmt.Errorf("failed to type-assert to fs.ReadDirFile")
+	}
+	fileinfos, err := ff.ReadDir(-1)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to read dir: %w", err)
 	}
 
-	fm := make(map[string]os.FileInfo, len(fileinfos))
+	fm := make(map[string]fs.FileInfo, len(fileinfos))
 	filenames := make([]string, 0, len(fileinfos))
 	for _, fi := range fileinfos {
 		name := fi.Name()
-		fm[name] = fi
+		info, err := fi.Info()
+		if err != nil {
+			return fmt.Errorf("failed to get file info: %w", err)
+		}
+
+		fm[name] = info
 		filenames = append(filenames, name)
 	}
 
 	basePathEscaped := html.EscapeString(c.Path())
-	fmt.Fprintf(c, "<html><head><title>%s</title><style>.dir { font-weight: bold }</style></head><body>", basePathEscaped)
-	fmt.Fprintf(c, "<h1>%s</h1>", basePathEscaped)
-	fmt.Fprint(c, "<ul>")
+	_, _ = fmt.Fprintf(c, "<html><head><title>%s</title><style>.dir { font-weight: bold }</style></head><body>", basePathEscaped)
+	_, _ = fmt.Fprintf(c, "<h1>%s</h1>", basePathEscaped)
+	_, _ = fmt.Fprint(c, "<ul>")
 
 	if len(basePathEscaped) > 1 {
-		parentPathEscaped := html.EscapeString(c.Path() + "/..")
-		fmt.Fprintf(c, `<li><a href="%s" class="dir">..</a></li>`, parentPathEscaped)
+		parentPathEscaped := html.EscapeString(strings.TrimRight(c.Path(), "/") + "/..")
+		_, _ = fmt.Fprintf(c, `<li><a href="%s" class="dir">..</a></li>`, parentPathEscaped)
 	}
 
 	sort.Strings(filenames)
@@ -54,12 +63,23 @@ func dirList(c *fiber.Ctx, f http.File) error {
 			auxStr = fmt.Sprintf("file, %d bytes", fi.Size())
 			className = "file"
 		}
-		fmt.Fprintf(c, `<li><a href="%s" class="%s">%s</a>, %s, last modified %s</li>`,
+		_, _ = fmt.Fprintf(c, `<li><a href="%s" class="%s">%s</a>, %s, last modified %s</li>`,
 			pathEscaped, className, html.EscapeString(name), auxStr, fi.ModTime())
 	}
-	fmt.Fprint(c, "</ul></body></html>")
+	_, _ = fmt.Fprint(c, "</ul></body></html>")
 
 	c.Type("html")
 
 	return nil
+}
+
+func openFile(filesystem fs.FS, name string) (fs.File, error) {
+	name = filepath.ToSlash(name)
+
+	file, err := filesystem.Open(name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file: %w", err)
+	}
+
+	return file, nil
 }

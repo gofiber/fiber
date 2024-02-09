@@ -4,51 +4,53 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v2/utils"
+	"github.com/gofiber/utils/v2"
+	"github.com/stretchr/testify/require"
 )
 
 // go test -run Test_Memory -v -race
 
 func Test_Memory(t *testing.T) {
-	var store = New()
+	t.Parallel()
+	store := New()
 	var (
-		key             = "john"
-		val interface{} = []byte("doe")
-		exp             = 1 * time.Second
+		key     = "john"
+		val any = []byte("doe")
+		exp     = 1 * time.Second
 	)
 
 	store.Set(key, val, 0)
 	store.Set(key, val, 0)
 
 	result := store.Get(key)
-	utils.AssertEqual(t, val, result)
+	require.Equal(t, val, result)
 
 	result = store.Get("empty")
-	utils.AssertEqual(t, nil, result)
+	require.Equal(t, nil, result)
 
 	store.Set(key, val, exp)
 	time.Sleep(1100 * time.Millisecond)
 
 	result = store.Get(key)
-	utils.AssertEqual(t, nil, result)
+	require.Equal(t, nil, result)
 
 	store.Set(key, val, 0)
 	result = store.Get(key)
-	utils.AssertEqual(t, val, result)
+	require.Equal(t, val, result)
 
 	store.Delete(key)
 	result = store.Get(key)
-	utils.AssertEqual(t, nil, result)
+	require.Equal(t, nil, result)
 
 	store.Set("john", val, 0)
 	store.Set("doe", val, 0)
 	store.Reset()
 
 	result = store.Get("john")
-	utils.AssertEqual(t, nil, result)
+	require.Equal(t, nil, result)
 
 	result = store.Get("doe")
-	utils.AssertEqual(t, nil, result)
+	require.Equal(t, nil, result)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Memory -benchmem -count=4
@@ -58,7 +60,7 @@ func Benchmark_Memory(b *testing.B) {
 	for i := 0; i < keyLength; i++ {
 		keys[i] = utils.UUID()
 	}
-	value := []string{"some", "random", "value"}
+	value := []byte("joe")
 
 	ttl := 2 * time.Second
 	b.Run("fiber_memory", func(b *testing.B) {
@@ -74,7 +76,6 @@ func Benchmark_Memory(b *testing.B) {
 			}
 			for _, key := range keys {
 				d.Delete(key)
-
 			}
 		}
 	})

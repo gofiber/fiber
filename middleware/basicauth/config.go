@@ -1,7 +1,10 @@
 package basicauth
 
 import (
-	"github.com/gofiber/fiber/v2"
+	"crypto/subtle"
+
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/utils/v2"
 )
 
 // Config defines the config for middleware.
@@ -9,7 +12,7 @@ type Config struct {
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
-	Next func(c *fiber.Ctx) bool
+	Next func(c fiber.Ctx) bool
 
 	// Users defines the allowed credentials
 	//
@@ -37,27 +40,15 @@ type Config struct {
 	//
 	// Optional. Default: nil
 	Unauthorized fiber.Handler
-
-	// ContextUser is the key to store the username in Locals
-	//
-	// Optional. Default: "username"
-	ContextUsername string
-
-	// ContextPass is the key to store the password in Locals
-	//
-	// Optional. Default: "password"
-	ContextPassword string
 }
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next:            nil,
-	Users:           map[string]string{},
-	Realm:           "Restricted",
-	Authorizer:      nil,
-	Unauthorized:    nil,
-	ContextUsername: "username",
-	ContextPassword: "password",
+	Next:         nil,
+	Users:        map[string]string{},
+	Realm:        "Restricted",
+	Authorizer:   nil,
+	Unauthorized: nil,
 }
 
 // Helper function to set default values
@@ -82,24 +73,15 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.Authorizer == nil {
 		cfg.Authorizer = func(user, pass string) bool {
-			user, exist := cfg.Users[user]
-			if !exist {
-				return false
-			}
-			return user == pass
+			userPwd, exist := cfg.Users[user]
+			return exist && subtle.ConstantTimeCompare(utils.UnsafeBytes(userPwd), utils.UnsafeBytes(pass)) == 1
 		}
 	}
 	if cfg.Unauthorized == nil {
-		cfg.Unauthorized = func(c *fiber.Ctx) error {
+		cfg.Unauthorized = func(c fiber.Ctx) error {
 			c.Set(fiber.HeaderWWWAuthenticate, "basic realm="+cfg.Realm)
 			return c.SendStatus(fiber.StatusUnauthorized)
 		}
-	}
-	if cfg.ContextUsername == "" {
-		cfg.ContextUsername = ConfigDefault.ContextUsername
-	}
-	if cfg.ContextPassword == "" {
-		cfg.ContextPassword = ConfigDefault.ContextPassword
 	}
 	return cfg
 }

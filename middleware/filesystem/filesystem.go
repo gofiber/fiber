@@ -1,13 +1,17 @@
 package filesystem
 
 import (
+	"errors"
+	"fmt"
+	"io/fs"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 // Config defines the config for middleware.
@@ -15,13 +19,19 @@ type Config struct {
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
-	Next func(c *fiber.Ctx) bool
+	Next func(c fiber.Ctx) bool
 
 	// Root is a FileSystem that provides access
 	// to a collection of files and directories.
 	//
 	// Required. Default: nil
-	Root http.FileSystem `json:"-"`
+	Root fs.FS `json:"-"`
+
+	// PathPrefix defines a prefix to be added to a filepath when
+	// reading a file from the FileSystem.
+	//
+	// Optional. Default "."
+	PathPrefix string `json:"path_prefix"`
 
 	// Enable directory browsing.
 	//
@@ -33,6 +43,11 @@ type Config struct {
 	// Optional. Default: "index.html"
 	Index string `json:"index"`
 
+	// When set to true, enables direct download for files.
+	//
+	// Optional. Default: false.
+	Download bool `json:"download"`
+
 	// The value for the Cache-Control HTTP-header
 	// that is set on the file response. MaxAge is defined in seconds.
 	//
@@ -43,18 +58,30 @@ type Config struct {
 	//
 	// Optional. Default: ""
 	NotFoundFile string `json:"not_found_file"`
+
+	// The value for the Content-Type HTTP-header
+	// that is set on the file response
+	//
+	// Optional. Default: ""
+	ContentTypeCharset string `json:"content_type_charset"`
 }
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next:   nil,
-	Root:   nil,
-	Browse: false,
-	Index:  "/index.html",
-	MaxAge: 0,
+	Next:               nil,
+	Root:               nil,
+	PathPrefix:         ".",
+	Browse:             false,
+	Index:              "/index.html",
+	MaxAge:             0,
+	ContentTypeCharset: "",
 }
 
-// New creates a new middleware handler
+// New creates a new middleware handler.
+//
+// filesystem does not handle url encoded values (for example spaces)
+// on it's own. If you need that functionality, set "UnescapePath"
+// in fiber.Config
 func New(config ...Config) fiber.Handler {
 	// Set default config
 	cfg := ConfigDefault
@@ -66,6 +93,9 @@ func New(config ...Config) fiber.Handler {
 		// Set default values
 		if cfg.Index == "" {
 			cfg.Index = ConfigDefault.Index
+		}
+		if cfg.PathPrefix == "" {
+			cfg.PathPrefix = ConfigDefault.PathPrefix
 		}
 		if !strings.HasPrefix(cfg.Index, "/") {
 			cfg.Index = "/" + cfg.Index
@@ -79,12 +109,21 @@ func New(config ...Config) fiber.Handler {
 		panic("filesystem: Root cannot be nil")
 	}
 
+	// PathPrefix configurations for io/fs compatibility.
+	if cfg.PathPrefix != "." && !strings.HasPrefix(cfg.PathPrefix, "/") {
+		cfg.PathPrefix = "./" + cfg.PathPrefix
+	}
+
+	if cfg.NotFoundFile != "" {
+		cfg.NotFoundFile = filepath.Join(cfg.PathPrefix, filepath.Clean("/"+cfg.NotFoundFile))
+	}
+
 	var once sync.Once
 	var prefix string
-	var cacheControlStr = "public, max-age=" + strconv.Itoa(cfg.MaxAge)
+	cacheControlStr := "public, max-age=" + strconv.Itoa(cfg.MaxAge)
 
 	// Return new handler
-	return func(c *fiber.Ctx) (err error) {
+	return func(c fiber.Ctx) error {
 		// Don't execute middleware if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()
@@ -109,30 +148,44 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		var (
-			file http.File
+			file fs.File
 			stat os.FileInfo
 		)
 
-		file, err = cfg.Root.Open(path)
-		if err != nil && os.IsNotExist(err) && cfg.NotFoundFile != "" {
-			file, err = cfg.Root.Open(cfg.NotFoundFile)
+		// Add PathPrefix
+		if cfg.PathPrefix != "" {
+			// PathPrefix already has a "/" prefix
+			path = filepath.Join(cfg.PathPrefix, filepath.Clean("/"+path))
+		}
+
+		if len(path) > 1 {
+			path = strings.TrimRight(path, "/")
+		}
+
+		file, err := openFile(cfg.Root, path)
+
+		if err != nil && errors.Is(err, fs.ErrNotExist) && cfg.NotFoundFile != "" {
+			file, err = openFile(cfg.Root, cfg.NotFoundFile)
 		}
 
 		if err != nil {
-			if os.IsNotExist(err) {
+			if errors.Is(err, fs.ErrNotExist) {
 				return c.Status(fiber.StatusNotFound).Next()
 			}
-			return
+			return fmt.Errorf("failed to open: %w", err)
 		}
 
-		if stat, err = file.Stat(); err != nil {
-			return
+		stat, err = file.Stat()
+		if err != nil {
+			return fmt.Errorf("failed to stat: %w", err)
 		}
 
 		// Serve index if path is directory
 		if stat.IsDir() {
-			indexPath := strings.TrimSuffix(path, "/") + cfg.Index
-			index, err := cfg.Root.Open(indexPath)
+			indexPath := strings.TrimRight(path, "/") + cfg.Index
+			indexPath = filepath.Join(cfg.PathPrefix, filepath.Clean("/"+indexPath))
+
+			index, err := openFile(cfg.Root, indexPath)
 			if err == nil {
 				indexStat, err := index.Stat()
 				if err == nil {
@@ -147,18 +200,30 @@ func New(config ...Config) fiber.Handler {
 			if cfg.Browse {
 				return dirList(c, file)
 			}
+
 			return fiber.ErrForbidden
 		}
+
+		c.Status(fiber.StatusOK)
 
 		modTime := stat.ModTime()
 		contentLength := int(stat.Size())
 
 		// Set Content Type header
-		c.Type(getFileExtension(stat.Name()))
+		if cfg.ContentTypeCharset == "" {
+			c.Type(getFileExtension(stat.Name()))
+		} else {
+			c.Type(getFileExtension(stat.Name()), cfg.ContentTypeCharset)
+		}
 
 		// Set Last Modified header
 		if !modTime.IsZero() {
 			c.Set(fiber.HeaderLastModified, modTime.UTC().Format(http.TimeFormat))
+		}
+
+		// Sets the response Content-Disposition header to attachment if the Download option is true and if it's a file
+		if cfg.Download && !stat.IsDir() {
+			c.Attachment()
 		}
 
 		if method == fiber.MethodGet {
@@ -174,7 +239,7 @@ func New(config ...Config) fiber.Handler {
 			c.Response().SkipBody = true
 			c.Response().Header.SetContentLength(contentLength)
 			if err := file.Close(); err != nil {
-				return err
+				return fmt.Errorf("failed to close: %w", err)
 			}
 			return nil
 		}
@@ -183,29 +248,34 @@ func New(config ...Config) fiber.Handler {
 	}
 }
 
-// SendFile ...
-func SendFile(c *fiber.Ctx, fs http.FileSystem, path string) (err error) {
+// SendFile serves a file from an fs.FS filesystem at the specified path.
+// It handles content serving, sets appropriate headers, and returns errors when needed.
+// Usage: err := SendFile(ctx, fs, "/path/to/file.txt")
+func SendFile(c fiber.Ctx, filesystem fs.FS, path string) error {
 	var (
-		file http.File
+		file fs.File
 		stat os.FileInfo
 	)
 
-	file, err = fs.Open(path)
+	path = filepath.Join(".", filepath.Clean("/"+path))
+
+	file, err := openFile(filesystem, path)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return fiber.ErrNotFound
 		}
-		return err
+		return fmt.Errorf("failed to open: %w", err)
 	}
 
-	if stat, err = file.Stat(); err != nil {
-		return err
+	stat, err = file.Stat()
+	if err != nil {
+		return fmt.Errorf("failed to stat: %w", err)
 	}
 
 	// Serve index if path is directory
 	if stat.IsDir() {
-		indexPath := strings.TrimSuffix(path, "/") + ConfigDefault.Index
-		index, err := fs.Open(indexPath)
+		indexPath := strings.TrimRight(path, "/") + ConfigDefault.Index
+		index, err := openFile(filesystem, indexPath)
 		if err == nil {
 			indexStat, err := index.Stat()
 			if err == nil {
@@ -219,6 +289,8 @@ func SendFile(c *fiber.Ctx, fs http.FileSystem, path string) (err error) {
 	if stat.IsDir() {
 		return fiber.ErrForbidden
 	}
+
+	c.Status(fiber.StatusOK)
 
 	modTime := stat.ModTime()
 	contentLength := int(stat.Size())
@@ -242,7 +314,7 @@ func SendFile(c *fiber.Ctx, fs http.FileSystem, path string) (err error) {
 		c.Response().SkipBody = true
 		c.Response().Header.SetContentLength(contentLength)
 		if err := file.Close(); err != nil {
-			return err
+			return fmt.Errorf("failed to close: %w", err)
 		}
 		return nil
 	}

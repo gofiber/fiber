@@ -1,12 +1,36 @@
-on: [push, pull_request]
-name: Linter
+# Adapted from https://github.com/golangci/golangci-lint-action/blob/b56f6f529003f1c81d4d759be6bd5f10bf9a0fa0/README.md#how-to-use
+
+name: golangci-lint
+on:
+  push:
+    branches:
+      - master
+      - main
+  pull_request:
+
+permissions:
+  # Required: allow read access to the content for analysis.
+  contents: read
+  # Optional: allow read access to pull request. Use with `only-new-issues` option.
+  pull-requests: read
+  # Optional: Allow write access to checks to allow the action to annotate code in the PR.
+  checks: write
+
 jobs:
-  Golint:
+  golangci:
+    name: lint
     runs-on: ubuntu-latest
     steps:
-      - name: Fetch Repository
-        uses: actions/checkout@v2
-      - name: Run Golint
-        uses: reviewdog/action-golangci-lint@v1
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
         with:
-          golangci_lint_flags: "--tests=false"
+          # NOTE: Keep this in sync with the version from go.mod
+          go-version: "1.20.x"
+          cache: false
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v3
+        with:
+          # NOTE: Keep this in sync with the version from .golangci.yml
+          version: v1.55.2
