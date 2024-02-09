@@ -829,11 +829,11 @@ func (c *DefaultCtx) Links(link ...string) {
 	bb := bytebufferpool.Get()
 	for i := range link {
 		if i%2 == 0 {
-			_ = bb.WriteByte('<')          //nolint:errcheck // This will never fail
-			_, _ = bb.WriteString(link[i]) //nolint:errcheck // This will never fail
-			_ = bb.WriteByte('>')          //nolint:errcheck // This will never fail
+			bb.WriteByte('<')
+			bb.WriteString(link[i])
+			bb.WriteByte('>')
 		} else {
-			_, _ = bb.WriteString(`; rel="` + link[i] + `",`) //nolint:errcheck // This will never fail
+			bb.WriteString(`; rel="` + link[i] + `",`)
 		}
 	}
 	c.setCanonical(HeaderLink, strings.TrimRight(c.app.getString(bb.Bytes()), ","))
@@ -1609,26 +1609,26 @@ func (c *DefaultCtx) String() string {
 	buf := bytebufferpool.Get()
 
 	// Start with the ID, converting it to a hex string without fmt.Sprintf
-	buf.WriteByte('#') //nolint:errcheck // It is fine to ignore the error
+	buf.WriteByte('#')
 	// Convert ID to hexadecimal
 	id := strconv.FormatUint(c.fasthttp.ID(), 16)
 	// Pad with leading zeros to ensure 16 characters
 	for i := 0; i < (16 - len(id)); i++ {
-		buf.WriteByte('0') //nolint:errcheck // It is fine to ignore the error
+		buf.WriteByte('0')
 	}
-	buf.WriteString(id)    //nolint:errcheck // It is fine to ignore the error
-	buf.WriteString(" - ") //nolint:errcheck // It is fine to ignore the error
+	buf.WriteString(id)
+	buf.WriteString(" - ")
 
 	// Add local and remote addresses directly
-	buf.WriteString(c.fasthttp.LocalAddr().String())  //nolint:errcheck // It is fine to ignore the error
-	buf.WriteString(" <-> ")                          //nolint:errcheck // It is fine to ignore the error
-	buf.WriteString(c.fasthttp.RemoteAddr().String()) //nolint:errcheck // It is fine to ignore the error
-	buf.WriteString(" - ")                            //nolint:errcheck // It is fine to ignore the error
+	buf.WriteString(c.fasthttp.LocalAddr().String())
+	buf.WriteString(" <-> ")
+	buf.WriteString(c.fasthttp.RemoteAddr().String())
+	buf.WriteString(" - ")
 
 	// Add method and URI
-	buf.Write(c.fasthttp.Request.Header.Method()) //nolint:errcheck // It is fine to ignore the error
-	buf.WriteByte(' ')                            //nolint:errcheck // It is fine to ignore the error
-	buf.Write(c.fasthttp.URI().FullURI())         //nolint:errcheck // It is fine to ignore the error
+	buf.Write(c.fasthttp.Request.Header.Method())
+	buf.WriteByte(' ')
+	buf.Write(c.fasthttp.URI().FullURI())
 
 	// Allocate string
 	str := buf.String()

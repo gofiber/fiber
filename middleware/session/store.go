@@ -75,7 +75,7 @@ func (s *Store) Get(c fiber.Ctx) (*Session, error) {
 		if raw != nil && err == nil {
 			mux.Lock()
 			defer mux.Unlock()
-			_, _ = sess.byteBuffer.Write(raw) //nolint:errcheck // This will never fail
+			sess.byteBuffer.Write(raw)
 			encCache := gob.NewDecoder(sess.byteBuffer)
 			err := encCache.Decode(&sess.data.Data)
 			if err != nil {
