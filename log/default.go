@@ -83,11 +83,11 @@ func (l *defaultLogger) privateLogw(lv Level, format string, keysAndValues []any
 
 		for i := 0; i < len(keysAndValues); i += 2 {
 			if i > 0 || format != "" {
-				_ = buf.WriteByte(' ')
+				_ = buf.WriteByte(' ') //nolint:errcheck // It is fine to ignore the error
 			}
-			_, _ = buf.WriteString(keysAndValues[i].(string))
-			_ = buf.WriteByte('=')
-			_, _ = buf.WriteString(utils.ToString(keysAndValues[i+1]))
+			_, _ = buf.WriteString(keysAndValues[i].(string))          //nolint:errcheck // It is fine to ignore the error
+			_ = buf.WriteByte('=')                                     //nolint:errcheck // It is fine to ignore the error
+			_, _ = buf.WriteString(utils.ToString(keysAndValues[i+1])) //nolint:errcheck // It is fine to ignore the error
 		}
 	}
 
