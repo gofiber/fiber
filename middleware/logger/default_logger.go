@@ -74,8 +74,7 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 			buf.WriteString(" | ") //nolint:errcheck // It is fine to ignore the error
 
 			// Duration with 13 fixed width, right aligned
-			duration := time.Duration(data.Stop.Sub(data.Start)).String()
-			fixedWidth(duration, 13, true)
+			fixedWidth(time.Duration(data.Stop.Sub(data.Start)).String(), 13, true)
 			buf.WriteString(" | ") //nolint:errcheck // It is fine to ignore the error
 
 			// Client IP with 15 fixed width, right aligned
@@ -87,7 +86,7 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 			buf.WriteString(" | ") //nolint:errcheck // It is fine to ignore the error
 
 			// Path with dynamic padding for error message, left aligned
-			errPadding, _ := strconv.Atoi(data.ErrPaddingStr) // Assuming this is a valid int
+			errPadding, _ := strconv.Atoi(data.ErrPaddingStr) //nolint:errcheck // It is fine to ignore the error
 			fixedWidth(c.Path(), errPadding, false)
 
 			// Error message
