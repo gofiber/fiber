@@ -3763,7 +3763,7 @@ func Test_Ctx_RenderWithBindVars(t *testing.T) {
 	err = c.Render("./.github/testdata/index.tmpl", Map{})
 	require.NoError(t, err)
 	buf := bytebufferpool.Get()
-	_, _ = buf.WriteString("overwrite") //nolint:errcheck // This will never fail
+	buf.WriteString("overwrite")
 	defer bytebufferpool.Put(buf)
 
 	require.NoError(t, err)
@@ -3786,7 +3786,7 @@ func Test_Ctx_RenderWithOverwrittenBind(t *testing.T) {
 	require.NoError(t, err)
 
 	buf := bytebufferpool.Get()
-	_, _ = buf.WriteString("overwrite") //nolint:errcheck // This will never fail
+	buf.WriteString("overwrite")
 	defer bytebufferpool.Put(buf)
 
 	require.Equal(t, "<h1>Hello from Fiber!</h1>", string(c.Response().Body()))

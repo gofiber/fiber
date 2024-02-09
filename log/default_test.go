@@ -81,14 +81,14 @@ func Test_CtxLogger(t *testing.T) {
 	WithContext(ctx).Debugf("received %s order", work)
 	WithContext(ctx).Infof("starting %s", work)
 	WithContext(ctx).Warnf("%s may fail", work)
-	WithContext(ctx).Errorf("%s failed", work)
+	WithContext(ctx).Errorf("%s failed %d", work, 50)
 	WithContext(ctx).Panicf("%s panic", work)
 
 	require.Equal(t, "[Trace] trace work\n"+
 		"[Debug] received work order\n"+
 		"[Info] starting work\n"+
 		"[Warn] work may fail\n"+
-		"[Error] work failed\n"+
+		"[Error] work failed 50\n"+
 		"[Panic] work panic\n", string(w.b))
 }
 
