@@ -1609,26 +1609,26 @@ func (c *DefaultCtx) String() string {
 	buf := bytebufferpool.Get()
 
 	// Start with the ID, converting it to a hex string without fmt.Sprintf
-	buf.WriteByte('#') //nolint:errcheck
+	buf.WriteByte('#') //nolint:errcheck // It is fine to ignore the error
 	// Convert ID to hexadecimal
 	id := strconv.FormatUint(uint64(c.fasthttp.ID()), 16)
 	// Pad with leading zeros to ensure 16 characters
 	for i := 0; i < (16 - len(id)); i++ {
-		buf.WriteByte('0') //nolint:errcheck
+		buf.WriteByte('0') //nolint:errcheck // It is fine to ignore the error
 	}
-	buf.WriteString(id)    //nolint:errcheck
-	buf.WriteString(" - ") //nolint:errcheck
+	buf.WriteString(id)    //nolint:errcheck // It is fine to ignore the error
+	buf.WriteString(" - ") //nolint:errcheck // It is fine to ignore the error
 
 	// Add local and remote addresses directly
-	buf.WriteString(c.fasthttp.LocalAddr().String())  //nolint:errcheck
-	buf.WriteString(" <-> ")                          //nolint:errcheck
-	buf.WriteString(c.fasthttp.RemoteAddr().String()) //nolint:errcheck
-	buf.WriteString(" - ")                            //nolint:errcheck
+	buf.WriteString(c.fasthttp.LocalAddr().String())  //nolint:errcheck // It is fine to ignore the error
+	buf.WriteString(" <-> ")                          //nolint:errcheck // It is fine to ignore the error
+	buf.WriteString(c.fasthttp.RemoteAddr().String()) //nolint:errcheck // It is fine to ignore the error
+	buf.WriteString(" - ")                            //nolint:errcheck // It is fine to ignore the error
 
 	// Add method and URI
-	buf.Write(c.fasthttp.Request.Header.Method()) //nolint:errcheck
-	buf.WriteByte(' ')                            //nolint:errcheck
-	buf.Write(c.fasthttp.URI().FullURI())         //nolint:errcheck
+	buf.Write(c.fasthttp.Request.Header.Method()) //nolint:errcheck // It is fine to ignore the error
+	buf.WriteByte(' ')                            //nolint:errcheck // It is fine to ignore the error
+	buf.Write(c.fasthttp.URI().FullURI())         //nolint:errcheck // It is fine to ignore the error
 
 	// Allocate string
 	str := buf.String()
