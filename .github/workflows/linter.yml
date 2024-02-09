@@ -27,3 +27,4 @@ jobs:
         with:
           # NOTE: Keep this in sync with the version from .golangci.yml
           version: v1.55.2
+          args: --verbose
