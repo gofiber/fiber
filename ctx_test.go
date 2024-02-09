@@ -4631,6 +4631,20 @@ func Test_Ctx_String(t *testing.T) {
 	require.Equal(t, "#0000000000000000 - 0.0.0.0:0 <-> 0.0.0.0:0 - GET http:///", c.String())
 }
 
+// go test -v  -run=^$ -bench=Benchmark_Ctx_String -benchmem -count=4
+func Benchmark_Ctx_String(b *testing.B) {
+	var str string
+	app := New()
+	ctx := app.NewCtx(&fasthttp.RequestCtx{})
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		str = ctx.String()
+	}
+	require.Equal(b, "#0000000000000000 - 0.0.0.0:0 <-> 0.0.0.0:0 - GET http:///", str)
+}
+
 func TestCtx_ParamsInt(t *testing.T) {
 	// Create a test context and set some strings (or params)
 	// create a fake app to be used within this test
