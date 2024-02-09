@@ -13,7 +13,8 @@ func createHelperServer(t testing.TB, config ...fiber.Config) (*fiber.App, func(
 	t.Helper()
 
 	ln := fasthttputil.NewInmemoryListener()
-
+        defer ln.Close()
+	
 	var cfg fiber.Config
 	if len(config) > 0 {
 		cfg = config[0]
