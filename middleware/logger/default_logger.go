@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 	"strconv"
-	"sync"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
@@ -14,8 +13,6 @@ import (
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 )
-
-var mu sync.Mutex
 
 // default logger for fiber
 func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
@@ -128,9 +125,7 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 		_, _ = buf.WriteString(err.Error()) //nolint:errcheck // This will never fail
 	}
 
-	mu.Lock()
 	writeLog(cfg.Output, buf.Bytes())
-	mu.Unlock()
 
 	if cfg.Done != nil {
 		cfg.Done(c, buf.Bytes())
