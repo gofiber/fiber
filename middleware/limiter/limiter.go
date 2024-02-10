@@ -11,7 +11,7 @@ const (
 	xRateLimitReset     = "X-RateLimit-Reset"
 )
 
-type LimiterHandler interface {
+type Handler interface {
 	New(config Config) fiber.Handler
 }
 

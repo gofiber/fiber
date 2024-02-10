@@ -17,7 +17,8 @@ var (
 	dummyValue       = []byte{'+'}
 )
 
-type CSRFHandler struct {
+// Handler handles
+type Handler struct {
 	config         *Config
 	sessionManager *sessionManager
 	storageManager *storageManager
@@ -58,7 +59,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Store the CSRF handler in the context
-		c.Locals(handlerKey, &CSRFHandler{
+		c.Locals(handlerKey, &Handler{
 			config:         &cfg,
 			sessionManager: sessionManager,
 			storageManager: storageManager,
@@ -98,10 +99,10 @@ func New(config ...Config) fiber.Handler {
 				return cfg.ErrorHandler(c, ErrTokenNotFound)
 			}
 
-			// If not using CsrfFromCookie extractor, check that the token matches the cookie
+			// If not using FromCookie extractor, check that the token matches the cookie
 			// This is to prevent CSRF attacks by using a Double Submit Cookie method
 			// Useful when we do not have access to the users Session
-			if !isCsrfFromCookie(cfg.Extractor) && !compareStrings(extractedToken, c.Cookies(cfg.CookieName)) {
+			if !isFromCookie(cfg.Extractor) && !compareStrings(extractedToken, c.Cookies(cfg.CookieName)) {
 				return cfg.ErrorHandler(c, ErrTokenInvalid)
 			}
 
@@ -154,10 +155,10 @@ func TokenFromContext(c fiber.Ctx) string {
 	return token
 }
 
-// HandlerFromContext returns the CSRFHandler found in the context
+// HandlerFromContext returns the Handler found in the context
 // returns nil if the handler does not exist
-func HandlerFromContext(c fiber.Ctx) *CSRFHandler {
-	handler, ok := c.Locals(handlerKey).(*CSRFHandler)
+func HandlerFromContext(c fiber.Ctx) *Handler {
+	handler, ok := c.Locals(handlerKey).(*Handler)
 	if !ok {
 		return nil
 	}
@@ -219,11 +220,11 @@ func setCSRFCookie(c fiber.Ctx, cfg Config, token string, expiry time.Duration) 
 
 // DeleteToken removes the token found in the context from the storage
 // and expires the CSRF cookie
-func (handler *CSRFHandler) DeleteToken(c fiber.Ctx) error {
+func (handler *Handler) DeleteToken(c fiber.Ctx) error {
 	// Get the config from the context
 	config := handler.config
 	if config == nil {
-		panic("CSRFHandler config not found in context")
+		panic("CSRF Handler config not found in context")
 	}
 	// Extract token from the client request cookie
 	cookieToken := c.Cookies(config.CookieName)
@@ -237,9 +238,9 @@ func (handler *CSRFHandler) DeleteToken(c fiber.Ctx) error {
 	return nil
 }
 
-// isCsrfFromCookie checks if the extractor is set to ExtractFromCookie
-func isCsrfFromCookie(extractor any) bool {
-	return reflect.ValueOf(extractor).Pointer() == reflect.ValueOf(CsrfFromCookie).Pointer()
+// isFromCookie checks if the extractor is set to ExtractFromCookie
+func isFromCookie(extractor any) bool {
+	return reflect.ValueOf(extractor).Pointer() == reflect.ValueOf(FromCookie).Pointer()
 }
 
 // refererMatchesHost checks that the referer header matches the host header

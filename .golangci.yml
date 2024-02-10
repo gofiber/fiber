@@ -109,8 +109,6 @@ linters-settings:
         disabled: true
       - name: exported
         disabled: true
-        arguments:
-          - disableStutteringCheck # TODO https://github.com/gofiber/fiber/issues/2816
       - name: file-header
         disabled: true
       - name: function-result-limit
@@ -193,7 +191,7 @@ linters:
     # - gosmopolitan # TODO https://github.com/gofiber/fiber/issues/2816
     - govet
     - grouper
-    # - inamedparam # TODO https://github.com/gofiber/fiber/issues/2816
+    - inamedparam
     - loggercheck
     # - mirror # TODO https://github.com/gofiber/fiber/issues/2816
     - misspell
