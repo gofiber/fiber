@@ -406,7 +406,7 @@ func (app *App) startupMessage(addr string, isTLS bool, pids string, cfg ListenC
 
 	// add new Line as spacer
 	_, _ = fmt.Fprintf(out, "\n%s", colors.Reset)
-	
+
 }
 
 // printRoutesMessage print all routes with method, path, name and handlers
