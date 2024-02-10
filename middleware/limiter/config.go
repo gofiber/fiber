@@ -55,7 +55,7 @@ type Config struct {
 	// LimiterMiddleware is the struct that implements a limiter middleware.
 	//
 	// Default: a new Fixed Window Rate Limiter
-	LimiterMiddleware LimiterHandler
+	LimiterMiddleware Handler
 }
 
 // ConfigDefault is the default config

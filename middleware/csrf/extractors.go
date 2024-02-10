@@ -14,8 +14,8 @@ var (
 	ErrMissingCookie = errors.New("missing csrf token in cookie")
 )
 
-// csrfFromParam returns a function that extracts token from the url param string.
-func CsrfFromParam(param string) func(c fiber.Ctx) (string, error) {
+// FromParam returns a function that extracts token from the url param string.
+func FromParam(param string) func(c fiber.Ctx) (string, error) {
 	return func(c fiber.Ctx) (string, error) {
 		token := c.Params(param)
 		if token == "" {
@@ -25,8 +25,8 @@ func CsrfFromParam(param string) func(c fiber.Ctx) (string, error) {
 	}
 }
 
-// csrfFromForm returns a function that extracts a token from a multipart-form.
-func CsrfFromForm(param string) func(c fiber.Ctx) (string, error) {
+// FromForm returns a function that extracts a token from a multipart-form.
+func FromForm(param string) func(c fiber.Ctx) (string, error) {
 	return func(c fiber.Ctx) (string, error) {
 		token := c.FormValue(param)
 		if token == "" {
@@ -36,8 +36,8 @@ func CsrfFromForm(param string) func(c fiber.Ctx) (string, error) {
 	}
 }
 
-// csrfFromCookie returns a function that extracts token from the cookie header.
-func CsrfFromCookie(param string) func(c fiber.Ctx) (string, error) {
+// FromCookie returns a function that extracts token from the cookie header.
+func FromCookie(param string) func(c fiber.Ctx) (string, error) {
 	return func(c fiber.Ctx) (string, error) {
 		token := c.Cookies(param)
 		if token == "" {
@@ -47,8 +47,8 @@ func CsrfFromCookie(param string) func(c fiber.Ctx) (string, error) {
 	}
 }
 
-// csrfFromHeader returns a function that extracts token from the request header.
-func CsrfFromHeader(param string) func(c fiber.Ctx) (string, error) {
+// FromHeader returns a function that extracts token from the request header.
+func FromHeader(param string) func(c fiber.Ctx) (string, error) {
 	return func(c fiber.Ctx) (string, error) {
 		token := c.Get(param)
 		if token == "" {
@@ -58,8 +58,8 @@ func CsrfFromHeader(param string) func(c fiber.Ctx) (string, error) {
 	}
 }
 
-// csrfFromQuery returns a function that extracts token from the query string.
-func CsrfFromQuery(param string) func(c fiber.Ctx) (string, error) {
+// FromQuery returns a function that extracts token from the query string.
+func FromQuery(param string) func(c fiber.Ctx) (string, error) {
 	return func(c fiber.Ctx) (string, error) {
 		token := fiber.Query[string](c, param)
 		if token == "" {
