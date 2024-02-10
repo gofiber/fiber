@@ -159,6 +159,8 @@ issues:
    exclude-use-default: false
 
 linters:
+  disable:
+    - spancheck
   enable:
     - asasalint
     - asciicheck
