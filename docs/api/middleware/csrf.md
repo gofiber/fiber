@@ -147,8 +147,6 @@ KeyLookup will be ignored if Extractor is explicitly set.
 Getting the CSRF token in a handler:
 
 ```go
-
-```go
 func handler(c fiber.Ctx) error {
     handler := csrf.HandlerFromContext(c)
     token := csrf.TokenFromContext(c)
