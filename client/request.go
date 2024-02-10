@@ -532,6 +532,11 @@ func (r *Request) Patch(url string) (*Response, error) {
 	return r.SetURL(url).SetMethod(fiber.MethodPatch).Send()
 }
 
+// Custom Send custom request.
+func (r *Request) Custom(url string, method string) (*Response, error) {
+	return r.SetURL(url).SetMethod(method).Send()
+}
+
 // Send a request.
 func (r *Request) Send() (*Response, error) {
 	r.checkClient()

@@ -13,8 +13,7 @@ func createHelperServer(t testing.TB, config ...fiber.Config) (*fiber.App, func(
 	t.Helper()
 
 	ln := fasthttputil.NewInmemoryListener()
-        defer ln.Close()
-	
+
 	var cfg fiber.Config
 	if len(config) > 0 {
 		cfg = config[0]
@@ -27,6 +26,7 @@ func createHelperServer(t testing.TB, config ...fiber.Config) (*fiber.App, func(
 		}, func() {
 			require.NoError(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}))
 		}
+	// TODO: add closer fn
 }
 
 func testRequest(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Request), excepted string, count ...int) {

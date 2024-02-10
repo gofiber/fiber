@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
@@ -157,6 +158,33 @@ func Test_Client_Unsupported_Protocol(t *testing.T) {
 		Get("ftp://example.com")
 
 	require.ErrorIs(t, err, ErrURLFormat)
+}
+
+func Test_Client_ConcurrencyRequests(t *testing.T) {
+	t.Parallel()
+
+	app, dial, start := createHelperServer(t)
+	app.All("/", func(c fiber.Ctx) error {
+		return c.SendString(c.Hostname() + " " + c.Method())
+	})
+	go start()
+
+	wg := sync.WaitGroup{}
+	for i := 0; i < 5; i++ {
+		for _, method := range []string{"GET", "POST", "PUT", "DELETE", "PATCH"} {
+			wg.Add(1)
+			go func(m string) {
+				defer wg.Done()
+				resp, err := C().Custom("http://example.com", m, Config{
+					Dial: dial,
+				})
+				require.NoError(t, err)
+				require.Equal(t, "example.com "+m, utils.UnsafeString(resp.RawResponse.Body()))
+			}(method)
+		}
+	}
+
+	wg.Wait()
 }
 
 func Test_Get(t *testing.T) {

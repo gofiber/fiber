@@ -553,6 +553,14 @@ func (c *Client) Patch(url string, cfg ...Config) (*Response, error) {
 	return req.Patch(url)
 }
 
+// Custom provide an API like axios which send custom request.
+func (c *Client) Custom(url string, method string, cfg ...Config) (*Response, error) {
+	req := AcquireRequest().SetClient(c)
+	setConfigToRequest(req, cfg...)
+
+	return req.Custom(url, method)
+}
+
 // Reset clear Client object
 func (c *Client) Reset() {
 	c.baseURL = ""
