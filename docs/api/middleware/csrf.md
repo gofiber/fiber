@@ -31,7 +31,7 @@ By default, the middleware generates and stores tokens using the `fiber.Storage`
 When the authorization status changes, the previously issued token MUST be deleted, and a new one generated. See [Token Lifecycle](#token-lifecycle) [Deleting Tokens](#deleting-tokens) for more information.
 
 :::caution
-When using this pattern, it's important to set the `CookieSameSite` option to `Lax` or `Strict` and ensure that the Extractor is not `CsrfFromCookie`, and KeyLookup is not `cookie:<name>`.
+When using this pattern, it's important to set the `CookieSameSite` option to `Lax` or `Strict` and ensure that the Extractor is not `FromCookie`, and KeyLookup is not `cookie:<name>`.
 :::
 
 :::note
@@ -206,7 +206,7 @@ var ConfigDefault = Config{
 	Expiration:        1 * time.Hour,
 	KeyGenerator:      utils.UUIDv4,
 	ErrorHandler:      defaultErrorHandler,
-	Extractor:         CsrfFromHeader(HeaderName),
+	Extractor:         FromHeader(HeaderName),
 	SessionKey:        "csrfToken",
 }
 ```
@@ -226,7 +226,7 @@ var ConfigDefault = Config{
 	Expiration:        1 * time.Hour,
 	KeyGenerator:      utils.UUIDv4,
 	ErrorHandler:      defaultErrorHandler,
-	Extractor:         CsrfFromHeader(HeaderName),
+	Extractor:         FromHeader(HeaderName),
 	Session:           session.Store,
 	SessionKey:        "csrfToken",
 }

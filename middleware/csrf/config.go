@@ -117,7 +117,7 @@ var ConfigDefault = Config{
 	Expiration:     1 * time.Hour,
 	KeyGenerator:   utils.UUIDv4,
 	ErrorHandler:   defaultErrorHandler,
-	Extractor:      CsrfFromHeader(HeaderName),
+	Extractor:      FromHeader(HeaderName),
 	SessionKey:     "csrfToken",
 }
 
@@ -169,15 +169,15 @@ func configDefault(config ...Config) Config {
 
 	if cfg.Extractor == nil {
 		// By default we extract from a header
-		cfg.Extractor = CsrfFromHeader(textproto.CanonicalMIMEHeaderKey(selectors[1]))
+		cfg.Extractor = FromHeader(textproto.CanonicalMIMEHeaderKey(selectors[1]))
 
 		switch selectors[0] {
 		case "form":
-			cfg.Extractor = CsrfFromForm(selectors[1])
+			cfg.Extractor = FromForm(selectors[1])
 		case "query":
-			cfg.Extractor = CsrfFromQuery(selectors[1])
+			cfg.Extractor = FromQuery(selectors[1])
 		case "param":
-			cfg.Extractor = CsrfFromParam(selectors[1])
+			cfg.Extractor = FromParam(selectors[1])
 		case "cookie":
 			if cfg.Session == nil {
 				log.Warn("[CSRF] Cookie extractor is not recommended without a session store")
@@ -185,7 +185,7 @@ func configDefault(config ...Config) Config {
 			if cfg.CookieSameSite == "None" || cfg.CookieSameSite != "Lax" && cfg.CookieSameSite != "Strict" {
 				log.Warn("[CSRF] Cookie extractor is only recommended for use with SameSite=Lax or SameSite=Strict")
 			}
-			cfg.Extractor = CsrfFromCookie(selectors[1])
+			cfg.Extractor = FromCookie(selectors[1])
 			cfg.CookieName = selectors[1] // Cookie name is the same as the key
 		}
 	}
