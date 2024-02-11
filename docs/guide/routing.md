@@ -145,7 +145,7 @@ We have adapted the routing strongly to the express routing, but currently witho
 Route constraints execute when a match has occurred to the incoming URL and the URL path is tokenized into route values by parameters. The feature was intorduced in `v2.37.0` and inspired by [.NET Core](https://docs.microsoft.com/en-us/aspnet/core/fundamentals/routing?view=aspnetcore-6.0#route-constraints).
 
 :::caution
-Constraints aren't validation for parameters. If constraint aren't valid for parameter value, Fiber returns **404 handler**.
+Constraints aren't validation for parameters. If constraints aren't valid for a parameter value, Fiber returns **404 handler**.
 :::
 
 | Constraint        | Example                              | Example matches                                                                             |

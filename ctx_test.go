@@ -3883,7 +3883,7 @@ func Test_Ctx_RenderWithBindVars(t *testing.T) {
 	err = c.Render("./.github/testdata/index.tmpl", Map{})
 	require.NoError(t, err)
 	buf := bytebufferpool.Get()
-	_, _ = buf.WriteString("overwrite") //nolint:errcheck // This will never fail
+	buf.WriteString("overwrite")
 	defer bytebufferpool.Put(buf)
 
 	require.NoError(t, err)
@@ -3906,7 +3906,7 @@ func Test_Ctx_RenderWithOverwrittenBind(t *testing.T) {
 	require.NoError(t, err)
 
 	buf := bytebufferpool.Get()
-	_, _ = buf.WriteString("overwrite") //nolint:errcheck // This will never fail
+	buf.WriteString("overwrite")
 	defer bytebufferpool.Put(buf)
 
 	require.Equal(t, "<h1>Hello from Fiber!</h1>", string(c.Response().Body()))
@@ -4749,6 +4749,20 @@ func Test_Ctx_String(t *testing.T) {
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
 	require.Equal(t, "#0000000000000000 - 0.0.0.0:0 <-> 0.0.0.0:0 - GET http:///", c.String())
+}
+
+// go test -v  -run=^$ -bench=Benchmark_Ctx_String -benchmem -count=4
+func Benchmark_Ctx_String(b *testing.B) {
+	var str string
+	app := New()
+	ctx := app.NewCtx(&fasthttp.RequestCtx{})
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		str = ctx.String()
+	}
+	require.Equal(b, "#0000000000000000 - 0.0.0.0:0 <-> 0.0.0.0:0 - GET http:///", str)
 }
 
 func TestCtx_ParamsInt(t *testing.T) {

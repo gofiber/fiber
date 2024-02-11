@@ -9,13 +9,13 @@ import (
 type CustomBinder interface {
 	Name() string
 	MIMETypes() []string
-	Parse(Ctx, any) error
+	Parse(c Ctx, out any) error
 }
 
 // An interface to register custom struct validator for binding.
 type StructValidator interface {
 	Engine() any
-	ValidateStruct(any) error
+	ValidateStruct(out any) error
 }
 
 // Bind struct

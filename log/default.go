@@ -6,8 +6,8 @@ import (
 	"io"
 	"log"
 	"os"
-	"sync"
 
+	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
 )
 
@@ -27,8 +27,8 @@ func (l *defaultLogger) privateLog(lv Level, fmtArgs []any) {
 	}
 	level := lv.toString()
 	buf := bytebufferpool.Get()
-	_, _ = buf.WriteString(level)                  //nolint:errcheck // It is fine to ignore the error
-	_, _ = buf.WriteString(fmt.Sprint(fmtArgs...)) //nolint:errcheck // It is fine to ignore the error
+	buf.WriteString(level)
+	buf.WriteString(fmt.Sprint(fmtArgs...))
 
 	_ = l.stdlog.Output(l.depth, buf.String()) //nolint:errcheck // It is fine to ignore the error
 	buf.Reset()
@@ -46,7 +46,7 @@ func (l *defaultLogger) privateLogf(lv Level, format string, fmtArgs []any) {
 	}
 	level := lv.toString()
 	buf := bytebufferpool.Get()
-	_, _ = buf.WriteString(level) //nolint:errcheck // It is fine to ignore the error
+	buf.WriteString(level)
 
 	if len(fmtArgs) > 0 {
 		_, _ = fmt.Fprintf(buf, format, fmtArgs...)
@@ -69,14 +69,12 @@ func (l *defaultLogger) privateLogw(lv Level, format string, keysAndValues []any
 	}
 	level := lv.toString()
 	buf := bytebufferpool.Get()
-	_, _ = buf.WriteString(level) //nolint:errcheck // It is fine to ignore the error
+	buf.WriteString(level)
 
 	// Write format privateLog buffer
 	if format != "" {
-		_, _ = buf.WriteString(format) //nolint:errcheck // It is fine to ignore the error
+		buf.WriteString(format)
 	}
-	var once sync.Once
-	isFirst := true
 	// Write keys and values privateLog buffer
 	if len(keysAndValues) > 0 {
 		if (len(keysAndValues) & 1) == 1 {
@@ -84,14 +82,12 @@ func (l *defaultLogger) privateLogw(lv Level, format string, keysAndValues []any
 		}
 
 		for i := 0; i < len(keysAndValues); i += 2 {
-			if format == "" && isFirst {
-				once.Do(func() {
-					_, _ = fmt.Fprintf(buf, "%s=%v", keysAndValues[i], keysAndValues[i+1])
-					isFirst = false
-				})
-				continue
+			if i > 0 || format != "" {
+				buf.WriteByte(' ')
 			}
-			_, _ = fmt.Fprintf(buf, " %s=%v", keysAndValues[i], keysAndValues[i+1])
+			buf.WriteString(keysAndValues[i].(string)) //nolint:forcetypeassert // Keys must be strings
+			buf.WriteByte('=')
+			buf.WriteString(utils.ToString(keysAndValues[i+1]))
 		}
 	}
 
