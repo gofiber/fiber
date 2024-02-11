@@ -128,7 +128,7 @@ Esses testes são realizados pelo [TechEmpower](https://www.techempower.com/benc
 
 ## ⚙️ Instalação
 
-Certifique-se de ter o Go instalado ([download](https://go.dev/dl/)). Versão `1.17` ou superior é obrigatória.
+Certifique-se de ter o Go instalado ([download](https://go.dev/dl/)). Versão `1.20` ou superior é obrigatória.
 
 Inicie seu projeto criando um diretório e então execute `go mod init github.com/your/repo` ([saiba mais](https://go.dev/blog/using-go-modules)) dentro dele. Então, instale o Fiber com o comando [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
 
@@ -160,7 +160,7 @@ O Fiber é **inspirado** no Express, o framework web mais popular da Internet. C
 
 ## ⚠️ Limitações
 
--   Devido ao uso de "unsafe" pelo Fiber, a biblioteca pode nem sempre ser compatível com a última versão do Go. Fiber 2.40.0 foi testado com as versões Go de 1.17 a 1.21.
+-   Devido ao uso de "unsafe" pelo Fiber, a biblioteca pode nem sempre ser compatível com a última versão do Go. Fiber 3.0.0 foi testado com as versões Go de 1.20 a 1.22.
 -   Fiber não é compatível com as interfaces net/http. Isso significa que você não poderá usar projetos como gqlgen, go-swagger ou quaisquer outros que fazem parte do ecossistema net/http.
 
 ## 👀 Exemplos
