@@ -2414,6 +2414,26 @@ func Test_Params(t *testing.T) {
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
+    // go test -run Test_Params_TypeAssertFail
+func Test_Params_TypeAssertFail(t *testing.T) {
+	type customCtx struct {
+		Ctx
+	}
+
+	app := New()
+	c := &customCtx{
+		Ctx: app.NewCtx(&fasthttp.RequestCtx{}),
+	}
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("The code did not panic")
+		}
+	}()
+
+	Params[int](c, "key")
+}
+
 // go test -v -run=^$ -bench=Benchmark_Params -benchmem -count=4
 func Benchmark_Params(b *testing.B) {
 	app := New()
