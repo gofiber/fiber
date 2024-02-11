@@ -146,7 +146,7 @@ func Test_Redirect_Back(t *testing.T) {
 
 	err = c.Redirect().Back()
 	require.Equal(t, 500, c.Response().StatusCode())
-	require.ErrorAs(t, ErrRedirectBackNoFallback, &err)
+	require.ErrorAs(t, err, &ErrRedirectBackNoFallback)
 }
 
 // go test -run Test_Redirect_Back_WithReferer
