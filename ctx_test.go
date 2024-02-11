@@ -2294,6 +2294,126 @@ func Benchmark_Ctx_Params(b *testing.B) {
 	require.Equal(b, "awesome", res)
 }
 
+// go test -run Test_Params
+func Test_Params(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	app.Get("/test/:string/:number/:bool/:float", func(c Ctx) error {
+		// int
+		require.Equal(t, 8, Params[int](c, "number"))
+		require.Equal(t, 8, Params[int](c, "number", 1))
+		require.Equal(t, 8, Params[int](c, "number", 1, 2))
+		require.Equal(t, 0, Params[int](c, "string"))
+		require.Equal(t, 1, Params[int](c, "string", 1))
+		require.Equal(t, 1, Params[int](c, "string", 1, 2))
+
+		// int8
+		require.Equal(t, int8(8), Params[int8](c, "number"))
+		require.Equal(t, int8(8), Params[int8](c, "number", 1))
+		require.Equal(t, int8(8), Params[int8](c, "number", 1, 2))
+		require.Equal(t, int8(0), Params[int8](c, "string"))
+		require.Equal(t, int8(1), Params[int8](c, "string", 1))
+		require.Equal(t, int8(1), Params[int8](c, "string", 1, 2))
+
+		// int16
+		require.Equal(t, int16(8), Params[int16](c, "number"))
+		require.Equal(t, int16(8), Params[int16](c, "number", 1))
+		require.Equal(t, int16(8), Params[int16](c, "number", 1, 2))
+		require.Equal(t, int16(0), Params[int16](c, "string"))
+		require.Equal(t, int16(1), Params[int16](c, "string", 1))
+		require.Equal(t, int16(1), Params[int16](c, "string", 1, 2))
+
+		// int32
+		require.Equal(t, int32(8), Params[int32](c, "number"))
+		require.Equal(t, int32(8), Params[int32](c, "number", 1))
+		require.Equal(t, int32(8), Params[int32](c, "number", 1, 2))
+		require.Equal(t, int32(0), Params[int32](c, "string"))
+		require.Equal(t, int32(1), Params[int32](c, "string", 1))
+		require.Equal(t, int32(1), Params[int32](c, "string", 1, 2))
+
+		// int64
+		require.Equal(t, int64(8), Params[int64](c, "number"))
+		require.Equal(t, int64(8), Params[int64](c, "number", 1))
+		require.Equal(t, int64(8), Params[int64](c, "number", 1, 2))
+		require.Equal(t, int64(0), Params[int64](c, "string"))
+		require.Equal(t, int64(1), Params[int64](c, "string", 1))
+		require.Equal(t, int64(1), Params[int64](c, "string", 1, 2))
+
+		// uint
+		require.Equal(t, uint(8), Params[uint](c, "number"))
+		require.Equal(t, uint(8), Params[uint](c, "number", 1))
+		require.Equal(t, uint(8), Params[uint](c, "number", 1, 2))
+		require.Equal(t, uint(0), Params[uint](c, "string"))
+		require.Equal(t, uint(1), Params[uint](c, "string", 1))
+		require.Equal(t, uint(1), Params[uint](c, "string", 1, 2))
+
+		// uint8
+		require.Equal(t, uint8(8), Params[uint8](c, "number"))
+		require.Equal(t, uint8(8), Params[uint8](c, "number", 1))
+		require.Equal(t, uint8(8), Params[uint8](c, "number", 1, 2))
+		require.Equal(t, uint8(0), Params[uint8](c, "string"))
+		require.Equal(t, uint8(1), Params[uint8](c, "string", 1))
+		require.Equal(t, uint8(1), Params[uint8](c, "string", 1, 2))
+
+		// uint16
+		require.Equal(t, uint16(8), Params[uint16](c, "number"))
+		require.Equal(t, uint16(8), Params[uint16](c, "number", 1))
+		require.Equal(t, uint16(8), Params[uint16](c, "number", 1, 2))
+		require.Equal(t, uint16(0), Params[uint16](c, "string"))
+		require.Equal(t, uint16(1), Params[uint16](c, "string", 1))
+		require.Equal(t, uint16(1), Params[uint16](c, "string", 1, 2))
+
+		// uint32
+		require.Equal(t, uint32(8), Params[uint32](c, "number"))
+		require.Equal(t, uint32(8), Params[uint32](c, "number", 1))
+		require.Equal(t, uint32(8), Params[uint32](c, "number", 1, 2))
+		require.Equal(t, uint32(0), Params[uint32](c, "string"))
+		require.Equal(t, uint32(1), Params[uint32](c, "string", 1))
+		require.Equal(t, uint32(1), Params[uint32](c, "string", 1, 2))
+
+		// uint64
+		require.Equal(t, uint64(8), Params[uint64](c, "number"))
+		require.Equal(t, uint64(8), Params[uint64](c, "number", 1))
+		require.Equal(t, uint64(8), Params[uint64](c, "number", 1, 2))
+		require.Equal(t, uint64(0), Params[uint64](c, "string"))
+		require.Equal(t, uint64(1), Params[uint64](c, "string", 1))
+		require.Equal(t, uint64(1), Params[uint64](c, "string", 1, 2))
+
+		// string
+		require.Equal(t, "john", Params[string](c, "string"))
+		require.Equal(t, "john", Params[string](c, "string", "doe"))
+		require.Equal(t, "8", Params[string](c, "number"))
+		require.Equal(t, "", Params[string](c, "fake"))
+		require.Equal(t, "doe", Params[string](c, "fake", "doe"))
+		require.Equal(t, "doe", Params[string](c, "fake", "doe", "mary"))
+
+		// bool
+		require.Equal(t, true, Params[bool](c, "bool"))
+		require.Equal(t, true, Params[bool](c, "bool", false))
+		require.Equal(t, false, Params[bool](c, "string"))
+		require.Equal(t, true, Params[bool](c, "string", true))
+
+		// float32
+		require.Equal(t, float32(3.1415), Params[float32](c, "float"))
+		require.Equal(t, float32(3.1415), Params[float32](c, "float", float32(1.234)))
+		require.Equal(t, float32(0), Params[float32](c, "string"))
+		require.Equal(t, float32(1.234), Params[float32](c, "string", float32(1.234)))
+
+		// float64
+		require.Equal(t, float64(3.1415), Params[float64](c, "float"))
+		require.Equal(t, float64(3.1415), Params[float64](c, "float", float64(1.234)))
+		require.Equal(t, float64(0), Params[float64](c, "string"))
+		require.Equal(t, float64(1.234), Params[float64](c, "string", float64(1.234)))
+		return nil
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john/8/true/3.1415", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+}
+
 // go test -run Test_Ctx_Path
 func Test_Ctx_Path(t *testing.T) {
 	t.Parallel()

@@ -972,6 +972,31 @@ func (c *DefaultCtx) Params(key string, defaultValue ...string) string {
 	return defaultString("", defaultValue)
 }
 
+// Params is used to get the route parameters.
+// This function is generic and can handle differnet route paramaters type values.
+//
+// Example:
+//
+// http://example.com/user/:user -> http://example.com/user/john
+// Parmas[string](c, "user") -> returns john
+//
+// http://example.com/id/:id -> http://example.com/user/114
+// Params[int](c, "id") ->  returns 114 as integer.
+//
+// http://example.com/id/:number -> http://example.com/id/john
+// Params[string](c, "number", 0) -> returns 0 because can't parse 'john' as integer.
+func Params[V GenericType](c Ctx, key string, defaultValue ...V) V {
+	ctx, ok := c.(*DefaultCtx)
+	if !ok {
+		panic(fmt.Errorf("failed to type-assert to *DefaultCtx"))
+	}
+
+	var v V
+	p := ctx.Params(key)
+
+	return genericParseType[V](ctx, p, v, defaultValue...)
+}
+
 // ParamsInt is used to get an integer from the route parameters
 // it defaults to zero if the parameter is not found or if the
 // parameter cannot be converted to an integer
@@ -1107,7 +1132,7 @@ func (c *DefaultCtx) Queries() map[string]string {
 //	name := Query[string](c, "search") // Returns "john"
 //	age := Query[int](c, "age") // Returns 8
 //	unknown := Query[string](c, "unknown", "default") // Returns "default" since the query parameter "unknown" is not found
-func Query[V QueryType](c Ctx, key string, defaultValue ...V) V {
+func Query[V GenericType](c Ctx, key string, defaultValue ...V) V {
 	ctx, ok := c.(*DefaultCtx)
 	if !ok {
 		panic(fmt.Errorf("failed to type-assert to *DefaultCtx"))
@@ -1115,68 +1140,26 @@ func Query[V QueryType](c Ctx, key string, defaultValue ...V) V {
 	var v V
 	q := ctx.app.getString(ctx.fasthttp.QueryArgs().Peek(key))
 
-	switch any(v).(type) {
-	case int:
-		return queryParseInt[V](q, 32, func(i int64) V { return assertValueType[V, int](int(i)) }, defaultValue...)
-	case int8:
-		return queryParseInt[V](q, 8, func(i int64) V { return assertValueType[V, int8](int8(i)) }, defaultValue...)
-	case int16:
-		return queryParseInt[V](q, 16, func(i int64) V { return assertValueType[V, int16](int16(i)) }, defaultValue...)
-	case int32:
-		return queryParseInt[V](q, 32, func(i int64) V { return assertValueType[V, int32](int32(i)) }, defaultValue...)
-	case int64:
-		return queryParseInt[V](q, 64, func(i int64) V { return assertValueType[V, int64](i) }, defaultValue...)
-	case uint:
-		return queryParseUint[V](q, 32, func(i uint64) V { return assertValueType[V, uint](uint(i)) }, defaultValue...)
-	case uint8:
-		return queryParseUint[V](q, 8, func(i uint64) V { return assertValueType[V, uint8](uint8(i)) }, defaultValue...)
-	case uint16:
-		return queryParseUint[V](q, 16, func(i uint64) V { return assertValueType[V, uint16](uint16(i)) }, defaultValue...)
-	case uint32:
-		return queryParseUint[V](q, 32, func(i uint64) V { return assertValueType[V, uint32](uint32(i)) }, defaultValue...)
-	case uint64:
-		return queryParseUint[V](q, 64, func(i uint64) V { return assertValueType[V, uint64](i) }, defaultValue...)
-	case float32:
-		return queryParseFloat[V](q, 32, func(i float64) V { return assertValueType[V, float32](float32(i)) }, defaultValue...)
-	case float64:
-		return queryParseFloat[V](q, 64, func(i float64) V { return assertValueType[V, float64](i) }, defaultValue...)
-	case bool:
-		return queryParseBool[V](q, func(b bool) V { return assertValueType[V, bool](b) }, defaultValue...)
-	case string:
-		if q == "" && len(defaultValue) > 0 {
-			return defaultValue[0]
-		}
-		return assertValueType[V, string](q)
-	case []byte:
-		if q == "" && len(defaultValue) > 0 {
-			return defaultValue[0]
-		}
-		return assertValueType[V, []byte](ctx.app.getBytes(q))
-	default:
-		if len(defaultValue) > 0 {
-			return defaultValue[0]
-		}
-		return v
-	}
+	return genericParseType[V](ctx, q, v)
 }
 
-type QueryType interface {
-	QueryTypeInteger | QueryTypeFloat | bool | string | []byte
+type GenericType interface {
+	GenericTypeInteger | GenericTypeFloat | bool | string | []byte
 }
 
-type QueryTypeInteger interface {
-	QueryTypeIntegerSigned | QueryTypeIntegerUnsigned
+type GenericTypeInteger interface {
+	GenericTypeIntegerSigned | GenericTypeIntegerUnsigned
 }
 
-type QueryTypeIntegerSigned interface {
+type GenericTypeIntegerSigned interface {
 	int | int8 | int16 | int32 | int64
 }
 
-type QueryTypeIntegerUnsigned interface {
+type GenericTypeIntegerUnsigned interface {
 	uint | uint8 | uint16 | uint32 | uint64
 }
 
-type QueryTypeFloat interface {
+type GenericTypeFloat interface {
 	float32 | float64
 }
 
