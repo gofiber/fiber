@@ -885,7 +885,7 @@ func AcquireClient() *Client {
 	}
 	c, ok := v.(*Client)
 	if !ok {
-		panic(fmt.Errorf("failed to type-assert to *Client"))
+		return &Client{}
 	}
 	return c
 }
@@ -909,9 +909,13 @@ func ReleaseClient(c *Client) {
 // no longer needed. This allows Agent recycling, reduces GC pressure
 // and usually improves performance.
 func AcquireAgent() *Agent {
-	a, ok := agentPool.Get().(*Agent)
+	v := agentPool.Get()
+	if v == nil {
+		return &Agent{}
+	}
+	a, ok := v.(*Agent)
 	if !ok {
-		panic(fmt.Errorf("failed to type-assert to *Agent"))
+		return &Agent{}
 	}
 	return a
 }
@@ -938,7 +942,7 @@ func AcquireResponse() *Response {
 	}
 	r, ok := v.(*Response)
 	if !ok {
-		panic(fmt.Errorf("failed to type-assert to *Response"))
+		return &Response{}
 	}
 	return r
 }
@@ -965,7 +969,7 @@ func AcquireArgs() *Args {
 	}
 	a, ok := v.(*Args)
 	if !ok {
-		panic(fmt.Errorf("failed to type-assert to *Args"))
+		return &Args{}
 	}
 	return a
 }
@@ -990,7 +994,7 @@ func AcquireFormFile() *FormFile {
 	}
 	ff, ok := v.(*FormFile)
 	if !ok {
-		panic(fmt.Errorf("failed to type-assert to *FormFile"))
+		return &FormFile{}
 	}
 	return ff
 }
