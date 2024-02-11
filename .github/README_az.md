@@ -73,10 +73,10 @@
     <img height="20px" src="https://img.shields.io/badge/PL-flag.svg?color=555555&style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjgwIDgwMCI+DQo8cGF0aCBmaWxsPSIjZTllOGU3IiBkPSJtMCwwaDEyODB2NDAwaC0xMjgweiIvPg0KPHBhdGggZmlsbD0iI2Q0MjEzZCIgZD0ibTAsNDAwaDEyODB2NDAwaC0xMjgweiIvPg0KPC9zdmc+DQo=">
   </a>
   <br>
-  <a href="https://pkg.go.dev/github.com/gofiber/fiber/v2#pkg-overview">
+  <a href="https://pkg.go.dev/github.com/gofiber/fiber/v3#pkg-overview">
     <img src="https://img.shields.io/badge/%F0%9F%93%9A%20godoc-pkg-00ACD7.svg?color=00ACD7&style=flat-square">
   </a>
-  <a href="https://goreportcard.com/report/github.com/gofiber/fiber/v2">
+  <a href="https://goreportcard.com/report/github.com/gofiber/fiber/v3">
     <img src="https://img.shields.io/badge/%F0%9F%93%9D%20goreport-A%2B-75C46B?style=flat-square">
   </a>
   <a href="https://gocover.io/github.com/gofiber/fiber">
@@ -105,7 +105,7 @@
 ```go
 package main
 
-import "github.com/gofiber/fiber/v2"
+import "github.com/gofiber/fiber/v3"
 
 func main() {
     app := fiber.New()
@@ -129,12 +129,12 @@ Bu testlər [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r
 
 ## ⚙️ Quraşdırılması
 
-Go dilinin `1.17` və ya daha yuxarı versiyanın [yükləndiyindən](https://go.dev/dl/) əmin olun.
+Go dilinin `1.20` və ya daha yuxarı versiyanın [yükləndiyindən](https://go.dev/dl/) əmin olun.
 
 Bir qovluq yaratdıqdan sonra, `go mod init github.com/your/repo` komandasını eyni qovluğun daxilində işə salaraq layihənizi başladın ([go modulları haqqında əlavə bilgilər](https://go.dev/blog/using-go-modules)). Növbəti addım olaraq Fiber-i [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) komandasını işlədərək yükləyin:
 
 ```bash
-go get -u github.com/gofiber/fiber/v2
+go get -u github.com/gofiber/fiber/v3
 ```
 
 ## 🎯 Özəllikləri
@@ -164,7 +164,7 @@ Biz istifadəçilərdən gələn [issue-a](https://github.com/gofiber/fiber/issu
 
 ## ⚠️ Limitlər
 
--   Fiber unsafe prinsiplərə əsaslanaraq çalışdığından, o hər zaman Go-nun son versiyası ilə uyğunlaşmaya bilər. Buna görə də, Fiber 2.40.0 — Go 1.17 və 1.21 versiyaları ilə test edilərək saz vəziyyətə gətirilmişdir.
+-   Fiber unsafe prinsiplərə əsaslanaraq çalışdığından, o hər zaman Go-nun son versiyası ilə uyğunlaşmaya bilər. Buna görə də, Fiber 3.0.0 — Go 1.20 və 1.22 versiyaları ilə test edilərək saz vəziyyətə gətirilmişdir.
 -   Fiber net/http interfeysləri ilə uyğun deyil. Yəni gqlgen, go-swagger kimi net/http ekosisteminin parçası olan layihələri istifadə edə bilməzsiniz.
 
 ## 👀 Misallar
@@ -312,7 +312,7 @@ Fiber baxış mühərriki təyin edilmədikdə [html/template-in](https://pkg.go
 package main
 
 import (
-    "github.com/gofiber/fiber/v2"
+    "github.com/gofiber/fiber/v3"
     "github.com/gofiber/template/pug"
 )
 
@@ -379,8 +379,8 @@ package main
 import (
     "log"
 
-    "github.com/gofiber/fiber/v2"
-    "github.com/gofiber/fiber/v2/middleware/logger"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/logger"
 )
 
 func main() {
@@ -402,8 +402,8 @@ func main() {
 import (
     "log"
 
-    "github.com/gofiber/fiber/v2"
-    "github.com/gofiber/fiber/v2/middleware/cors"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/cors"
 )
 
 func main() {
@@ -487,8 +487,8 @@ func main() {
 
 ```go
 import (
-    "github.com/gofiber/fiber/v2"
-    "github.com/gofiber/fiber/v2/middleware/websocket"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/websocket"
 )
 
 func main() {
@@ -521,7 +521,7 @@ func main() {
 
 ```go
 import (
-    "github.com/gofiber/fiber/v2"
+    "github.com/gofiber/fiber/v3"
     "github.com/valyala/fasthttp"
 )
 
@@ -562,8 +562,8 @@ func main() {
 
 ```go
 import (
-    "github.com/gofiber/fiber/v2"
-    "github.com/gofiber/fiber/v2/middleware/recover"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/recover"
 )
 
 func main() {
@@ -587,8 +587,8 @@ func main() {
 
 ```go
 import (
-    "github.com/gofiber/fiber/v2"
-    "github.com/gofiber/fiber/v2/middleware/recover"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/recover"
 )
 
 func main() {
