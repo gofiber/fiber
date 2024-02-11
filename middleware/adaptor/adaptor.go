@@ -39,30 +39,42 @@ func ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error) {
 
 // CopyContextToFiberContext copies the values of context.Context to a fasthttp.RequestCtx
 func CopyContextToFiberContext(context any, requestContext *fasthttp.RequestCtx) {
-	contextValues := reflect.ValueOf(context).Elem()
-	contextKeys := reflect.TypeOf(context).Elem()
-	if contextKeys.Kind() == reflect.Struct {
-		var lastKey any
-		for i := 0; i < contextValues.NumField(); i++ {
-			reflectValue := contextValues.Field(i)
-			/* #nosec */
-			reflectValue = reflect.NewAt(reflectValue.Type(), unsafe.Pointer(reflectValue.UnsafeAddr())).Elem()
+    contextValue := reflect.ValueOf(context).Elem()
+    contextType := reflect.TypeOf(context).Elem()
 
-			reflectField := contextKeys.Field(i)
+    if contextType.Kind() != reflect.Struct {
+        return
+    }
 
-			if reflectField.Name == "noCopy" {
-				break
-			} else if reflectField.Name == "Context" {
-				CopyContextToFiberContext(reflectValue.Interface(), requestContext)
-			} else if reflectField.Name == "key" {
-				lastKey = reflectValue.Interface()
-			} else if lastKey != nil && reflectField.Name == "val" { //nolint:revive // We need these checks here
-				requestContext.SetUserValue(lastKey, reflectValue.Interface())
-			} else {
-				lastKey = nil
-			}
-		}
-	}
+    var lastKey any
+    for i := 0; i < contextValue.NumField(); i++ {
+        field := contextValue.Field(i)
+        fieldType := contextType.Field(i)
+
+        // Skip unexported fields or the special "noCopy" field.
+        if fieldType.PkgPath != "" || fieldType.Name == "noCopy" {
+            continue
+        }
+
+        // Use unsafe to bypass restrictions (like unexported fields).
+        field = reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem()
+
+        switch fieldType.Name {
+        case "Context":
+            // Recursively copy nested Context values.
+            CopyContextToFiberContext(field.Interface(), requestContext)
+        case "key":
+            // Remember the last key to pair it with a value later.
+            lastKey = field.Interface()
+        case "val":
+            if lastKey != nil {
+                // If there's a key waiting for a value, set it in the request context.
+                requestContext.SetUserValue(lastKey, field.Interface())
+                // Reset the lastKey to ensure pairs are matched correctly.
+                lastKey = nil
+            }
+        }
+    }
 }
 
 // HTTPMiddleware wraps net/http middleware to fiber middleware
