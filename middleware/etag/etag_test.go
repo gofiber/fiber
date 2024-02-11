@@ -33,7 +33,7 @@ func Test_ETag_SkipError(t *testing.T) {
 
 	app.Use(New())
 
-	app.Get("/", func(c fiber.Ctx) error {
+	app.Get("/", func(_ fiber.Ctx) error {
 		return fiber.ErrForbidden
 	})
 
@@ -65,7 +65,7 @@ func Test_ETag_NoBody(t *testing.T) {
 
 	app.Use(New())
 
-	app.Get("/", func(c fiber.Ctx) error {
+	app.Get("/", func(_ fiber.Ctx) error {
 		return nil
 	})
 

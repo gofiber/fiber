@@ -78,7 +78,7 @@ func Test_Listen_Graceful_Shutdown(t *testing.T) {
 		time.Sleep(tc.Time)
 
 		a := Get("http://example.com")
-		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+		a.HostClient.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
 		code, body, errs := a.String()
 
 		require.Equal(t, tc.ExpectedStatusCode, code)
@@ -249,7 +249,7 @@ func Test_Listen_TLSConfigFunc(t *testing.T) {
 
 	require.NoError(t, app.Listen(":0", ListenConfig{
 		DisableStartupMessage: true,
-		TLSConfigFunc: func(tlsConfig *tls.Config) {
+		TLSConfigFunc: func(_ *tls.Config) {
 			callTLSConfig = true
 		},
 		CertFile:    "./.github/testdata/ssl.pem",

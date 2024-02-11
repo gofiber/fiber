@@ -35,7 +35,7 @@ func Test_Logger(t *testing.T) {
 		Output: buf,
 	}))
 
-	app.Get("/", func(c fiber.Ctx) error {
+	app.Get("/", func(_ fiber.Ctx) error {
 		return errors.New("some random error")
 	})
 
@@ -575,7 +575,7 @@ func Test_CustomTags(t *testing.T) {
 	app.Use(New(Config{
 		Format: "${custom_tag}",
 		CustomTags: map[string]LogFunc{
-			"custom_tag": func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (int, error) {
+			"custom_tag": func(output Buffer, _ fiber.Ctx, _ *Data, _ string) (int, error) {
 				return output.WriteString(customTag)
 			},
 		},

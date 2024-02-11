@@ -320,7 +320,7 @@ func Test_Redirect_Request(t *testing.T) {
 		a := Get("http://example.com" + tc.URL)
 		a.Cookie(FlashCookieName, tc.CookieValue)
 		a.MaxRedirectsCount(1)
-		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+		a.HostClient.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
 		code, body, errs := a.String()
 
 		require.Equal(t, tc.ExpectedStatusCode, code)

@@ -56,7 +56,7 @@ func CopyContextToFiberContext(context any, requestContext *fasthttp.RequestCtx)
 				CopyContextToFiberContext(reflectValue.Interface(), requestContext)
 			} else if reflectField.Name == "key" {
 				lastKey = reflectValue.Interface()
-			} else if lastKey != nil && reflectField.Name == "val" {
+			} else if lastKey != nil && reflectField.Name == "val" { //nolint:revive // We need these checks here
 				requestContext.SetUserValue(lastKey, reflectValue.Interface())
 			} else {
 				lastKey = nil
@@ -69,7 +69,7 @@ func CopyContextToFiberContext(context any, requestContext *fasthttp.RequestCtx)
 func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		var next bool
-		nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextHandler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 			next = true
 			// Convert again in case request may modify by middleware
 			c.Request().Header.SetMethod(r.Method)

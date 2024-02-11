@@ -503,7 +503,7 @@ func Test_CustomExpiration(t *testing.T) {
 	app := fiber.New()
 	var called bool
 	var newCacheTime int
-	app.Use(New(Config{ExpirationGenerator: func(c fiber.Ctx, cfg *Config) time.Duration {
+	app.Use(New(Config{ExpirationGenerator: func(c fiber.Ctx, _ *Config) time.Duration {
 		called = true
 		var err error
 		newCacheTime, err = strconv.Atoi(c.GetRespHeader("Cache-Time", "600"))
@@ -706,7 +706,7 @@ func Test_CustomCacheHeader(t *testing.T) {
 // time intervals to maintain strong ascending order of expiration
 func stableAscendingExpiration() func(c1 fiber.Ctx, c2 *Config) time.Duration {
 	i := 0
-	return func(c1 fiber.Ctx, c2 *Config) time.Duration {
+	return func(_ fiber.Ctx, _ *Config) time.Duration {
 		i++
 		return time.Hour * time.Duration(i)
 	}

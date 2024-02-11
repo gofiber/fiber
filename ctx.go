@@ -294,7 +294,7 @@ func (c *DefaultCtx) ClearCookie(key ...string) {
 		}
 		return
 	}
-	c.fasthttp.Request.Header.VisitAllCookie(func(k, v []byte) {
+	c.fasthttp.Request.Header.VisitAllCookie(func(k, _ []byte) {
 		c.fasthttp.Response.Header.DelClientCookieBytes(k)
 	})
 }
