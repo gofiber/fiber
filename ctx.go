@@ -973,7 +973,7 @@ func (c *DefaultCtx) Params(key string, defaultValue ...string) string {
 }
 
 // Params is used to get the route parameters.
-// This function is generic and can handle differnet route paramaters type values.
+// This function is generic and can handle differnet route parameters type values.
 //
 // Example:
 //
@@ -1140,7 +1140,7 @@ func Query[V GenericType](c Ctx, key string, defaultValue ...V) V {
 	var v V
 	q := ctx.app.getString(ctx.fasthttp.QueryArgs().Peek(key))
 
-	return genericParseType[V](ctx, q, v)
+	return genericParseType[V](ctx, q, v, defaultValue...)
 }
 
 type GenericType interface {

@@ -2414,6 +2414,185 @@ func Test_Params(t *testing.T) {
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
+// go test -v -run=^$ -bench=Benchmark_Params -benchmem -count=4
+func Benchmark_Params(b *testing.B) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+
+	c.route = &Route{
+		Params: []string{
+			"param1", "param2", "param3", "param4",
+		},
+	}
+	c.values = [maxParams]string{
+		"john", "doe", "is", "awesome",
+	}
+	var res string
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		_ = Params[string](c, "param1")
+		_ = Params[string](c, "param2")
+		_ = Params[string](c, "param3")
+		res = Params[string](c, "param4")
+	}
+	require.Equal(b, "awesome", res)
+
+	c.values = [maxParams]string{
+		"1", "2", "3", "4",
+	}
+	var resInt int
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		_ = Params[int](c, "param1")
+		_ = Params[int](c, "param2")
+		_ = Params[int](c, "param3")
+		resInt = Params[int](c, "param4")
+	}
+	require.Equal(b, 4, resInt)
+
+	var resInt8 int8
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		_ = Params[int8](c, "param1")
+		_ = Params[int8](c, "param2")
+		_ = Params[int8](c, "param3")
+		resInt8 = Params[int8](c, "param4")
+	}
+	require.Equal(b, int8(4), resInt8)
+
+	var resInt16 int16
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		_ = Params[int16](c, "param1")
+		_ = Params[int16](c, "param2")
+		_ = Params[int16](c, "param3")
+		resInt16 = Params[int16](c, "param4")
+	}
+	require.Equal(b, int16(4), resInt16)
+
+	var resInt32 int32
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		_ = Params[int32](c, "param1")
+		_ = Params[int32](c, "param2")
+		_ = Params[int32](c, "param3")
+		resInt32 = Params[int32](c, "param4")
+	}
+	require.Equal(b, int32(4), resInt32)
+
+	var resInt64 int64
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		_ = Params[int64](c, "param1")
+		_ = Params[int64](c, "param2")
+		_ = Params[int64](c, "param3")
+		resInt64 = Params[int64](c, "param4")
+	}
+	require.Equal(b, int64(4), resInt64)
+
+	var resUint uint
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		_ = Params[uint](c, "param1")
+		_ = Params[uint](c, "param2")
+		_ = Params[uint](c, "param3")
+		resUint = Params[uint](c, "param4")
+	}
+	require.Equal(b, uint(4), resUint)
+
+	var resUint8 uint8
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		_ = Params[uint8](c, "param1")
+		_ = Params[uint8](c, "param2")
+		_ = Params[uint8](c, "param3")
+		resUint8 = Params[uint8](c, "param4")
+	}
+	require.Equal(b, uint8(4), resUint8)
+
+	var resUint16 uint16
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		_ = Params[uint16](c, "param1")
+		_ = Params[uint16](c, "param2")
+		_ = Params[uint16](c, "param3")
+		resUint16 = Params[uint16](c, "param4")
+	}
+	require.Equal(b, uint16(4), resUint16)
+
+	var resUint32 uint32
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		_ = Params[uint32](c, "param1")
+		_ = Params[uint32](c, "param2")
+		_ = Params[uint32](c, "param3")
+		resUint32 = Params[uint32](c, "param4")
+	}
+	require.Equal(b, uint32(4), resUint32)
+
+	var resUint64 uint64
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		_ = Params[uint64](c, "param1")
+		_ = Params[uint64](c, "param2")
+		_ = Params[uint64](c, "param3")
+		resUint64 = Params[uint64](c, "param4")
+	}
+	require.Equal(b, uint64(4), resUint64)
+
+	c.values = [maxParams]string{
+		"true", "false", "true", "false",
+	}
+
+	var resBool bool
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		_ = Params[bool](c, "param1")
+		_ = Params[bool](c, "param2")
+		_ = Params[bool](c, "param3")
+		resBool = Params[bool](c, "param4")
+	}
+	require.Equal(b, false, resBool)
+
+	c.values = [maxParams]string{
+		"1", "2", "3", "3.1415",
+	}
+
+	var resFloat32 float32
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		_ = Params[float32](c, "param1")
+		_ = Params[float32](c, "param2")
+		_ = Params[float32](c, "param3")
+		resFloat32 = Params[float32](c, "param4")
+	}
+	require.Equal(b, float32(3.1415), resFloat32)
+
+	var resFloat64 float64
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		_ = Params[float64](c, "param1")
+		_ = Params[float64](c, "param2")
+		_ = Params[float64](c, "param3")
+		resFloat64 = Params[float64](c, "param4")
+	}
+	require.Equal(b, float64(3.1415), resFloat64)
+}
+
 // go test -run Test_Ctx_Path
 func Test_Ctx_Path(t *testing.T) {
 	t.Parallel()
