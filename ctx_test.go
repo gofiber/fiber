@@ -2396,16 +2396,16 @@ func Test_Params(t *testing.T) {
 		require.True(t, Params[bool](c, "string", true))
 
 		// float32
-		require.Equal(t, float32(3.1415), Params[float32](c, "float"))
-		require.Equal(t, float32(3.1415), Params[float32](c, "float", float32(1.234)))
-		require.Equal(t, float32(0), Params[float32](c, "string"))
-		require.Equal(t, float32(1.234), Params[float32](c, "string", float32(1.234)))
+		require.InEpsilon(t, float32(3.1415), Params[float32](c, "float"), epsilon)
+		require.InEpsilon(t, float32(3.1415), Params[float32](c, "float", float32(1.234)), epsilon)
+		require.InDelta(t, float32(0), Params[float32](c, "string"), 0)
+		require.InEpsilon(t, float32(1.234), Params[float32](c, "string", float32(1.234)), epsilon)
 
 		// float64
-		require.Equal(t, float64(3.1415), Params[float64](c, "float"))
-		require.Equal(t, float64(3.1415), Params[float64](c, "float", float64(1.234)))
-		require.Equal(t, float64(0), Params[float64](c, "string"))
-		require.Equal(t, float64(1.234), Params[float64](c, "string", float64(1.234)))
+		require.InEpsilon(t, float64(3.1415), Params[float64](c, "float"), epsilon)
+		require.InEpsilon(t, float64(3.1415), Params[float64](c, "float", float64(1.234)), epsilon)
+		require.InDelta(t, float64(0), Params[float64](c, "string"), 0)
+		require.InEpsilon(t, float64(1.234), Params[float64](c, "string", float64(1.234)), epsilon)
 		return nil
 	})
 
@@ -2579,7 +2579,7 @@ func Benchmark_Params(b *testing.B) {
 		_ = Params[float32](c, "param3")
 		resFloat32 = Params[float32](c, "param4")
 	}
-	require.Equal(b, float32(3.1415), resFloat32)
+	require.InEpsilon(b, float32(3.1415), resFloat32, epsilon)
 
 	var resFloat64 float64
 	b.ReportAllocs()
@@ -2590,7 +2590,7 @@ func Benchmark_Params(b *testing.B) {
 		_ = Params[float64](c, "param3")
 		resFloat64 = Params[float64](c, "param4")
 	}
-	require.Equal(b, float64(3.1415), resFloat64)
+	require.InEpsilon(b, float64(3.1415), resFloat64, epsilon)
 }
 
 // go test -run Test_Ctx_Path
