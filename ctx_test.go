@@ -2390,10 +2390,10 @@ func Test_Params(t *testing.T) {
 		require.Equal(t, "doe", Params[string](c, "fake", "doe", "mary"))
 
 		// bool
-		require.Equal(t, true, Params[bool](c, "bool"))
-		require.Equal(t, true, Params[bool](c, "bool", false))
-		require.Equal(t, false, Params[bool](c, "string"))
-		require.Equal(t, true, Params[bool](c, "string", true))
+		require.True(t, Params[bool](c, "bool"))
+		require.True(t, Params[bool](c, "bool", false))
+		require.False(t, Params[bool](c, "string"))
+		require.True(t, Params[bool](c, "string", true))
 
 		// float32
 		require.Equal(t, float32(3.1415), Params[float32](c, "float"))
@@ -2564,7 +2564,7 @@ func Benchmark_Params(b *testing.B) {
 		_ = Params[bool](c, "param3")
 		resBool = Params[bool](c, "param4")
 	}
-	require.Equal(b, false, resBool)
+	require.False(b, resBool)
 
 	c.values = [maxParams]string{
 		"1", "2", "3", "3.1415",
