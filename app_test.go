@@ -866,7 +866,7 @@ func Test_App_ShutdownWithContext(t *testing.T) {
 	ln := fasthttputil.NewInmemoryListener()
 
 	go func() {
-		require.NoError(t, app.Listener(ln)) 
+		require.NoError(t, app.Listener(ln))
 	}()
 
 	time.Sleep(1 * time.Second)
@@ -1543,7 +1543,7 @@ func Test_App_ReadTimeout(t *testing.T) {
 		time.Sleep(500 * time.Millisecond)
 
 		conn, err := net.Dial(NetworkTCP4, "127.0.0.1:4004")
-		require.NoError(t, err) 
+		require.NoError(t, err)
 		defer func(conn net.Conn) {
 			err := conn.Close()
 			require.NoError(t, err)
