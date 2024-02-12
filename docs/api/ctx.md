@@ -1199,11 +1199,11 @@ app.Get("/v1/*/shop/*", func(c fiber.Ctx) error {
 
 
 In certain scenarios, it can be useful to have an alternative approach to handle different types of parameters, not 
-just strings. This can be achieved using a generic Query function known as `Params[V genericType](c Ctx, key string, defaultValue ...V) V`. 
-This function is capable of parsing a query string and returning a value of a type that is assumed and specified by `V genericType`.
+just strings. This can be achieved using a generic Query function known as `Params[V GenericType](c Ctx, key string, defaultValue ...V) V`. 
+This function is capable of parsing a query string and returning a value of a type that is assumed and specified by `V GenericType`.
 
 ```go title="Signature"
-func Params[v genericType](c Ctx, key string, default value ...V) V
+func Params[v GenericType](c Ctx, key string, default value ...V) V
 ```
 
 ```go title="Example"
@@ -1217,7 +1217,7 @@ app.Get("/user/:id", func(c fiber.Ctx) error{
 })
 ```
 
-The generic Params function supports returning the following data types based on V genericType:
+The generic Params function supports returning the following data types based on V GenericType:
 - Integer: int, int8, int16, int32, int64
 - Unsigned integer: uint, uint8, uint16, uint32, uint64
 - Floating-point numbers: float32, float64
@@ -1403,13 +1403,13 @@ app.Get("/", func(c fiber.Ctx) error {
 > Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
 
 In certain scenarios, it can be useful to have an alternative approach to handle different types of query parameters, not 
-just strings. This can be achieved using a generic Query function known as `Query[V genericType](c Ctx, key string, defaultValue ...V) V`. 
-This function is capable of parsing a query string and returning a value of a type that is assumed and specified by `V genericType`.
+just strings. This can be achieved using a generic Query function known as `Query[V GenericType](c Ctx, key string, defaultValue ...V) V`. 
+This function is capable of parsing a query string and returning a value of a type that is assumed and specified by `V GenericType`.
 
 Here is the signature for the generic Query function:
 
 ```go title="Signature"
-func Query[V genericType](c Ctx, key string, defaultValue ...V) V
+func Query[V GenericType](c Ctx, key string, defaultValue ...V) V
 ```
 
 Consider this example:
@@ -1426,12 +1426,12 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
-In this case, `Query[V genericType](c Ctx, key string, defaultValue ...V) V` can retrieve 'page' as an integer, 'brand' 
+In this case, `Query[V GenericType](c Ctx, key string, defaultValue ...V) V` can retrieve 'page' as an integer, 'brand' 
 as a string, and 'new' as a boolean. The function uses the appropriate parsing function for each specified type to ensure 
 the correct type is returned. This simplifies the retrieval process of different types of query parameters, making your 
 controller actions cleaner.
 
-The generic Query function supports returning the following data types based on V genericType:
+The generic Query function supports returning the following data types based on V GenericType:
 - Integer: int, int8, int16, int32, int64
 - Unsigned integer: uint, uint8, uint16, uint32, uint64
 - Floating-point numbers: float32, float64
