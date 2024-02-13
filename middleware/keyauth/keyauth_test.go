@@ -64,7 +64,7 @@ func TestAuthSources(t *testing.T) {
 
 				authMiddleware := New(Config{
 					KeyLookup: authSource + ":" + test.authTokenName,
-					Validator: func(c fiber.Ctx, key string) (bool, error) {
+					Validator: func(_ fiber.Ctx, key string) (bool, error) {
 						if key == CorrectKey {
 							return true, nil
 						}
@@ -141,7 +141,7 @@ func TestMultipleKeyAuth(t *testing.T) {
 			return c.OriginalURL() != "/auth1"
 		},
 		KeyLookup: "header:key",
-		Validator: func(c fiber.Ctx, key string) (bool, error) {
+		Validator: func(_ fiber.Ctx, key string) (bool, error) {
 			if key == "password1" {
 				return true, nil
 			}
@@ -155,7 +155,7 @@ func TestMultipleKeyAuth(t *testing.T) {
 			return c.OriginalURL() != "/auth2"
 		},
 		KeyLookup: "header:key",
-		Validator: func(c fiber.Ctx, key string) (bool, error) {
+		Validator: func(_ fiber.Ctx, key string) (bool, error) {
 			if key == "password2" {
 				return true, nil
 			}
@@ -269,10 +269,10 @@ func TestCustomSuccessAndFailureHandlers(t *testing.T) {
 		SuccessHandler: func(c fiber.Ctx) error {
 			return c.Status(fiber.StatusOK).SendString("API key is valid and request was handled by custom success handler")
 		},
-		ErrorHandler: func(c fiber.Ctx, err error) error {
+		ErrorHandler: func(c fiber.Ctx, _ error) error {
 			return c.Status(fiber.StatusUnauthorized).SendString("API key is invalid and request was handled by custom error handler")
 		},
-		Validator: func(c fiber.Ctx, key string) (bool, error) {
+		Validator: func(_ fiber.Ctx, key string) (bool, error) {
 			if key == CorrectKey {
 				return true, nil
 			}
@@ -281,7 +281,7 @@ func TestCustomSuccessAndFailureHandlers(t *testing.T) {
 	}))
 
 	// Define a test handler that should not be called
-	app.Get("/", func(c fiber.Ctx) error {
+	app.Get("/", func(_ fiber.Ctx) error {
 		t.Error("Test handler should not be called")
 		return nil
 	})
@@ -322,7 +322,7 @@ func TestCustomNextFunc(t *testing.T) {
 		Next: func(c fiber.Ctx) bool {
 			return c.Path() == "/allowed"
 		},
-		Validator: func(c fiber.Ctx, key string) (bool, error) {
+		Validator: func(_ fiber.Ctx, key string) (bool, error) {
 			if key == CorrectKey {
 				return true, nil
 			}
@@ -382,7 +382,7 @@ func TestAuthSchemeToken(t *testing.T) {
 
 	app.Use(New(Config{
 		AuthScheme: "Token",
-		Validator: func(c fiber.Ctx, key string) (bool, error) {
+		Validator: func(_ fiber.Ctx, key string) (bool, error) {
 			if key == CorrectKey {
 				return true, nil
 			}
@@ -418,7 +418,7 @@ func TestAuthSchemeBasic(t *testing.T) {
 	app.Use(New(Config{
 		KeyLookup:  "header:Authorization",
 		AuthScheme: "Basic",
-		Validator: func(c fiber.Ctx, key string) (bool, error) {
+		Validator: func(_ fiber.Ctx, key string) (bool, error) {
 			if key == CorrectKey {
 				return true, nil
 			}

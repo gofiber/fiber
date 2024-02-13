@@ -139,7 +139,7 @@ func Test_App_ServerErrorHandler_SmallReadBuffer(t *testing.T) {
 	)
 	app := New()
 
-	app.Get("/", func(c Ctx) error {
+	app.Get("/", func(_ Ctx) error {
 		panic(errors.New("should never called"))
 	})
 
@@ -160,7 +160,7 @@ func Test_App_Errors(t *testing.T) {
 		BodyLimit: 4,
 	})
 
-	app.Get("/", func(c Ctx) error {
+	app.Get("/", func(_ Ctx) error {
 		return errors.New("hi, i'm an error")
 	})
 
@@ -236,12 +236,12 @@ func Test_App_CustomConstraint(t *testing.T) {
 func Test_App_ErrorHandler_Custom(t *testing.T) {
 	t.Parallel()
 	app := New(Config{
-		ErrorHandler: func(c Ctx, err error) error {
+		ErrorHandler: func(c Ctx, _ error) error {
 			return c.Status(200).SendString("hi, i'm an custom error")
 		},
 	})
 
-	app.Get("/", func(c Ctx) error {
+	app.Get("/", func(_ Ctx) error {
 		return errors.New("hi, i'm an error")
 	})
 
@@ -271,7 +271,7 @@ func Test_App_ErrorHandler_HandlerStack(t *testing.T) {
 		require.Equal(t, "0: GET error", err.Error())
 		return errors.New("2: USE error")
 	})
-	app.Get("/", func(c Ctx) error {
+	app.Get("/", func(_ Ctx) error {
 		return errors.New("0: GET error")
 	})
 
@@ -297,7 +297,7 @@ func Test_App_ErrorHandler_RouteStack(t *testing.T) {
 		require.Equal(t, "0: GET error", err.Error())
 		return errors.New("1: USE error") // [2] call ErrorHandler
 	})
-	app.Get("/test", func(c Ctx) error {
+	app.Get("/test", func(_ Ctx) error {
 		return errors.New("0: GET error") // [1] return to USE
 	})
 
@@ -1433,7 +1433,7 @@ func Test_Test_Timeout(t *testing.T) {
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
-	app.Get("timeout", func(c Ctx) error {
+	app.Get("timeout", func(_ Ctx) error {
 		time.Sleep(200 * time.Millisecond)
 		return nil
 	})
@@ -1633,7 +1633,7 @@ func Test_App_Server(t *testing.T) {
 
 func Test_App_Error_In_Fasthttp_Server(t *testing.T) {
 	app := New()
-	app.config.ErrorHandler = func(c Ctx, err error) error {
+	app.config.ErrorHandler = func(_ Ctx, _ error) error {
 		return errors.New("fake error")
 	}
 	app.server.GetOnly = true
@@ -1731,7 +1731,7 @@ func Test_App_Test_no_timeout_infinitely(t *testing.T) {
 	go func() {
 		defer func() { c <- 0 }()
 		app := New()
-		app.Get("/", func(c Ctx) error {
+		app.Get("/", func(_ Ctx) error {
 			runtime.Goexit()
 			return nil
 		})

@@ -159,7 +159,7 @@ func Test_Compress_Next_Error(t *testing.T) {
 
 	app.Use(New())
 
-	app.Get("/", func(c fiber.Ctx) error {
+	app.Get("/", func(_ fiber.Ctx) error {
 		return errors.New("next error")
 	})
 
