@@ -37,30 +37,42 @@ func ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error) {
 	return &req, nil
 }
 
-// CopyContextToFiberContext copies the values of context.Context to a fasthttp.RequestCtx
+// CopyContextToFiberContext copies the values of context.Context to a fasthttp.RequestCtx.
 func CopyContextToFiberContext(context any, requestContext *fasthttp.RequestCtx) {
 	contextValues := reflect.ValueOf(context).Elem()
 	contextKeys := reflect.TypeOf(context).Elem()
-	if contextKeys.Kind() == reflect.Struct {
-		var lastKey any
-		for i := 0; i < contextValues.NumField(); i++ {
-			reflectValue := contextValues.Field(i)
+
+	if contextKeys.Kind() != reflect.Struct {
+		return
+	}
+
+	var lastKey any
+	for i := 0; i < contextValues.NumField(); i++ {
+		reflectValue := contextValues.Field(i)
+		reflectField := contextKeys.Field(i)
+
+		if reflectField.Name == "noCopy" {
+			break
+		}
+
+		// Use unsafe to access potentially unexported fields.
+		if reflectValue.CanAddr() {
 			/* #nosec */
 			reflectValue = reflect.NewAt(reflectValue.Type(), unsafe.Pointer(reflectValue.UnsafeAddr())).Elem()
+		}
 
-			reflectField := contextKeys.Field(i)
-
-			if reflectField.Name == "noCopy" {
-				break
-			} else if reflectField.Name == "Context" {
-				CopyContextToFiberContext(reflectValue.Interface(), requestContext)
-			} else if reflectField.Name == "key" {
-				lastKey = reflectValue.Interface()
-			} else if lastKey != nil && reflectField.Name == "val" {
+		switch reflectField.Name {
+		case "Context":
+			CopyContextToFiberContext(reflectValue.Interface(), requestContext)
+		case "key":
+			lastKey = reflectValue.Interface()
+		case "val":
+			if lastKey != nil {
 				requestContext.SetUserValue(lastKey, reflectValue.Interface())
-			} else {
-				lastKey = nil
+				lastKey = nil // Reset lastKey after setting the value
 			}
+		default:
+			continue
 		}
 	}
 }
@@ -69,7 +81,7 @@ func CopyContextToFiberContext(context any, requestContext *fasthttp.RequestCtx)
 func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		var next bool
-		nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextHandler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 			next = true
 			// Convert again in case request may modify by middleware
 			c.Request().Header.SetMethod(r.Method)

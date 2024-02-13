@@ -960,7 +960,7 @@ func Test_Ctx_Format(t *testing.T) {
 		fmts := []ResFmt{}
 		for _, t := range types {
 			t := utils.CopyString(t)
-			fmts = append(fmts, ResFmt{t, func(c Ctx) error {
+			fmts = append(fmts, ResFmt{t, func(_ Ctx) error {
 				accepted = t
 				return nil
 			}})
@@ -982,7 +982,7 @@ func Test_Ctx_Format(t *testing.T) {
 	require.NotEqual(t, StatusNotAcceptable, c.Response().StatusCode())
 
 	myError := errors.New("this is an error")
-	err = c.Format(ResFmt{"text/html", func(c Ctx) error { return myError }})
+	err = c.Format(ResFmt{"text/html", func(_ Ctx) error { return myError }})
 	require.ErrorIs(t, err, myError)
 
 	c.Request().Header.Set(HeaderAccept, "application/json")
@@ -2122,7 +2122,7 @@ func Test_Ctx_ClientHelloInfo(t *testing.T) {
 func Test_Ctx_InvalidMethod(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Get("/", func(c Ctx) error {
+	app.Get("/", func(_ Ctx) error {
 		return nil
 	})
 
@@ -3718,7 +3718,7 @@ func Test_Ctx_JSON(t *testing.T) {
 		t.Parallel()
 
 		app := New(Config{
-			JSONEncoder: func(v any) ([]byte, error) {
+			JSONEncoder: func(_ any) ([]byte, error) {
 				return []byte(`["custom","json"]`), nil
 			},
 		})
@@ -3809,7 +3809,7 @@ func Test_Ctx_JSONP(t *testing.T) {
 		t.Parallel()
 
 		app := New(Config{
-			JSONEncoder: func(v any) ([]byte, error) {
+			JSONEncoder: func(_ any) ([]byte, error) {
 				return []byte(`["custom","json"]`), nil
 			},
 		})
@@ -3886,7 +3886,7 @@ func Test_Ctx_XML(t *testing.T) {
 		t.Parallel()
 
 		app := New(Config{
-			XMLEncoder: func(v any) ([]byte, error) {
+			XMLEncoder: func(_ any) ([]byte, error) {
 				return []byte(`<custom>xml</custom>`), nil
 			},
 		})
@@ -4257,11 +4257,11 @@ func Test_Ctx_RestartRoutingWithChangedPath(t *testing.T) {
 		c.Path("/new")
 		return c.RestartRouting()
 	})
-	app.Get("/old", func(c Ctx) error {
+	app.Get("/old", func(_ Ctx) error {
 		executedOldHandler = true
 		return nil
 	})
-	app.Get("/new", func(c Ctx) error {
+	app.Get("/new", func(_ Ctx) error {
 		executedNewHandler = true
 		return nil
 	})
@@ -4277,7 +4277,7 @@ func Test_Ctx_RestartRoutingWithChangedPath(t *testing.T) {
 func Test_Ctx_RestartRoutingWithChangedPathAndCatchAll(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Get("/new", func(c Ctx) error {
+	app.Get("/new", func(_ Ctx) error {
 		return nil
 	})
 	app.Use(func(c Ctx) error {
@@ -4285,7 +4285,7 @@ func Test_Ctx_RestartRoutingWithChangedPathAndCatchAll(t *testing.T) {
 		// c.Next() would fail this test as a 404 is returned from the next handler
 		return c.RestartRouting()
 	})
-	app.Use(func(c Ctx) error {
+	app.Use(func(_ Ctx) error {
 		return ErrNotFound
 	})
 

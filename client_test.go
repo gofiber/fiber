@@ -44,7 +44,7 @@ func Test_Client_Invalid_URL(t *testing.T) {
 
 	a := Get("http://example.com\r\n\r\nGET /\r\n\r\n")
 
-	a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+	a.HostClient.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
 
 	_, body, errs := a.String()
 
@@ -86,7 +86,7 @@ func Test_Client_Get(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		a := Get("http://example.com")
 
-		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+		a.HostClient.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
 
 		code, body, errs := a.String()
 
@@ -115,7 +115,7 @@ func Test_Client_Head(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		a := Head("http://example.com")
 
-		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+		a.HostClient.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
 
 		code, body, errs := a.String()
 
@@ -151,7 +151,7 @@ func Test_Client_Post(t *testing.T) {
 		a := Post("http://example.com").
 			Form(args)
 
-		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+		a.HostClient.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
 
 		code, body, errs := a.String()
 
@@ -188,7 +188,7 @@ func Test_Client_Put(t *testing.T) {
 		a := Put("http://example.com").
 			Form(args)
 
-		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+		a.HostClient.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
 
 		code, body, errs := a.String()
 
@@ -225,7 +225,7 @@ func Test_Client_Patch(t *testing.T) {
 		a := Patch("http://example.com").
 			Form(args)
 
-		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+		a.HostClient.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
 
 		code, body, errs := a.String()
 
@@ -260,7 +260,7 @@ func Test_Client_Delete(t *testing.T) {
 
 		a := Delete("http://example.com")
 
-		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+		a.HostClient.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
 
 		code, body, errs := a.String()
 
@@ -294,7 +294,7 @@ func Test_Client_UserAgent(t *testing.T) {
 		for i := 0; i < 5; i++ {
 			a := Get("http://example.com")
 
-			a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+			a.HostClient.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
 
 			code, body, errs := a.String()
 
@@ -312,7 +312,7 @@ func Test_Client_UserAgent(t *testing.T) {
 
 			a := c.Get("http://example.com")
 
-			a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+			a.HostClient.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
 
 			code, body, errs := a.String()
 
@@ -451,7 +451,7 @@ func Test_Client_Agent_Host(t *testing.T) {
 
 	require.Equal(t, "1.1.1.1:8080", a.HostClient.Addr)
 
-	a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+	a.HostClient.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
 
 	code, body, errs := a.String()
 
@@ -560,7 +560,7 @@ func Test_Client_Agent_Custom_Response(t *testing.T) {
 
 		require.NoError(t, a.Parse())
 
-		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+		a.HostClient.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
 
 		code, body, errs := a.SetResponse(resp).
 			String()
@@ -597,7 +597,7 @@ func Test_Client_Agent_Dest(t *testing.T) {
 
 		a := Get("http://example.com")
 
-		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+		a.HostClient.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
 
 		code, body, errs := a.Dest(dest[:0]).String()
 
@@ -613,7 +613,7 @@ func Test_Client_Agent_Dest(t *testing.T) {
 
 		a := Get("http://example.com")
 
-		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+		a.HostClient.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
 
 		code, body, errs := a.Dest(dest[:0]).String()
 
@@ -671,11 +671,11 @@ func Test_Client_Agent_RetryIf(t *testing.T) {
 	}()
 
 	a := Post("http://example.com").
-		RetryIf(func(req *Request) bool {
+		RetryIf(func(_ *Request) bool {
 			return true
 		})
 	dialsCount := 0
-	a.HostClient.Dial = func(addr string) (net.Conn, error) {
+	a.HostClient.Dial = func(_ string) (net.Conn, error) {
 		dialsCount++
 		switch dialsCount {
 		case 1:
@@ -819,7 +819,7 @@ func Test_Client_Agent_MultipartForm(t *testing.T) {
 		Boundary("myBoundary").
 		MultipartForm(args)
 
-	a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+	a.HostClient.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
 
 	code, body, errs := a.String()
 
@@ -900,7 +900,7 @@ func Test_Client_Agent_MultipartForm_SendFiles(t *testing.T) {
 			SendFiles(".github/testdata/index.html", "index", ".github/testdata/index.tmpl").
 			MultipartForm(nil)
 
-		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+		a.HostClient.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
 
 		code, body, errs := a.String()
 
@@ -1010,7 +1010,7 @@ func Test_Client_Agent_Timeout(t *testing.T) {
 	a := Get("http://example.com").
 		Timeout(time.Millisecond * 50)
 
-	a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+	a.HostClient.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
 
 	_, body, errs := a.String()
 
@@ -1039,7 +1039,7 @@ func Test_Client_Agent_Reuse(t *testing.T) {
 	a := Get("http://example.com").
 		Reuse()
 
-	a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+	a.HostClient.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
 
 	code, body, errs := a.String()
 
@@ -1152,7 +1152,7 @@ func Test_Client_Agent_MaxRedirectsCount(t *testing.T) {
 		a := Get("http://example.com?foo").
 			MaxRedirectsCount(1)
 
-		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+		a.HostClient.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
 
 		code, body, errs := a.String()
 
@@ -1166,7 +1166,7 @@ func Test_Client_Agent_MaxRedirectsCount(t *testing.T) {
 		a := Get("http://example.com").
 			MaxRedirectsCount(1)
 
-		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+		a.HostClient.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
 
 		_, body, errs := a.String()
 
@@ -1202,7 +1202,7 @@ func Test_Client_Agent_Struct(t *testing.T) {
 
 		a := Get("http://example.com")
 
-		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+		a.HostClient.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
 
 		var d data
 
@@ -1220,7 +1220,7 @@ func Test_Client_Agent_Struct(t *testing.T) {
 
 		errPre := errors.New("pre errors")
 
-		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+		a.HostClient.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
 		a.errs = append(a.errs, errPre)
 
 		var d data
@@ -1236,7 +1236,7 @@ func Test_Client_Agent_Struct(t *testing.T) {
 		t.Parallel()
 		a := Get("http://example.com/error")
 
-		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+		a.HostClient.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
 
 		var d data
 
@@ -1260,7 +1260,7 @@ func Test_Client_Agent_Struct(t *testing.T) {
 		request.SetRequestURI("http://example.com")
 		err := a.Parse()
 		require.NoError(t, err)
-		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+		a.HostClient.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
 		var d data
 		code, body, errs := a.Struct(&d)
 		require.Equal(t, StatusOK, code)
@@ -1303,7 +1303,7 @@ func testAgent(t *testing.T, handler Handler, wrapAgent func(agent *Agent), exce
 
 		wrapAgent(a)
 
-		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+		a.HostClient.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
 
 		code, body, errs := a.String()
 

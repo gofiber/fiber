@@ -11,6 +11,10 @@ output:
   sort-results: true
 
 linters-settings:
+  testifylint:
+    enable-all: true
+    disable:
+      - go-require
   errcheck:
      check-type-assertions: true
      check-blank: true
@@ -159,6 +163,8 @@ issues:
    exclude-use-default: false
 
 linters:
+  disable:
+    - spancheck
   enable:
     - asasalint
     - asciicheck
