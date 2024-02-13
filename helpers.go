@@ -291,27 +291,27 @@ func paramsMatch(specParamStr, offerParams string) bool {
 	// Preprocess the spec params to more easily test
 	// for out-of-order parameters
 	specParams := make([][2]string, 0, 2)
-	forEachParameter(specParamStr, func(s1, s2 string) bool {
-		if s1 == "q" || s1 == "Q" {
+	fasthttp.VisitHeaderParams([]byte(specParamStr), func(key, value []byte) bool {
+		if string(key) == "q" {
 			return false
 		}
 		for i := range specParams {
-			if utils.EqualFold(s1, specParams[i][0]) {
-				specParams[i][1] = s2
+			if utils.EqualFold(key, []byte(specParams[i][0])) {
+				specParams[i][1] = string(value)
 				return false
 			}
 		}
-		specParams = append(specParams, [2]string{s1, s2})
+		specParams = append(specParams, [2]string{string(key), string(value)})
 		return true
 	})
 
 	allSpecParamsMatch := true
 	for i := range specParams {
 		foundParam := false
-		forEachParameter(offerParams, func(offerParam, offerVal string) bool {
-			if utils.EqualFold(specParams[i][0], offerParam) {
+		fasthttp.VisitHeaderParams([]byte(offerParams), func(key, value []byte) bool {
+			if utils.EqualFold(specParams[i][0], string(key)) {
 				foundParam = true
-				allSpecParamsMatch = utils.EqualFold(specParams[i][1], offerVal)
+				allSpecParamsMatch = utils.EqualFold(specParams[i][1], string(value))
 				return false
 			}
 			return true
@@ -406,127 +406,6 @@ func forEachMediaRange(header string, functor func(string)) {
 	}
 }
 
-// forEachParamter parses a given parameter list, calling functor
-// on each valid parameter. If functor returns false, we stop processing.
-// It expects a leading ';'.
-// See: https://www.rfc-editor.org/rfc/rfc9110#section-5.6.6
-// According to RFC-9110 2.4, it is up to our discretion whether
-// to attempt to recover from errors in HTTP semantics. Therefor,
-// we take the simple approach and exit early when a semantic error
-// is detected in the header.
-//
-//	parameter = parameter-name "=" parameter-value
-//	parameter-name = token
-//	parameter-value = ( token / quoted-string )
-//	parameters = *( OWS ";" OWS [ parameter ] )
-func forEachParameter(params string, functor func(string, string) bool) {
-	for len(params) > 0 {
-		// eat OWS ";" OWS
-		params = strings.TrimLeft(params, " ")
-		if len(params) == 0 || params[0] != ';' {
-			return
-		}
-		params = strings.TrimLeft(params[1:], " ")
-
-		n := 0
-
-		// make sure the parameter is at least one character long
-		if len(params) == 0 || !validHeaderFieldByte(params[n]) {
-			return
-		}
-		n++
-		for n < len(params) && validHeaderFieldByte(params[n]) {
-			n++
-		}
-
-		// We should hit a '=' (that has more characters after it)
-		// If not, the parameter is invalid.
-		// param=foo
-		// ~~~~~^
-		if n >= len(params)-1 || params[n] != '=' {
-			return
-		}
-		param := params[:n]
-		n++
-
-		if params[n] == '"' {
-			// Handle quoted strings and quoted-pairs (i.e., characters escaped with \ )
-			// See: https://www.rfc-editor.org/rfc/rfc9110#section-5.6.4
-			foundEndQuote := false
-			escaping := false
-			n++
-			m := n
-			for ; n < len(params); n++ {
-				if params[n] == '"' && !escaping {
-					foundEndQuote = true
-					break
-				}
-				// Recipients that process the value of a quoted-string MUST handle
-				// a quoted-pair as if it were replaced by the octet following the backslash
-				escaping = params[n] == '\\' && !escaping
-			}
-			if !foundEndQuote {
-				// Not a valid parameter
-				return
-			}
-			if !functor(param, params[m:n]) {
-				return
-			}
-			n++
-		} else if validHeaderFieldByte(params[n]) {
-			// Parse a normal value, which should just be a token.
-			m := n
-			n++
-			for n < len(params) && validHeaderFieldByte(params[n]) {
-				n++
-			}
-			if !functor(param, params[m:n]) {
-				return
-			}
-		} else {
-			// Value was invalid
-			return
-		}
-		params = params[n:]
-	}
-}
-
-// validHeaderFieldByte returns true if a valid tchar
-//
-//	tchar = "!" / "#" / "$" / "%" / "&" / "'" / "*" / "+" / "-" / "." /
-//	"^" / "_" / "`" / "|" / "~" / DIGIT / ALPHA
-//
-// See: https://www.rfc-editor.org/rfc/rfc9110#section-5.6.2
-// Function copied from net/textproto:
-// https://github.com/golang/go/blob/master/src/net/textproto/reader.go#L663
-func validHeaderFieldByte(c byte) bool {
-	// mask is a 128-bit bitmap with 1s for allowed bytes,
-	// so that the byte c can be tested with a shift and an and.
-	// If c >= 128, then 1<<c and 1<<(c-64) will both be zero,
-	// and this function will return false.
-	const mask = 0 |
-		(1<<(10)-1)<<'0' |
-		(1<<(26)-1)<<'a' |
-		(1<<(26)-1)<<'A' |
-		1<<'!' |
-		1<<'#' |
-		1<<'$' |
-		1<<'%' |
-		1<<'&' |
-		1<<'\'' |
-		1<<'*' |
-		1<<'+' |
-		1<<'-' |
-		1<<'.' |
-		1<<'^' |
-		1<<'_' |
-		1<<'`' |
-		1<<'|' |
-		1<<'~'
-	return ((uint64(1)<<c)&(mask&(1<<64-1)) |
-		(uint64(1)<<(c-64))&(mask>>64)) != 0
-}
-
 // getOffer return valid offer for header negotiation
 func getOffer(header string, isAccepted func(spec, offer, specParams string) bool, offers ...string) string {
 	if len(offers) == 0 {
@@ -557,16 +436,18 @@ func getOffer(header string, isAccepted func(spec, offer, specParams string) boo
 				}
 			} else {
 				hasParams := false
-				forEachParameter(accept[i:], func(param, val string) bool {
-					if param == "q" || param == "Q" {
-						if q, err := fasthttp.ParseUfloat([]byte(val)); err == nil {
-							quality = q
+				fasthttp.VisitHeaderParams([]byte(accept[i:]),
+					func(key, value []byte) bool {
+						if string(key) == "q" {
+							if q, err := fasthttp.ParseUfloat(value); err == nil {
+								quality = q
+							}
+							return false
 						}
-						return false
-					}
-					hasParams = true
-					return true
-				})
+						hasParams = true
+						return true
+					},
+				)
 				if hasParams {
 					params = accept[i:]
 				}
