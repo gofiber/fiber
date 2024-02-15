@@ -954,22 +954,7 @@ func (c *DefaultCtx) OriginalURL() string {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (c *DefaultCtx) Params(key string, defaultValue ...string) string {
-	if key == "*" || key == "+" {
-		key += "1"
-	}
-	for i := range c.route.Params {
-		if len(key) != len(c.route.Params[i]) {
-			continue
-		}
-		if c.route.Params[i] == key || (!c.app.config.CaseSensitive && utils.EqualFold(c.route.Params[i], key)) {
-			// in case values are not here
-			if len(c.values) <= i || len(c.values[i]) == 0 {
-				break
-			}
-			return c.values[i]
-		}
-	}
-	return defaultString("", defaultValue)
+	return Params[string](c, key, defaultValue...)
 }
 
 // Params is used to get the route parameters.
@@ -991,28 +976,25 @@ func Params[V GenericType](c Ctx, key string, defaultValue ...V) V {
 		panic(fmt.Errorf("failed to type-assert to *DefaultCtx"))
 	}
 
-	var v V
-	p := ctx.Params(key)
-
-	return genericParseType[V](ctx, p, v, defaultValue...)
-}
-
-// ParamsInt is used to get an integer from the route parameters
-// it defaults to zero if the parameter is not found or if the
-// parameter cannot be converted to an integer
-// If a default value is given, it will return that value in case the param
-// doesn't exist or cannot be converted to an integer
-func (c *DefaultCtx) ParamsInt(key string, defaultValue ...int) (int, error) {
-	// Use Atoi to convert the param to an int or return zero and an error
-	value, err := strconv.Atoi(c.Params(key))
-	if err != nil {
-		if len(defaultValue) > 0 {
-			return defaultValue[0], nil
-		}
-		return 0, fmt.Errorf("failed to convert: %w", err)
+	if key == "*" || key == "+" {
+		key += "1"
 	}
 
-	return value, nil
+	var v V
+	for i := range ctx.route.Params {
+		if len(key) != len(ctx.route.Params[i]) {
+			continue
+		}
+		if ctx.route.Params[i] == key || (!ctx.app.config.CaseSensitive && utils.EqualFold(ctx.route.Params[i], key)) {
+			// in case values are not here
+			if len(ctx.values) <= i || len(ctx.values[i]) == 0 {
+				break
+			}
+			return genericParseType[V](ctx, ctx.values[i], v, defaultValue...)
+		}
+	}
+
+	return v
 }
 
 // Path returns the path part of the request URL.

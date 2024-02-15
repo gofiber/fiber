@@ -224,13 +224,6 @@ type Ctx interface {
 	// Make copies or use the Immutable setting to use the value outside the Handler.
 	Params(key string, defaultValue ...string) string
 
-	// ParamsInt is used to get an integer from the route parameters
-	// it defaults to zero if the parameter is not found or if the
-	// parameter cannot be converted to an integer
-	// If a default value is given, it will return that value in case the param
-	// doesn't exist or cannot be converted to an integer
-	ParamsInt(key string, defaultValue ...int) (int, error)
-
 	// Path returns the path part of the request URL.
 	// Optionally, you could override the path.
 	Path(override ...string) string

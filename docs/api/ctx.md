@@ -1225,33 +1225,6 @@ The generic Params function supports returning the following data types based on
 - String: string
 - Byte array: []byte
 
-## ParamsInt
-
-Method can be used to get an integer from the route parameters.
-Please note if that parameter is not in the request, zero
-will be returned. If the parameter is NOT a number, zero and an error
-will be returned
-
-:::info
-Defaults to the integer zero \(`0`\), if the param **doesn't** exist.
-:::
-
-```go title="Signature"
-func (c *Ctx) ParamsInt(key string) (int, error)
-```
-
-```go title="Example"
-// GET http://example.com/user/123
-app.Get("/user/:id", func(c fiber.Ctx) error {
-  id, err := c.ParamsInt("id") // int 123 and no error
-
-  // ...
-})
-
-```
-
-This method is equivalent of using `atoi` with ctx.Params
-
 ## ParamsParser
 
 This method is similar to BodyParser, but for path parameters. It is important to use the struct tag "params". For example, if you want to parse a path parameter with a field called Pass, you would use a struct field of params:"pass"
