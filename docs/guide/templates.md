@@ -18,7 +18,7 @@ Fiber provides a Views interface to provide your own template engine:
 ```go
 type Views interface {
     Load() error
-    Render(io.Writer, string, any, ...string) error
+    Render(out io.Writer, name string, binding any, layout ...string) error
 }
 ```
 </TabItem>

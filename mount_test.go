@@ -237,7 +237,7 @@ func Test_App_ErrorHandler_GroupMount(t *testing.T) {
 			return c.Status(500).SendString("1: custom error")
 		},
 	})
-	micro.Get("/doe", func(c Ctx) error {
+	micro.Get("/doe", func(_ Ctx) error {
 		return errors.New("0: GET error")
 	})
 
@@ -257,7 +257,7 @@ func Test_App_ErrorHandler_GroupMountRootLevel(t *testing.T) {
 			return c.Status(500).SendString("1: custom error")
 		},
 	})
-	micro.Get("/john/doe", func(c Ctx) error {
+	micro.Get("/john/doe", func(_ Ctx) error {
 		return errors.New("0: GET error")
 	})
 
@@ -290,13 +290,13 @@ func Test_App_Group_Mount(t *testing.T) {
 func Test_App_UseParentErrorHandler(t *testing.T) {
 	t.Parallel()
 	app := New(Config{
-		ErrorHandler: func(ctx Ctx, err error) error {
+		ErrorHandler: func(ctx Ctx, _ error) error {
 			return ctx.Status(500).SendString("hi, i'm a custom error")
 		},
 	})
 
 	fiber := New()
-	fiber.Get("/", func(c Ctx) error {
+	fiber.Get("/", func(_ Ctx) error {
 		return errors.New("something happened")
 	})
 
@@ -311,11 +311,11 @@ func Test_App_UseMountedErrorHandler(t *testing.T) {
 	app := New()
 
 	fiber := New(Config{
-		ErrorHandler: func(c Ctx, err error) error {
+		ErrorHandler: func(c Ctx, _ error) error {
 			return c.Status(500).SendString("hi, i'm a custom error")
 		},
 	})
-	fiber.Get("/", func(c Ctx) error {
+	fiber.Get("/", func(_ Ctx) error {
 		return errors.New("something happened")
 	})
 
@@ -330,11 +330,11 @@ func Test_App_UseMountedErrorHandlerRootLevel(t *testing.T) {
 	app := New()
 
 	fiber := New(Config{
-		ErrorHandler: func(c Ctx, err error) error {
+		ErrorHandler: func(c Ctx, _ error) error {
 			return c.Status(500).SendString("hi, i'm a custom error")
 		},
 	})
-	fiber.Get("/api", func(c Ctx) error {
+	fiber.Get("/api", func(_ Ctx) error {
 		return errors.New("something happened")
 	})
 
@@ -348,34 +348,34 @@ func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	tsf := func(c Ctx, err error) error {
+	tsf := func(c Ctx, _ error) error {
 		return c.Status(200).SendString("hi, i'm a custom sub sub fiber error")
 	}
 	tripleSubFiber := New(Config{
 		ErrorHandler: tsf,
 	})
-	tripleSubFiber.Get("/", func(c Ctx) error {
+	tripleSubFiber.Get("/", func(_ Ctx) error {
 		return errors.New("something happened")
 	})
 
-	sf := func(c Ctx, err error) error {
+	sf := func(c Ctx, _ error) error {
 		return c.Status(200).SendString("hi, i'm a custom sub fiber error")
 	}
 	subfiber := New(Config{
 		ErrorHandler: sf,
 	})
-	subfiber.Get("/", func(c Ctx) error {
+	subfiber.Get("/", func(_ Ctx) error {
 		return errors.New("something happened")
 	})
 	subfiber.Use("/third", tripleSubFiber)
 
-	f := func(c Ctx, err error) error {
+	f := func(c Ctx, _ error) error {
 		return c.Status(200).SendString("hi, i'm a custom error")
 	}
 	fiber := New(Config{
 		ErrorHandler: f,
 	})
-	fiber.Get("/", func(c Ctx) error {
+	fiber.Get("/", func(_ Ctx) error {
 		return errors.New("something happened")
 	})
 	fiber.Use("/sub", subfiber)

@@ -35,7 +35,7 @@ func Test_Logger(t *testing.T) {
 		Output: buf,
 	}))
 
-	app.Get("/", func(c fiber.Ctx) error {
+	app.Get("/", func(_ fiber.Ctx) error {
 		return errors.New("some random error")
 	})
 
@@ -143,9 +143,9 @@ func Test_Logger_ErrorTimeZone(t *testing.T) {
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
 
-type fakeOutput int
+type fakeErrorOutput int
 
-func (o *fakeOutput) Write([]byte) (int, error) {
+func (o *fakeErrorOutput) Write([]byte) (int, error) {
 	*o++
 	return 0, errors.New("fake output")
 }
@@ -153,7 +153,7 @@ func (o *fakeOutput) Write([]byte) (int, error) {
 // go test -run Test_Logger_ErrorOutput_WithoutColor
 func Test_Logger_ErrorOutput_WithoutColor(t *testing.T) {
 	t.Parallel()
-	o := new(fakeOutput)
+	o := new(fakeErrorOutput)
 	app := fiber.New()
 	app.Use(New(Config{
 		Output:        o,
@@ -163,14 +163,13 @@ func Test_Logger_ErrorOutput_WithoutColor(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
-
-	require.Equal(t, 1, int(*o))
+	require.EqualValues(t, 2, *o)
 }
 
 // go test -run Test_Logger_ErrorOutput
 func Test_Logger_ErrorOutput(t *testing.T) {
 	t.Parallel()
-	o := new(fakeOutput)
+	o := new(fakeErrorOutput)
 	app := fiber.New()
 	app.Use(New(Config{
 		Output: o,
@@ -179,7 +178,7 @@ func Test_Logger_ErrorOutput(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
-	require.Equal(t, 1, int(*o))
+	require.EqualValues(t, 2, *o)
 }
 
 // go test -run Test_Logger_All
@@ -576,7 +575,7 @@ func Test_CustomTags(t *testing.T) {
 	app.Use(New(Config{
 		Format: "${custom_tag}",
 		CustomTags: map[string]LogFunc{
-			"custom_tag": func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (int, error) {
+			"custom_tag": func(output Buffer, _ fiber.Ctx, _ *Data, _ string) (int, error) {
 				return output.WriteString(customTag)
 			},
 		},
@@ -634,6 +633,13 @@ func Test_Logger_ByteSent_Streaming(t *testing.T) {
 	require.Equal(t, "0 0 200", buf.String())
 }
 
+type fakeOutput int
+
+func (o *fakeOutput) Write(b []byte) (int, error) {
+	*o++
+	return len(b), nil
+}
+
 // go test -run Test_Logger_EnableColors
 func Test_Logger_EnableColors(t *testing.T) {
 	t.Parallel()
@@ -646,6 +652,5 @@ func Test_Logger_EnableColors(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
-
-	require.Equal(t, 1, int(*o))
+	require.EqualValues(t, 1, *o)
 }

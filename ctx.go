@@ -109,7 +109,7 @@ type Cookie struct {
 // Views is the interface that wraps the Render function.
 type Views interface {
 	Load() error
-	Render(io.Writer, string, any, ...string) error
+	Render(out io.Writer, name string, binding any, layout ...string) error
 }
 
 // ResFmt associates a Content Type to a fiber.Handler for c.Format
@@ -298,7 +298,7 @@ func (c *DefaultCtx) ClearCookie(key ...string) {
 		}
 		return
 	}
-	c.fasthttp.Request.Header.VisitAllCookie(func(k, v []byte) {
+	c.fasthttp.Request.Header.VisitAllCookie(func(k, _ []byte) {
 		c.fasthttp.Response.Header.DelClientCookieBytes(k)
 	})
 }
@@ -564,6 +564,30 @@ func (c *DefaultCtx) GetRespHeader(key string, defaultValue ...string) string {
 	return defaultString(c.app.getString(c.fasthttp.Response.Header.Peek(key)), defaultValue)
 }
 
+// GetRespHeaders returns the HTTP response headers.
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting instead.
+func (c *DefaultCtx) GetRespHeaders() map[string][]string {
+	headers := make(map[string][]string)
+	c.Response().Header.VisitAll(func(k, v []byte) {
+		key := c.app.getString(k)
+		headers[key] = append(headers[key], c.app.getString(v))
+	})
+	return headers
+}
+
+// GetReqHeaders returns the HTTP request headers.
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting instead.
+func (c *DefaultCtx) GetReqHeaders() map[string][]string {
+	headers := make(map[string][]string)
+	c.Request().Header.VisitAll(func(k, v []byte) {
+		key := c.app.getString(k)
+		headers[key] = append(headers[key], c.app.getString(v))
+	})
+	return headers
+}
+
 // Host contains the host derived from the X-Forwarded-Host or Host HTTP header.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
@@ -809,11 +833,11 @@ func (c *DefaultCtx) Links(link ...string) {
 	bb := bytebufferpool.Get()
 	for i := range link {
 		if i%2 == 0 {
-			_ = bb.WriteByte('<')          //nolint:errcheck // This will never fail
-			_, _ = bb.WriteString(link[i]) //nolint:errcheck // This will never fail
-			_ = bb.WriteByte('>')          //nolint:errcheck // This will never fail
+			bb.WriteByte('<')
+			bb.WriteString(link[i])
+			bb.WriteByte('>')
 		} else {
-			_, _ = bb.WriteString(`; rel="` + link[i] + `",`) //nolint:errcheck // This will never fail
+			bb.WriteString(`; rel="` + link[i] + `",`)
 		}
 	}
 	c.setCanonical(HeaderLink, strings.TrimRight(c.app.getString(bb.Bytes()), ","))
@@ -1586,14 +1610,39 @@ func (c *DefaultCtx) Status(status int) Ctx {
 //
 // The returned value may be useful for logging.
 func (c *DefaultCtx) String() string {
-	return fmt.Sprintf(
-		"#%016X - %s <-> %s - %s %s",
-		c.fasthttp.ID(),
-		c.fasthttp.LocalAddr(),
-		c.fasthttp.RemoteAddr(),
-		c.fasthttp.Request.Header.Method(),
-		c.fasthttp.URI().FullURI(),
-	)
+	// Get buffer from pool
+	buf := bytebufferpool.Get()
+
+	// Start with the ID, converting it to a hex string without fmt.Sprintf
+	buf.WriteByte('#')
+	// Convert ID to hexadecimal
+	id := strconv.FormatUint(c.fasthttp.ID(), 16)
+	// Pad with leading zeros to ensure 16 characters
+	for i := 0; i < (16 - len(id)); i++ {
+		buf.WriteByte('0')
+	}
+	buf.WriteString(id)
+	buf.WriteString(" - ")
+
+	// Add local and remote addresses directly
+	buf.WriteString(c.fasthttp.LocalAddr().String())
+	buf.WriteString(" <-> ")
+	buf.WriteString(c.fasthttp.RemoteAddr().String())
+	buf.WriteString(" - ")
+
+	// Add method and URI
+	buf.Write(c.fasthttp.Request.Header.Method())
+	buf.WriteByte(' ')
+	buf.Write(c.fasthttp.URI().FullURI())
+
+	// Allocate string
+	str := buf.String()
+
+	// Reset buffer
+	buf.Reset()
+	bytebufferpool.Put(buf)
+
+	return str
 }
 
 // Type sets the Content-Type HTTP header to the MIME type specified by the file extension.

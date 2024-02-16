@@ -11,10 +11,19 @@ output:
   sort-results: true
 
 linters-settings:
+  testifylint:
+    enable-all: true
+    disable:
+      - go-require
   errcheck:
      check-type-assertions: true
      check-blank: true
      disable-default-exclusions: true
+     exclude-functions:
+       - '(*bytes.Buffer).Write' # always returns nil error
+       - '(*github.com/valyala/bytebufferpool.ByteBuffer).Write' # always returns nil error
+       - '(*github.com/valyala/bytebufferpool.ByteBuffer).WriteByte' # always returns nil error
+       - '(*github.com/valyala/bytebufferpool.ByteBuffer).WriteString' # always returns nil error
 
   errchkjson:
     report-no-exported: true
@@ -40,7 +49,7 @@ linters-settings:
 
   gosec:
     excludes:
-      - G104
+      - G104 # Provided by errcheck
     config:
       global:
         audit: true
@@ -104,8 +113,6 @@ linters-settings:
         disabled: true
       - name: exported
         disabled: true
-        arguments:
-          - disableStutteringCheck # TODO https://github.com/gofiber/fiber/issues/2816
       - name: file-header
         disabled: true
       - name: function-result-limit
@@ -124,6 +131,9 @@ linters-settings:
         disabled: true
       - name: unchecked-type-assertion
         disabled: true # TODO https://github.com/gofiber/fiber/issues/2816
+      # Provided by errcheck
+      - name: unhandled-error
+        disabled: true
 
   stylecheck:
     checks:
@@ -153,6 +163,8 @@ issues:
    exclude-use-default: false
 
 linters:
+  disable:
+    - spancheck
   enable:
     - asasalint
     - asciicheck
@@ -185,7 +197,7 @@ linters:
     # - gosmopolitan # TODO https://github.com/gofiber/fiber/issues/2816
     - govet
     - grouper
-    # - inamedparam # TODO https://github.com/gofiber/fiber/issues/2816
+    - inamedparam
     - loggercheck
     # - mirror # TODO https://github.com/gofiber/fiber/issues/2816
     - misspell

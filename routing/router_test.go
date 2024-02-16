@@ -319,11 +319,11 @@ func Test_Router_Handler_Catch_Error(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	app.config.ErrorHandler = func(c fiber.Ctx, err error) error {
+	app.config.ErrorHandler = func(_ fiber.Ctx, _ error) error {
 		return errors.New("fake error")
 	}
 
-	app.Get("/", func(c fiber.Ctx) error {
+	app.Get("/", func(_ fiber.Ctx) error {
 		return fiber.ErrForbidden
 	})
 
@@ -495,7 +495,7 @@ func Test_Router_NotFound_HTML_Inject(t *testing.T) {
 //////////////////////////////////////////////
 
 func registerDummyRoutes(app *fiber.App) {
-	h := func(c fiber.Ctx) error {
+	h := func(_ fiber.Ctx) error {
 		return nil
 	}
 	for _, r := range routesFixture.GithubAPI {
@@ -681,7 +681,7 @@ func Benchmark_Route_Match(b *testing.B) {
 		Path:   "/user/keys/:id",
 		Method: "DELETE",
 	}
-	route.Handlers = append(route.Handlers, func(c fiber.Ctx) error {
+	route.Handlers = append(route.Handlers, func(_ fiber.Ctx) error {
 		return nil
 	})
 	b.ResetTimer()
@@ -710,7 +710,7 @@ func Benchmark_Route_Match_Star(b *testing.B) {
 		Path:   "/user/keys/bla",
 		Method: "DELETE",
 	}
-	route.Handlers = append(route.Handlers, func(c fiber.Ctx) error {
+	route.Handlers = append(route.Handlers, func(_ fiber.Ctx) error {
 		return nil
 	})
 	b.ResetTimer()
@@ -740,7 +740,7 @@ func Benchmark_Route_Match_Root(b *testing.B) {
 		Path:   "/",
 		Method: "DELETE",
 	}
-	route.Handlers = append(route.Handlers, func(c fiber.Ctx) error {
+	route.Handlers = append(route.Handlers, func(_ fiber.Ctx) error {
 		return nil
 	})
 
@@ -778,7 +778,7 @@ func Benchmark_Router_Handler_Unescape(b *testing.B) {
 	app := fiber.New()
 	app.config.UnescapePath = true
 	registerDummyRoutes(app)
-	app.Delete("/créer", func(c fiber.Ctx) error {
+	app.Delete("/créer", func(_ fiber.Ctx) error {
 		return nil
 	})
 

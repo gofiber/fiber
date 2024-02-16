@@ -7,8 +7,14 @@ on:
       - master
       - main
   pull_request:
+
 permissions:
+  # Required: allow read access to the content for analysis.
   contents: read
+  # Optional: allow read access to pull request. Use with `only-new-issues` option.
+  pull-requests: read
+  # Optional: Allow write access to checks to allow the action to annotate code in the PR.
+  checks: write
 
 jobs:
   golangci:
@@ -21,9 +27,10 @@ jobs:
         with:
           # NOTE: Keep this in sync with the version from go.mod
           go-version: "1.20.x"
+          cache: false
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v3
+        uses: golangci/golangci-lint-action@v4
         with:
           # NOTE: Keep this in sync with the version from .golangci.yml
-          version: v1.55.2
+          version: v1.56.1

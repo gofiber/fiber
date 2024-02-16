@@ -88,6 +88,10 @@ app.Use(logger.New(logger.Config{
 }))
 ```
 
+:::tip 
+Writing to os.File is goroutine-safe, but if you are using a custom Output that is not goroutine-safe, make sure to implement locking to properly serialize writes.
+:::
+
 ## Config
 
 ### Config

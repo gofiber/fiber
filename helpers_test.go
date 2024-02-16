@@ -257,7 +257,7 @@ func Test_Utils_ForEachParameter(t *testing.T) {
 // go test -v -run=^$ -bench=Benchmark_Utils_ForEachParameter -benchmem -count=4
 func Benchmark_Utils_ForEachParameter(b *testing.B) {
 	for n := 0; n < b.N; n++ {
-		forEachParameter(`  ;  josua=1  ;   vermant="20tw\",bob;sack o" ; version=1; foo=bar;  `, func(s1, s2 string) bool {
+		forEachParameter(`  ;  josua=1  ;   vermant="20tw\",bob;sack o" ; version=1; foo=bar;  `, func(_, _ string) bool {
 			return true
 		})
 	}

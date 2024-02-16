@@ -961,7 +961,7 @@ func Test_Ctx_Format(t *testing.T) {
 		fmts := []ResFmt{}
 		for _, t := range types {
 			t := utils.CopyString(t)
-			fmts = append(fmts, ResFmt{t, func(c Ctx) error {
+			fmts = append(fmts, ResFmt{t, func(_ Ctx) error {
 				accepted = t
 				return nil
 			}})
@@ -983,7 +983,7 @@ func Test_Ctx_Format(t *testing.T) {
 	require.NotEqual(t, StatusNotAcceptable, c.Response().StatusCode())
 
 	myError := errors.New("this is an error")
-	err = c.Format(ResFmt{"text/html", func(c Ctx) error { return myError }})
+	err = c.Format(ResFmt{"text/html", func(_ Ctx) error { return myError }})
 	require.ErrorIs(t, err, myError)
 
 	c.Request().Header.Set(HeaderAccept, "application/json")
@@ -2123,7 +2123,7 @@ func Test_Ctx_ClientHelloInfo(t *testing.T) {
 func Test_Ctx_InvalidMethod(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Get("/", func(c Ctx) error {
+	app.Get("/", func(_ Ctx) error {
 		return nil
 	})
 
@@ -3400,7 +3400,7 @@ func Test_Ctx_JSON(t *testing.T) {
 		t.Parallel()
 
 		app := New(Config{
-			JSONEncoder: func(v any) ([]byte, error) {
+			JSONEncoder: func(_ any) ([]byte, error) {
 				return []byte(`["custom","json"]`), nil
 			},
 		})
@@ -3491,7 +3491,7 @@ func Test_Ctx_JSONP(t *testing.T) {
 		t.Parallel()
 
 		app := New(Config{
-			JSONEncoder: func(v any) ([]byte, error) {
+			JSONEncoder: func(_ any) ([]byte, error) {
 				return []byte(`["custom","json"]`), nil
 			},
 		})
@@ -3568,7 +3568,7 @@ func Test_Ctx_XML(t *testing.T) {
 		t.Parallel()
 
 		app := New(Config{
-			XMLEncoder: func(v any) ([]byte, error) {
+			XMLEncoder: func(_ any) ([]byte, error) {
 				return []byte(`<custom>xml</custom>`), nil
 			},
 		})
@@ -3764,7 +3764,7 @@ func Test_Ctx_RenderWithBindVars(t *testing.T) {
 	err = c.Render("./.github/testdata/index.tmpl", Map{})
 	require.NoError(t, err)
 	buf := bytebufferpool.Get()
-	_, _ = buf.WriteString("overwrite") //nolint:errcheck // This will never fail
+	buf.WriteString("overwrite")
 	defer bytebufferpool.Put(buf)
 
 	require.NoError(t, err)
@@ -3787,7 +3787,7 @@ func Test_Ctx_RenderWithOverwrittenBind(t *testing.T) {
 	require.NoError(t, err)
 
 	buf := bytebufferpool.Get()
-	_, _ = buf.WriteString("overwrite") //nolint:errcheck // This will never fail
+	buf.WriteString("overwrite")
 	defer bytebufferpool.Put(buf)
 
 	require.Equal(t, "<h1>Hello from Fiber!</h1>", string(c.Response().Body()))
@@ -3939,11 +3939,11 @@ func Test_Ctx_RestartRoutingWithChangedPath(t *testing.T) {
 		c.Path("/new")
 		return c.RestartRouting()
 	})
-	app.Get("/old", func(c Ctx) error {
+	app.Get("/old", func(_ Ctx) error {
 		executedOldHandler = true
 		return nil
 	})
-	app.Get("/new", func(c Ctx) error {
+	app.Get("/new", func(_ Ctx) error {
 		executedNewHandler = true
 		return nil
 	})
@@ -3959,7 +3959,7 @@ func Test_Ctx_RestartRoutingWithChangedPath(t *testing.T) {
 func Test_Ctx_RestartRoutingWithChangedPathAndCatchAll(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Get("/new", func(c Ctx) error {
+	app.Get("/new", func(_ Ctx) error {
 		return nil
 	})
 	app.Use(func(c Ctx) error {
@@ -3967,7 +3967,7 @@ func Test_Ctx_RestartRoutingWithChangedPathAndCatchAll(t *testing.T) {
 		// c.Next() would fail this test as a 404 is returned from the next handler
 		return c.RestartRouting()
 	})
-	app.Use(func(c Ctx) error {
+	app.Use(func(_ Ctx) error {
 		return ErrNotFound
 	})
 
@@ -4632,6 +4632,20 @@ func Test_Ctx_String(t *testing.T) {
 	require.Equal(t, "#0000000000000000 - 0.0.0.0:0 <-> 0.0.0.0:0 - GET http:///", c.String())
 }
 
+// go test -v  -run=^$ -bench=Benchmark_Ctx_String -benchmem -count=4
+func Benchmark_Ctx_String(b *testing.B) {
+	var str string
+	app := New()
+	ctx := app.NewCtx(&fasthttp.RequestCtx{})
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		str = ctx.String()
+	}
+	require.Equal(b, "#0000000000000000 - 0.0.0.0:0 <-> 0.0.0.0:0 - GET http:///", str)
+}
+
 func TestCtx_ParamsInt(t *testing.T) {
 	// Create a test context and set some strings (or params)
 	// create a fake app to be used within this test
@@ -4853,4 +4867,90 @@ func Test_Ctx_extractIPsFromHeader_EnableValidateIp(t *testing.T) {
 	ips := c.IPs()
 	res := ips[len(ips)-2]
 	require.Equal(t, "42.118.81.169", res)
+}
+
+// go test -run Test_Ctx_GetRespHeaders
+func Test_Ctx_GetRespHeaders(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	c.Set("test", "Hello, World 👋!")
+	c.Set("foo", "bar")
+	c.Response().Header.Set("multi", "one")
+	c.Response().Header.Add("multi", "two")
+	c.Response().Header.Set(HeaderContentType, "application/json")
+
+	require.Equal(t, map[string][]string{
+		"Content-Type": {"application/json"},
+		"Foo":          {"bar"},
+		"Multi":        {"one", "two"},
+		"Test":         {"Hello, World 👋!"},
+	}, c.GetRespHeaders())
+}
+
+func Benchmark_Ctx_GetRespHeaders(b *testing.B) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	c.Response().Header.Set("test", "Hello, World 👋!")
+	c.Response().Header.Set("foo", "bar")
+	c.Response().Header.Set(HeaderContentType, "application/json")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	var headers map[string][]string
+	for n := 0; n < b.N; n++ {
+		headers = c.GetRespHeaders()
+	}
+
+	require.Equal(b, map[string][]string{
+		"Content-Type": {"application/json"},
+		"Foo":          {"bar"},
+		"Test":         {"Hello, World 👋!"},
+	}, headers)
+}
+
+// go test -run Test_Ctx_GetReqHeaders
+func Test_Ctx_GetReqHeaders(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	c.Request().Header.Set("test", "Hello, World 👋!")
+	c.Request().Header.Set("foo", "bar")
+	c.Request().Header.Set("multi", "one")
+	c.Request().Header.Add("multi", "two")
+	c.Request().Header.Set(HeaderContentType, "application/json")
+
+	require.Equal(t, map[string][]string{
+		"Content-Type": {"application/json"},
+		"Foo":          {"bar"},
+		"Test":         {"Hello, World 👋!"},
+		"Multi":        {"one", "two"},
+	}, c.GetReqHeaders())
+}
+
+func Benchmark_Ctx_GetReqHeaders(b *testing.B) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	c.Request().Header.Set("test", "Hello, World 👋!")
+	c.Request().Header.Set("foo", "bar")
+	c.Request().Header.Set(HeaderContentType, "application/json")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	var headers map[string][]string
+	for n := 0; n < b.N; n++ {
+		headers = c.GetReqHeaders()
+	}
+
+	require.Equal(b, map[string][]string{
+		"Content-Type": {"application/json"},
+		"Foo":          {"bar"},
+		"Test":         {"Hello, World 👋!"},
+	}, headers)
 }
