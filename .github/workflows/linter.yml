@@ -30,7 +30,7 @@ jobs:
           cache: false
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v3
+        uses: golangci/golangci-lint-action@v4
         with:
           # NOTE: Keep this in sync with the version from .golangci.yml
-          version: v1.55.2
+          version: v1.56.1

@@ -102,6 +102,11 @@
   <b>Fiber</b> is an <a href="https://github.com/expressjs/express">Express</a> inspired <b>web framework</b> built on top of <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, the <b>fastest</b> HTTP engine for <a href="https://go.dev/doc/">Go</a>. Designed to <b>ease</b> things up for <b>fast</b> development with <b>zero memory allocation</b> and <b>performance</b> in mind.
 </p>
 
+## ⚠️ **Attention**
+
+Fiber v3 is currently in beta and under active development. While it offers exciting new features, please note that it may not be stable for production use. We recommend sticking to the latest stable release (v2.x) for mission-critical applications. If you choose to use v3, be prepared for potential bugs and breaking changes. Always check the official documentation and release notes for updates and proceed with caution. Happy coding! 🚀
+
+
 ## ⚡️ Quickstart
 
 ```go
@@ -131,7 +136,7 @@ These tests are performed by [TechEmpower](https://www.techempower.com/benchmark
 
 ## ⚙️ Installation
 
-Make sure you have Go installed ([download](https://go.dev/dl/)). Version `1.17` or higher is required.
+Make sure you have Go installed ([download](https://go.dev/dl/)). Version `1.20` or higher is required.
 
 Initialize your project by creating a folder and then running `go mod init github.com/your/repo` ([learn more](https://go.dev/blog/using-go-modules)) inside the folder. Then install Fiber with the [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
 
@@ -165,7 +170,7 @@ We **listen** to our users in [issues](https://github.com/gofiber/fiber/issues),
 
 ## ⚠️ Limitations
 
--   Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber 2.40.0 has been tested with Go versions 1.17 to 1.21.
+-   Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber 3.0.0 has been tested with Go versions 1.20 to 1.22.
 -   Fiber is not compatible with net/http interfaces. This means you will not be able to use projects like gqlgen, go-swagger, or any others which are part of the net/http ecosystem.
 
 ## 👀 Examples

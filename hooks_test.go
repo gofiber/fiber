@@ -88,7 +88,7 @@ func Test_Hook_OnName_Error(t *testing.T) {
 		}
 	}()
 
-	app.Hooks().OnName(func(r Route) error {
+	app.Hooks().OnName(func(_ Route) error {
 		return errors.New("unknown error")
 	})
 
@@ -172,7 +172,7 @@ func Test_Hook_OnGroupName_Error(t *testing.T) {
 		}
 	}()
 
-	app.Hooks().OnGroupName(func(g Group) error {
+	app.Hooks().OnGroupName(func(_ Group) error {
 		return errors.New("unknown error")
 	})
 
@@ -206,7 +206,7 @@ func Test_Hook_OnListen(t *testing.T) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	app.Hooks().OnListen(func(listenData ListenData) error {
+	app.Hooks().OnListen(func(_ ListenData) error {
 		_, err := buf.WriteString("ready")
 		require.NoError(t, err)
 
@@ -229,7 +229,7 @@ func Test_Hook_OnListenPrefork(t *testing.T) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	app.Hooks().OnListen(func(listenData ListenData) error {
+	app.Hooks().OnListen(func(_ ListenData) error {
 		_, err := buf.WriteString("ready")
 		require.NoError(t, err)
 

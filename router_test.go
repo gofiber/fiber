@@ -318,11 +318,11 @@ func Test_Router_Handler_Catch_Error(t *testing.T) {
 	t.Parallel()
 
 	app := New()
-	app.config.ErrorHandler = func(c Ctx, err error) error {
+	app.config.ErrorHandler = func(_ Ctx, _ error) error {
 		return errors.New("fake error")
 	}
 
-	app.Get("/", func(c Ctx) error {
+	app.Get("/", func(_ Ctx) error {
 		return ErrForbidden
 	})
 
@@ -494,7 +494,7 @@ func Test_Router_NotFound_HTML_Inject(t *testing.T) {
 //////////////////////////////////////////////
 
 func registerDummyRoutes(app *App) {
-	h := func(c Ctx) error {
+	h := func(_ Ctx) error {
 		return nil
 	}
 	for _, r := range routesFixture.GithubAPI {
@@ -680,7 +680,7 @@ func Benchmark_Route_Match(b *testing.B) {
 		Path:   "/user/keys/:id",
 		Method: "DELETE",
 	}
-	route.Handlers = append(route.Handlers, func(c Ctx) error {
+	route.Handlers = append(route.Handlers, func(_ Ctx) error {
 		return nil
 	})
 	b.ResetTimer()
@@ -709,7 +709,7 @@ func Benchmark_Route_Match_Star(b *testing.B) {
 		Path:   "/user/keys/bla",
 		Method: "DELETE",
 	}
-	route.Handlers = append(route.Handlers, func(c Ctx) error {
+	route.Handlers = append(route.Handlers, func(_ Ctx) error {
 		return nil
 	})
 	b.ResetTimer()
@@ -739,7 +739,7 @@ func Benchmark_Route_Match_Root(b *testing.B) {
 		Path:   "/",
 		Method: "DELETE",
 	}
-	route.Handlers = append(route.Handlers, func(c Ctx) error {
+	route.Handlers = append(route.Handlers, func(_ Ctx) error {
 		return nil
 	})
 
@@ -777,7 +777,7 @@ func Benchmark_Router_Handler_Unescape(b *testing.B) {
 	app := New()
 	app.config.UnescapePath = true
 	registerDummyRoutes(app)
-	app.Delete("/créer", func(c Ctx) error {
+	app.Delete("/créer", func(_ Ctx) error {
 		return nil
 	})
 

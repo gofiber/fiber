@@ -34,7 +34,7 @@ func New(config ...Config) fiber.Handler {
 		err := c.Next()
 
 		// Encrypt response cookies
-		c.Response().Header.VisitAllCookie(func(key, value []byte) {
+		c.Response().Header.VisitAllCookie(func(key, _ []byte) {
 			keyString := string(key)
 			if !isDisabled(keyString, cfg.Except) {
 				cookieValue := fasthttp.Cookie{}

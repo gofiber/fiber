@@ -82,7 +82,7 @@ func Test_Listen_Graceful_Shutdown(t *testing.T) {
 		req.SetRequestURI("http://example.com")
 
 		client := fasthttp.HostClient{}
-		client.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+		client.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
 
 		resp := fasthttp.AcquireResponse()
 		err := client.Do(req, resp)
@@ -255,7 +255,7 @@ func Test_Listen_TLSConfigFunc(t *testing.T) {
 
 	require.NoError(t, app.Listen(":0", ListenConfig{
 		DisableStartupMessage: true,
-		TLSConfigFunc: func(tlsConfig *tls.Config) {
+		TLSConfigFunc: func(_ *tls.Config) {
 			callTLSConfig = true
 		},
 		CertFile:    "./.github/testdata/ssl.pem",
@@ -361,7 +361,7 @@ func Test_Listen_Master_Process_Show_Startup_Message(t *testing.T) {
 	require.Contains(t, startupMessage, "(bound on host 0.0.0.0 and port 3000)")
 	require.Contains(t, startupMessage, "Child PIDs")
 	require.Contains(t, startupMessage, "11111, 22222, 33333, 44444, 55555, 60000")
-	require.Contains(t, startupMessage, fmt.Sprintf("Prefork: %sEnabled%s", colors.Blue, colors.Reset))
+	require.Contains(t, startupMessage, fmt.Sprintf("Prefork: \t\t\t%sEnabled%s", colors.Blue, colors.Reset))
 }
 
 // go test -run Test_Listen_Master_Process_Show_Startup_MessageWithAppName
@@ -408,7 +408,7 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithDisabledPreforkAndCustom
 	require.Contains(t, startupMessage, fmt.Sprintf("%sINFO%s", colors.Green, colors.Reset))
 	require.Contains(t, startupMessage, fmt.Sprintf("%s%s%s", colors.Blue, appName, colors.Reset))
 	require.Contains(t, startupMessage, fmt.Sprintf("%s%s%s", colors.Blue, "https://server.com:8081", colors.Reset))
-	require.Contains(t, startupMessage, fmt.Sprintf("Prefork: %sDisabled%s", colors.Red, colors.Reset))
+	require.Contains(t, startupMessage, fmt.Sprintf("Prefork: \t\t\t%sDisabled%s", colors.Red, colors.Reset))
 }
 
 // go test -run Test_Listen_Print_Route

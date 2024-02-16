@@ -27,8 +27,8 @@ func (l *defaultLogger) privateLog(lv Level, fmtArgs []any) {
 	}
 	level := lv.toString()
 	buf := bytebufferpool.Get()
-	_, _ = buf.WriteString(level)                  //nolint:errcheck // It is fine to ignore the error
-	_, _ = buf.WriteString(fmt.Sprint(fmtArgs...)) //nolint:errcheck // It is fine to ignore the error
+	buf.WriteString(level)
+	buf.WriteString(fmt.Sprint(fmtArgs...))
 
 	if lv == LevelPanic {
 		panic(buf.String())
@@ -51,7 +51,7 @@ func (l *defaultLogger) privateLogf(lv Level, format string, fmtArgs []any) {
 	}
 	level := lv.toString()
 	buf := bytebufferpool.Get()
-	_, _ = buf.WriteString(level) //nolint:errcheck // It is fine to ignore the error
+	buf.WriteString(level)
 
 	if len(fmtArgs) > 0 {
 		_, _ = fmt.Fprintf(buf, format, fmtArgs...)
@@ -80,11 +80,11 @@ func (l *defaultLogger) privateLogw(lv Level, format string, keysAndValues []any
 	}
 	level := lv.toString()
 	buf := bytebufferpool.Get()
-	_, _ = buf.WriteString(level) //nolint:errcheck // It is fine to ignore the error
+	buf.WriteString(level)
 
 	// Write format privateLog buffer
 	if format != "" {
-		_, _ = buf.WriteString(format) //nolint:errcheck // It is fine to ignore the error
+		buf.WriteString(format)
 	}
 	// Write keys and values privateLog buffer
 	if len(keysAndValues) > 0 {
@@ -94,11 +94,11 @@ func (l *defaultLogger) privateLogw(lv Level, format string, keysAndValues []any
 
 		for i := 0; i < len(keysAndValues); i += 2 {
 			if i > 0 || format != "" {
-				_ = buf.WriteByte(' ') //nolint:errcheck // It is fine to ignore the error
+				buf.WriteByte(' ')
 			}
-			_, _ = buf.WriteString(keysAndValues[i].(string))          //nolint:errcheck // It is fine to ignore the error
-			_ = buf.WriteByte('=')                                     //nolint:errcheck // It is fine to ignore the error
-			_, _ = buf.WriteString(utils.ToString(keysAndValues[i+1])) //nolint:errcheck // It is fine to ignore the error
+			buf.WriteString(keysAndValues[i].(string)) //nolint:forcetypeassert // Keys must be strings
+			buf.WriteByte('=')
+			buf.WriteString(utils.ToString(keysAndValues[i+1]))
 		}
 	}
 

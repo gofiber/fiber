@@ -146,7 +146,7 @@ func Test_Redirect_Back(t *testing.T) {
 
 	err = c.Redirect().Back()
 	require.Equal(t, 500, c.Response().StatusCode())
-	require.ErrorAs(t, ErrRedirectBackNoFallback, &err)
+	require.ErrorAs(t, err, &ErrRedirectBackNoFallback)
 }
 
 // go test -run Test_Redirect_Back_WithReferer
@@ -318,7 +318,7 @@ func Test_Redirect_Request(t *testing.T) {
 
 	for _, tc := range testCases {
 		client := &fasthttp.HostClient{
-			Dial: func(addr string) (net.Conn, error) {
+			Dial: func(_ string) (net.Conn, error) {
 				return ln.Dial()
 			},
 		}
@@ -345,14 +345,17 @@ func Benchmark_Redirect_Route(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
+	var err error
+
 	for n := 0; n < b.N; n++ {
-		c.Redirect().Route("user", RedirectConfig{ //nolint:errcheck,revive // we don't need to handle error here
+		err = c.Redirect().Route("user", RedirectConfig{
 			Params: Map{
 				"name": "fiber",
 			},
 		})
 	}
 
+	require.NoError(b, err)
 	require.Equal(b, 302, c.Response().StatusCode())
 	require.Equal(b, "/user/fiber", string(c.Response().Header.Peek(HeaderLocation)))
 }
@@ -369,8 +372,10 @@ func Benchmark_Redirect_Route_WithQueries(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
+	var err error
+
 	for n := 0; n < b.N; n++ {
-		c.Redirect().Route("user", RedirectConfig{ //nolint:errcheck,revive // we don't need to handle error here
+		err = c.Redirect().Route("user", RedirectConfig{
 			Params: Map{
 				"name": "fiber",
 			},
@@ -378,6 +383,7 @@ func Benchmark_Redirect_Route_WithQueries(b *testing.B) {
 		})
 	}
 
+	require.NoError(b, err)
 	require.Equal(b, 302, c.Response().StatusCode())
 	// analysis of query parameters with url parsing, since a map pass is always randomly ordered
 	location, err := url.Parse(string(c.Response().Header.Peek(HeaderLocation)))
@@ -398,10 +404,13 @@ func Benchmark_Redirect_Route_WithFlashMessages(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
+	var err error
+
 	for n := 0; n < b.N; n++ {
-		c.Redirect().With("success", "1").With("message", "test").Route("user") //nolint:errcheck,revive // we don't need to handle error here
+		err = c.Redirect().With("success", "1").With("message", "test").Route("user")
 	}
 
+	require.NoError(b, err)
 	require.Equal(b, 302, c.Response().StatusCode())
 	require.Equal(b, "/user", string(c.Response().Header.Peek(HeaderLocation)))
 

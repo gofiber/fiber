@@ -12,7 +12,7 @@ func New(config ...Config) fiber.Handler {
 
 	// Setup request handlers
 	var (
-		fctx       = func(c *fasthttp.RequestCtx) {}
+		fctx       = func(_ *fasthttp.RequestCtx) {}
 		compressor fasthttp.RequestHandler
 	)
 

@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 	"strconv"
-	"sync"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
@@ -14,8 +13,6 @@ import (
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 )
-
-var mu sync.Mutex
 
 // default logger for fiber
 func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
@@ -33,9 +30,9 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 			if data.ChainErr != nil {
 				formatErr = colors.Red + " | " + data.ChainErr.Error() + colors.Reset
 			}
-			_, _ = buf.WriteString( //nolint:errcheck // This will never fail
+			buf.WriteString(
 				fmt.Sprintf("%s |%s %3d %s| %13v | %15s |%s %-7s %s| %-"+data.ErrPaddingStr+"s %s\n",
-					data.Timestamp.Load().(string),
+					data.Timestamp.Load().(string), //nolint:forcetypeassert // Timestamp is always a string
 					statusColor(c.Response().StatusCode(), colors), c.Response().StatusCode(), colors.Reset,
 					data.Stop.Sub(data.Start),
 					c.IP(),
@@ -53,45 +50,45 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 			fixedWidth := func(s string, width int, rightAlign bool) {
 				if rightAlign {
 					for i := len(s); i < width; i++ {
-						_ = buf.WriteByte(' ') //nolint:errcheck // It is fine to ignore the error
+						buf.WriteByte(' ')
 					}
-					_, _ = buf.WriteString(s) //nolint:errcheck // It is fine to ignore the error
+					buf.WriteString(s)
 				} else {
-					_, _ = buf.WriteString(s) //nolint:errcheck // It is fine to ignore the error
+					buf.WriteString(s)
 					for i := len(s); i < width; i++ {
-						_ = buf.WriteByte(' ') //nolint:errcheck // It is fine to ignore the error
+						buf.WriteByte(' ')
 					}
 				}
 			}
 
 			// Timestamp
-			_, _ = buf.WriteString(data.Timestamp.Load().(string)) //nolint:errcheck // It is fine to ignore the error
-			_, _ = buf.WriteString(" | ")                          //nolint:errcheck // It is fine to ignore the error
+			buf.WriteString(data.Timestamp.Load().(string)) //nolint:forcetypeassert // Timestamp is always a string
+			buf.WriteString(" | ")
 
 			// Status Code with 3 fixed width, right aligned
 			fixedWidth(strconv.Itoa(c.Response().StatusCode()), 3, true)
-			_, _ = buf.WriteString(" | ") //nolint:errcheck // It is fine to ignore the error
+			buf.WriteString(" | ")
 
 			// Duration with 13 fixed width, right aligned
 			fixedWidth(data.Stop.Sub(data.Start).String(), 13, true)
-			_, _ = buf.WriteString(" | ") //nolint:errcheck // It is fine to ignore the error
+			buf.WriteString(" | ")
 
 			// Client IP with 15 fixed width, right aligned
 			fixedWidth(c.IP(), 15, true)
-			_, _ = buf.WriteString(" | ") //nolint:errcheck // It is fine to ignore the error
+			buf.WriteString(" | ")
 
 			// HTTP Method with 7 fixed width, left aligned
 			fixedWidth(c.Method(), 7, false)
-			_, _ = buf.WriteString(" | ") //nolint:errcheck // It is fine to ignore the error
+			buf.WriteString(" | ")
 
 			// Path with dynamic padding for error message, left aligned
 			errPadding, _ := strconv.Atoi(data.ErrPaddingStr) //nolint:errcheck // It is fine to ignore the error
 			fixedWidth(c.Path(), errPadding, false)
 
 			// Error message
-			_, _ = buf.WriteString(" ")       //nolint:errcheck // It is fine to ignore the error
-			_, _ = buf.WriteString(formatErr) //nolint:errcheck // It is fine to ignore the error
-			_, _ = buf.WriteString("\n")      //nolint:errcheck // It is fine to ignore the error
+			buf.WriteString(" ")
+			buf.WriteString(formatErr)
+			buf.WriteString("\n")
 		}
 
 		// Write buffer to output
@@ -112,7 +109,7 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 	// Loop over template parts execute dynamic parts and add fixed parts to the buffer
 	for i, logFunc := range data.LogFuncChain {
 		if logFunc == nil {
-			_, _ = buf.Write(data.TemplateChain[i]) //nolint:errcheck // This will never fail
+			buf.Write(data.TemplateChain[i])
 		} else if data.TemplateChain[i] == nil {
 			_, err = logFunc(buf, c, data, "")
 		} else {
@@ -125,12 +122,10 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 
 	// Also write errors to the buffer
 	if err != nil {
-		_, _ = buf.WriteString(err.Error()) //nolint:errcheck // This will never fail
+		buf.WriteString(err.Error())
 	}
 
-	mu.Lock()
 	writeLog(cfg.Output, buf.Bytes())
-	mu.Unlock()
 
 	if cfg.Done != nil {
 		cfg.Done(c, buf.Bytes())

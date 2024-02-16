@@ -20,7 +20,7 @@ func Test_Middleware_Favicon(t *testing.T) {
 
 	app.Use(New())
 
-	app.Get("/", func(c fiber.Ctx) error {
+	app.Get("/", func(_ fiber.Ctx) error {
 		return nil
 	})
 
@@ -66,7 +66,7 @@ func Test_Middleware_Favicon_Found(t *testing.T) {
 		File: "../../.github/testdata/favicon.ico",
 	}))
 
-	app.Get("/", func(c fiber.Ctx) error {
+	app.Get("/", func(_ fiber.Ctx) error {
 		return nil
 	})
 
@@ -86,7 +86,7 @@ func Test_Custom_Favicon_URL(t *testing.T) {
 		URL:  customURL,
 	}))
 
-	app.Get("/", func(c fiber.Ctx) error {
+	app.Get("/", func(_ fiber.Ctx) error {
 		return nil
 	})
 
@@ -108,7 +108,7 @@ func Test_Custom_Favicon_Data(t *testing.T) {
 		Data: data,
 	}))
 
-	app.Get("/", func(c fiber.Ctx) error {
+	app.Get("/", func(_ fiber.Ctx) error {
 		return nil
 	})
 
@@ -157,7 +157,7 @@ func Test_Middleware_Favicon_CacheControl(t *testing.T) {
 func Benchmark_Middleware_Favicon(b *testing.B) {
 	app := fiber.New()
 	app.Use(New())
-	app.Get("/", func(c fiber.Ctx) error {
+	app.Get("/", func(_ fiber.Ctx) error {
 		return nil
 	})
 	handler := app.Handler()

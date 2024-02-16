@@ -142,7 +142,7 @@ func Benchmark_Idempotency(b *testing.B) {
 		Lifetime: lifetime,
 	}))
 
-	app.Post("/", func(c fiber.Ctx) error {
+	app.Post("/", func(_ fiber.Ctx) error {
 		return nil
 	})
 

@@ -53,6 +53,7 @@ func getTLSConfig(ln net.Listener) *tls.Config {
 					if elem := newval.Elem(); elem.Type() != nil {
 						// Cast value to *tls.Config
 						c, ok := elem.Interface().(*tls.Config)
+						//nolint:revive // We need to check if the type assertion was successful
 						if !ok {
 							panic(fmt.Errorf("failed to type-assert to *tls.Config"))
 						}

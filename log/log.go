@@ -54,8 +54,8 @@ type CommonLogger interface {
 
 // ControlLogger provides methods to config a logger.
 type ControlLogger interface {
-	SetLevel(Level)
-	SetOutput(io.Writer)
+	SetLevel(level Level)
+	SetOutput(w io.Writer)
 }
 
 // AllLogger is the combination of Logger, FormatLogger, CtxLogger and ControlLogger.

@@ -86,7 +86,7 @@ func Test_CtxLogger(t *testing.T) {
 	WithContext(ctx).Debugf("received %s order", work)
 	WithContext(ctx).Infof("starting %s", work)
 	WithContext(ctx).Warnf("%s may fail", work)
-	WithContext(ctx).Errorf("%s failed", work)
+	WithContext(ctx).Errorf("%s failed %d", work, 50)
 
 	require.Panics(t, func() {
 		WithContext(ctx).Panicf("%s panic", work)
@@ -96,7 +96,7 @@ func Test_CtxLogger(t *testing.T) {
 		"[Debug] received work order\n"+
 		"[Info] starting work\n"+
 		"[Warn] work may fail\n"+
-		"[Error] work failed\n", string(w.b))
+		"[Error] work failed 50\n", string(w.b))
 }
 
 func Test_LogfKeyAndValues(t *testing.T) {
