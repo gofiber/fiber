@@ -52,6 +52,7 @@ func addMissingPort(addr string, isTLS bool) string {
 // `core` stores middleware and plugin definitions,
 // and defines the execution process
 type core struct {
+	host   *fasthttp.HostClient
 	client *Client
 	req    *Request
 	ctx    context.Context
@@ -92,6 +93,8 @@ func (c *core) execFunc() (*Response, error) {
 	c.req.RawRequest.CopyTo(reqv)
 	cfg := c.getRetryConfig()
 
+	defer ReleaseHostClient(c.host)
+
 	go func() {
 		c.client.mu.Lock()
 
@@ -100,16 +103,16 @@ func (c *core) execFunc() (*Response, error) {
 		if cfg != nil {
 			err = retry.NewExponentialBackoff(*cfg).Retry(func() error {
 				if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
-					return c.client.host.DoRedirects(reqv, respv, c.req.maxRedirects)
+					return c.host.DoRedirects(reqv, respv, c.req.maxRedirects)
 				}
 
-				return c.client.host.Do(reqv, respv)
+				return c.host.Do(reqv, respv)
 			})
 		} else {
 			if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
-				err = c.client.host.DoRedirects(reqv, respv, c.req.maxRedirects)
+				err = c.host.DoRedirects(reqv, respv, c.req.maxRedirects)
 			} else {
-				err = c.client.host.Do(reqv, respv)
+				err = c.host.Do(reqv, respv)
 			}
 		}
 		defer func() {
@@ -203,14 +206,14 @@ func (c *core) timeout() context.CancelFunc {
 // dial set dial in host.
 func (c *core) dial() {
 	c.client.mu.Lock()
-	c.client.host.Dial = c.req.dial
+	c.host.Dial = c.req.dial
 	c.client.mu.Unlock()
 }
 
 // tls sets tls config.
 func (c *core) tls() {
 	c.client.mu.Lock()
-	c.client.host.TLSConfig = c.client.tlsConfig.Clone()
+	c.host.TLSConfig = c.client.tlsConfig.Clone()
 	c.client.mu.Unlock()
 }
 
@@ -231,8 +234,8 @@ func (c *core) proxy() error {
 	}
 
 	c.client.mu.Lock()
-	c.client.host.Addr = addMissingPort(string(rawURI.Host()), isTLS)
-	c.client.host.IsTLS = isTLS
+	c.host.Addr = addMissingPort(string(rawURI.Host()), isTLS)
+	c.host.IsTLS = isTLS
 	c.client.mu.Unlock()
 
 	return nil
@@ -306,7 +309,9 @@ func releaseErrChan(ch chan error) {
 
 // newCore returns an empty core object.
 func newCore() *core {
-	c := &core{}
+	c := &core{
+		host: AcquireHostClient(),
+	}
 
 	return c
 }

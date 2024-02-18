@@ -35,8 +35,6 @@ var (
 type Client struct {
 	mu sync.RWMutex
 
-	host *fasthttp.HostClient
-
 	baseURL   string
 	userAgent string
 	referer   string
@@ -108,17 +106,6 @@ func (c *Client) AddResponseHook(h ...ResponseHook) *Client {
 	defer c.mu.Unlock()
 
 	c.userResponseHooks = append(c.userResponseHooks, h...)
-	return c
-}
-
-// HostClient returns host client in client.
-func (c *Client) HostClient() *fasthttp.HostClient {
-	return c.host
-}
-
-// SetHostClient sets host client in client.
-func (c *Client) SetHostClient(host *fasthttp.HostClient) *Client {
-	c.host = host
 	return c
 }
 
@@ -669,7 +656,6 @@ var (
 	clientPool       = &sync.Pool{
 		New: func() any {
 			return &Client{
-				host: &fasthttp.HostClient{},
 				header: &Header{
 					RequestHeader: &fasthttp.RequestHeader{},
 				},
@@ -772,4 +758,44 @@ func Options(url string, cfg ...Config) (*Response, error) {
 // Patch send a patch request use defaultClient, a convenient method.
 func Patch(url string, cfg ...Config) (*Response, error) {
 	return C().Patch(url, cfg...)
+}
+
+var hostClienPool = &sync.Pool{
+	New: func() any {
+		return &fasthttp.HostClient{}
+	},
+}
+
+// AcquireHostClient returns an empty HostClient object from the pool.
+//
+// The returned HostClient object may be returned to the pool with ReleaseHostClient when no longer needed.
+// This allows reducing GC load.
+func AcquireHostClient() *fasthttp.HostClient {
+	hostClient, ok := hostClienPool.Get().(*fasthttp.HostClient)
+	if !ok {
+		panic(fmt.Errorf("failed to type-assert to *fasthttp.HostClient"))
+	}
+
+	return hostClient
+}
+
+// ReleaseHostClient returns the object acquired via AcquireHostClient to the pool.
+//
+// Do not access the released HostClient object, otherwise data
+func ReleaseHostClient(h *fasthttp.HostClient) {
+	// reset host client
+	h.Addr = ""
+	h.Name = ""
+	h.Dial = nil
+	h.MaxConns = 0
+	h.MaxIdleConnDuration = 0
+	h.ReadTimeout = 0
+	h.WriteTimeout = 0
+	h.ReadBufferSize = 0
+	h.WriteBufferSize = 0
+	h.DisableHeaderNamesNormalizing = false
+	h.DisablePathNormalizing = false
+	h.DisablePathNormalizing = false
+
+	hostClienPool.Put(h)
 }

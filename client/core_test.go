@@ -87,7 +87,7 @@ func Test_Exec_Func(t *testing.T) {
 		core.client = client
 		core.req = req
 
-		core.client.host.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+		core.host.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
 		req.RawRequest.SetRequestURI("http://example.com/normal")
 
 		resp, err := core.execFunc()
@@ -104,7 +104,7 @@ func Test_Exec_Func(t *testing.T) {
 		core.client = client
 		core.req = req
 
-		core.client.host.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+		core.host.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
 		req.RawRequest.SetRequestURI("http://example.com/return-error")
 
 		resp, err := core.execFunc()
@@ -124,7 +124,7 @@ func Test_Exec_Func(t *testing.T) {
 		core.client = client
 		core.req = req
 
-		core.client.host.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+		core.host.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
 		req.RawRequest.SetRequestURI("http://example.com/hang-up")
 
 		_, err := core.execFunc()
