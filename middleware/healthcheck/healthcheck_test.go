@@ -26,6 +26,14 @@ func Test_HealthCheck_Strict_Routing_Default(t *testing.T) {
 	req, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/v1/livez", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusOK, req.StatusCode)
+
+	req, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/v1/livez/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusNotFound, req.StatusCode)
+
+	req, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/v1/readyz/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusNotFound, req.StatusCode)
 }
 
 func Test_HealthCheck_Group_Default(t *testing.T) {
