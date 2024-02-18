@@ -10,14 +10,14 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-func shouldWork(app *fiber.App, t *testing.T, path string) {
+func shouldWork(t *testing.T, app *fiber.App, path string) {
 	t.Helper()
 	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusOK, req.StatusCode, "path: "+path+" should match")
 }
 
-func shouldNotWork(app *fiber.App, t *testing.T, path string) {
+func shouldNotWork(t *testing.T, app *fiber.App, path string) {
 	t.Helper()
 	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, nil))
 	utils.AssertEqual(t, nil, err)
@@ -33,12 +33,12 @@ func Test_HealthCheck_Strict_Routing_Default(t *testing.T) {
 
 	app.Use(New())
 
-	shouldWork(app, t, "/readyz")
-	shouldWork(app, t, "/livez")
-	shouldNotWork(app, t, "/readyz/")
-	shouldNotWork(app, t, "/livez/")
-	shouldNotWork(app, t, "/notDefined/readyz")
-	shouldNotWork(app, t, "/notDefined/livez")
+	shouldWork(t, app, "/readyz")
+	shouldWork(t, app, "/livez")
+	shouldNotWork(t, app, "/readyz/")
+	shouldNotWork(t, app, "/livez/")
+	shouldNotWork(t, app, "/notDefined/readyz")
+	shouldNotWork(t, app, "/notDefined/livez")
 }
 
 func Test_HealthCheck_Group_Default(t *testing.T) {
@@ -50,18 +50,18 @@ func Test_HealthCheck_Group_Default(t *testing.T) {
 	customer := v2Group.Group("/customer/")
 	customer.Use(New())
 
-	shouldWork(app, t, "/v1/readyz")
-	shouldWork(app, t, "/v1/livez")
-	shouldWork(app, t, "/v1/readyz/")
-	shouldWork(app, t, "/v1/livez/")
-	shouldWork(app, t, "/v2/customer/readyz")
-	shouldWork(app, t, "/v2/customer/livez")
-	shouldWork(app, t, "/v2/customer/readyz/")
-	shouldWork(app, t, "/v2/customer/livez/")
-	shouldNotWork(app, t, "/notDefined/readyz")
-	shouldNotWork(app, t, "/notDefined/livez")
-	shouldNotWork(app, t, "/notDefined/readyz/")
-	shouldNotWork(app, t, "/notDefined/livez/")
+	shouldWork(t, app, "/v1/readyz")
+	shouldWork(t, app, "/v1/livez")
+	shouldWork(t, app, "/v1/readyz/")
+	shouldWork(t, app, "/v1/livez/")
+	shouldWork(t, app, "/v2/customer/readyz")
+	shouldWork(t, app, "/v2/customer/livez")
+	shouldWork(t, app, "/v2/customer/readyz/")
+	shouldWork(t, app, "/v2/customer/livez/")
+	shouldNotWork(t, app, "/notDefined/readyz")
+	shouldNotWork(t, app, "/notDefined/livez")
+	shouldNotWork(t, app, "/notDefined/readyz/")
+	shouldNotWork(t, app, "/notDefined/livez/")
 
 	// strict routing
 	app = fiber.New(fiber.Config{
@@ -72,18 +72,18 @@ func Test_HealthCheck_Group_Default(t *testing.T) {
 	customer = v2Group.Group("/customer/")
 	customer.Use(New())
 
-	shouldWork(app, t, "/v1/readyz")
-	shouldWork(app, t, "/v1/livez")
-	shouldNotWork(app, t, "/v1/readyz/")
-	shouldNotWork(app, t, "/v1/livez/")
-	shouldWork(app, t, "/v2/customer/readyz")
-	shouldWork(app, t, "/v2/customer/livez")
-	shouldNotWork(app, t, "/v2/customer/readyz/")
-	shouldNotWork(app, t, "/v2/customer/livez/")
-	shouldNotWork(app, t, "/notDefined/readyz")
-	shouldNotWork(app, t, "/notDefined/livez")
-	shouldNotWork(app, t, "/notDefined/readyz/")
-	shouldNotWork(app, t, "/notDefined/livez/")
+	shouldWork(t, app, "/v1/readyz")
+	shouldWork(t, app, "/v1/livez")
+	shouldNotWork(t, app, "/v1/readyz/")
+	shouldNotWork(t, app, "/v1/livez/")
+	shouldWork(t, app, "/v2/customer/readyz")
+	shouldWork(t, app, "/v2/customer/livez")
+	shouldNotWork(t, app, "/v2/customer/readyz/")
+	shouldNotWork(t, app, "/v2/customer/livez/")
+	shouldNotWork(t, app, "/notDefined/readyz")
+	shouldNotWork(t, app, "/notDefined/livez")
+	shouldNotWork(t, app, "/notDefined/readyz/")
+	shouldNotWork(t, app, "/notDefined/livez/")
 }
 
 func Test_HealthCheck_Default(t *testing.T) {
@@ -92,12 +92,12 @@ func Test_HealthCheck_Default(t *testing.T) {
 	app := fiber.New()
 	app.Use(New())
 
-	shouldWork(app, t, "/readyz")
-	shouldWork(app, t, "/livez")
-	shouldWork(app, t, "/readyz/")
-	shouldWork(app, t, "/livez/")
-	shouldNotWork(app, t, "/notDefined/readyz")
-	shouldNotWork(app, t, "/notDefined/livez")
+	shouldWork(t, app, "/readyz")
+	shouldWork(t, app, "/livez")
+	shouldWork(t, app, "/readyz/")
+	shouldWork(t, app, "/livez/")
+	shouldNotWork(t, app, "/notDefined/readyz")
+	shouldNotWork(t, app, "/notDefined/livez")
 }
 
 func Test_HealthCheck_Custom(t *testing.T) {
@@ -128,7 +128,7 @@ func Test_HealthCheck_Custom(t *testing.T) {
 	}))
 
 	// Live should return 200 with GET request
-	shouldWork(app, t, "/live")
+	shouldWork(t, app, "/live")
 	// Live should return 404 with POST request
 	req, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/live", nil))
 	utils.AssertEqual(t, nil, err)
@@ -147,7 +147,7 @@ func Test_HealthCheck_Custom(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	// Ready should return 200 with GET request after the channel is closed
-	shouldWork(app, t, "/ready")
+	shouldWork(t, app, "/ready")
 }
 
 func Test_HealthCheck_Next(t *testing.T) {
@@ -161,8 +161,8 @@ func Test_HealthCheck_Next(t *testing.T) {
 		},
 	}))
 
-	shouldNotWork(app, t, "/readyz")
-	shouldNotWork(app, t, "/livez")
+	shouldNotWork(t, app, "/readyz")
+	shouldNotWork(t, app, "/livez")
 }
 
 func Benchmark_HealthCheck(b *testing.B) {
