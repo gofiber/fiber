@@ -11,15 +11,17 @@ import (
 )
 
 func shouldWork(app *fiber.App, t *testing.T, path string) {
+	t.Helper()
 	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, nil))
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusOK, req.StatusCode)
+	utils.AssertEqual(t, fiber.StatusOK, req.StatusCode, "path: "+path+" should match")
 }
 
 func shouldNotWork(app *fiber.App, t *testing.T, path string) {
+	t.Helper()
 	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, nil))
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusNotFound, req.StatusCode)
+	utils.AssertEqual(t, fiber.StatusNotFound, req.StatusCode, "path: "+path+" should not match")
 }
 
 func Test_HealthCheck_Strict_Routing_Default(t *testing.T) {
@@ -56,10 +58,32 @@ func Test_HealthCheck_Group_Default(t *testing.T) {
 	shouldWork(app, t, "/v2/customer/livez")
 	shouldWork(app, t, "/v2/customer/readyz/")
 	shouldWork(app, t, "/v2/customer/livez/")
+	shouldNotWork(app, t, "/notDefined/readyz")
+	shouldNotWork(app, t, "/notDefined/livez")
+	shouldNotWork(app, t, "/notDefined/readyz/")
+	shouldNotWork(app, t, "/notDefined/livez/")
+
+	// strict routing
+	app = fiber.New(fiber.Config{
+		StrictRouting: true,
+	})
+	app.Group("/v1", New())
+	v2Group = app.Group("/v2/")
+	customer = v2Group.Group("/customer/")
+	customer.Use(New())
+
+	shouldWork(app, t, "/v1/readyz")
+	shouldWork(app, t, "/v1/livez")
+	shouldNotWork(app, t, "/v1/readyz/")
+	shouldNotWork(app, t, "/v1/livez/")
+	shouldWork(app, t, "/v2/customer/readyz")
+	shouldWork(app, t, "/v2/customer/livez")
 	shouldNotWork(app, t, "/v2/customer/readyz/")
 	shouldNotWork(app, t, "/v2/customer/livez/")
 	shouldNotWork(app, t, "/notDefined/readyz")
 	shouldNotWork(app, t, "/notDefined/livez")
+	shouldNotWork(app, t, "/notDefined/readyz/")
+	shouldNotWork(app, t, "/notDefined/livez/")
 }
 
 func Test_HealthCheck_Default(t *testing.T) {
