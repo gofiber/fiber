@@ -10,6 +10,50 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+func Test_HealthCheck_Strict_Routing_Default(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New(fiber.Config{
+		StrictRouting: true,
+	})
+
+	app.Use(New())
+
+	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/v1/readyz", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusOK, req.StatusCode)
+
+	req, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/v1/livez", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusOK, req.StatusCode)
+}
+
+func Test_HealthCheck_Group_Default(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Group("/v1", New())
+	v2 := app.Group("/v2/")
+	customer := v2.Group("/customer/")
+	customer.Use(New())
+
+	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/v1/readyz", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusOK, req.StatusCode)
+
+	req, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/v1/livez", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusOK, req.StatusCode)
+
+	req, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/v2/customer/readyz", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusOK, req.StatusCode)
+
+	req, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/v2/customer/livez", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusOK, req.StatusCode)
+}
+
 func Test_HealthCheck_Default(t *testing.T) {
 	t.Parallel()
 

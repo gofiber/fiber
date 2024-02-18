@@ -1,6 +1,9 @@
 package healthcheck
 
 import (
+	"fmt"
+	"regexp"
+
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -27,6 +30,11 @@ func healthCheckerHandler(checker HealthChecker) fiber.Handler {
 func New(config ...Config) fiber.Handler {
 	cfg := defaultConfig(config...)
 
+	baseRegexp := `\%s$`
+
+	readinessIdentifier := regexp.MustCompile(fmt.Sprintf(baseRegexp, cfg.ReadinessEndpoint))
+	livenessIdentifier := regexp.MustCompile(fmt.Sprintf(baseRegexp, cfg.LivenessEndpoint))
+
 	isLiveHandler := healthCheckerHandler(cfg.LivenessProbe)
 	isReadyHandler := healthCheckerHandler(cfg.ReadinessProbe)
 
@@ -40,10 +48,11 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		switch c.Path() {
-		case cfg.ReadinessEndpoint:
+		if readinessIdentifier.Match([]byte(c.Path())) {
 			return isReadyHandler(c)
-		case cfg.LivenessEndpoint:
+		}
+
+		if livenessIdentifier.Match([]byte(c.Path())) {
 			return isLiveHandler(c)
 		}
 
