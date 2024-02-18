@@ -1,8 +1,7 @@
 package healthcheck
 
 import (
-	"fmt"
-	"regexp"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -30,11 +29,6 @@ func healthCheckerHandler(checker HealthChecker) fiber.Handler {
 func New(config ...Config) fiber.Handler {
 	cfg := defaultConfig(config...)
 
-	baseRegexp := `\%s$`
-
-	readinessIdentifier := regexp.MustCompile(fmt.Sprintf(baseRegexp, cfg.ReadinessEndpoint))
-	livenessIdentifier := regexp.MustCompile(fmt.Sprintf(baseRegexp, cfg.LivenessEndpoint))
-
 	isLiveHandler := healthCheckerHandler(cfg.LivenessProbe)
 	isReadyHandler := healthCheckerHandler(cfg.ReadinessProbe)
 
@@ -48,11 +42,14 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		if readinessIdentifier.Match([]byte(c.Path())) {
-			return isReadyHandler(c)
-		}
+		// Find the start of the last segment
+		lastSlashIndex := strings.LastIndex(c.Path(), "/")
+		lastSegment := c.Path()[lastSlashIndex:] // +1 to skip the slash itself
 
-		if livenessIdentifier.Match([]byte(c.Path())) {
+		// Direct string comparison for the last segment of the path
+		if lastSegment == cfg.ReadinessEndpoint {
+			return isReadyHandler(c)
+		} else if lastSegment == cfg.LivenessEndpoint {
 			return isLiveHandler(c)
 		}
 
