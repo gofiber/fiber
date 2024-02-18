@@ -34,7 +34,7 @@ func New(config ...Config) fiber.Handler {
 				if queryString != "" {
 					queryString = "?" + queryString
 				}
-				return c.Redirect().Status(cfg.StatusCode).To(replacer.Replace(v)+queryString)
+				return c.Redirect().Status(cfg.StatusCode).To(replacer.Replace(v) + queryString)
 			}
 		}
 		return c.Next()

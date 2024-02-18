@@ -377,7 +377,7 @@ func Test_CORS_AllowOriginsAndAllowOriginsFunc_AllUseCases(t *testing.T) {
 			Name: "AllowOriginsDefined/AllowOriginsFuncReturnsTrue/OriginAllowed",
 			Config: Config{
 				AllowOrigins: "http://aaa.com",
-				AllowOriginsFunc: func(origin string) bool {
+				AllowOriginsFunc: func(_ string) bool {
 					return true
 				},
 			},
@@ -388,7 +388,7 @@ func Test_CORS_AllowOriginsAndAllowOriginsFunc_AllUseCases(t *testing.T) {
 			Name: "AllowOriginsDefined/AllowOriginsFuncReturnsTrue/OriginNotAllowed",
 			Config: Config{
 				AllowOrigins: "http://aaa.com",
-				AllowOriginsFunc: func(origin string) bool {
+				AllowOriginsFunc: func(_ string) bool {
 					return true
 				},
 			},
@@ -399,7 +399,7 @@ func Test_CORS_AllowOriginsAndAllowOriginsFunc_AllUseCases(t *testing.T) {
 			Name: "AllowOriginsDefined/AllowOriginsFuncReturnsFalse/OriginAllowed",
 			Config: Config{
 				AllowOrigins: "http://aaa.com",
-				AllowOriginsFunc: func(origin string) bool {
+				AllowOriginsFunc: func(_ string) bool {
 					return false
 				},
 			},
@@ -410,7 +410,7 @@ func Test_CORS_AllowOriginsAndAllowOriginsFunc_AllUseCases(t *testing.T) {
 			Name: "AllowOriginsDefined/AllowOriginsFuncReturnsFalse/OriginNotAllowed",
 			Config: Config{
 				AllowOrigins: "http://aaa.com",
-				AllowOriginsFunc: func(origin string) bool {
+				AllowOriginsFunc: func(_ string) bool {
 					return false
 				},
 			},
@@ -430,7 +430,7 @@ func Test_CORS_AllowOriginsAndAllowOriginsFunc_AllUseCases(t *testing.T) {
 			Name: "AllowOriginsEmpty/AllowOriginsFuncReturnsTrue/OriginAllowed",
 			Config: Config{
 				AllowOrigins: "",
-				AllowOriginsFunc: func(origin string) bool {
+				AllowOriginsFunc: func(_ string) bool {
 					return true
 				},
 			},
@@ -441,7 +441,7 @@ func Test_CORS_AllowOriginsAndAllowOriginsFunc_AllUseCases(t *testing.T) {
 			Name: "AllowOriginsEmpty/AllowOriginsFuncReturnsFalse/OriginNotAllowed",
 			Config: Config{
 				AllowOrigins: "",
-				AllowOriginsFunc: func(origin string) bool {
+				AllowOriginsFunc: func(_ string) bool {
 					return false
 				},
 			},
@@ -481,7 +481,7 @@ func Test_CORS_AllowCredetials(t *testing.T) {
 			Name: "AllowOriginsFuncDefined",
 			Config: Config{
 				AllowCredentials: true,
-				AllowOriginsFunc: func(origin string) bool {
+				AllowOriginsFunc: func(_ string) bool {
 					return true
 				},
 			},

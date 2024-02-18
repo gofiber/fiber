@@ -949,7 +949,7 @@ func Test_CSRF_Cookie_Injection_Exploit(t *testing.T) {
 // 	})
 
 // 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
-// 	require.Equal(t, nil, err)
+// 	require.NoError(t, err)
 // 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 // 	var token string

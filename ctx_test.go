@@ -1372,7 +1372,7 @@ func Test_Ctx_Parsers(t *testing.T) {
 		defer app.ReleaseCtx(c)
 		testStruct := new(TestStruct)
 
-		require.Equal(t, nil, actionFn(c, testStruct))
+		require.NoError(t, actionFn(c, testStruct))
 		require.Equal(t, "foo", testStruct.Name)
 		require.Equal(t, 111, testStruct.Class)
 		require.Equal(t, "bar", testStruct.NameWithDefault)
@@ -1429,12 +1429,12 @@ func Test_Ctx_Parsers(t *testing.T) {
 	})
 	t.Run("ParamsParser", func(t *testing.T) {
 		t.Skip("ParamsParser is not ready for v3")
-		//t.Parallel()
-		//withValues(t, func(c Ctx, testStruct *TestStruct) error {
-		//	c.route = &Route{Params: []string{"name", "name2", "class", "class2"}}
-		//	c.values = [30]string{"foo", "bar", "111", "222"}
-		//	return c.ParamsParser(testStruct)
-		//})
+		// t.Parallel()
+		// withValues(t, func(c Ctx, testStruct *TestStruct) error {
+		//	 c.route = &Route{Params: []string{"name", "name2", "class", "class2"}}
+		//	 c.values = [30]string{"foo", "bar", "111", "222"}
+		//	 return c.ParamsParser(testStruct)
+		// })
 	})
 	t.Run("ReqHeaderParser", func(t *testing.T) {
 		t.Parallel()
