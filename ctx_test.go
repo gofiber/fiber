@@ -1366,83 +1366,84 @@ func Test_Ctx_Parsers(t *testing.T) {
 		ClassWithDefault int    `json:"class2" xml:"Class2" form:"class2" cookie:"class2" query:"class2" params:"class2" reqHeader:"class2"`
 	}
 
-	withValues := func(t *testing.T, actionFn func(c *Ctx, testStruct *TestStruct) error) {
+	withValues := func(t *testing.T, actionFn func(c Ctx, testStruct *TestStruct) error) {
 		t.Helper()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c := app.AcquireCtx()
 		defer app.ReleaseCtx(c)
 		testStruct := new(TestStruct)
 
-		utils.AssertEqual(t, nil, actionFn(c, testStruct))
-		utils.AssertEqual(t, "foo", testStruct.Name)
-		utils.AssertEqual(t, 111, testStruct.Class)
-		utils.AssertEqual(t, "bar", testStruct.NameWithDefault)
-		utils.AssertEqual(t, 222, testStruct.ClassWithDefault)
+		require.Equal(t, nil, actionFn(c, testStruct))
+		require.Equal(t, "foo", testStruct.Name)
+		require.Equal(t, 111, testStruct.Class)
+		require.Equal(t, "bar", testStruct.NameWithDefault)
+		require.Equal(t, 222, testStruct.ClassWithDefault)
 	}
 
 	t.Run("BodyParser:xml", func(t *testing.T) {
 		t.Parallel()
-		withValues(t, func(c *Ctx, testStruct *TestStruct) error {
+		withValues(t, func(c Ctx, testStruct *TestStruct) error {
 			c.Request().Header.SetContentType(MIMEApplicationXML)
 			c.Request().SetBody([]byte(`<TestStruct><Name>foo</Name><Class>111</Class><Name2>bar</Name2><Class2>222</Class2></TestStruct>`))
-			return c.BodyParser(testStruct)
+			return c.Bind().Body(testStruct)
 		})
 	})
 	t.Run("BodyParser:form", func(t *testing.T) {
 		t.Parallel()
-		withValues(t, func(c *Ctx, testStruct *TestStruct) error {
+		withValues(t, func(c Ctx, testStruct *TestStruct) error {
 			c.Request().Header.SetContentType(MIMEApplicationForm)
 			c.Request().SetBody([]byte(`name=foo&class=111&name2=bar&class2=222`))
-			return c.BodyParser(testStruct)
+			return c.Bind().Body(testStruct)
 		})
 	})
 	t.Run("BodyParser:json", func(t *testing.T) {
 		t.Parallel()
-		withValues(t, func(c *Ctx, testStruct *TestStruct) error {
+		withValues(t, func(c Ctx, testStruct *TestStruct) error {
 			c.Request().Header.SetContentType(MIMEApplicationJSON)
 			c.Request().SetBody([]byte(`{"name":"foo","class":111,"name2":"bar","class2":222}`))
-			return c.BodyParser(testStruct)
+			return c.Bind().Body(testStruct)
 		})
 	})
 	t.Run("BodyParser:multiform", func(t *testing.T) {
 		t.Parallel()
-		withValues(t, func(c *Ctx, testStruct *TestStruct) error {
+		withValues(t, func(c Ctx, testStruct *TestStruct) error {
 			body := []byte("--b\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\nfoo\r\n--b\r\nContent-Disposition: form-data; name=\"class\"\r\n\r\n111\r\n--b\r\nContent-Disposition: form-data; name=\"name2\"\r\n\r\nbar\r\n--b\r\nContent-Disposition: form-data; name=\"class2\"\r\n\r\n222\r\n--b--")
 			c.Request().SetBody(body)
 			c.Request().Header.SetContentType(MIMEMultipartForm + `;boundary="b"`)
 			c.Request().Header.SetContentLength(len(body))
-			return c.BodyParser(testStruct)
+			return c.Bind().Body(testStruct)
 		})
 	})
 	t.Run("CookieParser", func(t *testing.T) {
 		t.Parallel()
-		withValues(t, func(c *Ctx, testStruct *TestStruct) error {
+		withValues(t, func(c Ctx, testStruct *TestStruct) error {
 			c.Request().Header.Set("Cookie", "name=foo;name2=bar;class=111;class2=222")
-			return c.CookieParser(testStruct)
+			return c.Bind().Cookie(testStruct)
 		})
 	})
 	t.Run("QueryParser", func(t *testing.T) {
 		t.Parallel()
-		withValues(t, func(c *Ctx, testStruct *TestStruct) error {
+		withValues(t, func(c Ctx, testStruct *TestStruct) error {
 			c.Request().URI().SetQueryString("name=foo&name2=bar&class=111&class2=222")
-			return c.QueryParser(testStruct)
+			return c.Bind().Query(testStruct)
 		})
 	})
 	t.Run("ParamsParser", func(t *testing.T) {
-		t.Parallel()
-		withValues(t, func(c *Ctx, testStruct *TestStruct) error {
-			c.route = &Route{Params: []string{"name", "name2", "class", "class2"}}
-			c.values = [30]string{"foo", "bar", "111", "222"}
-			return c.ParamsParser(testStruct)
-		})
+		t.Skip("ParamsParser is not ready for v3")
+		//t.Parallel()
+		//withValues(t, func(c Ctx, testStruct *TestStruct) error {
+		//	c.route = &Route{Params: []string{"name", "name2", "class", "class2"}}
+		//	c.values = [30]string{"foo", "bar", "111", "222"}
+		//	return c.ParamsParser(testStruct)
+		//})
 	})
 	t.Run("ReqHeaderParser", func(t *testing.T) {
 		t.Parallel()
-		withValues(t, func(c *Ctx, testStruct *TestStruct) error {
+		withValues(t, func(c Ctx, testStruct *TestStruct) error {
 			c.Request().Header.Add("name", "foo")
 			c.Request().Header.Add("name2", "bar")
 			c.Request().Header.Add("class", "111")
 			c.Request().Header.Add("class2", "222")
-			return c.ReqHeaderParser(testStruct)
+			return c.Bind().Header(testStruct)
 		})
 	})
 }

@@ -21,14 +21,6 @@ type Config struct {
 	//
 	// Optional. Default: utils.UUID
 	Generator func() string
-
-	// ContextKey defines the key used when storing the request ID in
-	// the locals for a specific request.
-	// Should be a private type instead of string, but too many apps probably
-	// rely on this exact value.
-	//
-	// Optional. Default: "requestid"
-	ContextKey interface{}
 }
 
 // ConfigDefault is the default config
@@ -57,9 +49,6 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.Generator == nil {
 		cfg.Generator = ConfigDefault.Generator
-	}
-	if cfg.ContextKey == nil {
-		cfg.ContextKey = ConfigDefault.ContextKey
 	}
 	return cfg
 }

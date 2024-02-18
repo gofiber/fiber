@@ -38,10 +38,6 @@ type Config struct {
 
 	// Validator is a function to validate key.
 	Validator func(fiber.Ctx, string) (bool, error)
-
-	// Context key to store the bearertoken from the token into context.
-	// Optional. Default: "token".
-	ContextKey interface{}
 }
 
 // ConfigDefault is the default config
@@ -85,9 +81,6 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.Validator == nil {
 		panic("fiber: keyauth middleware requires a validator function")
-	}
-	if cfg.ContextKey == nil {
-		cfg.ContextKey = ConfigDefault.ContextKey
 	}
 
 	return cfg

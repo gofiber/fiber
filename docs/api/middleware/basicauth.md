@@ -78,8 +78,6 @@ func handler(c fiber.Ctx) error {
 | Realm           | `string`                    | Realm is a string to define the realm attribute of BasicAuth. The realm identifies the system to authenticate against and can be used by clients to save credentials. | `"Restricted"`        |
 | Authorizer      | `func(string, string) bool` | Authorizer defines a function to check the credentials. It will be called with a username and password and is expected to return true or false to indicate approval.  | `nil`                 |
 | Unauthorized    | `fiber.Handler`             | Unauthorized defines the response body for unauthorized responses.                                                                                                    | `nil`                 |
-| ContextUsername | `interface{}`               | ContextUsername is the key to store the username in Locals.                                                                                                           | `"username"`          |
-| ContextPassword | `interface{}`               | ContextPassword is the key to store the password in Locals.                                                                                                           | `"password"`          |
 
 ## Default Config
 

@@ -1,17 +1,17 @@
 package healthcheck
 
 import (
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 // HealthChecker defines a function to check liveness or readiness of the application
-type HealthChecker func(*fiber.Ctx) bool
+type HealthChecker func(fiber.Ctx) bool
 
-// ProbeCheckerHandler defines a function that returns a ProbeChecker
+// HealthCheckerHandler defines a function that returns a HealthChecker
 type HealthCheckerHandler func(HealthChecker) fiber.Handler
 
 func healthCheckerHandler(checker HealthChecker) fiber.Handler {
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		if checker == nil {
 			return c.Next()
 		}
@@ -30,7 +30,7 @@ func New(config ...Config) fiber.Handler {
 	isLiveHandler := healthCheckerHandler(cfg.LivenessProbe)
 	isReadyHandler := healthCheckerHandler(cfg.ReadinessProbe)
 
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		// Don't execute middleware if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()

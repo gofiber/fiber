@@ -89,12 +89,6 @@ type Config struct {
 	// Default: "csrfToken"
 	SessionKey string
 
-	// Context key to store generated CSRF token into context.
-	// If left empty, token will not be stored in context.
-	//
-	// Optional. Default: ""
-	ContextKey interface{}
-
 	// KeyGenerator creates a new CSRF token
 	//
 	// Optional. Default: utils.UUID
@@ -111,11 +105,6 @@ type Config struct {
 	//
 	// Optional. Default will create an Extractor based on KeyLookup.
 	Extractor func(c fiber.Ctx) (string, error)
-
-	// HandlerContextKey is used to store the CSRF Handler into context
-	//
-	// Default: "fiber.csrf.handler"
-	HandlerContextKey interface{}
 }
 
 const HeaderName = "X-Csrf-Token"
@@ -168,9 +157,6 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.SessionKey == "" {
 		cfg.SessionKey = ConfigDefault.SessionKey
-	}
-	if cfg.HandlerContextKey == nil {
-		cfg.HandlerContextKey = ConfigDefault.HandlerContextKey
 	}
 
 	// Generate the correct extractor to get the token from the correct location
