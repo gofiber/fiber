@@ -10,6 +10,18 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+func shouldWork(app *fiber.App, t *testing.T, path string) {
+	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusOK, req.StatusCode)
+}
+
+func shouldNotWork(app *fiber.App, t *testing.T, path string) {
+	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusNotFound, req.StatusCode)
+}
+
 func Test_HealthCheck_Strict_Routing_Default(t *testing.T) {
 	t.Parallel()
 
@@ -19,21 +31,12 @@ func Test_HealthCheck_Strict_Routing_Default(t *testing.T) {
 
 	app.Use(New())
 
-	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/v1/readyz", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusOK, req.StatusCode)
-
-	req, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/v1/livez", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusOK, req.StatusCode)
-
-	req, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/v1/livez/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusNotFound, req.StatusCode)
-
-	req, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/v1/readyz/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusNotFound, req.StatusCode)
+	shouldWork(app, t, "/readyz")
+	shouldWork(app, t, "/livez")
+	shouldNotWork(app, t, "/readyz/")
+	shouldNotWork(app, t, "/livez/")
+	shouldNotWork(app, t, "/notDefined/readyz")
+	shouldNotWork(app, t, "/notDefined/livez")
 }
 
 func Test_HealthCheck_Group_Default(t *testing.T) {
@@ -45,21 +48,18 @@ func Test_HealthCheck_Group_Default(t *testing.T) {
 	customer := v2Group.Group("/customer/")
 	customer.Use(New())
 
-	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/v1/readyz", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusOK, req.StatusCode)
-
-	req, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/v1/livez", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusOK, req.StatusCode)
-
-	req, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/v2/customer/readyz", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusOK, req.StatusCode)
-
-	req, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/v2/customer/livez", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusOK, req.StatusCode)
+	shouldWork(app, t, "/v1/readyz")
+	shouldWork(app, t, "/v1/livez")
+	shouldWork(app, t, "/v1/readyz/")
+	shouldWork(app, t, "/v1/livez/")
+	shouldWork(app, t, "/v2/customer/readyz")
+	shouldWork(app, t, "/v2/customer/livez")
+	shouldWork(app, t, "/v2/customer/readyz/")
+	shouldWork(app, t, "/v2/customer/livez/")
+	shouldNotWork(app, t, "/v2/customer/readyz/")
+	shouldNotWork(app, t, "/v2/customer/livez/")
+	shouldNotWork(app, t, "/notDefined/readyz")
+	shouldNotWork(app, t, "/notDefined/livez")
 }
 
 func Test_HealthCheck_Default(t *testing.T) {
@@ -68,13 +68,12 @@ func Test_HealthCheck_Default(t *testing.T) {
 	app := fiber.New()
 	app.Use(New())
 
-	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/readyz", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusOK, req.StatusCode)
-
-	req, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/livez", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusOK, req.StatusCode)
+	shouldWork(app, t, "/readyz")
+	shouldWork(app, t, "/livez")
+	shouldWork(app, t, "/readyz/")
+	shouldWork(app, t, "/livez/")
+	shouldNotWork(app, t, "/notDefined/readyz")
+	shouldNotWork(app, t, "/notDefined/livez")
 }
 
 func Test_HealthCheck_Custom(t *testing.T) {
@@ -105,12 +104,9 @@ func Test_HealthCheck_Custom(t *testing.T) {
 	}))
 
 	// Live should return 200 with GET request
-	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/live", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusOK, req.StatusCode)
-
+	shouldWork(app, t, "/live")
 	// Live should return 404 with POST request
-	req, err = app.Test(httptest.NewRequest(fiber.MethodPost, "/live", nil))
+	req, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/live", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusNotFound, req.StatusCode)
 
@@ -127,9 +123,7 @@ func Test_HealthCheck_Custom(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	// Ready should return 200 with GET request after the channel is closed
-	req, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/ready", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusOK, req.StatusCode)
+	shouldWork(app, t, "/ready")
 }
 
 func Test_HealthCheck_Next(t *testing.T) {
@@ -143,9 +137,8 @@ func Test_HealthCheck_Next(t *testing.T) {
 		},
 	}))
 
-	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/livez", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusNotFound, req.StatusCode)
+	shouldNotWork(app, t, "/readyz")
+	shouldNotWork(app, t, "/livez")
 }
 
 func Benchmark_HealthCheck(b *testing.B) {
