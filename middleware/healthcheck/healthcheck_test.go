@@ -33,8 +33,8 @@ func Test_HealthCheck_Group_Default(t *testing.T) {
 
 	app := fiber.New()
 	app.Group("/v1", New())
-	v2 := app.Group("/v2/")
-	customer := v2.Group("/customer/")
+	v2Group := app.Group("/v2/")
+	customer := v2Group.Group("/customer/")
 	customer.Use(New())
 
 	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/v1/readyz", nil))
