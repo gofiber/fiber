@@ -48,7 +48,7 @@ func New(config ...Config) fiber.Handler {
 			if !c.App().Config().StrictRouting {
 				checkPathTrimmed = utils.TrimRight(checkPath, '/')
 			}
-			switch true {
+			switch {
 			case checkPath == cfg.ReadinessEndpoint || checkPathTrimmed == cfg.ReadinessEndpoint:
 				return isReadyHandler(c)
 			case checkPath == cfg.LivenessEndpoint || checkPathTrimmed == cfg.LivenessEndpoint:
