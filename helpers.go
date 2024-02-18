@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 	"unsafe"
 
@@ -32,8 +33,10 @@ type acceptedType struct {
 	quality     float64
 	specificity int
 	order       int
-	params      string
+	params      headerParams
 }
+
+type headerParams map[string][]byte
 
 // getTLSConfig returns a net listener's tls config
 func getTLSConfig(ln net.Listener) *tls.Config {
@@ -222,7 +225,7 @@ func getGroupPath(prefix, path string) string {
 // acceptsOffer This function determines if an offer matches a given specification.
 // It checks if the specification ends with a '*' or if the offer has the prefix of the specification.
 // Returns true if the offer matches the specification, false otherwise.
-func acceptsOffer(spec, offer, _ string) bool {
+func acceptsOffer(spec, offer string, _ headerParams) bool {
 	if len(spec) >= 1 && spec[len(spec)-1] == '*' {
 		return true
 	} else if strings.HasPrefix(spec, offer) {
@@ -237,7 +240,7 @@ func acceptsOffer(spec, offer, _ string) bool {
 // It checks if the offer MIME type matches the specification MIME type or if the specification is of the form <MIME_type>/* and the offer MIME type has the same MIME type.
 // It checks if the offer contains every parameter present in the specification.
 // Returns true if the offer type matches the specification, false otherwise.
-func acceptsOfferType(spec, offerType, specParams string) bool {
+func acceptsOfferType(spec, offerType string, specParams headerParams) bool {
 	var offerMime, offerParams string
 
 	if i := strings.IndexByte(offerType, ';'); i == -1 {
@@ -283,35 +286,18 @@ func acceptsOfferType(spec, offerType, specParams string) bool {
 // For the sake of simplicity, we forgo this and compare the value as-is. Besides, it would
 // be highly unusual for a client to escape something other than a double quote or backslash.
 // See https://www.rfc-editor.org/rfc/rfc9110#name-parameters
-func paramsMatch(specParamStr, offerParams string) bool {
-	if specParamStr == "" {
+func paramsMatch(specParamStr headerParams, offerParams string) bool {
+	if len(specParamStr) == 0 {
 		return true
 	}
 
-	// Preprocess the spec params to more easily test
-	// for out-of-order parameters
-	specParams := make([][2]string, 0, 2)
-	fasthttp.VisitHeaderParams([]byte(specParamStr), func(key, value []byte) bool {
-		if string(key) == "q" {
-			return false
-		}
-		for i := range specParams {
-			if utils.EqualFold(key, []byte(specParams[i][0])) {
-				specParams[i][1] = string(value)
-				return false
-			}
-		}
-		specParams = append(specParams, [2]string{string(key), string(value)})
-		return true
-	})
-
 	allSpecParamsMatch := true
-	for i := range specParams {
+	for specParam, specVal := range specParamStr {
 		foundParam := false
-		fasthttp.VisitHeaderParams([]byte(offerParams), func(key, value []byte) bool {
-			if utils.EqualFold(specParams[i][0], string(key)) {
+		fasthttp.VisitHeaderParams(utils.UnsafeBytes(offerParams), func(key, value []byte) bool {
+			if utils.EqualFold(specParam, string(key)) {
 				foundParam = true
-				allSpecParamsMatch = utils.EqualFold(specParams[i][1], string(value))
+				allSpecParamsMatch = utils.EqualFold(specVal, value)
 				return false
 			}
 			return true
@@ -320,6 +306,7 @@ func paramsMatch(specParamStr, offerParams string) bool {
 			return false
 		}
 	}
+
 	return allSpecParamsMatch
 }
 
@@ -361,12 +348,12 @@ func getSplicedStrList(headerValue string, dst []string) []string {
 // forEachMediaRange parses an Accept or Content-Type header, calling functor
 // on each media range.
 // See: https://www.rfc-editor.org/rfc/rfc9110#name-content-negotiation-fields
-func forEachMediaRange(header string, functor func(string)) {
-	hasDQuote := strings.IndexByte(header, '"') != -1
+func forEachMediaRange(header []byte, functor func([]byte)) {
+	hasDQuote := bytes.IndexByte(header, '"') != -1
 
 	for len(header) > 0 {
 		n := 0
-		header = strings.TrimLeft(header, " ")
+		header = bytes.TrimLeft(header, " ")
 		quotes := 0
 		escaping := false
 
@@ -392,7 +379,7 @@ func forEachMediaRange(header string, functor func(string)) {
 			}
 		} else {
 			// Simple case. Just look for the next comma.
-			if n = strings.IndexByte(header, ','); n == -1 {
+			if n = bytes.IndexByte(header, ','); n == -1 {
 				n = len(header)
 			}
 		}
@@ -406,12 +393,22 @@ func forEachMediaRange(header string, functor func(string)) {
 	}
 }
 
-// getOffer return valid offer for header negotiation
-func getOffer(header string, isAccepted func(spec, offer, specParams string) bool, offers ...string) string {
+// Pool for headerParams instances. The headerParams object *must*
+// be cleared before being returned to the pool.
+var headerParamPool = sync.Pool{
+	New: func() any {
+		return make(headerParams)
+	},
+}
+
+// getOffer return valid offer for header negotiation.
+// Do not pass header using utils.UnsafeBytes - this can cause a panic due
+// to the use of utils.ToLowerBytes.
+func getOffer(header []byte, isAccepted func(spec, offer string, specParams headerParams) bool, offers ...string) string {
 	if len(offers) == 0 {
 		return ""
 	}
-	if header == "" {
+	if len(header) == 0 {
 		return offers[0]
 	}
 
@@ -420,38 +417,36 @@ func getOffer(header string, isAccepted func(spec, offer, specParams string) boo
 
 	// Parse header and get accepted types with their quality and specificity
 	// See: https://www.rfc-editor.org/rfc/rfc9110#name-content-negotiation-fields
-	forEachMediaRange(header, func(accept string) {
+	forEachMediaRange(header, func(accept []byte) {
 		order++
-		spec, quality, params := accept, 1.0, ""
+		spec, quality := accept, 1.0
 
-		if i := strings.IndexByte(accept, ';'); i != -1 {
+		var params headerParams
+
+		if i := bytes.IndexByte(accept, ';'); i != -1 {
 			spec = accept[:i]
 
 			// The vast majority of requests will have only the q parameter with
 			// no whitespace. Check this first to see if we can skip
 			// the more involved parsing.
-			if strings.HasPrefix(accept[i:], ";q=") && strings.IndexByte(accept[i+3:], ';') == -1 {
-				if q, err := fasthttp.ParseUfloat([]byte(strings.TrimRight(accept[i+3:], " "))); err == nil {
+			if bytes.HasPrefix(accept[i:], []byte(";q=")) && bytes.IndexByte(accept[i+3:], ';') == -1 {
+				if q, err := fasthttp.ParseUfloat(bytes.TrimRight(accept[i+3:], " ")); err == nil {
 					quality = q
 				}
 			} else {
-				hasParams := false
-				fasthttp.VisitHeaderParams([]byte(accept[i:]),
-					func(key, value []byte) bool {
-						if string(key) == "q" {
-							if q, err := fasthttp.ParseUfloat(value); err == nil {
-								quality = q
-							}
-							return false
+				params, _ = headerParamPool.Get().(headerParams) //nolint:errcheck // only contains headerParams
+				fasthttp.VisitHeaderParams(accept[i:], func(key, value []byte) bool {
+					if string(key) == "q" {
+						if q, err := fasthttp.ParseUfloat(value); err == nil {
+							quality = q
 						}
-						hasParams = true
-						return true
-					},
-				)
-				if hasParams {
-					params = accept[i:]
-				}
+						return false
+					}
+					params[utils.UnsafeString(utils.ToLowerBytes(key))] = value
+					return true
+				})
 			}
+
 			// Skip this accept type if quality is 0.0
 			// See: https://www.rfc-editor.org/rfc/rfc9110#quality.values
 			if quality == 0.0 {
@@ -459,23 +454,23 @@ func getOffer(header string, isAccepted func(spec, offer, specParams string) boo
 			}
 		}
 
-		spec = strings.TrimRight(spec, " ")
+		spec = bytes.TrimRight(spec, " ")
 
 		// Get specificity
 		var specificity int
 		// check for wildcard this could be a mime */* or a wildcard character *
-		if spec == "*/*" || spec == "*" {
+		if string(spec) == "*/*" || string(spec) == "*" {
 			specificity = 1
-		} else if strings.HasSuffix(spec, "/*") {
+		} else if bytes.HasSuffix(spec, []byte("/*")) {
 			specificity = 2
-		} else if strings.IndexByte(spec, '/') != -1 {
+		} else if bytes.IndexByte(spec, '/') != -1 {
 			specificity = 3
 		} else {
 			specificity = 4
 		}
 
 		// Add to accepted types
-		acceptedTypes = append(acceptedTypes, acceptedType{spec, quality, specificity, order, params})
+		acceptedTypes = append(acceptedTypes, acceptedType{utils.UnsafeString(spec), quality, specificity, order, params})
 	})
 
 	if len(acceptedTypes) > 1 {
@@ -484,18 +479,30 @@ func getOffer(header string, isAccepted func(spec, offer, specParams string) boo
 	}
 
 	// Find the first offer that matches the accepted types
+	ret := ""
+	done := false
 	for _, acceptedType := range acceptedTypes {
-		for _, offer := range offers {
-			if len(offer) == 0 {
-				continue
+		if !done {
+			for _, offer := range offers {
+				if offer == "" {
+					continue
+				}
+				if isAccepted(acceptedType.spec, offer, acceptedType.params) {
+					ret = offer
+					done = true
+					break
+				}
 			}
-			if isAccepted(acceptedType.spec, offer, acceptedType.params) {
-				return offer
+		}
+		if acceptedType.params != nil {
+			for p := range acceptedType.params {
+				delete(acceptedType.params, p)
 			}
+			headerParamPool.Put(acceptedType.params)
 		}
 	}
 
-	return ""
+	return ret
 }
 
 // sortAcceptedTypes sorts accepted types by quality and specificity, preserving order of equal elements
