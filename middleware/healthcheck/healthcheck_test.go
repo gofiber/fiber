@@ -1,27 +1,29 @@
 package healthcheck
 
 import (
-	"net/http/httptest"
-	"testing"
-	"time"
-
+	"fmt"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
+	"net/http/httptest"
+	"testing"
 )
 
-func shouldWork(t *testing.T, app *fiber.App, path string) {
+func shouldGiveStatus(t *testing.T, app *fiber.App, path string, expectedStatus int) {
 	t.Helper()
 	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, nil))
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusOK, req.StatusCode, "path: "+path+" should match")
+	utils.AssertEqual(t, expectedStatus, req.StatusCode, "path: "+path+" should match "+fmt.Sprint(expectedStatus))
 }
 
-func shouldNotWork(t *testing.T, app *fiber.App, path string) {
+func shouldGiveOK(t *testing.T, app *fiber.App, path string) {
 	t.Helper()
-	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusNotFound, req.StatusCode, "path: "+path+" should not match")
+	shouldGiveStatus(t, app, path, fiber.StatusOK)
+}
+
+func shouldGiveNotFound(t *testing.T, app *fiber.App, path string) {
+	t.Helper()
+	shouldGiveStatus(t, app, path, fiber.StatusNotFound)
 }
 
 func Test_HealthCheck_Strict_Routing_Default(t *testing.T) {
@@ -33,12 +35,12 @@ func Test_HealthCheck_Strict_Routing_Default(t *testing.T) {
 
 	app.Use(New())
 
-	shouldWork(t, app, "/readyz")
-	shouldWork(t, app, "/livez")
-	shouldNotWork(t, app, "/readyz/")
-	shouldNotWork(t, app, "/livez/")
-	shouldNotWork(t, app, "/notDefined/readyz")
-	shouldNotWork(t, app, "/notDefined/livez")
+	shouldGiveOK(t, app, "/readyz")
+	shouldGiveOK(t, app, "/livez")
+	shouldGiveNotFound(t, app, "/readyz/")
+	shouldGiveNotFound(t, app, "/livez/")
+	shouldGiveNotFound(t, app, "/notDefined/readyz")
+	shouldGiveNotFound(t, app, "/notDefined/livez")
 }
 
 func Test_HealthCheck_Group_Default(t *testing.T) {
@@ -50,18 +52,25 @@ func Test_HealthCheck_Group_Default(t *testing.T) {
 	customer := v2Group.Group("/customer/")
 	customer.Use(New())
 
-	shouldWork(t, app, "/v1/readyz")
-	shouldWork(t, app, "/v1/livez")
-	shouldWork(t, app, "/v1/readyz/")
-	shouldWork(t, app, "/v1/livez/")
-	shouldWork(t, app, "/v2/customer/readyz")
-	shouldWork(t, app, "/v2/customer/livez")
-	shouldWork(t, app, "/v2/customer/readyz/")
-	shouldWork(t, app, "/v2/customer/livez/")
-	shouldNotWork(t, app, "/notDefined/readyz")
-	shouldNotWork(t, app, "/notDefined/livez")
-	shouldNotWork(t, app, "/notDefined/readyz/")
-	shouldNotWork(t, app, "/notDefined/livez/")
+	v3Group := app.Group("/v3/")
+	v3Group.Group("/todos/", New(Config{ReadinessEndpoint: "/readyz/", LivenessEndpoint: "/livez/"}))
+
+	shouldGiveOK(t, app, "/v1/readyz")
+	shouldGiveOK(t, app, "/v1/livez")
+	shouldGiveOK(t, app, "/v1/readyz/")
+	shouldGiveOK(t, app, "/v1/livez/")
+	shouldGiveOK(t, app, "/v2/customer/readyz")
+	shouldGiveOK(t, app, "/v2/customer/livez")
+	shouldGiveOK(t, app, "/v2/customer/readyz/")
+	shouldGiveOK(t, app, "/v2/customer/livez/")
+	shouldGiveNotFound(t, app, "/v3/todos/readyz")
+	shouldGiveNotFound(t, app, "/v3/todos/livez")
+	shouldGiveOK(t, app, "/v3/todos/readyz/")
+	shouldGiveOK(t, app, "/v3/todos/livez/")
+	shouldGiveNotFound(t, app, "/notDefined/readyz")
+	shouldGiveNotFound(t, app, "/notDefined/livez")
+	shouldGiveNotFound(t, app, "/notDefined/readyz/")
+	shouldGiveNotFound(t, app, "/notDefined/livez/")
 
 	// strict routing
 	app = fiber.New(fiber.Config{
@@ -72,18 +81,25 @@ func Test_HealthCheck_Group_Default(t *testing.T) {
 	customer = v2Group.Group("/customer/")
 	customer.Use(New())
 
-	shouldWork(t, app, "/v1/readyz")
-	shouldWork(t, app, "/v1/livez")
-	shouldNotWork(t, app, "/v1/readyz/")
-	shouldNotWork(t, app, "/v1/livez/")
-	shouldWork(t, app, "/v2/customer/readyz")
-	shouldWork(t, app, "/v2/customer/livez")
-	shouldNotWork(t, app, "/v2/customer/readyz/")
-	shouldNotWork(t, app, "/v2/customer/livez/")
-	shouldNotWork(t, app, "/notDefined/readyz")
-	shouldNotWork(t, app, "/notDefined/livez")
-	shouldNotWork(t, app, "/notDefined/readyz/")
-	shouldNotWork(t, app, "/notDefined/livez/")
+	v3Group = app.Group("/v3/")
+	v3Group.Group("/todos/", New(Config{ReadinessEndpoint: "/readyz/", LivenessEndpoint: "/livez/"}))
+
+	shouldGiveOK(t, app, "/v1/readyz")
+	shouldGiveOK(t, app, "/v1/livez")
+	shouldGiveNotFound(t, app, "/v1/readyz/")
+	shouldGiveNotFound(t, app, "/v1/livez/")
+	shouldGiveOK(t, app, "/v2/customer/readyz")
+	shouldGiveOK(t, app, "/v2/customer/livez")
+	shouldGiveNotFound(t, app, "/v2/customer/readyz/")
+	shouldGiveNotFound(t, app, "/v2/customer/livez/")
+	shouldGiveNotFound(t, app, "/v3/todos/readyz")
+	shouldGiveNotFound(t, app, "/v3/todos/livez")
+	shouldGiveOK(t, app, "/v3/todos/readyz/")
+	shouldGiveOK(t, app, "/v3/todos/livez/")
+	shouldGiveNotFound(t, app, "/notDefined/readyz")
+	shouldGiveNotFound(t, app, "/notDefined/livez")
+	shouldGiveNotFound(t, app, "/notDefined/readyz/")
+	shouldGiveNotFound(t, app, "/notDefined/livez/")
 }
 
 func Test_HealthCheck_Default(t *testing.T) {
@@ -92,12 +108,12 @@ func Test_HealthCheck_Default(t *testing.T) {
 	app := fiber.New()
 	app.Use(New())
 
-	shouldWork(t, app, "/readyz")
-	shouldWork(t, app, "/livez")
-	shouldWork(t, app, "/readyz/")
-	shouldWork(t, app, "/livez/")
-	shouldNotWork(t, app, "/notDefined/readyz")
-	shouldNotWork(t, app, "/notDefined/livez")
+	shouldGiveOK(t, app, "/readyz")
+	shouldGiveOK(t, app, "/livez")
+	shouldGiveOK(t, app, "/readyz/")
+	shouldGiveOK(t, app, "/livez/")
+	shouldGiveNotFound(t, app, "/notDefined/readyz")
+	shouldGiveNotFound(t, app, "/notDefined/livez")
 }
 
 func Test_HealthCheck_Custom(t *testing.T) {
@@ -106,11 +122,6 @@ func Test_HealthCheck_Custom(t *testing.T) {
 	app := fiber.New()
 
 	c1 := make(chan struct{}, 1)
-	go func() {
-		time.Sleep(1 * time.Second)
-		c1 <- struct{}{}
-	}()
-
 	app.Use(New(Config{
 		LivenessProbe: func(c *fiber.Ctx) bool {
 			return true
@@ -128,7 +139,7 @@ func Test_HealthCheck_Custom(t *testing.T) {
 	}))
 
 	// Live should return 200 with GET request
-	shouldWork(t, app, "/live")
+	shouldGiveOK(t, app, "/live")
 	// Live should return 404 with POST request
 	req, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/live", nil))
 	utils.AssertEqual(t, nil, err)
@@ -140,14 +151,53 @@ func Test_HealthCheck_Custom(t *testing.T) {
 	utils.AssertEqual(t, fiber.StatusNotFound, req.StatusCode)
 
 	// Ready should return 503 with GET request before the channel is closed
-	req, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/ready", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusServiceUnavailable, req.StatusCode)
-
-	time.Sleep(1 * time.Second)
+	shouldGiveStatus(t, app, "/ready", fiber.StatusServiceUnavailable)
 
 	// Ready should return 200 with GET request after the channel is closed
-	shouldWork(t, app, "/ready")
+	c1 <- struct{}{}
+	shouldGiveOK(t, app, "/ready")
+}
+
+func Test_HealthCheck_Custom_Nested(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	c1 := make(chan struct{}, 1)
+
+	app.Use(New(Config{
+		LivenessProbe: func(c *fiber.Ctx) bool {
+			return true
+		},
+		LivenessEndpoint: "/probe/live",
+		ReadinessProbe: func(c *fiber.Ctx) bool {
+			select {
+			case <-c1:
+				return true
+			default:
+				return false
+			}
+		},
+		ReadinessEndpoint: "/probe/ready",
+	}))
+
+	shouldGiveOK(t, app, "/probe/live")
+	shouldGiveStatus(t, app, "/probe/ready", fiber.StatusServiceUnavailable)
+	shouldGiveOK(t, app, "/probe/live/")
+	shouldGiveStatus(t, app, "/probe/ready/", fiber.StatusServiceUnavailable)
+	shouldGiveNotFound(t, app, "/probe/livez")
+	shouldGiveNotFound(t, app, "/probe/readyz")
+	shouldGiveNotFound(t, app, "/probe/livez/")
+	shouldGiveNotFound(t, app, "/probe/readyz/")
+	shouldGiveNotFound(t, app, "/livez")
+	shouldGiveNotFound(t, app, "/readyz")
+	shouldGiveNotFound(t, app, "/readyz/")
+	shouldGiveNotFound(t, app, "/livez/")
+
+	c1 <- struct{}{}
+	shouldGiveOK(t, app, "/probe/ready")
+	c1 <- struct{}{}
+	shouldGiveOK(t, app, "/probe/ready/")
 }
 
 func Test_HealthCheck_Next(t *testing.T) {
@@ -161,8 +211,8 @@ func Test_HealthCheck_Next(t *testing.T) {
 		},
 	}))
 
-	shouldNotWork(t, app, "/readyz")
-	shouldNotWork(t, app, "/livez")
+	shouldGiveNotFound(t, app, "/readyz")
+	shouldGiveNotFound(t, app, "/livez")
 }
 
 func Benchmark_HealthCheck(b *testing.B) {

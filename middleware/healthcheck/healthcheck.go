@@ -44,13 +44,14 @@ func New(config ...Config) fiber.Handler {
 		prefixCount := len(utils.TrimRight(c.Route().Path, '/'))
 		if len(c.Path()) >= prefixCount {
 			checkPath := c.Path()[prefixCount:]
+			checkPathTrimmed := checkPath
 			if !c.App().Config().StrictRouting {
-				checkPath = utils.TrimRight(checkPath, '/')
+				checkPathTrimmed = utils.TrimRight(checkPath, '/')
 			}
-			switch checkPath {
-			case cfg.ReadinessEndpoint:
+			switch true {
+			case checkPath == cfg.ReadinessEndpoint || checkPathTrimmed == cfg.ReadinessEndpoint:
 				return isReadyHandler(c)
-			case cfg.LivenessEndpoint:
+			case checkPath == cfg.LivenessEndpoint || checkPathTrimmed == cfg.LivenessEndpoint:
 				return isLiveHandler(c)
 			}
 		}
