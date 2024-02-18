@@ -15,7 +15,7 @@ Titles always we must use prefix according to below:
 - 📚 Doc: Translate to Portuguese middleware redirect
 - 🎨 Style: Respected pattern Golint
 
-All pull request that contains a feature or fix is mandatory to have unit tests. Your PR is only to be merged if you respect this flow.
+All pull requests that contain a feature or fix are mandatory to have unit tests. Your PR is only to be merged if you respect this flow.
 
 # 👍 Contribute
 

@@ -1,12 +1,11 @@
 name: "Sync docs"
 
 on:
-  push:
-    branches:
-      - master
-      - main
-    paths:
-      - "docs/**"
+#  push:
+#    branches:
+#      - v2
+#    paths:
+#      - "docs/**"
   release:
     types: [published]
 

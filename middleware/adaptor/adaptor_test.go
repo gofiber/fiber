@@ -35,7 +35,8 @@ func Test_HTTPHandler(t *testing.T) {
 	expectedURL, err := url.ParseRequestURI(expectedRequestURI)
 	require.NoError(t, err)
 
-	expectedContextKey := "contextKey"
+	type contextKeyType string
+	expectedContextKey := contextKeyType("contextKey")
 	expectedContextValue := "contextValue"
 
 	callsCount := 0
@@ -114,6 +115,7 @@ var (
 )
 
 func Test_HTTPMiddleware(t *testing.T) {
+	const expectedHost = "foobar.com"
 	tests := []struct {
 		name       string
 		url        string
@@ -146,6 +148,7 @@ func Test_HTTPMiddleware(t *testing.T) {
 				w.WriteHeader(http.StatusMethodNotAllowed)
 				return
 			}
+
 			r = r.WithContext(context.WithValue(r.Context(), TestContextKey, "okay"))
 			r = r.WithContext(context.WithValue(r.Context(), TestContextSecondKey, "not_okay"))
 			r = r.WithContext(context.WithValue(r.Context(), TestContextSecondKey, "okay"))
@@ -178,6 +181,7 @@ func Test_HTTPMiddleware(t *testing.T) {
 
 	for _, tt := range tests {
 		req, err := http.NewRequestWithContext(context.Background(), tt.method, tt.url, nil)
+		req.Host = expectedHost
 		require.NoError(t, err)
 
 		resp, err := app.Test(req)
@@ -186,6 +190,7 @@ func Test_HTTPMiddleware(t *testing.T) {
 	}
 
 	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodPost, "/", nil)
+	req.Host = expectedHost
 	require.NoError(t, err)
 
 	resp, err := app.Test(req)
@@ -237,6 +242,8 @@ func testFiberToHandlerFunc(t *testing.T, checkDefaultPort bool, app ...*fiber.A
 		require.Equal(t, expectedRequestURI, string(c.Context().RequestURI()), "RequestURI")
 		require.Equal(t, expectedContentLength, c.Context().Request.Header.ContentLength(), "ContentLength")
 		require.Equal(t, expectedHost, c.Hostname(), "Host")
+		require.Equal(t, expectedHost, string(c.Request().Header.Host()), "Host")
+		require.Equal(t, "http://"+expectedHost, c.BaseURL(), "BaseURL")
 		require.Equal(t, expectedRemoteAddr, c.Context().RemoteAddr().String(), "RemoteAddr")
 
 		body := string(c.Body())
@@ -292,7 +299,7 @@ func testFiberToHandlerFunc(t *testing.T, checkDefaultPort bool, app ...*fiber.A
 	require.Equal(t, expectedResponseBody, string(w.body), "Body")
 }
 
-func setFiberContextValueMiddleware(next fiber.Handler, key string, value any) fiber.Handler {
+func setFiberContextValueMiddleware(next fiber.Handler, key, value any) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		c.Locals(key, value)
 		return next(c)

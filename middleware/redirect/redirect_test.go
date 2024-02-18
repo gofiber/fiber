@@ -44,6 +44,12 @@ func Test_Redirect(t *testing.T) {
 		},
 		StatusCode: fiber.StatusMovedPermanently,
 	}))
+	app.Use(New(Config{
+		Rules: map[string]string{
+			"/params": "/with_params",
+		},
+		StatusCode: fiber.StatusMovedPermanently,
+	}))
 
 	app.Get("/api/*", func(c fiber.Ctx) error {
 		return c.SendString("API")
@@ -103,6 +109,12 @@ func Test_Redirect(t *testing.T) {
 			name:       "no redirect to swagger route #2",
 			url:        "/api/test",
 			statusCode: fiber.StatusOK,
+		},
+		{
+			name:       "redirect with query params",
+			url:        "/params?query=abc",
+			redirectTo: "/with_params?query=abc",
+			statusCode: fiber.StatusMovedPermanently,
 		},
 	}
 	for _, tt := range tests {

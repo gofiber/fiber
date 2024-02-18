@@ -1435,9 +1435,13 @@ app.Get("/", func(c fiber.Ctx) error {
             return err
         }
 
-        log.Println(p.Name)     // john
-        log.Println(p.Pass)     // doe
-        log.Println(p.Products) // [shoe, hat]
+        log.Println(p.Name)        // john
+        log.Println(p.Pass)        // doe
+        // fiber.Config{EnableSplittingOnParsers: false} - default
+        log.Println(p.Products)    // ["shoe,hat"]
+        // fiber.Config{EnableSplittingOnParsers: true}
+        // log.Println(p.Products) // ["shoe", "hat"]
+		
 
         // ...
 })
@@ -1445,6 +1449,10 @@ app.Get("/", func(c fiber.Ctx) error {
 
 // curl "http://localhost:3000/?name=john&pass=doe&products=shoe,hat"
 ```
+
+:::info
+For more parser settings please look here [Config](fiber.md#config)
+:::
 
 ## Range
 

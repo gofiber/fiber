@@ -1,8 +1,7 @@
 on:
   push:
     branches:
-      - master
-      - main
+      - v2
     paths:
       - "**"
       - "!docs/**"
