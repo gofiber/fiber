@@ -18,6 +18,6 @@ func FuzzUtilsGetOffer(f *testing.F) {
 		f.Add(input)
 	}
 	f.Fuzz(func(_ *testing.T, spec string) {
-		getOffer(spec, acceptsOfferType, `application/json;version=1;v=1;foo=bar`, `text/plain;param="big fox"`)
+		getOffer([]byte(spec), acceptsOfferType, `application/json;version=1;v=1;foo=bar`, `text/plain;param="big fox"`)
 	})
 }
