@@ -7,6 +7,7 @@ package fiber
 import (
 	"bytes"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -41,25 +42,27 @@ func getTLSConfig(ln net.Listener) *tls.Config {
 	pointer := reflect.ValueOf(ln)
 
 	// Is it a tls.listener?
-	if pointer.String() == "<*tls.listener Value>" {
-		// Copy value from pointer
-		if val := reflect.Indirect(pointer); val.Type() != nil {
-			// Get private field from value
-			if field := val.FieldByName("config"); field.Type() != nil {
-				// Copy value from pointer field (unsafe)
-				newval := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())) //nolint:gosec // Probably the only way to extract the *tls.Config from a net.Listener. TODO: Verify there really is no easier way without using unsafe.
-				if newval.Type() != nil {
-					// Get element from pointer
-					if elem := newval.Elem(); elem.Type() != nil {
-						// Cast value to *tls.Config
-						c, ok := elem.Interface().(*tls.Config)
-						//nolint:revive // We need to check if the type assertion was successful
-						if !ok {
-							panic(fmt.Errorf("failed to type-assert to *tls.Config"))
-						}
-						return c
-					}
+	if pointer.String() != "<*tls.listener Value>" {
+		return nil
+	}
+
+	// Copy value from pointer
+	if val := reflect.Indirect(pointer); val.Type() != nil {
+		// Get private field from value
+		if field := val.FieldByName("config"); field.Type() != nil {
+			// Copy value from pointer field (unsafe)
+			newval := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())) //nolint:gosec // Probably the only way to extract the *tls.Config from a net.Listener. TODO: Verify there really is no easier way without using unsafe.
+			if newval.Type() == nil {
+				return nil
+			}
+			// Get element from pointer
+			if elem := newval.Elem(); elem.Type() != nil {
+				// Cast value to *tls.Config
+				c, ok := elem.Interface().(*tls.Config)
+				if !ok {
+					panic(errors.New("failed to type-assert to *tls.Config"))
 				}
+				return c
 			}
 		}
 	}

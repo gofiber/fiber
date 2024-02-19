@@ -70,7 +70,7 @@ func New(config ...Config) fiber.Handler {
 				subdomains = "; includeSubDomains"
 			}
 			if cfg.HSTSPreloadEnabled {
-				subdomains = fmt.Sprintf("%s; preload", subdomains)
+				subdomains += "; preload"
 			}
 			c.Set(fiber.HeaderStrictTransportSecurity, fmt.Sprintf("max-age=%d%s", cfg.HSTSMaxAge, subdomains))
 		}

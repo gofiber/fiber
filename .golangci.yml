@@ -209,7 +209,7 @@ linters:
     - nolintlint
     - nonamedreturns
     - nosprintfhostport
-    # - perfsprint # TODO https://github.com/gofiber/fiber/issues/2816
+    - perfsprint
     - predeclared
     - promlinter
     - reassign
