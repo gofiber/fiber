@@ -2,6 +2,7 @@ package healthcheck
 
 import (
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/utils"
 )
 
 // HealthChecker defines a function to check liveness or readiness of the application
@@ -40,11 +41,19 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		switch c.Path() {
-		case cfg.ReadinessEndpoint:
-			return isReadyHandler(c)
-		case cfg.LivenessEndpoint:
-			return isLiveHandler(c)
+		prefixCount := len(utils.TrimRight(c.Route().Path, '/'))
+		if len(c.Path()) >= prefixCount {
+			checkPath := c.Path()[prefixCount:]
+			checkPathTrimmed := checkPath
+			if !c.App().Config().StrictRouting {
+				checkPathTrimmed = utils.TrimRight(checkPath, '/')
+			}
+			switch {
+			case checkPath == cfg.ReadinessEndpoint || checkPathTrimmed == cfg.ReadinessEndpoint:
+				return isReadyHandler(c)
+			case checkPath == cfg.LivenessEndpoint || checkPathTrimmed == cfg.LivenessEndpoint:
+				return isLiveHandler(c)
+			}
 		}
 
 		return c.Next()
