@@ -5,7 +5,7 @@
 package fiber
 
 import (
-	"fmt"
+	"errors"
 	"strings"
 	"sync"
 
@@ -53,7 +53,7 @@ type RedirectConfig struct {
 func AcquireRedirect() *Redirect {
 	redirect, ok := redirectPool.Get().(*Redirect)
 	if !ok {
-		panic(fmt.Errorf("failed to type-assert to *Redirect"))
+		panic(errors.New("failed to type-assert to *Redirect"))
 	}
 
 	return redirect

@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -885,7 +886,7 @@ func AcquireClient() *Client {
 	}
 	c, ok := v.(*Client)
 	if !ok {
-		panic(fmt.Errorf("failed to type-assert to *Client"))
+		panic(errors.New("failed to type-assert to *Client"))
 	}
 	return c
 }
@@ -911,7 +912,7 @@ func ReleaseClient(c *Client) {
 func AcquireAgent() *Agent {
 	a, ok := agentPool.Get().(*Agent)
 	if !ok {
-		panic(fmt.Errorf("failed to type-assert to *Agent"))
+		panic(errors.New("failed to type-assert to *Agent"))
 	}
 	return a
 }
@@ -938,7 +939,7 @@ func AcquireResponse() *Response {
 	}
 	r, ok := v.(*Response)
 	if !ok {
-		panic(fmt.Errorf("failed to type-assert to *Response"))
+		panic(errors.New("failed to type-assert to *Response"))
 	}
 	return r
 }
@@ -965,7 +966,7 @@ func AcquireArgs() *Args {
 	}
 	a, ok := v.(*Args)
 	if !ok {
-		panic(fmt.Errorf("failed to type-assert to *Args"))
+		panic(errors.New("failed to type-assert to *Args"))
 	}
 	return a
 }
@@ -990,7 +991,7 @@ func AcquireFormFile() *FormFile {
 	}
 	ff, ok := v.(*FormFile)
 	if !ok {
-		panic(fmt.Errorf("failed to type-assert to *FormFile"))
+		panic(errors.New("failed to type-assert to *FormFile"))
 	}
 	return ff
 }

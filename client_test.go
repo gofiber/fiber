@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"errors"
-	"fmt"
 	"io"
 	"mime/multipart"
 	"net"
@@ -630,7 +629,7 @@ type readErrorConn struct {
 }
 
 func (*readErrorConn) Read(_ []byte) (int, error) {
-	return 0, fmt.Errorf("error")
+	return 0, errors.New("error")
 }
 
 func (*readErrorConn) Write(p []byte) (int, error) {

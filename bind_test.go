@@ -1556,7 +1556,7 @@ func (*structValidator) ValidateStruct(out any) error {
 	out = reflect.ValueOf(out).Elem().Interface()
 	sq, ok := out.(simpleQuery)
 	if !ok {
-		return fmt.Errorf("failed to type-assert to simpleQuery")
+		return errors.New("failed to type-assert to simpleQuery")
 	}
 
 	if sq.Name != "john" {
