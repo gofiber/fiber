@@ -47,7 +47,7 @@ func main() {
 		Validator:  validateAPIKey,
 	}))
 
-		app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c *fiber.Ctx) error {
 		return c.SendString("Successfully authenticated!")
 	})
 
