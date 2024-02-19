@@ -4181,7 +4181,7 @@ func Test_Ctx_Render_Go_Template(t *testing.T) {
 		require.NoError(t, err)
 	}()
 
-	_, err = file.Write([]byte("template"))
+	_, err = file.WriteString("template")
 	require.NoError(t, err)
 
 	err = file.Close()

@@ -200,7 +200,7 @@ linters:
     - grouper
     - inamedparam
     - loggercheck
-    # - mirror # TODO https://github.com/gofiber/fiber/issues/2816
+    - mirror
     - misspell
     - nakedret
     - nilerr
