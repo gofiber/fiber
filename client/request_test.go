@@ -849,7 +849,7 @@ func Test_Request_UserAgent_With_Server(t *testing.T) {
 
 	t.Run("default", func(t *testing.T) {
 		t.Parallel()
-		testRequest(t, handler, func(agent *Request) {}, defaultUserAgent, 5)
+		testRequest(t, handler, func(_ *Request) {}, defaultUserAgent, 5)
 	})
 
 	t.Run("custom", func(t *testing.T) {
@@ -1540,11 +1540,11 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 			})
 		}
 
-		require.Equal(b, "", string(p.Peek("TInt")))
-		require.Equal(b, "", string(p.Peek("TString")))
-		require.Equal(b, "", string(p.Peek("TFloat")))
-		require.Equal(b, 0, len(p.PeekMulti("TSlice")))
-		require.Equal(b, 0, len(p.PeekMulti("int_slice")))
+		require.Empty(b, string(p.Peek("TInt")))
+		require.Empty(b, string(p.Peek("TString")))
+		require.Empty(b, string(p.Peek("TFloat")))
+		require.Empty(b, len(p.PeekMulti("TSlice")))
+		require.Empty(b, len(p.PeekMulti("int_slice")))
 	})
 
 	b.Run("error type should ignore", func(b *testing.B) {

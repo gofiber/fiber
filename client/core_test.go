@@ -65,7 +65,7 @@ func Test_Exec_Func(t *testing.T) {
 		return c.SendString(c.Hostname())
 	})
 
-	app.Get("/return-error", func(c fiber.Ctx) error {
+	app.Get("/return-error", func(_ fiber.Ctx) error {
 		return fmt.Errorf("the request is error")
 	})
 
@@ -87,7 +87,7 @@ func Test_Exec_Func(t *testing.T) {
 		core.client = client
 		core.req = req
 
-		core.req.dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+		core.req.dial = func(_ string) (net.Conn, error) { return ln.Dial() }
 		req.RawRequest.SetRequestURI("http://example.com/normal")
 
 		resp, err := core.execFunc()
@@ -159,7 +159,7 @@ func Test_Execute(t *testing.T) {
 	t.Run("add user request hooks", func(t *testing.T) {
 		t.Parallel()
 		core, client, req := newCore(), AcquireClient(), AcquireRequest()
-		client.AddRequestHook(func(c *Client, r *Request) error {
+		client.AddRequestHook(func(_ *Client, _ *Request) error {
 			require.Equal(t, "http://example.com", req.URL())
 			return nil
 		})

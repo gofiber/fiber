@@ -18,8 +18,8 @@ import (
 // WithStruct Implementing this interface allows data to
 // be stored from a struct via reflect.
 type WithStruct interface {
-	Add(string, string)
-	Del(string)
+	Add(name string, obj string)
+	Del(name string)
 }
 
 // Types of request bodies.
@@ -895,20 +895,20 @@ func SetFileReader(r io.ReadCloser) SetFileFunc {
 //
 // The returned file may be returned to the pool with ReleaseFile when no longer needed.
 // This allows reducing GC load.
-func AcquireFile(setter ...SetFileFunc) (f *File) {
+func AcquireFile(setter ...SetFileFunc) *File {
 	fv := filePool.Get()
 	if fv != nil {
-		f = fv.(*File)
+		f := fv.(*File)
 		for _, v := range setter {
 			v(f)
 		}
-		return
+		return f
 	}
-	f = &File{}
+	f := &File{}
 	for _, v := range setter {
 		v(f)
 	}
-	return
+	return f
 }
 
 // ReleaseFile returns the object acquired via AcquireFile to the pool.

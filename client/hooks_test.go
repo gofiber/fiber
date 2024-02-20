@@ -583,5 +583,5 @@ func Test_Client_Logger_DisableDebug(t *testing.T) {
 	defer resp.Close()
 
 	require.NoError(t, err)
-	require.Len(t, buf.String(), 0)
+	require.Empty(t, buf.String())
 }

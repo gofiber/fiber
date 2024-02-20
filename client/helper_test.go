@@ -9,17 +9,12 @@ import (
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
-func createHelperServer(t testing.TB, config ...fiber.Config) (*fiber.App, func(addr string) (net.Conn, error), func()) {
+func createHelperServer(t testing.TB) (*fiber.App, func(addr string) (net.Conn, error), func()) {
 	t.Helper()
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	var cfg fiber.Config
-	if len(config) > 0 {
-		cfg = config[0]
-	}
-
-	app := fiber.New(cfg)
+	app := fiber.New()
 
 	return app, func(addr string) (net.Conn, error) {
 			return ln.Dial()

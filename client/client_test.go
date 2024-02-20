@@ -64,7 +64,7 @@ func Test_Client_Marshal(t *testing.T) {
 	t.Run("set json marshal", func(t *testing.T) {
 		t.Parallel()
 		client := AcquireClient().
-			SetJSONMarshal(func(v any) ([]byte, error) {
+			SetJSONMarshal(func(_ any) ([]byte, error) {
 				return []byte("hello"), nil
 			})
 		val, err := client.JSONMarshal()(nil)
@@ -87,7 +87,7 @@ func Test_Client_Marshal(t *testing.T) {
 	t.Run("set xml marshal", func(t *testing.T) {
 		t.Parallel()
 		client := AcquireClient().
-			SetXMLMarshal(func(v any) ([]byte, error) {
+			SetXMLMarshal(func(_ any) ([]byte, error) {
 				return []byte("hello"), nil
 			})
 		val, err := client.XMLMarshal()(nil)
@@ -99,7 +99,7 @@ func Test_Client_Marshal(t *testing.T) {
 	t.Run("set xml unmarshal", func(t *testing.T) {
 		t.Parallel()
 		client := AcquireClient().
-			SetXMLUnmarshal(func(data []byte, v any) error {
+			SetXMLUnmarshal(func(_ []byte, _ any) error {
 				return fmt.Errorf("empty xml")
 			})
 

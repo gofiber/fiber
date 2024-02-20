@@ -59,13 +59,13 @@ func randString(n int) string {
 // The baseUrl will be merge with request uri.
 // Query params and path params deal in this function.
 func parserRequestURL(c *Client, req *Request) error {
-	splitUrl := strings.Split(req.url, "?")
-	// I don't want to judge splitUrl length.
-	splitUrl = append(splitUrl, "")
+	splitURL := strings.Split(req.url, "?")
+	// I don't want to judge splitURL length.
+	splitURL = append(splitURL, "")
 
 	// Determine whether to superimpose baseurl based on
 	// whether the URL starts with the protocol
-	uri := splitUrl[0]
+	uri := splitURL[0]
 	if !protocolCheck.MatchString(uri) {
 		uri = c.baseURL + uri
 		if !protocolCheck.MatchString(uri) {
@@ -85,7 +85,7 @@ func parserRequestURL(c *Client, req *Request) error {
 	req.RawRequest.SetRequestURI(uri)
 
 	// merge query params
-	hashSplit := strings.Split(splitUrl[1], "#")
+	hashSplit := strings.Split(splitURL[1], "#")
 	hashSplit = append(hashSplit, "")
 	args := fasthttp.AcquireArgs()
 	defer func() {

@@ -483,7 +483,7 @@ func Test_Proxy_DoTimeout_RestoreOriginalURL(t *testing.T) {
 	})
 
 	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
-	require.NotErrorIs(t, nil, err1)
+	require.Error(t, err1)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "proxied", string(body))
