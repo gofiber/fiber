@@ -52,7 +52,6 @@ func addMissingPort(addr string, isTLS bool) string {
 // `core` stores middleware and plugin definitions,
 // and defines the execution process
 type core struct {
-	host   *fasthttp.HostClient
 	client *Client
 	req    *Request
 	ctx    context.Context
@@ -93,26 +92,31 @@ func (c *core) execFunc() (*Response, error) {
 	c.req.RawRequest.CopyTo(reqv)
 	cfg := c.getRetryConfig()
 
-	defer ReleaseHostClient(c.host)
+	var host = AcquireHostClient()
 
+	err := c.configureHostClient(host)
+	if err != nil {
+		defer ReleaseHostClient(host)
+		return nil, err
+	}
 	go func() {
+		defer ReleaseHostClient(host)
 		c.client.mu.Lock()
 
-		var err error
 		respv := fasthttp.AcquireResponse()
 		if cfg != nil {
 			err = retry.NewExponentialBackoff(*cfg).Retry(func() error {
 				if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
-					return c.host.DoRedirects(reqv, respv, c.req.maxRedirects)
+					return host.DoRedirects(reqv, respv, c.req.maxRedirects)
 				}
 
-				return c.host.Do(reqv, respv)
+				return host.Do(reqv, respv)
 			})
 		} else {
 			if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
-				err = c.host.DoRedirects(reqv, respv, c.req.maxRedirects)
+				err = host.DoRedirects(reqv, respv, c.req.maxRedirects)
 			} else {
-				err = c.host.Do(reqv, respv)
+				err = host.Do(reqv, respv)
 			}
 		}
 		defer func() {
@@ -203,22 +207,14 @@ func (c *core) timeout() context.CancelFunc {
 	return cancel
 }
 
-// dial set dial in host.
-func (c *core) dial() {
+// configureHostClient set configureHostClient in host.
+func (c *core) configureHostClient(hostClient *fasthttp.HostClient) error {
+	// tls and dial configuration
 	c.client.mu.Lock()
-	c.host.Dial = c.req.dial
+	hostClient.TLSConfig = c.client.tlsConfig.Clone()
+	hostClient.Dial = c.req.dial
 	c.client.mu.Unlock()
-}
 
-// tls sets tls config.
-func (c *core) tls() {
-	c.client.mu.Lock()
-	c.host.TLSConfig = c.client.tlsConfig.Clone()
-	c.client.mu.Unlock()
-}
-
-// proxy set proxy in host.
-func (c *core) proxy() error {
 	rawURI := c.req.RawRequest.URI()
 	if c.client.proxyURL != "" {
 		rawURI = fasthttp.AcquireURI()
@@ -233,9 +229,10 @@ func (c *core) proxy() error {
 		return ErrNotSupportSchema
 	}
 
+	// proxy configuration
 	c.client.mu.Lock()
-	c.host.Addr = addMissingPort(string(rawURI.Host()), isTLS)
-	c.host.IsTLS = isTLS
+	hostClient.Addr = addMissingPort(string(rawURI.Host()), isTLS)
+	hostClient.IsTLS = isTLS
 	c.client.mu.Unlock()
 
 	return nil
@@ -258,15 +255,6 @@ func (c *core) execute(ctx context.Context, client *Client, req *Request) (*Resp
 	cancel := c.timeout()
 	if cancel != nil {
 		defer cancel()
-	}
-
-	c.tls()
-
-	c.dial()
-
-	err = c.proxy()
-	if err != nil {
-		return nil, err
 	}
 
 	// Do http request
@@ -309,9 +297,7 @@ func releaseErrChan(ch chan error) {
 
 // newCore returns an empty core object.
 func newCore() *core {
-	c := &core{
-		host: AcquireHostClient(),
-	}
+	c := &core{}
 
 	return c
 }
