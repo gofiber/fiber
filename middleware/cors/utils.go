@@ -49,8 +49,10 @@ func normalizeDomain(input string) string {
 	input = strings.TrimPrefix(strings.TrimPrefix(input, "http://"), "https://")
 
 	// Find and remove port, if present
-	if portIndex := strings.Index(input, ":"); portIndex != -1 {
-		input = input[:portIndex]
+	if len(input) > 0 && input[0] != '[' {
+		if portIndex := strings.Index(input, ":"); portIndex != -1 {
+			input = input[:portIndex]
+		}
 	}
 
 	return input
