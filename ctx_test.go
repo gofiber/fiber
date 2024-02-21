@@ -2213,8 +2213,11 @@ func Test_Ctx_Params(t *testing.T) {
 	})
 	app.Get("/test3/*/blafasel/*", func(c Ctx) error {
 		require.Equal(t, "1111", c.Params("*1"))
+		require.Equal(t, 1111, Params(c, "*1", 0))
 		require.Equal(t, "2222", c.Params("*2"))
+		require.Equal(t, 2222, Params(c, "*2", 0))
 		require.Equal(t, "1111", c.Params("*"))
+		require.Equal(t, 1111, Params(c, "*", 0))
 		return nil
 	})
 	app.Get("/test4/:optional?", func(c Ctx) error {
@@ -4462,150 +4465,448 @@ func Benchmark_Ctx_GetReqHeaders(b *testing.B) {
 	}, headers)
 }
 
-// go test -run Test_genericParseType
-func Test_genericParseType(t *testing.T) {
+// go test -run Test_genericParseTypeInts
+func Test_genericParseTypeInts(t *testing.T) {
+	t.Parallel()
+	ints := []struct {
+		value int
+		str   string
+	}{
+		{
+			value: 0,
+			str:   "0",
+		},
+		{
+			value: 1,
+			str:   "2",
+		},
+		{
+			value: 2,
+			str:   "2",
+		},
+		{
+			value: 3,
+			str:   "3",
+		},
+		{
+			value: 4,
+			str:   "4",
+		},
+	}
+
+	int8s := []struct {
+		value int8
+		str   string
+	}{
+		{
+			value: int8(0),
+			str:   "0",
+		},
+		{
+			value: int8(1),
+			str:   "1",
+		},
+		{
+			value: int8(2),
+			str:   "2",
+		},
+		{
+			value: int8(3),
+			str:   "3",
+		},
+		{
+			value: int8(4),
+			str:   "4",
+		},
+	}
+
+	int16s := []struct {
+		value int16
+		str   string
+	}{
+		{
+			value: int16(0),
+			str:   "0",
+		},
+		{
+			value: int16(1),
+			str:   "1",
+		},
+		{
+			value: int16(2),
+			str:   "2",
+		},
+		{
+			value: int16(3),
+			str:   "3",
+		},
+		{
+			value: int16(4),
+			str:   "4",
+		},
+	}
+
+	int32s := []struct {
+		value int32
+		str   string
+	}{
+		{
+			value: int32(0),
+			str:   "0",
+		},
+		{
+			value: int32(1),
+			str:   "1",
+		},
+		{
+			value: int32(2),
+			str:   "2",
+		},
+		{
+			value: int32(3),
+			str:   "3",
+		},
+		{
+			value: int32(4),
+			str:   "4",
+		},
+	}
+
+	int64s := []struct {
+		value int64
+		str   string
+	}{
+		{
+			value: int64(0),
+			str:   "0",
+		},
+		{
+			value: int64(1),
+			str:   "1",
+		},
+		{
+			value: int64(2),
+			str:   "2",
+		},
+		{
+			value: int64(3),
+			str:   "3",
+		},
+		{
+			value: int64(4),
+			str:   "4",
+		},
+	}
+
+	c := New().NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	for _, test := range ints {
+		t.Run("benchmark_genericParseTypeInts", Test_genericParse(c, test.str, test.value))
+	}
+
+	for _, test := range int8s {
+		t.Run("benchmark_genericParseTypeInt8s", Test_genericParse(c, test.str, test.value))
+	}
+
+	for _, test := range int16s {
+		t.Run("benchmark_genericParseTypeInt16s", Test_genericParse(c, test.str, test.value))
+	}
+
+	for _, test := range int32s {
+		t.Run("benchmark_genericParseTypeInt32s", Test_genericParse(c, test.str, test.value))
+	}
+
+	for _, test := range int64s {
+		t.Run("benchmark_genericParseTypeInt64s", Test_genericParse(c, test.str, test.value))
+	}
+}
+
+// go test -run Test_genericParseTypeUints
+func Test_genericParseTypeUints(t *testing.T) {
+	t.Parallel()
+	uints := []struct {
+		value uint
+		str   string
+	}{
+		{
+			value: uint(0),
+			str:   "0",
+		},
+		{
+			value: uint(1),
+			str:   "1",
+		},
+		{
+			value: uint(2),
+			str:   "2",
+		},
+		{
+			value: uint(3),
+			str:   "3",
+		},
+		{
+			value: uint(4),
+			str:   "4",
+		},
+	}
+
+	uint8s := []struct {
+		value uint8
+		str   string
+	}{
+		{
+			value: uint8(0),
+			str:   "0",
+		},
+		{
+			value: uint8(1),
+			str:   "1",
+		},
+		{
+			value: uint8(2),
+			str:   "2",
+		},
+		{
+			value: uint8(3),
+			str:   "3",
+		},
+		{
+			value: uint8(4),
+			str:   "4",
+		},
+	}
+
+	uint16s := []struct {
+		value uint16
+		str   string
+	}{
+		{
+			value: uint16(0),
+			str:   "0",
+		},
+		{
+			value: uint16(1),
+			str:   "1",
+		},
+		{
+			value: uint16(2),
+			str:   "2",
+		},
+		{
+			value: uint16(3),
+			str:   "3",
+		},
+		{
+			value: uint16(4),
+			str:   "4",
+		},
+	}
+
+	uint32s := []struct {
+		value uint32
+		str   string
+	}{
+		{
+			value: uint32(0),
+			str:   "0",
+		},
+		{
+			value: uint32(1),
+			str:   "1",
+		},
+		{
+			value: uint32(2),
+			str:   "2",
+		},
+		{
+			value: uint32(3),
+			str:   "3",
+		},
+		{
+			value: uint32(4),
+			str:   "4",
+		},
+	}
+
+	uint64s := []struct {
+		value uint64
+		str   string
+	}{
+		{
+			value: uint64(0),
+			str:   "0",
+		},
+		{
+			value: uint64(1),
+			str:   "1",
+		},
+		{
+			value: uint64(2),
+			str:   "2",
+		},
+		{
+			value: uint64(3),
+			str:   "3",
+		},
+		{
+			value: uint64(4),
+			str:   "4",
+		},
+	}
+
 	c := New().NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
 
-	// string
-	var vString string
-	require.Equal(t, "john", genericParseType(c, "john", vString))
-	require.Equal(t, "john", genericParseType(c, "john", vString, "doe"))
-	require.Equal(t, "john", genericParseType(c, "john", vString, "doe", "hello"))
+	for _, test := range uints {
+		t.Run("benchamrk_genericParseTypeUints", Test_genericParse(c, test.str, test.value))
+	}
 
-	// int
-	var vInt int
-	require.Equal(t, 0, genericParseType(c, "0", vInt))
-	require.Equal(t, 0, genericParseType(c, "0", 0, vInt))
-	require.Equal(t, 0, genericParseType(c, "0", 0, vInt, 2))
-	require.Equal(t, 0, genericParseType(c, "0", vInt, 1))
-	require.Equal(t, 8, genericParseType(c, "8", vInt))
-	require.Equal(t, 0, genericParseType(c, "i'm not integer", vInt))
-	require.Equal(t, 8, genericParseType(c, "i'm not integer", vInt, 8))
-	require.Equal(t, 8, genericParseType(c, "i'm not integer", vInt, 8, 9))
+	for _, test := range uint8s {
+		t.Run("benchamrk_genericParseTypeUint8s", Test_genericParse(c, test.str, test.value))
+	}
 
-	// int8
-	var vInt8 int8
-	require.Equal(t, int8(8), genericParseType(c, "8", vInt8))
-	require.Equal(t, int8(8), genericParseType(c, "8", vInt8, 9))
-	require.Equal(t, int8(8), genericParseType(c, "8", vInt8, 9, 10))
-	require.Equal(t, int8(8), genericParseType(c, "8", vInt8, 9, 10))
-	require.Equal(t, int8(0), genericParseType(c, "i'm verybad integer", vInt8))
-	require.Equal(t, int8(9), genericParseType(c, "i'm verybad integer", vInt8, 9))
-	require.Equal(t, int8(9), genericParseType(c, "i'm verybad integer", vInt8, 9, 10))
+	for _, test := range uint16s {
+		t.Run("benchamrk_genericParseTypeUint16s", Test_genericParse(c, test.str, test.value))
+	}
 
-	// int16
-	var vInt16 int16
-	require.Equal(t, int16(15), genericParseType(c, "15", vInt16))
-	require.Equal(t, int16(15), genericParseType(c, "15", vInt16, 16))
-	require.Equal(t, int16(15), genericParseType(c, "15", vInt16, 16, 17))
-	require.Equal(t, int16(0), genericParseType(c, "fiftyEight", vInt16))
-	require.Equal(t, int16(11), genericParseType(c, "fiftyEight", vInt16, 11))
-	require.Equal(t, int16(11), genericParseType(c, "fiftyEight", vInt16, 11, 12))
+	for _, test := range uint32s {
+		t.Run("benchamrk_genericParseTypeUint32s", Test_genericParse(c, test.str, test.value))
+	}
 
-	// int32
-	var vInt32 int32
-	require.Equal(t, int32(245), genericParseType(c, "245", vInt32))
-	require.Equal(t, int32(245), genericParseType(c, "245", vInt32, 999))
-	require.Equal(t, int32(245), genericParseType(c, "245", vInt32, 999, 1009))
-	require.Equal(t, int32(0), genericParseType(c, "", vInt32))
-	require.Equal(t, int32(987), genericParseType(c, "", vInt32, 987))
-	require.Equal(t, int32(987), genericParseType(c, "", vInt32, 987, 988))
+	for _, test := range uint64s {
+		t.Run("benchamrk_genericParseTypeUint64s", Test_genericParse(c, test.str, test.value))
+	}
+}
 
-	// int64
-	var vInt64 int64
-	require.Equal(t, int64(245), genericParseType(c, "245", vInt64))
-	require.Equal(t, int64(245), genericParseType(c, "245", vInt64, 999))
-	require.Equal(t, int64(245), genericParseType(c, "245", vInt64, 999, 1009))
-	require.Equal(t, int64(0), genericParseType(c, "", vInt64))
-	require.Equal(t, int64(987), genericParseType(c, "", vInt64, 987))
-	require.Equal(t, int64(987), genericParseType(c, "", vInt64, 987, 988))
+// go test -run Test_genericParseTypeFloats
+func Test_genericParseTypeFloats(t *testing.T) {
+	t.Parallel()
+	float32s := []struct {
+		value float32
+		str   string
+	}{
+		{
+			value: float32(3.1415),
+			str:   "3.1415",
+		},
+		{
+			value: float32(1.234),
+			str:   "1.234",
+		},
+		{
+			value: float32(2),
+			str:   "2",
+		},
+		{
+			value: float32(3),
+			str:   "3",
+		},
+	}
 
-	// uint
-	var vUint uint
-	require.Equal(t, uint(13), genericParseType(c, "13", vUint))
-	require.Equal(t, uint(13), genericParseType(c, "13", vUint, 15))
-	require.Equal(t, uint(13), genericParseType(c, "13", vUint, 15, 17))
-	require.Equal(t, uint(0), genericParseType(c, "", vUint))
-	require.Equal(t, uint(0), genericParseType(c, "i'm not number", vUint))
-	require.Equal(t, uint(13), genericParseType(c, "", vUint, uint(13)))
-	require.Equal(t, uint(13), genericParseType(c, "", vUint, uint(13), uint(14)))
+	float64s := []struct {
+		value float64
+		str   string
+	}{
+		{
+			value: float64(3.1415),
+			str:   "3.1415",
+		},
+		{
+			value: float64(1.234),
+			str:   "1.234",
+		},
+		{
+			value: float64(2),
+			str:   "2",
+		},
+		{
+			value: float64(3),
+			str:   "3",
+		},
+	}
 
-	// uint8
-	var vUint8 uint8
-	require.Equal(t, uint8(13), genericParseType(c, "13", vUint8))
-	require.Equal(t, uint8(13), genericParseType(c, "13", vUint8, 15))
-	require.Equal(t, uint8(13), genericParseType(c, "13", vUint8, 15, 17))
-	require.Equal(t, uint8(0), genericParseType(c, "", vUint8))
-	require.Equal(t, uint8(0), genericParseType(c, "i'm not number", vUint8))
-	require.Equal(t, uint8(13), genericParseType(c, "", vUint8, uint8(13)))
-	require.Equal(t, uint8(13), genericParseType(c, "", vUint8, uint8(13), uint8(14)))
+	c := New().NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
 
-	// uint16
-	var vUint16 uint16
-	require.Equal(t, uint16(13), genericParseType(c, "13", vUint16))
-	require.Equal(t, uint16(13), genericParseType(c, "13", vUint16, 15))
-	require.Equal(t, uint16(13), genericParseType(c, "13", vUint16, 15, 17))
-	require.Equal(t, uint16(0), genericParseType(c, "", vUint16))
-	require.Equal(t, uint16(0), genericParseType(c, "i'm not number", vUint16))
-	require.Equal(t, uint16(13), genericParseType(c, "", vUint16, uint16(13)))
-	require.Equal(t, uint16(13), genericParseType(c, "", vUint16, uint16(13), uint16(14)))
+	for _, test := range float32s {
+		t.Run("benchmark_genericParseTypeFloat32s", Test_genericParseFloat(c, test.str, test.value))
+	}
 
-	// uint32
-	var vUint32 uint32
-	require.Equal(t, uint32(13), genericParseType(c, "13", vUint32))
-	require.Equal(t, uint32(13), genericParseType(c, "13", vUint32, 15))
-	require.Equal(t, uint32(13), genericParseType(c, "13", vUint32, 15, 17))
-	require.Equal(t, uint32(0), genericParseType(c, "", vUint32))
-	require.Equal(t, uint32(0), genericParseType(c, "i'm not number", vUint32))
-	require.Equal(t, uint32(13), genericParseType(c, "", vUint32, uint32(13)))
-	require.Equal(t, uint32(13), genericParseType(c, "", vUint32, uint32(13), uint32(14)))
+	for _, test := range float64s {
+		t.Run("benchmark_genericParseTypeFloat64s", Test_genericParseFloat(c, test.str, test.value))
+	}
+}
 
-	// uint64
-	var vUint64 uint64
-	require.Equal(t, uint64(13), genericParseType(c, "13", vUint64))
-	require.Equal(t, uint64(13), genericParseType(c, "13", vUint64, 15))
-	require.Equal(t, uint64(13), genericParseType(c, "13", vUint64, 15, 17))
-	require.Equal(t, uint64(0), genericParseType(c, "", vUint64))
-	require.Equal(t, uint64(0), genericParseType(c, "i'm not number", vUint64))
-	require.Equal(t, uint64(13), genericParseType(c, "", vUint64, uint64(13)))
-	require.Equal(t, uint64(13), genericParseType(c, "", vUint64, uint64(13), uint64(14)))
+// go test -run Test_genericParseTypeArrayBytes
+func Test_genericParseTypeArrayBytes(t *testing.T) {
+	t.Parallel()
+	arrBytes := []struct {
+		value []byte
+		str   string
+	}{
+		{
+			value: []byte("alex"),
+			str:   "alex",
+		},
+		{
+			value: []byte("32.23"),
+			str:   "32.23",
+		},
+		{
+			value: []byte(nil),
+			str:   "",
+		},
+		{
+			value: []byte("john"),
+			str:   "john",
+		},
+	}
 
-	// boolean
-	var vBool bool
-	require.Equal(t, true, genericParseType(c, "true", vBool))
-	require.Equal(t, true, genericParseType(c, "TRUE", vBool))
-	require.Equal(t, true, genericParseType(c, "True", vBool))
-	require.Equal(t, true, genericParseType(c, "true", vBool, false))
-	require.Equal(t, true, genericParseType(c, "true", vBool, false, true, false))
-	require.Equal(t, false, genericParseType(c, "", vBool))
-	require.Equal(t, true, genericParseType(c, "", vBool, true))
-	require.Equal(t, true, genericParseType(c, "", vBool, true, false, false))
+	c := New().NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
 
-	// float32
-	var vFloat32 float32
-	require.InEpsilon(t, float32(3.1415), genericParseType(c, "3.1415", vFloat32), epsilon)
-	require.InEpsilon(t, float32(3.1415), genericParseType(c, "3.1415", vFloat32, float32(1.23)), epsilon)
-	require.InEpsilon(t, float32(3.1415), genericParseType(c, "3.1415", vFloat32, float32(1.23), float32(4.567)), epsilon)
-	require.InDelta(t, float32(0), genericParseType(c, "", vFloat32), 0)
-	require.InEpsilon(t, float32(3.1415), genericParseType(c, "", vFloat32, float32(3.1415)), epsilon)
-	require.InEpsilon(t, float32(3.1415), genericParseType(c, "", vFloat32, float32(3.1415), float32(1.2345)), epsilon)
+	for _, test := range arrBytes {
+		t.Run("Benchmark_genericParseTypeArrayBytes", Test_genericParse(c, test.str, test.value))
+	}
+}
 
-	// float64
-	var vFloat64 float64
-	require.InEpsilon(t, float64(3.1415), genericParseType(c, "3.1415", vFloat64), epsilon)
-	require.InEpsilon(t, float64(3.1415), genericParseType(c, "3.1415", vFloat64, float64(1.23)), epsilon)
-	require.InEpsilon(t, float64(3.1415), genericParseType(c, "3.1415", vFloat64, float64(1.23), float64(4.567)), epsilon)
-	require.InDelta(t, float64(0), genericParseType(c, "", vFloat64), 0)
-	require.InEpsilon(t, float64(3.1415), genericParseType(c, "", vFloat64, float64(3.1415)), epsilon)
-	require.InEpsilon(t, float64(3.1415), genericParseType(c, "", vFloat64, float64(3.1415), float64(1.2345)), epsilon)
+// go test -run Test_genericParseTypeBoolean
+func Test_genericParseTypeBoolean(t *testing.T) {
+	t.Parallel()
+	bools := []struct {
+		str   string
+		value bool
+	}{
+		{
+			str:   "True",
+			value: true,
+		},
+		{
+			str:   "False",
+			value: false,
+		},
+		{
+			str:   "true",
+			value: true,
+		},
+		{
+			str:   "false",
+			value: false,
+		},
+	}
 
-	// array byte
-	var vByte []byte
-	require.Equal(t, []byte("alex"), genericParseType(c, "alex", vByte))
-	require.Equal(t, []byte("alex"), genericParseType(c, "alex", vByte, []byte("john")))
-	require.Equal(t, []byte("32.23"), genericParseType(c, "32.23", vByte))
-	require.Equal(t, []byte("32.23"), genericParseType(c, "32.23", vByte, []byte("12.34")))
-	require.Equal(t, []byte(nil), genericParseType(c, "", vByte))
+	c := New().NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+
+	for _, test := range bools {
+		t.Run("Benchmark_genericParseTypeBoolean", Test_genericParse(c, test.str, test.value))
+	}
+}
+
+// go test -run Test_genericParseTypeString
+func Test_genericParseTypeString(t *testing.T) {
+	strings := []string{"john", "doe", "hello", "fiber"}
+
+	c := New().NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+
+	for _, test := range strings {
+		t.Run("benchmark_genericParseTypeString", Test_genericParse(c, test, test))
+	}
 }
 
 // go test -v -run=^$ -bench=Benchmark_genericParseTypeInts -benchmem -count=4
@@ -5089,5 +5390,19 @@ func Benchmark_genericParseFloat[V GenericType](c *DefaultCtx, str string, expec
 	return func(b *testing.B) {
 		var v V
 		require.InEpsilon(b, expectValue, genericParseType(c, str, v), epsilon)
+	}
+}
+
+func Test_genericParse[V GenericType](c *DefaultCtx, str string, expectValue V) func(t *testing.T) {
+	return func(b *testing.T) {
+		var v V
+		require.Equal(b, expectValue, genericParseType(c, str, v))
+	}
+}
+
+func Test_genericParseFloat[V GenericType](c *DefaultCtx, str string, expectValue V) func(t *testing.T) {
+	return func(t *testing.T) {
+		var v V
+		require.InEpsilon(t, expectValue, genericParseType(c, str, v), epsilon)
 	}
 }
