@@ -399,86 +399,131 @@ func Test_ConvertRequest(t *testing.T) {
 }
 
 // Benchmark for FiberHandlerFunc
-func Benchmark_FiberHandlerFunc_1MB(b *testing.B) {
+func Benchmark_FiberHandlerFunc(b *testing.B) {
+	benchmarks := []struct {
+		name        string
+		bodyContent []byte
+	}{
+		{
+			name:        "100KB",
+			bodyContent: make([]byte, 100*1024),
+		},
+		{
+			name:        "500KB",
+			bodyContent: make([]byte, 500*1024),
+		},
+		{
+			name:        "1MB",
+			bodyContent: make([]byte, 1*1024*1024),
+		},
+		{
+			name:        "5MB",
+			bodyContent: make([]byte, 5*1024*1024),
+		},
+		{
+			name:        "10MB",
+			bodyContent: make([]byte, 10*1024*1024),
+		},
+		{
+			name:        "25MB",
+			bodyContent: make([]byte, 25*1024*1024),
+		},
+		{
+			name:        "50MB",
+			bodyContent: make([]byte, 50*1024*1024),
+		},
+	}
+
 	fiberH := func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
 	}
 	handlerFunc := FiberHandlerFunc(fiberH)
 
-	// Create body content
-	bodyContent := make([]byte, 1*1024*1024)
-	bodyBuffer := bytes.NewBuffer(bodyContent)
+	for _, bm := range benchmarks {
+		b.Run(bm.name, func(b *testing.B) {
+			w := httptest.NewRecorder()
+			bodyBuffer := bytes.NewBuffer(bm.bodyContent)
 
-	r := http.Request{
-		Method: http.MethodPost,
-		Body:   http.NoBody,
-	}
+			r := http.Request{
+				Method: http.MethodPost,
+				Body:   http.NoBody,
+			}
 
-	// Replace the empty Body with our buffer
-	r.Body = io.NopCloser(bodyBuffer)
-	defer r.Body.Close() //nolint:errcheck // not needed
+			// Replace the empty Body with our buffer
+			r.Body = io.NopCloser(bodyBuffer)
+			defer r.Body.Close() //nolint:errcheck // not needed
 
-	// Create recorder
-	w := httptest.NewRecorder()
+			b.ReportAllocs()
+			b.ResetTimer()
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		handlerFunc.ServeHTTP(w, &r)
+			for i := 0; i < b.N; i++ {
+				handlerFunc.ServeHTTP(w, &r)
+			}
+		})
 	}
 }
 
-func Benchmark_FiberHandlerFunc_10MB(b *testing.B) {
+func Benchmark_FiberHandlerFunc_Parallel(b *testing.B) {
+	benchmarks := []struct {
+		name        string
+		bodyContent []byte
+	}{
+		{
+			name:        "100KB",
+			bodyContent: make([]byte, 100*1024),
+		},
+		{
+			name:        "500KB",
+			bodyContent: make([]byte, 500*1024),
+		},
+		{
+			name:        "1MB",
+			bodyContent: make([]byte, 1*1024*1024),
+		},
+		{
+			name:        "5MB",
+			bodyContent: make([]byte, 5*1024*1024),
+		},
+		{
+			name:        "10MB",
+			bodyContent: make([]byte, 10*1024*1024),
+		},
+		{
+			name:        "25MB",
+			bodyContent: make([]byte, 25*1024*1024),
+		},
+		{
+			name:        "50MB",
+			bodyContent: make([]byte, 50*1024*1024),
+		},
+	}
+
 	fiberH := func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
 	}
 	handlerFunc := FiberHandlerFunc(fiberH)
 
-	// Create body content
-	bodyContent := make([]byte, 10*1024*1024)
-	bodyBuffer := bytes.NewBuffer(bodyContent)
+	for _, bm := range benchmarks {
+		b.Run(bm.name, func(b *testing.B) {
+			bodyBuffer := bytes.NewBuffer(bm.bodyContent)
+			b.ReportAllocs()
+			b.ResetTimer()
 
-	r := http.Request{
-		Method: http.MethodPost,
-		Body:   http.NoBody,
-	}
+			b.RunParallel(func(pb *testing.PB) {
+				w := httptest.NewRecorder()
+				r := http.Request{
+					Method: http.MethodPost,
+					Body:   http.NoBody,
+				}
 
-	// Replace the empty Body with our buffer
-	r.Body = io.NopCloser(bodyBuffer)
-	defer r.Body.Close() //nolint:errcheck // not needed
+				// Replace the empty Body with our buffer
+				r.Body = io.NopCloser(bodyBuffer)
+				defer r.Body.Close() //nolint:errcheck // not needed
 
-	// Create recorder
-	w := httptest.NewRecorder()
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		handlerFunc.ServeHTTP(w, &r)
-	}
-}
-
-func Benchmark_FiberHandlerFunc_50MB(b *testing.B) {
-	fiberH := func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	}
-	handlerFunc := FiberHandlerFunc(fiberH)
-
-	// Create body content
-	bodyContent := make([]byte, 50*1024*1024)
-	bodyBuffer := bytes.NewBuffer(bodyContent)
-
-	r := http.Request{
-		Method: http.MethodPost,
-		Body:   http.NoBody,
-	}
-
-	// Replace the empty Body with our buffer
-	r.Body = io.NopCloser(bodyBuffer)
-	defer r.Body.Close() //nolint:errcheck // not needed
-
-	// Create recorder
-	w := httptest.NewRecorder()
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		handlerFunc.ServeHTTP(w, &r)
+				for pb.Next() {
+					handlerFunc(w, &r)
+				}
+			})
+		})
 	}
 }
