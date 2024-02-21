@@ -163,7 +163,7 @@ func Test_Logger_ErrorOutput_WithoutColor(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
-	require.EqualValues(t, 1, *o)
+	require.EqualValues(t, 2, *o)
 }
 
 // go test -run Test_Logger_ErrorOutput
@@ -178,7 +178,7 @@ func Test_Logger_ErrorOutput(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
-	require.EqualValues(t, 1, *o)
+	require.EqualValues(t, 2, *o)
 }
 
 // go test -run Test_Logger_All
