@@ -7,7 +7,7 @@ package fiber
 import (
 	"context"
 	"crypto/tls"
-	"fmt"
+	"errors"
 	"io"
 	"mime/multipart"
 	"sync"
@@ -446,7 +446,7 @@ func (app *App) NewCtx(fctx *fasthttp.RequestCtx) Ctx {
 func (app *App) AcquireCtx() Ctx {
 	ctx, ok := app.pool.Get().(Ctx)
 	if !ok {
-		panic(fmt.Errorf("failed to type-assert to Ctx"))
+		panic(errors.New("failed to type-assert to Ctx"))
 	}
 	return ctx
 }

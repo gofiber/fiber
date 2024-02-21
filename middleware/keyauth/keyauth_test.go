@@ -3,7 +3,6 @@ package keyauth
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -300,7 +299,7 @@ func TestCustomSuccessAndFailureHandlers(t *testing.T) {
 
 	// Create a request with a valid API key in the Authorization header
 	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
-	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", CorrectKey))
+	req.Header.Add("Authorization", "Bearer "+CorrectKey)
 
 	// Send the request to the app
 	res, err = app.Test(req)
@@ -363,7 +362,7 @@ func TestCustomNextFunc(t *testing.T) {
 
 	// Create a request with a different path and send it to the app with correct key
 	req = httptest.NewRequest(fiber.MethodGet, "/not-allowed", nil)
-	req.Header.Add("Authorization", fmt.Sprintf("Basic %s", CorrectKey))
+	req.Header.Add("Authorization", "Basic "+CorrectKey)
 
 	res, err = app.Test(req)
 	require.NoError(t, err)
@@ -397,7 +396,7 @@ func TestAuthSchemeToken(t *testing.T) {
 
 	// Create a request with a valid API key in the "Token" Authorization header
 	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
-	req.Header.Add("Authorization", fmt.Sprintf("Token %s", CorrectKey))
+	req.Header.Add("Authorization", "Token "+CorrectKey)
 
 	// Send the request to the app
 	res, err := app.Test(req)
@@ -445,7 +444,7 @@ func TestAuthSchemeBasic(t *testing.T) {
 
 	// Create a request with a valid API key in the "Authorization" header using the "Basic" scheme
 	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
-	req.Header.Add("Authorization", fmt.Sprintf("Basic %s", CorrectKey))
+	req.Header.Add("Authorization", "Basic "+CorrectKey)
 
 	// Send the request to the app
 	res, err = app.Test(req)

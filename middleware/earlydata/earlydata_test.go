@@ -70,7 +70,7 @@ func appWithConfig(t *testing.T, c *fiber.Config) *fiber.App {
 	}, "/", func(c fiber.Ctx) error {
 		valid, ok := c.Locals(localsKeyTestValid).(bool)
 		if !ok {
-			panic(fmt.Errorf("failed to type-assert to bool"))
+			panic(errors.New("failed to type-assert to bool"))
 		}
 		if !valid {
 			return errors.New("handler called even though validation failed")

@@ -1672,7 +1672,7 @@ func Test_App_ReadBodyStream(t *testing.T) {
 	require.NoError(t, err, "app.Test(req)")
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "io.ReadAll(resp.Body)")
-	require.Equal(t, fmt.Sprintf("true %s", testString), string(body))
+	require.Equal(t, "true "+testString, string(body))
 }
 
 func Test_App_DisablePreParseMultipartForm(t *testing.T) {
@@ -1688,7 +1688,7 @@ func Test_App_DisablePreParseMultipartForm(t *testing.T) {
 			return err
 		}
 		if !req.IsBodyStream() {
-			return fmt.Errorf("not a body stream")
+			return errors.New("not a body stream")
 		}
 		file, err := mpf.File["test"][0].Open()
 		if err != nil {
@@ -1700,7 +1700,7 @@ func Test_App_DisablePreParseMultipartForm(t *testing.T) {
 			return fmt.Errorf("failed to read: %w", err)
 		}
 		if n != len(testString) {
-			return fmt.Errorf("bad read length")
+			return errors.New("bad read length")
 		}
 		return c.Send(buffer)
 	})

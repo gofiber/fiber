@@ -1,7 +1,7 @@
 package retry
 
 import (
-	"fmt"
+	"errors"
 	"testing"
 	"time"
 
@@ -44,9 +44,9 @@ func TestExponentialBackoff_Retry(t *testing.T) {
 				MaxRetryCount:   5,
 			},
 			f: func() error {
-				return fmt.Errorf("failed function")
+				return errors.New("failed function")
 			},
-			expErr: fmt.Errorf("failed function"),
+			expErr: errors.New("failed function"),
 		},
 	}
 
