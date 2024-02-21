@@ -147,7 +147,7 @@ type fakeErrorOutput int
 
 func (o *fakeErrorOutput) Write([]byte) (int, error) {
 	*o++
-	return 0, nil
+	return 0, errors.New("fake output")
 }
 
 // go test -run Test_Logger_ErrorOutput_WithoutColor
@@ -163,7 +163,7 @@ func Test_Logger_ErrorOutput_WithoutColor(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
-	require.EqualValues(t, 2, *o)
+	require.EqualValues(t, 1, *o)
 }
 
 // go test -run Test_Logger_ErrorOutput
@@ -178,7 +178,7 @@ func Test_Logger_ErrorOutput(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
-	require.EqualValues(t, 2, *o)
+	require.EqualValues(t, 1, *o)
 }
 
 // go test -run Test_Logger_All

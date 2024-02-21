@@ -116,7 +116,7 @@ Writing to os.File is goroutine-safe, but if you are using a custom Output that 
 var ConfigDefault = Config{
     Next:          nil,
     Done:          nil,
-	Format:        "[${time}] ${ip} ${status} - ${latency} ${method} ${path} ${error}\n",
+    Format:        "[${time}] ${ip} ${status} - ${latency} ${method} ${path} ${error}\n",
     TimeFormat:    "15:04:05",
     TimeZone:      "Local",
     TimeInterval:  500 * time.Millisecond,

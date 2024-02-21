@@ -18,7 +18,6 @@ func Test_HealthCheck_Default(t *testing.T) {
 
 	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/readyz", nil))
 	require.NoError(t, err)
-	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, req.StatusCode)
 
 	req, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/livez", nil))

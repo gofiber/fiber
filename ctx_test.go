@@ -1362,8 +1362,8 @@ func Test_Ctx_Parsers(t *testing.T) {
 	type TestStruct struct {
 		Name             string
 		Class            int
-		NameWithDefault  string `json:"name2" xml:"Name2" form:"name2" cookie:"name2" query:"name2" params:"name2" reqHeader:"name2"`
-		ClassWithDefault int    `json:"class2" xml:"Class2" form:"class2" cookie:"class2" query:"class2" params:"class2" reqHeader:"class2"`
+		NameWithDefault  string `json:"name2"  xml:"Name2"  form:"name2"  cookie:"name2"  query:"name2"  params:"name2"  header:"name2"`
+		ClassWithDefault int    `json:"class2" xml:"Class2" form:"class2" cookie:"class2" query:"class2" params:"class2" header:"class2"`
 	}
 
 	withValues := func(t *testing.T, actionFn func(c Ctx, testStruct *TestStruct) error) {
