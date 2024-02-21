@@ -677,6 +677,10 @@ app.Get("/", func(c fiber.Ctx) error {
 > _Returned value is only valid within the handler. Do not store any references.  
 > Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
 
+In certain scenarios, it can be useful to have an alternative approach to handle different types of headers, not 
+just strings. This can be achieved using a GetReqHeader function known as `GetReqHeader[V GenericType](c Ctx, key string, defaultValue ...V) V`. 
+This function is capable of parsing a header string and returning a value of a type that is assumed and specified by `V GenericType`.
+
 ## GetReqHeaders
 
 Returns the HTTP request headers as a map. Since a header can be set multiple times in a single request, the values of the map are slices of strings containing all the different values of the header.
@@ -1200,7 +1204,7 @@ app.Get("/v1/*/shop/*", func(c fiber.Ctx) error {
 
 In certain scenarios, it can be useful to have an alternative approach to handle different types of parameters, not 
 just strings. This can be achieved using a generic Query function known as `Params[V GenericType](c Ctx, key string, defaultValue ...V) V`. 
-This function is capable of parsing a query string and returning a value of a type that is assumed and specified by `V GenericType`.
+This function is capable of parsing a parameter string and returning a value of a type that is assumed and specified by `V GenericType`.
 
 ```go title="Signature"
 func Params[v GenericType](c Ctx, key string, default value ...V) V
