@@ -45,7 +45,7 @@ func genericParseBool[V GenericType](str string, parser func(bool) V, defaultVal
 	return genericParseDefault[V](err, func() V { return parser(result) }, defaultValue...)
 }
 
-func genericParseType[V GenericType](ctx *DefaultCtx, str string, v V, defaultValue ...V) V {
+func genericParseType[V GenericType](str string, v V, defaultValue ...V) V {
 	switch any(v).(type) {
 	case int:
 		return genericParseInt[V](str, 32, func(i int64) V { return assertValueType[V, int](int(i)) }, defaultValue...)
@@ -82,7 +82,7 @@ func genericParseType[V GenericType](ctx *DefaultCtx, str string, v V, defaultVa
 		if str == "" && len(defaultValue) > 0 {
 			return defaultValue[0]
 		}
-		return assertValueType[V, []byte](ctx.app.getBytes(str))
+		return assertValueType[V, []byte]([]byte(str))
 	default:
 		if len(defaultValue) > 0 {
 			return defaultValue[0]

@@ -164,7 +164,8 @@ issues:
 
 linters:
   disable:
-    - spancheck
+    - spancheck # opentelemetry, irrelevant
+    - tagalign  # requires awkward manual formatting of struct tags
   enable:
     - asasalint
     - asciicheck
@@ -199,7 +200,7 @@ linters:
     - grouper
     - inamedparam
     - loggercheck
-    # - mirror # TODO https://github.com/gofiber/fiber/issues/2816
+    - mirror
     - misspell
     - nakedret
     - nilerr
@@ -208,7 +209,7 @@ linters:
     - nolintlint
     - nonamedreturns
     - nosprintfhostport
-    # - perfsprint # TODO https://github.com/gofiber/fiber/issues/2816
+    - perfsprint
     - predeclared
     - promlinter
     - reassign
@@ -217,7 +218,6 @@ linters:
     - sqlclosecheck
     - staticcheck
     - stylecheck
-    # - tagalign # TODO https://github.com/gofiber/fiber/issues/2816
     - tagliatelle
     - testifylint
     # - testpackage # TODO: Enable once https://github.com/gofiber/fiber/issues/2252 is implemented

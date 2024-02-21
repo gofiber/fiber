@@ -50,7 +50,7 @@ func Test_Cache_Expired(t *testing.T) {
 	app.Use(New(Config{Expiration: 2 * time.Second}))
 
 	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString(fmt.Sprintf("%d", time.Now().UnixNano()))
+		return c.SendString(strconv.FormatInt(time.Now().UnixNano(), 10))
 	})
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
@@ -88,7 +88,7 @@ func Test_Cache(t *testing.T) {
 	app.Use(New())
 
 	app.Get("/", func(c fiber.Ctx) error {
-		now := fmt.Sprintf("%d", time.Now().UnixNano())
+		now := strconv.FormatInt(time.Now().UnixNano(), 10)
 		return c.SendString(now)
 	})
 
@@ -307,7 +307,7 @@ func Test_Cache_Invalid_Expiration(t *testing.T) {
 	app.Use(cache)
 
 	app.Get("/", func(c fiber.Ctx) error {
-		now := fmt.Sprintf("%d", time.Now().UnixNano())
+		now := strconv.FormatInt(time.Now().UnixNano(), 10)
 		return c.SendString(now)
 	})
 
@@ -513,8 +513,7 @@ func Test_CustomExpiration(t *testing.T) {
 
 	app.Get("/", func(c fiber.Ctx) error {
 		c.Response().Header.Add("Cache-Time", "1")
-		now := fmt.Sprintf("%d", time.Now().UnixNano())
-		return c.SendString(now)
+		return c.SendString(strconv.FormatInt(time.Now().UnixNano(), 10))
 	})
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
@@ -620,7 +619,7 @@ func Test_Cache_WithHead(t *testing.T) {
 	app.Use(New())
 
 	handler := func(c fiber.Ctx) error {
-		now := fmt.Sprintf("%d", time.Now().UnixNano())
+		now := strconv.FormatInt(time.Now().UnixNano(), 10)
 		return c.SendString(now)
 	}
 	app.Route("/").Get(handler).Head(handler)

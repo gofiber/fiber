@@ -1271,7 +1271,7 @@ func Test_Ctx_FormValue(t *testing.T) {
 	require.NoError(t, writer.Close())
 
 	req := httptest.NewRequest(MethodPost, "/test", body)
-	req.Header.Set("Content-Type", fmt.Sprintf("multipart/form-data; boundary=%s", writer.Boundary()))
+	req.Header.Set("Content-Type", "multipart/form-data; boundary="+writer.Boundary())
 	req.Header.Set("Content-Length", strconv.Itoa(len(body.Bytes())))
 
 	resp, err := app.Test(req)
@@ -2167,7 +2167,7 @@ func Test_Ctx_MultipartForm(t *testing.T) {
 	require.NoError(t, writer.Close())
 
 	req := httptest.NewRequest(MethodPost, "/test", body)
-	req.Header.Set(HeaderContentType, fmt.Sprintf("multipart/form-data; boundary=%s", writer.Boundary()))
+	req.Header.Set(HeaderContentType, "multipart/form-data; boundary="+writer.Boundary())
 	req.Header.Set(HeaderContentLength, strconv.Itoa(len(body.Bytes())))
 
 	resp, err := app.Test(req)
@@ -3789,7 +3789,7 @@ func Test_Ctx_Render_Go_Template(t *testing.T) {
 		require.NoError(t, err)
 	}()
 
-	_, err = file.Write([]byte("template"))
+	_, err = file.WriteString("template")
 	require.NoError(t, err)
 
 	err = file.Close()
