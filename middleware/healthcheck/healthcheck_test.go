@@ -1,8 +1,8 @@
 package healthcheck
 
 import (
-	"fmt"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -13,8 +13,8 @@ import (
 func shouldGiveStatus(t *testing.T, app *fiber.App, path string, expectedStatus int) {
 	t.Helper()
 	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, nil))
-	require.Equal(t, nil, err)
-	require.Equal(t, expectedStatus, req.StatusCode, "path: "+path+" should match "+fmt.Sprint(expectedStatus))
+	require.NoError(t, err)
+	require.Equal(t, expectedStatus, req.StatusCode, "path: "+path+" should match "+strconv.Itoa(expectedStatus))
 }
 
 func shouldGiveOK(t *testing.T, app *fiber.App, path string) {

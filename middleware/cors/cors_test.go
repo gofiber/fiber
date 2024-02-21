@@ -582,7 +582,7 @@ func Test_CORS_AllowCredentials(t *testing.T) {
 			Name: "fiber-ghsa-fmg4-x8pw-hjhg-wildcard-credentials",
 			Config: Config{
 				AllowCredentials: true,
-				AllowOriginsFunc: func(origin string) bool {
+				AllowOriginsFunc: func(_ string) bool {
 					return true
 				},
 			},
