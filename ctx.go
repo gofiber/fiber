@@ -549,7 +549,19 @@ func (c *DefaultCtx) Fresh() bool {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (c *DefaultCtx) Get(key string, defaultValue ...string) string {
-	return defaultString(c.app.getString(c.fasthttp.Request.Header.Peek(key)), defaultValue)
+	return GetReqHeader(c, key, defaultValue...)
+}
+
+// GetReqHeader returns the HTTP request header specified by filed.
+// This function is generic and can handle differnet headers type values.
+func GetReqHeader[V GenericType](c Ctx, key string, defaultValue ...V) V {
+	ctx, ok := c.(*DefaultCtx)
+	if !ok {
+		panic(fmt.Errorf("failed to type-assert to *DefaultCtx"))
+	}
+
+	var v V
+	return genericParseType[V](ctx, ctx.app.getString(ctx.fasthttp.Request.Header.Peek(key)), v, defaultValue...)
 }
 
 // GetRespHeader returns the HTTP response header specified by field.
