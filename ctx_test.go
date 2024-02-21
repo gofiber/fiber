@@ -1366,6 +1366,18 @@ func Test_Ctx_Get(t *testing.T) {
 	require.Equal(t, "default", c.Get("unknown", "default"))
 }
 
+// go test -run Test_Ctx_GetReqHeader
+func Test_Ctx_GetReqHeader(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	c.Request().Header.Set("foo", "bar")
+	c.Request().Header.Set("id", "123")
+	require.Equal(t, 123, GetReqHeader[int](c, "id"))
+	require.Equal(t, "bar", GetReqHeader[string](c, "foo"))
+}
+
 // go test -run Test_Ctx_Host
 func Test_Ctx_Host(t *testing.T) {
 	t.Parallel()
