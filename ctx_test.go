@@ -1357,6 +1357,7 @@ func Benchmark_Ctx_Fresh_WithNoCache(b *testing.B) {
 func Test_Ctx_Parsers(t *testing.T) {
 	t.Parallel()
 	// setup
+	app := New()
 
 	type TestStruct struct {
 		Name             string
@@ -1367,7 +1368,7 @@ func Test_Ctx_Parsers(t *testing.T) {
 
 	withValues := func(t *testing.T, actionFn func(c Ctx, testStruct *TestStruct) error) {
 		t.Helper()
-		app := New()
+
 		c := app.AcquireCtx()
 		defer app.ReleaseCtx(c)
 		testStruct := new(TestStruct)
