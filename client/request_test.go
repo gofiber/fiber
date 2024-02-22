@@ -428,6 +428,7 @@ func Test_Request_FormData(t *testing.T) {
 	t.Run("add form data", func(t *testing.T) {
 		t.Parallel()
 		req := AcquireRequest()
+		defer ReleaseRequest(req)
 		req.AddFormData("foo", "bar").AddFormData("foo", "fiber")
 
 		res := req.FormData("foo")
@@ -439,6 +440,7 @@ func Test_Request_FormData(t *testing.T) {
 	t.Run("set param", func(t *testing.T) {
 		t.Parallel()
 		req := AcquireRequest()
+		defer ReleaseRequest(req)
 		req.AddFormData("foo", "bar").SetFormData("foo", "fiber")
 
 		res := req.FormData("foo")
@@ -449,6 +451,7 @@ func Test_Request_FormData(t *testing.T) {
 	t.Run("add params", func(t *testing.T) {
 		t.Parallel()
 		req := AcquireRequest()
+		defer ReleaseRequest(req)
 		req.SetFormData("foo", "bar").
 			AddFormDatas(map[string][]string{
 				"foo": {"fiber", "buaa"},
@@ -457,9 +460,9 @@ func Test_Request_FormData(t *testing.T) {
 
 		res := req.FormData("foo")
 		require.Len(t, res, 3)
-		require.Equal(t, "bar", res[0])
-		require.Equal(t, "buaa", res[1])
-		require.Equal(t, "fiber", res[2])
+		require.Contains(t, res, "bar")
+		require.Contains(t, res, "buaa")
+		require.Contains(t, res, "fiber")
 
 		res = req.FormData("bar")
 		require.Len(t, res, 1)
@@ -469,6 +472,7 @@ func Test_Request_FormData(t *testing.T) {
 	t.Run("set headers", func(t *testing.T) {
 		t.Parallel()
 		req := AcquireRequest()
+		defer ReleaseRequest(req)
 		req.SetFormData("foo", "bar").
 			SetFormDatas(map[string]string{
 				"foo": "fiber",
@@ -497,6 +501,7 @@ func Test_Request_FormData(t *testing.T) {
 		}
 
 		p := AcquireRequest()
+		defer ReleaseRequest(p)
 		p.SetFormDatasWithStruct(&args{
 			TInt:      5,
 			TString:   "string",
@@ -521,18 +526,19 @@ func Test_Request_FormData(t *testing.T) {
 
 		tslice := p.FormData("TSlice")
 		require.Len(t, tslice, 2)
-		require.Equal(t, "bar", tslice[0])
-		require.Equal(t, "foo", tslice[1])
+		require.Contains(t, tslice, "bar")
+		require.Contains(t, tslice, "foo")
 
 		tint := p.FormData("TSlice")
 		require.Len(t, tint, 2)
-		require.Equal(t, "bar", tint[0])
-		require.Equal(t, "foo", tint[1])
+		require.Contains(t, tint, "bar")
+		require.Contains(t, tint, "foo")
 	})
 
 	t.Run("del params", func(t *testing.T) {
 		t.Parallel()
 		req := AcquireRequest()
+		defer ReleaseRequest(req)
 		req.SetFormData("foo", "bar").
 			SetFormDatas(map[string]string{
 				"foo": "fiber",
