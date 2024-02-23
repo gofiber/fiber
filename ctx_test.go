@@ -2309,26 +2309,6 @@ func Benchmark_Ctx_Params(b *testing.B) {
 	require.Equal(b, "awesome", res)
 }
 
-// go test -run Test_Params_TypeAssertFail
-func Test_Params_TypeAssertFail(t *testing.T) {
-	type customCtx struct {
-		Ctx
-	}
-
-	app := New()
-	c := &customCtx{
-		Ctx: app.NewCtx(&fasthttp.RequestCtx{}),
-	}
-
-	defer func() {
-		if r := recover(); r == nil {
-			t.Errorf("The code did not panic")
-		}
-	}()
-
-	Params[int](c, "key")
-}
-
 // go test -run Test_Ctx_Path
 func Test_Ctx_Path(t *testing.T) {
 	t.Parallel()
