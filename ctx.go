@@ -556,13 +556,8 @@ func (c *DefaultCtx) Get(key string, defaultValue ...string) string {
 // GetReqHeader returns the HTTP request header specified by filed.
 // This function is generic and can handle differnet headers type values.
 func GetReqHeader[V GenericType](c Ctx, key string, defaultValue ...V) V {
-	ctx, ok := c.(*DefaultCtx)
-	if !ok {
-		panic(fmt.Errorf("failed to type-assert to *DefaultCtx"))
-	}
-
 	var v V
-	return genericParseType[V](ctx.app.getString(ctx.fasthttp.Request.Header.Peek(key)), v, defaultValue...)
+	return genericParseType[V](c.App().getString(c.Request().Header.Peek(key)), v, defaultValue...)
 }
 
 // GetRespHeader returns the HTTP response header specified by field.
@@ -984,26 +979,21 @@ func (c *DefaultCtx) Params(key string, defaultValue ...string) string {
 // http://example.com/id/:number -> http://example.com/id/john
 // Params[string](c, "number", 0) -> returns 0 because can't parse 'john' as integer.
 func Params[V GenericType](c Ctx, key string, defaultValue ...V) V {
-	ctx, ok := c.(*DefaultCtx)
-	if !ok {
-		panic(fmt.Errorf("failed to type-assert to *DefaultCtx"))
-	}
-
 	if key == "*" || key == "+" {
 		key += "1"
 	}
 
 	var v V
-	for i := range ctx.route.Params {
-		if len(key) != len(ctx.route.Params[i]) {
+	for i := range c.Route().Params {
+		if len(key) != len(c.Route().Params[i]) {
 			continue
 		}
-		if ctx.route.Params[i] == key || (!ctx.app.config.CaseSensitive && utils.EqualFold(ctx.route.Params[i], key)) {
+		if c.Route().Params[i] == key || (!c.App().config.CaseSensitive && utils.EqualFold(c.Route().Params[i], key)) {
 			// in case values are not here
-			if len(ctx.values) <= i || len(ctx.values[i]) == 0 {
+			if len(c.Bind().ctx.values) <= i || len(c.Bind().ctx.values[i]) == 0 {
 				break
 			}
-			return genericParseType[V](ctx.values[i], v, defaultValue...)
+			return genericParseType[V](c.Bind().ctx.values[i], v, defaultValue...)
 		}
 	}
 
