@@ -977,7 +977,7 @@ func (c *DefaultCtx) Params(key string, defaultValue ...string) string {
 // Params[int](c, "id") ->  returns 114 as integer.
 //
 // http://example.com/id/:number -> http://example.com/id/john
-// Params[string](c, "number", 0) -> returns 0 because can't parse 'john' as integer.
+// Params[int](c, "number", 0) -> returns 0 because can't parse 'john' as integer.
 func Params[V GenericType](c Ctx, key string, defaultValue ...V) V {
 	if key == "*" || key == "+" {
 		key += "1"
@@ -995,6 +995,10 @@ func Params[V GenericType](c Ctx, key string, defaultValue ...V) V {
 			}
 			return genericParseType[V](c.Bind().ctx.values[i], v, defaultValue...)
 		}
+	}
+
+	if len(defaultValue) > 0 {
+		return defaultValue[0]
 	}
 
 	return v

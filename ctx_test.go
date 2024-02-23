@@ -4493,7 +4493,7 @@ func Test_genericParseTypeInts(t *testing.T) {
 		},
 		{
 			value: 1,
-			str:   "2",
+			str:   "1",
 		},
 		{
 			value: 2,
@@ -4631,7 +4631,7 @@ func Test_genericParseTypeInts(t *testing.T) {
 
 	for _, test := range int64s {
 		var v int64
-		t.Run("benchmark_genericParseTypeInt64s", func(t *testing.T) {
+		t.Run("test_genericParseTypeInt64s", func(t *testing.T) {
 			require.Equal(t, test.value, genericParseType(test.str, v))
 		})
 	}
