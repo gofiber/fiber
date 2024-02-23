@@ -4888,7 +4888,7 @@ func Test_genericParseTypeArrayBytes(t *testing.T) {
 	for _, test := range arrBytes {
 		var v []byte
 		t.Run("test_genericParseTypeArrayBytes", func(t *testing.T) {
-			require.Equal(t, test.value, genericParseType(test.str, v))
+			require.Equal(t, test.value, genericParseType(test.str, v, []byte(nil)))
 		})
 	}
 }
@@ -5079,7 +5079,7 @@ func Benchmark_genericParseTypeInts(b *testing.B) {
 	}
 
 	for _, test := range int8s {
-		var v int
+		var v int8
 		b.Run("test_genericParseTypeInt8s", func(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
@@ -5090,7 +5090,7 @@ func Benchmark_genericParseTypeInts(b *testing.B) {
 	}
 
 	for _, test := range int16s {
-		var v int
+		var v int16
 		b.Run("test_genericParseTypeInt16s", func(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
@@ -5101,7 +5101,7 @@ func Benchmark_genericParseTypeInts(b *testing.B) {
 	}
 
 	for _, test := range int32s {
-		var v int
+		var v int32
 		b.Run("test_genericParseType32Ints", func(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
@@ -5112,7 +5112,7 @@ func Benchmark_genericParseTypeInts(b *testing.B) {
 	}
 
 	for _, test := range int64s {
-		var v int
+		var v int64
 		b.Run("test_genericParseTypeInt64s", func(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
@@ -5371,10 +5371,12 @@ func Benchmark_genericParseTypeFloats(b *testing.B) {
 
 // go test -v -run=^$ -bench=Benchmark_genericParseTypeArrayBytes -benchmem -count=4
 func Benchmark_genericParseTypeArrayBytes(b *testing.B) {
-	arrBytes := []struct {
-		value []byte
+	type genericTypes[v GenericType] struct {
+		value v
 		str   string
-	}{
+	}
+
+	arrBytes := []genericTypes[[]byte]{
 		{
 			value: []byte("alex"),
 			str:   "alex",
@@ -5398,7 +5400,7 @@ func Benchmark_genericParseTypeArrayBytes(b *testing.B) {
 		b.Run("Benchmark_genericParseTypeArrayBytes", func(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
-			res := genericParseType(test.str, v)
+			res := genericParseType(test.str, v, []byte(nil))
 			require.Equal(b, test.value, res)
 		})
 	}
@@ -5406,10 +5408,12 @@ func Benchmark_genericParseTypeArrayBytes(b *testing.B) {
 
 // go test -v -run=^$ -bench=Benchmark_genericParseTypeBoolean -benchmem -count=4
 func Benchmark_genericParseTypeBoolean(b *testing.B) {
-	bools := []struct {
+	type genericTypes[v GenericType] struct {
+		value v
 		str   string
-		value bool
-	}{
+	}
+
+	bools := []genericTypes[bool]{
 		{
 			str:   "True",
 			value: true,
