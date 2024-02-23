@@ -1732,3 +1732,17 @@ func (c *DefaultCtx) Bind() *Bind {
 	}
 	return c.bind
 }
+
+// Converts a string value to a specified type, handling errors and optional default values.
+func Convert[T any](value string, convertor func(string) (T, error), defaultValue ...T) (*T, error) {
+	converted, err := convertor(value)
+	if err != nil {
+		if len(defaultValue) > 0 {
+			return &defaultValue[0], nil
+		}
+
+		return nil, fmt.Errorf("failed to convert: %w", err)
+	}
+
+	return &converted, nil
+}
