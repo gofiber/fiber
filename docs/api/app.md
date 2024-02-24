@@ -93,7 +93,7 @@ type Static struct {
     // Next defines a function to skip this middleware when returned true.
     //
     // Optional. Default: nil
-    Next func(c *Ctx) bool
+    Next func(c Ctx) bool
 }
 ```
 
