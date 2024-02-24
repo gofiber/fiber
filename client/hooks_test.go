@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/xml"
 	"io"
+	"net"
 	"net/url"
 	"strings"
 	"testing"
@@ -528,9 +529,14 @@ func Test_Client_Logger_Debug(t *testing.T) {
 		return c.SendString("response")
 	})
 
+	var url string
+
 	go func() {
-		require.NoError(t, app.Listen(":3000", fiber.ListenConfig{
+		require.NoError(t, app.Listen(":0", fiber.ListenConfig{
 			DisableStartupMessage: true,
+			ListenerAddrFunc: func(addr net.Addr) {
+				url = addr.String()
+			},
 		}))
 	}()
 
@@ -546,11 +552,11 @@ func Test_Client_Logger_Debug(t *testing.T) {
 	client := AcquireClient()
 	client.Debug()
 
-	resp, err := client.Get("http://localhost:3000")
+	resp, err := client.Get("http://" + url)
 	defer resp.Close()
 
 	require.NoError(t, err)
-	require.Contains(t, buf.String(), "Host: localhost:3000")
+	require.Contains(t, buf.String(), "Host: "+url)
 	require.Contains(t, buf.String(), "Content-Length: 8")
 }
 
@@ -561,9 +567,14 @@ func Test_Client_Logger_DisableDebug(t *testing.T) {
 		return c.SendString("response")
 	})
 
+	var url string
+
 	go func() {
-		require.NoError(t, app.Listen(":3000", fiber.ListenConfig{
+		require.NoError(t, app.Listen(":0", fiber.ListenConfig{
 			DisableStartupMessage: true,
+			ListenerAddrFunc: func(addr net.Addr) {
+				url = addr.String()
+			},
 		}))
 	}()
 
@@ -579,7 +590,7 @@ func Test_Client_Logger_DisableDebug(t *testing.T) {
 	client := AcquireClient()
 	client.DisableDebug()
 
-	resp, err := client.Get("http://localhost:3000")
+	resp, err := client.Get("http://" + url)
 	defer resp.Close()
 
 	require.NoError(t, err)
