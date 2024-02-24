@@ -138,8 +138,7 @@ func Test_Proxy_Balancer_WithTlsConfig(t *testing.T) {
 		}))
 	}()
 
-	client := clientpkg.AcquireClient()
-	defer clientpkg.ReleaseClient(client)
+	client := clientpkg.NewClient()
 	client.SetTLSConfig(clientTLSConf)
 
 	resp, err := client.Get("https://" + addr + "/tlsbalancer")
@@ -177,8 +176,7 @@ func Test_Proxy_Forward_WithTlsConfig_To_Http(t *testing.T) {
 		}))
 	}()
 
-	client := clientpkg.AcquireClient()
-	defer clientpkg.ReleaseClient(client)
+	client := clientpkg.NewClient()
 	client.SetTimeout(5 * time.Second)
 	client.TLSConfig().InsecureSkipVerify = true
 
@@ -243,8 +241,7 @@ func Test_Proxy_Forward_WithClient_TLSConfig(t *testing.T) {
 		}))
 	}()
 
-	client := clientpkg.AcquireClient()
-	defer clientpkg.ReleaseClient(client)
+	client := clientpkg.NewClient()
 	client.SetTLSConfig(clientTLSConf)
 
 	resp, err := client.Get("https://" + addr)
@@ -599,8 +596,7 @@ func Test_Proxy_Forward_Global_Client(t *testing.T) {
 		}))
 	}()
 
-	client := clientpkg.AcquireClient()
-	defer clientpkg.ReleaseClient(client)
+	client := clientpkg.NewClient()
 
 	resp, err := client.Get("http://" + addr)
 	require.NoError(t, err)
@@ -632,8 +628,7 @@ func Test_Proxy_Forward_Local_Client(t *testing.T) {
 		}))
 	}()
 
-	client := clientpkg.AcquireClient()
-	defer clientpkg.ReleaseClient(client)
+	client := clientpkg.NewClient()
 
 	resp, err := client.Get("http://" + addr)
 	require.NoError(t, err)
@@ -711,8 +706,7 @@ func Test_Proxy_Domain_Forward_Local(t *testing.T) {
 		}))
 	}()
 
-	client := clientpkg.AcquireClient()
-	defer clientpkg.ReleaseClient(client)
+	client := clientpkg.NewClient()
 
 	resp, err := client.Get("http://" + localDomain + "/test?query_test=true")
 	require.NoError(t, err)
