@@ -3,11 +3,64 @@ package client
 import (
 	"net"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp/fasthttputil"
 )
+
+type testServer struct {
+	app *fiber.App
+	ch  chan struct{}
+	ln  *fasthttputil.InmemoryListener
+	tb  testing.TB
+}
+
+func startTestServer(tb testing.TB) *testServer {
+	tb.Helper()
+
+	ln := fasthttputil.NewInmemoryListener()
+	app := fiber.New()
+
+	ch := make(chan struct{})
+	go func() {
+		if err := app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}); err != nil {
+			tb.Fatal(err)
+		}
+
+		close(ch)
+	}()
+
+	return &testServer{
+		app: app,
+		ch:  ch,
+		ln:  ln,
+		tb:  tb,
+	}
+}
+
+func (ts *testServer) stop() {
+	ts.tb.Helper()
+
+	if err := ts.app.Shutdown(); err != nil {
+		ts.tb.Fatal(err)
+	}
+
+	select {
+	case <-ts.ch:
+	case <-time.After(time.Second):
+		ts.tb.Fatalf("timeout when waiting for server close")
+	}
+}
+
+func (ts *testServer) dial() func(addr string) (net.Conn, error) {
+	ts.tb.Helper()
+
+	return func(addr string) (net.Conn, error) {
+		return ts.ln.Dial()
+	}
+}
 
 func createHelperServer(t testing.TB) (*fiber.App, func(addr string) (net.Conn, error), func()) {
 	t.Helper()

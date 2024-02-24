@@ -8,7 +8,6 @@ import (
 	"net"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/gofiber/fiber/v3/internal/tlstest"
 
@@ -19,20 +18,26 @@ import (
 func Test_Response_Status(t *testing.T) {
 	t.Parallel()
 
-	app, ln, start := createHelperServer(t)
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("foo")
-	})
-	app.Get("/fail", func(c fiber.Ctx) error {
-		return c.SendStatus(407)
-	})
-	go start()
+	setupApp := func() *testServer {
+		server := startTestServer(t)
+
+		server.app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString("foo")
+		})
+		server.app.Get("/fail", func(c fiber.Ctx) error {
+			return c.SendStatus(407)
+		})
+
+		return server
+	}
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 
+		server := setupApp()
+		defer server.stop()
 		resp, err := AcquireRequest().
-			SetDial(ln).
+			SetDial(server.dial()).
 			Get("http://example")
 
 		require.NoError(t, err)
@@ -43,8 +48,10 @@ func Test_Response_Status(t *testing.T) {
 	t.Run("fail", func(t *testing.T) {
 		t.Parallel()
 
+		server := setupApp()
+		defer server.stop()
 		resp, err := AcquireRequest().
-			SetDial(ln).
+			SetDial(server.dial()).
 			Get("http://example/fail")
 
 		require.NoError(t, err)
@@ -56,20 +63,26 @@ func Test_Response_Status(t *testing.T) {
 func Test_Response_Status_Code(t *testing.T) {
 	t.Parallel()
 
-	app, ln, start := createHelperServer(t)
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("foo")
-	})
-	app.Get("/fail", func(c fiber.Ctx) error {
-		return c.SendStatus(407)
-	})
-	go start()
+	setupApp := func() *testServer {
+		server := startTestServer(t)
+
+		server.app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString("foo")
+		})
+		server.app.Get("/fail", func(c fiber.Ctx) error {
+			return c.SendStatus(407)
+		})
+
+		return server
+	}
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 
+		server := setupApp()
+		defer server.stop()
 		resp, err := AcquireRequest().
-			SetDial(ln).
+			SetDial(server.dial()).
 			Get("http://example")
 
 		require.NoError(t, err)
@@ -80,8 +93,10 @@ func Test_Response_Status_Code(t *testing.T) {
 	t.Run("fail", func(t *testing.T) {
 		t.Parallel()
 
+		server := setupApp()
+		defer server.stop()
 		resp, err := AcquireRequest().
-			SetDial(ln).
+			SetDial(server.dial()).
 			Get("http://example/fail")
 
 		require.NoError(t, err)
@@ -95,14 +110,16 @@ func Test_Response_Protocol(t *testing.T) {
 
 	t.Run("http", func(t *testing.T) {
 		t.Parallel()
-		app, ln, start := createHelperServer(t)
-		app.Get("/", func(c fiber.Ctx) error {
+
+		server := startTestServer(t)
+		defer server.stop()
+
+		server.app.Get("/", func(c fiber.Ctx) error {
 			return c.SendString("foo")
 		})
-		go start()
 
 		resp, err := AcquireRequest().
-			SetDial(ln).
+			SetDial(server.dial()).
 			Get("http://example")
 
 		require.NoError(t, err)
@@ -148,15 +165,15 @@ func Test_Response_Protocol(t *testing.T) {
 func Test_Response_Header(t *testing.T) {
 	t.Parallel()
 
-	app, ln, start := createHelperServer(t)
-	app.Get("/", func(c fiber.Ctx) error {
+	server := startTestServer(t)
+	defer server.stop()
+	server.app.Get("/", func(c fiber.Ctx) error {
 		c.Response().Header.Add("foo", "bar")
 		return c.SendString("helo world")
 	})
-	go start()
 
 	resp, err := AcquireRequest().
-		SetDial(ln).
+		SetDial(server.dial()).
 		Get("http://example.com")
 
 	require.NoError(t, err)
@@ -167,18 +184,18 @@ func Test_Response_Header(t *testing.T) {
 func Test_Response_Cookie(t *testing.T) {
 	t.Parallel()
 
-	app, ln, start := createHelperServer(t)
-	app.Get("/", func(c fiber.Ctx) error {
+	server := startTestServer(t)
+	defer server.stop()
+	server.app.Get("/", func(c fiber.Ctx) error {
 		c.Cookie(&fiber.Cookie{
 			Name:  "foo",
 			Value: "bar",
 		})
 		return c.SendString("helo world")
 	})
-	go start()
 
 	resp, err := AcquireRequest().
-		SetDial(ln).
+		SetDial(server.dial()).
 		Get("http://example.com")
 
 	require.NoError(t, err)
@@ -189,23 +206,29 @@ func Test_Response_Cookie(t *testing.T) {
 func Test_Response_Body(t *testing.T) {
 	t.Parallel()
 
-	app, ln, start := createHelperServer(t)
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("hello world")
-	})
-	app.Get("/json", func(c fiber.Ctx) error {
-		return c.SendString("{\"status\":\"success\"}")
-	})
-	app.Get("/xml", func(c fiber.Ctx) error {
-		return c.SendString("<status><name>success</name></status>")
-	})
+	setupApp := func() *testServer {
+		server := startTestServer(t)
 
-	go start()
+		server.app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString("hello world")
+		})
+		server.app.Get("/json", func(c fiber.Ctx) error {
+			return c.SendString("{\"status\":\"success\"}")
+		})
+		server.app.Get("/xml", func(c fiber.Ctx) error {
+			return c.SendString("<status><name>success</name></status>")
+		})
+
+		return server
+	}
 
 	t.Run("raw body", func(t *testing.T) {
 		t.Parallel()
+
+		server := setupApp()
+		defer server.stop()
 		resp, err := AcquireRequest().
-			SetDial(ln).
+			SetDial(server.dial()).
 			Get("http://example.com")
 
 		require.NoError(t, err)
@@ -215,8 +238,11 @@ func Test_Response_Body(t *testing.T) {
 
 	t.Run("string body", func(t *testing.T) {
 		t.Parallel()
+
+		server := setupApp()
+		defer server.stop()
 		resp, err := AcquireRequest().
-			SetDial(ln).
+			SetDial(server.dial()).
 			Get("http://example.com")
 
 		require.NoError(t, err)
@@ -230,8 +256,10 @@ func Test_Response_Body(t *testing.T) {
 			Status string `json:"status"`
 		}
 
+		server := setupApp()
+		defer server.stop()
 		resp, err := AcquireRequest().
-			SetDial(ln).
+			SetDial(server.dial()).
 			Get("http://example.com/json")
 
 		require.NoError(t, err)
@@ -250,8 +278,10 @@ func Test_Response_Body(t *testing.T) {
 			Status string   `xml:"name"`
 		}
 
+		server := setupApp()
+		defer server.stop()
 		resp, err := AcquireRequest().
-			SetDial(ln).
+			SetDial(server.dial()).
 			Get("http://example.com/xml")
 
 		require.NoError(t, err)
@@ -266,18 +296,24 @@ func Test_Response_Body(t *testing.T) {
 
 func Test_Response_Save(t *testing.T) {
 	t.Parallel()
-	app, ln, start := createHelperServer(t)
-	app.Get("/json", func(c fiber.Ctx) error {
-		return c.SendString("{\"status\":\"success\"}")
-	})
 
-	go start()
-	time.Sleep(300 * time.Millisecond)
+	setupApp := func() *testServer {
+		server := startTestServer(t)
+
+		server.app.Get("/json", func(c fiber.Ctx) error {
+			return c.SendString("{\"status\":\"success\"}")
+		})
+
+		return server
+	}
 
 	t.Run("file path", func(t *testing.T) {
 		t.Parallel()
+
+		server := setupApp()
+		defer server.stop()
 		resp, err := AcquireRequest().
-			SetDial(ln).
+			SetDial(server.dial()).
 			Get("http://example.com/json")
 
 		require.NoError(t, err)
@@ -307,8 +343,11 @@ func Test_Response_Save(t *testing.T) {
 
 	t.Run("io.Writer", func(t *testing.T) {
 		t.Parallel()
+
+		server := setupApp()
+		defer server.stop()
 		resp, err := AcquireRequest().
-			SetDial(ln).
+			SetDial(server.dial()).
 			Get("http://example.com/json")
 
 		require.NoError(t, err)
@@ -322,8 +361,11 @@ func Test_Response_Save(t *testing.T) {
 
 	t.Run("error type", func(t *testing.T) {
 		t.Parallel()
+
+		server := setupApp()
+		defer server.stop()
 		resp, err := AcquireRequest().
-			SetDial(ln).
+			SetDial(server.dial()).
 			Get("http://example.com/json")
 
 		require.NoError(t, err)
