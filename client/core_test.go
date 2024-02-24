@@ -87,7 +87,7 @@ func Test_Exec_Func(t *testing.T) {
 		core.client = client
 		core.req = req
 
-		core.req.dial = func(_ string) (net.Conn, error) { return ln.Dial() }
+		client.SetDial(func(_ string) (net.Conn, error) { return ln.Dial() })
 		req.RawRequest.SetRequestURI("http://example.com/normal")
 
 		resp, err := core.execFunc()
@@ -104,7 +104,7 @@ func Test_Exec_Func(t *testing.T) {
 		core.client = client
 		core.req = req
 
-		core.req.dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+		client.SetDial(func(_ string) (net.Conn, error) { return ln.Dial() })
 		req.RawRequest.SetRequestURI("http://example.com/return-error")
 
 		resp, err := core.execFunc()
@@ -124,7 +124,7 @@ func Test_Exec_Func(t *testing.T) {
 		core.client = client
 		core.req = req
 
-		core.req.dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+		client.SetDial(func(_ string) (net.Conn, error) { return ln.Dial() })
 		req.RawRequest.SetRequestURI("http://example.com/hang-up")
 
 		_, err := core.execFunc()
@@ -163,9 +163,10 @@ func Test_Execute(t *testing.T) {
 			require.Equal(t, "http://example.com", req.URL())
 			return nil
 		})
-		req.SetDial(func(addr string) (net.Conn, error) {
+		client.SetDial(func(addr string) (net.Conn, error) {
 			return ln.Dial()
-		}).SetURL("http://example.com")
+		})
+		req.SetURL("http://example.com")
 
 		resp, err := core.execute(context.Background(), client, req)
 		require.NoError(t, err)
@@ -179,9 +180,10 @@ func Test_Execute(t *testing.T) {
 			require.Equal(t, "http://example.com", req.URL())
 			return nil
 		})
-		req.SetDial(func(addr string) (net.Conn, error) {
+		client.SetDial(func(addr string) (net.Conn, error) {
 			return ln.Dial()
-		}).SetURL("http://example.com")
+		})
+		req.SetURL("http://example.com")
 
 		resp, err := core.execute(context.Background(), client, req)
 		require.NoError(t, err)
@@ -192,9 +194,10 @@ func Test_Execute(t *testing.T) {
 		t.Parallel()
 		core, client, req := newCore(), AcquireClient(), AcquireRequest()
 
-		req.SetDial(func(addr string) (net.Conn, error) {
+		client.SetDial(func(addr string) (net.Conn, error) {
 			return ln.Dial()
-		}).SetURL("http://example.com/hang-up")
+		})
+		req.SetURL("http://example.com/hang-up")
 
 		resp, err := core.execute(context.Background(), client, req)
 		require.NoError(t, err)
@@ -205,9 +208,10 @@ func Test_Execute(t *testing.T) {
 		t.Parallel()
 		core, client, req := newCore(), AcquireClient(), AcquireRequest()
 		client.SetTimeout(500 * time.Millisecond)
-		req.SetDial(func(addr string) (net.Conn, error) {
+		client.SetDial(func(addr string) (net.Conn, error) {
 			return ln.Dial()
-		}).SetURL("http://example.com/hang-up")
+		})
+		req.SetURL("http://example.com/hang-up")
 
 		_, err := core.execute(context.Background(), client, req)
 		require.Equal(t, ErrTimeoutOrCancel, err)
@@ -217,9 +221,10 @@ func Test_Execute(t *testing.T) {
 		t.Parallel()
 		core, client, req := newCore(), AcquireClient(), AcquireRequest()
 
-		req.SetDial(func(addr string) (net.Conn, error) {
+		client.SetDial(func(addr string) (net.Conn, error) {
 			return ln.Dial()
-		}).SetURL("http://example.com/hang-up").
+		})
+		req.SetURL("http://example.com/hang-up").
 			SetTimeout(300 * time.Millisecond)
 
 		_, err := core.execute(context.Background(), client, req)
@@ -231,9 +236,10 @@ func Test_Execute(t *testing.T) {
 		core, client, req := newCore(), AcquireClient(), AcquireRequest()
 		client.SetTimeout(30 * time.Millisecond)
 
-		req.SetDial(func(addr string) (net.Conn, error) {
+		client.SetDial(func(addr string) (net.Conn, error) {
 			return ln.Dial()
-		}).SetURL("http://example.com/hang-up").
+		})
+		req.SetURL("http://example.com/hang-up").
 			SetTimeout(3000 * time.Millisecond)
 
 		resp, err := core.execute(context.Background(), client, req)

@@ -1,7 +1,6 @@
 package client
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"net"
@@ -92,31 +91,24 @@ func (c *core) execFunc() (*Response, error) {
 	c.req.RawRequest.CopyTo(reqv)
 	cfg := c.getRetryConfig()
 
-	var host = AcquireHostClient()
-
-	err := c.configureHostClient(host)
-	if err != nil {
-		defer ReleaseHostClient(host)
-		return nil, err
-	}
+	var err error
 	go func() {
-		defer ReleaseHostClient(host)
-		c.client.mu.Lock()
+		//c.client.mu.Lock()
 
 		respv := fasthttp.AcquireResponse()
 		if cfg != nil {
 			err = retry.NewExponentialBackoff(*cfg).Retry(func() error {
 				if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
-					return host.DoRedirects(reqv, respv, c.req.maxRedirects)
+					return c.client.client.DoRedirects(reqv, respv, c.req.maxRedirects)
 				}
 
-				return host.Do(reqv, respv)
+				return c.client.client.Do(reqv, respv)
 			})
 		} else {
 			if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
-				err = host.DoRedirects(reqv, respv, c.req.maxRedirects)
+				err = c.client.client.DoRedirects(reqv, respv, c.req.maxRedirects)
 			} else {
-				err = host.Do(reqv, respv)
+				err = c.client.client.Do(reqv, respv)
 			}
 		}
 		defer func() {
@@ -132,7 +124,7 @@ func (c *core) execFunc() (*Response, error) {
 			respv.CopyTo(resp.RawResponse)
 			errCh <- nil
 		}
-		c.client.mu.Unlock()
+		//c.client.mu.Unlock()
 	}()
 
 	select {
@@ -208,7 +200,7 @@ func (c *core) timeout() context.CancelFunc {
 }
 
 // configureHostClient set configureHostClient in host.
-func (c *core) configureHostClient(hostClient *fasthttp.HostClient) error {
+/*func (c *core) configureHostClient(hostClient *fasthttp.Client) error {
 	// tls and dial configuration
 	c.client.mu.Lock()
 	hostClient.TLSConfig = c.client.tlsConfig.Clone()
@@ -236,7 +228,7 @@ func (c *core) configureHostClient(hostClient *fasthttp.HostClient) error {
 	c.client.mu.Unlock()
 
 	return nil
-}
+}*/
 
 // execute will exec each hooks and plugins.
 func (c *core) execute(ctx context.Context, client *Client, req *Request) (*Response, error) {

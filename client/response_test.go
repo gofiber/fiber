@@ -36,8 +36,12 @@ func Test_Response_Status(t *testing.T) {
 
 		server := setupApp()
 		defer server.stop()
+
+		client := AcquireClient().SetDial(server.dial())
+		defer ReleaseClient(client)
+
 		resp, err := AcquireRequest().
-			SetDial(server.dial()).
+			SetClient(client).
 			Get("http://example")
 
 		require.NoError(t, err)
@@ -50,8 +54,12 @@ func Test_Response_Status(t *testing.T) {
 
 		server := setupApp()
 		defer server.stop()
+
+		client := AcquireClient().SetDial(server.dial())
+		defer ReleaseClient(client)
+
 		resp, err := AcquireRequest().
-			SetDial(server.dial()).
+			SetClient(client).
 			Get("http://example/fail")
 
 		require.NoError(t, err)
@@ -81,8 +89,12 @@ func Test_Response_Status_Code(t *testing.T) {
 
 		server := setupApp()
 		defer server.stop()
+
+		client := AcquireClient().SetDial(server.dial())
+		defer ReleaseClient(client)
+
 		resp, err := AcquireRequest().
-			SetDial(server.dial()).
+			SetClient(client).
 			Get("http://example")
 
 		require.NoError(t, err)
@@ -95,8 +107,12 @@ func Test_Response_Status_Code(t *testing.T) {
 
 		server := setupApp()
 		defer server.stop()
+
+		client := AcquireClient().SetDial(server.dial())
+		defer ReleaseClient(client)
+
 		resp, err := AcquireRequest().
-			SetDial(server.dial()).
+			SetClient(client).
 			Get("http://example/fail")
 
 		require.NoError(t, err)
@@ -118,8 +134,11 @@ func Test_Response_Protocol(t *testing.T) {
 			return c.SendString("foo")
 		})
 
+		client := AcquireClient().SetDial(server.dial())
+		defer ReleaseClient(client)
+
 		resp, err := AcquireRequest().
-			SetDial(server.dial()).
+			SetClient(client).
 			Get("http://example")
 
 		require.NoError(t, err)
@@ -172,8 +191,11 @@ func Test_Response_Header(t *testing.T) {
 		return c.SendString("helo world")
 	})
 
+	client := AcquireClient().SetDial(server.dial())
+	defer ReleaseClient(client)
+
 	resp, err := AcquireRequest().
-		SetDial(server.dial()).
+		SetClient(client).
 		Get("http://example.com")
 
 	require.NoError(t, err)
@@ -194,8 +216,11 @@ func Test_Response_Cookie(t *testing.T) {
 		return c.SendString("helo world")
 	})
 
+	client := AcquireClient().SetDial(server.dial())
+	defer ReleaseClient(client)
+
 	resp, err := AcquireRequest().
-		SetDial(server.dial()).
+		SetClient(client).
 		Get("http://example.com")
 
 	require.NoError(t, err)
@@ -227,8 +252,12 @@ func Test_Response_Body(t *testing.T) {
 
 		server := setupApp()
 		defer server.stop()
+
+		client := AcquireClient().SetDial(server.dial())
+		defer ReleaseClient(client)
+
 		resp, err := AcquireRequest().
-			SetDial(server.dial()).
+			SetClient(client).
 			Get("http://example.com")
 
 		require.NoError(t, err)
@@ -241,8 +270,12 @@ func Test_Response_Body(t *testing.T) {
 
 		server := setupApp()
 		defer server.stop()
+
+		client := AcquireClient().SetDial(server.dial())
+		defer ReleaseClient(client)
+
 		resp, err := AcquireRequest().
-			SetDial(server.dial()).
+			SetClient(client).
 			Get("http://example.com")
 
 		require.NoError(t, err)
@@ -258,8 +291,12 @@ func Test_Response_Body(t *testing.T) {
 
 		server := setupApp()
 		defer server.stop()
+
+		client := AcquireClient().SetDial(server.dial())
+		defer ReleaseClient(client)
+
 		resp, err := AcquireRequest().
-			SetDial(server.dial()).
+			SetClient(client).
 			Get("http://example.com/json")
 
 		require.NoError(t, err)
@@ -280,8 +317,12 @@ func Test_Response_Body(t *testing.T) {
 
 		server := setupApp()
 		defer server.stop()
+
+		client := AcquireClient().SetDial(server.dial())
+		defer ReleaseClient(client)
+
 		resp, err := AcquireRequest().
-			SetDial(server.dial()).
+			SetClient(client).
 			Get("http://example.com/xml")
 
 		require.NoError(t, err)
@@ -312,8 +353,12 @@ func Test_Response_Save(t *testing.T) {
 
 		server := setupApp()
 		defer server.stop()
+
+		client := AcquireClient().SetDial(server.dial())
+		defer ReleaseClient(client)
+
 		resp, err := AcquireRequest().
-			SetDial(server.dial()).
+			SetClient(client).
 			Get("http://example.com/json")
 
 		require.NoError(t, err)
@@ -346,8 +391,12 @@ func Test_Response_Save(t *testing.T) {
 
 		server := setupApp()
 		defer server.stop()
+
+		client := AcquireClient().SetDial(server.dial())
+		defer ReleaseClient(client)
+
 		resp, err := AcquireRequest().
-			SetDial(server.dial()).
+			SetClient(client).
 			Get("http://example.com/json")
 
 		require.NoError(t, err)
@@ -364,8 +413,12 @@ func Test_Response_Save(t *testing.T) {
 
 		server := setupApp()
 		defer server.stop()
+
+		client := AcquireClient().SetDial(server.dial())
+		defer ReleaseClient(client)
+
 		resp, err := AcquireRequest().
-			SetDial(server.dial()).
+			SetClient(client).
 			Get("http://example.com/json")
 
 		require.NoError(t, err)

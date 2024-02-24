@@ -58,16 +58,7 @@ type Request struct {
 	files    []*File
 	bodyType bodyType
 
-	dial fasthttp.DialFunc
-
 	RawRequest *fasthttp.Request
-}
-
-// SetDial set HostClient dial, this method for unit test,
-// maybe don't use it.
-func (r *Request) SetDial(f fasthttp.DialFunc) *Request {
-	r.dial = f
-	return r
 }
 
 // Method returns http method in request.

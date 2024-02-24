@@ -89,8 +89,11 @@ func testRequest(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Requ
 		c = count[0]
 	}
 
+	client := AcquireClient().SetDial(ln)
+	defer ReleaseClient(client)
+
 	for i := 0; i < c; i++ {
-		req := AcquireRequest().SetDial(ln)
+		req := AcquireRequest().SetClient(client)
 		wrapAgent(req)
 
 		resp, err := req.Get("http://example.com")
@@ -114,8 +117,11 @@ func testRequestFail(t *testing.T, handler fiber.Handler, wrapAgent func(agent *
 		c = count[0]
 	}
 
+	client := AcquireClient().SetDial(ln)
+	defer ReleaseClient(client)
+
 	for i := 0; i < c; i++ {
-		req := AcquireRequest().SetDial(ln)
+		req := AcquireRequest().SetClient(client)
 		wrapAgent(req)
 
 		_, err := req.Get("http://example.com")
@@ -137,10 +143,10 @@ func testClient(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Clien
 	}
 
 	for i := 0; i < c; i++ {
-		client := AcquireClient()
+		client := AcquireClient().SetDial(ln)
 		wrapAgent(client)
 
-		resp, err := client.Get("http://example.com", Config{Dial: ln})
+		resp, err := client.Get("http://example.com")
 
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode())

@@ -35,6 +35,8 @@ var (
 type Client struct {
 	mu sync.RWMutex
 
+	client *fasthttp.Client
+
 	baseURL   string
 	userAgent string
 	referer   string
@@ -65,9 +67,6 @@ type Client struct {
 	xmlUnmarshal  utils.XMLUnmarshal
 
 	cookieJar *CookieJar
-
-	// tls config
-	tlsConfig *tls.Config
 
 	// proxy
 	proxyURL string
@@ -156,18 +155,18 @@ func (c *Client) SetXMLUnmarshal(f utils.XMLUnmarshal) *Client {
 // TLSConfig returns tlsConfig in client.
 // If client don't have tlsConfig, this function will init it.
 func (c *Client) TLSConfig() *tls.Config {
-	if c.tlsConfig == nil {
-		c.tlsConfig = &tls.Config{
+	if c.client.TLSConfig == nil {
+		c.client.TLSConfig = &tls.Config{
 			MinVersion: tls.VersionTLS12,
 		}
 	}
 
-	return c.tlsConfig
+	return c.client.TLSConfig
 }
 
 // SetTLSConfig sets tlsConfig in client.
 func (c *Client) SetTLSConfig(config *tls.Config) *Client {
-	c.tlsConfig = config
+	c.client.TLSConfig = config
 	return c
 }
 
@@ -548,8 +547,17 @@ func (c *Client) Custom(url string, method string, cfg ...Config) (*Response, er
 	return req.Custom(url, method)
 }
 
+func (c *Client) SetDial(dial fasthttp.DialFunc) *Client {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.client.Dial = dial
+	return c
+}
+
 // Reset clear Client object
 func (c *Client) Reset() {
+	c.client = &fasthttp.Client{}
 	c.baseURL = ""
 	c.timeout = 0
 	c.userAgent = ""
@@ -582,8 +590,6 @@ type Config struct {
 	Body     any
 	FormData map[string]string
 	File     []*File
-
-	Dial fasthttp.DialFunc
 }
 
 // setConfigToRequest Set the parameters passed via Config to Request.
@@ -629,10 +635,6 @@ func setConfigToRequest(req *Request, config ...Config) {
 		req.SetMaxRedirects(cfg.MaxRedirects)
 	}
 
-	if cfg.Dial != nil {
-		req.SetDial(cfg.Dial)
-	}
-
 	if cfg.Body != nil {
 		req.SetJSON(cfg.Body)
 		return
@@ -656,6 +658,7 @@ var (
 	clientPool       = &sync.Pool{
 		New: func() any {
 			return &Client{
+				client: &fasthttp.Client{},
 				header: &Header{
 					RequestHeader: &fasthttp.RequestHeader{},
 				},
@@ -758,44 +761,4 @@ func Options(url string, cfg ...Config) (*Response, error) {
 // Patch send a patch request use defaultClient, a convenient method.
 func Patch(url string, cfg ...Config) (*Response, error) {
 	return C().Patch(url, cfg...)
-}
-
-var hostClienPool = &sync.Pool{
-	New: func() any {
-		return &fasthttp.HostClient{}
-	},
-}
-
-// AcquireHostClient returns an empty HostClient object from the pool.
-//
-// The returned HostClient object may be returned to the pool with ReleaseHostClient when no longer needed.
-// This allows reducing GC load.
-func AcquireHostClient() *fasthttp.HostClient {
-	hostClient, ok := hostClienPool.Get().(*fasthttp.HostClient)
-	if !ok {
-		panic(fmt.Errorf("failed to type-assert to *fasthttp.HostClient"))
-	}
-
-	return hostClient
-}
-
-// ReleaseHostClient returns the object acquired via AcquireHostClient to the pool.
-//
-// Do not access the released HostClient object, otherwise data
-func ReleaseHostClient(h *fasthttp.HostClient) {
-	// reset host client
-	h.Addr = ""
-	h.Name = ""
-	h.Dial = nil
-	h.MaxConns = 0
-	h.MaxIdleConnDuration = 0
-	h.ReadTimeout = 0
-	h.WriteTimeout = 0
-	h.ReadBufferSize = 0
-	h.WriteBufferSize = 0
-	h.DisableHeaderNamesNormalizing = false
-	h.DisablePathNormalizing = false
-	h.DisablePathNormalizing = false
-
-	hostClienPool.Put(h)
 }

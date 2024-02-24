@@ -111,8 +111,8 @@ func Test_Request_Header(t *testing.T) {
 		res := req.Header("foo")
 		require.Len(t, res, 3)
 		require.Equal(t, "bar", res[0])
-		require.Equal(t, "buaa", res[1])
-		require.Equal(t, "fiber", res[2])
+		require.Equal(t, "fiber", res[1])
+		require.Equal(t, "buaa", res[2])
 
 		res = req.Header("bar")
 		require.Len(t, res, 1)
@@ -174,8 +174,8 @@ func Test_Request_QueryParam(t *testing.T) {
 		res := req.Param("foo")
 		require.Len(t, res, 3)
 		require.Equal(t, "bar", res[0])
-		require.Equal(t, "buaa", res[1])
-		require.Equal(t, "fiber", res[2])
+		require.Equal(t, "fiber", res[1])
+		require.Equal(t, "buaa", res[2])
 
 		res = req.Param("bar")
 		require.Len(t, res, 1)
@@ -237,13 +237,13 @@ func Test_Request_QueryParam(t *testing.T) {
 
 		tslice := p.Param("TSlice")
 		require.Len(t, tslice, 2)
-		require.Equal(t, "bar", tslice[0])
-		require.Equal(t, "foo", tslice[1])
+		require.Equal(t, "foo", tslice[0])
+		require.Equal(t, "bar", tslice[1])
 
 		tint := p.Param("TSlice")
 		require.Len(t, tint, 2)
-		require.Equal(t, "bar", tint[0])
-		require.Equal(t, "foo", tint[1])
+		require.Equal(t, "foo", tint[0])
+		require.Equal(t, "bar", tint[1])
 	})
 
 	t.Run("del params", func(t *testing.T) {
@@ -629,8 +629,11 @@ func Test_Request_Get(t *testing.T) {
 	go start()
 	time.Sleep(100 * time.Millisecond)
 
+	client := AcquireClient().SetDial(ln)
+	defer ReleaseClient(client)
+
 	for i := 0; i < 5; i++ {
-		req := AcquireRequest().SetDial(ln)
+		req := AcquireRequest().SetClient(client)
 
 		resp, err := req.Get("http://example.com")
 		require.NoError(t, err)
@@ -652,9 +655,12 @@ func Test_Request_Post(t *testing.T) {
 	go start()
 	time.Sleep(100 * time.Millisecond)
 
+	client := AcquireClient().SetDial(ln)
+	defer ReleaseClient(client)
+
 	for i := 0; i < 5; i++ {
 		resp, err := AcquireRequest().
-			SetDial(ln).
+			SetClient(client).
 			SetFormData("foo", "bar").
 			Post("http://example.com")
 
@@ -676,9 +682,12 @@ func Test_Request_Head(t *testing.T) {
 	go start()
 	time.Sleep(100 * time.Millisecond)
 
+	client := AcquireClient().SetDial(ln)
+	defer ReleaseClient(client)
+
 	for i := 0; i < 5; i++ {
 		resp, err := AcquireRequest().
-			SetDial(ln).
+			SetClient(client).
 			Head("http://example.com")
 
 		require.NoError(t, err)
@@ -699,9 +708,12 @@ func Test_Request_Put(t *testing.T) {
 	go start()
 	time.Sleep(100 * time.Millisecond)
 
+	client := AcquireClient().SetDial(ln)
+	defer ReleaseClient(client)
+
 	for i := 0; i < 5; i++ {
 		resp, err := AcquireRequest().
-			SetDial(ln).
+			SetClient(client).
 			SetFormData("foo", "bar").
 			Put("http://example.com")
 
@@ -726,9 +738,12 @@ func Test_Request_Delete(t *testing.T) {
 	go start()
 	time.Sleep(100 * time.Millisecond)
 
+	client := AcquireClient().SetDial(ln)
+	defer ReleaseClient(client)
+
 	for i := 0; i < 5; i++ {
 		resp, err := AcquireRequest().
-			SetDial(ln).
+			SetClient(client).
 			Delete("http://example.com")
 
 		require.NoError(t, err)
@@ -752,9 +767,12 @@ func Test_Request_Options(t *testing.T) {
 	go start()
 	time.Sleep(100 * time.Millisecond)
 
+	client := AcquireClient().SetDial(ln)
+	defer ReleaseClient(client)
+
 	for i := 0; i < 5; i++ {
 		resp, err := AcquireRequest().
-			SetDial(ln).
+			SetClient(client).
 			Options("http://example.com")
 
 		require.NoError(t, err)
@@ -778,9 +796,12 @@ func Test_Request_Send(t *testing.T) {
 	go start()
 	time.Sleep(100 * time.Millisecond)
 
+	client := AcquireClient().SetDial(ln)
+	defer ReleaseClient(client)
+
 	for i := 0; i < 5; i++ {
 		resp, err := AcquireRequest().
-			SetDial(ln).
+			SetClient(client).
 			SetURL("http://example.com").
 			SetMethod(fiber.MethodPost).
 			Send()
@@ -805,9 +826,12 @@ func Test_Request_Patch(t *testing.T) {
 	go start()
 	time.Sleep(100 * time.Millisecond)
 
+	client := AcquireClient().SetDial(ln)
+	defer ReleaseClient(client)
+
 	for i := 0; i < 5; i++ {
 		resp, err := AcquireRequest().
-			SetDial(ln).
+			SetClient(client).
 			SetFormData("foo", "bar").
 			Patch("http://example.com")
 
@@ -1003,8 +1027,11 @@ func Test_Request_Body_With_Server(t *testing.T) {
 
 		go start()
 
+		client := AcquireClient().SetDial(ln)
+		defer ReleaseClient(client)
+
 		req := AcquireRequest().
-			SetDial(ln).
+			SetClient(client).
 			SetBoundary("myBoundary").
 			SetFormData("foo", "bar").
 			AddFiles(AcquireFile(
@@ -1056,9 +1083,12 @@ func Test_Request_Body_With_Server(t *testing.T) {
 
 		go start()
 
+		client := AcquireClient().SetDial(ln)
+		defer ReleaseClient(client)
+
 		for i := 0; i < 5; i++ {
 			req := AcquireRequest().
-				SetDial(ln).
+				SetClient(client).
 				AddFiles(
 					AcquireFile(
 						SetFileFieldName("field1"),
@@ -1091,8 +1121,11 @@ func Test_Request_Body_With_Server(t *testing.T) {
 
 		go start()
 
+		client := AcquireClient().SetDial(ln)
+		defer ReleaseClient(client)
+
 		req := AcquireRequest().
-			SetDial(ln).
+			SetClient(client).
 			SetFormData("foo", "bar").
 			AddFiles(AcquireFile(
 				SetFileName("hello.txt"),
@@ -1177,8 +1210,11 @@ func Test_Request_Timeout_With_Server(t *testing.T) {
 	})
 	go start()
 
+	client := AcquireClient().SetDial(ln)
+	defer ReleaseClient(client)
+
 	_, err := AcquireRequest().
-		SetDial(ln).
+		SetClient(client).
 		SetTimeout(50 * time.Millisecond).
 		Get("http://example.com")
 
@@ -1206,8 +1242,12 @@ func Test_Request_MaxRedirects(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
+
+		client := AcquireClient().SetDial(func(addr string) (net.Conn, error) { return ln.Dial() })
+		defer ReleaseClient(client)
+
 		resp, err := AcquireRequest().
-			SetDial(func(addr string) (net.Conn, error) { return ln.Dial() }).
+			SetClient(client).
 			SetMaxRedirects(1).
 			Get("http://example.com?foo")
 		body := resp.String()
@@ -1222,8 +1262,12 @@ func Test_Request_MaxRedirects(t *testing.T) {
 
 	t.Run("error", func(t *testing.T) {
 		t.Parallel()
+
+		client := AcquireClient().SetDial(func(addr string) (net.Conn, error) { return ln.Dial() })
+		defer ReleaseClient(client)
+
 		resp, err := AcquireRequest().
-			SetDial(func(addr string) (net.Conn, error) { return ln.Dial() }).
+			SetClient(client).
 			SetMaxRedirects(1).
 			Get("http://example.com")
 
@@ -1232,8 +1276,13 @@ func Test_Request_MaxRedirects(t *testing.T) {
 	})
 
 	t.Run("MaxRedirects", func(t *testing.T) {
+		t.Parallel()
+
+		client := AcquireClient().SetDial(func(addr string) (net.Conn, error) { return ln.Dial() })
+		defer ReleaseClient(client)
+
 		req := AcquireRequest().
-			SetDial(func(addr string) (net.Conn, error) { return ln.Dial() }).
+			SetClient(client).
 			SetMaxRedirects(3)
 
 		require.Equal(t, req.MaxRedirects(), 3)
