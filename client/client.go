@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"errors"
-	"fmt"
 	"io"
 	urlpkg "net/url"
 	"os"
@@ -655,56 +654,35 @@ var (
 	defaultClient    *Client
 	replaceMu        = sync.Mutex{}
 	defaultUserAgent = "fiber"
-	clientPool       = &sync.Pool{
-		New: func() any {
-			return &Client{
-				client: &fasthttp.Client{},
-				header: &Header{
-					RequestHeader: &fasthttp.RequestHeader{},
-				},
-				params: &QueryParam{
-					Args: fasthttp.AcquireArgs(),
-				},
-				cookies: &Cookie{},
-				path:    &PathParam{},
-
-				userRequestHooks:     []RequestHook{},
-				builtinRequestHooks:  []RequestHook{parserRequestURL, parserRequestHeader, parserRequestBody},
-				userResponseHooks:    []ResponseHook{},
-				builtinResponseHooks: []ResponseHook{parserResponseCookie, logger},
-				jsonMarshal:          json.Marshal,
-				jsonUnmarshal:        json.Unmarshal,
-				xmlMarshal:           xml.Marshal,
-				xmlUnmarshal:         xml.Unmarshal,
-			}
-		},
-	}
 )
 
 // init acquire a default client.
 func init() {
-	defaultClient = AcquireClient()
+	defaultClient = NewClient()
 }
 
-// AcquireClient returns an empty Client object from the pool.
-//
-// The returned Client object may be returned to the pool with ReleaseClient when no longer needed.
-// This allows reducing GC load.
-func AcquireClient() *Client {
-	client, ok := clientPool.Get().(*Client)
-	if !ok {
-		panic(fmt.Errorf("failed to type-assert to *Client"))
+// NewClient creates and returns a new Client object.
+func NewClient() *Client {
+	return &Client{
+		client: &fasthttp.Client{},
+		header: &Header{
+			RequestHeader: &fasthttp.RequestHeader{},
+		},
+		params: &QueryParam{
+			Args: fasthttp.AcquireArgs(),
+		},
+		cookies: &Cookie{},
+		path:    &PathParam{},
+
+		userRequestHooks:     []RequestHook{},
+		builtinRequestHooks:  []RequestHook{parserRequestURL, parserRequestHeader, parserRequestBody},
+		userResponseHooks:    []ResponseHook{},
+		builtinResponseHooks: []ResponseHook{parserResponseCookie, logger},
+		jsonMarshal:          json.Marshal,
+		jsonUnmarshal:        json.Unmarshal,
+		xmlMarshal:           xml.Marshal,
+		xmlUnmarshal:         xml.Unmarshal,
 	}
-
-	return client
-}
-
-// ReleaseClient returns the object acquired via AcquireClient to the pool.
-//
-// Do not access the released Client object, otherwise data races may occur.
-func ReleaseClient(c *Client) {
-	c.Reset()
-	clientPool.Put(c)
 }
 
 // C get default client.

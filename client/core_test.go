@@ -82,7 +82,7 @@ func Test_Exec_Func(t *testing.T) {
 
 	t.Run("normal request", func(t *testing.T) {
 		t.Parallel()
-		core, client, req := newCore(), AcquireClient(), AcquireRequest()
+		core, client, req := newCore(), NewClient(), AcquireRequest()
 		core.ctx = context.Background()
 		core.client = client
 		core.req = req
@@ -99,7 +99,7 @@ func Test_Exec_Func(t *testing.T) {
 
 	t.Run("the request return an error", func(t *testing.T) {
 		t.Parallel()
-		core, client, req := newCore(), AcquireClient(), AcquireRequest()
+		core, client, req := newCore(), NewClient(), AcquireRequest()
 		core.ctx = context.Background()
 		core.client = client
 		core.req = req
@@ -116,7 +116,7 @@ func Test_Exec_Func(t *testing.T) {
 
 	t.Run("the request timeout", func(t *testing.T) {
 		t.Parallel()
-		core, client, req := newCore(), AcquireClient(), AcquireRequest()
+		core, client, req := newCore(), NewClient(), AcquireRequest()
 		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 		defer cancel()
 
@@ -158,7 +158,7 @@ func Test_Execute(t *testing.T) {
 
 	t.Run("add user request hooks", func(t *testing.T) {
 		t.Parallel()
-		core, client, req := newCore(), AcquireClient(), AcquireRequest()
+		core, client, req := newCore(), NewClient(), AcquireRequest()
 		client.AddRequestHook(func(_ *Client, _ *Request) error {
 			require.Equal(t, "http://example.com", req.URL())
 			return nil
@@ -175,7 +175,7 @@ func Test_Execute(t *testing.T) {
 
 	t.Run("add user response hooks", func(t *testing.T) {
 		t.Parallel()
-		core, client, req := newCore(), AcquireClient(), AcquireRequest()
+		core, client, req := newCore(), NewClient(), AcquireRequest()
 		client.AddResponseHook(func(c *Client, resp *Response, req *Request) error {
 			require.Equal(t, "http://example.com", req.URL())
 			return nil
@@ -192,7 +192,7 @@ func Test_Execute(t *testing.T) {
 
 	t.Run("no timeout", func(t *testing.T) {
 		t.Parallel()
-		core, client, req := newCore(), AcquireClient(), AcquireRequest()
+		core, client, req := newCore(), NewClient(), AcquireRequest()
 
 		client.SetDial(func(addr string) (net.Conn, error) {
 			return ln.Dial()
@@ -206,7 +206,7 @@ func Test_Execute(t *testing.T) {
 
 	t.Run("client timeout", func(t *testing.T) {
 		t.Parallel()
-		core, client, req := newCore(), AcquireClient(), AcquireRequest()
+		core, client, req := newCore(), NewClient(), AcquireRequest()
 		client.SetTimeout(500 * time.Millisecond)
 		client.SetDial(func(addr string) (net.Conn, error) {
 			return ln.Dial()
@@ -219,7 +219,7 @@ func Test_Execute(t *testing.T) {
 
 	t.Run("request timeout", func(t *testing.T) {
 		t.Parallel()
-		core, client, req := newCore(), AcquireClient(), AcquireRequest()
+		core, client, req := newCore(), NewClient(), AcquireRequest()
 
 		client.SetDial(func(addr string) (net.Conn, error) {
 			return ln.Dial()
@@ -233,7 +233,7 @@ func Test_Execute(t *testing.T) {
 
 	t.Run("request timeout has higher level", func(t *testing.T) {
 		t.Parallel()
-		core, client, req := newCore(), AcquireClient(), AcquireRequest()
+		core, client, req := newCore(), NewClient(), AcquireRequest()
 		client.SetTimeout(30 * time.Millisecond)
 
 		client.SetDial(func(addr string) (net.Conn, error) {

@@ -19,13 +19,13 @@ func Test_Response_Status(t *testing.T) {
 	t.Parallel()
 
 	setupApp := func() *testServer {
-		server := startTestServer(t)
-
-		server.app.Get("/", func(c fiber.Ctx) error {
-			return c.SendString("foo")
-		})
-		server.app.Get("/fail", func(c fiber.Ctx) error {
-			return c.SendStatus(407)
+		server := startTestServer(t, func(app *fiber.App) {
+			app.Get("/", func(c fiber.Ctx) error {
+				return c.SendString("foo")
+			})
+			app.Get("/fail", func(c fiber.Ctx) error {
+				return c.SendStatus(407)
+			})
 		})
 
 		return server
@@ -37,8 +37,7 @@ func Test_Response_Status(t *testing.T) {
 		server := setupApp()
 		defer server.stop()
 
-		client := AcquireClient().SetDial(server.dial())
-		defer ReleaseClient(client)
+		client := NewClient().SetDial(server.dial())
 
 		resp, err := AcquireRequest().
 			SetClient(client).
@@ -55,8 +54,7 @@ func Test_Response_Status(t *testing.T) {
 		server := setupApp()
 		defer server.stop()
 
-		client := AcquireClient().SetDial(server.dial())
-		defer ReleaseClient(client)
+		client := NewClient().SetDial(server.dial())
 
 		resp, err := AcquireRequest().
 			SetClient(client).
@@ -72,13 +70,13 @@ func Test_Response_Status_Code(t *testing.T) {
 	t.Parallel()
 
 	setupApp := func() *testServer {
-		server := startTestServer(t)
-
-		server.app.Get("/", func(c fiber.Ctx) error {
-			return c.SendString("foo")
-		})
-		server.app.Get("/fail", func(c fiber.Ctx) error {
-			return c.SendStatus(407)
+		server := startTestServer(t, func(app *fiber.App) {
+			app.Get("/", func(c fiber.Ctx) error {
+				return c.SendString("foo")
+			})
+			app.Get("/fail", func(c fiber.Ctx) error {
+				return c.SendStatus(407)
+			})
 		})
 
 		return server
@@ -90,8 +88,7 @@ func Test_Response_Status_Code(t *testing.T) {
 		server := setupApp()
 		defer server.stop()
 
-		client := AcquireClient().SetDial(server.dial())
-		defer ReleaseClient(client)
+		client := NewClient().SetDial(server.dial())
 
 		resp, err := AcquireRequest().
 			SetClient(client).
@@ -108,8 +105,7 @@ func Test_Response_Status_Code(t *testing.T) {
 		server := setupApp()
 		defer server.stop()
 
-		client := AcquireClient().SetDial(server.dial())
-		defer ReleaseClient(client)
+		client := NewClient().SetDial(server.dial())
 
 		resp, err := AcquireRequest().
 			SetClient(client).
@@ -127,15 +123,14 @@ func Test_Response_Protocol(t *testing.T) {
 	t.Run("http", func(t *testing.T) {
 		t.Parallel()
 
-		server := startTestServer(t)
+		server := startTestServer(t, func(app *fiber.App) {
+			app.Get("/", func(c fiber.Ctx) error {
+				return c.SendString("foo")
+			})
+		})
 		defer server.stop()
 
-		server.app.Get("/", func(c fiber.Ctx) error {
-			return c.SendString("foo")
-		})
-
-		client := AcquireClient().SetDial(server.dial())
-		defer ReleaseClient(client)
+		client := NewClient().SetDial(server.dial())
 
 		resp, err := AcquireRequest().
 			SetClient(client).
@@ -168,7 +163,7 @@ func Test_Response_Protocol(t *testing.T) {
 			}))
 		}()
 
-		client := AcquireClient()
+		client := NewClient()
 		resp, err := client.SetTLSConfig(clientTLSConf).Get("https://" + ln.Addr().String())
 
 		require.NoError(t, err)
@@ -184,15 +179,15 @@ func Test_Response_Protocol(t *testing.T) {
 func Test_Response_Header(t *testing.T) {
 	t.Parallel()
 
-	server := startTestServer(t)
-	defer server.stop()
-	server.app.Get("/", func(c fiber.Ctx) error {
-		c.Response().Header.Add("foo", "bar")
-		return c.SendString("helo world")
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error {
+			c.Response().Header.Add("foo", "bar")
+			return c.SendString("helo world")
+		})
 	})
+	defer server.stop()
 
-	client := AcquireClient().SetDial(server.dial())
-	defer ReleaseClient(client)
+	client := NewClient().SetDial(server.dial())
 
 	resp, err := AcquireRequest().
 		SetClient(client).
@@ -206,18 +201,18 @@ func Test_Response_Header(t *testing.T) {
 func Test_Response_Cookie(t *testing.T) {
 	t.Parallel()
 
-	server := startTestServer(t)
-	defer server.stop()
-	server.app.Get("/", func(c fiber.Ctx) error {
-		c.Cookie(&fiber.Cookie{
-			Name:  "foo",
-			Value: "bar",
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error {
+			c.Cookie(&fiber.Cookie{
+				Name:  "foo",
+				Value: "bar",
+			})
+			return c.SendString("helo world")
 		})
-		return c.SendString("helo world")
 	})
+	defer server.stop()
 
-	client := AcquireClient().SetDial(server.dial())
-	defer ReleaseClient(client)
+	client := NewClient().SetDial(server.dial())
 
 	resp, err := AcquireRequest().
 		SetClient(client).
@@ -232,16 +227,18 @@ func Test_Response_Body(t *testing.T) {
 	t.Parallel()
 
 	setupApp := func() *testServer {
-		server := startTestServer(t)
+		server := startTestServer(t, func(app *fiber.App) {
+			app.Get("/", func(c fiber.Ctx) error {
+				return c.SendString("hello world")
+			})
 
-		server.app.Get("/", func(c fiber.Ctx) error {
-			return c.SendString("hello world")
-		})
-		server.app.Get("/json", func(c fiber.Ctx) error {
-			return c.SendString("{\"status\":\"success\"}")
-		})
-		server.app.Get("/xml", func(c fiber.Ctx) error {
-			return c.SendString("<status><name>success</name></status>")
+			app.Get("/json", func(c fiber.Ctx) error {
+				return c.SendString("{\"status\":\"success\"}")
+			})
+
+			app.Get("/xml", func(c fiber.Ctx) error {
+				return c.SendString("<status><name>success</name></status>")
+			})
 		})
 
 		return server
@@ -253,8 +250,7 @@ func Test_Response_Body(t *testing.T) {
 		server := setupApp()
 		defer server.stop()
 
-		client := AcquireClient().SetDial(server.dial())
-		defer ReleaseClient(client)
+		client := NewClient().SetDial(server.dial())
 
 		resp, err := AcquireRequest().
 			SetClient(client).
@@ -271,8 +267,7 @@ func Test_Response_Body(t *testing.T) {
 		server := setupApp()
 		defer server.stop()
 
-		client := AcquireClient().SetDial(server.dial())
-		defer ReleaseClient(client)
+		client := NewClient().SetDial(server.dial())
 
 		resp, err := AcquireRequest().
 			SetClient(client).
@@ -292,8 +287,7 @@ func Test_Response_Body(t *testing.T) {
 		server := setupApp()
 		defer server.stop()
 
-		client := AcquireClient().SetDial(server.dial())
-		defer ReleaseClient(client)
+		client := NewClient().SetDial(server.dial())
 
 		resp, err := AcquireRequest().
 			SetClient(client).
@@ -318,8 +312,7 @@ func Test_Response_Body(t *testing.T) {
 		server := setupApp()
 		defer server.stop()
 
-		client := AcquireClient().SetDial(server.dial())
-		defer ReleaseClient(client)
+		client := NewClient().SetDial(server.dial())
 
 		resp, err := AcquireRequest().
 			SetClient(client).
@@ -339,10 +332,10 @@ func Test_Response_Save(t *testing.T) {
 	t.Parallel()
 
 	setupApp := func() *testServer {
-		server := startTestServer(t)
-
-		server.app.Get("/json", func(c fiber.Ctx) error {
-			return c.SendString("{\"status\":\"success\"}")
+		server := startTestServer(t, func(app *fiber.App) {
+			app.Get("/json", func(c fiber.Ctx) error {
+				return c.SendString("{\"status\":\"success\"}")
+			})
 		})
 
 		return server
@@ -354,8 +347,7 @@ func Test_Response_Save(t *testing.T) {
 		server := setupApp()
 		defer server.stop()
 
-		client := AcquireClient().SetDial(server.dial())
-		defer ReleaseClient(client)
+		client := NewClient().SetDial(server.dial())
 
 		resp, err := AcquireRequest().
 			SetClient(client).
@@ -392,8 +384,7 @@ func Test_Response_Save(t *testing.T) {
 		server := setupApp()
 		defer server.stop()
 
-		client := AcquireClient().SetDial(server.dial())
-		defer ReleaseClient(client)
+		client := NewClient().SetDial(server.dial())
 
 		resp, err := AcquireRequest().
 			SetClient(client).
@@ -414,8 +405,7 @@ func Test_Response_Save(t *testing.T) {
 		server := setupApp()
 		defer server.stop()
 
-		client := AcquireClient().SetDial(server.dial())
-		defer ReleaseClient(client)
+		client := NewClient().SetDial(server.dial())
 
 		resp, err := AcquireRequest().
 			SetClient(client).

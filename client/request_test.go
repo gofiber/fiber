@@ -52,7 +52,7 @@ func Test_Request_URL(t *testing.T) {
 func Test_Request_Client(t *testing.T) {
 	t.Parallel()
 
-	client := AcquireClient()
+	client := NewClient()
 	req := AcquireRequest()
 
 	req.SetClient(client)
@@ -629,8 +629,7 @@ func Test_Request_Get(t *testing.T) {
 	go start()
 	time.Sleep(100 * time.Millisecond)
 
-	client := AcquireClient().SetDial(ln)
-	defer ReleaseClient(client)
+	client := NewClient().SetDial(ln)
 
 	for i := 0; i < 5; i++ {
 		req := AcquireRequest().SetClient(client)
@@ -655,8 +654,7 @@ func Test_Request_Post(t *testing.T) {
 	go start()
 	time.Sleep(100 * time.Millisecond)
 
-	client := AcquireClient().SetDial(ln)
-	defer ReleaseClient(client)
+	client := NewClient().SetDial(ln)
 
 	for i := 0; i < 5; i++ {
 		resp, err := AcquireRequest().
@@ -682,8 +680,7 @@ func Test_Request_Head(t *testing.T) {
 	go start()
 	time.Sleep(100 * time.Millisecond)
 
-	client := AcquireClient().SetDial(ln)
-	defer ReleaseClient(client)
+	client := NewClient().SetDial(ln)
 
 	for i := 0; i < 5; i++ {
 		resp, err := AcquireRequest().
@@ -708,8 +705,7 @@ func Test_Request_Put(t *testing.T) {
 	go start()
 	time.Sleep(100 * time.Millisecond)
 
-	client := AcquireClient().SetDial(ln)
-	defer ReleaseClient(client)
+	client := NewClient().SetDial(ln)
 
 	for i := 0; i < 5; i++ {
 		resp, err := AcquireRequest().
@@ -738,8 +734,7 @@ func Test_Request_Delete(t *testing.T) {
 	go start()
 	time.Sleep(100 * time.Millisecond)
 
-	client := AcquireClient().SetDial(ln)
-	defer ReleaseClient(client)
+	client := NewClient().SetDial(ln)
 
 	for i := 0; i < 5; i++ {
 		resp, err := AcquireRequest().
@@ -767,8 +762,7 @@ func Test_Request_Options(t *testing.T) {
 	go start()
 	time.Sleep(100 * time.Millisecond)
 
-	client := AcquireClient().SetDial(ln)
-	defer ReleaseClient(client)
+	client := NewClient().SetDial(ln)
 
 	for i := 0; i < 5; i++ {
 		resp, err := AcquireRequest().
@@ -796,8 +790,7 @@ func Test_Request_Send(t *testing.T) {
 	go start()
 	time.Sleep(100 * time.Millisecond)
 
-	client := AcquireClient().SetDial(ln)
-	defer ReleaseClient(client)
+	client := NewClient().SetDial(ln)
 
 	for i := 0; i < 5; i++ {
 		resp, err := AcquireRequest().
@@ -826,8 +819,7 @@ func Test_Request_Patch(t *testing.T) {
 	go start()
 	time.Sleep(100 * time.Millisecond)
 
-	client := AcquireClient().SetDial(ln)
-	defer ReleaseClient(client)
+	client := NewClient().SetDial(ln)
 
 	for i := 0; i < 5; i++ {
 		resp, err := AcquireRequest().
@@ -1027,8 +1019,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 
 		go start()
 
-		client := AcquireClient().SetDial(ln)
-		defer ReleaseClient(client)
+		client := NewClient().SetDial(ln)
 
 		req := AcquireRequest().
 			SetClient(client).
@@ -1083,8 +1074,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 
 		go start()
 
-		client := AcquireClient().SetDial(ln)
-		defer ReleaseClient(client)
+		client := NewClient().SetDial(ln)
 
 		for i := 0; i < 5; i++ {
 			req := AcquireRequest().
@@ -1121,8 +1111,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 
 		go start()
 
-		client := AcquireClient().SetDial(ln)
-		defer ReleaseClient(client)
+		client := NewClient().SetDial(ln)
 
 		req := AcquireRequest().
 			SetClient(client).
@@ -1210,8 +1199,7 @@ func Test_Request_Timeout_With_Server(t *testing.T) {
 	})
 	go start()
 
-	client := AcquireClient().SetDial(ln)
-	defer ReleaseClient(client)
+	client := NewClient().SetDial(ln)
 
 	_, err := AcquireRequest().
 		SetClient(client).
@@ -1243,8 +1231,7 @@ func Test_Request_MaxRedirects(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 
-		client := AcquireClient().SetDial(func(addr string) (net.Conn, error) { return ln.Dial() })
-		defer ReleaseClient(client)
+		client := NewClient().SetDial(func(addr string) (net.Conn, error) { return ln.Dial() })
 
 		resp, err := AcquireRequest().
 			SetClient(client).
@@ -1263,8 +1250,7 @@ func Test_Request_MaxRedirects(t *testing.T) {
 	t.Run("error", func(t *testing.T) {
 		t.Parallel()
 
-		client := AcquireClient().SetDial(func(addr string) (net.Conn, error) { return ln.Dial() })
-		defer ReleaseClient(client)
+		client := NewClient().SetDial(func(addr string) (net.Conn, error) { return ln.Dial() })
 
 		resp, err := AcquireRequest().
 			SetClient(client).
@@ -1278,8 +1264,7 @@ func Test_Request_MaxRedirects(t *testing.T) {
 	t.Run("MaxRedirects", func(t *testing.T) {
 		t.Parallel()
 
-		client := AcquireClient().SetDial(func(addr string) (net.Conn, error) { return ln.Dial() })
-		defer ReleaseClient(client)
+		client := NewClient().SetDial(func(addr string) (net.Conn, error) { return ln.Dial() })
 
 		req := AcquireRequest().
 			SetClient(client).

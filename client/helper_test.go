@@ -17,11 +17,15 @@ type testServer struct {
 	tb  testing.TB
 }
 
-func startTestServer(tb testing.TB) *testServer {
+func startTestServer(tb testing.TB, beforeStarting func(app *fiber.App)) *testServer {
 	tb.Helper()
 
 	ln := fasthttputil.NewInmemoryListener()
 	app := fiber.New()
+
+	if beforeStarting != nil {
+		beforeStarting(app)
+	}
 
 	ch := make(chan struct{})
 	go func() {
@@ -89,8 +93,7 @@ func testRequest(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Requ
 		c = count[0]
 	}
 
-	client := AcquireClient().SetDial(ln)
-	defer ReleaseClient(client)
+	client := NewClient().SetDial(ln)
 
 	for i := 0; i < c; i++ {
 		req := AcquireRequest().SetClient(client)
@@ -117,8 +120,7 @@ func testRequestFail(t *testing.T, handler fiber.Handler, wrapAgent func(agent *
 		c = count[0]
 	}
 
-	client := AcquireClient().SetDial(ln)
-	defer ReleaseClient(client)
+	client := NewClient().SetDial(ln)
 
 	for i := 0; i < c; i++ {
 		req := AcquireRequest().SetClient(client)
@@ -143,7 +145,7 @@ func testClient(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Clien
 	}
 
 	for i := 0; i < c; i++ {
-		client := AcquireClient().SetDial(ln)
+		client := NewClient().SetDial(ln)
 		wrapAgent(client)
 
 		resp, err := client.Get("http://example.com")

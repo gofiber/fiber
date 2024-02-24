@@ -25,7 +25,7 @@ func Test_Client_Add_Hook(t *testing.T) {
 
 	t.Run("add request hooks", func(t *testing.T) {
 		t.Parallel()
-		client := AcquireClient().AddRequestHook(func(c *Client, r *Request) error {
+		client := NewClient().AddRequestHook(func(c *Client, r *Request) error {
 			return nil
 		})
 
@@ -42,7 +42,7 @@ func Test_Client_Add_Hook(t *testing.T) {
 
 	t.Run("add response hooks", func(t *testing.T) {
 		t.Parallel()
-		client := AcquireClient().AddResponseHook(func(c *Client, resp *Response, r *Request) error {
+		client := NewClient().AddResponseHook(func(c *Client, resp *Response, r *Request) error {
 			return nil
 		})
 
@@ -63,7 +63,7 @@ func Test_Client_Marshal(t *testing.T) {
 
 	t.Run("set json marshal", func(t *testing.T) {
 		t.Parallel()
-		client := AcquireClient().
+		client := NewClient().
 			SetJSONMarshal(func(_ any) ([]byte, error) {
 				return []byte("hello"), nil
 			})
@@ -75,7 +75,7 @@ func Test_Client_Marshal(t *testing.T) {
 
 	t.Run("set json unmarshal", func(t *testing.T) {
 		t.Parallel()
-		client := AcquireClient().
+		client := NewClient().
 			SetJSONUnmarshal(func(data []byte, v any) error {
 				return fmt.Errorf("empty json")
 			})
@@ -86,7 +86,7 @@ func Test_Client_Marshal(t *testing.T) {
 
 	t.Run("set xml marshal", func(t *testing.T) {
 		t.Parallel()
-		client := AcquireClient().
+		client := NewClient().
 			SetXMLMarshal(func(_ any) ([]byte, error) {
 				return []byte("hello"), nil
 			})
@@ -98,7 +98,7 @@ func Test_Client_Marshal(t *testing.T) {
 
 	t.Run("set xml unmarshal", func(t *testing.T) {
 		t.Parallel()
-		client := AcquireClient().
+		client := NewClient().
 			SetXMLUnmarshal(func(_ []byte, _ any) error {
 				return fmt.Errorf("empty xml")
 			})
@@ -111,7 +111,7 @@ func Test_Client_Marshal(t *testing.T) {
 func Test_Client_SetBaseURL(t *testing.T) {
 	t.Parallel()
 
-	client := AcquireClient().SetBaseURL("http://example.com")
+	client := NewClient().SetBaseURL("http://example.com")
 
 	require.Equal(t, "http://example.com", client.BaseURL())
 }
@@ -127,7 +127,7 @@ func Test_Client_Invalid_URL(t *testing.T) {
 
 	go start()
 
-	_, err := AcquireClient().SetDial(dial).
+	_, err := NewClient().SetDial(dial).
 		R().
 		Get("http://example.com\r\n\r\nGET /\r\n\r\n")
 
@@ -137,7 +137,7 @@ func Test_Client_Invalid_URL(t *testing.T) {
 func Test_Client_Unsupported_Protocol(t *testing.T) {
 	t.Parallel()
 
-	_, err := AcquireClient().
+	_, err := NewClient().
 		R().
 		Get("ftp://example.com")
 
@@ -191,7 +191,7 @@ func Test_Get(t *testing.T) {
 
 	t.Run("client get", func(t *testing.T) {
 		t.Parallel()
-		resp, err := AcquireClient().SetDial(dial).Get("http://example.com")
+		resp, err := NewClient().SetDial(dial).Get("http://example.com")
 		require.NoError(t, err)
 		require.Equal(t, "example.com", utils.UnsafeString(resp.RawResponse.Body()))
 	})
@@ -218,7 +218,7 @@ func Test_Head(t *testing.T) {
 
 	t.Run("client head", func(t *testing.T) {
 		t.Parallel()
-		resp, err := AcquireClient().SetDial(dial).Head("http://example.com")
+		resp, err := NewClient().SetDial(dial).Head("http://example.com")
 		require.NoError(t, err)
 		require.Equal(t, "", utils.UnsafeString(resp.RawResponse.Body()))
 	})
@@ -254,7 +254,7 @@ func Test_Post(t *testing.T) {
 	t.Run("client post", func(t *testing.T) {
 		t.Parallel()
 		for i := 0; i < 5; i++ {
-			resp, err := AcquireClient().SetDial(dial).Post("http://example.com", Config{
+			resp, err := NewClient().SetDial(dial).Post("http://example.com", Config{
 				FormData: map[string]string{
 					"foo": "bar",
 				},
@@ -295,7 +295,7 @@ func Test_Put(t *testing.T) {
 	t.Run("client put", func(t *testing.T) {
 		t.Parallel()
 		for i := 0; i < 5; i++ {
-			resp, err := AcquireClient().SetDial(dial).Put("http://example.com", Config{
+			resp, err := NewClient().SetDial(dial).Put("http://example.com", Config{
 				FormData: map[string]string{
 					"foo": "bar",
 				},
@@ -337,7 +337,7 @@ func Test_Delete(t *testing.T) {
 	t.Run("client delete", func(t *testing.T) {
 		t.Parallel()
 		for i := 0; i < 5; i++ {
-			resp, err := AcquireClient().SetDial(dial).Delete("http://example.com", Config{
+			resp, err := NewClient().SetDial(dial).Delete("http://example.com", Config{
 				FormData: map[string]string{
 					"foo": "bar",
 				},
@@ -375,7 +375,7 @@ func Test_Options(t *testing.T) {
 	t.Run("client options", func(t *testing.T) {
 		t.Parallel()
 		for i := 0; i < 5; i++ {
-			resp, err := AcquireClient().SetDial(dial).Options("http://example.com")
+			resp, err := NewClient().SetDial(dial).Options("http://example.com")
 
 			require.NoError(t, err)
 			require.Equal(t, fiber.StatusNoContent, resp.StatusCode())
@@ -414,7 +414,7 @@ func Test_Patch(t *testing.T) {
 	t.Run("client patch", func(t *testing.T) {
 		t.Parallel()
 		for i := 0; i < 5; i++ {
-			resp, err := AcquireClient().SetDial(dial).Patch("http://example.com", Config{
+			resp, err := NewClient().SetDial(dial).Patch("http://example.com", Config{
 				FormData: map[string]string{
 					"foo": "bar",
 				},
@@ -453,7 +453,7 @@ func Test_Client_UserAgent(t *testing.T) {
 	t.Run("custom", func(t *testing.T) {
 		t.Parallel()
 		for i := 0; i < 5; i++ {
-			c := AcquireClient().SetDial(dial).
+			c := NewClient().SetDial(dial).
 				SetUserAgent("ua")
 
 			resp, err := c.Get("http://example.com")
@@ -461,7 +461,6 @@ func Test_Client_UserAgent(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, fiber.StatusOK, resp.StatusCode())
 			require.Equal(t, "ua", resp.String())
-			ReleaseClient(c)
 		}
 	})
 }
@@ -471,7 +470,7 @@ func Test_Client_Header(t *testing.T) {
 
 	t.Run("add header", func(t *testing.T) {
 		t.Parallel()
-		req := AcquireClient()
+		req := NewClient()
 		req.AddHeader("foo", "bar").AddHeader("foo", "fiber")
 
 		res := req.Header("foo")
@@ -482,7 +481,7 @@ func Test_Client_Header(t *testing.T) {
 
 	t.Run("set header", func(t *testing.T) {
 		t.Parallel()
-		req := AcquireClient()
+		req := NewClient()
 		req.AddHeader("foo", "bar").SetHeader("foo", "fiber")
 
 		res := req.Header("foo")
@@ -492,7 +491,7 @@ func Test_Client_Header(t *testing.T) {
 
 	t.Run("add headers", func(t *testing.T) {
 		t.Parallel()
-		req := AcquireClient()
+		req := NewClient()
 		req.SetHeader("foo", "bar").
 			AddHeaders(map[string][]string{
 				"foo": {"fiber", "buaa"},
@@ -512,7 +511,7 @@ func Test_Client_Header(t *testing.T) {
 
 	t.Run("set headers", func(t *testing.T) {
 		t.Parallel()
-		req := AcquireClient()
+		req := NewClient()
 		req.SetHeader("foo", "bar").
 			SetHeaders(map[string]string{
 				"foo": "fiber",
@@ -560,7 +559,7 @@ func Test_Client_Cookie(t *testing.T) {
 
 	t.Run("set cookie", func(t *testing.T) {
 		t.Parallel()
-		req := AcquireClient().
+		req := NewClient().
 			SetCookie("foo", "bar")
 		require.Equal(t, "bar", req.Cookie("foo"))
 
@@ -570,7 +569,7 @@ func Test_Client_Cookie(t *testing.T) {
 
 	t.Run("set cookies", func(t *testing.T) {
 		t.Parallel()
-		req := AcquireClient().
+		req := NewClient().
 			SetCookies(map[string]string{
 				"foo": "bar",
 				"bar": "foo",
@@ -592,7 +591,7 @@ func Test_Client_Cookie(t *testing.T) {
 			CookieString string `cookie:"string"`
 		}
 
-		req := AcquireClient().SetCookiesWithStruct(&args{
+		req := NewClient().SetCookiesWithStruct(&args{
 			CookieInt:    5,
 			CookieString: "foo",
 		})
@@ -603,7 +602,7 @@ func Test_Client_Cookie(t *testing.T) {
 
 	t.Run("del cookies", func(t *testing.T) {
 		t.Parallel()
-		req := AcquireClient().
+		req := NewClient().
 			SetCookies(map[string]string{
 				"foo": "bar",
 				"bar": "foo",
@@ -759,7 +758,7 @@ func Test_Client_QueryParam(t *testing.T) {
 
 	t.Run("add param", func(t *testing.T) {
 		t.Parallel()
-		req := AcquireClient()
+		req := NewClient()
 		req.AddParam("foo", "bar").AddParam("foo", "fiber")
 
 		res := req.Param("foo")
@@ -770,7 +769,7 @@ func Test_Client_QueryParam(t *testing.T) {
 
 	t.Run("set param", func(t *testing.T) {
 		t.Parallel()
-		req := AcquireClient()
+		req := NewClient()
 		req.AddParam("foo", "bar").SetParam("foo", "fiber")
 
 		res := req.Param("foo")
@@ -780,7 +779,7 @@ func Test_Client_QueryParam(t *testing.T) {
 
 	t.Run("add params", func(t *testing.T) {
 		t.Parallel()
-		req := AcquireClient()
+		req := NewClient()
 		req.SetParam("foo", "bar").
 			AddParams(map[string][]string{
 				"foo": {"fiber", "buaa"},
@@ -800,7 +799,7 @@ func Test_Client_QueryParam(t *testing.T) {
 
 	t.Run("set headers", func(t *testing.T) {
 		t.Parallel()
-		req := AcquireClient()
+		req := NewClient()
 		req.SetParam("foo", "bar").
 			SetParams(map[string]string{
 				"foo": "fiber",
@@ -828,7 +827,7 @@ func Test_Client_QueryParam(t *testing.T) {
 			TIntSlice []int `param:"int_slice"`
 		}
 
-		p := AcquireClient()
+		p := NewClient()
 		p.SetParamsWithStruct(&args{
 			TInt:      5,
 			TString:   "string",
@@ -864,7 +863,7 @@ func Test_Client_QueryParam(t *testing.T) {
 
 	t.Run("del params", func(t *testing.T) {
 		t.Parallel()
-		req := AcquireClient()
+		req := NewClient()
 		req.SetParam("foo", "bar").
 			SetParams(map[string]string{
 				"foo": "fiber",
@@ -900,7 +899,7 @@ func Test_Client_PathParam(t *testing.T) {
 
 	t.Run("set path param", func(t *testing.T) {
 		t.Parallel()
-		req := AcquireClient().
+		req := NewClient().
 			SetPathParam("foo", "bar")
 		require.Equal(t, "bar", req.PathParam("foo"))
 
@@ -910,7 +909,7 @@ func Test_Client_PathParam(t *testing.T) {
 
 	t.Run("set path params", func(t *testing.T) {
 		t.Parallel()
-		req := AcquireClient().
+		req := NewClient().
 			SetPathParams(map[string]string{
 				"foo": "bar",
 				"bar": "foo",
@@ -932,7 +931,7 @@ func Test_Client_PathParam(t *testing.T) {
 			CookieString string `path:"string"`
 		}
 
-		req := AcquireClient().SetPathParamsWithStruct(&args{
+		req := NewClient().SetPathParamsWithStruct(&args{
 			CookieInt:    5,
 			CookieString: "foo",
 		})
@@ -943,7 +942,7 @@ func Test_Client_PathParam(t *testing.T) {
 
 	t.Run("del path params", func(t *testing.T) {
 		t.Parallel()
-		req := AcquireClient().
+		req := NewClient().
 			SetPathParams(map[string]string{
 				"foo": "bar",
 				"bar": "foo",
@@ -966,7 +965,7 @@ func Test_Client_PathParam_With_Server(t *testing.T) {
 
 	go start()
 
-	resp, err := AcquireClient().SetDial(dial).
+	resp, err := NewClient().SetDial(dial).
 		SetPathParam("path", "test").
 		Get("http://example.com/:path")
 
@@ -997,7 +996,7 @@ func Test_Client_TLS(t *testing.T) {
 		}))
 	}()
 
-	client := AcquireClient()
+	client := NewClient()
 	resp, err := client.SetTLSConfig(clientTLSConf).Get("https://" + ln.Addr().String())
 
 	require.NoError(t, err)
@@ -1028,7 +1027,7 @@ func Test_Client_TLS_Empty_TLSConfig(t *testing.T) {
 		}))
 	}()
 
-	client := AcquireClient()
+	client := NewClient()
 	resp, err := client.Get("https://" + ln.Addr().String())
 
 	require.Error(t, err)
@@ -1042,14 +1041,14 @@ func Test_Client_SetCertificates(t *testing.T) {
 	serverTLSConf, _, err := tlstest.GetTLSConfigs()
 	require.NoError(t, err)
 
-	client := AcquireClient().SetCertificates(serverTLSConf.Certificates...)
+	client := NewClient().SetCertificates(serverTLSConf.Certificates...)
 	require.Len(t, client.TLSConfig().Certificates, 1)
 }
 
 func Test_Client_SetRootCertificate(t *testing.T) {
 	t.Parallel()
 
-	client := AcquireClient().SetRootCertificate("../.github/testdata/ssl.pem")
+	client := NewClient().SetRootCertificate("../.github/testdata/ssl.pem")
 	require.NotNil(t, client.TLSConfig().RootCAs)
 }
 
@@ -1063,14 +1062,14 @@ func Test_Client_SetRootCertificateFromString(t *testing.T) {
 	pem, err := io.ReadAll(file)
 	require.NoError(t, err)
 
-	client := AcquireClient().SetRootCertificateFromString(string(pem))
+	client := NewClient().SetRootCertificateFromString(string(pem))
 	require.NotNil(t, client.TLSConfig().RootCAs)
 }
 
 func Test_Client_R(t *testing.T) {
 	t.Parallel()
 
-	client := AcquireClient()
+	client := NewClient()
 	req := client.R()
 
 	require.Equal(t, "Request", reflect.TypeOf(req).Elem().Name())
@@ -1093,7 +1092,7 @@ func Test_Replace(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode())
 	require.Equal(t, "", resp.String())
 
-	r := AcquireClient().SetDial(dial).SetHeader("k1", "v1")
+	r := NewClient().SetDial(dial).SetHeader("k1", "v1")
 	clean := Replace(r)
 	resp, err = Get("http://example.com")
 	require.NoError(t, err)
@@ -1101,7 +1100,6 @@ func Test_Replace(t *testing.T) {
 	require.Equal(t, "v1", resp.String())
 
 	clean()
-	ReleaseClient(r)
 
 	C().SetDial(dial)
 	resp, err = Get("http://example.com")
@@ -1249,7 +1247,7 @@ func Test_Client_SetProxyURL(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
-		client := AcquireClient().SetDial(dial)
+		client := NewClient().SetDial(dial)
 		client.SetProxyURL("http://test.com")
 		_, err := client.Get("http://localhost:3000")
 
@@ -1258,8 +1256,7 @@ func Test_Client_SetProxyURL(t *testing.T) {
 
 	t.Run("wrong url", func(t *testing.T) {
 		t.Parallel()
-		client := AcquireClient()
-		defer ReleaseClient(client)
+		client := NewClient()
 
 		require.Panics(t, func() {
 			client.SetProxyURL(":this is not a url")
@@ -1268,8 +1265,7 @@ func Test_Client_SetProxyURL(t *testing.T) {
 
 	t.Run("error", func(t *testing.T) {
 		t.Parallel()
-		client := AcquireClient()
-		defer ReleaseClient(client)
+		client := NewClient()
 
 		require.Panics(t, func() {
 			client.SetProxyURL("htgdftp://test.com")
@@ -1285,7 +1281,7 @@ func Test_Client_SetRetryConfig(t *testing.T) {
 		MaxRetryCount:   3,
 	}
 
-	core, client, req := newCore(), AcquireClient(), AcquireRequest()
+	core, client, req := newCore(), NewClient(), AcquireRequest()
 	req.SetURL("http://example.com")
 	client.SetRetryConfig(retryConfig)
 	_, err := core.execute(context.Background(), client, req)
@@ -1303,8 +1299,7 @@ func Benchmark_Client_Request(b *testing.B) {
 
 	go start()
 
-	client := AcquireClient().SetDial(dial)
-	defer ReleaseClient(client)
+	client := NewClient().SetDial(dial)
 
 	b.ResetTimer()
 	b.ReportAllocs()
