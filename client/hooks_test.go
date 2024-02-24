@@ -3,14 +3,12 @@ package client
 import (
 	"bytes"
 	"encoding/xml"
+	"fmt"
 	"io"
 	"net"
 	"net/url"
 	"strings"
 	"testing"
-	"time"
-
-	"github.com/gofiber/fiber/v3/log"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
@@ -522,6 +520,54 @@ func Test_Parser_Request_Body(t *testing.T) {
 	})
 }
 
+type dummyLogger struct {
+	buf *bytes.Buffer
+}
+
+func (l *dummyLogger) Trace(v ...any) {}
+
+func (l *dummyLogger) Debug(v ...any) {}
+
+func (l *dummyLogger) Info(v ...any) {}
+
+func (l *dummyLogger) Warn(v ...any) {}
+
+func (l *dummyLogger) Error(v ...any) {}
+
+func (l *dummyLogger) Fatal(v ...any) {}
+
+func (l *dummyLogger) Panic(v ...any) {}
+
+func (l *dummyLogger) Tracef(format string, v ...any) {}
+
+func (l *dummyLogger) Debugf(format string, v ...any) {
+	l.buf.WriteString(fmt.Sprintf(format, v...))
+}
+
+func (l *dummyLogger) Infof(format string, v ...any) {}
+
+func (l *dummyLogger) Warnf(format string, v ...any) {}
+
+func (l *dummyLogger) Errorf(format string, v ...any) {}
+
+func (l *dummyLogger) Fatalf(format string, v ...any) {}
+
+func (l *dummyLogger) Panicf(format string, v ...any) {}
+
+func (l *dummyLogger) Tracew(msg string, keysAndValues ...any) {}
+
+func (l *dummyLogger) Debugw(msg string, keysAndValues ...any) {}
+
+func (l *dummyLogger) Infow(msg string, keysAndValues ...any) {}
+
+func (l *dummyLogger) Warnw(msg string, keysAndValues ...any) {}
+
+func (l *dummyLogger) Errorw(msg string, keysAndValues ...any) {}
+
+func (l *dummyLogger) Fatalw(msg string, keysAndValues ...any) {}
+
+func (l *dummyLogger) Panicw(msg string, keysAndValues ...any) {}
+
 func Test_Client_Logger_Debug(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -529,13 +575,12 @@ func Test_Client_Logger_Debug(t *testing.T) {
 		return c.SendString("response")
 	})
 
-	var url string
-
+	addrChan := make(chan string)
 	go func() {
 		require.NoError(t, app.Listen(":0", fiber.ListenConfig{
 			DisableStartupMessage: true,
 			ListenerAddrFunc: func(addr net.Addr) {
-				url = addr.String()
+				addrChan <- addr.String()
 			},
 		}))
 	}()
@@ -544,14 +589,13 @@ func Test_Client_Logger_Debug(t *testing.T) {
 		_ = app.Shutdown()
 	}(app)
 
-	time.Sleep(1 * time.Second)
-
 	var buf bytes.Buffer
-	log.SetOutput(&buf)
+	logger := &dummyLogger{buf: &buf}
 
 	client := NewClient()
-	client.Debug()
+	client.Debug().SetLogger(logger)
 
+	url := <-addrChan
 	resp, err := client.Get("http://" + url)
 	defer resp.Close()
 
@@ -567,13 +611,12 @@ func Test_Client_Logger_DisableDebug(t *testing.T) {
 		return c.SendString("response")
 	})
 
-	var url string
-
+	addrChan := make(chan string)
 	go func() {
 		require.NoError(t, app.Listen(":0", fiber.ListenConfig{
 			DisableStartupMessage: true,
 			ListenerAddrFunc: func(addr net.Addr) {
-				url = addr.String()
+				addrChan <- addr.String()
 			},
 		}))
 	}()
@@ -582,14 +625,13 @@ func Test_Client_Logger_DisableDebug(t *testing.T) {
 		_ = app.Shutdown()
 	}(app)
 
-	time.Sleep(1 * time.Second)
-
 	var buf bytes.Buffer
-	log.SetOutput(&buf)
+	logger := &dummyLogger{buf: &buf}
 
 	client := NewClient()
-	client.DisableDebug()
+	client.DisableDebug().SetLogger(logger)
 
+	url := <-addrChan
 	resp, err := client.Get("http://" + url)
 	defer resp.Close()
 

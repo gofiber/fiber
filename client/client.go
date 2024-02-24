@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3/log"
+
 	"github.com/gofiber/utils/v2"
 
 	"github.com/valyala/fasthttp"
@@ -72,6 +73,9 @@ type Client struct {
 
 	// retry
 	retryConfig *RetryConfig
+
+	// logger
+	logger log.CommonLogger
 }
 
 // R raise a request from the client.
@@ -181,7 +185,7 @@ func (c *Client) SetRootCertificate(path string) *Client {
 	cleanPath := filepath.Clean(path)
 	file, err := os.Open(cleanPath)
 	if err != nil {
-		log.Panicf("client: %v", err)
+		c.logger.Panicf("client: %v", err)
 	}
 	defer func() {
 		_ = file.Close() //nolint:errcheck // It is fine to ignore the error here
@@ -189,7 +193,7 @@ func (c *Client) SetRootCertificate(path string) *Client {
 
 	pem, err := io.ReadAll(file)
 	if err != nil {
-		log.Panicf("client: %v", err)
+		c.logger.Panicf("client: %v", err)
 	}
 
 	config := c.TLSConfig()
@@ -198,7 +202,7 @@ func (c *Client) SetRootCertificate(path string) *Client {
 	}
 
 	if !config.RootCAs.AppendCertsFromPEM(pem) {
-		log.Panicf("client: %v", ErrFailedToAppendCert)
+		c.logger.Panicf("client: %v", ErrFailedToAppendCert)
 	}
 
 	return c
@@ -213,7 +217,7 @@ func (c *Client) SetRootCertificateFromString(pem string) *Client {
 	}
 
 	if !config.RootCAs.AppendCertsFromPEM([]byte(pem)) {
-		log.Panicf("client: %v", ErrFailedToAppendCert)
+		c.logger.Panicf("client: %v", ErrFailedToAppendCert)
 	}
 
 	return c
@@ -223,12 +227,12 @@ func (c *Client) SetRootCertificateFromString(pem string) *Client {
 func (c *Client) SetProxyURL(proxyURL string) *Client {
 	pURL, err := urlpkg.Parse(proxyURL)
 	if err != nil {
-		log.Panicf("client: %v", err)
+		c.logger.Panicf("client: %v", err)
 		return c
 	}
 
 	if pURL.Scheme != "http" && pURL.Scheme != "https" {
-		log.Panicf("client: %v", ErrInvalidProxyURL)
+		c.logger.Panicf("client: %v", ErrInvalidProxyURL)
 		return c
 	}
 
@@ -546,12 +550,27 @@ func (c *Client) Custom(url string, method string, cfg ...Config) (*Response, er
 	return req.Custom(url, method)
 }
 
+// SetDial sets dial function in client.
 func (c *Client) SetDial(dial fasthttp.DialFunc) *Client {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	c.client.Dial = dial
 	return c
+}
+
+// SetLogger sets logger instance in client.
+func (c *Client) SetLogger(logger log.CommonLogger) *Client {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.logger = logger
+	return c
+}
+
+// Logger returns logger instance of client.
+func (c *Client) Logger() log.CommonLogger {
+	return c.logger
 }
 
 // Reset clear Client object
@@ -682,6 +701,7 @@ func NewClient() *Client {
 		jsonUnmarshal:        json.Unmarshal,
 		xmlMarshal:           xml.Marshal,
 		xmlUnmarshal:         xml.Unmarshal,
+		logger:               log.DefaultLogger(),
 	}
 }
 
