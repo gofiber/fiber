@@ -137,8 +137,8 @@ func (c *core) execFunc() (*Response, error) {
 
 // preHooks Exec request hook
 func (c *core) preHooks() error {
-	c.client.mu.RLock()
-	defer c.client.mu.RUnlock()
+	c.client.mu.Lock()
+	defer c.client.mu.Unlock()
 
 	for _, f := range c.client.userRequestHooks {
 		err := f(c.client, c.req)
