@@ -2,7 +2,7 @@ package client
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"net"
 	"testing"
 	"time"
@@ -66,7 +66,7 @@ func Test_Exec_Func(t *testing.T) {
 	})
 
 	app.Get("/return-error", func(_ fiber.Ctx) error {
-		return fmt.Errorf("the request is error")
+		return errors.New("the request is error")
 	})
 
 	app.Get("/hang-up", func(c fiber.Ctx) error {
@@ -87,11 +87,10 @@ func Test_Exec_Func(t *testing.T) {
 		core.client = client
 		core.req = req
 
-		client.SetDial(func(_ string) (net.Conn, error) { return ln.Dial() })
+		client.SetDial(func(_ string) (net.Conn, error) { return ln.Dial() }) //nolint:wrapcheck // not needed
 		req.RawRequest.SetRequestURI("http://example.com/normal")
 
 		resp, err := core.execFunc()
-		fmt.Print(string(resp.Body()))
 		require.NoError(t, err)
 		require.Equal(t, 200, resp.RawResponse.StatusCode())
 		require.Equal(t, "example.com", string(resp.RawResponse.Body()))
@@ -104,7 +103,7 @@ func Test_Exec_Func(t *testing.T) {
 		core.client = client
 		core.req = req
 
-		client.SetDial(func(_ string) (net.Conn, error) { return ln.Dial() })
+		client.SetDial(func(_ string) (net.Conn, error) { return ln.Dial() }) //nolint:wrapcheck // not needed
 		req.RawRequest.SetRequestURI("http://example.com/return-error")
 
 		resp, err := core.execFunc()
@@ -124,7 +123,7 @@ func Test_Exec_Func(t *testing.T) {
 		core.client = client
 		core.req = req
 
-		client.SetDial(func(_ string) (net.Conn, error) { return ln.Dial() })
+		client.SetDial(func(_ string) (net.Conn, error) { return ln.Dial() }) //nolint:wrapcheck // not needed
 		req.RawRequest.SetRequestURI("http://example.com/hang-up")
 
 		_, err := core.execFunc()
@@ -143,8 +142,8 @@ func Test_Execute(t *testing.T) {
 		return c.SendString(c.Hostname())
 	})
 
-	app.Get("/return-error", func(c fiber.Ctx) error {
-		return fmt.Errorf("the request is error")
+	app.Get("/return-error", func(_ fiber.Ctx) error {
+		return errors.New("the request is error")
 	})
 
 	app.Get("/hang-up", func(c fiber.Ctx) error {
@@ -163,8 +162,8 @@ func Test_Execute(t *testing.T) {
 			require.Equal(t, "http://example.com", req.URL())
 			return nil
 		})
-		client.SetDial(func(addr string) (net.Conn, error) {
-			return ln.Dial()
+		client.SetDial(func(_ string) (net.Conn, error) {
+			return ln.Dial() //nolint:wrapcheck // not needed
 		})
 		req.SetURL("http://example.com")
 
@@ -176,12 +175,12 @@ func Test_Execute(t *testing.T) {
 	t.Run("add user response hooks", func(t *testing.T) {
 		t.Parallel()
 		core, client, req := newCore(), NewClient(), AcquireRequest()
-		client.AddResponseHook(func(c *Client, resp *Response, req *Request) error {
+		client.AddResponseHook(func(_ *Client, _ *Response, req *Request) error {
 			require.Equal(t, "http://example.com", req.URL())
 			return nil
 		})
-		client.SetDial(func(addr string) (net.Conn, error) {
-			return ln.Dial()
+		client.SetDial(func(_ string) (net.Conn, error) {
+			return ln.Dial() //nolint:wrapcheck // not needed
 		})
 		req.SetURL("http://example.com")
 
@@ -194,8 +193,8 @@ func Test_Execute(t *testing.T) {
 		t.Parallel()
 		core, client, req := newCore(), NewClient(), AcquireRequest()
 
-		client.SetDial(func(addr string) (net.Conn, error) {
-			return ln.Dial()
+		client.SetDial(func(_ string) (net.Conn, error) {
+			return ln.Dial() //nolint:wrapcheck // not needed
 		})
 		req.SetURL("http://example.com/hang-up")
 
@@ -208,8 +207,8 @@ func Test_Execute(t *testing.T) {
 		t.Parallel()
 		core, client, req := newCore(), NewClient(), AcquireRequest()
 		client.SetTimeout(500 * time.Millisecond)
-		client.SetDial(func(addr string) (net.Conn, error) {
-			return ln.Dial()
+		client.SetDial(func(_ string) (net.Conn, error) {
+			return ln.Dial() //nolint:wrapcheck // not needed
 		})
 		req.SetURL("http://example.com/hang-up")
 
@@ -221,8 +220,8 @@ func Test_Execute(t *testing.T) {
 		t.Parallel()
 		core, client, req := newCore(), NewClient(), AcquireRequest()
 
-		client.SetDial(func(addr string) (net.Conn, error) {
-			return ln.Dial()
+		client.SetDial(func(_ string) (net.Conn, error) {
+			return ln.Dial() //nolint:wrapcheck // not needed
 		})
 		req.SetURL("http://example.com/hang-up").
 			SetTimeout(300 * time.Millisecond)
@@ -236,8 +235,8 @@ func Test_Execute(t *testing.T) {
 		core, client, req := newCore(), NewClient(), AcquireRequest()
 		client.SetTimeout(30 * time.Millisecond)
 
-		client.SetDial(func(addr string) (net.Conn, error) {
-			return ln.Dial()
+		client.SetDial(func(_ string) (net.Conn, error) {
+			return ln.Dial() //nolint:wrapcheck // not needed
 		})
 		req.SetURL("http://example.com/hang-up").
 			SetTimeout(3000 * time.Millisecond)

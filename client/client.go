@@ -543,7 +543,7 @@ func (c *Client) Patch(url string, cfg ...Config) (*Response, error) {
 }
 
 // Custom provide an API like axios which send custom request.
-func (c *Client) Custom(url string, method string, cfg ...Config) (*Response, error) {
+func (c *Client) Custom(url, method string, cfg ...Config) (*Response, error) {
 	req := AcquireRequest().SetClient(c)
 	setConfigToRequest(req, cfg...)
 
@@ -593,7 +593,7 @@ func (c *Client) Reset() {
 // Body is higher than FormData, and the priority of FormData
 // is higher than File.
 type Config struct {
-	Ctx context.Context
+	Ctx context.Context //nolint:containedctx // It's needed to be stored in the config.
 
 	UserAgent string
 	Referer   string

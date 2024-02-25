@@ -168,7 +168,8 @@ func Test_Parser_Request_URL(t *testing.T) {
 		err := parserRequestURL(client, req)
 		require.NoError(t, err)
 
-		values, _ := url.ParseQuery(string(req.RawRequest.URI().QueryString()))
+		values, err := url.ParseQuery(string(req.RawRequest.URI().QueryString()))
+		require.NoError(t, err)
 
 		flag1, flag2, flag3 := false, false, false
 		for _, v := range values["bar"] {
@@ -524,49 +525,49 @@ type dummyLogger struct {
 	buf *bytes.Buffer
 }
 
-func (l *dummyLogger) Trace(v ...any) {}
+func (*dummyLogger) Trace(_ ...any) {}
 
-func (l *dummyLogger) Debug(v ...any) {}
+func (*dummyLogger) Debug(_ ...any) {}
 
-func (l *dummyLogger) Info(v ...any) {}
+func (*dummyLogger) Info(_ ...any) {}
 
-func (l *dummyLogger) Warn(v ...any) {}
+func (*dummyLogger) Warn(_ ...any) {}
 
-func (l *dummyLogger) Error(v ...any) {}
+func (*dummyLogger) Error(_ ...any) {}
 
-func (l *dummyLogger) Fatal(v ...any) {}
+func (*dummyLogger) Fatal(_ ...any) {}
 
-func (l *dummyLogger) Panic(v ...any) {}
+func (*dummyLogger) Panic(_ ...any) {}
 
-func (l *dummyLogger) Tracef(format string, v ...any) {}
+func (*dummyLogger) Tracef(_ string, _ ...any) {}
 
 func (l *dummyLogger) Debugf(format string, v ...any) {
-	l.buf.WriteString(fmt.Sprintf(format, v...))
+	_, _ = l.buf.WriteString(fmt.Sprintf(format, v...)) //nolint:errcheck // not needed
 }
 
-func (l *dummyLogger) Infof(format string, v ...any) {}
+func (*dummyLogger) Infof(_ string, _ ...any) {}
 
-func (l *dummyLogger) Warnf(format string, v ...any) {}
+func (*dummyLogger) Warnf(_ string, _ ...any) {}
 
-func (l *dummyLogger) Errorf(format string, v ...any) {}
+func (*dummyLogger) Errorf(_ string, _ ...any) {}
 
-func (l *dummyLogger) Fatalf(format string, v ...any) {}
+func (*dummyLogger) Fatalf(_ string, _ ...any) {}
 
-func (l *dummyLogger) Panicf(format string, v ...any) {}
+func (*dummyLogger) Panicf(_ string, _ ...any) {}
 
-func (l *dummyLogger) Tracew(msg string, keysAndValues ...any) {}
+func (*dummyLogger) Tracew(_ string, _ ...any) {}
 
-func (l *dummyLogger) Debugw(msg string, keysAndValues ...any) {}
+func (*dummyLogger) Debugw(_ string, _ ...any) {}
 
-func (l *dummyLogger) Infow(msg string, keysAndValues ...any) {}
+func (*dummyLogger) Infow(_ string, _ ...any) {}
 
-func (l *dummyLogger) Warnw(msg string, keysAndValues ...any) {}
+func (*dummyLogger) Warnw(_ string, _ ...any) {}
 
-func (l *dummyLogger) Errorw(msg string, keysAndValues ...any) {}
+func (*dummyLogger) Errorw(_ string, _ ...any) {}
 
-func (l *dummyLogger) Fatalw(msg string, keysAndValues ...any) {}
+func (*dummyLogger) Fatalw(_ string, _ ...any) {}
 
-func (l *dummyLogger) Panicw(msg string, keysAndValues ...any) {}
+func (*dummyLogger) Panicw(_ string, _ ...any) {}
 
 func Test_Client_Logger_Debug(t *testing.T) {
 	t.Parallel()
@@ -586,7 +587,7 @@ func Test_Client_Logger_Debug(t *testing.T) {
 	}()
 
 	defer func(app *fiber.App) {
-		_ = app.Shutdown()
+		require.NoError(t, app.Shutdown())
 	}(app)
 
 	var buf bytes.Buffer
@@ -595,12 +596,13 @@ func Test_Client_Logger_Debug(t *testing.T) {
 	client := NewClient()
 	client.Debug().SetLogger(logger)
 
-	url := <-addrChan
-	resp, err := client.Get("http://" + url)
+	addr := <-addrChan
+	resp, err := client.Get("http://" + addr)
+	require.NoError(t, err)
 	defer resp.Close()
 
 	require.NoError(t, err)
-	require.Contains(t, buf.String(), "Host: "+url)
+	require.Contains(t, buf.String(), "Host: "+addr)
 	require.Contains(t, buf.String(), "Content-Length: 8")
 }
 
@@ -622,7 +624,7 @@ func Test_Client_Logger_DisableDebug(t *testing.T) {
 	}()
 
 	defer func(app *fiber.App) {
-		_ = app.Shutdown()
+		require.NoError(t, app.Shutdown())
 	}(app)
 
 	var buf bytes.Buffer
@@ -631,8 +633,9 @@ func Test_Client_Logger_DisableDebug(t *testing.T) {
 	client := NewClient()
 	client.DisableDebug().SetLogger(logger)
 
-	url := <-addrChan
-	resp, err := client.Get("http://" + url)
+	addr := <-addrChan
+	resp, err := client.Get("http://" + addr)
+	require.NoError(t, err)
 	defer resp.Close()
 
 	require.NoError(t, err)

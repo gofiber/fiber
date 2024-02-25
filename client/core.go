@@ -14,11 +14,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-var (
-	httpBytes  = []byte("http")
-	httpsBytes = []byte("https")
-	boundary   = "--FiberFormBoundary"
-)
+var boundary = "--FiberFormBoundary"
 
 // RequestHook is a function that receives Agent and Request,
 // it can change the data in Request and Agent.
@@ -36,7 +32,7 @@ type ResponseHook func(*Client, *Response, *Request) error
 type RetryConfig = retry.Config
 
 // addMissingPort will add the corresponding port number for host.
-func addMissingPort(addr string, isTLS bool) string {
+func addMissingPort(addr string, isTLS bool) string { //revive:disable-line:flag-parameter // Accepting a bool param named isTLS if fine here
 	n := strings.Index(addr, ":")
 	if n >= 0 {
 		return addr
@@ -53,7 +49,7 @@ func addMissingPort(addr string, isTLS bool) string {
 type core struct {
 	client *Client
 	req    *Request
-	ctx    context.Context
+	ctx    context.Context //nolint:containedctx // It's needed to be stored in the core.
 }
 
 // getRetryConfig returns the retry configuration of the client.
@@ -93,8 +89,6 @@ func (c *core) execFunc() (*Response, error) {
 
 	var err error
 	go func() {
-		//c.client.mu.Lock()
-
 		respv := fasthttp.AcquireResponse()
 		if cfg != nil {
 			err = retry.NewExponentialBackoff(*cfg).Retry(func() error {
@@ -124,7 +118,6 @@ func (c *core) execFunc() (*Response, error) {
 			respv.CopyTo(resp.RawResponse)
 			errCh <- nil
 		}
-		//c.client.mu.Unlock()
 	}()
 
 	select {
@@ -246,7 +239,12 @@ var errChanPool = &sync.Pool{
 // The returned error chan may be returned to the pool with releaseErrChan when no longer needed.
 // This allows reducing GC load.
 func acquireErrChan() chan error {
-	return errChanPool.Get().(chan error)
+	ch, ok := errChanPool.Get().(chan error)
+	if !ok {
+		panic(errors.New("failed to type-assert to chan error"))
+	}
+
+	return ch
 }
 
 // releaseErrChan returns the object acquired via acquireErrChan to the pool.

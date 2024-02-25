@@ -3,6 +3,7 @@ package client
 
 import (
 	"bytes"
+	"errors"
 	"net"
 	"sync"
 	"time"
@@ -19,7 +20,12 @@ var cookieJarPool = sync.Pool{
 
 // AcquireCookieJar returns an empty CookieJar object from pool.
 func AcquireCookieJar() *CookieJar {
-	return cookieJarPool.Get().(*CookieJar)
+	jar, ok := cookieJarPool.Get().(*CookieJar)
+	if !ok {
+		panic(errors.New("failed to type-assert to *CookieJar"))
+	}
+
+	return jar
 }
 
 // ReleaseCookieJar returns CookieJar to the pool.
@@ -157,11 +163,6 @@ func (cj *CookieJar) SetKeyValue(host, key, value string) {
 // This function prevents extra allocations by making repeated cookies
 // not being duplicated.
 func (cj *CookieJar) SetKeyValueBytes(host string, key, value []byte) {
-	cj.setKeyValue(host, key, value)
-}
-
-// setKeyValue sets a cookie by key and value for a specific host.
-func (cj *CookieJar) setKeyValue(host string, key, value []byte) {
 	c := fasthttp.AcquireCookie()
 	c.SetKeyBytes(key)
 	c.SetValueBytes(value)
@@ -204,7 +205,7 @@ func (cj *CookieJar) parseCookiesFromResp(host, path []byte, resp *fasthttp.Resp
 			c, isCreated = fasthttp.AcquireCookie(), true
 		}
 
-		_ = c.ParseBytes(value)
+		_ = c.ParseBytes(value) //nolint:errcheck // ignore error
 		if c.Expire().Equal(fasthttp.CookieExpireUnlimited) || c.Expire().After(now) {
 			cookies = append(cookies, c)
 		} else if isCreated {

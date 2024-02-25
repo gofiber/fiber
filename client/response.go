@@ -3,6 +3,7 @@ package client
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -90,35 +91,35 @@ func (r *Response) Save(v any) error {
 		// create directory
 		if _, err := os.Stat(dir); err != nil {
 			if !errors.Is(err, fs.ErrNotExist) {
-				return err
+				return fmt.Errorf("failed to check directory: %w", err)
 			}
 
 			if err = os.MkdirAll(dir, 0o750); err != nil {
-				return err
+				return fmt.Errorf("failed to create directory: %w", err)
 			}
 		}
 
 		// create file
 		outFile, err := os.Create(file)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to create file: %w", err)
 		}
-		defer func() { _ = outFile.Close() }()
+		defer func() { _ = outFile.Close() }() //nolint:errcheck // not needed
 
 		_, err = io.Copy(outFile, bytes.NewReader(r.Body()))
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to write response body to file: %w", err)
 		}
 
 		return nil
 	case io.Writer:
 		_, err := io.Copy(p, bytes.NewReader(r.Body()))
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to write response body to io.Writer: %w", err)
 		}
 		defer func() {
 			if pc, ok := p.(io.WriteCloser); ok {
-				_ = pc.Close()
+				_ = pc.Close() //nolint:errcheck // not needed
 			}
 		}()
 

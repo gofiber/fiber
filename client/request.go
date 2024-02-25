@@ -3,6 +3,7 @@ package client
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"path/filepath"
 	"reflect"
@@ -18,7 +19,7 @@ import (
 // WithStruct Implementing this interface allows data to
 // be stored from a struct via reflect.
 type WithStruct interface {
-	Add(name string, obj string)
+	Add(name, obj string)
 	Del(name string)
 }
 
@@ -42,7 +43,7 @@ type Request struct {
 	userAgent string
 	boundary  string
 	referer   string
-	ctx       context.Context
+	ctx       context.Context //nolint:containedctx // It's needed to be stored in the request.
 	header    *Header
 	params    *QueryParam
 	cookies   *Cookie
@@ -524,7 +525,7 @@ func (r *Request) Patch(url string) (*Response, error) {
 }
 
 // Custom Send custom request.
-func (r *Request) Custom(url string, method string) (*Response, error) {
+func (r *Request) Custom(url, method string) (*Response, error) {
 	return r.SetURL(url).SetMethod(method).Send()
 }
 
@@ -834,7 +835,10 @@ var requestPool = &sync.Pool{
 // The returned request may be returned to the pool with ReleaseRequest when no longer needed.
 // This allows reducing GC load.
 func AcquireRequest() *Request {
-	req := requestPool.Get().(*Request)
+	req, ok := requestPool.Get().(*Request)
+	if !ok {
+		panic(errors.New("failed to type-assert to *Request"))
+	}
 
 	return req
 }
@@ -889,7 +893,10 @@ func SetFileReader(r io.ReadCloser) SetFileFunc {
 func AcquireFile(setter ...SetFileFunc) *File {
 	fv := filePool.Get()
 	if fv != nil {
-		f := fv.(*File)
+		f, ok := fv.(*File)
+		if !ok {
+			panic(errors.New("failed to type-assert to *File"))
+		}
 		for _, v := range setter {
 			v(f)
 		}

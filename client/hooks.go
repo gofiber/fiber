@@ -1,6 +1,8 @@
 package client
 
 import (
+	"errors"
+	"fmt"
 	"io"
 	"math/rand"
 	"mime/multipart"
@@ -74,10 +76,10 @@ func parserRequestURL(c *Client, req *Request) error {
 
 	// set path params
 	req.path.VisitAll(func(key, val string) {
-		uri = strings.Replace(uri, ":"+key, val, -1)
+		uri = strings.ReplaceAll(uri, ":"+key, val)
 	})
 	c.path.VisitAll(func(key, val string) {
-		uri = strings.Replace(uri, ":"+key, val, -1)
+		uri = strings.ReplaceAll(uri, ":"+key, val)
 	})
 
 	// set uri to request and other related setting
@@ -133,7 +135,7 @@ func parserRequestHeader(c *Client, req *Request) error {
 		req.RawRequest.Header.SetContentType(multipartFormData)
 		// set boundary
 		if req.boundary == boundary {
-			req.boundary = req.boundary + randString(16)
+			req.boundary += randString(16)
 		}
 		req.RawRequest.Header.SetMultipartFormBoundary(req.boundary)
 	default:
@@ -193,7 +195,7 @@ func parserRequestBody(c *Client, req *Request) error {
 		mw := multipart.NewWriter(req.RawRequest.BodyWriter())
 		err := mw.SetBoundary(req.boundary)
 		if err != nil {
-			return err
+			return fmt.Errorf("set boundary error: %w", err)
 		}
 		defer func() {
 			err := mw.Close()
@@ -210,7 +212,7 @@ func parserRequestBody(c *Client, req *Request) error {
 			err = mw.WriteField(utils.UnsafeString(key), utils.UnsafeString(value))
 		})
 		if err != nil {
-			return err
+			return fmt.Errorf("write formdata error: %w", err)
 		}
 
 		// add file
@@ -235,34 +237,36 @@ func parserRequestBody(c *Client, req *Request) error {
 			if v.reader == nil {
 				v.reader, err = os.Open(v.path)
 				if err != nil {
-					return err
+					return fmt.Errorf("open file error: %w", err)
 				}
 			}
 
 			// write file
 			w, err := mw.CreateFormFile(v.fieldName, v.name)
 			if err != nil {
-				return err
+				return fmt.Errorf("create file error: %w", err)
 			}
 
 			for {
 				n, err := v.reader.Read(b)
-				if err != nil && err != io.EOF {
-					return err
+				if err != nil && !errors.Is(err, io.EOF) {
+					return fmt.Errorf("read file error: %w", err)
 				}
 
-				if err == io.EOF {
+				if errors.Is(err, io.EOF) {
 					break
 				}
 
 				_, err = w.Write(b[:n])
 				if err != nil {
-					return err
+					return fmt.Errorf("write file error: %w", err)
 				}
 			}
 
-			// ignore err
-			_ = v.reader.Close()
+			err = v.reader.Close()
+			if err != nil {
+				return fmt.Errorf("close file error: %w", err)
+			}
 		}
 	case rawBody:
 		if body, ok := req.body.([]byte); ok {
@@ -270,6 +274,8 @@ func parserRequestBody(c *Client, req *Request) error {
 		} else {
 			return ErrBodyType
 		}
+	case noBody:
+		return nil
 	}
 
 	return nil
@@ -277,13 +283,21 @@ func parserRequestBody(c *Client, req *Request) error {
 
 // parserResponseHeader will parse the response header and store it in the response
 func parserResponseCookie(c *Client, resp *Response, req *Request) error {
+	var err error
 	resp.RawResponse.Header.VisitAllCookie(func(key, value []byte) {
 		cookie := fasthttp.AcquireCookie()
-		_ = cookie.ParseBytes(value)
+		err = cookie.ParseBytes(value)
+		if err != nil {
+			return
+		}
 		cookie.SetKeyBytes(key)
 
 		resp.cookie = append(resp.cookie, cookie)
 	})
+
+	if err != nil {
+		return err
+	}
 
 	// store cookies to jar
 	if c.cookieJar != nil {

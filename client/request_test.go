@@ -72,7 +72,9 @@ func Test_Request_Context(t *testing.T) {
 	req.SetContext(ctx)
 	ctx = req.Context()
 
-	require.Equal(t, "string", ctx.Value(key).(string))
+	v, ok := ctx.Value(key).(string)
+	require.True(t, ok)
+	require.Equal(t, "string", v)
 }
 
 func Test_Request_Header(t *testing.T) {
@@ -840,8 +842,10 @@ func Test_Request_Header_With_Server(t *testing.T) {
 	handler := func(c fiber.Ctx) error {
 		c.Request().Header.VisitAll(func(key, value []byte) {
 			if k := string(key); k == "K1" || k == "K2" {
-				_, _ = c.Write(key)
-				_, _ = c.Write(value)
+				_, err := c.Write(key)
+				require.NoError(t, err)
+				_, err = c.Write(value)
+				require.NoError(t, err)
 			}
 		})
 		return nil
@@ -936,13 +940,13 @@ func checkFormFile(t *testing.T, fh *multipart.FileHeader, filename string) {
 	basename := filepath.Base(filename)
 	require.Equal(t, fh.Filename, basename)
 
-	b1, err := os.ReadFile(filename)
+	b1, err := os.ReadFile(filepath.Clean(filename))
 	require.NoError(t, err)
 
 	b2 := make([]byte, fh.Size)
 	f, err := fh.Open()
 	require.NoError(t, err)
-	defer func() { _ = f.Close() }()
+	defer func() { require.NoError(t, f.Close()) }()
 	_, err = f.Read(b2)
 	require.NoError(t, err)
 	require.Equal(t, b1, b2)
@@ -1056,7 +1060,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 			buf := make([]byte, fh1.Size)
 			f, err := fh1.Open()
 			require.NoError(t, err)
-			defer func() { _ = f.Close() }()
+			defer func() { require.NoError(t, f.Close()) }()
 			_, err = f.Read(buf)
 			require.NoError(t, err)
 			require.Equal(t, "form file", string(buf))
@@ -1176,7 +1180,7 @@ func Test_Request_Error_Body_With_Server(t *testing.T) {
 			SetBoundary("*").
 			AddFileWithReader("t.txt", io.NopCloser(strings.NewReader("world"))).
 			Get("http://example.com")
-		require.Equal(t, "mime: invalid boundary character", err.Error())
+		require.Equal(t, "set boundary error: mime: invalid boundary character", err.Error())
 	})
 
 	t.Run("open non exist file", func(t *testing.T) {
@@ -1231,7 +1235,7 @@ func Test_Request_MaxRedirects(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 
-		client := NewClient().SetDial(func(addr string) (net.Conn, error) { return ln.Dial() })
+		client := NewClient().SetDial(func(_ string) (net.Conn, error) { return ln.Dial() }) //nolint:wrapcheck // not needed
 
 		resp, err := AcquireRequest().
 			SetClient(client).
@@ -1250,7 +1254,7 @@ func Test_Request_MaxRedirects(t *testing.T) {
 	t.Run("error", func(t *testing.T) {
 		t.Parallel()
 
-		client := NewClient().SetDial(func(addr string) (net.Conn, error) { return ln.Dial() })
+		client := NewClient().SetDial(func(_ string) (net.Conn, error) { return ln.Dial() }) //nolint:wrapcheck // not needed
 
 		resp, err := AcquireRequest().
 			SetClient(client).
@@ -1264,13 +1268,13 @@ func Test_Request_MaxRedirects(t *testing.T) {
 	t.Run("MaxRedirects", func(t *testing.T) {
 		t.Parallel()
 
-		client := NewClient().SetDial(func(addr string) (net.Conn, error) { return ln.Dial() })
+		client := NewClient().SetDial(func(_ string) (net.Conn, error) { return ln.Dial() }) //nolint:wrapcheck // not needed
 
 		req := AcquireRequest().
 			SetClient(client).
 			SetMaxRedirects(3)
 
-		require.Equal(t, req.MaxRedirects(), 3)
+		require.Equal(t, 3, req.MaxRedirects())
 	})
 }
 

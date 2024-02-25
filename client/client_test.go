@@ -3,7 +3,7 @@ package client
 import (
 	"context"
 	"crypto/tls"
-	"fmt"
+	"errors"
 	"io"
 	"net"
 	"os"
@@ -20,6 +20,8 @@ import (
 )
 
 func startTestServerWithPort(t *testing.T, beforeStarting func(app *fiber.App)) (*fiber.App, string) {
+	t.Helper()
+
 	app := fiber.New()
 
 	if beforeStarting != nil {
@@ -45,15 +47,15 @@ func Test_Client_Add_Hook(t *testing.T) {
 
 	t.Run("add request hooks", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient().AddRequestHook(func(c *Client, r *Request) error {
+		client := NewClient().AddRequestHook(func(_ *Client, _ *Request) error {
 			return nil
 		})
 
 		require.Len(t, client.RequestHook(), 1)
 
-		client.AddRequestHook(func(c *Client, r *Request) error {
+		client.AddRequestHook(func(_ *Client, _ *Request) error {
 			return nil
-		}, func(c *Client, r *Request) error {
+		}, func(_ *Client, _ *Request) error {
 			return nil
 		})
 
@@ -62,15 +64,15 @@ func Test_Client_Add_Hook(t *testing.T) {
 
 	t.Run("add response hooks", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient().AddResponseHook(func(c *Client, resp *Response, r *Request) error {
+		client := NewClient().AddResponseHook(func(_ *Client, _ *Response, _ *Request) error {
 			return nil
 		})
 
 		require.Len(t, client.ResponseHook(), 1)
 
-		client.AddResponseHook(func(c *Client, resp *Response, r *Request) error {
+		client.AddResponseHook(func(_ *Client, _ *Response, _ *Request) error {
 			return nil
-		}, func(c *Client, resp *Response, r *Request) error {
+		}, func(_ *Client, _ *Response, _ *Request) error {
 			return nil
 		})
 
@@ -96,12 +98,12 @@ func Test_Client_Marshal(t *testing.T) {
 	t.Run("set json unmarshal", func(t *testing.T) {
 		t.Parallel()
 		client := NewClient().
-			SetJSONUnmarshal(func(data []byte, v any) error {
-				return fmt.Errorf("empty json")
+			SetJSONUnmarshal(func(_ []byte, _ any) error {
+				return errors.New("empty json")
 			})
 
 		err := client.JSONUnmarshal()(nil, nil)
-		require.Equal(t, fmt.Errorf("empty json"), err)
+		require.Equal(t, errors.New("empty json"), err)
 	})
 
 	t.Run("set xml marshal", func(t *testing.T) {
@@ -120,11 +122,11 @@ func Test_Client_Marshal(t *testing.T) {
 		t.Parallel()
 		client := NewClient().
 			SetXMLUnmarshal(func(_ []byte, _ any) error {
-				return fmt.Errorf("empty xml")
+				return errors.New("empty xml")
 			})
 
 		err := client.XMLUnmarshal()(nil, nil)
-		require.Equal(t, fmt.Errorf("empty xml"), err)
+		require.Equal(t, errors.New("empty xml"), err)
 	})
 }
 
@@ -208,7 +210,9 @@ func Test_Get(t *testing.T) {
 		t.Parallel()
 
 		app, addr := setupApp()
-		defer app.Shutdown()
+		defer func() {
+			require.NoError(t, app.Shutdown())
+		}()
 
 		resp, err := Get("http://" + addr)
 		require.NoError(t, err)
@@ -219,7 +223,9 @@ func Test_Get(t *testing.T) {
 		t.Parallel()
 
 		app, addr := setupApp()
-		defer app.Shutdown()
+		defer func() {
+			require.NoError(t, app.Shutdown())
+		}()
 
 		resp, err := NewClient().Get("http://" + addr)
 		require.NoError(t, err)
@@ -244,7 +250,9 @@ func Test_Head(t *testing.T) {
 		t.Parallel()
 
 		app, addr := setupApp()
-		defer app.Shutdown()
+		defer func() {
+			require.NoError(t, app.Shutdown())
+		}()
 
 		resp, err := Head("http://" + addr)
 		require.NoError(t, err)
@@ -255,7 +263,9 @@ func Test_Head(t *testing.T) {
 		t.Parallel()
 
 		app, addr := setupApp()
-		defer app.Shutdown()
+		defer func() {
+			require.NoError(t, app.Shutdown())
+		}()
 
 		resp, err := NewClient().Head("http://" + addr)
 		require.NoError(t, err)
@@ -281,7 +291,9 @@ func Test_Post(t *testing.T) {
 		t.Parallel()
 
 		app, addr := setupApp()
-		defer app.Shutdown()
+		defer func() {
+			require.NoError(t, app.Shutdown())
+		}()
 
 		for i := 0; i < 5; i++ {
 			resp, err := Post("http://"+addr, Config{
@@ -300,7 +312,9 @@ func Test_Post(t *testing.T) {
 		t.Parallel()
 
 		app, addr := setupApp()
-		defer app.Shutdown()
+		defer func() {
+			require.NoError(t, app.Shutdown())
+		}()
 
 		for i := 0; i < 5; i++ {
 			resp, err := NewClient().Post("http://"+addr, Config{
@@ -333,7 +347,9 @@ func Test_Put(t *testing.T) {
 		t.Parallel()
 
 		app, addr := setupApp()
-		defer app.Shutdown()
+		defer func() {
+			require.NoError(t, app.Shutdown())
+		}()
 
 		for i := 0; i < 5; i++ {
 			resp, err := Put("http://"+addr, Config{
@@ -352,7 +368,9 @@ func Test_Put(t *testing.T) {
 		t.Parallel()
 
 		app, addr := setupApp()
-		defer app.Shutdown()
+		defer func() {
+			require.NoError(t, app.Shutdown())
+		}()
 
 		for i := 0; i < 5; i++ {
 			resp, err := NewClient().Put("http://"+addr, Config{
@@ -386,7 +404,9 @@ func Test_Delete(t *testing.T) {
 		t.Parallel()
 
 		app, addr := setupApp()
-		defer app.Shutdown()
+		defer func() {
+			require.NoError(t, app.Shutdown())
+		}()
 
 		time.Sleep(1 * time.Second)
 
@@ -407,7 +427,9 @@ func Test_Delete(t *testing.T) {
 		t.Parallel()
 
 		app, addr := setupApp()
-		defer app.Shutdown()
+		defer func() {
+			require.NoError(t, app.Shutdown())
+		}()
 
 		for i := 0; i < 5; i++ {
 			resp, err := NewClient().Delete("http://"+addr, Config{
@@ -440,7 +462,9 @@ func Test_Options(t *testing.T) {
 		t.Parallel()
 
 		app, addr := setupApp()
-		defer app.Shutdown()
+		defer func() {
+			require.NoError(t, app.Shutdown())
+		}()
 
 		for i := 0; i < 5; i++ {
 			resp, err := Options("http://" + addr)
@@ -455,7 +479,9 @@ func Test_Options(t *testing.T) {
 		t.Parallel()
 
 		app, addr := setupApp()
-		defer app.Shutdown()
+		defer func() {
+			require.NoError(t, app.Shutdown())
+		}()
 
 		for i := 0; i < 5; i++ {
 			resp, err := NewClient().Options("http://" + addr)
@@ -484,7 +510,9 @@ func Test_Patch(t *testing.T) {
 		t.Parallel()
 
 		app, addr := setupApp()
-		defer app.Shutdown()
+		defer func() {
+			require.NoError(t, app.Shutdown())
+		}()
 
 		time.Sleep(1 * time.Second)
 
@@ -505,7 +533,9 @@ func Test_Patch(t *testing.T) {
 		t.Parallel()
 
 		app, addr := setupApp()
-		defer app.Shutdown()
+		defer func() {
+			require.NoError(t, app.Shutdown())
+		}()
 
 		for i := 0; i < 5; i++ {
 			resp, err := NewClient().Patch("http://"+addr, Config{
@@ -538,7 +568,9 @@ func Test_Client_UserAgent(t *testing.T) {
 		t.Parallel()
 
 		app, addr := setupApp()
-		defer app.Shutdown()
+		defer func() {
+			require.NoError(t, app.Shutdown())
+		}()
 
 		for i := 0; i < 5; i++ {
 			resp, err := Get("http://" + addr)
@@ -553,7 +585,9 @@ func Test_Client_UserAgent(t *testing.T) {
 		t.Parallel()
 
 		app, addr := setupApp()
-		defer app.Shutdown()
+		defer func() {
+			require.NoError(t, app.Shutdown())
+		}()
 
 		for i := 0; i < 5; i++ {
 			c := NewClient().
@@ -1159,7 +1193,7 @@ func Test_Client_SetRootCertificateFromString(t *testing.T) {
 	t.Parallel()
 
 	file, err := os.Open("../.github/testdata/ssl.pem")
-	defer func() { _ = file.Close() }()
+	defer func() { require.NoError(t, file.Close()) }()
 	require.NoError(t, err)
 
 	pem, err := io.ReadAll(file)
@@ -1345,7 +1379,7 @@ func Test_Client_SetProxyURL(t *testing.T) {
 	go start()
 
 	t.Cleanup(func() {
-		_ = app.Shutdown()
+		require.NoError(t, app.Shutdown())
 	})
 
 	time.Sleep(1 * time.Second)
@@ -1409,8 +1443,11 @@ func Benchmark_Client_Request(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
+	var err error
+	var resp *Response
 	for i := 0; i < b.N; i++ {
-		resp, _ := client.Get("http://example.com")
+		resp, err = client.Get("http://example.com")
 		resp.Close()
 	}
+	require.NoError(b, err)
 }

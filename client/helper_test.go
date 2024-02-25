@@ -61,24 +61,23 @@ func (ts *testServer) stop() {
 func (ts *testServer) dial() func(addr string) (net.Conn, error) {
 	ts.tb.Helper()
 
-	return func(addr string) (net.Conn, error) {
-		return ts.ln.Dial()
+	return func(_ string) (net.Conn, error) {
+		return ts.ln.Dial() //nolint:wrapcheck // not needed
 	}
 }
 
-func createHelperServer(t testing.TB) (*fiber.App, func(addr string) (net.Conn, error), func()) {
-	t.Helper()
+func createHelperServer(tb testing.TB) (*fiber.App, func(addr string) (net.Conn, error), func()) {
+	tb.Helper()
 
 	ln := fasthttputil.NewInmemoryListener()
 
 	app := fiber.New()
 
-	return app, func(addr string) (net.Conn, error) {
-			return ln.Dial()
+	return app, func(_ string) (net.Conn, error) {
+			return ln.Dial() //nolint:wrapcheck // not needed
 		}, func() {
-			require.NoError(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}))
+			require.NoError(tb, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}))
 		}
-	// TODO: add closer fn
 }
 
 func testRequest(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Request), excepted string, count ...int) {
@@ -132,7 +131,7 @@ func testRequestFail(t *testing.T, handler fiber.Handler, wrapAgent func(agent *
 	}
 }
 
-func testClient(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Client), excepted string, count ...int) {
+func testClient(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Client), excepted string, count ...int) { //nolint: unparam // maybe needed
 	t.Helper()
 
 	app, ln, start := createHelperServer(t)
