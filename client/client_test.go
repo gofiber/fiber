@@ -12,13 +12,33 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v3/addon/retry"
-
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/addon/retry"
 	"github.com/gofiber/fiber/v3/internal/tlstest"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 )
+
+func startTestServerWithPort(t *testing.T, beforeStarting func(app *fiber.App)) (*fiber.App, string) {
+	app := fiber.New()
+
+	if beforeStarting != nil {
+		beforeStarting(app)
+	}
+
+	addrChan := make(chan string)
+	go func() {
+		require.NoError(t, app.Listen(":0", fiber.ListenConfig{
+			DisableStartupMessage: true,
+			ListenerAddrFunc: func(addr net.Addr) {
+				addrChan <- addr.String()
+			},
+		}))
+	}()
+
+	addr := <-addrChan
+	return app, addr
+}
 
 func Test_Client_Add_Hook(t *testing.T) {
 	t.Parallel()
@@ -153,14 +173,15 @@ func Test_Client_ConcurrencyRequests(t *testing.T) {
 	})
 	go start()
 
+	client := NewClient().SetDial(dial)
+
 	wg := sync.WaitGroup{}
 	for i := 0; i < 5; i++ {
-		C().SetDial(dial)
 		for _, method := range []string{"GET", "POST", "PUT", "DELETE", "PATCH"} {
 			wg.Add(1)
 			go func(m string) {
 				defer wg.Done()
-				resp, err := C().Custom("http://example.com", m)
+				resp, err := client.Custom("http://example.com", m)
 				require.NoError(t, err)
 				require.Equal(t, "example.com "+m, utils.UnsafeString(resp.RawResponse.Body()))
 			}(method)
@@ -173,52 +194,70 @@ func Test_Client_ConcurrencyRequests(t *testing.T) {
 func Test_Get(t *testing.T) {
 	t.Parallel()
 
-	app, dial, start := createHelperServer(t)
+	setupApp := func() (*fiber.App, string) {
+		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
+			app.Get("/", func(c fiber.Ctx) error {
+				return c.SendString(c.Hostname())
+			})
+		})
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString(c.Hostname())
-	})
-
-	go start()
+		return app, addr
+	}
 
 	t.Run("global get function", func(t *testing.T) {
 		t.Parallel()
-		C().SetDial(dial)
-		resp, err := Get("http://example.com")
+
+		app, addr := setupApp()
+		defer app.Shutdown()
+
+		resp, err := Get("http://" + addr)
 		require.NoError(t, err)
-		require.Equal(t, "example.com", utils.UnsafeString(resp.RawResponse.Body()))
+		require.Equal(t, "0.0.0.0", utils.UnsafeString(resp.RawResponse.Body()))
 	})
 
 	t.Run("client get", func(t *testing.T) {
 		t.Parallel()
-		resp, err := NewClient().SetDial(dial).Get("http://example.com")
+
+		app, addr := setupApp()
+		defer app.Shutdown()
+
+		resp, err := NewClient().Get("http://" + addr)
 		require.NoError(t, err)
-		require.Equal(t, "example.com", utils.UnsafeString(resp.RawResponse.Body()))
+		require.Equal(t, "0.0.0.0", utils.UnsafeString(resp.RawResponse.Body()))
 	})
 }
 
 func Test_Head(t *testing.T) {
 	t.Parallel()
 
-	app, dial, start := createHelperServer(t)
+	setupApp := func() (*fiber.App, string) {
+		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
+			app.Head("/", func(c fiber.Ctx) error {
+				return c.SendString(c.Hostname())
+			})
+		})
 
-	app.Head("/", func(c fiber.Ctx) error {
-		return c.SendString(c.Hostname())
-	})
-
-	go start()
+		return app, addr
+	}
 
 	t.Run("global head function", func(t *testing.T) {
 		t.Parallel()
-		C().SetDial(dial)
-		resp, err := Head("http://example.com")
+
+		app, addr := setupApp()
+		defer app.Shutdown()
+
+		resp, err := Head("http://" + addr)
 		require.NoError(t, err)
 		require.Equal(t, "", utils.UnsafeString(resp.RawResponse.Body()))
 	})
 
 	t.Run("client head", func(t *testing.T) {
 		t.Parallel()
-		resp, err := NewClient().SetDial(dial).Head("http://example.com")
+
+		app, addr := setupApp()
+		defer app.Shutdown()
+
+		resp, err := NewClient().Head("http://" + addr)
 		require.NoError(t, err)
 		require.Equal(t, "", utils.UnsafeString(resp.RawResponse.Body()))
 	})
@@ -227,19 +266,25 @@ func Test_Head(t *testing.T) {
 func Test_Post(t *testing.T) {
 	t.Parallel()
 
-	app, dial, start := createHelperServer(t)
-	app.Post("/", func(c fiber.Ctx) error {
-		return c.Status(fiber.StatusCreated).
-			SendString(c.FormValue("foo"))
-	})
+	setupApp := func() (*fiber.App, string) {
+		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
+			app.Post("/", func(c fiber.Ctx) error {
+				return c.Status(fiber.StatusCreated).
+					SendString(c.FormValue("foo"))
+			})
+		})
 
-	go start()
+		return app, addr
+	}
 
 	t.Run("global post function", func(t *testing.T) {
 		t.Parallel()
+
+		app, addr := setupApp()
+		defer app.Shutdown()
+
 		for i := 0; i < 5; i++ {
-			C().SetDial(dial)
-			resp, err := Post("http://example.com", Config{
+			resp, err := Post("http://"+addr, Config{
 				FormData: map[string]string{
 					"foo": "bar",
 				},
@@ -253,8 +298,12 @@ func Test_Post(t *testing.T) {
 
 	t.Run("client post", func(t *testing.T) {
 		t.Parallel()
+
+		app, addr := setupApp()
+		defer app.Shutdown()
+
 		for i := 0; i < 5; i++ {
-			resp, err := NewClient().SetDial(dial).Post("http://example.com", Config{
+			resp, err := NewClient().Post("http://"+addr, Config{
 				FormData: map[string]string{
 					"foo": "bar",
 				},
@@ -270,17 +319,24 @@ func Test_Post(t *testing.T) {
 func Test_Put(t *testing.T) {
 	t.Parallel()
 
-	app, dial, start := createHelperServer(t)
-	app.Put("/", func(c fiber.Ctx) error {
-		return c.SendString(c.FormValue("foo"))
-	})
+	setupApp := func() (*fiber.App, string) {
+		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
+			app.Put("/", func(c fiber.Ctx) error {
+				return c.SendString(c.FormValue("foo"))
+			})
+		})
 
-	go start()
+		return app, addr
+	}
 
 	t.Run("global put function", func(t *testing.T) {
 		t.Parallel()
+
+		app, addr := setupApp()
+		defer app.Shutdown()
+
 		for i := 0; i < 5; i++ {
-			resp, err := Put("http://example.com", Config{
+			resp, err := Put("http://"+addr, Config{
 				FormData: map[string]string{
 					"foo": "bar",
 				},
@@ -294,8 +350,12 @@ func Test_Put(t *testing.T) {
 
 	t.Run("client put", func(t *testing.T) {
 		t.Parallel()
+
+		app, addr := setupApp()
+		defer app.Shutdown()
+
 		for i := 0; i < 5; i++ {
-			resp, err := NewClient().SetDial(dial).Put("http://example.com", Config{
+			resp, err := NewClient().Put("http://"+addr, Config{
 				FormData: map[string]string{
 					"foo": "bar",
 				},
@@ -311,18 +371,27 @@ func Test_Put(t *testing.T) {
 func Test_Delete(t *testing.T) {
 	t.Parallel()
 
-	app, dial, start := createHelperServer(t)
-	app.Delete("/", func(c fiber.Ctx) error {
-		return c.Status(fiber.StatusNoContent).
-			SendString("deleted")
-	})
+	setupApp := func() (*fiber.App, string) {
+		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
+			app.Delete("/", func(c fiber.Ctx) error {
+				return c.Status(fiber.StatusNoContent).
+					SendString("deleted")
+			})
+		})
 
-	go start()
+		return app, addr
+	}
 
 	t.Run("global delete function", func(t *testing.T) {
 		t.Parallel()
+
+		app, addr := setupApp()
+		defer app.Shutdown()
+
+		time.Sleep(1 * time.Second)
+
 		for i := 0; i < 5; i++ {
-			resp, err := Delete("http://example.com", Config{
+			resp, err := Delete("http://"+addr, Config{
 				FormData: map[string]string{
 					"foo": "bar",
 				},
@@ -336,8 +405,12 @@ func Test_Delete(t *testing.T) {
 
 	t.Run("client delete", func(t *testing.T) {
 		t.Parallel()
+
+		app, addr := setupApp()
+		defer app.Shutdown()
+
 		for i := 0; i < 5; i++ {
-			resp, err := NewClient().SetDial(dial).Delete("http://example.com", Config{
+			resp, err := NewClient().Delete("http://"+addr, Config{
 				FormData: map[string]string{
 					"foo": "bar",
 				},
@@ -353,18 +426,24 @@ func Test_Delete(t *testing.T) {
 func Test_Options(t *testing.T) {
 	t.Parallel()
 
-	app, dial, start := createHelperServer(t)
-	app.Options("/", func(c fiber.Ctx) error {
-		return c.Status(fiber.StatusNoContent).SendString("")
-	})
+	setupApp := func() (*fiber.App, string) {
+		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
+			app.Options("/", func(c fiber.Ctx) error {
+				return c.Status(fiber.StatusNoContent).SendString("")
+			})
+		})
 
-	go start()
+		return app, addr
+	}
 
 	t.Run("global options function", func(t *testing.T) {
 		t.Parallel()
+
+		app, addr := setupApp()
+		defer app.Shutdown()
+
 		for i := 0; i < 5; i++ {
-			C().SetDial(dial)
-			resp, err := Options("http://example.com")
+			resp, err := Options("http://" + addr)
 
 			require.NoError(t, err)
 			require.Equal(t, fiber.StatusNoContent, resp.StatusCode())
@@ -374,8 +453,12 @@ func Test_Options(t *testing.T) {
 
 	t.Run("client options", func(t *testing.T) {
 		t.Parallel()
+
+		app, addr := setupApp()
+		defer app.Shutdown()
+
 		for i := 0; i < 5; i++ {
-			resp, err := NewClient().SetDial(dial).Options("http://example.com")
+			resp, err := NewClient().Options("http://" + addr)
 
 			require.NoError(t, err)
 			require.Equal(t, fiber.StatusNoContent, resp.StatusCode())
@@ -387,19 +470,26 @@ func Test_Options(t *testing.T) {
 func Test_Patch(t *testing.T) {
 	t.Parallel()
 
-	app, dial, start := createHelperServer(t)
+	setupApp := func() (*fiber.App, string) {
+		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
+			app.Patch("/", func(c fiber.Ctx) error {
+				return c.SendString(c.FormValue("foo"))
+			})
+		})
 
-	app.Patch("/", func(c fiber.Ctx) error {
-		return c.SendString(c.FormValue("foo"))
-	})
-
-	go start()
+		return app, addr
+	}
 
 	t.Run("global patch function", func(t *testing.T) {
 		t.Parallel()
+
+		app, addr := setupApp()
+		defer app.Shutdown()
+
+		time.Sleep(1 * time.Second)
+
 		for i := 0; i < 5; i++ {
-			C().SetDial(dial)
-			resp, err := Patch("http://example.com", Config{
+			resp, err := Patch("http://"+addr, Config{
 				FormData: map[string]string{
 					"foo": "bar",
 				},
@@ -413,8 +503,12 @@ func Test_Patch(t *testing.T) {
 
 	t.Run("client patch", func(t *testing.T) {
 		t.Parallel()
+
+		app, addr := setupApp()
+		defer app.Shutdown()
+
 		for i := 0; i < 5; i++ {
-			resp, err := NewClient().SetDial(dial).Patch("http://example.com", Config{
+			resp, err := NewClient().Patch("http://"+addr, Config{
 				FormData: map[string]string{
 					"foo": "bar",
 				},
@@ -430,19 +524,24 @@ func Test_Patch(t *testing.T) {
 func Test_Client_UserAgent(t *testing.T) {
 	t.Parallel()
 
-	app, dial, start := createHelperServer(t)
+	setupApp := func() (*fiber.App, string) {
+		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
+			app.Get("/", func(c fiber.Ctx) error {
+				return c.Send(c.Request().Header.UserAgent())
+			})
+		})
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.Send(c.Request().Header.UserAgent())
-	})
-
-	go start()
+		return app, addr
+	}
 
 	t.Run("default", func(t *testing.T) {
 		t.Parallel()
+
+		app, addr := setupApp()
+		defer app.Shutdown()
+
 		for i := 0; i < 5; i++ {
-			C().SetDial(dial)
-			resp, err := Get("http://example.com")
+			resp, err := Get("http://" + addr)
 
 			require.NoError(t, err)
 			require.Equal(t, fiber.StatusOK, resp.StatusCode())
@@ -452,11 +551,15 @@ func Test_Client_UserAgent(t *testing.T) {
 
 	t.Run("custom", func(t *testing.T) {
 		t.Parallel()
+
+		app, addr := setupApp()
+		defer app.Shutdown()
+
 		for i := 0; i < 5; i++ {
-			c := NewClient().SetDial(dial).
+			c := NewClient().
 				SetUserAgent("ua")
 
-			resp, err := c.Get("http://example.com")
+			resp, err := c.Get("http://" + addr)
 
 			require.NoError(t, err)
 			require.Equal(t, fiber.StatusOK, resp.StatusCode())
@@ -1107,6 +1210,8 @@ func Test_Replace(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode())
 	require.Equal(t, "", resp.String())
+
+	C().SetDial(nil)
 }
 
 func Test_Set_Config_To_Request(t *testing.T) {
