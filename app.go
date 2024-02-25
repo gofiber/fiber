@@ -897,7 +897,7 @@ func (app *App) ShutdownWithContext(ctx context.Context) error {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 	if app.server == nil {
-		return fmt.Errorf("shutdown: server is not running")
+		return ErrNotRunning
 	}
 	return app.server.ShutdownWithContext(ctx)
 }
@@ -948,7 +948,7 @@ func (app *App) Test(req *http.Request, msTimeout ...int) (*http.Response, error
 		var returned bool
 		defer func() {
 			if !returned {
-				channel <- fmt.Errorf("runtime.Goexit() called in handler or server panic")
+				channel <- ErrHandlerExited
 			}
 		}()
 
@@ -1071,10 +1071,7 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error {
 // errors before calling the application's error handler method.
 func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 	// Acquire Ctx with fasthttp request from pool
-	c, ok := app.AcquireCtx().(*DefaultCtx)
-	if !ok {
-		panic(fmt.Errorf("failed to type-assert to *DefaultCtx"))
-	}
+	c := app.AcquireCtx()
 	c.Reset(fctx)
 
 	defer app.ReleaseCtx(c)

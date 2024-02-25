@@ -1,6 +1,7 @@
 package filesystem
 
 import (
+	"errors"
 	"fmt"
 	"html"
 	"io/fs"
@@ -11,6 +12,11 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 )
+
+// ErrDirListingNotSupported is returned from the filesystem middleware handler if
+// the given fs.FS does not support directory listing. This is uncommon and may
+// indicate an issue with the FS implementation.
+var ErrDirListingNotSupported = errors.New("failed to type-assert to fs.ReadDirFile")
 
 func getFileExtension(p string) string {
 	n := strings.LastIndexByte(p, '.')
@@ -23,7 +29,7 @@ func getFileExtension(p string) string {
 func dirList(c fiber.Ctx, f fs.File) error {
 	ff, ok := f.(fs.ReadDirFile)
 	if !ok {
-		return fmt.Errorf("failed to type-assert to fs.ReadDirFile")
+		return ErrDirListingNotSupported
 	}
 	fileinfos, err := ff.ReadDir(-1)
 	if err != nil {

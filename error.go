@@ -11,9 +11,13 @@ import (
 // Unexported because users will hopefully never need to see it.
 var errUnreachable = errors.New("fiber: unreachable code, please create an issue at github.com/gofiber/fiber")
 
-// Graceful shutdown errors
+// General errors
 var (
 	ErrGracefulTimeout = errors.New("shutdown: graceful timeout has been reached, exiting")
+	// ErrNotRunning indicates that a Shutdown method was called when the server was not running.
+	ErrNotRunning = errors.New("shutdown: server is not running")
+	// ErrHandlerExited is returned by App.Test if a handler panics or calls runtime.Goexit().
+	ErrHandlerExited = errors.New("runtime.Goexit() called in handler or server panic")
 )
 
 // Fiber redirection errors

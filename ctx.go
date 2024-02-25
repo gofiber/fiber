@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -116,22 +117,22 @@ type ResFmt struct {
 
 // Accepts checks if the specified extensions or content types are acceptable.
 func (c *DefaultCtx) Accepts(offers ...string) string {
-	return getOffer(c.Get(HeaderAccept), acceptsOfferType, offers...)
+	return getOffer(c.fasthttp.Request.Header.Peek(HeaderAccept), acceptsOfferType, offers...)
 }
 
 // AcceptsCharsets checks if the specified charset is acceptable.
 func (c *DefaultCtx) AcceptsCharsets(offers ...string) string {
-	return getOffer(c.Get(HeaderAcceptCharset), acceptsOffer, offers...)
+	return getOffer(c.fasthttp.Request.Header.Peek(HeaderAcceptCharset), acceptsOffer, offers...)
 }
 
 // AcceptsEncodings checks if the specified encoding is acceptable.
 func (c *DefaultCtx) AcceptsEncodings(offers ...string) string {
-	return getOffer(c.Get(HeaderAcceptEncoding), acceptsOffer, offers...)
+	return getOffer(c.fasthttp.Request.Header.Peek(HeaderAcceptEncoding), acceptsOffer, offers...)
 }
 
 // AcceptsLanguages checks if the specified language is acceptable.
 func (c *DefaultCtx) AcceptsLanguages(offers ...string) string {
-	return getOffer(c.Get(HeaderAcceptLanguage), acceptsOffer, offers...)
+	return getOffer(c.fasthttp.Request.Header.Peek(HeaderAcceptLanguage), acceptsOffer, offers...)
 }
 
 // App returns the *App reference to the instance of the Fiber application
@@ -615,7 +616,7 @@ func (c *DefaultCtx) Hostname() string {
 func (c *DefaultCtx) Port() string {
 	tcpaddr, ok := c.fasthttp.RemoteAddr().(*net.TCPAddr)
 	if !ok {
-		panic(fmt.Errorf("failed to type-assert to *net.TCPAddr"))
+		panic(errors.New("failed to type-assert to *net.TCPAddr"))
 	}
 	return strconv.Itoa(tcpaddr.Port)
 }
@@ -1108,12 +1109,8 @@ func (c *DefaultCtx) Queries() map[string]string {
 //	age := Query[int](c, "age") // Returns 8
 //	unknown := Query[string](c, "unknown", "default") // Returns "default" since the query parameter "unknown" is not found
 func Query[V QueryType](c Ctx, key string, defaultValue ...V) V {
-	ctx, ok := c.(*DefaultCtx)
-	if !ok {
-		panic(fmt.Errorf("failed to type-assert to *DefaultCtx"))
-	}
 	var v V
-	q := ctx.app.getString(ctx.fasthttp.QueryArgs().Peek(key))
+	q := c.App().getString(c.Context().QueryArgs().Peek(key))
 
 	switch any(v).(type) {
 	case int:
@@ -1151,7 +1148,7 @@ func Query[V QueryType](c Ctx, key string, defaultValue ...V) V {
 		if q == "" && len(defaultValue) > 0 {
 			return defaultValue[0]
 		}
-		return assertValueType[V, []byte](ctx.app.getBytes(q))
+		return assertValueType[V, []byte](c.App().getBytes(q))
 	default:
 		if len(defaultValue) > 0 {
 			return defaultValue[0]

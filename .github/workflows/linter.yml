@@ -33,4 +33,4 @@ jobs:
         uses: golangci/golangci-lint-action@v4
         with:
           # NOTE: Keep this in sync with the version from .golangci.yml
-          version: v1.56.1
+          version: v1.56.2

@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"errors"
 	"fmt"
 	"html"
 	"sort"
@@ -209,12 +210,12 @@ func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 	if app.newCtxFunc != nil {
 		c, ok = app.AcquireCtx().(CustomCtx)
 		if !ok {
-			panic(fmt.Errorf("failed to type-assert to CustomCtx"))
+			panic(errors.New("failed to type-assert to CustomCtx"))
 		}
 	} else {
 		c, ok = app.AcquireCtx().(*DefaultCtx)
 		if !ok {
-			panic(fmt.Errorf("failed to type-assert to *DefaultCtx"))
+			panic(errors.New("failed to type-assert to *DefaultCtx"))
 		}
 	}
 	c.Reset(rctx)
