@@ -199,37 +199,6 @@ func (c *core) timeout() context.CancelFunc {
 	return cancel
 }
 
-// configureHostClient set configureHostClient in host.
-/*func (c *core) configureHostClient(hostClient *fasthttp.Client) error {
-	// tls and dial configuration
-	c.client.mu.Lock()
-	hostClient.TLSConfig = c.client.tlsConfig.Clone()
-	hostClient.Dial = c.req.dial
-	c.client.mu.Unlock()
-
-	rawURI := c.req.RawRequest.URI()
-	if c.client.proxyURL != "" {
-		rawURI = fasthttp.AcquireURI()
-		rawURI.Update(c.client.proxyURL)
-		defer fasthttp.ReleaseURI(rawURI)
-	}
-
-	isTLS, scheme := false, rawURI.Scheme()
-	if bytes.Equal(httpsBytes, scheme) {
-		isTLS = true
-	} else if !bytes.Equal(httpBytes, scheme) {
-		return ErrNotSupportSchema
-	}
-
-	// proxy configuration
-	c.client.mu.Lock()
-	hostClient.Addr = addMissingPort(string(rawURI.Host()), isTLS)
-	hostClient.IsTLS = isTLS
-	c.client.mu.Unlock()
-
-	return nil
-}*/
-
 // execute will exec each hooks and plugins.
 func (c *core) execute(ctx context.Context, client *Client, req *Request) (*Response, error) {
 	// keep a reference, because pass param is boring
