@@ -217,11 +217,6 @@ func (cj *CookieJar) parseCookiesFromResp(host, path []byte, resp *fasthttp.Resp
 
 // Release releases all cookie values.
 func (cj *CookieJar) Release() {
-	for _, v := range cj.hostCookies {
-		for _, c := range v {
-			fasthttp.ReleaseCookie(c)
-		}
-	}
 	cj.hostCookies = nil
 }
 
