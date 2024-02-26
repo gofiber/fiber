@@ -685,12 +685,16 @@ func Benchmark_CORS_NewHandler(b *testing.B) {
 		MaxAge:           600,
 	}))
 
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	req.Header.Set(fiber.HeaderOrigin, "http://localhost")
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		app.Test(req)
+		resp, err := app.Test(req)
+		if err != nil {
+			b.Fatalf("Failed to perform request: %v", err)
+		}
+		_ = resp
 	}
 }
 
@@ -704,13 +708,17 @@ func Benchmark_CORS_NewHandlerPreflight(b *testing.B) {
 		MaxAge:           600,
 	}))
 
-	req := httptest.NewRequest("OPTIONS", "/", nil)
+	req := httptest.NewRequest(fiber.MethodOptions, "/", nil)
 	req.Header.Set(fiber.HeaderOrigin, "http://localhost")
-	req.Header.Set(fiber.HeaderAccessControlRequestMethod, "POST")
+	req.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodPost)
 	req.Header.Set(fiber.HeaderAccessControlRequestHeaders, "Origin,Content-Type,Accept")
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		app.Test(req)
+		resp, err := app.Test(req)
+		if err != nil {
+			b.Fatalf("Failed to perform request: %v", err)
+		}
+		_ = resp
 	}
 }
