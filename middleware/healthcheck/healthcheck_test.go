@@ -34,8 +34,8 @@ func Test_HealthCheck_Strict_Routing_Default(t *testing.T) {
 		StrictRouting: true,
 	})
 
-	app.Use("/livez", NewHealthChecker())
-	app.Use("/readyz", NewHealthChecker())
+	app.Get("/livez", NewHealthChecker())
+	app.Get("/readyz", NewHealthChecker())
 
 	shouldGiveOK(t, app, "/readyz")
 	shouldGiveOK(t, app, "/livez")
@@ -49,8 +49,8 @@ func Test_HealthCheck_Default(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	app.Use("/livez", NewHealthChecker())
-	app.Use("/readyz", NewHealthChecker())
+	app.Get("/livez", NewHealthChecker())
+	app.Get("/readyz", NewHealthChecker())
 
 	shouldGiveOK(t, app, "/readyz")
 	shouldGiveOK(t, app, "/livez")
@@ -65,12 +65,12 @@ func Test_HealthCheck_Custom(t *testing.T) {
 
 	app := fiber.New()
 	c1 := make(chan struct{}, 1)
-	app.Use("/live", NewHealthChecker(Config{
+	app.Get("/live", NewHealthChecker(Config{
 		Probe: func(_ fiber.Ctx) bool {
 			return true
 		},
 	}))
-	app.Use("/ready", NewHealthChecker(Config{
+	app.Get("/ready", NewHealthChecker(Config{
 		Probe: func(_ fiber.Ctx) bool {
 			select {
 			case <-c1:
@@ -86,12 +86,12 @@ func Test_HealthCheck_Custom(t *testing.T) {
 	// Live should return 404 with POST request
 	req, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/live", nil))
 	require.NoError(t, err)
-	require.Equal(t, fiber.StatusNotFound, req.StatusCode)
+	require.Equal(t, fiber.StatusMethodNotAllowed, req.StatusCode)
 
 	// Ready should return 404 with POST request
 	req, err = app.Test(httptest.NewRequest(fiber.MethodPost, "/ready", nil))
 	require.NoError(t, err)
-	require.Equal(t, fiber.StatusNotFound, req.StatusCode)
+	require.Equal(t, fiber.StatusMethodNotAllowed, req.StatusCode)
 
 	// Ready should return 503 with GET request before the channel is closed
 	shouldGiveStatus(t, app, "/ready", fiber.StatusServiceUnavailable)
@@ -107,12 +107,12 @@ func Test_HealthCheck_Custom_Nested(t *testing.T) {
 	app := fiber.New()
 
 	c1 := make(chan struct{}, 1)
-	app.Use("/probe/live", NewHealthChecker(Config{
+	app.Get("/probe/live", NewHealthChecker(Config{
 		Probe: func(_ fiber.Ctx) bool {
 			return true
 		},
 	}))
-	app.Use("/probe/ready", NewHealthChecker(Config{
+	app.Get("/probe/ready", NewHealthChecker(Config{
 		Probe: func(_ fiber.Ctx) bool {
 			select {
 			case <-c1:
@@ -153,8 +153,8 @@ func Test_HealthCheck_Next(t *testing.T) {
 		},
 	})
 
-	app.Use("/readyz", checker)
-	app.Use("/livez", checker)
+	app.Get("/readyz", checker)
+	app.Get("/livez", checker)
 
 	shouldGiveNotFound(t, app, "/readyz")
 	shouldGiveNotFound(t, app, "/livez")
@@ -163,8 +163,8 @@ func Test_HealthCheck_Next(t *testing.T) {
 func Benchmark_HealthCheck(b *testing.B) {
 	app := fiber.New()
 
-	app.Use(DefaultLivenessEndpoint, NewHealthChecker())
-	app.Use(DefaultReadinessEndpoint, NewHealthChecker())
+	app.Get(DefaultLivenessEndpoint, NewHealthChecker())
+	app.Get(DefaultReadinessEndpoint, NewHealthChecker())
 
 	h := app.Handler()
 	fctx := &fasthttp.RequestCtx{}
