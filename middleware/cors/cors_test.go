@@ -674,3 +674,43 @@ func Test_CORS_AllowCredentials(t *testing.T) {
 		})
 	}
 }
+
+func Benchmark_CORS_NewHandler(b *testing.B) {
+	app := fiber.New()
+	app.Use(New(Config{
+		AllowOrigins:     "http://localhost,http://example.com",
+		AllowMethods:     "GET,POST,PUT,DELETE",
+		AllowHeaders:     "Origin,Content-Type,Accept",
+		AllowCredentials: true,
+		MaxAge:           600,
+	}))
+
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Header.Set(fiber.HeaderOrigin, "http://localhost")
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		app.Test(req)
+	}
+}
+
+func Benchmark_CORS_NewHandlerPreflight(b *testing.B) {
+	app := fiber.New()
+	app.Use(New(Config{
+		AllowOrigins:     "http://localhost,http://example.com",
+		AllowMethods:     "GET,POST,PUT,DELETE",
+		AllowHeaders:     "Origin,Content-Type,Accept",
+		AllowCredentials: true,
+		MaxAge:           600,
+	}))
+
+	req := httptest.NewRequest("OPTIONS", "/", nil)
+	req.Header.Set(fiber.HeaderOrigin, "http://localhost")
+	req.Header.Set(fiber.HeaderAccessControlRequestMethod, "POST")
+	req.Header.Set(fiber.HeaderAccessControlRequestHeaders, "Origin,Content-Type,Accept")
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		app.Test(req)
+	}
+}
