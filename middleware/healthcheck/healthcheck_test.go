@@ -34,7 +34,8 @@ func Test_HealthCheck_Strict_Routing_Default(t *testing.T) {
 		StrictRouting: true,
 	})
 
-	app.Use(New())
+	app.Use("/livez", NewHealthChecker())
+	app.Use("/readyz", NewHealthChecker())
 
 	shouldGiveOK(t, app, "/readyz")
 	shouldGiveOK(t, app, "/livez")
@@ -44,70 +45,12 @@ func Test_HealthCheck_Strict_Routing_Default(t *testing.T) {
 	shouldGiveNotFound(t, app, "/notDefined/livez")
 }
 
-func Test_HealthCheck_Group_Default(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-	app.Group("/v1", New())
-	v2Group := app.Group("/v2/")
-	customer := v2Group.Group("/customer/")
-	customer.Use(New())
-
-	v3Group := app.Group("/v3/")
-	v3Group.Group("/todos/", New(Config{ReadinessEndpoint: "/readyz/", LivenessEndpoint: "/livez/"}))
-
-	shouldGiveOK(t, app, "/v1/readyz")
-	shouldGiveOK(t, app, "/v1/livez")
-	shouldGiveOK(t, app, "/v1/readyz/")
-	shouldGiveOK(t, app, "/v1/livez/")
-	shouldGiveOK(t, app, "/v2/customer/readyz")
-	shouldGiveOK(t, app, "/v2/customer/livez")
-	shouldGiveOK(t, app, "/v2/customer/readyz/")
-	shouldGiveOK(t, app, "/v2/customer/livez/")
-	shouldGiveNotFound(t, app, "/v3/todos/readyz")
-	shouldGiveNotFound(t, app, "/v3/todos/livez")
-	shouldGiveOK(t, app, "/v3/todos/readyz/")
-	shouldGiveOK(t, app, "/v3/todos/livez/")
-	shouldGiveNotFound(t, app, "/notDefined/readyz")
-	shouldGiveNotFound(t, app, "/notDefined/livez")
-	shouldGiveNotFound(t, app, "/notDefined/readyz/")
-	shouldGiveNotFound(t, app, "/notDefined/livez/")
-
-	// strict routing
-	app = fiber.New(fiber.Config{
-		StrictRouting: true,
-	})
-	app.Group("/v1", New())
-	v2Group = app.Group("/v2/")
-	customer = v2Group.Group("/customer/")
-	customer.Use(New())
-
-	v3Group = app.Group("/v3/")
-	v3Group.Group("/todos/", New(Config{ReadinessEndpoint: "/readyz/", LivenessEndpoint: "/livez/"}))
-
-	shouldGiveOK(t, app, "/v1/readyz")
-	shouldGiveOK(t, app, "/v1/livez")
-	shouldGiveNotFound(t, app, "/v1/readyz/")
-	shouldGiveNotFound(t, app, "/v1/livez/")
-	shouldGiveOK(t, app, "/v2/customer/readyz")
-	shouldGiveOK(t, app, "/v2/customer/livez")
-	shouldGiveNotFound(t, app, "/v2/customer/readyz/")
-	shouldGiveNotFound(t, app, "/v2/customer/livez/")
-	shouldGiveNotFound(t, app, "/v3/todos/readyz")
-	shouldGiveNotFound(t, app, "/v3/todos/livez")
-	shouldGiveOK(t, app, "/v3/todos/readyz/")
-	shouldGiveOK(t, app, "/v3/todos/livez/")
-	shouldGiveNotFound(t, app, "/notDefined/readyz")
-	shouldGiveNotFound(t, app, "/notDefined/livez")
-	shouldGiveNotFound(t, app, "/notDefined/readyz/")
-	shouldGiveNotFound(t, app, "/notDefined/livez/")
-}
-
 func Test_HealthCheck_Default(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	app.Use(New())
+	app.Use("/livez", NewHealthChecker())
+	app.Use("/readyz", NewHealthChecker())
 
 	shouldGiveOK(t, app, "/readyz")
 	shouldGiveOK(t, app, "/livez")
@@ -121,14 +64,14 @@ func Test_HealthCheck_Custom(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-
 	c1 := make(chan struct{}, 1)
-	app.Use(New(Config{
-		LivenessProbe: func(_ fiber.Ctx) bool {
+	app.Use("/live", NewHealthChecker(Config{
+		Probe: func(_ fiber.Ctx) bool {
 			return true
 		},
-		LivenessEndpoint: "/live",
-		ReadinessProbe: func(_ fiber.Ctx) bool {
+	}))
+	app.Use("/ready", NewHealthChecker(Config{
+		Probe: func(_ fiber.Ctx) bool {
 			select {
 			case <-c1:
 				return true
@@ -136,7 +79,6 @@ func Test_HealthCheck_Custom(t *testing.T) {
 				return false
 			}
 		},
-		ReadinessEndpoint: "/ready",
 	}))
 
 	// Live should return 200 with GET request
@@ -165,13 +107,13 @@ func Test_HealthCheck_Custom_Nested(t *testing.T) {
 	app := fiber.New()
 
 	c1 := make(chan struct{}, 1)
-
-	app.Use(New(Config{
-		LivenessProbe: func(_ fiber.Ctx) bool {
+	app.Use("/probe/live", NewHealthChecker(Config{
+		Probe: func(_ fiber.Ctx) bool {
 			return true
 		},
-		LivenessEndpoint: "/probe/live",
-		ReadinessProbe: func(_ fiber.Ctx) bool {
+	}))
+	app.Use("/probe/ready", NewHealthChecker(Config{
+		Probe: func(_ fiber.Ctx) bool {
 			select {
 			case <-c1:
 				return true
@@ -179,7 +121,6 @@ func Test_HealthCheck_Custom_Nested(t *testing.T) {
 				return false
 			}
 		},
-		ReadinessEndpoint: "/probe/ready",
 	}))
 
 	shouldGiveOK(t, app, "/probe/live")
@@ -206,11 +147,14 @@ func Test_HealthCheck_Next(t *testing.T) {
 
 	app := fiber.New()
 
-	app.Use(New(Config{
+	checker := NewHealthChecker(Config{
 		Next: func(_ fiber.Ctx) bool {
 			return true
 		},
-	}))
+	})
+
+	app.Use("/readyz", checker)
+	app.Use("/livez", checker)
 
 	shouldGiveNotFound(t, app, "/readyz")
 	shouldGiveNotFound(t, app, "/livez")
@@ -219,7 +163,8 @@ func Test_HealthCheck_Next(t *testing.T) {
 func Benchmark_HealthCheck(b *testing.B) {
 	app := fiber.New()
 
-	app.Use(New())
+	app.Use(DefaultLivenessEndpoint, NewHealthChecker())
+	app.Use(DefaultReadinessEndpoint, NewHealthChecker())
 
 	h := app.Handler()
 	fctx := &fasthttp.RequestCtx{}
