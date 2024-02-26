@@ -453,6 +453,33 @@ func Test_CORS_AllowOriginsAndAllowOriginsFunc_AllUseCases(t *testing.T) {
 			ResponseOrigin: "http://aaa.com",
 		},
 		{
+			Name: "AllowOriginsDefined/AllowOriginsFuncUndefined/MultipleOrigins/NoWhitespace/OriginAllowed",
+			Config: Config{
+				AllowOrigins:     "http://aaa.com,http://bbb.com",
+				AllowOriginsFunc: nil,
+			},
+			RequestOrigin:  "http://bbb.com",
+			ResponseOrigin: "http://bbb.com",
+		},
+		{
+			Name: "AllowOriginsDefined/AllowOriginsFuncUndefined/MultipleOrigins/NoWhitespace/OriginNotAllowed",
+			Config: Config{
+				AllowOrigins:     "http://aaa.com,http://bbb.com",
+				AllowOriginsFunc: nil,
+			},
+			RequestOrigin:  "http://ccc.com",
+			ResponseOrigin: "",
+		},
+		{
+			Name: "AllowOriginsDefined/AllowOriginsFuncUndefined/MultipleOrigins/Whitespace/OriginAllowed",
+			Config: Config{
+				AllowOrigins:     "http://aaa.com, http://bbb.com",
+				AllowOriginsFunc: nil,
+			},
+			RequestOrigin:  "http://aaa.com",
+			ResponseOrigin: "http://aaa.com",
+		},
+		{
 			Name: "AllowOriginsDefined/AllowOriginsFuncUndefined/OriginNotAllowed",
 			Config: Config{
 				AllowOrigins:     "http://aaa.com",
