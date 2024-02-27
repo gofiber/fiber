@@ -299,17 +299,17 @@ func Test_Proxy_Timeout_Slow_Server(t *testing.T) {
 	t.Parallel()
 
 	_, addr := createProxyTestServer(t, func(c fiber.Ctx) error {
-		time.Sleep(2 * time.Second)
+		time.Sleep(300 * time.Millisecond)
 		return c.SendString("fiber is awesome")
 	})
 
 	app := fiber.New()
 	app.Use(Balancer(Config{
 		Servers: []string{addr},
-		Timeout: 3 * time.Second,
+		Timeout: 600 * time.Millisecond,
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), 5000)
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), 2000)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
