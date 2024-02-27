@@ -110,7 +110,7 @@ func New(config ...Config) fiber.Handler {
 
 	// Validate CORS credentials configuration
 	if cfg.AllowCredentials && cfg.AllowOrigins == "*" {
-		panic("[CORS] Insecure setup, 'AllowCredentials' is set to true, and 'AllowOrigins' is set to a wildcard.")
+		log.Panic("[CORS] Insecure setup, 'AllowCredentials' is set to true, and 'AllowOrigins' is set to a wildcard.") //nolint:revive // we want to exit the program
 	}
 
 	// Validate and normalize static AllowOrigins if not using AllowOriginsFunc
@@ -121,8 +121,7 @@ func New(config ...Config) fiber.Handler {
 			if isValid {
 				validatedOrigins = append(validatedOrigins, normalizedOrigin)
 			} else {
-				log.Warnf("[CORS] Invalid origin format in configuration: %s", origin)
-				panic("[CORS] Invalid origin provided in configuration")
+				log.Panicf("[CORS] Invalid origin format in configuration: %s", origin) //nolint:revive // we want to exit the program
 			}
 		}
 		cfg.AllowOrigins = strings.Join(validatedOrigins, ",")

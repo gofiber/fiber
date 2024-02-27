@@ -1,7 +1,8 @@
 package healthcheck
 
 import (
-	"github.com/gofiber/fiber/v2/utils"
+	"strings"
+
 	"github.com/gofiber/fiber/v3"
 )
 
@@ -41,12 +42,12 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		prefixCount := len(utils.TrimRight(c.Route().Path, '/'))
+		prefixCount := len(strings.TrimRight(c.Route().Path, "/"))
 		if len(c.Path()) >= prefixCount {
 			checkPath := c.Path()[prefixCount:]
 			checkPathTrimmed := checkPath
 			if !c.App().Config().StrictRouting {
-				checkPathTrimmed = utils.TrimRight(checkPath, '/')
+				checkPathTrimmed = strings.TrimRight(checkPath, "/")
 			}
 			switch {
 			case checkPath == cfg.ReadinessEndpoint || checkPathTrimmed == cfg.ReadinessEndpoint:
