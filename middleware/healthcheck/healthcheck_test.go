@@ -56,6 +56,7 @@ func Test_HealthCheck_Group_Default(t *testing.T) {
 	v3Group := app.Group("/v3/")
 	v3Group.Group("/todos/", New(Config{ReadinessEndpoint: "/readyz/", LivenessEndpoint: "/livez/"}))
 
+	// Testing health check endpoints in versioned API groups
 	shouldGiveOK(t, app, "/v1/readyz")
 	shouldGiveOK(t, app, "/v1/livez")
 	shouldGiveOK(t, app, "/v1/readyz/")
@@ -139,6 +140,7 @@ func Test_HealthCheck_Custom(t *testing.T) {
 		ReadinessEndpoint: "/ready",
 	}))
 
+	// Setup custom liveness and readiness probes to simulate application health status
 	// Live should return 200 with GET request
 	shouldGiveOK(t, app, "/live")
 	// Live should return 404 with POST request
@@ -182,6 +184,7 @@ func Test_HealthCheck_Custom_Nested(t *testing.T) {
 		ReadinessEndpoint: "/probe/ready",
 	}))
 
+	// Testing custom health check endpoints with nested paths
 	shouldGiveOK(t, app, "/probe/live")
 	shouldGiveStatus(t, app, "/probe/ready", fiber.StatusServiceUnavailable)
 	shouldGiveOK(t, app, "/probe/live/")

@@ -26,8 +26,7 @@ if [ "$EVENT" == "push" ]; then
   fi
 
 # Handle release event
-el
-if [ "$EVENT" == "release" ]; then
+elif [ "$EVENT" == "release" ]; then
   major_version="${TAG_NAME%%.*}"
 
   # Form new version name
