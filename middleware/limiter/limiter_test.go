@@ -2,6 +2,7 @@ package limiter
 
 import (
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"sync"
 	"testing"
@@ -33,7 +34,7 @@ func Test_Limiter_Concurrency_Store(t *testing.T) {
 	var wg sync.WaitGroup
 	singleRequest := func(wg *sync.WaitGroup) {
 		defer wg.Done()
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
@@ -49,13 +50,13 @@ func Test_Limiter_Concurrency_Store(t *testing.T) {
 
 	wg.Wait()
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
 	time.Sleep(3 * time.Second)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 }
@@ -79,7 +80,7 @@ func Test_Limiter_Concurrency(t *testing.T) {
 	var wg sync.WaitGroup
 	singleRequest := func(wg *sync.WaitGroup) {
 		defer wg.Done()
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
@@ -95,13 +96,13 @@ func Test_Limiter_Concurrency(t *testing.T) {
 
 	wg.Wait()
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
 	time.Sleep(3 * time.Second)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 }
@@ -126,21 +127,21 @@ func Test_Limiter_Fixed_Window_No_Skip_Choices(t *testing.T) {
 		return c.SendStatus(200)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 400, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
 	time.Sleep(3 * time.Second)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 }
@@ -166,21 +167,21 @@ func Test_Limiter_Fixed_Window_Custom_Storage_No_Skip_Choices(t *testing.T) {
 		return c.SendStatus(200)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 400, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
 	time.Sleep(3 * time.Second)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 }
@@ -205,21 +206,21 @@ func Test_Limiter_Sliding_Window_No_Skip_Choices(t *testing.T) {
 		return c.SendStatus(200)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 400, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
 	time.Sleep(4*time.Second + 500*time.Millisecond)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 }
@@ -245,21 +246,21 @@ func Test_Limiter_Sliding_Window_Custom_Storage_No_Skip_Choices(t *testing.T) {
 		return c.SendStatus(200)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 400, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
 	time.Sleep(4*time.Second + 500*time.Millisecond)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 }
@@ -283,21 +284,21 @@ func Test_Limiter_Fixed_Window_Skip_Failed_Requests(t *testing.T) {
 		return c.SendStatus(200)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 400, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
 	time.Sleep(3 * time.Second)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 }
@@ -322,21 +323,21 @@ func Test_Limiter_Fixed_Window_Custom_Storage_Skip_Failed_Requests(t *testing.T)
 		return c.SendStatus(200)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 400, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
 	time.Sleep(3 * time.Second)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 }
@@ -360,21 +361,21 @@ func Test_Limiter_Sliding_Window_Skip_Failed_Requests(t *testing.T) {
 		return c.SendStatus(200)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 400, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
 	time.Sleep(4*time.Second + 500*time.Millisecond)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 }
@@ -399,21 +400,21 @@ func Test_Limiter_Sliding_Window_Custom_Storage_Skip_Failed_Requests(t *testing.
 		return c.SendStatus(200)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 400, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
 	time.Sleep(4*time.Second + 500*time.Millisecond)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 }
@@ -439,21 +440,21 @@ func Test_Limiter_Fixed_Window_Skip_Successful_Requests(t *testing.T) {
 		return c.SendStatus(200)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 400, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
 	time.Sleep(3 * time.Second)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 400, resp.StatusCode)
 }
@@ -480,21 +481,21 @@ func Test_Limiter_Fixed_Window_Custom_Storage_Skip_Successful_Requests(t *testin
 		return c.SendStatus(200)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 400, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
 	time.Sleep(3 * time.Second)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 400, resp.StatusCode)
 }
@@ -520,21 +521,21 @@ func Test_Limiter_Sliding_Window_Skip_Successful_Requests(t *testing.T) {
 		return c.SendStatus(200)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 400, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
 	time.Sleep(4*time.Second + 500*time.Millisecond)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 400, resp.StatusCode)
 }
@@ -561,21 +562,21 @@ func Test_Limiter_Sliding_Window_Custom_Storage_Skip_Successful_Requests(t *test
 		return c.SendStatus(200)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/success", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 400, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
 	time.Sleep(4*time.Second + 500*time.Millisecond)
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 400, resp.StatusCode)
 }
@@ -617,7 +618,7 @@ func Test_Limiter_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
@@ -692,7 +693,7 @@ func Test_Sliding_Window(t *testing.T) {
 	})
 
 	singleRequest := func(shouldFail bool) {
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 		if shouldFail {
 			require.NoError(t, err)
 			require.Equal(t, 429, resp.StatusCode)

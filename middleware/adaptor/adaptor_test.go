@@ -1,4 +1,4 @@
-//nolint:bodyclose, contextcheck, revive // Much easier to just ignore memory leaks in tests
+//nolint:contextcheck, revive // Much easier to just ignore memory leaks in tests
 package adaptor
 
 import (

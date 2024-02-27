@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
@@ -34,7 +35,7 @@ func Test_Compress_Gzip(t *testing.T) {
 		return c.Send(filedata)
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("Accept-Encoding", "gzip")
 
 	resp, err := app.Test(req)
@@ -65,7 +66,7 @@ func Test_Compress_Different_Level(t *testing.T) {
 				return c.Send(filedata)
 			})
 
-			req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 			req.Header.Set("Accept-Encoding", "gzip")
 
 			resp, err := app.Test(req)
@@ -91,7 +92,7 @@ func Test_Compress_Deflate(t *testing.T) {
 		return c.Send(filedata)
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("Accept-Encoding", "deflate")
 
 	resp, err := app.Test(req)
@@ -115,7 +116,7 @@ func Test_Compress_Brotli(t *testing.T) {
 		return c.Send(filedata)
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("Accept-Encoding", "br")
 
 	resp, err := app.Test(req, 10000)
@@ -139,7 +140,7 @@ func Test_Compress_Disabled(t *testing.T) {
 		return c.Send(filedata)
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("Accept-Encoding", "br")
 
 	resp, err := app.Test(req)
@@ -163,7 +164,7 @@ func Test_Compress_Next_Error(t *testing.T) {
 		return errors.New("next error")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	req.Header.Set("Accept-Encoding", "gzip")
 
 	resp, err := app.Test(req)
@@ -186,7 +187,7 @@ func Test_Compress_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
