@@ -314,7 +314,7 @@ func Test_App_serverErrorHandler_Internal_Error(t *testing.T) {
 	t.Parallel()
 	app := New()
 	msg := "test err"
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	app.serverErrorHandler(c.fasthttp, errors.New(msg))
 	require.Equal(t, string(c.fasthttp.Response.Body()), msg)
@@ -324,7 +324,7 @@ func Test_App_serverErrorHandler_Internal_Error(t *testing.T) {
 func Test_App_serverErrorHandler_Network_Error(t *testing.T) {
 	t.Parallel()
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	app.serverErrorHandler(c.fasthttp, &net.DNSError{
 		Err:       "test error",
@@ -1400,8 +1400,7 @@ func Test_App_Next_Method(t *testing.T) {
 func Benchmark_AcquireCtx(b *testing.B) {
 	app := New()
 	for n := 0; n < b.N; n++ {
-		c := app.AcquireCtx()
-		c.Reset(&fasthttp.RequestCtx{})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 		app.ReleaseCtx(c)
 	}
@@ -1765,7 +1764,7 @@ func Test_App_SetTLSHandler(t *testing.T) {
 	app := New()
 	app.SetTLSHandler(tlsHandler)
 
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 
 	require.Equal(t, "example.golang", c.ClientHelloInfo().ServerName)

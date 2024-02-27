@@ -87,7 +87,7 @@ func Test_HTTPHandler(t *testing.T) {
 
 	fctx.Init(&req, remoteAddr, nil)
 	app := fiber.New()
-	ctx := app.NewCtx(&fctx)
+	ctx := app.AcquireCtx(&fctx)
 	defer app.ReleaseCtx(ctx)
 
 	err = fiberH(ctx)

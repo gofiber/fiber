@@ -21,7 +21,7 @@ func Test_Session(t *testing.T) {
 	app := fiber.New()
 
 	// fiber context
-	ctx := app.NewCtx(&fasthttp.RequestCtx{})
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	// set session
 	ctx.Request().Header.SetCookie(store.sessionName, "123")
@@ -69,7 +69,7 @@ func Test_Session(t *testing.T) {
 	require.NoError(t, err)
 
 	// requesting entirely new context to prevent falsy tests
-	ctx = app.NewCtx(&fasthttp.RequestCtx{})
+	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	sess, err = store.Get(ctx)
 	require.NoError(t, err)
@@ -80,7 +80,7 @@ func Test_Session(t *testing.T) {
 
 	// when we use the original session for the second time
 	// the session be should be same if the session is not expired
-	ctx = app.NewCtx(&fasthttp.RequestCtx{})
+	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	// request the server with the old session
 	ctx.Request().Header.SetCookie(store.sessionName, id)
@@ -101,7 +101,7 @@ func Test_Session_Types(t *testing.T) {
 	app := fiber.New()
 
 	// fiber context
-	ctx := app.NewCtx(&fasthttp.RequestCtx{})
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	// set cookie
 	ctx.Request().Header.SetCookie(store.sessionName, "123")
@@ -265,7 +265,7 @@ func Test_Session_Store_Reset(t *testing.T) {
 	// fiber instance
 	app := fiber.New()
 	// fiber context
-	ctx := app.NewCtx(&fasthttp.RequestCtx{})
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	// get session
 	sess, err := store.Get(ctx)
@@ -298,7 +298,7 @@ func Test_Session_Save(t *testing.T) {
 		// fiber instance
 		app := fiber.New()
 		// fiber context
-		ctx := app.NewCtx(&fasthttp.RequestCtx{})
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 		// get session
 		sess, err := store.Get(ctx)
@@ -320,7 +320,7 @@ func Test_Session_Save(t *testing.T) {
 		// fiber instance
 		app := fiber.New()
 		// fiber context
-		ctx := app.NewCtx(&fasthttp.RequestCtx{})
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 		// get session
 		sess, err := store.Get(ctx)
@@ -347,7 +347,7 @@ func Test_Session_Save_Expiration(t *testing.T) {
 		// fiber instance
 		app := fiber.New()
 		// fiber context
-		ctx := app.NewCtx(&fasthttp.RequestCtx{})
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 		// get session
 		sess, err := store.Get(ctx)
@@ -389,7 +389,7 @@ func Test_Session_Destroy(t *testing.T) {
 		// fiber instance
 		app := fiber.New()
 		// fiber context
-		ctx := app.NewCtx(&fasthttp.RequestCtx{})
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 		// get session
 		sess, err := store.Get(ctx)
@@ -410,7 +410,7 @@ func Test_Session_Destroy(t *testing.T) {
 		// fiber instance
 		app := fiber.New()
 		// fiber context
-		ctx := app.NewCtx(&fasthttp.RequestCtx{})
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 		// get session
 		sess, err := store.Get(ctx)
@@ -449,7 +449,7 @@ func Test_Session_Cookie(t *testing.T) {
 	// fiber instance
 	app := fiber.New()
 	// fiber context
-	ctx := app.NewCtx(&fasthttp.RequestCtx{})
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	// get session
 	sess, err := store.Get(ctx)
@@ -467,7 +467,7 @@ func Test_Session_Cookie_In_Response(t *testing.T) {
 	app := fiber.New()
 
 	// fiber context
-	ctx := app.NewCtx(&fasthttp.RequestCtx{})
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	// get session
 	sess, err := store.Get(ctx)
@@ -492,7 +492,7 @@ func Test_Session_Deletes_Single_Key(t *testing.T) {
 	store := New()
 	app := fiber.New()
 
-	ctx := app.NewCtx(&fasthttp.RequestCtx{})
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	sess, err := store.Get(ctx)
 	require.NoError(t, err)
@@ -522,7 +522,7 @@ func Test_Session_Reset(t *testing.T) {
 	store := New()
 
 	// fiber context
-	ctx := app.NewCtx(&fasthttp.RequestCtx{})
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	t.Run("reset session data and id, and set fresh to be true", func(t *testing.T) {
 		t.Parallel()
@@ -590,7 +590,7 @@ func Test_Session_Regenerate(t *testing.T) {
 		// a random session uuid
 		originalSessionUUIDString := ""
 		// fiber context
-		ctx := app.NewCtx(&fasthttp.RequestCtx{})
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 		// now the session is in the storage
 		freshSession, err := store.Get(ctx)
@@ -622,7 +622,7 @@ func Test_Session_Regenerate(t *testing.T) {
 // go test -v -run=^$ -bench=Benchmark_Session -benchmem -count=4
 func Benchmark_Session(b *testing.B) {
 	app, store := fiber.New(), New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 	c.Request().Header.SetCookie(store.sessionName, "12356789")
 
