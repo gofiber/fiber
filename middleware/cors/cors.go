@@ -114,24 +114,28 @@ func New(config ...Config) fiber.Handler {
 	}
 
 	// allowOrigins is a slice of strings that contains the allowed origins
-	// that are defined in the 'AllowOrigins' configuration.
+	// defined in the 'AllowOrigins' configuration.
 	var allowOrigins []string
 
 	// Validate and normalize static AllowOrigins
 	if cfg.AllowOrigins != "" && cfg.AllowOrigins != "*" {
-		for _, origin := range strings.Split(cfg.AllowOrigins, ",") {
-			origin = strings.TrimSpace(origin)
-			isValid, normalizedOrigin := normalizeOrigin(origin)
+		origins := strings.Split(cfg.AllowOrigins, ",")
+		allowOrigins = make([]string, len(origins))
+
+		for i, origin := range origins {
+			trimmedOrigin := strings.TrimSpace(origin)
+			isValid, normalizedOrigin := normalizeOrigin(trimmedOrigin)
+
 			if isValid {
-				allowOrigins = append(allowOrigins, normalizedOrigin)
+				allowOrigins[i] = normalizedOrigin
 			} else {
-				log.Warnf("[CORS] Invalid origin format in configuration: %s", origin)
+				log.Warnf("[CORS] Invalid origin format in configuration: %s", trimmedOrigin)
 				panic("[CORS] Invalid origin provided in configuration")
 			}
 		}
 	} else {
 		// If AllowOrigins is set to a wildcard or not set,
-		// set the allowOrigins to a slice with a single element
+		// set allowOrigins to a slice with a single element
 		allowOrigins = []string{cfg.AllowOrigins}
 	}
 
