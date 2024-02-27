@@ -675,50 +675,74 @@ func Test_CORS_AllowCredentials(t *testing.T) {
 	}
 }
 
+// go test -v -run=^$ -bench=Benchmark_CORS_NewHandler -benchmem -count=4
 func Benchmark_CORS_NewHandler(b *testing.B) {
 	app := fiber.New()
-	app.Use(New(Config{
+	c := New(Config{
 		AllowOrigins:     "http://localhost,http://example.com",
 		AllowMethods:     "GET,POST,PUT,DELETE",
 		AllowHeaders:     "Origin,Content-Type,Accept",
 		AllowCredentials: true,
 		MaxAge:           600,
-	}))
+	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	app.Use(c)
+	app.Use(func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	h := app.Handler()
+	ctx := &fasthttp.RequestCtx{}
+
+	req := &fasthttp.Request{}
+	req.Header.SetMethod(fiber.MethodGet)
+	req.SetRequestURI("/")
 	req.Header.Set(fiber.HeaderOrigin, "http://localhost")
+	req.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
+	req.Header.Set(fiber.HeaderAccessControlRequestHeaders, "Origin,Content-Type,Accept")
 
+	ctx.Init(req, nil, nil)
+
+	b.ReportAllocs()
 	b.ResetTimer()
+
 	for i := 0; i < b.N; i++ {
-		resp, err := app.Test(req)
-		if err != nil {
-			b.Fatalf("Failed to perform request: %v", err)
-		}
-		_ = resp
+		h(ctx)
 	}
 }
 
+// go test -v -run=^$ -bench=Benchmark_CORS_NewHandlerPreflight -benchmem -count=4
 func Benchmark_CORS_NewHandlerPreflight(b *testing.B) {
 	app := fiber.New()
-	app.Use(New(Config{
+	c := New(Config{
 		AllowOrigins:     "http://localhost,http://example.com",
 		AllowMethods:     "GET,POST,PUT,DELETE",
 		AllowHeaders:     "Origin,Content-Type,Accept",
 		AllowCredentials: true,
 		MaxAge:           600,
-	}))
+	})
 
-	req := httptest.NewRequest(fiber.MethodOptions, "/", nil)
+	app.Use(c)
+	app.Use(func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	h := app.Handler()
+	ctx := &fasthttp.RequestCtx{}
+
+	req := &fasthttp.Request{}
+	req.Header.SetMethod(fiber.MethodOptions)
+	req.SetRequestURI("/")
 	req.Header.Set(fiber.HeaderOrigin, "http://localhost")
 	req.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodPost)
 	req.Header.Set(fiber.HeaderAccessControlRequestHeaders, "Origin,Content-Type,Accept")
 
+	ctx.Init(req, nil, nil)
+
+	b.ReportAllocs()
 	b.ResetTimer()
+
 	for i := 0; i < b.N; i++ {
-		resp, err := app.Test(req)
-		if err != nil {
-			b.Fatalf("Failed to perform request: %v", err)
-		}
-		_ = resp
+		h(ctx)
 	}
 }
