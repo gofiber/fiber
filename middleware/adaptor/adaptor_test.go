@@ -1,4 +1,4 @@
-//nolint:bodyclose, contextcheck, revive // Much easier to just ignore memory leaks in tests
+//nolint:contextcheck, revive // Much easier to just ignore memory leaks in tests
 package adaptor
 
 import (
@@ -87,7 +87,7 @@ func Test_HTTPHandler(t *testing.T) {
 
 	fctx.Init(&req, remoteAddr, nil)
 	app := fiber.New()
-	ctx := app.NewCtx(&fctx)
+	ctx := app.AcquireCtx(&fctx)
 	defer app.ReleaseCtx(ctx)
 
 	err = fiberH(ctx)

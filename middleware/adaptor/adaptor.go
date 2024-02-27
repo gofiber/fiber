@@ -160,7 +160,7 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		fctx.Init(req, remoteAddr, nil)
 		if len(h) > 0 {
 			// New fiber Ctx
-			ctx := app.NewCtx(&fctx)
+			ctx := app.AcquireCtx(&fctx)
 			// Execute fiber Ctx
 			err := h[0](ctx)
 			if err != nil {

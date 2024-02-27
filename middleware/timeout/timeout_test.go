@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -27,12 +28,12 @@ func Test_WithContextTimeout(t *testing.T) {
 	}, 100*time.Millisecond)
 	app.Get("/test/:sleepTime", h)
 	testTimeout := func(timeoutStr string) {
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test/"+timeoutStr, nil))
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test/"+timeoutStr, http.NoBody))
 		require.NoError(t, err, "app.Test(req)")
 		require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode, "Status code")
 	}
 	testSucces := func(timeoutStr string) {
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test/"+timeoutStr, nil))
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test/"+timeoutStr, http.NoBody))
 		require.NoError(t, err, "app.Test(req)")
 		require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
 	}
@@ -59,12 +60,12 @@ func Test_WithContextTimeoutWithCustomError(t *testing.T) {
 	}, 100*time.Millisecond, ErrFooTimeOut)
 	app.Get("/test/:sleepTime", h)
 	testTimeout := func(timeoutStr string) {
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test/"+timeoutStr, nil))
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test/"+timeoutStr, http.NoBody))
 		require.NoError(t, err, "app.Test(req)")
 		require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode, "Status code")
 	}
 	testSucces := func(timeoutStr string) {
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test/"+timeoutStr, nil))
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test/"+timeoutStr, http.NoBody))
 		require.NoError(t, err, "app.Test(req)")
 		require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
 	}

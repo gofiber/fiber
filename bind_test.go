@@ -1,4 +1,4 @@
-//nolint:wrapcheck,tagliatelle,bodyclose // We must not wrap errors in tests
+//nolint:wrapcheck,tagliatelle // We must not wrap errors in tests
 package fiber
 
 import (
@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"testing"
@@ -23,7 +24,7 @@ const helloWorld = "hello world"
 func Test_Bind_Query(t *testing.T) {
 	t.Parallel()
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Query struct {
 		ID    int
@@ -98,7 +99,7 @@ func Test_Bind_Query_Map(t *testing.T) {
 	t.Parallel()
 
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
@@ -156,7 +157,7 @@ func Test_Bind_Query_WithSetParserDecoder(t *testing.T) {
 	})
 
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type NonRFCTimeInput struct {
 		Date  NonRFCTime `query:"date"`
@@ -188,7 +189,7 @@ func Test_Bind_Query_WithSetParserDecoder(t *testing.T) {
 func Test_Bind_Query_Schema(t *testing.T) {
 	t.Parallel()
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Query1 struct {
 		Name   string `query:"name,required"`
@@ -289,7 +290,7 @@ func Test_Bind_Query_Schema(t *testing.T) {
 func Test_Bind_Header(t *testing.T) {
 	t.Parallel()
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Header struct {
 		ID    int
@@ -362,7 +363,7 @@ func Test_Bind_Header_Map(t *testing.T) {
 	t.Parallel()
 
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
@@ -410,7 +411,7 @@ func Test_Bind_Header_WithSetParserDecoder(t *testing.T) {
 	})
 
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type NonRFCTimeInput struct {
 		Date  NonRFCTime `req:"date"`
@@ -445,7 +446,7 @@ func Test_Bind_Header_WithSetParserDecoder(t *testing.T) {
 func Test_Bind_Header_Schema(t *testing.T) {
 	t.Parallel()
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Header1 struct {
 		Name   string `header:"Name,required"`
@@ -530,7 +531,7 @@ func Test_Bind_Header_Schema(t *testing.T) {
 func Test_Bind_RespHeader(t *testing.T) {
 	t.Parallel()
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Header struct {
 		ID    int
@@ -603,7 +604,7 @@ func Test_Bind_RespHeader_Map(t *testing.T) {
 	t.Parallel()
 
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
@@ -632,7 +633,7 @@ func Benchmark_Bind_Query(b *testing.B) {
 	var err error
 
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Query struct {
 		ID    int
@@ -656,7 +657,7 @@ func Benchmark_Bind_Query_Map(b *testing.B) {
 	var err error
 
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
@@ -675,7 +676,7 @@ func Benchmark_Bind_Query_WithParseParam(b *testing.B) {
 	var err error
 
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Person struct {
 		Name string `query:"name"`
@@ -705,7 +706,7 @@ func Benchmark_Bind_Query_Comma(b *testing.B) {
 	var err error
 
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Query struct {
 		ID    int
@@ -730,7 +731,7 @@ func Benchmark_Bind_Header(b *testing.B) {
 	var err error
 
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type ReqHeader struct {
 		ID    int
@@ -757,7 +758,7 @@ func Benchmark_Bind_Header(b *testing.B) {
 func Benchmark_Bind_Header_Map(b *testing.B) {
 	var err error
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
@@ -780,7 +781,7 @@ func Benchmark_Bind_RespHeader(b *testing.B) {
 	var err error
 
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type ReqHeader struct {
 		ID    int
@@ -807,7 +808,7 @@ func Benchmark_Bind_RespHeader(b *testing.B) {
 func Benchmark_Bind_RespHeader_Map(b *testing.B) {
 	var err error
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
@@ -829,7 +830,7 @@ func Benchmark_Bind_RespHeader_Map(b *testing.B) {
 func Test_Bind_Body(t *testing.T) {
 	t.Parallel()
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Demo struct {
 		Name string `json:"name" xml:"name" form:"name" query:"name"`
@@ -926,7 +927,7 @@ func Test_Bind_Body_WithSetParserDecoder(t *testing.T) {
 	})
 
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Demo struct {
 		Date  CustomTime `form:"date"`
@@ -958,7 +959,7 @@ func Benchmark_Bind_Body_JSON(b *testing.B) {
 	var err error
 
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Demo struct {
 		Name string `json:"name"`
@@ -984,7 +985,7 @@ func Benchmark_Bind_Body_XML(b *testing.B) {
 	var err error
 
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Demo struct {
 		Name string `xml:"name"`
@@ -1010,7 +1011,7 @@ func Benchmark_Bind_Body_Form(b *testing.B) {
 	var err error
 
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Demo struct {
 		Name string `form:"name"`
@@ -1036,7 +1037,7 @@ func Benchmark_Bind_Body_MultipartForm(b *testing.B) {
 	var err error
 
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Demo struct {
 		Name string `form:"name"`
@@ -1063,7 +1064,7 @@ func Benchmark_Bind_Body_Form_Map(b *testing.B) {
 	var err error
 
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	body := []byte("name=john")
 	c.Request().SetBody(body)
@@ -1099,9 +1100,9 @@ func Test_Bind_URI(t *testing.T) {
 		require.Equal(t, uint(222), d.RoleID)
 		return nil
 	})
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/test1/111/role/222", nil))
+	_, err := app.Test(httptest.NewRequest(MethodGet, "/test1/111/role/222", http.NoBody))
 	require.NoError(t, err)
-	_, err = app.Test(httptest.NewRequest(MethodGet, "/test2/111/role/222", nil))
+	_, err = app.Test(httptest.NewRequest(MethodGet, "/test2/111/role/222", http.NoBody))
 	require.NoError(t, err)
 }
 
@@ -1120,9 +1121,9 @@ func Test_Bind_URI_Map(t *testing.T) {
 		require.Equal(t, uint(222), d["roleId"])
 		return nil
 	})
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/test1/111/role/222", nil))
+	_, err := app.Test(httptest.NewRequest(MethodGet, "/test1/111/role/222", http.NoBody))
 	require.NoError(t, err)
-	_, err = app.Test(httptest.NewRequest(MethodGet, "/test2/111/role/222", nil))
+	_, err = app.Test(httptest.NewRequest(MethodGet, "/test2/111/role/222", http.NoBody))
 	require.NoError(t, err)
 }
 
@@ -1131,7 +1132,7 @@ func Benchmark_Bind_URI(b *testing.B) {
 	var err error
 
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	c.route = &Route{
 		Params: []string{
@@ -1168,7 +1169,7 @@ func Benchmark_Bind_URI_Map(b *testing.B) {
 	var err error
 
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	c.route = &Route{
 		Params: []string{
@@ -1200,7 +1201,7 @@ func Test_Bind_Cookie(t *testing.T) {
 	t.Parallel()
 
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Cookie struct {
 		ID    int
@@ -1273,7 +1274,7 @@ func Test_Bind_Cookie_Map(t *testing.T) {
 	t.Parallel()
 
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
@@ -1321,7 +1322,7 @@ func Test_Bind_Cookie_WithSetParserDecoder(t *testing.T) {
 	})
 
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type NonRFCTimeInput struct {
 		Date  NonRFCTime `cerez:"date"`
@@ -1357,7 +1358,7 @@ func Test_Bind_Cookie_Schema(t *testing.T) {
 	t.Parallel()
 
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Cookie1 struct {
 		Name   string `cookie:"Name,required"`
@@ -1443,7 +1444,7 @@ func Benchmark_Bind_Cookie(b *testing.B) {
 	var err error
 
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Cookie struct {
 		ID    int
@@ -1472,7 +1473,7 @@ func Benchmark_Bind_Cookie_Map(b *testing.B) {
 	var err error
 
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
@@ -1509,7 +1510,7 @@ func (*customBinder) Parse(c Ctx, out any) error {
 // go test -run Test_Bind_CustomBinder
 func Test_Bind_CustomBinder(t *testing.T) {
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	// Register binder
 	customBinder := &customBinder{}
@@ -1533,7 +1534,7 @@ func Test_Bind_CustomBinder(t *testing.T) {
 // go test -run Test_Bind_Must
 func Test_Bind_Must(t *testing.T) {
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type RequiredQuery struct {
 		Name string `query:"name,required"`
@@ -1573,7 +1574,7 @@ type simpleQuery struct {
 // go test -run Test_Bind_StructValidator
 func Test_Bind_StructValidator(t *testing.T) {
 	app := New(Config{StructValidator: &structValidator{}})
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	rq := new(simpleQuery)
 	c.Request().URI().SetQueryString("name=efe")
@@ -1588,7 +1589,7 @@ func Test_Bind_StructValidator(t *testing.T) {
 func Test_Bind_RepeatParserWithSameStruct(t *testing.T) {
 	t.Parallel()
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 
 	type Request struct {

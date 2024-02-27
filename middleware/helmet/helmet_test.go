@@ -1,6 +1,7 @@
 package helmet
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -17,7 +18,7 @@ func Test_Default(t *testing.T) {
 		return c.SendString("Hello, World!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, "0", resp.Header.Get(fiber.HeaderXXSSProtection))
 	require.Equal(t, "nosniff", resp.Header.Get(fiber.HeaderXContentTypeOptions))
@@ -61,7 +62,7 @@ func Test_CustomValues_AllHeaders(t *testing.T) {
 		return c.SendString("Hello, World!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	// Assertions for custom header values
 	require.Equal(t, "0", resp.Header.Get(fiber.HeaderXXSSProtection))
@@ -106,7 +107,7 @@ func Test_RealWorldValues_AllHeaders(t *testing.T) {
 		return c.SendString("Hello, World!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	// Assertions for real-world header values
 	require.Equal(t, "0", resp.Header.Get(fiber.HeaderXXSSProtection))
@@ -141,11 +142,11 @@ func Test_Next(t *testing.T) {
 		return c.SendString("Skipped!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, "no-referrer", resp.Header.Get(fiber.HeaderReferrerPolicy))
 
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/next", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/next", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, "", resp.Header.Get(fiber.HeaderReferrerPolicy))
 }
@@ -161,7 +162,7 @@ func Test_ContentSecurityPolicy(t *testing.T) {
 		return c.SendString("Hello, World!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, "default-src 'none'", resp.Header.Get(fiber.HeaderContentSecurityPolicy))
 }
@@ -178,7 +179,7 @@ func Test_ContentSecurityPolicyReportOnly(t *testing.T) {
 		return c.SendString("Hello, World!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, "default-src 'none'", resp.Header.Get(fiber.HeaderContentSecurityPolicyReportOnly))
 	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentSecurityPolicy))
@@ -195,7 +196,7 @@ func Test_PermissionsPolicy(t *testing.T) {
 		return c.SendString("Hello, World!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, "microphone=()", resp.Header.Get(fiber.HeaderPermissionsPolicy))
 }

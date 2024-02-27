@@ -427,7 +427,7 @@ func NewDefaultCtx(app *App) *DefaultCtx {
 	}
 }
 
-func (app *App) NewCtx(fctx *fasthttp.RequestCtx) Ctx {
+func (app *App) newCtx() Ctx {
 	var c Ctx
 
 	if app.newCtxFunc != nil {
@@ -436,18 +436,18 @@ func (app *App) NewCtx(fctx *fasthttp.RequestCtx) Ctx {
 		c = NewDefaultCtx(app)
 	}
 
-	// Set request
-	c.setReq(fctx)
-
 	return c
 }
 
 // AcquireCtx retrieves a new Ctx from the pool.
-func (app *App) AcquireCtx() Ctx {
+func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) Ctx {
 	ctx, ok := app.pool.Get().(Ctx)
+
 	if !ok {
 		panic(errors.New("failed to type-assert to Ctx"))
 	}
+	ctx.Reset(fctx)
+
 	return ctx
 }
 
@@ -470,7 +470,7 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 	c.pathOriginal = c.app.getString(fctx.URI().PathOriginal())
 
 	// Attach *fasthttp.RequestCtx to ctx
-	c.fasthttp = fctx
+	c.setReq(fctx)
 
 	// reset base uri
 	c.baseURI = ""

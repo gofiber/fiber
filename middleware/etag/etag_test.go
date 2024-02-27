@@ -3,6 +3,7 @@ package etag
 import (
 	"bytes"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -21,7 +22,7 @@ func Test_ETag_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
@@ -37,7 +38,7 @@ func Test_ETag_SkipError(t *testing.T) {
 		return fiber.ErrForbidden
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
 }
@@ -53,7 +54,7 @@ func Test_ETag_NotStatusOK(t *testing.T) {
 		return c.SendStatus(fiber.StatusCreated)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusCreated, resp.StatusCode)
 }
@@ -69,7 +70,7 @@ func Test_ETag_NoBody(t *testing.T) {
 		return nil
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
@@ -102,7 +103,7 @@ func testETagNewEtag(t *testing.T, headerIfNoneMatch, matched bool) { //nolint:r
 		return c.SendString("Hello, World!")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	if headerIfNoneMatch {
 		etag := `"non-match"`
 		if matched {
@@ -156,7 +157,7 @@ func testETagWeakEtag(t *testing.T, headerIfNoneMatch, matched bool) { //nolint:
 		return c.SendString("Hello, World!")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	if headerIfNoneMatch {
 		etag := `W/"non-match"`
 		if matched {
@@ -214,7 +215,7 @@ func testETagCustomEtag(t *testing.T, headerIfNoneMatch, matched bool) { //nolin
 		return c.SendString("Hello, World!")
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 	if headerIfNoneMatch {
 		etag := `"non-match"`
 		if matched {
@@ -255,7 +256,7 @@ func Test_ETag_CustomEtagPut(t *testing.T) {
 		return c.SendString("Hello, World!")
 	})
 
-	req := httptest.NewRequest(fiber.MethodPut, "/", nil)
+	req := httptest.NewRequest(fiber.MethodPut, "/", http.NoBody)
 	req.Header.Set(fiber.HeaderIfMatch, `"non-match"`)
 	resp, err := app.Test(req)
 	require.NoError(t, err)

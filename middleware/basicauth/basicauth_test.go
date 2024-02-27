@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -22,7 +23,7 @@ func Test_BasicAuth_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
@@ -75,7 +76,7 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 		// Base64 encode credentials for http auth header
 		creds := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", tt.username, tt.password)))
 
-		req := httptest.NewRequest(fiber.MethodGet, "/testauth", nil)
+		req := httptest.NewRequest(fiber.MethodGet, "/testauth", http.NoBody)
 		req.Header.Add("Authorization", "Basic "+creds)
 		resp, err := app.Test(req)
 		require.NoError(t, err)

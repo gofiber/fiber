@@ -81,5 +81,5 @@ func normalizeOrigin(origin string) (bool, string) {
 
 	// Normalize the origin by constructing it from the scheme and host.
 	// The path or trailing slash is not included in the normalized origin.
-	return true, strings.ToLower(parsedOrigin.Scheme) + "://" + strings.ToLower(parsedOrigin.Host)
+	return true, strings.ToLower(parsedOrigin.Scheme + "://" + parsedOrigin.Host)
 }

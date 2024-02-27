@@ -2,7 +2,6 @@
 // 🤖 Github Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
-//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package fiber
 
 import (
@@ -458,14 +457,14 @@ func Test_Mount_Route_Names(t *testing.T) {
 	require.Equal(t, "/app2/users", route.Path)
 
 	// GetRouteURL inside handler
-	req := httptest.NewRequest(MethodGet, "/app1/users", nil)
+	req := httptest.NewRequest(MethodGet, "/app1/users", http.NoBody)
 	resp, err := rootApp.Test(req)
 
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
 	// ctx.App().GetRoute() inside handler
-	req = httptest.NewRequest(MethodPost, "/app1/users", nil)
+	req = httptest.NewRequest(MethodPost, "/app1/users", http.NoBody)
 	resp, err = rootApp.Test(req)
 
 	require.NoError(t, err, "app.Test(req)")

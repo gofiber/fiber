@@ -1,4 +1,3 @@
-//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package filesystem
 
 import (
@@ -123,7 +122,7 @@ func Test_FileSystem(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, tt.url, nil))
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, tt.url, http.NoBody))
 			require.NoError(t, err)
 			require.Equal(t, tt.statusCode, resp.StatusCode)
 
@@ -146,7 +145,7 @@ func Test_FileSystem_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
@@ -159,7 +158,7 @@ func Test_FileSystem_Download(t *testing.T) {
 		Download: true,
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/img/fiber.png", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/img/fiber.png", http.NoBody))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
@@ -175,7 +174,7 @@ func Test_FileSystem_NonGetAndHead(t *testing.T) {
 		Root: os.DirFS("../../.github/testdata/fs"),
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/test", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/test", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 404, resp.StatusCode)
 }
@@ -203,7 +202,7 @@ func Test_FileSystem_NoRoot(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(New())
-	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 }
 
@@ -246,7 +245,7 @@ func Test_FileSystem_UsingContentTypeCharset(t *testing.T) {
 		ContentTypeCharset: "UTF-8",
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 	require.Equal(t, "text/html; charset=UTF-8", resp.Header.Get("Content-Type"))

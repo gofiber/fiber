@@ -1,6 +1,7 @@
 package healthcheck
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"testing"
@@ -12,7 +13,7 @@ import (
 
 func shouldGiveStatus(t *testing.T, app *fiber.App, path string, expectedStatus int) {
 	t.Helper()
-	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, nil))
+	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, expectedStatus, req.StatusCode, "path: "+path+" should match "+strconv.Itoa(expectedStatus))
 }
@@ -81,15 +82,16 @@ func Test_HealthCheck_Custom(t *testing.T) {
 		},
 	}))
 
+	// Setup custom liveness and readiness probes to simulate application health status
 	// Live should return 200 with GET request
 	shouldGiveOK(t, app, "/live")
 	// Live should return 404 with POST request
-	req, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/live", nil))
+	req, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/live", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusMethodNotAllowed, req.StatusCode)
 
 	// Ready should return 404 with POST request
-	req, err = app.Test(httptest.NewRequest(fiber.MethodPost, "/ready", nil))
+	req, err = app.Test(httptest.NewRequest(fiber.MethodPost, "/ready", http.NoBody))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusMethodNotAllowed, req.StatusCode)
 
@@ -123,6 +125,7 @@ func Test_HealthCheck_Custom_Nested(t *testing.T) {
 		},
 	}))
 
+	// Testing custom health check endpoints with nested paths
 	shouldGiveOK(t, app, "/probe/live")
 	shouldGiveStatus(t, app, "/probe/ready", fiber.StatusServiceUnavailable)
 	shouldGiveOK(t, app, "/probe/live/")
