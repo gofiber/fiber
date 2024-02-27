@@ -492,7 +492,7 @@ func Test_Proxy_DoTimeout_Timeout(t *testing.T) {
 		return DoTimeout(c, "http://"+addr, time.Second)
 	})
 
-	_, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
+	_, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), int((1*time.Second)/time.Millisecond))
 	require.Equal(t, errors.New("test: timeout error 1000ms"), err1)
 }
 
@@ -532,7 +532,7 @@ func Test_Proxy_DoDeadline_PastDeadline(t *testing.T) {
 		return DoDeadline(c, "http://"+addr, time.Now().Add(time.Second))
 	})
 
-	_, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
+	_, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), int((1*time.Second)/time.Millisecond))
 	require.Equal(t, errors.New("test: timeout error 1000ms"), err1)
 }
 
