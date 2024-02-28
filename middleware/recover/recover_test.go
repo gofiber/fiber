@@ -1,7 +1,6 @@
 package recover //nolint:predeclared // TODO: Rename to some non-builtin
 
 import (
-	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -25,7 +24,7 @@ func Test_Recover(t *testing.T) {
 		panic("Hi, I'm an error!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/panic", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/panic", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
 }
@@ -40,7 +39,7 @@ func Test_Recover_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
@@ -56,7 +55,7 @@ func Test_Recover_EnableStackTrace(t *testing.T) {
 		panic("Hi, I'm an error!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/panic", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/panic", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 }

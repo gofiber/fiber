@@ -396,7 +396,7 @@ func Test_ConvertRequest(t *testing.T) {
 		return c.SendString("Request URL: " + httpReq.URL.String())
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test?hello=world&another=test", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test?hello=world&another=test", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
 
@@ -453,7 +453,7 @@ func Benchmark_FiberHandlerFunc(b *testing.B) {
 
 			r := http.Request{
 				Method: http.MethodPost,
-				Body:   http.NoBody,
+				Body:   nil,
 			}
 
 			// Replace the empty Body with our buffer
@@ -520,7 +520,7 @@ func Benchmark_FiberHandlerFunc_Parallel(b *testing.B) {
 				w := httptest.NewRecorder()
 				r := http.Request{
 					Method: http.MethodPost,
-					Body:   http.NoBody,
+					Body:   nil,
 				}
 
 				// Replace the empty Body with our buffer

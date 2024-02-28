@@ -285,7 +285,7 @@ func TestCustomSuccessAndFailureHandlers(t *testing.T) {
 	})
 
 	// Create a request without an API key and send it to the app
-	res, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	res, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 
 	// Read the response body into a string
@@ -297,7 +297,7 @@ func TestCustomSuccessAndFailureHandlers(t *testing.T) {
 	require.Equal(t, "API key is invalid and request was handled by custom error handler", string(body))
 
 	// Create a request with a valid API key in the Authorization header
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	req.Header.Add("Authorization", "Bearer "+CorrectKey)
 
 	// Send the request to the app
@@ -334,7 +334,7 @@ func TestCustomNextFunc(t *testing.T) {
 	})
 
 	// Create a request with the "/allowed" path and send it to the app
-	req := httptest.NewRequest(fiber.MethodGet, "/allowed", http.NoBody)
+	req := httptest.NewRequest(fiber.MethodGet, "/allowed", nil)
 	res, err := app.Test(req)
 	require.NoError(t, err)
 
@@ -347,7 +347,7 @@ func TestCustomNextFunc(t *testing.T) {
 	require.Equal(t, "API key is valid and request was allowed by custom filter", string(body))
 
 	// Create a request with a different path and send it to the app without correct key
-	req = httptest.NewRequest(fiber.MethodGet, "/not-allowed", http.NoBody)
+	req = httptest.NewRequest(fiber.MethodGet, "/not-allowed", nil)
 	res, err = app.Test(req)
 	require.NoError(t, err)
 
@@ -360,7 +360,7 @@ func TestCustomNextFunc(t *testing.T) {
 	require.Equal(t, string(body), ErrMissingOrMalformedAPIKey.Error())
 
 	// Create a request with a different path and send it to the app with correct key
-	req = httptest.NewRequest(fiber.MethodGet, "/not-allowed", http.NoBody)
+	req = httptest.NewRequest(fiber.MethodGet, "/not-allowed", nil)
 	req.Header.Add("Authorization", "Basic "+CorrectKey)
 
 	res, err = app.Test(req)
@@ -394,7 +394,7 @@ func TestAuthSchemeToken(t *testing.T) {
 	})
 
 	// Create a request with a valid API key in the "Token" Authorization header
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	req.Header.Add("Authorization", "Token "+CorrectKey)
 
 	// Send the request to the app
@@ -430,7 +430,7 @@ func TestAuthSchemeBasic(t *testing.T) {
 	})
 
 	// Create a request without an API key and  Send the request to the app
-	res, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	res, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 
 	// Read the response body into a string
@@ -442,7 +442,7 @@ func TestAuthSchemeBasic(t *testing.T) {
 	require.Equal(t, string(body), ErrMissingOrMalformedAPIKey.Error())
 
 	// Create a request with a valid API key in the "Authorization" header using the "Basic" scheme
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	req.Header.Add("Authorization", "Basic "+CorrectKey)
 
 	// Send the request to the app

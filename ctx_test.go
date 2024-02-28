@@ -17,7 +17,6 @@ import (
 	"io"
 	"mime/multipart"
 	"net"
-	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -856,7 +855,7 @@ func Test_Ctx_UserContext_Multiple_Requests(t *testing.T) {
 		i := i
 		t.Run(fmt.Sprintf("request_%d", i), func(t *testing.T) {
 			t.Parallel()
-			resp, err := app.Test(httptest.NewRequest(MethodGet, fmt.Sprintf("/?input=%d", i), http.NoBody))
+			resp, err := app.Test(httptest.NewRequest(MethodGet, fmt.Sprintf("/?input=%d", i), nil))
 
 			require.NoError(t, err, "Unexpected error from response")
 			require.Equal(t, StatusOK, resp.StatusCode, "context.Context returned from c.UserContext() is reused")
@@ -1740,7 +1739,7 @@ func Test_Ctx_PortInHandler(t *testing.T) {
 		return c.SendString(c.Port())
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/port", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/port", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
@@ -2077,7 +2076,7 @@ func Test_Ctx_Locals(t *testing.T) {
 		require.Equal(t, "doe", c.Locals("john"))
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
@@ -2099,7 +2098,7 @@ func Test_Ctx_Locals_Generic(t *testing.T) {
 		require.Equal(t, 0, Locals[int](c, "isHuman"))
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
@@ -2122,7 +2121,7 @@ func Test_Ctx_Locals_GenericCustomStruct(t *testing.T) {
 		require.Equal(t, User{"john", 18}, Locals[User](c, "user"))
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
@@ -2173,7 +2172,7 @@ func Test_Ctx_ClientHelloInfo(t *testing.T) {
 	})
 
 	// Test without TLS handler
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/ServerName", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/ServerName", nil))
 	require.NoError(t, err)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -2191,7 +2190,7 @@ func Test_Ctx_ClientHelloInfo(t *testing.T) {
 	}}
 
 	// Test ServerName
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/ServerName", http.NoBody))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/ServerName", nil))
 	require.NoError(t, err)
 
 	body, err = io.ReadAll(resp.Body)
@@ -2199,7 +2198,7 @@ func Test_Ctx_ClientHelloInfo(t *testing.T) {
 	require.Equal(t, []byte("example.golang"), body)
 
 	// Test SignatureSchemes
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/SignatureSchemes", http.NoBody))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/SignatureSchemes", nil))
 	require.NoError(t, err)
 
 	body, err = io.ReadAll(resp.Body)
@@ -2207,7 +2206,7 @@ func Test_Ctx_ClientHelloInfo(t *testing.T) {
 	require.Equal(t, "["+strconv.Itoa(pssWithSHA256)+"]", string(body))
 
 	// Test SupportedVersions
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/SupportedVersions", http.NoBody))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/SupportedVersions", nil))
 	require.NoError(t, err)
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -2322,23 +2321,23 @@ func Test_Ctx_Params(t *testing.T) {
 		require.Equal(t, "first", c.Params("Id"))
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2/im/a/cookie", http.NoBody))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2/im/a/cookie", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test3/1111/blafasel/2222", http.NoBody))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test3/1111/blafasel/2222", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test4", http.NoBody))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test4", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test5/first/second", http.NoBody))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test5/first/second", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
@@ -2356,11 +2355,11 @@ func Test_Ctx_Params_Case_Sensitive(t *testing.T) {
 		require.Equal(t, "second", c.Params("Id"))
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2/first/second", http.NoBody))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2/first/second", nil))
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
@@ -2409,7 +2408,7 @@ func Test_Ctx_Path(t *testing.T) {
 		require.Equal(t, "/اختبار/", c.Path("/%D8%A7%D8%AE%D8%AA%D8%A8%D8%A7%D8%B1/"))
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/specialChars/cr%C3%A9er", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/specialChars/cr%C3%A9er", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
@@ -3128,7 +3127,7 @@ func Test_Ctx_Route(t *testing.T) {
 		require.Equal(t, "/test", c.Route().Path)
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
@@ -3147,7 +3146,7 @@ func Test_Ctx_RouteNormalized(t *testing.T) {
 		require.Equal(t, "/test", c.Route().Path)
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "//test", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "//test", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
 }
@@ -3384,7 +3383,7 @@ func Test_Ctx_SendFile_404(t *testing.T) {
 		return err
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, StatusNotFound, resp.StatusCode)
 }
@@ -3424,11 +3423,11 @@ func Test_Ctx_SendFile_Immutable(t *testing.T) {
 		t.Run(endpoint, func(t *testing.T) {
 			t.Parallel()
 			// 1st try
-			resp, err := app.Test(httptest.NewRequest(MethodGet, endpoint, http.NoBody))
+			resp, err := app.Test(httptest.NewRequest(MethodGet, endpoint, nil))
 			require.NoError(t, err)
 			require.Equal(t, StatusOK, resp.StatusCode)
 			// 2nd try
-			resp, err = app.Test(httptest.NewRequest(MethodGet, endpoint, http.NoBody))
+			resp, err = app.Test(httptest.NewRequest(MethodGet, endpoint, nil))
 			require.NoError(t, err)
 			require.Equal(t, StatusOK, resp.StatusCode)
 		})
@@ -3446,9 +3445,9 @@ func Test_Ctx_SendFile_RestoreOriginalURL(t *testing.T) {
 		return err
 	})
 
-	_, err1 := app.Test(httptest.NewRequest(MethodGet, "/?test=true", http.NoBody))
+	_, err1 := app.Test(httptest.NewRequest(MethodGet, "/?test=true", nil))
 	// second request required to confirm with zero allocation
-	_, err2 := app.Test(httptest.NewRequest(MethodGet, "/?test=true", http.NoBody))
+	_, err2 := app.Test(httptest.NewRequest(MethodGet, "/?test=true", nil))
 
 	require.NoError(t, err1)
 	require.NoError(t, err2)
@@ -3761,7 +3760,7 @@ func Test_Ctx_Next(t *testing.T) {
 		c.Set("X-Next-Result", "Works")
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/test", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/test", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 	require.Equal(t, "Works", resp.Header.Get("X-Next-Result"))
@@ -3776,7 +3775,7 @@ func Test_Ctx_Next_Error(t *testing.T) {
 		return ErrNotFound
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/test", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/test", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
 	require.Equal(t, "Works", resp.Header.Get("X-Next-Result"))
@@ -4018,7 +4017,7 @@ func Test_Ctx_RestartRouting(t *testing.T) {
 		}
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 	require.Equal(t, 3, calls, "Number of calls")
@@ -4043,7 +4042,7 @@ func Test_Ctx_RestartRoutingWithChangedPath(t *testing.T) {
 		return nil
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/old", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/old", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 	require.False(t, executedOldHandler, "Executed old handler")
@@ -4066,7 +4065,7 @@ func Test_Ctx_RestartRoutingWithChangedPathAndCatchAll(t *testing.T) {
 		return ErrNotFound
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/old", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/old", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
@@ -4813,16 +4812,16 @@ func TestCtx_ParamsInt(t *testing.T) {
 		return nil
 	})
 
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/test/1111", http.NoBody))
+	_, err := app.Test(httptest.NewRequest(MethodGet, "/test/1111", nil))
 	require.NoError(t, err)
 
-	_, err = app.Test(httptest.NewRequest(MethodGet, "/testnoint/xd", http.NoBody))
+	_, err = app.Test(httptest.NewRequest(MethodGet, "/testnoint/xd", nil))
 	require.NoError(t, err)
 
-	_, err = app.Test(httptest.NewRequest(MethodGet, "/testignoredefault/2222", http.NoBody))
+	_, err = app.Test(httptest.NewRequest(MethodGet, "/testignoredefault/2222", nil))
 	require.NoError(t, err)
 
-	_, err = app.Test(httptest.NewRequest(MethodGet, "/testdefault/xd", http.NoBody))
+	_, err = app.Test(httptest.NewRequest(MethodGet, "/testdefault/xd", nil))
 	require.NoError(t, err)
 }
 

@@ -1,7 +1,6 @@
 package requestid
 
 import (
-	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -20,14 +19,14 @@ func Test_RequestID(t *testing.T) {
 		return c.SendString("Hello, World 👋!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 	reqid := resp.Header.Get(fiber.HeaderXRequestID)
 	require.Len(t, reqid, 36)
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	req.Header.Add(fiber.HeaderXRequestID, reqid)
 
 	resp, err = app.Test(req)
@@ -46,7 +45,7 @@ func Test_RequestID_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Empty(t, resp.Header.Get(fiber.HeaderXRequestID))
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
@@ -71,7 +70,7 @@ func Test_RequestID_FromContext(t *testing.T) {
 		return c.Next()
 	})
 
-	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, reqID, ctxVal)
 }
