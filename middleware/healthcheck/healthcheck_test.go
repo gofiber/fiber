@@ -185,23 +185,23 @@ func Benchmark_HealthCheck(b *testing.B) {
 }
 
 func Benchmark_HealthCheck_Parallel(b *testing.B) {
-    app := fiber.New()
+	app := fiber.New()
 
-    app.Get(DefaultLivenessEndpoint, NewHealthChecker())
-    app.Get(DefaultReadinessEndpoint, NewHealthChecker())
+	app.Get(DefaultLivenessEndpoint, NewHealthChecker())
+	app.Get(DefaultReadinessEndpoint, NewHealthChecker())
 
-    h := app.Handler()
+	h := app.Handler()
 
-    b.ReportAllocs()
-    b.ResetTimer()
+	b.ReportAllocs()
+	b.ResetTimer()
 
-    b.RunParallel(func(pb *testing.PB) {
-        fctx := &fasthttp.RequestCtx{}
-        fctx.Request.Header.SetMethod(fiber.MethodGet)
-        fctx.Request.SetRequestURI("/livez")
+	b.RunParallel(func(pb *testing.PB) {
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Request.Header.SetMethod(fiber.MethodGet)
+		fctx.Request.SetRequestURI("/livez")
 
-        for pb.Next() {
-            h(fctx)
-        }
-    })
+		for pb.Next() {
+			h(fctx)
+		}
+	})
 }
