@@ -223,11 +223,11 @@ func (cj *CookieJar) parseCookiesFromResp(host, path []byte, resp *fasthttp.Resp
 func (cj *CookieJar) Release() {
 	// FOllOW-UP performance optimization
 	// currently a race condition is found because the reset method modifies a value which is not a copy but a reference -> solution should be to make a copy
-	//for _, v := range cj.hostCookies {
-	//	for _, c := range v {
+	// for _, v := range cj.hostCookies {
+	//	  for _, c := range v {
 	//		fasthttp.ReleaseCookie(c)
-	//	}
-	//}
+	//	  }
+	// }
 	cj.hostCookies = nil
 }
 
