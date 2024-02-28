@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"testing"
@@ -1100,9 +1099,9 @@ func Test_Bind_URI(t *testing.T) {
 		require.Equal(t, uint(222), d.RoleID)
 		return nil
 	})
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/test1/111/role/222", http.NoBody))
+	_, err := app.Test(httptest.NewRequest(MethodGet, "/test1/111/role/222", nil))
 	require.NoError(t, err)
-	_, err = app.Test(httptest.NewRequest(MethodGet, "/test2/111/role/222", http.NoBody))
+	_, err = app.Test(httptest.NewRequest(MethodGet, "/test2/111/role/222", nil))
 	require.NoError(t, err)
 }
 
@@ -1121,9 +1120,9 @@ func Test_Bind_URI_Map(t *testing.T) {
 		require.Equal(t, uint(222), d["roleId"])
 		return nil
 	})
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/test1/111/role/222", http.NoBody))
+	_, err := app.Test(httptest.NewRequest(MethodGet, "/test1/111/role/222", nil))
 	require.NoError(t, err)
-	_, err = app.Test(httptest.NewRequest(MethodGet, "/test2/111/role/222", http.NoBody))
+	_, err = app.Test(httptest.NewRequest(MethodGet, "/test2/111/role/222", nil))
 	require.NoError(t, err)
 }
 

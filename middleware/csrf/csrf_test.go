@@ -1,7 +1,6 @@
 package csrf
 
 import (
-	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -375,7 +374,7 @@ func Test_CSRF_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
@@ -949,7 +948,7 @@ func Test_CSRF_Cookie_Injection_Exploit(t *testing.T) {
 // 		return c.SendStatus(fiber.StatusOK)
 // 	})
 
-// 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+// 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 // 	require.NoError(t, err)
 // 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
@@ -964,11 +963,11 @@ func Test_CSRF_Cookie_Injection_Exploit(t *testing.T) {
 
 // 	fmt.Println("token", token)
 
-// 	getReq := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+// 	getReq := httptest.NewRequest(fiber.MethodGet, "/", nil)
 // 	getReq.Header.Set(HeaderName, token)
 // 	resp, err = app.Test(getReq)
 
-// 	getReq = httptest.NewRequest(fiber.MethodGet, "/test", http.NoBody)
+// 	getReq = httptest.NewRequest(fiber.MethodGet, "/test", nil)
 // 	getReq.Header.Set("X-Requested-With", "XMLHttpRequest")
 // 	getReq.Header.Set(fiber.HeaderCacheControl, "no")
 // 	getReq.Header.Set(HeaderName, token)
@@ -979,7 +978,7 @@ func Test_CSRF_Cookie_Injection_Exploit(t *testing.T) {
 // 	getReq.Header.Del(HeaderName)
 // 	resp, err = app.Test(getReq)
 
-// 	postReq := httptest.NewRequest(fiber.MethodPost, "/", http.NoBody)
+// 	postReq := httptest.NewRequest(fiber.MethodPost, "/", nil)
 // 	postReq.Header.Set("X-Requested-With", "XMLHttpRequest")
 // 	postReq.Header.Set(HeaderName, token)
 // 	resp, err = app.Test(postReq)

@@ -3,7 +3,6 @@ package pprof
 import (
 	"bytes"
 	"io"
-	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -20,7 +19,7 @@ func Test_Non_Pprof_Path(t *testing.T) {
 		return c.SendString("escaped")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
@@ -38,7 +37,7 @@ func Test_Non_Pprof_Path_WithPrefix(t *testing.T) {
 		return c.SendString("escaped")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
@@ -56,7 +55,7 @@ func Test_Pprof_Index(t *testing.T) {
 		return c.SendString("escaped")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/pprof/", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/pprof/", nil))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
@@ -75,7 +74,7 @@ func Test_Pprof_Index_WithPrefix(t *testing.T) {
 		return c.SendString("escaped")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/federated-fiber/debug/pprof/", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/federated-fiber/debug/pprof/", nil))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
@@ -106,7 +105,7 @@ func Test_Pprof_Subs(t *testing.T) {
 			if sub == "profile" {
 				target += "?seconds=1"
 			}
-			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, target, http.NoBody), 5000)
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, target, nil), 5000)
 			require.NoError(t, err)
 			require.Equal(t, 200, resp.StatusCode)
 		})
@@ -134,7 +133,7 @@ func Test_Pprof_Subs_WithPrefix(t *testing.T) {
 			if sub == "profile" {
 				target += "?seconds=1"
 			}
-			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, target, http.NoBody), 5000)
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, target, nil), 5000)
 			require.NoError(t, err)
 			require.Equal(t, 200, resp.StatusCode)
 		})
@@ -150,7 +149,7 @@ func Test_Pprof_Other(t *testing.T) {
 		return c.SendString("escaped")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/pprof/302", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/pprof/302", nil))
 	require.NoError(t, err)
 	require.Equal(t, 302, resp.StatusCode)
 }
@@ -164,7 +163,7 @@ func Test_Pprof_Other_WithPrefix(t *testing.T) {
 		return c.SendString("escaped")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/federated-fiber/debug/pprof/302", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/federated-fiber/debug/pprof/302", nil))
 	require.NoError(t, err)
 	require.Equal(t, 302, resp.StatusCode)
 }
@@ -179,7 +178,7 @@ func Test_Pprof_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/pprof/", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/pprof/", nil))
 	require.NoError(t, err)
 	require.Equal(t, 404, resp.StatusCode)
 }
@@ -195,7 +194,7 @@ func Test_Pprof_Next_WithPrefix(t *testing.T) {
 		Prefix: "/federated-fiber",
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/federated-fiber/debug/pprof/", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/federated-fiber/debug/pprof/", nil))
 	require.NoError(t, err)
 	require.Equal(t, 404, resp.StatusCode)
 }

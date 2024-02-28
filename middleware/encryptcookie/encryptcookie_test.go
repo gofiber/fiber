@@ -2,7 +2,6 @@ package encryptcookie
 
 import (
 	"encoding/base64"
-	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -93,7 +92,7 @@ func Test_Encrypt_Cookie_Next(t *testing.T) {
 		return nil
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, "SomeThing", resp.Cookies()[0].Value)
 }

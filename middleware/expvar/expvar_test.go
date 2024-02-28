@@ -3,7 +3,6 @@ package expvar
 import (
 	"bytes"
 	"io"
-	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -21,7 +20,7 @@ func Test_Non_Expvar_Path(t *testing.T) {
 		return c.SendString("escaped")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
@@ -40,7 +39,7 @@ func Test_Expvar_Index(t *testing.T) {
 		return c.SendString("escaped")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/vars", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/vars", nil))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 	require.Equal(t, fiber.MIMEApplicationJSONCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
@@ -61,7 +60,7 @@ func Test_Expvar_Filter(t *testing.T) {
 		return c.SendString("escaped")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/vars?r=cmd", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/vars?r=cmd", nil))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 	require.Equal(t, fiber.MIMEApplicationJSONCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
@@ -82,7 +81,7 @@ func Test_Expvar_Other_Path(t *testing.T) {
 		return c.SendString("escaped")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/vars/302", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/vars/302", nil))
 	require.NoError(t, err)
 	require.Equal(t, 302, resp.StatusCode)
 }
@@ -98,7 +97,7 @@ func Test_Expvar_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/vars", http.NoBody))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/vars", nil))
 	require.NoError(t, err)
 	require.Equal(t, 404, resp.StatusCode)
 }

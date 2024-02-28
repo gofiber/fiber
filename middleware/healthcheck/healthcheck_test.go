@@ -1,7 +1,6 @@
 package healthcheck
 
 import (
-	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"testing"
@@ -13,7 +12,7 @@ import (
 
 func shouldGiveStatus(t *testing.T, app *fiber.App, path string, expectedStatus int) {
 	t.Helper()
-	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, http.NoBody))
+	req, err := app.Test(httptest.NewRequest(fiber.MethodGet, path, nil))
 	require.NoError(t, err)
 	require.Equal(t, expectedStatus, req.StatusCode, "path: "+path+" should match "+strconv.Itoa(expectedStatus))
 }
@@ -86,12 +85,12 @@ func Test_HealthCheck_Custom(t *testing.T) {
 	// Live should return 200 with GET request
 	shouldGiveOK(t, app, "/live")
 	// Live should return 404 with POST request
-	req, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/live", http.NoBody))
+	req, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/live", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusMethodNotAllowed, req.StatusCode)
 
 	// Ready should return 404 with POST request
-	req, err = app.Test(httptest.NewRequest(fiber.MethodPost, "/ready", http.NoBody))
+	req, err = app.Test(httptest.NewRequest(fiber.MethodPost, "/ready", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusMethodNotAllowed, req.StatusCode)
 
