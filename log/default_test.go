@@ -56,19 +56,9 @@ func Test_DefaultLogger(t *testing.T) {
 	Warn("work may fail")
 	Error("work failed")
 
-	didPanic := false
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				didPanic = true
-			}
-		}()
+	require.Panics(t, func() {
 		Panic("work panic")
-	}()
-
-	if !didPanic {
-		t.Errorf("Expected a panic when the panic logger method is called")
-	}
+	})
 
 	require.Equal(t, "[Trace] trace work\n"+
 		"[Debug] received work order\n"+
@@ -90,19 +80,9 @@ func Test_DefaultFormatLogger(t *testing.T) {
 	Warnf("%s may fail", work)
 	Errorf("%s failed", work)
 
-	didPanic := false
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				didPanic = true
-			}
-		}()
+	require.Panics(t, func() {
 		Panicf("%s panic", work)
-	}()
-
-	if !didPanic {
-		t.Errorf("Expected a panic when the panic logger method is called")
-	}
+	})
 
 	require.Equal(t, "[Trace] trace work\n"+
 		"[Debug] received work order\n"+
@@ -126,19 +106,9 @@ func Test_CtxLogger(t *testing.T) {
 	WithContext(ctx).Warnf("%s may fail", work)
 	WithContext(ctx).Errorf("%s failed %d", work, 50)
 
-	didPanic := false
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				didPanic = true
-			}
-		}()
+	require.Panics(t, func() {
 		WithContext(ctx).Panicf("%s panic", work)
-	}()
-
-	if !didPanic {
-		t.Errorf("Expected a panic when the panic logger method is called")
-	}
+	})
 
 	require.Equal(t, "[Trace] trace work\n"+
 		"[Debug] received work order\n"+
