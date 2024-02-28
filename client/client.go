@@ -682,6 +682,10 @@ func init() {
 
 // NewClient creates and returns a new Client object.
 func NewClient() *Client {
+	// FOllOW-UP performance optimization
+	// trie to use a pool to reduce the cost of memory allocation
+	// for the fiber client and the fasthttp client
+	// if possible also for other structs -> request header, cookie, query param, path param...
 	return &Client{
 		client: &fasthttp.Client{},
 		header: &Header{

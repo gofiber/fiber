@@ -155,7 +155,11 @@ func (cj *CookieJar) SetByHost(host []byte, cookies ...*fasthttp.Cookie) {
 // This function prevents extra allocations by making repeated cookies
 // not being duplicated.
 func (cj *CookieJar) SetKeyValue(host, key, value string) {
-	cj.SetKeyValueBytes(host, utils.UnsafeBytes(key), utils.UnsafeBytes(value))
+	c := fasthttp.AcquireCookie()
+	c.SetKey(key)
+	c.SetValue(value)
+
+	cj.SetByHost(utils.UnsafeBytes(host), c)
 }
 
 // SetKeyValueBytes sets a cookie by key and value for a specific host.
@@ -217,6 +221,13 @@ func (cj *CookieJar) parseCookiesFromResp(host, path []byte, resp *fasthttp.Resp
 
 // Release releases all cookie values.
 func (cj *CookieJar) Release() {
+	// FOllOW-UP performance optimization
+	// currently a race condition is found because the reset method modifies a value which is not a copy but a reference -> solution should be to make a copy
+	//for _, v := range cj.hostCookies {
+	//	for _, c := range v {
+	//		fasthttp.ReleaseCookie(c)
+	//	}
+	//}
 	cj.hostCookies = nil
 }
 
