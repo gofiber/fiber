@@ -971,7 +971,7 @@ func (c *DefaultCtx) Params(key string, defaultValue ...string) string {
 // Example:
 //
 // http://example.com/user/:user -> http://example.com/user/john
-// Parmas[string](c, "user") -> returns john
+// Params[string](c, "user") -> returns john
 //
 // http://example.com/id/:id -> http://example.com/user/114
 // Params[int](c, "id") ->  returns 114 as integer.
