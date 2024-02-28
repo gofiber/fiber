@@ -183,3 +183,25 @@ func Benchmark_HealthCheck(b *testing.B) {
 
 	require.Equal(b, fiber.StatusOK, fctx.Response.Header.StatusCode())
 }
+
+func Benchmark_HealthCheck_Parallel(b *testing.B) {
+    app := fiber.New()
+
+    app.Get(DefaultLivenessEndpoint, NewHealthChecker())
+    app.Get(DefaultReadinessEndpoint, NewHealthChecker())
+
+    h := app.Handler()
+
+    b.ReportAllocs()
+    b.ResetTimer()
+
+    b.RunParallel(func(pb *testing.PB) {
+        fctx := &fasthttp.RequestCtx{}
+        fctx.Request.Header.SetMethod(fiber.MethodGet)
+        fctx.Request.SetRequestURI("/livez")
+
+        for pb.Next() {
+            h(fctx)
+        }
+    })
+}
