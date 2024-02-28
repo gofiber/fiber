@@ -79,7 +79,9 @@ app.All(healthcheck.DefaultReadinessEndpoint, healthcheck.New(healthcheck.Config
 
 ```go
 type Config struct {
-	// Next defines a function to skip this middleware when returned true.
+	// Next defines a function to skip this middleware when returned true. If this function returns true
+    // and no other handlers are defined for the route, Fiber will return a status 404 Not Found, since
+    // no other handlers were defined to return a different status.
 	//
 	// Optional. Default: nil
 	Next func(fiber.Ctx) bool

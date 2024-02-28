@@ -159,6 +159,8 @@ func Test_HealthCheck_Next(t *testing.T) {
 	app.Get("/readyz", checker)
 	app.Get("/livez", checker)
 
+	// This should give not found since there are no other handlers to execute
+	// so it's like the route isn't defined at all
 	shouldGiveNotFound(t, app, "/readyz")
 	shouldGiveNotFound(t, app, "/livez")
 }
