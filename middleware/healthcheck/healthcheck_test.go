@@ -34,7 +34,8 @@ func Test_HealthCheck_Strict_Routing_Default(t *testing.T) {
 		StrictRouting: true,
 	})
 
-	app.Use(New())
+	app.Get("/livez", NewHealthChecker())
+	app.Get("/readyz", NewHealthChecker())
 
 	shouldGiveOK(t, app, "/readyz")
 	shouldGiveOK(t, app, "/livez")
@@ -44,71 +45,12 @@ func Test_HealthCheck_Strict_Routing_Default(t *testing.T) {
 	shouldGiveNotFound(t, app, "/notDefined/livez")
 }
 
-func Test_HealthCheck_Group_Default(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-	app.Group("/v1", New())
-	v2Group := app.Group("/v2/")
-	customer := v2Group.Group("/customer/")
-	customer.Use(New())
-
-	v3Group := app.Group("/v3/")
-	v3Group.Group("/todos/", New(Config{ReadinessEndpoint: "/readyz/", LivenessEndpoint: "/livez/"}))
-
-	// Testing health check endpoints in versioned API groups
-	shouldGiveOK(t, app, "/v1/readyz")
-	shouldGiveOK(t, app, "/v1/livez")
-	shouldGiveOK(t, app, "/v1/readyz/")
-	shouldGiveOK(t, app, "/v1/livez/")
-	shouldGiveOK(t, app, "/v2/customer/readyz")
-	shouldGiveOK(t, app, "/v2/customer/livez")
-	shouldGiveOK(t, app, "/v2/customer/readyz/")
-	shouldGiveOK(t, app, "/v2/customer/livez/")
-	shouldGiveNotFound(t, app, "/v3/todos/readyz")
-	shouldGiveNotFound(t, app, "/v3/todos/livez")
-	shouldGiveOK(t, app, "/v3/todos/readyz/")
-	shouldGiveOK(t, app, "/v3/todos/livez/")
-	shouldGiveNotFound(t, app, "/notDefined/readyz")
-	shouldGiveNotFound(t, app, "/notDefined/livez")
-	shouldGiveNotFound(t, app, "/notDefined/readyz/")
-	shouldGiveNotFound(t, app, "/notDefined/livez/")
-
-	// strict routing
-	app = fiber.New(fiber.Config{
-		StrictRouting: true,
-	})
-	app.Group("/v1", New())
-	v2Group = app.Group("/v2/")
-	customer = v2Group.Group("/customer/")
-	customer.Use(New())
-
-	v3Group = app.Group("/v3/")
-	v3Group.Group("/todos/", New(Config{ReadinessEndpoint: "/readyz/", LivenessEndpoint: "/livez/"}))
-
-	shouldGiveOK(t, app, "/v1/readyz")
-	shouldGiveOK(t, app, "/v1/livez")
-	shouldGiveNotFound(t, app, "/v1/readyz/")
-	shouldGiveNotFound(t, app, "/v1/livez/")
-	shouldGiveOK(t, app, "/v2/customer/readyz")
-	shouldGiveOK(t, app, "/v2/customer/livez")
-	shouldGiveNotFound(t, app, "/v2/customer/readyz/")
-	shouldGiveNotFound(t, app, "/v2/customer/livez/")
-	shouldGiveNotFound(t, app, "/v3/todos/readyz")
-	shouldGiveNotFound(t, app, "/v3/todos/livez")
-	shouldGiveOK(t, app, "/v3/todos/readyz/")
-	shouldGiveOK(t, app, "/v3/todos/livez/")
-	shouldGiveNotFound(t, app, "/notDefined/readyz")
-	shouldGiveNotFound(t, app, "/notDefined/livez")
-	shouldGiveNotFound(t, app, "/notDefined/readyz/")
-	shouldGiveNotFound(t, app, "/notDefined/livez/")
-}
-
 func Test_HealthCheck_Default(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	app.Use(New())
+	app.Get("/livez", NewHealthChecker())
+	app.Get("/readyz", NewHealthChecker())
 
 	shouldGiveOK(t, app, "/readyz")
 	shouldGiveOK(t, app, "/livez")
@@ -122,14 +64,14 @@ func Test_HealthCheck_Custom(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-
 	c1 := make(chan struct{}, 1)
-	app.Use(New(Config{
-		LivenessProbe: func(_ fiber.Ctx) bool {
+	app.Get("/live", NewHealthChecker(Config{
+		Probe: func(_ fiber.Ctx) bool {
 			return true
 		},
-		LivenessEndpoint: "/live",
-		ReadinessProbe: func(_ fiber.Ctx) bool {
+	}))
+	app.Get("/ready", NewHealthChecker(Config{
+		Probe: func(_ fiber.Ctx) bool {
 			select {
 			case <-c1:
 				return true
@@ -137,7 +79,6 @@ func Test_HealthCheck_Custom(t *testing.T) {
 				return false
 			}
 		},
-		ReadinessEndpoint: "/ready",
 	}))
 
 	// Setup custom liveness and readiness probes to simulate application health status
@@ -146,12 +87,12 @@ func Test_HealthCheck_Custom(t *testing.T) {
 	// Live should return 404 with POST request
 	req, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/live", nil))
 	require.NoError(t, err)
-	require.Equal(t, fiber.StatusNotFound, req.StatusCode)
+	require.Equal(t, fiber.StatusMethodNotAllowed, req.StatusCode)
 
 	// Ready should return 404 with POST request
 	req, err = app.Test(httptest.NewRequest(fiber.MethodPost, "/ready", nil))
 	require.NoError(t, err)
-	require.Equal(t, fiber.StatusNotFound, req.StatusCode)
+	require.Equal(t, fiber.StatusMethodNotAllowed, req.StatusCode)
 
 	// Ready should return 503 with GET request before the channel is closed
 	shouldGiveStatus(t, app, "/ready", fiber.StatusServiceUnavailable)
@@ -167,13 +108,13 @@ func Test_HealthCheck_Custom_Nested(t *testing.T) {
 	app := fiber.New()
 
 	c1 := make(chan struct{}, 1)
-
-	app.Use(New(Config{
-		LivenessProbe: func(_ fiber.Ctx) bool {
+	app.Get("/probe/live", NewHealthChecker(Config{
+		Probe: func(_ fiber.Ctx) bool {
 			return true
 		},
-		LivenessEndpoint: "/probe/live",
-		ReadinessProbe: func(_ fiber.Ctx) bool {
+	}))
+	app.Get("/probe/ready", NewHealthChecker(Config{
+		Probe: func(_ fiber.Ctx) bool {
 			select {
 			case <-c1:
 				return true
@@ -181,7 +122,6 @@ func Test_HealthCheck_Custom_Nested(t *testing.T) {
 				return false
 			}
 		},
-		ReadinessEndpoint: "/probe/ready",
 	}))
 
 	// Testing custom health check endpoints with nested paths
@@ -209,12 +149,17 @@ func Test_HealthCheck_Next(t *testing.T) {
 
 	app := fiber.New()
 
-	app.Use(New(Config{
+	checker := NewHealthChecker(Config{
 		Next: func(_ fiber.Ctx) bool {
 			return true
 		},
-	}))
+	})
 
+	app.Get("/readyz", checker)
+	app.Get("/livez", checker)
+
+	// This should give not found since there are no other handlers to execute
+	// so it's like the route isn't defined at all
 	shouldGiveNotFound(t, app, "/readyz")
 	shouldGiveNotFound(t, app, "/livez")
 }
@@ -222,7 +167,8 @@ func Test_HealthCheck_Next(t *testing.T) {
 func Benchmark_HealthCheck(b *testing.B) {
 	app := fiber.New()
 
-	app.Use(New())
+	app.Get(DefaultLivenessEndpoint, NewHealthChecker())
+	app.Get(DefaultReadinessEndpoint, NewHealthChecker())
 
 	h := app.Handler()
 	fctx := &fasthttp.RequestCtx{}
@@ -237,4 +183,26 @@ func Benchmark_HealthCheck(b *testing.B) {
 	}
 
 	require.Equal(b, fiber.StatusOK, fctx.Response.Header.StatusCode())
+}
+
+func Benchmark_HealthCheck_Parallel(b *testing.B) {
+	app := fiber.New()
+
+	app.Get(DefaultLivenessEndpoint, NewHealthChecker())
+	app.Get(DefaultReadinessEndpoint, NewHealthChecker())
+
+	h := app.Handler()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Request.Header.SetMethod(fiber.MethodGet)
+		fctx.Request.SetRequestURI("/livez")
+
+		for pb.Next() {
+			h(fctx)
+		}
+	})
 }
