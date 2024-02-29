@@ -459,21 +459,11 @@ func (app *App) ReleaseCtx(c Ctx) {
 
 // Reset is a method to reset context fields by given request when to use server handlers.
 func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
-	// Reset route and handler index
-	c.indexRoute = -1
-	c.indexHandler = 0
-
-	// Reset matched flag
-	c.matched = false
-
 	// Set paths
 	c.pathOriginal = c.app.getString(fctx.URI().PathOriginal())
 
 	// Attach *fasthttp.RequestCtx to ctx
 	c.setReq(fctx)
-
-	// reset base uri
-	c.baseURI = ""
 
 	// Set method
 	c.method = c.app.getString(fctx.Request.Header.Method())
@@ -485,6 +475,16 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 
 // Release is a method to reset context fields when to use ReleaseCtx()
 func (c *DefaultCtx) release() {
+	// Reset route and handler index
+	c.indexRoute = -1
+	c.indexHandler = 0
+
+	// Reset matched flag
+	c.matched = false
+
+	// reset base uri
+	c.baseURI = ""
+
 	c.route = nil
 	c.fasthttp = nil
 	c.bind = nil
