@@ -28,7 +28,7 @@ type Config struct {
 
 	// Format defines the logging tags
 	//
-	// Optional. Default: [${time}] ${status} - ${latency} ${method} ${path}\n
+	// Optional. Default: [${time}] ${ip} ${status} - ${latency} ${method} ${path} ${error}
 	Format string
 
 	// TimeFormat https://programming.guide/go/format-parse-string-time-date-example.html
@@ -109,7 +109,7 @@ var ConfigDefault = Config{
 }
 
 // default logging format for Fiber's default logger
-var defaultFormat = "[${time}] ${status} - ${latency} ${method} ${path}\n"
+var defaultFormat = "[${time}] ${ip} ${status} - ${latency} ${method} ${path} ${error}\n"
 
 // Helper function to set default values
 func configDefault(config ...Config) Config {

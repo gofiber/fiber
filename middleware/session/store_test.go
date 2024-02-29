@@ -22,7 +22,7 @@ func TestStore_getSessionID(t *testing.T) {
 		// session store
 		store := New()
 		// fiber context
-		ctx := app.NewCtx(&fasthttp.RequestCtx{})
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 		// set cookie
 		ctx.Request().Header.SetCookie(store.sessionName, expectedID)
@@ -37,7 +37,7 @@ func TestStore_getSessionID(t *testing.T) {
 			KeyLookup: "header:session_id",
 		})
 		// fiber context
-		ctx := app.NewCtx(&fasthttp.RequestCtx{})
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 		// set header
 		ctx.Request().Header.Set(store.sessionName, expectedID)
@@ -52,7 +52,7 @@ func TestStore_getSessionID(t *testing.T) {
 			KeyLookup: "query:session_id",
 		})
 		// fiber context
-		ctx := app.NewCtx(&fasthttp.RequestCtx{})
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 		// set url parameter
 		ctx.Request().SetRequestURI(fmt.Sprintf("/path?%s=%s", store.sessionName, expectedID))
@@ -73,7 +73,7 @@ func TestStore_Get(t *testing.T) {
 		// session store
 		store := New()
 		// fiber context
-		ctx := app.NewCtx(&fasthttp.RequestCtx{})
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 		// set cookie
 		ctx.Request().Header.SetCookie(store.sessionName, unexpectedID)
@@ -94,7 +94,7 @@ func TestStore_DeleteSession(t *testing.T) {
 	store := New()
 
 	// fiber context
-	ctx := app.NewCtx(&fasthttp.RequestCtx{})
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	// Create a new session
 	session, err := store.Get(ctx)

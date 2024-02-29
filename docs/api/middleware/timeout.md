@@ -8,14 +8,6 @@ There exist two distinct implementations of timeout middleware [Fiber](https://g
 
 **New**
 
-Wraps a `fiber.Handler` with a timeout. If the handler takes longer than the given duration to return, the timeout error is set and forwarded to the centralized [ErrorHandler](https://docs.gofiber.io/error-handling).
-
-:::caution
-This has been deprecated since it raises race conditions.
-:::
-
-**NewWithContext**
-
 As a `fiber.Handler` wrapper, it creates a context with `context.WithTimeout` and pass it in `UserContext`. 
  
 If the context passed executions (eg. DB ops, Http calls) takes longer than the given duration to return, the timeout error is set and forwarded to the centralized `ErrorHandler`.
@@ -27,7 +19,6 @@ It does not cancel long running executions. Underlying executions must handle ti
 
 ```go
 func New(handler fiber.Handler, timeout time.Duration, timeoutErrors ...error) fiber.Handler
-func NewWithContext(handler fiber.Handler, timeout time.Duration, timeoutErrors ...error) fiber.Handler
 ```
 
 ## Examples
@@ -46,12 +37,7 @@ After you initiate your Fiber app, you can use the following possibilities:
 ```go
 func main() {
 	app := fiber.New()
-<<<<<<< HEAD:middleware/timeout/README.md
 	h := func(c fiber.Ctx) error {
-=======
-
-	h := func(c fiber.Ctx) error {
->>>>>>> origin/master:docs/api/middleware/timeout.md
 		sleepTime, _ := time.ParseDuration(c.Params("sleepTime") + "ms")
 		if err := sleepWithContext(c.UserContext(), sleepTime); err != nil {
 			return fmt.Errorf("%w: execution error", err)
@@ -105,7 +91,7 @@ func main() {
 		return nil
 	}
 
-	app.Get("/foo/:sleepTime", timeout.NewWithContext(h, 2*time.Second, ErrFooTimeOut))
+	app.Get("/foo/:sleepTime", timeout.New(h, 2*time.Second, ErrFooTimeOut))
 	log.Fatal(app.Listen(":3000"))
 }
 
@@ -144,7 +130,7 @@ func main() {
 		return nil
 	}
 
-	app.Get("/foo", timeout.NewWithContext(handler, 10*time.Second))
+	app.Get("/foo", timeout.New(handler, 10*time.Second))
 	log.Fatal(app.Listen(":3000"))
 }
 ```

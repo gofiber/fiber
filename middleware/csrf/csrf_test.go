@@ -79,16 +79,16 @@ func Test_CSRF_WithSession(t *testing.T) {
 
 	// fiber context
 	ctx := &fasthttp.RequestCtx{}
-	defer app.ReleaseCtx(app.NewCtx(ctx))
+	defer app.ReleaseCtx(app.AcquireCtx(ctx))
 
 	// get session
-	sess, err := store.Get(app.NewCtx(ctx))
+	sess, err := store.Get(app.AcquireCtx(ctx))
 	require.NoError(t, err)
 	require.True(t, sess.Fresh())
 
 	// the session string is no longer be 123
 	newSessionIDString := sess.ID()
-	app.NewCtx(ctx).Request().Header.SetCookie("_session", newSessionIDString)
+	app.AcquireCtx(ctx).Request().Header.SetCookie("_session", newSessionIDString)
 
 	// middleware config
 	config := Config{
@@ -212,16 +212,16 @@ func Test_CSRF_ExpiredToken_WithSession(t *testing.T) {
 
 	// fiber context
 	ctx := &fasthttp.RequestCtx{}
-	defer app.ReleaseCtx(app.NewCtx(ctx))
+	defer app.ReleaseCtx(app.AcquireCtx(ctx))
 
 	// get session
-	sess, err := store.Get(app.NewCtx(ctx))
+	sess, err := store.Get(app.AcquireCtx(ctx))
 	require.NoError(t, err)
 	require.True(t, sess.Fresh())
 
 	// get session id
 	newSessionIDString := sess.ID()
-	app.NewCtx(ctx).Request().Header.SetCookie("_session", newSessionIDString)
+	app.AcquireCtx(ctx).Request().Header.SetCookie("_session", newSessionIDString)
 
 	// middleware config
 	config := Config{
@@ -714,9 +714,9 @@ func Test_CSRF_DeleteToken(t *testing.T) {
 	ctx.Request.Header.SetMethod(fiber.MethodPost)
 	ctx.Request.Header.Set(HeaderName, token)
 	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
-	handler := HandlerFromContext(app.NewCtx(ctx))
+	handler := HandlerFromContext(app.AcquireCtx(ctx))
 	if handler != nil {
-		if err := handler.DeleteToken(app.NewCtx(ctx)); err != nil {
+		if err := handler.DeleteToken(app.AcquireCtx(ctx)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -746,13 +746,13 @@ func Test_CSRF_DeleteToken_WithSession(t *testing.T) {
 	ctx := &fasthttp.RequestCtx{}
 
 	// get session
-	sess, err := store.Get(app.NewCtx(ctx))
+	sess, err := store.Get(app.AcquireCtx(ctx))
 	require.NoError(t, err)
 	require.True(t, sess.Fresh())
 
 	// the session string is no longer be 123
 	newSessionIDString := sess.ID()
-	app.NewCtx(ctx).Request().Header.SetCookie("_session", newSessionIDString)
+	app.AcquireCtx(ctx).Request().Header.SetCookie("_session", newSessionIDString)
 
 	// middleware config
 	config := Config{
@@ -781,9 +781,9 @@ func Test_CSRF_DeleteToken_WithSession(t *testing.T) {
 	ctx.Request.Header.SetMethod(fiber.MethodPost)
 	ctx.Request.Header.Set(HeaderName, token)
 	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
-	handler := HandlerFromContext(app.NewCtx(ctx))
+	handler := HandlerFromContext(app.AcquireCtx(ctx))
 	if handler != nil {
-		if err := handler.DeleteToken(app.NewCtx(ctx)); err != nil {
+		if err := handler.DeleteToken(app.AcquireCtx(ctx)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -949,7 +949,7 @@ func Test_CSRF_Cookie_Injection_Exploit(t *testing.T) {
 // 	})
 
 // 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
-// 	require.Equal(t, nil, err)
+// 	require.NoError(t, err)
 // 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 // 	var token string

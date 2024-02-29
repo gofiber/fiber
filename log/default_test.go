@@ -28,6 +28,22 @@ func (w *byteSliceWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+func Test_WithContextCaller(t *testing.T) {
+	logger = &defaultLogger{
+		stdlog: log.New(os.Stderr, "", log.Lshortfile),
+		depth:  4,
+	}
+
+	var w byteSliceWriter
+	SetOutput(&w)
+	ctx := context.TODO()
+
+	WithContext(ctx).Info("")
+	Info("")
+
+	require.Equal(t, "default_test.go:41: [Info] \ndefault_test.go:42: [Info] \n", string(w.b))
+}
+
 func Test_DefaultLogger(t *testing.T) {
 	initDefaultLogger()
 
@@ -39,7 +55,11 @@ func Test_DefaultLogger(t *testing.T) {
 	Info("starting work")
 	Warn("work may fail")
 	Error("work failed")
-	Panic("work panic")
+
+	require.Panics(t, func() {
+		Panic("work panic")
+	})
+
 	require.Equal(t, "[Trace] trace work\n"+
 		"[Debug] received work order\n"+
 		"[Info] starting work\n"+
@@ -59,7 +79,10 @@ func Test_DefaultFormatLogger(t *testing.T) {
 	Infof("starting %s", work)
 	Warnf("%s may fail", work)
 	Errorf("%s failed", work)
-	Panicf("%s panic", work)
+
+	require.Panics(t, func() {
+		Panicf("%s panic", work)
+	})
 
 	require.Equal(t, "[Trace] trace work\n"+
 		"[Debug] received work order\n"+
@@ -82,7 +105,10 @@ func Test_CtxLogger(t *testing.T) {
 	WithContext(ctx).Infof("starting %s", work)
 	WithContext(ctx).Warnf("%s may fail", work)
 	WithContext(ctx).Errorf("%s failed %d", work, 50)
-	WithContext(ctx).Panicf("%s panic", work)
+
+	require.Panics(t, func() {
+		WithContext(ctx).Panicf("%s panic", work)
+	})
 
 	require.Equal(t, "[Trace] trace work\n"+
 		"[Debug] received work order\n"+
@@ -208,22 +234,6 @@ func BenchmarkLogfKeyAndValues(b *testing.B) {
 			}
 		})
 	}
-}
-
-func Test_WithContextCaller(t *testing.T) {
-	logger = &defaultLogger{
-		stdlog: log.New(os.Stderr, "", log.Lshortfile),
-		depth:  4,
-	}
-
-	var w byteSliceWriter
-	SetOutput(&w)
-	ctx := context.TODO()
-
-	WithContext(ctx).Info("")
-	Info("")
-
-	require.Equal(t, "default_test.go:223: [Info] \ndefault_test.go:224: [Info] \n", string(w.b))
 }
 
 func Test_SetLevel(t *testing.T) {

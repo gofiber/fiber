@@ -144,8 +144,12 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 		TagReset: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
 			return output.WriteString(c.App().Config().ColorScheme.Reset)
 		},
-		TagError: func(output Buffer, _ fiber.Ctx, data *Data, _ string) (int, error) {
+		TagError: func(output Buffer, c fiber.Ctx, data *Data, _ string) (int, error) {
 			if data.ChainErr != nil {
+				if cfg.enableColors {
+					colors := c.App().Config().ColorScheme
+					return output.WriteString(fmt.Sprintf("%s%s%s", colors.Red, data.ChainErr.Error(), colors.Reset))
+				}
 				return output.WriteString(data.ChainErr.Error())
 			}
 			return output.WriteString("-")

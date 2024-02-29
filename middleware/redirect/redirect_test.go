@@ -1,4 +1,3 @@
-//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package redirect
 
 import (
@@ -41,6 +40,12 @@ func Test_Redirect(t *testing.T) {
 	app.Use(New(Config{
 		Rules: map[string]string{
 			"/": "/swagger",
+		},
+		StatusCode: fiber.StatusMovedPermanently,
+	}))
+	app.Use(New(Config{
+		Rules: map[string]string{
+			"/params": "/with_params",
 		},
 		StatusCode: fiber.StatusMovedPermanently,
 	}))
@@ -103,6 +108,12 @@ func Test_Redirect(t *testing.T) {
 			name:       "no redirect to swagger route #2",
 			url:        "/api/test",
 			statusCode: fiber.StatusOK,
+		},
+		{
+			name:       "redirect with query params",
+			url:        "/params?query=abc",
+			redirectTo: "/with_params?query=abc",
+			statusCode: fiber.StatusMovedPermanently,
 		},
 	}
 	for _, tt := range tests {

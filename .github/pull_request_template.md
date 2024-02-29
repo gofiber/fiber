@@ -4,7 +4,7 @@ Please provide a clear and concise description of the changes you've made and th
 
 Related to # (issue)
 
-## Changes Introduced
+## Changes introduced
 
 List the new features or adjustments introduced in this pull request. Provide details on benchmarks, documentation updates, changelog entries, and if applicable, the migration guide.
 
@@ -16,7 +16,7 @@ List the new features or adjustments introduced in this pull request. Provide de
 - [ ] API Longevity: Discuss the steps taken to ensure that the new or updated APIs are consistent and not prone to breaking changes.
 - [ ] Examples: Provide examples demonstrating the new features or changes in action.
 
-## Type of Change
+## Type of change
 
 Please delete options that are not relevant.
 
@@ -39,6 +39,6 @@ Before you submit your pull request, please make sure you meet these requirement
 - [ ] Aimed for optimal performance with minimal allocations in the new code.
 - [ ] Provided benchmarks for the new code to analyze and improve upon.
 
-## Commit Formatting
+## Commit formatting
 
 Please use emojis in commit messages for an easy way to identify the purpose or intention of a commit. Check out the emoji cheatsheet here: [CONTRIBUTING.md](https://github.com/gofiber/fiber/blob/master/.github/CONTRIBUTING.md#pull-requests-or-commits)
