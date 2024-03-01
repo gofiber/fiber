@@ -726,6 +726,195 @@ func Benchmark_CORS_NewHandler(b *testing.B) {
 	}
 }
 
+// go test -v -run=^$ -bench=Benchmark_CORS_NewHandlerParallel -benchmem -count=4
+func Benchmark_CORS_NewHandlerParallel(b *testing.B) {
+	app := fiber.New()
+	c := New(Config{
+		AllowOrigins:     "http://localhost,http://example.com",
+		AllowMethods:     "GET,POST,PUT,DELETE",
+		AllowHeaders:     "Origin,Content-Type,Accept",
+		AllowCredentials: true,
+		MaxAge:           600,
+	})
+
+	app.Use(c)
+	app.Use(func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	h := app.Handler()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		ctx := &fasthttp.RequestCtx{}
+
+		req := &fasthttp.Request{}
+		req.Header.SetMethod(fiber.MethodGet)
+		req.SetRequestURI("/")
+		req.Header.Set(fiber.HeaderOrigin, "http://localhost")
+		req.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
+		req.Header.Set(fiber.HeaderAccessControlRequestHeaders, "Origin,Content-Type,Accept")
+
+		ctx.Init(req, nil, nil)
+
+		for pb.Next() {
+			h(ctx)
+		}
+	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_CORS_NewHandlerSingleOrigin -benchmem -count=4
+func Benchmark_CORS_NewHandlerSingleOrigin(b *testing.B) {
+	app := fiber.New()
+	c := New(Config{
+		AllowOrigins:     "http://example.com",
+		AllowMethods:     "GET,POST,PUT,DELETE",
+		AllowHeaders:     "Origin,Content-Type,Accept",
+		AllowCredentials: true,
+		MaxAge:           600,
+	})
+
+	app.Use(c)
+	app.Use(func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	h := app.Handler()
+	ctx := &fasthttp.RequestCtx{}
+
+	req := &fasthttp.Request{}
+	req.Header.SetMethod(fiber.MethodGet)
+	req.SetRequestURI("/")
+	req.Header.Set(fiber.HeaderOrigin, "http://example.com")
+	req.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
+	req.Header.Set(fiber.HeaderAccessControlRequestHeaders, "Origin,Content-Type,Accept")
+
+	ctx.Init(req, nil, nil)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		h(ctx)
+	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_CORS_NewHandlerSingleOriginParallel -benchmem -count=4
+func Benchmark_CORS_NewHandlerSingleOriginParallel(b *testing.B) {
+	app := fiber.New()
+	c := New(Config{
+		AllowOrigins:     "http://example.com",
+		AllowMethods:     "GET,POST,PUT,DELETE",
+		AllowHeaders:     "Origin,Content-Type,Accept",
+		AllowCredentials: true,
+		MaxAge:           600,
+	})
+
+	app.Use(c)
+	app.Use(func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	h := app.Handler()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		ctx := &fasthttp.RequestCtx{}
+
+		req := &fasthttp.Request{}
+		req.Header.SetMethod(fiber.MethodGet)
+		req.SetRequestURI("/")
+		req.Header.Set(fiber.HeaderOrigin, "http://example.com")
+		req.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
+		req.Header.Set(fiber.HeaderAccessControlRequestHeaders, "Origin,Content-Type,Accept")
+
+		ctx.Init(req, nil, nil)
+
+		for pb.Next() {
+			h(ctx)
+		}
+	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_CORS_NewHandlerWildcard -benchmem -count=4
+func Benchmark_CORS_NewHandlerWildcard(b *testing.B) {
+	app := fiber.New()
+	c := New(Config{
+		AllowOrigins:     "*",
+		AllowMethods:     "GET,POST,PUT,DELETE",
+		AllowHeaders:     "Origin,Content-Type,Accept",
+		AllowCredentials: false,
+		MaxAge:           600,
+	})
+
+	app.Use(c)
+	app.Use(func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	h := app.Handler()
+	ctx := &fasthttp.RequestCtx{}
+
+	req := &fasthttp.Request{}
+	req.Header.SetMethod(fiber.MethodGet)
+	req.SetRequestURI("/")
+	req.Header.Set(fiber.HeaderOrigin, "http://example.com")
+	req.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
+	req.Header.Set(fiber.HeaderAccessControlRequestHeaders, "Origin,Content-Type,Accept")
+
+	ctx.Init(req, nil, nil)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		h(ctx)
+	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_CORS_NewHandlerWildcardParallel -benchmem -count=4
+func Benchmark_CORS_NewHandlerWildcardParallel(b *testing.B) {
+	app := fiber.New()
+	c := New(Config{
+		AllowOrigins:     "*",
+		AllowMethods:     "GET,POST,PUT,DELETE",
+		AllowHeaders:     "Origin,Content-Type,Accept",
+		AllowCredentials: false,
+		MaxAge:           600,
+	})
+
+	app.Use(c)
+	app.Use(func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	h := app.Handler()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		ctx := &fasthttp.RequestCtx{}
+
+		req := &fasthttp.Request{}
+		req.Header.SetMethod(fiber.MethodGet)
+		req.SetRequestURI("/")
+		req.Header.Set(fiber.HeaderOrigin, "http://example.com")
+		req.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
+		req.Header.Set(fiber.HeaderAccessControlRequestHeaders, "Origin,Content-Type,Accept")
+
+		ctx.Init(req, nil, nil)
+
+		for pb.Next() {
+			h(ctx)
+		}
+	})
+}
+
 // go test -v -run=^$ -bench=Benchmark_CORS_NewHandlerPreflight -benchmem -count=4
 func Benchmark_CORS_NewHandlerPreflight(b *testing.B) {
 	app := fiber.New()
@@ -748,7 +937,7 @@ func Benchmark_CORS_NewHandlerPreflight(b *testing.B) {
 	req := &fasthttp.Request{}
 	req.Header.SetMethod(fiber.MethodOptions)
 	req.SetRequestURI("/")
-	req.Header.Set(fiber.HeaderOrigin, "http://localhost")
+	req.Header.Set(fiber.HeaderOrigin, "http://example.com")
 	req.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodPost)
 	req.Header.Set(fiber.HeaderAccessControlRequestHeaders, "Origin,Content-Type,Accept")
 
@@ -760,4 +949,193 @@ func Benchmark_CORS_NewHandlerPreflight(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		h(ctx)
 	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_CORS_NewHandlerPreflightParallel -benchmem -count=4
+func Benchmark_CORS_NewHandlerPreflightParallel(b *testing.B) {
+	app := fiber.New()
+	c := New(Config{
+		AllowOrigins:     "http://localhost,http://example.com",
+		AllowMethods:     "GET,POST,PUT,DELETE",
+		AllowHeaders:     "Origin,Content-Type,Accept",
+		AllowCredentials: true,
+		MaxAge:           600,
+	})
+
+	app.Use(c)
+	app.Use(func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	h := app.Handler()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		ctx := &fasthttp.RequestCtx{}
+
+		req := &fasthttp.Request{}
+		req.Header.SetMethod(fiber.MethodOptions)
+		req.SetRequestURI("/")
+		req.Header.Set(fiber.HeaderOrigin, "http://example.com")
+		req.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodPost)
+		req.Header.Set(fiber.HeaderAccessControlRequestHeaders, "Origin,Content-Type,Accept")
+
+		ctx.Init(req, nil, nil)
+
+		for pb.Next() {
+			h(ctx)
+		}
+	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_CORS_NewHandlerPreflightSingleOrigin -benchmem -count=4
+func Benchmark_CORS_NewHandlerPreflightSingleOrigin(b *testing.B) {
+	app := fiber.New()
+	c := New(Config{
+		AllowOrigins:     "http://example.com",
+		AllowMethods:     "GET,POST,PUT,DELETE",
+		AllowHeaders:     "Origin,Content-Type,Accept",
+		AllowCredentials: true,
+		MaxAge:           600,
+	})
+
+	app.Use(c)
+	app.Use(func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	h := app.Handler()
+	ctx := &fasthttp.RequestCtx{}
+
+	req := &fasthttp.Request{}
+	req.Header.SetMethod(fiber.MethodOptions)
+	req.SetRequestURI("/")
+	req.Header.Set(fiber.HeaderOrigin, "http://example.com")
+	req.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodPost)
+	req.Header.Set(fiber.HeaderAccessControlRequestHeaders, "Origin,Content-Type,Accept")
+
+	ctx.Init(req, nil, nil)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		h(ctx)
+	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_CORS_NewHandlerPreflightSingleOriginParallel -benchmem -count=4
+func Benchmark_CORS_NewHandlerPreflightSingleOriginParallel(b *testing.B) {
+	app := fiber.New()
+	c := New(Config{
+		AllowOrigins:     "http://example.com",
+		AllowMethods:     "GET,POST,PUT,DELETE",
+		AllowHeaders:     "Origin,Content-Type,Accept",
+		AllowCredentials: true,
+		MaxAge:           600,
+	})
+
+	app.Use(c)
+	app.Use(func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	h := app.Handler()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		ctx := &fasthttp.RequestCtx{}
+
+		req := &fasthttp.Request{}
+		req.Header.SetMethod(fiber.MethodOptions)
+		req.SetRequestURI("/")
+		req.Header.Set(fiber.HeaderOrigin, "http://example.com")
+		req.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodPost)
+		req.Header.Set(fiber.HeaderAccessControlRequestHeaders, "Origin,Content-Type,Accept")
+
+		ctx.Init(req, nil, nil)
+
+		for pb.Next() {
+			h(ctx)
+		}
+	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_CORS_NewHandlerPreflightWildcard -benchmem -count=4
+func Benchmark_CORS_NewHandlerPreflightWildcard(b *testing.B) {
+	app := fiber.New()
+	c := New(Config{
+		AllowOrigins:     "*",
+		AllowMethods:     "GET,POST,PUT,DELETE",
+		AllowHeaders:     "Origin,Content-Type,Accept",
+		AllowCredentials: false,
+		MaxAge:           600,
+	})
+
+	app.Use(c)
+	app.Use(func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	h := app.Handler()
+	ctx := &fasthttp.RequestCtx{}
+
+	req := &fasthttp.Request{}
+	req.Header.SetMethod(fiber.MethodOptions)
+	req.SetRequestURI("/")
+	req.Header.Set(fiber.HeaderOrigin, "http://example.com")
+	req.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodPost)
+	req.Header.Set(fiber.HeaderAccessControlRequestHeaders, "Origin,Content-Type,Accept")
+
+	ctx.Init(req, nil, nil)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		h(ctx)
+	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_CORS_NewHandlerPreflightWildcardParallel -benchmem -count=4
+func Benchmark_CORS_NewHandlerPreflightWildcardParallel(b *testing.B) {
+	app := fiber.New()
+	c := New(Config{
+		AllowOrigins:     "*",
+		AllowMethods:     "GET,POST,PUT,DELETE",
+		AllowHeaders:     "Origin,Content-Type,Accept",
+		AllowCredentials: false,
+		MaxAge:           600,
+	})
+
+	app.Use(c)
+	app.Use(func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	h := app.Handler()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		ctx := &fasthttp.RequestCtx{}
+
+		req := &fasthttp.Request{}
+		req.Header.SetMethod(fiber.MethodOptions)
+		req.SetRequestURI("/")
+		req.Header.Set(fiber.HeaderOrigin, "http://example.com")
+		req.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodPost)
+		req.Header.Set(fiber.HeaderAccessControlRequestHeaders, "Origin,Content-Type,Accept")
+
+		ctx.Init(req, nil, nil)
+
+		for pb.Next() {
+			h(ctx)
+		}
+	})
 }
