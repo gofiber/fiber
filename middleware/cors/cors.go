@@ -113,23 +113,31 @@ func New(config ...Config) fiber.Handler {
 		panic("[CORS] Insecure setup, 'AllowCredentials' is set to true, and 'AllowOrigins' is set to a wildcard.")
 	}
 
-	// Validate and normalize static AllowOrigins if not using AllowOriginsFunc
-	if cfg.AllowOriginsFunc == nil && cfg.AllowOrigins != "" && cfg.AllowOrigins != "*" {
-		validatedOrigins := []string{}
-		for _, origin := range strings.Split(cfg.AllowOrigins, ",") {
-			isValid, normalizedOrigin := normalizeOrigin(origin)
+	// allowOrigins is a slice of strings that contains the allowed origins
+	// defined in the 'AllowOrigins' configuration.
+	var allowOrigins []string
+
+	// Validate and normalize static AllowOrigins
+	if cfg.AllowOrigins != "" && cfg.AllowOrigins != "*" {
+		origins := strings.Split(cfg.AllowOrigins, ",")
+		allowOrigins = make([]string, len(origins))
+
+		for i, origin := range origins {
+			trimmedOrigin := strings.TrimSpace(origin)
+			isValid, normalizedOrigin := normalizeOrigin(trimmedOrigin)
+
 			if isValid {
-				validatedOrigins = append(validatedOrigins, normalizedOrigin)
+				allowOrigins[i] = normalizedOrigin
 			} else {
-				log.Warnf("[CORS] Invalid origin format in configuration: %s", origin)
+				log.Warnf("[CORS] Invalid origin format in configuration: %s", trimmedOrigin)
 				panic("[CORS] Invalid origin provided in configuration")
 			}
 		}
-		cfg.AllowOrigins = strings.Join(validatedOrigins, ",")
+	} else {
+		// If AllowOrigins is set to a wildcard or not set,
+		// set allowOrigins to a slice with a single element
+		allowOrigins = []string{cfg.AllowOrigins}
 	}
-
-	// Convert string to slice
-	allowOrigins := strings.Split(strings.ReplaceAll(cfg.AllowOrigins, " ", ""), ",")
 
 	// Strip white spaces
 	allowMethods := strings.ReplaceAll(cfg.AllowMethods, " ", "")
@@ -165,10 +173,8 @@ func New(config ...Config) fiber.Handler {
 		// Run AllowOriginsFunc if the logic for
 		// handling the value in 'AllowOrigins' does
 		// not result in allowOrigin being set.
-		if allowOrigin == "" && cfg.AllowOriginsFunc != nil {
-			if cfg.AllowOriginsFunc(originHeader) {
-				allowOrigin = originHeader
-			}
+		if allowOrigin == "" && cfg.AllowOriginsFunc != nil && cfg.AllowOriginsFunc(originHeader) {
+			allowOrigin = originHeader
 		}
 
 		// Simple request
