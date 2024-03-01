@@ -307,7 +307,7 @@ func Test_Tracew(t *testing.T) {
 	require.Equal(t, "[Trace] trace work key1=value1 key2=value2\n", string(w.b))
 }
 
-func BenchmarkLogfKeyAndValues(b *testing.B) {
+func Benchmark_LogfKeyAndValues(b *testing.B) {
 	tests := []struct {
 		name          string
 		level         Level
@@ -365,7 +365,7 @@ func BenchmarkLogfKeyAndValues(b *testing.B) {
 	}
 }
 
-func BenchmarkLogfKeyAndValuesParallel(b *testing.B) {
+func Benchmark_LogfKeyAndValuesParallel(b *testing.B) {
 	tests := []struct {
 		name          string
 		level         Level
