@@ -93,7 +93,7 @@ type Static struct {
     // Next defines a function to skip this middleware when returned true.
     //
     // Optional. Default: nil
-    Next func(c *Ctx) bool
+    Next func(c Ctx) bool
 }
 ```
 
@@ -205,7 +205,7 @@ func main() {
 
   app.Route("/test", func(api fiber.Router) {
       api.Get("/foo", handler).Name("foo") // /test/foo (name: test.foo)
-    api.Get("/bar", handler).Name("bar") // /test/bar (name: test.bar)
+      api.Get("/bar", handler).Name("bar") // /test/bar (name: test.bar)
   }, "test.")
 
   log.Fatal(app.Listen(":3000"))

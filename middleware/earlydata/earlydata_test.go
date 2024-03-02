@@ -1,10 +1,8 @@
-//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package earlydata_test
 
 import (
 	"errors"
 	"fmt"
-	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -90,7 +88,7 @@ func Test_EarlyData(t *testing.T) {
 		t.Helper()
 
 		{
-			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+			req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 
 			resp, err := app.Test(req)
 			require.NoError(t, err)
@@ -108,7 +106,7 @@ func Test_EarlyData(t *testing.T) {
 		}
 
 		{
-			req := httptest.NewRequest(fiber.MethodPost, "/", http.NoBody)
+			req := httptest.NewRequest(fiber.MethodPost, "/", nil)
 
 			resp, err := app.Test(req)
 			require.NoError(t, err)
@@ -130,7 +128,7 @@ func Test_EarlyData(t *testing.T) {
 		t.Helper()
 
 		{
-			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
+			req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 
 			resp, err := app.Test(req)
 			require.NoError(t, err)
@@ -148,7 +146,7 @@ func Test_EarlyData(t *testing.T) {
 		}
 
 		{
-			req := httptest.NewRequest(fiber.MethodPost, "/", http.NoBody)
+			req := httptest.NewRequest(fiber.MethodPost, "/", nil)
 
 			resp, err := app.Test(req)
 			require.NoError(t, err)

@@ -1,10 +1,8 @@
-//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package idempotency_test
 
 import (
 	"errors"
 	"io"
-	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"sync"
@@ -83,7 +81,7 @@ func Test_Idempotency(t *testing.T) {
 	})
 
 	doReq := func(method, route, idempotencyKey string) string {
-		req := httptest.NewRequest(method, route, http.NoBody)
+		req := httptest.NewRequest(method, route, nil)
 		if idempotencyKey != "" {
 			req.Header.Set("X-Idempotency-Key", idempotencyKey)
 		}
