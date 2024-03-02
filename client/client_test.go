@@ -30,6 +30,7 @@ func startTestServerWithPort(t *testing.T, beforeStarting func(app *fiber.App)) 
 	}
 
 	addrChan := make(chan string)
+	errChan := make(chan error, 1)
 	go func() {
 		err := app.Listen(":0", fiber.ListenConfig{
 			DisableStartupMessage: true,
@@ -37,11 +38,19 @@ func startTestServerWithPort(t *testing.T, beforeStarting func(app *fiber.App)) 
 				addrChan <- addr.String()
 			},
 		})
-		require.NoError(t, err)
+		if err != nil {
+			errChan <- err
+		}
 	}()
 
-	addr := <-addrChan
-	return app, addr
+	select {
+	case addr := <-addrChan:
+		return app, addr
+	case err := <-errChan:
+		t.Fatalf("Failed to start test server: %v", err)
+	}
+
+	return nil, ""
 }
 
 func Test_Client_Add_Hook(t *testing.T) {
@@ -136,14 +145,16 @@ func Test_Client_Marshal(t *testing.T) {
 
 	t.Run("set json marshal error", func(t *testing.T) {
 		t.Parallel()
+
+		emptyErr := errors.New("empty json")
 		client := NewClient().
 			SetJSONMarshal(func(_ any) ([]byte, error) {
-				return nil, errors.New("empty json")
+				return nil, emptyErr
 			})
 
 		val, err := client.JSONMarshal()(nil)
 		require.Nil(t, val)
-		require.Equal(t, errors.New("empty json"), err)
+		require.ErrorIs(t, err, emptyErr)
 	})
 
 	t.Run("set json unmarshal", func(t *testing.T) {
@@ -341,6 +352,7 @@ func Test_Head(t *testing.T) {
 
 		resp, err := Head("http://" + addr)
 		require.NoError(t, err)
+		require.Equal(t, "7", resp.Header(fiber.HeaderContentLength))
 		require.Equal(t, "", utils.UnsafeString(resp.RawResponse.Body()))
 	})
 
@@ -354,6 +366,7 @@ func Test_Head(t *testing.T) {
 
 		resp, err := NewClient().Head("http://" + addr)
 		require.NoError(t, err)
+		require.Equal(t, "7", resp.Header(fiber.HeaderContentLength))
 		require.Equal(t, "", utils.UnsafeString(resp.RawResponse.Body()))
 	})
 }
@@ -536,6 +549,7 @@ func Test_Options(t *testing.T) {
 	setupApp := func() (*fiber.App, string) {
 		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
 			app.Options("/", func(c fiber.Ctx) error {
+				c.Set(fiber.HeaderAllow, "GET, POST, PUT, DELETE, PATCH")
 				return c.Status(fiber.StatusNoContent).SendString("")
 			})
 		})
@@ -555,6 +569,7 @@ func Test_Options(t *testing.T) {
 			resp, err := Options("http://" + addr)
 
 			require.NoError(t, err)
+			require.Equal(t, "GET, POST, PUT, DELETE, PATCH", resp.Header(fiber.HeaderAllow))
 			require.Equal(t, fiber.StatusNoContent, resp.StatusCode())
 			require.Equal(t, "", resp.String())
 		}
@@ -572,6 +587,7 @@ func Test_Options(t *testing.T) {
 			resp, err := NewClient().Options("http://" + addr)
 
 			require.NoError(t, err)
+			require.Equal(t, "GET, POST, PUT, DELETE, PATCH", resp.Header(fiber.HeaderAllow))
 			require.Equal(t, fiber.StatusNoContent, resp.StatusCode())
 			require.Equal(t, "", resp.String())
 		}
@@ -1213,8 +1229,8 @@ func Test_Client_PathParam(t *testing.T) {
 func Test_Client_PathParam_With_Server(t *testing.T) {
 	app, dial, start := createHelperServer(t)
 
-	app.Get("/test", func(c fiber.Ctx) error {
-		return c.SendString("ok")
+	app.Get("/:test", func(c fiber.Ctx) error {
+		return c.SendString(c.Params("test"))
 	})
 
 	go start()
@@ -1225,7 +1241,7 @@ func Test_Client_PathParam_With_Server(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode())
-	require.Equal(t, "ok", resp.String())
+	require.Equal(t, "test", resp.String())
 }
 
 func Test_Client_TLS(t *testing.T) {
