@@ -69,10 +69,10 @@ func Test_Listen_Graceful_Shutdown(t *testing.T) {
 		Time               time.Duration
 		ExpectedBody       string
 		ExpectedStatusCode int
-		ExceptedErr        error
+		ExpectedErr        error
 	}{
-		{Time: 100 * time.Millisecond, ExpectedBody: "example.com", ExpectedStatusCode: StatusOK, ExceptedErr: nil},
-		{Time: 500 * time.Millisecond, ExpectedBody: "", ExpectedStatusCode: StatusOK, ExceptedErr: errors.New("InmemoryListener is already closed: use of closed network connection")},
+		{Time: 100 * time.Millisecond, ExpectedBody: "example.com", ExpectedStatusCode: StatusOK, ExpectedErr: nil},
+		{Time: 500 * time.Millisecond, ExpectedBody: "", ExpectedStatusCode: StatusOK, ExpectedErr: errors.New("InmemoryListener is already closed: use of closed network connection")},
 	}
 
 	for _, tc := range testCases {
@@ -87,9 +87,12 @@ func Test_Listen_Graceful_Shutdown(t *testing.T) {
 		resp := fasthttp.AcquireResponse()
 		err := client.Do(req, resp)
 
-		require.Equal(t, tc.ExceptedErr, err)
+		require.Equal(t, tc.ExpectedErr, err)
 		require.Equal(t, tc.ExpectedStatusCode, resp.StatusCode())
 		require.Equal(t, tc.ExpectedBody, string(resp.Body()))
+
+		fasthttp.ReleaseRequest(req)
+		fasthttp.ReleaseResponse(resp)
 	}
 
 	mu.Lock()

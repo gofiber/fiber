@@ -973,6 +973,26 @@ func Test_Client_CookieJar_Response(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("different domain", func(t *testing.T) {
+		t.Parallel()
+		handler := func(c fiber.Ctx) error {
+			return c.SendString(c.Cookies("k1"))
+		}
+
+		jar := AcquireCookieJar()
+		defer ReleaseCookieJar(jar)
+
+		jar.SetKeyValue("example.com", "k1", "v1")
+
+		wrapAgent := func(c *Client) {
+			c.SetCookieJar(jar)
+		}
+		testClient(t, handler, wrapAgent, "v1")
+
+		require.Len(t, jar.getCookiesByHost("example.com"), 1)
+		require.Len(t, jar.getCookiesByHost("example"), 0)
+	})
 }
 
 func Test_Client_Referer(t *testing.T) {

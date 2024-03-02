@@ -291,28 +291,28 @@ func Test_Redirect_Request(t *testing.T) {
 		CookieValue        string
 		ExpectedBody       string
 		ExpectedStatusCode int
-		ExceptedErr        error
+		ExpectedErr        error
 	}{
 		{
 			URL:                "/",
 			CookieValue:        "key:value,key2:value2,co\\:m\\,ma:Fi\\:ber\\, v3",
 			ExpectedBody:       `{"inputs":{},"messages":{"co:m,ma":"Fi:ber, v3","key":"value","key2":"value2"}}`,
 			ExpectedStatusCode: StatusOK,
-			ExceptedErr:        nil,
+			ExpectedErr:        nil,
 		},
 		{
 			URL:                "/with-inputs?name=john&surname=doe",
 			CookieValue:        "key:value,key2:value2,key:value,key2:value2,old_input_data_name:john,old_input_data_surname:doe",
 			ExpectedBody:       `{"inputs":{"name":"john","surname":"doe"},"messages":{"key":"value","key2":"value2"}}`,
 			ExpectedStatusCode: StatusOK,
-			ExceptedErr:        nil,
+			ExpectedErr:        nil,
 		},
 		{
 			URL:                "/just-inputs?name=john&surname=doe",
 			CookieValue:        "old_input_data_name:john,old_input_data_surname:doe",
 			ExpectedBody:       `{"inputs":{"name":"john","surname":"doe"},"messages":{}}`,
 			ExpectedStatusCode: StatusOK,
-			ExceptedErr:        nil,
+			ExpectedErr:        nil,
 		},
 	}
 
