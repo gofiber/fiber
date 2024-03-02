@@ -2220,7 +2220,7 @@ func Convert[T any](value string, convertor func(string) (T, error), defaultValu
 ```go title="Example"
 // GET http://example.com/id/bb70ab33-d455-4a03-8d78-d3c1dacae9ff
 app.Get("/id/:id", func(c fiber.Ctx) error {
-  fiber.Convertor(c.Params("id"), uuid.Parse) // UUID(bb70ab33-d455-4a03-8d78-d3c1dacae9ff), nil
+  fiber.Convert(c.Params("id"), uuid.Parse) // UUID(bb70ab33-d455-4a03-8d78-d3c1dacae9ff), nil
 
   // ...
 })
