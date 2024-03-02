@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"mime/multipart"
 	"net"
 	"net/http/httptest"
@@ -4581,6 +4582,18 @@ func Test_genericParseTypeInts(t *testing.T) {
 			value: 4,
 			str:   "4",
 		},
+		{
+			value: math.MaxInt,
+			str:   strconv.Itoa(math.MaxInt),
+		},
+		{
+			value: math.MinInt,
+			str:   strconv.Itoa(math.MinInt),
+		},
+		{
+			value: -1,
+			str:   "-1",
+		},
 	}
 
 	for _, test := range ints {
@@ -4623,6 +4636,14 @@ func Test_genericParseTypeInt8s(t *testing.T) {
 			value: int8(4),
 			str:   "4",
 		},
+		{
+			value: math.MaxInt8,
+			str:   strconv.Itoa(math.MaxInt8),
+		},
+		{
+			value: math.MinInt8,
+			str:   strconv.Itoa(math.MinInt8),
+		},
 	}
 
 	for _, test := range int8s {
@@ -4663,6 +4684,14 @@ func Test_genericParseTypeInt16s(t *testing.T) {
 		{
 			value: int16(4),
 			str:   "4",
+		},
+		{
+			value: math.MaxInt16,
+			str:   strconv.Itoa(math.MaxInt16),
+		},
+		{
+			value: math.MinInt16,
+			str:   strconv.Itoa(math.MinInt16),
 		},
 	}
 
@@ -4705,6 +4734,14 @@ func Test_genericParseTypeInt32s(t *testing.T) {
 			value: int32(4),
 			str:   "4",
 		},
+		{
+			value: math.MaxInt32,
+			str:   strconv.Itoa(math.MaxInt32),
+		},
+		{
+			value: math.MinInt32,
+			str:   strconv.Itoa(math.MinInt32),
+		},
 	}
 
 	for _, test := range int32s {
@@ -4745,6 +4782,14 @@ func Test_genericParseTypeInt64s(t *testing.T) {
 		{
 			value: int64(4),
 			str:   "4",
+		},
+		{
+			value: math.MaxInt64,
+			str:   strconv.Itoa(math.MaxInt64),
+		},
+		{
+			value: math.MinInt64,
+			str:   strconv.Itoa(math.MinInt64),
 		},
 	}
 
