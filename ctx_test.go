@@ -5165,56 +5165,61 @@ func Benchmark_genericParseTypeInts(b *testing.B) {
 	}
 
 	for _, test := range ints {
-		var v int
 		b.Run("bench_genericParseTypeInts", func(b *testing.B) {
+			var res int
 			b.ReportAllocs()
 			b.ResetTimer()
-
-			res := genericParseType(test.str, v)
+			for n := 0; n < b.N; n++ {
+				res = genericParseType(test.str, res)
+			}
 			require.Equal(b, test.value, res)
 		})
 	}
 
 	for _, test := range int8s {
-		var v int8
 		b.Run("benchmark_genericParseTypeInt8s", func(b *testing.B) {
+			var res int8
 			b.ReportAllocs()
 			b.ResetTimer()
-
-			res := genericParseType(test.str, v)
+			for n := 0; n < b.N; n++ {
+				res = genericParseType(test.str, res)
+			}
 			require.Equal(b, test.value, res)
 		})
 	}
 
 	for _, test := range int16s {
-		var v int16
 		b.Run("benchmark_genericParseTypeInt16s", func(b *testing.B) {
+			var res int16
 			b.ReportAllocs()
 			b.ResetTimer()
-
-			res := genericParseType(test.str, v)
+			for n := 0; n < b.N; n++ {
+				res = genericParseType(test.str, res)
+			}
 			require.Equal(b, test.value, res)
 		})
 	}
 
 	for _, test := range int32s {
-		var v int32
 		b.Run("benchmark_genericParseType32Ints", func(b *testing.B) {
+			var res int32
 			b.ReportAllocs()
 			b.ResetTimer()
-
-			res := genericParseType(test.str, v)
+			for n := 0; n < b.N; n++ {
+				res = genericParseType(test.str, res)
+			}
 			require.Equal(b, test.value, res)
 		})
 	}
 
 	for _, test := range int64s {
-		var v int64
 		b.Run("benchmark_genericParseTypeInt64s", func(b *testing.B) {
+			var res int64
 			b.ReportAllocs()
 			b.ResetTimer()
-
-			res := genericParseType(test.str, v)
+			for n := 0; n < b.N; n++ {
+				res = genericParseType(test.str, res)
+			}
 			require.Equal(b, test.value, res)
 		})
 	}
@@ -5343,56 +5348,61 @@ func Benchmark_genericParseTypeUints(b *testing.B) {
 	}
 
 	for _, test := range uints {
-		var v uint
 		b.Run("benchamark_genericParseTypeUints", func(b *testing.B) {
+			var res uint
 			b.ReportAllocs()
 			b.ResetTimer()
-
-			res := genericParseType(test.str, v)
+			for n := 0; n < b.N; n++ {
+				res = genericParseType(test.str, res)
+			}
 			require.Equal(b, test.value, res)
 		})
 	}
 
 	for _, test := range uint8s {
-		var v uint8
 		b.Run("benchamark_genericParseTypeUint8s", func(b *testing.B) {
+			var res uint8
 			b.ReportAllocs()
 			b.ResetTimer()
-
-			res := genericParseType(test.str, v)
+			for n := 0; n < b.N; n++ {
+				res = genericParseType(test.str, res)
+			}
 			require.Equal(b, test.value, res)
 		})
 	}
 
 	for _, test := range uint16s {
-		var v uint16
 		b.Run("benchamark_genericParseTypeUint16s", func(b *testing.B) {
+			var res uint16
 			b.ReportAllocs()
 			b.ResetTimer()
-
-			res := genericParseType(test.str, v)
+			for n := 0; n < b.N; n++ {
+				res = genericParseType(test.str, res)
+			}
 			require.Equal(b, test.value, res)
 		})
 	}
 
 	for _, test := range uint32s {
-		var v uint32
 		b.Run("benchamark_genericParseTypeUint32s", func(b *testing.B) {
+			var res uint32
 			b.ReportAllocs()
 			b.ResetTimer()
-
-			res := genericParseType(test.str, v)
+			for n := 0; n < b.N; n++ {
+				res = genericParseType(test.str, res)
+			}
 			require.Equal(b, test.value, res)
 		})
 	}
 
 	for _, test := range uint64s {
-		var v uint64
 		b.Run("benchamark_genericParseTypeUint64s", func(b *testing.B) {
+			var res uint64
 			b.ReportAllocs()
 			b.ResetTimer()
-
-			res := genericParseType(test.str, v)
+			for n := 0; n < b.N; n++ {
+				res = genericParseType(test.str, res)
+			}
 			require.Equal(b, test.value, res)
 		})
 	}
@@ -5444,23 +5454,25 @@ func Benchmark_genericParseTypeFloats(b *testing.B) {
 	}
 
 	for _, test := range float32s {
-		var v float32
 		b.Run("benchmark_genericParseTypeFloat32s", func(b *testing.B) {
+			var res float32
 			b.ReportAllocs()
 			b.ResetTimer()
-
-			res := genericParseType(test.str, v)
+			for n := 0; n < b.N; n++ {
+				res = genericParseType(test.str, res)
+			}
 			require.InEpsilon(b, test.value, res, epsilon)
 		})
 	}
 
 	for _, test := range float64s {
-		var v float64
 		b.Run("benchmark_genericParseTypeFloat32s", func(b *testing.B) {
+			var res float64
 			b.ReportAllocs()
 			b.ResetTimer()
-
-			res := genericParseType(test.str, v)
+			for n := 0; n < b.N; n++ {
+				res = genericParseType(test.str, res)
+			}
 			require.InEpsilon(b, test.value, res, epsilon)
 		})
 	}
@@ -5493,11 +5505,13 @@ func Benchmark_genericParseTypeArrayBytes(b *testing.B) {
 	}
 
 	for _, test := range arrBytes {
-		var v []byte
 		b.Run("Benchmark_genericParseTypeArrayBytes", func(b *testing.B) {
+			var res []byte
 			b.ReportAllocs()
 			b.ResetTimer()
-			res := genericParseType(test.str, v, []byte(nil))
+			for n := 0; n < b.N; n++ {
+				res = genericParseType(test.str, res, []byte(nil))
+			}
 			require.Equal(b, test.value, res)
 		})
 	}
@@ -5530,12 +5544,13 @@ func Benchmark_genericParseTypeBoolean(b *testing.B) {
 	}
 
 	for _, test := range bools {
-		var v bool
 		b.Run("Benchmark_genericParseTypeBoolean", func(b *testing.B) {
+			var res bool
 			b.ReportAllocs()
 			b.ResetTimer()
-
-			res := genericParseType(test.str, v)
+			for n := 0; n < b.N; n++ {
+				res = genericParseType(test.str, res)
+			}
 			if test.value {
 				require.True(b, res)
 			} else {
@@ -5552,12 +5567,14 @@ func Benchmark_genericParseTypeString(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for _, test := range tests {
-		var v string
 		b.Run("benchmark_genericParseTypeString", func(b *testing.B) {
+			var res string
 			b.ReportAllocs()
 			b.ResetTimer()
+			for n := 0; n < b.N; n++ {
+				res = genericParseType(test, res)
+			}
 
-			res := genericParseType(test, v)
 			require.Equal(b, test, res)
 		})
 	}
