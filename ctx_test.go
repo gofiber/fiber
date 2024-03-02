@@ -4583,12 +4583,20 @@ func Test_genericParseTypeInts(t *testing.T) {
 			str:   "4",
 		},
 		{
-			value: math.MaxInt,
-			str:   strconv.Itoa(math.MaxInt),
+			value: 2147483647,
+			str:   "2147483647",
 		},
 		{
-			value: math.MinInt,
-			str:   strconv.Itoa(math.MinInt),
+			value: -2147483648,
+			str:   "-2147483648",
+		},
+		{
+			value: 0,
+			str:   "2147483648",
+		},
+		{
+			value: 0,
+			str:   "-2147483649",
 		},
 		{
 			value: -1,
