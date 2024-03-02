@@ -1128,26 +1128,6 @@ func Query[V GenericType](c Ctx, key string, defaultValue ...V) V {
 	return genericParseType[V](q, v, defaultValue...)
 }
 
-type GenericType interface {
-	GenericTypeInteger | GenericTypeFloat | bool | string | []byte
-}
-
-type GenericTypeInteger interface {
-	GenericTypeIntegerSigned | GenericTypeIntegerUnsigned
-}
-
-type GenericTypeIntegerSigned interface {
-	int | int8 | int16 | int32 | int64
-}
-
-type GenericTypeIntegerUnsigned interface {
-	uint | uint8 | uint16 | uint32 | uint64
-}
-
-type GenericTypeFloat interface {
-	float32 | float64
-}
-
 // Range returns a struct containing the type and a slice of ranges.
 func (c *DefaultCtx) Range(size int) (Range, error) {
 	var (

@@ -48,7 +48,7 @@ func genericParseBool[V GenericType](str string, parser func(bool) V, defaultVal
 func genericParseType[V GenericType](str string, v V, defaultValue ...V) V {
 	switch any(v).(type) {
 	case int:
-		return genericParseInt[V](str, 32, func(i int64) V { return assertValueType[V, int](int(i)) }, defaultValue...)
+		return genericParseInt[V](str, 0, func(i int64) V { return assertValueType[V, int](int(i)) }, defaultValue...)
 	case int8:
 		return genericParseInt[V](str, 8, func(i int64) V { return assertValueType[V, int8](int8(i)) }, defaultValue...)
 	case int16:
@@ -89,4 +89,24 @@ func genericParseType[V GenericType](str string, v V, defaultValue ...V) V {
 		}
 		return v
 	}
+}
+
+type GenericType interface {
+	GenericTypeInteger | GenericTypeFloat | bool | string | []byte
+}
+
+type GenericTypeInteger interface {
+	GenericTypeIntegerSigned | GenericTypeIntegerUnsigned
+}
+
+type GenericTypeIntegerSigned interface {
+	int | int8 | int16 | int32 | int64
+}
+
+type GenericTypeIntegerUnsigned interface {
+	uint | uint8 | uint16 | uint32 | uint64
+}
+
+type GenericTypeFloat interface {
+	float32 | float64
 }
