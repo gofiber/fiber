@@ -24,12 +24,21 @@ func Test_Rand_String(t *testing.T) {
 			name: "test generate",
 			args: 16,
 		},
+		{
+			name: "test generate smaller string",
+			args: 8,
+		},
+		{
+			name: "test generate larger string",
+			args: 32,
+		},
 	}
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got := randString(tt.args)
-			require.Len(t, got, 16)
+			require.Len(t, got, tt.args)
 		})
 	}
 }

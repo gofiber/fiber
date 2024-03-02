@@ -17,6 +17,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/tlstest"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/bytebufferpool"
 )
 
 func startTestServerWithPort(t *testing.T, beforeStarting func(app *fiber.App)) (*fiber.App, string) {
@@ -30,12 +31,13 @@ func startTestServerWithPort(t *testing.T, beforeStarting func(app *fiber.App)) 
 
 	addrChan := make(chan string)
 	go func() {
-		require.NoError(t, app.Listen(":0", fiber.ListenConfig{
+		err := app.Listen(":0", fiber.ListenConfig{
 			DisableStartupMessage: true,
 			ListenerAddrFunc: func(addr net.Addr) {
 				addrChan <- addr.String()
 			},
-		}))
+		})
+		require.NoError(t, err)
 	}()
 
 	addr := <-addrChan
@@ -47,19 +49,28 @@ func Test_Client_Add_Hook(t *testing.T) {
 
 	t.Run("add request hooks", func(t *testing.T) {
 		t.Parallel()
+
+		buf := bytebufferpool.Get()
+		defer bytebufferpool.Put(buf)
+
 		client := NewClient().AddRequestHook(func(_ *Client, _ *Request) error {
+			buf.WriteString("hook1")
 			return nil
 		})
 
 		require.Len(t, client.RequestHook(), 1)
 
 		client.AddRequestHook(func(_ *Client, _ *Request) error {
+			buf.WriteString("hook2")
 			return nil
 		}, func(_ *Client, _ *Request) error {
+			buf.WriteString("hook3")
 			return nil
 		})
 
 		require.Len(t, client.RequestHook(), 3)
+
+		client.builtinRequestHooks[0](client, &Request{})
 	})
 
 	t.Run("add response hooks", func(t *testing.T) {
@@ -80,6 +91,34 @@ func Test_Client_Add_Hook(t *testing.T) {
 	})
 }
 
+func Test_Client_Add_Hook_CheckOrder(t *testing.T) {
+	t.Parallel()
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	client := NewClient().
+		AddRequestHook(func(_ *Client, _ *Request) error {
+			buf.WriteString("hook1")
+			return nil
+		}).
+		AddRequestHook(func(_ *Client, _ *Request) error {
+			buf.WriteString("hook2")
+			return nil
+		}).
+		AddRequestHook(func(_ *Client, _ *Request) error {
+			buf.WriteString("hook3")
+			return nil
+		})
+
+	for _, hook := range client.RequestHook() {
+		require.NoError(t, hook(client, &Request{}))
+	}
+
+	require.Equal(t, "hook1hook2hook3", buf.String())
+
+}
+
 func Test_Client_Marshal(t *testing.T) {
 	t.Parallel()
 
@@ -95,7 +134,30 @@ func Test_Client_Marshal(t *testing.T) {
 		require.Equal(t, []byte("hello"), val)
 	})
 
+	t.Run("set json marshal error", func(t *testing.T) {
+		t.Parallel()
+		client := NewClient().
+			SetJSONMarshal(func(_ any) ([]byte, error) {
+				return nil, errors.New("empty json")
+			})
+
+		val, err := client.JSONMarshal()(nil)
+		require.Nil(t, val)
+		require.Equal(t, errors.New("empty json"), err)
+	})
+
 	t.Run("set json unmarshal", func(t *testing.T) {
+		t.Parallel()
+		client := NewClient().
+			SetJSONUnmarshal(func(_ []byte, _ any) error {
+				return errors.New("empty json")
+			})
+
+		err := client.JSONUnmarshal()(nil, nil)
+		require.Equal(t, errors.New("empty json"), err)
+	})
+
+	t.Run("set json unmarshal error", func(t *testing.T) {
 		t.Parallel()
 		client := NewClient().
 			SetJSONUnmarshal(func(_ []byte, _ any) error {
@@ -118,7 +180,30 @@ func Test_Client_Marshal(t *testing.T) {
 		require.Equal(t, []byte("hello"), val)
 	})
 
+	t.Run("set xml marshal error", func(t *testing.T) {
+		t.Parallel()
+		client := NewClient().
+			SetXMLMarshal(func(_ any) ([]byte, error) {
+				return nil, errors.New("empty xml")
+			})
+
+		val, err := client.XMLMarshal()(nil)
+		require.Nil(t, val)
+		require.Equal(t, errors.New("empty xml"), err)
+	})
+
 	t.Run("set xml unmarshal", func(t *testing.T) {
+		t.Parallel()
+		client := NewClient().
+			SetXMLUnmarshal(func(_ []byte, _ any) error {
+				return errors.New("empty xml")
+			})
+
+		err := client.XMLUnmarshal()(nil, nil)
+		require.Equal(t, errors.New("empty xml"), err)
+	})
+
+	t.Run("set xml unmarshal error", func(t *testing.T) {
 		t.Parallel()
 		client := NewClient().
 			SetXMLUnmarshal(func(_ []byte, _ any) error {
@@ -151,7 +236,7 @@ func Test_Client_Invalid_URL(t *testing.T) {
 
 	_, err := NewClient().SetDial(dial).
 		R().
-		Get("http://example.com\r\n\r\nGET /\r\n\r\n")
+		Get("http//example")
 
 	require.ErrorIs(t, err, ErrURLFormat)
 }
@@ -662,6 +747,18 @@ func Test_Client_Header(t *testing.T) {
 		res = req.Header("bar")
 		require.Len(t, res, 1)
 		require.Equal(t, "foo", res[0])
+	})
+
+	t.Run("set header case insensitive", func(t *testing.T) {
+		t.Parallel()
+		req := NewClient()
+		req.SetHeader("foo", "bar").
+			AddHeader("FOO", "fiber")
+
+		res := req.Header("foo")
+		require.Len(t, res, 2)
+		require.Equal(t, "bar", res[0])
+		require.Equal(t, "fiber", res[1])
 	})
 }
 

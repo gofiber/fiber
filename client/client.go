@@ -188,7 +188,10 @@ func (c *Client) SetRootCertificate(path string) *Client {
 		c.logger.Panicf("client: %v", err)
 	}
 	defer func() {
-		_ = file.Close() //nolint:errcheck // It is fine to ignore the error here
+		if err := file.Close(); err != nil {
+			c.logger.Panicf("client: failed to close file: %v", err)
+		}
+
 	}()
 
 	pem, err := io.ReadAll(file)
@@ -580,6 +583,14 @@ func (c *Client) Reset() {
 	c.timeout = 0
 	c.userAgent = ""
 	c.referer = ""
+	c.proxyURL = ""
+	c.retryConfig = nil
+	c.debug = false
+
+	if c.cookieJar != nil {
+		c.cookieJar.Release()
+		c.cookieJar = nil
+	}
 
 	c.path.Reset()
 	c.cookies.Reset()

@@ -36,6 +36,8 @@ const (
 	rawBody
 )
 
+var ErrClientNil = errors.New("client can not be nil")
+
 // Request is a struct which contains the request data.
 type Request struct {
 	url       string
@@ -92,6 +94,10 @@ func (r *Request) Client() *Client {
 
 // SetClient method sets client in request instance.
 func (r *Request) SetClient(c *Client) *Request {
+	if c == nil {
+		panic(ErrClientNil)
+	}
+
 	r.client = c
 	return r
 }
@@ -342,6 +348,7 @@ func (r *Request) SetRawBody(v []byte) *Request {
 }
 
 // resetBody will clear body object and set bodyType
+// if body type is formBody and filesBody, the new body type will be ignored.
 func (r *Request) resetBody(t bodyType) {
 	r.body = nil
 
@@ -921,6 +928,7 @@ func ReleaseFile(f *File) {
 // `p` is a structure that implements the WithStruct interface,
 // The field name can be specified by `tagName`.
 // `v` is a struct include some data.
+// Note: This method only supports simple types and nested structs are not currently supported.
 func SetValWithStruct(p WithStruct, tagName string, v any) {
 	valueOfV := reflect.ValueOf(v)
 	typeOfV := reflect.TypeOf(v)

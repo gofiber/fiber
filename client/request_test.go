@@ -35,6 +35,21 @@ func Test_Request_Method(t *testing.T) {
 
 	req.SetMethod("DELETE")
 	require.Equal(t, "DELETE", req.Method())
+
+	req.SetMethod("PATCH")
+	require.Equal(t, "PATCH", req.Method())
+
+	req.SetMethod("OPTIONS")
+	require.Equal(t, "OPTIONS", req.Method())
+
+	req.SetMethod("HEAD")
+	require.Equal(t, "HEAD", req.Method())
+
+	req.SetMethod("TRACE")
+	require.Equal(t, "TRACE", req.Method())
+
+	req.SetMethod("CUSTOM")
+	require.Equal(t, "CUSTOM", req.Method())
 }
 
 func Test_Request_URL(t *testing.T) {

@@ -90,6 +90,11 @@ func (c *core) execFunc() (*Response, error) {
 	var err error
 	go func() {
 		respv := fasthttp.AcquireResponse()
+		defer func() {
+			fasthttp.ReleaseRequest(reqv)
+			fasthttp.ReleaseResponse(respv)
+		}()
+
 		if cfg != nil {
 			err = retry.NewExponentialBackoff(*cfg).Retry(func() error {
 				if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
@@ -105,10 +110,6 @@ func (c *core) execFunc() (*Response, error) {
 				err = c.client.client.Do(reqv, respv)
 			}
 		}
-		defer func() {
-			fasthttp.ReleaseRequest(reqv)
-			fasthttp.ReleaseResponse(respv)
-		}()
 
 		if atomic.CompareAndSwapInt32(&done, 0, 1) {
 			if err != nil {

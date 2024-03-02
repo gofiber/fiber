@@ -192,82 +192,7 @@ func parserRequestBody(c *Client, req *Request) error {
 	case formBody:
 		req.RawRequest.SetBody(req.formData.QueryString())
 	case filesBody:
-		mw := multipart.NewWriter(req.RawRequest.BodyWriter())
-		err := mw.SetBoundary(req.boundary)
-		if err != nil {
-			return fmt.Errorf("set boundary error: %w", err)
-		}
-		defer func() {
-			err := mw.Close()
-			if err != nil {
-				return
-			}
-		}()
-
-		// add formdata
-		req.formData.VisitAll(func(key, value []byte) {
-			if err != nil {
-				return
-			}
-			err = mw.WriteField(utils.UnsafeString(key), utils.UnsafeString(value))
-		})
-		if err != nil {
-			return fmt.Errorf("write formdata error: %w", err)
-		}
-
-		// add file
-		b := make([]byte, 512)
-		for i, v := range req.files {
-			if v.name == "" && v.path == "" {
-				return ErrFileNoName
-			}
-
-			// if name is not exist, set name
-			if v.name == "" && v.path != "" {
-				v.path = filepath.Clean(v.path)
-				v.name = filepath.Base(v.path)
-			}
-
-			// if field name is not exist, set it
-			if v.fieldName == "" {
-				v.fieldName = "file" + strconv.Itoa(i+1)
-			}
-
-			// check the reader
-			if v.reader == nil {
-				v.reader, err = os.Open(v.path)
-				if err != nil {
-					return fmt.Errorf("open file error: %w", err)
-				}
-			}
-
-			// write file
-			w, err := mw.CreateFormFile(v.fieldName, v.name)
-			if err != nil {
-				return fmt.Errorf("create file error: %w", err)
-			}
-
-			for {
-				n, err := v.reader.Read(b)
-				if err != nil && !errors.Is(err, io.EOF) {
-					return fmt.Errorf("read file error: %w", err)
-				}
-
-				if errors.Is(err, io.EOF) {
-					break
-				}
-
-				_, err = w.Write(b[:n])
-				if err != nil {
-					return fmt.Errorf("write file error: %w", err)
-				}
-			}
-
-			err = v.reader.Close()
-			if err != nil {
-				return fmt.Errorf("close file error: %w", err)
-			}
-		}
+		return parserRequestBodyFile(req)
 	case rawBody:
 		if body, ok := req.body.([]byte); ok {
 			req.RawRequest.SetBody(body)
@@ -276,6 +201,89 @@ func parserRequestBody(c *Client, req *Request) error {
 		}
 	case noBody:
 		return nil
+	}
+
+	return nil
+}
+
+// parserRequestBodyFile parses request body if body type is file
+// this is an addition of parserRequestBody.
+func parserRequestBodyFile(req *Request) error {
+	mw := multipart.NewWriter(req.RawRequest.BodyWriter())
+	err := mw.SetBoundary(req.boundary)
+	if err != nil {
+		return fmt.Errorf("set boundary error: %w", err)
+	}
+	defer func() {
+		err := mw.Close()
+		if err != nil {
+			return
+		}
+	}()
+
+	// add formdata
+	req.formData.VisitAll(func(key, value []byte) {
+		if err != nil {
+			return
+		}
+		err = mw.WriteField(utils.UnsafeString(key), utils.UnsafeString(value))
+	})
+	if err != nil {
+		return fmt.Errorf("write formdata error: %w", err)
+	}
+
+	// add file
+	b := make([]byte, 512)
+	for i, v := range req.files {
+		if v.name == "" && v.path == "" {
+			return ErrFileNoName
+		}
+
+		// if name is not exist, set name
+		if v.name == "" && v.path != "" {
+			v.path = filepath.Clean(v.path)
+			v.name = filepath.Base(v.path)
+		}
+
+		// if field name is not exist, set it
+		if v.fieldName == "" {
+			v.fieldName = "file" + strconv.Itoa(i+1)
+		}
+
+		// check the reader
+		if v.reader == nil {
+			v.reader, err = os.Open(v.path)
+			if err != nil {
+				return fmt.Errorf("open file error: %w", err)
+			}
+		}
+
+		// write file
+		w, err := mw.CreateFormFile(v.fieldName, v.name)
+		if err != nil {
+			return fmt.Errorf("create file error: %w", err)
+		}
+
+		for {
+			n, err := v.reader.Read(b)
+			if err != nil && !errors.Is(err, io.EOF) {
+				return fmt.Errorf("read file error: %w", err)
+			}
+
+			if errors.Is(err, io.EOF) {
+				break
+			}
+
+			_, err = w.Write(b[:n])
+			if err != nil {
+				return fmt.Errorf("write file error: %w", err)
+			}
+		}
+
+		err = v.reader.Close()
+		if err != nil {
+			return fmt.Errorf("close file error: %w", err)
+		}
 	}
 
 	return nil
