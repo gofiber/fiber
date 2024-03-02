@@ -4602,6 +4602,7 @@ func Test_genericParseTypeInts(t *testing.T) {
 		t.Run("test_genericParseTypeInts", func(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tt.value, genericParseType(tt.str, v))
+			require.Equal(t, tt.value, genericParseType[int](tt.str, v))
 		})
 	}
 }
@@ -4637,11 +4638,11 @@ func Test_genericParseTypeInt8s(t *testing.T) {
 			str:   "4",
 		},
 		{
-			value: math.MaxInt8,
+			value: int8(math.MaxInt8),
 			str:   strconv.Itoa(math.MaxInt8),
 		},
 		{
-			value: math.MinInt8,
+			value: int8(math.MinInt8),
 			str:   strconv.Itoa(math.MinInt8),
 		},
 	}
@@ -4652,6 +4653,7 @@ func Test_genericParseTypeInt8s(t *testing.T) {
 		t.Run("test_genericParseTypeInt8s", func(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tt.value, genericParseType(tt.str, v))
+			require.Equal(t, tt.value, genericParseType[int8](tt.str, v))
 		})
 	}
 }
@@ -4686,11 +4688,11 @@ func Test_genericParseTypeInt16s(t *testing.T) {
 			str:   "4",
 		},
 		{
-			value: math.MaxInt16,
+			value: int16(math.MaxInt16),
 			str:   strconv.Itoa(math.MaxInt16),
 		},
 		{
-			value: math.MinInt16,
+			value: int16(math.MinInt16),
 			str:   strconv.Itoa(math.MinInt16),
 		},
 	}
@@ -4701,6 +4703,7 @@ func Test_genericParseTypeInt16s(t *testing.T) {
 		t.Run("test_genericParseTypeInt16s", func(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tt.value, genericParseType(tt.str, v))
+			require.Equal(t, tt.value, genericParseType[int16](tt.str, v))
 		})
 	}
 }
@@ -4735,11 +4738,11 @@ func Test_genericParseTypeInt32s(t *testing.T) {
 			str:   "4",
 		},
 		{
-			value: math.MaxInt32,
+			value: int32(math.MaxInt32),
 			str:   strconv.Itoa(math.MaxInt32),
 		},
 		{
-			value: math.MinInt32,
+			value: int32(math.MinInt32),
 			str:   strconv.Itoa(math.MinInt32),
 		},
 	}
@@ -4750,6 +4753,7 @@ func Test_genericParseTypeInt32s(t *testing.T) {
 		t.Run("test_genericParseTypeInt32s", func(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tt.value, genericParseType(tt.str, v))
+			require.Equal(t, tt.value, genericParseType[int32](tt.str, v))
 		})
 	}
 }
@@ -4784,11 +4788,11 @@ func Test_genericParseTypeInt64s(t *testing.T) {
 			str:   "4",
 		},
 		{
-			value: math.MaxInt64,
+			value: int64(math.MaxInt64),
 			str:   strconv.Itoa(math.MaxInt64),
 		},
 		{
-			value: math.MinInt64,
+			value: int64(math.MinInt64),
 			str:   strconv.Itoa(math.MinInt64),
 		},
 	}
@@ -4799,6 +4803,7 @@ func Test_genericParseTypeInt64s(t *testing.T) {
 		t.Run("test_genericParseTypeInt64s", func(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tt.value, genericParseType(tt.str, v))
+			require.Equal(t, tt.value, genericParseType[int64](tt.str, v))
 		})
 	}
 }
@@ -4840,6 +4845,7 @@ func Test_genericParseTypeUints(t *testing.T) {
 		t.Run("test_genericParseTypeUints", func(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tt.value, genericParseType(tt.str, v))
+			require.Equal(t, tt.value, genericParseType[uint](tt.str, v))
 		})
 	}
 }
@@ -4873,6 +4879,10 @@ func Test_genericParseTypeUint8s(t *testing.T) {
 			value: uint8(4),
 			str:   "4",
 		},
+		{
+			value: uint8(math.MaxUint8),
+			str:   strconv.Itoa(math.MaxUint8),
+		},
 	}
 
 	for _, test := range uint8s {
@@ -4881,6 +4891,7 @@ func Test_genericParseTypeUint8s(t *testing.T) {
 		t.Run("test_genericParseTypeUint8s", func(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tt.value, genericParseType(tt.str, v))
+			require.Equal(t, tt.value, genericParseType[uint8](tt.str, v))
 		})
 	}
 }
@@ -4915,6 +4926,10 @@ func Test_genericParseTypeUint16s(t *testing.T) {
 			value: uint16(4),
 			str:   "4",
 		},
+		{
+			value: uint16(math.MaxUint16),
+			str:   strconv.Itoa(math.MaxUint16),
+		},
 	}
 
 	for _, test := range uint16s {
@@ -4923,6 +4938,7 @@ func Test_genericParseTypeUint16s(t *testing.T) {
 		t.Run("test_genericParseTypeUint16s", func(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tt.value, genericParseType(tt.str, v))
+			require.Equal(t, tt.value, genericParseType[uint16](tt.str, v))
 		})
 	}
 }
@@ -4957,6 +4973,10 @@ func Test_genericParseTypeUint32s(t *testing.T) {
 			value: uint32(4),
 			str:   "4",
 		},
+		{
+			value: uint32(math.MaxUint32),
+			str:   strconv.Itoa(math.MaxUint32),
+		},
 	}
 
 	for _, test := range uint32s {
@@ -4965,6 +4985,7 @@ func Test_genericParseTypeUint32s(t *testing.T) {
 		t.Run("test_genericParseTypeUint32s", func(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tt.value, genericParseType(tt.str, v))
+			require.Equal(t, tt.value, genericParseType[uint32](tt.str, v))
 		})
 	}
 }
@@ -5006,6 +5027,7 @@ func Test_genericParseTypeUint64s(t *testing.T) {
 		t.Run("test_genericParseTypeUint64s", func(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tt.value, genericParseType(tt.str, v))
+			require.Equal(t, tt.value, genericParseType[uint64](tt.str, v))
 		})
 	}
 }
@@ -5044,6 +5066,7 @@ func Test_genericParseTypeFloat32s(t *testing.T) {
 		t.Run("test_genericParseTypeFloat32s", func(t *testing.T) {
 			t.Parallel()
 			require.InEpsilon(t, tt.value, genericParseType(tt.str, v), epsilon)
+			require.InEpsilon(t, tt.value, genericParseType[float32](tt.str, v), epsilon)
 		})
 	}
 }
@@ -5082,6 +5105,7 @@ func Test_genericParseTypeFloat64s(t *testing.T) {
 		t.Run("test_genericParseTypeFloat64s", func(t *testing.T) {
 			t.Parallel()
 			require.InEpsilon(t, tt.value, genericParseType(tt.str, v), epsilon)
+			require.InEpsilon(t, tt.value, genericParseType[float64](tt.str, v), epsilon)
 		})
 	}
 }
@@ -5120,6 +5144,7 @@ func Test_genericParseTypeArrayBytes(t *testing.T) {
 		t.Run("test_genericParseTypeArrayBytes", func(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tt.value, genericParseType(tt.str, v, []byte(nil)))
+			require.Equal(t, tt.value, genericParseType[[]byte](tt.str, v, []byte(nil)))
 		})
 	}
 }
@@ -5159,8 +5184,10 @@ func Test_genericParseTypeBoolean(t *testing.T) {
 			t.Parallel()
 			if tt.value {
 				require.True(t, genericParseType(tt.str, v))
+				require.True(t, genericParseType[bool](tt.str, v))
 			} else {
 				require.False(t, genericParseType(tt.str, v))
+				require.False(t, genericParseType[bool](tt.str, v))
 			}
 		})
 	}
@@ -5178,6 +5205,7 @@ func Test_genericParseTypeString(t *testing.T) {
 		t.Run("test_genericParseTypeString", func(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tt, genericParseType(tt, v))
+			require.Equal(t, tt, genericParseType[string](tt, v))
 		})
 	}
 }
