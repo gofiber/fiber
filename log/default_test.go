@@ -64,7 +64,8 @@ func Test_DefaultLogger(t *testing.T) {
 		"[Debug] received work order\n"+
 		"[Info] starting work\n"+
 		"[Warn] work may fail\n"+
-		"[Error] work failed\n", string(w.b))
+		"[Error] work failed\n"+
+		"[Panic] work panic\n", string(w.b))
 }
 
 func Test_DefaultFormatLogger(t *testing.T) {
@@ -87,7 +88,8 @@ func Test_DefaultFormatLogger(t *testing.T) {
 		"[Debug] received work order\n"+
 		"[Info] starting work\n"+
 		"[Warn] work may fail\n"+
-		"[Error] work failed\n", string(w.b))
+		"[Error] work failed\n"+
+		"[Panic] work panic\n", string(w.b))
 }
 
 func Test_CtxLogger(t *testing.T) {
@@ -112,7 +114,8 @@ func Test_CtxLogger(t *testing.T) {
 		"[Debug] received work order\n"+
 		"[Info] starting work\n"+
 		"[Warn] work may fail\n"+
-		"[Error] work failed 50\n", string(w.b))
+		"[Error] work failed 50\n"+
+		"[Panic] work panic\n", string(w.b))
 }
 
 func Test_LogfKeyAndValues(t *testing.T) {
