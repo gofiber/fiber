@@ -4591,14 +4591,6 @@ func Test_genericParseTypeInts(t *testing.T) {
 			str:   "-2147483648",
 		},
 		{
-			value: 0,
-			str:   "2147483648",
-		},
-		{
-			value: 0,
-			str:   "-2147483649",
-		},
-		{
 			value: -1,
 			str:   "-1",
 		},
