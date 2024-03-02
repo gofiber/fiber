@@ -1239,6 +1239,38 @@ func Test_Client_TLS(t *testing.T) {
 	require.Equal(t, "tls", resp.String())
 }
 
+func Test_Client_TLS_Error(t *testing.T) {
+	t.Parallel()
+
+	serverTLSConf, clientTLSConf, err := tlstest.GetTLSConfigs()
+	clientTLSConf.MaxVersion = tls.VersionTLS12
+	serverTLSConf.MinVersion = tls.VersionTLS13
+	require.NoError(t, err)
+
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+
+	ln = tls.NewListener(ln, serverTLSConf)
+
+	app := fiber.New()
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("tls")
+	})
+
+	go func() {
+		require.NoError(t, app.Listener(ln, fiber.ListenConfig{
+			DisableStartupMessage: true,
+		}))
+	}()
+
+	client := NewClient()
+	resp, err := client.SetTLSConfig(clientTLSConf).Get("https://" + ln.Addr().String())
+
+	require.Error(t, err)
+	require.Equal(t, clientTLSConf, client.TLSConfig())
+	require.Nil(t, resp)
+}
+
 func Test_Client_TLS_Empty_TLSConfig(t *testing.T) {
 	t.Parallel()
 

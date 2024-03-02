@@ -358,11 +358,10 @@ func Test_Response_Save(t *testing.T) {
 		err = resp.Save("./test/tmp.json")
 		require.NoError(t, err)
 		defer func() {
-			if _, err := os.Stat("./test/tmp.json"); err != nil {
-				return
-			}
+			_, err := os.Stat("./test/tmp.json")
+			require.NoError(t, err)
 
-			err := os.RemoveAll("./test")
+			err = os.RemoveAll("./test")
 			require.NoError(t, err)
 		}()
 
