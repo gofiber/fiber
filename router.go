@@ -208,14 +208,14 @@ func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 	var c CustomCtx
 	var ok bool
 	if app.newCtxFunc != nil {
-		c, ok = app.AcquireCtx().(CustomCtx)
+		c, ok = app.AcquireCtx(rctx).(CustomCtx)
 		if !ok {
-			panic(errors.New("failed to type-assert to CustomCtx"))
+			panic(errors.New("requestHandler: failed to type-assert to CustomCtx"))
 		}
 	} else {
-		c, ok = app.AcquireCtx().(*DefaultCtx)
+		c, ok = app.AcquireCtx(rctx).(*DefaultCtx)
 		if !ok {
-			panic(errors.New("failed to type-assert to *DefaultCtx"))
+			panic(errors.New("requestHandler: failed to type-assert to *DefaultCtx"))
 		}
 	}
 	c.Reset(rctx)

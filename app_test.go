@@ -2,7 +2,7 @@
 // 🤖 Github Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
-//nolint:bodyclose, goconst // Much easier to just ignore memory leaks in tests
+//nolint:goconst // Much easier to just ignore memory leaks in tests
 package fiber
 
 import (
@@ -314,7 +314,7 @@ func Test_App_serverErrorHandler_Internal_Error(t *testing.T) {
 	t.Parallel()
 	app := New()
 	msg := "test err"
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	app.serverErrorHandler(c.fasthttp, errors.New(msg))
 	require.Equal(t, string(c.fasthttp.Response.Body()), msg)
@@ -324,7 +324,7 @@ func Test_App_serverErrorHandler_Internal_Error(t *testing.T) {
 func Test_App_serverErrorHandler_Network_Error(t *testing.T) {
 	t.Parallel()
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	app.serverErrorHandler(c.fasthttp, &net.DNSError{
 		Err:       "test error",
@@ -1400,8 +1400,7 @@ func Test_App_Next_Method(t *testing.T) {
 func Benchmark_AcquireCtx(b *testing.B) {
 	app := New()
 	for n := 0; n < b.N; n++ {
-		c := app.AcquireCtx()
-		c.Reset(&fasthttp.RequestCtx{})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 		app.ReleaseCtx(c)
 	}
@@ -1612,7 +1611,7 @@ func Test_App_SmallReadBuffer(t *testing.T) {
 
 	go func() {
 		time.Sleep(500 * time.Millisecond)
-		req, err := http.NewRequestWithContext(context.Background(), MethodGet, "http://127.0.0.1:4006/small-read-buffer", http.NoBody)
+		req, err := http.NewRequestWithContext(context.Background(), MethodGet, "http://127.0.0.1:4006/small-read-buffer", nil)
 		require.NoError(t, err)
 		var client http.Client
 		resp, err := client.Do(req)
@@ -1736,7 +1735,7 @@ func Test_App_Test_no_timeout_infinitely(t *testing.T) {
 			return nil
 		})
 
-		req := httptest.NewRequest(MethodGet, "/", http.NoBody)
+		req := httptest.NewRequest(MethodGet, "/", nil)
 		_, err = app.Test(req, -1)
 	}()
 
@@ -1765,7 +1764,7 @@ func Test_App_SetTLSHandler(t *testing.T) {
 	app := New()
 	app.SetTLSHandler(tlsHandler)
 
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 
 	require.Equal(t, "example.golang", c.ClientHelloInfo().ServerName)

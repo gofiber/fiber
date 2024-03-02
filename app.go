@@ -496,7 +496,7 @@ func New(config ...Config) *App {
 	// Create Ctx pool
 	app.pool = sync.Pool{
 		New: func() any {
-			return app.NewCtx(&fasthttp.RequestCtx{})
+			return app.newCtx()
 		},
 	}
 
@@ -1071,9 +1071,7 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error {
 // errors before calling the application's error handler method.
 func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 	// Acquire Ctx with fasthttp request from pool
-	c := app.AcquireCtx()
-	c.Reset(fctx)
-
+	c := app.AcquireCtx(fctx)
 	defer app.ReleaseCtx(c)
 
 	var (

@@ -30,11 +30,10 @@ func (l *defaultLogger) privateLog(lv Level, fmtArgs []any) {
 	buf.WriteString(level)
 	buf.WriteString(fmt.Sprint(fmtArgs...))
 
+	_ = l.stdlog.Output(l.depth, buf.String()) //nolint:errcheck // It is fine to ignore the error
 	if lv == LevelPanic {
 		panic(buf.String())
 	}
-
-	_ = l.stdlog.Output(l.depth, buf.String()) //nolint:errcheck // It is fine to ignore the error
 
 	buf.Reset()
 	bytebufferpool.Put(buf)
@@ -59,12 +58,10 @@ func (l *defaultLogger) privateLogf(lv Level, format string, fmtArgs []any) {
 		_, _ = fmt.Fprint(buf, fmtArgs...)
 	}
 
+	_ = l.stdlog.Output(l.depth, buf.String()) //nolint:errcheck // It is fine to ignore the error
 	if lv == LevelPanic {
 		panic(buf.String())
 	}
-
-	_ = l.stdlog.Output(l.depth, buf.String()) //nolint:errcheck // It is fine to ignore the error
-
 	buf.Reset()
 	bytebufferpool.Put(buf)
 	if lv == LevelFatal {
@@ -102,12 +99,10 @@ func (l *defaultLogger) privateLogw(lv Level, format string, keysAndValues []any
 		}
 	}
 
+	_ = l.stdlog.Output(l.depth, buf.String()) //nolint:errcheck // It is fine to ignore the error
 	if lv == LevelPanic {
 		panic(buf.String())
 	}
-
-	_ = l.stdlog.Output(l.depth, buf.String()) //nolint:errcheck // It is fine to ignore the error
-
 	buf.Reset()
 	bytebufferpool.Put(buf)
 	if lv == LevelFatal {
