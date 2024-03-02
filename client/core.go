@@ -98,16 +98,16 @@ func (c *core) execFunc() (*Response, error) {
 		if cfg != nil {
 			err = retry.NewExponentialBackoff(*cfg).Retry(func() error {
 				if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
-					return c.client.client.DoRedirects(reqv, respv, c.req.maxRedirects)
+					return c.client.fasthttp.DoRedirects(reqv, respv, c.req.maxRedirects)
 				}
 
-				return c.client.client.Do(reqv, respv)
+				return c.client.fasthttp.Do(reqv, respv)
 			})
 		} else {
 			if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
-				err = c.client.client.DoRedirects(reqv, respv, c.req.maxRedirects)
+				err = c.client.fasthttp.DoRedirects(reqv, respv, c.req.maxRedirects)
 			} else {
-				err = c.client.client.Do(reqv, respv)
+				err = c.client.fasthttp.Do(reqv, respv)
 			}
 		}
 

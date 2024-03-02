@@ -35,7 +35,7 @@ var (
 type Client struct {
 	mu sync.RWMutex
 
-	client *fasthttp.Client
+	fasthttp *fasthttp.Client
 
 	baseURL   string
 	userAgent string
@@ -158,18 +158,18 @@ func (c *Client) SetXMLUnmarshal(f utils.XMLUnmarshal) *Client {
 // TLSConfig returns tlsConfig in client.
 // If client don't have tlsConfig, this function will init it.
 func (c *Client) TLSConfig() *tls.Config {
-	if c.client.TLSConfig == nil {
-		c.client.TLSConfig = &tls.Config{
+	if c.fasthttp.TLSConfig == nil {
+		c.fasthttp.TLSConfig = &tls.Config{
 			MinVersion: tls.VersionTLS12,
 		}
 	}
 
-	return c.client.TLSConfig
+	return c.fasthttp.TLSConfig
 }
 
 // SetTLSConfig sets tlsConfig in client.
 func (c *Client) SetTLSConfig(config *tls.Config) *Client {
-	c.client.TLSConfig = config
+	c.fasthttp.TLSConfig = config
 	return c
 }
 
@@ -558,7 +558,7 @@ func (c *Client) SetDial(dial fasthttp.DialFunc) *Client {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.client.Dial = dial
+	c.fasthttp.Dial = dial
 	return c
 }
 
@@ -578,7 +578,7 @@ func (c *Client) Logger() log.CommonLogger {
 
 // Reset clear Client object
 func (c *Client) Reset() {
-	c.client = &fasthttp.Client{}
+	c.fasthttp = &fasthttp.Client{}
 	c.baseURL = ""
 	c.timeout = 0
 	c.userAgent = ""
@@ -698,7 +698,7 @@ func NewClient() *Client {
 	// for the fiber client and the fasthttp client
 	// if possible also for other structs -> request header, cookie, query param, path param...
 	return &Client{
-		client: &fasthttp.Client{},
+		fasthttp: &fasthttp.Client{},
 		header: &Header{
 			RequestHeader: &fasthttp.RequestHeader{},
 		},
