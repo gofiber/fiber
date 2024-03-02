@@ -1580,3 +1580,27 @@ func Benchmark_Client_Request(b *testing.B) {
 	}
 	require.NoError(b, err)
 }
+
+func Benchmark_Client_Request_Parallel(b *testing.B) {
+	app, dial, start := createHelperServer(b)
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("hello world")
+	})
+
+	go start()
+
+	client := NewClient().SetDial(dial)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	b.RunParallel(func(pb *testing.PB) {
+		var err error
+		var resp *Response
+		for pb.Next() {
+			resp, err = client.Get("http://example.com")
+			resp.Close()
+		}
+		require.NoError(b, err)
+	})
+}
