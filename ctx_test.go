@@ -333,8 +333,8 @@ func Benchmark_Ctx_BaseURL(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
-	c.Request().SetHost("google.com:1337")
-	c.Request().URI().SetPath("/haha/oke/lol")
+	c.Context().URI().SetHost("google.com:1337")
+	c.Context().URI().SetPath("/haha/oke/lol")
 	var res string
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -1429,7 +1429,7 @@ func Test_Ctx_Parsers(t *testing.T) {
 	t.Run("QueryParser", func(t *testing.T) {
 		t.Parallel()
 		withValues(t, func(c Ctx, testStruct *TestStruct) error {
-			c.Request().URI().SetQueryString("name=foo&name2=bar&class=111&class2=222&names=foo,bar,test")
+			c.Context().URI().SetQueryString("name=foo&name2=bar&class=111&class2=222&names=foo,bar,test")
 			return c.Bind().Query(testStruct)
 		})
 	})
@@ -2457,6 +2457,7 @@ func Test_Ctx_Scheme(t *testing.T) {
 	freq.Request.Header.Set("X-Forwarded", "invalid")
 
 	c := app.AcquireCtx(freq)
+	defer app.ReleaseCtx(c)
 
 	c.Request().Header.Set(HeaderXForwardedProto, schemeHTTPS)
 	require.Equal(t, schemeHTTPS, c.Scheme())
@@ -2604,8 +2605,9 @@ func Test_Ctx_Query(t *testing.T) {
 	t.Parallel()
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
 
-	c.Request().URI().SetQueryString("search=john&age=20")
+	c.Context().URI().SetQueryString("search=john&age=20")
 	require.Equal(t, "john", c.Query("search"))
 	require.Equal(t, "20", c.Query("age"))
 	require.Equal(t, "default", c.Query("unknown", "default"))
@@ -2620,7 +2622,7 @@ func Test_Ctx_Query(t *testing.T) {
 func Benchmark_Ctx_Query(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	c.Request().URI().SetQueryString("search=john&age=8")
+	c.Context().URI().SetQueryString("search=john&age=8")
 	var res string
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -2636,7 +2638,7 @@ func Test_Ctx_QuerySignedInt(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	c.Request().URI().SetQueryString("search=john&age=8")
+	c.Context().Request.URI().SetQueryString("search=john&age=8")
 	// int
 	require.Equal(t, 0, Query[int](c, "foo"))
 	require.Equal(t, 8, Query[int](c, "age", 12))
@@ -2682,7 +2684,7 @@ func Test_Ctx_QuerySignedInt(t *testing.T) {
 func Benchmark_Ctx_QuerySignedInt(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	c.Request().URI().SetQueryString("search=john&age=8")
+	c.Context().URI().SetQueryString("search=john&age=8")
 	var res int
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -2701,7 +2703,7 @@ func Test_Ctx_QueryBoundarySignedInt(t *testing.T) {
 
 	// int
 	q = fmt.Sprintf("minus=%s&plus=%s&minus_over=%s&plus_over=%s", "2147483647", "-2147483648", "-2147483649", "2147483648")
-	c.Request().URI().SetQueryString(q)
+	c.Context().URI().SetQueryString(q)
 	require.Equal(t, 2147483647, Query[int](c, "minus"))
 	require.Equal(t, -2147483648, Query[int](c, "plus"))
 	require.Equal(t, 0, Query[int](c, "minus_over"))
@@ -2709,7 +2711,7 @@ func Test_Ctx_QueryBoundarySignedInt(t *testing.T) {
 
 	// int8
 	q = fmt.Sprintf("minus=%s&plus=%s&minus_over=%s&plus_over=%s", "127", "-128", "-129", "128")
-	c.Request().URI().SetQueryString(q)
+	c.Context().URI().SetQueryString(q)
 	require.Equal(t, int8(127), Query[int8](c, "minus"))
 	require.Equal(t, int8(-128), Query[int8](c, "plus"))
 	require.Equal(t, int8(0), Query[int8](c, "minus_over"))
@@ -2717,7 +2719,7 @@ func Test_Ctx_QueryBoundarySignedInt(t *testing.T) {
 
 	// int16
 	q = fmt.Sprintf("minus=%s&plus=%s&minus_over=%s&plus_over=%s", "32767", "-32768", "-32769", "32768")
-	c.Request().URI().SetQueryString(q)
+	c.Context().URI().SetQueryString(q)
 	require.Equal(t, int16(32767), Query[int16](c, "minus"))
 	require.Equal(t, int16(-32768), Query[int16](c, "plus"))
 	require.Equal(t, int16(0), Query[int16](c, "minus_over"))
@@ -2725,7 +2727,7 @@ func Test_Ctx_QueryBoundarySignedInt(t *testing.T) {
 
 	// int32
 	q = fmt.Sprintf("minus=%s&plus=%s&minus_over=%s&plus_over=%s", "2147483647", "-2147483648", "-2147483649", "2147483648")
-	c.Request().URI().SetQueryString(q)
+	c.Context().URI().SetQueryString(q)
 	require.Equal(t, int32(2147483647), Query[int32](c, "minus"))
 	require.Equal(t, int32(-2147483648), Query[int32](c, "plus"))
 	require.Equal(t, int32(0), Query[int32](c, "minus_over"))
@@ -2733,7 +2735,7 @@ func Test_Ctx_QueryBoundarySignedInt(t *testing.T) {
 
 	// int64
 	q = fmt.Sprintf("minus=%s&plus=%s", "-9223372036854775808", "9223372036854775807")
-	c.Request().URI().SetQueryString(q)
+	c.Context().URI().SetQueryString(q)
 	require.Equal(t, int64(-9223372036854775808), Query[int64](c, "minus"))
 	require.Equal(t, int64(9223372036854775807), Query[int64](c, "plus"))
 }
@@ -2742,7 +2744,7 @@ func Test_Ctx_QueryBoundarySignedInt(t *testing.T) {
 func Benchmark_Ctx_QueryBoundarySignedInt(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	c.Request().URI().SetQueryString("search=john&age=8")
+	c.Context().URI().SetQueryString("search=john&age=8")
 	var res int
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -2758,7 +2760,7 @@ func Test_Ctx_QueryUnsignedInt(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	c.Request().URI().SetQueryString("search=john&age=8")
+	c.Context().URI().SetQueryString("search=john&age=8")
 	// uint
 	require.Equal(t, uint(0), Query[uint](c, "foo"))
 	require.Equal(t, uint(8), Query[uint](c, "age", 12))
@@ -2804,7 +2806,7 @@ func Test_Ctx_QueryUnsignedInt(t *testing.T) {
 func Benchmark_Ctx_QueryUnsignedInt(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	c.Request().URI().SetQueryString("search=john&age=8")
+	c.Context().URI().SetQueryString("search=john&age=8")
 	var res uint
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -2823,7 +2825,7 @@ func Test_Ctx_QueryBoundaryUnsignedInt(t *testing.T) {
 
 	// uint
 	q = fmt.Sprintf("minus=%s&plus=%s&minus_over=%s&plus_over=%s", "0", "4294967295", "4294967296", "4294967297")
-	c.Request().URI().SetQueryString(q)
+	c.Context().URI().SetQueryString(q)
 	require.Equal(t, uint(0), Query[uint](c, "minus"))
 	require.Equal(t, uint(4294967295), Query[uint](c, "plus"))
 	require.Equal(t, uint(0), Query[uint](c, "minus_over"))
@@ -2831,7 +2833,7 @@ func Test_Ctx_QueryBoundaryUnsignedInt(t *testing.T) {
 
 	// uint8
 	q = fmt.Sprintf("minus=%s&plus=%s&minus_over=%s&plus_over=%s", "0", "255", "256", "257")
-	c.Request().URI().SetQueryString(q)
+	c.Context().URI().SetQueryString(q)
 	require.Equal(t, uint8(0), Query[uint8](c, "minus"))
 	require.Equal(t, uint8(255), Query[uint8](c, "plus"))
 	require.Equal(t, uint8(0), Query[uint8](c, "minus_over"))
@@ -2839,7 +2841,7 @@ func Test_Ctx_QueryBoundaryUnsignedInt(t *testing.T) {
 
 	// uint16
 	q = fmt.Sprintf("minus=%s&plus=%s&minus_over=%s&plus_over=%s", "0", "65535", "65536", "65537")
-	c.Request().URI().SetQueryString(q)
+	c.Context().URI().SetQueryString(q)
 	require.Equal(t, uint16(0), Query[uint16](c, "minus"))
 	require.Equal(t, uint16(65535), Query[uint16](c, "plus"))
 	require.Equal(t, uint16(0), Query[uint16](c, "minus_over"))
@@ -2847,7 +2849,7 @@ func Test_Ctx_QueryBoundaryUnsignedInt(t *testing.T) {
 
 	// uint32
 	q = fmt.Sprintf("minus=%s&plus=%s&minus_over=%s&plus_over=%s", "0", "4294967295", "4294967296", "4294967297")
-	c.Request().URI().SetQueryString(q)
+	c.Context().URI().SetQueryString(q)
 	require.Equal(t, uint32(0), Query[uint32](c, "minus"))
 	require.Equal(t, uint32(4294967295), Query[uint32](c, "plus"))
 	require.Equal(t, uint32(0), Query[uint32](c, "minus_over"))
@@ -2855,7 +2857,7 @@ func Test_Ctx_QueryBoundaryUnsignedInt(t *testing.T) {
 
 	// uint64
 	q = fmt.Sprintf("minus=%s&plus=%s", "0", "18446744073709551615")
-	c.Request().URI().SetQueryString(q)
+	c.Context().URI().SetQueryString(q)
 	require.Equal(t, uint64(0), Query[uint64](c, "minus"))
 	require.Equal(t, uint64(18446744073709551615), Query[uint64](c, "plus"))
 }
@@ -2864,7 +2866,7 @@ func Test_Ctx_QueryBoundaryUnsignedInt(t *testing.T) {
 func Benchmark_Ctx_QueryBoundaryUnsignedInt(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	c.Request().URI().SetQueryString("search=john&age=8")
+	c.Context().URI().SetQueryString("search=john&age=8")
 	var res uint
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -2880,7 +2882,7 @@ func Test_Ctx_QueryFloat(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	c.Request().URI().SetQueryString("name=alex&amount=32.23&id=")
+	c.Context().URI().SetQueryString("name=alex&amount=32.23&id=")
 
 	// float32
 	require.InEpsilon(t, float32(32.23), Query[float32](c, "amount"), epsilon)
@@ -2903,7 +2905,7 @@ func Test_Ctx_QueryFloat(t *testing.T) {
 func Benchmark_Ctx_QueryFloat(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	c.Request().URI().SetQueryString("search=john&age=8")
+	c.Context().URI().SetQueryString("search=john&age=8")
 	var res float32
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -2919,7 +2921,7 @@ func Test_Ctx_QueryBool(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	c.Request().URI().SetQueryString("name=alex&want_pizza=false&id=")
+	c.Context().URI().SetQueryString("name=alex&want_pizza=false&id=")
 
 	require.False(t, Query[bool](c, "want_pizza"))
 	require.False(t, Query[bool](c, "want_pizza", true))
@@ -2933,7 +2935,7 @@ func Test_Ctx_QueryBool(t *testing.T) {
 func Benchmark_Ctx_QueryBool(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	c.Request().URI().SetQueryString("search=john&age=8")
+	c.Context().URI().SetQueryString("search=john&age=8")
 	var res bool
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -2949,7 +2951,7 @@ func Test_Ctx_QueryString(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	c.Request().URI().SetQueryString("name=alex&amount=32.23&id=")
+	c.Context().URI().SetQueryString("name=alex&amount=32.23&id=")
 
 	require.Equal(t, "alex", Query[string](c, "name"))
 	require.Equal(t, "alex", Query[string](c, "name", "john"))
@@ -2963,7 +2965,7 @@ func Test_Ctx_QueryString(t *testing.T) {
 func Benchmark_Ctx_QueryString(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	c.Request().URI().SetQueryString("search=john&age=8")
+	c.Context().URI().SetQueryString("search=john&age=8")
 	var res string
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -2979,7 +2981,7 @@ func Test_Ctx_QueryBytes(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	c.Request().URI().SetQueryString("name=alex&amount=32.23&id=")
+	c.Context().URI().SetQueryString("name=alex&amount=32.23&id=")
 
 	require.Equal(t, []byte("alex"), Query[[]byte](c, "name"))
 	require.Equal(t, []byte("alex"), Query[[]byte](c, "name", []byte("john")))
@@ -2993,7 +2995,7 @@ func Test_Ctx_QueryBytes(t *testing.T) {
 func Benchmark_Ctx_QueryBytes(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	c.Request().URI().SetQueryString("search=john&age=8")
+	c.Context().URI().SetQueryString("search=john&age=8")
 	var res []byte
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -3009,7 +3011,7 @@ func Test_Ctx_QueryWithoutGenericDataType(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	c.Request().URI().SetQueryString("name=alex&amount=32.23&isAgent=true&id=32")
+	c.Context().URI().SetQueryString("name=alex&amount=32.23&isAgent=true&id=32")
 
 	require.Equal(t, "alex", Query(c, "name", "john"))
 	require.Equal(t, "john", Query(c, "unknown", "john"))
@@ -3047,7 +3049,7 @@ func Test_Ctx_QueryWithoutGenericDataType(t *testing.T) {
 func Benchmark_Ctx_QueryWithoutGenericDataType(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	c.Request().URI().SetQueryString("search=john&age=8")
+	c.Context().URI().SetQueryString("search=john&age=8")
 	var res int
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -3272,10 +3274,10 @@ func Test_Ctx_Subdomains(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	c.Request().URI().SetHost("john.doe.is.awesome.google.com")
+	c.Context().URI().SetHost("john.doe.is.awesome.google.com")
 	require.Equal(t, []string{"john", "doe"}, c.Subdomains(4))
 
-	c.Request().URI().SetHost("localhost:3000")
+	c.Context().URI().SetHost("localhost:3000")
 	require.Equal(t, []string{"localhost:3000"}, c.Subdomains())
 }
 
@@ -4615,7 +4617,7 @@ func Test_Ctx_Queries(t *testing.T) {
 
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
-	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football&favouriteDrinks=milo,coke,pepsi&alloc=&no=1&field1=value1&field1=value2&field2=value3&list_a=1&list_a=2&list_a=3&list_b[]=1&list_b[]=2&list_b[]=3&list_c=1,2,3")
+	c.Context().URI().SetQueryString("id=1&name=tom&hobby=basketball,football&favouriteDrinks=milo,coke,pepsi&alloc=&no=1&field1=value1&field1=value2&field2=value3&list_a=1&list_a=2&list_a=3&list_b[]=1&list_b[]=2&list_b[]=3&list_c=1,2,3")
 
 	queries := c.Queries()
 	require.Equal(t, "1", queries["id"])
@@ -4630,7 +4632,7 @@ func Test_Ctx_Queries(t *testing.T) {
 	require.Equal(t, "3", queries["list_b[]"])
 	require.Equal(t, "1,2,3", queries["list_c"])
 
-	c.Request().URI().SetQueryString("filters.author.name=John&filters.category.name=Technology&filters[customer][name]=Alice&filters[status]=pending")
+	c.Context().URI().SetQueryString("filters.author.name=John&filters.category.name=Technology&filters[customer][name]=Alice&filters[status]=pending")
 
 	queries = c.Queries()
 	require.Equal(t, "John", queries["filters.author.name"])
@@ -4638,7 +4640,7 @@ func Test_Ctx_Queries(t *testing.T) {
 	require.Equal(t, "Alice", queries["filters[customer][name]"])
 	require.Equal(t, "pending", queries["filters[status]"])
 
-	c.Request().URI().SetQueryString("tags=apple,orange,banana&filters[tags]=apple,orange,banana&filters[category][name]=fruits&filters.tags=apple,orange,banana&filters.category.name=fruits")
+	c.Context().URI().SetQueryString("tags=apple,orange,banana&filters[tags]=apple,orange,banana&filters[category][name]=fruits&filters.tags=apple,orange,banana&filters.category.name=fruits")
 
 	queries = c.Queries()
 	require.Equal(t, "apple,orange,banana", queries["tags"])
@@ -4647,7 +4649,7 @@ func Test_Ctx_Queries(t *testing.T) {
 	require.Equal(t, "apple,orange,banana", queries["filters.tags"])
 	require.Equal(t, "fruits", queries["filters.category.name"])
 
-	c.Request().URI().SetQueryString("filters[tags][0]=apple&filters[tags][1]=orange&filters[tags][2]=banana&filters[category][name]=fruits")
+	c.Context().URI().SetQueryString("filters[tags][0]=apple&filters[tags][1]=orange&filters[tags][2]=banana&filters[category][name]=fruits")
 
 	queries = c.Queries()
 	require.Equal(t, "apple", queries["filters[tags][0]"])
@@ -4663,7 +4665,7 @@ func Benchmark_Ctx_Queries(b *testing.B) {
 
 	b.ReportAllocs()
 	b.ResetTimer()
-	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football&favouriteDrinks=milo,coke,pepsi&alloc=&no=1")
+	c.Context().URI().SetQueryString("id=1&name=tom&hobby=basketball,football&favouriteDrinks=milo,coke,pepsi&alloc=&no=1")
 
 	var queries map[string]string
 	for n := 0; n < b.N; n++ {

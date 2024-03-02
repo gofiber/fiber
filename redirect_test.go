@@ -203,8 +203,9 @@ func Test_Redirect_Route_WithOldInput(t *testing.T) {
 	}).Name("user")
 
 	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	defer app.ReleaseCtx(c)
 
-	c.Request().URI().SetQueryString("id=1&name=tom")
+	c.Context().URI().SetQueryString("id=1&name=tom")
 	err := c.Redirect().With("success", "1").With("message", "test").WithInput().Route("user")
 	require.NoError(t, err)
 	require.Equal(t, 302, c.Response().StatusCode())

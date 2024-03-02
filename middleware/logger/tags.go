@@ -114,7 +114,7 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return output.Write([]byte(strings.Join(reqHeaders, "&")))
 		},
 		TagQueryStringParams: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			return output.WriteString(c.Request().URI().QueryArgs().String())
+			return output.WriteString(c.Context().URI().QueryArgs().String())
 		},
 
 		TagBlack: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {

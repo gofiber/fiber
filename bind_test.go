@@ -32,23 +32,23 @@ func Test_Bind_Query(t *testing.T) {
 	}
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
-	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
+	c.Context().URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
 	q := new(Query)
 	require.NoError(t, c.Bind().Query(q))
 	require.Len(t, q.Hobby, 2)
 
-	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football")
+	c.Context().URI().SetQueryString("id=1&name=tom&hobby=basketball,football")
 	q = new(Query)
 	require.NoError(t, c.Bind().Query(q))
 	require.Len(t, q.Hobby, 2)
 
-	c.Request().URI().SetQueryString("id=1&name=tom&hobby=scoccer&hobby=basketball,football")
+	c.Context().URI().SetQueryString("id=1&name=tom&hobby=scoccer&hobby=basketball,football")
 	q = new(Query)
 	require.NoError(t, c.Bind().Query(q))
 	require.Len(t, q.Hobby, 3)
 
 	empty := new(Query)
-	c.Request().URI().SetQueryString("")
+	c.Context().URI().SetQueryString("")
 	require.NoError(t, c.Bind().Query(empty))
 	require.Empty(t, empty.Hobby)
 
@@ -63,7 +63,7 @@ func Test_Bind_Query(t *testing.T) {
 		No              []int64
 	}
 
-	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football&favouriteDrinks=milo,coke,pepsi&alloc=&no=1")
+	c.Context().URI().SetQueryString("id=1&name=tom&hobby=basketball,football&favouriteDrinks=milo,coke,pepsi&alloc=&no=1")
 	q2 := new(Query2)
 	q2.Bool = true
 	q2.Name = helloWorld
@@ -81,14 +81,14 @@ func Test_Bind_Query(t *testing.T) {
 		Name string `query:"name,required"`
 	}
 	rq := new(RequiredQuery)
-	c.Request().URI().SetQueryString("")
+	c.Context().URI().SetQueryString("")
 	require.Equal(t, "name is empty", c.Bind().Query(rq).Error())
 
 	type ArrayQuery struct {
 		Data []string
 	}
 	aq := new(ArrayQuery)
-	c.Request().URI().SetQueryString("data[]=john&data[]=doe")
+	c.Context().URI().SetQueryString("data[]=john&data[]=doe")
 	require.NoError(t, c.Bind().Query(aq))
 	require.Len(t, aq.Data, 2)
 }
@@ -102,33 +102,33 @@ func Test_Bind_Query_Map(t *testing.T) {
 
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
-	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
+	c.Context().URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
 	q := make(map[string][]string)
 	require.NoError(t, c.Bind().Query(&q))
 	require.Len(t, q["hobby"], 2)
 
-	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football")
+	c.Context().URI().SetQueryString("id=1&name=tom&hobby=basketball,football")
 	q = make(map[string][]string)
 	require.NoError(t, c.Bind().Query(&q))
 	require.Len(t, q["hobby"], 2)
 
-	c.Request().URI().SetQueryString("id=1&name=tom&hobby=scoccer&hobby=basketball,football")
+	c.Context().URI().SetQueryString("id=1&name=tom&hobby=scoccer&hobby=basketball,football")
 	q = make(map[string][]string)
 	require.NoError(t, c.Bind().Query(&q))
 	require.Len(t, q["hobby"], 3)
 
-	c.Request().URI().SetQueryString("id=1&name=tom&hobby=scoccer")
+	c.Context().URI().SetQueryString("id=1&name=tom&hobby=scoccer")
 	qq := make(map[string]string)
 	require.NoError(t, c.Bind().Query(&qq))
 	require.Equal(t, "1", qq["id"])
 
 	empty := make(map[string][]string)
-	c.Request().URI().SetQueryString("")
+	c.Context().URI().SetQueryString("")
 	require.NoError(t, c.Bind().Query(&empty))
 	require.Empty(t, empty["hobby"])
 
 	em := make(map[string][]int)
-	c.Request().URI().SetQueryString("")
+	c.Context().URI().SetQueryString("")
 	require.ErrorIs(t, c.Bind().Query(&em), binder.ErrMapNotConvertable)
 }
 
@@ -168,14 +168,14 @@ func Test_Bind_Query_WithSetParserDecoder(t *testing.T) {
 	c.Request().Header.SetContentType("")
 	q := new(NonRFCTimeInput)
 
-	c.Request().URI().SetQueryString("date=2021-04-10&title=CustomDateTest&Body=October")
+	c.Context().URI().SetQueryString("date=2021-04-10&title=CustomDateTest&Body=October")
 	require.NoError(t, c.Bind().Query(q))
 	require.Equal(t, "CustomDateTest", q.Title)
 	date := fmt.Sprintf("%v", q.Date)
 	require.Equal(t, "{0 63753609600 <nil>}", date)
 	require.Equal(t, "October", q.Body)
 
-	c.Request().URI().SetQueryString("date=2021-04-10&title&Body=October")
+	c.Context().URI().SetQueryString("date=2021-04-10&title&Body=October")
 	q = &NonRFCTimeInput{
 		Title: "Existing title",
 		Body:  "Existing Body",
@@ -198,19 +198,19 @@ func Test_Bind_Query_Schema(t *testing.T) {
 	}
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
-	c.Request().URI().SetQueryString("name=tom&nested.age=10")
+	c.Context().URI().SetQueryString("name=tom&nested.age=10")
 	q := new(Query1)
 	require.NoError(t, c.Bind().Query(q))
 
-	c.Request().URI().SetQueryString("namex=tom&nested.age=10")
+	c.Context().URI().SetQueryString("namex=tom&nested.age=10")
 	q = new(Query1)
 	require.Equal(t, "name is empty", c.Bind().Query(q).Error())
 
-	c.Request().URI().SetQueryString("name=tom&nested.agex=10")
+	c.Context().URI().SetQueryString("name=tom&nested.agex=10")
 	q = new(Query1)
 	require.NoError(t, c.Bind().Query(q))
 
-	c.Request().URI().SetQueryString("name=tom&test.age=10")
+	c.Context().URI().SetQueryString("name=tom&test.age=10")
 	q = new(Query1)
 	require.Equal(t, "nested is empty", c.Bind().Query(q).Error())
 
@@ -220,19 +220,19 @@ func Test_Bind_Query_Schema(t *testing.T) {
 			Age int `query:"age,required"`
 		} `query:"nested"`
 	}
-	c.Request().URI().SetQueryString("name=tom&nested.age=10")
+	c.Context().URI().SetQueryString("name=tom&nested.age=10")
 	q2 := new(Query2)
 	require.NoError(t, c.Bind().Query(q2))
 
-	c.Request().URI().SetQueryString("nested.age=10")
+	c.Context().URI().SetQueryString("nested.age=10")
 	q2 = new(Query2)
 	require.NoError(t, c.Bind().Query(q2))
 
-	c.Request().URI().SetQueryString("nested.agex=10")
+	c.Context().URI().SetQueryString("nested.agex=10")
 	q2 = new(Query2)
 	require.Equal(t, "nested.age is empty", c.Bind().Query(q2).Error())
 
-	c.Request().URI().SetQueryString("nested.agex=10")
+	c.Context().URI().SetQueryString("nested.agex=10")
 	q2 = new(Query2)
 	require.Equal(t, "nested.age is empty", c.Bind().Query(q2).Error())
 
@@ -240,17 +240,17 @@ func Test_Bind_Query_Schema(t *testing.T) {
 		Value int   `query:"val,required"`
 		Next  *Node `query:"next,required"`
 	}
-	c.Request().URI().SetQueryString("val=1&next.val=3")
+	c.Context().URI().SetQueryString("val=1&next.val=3")
 	n := new(Node)
 	require.NoError(t, c.Bind().Query(n))
 	require.Equal(t, 1, n.Value)
 	require.Equal(t, 3, n.Next.Value)
 
-	c.Request().URI().SetQueryString("next.val=2")
+	c.Context().URI().SetQueryString("next.val=2")
 	n = new(Node)
 	require.Equal(t, "val is empty", c.Bind().Query(n).Error())
 
-	c.Request().URI().SetQueryString("val=3&next.value=2")
+	c.Context().URI().SetQueryString("val=3&next.value=2")
 	n = new(Node)
 	n.Next = new(Node)
 	require.NoError(t, c.Bind().Query(n))
@@ -266,7 +266,7 @@ func Test_Bind_Query_Schema(t *testing.T) {
 		Data []Person `query:"data"`
 	}
 
-	c.Request().URI().SetQueryString("data[0][name]=john&data[0][age]=10&data[1][name]=doe&data[1][age]=12")
+	c.Context().URI().SetQueryString("data[0][name]=john&data[0][age]=10&data[1][name]=doe&data[1][age]=12")
 	cq := new(CollectionQuery)
 	require.NoError(t, c.Bind().Query(cq))
 	require.Len(t, cq.Data, 2)
@@ -275,7 +275,7 @@ func Test_Bind_Query_Schema(t *testing.T) {
 	require.Equal(t, "doe", cq.Data[1].Name)
 	require.Equal(t, 12, cq.Data[1].Age)
 
-	c.Request().URI().SetQueryString("data.0.name=john&data.0.age=10&data.1.name=doe&data.1.age=12")
+	c.Context().URI().SetQueryString("data.0.name=john&data.0.age=10&data.1.name=doe&data.1.age=12")
 	cq = new(CollectionQuery)
 	require.NoError(t, c.Bind().Query(cq))
 	require.Len(t, cq.Data, 2)
@@ -641,7 +641,7 @@ func Benchmark_Bind_Query(b *testing.B) {
 	}
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
-	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
+	c.Context().URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
 	q := new(Query)
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -660,7 +660,7 @@ func Benchmark_Bind_Query_Map(b *testing.B) {
 
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
-	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
+	c.Context().URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
 	q := make(map[string][]string)
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -688,7 +688,7 @@ func Benchmark_Bind_Query_WithParseParam(b *testing.B) {
 
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
-	c.Request().URI().SetQueryString("data[0][name]=john&data[0][age]=10")
+	c.Context().URI().SetQueryString("data[0][name]=john&data[0][age]=10")
 	cq := new(CollectionQuery)
 
 	b.ReportAllocs()
@@ -714,8 +714,8 @@ func Benchmark_Bind_Query_Comma(b *testing.B) {
 	}
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
-	// c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
-	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football")
+	// c.Context().URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
+	c.Context().URI().SetQueryString("id=1&name=tom&hobby=basketball,football")
 	q := new(Query)
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -1539,7 +1539,7 @@ func Test_Bind_Must(t *testing.T) {
 		Name string `query:"name,required"`
 	}
 	rq := new(RequiredQuery)
-	c.Request().URI().SetQueryString("")
+	c.Context().URI().SetQueryString("")
 	err := c.Bind().Must().Query(rq)
 	require.Equal(t, StatusBadRequest, c.Response().StatusCode())
 	require.Equal(t, "Bad request: name is empty", err.Error())
@@ -1576,11 +1576,11 @@ func Test_Bind_StructValidator(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	rq := new(simpleQuery)
-	c.Request().URI().SetQueryString("name=efe")
+	c.Context().URI().SetQueryString("name=efe")
 	require.Equal(t, "you should have entered right name", c.Bind().Query(rq).Error())
 
 	rq = new(simpleQuery)
-	c.Request().URI().SetQueryString("name=john")
+	c.Context().URI().SetQueryString("name=john")
 	require.NoError(t, c.Bind().Query(rq))
 }
 
@@ -1599,7 +1599,7 @@ func Test_Bind_RepeatParserWithSameStruct(t *testing.T) {
 
 	r := new(Request)
 
-	c.Request().URI().SetQueryString("query_param=query_param")
+	c.Context().URI().SetQueryString("query_param=query_param")
 	require.NoError(t, c.Bind().Query(r))
 	require.Equal(t, "query_param", r.QueryParam)
 
