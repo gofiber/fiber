@@ -78,8 +78,6 @@ func Test_Client_Add_Hook(t *testing.T) {
 		})
 
 		require.Len(t, client.RequestHook(), 3)
-
-		client.builtinRequestHooks[0](client, &Request{})
 	})
 
 	t.Run("add response hooks", func(t *testing.T) {
@@ -125,7 +123,6 @@ func Test_Client_Add_Hook_CheckOrder(t *testing.T) {
 	}
 
 	require.Equal(t, "hook1hook2hook3", buf.String())
-
 }
 
 func Test_Client_Marshal(t *testing.T) {
@@ -1007,7 +1004,7 @@ func Test_Client_CookieJar_Response(t *testing.T) {
 		testClient(t, handler, wrapAgent, "v1")
 
 		require.Len(t, jar.getCookiesByHost("example.com"), 1)
-		require.Len(t, jar.getCookiesByHost("example"), 0)
+		require.Empty(t, jar.getCookiesByHost("example"))
 	})
 }
 

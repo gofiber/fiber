@@ -191,7 +191,6 @@ func (c *Client) SetRootCertificate(path string) *Client {
 		if err := file.Close(); err != nil {
 			c.logger.Panicf("client: failed to close file: %v", err)
 		}
-
 	}()
 
 	pem, err := io.ReadAll(file)
