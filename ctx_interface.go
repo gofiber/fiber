@@ -79,10 +79,9 @@ type Ctx interface {
 	// Override this default with the filename parameter.
 	Download(file string, filename ...string) error
 
-	// Request return the *fasthttp.Request object
-	// This allows you to use all fasthttp request methods
-	// https://godoc.org/github.com/valyala/fasthttp#Request
-	Request() *Request
+	// Req returns the [Request] object for the current request context.
+	// To access the underlying fasthttp request object, use [Ctx.Context].
+	Req() *Request
 
 	// Response return the *fasthttp.Response object
 	// This allows you to use all fasthttp response methods

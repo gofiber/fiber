@@ -465,7 +465,7 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 
 			// Check if body raw is the same as previous before decompression
 			require.Equal(
-				t, tCase.body, c.Request().BodyRaw(),
+				t, tCase.body, c.Req().BodyRaw(),
 				"Body raw must be the same as set before",
 			)
 		})
@@ -658,7 +658,7 @@ func Test_Ctx_Body_With_Compression_Immutable(t *testing.T) {
 
 			// Check if body raw is the same as previous before decompression
 			require.Equal(
-				t, tCase.body, c.Request().BodyRaw(),
+				t, tCase.body, c.Req().BodyRaw(),
 				"Body raw must be the same as set before",
 			)
 		})
@@ -1886,7 +1886,7 @@ func Test_Ctx_IPs(t *testing.T) {
 	require.Empty(t, c.IPs())
 
 	// missing header
-	c.Request()
+	c.Req()
 	require.Empty(t, c.IPs())
 }
 
@@ -1922,7 +1922,7 @@ func Test_Ctx_IPs_With_IP_Validation(t *testing.T) {
 	require.Empty(t, c.IPs())
 
 	// missing header
-	c.Request()
+	c.Req()
 	require.Empty(t, c.IPs())
 }
 
@@ -2010,7 +2010,7 @@ func Benchmark_Ctx_IP_With_ProxyHeader_and_IP_Validation(b *testing.B) {
 func Benchmark_Ctx_IP(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	c.Request()
+	c.Req()
 	var res string
 	b.ReportAllocs()
 	b.ResetTimer()

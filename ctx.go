@@ -188,12 +188,12 @@ func (c *DefaultCtx) BaseURL() string {
 
 // BodyRaw is an alias of [Request.BodyRaw].
 func (c *DefaultCtx) BodyRaw() []byte {
-	return c.Request().BodyRaw()
+	return c.Req().BodyRaw()
 }
 
 // Body is an alias of [Request.Body].
 func (c *DefaultCtx) Body() []byte {
-	return c.Request().Body()
+	return c.Req().Body()
 }
 
 // ClearCookie expires a specific cookie by key on the client side.
@@ -289,10 +289,10 @@ func (c *DefaultCtx) Download(file string, filename ...string) error {
 	return c.SendFile(file)
 }
 
-// Request return the *fasthttp.Request object
+// Req return the *fasthttp.Req object
 // This allows you to use all fasthttp request methods
-// https://godoc.org/github.com/valyala/fasthttp#Request
-func (c *DefaultCtx) Request() *Request {
+// https://godoc.org/github.com/valyala/fasthttp#Req
+func (c *DefaultCtx) Req() *Request {
 	return c.req
 }
 
@@ -457,7 +457,7 @@ func (c *DefaultCtx) Fresh() bool {
 
 // Get is an alias of [Request.Get].
 func (c *DefaultCtx) Get(key string, defaultValue ...string) string {
-	return c.Request().Get(key, defaultValue...)
+	return c.Req().Get(key, defaultValue...)
 }
 
 // GetRespHeader returns the HTTP response header specified by field.
