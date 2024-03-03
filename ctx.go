@@ -42,9 +42,9 @@ type contextKey int
 const userContextKey contextKey = 0 // __local_user_context__
 
 type DefaultCtx struct {
-	app   *App     // Reference to *App
-	route *Route   // Reference to *Route
-	req   *Request // Reference to *Request
+	app   *App    // Reference to *App
+	route *Route  // Reference to *Route
+	req   Request // Reference to *Request
 	// res				*Response // Reference to *Response
 	indexRoute          int                  // Index of the current route
 	indexHandler        int                  // Index of the current handler
@@ -293,7 +293,7 @@ func (c *DefaultCtx) Download(file string, filename ...string) error {
 // This allows you to use all fasthttp request methods
 // https://godoc.org/github.com/valyala/fasthttp#Req
 func (c *DefaultCtx) Req() *Request {
-	return c.req
+	return &c.req
 }
 
 // Response return the *fasthttp.Response object
