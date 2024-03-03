@@ -26,7 +26,7 @@ func startServer(app *fiber.App, ln net.Listener) {
 		}
 	}()
 
-	time.Sleep(2 * time.Second)
+	time.Sleep(1 * time.Second)
 }
 
 func createProxyTestServer(t *testing.T, handler fiber.Handler) (*fiber.App, string) {

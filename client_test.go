@@ -24,7 +24,8 @@ import (
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
-func startServer(app *App, ln *fasthttputil.InmemoryListener) {
+func startServer(t *testing.T, app *App, ln *fasthttputil.InmemoryListener) {
+	t.Helper()
 	go func() {
 		err := app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
@@ -34,7 +35,19 @@ func startServer(app *App, ln *fasthttputil.InmemoryListener) {
 		}
 	}()
 
-	time.Sleep(2 * time.Second)
+	// Server readiness check
+	for i := 0; i < 10; i++ {
+		conn, err := ln.Dial()
+		if err == nil {
+			conn.Close() //nolint:errcheck // We don't care about the error here
+			break
+		}
+		// Wait a bit before retrying
+		time.Sleep(100 * time.Millisecond)
+		if i == 9 {
+			t.Fatalf("Server did not become ready in time: %v", err)
+		}
+	}
 }
 
 func Test_Client_Invalid_URL(t *testing.T) {
@@ -47,7 +60,7 @@ func Test_Client_Invalid_URL(t *testing.T) {
 	})
 
 	// Wait for server to start
-	startServer(app, ln)
+	startServer(t, app, ln)
 
 	a := Get("http://example.com\r\n\r\nGET /\r\n\r\n")
 
@@ -81,7 +94,7 @@ func Test_Client_Get(t *testing.T) {
 	})
 
 	// Wait for server to start
-	startServer(app, ln)
+	startServer(t, app, ln)
 
 	for i := 0; i < 5; i++ {
 		a := Get("http://example.com")
@@ -106,7 +119,7 @@ func Test_Client_Head(t *testing.T) {
 	})
 
 	// Wait for server to start
-	startServer(app, ln)
+	startServer(t, app, ln)
 
 	for i := 0; i < 5; i++ {
 		a := Head("http://example.com")
@@ -132,7 +145,7 @@ func Test_Client_Post(t *testing.T) {
 	})
 
 	// Wait for server to start
-	startServer(app, ln)
+	startServer(t, app, ln)
 
 	for i := 0; i < 5; i++ {
 		args := AcquireArgs()
@@ -164,7 +177,7 @@ func Test_Client_Put(t *testing.T) {
 	})
 
 	// Wait for server to start
-	startServer(app, ln)
+	startServer(t, app, ln)
 
 	for i := 0; i < 5; i++ {
 		args := AcquireArgs()
@@ -196,7 +209,7 @@ func Test_Client_Patch(t *testing.T) {
 	})
 
 	// Wait for server to start
-	startServer(app, ln)
+	startServer(t, app, ln)
 
 	for i := 0; i < 5; i++ {
 		args := AcquireArgs()
@@ -229,7 +242,7 @@ func Test_Client_Delete(t *testing.T) {
 	})
 
 	// Wait for server to start
-	startServer(app, ln)
+	startServer(t, app, ln)
 
 	for i := 0; i < 5; i++ {
 		args := AcquireArgs()
@@ -258,7 +271,7 @@ func Test_Client_UserAgent(t *testing.T) {
 	})
 
 	// Wait for server to start
-	startServer(app, ln)
+	startServer(t, app, ln)
 
 	t.Run("default", func(t *testing.T) {
 		for i := 0; i < 5; i++ {
@@ -401,7 +414,7 @@ func Test_Client_Agent_Host(t *testing.T) {
 	})
 
 	// Wait for server to start
-	startServer(app, ln)
+	startServer(t, app, ln)
 
 	a := Get("http://1.1.1.1:8080").
 		Host("example.com").
@@ -496,7 +509,7 @@ func Test_Client_Agent_Custom_Response(t *testing.T) {
 	})
 
 	// Wait for server to start
-	startServer(app, ln)
+	startServer(t, app, ln)
 
 	for i := 0; i < 5; i++ {
 		a := AcquireAgent()
@@ -532,7 +545,7 @@ func Test_Client_Agent_Dest(t *testing.T) {
 	})
 
 	// Wait for server to start
-	startServer(app, ln)
+	startServer(t, app, ln)
 
 	t.Run("small dest", func(t *testing.T) {
 		dest := []byte("de")
@@ -604,7 +617,7 @@ func Test_Client_Agent_RetryIf(t *testing.T) {
 	app := New()
 
 	// Wait for server to start
-	startServer(app, ln)
+	startServer(t, app, ln)
 
 	a := Post("http://example.com").
 		RetryIf(func(_ *Request) bool {
@@ -735,7 +748,7 @@ func Test_Client_Agent_MultipartForm(t *testing.T) {
 	})
 
 	// Wait for server to start
-	startServer(app, ln)
+	startServer(t, app, ln)
 
 	args := AcquireArgs()
 
@@ -805,7 +818,7 @@ func Test_Client_Agent_MultipartForm_SendFiles(t *testing.T) {
 	})
 
 	// Wait for server to start
-	startServer(app, ln)
+	startServer(t, app, ln)
 
 	for i := 0; i < 5; i++ {
 		ff := AcquireFormFile()
@@ -912,7 +925,7 @@ func Test_Client_Agent_Timeout(t *testing.T) {
 	})
 
 	// Wait for server to start
-	startServer(app, ln)
+	startServer(t, app, ln)
 
 	a := Get("http://example.com").
 		Timeout(time.Millisecond * 50)
@@ -936,7 +949,7 @@ func Test_Client_Agent_Reuse(t *testing.T) {
 	})
 
 	// Wait for server to start
-	startServer(app, ln)
+	startServer(t, app, ln)
 
 	a := Get("http://example.com").
 		Reuse()
@@ -1046,7 +1059,7 @@ func Test_Client_Agent_MaxRedirectsCount(t *testing.T) {
 	})
 
 	// Wait for server to start
-	startServer(app, ln)
+	startServer(t, app, ln)
 
 	t.Run("success", func(t *testing.T) {
 		a := Get("http://example.com?foo").
@@ -1089,7 +1102,7 @@ func Test_Client_Agent_Struct(t *testing.T) {
 	})
 
 	// Wait for server to start
-	startServer(app, ln)
+	startServer(t, app, ln)
 
 	t.Run("success", func(t *testing.T) {
 		a := Get("http://example.com")
@@ -1175,7 +1188,7 @@ func testAgent(t *testing.T, handler Handler, wrapAgent func(agent *Agent), exce
 	app.Get("/", handler)
 
 	// Wait for server to start
-	startServer(app, ln)
+	startServer(t, app, ln)
 
 	c := 1
 	if len(count) > 0 {

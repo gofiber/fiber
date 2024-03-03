@@ -63,13 +63,27 @@ func Test_Listen_Graceful_Shutdown(t *testing.T) {
 		})
 	}()
 
+	// Server readiness check
+	for i := 0; i < 10; i++ {
+		conn, err := ln.Dial()
+		if err == nil {
+			conn.Close() //nolint:errcheck // ignore error
+			break
+		}
+		// Wait a bit before retrying
+		time.Sleep(100 * time.Millisecond)
+		if i == 9 {
+			t.Fatalf("Server did not become ready in time: %v", err)
+		}
+	}
+
 	testCases := []struct {
 		Time               time.Duration
 		ExpectedBody       string
 		ExpectedStatusCode int
 		ExceptedErrsLen    int
 	}{
-		{Time: 500 * time.Millisecond, ExpectedBody: "example.com", ExpectedStatusCode: StatusOK, ExceptedErrsLen: 0},
+		{Time: 100 * time.Millisecond, ExpectedBody: "example.com", ExpectedStatusCode: StatusOK, ExceptedErrsLen: 0},
 		{Time: 5 * time.Second, ExpectedBody: "", ExpectedStatusCode: 0, ExceptedErrsLen: 1},
 	}
 
