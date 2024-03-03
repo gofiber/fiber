@@ -24,9 +24,20 @@ import (
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
-func Test_Client_Invalid_URL(t *testing.T) {
-	t.Parallel()
+func startServer(app *App, ln *fasthttputil.InmemoryListener) {
+	go func() {
+		err := app.Listener(ln, ListenConfig{
+			DisableStartupMessage: true,
+		})
+		if err != nil {
+			panic(err)
+		}
+	}()
 
+	time.Sleep(2 * time.Second)
+}
+
+func Test_Client_Invalid_URL(t *testing.T) {
 	ln := fasthttputil.NewInmemoryListener()
 
 	app := New()
@@ -35,11 +46,8 @@ func Test_Client_Invalid_URL(t *testing.T) {
 		return c.SendString(c.Host())
 	})
 
-	go func() {
-		require.NoError(t, app.Listener(ln, ListenConfig{
-			DisableStartupMessage: true,
-		}))
-	}()
+	// Wait for server to start
+	startServer(app, ln)
 
 	a := Get("http://example.com\r\n\r\nGET /\r\n\r\n")
 
@@ -54,8 +62,6 @@ func Test_Client_Invalid_URL(t *testing.T) {
 }
 
 func Test_Client_Unsupported_Protocol(t *testing.T) {
-	t.Parallel()
-
 	a := Get("ftp://example.com")
 
 	_, body, errs := a.String()
@@ -66,8 +72,6 @@ func Test_Client_Unsupported_Protocol(t *testing.T) {
 }
 
 func Test_Client_Get(t *testing.T) {
-	t.Parallel()
-
 	ln := fasthttputil.NewInmemoryListener()
 
 	app := New()
@@ -76,11 +80,8 @@ func Test_Client_Get(t *testing.T) {
 		return c.SendString(c.Host())
 	})
 
-	go func() {
-		require.NoError(t, app.Listener(ln, ListenConfig{
-			DisableStartupMessage: true,
-		}))
-	}()
+	// Wait for server to start
+	startServer(app, ln)
 
 	for i := 0; i < 5; i++ {
 		a := Get("http://example.com")
@@ -96,8 +97,6 @@ func Test_Client_Get(t *testing.T) {
 }
 
 func Test_Client_Head(t *testing.T) {
-	t.Parallel()
-
 	ln := fasthttputil.NewInmemoryListener()
 
 	app := New()
@@ -106,11 +105,9 @@ func Test_Client_Head(t *testing.T) {
 		return c.SendStatus(StatusAccepted)
 	})
 
-	go func() {
-		require.NoError(t, app.Listener(ln, ListenConfig{
-			DisableStartupMessage: true,
-		}))
-	}()
+	// Wait for server to start
+	startServer(app, ln)
+
 	for i := 0; i < 5; i++ {
 		a := Head("http://example.com")
 
@@ -125,8 +122,6 @@ func Test_Client_Head(t *testing.T) {
 }
 
 func Test_Client_Post(t *testing.T) {
-	t.Parallel()
-
 	ln := fasthttputil.NewInmemoryListener()
 
 	app := New()
@@ -136,11 +131,8 @@ func Test_Client_Post(t *testing.T) {
 			SendString(c.FormValue("foo"))
 	})
 
-	go func() {
-		require.NoError(t, app.Listener(ln, ListenConfig{
-			DisableStartupMessage: true,
-		}))
-	}()
+	// Wait for server to start
+	startServer(app, ln)
 
 	for i := 0; i < 5; i++ {
 		args := AcquireArgs()
@@ -163,8 +155,6 @@ func Test_Client_Post(t *testing.T) {
 }
 
 func Test_Client_Put(t *testing.T) {
-	t.Parallel()
-
 	ln := fasthttputil.NewInmemoryListener()
 
 	app := New()
@@ -173,11 +163,8 @@ func Test_Client_Put(t *testing.T) {
 		return c.SendString(c.FormValue("foo"))
 	})
 
-	go func() {
-		require.NoError(t, app.Listener(ln, ListenConfig{
-			DisableStartupMessage: true,
-		}))
-	}()
+	// Wait for server to start
+	startServer(app, ln)
 
 	for i := 0; i < 5; i++ {
 		args := AcquireArgs()
@@ -200,8 +187,6 @@ func Test_Client_Put(t *testing.T) {
 }
 
 func Test_Client_Patch(t *testing.T) {
-	t.Parallel()
-
 	ln := fasthttputil.NewInmemoryListener()
 
 	app := New()
@@ -210,11 +195,8 @@ func Test_Client_Patch(t *testing.T) {
 		return c.SendString(c.FormValue("foo"))
 	})
 
-	go func() {
-		require.NoError(t, app.Listener(ln, ListenConfig{
-			DisableStartupMessage: true,
-		}))
-	}()
+	// Wait for server to start
+	startServer(app, ln)
 
 	for i := 0; i < 5; i++ {
 		args := AcquireArgs()
@@ -237,8 +219,6 @@ func Test_Client_Patch(t *testing.T) {
 }
 
 func Test_Client_Delete(t *testing.T) {
-	t.Parallel()
-
 	ln := fasthttputil.NewInmemoryListener()
 
 	app := New()
@@ -248,11 +228,8 @@ func Test_Client_Delete(t *testing.T) {
 			SendString("deleted")
 	})
 
-	go func() {
-		require.NoError(t, app.Listener(ln, ListenConfig{
-			DisableStartupMessage: true,
-		}))
-	}()
+	// Wait for server to start
+	startServer(app, ln)
 
 	for i := 0; i < 5; i++ {
 		args := AcquireArgs()
@@ -272,8 +249,6 @@ func Test_Client_Delete(t *testing.T) {
 }
 
 func Test_Client_UserAgent(t *testing.T) {
-	t.Parallel()
-
 	ln := fasthttputil.NewInmemoryListener()
 
 	app := New()
@@ -282,14 +257,10 @@ func Test_Client_UserAgent(t *testing.T) {
 		return c.Send(c.Request().Header.UserAgent())
 	})
 
-	go func() {
-		require.NoError(t, app.Listener(ln, ListenConfig{
-			DisableStartupMessage: true,
-		}))
-	}()
+	// Wait for server to start
+	startServer(app, ln)
 
 	t.Run("default", func(t *testing.T) {
-		t.Parallel()
 		for i := 0; i < 5; i++ {
 			a := Get("http://example.com")
 
@@ -304,7 +275,6 @@ func Test_Client_UserAgent(t *testing.T) {
 	})
 
 	t.Run("custom", func(t *testing.T) {
-		t.Parallel()
 		for i := 0; i < 5; i++ {
 			c := AcquireClient()
 			c.UserAgent = "ua"
@@ -324,7 +294,6 @@ func Test_Client_UserAgent(t *testing.T) {
 }
 
 func Test_Client_Agent_Set_Or_Add_Headers(t *testing.T) {
-	t.Parallel()
 	handler := func(c Ctx) error {
 		c.Request().Header.VisitAll(func(key, value []byte) {
 			if k := string(key); k == "K1" || k == "K2" {
@@ -352,7 +321,6 @@ func Test_Client_Agent_Set_Or_Add_Headers(t *testing.T) {
 }
 
 func Test_Client_Agent_Connection_Close(t *testing.T) {
-	t.Parallel()
 	handler := func(c Ctx) error {
 		if c.Request().Header.ConnectionClose() {
 			return c.SendString("close")
@@ -368,7 +336,6 @@ func Test_Client_Agent_Connection_Close(t *testing.T) {
 }
 
 func Test_Client_Agent_UserAgent(t *testing.T) {
-	t.Parallel()
 	handler := func(c Ctx) error {
 		return c.Send(c.Request().Header.UserAgent())
 	}
@@ -382,7 +349,6 @@ func Test_Client_Agent_UserAgent(t *testing.T) {
 }
 
 func Test_Client_Agent_Cookie(t *testing.T) {
-	t.Parallel()
 	handler := func(c Ctx) error {
 		return c.SendString(
 			c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3") + c.Cookies("k4"))
@@ -400,7 +366,6 @@ func Test_Client_Agent_Cookie(t *testing.T) {
 }
 
 func Test_Client_Agent_Referer(t *testing.T) {
-	t.Parallel()
 	handler := func(c Ctx) error {
 		return c.Send(c.Request().Header.Referer())
 	}
@@ -414,7 +379,6 @@ func Test_Client_Agent_Referer(t *testing.T) {
 }
 
 func Test_Client_Agent_ContentType(t *testing.T) {
-	t.Parallel()
 	handler := func(c Ctx) error {
 		return c.Send(c.Request().Header.ContentType())
 	}
@@ -428,8 +392,6 @@ func Test_Client_Agent_ContentType(t *testing.T) {
 }
 
 func Test_Client_Agent_Host(t *testing.T) {
-	t.Parallel()
-
 	ln := fasthttputil.NewInmemoryListener()
 
 	app := New()
@@ -438,11 +400,8 @@ func Test_Client_Agent_Host(t *testing.T) {
 		return c.SendString(c.Host())
 	})
 
-	go func() {
-		require.NoError(t, app.Listener(ln, ListenConfig{
-			DisableStartupMessage: true,
-		}))
-	}()
+	// Wait for server to start
+	startServer(app, ln)
 
 	a := Get("http://1.1.1.1:8080").
 		Host("example.com").
@@ -460,7 +419,6 @@ func Test_Client_Agent_Host(t *testing.T) {
 }
 
 func Test_Client_Agent_QueryString(t *testing.T) {
-	t.Parallel()
 	handler := func(c Ctx) error {
 		return c.Send(c.Request().URI().QueryString())
 	}
@@ -474,7 +432,6 @@ func Test_Client_Agent_QueryString(t *testing.T) {
 }
 
 func Test_Client_Agent_BasicAuth(t *testing.T) {
-	t.Parallel()
 	handler := func(c Ctx) error {
 		// Get authorization header
 		auth := c.Get(HeaderAuthorization)
@@ -494,7 +451,6 @@ func Test_Client_Agent_BasicAuth(t *testing.T) {
 }
 
 func Test_Client_Agent_BodyString(t *testing.T) {
-	t.Parallel()
 	handler := func(c Ctx) error {
 		return c.Send(c.Request().Body())
 	}
@@ -507,7 +463,6 @@ func Test_Client_Agent_BodyString(t *testing.T) {
 }
 
 func Test_Client_Agent_Body(t *testing.T) {
-	t.Parallel()
 	handler := func(c Ctx) error {
 		return c.Send(c.Request().Body())
 	}
@@ -520,7 +475,6 @@ func Test_Client_Agent_Body(t *testing.T) {
 }
 
 func Test_Client_Agent_BodyStream(t *testing.T) {
-	t.Parallel()
 	handler := func(c Ctx) error {
 		return c.Send(c.Request().Body())
 	}
@@ -533,8 +487,6 @@ func Test_Client_Agent_BodyStream(t *testing.T) {
 }
 
 func Test_Client_Agent_Custom_Response(t *testing.T) {
-	t.Parallel()
-
 	ln := fasthttputil.NewInmemoryListener()
 
 	app := New()
@@ -543,11 +495,8 @@ func Test_Client_Agent_Custom_Response(t *testing.T) {
 		return c.SendString("custom")
 	})
 
-	go func() {
-		require.NoError(t, app.Listener(ln, ListenConfig{
-			DisableStartupMessage: true,
-		}))
-	}()
+	// Wait for server to start
+	startServer(app, ln)
 
 	for i := 0; i < 5; i++ {
 		a := AcquireAgent()
@@ -574,8 +523,6 @@ func Test_Client_Agent_Custom_Response(t *testing.T) {
 }
 
 func Test_Client_Agent_Dest(t *testing.T) {
-	t.Parallel()
-
 	ln := fasthttputil.NewInmemoryListener()
 
 	app := New()
@@ -584,14 +531,10 @@ func Test_Client_Agent_Dest(t *testing.T) {
 		return c.SendString("dest")
 	})
 
-	go func() {
-		require.NoError(t, app.Listener(ln, ListenConfig{
-			DisableStartupMessage: true,
-		}))
-	}()
+	// Wait for server to start
+	startServer(app, ln)
 
 	t.Run("small dest", func(t *testing.T) {
-		t.Parallel()
 		dest := []byte("de")
 
 		a := Get("http://example.com")
@@ -607,7 +550,6 @@ func Test_Client_Agent_Dest(t *testing.T) {
 	})
 
 	t.Run("enough dest", func(t *testing.T) {
-		t.Parallel()
 		dest := []byte("foobar")
 
 		a := Get("http://example.com")
@@ -657,17 +599,12 @@ func (*readErrorConn) SetWriteDeadline(_ time.Time) error {
 }
 
 func Test_Client_Agent_RetryIf(t *testing.T) {
-	t.Parallel()
-
 	ln := fasthttputil.NewInmemoryListener()
 
 	app := New()
 
-	go func() {
-		require.NoError(t, app.Listener(ln, ListenConfig{
-			DisableStartupMessage: true,
-		}))
-	}()
+	// Wait for server to start
+	startServer(app, ln)
 
 	a := Post("http://example.com").
 		RetryIf(func(_ *Request) bool {
@@ -697,7 +634,6 @@ func Test_Client_Agent_RetryIf(t *testing.T) {
 }
 
 func Test_Client_Agent_Json(t *testing.T) {
-	t.Parallel()
 	// Test without ctype parameter
 	handler := func(c Ctx) error {
 		require.Equal(t, MIMEApplicationJSON, string(c.Request().Header.ContentType()))
@@ -726,7 +662,6 @@ func Test_Client_Agent_Json(t *testing.T) {
 }
 
 func Test_Client_Agent_Json_Error(t *testing.T) {
-	t.Parallel()
 	a := Get("http://example.com").
 		JSONEncoder(json.Marshal).
 		JSON(complex(1, 1))
@@ -740,7 +675,6 @@ func Test_Client_Agent_Json_Error(t *testing.T) {
 }
 
 func Test_Client_Agent_XML(t *testing.T) {
-	t.Parallel()
 	handler := func(c Ctx) error {
 		require.Equal(t, MIMEApplicationXML, string(c.Request().Header.ContentType()))
 
@@ -755,7 +689,6 @@ func Test_Client_Agent_XML(t *testing.T) {
 }
 
 func Test_Client_Agent_XML_Error(t *testing.T) {
-	t.Parallel()
 	a := Get("http://example.com").
 		XML(complex(1, 1))
 
@@ -767,7 +700,6 @@ func Test_Client_Agent_XML_Error(t *testing.T) {
 }
 
 func Test_Client_Agent_Form(t *testing.T) {
-	t.Parallel()
 	handler := func(c Ctx) error {
 		require.Equal(t, MIMEApplicationForm, string(c.Request().Header.ContentType()))
 
@@ -788,8 +720,6 @@ func Test_Client_Agent_Form(t *testing.T) {
 }
 
 func Test_Client_Agent_MultipartForm(t *testing.T) {
-	t.Parallel()
-
 	ln := fasthttputil.NewInmemoryListener()
 
 	app := New()
@@ -804,11 +734,8 @@ func Test_Client_Agent_MultipartForm(t *testing.T) {
 		return c.Send(c.Request().Body())
 	})
 
-	go func() {
-		require.NoError(t, app.Listener(ln, ListenConfig{
-			DisableStartupMessage: true,
-		}))
-	}()
+	// Wait for server to start
+	startServer(app, ln)
 
 	args := AcquireArgs()
 
@@ -829,8 +756,6 @@ func Test_Client_Agent_MultipartForm(t *testing.T) {
 }
 
 func Test_Client_Agent_MultipartForm_Errors(t *testing.T) {
-	t.Parallel()
-
 	a := AcquireAgent()
 	a.mw = &errorMultipartWriter{}
 
@@ -847,8 +772,6 @@ func Test_Client_Agent_MultipartForm_Errors(t *testing.T) {
 }
 
 func Test_Client_Agent_MultipartForm_SendFiles(t *testing.T) {
-	t.Parallel()
-
 	ln := fasthttputil.NewInmemoryListener()
 
 	app := New()
@@ -881,11 +804,8 @@ func Test_Client_Agent_MultipartForm_SendFiles(t *testing.T) {
 		return c.SendString("multipart form files")
 	})
 
-	go func() {
-		require.NoError(t, app.Listener(ln, ListenConfig{
-			DisableStartupMessage: true,
-		}))
-	}()
+	// Wait for server to start
+	startServer(app, ln)
 
 	for i := 0; i < 5; i++ {
 		ff := AcquireFormFile()
@@ -933,8 +853,6 @@ func checkFormFile(t *testing.T, fh *multipart.FileHeader, filename string) {
 }
 
 func Test_Client_Agent_Multipart_Random_Boundary(t *testing.T) {
-	t.Parallel()
-
 	a := Post("http://example.com").
 		MultipartForm(nil)
 
@@ -944,8 +862,6 @@ func Test_Client_Agent_Multipart_Random_Boundary(t *testing.T) {
 }
 
 func Test_Client_Agent_Multipart_Invalid_Boundary(t *testing.T) {
-	t.Parallel()
-
 	a := Post("http://example.com").
 		Boundary("*").
 		MultipartForm(nil)
@@ -955,8 +871,6 @@ func Test_Client_Agent_Multipart_Invalid_Boundary(t *testing.T) {
 }
 
 func Test_Client_Agent_SendFile_Error(t *testing.T) {
-	t.Parallel()
-
 	a := Post("http://example.com").
 		SendFile("non-exist-file!", "")
 
@@ -965,7 +879,6 @@ func Test_Client_Agent_SendFile_Error(t *testing.T) {
 }
 
 func Test_Client_Debug(t *testing.T) {
-	t.Parallel()
 	handler := func(c Ctx) error {
 		return c.SendString("debug")
 	}
@@ -989,8 +902,6 @@ func Test_Client_Debug(t *testing.T) {
 }
 
 func Test_Client_Agent_Timeout(t *testing.T) {
-	t.Parallel()
-
 	ln := fasthttputil.NewInmemoryListener()
 
 	app := New()
@@ -1000,11 +911,8 @@ func Test_Client_Agent_Timeout(t *testing.T) {
 		return c.SendString("timeout")
 	})
 
-	go func() {
-		require.NoError(t, app.Listener(ln, ListenConfig{
-			DisableStartupMessage: true,
-		}))
-	}()
+	// Wait for server to start
+	startServer(app, ln)
 
 	a := Get("http://example.com").
 		Timeout(time.Millisecond * 50)
@@ -1019,8 +927,6 @@ func Test_Client_Agent_Timeout(t *testing.T) {
 }
 
 func Test_Client_Agent_Reuse(t *testing.T) {
-	t.Parallel()
-
 	ln := fasthttputil.NewInmemoryListener()
 
 	app := New()
@@ -1029,11 +935,8 @@ func Test_Client_Agent_Reuse(t *testing.T) {
 		return c.SendString("reuse")
 	})
 
-	go func() {
-		require.NoError(t, app.Listener(ln, ListenConfig{
-			DisableStartupMessage: true,
-		}))
-	}()
+	// Wait for server to start
+	startServer(app, ln)
 
 	a := Get("http://example.com").
 		Reuse()
@@ -1054,8 +957,6 @@ func Test_Client_Agent_Reuse(t *testing.T) {
 }
 
 func Test_Client_Agent_InsecureSkipVerify(t *testing.T) {
-	t.Parallel()
-
 	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
 	require.NoError(t, err)
 
@@ -1076,10 +977,14 @@ func Test_Client_Agent_InsecureSkipVerify(t *testing.T) {
 	})
 
 	go func() {
-		require.NoError(t, app.Listener(ln, ListenConfig{
+		//nolint:errcheck // We don't care about the error here
+		app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
-		}))
+		})
 	}()
+
+	// Wait for server to start
+	time.Sleep(2 * time.Second)
 
 	code, body, errs := Get("https://" + ln.Addr().String()).
 		InsecureSkipVerify().
@@ -1092,8 +997,6 @@ func Test_Client_Agent_InsecureSkipVerify(t *testing.T) {
 }
 
 func Test_Client_Agent_TLS(t *testing.T) {
-	t.Parallel()
-
 	serverTLSConf, clientTLSConf, err := tlstest.GetTLSConfigs()
 	require.NoError(t, err)
 
@@ -1109,10 +1012,14 @@ func Test_Client_Agent_TLS(t *testing.T) {
 	})
 
 	go func() {
-		require.NoError(t, app.Listener(ln, ListenConfig{
+		//nolint:errcheck // We don't care about the error here
+		app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
-		}))
+		})
 	}()
+
+	// Wait for server to start
+	time.Sleep(2 * time.Second)
 
 	code, body, errs := Get("https://" + ln.Addr().String()).
 		TLSConfig(clientTLSConf).
@@ -1124,8 +1031,6 @@ func Test_Client_Agent_TLS(t *testing.T) {
 }
 
 func Test_Client_Agent_MaxRedirectsCount(t *testing.T) {
-	t.Parallel()
-
 	ln := fasthttputil.NewInmemoryListener()
 
 	app := New()
@@ -1140,14 +1045,10 @@ func Test_Client_Agent_MaxRedirectsCount(t *testing.T) {
 		return c.SendString("redirect")
 	})
 
-	go func() {
-		require.NoError(t, app.Listener(ln, ListenConfig{
-			DisableStartupMessage: true,
-		}))
-	}()
+	// Wait for server to start
+	startServer(app, ln)
 
 	t.Run("success", func(t *testing.T) {
-		t.Parallel()
 		a := Get("http://example.com?foo").
 			MaxRedirectsCount(1)
 
@@ -1161,7 +1062,6 @@ func Test_Client_Agent_MaxRedirectsCount(t *testing.T) {
 	})
 
 	t.Run("error", func(t *testing.T) {
-		t.Parallel()
 		a := Get("http://example.com").
 			MaxRedirectsCount(1)
 
@@ -1176,8 +1076,6 @@ func Test_Client_Agent_MaxRedirectsCount(t *testing.T) {
 }
 
 func Test_Client_Agent_Struct(t *testing.T) {
-	t.Parallel()
-
 	ln := fasthttputil.NewInmemoryListener()
 
 	app := New()
@@ -1190,15 +1088,10 @@ func Test_Client_Agent_Struct(t *testing.T) {
 		return c.SendString(`{"success"`)
 	})
 
-	go func() {
-		require.NoError(t, app.Listener(ln, ListenConfig{
-			DisableStartupMessage: true,
-		}))
-	}()
+	// Wait for server to start
+	startServer(app, ln)
 
 	t.Run("success", func(t *testing.T) {
-		t.Parallel()
-
 		a := Get("http://example.com")
 
 		a.HostClient.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
@@ -1214,7 +1107,6 @@ func Test_Client_Agent_Struct(t *testing.T) {
 	})
 
 	t.Run("pre error", func(t *testing.T) {
-		t.Parallel()
 		a := Get("http://example.com")
 
 		errPre := errors.New("pre errors")
@@ -1232,7 +1124,6 @@ func Test_Client_Agent_Struct(t *testing.T) {
 	})
 
 	t.Run("error", func(t *testing.T) {
-		t.Parallel()
 		a := Get("http://example.com/error")
 
 		a.HostClient.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
@@ -1250,7 +1141,6 @@ func Test_Client_Agent_Struct(t *testing.T) {
 	})
 
 	t.Run("nil jsonDecoder", func(t *testing.T) {
-		t.Parallel()
 		a := AcquireAgent()
 		defer ReleaseAgent(a)
 		defer a.ConnectionClose()
@@ -1270,8 +1160,6 @@ func Test_Client_Agent_Struct(t *testing.T) {
 }
 
 func Test_Client_Agent_Parse(t *testing.T) {
-	t.Parallel()
-
 	a := Get("https://example.com:10443")
 
 	require.NoError(t, a.Parse())
@@ -1286,11 +1174,8 @@ func testAgent(t *testing.T, handler Handler, wrapAgent func(agent *Agent), exce
 
 	app.Get("/", handler)
 
-	go func() {
-		require.NoError(t, app.Listener(ln, ListenConfig{
-			DisableStartupMessage: true,
-		}))
-	}()
+	// Wait for server to start
+	startServer(app, ln)
 
 	c := 1
 	if len(count) > 0 {

@@ -821,10 +821,15 @@ func Test_App_ShutdownWithTimeout(t *testing.T) {
 		time.Sleep(5 * time.Second)
 		return c.SendString("body")
 	})
+
 	ln := fasthttputil.NewInmemoryListener()
 	go func() {
-		require.NoError(t, app.Listener(ln))
+		err := app.Listener(ln)
+		if err != nil {
+			panic(err)
+		}
 	}()
+
 	time.Sleep(1 * time.Second)
 	go func() {
 		conn, err := ln.Dial()
@@ -866,7 +871,10 @@ func Test_App_ShutdownWithContext(t *testing.T) {
 	ln := fasthttputil.NewInmemoryListener()
 
 	go func() {
-		require.NoError(t, app.Listener(ln))
+		err := app.Listener(ln)
+		if err != nil {
+			panic(err)
+		}
 	}()
 
 	time.Sleep(1 * time.Second)

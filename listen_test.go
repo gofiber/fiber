@@ -46,12 +46,13 @@ func Test_Listen_Graceful_Shutdown(t *testing.T) {
 	})
 
 	ln := fasthttputil.NewInmemoryListener()
+	errs := make(chan error)
 
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		err := app.Listener(ln, ListenConfig{
+		errs <- app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 			GracefulContext:       ctx,
 			OnShutdownSuccess: func() {
@@ -60,8 +61,6 @@ func Test_Listen_Graceful_Shutdown(t *testing.T) {
 				mu.Unlock()
 			},
 		})
-
-		require.NoError(t, err)
 	}()
 
 	testCases := []struct {
@@ -70,8 +69,8 @@ func Test_Listen_Graceful_Shutdown(t *testing.T) {
 		ExpectedStatusCode int
 		ExceptedErrsLen    int
 	}{
-		{Time: 100 * time.Millisecond, ExpectedBody: "example.com", ExpectedStatusCode: StatusOK, ExceptedErrsLen: 0},
-		{Time: 500 * time.Millisecond, ExpectedBody: "", ExpectedStatusCode: 0, ExceptedErrsLen: 1},
+		{Time: 500 * time.Millisecond, ExpectedBody: "example.com", ExpectedStatusCode: StatusOK, ExceptedErrsLen: 0},
+		{Time: 5 * time.Second, ExpectedBody: "", ExpectedStatusCode: 0, ExceptedErrsLen: 1},
 	}
 
 	for _, tc := range testCases {
@@ -87,7 +86,9 @@ func Test_Listen_Graceful_Shutdown(t *testing.T) {
 	}
 
 	mu.Lock()
+	err := <-errs
 	require.True(t, shutdown)
+	require.NoError(t, err)
 	mu.Unlock()
 }
 
@@ -214,7 +215,6 @@ func Test_Listener(t *testing.T) {
 }
 
 func Test_App_Listener_TLS_Listener(t *testing.T) {
-	t.Parallel()
 	// Create tls certificate
 	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
 	if err != nil {
