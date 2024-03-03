@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"strings"
 	"sync"
@@ -49,7 +50,7 @@ func Test_Listen_Graceful_Shutdown(t *testing.T) {
 	errs := make(chan error)
 
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 
 		errs <- app.Listener(ln, ListenConfig{
@@ -84,19 +85,43 @@ func Test_Listen_Graceful_Shutdown(t *testing.T) {
 		ExceptedErrsLen    int
 	}{
 		{Time: 100 * time.Millisecond, ExpectedBody: "example.com", ExpectedStatusCode: StatusOK, ExceptedErrsLen: 0},
-		{Time: 5 * time.Second, ExpectedBody: "", ExpectedStatusCode: 0, ExceptedErrsLen: 1},
+		{Time: 3 * time.Second, ExpectedBody: "", ExpectedStatusCode: 0, ExceptedErrsLen: 1},
 	}
 
 	for _, tc := range testCases {
 		time.Sleep(tc.Time)
 
-		a := Get("http://example.com")
-		a.HostClient.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
-		code, body, errs := a.String()
+		client := &http.Client{
+			Transport: &http.Transport{
+				DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+					return ln.Dial()
+				},
+			},
+		}
 
-		require.Equal(t, tc.ExpectedStatusCode, code)
-		require.Equal(t, tc.ExpectedBody, body)
-		require.Len(t, errs, tc.ExceptedErrsLen)
+		// Making the request
+		actualErrsLen := 0
+		resp, err := client.Get("http://example.com") //nolint:noctx // no need for context in tests
+		if err != nil {
+			actualErrsLen++
+		}
+
+		if resp != nil {
+			bodyBytes, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			body := string(bodyBytes)
+
+			// Checking the status code and response body
+			require.Equal(t, tc.ExpectedStatusCode, resp.StatusCode)
+			require.Equal(t, tc.ExpectedBody, body)
+
+			if resp.StatusCode >= 400 {
+				actualErrsLen++
+			}
+			require.NoError(t, resp.Body.Close())
+		}
+
+		require.Equal(t, tc.ExceptedErrsLen, actualErrsLen)
 	}
 
 	mu.Lock()
