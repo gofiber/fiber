@@ -30,8 +30,8 @@ func Test_Bind_Query(t *testing.T) {
 		Name  string
 		Hobby []string
 	}
-	c.Request().SetBody([]byte(``))
-	c.Request().Header.SetContentType("")
+	c.Context().Request.SetBody([]byte(``))
+	c.Context().Request.Header.SetContentType("")
 	c.Context().URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
 	q := new(Query)
 	require.NoError(t, c.Bind().Query(q))
@@ -100,8 +100,8 @@ func Test_Bind_Query_Map(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	c.Request().SetBody([]byte(``))
-	c.Request().Header.SetContentType("")
+	c.Context().Request.SetBody([]byte(``))
+	c.Context().Request.Header.SetContentType("")
 	c.Context().URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
 	q := make(map[string][]string)
 	require.NoError(t, c.Bind().Query(&q))
@@ -164,8 +164,8 @@ func Test_Bind_Query_WithSetParserDecoder(t *testing.T) {
 		Body  string     `query:"body"`
 	}
 
-	c.Request().SetBody([]byte(``))
-	c.Request().Header.SetContentType("")
+	c.Context().Request.SetBody([]byte(``))
+	c.Context().Request.Header.SetContentType("")
 	q := new(NonRFCTimeInput)
 
 	c.Context().URI().SetQueryString("date=2021-04-10&title=CustomDateTest&Body=October")
@@ -196,8 +196,8 @@ func Test_Bind_Query_Schema(t *testing.T) {
 			Age int `query:"age"`
 		} `query:"nested,required"`
 	}
-	c.Request().SetBody([]byte(``))
-	c.Request().Header.SetContentType("")
+	c.Context().Request.SetBody([]byte(``))
+	c.Context().Request.Header.SetContentType("")
 	c.Context().URI().SetQueryString("name=tom&nested.age=10")
 	q := new(Query1)
 	require.NoError(t, c.Bind().Query(q))
@@ -296,24 +296,24 @@ func Test_Bind_Header(t *testing.T) {
 		Name  string
 		Hobby []string
 	}
-	c.Request().SetBody([]byte(``))
-	c.Request().Header.SetContentType("")
+	c.Context().Request.SetBody([]byte(``))
+	c.Context().Request.Header.SetContentType("")
 
-	c.Request().Header.Add("id", "1")
-	c.Request().Header.Add("Name", "John Doe")
-	c.Request().Header.Add("Hobby", "golang,fiber")
+	c.Context().Request.Header.Add("id", "1")
+	c.Context().Request.Header.Add("Name", "John Doe")
+	c.Context().Request.Header.Add("Hobby", "golang,fiber")
 	q := new(Header)
 	require.NoError(t, c.Bind().Header(q))
 	require.Len(t, q.Hobby, 2)
 
-	c.Request().Header.Del("hobby")
-	c.Request().Header.Add("Hobby", "golang,fiber,go")
+	c.Context().Request.Header.Del("hobby")
+	c.Context().Request.Header.Add("Hobby", "golang,fiber,go")
 	q = new(Header)
 	require.NoError(t, c.Bind().Header(q))
 	require.Len(t, q.Hobby, 3)
 
 	empty := new(Header)
-	c.Request().Header.Del("hobby")
+	c.Context().Request.Header.Del("hobby")
 	require.NoError(t, c.Bind().Query(empty))
 	require.Empty(t, empty.Hobby)
 
@@ -328,13 +328,13 @@ func Test_Bind_Header(t *testing.T) {
 		No              []int64
 	}
 
-	c.Request().Header.Add("id", "2")
-	c.Request().Header.Add("Name", "Jane Doe")
-	c.Request().Header.Del("hobby")
-	c.Request().Header.Add("Hobby", "go,fiber")
-	c.Request().Header.Add("favouriteDrinks", "milo,coke,pepsi")
-	c.Request().Header.Add("alloc", "")
-	c.Request().Header.Add("no", "1")
+	c.Context().Request.Header.Add("id", "2")
+	c.Context().Request.Header.Add("Name", "Jane Doe")
+	c.Context().Request.Header.Del("hobby")
+	c.Context().Request.Header.Add("Hobby", "go,fiber")
+	c.Context().Request.Header.Add("favouriteDrinks", "milo,coke,pepsi")
+	c.Context().Request.Header.Add("alloc", "")
+	c.Context().Request.Header.Add("no", "1")
 
 	h2 := new(Header2)
 	h2.Bool = true
@@ -353,7 +353,7 @@ func Test_Bind_Header(t *testing.T) {
 		Name string `header:"name,required"`
 	}
 	rh := new(RequiredHeader)
-	c.Request().Header.Del("name")
+	c.Context().Request.Header.Del("name")
 	require.Equal(t, "name is empty", c.Bind().Header(rh).Error())
 }
 
@@ -364,24 +364,24 @@ func Test_Bind_Header_Map(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	c.Request().SetBody([]byte(``))
-	c.Request().Header.SetContentType("")
+	c.Context().Request.SetBody([]byte(``))
+	c.Context().Request.Header.SetContentType("")
 
-	c.Request().Header.Add("id", "1")
-	c.Request().Header.Add("Name", "John Doe")
-	c.Request().Header.Add("Hobby", "golang,fiber")
+	c.Context().Request.Header.Add("id", "1")
+	c.Context().Request.Header.Add("Name", "John Doe")
+	c.Context().Request.Header.Add("Hobby", "golang,fiber")
 	q := make(map[string][]string, 0)
 	require.NoError(t, c.Bind().Header(&q))
 	require.Len(t, q["Hobby"], 2)
 
-	c.Request().Header.Del("hobby")
-	c.Request().Header.Add("Hobby", "golang,fiber,go")
+	c.Context().Request.Header.Del("hobby")
+	c.Context().Request.Header.Add("Hobby", "golang,fiber,go")
 	q = make(map[string][]string, 0)
 	require.NoError(t, c.Bind().Header(&q))
 	require.Len(t, q["Hobby"], 3)
 
 	empty := make(map[string][]string, 0)
-	c.Request().Header.Del("hobby")
+	c.Context().Request.Header.Del("hobby")
 	require.NoError(t, c.Bind().Query(&empty))
 	require.Empty(t, empty["Hobby"])
 }
@@ -418,13 +418,13 @@ func Test_Bind_Header_WithSetParserDecoder(t *testing.T) {
 		Body  string     `req:"body"`
 	}
 
-	c.Request().SetBody([]byte(``))
-	c.Request().Header.SetContentType("")
+	c.Context().Request.SetBody([]byte(``))
+	c.Context().Request.Header.SetContentType("")
 	r := new(NonRFCTimeInput)
 
-	c.Request().Header.Add("Date", "2021-04-10")
-	c.Request().Header.Add("Title", "CustomDateTest")
-	c.Request().Header.Add("Body", "October")
+	c.Context().Request.Header.Add("Date", "2021-04-10")
+	c.Context().Request.Header.Add("Title", "CustomDateTest")
+	c.Context().Request.Header.Add("Body", "October")
 
 	require.NoError(t, c.Bind().Header(r))
 	require.Equal(t, "CustomDateTest", r.Title)
@@ -432,7 +432,7 @@ func Test_Bind_Header_WithSetParserDecoder(t *testing.T) {
 	require.Equal(t, "{0 63753609600 <nil>}", date)
 	require.Equal(t, "October", r.Body)
 
-	c.Request().Header.Add("Title", "")
+	c.Context().Request.Header.Add("Title", "")
 	r = &NonRFCTimeInput{
 		Title: "Existing title",
 		Body:  "Existing Body",
@@ -453,30 +453,30 @@ func Test_Bind_Header_Schema(t *testing.T) {
 			Age int `header:"Age"`
 		} `header:"Nested,required"`
 	}
-	c.Request().SetBody([]byte(``))
-	c.Request().Header.SetContentType("")
+	c.Context().Request.SetBody([]byte(``))
+	c.Context().Request.Header.SetContentType("")
 
-	c.Request().Header.Add("Name", "tom")
-	c.Request().Header.Add("Nested.Age", "10")
+	c.Context().Request.Header.Add("Name", "tom")
+	c.Context().Request.Header.Add("Nested.Age", "10")
 	q := new(Header1)
 	require.NoError(t, c.Bind().Header(q))
 
-	c.Request().Header.Del("Name")
+	c.Context().Request.Header.Del("Name")
 	q = new(Header1)
 	require.Equal(t, "Name is empty", c.Bind().Header(q).Error())
 
-	c.Request().Header.Add("Name", "tom")
-	c.Request().Header.Del("Nested.Age")
-	c.Request().Header.Add("Nested.Agex", "10")
+	c.Context().Request.Header.Add("Name", "tom")
+	c.Context().Request.Header.Del("Nested.Age")
+	c.Context().Request.Header.Add("Nested.Agex", "10")
 	q = new(Header1)
 	require.NoError(t, c.Bind().Header(q))
 
-	c.Request().Header.Del("Nested.Agex")
+	c.Context().Request.Header.Del("Nested.Agex")
 	q = new(Header1)
 	require.Equal(t, "Nested is empty", c.Bind().Header(q).Error())
 
-	c.Request().Header.Del("Nested.Agex")
-	c.Request().Header.Del("Name")
+	c.Context().Request.Header.Del("Nested.Agex")
+	c.Context().Request.Header.Del("Name")
 
 	type Header2 struct {
 		Name   string `header:"Name"`
@@ -485,19 +485,19 @@ func Test_Bind_Header_Schema(t *testing.T) {
 		} `header:"Nested"`
 	}
 
-	c.Request().Header.Add("Name", "tom")
-	c.Request().Header.Add("Nested.Age", "10")
+	c.Context().Request.Header.Add("Name", "tom")
+	c.Context().Request.Header.Add("Nested.Age", "10")
 
 	h2 := new(Header2)
 	require.NoError(t, c.Bind().Header(h2))
 
-	c.Request().Header.Del("Name")
+	c.Context().Request.Header.Del("Name")
 	h2 = new(Header2)
 	require.NoError(t, c.Bind().Header(h2))
 
-	c.Request().Header.Del("Name")
-	c.Request().Header.Del("Nested.Age")
-	c.Request().Header.Add("Nested.Agex", "10")
+	c.Context().Request.Header.Del("Name")
+	c.Context().Request.Header.Del("Nested.Age")
+	c.Context().Request.Header.Add("Nested.Agex", "10")
 	h2 = new(Header2)
 	require.Equal(t, "Nested.age is empty", c.Bind().Header(h2).Error())
 
@@ -505,20 +505,20 @@ func Test_Bind_Header_Schema(t *testing.T) {
 		Value int   `header:"Val,required"`
 		Next  *Node `header:"Next,required"`
 	}
-	c.Request().Header.Add("Val", "1")
-	c.Request().Header.Add("Next.Val", "3")
+	c.Context().Request.Header.Add("Val", "1")
+	c.Context().Request.Header.Add("Next.Val", "3")
 	n := new(Node)
 	require.NoError(t, c.Bind().Header(n))
 	require.Equal(t, 1, n.Value)
 	require.Equal(t, 3, n.Next.Value)
 
-	c.Request().Header.Del("Val")
+	c.Context().Request.Header.Del("Val")
 	n = new(Node)
 	require.Equal(t, "Val is empty", c.Bind().Header(n).Error())
 
-	c.Request().Header.Add("Val", "3")
-	c.Request().Header.Del("Next.Val")
-	c.Request().Header.Add("Next.Value", "2")
+	c.Context().Request.Header.Add("Val", "3")
+	c.Context().Request.Header.Del("Next.Val")
+	c.Context().Request.Header.Add("Next.Value", "2")
 	n = new(Node)
 	n.Next = new(Node)
 	require.NoError(t, c.Bind().Header(n))
@@ -537,8 +537,8 @@ func Test_Bind_RespHeader(t *testing.T) {
 		Name  string
 		Hobby []string
 	}
-	c.Request().SetBody([]byte(``))
-	c.Request().Header.SetContentType("")
+	c.Context().Request.SetBody([]byte(``))
+	c.Context().Request.Header.SetContentType("")
 
 	c.Response().Header.Add("id", "1")
 	c.Response().Header.Add("Name", "John Doe")
@@ -605,8 +605,8 @@ func Test_Bind_RespHeader_Map(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	c.Request().SetBody([]byte(``))
-	c.Request().Header.SetContentType("")
+	c.Context().Request.SetBody([]byte(``))
+	c.Context().Request.Header.SetContentType("")
 
 	c.Response().Header.Add("id", "1")
 	c.Response().Header.Add("Name", "John Doe")
@@ -639,8 +639,8 @@ func Benchmark_Bind_Query(b *testing.B) {
 		Name  string
 		Hobby []string
 	}
-	c.Request().SetBody([]byte(``))
-	c.Request().Header.SetContentType("")
+	c.Context().Request.SetBody([]byte(``))
+	c.Context().Request.Header.SetContentType("")
 	c.Context().URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
 	q := new(Query)
 	b.ReportAllocs()
@@ -658,8 +658,8 @@ func Benchmark_Bind_Query_Map(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	c.Request().SetBody([]byte(``))
-	c.Request().Header.SetContentType("")
+	c.Context().Request.SetBody([]byte(``))
+	c.Context().Request.Header.SetContentType("")
 	c.Context().URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
 	q := make(map[string][]string)
 	b.ReportAllocs()
@@ -686,8 +686,8 @@ func Benchmark_Bind_Query_WithParseParam(b *testing.B) {
 		Data []Person `query:"data"`
 	}
 
-	c.Request().SetBody([]byte(``))
-	c.Request().Header.SetContentType("")
+	c.Context().Request.SetBody([]byte(``))
+	c.Context().Request.Header.SetContentType("")
 	c.Context().URI().SetQueryString("data[0][name]=john&data[0][age]=10")
 	cq := new(CollectionQuery)
 
@@ -712,8 +712,8 @@ func Benchmark_Bind_Query_Comma(b *testing.B) {
 		Name  string
 		Hobby []string
 	}
-	c.Request().SetBody([]byte(``))
-	c.Request().Header.SetContentType("")
+	c.Context().Request.SetBody([]byte(``))
+	c.Context().Request.Header.SetContentType("")
 	// c.Context().URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
 	c.Context().URI().SetQueryString("id=1&name=tom&hobby=basketball,football")
 	q := new(Query)
@@ -737,12 +737,12 @@ func Benchmark_Bind_Header(b *testing.B) {
 		Name  string
 		Hobby []string
 	}
-	c.Request().SetBody([]byte(``))
-	c.Request().Header.SetContentType("")
+	c.Context().Request.SetBody([]byte(``))
+	c.Context().Request.Header.SetContentType("")
 
-	c.Request().Header.Add("id", "1")
-	c.Request().Header.Add("Name", "John Doe")
-	c.Request().Header.Add("Hobby", "golang,fiber")
+	c.Context().Request.Header.Add("id", "1")
+	c.Context().Request.Header.Add("Name", "John Doe")
+	c.Context().Request.Header.Add("Hobby", "golang,fiber")
 
 	q := new(ReqHeader)
 	b.ReportAllocs()
@@ -759,12 +759,12 @@ func Benchmark_Bind_Header_Map(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	c.Request().SetBody([]byte(``))
-	c.Request().Header.SetContentType("")
+	c.Context().Request.SetBody([]byte(``))
+	c.Context().Request.Header.SetContentType("")
 
-	c.Request().Header.Add("id", "1")
-	c.Request().Header.Add("Name", "John Doe")
-	c.Request().Header.Add("Hobby", "golang,fiber")
+	c.Context().Request.Header.Add("id", "1")
+	c.Context().Request.Header.Add("Name", "John Doe")
+	c.Context().Request.Header.Add("Hobby", "golang,fiber")
 
 	q := make(map[string][]string)
 	b.ReportAllocs()
@@ -787,8 +787,8 @@ func Benchmark_Bind_RespHeader(b *testing.B) {
 		Name  string
 		Hobby []string
 	}
-	c.Request().SetBody([]byte(``))
-	c.Request().Header.SetContentType("")
+	c.Context().Request.SetBody([]byte(``))
+	c.Context().Request.Header.SetContentType("")
 
 	c.Response().Header.Add("id", "1")
 	c.Response().Header.Add("Name", "John Doe")
@@ -809,8 +809,8 @@ func Benchmark_Bind_RespHeader_Map(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	c.Request().SetBody([]byte(``))
-	c.Request().Header.SetContentType("")
+	c.Context().Request.SetBody([]byte(``))
+	c.Context().Request.Header.SetContentType("")
 
 	c.Response().Header.Add("id", "1")
 	c.Response().Header.Add("Name", "John Doe")
@@ -843,20 +843,20 @@ func Test_Bind_Body(t *testing.T) {
 		err = w.Close()
 		require.NoError(t, err)
 
-		c.Request().Header.SetContentType(MIMEApplicationJSON)
-		c.Request().Header.Set(HeaderContentEncoding, "gzip")
-		c.Request().SetBody(gzipJSON.Bytes())
-		c.Request().Header.SetContentLength(len(gzipJSON.Bytes()))
+		c.Context().Request.Header.SetContentType(MIMEApplicationJSON)
+		c.Context().Request.Header.SetContentEncoding("gzip")
+		c.Context().Request.SetBody(gzipJSON.Bytes())
+		c.Context().Request.Header.SetContentLength(len(gzipJSON.Bytes()))
 		d := new(Demo)
 		require.NoError(t, c.Bind().Body(d))
 		require.Equal(t, "john", d.Name)
-		c.Request().Header.Del(HeaderContentEncoding)
+		c.Context().Request.Header.Del(HeaderContentEncoding)
 	}
 
 	testDecodeParser := func(contentType, body string) {
-		c.Request().Header.SetContentType(contentType)
-		c.Request().SetBody([]byte(body))
-		c.Request().Header.SetContentLength(len(body))
+		c.Context().Request.Header.SetContentType(contentType)
+		c.Context().Request.SetBody([]byte(body))
+		c.Context().Request.Header.SetContentLength(len(body))
 		d := new(Demo)
 		require.NoError(t, c.Bind().Body(d))
 		require.Equal(t, "john", d.Name)
@@ -868,9 +868,9 @@ func Test_Bind_Body(t *testing.T) {
 	testDecodeParser(MIMEMultipartForm+`;boundary="b"`, "--b\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\njohn\r\n--b--")
 
 	testDecodeParserError := func(contentType, body string) {
-		c.Request().Header.SetContentType(contentType)
-		c.Request().SetBody([]byte(body))
-		c.Request().Header.SetContentLength(len(body))
+		c.Context().Request.Header.SetContentType(contentType)
+		c.Context().Request.SetBody([]byte(body))
+		c.Context().Request.Header.SetContentLength(len(body))
 		require.Error(t, c.Bind().Body(nil))
 	}
 
@@ -881,20 +881,20 @@ func Test_Bind_Body(t *testing.T) {
 		Data []Demo `query:"data"`
 	}
 
-	c.Request().Reset()
-	c.Request().Header.SetContentType(MIMEApplicationForm)
-	c.Request().SetBody([]byte("data[0][name]=john&data[1][name]=doe"))
-	c.Request().Header.SetContentLength(len(c.Body()))
+	c.Context().Request.Reset()
+	c.Context().Request.Header.SetContentType(MIMEApplicationForm)
+	c.Context().Request.SetBody([]byte("data[0][name]=john&data[1][name]=doe"))
+	c.Context().Request.Header.SetContentLength(len(c.Body()))
 	cq := new(CollectionQuery)
 	require.NoError(t, c.Bind().Body(cq))
 	require.Len(t, cq.Data, 2)
 	require.Equal(t, "john", cq.Data[0].Name)
 	require.Equal(t, "doe", cq.Data[1].Name)
 
-	c.Request().Reset()
-	c.Request().Header.SetContentType(MIMEApplicationForm)
-	c.Request().SetBody([]byte("data.0.name=john&data.1.name=doe"))
-	c.Request().Header.SetContentLength(len(c.Body()))
+	c.Context().Request.Reset()
+	c.Context().Request.Header.SetContentType(MIMEApplicationForm)
+	c.Context().Request.SetBody([]byte("data.0.name=john&data.1.name=doe"))
+	c.Context().Request.Header.SetContentLength(len(c.Body()))
 	cq = new(CollectionQuery)
 	require.NoError(t, c.Bind().Body(cq))
 	require.Len(t, cq.Data, 2)
@@ -935,9 +935,9 @@ func Test_Bind_Body_WithSetParserDecoder(t *testing.T) {
 	}
 
 	testDecodeParser := func(contentType, body string) {
-		c.Request().Header.SetContentType(contentType)
-		c.Request().SetBody([]byte(body))
-		c.Request().Header.SetContentLength(len(body))
+		c.Context().Request.Header.SetContentType(contentType)
+		c.Context().Request.SetBody([]byte(body))
+		c.Context().Request.Header.SetContentLength(len(body))
 		d := Demo{
 			Title: "Existing title",
 			Body:  "Existing Body",
@@ -964,9 +964,9 @@ func Benchmark_Bind_Body_JSON(b *testing.B) {
 		Name string `json:"name"`
 	}
 	body := []byte(`{"name":"john"}`)
-	c.Request().SetBody(body)
-	c.Request().Header.SetContentType(MIMEApplicationJSON)
-	c.Request().Header.SetContentLength(len(body))
+	c.Context().Request.SetBody(body)
+	c.Context().Request.Header.SetContentType(MIMEApplicationJSON)
+	c.Context().Request.Header.SetContentLength(len(body))
 	d := new(Demo)
 
 	b.ReportAllocs()
@@ -990,9 +990,9 @@ func Benchmark_Bind_Body_XML(b *testing.B) {
 		Name string `xml:"name"`
 	}
 	body := []byte("<Demo><name>john</name></Demo>")
-	c.Request().SetBody(body)
-	c.Request().Header.SetContentType(MIMEApplicationXML)
-	c.Request().Header.SetContentLength(len(body))
+	c.Context().Request.SetBody(body)
+	c.Context().Request.Header.SetContentType(MIMEApplicationXML)
+	c.Context().Request.Header.SetContentLength(len(body))
 	d := new(Demo)
 
 	b.ReportAllocs()
@@ -1016,9 +1016,9 @@ func Benchmark_Bind_Body_Form(b *testing.B) {
 		Name string `form:"name"`
 	}
 	body := []byte("name=john")
-	c.Request().SetBody(body)
-	c.Request().Header.SetContentType(MIMEApplicationForm)
-	c.Request().Header.SetContentLength(len(body))
+	c.Context().Request.SetBody(body)
+	c.Context().Request.Header.SetContentType(MIMEApplicationForm)
+	c.Context().Request.Header.SetContentLength(len(body))
 	d := new(Demo)
 
 	b.ReportAllocs()
@@ -1043,9 +1043,9 @@ func Benchmark_Bind_Body_MultipartForm(b *testing.B) {
 	}
 
 	body := []byte("--b\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\njohn\r\n--b--")
-	c.Request().SetBody(body)
-	c.Request().Header.SetContentType(MIMEMultipartForm + `;boundary="b"`)
-	c.Request().Header.SetContentLength(len(body))
+	c.Context().Request.SetBody(body)
+	c.Context().Request.Header.SetContentType(MIMEMultipartForm + `;boundary="b"`)
+	c.Context().Request.Header.SetContentLength(len(body))
 	d := new(Demo)
 
 	b.ReportAllocs()
@@ -1066,9 +1066,9 @@ func Benchmark_Bind_Body_Form_Map(b *testing.B) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	body := []byte("name=john")
-	c.Request().SetBody(body)
-	c.Request().Header.SetContentType(MIMEApplicationForm)
-	c.Request().Header.SetContentLength(len(body))
+	c.Context().Request.SetBody(body)
+	c.Context().Request.Header.SetContentType(MIMEApplicationForm)
+	c.Context().Request.Header.SetContentLength(len(body))
 	d := make(map[string]string)
 
 	b.ReportAllocs()
@@ -1207,24 +1207,24 @@ func Test_Bind_Cookie(t *testing.T) {
 		Name  string
 		Hobby []string
 	}
-	c.Request().SetBody([]byte(``))
-	c.Request().Header.SetContentType("")
+	c.Context().Request.SetBody([]byte(``))
+	c.Context().Request.Header.SetContentType("")
 
-	c.Request().Header.SetCookie("id", "1")
-	c.Request().Header.SetCookie("Name", "John Doe")
-	c.Request().Header.SetCookie("Hobby", "golang,fiber")
+	c.Context().Request.Header.SetCookie("id", "1")
+	c.Context().Request.Header.SetCookie("Name", "John Doe")
+	c.Context().Request.Header.SetCookie("Hobby", "golang,fiber")
 	q := new(Cookie)
 	require.NoError(t, c.Bind().Cookie(q))
 	require.Len(t, q.Hobby, 2)
 
-	c.Request().Header.DelCookie("hobby")
-	c.Request().Header.SetCookie("Hobby", "golang,fiber,go")
+	c.Context().Request.Header.DelCookie("hobby")
+	c.Context().Request.Header.SetCookie("Hobby", "golang,fiber,go")
 	q = new(Cookie)
 	require.NoError(t, c.Bind().Cookie(q))
 	require.Len(t, q.Hobby, 3)
 
 	empty := new(Cookie)
-	c.Request().Header.DelCookie("hobby")
+	c.Context().Request.Header.DelCookie("hobby")
 	require.NoError(t, c.Bind().Query(empty))
 	require.Empty(t, empty.Hobby)
 
@@ -1239,13 +1239,13 @@ func Test_Bind_Cookie(t *testing.T) {
 		No              []int64
 	}
 
-	c.Request().Header.SetCookie("id", "2")
-	c.Request().Header.SetCookie("Name", "Jane Doe")
-	c.Request().Header.DelCookie("hobby")
-	c.Request().Header.SetCookie("Hobby", "go,fiber")
-	c.Request().Header.SetCookie("favouriteDrinks", "milo,coke,pepsi")
-	c.Request().Header.SetCookie("alloc", "")
-	c.Request().Header.SetCookie("no", "1")
+	c.Context().Request.Header.SetCookie("id", "2")
+	c.Context().Request.Header.SetCookie("Name", "Jane Doe")
+	c.Context().Request.Header.DelCookie("hobby")
+	c.Context().Request.Header.SetCookie("Hobby", "go,fiber")
+	c.Context().Request.Header.SetCookie("favouriteDrinks", "milo,coke,pepsi")
+	c.Context().Request.Header.SetCookie("alloc", "")
+	c.Context().Request.Header.SetCookie("no", "1")
 
 	h2 := new(Cookie2)
 	h2.Bool = true
@@ -1264,7 +1264,7 @@ func Test_Bind_Cookie(t *testing.T) {
 		Name string `cookie:"name,required"`
 	}
 	rh := new(RequiredCookie)
-	c.Request().Header.DelCookie("name")
+	c.Context().Request.Header.DelCookie("name")
 	require.Equal(t, "name is empty", c.Bind().Cookie(rh).Error())
 }
 
@@ -1275,24 +1275,24 @@ func Test_Bind_Cookie_Map(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	c.Request().SetBody([]byte(``))
-	c.Request().Header.SetContentType("")
+	c.Context().Request.SetBody([]byte(``))
+	c.Context().Request.Header.SetContentType("")
 
-	c.Request().Header.SetCookie("id", "1")
-	c.Request().Header.SetCookie("Name", "John Doe")
-	c.Request().Header.SetCookie("Hobby", "golang,fiber")
+	c.Context().Request.Header.SetCookie("id", "1")
+	c.Context().Request.Header.SetCookie("Name", "John Doe")
+	c.Context().Request.Header.SetCookie("Hobby", "golang,fiber")
 	q := make(map[string][]string)
 	require.NoError(t, c.Bind().Cookie(&q))
 	require.Len(t, q["Hobby"], 2)
 
-	c.Request().Header.DelCookie("hobby")
-	c.Request().Header.SetCookie("Hobby", "golang,fiber,go")
+	c.Context().Request.Header.DelCookie("hobby")
+	c.Context().Request.Header.SetCookie("Hobby", "golang,fiber,go")
 	q = make(map[string][]string)
 	require.NoError(t, c.Bind().Cookie(&q))
 	require.Len(t, q["Hobby"], 3)
 
 	empty := make(map[string][]string)
-	c.Request().Header.DelCookie("hobby")
+	c.Context().Request.Header.DelCookie("hobby")
 	require.NoError(t, c.Bind().Query(&empty))
 	require.Empty(t, empty["Hobby"])
 }
@@ -1329,13 +1329,13 @@ func Test_Bind_Cookie_WithSetParserDecoder(t *testing.T) {
 		Body  string     `cerez:"body"`
 	}
 
-	c.Request().SetBody([]byte(``))
-	c.Request().Header.SetContentType("")
+	c.Context().Request.SetBody([]byte(``))
+	c.Context().Request.Header.SetContentType("")
 	r := new(NonRFCTimeInput)
 
-	c.Request().Header.SetCookie("Date", "2021-04-10")
-	c.Request().Header.SetCookie("Title", "CustomDateTest")
-	c.Request().Header.SetCookie("Body", "October")
+	c.Context().Request.Header.SetCookie("Date", "2021-04-10")
+	c.Context().Request.Header.SetCookie("Title", "CustomDateTest")
+	c.Context().Request.Header.SetCookie("Body", "October")
 
 	require.NoError(t, c.Bind().Cookie(r))
 	require.Equal(t, "CustomDateTest", r.Title)
@@ -1343,7 +1343,7 @@ func Test_Bind_Cookie_WithSetParserDecoder(t *testing.T) {
 	require.Equal(t, "{0 63753609600 <nil>}", date)
 	require.Equal(t, "October", r.Body)
 
-	c.Request().Header.SetCookie("Title", "")
+	c.Context().Request.Header.SetCookie("Title", "")
 	r = &NonRFCTimeInput{
 		Title: "Existing title",
 		Body:  "Existing Body",
@@ -1365,30 +1365,30 @@ func Test_Bind_Cookie_Schema(t *testing.T) {
 			Age int `cookie:"Age"`
 		} `cookie:"Nested,required"`
 	}
-	c.Request().SetBody([]byte(``))
-	c.Request().Header.SetContentType("")
+	c.Context().Request.SetBody([]byte(``))
+	c.Context().Request.Header.SetContentType("")
 
-	c.Request().Header.SetCookie("Name", "tom")
-	c.Request().Header.SetCookie("Nested.Age", "10")
+	c.Context().Request.Header.SetCookie("Name", "tom")
+	c.Context().Request.Header.SetCookie("Nested.Age", "10")
 	q := new(Cookie1)
 	require.NoError(t, c.Bind().Cookie(q))
 
-	c.Request().Header.DelCookie("Name")
+	c.Context().Request.Header.DelCookie("Name")
 	q = new(Cookie1)
 	require.Equal(t, "Name is empty", c.Bind().Cookie(q).Error())
 
-	c.Request().Header.SetCookie("Name", "tom")
-	c.Request().Header.DelCookie("Nested.Age")
-	c.Request().Header.SetCookie("Nested.Agex", "10")
+	c.Context().Request.Header.SetCookie("Name", "tom")
+	c.Context().Request.Header.DelCookie("Nested.Age")
+	c.Context().Request.Header.SetCookie("Nested.Agex", "10")
 	q = new(Cookie1)
 	require.NoError(t, c.Bind().Cookie(q))
 
-	c.Request().Header.DelCookie("Nested.Agex")
+	c.Context().Request.Header.DelCookie("Nested.Agex")
 	q = new(Cookie1)
 	require.Equal(t, "Nested is empty", c.Bind().Cookie(q).Error())
 
-	c.Request().Header.DelCookie("Nested.Agex")
-	c.Request().Header.DelCookie("Name")
+	c.Context().Request.Header.DelCookie("Nested.Agex")
+	c.Context().Request.Header.DelCookie("Name")
 
 	type Cookie2 struct {
 		Name   string `cookie:"Name"`
@@ -1397,19 +1397,19 @@ func Test_Bind_Cookie_Schema(t *testing.T) {
 		} `cookie:"Nested"`
 	}
 
-	c.Request().Header.SetCookie("Name", "tom")
-	c.Request().Header.SetCookie("Nested.Age", "10")
+	c.Context().Request.Header.SetCookie("Name", "tom")
+	c.Context().Request.Header.SetCookie("Nested.Age", "10")
 
 	h2 := new(Cookie2)
 	require.NoError(t, c.Bind().Cookie(h2))
 
-	c.Request().Header.DelCookie("Name")
+	c.Context().Request.Header.DelCookie("Name")
 	h2 = new(Cookie2)
 	require.NoError(t, c.Bind().Cookie(h2))
 
-	c.Request().Header.DelCookie("Name")
-	c.Request().Header.DelCookie("Nested.Age")
-	c.Request().Header.SetCookie("Nested.Agex", "10")
+	c.Context().Request.Header.DelCookie("Name")
+	c.Context().Request.Header.DelCookie("Nested.Age")
+	c.Context().Request.Header.SetCookie("Nested.Agex", "10")
 	h2 = new(Cookie2)
 	require.Equal(t, "Nested.Age is empty", c.Bind().Cookie(h2).Error())
 
@@ -1417,20 +1417,20 @@ func Test_Bind_Cookie_Schema(t *testing.T) {
 		Value int   `cookie:"Val,required"`
 		Next  *Node `cookie:"Next,required"`
 	}
-	c.Request().Header.SetCookie("Val", "1")
-	c.Request().Header.SetCookie("Next.Val", "3")
+	c.Context().Request.Header.SetCookie("Val", "1")
+	c.Context().Request.Header.SetCookie("Next.Val", "3")
 	n := new(Node)
 	require.NoError(t, c.Bind().Cookie(n))
 	require.Equal(t, 1, n.Value)
 	require.Equal(t, 3, n.Next.Value)
 
-	c.Request().Header.DelCookie("Val")
+	c.Context().Request.Header.DelCookie("Val")
 	n = new(Node)
 	require.Equal(t, "Val is empty", c.Bind().Cookie(n).Error())
 
-	c.Request().Header.SetCookie("Val", "3")
-	c.Request().Header.DelCookie("Next.Val")
-	c.Request().Header.SetCookie("Next.Value", "2")
+	c.Context().Request.Header.SetCookie("Val", "3")
+	c.Context().Request.Header.DelCookie("Next.Val")
+	c.Context().Request.Header.SetCookie("Next.Value", "2")
 	n = new(Node)
 	n.Next = new(Node)
 	require.NoError(t, c.Bind().Cookie(n))
@@ -1450,12 +1450,12 @@ func Benchmark_Bind_Cookie(b *testing.B) {
 		Name  string
 		Hobby []string
 	}
-	c.Request().SetBody([]byte(``))
-	c.Request().Header.SetContentType("")
+	c.Context().Request.SetBody([]byte(``))
+	c.Context().Request.Header.SetContentType("")
 
-	c.Request().Header.SetCookie("id", "1")
-	c.Request().Header.SetCookie("Name", "John Doe")
-	c.Request().Header.SetCookie("Hobby", "golang,fiber")
+	c.Context().Request.Header.SetCookie("id", "1")
+	c.Context().Request.Header.SetCookie("Name", "John Doe")
+	c.Context().Request.Header.SetCookie("Hobby", "golang,fiber")
 
 	q := new(Cookie)
 	b.ReportAllocs()
@@ -1474,12 +1474,12 @@ func Benchmark_Bind_Cookie_Map(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	c.Request().SetBody([]byte(``))
-	c.Request().Header.SetContentType("")
+	c.Context().Request.SetBody([]byte(``))
+	c.Context().Request.Header.SetContentType("")
 
-	c.Request().Header.SetCookie("id", "1")
-	c.Request().Header.SetCookie("Name", "John Doe")
-	c.Request().Header.SetCookie("Hobby", "golang,fiber")
+	c.Context().Request.Header.SetCookie("id", "1")
+	c.Context().Request.Header.SetCookie("Name", "John Doe")
+	c.Context().Request.Header.SetCookie("Hobby", "golang,fiber")
 
 	q := make(map[string][]string)
 	b.ReportAllocs()
@@ -1519,9 +1519,9 @@ func Test_Bind_CustomBinder(t *testing.T) {
 		Name string `json:"name"`
 	}
 	body := []byte(`{"name":"john"}`)
-	c.Request().SetBody(body)
-	c.Request().Header.SetContentType("test")
-	c.Request().Header.SetContentLength(len(body))
+	c.Context().Request.SetBody(body)
+	c.Context().Request.Header.SetContentType("test")
+	c.Context().Request.Header.SetContentLength(len(body))
 	d := new(Demo)
 
 	require.NoError(t, c.Bind().Body(d))
@@ -1603,7 +1603,7 @@ func Test_Bind_RepeatParserWithSameStruct(t *testing.T) {
 	require.NoError(t, c.Bind().Query(r))
 	require.Equal(t, "query_param", r.QueryParam)
 
-	c.Request().Header.Add("header_param", "header_param")
+	c.Context().Request.Header.Add("header_param", "header_param")
 	require.NoError(t, c.Bind().Header(r))
 	require.Equal(t, "header_param", r.HeaderParam)
 
@@ -1613,18 +1613,18 @@ func Test_Bind_RepeatParserWithSameStruct(t *testing.T) {
 	require.NoError(t, err)
 	err = w.Close()
 	require.NoError(t, err)
-	c.Request().Header.SetContentType(MIMEApplicationJSON)
-	c.Request().Header.Set(HeaderContentEncoding, "gzip")
-	c.Request().SetBody(gzipJSON.Bytes())
-	c.Request().Header.SetContentLength(len(gzipJSON.Bytes()))
+	c.Context().Request.Header.SetContentType(MIMEApplicationJSON)
+	c.Context().Request.Header.SetContentEncoding("gzip")
+	c.Context().Request.SetBody(gzipJSON.Bytes())
+	c.Context().Request.Header.SetContentLength(len(gzipJSON.Bytes()))
 	require.NoError(t, c.Bind().Body(r))
 	require.Equal(t, "body_param", r.BodyParam)
-	c.Request().Header.Del(HeaderContentEncoding)
+	c.Context().Request.Header.Del(HeaderContentEncoding)
 
 	testDecodeParser := func(contentType, body string) {
-		c.Request().Header.SetContentType(contentType)
-		c.Request().SetBody([]byte(body))
-		c.Request().Header.SetContentLength(len(body))
+		c.Context().Request.Header.SetContentType(contentType)
+		c.Context().Request.SetBody([]byte(body))
+		c.Context().Request.Header.SetContentLength(len(body))
 		require.NoError(t, c.Bind().Body(r))
 		require.Equal(t, "body_param", r.BodyParam)
 	}
