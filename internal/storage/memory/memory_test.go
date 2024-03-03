@@ -83,7 +83,7 @@ func Test_Storage_Memory_Get_NotExist(t *testing.T) {
 func Test_Storage_Memory_Delete(t *testing.T) {
 	t.Parallel()
 	var (
-		key = "john"
+		key = "john-delete"
 		val = []byte("doe")
 	)
 
