@@ -186,106 +186,14 @@ func (c *DefaultCtx) BaseURL() string {
 	return c.baseURI
 }
 
-// BodyRaw contains the raw body submitted in a POST request.
-// Returned value is only valid within the handler. Do not store any references.
-// Make copies or use the Immutable setting instead.
+// BodyRaw is an alias of [Request.BodyRaw]
 func (c *DefaultCtx) BodyRaw() []byte {
-	if c.app.config.Immutable {
-		return utils.CopyBytes(c.fasthttp.Request.Body())
-	}
-	return c.fasthttp.Request.Body()
+	return c.Request().BodyRaw()
 }
 
-func (c *DefaultCtx) tryDecodeBodyInOrder(
-	originalBody *[]byte,
-	encodings []string,
-) ([]byte, uint8, error) {
-	var (
-		err             error
-		body            []byte
-		decodesRealized uint8
-	)
-
-	for index, encoding := range encodings {
-		decodesRealized++
-		switch encoding {
-		case StrGzip:
-			body, err = c.fasthttp.Request.BodyGunzip()
-		case StrBr, StrBrotli:
-			body, err = c.fasthttp.Request.BodyUnbrotli()
-		case StrDeflate:
-			body, err = c.fasthttp.Request.BodyInflate()
-		default:
-			decodesRealized--
-			if len(encodings) == 1 {
-				body = c.fasthttp.Request.Body()
-			}
-			return body, decodesRealized, nil
-		}
-
-		if err != nil {
-			return nil, decodesRealized, err
-		}
-
-		// Only execute body raw update if it has a next iteration to try to decode
-		if index < len(encodings)-1 && decodesRealized > 0 {
-			if index == 0 {
-				tempBody := c.fasthttp.Request.Body()
-				*originalBody = make([]byte, len(tempBody))
-				copy(*originalBody, tempBody)
-			}
-			c.fasthttp.Request.SetBodyRaw(body)
-		}
-	}
-
-	return body, decodesRealized, nil
-}
-
-// Body contains the raw body submitted in a POST request.
-// This method will decompress the body if the 'Content-Encoding' header is provided.
-// It returns the original (or decompressed) body data which is valid only within the handler.
-// Don't store direct references to the returned data.
-// If you need to keep the body's data later, make a copy or use the Immutable option.
+// Body is an alias of [Request.Body]
 func (c *DefaultCtx) Body() []byte {
-	var (
-		err                error
-		body, originalBody []byte
-		headerEncoding     string
-		encodingOrder      = []string{"", "", ""}
-	)
-
-	// faster than peek
-	c.fasthttp.Request.Header.VisitAll(func(key, value []byte) {
-		if c.app.getString(key) == HeaderContentEncoding {
-			headerEncoding = c.app.getString(value)
-		}
-	})
-
-	// Split and get the encodings list, in order to attend the
-	// rule defined at: https://www.rfc-editor.org/rfc/rfc9110#section-8.4-5
-	encodingOrder = getSplicedStrList(headerEncoding, encodingOrder)
-	if len(encodingOrder) == 0 {
-		if c.app.config.Immutable {
-			return utils.CopyBytes(c.fasthttp.Request.Body())
-		}
-		return c.fasthttp.Request.Body()
-	}
-
-	var decodesRealized uint8
-	body, decodesRealized, err = c.tryDecodeBodyInOrder(&originalBody, encodingOrder)
-
-	// Ensure that the body will be the original
-	if originalBody != nil && decodesRealized > 0 {
-		c.fasthttp.Request.SetBodyRaw(originalBody)
-	}
-	if err != nil {
-		return []byte(err.Error())
-	}
-
-	if c.app.config.Immutable {
-		return utils.CopyBytes(body)
-	}
-	return body
+	return c.Request().Body()
 }
 
 // ClearCookie expires a specific cookie by key on the client side.
