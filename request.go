@@ -119,3 +119,11 @@ func (r *Request) tryDecodeBodyInOrder(
 
 	return body, decodesRealized, nil
 }
+
+// Get returns the HTTP request header specified by field.
+// Field names are case-insensitive
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting instead.
+func (r *Request) Get(key string, defaultValue ...string) string {
+	return defaultString(r.app.getString(r.fasthttp.Header.Peek(key)), defaultValue)
+}

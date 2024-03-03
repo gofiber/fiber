@@ -186,12 +186,12 @@ func (c *DefaultCtx) BaseURL() string {
 	return c.baseURI
 }
 
-// BodyRaw is an alias of [Request.BodyRaw]
+// BodyRaw is an alias of [Request.BodyRaw].
 func (c *DefaultCtx) BodyRaw() []byte {
 	return c.Request().BodyRaw()
 }
 
-// Body is an alias of [Request.Body]
+// Body is an alias of [Request.Body].
 func (c *DefaultCtx) Body() []byte {
 	return c.Request().Body()
 }
@@ -455,12 +455,9 @@ func (c *DefaultCtx) Fresh() bool {
 	return true
 }
 
-// Get returns the HTTP request header specified by field.
-// Field names are case-insensitive
-// Returned value is only valid within the handler. Do not store any references.
-// Make copies or use the Immutable setting instead.
+// Get is an alias of [Request.Get].
 func (c *DefaultCtx) Get(key string, defaultValue ...string) string {
-	return defaultString(c.app.getString(c.fasthttp.Request.Header.Peek(key)), defaultValue)
+	return c.Request().Get(key, defaultValue...)
 }
 
 // GetRespHeader returns the HTTP response header specified by field.
