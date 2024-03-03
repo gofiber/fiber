@@ -82,7 +82,7 @@ type Ctx interface {
 	// Request return the *fasthttp.Request object
 	// This allows you to use all fasthttp request methods
 	// https://godoc.org/github.com/valyala/fasthttp#Request
-	Request() *fasthttp.Request
+	Request() *Request
 
 	// Response return the *fasthttp.Response object
 	// This allows you to use all fasthttp response methods
@@ -498,6 +498,13 @@ func (c *DefaultCtx) release() {
 
 // SetReq resets fields of context that is relating to request.
 func (c *DefaultCtx) setReq(fctx *fasthttp.RequestCtx) {
+	// Set request and response
+	c.req = &Request{
+		app:      c.app,
+		fasthttp: &c.fasthttp.Request,
+	}
+	// c.res = &Response{app: c.app}
+
 	// Set paths
 	c.pathOriginal = c.app.getString(fctx.URI().PathOriginal())
 

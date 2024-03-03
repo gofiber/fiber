@@ -42,8 +42,10 @@ type contextKey int
 const userContextKey contextKey = 0 // __local_user_context__
 
 type DefaultCtx struct {
-	app                 *App                 // Reference to *App
-	route               *Route               // Reference to *Route
+	app   *App     // Reference to *App
+	route *Route   // Reference to *Route
+	req   *Request // Reference to *Request
+	// res				*Response // Reference to *Response
 	indexRoute          int                  // Index of the current route
 	indexHandler        int                  // Index of the current handler
 	method              string               // HTTP method
@@ -253,7 +255,7 @@ func (c *DefaultCtx) Body() []byte {
 	)
 
 	// faster than peek
-	c.Request().Header.VisitAll(func(key, value []byte) {
+	c.fasthttp.Request.Header.VisitAll(func(key, value []byte) {
 		if c.app.getString(key) == HeaderContentEncoding {
 			headerEncoding = c.app.getString(value)
 		}
@@ -382,8 +384,8 @@ func (c *DefaultCtx) Download(file string, filename ...string) error {
 // Request return the *fasthttp.Request object
 // This allows you to use all fasthttp request methods
 // https://godoc.org/github.com/valyala/fasthttp#Request
-func (c *DefaultCtx) Request() *fasthttp.Request {
-	return &c.fasthttp.Request
+func (c *DefaultCtx) Request() *Request {
+	return c.req
 }
 
 // Response return the *fasthttp.Response object
@@ -578,7 +580,7 @@ func (c *DefaultCtx) GetRespHeaders() map[string][]string {
 // Make copies or use the Immutable setting instead.
 func (c *DefaultCtx) GetReqHeaders() map[string][]string {
 	headers := make(map[string][]string)
-	c.Request().Header.VisitAll(func(k, v []byte) {
+	c.fasthttp.Request.Header.VisitAll(func(k, v []byte) {
 		key := c.app.getString(k)
 		headers[key] = append(headers[key], c.app.getString(v))
 	})
@@ -946,7 +948,7 @@ func (c *DefaultCtx) RestartRouting() error {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (c *DefaultCtx) OriginalURL() string {
-	return c.app.getString(c.fasthttp.Request.Header.RequestURI())
+	return c.req.OriginalURL()
 }
 
 // Params is used to get the route parameters.
