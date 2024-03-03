@@ -465,7 +465,7 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 
 			// Check if body raw is the same as previous before decompression
 			require.Equal(
-				t, tCase.body, c.Request().Body(),
+				t, tCase.body, c.Request().BodyRaw(),
 				"Body raw must be the same as set before",
 			)
 		})
@@ -658,7 +658,7 @@ func Test_Ctx_Body_With_Compression_Immutable(t *testing.T) {
 
 			// Check if body raw is the same as previous before decompression
 			require.Equal(
-				t, tCase.body, c.Request().Body(),
+				t, tCase.body, c.Request().BodyRaw(),
 				"Body raw must be the same as set before",
 			)
 		})

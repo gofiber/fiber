@@ -498,18 +498,16 @@ func (c *DefaultCtx) release() {
 
 // SetReq resets fields of context that is relating to request.
 func (c *DefaultCtx) setReq(fctx *fasthttp.RequestCtx) {
-	// Set request and response
-	c.req = &Request{
-		app:      c.app,
-		fasthttp: &c.fasthttp.Request,
-	}
-	// c.res = &Response{app: c.app}
-
 	// Set paths
 	c.pathOriginal = c.app.getString(fctx.URI().PathOriginal())
 
 	// Attach *fasthttp.RequestCtx to ctx
 	c.fasthttp = fctx
+	c.req = &Request{
+		app:      c.app,
+		fasthttp: &c.fasthttp.Request,
+	}
+	// c.res = &Response{app: c.app}
 
 	// Set method
 	c.method = c.app.getString(fctx.Request.Header.Method())

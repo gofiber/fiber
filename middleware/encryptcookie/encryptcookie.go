@@ -18,14 +18,14 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Decrypt request cookies
-		c.Request().Header.VisitAllCookie(func(key, value []byte) {
+		c.Context().Request.Header.VisitAllCookie(func(key, value []byte) {
 			keyString := string(key)
 			if !isDisabled(keyString, cfg.Except) {
 				decryptedValue, err := cfg.Decryptor(string(value), cfg.Key)
 				if err != nil {
-					c.Request().Header.SetCookieBytesKV(key, nil)
+					c.Context().Request.Header.SetCookieBytesKV(key, nil)
 				} else {
-					c.Request().Header.SetCookie(string(key), decryptedValue)
+					c.Context().Request.Header.SetCookie(string(key), decryptedValue)
 				}
 			}
 		})

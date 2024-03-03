@@ -88,7 +88,7 @@ func Test_CSRF_WithSession(t *testing.T) {
 
 	// the session string is no longer be 123
 	newSessionIDString := sess.ID()
-	app.AcquireCtx(ctx).Request().Header.SetCookie("_session", newSessionIDString)
+	app.AcquireCtx(ctx).Context().Request.Header.SetCookie("_session", newSessionIDString)
 
 	// middleware config
 	config := Config{
@@ -221,7 +221,7 @@ func Test_CSRF_ExpiredToken_WithSession(t *testing.T) {
 
 	// get session id
 	newSessionIDString := sess.ID()
-	app.AcquireCtx(ctx).Request().Header.SetCookie("_session", newSessionIDString)
+	app.AcquireCtx(ctx).Context().Request.Header.SetCookie("_session", newSessionIDString)
 
 	// middleware config
 	config := Config{
@@ -1029,7 +1029,7 @@ func Test_CSRF_DeleteToken_WithSession(t *testing.T) {
 
 	// the session string is no longer be 123
 	newSessionIDString := sess.ID()
-	app.AcquireCtx(ctx).Request().Header.SetCookie("_session", newSessionIDString)
+	app.AcquireCtx(ctx).Context().Request.Header.SetCookie("_session", newSessionIDString)
 
 	// middleware config
 	config := Config{

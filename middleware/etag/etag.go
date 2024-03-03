@@ -65,7 +65,7 @@ func New(config ...Config) fiber.Handler {
 		etag := bb.Bytes()
 
 		// Get ETag header from request
-		clientEtag := c.Request().Header.Peek(fiber.HeaderIfNoneMatch)
+		clientEtag := c.Context().Request.Header.Peek(fiber.HeaderIfNoneMatch)
 
 		// Check if client's ETag is weak
 		if bytes.HasPrefix(clientEtag, weakPrefix) {

@@ -25,7 +25,7 @@ func TestStore_getSessionID(t *testing.T) {
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 		// set cookie
-		ctx.Request().Header.SetCookie(store.sessionName, expectedID)
+		ctx.Context().Request.Header.SetCookie(store.sessionName, expectedID)
 
 		require.Equal(t, expectedID, store.getSessionID(ctx))
 	})
@@ -40,7 +40,7 @@ func TestStore_getSessionID(t *testing.T) {
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 		// set header
-		ctx.Request().Header.Set(store.sessionName, expectedID)
+		ctx.Context().Request.Header.Set(store.sessionName, expectedID)
 
 		require.Equal(t, expectedID, store.getSessionID(ctx))
 	})
@@ -55,7 +55,7 @@ func TestStore_getSessionID(t *testing.T) {
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 		// set url parameter
-		ctx.Request().SetRequestURI(fmt.Sprintf("/path?%s=%s", store.sessionName, expectedID))
+		ctx.Context().Request.SetRequestURI(fmt.Sprintf("/path?%s=%s", store.sessionName, expectedID))
 
 		require.Equal(t, expectedID, store.getSessionID(ctx))
 	})
@@ -76,7 +76,7 @@ func TestStore_Get(t *testing.T) {
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 		// set cookie
-		ctx.Request().Header.SetCookie(store.sessionName, unexpectedID)
+		ctx.Context().Request.Header.SetCookie(store.sessionName, unexpectedID)
 
 		acquiredSession, err := store.Get(ctx)
 		require.NoError(t, err)

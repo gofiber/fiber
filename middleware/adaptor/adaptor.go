@@ -84,13 +84,13 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 		nextHandler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 			next = true
 			// Convert again in case request may modify by middleware
-			c.Request().Header.SetMethod(r.Method)
-			c.Request().SetRequestURI(r.RequestURI)
-			c.Request().SetHost(r.Host)
-			c.Request().Header.SetHost(r.Host)
+			c.Context().Request.Header.SetMethod(r.Method)
+			c.Context().Request.SetRequestURI(r.RequestURI)
+			c.Context().Request.SetHost(r.Host)
+			c.Context().Request.Header.SetHost(r.Host)
 			for key, val := range r.Header {
 				for _, v := range val {
-					c.Request().Header.Set(key, v)
+					c.Context().Request.Header.Set(key, v)
 				}
 			}
 			CopyContextToFiberContext(r.Context(), c.Context())
