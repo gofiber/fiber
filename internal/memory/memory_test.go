@@ -30,7 +30,7 @@ func Test_Memory(t *testing.T) {
 	store.Set(key, val, exp)
 	time.Sleep(1100 * time.Millisecond)
 	result = store.Get(key)
-	require.Nil(t, result) // TODO: This is failing
+	require.Nil(t, result)
 
 	// Set key with value and no expiration
 	store.Set(key, val, 0)
