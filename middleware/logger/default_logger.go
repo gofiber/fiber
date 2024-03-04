@@ -156,11 +156,15 @@ func appendInt(output Buffer, v int) (int, error) {
 
 // writeLog writes a msg to w, printing a warning to stderr if the log fails.
 func writeLog(w io.Writer, msg []byte) {
+	if w == nil {
+		fmt.Fprintf(os.Stderr, "writeLog: io.Writer is nil\n")
+		return
+	}
 	if _, err := w.Write(msg); err != nil {
-		// Write error to output
-		if _, err := w.Write([]byte(err.Error())); err != nil {
-			// There is something wrong with the given io.Writer
-			_, _ = fmt.Fprintf(os.Stderr, "Failed to write to log, %v\n", err)
+		// Attempt to write the error message to the original writer, w
+		if _, err := w.Write([]byte("Failed to write log message: " + err.Error())); err != nil {
+			// If writing to w fails, fall back to stderr
+			fmt.Fprintf(os.Stderr, "Failed to write to log, %v\n", err)
 		}
 	}
 }

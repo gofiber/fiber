@@ -604,14 +604,24 @@ func (a *Agent) MultipartForm(args *Args) *Agent {
 		})
 	}
 
-	for _, ff := range a.formFiles {
-		w, err := a.mw.CreateFormFile(ff.Fieldname, ff.Name)
-		if err != nil {
-			a.errs = append(a.errs, err)
-			continue
-		}
-		if _, err = w.Write(ff.Content); err != nil {
-			a.errs = append(a.errs, err)
+	// Check if a.formFiles is not nil to avoid nil dereference
+	if a.formFiles != nil {
+		for _, ff := range a.formFiles {
+			// Additionally, check if ff is not nil to avoid nil dereference
+			if ff == nil {
+				continue // Skip this iteration if ff is nil
+			}
+			w, err := a.mw.CreateFormFile(ff.Fieldname, ff.Name)
+			if err != nil {
+				a.errs = append(a.errs, err)
+				continue
+			}
+			// Check if ff.Content is not nil before writing
+			if ff.Content != nil {
+				if _, err = w.Write(ff.Content); err != nil {
+					a.errs = append(a.errs, err)
+				}
+			}
 		}
 	}
 
@@ -854,10 +864,12 @@ func (a *Agent) reset() {
 	a.Name = ""
 	a.NoDefaultUserAgentHeader = false
 	for i, ff := range a.formFiles {
-		if ff.autoRelease {
-			ReleaseFormFile(ff)
+		if ff != nil {
+			if ff.autoRelease {
+				ReleaseFormFile(ff)
+			}
+			a.formFiles[i] = nil
 		}
-		a.formFiles[i] = nil
 	}
 	a.formFiles = a.formFiles[:0]
 }

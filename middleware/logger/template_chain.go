@@ -17,9 +17,24 @@ import (
 func buildLogFuncChain(cfg *Config, tagFunctions map[string]LogFunc) ([][]byte, []LogFunc, error) {
 	// process flow is copied from the fasttemplate flow https://github.com/valyala/fasttemplate/blob/2a2d1afadadf9715bfa19683cdaeac8347e5d9f9/template.go#L23-L62
 	templateB := utils.UnsafeBytes(cfg.Format)
+	if templateB == nil {
+		return nil, nil, errors.New("template is nil")
+	}
+
 	startTagB := utils.UnsafeBytes(startTag)
+	if startTagB == nil {
+		return nil, nil, errors.New("startTag is nil")
+	}
+
 	endTagB := utils.UnsafeBytes(endTag)
+	if endTagB == nil {
+		return nil, nil, errors.New("endTag is nil")
+	}
+
 	paramSeparatorB := utils.UnsafeBytes(paramSeparator)
+	if paramSeparatorB == nil {
+		return nil, nil, errors.New("paramSeparator is nil")
+	}
 
 	var fixParts [][]byte
 	var funcChain []LogFunc
