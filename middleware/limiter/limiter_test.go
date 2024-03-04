@@ -15,9 +15,6 @@ import (
 
 // go test -run Test_Limiter_Concurrency_Store -race -v
 func Test_Limiter_Concurrency_Store(t *testing.T) {
-	t.Parallel()
-	// Test concurrency using a custom store
-
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -62,9 +59,6 @@ func Test_Limiter_Concurrency_Store(t *testing.T) {
 
 // go test -run Test_Limiter_Concurrency -race -v
 func Test_Limiter_Concurrency(t *testing.T) {
-	t.Parallel()
-	// Test concurrency using a default store
-
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -343,7 +337,6 @@ func Test_Limiter_Fixed_Window_Custom_Storage_Skip_Failed_Requests(t *testing.T)
 
 // go test -run Test_Limiter_Sliding_Window_Skip_Failed_Requests -v
 func Test_Limiter_Sliding_Window_Skip_Failed_Requests(t *testing.T) {
-	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -420,9 +413,6 @@ func Test_Limiter_Sliding_Window_Custom_Storage_Skip_Failed_Requests(t *testing.
 
 // go test -run Test_Limiter_Fixed_Window_Skip_Successful_Requests -v
 func Test_Limiter_Fixed_Window_Skip_Successful_Requests(t *testing.T) {
-	t.Parallel()
-	// Test concurrency using a default store
-
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -460,9 +450,6 @@ func Test_Limiter_Fixed_Window_Skip_Successful_Requests(t *testing.T) {
 
 // go test -run Test_Limiter_Fixed_Window_Custom_Storage_Skip_Successful_Requests -v
 func Test_Limiter_Fixed_Window_Custom_Storage_Skip_Successful_Requests(t *testing.T) {
-	t.Parallel()
-	// Test concurrency using a default store
-
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -501,9 +488,6 @@ func Test_Limiter_Fixed_Window_Custom_Storage_Skip_Successful_Requests(t *testin
 
 // go test -run Test_Limiter_Sliding_Window_Skip_Successful_Requests -v
 func Test_Limiter_Sliding_Window_Skip_Successful_Requests(t *testing.T) {
-	t.Parallel()
-	// Test concurrency using a default store
-
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -541,9 +525,6 @@ func Test_Limiter_Sliding_Window_Skip_Successful_Requests(t *testing.T) {
 
 // go test -run Test_Limiter_Sliding_Window_Custom_Storage_Skip_Successful_Requests -v
 func Test_Limiter_Sliding_Window_Custom_Storage_Skip_Successful_Requests(t *testing.T) {
-	t.Parallel()
-	// Test concurrency using a default store
-
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -678,7 +659,6 @@ func Benchmark_Limiter(b *testing.B) {
 
 // go test -run Test_Sliding_Window -race -v
 func Test_Sliding_Window(t *testing.T) {
-	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{
 		Max:               10,
