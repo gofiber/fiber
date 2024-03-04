@@ -30,4 +30,13 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
 
-      - run: go test ./... -v -race -count=1
+      - name: Test
+        run: go test ./... -v -race -count=1 -coverprofile=coverage.txt -covermode=atomic
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4.0.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          file: ./coverage.txt
+          flags: unittests
+          slug: gofiber/fiber
