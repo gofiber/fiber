@@ -487,11 +487,11 @@ func Test_Proxy_DoTimeout_Timeout(t *testing.T) {
 
 	app := fiber.New()
 	app.Get("/test", func(c fiber.Ctx) error {
-		return DoTimeout(c, "http://"+addr, time.Second)
+		return DoTimeout(c, "http://"+addr, 1*time.Second)
 	})
 
-	_, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), int((1*time.Second)/time.Millisecond))
-	require.Equal(t, errors.New("test: timeout error 1000ms"), err1)
+	_, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), int((1*time.Second)/(10*time.Millisecond)))
+	require.Equal(t, errors.New("test: timeout error 100ms"), err1)
 }
 
 // go test -race -run Test_Proxy_DoDeadline_RestoreOriginalURL

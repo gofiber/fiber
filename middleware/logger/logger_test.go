@@ -230,7 +230,6 @@ func getLatencyTimeUnits() []struct {
 
 // go test -run Test_Logger_WithLatency
 func Test_Logger_WithLatency(t *testing.T) {
-	t.Parallel()
 	buff := bytebufferpool.Get()
 	defer bytebufferpool.Put(buff)
 	app := fiber.New()

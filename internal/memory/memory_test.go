@@ -9,9 +9,7 @@ import (
 )
 
 // go test -run Test_Memory -v -race
-
 func Test_Memory(t *testing.T) {
-	t.Parallel()
 	store := New()
 	var (
 		key     = "john"
@@ -19,38 +17,41 @@ func Test_Memory(t *testing.T) {
 		exp     = 1 * time.Second
 	)
 
+	// Set key with value
 	store.Set(key, val, 0)
-	store.Set(key, val, 0)
-
 	result := store.Get(key)
 	require.Equal(t, val, result)
 
+	// Get non-existing key
 	result = store.Get("empty")
-	require.Equal(t, nil, result)
+	require.Nil(t, result)
 
+	// Set key with value and ttl
 	store.Set(key, val, exp)
 	time.Sleep(1100 * time.Millisecond)
-
 	result = store.Get(key)
-	require.Equal(t, nil, result)
+	require.Nil(t, result) // TODO: This is failing
 
+	// Set key with value and no expiration
 	store.Set(key, val, 0)
 	result = store.Get(key)
 	require.Equal(t, val, result)
 
+	// Delete key
 	store.Delete(key)
 	result = store.Get(key)
-	require.Equal(t, nil, result)
+	require.Nil(t, result)
 
-	store.Set("john", val, 0)
-	store.Set("doe", val, 0)
+	// Reset all keys
+	store.Set("john-reset", val, 0)
+	store.Set("doe-reset", val, 0)
 	store.Reset()
 
-	result = store.Get("john")
-	require.Equal(t, nil, result)
-
-	result = store.Get("doe")
-	require.Equal(t, nil, result)
+	// Check if all keys are deleted
+	result = store.Get("john-reset")
+	require.Nil(t, result)
+	result = store.Get("doe-reset")
+	require.Nil(t, result)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Memory -benchmem -count=4
