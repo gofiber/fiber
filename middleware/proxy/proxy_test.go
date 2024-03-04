@@ -516,8 +516,6 @@ func Test_Proxy_DoDeadline_RestoreOriginalURL(t *testing.T) {
 
 // go test -race -run Test_Proxy_DoDeadline_PastDeadline
 func Test_Proxy_DoDeadline_PastDeadline(t *testing.T) {
-	t.Parallel()
-
 	_, addr := createProxyTestServer(t, func(c fiber.Ctx) error {
 		time.Sleep(time.Second * 5)
 		return c.SendString("proxied")
@@ -525,7 +523,7 @@ func Test_Proxy_DoDeadline_PastDeadline(t *testing.T) {
 
 	app := fiber.New()
 	app.Get("/test", func(c fiber.Ctx) error {
-		return DoDeadline(c, "http://"+addr, time.Now().Add(2*time.Second))
+		return DoDeadline(c, "http://"+addr, time.Now().Add(time.Second))
 	})
 
 	_, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), int((1*time.Second)/time.Millisecond))
