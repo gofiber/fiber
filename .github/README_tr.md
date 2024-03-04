@@ -318,7 +318,7 @@ func main() {
         Views: pug.New("./views", ".pug"),
     })
 
-    // Ve şimdi `./views/home.pug` templateni şu şekilde çağırabilirsiniz:
+    // Ve şimdi `./views/home.pug` template'ini şu şekilde çağırabilirsiniz:
     app.Get("/", func(c fiber.Ctx) error {
         return c.Render("home", fiber.Map{
             "title": "Homepage",
