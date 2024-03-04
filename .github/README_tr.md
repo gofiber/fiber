@@ -142,7 +142,7 @@ go get -u github.com/gofiber/fiber/v3
 -   [Statik dosya](https://docs.gofiber.io/api/app#static) sunumu
 -   Olağanüstü [performans](https://docs.gofiber.io/extra/benchmarks)
 -   [Düşük bellek](https://docs.gofiber.io/extra/benchmarks) kullanımı
--   [API uç noktaları](https://docs.gofiber.io/api/ctx)
+-   [API uç noktaları (endpoints)](https://docs.gofiber.io/api/ctx)
 -   Middleware'lar & [Next](https://docs.gofiber.io/api/ctx#next) desteği
 -   [Hızlı](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) sunucu taraflı programlama
 -   [Template motorları](https://github.com/gofiber/template)
