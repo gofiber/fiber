@@ -124,15 +124,16 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		// Only allow GET, HEAD, and OPTIONS requests
-		if c.Method() != fiber.MethodGet && c.Method() != fiber.MethodHead && c.Method() != fiber.MethodOptions {
-			c.Status(fiber.StatusMethodNotAllowed)
+		// Only allow GET, HEAD and OPTIONS requests
+		if c.Method() != fiber.MethodGet && c.Method() != fiber.MethodHead {
+			if c.Method() != fiber.MethodOptions {
+				c.Status(fiber.StatusMethodNotAllowed)
+			} else {
+				c.Status(fiber.StatusOK)
+			}
 			c.Set(fiber.HeaderAllow, hAllow)
+			c.Set(fiber.HeaderContentLength, hZero)
 			return nil
-		}
-
-		if c.Method() == fiber.MethodOptions {
-			return c.SendStatus(fiber.StatusOK)
 		}
 
 		// Serve cached favicon
