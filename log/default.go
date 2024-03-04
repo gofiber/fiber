@@ -34,6 +34,7 @@ func (l *defaultLogger) privateLog(lv Level, fmtArgs []any) {
 	if lv == LevelPanic {
 		panic(buf.String())
 	}
+
 	buf.Reset()
 	bytebufferpool.Put(buf)
 	if lv == LevelFatal {
@@ -56,6 +57,7 @@ func (l *defaultLogger) privateLogf(lv Level, format string, fmtArgs []any) {
 	} else {
 		_, _ = fmt.Fprint(buf, fmtArgs...)
 	}
+
 	_ = l.stdlog.Output(l.depth, buf.String()) //nolint:errcheck // It is fine to ignore the error
 	if lv == LevelPanic {
 		panic(buf.String())
