@@ -1054,6 +1054,7 @@ func Test_Client_Agent_InsecureSkipVerify(t *testing.T) {
 		return c.SendString("ignore tls")
 	})
 
+	// We can't use startServer here because the listener is a different type
 	go func() {
 		//nolint:errcheck // We don't care about the error here
 		app.Listener(ln, ListenConfig{
@@ -1091,6 +1092,7 @@ func Test_Client_Agent_TLS(t *testing.T) {
 		return c.SendString("tls")
 	})
 
+	// We can't use startServer here because the listener is a different type
 	go func() {
 		//nolint:errcheck // We don't care about the error here
 		app.Listener(ln, ListenConfig{
