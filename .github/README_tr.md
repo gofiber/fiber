@@ -128,7 +128,7 @@ Bu testler [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r1
 
 ## ⚙️ Kurulum
 
-Go'nun `1.20` sürümü ([indir](https://go.dev/dl/)) veya daha yüksek bir sürüm gerekli.
+Go'nun yüklü olduğundan emin olun ([indir](https://go.dev/dl/)). `1.20` veya veya daha yüksek bir sürüme sahip olmanız gerekmektedir.
 
 Bir dizin oluşturup dizinin içinde `go mod init github.com/your/repo` komutunu yazarak projenizi geliştirmeye başlayın ([daha fazla öğren](https://go.dev/blog/using-go-modules)). Ardından Fiber'ı kurmak için [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) komutunu çalıştırın:
 
