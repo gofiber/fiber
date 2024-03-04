@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"errors"
+	"fmt"
 	"io"
 	urlpkg "net/url"
 	"os"
@@ -226,21 +227,19 @@ func (c *Client) SetRootCertificateFromString(pem string) *Client {
 }
 
 // SetProxyURL sets proxy url in client. It will apply via core to hostclient.
-func (c *Client) SetProxyURL(proxyURL string) *Client {
+func (c *Client) SetProxyURL(proxyURL string) error {
 	pURL, err := urlpkg.Parse(proxyURL)
 	if err != nil {
-		c.logger.Panicf("client: %v", err)
-		return c
+		return fmt.Errorf("client: %w", err)
 	}
 
 	if pURL.Scheme != "http" && pURL.Scheme != "https" {
-		c.logger.Panicf("client: %v", ErrInvalidProxyURL)
-		return c
+		return fmt.Errorf("client: %w", ErrInvalidProxyURL)
 	}
 
 	c.proxyURL = pURL.String()
 
-	return c
+	return nil
 }
 
 // RetryConfig returns retry config in client.

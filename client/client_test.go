@@ -1549,8 +1549,11 @@ func Test_Client_SetProxyURL(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 		client := NewClient().SetDial(dial)
-		client.SetProxyURL("http://test.com")
-		_, err := client.Get("http://localhost:3000")
+		err := client.SetProxyURL("http://test.com")
+
+		require.NoError(t, err)
+
+		_, err = client.Get("http://localhost:3000")
 
 		require.NoError(t, err)
 	})
@@ -1559,18 +1562,18 @@ func Test_Client_SetProxyURL(t *testing.T) {
 		t.Parallel()
 		client := NewClient()
 
-		require.Panics(t, func() {
-			client.SetProxyURL(":this is not a url")
-		})
+		err := client.SetProxyURL(":this is not a url")
+
+		require.Error(t, err)
 	})
 
 	t.Run("error", func(t *testing.T) {
 		t.Parallel()
 		client := NewClient()
 
-		require.Panics(t, func() {
-			client.SetProxyURL("htgdftp://test.com")
-		})
+		err := client.SetProxyURL("htgdftp://test.com")
+
+		require.Error(t, err)
 	})
 }
 
