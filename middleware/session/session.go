@@ -214,6 +214,10 @@ func (s *Session) SetExpiry(exp time.Duration) {
 }
 
 func (s *Session) setSession() {
+	if s.config == nil {
+		return
+	}
+
 	if s.config.source == SourceHeader {
 		s.ctx.Request().Header.SetBytesV(s.config.sessionName, []byte(s.id))
 		s.ctx.Response().Header.SetBytesV(s.config.sessionName, []byte(s.id))
@@ -246,6 +250,9 @@ func (s *Session) setSession() {
 }
 
 func (s *Session) delSession() {
+	if s.config == nil {
+		return
+	}
 	if s.config.source == SourceHeader {
 		s.ctx.Request().Header.Del(s.config.sessionName)
 		s.ctx.Response().Header.Del(s.config.sessionName)

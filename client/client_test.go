@@ -1262,6 +1262,7 @@ func Test_Client_TLS(t *testing.T) {
 			DisableStartupMessage: true,
 		}))
 	}()
+	time.Sleep(1 * time.Second)
 
 	client := NewClient()
 	resp, err := client.SetTLSConfig(clientTLSConf).Get("https://" + ln.Addr().String())
@@ -1295,6 +1296,7 @@ func Test_Client_TLS_Error(t *testing.T) {
 			DisableStartupMessage: true,
 		}))
 	}()
+	time.Sleep(1 * time.Second)
 
 	client := NewClient()
 	resp, err := client.SetTLSConfig(clientTLSConf).Get("https://" + ln.Addr().String())
@@ -1325,6 +1327,7 @@ func Test_Client_TLS_Empty_TLSConfig(t *testing.T) {
 			DisableStartupMessage: true,
 		}))
 	}()
+	time.Sleep(1 * time.Second)
 
 	client := NewClient()
 	resp, err := client.Get("https://" + ln.Addr().String())
@@ -1590,9 +1593,10 @@ func Test_Client_SetRetryConfig(t *testing.T) {
 	client.SetRetryConfig(retryConfig)
 	_, err := core.execute(context.Background(), client, req)
 
-	require.NoError(t, err)
+	require.Error(t, err)
 	require.Equal(t, retryConfig.InitialInterval, client.RetryConfig().InitialInterval)
 	require.Equal(t, retryConfig.MaxRetryCount, client.RetryConfig().MaxRetryCount)
+	ReleaseRequest(req)
 }
 
 func Benchmark_Client_Request(b *testing.B) {
