@@ -1587,7 +1587,7 @@ func Test_Client_SetRetryConfig(t *testing.T) {
 	}
 
 	core, client, req := newCore(), NewClient(), AcquireRequest()
-	req.SetURL("http://example.com")
+	req.SetURL("http://exampleretry.com")
 	client.SetRetryConfig(retryConfig)
 	_, err := core.execute(context.Background(), client, req)
 
