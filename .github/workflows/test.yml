@@ -30,8 +30,11 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
 
+      - name: Install gotestsum
+        run: go install gotest.tools/gotestsum@v1.11.0
+
       - name: Test
-        run: go test ./... -v -race -count=1 -coverprofile=coverage.txt -covermode=atomic
+        run: gotestsum -f testname -- ./... -race -count=1 -coverprofile=coverage.txt -covermode=atomic
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v4.0.1

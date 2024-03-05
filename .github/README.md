@@ -562,7 +562,7 @@ func main() {
 }
 ```
 
-### Recover middleware
+### Recover Middleware
 
 📖 [Recover](https://docs.gofiber.io/api/middleware/recover)
 
