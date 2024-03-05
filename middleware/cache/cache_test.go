@@ -44,8 +44,6 @@ func Test_Cache_CacheControl(t *testing.T) {
 }
 
 func Test_Cache_Expired(t *testing.T) {
-	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New(Config{Expiration: 2 * time.Second}))
 
@@ -410,8 +408,6 @@ func Test_Cache_Post(t *testing.T) {
 }
 
 func Test_Cache_NothingToCache(t *testing.T) {
-	t.Parallel()
-
 	app := fiber.New()
 
 	app.Use(New(Config{Expiration: -(time.Second * 1)}))
