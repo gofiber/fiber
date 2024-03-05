@@ -2,7 +2,6 @@ package proxy
 
 import (
 	"bytes"
-	"crypto/tls"
 	"net/url"
 	"strings"
 	"sync"
@@ -104,13 +103,6 @@ var client = &fasthttp.Client{
 }
 
 var lock sync.RWMutex
-
-// WithTLSConfig update http client with a user specified tls.config
-// This function should be called before Do and Forward.
-// Deprecated: use WithClient instead.
-func WithTLSConfig(tlsConfig *tls.Config) {
-	client.TLSConfig = tlsConfig
-}
 
 // WithClient sets the global proxy client.
 // This function should be called before Do and Forward.

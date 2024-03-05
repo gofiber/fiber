@@ -10,7 +10,6 @@ import (
 	"io"
 	"log"
 	"net"
-	"net/http"
 	"os"
 	"strings"
 	"sync"
@@ -18,6 +17,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
@@ -82,46 +82,30 @@ func Test_Listen_Graceful_Shutdown(t *testing.T) {
 		Time               time.Duration
 		ExpectedBody       string
 		ExpectedStatusCode int
-		ExceptedErrsLen    int
+		ExpectedErr        error
 	}{
-		{Time: 100 * time.Millisecond, ExpectedBody: "example.com", ExpectedStatusCode: StatusOK, ExceptedErrsLen: 0},
-		{Time: 3 * time.Second, ExpectedBody: "", ExpectedStatusCode: 0, ExceptedErrsLen: 1},
+		{Time: 100 * time.Millisecond, ExpectedBody: "example.com", ExpectedStatusCode: StatusOK, ExpectedErr: nil},
+		{Time: 500 * time.Millisecond, ExpectedBody: "", ExpectedStatusCode: StatusOK, ExpectedErr: errors.New("InmemoryListener is already closed: use of closed network connection")},
 	}
 
 	for _, tc := range testCases {
 		time.Sleep(tc.Time)
 
-		client := &http.Client{
-			Transport: &http.Transport{
-				DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
-					return ln.Dial()
-				},
-			},
-		}
+		req := fasthttp.AcquireRequest()
+		req.SetRequestURI("http://example.com")
 
-		// Making the request
-		actualErrsLen := 0
-		resp, err := client.Get("http://example.com") //nolint:noctx // no need for context in tests
-		if err != nil {
-			actualErrsLen++
-		}
+		client := fasthttp.HostClient{}
+		client.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
 
-		if resp != nil {
-			bodyBytes, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
-			body := string(bodyBytes)
+		resp := fasthttp.AcquireResponse()
+		err := client.Do(req, resp)
 
-			// Checking the status code and response body
-			require.Equal(t, tc.ExpectedStatusCode, resp.StatusCode)
-			require.Equal(t, tc.ExpectedBody, body)
+		require.Equal(t, tc.ExpectedErr, err)
+		require.Equal(t, tc.ExpectedStatusCode, resp.StatusCode())
+		require.Equal(t, tc.ExpectedBody, string(resp.Body()))
 
-			if resp.StatusCode >= 400 {
-				actualErrsLen++
-			}
-			require.NoError(t, resp.Body.Close())
-		}
-
-		require.Equal(t, tc.ExceptedErrsLen, actualErrsLen)
+		fasthttp.ReleaseRequest(req)
+		fasthttp.ReleaseResponse(resp)
 	}
 
 	mu.Lock()
