@@ -291,7 +291,6 @@ func (r *Redirect) Back(fallback ...string) error {
 // setFlash is a method to get flash messages before removing them
 func (r *Redirect) setFlash() {
 	if r.c == nil {
-		// Handle the nil case, possibly logging an error or returning early.
 		return
 	}
 

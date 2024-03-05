@@ -19,8 +19,6 @@ import (
 
 // go test -run Test_Idempotency
 func Test_Idempotency(t *testing.T) {
-	t.Parallel()
-
 	app := fiber.New()
 
 	app.Use(func(c fiber.Ctx) error {

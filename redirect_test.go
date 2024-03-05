@@ -248,8 +248,6 @@ func Test_Redirect_setFlash(t *testing.T) {
 
 // go test -run Test_Redirect_Request
 func Test_Redirect_Request(t *testing.T) {
-	t.Parallel()
-
 	app := New()
 
 	app.Get("/", func(c Ctx) error {

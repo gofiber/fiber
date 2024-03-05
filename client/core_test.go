@@ -56,8 +56,6 @@ func Test_AddMissing_Port(t *testing.T) {
 }
 
 func Test_Exec_Func(t *testing.T) {
-	t.Parallel()
-
 	ln := fasthttputil.NewInmemoryListener()
 	app := fiber.New()
 
@@ -81,7 +79,6 @@ func Test_Exec_Func(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 
 	t.Run("normal request", func(t *testing.T) {
-		t.Parallel()
 		core, client, req := newCore(), NewClient(), AcquireRequest()
 		core.ctx = context.Background()
 		core.client = client
@@ -97,7 +94,6 @@ func Test_Exec_Func(t *testing.T) {
 	})
 
 	t.Run("the request return an error", func(t *testing.T) {
-		t.Parallel()
 		core, client, req := newCore(), NewClient(), AcquireRequest()
 		core.ctx = context.Background()
 		core.client = client
@@ -114,7 +110,6 @@ func Test_Exec_Func(t *testing.T) {
 	})
 
 	t.Run("the request timeout", func(t *testing.T) {
-		t.Parallel()
 		core, client, req := newCore(), NewClient(), AcquireRequest()
 		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 		defer cancel()
@@ -133,8 +128,6 @@ func Test_Exec_Func(t *testing.T) {
 }
 
 func Test_Execute(t *testing.T) {
-	t.Parallel()
-
 	ln := fasthttputil.NewInmemoryListener()
 	app := fiber.New()
 
@@ -156,7 +149,6 @@ func Test_Execute(t *testing.T) {
 	}()
 
 	t.Run("add user request hooks", func(t *testing.T) {
-		t.Parallel()
 		core, client, req := newCore(), NewClient(), AcquireRequest()
 		client.AddRequestHook(func(_ *Client, _ *Request) error {
 			require.Equal(t, "http://example.com", req.URL())
@@ -173,7 +165,6 @@ func Test_Execute(t *testing.T) {
 	})
 
 	t.Run("add user response hooks", func(t *testing.T) {
-		t.Parallel()
 		core, client, req := newCore(), NewClient(), AcquireRequest()
 		client.AddResponseHook(func(_ *Client, _ *Response, req *Request) error {
 			require.Equal(t, "http://example.com", req.URL())
@@ -190,7 +181,6 @@ func Test_Execute(t *testing.T) {
 	})
 
 	t.Run("no timeout", func(t *testing.T) {
-		t.Parallel()
 		core, client, req := newCore(), NewClient(), AcquireRequest()
 
 		client.SetDial(func(_ string) (net.Conn, error) {
@@ -204,7 +194,6 @@ func Test_Execute(t *testing.T) {
 	})
 
 	t.Run("client timeout", func(t *testing.T) {
-		t.Parallel()
 		core, client, req := newCore(), NewClient(), AcquireRequest()
 		client.SetTimeout(500 * time.Millisecond)
 		client.SetDial(func(_ string) (net.Conn, error) {
@@ -217,7 +206,6 @@ func Test_Execute(t *testing.T) {
 	})
 
 	t.Run("request timeout", func(t *testing.T) {
-		t.Parallel()
 		core, client, req := newCore(), NewClient(), AcquireRequest()
 
 		client.SetDial(func(_ string) (net.Conn, error) {
@@ -231,7 +219,6 @@ func Test_Execute(t *testing.T) {
 	})
 
 	t.Run("request timeout has higher level", func(t *testing.T) {
-		t.Parallel()
 		core, client, req := newCore(), NewClient(), AcquireRequest()
 		client.SetTimeout(30 * time.Millisecond)
 
