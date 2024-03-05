@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
@@ -118,7 +119,7 @@ func Test_Compress_Brotli(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	req.Header.Set("Accept-Encoding", "br")
 
-	resp, err := app.Test(req, 10000)
+	resp, err := app.Test(req, 10*time.Second)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.Equal(t, "br", resp.Header.Get(fiber.HeaderContentEncoding))
