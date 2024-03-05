@@ -128,7 +128,7 @@ Bu testler [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r1
 
 ## ⚙️ Kurulum
 
-Go'nun `1.20` sürümü ([indir](https://go.dev/dl/)) veya daha yüksek bir sürüm gerekli.
+Go'nun yüklü olduğundan emin olun ([indir](https://go.dev/dl/)). `1.20` veya daha yüksek bir sürüme sahip olmanız gerekmektedir.
 
 Bir dizin oluşturup dizinin içinde `go mod init github.com/your/repo` komutunu yazarak projenizi geliştirmeye başlayın ([daha fazla öğren](https://go.dev/blog/using-go-modules)). Ardından Fiber'ı kurmak için [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) komutunu çalıştırın:
 
@@ -142,7 +142,7 @@ go get -u github.com/gofiber/fiber/v3
 -   [Statik dosya](https://docs.gofiber.io/api/app#static) sunumu
 -   Olağanüstü [performans](https://docs.gofiber.io/extra/benchmarks)
 -   [Düşük bellek](https://docs.gofiber.io/extra/benchmarks) kullanımı
--   [API uç noktaları](https://docs.gofiber.io/api/ctx)
+-   [API uç noktaları (endpoints)](https://docs.gofiber.io/api/ctx)
 -   Middleware'lar & [Next](https://docs.gofiber.io/api/ctx#next) desteği
 -   [Hızlı](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) sunucu taraflı programlama
 -   [Template motorları](https://github.com/gofiber/template)
@@ -318,7 +318,7 @@ func main() {
         Views: pug.New("./views", ".pug"),
     })
 
-    // Ve şimdi `./views/home.pug` templateni şu şekilde çağırabilirsiniz:
+    // Ve şimdi `./views/home.pug` template'ini şu şekilde çağırabilirsiniz:
     app.Get("/", func(c fiber.Ctx) error {
         return c.Render("home", fiber.Map{
             "title": "Homepage",
@@ -582,7 +582,7 @@ Fiber'a dahil edilen middlewareların bir listesi aşağıda verilmiştir.
 
 | Middleware                                                                             | Açıklama                                                                                                                                                                                     |
 | :------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [basicauth](https://github.com/gofiber/fiber/tree/master/middleware/basicauth)         | Basic auth middleware'ı, bir HTTP Basic auth sağlar. Geçerli kimlik bilgileri için sonraki handlerı ve eksik veya geçersiz kimlik bilgileri için 401 döndürür.                               |
+| [basicauth](https://github.com/gofiber/fiber/tree/master/middleware/basicauth)         | Basic auth middleware'ı, bir HTTP Basic authentication sağlar. Geçerli kimlik bilgileri için sonraki handlerı çağırır, eksik veya geçersiz kimlik bilgileri içinse 401 döndürür.             |
 | [cache](https://github.com/gofiber/fiber/tree/master/middleware/cache)                 | Reponseları durdur ve önbelleğe al.                                                                                                                                                          |
 | [compress](https://github.com/gofiber/fiber/tree/master/middleware/compress)           | Fiber için sıkıştırma middleware, varsayılan olarak `deflate`, `gzip` ve `brotli`yi destekler.                                                                                               |
 | [cors](https://github.com/gofiber/fiber/tree/master/middleware/cors)                   | Çeşitli seçeneklerle başlangıçlar arası kaynak paylaşımını \(CORS\) etkinleştirin.                                                                                                           |

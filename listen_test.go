@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
@@ -68,22 +69,30 @@ func Test_Listen_Graceful_Shutdown(t *testing.T) {
 		Time               time.Duration
 		ExpectedBody       string
 		ExpectedStatusCode int
-		ExceptedErrsLen    int
+		ExpectedErr        error
 	}{
-		{Time: 100 * time.Millisecond, ExpectedBody: "example.com", ExpectedStatusCode: StatusOK, ExceptedErrsLen: 0},
-		{Time: 500 * time.Millisecond, ExpectedBody: "", ExpectedStatusCode: 0, ExceptedErrsLen: 1},
+		{Time: 100 * time.Millisecond, ExpectedBody: "example.com", ExpectedStatusCode: StatusOK, ExpectedErr: nil},
+		{Time: 500 * time.Millisecond, ExpectedBody: "", ExpectedStatusCode: StatusOK, ExpectedErr: errors.New("InmemoryListener is already closed: use of closed network connection")},
 	}
 
 	for _, tc := range testCases {
 		time.Sleep(tc.Time)
 
-		a := Get("http://example.com")
-		a.HostClient.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
-		code, body, errs := a.String()
+		req := fasthttp.AcquireRequest()
+		req.SetRequestURI("http://example.com")
 
-		require.Equal(t, tc.ExpectedStatusCode, code)
-		require.Equal(t, tc.ExpectedBody, body)
-		require.Len(t, errs, tc.ExceptedErrsLen)
+		client := fasthttp.HostClient{}
+		client.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
+
+		resp := fasthttp.AcquireResponse()
+		err := client.Do(req, resp)
+
+		require.Equal(t, tc.ExpectedErr, err)
+		require.Equal(t, tc.ExpectedStatusCode, resp.StatusCode())
+		require.Equal(t, tc.ExpectedBody, string(resp.Body()))
+
+		fasthttp.ReleaseRequest(req)
+		fasthttp.ReleaseResponse(resp)
 	}
 
 	mu.Lock()

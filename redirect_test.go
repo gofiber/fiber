@@ -291,41 +291,45 @@ func Test_Redirect_Request(t *testing.T) {
 		CookieValue        string
 		ExpectedBody       string
 		ExpectedStatusCode int
-		ExceptedErrsLen    int
+		ExpectedErr        error
 	}{
 		{
 			URL:                "/",
 			CookieValue:        "key:value,key2:value2,co\\:m\\,ma:Fi\\:ber\\, v3",
 			ExpectedBody:       `{"inputs":{},"messages":{"co:m,ma":"Fi:ber, v3","key":"value","key2":"value2"}}`,
 			ExpectedStatusCode: StatusOK,
-			ExceptedErrsLen:    0,
+			ExpectedErr:        nil,
 		},
 		{
 			URL:                "/with-inputs?name=john&surname=doe",
 			CookieValue:        "key:value,key2:value2,key:value,key2:value2,old_input_data_name:john,old_input_data_surname:doe",
 			ExpectedBody:       `{"inputs":{"name":"john","surname":"doe"},"messages":{"key":"value","key2":"value2"}}`,
 			ExpectedStatusCode: StatusOK,
-			ExceptedErrsLen:    0,
+			ExpectedErr:        nil,
 		},
 		{
 			URL:                "/just-inputs?name=john&surname=doe",
 			CookieValue:        "old_input_data_name:john,old_input_data_surname:doe",
 			ExpectedBody:       `{"inputs":{"name":"john","surname":"doe"},"messages":{}}`,
 			ExpectedStatusCode: StatusOK,
-			ExceptedErrsLen:    0,
+			ExpectedErr:        nil,
 		},
 	}
 
 	for _, tc := range testCases {
-		a := Get("http://example.com" + tc.URL)
-		a.Cookie(FlashCookieName, tc.CookieValue)
-		a.MaxRedirectsCount(1)
-		a.HostClient.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
-		code, body, errs := a.String()
+		client := &fasthttp.HostClient{
+			Dial: func(_ string) (net.Conn, error) {
+				return ln.Dial()
+			},
+		}
+		req, resp := fasthttp.AcquireRequest(), fasthttp.AcquireResponse()
+		req.SetRequestURI("http://example.com" + tc.URL)
+		req.Header.SetCookie(FlashCookieName, tc.CookieValue)
+		err := client.DoRedirects(req, resp, 1)
 
-		require.Equal(t, tc.ExpectedStatusCode, code)
-		require.Equal(t, tc.ExpectedBody, body)
-		require.Len(t, errs, tc.ExceptedErrsLen)
+		require.NoError(t, err)
+		require.Equal(t, tc.ExpectedBody, string(resp.Body()))
+		require.Equal(t, tc.ExpectedStatusCode, resp.StatusCode())
 	}
 }
 
