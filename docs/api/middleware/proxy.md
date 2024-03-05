@@ -9,7 +9,7 @@ Proxy middleware for [Fiber](https://github.com/gofiber/fiber) that allows you t
 ## Signatures
 
 ```go
-// Balancer create a load balancer among multiple upstrem servers.
+// Balancer create a load balancer among multiple upstream servers.
 func Balancer(config Config) fiber.Handler
 // Forward performs the given http request and fills the given http response.
 func Forward(addr string, clients ...*fasthttp.Client) fiber.Handler
@@ -21,9 +21,9 @@ func DoRedirects(c fiber.Ctx, addr string, maxRedirectsCount int, clients ...*fa
 func DoDeadline(c fiber.Ctx, addr string, deadline time.Time, clients ...*fasthttp.Client) error
 // DoTimeout performs the given request and waits for response during the given timeout duration.
 func DoTimeout(c fiber.Ctx, addr string, timeout time.Duration, clients ...*fasthttp.Client) error
-// DomainForward the given http request based on the given domain and fills the given http response
+// DomainForward the given http request based on the given domain and fills the given http response.
 func DomainForward(hostname string, addr string, clients ...*fasthttp.Client) fiber.Handler
-// BalancerForward performs the given http request based round robin balancer and fills the given http response
+// BalancerForward performs the given http request based round robin balancer and fills the given http response.
 func BalancerForward(servers []string, clients ...*fasthttp.Client) fiber.Handler
 ```
 
@@ -137,6 +137,18 @@ app.Use(proxy.BalancerForward([]string{
     "http://localhost:3002",
     "http://localhost:3003",
 }))
+
+
+// Make round robin balancer with IPv6 support.
+app.Use(proxy.Balancer(proxy.Config{
+    Servers: []string{
+        "http://[::1]:3001",
+        "http://127.0.0.1:3002",
+        "http://localhost:3003",
+    },
+    // Enable TCP4 and TCP6 network stacks.
+    DialDualStack: true,
+}))
 ```
 
 ## Config
@@ -151,6 +163,7 @@ app.Use(proxy.BalancerForward([]string{
 | ReadBufferSize  | `int`                                          | Per-connection buffer size for requests' reading. This also limits the maximum header size. Increase this buffer if your clients send multi-KB RequestURIs and/or multi-KB headers (for example, BIG cookies). | (Not specified) |
 | WriteBufferSize | `int`                                          | Per-connection buffer size for responses' writing.                                                                                                                                                             | (Not specified) |
 | TlsConfig       | `*tls.Config` (or `*fasthttp.TLSConfig` in v3) | TLS config for the HTTP client.                                                                                                                                                                                | `nil`           |
+| DialDualStack   | `bool`                                         | Client will attempt to connect to both IPv4 and IPv6 host addresses if set to true.                                                                                                                            | `false`         |
 | Client          | `*fasthttp.LBClient`                           | Client is a custom client when client config is complex.                                                                                                                                                       | `nil`           |
 
 ## Default Config
