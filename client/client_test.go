@@ -1581,8 +1581,6 @@ func Test_Client_SetProxyURL(t *testing.T) {
 }
 
 func Test_Client_SetRetryConfig(t *testing.T) {
-	t.Parallel()
-
 	retryConfig := &retry.Config{
 		InitialInterval: 1 * time.Second,
 		MaxRetryCount:   3,
@@ -1593,10 +1591,9 @@ func Test_Client_SetRetryConfig(t *testing.T) {
 	client.SetRetryConfig(retryConfig)
 	_, err := core.execute(context.Background(), client, req)
 
-	require.Error(t, err)
+	require.NoError(t, err)
 	require.Equal(t, retryConfig.InitialInterval, client.RetryConfig().InitialInterval)
 	require.Equal(t, retryConfig.MaxRetryCount, client.RetryConfig().MaxRetryCount)
-	ReleaseRequest(req)
 }
 
 func Benchmark_Client_Request(b *testing.B) {
