@@ -23,7 +23,6 @@ import (
 
 // go test -run Test_Logger
 func Test_Logger(t *testing.T) {
-	t.Parallel()
 	app := fiber.New()
 
 	buf := bytebufferpool.Get()
@@ -46,7 +45,6 @@ func Test_Logger(t *testing.T) {
 
 // go test -run Test_Logger_locals
 func Test_Logger_locals(t *testing.T) {
-	t.Parallel()
 	app := fiber.New()
 
 	buf := bytebufferpool.Get()
@@ -93,7 +91,6 @@ func Test_Logger_locals(t *testing.T) {
 
 // go test -run Test_Logger_Next
 func Test_Logger_Next(t *testing.T) {
-	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{
 		Next: func(_ fiber.Ctx) bool {
@@ -108,7 +105,6 @@ func Test_Logger_Next(t *testing.T) {
 
 // go test -run Test_Logger_Done
 func Test_Logger_Done(t *testing.T) {
-	t.Parallel()
 	buf := bytes.NewBuffer(nil)
 	app := fiber.New()
 	app.Use(New(Config{
@@ -131,7 +127,6 @@ func Test_Logger_Done(t *testing.T) {
 
 // go test -run Test_Logger_ErrorTimeZone
 func Test_Logger_ErrorTimeZone(t *testing.T) {
-	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{
 		TimeZone: "invalid",
@@ -151,7 +146,6 @@ func (o *fakeErrorOutput) Write([]byte) (int, error) {
 
 // go test -run Test_Logger_ErrorOutput_WithoutColor
 func Test_Logger_ErrorOutput_WithoutColor(t *testing.T) {
-	t.Parallel()
 	o := new(fakeErrorOutput)
 	app := fiber.New()
 	app.Use(New(Config{
@@ -167,7 +161,6 @@ func Test_Logger_ErrorOutput_WithoutColor(t *testing.T) {
 
 // go test -run Test_Logger_ErrorOutput
 func Test_Logger_ErrorOutput(t *testing.T) {
-	t.Parallel()
 	o := new(fakeErrorOutput)
 	app := fiber.New()
 	app.Use(New(Config{
@@ -182,7 +175,6 @@ func Test_Logger_ErrorOutput(t *testing.T) {
 
 // go test -run Test_Logger_All
 func Test_Logger_All(t *testing.T) {
-	t.Parallel()
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
@@ -316,7 +308,6 @@ func Test_Logger_WithLatency_DefaultFormat(t *testing.T) {
 
 // go test -run Test_Query_Params
 func Test_Query_Params(t *testing.T) {
-	t.Parallel()
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
@@ -336,7 +327,6 @@ func Test_Query_Params(t *testing.T) {
 
 // go test -run Test_Response_Body
 func Test_Response_Body(t *testing.T) {
-	t.Parallel()
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
@@ -371,7 +361,6 @@ func Test_Response_Body(t *testing.T) {
 
 // go test -run Test_Logger_AppendUint
 func Test_Logger_AppendUint(t *testing.T) {
-	t.Parallel()
 	app := fiber.New()
 
 	buf := bytebufferpool.Get()
@@ -394,7 +383,6 @@ func Test_Logger_AppendUint(t *testing.T) {
 
 // go test -run Test_Logger_Data_Race -race
 func Test_Logger_Data_Race(t *testing.T) {
-	t.Parallel()
 	app := fiber.New()
 
 	buf := bytebufferpool.Get()
@@ -489,7 +477,6 @@ func Benchmark_Logger(b *testing.B) {
 
 // go test -run Test_Response_Header
 func Test_Response_Header(t *testing.T) {
-	t.Parallel()
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
@@ -516,7 +503,6 @@ func Test_Response_Header(t *testing.T) {
 
 // go test -run Test_Req_Header
 func Test_Req_Header(t *testing.T) {
-	t.Parallel()
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
@@ -539,7 +525,6 @@ func Test_Req_Header(t *testing.T) {
 
 // go test -run Test_ReqHeader_Header
 func Test_ReqHeader_Header(t *testing.T) {
-	t.Parallel()
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
@@ -562,7 +547,6 @@ func Test_ReqHeader_Header(t *testing.T) {
 
 // go test -run Test_CustomTags
 func Test_CustomTags(t *testing.T) {
-	t.Parallel()
 	customTag := "it is a custom tag"
 
 	buf := bytebufferpool.Get()
@@ -592,7 +576,6 @@ func Test_CustomTags(t *testing.T) {
 
 // go test -run Test_Logger_ByteSent_Streaming
 func Test_Logger_ByteSent_Streaming(t *testing.T) {
-	t.Parallel()
 	app := fiber.New()
 
 	buf := bytebufferpool.Get()
@@ -639,7 +622,6 @@ func (o *fakeOutput) Write(b []byte) (int, error) {
 
 // go test -run Test_Logger_EnableColors
 func Test_Logger_EnableColors(t *testing.T) {
-	t.Parallel()
 	o := new(fakeOutput)
 	app := fiber.New()
 	app.Use(New(Config{
