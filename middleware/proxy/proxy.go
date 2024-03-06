@@ -192,10 +192,6 @@ func doAction(
 }
 
 func getScheme(uri []byte) []byte {
-	if uri == nil {
-		return nil
-	}
-
 	i := bytes.IndexByte(uri, '/')
 	if i < 1 || uri[i-1] != ':' || i == len(uri)-1 || uri[i+1] != '/' {
 		return nil

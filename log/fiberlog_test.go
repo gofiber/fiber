@@ -15,7 +15,6 @@ func Test_DefaultSystemLogger(t *testing.T) {
 }
 
 func Test_SetLogger(t *testing.T) {
-	t.Parallel()
 	setLog := &defaultLogger{
 		stdlog: log.New(os.Stderr, "", log.LstdFlags|log.Lshortfile|log.Lmicroseconds),
 		depth:  6,
