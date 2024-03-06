@@ -134,6 +134,7 @@ func TestCookieJarSet(t *testing.T) {
 }
 
 func TestCookieJarSetRepeatedCookieKeys(t *testing.T) {
+	t.Parallel()
 	host := "fast.http"
 	cj := &CookieJar{}
 

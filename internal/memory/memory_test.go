@@ -10,9 +10,10 @@ import (
 
 // go test -run Test_Memory -v -race
 func Test_Memory(t *testing.T) {
+	t.Parallel()
 	store := New()
 	var (
-		key     = "john"
+		key     = "john-internal"
 		val any = []byte("doe")
 		exp     = 1 * time.Second
 	)
