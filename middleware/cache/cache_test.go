@@ -44,6 +44,7 @@ func Test_Cache_CacheControl(t *testing.T) {
 }
 
 func Test_Cache_Expired(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{Expiration: 2 * time.Second}))
 
@@ -408,6 +409,7 @@ func Test_Cache_Post(t *testing.T) {
 }
 
 func Test_Cache_NothingToCache(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New(Config{Expiration: -(time.Second * 1)}))
@@ -494,6 +496,7 @@ func Test_CustomKey(t *testing.T) {
 }
 
 func Test_CustomExpiration(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	var called bool
 	var newCacheTime int
@@ -706,6 +709,7 @@ func stableAscendingExpiration() func(c1 fiber.Ctx, c2 *Config) time.Duration {
 }
 
 func Test_Cache_MaxBytesOrder(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{
 		MaxBytes:            2,
@@ -741,6 +745,7 @@ func Test_Cache_MaxBytesOrder(t *testing.T) {
 }
 
 func Test_Cache_MaxBytesSizes(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New(Config{

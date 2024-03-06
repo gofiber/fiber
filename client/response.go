@@ -73,17 +73,11 @@ func (r *Response) String() string {
 
 // JSON method will unmarshal body to json.
 func (r *Response) JSON(v any) error {
-	if r.client == nil {
-		return errors.New("cannot unmarshal JSON: client is nil")
-	}
 	return r.client.jsonUnmarshal(r.Body(), v)
 }
 
 // XML method will unmarshal body to xml.
 func (r *Response) XML(v any) error {
-	if r.client == nil {
-		return errors.New("cannot unmarshal XML: client is nil")
-	}
 	return r.client.xmlUnmarshal(r.Body(), v)
 }
 

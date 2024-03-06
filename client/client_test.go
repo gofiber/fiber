@@ -1582,6 +1582,7 @@ func Test_Client_SetProxyURL(t *testing.T) {
 }
 
 func Test_Client_SetRetryConfig(t *testing.T) {
+	t.Parallel()
 	retryConfig := &retry.Config{
 		InitialInterval: 1 * time.Second,
 		MaxRetryCount:   3,
