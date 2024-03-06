@@ -13,8 +13,8 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/idempotency"
 	"github.com/valyala/fasthttp"
-	"gotest.tools/assert"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 

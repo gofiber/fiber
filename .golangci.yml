@@ -13,8 +13,6 @@ output:
 linters-settings:
   testifylint:
     enable-all: true
-    disable:
-      - go-require
   errcheck:
      check-type-assertions: true
      check-blank: true
