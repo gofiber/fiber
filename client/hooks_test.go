@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -587,7 +588,7 @@ func Test_Client_Logger_Debug(t *testing.T) {
 
 	addrChan := make(chan string)
 	go func() {
-		require.NoError(t, app.Listen(":0", fiber.ListenConfig{
+		assert.NoError(t, app.Listen(":0", fiber.ListenConfig{
 			DisableStartupMessage: true,
 			ListenerAddrFunc: func(addr net.Addr) {
 				addrChan <- addr.String()
@@ -624,7 +625,7 @@ func Test_Client_Logger_DisableDebug(t *testing.T) {
 
 	addrChan := make(chan string)
 	go func() {
-		require.NoError(t, app.Listen(":0", fiber.ListenConfig{
+		assert.NoError(t, app.Listen(":0", fiber.ListenConfig{
 			DisableStartupMessage: true,
 			ListenerAddrFunc: func(addr net.Addr) {
 				addrChan <- addr.String()

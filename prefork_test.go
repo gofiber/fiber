@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -28,7 +29,7 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.NoError(t, app.Shutdown())
+		assert.NoError(t, app.Shutdown())
 	}()
 
 	require.NoError(t, app.prefork("[::1]:", nil, ListenConfig{ListenerNetwork: NetworkTCP6}))
@@ -43,7 +44,7 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.NoError(t, app.Shutdown())
+		assert.NoError(t, app.Shutdown())
 	}()
 
 	require.NoError(t, app.prefork("127.0.0.1:", config, listenConfigDefault()))
@@ -57,7 +58,7 @@ func Test_App_Prefork_Master_Process(t *testing.T) {
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.NoError(t, app.Shutdown())
+		assert.NoError(t, app.Shutdown())
 	}()
 
 	require.NoError(t, app.prefork(":3000", nil, listenConfigDefault()))

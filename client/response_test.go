@@ -12,6 +12,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/tlstest"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -158,7 +159,7 @@ func Test_Response_Protocol(t *testing.T) {
 		})
 
 		go func() {
-			require.NoError(t, app.Listener(ln, fiber.ListenConfig{
+			assert.NoError(t, app.Listener(ln, fiber.ListenConfig{
 				DisableStartupMessage: true,
 			}))
 		}()

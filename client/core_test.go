@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp/fasthttputil"
 )
@@ -73,7 +74,7 @@ func Test_Exec_Func(t *testing.T) {
 	})
 
 	go func() {
-		require.NoError(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}))
+		assert.NoError(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}))
 	}()
 
 	time.Sleep(300 * time.Millisecond)
@@ -145,7 +146,7 @@ func Test_Execute(t *testing.T) {
 	})
 
 	go func() {
-		require.NoError(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}))
+		assert.NoError(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}))
 	}()
 
 	t.Run("add user request hooks", func(t *testing.T) {

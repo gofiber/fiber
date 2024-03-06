@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/bytebufferpool"
 )
@@ -215,7 +216,7 @@ func Test_Hook_OnListen(t *testing.T) {
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.NoError(t, app.Shutdown())
+		assert.NoError(t, app.Shutdown())
 	}()
 	require.NoError(t, app.Listen(":9000"))
 
@@ -238,7 +239,7 @@ func Test_Hook_OnListenPrefork(t *testing.T) {
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.NoError(t, app.Shutdown())
+		assert.NoError(t, app.Shutdown())
 	}()
 
 	require.NoError(t, app.Listen(":9000", ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
@@ -254,7 +255,7 @@ func Test_Hook_OnHook(t *testing.T) {
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.NoError(t, app.Shutdown())
+		assert.NoError(t, app.Shutdown())
 	}()
 
 	app.Hooks().OnFork(func(pid int) error {

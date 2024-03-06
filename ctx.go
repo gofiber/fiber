@@ -1319,12 +1319,13 @@ func (c *DefaultCtx) Render(name string, bind Map, layouts ...string) error {
 	var rendered bool
 	for i := len(c.app.mountFields.appListKeys) - 1; i >= 0; i-- {
 		prefix := c.app.mountFields.appListKeys[i]
-		app := c.app.mountFields.appList[prefix]
+		app, exists := c.app.mountFields.appList[prefix]
+		if !exists || app == nil { // Check if app exists and is not nil
+			continue // Skip this iteration if app is nil
+		}
 		if prefix == "" || strings.Contains(c.OriginalURL(), prefix) {
 			if len(layouts) == 0 && app.config.ViewsLayout != "" {
-				layouts = []string{
-					app.config.ViewsLayout,
-				}
+				layouts = []string{app.config.ViewsLayout}
 			}
 
 			// Render template from Views

@@ -13,12 +13,14 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/idempotency"
 	"github.com/valyala/fasthttp"
+	"gotest.tools/assert"
 
 	"github.com/stretchr/testify/require"
 )
 
 // go test -run Test_Idempotency
 func Test_Idempotency(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(func(c fiber.Ctx) error {
@@ -73,7 +75,7 @@ func Test_Idempotency(t *testing.T) {
 	})
 
 	app.Post("/slow", func(c fiber.Ctx) error {
-		time.Sleep(2 * lifetime)
+		time.Sleep(4 * lifetime)
 
 		return c.SendString(strconv.Itoa(nextCount()))
 	})
@@ -83,7 +85,7 @@ func Test_Idempotency(t *testing.T) {
 		if idempotencyKey != "" {
 			req.Header.Set("X-Idempotency-Key", idempotencyKey)
 		}
-		resp, err := app.Test(req, 3*lifetime)
+		resp, err := app.Test(req, 5*lifetime)
 		require.NoError(t, err)
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
@@ -117,13 +119,13 @@ func Test_Idempotency(t *testing.T) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				require.Equal(t, "11", doReq(fiber.MethodPost, "/slow", "22222222-2222-2222-2222-222222222222"))
+				assert.Equal(t, "11", doReq(fiber.MethodPost, "/slow", "22222222-2222-2222-2222-222222222222"))
 			}()
 		}
 		wg.Wait()
 		require.Equal(t, "11", doReq(fiber.MethodPost, "/slow", "22222222-2222-2222-2222-222222222222"))
 	}
-	time.Sleep(2 * lifetime)
+	time.Sleep(4 * lifetime)
 	require.Equal(t, "12", doReq(fiber.MethodPost, "/slow", "22222222-2222-2222-2222-222222222222"))
 }
 

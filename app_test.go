@@ -25,6 +25,7 @@ import (
 
 	"github.com/gofiber/utils/v2"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttputil"
@@ -825,21 +826,16 @@ func Test_App_ShutdownWithTimeout(t *testing.T) {
 	ln := fasthttputil.NewInmemoryListener()
 	go func() {
 		err := app.Listener(ln)
-		if err != nil {
-			panic(err)
-		}
+		assert.NoError(t, err)
 	}()
 
 	time.Sleep(1 * time.Second)
 	go func() {
 		conn, err := ln.Dial()
-		if err != nil {
-			t.Errorf("unexepcted error: %v", err)
-		}
+		assert.NoError(t, err)
 
-		if _, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: google.com\r\n\r\n")); err != nil {
-			t.Errorf("unexpected error: %v", err)
-		}
+		_, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: google.com\r\n\r\n"))
+		assert.NoError(t, err)
 	}()
 	time.Sleep(1 * time.Second)
 
@@ -872,22 +868,17 @@ func Test_App_ShutdownWithContext(t *testing.T) {
 
 	go func() {
 		err := app.Listener(ln)
-		if err != nil {
-			panic(err)
-		}
+		assert.NoError(t, err)
 	}()
 
 	time.Sleep(1 * time.Second)
 
 	go func() {
 		conn, err := ln.Dial()
-		if err != nil {
-			t.Errorf("unexepcted error: %v", err)
-		}
+		assert.NoError(t, err)
 
-		if _, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: google.com\r\n\r\n")); err != nil {
-			t.Errorf("unexpected error: %v", err)
-		}
+		_, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: google.com\r\n\r\n"))
+		assert.NoError(t, err)
 	}()
 
 	time.Sleep(1 * time.Second)
@@ -1550,23 +1541,23 @@ func Test_App_ReadTimeout(t *testing.T) {
 		time.Sleep(500 * time.Millisecond)
 
 		conn, err := net.Dial(NetworkTCP4, "127.0.0.1:4004")
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		defer func(conn net.Conn) {
 			err := conn.Close()
-			require.NoError(t, err)
+			assert.NoError(t, err)
 		}(conn)
 
 		_, err = conn.Write([]byte("HEAD /read-timeout HTTP/1.1\r\n"))
-		require.NoError(t, err)
+		assert.NoError(t, err)
 
 		buf := make([]byte, 1024)
 		var n int
 		n, err = conn.Read(buf)
 
-		require.NoError(t, err)
-		require.True(t, bytes.Contains(buf[:n], []byte("408 Request Timeout")))
+		assert.NoError(t, err)
+		assert.True(t, bytes.Contains(buf[:n], []byte("408 Request Timeout")))
 
-		require.NoError(t, app.Shutdown())
+		assert.NoError(t, app.Shutdown())
 	}()
 
 	require.NoError(t, app.Listen(":4004", ListenConfig{DisableStartupMessage: true}))
@@ -1584,23 +1575,22 @@ func Test_App_BadRequest(t *testing.T) {
 	go func() {
 		time.Sleep(500 * time.Millisecond)
 		conn, err := net.Dial(NetworkTCP4, "127.0.0.1:4005")
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		defer func(conn net.Conn) {
 			err := conn.Close()
-			require.NoError(t, err)
+			assert.NoError(t, err)
 		}(conn)
 
 		_, err = conn.Write([]byte("BadRequest\r\n"))
-		require.NoError(t, err)
+		assert.NoError(t, err)
 
 		buf := make([]byte, 1024)
 		var n int
 		n, err = conn.Read(buf)
-		require.NoError(t, err)
 
-		require.True(t, bytes.Contains(buf[:n], []byte("400 Bad Request")))
-
-		require.NoError(t, app.Shutdown())
+		assert.NoError(t, err)
+		assert.True(t, bytes.Contains(buf[:n], []byte("400 Bad Request")))
+		assert.NoError(t, app.Shutdown())
 	}()
 
 	require.NoError(t, app.Listen(":4005", ListenConfig{DisableStartupMessage: true}))
@@ -1620,12 +1610,12 @@ func Test_App_SmallReadBuffer(t *testing.T) {
 	go func() {
 		time.Sleep(500 * time.Millisecond)
 		req, err := http.NewRequestWithContext(context.Background(), MethodGet, "http://127.0.0.1:4006/small-read-buffer", nil)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		var client http.Client
 		resp, err := client.Do(req)
-		require.NoError(t, err)
-		require.Equal(t, 431, resp.StatusCode)
-		require.NoError(t, app.Shutdown())
+		assert.NoError(t, err)
+		assert.Equal(t, 431, resp.StatusCode)
+		assert.NoError(t, app.Shutdown())
 	}()
 
 	require.NoError(t, app.Listen(":4006", ListenConfig{DisableStartupMessage: true}))
