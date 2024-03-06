@@ -119,10 +119,6 @@ func (r *Redirect) WithInput() *Redirect {
 
 // Get flash messages.
 func (r *Redirect) Messages() map[string]string {
-	if r.c == nil {
-		return make(map[string]string) // Return an empty map if `c` is nil.
-	}
-
 	msgs := r.c.redirectionMessages
 	flashMessages := make(map[string]string, len(msgs))
 
@@ -139,11 +135,8 @@ func (r *Redirect) Messages() map[string]string {
 
 // Get flash message by key.
 func (r *Redirect) Message(key string) string {
-	if r.c == nil {
-		return ""
-	}
-
 	msgs := r.c.redirectionMessages
+
 	for _, msg := range msgs {
 		k, v := parseMessage(msg)
 
@@ -156,10 +149,6 @@ func (r *Redirect) Message(key string) string {
 
 // Get old input data.
 func (r *Redirect) OldInputs() map[string]string {
-	if r.c == nil {
-		return make(map[string]string)
-	}
-
 	msgs := r.c.redirectionMessages
 	oldInputs := make(map[string]string, len(msgs))
 
@@ -167,7 +156,7 @@ func (r *Redirect) OldInputs() map[string]string {
 		k, v := parseMessage(msg)
 
 		if strings.HasPrefix(k, OldInputDataPrefix) {
-			// Remove "old_input_data_" part from key
+			// remove "old_input_data_" part from key
 			oldInputs[k[len(OldInputDataPrefix):]] = v
 		}
 	}
@@ -176,11 +165,8 @@ func (r *Redirect) OldInputs() map[string]string {
 
 // Get old input data by key.
 func (r *Redirect) OldInput(key string) string {
-	if r.c == nil {
-		return ""
-	}
-
 	msgs := r.c.redirectionMessages
+
 	for _, msg := range msgs {
 		k, v := parseMessage(msg)
 
@@ -202,10 +188,6 @@ func (r *Redirect) To(location string) error {
 // Route redirects to the Route registered in the app with appropriate parameters.
 // If you want to send queries or params to route, you should use config parameter.
 func (r *Redirect) Route(name string, config ...RedirectConfig) error {
-	if r.c == nil {
-		return errors.New("redirect context is nil")
-	}
-
 	// Check config
 	cfg := RedirectConfig{}
 	if len(config) > 0 {
@@ -290,10 +272,6 @@ func (r *Redirect) Back(fallback ...string) error {
 
 // setFlash is a method to get flash messages before removing them
 func (r *Redirect) setFlash() {
-	if r.c == nil {
-		return
-	}
-
 	// parse flash messages
 	cookieValue := r.c.Cookies(FlashCookieName)
 

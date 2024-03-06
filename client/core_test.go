@@ -49,6 +49,7 @@ func Test_AddMissing_Port(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
+		tt := tt // create a new 'tt' variable for the goroutine
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tt.want, addMissingPort(tt.args.addr, tt.args.isTLS))

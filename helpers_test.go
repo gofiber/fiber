@@ -212,6 +212,7 @@ func Benchmark_Utils_ParamsMatch(b *testing.B) {
 }
 
 func Test_Utils_AcceptsOfferType(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		description string
 		spec        string
@@ -273,6 +274,7 @@ func Test_Utils_AcceptsOfferType(t *testing.T) {
 }
 
 func Test_Utils_GetSplicedStrList(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		description  string
 		headerValue  string
@@ -302,6 +304,8 @@ func Test_Utils_GetSplicedStrList(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
+			tc := tc // create a new 'tc' variable for the goroutine
+			t.Parallel()
 			dst := make([]string, 10)
 			result := getSplicedStrList(tc.headerValue, dst)
 			require.Equal(t, tc.expectedList, result)

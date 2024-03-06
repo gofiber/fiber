@@ -198,6 +198,7 @@ func (*customConstraint) Execute(param string, args ...string) bool {
 }
 
 func Test_App_CustomConstraint(t *testing.T) {
+	t.Parallel()
 	app := New()
 	app.RegisterCustomConstraint(&customConstraint{})
 
@@ -902,6 +903,7 @@ func Test_App_ShutdownWithContext(t *testing.T) {
 
 // go test -run Test_App_Static_Index_Default
 func Test_App_Static_Index_Default(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	app.Static("/prefix", "./.github/workflows")
@@ -931,6 +933,7 @@ func Test_App_Static_Index_Default(t *testing.T) {
 
 // go test -run Test_App_Static_Index
 func Test_App_Static_Direct(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	app.Static("/", "./.github")
@@ -959,6 +962,7 @@ func Test_App_Static_Direct(t *testing.T) {
 
 // go test -run Test_App_Static_MaxAge
 func Test_App_Static_MaxAge(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	app.Static("/", "./.github", Static{MaxAge: 100})
@@ -973,6 +977,7 @@ func Test_App_Static_MaxAge(t *testing.T) {
 
 // go test -run Test_App_Static_Custom_CacheControl
 func Test_App_Static_Custom_CacheControl(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	app.Static("/", "./.github", Static{ModifyResponse: func(c Ctx) error {
@@ -993,6 +998,7 @@ func Test_App_Static_Custom_CacheControl(t *testing.T) {
 
 // go test -run Test_App_Static_Download
 func Test_App_Static_Download(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	app.Static("/fiber.png", "./.github/testdata/fs/img/fiber.png", Static{Download: true})
@@ -1007,6 +1013,7 @@ func Test_App_Static_Download(t *testing.T) {
 
 // go test -run Test_App_Static_Group
 func Test_App_Static_Group(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	grp := app.Group("/v1", func(c Ctx) error {
@@ -1036,6 +1043,7 @@ func Test_App_Static_Group(t *testing.T) {
 }
 
 func Test_App_Static_Wildcard(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	app.Static("*", "./.github/index.html")
@@ -1053,6 +1061,7 @@ func Test_App_Static_Wildcard(t *testing.T) {
 }
 
 func Test_App_Static_Prefix_Wildcard(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	app.Static("/test/*", "./.github/index.html")
@@ -1078,6 +1087,7 @@ func Test_App_Static_Prefix_Wildcard(t *testing.T) {
 }
 
 func Test_App_Static_Prefix(t *testing.T) {
+	t.Parallel()
 	app := New()
 	app.Static("/john", "./.github")
 
@@ -1108,6 +1118,7 @@ func Test_App_Static_Prefix(t *testing.T) {
 }
 
 func Test_App_Static_Trailing_Slash(t *testing.T) {
+	t.Parallel()
 	app := New()
 	app.Static("/john", "./.github")
 
@@ -1154,6 +1165,7 @@ func Test_App_Static_Trailing_Slash(t *testing.T) {
 }
 
 func Test_App_Static_Next(t *testing.T) {
+	t.Parallel()
 	app := New()
 	app.Static("/", ".github", Static{
 		Next: func(c Ctx) bool {
@@ -1167,6 +1179,7 @@ func Test_App_Static_Next(t *testing.T) {
 	})
 
 	t.Run("app.Static is skipped: invoking Get handler", func(t *testing.T) {
+		t.Parallel()
 		req := httptest.NewRequest(MethodGet, "/", nil)
 		req.Header.Set("X-Custom-Header", "skip")
 		resp, err := app.Test(req)
@@ -1181,6 +1194,7 @@ func Test_App_Static_Next(t *testing.T) {
 	})
 
 	t.Run("app.Static is not skipped: serving index.html", func(t *testing.T) {
+		t.Parallel()
 		req := httptest.NewRequest(MethodGet, "/", nil)
 		req.Header.Set("X-Custom-Header", "don't skip")
 		resp, err := app.Test(req)
@@ -1197,6 +1211,7 @@ func Test_App_Static_Next(t *testing.T) {
 
 // go test -run Test_App_Mixed_Routes_WithSameLen
 func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	// middleware
@@ -1475,6 +1490,7 @@ func (invalidView) Render(io.Writer, string, any, ...string) error { panic("impl
 
 // go test -run Test_App_Init_Error_View
 func Test_App_Init_Error_View(t *testing.T) {
+	t.Parallel()
 	app := New(Config{Views: invalidView{}})
 
 	defer func() {
@@ -1813,6 +1829,7 @@ func TestApp_GetRoutes(t *testing.T) {
 }
 
 func Test_Middleware_Route_Naming_With_Use(t *testing.T) {
+	t.Parallel()
 	named := "named"
 	app := New()
 
@@ -1872,6 +1889,7 @@ func Test_Middleware_Route_Naming_With_Use(t *testing.T) {
 }
 
 func Test_Route_Naming_Issue_2671_2685(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	app.Get("/", emptyHandler).Name("index")

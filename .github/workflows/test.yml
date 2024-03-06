@@ -33,7 +33,10 @@ jobs:
       - name: Install gotestsum
         run: go install gotest.tools/gotestsum@v1.11.0
 
-      - name: Test
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run tests
         run: gotestsum -f testname -- ./... -race -count=1 -coverprofile=coverage.txt -covermode=atomic
 
       - name: Upload coverage reports to Codecov
