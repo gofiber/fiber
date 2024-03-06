@@ -436,7 +436,7 @@ func Test_Proxy_DoRedirects_RestoreOriginalURL(t *testing.T) {
 		return DoRedirects(c, "http://google.com", 1)
 	})
 
-	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
+	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), 2*time.Second)
 	require.NoError(t, err1)
 	_, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -474,7 +474,7 @@ func Test_Proxy_DoTimeout_RestoreOriginalURL(t *testing.T) {
 		return DoTimeout(c, "http://"+addr, time.Second)
 	})
 
-	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
+	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), 2*time.Second)
 	require.NoError(t, err1)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)

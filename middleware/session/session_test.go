@@ -346,8 +346,9 @@ func Test_Session_Save_Expiration(t *testing.T) {
 	t.Parallel()
 
 	t.Run("save to cookie", func(t *testing.T) {
-		const sessionDuration = 5 * time.Second
 		t.Parallel()
+
+		const sessionDuration = 5 * time.Second
 		// session store
 		store := New()
 		// fiber instance
