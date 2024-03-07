@@ -519,7 +519,7 @@ func Test_CustomExpiration(t *testing.T) {
 	require.Equal(t, 1, newCacheTime)
 
 	// Sleep until the cache is expired
-	time.Sleep(1 * time.Second)
+	time.Sleep(1*time.Second + 100*time.Millisecond)
 
 	cachedResp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
