@@ -1769,6 +1769,19 @@ func Test_App_Test_no_timeout_infinitely(t *testing.T) {
 	}
 }
 
+func Test_App_Test_timeout(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/", func(_ Ctx) error {
+		time.Sleep(1 * time.Second)
+		return nil
+	})
+
+	_, err := app.Test(httptest.NewRequest(MethodGet, "/", nil), 100*time.Millisecond)
+	require.Equal(t, errors.New("test: timeout error after 100ms"), err)
+}
+
 func Test_App_SetTLSHandler(t *testing.T) {
 	t.Parallel()
 	tlsHandler := &TLSHandler{clientHelloInfo: &tls.ClientHelloInfo{

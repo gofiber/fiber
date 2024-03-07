@@ -495,8 +495,14 @@ func Test_Proxy_DoTimeout_Timeout(t *testing.T) {
 		return DoTimeout(c, "http://"+addr, time.Second)
 	})
 
-	_, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), 1*time.Second)
-	require.Equal(t, errors.New("test: timeout error after 1s"), err1)
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), 2*time.Second)
+	require.NoError(t, err)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	require.Equal(t, "timeout", string(body))
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	require.Equal(t, "/test", resp.Request.URL.String())
 }
 
 // go test -race -run Test_Proxy_DoDeadline_RestoreOriginalURL
