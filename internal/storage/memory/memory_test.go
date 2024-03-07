@@ -65,10 +65,12 @@ func Test_Storage_Memory_Get(t *testing.T) {
 func Test_Storage_Memory_Set_Expiration(t *testing.T) {
 	t.Parallel()
 	var (
-		testStore = New()
-		key       = "john"
-		val       = []byte("doe")
-		exp       = 1 * time.Second
+		testStore = New(Config{
+			GCInterval: 300 * time.Millisecond,
+		})
+		key = "john"
+		val = []byte("doe")
+		exp = 1 * time.Second
 	)
 
 	err := testStore.Set(key, val, exp)

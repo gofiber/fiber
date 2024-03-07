@@ -1,3 +1,5 @@
+// Package memory Is a copy of the storage memory from the external storage packet as a purpose to test the behavior
+// in the unittests when using a storages from these packets
 package memory
 
 import (
