@@ -635,36 +635,158 @@ func Test_Session_Regenerate(t *testing.T) {
 
 // go test -v -run=^$ -bench=Benchmark_Session -benchmem -count=4
 func Benchmark_Session(b *testing.B) {
-	app, store := fiber.New(), New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-	c.Request().Header.SetCookie(store.sessionName, "12356789")
-
-	var err error
 	b.Run("default", func(b *testing.B) {
+		app, store := fiber.New(), New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		c.Request().Header.SetCookie(store.sessionName, "12356789")
+
 		b.ReportAllocs()
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
 			sess, _ := store.Get(c) //nolint:errcheck // We're inside a benchmark
 			sess.Set("john", "doe")
-			err = sess.Save()
+			_ = sess.Save() //nolint:errcheck // We're inside a benchmark
 		}
-
-		require.NoError(b, err)
 	})
 
 	b.Run("storage", func(b *testing.B) {
-		store = New(Config{
+		app := fiber.New()
+		store := New(Config{
+			Storage: memory.New(),
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		c.Request().Header.SetCookie(store.sessionName, "12356789")
+
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			sess, _ := store.Get(c) //nolint:errcheck // We're inside a benchmark
+			sess.Set("john", "doe")
+			_ = sess.Save() //nolint:errcheck // We're inside a benchmark
+		}
+	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_Session_Parallel -benchmem -count=4
+func Benchmark_Session_Parallel(b *testing.B) {
+	b.Run("default", func(b *testing.B) {
+		app, store := fiber.New(), New()
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				c := app.AcquireCtx(&fasthttp.RequestCtx{})
+				c.Request().Header.SetCookie(store.sessionName, "12356789")
+
+				sess, _ := store.Get(c) //nolint:errcheck // We're inside a benchmark
+				sess.Set("john", "doe")
+				_ = sess.Save() //nolint:errcheck // We're inside a benchmark
+				app.ReleaseCtx(c)
+			}
+		})
+	})
+
+	b.Run("storage", func(b *testing.B) {
+		app := fiber.New()
+		store := New(Config{
 			Storage: memory.New(),
 		})
 		b.ReportAllocs()
 		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				c := app.AcquireCtx(&fasthttp.RequestCtx{})
+				c.Request().Header.SetCookie(store.sessionName, "12356789")
+
+				sess, _ := store.Get(c) //nolint:errcheck // We're inside a benchmark
+				sess.Set("john", "doe")
+				_ = sess.Save() //nolint:errcheck // We're inside a benchmark
+				app.ReleaseCtx(c)
+			}
+		})
+	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_Session_Asserted -benchmem -count=4
+func Benchmark_Session_Asserted(b *testing.B) {
+	b.Run("default", func(b *testing.B) {
+		app, store := fiber.New(), New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		c.Request().Header.SetCookie(store.sessionName, "12356789")
+
+		b.ReportAllocs()
+		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			sess, _ := store.Get(c) //nolint:errcheck // We're inside a benchmark
+			sess, err := store.Get(c)
+			require.NoError(b, err)
 			sess.Set("john", "doe")
 			err = sess.Save()
+			require.NoError(b, err)
 		}
+	})
 
-		require.NoError(b, err)
+	b.Run("storage", func(b *testing.B) {
+		app := fiber.New()
+		store := New(Config{
+			Storage: memory.New(),
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		c.Request().Header.SetCookie(store.sessionName, "12356789")
+
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			sess, err := store.Get(c)
+			require.NoError(b, err)
+			sess.Set("john", "doe")
+			err = sess.Save()
+			require.NoError(b, err)
+		}
+	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_Session_Asserted_Parallel -benchmem -count=4
+func Benchmark_Session_Asserted_Parallel(b *testing.B) {
+	b.Run("default", func(b *testing.B) {
+		app, store := fiber.New(), New()
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				c := app.AcquireCtx(&fasthttp.RequestCtx{})
+				c.Request().Header.SetCookie(store.sessionName, "12356789")
+
+				sess, err := store.Get(c)
+				require.NoError(b, err)
+				sess.Set("john", "doe")
+				require.NoError(b, sess.Save())
+				app.ReleaseCtx(c)
+			}
+		})
+	})
+
+	b.Run("storage", func(b *testing.B) {
+		app := fiber.New()
+		store := New(Config{
+			Storage: memory.New(),
+		})
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				c := app.AcquireCtx(&fasthttp.RequestCtx{})
+				c.Request().Header.SetCookie(store.sessionName, "12356789")
+
+				sess, err := store.Get(c)
+				require.NoError(b, err)
+				sess.Set("john", "doe")
+				require.NoError(b, sess.Save())
+				app.ReleaseCtx(c)
+			}
+		})
 	})
 }
