@@ -144,7 +144,7 @@ func Test_Proxy_Balancer_WithTlsConfig(t *testing.T) {
 
 	startServer(app, ln)
 
-	client := clientpkg.NewClient()
+	client := clientpkg.New()
 	client.SetTLSConfig(clientTLSConf)
 
 	resp, err := client.Get("https://" + addr + "/tlsbalancer")
@@ -175,7 +175,7 @@ func Test_Proxy_Forward_WithTlsConfig_To_Http(t *testing.T) {
 	app.Use(Forward("http://" + targetAddr))
 	startServer(app, proxyServerLn)
 
-	client := clientpkg.NewClient()
+	client := clientpkg.New()
 	client.SetTimeout(5 * time.Second)
 	client.TLSConfig().InsecureSkipVerify = true
 
@@ -236,7 +236,7 @@ func Test_Proxy_Forward_WithClient_TLSConfig(t *testing.T) {
 
 	startServer(app, ln)
 
-	client := clientpkg.NewClient()
+	client := clientpkg.New()
 	client.SetTLSConfig(clientTLSConf)
 
 	resp, err := client.Get("https://" + addr)
@@ -583,7 +583,7 @@ func Test_Proxy_Forward_Global_Client(t *testing.T) {
 	app.Use(Forward("http://" + addr + "/test_global_client"))
 	startServer(app, ln)
 
-	client := clientpkg.NewClient()
+	client := clientpkg.New()
 	resp, err := client.Get("http://" + addr)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode())
@@ -610,7 +610,7 @@ func Test_Proxy_Forward_Local_Client(t *testing.T) {
 	}))
 	startServer(app, ln)
 
-	client := clientpkg.NewClient()
+	client := clientpkg.New()
 	resp, err := client.Get("http://" + addr)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode())
@@ -678,7 +678,7 @@ func Test_Proxy_Domain_Forward_Local(t *testing.T) {
 	startServer(app, ln)
 	startServer(app1, ln1)
 
-	client := clientpkg.NewClient()
+	client := clientpkg.New()
 	resp, err := client.Get("http://" + localDomain + "/test?query_test=true")
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode())

@@ -686,11 +686,11 @@ var (
 
 // init acquire a default client.
 func init() {
-	defaultClient = NewClient()
+	defaultClient = New()
 }
 
-// NewClient creates and returns a new Client object.
-func NewClient() *Client {
+// New creates and returns a new Client object.
+func New() *Client {
 	// FOllOW-UP performance optimization
 	// trie to use a pool to reduce the cost of memory allocation
 	// for the fiber client and the fasthttp client

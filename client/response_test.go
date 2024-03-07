@@ -38,7 +38,7 @@ func Test_Response_Status(t *testing.T) {
 		server := setupApp()
 		defer server.stop()
 
-		client := NewClient().SetDial(server.dial())
+		client := New().SetDial(server.dial())
 
 		resp, err := AcquireRequest().
 			SetClient(client).
@@ -55,7 +55,7 @@ func Test_Response_Status(t *testing.T) {
 		server := setupApp()
 		defer server.stop()
 
-		client := NewClient().SetDial(server.dial())
+		client := New().SetDial(server.dial())
 
 		resp, err := AcquireRequest().
 			SetClient(client).
@@ -89,7 +89,7 @@ func Test_Response_Status_Code(t *testing.T) {
 		server := setupApp()
 		defer server.stop()
 
-		client := NewClient().SetDial(server.dial())
+		client := New().SetDial(server.dial())
 
 		resp, err := AcquireRequest().
 			SetClient(client).
@@ -106,7 +106,7 @@ func Test_Response_Status_Code(t *testing.T) {
 		server := setupApp()
 		defer server.stop()
 
-		client := NewClient().SetDial(server.dial())
+		client := New().SetDial(server.dial())
 
 		resp, err := AcquireRequest().
 			SetClient(client).
@@ -131,7 +131,7 @@ func Test_Response_Protocol(t *testing.T) {
 		})
 		defer server.stop()
 
-		client := NewClient().SetDial(server.dial())
+		client := New().SetDial(server.dial())
 
 		resp, err := AcquireRequest().
 			SetClient(client).
@@ -164,7 +164,7 @@ func Test_Response_Protocol(t *testing.T) {
 			}))
 		}()
 
-		client := NewClient()
+		client := New()
 		resp, err := client.SetTLSConfig(clientTLSConf).Get("https://" + ln.Addr().String())
 
 		require.NoError(t, err)
@@ -188,7 +188,7 @@ func Test_Response_Header(t *testing.T) {
 	})
 	defer server.stop()
 
-	client := NewClient().SetDial(server.dial())
+	client := New().SetDial(server.dial())
 
 	resp, err := AcquireRequest().
 		SetClient(client).
@@ -213,7 +213,7 @@ func Test_Response_Cookie(t *testing.T) {
 	})
 	defer server.stop()
 
-	client := NewClient().SetDial(server.dial())
+	client := New().SetDial(server.dial())
 
 	resp, err := AcquireRequest().
 		SetClient(client).
@@ -251,7 +251,7 @@ func Test_Response_Body(t *testing.T) {
 		server := setupApp()
 		defer server.stop()
 
-		client := NewClient().SetDial(server.dial())
+		client := New().SetDial(server.dial())
 
 		resp, err := AcquireRequest().
 			SetClient(client).
@@ -268,7 +268,7 @@ func Test_Response_Body(t *testing.T) {
 		server := setupApp()
 		defer server.stop()
 
-		client := NewClient().SetDial(server.dial())
+		client := New().SetDial(server.dial())
 
 		resp, err := AcquireRequest().
 			SetClient(client).
@@ -288,7 +288,7 @@ func Test_Response_Body(t *testing.T) {
 		server := setupApp()
 		defer server.stop()
 
-		client := NewClient().SetDial(server.dial())
+		client := New().SetDial(server.dial())
 
 		resp, err := AcquireRequest().
 			SetClient(client).
@@ -313,7 +313,7 @@ func Test_Response_Body(t *testing.T) {
 		server := setupApp()
 		defer server.stop()
 
-		client := NewClient().SetDial(server.dial())
+		client := New().SetDial(server.dial())
 
 		resp, err := AcquireRequest().
 			SetClient(client).
@@ -348,7 +348,7 @@ func Test_Response_Save(t *testing.T) {
 		server := setupApp()
 		defer server.stop()
 
-		client := NewClient().SetDial(server.dial())
+		client := New().SetDial(server.dial())
 
 		resp, err := AcquireRequest().
 			SetClient(client).
@@ -384,7 +384,7 @@ func Test_Response_Save(t *testing.T) {
 		server := setupApp()
 		defer server.stop()
 
-		client := NewClient().SetDial(server.dial())
+		client := New().SetDial(server.dial())
 
 		resp, err := AcquireRequest().
 			SetClient(client).
@@ -405,7 +405,7 @@ func Test_Response_Save(t *testing.T) {
 		server := setupApp()
 		defer server.stop()
 
-		client := NewClient().SetDial(server.dial())
+		client := New().SetDial(server.dial())
 
 		resp, err := AcquireRequest().
 			SetClient(client).
