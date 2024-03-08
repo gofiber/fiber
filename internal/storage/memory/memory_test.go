@@ -94,7 +94,7 @@ func Test_Storage_Memory_Set_Long_Expiration_with_Keys(t *testing.T) {
 		testStore = New()
 		key       = "john"
 		val       = []byte("doe")
-		exp       = 5 * time.Second
+		exp       = 3 * time.Second
 	)
 
 	keys, err := testStore.Keys()
