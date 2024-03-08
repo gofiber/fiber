@@ -1,5 +1,5 @@
 ---
-ID: healthcheck
+id: healthcheck
 ---
 
 # Health Check
