@@ -75,7 +75,7 @@ func Test_Idempotency(t *testing.T) {
 	})
 
 	app.Post("/slow", func(c fiber.Ctx) error {
-		time.Sleep(4 * lifetime)
+		time.Sleep(3 * lifetime)
 
 		return c.SendString(strconv.Itoa(nextCount()))
 	})
@@ -85,7 +85,8 @@ func Test_Idempotency(t *testing.T) {
 		if idempotencyKey != "" {
 			req.Header.Set("X-Idempotency-Key", idempotencyKey)
 		}
-		resp, err := app.Test(req, 5*lifetime)
+		// double timeout time for slow route
+		resp, err := app.Test(req, 6*lifetime)
 		require.NoError(t, err)
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
@@ -125,7 +126,7 @@ func Test_Idempotency(t *testing.T) {
 		wg.Wait()
 		require.Equal(t, "11", doReq(fiber.MethodPost, "/slow", "22222222-2222-2222-2222-222222222222"))
 	}
-	time.Sleep(4 * lifetime)
+	time.Sleep(3 * lifetime)
 	require.Equal(t, "12", doReq(fiber.MethodPost, "/slow", "22222222-2222-2222-2222-222222222222"))
 }
 
