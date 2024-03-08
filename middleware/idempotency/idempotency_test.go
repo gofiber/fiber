@@ -54,7 +54,7 @@ func Test_Idempotency(t *testing.T) {
 	})
 
 	// Needs to be at least a second as the memory storage doesn't support shorter durations.
-	const lifetime = 1 * time.Second
+	const lifetime = 2 * time.Second
 
 	app.Use(idempotency.New(idempotency.Config{
 		Lifetime: lifetime,
@@ -108,7 +108,7 @@ func Test_Idempotency(t *testing.T) {
 	require.Equal(t, "9", doReq(fiber.MethodPost, "/", "11111111-1111-1111-1111-111111111111"))
 
 	require.Equal(t, "7", doReq(fiber.MethodPost, "/", "00000000-0000-0000-0000-000000000000"))
-	time.Sleep(2 * lifetime)
+	time.Sleep(4 * lifetime)
 	require.Equal(t, "10", doReq(fiber.MethodPost, "/", "00000000-0000-0000-0000-000000000000"))
 	require.Equal(t, "10", doReq(fiber.MethodPost, "/", "00000000-0000-0000-0000-000000000000"))
 
