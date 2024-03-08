@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp/fasthttputil"
 )
@@ -48,6 +49,7 @@ func Test_AddMissing_Port(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
+		tt := tt // create a new 'tt' variable for the goroutine
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tt.want, addMissingPort(tt.args.addr, tt.args.isTLS))
@@ -57,7 +59,6 @@ func Test_AddMissing_Port(t *testing.T) {
 
 func Test_Exec_Func(t *testing.T) {
 	t.Parallel()
-
 	ln := fasthttputil.NewInmemoryListener()
 	app := fiber.New()
 
@@ -75,7 +76,7 @@ func Test_Exec_Func(t *testing.T) {
 	})
 
 	go func() {
-		require.NoError(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}))
+		assert.NoError(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}))
 	}()
 
 	time.Sleep(300 * time.Millisecond)
@@ -134,7 +135,6 @@ func Test_Exec_Func(t *testing.T) {
 
 func Test_Execute(t *testing.T) {
 	t.Parallel()
-
 	ln := fasthttputil.NewInmemoryListener()
 	app := fiber.New()
 
@@ -152,7 +152,7 @@ func Test_Execute(t *testing.T) {
 	})
 
 	go func() {
-		require.NoError(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}))
+		assert.NoError(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}))
 	}()
 
 	t.Run("add user request hooks", func(t *testing.T) {

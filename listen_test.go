@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttputil"
@@ -29,7 +30,7 @@ func Test_Listen(t *testing.T) {
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.NoError(t, app.Shutdown())
+		assert.NoError(t, app.Shutdown())
 	}()
 
 	require.NoError(t, app.Listen(":4003", ListenConfig{DisableStartupMessage: true}))
@@ -47,12 +48,13 @@ func Test_Listen_Graceful_Shutdown(t *testing.T) {
 	})
 
 	ln := fasthttputil.NewInmemoryListener()
+	errs := make(chan error)
 
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 
-		err := app.Listener(ln, ListenConfig{
+		errs <- app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 			GracefulContext:       ctx,
 			OnShutdownSuccess: func() {
@@ -61,9 +63,21 @@ func Test_Listen_Graceful_Shutdown(t *testing.T) {
 				mu.Unlock()
 			},
 		})
-
-		require.NoError(t, err)
 	}()
+
+	// Server readiness check
+	for i := 0; i < 10; i++ {
+		conn, err := ln.Dial()
+		if err == nil {
+			conn.Close() //nolint:errcheck // ignore error
+			break
+		}
+		// Wait a bit before retrying
+		time.Sleep(100 * time.Millisecond)
+		if i == 9 {
+			t.Fatalf("Server did not become ready in time: %v", err)
+		}
+	}
 
 	testCases := []struct {
 		Time               time.Duration
@@ -71,8 +85,8 @@ func Test_Listen_Graceful_Shutdown(t *testing.T) {
 		ExpectedStatusCode int
 		ExpectedErr        error
 	}{
-		{Time: 100 * time.Millisecond, ExpectedBody: "example.com", ExpectedStatusCode: StatusOK, ExpectedErr: nil},
-		{Time: 500 * time.Millisecond, ExpectedBody: "", ExpectedStatusCode: StatusOK, ExpectedErr: errors.New("InmemoryListener is already closed: use of closed network connection")},
+		{Time: 500 * time.Millisecond, ExpectedBody: "example.com", ExpectedStatusCode: StatusOK, ExpectedErr: nil},
+		{Time: 3 * time.Second, ExpectedBody: "", ExpectedStatusCode: StatusOK, ExpectedErr: errors.New("InmemoryListener is already closed: use of closed network connection")},
 	}
 
 	for _, tc := range testCases {
@@ -96,7 +110,9 @@ func Test_Listen_Graceful_Shutdown(t *testing.T) {
 	}
 
 	mu.Lock()
+	err := <-errs
 	require.True(t, shutdown)
+	require.NoError(t, err)
 	mu.Unlock()
 }
 
@@ -121,7 +137,7 @@ func Test_Listen_TLS(t *testing.T) {
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.NoError(t, app.Shutdown())
+		assert.NoError(t, app.Shutdown())
 	}()
 
 	require.NoError(t, app.Listen(":0", ListenConfig{
@@ -146,7 +162,7 @@ func Test_Listen_TLS_Prefork(t *testing.T) {
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.NoError(t, app.Shutdown())
+		assert.NoError(t, app.Shutdown())
 	}()
 
 	require.NoError(t, app.Listen(":99999", ListenConfig{
@@ -170,7 +186,7 @@ func Test_Listen_MutualTLS(t *testing.T) {
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.NoError(t, app.Shutdown())
+		assert.NoError(t, app.Shutdown())
 	}()
 
 	require.NoError(t, app.Listen(":0", ListenConfig{
@@ -197,7 +213,7 @@ func Test_Listen_MutualTLS_Prefork(t *testing.T) {
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.NoError(t, app.Shutdown())
+		assert.NoError(t, app.Shutdown())
 	}()
 
 	require.NoError(t, app.Listen(":99999", ListenConfig{
@@ -215,7 +231,7 @@ func Test_Listener(t *testing.T) {
 
 	go func() {
 		time.Sleep(500 * time.Millisecond)
-		require.NoError(t, app.Shutdown())
+		assert.NoError(t, app.Shutdown())
 	}()
 
 	ln := fasthttputil.NewInmemoryListener()
@@ -223,7 +239,6 @@ func Test_Listener(t *testing.T) {
 }
 
 func Test_App_Listener_TLS_Listener(t *testing.T) {
-	t.Parallel()
 	// Create tls certificate
 	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
 	if err != nil {
@@ -240,7 +255,7 @@ func Test_App_Listener_TLS_Listener(t *testing.T) {
 
 	go func() {
 		time.Sleep(time.Millisecond * 500)
-		require.NoError(t, app.Shutdown())
+		assert.NoError(t, app.Shutdown())
 	}()
 
 	require.NoError(t, app.Listener(ln))
@@ -253,7 +268,7 @@ func Test_Listen_TLSConfigFunc(t *testing.T) {
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.NoError(t, app.Shutdown())
+		assert.NoError(t, app.Shutdown())
 	}()
 
 	require.NoError(t, app.Listen(":0", ListenConfig{
@@ -275,7 +290,7 @@ func Test_Listen_ListenerAddrFunc(t *testing.T) {
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.NoError(t, app.Shutdown())
+		assert.NoError(t, app.Shutdown())
 	}()
 
 	require.NoError(t, app.Listen(":0", ListenConfig{
@@ -297,7 +312,7 @@ func Test_Listen_BeforeServeFunc(t *testing.T) {
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.NoError(t, app.Shutdown())
+		assert.NoError(t, app.Shutdown())
 	}()
 
 	wantErr := errors.New("test")
@@ -320,7 +335,7 @@ func Test_Listen_ListenerNetwork(t *testing.T) {
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.NoError(t, app.Shutdown())
+		assert.NoError(t, app.Shutdown())
 	}()
 
 	require.NoError(t, app.Listen(":0", ListenConfig{
@@ -335,7 +350,7 @@ func Test_Listen_ListenerNetwork(t *testing.T) {
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.NoError(t, app.Shutdown())
+		assert.NoError(t, app.Shutdown())
 	}()
 
 	require.NoError(t, app.Listen(":0", ListenConfig{

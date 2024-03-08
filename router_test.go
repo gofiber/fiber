@@ -455,6 +455,7 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 }
 
 func Test_Router_NotFound(t *testing.T) {
+	t.Parallel()
 	app := New()
 	app.Use(func(c Ctx) error {
 		return c.Next()
@@ -472,6 +473,7 @@ func Test_Router_NotFound(t *testing.T) {
 }
 
 func Test_Router_NotFound_HTML_Inject(t *testing.T) {
+	t.Parallel()
 	app := New()
 	app.Use(func(c Ctx) error {
 		return c.Next()

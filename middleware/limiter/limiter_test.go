@@ -9,6 +9,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -16,8 +17,6 @@ import (
 // go test -run Test_Limiter_Concurrency_Store -race -v
 func Test_Limiter_Concurrency_Store(t *testing.T) {
 	t.Parallel()
-	// Test concurrency using a custom store
-
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -31,20 +30,19 @@ func Test_Limiter_Concurrency_Store(t *testing.T) {
 	})
 
 	var wg sync.WaitGroup
-	singleRequest := func(wg *sync.WaitGroup) {
-		defer wg.Done()
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Equal(t, "Hello tester!", string(body))
-	}
 
 	for i := 0; i <= 49; i++ {
 		wg.Add(1)
-		go singleRequest(&wg)
+		go func(wg *sync.WaitGroup) {
+			defer wg.Done()
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+			assert.NoError(t, err)
+			assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+			body, err := io.ReadAll(resp.Body)
+			assert.NoError(t, err)
+			assert.Equal(t, "Hello tester!", string(body))
+		}(&wg)
 	}
 
 	wg.Wait()
@@ -63,8 +61,6 @@ func Test_Limiter_Concurrency_Store(t *testing.T) {
 // go test -run Test_Limiter_Concurrency -race -v
 func Test_Limiter_Concurrency(t *testing.T) {
 	t.Parallel()
-	// Test concurrency using a default store
-
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -77,20 +73,19 @@ func Test_Limiter_Concurrency(t *testing.T) {
 	})
 
 	var wg sync.WaitGroup
-	singleRequest := func(wg *sync.WaitGroup) {
-		defer wg.Done()
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Equal(t, "Hello tester!", string(body))
-	}
 
 	for i := 0; i <= 49; i++ {
 		wg.Add(1)
-		go singleRequest(&wg)
+		go func(wg *sync.WaitGroup) {
+			defer wg.Done()
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+			assert.NoError(t, err)
+			assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+			body, err := io.ReadAll(resp.Body)
+			assert.NoError(t, err)
+			assert.Equal(t, "Hello tester!", string(body))
+		}(&wg)
 	}
 
 	wg.Wait()
@@ -421,8 +416,6 @@ func Test_Limiter_Sliding_Window_Custom_Storage_Skip_Failed_Requests(t *testing.
 // go test -run Test_Limiter_Fixed_Window_Skip_Successful_Requests -v
 func Test_Limiter_Fixed_Window_Skip_Successful_Requests(t *testing.T) {
 	t.Parallel()
-	// Test concurrency using a default store
-
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -461,8 +454,6 @@ func Test_Limiter_Fixed_Window_Skip_Successful_Requests(t *testing.T) {
 // go test -run Test_Limiter_Fixed_Window_Custom_Storage_Skip_Successful_Requests -v
 func Test_Limiter_Fixed_Window_Custom_Storage_Skip_Successful_Requests(t *testing.T) {
 	t.Parallel()
-	// Test concurrency using a default store
-
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -502,8 +493,6 @@ func Test_Limiter_Fixed_Window_Custom_Storage_Skip_Successful_Requests(t *testin
 // go test -run Test_Limiter_Sliding_Window_Skip_Successful_Requests -v
 func Test_Limiter_Sliding_Window_Skip_Successful_Requests(t *testing.T) {
 	t.Parallel()
-	// Test concurrency using a default store
-
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -542,8 +531,6 @@ func Test_Limiter_Sliding_Window_Skip_Successful_Requests(t *testing.T) {
 // go test -run Test_Limiter_Sliding_Window_Custom_Storage_Skip_Successful_Requests -v
 func Test_Limiter_Sliding_Window_Custom_Storage_Skip_Successful_Requests(t *testing.T) {
 	t.Parallel()
-	// Test concurrency using a default store
-
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -682,7 +669,7 @@ func Test_Sliding_Window(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{
 		Max:               10,
-		Expiration:        2 * time.Second,
+		Expiration:        1 * time.Second,
 		Storage:           memory.New(),
 		LimiterMiddleware: SlidingWindow{},
 	}))
@@ -706,7 +693,7 @@ func Test_Sliding_Window(t *testing.T) {
 		singleRequest(false)
 	}
 
-	time.Sleep(2 * time.Second)
+	time.Sleep(3 * time.Second)
 
 	for i := 0; i < 5; i++ {
 		singleRequest(false)
@@ -718,9 +705,14 @@ func Test_Sliding_Window(t *testing.T) {
 		singleRequest(false)
 	}
 
-	time.Sleep(4 * time.Second)
+	time.Sleep(3 * time.Second)
 
-	for i := 0; i < 9; i++ {
+	for i := 0; i < 10; i++ {
 		singleRequest(false)
+	}
+
+	// requests should fail now
+	for i := 0; i < 5; i++ {
+		singleRequest(true)
 	}
 }

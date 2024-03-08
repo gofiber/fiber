@@ -25,6 +25,7 @@ import (
 
 	"github.com/gofiber/utils/v2"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttputil"
@@ -197,6 +198,7 @@ func (*customConstraint) Execute(param string, args ...string) bool {
 }
 
 func Test_App_CustomConstraint(t *testing.T) {
+	t.Parallel()
 	app := New()
 	app.RegisterCustomConstraint(&customConstraint{})
 
@@ -821,20 +823,20 @@ func Test_App_ShutdownWithTimeout(t *testing.T) {
 		time.Sleep(5 * time.Second)
 		return c.SendString("body")
 	})
+
 	ln := fasthttputil.NewInmemoryListener()
 	go func() {
-		require.NoError(t, app.Listener(ln))
+		err := app.Listener(ln)
+		assert.NoError(t, err)
 	}()
+
 	time.Sleep(1 * time.Second)
 	go func() {
 		conn, err := ln.Dial()
-		if err != nil {
-			t.Errorf("unexepcted error: %v", err)
-		}
+		assert.NoError(t, err)
 
-		if _, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: google.com\r\n\r\n")); err != nil {
-			t.Errorf("unexpected error: %v", err)
-		}
+		_, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: google.com\r\n\r\n"))
+		assert.NoError(t, err)
 	}()
 	time.Sleep(1 * time.Second)
 
@@ -866,20 +868,18 @@ func Test_App_ShutdownWithContext(t *testing.T) {
 	ln := fasthttputil.NewInmemoryListener()
 
 	go func() {
-		require.NoError(t, app.Listener(ln))
+		err := app.Listener(ln)
+		assert.NoError(t, err)
 	}()
 
 	time.Sleep(1 * time.Second)
 
 	go func() {
 		conn, err := ln.Dial()
-		if err != nil {
-			t.Errorf("unexepcted error: %v", err)
-		}
+		assert.NoError(t, err)
 
-		if _, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: google.com\r\n\r\n")); err != nil {
-			t.Errorf("unexpected error: %v", err)
-		}
+		_, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: google.com\r\n\r\n"))
+		assert.NoError(t, err)
 	}()
 
 	time.Sleep(1 * time.Second)
@@ -903,6 +903,7 @@ func Test_App_ShutdownWithContext(t *testing.T) {
 
 // go test -run Test_App_Static_Index_Default
 func Test_App_Static_Index_Default(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	app.Static("/prefix", "./.github/workflows")
@@ -932,6 +933,7 @@ func Test_App_Static_Index_Default(t *testing.T) {
 
 // go test -run Test_App_Static_Index
 func Test_App_Static_Direct(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	app.Static("/", "./.github")
@@ -960,6 +962,7 @@ func Test_App_Static_Direct(t *testing.T) {
 
 // go test -run Test_App_Static_MaxAge
 func Test_App_Static_MaxAge(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	app.Static("/", "./.github", Static{MaxAge: 100})
@@ -974,6 +977,7 @@ func Test_App_Static_MaxAge(t *testing.T) {
 
 // go test -run Test_App_Static_Custom_CacheControl
 func Test_App_Static_Custom_CacheControl(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	app.Static("/", "./.github", Static{ModifyResponse: func(c Ctx) error {
@@ -994,6 +998,7 @@ func Test_App_Static_Custom_CacheControl(t *testing.T) {
 
 // go test -run Test_App_Static_Download
 func Test_App_Static_Download(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	app.Static("/fiber.png", "./.github/testdata/fs/img/fiber.png", Static{Download: true})
@@ -1008,6 +1013,7 @@ func Test_App_Static_Download(t *testing.T) {
 
 // go test -run Test_App_Static_Group
 func Test_App_Static_Group(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	grp := app.Group("/v1", func(c Ctx) error {
@@ -1037,6 +1043,7 @@ func Test_App_Static_Group(t *testing.T) {
 }
 
 func Test_App_Static_Wildcard(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	app.Static("*", "./.github/index.html")
@@ -1054,6 +1061,7 @@ func Test_App_Static_Wildcard(t *testing.T) {
 }
 
 func Test_App_Static_Prefix_Wildcard(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	app.Static("/test/*", "./.github/index.html")
@@ -1079,6 +1087,7 @@ func Test_App_Static_Prefix_Wildcard(t *testing.T) {
 }
 
 func Test_App_Static_Prefix(t *testing.T) {
+	t.Parallel()
 	app := New()
 	app.Static("/john", "./.github")
 
@@ -1109,6 +1118,7 @@ func Test_App_Static_Prefix(t *testing.T) {
 }
 
 func Test_App_Static_Trailing_Slash(t *testing.T) {
+	t.Parallel()
 	app := New()
 	app.Static("/john", "./.github")
 
@@ -1155,6 +1165,7 @@ func Test_App_Static_Trailing_Slash(t *testing.T) {
 }
 
 func Test_App_Static_Next(t *testing.T) {
+	t.Parallel()
 	app := New()
 	app.Static("/", ".github", Static{
 		Next: func(c Ctx) bool {
@@ -1168,6 +1179,7 @@ func Test_App_Static_Next(t *testing.T) {
 	})
 
 	t.Run("app.Static is skipped: invoking Get handler", func(t *testing.T) {
+		t.Parallel()
 		req := httptest.NewRequest(MethodGet, "/", nil)
 		req.Header.Set("X-Custom-Header", "skip")
 		resp, err := app.Test(req)
@@ -1182,6 +1194,7 @@ func Test_App_Static_Next(t *testing.T) {
 	})
 
 	t.Run("app.Static is not skipped: serving index.html", func(t *testing.T) {
+		t.Parallel()
 		req := httptest.NewRequest(MethodGet, "/", nil)
 		req.Header.Set("X-Custom-Header", "don't skip")
 		resp, err := app.Test(req)
@@ -1198,6 +1211,7 @@ func Test_App_Static_Next(t *testing.T) {
 
 // go test -run Test_App_Mixed_Routes_WithSameLen
 func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	// middleware
@@ -1476,6 +1490,7 @@ func (invalidView) Render(io.Writer, string, any, ...string) error { panic("impl
 
 // go test -run Test_App_Init_Error_View
 func Test_App_Init_Error_View(t *testing.T) {
+	t.Parallel()
 	app := New(Config{Views: invalidView{}})
 
 	defer func() {
@@ -1542,23 +1557,23 @@ func Test_App_ReadTimeout(t *testing.T) {
 		time.Sleep(500 * time.Millisecond)
 
 		conn, err := net.Dial(NetworkTCP4, "127.0.0.1:4004")
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		defer func(conn net.Conn) {
 			err := conn.Close()
-			require.NoError(t, err)
+			assert.NoError(t, err)
 		}(conn)
 
 		_, err = conn.Write([]byte("HEAD /read-timeout HTTP/1.1\r\n"))
-		require.NoError(t, err)
+		assert.NoError(t, err)
 
 		buf := make([]byte, 1024)
 		var n int
 		n, err = conn.Read(buf)
 
-		require.NoError(t, err)
-		require.True(t, bytes.Contains(buf[:n], []byte("408 Request Timeout")))
+		assert.NoError(t, err)
+		assert.True(t, bytes.Contains(buf[:n], []byte("408 Request Timeout")))
 
-		require.NoError(t, app.Shutdown())
+		assert.NoError(t, app.Shutdown())
 	}()
 
 	require.NoError(t, app.Listen(":4004", ListenConfig{DisableStartupMessage: true}))
@@ -1576,23 +1591,22 @@ func Test_App_BadRequest(t *testing.T) {
 	go func() {
 		time.Sleep(500 * time.Millisecond)
 		conn, err := net.Dial(NetworkTCP4, "127.0.0.1:4005")
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		defer func(conn net.Conn) {
 			err := conn.Close()
-			require.NoError(t, err)
+			assert.NoError(t, err)
 		}(conn)
 
 		_, err = conn.Write([]byte("BadRequest\r\n"))
-		require.NoError(t, err)
+		assert.NoError(t, err)
 
 		buf := make([]byte, 1024)
 		var n int
 		n, err = conn.Read(buf)
-		require.NoError(t, err)
 
-		require.True(t, bytes.Contains(buf[:n], []byte("400 Bad Request")))
-
-		require.NoError(t, app.Shutdown())
+		assert.NoError(t, err)
+		assert.True(t, bytes.Contains(buf[:n], []byte("400 Bad Request")))
+		assert.NoError(t, app.Shutdown())
 	}()
 
 	require.NoError(t, app.Listen(":4005", ListenConfig{DisableStartupMessage: true}))
@@ -1612,12 +1626,12 @@ func Test_App_SmallReadBuffer(t *testing.T) {
 	go func() {
 		time.Sleep(500 * time.Millisecond)
 		req, err := http.NewRequestWithContext(context.Background(), MethodGet, "http://127.0.0.1:4006/small-read-buffer", nil)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		var client http.Client
 		resp, err := client.Do(req)
-		require.NoError(t, err)
-		require.Equal(t, 431, resp.StatusCode)
-		require.NoError(t, app.Shutdown())
+		assert.NoError(t, err)
+		assert.Equal(t, 431, resp.StatusCode)
+		assert.NoError(t, app.Shutdown())
 	}()
 
 	require.NoError(t, app.Listen(":4006", ListenConfig{DisableStartupMessage: true}))
@@ -1755,6 +1769,19 @@ func Test_App_Test_no_timeout_infinitely(t *testing.T) {
 	}
 }
 
+func Test_App_Test_timeout(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/", func(_ Ctx) error {
+		time.Sleep(1 * time.Second)
+		return nil
+	})
+
+	_, err := app.Test(httptest.NewRequest(MethodGet, "/", nil), 100*time.Millisecond)
+	require.Equal(t, errors.New("test: timeout error after 100ms"), err)
+}
+
 func Test_App_SetTLSHandler(t *testing.T) {
 	t.Parallel()
 	tlsHandler := &TLSHandler{clientHelloInfo: &tls.ClientHelloInfo{
@@ -1815,6 +1842,7 @@ func TestApp_GetRoutes(t *testing.T) {
 }
 
 func Test_Middleware_Route_Naming_With_Use(t *testing.T) {
+	t.Parallel()
 	named := "named"
 	app := New()
 
@@ -1874,6 +1902,7 @@ func Test_Middleware_Route_Naming_With_Use(t *testing.T) {
 }
 
 func Test_Route_Naming_Issue_2671_2685(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	app.Get("/", emptyHandler).Name("index")
