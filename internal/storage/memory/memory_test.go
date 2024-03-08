@@ -76,7 +76,8 @@ func Test_Storage_Memory_Set_Expiration(t *testing.T) {
 	err := testStore.Set(key, val, exp)
 	require.NoError(t, err)
 
-	time.Sleep(1100 * time.Millisecond)
+	// interval + expire + buffer
+	time.Sleep(1500 * time.Millisecond)
 
 	result, err := testStore.Get(key)
 	require.NoError(t, err)
