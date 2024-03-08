@@ -48,7 +48,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 
 	t.Run("client baseurl should be set", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient().SetBaseURL("http://example.com/api")
+		client := New().SetBaseURL("http://example.com/api")
 		req := AcquireRequest().SetURL("")
 
 		err := parserRequestURL(client, req)
@@ -58,7 +58,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 
 	t.Run("request url should be set", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient()
+		client := New()
 		req := AcquireRequest().SetURL("http://example.com/api")
 
 		err := parserRequestURL(client, req)
@@ -68,7 +68,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 
 	t.Run("the request url will override baseurl with protocol", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient().SetBaseURL("http://example.com/api")
+		client := New().SetBaseURL("http://example.com/api")
 		req := AcquireRequest().SetURL("http://example.com/api/v1")
 
 		err := parserRequestURL(client, req)
@@ -78,7 +78,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 
 	t.Run("the request url should be append after baseurl without protocol", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient().SetBaseURL("http://example.com/api")
+		client := New().SetBaseURL("http://example.com/api")
 		req := AcquireRequest().SetURL("/v1")
 
 		err := parserRequestURL(client, req)
@@ -88,7 +88,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 
 	t.Run("the url is error", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient().SetBaseURL("example.com/api")
+		client := New().SetBaseURL("example.com/api")
 		req := AcquireRequest().SetURL("/v1")
 
 		err := parserRequestURL(client, req)
@@ -97,7 +97,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 
 	t.Run("the path param from client", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient().
+		client := New().
 			SetBaseURL("http://example.com/api/:id").
 			SetPathParam("id", "5")
 		req := AcquireRequest()
@@ -109,7 +109,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 
 	t.Run("the path param from request", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient().
+		client := New().
 			SetBaseURL("http://example.com/api/:id/:name").
 			SetPathParam("id", "5")
 		req := AcquireRequest().
@@ -127,7 +127,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 
 	t.Run("the path param from request and client", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient().
+		client := New().
 			SetBaseURL("http://example.com/api/:id/:name").
 			SetPathParam("id", "5")
 		req := AcquireRequest().
@@ -145,7 +145,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 
 	t.Run("query params from client should be set", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient().
+		client := New().
 			SetParam("foo", "bar")
 		req := AcquireRequest().SetURL("http://example.com/api/v1")
 
@@ -156,7 +156,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 
 	t.Run("query params from request should be set", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient()
+		client := New()
 		req := AcquireRequest().
 			SetURL("http://example.com/api/v1").
 			SetParam("bar", "foo")
@@ -168,7 +168,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 
 	t.Run("query params should be merged", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient().
+		client := New().
 			SetParam("bar", "foo1")
 		req := AcquireRequest().
 			SetURL("http://example.com/api/v1?bar=foo2").
@@ -201,7 +201,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 
 	t.Run("client header should be set", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient().
+		client := New().
 			SetHeaders(map[string]string{
 				fiber.HeaderContentType: "application/json",
 			})
@@ -215,7 +215,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 
 	t.Run("request header should be set", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient()
+		client := New()
 
 		req := AcquireRequest().
 			SetHeaders(map[string]string{
@@ -229,7 +229,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 
 	t.Run("request header should override client header", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient().
+		client := New().
 			SetHeader(fiber.HeaderContentType, "application/xml")
 
 		req := AcquireRequest().
@@ -245,7 +245,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 		type jsonData struct {
 			Name string `json:"name"`
 		}
-		client := NewClient()
+		client := New()
 		req := AcquireRequest().
 			SetJSON(jsonData{
 				Name: "foo",
@@ -262,7 +262,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 			XMLName xml.Name `xml:"body"`
 			Name    string   `xml:"name"`
 		}
-		client := NewClient()
+		client := New()
 		req := AcquireRequest().
 			SetXML(xmlData{
 				Name: "foo",
@@ -275,7 +275,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 
 	t.Run("auto set form data header", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient()
+		client := New()
 		req := AcquireRequest().
 			SetFormDatas(map[string]string{
 				"foo":  "bar",
@@ -289,7 +289,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 
 	t.Run("auto set file header", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient()
+		client := New()
 		req := AcquireRequest().
 			AddFileWithReader("hello", io.NopCloser(strings.NewReader("world"))).
 			SetFormData("foo", "bar")
@@ -302,7 +302,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 
 	t.Run("ua should have default value", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient()
+		client := New()
 		req := AcquireRequest()
 
 		err := parserRequestHeader(client, req)
@@ -312,7 +312,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 
 	t.Run("ua in client should be set", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient().SetUserAgent("foo")
+		client := New().SetUserAgent("foo")
 		req := AcquireRequest()
 
 		err := parserRequestHeader(client, req)
@@ -322,7 +322,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 
 	t.Run("ua in request should have higher level", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient().SetUserAgent("foo")
+		client := New().SetUserAgent("foo")
 		req := AcquireRequest().SetUserAgent("bar")
 
 		err := parserRequestHeader(client, req)
@@ -332,7 +332,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 
 	t.Run("referer in client should be set", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient().SetReferer("https://example.com")
+		client := New().SetReferer("https://example.com")
 		req := AcquireRequest()
 
 		err := parserRequestHeader(client, req)
@@ -342,7 +342,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 
 	t.Run("referer in request should have higher level", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient().SetReferer("http://example.com")
+		client := New().SetReferer("http://example.com")
 		req := AcquireRequest().SetReferer("https://example.com")
 
 		err := parserRequestHeader(client, req)
@@ -352,7 +352,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 
 	t.Run("client cookie should be set", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient().
+		client := New().
 			SetCookie("foo", "bar").
 			SetCookies(map[string]string{
 				"bar":  "foo",
@@ -376,7 +376,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 			Bar int    `cookie:"bar"`
 		}
 
-		client := NewClient()
+		client := New()
 
 		req := AcquireRequest().
 			SetCookiesWithStruct(&cookies{
@@ -398,7 +398,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 			Bar int    `cookie:"bar"`
 		}
 
-		client := NewClient().
+		client := New().
 			SetCookie("foo", "bar").
 			SetCookies(map[string]string{
 				"bar":  "foo",
@@ -427,7 +427,7 @@ func Test_Parser_Request_Body(t *testing.T) {
 		type jsonData struct {
 			Name string `json:"name"`
 		}
-		client := NewClient()
+		client := New()
 		req := AcquireRequest().
 			SetJSON(jsonData{
 				Name: "foo",
@@ -444,7 +444,7 @@ func Test_Parser_Request_Body(t *testing.T) {
 			XMLName xml.Name `xml:"body"`
 			Name    string   `xml:"name"`
 		}
-		client := NewClient()
+		client := New()
 		req := AcquireRequest().
 			SetXML(xmlData{
 				Name: "foo",
@@ -457,7 +457,7 @@ func Test_Parser_Request_Body(t *testing.T) {
 
 	t.Run("form data body", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient()
+		client := New()
 		req := AcquireRequest().
 			SetFormDatas(map[string]string{
 				"ball": "cricle and square",
@@ -470,7 +470,7 @@ func Test_Parser_Request_Body(t *testing.T) {
 
 	t.Run("form data body error", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient()
+		client := New()
 		req := AcquireRequest().
 			SetFormDatas(map[string]string{
 				"": "",
@@ -482,7 +482,7 @@ func Test_Parser_Request_Body(t *testing.T) {
 
 	t.Run("file body", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient()
+		client := New()
 		req := AcquireRequest().
 			AddFileWithReader("hello", io.NopCloser(strings.NewReader("world")))
 
@@ -494,7 +494,7 @@ func Test_Parser_Request_Body(t *testing.T) {
 
 	t.Run("file and form data", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient()
+		client := New()
 		req := AcquireRequest().
 			AddFileWithReader("hello", io.NopCloser(strings.NewReader("world"))).
 			SetFormData("foo", "bar")
@@ -508,7 +508,7 @@ func Test_Parser_Request_Body(t *testing.T) {
 
 	t.Run("raw body", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient()
+		client := New()
 		req := AcquireRequest().
 			SetRawBody([]byte("hello world"))
 
@@ -519,7 +519,7 @@ func Test_Parser_Request_Body(t *testing.T) {
 
 	t.Run("raw body error", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient()
+		client := New()
 		req := AcquireRequest().
 			SetRawBody([]byte("hello world"))
 
@@ -602,7 +602,7 @@ func Test_Client_Logger_Debug(t *testing.T) {
 	var buf bytes.Buffer
 	logger := &dummyLogger{buf: &buf}
 
-	client := NewClient()
+	client := New()
 	client.Debug().SetLogger(logger)
 
 	addr := <-addrChan
@@ -639,7 +639,7 @@ func Test_Client_Logger_DisableDebug(t *testing.T) {
 	var buf bytes.Buffer
 	logger := &dummyLogger{buf: &buf}
 
-	client := NewClient()
+	client := New()
 	client.DisableDebug().SetLogger(logger)
 
 	addr := <-addrChan

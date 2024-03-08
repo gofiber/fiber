@@ -62,7 +62,7 @@ func Test_Client_Add_Hook(t *testing.T) {
 		buf := bytebufferpool.Get()
 		defer bytebufferpool.Put(buf)
 
-		client := NewClient().AddRequestHook(func(_ *Client, _ *Request) error {
+		client := New().AddRequestHook(func(_ *Client, _ *Request) error {
 			buf.WriteString("hook1")
 			return nil
 		})
@@ -82,7 +82,7 @@ func Test_Client_Add_Hook(t *testing.T) {
 
 	t.Run("add response hooks", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient().AddResponseHook(func(_ *Client, _ *Response, _ *Request) error {
+		client := New().AddResponseHook(func(_ *Client, _ *Response, _ *Request) error {
 			return nil
 		})
 
@@ -104,7 +104,7 @@ func Test_Client_Add_Hook_CheckOrder(t *testing.T) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	client := NewClient().
+	client := New().
 		AddRequestHook(func(_ *Client, _ *Request) error {
 			buf.WriteString("hook1")
 			return nil
@@ -130,7 +130,7 @@ func Test_Client_Marshal(t *testing.T) {
 
 	t.Run("set json marshal", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient().
+		client := New().
 			SetJSONMarshal(func(_ any) ([]byte, error) {
 				return []byte("hello"), nil
 			})
@@ -144,7 +144,7 @@ func Test_Client_Marshal(t *testing.T) {
 		t.Parallel()
 
 		emptyErr := errors.New("empty json")
-		client := NewClient().
+		client := New().
 			SetJSONMarshal(func(_ any) ([]byte, error) {
 				return nil, emptyErr
 			})
@@ -156,7 +156,7 @@ func Test_Client_Marshal(t *testing.T) {
 
 	t.Run("set json unmarshal", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient().
+		client := New().
 			SetJSONUnmarshal(func(_ []byte, _ any) error {
 				return errors.New("empty json")
 			})
@@ -167,7 +167,7 @@ func Test_Client_Marshal(t *testing.T) {
 
 	t.Run("set json unmarshal error", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient().
+		client := New().
 			SetJSONUnmarshal(func(_ []byte, _ any) error {
 				return errors.New("empty json")
 			})
@@ -178,7 +178,7 @@ func Test_Client_Marshal(t *testing.T) {
 
 	t.Run("set xml marshal", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient().
+		client := New().
 			SetXMLMarshal(func(_ any) ([]byte, error) {
 				return []byte("hello"), nil
 			})
@@ -190,7 +190,7 @@ func Test_Client_Marshal(t *testing.T) {
 
 	t.Run("set xml marshal error", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient().
+		client := New().
 			SetXMLMarshal(func(_ any) ([]byte, error) {
 				return nil, errors.New("empty xml")
 			})
@@ -202,7 +202,7 @@ func Test_Client_Marshal(t *testing.T) {
 
 	t.Run("set xml unmarshal", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient().
+		client := New().
 			SetXMLUnmarshal(func(_ []byte, _ any) error {
 				return errors.New("empty xml")
 			})
@@ -213,7 +213,7 @@ func Test_Client_Marshal(t *testing.T) {
 
 	t.Run("set xml unmarshal error", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient().
+		client := New().
 			SetXMLUnmarshal(func(_ []byte, _ any) error {
 				return errors.New("empty xml")
 			})
@@ -226,7 +226,7 @@ func Test_Client_Marshal(t *testing.T) {
 func Test_Client_SetBaseURL(t *testing.T) {
 	t.Parallel()
 
-	client := NewClient().SetBaseURL("http://example.com")
+	client := New().SetBaseURL("http://example.com")
 
 	require.Equal(t, "http://example.com", client.BaseURL())
 }
@@ -242,7 +242,7 @@ func Test_Client_Invalid_URL(t *testing.T) {
 
 	go start()
 
-	_, err := NewClient().SetDial(dial).
+	_, err := New().SetDial(dial).
 		R().
 		Get("http//example")
 
@@ -252,7 +252,7 @@ func Test_Client_Invalid_URL(t *testing.T) {
 func Test_Client_Unsupported_Protocol(t *testing.T) {
 	t.Parallel()
 
-	_, err := NewClient().
+	_, err := New().
 		R().
 		Get("ftp://example.com")
 
@@ -268,7 +268,7 @@ func Test_Client_ConcurrencyRequests(t *testing.T) {
 	})
 	go start()
 
-	client := NewClient().SetDial(dial)
+	client := New().SetDial(dial)
 
 	wg := sync.WaitGroup{}
 	for i := 0; i < 5; i++ {
@@ -320,7 +320,7 @@ func Test_Get(t *testing.T) {
 			require.NoError(t, app.Shutdown())
 		}()
 
-		resp, err := NewClient().Get("http://" + addr)
+		resp, err := New().Get("http://" + addr)
 		require.NoError(t, err)
 		require.Equal(t, "0.0.0.0", utils.UnsafeString(resp.RawResponse.Body()))
 	})
@@ -361,7 +361,7 @@ func Test_Head(t *testing.T) {
 			require.NoError(t, app.Shutdown())
 		}()
 
-		resp, err := NewClient().Head("http://" + addr)
+		resp, err := New().Head("http://" + addr)
 		require.NoError(t, err)
 		require.Equal(t, "7", resp.Header(fiber.HeaderContentLength))
 		require.Equal(t, "", utils.UnsafeString(resp.RawResponse.Body()))
@@ -412,7 +412,7 @@ func Test_Post(t *testing.T) {
 		}()
 
 		for i := 0; i < 5; i++ {
-			resp, err := NewClient().Post("http://"+addr, Config{
+			resp, err := New().Post("http://"+addr, Config{
 				FormData: map[string]string{
 					"foo": "bar",
 				},
@@ -468,7 +468,7 @@ func Test_Put(t *testing.T) {
 		}()
 
 		for i := 0; i < 5; i++ {
-			resp, err := NewClient().Put("http://"+addr, Config{
+			resp, err := New().Put("http://"+addr, Config{
 				FormData: map[string]string{
 					"foo": "bar",
 				},
@@ -527,7 +527,7 @@ func Test_Delete(t *testing.T) {
 		}()
 
 		for i := 0; i < 5; i++ {
-			resp, err := NewClient().Delete("http://"+addr, Config{
+			resp, err := New().Delete("http://"+addr, Config{
 				FormData: map[string]string{
 					"foo": "bar",
 				},
@@ -581,7 +581,7 @@ func Test_Options(t *testing.T) {
 		}()
 
 		for i := 0; i < 5; i++ {
-			resp, err := NewClient().Options("http://" + addr)
+			resp, err := New().Options("http://" + addr)
 
 			require.NoError(t, err)
 			require.Equal(t, "GET, POST, PUT, DELETE, PATCH", resp.Header(fiber.HeaderAllow))
@@ -636,7 +636,7 @@ func Test_Patch(t *testing.T) {
 		}()
 
 		for i := 0; i < 5; i++ {
-			resp, err := NewClient().Patch("http://"+addr, Config{
+			resp, err := New().Patch("http://"+addr, Config{
 				FormData: map[string]string{
 					"foo": "bar",
 				},
@@ -688,7 +688,7 @@ func Test_Client_UserAgent(t *testing.T) {
 		}()
 
 		for i := 0; i < 5; i++ {
-			c := NewClient().
+			c := New().
 				SetUserAgent("ua")
 
 			resp, err := c.Get("http://" + addr)
@@ -705,7 +705,7 @@ func Test_Client_Header(t *testing.T) {
 
 	t.Run("add header", func(t *testing.T) {
 		t.Parallel()
-		req := NewClient()
+		req := New()
 		req.AddHeader("foo", "bar").AddHeader("foo", "fiber")
 
 		res := req.Header("foo")
@@ -716,7 +716,7 @@ func Test_Client_Header(t *testing.T) {
 
 	t.Run("set header", func(t *testing.T) {
 		t.Parallel()
-		req := NewClient()
+		req := New()
 		req.AddHeader("foo", "bar").SetHeader("foo", "fiber")
 
 		res := req.Header("foo")
@@ -726,7 +726,7 @@ func Test_Client_Header(t *testing.T) {
 
 	t.Run("add headers", func(t *testing.T) {
 		t.Parallel()
-		req := NewClient()
+		req := New()
 		req.SetHeader("foo", "bar").
 			AddHeaders(map[string][]string{
 				"foo": {"fiber", "buaa"},
@@ -746,7 +746,7 @@ func Test_Client_Header(t *testing.T) {
 
 	t.Run("set headers", func(t *testing.T) {
 		t.Parallel()
-		req := NewClient()
+		req := New()
 		req.SetHeader("foo", "bar").
 			SetHeaders(map[string]string{
 				"foo": "fiber",
@@ -764,7 +764,7 @@ func Test_Client_Header(t *testing.T) {
 
 	t.Run("set header case insensitive", func(t *testing.T) {
 		t.Parallel()
-		req := NewClient()
+		req := New()
 		req.SetHeader("foo", "bar").
 			AddHeader("FOO", "fiber")
 
@@ -806,7 +806,7 @@ func Test_Client_Cookie(t *testing.T) {
 
 	t.Run("set cookie", func(t *testing.T) {
 		t.Parallel()
-		req := NewClient().
+		req := New().
 			SetCookie("foo", "bar")
 		require.Equal(t, "bar", req.Cookie("foo"))
 
@@ -816,7 +816,7 @@ func Test_Client_Cookie(t *testing.T) {
 
 	t.Run("set cookies", func(t *testing.T) {
 		t.Parallel()
-		req := NewClient().
+		req := New().
 			SetCookies(map[string]string{
 				"foo": "bar",
 				"bar": "foo",
@@ -838,7 +838,7 @@ func Test_Client_Cookie(t *testing.T) {
 			CookieString string `cookie:"string"`
 		}
 
-		req := NewClient().SetCookiesWithStruct(&args{
+		req := New().SetCookiesWithStruct(&args{
 			CookieInt:    5,
 			CookieString: "foo",
 		})
@@ -849,7 +849,7 @@ func Test_Client_Cookie(t *testing.T) {
 
 	t.Run("del cookies", func(t *testing.T) {
 		t.Parallel()
-		req := NewClient().
+		req := New().
 			SetCookies(map[string]string{
 				"foo": "bar",
 				"bar": "foo",
@@ -1025,7 +1025,7 @@ func Test_Client_QueryParam(t *testing.T) {
 
 	t.Run("add param", func(t *testing.T) {
 		t.Parallel()
-		req := NewClient()
+		req := New()
 		req.AddParam("foo", "bar").AddParam("foo", "fiber")
 
 		res := req.Param("foo")
@@ -1036,7 +1036,7 @@ func Test_Client_QueryParam(t *testing.T) {
 
 	t.Run("set param", func(t *testing.T) {
 		t.Parallel()
-		req := NewClient()
+		req := New()
 		req.AddParam("foo", "bar").SetParam("foo", "fiber")
 
 		res := req.Param("foo")
@@ -1046,7 +1046,7 @@ func Test_Client_QueryParam(t *testing.T) {
 
 	t.Run("add params", func(t *testing.T) {
 		t.Parallel()
-		req := NewClient()
+		req := New()
 		req.SetParam("foo", "bar").
 			AddParams(map[string][]string{
 				"foo": {"fiber", "buaa"},
@@ -1066,7 +1066,7 @@ func Test_Client_QueryParam(t *testing.T) {
 
 	t.Run("set headers", func(t *testing.T) {
 		t.Parallel()
-		req := NewClient()
+		req := New()
 		req.SetParam("foo", "bar").
 			SetParams(map[string]string{
 				"foo": "fiber",
@@ -1094,7 +1094,7 @@ func Test_Client_QueryParam(t *testing.T) {
 			TIntSlice []int `param:"int_slice"`
 		}
 
-		p := NewClient()
+		p := New()
 		p.SetParamsWithStruct(&args{
 			TInt:      5,
 			TString:   "string",
@@ -1130,7 +1130,7 @@ func Test_Client_QueryParam(t *testing.T) {
 
 	t.Run("del params", func(t *testing.T) {
 		t.Parallel()
-		req := NewClient()
+		req := New()
 		req.SetParam("foo", "bar").
 			SetParams(map[string]string{
 				"foo": "fiber",
@@ -1166,7 +1166,7 @@ func Test_Client_PathParam(t *testing.T) {
 
 	t.Run("set path param", func(t *testing.T) {
 		t.Parallel()
-		req := NewClient().
+		req := New().
 			SetPathParam("foo", "bar")
 		require.Equal(t, "bar", req.PathParam("foo"))
 
@@ -1176,7 +1176,7 @@ func Test_Client_PathParam(t *testing.T) {
 
 	t.Run("set path params", func(t *testing.T) {
 		t.Parallel()
-		req := NewClient().
+		req := New().
 			SetPathParams(map[string]string{
 				"foo": "bar",
 				"bar": "foo",
@@ -1198,7 +1198,7 @@ func Test_Client_PathParam(t *testing.T) {
 			CookieString string `path:"string"`
 		}
 
-		req := NewClient().SetPathParamsWithStruct(&args{
+		req := New().SetPathParamsWithStruct(&args{
 			CookieInt:    5,
 			CookieString: "foo",
 		})
@@ -1209,7 +1209,7 @@ func Test_Client_PathParam(t *testing.T) {
 
 	t.Run("del path params", func(t *testing.T) {
 		t.Parallel()
-		req := NewClient().
+		req := New().
 			SetPathParams(map[string]string{
 				"foo": "bar",
 				"bar": "foo",
@@ -1232,7 +1232,7 @@ func Test_Client_PathParam_With_Server(t *testing.T) {
 
 	go start()
 
-	resp, err := NewClient().SetDial(dial).
+	resp, err := New().SetDial(dial).
 		SetPathParam("path", "test").
 		Get("http://example.com/:path")
 
@@ -1263,7 +1263,7 @@ func Test_Client_TLS(t *testing.T) {
 		}))
 	}()
 
-	client := NewClient()
+	client := New()
 	resp, err := client.SetTLSConfig(clientTLSConf).Get("https://" + ln.Addr().String())
 
 	require.NoError(t, err)
@@ -1296,7 +1296,7 @@ func Test_Client_TLS_Error(t *testing.T) {
 		}))
 	}()
 
-	client := NewClient()
+	client := New()
 	resp, err := client.SetTLSConfig(clientTLSConf).Get("https://" + ln.Addr().String())
 
 	require.Error(t, err)
@@ -1326,7 +1326,7 @@ func Test_Client_TLS_Empty_TLSConfig(t *testing.T) {
 		}))
 	}()
 
-	client := NewClient()
+	client := New()
 	resp, err := client.Get("https://" + ln.Addr().String())
 
 	require.Error(t, err)
@@ -1340,14 +1340,14 @@ func Test_Client_SetCertificates(t *testing.T) {
 	serverTLSConf, _, err := tlstest.GetTLSConfigs()
 	require.NoError(t, err)
 
-	client := NewClient().SetCertificates(serverTLSConf.Certificates...)
+	client := New().SetCertificates(serverTLSConf.Certificates...)
 	require.Len(t, client.TLSConfig().Certificates, 1)
 }
 
 func Test_Client_SetRootCertificate(t *testing.T) {
 	t.Parallel()
 
-	client := NewClient().SetRootCertificate("../.github/testdata/ssl.pem")
+	client := New().SetRootCertificate("../.github/testdata/ssl.pem")
 	require.NotNil(t, client.TLSConfig().RootCAs)
 }
 
@@ -1361,14 +1361,14 @@ func Test_Client_SetRootCertificateFromString(t *testing.T) {
 	pem, err := io.ReadAll(file)
 	require.NoError(t, err)
 
-	client := NewClient().SetRootCertificateFromString(string(pem))
+	client := New().SetRootCertificateFromString(string(pem))
 	require.NotNil(t, client.TLSConfig().RootCAs)
 }
 
 func Test_Client_R(t *testing.T) {
 	t.Parallel()
 
-	client := NewClient()
+	client := New()
 	req := client.R()
 
 	require.Equal(t, "Request", reflect.TypeOf(req).Elem().Name())
@@ -1391,7 +1391,7 @@ func Test_Replace(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode())
 	require.Equal(t, "", resp.String())
 
-	r := NewClient().SetDial(dial).SetHeader("k1", "v1")
+	r := New().SetDial(dial).SetHeader("k1", "v1")
 	clean := Replace(r)
 	resp, err = Get("http://example.com")
 	require.NoError(t, err)
@@ -1548,7 +1548,7 @@ func Test_Client_SetProxyURL(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient().SetDial(dial)
+		client := New().SetDial(dial)
 		err := client.SetProxyURL("http://test.com")
 
 		require.NoError(t, err)
@@ -1560,7 +1560,7 @@ func Test_Client_SetProxyURL(t *testing.T) {
 
 	t.Run("wrong url", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient()
+		client := New()
 
 		err := client.SetProxyURL(":this is not a url")
 
@@ -1569,7 +1569,7 @@ func Test_Client_SetProxyURL(t *testing.T) {
 
 	t.Run("error", func(t *testing.T) {
 		t.Parallel()
-		client := NewClient()
+		client := New()
 
 		err := client.SetProxyURL("htgdftp://test.com")
 
@@ -1585,7 +1585,7 @@ func Test_Client_SetRetryConfig(t *testing.T) {
 		MaxRetryCount:   3,
 	}
 
-	core, client, req := newCore(), NewClient(), AcquireRequest()
+	core, client, req := newCore(), New(), AcquireRequest()
 	req.SetURL("http://example.com")
 	client.SetRetryConfig(retryConfig)
 	_, err := core.execute(context.Background(), client, req)
@@ -1603,7 +1603,7 @@ func Benchmark_Client_Request(b *testing.B) {
 
 	go start()
 
-	client := NewClient().SetDial(dial)
+	client := New().SetDial(dial)
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -1625,7 +1625,7 @@ func Benchmark_Client_Request_Parallel(b *testing.B) {
 
 	go start()
 
-	client := NewClient().SetDial(dial)
+	client := New().SetDial(dial)
 
 	b.ResetTimer()
 	b.ReportAllocs()

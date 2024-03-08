@@ -92,7 +92,7 @@ func testRequest(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Requ
 		c = count[0]
 	}
 
-	client := NewClient().SetDial(ln)
+	client := New().SetDial(ln)
 
 	for i := 0; i < c; i++ {
 		req := AcquireRequest().SetClient(client)
@@ -119,7 +119,7 @@ func testRequestFail(t *testing.T, handler fiber.Handler, wrapAgent func(agent *
 		c = count[0]
 	}
 
-	client := NewClient().SetDial(ln)
+	client := New().SetDial(ln)
 
 	for i := 0; i < c; i++ {
 		req := AcquireRequest().SetClient(client)
@@ -144,7 +144,7 @@ func testClient(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Clien
 	}
 
 	for i := 0; i < c; i++ {
-		client := NewClient().SetDial(ln)
+		client := New().SetDial(ln)
 		wrapAgent(client)
 
 		resp, err := client.Get("http://example.com")
