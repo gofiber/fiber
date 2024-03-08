@@ -669,7 +669,7 @@ func Test_Sliding_Window(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{
 		Max:               10,
-		Expiration:        2 * time.Second,
+		Expiration:        1 * time.Second,
 		Storage:           memory.New(),
 		LimiterMiddleware: SlidingWindow{},
 	}))
@@ -693,7 +693,7 @@ func Test_Sliding_Window(t *testing.T) {
 		singleRequest(false)
 	}
 
-	time.Sleep(2 * time.Second)
+	time.Sleep(3 * time.Second)
 
 	for i := 0; i < 5; i++ {
 		singleRequest(false)
@@ -705,9 +705,14 @@ func Test_Sliding_Window(t *testing.T) {
 		singleRequest(false)
 	}
 
-	time.Sleep(4 * time.Second)
+	time.Sleep(3 * time.Second)
 
-	for i := 0; i < 9; i++ {
+	for i := 0; i < 10; i++ {
 		singleRequest(false)
+	}
+
+	// requests should fail now
+	for i := 0; i < 5; i++ {
+		singleRequest(true)
 	}
 }

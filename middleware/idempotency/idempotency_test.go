@@ -85,8 +85,7 @@ func Test_Idempotency(t *testing.T) {
 		if idempotencyKey != "" {
 			req.Header.Set("X-Idempotency-Key", idempotencyKey)
 		}
-		// double timeout time for slow route
-		resp, err := app.Test(req, 6*lifetime)
+		resp, err := app.Test(req, 15*time.Second)
 		require.NoError(t, err)
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
