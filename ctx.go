@@ -962,7 +962,22 @@ func (c *DefaultCtx) OriginalURL() string {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (c *DefaultCtx) Params(key string, defaultValue ...string) string {
-	return Params[string](c, key, defaultValue...)
+	if key == "*" || key == "+" {
+		key += "1"
+	}
+	for i := range c.route.Params {
+		if len(key) != len(c.route.Params[i]) {
+			continue
+		}
+		if c.route.Params[i] == key || (!c.app.config.CaseSensitive && utils.EqualFold(c.route.Params[i], key)) {
+			// in case values are not here
+			if len(c.values) <= i || len(c.values[i]) == 0 {
+				break
+			}
+			return c.values[i]
+		}
+	}
+	return defaultString("", defaultValue)
 }
 
 // Params is used to get the route parameters.
@@ -979,29 +994,8 @@ func (c *DefaultCtx) Params(key string, defaultValue ...string) string {
 // http://example.com/id/:number -> http://example.com/id/john
 // Params[int](c, "number", 0) -> returns 0 because can't parse 'john' as integer.
 func Params[V GenericType](c Ctx, key string, defaultValue ...V) V {
-	if key == "*" || key == "+" {
-		key += "1"
-	}
-
 	var v V
-	for i := range c.Route().Params {
-		if len(key) != len(c.Route().Params[i]) {
-			continue
-		}
-		if c.Route().Params[i] == key || (!c.App().config.CaseSensitive && utils.EqualFold(c.Route().Params[i], key)) {
-			// in case values are not here
-			if len(c.Bind().ctx.values) <= i || len(c.Bind().ctx.values[i]) == 0 {
-				break
-			}
-			return genericParseType[V](c.Bind().ctx.values[i], v, defaultValue...)
-		}
-	}
-
-	if len(defaultValue) > 0 {
-		return defaultValue[0]
-	}
-
-	return v
+	return genericParseType(c.Params(key), v, defaultValue...)
 }
 
 // Path returns the path part of the request URL.
