@@ -157,7 +157,7 @@ func TestCookieJarSetRepeatedCookieKeys(t *testing.T) {
 
 	cookies := cj.Get(uri)
 	require.Len(t, cookies, 2)
-	require.Equal(t, cookies[0], cookie2)
+	require.Equal(t, cookies[0].String(), cookie2.String())
 	require.True(t, bytes.Equal(cookies[0].Value(), cookie2.Value()))
 }
 
