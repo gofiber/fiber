@@ -5,10 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/fiber/v3/middleware/session"
-	"github.com/gofiber/utils/v2"
 )
 
 // Config defines the config for middleware.
@@ -94,6 +92,12 @@ type Config struct {
 	// Optional. Default: utils.UUID
 	KeyGenerator func() string
 
+	// ShouldRefererPortCheck indicates if the referer's port should be checked
+	//
+	// Optional. Default: false
+	// If set to true, the referer's port will be checked when validating the domain on https requests
+	ShouldRefererPortCheck bool
+
 	// ErrorHandler is executed when an error is returned from fiber.Handler.
 	//
 	// Optional. Default: DefaultErrorHandler
@@ -111,14 +115,15 @@ const HeaderName = "X-Csrf-Token"
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	KeyLookup:      "header:" + HeaderName,
-	CookieName:     "csrf_",
-	CookieSameSite: "Lax",
-	Expiration:     1 * time.Hour,
-	KeyGenerator:   utils.UUIDv4,
-	ErrorHandler:   defaultErrorHandler,
-	Extractor:      FromHeader(HeaderName),
-	SessionKey:     "csrfToken",
+	KeyLookup:              "header:" + HeaderName,
+	CookieName:             "csrf_",
+	CookieSameSite:         "Lax",
+	Expiration:             1 * time.Hour,
+	KeyGenerator:           utils.UUIDv4,
+	ErrorHandler:           defaultErrorHandler,
+	Extractor:              FromHeader(HeaderName),
+	SessionKey:             "csrfToken",
+	ShouldRefererPortCheck: true,
 }
 
 // default ErrorHandler that process return error from fiber.Handler

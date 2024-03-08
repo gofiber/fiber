@@ -4,9 +4,8 @@ import (
 	"errors"
 	"net/url"
 	"reflect"
+	"strings"
 	"time"
-
-	"github.com/gofiber/fiber/v3"
 )
 
 var (
@@ -84,8 +83,14 @@ func New(config ...Config) fiber.Handler {
 
 			// Enforce an origin check for HTTPS connections.
 			if c.Scheme() == "https" {
-				if err := refererMatchesHost(c); err != nil {
-					return cfg.ErrorHandler(c, err)
+				if cfg.ShouldRefererPortCheck {
+					if err := refererMatchesHost(c); err != nil {
+						return cfg.ErrorHandler(c, err)
+					}
+				} else {
+					if err := refererMatchesHostname(c); err != nil {
+						return cfg.ErrorHandler(c, err)
+					}
 				}
 			}
 
@@ -258,6 +263,33 @@ func refererMatchesHost(c fiber.Ctx) error {
 	}
 
 	if refererURL.Scheme+"://"+refererURL.Host != c.Scheme()+"://"+c.Host() {
+		return ErrBadReferer
+	}
+
+	return nil
+}
+
+// refererMatchesHostname checks that the referer header matches the host header without checking the port
+// returns an error if the referer header is not present or is invalid
+// returns nil if the referer header is valid
+func refererMatchesHostname(c fiber.Ctx) error {
+	referer := c.Get(fiber.HeaderReferer)
+	if referer == "" {
+		return ErrNoReferer
+	}
+
+	refererURL, err := url.Parse(referer)
+	if err != nil {
+		return ErrBadReferer
+	}
+
+	hostname := c.Hostname()
+
+	if idx := strings.Index(hostname, ":"); idx != -1 {
+		hostname = hostname[:idx]
+	}
+
+	if refererURL.Scheme+"://"+refererURL.Hostname() != c.Scheme()+"://"+hostname {
 		return ErrBadReferer
 	}
 
