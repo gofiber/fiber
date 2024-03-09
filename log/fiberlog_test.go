@@ -9,6 +9,7 @@ import (
 )
 
 func Test_DefaultSystemLogger(t *testing.T) {
+	t.Parallel()
 	defaultL := DefaultLogger()
 	require.Equal(t, logger, defaultL)
 }
@@ -24,7 +25,6 @@ func Test_SetLogger(t *testing.T) {
 }
 
 func Test_Fiberlog_SetLevel(t *testing.T) {
-	// Set up
 	mockLogger := &defaultLogger{}
 	SetLogger(mockLogger)
 

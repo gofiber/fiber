@@ -47,7 +47,8 @@ func Test_Middleware_Favicon_Not_Found(t *testing.T) {
 	t.Parallel()
 	defer func() {
 		if err := recover(); err == nil {
-			t.Fatal("should cache panic")
+			t.Error("should cache panic")
+			return
 		}
 	}()
 

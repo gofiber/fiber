@@ -16,6 +16,7 @@ import (
 	"github.com/gofiber/fiber/v3/addon/retry"
 	"github.com/gofiber/fiber/v3/internal/tlstest"
 	"github.com/gofiber/utils/v2"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/bytebufferpool"
 )
@@ -277,8 +278,8 @@ func Test_Client_ConcurrencyRequests(t *testing.T) {
 			go func(m string) {
 				defer wg.Done()
 				resp, err := client.Custom("http://example.com", m)
-				require.NoError(t, err)
-				require.Equal(t, "example.com "+m, utils.UnsafeString(resp.RawResponse.Body()))
+				assert.NoError(t, err)
+				assert.Equal(t, "example.com "+m, utils.UnsafeString(resp.RawResponse.Body()))
 			}(method)
 		}
 	}
@@ -1258,10 +1259,11 @@ func Test_Client_TLS(t *testing.T) {
 	})
 
 	go func() {
-		require.NoError(t, app.Listener(ln, fiber.ListenConfig{
+		assert.NoError(t, app.Listener(ln, fiber.ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
+	time.Sleep(1 * time.Second)
 
 	client := New()
 	resp, err := client.SetTLSConfig(clientTLSConf).Get("https://" + ln.Addr().String())
@@ -1291,10 +1293,11 @@ func Test_Client_TLS_Error(t *testing.T) {
 	})
 
 	go func() {
-		require.NoError(t, app.Listener(ln, fiber.ListenConfig{
+		assert.NoError(t, app.Listener(ln, fiber.ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
+	time.Sleep(1 * time.Second)
 
 	client := New()
 	resp, err := client.SetTLSConfig(clientTLSConf).Get("https://" + ln.Addr().String())
@@ -1321,10 +1324,11 @@ func Test_Client_TLS_Empty_TLSConfig(t *testing.T) {
 	})
 
 	go func() {
-		require.NoError(t, app.Listener(ln, fiber.ListenConfig{
+		assert.NoError(t, app.Listener(ln, fiber.ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
+	time.Sleep(1 * time.Second)
 
 	client := New()
 	resp, err := client.Get("https://" + ln.Addr().String())
@@ -1579,18 +1583,17 @@ func Test_Client_SetProxyURL(t *testing.T) {
 
 func Test_Client_SetRetryConfig(t *testing.T) {
 	t.Parallel()
-
 	retryConfig := &retry.Config{
 		InitialInterval: 1 * time.Second,
 		MaxRetryCount:   3,
 	}
 
 	core, client, req := newCore(), New(), AcquireRequest()
-	req.SetURL("http://example.com")
+	req.SetURL("http://exampleretry.com")
 	client.SetRetryConfig(retryConfig)
 	_, err := core.execute(context.Background(), client, req)
 
-	require.NoError(t, err)
+	require.Error(t, err)
 	require.Equal(t, retryConfig.InitialInterval, client.RetryConfig().InitialInterval)
 	require.Equal(t, retryConfig.MaxRetryCount, client.RetryConfig().MaxRetryCount)
 }

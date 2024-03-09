@@ -44,7 +44,7 @@ func New(config ...Config) *Storage {
 
 // Get value by key
 func (s *Storage) Get(key string) ([]byte, error) {
-	if len(key) <= 0 {
+	if len(key) == 0 {
 		return nil, nil
 	}
 	s.mux.RLock()
@@ -60,7 +60,7 @@ func (s *Storage) Get(key string) ([]byte, error) {
 // Set key with value
 func (s *Storage) Set(key string, val []byte, exp time.Duration) error {
 	// Ain't Nobody Got Time For That
-	if len(key) <= 0 || len(val) <= 0 {
+	if len(key) == 0 || len(val) == 0 {
 		return nil
 	}
 
@@ -79,7 +79,7 @@ func (s *Storage) Set(key string, val []byte, exp time.Duration) error {
 // Delete key by key
 func (s *Storage) Delete(key string) error {
 	// Ain't Nobody Got Time For That
-	if len(key) <= 0 {
+	if len(key) == 0 {
 		return nil
 	}
 	s.mux.Lock()
@@ -117,7 +117,7 @@ func (s *Storage) gc() {
 			expired = expired[:0]
 			s.mux.RLock()
 			for id, v := range s.db {
-				if v.expiry != 0 && v.expiry <= ts {
+				if v.expiry != 0 && v.expiry < ts {
 					expired = append(expired, id)
 				}
 			}
@@ -141,4 +141,30 @@ func (s *Storage) Conn() map[string]entry {
 	s.mux.RLock()
 	defer s.mux.RUnlock()
 	return s.db
+}
+
+// Return all the keys
+func (s *Storage) Keys() ([][]byte, error) {
+	s.mux.RLock()
+	defer s.mux.RUnlock()
+
+	if len(s.db) == 0 {
+		return nil, nil
+	}
+
+	ts := utils.Timestamp()
+	keys := make([][]byte, 0, len(s.db))
+	for key, v := range s.db {
+		// Filter out the expired keys
+		if v.expiry == 0 || v.expiry > ts {
+			keys = append(keys, []byte(key))
+		}
+	}
+
+	// Double check if no valid keys were found
+	if len(keys) == 0 {
+		return nil, nil
+	}
+
+	return keys, nil
 }

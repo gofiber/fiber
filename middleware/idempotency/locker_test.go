@@ -6,6 +6,7 @@ import (
 
 	"github.com/gofiber/fiber/v3/middleware/idempotency"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -25,7 +26,7 @@ func Test_MemoryLock(t *testing.T) {
 			defer close(done)
 
 			err := l.Lock("a")
-			require.NoError(t, err)
+			assert.NoError(t, err)
 		}()
 
 		select {

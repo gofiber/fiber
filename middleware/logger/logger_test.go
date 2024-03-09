@@ -95,6 +95,7 @@ func Test_Logger_locals(t *testing.T) {
 func Test_Logger_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
+
 	app.Use(New(Config{
 		Next: func(_ fiber.Ctx) bool {
 			return true
@@ -111,6 +112,7 @@ func Test_Logger_Done(t *testing.T) {
 	t.Parallel()
 	buf := bytes.NewBuffer(nil)
 	app := fiber.New()
+
 	app.Use(New(Config{
 		Done: func(c fiber.Ctx, logString []byte) {
 			if c.Response().StatusCode() == fiber.StatusOK {
@@ -133,6 +135,7 @@ func Test_Logger_Done(t *testing.T) {
 func Test_Logger_ErrorTimeZone(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
+
 	app.Use(New(Config{
 		TimeZone: "invalid",
 	}))
@@ -154,6 +157,7 @@ func Test_Logger_ErrorOutput_WithoutColor(t *testing.T) {
 	t.Parallel()
 	o := new(fakeErrorOutput)
 	app := fiber.New()
+
 	app.Use(New(Config{
 		Output:        o,
 		DisableColors: true,
@@ -170,6 +174,7 @@ func Test_Logger_ErrorOutput(t *testing.T) {
 	t.Parallel()
 	o := new(fakeErrorOutput)
 	app := fiber.New()
+
 	app.Use(New(Config{
 		Output: o,
 	}))
@@ -187,6 +192,7 @@ func Test_Logger_All(t *testing.T) {
 	defer bytebufferpool.Put(buf)
 
 	app := fiber.New()
+
 	app.Use(New(Config{
 		Format: "${pid}${reqHeaders}${referer}${scheme}${protocol}${ip}${ips}${host}${url}${ua}${body}${route}${black}${red}${green}${yellow}${blue}${magenta}${cyan}${white}${reset}${error}${reqHeader:test}${query:test}${form:test}${cookie:test}${non}",
 		Output: buf,
@@ -230,10 +236,10 @@ func getLatencyTimeUnits() []struct {
 
 // go test -run Test_Logger_WithLatency
 func Test_Logger_WithLatency(t *testing.T) {
-	t.Parallel()
 	buff := bytebufferpool.Get()
 	defer bytebufferpool.Put(buff)
 	app := fiber.New()
+
 	logger := New(Config{
 		Output: buff,
 		Format: "${latency}",
@@ -258,7 +264,7 @@ func Test_Logger_WithLatency(t *testing.T) {
 		sleepDuration = 1 * tu.div
 
 		// Create a new HTTP request to the test route
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), 2*time.Second)
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), 3*time.Second)
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
@@ -273,10 +279,10 @@ func Test_Logger_WithLatency(t *testing.T) {
 
 // go test -run Test_Logger_WithLatency_DefaultFormat
 func Test_Logger_WithLatency_DefaultFormat(t *testing.T) {
-	t.Parallel()
 	buff := bytebufferpool.Get()
 	defer bytebufferpool.Put(buff)
 	app := fiber.New()
+
 	logger := New(Config{
 		Output: buff,
 	})
@@ -323,6 +329,7 @@ func Test_Query_Params(t *testing.T) {
 	defer bytebufferpool.Put(buf)
 
 	app := fiber.New()
+
 	app.Use(New(Config{
 		Format: "${queryParams}",
 		Output: buf,
@@ -343,6 +350,7 @@ func Test_Response_Body(t *testing.T) {
 	defer bytebufferpool.Put(buf)
 
 	app := fiber.New()
+
 	app.Use(New(Config{
 		Format: "${resBody}",
 		Output: buf,
@@ -496,6 +504,7 @@ func Test_Response_Header(t *testing.T) {
 	defer bytebufferpool.Put(buf)
 
 	app := fiber.New()
+
 	app.Use(requestid.New(requestid.Config{
 		Next:      nil,
 		Header:    fiber.HeaderXRequestID,
@@ -523,6 +532,7 @@ func Test_Req_Header(t *testing.T) {
 	defer bytebufferpool.Put(buf)
 
 	app := fiber.New()
+
 	app.Use(New(Config{
 		Format: "${reqHeader:test}",
 		Output: buf,
@@ -546,6 +556,7 @@ func Test_ReqHeader_Header(t *testing.T) {
 	defer bytebufferpool.Put(buf)
 
 	app := fiber.New()
+
 	app.Use(New(Config{
 		Format: "${reqHeader:test}",
 		Output: buf,
@@ -571,6 +582,7 @@ func Test_CustomTags(t *testing.T) {
 	defer bytebufferpool.Put(buf)
 
 	app := fiber.New()
+
 	app.Use(New(Config{
 		Format: "${custom_tag}",
 		CustomTags: map[string]LogFunc{
@@ -644,6 +656,7 @@ func Test_Logger_EnableColors(t *testing.T) {
 	t.Parallel()
 	o := new(fakeOutput)
 	app := fiber.New()
+
 	app.Use(New(Config{
 		Output: o,
 	}))

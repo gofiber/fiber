@@ -399,6 +399,7 @@ func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
 
 // go test -run Test_Mount_Route_Names
 func Test_Mount_Route_Names(t *testing.T) {
+	t.Parallel()
 	// create sub-app with 2 handlers:
 	subApp1 := New()
 	subApp1.Get("/users", func(c Ctx) error {

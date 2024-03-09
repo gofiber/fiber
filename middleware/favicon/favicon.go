@@ -82,16 +82,18 @@ func New(config ...Config) fiber.Handler {
 		}
 	}
 
-	// Load icon if provided
+	// Load iconData if provided
 	var (
-		err     error
-		icon    []byte
-		iconLen string
+		err           error
+		iconData      []byte
+		iconLenHeader string
+		iconLen       int
 	)
 	if cfg.Data != nil {
 		// use the provided favicon data
-		icon = cfg.Data
-		iconLen = strconv.Itoa(len(cfg.Data))
+		iconData = cfg.Data
+		iconLenHeader = strconv.Itoa(len(cfg.Data))
+		iconLen = len(cfg.Data)
 	} else if cfg.File != "" {
 		// read from configured filesystem if present
 		if cfg.FileSystem != nil {
@@ -99,14 +101,15 @@ func New(config ...Config) fiber.Handler {
 			if err != nil {
 				panic(err)
 			}
-			if icon, err = io.ReadAll(f); err != nil {
+			if iconData, err = io.ReadAll(f); err != nil {
 				panic(err)
 			}
-		} else if icon, err = os.ReadFile(cfg.File); err != nil {
+		} else if iconData, err = os.ReadFile(cfg.File); err != nil {
 			panic(err)
 		}
 
-		iconLen = strconv.Itoa(len(icon))
+		iconLenHeader = strconv.Itoa(len(iconData))
+		iconLen = len(iconData)
 	}
 
 	// Return new handler
@@ -134,11 +137,11 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Serve cached favicon
-		if len(icon) > 0 {
-			c.Set(fiber.HeaderContentLength, iconLen)
+		if iconLen > 0 {
+			c.Set(fiber.HeaderContentLength, iconLenHeader)
 			c.Set(fiber.HeaderContentType, hType)
 			c.Set(fiber.HeaderCacheControl, cfg.CacheControl)
-			return c.Status(fiber.StatusOK).Send(icon)
+			return c.Status(fiber.StatusOK).Send(iconData)
 		}
 
 		return c.SendStatus(fiber.StatusNoContent)

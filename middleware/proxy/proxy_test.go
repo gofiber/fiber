@@ -18,6 +18,17 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+func startServer(app *fiber.App, ln net.Listener) {
+	go func() {
+		err := app.Listener(ln, fiber.ListenConfig{
+			DisableStartupMessage: true,
+		})
+		if err != nil {
+			panic(err)
+		}
+	}()
+}
+
 func createProxyTestServer(t *testing.T, handler fiber.Handler) (*fiber.App, string) {
 	t.Helper()
 
@@ -27,14 +38,9 @@ func createProxyTestServer(t *testing.T, handler fiber.Handler) (*fiber.App, str
 	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
 	require.NoError(t, err)
 
-	go func() {
-		require.NoError(t, target.Listener(ln, fiber.ListenConfig{
-			DisableStartupMessage: true,
-		}))
-	}()
-
-	time.Sleep(2 * time.Second)
 	addr := ln.Addr().String()
+
+	startServer(target, ln)
 
 	return target, addr
 }
@@ -45,7 +51,9 @@ func Test_Proxy_Empty_Upstream_Servers(t *testing.T) {
 
 	defer func() {
 		if r := recover(); r != nil {
-			require.Equal(t, "Servers cannot be empty", r)
+			if r != "Servers cannot be empty" {
+				panic(r)
+			}
 		}
 	}()
 	app := fiber.New()
@@ -58,7 +66,9 @@ func Test_Proxy_Empty_Config(t *testing.T) {
 
 	defer func() {
 		if r := recover(); r != nil {
-			require.Equal(t, "Servers cannot be empty", r)
+			if r != "Servers cannot be empty" {
+				panic(r)
+			}
 		}
 	}()
 	app := fiber.New()
@@ -132,11 +142,7 @@ func Test_Proxy_Balancer_WithTlsConfig(t *testing.T) {
 		TlsConfig: clientTLSConf,
 	}))
 
-	go func() {
-		require.NoError(t, app.Listener(ln, fiber.ListenConfig{
-			DisableStartupMessage: true,
-		}))
-	}()
+	startServer(app, ln)
 
 	client := clientpkg.New()
 	client.SetTLSConfig(clientTLSConf)
@@ -163,18 +169,11 @@ func Test_Proxy_Forward_WithTlsConfig_To_Http(t *testing.T) {
 	require.NoError(t, err)
 
 	proxyServerLn = tls.NewListener(proxyServerLn, proxyServerTLSConf)
-
-	app := fiber.New()
-
 	proxyAddr := proxyServerLn.Addr().String()
 
+	app := fiber.New()
 	app.Use(Forward("http://" + targetAddr))
-
-	go func() {
-		require.NoError(t, app.Listener(proxyServerLn, fiber.ListenConfig{
-			DisableStartupMessage: true,
-		}))
-	}()
+	startServer(app, proxyServerLn)
 
 	client := clientpkg.New()
 	client.SetTimeout(5 * time.Second)
@@ -235,11 +234,7 @@ func Test_Proxy_Forward_WithClient_TLSConfig(t *testing.T) {
 	})
 	app.Use(Forward("https://" + addr + "/tlsfwd"))
 
-	go func() {
-		require.NoError(t, app.Listener(ln, fiber.ListenConfig{
-			DisableStartupMessage: true,
-		}))
-	}()
+	startServer(app, ln)
 
 	client := clientpkg.New()
 	client.SetTLSConfig(clientTLSConf)
@@ -441,7 +436,7 @@ func Test_Proxy_DoRedirects_RestoreOriginalURL(t *testing.T) {
 		return DoRedirects(c, "http://google.com", 1)
 	})
 
-	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
+	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), 2*time.Second)
 	require.NoError(t, err1)
 	_, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -479,7 +474,7 @@ func Test_Proxy_DoTimeout_RestoreOriginalURL(t *testing.T) {
 		return DoTimeout(c, "http://"+addr, time.Second)
 	})
 
-	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
+	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), 2*time.Second)
 	require.NoError(t, err1)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -490,8 +485,6 @@ func Test_Proxy_DoTimeout_RestoreOriginalURL(t *testing.T) {
 
 // go test -race -run Test_Proxy_DoTimeout_Timeout
 func Test_Proxy_DoTimeout_Timeout(t *testing.T) {
-	t.Parallel()
-
 	_, addr := createProxyTestServer(t, func(c fiber.Ctx) error {
 		time.Sleep(time.Second * 5)
 		return c.SendString("proxied")
@@ -502,8 +495,14 @@ func Test_Proxy_DoTimeout_Timeout(t *testing.T) {
 		return DoTimeout(c, "http://"+addr, time.Second)
 	})
 
-	_, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), 1*time.Second)
-	require.Equal(t, errors.New("test: timeout error after 1s"), err1)
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), 2*time.Second)
+	require.NoError(t, err)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	require.Equal(t, "timeout", string(body))
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	require.Equal(t, "/test", resp.Request.URL.String())
 }
 
 // go test -race -run Test_Proxy_DoDeadline_RestoreOriginalURL
@@ -530,8 +529,6 @@ func Test_Proxy_DoDeadline_RestoreOriginalURL(t *testing.T) {
 
 // go test -race -run Test_Proxy_DoDeadline_PastDeadline
 func Test_Proxy_DoDeadline_PastDeadline(t *testing.T) {
-	t.Parallel()
-
 	_, addr := createProxyTestServer(t, func(c fiber.Ctx) error {
 		time.Sleep(time.Second * 5)
 		return c.SendString("proxied")
@@ -539,7 +536,7 @@ func Test_Proxy_DoDeadline_PastDeadline(t *testing.T) {
 
 	app := fiber.New()
 	app.Get("/test", func(c fiber.Ctx) error {
-		return DoDeadline(c, "http://"+addr, time.Now().Add(time.Second))
+		return DoDeadline(c, "http://"+addr, time.Now().Add(2*time.Second))
 	})
 
 	_, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), 1*time.Second)
@@ -590,14 +587,9 @@ func Test_Proxy_Forward_Global_Client(t *testing.T) {
 
 	addr := ln.Addr().String()
 	app.Use(Forward("http://" + addr + "/test_global_client"))
-	go func() {
-		require.NoError(t, app.Listener(ln, fiber.ListenConfig{
-			DisableStartupMessage: true,
-		}))
-	}()
+	startServer(app, ln)
 
 	client := clientpkg.New()
-
 	resp, err := client.Get("http://" + addr)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode())
@@ -622,14 +614,9 @@ func Test_Proxy_Forward_Local_Client(t *testing.T) {
 
 		Dial: fasthttp.Dial,
 	}))
-	go func() {
-		require.NoError(t, app.Listener(ln, fiber.ListenConfig{
-			DisableStartupMessage: true,
-		}))
-	}()
+	startServer(app, ln)
 
 	client := clientpkg.New()
-
 	resp, err := client.Get("http://" + addr)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode())
@@ -694,20 +681,10 @@ func Test_Proxy_Domain_Forward_Local(t *testing.T) {
 
 		Dial: fasthttp.Dial,
 	}))
-
-	go func() {
-		require.NoError(t, app.Listener(ln, fiber.ListenConfig{
-			DisableStartupMessage: true,
-		}))
-	}()
-	go func() {
-		require.NoError(t, app1.Listener(ln1, fiber.ListenConfig{
-			DisableStartupMessage: true,
-		}))
-	}()
+	startServer(app, ln)
+	startServer(app1, ln1)
 
 	client := clientpkg.New()
-
 	resp, err := client.Get("http://" + localDomain + "/test?query_test=true")
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode())

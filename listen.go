@@ -268,16 +268,17 @@ func (*App) createListener(addr string, tlsConfig *tls.Config, cfg ListenConfig)
 		listener, err = net.Listen(cfg.ListenerNetwork, addr)
 	}
 
+	// Check for error before using the listener
+	if err != nil {
+		// Wrap the error from tls.Listen/net.Listen
+		return nil, fmt.Errorf("failed to listen: %w", err)
+	}
+
 	if cfg.ListenerAddrFunc != nil {
 		cfg.ListenerAddrFunc(listener.Addr())
 	}
 
-	// Wrap error comes from tls.Listen/net.Listen
-	if err != nil {
-		err = fmt.Errorf("failed to listen: %w", err)
-	}
-
-	return listener, err
+	return listener, nil
 }
 
 func (app *App) printMessages(cfg ListenConfig, ln net.Listener) {
@@ -378,7 +379,7 @@ func (app *App) startupMessage(addr string, isTLS bool, pids string, cfg ListenC
 
 	if cfg.EnablePrefork {
 		// Turn the `pids` variable (in the form ",a,b,c,d,e,f,etc") into a slice of PIDs
-		var pidSlice []string
+		pidSlice := make([]string, 0)
 		for _, v := range strings.Split(pids, ",") {
 			if v != "" {
 				pidSlice = append(pidSlice, v)

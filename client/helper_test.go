@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp/fasthttputil"
 )
@@ -29,9 +30,8 @@ func startTestServer(tb testing.TB, beforeStarting func(app *fiber.App)) *testSe
 
 	ch := make(chan struct{})
 	go func() {
-		if err := app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}); err != nil {
-			tb.Fatal(err)
-		}
+		err := app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})
+		assert.NoError(tb, err)
 
 		close(ch)
 	}()
