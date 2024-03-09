@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/url"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -14,10 +15,12 @@ var (
 	ErrTokenInvalid  = errors.New("csrf token invalid")
 	ErrNoReferer     = errors.New("referer not supplied")
 	ErrBadReferer    = errors.New("referer invalid")
+	ErrBadOrigin     = errors.New("origin invalid")
 	dummyValue       = []byte{'+'}
+	errNoOrigin      = errors.New("origin not supplied")
 )
 
-// Handler handles
+// Handler for CSRF middleware
 type Handler struct {
 	config         *Config
 	sessionManager *sessionManager
@@ -82,11 +85,22 @@ func New(config ...Config) fiber.Handler {
 		default:
 			// Assume that anything not defined as 'safe' by RFC7231 needs protection
 
-			// Enforce an origin check for HTTPS connections.
-			if c.Scheme() == "https" {
-				if err := refererMatchesHost(c); err != nil {
-					return cfg.ErrorHandler(c, err)
+			// Enforce an origin check for unsafe requests.
+			err := originMatchesHost(c, cfg.TrustedOrigins)
+
+			// If there's no origin, enforce a referer check for HTTPS connections.
+			if err == errNoOrigin {
+				if c.Scheme() == "https" {
+					err = refererMatchesHost(c, cfg.TrustedOrigins)
+				} else {
+					// If it's not HTTPS, clear the error to allow the request to proceed.
+					err = nil
 				}
+			}
+
+			// If there's an error (either from origin check or referer check), handle it.
+			if err != nil {
+				return cfg.ErrorHandler(c, err)
 			}
 
 			// Extract token from client request i.e. header, query, param, form or cookie
@@ -243,10 +257,36 @@ func isFromCookie(extractor any) bool {
 	return reflect.ValueOf(extractor).Pointer() == reflect.ValueOf(FromCookie).Pointer()
 }
 
+// originMatchesHost checks that the origin header matches the host header
+// returns an error if the origin header is not present or is invalid
+// returns nil if the origin header is valid
+func originMatchesHost(c fiber.Ctx, TrustedOrigins []string) error {
+	origin := c.Get(fiber.HeaderOrigin)
+	if origin == "" {
+		return errNoOrigin
+	}
+
+	originURL, err := url.Parse(origin)
+	if err != nil {
+		return ErrBadReferer
+	}
+
+	if originURL.Host != c.Host() {
+		for _, trustedOrigin := range TrustedOrigins {
+			if isSameSchemeAndDomain(trustedOrigin, origin) {
+				return nil
+			}
+		}
+		return ErrBadOrigin
+	}
+
+	return nil
+}
+
 // refererMatchesHost checks that the referer header matches the host header
 // returns an error if the referer header is not present or is invalid
 // returns nil if the referer header is valid
-func refererMatchesHost(c fiber.Ctx) error {
+func refererMatchesHost(c fiber.Ctx, TrustedOrigins []string) error {
 	referer := c.Get(fiber.HeaderReferer)
 	if referer == "" {
 		return ErrNoReferer
@@ -257,9 +297,36 @@ func refererMatchesHost(c fiber.Ctx) error {
 		return ErrBadReferer
 	}
 
-	if refererURL.Scheme+"://"+refererURL.Host != c.Scheme()+"://"+c.Host() {
+	if refererURL.Host != c.Host() {
+		for _, trustedOrigin := range TrustedOrigins {
+			if isSameSchemeAndDomain(trustedOrigin, referer) {
+				return nil
+			}
+		}
 		return ErrBadReferer
 	}
 
 	return nil
+}
+
+// isSameSchemeAndDomain checks if the protoDomain and the trustedProtoDomain have the same scheme and domain
+// or if the protoDomain is a wildcard subdomain of the trustedProtoDomain
+func isSameSchemeAndDomain(trustedProtoDomain, protoDomain string) bool {
+	protoDomainURL, err := url.Parse(protoDomain)
+	if err != nil {
+		return false
+	}
+
+	// Check for valid schemes
+	validSchemes := map[string]bool{"http": true, "https": true}
+	if !validSchemes[protoDomainURL.Scheme] {
+		return false
+	}
+
+	// Remove the dot after the scheme (if any) from trustedProtoDomain
+	trustedProtoDomain = strings.TrimPrefix(trustedProtoDomain, "https://.")
+	trustedProtoDomain = strings.TrimPrefix(trustedProtoDomain, "http://.")
+
+	// Check for wildcard subdomain or exact match
+	return strings.HasSuffix(protoDomainURL.Host, trustedProtoDomain) || strings.HasSuffix(protoDomainURL.Host, "."+trustedProtoDomain)
 }
