@@ -175,25 +175,19 @@ func (c *DefaultCtx) Attachment(filename ...string) {
 	c.setCanonical(HeaderContentDisposition, "attachment")
 }
 
-// BaseURL returns (protocol + host + base path).
+// BaseURL is an alias of [Request.BaseURL].
 func (c *DefaultCtx) BaseURL() string {
-	// TODO: Could be improved: 53.8 ns/op  32 B/op  1 allocs/op
-	// Should work like https://codeigniter.com/user_guide/helpers/url_helper.html
-	if c.baseURI != "" {
-		return c.baseURI
-	}
-	c.baseURI = c.Scheme() + "://" + c.Host()
-	return c.baseURI
+	return c.req.BaseURL()
 }
 
 // BodyRaw is an alias of [Request.BodyRaw].
 func (c *DefaultCtx) BodyRaw() []byte {
-	return c.Req().BodyRaw()
+	return c.req.BodyRaw()
 }
 
 // Body is an alias of [Request.Body].
 func (c *DefaultCtx) Body() []byte {
-	return c.Req().Body()
+	return c.req.Body()
 }
 
 // ClearCookie expires a specific cookie by key on the client side.
@@ -457,7 +451,7 @@ func (c *DefaultCtx) Fresh() bool {
 
 // Get is an alias of [Request.Get].
 func (c *DefaultCtx) Get(key string, defaultValue ...string) string {
-	return c.Req().Get(key, defaultValue...)
+	return c.req.Get(key, defaultValue...)
 }
 
 // GetRespHeader returns the HTTP response header specified by field.
@@ -492,21 +486,9 @@ func (c *DefaultCtx) GetReqHeaders() map[string][]string {
 	return headers
 }
 
-// Host contains the host derived from the X-Forwarded-Host or Host HTTP header.
-// Returned value is only valid within the handler. Do not store any references.
-// Make copies or use the Immutable setting instead.
-// Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
+// Host is an alias of [Request.Host].
 func (c *DefaultCtx) Host() string {
-	if c.IsProxyTrusted() {
-		if host := c.Get(HeaderXForwardedHost); len(host) > 0 {
-			commaPos := strings.Index(host, ",")
-			if commaPos != -1 {
-				return host[:commaPos]
-			}
-			return host
-		}
-	}
-	return c.app.getString(c.fasthttp.Request.URI().Host())
+	return c.req.Host()
 }
 
 // Hostname contains the hostname derived from the X-Forwarded-Host or Host HTTP header using the c.Host() method.
@@ -849,9 +831,7 @@ func (c *DefaultCtx) RestartRouting() error {
 	return err
 }
 
-// OriginalURL contains the original request URL.
-// Returned value is only valid within the handler. Do not store any references.
-// Make copies or use the Immutable setting to use the value outside the Handler.
+// OriginalURL is an alias of [Request.OriginalURL]
 func (c *DefaultCtx) OriginalURL() string {
 	return c.req.OriginalURL()
 }
@@ -913,47 +893,14 @@ func (c *DefaultCtx) Path(override ...string) string {
 	return c.path
 }
 
-// Scheme contains the request protocol string: http or https for TLS requests.
-// Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
+// Scheme is an alias of [Request.Scheme].
 func (c *DefaultCtx) Scheme() string {
-	if c.fasthttp.IsTLS() {
-		return schemeHTTPS
-	}
-	if !c.IsProxyTrusted() {
-		return schemeHTTP
-	}
-
-	scheme := schemeHTTP
-	const lenXHeaderName = 12
-	c.fasthttp.Request.Header.VisitAll(func(key, val []byte) {
-		if len(key) < lenXHeaderName {
-			return // Neither "X-Forwarded-" nor "X-Url-Scheme"
-		}
-		switch {
-		case bytes.HasPrefix(key, []byte("X-Forwarded-")):
-			if bytes.Equal(key, []byte(HeaderXForwardedProto)) ||
-				bytes.Equal(key, []byte(HeaderXForwardedProtocol)) {
-				v := c.app.getString(val)
-				commaPos := strings.Index(v, ",")
-				if commaPos != -1 {
-					scheme = v[:commaPos]
-				} else {
-					scheme = v
-				}
-			} else if bytes.Equal(key, []byte(HeaderXForwardedSsl)) && bytes.Equal(val, []byte("on")) {
-				scheme = schemeHTTPS
-			}
-
-		case bytes.Equal(key, []byte(HeaderXUrlScheme)):
-			scheme = c.app.getString(val)
-		}
-	})
-	return scheme
+	return c.req.Scheme()
 }
 
-// Protocol returns the HTTP protocol of request: HTTP/1.1 and HTTP/2.
+// Protocol is an alias of [Request.Protocol].
 func (c *DefaultCtx) Protocol() string {
-	return utils.UnsafeString(c.fasthttp.Request.Header.Protocol())
+	return c.req.Protocol()
 }
 
 // Query returns the query string parameter in the url.

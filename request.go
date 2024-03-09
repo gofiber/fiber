@@ -1,21 +1,100 @@
 package fiber
 
 import (
+	"bytes"
+	"strings"
+
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
 
 type Request struct {
-	app      *App
-	fasthttp *fasthttp.Request
+	app      *App              // Reference to the parent App.
+	ctx      Ctx               // Reference to the parent Ctx.
+	fasthttp *fasthttp.Request // Reference to the underlying fasthttp.Request object.
+	baseURI  string            // HTTP base URI for memoization.
 }
 
 func (r *Request) App() *App {
 	return r.app
 }
 
+// OriginalURL contains the original request URL.
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting to use the value outside the Handler.
 func (r *Request) OriginalURL() string {
 	return r.app.getString(r.fasthttp.Header.RequestURI())
+}
+
+// BaseURL returns (protocol + host + base path).
+func (r *Request) BaseURL() string {
+	// TODO: Could be improved: 53.8 ns/op  32 B/op  1 allocs/op
+	// Should work like https://codeigniter.com/user_guide/helpers/url_helper.html
+	if r.baseURI != "" {
+		return r.baseURI
+	}
+	r.baseURI = r.Scheme() + "://" + r.Host()
+	return r.baseURI
+}
+
+// Protocol returns the HTTP protocol of request: HTTP/1.1 and HTTP/2.
+func (r *Request) Protocol() string {
+	return r.app.getString(r.fasthttp.Header.Protocol())
+}
+
+// Scheme contains the request protocol string: http or https for TLS requests.
+// Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
+func (r *Request) Scheme() string {
+	if string(r.fasthttp.URI().Scheme()) == "https" {
+		return schemeHTTPS
+	}
+	if !r.ctx.IsProxyTrusted() {
+		return schemeHTTP
+	}
+
+	scheme := schemeHTTP
+	const lenXHeaderName = 12
+	r.fasthttp.Header.VisitAll(func(key, val []byte) {
+		if len(key) < lenXHeaderName {
+			return // Neither "X-Forwarded-" nor "X-Url-Scheme"
+		}
+		switch {
+		case bytes.HasPrefix(key, []byte("X-Forwarded-")):
+			if string(key) == HeaderXForwardedProto ||
+				string(key) == HeaderXForwardedProtocol {
+				v := r.app.getString(val)
+				commaPos := strings.IndexByte(v, ',')
+				if commaPos != -1 {
+					scheme = v[:commaPos]
+				} else {
+					scheme = v
+				}
+			} else if string(key) == HeaderXForwardedSsl && string(val) == "on" {
+				scheme = schemeHTTPS
+			}
+
+		case string(key) == HeaderXUrlScheme:
+			scheme = r.app.getString(val)
+		}
+	})
+	return scheme
+}
+
+// Host contains the host derived from the X-Forwarded-Host or Host HTTP header.
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting instead.
+// Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
+func (r *Request) Host() string {
+	if r.ctx.IsProxyTrusted() {
+		if host := r.Get(HeaderXForwardedHost); len(host) > 0 {
+			commaPos := strings.Index(host, ",")
+			if commaPos != -1 {
+				return host[:commaPos]
+			}
+			return host
+		}
+	}
+	return r.app.getString(r.fasthttp.URI().Host())
 }
 
 // BodyRaw contains the raw body submitted in a POST request.

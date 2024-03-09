@@ -975,7 +975,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 		t.Parallel()
 		testRequest(t,
 			func(c fiber.Ctx) error {
-				require.Equal(t, "application/json", string(c.Get(fiber.HeaderContentType)))
+				require.Equal(t, "application/json", c.Get(fiber.HeaderContentType))
 				return c.SendString(string(c.Req().BodyRaw()))
 			},
 			func(agent *Request) {
@@ -1010,7 +1010,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 		t.Parallel()
 		testRequest(t,
 			func(c fiber.Ctx) error {
-				require.Equal(t, fiber.MIMEApplicationForm, string(c.Get(fiber.HeaderContentType)))
+				require.Equal(t, fiber.MIMEApplicationForm, c.Get(fiber.HeaderContentType))
 				return c.Send([]byte("foo=" + c.FormValue("foo") + "&bar=" + c.FormValue("bar") + "&fiber=" + c.FormValue("fiber")))
 			},
 			func(agent *Request) {

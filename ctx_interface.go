@@ -504,6 +504,7 @@ func (c *DefaultCtx) setReq(fctx *fasthttp.RequestCtx) {
 	c.fasthttp = fctx
 	c.req = Request{
 		app:      c.app,
+		ctx:      c,
 		fasthttp: &c.fasthttp.Request,
 	}
 	// c.res = &Response{app: c.app}
