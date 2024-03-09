@@ -89,7 +89,7 @@ func New(config ...Config) fiber.Handler {
 			err := originMatchesHost(c, cfg.TrustedOrigins)
 
 			// If there's no origin, enforce a referer check for HTTPS connections.
-			if err == errNoOrigin {
+			if errors.Is(err, errNoOrigin) {
 				if c.Scheme() == "https" {
 					err = refererMatchesHost(c, cfg.TrustedOrigins)
 				} else {
@@ -260,7 +260,7 @@ func isFromCookie(extractor any) bool {
 // originMatchesHost checks that the origin header matches the host header
 // returns an error if the origin header is not present or is invalid
 // returns nil if the origin header is valid
-func originMatchesHost(c fiber.Ctx, TrustedOrigins []string) error {
+func originMatchesHost(c fiber.Ctx, trustedOrigins []string) error {
 	origin := c.Get(fiber.HeaderOrigin)
 	if origin == "" {
 		return errNoOrigin
@@ -272,7 +272,7 @@ func originMatchesHost(c fiber.Ctx, TrustedOrigins []string) error {
 	}
 
 	if originURL.Host != c.Host() {
-		for _, trustedOrigin := range TrustedOrigins {
+		for _, trustedOrigin := range trustedOrigins {
 			if isSameSchemeAndDomain(trustedOrigin, origin) {
 				return nil
 			}
@@ -286,7 +286,7 @@ func originMatchesHost(c fiber.Ctx, TrustedOrigins []string) error {
 // refererMatchesHost checks that the referer header matches the host header
 // returns an error if the referer header is not present or is invalid
 // returns nil if the referer header is valid
-func refererMatchesHost(c fiber.Ctx, TrustedOrigins []string) error {
+func refererMatchesHost(c fiber.Ctx, trustedOrigins []string) error {
 	referer := c.Get(fiber.HeaderReferer)
 	if referer == "" {
 		return ErrNoReferer
@@ -298,7 +298,7 @@ func refererMatchesHost(c fiber.Ctx, TrustedOrigins []string) error {
 	}
 
 	if refererURL.Host != c.Host() {
-		for _, trustedOrigin := range TrustedOrigins {
+		for _, trustedOrigin := range trustedOrigins {
 			if isSameSchemeAndDomain(trustedOrigin, referer) {
 				return nil
 			}
