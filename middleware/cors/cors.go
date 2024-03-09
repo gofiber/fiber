@@ -63,6 +63,12 @@ type Config struct {
 	//
 	// Optional. Default value 0.
 	MaxAge int
+
+	// AllowPrivateNetworkAccess indicates whether the Access-Control-Allow-Private-Network
+	// response header should be set to true, allowing requests from private networks.
+	//
+	// Optional. Default value false.
+	AllowPrivateNetworkAccess bool
 }
 
 // ConfigDefault is the default config
@@ -225,6 +231,12 @@ func New(config ...Config) fiber.Handler {
 			c.Set(fiber.HeaderAccessControlMaxAge, maxAge)
 		} else if cfg.MaxAge < 0 {
 			c.Set(fiber.HeaderAccessControlMaxAge, "0")
+		}
+
+		// Set Preflight request handling
+		if cfg.AllowPrivateNetworkAccess {
+			// Set the Access-Control-Allow-Private-Network header to "true"
+			c.Set(fiber.HeaderAccessControlAllowPrivateNetwork, "true")
 		}
 
 		// Send 204 No Content

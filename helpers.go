@@ -978,6 +978,7 @@ const (
 	HeaderXRequestedWith                  = "X-Requested-With"
 	HeaderXRobotsTag                      = "X-Robots-Tag"
 	HeaderXUACompatible                   = "X-UA-Compatible"
+	HeaderAccessControlAllowPrivateNetwork = "Access-Control-Allow-Private-Network"
 )
 
 // Network types that are commonly used
