@@ -136,7 +136,7 @@ These tests are performed by [TechEmpower](https://www.techempower.com/benchmark
 
 ## ⚙️ Installation
 
-Make sure you have Go installed ([download](https://go.dev/dl/)). Version `1.20` or higher is required.
+Make sure you have Go installed ([download](https://go.dev/dl/)). Version `1.21` or higher is required.
 
 Initialize your project by creating a folder and then running `go mod init github.com/your/repo` ([learn more](https://go.dev/blog/using-go-modules)) inside the folder. Then install Fiber with the [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
 
@@ -170,7 +170,7 @@ We **listen** to our users in [issues](https://github.com/gofiber/fiber/issues),
 
 ## ⚠️ Limitations
 
--   Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber 3.0.0 has been tested with Go versions 1.20 to 1.22.
+-   Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber 3.0.0 has been tested with Go versions 1.21 and 1.22.
 -   Fiber is not compatible with net/http interfaces. This means you will not be able to use projects like gqlgen, go-swagger, or any others which are part of the net/http ecosystem.
 
 ## 👀 Examples
@@ -651,10 +651,9 @@ List of externally hosted middleware modules and maintained by the [Fiber team](
 
 | Middleware                                        | Description                                                                                                           |
 | :------------------------------------------------ | :-------------------------------------------------------------------------------------------------------------------- |
-| [jwt](https://github.com/gofiber/jwt)             | JWT returns a JSON Web Token \(JWT\) auth middleware.                                                                 |
+| [contrib](https://github.com/gofiber/contrib)     | Third party middlewares                                                                                               |
 | [storage](https://github.com/gofiber/storage)     | Premade storage drivers that implement the Storage interface, designed to be used with various Fiber middlewares.     |
-| [template](https://github.com/gofiber/template)   | This package contains 8 template engines that can be used with Fiber `v1.10.x` Go version 1.13 or higher is required. |
-| [websocket](https://github.com/gofiber/websocket) | Based on Fasthttp WebSocket for Fiber with Locals support!                                                            |
+| [template](https://github.com/gofiber/template)   | This package contains 9 template engines that can be used with Fiber `v3` Go version 1.21 or higher is required.      |
 
 ## 🕶️ Awesome List
 
