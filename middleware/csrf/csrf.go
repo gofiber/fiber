@@ -309,24 +309,29 @@ func refererMatchesHost(c fiber.Ctx, trustedOrigins []string) error {
 	return nil
 }
 
-// isSameSchemeAndDomain checks if the protoDomain and the trustedProtoDomain have the same scheme and domain
-// or if the protoDomain is a wildcard subdomain of the trustedProtoDomain
+// isSameSchemeAndDomain checks if the trustedProtoDomain is the same as the protoDomain
+// or if the protoDomain is a subdomain of the trustedProtoDomain where trustedProtoDomain
+// is prefixed with "https://." or "http://."
 func isSameSchemeAndDomain(trustedProtoDomain, protoDomain string) bool {
-	protoDomainURL, err := url.Parse(protoDomain)
-	if err != nil {
-		return false
+	if trustedProtoDomain == protoDomain {
+		return true
 	}
 
-	// Check for valid schemes
-	validSchemes := map[string]bool{"http": true, "https": true}
-	if !validSchemes[protoDomainURL.Scheme] {
-		return false
+	// Use constant prefixes for better readability and avoid magic numbers.
+	const httpsPrefix = "https://."
+	const httpPrefix = "http://."
+
+	if strings.HasPrefix(trustedProtoDomain, httpsPrefix) {
+		trustedProtoDomain = trustedProtoDomain[len(httpsPrefix):]
+		protoDomain = strings.TrimPrefix(protoDomain, "https://")
+		return strings.HasSuffix(protoDomain, "."+trustedProtoDomain)
 	}
 
-	// Remove the dot after the scheme (if any) from trustedProtoDomain
-	trustedProtoDomain = strings.TrimPrefix(trustedProtoDomain, "https://.")
-	trustedProtoDomain = strings.TrimPrefix(trustedProtoDomain, "http://.")
+	if strings.HasPrefix(trustedProtoDomain, httpPrefix) {
+		trustedProtoDomain = trustedProtoDomain[len(httpPrefix):]
+		protoDomain = strings.TrimPrefix(protoDomain, "http://")
+		return strings.HasSuffix(protoDomain, "."+trustedProtoDomain)
+	}
 
-	// Check for wildcard subdomain or exact match
-	return strings.HasSuffix(protoDomainURL.Host, trustedProtoDomain) || strings.HasSuffix(protoDomainURL.Host, "."+trustedProtoDomain)
+	return false
 }
