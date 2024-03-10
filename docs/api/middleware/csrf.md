@@ -217,7 +217,7 @@ app.Use(csrf.New(csrf.Config{
 
 ## Token Generation
 
-CSRF tokens are generated on 'safe' requests and when the existing token has expired or hasn't been set yet. If `SingleUseToken` is `true`, a new token is generated after each use. Retrieve the CSRF token using `csrf.TokenFromContext(c)`.
+CSRF tokens are generated on 'safe' requests and when the existing token has expired or hasn't been set yet. If `SingleUseToken` is `true`, a new token is generated after each use.  Retrieve the CSRF token using `csrf.TokenFromContext(c)`.
 
 ## Security Considerations
 
