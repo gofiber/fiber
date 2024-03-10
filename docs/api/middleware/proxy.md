@@ -7,6 +7,7 @@ id: proxy
 Proxy middleware for [Fiber](https://github.com/gofiber/fiber) that allows you to proxy requests to multiple servers.
 
 ## Signatures
+// BalancerForward performs the given http request based on a round-robin balancer and fills the given http response.
 
 ```go
 // Balancer create a load balancer among multiple upstream servers.
