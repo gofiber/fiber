@@ -13,7 +13,6 @@ import (
 	"io"
 	"mime/multipart"
 	"net"
-	"net/http"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -259,13 +258,9 @@ func (c *DefaultCtx) Cookie(cookie *Cookie) {
 	fasthttp.ReleaseCookie(fcookie)
 }
 
-// Cookies are used for getting a cookie value by key.
-// Defaults to the empty string "" if the cookie doesn't exist.
-// If a default value is given, it will return that value if the cookie doesn't exist.
-// The returned value is only valid within the handler. Do not store any references.
-// Make copies or use the Immutable setting to use the value outside the Handler.
+// Cookies is an alias of [Request.Cookies]
 func (c *DefaultCtx) Cookies(key string, defaultValue ...string) string {
-	return defaultString(c.app.getString(c.fasthttp.Request.Header.Cookie(key)), defaultValue)
+	return c.req.Cookies(key, defaultValue...)
 }
 
 // Download transfers the file from path as an attachment.
@@ -397,56 +392,9 @@ func (c *DefaultCtx) FormValue(key string, defaultValue ...string) string {
 	return defaultString(c.app.getString(c.fasthttp.FormValue(key)), defaultValue)
 }
 
-// Fresh returns true when the response is still “fresh” in the client's cache,
-// otherwise false is returned to indicate that the client cache is now stale
-// and the full response should be sent.
-// When a client sends the Cache-Control: no-cache request header to indicate an end-to-end
-// reload request, this module will return false to make handling these requests transparent.
-// https://github.com/jshttp/fresh/blob/10e0471669dbbfbfd8de65bc6efac2ddd0bfa057/index.js#L33
+// Fresh is an alias of [Request.Fresh]
 func (c *DefaultCtx) Fresh() bool {
-	// fields
-	modifiedSince := c.Get(HeaderIfModifiedSince)
-	noneMatch := c.Get(HeaderIfNoneMatch)
-
-	// unconditional request
-	if modifiedSince == "" && noneMatch == "" {
-		return false
-	}
-
-	// Always return stale when Cache-Control: no-cache
-	// to support end-to-end reload requests
-	// https://tools.ietf.org/html/rfc2616#section-14.9.4
-	cacheControl := c.Get(HeaderCacheControl)
-	if cacheControl != "" && isNoCache(cacheControl) {
-		return false
-	}
-
-	// if-none-match
-	if noneMatch != "" && noneMatch != "*" {
-		etag := c.app.getString(c.fasthttp.Response.Header.Peek(HeaderETag))
-		if etag == "" {
-			return false
-		}
-		if c.app.isEtagStale(etag, c.app.getBytes(noneMatch)) {
-			return false
-		}
-
-		if modifiedSince != "" {
-			lastModified := c.app.getString(c.fasthttp.Response.Header.Peek(HeaderLastModified))
-			if lastModified != "" {
-				lastModifiedTime, err := http.ParseTime(lastModified)
-				if err != nil {
-					return false
-				}
-				modifiedSinceTime, err := http.ParseTime(modifiedSince)
-				if err != nil {
-					return false
-				}
-				return lastModifiedTime.Before(modifiedSinceTime)
-			}
-		}
-	}
-	return true
+	return c.req.Fresh()
 }
 
 // Get is an alias of [Request.Get].
@@ -491,14 +439,9 @@ func (c *DefaultCtx) Host() string {
 	return c.req.Host()
 }
 
-// Hostname contains the hostname derived from the X-Forwarded-Host or Host HTTP header using the c.Host() method.
-// Returned value is only valid within the handler. Do not store any references.
-// Make copies or use the Immutable setting instead.
-// Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
+// Hostname is an alias of [Request.Hostname].
 func (c *DefaultCtx) Hostname() string {
-	addr, _ := parseAddr(c.Host())
-
-	return addr
+	return c.req.Hostname()
 }
 
 // Port returns the remote port of the request.
@@ -510,134 +453,14 @@ func (c *DefaultCtx) Port() string {
 	return strconv.Itoa(tcpaddr.Port)
 }
 
-// IP returns the remote IP address of the request.
-// If ProxyHeader and IP Validation is configured, it will parse that header and return the first valid IP address.
-// Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
+// IP is an alias of [Request.IP].
 func (c *DefaultCtx) IP() string {
-	if c.IsProxyTrusted() && len(c.app.config.ProxyHeader) > 0 {
-		return c.extractIPFromHeader(c.app.config.ProxyHeader)
-	}
-
-	return c.fasthttp.RemoteIP().String()
+	return c.req.IP()
 }
 
-// extractIPsFromHeader will return a slice of IPs it found given a header name in the order they appear.
-// When IP validation is enabled, any invalid IPs will be omitted.
-func (c *DefaultCtx) extractIPsFromHeader(header string) []string {
-	// TODO: Reuse the c.extractIPFromHeader func somehow in here
-
-	headerValue := c.Get(header)
-
-	// We can't know how many IPs we will return, but we will try to guess with this constant division.
-	// Counting ',' makes function slower for about 50ns in general case.
-	const maxEstimatedCount = 8
-	estimatedCount := len(headerValue) / maxEstimatedCount
-	if estimatedCount > maxEstimatedCount {
-		estimatedCount = maxEstimatedCount // Avoid big allocation on big header
-	}
-
-	ipsFound := make([]string, 0, estimatedCount)
-
-	i := 0
-	j := -1
-
-iploop:
-	for {
-		var v4, v6 bool
-
-		// Manually splitting string without allocating slice, working with parts directly
-		i, j = j+1, j+2
-
-		if j > len(headerValue) {
-			break
-		}
-
-		for j < len(headerValue) && headerValue[j] != ',' {
-			if headerValue[j] == ':' {
-				v6 = true
-			} else if headerValue[j] == '.' {
-				v4 = true
-			}
-			j++
-		}
-
-		for i < j && (headerValue[i] == ' ' || headerValue[i] == ',') {
-			i++
-		}
-
-		s := strings.TrimRight(headerValue[i:j], " ")
-
-		if c.app.config.EnableIPValidation {
-			// Skip validation if IP is clearly not IPv4/IPv6, otherwise validate without allocations
-			if (!v6 && !v4) || (v6 && !utils.IsIPv6(s)) || (v4 && !utils.IsIPv4(s)) {
-				continue iploop
-			}
-		}
-
-		ipsFound = append(ipsFound, s)
-	}
-
-	return ipsFound
-}
-
-// extractIPFromHeader will attempt to pull the real client IP from the given header when IP validation is enabled.
-// currently, it will return the first valid IP address in header.
-// when IP validation is disabled, it will simply return the value of the header without any inspection.
-// Implementation is almost the same as in extractIPsFromHeader, but without allocation of []string.
-func (c *DefaultCtx) extractIPFromHeader(header string) string {
-	if c.app.config.EnableIPValidation {
-		headerValue := c.Get(header)
-
-		i := 0
-		j := -1
-
-	iploop:
-		for {
-			var v4, v6 bool
-
-			// Manually splitting string without allocating slice, working with parts directly
-			i, j = j+1, j+2
-
-			if j > len(headerValue) {
-				break
-			}
-
-			for j < len(headerValue) && headerValue[j] != ',' {
-				if headerValue[j] == ':' {
-					v6 = true
-				} else if headerValue[j] == '.' {
-					v4 = true
-				}
-				j++
-			}
-
-			for i < j && headerValue[i] == ' ' {
-				i++
-			}
-
-			s := strings.TrimRight(headerValue[i:j], " ")
-
-			if c.app.config.EnableIPValidation {
-				if (!v6 && !v4) || (v6 && !utils.IsIPv6(s)) || (v4 && !utils.IsIPv4(s)) {
-					continue iploop
-				}
-			}
-
-			return s
-		}
-
-		return c.fasthttp.RemoteIP().String()
-	}
-
-	// default behavior if IP validation is not enabled is just to return whatever value is
-	// in the proxy header. Even if it is empty or invalid
-	return c.Get(c.app.config.ProxyHeader)
-}
-
-// IPs returns a string slice of IP addresses specified in the X-Forwarded-For request header.
-// When IP validation is enabled, only valid IPs are returned.
+// IPs is an alias of [Request.IPs]
 func (c *DefaultCtx) IPs() []string {
-	return c.extractIPsFromHeader(HeaderXForwardedFor)
+	return c.req.IPs()
 }
 
 // Is returns the matching content type,
