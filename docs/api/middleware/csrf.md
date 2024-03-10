@@ -10,7 +10,7 @@ This middleware offers two [Token Validation Patterns](#token-validation-pattern
 
 As a [Defense In Depth](#defense-in-depth) measure, this middleware performs [Referer Checking](#referer-checking) for HTTPS requests.
 
-## How to use GoFiber's CSRF Middleware
+## How to use Fiber's CSRF Middleware
 
 ## Examples
 
@@ -80,7 +80,7 @@ There are two basic use cases for the CSRF middleware:
 
 	- See GoFiber recipe [CSRF](https://github.com/gofiber/recipes/tree/master/csrf) for an example of using the CSRF middleware without a user session.
 
-2. **With Sessions**: This is generally considered more secure. It uses the Synchronizer Token Pattern and requires a user session, and the use of pre-session which prevents login CSRF attacks.
+2. **With Sessions**: This is generally considered more secure. It uses the Synchronizer Token Pattern and requires a user session, and the use of pre-session, which prevents login CSRF attacks.
 
 	- See GoFiber recipe [CSRF with Session](https://github.com/gofiber/recipes/tree/master/csrf-with-session) for an example of using the CSRF middleware with a user session.
 
@@ -228,7 +228,7 @@ Never use 'safe' methods to mutate data, for example, never use a GET request to
 
 #### Double Submit Cookie Pattern (Default)
 
-By default, the middleware generates and stores tokens using the `fiber.Storage` interface. These tokens are not linked to any particular user session, and they are validated using the Double Submit Cookie pattern. The token is stored in a cookie, and then sent as a header on requests. The middleware compares the cookie value with the header value to validate the token. This is a secure pattern that does not require a user session.
+By default, the middleware generates and stores tokens using the `fiber.Storage` interface. These tokens are not linked to any particular user session, and they are validated using the Double Submit Cookie pattern.  The token is stored in a cookie, and then sent as a header on requests. The middleware compares the cookie value with the header value to validate the token. This is a secure pattern that does not require a user session.
 
 When the authorization status changes, the previously issued token MUST be deleted, and a new one generated. See [Token Lifecycle](#token-lifecycle) [Deleting Tokens](#deleting-tokens) for more information.
 
@@ -247,7 +247,7 @@ When using this middleware with a user session, the middleware can be configured
 When using this pattern it's important to regenerate the session when the authorization status changes, this will also delete the token. See: [Token Lifecycle](#token-lifecycle) for more information.
 
 :::caution
-Pre-sessions are required and will be created automatically if not present. Use a session value to indicate authentication instead of relying on presence of a session.
+Pre-sessions are required and will be created automatically if not present. Use a session value to indicate authentication instead of relying on the presence of a session.
 :::
 
 ### Defense In Depth
@@ -262,7 +262,7 @@ To use these prefixes, set the `CookieName` option to `__Host-csrf_` or `__Secur
 
 ### Referer Checking
 
-For HTTPS requests, this middleware performs strict referer checking. Even if a subdomain can set or modify cookies on your domain, it can't force a user to post to your application since that request won't come from your own exact domain.
+For HTTPS requests, this middleware performs strict referer checking. Even if a subdomain can set or modify cookies on your domain, it can't force a user to post to your application, since that request won't come from your own exact domain.
 
 :::caution
 When HTTPS requests are protected by CSRF, referer checking is always carried out.
@@ -297,7 +297,7 @@ if handler != nil {
 ```
 
 :::tip
-If you are using this middleware with the fiber session middleware, then you can simply call `session.Destroy()`, `session.Regenerate()`, or `session.Reset()` to delete session and the token stored therein.
+If you are using this middleware with the fiber session middleware, then you can simply call `session.Destroy()`, `session.Regenerate()`, or `session.Reset()` to delete the session and the token stored therein.
 :::
 
 ### BREACH
