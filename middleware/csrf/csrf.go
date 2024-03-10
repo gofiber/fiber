@@ -262,18 +262,18 @@ func isFromCookie(extractor any) bool {
 // returns nil if the origin header is valid
 func originMatchesHost(c fiber.Ctx, trustedOrigins []string) error {
 	origin := c.Get(fiber.HeaderOrigin)
-	if origin == "" {
+	if origin == "" || origin == "null" { // "null" is set by some browsers when the origin is a secure context https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin#description
 		return errNoOrigin
 	}
 
 	originURL, err := url.Parse(origin)
 	if err != nil {
-		return ErrBadReferer
+		return ErrBadOrigin
 	}
 
 	if originURL.Host != c.Host() {
 		for _, trustedOrigin := range trustedOrigins {
-			if isSameSchemeAndDomain(trustedOrigin, origin) {
+			if isTrustedSchemeAndDomain(trustedOrigin, origin) {
 				return nil
 			}
 		}
@@ -299,7 +299,7 @@ func refererMatchesHost(c fiber.Ctx, trustedOrigins []string) error {
 
 	if refererURL.Host != c.Host() {
 		for _, trustedOrigin := range trustedOrigins {
-			if isSameSchemeAndDomain(trustedOrigin, referer) {
+			if isTrustedSchemeAndDomain(trustedOrigin, referer) {
 				return nil
 			}
 		}
@@ -309,10 +309,10 @@ func refererMatchesHost(c fiber.Ctx, trustedOrigins []string) error {
 	return nil
 }
 
-// isSameSchemeAndDomain checks if the trustedProtoDomain is the same as the protoDomain
+// isTrustedSchemeAndDomain checks if the trustedProtoDomain is the same as the protoDomain
 // or if the protoDomain is a subdomain of the trustedProtoDomain where trustedProtoDomain
 // is prefixed with "https://." or "http://."
-func isSameSchemeAndDomain(trustedProtoDomain, protoDomain string) bool {
+func isTrustedSchemeAndDomain(trustedProtoDomain, protoDomain string) bool {
 	if trustedProtoDomain == protoDomain {
 		return true
 	}

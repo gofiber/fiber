@@ -172,6 +172,7 @@ The CSRF middleware utilizes a set of sentinel errors to handle various scenario
 - `ErrTokenInvalid`: Indicates that the CSRF token is invalid.
 - `ErrNoReferer`: Indicates that the referer was not supplied.
 - `ErrBadReferer`: Indicates that the referer is invalid.
+- `ErrBadOrigin`: Indicates that the origin is invalid.
 
 If you use the default error handler, the client will receive a 403 Forbidden error without any additional information.
 
