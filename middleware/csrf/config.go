@@ -89,6 +89,19 @@ type Config struct {
 	// Default: "csrfToken"
 	SessionKey string
 
+	// TrustedOrigins is a list of trusted origins for unsafe requests.
+	// For requests that use the Origin header, the origin must match the
+	// Host header or one of the TrustedOrigins.
+	// For secure requests, that do not include the Origin header, the Referer
+	// header must match the Host header or one of the TrustedOrigins.
+	//
+	// This supports subdomain matching, so you can use a value like "https://.example.com"
+	// to allow any subdomain of example.com to submit requests.
+	//
+	//
+	// Optional. Default: []
+	TrustedOrigins []string
+
 	// KeyGenerator creates a new CSRF token
 	//
 	// Optional. Default: utils.UUID
