@@ -639,7 +639,6 @@ func Test_CSRF_Extractor_EmptyString(t *testing.T) {
 	h(ctx)
 	require.Equal(t, 403, ctx.Response.StatusCode())
 	require.Equal(t, ErrTokenNotFound.Error(), string(ctx.Response.Body()))
-
 }
 
 func Test_CSRF_Origin(t *testing.T) {
