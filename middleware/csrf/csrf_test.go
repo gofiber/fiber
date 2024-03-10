@@ -40,7 +40,7 @@ func Test_CSRF(t *testing.T) {
 		h(ctx)
 		require.Equal(t, 403, ctx.Response.StatusCode())
 
-		// Empty/invalid CSRF token
+		// Invalid CSRF token
 		ctx.Request.Reset()
 		ctx.Response.Reset()
 		ctx.Request.Header.SetMethod(fiber.MethodPost)
@@ -598,6 +598,50 @@ func Test_CSRF_From_Custom(t *testing.T) {
 	require.Equal(t, 200, ctx.Response.StatusCode())
 }
 
+func Test_CSRF_Extractor_EmptyString(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	extractor := func(_ fiber.Ctx) (string, error) {
+		return "", nil
+	}
+
+	errorHandler := func(c fiber.Ctx, err error) error {
+		return c.Status(403).SendString(err.Error())
+	}
+
+	app.Use(New(Config{
+		Extractor:    extractor,
+		ErrorHandler: errorHandler,
+	}))
+
+	app.Post("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	h := app.Handler()
+	ctx := &fasthttp.RequestCtx{}
+
+	// Generate CSRF token
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	h(ctx)
+	token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
+	token = strings.Split(strings.Split(token, ";")[0], "=")[1]
+
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.Header.Set(fiber.HeaderContentType, fiber.MIMETextPlain)
+	ctx.Request.SetBodyString("_csrf=" + token)
+	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
+	h(ctx)
+	require.Equal(t, 403, ctx.Response.StatusCode())
+	require.Equal(t, ErrTokenNotFound.Error(), string(ctx.Response.Body()))
+
+}
+
 func Test_CSRF_Origin(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -1101,7 +1145,7 @@ func Test_CSRF_ErrorHandler_MissingReferer(t *testing.T) {
 	app := fiber.New()
 
 	errHandler := func(ctx fiber.Ctx, err error) error {
-		require.Equal(t, ErrNoReferer, err)
+		require.Equal(t, ErrRefererNotFound, err)
 		return ctx.Status(419).Send([]byte("empty CSRF token"))
 	}
 
@@ -1275,7 +1319,7 @@ func Benchmark_Middleware_CSRF_GenerateToken(b *testing.B) {
 	require.Equal(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
 }
 
-func Test_InvalidURLHeaders(t *testing.T) {
+func Test_CSRF_InvalidURLHeaders(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
@@ -1307,12 +1351,12 @@ func Test_InvalidURLHeaders(t *testing.T) {
 	ctx.Request.URI().SetHost("example.com")
 	ctx.Request.Header.SetProtocol("http")
 	ctx.Request.Header.SetHost("example.com")
-	ctx.Request.Header.Set(fiber.HeaderOrigin, "Invalid Origin")
+	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://[::1]:%38%30/Invalid Origin")
 	ctx.Request.Header.Set(HeaderName, token)
 	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
 	h(ctx)
 	require.Equal(t, 419, ctx.Response.StatusCode())
-	require.Equal(t, ErrBadOrigin.Error(), string(ctx.Response.Body()))
+	require.Equal(t, ErrOriginInvalid.Error(), string(ctx.Response.Body()))
 
 	// invalid Referer
 	ctx.Request.Reset()
@@ -1323,10 +1367,67 @@ func Test_InvalidURLHeaders(t *testing.T) {
 	ctx.Request.URI().SetHost("example.com")
 	ctx.Request.Header.SetProtocol("https")
 	ctx.Request.Header.SetHost("example.com")
-	ctx.Request.Header.Set(fiber.HeaderReferer, "Invalid Referer")
+	ctx.Request.Header.Set(fiber.HeaderReferer, "http://[::1]:%38%30/Invalid Referer")
 	ctx.Request.Header.Set(HeaderName, token)
 	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
 	h(ctx)
 	require.Equal(t, 419, ctx.Response.StatusCode())
-	require.Equal(t, ErrBadReferer.Error(), string(ctx.Response.Body()))
+	require.Equal(t, ErrRefererInvalid.Error(), string(ctx.Response.Body()))
+}
+
+func Test_CSRF_TokenFromContext(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New())
+
+	app.Get("/", func(c fiber.Ctx) error {
+		token := TokenFromContext(c)
+		require.NotEmpty(t, token)
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
+func Test_CSRF_FromContextMethods(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New())
+
+	app.Get("/", func(c fiber.Ctx) error {
+		token := TokenFromContext(c)
+		require.NotEmpty(t, token)
+
+		handler := HandlerFromContext(c)
+		require.NotNil(t, handler)
+
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
+func Test_CSRF_FromContextMethods_Invalid(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Get("/", func(c fiber.Ctx) error {
+		token := TokenFromContext(c)
+		require.Empty(t, token)
+
+		handler := HandlerFromContext(c)
+		require.Nil(t, handler)
+
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }

@@ -11,13 +11,15 @@ import (
 )
 
 var (
-	ErrTokenNotFound = errors.New("csrf token not found")
-	ErrTokenInvalid  = errors.New("csrf token invalid")
-	ErrNoReferer     = errors.New("referer not supplied")
-	ErrBadReferer    = errors.New("referer invalid")
-	ErrBadOrigin     = errors.New("origin invalid")
-	dummyValue       = []byte{'+'}
-	errNoOrigin      = errors.New("origin not supplied")
+	ErrTokenNotFound   = errors.New("csrf token not found")
+	ErrTokenInvalid    = errors.New("csrf token invalid")
+	ErrRefererNotFound = errors.New("referer not supplied")
+	ErrRefererInvalid  = errors.New("referer invalid")
+	ErrRefererNoMatch  = errors.New("referer does not match host and is not a trusted origin")
+	ErrOriginInvalid   = errors.New("origin invalid")
+	ErrOriginNoMatch   = errors.New("origin does not match host and is not a trusted origin")
+	errOriginNotFound  = errors.New("origin not supplied or is null") // internal error, will not be returned to the user
+	dummyValue         = []byte{'+'}
 )
 
 // Handler for CSRF middleware
@@ -89,7 +91,7 @@ func New(config ...Config) fiber.Handler {
 			err := originMatchesHost(c, cfg.TrustedOrigins)
 
 			// If there's no origin, enforce a referer check for HTTPS connections.
-			if errors.Is(err, errNoOrigin) {
+			if errors.Is(err, errOriginNotFound) {
 				if c.Scheme() == "https" {
 					err = refererMatchesHost(c, cfg.TrustedOrigins)
 				} else {
@@ -263,12 +265,12 @@ func isFromCookie(extractor any) bool {
 func originMatchesHost(c fiber.Ctx, trustedOrigins []string) error {
 	origin := c.Get(fiber.HeaderOrigin)
 	if origin == "" || origin == "null" { // "null" is set by some browsers when the origin is a secure context https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin#description
-		return errNoOrigin
+		return errOriginNotFound
 	}
 
 	originURL, err := url.Parse(origin)
 	if err != nil {
-		return ErrBadOrigin
+		return ErrOriginInvalid
 	}
 
 	if originURL.Host != c.Host() {
@@ -277,7 +279,7 @@ func originMatchesHost(c fiber.Ctx, trustedOrigins []string) error {
 				return nil
 			}
 		}
-		return ErrBadOrigin
+		return ErrOriginNoMatch
 	}
 
 	return nil
@@ -289,12 +291,12 @@ func originMatchesHost(c fiber.Ctx, trustedOrigins []string) error {
 func refererMatchesHost(c fiber.Ctx, trustedOrigins []string) error {
 	referer := c.Get(fiber.HeaderReferer)
 	if referer == "" {
-		return ErrNoReferer
+		return ErrRefererNotFound
 	}
 
 	refererURL, err := url.Parse(referer)
 	if err != nil {
-		return ErrBadReferer
+		return ErrRefererInvalid
 	}
 
 	if refererURL.Host != c.Host() {
@@ -303,7 +305,7 @@ func refererMatchesHost(c fiber.Ctx, trustedOrigins []string) error {
 				return nil
 			}
 		}
-		return ErrBadReferer
+		return ErrRefererNoMatch
 	}
 
 	return nil
