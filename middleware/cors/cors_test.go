@@ -195,13 +195,37 @@ func Test_CORS_Invalid_Origin_Panic(t *testing.T) {
 	}
 }
 
+func Test_CORS_Invalid_Origin_URL_Panic(t *testing.T) {
+	t.Parallel()
+	// New fiber instance
+	app := fiber.New()
+
+	didPanic := false
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				didPanic = true
+			}
+		}()
+
+		app.Use(New(Config{
+			AllowOrigins:     "http://foo.[a-z]*.example.com",
+			AllowCredentials: true,
+		}))
+	}()
+
+	if !didPanic {
+		t.Errorf("Expected a panic when Origin is missing scheme")
+	}
+}
+
 // go test -run -v Test_CORS_Subdomain
 func Test_CORS_Subdomain(t *testing.T) {
 	t.Parallel()
 	// New fiber instance
 	app := fiber.New()
 	// OPTIONS (preflight) response headers when AllowOrigins is set to a subdomain
-	app.Use("/", New(Config{AllowOrigins: "http://*.example.com"}))
+	app.Use("/", New(Config{AllowOrigins: "http://.example.com"}))
 
 	// Get handler pointer
 	handler := app.Handler()
@@ -215,7 +239,7 @@ func Test_CORS_Subdomain(t *testing.T) {
 	// Perform request
 	handler(ctx)
 
-	// Allow-Origin header should be "" because http://google.com does not satisfy http://*.example.com
+	// Allow-Origin header should be "" because http://google.com does not satisfy http://.example.com
 	utils.AssertEqual(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
 
 	ctx.Request.Reset()
@@ -253,22 +277,22 @@ func Test_CORS_AllowOriginScheme(t *testing.T) {
 			shouldAllowOrigin: false,
 		},
 		{
-			pattern:           "http://*.example.com",
+			pattern:           "http://.example.com",
 			reqOrigin:         "http://aaa.example.com",
 			shouldAllowOrigin: true,
 		},
 		{
-			pattern:           "http://*.example.com",
+			pattern:           "http://.example.com",
 			reqOrigin:         "http://bbb.aaa.example.com",
 			shouldAllowOrigin: true,
 		},
 		{
-			pattern:           "http://*.aaa.example.com",
+			pattern:           "http://.aaa.example.com",
 			reqOrigin:         "http://bbb.aaa.example.com",
 			shouldAllowOrigin: true,
 		},
 		{
-			pattern:           "http://*.example.com:8080",
+			pattern:           "http://.example.com:8080",
 			reqOrigin:         "http://aaa.example.com:8080",
 			shouldAllowOrigin: true,
 		},
@@ -278,12 +302,12 @@ func Test_CORS_AllowOriginScheme(t *testing.T) {
 			shouldAllowOrigin: false,
 		},
 		{
-			pattern:           "http://*.aaa.example.com",
+			pattern:           "http://.aaa.example.com",
 			reqOrigin:         "http://ccc.bbb.example.com",
 			shouldAllowOrigin: false,
 		},
 		{
-			pattern:           "http://*.example.com",
+			pattern:           "http://.example.com",
 			reqOrigin:         "http://1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.example.com",
 			shouldAllowOrigin: true,
 		},
@@ -293,19 +317,14 @@ func Test_CORS_AllowOriginScheme(t *testing.T) {
 			shouldAllowOrigin: false,
 		},
 		{
-			pattern:           "https://*--aaa.bbb.com",
+			pattern:           "https://--aaa.bbb.com",
 			reqOrigin:         "https://prod-preview--aaa.bbb.com",
 			shouldAllowOrigin: false,
 		},
 		{
-			pattern:           "http://*.example.com",
+			pattern:           "http://.example.com",
 			reqOrigin:         "http://ccc.bbb.example.com",
 			shouldAllowOrigin: true,
-		},
-		{
-			pattern:           "http://foo.[a-z]*.example.com",
-			reqOrigin:         "http://ccc.bbb.example.com",
-			shouldAllowOrigin: false,
 		},
 		{
 			pattern:           "http://domain-1.com, http://example.com",
@@ -343,6 +362,35 @@ func Test_CORS_AllowOriginScheme(t *testing.T) {
 			utils.AssertEqual(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
 		}
 	}
+}
+
+func Test_CORS_AllowOriginHeader_NoMatch(t *testing.T) {
+	t.Parallel()
+	// New fiber instance
+	app := fiber.New()
+	app.Use("/", New(Config{
+		AllowOrigins: "http://example-1.com, https://example-1.com",
+	}))
+
+	// Get handler pointer
+	handler := app.Handler()
+
+	// Make request with disallowed origin
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.SetRequestURI("/")
+	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://google.com")
+
+	// Perform request
+	handler(ctx)
+
+	var headerExists bool
+	ctx.Response.Header.VisitAll(func(key, _ []byte) {
+		if string(key) == fiber.HeaderAccessControlAllowOrigin {
+			headerExists = true
+		}
+	})
+	utils.AssertEqual(t, false, headerExists, "Access-Control-Allow-Origin header should not be set")
 }
 
 // go test -run Test_CORS_Next

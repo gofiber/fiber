@@ -91,13 +91,14 @@ func Test_validateOrigin(t *testing.T) {
 		{"http://example.com:8080", "http://example.com:8081", false}, // Different ports should not match.
 		{"example.com", "example.com", true},                          // Simplified form, assuming scheme and port are not considered here, but in practice, they are part of the origin.
 		{"sub.example.com", "example.com", false},                     // Subdomain should not match the base domain directly.
-		{"sub.example.com", "*.example.com", true},                    // Correct assumption for wildcard subdomain matching.
-		{"example.com", "*.example.com", false},                       // Base domain should not match its wildcard subdomain pattern.
-		{"sub.example.com", "*.com", true},                            // Technically correct for pattern matching, but broad wildcard use like this is not recommended for CORS.
-		{"sub.sub.example.com", "*.example.com", true},                // Nested subdomain should match the wildcard pattern.
-		{"example.com", "*.org", false},                               // Different TLDs should not match.
+		{"sub.example.com", ".example.com", true},                     // Correct assumption for wildcard subdomain matching.
+		{"evilexample.com", ".example.com", false},                    // Base domain should not match its wildcard subdomain pattern.
+		{"example.com", ".example.com", false},                        // Base domain should not match its wildcard subdomain pattern.
+		{"sub.example.com", ".com", true},                             // Technically correct for pattern matching, but broad wildcard use like this is not recommended for CORS.
+		{"sub.sub.example.com", ".example.com", true},                 // Nested subdomain should match the wildcard pattern.
+		{"example.com", ".org", false},                                // Different TLDs should not match.
 		{"example.com", "example.org", false},                         // Different domains should not match.
-		{"example.com:8080", "*.example.com", false},                  // Different ports mean different origins.
+		{"example.com:8080", ".example.com", false},                   // Different ports mean different origins.
 		{"example.com", "sub.example.net", false},                     // Different domains should not match.
 		{"http://localhost", "http://localhost", true},                // Localhost should match.
 		{"http://127.0.0.1", "http://127.0.0.1", true},                // IPv4 address should match.

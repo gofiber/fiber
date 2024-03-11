@@ -195,7 +195,6 @@ func New(config ...Config) fiber.Handler {
 		c.Vary(fiber.HeaderOrigin)
 		c.Vary(fiber.HeaderAccessControlRequestMethod)
 		c.Vary(fiber.HeaderAccessControlRequestHeaders)
-		c.Set(fiber.HeaderAccessControlAllowOrigin, allowOrigin)
 		c.Set(fiber.HeaderAccessControlAllowMethods, allowMethods)
 
 		if cfg.AllowCredentials {
@@ -204,9 +203,10 @@ func New(config ...Config) fiber.Handler {
 				c.Set(fiber.HeaderAccessControlAllowOrigin, allowOrigin)
 				c.Set(fiber.HeaderAccessControlAllowCredentials, "true")
 			} else if allowOrigin == "*" {
+				c.Set(fiber.HeaderAccessControlAllowOrigin, allowOrigin)
 				log.Warn("[CORS] 'AllowCredentials' is true, but 'AllowOrigins' cannot be set to '*'.")
 			}
-		} else {
+		} else if len(allowOrigin) > 0 {
 			// For non-credential requests, it's safe to set to '*' or specific origins
 			c.Set(fiber.HeaderAccessControlAllowOrigin, allowOrigin)
 		}
