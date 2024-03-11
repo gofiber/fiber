@@ -132,14 +132,14 @@ This way, the CORS middleware allows you to control how your Fiber application r
 
 When configuring CORS, misconfiguration can potentially expose your application to various security risks.
 
-- **Allowing all origins:** Setting `Access-Control-Allow-Origin` to `*` (a wildcard) allows any domain to make cross-origin requests. This can expose your application to cross-site request forgery (CSRF) attacks. It's generally safer to specify the exact domains that are allowed to make requests.
+- **Allowing all origins:** Setting `Access-Control-Allow-Origin` to `*` (a wildcard) allows any domain to make cross-origin requests. This can expose your application to cross-site request forgery (CSRF) attacks. It's generally safer to specify the exact domains allowed to make requests.
 
 - **Allowing credentials:** The `Access-Control-Allow-Credentials` header indicates whether the browser should include credentials with cross-origin requests. If this is set to `true`, it can expose your application to attacks if combined with a wildcard `Access-Control-Allow-Origin`. We specifically prohibit this action in our CORS middleware, in line with the Fetch specification.
 
 - **Exposing headers:** The `Access-Control-Expose-Headers` header lets the server whitelist headers that browsers are allowed to access. Be careful not to expose sensitive headers.
 
 :::note
-In our CORS middleware, we specifically prevent `Access-Control-Allow-Credentials` from being `true` when `Access-Control-Allow-Origin` is set to the wildcard (`*`). This is to prevent potential security risks associated with allowing credentials to be shared with all origins. 
+In our CORS middleware, we specifically prevent `Access-Control-Allow-Credentials` from being `true` when `Access-Control-Allow-Origin` is set to the wildcard (`*`). This prevents potential security risks associated with allowing credentials to be shared with all origins. 
 
 When using `AllowOrigins`, a configuration check will cause a panic if `Access-Control-Allow-Credentials` is `true` and `Access-Control-Allow-Origin` is set to the wildcard.
 :::
@@ -147,5 +147,5 @@ When using `AllowOrigins`, a configuration check will cause a panic if `Access-C
 :::caution
 Be extra careful when using `AllowOriginsFunc`. Make sure to properly validate the origin to prevent potential security risks.
 
-When using `AllowOriginsFunc`, the `Access-Control-Allow-Origin` header will always be set to the origin header if the func returns `true`, which can bypass such protections if you simply return `true` in all situations. 
+When using `AllowOriginsFunc`, the `Access-Control-Allow-Origin` header will always be set to the origin header if the func returns `true`, which can bypass such protections if you return `true` in all situations. 
 :::
