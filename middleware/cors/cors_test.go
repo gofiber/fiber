@@ -171,51 +171,39 @@ func Test_CORS_Wildcard_AllowCredentials_Panic(t *testing.T) {
 }
 
 // go test -run -v Test_CORS_Invalid_Origin_Panic
-func Test_CORS_Invalid_Origin_Panic(t *testing.T) {
+func Test_CORS_Invalid_Origins_Panic(t *testing.T) {
 	t.Parallel()
-	// New fiber instance
-	app := fiber.New()
 
-	didPanic := false
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				didPanic = true
-			}
-		}()
-
-		app.Use(New(Config{
-			AllowOrigins:     "localhost",
-			AllowCredentials: true,
-		}))
-	}()
-
-	if !didPanic {
-		t.Errorf("Expected a panic when Origin is missing scheme")
+	invalidOrigins := []string{
+		"localhost",
+		"http://foo.[a-z]*.example.com",
+		"http://*",
+		"https://*",
+		"invalid url",
+		// add more invalid origins as needed
 	}
-}
 
-func Test_CORS_Invalid_Origin_URL_Panic(t *testing.T) {
-	t.Parallel()
-	// New fiber instance
-	app := fiber.New()
+	for _, origin := range invalidOrigins {
+		// New fiber instance
+		app := fiber.New()
 
-	didPanic := false
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				didPanic = true
-			}
+		didPanic := false
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					didPanic = true
+				}
+			}()
+
+			app.Use(New(Config{
+				AllowOrigins:     origin,
+				AllowCredentials: true,
+			}))
 		}()
 
-		app.Use(New(Config{
-			AllowOrigins:     "http://foo.[a-z]*.example.com",
-			AllowCredentials: true,
-		}))
-	}()
-
-	if !didPanic {
-		t.Errorf("Expected a panic due to invalid origin URL pattern")
+		if !didPanic {
+			t.Errorf("Expected a panic for invalid origin: %s", origin)
+		}
 	}
 }
 
