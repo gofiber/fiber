@@ -215,7 +215,7 @@ func Test_CORS_Invalid_Origin_URL_Panic(t *testing.T) {
 	}()
 
 	if !didPanic {
-		t.Errorf("Expected a panic when Origin is missing scheme")
+		t.Errorf("Expected a panic due to invalid origin URL pattern")
 	}
 }
 
