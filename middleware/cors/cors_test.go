@@ -137,6 +137,7 @@ func Test_CORS_Origin_AllowCredentials(t *testing.T) {
 
 	// Test non OPTIONS (preflight) response headers
 	ctx = &fasthttp.RequestCtx{}
+	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
 	handler(ctx)
 
