@@ -275,7 +275,7 @@ type Config struct {
 
 	// StreamRequestBody enables request body streaming,
 	// and calls the handler sooner when given body is
-	// larger then the current limit.
+	// larger than the current limit.
 	StreamRequestBody bool
 
 	// Will not pre parse Multipart Form data if set to true.

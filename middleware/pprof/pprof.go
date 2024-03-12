@@ -40,7 +40,7 @@ func New(config ...Config) fiber.Handler {
 
 		path := c.Path()
 		// We are only interested in /debug/pprof routes
-		path, found := cutPrefix(path, prefix)
+		path, found := strings.CutPrefix(path, prefix)
 		if !found {
 			return c.Next()
 		}
@@ -80,15 +80,4 @@ func New(config ...Config) fiber.Handler {
 		}
 		return nil
 	}
-}
-
-// cutPrefix is a copy of [strings.CutPrefix] added in Go 1.20.
-// Remove this function when we drop support for Go 1.19.
-//
-//nolint:nonamedreturns // Align with its original form in std.
-func cutPrefix(s, prefix string) (after string, found bool) {
-	if !strings.HasPrefix(s, prefix) {
-		return s, false
-	}
-	return s[len(prefix):], true
 }
