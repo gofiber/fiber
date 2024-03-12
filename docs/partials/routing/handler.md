@@ -17,7 +17,7 @@ func (app *App) Options(path string, handlers ...Handler) Router
 func (app *App) Trace(path string, handlers ...Handler) Router
 func (app *App) Patch(path string, handlers ...Handler) Router
 
-// Add allows you to specifiy a method as value
+// Add allows you to specify a method as value
 func (app *App) Add(method, path string, handlers ...Handler) Router
 
 // All will register the route on all HTTP methods

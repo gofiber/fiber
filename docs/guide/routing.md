@@ -142,7 +142,7 @@ app.Get("/v1/*/shop/*", handler)
 We have adapted the routing strongly to the express routing, but currently without the possibility of the regular expressions, because they are quite slow. The possibilities can be tested with version 0.1.7 \(express 4\) in the online [Express route tester](http://forbeslindesay.github.io/express-route-tester/).
 
 ### Constraints
-Route constraints execute when a match has occurred to the incoming URL and the URL path is tokenized into route values by parameters. The feature was intorduced in `v2.37.0` and inspired by [.NET Core](https://docs.microsoft.com/en-us/aspnet/core/fundamentals/routing?view=aspnetcore-6.0#route-constraints).
+Route constraints execute when a match has occurred to the incoming URL and the URL path is tokenized into route values by parameters. The feature was introduced in `v2.37.0` and inspired by [.NET Core](https://docs.microsoft.com/en-us/aspnet/core/fundamentals/routing?view=aspnetcore-6.0#route-constraints).
 
 :::caution
 Constraints aren't validation for parameters. If constraints aren't valid for a parameter value, Fiber returns **404 handler**.
