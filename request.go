@@ -10,14 +10,37 @@ import (
 )
 
 type Request struct {
-	app      *App              // Reference to the parent App.
-	ctx      Ctx               // Reference to the parent Ctx.
-	fasthttp *fasthttp.Request // Reference to the underlying fasthttp.Request object.
-	baseURI  string            // Memoized base HTTP URI of the current request.
+	app       *App              // Reference to the parent App.
+	ctx       Ctx               // Reference to the parent Ctx.
+	fasthttp  *fasthttp.Request // Reference to the underlying fasthttp.Request object.
+	baseURI   string            // Memoized base HTTP URI of the current request.
+	method    string            // HTTP method
+	methodINT int               // HTTP method INT equivalent
 }
 
 func (r *Request) App() *App {
 	return r.app
+}
+
+// Method returns the HTTP request method for the context, optionally overridden by the provided argument.
+// If no override is given or if the provided override is not a valid HTTP method, it returns the current method from the context.
+// Otherwise, it updates the context's method and returns the overridden method as a string.
+func (r *Request) Method(override ...string) string {
+	if len(override) == 0 {
+		// Nothing to override, just return current method from context
+		return r.method
+	}
+
+	method := utils.ToUpper(override[0])
+	mINT := r.app.methodInt(method)
+	if mINT == -1 {
+		// Provided override does not valid HTTP method, no override, return current method
+		return r.method
+	}
+
+	r.method = method
+	r.methodINT = mINT
+	return r.method
 }
 
 // OriginalURL contains the original request URL.

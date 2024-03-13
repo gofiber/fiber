@@ -465,8 +465,8 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 	c.setReq(fctx)
 
 	// Set method
-	c.method = c.app.getString(fctx.Request.Header.Method())
-	c.methodINT = c.app.methodInt(c.method)
+	c.req.method = c.app.getString(fctx.Request.Header.Method())
+	c.req.methodINT = c.app.methodInt(c.req.method)
 
 	// Prettify path
 	c.configDependentPaths()
@@ -500,18 +500,18 @@ func (c *DefaultCtx) setReq(fctx *fasthttp.RequestCtx) {
 	// Set paths
 	c.pathOriginal = c.app.getString(fctx.URI().PathOriginal())
 
+	method := c.app.getString(fctx.Request.Header.Method())
+
 	// Attach *fasthttp.RequestCtx to ctx
 	c.fasthttp = fctx
 	c.req = Request{
-		app:      c.app,
-		ctx:      c,
-		fasthttp: &c.fasthttp.Request,
+		app:       c.app,
+		ctx:       c,
+		fasthttp:  &c.fasthttp.Request,
+		method:    method,
+		methodINT: c.app.methodInt(method),
 	}
 	// c.res = &Response{app: c.app}
-
-	// Set method
-	c.method = c.app.getString(fctx.Request.Header.Method())
-	c.methodINT = c.app.methodInt(c.method)
 
 	// Prettify path
 	c.configDependentPaths()
@@ -519,7 +519,7 @@ func (c *DefaultCtx) setReq(fctx *fasthttp.RequestCtx) {
 
 // Methods to use with next stack.
 func (c *DefaultCtx) getMethodINT() int {
-	return c.methodINT
+	return c.req.methodINT
 }
 
 func (c *DefaultCtx) getIndexRoute() int {

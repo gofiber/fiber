@@ -47,8 +47,6 @@ type DefaultCtx struct {
 	// res				*Response // Reference to *Response
 	indexRoute          int                  // Index of the current route
 	indexHandler        int                  // Index of the current handler
-	method              string               // HTTP method
-	methodINT           int                  // HTTP method INT equivalent
 	baseURI             string               // HTTP base uri
 	path                string               // HTTP path with the modifications by the configuration -> string copy from pathBuffer
 	pathBuffer          []byte               // HTTP path buffer
@@ -584,25 +582,9 @@ func (c *DefaultCtx) Location(path string) {
 	c.setCanonical(HeaderLocation, path)
 }
 
-// Method returns the HTTP request method for the context, optionally overridden by the provided argument.
-// If no override is given or if the provided override is not a valid HTTP method, it returns the current method from the context.
-// Otherwise, it updates the context's method and returns the overridden method as a string.
+// Method is an alias of [Request.Method]
 func (c *DefaultCtx) Method(override ...string) string {
-	if len(override) == 0 {
-		// Nothing to override, just return current method from context
-		return c.method
-	}
-
-	method := utils.ToUpper(override[0])
-	mINT := c.app.methodInt(method)
-	if mINT == -1 {
-		// Provided override does not valid HTTP method, no override, return current method
-		return c.method
-	}
-
-	c.method = method
-	c.methodINT = mINT
-	return c.method
+	return c.Req().Method(override...)
 }
 
 // MultipartForm parse form entries from binary.
@@ -1081,7 +1063,7 @@ func (c *DefaultCtx) Route() *Route {
 		return &Route{
 			path:     c.pathOriginal,
 			Path:     c.pathOriginal,
-			Method:   c.method,
+			Method:   c.Req().Method(),
 			Handlers: make([]Handler, 0),
 			Params:   make([]string, 0),
 		}
