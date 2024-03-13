@@ -29,13 +29,13 @@ func startServer(app *fiber.App, ln net.Listener) {
 	}()
 }
 
-func createProxyTestServer(t *testing.T, handler fiber.Handler) (*fiber.App, string) {
+func createProxyTestServer(t *testing.T, handler fiber.Handler, network, address string) (*fiber.App, string) {
 	t.Helper()
 
 	target := fiber.New()
 	target.Get("/", handler)
 
-	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	ln, err := net.Listen(network, address)
 	require.NoError(t, err)
 
 	addr := ln.Addr().String()
@@ -43,6 +43,16 @@ func createProxyTestServer(t *testing.T, handler fiber.Handler) (*fiber.App, str
 	startServer(target, ln)
 
 	return target, addr
+}
+
+func createProxyTestServerIPv4(t *testing.T, handler fiber.Handler) (*fiber.App, string) {
+	t.Helper()
+	return createProxyTestServer(t, handler, fiber.NetworkTCP4, "127.0.0.1:0")
+}
+
+func createProxyTestServerIPv6(t *testing.T, handler fiber.Handler) (*fiber.App, string) {
+	t.Helper()
+	return createProxyTestServer(t, handler, fiber.NetworkTCP6, "[::1]:0")
 }
 
 // go test -run Test_Proxy_Empty_Host
@@ -96,7 +106,7 @@ func Test_Proxy_Next(t *testing.T) {
 func Test_Proxy(t *testing.T) {
 	t.Parallel()
 
-	target, addr := createProxyTestServer(t, func(c fiber.Ctx) error {
+	target, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusTeapot)
 	})
 
@@ -154,11 +164,86 @@ func Test_Proxy_Balancer_WithTlsConfig(t *testing.T) {
 	resp.Close()
 }
 
+// go test -run Test_Proxy_Balancer_IPv6_Upstream
+func Test_Proxy_Balancer_IPv6_Upstream(t *testing.T) {
+	t.Parallel()
+
+	target, addr := createProxyTestServerIPv6(t, func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusTeapot)
+	})
+
+	resp, err := target.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), 2*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+
+	app := fiber.New()
+
+	app.Use(Balancer(Config{Servers: []string{addr}}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req.Host = addr
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+}
+
+// go test -run Test_Proxy_Balancer_IPv6_Upstream
+func Test_Proxy_Balancer_IPv6_Upstream_With_DialDualStack(t *testing.T) {
+	t.Parallel()
+
+	target, addr := createProxyTestServerIPv6(t, func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusTeapot)
+	})
+
+	resp, err := target.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), 2*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+
+	app := fiber.New()
+
+	app.Use(Balancer(Config{
+		Servers:       []string{addr},
+		DialDualStack: true,
+	}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req.Host = addr
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+}
+
+// go test -run Test_Proxy_Balancer_IPv6_Upstream
+func Test_Proxy_Balancer_IPv4_Upstream_With_DialDualStack(t *testing.T) {
+	t.Parallel()
+
+	target, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusTeapot)
+	})
+
+	resp, err := target.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), 2*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+
+	app := fiber.New()
+
+	app.Use(Balancer(Config{
+		Servers:       []string{addr},
+		DialDualStack: true,
+	}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req.Host = addr
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+}
+
 // go test -run Test_Proxy_Forward_WithTlsConfig_To_Http
 func Test_Proxy_Forward_WithTlsConfig_To_Http(t *testing.T) {
 	t.Parallel()
 
-	_, targetAddr := createProxyTestServer(t, func(c fiber.Ctx) error {
+	_, targetAddr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
 		return c.SendString("hello from target")
 	})
 
@@ -192,7 +277,7 @@ func Test_Proxy_Forward(t *testing.T) {
 
 	app := fiber.New()
 
-	_, addr := createProxyTestServer(t, func(c fiber.Ctx) error {
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
 		return c.SendString("forwarded")
 	})
 
@@ -250,7 +335,7 @@ func Test_Proxy_Forward_WithClient_TLSConfig(t *testing.T) {
 func Test_Proxy_Modify_Response(t *testing.T) {
 	t.Parallel()
 
-	_, addr := createProxyTestServer(t, func(c fiber.Ctx) error {
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
 		return c.Status(500).SendString("not modified")
 	})
 
@@ -276,7 +361,7 @@ func Test_Proxy_Modify_Response(t *testing.T) {
 func Test_Proxy_Modify_Request(t *testing.T) {
 	t.Parallel()
 
-	_, addr := createProxyTestServer(t, func(c fiber.Ctx) error {
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
 		b := c.Request().Body()
 		return c.SendString(string(b))
 	})
@@ -303,7 +388,7 @@ func Test_Proxy_Modify_Request(t *testing.T) {
 func Test_Proxy_Timeout_Slow_Server(t *testing.T) {
 	t.Parallel()
 
-	_, addr := createProxyTestServer(t, func(c fiber.Ctx) error {
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
 		time.Sleep(300 * time.Millisecond)
 		return c.SendString("fiber is awesome")
 	})
@@ -327,7 +412,7 @@ func Test_Proxy_Timeout_Slow_Server(t *testing.T) {
 func Test_Proxy_With_Timeout(t *testing.T) {
 	t.Parallel()
 
-	_, addr := createProxyTestServer(t, func(c fiber.Ctx) error {
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
 		time.Sleep(1 * time.Second)
 		return c.SendString("fiber is awesome")
 	})
@@ -351,7 +436,7 @@ func Test_Proxy_With_Timeout(t *testing.T) {
 func Test_Proxy_Buffer_Size_Response(t *testing.T) {
 	t.Parallel()
 
-	_, addr := createProxyTestServer(t, func(c fiber.Ctx) error {
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
 		long := strings.Join(make([]string, 5000), "-")
 		c.Set("Very-Long-Header", long)
 		return c.SendString("ok")
@@ -378,7 +463,7 @@ func Test_Proxy_Buffer_Size_Response(t *testing.T) {
 // go test -race -run Test_Proxy_Do_RestoreOriginalURL
 func Test_Proxy_Do_RestoreOriginalURL(t *testing.T) {
 	t.Parallel()
-	_, addr := createProxyTestServer(t, func(c fiber.Ctx) error {
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
 		return c.SendString("proxied")
 	})
 
@@ -465,7 +550,7 @@ func Test_Proxy_DoRedirects_TooManyRedirects(t *testing.T) {
 func Test_Proxy_DoTimeout_RestoreOriginalURL(t *testing.T) {
 	t.Parallel()
 
-	_, addr := createProxyTestServer(t, func(c fiber.Ctx) error {
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
 		return c.SendString("proxied")
 	})
 
@@ -485,7 +570,7 @@ func Test_Proxy_DoTimeout_RestoreOriginalURL(t *testing.T) {
 
 // go test -race -run Test_Proxy_DoTimeout_Timeout
 func Test_Proxy_DoTimeout_Timeout(t *testing.T) {
-	_, addr := createProxyTestServer(t, func(c fiber.Ctx) error {
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
 		time.Sleep(time.Second * 5)
 		return c.SendString("proxied")
 	})
@@ -509,7 +594,7 @@ func Test_Proxy_DoTimeout_Timeout(t *testing.T) {
 func Test_Proxy_DoDeadline_RestoreOriginalURL(t *testing.T) {
 	t.Parallel()
 
-	_, addr := createProxyTestServer(t, func(c fiber.Ctx) error {
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
 		return c.SendString("proxied")
 	})
 
@@ -529,7 +614,7 @@ func Test_Proxy_DoDeadline_RestoreOriginalURL(t *testing.T) {
 
 // go test -race -run Test_Proxy_DoDeadline_PastDeadline
 func Test_Proxy_DoDeadline_PastDeadline(t *testing.T) {
-	_, addr := createProxyTestServer(t, func(c fiber.Ctx) error {
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
 		time.Sleep(time.Second * 5)
 		return c.SendString("proxied")
 	})
@@ -547,7 +632,7 @@ func Test_Proxy_DoDeadline_PastDeadline(t *testing.T) {
 func Test_Proxy_Do_HTTP_Prefix_URL(t *testing.T) {
 	t.Parallel()
 
-	_, addr := createProxyTestServer(t, func(c fiber.Ctx) error {
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
 		return c.SendString("hello world")
 	})
 
@@ -628,7 +713,7 @@ func Test_Proxy_Forward_Local_Client(t *testing.T) {
 func Test_ProxyBalancer_Custom_Client(t *testing.T) {
 	t.Parallel()
 
-	target, addr := createProxyTestServer(t, func(c fiber.Ctx) error {
+	target, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusTeapot)
 	})
 
@@ -698,7 +783,7 @@ func Test_Proxy_Balancer_Forward_Local(t *testing.T) {
 
 	app := fiber.New()
 
-	_, addr := createProxyTestServer(t, func(c fiber.Ctx) error {
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
 		return c.SendString("forwarded")
 	})
 

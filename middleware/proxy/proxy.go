@@ -45,6 +45,8 @@ func Balancer(config Config) fiber.Handler {
 				WriteBufferSize: config.WriteBufferSize,
 
 				TLSConfig: config.TlsConfig,
+
+				DialDualStack: config.DialDualStack,
 			}
 
 			lbc.Clients = append(lbc.Clients, client)
