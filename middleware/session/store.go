@@ -42,10 +42,13 @@ func (*Store) RegisterType(i any) {
 
 // Get will get/create a session
 func (s *Store) Get(c fiber.Ctx) (*Session, error) {
+	return s.GetByID(c, s.getSessionID(c))
+}
+
+// GetByID will get/create a session
+func (s *Store) GetByID(c fiber.Ctx, id string) (*Session, error) {
 	var fresh bool
 	loadData := true
-
-	id := s.getSessionID(c)
 
 	if len(id) == 0 {
 		fresh = true
