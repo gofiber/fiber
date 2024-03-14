@@ -115,28 +115,31 @@ func New(config ...Config) fiber.Handler {
 
 	// allowOrigins is a slice of strings that contains the allowed origins
 	// defined in the 'AllowOrigins' configuration.
-	var allowOrigins []string
+	allowOrigins := []string{}
+	allowSOrigins := []subdomain{}
+	allowAllOrigins := false
 
 	// Validate and normalize static AllowOrigins
 	if cfg.AllowOrigins != "" && cfg.AllowOrigins != "*" {
 		origins := strings.Split(cfg.AllowOrigins, ",")
-		allowOrigins = make([]string, len(origins))
 
-		for i, origin := range origins {
+		for _, origin := range origins {
 			trimmedOrigin := strings.TrimSpace(origin)
 			isValid, normalizedOrigin := normalizeOrigin(trimmedOrigin)
 
-			if isValid {
-				allowOrigins[i] = normalizedOrigin
-			} else {
+			if !isValid {
 				log.Warnf("[CORS] Invalid origin format in configuration: %s", trimmedOrigin)
 				panic("[CORS] Invalid origin provided in configuration")
 			}
+
+			if i := strings.Index(normalizedOrigin, "://."); i != -1 {
+				allowSOrigins = append(allowSOrigins, subdomain{prefix: normalizedOrigin[:i+3], suffix: normalizedOrigin[i+3:]})
+			} else {
+				allowOrigins = append(allowOrigins, normalizedOrigin)
+			}
 		}
-	} else {
-		// If AllowOrigins is set to a wildcard or not set,
-		// set allowOrigins to a slice with a single element
-		allowOrigins = []string{cfg.AllowOrigins}
+	} else if cfg.AllowOrigins == "*" {
+		allowAllOrigins = true
 	}
 
 	// Strip white spaces
@@ -155,18 +158,41 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Get originHeader header
-		originHeader := c.Get(fiber.HeaderOrigin)
+		originHeader := strings.ToLower(c.Get(fiber.HeaderOrigin))
+
+		// If the request does not have an Origin header, the request is outside the scope of CORS
+		if originHeader == "" {
+			return c.Next()
+		}
+
+		// Set default allowOrigin to empty string
 		allowOrigin := ""
 
 		// Check allowed origins
-		for _, origin := range allowOrigins {
-			if origin == "*" {
-				allowOrigin = "*"
-				break
+		if allowAllOrigins {
+			allowOrigin = "*"
+		} else {
+			// Check if the origin is in the list of allowed origins
+			for _, origin := range allowOrigins {
+				if origin == "*" {
+					allowOrigin = "*"
+					break
+				}
+
+				if origin == originHeader {
+					allowOrigin = originHeader
+					break
+				}
 			}
-			if validateDomain(originHeader, origin) {
-				allowOrigin = originHeader
-				break
+
+			// Check if the origin is in the list of allowed subdomains
+			if allowOrigin == "" {
+				for _, sOrigin := range allowSOrigins {
+					if sOrigin.match(originHeader) {
+						allowOrigin = originHeader
+						break
+					}
+				}
 			}
 		}
 

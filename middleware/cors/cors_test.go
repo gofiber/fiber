@@ -49,6 +49,7 @@ func testDefaultOrEmptyConfig(t *testing.T, app *fiber.App) {
 	// Test default GET response headers
 	ctx := &fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
 	h(ctx)
 
 	utils.AssertEqual(t, "*", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
@@ -58,6 +59,7 @@ func testDefaultOrEmptyConfig(t *testing.T, app *fiber.App) {
 	// Test default OPTIONS (preflight) response headers
 	ctx = &fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
 	h(ctx)
 
 	utils.AssertEqual(t, "GET,POST,HEAD,PUT,DELETE,PATCH", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)))
@@ -98,6 +100,7 @@ func Test_CORS_Wildcard(t *testing.T) {
 	// Test non OPTIONS (preflight) response headers
 	ctx = &fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
 	handler(ctx)
 
 	utils.AssertEqual(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowCredentials)))

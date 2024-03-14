@@ -12,31 +12,6 @@ func matchScheme(domain, pattern string) bool {
 	return didx != -1 && pidx != -1 && domain[:didx] == pattern[:pidx]
 }
 
-// validateDomain checks if the domain matches the pattern
-func validateDomain(domain, pattern string) bool {
-	// Directly compare the domain and pattern for an exact match.
-	if domain == pattern {
-		return true
-	}
-
-	// Normalize domain and pattern to exclude schemes and ports for matching purposes
-	normalizedDomain := normalizeDomain(domain)
-	normalizedPattern := normalizeDomain(pattern)
-
-	// Handling the case where pattern is a wildcard subdomain pattern.
-	if strings.HasPrefix(normalizedPattern, ".") {
-		// Trim leading "." from pattern for comparison.
-		trimmedPattern := normalizedPattern[1:]
-
-		// Check if the domain ends with a dot followed by the trimmed pattern.
-		if strings.HasSuffix(normalizedDomain, "."+trimmedPattern) {
-			return true
-		}
-	}
-
-	return false
-}
-
 // normalizeDomain removes the scheme and port from the input domain
 func normalizeDomain(input string) string {
 	// Remove scheme
@@ -83,4 +58,14 @@ func normalizeOrigin(origin string) (bool, string) {
 	// Normalize the origin by constructing it from the scheme and host.
 	// The path or trailing slash is not included in the normalized origin.
 	return true, strings.ToLower(parsedOrigin.Scheme) + "://" + strings.ToLower(parsedOrigin.Host)
+}
+
+type subdomain struct {
+	// The wildcard pattern
+	prefix string
+	suffix string
+}
+
+func (s subdomain) match(o string) bool {
+	return len(o) >= len(s.prefix)+len(s.suffix) && strings.HasPrefix(o, s.prefix) && strings.HasSuffix(o, s.suffix)
 }
