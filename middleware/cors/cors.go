@@ -174,11 +174,6 @@ func New(config ...Config) fiber.Handler {
 		} else {
 			// Check if the origin is in the list of allowed origins
 			for _, origin := range allowOrigins {
-				if origin == "*" {
-					allowOrigin = "*"
-					break
-				}
-
 				if origin == originHeader {
 					allowOrigin = originHeader
 					break
