@@ -326,7 +326,6 @@ func Test_CORS_AllowOriginScheme(t *testing.T) {
 			shouldAllowOrigin: false,
 		},
 		{
-<<<<<<< HEAD
 			pattern:           "http://domain-1.com, http://example.com",
 			reqOrigin:         "http://example.com",
 			shouldAllowOrigin: true,
@@ -337,8 +336,6 @@ func Test_CORS_AllowOriginScheme(t *testing.T) {
 			shouldAllowOrigin: false,
 		},
 		{
-=======
->>>>>>> upstream/fix-cors-allow-origins
 			pattern:           "http://domain-1.com,http://example.com",
 			reqOrigin:         "http://domain-1.com",
 			shouldAllowOrigin: true,
