@@ -24,19 +24,13 @@ func validateDomain(domain, pattern string) bool {
 	normalizedPattern := normalizeDomain(pattern)
 
 	// Handling the case where pattern is a wildcard subdomain pattern.
-	if strings.HasPrefix(normalizedPattern, "*.") {
-		// Trim leading "*." from pattern for comparison.
-		trimmedPattern := normalizedPattern[2:]
+	if strings.HasPrefix(normalizedPattern, ".") {
+		// Trim leading "." from pattern for comparison.
+		trimmedPattern := normalizedPattern[1:]
 
-		// Check if the domain ends with the trimmed pattern.
-		if strings.HasSuffix(normalizedDomain, trimmedPattern) {
-			// Ensure that the domain is not exactly the base domain.
-			if normalizedDomain != trimmedPattern {
-				// Special handling to prevent "example.com" matching "*.example.com".
-				if strings.TrimSuffix(normalizedDomain, trimmedPattern) != "" {
-					return true
-				}
-			}
+		// Check if the domain ends with a dot followed by the trimmed pattern.
+		if strings.HasSuffix(normalizedDomain, "."+trimmedPattern) {
+			return true
 		}
 	}
 
@@ -70,6 +64,13 @@ func normalizeOrigin(origin string) (bool, string) {
 
 	// Validate the scheme is either http or https
 	if parsedOrigin.Scheme != "http" && parsedOrigin.Scheme != "https" {
+		return false, ""
+	}
+
+	// Don't allow a wildcard with a protocol
+	// wildcards cannot be used within any other value. For example, the following header is not valid:
+	// Access-Control-Allow-Origin: https://*.normal-website.com
+	if strings.Contains(parsedOrigin.Host, "*") {
 		return false, ""
 	}
 
