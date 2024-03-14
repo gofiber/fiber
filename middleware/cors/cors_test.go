@@ -714,7 +714,7 @@ func Test_CORS_AllowPrivateNetworkAccess(t *testing.T) {
 	ctx = &fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fiber.MethodOptions)
 	ctx.Request.Header.Set(fiber.HeaderOrigin, "https://example.com")
-	
+
 	// Test scenario where AllowPrivateNetworkAccess is disabled (default)
 	app = fiber.New()
 	app.Use(New())
