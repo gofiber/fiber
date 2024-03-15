@@ -591,11 +591,12 @@ func findGreedyParamLen(s string, searchCount int, segment *routeSegment) int {
 	// check all from right to left segments
 	for i := segment.PartCount; i > 0 && searchCount > 0; i-- {
 		searchCount--
-		if constPosition := strings.LastIndex(s, segment.ComparePart); constPosition != -1 {
-			s = s[:constPosition]
-		} else {
+
+		constPosition := strings.LastIndex(s, segment.ComparePart)
+		if constPosition == -1 {
 			break
 		}
+		s = s[:constPosition]
 	}
 
 	return len(s)
