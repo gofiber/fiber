@@ -44,7 +44,7 @@ func normalizeOrigin(origin string) (bool, string) {
 
 	// Don't allow a wildcard with a protocol
 	// wildcards cannot be used within any other value. For example, the following header is not valid:
-	// Access-Control-Allow-Origin: https://*.normal-website.com
+	// Access-Control-Allow-Origin: https://*
 	if strings.Contains(parsedOrigin.Host, "*") {
 		return false, ""
 	}

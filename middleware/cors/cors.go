@@ -15,10 +15,10 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c *fiber.Ctx) bool
 
-	// AllowOriginsFunc defines a function that will set the 'access-control-allow-origin'
+	// AllowOriginsFunc defines a function that will set the 'Access-Control-Allow-Origin'
 	// response header to the 'origin' request header when returned true. This allows for
 	// dynamic evaluation of allowed origins. Note if AllowCredentials is true, wildcard origins
-	// will be not have the 'access-control-allow-credentials' header set to 'true'.
+	// will be not have the 'Access-Control-Allow-Credentials' header set to 'true'.
 	//
 	// Optional. Default: nil
 	AllowOriginsFunc func(origin string) bool
@@ -119,22 +119,34 @@ func New(config ...Config) fiber.Handler {
 	allowSOrigins := []subdomain{}
 	allowAllOrigins := false
 
+	// processOrigin processes an origin string, normalizes it and checks its validity
+	// it will panic if the origin is invalid
+	processOrigin := func(origin string) (string, bool) {
+		trimmedOrigin := strings.TrimSpace(origin)
+		isValid, normalizedOrigin := normalizeOrigin(trimmedOrigin)
+		if !isValid {
+			log.Warnf("[CORS] Invalid origin format in configuration: %s", trimmedOrigin)
+			panic("[CORS] Invalid origin provided in configuration")
+		}
+		return normalizedOrigin, true
+	}
+
 	// Validate and normalize static AllowOrigins
 	if cfg.AllowOrigins != "" && cfg.AllowOrigins != "*" {
 		origins := strings.Split(cfg.AllowOrigins, ",")
-
 		for _, origin := range origins {
-			trimmedOrigin := strings.TrimSpace(origin)
-			isValid, normalizedOrigin := normalizeOrigin(trimmedOrigin)
-
-			if !isValid {
-				log.Warnf("[CORS] Invalid origin format in configuration: %s", trimmedOrigin)
-				panic("[CORS] Invalid origin provided in configuration")
-			}
-
-			if i := strings.Index(normalizedOrigin, "://."); i != -1 {
-				allowSOrigins = append(allowSOrigins, subdomain{prefix: normalizedOrigin[:i+3], suffix: normalizedOrigin[i+3:]})
+			if i := strings.Index(origin, "://*."); i != -1 {
+				normalizedOrigin, isValid := processOrigin(origin[:i+3] + origin[i+4:])
+				if !isValid {
+					continue
+				}
+				sd := subdomain{prefix: normalizedOrigin[:i+3], suffix: normalizedOrigin[i+3:]}
+				allowSOrigins = append(allowSOrigins, sd)
 			} else {
+				normalizedOrigin, isValid := processOrigin(origin)
+				if !isValid {
+					continue
+				}
 				allowOrigins = append(allowOrigins, normalizedOrigin)
 			}
 		}

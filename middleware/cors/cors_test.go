@@ -217,7 +217,7 @@ func Test_CORS_Subdomain(t *testing.T) {
 	// New fiber instance
 	app := fiber.New()
 	// OPTIONS (preflight) response headers when AllowOrigins is set to a subdomain
-	app.Use("/", New(Config{AllowOrigins: "http://.example.com"}))
+	app.Use("/", New(Config{AllowOrigins: "http://*.example.com"}))
 
 	// Get handler pointer
 	handler := app.Handler()
@@ -231,7 +231,19 @@ func Test_CORS_Subdomain(t *testing.T) {
 	// Perform request
 	handler(ctx)
 
-	// Allow-Origin header should be "" because http://google.com does not satisfy http://.example.com
+	// Allow-Origin header should be "" because http://google.com does not satisfy http://*.example.com
+	utils.AssertEqual(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+
+	// Make request with domain only (disallowed)
+	ctx.Request.SetRequestURI("/")
+	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://example.com")
+
+	handler(ctx)
+
 	utils.AssertEqual(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
 
 	ctx.Request.Reset()
@@ -269,22 +281,22 @@ func Test_CORS_AllowOriginScheme(t *testing.T) {
 			shouldAllowOrigin: false,
 		},
 		{
-			pattern:           "http://.example.com",
+			pattern:           "http://*.example.com",
 			reqOrigin:         "http://aaa.example.com",
 			shouldAllowOrigin: true,
 		},
 		{
-			pattern:           "http://.example.com",
+			pattern:           "http://*.example.com",
 			reqOrigin:         "http://bbb.aaa.example.com",
 			shouldAllowOrigin: true,
 		},
 		{
-			pattern:           "http://.aaa.example.com",
+			pattern:           "http://*.aaa.example.com",
 			reqOrigin:         "http://bbb.aaa.example.com",
 			shouldAllowOrigin: true,
 		},
 		{
-			pattern:           "http://.example.com:8080",
+			pattern:           "http://*.example.com:8080",
 			reqOrigin:         "http://aaa.example.com:8080",
 			shouldAllowOrigin: true,
 		},
@@ -294,12 +306,12 @@ func Test_CORS_AllowOriginScheme(t *testing.T) {
 			shouldAllowOrigin: false,
 		},
 		{
-			pattern:           "http://.aaa.example.com",
+			pattern:           "http://*.aaa.example.com",
 			reqOrigin:         "http://ccc.bbb.example.com",
 			shouldAllowOrigin: false,
 		},
 		{
-			pattern:           "http://.example.com",
+			pattern:           "http://*.example.com",
 			reqOrigin:         "http://1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.1234567890.example.com",
 			shouldAllowOrigin: true,
 		},
@@ -314,7 +326,7 @@ func Test_CORS_AllowOriginScheme(t *testing.T) {
 			shouldAllowOrigin: false,
 		},
 		{
-			pattern:           "http://.example.com",
+			pattern:           "http://*.example.com",
 			reqOrigin:         "http://ccc.bbb.example.com",
 			shouldAllowOrigin: true,
 		},
