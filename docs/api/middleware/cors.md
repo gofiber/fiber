@@ -85,13 +85,19 @@ app.Use(cors.New(cors.Config{
 
 ### Porhibited usage
 
-**Note: The following configuration is considered insecure and will result in a panic.**
+The following example is prohibited because it can expose your application to security risks. It sets `AllowOrigins` to `*` (a wildcard) and `AllowCredentials` to `true`.
 
 ```go
 app.Use(cors.New(cors.Config{
     AllowOrigins: "*",
     AllowCredentials: true,
 }))
+```
+
+This will result in the following panic:
+
+```
+panic: [CORS] 'AllowCredentials' is true, but 'AllowOrigins' cannot be set to '*'.
 ```
 
 ## Config
