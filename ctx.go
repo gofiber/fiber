@@ -59,7 +59,6 @@ type DefaultCtx struct {
 	fasthttp            *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	matched             bool                 // Non use route matched
 	viewBindMap         sync.Map             // Default view map to bind template engine
-	bind                *Bind                // Default bind reference
 	redirect            *Redirect            // Default redirect reference
 	redirectionMessages []string             // Messages of the previous redirect
 }
@@ -182,6 +181,13 @@ func (c *DefaultCtx) BaseURL() string {
 	}
 	c.baseURI = c.Scheme() + "://" + c.Host()
 	return c.baseURI
+}
+
+func (c *DefaultCtx) Validate(v any) error {
+	if c.app.config.Validator == nil {
+		return NilValidatorError{}
+	}
+	return c.app.config.Validator.Validate(v)
 }
 
 // BodyRaw contains the raw body submitted in a POST request.
@@ -1257,7 +1263,7 @@ func (c *DefaultCtx) Redirect() *Redirect {
 	return c.redirect
 }
 
-// Bind Add vars to default view var map binding to template engine.
+// BindVars Add vars to default view var map binding to template engine.
 // Variables are read by the Render method and may be overwritten.
 func (c *DefaultCtx) BindVars(vars Map) error {
 	// init viewBindMap - lazy map
@@ -1749,15 +1755,13 @@ func (c *DefaultCtx) IsFromLocal() bool {
 	return c.isLocalHost(c.fasthttp.RemoteIP().String())
 }
 
-// You can bind body, cookie, headers etc. into the map, map slice, struct easily by using Binding method.
-// It gives custom binding support, detailed binding options and more.
-// Replacement of: BodyParser, ParamsParser, GetReqHeaders, GetRespHeaders, AllParams, QueryParser, ReqHeaderParser
-func (c *DefaultCtx) Bind() *Bind {
-	if c.bind == nil {
-		c.bind = &Bind{
-			ctx:    c,
-			should: true,
-		}
+// AllParams Params is used to get all route parameters.
+// Using Params method to get params.
+func (c *DefaultCtx) GetParams() map[string]string {
+	params := make(map[string]string, len(c.route.Params))
+	for _, param := range c.route.Params {
+		params[param] = c.Params(param)
 	}
-	return c.bind
+
+	return params
 }

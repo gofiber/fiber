@@ -1,10 +1,8 @@
 package fiber
 
 import (
-	"encoding/json"
 	"errors"
-
-	"github.com/gofiber/fiber/v3/internal/schema"
+	"reflect"
 )
 
 // Wrap and return this for unreachable code if panicking is undesirable (i.e., in a handler).
@@ -31,8 +29,9 @@ var (
 	ErrRangeUnsatisfiable = errors.New("range: unsatisfiable range")
 )
 
-// Binder errors
-var ErrCustomBinderNotFound = errors.New("binder: custom binder not found, please be sure to enter the right name")
+// NilValidatorError is the validate error when context.EnableValidate is called but no validator is set in config.
+type NilValidatorError struct {
+}
 
 // Format errors
 var (
@@ -40,37 +39,31 @@ var (
 	ErrNoHandlers = errors.New("format: at least one handler is required, but none were set")
 )
 
-// gorilla/schema errors
-type (
-	// ConversionError Conversion error exposes the internal schema.ConversionError for public use.
-	ConversionError = schema.ConversionError
-	// UnknownKeyError error exposes the internal schema.UnknownKeyError for public use.
-	UnknownKeyError = schema.UnknownKeyError
-	// EmptyFieldError error exposes the internal schema.EmptyFieldError for public use.
-	EmptyFieldError = schema.EmptyFieldError
-	// MultiError error exposes the internal schema.MultiError for public use.
-	MultiError = schema.MultiError
-)
+func (n NilValidatorError) Error() string {
+	return "fiber: ctx.EnableValidate(v any) is called without validator"
+}
 
-// encoding/json errors
-type (
-	// An InvalidUnmarshalError describes an invalid argument passed to Unmarshal.
-	// (The argument to Unmarshal must be a non-nil pointer.)
-	InvalidUnmarshalError = json.InvalidUnmarshalError
+// InvalidBinderError is the error when try to bind invalid value.
+type InvalidBinderError struct {
+	Type reflect.Type
+}
 
-	// A MarshalerError represents an error from calling a MarshalJSON or MarshalText method.
-	MarshalerError = json.MarshalerError
+func (e *InvalidBinderError) Error() string {
+	if e.Type == nil {
+		return "fiber: Bind(nil)"
+	}
 
-	// A SyntaxError is a description of a JSON syntax error.
-	SyntaxError = json.SyntaxError
+	if e.Type.Kind() != reflect.Pointer {
+		return "fiber: Unmarshal(non-pointer " + e.Type.String() + ")"
+	}
+	return "fiber: Bind(nil " + e.Type.String() + ")"
+}
 
-	// An UnmarshalTypeError describes a JSON value that was
-	// not appropriate for a value of a specific Go type.
-	UnmarshalTypeError = json.UnmarshalTypeError
+// UnsupportedBinderError is the error when try to bind unsupported type.
+type UnsupportedBinderError struct {
+	Type reflect.Type
+}
 
-	// An UnsupportedTypeError is returned by Marshal when attempting
-	// to encode an unsupported value type.
-	UnsupportedTypeError = json.UnsupportedTypeError
-
-	UnsupportedValueError = json.UnsupportedValueError
-)
+func (e *UnsupportedBinderError) Error() string {
+	return "unsupported binder: ctx.Bind().Req(" + e.Type.String() + "), only binding struct is supported new"
+}

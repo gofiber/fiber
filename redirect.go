@@ -9,9 +9,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/gofiber/fiber/v3/binder"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
+	"github.com/valyala/fasthttp"
 )
 
 // Pool for redirection
@@ -103,18 +103,43 @@ func (r *Redirect) With(key, value string) *Redirect {
 func (r *Redirect) WithInput() *Redirect {
 	// Get content-type
 	ctype := utils.ToLower(utils.UnsafeString(r.c.Context().Request.Header.ContentType()))
-	ctype = binder.FilterFlags(utils.ParseVendorSpecificContentType(ctype))
+	ctype = filterFlags(utils.ParseVendorSpecificContentType(ctype))
 
 	switch ctype {
 	case MIMEApplicationForm:
-		_ = r.c.Bind().Form(r.oldInput) //nolint:errcheck // not needed
+		r.oldInput = fasthttpArgsToMap(r.c.Context().PostArgs())
 	case MIMEMultipartForm:
-		_ = r.c.Bind().MultipartForm(r.oldInput) //nolint:errcheck // not needed
+		form, err := r.c.Context().MultipartForm()
+		if err != nil {
+			return r
+		}
+		for key, values := range form.Value {
+			r.oldInput[key] = values[0]
+		}
 	default:
-		_ = r.c.Bind().Query(r.oldInput) //nolint:errcheck // not needed
+		r.oldInput = fasthttpArgsToMap(r.c.Context().QueryArgs())
 	}
 
 	return r
+}
+
+// Get content type from content type header
+func filterFlags(content string) string {
+	for i, char := range content {
+		if char == ' ' || char == ';' {
+			return content[:i]
+		}
+	}
+	return content
+}
+
+func fasthttpArgsToMap(v *fasthttp.Args) map[string]string {
+	var u = make(map[string]string)
+	v.VisitAll(func(key, value []byte) {
+		u[string(key)] = string(value)
+	})
+
+	return u
 }
 
 // Get flash messages.

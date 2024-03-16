@@ -113,10 +113,14 @@ type App struct {
 	latestRoute *Route
 	// newCtxFunc
 	newCtxFunc func(app *App) CustomCtx
-	// custom binders
-	customBinders []CustomBinder
 	// TLS handler
 	tlsHandler *TLSHandler
+	// bind decoder cache
+	bindDecoderCache sync.Map
+	// form decoder cache
+	formDecoderCache sync.Map
+	// multipart decoder cache
+	multipartDecoderCache sync.Map
 	// Mount fields
 	mountFields *mountFields
 	// Indicates if the value was explicitly configured
@@ -325,6 +329,23 @@ type Config struct {
 	// Default: xml.Marshal
 	XMLEncoder utils.XMLMarshal `json:"-"`
 
+	// XMLDecoder set by an external client of Fiber it will use the provided implementation of a
+	// XMLUnmarshal
+	//
+	// Allowing for flexibility in using another XML library for encoding
+	// Default: utils.XMLUnmarshal
+	XMLDecoder utils.XMLUnmarshal `json:"-"`
+
+	// App validate. if nil, and context.EnableValidate will always return a error.
+	// Default: nil
+	Validator Validator
+
+	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only)
+	// WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chose.
+	//
+	// Default: NetworkTCP4
+	Network string
+
 	// If you find yourself behind some sort of proxy, like a load balancer,
 	// then certain header information may be sent to you using special X-Forwarded-* headers or the Forwarded header.
 	// For example, the Host HTTP header is usually used to return the requested host.
@@ -365,12 +386,6 @@ type Config struct {
 	//
 	// Optional. Default: DefaultColors
 	ColorScheme Colors `json:"color_scheme"`
-
-	// If you want to validate header/form/query... automatically when to bind, you can define struct validator.
-	// Fiber doesn't have default validator, so it'll skip validator step if you don't use any validator.
-	//
-	// Default: nil
-	StructValidator StructValidator
 
 	// RequestMethods provides customizibility for HTTP methods. You can add/remove methods as you wish.
 	//
@@ -486,11 +501,10 @@ func New(config ...Config) *App {
 	// Create a new app
 	app := &App{
 		// Create config
-		config:        Config{},
-		getBytes:      utils.UnsafeBytes,
-		getString:     utils.UnsafeString,
-		latestRoute:   &Route{},
-		customBinders: []CustomBinder{},
+		config:      Config{},
+		getBytes:    utils.UnsafeBytes,
+		getString:   utils.UnsafeString,
+		latestRoute: &Route{},
 	}
 
 	// Create Ctx pool
@@ -544,9 +558,15 @@ func New(config ...Config) *App {
 	if app.config.JSONDecoder == nil {
 		app.config.JSONDecoder = json.Unmarshal
 	}
+
 	if app.config.XMLEncoder == nil {
 		app.config.XMLEncoder = xml.Marshal
 	}
+
+	if app.config.XMLDecoder == nil {
+		app.config.XMLDecoder = xml.Unmarshal
+	}
+
 	if len(app.config.RequestMethods) == 0 {
 		app.config.RequestMethods = DefaultMethods
 	}
@@ -593,12 +613,6 @@ func (app *App) NewCtxFunc(function func(app *App) CustomCtx) {
 // RegisterCustomConstraint allows to register custom constraint.
 func (app *App) RegisterCustomConstraint(constraint CustomConstraint) {
 	app.customConstraints = append(app.customConstraints, constraint)
-}
-
-// You can register custom binders to use as Bind().Custom("name").
-// They should be compatible with CustomBinder interface.
-func (app *App) RegisterCustomBinder(binder CustomBinder) {
-	app.customBinders = append(app.customBinders, binder)
 }
 
 // You can use SetTLSHandler to use ClientHelloInfo when using TLS with Listener.

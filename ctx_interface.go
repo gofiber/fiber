@@ -43,6 +43,17 @@ type Ctx interface {
 	// BaseURL returns (protocol + host + base path).
 	BaseURL() string
 
+	// Bind unmarshal request data from context add assign to struct fields.
+	// You can bind cookie, headers etc. into basic type, slice, or any customized binders by
+	// implementing [encoding.TextUnmarshaler] or [bind.Unmarshaler].
+	// Replacement of: BodyParser, ParamsParser, GetReqHeaders, GetRespHeaders, AllParams, QueryParser, ReqHeaderParser
+	Bind() *Bind
+
+	// BindWithValidate is an alias for `context.Bind` and `context.EnableValidate`
+	// BindWithValidate(v any) error
+
+	Validate(v any) error
+
 	// Body contains the raw body submitted in a POST request.
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
@@ -281,7 +292,7 @@ type Ctx interface {
 	// You can use Redirect().To(), Redirect().Route() and Redirect().Back() for redirection.
 	Redirect() *Redirect
 
-	// Add vars to default view var map binding to template engine.
+	// BindVars Add vars to default view var map binding to template engine.
 	// Variables are read by the Render method and may be overwritten.
 	BindVars(vars Map) error
 
@@ -374,13 +385,12 @@ type Ctx interface {
 	// Reset is a method to reset context fields by given request when to use server handlers.
 	Reset(fctx *fasthttp.RequestCtx)
 
-	// You can bind body, cookie, headers etc. into the map, map slice, struct easily by using Binding method.
-	// It gives custom binding support, detailed binding options and more.
-	// Replacement of: BodyParser, ParamsParser, GetReqHeaders, GetRespHeaders, AllParams, QueryParser, ReqHeaderParser
-	Bind() *Bind
-
 	// ClientHelloInfo return CHI from context
 	ClientHelloInfo() *tls.ClientHelloInfo
+
+	// AllParams Params is used to get all route parameters.
+	// Using Params method to get params.
+	GetParams() map[string]string
 
 	// SetReq resets fields of context that is relating to request.
 	setReq(fctx *fasthttp.RequestCtx)
@@ -487,7 +497,6 @@ func (c *DefaultCtx) release() {
 
 	c.route = nil
 	c.fasthttp = nil
-	c.bind = nil
 	c.redirectionMessages = c.redirectionMessages[:0]
 	c.viewBindMap = sync.Map{}
 	if c.redirect != nil {
