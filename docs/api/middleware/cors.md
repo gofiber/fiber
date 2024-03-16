@@ -35,6 +35,14 @@ After you initiate your Fiber app, you can use the following possibilities:
 
 ### Basic usage
 
+To use the default configuration, simply use `cors.New()`. This will allow wildcard origins, all methods, no credentials, and no headers or exposed headers.
+
+```go
+app.Use(cors.New())
+```
+
+### Custom configuration (specific origins, headers, etc.)
+
 ```go
 // Initialize default config
 app.Use(cors.New())
