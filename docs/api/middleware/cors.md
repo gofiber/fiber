@@ -92,7 +92,7 @@ The `AllowOrigins` configuration supports matching subdomains at any level. This
 
 ### Example  
 
-If you want to allow CORS requests from any subdomain of `example.com`, including nested subdomains, you can configure the `AllowOrigins` like so:  
+If you want to allow CORS requests from any subdomain of `example.com`, including nested subdomains, you can configure the `AllowOrigins` like so:
 
 ```go
 app.Use(cors.New(cors.Config{
