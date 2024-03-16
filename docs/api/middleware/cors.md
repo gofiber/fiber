@@ -4,9 +4,9 @@ id: cors
 
 # CORS
 
-CORS middleware for [Fiber](https://github.com/gofiber/fiber) that can be used to enable [Cross-Origin Resource Sharing](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) with various options.
+CORS middleware for [Fiber](https://github.com/gofiber/fiber) that can be used to enable [Cross-Origin Resource Sharing](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) with various options. CORS is not a security feature, it's a feature that relaxes the security model of web browsers, and it's only intended to be used by servers that need to allow cross-origin requests.
 
-The middleware conforms to the `Access-Control-Allow-Origin` specification by parsing `AllowOrigins`. First, the middleware checks if there is a matching allowed origin for the requesting 'origin' header. If there is a match, it returns exactly one matching domain from the list of allowed origins. If there is no match, the middleware does not add the `Access-Control-Allow-Origin` header to the response.
+The middleware conforms to the `Access-Control-Allow-Origin` specification by parsing `AllowOrigins`. First, the middleware checks if there is a matching allowed origin for the requesting 'origin' header. If there is a match, the `Access-Control-Allow-Origin` response header will be set to the 'origin' request header. If there is no match, the `Access-Control-Allow-Origin` response header will not be set.
 
 To ensure that the provided origins are correctly formatted, this middleware validates and normalizes them. It checks for valid schemes, i.e., HTTP or HTTPS, and it will automatically remove trailing slashes. If the provided origin is invalid, the middleware will panic.
 
@@ -36,23 +36,7 @@ app.Use(cors.New())
 // Or extend your config for customization
 app.Use(cors.New(cors.Config{
     AllowOrigins: "https://gofiber.io, https://gofiber.net",
-    AllowHeaders:  "Origin, Content-Type, Accept",
-}))
-```
-
-Using the `AllowOriginsFunc` function. In this example any origin will be allowed via CORS.
-
-For example, if a browser running on `http://localhost:3000` sends a request, this will be accepted and the `Access-Control-Allow-Origin` response header will be set to `http://localhost:3000`.
-
-**Note: Using this feature is discouraged in production and it's best practice to explicitly set CORS origins via `AllowOrigins`.**
-
-```go
-app.Use(cors.New())
-
-app.Use(cors.New(cors.Config{
-    AllowOriginsFunc: func(origin string) bool {
-        return os.Getenv("ENVIRONMENT") == "development"
-    },
+    AllowHeaders: "Origin, Content-Type, Accept",
 }))
 ```
 
@@ -70,7 +54,7 @@ app.Use(cors.New(cors.Config{
 | Property         | Type                       | Description                                                                                                                                                                                                                                                                                                                                                        | Default                            |
 |:-----------------|:---------------------------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:-----------------------------------|
 | Next             | `func(*fiber.Ctx) bool`    | Next defines a function to skip this middleware when returned true.                                                                                                                                                                                                                                                                                                | `nil`                              |
-| AllowOriginsFunc | `func(origin string) bool` | AllowOriginsFunc defines a function that will set the 'Access-Control-Allow-Origin' response header to the 'origin' request header when returned true. This allows for dynamic evaluation of allowed origins. Note if AllowCredentials is true, wildcard origins will be not have the 'Access-Control-Allow-Credentials' header set to 'true'.                     | `nil`                              |
+| AllowOriginsFunc | `func(origin string) bool` | `AllowOriginsFunc` is a function that dynamically determines whether to allow a request based on its origin. If this function returns `true`, the 'Access-Control-Allow-Origin' response header will be set to the request's 'origin' header. This function is only used if the request's origin doesn't match any origin in `AllowOrigins`.                       | `nil`                              |
 | AllowOrigins     | `string`                   | AllowOrigins defines a comma separated list of origins that may access the resource. This supports subdomain matching, so you can use a value like "https://*.example.com" to allow any subdomain of example.com to submit requests.                                                                                                                               | `"*"`                              |
 | AllowMethods     | `string`                   | AllowMethods defines a list of methods allowed when accessing the resource. This is used in response to a preflight request.                                                                                                                                                                                                                                       | `"GET,POST,HEAD,PUT,DELETE,PATCH"` |
 | AllowHeaders     | `string`                   | AllowHeaders defines a list of request headers that can be used when making the actual request. This is in response to a preflight request.                                                                                                                                                                                                                        | `""`                               |
@@ -102,7 +86,7 @@ var ConfigDefault = Config{
 
 ## Subdomain Matching  
 
-The `AllowOrigins` configuration supports matching subdomains at any level. This means you can use a value like `"https://*.example.com"` to allow any subdomain of `example.com` to submit requests, including multiple subdomain levels such as `"https://sub.sub.example.com"`.  
+The `AllowOrigins` configuration supports matching subdomains at any level. This means you can use a value like `"https://*.example.com"` to allow any subdomain of `example.com` to submit requests, including multiple subdomain levels such as `"https://sub.sub.example.com"`.
 
 ### Example  
 
@@ -136,28 +120,32 @@ In all cases above, except the **Wildcard origin**, the middleware will either a
 
 The `AllowMethods` option controls which HTTP methods are allowed. For example, if `AllowMethods` is set to `"GET, POST"`, the middleware adds the header `Access-Control-Allow-Methods: GET, POST` to the response.
 
-The middleware also handles the `AllowOriginsFunc` option, which allows you to programmatically determine if an origin is allowed. If `AllowOriginsFunc` returns `true` for an origin, the middleware sets the `Access-Control-Allow-Origin` header to that origin.
+- **Programmatic origin validation:**: The middleware also handles the `AllowOriginsFunc` option, which allows you to programmatically determine if an origin is allowed. If `AllowOriginsFunc` returns `true` for an origin, the middleware sets the `Access-Control-Allow-Origin` header to that origin.
 
 This way, the CORS middleware allows you to control how your Fiber application responds to cross-origin requests.
 
-## Security Considerations  
+## Security Considerations
 
-When configuring CORS, misconfiguration can potentially expose your application to various security risks. Here are some secure configurations and common pitfalls to avoid:  
+When configuring CORS, misconfiguration can potentially expose your application to various security risks. Here are some secure configurations and common pitfalls to avoid:
 
-### Secure Configurations  
+### Secure Configurations
 
-- **Specify Allowed Origins**: Instead of using a wildcard (`*`), specify the exact domains allowed to make requests. For example, `AllowOrigins: "https://www.example.com, https://api.example.com"` ensures only these domains can make cross-origin requests to your application.  
+- **Specify Allowed Origins**: Instead of using a wildcard (`*`), specify the exact domains allowed to make requests. For example, `AllowOrigins: "https://www.example.com, https://api.example.com"` ensures only these domains can make cross-origin requests to your application.
 
-- **Use Credentials Carefully**: If your application needs to support credentials in cross-origin requests, ensure `AllowCredentials` is set to `true` and specify exact origins in `AllowOrigins`. Do not use a wildcard origin in this case.  
+- **Use Credentials Carefully**: If your application needs to support credentials in cross-origin requests, ensure `AllowCredentials` is set to `true` and specify exact origins in `AllowOrigins`. Do not use a wildcard origin in this case.
 
 - **Limit Exposed Headers**: Only whitelist headers that are necessary for the client-side application by setting `ExposeHeaders` appropriately. This minimizes the risk of exposing sensitive information.
 
-### Common Pitfalls  
+### Common Pitfalls
 
-- **Wildcard Origin with Credentials**: Setting `AllowOrigins` to `*` (a wildcard) and `AllowCredentials` to `true` is a common misconfiguration. This combination is prohibited because it can expose your application to security risks.  
+- **Wildcard Origin with Credentials**: Setting `AllowOrigins` to `*` (a wildcard) and `AllowCredentials` to `true` is a common misconfiguration. This combination is prohibited because it can expose your application to security risks.
 
-- **Overly Permissive Origins**: Specifying too many origins or using overly broad patterns (e.g., `https://*.example.com`) can inadvertently allow malicious sites to interact with your application. Be as specific as possible with allowed origins.  
+- **Overly Permissive Origins**: Specifying too many origins or using overly broad patterns (e.g., `https://*.example.com`) can inadvertently allow malicious sites to interact with your application. Be as specific as possible with allowed origins.
 
-- **Neglecting `AllowOriginsFunc` Validation**: When using `AllowOriginsFunc` for dynamic origin validation, ensure the function includes robust checks to prevent unauthorized origins from being accepted. Simply returning `true` for all origins can bypass security protections.  
+- **Neglecting `AllowOriginsFunc` Validation**: When using `AllowOriginsFunc` for dynamic origin validation, ensure the function includes robust checks to prevent unauthorized origins from being accepted. Simply returning `true` for all origins can bypass security protections.
 
-Remember, the key to secure CORS configuration is specificity and caution. By carefully selecting which origins, methods, and headers are allowed, you can help protect your application from cross-origin attacks.  
+:::caution
+Do not use `AllowOriginsFunc` to return `true` for all origins. This is particularly crucial when `AllowCredentials` is set to `true`. Doing so can bypass the restriction of using a wildcard origin with credentials, exposing your application to serious security threats.
+:::
+
+Remember, the key to secure CORS configuration is specificity and caution. By carefully selecting which origins, methods, and headers are allowed, you can help protect your application from cross-origin attacks.
