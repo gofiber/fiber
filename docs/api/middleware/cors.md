@@ -35,7 +35,7 @@ After you initiate your Fiber app, you can use the following possibilities:
 
 ### Basic usage
 
-To use the default configuration, simply use `cors.New()`. This will allow wildcard origins, all methods, no credentials, and no headers or exposed headers.
+To use the default configuration, simply use `cors.New()`. This will allow wildcard origins '*', all methods, no credentials, and no headers or exposed headers.
 
 ```go
 app.Use(cors.New())
@@ -63,7 +63,7 @@ Be sure to review the [security considerations](#security-considerations) when u
 :::caution
 Never allow `AllowOriginsFunc` to return `true` for all origins. This is particularly crucial when `AllowCredentials` is set to `true`. Doing so can bypass the restriction of using a wildcard origin with credentials, exposing your application to serious security threats.
 
-If you need to allow wildcard origins, use `AllowOrigins` with a wildcard '*' instead of `AllowOriginsFunc`.
+If you need to allow wildcard origins, use `AllowOrigins` with a wildcard `"*"` instead of `AllowOriginsFunc`.
 :::
 
 ```go
@@ -91,9 +91,9 @@ app.Use(cors.New(cors.Config{
 }))
 ```
 
-### Porhibited usage
+### Prohibited usage
 
-The following example is prohibited because it can expose your application to security risks. It sets `AllowOrigins` to `*` (a wildcard) and `AllowCredentials` to `true`.
+The following example is prohibited because it can expose your application to security risks. It sets `AllowOrigins` to `"*"` (a wildcard) and `AllowCredentials` to `true`.
 
 ```go
 app.Use(cors.New(cors.Config{
@@ -105,7 +105,7 @@ app.Use(cors.New(cors.Config{
 This will result in the following panic:
 
 ```
-panic: [CORS] 'AllowCredentials' is true, but 'AllowOrigins' cannot be set to '*'.
+panic: [CORS] 'AllowCredentials' is true, but 'AllowOrigins' cannot be set to `"*"`.
 ```
 
 ## Config
@@ -117,7 +117,7 @@ panic: [CORS] 'AllowCredentials' is true, but 'AllowOrigins' cannot be set to '*
 | AllowOrigins     | `string`                   | AllowOrigins defines a comma separated list of origins that may access the resource. This supports subdomain matching, so you can use a value like "https://*.example.com" to allow any subdomain of example.com to submit requests.                                                                                                                               | `"*"`                              |
 | AllowMethods     | `string`                   | AllowMethods defines a list of methods allowed when accessing the resource. This is used in response to a preflight request.                                                                                                                                                                                                                                       | `"GET,POST,HEAD,PUT,DELETE,PATCH"` |
 | AllowHeaders     | `string`                   | AllowHeaders defines a list of request headers that can be used when making the actual request. This is in response to a preflight request.                                                                                                                                                                                                                        | `""`                               |
-| AllowCredentials | `bool`                     | AllowCredentials indicates whether or not the response to the request can be exposed when the credentials flag is true. When used as part of a response to a preflight request, this indicates whether or not the actual request can be made using credentials. Note: If true, AllowOrigins cannot be set to a wildcard ("*") to prevent security vulnerabilities. | `false`                            |
+| AllowCredentials | `bool`                     | AllowCredentials indicates whether or not the response to the request can be exposed when the credentials flag is true. When used as part of a response to a preflight request, this indicates whether or not the actual request can be made using credentials. Note: If true, AllowOrigins cannot be set to a wildcard (`"*"`) to prevent security vulnerabilities. | `false`                          |
 | ExposeHeaders    | `string`                   | ExposeHeaders defines whitelist headers that clients are allowed to access.                                                                                                                                                                                                                                                                                        | `""`                               |
 | MaxAge           | `int`                      | MaxAge indicates how long (in seconds) the results of a preflight request can be cached. If you pass MaxAge 0, the Access-Control-Max-Age header will not be added and the browser will use 5 seconds by default. To disable caching completely, pass MaxAge value negative. It will set the Access-Control-Max-Age header to 0.                                   | `0`                                |
 
@@ -197,7 +197,7 @@ When configuring CORS, misconfiguration can potentially expose your application 
 
 ### Secure Configurations
 
-- **Specify Allowed Origins**: Instead of using a wildcard (`*`), specify the exact domains allowed to make requests. For example, `AllowOrigins: "https://www.example.com, https://api.example.com"` ensures only these domains can make cross-origin requests to your application.
+- **Specify Allowed Origins**: Instead of using a wildcard (`"*"`), specify the exact domains allowed to make requests. For example, `AllowOrigins: "https://www.example.com, https://api.example.com"` ensures only these domains can make cross-origin requests to your application.
 
 - **Use Credentials Carefully**: If your application needs to support credentials in cross-origin requests, ensure `AllowCredentials` is set to `true` and specify exact origins in `AllowOrigins`. Do not use a wildcard origin in this case.
 
@@ -205,10 +205,10 @@ When configuring CORS, misconfiguration can potentially expose your application 
 
 ### Common Pitfalls
 
-- **Wildcard Origin with Credentials**: Setting `AllowOrigins` to `*` (a wildcard) and `AllowCredentials` to `true` is a common misconfiguration. This combination is prohibited because it can expose your application to security risks.
+- **Wildcard Origin with Credentials**: Setting `AllowOrigins` to `"*"` (a wildcard) and `AllowCredentials` to `true` is a common misconfiguration. This combination is prohibited because it can expose your application to security risks.
 
 - **Overly Permissive Origins**: Specifying too many origins or using overly broad patterns (e.g., `https://*.example.com`) can inadvertently allow malicious sites to interact with your application. Be as specific as possible with allowed origins.
 
-- **Inadequate `AllowOriginsFunc` Validation**: When using `AllowOriginsFunc` for dynamic origin validation, ensure the function includes robust checks to prevent unauthorized origins from being accepted. Overly permissive validation can lead to security vulnerabilities. Never allow `AllowOriginsFunc` to return `true` for all origins. This is particularly crucial when `AllowCredentials` is set to `true`. Doing so can bypass the restriction of using a wildcard origin with credentials, exposing your application to serious security threats. If you need to allow wildcard origins, use `AllowOrigins` with a wildcard '*' instead of `AllowOriginsFunc`.
+- **Inadequate `AllowOriginsFunc` Validation**: When using `AllowOriginsFunc` for dynamic origin validation, ensure the function includes robust checks to prevent unauthorized origins from being accepted. Overly permissive validation can lead to security vulnerabilities. Never allow `AllowOriginsFunc` to return `true` for all origins. This is particularly crucial when `AllowCredentials` is set to `true`. Doing so can bypass the restriction of using a wildcard origin with credentials, exposing your application to serious security threats. If you need to allow wildcard origins, use `AllowOrigins` with a wildcard `"*"` instead of `AllowOriginsFunc`.
 
 Remember, the key to secure CORS configuration is specificity and caution. By carefully selecting which origins, methods, and headers are allowed, you can help protect your application from cross-origin attacks.
