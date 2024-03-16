@@ -24,8 +24,8 @@ Import the middleware package that is part of the Fiber web framework
 
 ```go
 import (
-    "github.com/gofiber/fiber/v2"
-    "github.com/gofiber/fiber/v2/middleware/filesystem"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/filesystem"
 )
 ```
 
@@ -63,8 +63,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/filesystem"
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/filesystem"
 )
 
 // Embed a single file
@@ -103,8 +103,8 @@ func main() {
 package main
 
 import (
-    "github.com/gofiber/fiber/v2"
-    "github.com/gofiber/fiber/v2/middleware/filesystem"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/filesystem"
 
     "github.com/markbates/pkger"
 )
@@ -128,8 +128,8 @@ func main() {
 package main
 
 import (
-    "github.com/gofiber/fiber/v2"
-    "github.com/gofiber/fiber/v2/middleware/filesystem"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/filesystem"
 
     "github.com/gobuffalo/packr/v2"
 )
@@ -153,8 +153,8 @@ func main() {
 package main
 
 import (
-    "github.com/gofiber/fiber/v2"
-    "github.com/gofiber/fiber/v2/middleware/filesystem"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/filesystem"
 
     "github.com/GeertJohan/go.rice"
 )
@@ -178,8 +178,8 @@ func main() {
 package main
 
 import (
-    "github.com/gofiber/fiber/v2"
-    "github.com/gofiber/fiber/v2/middleware/filesystem"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/filesystem"
 
     "<Your go module>/myEmbeddedFiles"
 )
@@ -203,8 +203,8 @@ func main() {
 package main
 
 import (
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/filesystem"
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/filesystem"
 
 	// Use blank to invoke init function and register data to statik
 	_ "<Your go module>/statik" 
@@ -231,7 +231,7 @@ func main() {
 
 | Property           | Type                    | Description                                                                                                 | Default      |
 |:-------------------|:------------------------|:------------------------------------------------------------------------------------------------------------|:-------------|
-| Next               | `func(*fiber.Ctx) bool` | Next defines a function to skip this middleware when returned true.                                         | `nil`        |
+| Next               | `func(fiber.Ctx) bool` | Next defines a function to skip this middleware when returned true.                                         | `nil`        |
 | Root               | `http.FileSystem`       | Root is a FileSystem that provides access to a collection of files and directories.                         | `nil`        |
 | PathPrefix         | `string`                | PathPrefix defines a prefix to be added to a filepath when reading a file from the FileSystem.              | ""           |
 | Browse             | `bool`                  | Enable directory browsing.                                                                                  | `false`      |
@@ -252,4 +252,49 @@ var ConfigDefault = Config{
     MaxAge: 0,
     ContentTypeCharset: "",
 }
+```
+
+## Utils
+
+### SendFile
+
+Serves a file from an [HTTP file system](https://pkg.go.dev/net/http#FileSystem) at the specified path.
+
+```go title="Signature" title="Signature"
+func SendFile(c fiber.Ctx, filesystem http.FileSystem, path string) error
+```
+Import the middleware package that is part of the Fiber web framework
+
+```go
+import (
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/filesystem"
+)
+```
+
+```go title="Example"
+// Define a route to serve a specific file
+app.Get("/download", func(c fiber.Ctx) error {
+    // Serve the file using SendFile function
+    err := filesystem.SendFile(c, http.Dir("your/filesystem/root"), "path/to/your/file.txt")
+    if err != nil {
+        // Handle the error, e.g., return a 404 Not Found response
+        return c.Status(fiber.StatusNotFound).SendString("File not found")
+    }
+    
+    return nil
+})
+```
+
+```go title="Example"
+// Serve static files from the "build" directory using Fiber's built-in middleware.
+app.Use("/", filesystem.New(filesystem.Config{
+    Root:       http.FS(f),         // Specify the root directory for static files.
+    PathPrefix: "build",            // Define the path prefix where static files are served.
+}))
+
+// For all other routes (wildcard "*"), serve the "index.html" file from the "build" directory.
+app.Use("*", func(ctx fiber.Ctx) error {
+    return filesystem.SendFile(ctx, http.FS(f), "build/index.html")
+})
 ```

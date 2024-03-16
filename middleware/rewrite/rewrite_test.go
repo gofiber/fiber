@@ -1,4 +1,3 @@
-//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package rewrite
 
 import (
@@ -63,14 +62,14 @@ func Test_Rewrite(t *testing.T) {
 	})
 
 	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/old", nil)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 	resp, err := app.Test(req)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 	body, err := io.ReadAll(resp.Body)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 	bodyString := string(body)
 
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, "Rewrite Successful", bodyString)
 
@@ -90,14 +89,14 @@ func Test_Rewrite(t *testing.T) {
 	})
 
 	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/old", nil)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 	resp, err = app.Test(req)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 	body, err = io.ReadAll(resp.Body)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 	bodyString = string(body)
 
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, "Rewrite Successful", bodyString)
 
@@ -114,14 +113,14 @@ func Test_Rewrite(t *testing.T) {
 	})
 
 	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/users/123/orders/456", nil)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 	resp, err = app.Test(req)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 	body, err = io.ReadAll(resp.Body)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 	bodyString = string(body)
 
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, "User ID: 123, Order ID: 456", bodyString)
 
@@ -142,14 +141,14 @@ func Test_Rewrite(t *testing.T) {
 	})
 
 	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/not-matching-any-rule", nil)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 	resp, err = app.Test(req)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 	body, err = io.ReadAll(resp.Body)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 	bodyString = string(body)
 
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, "OK", bodyString)
 
@@ -166,8 +165,8 @@ func Test_Rewrite(t *testing.T) {
 	})
 
 	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/not-matching-any-rule", nil)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 	resp, err = app.Test(req)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }

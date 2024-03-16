@@ -17,7 +17,7 @@ func Test_WithContextTimeout(t *testing.T) {
 	t.Parallel()
 	// fiber instance
 	app := fiber.New()
-	h := NewWithContext(func(c fiber.Ctx) error {
+	h := New(func(c fiber.Ctx) error {
 		sleepTime, err := time.ParseDuration(c.Params("sleepTime") + "ms")
 		require.NoError(t, err)
 		if err := sleepWithContext(c.UserContext(), sleepTime, context.DeadlineExceeded); err != nil {
@@ -49,7 +49,7 @@ func Test_WithContextTimeoutWithCustomError(t *testing.T) {
 	t.Parallel()
 	// fiber instance
 	app := fiber.New()
-	h := NewWithContext(func(c fiber.Ctx) error {
+	h := New(func(c fiber.Ctx) error {
 		sleepTime, err := time.ParseDuration(c.Params("sleepTime") + "ms")
 		require.NoError(t, err)
 		if err := sleepWithContext(c.UserContext(), sleepTime, ErrFooTimeOut); err != nil {

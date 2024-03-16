@@ -5,7 +5,9 @@
 package fiber
 
 import (
+	"errors"
 	"fmt"
+	"html"
 	"sort"
 	"strconv"
 	"strings"
@@ -43,7 +45,7 @@ type Router interface {
 
 // Route is a struct that holds all metadata for each registered handler.
 type Route struct {
-	// always keep in sync with the copy method "app.copyRoute"
+	// ### important: always keep in sync with the copy method "app.copyRoute" ###
 	// Data for routing
 	pos         uint32      // Position in stack -> important for the sort of the matched routes
 	use         bool        // USE matches path prefixes
@@ -192,7 +194,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 	}
 
 	// If c.Next() does not match, return 404
-	err := NewError(StatusNotFound, "Cannot "+c.method+" "+c.pathOriginal)
+	err := NewError(StatusNotFound, "Cannot "+c.method+" "+html.EscapeString(c.pathOriginal))
 	if !c.matched && app.methodExist(c) {
 		// If no match, scan stack again if other methods match the request
 		// Moved from app.handler because middleware may break the route chain
@@ -206,14 +208,14 @@ func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 	var c CustomCtx
 	var ok bool
 	if app.newCtxFunc != nil {
-		c, ok = app.AcquireCtx().(CustomCtx)
+		c, ok = app.AcquireCtx(rctx).(CustomCtx)
 		if !ok {
-			panic(fmt.Errorf("failed to type-assert to CustomCtx"))
+			panic(errors.New("requestHandler: failed to type-assert to CustomCtx"))
 		}
 	} else {
-		c, ok = app.AcquireCtx().(*DefaultCtx)
+		c, ok = app.AcquireCtx(rctx).(*DefaultCtx)
 		if !ok {
-			panic(fmt.Errorf("failed to type-assert to *DefaultCtx"))
+			panic(errors.New("requestHandler: failed to type-assert to *DefaultCtx"))
 		}
 	}
 	c.Reset(rctx)
@@ -259,7 +261,7 @@ func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
 
 	route.Path = prefixedPath
 	route.path = RemoveEscapeChar(prettyPath)
-	route.routeParser = parseRoute(prettyPath)
+	route.routeParser = parseRoute(prettyPath, app.customConstraints...)
 	route.root = false
 	route.star = false
 
@@ -277,13 +279,14 @@ func (*App) copyRoute(route *Route) *Route {
 		// Path data
 		path:        route.path,
 		routeParser: route.routeParser,
-		Params:      route.Params,
 
 		// misc
 		pos: route.pos,
 
 		// Public data
 		Path:     route.Path,
+		Params:   route.Params,
+		Name:     route.Name,
 		Method:   route.Method,
 		Handlers: route.Handlers,
 	}
@@ -333,8 +336,8 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 		// Is path a root slash?
 		isRoot := pathPretty == "/"
 		// Parse path parameters
-		parsedRaw := parseRoute(pathRaw)
-		parsedPretty := parseRoute(pathPretty)
+		parsedRaw := parseRoute(pathRaw, app.customConstraints...)
+		parsedPretty := parseRoute(pathPretty, app.customConstraints...)
 
 		// Create route metadata without pointer
 		route := Route{

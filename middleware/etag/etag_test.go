@@ -33,7 +33,7 @@ func Test_ETag_SkipError(t *testing.T) {
 
 	app.Use(New())
 
-	app.Get("/", func(c fiber.Ctx) error {
+	app.Get("/", func(_ fiber.Ctx) error {
 		return fiber.ErrForbidden
 	})
 
@@ -65,7 +65,7 @@ func Test_ETag_NoBody(t *testing.T) {
 
 	app.Use(New())
 
-	app.Get("/", func(c fiber.Ctx) error {
+	app.Get("/", func(_ fiber.Ctx) error {
 		return nil
 	})
 
@@ -124,7 +124,7 @@ func testETagNewEtag(t *testing.T, headerIfNoneMatch, matched bool) { //nolint:r
 		require.Equal(t, fiber.StatusNotModified, resp.StatusCode)
 		b, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
-		require.Equal(t, 0, len(b))
+		require.Empty(t, b)
 	}
 }
 
@@ -178,7 +178,7 @@ func testETagWeakEtag(t *testing.T, headerIfNoneMatch, matched bool) { //nolint:
 		require.Equal(t, fiber.StatusNotModified, resp.StatusCode)
 		b, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
-		require.Equal(t, 0, len(b))
+		require.Empty(t, b)
 	}
 }
 
@@ -236,7 +236,7 @@ func testETagCustomEtag(t *testing.T, headerIfNoneMatch, matched bool) { //nolin
 		require.Equal(t, fiber.StatusNotModified, resp.StatusCode)
 		b, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
-		require.Equal(t, 0, len(b))
+		require.Empty(t, b)
 	}
 }
 

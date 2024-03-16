@@ -141,10 +141,8 @@ func New(config ...Config) fiber.Handler {
 			if len(e.cencoding) > 0 {
 				c.Response().Header.SetBytesV(fiber.HeaderContentEncoding, e.cencoding)
 			}
-			if e.headers != nil {
-				for k, v := range e.headers {
-					c.Response().Header.SetBytesV(k, v)
-				}
+			for k, v := range e.headers {
+				c.Response().Header.SetBytesV(k, v)
 			}
 			// Set Cache-Control header if enabled
 			if cfg.CacheControl {

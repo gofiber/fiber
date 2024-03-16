@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttputil"
@@ -21,7 +22,7 @@ import (
 func Test_Redirect_To(t *testing.T) {
 	t.Parallel()
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	err := c.Redirect().To("http://default.com")
 	require.NoError(t, err)
@@ -41,7 +42,7 @@ func Test_Redirect_Route_WithParams(t *testing.T) {
 	app.Get("/user/:name", func(c Ctx) error {
 		return c.JSON(c.Params("name"))
 	}).Name("user")
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	err := c.Redirect().Route("user", RedirectConfig{
 		Params: Map{
@@ -60,7 +61,7 @@ func Test_Redirect_Route_WithParams_WithQueries(t *testing.T) {
 	app.Get("/user/:name", func(c Ctx) error {
 		return c.JSON(c.Params("name"))
 	}).Name("user")
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	err := c.Redirect().Route("user", RedirectConfig{
 		Params: Map{
@@ -84,7 +85,7 @@ func Test_Redirect_Route_WithOptionalParams(t *testing.T) {
 	app.Get("/user/:name?", func(c Ctx) error {
 		return c.JSON(c.Params("name"))
 	}).Name("user")
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	err := c.Redirect().Route("user", RedirectConfig{
 		Params: Map{
@@ -103,7 +104,7 @@ func Test_Redirect_Route_WithOptionalParamsWithoutValue(t *testing.T) {
 	app.Get("/user/:name?", func(c Ctx) error {
 		return c.JSON(c.Params("name"))
 	}).Name("user")
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	err := c.Redirect().Route("user")
 	require.NoError(t, err)
@@ -118,7 +119,7 @@ func Test_Redirect_Route_WithGreedyParameters(t *testing.T) {
 	app.Get("/user/+", func(c Ctx) error {
 		return c.JSON(c.Params("+"))
 	}).Name("user")
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	err := c.Redirect().Route("user", RedirectConfig{
 		Params: Map{
@@ -137,7 +138,7 @@ func Test_Redirect_Back(t *testing.T) {
 	app.Get("/", func(c Ctx) error {
 		return c.JSON("Home")
 	}).Name("home")
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	err := c.Redirect().Back("/")
 	require.NoError(t, err)
@@ -146,7 +147,7 @@ func Test_Redirect_Back(t *testing.T) {
 
 	err = c.Redirect().Back()
 	require.Equal(t, 500, c.Response().StatusCode())
-	require.ErrorAs(t, ErrRedirectBackNoFallback, &err)
+	require.ErrorAs(t, err, &ErrRedirectBackNoFallback)
 }
 
 // go test -run Test_Redirect_Back_WithReferer
@@ -159,7 +160,7 @@ func Test_Redirect_Back_WithReferer(t *testing.T) {
 	app.Get("/back", func(c Ctx) error {
 		return c.JSON("Back")
 	}).Name("back")
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Request().Header.Set(HeaderReferer, "/back")
 	err := c.Redirect().Back("/")
@@ -178,7 +179,7 @@ func Test_Redirect_Route_WithFlashMessages(t *testing.T) {
 		return c.SendString("user")
 	}).Name("user")
 
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	err := c.Redirect().With("success", "1").With("message", "test").Route("user")
 	require.NoError(t, err)
@@ -201,7 +202,7 @@ func Test_Redirect_Route_WithOldInput(t *testing.T) {
 		return c.SendString("user")
 	}).Name("user")
 
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	c.Request().URI().SetQueryString("id=1&name=tom")
 	err := c.Redirect().With("success", "1").With("message", "test").WithInput().Route("user")
@@ -229,7 +230,7 @@ func Test_Redirect_setFlash(t *testing.T) {
 		return c.SendString("user")
 	}).Name("user")
 
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	c.Request().Header.Set(HeaderCookie, "fiber_flash=success:1,message:test,old_input_data_name:tom,old_input_data_id:1")
 
@@ -249,7 +250,6 @@ func Test_Redirect_setFlash(t *testing.T) {
 // go test -run Test_Redirect_Request
 func Test_Redirect_Request(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	app.Get("/", func(c Ctx) error {
@@ -282,7 +282,7 @@ func Test_Redirect_Request(t *testing.T) {
 			GracefulContext:       ctx,
 		})
 
-		require.NoError(t, err)
+		assert.NoError(t, err)
 	}()
 
 	// Test cases
@@ -291,41 +291,45 @@ func Test_Redirect_Request(t *testing.T) {
 		CookieValue        string
 		ExpectedBody       string
 		ExpectedStatusCode int
-		ExceptedErrsLen    int
+		ExpectedErr        error
 	}{
 		{
 			URL:                "/",
 			CookieValue:        "key:value,key2:value2,co\\:m\\,ma:Fi\\:ber\\, v3",
 			ExpectedBody:       `{"inputs":{},"messages":{"co:m,ma":"Fi:ber, v3","key":"value","key2":"value2"}}`,
 			ExpectedStatusCode: StatusOK,
-			ExceptedErrsLen:    0,
+			ExpectedErr:        nil,
 		},
 		{
 			URL:                "/with-inputs?name=john&surname=doe",
 			CookieValue:        "key:value,key2:value2,key:value,key2:value2,old_input_data_name:john,old_input_data_surname:doe",
 			ExpectedBody:       `{"inputs":{"name":"john","surname":"doe"},"messages":{"key":"value","key2":"value2"}}`,
 			ExpectedStatusCode: StatusOK,
-			ExceptedErrsLen:    0,
+			ExpectedErr:        nil,
 		},
 		{
 			URL:                "/just-inputs?name=john&surname=doe",
 			CookieValue:        "old_input_data_name:john,old_input_data_surname:doe",
 			ExpectedBody:       `{"inputs":{"name":"john","surname":"doe"},"messages":{}}`,
 			ExpectedStatusCode: StatusOK,
-			ExceptedErrsLen:    0,
+			ExpectedErr:        nil,
 		},
 	}
 
 	for _, tc := range testCases {
-		a := Get("http://example.com" + tc.URL)
-		a.Cookie(FlashCookieName, tc.CookieValue)
-		a.MaxRedirectsCount(1)
-		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
-		code, body, errs := a.String()
+		client := &fasthttp.HostClient{
+			Dial: func(_ string) (net.Conn, error) {
+				return ln.Dial()
+			},
+		}
+		req, resp := fasthttp.AcquireRequest(), fasthttp.AcquireResponse()
+		req.SetRequestURI("http://example.com" + tc.URL)
+		req.Header.SetCookie(FlashCookieName, tc.CookieValue)
+		err := client.DoRedirects(req, resp, 1)
 
-		require.Equal(t, tc.ExpectedStatusCode, code)
-		require.Equal(t, tc.ExpectedBody, body)
-		require.Equal(t, tc.ExceptedErrsLen, len(errs))
+		require.NoError(t, err)
+		require.Equal(t, tc.ExpectedBody, string(resp.Body()))
+		require.Equal(t, tc.ExpectedStatusCode, resp.StatusCode())
 	}
 }
 
@@ -336,19 +340,22 @@ func Benchmark_Redirect_Route(b *testing.B) {
 		return c.JSON(c.Params("name"))
 	}).Name("user")
 
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	b.ReportAllocs()
 	b.ResetTimer()
 
+	var err error
+
 	for n := 0; n < b.N; n++ {
-		c.Redirect().Route("user", RedirectConfig{ //nolint:errcheck,gosec,revive // we don't need to handle error here
+		err = c.Redirect().Route("user", RedirectConfig{
 			Params: Map{
 				"name": "fiber",
 			},
 		})
 	}
 
+	require.NoError(b, err)
 	require.Equal(b, 302, c.Response().StatusCode())
 	require.Equal(b, "/user/fiber", string(c.Response().Header.Peek(HeaderLocation)))
 }
@@ -360,13 +367,15 @@ func Benchmark_Redirect_Route_WithQueries(b *testing.B) {
 		return c.JSON(c.Params("name"))
 	}).Name("user")
 
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	b.ReportAllocs()
 	b.ResetTimer()
 
+	var err error
+
 	for n := 0; n < b.N; n++ {
-		c.Redirect().Route("user", RedirectConfig{ //nolint:errcheck,gosec,revive // we don't need to handle error here
+		err = c.Redirect().Route("user", RedirectConfig{
 			Params: Map{
 				"name": "fiber",
 			},
@@ -374,6 +383,7 @@ func Benchmark_Redirect_Route_WithQueries(b *testing.B) {
 		})
 	}
 
+	require.NoError(b, err)
 	require.Equal(b, 302, c.Response().StatusCode())
 	// analysis of query parameters with url parsing, since a map pass is always randomly ordered
 	location, err := url.Parse(string(c.Response().Header.Peek(HeaderLocation)))
@@ -389,15 +399,18 @@ func Benchmark_Redirect_Route_WithFlashMessages(b *testing.B) {
 		return c.SendString("user")
 	}).Name("user")
 
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	b.ReportAllocs()
 	b.ResetTimer()
 
+	var err error
+
 	for n := 0; n < b.N; n++ {
-		c.Redirect().With("success", "1").With("message", "test").Route("user") //nolint:errcheck,gosec,revive // we don't need to handle error here
+		err = c.Redirect().With("success", "1").With("message", "test").Route("user")
 	}
 
+	require.NoError(b, err)
 	require.Equal(b, 302, c.Response().StatusCode())
 	require.Equal(b, "/user", string(c.Response().Header.Peek(HeaderLocation)))
 
@@ -415,7 +428,7 @@ func Benchmark_Redirect_setFlash(b *testing.B) {
 		return c.SendString("user")
 	}).Name("user")
 
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	c.Request().Header.Set(HeaderCookie, "fiber_flash=success:1,message:test,old_input_data_name:tom,old_input_data_id:1")
 
@@ -444,7 +457,7 @@ func Benchmark_Redirect_Messages(b *testing.B) {
 		return c.SendString("user")
 	}).Name("user")
 
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	c.Request().Header.Set(HeaderCookie, "fiber_flash=success:1,message:test,old_input_data_name:tom,old_input_data_id:1")
 	c.Redirect().setFlash()
@@ -469,7 +482,7 @@ func Benchmark_Redirect_OldInputs(b *testing.B) {
 		return c.SendString("user")
 	}).Name("user")
 
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	c.Request().Header.Set(HeaderCookie, "fiber_flash=success:1,message:test,old_input_data_name:tom,old_input_data_id:1")
 	c.Redirect().setFlash()
@@ -494,7 +507,7 @@ func Benchmark_Redirect_Message(b *testing.B) {
 		return c.SendString("user")
 	}).Name("user")
 
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	c.Request().Header.Set(HeaderCookie, "fiber_flash=success:1,message:test,old_input_data_name:tom,old_input_data_id:1")
 	c.Redirect().setFlash()
@@ -519,7 +532,7 @@ func Benchmark_Redirect_OldInput(b *testing.B) {
 		return c.SendString("user")
 	}).Name("user")
 
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	c.Request().Header.Set(HeaderCookie, "fiber_flash=success:1,message:test,old_input_data_name:tom,old_input_data_id:1")
 	c.Redirect().setFlash()

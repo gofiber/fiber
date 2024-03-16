@@ -20,7 +20,7 @@ func Test_Recover(t *testing.T) {
 
 	app.Use(New())
 
-	app.Get("/panic", func(c fiber.Ctx) error {
+	app.Get("/panic", func(_ fiber.Ctx) error {
 		panic("Hi, I'm an error!")
 	})
 
@@ -51,7 +51,7 @@ func Test_Recover_EnableStackTrace(t *testing.T) {
 		EnableStackTrace: true,
 	}))
 
-	app.Get("/panic", func(c fiber.Ctx) error {
+	app.Get("/panic", func(_ fiber.Ctx) error {
 		panic("Hi, I'm an error!")
 	})
 

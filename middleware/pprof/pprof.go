@@ -28,6 +28,9 @@ func New(config ...Config) fiber.Handler {
 		pprofThreadcreate = fasthttpadaptor.NewFastHTTPHandlerFunc(pprof.Handler("threadcreate").ServeHTTP)
 	)
 
+	// Construct actual prefix
+	prefix := cfg.Prefix + "/debug/pprof"
+
 	// Return new handler
 	return func(c fiber.Ctx) error {
 		// Don't execute middleware if Next returns true
@@ -37,39 +40,40 @@ func New(config ...Config) fiber.Handler {
 
 		path := c.Path()
 		// We are only interested in /debug/pprof routes
-		if len(path) < 12 || !strings.HasPrefix(path, cfg.Prefix+"/debug/pprof") {
+		path, found := strings.CutPrefix(path, prefix)
+		if !found {
 			return c.Next()
 		}
-		// Switch to original path without stripped slashes
+		// Switch on trimmed path against constant strings
 		switch path {
-		case cfg.Prefix + "/debug/pprof/":
+		case "/":
 			pprofIndex(c.Context())
-		case cfg.Prefix + "/debug/pprof/cmdline":
+		case "/cmdline":
 			pprofCmdline(c.Context())
-		case cfg.Prefix + "/debug/pprof/profile":
+		case "/profile":
 			pprofProfile(c.Context())
-		case cfg.Prefix + "/debug/pprof/symbol":
+		case "/symbol":
 			pprofSymbol(c.Context())
-		case cfg.Prefix + "/debug/pprof/trace":
+		case "/trace":
 			pprofTrace(c.Context())
-		case cfg.Prefix + "/debug/pprof/allocs":
+		case "/allocs":
 			pprofAllocs(c.Context())
-		case cfg.Prefix + "/debug/pprof/block":
+		case "/block":
 			pprofBlock(c.Context())
-		case cfg.Prefix + "/debug/pprof/goroutine":
+		case "/goroutine":
 			pprofGoroutine(c.Context())
-		case cfg.Prefix + "/debug/pprof/heap":
+		case "/heap":
 			pprofHeap(c.Context())
-		case cfg.Prefix + "/debug/pprof/mutex":
+		case "/mutex":
 			pprofMutex(c.Context())
-		case cfg.Prefix + "/debug/pprof/threadcreate":
+		case "/threadcreate":
 			pprofThreadcreate(c.Context())
 		default:
 			// pprof index only works with trailing slash
 			if strings.HasSuffix(path, "/") {
 				path = strings.TrimRight(path, "/")
 			} else {
-				path = cfg.Prefix + "/debug/pprof/"
+				path = prefix + "/"
 			}
 
 			return c.Redirect().To(path)

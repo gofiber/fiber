@@ -7,6 +7,7 @@ package fiber
 import (
 	"bytes"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -14,10 +15,11 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 	"unsafe"
 
-	"github.com/gofiber/fiber/v2/log"
+	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 
 	"github.com/valyala/bytebufferpool"
@@ -25,14 +27,17 @@ import (
 )
 
 // acceptType is a struct that holds the parsed value of an Accept header
-// along with quality, specificity, and order.
-// used for sorting accept headers.
+// along with quality, specificity, parameters, and order.
+// Used for sorting accept headers.
 type acceptedType struct {
 	spec        string
 	quality     float64
 	specificity int
 	order       int
+	params      headerParams
 }
+
+type headerParams map[string][]byte
 
 // getTLSConfig returns a net listener's tls config
 func getTLSConfig(ln net.Listener) *tls.Config {
@@ -40,24 +45,27 @@ func getTLSConfig(ln net.Listener) *tls.Config {
 	pointer := reflect.ValueOf(ln)
 
 	// Is it a tls.listener?
-	if pointer.String() == "<*tls.listener Value>" {
-		// Copy value from pointer
-		if val := reflect.Indirect(pointer); val.Type() != nil {
-			// Get private field from value
-			if field := val.FieldByName("config"); field.Type() != nil {
-				// Copy value from pointer field (unsafe)
-				newval := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())) //nolint:gosec // Probably the only way to extract the *tls.Config from a net.Listener. TODO: Verify there really is no easier way without using unsafe.
-				if newval.Type() != nil {
-					// Get element from pointer
-					if elem := newval.Elem(); elem.Type() != nil {
-						// Cast value to *tls.Config
-						c, ok := elem.Interface().(*tls.Config)
-						if !ok {
-							panic(fmt.Errorf("failed to type-assert to *tls.Config"))
-						}
-						return c
-					}
+	if pointer.String() != "<*tls.listener Value>" {
+		return nil
+	}
+
+	// Copy value from pointer
+	if val := reflect.Indirect(pointer); val.Type() != nil {
+		// Get private field from value
+		if field := val.FieldByName("config"); field.Type() != nil {
+			// Copy value from pointer field (unsafe)
+			newval := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())) //nolint:gosec // Probably the only way to extract the *tls.Config from a net.Listener. TODO: Verify there really is no easier way without using unsafe.
+			if newval.Type() == nil {
+				return nil
+			}
+			// Get element from pointer
+			if elem := newval.Elem(); elem.Type() != nil {
+				// Cast value to *tls.Config
+				c, ok := elem.Interface().(*tls.Config)
+				if !ok {
+					panic(errors.New("failed to type-assert to *tls.Config"))
 				}
+				return c
 			}
 		}
 	}
@@ -220,7 +228,7 @@ func getGroupPath(prefix, path string) string {
 // acceptsOffer This function determines if an offer matches a given specification.
 // It checks if the specification ends with a '*' or if the offer has the prefix of the specification.
 // Returns true if the offer matches the specification, false otherwise.
-func acceptsOffer(spec, offer string) bool {
+func acceptsOffer(spec, offer string, _ headerParams) bool {
 	if len(spec) >= 1 && spec[len(spec)-1] == '*' {
 		return true
 	} else if strings.HasPrefix(spec, offer) {
@@ -233,107 +241,240 @@ func acceptsOffer(spec, offer string) bool {
 // It checks if the specification is equal to */* (i.e., all types are accepted).
 // It gets the MIME type of the offer (either from the offer itself or by its file extension).
 // It checks if the offer MIME type matches the specification MIME type or if the specification is of the form <MIME_type>/* and the offer MIME type has the same MIME type.
+// It checks if the offer contains every parameter present in the specification.
 // Returns true if the offer type matches the specification, false otherwise.
-func acceptsOfferType(spec, offerType string) bool {
+func acceptsOfferType(spec, offerType string, specParams headerParams) bool {
+	var offerMime, offerParams string
+
+	if i := strings.IndexByte(offerType, ';'); i == -1 {
+		offerMime = offerType
+	} else {
+		offerMime = offerType[:i]
+		offerParams = offerType[i:]
+	}
+
 	// Accept: */*
 	if spec == "*/*" {
-		return true
+		return paramsMatch(specParams, offerParams)
 	}
 
 	var mimetype string
-	if strings.IndexByte(offerType, '/') != -1 {
-		mimetype = offerType // MIME type
+	if strings.IndexByte(offerMime, '/') != -1 {
+		mimetype = offerMime // MIME type
 	} else {
-		mimetype = utils.GetMIME(offerType) // extension
+		mimetype = utils.GetMIME(offerMime) // extension
 	}
 
 	if spec == mimetype {
 		// Accept: <MIME_type>/<MIME_subtype>
-		return true
+		return paramsMatch(specParams, offerParams)
 	}
 
 	s := strings.IndexByte(mimetype, '/')
 	// Accept: <MIME_type>/*
 	if strings.HasPrefix(spec, mimetype[:s]) && (spec[s:] == "/*" || mimetype[s:] == "/*") {
-		return true
+		return paramsMatch(specParams, offerParams)
 	}
 
 	return false
 }
 
-// getOffer return valid offer for header negotiation
-func getOffer(header string, isAccepted func(spec, offer string) bool, offers ...string) string {
+// paramsMatch returns whether offerParams contains all parameters present in specParams.
+// Matching is case insensitive, and surrounding quotes are stripped.
+// To align with the behavior of res.format from Express, the order of parameters is
+// ignored, and if a parameter is specified twice in the incoming Accept, the last
+// provided value is given precedence.
+// In the case of quoted values, RFC 9110 says that we must treat any character escaped
+// by a backslash as equivalent to the character itself (e.g., "a\aa" is equivalent to "aaa").
+// For the sake of simplicity, we forgo this and compare the value as-is. Besides, it would
+// be highly unusual for a client to escape something other than a double quote or backslash.
+// See https://www.rfc-editor.org/rfc/rfc9110#name-parameters
+func paramsMatch(specParamStr headerParams, offerParams string) bool {
+	if len(specParamStr) == 0 {
+		return true
+	}
+
+	allSpecParamsMatch := true
+	for specParam, specVal := range specParamStr {
+		foundParam := false
+		fasthttp.VisitHeaderParams(utils.UnsafeBytes(offerParams), func(key, value []byte) bool {
+			if utils.EqualFold(specParam, string(key)) {
+				foundParam = true
+				allSpecParamsMatch = utils.EqualFold(specVal, value)
+				return false
+			}
+			return true
+		})
+		if !foundParam || !allSpecParamsMatch {
+			return false
+		}
+	}
+
+	return allSpecParamsMatch
+}
+
+// getSplicedStrList function takes a string and a string slice as an argument, divides the string into different
+// elements divided by ',' and stores these elements in the string slice.
+// It returns the populated string slice as an output.
+//
+// If the given slice hasn't enough space, it will allocate more and return.
+func getSplicedStrList(headerValue string, dst []string) []string {
+	if headerValue == "" {
+		return nil
+	}
+
+	var (
+		index             int
+		character         rune
+		lastElementEndsAt uint8
+		insertIndex       int
+	)
+	for index, character = range headerValue + "$" {
+		if character == ',' || index == len(headerValue) {
+			if insertIndex >= len(dst) {
+				oldSlice := dst
+				dst = make([]string, len(dst)+(len(dst)>>1)+2)
+				copy(dst, oldSlice)
+			}
+			dst[insertIndex] = strings.TrimLeft(headerValue[lastElementEndsAt:index], " ")
+			lastElementEndsAt = uint8(index + 1)
+			insertIndex++
+		}
+	}
+
+	if len(dst) > insertIndex {
+		dst = dst[:insertIndex]
+	}
+	return dst
+}
+
+// forEachMediaRange parses an Accept or Content-Type header, calling functor
+// on each media range.
+// See: https://www.rfc-editor.org/rfc/rfc9110#name-content-negotiation-fields
+func forEachMediaRange(header []byte, functor func([]byte)) {
+	hasDQuote := bytes.IndexByte(header, '"') != -1
+
+	for len(header) > 0 {
+		n := 0
+		header = bytes.TrimLeft(header, " ")
+		quotes := 0
+		escaping := false
+
+		if hasDQuote {
+			// Complex case. We need to keep track of quotes and quoted-pairs (i.e.,  characters escaped with \ )
+		loop:
+			for n < len(header) {
+				switch header[n] {
+				case ',':
+					if quotes%2 == 0 {
+						break loop
+					}
+				case '"':
+					if !escaping {
+						quotes++
+					}
+				case '\\':
+					if quotes%2 == 1 {
+						escaping = !escaping
+					}
+				}
+				n++
+			}
+		} else {
+			// Simple case. Just look for the next comma.
+			if n = bytes.IndexByte(header, ','); n == -1 {
+				n = len(header)
+			}
+		}
+
+		functor(header[:n])
+
+		if n >= len(header) {
+			return
+		}
+		header = header[n+1:]
+	}
+}
+
+// Pool for headerParams instances. The headerParams object *must*
+// be cleared before being returned to the pool.
+var headerParamPool = sync.Pool{
+	New: func() any {
+		return make(headerParams)
+	},
+}
+
+// getOffer return valid offer for header negotiation.
+// Do not pass header using utils.UnsafeBytes - this can cause a panic due
+// to the use of utils.ToLowerBytes.
+func getOffer(header []byte, isAccepted func(spec, offer string, specParams headerParams) bool, offers ...string) string {
 	if len(offers) == 0 {
 		return ""
 	}
-	if header == "" {
+	if len(header) == 0 {
 		return offers[0]
 	}
 
+	acceptedTypes := make([]acceptedType, 0, 8)
+	order := 0
+
 	// Parse header and get accepted types with their quality and specificity
 	// See: https://www.rfc-editor.org/rfc/rfc9110#name-content-negotiation-fields
-	spec, commaPos, order := "", 0, 0
-	acceptedTypes := make([]acceptedType, 0, 20)
-	for len(header) > 0 {
+	forEachMediaRange(header, func(accept []byte) {
 		order++
+		spec, quality := accept, 1.0
 
-		// Skip spaces
-		header = strings.TrimLeft(header, " ")
+		var params headerParams
 
-		// Get spec
-		commaPos = strings.IndexByte(header, ',')
-		if commaPos != -1 {
-			spec = strings.TrimSpace(header[:commaPos])
-		} else {
-			spec = strings.TrimLeft(header, " ")
-		}
+		if i := bytes.IndexByte(accept, ';'); i != -1 {
+			spec = accept[:i]
 
-		// Get quality
-		quality := 1.0
-		if factorSign := strings.IndexByte(spec, ';'); factorSign != -1 {
-			factor := strings.Trim(spec[factorSign+1:], " ")
-			if strings.HasPrefix(factor, "q=") {
-				if q, err := fasthttp.ParseUfloat(utils.UnsafeBytes(factor[2:])); err == nil {
+			// The vast majority of requests will have only the q parameter with
+			// no whitespace. Check this first to see if we can skip
+			// the more involved parsing.
+			if bytes.HasPrefix(accept[i:], []byte(";q=")) && bytes.IndexByte(accept[i+3:], ';') == -1 {
+				if q, err := fasthttp.ParseUfloat(bytes.TrimRight(accept[i+3:], " ")); err == nil {
 					quality = q
 				}
+			} else {
+				params, _ = headerParamPool.Get().(headerParams) //nolint:errcheck // only contains headerParams
+				fasthttp.VisitHeaderParams(accept[i:], func(key, value []byte) bool {
+					if string(key) == "q" {
+						if q, err := fasthttp.ParseUfloat(value); err == nil {
+							quality = q
+						}
+						return false
+					}
+					params[utils.UnsafeString(utils.ToLowerBytes(key))] = value
+					return true
+				})
 			}
-			spec = spec[:factorSign]
+
+			// Skip this accept type if quality is 0.0
+			// See: https://www.rfc-editor.org/rfc/rfc9110#quality.values
+			if quality == 0.0 {
+				return
+			}
 		}
 
-		// Skip if quality is 0.0
-		// See: https://www.rfc-editor.org/rfc/rfc9110#quality.values
-		if quality == 0.0 {
-			if commaPos != -1 {
-				header = header[commaPos+1:]
-			} else {
-				break
-			}
-			continue
-		}
+		spec = bytes.TrimRight(spec, " ")
 
 		// Get specificity
-		specificity := 0
+		var specificity int
 		// check for wildcard this could be a mime */* or a wildcard character *
-		if spec == "*/*" || spec == "*" {
+		if string(spec) == "*/*" || string(spec) == "*" {
 			specificity = 1
-		} else if strings.HasSuffix(spec, "/*") {
+		} else if bytes.HasSuffix(spec, []byte("/*")) {
 			specificity = 2
-		} else if strings.IndexByte(spec, '/') != -1 {
+		} else if bytes.IndexByte(spec, '/') != -1 {
 			specificity = 3
 		} else {
 			specificity = 4
 		}
 
 		// Add to accepted types
-		acceptedTypes = append(acceptedTypes, acceptedType{spec, quality, specificity, order})
-
-		// Next
-		if commaPos != -1 {
-			header = header[commaPos+1:]
-		} else {
-			break
-		}
-	}
+		acceptedTypes = append(acceptedTypes, acceptedType{utils.UnsafeString(spec), quality, specificity, order, params})
+	})
 
 	if len(acceptedTypes) > 1 {
 		// Sort accepted types by quality and specificity, preserving order of equal elements
@@ -341,45 +482,57 @@ func getOffer(header string, isAccepted func(spec, offer string) bool, offers ..
 	}
 
 	// Find the first offer that matches the accepted types
+	ret := ""
+	done := false
 	for _, acceptedType := range acceptedTypes {
-		for _, offer := range offers {
-			if len(offer) == 0 {
-				continue
+		if !done {
+			for _, offer := range offers {
+				if offer == "" {
+					continue
+				}
+				if isAccepted(acceptedType.spec, offer, acceptedType.params) {
+					ret = offer
+					done = true
+					break
+				}
 			}
-			if isAccepted(acceptedType.spec, offer) {
-				return offer
+		}
+		if acceptedType.params != nil {
+			for p := range acceptedType.params {
+				delete(acceptedType.params, p)
 			}
+			headerParamPool.Put(acceptedType.params)
 		}
 	}
 
-	return ""
+	return ret
 }
 
 // sortAcceptedTypes sorts accepted types by quality and specificity, preserving order of equal elements
-//
-// Parameters are not supported, they are ignored when sorting by specificity.
-//
+// A type with parameters has higher priority than an equivalent one without parameters.
+// e.g., text/html;a=1;b=2 comes before text/html;a=1
 // See: https://www.rfc-editor.org/rfc/rfc9110#name-content-negotiation-fields
-func sortAcceptedTypes(at *[]acceptedType) {
-	if at == nil || len(*at) < 2 {
+func sortAcceptedTypes(acceptedTypes *[]acceptedType) {
+	if acceptedTypes == nil || len(*acceptedTypes) < 2 {
 		return
 	}
-	acceptedTypes := *at
+	at := *acceptedTypes
 
-	for i := 1; i < len(acceptedTypes); i++ {
+	for i := 1; i < len(at); i++ {
 		lo, hi := 0, i-1
 		for lo <= hi {
 			mid := (lo + hi) / 2
-			if acceptedTypes[i].quality < acceptedTypes[mid].quality ||
-				(acceptedTypes[i].quality == acceptedTypes[mid].quality && acceptedTypes[i].specificity < acceptedTypes[mid].specificity) ||
-				(acceptedTypes[i].quality == acceptedTypes[mid].quality && acceptedTypes[i].specificity == acceptedTypes[mid].specificity && acceptedTypes[i].order > acceptedTypes[mid].order) {
+			if at[i].quality < at[mid].quality ||
+				(at[i].quality == at[mid].quality && at[i].specificity < at[mid].specificity) ||
+				(at[i].quality == at[mid].quality && at[i].specificity < at[mid].specificity && len(at[i].params) < len(at[mid].params)) ||
+				(at[i].quality == at[mid].quality && at[i].specificity == at[mid].specificity && len(at[i].params) == len(at[mid].params) && at[i].order > at[mid].order) {
 				lo = mid + 1
 			} else {
 				hi = mid - 1
 			}
 		}
 		for j := i; j > lo; j-- {
-			acceptedTypes[j-1], acceptedTypes[j] = acceptedTypes[j], acceptedTypes[j-1]
+			at[j-1], at[j] = at[j], at[j-1]
 		}
 	}
 }
@@ -582,7 +735,7 @@ const (
 	MIMEApplicationJavaScriptCharsetUTF8 = "application/javascript; charset=utf-8"
 )
 
-// HTTP status codes were copied from https://github.com/nginx/nginx/blob/67d2a9541826ecd5db97d604f23460210fd3e517/conf/mime.types with the following updates:
+// HTTP status codes were copied from net/http with the following updates:
 // - Rename StatusNonAuthoritativeInfo to StatusNonAuthoritativeInformation
 // - Add StatusSwitchProxy (306)
 // NOTE: Keep this list in sync with statusMessage

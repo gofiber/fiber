@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
@@ -45,7 +46,7 @@ func Test_Compress_Gzip(t *testing.T) {
 	// Validate that the file size has shrunk
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.True(t, len(body) < len(filedata))
+	require.Less(t, len(body), len(filedata))
 }
 
 // go test -run Test_Compress_Different_Level
@@ -53,6 +54,7 @@ func Test_Compress_Different_Level(t *testing.T) {
 	t.Parallel()
 	levels := []Level{LevelBestSpeed, LevelBestCompression}
 	for _, level := range levels {
+		level := level
 		t.Run(fmt.Sprintf("level %d", level), func(t *testing.T) {
 			t.Parallel()
 			app := fiber.New()
@@ -75,7 +77,7 @@ func Test_Compress_Different_Level(t *testing.T) {
 			// Validate that the file size has shrunk
 			body, err := io.ReadAll(resp.Body)
 			require.NoError(t, err)
-			require.True(t, len(body) < len(filedata))
+			require.Less(t, len(body), len(filedata))
 		})
 	}
 }
@@ -101,7 +103,7 @@ func Test_Compress_Deflate(t *testing.T) {
 	// Validate that the file size has shrunk
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.True(t, len(body) < len(filedata))
+	require.Less(t, len(body), len(filedata))
 }
 
 func Test_Compress_Brotli(t *testing.T) {
@@ -117,7 +119,7 @@ func Test_Compress_Brotli(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	req.Header.Set("Accept-Encoding", "br")
 
-	resp, err := app.Test(req, 10000)
+	resp, err := app.Test(req, 10*time.Second)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.Equal(t, "br", resp.Header.Get(fiber.HeaderContentEncoding))
@@ -125,7 +127,7 @@ func Test_Compress_Brotli(t *testing.T) {
 	// Validate that the file size has shrunk
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.True(t, len(body) < len(filedata))
+	require.Less(t, len(body), len(filedata))
 }
 
 func Test_Compress_Disabled(t *testing.T) {
@@ -149,7 +151,7 @@ func Test_Compress_Disabled(t *testing.T) {
 	// Validate the file size is not shrunk
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.True(t, len(body) == len(filedata))
+	require.Equal(t, len(body), len(filedata))
 }
 
 func Test_Compress_Next_Error(t *testing.T) {
@@ -158,7 +160,7 @@ func Test_Compress_Next_Error(t *testing.T) {
 
 	app.Use(New())
 
-	app.Get("/", func(c fiber.Ctx) error {
+	app.Get("/", func(_ fiber.Ctx) error {
 		return errors.New("next error")
 	})
 

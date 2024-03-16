@@ -11,10 +11,17 @@ output:
   sort-results: true
 
 linters-settings:
+  testifylint:
+    enable-all: true
   errcheck:
      check-type-assertions: true
      check-blank: true
      disable-default-exclusions: true
+     exclude-functions:
+       - '(*bytes.Buffer).Write' # always returns nil error
+       - '(*github.com/valyala/bytebufferpool.ByteBuffer).Write' # always returns nil error
+       - '(*github.com/valyala/bytebufferpool.ByteBuffer).WriteByte' # always returns nil error
+       - '(*github.com/valyala/bytebufferpool.ByteBuffer).WriteString' # always returns nil error
 
   errchkjson:
     report-no-exported: true
@@ -39,18 +46,20 @@ linters-settings:
     extra-rules: true
 
   gosec:
+    excludes:
+      - G104 # Provided by errcheck
     config:
       global:
         audit: true
   
   depguard:
-    include-go-root: true
-    packages:
-      - flag
-      - io/ioutil
-    packages-with-error-message:
-      - flag: '`flag` package is only allowed in main.go'
-      - io/ioutil: '`io/ioutil` package is deprecated, use the `io` and `os` package instead'
+    rules:
+      main:
+        deny:
+          - pkg: flag
+            desc: '`flag` package is only allowed in main.go'
+          - pkg: io/ioutil
+            desc: '`io/ioutil` package is deprecated, use the `io` and `os` package instead'
 
   govet:
     check-shadowing: true
@@ -93,6 +102,8 @@ linters-settings:
         disabled: true
       - name: cognitive-complexity
         disabled: true
+      - name: comment-spacings
+        disabled: true # TODO https://github.com/gofiber/fiber/issues/2816
       - name: cyclomatic
         disabled: true
       - name: early-return
@@ -115,6 +126,11 @@ linters-settings:
       - name: nested-structs
         disabled: true
       - name: package-comments
+        disabled: true
+      - name: unchecked-type-assertion
+        disabled: true # TODO https://github.com/gofiber/fiber/issues/2816
+      # Provided by errcheck
+      - name: unhandled-error
         disabled: true
 
   stylecheck:
@@ -144,7 +160,16 @@ linters-settings:
 issues:
    exclude-use-default: false
 
+   exclude-rules:
+     # Exclude some linters from running on tests files.
+     - path: _test\.go
+       linters:
+         - bodyclose
+
 linters:
+  disable:
+    - spancheck # opentelemetry, irrelevant
+    - tagalign  # requires awkward manual formatting of struct tags
   enable:
     - asasalint
     - asciicheck
@@ -164,7 +189,8 @@ linters:
     - exportloopref
     - forbidigo
     - forcetypeassert
-    - goconst
+    # - gochecksumtype # TODO https://github.com/gofiber/fiber/issues/2816
+    # - goconst # TODO https://github.com/gofiber/fiber/issues/2816
     - gocritic
     - gofmt
     - gofumpt
@@ -173,9 +199,12 @@ linters:
     - goprintffuncname
     - gosec
     - gosimple
+    # - gosmopolitan # TODO https://github.com/gofiber/fiber/issues/2816
     - govet
     - grouper
+    - inamedparam
     - loggercheck
+    - mirror
     - misspell
     - nakedret
     - nilerr
@@ -184,6 +213,7 @@ linters:
     - nolintlint
     - nonamedreturns
     - nosprintfhostport
+    - perfsprint
     - predeclared
     - promlinter
     - reassign
@@ -193,15 +223,16 @@ linters:
     - staticcheck
     - stylecheck
     - tagliatelle
+    - testifylint
     # - testpackage # TODO: Enable once https://github.com/gofiber/fiber/issues/2252 is implemented
     - thelper
-    # - tparallel # TODO: Enable once https://github.com/gofiber/fiber/issues/2254 is implemented
+    - tparallel
     - typecheck
     - unconvert
     - unparam
     - unused
     - usestdlibvars
-    - wastedassign
+    # - wastedassign # TODO https://github.com/gofiber/fiber/issues/2816
     - whitespace
     - wrapcheck
     - tenv

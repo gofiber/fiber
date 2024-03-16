@@ -2,7 +2,6 @@
 // 📃 Github Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
-//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package fiber
 
 import (
@@ -12,7 +11,6 @@ import (
 	"io"
 	"net/http/httptest"
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/gofiber/utils/v2"
@@ -306,7 +304,7 @@ func Test_Router_Register_Missing_Handler(t *testing.T) {
 func Test_Ensure_Router_Interface_Implementation(t *testing.T) {
 	t.Parallel()
 
-	var app interface{} = (*App)(nil)
+	var app any = (*App)(nil)
 	_, ok := app.(Router)
 	require.True(t, ok)
 
@@ -319,11 +317,11 @@ func Test_Router_Handler_Catch_Error(t *testing.T) {
 	t.Parallel()
 
 	app := New()
-	app.config.ErrorHandler = func(c Ctx, err error) error {
+	app.config.ErrorHandler = func(_ Ctx, _ error) error {
 		return errors.New("fake error")
 	}
 
-	app.Get("/", func(c Ctx) error {
+	app.Get("/", func(_ Ctx) error {
 		return ErrForbidden
 	})
 
@@ -353,7 +351,7 @@ func Test_Route_Static_Root(t *testing.T) {
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.True(t, strings.Contains(app.getString(body), "color"))
+	require.Contains(t, app.getString(body), "color")
 
 	app = New()
 	app.Static("/", dir)
@@ -368,7 +366,7 @@ func Test_Route_Static_Root(t *testing.T) {
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.True(t, strings.Contains(app.getString(body), "color"))
+	require.Contains(t, app.getString(body), "color")
 }
 
 func Test_Route_Static_HasPrefix(t *testing.T) {
@@ -394,7 +392,7 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.True(t, strings.Contains(app.getString(body), "color"))
+	require.Contains(t, app.getString(body), "color")
 
 	app = New()
 	app.Static("/static/", dir, Static{
@@ -415,7 +413,7 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.True(t, strings.Contains(app.getString(body), "color"))
+	require.Contains(t, app.getString(body), "color")
 
 	app = New()
 	app.Static("/static", dir)
@@ -434,7 +432,7 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.True(t, strings.Contains(app.getString(body), "color"))
+	require.Contains(t, app.getString(body), "color")
 
 	app = New()
 	app.Static("/static/", dir)
@@ -453,7 +451,43 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.True(t, strings.Contains(app.getString(body), "color"))
+	require.Contains(t, app.getString(body), "color")
+}
+
+func Test_Router_NotFound(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Use(func(c Ctx) error {
+		return c.Next()
+	})
+	appHandler := app.Handler()
+	c := &fasthttp.RequestCtx{}
+
+	c.Request.Header.SetMethod("DELETE")
+	c.URI().SetPath("/this/route/does/not/exist")
+
+	appHandler(c)
+
+	require.Equal(t, 404, c.Response.StatusCode())
+	require.Equal(t, "Cannot DELETE /this/route/does/not/exist", string(c.Response.Body()))
+}
+
+func Test_Router_NotFound_HTML_Inject(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Use(func(c Ctx) error {
+		return c.Next()
+	})
+	appHandler := app.Handler()
+	c := &fasthttp.RequestCtx{}
+
+	c.Request.Header.SetMethod("DELETE")
+	c.URI().SetPath("/does/not/exist<script>alert('foo');</script>")
+
+	appHandler(c)
+
+	require.Equal(t, 404, c.Response.StatusCode())
+	require.Equal(t, "Cannot DELETE /does/not/exist&lt;script&gt;alert(&#39;foo&#39;);&lt;/script&gt;", string(c.Response.Body()))
 }
 
 //////////////////////////////////////////////
@@ -461,7 +495,7 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 //////////////////////////////////////////////
 
 func registerDummyRoutes(app *App) {
-	h := func(c Ctx) error {
+	h := func(_ Ctx) error {
 		return nil
 	}
 	for _, r := range routesFixture.GithubAPI {
@@ -618,7 +652,7 @@ func Benchmark_Router_Next(b *testing.B) {
 	var res bool
 	var err error
 
-	c := app.NewCtx(request).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(request).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
@@ -647,7 +681,7 @@ func Benchmark_Route_Match(b *testing.B) {
 		Path:   "/user/keys/:id",
 		Method: "DELETE",
 	}
-	route.Handlers = append(route.Handlers, func(c Ctx) error {
+	route.Handlers = append(route.Handlers, func(_ Ctx) error {
 		return nil
 	})
 	b.ResetTimer()
@@ -676,7 +710,7 @@ func Benchmark_Route_Match_Star(b *testing.B) {
 		Path:   "/user/keys/bla",
 		Method: "DELETE",
 	}
-	route.Handlers = append(route.Handlers, func(c Ctx) error {
+	route.Handlers = append(route.Handlers, func(_ Ctx) error {
 		return nil
 	})
 	b.ResetTimer()
@@ -706,7 +740,7 @@ func Benchmark_Route_Match_Root(b *testing.B) {
 		Path:   "/",
 		Method: "DELETE",
 	}
-	route.Handlers = append(route.Handlers, func(c Ctx) error {
+	route.Handlers = append(route.Handlers, func(_ Ctx) error {
 		return nil
 	})
 
@@ -744,7 +778,7 @@ func Benchmark_Router_Handler_Unescape(b *testing.B) {
 	app := New()
 	app.config.UnescapePath = true
 	registerDummyRoutes(app)
-	app.Delete("/créer", func(c Ctx) error {
+	app.Delete("/créer", func(_ Ctx) error {
 		return nil
 	})
 
@@ -799,8 +833,7 @@ func Benchmark_Router_Github_API(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			c.URI().SetPath(routesFixture.TestRoutes[i].Path)
 
-			ctx := app.AcquireCtx().(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
-			ctx.Reset(c)
+			ctx := app.AcquireCtx(c).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 			match, err = app.next(ctx)
 			app.ReleaseCtx(ctx)

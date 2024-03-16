@@ -16,8 +16,8 @@ Import the middleware package that is part of the Fiber web framework
 
 ```go
 import (
-    "github.com/gofiber/fiber/v2"
-    "github.com/gofiber/fiber/v2/middleware/logger"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/logger"
 )
 ```
 
@@ -65,7 +65,7 @@ app.Use(logger.New(logger.Config{
 // Add Custom Tags
 app.Use(logger.New(logger.Config{
     CustomTags: map[string]logger.LogFunc{
-        "custom_tag": func(output logger.Buffer, c *fiber.Ctx, data *logger.Data, extraParam string) (int, error) {
+        "custom_tag": func(output logger.Buffer, c fiber.Ctx, data *logger.Data, extraParam string) (int, error) {
             return output.WriteString("it is a custom tag")
         },
     },
@@ -75,7 +75,7 @@ app.Use(logger.New(logger.Config{
 app.Use(logger.New(logger.Config{
     TimeFormat: time.RFC3339Nano,
     TimeZone:   "Asia/Shanghai",
-    Done: func(c *fiber.Ctx, logString []byte) {
+    Done: func(c fiber.Ctx, logString []byte) {
         if c.Response().StatusCode() != fiber.StatusOK {
             reporter.SendToSlack(logString) 
         }
@@ -88,31 +88,35 @@ app.Use(logger.New(logger.Config{
 }))
 ```
 
+:::tip 
+Writing to os.File is goroutine-safe, but if you are using a custom Output that is not goroutine-safe, make sure to implement locking to properly serialize writes.
+:::
+
 ## Config
 
 ### Config
 
-| Property         | Type                       | Description                                                                                                                      | Default                                                |
-|:-----------------|:---------------------------|:---------------------------------------------------------------------------------------------------------------------------------|:-------------------------------------------------------|
-| Next             | `func(*fiber.Ctx) bool`    | Next defines a function to skip this middleware when returned true.                                                              | `nil`                                                  |
-| Done             | `func(*fiber.Ctx, []byte)` | Done is a function that is called after the log string for a request is written to Output, and pass the log string as parameter. | `nil`                                                  |
-| CustomTags       | `map[string]LogFunc`       | tagFunctions defines the custom tag action.                                                                                      | `map[string]LogFunc`                                   |
-| Format           | `string`                   | Format defines the logging tags.                                                                                                 | `[${time}] ${status} - ${latency} ${method} ${path}\n` |
-| TimeFormat       | `string`                   | TimeFormat defines the time format for log timestamps.                                                                           | `15:04:05`                                             |
-| TimeZone         | `string`                   | TimeZone can be specified, such as "UTC" and "America/New_York" and "Asia/Chongqing", etc                                        | `"Local"`                                              |
-| TimeInterval     | `time.Duration`            | TimeInterval is the delay before the timestamp is updated.                                                                       | `500 * time.Millisecond`                               |
-| Output           | `io.Writer`                | Output is a writer where logs are written.                                                                                       | `os.Stdout`                                            |
-| DisableColors    | `bool`                     | DisableColors defines if the logs output should be colorized.                                                                    | `false`                                                |
-| enableColors     | `bool`                     | Internal field for enabling colors in the log output. (This is not a user-configurable field)                                    | -                                                      |
-| enableLatency    | `bool`                     | Internal field for enabling latency measurement in logs. (This is not a user-configurable field)                                 | -                                                      |
-| timeZoneLocation | `*time.Location`           | Internal field for the time zone location. (This is not a user-configurable field)                                               | -                                                      |
+| Property         | Type                       | Description                                                                                                                      | Default                                                               |
+|:-----------------|:---------------------------|:---------------------------------------------------------------------------------------------------------------------------------|:----------------------------------------------------------------------|
+| Next             | `func(fiber.Ctx) bool`    | Next defines a function to skip this middleware when returned true.                                                              | `nil`                                                                 |
+| Done             | `func(fiber.Ctx, []byte)` | Done is a function that is called after the log string for a request is written to Output, and pass the log string as parameter. | `nil`                                                                 |
+| CustomTags       | `map[string]LogFunc`       | tagFunctions defines the custom tag action.                                                                                      | `map[string]LogFunc`                                                  |
+| Format           | `string`                   | Format defines the logging tags.                                                                                                 | `[${time}] ${ip} ${status} - ${latency} ${method} ${path} ${error}\n` |
+| TimeFormat       | `string`                   | TimeFormat defines the time format for log timestamps.                                                                           | `15:04:05`                                                            |
+| TimeZone         | `string`                   | TimeZone can be specified, such as "UTC" and "America/New_York" and "Asia/Chongqing", etc                                        | `"Local"`                                                             |
+| TimeInterval     | `time.Duration`            | TimeInterval is the delay before the timestamp is updated.                                                                       | `500 * time.Millisecond`                                              |
+| Output           | `io.Writer`                | Output is a writer where logs are written.                                                                                       | `os.Stdout`                                                           |
+| DisableColors    | `bool`                     | DisableColors defines if the logs output should be colorized.                                                                    | `false`                                                               |
+| enableColors     | `bool`                     | Internal field for enabling colors in the log output. (This is not a user-configurable field)                                    | -                                                                     |
+| enableLatency    | `bool`                     | Internal field for enabling latency measurement in logs. (This is not a user-configurable field)                                 | -                                                                     |
+| timeZoneLocation | `*time.Location`           | Internal field for the time zone location. (This is not a user-configurable field)                                               | -                                                                     |
 
 ## Default Config
 ```go
 var ConfigDefault = Config{
     Next:          nil,
     Done:          nil,
-    Format:        "[${time}] ${status} - ${latency} ${method} ${path}\n",
+    Format:        "[${time}] ${ip} ${status} - ${latency} ${method} ${path} ${error}\n",
     TimeFormat:    "15:04:05",
     TimeZone:      "Local",
     TimeInterval:  500 * time.Millisecond,

@@ -1,4 +1,3 @@
-//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package logger
 
 import (
@@ -10,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -34,7 +34,7 @@ func Test_Logger(t *testing.T) {
 		Output: buf,
 	}))
 
-	app.Get("/", func(c fiber.Ctx) error {
+	app.Get("/", func(_ fiber.Ctx) error {
 		return errors.New("some random error")
 	})
 
@@ -95,6 +95,7 @@ func Test_Logger_locals(t *testing.T) {
 func Test_Logger_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
+
 	app.Use(New(Config{
 		Next: func(_ fiber.Ctx) bool {
 			return true
@@ -111,6 +112,7 @@ func Test_Logger_Done(t *testing.T) {
 	t.Parallel()
 	buf := bytes.NewBuffer(nil)
 	app := fiber.New()
+
 	app.Use(New(Config{
 		Done: func(c fiber.Ctx, logString []byte) {
 			if c.Response().StatusCode() == fiber.StatusOK {
@@ -126,13 +128,14 @@ func Test_Logger_Done(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.True(t, buf.Len() > 0)
+	require.Greater(t, buf.Len(), 0)
 }
 
 // go test -run Test_Logger_ErrorTimeZone
 func Test_Logger_ErrorTimeZone(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
+
 	app.Use(New(Config{
 		TimeZone: "invalid",
 	}))
@@ -142,9 +145,9 @@ func Test_Logger_ErrorTimeZone(t *testing.T) {
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
 
-type fakeOutput int
+type fakeErrorOutput int
 
-func (o *fakeOutput) Write([]byte) (int, error) {
+func (o *fakeErrorOutput) Write([]byte) (int, error) {
 	*o++
 	return 0, errors.New("fake output")
 }
@@ -152,8 +155,9 @@ func (o *fakeOutput) Write([]byte) (int, error) {
 // go test -run Test_Logger_ErrorOutput_WithoutColor
 func Test_Logger_ErrorOutput_WithoutColor(t *testing.T) {
 	t.Parallel()
-	o := new(fakeOutput)
+	o := new(fakeErrorOutput)
 	app := fiber.New()
+
 	app.Use(New(Config{
 		Output:        o,
 		DisableColors: true,
@@ -162,15 +166,15 @@ func Test_Logger_ErrorOutput_WithoutColor(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
-
-	require.Equal(t, 1, int(*o))
+	require.EqualValues(t, 2, *o)
 }
 
 // go test -run Test_Logger_ErrorOutput
 func Test_Logger_ErrorOutput(t *testing.T) {
 	t.Parallel()
-	o := new(fakeOutput)
+	o := new(fakeErrorOutput)
 	app := fiber.New()
+
 	app.Use(New(Config{
 		Output: o,
 	}))
@@ -178,7 +182,7 @@ func Test_Logger_ErrorOutput(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
-	require.Equal(t, 1, int(*o))
+	require.EqualValues(t, 2, *o)
 }
 
 // go test -run Test_Logger_All
@@ -188,6 +192,7 @@ func Test_Logger_All(t *testing.T) {
 	defer bytebufferpool.Put(buf)
 
 	app := fiber.New()
+
 	app.Use(New(Config{
 		Format: "${pid}${reqHeaders}${referer}${scheme}${protocol}${ip}${ips}${host}${url}${ua}${body}${route}${black}${red}${green}${yellow}${blue}${magenta}${cyan}${white}${reset}${error}${reqHeader:test}${query:test}${form:test}${cookie:test}${non}",
 		Output: buf,
@@ -204,6 +209,119 @@ func Test_Logger_All(t *testing.T) {
 	require.Equal(t, expected, buf.String())
 }
 
+func getLatencyTimeUnits() []struct {
+	unit string
+	div  time.Duration
+} {
+	// windows does not support µs sleep precision
+	// https://github.com/golang/go/issues/29485
+	if runtime.GOOS == "windows" {
+		return []struct {
+			unit string
+			div  time.Duration
+		}{
+			{"ms", time.Millisecond},
+			{"s", time.Second},
+		}
+	}
+	return []struct {
+		unit string
+		div  time.Duration
+	}{
+		{"µs", time.Microsecond},
+		{"ms", time.Millisecond},
+		{"s", time.Second},
+	}
+}
+
+// go test -run Test_Logger_WithLatency
+func Test_Logger_WithLatency(t *testing.T) {
+	buff := bytebufferpool.Get()
+	defer bytebufferpool.Put(buff)
+	app := fiber.New()
+
+	logger := New(Config{
+		Output: buff,
+		Format: "${latency}",
+	})
+	app.Use(logger)
+
+	// Define a list of time units to test
+	timeUnits := getLatencyTimeUnits()
+
+	// Initialize a new time unit
+	sleepDuration := 1 * time.Nanosecond
+
+	// Define a test route that sleeps
+	app.Get("/test", func(c fiber.Ctx) error {
+		time.Sleep(sleepDuration)
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	// Loop through each time unit and assert that the log output contains the expected latency value
+	for _, tu := range timeUnits {
+		// Update the sleep duration for the next iteration
+		sleepDuration = 1 * tu.div
+
+		// Create a new HTTP request to the test route
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), 3*time.Second)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+		// Assert that the log output contains the expected latency value in the current time unit
+		require.True(t, bytes.HasSuffix(buff.Bytes(), []byte(tu.unit)),
+			fmt.Sprintf("Expected latency to be in %s, got %s", tu.unit, buff.String()))
+
+		// Reset the buffer
+		buff.Reset()
+	}
+}
+
+// go test -run Test_Logger_WithLatency_DefaultFormat
+func Test_Logger_WithLatency_DefaultFormat(t *testing.T) {
+	buff := bytebufferpool.Get()
+	defer bytebufferpool.Put(buff)
+	app := fiber.New()
+
+	logger := New(Config{
+		Output: buff,
+	})
+	app.Use(logger)
+
+	// Define a list of time units to test
+	timeUnits := getLatencyTimeUnits()
+
+	// Initialize a new time unit
+	sleepDuration := 1 * time.Nanosecond
+
+	// Define a test route that sleeps
+	app.Get("/test", func(c fiber.Ctx) error {
+		time.Sleep(sleepDuration)
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	// Loop through each time unit and assert that the log output contains the expected latency value
+	for _, tu := range timeUnits {
+		// Update the sleep duration for the next iteration
+		sleepDuration = 1 * tu.div
+
+		// Create a new HTTP request to the test route
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), 2*time.Second)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+		// Assert that the log output contains the expected latency value in the current time unit
+		// parse out the latency value from the log output
+		latency := bytes.Split(buff.Bytes(), []byte(" | "))[2]
+		// Assert that the latency value is in the current time unit
+		require.True(t, bytes.HasSuffix(latency, []byte(tu.unit)),
+			fmt.Sprintf("Expected latency to be in %s, got %s", tu.unit, latency))
+
+		// Reset the buffer
+		buff.Reset()
+	}
+}
+
 // go test -run Test_Query_Params
 func Test_Query_Params(t *testing.T) {
 	t.Parallel()
@@ -211,6 +329,7 @@ func Test_Query_Params(t *testing.T) {
 	defer bytebufferpool.Put(buf)
 
 	app := fiber.New()
+
 	app.Use(New(Config{
 		Format: "${queryParams}",
 		Output: buf,
@@ -231,6 +350,7 @@ func Test_Response_Body(t *testing.T) {
 	defer bytebufferpool.Put(buf)
 
 	app := fiber.New()
+
 	app.Use(New(Config{
 		Format: "${resBody}",
 		Output: buf,
@@ -312,9 +432,9 @@ func Test_Logger_Data_Race(t *testing.T) {
 	resp2, err2 = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	wg.Wait()
 
-	require.Nil(t, err1)
+	require.NoError(t, err1)
 	require.Equal(t, fiber.StatusOK, resp1.StatusCode)
-	require.Nil(t, err2)
+	require.NoError(t, err2)
 	require.Equal(t, fiber.StatusOK, resp2.StatusCode)
 }
 
@@ -384,11 +504,11 @@ func Test_Response_Header(t *testing.T) {
 	defer bytebufferpool.Put(buf)
 
 	app := fiber.New()
+
 	app.Use(requestid.New(requestid.Config{
-		Next:       nil,
-		Header:     fiber.HeaderXRequestID,
-		Generator:  func() string { return "Hello fiber!" },
-		ContextKey: "requestid",
+		Next:      nil,
+		Header:    fiber.HeaderXRequestID,
+		Generator: func() string { return "Hello fiber!" },
 	}))
 	app.Use(New(Config{
 		Format: "${respHeader:X-Request-ID}",
@@ -412,6 +532,7 @@ func Test_Req_Header(t *testing.T) {
 	defer bytebufferpool.Put(buf)
 
 	app := fiber.New()
+
 	app.Use(New(Config{
 		Format: "${reqHeader:test}",
 		Output: buf,
@@ -435,6 +556,7 @@ func Test_ReqHeader_Header(t *testing.T) {
 	defer bytebufferpool.Put(buf)
 
 	app := fiber.New()
+
 	app.Use(New(Config{
 		Format: "${reqHeader:test}",
 		Output: buf,
@@ -460,10 +582,11 @@ func Test_CustomTags(t *testing.T) {
 	defer bytebufferpool.Put(buf)
 
 	app := fiber.New()
+
 	app.Use(New(Config{
 		Format: "${custom_tag}",
 		CustomTags: map[string]LogFunc{
-			"custom_tag": func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (int, error) {
+			"custom_tag": func(output Buffer, _ fiber.Ctx, _ *Data, _ string) (int, error) {
 				return output.WriteString(customTag)
 			},
 		},
@@ -521,11 +644,19 @@ func Test_Logger_ByteSent_Streaming(t *testing.T) {
 	require.Equal(t, "0 0 200", buf.String())
 }
 
+type fakeOutput int
+
+func (o *fakeOutput) Write(b []byte) (int, error) {
+	*o++
+	return len(b), nil
+}
+
 // go test -run Test_Logger_EnableColors
 func Test_Logger_EnableColors(t *testing.T) {
 	t.Parallel()
 	o := new(fakeOutput)
 	app := fiber.New()
+
 	app.Use(New(Config{
 		Output: o,
 	}))
@@ -533,6 +664,5 @@ func Test_Logger_EnableColors(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
-
-	require.Equal(t, 1, int(*o))
+	require.EqualValues(t, 1, *o)
 }

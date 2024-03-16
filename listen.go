@@ -30,7 +30,7 @@ var figletFiberText = `
    / ____(_) /_  ___  _____
   / /_  / / __ \/ _ \/ ___/
  / __/ / / /_/ /  __/ /    
-/_/   /_/_.___/\___/_/     %s`
+/_/   /_/_.___/\___/_/          %s`
 
 const (
 	globalIpv4Addr = "0.0.0.0"
@@ -41,7 +41,7 @@ const (
 // TODO: Add timeout for graceful shutdown.
 type ListenConfig struct {
 	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only)
-	// WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chose.
+	// WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chosen.
 	//
 	// Default: NetworkTCP4
 	ListenerNetwork string `json:"listener_network"`
@@ -268,16 +268,17 @@ func (*App) createListener(addr string, tlsConfig *tls.Config, cfg ListenConfig)
 		listener, err = net.Listen(cfg.ListenerNetwork, addr)
 	}
 
+	// Check for error before using the listener
+	if err != nil {
+		// Wrap the error from tls.Listen/net.Listen
+		return nil, fmt.Errorf("failed to listen: %w", err)
+	}
+
 	if cfg.ListenerAddrFunc != nil {
 		cfg.ListenerAddrFunc(listener.Addr())
 	}
 
-	// Wrap error comes from tls.Listen/net.Listen
-	if err != nil {
-		err = fmt.Errorf("failed to listen: %w", err)
-	}
-
-	return listener, err
+	return listener, nil
 }
 
 func (app *App) printMessages(cfg ListenConfig, ln net.Listener) {
@@ -354,38 +355,38 @@ func (app *App) startupMessage(addr string, isTLS bool, pids string, cfg ListenC
 
 	if host == "0.0.0.0" {
 		_, _ = fmt.Fprintf(out,
-			"%sINFO%s Server started on %s%s://127.0.0.1:%s%s (bound on host 0.0.0.0 and port %s)\n",
+			"%sINFO%s Server started on: \t%s%s://127.0.0.1:%s%s (bound on host 0.0.0.0 and port %s)\n",
 			colors.Green, colors.Reset, colors.Blue, scheme, port, colors.Reset, port)
 	} else {
 		_, _ = fmt.Fprintf(out,
-			"%sINFO%s Server started on %s%s%s\n",
+			"%sINFO%s Server started on: \t%s%s%s\n",
 			colors.Green, colors.Reset, colors.Blue, fmt.Sprintf("%s://%s:%s", scheme, host, port), colors.Reset)
 	}
 
 	if app.config.AppName != "" {
-		_, _ = fmt.Fprintf(out, "%sINFO%s Application name: %s%s%s\n", colors.Green, colors.Reset, colors.Blue, app.config.AppName, colors.Reset)
+		_, _ = fmt.Fprintf(out, "%sINFO%s Application name: \t\t%s%s%s\n", colors.Green, colors.Reset, colors.Blue, app.config.AppName, colors.Reset)
 	}
 	_, _ = fmt.Fprintf(out,
-		"%sINFO%s Total handlers count: %s%s%s\n",
+		"%sINFO%s Total handlers count: \t%s%s%s\n",
 		colors.Green, colors.Reset, colors.Blue, strconv.Itoa(int(app.handlersCount)), colors.Reset)
 	if isPrefork == "Enabled" {
-		_, _ = fmt.Fprintf(out, "%sINFO%s Prefork: %s%s%s\n", colors.Green, colors.Reset, colors.Blue, isPrefork, colors.Reset)
+		_, _ = fmt.Fprintf(out, "%sINFO%s Prefork: \t\t\t%s%s%s\n", colors.Green, colors.Reset, colors.Blue, isPrefork, colors.Reset)
 	} else {
-		_, _ = fmt.Fprintf(out, "%sINFO%s Prefork: %s%s%s\n", colors.Green, colors.Reset, colors.Red, isPrefork, colors.Reset)
+		_, _ = fmt.Fprintf(out, "%sINFO%s Prefork: \t\t\t%s%s%s\n", colors.Green, colors.Reset, colors.Red, isPrefork, colors.Reset)
 	}
-	_, _ = fmt.Fprintf(out, "%sINFO%s PID: %s%v%s\n", colors.Green, colors.Reset, colors.Blue, os.Getpid(), colors.Reset)
-	_, _ = fmt.Fprintf(out, "%sINFO%s Total process count: %s%s%s\n", colors.Green, colors.Reset, colors.Blue, procs, colors.Reset)
+	_, _ = fmt.Fprintf(out, "%sINFO%s PID: \t\t\t%s%v%s\n", colors.Green, colors.Reset, colors.Blue, os.Getpid(), colors.Reset)
+	_, _ = fmt.Fprintf(out, "%sINFO%s Total process count: \t%s%s%s\n", colors.Green, colors.Reset, colors.Blue, procs, colors.Reset)
 
 	if cfg.EnablePrefork {
 		// Turn the `pids` variable (in the form ",a,b,c,d,e,f,etc") into a slice of PIDs
-		var pidSlice []string
+		pidSlice := make([]string, 0)
 		for _, v := range strings.Split(pids, ",") {
 			if v != "" {
 				pidSlice = append(pidSlice, v)
 			}
 		}
 
-		_, _ = fmt.Fprintf(out, "%sINFO%s Child PIDs: %s", colors.Green, colors.Reset, colors.Blue)
+		_, _ = fmt.Fprintf(out, "%sINFO%s Child PIDs: \t\t%s", colors.Green, colors.Reset, colors.Blue)
 		totalPids := len(pidSlice)
 		rowTotalPidCount := 10
 		for i := 0; i < totalPids; i += rowTotalPidCount {
@@ -403,6 +404,9 @@ func (app *App) startupMessage(addr string, isTLS bool, pids string, cfg ListenC
 			_, _ = fmt.Fprintf(out, "\n%s", colors.Reset)
 		}
 	}
+
+	// add new Line as spacer
+	_, _ = fmt.Fprintf(out, "\n%s", colors.Reset)
 }
 
 // printRoutesMessage print all routes with method, path, name and handlers

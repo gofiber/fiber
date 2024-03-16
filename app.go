@@ -23,7 +23,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gofiber/fiber/v2/log"
+	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 
 	"github.com/valyala/fasthttp"
@@ -125,6 +125,8 @@ type App struct {
 	mountFields *mountFields
 	// Indicates if the value was explicitly configured
 	configured Config
+	// customConstraints is a list of external constraints
+	customConstraints []CustomConstraint
 }
 
 // Config is a struct holding the server settings.
@@ -277,7 +279,7 @@ type Config struct {
 
 	// StreamRequestBody enables request body streaming,
 	// and calls the handler sooner when given body is
-	// larger then the current limit.
+	// larger than the current limit.
 	StreamRequestBody bool
 
 	// Will not pre parse Multipart Form data if set to true.
@@ -389,6 +391,13 @@ type Config struct {
 	//
 	// Optional. Default: DefaultMethods
 	RequestMethods []string
+
+	// EnableSplittingOnParsers splits the query/body/header parameters by comma when it's true.
+	// For example, you can use it to parse multiple values from a query parameter like this:
+	//   /api?foo=bar,baz == foo[]=bar&foo[]=baz
+	//
+	// Optional. Default: false
+	EnableSplittingOnParsers bool `json:"enable_splitting_on_parsers"`
 }
 
 // Static defines configuration options when defining static assets.
@@ -501,7 +510,7 @@ func New(config ...Config) *App {
 	// Create Ctx pool
 	app.pool = sync.Pool{
 		New: func() any {
-			return app.NewCtx(&fasthttp.RequestCtx{})
+			return app.newCtx()
 		},
 	}
 
@@ -601,6 +610,11 @@ func (app *App) NewCtxFunc(function func(app *App) CustomCtx) {
 	app.newCtxFunc = function
 }
 
+// RegisterCustomConstraint allows to register custom constraint.
+func (app *App) RegisterCustomConstraint(constraint CustomConstraint) {
+	app.customConstraints = append(app.customConstraints, constraint)
+}
+
 // You can use SetTLSHandler to use ClientHelloInfo when using TLS with Listener.
 func (app *App) SetTLSHandler(tlsHandler *TLSHandler) {
 	// Attach the tlsHandler to the config
@@ -616,9 +630,11 @@ func (app *App) Name(name string) Router {
 
 	for _, routes := range app.stack {
 		for _, route := range routes {
-			if route.Path == app.latestRoute.path {
-				route.Name = name
+			isMethodValid := route.Method == app.latestRoute.Method || app.latestRoute.use ||
+				(app.latestRoute.Method == MethodGet && route.Method == MethodHead)
 
+			if route.Path == app.latestRoute.Path && isMethodValid {
+				route.Name = name
 				if route.group != nil {
 					route.Name = route.group.name + route.Name
 				}
@@ -895,7 +911,7 @@ func (app *App) ShutdownWithContext(ctx context.Context) error {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 	if app.server == nil {
-		return fmt.Errorf("shutdown: server is not running")
+		return ErrNotRunning
 	}
 	return app.server.ShutdownWithContext(ctx)
 }
@@ -912,11 +928,11 @@ func (app *App) Hooks() *Hooks {
 
 // Test is used for internal debugging by passing a *http.Request.
 // Timeout is optional and defaults to 1s, -1 will disable it completely.
-func (app *App) Test(req *http.Request, msTimeout ...int) (*http.Response, error) {
+func (app *App) Test(req *http.Request, timeout ...time.Duration) (*http.Response, error) {
 	// Set timeout
-	timeout := 1000
-	if len(msTimeout) > 0 {
-		timeout = msTimeout[0]
+	to := 1 * time.Second
+	if len(timeout) > 0 {
+		to = timeout[0]
 	}
 
 	// Add Content-Length if not provided with body
@@ -946,7 +962,7 @@ func (app *App) Test(req *http.Request, msTimeout ...int) (*http.Response, error
 		var returned bool
 		defer func() {
 			if !returned {
-				channel <- fmt.Errorf("runtime.Goexit() called in handler or server panic")
+				channel <- ErrHandlerExited
 			}
 		}()
 
@@ -955,12 +971,12 @@ func (app *App) Test(req *http.Request, msTimeout ...int) (*http.Response, error
 	}()
 
 	// Wait for callback
-	if timeout >= 0 {
+	if to >= 0 {
 		// With timeout
 		select {
 		case err = <-channel:
-		case <-time.After(time.Duration(timeout) * time.Millisecond):
-			return nil, fmt.Errorf("test: timeout error %vms", timeout)
+		case <-time.After(to):
+			return nil, fmt.Errorf("test: timeout error after %s", to)
 		}
 	} else {
 		// Without timeout
@@ -1069,12 +1085,7 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error {
 // errors before calling the application's error handler method.
 func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 	// Acquire Ctx with fasthttp request from pool
-	c, ok := app.AcquireCtx().(*DefaultCtx)
-	if !ok {
-		panic(fmt.Errorf("failed to type-assert to *DefaultCtx"))
-	}
-	c.Reset(fctx)
-
+	c := app.AcquireCtx(fctx)
 	defer app.ReleaseCtx(c)
 
 	var (

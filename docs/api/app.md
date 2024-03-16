@@ -93,7 +93,7 @@ type Static struct {
     // Next defines a function to skip this middleware when returned true.
     //
     // Optional. Default: nil
-    Next func(c *Ctx) bool
+    Next func(c Ctx) bool
 }
 ```
 
@@ -127,7 +127,7 @@ func main() {
     micro := fiber.New()
     app.Mount("/john", micro) // GET /john/doe -> 200 OK
 
-    micro.Get("/doe", func(c *fiber.Ctx) error {
+    micro.Get("/doe", func(c fiber.Ctx) error {
         return c.SendStatus(fiber.StatusOK)
     })
 
@@ -205,7 +205,7 @@ func main() {
 
   app.Route("/test", func(api fiber.Router) {
       api.Get("/foo", handler).Name("foo") // /test/foo (name: test.foo)
-    api.Get("/bar", handler).Name("bar") // /test/bar (name: test.bar)
+      api.Get("/bar", handler).Name("bar") // /test/bar (name: test.bar)
   }, "test.")
 
   log.Fatal(app.Listen(":3000"))
@@ -261,7 +261,7 @@ func (app *App) Stack() [][]*Route
 ```
 
 ```go title="Examples"
-var handler = func(c *fiber.Ctx) error { return nil }
+var handler = func(c fiber.Ctx) error { return nil }
 
 func main() {
     app := fiber.New()
@@ -315,7 +315,7 @@ func (app *App) Name(name string) Router
 ```
 
 ```go title="Examples"
-var handler = func(c *fiber.Ctx) error { return nil }
+var handler = func(c fiber.Ctx) error { return nil }
 
 func main() {
     app := fiber.New()
@@ -417,7 +417,7 @@ func (app *App) GetRoute(name string) Route
 ```
 
 ```go title="Examples"
-var handler = func(c *fiber.Ctx) error { return nil }
+var handler = func(c fiber.Ctx) error { return nil }
 
 func main() {
     app := fiber.New()
@@ -454,7 +454,7 @@ When filterUseOption equal to true, it will filter the routes registered by the 
 ```go title="Examples"
 func main() {
 	app := fiber.New()
-	app.Post("/", func (c *fiber.Ctx) error {
+	app.Post("/", func (c fiber.Ctx) error {
 		return c.SendString("Hello, World!")
 	}).Name("index")
 	data, _ := json.MarshalIndent(app.GetRoutes(true), "", "  ")
@@ -617,6 +617,16 @@ ln = tls.NewListener(ln, &tls.Config{Certificates: []tls.Certificate{cer}})
 app.Listener(ln)
 ```
 
+## RegisterCustomConstraint
+
+RegisterCustomConstraint allows to register custom constraint.
+
+```go title="Signature"
+func (app *App) RegisterCustomConstraint(constraint CustomConstraint)
+```
+
+See [Custom Constraint](../guide/routing.md#custom-constraint) section for more information.
+
 ## Test
 
 Testing your application is done with the **Test** method. Use this method for creating `_test.go` files or when you need to debug your routing logic. The default timeout is `1s` if you want to disable a timeout altogether, pass `-1` as a second argument.
@@ -627,7 +637,7 @@ func (app *App) Test(req *http.Request, msTimeout ...int) (*http.Response, error
 
 ```go title="Examples"
 // Create route with GET method for test:
-app.Get("/", func(c *fiber.Ctx) error {
+app.Get("/", func(c fiber.Ctx) error {
   fmt.Println(c.BaseURL())              // => http://google.com
   fmt.Println(c.Get("X-Custom-Header")) // => hi
 
@@ -643,7 +653,7 @@ resp, _ := app.Test(req)
 
 // Do something with results:
 if resp.StatusCode == fiber.StatusOK {
-  body, _ := ioutil.ReadAll(resp.Body)
+  body, _ := io.ReadAll(resp.Body)
   fmt.Println(string(body)) // => Hello, World!
 }
 ```

@@ -1,4 +1,4 @@
-//nolint:wrapcheck,tagliatelle,bodyclose // We must not wrap errors in tests
+//nolint:wrapcheck,tagliatelle // We must not wrap errors in tests
 package fiber
 
 import (
@@ -19,7 +19,7 @@ func Test_Binder(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	ctx := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
 	ctx.values = [maxParams]string{"id string"}
 	ctx.route = &Route{Params: []string{"id"}}
 	ctx.Request().SetBody([]byte(`{"name": "john doe"}`))
@@ -43,7 +43,7 @@ func Test_Binder_Nested(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
 	c.Request().URI().SetQueryString("name=tom&nested.and.age=10&nested.and.test=john")
@@ -70,7 +70,7 @@ func Test_Binder_Nested_Slice(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
 	c.Request().URI().SetQueryString("name=tom&data[0][name]=john&data[0][age]=10&data[1][name]=doe&data[1][age]=12")
@@ -97,7 +97,7 @@ func Test_Binder_Nested_Slice(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
 	c.Request().URI().SetQueryString("data[0][users][0][name]=john&data[0][users][0][age]=10&data[1][users][0][name]=doe&data[1][users][0][age]=12")
@@ -124,7 +124,7 @@ func Test_Binder_Nested_Slice(t *testing.T) {
 func Test_Bind_BasicType(t *testing.T) {
 	t.Parallel()
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Query struct {
 		Flag bool `query:"enable"`
@@ -209,7 +209,7 @@ func Test_Bind_BasicType(t *testing.T) {
 func Test_Bind_Query(t *testing.T) {
 	t.Parallel()
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Query struct {
 		ID    int      `query:"id"`
@@ -273,7 +273,7 @@ func Test_Bind_Query(t *testing.T) {
 func Test_Bind_Resp_Header(t *testing.T) {
 	t.Parallel()
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type resHeader struct {
 		Key string `respHeader:"k"`
@@ -306,7 +306,7 @@ func (u *userCtxUnmarshaler) UnmarshalFiberCtx(ctx Ctx) error {
 func Test_Bind_CustomizedUnmarshaler(t *testing.T) {
 	t.Parallel()
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Req struct {
 		Key userCtxUnmarshaler
@@ -324,7 +324,7 @@ func Test_Bind_CustomizedUnmarshaler(t *testing.T) {
 func Test_Bind_TextUnmarshaler(t *testing.T) {
 	t.Parallel()
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Req struct {
 		Time time.Time `query:"time"`
@@ -347,7 +347,7 @@ func Test_Bind_TextUnmarshaler(t *testing.T) {
 func Test_Bind_error_message(t *testing.T) {
 	t.Parallel()
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Req struct {
 		Time time.Time `query:"time"`
@@ -364,7 +364,7 @@ func Test_Bind_error_message(t *testing.T) {
 func Test_Bind_Form(t *testing.T) {
 	t.Parallel()
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
 
 	c.Context().Request.Header.Set(HeaderContentType, MIMEApplicationForm)
 	c.Context().Request.SetBody([]byte(url.Values{
@@ -391,7 +391,7 @@ func Test_Bind_Form(t *testing.T) {
 func Test_Bind_Multipart(t *testing.T) {
 	t.Parallel()
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
 
 	buf := bytes.NewBuffer(nil)
 	boundary := multipart.NewWriter(nil).Boundary()
@@ -436,7 +436,7 @@ type Req struct {
 func getBenchCtx() Ctx {
 	app := New()
 
-	ctx := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
 	ctx.values = [maxParams]string{"id string"}
 	ctx.route = &Route{Params: []string{"id"}}
 
@@ -503,7 +503,7 @@ func Test_Binder_Float(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	ctx := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
 	ctx.values = [maxParams]string{"3.14"}
 	ctx.route = &Route{Params: []string{"id"}}
 

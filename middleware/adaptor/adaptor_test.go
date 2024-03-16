@@ -1,7 +1,8 @@
-//nolint:bodyclose, contextcheck, revive // Much easier to just ignore memory leaks in tests
+//nolint:contextcheck, revive // Much easier to just ignore memory leaks in tests
 package adaptor
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -9,7 +10,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"reflect"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -33,61 +33,34 @@ func Test_HTTPHandler(t *testing.T) {
 		"XXX-Remote-Addr": "123.43.4543.345",
 	}
 	expectedURL, err := url.ParseRequestURI(expectedRequestURI)
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-	expectedContextKey := "contextKey"
+	require.NoError(t, err)
+
+	type contextKeyType string
+	expectedContextKey := contextKeyType("contextKey")
 	expectedContextValue := "contextValue"
 
 	callsCount := 0
 	nethttpH := func(w http.ResponseWriter, r *http.Request) {
 		callsCount++
-		if r.Method != expectedMethod {
-			t.Fatalf("unexpected method %q. Expecting %q", r.Method, expectedMethod)
-		}
-		if r.Proto != expectedProto {
-			t.Fatalf("unexpected proto %q. Expecting %q", r.Proto, expectedProto)
-		}
-		if r.ProtoMajor != expectedProtoMajor {
-			t.Fatalf("unexpected protoMajor %d. Expecting %d", r.ProtoMajor, expectedProtoMajor)
-		}
-		if r.ProtoMinor != expectedProtoMinor {
-			t.Fatalf("unexpected protoMinor %d. Expecting %d", r.ProtoMinor, expectedProtoMinor)
-		}
-		if r.RequestURI != expectedRequestURI {
-			t.Fatalf("unexpected requestURI %q. Expecting %q", r.RequestURI, expectedRequestURI)
-		}
-		if r.ContentLength != int64(expectedContentLength) {
-			t.Fatalf("unexpected contentLength %d. Expecting %d", r.ContentLength, expectedContentLength)
-		}
-		if len(r.TransferEncoding) != 0 {
-			t.Fatalf("unexpected transferEncoding %q. Expecting []", r.TransferEncoding)
-		}
-		if r.Host != expectedHost {
-			t.Fatalf("unexpected host %q. Expecting %q", r.Host, expectedHost)
-		}
-		if r.RemoteAddr != expectedRemoteAddr {
-			t.Fatalf("unexpected remoteAddr %q. Expecting %q", r.RemoteAddr, expectedRemoteAddr)
-		}
+		require.Equal(t, expectedMethod, r.Method, "Method")
+		require.Equal(t, expectedProto, r.Proto, "Proto")
+		require.Equal(t, expectedProtoMajor, r.ProtoMajor, "ProtoMajor")
+		require.Equal(t, expectedProtoMinor, r.ProtoMinor, "ProtoMinor")
+		require.Equal(t, expectedRequestURI, r.RequestURI, "RequestURI")
+		require.Equal(t, expectedContentLength, int(r.ContentLength), "ContentLength")
+		require.Empty(t, r.TransferEncoding, "TransferEncoding")
+		require.Equal(t, expectedHost, r.Host, "Host")
+		require.Equal(t, expectedRemoteAddr, r.RemoteAddr, "RemoteAddr")
+
 		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			t.Fatalf("unexpected error when reading request body: %s", err)
-		}
-		if string(body) != expectedBody {
-			t.Fatalf("unexpected body %q. Expecting %q", body, expectedBody)
-		}
-		if !reflect.DeepEqual(r.URL, expectedURL) {
-			t.Fatalf("unexpected URL: %#v. Expecting %#v", r.URL, expectedURL)
-		}
-		if r.Context().Value(expectedContextKey) != expectedContextValue {
-			t.Fatalf("unexpected context value for key %q. Expecting %q", expectedContextKey, expectedContextValue)
-		}
+		require.NoError(t, err)
+		require.Equal(t, expectedBody, string(body), "Body")
+		require.Equal(t, expectedURL, r.URL, "URL")
+		require.Equal(t, expectedContextValue, r.Context().Value(expectedContextKey), "Context")
 
 		for k, expectedV := range expectedHeader {
 			v := r.Header.Get(k)
-			if v != expectedV {
-				t.Fatalf("unexpected header value %q for key %q. Expecting %q", v, k, expectedV)
-			}
+			require.Equal(t, expectedV, v, "Header")
 		}
 
 		w.Header().Set("Header1", "value1")
@@ -104,43 +77,30 @@ func Test_HTTPHandler(t *testing.T) {
 	req.Header.SetMethod(expectedMethod)
 	req.SetRequestURI(expectedRequestURI)
 	req.Header.SetHost(expectedHost)
-	req.BodyWriter().Write([]byte(expectedBody)) //nolint:errcheck, gosec // not needed
+	req.BodyWriter().Write([]byte(expectedBody)) //nolint:errcheck // not needed
 	for k, v := range expectedHeader {
 		req.Header.Set(k, v)
 	}
 
 	remoteAddr, err := net.ResolveTCPAddr("tcp", expectedRemoteAddr)
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
+	require.NoError(t, err)
+
 	fctx.Init(&req, remoteAddr, nil)
 	app := fiber.New()
-	ctx := app.NewCtx(&fctx)
+	ctx := app.AcquireCtx(&fctx)
 	defer app.ReleaseCtx(ctx)
 
 	err = fiberH(ctx)
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-
-	if callsCount != 1 {
-		t.Fatalf("unexpected callsCount: %d. Expecting 1", callsCount)
-	}
+	require.NoError(t, err)
+	require.Equal(t, 1, callsCount, "callsCount")
 
 	resp := &fctx.Response
-	if resp.StatusCode() != fiber.StatusBadRequest {
-		t.Fatalf("unexpected statusCode: %d. Expecting %d", resp.StatusCode(), fiber.StatusBadRequest)
-	}
-	if string(resp.Header.Peek("Header1")) != "value1" {
-		t.Fatalf("unexpected header value: %q. Expecting %q", resp.Header.Peek("Header1"), "value1")
-	}
-	if string(resp.Header.Peek("Header2")) != "value2" {
-		t.Fatalf("unexpected header value: %q. Expecting %q", resp.Header.Peek("Header2"), "value2")
-	}
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode(), "StatusCode")
+	require.Equal(t, "value1", string(resp.Header.Peek("Header1")), "Header1")
+	require.Equal(t, "value2", string(resp.Header.Peek("Header2")), "Header2")
+
 	expectedResponseBody := fmt.Sprintf("request body is %q", expectedBody)
-	if string(resp.Body()) != expectedResponseBody {
-		t.Fatalf("unexpected response body %q. Expecting %q", resp.Body(), expectedResponseBody)
-	}
+	require.Equal(t, expectedResponseBody, string(resp.Body()), "Body")
 }
 
 type contextKey string
@@ -155,6 +115,7 @@ var (
 )
 
 func Test_HTTPMiddleware(t *testing.T) {
+	const expectedHost = "foobar.com"
 	tests := []struct {
 		name       string
 		url        string
@@ -187,6 +148,7 @@ func Test_HTTPMiddleware(t *testing.T) {
 				w.WriteHeader(http.StatusMethodNotAllowed)
 				return
 			}
+
 			r = r.WithContext(context.WithValue(r.Context(), TestContextKey, "okay"))
 			r = r.WithContext(context.WithValue(r.Context(), TestContextSecondKey, "not_okay"))
 			r = r.WithContext(context.WithValue(r.Context(), TestContextSecondKey, "okay"))
@@ -219,32 +181,22 @@ func Test_HTTPMiddleware(t *testing.T) {
 
 	for _, tt := range tests {
 		req, err := http.NewRequestWithContext(context.Background(), tt.method, tt.url, nil)
-		if err != nil {
-			t.Fatalf(`%s: %s`, t.Name(), err)
-		}
+		req.Host = expectedHost
+		require.NoError(t, err)
+
 		resp, err := app.Test(req)
-		if err != nil {
-			t.Fatalf(`%s: %s`, t.Name(), err)
-		}
-		if resp.StatusCode != tt.statusCode {
-			t.Fatalf(`%s: StatusCode: got %v - expected %v`, t.Name(), resp.StatusCode, tt.statusCode)
-		}
+		require.NoError(t, err)
+		require.Equal(t, tt.statusCode, resp.StatusCode, "StatusCode")
 	}
 
 	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodPost, "/", nil)
-	if err != nil {
-		t.Fatalf(`%s: %s`, t.Name(), err)
-	}
+	req.Host = expectedHost
+	require.NoError(t, err)
+
 	resp, err := app.Test(req)
-	if err != nil {
-		t.Fatalf(`%s: %s`, t.Name(), err)
-	}
-	if resp.Header.Get("context_okay") != "okay" {
-		t.Fatalf(`%s: Header context_okay: got %v - expected %v`, t.Name(), resp.Header.Get("context_okay"), "okay")
-	}
-	if resp.Header.Get("context_second_okay") != "okay" {
-		t.Fatalf(`%s: Header context_second_okay: got %v - expected %v`, t.Name(), resp.Header.Get("context_second_okay"), "okay")
-	}
+	require.NoError(t, err)
+	require.Equal(t, "okay", resp.Header.Get("context_okay"))
+	require.Equal(t, "okay", resp.Header.Get("context_second_okay"))
 }
 
 func Test_FiberHandler(t *testing.T) {
@@ -281,43 +233,26 @@ func testFiberToHandlerFunc(t *testing.T, checkDefaultPort bool, app ...*fiber.A
 		"XXX-Remote-Addr": "123.43.4543.345",
 	}
 	expectedURL, err := url.ParseRequestURI(expectedRequestURI)
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
+	require.NoError(t, err)
 
 	callsCount := 0
 	fiberH := func(c fiber.Ctx) error {
 		callsCount++
-		if c.Method() != expectedMethod {
-			t.Fatalf("unexpected method %q. Expecting %q", c.Method(), expectedMethod)
-		}
-		if string(c.Context().RequestURI()) != expectedRequestURI {
-			t.Fatalf("unexpected requestURI %q. Expecting %q", string(c.Context().RequestURI()), expectedRequestURI)
-		}
-		contentLength := c.Context().Request.Header.ContentLength()
-		if contentLength != expectedContentLength {
-			t.Fatalf("unexpected contentLength %d. Expecting %d", contentLength, expectedContentLength)
-		}
-		if c.Hostname() != expectedHost {
-			t.Fatalf("unexpected host %q. Expecting %q", c.Hostname(), expectedHost)
-		}
-		remoteAddr := c.Context().RemoteAddr().String()
-		if remoteAddr != expectedRemoteAddr {
-			t.Fatalf("unexpected remoteAddr %q. Expecting %q", remoteAddr, expectedRemoteAddr)
-		}
+		require.Equal(t, expectedMethod, c.Method(), "Method")
+		require.Equal(t, expectedRequestURI, string(c.Context().RequestURI()), "RequestURI")
+		require.Equal(t, expectedContentLength, c.Context().Request.Header.ContentLength(), "ContentLength")
+		require.Equal(t, expectedHost, c.Hostname(), "Host")
+		require.Equal(t, expectedHost, string(c.Request().Header.Host()), "Host")
+		require.Equal(t, "http://"+expectedHost, c.BaseURL(), "BaseURL")
+		require.Equal(t, expectedRemoteAddr, c.Context().RemoteAddr().String(), "RemoteAddr")
+
 		body := string(c.Body())
-		if body != expectedBody {
-			t.Fatalf("unexpected body %q. Expecting %q", body, expectedBody)
-		}
-		if c.OriginalURL() != expectedURL.String() {
-			t.Fatalf("unexpected URL: %#v. Expecting %#v", c.OriginalURL(), expectedURL)
-		}
+		require.Equal(t, expectedBody, body, "Body")
+		require.Equal(t, expectedURL.String(), c.OriginalURL(), "URL")
 
 		for k, expectedV := range expectedHeader {
 			v := c.Get(k)
-			if v != expectedV {
-				t.Fatalf("unexpected header value %q for key %q. Expecting %q", v, k, expectedV)
-			}
+			require.Equal(t, expectedV, v, "Header")
 		}
 
 		c.Set("Header1", "value1")
@@ -356,22 +291,15 @@ func testFiberToHandlerFunc(t *testing.T, checkDefaultPort bool, app ...*fiber.A
 	var w netHTTPResponseWriter
 	handlerFunc.ServeHTTP(&w, &r)
 
-	if w.StatusCode() != http.StatusBadRequest {
-		t.Fatalf("unexpected statusCode: %d. Expecting %d", w.StatusCode(), http.StatusBadRequest)
-	}
-	if w.Header().Get("Header1") != "value1" {
-		t.Fatalf("unexpected header value: %q. Expecting %q", w.Header().Get("Header1"), "value1")
-	}
-	if w.Header().Get("Header2") != "value2" {
-		t.Fatalf("unexpected header value: %q. Expecting %q", w.Header().Get("Header2"), "value2")
-	}
+	require.Equal(t, http.StatusBadRequest, w.StatusCode(), "StatusCode")
+	require.Equal(t, "value1", w.Header().Get("Header1"), "Header1")
+	require.Equal(t, "value2", w.Header().Get("Header2"), "Header2")
+
 	expectedResponseBody := fmt.Sprintf("request body is %q", expectedBody)
-	if string(w.body) != expectedResponseBody {
-		t.Fatalf("unexpected response body %q. Expecting %q", string(w.body), expectedResponseBody)
-	}
+	require.Equal(t, expectedResponseBody, string(w.body), "Body")
 }
 
-func setFiberContextValueMiddleware(next fiber.Handler, key string, value interface{}) fiber.Handler {
+func setFiberContextValueMiddleware(next fiber.Handler, key, value any) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		c.Locals(key, value)
 		return next(c)
@@ -386,16 +314,9 @@ func Test_FiberHandler_RequestNilBody(t *testing.T) {
 	callsCount := 0
 	fiberH := func(c fiber.Ctx) error {
 		callsCount++
-		if c.Method() != expectedMethod {
-			t.Fatalf("unexpected method %q. Expecting %q", c.Method(), expectedMethod)
-		}
-		if string(c.Request().RequestURI()) != expectedRequestURI {
-			t.Fatalf("unexpected requestURI %q. Expecting %q", string(c.Request().RequestURI()), expectedRequestURI)
-		}
-		contentLength := c.Request().Header.ContentLength()
-		if contentLength != expectedContentLength {
-			t.Fatalf("unexpected contentLength %d. Expecting %d", contentLength, expectedContentLength)
-		}
+		require.Equal(t, expectedMethod, c.Method(), "Method")
+		require.Equal(t, expectedRequestURI, string(c.Context().RequestURI()), "RequestURI")
+		require.Equal(t, expectedContentLength, c.Context().Request.Header.ContentLength(), "ContentLength")
 
 		_, err := c.Write([]byte("request body is nil"))
 		return err
@@ -411,9 +332,7 @@ func Test_FiberHandler_RequestNilBody(t *testing.T) {
 	nethttpH.ServeHTTP(&w, &r)
 
 	expectedResponseBody := "request body is nil"
-	if string(w.body) != expectedResponseBody {
-		t.Fatalf("unexpected response body %q. Expecting %q", string(w.body), expectedResponseBody)
-	}
+	require.Equal(t, expectedResponseBody, string(w.body), "Body")
 }
 
 type netHTTPBody struct {
@@ -477,11 +396,141 @@ func Test_ConvertRequest(t *testing.T) {
 		return c.SendString("Request URL: " + httpReq.URL.String())
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test?hello=world&another=test", http.NoBody))
-	require.Equal(t, nil, err, "app.Test(req)")
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test?hello=world&another=test", nil))
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "Request URL: /test?hello=world&another=test", string(body))
+}
+
+// Benchmark for FiberHandlerFunc
+func Benchmark_FiberHandlerFunc(b *testing.B) {
+	benchmarks := []struct {
+		name        string
+		bodyContent []byte
+	}{
+		{
+			name:        "100KB",
+			bodyContent: make([]byte, 100*1024),
+		},
+		{
+			name:        "500KB",
+			bodyContent: make([]byte, 500*1024),
+		},
+		{
+			name:        "1MB",
+			bodyContent: make([]byte, 1*1024*1024),
+		},
+		{
+			name:        "5MB",
+			bodyContent: make([]byte, 5*1024*1024),
+		},
+		{
+			name:        "10MB",
+			bodyContent: make([]byte, 10*1024*1024),
+		},
+		{
+			name:        "25MB",
+			bodyContent: make([]byte, 25*1024*1024),
+		},
+		{
+			name:        "50MB",
+			bodyContent: make([]byte, 50*1024*1024),
+		},
+	}
+
+	fiberH := func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	}
+	handlerFunc := FiberHandlerFunc(fiberH)
+
+	for _, bm := range benchmarks {
+		b.Run(bm.name, func(b *testing.B) {
+			w := httptest.NewRecorder()
+			bodyBuffer := bytes.NewBuffer(bm.bodyContent)
+
+			r := http.Request{
+				Method: http.MethodPost,
+				Body:   nil,
+			}
+
+			// Replace the empty Body with our buffer
+			r.Body = io.NopCloser(bodyBuffer)
+			defer r.Body.Close() //nolint:errcheck // not needed
+
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			for i := 0; i < b.N; i++ {
+				handlerFunc.ServeHTTP(w, &r)
+			}
+		})
+	}
+}
+
+func Benchmark_FiberHandlerFunc_Parallel(b *testing.B) {
+	benchmarks := []struct {
+		name        string
+		bodyContent []byte
+	}{
+		{
+			name:        "100KB",
+			bodyContent: make([]byte, 100*1024),
+		},
+		{
+			name:        "500KB",
+			bodyContent: make([]byte, 500*1024),
+		},
+		{
+			name:        "1MB",
+			bodyContent: make([]byte, 1*1024*1024),
+		},
+		{
+			name:        "5MB",
+			bodyContent: make([]byte, 5*1024*1024),
+		},
+		{
+			name:        "10MB",
+			bodyContent: make([]byte, 10*1024*1024),
+		},
+		{
+			name:        "25MB",
+			bodyContent: make([]byte, 25*1024*1024),
+		},
+		{
+			name:        "50MB",
+			bodyContent: make([]byte, 50*1024*1024),
+		},
+	}
+
+	fiberH := func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	}
+	handlerFunc := FiberHandlerFunc(fiberH)
+
+	for _, bm := range benchmarks {
+		b.Run(bm.name, func(b *testing.B) {
+			bodyBuffer := bytes.NewBuffer(bm.bodyContent)
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			b.RunParallel(func(pb *testing.PB) {
+				w := httptest.NewRecorder()
+				r := http.Request{
+					Method: http.MethodPost,
+					Body:   nil,
+				}
+
+				// Replace the empty Body with our buffer
+				r.Body = io.NopCloser(bodyBuffer)
+				defer r.Body.Close() //nolint:errcheck // not needed
+
+				for pb.Next() {
+					handlerFunc(w, &r)
+				}
+			})
+		})
+	}
 }

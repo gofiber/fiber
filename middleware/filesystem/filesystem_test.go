@@ -1,4 +1,3 @@
-//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package filesystem
 
 import (
@@ -120,7 +119,9 @@ func Test_FileSystem(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, tt.url, nil))
 			require.NoError(t, err)
 			require.Equal(t, tt.statusCode, resp.StatusCode)
@@ -160,7 +161,7 @@ func Test_FileSystem_Download(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/img/fiber.png", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.False(t, resp.Header.Get(fiber.HeaderContentLength) == "")
+	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
 	require.Equal(t, "image/png", resp.Header.Get(fiber.HeaderContentType))
 	require.Equal(t, "attachment", resp.Header.Get(fiber.HeaderContentDisposition))
 }

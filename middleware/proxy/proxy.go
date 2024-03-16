@@ -2,7 +2,6 @@ package proxy
 
 import (
 	"bytes"
-	"crypto/tls"
 	"net/url"
 	"strings"
 	"sync"
@@ -46,6 +45,8 @@ func Balancer(config Config) fiber.Handler {
 				WriteBufferSize: config.WriteBufferSize,
 
 				TLSConfig: config.TlsConfig,
+
+				DialDualStack: config.DialDualStack,
 			}
 
 			lbc.Clients = append(lbc.Clients, client)
@@ -104,15 +105,6 @@ var client = &fasthttp.Client{
 }
 
 var lock sync.RWMutex
-
-// WithTlsConfig update http client with a user specified tls.config
-// This function should be called before Do and Forward.
-// Deprecated: use WithClient instead.
-//
-//nolint:stylecheck,revive // TODO: Rename to "WithTLSConfig" in v3
-func WithTlsConfig(tlsConfig *tls.Config) {
-	client.TLSConfig = tlsConfig
-}
 
 // WithClient sets the global proxy client.
 // This function should be called before Do and Forward.

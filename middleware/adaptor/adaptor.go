@@ -37,30 +37,42 @@ func ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error) {
 	return &req, nil
 }
 
-// CopyContextToFiberContext copies the values of context.Context to a fasthttp.RequestCtx
-func CopyContextToFiberContext(context interface{}, requestContext *fasthttp.RequestCtx) {
+// CopyContextToFiberContext copies the values of context.Context to a fasthttp.RequestCtx.
+func CopyContextToFiberContext(context any, requestContext *fasthttp.RequestCtx) {
 	contextValues := reflect.ValueOf(context).Elem()
 	contextKeys := reflect.TypeOf(context).Elem()
-	if contextKeys.Kind() == reflect.Struct {
-		var lastKey interface{}
-		for i := 0; i < contextValues.NumField(); i++ {
-			reflectValue := contextValues.Field(i)
+
+	if contextKeys.Kind() != reflect.Struct {
+		return
+	}
+
+	var lastKey any
+	for i := 0; i < contextValues.NumField(); i++ {
+		reflectValue := contextValues.Field(i)
+		reflectField := contextKeys.Field(i)
+
+		if reflectField.Name == "noCopy" {
+			break
+		}
+
+		// Use unsafe to access potentially unexported fields.
+		if reflectValue.CanAddr() {
 			/* #nosec */
 			reflectValue = reflect.NewAt(reflectValue.Type(), unsafe.Pointer(reflectValue.UnsafeAddr())).Elem()
+		}
 
-			reflectField := contextKeys.Field(i)
-
-			if reflectField.Name == "noCopy" {
-				break
-			} else if reflectField.Name == "Context" {
-				CopyContextToFiberContext(reflectValue.Interface(), requestContext)
-			} else if reflectField.Name == "key" {
-				lastKey = reflectValue.Interface()
-			} else if lastKey != nil && reflectField.Name == "val" {
+		switch reflectField.Name {
+		case "Context":
+			CopyContextToFiberContext(reflectValue.Interface(), requestContext)
+		case "key":
+			lastKey = reflectValue.Interface()
+		case "val":
+			if lastKey != nil {
 				requestContext.SetUserValue(lastKey, reflectValue.Interface())
-			} else {
-				lastKey = nil
+				lastKey = nil // Reset lastKey after setting the value
 			}
+		default:
+			continue
 		}
 	}
 }
@@ -69,12 +81,13 @@ func CopyContextToFiberContext(context interface{}, requestContext *fasthttp.Req
 func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		var next bool
-		nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextHandler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 			next = true
 			// Convert again in case request may modify by middleware
 			c.Request().Header.SetMethod(r.Method)
 			c.Request().SetRequestURI(r.RequestURI)
 			c.Request().SetHost(r.Host)
+			c.Request().Header.SetHost(r.Host)
 			for key, val := range r.Header {
 				for _, v := range val {
 					c.Request().Header.Set(key, v)
@@ -116,14 +129,9 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		defer fasthttp.ReleaseRequest(req)
 		// Convert net/http -> fasthttp request
 		if r.Body != nil {
-			body, err := io.ReadAll(r.Body)
-			if err != nil {
-				http.Error(w, utils.StatusMessage(fiber.StatusInternalServerError), fiber.StatusInternalServerError)
-				return
-			}
+			n, err := io.Copy(req.BodyWriter(), r.Body)
+			req.Header.SetContentLength(int(n))
 
-			req.Header.SetContentLength(len(body))
-			_, err = req.BodyWriter().Write(body)
 			if err != nil {
 				http.Error(w, utils.StatusMessage(fiber.StatusInternalServerError), fiber.StatusInternalServerError)
 				return
@@ -132,6 +140,7 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		req.Header.SetMethod(r.Method)
 		req.SetRequestURI(r.RequestURI)
 		req.SetHost(r.Host)
+		req.Header.SetHost(r.Host)
 		for key, val := range r.Header {
 			for _, v := range val {
 				req.Header.Set(key, v)
@@ -151,7 +160,7 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		fctx.Init(req, remoteAddr, nil)
 		if len(h) > 0 {
 			// New fiber Ctx
-			ctx := app.NewCtx(&fctx)
+			ctx := app.AcquireCtx(&fctx)
 			// Execute fiber Ctx
 			err := h[0](ctx)
 			if err != nil {

@@ -1,9 +1,7 @@
-//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package keyauth
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -64,7 +62,7 @@ func TestAuthSources(t *testing.T) {
 
 				authMiddleware := New(Config{
 					KeyLookup: authSource + ":" + test.authTokenName,
-					Validator: func(c fiber.Ctx, key string) (bool, error) {
+					Validator: func(_ fiber.Ctx, key string) (bool, error) {
 						if key == CorrectKey {
 							return true, nil
 						}
@@ -88,7 +86,7 @@ func TestAuthSources(t *testing.T) {
 				// construct the test HTTP request
 				var req *http.Request
 				req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, test.route, nil)
-				require.Equal(t, err, nil)
+				require.NoError(t, err)
 
 				// setup the apikey for the different auth schemes
 				if authSource == "header" {
@@ -107,7 +105,7 @@ func TestAuthSources(t *testing.T) {
 
 				res, err := app.Test(req, -1)
 
-				require.Equal(t, nil, err, test.description)
+				require.NoError(t, err, test.description)
 
 				// test the body of the request
 				body, err := io.ReadAll(res.Body)
@@ -121,11 +119,11 @@ func TestAuthSources(t *testing.T) {
 				require.Equal(t, test.expectedCode, res.StatusCode, test.description)
 
 				// body
-				require.Equal(t, nil, err, test.description)
+				require.NoError(t, err, test.description)
 				require.Equal(t, test.expectedBody, string(body), test.description)
 
 				err = res.Body.Close()
-				require.Equal(t, err, nil)
+				require.NoError(t, err)
 			}
 		})
 	}
@@ -141,7 +139,7 @@ func TestMultipleKeyAuth(t *testing.T) {
 			return c.OriginalURL() != "/auth1"
 		},
 		KeyLookup: "header:key",
-		Validator: func(c fiber.Ctx, key string) (bool, error) {
+		Validator: func(_ fiber.Ctx, key string) (bool, error) {
 			if key == "password1" {
 				return true, nil
 			}
@@ -155,7 +153,7 @@ func TestMultipleKeyAuth(t *testing.T) {
 			return c.OriginalURL() != "/auth2"
 		},
 		KeyLookup: "header:key",
-		Validator: func(c fiber.Ctx, key string) (bool, error) {
+		Validator: func(_ fiber.Ctx, key string) (bool, error) {
 			if key == "password2" {
 				return true, nil
 			}
@@ -243,21 +241,21 @@ func TestMultipleKeyAuth(t *testing.T) {
 	for _, test := range tests {
 		var req *http.Request
 		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, test.route, nil)
-		require.Equal(t, err, nil)
+		require.NoError(t, err)
 		if test.APIKey != "" {
 			req.Header.Set("key", test.APIKey)
 		}
 
 		res, err := app.Test(req, -1)
 
-		require.Equal(t, nil, err, test.description)
+		require.NoError(t, err, test.description)
 
 		// test the body of the request
 		body, err := io.ReadAll(res.Body)
 		require.Equal(t, test.expectedCode, res.StatusCode, test.description)
 
 		// body
-		require.Equal(t, nil, err, test.description)
+		require.NoError(t, err, test.description)
 		require.Equal(t, test.expectedBody, string(body), test.description)
 	}
 }
@@ -269,10 +267,10 @@ func TestCustomSuccessAndFailureHandlers(t *testing.T) {
 		SuccessHandler: func(c fiber.Ctx) error {
 			return c.Status(fiber.StatusOK).SendString("API key is valid and request was handled by custom success handler")
 		},
-		ErrorHandler: func(c fiber.Ctx, err error) error {
+		ErrorHandler: func(c fiber.Ctx, _ error) error {
 			return c.Status(fiber.StatusUnauthorized).SendString("API key is invalid and request was handled by custom error handler")
 		},
-		Validator: func(c fiber.Ctx, key string) (bool, error) {
+		Validator: func(_ fiber.Ctx, key string) (bool, error) {
 			if key == CorrectKey {
 				return true, nil
 			}
@@ -281,38 +279,38 @@ func TestCustomSuccessAndFailureHandlers(t *testing.T) {
 	}))
 
 	// Define a test handler that should not be called
-	app.Get("/", func(c fiber.Ctx) error {
+	app.Get("/", func(_ fiber.Ctx) error {
 		t.Error("Test handler should not be called")
 		return nil
 	})
 
 	// Create a request without an API key and send it to the app
 	res, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	// Read the response body into a string
 	body, err := io.ReadAll(res.Body)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	// Check that the response has the expected status code and body
-	require.Equal(t, res.StatusCode, http.StatusUnauthorized)
-	require.Equal(t, string(body), "API key is invalid and request was handled by custom error handler")
+	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
+	require.Equal(t, "API key is invalid and request was handled by custom error handler", string(body))
 
 	// Create a request with a valid API key in the Authorization header
 	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
-	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", CorrectKey))
+	req.Header.Add("Authorization", "Bearer "+CorrectKey)
 
 	// Send the request to the app
 	res, err = app.Test(req)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	// Read the response body into a string
 	body, err = io.ReadAll(res.Body)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	// Check that the response has the expected status code and body
-	require.Equal(t, res.StatusCode, http.StatusOK)
-	require.Equal(t, string(body), "API key is valid and request was handled by custom success handler")
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	require.Equal(t, "API key is valid and request was handled by custom success handler", string(body))
 }
 
 func TestCustomNextFunc(t *testing.T) {
@@ -322,7 +320,7 @@ func TestCustomNextFunc(t *testing.T) {
 		Next: func(c fiber.Ctx) bool {
 			return c.Path() == "/allowed"
 		},
-		Validator: func(c fiber.Ctx, key string) (bool, error) {
+		Validator: func(_ fiber.Ctx, key string) (bool, error) {
 			if key == CorrectKey {
 				return true, nil
 			}
@@ -338,42 +336,42 @@ func TestCustomNextFunc(t *testing.T) {
 	// Create a request with the "/allowed" path and send it to the app
 	req := httptest.NewRequest(fiber.MethodGet, "/allowed", nil)
 	res, err := app.Test(req)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	// Read the response body into a string
 	body, err := io.ReadAll(res.Body)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	// Check that the response has the expected status code and body
-	require.Equal(t, res.StatusCode, http.StatusOK)
-	require.Equal(t, string(body), "API key is valid and request was allowed by custom filter")
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	require.Equal(t, "API key is valid and request was allowed by custom filter", string(body))
 
 	// Create a request with a different path and send it to the app without correct key
 	req = httptest.NewRequest(fiber.MethodGet, "/not-allowed", nil)
 	res, err = app.Test(req)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	// Read the response body into a string
 	body, err = io.ReadAll(res.Body)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	// Check that the response has the expected status code and body
-	require.Equal(t, res.StatusCode, http.StatusUnauthorized)
+	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
 	require.Equal(t, string(body), ErrMissingOrMalformedAPIKey.Error())
 
 	// Create a request with a different path and send it to the app with correct key
 	req = httptest.NewRequest(fiber.MethodGet, "/not-allowed", nil)
-	req.Header.Add("Authorization", fmt.Sprintf("Basic %s", CorrectKey))
+	req.Header.Add("Authorization", "Basic "+CorrectKey)
 
 	res, err = app.Test(req)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	// Read the response body into a string
 	body, err = io.ReadAll(res.Body)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	// Check that the response has the expected status code and body
-	require.Equal(t, res.StatusCode, http.StatusUnauthorized)
+	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
 	require.Equal(t, string(body), ErrMissingOrMalformedAPIKey.Error())
 }
 
@@ -382,7 +380,7 @@ func TestAuthSchemeToken(t *testing.T) {
 
 	app.Use(New(Config{
 		AuthScheme: "Token",
-		Validator: func(c fiber.Ctx, key string) (bool, error) {
+		Validator: func(_ fiber.Ctx, key string) (bool, error) {
 			if key == CorrectKey {
 				return true, nil
 			}
@@ -397,19 +395,19 @@ func TestAuthSchemeToken(t *testing.T) {
 
 	// Create a request with a valid API key in the "Token" Authorization header
 	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
-	req.Header.Add("Authorization", fmt.Sprintf("Token %s", CorrectKey))
+	req.Header.Add("Authorization", "Token "+CorrectKey)
 
 	// Send the request to the app
 	res, err := app.Test(req)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	// Read the response body into a string
 	body, err := io.ReadAll(res.Body)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	// Check that the response has the expected status code and body
-	require.Equal(t, res.StatusCode, http.StatusOK)
-	require.Equal(t, string(body), "API key is valid")
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	require.Equal(t, "API key is valid", string(body))
 }
 
 func TestAuthSchemeBasic(t *testing.T) {
@@ -418,7 +416,7 @@ func TestAuthSchemeBasic(t *testing.T) {
 	app.Use(New(Config{
 		KeyLookup:  "header:Authorization",
 		AuthScheme: "Basic",
-		Validator: func(c fiber.Ctx, key string) (bool, error) {
+		Validator: func(_ fiber.Ctx, key string) (bool, error) {
 			if key == CorrectKey {
 				return true, nil
 			}
@@ -433,29 +431,29 @@ func TestAuthSchemeBasic(t *testing.T) {
 
 	// Create a request without an API key and  Send the request to the app
 	res, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	// Read the response body into a string
 	body, err := io.ReadAll(res.Body)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	// Check that the response has the expected status code and body
-	require.Equal(t, res.StatusCode, http.StatusUnauthorized)
+	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
 	require.Equal(t, string(body), ErrMissingOrMalformedAPIKey.Error())
 
 	// Create a request with a valid API key in the "Authorization" header using the "Basic" scheme
 	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
-	req.Header.Add("Authorization", fmt.Sprintf("Basic %s", CorrectKey))
+	req.Header.Add("Authorization", "Basic "+CorrectKey)
 
 	// Send the request to the app
 	res, err = app.Test(req)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	// Read the response body into a string
 	body, err = io.ReadAll(res.Body)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	// Check that the response has the expected status code and body
-	require.Equal(t, res.StatusCode, http.StatusOK)
-	require.Equal(t, string(body), "API key is valid")
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	require.Equal(t, "API key is valid", string(body))
 }

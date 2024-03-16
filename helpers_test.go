@@ -17,47 +17,310 @@ import (
 
 func Test_Utils_GetOffer(t *testing.T) {
 	t.Parallel()
-	require.Equal(t, "", getOffer("hello", acceptsOffer))
-	require.Equal(t, "1", getOffer("", acceptsOffer, "1"))
-	require.Equal(t, "", getOffer("2", acceptsOffer, "1"))
+	require.Equal(t, "", getOffer([]byte("hello"), acceptsOffer))
+	require.Equal(t, "1", getOffer([]byte(""), acceptsOffer, "1"))
+	require.Equal(t, "", getOffer([]byte("2"), acceptsOffer, "1"))
 
-	require.Equal(t, "", getOffer("", acceptsOfferType))
-	require.Equal(t, "", getOffer("text/html", acceptsOfferType))
-	require.Equal(t, "", getOffer("text/html", acceptsOfferType, "application/json"))
-	require.Equal(t, "", getOffer("text/html;q=0", acceptsOfferType, "text/html"))
-	require.Equal(t, "", getOffer("application/json, */*; q=0", acceptsOfferType, "image/png"))
-	require.Equal(t, "application/xml", getOffer("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", acceptsOfferType, "application/xml", "application/json"))
-	require.Equal(t, "text/html", getOffer("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", acceptsOfferType, "text/html"))
-	require.Equal(t, "application/pdf", getOffer("text/plain;q=0,application/pdf;q=0.9,*/*;q=0.000", acceptsOfferType, "application/pdf", "application/json"))
-	require.Equal(t, "application/pdf", getOffer("text/plain;q=0,application/pdf;q=0.9,*/*;q=0.000", acceptsOfferType, "application/pdf", "application/json"))
+	require.Equal(t, "", getOffer([]byte(""), acceptsOfferType))
+	require.Equal(t, "", getOffer([]byte("text/html"), acceptsOfferType))
+	require.Equal(t, "", getOffer([]byte("text/html"), acceptsOfferType, "application/json"))
+	require.Equal(t, "", getOffer([]byte("text/html;q=0"), acceptsOfferType, "text/html"))
+	require.Equal(t, "", getOffer([]byte("application/json, */*; q=0"), acceptsOfferType, "image/png"))
+	require.Equal(t, "application/xml", getOffer([]byte("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"), acceptsOfferType, "application/xml", "application/json"))
+	require.Equal(t, "text/html", getOffer([]byte("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"), acceptsOfferType, "text/html"))
+	require.Equal(t, "application/pdf", getOffer([]byte("text/plain;q=0,application/pdf;q=0.9,*/*;q=0.000"), acceptsOfferType, "application/pdf", "application/json"))
+	require.Equal(t, "application/pdf", getOffer([]byte("text/plain;q=0,application/pdf;q=0.9,*/*;q=0.000"), acceptsOfferType, "application/pdf", "application/json"))
+	require.Equal(t, "text/plain;a=1", getOffer([]byte("text/plain;a=1"), acceptsOfferType, "text/plain;a=1"))
+	require.Equal(t, "", getOffer([]byte("text/plain;a=1;b=2"), acceptsOfferType, "text/plain;b=2"))
 
-	require.Equal(t, "", getOffer("utf-8, iso-8859-1;q=0.5", acceptsOffer))
-	require.Equal(t, "", getOffer("utf-8, iso-8859-1;q=0.5", acceptsOffer, "ascii"))
-	require.Equal(t, "utf-8", getOffer("utf-8, iso-8859-1;q=0.5", acceptsOffer, "utf-8"))
-	require.Equal(t, "iso-8859-1", getOffer("utf-8;q=0, iso-8859-1;q=0.5", acceptsOffer, "utf-8", "iso-8859-1"))
+	// Spaces, quotes, out of order params, and case insensitivity
+	require.Equal(t, "text/plain", getOffer([]byte("text/plain  "), acceptsOfferType, "text/plain"))
+	require.Equal(t, "text/plain", getOffer([]byte("text/plain;q=0.4  "), acceptsOfferType, "text/plain"))
+	require.Equal(t, "text/plain", getOffer([]byte("text/plain;q=0.4  ;"), acceptsOfferType, "text/plain"))
+	require.Equal(t, "text/plain", getOffer([]byte("text/plain;q=0.4  ; p=foo"), acceptsOfferType, "text/plain"))
+	require.Equal(t, "text/plain;b=2;a=1", getOffer([]byte("text/plain ;a=1;b=2"), acceptsOfferType, "text/plain;b=2;a=1"))
+	require.Equal(t, "text/plain;a=1", getOffer([]byte("text/plain;   a=1   "), acceptsOfferType, "text/plain;a=1"))
+	require.Equal(t, `text/plain;a="1;b=2\",text/plain"`, getOffer([]byte(`text/plain;a="1;b=2\",text/plain";q=0.9`), acceptsOfferType, `text/plain;a=1;b=2`, `text/plain;a="1;b=2\",text/plain"`))
+	require.Equal(t, "text/plain;A=CAPS", getOffer([]byte(`text/plain;a="caPs"`), acceptsOfferType, "text/plain;A=CAPS"))
 
-	require.Equal(t, "deflate", getOffer("gzip, deflate", acceptsOffer, "deflate"))
-	require.Equal(t, "", getOffer("gzip, deflate;q=0", acceptsOffer, "deflate"))
+	// Priority
+	require.Equal(t, "text/plain", getOffer([]byte("text/plain"), acceptsOfferType, "text/plain", "text/plain;a=1"))
+	require.Equal(t, "text/plain;a=1", getOffer([]byte("text/plain"), acceptsOfferType, "text/plain;a=1", "", "text/plain"))
+	require.Equal(t, "text/plain;a=1", getOffer([]byte("text/plain,text/plain;a=1"), acceptsOfferType, "text/plain", "text/plain;a=1"))
+	require.Equal(t, "text/plain", getOffer([]byte("text/plain;q=0.899,text/plain;a=1;q=0.898"), acceptsOfferType, "text/plain", "text/plain;a=1"))
+	require.Equal(t, "text/plain;a=1;b=2", getOffer([]byte("text/plain,text/plain;a=1,text/plain;a=1;b=2"), acceptsOfferType, "text/plain", "text/plain;a=1", "text/plain;a=1;b=2"))
+
+	// Takes the last value specified
+	require.Equal(t, "text/plain;a=1;b=2", getOffer([]byte("text/plain;a=1;b=1;B=2"), acceptsOfferType, "text/plain;a=1;b=1", "text/plain;a=1;b=2"))
+
+	require.Equal(t, "", getOffer([]byte("utf-8, iso-8859-1;q=0.5"), acceptsOffer))
+	require.Equal(t, "", getOffer([]byte("utf-8, iso-8859-1;q=0.5"), acceptsOffer, "ascii"))
+	require.Equal(t, "utf-8", getOffer([]byte("utf-8, iso-8859-1;q=0.5"), acceptsOffer, "utf-8"))
+	require.Equal(t, "iso-8859-1", getOffer([]byte("utf-8;q=0, iso-8859-1;q=0.5"), acceptsOffer, "utf-8", "iso-8859-1"))
+
+	require.Equal(t, "deflate", getOffer([]byte("gzip, deflate"), acceptsOffer, "deflate"))
+	require.Equal(t, "", getOffer([]byte("gzip, deflate;q=0"), acceptsOffer, "deflate"))
 }
 
+// go test -v -run=^$ -bench=Benchmark_Utils_GetOffer -benchmem -count=4
 func Benchmark_Utils_GetOffer(b *testing.B) {
-	headers := []string{
-		"text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-		"application/json",
-		"utf-8, iso-8859-1;q=0.5",
-		"gzip, deflate",
+	testCases := []struct {
+		description string
+		accept      string
+		offers      []string
+	}{
+		{
+			description: "simple",
+			accept:      "application/json",
+			offers:      []string{"application/json"},
+		},
+		{
+			description: "6 offers",
+			accept:      "text/plain",
+			offers:      []string{"junk/a", "junk/b", "junk/c", "junk/d", "junk/e", "text/plain"},
+		},
+		{
+			description: "1 parameter",
+			accept:      "application/json; version=1",
+			offers:      []string{"application/json;version=1"},
+		},
+		{
+			description: "2 parameters",
+			accept:      "application/json; version=1; foo=bar",
+			offers:      []string{"application/json;version=1;foo=bar"},
+		},
+		{
+			description: "3 parameters",
+			accept:      "application/json; version=1; foo=bar; charset=utf-8",
+			offers:      []string{"application/json;version=1;foo=bar;charset=utf-8"},
+		},
+		{
+			description: "10 parameters",
+			accept:      "text/plain;a=1;b=2;c=3;d=4;e=5;f=6;g=7;h=8;i=9;j=10",
+			offers:      []string{"text/plain;a=1;b=2;c=3;d=4;e=5;f=6;g=7;h=8;i=9;j=10"},
+		},
+		{
+			description: "6 offers w/params",
+			accept:      "text/plain; format=flowed",
+			offers: []string{
+				"junk/a;a=b",
+				"junk/b;b=c",
+				"junk/c;c=d",
+				"text/plain; format=justified",
+				"text/plain; format=flat",
+				"text/plain; format=flowed",
+			},
+		},
+		{
+			description: "mime extension",
+			accept:      "utf-8, iso-8859-1;q=0.5",
+			offers:      []string{"utf-8"},
+		},
+		{
+			description: "mime extension",
+			accept:      "utf-8, iso-8859-1;q=0.5",
+			offers:      []string{"iso-8859-1"},
+		},
+		{
+			description: "mime extension",
+			accept:      "utf-8, iso-8859-1;q=0.5",
+			offers:      []string{"iso-8859-1", "utf-8"},
+		},
+		{
+			description: "mime extension",
+			accept:      "gzip, deflate",
+			offers:      []string{"deflate"},
+		},
+		{
+			description: "web browser",
+			accept:      "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+			offers:      []string{"text/html", "application/xml", "application/xml+xhtml"},
+		},
 	}
-	offers := [][]string{
-		{"text/html", "application/xml", "application/xml+xhtml"},
-		{"application/json"},
-		{"utf-8"},
-		{"deflate"},
+
+	for _, tc := range testCases {
+		accept := []byte(tc.accept)
+		b.Run(tc.description, func(b *testing.B) {
+			for n := 0; n < b.N; n++ {
+				getOffer(accept, acceptsOfferType, tc.offers...)
+			}
+		})
+	}
+}
+
+func Test_Utils_ParamsMatch(t *testing.T) {
+	testCases := []struct {
+		description string
+		accept      headerParams
+		offer       string
+		match       bool
+	}{
+		{
+			description: "empty accept and offer",
+			accept:      nil,
+			offer:       "",
+			match:       true,
+		},
+		{
+			description: "accept is empty, offer has params",
+			accept:      make(headerParams),
+			offer:       ";foo=bar",
+			match:       true,
+		},
+		{
+			description: "offer is empty, accept has params",
+			accept:      headerParams{"foo": []byte("bar")},
+			offer:       "",
+			match:       false,
+		},
+		{
+			description: "accept has extra parameters",
+			accept:      headerParams{"foo": []byte("bar"), "a": []byte("1")},
+			offer:       ";foo=bar",
+			match:       false,
+		},
+		{
+			description: "matches regardless of order",
+			accept:      headerParams{"b": []byte("2"), "a": []byte("1")},
+			offer:       ";b=2;a=1",
+			match:       true,
+		},
+		{
+			description: "case insensitive",
+			accept:      headerParams{"ParaM": []byte("FoO")},
+			offer:       ";pAram=foO",
+			match:       true,
+		},
+	}
+
+	for _, tc := range testCases {
+		require.Equal(t, tc.match, paramsMatch(tc.accept, tc.offer), tc.description)
+	}
+}
+
+func Benchmark_Utils_ParamsMatch(b *testing.B) {
+	var match bool
+
+	specParams := headerParams{
+		"appLe": []byte("orange"),
+		"param": []byte("foo"),
 	}
 	for n := 0; n < b.N; n++ {
-		for i, header := range headers {
-			getOffer(header, acceptsOfferType, offers[i]...)
-		}
+		match = paramsMatch(specParams, `;param=foo; apple=orange`)
 	}
+	require.True(b, match)
+}
+
+func Test_Utils_AcceptsOfferType(t *testing.T) {
+	t.Parallel()
+	testCases := []struct {
+		description string
+		spec        string
+		specParams  headerParams
+		offerType   string
+		accepts     bool
+	}{
+		{
+			description: "no params, matching",
+			spec:        "application/json",
+			offerType:   "application/json",
+			accepts:     true,
+		},
+		{
+			description: "no params, mismatch",
+			spec:        "application/json",
+			offerType:   "application/xml",
+			accepts:     false,
+		},
+		{
+			description: "params match",
+			spec:        "application/json",
+			specParams:  headerParams{"format": []byte("foo"), "version": []byte("1")},
+			offerType:   "application/json;version=1;format=foo;q=0.1",
+			accepts:     true,
+		},
+		{
+			description: "spec has extra params",
+			spec:        "text/html",
+			specParams:  headerParams{"charset": []byte("utf-8")},
+			offerType:   "text/html",
+			accepts:     false,
+		},
+		{
+			description: "offer has extra params",
+			spec:        "text/html",
+			offerType:   "text/html;charset=utf-8",
+			accepts:     true,
+		},
+		{
+			description: "ignores optional whitespace",
+			spec:        "application/json",
+			specParams:  headerParams{"format": []byte("foo"), "version": []byte("1")},
+			offerType:   "application/json;  version=1 ;    format=foo   ",
+			accepts:     true,
+		},
+		{
+			description: "ignores optional whitespace",
+			spec:        "application/json",
+			specParams:  headerParams{"format": []byte("foo bar"), "version": []byte("1")},
+			offerType:   `application/json;version="1";format="foo bar"`,
+			accepts:     true,
+		},
+	}
+	for _, tc := range testCases {
+		accepts := acceptsOfferType(tc.spec, tc.offerType, tc.specParams)
+		require.Equal(t, tc.accepts, accepts, tc.description)
+	}
+}
+
+func Test_Utils_GetSplicedStrList(t *testing.T) {
+	t.Parallel()
+	testCases := []struct {
+		description  string
+		headerValue  string
+		expectedList []string
+	}{
+		{
+			description:  "normal case",
+			headerValue:  "gzip, deflate,br",
+			expectedList: []string{"gzip", "deflate", "br"},
+		},
+		{
+			description:  "no matter the value",
+			headerValue:  "   gzip,deflate, br, zip",
+			expectedList: []string{"gzip", "deflate", "br", "zip"},
+		},
+		{
+			description:  "headerValue is empty",
+			headerValue:  "",
+			expectedList: nil,
+		},
+		{
+			description:  "has a comma without element",
+			headerValue:  "gzip,",
+			expectedList: []string{"gzip", ""},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			tc := tc // create a new 'tc' variable for the goroutine
+			t.Parallel()
+			dst := make([]string, 10)
+			result := getSplicedStrList(tc.headerValue, dst)
+			require.Equal(t, tc.expectedList, result)
+		})
+	}
+}
+
+func Benchmark_Utils_GetSplicedStrList(b *testing.B) {
+	destination := make([]string, 5)
+	result := destination
+	const input = `deflate, gzip,br,brotli`
+	for n := 0; n < b.N; n++ {
+		result = getSplicedStrList(input, destination)
+	}
+	require.Equal(b, []string{"deflate", "gzip", "br", "brotli"}, result)
 }
 
 func Test_Utils_SortAcceptedTypes(t *testing.T) {
@@ -74,9 +337,10 @@ func Test_Utils_SortAcceptedTypes(t *testing.T) {
 		{spec: "image/*", quality: 1, specificity: 2, order: 8},
 		{spec: "image/gif", quality: 1, specificity: 3, order: 9},
 		{spec: "text/plain", quality: 1, specificity: 3, order: 10},
+		{spec: "application/json", quality: 0.999, specificity: 3, params: headerParams{"a": []byte("1")}, order: 11},
 	}
 	sortAcceptedTypes(&acceptedTypes)
-	require.Equal(t, acceptedTypes, []acceptedType{
+	require.Equal(t, []acceptedType{
 		{spec: "text/html", quality: 1, specificity: 3, order: 0},
 		{spec: "application/xml", quality: 1, specificity: 3, order: 4},
 		{spec: "application/pdf", quality: 1, specificity: 3, order: 5},
@@ -85,10 +349,11 @@ func Test_Utils_SortAcceptedTypes(t *testing.T) {
 		{spec: "image/gif", quality: 1, specificity: 3, order: 9},
 		{spec: "text/plain", quality: 1, specificity: 3, order: 10},
 		{spec: "image/*", quality: 1, specificity: 2, order: 8},
+		{spec: "application/json", quality: 0.999, specificity: 3, params: headerParams{"a": []byte("1")}, order: 11},
 		{spec: "application/json", quality: 0.999, specificity: 3, order: 3},
 		{spec: "text/*", quality: 0.5, specificity: 2, order: 1},
 		{spec: "*/*", quality: 0.1, specificity: 1, order: 2},
-	})
+	}, acceptedTypes)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Utils_SortAcceptedTypes_Sorted -benchmem -count=4
@@ -122,7 +387,7 @@ func Benchmark_Utils_SortAcceptedTypes_Unsorted(b *testing.B) {
 		acceptedTypes[10] = acceptedType{spec: "text/plain", quality: 1, specificity: 3, order: 10}
 		sortAcceptedTypes(&acceptedTypes)
 	}
-	require.Equal(b, acceptedTypes, []acceptedType{
+	require.Equal(b, []acceptedType{
 		{spec: "text/html", quality: 1, specificity: 3, order: 0},
 		{spec: "application/xml", quality: 1, specificity: 3, order: 4},
 		{spec: "application/pdf", quality: 1, specificity: 3, order: 5},
@@ -134,7 +399,7 @@ func Benchmark_Utils_SortAcceptedTypes_Unsorted(b *testing.B) {
 		{spec: "application/json", quality: 0.999, specificity: 3, order: 3},
 		{spec: "text/*", quality: 0.5, specificity: 2, order: 1},
 		{spec: "*/*", quality: 0.1, specificity: 1, order: 2},
-	})
+	}, acceptedTypes)
 }
 
 func Test_Utils_UniqueRouteStack(t *testing.T) {
@@ -233,9 +498,9 @@ func Test_Utils_Parse_Address(t *testing.T) {
 func Test_Utils_TestConn_Deadline(t *testing.T) {
 	t.Parallel()
 	conn := &testConn{}
-	require.Nil(t, conn.SetDeadline(time.Time{}))
-	require.Nil(t, conn.SetReadDeadline(time.Time{}))
-	require.Nil(t, conn.SetWriteDeadline(time.Time{}))
+	require.NoError(t, conn.SetDeadline(time.Time{}))
+	require.NoError(t, conn.SetReadDeadline(time.Time{}))
+	require.NoError(t, conn.SetWriteDeadline(time.Time{}))
 }
 
 func Test_Utils_IsNoCache(t *testing.T) {

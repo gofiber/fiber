@@ -18,8 +18,8 @@ Import the middleware package that is part of the Fiber web framework
 
 ```go
 import (
-  "github.com/gofiber/fiber/v2"
-  "github.com/gofiber/fiber/v2/middleware/etag"
+  "github.com/gofiber/fiber/v3"
+  "github.com/gofiber/fiber/v3/middleware/etag"
 )
 ```
 
@@ -30,7 +30,7 @@ After you initiate your Fiber app, you can use the following possibilities:
 app.Use(etag.New())
 
 // Get / receives Etag: "13-1831710635" in response header
-app.Get("/", func(c *fiber.Ctx) error {
+app.Get("/", func(c fiber.Ctx) error {
     return c.SendString("Hello, World!")
 })
 
@@ -40,7 +40,7 @@ app.Use(etag.New(etag.Config{
 }))
 
 // Get / receives Etag: "W/"13-1831710635" in response header
-app.Get("/", func(c *fiber.Ctx) error {
+app.Get("/", func(c fiber.Ctx) error {
     return c.SendString("Hello, World!")
 })
 ```
@@ -50,7 +50,7 @@ app.Get("/", func(c *fiber.Ctx) error {
 | Property | Type                    | Description                                                                                                        | Default |
 |:---------|:------------------------|:-------------------------------------------------------------------------------------------------------------------|:--------|
 | Weak     | `bool`                  | Weak indicates that a weak validator is used. Weak etags are easy to generate but are less useful for comparisons. | `false` |
-| Next     | `func(*fiber.Ctx) bool` | Next defines a function to skip this middleware when returned true.                                                | `nil`   |
+| Next     | `func(fiber.Ctx) bool` | Next defines a function to skip this middleware when returned true.                                                | `nil`   |
 
 ## Default Config
 

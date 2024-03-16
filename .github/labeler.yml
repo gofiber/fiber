@@ -15,6 +15,9 @@ labels:
     -   label: '✏️ Feature'
         matcher:
             title: '\b(feature|feat|create|implement|add)\b'
+    -   label: '📝 Proposal'
+        matcher:
+            title: '\b(proposal|idea|request|suggest)\b'
     -   label: '🤔 Question'
         matcher:
             title: '\b(question|how)\b'

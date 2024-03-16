@@ -85,21 +85,21 @@ func init() {
 				},
 			},
 			{
-				pattern: "/v1/some/resource/name\\:customVerb",
+				pattern: `/v1/some/resource/name\:customVerb`,
 				testCases: []routeTestCase{
 					{url: "/v1/some/resource/name:customVerb", params: nil, match: true},
 					{url: "/v1/some/resource/name:test", params: nil, match: false},
 				},
 			},
 			{
-				pattern: "/v1/some/resource/:name\\:customVerb",
+				pattern: `/v1/some/resource/:name\:customVerb`,
 				testCases: []routeTestCase{
 					{url: "/v1/some/resource/test:customVerb", params: []string{"test"}, match: true},
 					{url: "/v1/some/resource/test:test", params: nil, match: false},
 				},
 			},
 			{
-				pattern: "/v1/some/resource/name\\\\:customVerb?\\?/:param/*",
+				pattern: `/v1/some/resource/name\\:customVerb?\?/:param/*`,
 				testCases: []routeTestCase{
 					{url: "/v1/some/resource/name:customVerb??/test/optionalWildCard/character", params: []string{"test", "optionalWildCard/character"}, match: true},
 					{url: "/v1/some/resource/name:customVerb??/test", params: []string{"test", ""}, match: true},
@@ -572,7 +572,7 @@ func init() {
 				},
 			},
 			{
-				pattern: "/api/v1/:param<datetime(2006\\-01\\-02)>",
+				pattern: `/api/v1/:param<datetime(2006\-01\-02)>`,
 				testCases: []routeTestCase{
 					{url: "/api/v1/entity", params: nil, match: false},
 					{url: "/api/v1/8728382", params: nil, match: false},
@@ -598,7 +598,7 @@ func init() {
 				},
 			},
 			{
-				pattern: "/api/v1/:param<regex(\\d{4}-\\d{2}-\\d{2})}>",
+				pattern: `/api/v1/:param<regex(\d{4}-\d{2}-\d{2})}>`,
 				testCases: []routeTestCase{
 					{url: "/api/v1/ent", params: nil, match: false},
 					{url: "/api/v1/15", params: nil, match: false},
@@ -642,7 +642,7 @@ func init() {
 				},
 			},
 			{
-				pattern: "/api/v1/:param<int\\;range(10,30)>",
+				pattern: `/api/v1/:param<int\;range(10,30)>`,
 				testCases: []routeTestCase{
 					{url: "/api/v1/entity", params: []string{"entity"}, match: true},
 					{url: "/api/v1/87283827683", params: []string{"87283827683"}, match: true},
@@ -651,7 +651,7 @@ func init() {
 				},
 			},
 			{
-				pattern: "/api/v1/:param<range(10\\,30,1500)>",
+				pattern: `/api/v1/:param<range(10\,30,1500)>`,
 				testCases: []routeTestCase{
 					{url: "/api/v1/entity", params: nil, match: false},
 					{url: "/api/v1/87283827683", params: nil, match: false},
@@ -697,7 +697,7 @@ func init() {
 				},
 			},
 			{
-				pattern: "/api/v1/:date<datetime(2006\\-01\\-02)>/:regex<regex(p([a-z]+)ch)>",
+				pattern: `/api/v1/:date<datetime(2006\-01\-02)>/:regex<regex(p([a-z]+)ch)>`,
 				testCases: []routeTestCase{
 					{url: "/api/v1/2005-11-01/a", params: nil, match: false},
 					{url: "/api/v1/2005-1101/paach", params: nil, match: false},

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/bytebufferpool"
 )
@@ -63,7 +64,7 @@ func Test_Hook_OnName(t *testing.T) {
 
 	app.Hooks().OnName(func(r Route) error {
 		_, err := buf.WriteString(r.Name)
-		require.NoError(t, nil, err)
+		require.NoError(t, err)
 
 		return nil
 	})
@@ -88,7 +89,7 @@ func Test_Hook_OnName_Error(t *testing.T) {
 		}
 	}()
 
-	app.Hooks().OnName(func(r Route) error {
+	app.Hooks().OnName(func(_ Route) error {
 		return errors.New("unknown error")
 	})
 
@@ -104,7 +105,7 @@ func Test_Hook_OnGroup(t *testing.T) {
 
 	app.Hooks().OnGroup(func(g Group) error {
 		_, err := buf.WriteString(g.Prefix)
-		require.NoError(t, nil, err)
+		require.NoError(t, err)
 		return nil
 	})
 
@@ -143,7 +144,7 @@ func Test_Hook_OnGroupName(t *testing.T) {
 
 	app.Hooks().OnGroupName(func(g Group) error {
 		_, err := buf.WriteString(g.name)
-		require.NoError(t, nil, err)
+		require.NoError(t, err)
 
 		return nil
 	})
@@ -172,7 +173,7 @@ func Test_Hook_OnGroupName_Error(t *testing.T) {
 		}
 	}()
 
-	app.Hooks().OnGroupName(func(g Group) error {
+	app.Hooks().OnGroupName(func(_ Group) error {
 		return errors.New("unknown error")
 	})
 
@@ -189,12 +190,12 @@ func Test_Hook_OnShutdown(t *testing.T) {
 
 	app.Hooks().OnShutdown(func() error {
 		_, err := buf.WriteString("shutdowning")
-		require.NoError(t, nil, err)
+		require.NoError(t, err)
 
 		return nil
 	})
 
-	require.Nil(t, app.Shutdown())
+	require.NoError(t, app.Shutdown())
 	require.Equal(t, "shutdowning", buf.String())
 }
 
@@ -206,7 +207,7 @@ func Test_Hook_OnListen(t *testing.T) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	app.Hooks().OnListen(func(listenData ListenData) error {
+	app.Hooks().OnListen(func(_ ListenData) error {
 		_, err := buf.WriteString("ready")
 		require.NoError(t, err)
 
@@ -215,9 +216,9 @@ func Test_Hook_OnListen(t *testing.T) {
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.Equal(t, nil, app.Shutdown())
+		assert.NoError(t, app.Shutdown())
 	}()
-	require.Equal(t, nil, app.Listen(":9000"))
+	require.NoError(t, app.Listen(":9000"))
 
 	require.Equal(t, "ready", buf.String())
 }
@@ -229,19 +230,19 @@ func Test_Hook_OnListenPrefork(t *testing.T) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	app.Hooks().OnListen(func(listenData ListenData) error {
+	app.Hooks().OnListen(func(_ ListenData) error {
 		_, err := buf.WriteString("ready")
-		require.NoError(t, nil, err)
+		require.NoError(t, err)
 
 		return nil
 	})
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.Nil(t, app.Shutdown())
+		assert.NoError(t, app.Shutdown())
 	}()
 
-	require.Nil(t, app.Listen(":9000", ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
+	require.NoError(t, app.Listen(":9000", ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
 	require.Equal(t, "ready", buf.String())
 }
 
@@ -254,7 +255,7 @@ func Test_Hook_OnHook(t *testing.T) {
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.Nil(t, app.Shutdown())
+		assert.NoError(t, app.Shutdown())
 	}()
 
 	app.Hooks().OnFork(func(pid int) error {
@@ -262,7 +263,7 @@ func Test_Hook_OnHook(t *testing.T) {
 		return nil
 	})
 
-	require.Nil(t, app.prefork(":3000", nil, ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
+	require.NoError(t, app.prefork(":3000", nil, ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
 }
 
 func Test_Hook_OnMount(t *testing.T) {
@@ -274,7 +275,7 @@ func Test_Hook_OnMount(t *testing.T) {
 	subApp.Get("/test", testSimpleHandler)
 
 	subApp.Hooks().OnMount(func(parent *App) error {
-		require.Equal(t, parent.mountFields.mountPath, "")
+		require.Empty(t, parent.mountFields.mountPath)
 
 		return nil
 	})

@@ -45,12 +45,11 @@ func Test_Cache_CacheControl(t *testing.T) {
 
 func Test_Cache_Expired(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New(Config{Expiration: 2 * time.Second}))
 
 	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString(fmt.Sprintf("%d", time.Now().UnixNano()))
+		return c.SendString(strconv.FormatInt(time.Now().UnixNano(), 10))
 	})
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
@@ -88,7 +87,7 @@ func Test_Cache(t *testing.T) {
 	app.Use(New())
 
 	app.Get("/", func(c fiber.Ctx) error {
-		now := fmt.Sprintf("%d", time.Now().UnixNano())
+		now := strconv.FormatInt(time.Now().UnixNano(), 10)
 		return c.SendString(now)
 	})
 
@@ -116,7 +115,7 @@ func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
 	app.Use(New())
 
 	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString(c.Query("id", "1"))
+		return c.SendString(fiber.Query(c, "id", "1"))
 	})
 
 	// Request id = 1
@@ -184,7 +183,7 @@ func Test_Cache_WithETagAndNoCacheRequestDirective(t *testing.T) {
 	)
 
 	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString(c.Query("id", "1"))
+		return c.SendString(fiber.Query(c, "id", "1"))
 	})
 
 	// Request id = 1
@@ -247,7 +246,7 @@ func Test_Cache_WithNoStoreRequestDirective(t *testing.T) {
 	app.Use(New())
 
 	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString(c.Query("id", "1"))
+		return c.SendString(fiber.Query(c, "id", "1"))
 	})
 
 	// Request id = 2
@@ -307,7 +306,7 @@ func Test_Cache_Invalid_Expiration(t *testing.T) {
 	app.Use(cache)
 
 	app.Get("/", func(c fiber.Ctx) error {
-		now := fmt.Sprintf("%d", time.Now().UnixNano())
+		now := strconv.FormatInt(time.Now().UnixNano(), 10)
 		return c.SendString(now)
 	})
 
@@ -335,11 +334,11 @@ func Test_Cache_Get(t *testing.T) {
 	app.Use(New())
 
 	app.Post("/", func(c fiber.Ctx) error {
-		return c.SendString(c.Query("cache"))
+		return c.SendString(fiber.Query[string](c, "cache"))
 	})
 
 	app.Get("/get", func(c fiber.Ctx) error {
-		return c.SendString(c.Query("cache"))
+		return c.SendString(fiber.Query[string](c, "cache"))
 	})
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/?cache=123", nil))
@@ -377,11 +376,11 @@ func Test_Cache_Post(t *testing.T) {
 	}))
 
 	app.Post("/", func(c fiber.Ctx) error {
-		return c.SendString(c.Query("cache"))
+		return c.SendString(fiber.Query[string](c, "cache"))
 	})
 
 	app.Get("/get", func(c fiber.Ctx) error {
-		return c.SendString(c.Query("cache"))
+		return c.SendString(fiber.Query[string](c, "cache"))
 	})
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/?cache=123", nil))
@@ -411,7 +410,6 @@ func Test_Cache_Post(t *testing.T) {
 
 func Test_Cache_NothingToCache(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 
 	app.Use(New(Config{Expiration: -(time.Second * 1)}))
@@ -467,14 +465,14 @@ func Test_Cache_CustomNext(t *testing.T) {
 	bodyCached, err := io.ReadAll(respCached.Body)
 	require.NoError(t, err)
 	require.True(t, bytes.Equal(body, bodyCached))
-	require.True(t, respCached.Header.Get(fiber.HeaderCacheControl) != "")
+	require.NotEmpty(t, respCached.Header.Get(fiber.HeaderCacheControl))
 
 	_, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/error", nil))
 	require.NoError(t, err)
 
 	errRespCached, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/error", nil))
 	require.NoError(t, err)
-	require.True(t, errRespCached.Header.Get(fiber.HeaderCacheControl) == "")
+	require.Empty(t, errRespCached.Header.Get(fiber.HeaderCacheControl))
 }
 
 func Test_CustomKey(t *testing.T) {
@@ -499,11 +497,10 @@ func Test_CustomKey(t *testing.T) {
 
 func Test_CustomExpiration(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	var called bool
 	var newCacheTime int
-	app.Use(New(Config{ExpirationGenerator: func(c fiber.Ctx, cfg *Config) time.Duration {
+	app.Use(New(Config{ExpirationGenerator: func(c fiber.Ctx, _ *Config) time.Duration {
 		called = true
 		var err error
 		newCacheTime, err = strconv.Atoi(c.GetRespHeader("Cache-Time", "600"))
@@ -513,8 +510,7 @@ func Test_CustomExpiration(t *testing.T) {
 
 	app.Get("/", func(c fiber.Ctx) error {
 		c.Response().Header.Add("Cache-Time", "1")
-		now := fmt.Sprintf("%d", time.Now().UnixNano())
-		return c.SendString(now)
+		return c.SendString(strconv.FormatInt(time.Now().UnixNano(), 10))
 	})
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
@@ -523,7 +519,7 @@ func Test_CustomExpiration(t *testing.T) {
 	require.Equal(t, 1, newCacheTime)
 
 	// Sleep until the cache is expired
-	time.Sleep(1 * time.Second)
+	time.Sleep(1*time.Second + 100*time.Millisecond)
 
 	cachedResp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
@@ -589,7 +585,7 @@ func Test_CacheHeader(t *testing.T) {
 	})
 
 	app.Post("/", func(c fiber.Ctx) error {
-		return c.SendString(c.Query("cache"))
+		return c.SendString(fiber.Query[string](c, "cache"))
 	})
 
 	app.Get("/error", func(c fiber.Ctx) error {
@@ -620,7 +616,7 @@ func Test_Cache_WithHead(t *testing.T) {
 	app.Use(New())
 
 	handler := func(c fiber.Ctx) error {
-		now := fmt.Sprintf("%d", time.Now().UnixNano())
+		now := strconv.FormatInt(time.Now().UnixNano(), 10)
 		return c.SendString(now)
 	}
 	app.Route("/").Get(handler).Head(handler)
@@ -650,7 +646,7 @@ func Test_Cache_WithHeadThenGet(t *testing.T) {
 	app.Use(New())
 
 	handler := func(c fiber.Ctx) error {
-		return c.SendString(c.Query("cache"))
+		return c.SendString(fiber.Query[string](c, "cache"))
 	}
 	app.Route("/").Get(handler).Head(handler)
 
@@ -706,7 +702,7 @@ func Test_CustomCacheHeader(t *testing.T) {
 // time intervals to maintain strong ascending order of expiration
 func stableAscendingExpiration() func(c1 fiber.Ctx, c2 *Config) time.Duration {
 	i := 0
-	return func(c1 fiber.Ctx, c2 *Config) time.Duration {
+	return func(_ fiber.Ctx, _ *Config) time.Duration {
 		i++
 		return time.Hour * time.Duration(i)
 	}
@@ -714,7 +710,6 @@ func stableAscendingExpiration() func(c1 fiber.Ctx, c2 *Config) time.Duration {
 
 func Test_Cache_MaxBytesOrder(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New(Config{
 		MaxBytes:            2,
@@ -751,7 +746,6 @@ func Test_Cache_MaxBytesOrder(t *testing.T) {
 
 func Test_Cache_MaxBytesSizes(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -809,7 +803,7 @@ func Benchmark_Cache(b *testing.B) {
 	}
 
 	require.Equal(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
-	require.True(b, len(fctx.Response.Body()) > 30000)
+	require.Greater(b, len(fctx.Response.Body()), 30000)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Cache_Storage -benchmem -count=4
@@ -839,7 +833,7 @@ func Benchmark_Cache_Storage(b *testing.B) {
 	}
 
 	require.Equal(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
-	require.True(b, len(fctx.Response.Body()) > 30000)
+	require.Greater(b, len(fctx.Response.Body()), 30000)
 }
 
 func Benchmark_Cache_AdditionalHeaders(b *testing.B) {

@@ -1,6 +1,7 @@
 package favicon
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
@@ -18,7 +19,7 @@ func Test_Middleware_Favicon(t *testing.T) {
 
 	app.Use(New())
 
-	app.Get("/", func(c fiber.Ctx) error {
+	app.Get("/", func(_ fiber.Ctx) error {
 		return nil
 	})
 
@@ -46,7 +47,8 @@ func Test_Middleware_Favicon_Not_Found(t *testing.T) {
 	t.Parallel()
 	defer func() {
 		if err := recover(); err == nil {
-			t.Fatal("should cache panic")
+			t.Error("should cache panic")
+			return
 		}
 	}()
 
@@ -64,12 +66,53 @@ func Test_Middleware_Favicon_Found(t *testing.T) {
 		File: "../../.github/testdata/favicon.ico",
 	}))
 
-	app.Get("/", func(c fiber.Ctx) error {
+	app.Get("/", func(_ fiber.Ctx) error {
 		return nil
 	})
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/favicon.ico", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
+	require.Equal(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
+	require.Equal(t, "public, max-age=31536000", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
+}
 
+// go test -run Test_Custom_Favicon_Url
+func Test_Custom_Favicon_URL(t *testing.T) {
+	app := fiber.New()
+	const customURL = "/favicon.svg"
+	app.Use(New(Config{
+		File: "../../.github/testdata/favicon.ico",
+		URL:  customURL,
+	}))
+
+	app.Get("/", func(_ fiber.Ctx) error {
+		return nil
+	})
+
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, customURL, nil))
+
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
+	require.Equal(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
+}
+
+// go test -run Test_Custom_Favicon_Data
+func Test_Custom_Favicon_Data(t *testing.T) {
+	data, err := os.ReadFile("../../.github/testdata/favicon.ico")
+	require.NoError(t, err)
+
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Data: data,
+	}))
+
+	app.Get("/", func(_ fiber.Ctx) error {
+		return nil
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/favicon.ico", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
 	require.Equal(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
@@ -114,7 +157,7 @@ func Test_Middleware_Favicon_CacheControl(t *testing.T) {
 func Benchmark_Middleware_Favicon(b *testing.B) {
 	app := fiber.New()
 	app.Use(New())
-	app.Get("/", func(c fiber.Ctx) error {
+	app.Get("/", func(_ fiber.Ctx) error {
 		return nil
 	})
 	handler := app.Handler()
@@ -142,24 +185,4 @@ func Test_Favicon_Next(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
-}
-
-// go test -run Test_Custom_Favicon_URL
-func Test_Custom_Favicon_URL(t *testing.T) {
-	app := fiber.New()
-	const customURL = "/favicon.svg"
-	app.Use(New(Config{
-		File: "../../.github/testdata/favicon.ico",
-		URL:  customURL,
-	}))
-
-	app.Get("/", func(c fiber.Ctx) error {
-		return nil
-	})
-
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, customURL, nil))
-
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
-	require.Equal(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
 }

@@ -1,10 +1,8 @@
-//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package idempotency_test
 
 import (
 	"errors"
 	"io"
-	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"sync"
@@ -16,13 +14,13 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/idempotency"
 	"github.com/valyala/fasthttp"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // go test -run Test_Idempotency
 func Test_Idempotency(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 
 	app.Use(func(c fiber.Ctx) error {
@@ -56,7 +54,7 @@ func Test_Idempotency(t *testing.T) {
 	})
 
 	// Needs to be at least a second as the memory storage doesn't support shorter durations.
-	const lifetime = 1 * time.Second
+	const lifetime = 2 * time.Second
 
 	app.Use(idempotency.New(idempotency.Config{
 		Lifetime: lifetime,
@@ -77,17 +75,17 @@ func Test_Idempotency(t *testing.T) {
 	})
 
 	app.Post("/slow", func(c fiber.Ctx) error {
-		time.Sleep(2 * lifetime)
+		time.Sleep(3 * lifetime)
 
 		return c.SendString(strconv.Itoa(nextCount()))
 	})
 
 	doReq := func(method, route, idempotencyKey string) string {
-		req := httptest.NewRequest(method, route, http.NoBody)
+		req := httptest.NewRequest(method, route, nil)
 		if idempotencyKey != "" {
 			req.Header.Set("X-Idempotency-Key", idempotencyKey)
 		}
-		resp, err := app.Test(req, 3*int(lifetime.Milliseconds()))
+		resp, err := app.Test(req, 15*time.Second)
 		require.NoError(t, err)
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
@@ -110,7 +108,7 @@ func Test_Idempotency(t *testing.T) {
 	require.Equal(t, "9", doReq(fiber.MethodPost, "/", "11111111-1111-1111-1111-111111111111"))
 
 	require.Equal(t, "7", doReq(fiber.MethodPost, "/", "00000000-0000-0000-0000-000000000000"))
-	time.Sleep(2 * lifetime)
+	time.Sleep(4 * lifetime)
 	require.Equal(t, "10", doReq(fiber.MethodPost, "/", "00000000-0000-0000-0000-000000000000"))
 	require.Equal(t, "10", doReq(fiber.MethodPost, "/", "00000000-0000-0000-0000-000000000000"))
 
@@ -121,13 +119,13 @@ func Test_Idempotency(t *testing.T) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				require.Equal(t, "11", doReq(fiber.MethodPost, "/slow", "22222222-2222-2222-2222-222222222222"))
+				assert.Equal(t, "11", doReq(fiber.MethodPost, "/slow", "22222222-2222-2222-2222-222222222222"))
 			}()
 		}
 		wg.Wait()
 		require.Equal(t, "11", doReq(fiber.MethodPost, "/slow", "22222222-2222-2222-2222-222222222222"))
 	}
-	time.Sleep(2 * lifetime)
+	time.Sleep(3 * lifetime)
 	require.Equal(t, "12", doReq(fiber.MethodPost, "/slow", "22222222-2222-2222-2222-222222222222"))
 }
 
@@ -142,7 +140,7 @@ func Benchmark_Idempotency(b *testing.B) {
 		Lifetime: lifetime,
 	}))
 
-	app.Post("/", func(c fiber.Ctx) error {
+	app.Post("/", func(_ fiber.Ctx) error {
 		return nil
 	})
 
