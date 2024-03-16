@@ -33,6 +33,8 @@ import (
 
 After you initiate your Fiber app, you can use the following possibilities:
 
+### Basic usage
+
 ```go
 // Initialize default config
 app.Use(cors.New())
@@ -43,6 +45,45 @@ app.Use(cors.New(cors.Config{
     AllowHeaders: "Origin, Content-Type, Accept",
 }))
 ```
+
+### Dynamic origin validation
+
+You can use `AllowOriginsFunc` to programmatically determine whether to allow a request based on its origin. This is useful when you need to validate origins against a database or other dynamic sources. The function should return `true` if the origin is allowed, and `false` otherwise.
+
+Be sure to review the [security considerations](#security-considerations) when using `AllowOriginsFunc`.
+
+:::caution
+Never allow `AllowOriginsFunc` to return `true` for all origins. This is particularly crucial when `AllowCredentials` is set to `true`. Doing so can bypass the restriction of using a wildcard origin with credentials, exposing your application to serious security threats.
+
+If you need to allow wildcard origins, use `AllowOrigins` with a wildcard '*' instead of `AllowOriginsFunc`.
+:::
+
+```go
+// dbCheckOrigin checks if the origin is in the list of allowed origins in the database.
+func dbCheckOrigin(db *sql.DB, origin string) bool {
+  // Placeholder query - adjust according to your database schema and query needs
+  query := "SELECT COUNT(*) FROM allowed_origins WHERE origin = $1"
+  
+  var count int
+  err := db.QueryRow(query, origin).Scan(&count)
+  if err != nil {
+    // Handle error (e.g., log it); for simplicity, we return false here
+    return false
+  }
+  
+  return count > 0
+}
+
+// ...
+
+app.Use(cors.New(cors.Config{
+  AllowOriginsFunc: func(origin string) bool {
+	return dbCheckOrigin(db, origin)
+  },
+}))
+```
+
+### Porhibited usage
 
 **Note: The following configuration is considered insecure and will result in a panic.**
 
@@ -88,11 +129,11 @@ var ConfigDefault = Config{
 }
 ```
 
-## Subdomain Matching  
+## Subdomain Matching
 
 The `AllowOrigins` configuration supports matching subdomains at any level. This means you can use a value like `"https://*.example.com"` to allow any subdomain of `example.com` to submit requests, including multiple subdomain levels such as `"https://sub.sub.example.com"`.
 
-### Example  
+### Example
 
 If you want to allow CORS requests from any subdomain of `example.com`, including nested subdomains, you can configure the `AllowOrigins` like so:
 
@@ -154,12 +195,6 @@ When configuring CORS, misconfiguration can potentially expose your application 
 
 - **Overly Permissive Origins**: Specifying too many origins or using overly broad patterns (e.g., `https://*.example.com`) can inadvertently allow malicious sites to interact with your application. Be as specific as possible with allowed origins.
 
-- **Inadequate `AllowOriginsFunc` Validation**: When using `AllowOriginsFunc` for dynamic origin validation, ensure the function includes robust checks to prevent unauthorized origins from being accepted. Overly permissive validation can lead to security vulnerabilities.
-
-:::caution
-Never allow `AllowOriginsFunc` to return `true` for all origins. This is particularly crucial when `AllowCredentials` is set to `true`. Doing so can bypass the restriction of using a wildcard origin with credentials, exposing your application to serious security threats.
-
-If you need to allow wildcard origins, use `AllowOrigins` with a wildcard '*' instead of `AllowOriginsFunc`.
-:::
+- **Inadequate `AllowOriginsFunc` Validation**: When using `AllowOriginsFunc` for dynamic origin validation, ensure the function includes robust checks to prevent unauthorized origins from being accepted. Overly permissive validation can lead to security vulnerabilities. Never allow `AllowOriginsFunc` to return `true` for all origins. This is particularly crucial when `AllowCredentials` is set to `true`. Doing so can bypass the restriction of using a wildcard origin with credentials, exposing your application to serious security threats. If you need to allow wildcard origins, use `AllowOrigins` with a wildcard '*' instead of `AllowOriginsFunc`.
 
 Remember, the key to secure CORS configuration is specificity and caution. By carefully selecting which origins, methods, and headers are allowed, you can help protect your application from cross-origin attacks.
