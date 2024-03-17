@@ -235,7 +235,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Set Preflight request handling
-		if cfg.AllowPrivateNetwork && c.Get(fiber.HeaderAccessControlAllowPrivateNetwork){
+		if cfg.AllowPrivateNetwork && c.Get(fiber.HeaderAccessControlAllowPrivateNetwork) == "true" {
 			// Set the Access-Control-Allow-Private-Network header to "true"
 			c.Set(fiber.HeaderAccessControlAllowPrivateNetwork, "true")
 		}
