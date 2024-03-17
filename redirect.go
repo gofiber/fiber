@@ -278,13 +278,12 @@ func (r *Redirect) setFlash() {
 	var commaPos int
 	for {
 		commaPos = findNextNonEscapedCharsetPosition(cookieValue, []byte(CookieDataSeparator))
-		if commaPos != -1 {
-			r.c.redirectionMessages = append(r.c.redirectionMessages, strings.Trim(cookieValue[:commaPos], " "))
-			cookieValue = cookieValue[commaPos+1:]
-		} else {
+		if commaPos == -1 {
 			r.c.redirectionMessages = append(r.c.redirectionMessages, strings.Trim(cookieValue, " "))
 			break
 		}
+		r.c.redirectionMessages = append(r.c.redirectionMessages, strings.Trim(cookieValue[:commaPos], " "))
+		cookieValue = cookieValue[commaPos+1:]
 	}
 
 	r.c.ClearCookie(FlashCookieName)
