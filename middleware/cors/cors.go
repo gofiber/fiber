@@ -172,8 +172,9 @@ func New(config ...Config) fiber.Handler {
 		// Get originHeader header
 		originHeader := strings.ToLower(c.Get(fiber.HeaderOrigin))
 
-		// If the request does not have an Origin header, the request is outside the scope of CORS
-		if originHeader == "" {
+		// If the request does not have Origin and Access-Control-Request-Method
+		// headers, the request is outside the scope of CORS
+		if originHeader == "" || c.Get(fiber.HeaderAccessControlRequestMethod) == "" {
 			return c.Next()
 		}
 
@@ -211,8 +212,9 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Simple request
+		// Ommit allowMethods and allowHeaders, only used for pre-flight requests
 		if c.Method() != fiber.MethodOptions {
-			setCORSHeaders(c, allowOrigin, allowMethods, allowHeaders, exposeHeaders, maxAge, cfg)
+			setCORSHeaders(c, allowOrigin, "", "", exposeHeaders, maxAge, cfg)
 			return c.Next()
 		}
 
@@ -233,14 +235,14 @@ func setCORSHeaders(c *fiber.Ctx, allowOrigin, allowMethods, allowHeaders, expos
 
 	if cfg.AllowCredentials {
 		// When AllowCredentials is true, set the Access-Control-Allow-Origin to the specific origin instead of '*'
-		if allowOrigin != "*" && allowOrigin != "" {
-			c.Set(fiber.HeaderAccessControlAllowOrigin, allowOrigin)
-			c.Set(fiber.HeaderAccessControlAllowCredentials, "true")
-		} else if allowOrigin == "*" {
+		if allowOrigin == "*" {
 			c.Set(fiber.HeaderAccessControlAllowOrigin, allowOrigin)
 			log.Warn("[CORS] 'AllowCredentials' is true, but 'AllowOrigins' cannot be set to '*'.")
+		} else if allowOrigin != "" {
+			c.Set(fiber.HeaderAccessControlAllowOrigin, allowOrigin)
+			c.Set(fiber.HeaderAccessControlAllowCredentials, "true")
 		}
-	} else if len(allowOrigin) > 0 {
+	} else if allowOrigin != "" {
 		// For non-credential requests, it's safe to set to '*' or specific origins
 		c.Set(fiber.HeaderAccessControlAllowOrigin, allowOrigin)
 	}
