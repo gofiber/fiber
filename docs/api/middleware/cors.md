@@ -80,7 +80,7 @@ app.Use(cors.New(cors.Config{
 | ExposeHeaders    | `string`                   | ExposeHeaders defines a whitelist headers that clients are allowed to access.                                                                                                                                                                                                                                                                                      | `""`                               |
 | MaxAge           | `int`                      | MaxAge indicates how long (in seconds) the results of a preflight request can be cached. If you pass MaxAge 0, Access-Control-Max-Age header will not be added and browser will use 5 seconds by default. To disable caching completely, pass MaxAge value negative. It will set the Access-Control-Max-Age header 0.                                              | `0`                                |
 
-| `AllowPrivateNetworkAccess`  | `bool`  | Indicates whether the `Access-Control-Allow-Private-Network` response header should be set to `true`, allowing requests from private networks. This aligns with modern security practices for web applications interacting with private networks. |
+| `AllowPrivateNetwork`  | `bool`  | Indicates whether the `Access-Control-Allow-Private-Network` response header should be set to `true`, allowing requests from private networks. This aligns with modern security practices for web applications interacting with private networks. |
 
 
 ## Default Config
@@ -102,6 +102,6 @@ var ConfigDefault = Config{
 	AllowCredentials: false,
 	ExposeHeaders:    "",
 	MaxAge:           0,
-	AllowPrivateNetworkAccess: false,
+	AllowPrivateNetwork: false,
 }
 ```

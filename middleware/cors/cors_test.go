@@ -690,15 +690,14 @@ func Test_CORS_AllowCredentials(t *testing.T) {
 }
 
 // The Enhancement for issue #2804
-func Test_CORS_AllowPrivateNetworkAccess(t *testing.T) {
+func Test_CORS_AllowPrivateNetwork(t *testing.T) {
 	t.Parallel()
 
-	// Test scenario where AllowPrivateNetworkAccess is enabled
+	// Test scenario where AllowPrivateNetwork is enabled
 	app := fiber.New()
 	app.Use(New(Config{
-		AllowPrivateNetworkAccess: true,
+		AllowPrivateNetwork: true,
 	}))
-
 	handler := app.Handler()
 
 	ctx := &fasthttp.RequestCtx{}
@@ -708,18 +707,46 @@ func Test_CORS_AllowPrivateNetworkAccess(t *testing.T) {
 	handler(ctx)
 
 	// Verify the Access-Control-Allow-Private-Network header is set to "true"
-	require.Equal(t, "true", string(ctx.Response.Header.Peek("Access-Control-Allow-Private-Network")), "The Access-Control-Allow-Private-Network header should be set to 'true' when AllowPrivateNetworkAccess is enabled")
+	require.Equal(t, "true", string(ctx.Response.Header.Peek("Access-Control-Allow-Private-Network")), "The Access-Control-Allow-Private-Network header should be set to 'true' when AllowPrivateNetwork is enabled")
 
 	// Reset ctx for next test
 	ctx = &fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fiber.MethodOptions)
 	ctx.Request.Header.Set(fiber.HeaderOrigin, "https://example.com")
 
-	// Test scenario where AllowPrivateNetworkAccess is disabled (default)
+	// Test scenario where AllowPrivateNetwork is disabled (default)
 	app = fiber.New()
 	app.Use(New())
-
 	handler = app.Handler()
+	handler(ctx)
+
+	// Verify the Access-Control-Allow-Private-Network header is not present
+	require.Equal(t, "", string(ctx.Response.Header.Peek("Access-Control-Allow-Private-Network")), "The Access-Control-Allow-Private-Network header should not be present by default")
+
+	// Test scenario where AllowPrivateNetwork is disabled but client sends header
+	app := fiber.New()
+	app.Use(New())
+	handler := app.Handler()
+
+	ctx = &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderOrigin, "https://example.com")
+	ctx.Request.Header.Set("Access-Control-Request-Private-Network", "true")
+	handler(ctx)
+
+	// Verify the Access-Control-Allow-Private-Network header is not present
+	require.Equal(t, "", string(ctx.Response.Header.Peek("Access-Control-Allow-Private-Network")), "The Access-Control-Allow-Private-Network header should not be present by default")
+
+	// Test scenario where AllowPrivateNetwork is enabled and client does NOT send header
+	app := fiber.New()
+	app.Use(New(Config{
+		AllowPrivateNetwork: true,
+	}))
+	handler := app.Handler()
+
+	ctx = &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderOrigin, "https://example.com")
 	handler(ctx)
 
 	// Verify the Access-Control-Allow-Private-Network header is not present
