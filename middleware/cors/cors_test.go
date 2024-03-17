@@ -438,6 +438,9 @@ func Test_CORS_Headers_BasedOnRequestType(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{}))
+	app.Use(func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
 
 	methods := []string{
 		fiber.MethodGet,
@@ -458,6 +461,7 @@ func Test_CORS_Headers_BasedOnRequestType(t *testing.T) {
 			ctx.Request.Header.SetMethod(method)
 			ctx.Request.SetRequestURI("https://example.com/")
 			handler(ctx)
+			utils.AssertEqual(t, 200, ctx.Response.StatusCode(), "Status code should be 200")
 			utils.AssertEqual(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)), "Access-Control-Allow-Origin header should not be set")
 		}
 	})
@@ -470,6 +474,7 @@ func Test_CORS_Headers_BasedOnRequestType(t *testing.T) {
 			ctx.Request.SetRequestURI("https://example.com/")
 			ctx.Request.Header.Set(fiber.HeaderOrigin, "http://example.com")
 			handler(ctx)
+			utils.AssertEqual(t, 200, ctx.Response.StatusCode(), "Status code should be 200")
 			utils.AssertEqual(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)), "Access-Control-Allow-Origin header should not be set")
 		}
 	})
@@ -482,6 +487,7 @@ func Test_CORS_Headers_BasedOnRequestType(t *testing.T) {
 			ctx.Request.SetRequestURI("https://example.com/")
 			ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 			handler(ctx)
+			utils.AssertEqual(t, 200, ctx.Response.StatusCode(), "Status code should be 200")
 			utils.AssertEqual(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)), "Access-Control-Allow-Origin header should not be set")
 		}
 	})
@@ -495,6 +501,7 @@ func Test_CORS_Headers_BasedOnRequestType(t *testing.T) {
 			ctx.Request.Header.Set(fiber.HeaderOrigin, "http://example.com")
 			ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, method)
 			handler(ctx)
+			utils.AssertEqual(t, 204, ctx.Response.StatusCode(), "Status code should be 204")
 			utils.AssertEqual(t, "*", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)), "Access-Control-Allow-Origin header should be set")
 			utils.AssertEqual(t, "GET,POST,HEAD,PUT,DELETE,PATCH", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)), "Access-Control-Allow-Methods header should be set (preflight request)")
 			utils.AssertEqual(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)), "Access-Control-Allow-Headers header should be set (preflight request)")
@@ -510,6 +517,7 @@ func Test_CORS_Headers_BasedOnRequestType(t *testing.T) {
 			ctx.Request.Header.Set(fiber.HeaderOrigin, "http://example.com")
 			ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, method)
 			handler(ctx)
+			utils.AssertEqual(t, 200, ctx.Response.StatusCode(), "Status code should be 200")
 			utils.AssertEqual(t, "*", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)), "Access-Control-Allow-Origin header should be set")
 			utils.AssertEqual(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)), "Access-Control-Allow-Methods header should not be set (non-preflight request)")
 			utils.AssertEqual(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)), "Access-Control-Allow-Headers header should not be set (non-preflight request)")
