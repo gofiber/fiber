@@ -1359,7 +1359,12 @@ func Test_Ctx_Parsers(t *testing.T) {
 	// setup
 	app := New()
 
+	type TestEmbeddedStruct struct {
+		Names []string `query:"names"`
+	}
+
 	type TestStruct struct {
+		TestEmbeddedStruct
 		Name             string
 		Class            int
 		NameWithDefault  string `json:"name2" xml:"Name2" form:"name2" cookie:"name2" query:"name2" params:"name2" header:"Name2"`
@@ -1378,13 +1383,14 @@ func Test_Ctx_Parsers(t *testing.T) {
 		require.Equal(t, 111, testStruct.Class)
 		require.Equal(t, "bar", testStruct.NameWithDefault)
 		require.Equal(t, 222, testStruct.ClassWithDefault)
+		require.Equal(t, []string{"foo", "bar", "test"}, testStruct.TestEmbeddedStruct.Names)
 	}
 
 	t.Run("BodyParser:xml", func(t *testing.T) {
 		t.Parallel()
 		withValues(t, func(c Ctx, testStruct *TestStruct) error {
 			c.Request().Header.SetContentType(MIMEApplicationXML)
-			c.Request().SetBody([]byte(`<TestStruct><Name>foo</Name><Class>111</Class><Name2>bar</Name2><Class2>222</Class2></TestStruct>`))
+			c.Request().SetBody([]byte(`<TestStruct><Name>foo</Name><Class>111</Class><Name2>bar</Name2><Class2>222</Class2><Names>foo</Names><Names>bar</Names><Names>test</Names></TestStruct>`))
 			return c.Bind().Body(testStruct)
 		})
 	})
@@ -1392,7 +1398,7 @@ func Test_Ctx_Parsers(t *testing.T) {
 		t.Parallel()
 		withValues(t, func(c Ctx, testStruct *TestStruct) error {
 			c.Request().Header.SetContentType(MIMEApplicationForm)
-			c.Request().SetBody([]byte(`name=foo&class=111&name2=bar&class2=222`))
+			c.Request().SetBody([]byte(`name=foo&class=111&name2=bar&class2=222&names=foo,bar,test`))
 			return c.Bind().Body(testStruct)
 		})
 	})
@@ -1400,14 +1406,14 @@ func Test_Ctx_Parsers(t *testing.T) {
 		t.Parallel()
 		withValues(t, func(c Ctx, testStruct *TestStruct) error {
 			c.Request().Header.SetContentType(MIMEApplicationJSON)
-			c.Request().SetBody([]byte(`{"name":"foo","class":111,"name2":"bar","class2":222}`))
+			c.Request().SetBody([]byte(`{"name":"foo","class":111,"name2":"bar","class2":222,"names":["foo","bar","test"]}`))
 			return c.Bind().Body(testStruct)
 		})
 	})
 	t.Run("BodyParser:multiform", func(t *testing.T) {
 		t.Parallel()
 		withValues(t, func(c Ctx, testStruct *TestStruct) error {
-			body := []byte("--b\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\nfoo\r\n--b\r\nContent-Disposition: form-data; name=\"class\"\r\n\r\n111\r\n--b\r\nContent-Disposition: form-data; name=\"name2\"\r\n\r\nbar\r\n--b\r\nContent-Disposition: form-data; name=\"class2\"\r\n\r\n222\r\n--b--")
+			body := []byte("--b\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\nfoo\r\n--b\r\nContent-Disposition: form-data; name=\"class\"\r\n\r\n111\r\n--b\r\nContent-Disposition: form-data; name=\"name2\"\r\n\r\nbar\r\n--b\r\nContent-Disposition: form-data; name=\"class2\"\r\n\r\n222\r\n--b\r\nContent-Disposition: form-data; name=\"names\"\r\n\r\nfoo\r\n--b\r\nContent-Disposition: form-data; name=\"names\"\r\n\r\nbar\r\n--b\r\nContent-Disposition: form-data; name=\"names\"\r\n\r\ntest\r\n--b--")
 			c.Request().SetBody(body)
 			c.Request().Header.SetContentType(MIMEMultipartForm + `;boundary="b"`)
 			c.Request().Header.SetContentLength(len(body))
@@ -1417,14 +1423,14 @@ func Test_Ctx_Parsers(t *testing.T) {
 	t.Run("CookieParser", func(t *testing.T) {
 		t.Parallel()
 		withValues(t, func(c Ctx, testStruct *TestStruct) error {
-			c.Request().Header.Set("Cookie", "name=foo;name2=bar;class=111;class2=222")
+			c.Request().Header.Set("Cookie", "name=foo;name2=bar;class=111;class2=222;names=foo,bar,test")
 			return c.Bind().Cookie(testStruct)
 		})
 	})
 	t.Run("QueryParser", func(t *testing.T) {
 		t.Parallel()
 		withValues(t, func(c Ctx, testStruct *TestStruct) error {
-			c.Request().URI().SetQueryString("name=foo&name2=bar&class=111&class2=222")
+			c.Request().URI().SetQueryString("name=foo&name2=bar&class=111&class2=222&names=foo,bar,test")
 			return c.Bind().Query(testStruct)
 		})
 	})
@@ -1444,6 +1450,7 @@ func Test_Ctx_Parsers(t *testing.T) {
 			c.Request().Header.Add("name2", "bar")
 			c.Request().Header.Add("class", "111")
 			c.Request().Header.Add("class2", "222")
+			c.Request().Header.Add("names", "foo,bar,test")
 			return c.Bind().Header(testStruct)
 		})
 	})

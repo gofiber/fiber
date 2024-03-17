@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log" //nolint:depguard // TODO: Required to capture output, use internal log package instead
 	"net"
 	"os"
 	"strings"
