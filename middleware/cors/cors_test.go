@@ -751,6 +751,22 @@ func Test_CORS_AllowPrivateNetwork(t *testing.T) {
 
 	// Verify the Access-Control-Allow-Private-Network header is not present
 	require.Equal(t, "", string(ctx.Response.Header.Peek("Access-Control-Allow-Private-Network")), "The Access-Control-Allow-Private-Network header should not be present by default")
+
+	// Test scenario where AllowPrivateNetwork is enabled and client sends header with false value
+	app = fiber.New()
+	app.Use(New(Config{
+		AllowPrivateNetwork: true,
+	}))
+	handler = app.Handler()
+
+	ctx = &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderOrigin, "https://example.com")
+	ctx.Request.Header.Set("Access-Control-Request-Private-Network", "false")
+	handler(ctx)
+
+	// Verify the Access-Control-Allow-Private-Network header is not present
+	require.Equal(t, "", string(ctx.Response.Header.Peek("Access-Control-Allow-Private-Network")), "The Access-Control-Allow-Private-Network header should not be present by default")
 }
 
 // go test -v -run=^$ -bench=Benchmark_CORS_NewHandler -benchmem -count=4

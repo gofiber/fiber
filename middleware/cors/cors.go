@@ -84,10 +84,10 @@ var ConfigDefault = Config{
 		fiber.MethodDelete,
 		fiber.MethodPatch,
 	}, ","),
-	AllowHeaders:     "",
-	AllowCredentials: false,
-	ExposeHeaders:    "",
-	MaxAge:           0,
+	AllowHeaders:        "",
+	AllowCredentials:    false,
+	ExposeHeaders:       "",
+	MaxAge:              0,
 	AllowPrivateNetwork: false,
 }
 
@@ -235,7 +235,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Set Preflight request handling
-		if cfg.AllowPrivateNetwork && c.Get(fiber.HeaderAccessControlAllowPrivateNetwork) == "true" {
+		if cfg.AllowPrivateNetwork && c.Get("Access-Control-Request-Private-Network") == "true" {
 			// Set the Access-Control-Allow-Private-Network header to "true"
 			c.Set(fiber.HeaderAccessControlAllowPrivateNetwork, "true")
 		}
