@@ -455,6 +455,7 @@ func Test_CORS_Headers_BasedOnRequestType(t *testing.T) {
 	handler := app.Handler()
 
 	t.Run("Without origin and Access-Control-Request-Method headers", func(t *testing.T) {
+		t.Parallel()
 		// Make request without origin header, and without Access-Control-Request-Method
 		for _, method := range methods {
 			ctx := &fasthttp.RequestCtx{}
@@ -467,6 +468,7 @@ func Test_CORS_Headers_BasedOnRequestType(t *testing.T) {
 	})
 
 	t.Run("With origin but without Access-Control-Request-Method header", func(t *testing.T) {
+		t.Parallel()
 		// Make request with origin header, but without Access-Control-Request-Method
 		for _, method := range methods {
 			ctx := &fasthttp.RequestCtx{}
@@ -480,6 +482,7 @@ func Test_CORS_Headers_BasedOnRequestType(t *testing.T) {
 	})
 
 	t.Run("Without origin but with Access-Control-Request-Method header", func(t *testing.T) {
+		t.Parallel()
 		// Make request without origin header, but with Access-Control-Request-Method
 		for _, method := range methods {
 			ctx := &fasthttp.RequestCtx{}
@@ -493,6 +496,7 @@ func Test_CORS_Headers_BasedOnRequestType(t *testing.T) {
 	})
 
 	t.Run("Preflight request with origin and Access-Control-Request-Method headers", func(t *testing.T) {
+		t.Parallel()
 		// Make preflight request with origin header and with Access-Control-Request-Method
 		for _, method := range methods {
 			ctx := &fasthttp.RequestCtx{}
@@ -509,6 +513,7 @@ func Test_CORS_Headers_BasedOnRequestType(t *testing.T) {
 	})
 
 	t.Run("Non-preflight request with origin and Access-Control-Request-Method headers", func(t *testing.T) {
+		t.Parallel()
 		// Make non-preflight request with origin header and with Access-Control-Request-Method
 		for _, method := range methods {
 			ctx := &fasthttp.RequestCtx{}
@@ -676,7 +681,7 @@ func Test_CORS_AllowOriginsAndAllowOriginsFunc_AllUseCases(t *testing.T) {
 			Name: "AllowOriginsDefined/AllowOriginsFuncReturnsTrue/OriginAllowed",
 			Config: Config{
 				AllowOrigins: "http://aaa.com",
-				AllowOriginsFunc: func(origin string) bool {
+				AllowOriginsFunc: func(_ string) bool {
 					return true
 				},
 			},
@@ -687,7 +692,7 @@ func Test_CORS_AllowOriginsAndAllowOriginsFunc_AllUseCases(t *testing.T) {
 			Name: "AllowOriginsDefined/AllowOriginsFuncReturnsTrue/OriginNotAllowed",
 			Config: Config{
 				AllowOrigins: "http://aaa.com",
-				AllowOriginsFunc: func(origin string) bool {
+				AllowOriginsFunc: func(_ string) bool {
 					return true
 				},
 			},
@@ -698,7 +703,7 @@ func Test_CORS_AllowOriginsAndAllowOriginsFunc_AllUseCases(t *testing.T) {
 			Name: "AllowOriginsDefined/AllowOriginsFuncReturnsFalse/OriginAllowed",
 			Config: Config{
 				AllowOrigins: "http://aaa.com",
-				AllowOriginsFunc: func(origin string) bool {
+				AllowOriginsFunc: func(_ string) bool {
 					return false
 				},
 			},
@@ -709,7 +714,7 @@ func Test_CORS_AllowOriginsAndAllowOriginsFunc_AllUseCases(t *testing.T) {
 			Name: "AllowOriginsDefined/AllowOriginsFuncReturnsFalse/OriginNotAllowed",
 			Config: Config{
 				AllowOrigins: "http://aaa.com",
-				AllowOriginsFunc: func(origin string) bool {
+				AllowOriginsFunc: func(_ string) bool {
 					return false
 				},
 			},
@@ -729,7 +734,7 @@ func Test_CORS_AllowOriginsAndAllowOriginsFunc_AllUseCases(t *testing.T) {
 			Name: "AllowOriginsEmpty/AllowOriginsFuncReturnsTrue/OriginAllowed",
 			Config: Config{
 				AllowOrigins: "",
-				AllowOriginsFunc: func(origin string) bool {
+				AllowOriginsFunc: func(_ string) bool {
 					return true
 				},
 			},
@@ -740,7 +745,7 @@ func Test_CORS_AllowOriginsAndAllowOriginsFunc_AllUseCases(t *testing.T) {
 			Name: "AllowOriginsEmpty/AllowOriginsFuncReturnsFalse/OriginNotAllowed",
 			Config: Config{
 				AllowOrigins: "",
-				AllowOriginsFunc: func(origin string) bool {
+				AllowOriginsFunc: func(_ string) bool {
 					return false
 				},
 			},
@@ -782,7 +787,7 @@ func Test_CORS_AllowCredentials(t *testing.T) {
 			Name: "AllowOriginsFuncDefined",
 			Config: Config{
 				AllowCredentials: true,
-				AllowOriginsFunc: func(origin string) bool {
+				AllowOriginsFunc: func(_ string) bool {
 					return true
 				},
 			},
@@ -795,7 +800,7 @@ func Test_CORS_AllowCredentials(t *testing.T) {
 			Name: "fiber-ghsa-fmg4-x8pw-hjhg-wildcard-credentials",
 			Config: Config{
 				AllowCredentials: true,
-				AllowOriginsFunc: func(origin string) bool {
+				AllowOriginsFunc: func(_ string) bool {
 					return true
 				},
 			},
