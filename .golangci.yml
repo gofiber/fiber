@@ -72,8 +72,8 @@ linters-settings:
 
   gocritic:
     # TODO: Uncomment the following lines
-    # enabled-tags:
-    #   - diagnostic
+    enabled-tags:
+      - diagnostic
     #   - style
     #   - performance
     #   - experimental

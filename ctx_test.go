@@ -1435,6 +1435,7 @@ func Test_Ctx_Parsers(t *testing.T) {
 	})
 	t.Run("ParamsParser", func(t *testing.T) {
 		t.Skip("ParamsParser is not ready for v3")
+		//nolint:gocritic // TODO: uncomment
 		// t.Parallel()
 		// withValues(t, func(c Ctx, testStruct *TestStruct) error {
 		//	 c.route = &Route{Params: []string{"name", "name2", "class", "class2"}}
@@ -4758,8 +4759,6 @@ func TestCtx_ParamsInt(t *testing.T) {
 	// For the user id I will use the number 1111, so I should be able to get the number
 	// 1111 from the Ctx
 	app.Get("/test/:user", func(c Ctx) error {
-		// require.Equal(t, "john", c.Params("user"))
-
 		num, err := c.ParamsInt("user")
 
 		// Check the number matches
@@ -4774,8 +4773,6 @@ func TestCtx_ParamsInt(t *testing.T) {
 	// In this test case, there will be a bad request where the expected number is NOT
 	// a number in the path
 	app.Get("/testnoint/:user", func(c Ctx) error {
-		// require.Equal(t, "john", c.Params("user"))
-
 		num, err := c.ParamsInt("user")
 
 		// Check the number matches
@@ -4790,8 +4787,6 @@ func TestCtx_ParamsInt(t *testing.T) {
 	// For the user id I will use the number 2222, so I should be able to get the number
 	// 2222 from the Ctx even when the default value is specified
 	app.Get("/testignoredefault/:user", func(c Ctx) error {
-		// require.Equal(t, "john", c.Params("user"))
-
 		num, err := c.ParamsInt("user", 1111)
 
 		// Check the number matches
@@ -4806,8 +4801,6 @@ func TestCtx_ParamsInt(t *testing.T) {
 	// In this test case, there will be a bad request where the expected number is NOT
 	// a number in the path, default value of 1111 should be used instead
 	app.Get("/testdefault/:user", func(c Ctx) error {
-		// require.Equal(t, "john", c.Params("user"))
-
 		num, err := c.ParamsInt("user", 1111)
 
 		// Check the number matches

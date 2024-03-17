@@ -94,7 +94,6 @@ func readContent(rf io.ReaderFrom, name string) (int64, error) {
 // quoteString escape special characters in a given string
 func (app *App) quoteString(raw string) string {
 	bb := bytebufferpool.Get()
-	// quoted := string(fasthttp.AppendQuotedArg(bb.B, getBytes(raw)))
 	quoted := app.getString(fasthttp.AppendQuotedArg(bb.B, app.getBytes(raw)))
 	bytebufferpool.Put(bb)
 	return quoted
