@@ -462,13 +462,14 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 		// Get specificity
 		var specificity int
 		// check for wildcard this could be a mime */* or a wildcard character *
-		if string(spec) == "*/*" || string(spec) == "*" {
+		switch {
+		case string(spec) == "*/*" || string(spec) == "*":
 			specificity = 1
-		} else if bytes.HasSuffix(spec, []byte("/*")) {
+		case bytes.HasSuffix(spec, []byte("/*")):
 			specificity = 2
-		} else if bytes.IndexByte(spec, '/') != -1 {
+		case bytes.IndexByte(spec, '/') != -1:
 			specificity = 3
-		} else {
+		default:
 			specificity = 4
 		}
 

@@ -78,11 +78,6 @@ linters-settings:
     #   - performance
     #   - experimental
     #   - opinionated
-    disabled-checks:
-      - ifElseChain # TODO: Do not disable
-      # - hugeParam
-      # - rangeExprCopy
-      # - rangeValCopy
     settings:
       captLocal:
         paramsOnly: false
@@ -195,6 +190,8 @@ linters-settings:
         disabled: true
       - name: unchecked-type-assertion
         disabled: true # TODO: Do not disable
+      - name: unhandled-error
+        arguments: ['bytes\.Buffer\.Write']
 
   stylecheck:
     checks:
@@ -217,9 +214,6 @@ linters-settings:
 
   testifylint:
     enable-all: true
-    # TODO: Do not disable any options
-    disable:
-      - go-require
 
   testpackage:
     skip-regexp: "^$"
