@@ -34,6 +34,7 @@ func Test_CORS_Negative_MaxAge(t *testing.T) {
 
 	ctx := &fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
 	app.Handler()(ctx)
 
@@ -48,6 +49,7 @@ func testDefaultOrEmptyConfig(t *testing.T, app *fiber.App) {
 	// Test default GET response headers
 	ctx := &fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
 	h(ctx)
 
@@ -58,6 +60,7 @@ func testDefaultOrEmptyConfig(t *testing.T, app *fiber.App) {
 	// Test default OPTIONS (preflight) response headers
 	ctx = &fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
 	h(ctx)
 
@@ -86,6 +89,7 @@ func Test_CORS_Wildcard(t *testing.T) {
 	ctx.Request.SetRequestURI("/")
 	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
 	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 
 	// Perform request
 	handler(ctx)
@@ -100,6 +104,7 @@ func Test_CORS_Wildcard(t *testing.T) {
 	ctx = &fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
 	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
+	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 	handler(ctx)
 
 	require.Equal(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowCredentials)))
@@ -127,6 +132,7 @@ func Test_CORS_Origin_AllowCredentials(t *testing.T) {
 	ctx.Request.SetRequestURI("/")
 	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
 	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 
 	// Perform request
 	handler(ctx)
@@ -140,6 +146,7 @@ func Test_CORS_Origin_AllowCredentials(t *testing.T) {
 	// Test non OPTIONS (preflight) response headers
 	ctx = &fasthttp.RequestCtx{}
 	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
+	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
 	handler(ctx)
 
@@ -225,6 +232,7 @@ func Test_CORS_Subdomain(t *testing.T) {
 	ctx := &fasthttp.RequestCtx{}
 	ctx.Request.SetRequestURI("/")
 	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://google.com")
 
 	// Perform request
@@ -239,6 +247,7 @@ func Test_CORS_Subdomain(t *testing.T) {
 	// Make request with domain only (disallowed)
 	ctx.Request.SetRequestURI("/")
 	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://example.com")
 
 	handler(ctx)
@@ -251,6 +260,7 @@ func Test_CORS_Subdomain(t *testing.T) {
 	// Make request with allowed origin
 	ctx.Request.SetRequestURI("/")
 	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://test.example.com")
 
 	handler(ctx)
@@ -365,6 +375,7 @@ func Test_CORS_AllowOriginScheme(t *testing.T) {
 		ctx := &fasthttp.RequestCtx{}
 		ctx.Request.SetRequestURI("/")
 		ctx.Request.Header.SetMethod(fiber.MethodOptions)
+		ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 		ctx.Request.Header.Set(fiber.HeaderOrigin, tt.reqOrigin)
 
 		handler(ctx)
@@ -403,7 +414,7 @@ func Test_CORS_AllowOriginHeader_NoMatch(t *testing.T) {
 			headerExists = true
 		}
 	})
-	require.Equal(t, false, headerExists, "Access-Control-Allow-Origin header should not be set")
+	require.False(t, headerExists, "Access-Control-Allow-Origin header should not be set")
 }
 
 // go test -run Test_CORS_Next
@@ -411,7 +422,7 @@ func Test_CORS_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{
-		Next: func(_ fiber.Ctx) bool {
+		Next: func(_ *fiber.Ctx) bool {
 			return true
 		},
 	}))
@@ -426,7 +437,7 @@ func Test_CORS_Headers_BasedOnRequestType(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{}))
-	app.Use(func(c *fiber.Ctx) error {
+	app.Use(func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
@@ -443,6 +454,7 @@ func Test_CORS_Headers_BasedOnRequestType(t *testing.T) {
 	handler := app.Handler()
 
 	t.Run("Without origin and Access-Control-Request-Method headers", func(t *testing.T) {
+		t.Parallel()
 		// Make request without origin header, and without Access-Control-Request-Method
 		for _, method := range methods {
 			ctx := &fasthttp.RequestCtx{}
@@ -455,6 +467,7 @@ func Test_CORS_Headers_BasedOnRequestType(t *testing.T) {
 	})
 
 	t.Run("With origin but without Access-Control-Request-Method header", func(t *testing.T) {
+		t.Parallel()
 		// Make request with origin header, but without Access-Control-Request-Method
 		for _, method := range methods {
 			ctx := &fasthttp.RequestCtx{}
@@ -468,6 +481,7 @@ func Test_CORS_Headers_BasedOnRequestType(t *testing.T) {
 	})
 
 	t.Run("Without origin but with Access-Control-Request-Method header", func(t *testing.T) {
+		t.Parallel()
 		// Make request without origin header, but with Access-Control-Request-Method
 		for _, method := range methods {
 			ctx := &fasthttp.RequestCtx{}
@@ -481,6 +495,7 @@ func Test_CORS_Headers_BasedOnRequestType(t *testing.T) {
 	})
 
 	t.Run("Preflight request with origin and Access-Control-Request-Method headers", func(t *testing.T) {
+		t.Parallel()
 		// Make preflight request with origin header and with Access-Control-Request-Method
 		for _, method := range methods {
 			ctx := &fasthttp.RequestCtx{}
@@ -497,6 +512,7 @@ func Test_CORS_Headers_BasedOnRequestType(t *testing.T) {
 	})
 
 	t.Run("Non-preflight request with origin and Access-Control-Request-Method headers", func(t *testing.T) {
+		t.Parallel()
 		// Make non-preflight request with origin header and with Access-Control-Request-Method
 		for _, method := range methods {
 			ctx := &fasthttp.RequestCtx{}
@@ -531,6 +547,7 @@ func Test_CORS_AllowOriginsAndAllowOriginsFunc(t *testing.T) {
 	ctx := &fasthttp.RequestCtx{}
 	ctx.Request.SetRequestURI("/")
 	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://google.com")
 
 	// Perform request
@@ -545,6 +562,7 @@ func Test_CORS_AllowOriginsAndAllowOriginsFunc(t *testing.T) {
 	// Make request with allowed origin
 	ctx.Request.SetRequestURI("/")
 	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://example-1.com")
 
 	handler(ctx)
@@ -557,6 +575,7 @@ func Test_CORS_AllowOriginsAndAllowOriginsFunc(t *testing.T) {
 	// Make request with allowed origin
 	ctx.Request.SetRequestURI("/")
 	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://example-2.com")
 
 	handler(ctx)
@@ -596,6 +615,7 @@ func Test_CORS_AllowOriginsFunc(t *testing.T) {
 	// Make request with allowed origin
 	ctx.Request.SetRequestURI("/")
 	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://example-2.com")
 
 	handler(ctx)
@@ -743,6 +763,7 @@ func Test_CORS_AllowOriginsAndAllowOriginsFunc_AllUseCases(t *testing.T) {
 			ctx := &fasthttp.RequestCtx{}
 			ctx.Request.SetRequestURI("/")
 			ctx.Request.Header.SetMethod(fiber.MethodOptions)
+			ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 			ctx.Request.Header.Set(fiber.HeaderOrigin, tc.RequestOrigin)
 
 			handler(ctx)
@@ -833,6 +854,7 @@ func Test_CORS_AllowCredentials(t *testing.T) {
 			ctx := &fasthttp.RequestCtx{}
 			ctx.Request.SetRequestURI("/")
 			ctx.Request.Header.SetMethod(fiber.MethodOptions)
+			ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 			ctx.Request.Header.Set(fiber.HeaderOrigin, tc.RequestOrigin)
 
 			handler(ctx)
