@@ -51,9 +51,17 @@ type Config struct {
 	TlsConfig *tls.Config //nolint:stylecheck,revive // TODO: Rename to "TLSConfig" in v3
 
 	// Client is custom client when client config is complex.
-	// Note that Servers, Timeout, WriteBufferSize, ReadBufferSize and TlsConfig
-	// will not be used if the client are set.
+	// Note that Servers, Timeout, WriteBufferSize, ReadBufferSize, TlsConfig
+	// and DialDualStack will not be used if the client are set.
 	Client *fasthttp.LBClient
+
+	// Attempt to connect to both ipv4 and ipv6 host addresses if set to true.
+	//
+	// By default client connects only to ipv4 addresses, since unfortunately ipv6
+	// remains broken in many networks worldwide :)
+	//
+	// Optional. Default: false
+	DialDualStack bool
 }
 
 // ConfigDefault is the default config

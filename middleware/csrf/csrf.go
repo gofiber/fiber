@@ -4,20 +4,25 @@ import (
 	"errors"
 	"net/url"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 )
 
 var (
-	ErrTokenNotFound = errors.New("csrf token not found")
-	ErrTokenInvalid  = errors.New("csrf token invalid")
-	ErrNoReferer     = errors.New("referer not supplied")
-	ErrBadReferer    = errors.New("referer invalid")
-	dummyValue       = []byte{'+'}
+	ErrTokenNotFound   = errors.New("csrf token not found")
+	ErrTokenInvalid    = errors.New("csrf token invalid")
+	ErrRefererNotFound = errors.New("referer not supplied")
+	ErrRefererInvalid  = errors.New("referer invalid")
+	ErrRefererNoMatch  = errors.New("referer does not match host and is not a trusted origin")
+	ErrOriginInvalid   = errors.New("origin invalid")
+	ErrOriginNoMatch   = errors.New("origin does not match host and is not a trusted origin")
+	errOriginNotFound  = errors.New("origin not supplied or is null") // internal error, will not be returned to the user
+	dummyValue         = []byte{'+'}
 )
 
-// Handler handles
+// Handler for CSRF middleware
 type Handler struct {
 	config         *Config
 	sessionManager *sessionManager
@@ -82,11 +87,22 @@ func New(config ...Config) fiber.Handler {
 		default:
 			// Assume that anything not defined as 'safe' by RFC7231 needs protection
 
-			// Enforce an origin check for HTTPS connections.
-			if c.Scheme() == "https" {
-				if err := refererMatchesHost(c); err != nil {
-					return cfg.ErrorHandler(c, err)
+			// Enforce an origin check for unsafe requests.
+			err := originMatchesHost(c, cfg.TrustedOrigins)
+
+			// If there's no origin, enforce a referer check for HTTPS connections.
+			if errors.Is(err, errOriginNotFound) {
+				if c.Scheme() == "https" {
+					err = refererMatchesHost(c, cfg.TrustedOrigins)
+				} else {
+					// If it's not HTTPS, clear the error to allow the request to proceed.
+					err = nil
 				}
+			}
+
+			// If there's an error (either from origin check or referer check), handle it.
+			if err != nil {
+				return cfg.ErrorHandler(c, err)
 			}
 
 			// Extract token from client request i.e. header, query, param, form or cookie
@@ -243,23 +259,81 @@ func isFromCookie(extractor any) bool {
 	return reflect.ValueOf(extractor).Pointer() == reflect.ValueOf(FromCookie).Pointer()
 }
 
+// originMatchesHost checks that the origin header matches the host header
+// returns an error if the origin header is not present or is invalid
+// returns nil if the origin header is valid
+func originMatchesHost(c fiber.Ctx, trustedOrigins []string) error {
+	origin := c.Get(fiber.HeaderOrigin)
+	if origin == "" || origin == "null" { // "null" is set by some browsers when the origin is a secure context https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin#description
+		return errOriginNotFound
+	}
+
+	originURL, err := url.Parse(origin)
+	if err != nil {
+		return ErrOriginInvalid
+	}
+
+	if originURL.Host != c.Host() {
+		for _, trustedOrigin := range trustedOrigins {
+			if isTrustedSchemeAndDomain(trustedOrigin, origin) {
+				return nil
+			}
+		}
+		return ErrOriginNoMatch
+	}
+
+	return nil
+}
+
 // refererMatchesHost checks that the referer header matches the host header
 // returns an error if the referer header is not present or is invalid
 // returns nil if the referer header is valid
-func refererMatchesHost(c fiber.Ctx) error {
+func refererMatchesHost(c fiber.Ctx, trustedOrigins []string) error {
 	referer := c.Get(fiber.HeaderReferer)
 	if referer == "" {
-		return ErrNoReferer
+		return ErrRefererNotFound
 	}
 
 	refererURL, err := url.Parse(referer)
 	if err != nil {
-		return ErrBadReferer
+		return ErrRefererInvalid
 	}
 
-	if refererURL.Scheme+"://"+refererURL.Host != c.Scheme()+"://"+c.Host() {
-		return ErrBadReferer
+	if refererURL.Host != c.Host() {
+		for _, trustedOrigin := range trustedOrigins {
+			if isTrustedSchemeAndDomain(trustedOrigin, referer) {
+				return nil
+			}
+		}
+		return ErrRefererNoMatch
 	}
 
 	return nil
+}
+
+// isTrustedSchemeAndDomain checks if the trustedProtoDomain is the same as the protoDomain
+// or if the protoDomain is a subdomain of the trustedProtoDomain where trustedProtoDomain
+// is prefixed with "https://." or "http://."
+func isTrustedSchemeAndDomain(trustedProtoDomain, protoDomain string) bool {
+	if trustedProtoDomain == protoDomain {
+		return true
+	}
+
+	// Use constant prefixes for better readability and avoid magic numbers.
+	const httpsPrefix = "https://."
+	const httpPrefix = "http://."
+
+	if strings.HasPrefix(trustedProtoDomain, httpsPrefix) {
+		trustedProtoDomain = trustedProtoDomain[len(httpsPrefix):]
+		protoDomain = strings.TrimPrefix(protoDomain, "https://")
+		return strings.HasSuffix(protoDomain, "."+trustedProtoDomain)
+	}
+
+	if strings.HasPrefix(trustedProtoDomain, httpPrefix) {
+		trustedProtoDomain = trustedProtoDomain[len(httpPrefix):]
+		protoDomain = strings.TrimPrefix(protoDomain, "http://")
+		return strings.HasSuffix(protoDomain, "."+trustedProtoDomain)
+	}
+
+	return false
 }
