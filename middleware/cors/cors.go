@@ -133,11 +133,10 @@ func New(config ...Config) fiber.Handler {
 			trimmedOrigin := strings.TrimSpace(origin)
 			isValid, normalizedOrigin := normalizeOrigin(trimmedOrigin)
 
-			if isValid {
-				allowOrigins[i] = normalizedOrigin
-			} else {
+			if !isValid {
 				log.Panicf("[CORS] Invalid origin format in configuration: %s", trimmedOrigin) //nolint:revive // we want to exit the program
 			}
+			allowOrigins[i] = normalizedOrigin
 		}
 	} else {
 		// If AllowOrigins is set to a wildcard or not set,
