@@ -72,18 +72,20 @@ func (s *Store) Get(c fiber.Ctx) (*Session, error) {
 	if loadData {
 		raw, err := s.Storage.Get(id)
 		// Unmarshal if we found data
-		if raw != nil && err == nil {
+		switch {
+		case err != nil:
+			return nil, err
+
+		case raw != nil:
 			mux.Lock()
 			defer mux.Unlock()
-			_, _ = sess.byteBuffer.Write(raw) // Ignore error, this will never fail
+			sess.byteBuffer.Write(raw)
 			encCache := gob.NewDecoder(sess.byteBuffer)
 			err := encCache.Decode(&sess.data.Data)
 			if err != nil {
 				return nil, fmt.Errorf("failed to decode session data: %w", err)
 			}
-		} else if err != nil {
-			return nil, err
-		} else {
+		default:
 			// both raw and err is nil, which means id is not in the storage
 			sess.fresh = true
 		}
