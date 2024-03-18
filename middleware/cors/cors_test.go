@@ -422,7 +422,7 @@ func Test_CORS_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{
-		Next: func(_ *fiber.Ctx) bool {
+		Next: func(_ fiber.Ctx) bool {
 			return true
 		},
 	}))
