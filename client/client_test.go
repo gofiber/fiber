@@ -656,7 +656,7 @@ func Test_Client_UserAgent(t *testing.T) {
 	setupApp := func() (*fiber.App, string) {
 		app, addr := startTestServerWithPort(t, func(app *fiber.App) {
 			app.Get("/", func(c fiber.Ctx) error {
-				return c.Send(c.Request().Header.UserAgent())
+				return c.SendString(c.Get(fiber.HeaderUserAgent))
 			})
 		})
 
@@ -778,7 +778,7 @@ func Test_Client_Header(t *testing.T) {
 
 func Test_Client_Header_With_Server(t *testing.T) {
 	handler := func(c fiber.Ctx) error {
-		c.Request().Header.VisitAll(func(key, value []byte) {
+		c.Context().Request.Header.VisitAll(func(key, value []byte) {
 			if k := string(key); k == "K1" || k == "K2" {
 				_, _ = c.Write(key)   //nolint:errcheck // It is fine to ignore the error here
 				_, _ = c.Write(value) //nolint:errcheck // It is fine to ignore the error here
@@ -1011,7 +1011,7 @@ func Test_Client_CookieJar_Response(t *testing.T) {
 
 func Test_Client_Referer(t *testing.T) {
 	handler := func(c fiber.Ctx) error {
-		return c.Send(c.Request().Header.Referer())
+		return c.SendString(c.Get(fiber.HeaderReferer))
 	}
 
 	wrapAgent := func(c *Client) {
@@ -1383,7 +1383,7 @@ func Test_Replace(t *testing.T) {
 	app, dial, start := createHelperServer(t)
 
 	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString(string(c.Request().Header.Peek("k1")))
+		return c.SendString(c.Get("k1"))
 	})
 
 	go start()

@@ -234,7 +234,7 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 		if method == fiber.MethodHead {
-			c.Request().ResetBody()
+			c.Context().Request.ResetBody()
 			// Fasthttp should skipbody by default if HEAD?
 			c.Response().SkipBody = true
 			c.Response().Header.SetContentLength(contentLength)
@@ -309,7 +309,7 @@ func SendFile(c fiber.Ctx, filesystem fs.FS, path string) error {
 		return nil
 	}
 	if method == fiber.MethodHead {
-		c.Request().ResetBody()
+		c.Context().Request.ResetBody()
 		// Fasthttp should skipbody by default if HEAD?
 		c.Response().SkipBody = true
 		c.Response().Header.SetContentLength(contentLength)

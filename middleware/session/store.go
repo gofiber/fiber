@@ -103,7 +103,7 @@ func (s *Store) getSessionID(c fiber.Ctx) string {
 	}
 
 	if s.source == SourceHeader {
-		id = string(c.Request().Header.Peek(s.sessionName))
+		id = string(c.Context().Request.Header.Peek(s.sessionName))
 		if len(id) > 0 {
 			return id
 		}

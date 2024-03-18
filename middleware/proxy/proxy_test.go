@@ -362,7 +362,7 @@ func Test_Proxy_Modify_Request(t *testing.T) {
 	t.Parallel()
 
 	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
-		b := c.Request().Body()
+		b := c.Req().Body()
 		return c.SendString(string(b))
 	})
 
@@ -370,7 +370,7 @@ func Test_Proxy_Modify_Request(t *testing.T) {
 	app.Use(Balancer(Config{
 		Servers: []string{addr},
 		ModifyRequest: func(c fiber.Ctx) error {
-			c.Request().SetBody([]byte("modified request"))
+			c.Context().Request.SetBody([]byte("modified request"))
 			return nil
 		},
 	}))

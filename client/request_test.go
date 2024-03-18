@@ -856,7 +856,7 @@ func Test_Request_Patch(t *testing.T) {
 func Test_Request_Header_With_Server(t *testing.T) {
 	t.Parallel()
 	handler := func(c fiber.Ctx) error {
-		c.Request().Header.VisitAll(func(key, value []byte) {
+		c.Context().Request.Header.VisitAll(func(key, value []byte) {
 			if k := string(key); k == "K1" || k == "K2" {
 				_, err := c.Write(key)
 				require.NoError(t, err)
@@ -886,7 +886,7 @@ func Test_Request_UserAgent_With_Server(t *testing.T) {
 	t.Parallel()
 
 	handler := func(c fiber.Ctx) error {
-		return c.Send(c.Request().Header.UserAgent())
+		return c.SendString(c.Get(fiber.HeaderUserAgent))
 	}
 
 	t.Run("default", func(t *testing.T) {
@@ -924,7 +924,7 @@ func Test_Request_Cookie_With_Server(t *testing.T) {
 func Test_Request_Referer_With_Server(t *testing.T) {
 	t.Parallel()
 	handler := func(c fiber.Ctx) error {
-		return c.Send(c.Request().Header.Referer())
+		return c.SendString(c.Get(fiber.HeaderReferer))
 	}
 
 	wrapAgent := func(req *Request) {
@@ -937,7 +937,7 @@ func Test_Request_Referer_With_Server(t *testing.T) {
 func Test_Request_QueryString_With_Server(t *testing.T) {
 	t.Parallel()
 	handler := func(c fiber.Ctx) error {
-		return c.Send(c.Request().URI().QueryString())
+		return c.Send(c.Context().URI().QueryString())
 	}
 
 	wrapAgent := func(req *Request) {
@@ -975,8 +975,8 @@ func Test_Request_Body_With_Server(t *testing.T) {
 		t.Parallel()
 		testRequest(t,
 			func(c fiber.Ctx) error {
-				require.Equal(t, "application/json", string(c.Request().Header.ContentType()))
-				return c.SendString(string(c.Request().Body()))
+				require.Equal(t, "application/json", c.Get(fiber.HeaderContentType))
+				return c.SendString(string(c.Req().BodyRaw()))
 			},
 			func(agent *Request) {
 				agent.SetJSON(map[string]string{
@@ -991,8 +991,8 @@ func Test_Request_Body_With_Server(t *testing.T) {
 		t.Parallel()
 		testRequest(t,
 			func(c fiber.Ctx) error {
-				require.Equal(t, "application/xml", string(c.Request().Header.ContentType()))
-				return c.SendString(string(c.Request().Body()))
+				require.Equal(t, "application/xml", c.Get(fiber.HeaderContentType))
+				return c.SendString(string(c.Req().BodyRaw()))
 			},
 			func(agent *Request) {
 				type args struct {
@@ -1010,7 +1010,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 		t.Parallel()
 		testRequest(t,
 			func(c fiber.Ctx) error {
-				require.Equal(t, fiber.MIMEApplicationForm, string(c.Request().Header.ContentType()))
+				require.Equal(t, fiber.MIMEApplicationForm, c.Get(fiber.HeaderContentType))
 				return c.Send([]byte("foo=" + c.FormValue("foo") + "&bar=" + c.FormValue("bar") + "&fiber=" + c.FormValue("fiber")))
 			},
 			func(agent *Request) {
@@ -1034,7 +1034,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, "bar", mf.Value["foo"][0])
 
-			return c.Send(c.Request().Body())
+			return c.Send(c.Req().Body())
 		})
 
 		go start()
@@ -1126,7 +1126,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 			reg := regexp.MustCompile(`multipart/form-data; boundary=[\-\w]{35}`)
 			require.True(t, reg.MatchString(c.Get(fiber.HeaderContentType)))
 
-			return c.Send(c.Request().Body())
+			return c.Send(c.Req().BodyRaw())
 		})
 
 		go start()
@@ -1151,7 +1151,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 		t.Parallel()
 		testRequest(t,
 			func(c fiber.Ctx) error {
-				return c.SendString(string(c.Request().Body()))
+				return c.SendString(string(c.Req().BodyRaw()))
 			},
 			func(agent *Request) {
 				agent.SetRawBody([]byte("hello"))
@@ -1237,7 +1237,7 @@ func Test_Request_MaxRedirects(t *testing.T) {
 	app := fiber.New()
 
 	app.Get("/", func(c fiber.Ctx) error {
-		if c.Request().URI().QueryArgs().Has("foo") {
+		if c.Context().URI().QueryArgs().Has("foo") {
 			return c.Redirect().To("/foo")
 		}
 		return c.Redirect().To("/")

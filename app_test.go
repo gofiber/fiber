@@ -1678,7 +1678,7 @@ func Test_App_ReadBodyStream(t *testing.T) {
 	app := New(Config{StreamRequestBody: true})
 	app.Post("/", func(c Ctx) error {
 		// Calling c.Body() automatically reads the entire stream.
-		return c.SendString(fmt.Sprintf("%v %s", c.Request().IsBodyStream(), c.Body()))
+		return c.SendString(fmt.Sprintf("%v %s", c.Context().Request.IsBodyStream(), c.Body()))
 	})
 	testString := "this is a test"
 	resp, err := app.Test(httptest.NewRequest(MethodPost, "/", bytes.NewBufferString(testString)))
@@ -1695,7 +1695,7 @@ func Test_App_DisablePreParseMultipartForm(t *testing.T) {
 
 	app := New(Config{DisablePreParseMultipartForm: true, StreamRequestBody: true})
 	app.Post("/", func(c Ctx) error {
-		req := c.Request()
+		req := &c.Context().Request
 		mpf, err := req.MultipartForm()
 		if err != nil {
 			return err

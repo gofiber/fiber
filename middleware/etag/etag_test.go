@@ -1,7 +1,6 @@
 package etag
 
 import (
-	"bytes"
 	"io"
 	"net/http/httptest"
 	"testing"
@@ -208,7 +207,7 @@ func testETagCustomEtag(t *testing.T, headerIfNoneMatch, matched bool) { //nolin
 
 	app.Get("/", func(c fiber.Ctx) error {
 		c.Set(fiber.HeaderETag, `"custom"`)
-		if bytes.Equal(c.Request().Header.Peek(fiber.HeaderIfNoneMatch), []byte(`"custom"`)) {
+		if c.Get(fiber.HeaderIfNoneMatch) == `"custom"` {
 			return c.SendStatus(fiber.StatusNotModified)
 		}
 		return c.SendString("Hello, World!")
@@ -249,7 +248,7 @@ func Test_ETag_CustomEtagPut(t *testing.T) {
 
 	app.Put("/", func(c fiber.Ctx) error {
 		c.Set(fiber.HeaderETag, `"custom"`)
-		if !bytes.Equal(c.Request().Header.Peek(fiber.HeaderIfMatch), []byte(`"custom"`)) {
+		if c.Get(fiber.HeaderIfMatch) != `"custom"` {
 			return c.SendStatus(fiber.StatusPreconditionFailed)
 		}
 		return c.SendString("Hello, World!")
