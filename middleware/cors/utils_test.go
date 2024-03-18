@@ -157,3 +157,20 @@ func TestSubdomainMatch(t *testing.T) {
 		})
 	}
 }
+
+// go test -v -run=^$ -bench=Benchmark_CORS_SubdomainMatch -benchmem -count=4
+func Benchmark_CORS_SubdomainMatch(b *testing.B) {
+	s := subdomain{
+		prefix: "www",
+		suffix: ".example.com",
+	}
+
+	o := "www.example.com"
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		s.match(o)
+	}
+}
