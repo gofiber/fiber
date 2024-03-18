@@ -1095,9 +1095,9 @@ func (*DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path stri
 	return nil
 }
 
-// Secure returns whether a secure connection was established.
+// Secure is an alias of [Request.Secure].
 func (c *DefaultCtx) Secure() bool {
-	return c.Protocol() == schemeHTTPS
+	return c.Req().Secure()
 }
 
 // Send sets the HTTP response body without copying it.
@@ -1228,26 +1228,14 @@ func (c *DefaultCtx) setCanonical(key, val string) {
 	c.fasthttp.Response.Header.SetCanonical(utils.UnsafeBytes(key), utils.UnsafeBytes(val))
 }
 
-// Subdomains returns a string slice of subdomains in the domain name of the request.
-// The subdomain offset, which defaults to 2, is used for determining the beginning of the subdomain segments.
+// Subdomains is an alias of [Request.Subdomains].
 func (c *DefaultCtx) Subdomains(offset ...int) []string {
-	o := 2
-	if len(offset) > 0 {
-		o = offset[0]
-	}
-	subdomains := strings.Split(c.Host(), ".")
-	l := len(subdomains) - o
-	// Check index to avoid slice bounds out of range panic
-	if l < 0 {
-		l = len(subdomains)
-	}
-	subdomains = subdomains[:l]
-	return subdomains
+	return c.Req().Subdomains(offset...)
 }
 
-// Stale is not implemented yet, pull requests are welcome!
+// Stale is an alias of [Request.Stale].
 func (c *DefaultCtx) Stale() bool {
-	return !c.Fresh()
+	return c.Req().Stale()
 }
 
 // Status sets the HTTP status for the response.
@@ -1330,10 +1318,9 @@ func (c *DefaultCtx) WriteString(s string) (int, error) {
 	return len(s), nil
 }
 
-// XHR returns a Boolean property, that is true, if the request's X-Requested-With header field is XMLHttpRequest,
-// indicating that the request was issued by a client library (such as jQuery).
+// XHR is an alias of [Request.XHR].
 func (c *DefaultCtx) XHR() bool {
-	return utils.EqualFold(c.app.getBytes(c.Get(HeaderXRequestedWith)), []byte("xmlhttprequest"))
+	return c.Req().XHR()
 }
 
 // configDependentPaths set paths for route recognition and prepared paths for the user,

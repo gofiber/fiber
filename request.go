@@ -431,3 +431,37 @@ func (r *Request) Fresh() bool {
 	}
 	return true
 }
+
+// Secure returns whether a secure connection was established.
+func (r *Request) Secure() bool {
+	return r.Protocol() == schemeHTTPS
+}
+
+// Stale is the opposite of [Request.Fresh] and returns true when the response
+// to this request is no longer "fresh" in the client's cache.
+func (r *Request) Stale() bool {
+	return !r.Fresh()
+}
+
+// Subdomains returns a string slice of subdomains in the domain name of the request.
+// The subdomain offset, which defaults to 2, is used for determining the beginning of the subdomain segments.
+func (r *Request) Subdomains(offset ...int) []string {
+	o := 2
+	if len(offset) > 0 {
+		o = offset[0]
+	}
+	subdomains := strings.Split(r.Host(), ".")
+	l := len(subdomains) - o
+	// Check index to avoid slice bounds out of range panic
+	if l < 0 {
+		l = len(subdomains)
+	}
+	subdomains = subdomains[:l]
+	return subdomains
+}
+
+// XHR returns a Boolean property, that is true, if the request's X-Requested-With header field is XMLHttpRequest,
+// indicating that the request was issued by a client library (such as jQuery).
+func (r *Request) XHR() bool {
+	return utils.EqualFold(r.Get(HeaderXRequestedWith), "xmlhttprequest")
+}
