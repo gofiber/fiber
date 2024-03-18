@@ -1436,6 +1436,7 @@ func Test_Ctx_Parsers(t *testing.T) {
 	})
 	t.Run("ParamsParser", func(t *testing.T) {
 		t.Skip("ParamsParser is not ready for v3")
+		//nolint:gocritic // TODO: uncomment
 		// t.Parallel()
 		// withValues(t, func(c Ctx, testStruct *TestStruct) error {
 		//	 c.route = &Route{Params: []string{"name", "name2", "class", "class2"}}

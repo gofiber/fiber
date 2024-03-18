@@ -108,11 +108,12 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 	var err error
 	// Loop over template parts execute dynamic parts and add fixed parts to the buffer
 	for i, logFunc := range data.LogFuncChain {
-		if logFunc == nil {
+		switch {
+		case logFunc == nil:
 			buf.Write(data.TemplateChain[i])
-		} else if data.TemplateChain[i] == nil {
+		case data.TemplateChain[i] == nil:
 			_, err = logFunc(buf, c, data, "")
-		} else {
+		default:
 			_, err = logFunc(buf, c, data, utils.UnsafeString(data.TemplateChain[i]))
 		}
 		if err != nil {
