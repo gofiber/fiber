@@ -733,18 +733,6 @@ func Test_CSRF_Origin(t *testing.T) {
 	h(ctx)
 	require.Equal(t, 403, ctx.Response.StatusCode())
 
-	// Test Correct Origin with path
-	ctx.Request.Reset()
-	ctx.Response.Reset()
-	ctx.Request.Header.SetMethod(fiber.MethodPost)
-	ctx.Request.Header.Set(fiber.HeaderXForwardedProto, "http")
-	ctx.Request.Header.Set(fiber.HeaderXForwardedHost, "example.com")
-	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://example.com/action/items?gogogo=true")
-	ctx.Request.Header.Set(HeaderName, token)
-	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
-	h(ctx)
-	require.Equal(t, 200, ctx.Response.StatusCode())
-
 	// Test Wrong Origin
 	ctx.Request.Reset()
 	ctx.Response.Reset()
@@ -767,8 +755,8 @@ func Test_CSRF_TrustedOrigins(t *testing.T) {
 		TrustedOrigins: []string{
 			"http://safe.example.com",
 			"https://safe.example.com",
-			"http://.domain-1.com",
-			"https://.domain-1.com",
+			"http://*.domain-1.com",
+			"https://*.domain-1.com",
 		},
 	}))
 
@@ -870,6 +858,35 @@ func Test_CSRF_TrustedOrigins(t *testing.T) {
 	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
 	h(ctx)
 	require.Equal(t, 403, ctx.Response.StatusCode())
+}
+
+func Test_CSRF_TrustedOrigins_InvalidOrigins(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		origin string
+	}{
+		{"No Scheme", "localhost"},
+		{"Wildcard", "https://*"},
+		{"Wildcard domain", "https://*example.com"},
+		{"File Scheme", "file://example.com"},
+		{"FTP Scheme", "ftp://example.com"},
+		{"Port Wildcard", "http://example.com:*"},
+		{"Multiple Wildcards", "https://*.*.com"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Panics(t, func() {
+				app := fiber.New()
+				app.Use(New(Config{
+					CookieSecure:   true,
+					TrustedOrigins: []string{tt.origin},
+				}))
+			}, "Expected panic")
+		})
+	}
 }
 
 func Test_CSRF_Referer(t *testing.T) {
@@ -979,6 +996,18 @@ func Test_CSRF_DeleteToken(t *testing.T) {
 	h := app.Handler()
 	ctx := &fasthttp.RequestCtx{}
 
+	// DeleteToken after token generation and remove the cookie
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.Set(HeaderName, "")
+	handler := HandlerFromContext(app.AcquireCtx(ctx))
+	if handler != nil {
+		ctx.Request.Header.DelAllCookies()
+		err := handler.DeleteToken(app.AcquireCtx(ctx))
+		require.ErrorIs(t, err, ErrTokenNotFound)
+	}
+	h(ctx)
+
 	// Generate CSRF token
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
 	h(ctx)
@@ -991,7 +1020,7 @@ func Test_CSRF_DeleteToken(t *testing.T) {
 	ctx.Request.Header.SetMethod(fiber.MethodPost)
 	ctx.Request.Header.Set(HeaderName, token)
 	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
-	handler := HandlerFromContext(app.AcquireCtx(ctx))
+	handler = HandlerFromContext(app.AcquireCtx(ctx))
 	if handler != nil {
 		if err := handler.DeleteToken(app.AcquireCtx(ctx)); err != nil {
 			t.Fatal(err)
