@@ -2,7 +2,6 @@ package csrf
 
 import (
 	"errors"
-	"log"
 	"net/url"
 	"reflect"
 	"strings"
@@ -66,7 +65,7 @@ func New(config ...Config) fiber.Handler {
 			trimmedOrigin := strings.TrimSpace(origin[:i+3] + origin[i+4:])
 			isValid, normalizedOrigin := normalizeOrigin(trimmedOrigin)
 			if !isValid {
-				log.Panicf("[CSRF] Invalid origin format in configuration: %s", origin)
+				panic("[CSRF] Invalid origin format in configuration:" + origin)
 			}
 			sd := subdomain{prefix: normalizedOrigin[:i+3], suffix: normalizedOrigin[i+3:]}
 			trustedSubOrigins = append(trustedSubOrigins, sd)
@@ -74,7 +73,7 @@ func New(config ...Config) fiber.Handler {
 			trimmedOrigin := strings.TrimSpace(origin)
 			isValid, normalizedOrigin := normalizeOrigin(trimmedOrigin)
 			if !isValid {
-				log.Panicf("[CSRF] Invalid origin format in configuration: %s", origin)
+				panic("[CSRF] Invalid origin format in configuration:" + origin)
 			}
 			trustedOrigins = append(trustedOrigins, normalizedOrigin)
 		}
