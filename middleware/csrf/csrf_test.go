@@ -800,6 +800,20 @@ func Test_CSRF_TrustedOrigins(t *testing.T) {
 	h(ctx)
 	require.Equal(t, 200, ctx.Response.StatusCode())
 
+	// Test Trusted Origin deeply nested subdomain
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.URI().SetScheme("https")
+	ctx.Request.URI().SetHost("a.b.c.domain-1.com")
+	ctx.Request.Header.SetProtocol("https")
+	ctx.Request.Header.SetHost("a.b.c.domain-1.com")
+	ctx.Request.Header.Set(fiber.HeaderOrigin, "https://a.b.c.domain-1.com")
+	ctx.Request.Header.Set(HeaderName, token)
+	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
+	h(ctx)
+	require.Equal(t, 200, ctx.Response.StatusCode())
+
 	// Test Trusted Origin Invalid
 	ctx.Request.Reset()
 	ctx.Response.Reset()
@@ -839,6 +853,21 @@ func Test_CSRF_TrustedOrigins(t *testing.T) {
 	ctx.Request.Header.SetProtocol("https")
 	ctx.Request.Header.SetHost("domain-1.com")
 	ctx.Request.Header.Set(fiber.HeaderReferer, "https://safe.domain-1.com")
+	ctx.Request.Header.Set(HeaderName, token)
+	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
+	h(ctx)
+	require.Equal(t, 200, ctx.Response.StatusCode())
+
+	// Test Trusted Referer deeply nested subdomain
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.Header.Set(fiber.HeaderXForwardedProto, "https")
+	ctx.Request.URI().SetScheme("https")
+	ctx.Request.URI().SetHost("a.b.c.domain-1.com")
+	ctx.Request.Header.SetProtocol("https")
+	ctx.Request.Header.SetHost("a.b.c.domain-1.com")
+	ctx.Request.Header.Set(fiber.HeaderReferer, "https://a.b.c.domain-1.com")
 	ctx.Request.Header.Set(HeaderName, token)
 	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
 	h(ctx)

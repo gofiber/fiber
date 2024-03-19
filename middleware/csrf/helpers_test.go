@@ -13,10 +13,11 @@ func Test_normalizeOrigin(t *testing.T) {
 		expectedValid  bool
 		expectedOrigin string
 	}{
-		{"http://example.com", true, "http://example.com"},            // Simple case should work.
-		{"http://example.com/", true, "http://example.com"},           // Trailing slash should be removed.
-		{"http://example.com:3000", true, "http://example.com:3000"},  // Port should be preserved.
-		{"http://example.com:3000/", true, "http://example.com:3000"}, // Trailing slash should be removed.
+		{"http://example.com", true, "http://example.com"},                       // Simple case should work.
+		{"HTTP://EXAMPLE.COM", true, "http://example.com"},                       // Case should be normalized.
+		{"http://example.com/", true, "http://example.com"},                      // Trailing slash should be removed.
+		{"http://example.com:3000", true, "http://example.com:3000"},             // Port should be preserved.
+		{"http://example.com:3000/", true, "http://example.com:3000"},            // Trailing slash should be removed.
 		{"http://", false, ""},                                                   // Invalid origin should not be accepted.
 		{"file:///etc/passwd", false, ""},                                        // File scheme should not be accepted.
 		{"https://*example.com", false, ""},                                      // Wildcard domain should not be accepted.
@@ -68,37 +69,44 @@ func TestSubdomainMatch(t *testing.T) {
 		},
 		{
 			name:     "match with different scheme",
-			sub:      subdomain{prefix: "https://api.", suffix: ".example.com"},
+			sub:      subdomain{prefix: "https://", suffix: ".example.com"},
 			origin:   "http://api.service.example.com",
 			expected: false,
 		},
 		{
 			name:     "match with valid subdomain",
-			sub:      subdomain{prefix: "https://api.", suffix: ".example.com"},
+			sub:      subdomain{prefix: "https://", suffix: ".example.com"},
 			origin:   "https://api.service.example.com",
 			expected: true,
 		},
 		{
+			name:     "match with valid nested subdomain",
+			sub:      subdomain{prefix: "https://", suffix: ".example.com"},
+			origin:   "https://1.2.api.service.example.com",
+			expected: true,
+		},
+
+		{
 			name:     "no match with invalid prefix",
-			sub:      subdomain{prefix: "https://api.", suffix: ".example.com"},
+			sub:      subdomain{prefix: "https://abc.", suffix: ".example.com"},
 			origin:   "https://service.example.com",
 			expected: false,
 		},
 		{
 			name:     "no match with invalid suffix",
-			sub:      subdomain{prefix: "https://api.", suffix: ".example.com"},
+			sub:      subdomain{prefix: "https://", suffix: ".example.com"},
 			origin:   "https://api.example.org",
 			expected: false,
 		},
 		{
 			name:     "no match with empty origin",
-			sub:      subdomain{prefix: "https://api.", suffix: ".example.com"},
+			sub:      subdomain{prefix: "https://", suffix: ".example.com"},
 			origin:   "",
 			expected: false,
 		},
 		{
 			name:     "partial match not considered a match",
-			sub:      subdomain{prefix: "https://api.", suffix: ".example.com"},
+			sub:      subdomain{prefix: "https://service.", suffix: ".example.com"},
 			origin:   "https://api.example.com",
 			expected: false,
 		},
