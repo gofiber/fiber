@@ -281,6 +281,11 @@ func Test_CORS_AllowOriginScheme(t *testing.T) {
 			shouldAllowOrigin: true,
 		},
 		{
+			pattern:           "HTTP://EXAMPLE.COM",
+			reqOrigin:         "http://example.com",
+			shouldAllowOrigin: true,
+		},
+		{
 			pattern:           "https://example.com",
 			reqOrigin:         "https://example.com",
 			shouldAllowOrigin: true,
@@ -308,6 +313,11 @@ func Test_CORS_AllowOriginScheme(t *testing.T) {
 		{
 			pattern:           "http://*.example.com:8080",
 			reqOrigin:         "http://aaa.example.com:8080",
+			shouldAllowOrigin: true,
+		},
+		{
+			pattern:           "http://*.example.com",
+			reqOrigin:         "http://1.2.aaa.example.com",
 			shouldAllowOrigin: true,
 		},
 		{

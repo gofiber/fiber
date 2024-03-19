@@ -111,53 +111,6 @@ func Test_normalizeDomain(t *testing.T) {
 	}
 }
 
-func TestSubdomainMatch(t *testing.T) {
-	tests := []struct {
-		name     string
-		sub      subdomain
-		origin   string
-		expected bool
-	}{
-		{
-			name:     "match with valid subdomain",
-			sub:      subdomain{prefix: "https://api.", suffix: ".example.com"},
-			origin:   "https://api.service.example.com",
-			expected: true,
-		},
-		{
-			name:     "no match with invalid prefix",
-			sub:      subdomain{prefix: "https://api.", suffix: ".example.com"},
-			origin:   "https://service.example.com",
-			expected: false,
-		},
-		{
-			name:     "no match with invalid suffix",
-			sub:      subdomain{prefix: "https://api.", suffix: ".example.com"},
-			origin:   "https://api.example.org",
-			expected: false,
-		},
-		{
-			name:     "no match with empty origin",
-			sub:      subdomain{prefix: "https://api.", suffix: ".example.com"},
-			origin:   "",
-			expected: false,
-		},
-		{
-			name:     "partial match not considered a match",
-			sub:      subdomain{prefix: "https://api.", suffix: ".example.com"},
-			origin:   "https://api.example.com",
-			expected: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := tt.sub.match(tt.origin)
-			utils.AssertEqual(t, tt.expected, got, "subdomain.match()")
-		})
-	}
-}
-
 // go test -v -run=^$ -bench=Benchmark_CORS_SubdomainMatch -benchmem -count=4
 func Benchmark_CORS_SubdomainMatch(b *testing.B) {
 	s := subdomain{
@@ -172,5 +125,71 @@ func Benchmark_CORS_SubdomainMatch(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		s.match(o)
+	}
+}
+
+func Test_CORS_SubdomainMatch(t *testing.T) {
+	tests := []struct {
+		name     string
+		sub      subdomain
+		origin   string
+		expected bool
+	}{
+		{
+			name:     "match with different scheme",
+			sub:      subdomain{prefix: "http://api.", suffix: ".example.com"},
+			origin:   "https://api.service.example.com",
+			expected: false,
+		},
+		{
+			name:     "match with different scheme",
+			sub:      subdomain{prefix: "https://", suffix: ".example.com"},
+			origin:   "http://api.service.example.com",
+			expected: false,
+		},
+		{
+			name:     "match with valid subdomain",
+			sub:      subdomain{prefix: "https://", suffix: ".example.com"},
+			origin:   "https://api.service.example.com",
+			expected: true,
+		},
+		{
+			name:     "match with valid nested subdomain",
+			sub:      subdomain{prefix: "https://", suffix: ".example.com"},
+			origin:   "https://1.2.api.service.example.com",
+			expected: true,
+		},
+
+		{
+			name:     "no match with invalid prefix",
+			sub:      subdomain{prefix: "https://abc.", suffix: ".example.com"},
+			origin:   "https://service.example.com",
+			expected: false,
+		},
+		{
+			name:     "no match with invalid suffix",
+			sub:      subdomain{prefix: "https://", suffix: ".example.com"},
+			origin:   "https://api.example.org",
+			expected: false,
+		},
+		{
+			name:     "no match with empty origin",
+			sub:      subdomain{prefix: "https://", suffix: ".example.com"},
+			origin:   "",
+			expected: false,
+		},
+		{
+			name:     "partial match not considered a match",
+			sub:      subdomain{prefix: "https://service.", suffix: ".example.com"},
+			origin:   "https://api.example.com",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.sub.match(tt.origin)
+			utils.AssertEqual(t, tt.expected, got, "subdomain.match()")
+		})
 	}
 }
