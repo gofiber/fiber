@@ -1197,32 +1197,33 @@ app.Get("/v1/*/shop/*", func(c fiber.Ctx) error {
 > _Returned value is only valid within the handler. Do not store any references.  
 > Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
 
-## ParamsInt
 
-Method can be used to get an integer from the route parameters.
-Please note if that parameter is not in the request, zero
-will be returned. If the parameter is NOT a number, zero and an error
-will be returned
-
-:::info
-Defaults to the integer zero \(`0`\), if the param **doesn't** exist.
-:::
+In certain scenarios, it can be useful to have an alternative approach to handle different types of parameters, not 
+just strings. This can be achieved using a generic Query function known as `Params[V GenericType](c Ctx, key string, defaultValue ...V) V`. 
+This function is capable of parsing a query string and returning a value of a type that is assumed and specified by `V GenericType`.
 
 ```go title="Signature"
-func (c Ctx) ParamsInt(key string) (int, error)
+func Params[v GenericType](c Ctx, key string, default value ...V) V
 ```
 
 ```go title="Example"
-// GET http://example.com/user/123
-app.Get("/user/:id", func(c fiber.Ctx) error {
-  id, err := c.ParamsInt("id") // int 123 and no error
 
-  // ...
+// Get http://example.com/user/114
+app.Get("/user/:id", func(c fiber.Ctx) error{
+  fiber.Params[string](c, "id") // returns "114" as string.
+  fiber.Params[int](c, "id") // returns 114 as integer
+  fiber.Params[string](c, "number") // retunrs "" (default string type)
+  fiber.Params[int](c, "number") // returns 0 (default integer value type)
 })
-
 ```
 
-This method is equivalent of using `atoi` with ctx.Params
+The generic Params function supports returning the following data types based on V GenericType:
+- Integer: int, int8, int16, int32, int64
+- Unsigned integer: uint, uint8, uint16, uint32, uint64
+- Floating-point numbers: float32, float64
+- Boolean: bool
+- String: string
+- Byte array: []byte
 
 ## ParamsParser
 
@@ -1375,13 +1376,13 @@ app.Get("/", func(c fiber.Ctx) error {
 > Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
 
 In certain scenarios, it can be useful to have an alternative approach to handle different types of query parameters, not 
-just strings. This can be achieved using a generic Query function known as `Query[V QueryType](c Ctx, key string, defaultValue ...V) V`. 
-This function is capable of parsing a query string and returning a value of a type that is assumed and specified by `V QueryType`.
+just strings. This can be achieved using a generic Query function known as `Query[V GenericType](c Ctx, key string, defaultValue ...V) V`. 
+This function is capable of parsing a query string and returning a value of a type that is assumed and specified by `V GenericType`.
 
 Here is the signature for the generic Query function:
 
 ```go title="Signature"
-func Query[V QueryType](c Ctx, key string, defaultValue ...V) V
+func Query[V GenericType](c Ctx, key string, defaultValue ...V) V
 ```
 
 Consider this example:
@@ -1398,12 +1399,12 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
-In this case, `Query[V QueryType](c Ctx, key string, defaultValue ...V) V` can retrieve 'page' as an integer, 'brand' 
+In this case, `Query[V GenericType](c Ctx, key string, defaultValue ...V) V` can retrieve 'page' as an integer, 'brand' 
 as a string, and 'new' as a boolean. The function uses the appropriate parsing function for each specified type to ensure 
 the correct type is returned. This simplifies the retrieval process of different types of query parameters, making your 
 controller actions cleaner.
 
-The generic Query function supports returning the following data types based on V QueryType:
+The generic Query function supports returning the following data types based on V GenericType:
 - Integer: int, int8, int16, int32, int64
 - Unsigned integer: uint, uint8, uint16, uint32, uint64
 - Floating-point numbers: float32, float64
@@ -2202,3 +2203,26 @@ app.Get("/", func(c fiber.Ctx) error {
   // </Fiber>
 })
 ```
+
+## Convert 
+Converts a string value to a specified type, handling errors and optional default values.
+This function simplifies the conversion process by encapsulating error handling and the management of default values, making your code cleaner and more consistent.
+```go title="Signature"
+func Convert[T any](value string, convertor func(string) (T, error), defaultValue ...T) (*T, error)
+```
+
+```go title="Example"
+// GET http://example.com/id/bb70ab33-d455-4a03-8d78-d3c1dacae9ff
+app.Get("/id/:id", func(c fiber.Ctx) error {
+  fiber.Convert(c.Params("id"), uuid.Parse) // UUID(bb70ab33-d455-4a03-8d78-d3c1dacae9ff), nil
+
+
+// GET http://example.com/search?id=65f6f54221fb90e6a6b76db7
+app.Get("/search", func(c fiber.Ctx) error) {
+  fiber.Convert(c.Query("id"), mongo.ParseObjectID) // objectid(65f6f54221fb90e6a6b76db7), nil
+  fiber.Convert(c.Query("id"), uuid.Parse) // uuid.Nil, error(cannot parse given uuid)
+  fiber.Convert(c.Query("id"), uuid.Parse, mongo.NewObjectID) // new object id generated and return nil as error.
+}
+
+  // ...
+})

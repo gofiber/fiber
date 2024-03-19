@@ -714,7 +714,6 @@ func Benchmark_Bind_Query_Comma(b *testing.B) {
 	}
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
-	// c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
 	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football")
 	q := new(Query)
 	b.ReportAllocs()

@@ -2,6 +2,8 @@ package cors
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 // go test -run -v Test_normalizeOrigin
@@ -16,6 +18,9 @@ func Test_normalizeOrigin(t *testing.T) {
 		{"http://example.com:3000", true, "http://example.com:3000"},  // Port should be preserved.
 		{"http://example.com:3000/", true, "http://example.com:3000"}, // Trailing slash should be removed.
 		{"http://", false, ""},                                                   // Invalid origin should not be accepted.
+		{"file:///etc/passwd", false, ""},                                        // File scheme should not be accepted.
+		{"https://*example.com", false, ""},                                      // Wildcard domain should not be accepted.
+		{"http://*.example.com", false, ""},                                      // Wildcard subdomain should not be accepted.
 		{"http://example.com/path", false, ""},                                   // Path should not be accepted.
 		{"http://example.com?query=123", false, ""},                              // Query should not be accepted.
 		{"http://example.com#fragment", false, ""},                               // Fragment should not be accepted.
@@ -75,44 +80,6 @@ func Test_matchScheme(t *testing.T) {
 	}
 }
 
-// go test -run -v Test_validateOrigin
-func Test_validateOrigin(t *testing.T) {
-	testCases := []struct {
-		domain   string
-		pattern  string
-		expected bool
-	}{
-		{"http://example.com", "http://example.com", true},            // Exact match should work.
-		{"https://example.com", "http://example.com", false},          // Scheme mismatch should matter in CORS context.
-		{"http://example.com", "https://example.com", false},          // Scheme mismatch should matter in CORS context.
-		{"http://example.com", "http://example.org", false},           // Different domains should not match.
-		{"http://example.com", "http://example.com:8080", false},      // Port mismatch should matter.
-		{"http://example.com:8080", "http://example.com", false},      // Port mismatch should matter.
-		{"http://example.com:8080", "http://example.com:8081", false}, // Different ports should not match.
-		{"example.com", "example.com", true},                          // Simplified form, assuming scheme and port are not considered here, but in practice, they are part of the origin.
-		{"sub.example.com", "example.com", false},                     // Subdomain should not match the base domain directly.
-		{"sub.example.com", "*.example.com", true},                    // Correct assumption for wildcard subdomain matching.
-		{"example.com", "*.example.com", false},                       // Base domain should not match its wildcard subdomain pattern.
-		{"sub.example.com", "*.com", true},                            // Technically correct for pattern matching, but broad wildcard use like this is not recommended for CORS.
-		{"sub.sub.example.com", "*.example.com", true},                // Nested subdomain should match the wildcard pattern.
-		{"example.com", "*.org", false},                               // Different TLDs should not match.
-		{"example.com", "example.org", false},                         // Different domains should not match.
-		{"example.com:8080", "*.example.com", false},                  // Different ports mean different origins.
-		{"example.com", "sub.example.net", false},                     // Different domains should not match.
-		{"http://localhost", "http://localhost", true},                // Localhost should match.
-		{"http://127.0.0.1", "http://127.0.0.1", true},                // IPv4 address should match.
-		{"http://[::1]", "http://[::1]", true},                        // IPv6 address should match.
-	}
-
-	for _, tc := range testCases {
-		result := validateDomain(tc.domain, tc.pattern)
-
-		if result != tc.expected {
-			t.Errorf("Expected validateOrigin('%s', '%s') to be %v, but got %v", tc.domain, tc.pattern, tc.expected, result)
-		}
-	}
-}
-
 // go test -run -v Test_normalizeDomain
 func Test_normalizeDomain(t *testing.T) {
 	testCases := []struct {
@@ -141,5 +108,88 @@ func Test_normalizeDomain(t *testing.T) {
 		if output != tc.expectedOutput {
 			t.Errorf("Expected normalized domain '%s' for input '%s', but got: '%s'", tc.expectedOutput, tc.input, output)
 		}
+	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_CORS_SubdomainMatch -benchmem -count=4
+func Benchmark_CORS_SubdomainMatch(b *testing.B) {
+	s := subdomain{
+		prefix: "www",
+		suffix: ".example.com",
+	}
+
+	o := "www.example.com"
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		s.match(o)
+	}
+}
+
+func Test_CORS_SubdomainMatch(t *testing.T) {
+	tests := []struct {
+		name     string
+		sub      subdomain
+		origin   string
+		expected bool
+	}{
+		{
+			name:     "match with different scheme",
+			sub:      subdomain{prefix: "http://api.", suffix: ".example.com"},
+			origin:   "https://api.service.example.com",
+			expected: false,
+		},
+		{
+			name:     "match with different scheme",
+			sub:      subdomain{prefix: "https://", suffix: ".example.com"},
+			origin:   "http://api.service.example.com",
+			expected: false,
+		},
+		{
+			name:     "match with valid subdomain",
+			sub:      subdomain{prefix: "https://", suffix: ".example.com"},
+			origin:   "https://api.service.example.com",
+			expected: true,
+		},
+		{
+			name:     "match with valid nested subdomain",
+			sub:      subdomain{prefix: "https://", suffix: ".example.com"},
+			origin:   "https://1.2.api.service.example.com",
+			expected: true,
+		},
+
+		{
+			name:     "no match with invalid prefix",
+			sub:      subdomain{prefix: "https://abc.", suffix: ".example.com"},
+			origin:   "https://service.example.com",
+			expected: false,
+		},
+		{
+			name:     "no match with invalid suffix",
+			sub:      subdomain{prefix: "https://", suffix: ".example.com"},
+			origin:   "https://api.example.org",
+			expected: false,
+		},
+		{
+			name:     "no match with empty origin",
+			sub:      subdomain{prefix: "https://", suffix: ".example.com"},
+			origin:   "",
+			expected: false,
+		},
+		{
+			name:     "partial match not considered a match",
+			sub:      subdomain{prefix: "https://service.", suffix: ".example.com"},
+			origin:   "https://api.example.com",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.sub.match(tt.origin)
+			assert.Equal(t, tt.expected, got, "subdomain.match()")
+		})
 	}
 }

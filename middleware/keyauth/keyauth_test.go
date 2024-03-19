@@ -89,15 +89,16 @@ func TestAuthSources(t *testing.T) {
 				require.NoError(t, err)
 
 				// setup the apikey for the different auth schemes
-				if authSource == "header" {
+				switch authSource {
+				case "header":
 					req.Header.Set(test.authTokenName, test.APIKey)
-				} else if authSource == "cookie" {
+				case "cookie":
 					req.Header.Set("Cookie", test.authTokenName+"="+test.APIKey)
-				} else if authSource == "query" || authSource == "form" {
+				case "query", "form":
 					q := req.URL.Query()
 					q.Add(test.authTokenName, test.APIKey)
 					req.URL.RawQuery = q.Encode()
-				} else if authSource == "param" {
+				case "param":
 					r := req.URL.Path
 					r += url.PathEscape(test.APIKey)
 					req.URL.Path = r

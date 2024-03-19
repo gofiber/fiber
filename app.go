@@ -988,8 +988,7 @@ func (app *App) Test(req *http.Request, timeout ...time.Duration) (*http.Respons
 
 type disableLogger struct{}
 
-func (*disableLogger) Printf(_ string, _ ...any) {
-	// fmt.Println(fmt.Sprintf(format, args...))
+func (*disableLogger) Printf(string, ...any) {
 }
 
 func (app *App) init() *App {
