@@ -907,12 +907,13 @@ func Test_CSRF_TrustedOrigins_InvalidOrigins(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			origin := tt.origin
 			t.Parallel()
 			require.Panics(t, func() {
 				app := fiber.New()
 				app.Use(New(Config{
 					CookieSecure:   true,
-					TrustedOrigins: []string{tt.origin},
+					TrustedOrigins: []string{origin},
 				}))
 			}, "Expected panic")
 		})
