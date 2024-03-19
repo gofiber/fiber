@@ -119,33 +119,23 @@ func New(config ...Config) fiber.Handler {
 	allowSOrigins := []subdomain{}
 	allowAllOrigins := false
 
-	// processOrigin processes an origin string, normalizes it and checks its validity
-	// it will panic if the origin is invalid
-	processOrigin := func(origin string) (string, bool) {
-		trimmedOrigin := strings.TrimSpace(origin)
-		isValid, normalizedOrigin := normalizeOrigin(trimmedOrigin)
-		if !isValid {
-			log.Warnf("[CORS] Invalid origin format in configuration: %s", trimmedOrigin)
-			panic("[CORS] Invalid origin provided in configuration")
-		}
-		return normalizedOrigin, true
-	}
-
 	// Validate and normalize static AllowOrigins
 	if cfg.AllowOrigins != "" && cfg.AllowOrigins != "*" {
 		origins := strings.Split(cfg.AllowOrigins, ",")
 		for _, origin := range origins {
 			if i := strings.Index(origin, "://*."); i != -1 {
-				normalizedOrigin, isValid := processOrigin(origin[:i+3] + origin[i+4:])
+				trimmedOrigin := strings.TrimSpace(origin[:i+3] + origin[i+4:])
+				isValid, normalizedOrigin := normalizeOrigin(trimmedOrigin)
 				if !isValid {
-					continue
+					panic("[CORS] Invalid origin format in configuration: " + trimmedOrigin)
 				}
 				sd := subdomain{prefix: normalizedOrigin[:i+3], suffix: normalizedOrigin[i+3:]}
 				allowSOrigins = append(allowSOrigins, sd)
 			} else {
-				normalizedOrigin, isValid := processOrigin(origin)
+				trimmedOrigin := strings.TrimSpace(origin)
+				isValid, normalizedOrigin := normalizeOrigin(trimmedOrigin)
 				if !isValid {
-					continue
+					panic("[CORS] Invalid origin format in configuration: " + trimmedOrigin)
 				}
 				allowOrigins = append(allowOrigins, normalizedOrigin)
 			}
