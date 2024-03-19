@@ -861,7 +861,6 @@ func Test_CSRF_TrustedOrigins(t *testing.T) {
 }
 
 func Test_CSRF_TrustedOrigins_InvalidOrigins(t *testing.T) {
-			t.Parallel()
 	t.Parallel()
 
 	tests := []struct {
