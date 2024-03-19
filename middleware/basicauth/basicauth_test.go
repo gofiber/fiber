@@ -79,7 +79,7 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 		req.Header.Add("Authorization", "Basic "+creds)
 		resp, err := app.Test(req)
 		require.NoError(t, err)
-
+		defer resp.Body.Close()
 		body, err := io.ReadAll(resp.Body)
 
 		require.NoError(t, err)
