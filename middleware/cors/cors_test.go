@@ -891,15 +891,40 @@ func Test_CORS_AllowPrivateNetwork(t *testing.T) {
 	ctx := &fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fiber.MethodOptions)
 	ctx.Request.Header.Set(fiber.HeaderOrigin, "https://example.com")
+	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 	ctx.Request.Header.Set("Access-Control-Request-Private-Network", "true")
 	handler(ctx)
 
 	// Verify the Access-Control-Allow-Private-Network header is set to "true"
 	require.Equal(t, "true", string(ctx.Response.Header.Peek("Access-Control-Allow-Private-Network")), "The Access-Control-Allow-Private-Network header should be set to 'true' when AllowPrivateNetwork is enabled")
 
+	// Non-preflight request should not have Access-Control-Allow-Private-Network header
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.Header.Set(fiber.HeaderOrigin, "https://example.com")
+	ctx.Request.Header.Set("Access-Control-Request-Private-Network", "true")
+	handler(ctx)
+
+	require.Equal(t, "", string(ctx.Response.Header.Peek("Access-Control-Allow-Private-Network")), "The Access-Control-Allow-Private-Network header should be set to 'true' when AllowPrivateNetwork is enabled")
+
+	// Non-preflight GET request should not have Access-Control-Allow-Private-Network header
+	require.Equal(t, "", string(ctx.Response.Header.Peek("Access-Control-Allow-Private-Network")), "The Access-Control-Allow-Private-Network header should be set to 'true' when AllowPrivateNetwork is enabled")
+
+	// Non-preflight OPTIONS request should not have Access-Control-Allow-Private-Network header
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderOrigin, "https://example.com")
+	ctx.Request.Header.Set("Access-Control-Request-Private-Network", "true")
+	handler(ctx)
+
+	require.Equal(t, "", string(ctx.Response.Header.Peek("Access-Control-Allow-Private-Network")), "The Access-Control-Allow-Private-Network header should be set to 'true' when AllowPrivateNetwork is enabled")
+
 	// Reset ctx for next test
 	ctx = &fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 	ctx.Request.Header.Set(fiber.HeaderOrigin, "https://example.com")
 
 	// Test scenario where AllowPrivateNetwork is disabled (default)
@@ -918,6 +943,7 @@ func Test_CORS_AllowPrivateNetwork(t *testing.T) {
 
 	ctx = &fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 	ctx.Request.Header.Set(fiber.HeaderOrigin, "https://example.com")
 	ctx.Request.Header.Set("Access-Control-Request-Private-Network", "true")
 	handler(ctx)
@@ -934,6 +960,7 @@ func Test_CORS_AllowPrivateNetwork(t *testing.T) {
 
 	ctx = &fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 	ctx.Request.Header.Set(fiber.HeaderOrigin, "https://example.com")
 	handler(ctx)
 
@@ -949,6 +976,7 @@ func Test_CORS_AllowPrivateNetwork(t *testing.T) {
 
 	ctx = &fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 	ctx.Request.Header.Set(fiber.HeaderOrigin, "https://example.com")
 	ctx.Request.Header.Set("Access-Control-Request-Private-Network", "false")
 	handler(ctx)
