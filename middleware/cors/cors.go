@@ -218,14 +218,11 @@ func New(config ...Config) fiber.Handler {
 		// Preflight request
 		c.Vary(fiber.HeaderAccessControlRequestMethod)
 		c.Vary(fiber.HeaderAccessControlRequestHeaders)
-
-		setCORSHeaders(c, allowOrigin, allowMethods, allowHeaders, exposeHeaders, maxAge, cfg)
-
-		// Set Preflight request handling
-		if cfg.AllowPrivateNetwork && c.Get("Access-Control-Request-Private-Network") == "true" {
-			// Set the Access-Control-Allow-Private-Network header to "true"
+		if cfg.AllowPrivateNetwork && c.Get(fiber.HeaderAccessControlRequestPrivateNetwork) == "true" {
+			c.Vary(fiber.HeaderAccessControlRequestPrivateNetwork)
 			c.Set(fiber.HeaderAccessControlAllowPrivateNetwork, "true")
 		}
+		setCORSHeaders(c, allowOrigin, allowMethods, allowHeaders, exposeHeaders, maxAge, cfg)
 
 		// Send 204 No Content
 		return c.SendStatus(fiber.StatusNoContent)
