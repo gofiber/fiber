@@ -1251,7 +1251,7 @@ func Test_Request_MaxRedirects(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 
-		client := New().SetDial(func(_ string) (net.Conn, error) { return ln.Dial() }) //nolint:wrapcheck // not needed
+		client := New().SetDial(func(_ string) (net.Conn, error) { return ln.Dial() })
 
 		resp, err := AcquireRequest().
 			SetClient(client).
@@ -1270,7 +1270,7 @@ func Test_Request_MaxRedirects(t *testing.T) {
 	t.Run("error", func(t *testing.T) {
 		t.Parallel()
 
-		client := New().SetDial(func(_ string) (net.Conn, error) { return ln.Dial() }) //nolint:wrapcheck // not needed
+		client := New().SetDial(func(_ string) (net.Conn, error) { return ln.Dial() })
 
 		resp, err := AcquireRequest().
 			SetClient(client).
@@ -1284,7 +1284,7 @@ func Test_Request_MaxRedirects(t *testing.T) {
 	t.Run("MaxRedirects", func(t *testing.T) {
 		t.Parallel()
 
-		client := New().SetDial(func(_ string) (net.Conn, error) { return ln.Dial() }) //nolint:wrapcheck // not needed
+		client := New().SetDial(func(_ string) (net.Conn, error) { return ln.Dial() })
 
 		req := AcquireRequest().
 			SetClient(client).

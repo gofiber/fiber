@@ -1,12 +1,9 @@
-# v1.2.0. Created based on golangci-lint v1.56.2
+# v1.2.0. Created based on golangci-lint v1.57.1
 
 run:
   timeout: 5m
-  skip-dirs-use-default: false
   modules-download-mode: readonly
   allow-serial-runners: true
-  skip-dirs:
-    - internal # TODO: Do not ignore interal
 
 output:
   sort-results: true
@@ -255,6 +252,8 @@ issues:
   exclude-case-sensitive: true
   max-issues-per-linter: 0
   max-same-issues: 0
+  exclude-dirs:
+    - internal # TODO: Do not ignore interal packages
   exclude-rules:
     - linters:
         - goerr113

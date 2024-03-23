@@ -62,7 +62,7 @@ func (ts *testServer) dial() func(addr string) (net.Conn, error) {
 	ts.tb.Helper()
 
 	return func(_ string) (net.Conn, error) {
-		return ts.ln.Dial() //nolint:wrapcheck // not needed
+		return ts.ln.Dial()
 	}
 }
 
@@ -74,7 +74,7 @@ func createHelperServer(tb testing.TB) (*fiber.App, func(addr string) (net.Conn,
 	app := fiber.New()
 
 	return app, func(_ string) (net.Conn, error) {
-			return ln.Dial() //nolint:wrapcheck // not needed
+			return ln.Dial()
 		}, func() {
 			require.NoError(tb, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}))
 		}

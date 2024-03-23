@@ -1,4 +1,3 @@
-//nolint:wrapcheck // We must not wrap errors in tests
 package fiber
 
 import (
