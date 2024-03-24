@@ -6,8 +6,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// go test -run -v Test_normalizeOrigin
-func Test_normalizeOrigin(t *testing.T) {
+// go test -run -v Test_NormalizeOrigin
+func Test_NormalizeOrigin(t *testing.T) {
 	testCases := []struct {
 		origin         string
 		expectedValid  bool
@@ -52,8 +52,8 @@ func Test_normalizeOrigin(t *testing.T) {
 	}
 }
 
-// go test -run -v Test_matchScheme
-func Test_matchScheme(t *testing.T) {
+// go test -run -v Test_MatchScheme
+func Test_MatchScheme(t *testing.T) {
 	testCases := []struct {
 		domain   string
 		pattern  string
@@ -80,8 +80,8 @@ func Test_matchScheme(t *testing.T) {
 	}
 }
 
-// go test -run -v Test_normalizeDomain
-func Test_normalizeDomain(t *testing.T) {
+// go test -run -v Test_NormalizeDomain
+func Test_NormalizeDomain(t *testing.T) {
 	testCases := []struct {
 		input          string
 		expectedOutput string

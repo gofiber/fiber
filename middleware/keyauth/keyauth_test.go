@@ -14,7 +14,7 @@ import (
 
 const CorrectKey = "specials: !$%,.#\"!?~`<>@$^*(){}[]|/\\123"
 
-func TestAuthSources(t *testing.T) {
+func Test_AuthSources(t *testing.T) {
 	// define test cases
 	testSources := []string{"header", "cookie", "query", "param", "form"}
 
@@ -130,7 +130,7 @@ func TestAuthSources(t *testing.T) {
 	}
 }
 
-func TestMultipleKeyAuth(t *testing.T) {
+func Test_MultipleKeyAuth(t *testing.T) {
 	// setup the fiber endpoint
 	app := fiber.New()
 
@@ -261,7 +261,7 @@ func TestMultipleKeyAuth(t *testing.T) {
 	}
 }
 
-func TestCustomSuccessAndFailureHandlers(t *testing.T) {
+func Test_CustomSuccessAndFailureHandlers(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -314,7 +314,7 @@ func TestCustomSuccessAndFailureHandlers(t *testing.T) {
 	require.Equal(t, "API key is valid and request was handled by custom success handler", string(body))
 }
 
-func TestCustomNextFunc(t *testing.T) {
+func Test_CustomNextFunc(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -376,7 +376,7 @@ func TestCustomNextFunc(t *testing.T) {
 	require.Equal(t, string(body), ErrMissingOrMalformedAPIKey.Error())
 }
 
-func TestAuthSchemeToken(t *testing.T) {
+func Test_AuthSchemeToken(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -411,7 +411,7 @@ func TestAuthSchemeToken(t *testing.T) {
 	require.Equal(t, "API key is valid", string(body))
 }
 
-func TestAuthSchemeBasic(t *testing.T) {
+func Test_AuthSchemeBasic(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{

@@ -26,18 +26,20 @@
   </a>
 </p>
 <p align="center">
-  <b>Fiber</b> is an <a href="https://github.com/expressjs/express">Express</a> inspired <b>web framework</b> built on top of <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, the <b>fastest</b> HTTP engine for <a href="https://go.dev/doc/">Go</a>. Designed to <b>ease</b> things up for <b>fast</b> development with <b>zero memory allocation</b> and <b>performance</b> in mind.
+  <em><b>Fiber</b> is an <a href="https://github.com/expressjs/express">Express</a> inspired <b>web framework</b> built on top of <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, the <b>fastest</b> HTTP engine for <a href="https://go.dev/doc/">Go</a>. Designed to <b>ease</b> things up for <b>fast</b> development with <b>zero memory allocation</b> and <b>performance</b> in mind.</em>
 </p>
+
+---
 
 ## ⚠️ **Attention**
 
 Fiber v3 is currently in beta and under active development. While it offers exciting new features, please note that it may not be stable for production use. We recommend sticking to the latest stable release (v2.x) for mission-critical applications. If you choose to use v3, be prepared for potential bugs and breaking changes. Always check the official documentation and release notes for updates and proceed with caution. Happy coding! 🚀
 
+---
+
 ## ⚙️ Installation
 
-Before you begin, ensure you have Go installed on your system. Fiber requires **Go version `1.21` or higher** to run. You can check your current Go version by running `go version` in your terminal. If you need to install or upgrade Go, visit the [official Go download page](https://go.dev/dl/).
-
-Once you have verified your Go installation, you can start setting up your project. Create a new directory for your project and navigate into it. Then, initialize your project with Go modules by executing the following command in your terminal:
+Fiber requires **Go version `1.21` or higher** to run. If you need to install or upgrade Go, visit the [official Go download page](https://go.dev/dl/). To start setting up your project. Create a new directory for your project and navigate into it. Then, initialize your project with Go modules by executing the following command in your terminal:
 
 ```bash
 go mod init github.com/your/repo
@@ -60,7 +62,11 @@ Getting started with Fiber is easy. Here's a basic example to create a simple we
 ```go
 package main
 
-import "github.com/gofiber/fiber/v3"
+import (
+    "log"
+
+    "github.com/gofiber/fiber/v3"
+)
 
 func main() {
     // Initialize a new Fiber app
@@ -73,7 +79,7 @@ func main() {
     })
 
     // Start the server on port 3000
-    app.Listen(":3000")
+    log.Fatal(app.Listen(":3000"))
 }
 ```
 
@@ -186,7 +192,6 @@ func main() {
     //    ]
     // }
 
-
     log.Fatal(app.Listen(":3000"))
 }
 
@@ -262,6 +267,8 @@ Checkout our [Template](https://github.com/gofiber/template) package that suppor
 package main
 
 import (
+    "log"
+
     "github.com/gofiber/fiber/v3"
     "github.com/gofiber/template/pug"
 )
@@ -437,6 +444,8 @@ func main() {
 
 ```go
 import (
+    "log"
+
     "github.com/gofiber/fiber/v3"
     "github.com/gofiber/fiber/v3/middleware/websocket"
 )
@@ -471,6 +480,8 @@ func main() {
 
 ```go
 import (
+    "log"
+
     "github.com/gofiber/fiber/v3"
     "github.com/valyala/fasthttp"
 )
@@ -512,6 +523,8 @@ func main() {
 
 ```go
 import (
+    "log"
+
     "github.com/gofiber/fiber/v3"
     "github.com/gofiber/fiber/v3/middleware/recover"
 )
@@ -537,6 +550,8 @@ func main() {
 
 ```go
 import (
+    "log"
+
     "github.com/gofiber/fiber/v3"
 )
 
@@ -611,6 +626,21 @@ If you want to say **Thank You** and/or support the active development of `Fiber
 3. Write a review or tutorial on [Medium](https://medium.com/), [Dev.to](https://dev.to/) or personal blog.
 4. Support the project by donating a [cup of coffee](https://buymeacoff.ee/fenny).
 
+## 🖥️ Development
+
+To ensure your contributions are ready for a Pull Request, please use the following `Makefile` commands. These tools help maintain code quality, consistency.
+
+* **make help**: Display available commands.
+* **make audit**: Conduct quality checks.
+* **make benchmark**: Benchmark code performance.
+* **make coverage**: Generate test coverage report.
+* **make format**: Automatically format code.
+* **make lint**: Run lint checks.
+* **make test**: Execute all tests.
+* **make tidy**: Tidy dependencies.
+
+Run these commands to ensure your code adheres to project standards and best practices.
+
 ## ☕ Supporters
 
 Fiber is an open source project that runs on donations to pay the bills e.g. our domain name, gitbook, netlify and serverless hosting. If you want to support Fiber, you can ☕ [**buy a coffee here**](https://buymeacoff.ee/fenny).
@@ -636,7 +666,7 @@ Fiber is an open source project that runs on donations to pay the bills e.g. our
 | ![](https://avatars.githubusercontent.com/u/31022056?s=25) | [@marvinjwendt](https://github.com/marvinjwendt) | ☕ x 1   |
 | ![](https://avatars.githubusercontent.com/u/31921460?s=25) | [@toishy](https://github.com/toishy)             | ☕ x 1   |
 
-## ‎‍💻 Code Contributors
+## 💻 Code Contributors
 
 <img src="https://opencollective.com/fiber/contributors.svg?width=890&button=false" alt="Code Contributors" style="max-width:100%;">
 
@@ -644,6 +674,6 @@ Fiber is an open source project that runs on donations to pay the bills e.g. our
 
 <img src="https://starchart.cc/gofiber/fiber.svg" alt="Stargazers over time" style="max-width: 100%">
 
-## ⚠️ License
+## 🧾 License
 
 Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Contributors](https://github.com/gofiber/fiber/graphs/contributors). `Fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE). Official logo was created by [Vic Shóstak](https://github.com/koddr) and distributed under [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) license (CC BY-SA 4.0 International).

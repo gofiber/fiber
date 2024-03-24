@@ -9,8 +9,8 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// go test -run TestStore_getSessionID
-func TestStore_getSessionID(t *testing.T) {
+// go test -run Test_Store_getSessionID
+func Test_Store_getSessionID(t *testing.T) {
 	t.Parallel()
 	expectedID := "test-session-id"
 
@@ -61,9 +61,9 @@ func TestStore_getSessionID(t *testing.T) {
 	})
 }
 
-// go test -run TestStore_Get
+// go test -run Test_Store_Get
 // Regression: https://github.com/gofiber/fiber/issues/1408
-func TestStore_Get(t *testing.T) {
+func Test_Store_Get(t *testing.T) {
 	t.Parallel()
 	unexpectedID := "test-session-id"
 	// fiber instance
@@ -85,8 +85,8 @@ func TestStore_Get(t *testing.T) {
 	})
 }
 
-// go test -run TestStore_DeleteSession
-func TestStore_DeleteSession(t *testing.T) {
+// go test -run Test_Store_DeleteSession
+func Test_Store_DeleteSession(t *testing.T) {
 	t.Parallel()
 	// fiber instance
 	app := fiber.New()

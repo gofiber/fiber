@@ -9,8 +9,8 @@
 *.test
 *.tmp
 
-# Output of the go coverage tool, specifically when used with LiteIDE
-*.out
+# Output of the go coverage tool
+**/*.out
 
 # IDE files
 .vscode

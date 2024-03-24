@@ -22,7 +22,7 @@ func checkKeyValue(t *testing.T, cj *CookieJar, cookie *fasthttp.Cookie, uri *fa
 	require.Equal(t, string(c.Value()), string(cookie.Value()))
 }
 
-func TestCookieJarGet(t *testing.T) {
+func Test_CookieJarGet(t *testing.T) {
 	t.Parallel()
 
 	url := []byte("http://fasthttp.com/")
@@ -97,7 +97,7 @@ func TestCookieJarGet(t *testing.T) {
 	}
 }
 
-func TestCookieJarGetExpired(t *testing.T) {
+func Test_CookieJarGetExpired(t *testing.T) {
 	t.Parallel()
 
 	url1 := []byte("http://fasthttp.com/make/")
@@ -116,7 +116,7 @@ func TestCookieJarGetExpired(t *testing.T) {
 	require.Empty(t, cookies)
 }
 
-func TestCookieJarSet(t *testing.T) {
+func Test_CookieJarSet(t *testing.T) {
 	t.Parallel()
 
 	url := []byte("http://fasthttp.com/hello/world")
@@ -133,7 +133,7 @@ func TestCookieJarSet(t *testing.T) {
 	checkKeyValue(t, cj, cookie, uri, 1)
 }
 
-func TestCookieJarSetRepeatedCookieKeys(t *testing.T) {
+func Test_CookieJarSetRepeatedCookieKeys(t *testing.T) {
 	t.Parallel()
 	host := "fast.http"
 	cj := &CookieJar{}
@@ -161,7 +161,7 @@ func TestCookieJarSetRepeatedCookieKeys(t *testing.T) {
 	require.True(t, bytes.Equal(cookies[0].Value(), cookie2.Value()))
 }
 
-func TestCookieJarSetKeyValue(t *testing.T) {
+func Test_CookieJarSetKeyValue(t *testing.T) {
 	t.Parallel()
 
 	host := "fast.http"
@@ -179,7 +179,7 @@ func TestCookieJarSetKeyValue(t *testing.T) {
 	require.Len(t, cookies, 2)
 }
 
-func TestCookieJarGetFromResponse(t *testing.T) {
+func Test_CookieJarGetFromResponse(t *testing.T) {
 	t.Parallel()
 
 	res := fasthttp.AcquireResponse()
