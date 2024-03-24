@@ -8,7 +8,7 @@ import (
 	"github.com/tinylib/msgp/msgp"
 )
 
-func TestMarshalUnmarshalitem(t *testing.T) {
+func Test_MarshalUnmarshalitem(t *testing.T) {
 	v := item{}
 	bts, err := v.MarshalMsg(nil)
 	if err != nil {
@@ -31,7 +31,7 @@ func TestMarshalUnmarshalitem(t *testing.T) {
 	}
 }
 
-func BenchmarkMarshalMsgitem(b *testing.B) {
+func Benchmark_MarshalMsgitem(b *testing.B) {
 	v := item{}
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -40,7 +40,7 @@ func BenchmarkMarshalMsgitem(b *testing.B) {
 	}
 }
 
-func BenchmarkAppendMsgitem(b *testing.B) {
+func Benchmark_AppendMsgitem(b *testing.B) {
 	v := item{}
 	bts := make([]byte, 0, v.Msgsize())
 	bts, _ = v.MarshalMsg(bts[0:0])
@@ -52,7 +52,7 @@ func BenchmarkAppendMsgitem(b *testing.B) {
 	}
 }
 
-func BenchmarkUnmarshalitem(b *testing.B) {
+func Benchmark_Unmarshalitem(b *testing.B) {
 	v := item{}
 	bts, _ := v.MarshalMsg(nil)
 	b.ReportAllocs()

@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestEnvVarStructWithExportVarsExcludeVars(t *testing.T) {
+func Test_EnvVarStructWithExportVarsExcludeVars(t *testing.T) {
 	t.Setenv("testKey", "testEnvValue")
 	t.Setenv("anotherEnvKey", "anotherEnvVal")
 	t.Setenv("excludeKey", "excludeEnvValue")
@@ -27,7 +27,7 @@ func TestEnvVarStructWithExportVarsExcludeVars(t *testing.T) {
 	require.Equal(t, "", vars.Vars["anotherEnvKey"])
 }
 
-func TestEnvVarHandler(t *testing.T) {
+func Test_EnvVarHandler(t *testing.T) {
 	t.Setenv("testKey", "testVal")
 
 	expectedEnvVarResponse, err := json.Marshal(
@@ -54,7 +54,7 @@ func TestEnvVarHandler(t *testing.T) {
 	require.Equal(t, expectedEnvVarResponse, respBody)
 }
 
-func TestEnvVarHandlerNotMatched(t *testing.T) {
+func Test_EnvVarHandlerNotMatched(t *testing.T) {
 	app := fiber.New()
 	app.Use("/envvars", New(Config{
 		ExportVars: map[string]string{"testKey": ""},
@@ -76,7 +76,7 @@ func TestEnvVarHandlerNotMatched(t *testing.T) {
 	require.Equal(t, []byte("OK"), respBody)
 }
 
-func TestEnvVarHandlerDefaultConfig(t *testing.T) {
+func Test_EnvVarHandlerDefaultConfig(t *testing.T) {
 	t.Setenv("testEnvKey", "testEnvVal")
 
 	app := fiber.New()
@@ -96,7 +96,7 @@ func TestEnvVarHandlerDefaultConfig(t *testing.T) {
 	require.Equal(t, "testEnvVal", val)
 }
 
-func TestEnvVarHandlerMethod(t *testing.T) {
+func Test_EnvVarHandlerMethod(t *testing.T) {
 	app := fiber.New()
 	app.Use("/envvars", New())
 
@@ -107,7 +107,7 @@ func TestEnvVarHandlerMethod(t *testing.T) {
 	require.Equal(t, fiber.StatusMethodNotAllowed, resp.StatusCode)
 }
 
-func TestEnvVarHandlerSpecialValue(t *testing.T) {
+func Test_EnvVarHandlerSpecialValue(t *testing.T) {
 	testEnvKey := "testEnvKey"
 	fakeBase64 := "testBase64:TQ=="
 	t.Setenv(testEnvKey, fakeBase64)

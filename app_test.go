@@ -1809,7 +1809,7 @@ func Test_App_AddCustomRequestMethod(t *testing.T) {
 	require.Equal(t, "TEST", appMethods[len(appMethods)-1])
 }
 
-func TestApp_GetRoutes(t *testing.T) {
+func Test_App_GetRoutes(t *testing.T) {
 	t.Parallel()
 	app := New()
 	app.Use(func(c Ctx) error {

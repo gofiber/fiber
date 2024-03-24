@@ -4561,8 +4561,8 @@ func Benchmark_Ctx_GetReqHeaders(b *testing.B) {
 	}, headers)
 }
 
-// go test -run Test_genericParseTypeInts
-func Test_genericParseTypeInts(t *testing.T) {
+// go test -run Test_GenericParseTypeInts
+func Test_GenericParseTypeInts(t *testing.T) {
 	t.Parallel()
 	type genericTypes[v GenericType] struct {
 		value v
@@ -4615,8 +4615,8 @@ func Test_genericParseTypeInts(t *testing.T) {
 	}
 }
 
-// go test -run Test_genericParseTypeInt8s
-func Test_genericParseTypeInt8s(t *testing.T) {
+// go test -run Test_GenericParseTypeInt8s
+func Test_GenericParseTypeInt8s(t *testing.T) {
 	t.Parallel()
 
 	type genericTypes[v GenericType] struct {
@@ -4666,8 +4666,8 @@ func Test_genericParseTypeInt8s(t *testing.T) {
 	}
 }
 
-// go test -run Test_genericParseTypeInt16s
-func Test_genericParseTypeInt16s(t *testing.T) {
+// go test -run Test_GenericParseTypeInt16s
+func Test_GenericParseTypeInt16s(t *testing.T) {
 	t.Parallel()
 	type genericTypes[v GenericType] struct {
 		value v
@@ -4716,8 +4716,8 @@ func Test_genericParseTypeInt16s(t *testing.T) {
 	}
 }
 
-// go test -run Test_genericParseTypeInt32s
-func Test_genericParseTypeInt32s(t *testing.T) {
+// go test -run Test_GenericParseTypeInt32s
+func Test_GenericParseTypeInt32s(t *testing.T) {
 	t.Parallel()
 	type genericTypes[v GenericType] struct {
 		value v
@@ -4766,8 +4766,8 @@ func Test_genericParseTypeInt32s(t *testing.T) {
 	}
 }
 
-// go test -run Test_genericParseTypeInt64s
-func Test_genericParseTypeInt64s(t *testing.T) {
+// go test -run Test_GenericParseTypeInt64s
+func Test_GenericParseTypeInt64s(t *testing.T) {
 	t.Parallel()
 	type genericTypes[v GenericType] struct {
 		value v
@@ -4816,8 +4816,8 @@ func Test_genericParseTypeInt64s(t *testing.T) {
 	}
 }
 
-// go test -run Test_genericParseTypeUints
-func Test_genericParseTypeUints(t *testing.T) {
+// go test -run Test_GenericParseTypeUints
+func Test_GenericParseTypeUints(t *testing.T) {
 	t.Parallel()
 	type genericTypes[v GenericType] struct {
 		value v
@@ -4858,8 +4858,8 @@ func Test_genericParseTypeUints(t *testing.T) {
 	}
 }
 
-// go test -run Test_genericParseTypeUints
-func Test_genericParseTypeUint8s(t *testing.T) {
+// go test -run Test_GenericParseTypeUints
+func Test_GenericParseTypeUint8s(t *testing.T) {
 	t.Parallel()
 	type genericTypes[v GenericType] struct {
 		value v
@@ -4904,8 +4904,8 @@ func Test_genericParseTypeUint8s(t *testing.T) {
 	}
 }
 
-// go test -run Test_genericParseTypeUint16s
-func Test_genericParseTypeUint16s(t *testing.T) {
+// go test -run Test_GenericParseTypeUint16s
+func Test_GenericParseTypeUint16s(t *testing.T) {
 	t.Parallel()
 
 	type genericTypes[v GenericType] struct {
@@ -4951,8 +4951,8 @@ func Test_genericParseTypeUint16s(t *testing.T) {
 	}
 }
 
-// go test -run Test_genericParseTypeUint32s
-func Test_genericParseTypeUint32s(t *testing.T) {
+// go test -run Test_GenericParseTypeUint32s
+func Test_GenericParseTypeUint32s(t *testing.T) {
 	t.Parallel()
 
 	type genericTypes[v GenericType] struct {
@@ -4998,8 +4998,8 @@ func Test_genericParseTypeUint32s(t *testing.T) {
 	}
 }
 
-// go test -run Test_genericParseTypeUint64s
-func Test_genericParseTypeUint64s(t *testing.T) {
+// go test -run Test_GenericParseTypeUint64s
+func Test_GenericParseTypeUint64s(t *testing.T) {
 	t.Parallel()
 	type genericTypes[v GenericType] struct {
 		value v
@@ -5040,8 +5040,8 @@ func Test_genericParseTypeUint64s(t *testing.T) {
 	}
 }
 
-// go test -run Test_genericParseTypeFloat32s
-func Test_genericParseTypeFloat32s(t *testing.T) {
+// go test -run Test_GenericParseTypeFloat32s
+func Test_GenericParseTypeFloat32s(t *testing.T) {
 	t.Parallel()
 
 	type genericTypes[v GenericType] struct {
@@ -5079,8 +5079,8 @@ func Test_genericParseTypeFloat32s(t *testing.T) {
 	}
 }
 
-// go test -run Test_genericParseTypeFloat64s
-func Test_genericParseTypeFloat64s(t *testing.T) {
+// go test -run Test_GenericParseTypeFloat64s
+func Test_GenericParseTypeFloat64s(t *testing.T) {
 	t.Parallel()
 
 	type genericTypes[v GenericType] struct {
@@ -5118,8 +5118,8 @@ func Test_genericParseTypeFloat64s(t *testing.T) {
 	}
 }
 
-// go test -run Test_genericParseTypeArrayBytes
-func Test_genericParseTypeArrayBytes(t *testing.T) {
+// go test -run Test_GenericParseTypeArrayBytes
+func Test_GenericParseTypeArrayBytes(t *testing.T) {
 	t.Parallel()
 
 	type genericTypes[v GenericType] struct {
@@ -5157,8 +5157,8 @@ func Test_genericParseTypeArrayBytes(t *testing.T) {
 	}
 }
 
-// go test -run Test_genericParseTypeBoolean
-func Test_genericParseTypeBoolean(t *testing.T) {
+// go test -run Test_GenericParseTypeBoolean
+func Test_GenericParseTypeBoolean(t *testing.T) {
 	t.Parallel()
 
 	type genericTypes[v GenericType] struct {
@@ -5201,8 +5201,8 @@ func Test_genericParseTypeBoolean(t *testing.T) {
 	}
 }
 
-// go test -run Test_genericParseTypeString
-func Test_genericParseTypeString(t *testing.T) {
+// go test -run Test_GenericParseTypeString
+func Test_GenericParseTypeString(t *testing.T) {
 	t.Parallel()
 
 	tests := []string{"john", "doe", "hello", "fiber"}
@@ -5218,8 +5218,8 @@ func Test_genericParseTypeString(t *testing.T) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_genericParseTypeInts -benchmem -count=4
-func Benchmark_genericParseTypeInts(b *testing.B) {
+// go test -v -run=^$ -bench=Benchmark_GenericParseTypeInts -benchmem -count=4
+func Benchmark_GenericParseTypeInts(b *testing.B) {
 	type genericTypes[v GenericType] struct {
 		value v
 		str   string
@@ -5401,8 +5401,8 @@ func Benchmark_genericParseTypeInts(b *testing.B) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_genericParseTypeUints -benchmem -count=4
-func Benchmark_genericParseTypeUints(b *testing.B) {
+// go test -v -run=^$ -bench=Benchmark_GenericParseTypeUints -benchmem -count=4
+func Benchmark_GenericParseTypeUints(b *testing.B) {
 	type genericTypes[v GenericType] struct {
 		value v
 		str   string
@@ -5584,8 +5584,8 @@ func Benchmark_genericParseTypeUints(b *testing.B) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_genericParseTypeFloats -benchmem -count=4
-func Benchmark_genericParseTypeFloats(b *testing.B) {
+// go test -v -run=^$ -bench=Benchmark_GenericParseTypeFloats -benchmem -count=4
+func Benchmark_GenericParseTypeFloats(b *testing.B) {
 	type genericTypes[v GenericType] struct {
 		value v
 		str   string
@@ -5654,8 +5654,8 @@ func Benchmark_genericParseTypeFloats(b *testing.B) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_genericParseTypeArrayBytes -benchmem -count=4
-func Benchmark_genericParseTypeArrayBytes(b *testing.B) {
+// go test -v -run=^$ -bench=Benchmark_GenericParseTypeArrayBytes -benchmem -count=4
+func Benchmark_GenericParseTypeArrayBytes(b *testing.B) {
 	type genericTypes[v GenericType] struct {
 		value v
 		str   string
@@ -5681,7 +5681,7 @@ func Benchmark_genericParseTypeArrayBytes(b *testing.B) {
 	}
 
 	for _, test := range arrBytes {
-		b.Run("Benchmark_genericParseTypeArrayBytes", func(b *testing.B) {
+		b.Run("Benchmark_GenericParseTypeArrayBytes", func(b *testing.B) {
 			var res []byte
 			b.ReportAllocs()
 			b.ResetTimer()
@@ -5693,8 +5693,8 @@ func Benchmark_genericParseTypeArrayBytes(b *testing.B) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_genericParseTypeBoolean -benchmem -count=4
-func Benchmark_genericParseTypeBoolean(b *testing.B) {
+// go test -v -run=^$ -bench=Benchmark_GenericParseTypeBoolean -benchmem -count=4
+func Benchmark_GenericParseTypeBoolean(b *testing.B) {
 	type genericTypes[v GenericType] struct {
 		value v
 		str   string
@@ -5720,7 +5720,7 @@ func Benchmark_genericParseTypeBoolean(b *testing.B) {
 	}
 
 	for _, test := range bools {
-		b.Run("Benchmark_genericParseTypeBoolean", func(b *testing.B) {
+		b.Run("Benchmark_GenericParseTypeBoolean", func(b *testing.B) {
 			var res bool
 			b.ReportAllocs()
 			b.ResetTimer()
@@ -5736,8 +5736,8 @@ func Benchmark_genericParseTypeBoolean(b *testing.B) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_genericParseTypeString -benchmem -count=4
-func Benchmark_genericParseTypeString(b *testing.B) {
+// go test -v -run=^$ -bench=Benchmark_GenericParseTypeString -benchmem -count=4
+func Benchmark_GenericParseTypeString(b *testing.B) {
 	tests := []string{"john", "doe", "hello", "fiber"}
 
 	b.ReportAllocs()

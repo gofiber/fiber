@@ -31,7 +31,7 @@ func TestMarshalUnmarshalresponse(t *testing.T) {
 	}
 }
 
-func BenchmarkMarshalMsgresponse(b *testing.B) {
+func Benchmark_MarshalMsgresponse(b *testing.B) {
 	v := response{}
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -40,7 +40,7 @@ func BenchmarkMarshalMsgresponse(b *testing.B) {
 	}
 }
 
-func BenchmarkAppendMsgresponse(b *testing.B) {
+func Benchmark_AppendMsgresponse(b *testing.B) {
 	v := response{}
 	bts := make([]byte, 0, v.Msgsize())
 	bts, _ = v.MarshalMsg(bts[0:0])
@@ -52,7 +52,7 @@ func BenchmarkAppendMsgresponse(b *testing.B) {
 	}
 }
 
-func BenchmarkUnmarshalresponse(b *testing.B) {
+func Benchmark_Unmarshalresponse(b *testing.B) {
 	v := response{}
 	bts, _ := v.MarshalMsg(nil)
 	b.ReportAllocs()
