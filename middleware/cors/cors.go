@@ -63,6 +63,12 @@ type Config struct {
 	//
 	// Optional. Default value 0.
 	MaxAge int
+
+	// AllowPrivateNetwork indicates whether the Access-Control-Allow-Private-Network
+	// response header should be set to true, allowing requests from private networks.
+	//
+	// Optional. Default value false.
+	AllowPrivateNetwork bool
 }
 
 // ConfigDefault is the default config
@@ -78,10 +84,11 @@ var ConfigDefault = Config{
 		fiber.MethodDelete,
 		fiber.MethodPatch,
 	}, ","),
-	AllowHeaders:     "",
-	AllowCredentials: false,
-	ExposeHeaders:    "",
-	MaxAge:           0,
+	AllowHeaders:        "",
+	AllowCredentials:    false,
+	ExposeHeaders:       "",
+	MaxAge:              0,
+	AllowPrivateNetwork: false,
 }
 
 // New creates a new middleware handler
@@ -211,7 +218,10 @@ func New(config ...Config) fiber.Handler {
 		// Preflight request
 		c.Vary(fiber.HeaderAccessControlRequestMethod)
 		c.Vary(fiber.HeaderAccessControlRequestHeaders)
-
+		if cfg.AllowPrivateNetwork && c.Get(fiber.HeaderAccessControlRequestPrivateNetwork) == "true" {
+			c.Vary(fiber.HeaderAccessControlRequestPrivateNetwork)
+			c.Set(fiber.HeaderAccessControlAllowPrivateNetwork, "true")
+		}
 		setCORSHeaders(c, allowOrigin, allowMethods, allowHeaders, exposeHeaders, maxAge, cfg)
 
 		// Send 204 No Content
