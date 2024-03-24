@@ -639,7 +639,7 @@ To ensure your contributions are ready for a Pull Request, please use the follow
 * **make test**: Execute all tests.
 * **make tidy**: Tidy dependencies.
 
-Run these commands to ensure your code adheres to project standards and best practices before making a contribution.
+Run these commands to ensure your code adheres to project standards and best practices.
 
 ## ☕ Supporters
 
