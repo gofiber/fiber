@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/url"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -220,7 +221,7 @@ func isCsrfFromCookie(extractor interface{}) bool {
 // returns an error if the referer header is not present or is invalid
 // returns nil if the referer header is valid
 func refererMatchesHost(c *fiber.Ctx) error {
-	referer := c.Get(fiber.HeaderReferer)
+	referer := strings.ToLower(c.Get(fiber.HeaderReferer))
 	if referer == "" {
 		return ErrNoReferer
 	}
@@ -230,9 +231,9 @@ func refererMatchesHost(c *fiber.Ctx) error {
 		return ErrBadReferer
 	}
 
-	if refererURL.Scheme+"://"+refererURL.Host != c.Protocol()+"://"+c.Hostname() {
-		return ErrBadReferer
+	if refererURL.Scheme == c.Protocol() && refererURL.Host == c.Hostname() {
+		return nil
 	}
 
-	return nil
+	return ErrBadReferer
 }
