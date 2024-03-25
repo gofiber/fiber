@@ -5786,6 +5786,40 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 		})
 	})
 
+	// Scenario with trusted proxy check simple
+	b.Run("WithProxyCheckSimple", func(b *testing.B) {
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().SetRequestURI("http://google.com/test")
+		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			c.IsProxyTrusted()
+		}
+		app.ReleaseCtx(c)
+	})
+
+	// Scenario with trusted proxy check simple in parallel
+	b.Run("WithProxyCheckSimpleParallel", func(b *testing.B) {
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+		})
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			c.Request().SetRequestURI("http://google.com/")
+			c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+			for pb.Next() {
+				c.IsProxyTrusted()
+			}
+			app.ReleaseCtx(c)
+		})
+	})
+
 	// Scenario with trusted proxy check
 	b.Run("WithProxyCheck", func(b *testing.B) {
 		app := New(Config{
