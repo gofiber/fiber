@@ -5755,3 +5755,198 @@ func Benchmark_GenericParseTypeString(b *testing.B) {
 		})
 	}
 }
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_IsProxyTrusted -benchmem -count=4
+func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
+	// Scenario without trusted proxy check
+	b.Run("NoProxyCheck", func(b *testing.B) {
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().SetRequestURI("http://google.com:8080/test")
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			c.IsProxyTrusted()
+		}
+		app.ReleaseCtx(c)
+	})
+
+	// Scenario without trusted proxy check in parallel
+	b.Run("NoProxyCheckParallel", func(b *testing.B) {
+		app := New()
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			c.Request().SetRequestURI("http://google.com:8080/test")
+			for pb.Next() {
+				c.IsProxyTrusted()
+			}
+			app.ReleaseCtx(c)
+		})
+	})
+
+	// Scenario with trusted proxy check
+	b.Run("WithProxyCheck", func(b *testing.B) {
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+			TrustedProxies:          []string{"0.0.0.0"},
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().SetRequestURI("http://google.com/test")
+		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			c.IsProxyTrusted()
+		}
+		app.ReleaseCtx(c)
+	})
+
+	// Scenario with trusted proxy check in parallel
+	b.Run("WithProxyCheckParallel", func(b *testing.B) {
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+			TrustedProxies:          []string{"0.0.0.0"},
+		})
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			c.Request().SetRequestURI("http://google.com/")
+			c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+			for pb.Next() {
+				c.IsProxyTrusted()
+			}
+			app.ReleaseCtx(c)
+		})
+	})
+
+	// Scenario with trusted proxy check with subnet
+	b.Run("WithProxyCheckSubnet", func(b *testing.B) {
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+			TrustedProxies:          []string{"0.0.0.0/8"},
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().SetRequestURI("http://google.com/test")
+		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			c.IsProxyTrusted()
+		}
+		app.ReleaseCtx(c)
+	})
+
+	// Scenario with trusted proxy check with subnet in parallel
+	b.Run("WithProxyCheckParallelSubnet", func(b *testing.B) {
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+			TrustedProxies:          []string{"0.0.0.0/8"},
+		})
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			c.Request().SetRequestURI("http://google.com/")
+			c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+			for pb.Next() {
+				c.IsProxyTrusted()
+			}
+			app.ReleaseCtx(c)
+		})
+	})
+
+	// Scenario with trusted proxy check with multiple subnet
+	b.Run("WithProxyCheckMultipleSubnet", func(b *testing.B) {
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+			TrustedProxies:          []string{"192.168.0.0/24", "10.0.0.0/16", "0.0.0.0/8"},
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().SetRequestURI("http://google.com/test")
+		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			c.IsProxyTrusted()
+		}
+		app.ReleaseCtx(c)
+	})
+
+	// Scenario with trusted proxy check with multiple subnet in parallel
+	b.Run("WithProxyCheckParallelMultipleSubnet", func(b *testing.B) {
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+			TrustedProxies:          []string{"192.168.0.0/24", "10.0.0.0/16", "0.0.0.0/8"},
+		})
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			c.Request().SetRequestURI("http://google.com/")
+			c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+			for pb.Next() {
+				c.IsProxyTrusted()
+			}
+			app.ReleaseCtx(c)
+		})
+	})
+
+	// Scenario with trusted proxy check with all subnets
+	b.Run("WithProxyCheckAllSubnets", func(b *testing.B) {
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+			TrustedProxies: []string{
+				"127.0.0.0/8",     // Loopback addresses
+				"169.254.0.0/16",  // Link-Local addresses
+				"fe80::/10",       // Link-Local addresses
+				"192.168.0.0/16",  // Private Network addresses
+				"172.16.0.0/12",   // Private Network addresses
+				"10.0.0.0/8",      // Private Network addresses
+				"fc00::/7",        // Unique Local addresses
+				"173.245.48.0/20", // My custom range
+				"0.0.0.0/8",       // All IPv4 addresses
+			},
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().SetRequestURI("http://google.com/test")
+		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			c.IsProxyTrusted()
+		}
+		app.ReleaseCtx(c)
+	})
+
+	// Scenario with trusted proxy check with all subnets in parallel
+	b.Run("WithProxyCheckParallelAllSubnets", func(b *testing.B) {
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+			TrustedProxies: []string{
+				"127.0.0.0/8",     // Loopback addresses
+				"169.254.0.0/16",  // Link-Local addresses
+				"fe80::/10",       // Link-Local addresses
+				"192.168.0.0/16",  // Private Network addresses
+				"172.16.0.0/12",   // Private Network addresses
+				"10.0.0.0/8",      // Private Network addresses
+				"fc00::/7",        // Unique Local addresses
+				"173.245.48.0/20", // My custom range
+				"0.0.0.0/8",       // All IPv4 addresses
+			},
+		})
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			c.Request().SetRequestURI("http://google.com/")
+			c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+			for pb.Next() {
+				c.IsProxyTrusted()
+			}
+			app.ReleaseCtx(c)
+		})
+	})
+}
