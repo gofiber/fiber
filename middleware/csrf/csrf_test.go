@@ -1330,7 +1330,10 @@ func Benchmark_Middleware_CSRF_Check(b *testing.B) {
 		return c.SendStatus(fiber.StatusTeapot)
 	})
 
-	fctx := &fasthttp.RequestCtx{}
+	app.Post("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusTeapot)
+	})
+
 	h := app.Handler()
 	ctx := &fasthttp.RequestCtx{}
 
@@ -1340,17 +1343,27 @@ func Benchmark_Middleware_CSRF_Check(b *testing.B) {
 	token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
 	token = strings.Split(strings.Split(token, ";")[0], "=")[1]
 
+	// Test Correct Referer POST
+	ctx.Request.Reset()
+	ctx.Response.Reset()
 	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.Header.Set(fiber.HeaderXForwardedProto, "https")
+	ctx.Request.URI().SetScheme("https")
+	ctx.Request.URI().SetHost("example.com")
+	ctx.Request.Header.SetProtocol("https")
+	ctx.Request.Header.SetHost("example.com")
+	ctx.Request.Header.Set(fiber.HeaderReferer, "https://example.com")
 	ctx.Request.Header.Set(HeaderName, token)
+	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
 
 	b.ReportAllocs()
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		h(fctx)
+		h(ctx)
 	}
 
-	require.Equal(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
+	require.Equal(b, fiber.StatusTeapot, ctx.Response.Header.StatusCode())
 }
 
 // go test -v -run=^$ -bench=Benchmark_Middleware_CSRF_GenerateToken -benchmem -count=4
@@ -1362,7 +1375,6 @@ func Benchmark_Middleware_CSRF_GenerateToken(b *testing.B) {
 		return c.SendStatus(fiber.StatusTeapot)
 	})
 
-	fctx := &fasthttp.RequestCtx{}
 	h := app.Handler()
 	ctx := &fasthttp.RequestCtx{}
 
@@ -1372,10 +1384,11 @@ func Benchmark_Middleware_CSRF_GenerateToken(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		h(fctx)
+		h(ctx)
 	}
 
-	require.Equal(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
+	// Ensure the GET request returns a 418 status code
+	require.Equal(b, fiber.StatusTeapot, ctx.Response.Header.StatusCode())
 }
 
 func Test_CSRF_InvalidURLHeaders(t *testing.T) {
