@@ -9,7 +9,7 @@ sidebar_position: 1
 
 ### New
 
-This method creates a new **App** named instance. You can pass optional [config ](#config)when creating a new instance.
+This method creates a new **App** named instance. You can pass optional [config](#config)when creating a new instance.
 
 ```go title="Signature"
 func New(config ...Config) *App
@@ -38,7 +38,7 @@ app := fiber.New(fiber.Config{
 // ...
 ```
 
-**Config fields**
+#### Config fields
 
 | Property                     | Type                                                              | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Default                                                                  |
 |------------------------------|-------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------|
@@ -85,6 +85,18 @@ app := fiber.New(fiber.Config{
 
 ### Config
 
+You can pass an optional ListenConfig when calling the [`Listen`](#listen) or [`Listener`](#listener) method.
+
+```go title="Example"
+// Custom config
+app.Listen(":8080", fiber.ListenConfig{
+    EnablePrefork: true,
+    DisableStartupMessage: true,
+})
+```
+
+#### Config fields
+
 | Property              | Type                          | Description                                                                                                                                   | Default |
 |-----------------------|-------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|---------|
 | BeforeServeFunc       | `func(app *App) error`        | Allows customizing and accessing fiber app before serving the app.                                                                            | `nil`   |
@@ -100,6 +112,7 @@ app := fiber.New(fiber.Config{
 | OnShutdownError       | `func(err error)`             | Allows to customize error behavior when gracefully shutting down the server by given signal.  Prints error with `log.Fatalf()`                | `nil`   |
 | OnShutdownSuccess     | `func()`                      | Allows to customize success behavior when gracefully shutting down the server by given signal.                                                | `nil`   |
 | TLSConfigFunc         | `func(tlsConfig *tls.Config)` | Allows customizing `tls.Config` as you want.                                                                                                  | `nil`   |
+
 
 ### Listen
 
@@ -120,98 +133,34 @@ app.Listen(":8080", fiber.ListenConfig{EnablePrefork: true})
 app.Listen("127.0.0.1:8080")
 ```
 
-### ListenTLS
+#### Prefork
 
-ListenTLS serves HTTPs requests from the given address using certFile and keyFile paths to as TLS certificate and key file.
-
-```go title="Signature"
-func (app *App) ListenTLS(addr, certFile, keyFile string) error
-```
+Prefork is a feature that allows you to spawn multiple Go processes listening on the same port. This can be useful for scaling across multiple CPU cores.
 
 ```go title="Examples"
-app.ListenTLS(":443", "./cert.pem", "./cert.key");
+app.Listen(":8080", fiber.ListenConfig{EnablePrefork: true})
 ```
 
-Using `ListenTLS` defaults to the following config \( use `Listener` to provide your own config \)
+This distributes the incoming connections between the spawned processes and allows more requests to be handled simultaneously.
 
-```go title="Default \*tls.Config"
-&tls.Config{
-    MinVersion:               tls.VersionTLS12,
-    Certificates: []tls.Certificate{
-        cert,
-    },
-}
-```
+#### TLS
 
-### ListenTLSWithCertificate
-
-```go title="Signature"
-func (app *App) ListenTLS(addr string, cert tls.Certificate) error
-```
+TLS serves HTTPs requests from the given address using certFile and keyFile paths to as TLS certificate and key file.
 
 ```go title="Examples"
-app.ListenTLSWithCertificate(":443", cert);
+app.Listen(":443", fiber.ListenConfig{CertFile: "./cert.pem", CertKeyFile: "./cert.key"})
 ```
 
-Using `ListenTLSWithCertificate` defaults to the following config \( use `Listener` to provide your own config \)
-
-```go title="Default \*tls.Config"
-&tls.Config{
-    MinVersion:               tls.VersionTLS12,
-    Certificates: []tls.Certificate{
-        cert,
-    },
-}
-```
-
-### ListenMutualTLS
-
-ListenMutualTLS serves HTTPs requests from the given address using certFile, keyFile and clientCertFile are the paths to TLS certificate and key file
-
-```go title="Signature"
-func (app *App) ListenMutualTLS(addr, certFile, keyFile, clientCertFile string) error
-```
+#### TLS with certificate
 
 ```go title="Examples"
-app.ListenMutualTLS(":443", "./cert.pem", "./cert.key", "./ca-chain-cert.pem");
+app.Listen(":443", fiber.ListenConfig{CertClientFile: "./ca-chain-cert.pem"})
 ```
 
-Using `ListenMutualTLS` defaults to the following config \( use `Listener` to provide your own config \)
-
-```go title="Default \*tls.Config"
-&tls.Config{
-	MinVersion: tls.VersionTLS12,
-	ClientAuth: tls.RequireAndVerifyClientCert,
-	ClientCAs:  clientCertPool,
-	Certificates: []tls.Certificate{
-		cert,
-	},
-}
-```
-
-### ListenMutualTLSWithCertificate
-
-ListenMutualTLSWithCertificate serves HTTPs requests from the given address using certFile, keyFile and clientCertFile are the paths to TLS certificate and key file
-
-```go title="Signature"
-func (app *App) ListenMutualTLSWithCertificate(addr string, cert tls.Certificate, clientCertPool *x509.CertPool) error
-```
+#### TLS with certFile, keyFile and clientCertFile
 
 ```go title="Examples"
-app.ListenMutualTLSWithCertificate(":443", cert, clientCertPool);
-```
-
-Using `ListenMutualTLSWithCertificate` defaults to the following config \( use `Listener` to provide your own config \)
-
-```go title="Default \*tls.Config"
-&tls.Config{
-	MinVersion: tls.VersionTLS12,
-	ClientAuth: tls.RequireAndVerifyClientCert,
-	ClientCAs:  clientCertPool,
-	Certificates: []tls.Certificate{
-		cert,
-	},
-}
+app.Listen(":443", fiber.ListenConfig{CertFile: "./cert.pem", CertKeyFile: "./cert.key", CertClientFile: "./ca-chain-cert.pem"})
 ```
 
 ### Listener
@@ -219,7 +168,7 @@ Using `ListenMutualTLSWithCertificate` defaults to the following config \( use `
 You can pass your own [`net.Listener`](https://pkg.go.dev/net/#Listener) using the `Listener` method. This method can be used to enable **TLS/HTTPS** with a custom tls.Config.
 
 ```go title="Signature"
-func (app *App) Listener(ln net.Listener) error
+func (app *App) Listener(ln net.Listener, config ...ListenConfig) error
 ```
 
 ```go title="Examples"
@@ -231,7 +180,6 @@ ln = tls.NewListener(ln, &tls.Config{Certificates: []tls.Certificate{cer}})
 
 app.Listener(ln)
 ```
-
 
 ## Server
 
@@ -294,7 +242,7 @@ func IsChild() bool
 // Config app
 app := fiber.New()
 
-app.Get("/", func(c *fiber.Ctx) error {
+app.Get("/", func(c fiber.Ctx) error {
     if !fiber.IsChild() {
         fmt.Println("I'm the parent process")
     } else {
