@@ -92,7 +92,7 @@ func main() {
 }
 ```
 
-```text
+```bash
 go run server.go
 ```
 

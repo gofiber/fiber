@@ -212,38 +212,6 @@ func main() {
 }
 ```
 
-## Server
-
-Server returns the underlying [fasthttp server](https://godoc.org/github.com/valyala/fasthttp#Server)
-
-```go title="Signature"
-func (app *App) Server() *fasthttp.Server
-```
-
-```go title="Examples"
-func main() {
-    app := fiber.New()
-
-    app.Server().MaxConnsPerIP = 1
-
-    // ...
-}
-```
-
-## Server Shutdown
-
-Shutdown gracefully shuts down the server without interrupting any active connections. Shutdown works by first closing all open listeners and then waits indefinitely for all connections to return to idle before shutting down.
-
-ShutdownWithTimeout will forcefully close any active connections after the timeout expires.
-
-ShutdownWithContext shuts down the server including by force if the context's deadline is exceeded.
-
-```go
-func (app *App) Shutdown() error
-func (app *App) ShutdownWithTimeout(timeout time.Duration) error
-func (app *App) ShutdownWithContext(ctx context.Context) error
-```
-
 ## HandlersCount
 
 This method returns the amount of registered handlers.
@@ -429,7 +397,6 @@ func main() {
 
 
 	app.Listen(":3000")
-
 }
 ```
 
@@ -487,134 +454,6 @@ Handler returns the server handler that can be used to serve custom \*fasthttp.R
 
 ```go title="Signature"
 func (app *App) Handler() fasthttp.RequestHandler
-```
-
-## Listen
-
-Listen serves HTTP requests from the given address.
-
-```go title="Signature"
-func (app *App) Listen(addr string) error
-```
-
-```go title="Examples"
-// Listen on port :8080 
-app.Listen(":8080")
-
-// Custom host
-app.Listen("127.0.0.1:8080")
-```
-
-## ListenTLS
-
-ListenTLS serves HTTPs requests from the given address using certFile and keyFile paths to as TLS certificate and key file.
-
-```go title="Signature"
-func (app *App) ListenTLS(addr, certFile, keyFile string) error
-```
-
-```go title="Examples"
-app.ListenTLS(":443", "./cert.pem", "./cert.key");
-```
-
-Using `ListenTLS` defaults to the following config \( use `Listener` to provide your own config \)
-
-```go title="Default \*tls.Config"
-&tls.Config{
-    MinVersion:               tls.VersionTLS12,
-    Certificates: []tls.Certificate{
-        cert,
-    },
-}
-```
-
-## ListenTLSWithCertificate
-
-```go title="Signature"
-func (app *App) ListenTLS(addr string, cert tls.Certificate) error
-```
-
-```go title="Examples"
-app.ListenTLSWithCertificate(":443", cert);
-```
-
-Using `ListenTLSWithCertificate` defaults to the following config \( use `Listener` to provide your own config \)
-
-```go title="Default \*tls.Config"
-&tls.Config{
-    MinVersion:               tls.VersionTLS12,
-    Certificates: []tls.Certificate{
-        cert,
-    },
-}
-```
-
-## ListenMutualTLS
-
-ListenMutualTLS serves HTTPs requests from the given address using certFile, keyFile and clientCertFile are the paths to TLS certificate and key file
-
-```go title="Signature"
-func (app *App) ListenMutualTLS(addr, certFile, keyFile, clientCertFile string) error
-```
-
-```go title="Examples"
-app.ListenMutualTLS(":443", "./cert.pem", "./cert.key", "./ca-chain-cert.pem");
-```
-
-Using `ListenMutualTLS` defaults to the following config \( use `Listener` to provide your own config \)
-
-```go title="Default \*tls.Config"
-&tls.Config{
-	MinVersion: tls.VersionTLS12,
-	ClientAuth: tls.RequireAndVerifyClientCert,
-	ClientCAs:  clientCertPool,
-	Certificates: []tls.Certificate{
-		cert,
-	},
-}
-```
-
-## ListenMutualTLSWithCertificate
-
-ListenMutualTLSWithCertificate serves HTTPs requests from the given address using certFile, keyFile and clientCertFile are the paths to TLS certificate and key file
-
-```go title="Signature"
-func (app *App) ListenMutualTLSWithCertificate(addr string, cert tls.Certificate, clientCertPool *x509.CertPool) error
-```
-
-```go title="Examples"
-app.ListenMutualTLSWithCertificate(":443", cert, clientCertPool);
-```
-
-Using `ListenMutualTLSWithCertificate` defaults to the following config \( use `Listener` to provide your own config \)
-
-```go title="Default \*tls.Config"
-&tls.Config{
-	MinVersion: tls.VersionTLS12,
-	ClientAuth: tls.RequireAndVerifyClientCert,
-	ClientCAs:  clientCertPool,
-	Certificates: []tls.Certificate{
-		cert,
-	},
-}
-```
-
-## Listener
-
-You can pass your own [`net.Listener`](https://pkg.go.dev/net/#Listener) using the `Listener` method. This method can be used to enable **TLS/HTTPS** with a custom tls.Config.
-
-```go title="Signature"
-func (app *App) Listener(ln net.Listener) error
-```
-
-```go title="Examples"
-ln, _ := net.Listen("tcp", ":3000")
-
-cer, _:= tls.LoadX509KeyPair("server.crt", "server.key")
-
-ln = tls.NewListener(ln, &tls.Config{Certificates: []tls.Certificate{cer}})
-
-app.Listener(ln)
 ```
 
 ## RegisterCustomConstraint
