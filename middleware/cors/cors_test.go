@@ -69,6 +69,33 @@ func testDefaultOrEmptyConfig(t *testing.T, app *fiber.App) {
 	utils.AssertEqual(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlMaxAge)))
 }
 
+func Test_CORS_AllowOrigins_Vary(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New(
+		Config{
+			AllowOrigins: "http://localhost",
+		},
+	))
+
+	h := app.Handler()
+
+	// Test Vary header non-Cors request
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	h(ctx)
+	utils.AssertEqual(t, true, strings.Contains(string(ctx.Response.Header.Peek(fiber.HeaderVary)), fiber.HeaderOrigin), "Vary header should be set")
+
+	// Test Vary header Cors request
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
+	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
+	h(ctx)
+	utils.AssertEqual(t, true, strings.Contains(string(ctx.Response.Header.Peek(fiber.HeaderVary)), fiber.HeaderOrigin), "Vary header should be set")
+}
+
 // go test -run -v Test_CORS_Wildcard
 func Test_CORS_Wildcard(t *testing.T) {
 	t.Parallel()
@@ -96,6 +123,7 @@ func Test_CORS_Wildcard(t *testing.T) {
 
 	// Check result
 	utils.AssertEqual(t, "*", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin))) // Validates request is not reflecting origin in the response
+	utils.AssertEqual(t, true, strings.Contains(string(ctx.Response.Header.Peek(fiber.HeaderVary)), fiber.HeaderOrigin), "Vary header should be set")
 	utils.AssertEqual(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowCredentials)))
 	utils.AssertEqual(t, "3600", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlMaxAge)))
 	utils.AssertEqual(t, "Authentication", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)))
@@ -106,6 +134,7 @@ func Test_CORS_Wildcard(t *testing.T) {
 	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
 	handler(ctx)
 
+	utils.AssertEqual(t, false, strings.Contains(string(ctx.Response.Header.Peek(fiber.HeaderVary)), fiber.HeaderOrigin), "Vary header should not be set")
 	utils.AssertEqual(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowCredentials)))
 	utils.AssertEqual(t, "X-Request-ID", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlExposeHeaders)))
 }
