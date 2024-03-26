@@ -591,13 +591,13 @@ func (app *App) RegisterCustomConstraint(constraint CustomConstraint) {
 	app.customConstraints = append(app.customConstraints, constraint)
 }
 
-// You can register custom binders to use as Bind().Custom("name").
+// RegisterCustomBinder Allows to register custom binders to use as Bind().Custom("name").
 // They should be compatible with CustomBinder interface.
 func (app *App) RegisterCustomBinder(binder CustomBinder) {
 	app.customBinders = append(app.customBinders, binder)
 }
 
-// You can use SetTLSHandler to use ClientHelloInfo when using TLS with Listener.
+// SetTLSHandler Can be used to set ClientHelloInfo when using TLS with Listener.
 func (app *App) SetTLSHandler(tlsHandler *TLSHandler) {
 	// Attach the tlsHandler to the config
 	app.mutex.Lock()

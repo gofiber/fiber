@@ -5,9 +5,11 @@ description: The app instance conventionally denotes the Fiber application.
 sidebar_position: 2
 ---
 
+## Routing
+
 import RoutingHandler from './../partials/routing/handler.md';
 
-## Static
+### Static
 
 Use the **Static** method to serve static files such as **images**, **CSS,** and **JavaScript**.
 
@@ -109,11 +111,11 @@ app.Static("/", "./public", fiber.Static{
 })
 ```
 
-## Route Handlers
+### Route Handlers
 
 <RoutingHandler />
 
-## Mount
+### Mount
 
 You can Mount Fiber instance by creating a `*Mount`
 
@@ -135,7 +137,7 @@ func main() {
 }
 ```
 
-## MountPath
+### MountPath
 
 The `MountPath` property contains one or more path patterns on which a sub-app was mounted.
 
@@ -165,7 +167,7 @@ func main() {
 Mounting order is important for MountPath. If you want to get mount paths properly, you should start mounting from the deepest app.
 :::
 
-## Group
+### Group
 
 You can group routes by creating a `*Group` struct.
 
@@ -191,7 +193,7 @@ func main() {
 }
 ```
 
-## Route
+### Route
 
 You can define routes with a common prefix inside the common function.
 
@@ -212,7 +214,7 @@ func main() {
 }
 ```
 
-## HandlersCount
+### HandlersCount
 
 This method returns the amount of registered handlers.
 
@@ -220,7 +222,7 @@ This method returns the amount of registered handlers.
 func (app *App) HandlersCount() uint32
 ```
 
-## Stack
+### Stack
 
 This method returns the original router stack
 
@@ -274,7 +276,7 @@ func main() {
 ]
 ```
 
-## Name
+### Name
 
 This method assigns the name of latest created route.
 
@@ -376,7 +378,7 @@ func main() {
 ]
 ```
 
-## GetRoute
+### GetRoute
 
 This method gets the route by name.
 
@@ -409,7 +411,7 @@ func main() {
 }
 ```
 
-## GetRoutes
+### GetRoutes
 
 This method gets all routes.
 
@@ -456,6 +458,35 @@ Handler returns the server handler that can be used to serve custom \*fasthttp.R
 func (app *App) Handler() fasthttp.RequestHandler
 ```
 
+## ErrorHandler
+
+Errorhandler executes the process which was defined for the application in case of errors, this is used in some cases in middlewares.
+
+```go title="Signature"
+func (app *App) ErrorHandler(ctx Ctx, err error) error
+```
+
+## NewCtxFunc
+
+NewCtxFunc allows to customize ctx methods as we want.
+
+```go title="Signature"
+func (app *App) NewCtxFunc(function func(app *App) CustomCtx)
+```
+
+TODO: add example
+
+## RegisterCustomBinder
+
+You can register custom binders to use as Bind().Custom("name").
+They should be compatible with CustomBinder interface.
+
+```go title="Signature"
+func (app *App) RegisterCustomBinder(binder CustomBinder)
+```
+
+TODO: add example
+
 ## RegisterCustomConstraint
 
 RegisterCustomConstraint allows to register custom constraint.
@@ -465,6 +496,15 @@ func (app *App) RegisterCustomConstraint(constraint CustomConstraint)
 ```
 
 See [Custom Constraint](../guide/routing.md#custom-constraint) section for more information.
+
+
+## SetTLSHandler
+
+Use SetTLSHandler to set [ClientHelloInfo](https://datatracker.ietf.org/doc/html/rfc8446#section-4.1.2) when using TLS with Listener.
+
+```go title="Signature"
+func (app *App) SetTLSHandler(tlsHandler *TLSHandler)
+```
 
 ## Test
 

@@ -1,4 +1,5 @@
 ---
+id: whats_new
 title: 🆕 Whats New in v3
 sidebar_position: 2
 ---
