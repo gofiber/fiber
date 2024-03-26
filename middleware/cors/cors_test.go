@@ -50,7 +50,6 @@ func testDefaultOrEmptyConfig(t *testing.T, app *fiber.App) {
 	// Test default GET response headers
 	ctx := &fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
-	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
 	h(ctx)
 
@@ -105,7 +104,6 @@ func Test_CORS_Wildcard(t *testing.T) {
 	ctx = &fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
 	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
-	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 	handler(ctx)
 
 	utils.AssertEqual(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowCredentials)))
@@ -147,7 +145,6 @@ func Test_CORS_Origin_AllowCredentials(t *testing.T) {
 	// Test non OPTIONS (preflight) response headers
 	ctx = &fasthttp.RequestCtx{}
 	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
-	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
 	handler(ctx)
 
@@ -466,41 +463,13 @@ func Test_CORS_Headers_BasedOnRequestType(t *testing.T) {
 	// Get handler pointer
 	handler := app.Handler()
 
-	t.Run("Without origin and Access-Control-Request-Method headers", func(t *testing.T) {
+	t.Run("Without origin", func(t *testing.T) {
 		t.Parallel()
 		// Make request without origin header, and without Access-Control-Request-Method
 		for _, method := range methods {
 			ctx := &fasthttp.RequestCtx{}
 			ctx.Request.Header.SetMethod(method)
 			ctx.Request.SetRequestURI("https://example.com/")
-			handler(ctx)
-			utils.AssertEqual(t, 200, ctx.Response.StatusCode(), "Status code should be 200")
-			utils.AssertEqual(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)), "Access-Control-Allow-Origin header should not be set")
-		}
-	})
-
-	t.Run("With origin but without Access-Control-Request-Method header", func(t *testing.T) {
-		t.Parallel()
-		// Make request with origin header, but without Access-Control-Request-Method
-		for _, method := range methods {
-			ctx := &fasthttp.RequestCtx{}
-			ctx.Request.Header.SetMethod(method)
-			ctx.Request.SetRequestURI("https://example.com/")
-			ctx.Request.Header.Set(fiber.HeaderOrigin, "http://example.com")
-			handler(ctx)
-			utils.AssertEqual(t, 200, ctx.Response.StatusCode(), "Status code should be 200")
-			utils.AssertEqual(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)), "Access-Control-Allow-Origin header should not be set")
-		}
-	})
-
-	t.Run("Without origin but with Access-Control-Request-Method header", func(t *testing.T) {
-		t.Parallel()
-		// Make request without origin header, but with Access-Control-Request-Method
-		for _, method := range methods {
-			ctx := &fasthttp.RequestCtx{}
-			ctx.Request.Header.SetMethod(method)
-			ctx.Request.SetRequestURI("https://example.com/")
-			ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 			handler(ctx)
 			utils.AssertEqual(t, 200, ctx.Response.StatusCode(), "Status code should be 200")
 			utils.AssertEqual(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)), "Access-Control-Allow-Origin header should not be set")
@@ -524,7 +493,7 @@ func Test_CORS_Headers_BasedOnRequestType(t *testing.T) {
 		}
 	})
 
-	t.Run("Non-preflight request with origin and Access-Control-Request-Method headers", func(t *testing.T) {
+	t.Run("Non-preflight request with origin", func(t *testing.T) {
 		t.Parallel()
 		// Make non-preflight request with origin header and with Access-Control-Request-Method
 		for _, method := range methods {
@@ -532,7 +501,6 @@ func Test_CORS_Headers_BasedOnRequestType(t *testing.T) {
 			ctx.Request.Header.SetMethod(method)
 			ctx.Request.SetRequestURI("https://example.com/api/action")
 			ctx.Request.Header.Set(fiber.HeaderOrigin, "http://example.com")
-			ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, method)
 			handler(ctx)
 			utils.AssertEqual(t, 200, ctx.Response.StatusCode(), "Status code should be 200")
 			utils.AssertEqual(t, "*", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)), "Access-Control-Allow-Origin header should be set")
@@ -901,7 +869,6 @@ func Benchmark_CORS_NewHandler(b *testing.B) {
 	req.Header.SetMethod(fiber.MethodGet)
 	req.SetRequestURI("/")
 	req.Header.Set(fiber.HeaderOrigin, "http://localhost")
-	req.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 	req.Header.Set(fiber.HeaderAccessControlRequestHeaders, "Origin,Content-Type,Accept")
 
 	ctx.Init(req, nil, nil)
@@ -942,7 +909,6 @@ func Benchmark_CORS_NewHandlerParallel(b *testing.B) {
 		req.Header.SetMethod(fiber.MethodGet)
 		req.SetRequestURI("/")
 		req.Header.Set(fiber.HeaderOrigin, "http://localhost")
-		req.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 		req.Header.Set(fiber.HeaderAccessControlRequestHeaders, "Origin,Content-Type,Accept")
 
 		ctx.Init(req, nil, nil)
@@ -976,7 +942,6 @@ func Benchmark_CORS_NewHandlerSingleOrigin(b *testing.B) {
 	req.Header.SetMethod(fiber.MethodGet)
 	req.SetRequestURI("/")
 	req.Header.Set(fiber.HeaderOrigin, "http://example.com")
-	req.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 	req.Header.Set(fiber.HeaderAccessControlRequestHeaders, "Origin,Content-Type,Accept")
 
 	ctx.Init(req, nil, nil)
@@ -1017,7 +982,6 @@ func Benchmark_CORS_NewHandlerSingleOriginParallel(b *testing.B) {
 		req.Header.SetMethod(fiber.MethodGet)
 		req.SetRequestURI("/")
 		req.Header.Set(fiber.HeaderOrigin, "http://example.com")
-		req.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 		req.Header.Set(fiber.HeaderAccessControlRequestHeaders, "Origin,Content-Type,Accept")
 
 		ctx.Init(req, nil, nil)
@@ -1051,7 +1015,6 @@ func Benchmark_CORS_NewHandlerWildcard(b *testing.B) {
 	req.Header.SetMethod(fiber.MethodGet)
 	req.SetRequestURI("/")
 	req.Header.Set(fiber.HeaderOrigin, "http://example.com")
-	req.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 	req.Header.Set(fiber.HeaderAccessControlRequestHeaders, "Origin,Content-Type,Accept")
 
 	ctx.Init(req, nil, nil)
@@ -1092,7 +1055,6 @@ func Benchmark_CORS_NewHandlerWildcardParallel(b *testing.B) {
 		req.Header.SetMethod(fiber.MethodGet)
 		req.SetRequestURI("/")
 		req.Header.Set(fiber.HeaderOrigin, "http://example.com")
-		req.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 		req.Header.Set(fiber.HeaderAccessControlRequestHeaders, "Origin,Content-Type,Accept")
 
 		ctx.Init(req, nil, nil)
@@ -1122,6 +1084,7 @@ func Benchmark_CORS_NewHandlerPreflight(b *testing.B) {
 	h := app.Handler()
 	ctx := &fasthttp.RequestCtx{}
 
+	// Preflight request
 	req := &fasthttp.Request{}
 	req.Header.SetMethod(fiber.MethodOptions)
 	req.SetRequestURI("/")
