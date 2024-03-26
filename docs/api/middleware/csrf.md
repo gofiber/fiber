@@ -116,7 +116,7 @@ func (h *Handler) DeleteToken(c fiber.Ctx) error
 | Storage           | `fiber.Storage`                    | Store is used to store the state of the middleware.                                                                                                                                                                                                                                          | `nil`                        |
 | Session           | `*session.Store`                   | Session is used to store the state of the middleware. Overrides Storage if set.                                                                                                                                                                                                              | `nil`                        |
 | SessionKey        | `string`                           | SessionKey is the key used to store the token in the session.                                                                                                                                                                                                                                | "csrfToken"                  |
-| TrustedOrigins    | `[]string`                         | TrustedOrigins is a list of trusted origins for unsafe requests. This supports subdomain matching, so you can use a value like "https://.example.com" to allow any subdomain of example.com to submit requests.                                                                              | `[]`                         |
+| TrustedOrigins    | `[]string`                         | TrustedOrigins is a list of trusted origins for unsafe requests. This supports subdomain matching, so you can use a value like "https://*.example.com" to allow any subdomain of example.com to submit requests.                                                                             | `[]`                         |
 
 ### Default Config
 
@@ -153,6 +153,36 @@ var ConfigDefault = Config{
 	SessionKey:        "csrfToken",
 }
 ```
+
+### Trusted Origins
+
+The `TrustedOrigins` option is used to specify a list of trusted origins for unsafe requests. This is useful when you want to allow requests from other origins. This supports matching subdomains at any level. This means you can use a value like `"https://*.example.com"` to allow any subdomain of `example.com` to submit requests, including multiple subdomain levels such as `"https://sub.sub.example.com"`.
+
+To ensure that the provided `TrustedOrigins` origins are correctly formatted, this middleware validates and normalizes them. It checks for valid schemes, i.e., HTTP or HTTPS, and it will automatically remove trailing slashes. If the provided origin is invalid, the middleware will panic.
+
+#### Example with Explicit Origins
+
+In the following example, the CSRF middleware will allow requests from `trusted.example.com`, in addition to the current host.
+
+```go
+app.Use(csrf.New(csrf.Config{
+	TrustedOrigins: []string{"https://trusted.example.com"},
+}))
+```
+
+#### Example with Subdomain Matching
+
+In the following example, the CSRF middleware will allow requests from any subdomain of `example.com`, in addition to the current host.
+
+```go
+app.Use(csrf.New(csrf.Config{
+	TrustedOrigins: []string{"https://*.example.com"},
+}))
+```
+
+::caution
+When using `TrustedOrigins` with subdomain matching, make sure you control and trust all the subdomains, including all subdomain levels. If not, an attacker could create a subdomain under a trusted origin and use it to send harmful requests.
+:::
 
 ## Constants
 
@@ -272,7 +302,6 @@ When HTTPS requests are protected by CSRF, referer checking is always carried ou
 
 The Referer header is automatically included in requests by all modern browsers, including those made using the JS Fetch API. However, if you're making use of this middleware with a custom client, it's important to ensure that the client sends a valid Referer header.
 :::
-
 
 ### Token Lifecycle
 
