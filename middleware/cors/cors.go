@@ -169,9 +169,13 @@ func New(config ...Config) fiber.Handler {
 		// Get originHeader header
 		originHeader := strings.ToLower(c.Get(fiber.HeaderOrigin))
 
-		// If the request does not have Origin and Access-Control-Request-Method
-		// headers, the request is outside the scope of CORS
-		if originHeader == "" || c.Get(fiber.HeaderAccessControlRequestMethod) == "" {
+		// If the request does not have Origin header, the request is outside the scope of CORS
+		if originHeader == "" {
+			return c.Next()
+		}
+
+		// If it's a preflight request and doesn't have Access-Control-Request-Method header, it's outside the scope of CORS
+		if c.Method() == fiber.MethodOptions && c.Get(fiber.HeaderAccessControlRequestMethod) == "" {
 			return c.Next()
 		}
 
