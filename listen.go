@@ -101,7 +101,8 @@ type ListenConfig struct {
 
 	// OnShutdownError allows to customize error behavior when to graceful shutdown server by given signal.
 	//
-	// Default: Print error with log.Fatalf()
+	// Print error with log.Fatalf() by default.
+	// Default: nil
 	OnShutdownError func(err error)
 
 	// OnShutdownSuccess allows to customize success behavior when to graceful shutdown server by given signal.

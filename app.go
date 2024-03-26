@@ -276,6 +276,8 @@ type Config struct {
 	// StreamRequestBody enables request body streaming,
 	// and calls the handler sooner when given body is
 	// larger than the current limit.
+	//
+	// Default: false
 	StreamRequestBody bool
 
 	// Will not pre parse Multipart Form data if set to true.
@@ -284,6 +286,8 @@ type Config struct {
 	// multipart form data as a binary blob, or choose when to parse the data.
 	//
 	// Server pre parses multipart form data by default.
+	//
+	// Default: false
 	DisablePreParseMultipartForm bool
 
 	// Aggressively reduces memory usage at the cost of higher CPU usage
@@ -295,14 +299,6 @@ type Config struct {
 	//
 	// Default: false
 	ReduceMemoryUsage bool `json:"reduce_memory_usage"`
-
-	// FEATURE: v2.3.x
-	// The router executes the same handler by default if StrictRouting or CaseSensitive is disabled.
-	// Enabling RedirectFixedPath will change this behavior into a client redirect to the original route path.
-	// Using the status code 301 for GET requests and 308 for all other request methods.
-	//
-	// Default: false
-	// RedirectFixedPath bool
 
 	// When set by an external client of Fiber it will use the provided implementation of a
 	// JSONMarshal
@@ -595,13 +591,13 @@ func (app *App) RegisterCustomConstraint(constraint CustomConstraint) {
 	app.customConstraints = append(app.customConstraints, constraint)
 }
 
-// You can register custom binders to use as Bind().Custom("name").
+// RegisterCustomBinder Allows to register custom binders to use as Bind().Custom("name").
 // They should be compatible with CustomBinder interface.
 func (app *App) RegisterCustomBinder(binder CustomBinder) {
 	app.customBinders = append(app.customBinders, binder)
 }
 
-// You can use SetTLSHandler to use ClientHelloInfo when using TLS with Listener.
+// SetTLSHandler Can be used to set ClientHelloInfo when using TLS with Listener.
 func (app *App) SetTLSHandler(tlsHandler *TLSHandler) {
 	// Attach the tlsHandler to the config
 	app.mutex.Lock()
