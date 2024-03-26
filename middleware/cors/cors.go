@@ -175,6 +175,8 @@ func New(config ...Config) fiber.Handler {
 
 		// If it's a preflight request and doesn't have Access-Control-Request-Method header, it's outside the scope of CORS
 		if c.Method() == fiber.MethodOptions && c.Get(fiber.HeaderAccessControlRequestMethod) == "" {
+			// See comment in preflight section below
+			c.Vary(fiber.HeaderOrigin)
 			return c.Next()
 		}
 
