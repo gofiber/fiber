@@ -169,9 +169,24 @@ func New(config ...Config) fiber.Handler {
 		// Get originHeader header
 		originHeader := strings.ToLower(c.Get(fiber.HeaderOrigin))
 
-		// If the request does not have Origin and Access-Control-Request-Method
-		// headers, the request is outside the scope of CORS
-		if originHeader == "" || c.Get(fiber.HeaderAccessControlRequestMethod) == "" {
+		// If the request does not have Origin header, the request is outside the scope of CORS
+		if originHeader == "" {
+			// See https://fetch.spec.whatwg.org/#cors-protocol-and-http-caches
+			// Unless all origins are allowed, we include the Vary header to cache the response correctly
+			if !allowAllOrigins {
+				c.Vary(fiber.HeaderOrigin)
+			}
+
+			return c.Next()
+		}
+
+		// If it's a preflight request and doesn't have Access-Control-Request-Method header, it's outside the scope of CORS
+		if c.Method() == fiber.MethodOptions && c.Get(fiber.HeaderAccessControlRequestMethod) == "" {
+			// Response to OPTIONS request should not be cached but,
+			// some caching can be configured to cache such responses.
+			// To Avoid poisoning the cache, we include the Vary header
+			// for non-CORS OPTIONS requests:
+			c.Vary(fiber.HeaderOrigin)
 			return c.Next()
 		}
 
@@ -211,17 +226,28 @@ func New(config ...Config) fiber.Handler {
 		// Simple request
 		// Ommit allowMethods and allowHeaders, only used for pre-flight requests
 		if c.Method() != fiber.MethodOptions {
+			if !allowAllOrigins {
+				// See https://fetch.spec.whatwg.org/#cors-protocol-and-http-caches
+				c.Vary(fiber.HeaderOrigin)
+			}
 			setCORSHeaders(c, allowOrigin, "", "", exposeHeaders, maxAge, cfg)
 			return c.Next()
 		}
 
-		// Preflight request
+		// Pre-flight request
+
+		// Response to OPTIONS request should not be cached but,
+		// some caching can be configured to cache such responses.
+		// To Avoid poisoning the cache, we include the Vary header
+		// of preflight responses:
 		c.Vary(fiber.HeaderAccessControlRequestMethod)
 		c.Vary(fiber.HeaderAccessControlRequestHeaders)
 		if cfg.AllowPrivateNetwork && c.Get(fiber.HeaderAccessControlRequestPrivateNetwork) == "true" {
 			c.Vary(fiber.HeaderAccessControlRequestPrivateNetwork)
 			c.Set(fiber.HeaderAccessControlAllowPrivateNetwork, "true")
 		}
+		c.Vary(fiber.HeaderOrigin)
+
 		setCORSHeaders(c, allowOrigin, allowMethods, allowHeaders, exposeHeaders, maxAge, cfg)
 
 		// Send 204 No Content
@@ -231,8 +257,6 @@ func New(config ...Config) fiber.Handler {
 
 // Function to set CORS headers
 func setCORSHeaders(c fiber.Ctx, allowOrigin, allowMethods, allowHeaders, exposeHeaders, maxAge string, cfg Config) {
-	c.Vary(fiber.HeaderOrigin)
-
 	if cfg.AllowCredentials {
 		// When AllowCredentials is true, set the Access-Control-Allow-Origin to the specific origin instead of '*'
 		if allowOrigin == "*" {
