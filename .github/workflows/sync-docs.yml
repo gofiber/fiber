@@ -3,7 +3,8 @@ name: "Sync docs"
 on:
   push:
     branches:
-      - v2
+      - master
+      - main
     paths:
       - "docs/**"
   release:
@@ -11,13 +12,12 @@ on:
 
 jobs:
   sync-docs:
-    if: false
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 2
 
       - name: Setup Node.js environment

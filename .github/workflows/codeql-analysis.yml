@@ -3,7 +3,8 @@ name: "CodeQL"
 on:
   push:
     branches:
-      - v2
+      - master
+      - main
     paths:
       - "**"
       - "!docs/**"

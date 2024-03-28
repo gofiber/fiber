@@ -4,7 +4,8 @@ on:
   push:
     # branches to consider in the event; optional, defaults to all
     branches:
-      - v2
+      - master
+      - main
 
 jobs:
   update_release_draft:
