@@ -164,7 +164,7 @@ Constraints aren't validation for parameters. If constraints aren't valid for a 
 | datetime          | :dob<datetime(2006\\\\-01\\\\-02)\>  | 2005-11-01                                                                                  |
 | regex(expression) | :date<regex(\\d{4}-\\d{2}-\\d{2})\> | 2022-08-27 (Must match regular expression)                                                  |
 
-**Examples**
+#### Examples
 
 <Tabs>
 <TabItem value="single-constraint" label="Single Constraint">
@@ -240,7 +240,7 @@ app.Get("/:test<int>?", func(c fiber.Ctx) error {
 // Cannot GET /7.0
 ```
 
-**Custom Constraint Example**
+#### Custom Constraint
 
 Custom constraints can be added to Fiber using the `app.RegisterCustomConstraint` method. Your constraints have to be compatible with the `CustomConstraint` interface.
 

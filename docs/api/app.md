@@ -468,13 +468,34 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error
 
 ## NewCtxFunc
 
-NewCtxFunc allows to customize ctx methods as we want.
+NewCtxFunc allows to customize the ctx struct as we want.
 
 ```go title="Signature"
 func (app *App) NewCtxFunc(function func(app *App) CustomCtx)
 ```
 
-TODO: add example
+```go title="Examples"
+type CustomCtx struct {
+	DefaultCtx
+}
+
+// Custom method
+func (c *CustomCtx) Params(key string, defaultValue ...string) string {
+	return "prefix_" + c.DefaultCtx.Params(key)
+}
+
+app := New()
+app.NewCtxFunc(func(app *fiber.App) fiber.CustomCtx {
+    return &CustomCtx{
+        DefaultCtx: *NewDefaultCtx(app),
+    }
+})
+// curl http://localhost:3000/123
+app.Get("/:id", func(c Ctx) error {
+    // use custom method - output: prefix_123
+    return c.SendString(c.Params("id"))
+})
+```
 
 ## RegisterCustomBinder
 
@@ -485,7 +506,50 @@ They should be compatible with CustomBinder interface.
 func (app *App) RegisterCustomBinder(binder CustomBinder)
 ```
 
-TODO: add example
+```go title="Examples"
+app := fiber.New()
+
+// My custom binder
+customBinder := &customBinder{}
+// Name of custom binder, which will be used as Bind().Custom("name")
+func (*customBinder) Name() string {
+    return "custom"
+}
+// Is used in the Body Bind method to check if the binder should be used for custom mime types
+func (*customBinder) MIMETypes() []string {
+    return []string{"application/yaml"}
+}
+// Parse the body and bind it to the out interface
+func (*customBinder) Parse(c Ctx, out any) error {
+    // parse yaml body
+    return yaml.Unmarshal(c.Body(), out)
+}
+// Register custom binder
+app.RegisterCustomBinder(customBinder)
+
+// curl -X POST http://localhost:3000/custom -H "Content-Type: application/yaml" -d "name: John"
+app.Post("/custom", func(c Ctx) error {
+    var user User
+    // output: {Name:John}
+    // Custom binder is used by the name
+    if err := c.Bind().Custom("custom", &user); err != nil {
+        return err
+    }
+    // ...
+    return c.JSON(user)
+})
+// curl -X POST http://localhost:3000/normal -H "Content-Type: application/yaml" -d "name: Doe"
+app.Post("/normal", func(c Ctx) error {
+    var user User
+    // output: {Name:Doe}
+    // Custom binder is used by the mime type
+    if err := c.Bind().Body(&user); err != nil {
+        return err
+    }
+    // ...
+    return c.JSON(user)
+})
+```
 
 ## RegisterCustomConstraint
 
