@@ -100,31 +100,6 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
-## AllParams
-
-Params is used to get all route parameters.
-Using Params method to get params.
-
-```go title="Signature"
-func (c Ctx) AllParams() map[string]string
-```
-
-```go title="Example"
-// GET http://example.com/user/fenny
-app.Get("/user/:name", func(c fiber.Ctx) error {
-  c.AllParams() // "{"name": "fenny"}"
-
-  // ...
-})
-
-// GET http://example.com/user/fenny/123
-app.Get("/user/*", func(c fiber.Ctx) error {
-  c.AllParams()  // "{"*1": "fenny/123"}"
-
-  // ...
-})
-```
-
 ## App
 
 Returns the [\*App](ctx.md) reference so you could easily access all application settings.
@@ -239,27 +214,6 @@ func (c Ctx) BaseURL() string
 app.Get("/", func(c fiber.Ctx) error {
   c.BaseURL() // https://example.com
   // ...
-})
-```
-
-## Bind
-
-Add vars to default view var map binding to template engine.
-Variables are read by the Render method and may be overwritten.
-
-```go title="Signature"
-func (c Ctx) Bind(vars Map) error
-```
-
-```go title="Example"
-app.Use(func(c fiber.Ctx) error {
-  c.Bind(fiber.Map{
-    "Title": "Hello, World!",
-  })
-})
-
-app.Get("/", func(c fiber.Ctx) error {
-  return c.Render("xxx.tmpl", fiber.Map{}) // Render will use Title variable
 })
 ```
 
@@ -2100,6 +2054,27 @@ app.Get("/", func(c fiber.Ctx) error {
   // => Vary: Origin, User-Agent, Accept-Encoding, Accept
 
   // ...
+})
+```
+
+## ViewBind
+
+Add vars to default view var map binding to template engine.
+Variables are read by the Render method and may be overwritten.
+
+```go title="Signature"
+func (c Ctx) ViewBind(vars Map) error
+```
+
+```go title="Example"
+app.Use(func(c fiber.Ctx) error {
+  c.ViewBind(fiber.Map{
+    "Title": "Hello, World!",
+  })
+})
+
+app.Get("/", func(c fiber.Ctx) error {
+  return c.Render("xxx.tmpl", fiber.Map{}) // Render will use Title variable
 })
 ```
 

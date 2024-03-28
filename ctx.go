@@ -1202,9 +1202,9 @@ func (c *DefaultCtx) Redirect() *Redirect {
 	return c.redirect
 }
 
-// Bind Add vars to default view var map binding to template engine.
+// ViewBind Add vars to default view var map binding to template engine.
 // Variables are read by the Render method and may be overwritten.
-func (c *DefaultCtx) BindVars(vars Map) error {
+func (c *DefaultCtx) ViewBind(vars Map) error {
 	// init viewBindMap - lazy map
 	for k, v := range vars {
 		c.viewBindMap.Store(k, v)
@@ -1694,7 +1694,7 @@ func (c *DefaultCtx) IsFromLocal() bool {
 	return c.isLocalHost(c.fasthttp.RemoteIP().String())
 }
 
-// You can bind body, cookie, headers etc. into the map, map slice, struct easily by using Binding method.
+// Bind You can bind body, cookie, headers etc. into the map, map slice, struct easily by using Binding method.
 // It gives custom binding support, detailed binding options and more.
 // Replacement of: BodyParser, ParamsParser, GetReqHeaders, GetRespHeaders, AllParams, QueryParser, ReqHeaderParser
 func (c *DefaultCtx) Bind() *Bind {
@@ -1707,7 +1707,7 @@ func (c *DefaultCtx) Bind() *Bind {
 	return c.bind
 }
 
-// Converts a string value to a specified type, handling errors and optional default values.
+// Convert a string value to a specified type, handling errors and optional default values.
 func Convert[T any](value string, convertor func(string) (T, error), defaultValue ...T) (T, error) {
 	converted, err := convertor(value)
 	if err != nil {

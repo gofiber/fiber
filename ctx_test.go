@@ -3441,13 +3441,13 @@ func Test_Ctx_RenderWithLocals(t *testing.T) {
 	})
 }
 
-func Test_Ctx_RenderWithBindVars(t *testing.T) {
+func Test_Ctx_RenderWithViewBind(t *testing.T) {
 	t.Parallel()
 
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	err := c.BindVars(Map{
+	err := c.ViewBind(Map{
 		"Title": "Hello, World!",
 	})
 	require.NoError(t, err)
@@ -3462,12 +3462,12 @@ func Test_Ctx_RenderWithBindVars(t *testing.T) {
 	require.Equal(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
 }
 
-func Test_Ctx_RenderWithOverwrittenBind(t *testing.T) {
+func Test_Ctx_RenderWithOverwrittenViewBind(t *testing.T) {
 	t.Parallel()
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	err := c.BindVars(Map{
+	err := c.ViewBind(Map{
 		"Title": "Hello, World!",
 	})
 	require.NoError(t, err)
@@ -3484,7 +3484,7 @@ func Test_Ctx_RenderWithOverwrittenBind(t *testing.T) {
 	require.Equal(t, "<h1>Hello from Fiber!</h1>", string(c.Response().Body()))
 }
 
-func Test_Ctx_RenderWithBindVarsLocals(t *testing.T) {
+func Test_Ctx_RenderWithViewBindLocals(t *testing.T) {
 	t.Parallel()
 	app := New(Config{
 		PassLocalsToViews: true,
@@ -3492,7 +3492,7 @@ func Test_Ctx_RenderWithBindVarsLocals(t *testing.T) {
 
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	err := c.BindVars(Map{
+	err := c.ViewBind(Map{
 		"Title": "Hello, World!",
 	})
 	require.NoError(t, err)
@@ -3528,7 +3528,7 @@ func Test_Ctx_RenderWithLocalsAndBinding(t *testing.T) {
 	require.Equal(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
 }
 
-func Benchmark_Ctx_RenderWithLocalsAndBindVars(b *testing.B) {
+func Benchmark_Ctx_RenderWithLocalsAndViewBind(b *testing.B) {
 	engine := &testTemplateEngine{}
 	err := engine.Load()
 	require.NoError(b, err)
@@ -3538,7 +3538,7 @@ func Benchmark_Ctx_RenderWithLocalsAndBindVars(b *testing.B) {
 	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	err = c.BindVars(Map{
+	err = c.ViewBind(Map{
 		"Title": "Hello, World!",
 	})
 	require.NoError(b, err)
@@ -3578,7 +3578,7 @@ func Benchmark_Ctx_RenderLocals(b *testing.B) {
 	require.Equal(b, "<h1>Hello, World!</h1>", string(c.Response().Body()))
 }
 
-func Benchmark_Ctx_RenderBindVars(b *testing.B) {
+func Benchmark_Ctx_RenderViewBind(b *testing.B) {
 	engine := &testTemplateEngine{}
 	err := engine.Load()
 	require.NoError(b, err)
@@ -3586,7 +3586,7 @@ func Benchmark_Ctx_RenderBindVars(b *testing.B) {
 	app.config.Views = engine
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	err = c.BindVars(Map{
+	err = c.ViewBind(Map{
 		"Title": "Hello, World!",
 	})
 	require.NoError(b, err)
