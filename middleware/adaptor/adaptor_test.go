@@ -244,7 +244,9 @@ func testFiberToHandlerFunc(t *testing.T, checkDefaultPort bool, app ...*fiber.A
 		require.Equal(t, expectedHost, c.Hostname(), "Host")
 		require.Equal(t, expectedHost, string(c.Request().Header.Host()), "Host")
 		require.Equal(t, "http://"+expectedHost, c.BaseURL(), "BaseURL")
-		require.Equal(t, expectedRemoteAddr, c.Context().RemoteAddr().String(), "RemoteAddr")
+		require.Equal(t, expectedHost, string(c.Request().Header.Host()), "Host")
+		utils.AssertEqual(t, "http://"+expectedHost, c.BaseURL(), "BaseURL")
+		utils.AssertEqual(t, expectedRemoteAddr, c.Context().RemoteAddr().String(), "RemoteAddr")
 
 		body := string(c.Body())
 		require.Equal(t, expectedBody, body, "Body")

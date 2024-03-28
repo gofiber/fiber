@@ -318,7 +318,6 @@ func originMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins [
 // returns nil if the referer header is valid
 func refererMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins []subdomain) error {
 	referer := strings.ToLower(c.Get(fiber.HeaderReferer))
-
 	if referer == "" {
 		return ErrRefererNotFound
 	}
