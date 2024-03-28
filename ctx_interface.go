@@ -8,11 +8,10 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"github.com/valyala/fasthttp"
 	"io"
 	"mime/multipart"
 	"sync"
-
-	"github.com/valyala/fasthttp"
 )
 
 // Ctx represents the Context which hold the HTTP request and response.
@@ -375,9 +374,6 @@ type Ctx interface {
 	// ClientHelloInfo return CHI from context
 	ClientHelloInfo() *tls.ClientHelloInfo
 
-	// SetReq resets fields of context that is relating to request.
-	setReq(fctx *fasthttp.RequestCtx)
-
 	// Release is a method to reset context fields when to use ReleaseCtx()
 	release()
 }
@@ -407,16 +403,6 @@ func NewDefaultCtx(app *App) *DefaultCtx {
 	return &DefaultCtx{
 		// Set app reference
 		app: app,
-
-		// Reset route and handler index
-		indexRoute:   -1,
-		indexHandler: 0,
-
-		// Reset matched flag
-		matched: false,
-
-		// reset base uri
-		baseURI: "",
 	}
 }
 
@@ -452,32 +438,26 @@ func (app *App) ReleaseCtx(c Ctx) {
 
 // Reset is a method to reset context fields by given request when to use server handlers.
 func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
+	// Reset route and handler index
+	c.indexRoute = -1
+	c.indexHandler = 0
+	// Reset matched flag
+	c.matched = false
 	// Set paths
 	c.pathOriginal = c.app.getString(fctx.URI().PathOriginal())
-
-	// Attach *fasthttp.RequestCtx to ctx
-	c.setReq(fctx)
-
 	// Set method
 	c.method = c.app.getString(fctx.Request.Header.Method())
 	c.methodINT = c.app.methodInt(c.method)
-
+	// Attach *fasthttp.RequestCtx to ctx
+	c.fasthttp = fctx
+	// reset base uri
+	c.baseURI = ""
 	// Prettify path
 	c.configDependentPaths()
 }
 
 // Release is a method to reset context fields when to use ReleaseCtx()
 func (c *DefaultCtx) release() {
-	// Reset route and handler index
-	c.indexRoute = -1
-	c.indexHandler = 0
-
-	// Reset matched flag
-	c.matched = false
-
-	// reset base uri
-	c.baseURI = ""
-
 	c.route = nil
 	c.fasthttp = nil
 	c.bind = nil
@@ -487,22 +467,6 @@ func (c *DefaultCtx) release() {
 		ReleaseRedirect(c.redirect)
 		c.redirect = nil
 	}
-}
-
-// SetReq resets fields of context that is relating to request.
-func (c *DefaultCtx) setReq(fctx *fasthttp.RequestCtx) {
-	// Set paths
-	c.pathOriginal = c.app.getString(fctx.URI().PathOriginal())
-
-	// Attach *fasthttp.RequestCtx to ctx
-	c.fasthttp = fctx
-
-	// Set method
-	c.method = c.app.getString(fctx.Request.Header.Method())
-	c.methodINT = c.app.methodInt(c.method)
-
-	// Prettify path
-	c.configDependentPaths()
 }
 
 // Methods to use with next stack.
