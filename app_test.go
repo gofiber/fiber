@@ -1997,10 +1997,10 @@ func Benchmark_Ctx_AcquireReleaseFlow(b *testing.B) {
 
 	fctx := &fasthttp.RequestCtx{}
 
-	b.ReportAllocs()
-	b.ResetTimer()
-
 	b.Run("withoutRequestCtx", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+
 		for n := 0; n < b.N; n++ {
 			c, _ := app.AcquireCtx(fctx).(*DefaultCtx) //nolint:errcheck // not needed
 			app.ReleaseCtx(c)
@@ -2008,6 +2008,9 @@ func Benchmark_Ctx_AcquireReleaseFlow(b *testing.B) {
 	})
 
 	b.Run("withRequestCtx", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+
 		for n := 0; n < b.N; n++ {
 			c, _ := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck // not needed
 			app.ReleaseCtx(c)
