@@ -1361,15 +1361,6 @@ func Test_App_Next_Method(t *testing.T) {
 	utils.AssertEqual(t, 404, resp.StatusCode, "Status code")
 }
 
-// go test -v -run=^$ -bench=Benchmark_AcquireCtx -benchmem -count=4
-func Benchmark_AcquireCtx(b *testing.B) {
-	app := New()
-	for n := 0; n < b.N; n++ {
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		app.ReleaseCtx(c)
-	}
-}
-
 // go test -v -run=^$ -bench=Benchmark_App_ETag -benchmem -count=4
 func Benchmark_App_ETag(b *testing.B) {
 	app := New()
@@ -1958,4 +1949,28 @@ func Benchmark_Communication_Flow(b *testing.B) {
 
 	utils.AssertEqual(b, 200, fctx.Response.Header.StatusCode())
 	utils.AssertEqual(b, "Hello, World!", string(fctx.Response.Body()))
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_AcquireReleaseFlow -benchmem -count=4
+func Benchmark_Ctx_AcquireReleaseFlow(b *testing.B) {
+	app := New()
+
+	fctx := &fasthttp.RequestCtx{}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	b.Run("withoutRequestCtx", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			c := app.AcquireCtx(fctx)
+			app.ReleaseCtx(c)
+		}
+	})
+
+	b.Run("withRequestCtx", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			app.ReleaseCtx(c)
+		}
+	})
 }
