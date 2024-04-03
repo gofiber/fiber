@@ -1934,3 +1934,28 @@ func Test_Route_Naming_Issue_2671_2685(t *testing.T) {
 	sRoute2 := app.GetRoute("simple-route2")
 	utils.AssertEqual(t, sRoute2.Path, "/simple-route")
 }
+
+// go test -v -run=^$ -bench=Benchmark_Communication_Flow -benchmem -count=4
+func Benchmark_Communication_Flow(b *testing.B) {
+	app := New()
+
+	app.Get("/", func(c *Ctx) error {
+		return c.SendString("Hello, World!")
+	})
+
+	h := app.Handler()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodGet)
+	fctx.Request.SetRequestURI("/")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		h(fctx)
+	}
+
+	utils.AssertEqual(b, 200, fctx.Response.Header.StatusCode())
+	utils.AssertEqual(b, "Hello, World!", string(fctx.Response.Body()))
+}
