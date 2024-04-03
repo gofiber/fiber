@@ -1408,16 +1408,6 @@ func Test_App_Next_Method(t *testing.T) {
 	require.Equal(t, 404, resp.StatusCode, "Status code")
 }
 
-// go test -v -run=^$ -bench=Benchmark_AcquireCtx -benchmem -count=4
-func Benchmark_AcquireCtx(b *testing.B) {
-	app := New()
-	for n := 0; n < b.N; n++ {
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-
-		app.ReleaseCtx(c)
-	}
-}
-
 // go test -v -run=^$ -bench=Benchmark_NewError -benchmem -count=4
 func Benchmark_NewError(b *testing.B) {
 	for n := 0; n < b.N; n++ {
@@ -1999,4 +1989,28 @@ func Benchmark_Communication_Flow(b *testing.B) {
 
 	require.Equal(b, 200, fctx.Response.Header.StatusCode())
 	require.Equal(b, "Hello, World!", string(fctx.Response.Body()))
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_AcquireReleaseFlow -benchmem -count=4
+func Benchmark_Ctx_AcquireReleaseFlow(b *testing.B) {
+	app := New()
+
+	fctx := &fasthttp.RequestCtx{}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	b.Run("withoutRequestCtx", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			c, _ := app.AcquireCtx(fctx).(*DefaultCtx) //nolint:errcheck // not needed
+			app.ReleaseCtx(c)
+		}
+	})
+
+	b.Run("withRequestCtx", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			c, _ := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck // not needed
+			app.ReleaseCtx(c)
+		}
+	})
 }
