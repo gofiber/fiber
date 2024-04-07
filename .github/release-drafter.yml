@@ -1,6 +1,6 @@
 name-template: 'v$RESOLVED_VERSION'
 tag-template: 'v$RESOLVED_VERSION'
-commitish: refs/heads/v2
+commitish: v2
 filter-by-commitish: true
 include-labels:
   - 'v2'
