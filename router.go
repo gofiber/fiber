@@ -218,7 +218,6 @@ func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 			panic(errors.New("requestHandler: failed to type-assert to *DefaultCtx"))
 		}
 	}
-	c.Reset(rctx)
 	defer app.ReleaseCtx(c)
 
 	// handle invalid http method directly
