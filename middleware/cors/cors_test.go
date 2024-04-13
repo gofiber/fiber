@@ -563,6 +563,24 @@ func Test_CORS_Headers_BasedOnRequestType(t *testing.T) {
 			require.Equal(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)), "Access-Control-Allow-Headers header should not be set (non-preflight request)")
 		}
 	})
+
+	t.Run("Preflight with Access-Control-Request-Headers", func(t *testing.T) {
+		t.Parallel()
+		// Make preflight request with origin header and with Access-Control-Request-Method
+		for _, method := range methods {
+			ctx := &fasthttp.RequestCtx{}
+			ctx.Request.Header.SetMethod(fiber.MethodOptions)
+			ctx.Request.SetRequestURI("https://example.com/")
+			ctx.Request.Header.Set(fiber.HeaderOrigin, "http://example.com")
+			ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, method)
+			ctx.Request.Header.Set(fiber.HeaderAccessControlRequestHeaders, "X-Custom-Header")
+			handler(ctx)
+			require.Equal(t, 204, ctx.Response.StatusCode(), "Status code should be 204")
+			require.Equal(t, "*", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)), "Access-Control-Allow-Origin header should be set")
+			require.Equal(t, "GET, POST, HEAD, PUT, DELETE, PATCH", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowMethods)), "Access-Control-Allow-Methods header should be set (preflight request)")
+			require.Equal(t, "X-Custom-Header", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)), "Access-Control-Allow-Headers header should be set (preflight request)")
+		}
+	})
 }
 
 func Test_CORS_AllowOriginsAndAllowOriginsFunc(t *testing.T) {
