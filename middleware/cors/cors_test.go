@@ -220,6 +220,7 @@ func Test_CORS_Wildcard_AllowCredentials_Panic(t *testing.T) {
 		}()
 
 		app.Use(New(Config{
+			AllowOrigins:     []string{"*"},
 			AllowCredentials: true,
 		}))
 	}()
