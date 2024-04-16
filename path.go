@@ -25,7 +25,7 @@ type routeParser struct {
 	plusCount     int             // number of plus parameters, used internally to give the plus parameter its number
 }
 
-// paramsSeg holds the segment metadata
+// routeSegment holds the segment metadata
 type routeSegment struct {
 	// const information
 	Const string // constant part of the route

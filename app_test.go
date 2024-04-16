@@ -1408,16 +1408,6 @@ func Test_App_Next_Method(t *testing.T) {
 	require.Equal(t, 404, resp.StatusCode, "Status code")
 }
 
-// go test -v -run=^$ -bench=Benchmark_AcquireCtx -benchmem -count=4
-func Benchmark_AcquireCtx(b *testing.B) {
-	app := New()
-	for n := 0; n < b.N; n++ {
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-
-		app.ReleaseCtx(c)
-	}
-}
-
 // go test -v -run=^$ -bench=Benchmark_NewError -benchmem -count=4
 func Benchmark_NewError(b *testing.B) {
 	for n := 0; n < b.N; n++ {
@@ -1974,4 +1964,56 @@ func Test_Route_Naming_Issue_2671_2685(t *testing.T) {
 
 	sRoute2 := app.GetRoute("simple-route2")
 	require.Equal(t, "/simple-route", sRoute2.Path)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Communication_Flow -benchmem -count=4
+func Benchmark_Communication_Flow(b *testing.B) {
+	app := New()
+
+	app.Get("/", func(c Ctx) error {
+		return c.SendString("Hello, World!")
+	})
+
+	h := app.Handler()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodGet)
+	fctx.Request.SetRequestURI("/")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		h(fctx)
+	}
+
+	require.Equal(b, 200, fctx.Response.Header.StatusCode())
+	require.Equal(b, "Hello, World!", string(fctx.Response.Body()))
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_AcquireReleaseFlow -benchmem -count=4
+func Benchmark_Ctx_AcquireReleaseFlow(b *testing.B) {
+	app := New()
+
+	fctx := &fasthttp.RequestCtx{}
+
+	b.Run("withoutRequestCtx", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+
+		for n := 0; n < b.N; n++ {
+			c, _ := app.AcquireCtx(fctx).(*DefaultCtx) //nolint:errcheck // not needed
+			app.ReleaseCtx(c)
+		}
+	})
+
+	b.Run("withRequestCtx", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+
+		for n := 0; n < b.N; n++ {
+			c, _ := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck // not needed
+			app.ReleaseCtx(c)
+		}
+	})
 }
