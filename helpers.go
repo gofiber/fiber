@@ -26,7 +26,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// acceptType is a struct that holds the parsed value of an Accept header
+// acceptedType is a struct that holds the parsed value of an Accept header
 // along with quality, specificity, parameters, and order.
 // Used for sorting accept headers.
 type acceptedType struct {
