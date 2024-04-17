@@ -95,9 +95,9 @@ type Config struct {
 	// For secure requests, that do not include the Origin header, the Referer
 	// header must match the Host header or one of the TrustedOrigins.
 	//
-	// This supports subdomain matching, so you can use a value like "https://.example.com"
-	// to allow any subdomain of example.com to submit requests.
-	//
+	// This supports matching subdomains at any level. This means you can use a value like
+	// `"https://*.example.com"` to allow any subdomain of `example.com` to submit requests,
+	// including multiple subdomain levels such as `"https://sub.sub.example.com"`.
 	//
 	// Optional. Default: []
 	TrustedOrigins []string
