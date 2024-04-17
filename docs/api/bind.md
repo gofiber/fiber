@@ -380,12 +380,6 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ### URI
 
-:::caution
-
-Not finished yet.
-
-:::
-
 This method is similar to [Body-Binding](#body), but for path parameters. It is important to use the struct tag "uri". For example, if you want to parse a path parameter with a field called Pass, you would use a struct field of uri:"pass"
 
 ```go title="Signature"
@@ -555,7 +549,7 @@ Validation is also possible with the binding methods. You can specify your valid
 
 Specify your struct validator in the [config](./fiber.md#config)
 
-Setup your validator in the config
+Setup your validator in the config:
 
 ```go title="Example"
 import "github.com/go-playground/validator/v10"
@@ -574,6 +568,8 @@ app := fiber.New(fiber.Config{
     StructValidator: &structValidator{validate: validator.New()},
 })
 ```
+
+Usage of the validation in the binding methods:
 
 ```go title="Example"
 type Person struct {
