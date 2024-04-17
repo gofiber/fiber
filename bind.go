@@ -19,7 +19,7 @@ type StructValidator interface {
 
 // Bind struct
 type Bind struct {
-	ctx    *DefaultCtx
+	ctx    Ctx
 	should bool
 }
 
@@ -51,7 +51,7 @@ func (b *Bind) returnErr(err error) error {
 
 // Struct validation.
 func (b *Bind) validateStruct(out any) error {
-	validator := b.ctx.app.config.StructValidator
+	validator := b.ctx.App().config.StructValidator
 	if validator != nil {
 		return validator.Validate(out)
 	}
@@ -140,7 +140,7 @@ func (b *Bind) Form(out any) error {
 
 // URI binds the route parameters into the struct, map[string]string and map[string][]string.
 func (b *Bind) URI(out any) error {
-	if err := b.returnErr(binder.URIBinder.Bind(b.ctx.route.Params, b.ctx.Params, out)); err != nil {
+	if err := b.returnErr(binder.URIBinder.Bind(b.ctx.Route().Params, b.ctx.Params, out)); err != nil {
 		return err
 	}
 
