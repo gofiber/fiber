@@ -5,7 +5,7 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
-// An interface to register custom binders.
+// CustomBinder An interface to register custom binders.
 type CustomBinder interface {
 	Name() string
 	MIMETypes() []string
@@ -14,8 +14,7 @@ type CustomBinder interface {
 
 // StructValidator is an interface to register custom struct validator for binding.
 type StructValidator interface {
-	Engine() any
-	ValidateStruct(out any) error
+	Validate(out any) error
 }
 
 // Bind struct
@@ -54,7 +53,7 @@ func (b *Bind) returnErr(err error) error {
 func (b *Bind) validateStruct(out any) error {
 	validator := b.ctx.app.config.StructValidator
 	if validator != nil {
-		return validator.ValidateStruct(out)
+		return validator.Validate(out)
 	}
 
 	return nil

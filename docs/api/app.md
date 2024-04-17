@@ -603,7 +603,7 @@ if resp.StatusCode == fiber.StatusOK {
 
 ## Hooks
 
-Hooks is a method to return [hooks](../guide/hooks.md) property.
+Hooks is a method to return [hooks](./hooks.md) property.
 
 ```go title="Signature"
 func (app *App) Hooks() *Hooks
