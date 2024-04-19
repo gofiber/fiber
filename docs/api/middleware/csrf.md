@@ -180,7 +180,7 @@ app.Use(csrf.New(csrf.Config{
 }))
 ```
 
-::caution
+:::caution
 When using `TrustedOrigins` with subdomain matching, make sure you control and trust all the subdomains, including all subdomain levels. If not, an attacker could create a subdomain under a trusted origin and use it to send harmful requests.
 :::
 

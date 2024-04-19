@@ -537,7 +537,8 @@ agent.SetResponse(resp)
 ReleaseResponse(resp)
 ```
 
-<details><summary>Example handling for response values</summary>
+<details>
+<summary>Example handling for response values</summary>
 
 ```go title="Example handling response"
 // Create a Fiber HTTP client agent
