@@ -260,7 +260,7 @@ app.Post("/", func(c fiber.Ctx) error {
 
 :::info
 
-All binder returned value are only valid within the handler. Do not store any references.  
+Returned value is only valid within the handler. Do not store any references.  
 Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
 
 :::
@@ -284,7 +284,7 @@ app.Post("/", func(c fiber.Ctx) error {
 
 :::info
 
-All binder returned value are only valid within the handler. Do not store any references.  
+Returned value is only valid within the handler. Do not store any references.  
 Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
 
 :::
@@ -457,7 +457,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 :::info
 
-All binder returned value are only valid within the handler. Do not store any references.  
+Returned value is only valid within the handler. Do not store any references.  
 Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
 
 :::
@@ -575,7 +575,7 @@ app.Post("/", func(c fiber.Ctx) error {
 
 :::info
 
-All binder returned value are only valid within the handler. Do not store any references.  
+Returned value is only valid within the handler. Do not store any references.  
 Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
 
 :::
@@ -615,7 +615,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 :::info
 
-All binder returned value are only valid within the handler. Do not store any references.  
+Returned value is only valid within the handler. Do not store any references.  
 Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
 
 :::
@@ -630,7 +630,7 @@ func (c Ctx) GetReqHeaders() map[string][]string
 
 :::info
 
-All binder returned value are only valid within the handler. Do not store any references.  
+Returned value is only valid within the handler. Do not store any references.  
 Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
 
 :::
@@ -658,7 +658,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 :::info
 
-All binder returned value are only valid within the handler. Do not store any references.  
+Returned value is only valid within the handler. Do not store any references.  
 Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
 
 :::
@@ -673,7 +673,7 @@ func (c Ctx) GetRespHeaders() map[string][]string
 
 :::info
 
-All binder returned value are only valid within the handler. Do not store any references.  
+Returned value is only valid within the handler. Do not store any references.  
 Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
 
 :::
@@ -726,7 +726,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 :::info
 
-All binder returned value are only valid within the handler. Do not store any references.  
+Returned value is only valid within the handler. Do not store any references.  
 Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
 
 :::
@@ -751,7 +751,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 :::info
 
-All binder returned value are only valid within the handler. Do not store any references.  
+Returned value is only valid within the handler. Do not store any references.  
 Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
 
 :::
@@ -1163,7 +1163,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 :::info
 
-All binder returned value are only valid within the handler. Do not store any references.  
+Returned value is only valid within the handler. Do not store any references.  
 Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
 
 :::
@@ -1216,7 +1216,7 @@ app.Get("/v1/*/shop/*", func(c fiber.Ctx) error {
 
 :::info
 
-All binder returned value are only valid within the handler. Do not store any references.  
+Returned value is only valid within the handler. Do not store any references.  
 Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
 
 :::
@@ -1396,7 +1396,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 :::info
 
-All binder returned value are only valid within the handler. Do not store any references.  
+Returned value is only valid within the handler. Do not store any references.  
 Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
 
 :::
