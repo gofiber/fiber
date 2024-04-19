@@ -241,26 +241,6 @@ app.Post("/", func(c fiber.Ctx) error {
 })
 ```
 
-## BodyRaw
-
-Returns the raw request **body**.
-
-```go title="Signature"
-func (c Ctx) BodyRaw() []byte
-```
-
-```go title="Example"
-// curl -X POST http://localhost:8080 -d user=john
-
-app.Post("/", func(c fiber.Ctx) error {
-  // Get raw body from POST request:
-  return c.Send(c.BodyRaw()) // []byte("user=john")
-})
-```
-
-> _Returned value is only valid within the handler. Do not store any references.  
-> Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
-
 ## Body
 
 As per the header `Content-Encoding`, this method will try to perform a file decompression from the **body** bytes. In case no `Content-Encoding` header is sent, it will perform as [BodyRaw](#bodyraw).
@@ -278,9 +258,36 @@ app.Post("/", func(c fiber.Ctx) error {
 })
 ```
 
-> _Returned value is only valid within the handler. Do not store any references.  
-> Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
+:::info
 
+All binder returned value are only valid within the handler. Do not store any references.  
+Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+
+:::
+
+## BodyRaw
+
+Returns the raw request **body**.
+
+```go title="Signature"
+func (c Ctx) BodyRaw() []byte
+```
+
+```go title="Example"
+// curl -X POST http://localhost:8080 -d user=john
+
+app.Post("/", func(c fiber.Ctx) error {
+  // Get raw body from POST request:
+  return c.Send(c.BodyRaw()) // []byte("user=john")
+})
+```
+
+:::info
+
+All binder returned value are only valid within the handler. Do not store any references.  
+Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+
+:::
 
 ## ClearCookie
 
@@ -366,6 +373,9 @@ Please read the [Fasthttp Documentation](https://pkg.go.dev/github.com/valyala/f
 
 ## Convert
 
+[//]: # (TODO: put it in a different section for generics)
+[//]: # (TODO: add Locals, Params, Query, GetReqHeader method)
+
 Converts a string value to a specified type, handling errors and optional default values.
 This function simplifies the conversion process by encapsulating error handling and the management of default values, making your code cleaner and more consistent.
 
@@ -445,8 +455,12 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
-> _Returned value is only valid within the handler. Do not store any references.  
-> Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
+:::info
+
+All binder returned value are only valid within the handler. Do not store any references.  
+Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+
+:::
 
 ## Download
 
@@ -559,8 +573,12 @@ app.Post("/", func(c fiber.Ctx) error {
 })
 ```
 
-> _Returned value is only valid within the handler. Do not store any references.  
-> Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
+:::info
+
+All binder returned value are only valid within the handler. Do not store any references.  
+Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+
+:::
 
 ## Fresh
 
@@ -595,8 +613,12 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
-> _Returned value is only valid within the handler. Do not store any references.  
-> Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
+:::info
+
+All binder returned value are only valid within the handler. Do not store any references.  
+Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+
+:::
 
 ## GetReqHeaders
 
@@ -606,8 +628,12 @@ Returns the HTTP request headers as a map. Since a header can be set multiple ti
 func (c Ctx) GetReqHeaders() map[string][]string
 ```
 
-> _Returned value is only valid within the handler. Do not store any references.  
-> Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
+:::info
+
+All binder returned value are only valid within the handler. Do not store any references.  
+Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+
+:::
 
 ## GetRespHeader
 
@@ -630,8 +656,12 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
-> _Returned value is only valid within the handler. Do not store any references.  
-> Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
+:::info
+
+All binder returned value are only valid within the handler. Do not store any references.  
+Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+
+:::
 
 ## GetRespHeaders
 
@@ -641,8 +671,12 @@ Returns the HTTP response headers as a map. Since a header can be set multiple t
 func (c Ctx) GetRespHeaders() map[string][]string
 ```
 
-> _Returned value is only valid within the handler. Do not store any references.  
-> Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
+:::info
+
+All binder returned value are only valid within the handler. Do not store any references.  
+Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+
+:::
 
 ## GetRouteURL
 
@@ -669,6 +703,34 @@ app.Get("/test", func(c fiber.Ctx) error {
 // /test returns "/user/1"
 ```
 
+## Host
+
+Returns the host derived from the [Host](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Host) HTTP header.
+
+In a network context, [`Host`](#host) refers to the combination of a hostname and potentially a port number used for connecting, while [`Hostname`](#hostname) refers specifically to the name assigned to a device on a network, excluding any port information.
+
+```go title="Signature"
+func (c Ctx) Host() string
+```
+
+```go title="Example"
+// GET http://google.com:8080/search
+
+app.Get("/", func(c fiber.Ctx) error {
+  c.Host() // "google.com:8080"
+  c.Hostname() // "google.com"
+
+  // ...
+})
+```
+
+:::info
+
+All binder returned value are only valid within the handler. Do not store any references.  
+Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+
+:::
+
 ## Hostname
 
 Returns the hostname derived from the [Host](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Host) HTTP header.
@@ -687,8 +749,12 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
-> _Returned value is only valid within the handler. Do not store any references.  
-> Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
+:::info
+
+All binder returned value are only valid within the handler. Do not store any references.  
+Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+
+:::
 
 ## IP
 
@@ -776,6 +842,35 @@ app.Get("/", func(c fiber.Ctx) error {
 
   // ...
 })
+```
+
+## IsProxyTrusted
+
+Checks trustworthiness of remote ip.
+If [`EnableTrustedProxyCheck`](fiber.md#config) false, it returns true
+IsProxyTrusted can check remote ip by proxy ranges and ip map.
+
+```go title="Signature"
+func (c Ctx) IsProxyTrusted() bool
+```
+
+```go title="Example"
+
+app := fiber.New(fiber.Config{
+  // EnableTrustedProxyCheck enables the trusted proxy check
+  EnableTrustedProxyCheck: true,
+  // TrustedProxies is a list of trusted proxy IP addresses
+  TrustedProxies: []string{"0.8.0.0", "0.8.0.1"},
+})
+        
+
+app.Get("/", func(c fiber.Ctx) error {
+  // If request came from trusted proxy, return true else return false
+  c.IsProxyTrusted()
+
+  // ...
+})
+
 ```
 
 ## JSON
@@ -1066,8 +1161,12 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
-> _Returned value is only valid within the handler. Do not store any references.  
-> Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
+:::info
+
+All binder returned value are only valid within the handler. Do not store any references.  
+Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+
+:::
 
 ## Params
 
@@ -1115,8 +1214,12 @@ app.Get("/v1/*/shop/*", func(c fiber.Ctx) error {
 })
 ```
 
-> _Returned value is only valid within the handler. Do not store any references.  
-> Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
+:::info
+
+All binder returned value are only valid within the handler. Do not store any references.  
+Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+
+:::
 
 
 In certain scenarios, it can be useful to have an alternative approach to handle different types of parameters, not 
@@ -1163,6 +1266,23 @@ app.Get("/users", func(c fiber.Ctx) error {
 
   c.Path("/john")
   c.Path() // "/john"
+
+  // ...
+})
+```
+
+## Port
+
+Returns the remote port of the request.
+
+```go title="Signature"
+func (c Ctx) Port() string
+```
+
+```go title="Example"
+// GET http://example.com:8080
+app.Get("/", func(c fiber.Ctx) error {
+  c.Port() // "8080"
 
   // ...
 })
@@ -1274,8 +1394,12 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
-> _Returned value is only valid within the handler. Do not store any references.  
-> Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
+:::info
+
+All binder returned value are only valid within the handler. Do not store any references.  
+Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+
+:::
 
 In certain scenarios, it can be useful to have an alternative approach to handle different types of query parameters, not 
 just strings. This can be achieved using a generic Query function known as `Query[V GenericType](c Ctx, key string, defaultValue ...V) V`. 
@@ -1337,6 +1461,8 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ## Redirect
 
+[//]: # (TODO: put it in a different file -> like binding)
+
 Redirects to the URL derived from the specified path, with specified status, a positive integer that corresponds to an HTTP status code.
 
 :::info
@@ -1367,6 +1493,8 @@ app.Get("/", func(c fiber.Ctx) error {
 ```
 
 ## RedirectToRoute
+
+[//]: # (TODO: put it in a different file -> like binding)
 
 Redirects to the specific route along with the parameters and with specified status, a positive integer that corresponds to an HTTP status code.
 
@@ -1405,6 +1533,8 @@ app.Get("/user/:name", func(c fiber.Ctx) error {
 
 ## RedirectBack
 
+[//]: # (TODO: put it in a different file -> like binding)
+
 Redirects back to refer URL. It redirects to fallback URL if refer header doesn't exists, with specified status, a positive integer that corresponds to an HTTP status code.
 
 :::info
@@ -1434,7 +1564,7 @@ app.Get("/back", func(c fiber.Ctx) error {
 Renders a view with data and sends a `text/html` response. By default `Render` uses the default [**Go Template engine**](https://pkg.go.dev/html/template/). If you want to use another View engine, please take a look at our [**Template middleware**](https://docs.gofiber.io/template).
 
 ```go title="Signature"
-func (c Ctx) Render(name string, bind any, layouts ...string) error
+func (c Ctx) Render(name string, bind Map, layouts ...string) error
 ```
 
 ## Request
@@ -1467,6 +1597,8 @@ app.Get("/", func(c fiber.Ctx) error {
   return nil
 })
 ```
+
+[//]: # (TODO: add RESET method)
 
 ## RestartRouting
 
@@ -1591,6 +1723,27 @@ app.Post("/", func(c fiber.Ctx) error {
 })
 ```
 
+## Schema
+
+Contains the request protocol string: http or https for TLS requests.
+
+:::info
+Please use [`Config.EnableTrustedProxyCheck`](fiber.md#config) to prevent header spoofing, in case when your app is behind the proxy.
+:::
+
+```go title="Signature"
+func (c Ctx) Schema() string
+```
+
+```go title="Example"
+// GET http://example.com
+app.Get("/", func(c fiber.Ctx) error {
+  c.Schema() // "http"
+
+  // ...
+})
+```
+
 ## Secure
 
 A boolean property that is `true` , if a **TLS** connection is established.
@@ -1697,6 +1850,10 @@ app.Get("/not-found", func(c fiber.Ctx) error {
 })
 ```
 
+[//]: # (TODO: add SendStream)
+[//]: # (TODO: add SendString)
+
+
 ## Set
 
 Sets the response’s HTTP header field to the specified `key`, `value`.
@@ -1766,6 +1923,8 @@ app.Get("/world", func(c fiber.Ctx) error {
   return c.Status(fiber.StatusNotFound).SendFile("./public/gopher.png")
 })
 ```
+
+[//]: # (TODO: add String)
 
 ## Subdomains
 

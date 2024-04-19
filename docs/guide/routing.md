@@ -5,6 +5,7 @@ description: >-
   Routing refers to how an application's endpoints (URIs) respond to client
   requests.
 sidebar_position: 1
+toc_max_heading_level: 4
 ---
 
 import Tabs from '@theme/Tabs';
@@ -164,7 +165,7 @@ Constraints aren't validation for parameters. If constraints aren't valid for a 
 | datetime          | `:dob<datetime(2006\\\\-01\\\\-02)\>`  | 2005-11-01                                                                                  |
 | regex(expression) | `:date<regex(\\d{4}-\\d{2}-\\d{2})\>` | 2022-08-27 (Must match regular expression)                                                  |
 
-**Examples**
+#### Examples
 
 <Tabs>
 <TabItem value="single-constraint" label="Single Constraint">
@@ -224,7 +225,7 @@ app.Get(`/:date<regex(\d{4}-\d{2}-\d{2})>`, func(c fiber.Ctx) error {
 You should use `\\` before routing-specific characters when to use datetime constraint (`*`, `+`, `?`, `:`, `/`, `<`, `>`, `;`, `(`, `)`), to avoid wrong parsing.
 :::
 
-**Optional Parameter Example**
+#### Optional Parameter Example
 
 You can impose constraints on optional parameters as well.
 
@@ -240,7 +241,7 @@ app.Get("/:test<int>?", func(c fiber.Ctx) error {
 // Cannot GET /7.0
 ```
 
-**Custom Constraint Example**
+#### Custom Constraint
 
 Custom constraints can be added to Fiber using the `app.RegisterCustomConstraint` method. Your constraints have to be compatible with the `CustomConstraint` interface.
 
@@ -297,7 +298,7 @@ func main() {
 
 Functions that are designed to make changes to the request or response are called **middleware functions**. The [Next](../api/ctx.md#next) is a **Fiber** router function, when called, executes the **next** function that **matches** the current route.
 
-**Example of a middleware function**
+### Example of a middleware function
 
 ```go
 app.Use(func(c fiber.Ctx) error {

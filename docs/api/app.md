@@ -499,7 +499,7 @@ app.Get("/:id", func(c Ctx) error {
 
 ## RegisterCustomBinder
 
-You can register custom binders to use as Bind().Custom("name").
+You can register custom binders to use as [`Bind().Custom("name")`](bind.md#custom).
 They should be compatible with CustomBinder interface.
 
 ```go title="Signature"

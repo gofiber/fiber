@@ -594,6 +594,9 @@ func (c *DefaultCtx) GetReqHeaders() map[string][]string {
 
 // Host contains the host derived from the X-Forwarded-Host or Host HTTP header.
 // Returned value is only valid within the handler. Do not store any references.
+// In a network context, `Host` refers to the combination of a hostname and potentially a port number used for connecting,
+// while `Hostname` refers specifically to the name assigned to a device on a network, excluding any port information.
+// Example: URL: https://example.com:8080 -> Host: example.com:8080
 // Make copies or use the Immutable setting instead.
 // Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
 func (c *DefaultCtx) Host() string {
@@ -611,6 +614,7 @@ func (c *DefaultCtx) Host() string {
 
 // Hostname contains the hostname derived from the X-Forwarded-Host or Host HTTP header using the c.Host() method.
 // Returned value is only valid within the handler. Do not store any references.
+// Example: URL: https://example.com:8080 -> Hostname: example.com
 // Make copies or use the Immutable setting instead.
 // Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
 func (c *DefaultCtx) Hostname() string {
