@@ -148,9 +148,9 @@ func main() {
 	two := fiber.New()
 	three := fiber.New()
 
-	two.Mount("/three", three)
-	one.Mount("/two", two)
-	app.Mount("/one", one)
+	two.Use("/three", three)
+	one.Use("/two", two)
+	app.Use("/one", one)
   
 	one.MountPath()   // "/one"
 	two.MountPath()   // "/one/two"
