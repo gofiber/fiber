@@ -736,7 +736,7 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
-When registering the proxy request header in the fiber app, the ip address of the header is returned [(Fiber configuration)](fiber.md#config)
+When registering the proxy request header in the fiber app, the ip address of the header is returned [(Fiber configuration)](fiber.md#proxyheader)
 
 ```go
 app := fiber.New(fiber.Config{
@@ -811,7 +811,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ## IsProxyTrusted
 
 Checks trustworthiness of remote ip.
-If [`EnableTrustedProxyCheck`](fiber.md#config) false, it returns true
+If [`EnableTrustedProxyCheck`](fiber.md#enabletrustedproxycheck) false, it returns true
 IsProxyTrusted can check remote ip by proxy ranges and ip map.
 
 ```go title="Signature"
@@ -1621,7 +1621,7 @@ app.Post("/", func(c fiber.Ctx) error {
 Contains the request protocol string: http or https for TLS requests.
 
 :::info
-Please use [`Config.EnableTrustedProxyCheck`](fiber.md#config) to prevent header spoofing, in case when your app is behind the proxy.
+Please use [`Config.EnableTrustedProxyCheck`](fiber.md#enabletrustedproxycheck) to prevent header spoofing, in case when your app is behind the proxy.
 :::
 
 ```go title="Signature"

@@ -339,7 +339,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ```
 
 :::info
-For more parser settings please look here [Config](fiber.md#config)
+For more parser settings please look here [Config](fiber.md#enablesplittingonparsers)
 :::
 
 
@@ -547,7 +547,7 @@ app.Get("/query", func(c fiber.Ctx) error {
 
 Validation is also possible with the binding methods. You can specify your validation rules using the `validate` struct tag.
 
-Specify your struct validator in the [config](./fiber.md#config)
+Specify your struct validator in the [config](./fiber.md#structvalidator)
 
 Setup your validator in the config:
 

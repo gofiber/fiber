@@ -21,18 +21,23 @@ Fiber v3 is a major release with a lot of new features, improvements, and breaki
 ## 🚀 Highlights
 
 ### Drop for old Go versions
+
+Fiber v3 drops support for Go versions below 1.21. We recommend upgrading to Go 1.21 or higher to use Fiber v3.
+
 ### App changes
 
-- Listen functions reduced
+We have made several changes to the Fiber app, including:
+
+Listen
+Mount
+
 
 ### Context change
 #### interface 
 #### customizable
-
-#### Binding
-#### Redirect
-### Generic functions
 ### Client package
+### Binding
+### Generic functions
 ### Middleware refactoring
 #### Session middleware
 #### Filesystem middleware
