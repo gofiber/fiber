@@ -1717,7 +1717,7 @@ app.Get("/file-with-url-chars", func(c fiber.Ctx) error {
 ```
 
 :::info
-For sending files from embedded file system [this functionality](./middleware/filesystem.md#sendfile) can be used
+For sending files from embedded file system [this functionality](../middleware/filesystem.md#sendfile) can be used
 :::
 
 ## SendStatus
