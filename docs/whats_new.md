@@ -28,9 +28,11 @@ Fiber v3 is a major release with a lot of new features, improvements, and breaki
 ### Context change
 #### interface 
 #### customizable
-### Client package
-### Binding
+
+#### Binding
+#### Redirect
 ### Generic functions
+### Client package
 ### Middleware refactoring
 #### Session middleware
 #### Filesystem middleware

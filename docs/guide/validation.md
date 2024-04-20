@@ -4,6 +4,8 @@ title: 🔎 Validation
 sidebar_position: 5
 ---
 
+[//]: # (TODO: replace by bind validation)
+
 ## Validator package
 
 Fiber can make _great_ use of the validator package to ensure correct validation of data to store.

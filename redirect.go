@@ -32,7 +32,7 @@ const (
 	CookieDataAssigner  = ":"
 )
 
-// Redirect is a struct to use it with Ctx.
+// Redirect is a struct that holds the redirect data.
 type Redirect struct {
 	c      *DefaultCtx // Embed ctx
 	status int         // Status code of redirection. Default: StatusFound
@@ -41,7 +41,7 @@ type Redirect struct {
 	oldInput map[string]string // Old input data
 }
 
-// A config to use with Redirect().Route()
+// RedirectConfig A config to use with Redirect().Route()
 // You can specify queries or route parameters.
 // NOTE: We don't use net/url to parse parameters because of it has poor performance. You have to pass map.
 type RedirectConfig struct {
@@ -86,7 +86,7 @@ func (r *Redirect) Status(code int) *Redirect {
 	return r
 }
 
-// You can send flash messages by using With().
+// With You can send flash messages by using With().
 // They will be sent as a cookie.
 // You can get them by using: Redirect().Messages(), Redirect().Message()
 // Note: You must use escape char before using ',' and ':' chars to avoid wrong parsing.
@@ -96,7 +96,7 @@ func (r *Redirect) With(key, value string) *Redirect {
 	return r
 }
 
-// You can send input data by using WithInput().
+// WithInput You can send input data by using WithInput().
 // They will be sent as a cookie.
 // This method can send form, multipart form, query data to redirected route.
 // You can get them by using: Redirect().OldInputs(), Redirect().OldInput()
@@ -117,7 +117,7 @@ func (r *Redirect) WithInput() *Redirect {
 	return r
 }
 
-// Get flash messages.
+// Messages Get flash messages.
 func (r *Redirect) Messages() map[string]string {
 	msgs := r.c.redirectionMessages
 	flashMessages := make(map[string]string, len(msgs))
@@ -133,7 +133,7 @@ func (r *Redirect) Messages() map[string]string {
 	return flashMessages
 }
 
-// Get flash message by key.
+// Message Get flash message by key.
 func (r *Redirect) Message(key string) string {
 	msgs := r.c.redirectionMessages
 
@@ -147,7 +147,7 @@ func (r *Redirect) Message(key string) string {
 	return ""
 }
 
-// Get old input data.
+// OldInputs Get old input data.
 func (r *Redirect) OldInputs() map[string]string {
 	msgs := r.c.redirectionMessages
 	oldInputs := make(map[string]string, len(msgs))
@@ -163,7 +163,7 @@ func (r *Redirect) OldInputs() map[string]string {
 	return oldInputs
 }
 
-// Get old input data by key.
+// OldInput Get old input data by key.
 func (r *Redirect) OldInput(key string) string {
 	msgs := r.c.redirectionMessages
 
@@ -177,7 +177,7 @@ func (r *Redirect) OldInput(key string) string {
 	return ""
 }
 
-// Redirect to the URL derived from the specified path, with specified status.
+// To redirect to the URL derived from the specified path, with specified status.
 func (r *Redirect) To(location string) error {
 	r.c.setCanonical(HeaderLocation, location)
 	r.c.Status(r.status)
@@ -253,7 +253,7 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 	return r.To(location)
 }
 
-// Redirect back to the URL to referer.
+// Back redirect to the URL to referer.
 func (r *Redirect) Back(fallback ...string) error {
 	location := r.c.Get(HeaderReferer)
 	if location == "" {
@@ -289,6 +289,7 @@ func (r *Redirect) setFlash() {
 	r.c.ClearCookie(FlashCookieName)
 }
 
+// parseMessage is a helper function to parse flash messages and old input data
 func parseMessage(raw string) (string, string) { //nolint: revive // not necessary
 	if i := findNextNonEscapedCharsetPosition(raw, []byte(CookieDataAssigner)); i != -1 {
 		return RemoveEscapeChar(raw[:i]), RemoveEscapeChar(raw[i+1:])

@@ -2,7 +2,7 @@
 id: client
 title: 🌎 Client
 description: The Client struct represents the Fiber HTTP Client.
-sidebar_position: 5
+sidebar_position: 6
 ---
 
 ## Start request

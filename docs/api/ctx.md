@@ -8,12 +8,6 @@ description: >-
 sidebar_position: 3
 ---
 
-:::caution
-
-Documentation is still in progress.
-
-:::
-
 ## Accepts
 
 Checks, if the specified **extensions** or **content** **types** are acceptable.
@@ -226,6 +220,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ## Bind
 
 Bind is a method that support supports bindings for the request/response body, query parameters, URL parameters, cookies and much more.
+It returns a pointer to the [Bind](./bind.md) struct which contains all the methods to bind the request/response data.
 
 For detailed information check the [Bind](./bind.md) documentation.
 
@@ -369,37 +364,6 @@ func (c Ctx) Context() *fasthttp.RequestCtx
 :::info
 Please read the [Fasthttp Documentation](https://pkg.go.dev/github.com/valyala/fasthttp?tab=doc) for more information.
 :::
-
-
-## Convert
-
-[//]: # (TODO: put it in a different section for generics)
-[//]: # (TODO: add Locals, Params, Query, GetReqHeader method)
-
-Converts a string value to a specified type, handling errors and optional default values.
-This function simplifies the conversion process by encapsulating error handling and the management of default values, making your code cleaner and more consistent.
-
-```go title="Signature"
-func Convert[T any](value string, convertor func(string) (T, error), defaultValue ...T) (*T, error)
-```
-
-```go title="Example"
-// GET http://example.com/id/bb70ab33-d455-4a03-8d78-d3c1dacae9ff
-app.Get("/id/:id", func(c fiber.Ctx) error {
-  fiber.Convert(c.Params("id"), uuid.Parse) // UUID(bb70ab33-d455-4a03-8d78-d3c1dacae9ff), nil
-
-
-// GET http://example.com/search?id=65f6f54221fb90e6a6b76db7
-app.Get("/search", func(c fiber.Ctx) error) {
-  fiber.Convert(c.Query("id"), mongo.ParseObjectID) // objectid(65f6f54221fb90e6a6b76db7), nil
-  fiber.Convert(c.Query("id"), uuid.Parse) // uuid.Nil, error(cannot parse given uuid)
-  fiber.Convert(c.Query("id"), uuid.Parse, mongo.NewObjectID) // new object id generated and return nil as error.
-}
-
-  // ...
-})
-```
-
 
 ## Cookie
 
@@ -1461,103 +1425,24 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ## Redirect
 
-[//]: # (TODO: put it in a different file -> like binding)
+Returns the Redirect reference.
 
-Redirects to the URL derived from the specified path, with specified status, a positive integer that corresponds to an HTTP status code.
-
-:::info
-If **not** specified, status defaults to **302 Found**.
-:::
+For detailed information check the [Redirect](./redirect.md) documentation.
 
 ```go title="Signature"
-func (c Ctx) Redirect(location string, status ...int) error
+func (c Ctx) Redirect() *Redirect
 ```
 
 ```go title="Example"
 app.Get("/coffee", func(c fiber.Ctx) error {
-  return c.Redirect("/teapot")
+    return c.Redirect().To("/teapot")
 })
 
 app.Get("/teapot", func(c fiber.Ctx) error {
-  return c.Status(fiber.StatusTeapot).Send("🍵 short and stout 🍵")
+    return c.Status(fiber.StatusTeapot).Send("🍵 short and stout 🍵")
 })
 ```
 
-```go title="More examples"
-app.Get("/", func(c fiber.Ctx) error {
-  return c.Redirect("/foo/bar")
-  return c.Redirect("../login")
-  return c.Redirect("http://example.com")
-  return c.Redirect("http://example.com", 301)
-})
-```
-
-## RedirectToRoute
-
-[//]: # (TODO: put it in a different file -> like binding)
-
-Redirects to the specific route along with the parameters and with specified status, a positive integer that corresponds to an HTTP status code.
-
-:::info
-If **not** specified, status defaults to **302 Found**.
-:::
-
-:::info
-If you want to send queries to route, you must add **"queries"** key typed as **map[string]string** to params.
-:::
-
-```go title="Signature"
-func (c Ctx) RedirectToRoute(routeName string, params fiber.Map, status ...int) error
-```
-
-```go title="Example"
-app.Get("/", func(c fiber.Ctx) error {
-  // /user/fiber
-  return c.RedirectToRoute("user", fiber.Map{
-    "name": "fiber"
-  })
-})
-
-app.Get("/with-queries", func(c fiber.Ctx) error {
-  // /user/fiber?data[0][name]=john&data[0][age]=10&test=doe
-  return c.RedirectToRoute("user", fiber.Map{
-    "name": "fiber",
-    "queries": map[string]string{"data[0][name]": "john", "data[0][age]": "10", "test": "doe"},
-  })
-})
-
-app.Get("/user/:name", func(c fiber.Ctx) error {
-  return c.SendString(c.Params("name"))
-}).Name("user")
-```
-
-## RedirectBack
-
-[//]: # (TODO: put it in a different file -> like binding)
-
-Redirects back to refer URL. It redirects to fallback URL if refer header doesn't exists, with specified status, a positive integer that corresponds to an HTTP status code.
-
-:::info
-If **not** specified, status defaults to **302 Found**.
-:::
-
-```go title="Signature"
-func (c Ctx) RedirectBack(fallback string, status ...int) error
-```
-
-```go title="Example"
-app.Get("/", func(c fiber.Ctx) error {
-  return c.SendString("Home page")
-})
-app.Get("/test", func(c fiber.Ctx) error {
-  c.Set("Content-Type", "text/html")
-  return c.SendString(`<a href="/back">Back</a>`)
-})
-
-app.Get("/back", func(c fiber.Ctx) error {
-  return c.RedirectBack("/")
-})
-```
 
 ## Render
 
@@ -1598,7 +1483,15 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
-[//]: # (TODO: add RESET method)
+## Reset
+
+Reset the context fields by given request when to use server handlers.
+
+```go title="Signature"
+func (c Ctx) Reset(fctx *fasthttp.RequestCtx)
+```
+
+It is used outside of the Fiber Handlers to reset the context for the next request.
 
 ## RestartRouting
 
@@ -1850,9 +1743,35 @@ app.Get("/not-found", func(c fiber.Ctx) error {
 })
 ```
 
-[//]: # (TODO: add SendStream)
-[//]: # (TODO: add SendString)
+## SendStream
 
+Sets response body to a stream of data and add optional body size.
+
+```go title="Signature"
+func (c Ctx) SendStream(stream io.Reader, size ...int) error
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  return c.SendStream(bytes.NewReader([]byte("Hello, World!")))
+  // => "Hello, World!"
+})
+```
+
+## SendString
+
+Sets the response body to a string.
+
+```go title="Signature"
+func (c Ctx) SendString(body string) error
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  return c.SendString("Hello, World!")
+  // => "Hello, World!"
+})
+```
 
 ## Set
 
@@ -1924,7 +1843,21 @@ app.Get("/world", func(c fiber.Ctx) error {
 })
 ```
 
-[//]: # (TODO: add String)
+## String
+
+Returns unique string representation of the ctx.
+
+```go title="Signature"
+func (c Ctx) String() string
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  c.String() // => "#0000000100000001 - 127.0.0.1:3000 <-> 127.0.0.1:61516 - GET http://localhost:3000/"
+
+  // ...
+})
+```
 
 ## Subdomains
 
@@ -1950,6 +1883,10 @@ app.Get("/", func(c fiber.Ctx) error {
 ## Type
 
 Sets the [Content-Type](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type) HTTP header to the MIME type listed [here](https://github.com/nginx/nginx/blob/master/conf/mime.types) specified by the file **extension**.
+
+:::info
+Method is a **chainable**.
+:::
 
 ```go title="Signature"
 func (c Ctx) Type(ext string, charset ...string) Ctx
