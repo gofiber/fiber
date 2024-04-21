@@ -6,7 +6,7 @@ sidebar_position: 5
 
 ## Validator package
 
-Fiber provides the [*Bind*](../api/bind.md#validation) function to validate and bind [request data](../api/bind.md#binders) to a struct.
+Fiber provides the [Bind](../api/bind.md#validation) function to validate and bind [request data](../api/bind.md#binders) to a struct.
 
 ```go title="Example"
 
