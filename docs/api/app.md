@@ -5,6 +5,8 @@ description: The app instance conventionally denotes the Fiber application.
 sidebar_position: 2
 ---
 
+import Reference from '@site/src/components/reference';
+
 ## Routing
 
 import RoutingHandler from './../partials/routing/handler.md';
@@ -23,17 +25,13 @@ func (app *App) Static(prefix, root string, config ...Static) Router
 
 Use the following code to serve files in a directory named `./public`
 
-```go
+```go title="Examples"
+// Serve files from multiple directories
 app.Static("/", "./public")
 
 // => http://localhost:3000/hello.html
 // => http://localhost:3000/js/jquery.js
 // => http://localhost:3000/css/style.css
-```
-
-```go title="Examples"
-// Serve files from multiple directories
-app.Static("/", "./public")
 
 // Serve files from "./files" directory:
 app.Static("/", "./files")
@@ -49,55 +47,21 @@ app.Static("/static", "./public")
 // => http://localhost:3000/static/css/style.css
 ```
 
+#### Config
+
 If you want to have a little bit more control regarding the settings for serving static files. You could use the `fiber.Static` struct to enable specific settings.
 
-```go title="fiber.Static{}"
-// Static defines configuration options when defining static assets.
-type Static struct {
-    // When set to true, the server tries minimizing CPU usage by caching compressed files.
-    // This works differently than the github.com/gofiber/compression middleware.
-    // Optional. Default value false
-    Compress bool `json:"compress"`
-
-    // When set to true, enables byte range requests.
-    // Optional. Default value false
-    ByteRange bool `json:"byte_range"`
-
-    // When set to true, enables directory browsing.
-    // Optional. Default value false.
-    Browse bool `json:"browse"`
-
-    // When set to true, enables direct download.
-    // Optional. Default value false.
-    Download bool `json:"download"`
-
-    // The name of the index file for serving a directory.
-    // Optional. Default value "index.html".
-    Index string `json:"index"`
-
-    // Expiration duration for inactive file handlers.
-    // Use a negative time.Duration to disable it.
-    //
-    // Optional. Default value 10 * time.Second.
-    CacheDuration time.Duration `json:"cache_duration"`
-
-    // The value for the Cache-Control HTTP-header
-    // that is set on the file response. MaxAge is defined in seconds.
-    //
-    // Optional. Default value 0.
-    MaxAge int `json:"max_age"`
-
-    // ModifyResponse defines a function that allows you to alter the response.
-    //
-    // Optional. Default: nil
-    ModifyResponse Handler
-
-    // Next defines a function to skip this middleware when returned true.
-    //
-    // Optional. Default: nil
-    Next func(c Ctx) bool
-}
-```
+| Property                                                   | Type               | Description                                                                                                                                                            | Default          |
+|------------------------------------------------------------|--------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------|
+| <Reference id="compress">Compress</Reference>              | `bool`             | When set to true, the server tries minimizing CPU usage by caching compressed files. This works differently than the [compress](../middleware/compress.md) middleware. | false            |
+| <Reference id="byte_range">ByteRange</Reference>           | `bool`             | When set to true, enables byte range requests.                                                                                                                         | false            |
+| <Reference id="browse">Browse</Reference>                  | `bool`             | When set to true, enables directory browsing.                                                                                                                          | false            |
+| <Reference id="download">Download</Reference>              | `bool`             | When set to true, enables direct download.                                                                                                                             | false            |
+| <Reference id="index">Index</Reference>                    | `string`           | The name of the index file for serving a directory.                                                                                                                    | "index.html"     |
+| <Reference id="cache_duration">CacheDuration</Reference>   | `time.Duration`    | Expiration duration for inactive file handlers. Use a negative `time.Duration` to disable it.                                                                          | 10 * time.Second |
+| <Reference id="max_age">MaxAge</Reference>                 | `int`              | The value for the `Cache-Control` HTTP-header that is set on the file response. MaxAge is defined in seconds.                                                          | 0                |
+| <Reference id="modify_response">ModifyResponse</Reference> | `Handler`          | ModifyResponse defines a function that allows you to alter the response.                                                                                               | nil              |
+| <Reference id="next">Next</Reference>                      | `func(c Ctx) bool` | Next defines a function to skip this middleware when returned true.                                                                                                    | nil              |
 
 ```go title="Example"
 // Custom config
@@ -242,7 +206,10 @@ func main() {
 }
 ```
 
-```javascript title="Result"
+<details>
+<summary>Click here to see the result</summary>
+
+```json
 [
   [
     {
@@ -271,6 +238,7 @@ func main() {
   ]
 ]
 ```
+</details>
 
 ### Name
 
@@ -308,7 +276,10 @@ func main() {
 }
 ```
 
-```javascript title="Result"
+<details>
+<summary>Click here to see the result</summary>
+
+```json
 [
   [
     {
@@ -373,6 +344,7 @@ func main() {
   null
 ]
 ```
+</details>
 
 ### GetRoute
 
@@ -398,7 +370,10 @@ func main() {
 }
 ```
 
-```javascript title="Result"
+<details>
+<summary>Click here to see the result</summary>
+
+```json
 {
   "method": "GET",
   "name": "index",
@@ -406,6 +381,7 @@ func main() {
   "params": null
 }
 ```
+</details>
 
 ### GetRoutes
 
@@ -427,7 +403,10 @@ func main() {
 }
 ```
 
-```javascript title="Result"
+<details>
+<summary>Click here to see the result</summary>
+
+```json
 [
     {
         "method": "POST",
@@ -437,10 +416,11 @@ func main() {
     }
 ]
 ```
+</details>
 
 ## Config
 
-Config returns the app config as value \( read-only \).
+Config returns the [app config](./fiber.md#config) as value \( read-only \).
 
 ```go title="Signature"
 func (app *App) Config() Config
@@ -448,7 +428,7 @@ func (app *App) Config() Config
 
 ## Handler
 
-Handler returns the server handler that can be used to serve custom \*fasthttp.RequestCtx requests.
+Handler returns the server handler that can be used to serve custom [`\*fasthttp.RequestCtx`](https://pkg.go.dev/github.com/valyala/fasthttp#RequestCtx) requests.
 
 ```go title="Signature"
 func (app *App) Handler() fasthttp.RequestHandler

@@ -11,7 +11,7 @@ import Reference from '@site/src/components/reference';
 
 ### New
 
-This method creates a new **App** named instance. You can pass optional [config](#config)when creating a new instance.
+This method creates a new **App** named instance. You can pass optional [config](#config) when creating a new instance.
 
 ```go title="Signature"
 func New(config ...Config) *App
