@@ -86,7 +86,7 @@ Fiber currently supports 9 template engines in our [gofiber/template](https://do
 * [jet](https://docs.gofiber.io/template/jet)
 * [mustache](https://docs.gofiber.io/template/mustache)
 * [pug](https://docs.gofiber.io/template/pug)
-* [slim](https://docs.gofiber.io/template/pug)
+* [slim](https://docs.gofiber.io/template/slim)
 
 To learn more about using Templates in Fiber, see [Templates](../guide/templates.md).
 

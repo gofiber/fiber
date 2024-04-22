@@ -97,7 +97,7 @@ The following example is prohibited because it can expose your application to se
 
 ```go
 app.Use(cors.New(cors.Config{
-    AllowOrigins: "*",
+    AllowOrigins: []string{"*"},
     AllowCredentials: true,
 }))
 ```
@@ -105,43 +105,46 @@ app.Use(cors.New(cors.Config{
 This will result in the following panic:
 
 ```
-panic: [CORS] 'AllowCredentials' is true, but 'AllowOrigins' cannot be set to `"*"`.
+panic: [CORS] Configuration error: When 'AllowCredentials' is set to true, 'AllowOrigins' cannot contain a wildcard origin '*'. Please specify allowed origins explicitly or adjust 'AllowCredentials' setting.
 ```
 
 ## Config
 
-| Property             | Type                        | Description                                                                                                                                                                                                                                                                                                                                                          | Default                            |
-|:---------------------|:----------------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:-----------------------------------|
-| AllowCredentials     | `bool`                      | AllowCredentials indicates whether or not the response to the request can be exposed when the credentials flag is true. When used as part of a response to a preflight request, this indicates whether or not the actual request can be made using credentials. Note: If true, AllowOrigins cannot be set to a wildcard (`"*"`) to prevent security vulnerabilities. | `false`                            |
-| AllowHeaders         | `string`                    | AllowHeaders defines a list of request headers that can be used when making the actual request. This is in response to a preflight request.                                                                                                                                                                                                                          | `""`                               |
-| AllowMethods         | `string`                    | AllowMethods defines a list of methods allowed when accessing the resource. This is used in response to a preflight request.                                                                                                                                                                                                                                         | `"GET,POST,HEAD,PUT,DELETE,PATCH"` |
-| AllowOrigins         | `string`                    | AllowOrigins defines a comma-separated list of origins that may access the resource. This supports subdomain matching, so you can use a value like "https://*.example.com" to allow any subdomain of example.com to submit requests.                                                                                                                                 | `"*"`                              |
-| AllowOriginsFunc     | `func(origin string) bool`  | `AllowOriginsFunc` is a function that dynamically determines whether to allow a request based on its origin. If this function returns `true`, the 'Access-Control-Allow-Origin' response header will be set to the request's 'origin' header. This function is only used if the request's origin doesn't match any origin in `AllowOrigins`.                         | `nil`                              |
-| AllowPrivateNetwork  | `bool`                      | Indicates whether the `Access-Control-Allow-Private-Network` response header should be set to `true`, allowing requests from private networks. This aligns with modern security practices for web applications interacting with private networks.                                                                                                                    | `false`                            |
-| ExposeHeaders        | `string`                    | ExposeHeaders defines whitelist headers that clients are allowed to access.                                                                                                                                                                                                                                                                                          | `""`                               |
-| MaxAge               | `int`                       | MaxAge indicates how long (in seconds) the results of a preflight request can be cached. If you pass MaxAge 0, the Access-Control-Max-Age header will not be added and the browser will use 5 seconds by default. To disable caching completely, pass MaxAge value negative. It will set the Access-Control-Max-Age header to 0.                                     | `0`                                |
-| Next                 | `func(fiber.Ctx) bool`      | Next defines a function to skip this middleware when returned true.                                                                                                                                                                                                                                                                                                  | `nil`                              |
+| Property             | Type                        | Description                                                                                                                                                                                                                                                                                                                                                          | Default                                 |
+|:---------------------|:----------------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:----------------------------------------|
+| AllowCredentials     | `bool`                      | AllowCredentials indicates whether or not the response to the request can be exposed when the credentials flag is true. When used as part of a response to a preflight request, this indicates whether or not the actual request can be made using credentials. Note: If true, AllowOrigins cannot be set to a wildcard (`"*"`) to prevent security vulnerabilities. | `false`                                 |
+| AllowHeaders         | `[]string`                  | AllowHeaders defines a list of request headers that can be used when making the actual request. This is in response to a preflight request.                                                                                                                                                                                                                          | `[]`                                    |
+| AllowMethods         | `[]string`                  | AllowMethods defines a list of methods allowed when accessing the resource. This is used in response to a preflight request.                                                                                                                                                                                                                                         | `"GET, POST, HEAD, PUT, DELETE, PATCH"` |
+| AllowOrigins         | `[]string`                  | AllowOrigins defines a list of origins that may access the resource. This supports subdomain matching, so you can use a value like "https://*.example.com" to allow any subdomain of example.com to submit requests. If the special wildcard `"*"` is present in the list, all origins will be allowed.                                                              | `["*"]`                                 |
+| AllowOriginsFunc     | `func(origin string) bool`  | `AllowOriginsFunc` is a function that dynamically determines whether to allow a request based on its origin. If this function returns `true`, the 'Access-Control-Allow-Origin' response header will be set to the request's 'origin' header. This function is only used if the request's origin doesn't match any origin in `AllowOrigins`.                         | `nil`                                   |
+| AllowPrivateNetwork  | `bool`                      | Indicates whether the `Access-Control-Allow-Private-Network` response header should be set to `true`, allowing requests from private networks. This aligns with modern security practices for web applications interacting with private networks.                                                                                                                    | `false`                                 |
+| ExposeHeaders        | `string`                    | ExposeHeaders defines whitelist headers that clients are allowed to access.                                                                                                                                                                                                                                                                                          | `[]`                                    |
+| MaxAge               | `int`                       | MaxAge indicates how long (in seconds) the results of a preflight request can be cached. If you pass MaxAge 0, the Access-Control-Max-Age header will not be added and the browser will use 5 seconds by default. To disable caching completely, pass MaxAge value negative. It will set the Access-Control-Max-Age header to 0.                                     | `0`                                     |
+| Next                 | `func(fiber.Ctx) bool`      | Next defines a function to skip this middleware when returned true.                                                                                                                                                                                                                                                                                                  | `nil`                                   |
 
+:::note
+If AllowOrigins is a zero value `[]string{}`, and AllowOriginsFunc is provided, the middleware will not default to allowing all origins with the wildcard value "*". Instead, it will rely on the AllowOriginsFunc to dynamically determine whether to allow a request based on its origin. This provides more flexibility and control over which origins are allowed.
+:::
 
 ## Default Config
 
 ```go
 var ConfigDefault = Config{
-	Next:         nil,
+	Next:             nil,
 	AllowOriginsFunc: nil,
-	AllowOrigins: "*",
-	AllowMethods: strings.Join([]string{
+	AllowOrigins:     []string{"*"},
+	AllowMethods: []string{
 		fiber.MethodGet,
 		fiber.MethodPost,
 		fiber.MethodHead,
 		fiber.MethodPut,
 		fiber.MethodDelete,
 		fiber.MethodPatch,
-	}, ","),
-	AllowHeaders:     "",
-	AllowCredentials: false,
-	ExposeHeaders:    "",
-	MaxAge:           0,
+	},
+	AllowHeaders:        []string{},
+	AllowCredentials:    false,
+	ExposeHeaders:       []string{},
+	MaxAge:              0,
 	AllowPrivateNetwork: false,
 }
 ```
