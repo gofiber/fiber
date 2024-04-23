@@ -1353,8 +1353,8 @@ func Benchmark_Ctx_Fresh_WithNoCache(b *testing.B) {
 	}
 }
 
-// go test -run Test_Ctx_Parsers -v
-func Test_Ctx_Parsers(t *testing.T) {
+// go test -run Test_Ctx_Binders -v
+func Test_Ctx_Binders(t *testing.T) {
 	t.Parallel()
 	// setup
 	app := New()
@@ -1386,7 +1386,7 @@ func Test_Ctx_Parsers(t *testing.T) {
 		require.Equal(t, []string{"foo", "bar", "test"}, testStruct.TestEmbeddedStruct.Names)
 	}
 
-	t.Run("BodyParser:xml", func(t *testing.T) {
+	t.Run("Body:xml", func(t *testing.T) {
 		t.Parallel()
 		withValues(t, func(c Ctx, testStruct *TestStruct) error {
 			c.Request().Header.SetContentType(MIMEApplicationXML)
@@ -1394,7 +1394,7 @@ func Test_Ctx_Parsers(t *testing.T) {
 			return c.Bind().Body(testStruct)
 		})
 	})
-	t.Run("BodyParser:form", func(t *testing.T) {
+	t.Run("Body:form", func(t *testing.T) {
 		t.Parallel()
 		withValues(t, func(c Ctx, testStruct *TestStruct) error {
 			c.Request().Header.SetContentType(MIMEApplicationForm)
@@ -1410,7 +1410,7 @@ func Test_Ctx_Parsers(t *testing.T) {
 			return c.Bind().Body(testStruct)
 		})
 	})
-	t.Run("BodyParser:multiform", func(t *testing.T) {
+	t.Run("Body:multiform", func(t *testing.T) {
 		t.Parallel()
 		withValues(t, func(c Ctx, testStruct *TestStruct) error {
 			body := []byte("--b\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\nfoo\r\n--b\r\nContent-Disposition: form-data; name=\"class\"\r\n\r\n111\r\n--b\r\nContent-Disposition: form-data; name=\"name2\"\r\n\r\nbar\r\n--b\r\nContent-Disposition: form-data; name=\"class2\"\r\n\r\n222\r\n--b\r\nContent-Disposition: form-data; name=\"names\"\r\n\r\nfoo\r\n--b\r\nContent-Disposition: form-data; name=\"names\"\r\n\r\nbar\r\n--b\r\nContent-Disposition: form-data; name=\"names\"\r\n\r\ntest\r\n--b--")
@@ -1420,31 +1420,31 @@ func Test_Ctx_Parsers(t *testing.T) {
 			return c.Bind().Body(testStruct)
 		})
 	})
-	t.Run("CookieParser", func(t *testing.T) {
+	t.Run("Cookie", func(t *testing.T) {
 		t.Parallel()
 		withValues(t, func(c Ctx, testStruct *TestStruct) error {
 			c.Request().Header.Set("Cookie", "name=foo;name2=bar;class=111;class2=222;names=foo,bar,test")
 			return c.Bind().Cookie(testStruct)
 		})
 	})
-	t.Run("QueryParser", func(t *testing.T) {
+	t.Run("Query", func(t *testing.T) {
 		t.Parallel()
 		withValues(t, func(c Ctx, testStruct *TestStruct) error {
 			c.Request().URI().SetQueryString("name=foo&name2=bar&class=111&class2=222&names=foo,bar,test")
 			return c.Bind().Query(testStruct)
 		})
 	})
-	t.Run("ParamsParser", func(t *testing.T) {
-		t.Skip("ParamsParser is not ready for v3")
+	t.Run("URI", func(t *testing.T) {
+		t.Skip("URI is not ready for v3")
 		//nolint:gocritic // TODO: uncomment
-		// t.Parallel()
-		// withValues(t, func(c Ctx, testStruct *TestStruct) error {
-		//	 c.route = &Route{Params: []string{"name", "name2", "class", "class2"}}
-		//	 c.values = [30]string{"foo", "bar", "111", "222"}
-		//	 return c.ParamsParser(testStruct)
-		// })
+		//t.Parallel()
+		//withValues(t, func(c Ctx, testStruct *TestStruct) error {
+		//	c.Route().Params = []string{"name", "name2", "class", "class2"}
+		//	c.Params().value = [30]string{"foo", "bar", "111", "222"}
+		//	return c.Bind().URI(testStruct)
+		//})
 	})
-	t.Run("ReqHeaderParser", func(t *testing.T) {
+	t.Run("ReqHeader", func(t *testing.T) {
 		t.Parallel()
 		withValues(t, func(c Ctx, testStruct *TestStruct) error {
 			c.Request().Header.Add("name", "foo")
@@ -3441,13 +3441,13 @@ func Test_Ctx_RenderWithLocals(t *testing.T) {
 	})
 }
 
-func Test_Ctx_RenderWithBindVars(t *testing.T) {
+func Test_Ctx_RenderWithViewBind(t *testing.T) {
 	t.Parallel()
 
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	err := c.BindVars(Map{
+	err := c.ViewBind(Map{
 		"Title": "Hello, World!",
 	})
 	require.NoError(t, err)
@@ -3462,12 +3462,12 @@ func Test_Ctx_RenderWithBindVars(t *testing.T) {
 	require.Equal(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
 }
 
-func Test_Ctx_RenderWithOverwrittenBind(t *testing.T) {
+func Test_Ctx_RenderWithOverwrittenViewBind(t *testing.T) {
 	t.Parallel()
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	err := c.BindVars(Map{
+	err := c.ViewBind(Map{
 		"Title": "Hello, World!",
 	})
 	require.NoError(t, err)
@@ -3484,7 +3484,7 @@ func Test_Ctx_RenderWithOverwrittenBind(t *testing.T) {
 	require.Equal(t, "<h1>Hello from Fiber!</h1>", string(c.Response().Body()))
 }
 
-func Test_Ctx_RenderWithBindVarsLocals(t *testing.T) {
+func Test_Ctx_RenderWithViewBindLocals(t *testing.T) {
 	t.Parallel()
 	app := New(Config{
 		PassLocalsToViews: true,
@@ -3492,7 +3492,7 @@ func Test_Ctx_RenderWithBindVarsLocals(t *testing.T) {
 
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	err := c.BindVars(Map{
+	err := c.ViewBind(Map{
 		"Title": "Hello, World!",
 	})
 	require.NoError(t, err)
@@ -3528,7 +3528,7 @@ func Test_Ctx_RenderWithLocalsAndBinding(t *testing.T) {
 	require.Equal(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
 }
 
-func Benchmark_Ctx_RenderWithLocalsAndBindVars(b *testing.B) {
+func Benchmark_Ctx_RenderWithLocalsAndViewBind(b *testing.B) {
 	engine := &testTemplateEngine{}
 	err := engine.Load()
 	require.NoError(b, err)
@@ -3538,7 +3538,7 @@ func Benchmark_Ctx_RenderWithLocalsAndBindVars(b *testing.B) {
 	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	err = c.BindVars(Map{
+	err = c.ViewBind(Map{
 		"Title": "Hello, World!",
 	})
 	require.NoError(b, err)
@@ -3578,7 +3578,7 @@ func Benchmark_Ctx_RenderLocals(b *testing.B) {
 	require.Equal(b, "<h1>Hello, World!</h1>", string(c.Response().Body()))
 }
 
-func Benchmark_Ctx_RenderBindVars(b *testing.B) {
+func Benchmark_Ctx_RenderViewBind(b *testing.B) {
 	engine := &testTemplateEngine{}
 	err := engine.Load()
 	require.NoError(b, err)
@@ -3586,7 +3586,7 @@ func Benchmark_Ctx_RenderBindVars(b *testing.B) {
 	app.config.Views = engine
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	err = c.BindVars(Map{
+	err = c.ViewBind(Map{
 		"Title": "Hello, World!",
 	})
 	require.NoError(b, err)

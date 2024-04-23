@@ -40,6 +40,13 @@ type Ctx interface {
 	// Attachment sets the HTTP response Content-Disposition header field to attachment.
 	Attachment(filename ...string)
 
+	// AutoFormat performs content-negotiation on the Accept HTTP header.
+	// It uses Accepts to select a proper format.
+	// The supported content types are text/html, text/plain, application/json, and application/xml.
+	// For more flexible content negotiation, use Format.
+	// If the header is not specified or there is no proper format, text/plain is used.
+	AutoFormat(body any) error
+
 	// BaseURL returns (protocol + host + base path).
 	BaseURL() string
 
@@ -97,13 +104,6 @@ type Ctx interface {
 	// StatusNotAcceptable is sent.
 	Format(handlers ...ResFmt) error
 
-	// AutoFormat performs content-negotiation on the Accept HTTP header.
-	// It uses Accepts to select a proper format.
-	// The supported content types are text/html, text/plain, application/json, and application/xml.
-	// For more flexible content negotiation, use Format.
-	// If the header is not specified or there is no proper format, text/plain is used.
-	AutoFormat(body any) error
-
 	// FormFile returns the first file by key from a MultipartForm.
 	FormFile(key string) (*multipart.FileHeader, error)
 
@@ -146,12 +146,16 @@ type Ctx interface {
 
 	// Host contains the host derived from the X-Forwarded-Host or Host HTTP header.
 	// Returned value is only valid within the handler. Do not store any references.
+	// In a network context, `Host` refers to the combination of a hostname and potentially a port number used for connecting,
+	// while `Hostname` refers specifically to the name assigned to a device on a network, excluding any port information.
+	// Example: URL: https://example.com:8080 -> Host: example.com:8080
 	// Make copies or use the Immutable setting instead.
 	// Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
 	Host() string
 
 	// Hostname contains the hostname derived from the X-Forwarded-Host or Host HTTP header using the c.Host() method.
 	// Returned value is only valid within the handler. Do not store any references.
+	// Example: URL: https://example.com:8080 -> Hostname: example.com
 	// Make copies or use the Immutable setting instead.
 	// Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
 	Hostname() string
@@ -274,9 +278,9 @@ type Ctx interface {
 	// You can use Redirect().To(), Redirect().Route() and Redirect().Back() for redirection.
 	Redirect() *Redirect
 
-	// Add vars to default view var map binding to template engine.
+	// ViewBind Add vars to default view var map binding to template engine.
 	// Variables are read by the Render method and may be overwritten.
-	BindVars(vars Map) error
+	ViewBind(vars Map) error
 
 	// GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
 	GetRouteURL(routeName string, params Map) (string, error)
@@ -367,7 +371,7 @@ type Ctx interface {
 	// Reset is a method to reset context fields by given request when to use server handlers.
 	Reset(fctx *fasthttp.RequestCtx)
 
-	// You can bind body, cookie, headers etc. into the map, map slice, struct easily by using Binding method.
+	// Bind You can bind body, cookie, headers etc. into the map, map slice, struct easily by using Binding method.
 	// It gives custom binding support, detailed binding options and more.
 	// Replacement of: BodyParser, ParamsParser, GetReqHeaders, GetRespHeaders, AllParams, QueryParser, ReqHeaderParser
 	Bind() *Bind

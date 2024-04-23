@@ -62,7 +62,7 @@ A complete example demonstrating the use of Air with Fiber can be found in the [
 
 ## How do I set up an error handler?
 
-To override the default error handler, you can override the default when providing a [Config](../api/fiber.md#config) when initiating a new [Fiber instance](../api/fiber.md#new).
+To override the default error handler, you can override the default when providing a [Config](../api/fiber.md#errorhandler) when initiating a new [Fiber instance](../api/fiber.md#new).
 
 ```go title="Example"
 app := fiber.New(fiber.Config{

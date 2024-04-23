@@ -3,26 +3,28 @@ id: route-handlers
 title: Route Handlers
 ---
 
+import Reference from '@site/src/components/reference';
+
 Registers a route bound to a specific [HTTP method](https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods).
 
 ```go title="Signatures"
 // HTTP methods
-func (app *App) Get(path string, handlers ...Handler) Router
-func (app *App) Head(path string, handlers ...Handler) Router
-func (app *App) Post(path string, handlers ...Handler) Router
-func (app *App) Put(path string, handlers ...Handler) Router
-func (app *App) Delete(path string, handlers ...Handler) Router
-func (app *App) Connect(path string, handlers ...Handler) Router
-func (app *App) Options(path string, handlers ...Handler) Router
-func (app *App) Trace(path string, handlers ...Handler) Router
-func (app *App) Patch(path string, handlers ...Handler) Router
+func (app *App) Get(path string, handler Handler, middlewares ...Handler) Router
+func (app *App) Head(path string, handler Handler, middlewares ...Handler) Router
+func (app *App) Post(path string, handler Handler, middlewares ...Handler) Router
+func (app *App) Put(path string, handler Handler, middlewares ...Handler) Router
+func (app *App) Delete(path string, handler Handler, middlewares ...Handler) Router
+func (app *App) Connect(path string, handler Handler, middlewares ...Handler) Router
+func (app *App) Options(path string, handler Handler, middlewares ...Handler) Router
+func (app *App) Trace(path string, handler Handler, middlewares ...Handler) Router
+func (app *App) Patch(path string, handler Handler, middlewares ...Handler) Router
 
 // Add allows you to specify a method as value
-func (app *App) Add(method, path string, handlers ...Handler) Router
+func (app *App) Add(method, path string, handler Handler, middlewares ...Handler) Router
 
 // All will register the route on all HTTP methods
 // Almost the same as app.Use but not bound to prefixes
-func (app *App) All(path string, handlers ...Handler) Router
+func (app *App) All(path string, handler Handler, middlewares ...Handler) Router
 ```
 
 ```go title="Examples"
@@ -37,10 +39,18 @@ app.Post("/api/register", func(c fiber.Ctx) error {
 })
 ```
 
-**Use** can be used for middleware packages and prefix catchers. These routes will only match the beginning of each path i.e. `/john` will match `/john/doe`, `/johnnnnn` etc
+<Reference id="use">**Use**</Reference>
+
+Can be used for middleware packages and prefix catchers. These routes will only match the beginning of each path i.e. `/john` will match `/john/doe`, `/johnnnnn` etc
 
 ```go title="Signature"
 func (app *App) Use(args ...any) Router
+
+// Different usage variations
+func (app *App) Use(handler Handler, middlewares ...Handler) Router
+func (app *App) Use(path string, handler Handler, middlewares ...Handler) Router
+func (app *App) Use(paths []string, handler Handler, middlewares ...Handler) Router
+func (app *App) Use(path string, app *App) Router
 ```
 
 ```go title="Examples"
@@ -66,4 +76,7 @@ app.Use("/api", func(c fiber.Ctx) error {
 }, func(c fiber.Ctx) error {
     return c.Next()
 })
+
+// Mount a sub-app
+app.Use("/api", api)
 ```
