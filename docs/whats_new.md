@@ -101,6 +101,16 @@ We have made several changes to the Fiber app, including:
 ### Generic functions
 
 ### Middleware refactoring
+
+#### CORS middleware
+##### added struct fields
+* Config.AllowPrivateNetwork bool
+##### changed struct fields
+* Config.AllowOrigins string -> []string
+* Config.AllowMethods string -> []string
+* Config.AllowHeaders string -> []string
+* Config.ExposeHeaders string -> []string
+
 #### Session middleware
 #### Filesystem middleware
 ### Monitor middleware
@@ -108,4 +118,26 @@ We have made several changes to the Fiber app, including:
 Monitor middleware is now in Contrib package.
 
 ## Migration guide
+
+### CORS Middleware
+
+The CORS middleware has been updated to use slices instead of strings for the `AllowOrigins`, `AllowMethods`, `AllowHeaders`, and `ExposeHeaders` fields. Here's how you can update your code:
+
+```go
+// Before
+app.Use(cors.New(cors.Config{
+  AllowOrigins: "https://example.com,https://example2.com",
+  AllowMethods: strings.Join([]string{fiber.MethodGet, fiber.MethodPost}, ","),
+  AllowHeaders: "Content-Type",
+  ExposeHeaders: "Content-Length",
+}))
+
+// After
+app.Use(cors.New(cors.Config{
+  AllowOrigins: []string{"https://example.com", "https://example2.com"},
+  AllowMethods: []string{fiber.MethodGet, fiber.MethodPost},
+  AllowHeaders: []string{"Content-Type"},
+  ExposeHeaders: []string{"Content-Length"},
+}))
+```
 ...
