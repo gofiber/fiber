@@ -102,14 +102,20 @@ We have made several changes to the Fiber app, including:
 
 ### Middleware refactoring
 
-#### CORS middleware
-##### added struct fields
-* Config.AllowPrivateNetwork bool
-##### changed struct fields
-* Config.AllowOrigins string -> []string
-* Config.AllowMethods string -> []string
-* Config.AllowHeaders string -> []string
-* Config.ExposeHeaders string -> []string
+### Updates to CORS Middleware
+
+We've made some changes to the CORS middleware to improve its functionality and flexibility. Here's what's new:
+
+#### New Struct Fields
+- `Config.AllowPrivateNetwork`: This new field is a boolean that allows you to control whether private networks are allowed. This is related to the [Private Network Access (PNA)](https://wicg.github.io/private-network-access/) specification from the Web Incubator Community Group (WICG). When set to `true`, the CORS middleware will allow CORS preflight requests from private networks and respond with the `Access-Control-Allow-Private-Network: true` header. This could be useful in development environments or specific use cases, but should be done with caution due to potential security risks.
+
+#### Updated Struct Fields
+We've updated several fields from a single string (containing comma-separated values) to slices, allowing for more explicit declaration of multiple values. Here are the updated fields:
+
+- `Config.AllowOrigins`: Now accepts a slice of strings, each representing an allowed origin.
+- `Config.AllowMethods`: Now accepts a slice of strings, each representing an allowed method.
+- `Config.AllowHeaders`: Now accepts a slice of strings, each representing an allowed header.
+- `Config.ExposeHeaders`: Now accepts a slice of strings, each representing an exposed header.
 
 #### Session middleware
 #### Filesystem middleware
