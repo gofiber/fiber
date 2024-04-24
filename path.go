@@ -427,7 +427,7 @@ func findNextCharsetPosition(search string, charset []byte) int {
 	return nextPosition
 }
 
-// findNextCharsetPosition search the last char position from the charset
+// findLastCharsetPosition search the last char position from the charset
 func findLastCharsetPosition(search string, charset []byte) int {
 	lastPosition := -1
 	for _, char := range charset {

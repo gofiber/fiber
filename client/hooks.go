@@ -289,7 +289,7 @@ func parserRequestBodyFile(req *Request) error {
 	return nil
 }
 
-// parserResponseHeader will parse the response header and store it in the response
+// parserResponseCookie will parse the response header and store it in the response
 func parserResponseCookie(c *Client, resp *Response, req *Request) error {
 	var err error
 	resp.RawResponse.Header.VisitAllCookie(func(key, value []byte) {
