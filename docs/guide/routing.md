@@ -5,6 +5,7 @@ description: >-
   Routing refers to how an application's endpoints (URIs) respond to client
   requests.
 sidebar_position: 1
+toc_max_heading_level: 4
 ---
 
 import Tabs from '@theme/Tabs';
@@ -150,21 +151,21 @@ Constraints aren't validation for parameters. If constraints aren't valid for a 
 
 | Constraint        | Example                              | Example matches                                                                             |
 | ----------------- | ------------------------------------ | ------------------------------------------------------------------------------------------- |
-| int               | :id<int\>                            | 123456789, -123456789                                                                       |
-| bool              | :active<bool\>                       | true,false                                                                                  |
-| guid              | :id<guid\>                           | CD2C1638-1638-72D5-1638-DEADBEEF1638                                                        |
-| float             | :weight<float\>                      | 1.234, -1,001.01e8                                                                          |
-| minLen(value)     | :username<minLen(4)\>                | Test (must be at least 4 characters)                                                        |
-| maxLen(value)     | :filename<maxLen(8)\>                | MyFile (must be no more than 8 characters                                                   |
-| len(length)       | :filename<len(12)\>                  | somefile.txt (exactly 12 characters)                                                        |
-| min(value)        | :age<min(18)\>                       | 19 (Integer value must be at least 18)                                                      |
-| max(value)        | :age<max(120)\>                      | 91 (Integer value must be no more than 120)                                                 |
-| range(min,max)    | :age<range(18,120)\>                 | 91 (Integer value must be at least 18 but no more than 120)                                 |
-| alpha             | :name<alpha\>                        | Rick (String must consist of one or more alphabetical characters, a-z and case-insensitive) |
-| datetime          | :dob<datetime(2006\\\\-01\\\\-02)\>  | 2005-11-01                                                                                  |
-| regex(expression) | :date<regex(\\d{4}-\\d{2}-\\d{2})\> | 2022-08-27 (Must match regular expression)                                                  |
+| int               | `:id<int\>`                           | 123456789, -123456789                                                                       |
+| bool              | `:active<bool\>`                       | true,false                                                                                  |
+| guid              | `:id<guid\>`                         | CD2C1638-1638-72D5-1638-DEADBEEF1638                                                        |
+| float             | `:weight<float\>`                      | 1.234, -1,001.01e8                                                                          |
+| minLen(value)     | `:username<minLen(4)\>`                | Test (must be at least 4 characters)                                                        |
+| maxLen(value)     | `:filename<maxLen(8)\>`                | MyFile (must be no more than 8 characters                                                   |
+| len(length)       | `:filename<len(12)\>`                  | somefile.txt (exactly 12 characters)                                                        |
+| min(value)        | `:age<min(18)\>`                       | 19 (Integer value must be at least 18)                                                      |
+| max(value)        | `:age<max(120)\>`                      | 91 (Integer value must be no more than 120)                                                 |
+| range(min,max)    | `:age<range(18,120)\>`                 | 91 (Integer value must be at least 18 but no more than 120)                                 |
+| alpha             | `:name<alpha\>`                        | Rick (String must consist of one or more alphabetical characters, a-z and case-insensitive) |
+| datetime          | `:dob<datetime(2006\\\\-01\\\\-02)\>`  | 2005-11-01                                                                                  |
+| regex(expression) | `:date<regex(\\d{4}-\\d{2}-\\d{2})\>` | 2022-08-27 (Must match regular expression)                                                  |
 
-**Examples**
+#### Examples
 
 <Tabs>
 <TabItem value="single-constraint" label="Single Constraint">
@@ -224,7 +225,7 @@ app.Get(`/:date<regex(\d{4}-\d{2}-\d{2})>`, func(c fiber.Ctx) error {
 You should use `\\` before routing-specific characters when to use datetime constraint (`*`, `+`, `?`, `:`, `/`, `<`, `>`, `;`, `(`, `)`), to avoid wrong parsing.
 :::
 
-**Optional Parameter Example**
+#### Optional Parameter Example
 
 You can impose constraints on optional parameters as well.
 
@@ -240,7 +241,7 @@ app.Get("/:test<int>?", func(c fiber.Ctx) error {
 // Cannot GET /7.0
 ```
 
-**Custom Constraint Example**
+#### Custom Constraint
 
 Custom constraints can be added to Fiber using the `app.RegisterCustomConstraint` method. Your constraints have to be compatible with the `CustomConstraint` interface.
 
@@ -297,7 +298,7 @@ func main() {
 
 Functions that are designed to make changes to the request or response are called **middleware functions**. The [Next](../api/ctx.md#next) is a **Fiber** router function, when called, executes the **next** function that **matches** the current route.
 
-**Example of a middleware function**
+### Example of a middleware function
 
 ```go
 app.Use(func(c fiber.Ctx) error {

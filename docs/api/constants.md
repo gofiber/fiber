@@ -2,10 +2,10 @@
 id: constants
 title: 📋 Constants
 description: Some constants for Fiber.
-sidebar_position: 4
+sidebar_position: 9
 ---
 
-HTTP methods were copied from net/http.
+### HTTP methods were copied from net/http.
 
 ```go
 const (
@@ -22,7 +22,7 @@ const (
 )
 ```
 
-MIME types that are commonly used
+### MIME types that are commonly used
 
 ```go
 const (
@@ -45,7 +45,7 @@ const (
 )
 ```
 
-HTTP status codes were copied from net/http.
+### HTTP status codes were copied from net/http.
 
 ```go
 const (
@@ -114,7 +114,7 @@ const (
 )
 ```
 
-Errors
+### Errors
 
 ```go
 var (

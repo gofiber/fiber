@@ -6,163 +6,39 @@ sidebar_position: 5
 
 ## Validator package
 
-Fiber can make _great_ use of the validator package to ensure correct validation of data to store.
+Fiber provides the [Bind](../api/bind.md#validation) function to validate and bind [request data](../api/bind.md#binders) to a struct.
 
-- [Official validator Github page \(Installation, use, examples..\).](https://github.com/go-playground/validator)
+```go title="Example"
 
-You can find the detailed descriptions of the _validations_ used in the fields contained on the structs below:
+import "github.com/go-playground/validator/v10"
 
-- [Detailed docs](https://pkg.go.dev/github.com/go-playground/validator?tab=doc)
-
-```go title="Validation Example"
-package main
-
-import (
-	"fmt"
-	"log"
-	"strings"
-
-	"github.com/go-playground/validator/v10"
-	"github.com/gofiber/fiber/v3"
-)
-
-type (
-	User struct {
-		Name string `validate:"required,min=5,max=20"` // Required field, min 5 char long max 20
-		Age  int    `validate:"required,teener"`       // Required field, and client needs to implement our 'teener' tag format which we'll see later
-	}
-
-	ErrorResponse struct {
-		Error       bool
-		FailedField string
-		Tag         string
-		Value       any
-	}
-
-	XValidator struct {
-		validator *validator.Validate
-	}
-
-	GlobalErrorHandlerResp struct {
-		Success bool   `json:"success"`
-		Message string `json:"message"`
-	}
-)
-
-// This is the validator instance
-// for more information see: https://github.com/go-playground/validator
-var validate = validator.New()
-
-func (v XValidator) Validate(data any) []ErrorResponse {
-	validationErrors := []ErrorResponse{}
-
-	errs := validate.Struct(data)
-	if errs != nil {
-		for _, err := range errs.(validator.ValidationErrors) {
-			// In this case data object is actually holding the User struct
-			var elem ErrorResponse
-
-			elem.FailedField = err.Field() // Export struct field name
-			elem.Tag = err.Tag()           // Export struct tag
-			elem.Value = err.Value()       // Export field value
-			elem.Error = true
-
-			validationErrors = append(validationErrors, elem)
-		}
-	}
-
-	return validationErrors
+type structValidator struct {
+    validate *validator.Validate
 }
 
-func main() {
-	myValidator := &XValidator{
-		validator: validate,
-	}
-
-	app := fiber.New(fiber.Config{
-		// Global custom error handler
-		ErrorHandler: func(c fiber.Ctx, err error) error {
-			return c.Status(fiber.StatusBadRequest).JSON(GlobalErrorHandlerResp{
-				Success: false,
-				Message: err.Error(),
-			})
-		},
-	})
-
-	// Custom struct validation tag format
-	myValidator.validator.RegisterValidation("teener", func(fl validator.FieldLevel) bool {
-		// User.Age needs to fit our needs, 12-18 years old.
-		return fl.Field().Int() >= 12 && fl.Field().Int() <= 18
-	})
-
-	app.Get("/", func(c fiber.Ctx) error {
-		user := &User{
-			Name: fiber.Query[string](c, "name"),
-			Age:  fiber.Query[int](c, "age"),
-		}
-
-		// Validation
-		if errs := myValidator.Validate(user); len(errs) > 0 && errs[0].Error {
-			errMsgs := make([]string, 0)
-
-			for _, err := range errs {
-				errMsgs = append(errMsgs, fmt.Sprintf(
-					"[%s]: '%v' | Needs to implement '%s'",
-					err.FailedField,
-					err.Value,
-					err.Tag,
-				))
-			}
-
-			return &fiber.Error{
-				Code:    fiber.ErrBadRequest.Code,
-				Message: strings.Join(errMsgs, " and "),
-			}
-		}
-
-		// Logic, validated with success
-		return c.SendString("Hello, World!")
-	})
-
-	log.Fatal(app.Listen(":3000"))
+// Validator needs to implement the Validate method
+func (v *structValidator) Validate(out any) error {
+    return v.validate.Struct(out)
 }
 
-/**
-OUTPUT
+// Setup your validator in the config
+app := fiber.New(fiber.Config{
+    StructValidator: &structValidator{validate: validator.New()},
+})
 
-[1]
-Request:
+type User struct {
+  Name string `json:"name" form:"name" query:"name" validate:"required"`
+  Age  int    `json:"age" form:"age" query:"age" validate:"gte=0,lte=100"`
+}
 
-GET http://127.0.0.1:3000/
-
-Response:
-
-{"success":false,"message":"[Name]: '' | Needs to implement 'required' and [Age]: '0' | Needs to implement 'required'"}
-
-[2]
-Request:
-
-GET http://127.0.0.1:3000/?name=efdal&age=9
-
-Response:
-{"success":false,"message":"[Age]: '9' | Needs to implement 'teener'"}
-
-[3]
-Request:
-
-GET http://127.0.0.1:3000/?name=efdal&age=
-
-Response:
-{"success":false,"message":"[Age]: '0' | Needs to implement 'required'"}
-
-[4]
-Request:
-
-GET http://127.0.0.1:3000/?name=efdal&age=18
-
-Response:
-Hello, World!
-
-**/
-
+app.Post("/", func(c fiber.Ctx) error {
+  user := new(User)
+  
+  // Works with all bind methods - Body, Query, Form, ...
+  if err := c.Bind().Body(user); err != nil { // <- here you receive the validation errors
+    return err
+  }
+  
+  return c.JSON(user)
+})
 ```

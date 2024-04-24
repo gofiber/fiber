@@ -1,6 +1,6 @@
 {
-  "label": "API",
-  "position": 2,
+  "label": "\uD83D\uDEE0\uFE0F API",
+  "position": 3,
   "link": {
     "type": "generated-index",
     "description": "API documentation for Fiber."

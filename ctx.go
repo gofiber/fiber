@@ -594,6 +594,9 @@ func (c *DefaultCtx) GetReqHeaders() map[string][]string {
 
 // Host contains the host derived from the X-Forwarded-Host or Host HTTP header.
 // Returned value is only valid within the handler. Do not store any references.
+// In a network context, `Host` refers to the combination of a hostname and potentially a port number used for connecting,
+// while `Hostname` refers specifically to the name assigned to a device on a network, excluding any port information.
+// Example: URL: https://example.com:8080 -> Host: example.com:8080
 // Make copies or use the Immutable setting instead.
 // Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
 func (c *DefaultCtx) Host() string {
@@ -611,6 +614,7 @@ func (c *DefaultCtx) Host() string {
 
 // Hostname contains the hostname derived from the X-Forwarded-Host or Host HTTP header using the c.Host() method.
 // Returned value is only valid within the handler. Do not store any references.
+// Example: URL: https://example.com:8080 -> Hostname: example.com
 // Make copies or use the Immutable setting instead.
 // Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
 func (c *DefaultCtx) Hostname() string {
@@ -1202,9 +1206,9 @@ func (c *DefaultCtx) Redirect() *Redirect {
 	return c.redirect
 }
 
-// Bind Add vars to default view var map binding to template engine.
+// ViewBind Add vars to default view var map binding to template engine.
 // Variables are read by the Render method and may be overwritten.
-func (c *DefaultCtx) BindVars(vars Map) error {
+func (c *DefaultCtx) ViewBind(vars Map) error {
 	// init viewBindMap - lazy map
 	for k, v := range vars {
 		c.viewBindMap.Store(k, v)
@@ -1694,7 +1698,7 @@ func (c *DefaultCtx) IsFromLocal() bool {
 	return c.isLocalHost(c.fasthttp.RemoteIP().String())
 }
 
-// You can bind body, cookie, headers etc. into the map, map slice, struct easily by using Binding method.
+// Bind You can bind body, cookie, headers etc. into the map, map slice, struct easily by using Binding method.
 // It gives custom binding support, detailed binding options and more.
 // Replacement of: BodyParser, ParamsParser, GetReqHeaders, GetRespHeaders, AllParams, QueryParser, ReqHeaderParser
 func (c *DefaultCtx) Bind() *Bind {
@@ -1707,7 +1711,7 @@ func (c *DefaultCtx) Bind() *Bind {
 	return c.bind
 }
 
-// Converts a string value to a specified type, handling errors and optional default values.
+// Convert a string value to a specified type, handling errors and optional default values.
 func Convert[T any](value string, convertor func(string) (T, error), defaultValue ...T) (T, error) {
 	converted, err := convertor(value)
 	if err != nil {

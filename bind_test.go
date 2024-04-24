@@ -1547,11 +1547,7 @@ func Test_Bind_Must(t *testing.T) {
 // simple struct validator for testing
 type structValidator struct{}
 
-func (*structValidator) Engine() any {
-	return ""
-}
-
-func (*structValidator) ValidateStruct(out any) error {
+func (*structValidator) Validate(out any) error {
 	out = reflect.ValueOf(out).Elem().Interface()
 	sq, ok := out.(simpleQuery)
 	if !ok {

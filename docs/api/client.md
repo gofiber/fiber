@@ -2,7 +2,7 @@
 id: client
 title: 🌎 Client
 description: The Client struct represents the Fiber HTTP Client.
-sidebar_position: 5
+sidebar_position: 6
 ---
 
 ## Start request
@@ -537,7 +537,8 @@ agent.SetResponse(resp)
 ReleaseResponse(resp)
 ```
 
-<details><summary>Example handling for response values</summary>
+<details>
+<summary>Example handling for response values</summary>
 
 ```go title="Example handling response"
 // Create a Fiber HTTP client agent

@@ -90,7 +90,7 @@ var DefaultErrorHandler = func(c fiber.Ctx, err error) error {
 
 ## Custom Error Handler
 
-A custom error handler can be set using a [Config ](../api/fiber.md#config)when initializing a [Fiber instance](../api/fiber.md#new).
+A custom error handler can be set using a [Config](../api/fiber.md#errorhandler) when initializing a [Fiber instance](../api/fiber.md#new).
 
 In most cases, the default error handler should be sufficient. However, a custom error handler can come in handy if you want to capture different types of errors and take action accordingly e.g., send a notification email or log an error to the centralized system. You can also send customized responses to the client e.g., error page or just a JSON response.
 
