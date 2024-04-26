@@ -2,6 +2,7 @@
 id: whats_new
 title: 🆕 Whats New in v3
 sidebar_position: 2
+toc_max_heading_level: 4
 ---
 
 :::caution
@@ -16,15 +17,31 @@ Its a draft, not finished yet.
 
 We are excited to announce the release of Fiber v3! 🚀
 
-Fiber v3 is a major release with a lot of new features, improvements, and breaking changes. We have worked hard to make Fiber even faster, more flexible, and easier to use.
+In this guide, we'll walk you through the most important changes in Fiber `v3` and show you how to migrate your existing Fiber `v2` applications to Fiber `v3`.
 
-## 🚀 Highlights
+- [🚀 App](#-app)
+- [🗺️ Router](#-router)
+- [🧠 Context](#-context)
+- [📎 Binding](#-binding)
+- [↪️ Redirect](#-redirect)
+- [🌎 Client package](#-client-package)
+- [🧰 Generic functions](#-generic-functions)
+- 🧬 Middlewares
+  - [Updates to CORS Middleware](#updates-to-cors-middleware)
+  - [Session middleware](#session-middleware)
+  - [Filesystem middleware](#filesystem-middleware)
+  - [Monitor middleware](#monitor-middleware)
+- [📋 Migration guide](#-migration-guide)
 
-### Drop for old Go versions
+## Drop for old Go versions
 
-Fiber v3 drops support for Go versions below 1.21. We recommend upgrading to Go 1.21 or higher to use Fiber v3.
+Fiber `v3` drops support for Go versions below `1.21`. We recommend upgrading to Go `1.21` or higher to use Fiber `v3`.
 
-### App changes
+## 🚀 App
+
+:::caution
+DRAFT section
+:::
 
 We have made several changes to the Fiber app, including:
 
@@ -35,13 +52,13 @@ We have made several changes to the Fiber app, including:
   * EnablePrintRoutes
   * ListenerNetwork -> previously Network
 
-#### new methods
+### new methods
 
 * RegisterCustomBinder
 * RegisterCustomConstraint
 * NewCtxFunc
 
-#### removed methods
+### removed methods
 
 * Mount -> Use app.Use() instead
 * ListenTLS -> Use app.Listen() with tls.Config
@@ -49,19 +66,131 @@ We have made several changes to the Fiber app, including:
 * ListenMutualTLS -> Use app.Listen() with tls.Config
 * ListenMutualTLSWithCertificate -> Use app.Listen() with tls.Config
 
-#### changed methods
+### Methods changes
 
-* Routing methods -> Get(), Post(), Put(), Delete(), Patch(), Options(), Trace(), Connect() and All()
-* Use -> can be used for app mounting
 * Test -> timeout changed to 1 second
 * Listen -> has a config parameter
 * Listener -> has a config parameter
 
-### Context change
-#### interface 
-#### customizable
+### CTX interface + customizable
 
-#### new methods
+---
+
+## 🗺️ Router
+
+We have slightly adapted our router interface
+
+### HTTP method registration
+
+In `v2` one handler was already mandatory when the route has been registered, but this was checked at runtime and was not correctly reflected in the signature, this has now been changed in `v3` to make it more explicit.
+
+```diff
+-    Get(path string, handlers ...Handler) Router
++    Get(path string, handler Handler, middleware ...Handler) Router
+-    Head(path string, handlers ...Handler) Router
++    Head(path string, handler Handler, middleware ...Handler) Router
+-    Post(path string, handlers ...Handler) Router
++    Post(path string, handler Handler, middleware ...Handler) Router
+-    Put(path string, handlers ...Handler) Router
++    Put(path string, handler Handler, middleware ...Handler) Router
+-    Delete(path string, handlers ...Handler) Router
++    Delete(path string, handler Handler, middleware ...Handler) Router
+-    Connect(path string, handlers ...Handler) Router
++    Connect(path string, handler Handler, middleware ...Handler) Router
+-    Options(path string, handlers ...Handler) Router
++    Options(path string, handler Handler, middleware ...Handler) Router
+-    Trace(path string, handlers ...Handler) Router
++    Trace(path string, handler Handler, middleware ...Handler) Router
+-    Patch(path string, handlers ...Handler) Router
++    Patch(path string, handler Handler, middleware ...Handler) Router
+-    All(path string, handlers ...Handler) Router
++    All(path string, handler Handler, middleware ...Handler) Router
+```
+
+### Route chaining
+
+The route method is now like `ExpressJs` which gives you the option of a different notation and allows you to concatenate the route declaration.
+
+```diff
+-    Route(prefix string, fn func(router Router), name ...string) Router
++    Route(path string) Register    
+```
+
+<details>
+<summary>Example</summary>
+
+```go
+app.Route("/api").Route("/user/:id?")
+  .Get(func(c fiber.Ctx) error {
+    // Get user
+    return c.JSON(fiber.Map{"message": "Get user", "id": c.Params("id")})
+  })
+  .Post(func(c fiber.Ctx) error {
+    // Create user
+    return c.JSON(fiber.Map{"message": "User created"})
+  })
+  .Put(func(c fiber.Ctx) error {
+    // Update user
+    return c.JSON(fiber.Map{"message": "User updated", "id": c.Params("id")})
+  })
+  .Delete(func(c fiber.Ctx) error {
+    // Delete user
+    return c.JSON(fiber.Map{"message": "User deleted", "id": c.Params("id")})
+  })
+})
+```
+</details>
+
+[Here](./api/app#route) you can find more information.
+
+### Middleware registration
+
+We have aligned our method for middlewares closer to express and now also support the [`Use`](./api/app#use) of multiple prefixes.
+
+Registering a subapp is now also possible via the [`Use`](./api/app#use) method instead of the old [`v2 Mount`](/v2.x/api/app#use) method.
+
+```diff
+-    Use(args ...interface{}) Router
++    Use(args ...any) Router
+```
+
+<details>
+<summary>Example</summary>
+
+```go
+// register mulitple prefixes
+app.Use(["/v1", "/v2"], func(c *fiber.Ctx) error {
+  // Middleware for /v1 and /v2
+  return c.Next() 
+})
+
+// define subapp
+api := fiber.New()
+api.Get("/user", func(c *fiber.Ctx) error {
+  return c.SendString("User")
+})
+// register subapp
+app.Use("/api", api)
+```
+</details>
+
+To enable the routing changes above we had to slightly adjust the signature of the `Add` method.
+
+```diff
+-    Add(method, path string, handlers ...Handler) Router
++    Add(methods []string, path string, handler Handler, middleware ...Handler) Router
+```
+
+---
+
+## 🧠 Context
+
+:::caution
+DRAFT section
+:::
+
+
+### new methods
 
 * AutoFormat -> ExpressJs like
 * Host -> ExpressJs like
@@ -74,7 +203,7 @@ We have made several changes to the Fiber app, including:
 * String -> ExpressJs like
 * ViewBind -> instead of Bind
 
-#### removed methods
+### removed methods
 
 * AllParams -> c.Bind().URL() ?
 * ParamsInt -> Params Generic
@@ -88,28 +217,49 @@ We have made several changes to the Fiber app, including:
 * RedirectBack -> c.Redirect().Back()
 * ReqHeaderParser -> c.Bind().Header()
 
-#### changed methods
+### changed methods
 
 * Bind -> for Binding instead of View, us c.ViewBind()
 * Format -> Param: body interface{} -> handlers ...ResFmt
 * Redirect -> c.Redirect().To()
 
-### Client package
+---
+
+## 🌎 Client package
+
+:::caution
+DRAFT section
+:::
+
+## 📎 Binding
+
+:::caution
+DRAFT section
+:::
+
+## ↪️ Redirect
+
+:::caution
+DRAFT section
+:::
 
 
-### Binding
-### Generic functions
+## 🧰 Generic functions
 
-### Middleware refactoring
+:::caution
+DRAFT section
+:::
 
-### Updates to CORS Middleware
+[//]: # (## Middleware refactoring)
+
+## Updates to CORS Middleware
 
 We've made some changes to the CORS middleware to improve its functionality and flexibility. Here's what's new:
 
-#### New Struct Fields
+### New Struct Fields
 - `Config.AllowPrivateNetwork`: This new field is a boolean that allows you to control whether private networks are allowed. This is related to the [Private Network Access (PNA)](https://wicg.github.io/private-network-access/) specification from the Web Incubator Community Group (WICG). When set to `true`, the CORS middleware will allow CORS preflight requests from private networks and respond with the `Access-Control-Allow-Private-Network: true` header. This could be useful in development environments or specific use cases, but should be done with caution due to potential security risks.
 
-#### Updated Struct Fields
+### Updated Struct Fields
 We've updated several fields from a single string (containing comma-separated values) to slices, allowing for more explicit declaration of multiple values. Here are the updated fields:
 
 - `Config.AllowOrigins`: Now accepts a slice of strings, each representing an allowed origin.
@@ -117,15 +267,29 @@ We've updated several fields from a single string (containing comma-separated va
 - `Config.AllowHeaders`: Now accepts a slice of strings, each representing an allowed header.
 - `Config.ExposeHeaders`: Now accepts a slice of strings, each representing an exposed header.
 
-#### Session middleware
-#### Filesystem middleware
-### Monitor middleware
+## Session middleware
+
+:::caution
+DRAFT section
+:::
+
+## Filesystem middleware
+
+:::caution
+DRAFT section
+:::
+
+## Monitor middleware
+
+:::caution
+DRAFT section
+:::
 
 Monitor middleware is now in Contrib package.
 
-## Migration guide
+## 📋 Migration guide
 
-### CORS Middleware
+## CORS Middleware
 
 The CORS middleware has been updated to use slices instead of strings for the `AllowOrigins`, `AllowMethods`, `AllowHeaders`, and `ExposeHeaders` fields. Here's how you can update your code:
 

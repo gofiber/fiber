@@ -155,20 +155,70 @@ func main() {
 
 ### Route
 
-You can define routes with a common prefix inside the common function.
+Returns an instance of a single route, which you can then use to handle HTTP verbs with optional middleware. 
+
+Similar to [`express`](https://expressjs.com/de/api.html#app.route).
 
 ```go title="Signature"
-func (app *App) Route(prefix string, fn func(router Router), name ...string) Router
+func (app *App) Route(path string) Register
 ```
+
+<details>
+<summary>Click here to see the `Register` interface</summary>
+
+```go
+type Register interface {
+  All(handler Handler, middleware ...Handler) Register
+  Get(handler Handler, middleware ...Handler) Register
+  Head(handler Handler, middleware ...Handler) Register
+  Post(handler Handler, middleware ...Handler) Register
+  Put(handler Handler, middleware ...Handler) Register
+  Delete(handler Handler, middleware ...Handler) Register
+  Connect(handler Handler, middleware ...Handler) Register
+  Options(handler Handler, middleware ...Handler) Register
+  Trace(handler Handler, middleware ...Handler) Register
+  Patch(handler Handler, middleware ...Handler) Register
+
+  Add(methods []string, handler Handler, middleware ...Handler) Register
+
+  Static(root string, config ...Static) Register
+
+  Route(path string) Register
+}
+```
+</details>
 
 ```go title="Examples"
 func main() {
   app := fiber.New()
 
-  app.Route("/test", func(api fiber.Router) {
-      api.Get("/foo", handler).Name("foo") // /test/foo (name: test.foo)
-      api.Get("/bar", handler).Name("bar") // /test/bar (name: test.bar)
-  }, "test.")
+  // use `Route` as chainable route declaration method
+  app.Route("/test").Get(func(c fiber.Ctx) error {
+    return c.SendString("GET /test")
+  })
+  
+  app.Route("/events").all(func(c fiber.Ctx) error {
+    // runs for all HTTP verbs first
+    // think of it as route specific middleware!
+  })
+  .get(func(c fiber.Ctx) error {
+    return c.SendString("GET /events")
+  })
+  .post(func(c fiber.Ctx) error {
+    // maybe add a new event...
+  })
+  
+  // combine multiple routes
+  app.Route("/v2").Route("/user").Get(func(c fiber.Ctx) error {
+    return c.SendString("GET /v2/user")
+  })
+  
+  // use multiple methods
+  app.Route("/api").Get(func(c fiber.Ctx) error {
+    return c.SendString("GET /api")
+  }).Post(func(c fiber.Ctx) error {
+    return c.SendString("POST /api")
+  })
 
   log.Fatal(app.Listen(":3000"))
 }
