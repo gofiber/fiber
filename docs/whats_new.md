@@ -147,7 +147,7 @@ app.Route("/api").Route("/user/:id?")
 
 We have aligned our method for middlewares closer to express and now also support the [`Use`](./api/app#use) of multiple prefixes.
 
-Registering a subapp is now also possible via the [`Use`](./api/app#use) method instead of the old [`v2 Mount`](/v2.x/api/app#use) method.
+Registering a subapp is now also possible via the [`Use`](./api/app#use) method instead of the old `app.Mount` method.
 
 ```diff
 -    Use(args ...interface{}) Router
