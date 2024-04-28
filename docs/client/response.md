@@ -1,0 +1,136 @@
+---
+id: response
+title: 🌎 Response
+description: >-
+  Response methods of Gofiber HTTP client.
+sidebar_position: 3
+---
+
+# Response
+
+Response is the result of a request. This object is used to access the response data.
+
+```go
+type Response struct {
+	client  *Client
+	request *Request
+	cookie  []*fasthttp.Cookie
+
+	RawResponse *fasthttp.Response
+}
+```
+
+## AcquireResponse
+
+AcquireResponse returns an empty response object from the pool.
+The returned response may be returned to the pool with ReleaseResponse when no longer needed.
+This allows reducing GC load.
+
+```go title="Signature"
+func AcquireResponse() *Response
+```
+
+## ReleaseResponse
+
+ReleaseResponse returns the object acquired via AcquireResponse to the pool.
+Do not access the released Response object, otherwise data races may occur.
+
+```go title="Signature"
+func ReleaseResponse(resp *Response)
+```
+
+## Status
+
+Status method returns the HTTP status string for the executed request.
+
+```go title="Signature"
+func (r *Response) Status() string
+```
+
+## StatusCode
+
+StatusCode method returns the HTTP status code for the executed request.
+
+```go title="Signature"
+func (r *Response) StatusCode() int
+```
+
+## Protocol
+
+Protocol method returns the HTTP response protocol used for the request.
+
+```go title="Signature"
+func (r *Response) Protocol() string
+```
+
+## Header
+
+Header method returns the response headers.
+
+```go title="Signature"
+func (r *Response) Header(key string) string
+```
+
+## Cookies
+
+Cookies method to access all the response cookies.
+
+```go title="Signature"
+func (r *Response) Cookies() []*fasthttp.Cookie
+```
+
+## Body
+
+Body method returns HTTP response as []byte array for the executed request.
+
+```go title="Signature"
+func (r *Response) Body() []byte
+```
+
+## String
+
+String method returns the body of the server response as String.
+
+```go title="Signature"
+func (r *Response) String() string
+```
+
+## JSON
+
+JSON method will unmarshal body to json.
+
+```go title="Signature"
+func (r *Response) JSON(v any) error
+```
+
+## XML
+
+XML method will unmarshal body to xml.
+
+```go title="Signature"
+func (r *Response) XML(v any) error
+```
+
+## Save
+
+Save method will save the body to a file or io.Writer.
+
+```go title="Signature"
+func (r *Response) Save(v any) error
+```
+
+## Reset
+
+Reset clears the Response object.
+
+```go title="Signature"
+func (r *Response) Reset() 
+```
+
+## Close
+
+Close method will release Request object and Response object, after call Close please don't use these object.
+
+```go title="Signature"
+func (r *Response) Close()
+```
