@@ -157,7 +157,7 @@ func main() {
 
 Returns an instance of a single route, which you can then use to handle HTTP verbs with optional middleware. 
 
-Similar to [`express`](https://expressjs.com/de/api.html#app.route).
+Similar to [`Express`](https://expressjs.com/de/api.html#app.route).
 
 ```go title="Signature"
 func (app *App) Route(path string) Register

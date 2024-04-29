@@ -2,7 +2,7 @@
 id: whats_new
 title: 🆕 Whats New in v3
 sidebar_position: 2
-toc_max_heading_level: 4
+toc_max_heading_level: 3
 ---
 
 :::caution
@@ -13,24 +13,25 @@ Its a draft, not finished yet.
 
 [//]: # (https://github.com/gofiber/fiber/releases/tag/v3.0.0-beta.2)
 
-## 🎉 Welcome to Fiber v3
+## 🎉 Welcome
 
 We are excited to announce the release of Fiber v3! 🚀
 
 In this guide, we'll walk you through the most important changes in Fiber `v3` and show you how to migrate your existing Fiber `v2` applications to Fiber `v3`.
 
+Here's a quick overview of the changes in Fiber `v3`:
 - [🚀 App](#-app)
 - [🗺️ Router](#-router)
 - [🧠 Context](#-context)
 - [📎 Binding](#-binding)
-- [↪️ Redirect](#-redirect)
+- [🔄️ Redirect](#-redirect)
 - [🌎 Client package](#-client-package)
 - [🧰 Generic functions](#-generic-functions)
-- 🧬 Middlewares
-  - [Updates to CORS Middleware](#updates-to-cors-middleware)
-  - [Session middleware](#session-middleware)
-  - [Filesystem middleware](#filesystem-middleware)
-  - [Monitor middleware](#monitor-middleware)
+- [🧬 Middlewares](#-middlewares)
+  - [CORS](#cors)
+  - [Session](#session)
+  - [Filesystem](#filesystem)
+  - [Monitor](#monitor)
 - [📋 Migration guide](#-migration-guide)
 
 ## Drop for old Go versions
@@ -76,7 +77,7 @@ We have made several changes to the Fiber app, including:
 
 ---
 
-## 🗺️ Router
+## 🗺 Router
 
 We have slightly adapted our router interface
 
@@ -109,7 +110,7 @@ In `v2` one handler was already mandatory when the route has been registered, bu
 
 ### Route chaining
 
-The route method is now like `ExpressJs` which gives you the option of a different notation and allows you to concatenate the route declaration.
+The route method is now like [`Express`](https://expressjs.com/de/api.html#app.route) which gives you the option of a different notation and allows you to concatenate the route declaration.
 
 ```diff
 -    Route(prefix string, fn func(router Router), name ...string) Router
@@ -145,14 +146,9 @@ app.Route("/api").Route("/user/:id?")
 
 ### Middleware registration
 
-We have aligned our method for middlewares closer to express and now also support the [`Use`](./api/app#use) of multiple prefixes.
+We have aligned our method for middlewares closer to [`Express`](https://expressjs.com/de/api.html#app.use) and now also support the [`Use`](./api/app#use) of multiple prefixes.
 
 Registering a subapp is now also possible via the [`Use`](./api/app#use) method instead of the old `app.Mount` method.
-
-```diff
--    Use(args ...interface{}) Router
-+    Use(args ...any) Router
-```
 
 <details>
 <summary>Example</summary>
@@ -237,7 +233,7 @@ DRAFT section
 DRAFT section
 :::
 
-## ↪️ Redirect
+## 🔄 Redirect
 
 :::caution
 DRAFT section
@@ -250,16 +246,16 @@ DRAFT section
 DRAFT section
 :::
 
-[//]: # (## Middleware refactoring)
+## 🧬 Middlewares
 
-## Updates to CORS Middleware
+### CORS
 
 We've made some changes to the CORS middleware to improve its functionality and flexibility. Here's what's new:
 
-### New Struct Fields
+#### New Struct Fields
 - `Config.AllowPrivateNetwork`: This new field is a boolean that allows you to control whether private networks are allowed. This is related to the [Private Network Access (PNA)](https://wicg.github.io/private-network-access/) specification from the Web Incubator Community Group (WICG). When set to `true`, the CORS middleware will allow CORS preflight requests from private networks and respond with the `Access-Control-Allow-Private-Network: true` header. This could be useful in development environments or specific use cases, but should be done with caution due to potential security risks.
 
-### Updated Struct Fields
+#### Updated Struct Fields
 We've updated several fields from a single string (containing comma-separated values) to slices, allowing for more explicit declaration of multiple values. Here are the updated fields:
 
 - `Config.AllowOrigins`: Now accepts a slice of strings, each representing an allowed origin.
@@ -267,19 +263,19 @@ We've updated several fields from a single string (containing comma-separated va
 - `Config.AllowHeaders`: Now accepts a slice of strings, each representing an allowed header.
 - `Config.ExposeHeaders`: Now accepts a slice of strings, each representing an exposed header.
 
-## Session middleware
+### Session
 
 :::caution
 DRAFT section
 :::
 
-## Filesystem middleware
+### Filesystem
 
 :::caution
 DRAFT section
 :::
 
-## Monitor middleware
+### Monitor
 
 :::caution
 DRAFT section
@@ -289,7 +285,30 @@ Monitor middleware is now in Contrib package.
 
 ## 📋 Migration guide
 
-## CORS Middleware
+- [🚀 App](#-app-1)
+- [🗺 Router](#-router-1)
+- [🧠 Context](#-context-1)
+- [📎 Parser](#-parser)
+- [🔄 Redirect](#-redirect-1)
+- [🌎 Client package](#-client-package-1)
+- [🧬 Middlewares](#-middlewares-1)
+
+
+### 🚀 App
+
+### 🗺 Router
+
+### 🧠 Context
+
+### 📎 Parser
+
+### 🔄 Redirect
+
+### 🌎 Client package
+
+### 🧬 Middlewares
+
+#### CORS
 
 The CORS middleware has been updated to use slices instead of strings for the `AllowOrigins`, `AllowMethods`, `AllowHeaders`, and `ExposeHeaders` fields. Here's how you can update your code:
 
