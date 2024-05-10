@@ -8,7 +8,14 @@ sidebar_position: 3
 
 # Response
 
-Response is the result of a request. This object is used to access the response data.
+The `Response` structure in Gofiber's HTTP client represents the server's response to an HTTP request. It contains all the necessary information received from the server. This includes:
+
+- **Status Code**: The HTTP status code returned by the server (e.g., 200 OK, 404 Not Found).
+- **Headers**: HTTP headers received from the server that provide additional information about the response.
+- **Body**: The data received from the server, typically in the form of a JSON, XML, or plain text format.
+- **Cookies**: Any cookies sent by the server along with the response.
+
+This structure allows users to easily access and manage the data returned by the server, facilitating efficient handling of HTTP responses.
 
 ```go
 type Response struct {
@@ -33,7 +40,7 @@ func AcquireResponse() *Response
 ## ReleaseResponse
 
 ReleaseResponse returns the object acquired via AcquireResponse to the pool.
-Do not access the released Response object, otherwise data races may occur.
+Do not access the released Response object, otherwise, data races may occur.
 
 ```go title="Signature"
 func ReleaseResponse(resp *Response)

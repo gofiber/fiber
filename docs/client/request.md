@@ -8,7 +8,15 @@ sidebar_position: 2
 
 # Request
 
-Request is the structure contains request data.
+The `Request` structure in Gofiber's HTTP client represents an HTTP request. It encapsulates all the necessary information required to send a request to a server. This includes:
+
+- **URL**: The URL to which the request is sent.
+- **Method**: The HTTP method used (GET, POST, PUT, DELETE, etc.).
+- **Headers**: HTTP headers that provide additional information about the request or the needed responses.
+- **Body**: The data sent with the request, typically used with POST and PUT methods.
+- **Query Parameters**: Parameters that are appended to the URL, used to modify the request or to provide additional information.
+
+This structure is designed to be flexible and efficient, allowing users to easily construct and modify HTTP requests according to their needs.
 
 ```go
 type Request struct {
@@ -50,7 +58,7 @@ func AcquireRequest() *Request
 ## ReleaseRequest
 
 ReleaseRequest returns the object acquired via AcquireRequest to the pool.
-Do not access the released Request object, otherwise data races may occur.
+Do not access the released Request object; otherwise, data races may occur.
 
 ```go title="Signature"
 func ReleaseRequest(req *Request)
@@ -216,7 +224,7 @@ func (r *Request) SetParamsWithStruct(v any) *Request
 
 ## DelParams
 
-DelParams method deletes single or multiple param fields ant its values.
+DelParams method deletes single or multiple param fields and their values.
 
 ```go title="Signature"
 func (r *Request) DelParams(key ...string) *Request
@@ -532,7 +540,7 @@ func (r *Request) SetMaxRedirects(count int) *Request
 ## Get
 
 Get sends the GET request. 
-It sets URL and HTTP method and then it sends the request.
+It sets the URL and HTTP method, and then it sends the request.
 
 ```go title="Signature"
 func (r *Request) Get(url string) (*Response, error)
@@ -541,7 +549,7 @@ func (r *Request) Get(url string) (*Response, error)
 ## Post
 
 Post sends the POST request. 
-It sets URL and HTTP method and then it sends the request.
+It sets the URL and HTTP method, and then it sends the request.
 
 ```go title="Signature"
 func (r *Request) Post(url string) (*Response, error)
@@ -550,7 +558,7 @@ func (r *Request) Post(url string) (*Response, error)
 ## Head
 
 Head sends the HEAD request. 
-It sets URL and HTTP method and then it sends the request.
+It sets the URL and HTTP method, and then it sends the request.
 
 ```go title="Signature"
 func (r *Request) Head(url string) (*Response, error)
@@ -559,7 +567,7 @@ func (r *Request) Head(url string) (*Response, error)
 ## Put
 
 Put sends the PUT request. 
-It sets URL and HTTP method and then it sends the request.
+It sets the URL and HTTP method, and then it sends the request.
 
 ```go title="Signature"
 func (r *Request) Put(url string) (*Response, error)
@@ -568,7 +576,7 @@ func (r *Request) Put(url string) (*Response, error)
 ## Delete
 
 Delete sends the DELETE request. 
-It sets URL and HTTP method and then it sends the request.
+It sets the URL and HTTP method, and then it sends the request.
 
 ```go title="Signature"
 func (r *Request) Delete(url string) (*Response, error)
@@ -577,7 +585,7 @@ func (r *Request) Delete(url string) (*Response, error)
 ## Options
 
 Options sends the OPTIONS request. 
-It sets URL and HTTP method and then it sends the request.
+It sets the URL and HTTP method, and then it sends the request.
 
 ```go title="Signature"
 func (r *Request) Options(url string) (*Response, error)
@@ -586,7 +594,7 @@ func (r *Request) Options(url string) (*Response, error)
 ## Patch
 
 Patch sends the PATCH request. 
-It sets URL and HTTP method and then it sends the request.
+It sets the URL and HTTP method, and then it sends the request.
 
 ```go title="Signature"
 func (r *Request) Patch(url string) (*Response, error)
@@ -595,7 +603,7 @@ func (r *Request) Patch(url string) (*Response, error)
 ## Custom
 
 Custom sends a request with custom HTTP method. 
-It sets URL and HTTP method and then it sends the request.
+It sets the URL and HTTP method, and then it sends the request.
 You can use Custom to send requests with methods like TRACE, CONNECT.
 
 ```go title="Signature"

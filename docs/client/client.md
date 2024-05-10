@@ -8,12 +8,43 @@ sidebar_position: 1
 
 # Client
 
-The Client is used to create a Fiber Client with client-level settings that apply to all requests raise from the client.
-Fiber Client also provides an option to override or merge most of the client settings at the request.
+The Fiber Client is a powerful HTTP client optimized for high performance and ease of use in server-side applications. Built on top of the robust FastHTTP library, it inherits FastHTTP's high-speed HTTP protocol implementation. The client is designed to make HTTP requests both internally within services or externally to other web services.
 
-It is built top on FastHTTP client.
+## Features
+- **Lightweight & Fast**: Leveraging the minimalistic design of FastHTTP, the Fiber Client is lightweight and extremely fast.
+- **Flexible Configuration**: Configure client-level settings such as timeouts, headers, and more, which apply to all requests. Specific requests can further override or merge these settings.
+- **Connection Pooling**: Manages a pool of persistent connections that reduce the overhead of repeatedly establishing connections.
+- **Timeouts & Retries**: Supports setting request timeouts and retry mechanisms to handle transient failures.
 
-# TODO: Add more information about gofiber client.
+## Usage
+To use the Fiber Client, instantiate it with the desired configuration. Here's a simple example:
+
+```go
+package main
+
+import (
+	"fmt"
+	"time"
+
+	"github.com/gofiber/fiber/v3/client"
+)
+
+func main() {
+	cc := client.New()
+	cc.SetTimeout(10 * time.Second)
+
+	// Get request
+	resp, err := cc.Get("https://httpbin.org/get")
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("Status: %d\n", resp.StatusCode())
+	fmt.Printf("Body: %s\n", string(resp.Body()))
+}
+```
+
+You can check out [examples](examples.md) for more examples!
 
 ```go
 type Client struct {
@@ -75,7 +106,7 @@ func New() *Client
 
 Config for easy to set the request parameters, it should be noted that when setting the request body will use JSON as the default serialization mechanism, while the priority of Body is higher than FormData, and the priority of FormData is higher than File.
 
-It can be used to configurate request data while sending requests using Get, Post etc.
+It can be used to configure request data while sending requests using Get, Post, etc.
 
 ```go
 type Config struct {
@@ -164,7 +195,7 @@ func (c *Client) JSONUnmarshal() utils.JSONUnmarshal
 
 ## SetJSONUnmarshal
 
-Set json decoder.
+Set the JSON decoder.
 
 ```go title="Signature"
 func (c *Client) SetJSONUnmarshal(f utils.JSONUnmarshal) *Client
@@ -180,7 +211,7 @@ func (c *Client) XMLMarshal() utils.XMLMarshal
 
 ## SetXMLMarshal
 
-SetXMLMarshal Set xml encoder.
+SetXMLMarshal sets the XML encoder.
 
 ```go title="Signature"
 func (c *Client) SetXMLMarshal(f utils.XMLMarshal) *Client
@@ -196,7 +227,7 @@ func (c *Client) XMLUnmarshal() utils.XMLUnmarshal
 
 ## SetXMLUnmarshal
 
-SetXMLUnmarshal Set xml decoder.
+SetXMLUnmarshal sets the XML decoder.
 
 ```go title="Signature"
 func (c *Client) SetXMLUnmarshal(f utils.XMLUnmarshal) *Client
@@ -205,7 +236,7 @@ func (c *Client) SetXMLUnmarshal(f utils.XMLUnmarshal) *Client
 ## TLSConfig
 
 TLSConfig returns tlsConfig in client.
-If client don't have tlsConfig, this function will init it.
+If the client doesn't have a tlsConfig, this function will initialize it.
 
 ```go title="Signature"
 func (c *Client) TLSConfig() *tls.Config
@@ -565,7 +596,7 @@ func (c *Client) SetCookieJar(cookieJar *CookieJar) *Client
 
 ## Get
 
-Get provide an API like axios which send get request.
+Get provides an API like axios which sends a get request.
 
 ```go title="Signature"
 func (c *Client) Get(url string, cfg ...Config) (*Response, error)
@@ -573,7 +604,7 @@ func (c *Client) Get(url string, cfg ...Config) (*Response, error)
 
 ## Post
 
-Post provide an API like axios which send post request.
+Post provides an API like axios which send post request.
 
 ```go title="Signature"
 func (c *Client) Post(url string, cfg ...Config) (*Response, error)
@@ -581,7 +612,7 @@ func (c *Client) Post(url string, cfg ...Config) (*Response, error)
 
 ## Head
 
-Head provide an API like axios which send head request.
+Head provides an API like axios which send head request.
 
 ```go title="Signature"
 func (c *Client) Head(url string, cfg ...Config) (*Response, error)
@@ -589,7 +620,7 @@ func (c *Client) Head(url string, cfg ...Config) (*Response, error)
 
 ## Put
 
-Put provide an API like axios which send put request.
+Put provides an API like axios which send put request.
 
 ```go title="Signature"
 func (c *Client) Put(url string, cfg ...Config) (*Response, error)
@@ -597,7 +628,7 @@ func (c *Client) Put(url string, cfg ...Config) (*Response, error)
 
 ## Delete
 
-Delete provide an API like axios which send delete request.
+Delete provides an API like axios which send delete request.
 
 ```go title="Signature"
 func (c *Client) Delete(url string, cfg ...Config) (*Response, error)
@@ -605,7 +636,7 @@ func (c *Client) Delete(url string, cfg ...Config) (*Response, error)
 
 ## Options
 
-Options provide an API like axios which send options request.
+Options provides an API like axios which send options request.
 
 ```go title="Signature"
 func (c *Client) Options(url string, cfg ...Config) (*Response, error)
@@ -613,7 +644,7 @@ func (c *Client) Options(url string, cfg ...Config) (*Response, error)
 
 ## Patch
 
-Patch provide an API like axios which send patch request.
+Patch provides an API like axios which send patch request.
 
 ```go title="Signature"
 func (c *Client) Patch(url string, cfg ...Config) (*Response, error)
@@ -621,7 +652,7 @@ func (c *Client) Patch(url string, cfg ...Config) (*Response, error)
 
 ## Custom
 
-Custom provide an API like axios which send custom request.
+Custom provides an API like axios which send custom request.
 
 ```go title="Signature"
 func (c *Client) Custom(url, method string, cfg ...Config) (*Response, error)
