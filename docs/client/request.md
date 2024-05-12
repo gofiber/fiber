@@ -1,6 +1,6 @@
 ---
 id: request
-title: 🌎 Request
+title: 📤 Request
 description: >-
   Request methods of Gofiber HTTP client.
 sidebar_position: 2

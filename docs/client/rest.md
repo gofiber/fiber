@@ -1,6 +1,6 @@
 ---
-id: client
-title: 🌎 Client
+id: rest
+title: 🖥️ REST
 description: >-
   HTTP client for Gofiber.
 sidebar_position: 1
