@@ -38,7 +38,7 @@ func AcquireResponse() *Response
 ## ReleaseResponse
 
 ReleaseResponse returns the object acquired via AcquireResponse to the pool.
-Do not access the released Response object, otherwise, data races may occur.
+Do not access the released Response object; otherwise, data races may occur.
 
 ```go title="Signature"
 func ReleaseResponse(resp *Response)
@@ -68,6 +68,23 @@ Protocol method returns the HTTP response protocol used for the request.
 func (r *Response) Protocol() string
 ```
 
+```go title="Example"
+resp, err := client.Get("https://httpbin.org/get")
+if err != nil {
+	panic(err)
+}
+
+fmt.Println(resp.Protocol())
+```
+
+<details>
+<summary>Click here to see the result</summary>
+
+```
+HTTP/1.1
+```
+</details>
+
 ## Header
 
 Header method returns the response headers.
@@ -83,6 +100,26 @@ Cookies method to access all the response cookies.
 ```go title="Signature"
 func (r *Response) Cookies() []*fasthttp.Cookie
 ```
+
+```go title="Example"
+resp, err := client.Get("https://httpbin.org/cookies/set/go/fiber")
+if err != nil {
+	panic(err)
+}
+
+cookies := resp.Cookies()
+for _, cookie := range cookies {
+	fmt.Printf("%s => %s\n", string(cookie.Key()), string(cookie.Value()))
+}
+```
+
+<details>
+<summary>Click here to see the result</summary>
+
+```
+go => fiber
+```
+</details>
 
 ## Body
 
@@ -107,6 +144,37 @@ JSON method will unmarshal body to json.
 ```go title="Signature"
 func (r *Response) JSON(v any) error
 ```
+
+```go title="Example"
+type Body struct {
+	Slideshow struct {
+		Author string `json:"author"`
+		Date   string `json:"date"`
+		Title  string `json:"title"`
+	} `json:"slideshow"`
+}
+var out Body
+
+resp, err := client.Get("https://httpbin.org/json")
+if err != nil {
+	panic(err)
+}
+
+err = resp.JSON(&out)
+if err != nil {
+	panic(err)
+}
+
+fmt.Printf("%+v\n", out)
+```
+
+<details>
+<summary>Click here to see the result</summary>
+
+```
+{Slideshow:{Author:Yours Truly Date:date of publication Title:Sample Slide Show}}
+```
+</details>
 
 ## XML
 

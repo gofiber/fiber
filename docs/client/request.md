@@ -113,7 +113,7 @@ func (r *Request) SetClient(c *Client) *Request
 
 ## Context
 
-Context returns the Context if its already set in request. Otherwise it returns `context.Background()`.
+Context returns the Context if it's already set in the request; otherwise, it returns `context.Background()`.
 
 ```go title="Signature"
 func (r *Request) Context() context.Context
@@ -121,7 +121,7 @@ func (r *Request) Context() context.Context
 
 ## SetContext
 
-SetContext sets the context.Context for current Request. It allows to interrupt the request execution if ctx.Done() channel is closed.
+SetContext sets the context.Context for current Request. It allows interruption of the request execution if the ctx.Done() channel is closed.
 See https://blog.golang.org/context article and the "context" package documentation.
 
 ```go title="Signature"
@@ -143,14 +143,79 @@ AddHeader method adds a single header field and its value in the request instanc
 func (r *Request) AddHeader(key, val string) *Request
 ```
 
+```go title="Example"
+req := client.AcquireRequest()
+defer client.ReleaseRequest(req)
+
+req.AddHeader("Golang", "Fiber")
+req.AddHeader("Test", "123456")
+req.AddHeader("Test", "654321")
+
+resp, err := req.Get("https://httpbin.org/headers")
+if err != nil {
+	panic(err)
+}
+
+fmt.Println(resp.String())
+```
+
+<details>
+<summary>Click here to see the result</summary>
+
+```
+{
+  "headers": {
+    "Golang": "Fiber", 
+    "Host": "httpbin.org", 
+    "Referer": "", 
+    "Test": "123456,654321", 
+    "User-Agent": "fiber", 
+    "X-Amzn-Trace-Id": "Root=1-664105d2-033cf7173457adb56d9e7193"
+  }
+}
+```
+</details>
+
 ## SetHeader
 
 SetHeader method sets a single header field and its value in the request instance.
-It will override header which has been set in client instance.
+It will override the header which has been set in the client instance.
 
 ```go title="Signature"
 func (r *Request) SetHeader(key, val string) *Request
 ```
+
+```go title="Example"
+req := client.AcquireRequest()
+defer client.ReleaseRequest(req)
+
+req.SetHeader("Test", "123456")
+req.SetHeader("Test", "654321")
+
+resp, err := req.Get("https://httpbin.org/headers")
+if err != nil {
+	panic(err)
+}
+
+fmt.Println(resp.String())
+```
+
+<details>
+<summary>Click here to see the result</summary>
+
+```
+{
+  "headers": {
+    "Golang": "Fiber", 
+    "Host": "httpbin.org", 
+    "Referer": "", 
+    "Test": "654321", 
+    "User-Agent": "fiber", 
+    "X-Amzn-Trace-Id": "Root=1-664105e5-5d676ba348450cdb62847f04"
+  }
+}
+```
+</details>
 
 ## AddHeaders
 
@@ -163,7 +228,7 @@ func (r *Request) AddHeaders(h map[string][]string) *Request
 ## SetHeaders
 
 SetHeaders method sets multiple header fields and its values at one go in the request instance.
-It will override header which has been set in client instance.
+It will override the header which has been set in the client instance.
 
 ```go title="Signature"
 func (r *Request) SetHeaders(h map[string]string) *Request
@@ -185,10 +250,42 @@ AddParam method adds a single param field and its value in the request instance.
 func (r *Request) AddParam(key, val string) *Request
 ```
 
+```go title="Example"
+req := client.AcquireRequest()
+defer client.ReleaseRequest(req)
+
+req.AddParam("name", "john")
+req.AddParam("hobbies", "football")
+req.AddParam("hobbies", "basketball")
+
+resp, err := req.Get("https://httpbin.org/response-headers")
+if err != nil {
+	panic(err)
+}
+
+fmt.Println(string(resp.Body()))
+```
+
+<details>
+<summary>Click here to see the result</summary>
+
+```
+{
+  "Content-Length": "145", 
+  "Content-Type": "application/json", 
+  "hobbies": [
+    "football", 
+    "basketball"
+  ], 
+  "name": "efectn"
+}
+```
+</details>
+
 ## SetParam
 
 SetParam method sets a single param field and its value in the request instance.
-It will override param which has been set in client instance.
+It will override param, which has been set in client instance.
 
 ```go title="Signature"
 func (r *Request) SetParam(key, val string) *Request
@@ -205,7 +302,7 @@ func (r *Request) AddParams(m map[string][]string) *Request
 ## SetParams
 
 SetParams method sets multiple param fields and its values at one go in the request instance.
-It will override param which has been set in client instance.
+It will override param, which has been set in client instance.
 
 ```go title="Signature"
 func (r *Request) SetParams(m map[string]string) *Request
@@ -214,11 +311,50 @@ func (r *Request) SetParams(m map[string]string) *Request
 ## SetParamsWithStruct
 
 SetParamsWithStruct method sets multiple param fields and its values at one go in the request instance.
-It will override param which has been set in client instance.
+It will override param, which has been set in client instance.
 
 ```go title="Signature"
 func (r *Request) SetParamsWithStruct(v any) *Request
 ```
+
+```go title="Example"
+req := client.AcquireRequest()
+defer client.ReleaseRequest(req)
+
+req.SetParamsWithStruct(struct {
+	Name    string   `json:"name"`
+	Hobbies []string `json:"hobbies"`
+}{
+	Name: "John Doe",
+	Hobbies: []string{
+		"Football",
+		"Basketball",
+	},
+})
+
+resp, err := req.Get("https://httpbin.org/response-headers")
+if err != nil {
+	panic(err)
+}
+
+fmt.Println(string(resp.Body()))
+```
+
+<details>
+<summary>Click here to see the result</summary>
+
+```
+{
+  "Content-Length": "147", 
+  "Content-Type": "application/json", 
+  "Hobbies": [
+    "Football", 
+    "Basketball"
+  ], 
+  "Name": "John Doe"
+}
+```
+</details>
 
 ## DelParams
 
@@ -280,7 +416,7 @@ func (r *Request) SetReferer(referer string) *Request
 
 ## Cookie
 
-Cookie returns the cookie be set in request instance. If the cookie doesn't exist, returns empty string.
+Cookie returns the cookie set in the request instance. If the cookie doesn't exist, returns empty string.
 
 ```go title="Signature"
 func (r *Request) Cookie(key string) string
@@ -289,7 +425,7 @@ func (r *Request) Cookie(key string) string
 ## SetCookie
 
 SetCookie method sets a single cookie field and its value in the request instance.
-It will override cookie which set in client instance.
+It will override the cookie which is set in the client instance.
 
 ```go title="Signature"
 func (r *Request) SetCookie(key, val string) *Request
@@ -298,16 +434,45 @@ func (r *Request) SetCookie(key, val string) *Request
 ## SetCookies
 
 SetCookies method sets multiple cookie fields and its values at one go in the request instance.
-It will override cookie which set in client instance.
+It will override the cookie which is set in the client instance.
 
 ```go title="Signature"
 func (r *Request) SetCookies(m map[string]string) *Request
 ```
 
+```go title="Example"
+req := client.AcquireRequest()
+defer client.ReleaseRequest(req)
+
+req.SetCookies(map[string]string{
+	"cookie1": "value1",
+	"cookie2": "value2",
+})
+
+resp, err := req.Get("https://httpbin.org/cookies")
+if err != nil {
+	panic(err)
+}
+
+fmt.Println(string(resp.Body()))
+```
+
+<details>
+<summary>Click here to see the result</summary>
+
+```
+{
+  "cookies": {
+    "test": "123"
+  }
+}
+```
+</details>
+
 ## SetCookiesWithStruct
 
 SetCookiesWithStruct method sets multiple cookie fields and its values at one go in the request instance.
-It will override cookie which set in client instance.
+It will override the cookie which is set in the client instance.
 
 ```go title="Signature"
 func (r *Request) SetCookiesWithStruct(v any) *Request
@@ -323,7 +488,7 @@ func (r *Request) DelCookies(key ...string) *Request
 
 ## PathParam
 
-PathParam returns the path param be set in request instance. If the path param doesn't exist, return empty string.
+PathParam returns the path param set in the request instance. If the path param doesn't exist, return empty string.
 
 ```go title="Signature"
 func (r *Request) PathParam(key string) string
@@ -337,6 +502,28 @@ It will override path param which set in client instance.
 ```go title="Signature"
 func (r *Request) SetPathParam(key, val string) *Request
 ```
+
+```go title="Example"
+req := client.AcquireRequest()
+defer client.ReleaseRequest(req)
+
+req.SetPathParam("base64", "R29maWJlcg==")
+
+resp, err := req.Get("https://httpbin.org/base64/:base64")
+if err != nil {
+	panic(err)
+}
+
+fmt.Println(string(resp.Body()))
+```
+
+<details>
+<summary>Click here to see the result</summary>
+
+```
+Gofiber
+```
+</details>
 
 ## SetPathParams
 
@@ -412,6 +599,42 @@ AddFormData method adds a single form data field and its value in the request in
 func (r *Request) AddFormData(key, val string) *Request
 ```
 
+```go title="Example"
+req := client.AcquireRequest()
+defer client.ReleaseRequest(req)
+
+req.AddFormData("points", "80")
+req.AddFormData("points", "90")
+req.AddFormData("points", "100")
+
+resp, err := req.Post("https://httpbin.org/post")
+if err != nil {
+	panic(err)
+}
+
+fmt.Println(string(resp.Body()))
+```
+
+<details>
+<summary>Click here to see the result</summary>
+
+```
+{
+  "args": {}, 
+  "data": "", 
+  "files": {}, 
+  "form": {
+    "points": [
+      "80", 
+      "90", 
+      "100"
+    ]
+  }, 
+  ...
+}
+```
+</details>
+
 ## SetFormData
 
 SetFormData method sets a single form data field and its value in the request instance.
@@ -419,6 +642,38 @@ SetFormData method sets a single form data field and its value in the request in
 ```go title="Signature"
 func (r *Request) SetFormData(key, val string) *Request 
 ```
+
+```go title="Example"
+req := client.AcquireRequest()
+defer client.ReleaseRequest(req)
+
+req.SetFormData("name", "john")
+req.SetFormData("email", "john@doe.com")
+
+resp, err := req.Post("https://httpbin.org/post")
+if err != nil {
+	panic(err)
+}
+
+fmt.Println(string(resp.Body()))
+```
+
+<details>
+<summary>Click here to see the result</summary>
+
+```
+{
+  "args": {}, 
+  "data": "", 
+  "files": {}, 
+  "form": {
+    "email": "john@doe.com", 
+    "name": "john"
+  }, 
+  ...
+}
+```
+</details>
 
 ## AddFormDatas
 
@@ -479,19 +734,80 @@ func (r *Request) FileByPath(path string) *File
 
 ## AddFile
 
-AddFile method adds single file field and its value in the request instance via file path.
+AddFile method adds a single file field and its value in the request instance via file path.
 
 ```go title="Signature"
 func (r *Request) AddFile(path string) *Request
 ```
 
+```go title="Example"
+req := client.AcquireRequest()
+defer client.ReleaseRequest(req)
+
+req.AddFile("test.txt")
+
+resp, err := req.Post("https://httpbin.org/post")
+if err != nil {
+	panic(err)
+}
+
+fmt.Println(string(resp.Body()))
+```
+
+<details>
+<summary>Click here to see the result</summary>
+
+```
+{
+  "args": {}, 
+  "data": "", 
+  "files": {
+    "file1": "This is an empty file!\n"
+  }, 
+  "form": {}, 
+  ...
+}
+```
+</details>
+
 ## AddFileWithReader
 
-AddFileWithReader method adds single field and its value in the request instance via reader.
+AddFileWithReader method adds a single field and its value in the request instance via reader.
 
 ```go title="Signature"
 func (r *Request) AddFileWithReader(name string, reader io.ReadCloser) *Request
 ```
+
+```go title="Example"
+req := client.AcquireRequest()
+defer client.ReleaseRequest(req)
+
+buf := bytes.NewBuffer([]byte("Hello, World!"))
+req.AddFileWithReader("test.txt", io.NopCloser(buf))
+
+resp, err := req.Post("https://httpbin.org/post")
+if err != nil {
+	panic(err)
+}
+
+fmt.Println(string(resp.Body()))
+```
+
+<details>
+<summary>Click here to see the result</summary>
+
+```
+{
+  "args": {}, 
+  "data": "", 
+  "files": {
+    "file1": "Hello, World!"
+  }, 
+  "form": {}, 
+  ...
+}
+```
+</details>
 
 ## AddFiles
 
@@ -511,16 +827,71 @@ func (r *Request) Timeout() time.Duration
 
 ## SetTimeout
 
-SetTimeout method sets timeout field and its values at one go in the request instance.
+SetTimeout method sets the timeout field and its values at one go in the request instance.
 It will override timeout which set in client instance.
 
 ```go title="Signature"
 func (r *Request) SetTimeout(t time.Duration) *Request
 ```
 
+```go title="Example 1"
+req := client.AcquireRequest()
+defer client.ReleaseRequest(req)
+
+req.SetTimeout(5 * time.Second)
+
+resp, err := req.Get("https://httpbin.org/delay/4")
+if err != nil {
+	panic(err)
+}
+
+fmt.Println(string(resp.Body()))
+```
+
+<details>
+<summary>Click here to see the result</summary>
+
+```
+{
+  "args": {}, 
+  "data": "", 
+  "files": {}, 
+  "form": {}, 
+  ...
+}
+```
+</details>
+
+```go title="Example 2"
+req := client.AcquireRequest()
+defer client.ReleaseRequest(req)
+
+req.SetTimeout(5 * time.Second)
+
+resp, err := req.Get("https://httpbin.org/delay/6")
+if err != nil {
+	panic(err)
+}
+
+fmt.Println(string(resp.Body()))
+```
+
+<details>
+<summary>Click here to see the result</summary>
+
+```
+panic: timeout or cancel
+
+goroutine 1 [running]:
+main.main()
+        main.go:18 +0xeb
+exit status 2
+```
+</details>
+
 ## MaxRedirects
 
-MaxRedirects returns the max redirects count in request.
+MaxRedirects returns the max redirects count in the request.
 
 ```go title="Signature"
 func (r *Request) MaxRedirects() int
@@ -529,7 +900,7 @@ func (r *Request) MaxRedirects() int
 ## SetMaxRedirects
 
 SetMaxRedirects method sets the maximum number of redirects at one go in the request instance.
-It will override max redirect which set in client instance.
+It will override max redirect, which is set in the client instance.
 
 ```go title="Signature"
 func (r *Request) SetMaxRedirects(count int) *Request

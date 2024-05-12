@@ -8,13 +8,13 @@ sidebar_position: 1
 
 The Fiber Client is a powerful HTTP client optimized for high performance and ease of use in server-side applications. Built on top of the robust FastHTTP library, it inherits FastHTTP's high-speed HTTP protocol implementation. The client is designed to make HTTP requests both internally within services or externally to other web services.
 
-## Features
+# Features
 - **Lightweight & Fast**: Leveraging the minimalistic design of FastHTTP, the Fiber Client is lightweight and extremely fast.
 - **Flexible Configuration**: Configure client-level settings such as timeouts, headers, and more, which apply to all requests. Specific requests can further override or merge these settings.
 - **Connection Pooling**: Manages a pool of persistent connections that reduce the overhead of repeatedly establishing connections.
 - **Timeouts & Retries**: Supports setting request timeouts and retry mechanisms to handle transient failures.
 
-## Usage
+# Usage
 To use the Fiber Client, instantiate it with the desired configuration. Here's a simple example:
 
 ```go
@@ -92,7 +92,7 @@ type Client struct {
 }
 ```
 
-## New
+ New
 
 New creates and returns a new Client object.
 
@@ -100,7 +100,73 @@ New creates and returns a new Client object.
 func New() *Client
 ```
 
-## Request Config
+# REST Methods
+
+## Get
+
+Get provides an API like axios which sends a get request.
+
+```go title="Signature"
+func (c *Client) Get(url string, cfg ...Config) (*Response, error)
+```
+
+## Post
+
+Post provides an API like axios which send post request.
+
+```go title="Signature"
+func (c *Client) Post(url string, cfg ...Config) (*Response, error)
+```
+
+## Head
+
+Head provides an API like axios which send head request.
+
+```go title="Signature"
+func (c *Client) Head(url string, cfg ...Config) (*Response, error)
+```
+
+## Put
+
+Put provides an API like axios which send put request.
+
+```go title="Signature"
+func (c *Client) Put(url string, cfg ...Config) (*Response, error)
+```
+
+## Delete
+
+Delete provides an API like axios which send delete request.
+
+```go title="Signature"
+func (c *Client) Delete(url string, cfg ...Config) (*Response, error)
+```
+
+## Options
+
+Options provides an API like axios which send options request.
+
+```go title="Signature"
+func (c *Client) Options(url string, cfg ...Config) (*Response, error)
+```
+
+## Patch
+
+Patch provides an API like axios which send patch request.
+
+```go title="Signature"
+func (c *Client) Patch(url string, cfg ...Config) (*Response, error)
+```
+
+## Custom
+
+Custom provides an API like axios which send custom request.
+
+```go title="Signature"
+func (c *Client) Custom(url, method string, cfg ...Config) (*Response, error)
+```
+
+# Request Configuration
 
 Config for easy to set the request parameters, it should be noted that when setting the request body will use JSON as the default serialization mechanism, while the priority of Body is higher than FormData, and the priority of FormData is higher than File.
 
@@ -312,6 +378,29 @@ SetBaseURL Set baseUrl which is prefix of real url.
 func (c *Client) SetBaseURL(url string) *Client
 ```
 
+```go title="Example"
+cc := client.New()
+cc.SetBaseURL("https://httpbin.org/")
+
+resp, err := cc.Get("/get")
+if err != nil {
+	panic(err)
+}
+
+fmt.Println(string(resp.Body()))
+```
+
+<details>
+<summary>Click here to see the result</summary>
+
+```
+{
+  "args": {}, 
+  ...
+}
+```
+</details>
+
 ## Header
 
 Header method returns header value via key, this method will visit all field in the header
@@ -512,6 +601,30 @@ Also it can be overridden at request level cookie options.
 func (c *Client) SetCookie(key, val string) *Client
 ```
 
+```go title="Example"
+cc := client.New()
+cc.SetCookie("john", "doe")
+
+resp, err := cc.Get("https://httpbin.org/cookies")
+if err != nil {
+	panic(err)
+}
+
+fmt.Println(string(resp.Body()))
+```
+
+<details>
+<summary>Click here to see the result</summary>
+
+```
+{
+  "cookies": {
+    "john": "doe"
+  }
+}
+```
+</details>
+
 ## SetCookies
 
 SetCookies method sets multiple cookies field and its values at one go in the client instance.
@@ -592,70 +705,6 @@ SetCookieJar sets cookie jar in client instance.
 func (c *Client) SetCookieJar(cookieJar *CookieJar) *Client
 ```
 
-## Get
-
-Get provides an API like axios which sends a get request.
-
-```go title="Signature"
-func (c *Client) Get(url string, cfg ...Config) (*Response, error)
-```
-
-## Post
-
-Post provides an API like axios which send post request.
-
-```go title="Signature"
-func (c *Client) Post(url string, cfg ...Config) (*Response, error)
-```
-
-## Head
-
-Head provides an API like axios which send head request.
-
-```go title="Signature"
-func (c *Client) Head(url string, cfg ...Config) (*Response, error)
-```
-
-## Put
-
-Put provides an API like axios which send put request.
-
-```go title="Signature"
-func (c *Client) Put(url string, cfg ...Config) (*Response, error)
-```
-
-## Delete
-
-Delete provides an API like axios which send delete request.
-
-```go title="Signature"
-func (c *Client) Delete(url string, cfg ...Config) (*Response, error)
-```
-
-## Options
-
-Options provides an API like axios which send options request.
-
-```go title="Signature"
-func (c *Client) Options(url string, cfg ...Config) (*Response, error)
-```
-
-## Patch
-
-Patch provides an API like axios which send patch request.
-
-```go title="Signature"
-func (c *Client) Patch(url string, cfg ...Config) (*Response, error)
-```
-
-## Custom
-
-Custom provides an API like axios which send custom request.
-
-```go title="Signature"
-func (c *Client) Custom(url, method string, cfg ...Config) (*Response, error)
-```
-
 ## SetDial
 
 SetDial sets dial function in client.
@@ -688,12 +737,12 @@ Reset clears the Client object
 func (c *Client) Reset()
 ```
 
-## Default Client
+# Default Client
 
 Default client is default client object of Gofiber and created using `New()`.
 You can configurate it as you wish or replace it with another clients.
 
-### C
+## C
 
 C gets default client.
 
@@ -701,7 +750,7 @@ C gets default client.
 func C()
 ```
 
-### Replace
+## Replace
 
 Replace the defaultClient, the returned function can undo.
 
@@ -713,7 +762,7 @@ The default client should not be changed concurrently.
 func Replace()
 ```
 
-### Get
+## Get
 
 Get send a get request use defaultClient, a convenient method.
 
@@ -721,7 +770,7 @@ Get send a get request use defaultClient, a convenient method.
 func Get(url string, cfg ...Config) (*Response, error)
 ```
 
-### Post
+## Post
 
 Post send a post request use defaultClient, a convenient method.
 
@@ -729,7 +778,7 @@ Post send a post request use defaultClient, a convenient method.
 func Post(url string, cfg ...Config) (*Response, error)
 ```
 
-### Head
+## Head
 
 Head send a head request use defaultClient, a convenient method.
 
@@ -737,7 +786,7 @@ Head send a head request use defaultClient, a convenient method.
 func Head(url string, cfg ...Config) (*Response, error)
 ```
 
-### Put
+## Put
 
 Put send a put request use defaultClient, a convenient method.
 
@@ -745,7 +794,7 @@ Put send a put request use defaultClient, a convenient method.
 func Put(url string, cfg ...Config) (*Response, error)
 ```
 
-### Delete
+## Delete
 
 Delete send a delete request use defaultClient, a convenient method.
 
@@ -753,7 +802,7 @@ Delete send a delete request use defaultClient, a convenient method.
 func Delete(url string, cfg ...Config) (*Response, error)
 ```
 
-### Options
+## Options
 
 Options send a options request use defaultClient, a convenient method.
 
@@ -761,7 +810,7 @@ Options send a options request use defaultClient, a convenient method.
 func Options(url string, cfg ...Config) (*Response, error)
 ```
 
-### Patch
+## Patch
 
 Patch send a patch request use defaultClient, a convenient method.
 
