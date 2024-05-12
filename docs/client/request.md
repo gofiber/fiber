@@ -6,8 +6,6 @@ description: >-
 sidebar_position: 2
 ---
 
-# Request
-
 The `Request` structure in Gofiber's HTTP client represents an HTTP request. It encapsulates all the necessary information required to send a request to a server. This includes:
 
 - **URL**: The URL to which the request is sent.

@@ -6,8 +6,6 @@ description: >-
 sidebar_position: 3
 ---
 
-# Response
-
 The `Response` structure in Gofiber's HTTP client represents the server's response to an HTTP request. It contains all the necessary information received from the server. This includes:
 
 - **Status Code**: The HTTP status code returned by the server (e.g., 200 OK, 404 Not Found).

@@ -6,8 +6,6 @@ description: >-
 sidebar_position: 1
 ---
 
-# Client
-
 The Fiber Client is a powerful HTTP client optimized for high performance and ease of use in server-side applications. Built on top of the robust FastHTTP library, it inherits FastHTTP's high-speed HTTP protocol implementation. The client is designed to make HTTP requests both internally within services or externally to other web services.
 
 ## Features
@@ -690,12 +688,12 @@ Reset clears the Client object
 func (c *Client) Reset()
 ```
 
-# Default Client
+## Default Client
 
 Default client is default client object of Gofiber and created using `New()`.
 You can configurate it as you wish or replace it with another clients.
 
-## C
+### C
 
 C gets default client.
 
@@ -703,7 +701,7 @@ C gets default client.
 func C()
 ```
 
-## Replace
+### Replace
 
 Replace the defaultClient, the returned function can undo.
 
@@ -715,7 +713,7 @@ The default client should not be changed concurrently.
 func Replace()
 ```
 
-## Get
+### Get
 
 Get send a get request use defaultClient, a convenient method.
 
@@ -723,7 +721,7 @@ Get send a get request use defaultClient, a convenient method.
 func Get(url string, cfg ...Config) (*Response, error)
 ```
 
-## Post
+### Post
 
 Post send a post request use defaultClient, a convenient method.
 
@@ -731,7 +729,7 @@ Post send a post request use defaultClient, a convenient method.
 func Post(url string, cfg ...Config) (*Response, error)
 ```
 
-## Head
+### Head
 
 Head send a head request use defaultClient, a convenient method.
 
@@ -739,7 +737,7 @@ Head send a head request use defaultClient, a convenient method.
 func Head(url string, cfg ...Config) (*Response, error)
 ```
 
-## Put
+### Put
 
 Put send a put request use defaultClient, a convenient method.
 
@@ -747,7 +745,7 @@ Put send a put request use defaultClient, a convenient method.
 func Put(url string, cfg ...Config) (*Response, error)
 ```
 
-## Delete
+### Delete
 
 Delete send a delete request use defaultClient, a convenient method.
 
@@ -755,7 +753,7 @@ Delete send a delete request use defaultClient, a convenient method.
 func Delete(url string, cfg ...Config) (*Response, error)
 ```
 
-## Options
+### Options
 
 Options send a options request use defaultClient, a convenient method.
 
@@ -763,7 +761,7 @@ Options send a options request use defaultClient, a convenient method.
 func Options(url string, cfg ...Config) (*Response, error)
 ```
 
-## Patch
+### Patch
 
 Patch send a patch request use defaultClient, a convenient method.
 

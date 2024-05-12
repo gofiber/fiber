@@ -2,11 +2,14 @@
 id: examples
 title: 🍳 Examples
 description: >-
-  Some useful examples about the client.
+    Some useful examples about the client.
 sidebar_position: 5
 ---
 
-# Basic Auth
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+## Basic Auth
 
 <Tabs>
 <TabItem value="client" label="Client">
@@ -68,7 +71,7 @@ func main() {
 </TabItem>
 </Tabs>
 
-# TLS
+## TLS
 
 <Tabs>
 <TabItem value="client" label="Client">
@@ -140,9 +143,9 @@ func main() {
 </TabItem>
 </Tabs>
 
-# Cookiejar
+## Cookiejar
 
-## Request
+### Request
 
 ```go
 func main() {
@@ -166,7 +169,7 @@ func main() {
 <details>
 <summary>Click here to see the result</summary>
 
-```
+```json
 {
   "cookies": {
     "john": "doe"
@@ -176,7 +179,7 @@ func main() {
 </details>
 
 
-## Response
+### Response
 
 ```go
 func main() {

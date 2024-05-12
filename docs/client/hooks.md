@@ -10,7 +10,7 @@ With hooks, you can manipulate the client on before request/after response stage
 
 There are 2 kinds of hooks:
 
-# Request Hooks
+## Request Hooks
 
 They are called before the HTTP request has been sent. You can use them make changes on Request object.
 
@@ -119,7 +119,7 @@ exit status 2
 ```
 </details>
 
-# Response Hooks
+## Response Hooks
 
 They are called after the HTTP response has been completed. You can use them to get some information about response and request.
 
