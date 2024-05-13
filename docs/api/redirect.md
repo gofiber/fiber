@@ -1,6 +1,6 @@
 ---
 id: redirect
-title: ↪️ Redirect
+title: 🔄 Redirect
 description: Fiber's built-in redirect package
 sidebar_position: 5
 toc_max_heading_level: 5
