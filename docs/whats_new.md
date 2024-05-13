@@ -223,10 +223,9 @@ DRAFT section
 
 ## 🌎 Client package
 
-:::caution
-DRAFT section
-:::
-
+The Gofiber client has been completely rebuilt. It includes numerous new features such as Cookiejar, request/response hooks, and more.
+You can take a look to [client docs](./client/client.md) to see what's new with the client.
+ 
 ## 📎 Binding
 
 :::caution

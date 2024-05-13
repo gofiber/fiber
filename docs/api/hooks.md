@@ -1,7 +1,7 @@
 ---
 id: hooks
 title: 🎣 Hooks
-sidebar_position: 8
+sidebar_position: 7
 ---
 
 import Tabs from '@theme/Tabs';

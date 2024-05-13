@@ -1,0 +1,8 @@
+{
+  "label": "\uD83C\uDF0E Client",
+  "position": 5,
+  "link": {
+    "type": "generated-index",
+    "description": "HTTP client for Fiber."
+  }
+}
