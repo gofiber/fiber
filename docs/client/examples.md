@@ -210,3 +210,39 @@ func main() {
 [john=doe; path=/]
 ```
 </details>
+
+### Response 2
+
+```go
+func main() {
+	jar := client.AcquireCookieJar()
+	defer client.ReleaseCookieJar(jar)
+
+	cc := client.New()
+	cc.SetCookieJar(jar)
+
+	_, err := cc.Get("https://httpbin.org/cookies/set/john/doe")
+	if err != nil {
+		panic(err)
+	}
+
+	resp, err := cc.Get("https://httpbin.org/cookies")
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(resp.String())
+}
+```
+
+<details>
+<summary>Click here to see the result</summary>
+
+```
+{
+  "cookies": {
+    "john": "doe"
+  }
+}
+```
+</details>
