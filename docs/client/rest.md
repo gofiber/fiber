@@ -4,6 +4,7 @@ title: 🖥️ REST
 description: >-
   HTTP client for Gofiber.
 sidebar_position: 1
+toc_max_heading_level: 5
 ---
 
 The Fiber Client for Fiber v3 is a powerful HTTP client optimized for high performance and ease of use in server-side applications. Built on top of the robust FastHTTP library, it inherits FastHTTP's high-speed HTTP protocol implementation. The client is designed to make HTTP requests both internally within services or externally to other web services.
@@ -118,20 +119,20 @@ Post provides an API like axios which send post request.
 func (c *Client) Post(url string, cfg ...Config) (*Response, error)
 ```
 
-### Head
-
-Head provides an API like axios which send head request.
-
-```go title="Signature"
-func (c *Client) Head(url string, cfg ...Config) (*Response, error)
-```
-
 ### Put
 
 Put provides an API like axios which send put request.
 
 ```go title="Signature"
 func (c *Client) Put(url string, cfg ...Config) (*Response, error)
+```
+
+### Patch
+
+Patch provides an API like axios which send patch request.
+
+```go title="Signature"
+func (c *Client) Patch(url string, cfg ...Config) (*Response, error)
 ```
 
 ### Delete
@@ -142,20 +143,20 @@ Delete provides an API like axios which send delete request.
 func (c *Client) Delete(url string, cfg ...Config) (*Response, error)
 ```
 
+### Head
+
+Head provides an API like axios which send head request.
+
+```go title="Signature"
+func (c *Client) Head(url string, cfg ...Config) (*Response, error)
+```
+
 ### Options
 
 Options provides an API like axios which send options request.
 
 ```go title="Signature"
 func (c *Client) Options(url string, cfg ...Config) (*Response, error)
-```
-
-### Patch
-
-Patch provides an API like axios which send patch request.
-
-```go title="Signature"
-func (c *Client) Patch(url string, cfg ...Config) (*Response, error)
 ```
 
 ### Custom
@@ -201,7 +202,9 @@ It acquires a request from the pool. You have to release it using `ReleaseReques
 func (c *Client) R() *Request
 ```
 
-### RequestHook
+### Hooks
+
+#### RequestHook
 
 RequestHook Request returns user-defined request hooks.
 
@@ -209,15 +212,7 @@ RequestHook Request returns user-defined request hooks.
 func (c *Client) RequestHook() []RequestHook
 ```
 
-### AddRequestHook
-
-AddRequestHook Add user-defined request hooks.
-
-```go title="Signature"
-func (c *Client) AddRequestHook(h ...RequestHook) *Client
-```
-
-### ResponseHook
+#### ResponseHook
 
 ResponseHook return user-define response hooks.
 
@@ -225,7 +220,15 @@ ResponseHook return user-define response hooks.
 func (c *Client) ResponseHook() []ResponseHook
 ```
 
-### AddResponseHook
+#### AddRequestHook
+
+AddRequestHook Add user-defined request hooks.
+
+```go title="Signature"
+func (c *Client) AddRequestHook(h ...RequestHook) *Client
+```
+
+#### AddResponseHook
 
 AddResponseHook Add user-defined response hooks.
 
@@ -233,7 +236,9 @@ AddResponseHook Add user-defined response hooks.
 func (c *Client) AddResponseHook(h ...ResponseHook) *Client
 ```
 
-### JSONMarshal
+### JSON
+
+#### JSONMarshal
 
 JSONMarshal returns json marshal function in Core.
 
@@ -241,15 +246,7 @@ JSONMarshal returns json marshal function in Core.
 func (c *Client) JSONMarshal() utils.JSONMarshal
 ```
 
-### SetJSONMarshal
-
-SetJSONMarshal sets the JSON encoder.
-
-```go title="Signature"
-func (c *Client) SetJSONMarshal(f utils.JSONMarshal) *Client
-```
-
-### JSONUnmarshal
+#### JSONUnmarshal
 
 JSONUnmarshal returns json unmarshal function in Core.
 
@@ -257,7 +254,15 @@ JSONUnmarshal returns json unmarshal function in Core.
 func (c *Client) JSONUnmarshal() utils.JSONUnmarshal
 ```
 
-### SetJSONUnmarshal
+#### SetJSONMarshal
+
+SetJSONMarshal sets the JSON encoder.
+
+```go title="Signature"
+func (c *Client) SetJSONMarshal(f utils.JSONMarshal) *Client
+```
+
+#### SetJSONUnmarshal
 
 Set the JSON decoder.
 
@@ -265,7 +270,9 @@ Set the JSON decoder.
 func (c *Client) SetJSONUnmarshal(f utils.JSONUnmarshal) *Client
 ```
 
-### XMLMarshal
+### XML
+
+#### XMLMarshal
 
 XMLMarshal returns xml marshal function in Core.
 
@@ -273,15 +280,7 @@ XMLMarshal returns xml marshal function in Core.
 func (c *Client) XMLMarshal() utils.XMLMarshal
 ```
 
-### SetXMLMarshal
-
-SetXMLMarshal sets the XML encoder.
-
-```go title="Signature"
-func (c *Client) SetXMLMarshal(f utils.XMLMarshal) *Client
-```
-
-### XMLUnmarshal
+#### XMLUnmarshal
 
 XMLUnmarshal returns xml unmarshal function in Core.
 
@@ -289,7 +288,15 @@ XMLUnmarshal returns xml unmarshal function in Core.
 func (c *Client) XMLUnmarshal() utils.XMLUnmarshal
 ```
 
-### SetXMLUnmarshal
+#### SetXMLMarshal
+
+SetXMLMarshal sets the XML encoder.
+
+```go title="Signature"
+func (c *Client) SetXMLMarshal(f utils.XMLMarshal) *Client
+```
+
+#### SetXMLUnmarshal
 
 SetXMLUnmarshal sets the XML decoder.
 
@@ -297,7 +304,9 @@ SetXMLUnmarshal sets the XML decoder.
 func (c *Client) SetXMLUnmarshal(f utils.XMLUnmarshal) *Client
 ```
 
-### TLSConfig
+### TLS
+
+#### TLSConfig
 
 TLSConfig returns tlsConfig in client.
 If the client doesn't have a tlsConfig, this function will initialize it.
@@ -306,7 +315,7 @@ If the client doesn't have a tlsConfig, this function will initialize it.
 func (c *Client) TLSConfig() *tls.Config
 ```
 
-### SetTLSConfig
+#### SetTLSConfig
 
 SetTLSConfig sets tlsConfig in client.
 
@@ -314,7 +323,7 @@ SetTLSConfig sets tlsConfig in client.
 func (c *Client) SetTLSConfig(config *tls.Config) *Client
 ```
 
-### SetCertificates
+#### SetCertificates
 
 SetCertificates method sets client certificates into client.
 
@@ -322,7 +331,7 @@ SetCertificates method sets client certificates into client.
 func (c *Client) SetCertificates(certs ...tls.Certificate) *Client
 ```
 
-### SetRootCertificate
+#### SetRootCertificate
 
 SetRootCertificate adds one or more root certificates into client.
 
@@ -330,7 +339,7 @@ SetRootCertificate adds one or more root certificates into client.
 func (c *Client) SetRootCertificate(path string) *Client
 ```
 
-### SetRootCertificateFromString
+#### SetRootCertificateFromString
 
 SetRootCertificateFromString method adds one or more root certificates into the client.
 
@@ -409,7 +418,7 @@ Header method returns header value via key, this method will visit all field in 
 func (c *Client) Header(key string) []string
 ```
 
-### AddHeader
+#### AddHeader
 
 AddHeader method adds a single header field and its value in the client instance.
 These headers will be applied to all requests raised from this client instance.
@@ -419,7 +428,7 @@ Also, it can be overridden at request level header options.
 func (c *Client) AddHeader(key, val string) *Client
 ```
 
-### SetHeader
+#### SetHeader
 
 SetHeader method sets a single header field and its value in the client instance.
 These headers will be applied to all requests raised from this client instance.
@@ -429,7 +438,7 @@ Also, it can be overridden at request level header options.
 func (c *Client) SetHeader(key, val string) *Client
 ```
 
-### AddHeaders
+#### AddHeaders
 
 AddHeaders method adds multiple headers field and its values at one go in the client instance.
 These headers will be applied to all requests raised from this client instance. 
@@ -439,7 +448,7 @@ Also it can be overridden at request level headers options.
 func (c *Client) AddHeaders(h map[string][]string) *Client
 ```
 
-### SetHeaders
+#### SetHeaders
 
 SetHeaders method sets multiple headers field and its values at one go in the client instance.
 These headers will be applied to all requests raised from this client instance. 
@@ -457,7 +466,7 @@ Param method returns params value via key, this method will visit all field in t
 func (c *Client) Param(key string) []string
 ```
 
-### AddParam
+#### AddParam
 
 AddParam method adds a single query param field and its value in the client instance.
 These params will be applied to all requests raised from this client instance.
@@ -467,7 +476,7 @@ Also, it can be overridden at request level param options.
 func (c *Client) AddParam(key, val string) *Client
 ```
 
-### SetParam
+#### SetParam
 
 SetParam method sets a single query param field and its value in the client instance.
 These params will be applied to all requests raised from this client instance.
@@ -477,7 +486,7 @@ Also, it can be overridden at request level param options.
 func (c *Client) SetParam(key, val string) *Client
 ```
 
-### AddParams
+#### AddParams
 
 AddParams method adds multiple query params field and its values at one go in the client instance.
 These params will be applied to all requests raised from this client instance. 
@@ -487,7 +496,7 @@ Also it can be overridden at request level params options.
 func (c *Client) AddParams(m map[string][]string) *Client
 ```
 
-### SetParams
+#### SetParams
 
 SetParams method sets multiple params field and its values at one go in the client instance.
 These params will be applied to all requests raised from this client instance. 
@@ -497,7 +506,7 @@ Also it can be overridden at request level params options.
 func (c *Client) SetParams(m map[string]string) *Client
 ```
 
-### SetParamsWithStruct
+#### SetParamsWithStruct
 
 SetParamsWithStruct method sets multiple params field and its values at one go in the client instance.
 These params will be applied to all requests raised from this client instance. 
@@ -507,7 +516,7 @@ Also it can be overridden at request level params options.
 func (c *Client) SetParamsWithStruct(v any) *Client
 ```
 
-### DelParams
+#### DelParams
 
 DelParams method deletes single or multiple params field and its values in client.
 
@@ -544,7 +553,7 @@ If the path param doesn't exist, return empty string.
 func (c *Client) PathParam(key string) string
 ```
 
-### SetPathParam
+#### SetPathParam
 
 SetPathParam method sets a single path param field and its value in the client instance.
 These path params will be applied to all requests raised from this client instance.
@@ -554,7 +563,7 @@ Also it can be overridden at request level path params options.
 func (c *Client) SetPathParam(key, val string) *Client
 ```
 
-### SetPathParams
+#### SetPathParams
 
 SetPathParams method sets multiple path params field and its values at one go in the client instance.
 These path params will be applied to all requests raised from this client instance. 
@@ -564,7 +573,7 @@ Also it can be overridden at request level path params options.
 func (c *Client) SetPathParams(m map[string]string) *Client
 ```
 
-### SetPathParamsWithStruct
+#### SetPathParamsWithStruct
 
 SetPathParamsWithStruct method sets multiple path params field and its values at one go in the client instance.
 These path params will be applied to all requests raised from this client instance. 
@@ -574,7 +583,7 @@ Also it can be overridden at request level path params options.
 func (c *Client) SetPathParamsWithStruct(v any) *Client
 ```
 
-### DelPathParams
+#### DelPathParams
 
 DelPathParams method deletes single or multiple path params field and its values in client.
 
@@ -591,7 +600,7 @@ If cookie doesn't exist, return empty string.
 func (c *Client) Cookie(key string) string
 ```
 
-### SetCookie
+#### SetCookie
 
 SetCookie method sets a single cookie field and its value in the client instance.
 These cookies will be applied to all requests raised from this client instance.
@@ -625,7 +634,7 @@ fmt.Println(string(resp.Body()))
 ```
 </details>
 
-### SetCookies
+#### SetCookies
 
 SetCookies method sets multiple cookies field and its values at one go in the client instance.
 These cookies will be applied to all requests raised from this client instance. 
@@ -635,7 +644,7 @@ Also it can be overridden at request level cookie options.
 func (c *Client) SetCookies(m map[string]string) *Client
 ```
 
-### SetCookiesWithStruct
+#### SetCookiesWithStruct
 
 SetCookiesWithStruct method sets multiple cookies field and its values at one go in the client instance.
 These cookies will be applied to all requests raised from this client instance.
@@ -645,17 +654,7 @@ Also it can be overridden at request level cookies options.
 func (c *Client) SetCookiesWithStruct(v any) *Client
 ```
 
-### SetCookiesWithStruct
-
-SetCookiesWithStruct method sets multiple cookies field and its values at one go in the client instance.
-These cookies will be applied to all requests raised from this client instance.
-Also it can be overridden at request level cookies options.
-
-```go title="Signature"
-func (c *Client) SetCookiesWithStruct(v any) *Client
-```
-
-### DelCookies
+#### DelCookies
 
 DelCookies method deletes single or multiple cookies field and its values in client.
 
@@ -681,20 +680,12 @@ Debug enable log debug level output.
 func (c *Client) Debug() *Client
 ```
 
-### DisableDebug
+#### DisableDebug
 
 DisableDebug disables log debug level output.
 
 ```go title="Signature"
 func (c *Client) DisableDebug() *Client
-```
-
-### SetCookieJar
-
-DisableDebug disables log debug level output.
-
-```go title="Signature"
-func (c *Client) SetCookieJar(cookieJar *CookieJar) *Client
 ```
 
 ### SetCookieJar
@@ -747,19 +738,7 @@ You can configurate it as you wish or replace it with another clients.
 C gets default client.
 
 ```go title="Signature"
-func C()
-```
-
-### Replace
-
-Replace the defaultClient, the returned function can undo.
-
-:::caution
-The default client should not be changed concurrently.
-:::
-
-```go title="Signature"
-func Replace()
+func C() *Client
 ```
 
 ### Get
@@ -778,20 +757,20 @@ Post is a convenience method that sends a POST request using the `defaultClient`
 func Post(url string, cfg ...Config) (*Response, error)
 ```
 
-### Head
-
-Head sends a HEAD request using the `defaultClient`, a convenience method.
-
-```go title="Signature"
-func Head(url string, cfg ...Config) (*Response, error)
-```
-
 ### Put
 
 Put is a convenience method that sends a PUT request using the `defaultClient`.
 
 ```go title="Signature"
 func Put(url string, cfg ...Config) (*Response, error)
+```
+
+### Patch
+
+Patch is a convenience method that sends a PATCH request using the `defaultClient`.
+
+```go title="Signature"
+func Patch(url string, cfg ...Config) (*Response, error)
 ```
 
 ### Delete
@@ -802,6 +781,14 @@ Delete is a convenience method that sends a DELETE request using the `defaultCli
 func Delete(url string, cfg ...Config) (*Response, error)
 ```
 
+### Head
+
+Head sends a HEAD request using the `defaultClient`, a convenience method.
+
+```go title="Signature"
+func Head(url string, cfg ...Config) (*Response, error)
+```
+
 ### Options
 
 Options is a convenience method that sends an OPTIONS request using the `defaultClient`.
@@ -810,10 +797,14 @@ Options is a convenience method that sends an OPTIONS request using the `default
 func Options(url string, cfg ...Config) (*Response, error)
 ```
 
-### Patch
+### Replace
 
-Patch is a convenience method that sends a PATCH request using the `defaultClient`.
+Replace the defaultClient, the returned function can undo.
+
+:::caution
+The default client should not be changed concurrently.
+:::
 
 ```go title="Signature"
-func Patch(url string, cfg ...Config) (*Response, error)
+func Replace(c *Client) func()
 ```

@@ -2,7 +2,7 @@
 id: examples
 title: 🍳 Examples
 description: >-
-Client usage examples.
+  Client usage examples.
 sidebar_position: 5
 ---
 

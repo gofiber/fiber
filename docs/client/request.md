@@ -43,6 +43,82 @@ type Request struct {
 }
 ```
 
+
+## REST Methods
+
+### Get
+
+Get sends the GET request.
+It sets the URL and HTTP method, and then it sends the request.
+
+```go title="Signature"
+func (r *Request) Get(url string) (*Response, error)
+```
+
+### Post
+
+Post sends the POST request.
+It sets the URL and HTTP method, and then it sends the request.
+
+```go title="Signature"
+func (r *Request) Post(url string) (*Response, error)
+```
+
+### Put
+
+Put sends the PUT request.
+It sets the URL and HTTP method, and then it sends the request.
+
+```go title="Signature"
+func (r *Request) Put(url string) (*Response, error)
+```
+
+### Patch
+
+Patch sends the PATCH request.
+It sets the URL and HTTP method, and then it sends the request.
+
+```go title="Signature"
+func (r *Request) Patch(url string) (*Response, error)
+```
+
+### Delete
+
+Delete sends the DELETE request.
+It sets the URL and HTTP method, and then it sends the request.
+
+```go title="Signature"
+func (r *Request) Delete(url string) (*Response, error)
+```
+
+### Head
+
+Head sends the HEAD request.
+It sets the URL and HTTP method, and then it sends the request.
+
+```go title="Signature"
+func (r *Request) Head(url string) (*Response, error)
+```
+
+### Options
+
+Options sends the OPTIONS request.
+It sets the URL and HTTP method, and then it sends the request.
+
+```go title="Signature"
+func (r *Request) Options(url string) (*Response, error)
+```
+
+### Custom
+
+Custom sends a request with custom HTTP method.
+It sets the URL and HTTP method, and then it sends the request.
+You can use Custom to send requests with methods like TRACE, CONNECT.
+
+```go title="Signature"
+func (r *Request) Custom(url, method string) (*Response, error)
+```
+
 ## AcquireRequest
 
 AcquireRequest returns an empty request object from the pool.
@@ -135,7 +211,7 @@ Header method returns header value via key, this method will visit all field in 
 func (r *Request) Header(key string) []string
 ```
 
-## AddHeader
+### AddHeader
 
 AddHeader method adds a single header field and its value in the request instance.
 
@@ -177,7 +253,7 @@ fmt.Println(resp.String())
 
 </details>
 
-## SetHeader
+### SetHeader
 
 SetHeader method sets a single header field and its value in the request instance.
 It will override the header which has been set in the client instance.
@@ -219,7 +295,7 @@ fmt.Println(resp.String())
 
 </details>
 
-## AddHeaders
+### AddHeaders
 
 AddHeaders method adds multiple header fields and its values at one go in the request instance.
 
@@ -227,7 +303,7 @@ AddHeaders method adds multiple header fields and its values at one go in the re
 func (r *Request) AddHeaders(h map[string][]string) *Request
 ```
 
-## SetHeaders
+### SetHeaders
 
 SetHeaders method sets multiple header fields and its values at one go in the request instance.
 It will override the header which has been set in the client instance.
@@ -244,7 +320,7 @@ Param method returns params value via key, this method will visit all field in t
 func (r *Request) Param(key string) []string
 ```
 
-## AddParam
+### AddParam
 
 AddParam method adds a single param field and its value in the request instance.
 
@@ -285,7 +361,7 @@ fmt.Println(string(resp.Body()))
 
 </details>
 
-## SetParam
+### SetParam
 
 SetParam method sets a single param field and its value in the request instance.
 It will override param, which has been set in client instance.
@@ -294,7 +370,7 @@ It will override param, which has been set in client instance.
 func (r *Request) SetParam(key, val string) *Request
 ```
 
-## AddParams
+### AddParams
 
 AddParams method adds multiple param fields and its values at one go in the request instance.
 
@@ -302,7 +378,7 @@ AddParams method adds multiple param fields and its values at one go in the requ
 func (r *Request) AddParams(m map[string][]string) *Request
 ```
 
-## SetParams
+### SetParams
 
 SetParams method sets multiple param fields and its values at one go in the request instance.
 It will override param, which has been set in client instance.
@@ -311,7 +387,7 @@ It will override param, which has been set in client instance.
 func (r *Request) SetParams(m map[string]string) *Request
 ```
 
-## SetParamsWithStruct
+### SetParamsWithStruct
 
 SetParamsWithStruct method sets multiple param fields and its values at one go in the request instance.
 It will override param, which has been set in client instance.
@@ -360,7 +436,7 @@ fmt.Println(string(resp.Body()))
 
 </details>
 
-## DelParams
+### DelParams
 
 DelParams method deletes single or multiple param fields and their values.
 
@@ -426,7 +502,7 @@ Cookie returns the cookie set in the request instance. If the cookie doesn't exi
 func (r *Request) Cookie(key string) string
 ```
 
-## SetCookie
+### SetCookie
 
 SetCookie method sets a single cookie field and its value in the request instance.
 It will override the cookie which is set in the client instance.
@@ -435,7 +511,7 @@ It will override the cookie which is set in the client instance.
 func (r *Request) SetCookie(key, val string) *Request
 ```
 
-## SetCookies
+### SetCookies
 
 SetCookies method sets multiple cookie fields and its values at one go in the request instance.
 It will override the cookie which is set in the client instance.
@@ -474,7 +550,7 @@ fmt.Println(string(resp.Body()))
 
 </details>
 
-## SetCookiesWithStruct
+### SetCookiesWithStruct
 
 SetCookiesWithStruct method sets multiple cookie fields and its values at one go in the request instance.
 It will override the cookie which is set in the client instance.
@@ -483,7 +559,7 @@ It will override the cookie which is set in the client instance.
 func (r *Request) SetCookiesWithStruct(v any) *Request
 ```
 
-## DelCookies
+### DelCookies
 
 DelCookies method deletes single or multiple cookie fields ant its values.
 
@@ -499,7 +575,7 @@ PathParam returns the path param set in the request instance. If the path param 
 func (r *Request) PathParam(key string) string
 ```
 
-## SetPathParam
+### SetPathParam
 
 SetPathParam method sets a single path param field and its value in the request instance.
 It will override path param which set in client instance.
@@ -531,7 +607,7 @@ Gofiber
 
 </details>
 
-## SetPathParams
+### SetPathParams
 
 SetPathParams method sets multiple path param fields and its values at one go in the request instance.
 It will override path param which set in client instance.
@@ -540,7 +616,7 @@ It will override path param which set in client instance.
 func (r *Request) SetPathParams(m map[string]string) *Request
 ```
 
-## SetPathParamsWithStruct
+### SetPathParamsWithStruct
 
 SetPathParamsWithStruct method sets multiple path param fields and its values at one go in the request instance.
 It will override path param which set in client instance.
@@ -549,7 +625,7 @@ It will override path param which set in client instance.
 func (r *Request) SetPathParamsWithStruct(v any) *Request
 ```
 
-## DelPathParams
+### DelPathParams
 
 DelPathParams method deletes single or multiple path param fields ant its values.
 
@@ -557,7 +633,7 @@ DelPathParams method deletes single or multiple path param fields ant its values
 func (r *Request) DelPathParams(key ...string) *Request
 ```
 
-## ResetPathParams
+### ResetPathParams
 
 ResetPathParams deletes all path params.
 
@@ -597,7 +673,7 @@ FormData method returns form data value via key, this method will visit all fiel
 func (r *Request) FormData(key string) []string
 ```
 
-## AddFormData
+### AddFormData
 
 AddFormData method adds a single form data field and its value in the request instance.
 
@@ -642,7 +718,7 @@ fmt.Println(string(resp.Body()))
 
 </details>
 
-## SetFormData
+### SetFormData
 
 SetFormData method sets a single form data field and its value in the request instance.
 
@@ -683,7 +759,7 @@ fmt.Println(string(resp.Body()))
 
 </details>
 
-## AddFormDatas
+### AddFormDatas
 
 AddFormDatas method adds multiple form data fields and its values in the request instance.
 
@@ -691,7 +767,7 @@ AddFormDatas method adds multiple form data fields and its values in the request
 func (r *Request) AddFormDatas(m map[string][]string) *Request
 ```
 
-## SetFormDatas
+### SetFormDatas
 
 SetFormDatas method sets multiple form data fields and its values in the request instance.
 
@@ -699,7 +775,7 @@ SetFormDatas method sets multiple form data fields and its values in the request
 func (r *Request) SetFormDatas(m map[string]string) *Request
 ```
 
-## SetFormDatas
+### SetFormDatas
 
 SetFormDatas method sets multiple form data fields and its values in the request instance.
 
@@ -707,7 +783,7 @@ SetFormDatas method sets multiple form data fields and its values in the request
 func (r *Request) SetFormDatas(m map[string]string) *Request
 ```
 
-## SetFormDatasWithStruct
+### SetFormDatasWithStruct
 
 SetFormDatasWithStruct method sets multiple form data fields and its values in the request instance via struct.
 
@@ -715,7 +791,7 @@ SetFormDatasWithStruct method sets multiple form data fields and its values in t
 func (r *Request) SetFormDatasWithStruct(v any) *Request
 ```
 
-## DelFormDatas
+### DelFormDatas
 
 DelFormDatas method deletes multiple form data fields and its value in the request instance.
 
@@ -732,7 +808,7 @@ If the name field is empty, it will try to match path.
 func (r *Request) File(name string) *File
 ```
 
-## FileByPath
+### FileByPath
 
 FileByPath returns file ptr store in request obj by path.
 
@@ -740,7 +816,7 @@ FileByPath returns file ptr store in request obj by path.
 func (r *Request) FileByPath(path string) *File
 ```
 
-## AddFile
+### AddFile
 
 AddFile method adds a single file field and its value in the request instance via file path.
 
@@ -779,7 +855,7 @@ fmt.Println(string(resp.Body()))
 
 </details>
 
-## AddFileWithReader
+### AddFileWithReader
 
 AddFileWithReader method adds a single field and its value in the request instance via reader.
 
@@ -819,7 +895,7 @@ fmt.Println(string(resp.Body()))
 
 </details>
 
-## AddFiles
+### AddFiles
 
 AddFiles method adds multiple file fields and its value in the request instance via File instance.
 
@@ -916,79 +992,6 @@ It will override max redirect, which is set in the client instance.
 
 ```go title="Signature"
 func (r *Request) SetMaxRedirects(count int) *Request
-```
-
-## Get
-
-Get sends the GET request.
-It sets the URL and HTTP method, and then it sends the request.
-
-```go title="Signature"
-func (r *Request) Get(url string) (*Response, error)
-```
-
-## Post
-
-Post sends the POST request.
-It sets the URL and HTTP method, and then it sends the request.
-
-```go title="Signature"
-func (r *Request) Post(url string) (*Response, error)
-```
-
-## Head
-
-Head sends the HEAD request.
-It sets the URL and HTTP method, and then it sends the request.
-
-```go title="Signature"
-func (r *Request) Head(url string) (*Response, error)
-```
-
-## Put
-
-Put sends the PUT request.
-It sets the URL and HTTP method, and then it sends the request.
-
-```go title="Signature"
-func (r *Request) Put(url string) (*Response, error)
-```
-
-## Delete
-
-Delete sends the DELETE request.
-It sets the URL and HTTP method, and then it sends the request.
-
-```go title="Signature"
-func (r *Request) Delete(url string) (*Response, error)
-```
-
-## Options
-
-Options sends the OPTIONS request.
-It sets the URL and HTTP method, and then it sends the request.
-
-```go title="Signature"
-func (r *Request) Options(url string) (*Response, error)
-```
-
-## Patch
-
-Patch sends the PATCH request.
-It sets the URL and HTTP method, and then it sends the request.
-
-```go title="Signature"
-func (r *Request) Patch(url string) (*Response, error)
-```
-
-## Custom
-
-Custom sends a request with custom HTTP method.
-It sets the URL and HTTP method, and then it sends the request.
-You can use Custom to send requests with methods like TRACE, CONNECT.
-
-```go title="Signature"
-func (r *Request) Custom(url, method string) (*Response, error)
 ```
 
 ## Send
