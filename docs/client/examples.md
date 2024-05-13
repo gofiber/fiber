@@ -176,6 +176,7 @@ func main() {
   }
 }
 ```
+
 </details>
 
 ### Response
@@ -205,9 +206,10 @@ func main() {
 <details>
 <summary>Click here to see the result</summary>
 
-```
+```plaintext
 [john=doe; path=/]
 ```
+
 </details>
 
 ### Response 2
@@ -237,11 +239,12 @@ func main() {
 <details>
 <summary>Click here to see the result</summary>
 
-```
+```json
 {
   "cookies": {
     "john": "doe"
   }
 }
 ```
+
 </details>

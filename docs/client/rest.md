@@ -6,7 +6,7 @@ description: >-
 sidebar_position: 1
 ---
 
-The Fiber Client is a powerful HTTP client optimized for high performance and ease of use in server-side applications. Built on top of the robust FastHTTP library, it inherits FastHTTP's high-speed HTTP protocol implementation. The client is designed to make HTTP requests both internally within services or externally to other web services.
+The Fiber Client for Fiber v3 is a powerful HTTP client optimized for high performance and ease of use in server-side applications. Built on top of the robust FastHTTP library, it inherits FastHTTP's high-speed HTTP protocol implementation. The client is designed to make HTTP requests both internally within services or externally to other web services.
 
 ## Features
 - **Lightweight & Fast**: Leveraging the minimalistic design of FastHTTP, the Fiber Client is lightweight and extremely fast.
@@ -332,7 +332,7 @@ func (c *Client) SetRootCertificate(path string) *Client
 
 ### SetRootCertificateFromString
 
-SetRootCertificateFromString method adds one or more root certificates into client.
+SetRootCertificateFromString method adds one or more root certificates into the client.
 
 ```go title="Signature"
 func (c *Client) SetRootCertificateFromString(pem string) *Client
@@ -356,7 +356,7 @@ func (c *Client) RetryConfig() *RetryConfig
 
 ### SetRetryConfig
 
-SetRetryConfig sets retry config in client which is impl by addon/retry package.
+SetRetryConfig sets retry config in client, which is impl by addon/retry package.
 
 ```go title="Signature"
 func (c *Client) SetRetryConfig(config *RetryConfig) *Client
@@ -517,7 +517,7 @@ func (c *Client) DelParams(key ...string) *Client
 
 ### SetUserAgent
 
-SetUserAgent method sets userAgent field and its value in the client instance.
+SetUserAgent method sets the userAgent field and its value in the client instance.
 This ua will be applied to all requests raised from this client instance.
 Also it can be overridden at request level ua options.
 

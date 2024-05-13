@@ -61,7 +61,7 @@ func main() {
 <details>
 <summary>Click here to see the result</summary>
 
-```
+```plaintext
 Status code: 200
 Repository: gofiber/fiber
 Description: ⚡️ Express inspired web framework written in Go
@@ -70,6 +70,7 @@ Owner: gofiber
 Name: fiber
 Full Name: gofiber/fiber
 ```
+
 </details>
 
 There are also some builtin request hooks provide some functionalities for Fiber client. Here is a list of them:
@@ -108,7 +109,7 @@ func main() {
 <details>
 <summary>Click here to see the result</summary>
 
-```
+```shell
 Hook 1.
 panic: error
 
@@ -117,6 +118,7 @@ main.main()
         main.go:25 +0xaa
 exit status 2
 ```
+
 </details>
 
 ## Response Hooks
@@ -151,7 +153,7 @@ func main() {
 <details>
 <summary>Click here to see the result</summary>
 
-```
+```plaintext
 Response Status Code: 200
 HTTP protocol: HTTP/1.1
 
@@ -168,6 +170,7 @@ Last-Modified: Thu, 17 Oct 2019 07:18:26 GMT
 Vary: Accept-Encoding
 X-Cache: HIT
 ```
+
 </details>
 
 There are also some builtin request hooks provide some functionalities for Fiber client. Here is a list of them:
@@ -209,7 +212,7 @@ func main() {
 <details>
 <summary>Click here to see the result</summary>
 
-```
+```shell
 Hook 1
 Hook 2
 panic: error
@@ -219,6 +222,7 @@ main.main()
         main.go:30 +0xd6
 exit status 2
 ```
+
 </details>
 
 :::info
@@ -249,8 +253,9 @@ func main() {
 <details>
 <summary>Click here to see the result</summary>
 
-```
+```plaintext
 Hook 1
 Hook 2
 ```
+
 </details>

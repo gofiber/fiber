@@ -162,7 +162,7 @@ fmt.Println(resp.String())
 <details>
 <summary>Click here to see the result</summary>
 
-```
+```json
 {
   "headers": {
     "Golang": "Fiber", 
@@ -174,6 +174,7 @@ fmt.Println(resp.String())
   }
 }
 ```
+
 </details>
 
 ## SetHeader
@@ -203,7 +204,7 @@ fmt.Println(resp.String())
 <details>
 <summary>Click here to see the result</summary>
 
-```
+```json
 {
   "headers": {
     "Golang": "Fiber", 
@@ -215,6 +216,7 @@ fmt.Println(resp.String())
   }
 }
 ```
+
 </details>
 
 ## AddHeaders
@@ -269,7 +271,7 @@ fmt.Println(string(resp.Body()))
 <details>
 <summary>Click here to see the result</summary>
 
-```
+```json
 {
   "Content-Length": "145", 
   "Content-Type": "application/json", 
@@ -280,6 +282,7 @@ fmt.Println(string(resp.Body()))
   "name": "efectn"
 }
 ```
+
 </details>
 
 ## SetParam
@@ -343,7 +346,7 @@ fmt.Println(string(resp.Body()))
 <details>
 <summary>Click here to see the result</summary>
 
-```
+```json
 {
   "Content-Length": "147", 
   "Content-Type": "application/json", 
@@ -354,6 +357,7 @@ fmt.Println(string(resp.Body()))
   "Name": "John Doe"
 }
 ```
+
 </details>
 
 ## DelParams
@@ -460,13 +464,14 @@ fmt.Println(string(resp.Body()))
 <details>
 <summary>Click here to see the result</summary>
 
-```
+```json
 {
   "cookies": {
     "test": "123"
   }
 }
 ```
+
 </details>
 
 ## SetCookiesWithStruct
@@ -520,9 +525,10 @@ fmt.Println(string(resp.Body()))
 <details>
 <summary>Click here to see the result</summary>
 
-```
+```plaintext
 Gofiber
 ```
+
 </details>
 
 ## SetPathParams
@@ -618,7 +624,7 @@ fmt.Println(string(resp.Body()))
 <details>
 <summary>Click here to see the result</summary>
 
-```
+```json
 {
   "args": {}, 
   "data": "", 
@@ -630,9 +636,10 @@ fmt.Println(string(resp.Body()))
       "100"
     ]
   }, 
-  ...
+  // ...
 }
 ```
+
 </details>
 
 ## SetFormData
@@ -661,7 +668,7 @@ fmt.Println(string(resp.Body()))
 <details>
 <summary>Click here to see the result</summary>
 
-```
+```json
 {
   "args": {}, 
   "data": "", 
@@ -670,9 +677,10 @@ fmt.Println(string(resp.Body()))
     "email": "john@doe.com", 
     "name": "john"
   }, 
-  ...
+  // ...
 }
 ```
+
 </details>
 
 ## AddFormDatas
@@ -757,7 +765,7 @@ fmt.Println(string(resp.Body()))
 <details>
 <summary>Click here to see the result</summary>
 
-```
+```json
 {
   "args": {}, 
   "data": "", 
@@ -765,9 +773,10 @@ fmt.Println(string(resp.Body()))
     "file1": "This is an empty file!\n"
   }, 
   "form": {}, 
-  ...
+  // ...
 }
 ```
+
 </details>
 
 ## AddFileWithReader
@@ -796,7 +805,7 @@ fmt.Println(string(resp.Body()))
 <details>
 <summary>Click here to see the result</summary>
 
-```
+```json
 {
   "args": {}, 
   "data": "", 
@@ -804,9 +813,10 @@ fmt.Println(string(resp.Body()))
     "file1": "Hello, World!"
   }, 
   "form": {}, 
-  ...
+  // ...
 }
 ```
+
 </details>
 
 ## AddFiles
@@ -851,15 +861,16 @@ fmt.Println(string(resp.Body()))
 <details>
 <summary>Click here to see the result</summary>
 
-```
+```json
 {
   "args": {}, 
   "data": "", 
   "files": {}, 
   "form": {}, 
-  ...
+  // ...
 }
 ```
+
 </details>
 
 ```go title="Example 2"
@@ -879,7 +890,7 @@ fmt.Println(string(resp.Body()))
 <details>
 <summary>Click here to see the result</summary>
 
-```
+```shell
 panic: timeout or cancel
 
 goroutine 1 [running]:
@@ -887,6 +898,7 @@ main.main()
         main.go:18 +0xeb
 exit status 2
 ```
+
 </details>
 
 ## MaxRedirects

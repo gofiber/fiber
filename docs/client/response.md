@@ -83,6 +83,7 @@ fmt.Println(resp.Protocol())
 ```
 HTTP/1.1
 ```
+
 </details>
 
 ## Header
@@ -119,6 +120,7 @@ for _, cookie := range cookies {
 ```
 go => fiber
 ```
+
 </details>
 
 ## Body
@@ -174,6 +176,7 @@ fmt.Printf("%+v\n", out)
 ```
 {Slideshow:{Author:Yours Truly Date:date of publication Title:Sample Slide Show}}
 ```
+
 </details>
 
 ## XML
