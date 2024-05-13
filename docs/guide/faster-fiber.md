@@ -31,7 +31,7 @@ func main() {
 
 ### References
 
-- [Set custom JSON encoder for client](../api/client.md#jsonencoder)
-- [Set custom JSON decoder for client](../api/client.md#jsondecoder)
+- [Set custom JSON encoder for client](../client/rest.md#setjsonmarshal)
+- [Set custom JSON decoder for client](../client/rest.md#setjsonunmarshal)
 - [Set custom JSON encoder for application](../api/fiber.md#jsonencoder)
 - [Set custom JSON decoder for application](../api/fiber.md#jsondecoder)
