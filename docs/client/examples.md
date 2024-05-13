@@ -178,7 +178,6 @@ func main() {
 ```
 </details>
 
-
 ### Response
 
 ```go

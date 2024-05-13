@@ -122,7 +122,7 @@ func (r *Request) Context() context.Context
 ## SetContext
 
 SetContext sets the context.Context for current Request. It allows interruption of the request execution if the ctx.Done() channel is closed.
-See https://blog.golang.org/context article and the "context" package documentation.
+See [the article](https://blog.golang.org/context) and the [context](https://pkg.go.dev/context) package documentation.
 
 ```go title="Signature"
 func (r *Request) SetContext(ctx context.Context) *Request
@@ -375,7 +375,7 @@ func (r *Request) UserAgent() string
 ## SetUserAgent
 
 SetUserAgent method sets user agent in request.
-It will override user agent which has been set in client instance.
+It will override the user agent which has been set in the client instance.
 
 ```go title="Signature"
 func (r *Request) SetUserAgent(ua string) *Request
@@ -908,7 +908,7 @@ func (r *Request) SetMaxRedirects(count int) *Request
 
 ## Get
 
-Get sends the GET request. 
+Get sends the GET request.
 It sets the URL and HTTP method, and then it sends the request.
 
 ```go title="Signature"
@@ -917,7 +917,7 @@ func (r *Request) Get(url string) (*Response, error)
 
 ## Post
 
-Post sends the POST request. 
+Post sends the POST request.
 It sets the URL and HTTP method, and then it sends the request.
 
 ```go title="Signature"
@@ -926,7 +926,7 @@ func (r *Request) Post(url string) (*Response, error)
 
 ## Head
 
-Head sends the HEAD request. 
+Head sends the HEAD request.
 It sets the URL and HTTP method, and then it sends the request.
 
 ```go title="Signature"
@@ -935,7 +935,7 @@ func (r *Request) Head(url string) (*Response, error)
 
 ## Put
 
-Put sends the PUT request. 
+Put sends the PUT request.
 It sets the URL and HTTP method, and then it sends the request.
 
 ```go title="Signature"
@@ -944,7 +944,7 @@ func (r *Request) Put(url string) (*Response, error)
 
 ## Delete
 
-Delete sends the DELETE request. 
+Delete sends the DELETE request.
 It sets the URL and HTTP method, and then it sends the request.
 
 ```go title="Signature"
@@ -953,7 +953,7 @@ func (r *Request) Delete(url string) (*Response, error)
 
 ## Options
 
-Options sends the OPTIONS request. 
+Options sends the OPTIONS request.
 It sets the URL and HTTP method, and then it sends the request.
 
 ```go title="Signature"
@@ -962,7 +962,7 @@ func (r *Request) Options(url string) (*Response, error)
 
 ## Patch
 
-Patch sends the PATCH request. 
+Patch sends the PATCH request.
 It sets the URL and HTTP method, and then it sends the request.
 
 ```go title="Signature"
@@ -971,7 +971,7 @@ func (r *Request) Patch(url string) (*Response, error)
 
 ## Custom
 
-Custom sends a request with custom HTTP method. 
+Custom sends a request with custom HTTP method.
 It sets the URL and HTTP method, and then it sends the request.
 You can use Custom to send requests with methods like TRACE, CONNECT.
 
@@ -1334,7 +1334,7 @@ func (f *File) SetPath(p string)
 
 ## SetReader
 
-SetReader method can receive a io.ReadCloser which will be closed in parserBody hook.
+SetReader method can receive an io.ReadCloser which will be closed in parserBody hook.
 
 ```go title="Signature"
 func (f *File) SetReader(r io.ReadCloser)

@@ -202,7 +202,7 @@ func (r *Response) Reset()
 
 ## Close
 
-Close method will release Request object and Response object, after call Close please don't use these object.
+Close method will release the Request and Response objects; after calling Close, please do not use these objects.
 
 ```go title="Signature"
 func (r *Response) Close()
