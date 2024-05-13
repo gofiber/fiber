@@ -1007,7 +1007,7 @@ Reset clears Request object, used by ReleaseRequest method.
 func (r *Request) Reset()
 ```
 
-# Header
+## Header
 
 Header is a wrapper which wrap http.Header, the header in client and request will store in it.
 
@@ -1017,7 +1017,7 @@ type Header struct {
 }
 ```
 
-## PeekMultiple
+### PeekMultiple
 
 PeekMultiple methods returns multiple field in header with same key.
 
@@ -1025,7 +1025,7 @@ PeekMultiple methods returns multiple field in header with same key.
 func (h *Header) PeekMultiple(key string) []string
 ```
 
-## AddHeaders
+### AddHeaders
 
 AddHeaders receives a map and add each value to header.
 
@@ -1033,7 +1033,7 @@ AddHeaders receives a map and add each value to header.
 func (h *Header) AddHeaders(r map[string][]string)
 ```
 
-## SetHeaders
+### SetHeaders
 
 SetHeaders will override all headers.
 
@@ -1041,7 +1041,7 @@ SetHeaders will override all headers.
 func (h *Header) SetHeaders(r map[string]string)
 ```
 
-# QueryParam
+## QueryParam
 
 QueryParam is a wrapper which wrap url.Values, the query string and formdata in client and request will store in it.
 
@@ -1051,7 +1051,7 @@ type QueryParam struct {
 }
 ```
 
-## AddParams
+### AddParams
 
 AddParams receive a map and add each value to param.
 
@@ -1059,7 +1059,7 @@ AddParams receive a map and add each value to param.
 func (p *QueryParam) AddParams(r map[string][]string)
 ```
 
-## SetParams
+### SetParams
 
 SetParams will override all params.
 
@@ -1067,7 +1067,7 @@ SetParams will override all params.
 func (p *QueryParam) SetParams(r map[string]string)
 ```
 
-## SetParamsWithStruct
+### SetParamsWithStruct
 
 SetParamsWithStruct will override all params with struct or pointer of struct.
 Nested structs are not currently supported.
@@ -1076,7 +1076,7 @@ Nested structs are not currently supported.
 func (p *QueryParam) SetParamsWithStruct(v any)
 ```
 
-# Cookie
+## Cookie
 
 Cookie is a map which to store the cookies.
 
@@ -1084,7 +1084,7 @@ Cookie is a map which to store the cookies.
 type Cookie map[string]string
 ```
 
-## Add
+### Add
 
 Add method impl the method in WithStruct interface.
 
@@ -1092,7 +1092,7 @@ Add method impl the method in WithStruct interface.
 func (c Cookie) Add(key, val string)
 ```
 
-## Del
+### Del
 
 Del method impl the method in WithStruct interface.
 
@@ -1100,7 +1100,7 @@ Del method impl the method in WithStruct interface.
 func (c Cookie) Del(key string)
 ```
 
-## SetCookie
+### SetCookie
 
 SetCookie method sets a single val in Cookie.
 
@@ -1108,7 +1108,7 @@ SetCookie method sets a single val in Cookie.
 func (c Cookie) SetCookie(key, val string)
 ```
 
-## SetCookies
+### SetCookies
 
 SetCookies method sets multiple val in Cookie.
 
@@ -1116,7 +1116,7 @@ SetCookies method sets multiple val in Cookie.
 func (c Cookie) SetCookies(m map[string]string)
 ```
 
-## SetCookiesWithStruct
+### SetCookiesWithStruct
 
 SetCookiesWithStruct method sets multiple val in Cookie via a struct.
 
@@ -1124,7 +1124,7 @@ SetCookiesWithStruct method sets multiple val in Cookie via a struct.
 func (c Cookie) SetCookiesWithStruct(v any)
 ```
 
-## DelCookies
+### DelCookies
 
 DelCookies method deletes multiple val in Cookie.
 
@@ -1132,7 +1132,7 @@ DelCookies method deletes multiple val in Cookie.
 func (c Cookie) DelCookies(key ...string)
 ```
 
-## VisitAll
+### VisitAll
 
 VisitAll method receive a function which can travel the all val.
 
@@ -1140,7 +1140,7 @@ VisitAll method receive a function which can travel the all val.
 func (c Cookie) VisitAll(f func(key, val string))
 ```
 
-## Reset
+### Reset
 
 Reset clears the Cookie object.
 
@@ -1148,7 +1148,7 @@ Reset clears the Cookie object.
 func (c Cookie) Reset()
 ```
 
-# PathParam
+## PathParam
 
 PathParam is a map which to store path params.
 
@@ -1156,7 +1156,7 @@ PathParam is a map which to store path params.
 type PathParam map[string]string
 ```
 
-## Add
+### Add
 
 Add method impl the method in WithStruct interface.
 
@@ -1164,7 +1164,7 @@ Add method impl the method in WithStruct interface.
 func (p PathParam) Add(key, val string)
 ```
 
-## Del
+### Del
 
 Del method impl the method in WithStruct interface.
 
@@ -1172,7 +1172,7 @@ Del method impl the method in WithStruct interface.
 func (p PathParam) Del(key string)
 ```
 
-## SetParam
+### SetParam
 
 SetParam method sets a single val in PathParam.
 
@@ -1180,7 +1180,7 @@ SetParam method sets a single val in PathParam.
 func (p PathParam) SetParam(key, val string)
 ```
 
-## SetParams
+### SetParams
 
 SetParams method sets multiple val in PathParam.
 
@@ -1188,7 +1188,7 @@ SetParams method sets multiple val in PathParam.
 func (p PathParam) SetParams(m map[string]string)
 ```
 
-## SetParamsWithStruct
+### SetParamsWithStruct
 
 SetParamsWithStruct method sets multiple val in PathParam via a struct.
 
@@ -1196,7 +1196,7 @@ SetParamsWithStruct method sets multiple val in PathParam via a struct.
 func (p PathParam) SetParamsWithStruct(v any)
 ```
 
-## DelParams
+### DelParams
 
 DelParams method deletes multiple val in PathParams.
 
@@ -1204,7 +1204,7 @@ DelParams method deletes multiple val in PathParams.
 func (p PathParam) DelParams(key ...string)
 ```
 
-## VisitAll
+### VisitAll
 
 VisitAll method receive a function which can travel the all val.
 
@@ -1212,7 +1212,7 @@ VisitAll method receive a function which can travel the all val.
 func (p PathParam) VisitAll(f func(key, val string))
 ```
 
-## Reset
+### Reset
 
 Reset clears the PathParam object.
 
@@ -1220,7 +1220,7 @@ Reset clears the PathParam object.
 func (p PathParam) Reset()
 ```
 
-# FormData
+## FormData
 
 FormData is a wrapper of fasthttp.Args and it is used for url encode body and file body.
 
@@ -1230,7 +1230,7 @@ type FormData struct {
 }
 ```
 
-## AddData
+### AddData
 
 AddData method is a wrapper of Args's Add method.
 
@@ -1238,7 +1238,7 @@ AddData method is a wrapper of Args's Add method.
 func (f *FormData) AddData(key, val string)
 ```
 
-## SetData
+### SetData
 
 SetData method is a wrapper of Args's Set method.
 
@@ -1246,7 +1246,7 @@ SetData method is a wrapper of Args's Set method.
 func (f *FormData) SetData(key, val string)
 ```
 
-## AddDatas
+### AddDatas
 
 AddDatas method supports add multiple fields.
 
@@ -1254,7 +1254,7 @@ AddDatas method supports add multiple fields.
 func (f *FormData) AddDatas(m map[string][]string)
 ```
 
-## SetDatas
+### SetDatas
 
 SetDatas method supports set multiple fields.
 
@@ -1262,7 +1262,7 @@ SetDatas method supports set multiple fields.
 func (f *FormData) SetDatas(m map[string]string)
 ```
 
-## SetDatasWithStruct
+### SetDatasWithStruct
 
 SetDatasWithStruct method supports set multiple fields via a struct.
 
@@ -1270,7 +1270,7 @@ SetDatasWithStruct method supports set multiple fields via a struct.
 func (f *FormData) SetDatasWithStruct(v any)
 ```
 
-## DelDatas
+### DelDatas
 
 DelDatas method deletes multiple fields.
 
@@ -1278,7 +1278,7 @@ DelDatas method deletes multiple fields.
 func (f *FormData) DelDatas(key ...string)
 ```
 
-## Reset
+### Reset
 
 Reset clear the FormData object.
 
@@ -1286,7 +1286,7 @@ Reset clear the FormData object.
 func (f *FormData) Reset()
 ```
 
-# File
+## File
 
 File is a struct which support send files via request.
 
@@ -1299,9 +1299,9 @@ type File struct {
 }
 ```
 
-## AcquireFile
+### AcquireFile
 
-AcquireFile returns an File object from the pool.
+AcquireFile returns a File object from the pool.
 And you can set field in the File with SetFileFunc.
 
 The returned file may be returned to the pool with ReleaseFile when no longer needed.
@@ -1311,7 +1311,7 @@ This allows reducing GC load.
 func AcquireFile(setter ...SetFileFunc) *File
 ```
 
-## ReleaseFile
+### ReleaseFile
 
 ReleaseFile returns the object acquired via AcquireFile to the pool.
 Do not access the released File object, otherwise data races may occur.
@@ -1320,7 +1320,7 @@ Do not access the released File object, otherwise data races may occur.
 func ReleaseFile(f *File)
 ```
 
-## SetName
+### SetName
 
 SetName method sets file name.
 
@@ -1328,7 +1328,7 @@ SetName method sets file name.
 func (f *File) SetName(n string)
 ```
 
-## SetFieldName
+### SetFieldName
 
 SetFieldName method sets key of file in the body.
 
@@ -1336,7 +1336,7 @@ SetFieldName method sets key of file in the body.
 func (f *File) SetFieldName(n string)
 ```
 
-## SetPath
+### SetPath
 
 SetPath method set file path.
 
@@ -1344,7 +1344,7 @@ SetPath method set file path.
 func (f *File) SetPath(p string)
 ```
 
-## SetReader
+### SetReader
 
 SetReader method can receive an io.ReadCloser which will be closed in parserBody hook.
 
@@ -1352,7 +1352,7 @@ SetReader method can receive an io.ReadCloser which will be closed in parserBody
 func (f *File) SetReader(r io.ReadCloser)
 ```
 
-## Reset
+### Reset
 
 Reset clear the File object.
 
