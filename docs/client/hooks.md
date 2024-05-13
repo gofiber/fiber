@@ -4,7 +4,6 @@ title: 🎣 Hooks
 description: >-
   Hooks are used to manipulate request/response proccess of Fiber client.
 sidebar_position: 4
-toc
 ---
 
 With hooks, you can manipulate the client on before request/after response stages or more complex logging/tracing cases.
