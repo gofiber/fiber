@@ -507,6 +507,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 		Path:     prefix,
 		Handlers: []Handler{handler},
 	}
+
 	// Increment global handler count
 	atomic.AddUint32(&app.handlersCount, 1)
 	// Add route to stack
