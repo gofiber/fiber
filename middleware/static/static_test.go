@@ -140,7 +140,7 @@ func Test_Static_Download(t *testing.T) {
 }
 
 // go test -run Test_Static_Group
-/*func Test_Static_Group(t *testing.T) {
+func Test_Static_Group(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
@@ -172,9 +172,9 @@ func Test_Static_Download(t *testing.T) {
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
 	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
-}*/
+}
 
-/*func Test_Static_Wildcard(t *testing.T) {
+func Test_Static_Wildcard(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
@@ -192,9 +192,9 @@ func Test_Static_Download(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Contains(t, string(body), "Test file")
-}*/
+}
 
-/*func Test_Static_Prefix_Wildcard(t *testing.T) {
+func Test_Static_Prefix_Wildcard(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
@@ -222,7 +222,7 @@ func Test_Static_Download(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Contains(t, string(body), "Test file")
-}*/
+}
 
 func Test_Static_Prefix(t *testing.T) {
 	t.Parallel()
