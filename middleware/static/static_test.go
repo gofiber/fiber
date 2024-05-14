@@ -150,7 +150,8 @@ func Test_Static_Group(t *testing.T) {
 	})
 
 	grp.Get("/v2*", New(Config{
-		Root: "../../.github/index.html",
+		Root:   "../../.github/index.html",
+		IsFile: true,
 	}))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/v1/v2", nil)
@@ -163,7 +164,8 @@ func Test_Static_Group(t *testing.T) {
 
 	grp = app.Group("/v2")
 	grp.Get("/v3*", New(Config{
-		Root: "../../.github/index.html",
+		Root:   "../../.github/index.html",
+		IsFile: true,
 	}))
 
 	req = httptest.NewRequest(fiber.MethodGet, "/v2/v3/john/doe", nil)
@@ -179,7 +181,8 @@ func Test_Static_Wildcard(t *testing.T) {
 	app := fiber.New()
 
 	app.Get("*", New(Config{
-		Root: "../../.github/index.html",
+		Root:   "../../.github/index.html",
+		IsFile: true,
 	}))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/yesyes/john/doe", nil)
@@ -199,7 +202,8 @@ func Test_Static_Prefix_Wildcard(t *testing.T) {
 	app := fiber.New()
 
 	app.Get("/test/*", New(Config{
-		Root: "../../.github/index.html",
+		Root:   "../../.github/index.html",
+		IsFile: true,
 	}))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/test/john/doe", nil)
@@ -210,7 +214,8 @@ func Test_Static_Prefix_Wildcard(t *testing.T) {
 	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
 
 	app.Get("/my/nameisjohn*", New(Config{
-		Root: "../../.github/index.html",
+		Root:   "../../.github/index.html",
+		IsFile: true,
 	}))
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/my/nameisjohn/no/its/not", nil))

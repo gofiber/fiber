@@ -54,16 +54,16 @@ func New(cfg ...Config) fiber.Handler {
 					fmt.Println(string(path))
 					if len(path) >= prefixLen {
 						// TODO: All routes have to contain star we don't need this mechanishm anymore i think
-						/*if isStar && string(path[0:prefixLen]) == prefix {
+						if config.IsFile {
 							path = append(path[0:0], '/')
 							fmt.Printf("istar %s", path)
-						} else {*/
-						path = path[prefixLen:]
-						fmt.Printf("path2 %s\n", path)
-						if len(path) == 0 || path[len(path)-1] != '/' {
-							path = append(path, '/')
+						} else {
+							path = path[prefixLen:]
+							fmt.Printf("path2 %s\n", path)
+							if len(path) == 0 || path[len(path)-1] != '/' {
+								path = append(path, '/')
+							}
 						}
-						//}
 					}
 					if len(path) > 0 && path[0] != '/' {
 						path = append([]byte("/"), path...)

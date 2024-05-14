@@ -48,6 +48,8 @@ type Config struct {
 	// Optional. Default value 0.
 	MaxAge int `json:"max_age"`
 
+	IsFile bool `json:"is_file"`
+
 	// ModifyResponse defines a function that allows you to alter the response.
 	//
 	// Optional. Default: nil
