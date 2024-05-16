@@ -1,7 +1,7 @@
 package static
 
 import (
-	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -10,65 +10,77 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-func New(cfg ...Config) fiber.Handler {
+// New creates a new middleware handler.
+// The root argument specifies the root directory from which to serve static assets.
+//
+// Note: Root has to be string or fs.FS, otherwise it will panic.
+func New(root string, cfg ...Config) fiber.Handler {
 	config := configDefault(cfg...)
 
 	var createFS sync.Once
 	var fileHandler fasthttp.RequestHandler
 	var cacheControlValue string
-	var modifyResponse fiber.Handler
 
 	return func(c fiber.Ctx) error {
+		// Don't execute middleware if Next returns true
+		if config.Next != nil && config.Next(c) {
+			return c.Next()
+		}
+
+		// We only serve static assets on GET or HEAD methods
+		method := c.Method()
+		if method != fiber.MethodGet && method != fiber.MethodHead {
+			return c.Next()
+		}
+
+		// Initialize FS
 		createFS.Do(func() {
 			prefix := c.Route().Path
-			isStar := prefix == "/*"
 
 			// Is prefix a partial wildcard?
 			if strings.Contains(prefix, "*") {
 				// /john* -> /john
-				isStar = true
 				prefix = strings.Split(prefix, "*")[0]
-				// Fix this later
 			}
 
 			prefixLen := len(prefix)
 			if prefixLen > 1 && prefix[prefixLen-1:] == "/" {
 				// /john/ -> /john
 				prefixLen--
-				prefix = prefix[:prefixLen]
 			}
 
-			fmt.Printf("prefix: %s, prefixlen: %d, isStar: %t\n", prefix, prefixLen, isStar)
-
 			fs := &fasthttp.FS{
-				Root:                 config.Root,
+				Root:                 root,
 				AllowEmptyRoot:       true,
-				GenerateIndexPages:   false,
-				AcceptByteRange:      false,
-				Compress:             false,
+				GenerateIndexPages:   config.Browse,
+				AcceptByteRange:      config.ByteRange,
+				Compress:             config.Compress,
 				CompressedFileSuffix: c.App().Config().CompressedFileSuffix,
 				CacheDuration:        config.CacheDuration,
 				IndexNames:           []string{"index.html"},
 				PathRewrite: func(fctx *fasthttp.RequestCtx) []byte {
 					path := fctx.Path()
-					fmt.Println(string(path))
+
 					if len(path) >= prefixLen {
-						// TODO: All routes have to contain star we don't need this mechanishm anymore i think
-						if config.IsFile {
+						checkFile, err := isFile(root)
+						if err != nil {
+							return path
+						}
+
+						if checkFile {
 							path = append(path[0:0], '/')
-							fmt.Printf("istar %s", path)
 						} else {
 							path = path[prefixLen:]
-							fmt.Printf("path2 %s\n", path)
 							if len(path) == 0 || path[len(path)-1] != '/' {
 								path = append(path, '/')
 							}
 						}
 					}
+
 					if len(path) > 0 && path[0] != '/' {
 						path = append([]byte("/"), path...)
 					}
-					fmt.Printf("path %s\n", path)
+
 					return path
 				},
 				PathNotFound: func(fctx *fasthttp.RequestCtx) {
@@ -81,22 +93,12 @@ func New(cfg ...Config) fiber.Handler {
 				cacheControlValue = "public, max-age=" + strconv.Itoa(maxAge)
 			}
 
-			fs.CacheDuration = config.CacheDuration
-			fs.Compress = config.Compress
-			fs.AcceptByteRange = config.ByteRange
-			fs.GenerateIndexPages = config.Browse
 			if config.Index != "" {
 				fs.IndexNames = []string{config.Index}
 			}
-			modifyResponse = config.ModifyResponse
 
 			fileHandler = fs.NewRequestHandler()
 		})
-
-		// Don't execute middleware if Next returns true
-		if config.Next != nil && config.Next(c) {
-			return c.Next()
-		}
 
 		// Serve file
 		fileHandler(c.Context())
@@ -112,9 +114,11 @@ func New(cfg ...Config) fiber.Handler {
 			if len(cacheControlValue) > 0 {
 				c.Context().Response.Header.Set(fiber.HeaderCacheControl, cacheControlValue)
 			}
-			if modifyResponse != nil {
-				return modifyResponse(c)
+
+			if config.ModifyResponse != nil {
+				return config.ModifyResponse(c)
 			}
+
 			return nil
 		}
 
@@ -126,4 +130,19 @@ func New(cfg ...Config) fiber.Handler {
 		// Next middleware
 		return c.Next()
 	}
+}
+
+// isFile checks if the root is a file.
+func isFile(root string) (bool, error) {
+	file, err := os.Open(root)
+	if err != nil {
+		return false, err
+	}
+
+	stat, err := file.Stat()
+	if err != nil {
+		return false, err
+	}
+
+	return stat.Mode().IsRegular(), nil
 }

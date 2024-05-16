@@ -15,15 +15,11 @@ func Test_Static_Index_Default(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	app.Get("/prefix", New(Config{
-		Root: "../../.github/workflows",
-	}))
+	app.Get("/prefix", New("../../.github/workflows"))
 
-	app.Get("", New(Config{
-		Root: "../../.github/",
-	}))
+	app.Get("", New("../../.github/"))
 
-	app.Get("test", New(Config{
+	app.Get("test", New("", Config{
 		Index: "index.html",
 	}))
 
@@ -53,9 +49,7 @@ func Test_Static_Direct(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	app.Get("/*", New(Config{
-		Root: "/home/efectn/Devel/fiber-v3-constraint/.github",
-	}))
+	app.Get("/*", New("/home/efectn/Devel/fiber-v3-constraint/.github"))
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/index.html", nil))
 	require.NoError(t, err, "app.Test(req)")
@@ -84,8 +78,7 @@ func Test_Static_MaxAge(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	app.Get("/*", New(Config{
-		Root:   "../../.github",
+	app.Get("/*", New("../../.github", Config{
 		MaxAge: 100,
 	}))
 
@@ -102,8 +95,7 @@ func Test_Static_Custom_CacheControl(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	app.Get("/*", New(Config{
-		Root: "../../.github",
+	app.Get("/*", New("../../.github", Config{
 		ModifyResponse: func(c fiber.Ctx) error {
 			if strings.Contains(c.GetRespHeader("Content-Type"), "text/html") {
 				c.Response().Header.Set("Cache-Control", "no-cache, no-store, must-revalidate")
@@ -126,8 +118,7 @@ func Test_Static_Download(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	app.Get("/fiber.png", New(Config{
-		Root:     "../../.github/testdata/fs/img/fiber.png",
+	app.Get("/fiber.png", New("../../.github/testdata/fs/img/fiber.png", Config{
 		Download: true,
 	}))
 
@@ -149,10 +140,7 @@ func Test_Static_Group(t *testing.T) {
 		return c.Next()
 	})
 
-	grp.Get("/v2*", New(Config{
-		Root:   "../../.github/index.html",
-		IsFile: true,
-	}))
+	grp.Get("/v2*", New("../../.github/index.html"))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/v1/v2", nil)
 	resp, err := app.Test(req)
@@ -163,10 +151,7 @@ func Test_Static_Group(t *testing.T) {
 	require.Equal(t, "123", resp.Header.Get("Test-Header"))
 
 	grp = app.Group("/v2")
-	grp.Get("/v3*", New(Config{
-		Root:   "../../.github/index.html",
-		IsFile: true,
-	}))
+	grp.Get("/v3*", New("../../.github/index.html"))
 
 	req = httptest.NewRequest(fiber.MethodGet, "/v2/v3/john/doe", nil)
 	resp, err = app.Test(req)
@@ -180,10 +165,7 @@ func Test_Static_Wildcard(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	app.Get("*", New(Config{
-		Root:   "../../.github/index.html",
-		IsFile: true,
-	}))
+	app.Get("*", New("../../.github/index.html"))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/yesyes/john/doe", nil)
 	resp, err := app.Test(req)
@@ -201,10 +183,7 @@ func Test_Static_Prefix_Wildcard(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	app.Get("/test/*", New(Config{
-		Root:   "../../.github/index.html",
-		IsFile: true,
-	}))
+	app.Get("/test*", New("../../.github/index.html"))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/test/john/doe", nil)
 	resp, err := app.Test(req)
@@ -213,10 +192,7 @@ func Test_Static_Prefix_Wildcard(t *testing.T) {
 	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
 	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
 
-	app.Get("/my/nameisjohn*", New(Config{
-		Root:   "../../.github/index.html",
-		IsFile: true,
-	}))
+	app.Get("/my/nameisjohn*", New("../../.github/index.html"))
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/my/nameisjohn/no/its/not", nil))
 	require.NoError(t, err, "app.Test(req)")
@@ -232,9 +208,7 @@ func Test_Static_Prefix_Wildcard(t *testing.T) {
 func Test_Static_Prefix(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	app.Get("/john/*", New(Config{
-		Root: "../../.github",
-	}))
+	app.Get("/john*", New("../../.github"))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/john/index.html", nil)
 	resp, err := app.Test(req)
@@ -243,9 +217,7 @@ func Test_Static_Prefix(t *testing.T) {
 	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
 	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
 
-	app.Get("/prefix/*", New(Config{
-		Root: "../../.github/testdata",
-	}))
+	app.Get("/prefix*", New("../../.github/testdata"))
 
 	req = httptest.NewRequest(fiber.MethodGet, "/prefix/index.html", nil)
 	resp, err = app.Test(req)
@@ -254,9 +226,7 @@ func Test_Static_Prefix(t *testing.T) {
 	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
 	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
 
-	app.Get("/single/*", New(Config{
-		Root: "../../.github/testdata/testRoutes.json",
-	}))
+	app.Get("/single*", New("../../.github/testdata/testRoutes.json"))
 
 	req = httptest.NewRequest(fiber.MethodGet, "/single", nil)
 	resp, err = app.Test(req)
@@ -269,9 +239,7 @@ func Test_Static_Prefix(t *testing.T) {
 func Test_Static_Trailing_Slash(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	app.Get("/john", New(Config{
-		Root: "../../.github",
-	}))
+	app.Get("/john*", New("../../.github"))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/john/", nil)
 	resp, err := app.Test(req)
@@ -280,9 +248,7 @@ func Test_Static_Trailing_Slash(t *testing.T) {
 	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
 	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
 
-	app.Get("/john_without_index", New(Config{
-		Root: "../../.github/testdata/fs/css",
-	}))
+	app.Get("/john_without_index*", New("../../.github/testdata/fs/css"))
 
 	req = httptest.NewRequest(fiber.MethodGet, "/john_without_index/", nil)
 	resp, err = app.Test(req)
@@ -291,9 +257,7 @@ func Test_Static_Trailing_Slash(t *testing.T) {
 	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
 	require.Equal(t, fiber.MIMETextPlainCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
 
-	app.Use("/john", New(Config{
-		Root: "../../.github",
-	}))
+	app.Use("/john", New("../../.github"))
 
 	req = httptest.NewRequest(fiber.MethodGet, "/john/", nil)
 	resp, err = app.Test(req)
@@ -309,9 +273,7 @@ func Test_Static_Trailing_Slash(t *testing.T) {
 	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
 	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
 
-	app.Use("/john_without_index/", New(Config{
-		Root: "../../.github/testdata/fs/css",
-	}))
+	app.Use("/john_without_index/", New("../../.github/testdata/fs/css"))
 
 	req = httptest.NewRequest(fiber.MethodGet, "/john_without_index/", nil)
 	resp, err = app.Test(req)
@@ -325,14 +287,13 @@ func Test_Static_Next(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	app.Get("/", New(Config{
-		Root: "../../.github",
+	app.Get("/*", New("../../.github", Config{
 		Next: func(c fiber.Ctx) bool {
 			return c.Get("X-Custom-Header") == "skip"
 		},
 	}))
 
-	app.Get("/", func(c fiber.Ctx) error {
+	app.Get("/*", func(c fiber.Ctx) error {
 		return c.SendString("You've skipped app.Static")
 	})
 
@@ -372,8 +333,7 @@ func Test_Route_Static_Root(t *testing.T) {
 
 	dir := "../../.github/testdata/fs/css"
 	app := fiber.New()
-	app.Get("/*", New(Config{
-		Root:   dir,
+	app.Get("/*", New(dir, Config{
 		Browse: true,
 	}))
 
@@ -390,9 +350,7 @@ func Test_Route_Static_Root(t *testing.T) {
 	require.Contains(t, string(body), "color")
 
 	app = fiber.New()
-	app.Get("/*", New(Config{
-		Root: dir,
-	}))
+	app.Get("/*", New(dir))
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err, "app.Test(req)")
@@ -412,8 +370,7 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 
 	dir := "../../.github/testdata/fs/css"
 	app := fiber.New()
-	app.Get("/static/*", New(Config{
-		Root:   dir,
+	app.Get("/static*", New(dir, Config{
 		Browse: true,
 	}))
 
@@ -434,8 +391,7 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 	require.Contains(t, string(body), "color")
 
 	app = fiber.New()
-	app.Get("/static/*", New(Config{
-		Root:   dir,
+	app.Get("/static/*", New(dir, Config{
 		Browse: true,
 	}))
 
@@ -456,9 +412,7 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 	require.Contains(t, string(body), "color")
 
 	app = fiber.New()
-	app.Get("/static/*", New(Config{
-		Root: dir,
-	}))
+	app.Get("/static*", New(dir))
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static", nil))
 	require.NoError(t, err, "app.Test(req)")
@@ -477,9 +431,7 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 	require.Contains(t, string(body), "color")
 
 	app = fiber.New()
-	app.Get("/static/*", New(Config{
-		Root: dir,
-	}))
+	app.Get("/static*", New(dir))
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static", nil))
 	require.NoError(t, err, "app.Test(req)")
