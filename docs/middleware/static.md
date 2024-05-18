@@ -100,7 +100,7 @@ curl http://localhost:3000/static/john/doee # will show hello.html
 </details>
 
 :::caution
-If you want to define static routes using `Get`, you need to use wildcard (`*`) operator in the end of the route.
+If you want to define static routes using `Get`, you need to use the wildcard (`*`) operator at the end of the route.
 :::
 
 ## Config

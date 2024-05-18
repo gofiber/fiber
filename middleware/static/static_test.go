@@ -52,7 +52,7 @@ func Test_Static_Direct(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	app.Get("/*", New("/home/efectn/Devel/fiber-v3-constraint/.github"))
+	app.Get("/*", New("../../.github"))
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/index.html", nil))
 	require.NoError(t, err, "app.Test(req)")
