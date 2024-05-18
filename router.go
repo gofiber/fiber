@@ -9,10 +9,8 @@ import (
 	"fmt"
 	"html"
 	"sort"
-	"strconv"
 	"strings"
 	"sync/atomic"
-	"time"
 
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
@@ -33,7 +31,6 @@ type Router interface {
 	Patch(path string, handler Handler, middleware ...Handler) Router
 
 	Add(methods []string, path string, handler Handler, middleware ...Handler) Router
-	Static(prefix, root string, config ...Static) Router
 	All(path string, handler Handler, middleware ...Handler) Router
 
 	Group(prefix string, handlers ...Handler) Router
@@ -375,145 +372,6 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 			app.addRoute(method, &route, isMount)
 		}
 	}
-}
-
-func (app *App) registerStatic(prefix, root string, config ...Static) {
-	// For security, we want to restrict to the current work directory.
-	if root == "" {
-		root = "."
-	}
-	// Cannot have an empty prefix
-	if prefix == "" {
-		prefix = "/"
-	}
-	// Prefix always start with a '/' or '*'
-	if prefix[0] != '/' {
-		prefix = "/" + prefix
-	}
-	// in case-sensitive routing, all to lowercase
-	if !app.config.CaseSensitive {
-		prefix = utils.ToLower(prefix)
-	}
-	// Strip trailing slashes from the root path
-	if len(root) > 0 && root[len(root)-1] == '/' {
-		root = root[:len(root)-1]
-	}
-	// Is prefix a direct wildcard?
-	isStar := prefix == "/*"
-	// Is prefix a root slash?
-	isRoot := prefix == "/"
-	// Is prefix a partial wildcard?
-	if strings.Contains(prefix, "*") {
-		// /john* -> /john
-		isStar = true
-		prefix = strings.Split(prefix, "*")[0]
-		// Fix this later
-	}
-	prefixLen := len(prefix)
-	if prefixLen > 1 && prefix[prefixLen-1:] == "/" {
-		// /john/ -> /john
-		prefixLen--
-		prefix = prefix[:prefixLen]
-	}
-	const cacheDuration = 10 * time.Second
-	// Fileserver settings
-	fs := &fasthttp.FS{
-		Root:                 root,
-		AllowEmptyRoot:       true,
-		GenerateIndexPages:   false,
-		AcceptByteRange:      false,
-		Compress:             false,
-		CompressedFileSuffix: app.config.CompressedFileSuffix,
-		CacheDuration:        cacheDuration,
-		IndexNames:           []string{"index.html"},
-		PathRewrite: func(fctx *fasthttp.RequestCtx) []byte {
-			path := fctx.Path()
-			if len(path) >= prefixLen {
-				if isStar && app.getString(path[0:prefixLen]) == prefix {
-					path = append(path[0:0], '/')
-				} else {
-					path = path[prefixLen:]
-					if len(path) == 0 || path[len(path)-1] != '/' {
-						path = append(path, '/')
-					}
-				}
-			}
-			if len(path) > 0 && path[0] != '/' {
-				path = append([]byte("/"), path...)
-			}
-			return path
-		},
-		PathNotFound: func(fctx *fasthttp.RequestCtx) {
-			fctx.Response.SetStatusCode(StatusNotFound)
-		},
-	}
-
-	// Set config if provided
-	var cacheControlValue string
-	var modifyResponse Handler
-	if len(config) > 0 {
-		maxAge := config[0].MaxAge
-		if maxAge > 0 {
-			cacheControlValue = "public, max-age=" + strconv.Itoa(maxAge)
-		}
-		fs.CacheDuration = config[0].CacheDuration
-		fs.Compress = config[0].Compress
-		fs.AcceptByteRange = config[0].ByteRange
-		fs.GenerateIndexPages = config[0].Browse
-		if config[0].Index != "" {
-			fs.IndexNames = []string{config[0].Index}
-		}
-		modifyResponse = config[0].ModifyResponse
-	}
-	fileHandler := fs.NewRequestHandler()
-	handler := func(c Ctx) error {
-		// Don't execute middleware if Next returns true
-		if len(config) != 0 && config[0].Next != nil && config[0].Next(c) {
-			return c.Next()
-		}
-		// Serve file
-		fileHandler(c.Context())
-		// Sets the response Content-Disposition header to attachment if the Download option is true
-		if len(config) > 0 && config[0].Download {
-			c.Attachment()
-		}
-		// Return request if found and not forbidden
-		status := c.Context().Response.StatusCode()
-		if status != StatusNotFound && status != StatusForbidden {
-			if len(cacheControlValue) > 0 {
-				c.Context().Response.Header.Set(HeaderCacheControl, cacheControlValue)
-			}
-			if modifyResponse != nil {
-				return modifyResponse(c)
-			}
-			return nil
-		}
-		// Reset response to default
-		c.Context().SetContentType("") // Issue #420
-		c.Context().Response.SetStatusCode(StatusOK)
-		c.Context().Response.SetBodyString("")
-		// Next middleware
-		return c.Next()
-	}
-
-	// Create route metadata without pointer
-	route := Route{
-		// Router booleans
-		use:  true,
-		root: isRoot,
-		path: prefix,
-		// Public data
-		Method:   MethodGet,
-		Path:     prefix,
-		Handlers: []Handler{handler},
-	}
-
-	// Increment global handler count
-	atomic.AddUint32(&app.handlersCount, 1)
-	// Add route to stack
-	app.addRoute(MethodGet, &route)
-	// Add HEAD route
-	app.addRoute(MethodHead, &route)
 }
 
 func (app *App) addRoute(method string, route *Route, isMounted ...bool) {

@@ -11,70 +11,6 @@ import Reference from '@site/src/components/reference';
 
 import RoutingHandler from './../partials/routing/handler.md';
 
-### Static
-
-Use the **Static** method to serve static files such as **images**, **CSS,** and **JavaScript**.
-
-:::info
-By default, **Static** will serve `index.html` files in response to a request on a directory.
-:::
-
-```go title="Signature"
-func (app *App) Static(prefix, root string, config ...Static) Router
-```
-
-Use the following code to serve files in a directory named `./public`
-
-```go title="Examples"
-// Serve files from multiple directories
-app.Static("/", "./public")
-
-// => http://localhost:3000/hello.html
-// => http://localhost:3000/js/jquery.js
-// => http://localhost:3000/css/style.css
-
-// Serve files from "./files" directory:
-app.Static("/", "./files")
-```
-
-You can use any virtual path prefix \(_where the path does not actually exist in the file system_\) for files that are served by the **Static** method, specify a prefix path for the static directory, as shown below:
-
-```go title="Examples"
-app.Static("/static", "./public")
-
-// => http://localhost:3000/static/hello.html
-// => http://localhost:3000/static/js/jquery.js
-// => http://localhost:3000/static/css/style.css
-```
-
-#### Config
-
-If you want to have a little bit more control regarding the settings for serving static files. You could use the `fiber.Static` struct to enable specific settings.
-
-| Property                                                   | Type               | Description                                                                                                                                                            | Default          |
-|------------------------------------------------------------|--------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------|
-| <Reference id="compress">Compress</Reference>              | `bool`             | When set to true, the server tries minimizing CPU usage by caching compressed files. This works differently than the [compress](../middleware/compress.md) middleware. | false            |
-| <Reference id="byte_range">ByteRange</Reference>           | `bool`             | When set to true, enables byte range requests.                                                                                                                         | false            |
-| <Reference id="browse">Browse</Reference>                  | `bool`             | When set to true, enables directory browsing.                                                                                                                          | false            |
-| <Reference id="download">Download</Reference>              | `bool`             | When set to true, enables direct download.                                                                                                                             | false            |
-| <Reference id="index">Index</Reference>                    | `string`           | The name of the index file for serving a directory.                                                                                                                    | "index.html"     |
-| <Reference id="cache_duration">CacheDuration</Reference>   | `time.Duration`    | Expiration duration for inactive file handlers. Use a negative `time.Duration` to disable it.                                                                          | 10 * time.Second |
-| <Reference id="max_age">MaxAge</Reference>                 | `int`              | The value for the `Cache-Control` HTTP-header that is set on the file response. MaxAge is defined in seconds.                                                          | 0                |
-| <Reference id="modify_response">ModifyResponse</Reference> | `Handler`          | ModifyResponse defines a function that allows you to alter the response.                                                                                               | nil              |
-| <Reference id="next">Next</Reference>                      | `func(c Ctx) bool` | Next defines a function to skip this middleware when returned true.                                                                                                    | nil              |
-
-```go title="Example"
-// Custom config
-app.Static("/", "./public", fiber.Static{
-  Compress:      true,
-  ByteRange:     true,
-  Browse:        true,
-  Index:         "john.html",
-  CacheDuration: 10 * time.Second,
-  MaxAge:        3600,
-})
-```
-
 ### Route Handlers
 
 <RoutingHandler />
@@ -180,8 +116,6 @@ type Register interface {
   Patch(handler Handler, middleware ...Handler) Register
 
   Add(methods []string, handler Handler, middleware ...Handler) Register
-
-  Static(root string, config ...Static) Register
 
   Route(path string) Register
 }
