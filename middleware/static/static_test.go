@@ -609,6 +609,9 @@ func Test_isFile(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			c := c
+			t.Parallel()
+
 			actual, err := isFile(c.path, c.filesystem)
 			require.ErrorIs(t, err, c.gotError)
 			require.Equal(t, c.expected, actual)

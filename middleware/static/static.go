@@ -1,8 +1,10 @@
 package static
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -81,11 +83,12 @@ func New(root string, cfg ...Config) fiber.Handler {
 					}
 
 					// If the root is a file, we need to reset the path to "/" always.
-					if checkFile && fs.FS == nil {
+					switch {
+					case checkFile && fs.FS == nil:
 						path = append(path[0:0], '/')
-					} else if checkFile && fs.FS != nil {
+					case checkFile && fs.FS != nil:
 						path = utils.UnsafeBytes(root)
-					} else {
+					default:
 						path = path[prefixLen:]
 						if len(path) == 0 || path[len(path)-1] != '/' {
 							path = append(path, '/')
@@ -152,18 +155,18 @@ func isFile(root string, filesystem fs.FS) (bool, error) {
 	if filesystem != nil {
 		file, err = filesystem.Open(root)
 		if err != nil {
-			return false, err
+			return false, fmt.Errorf("static: %w", err)
 		}
 	} else {
-		file, err = os.Open(root)
+		file, err = os.Open(filepath.Clean(root))
 		if err != nil {
-			return false, err
+			return false, fmt.Errorf("static: %w", err)
 		}
 	}
 
 	stat, err := file.Stat()
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("static: %w", err)
 	}
 
 	return stat.Mode().IsRegular(), nil
