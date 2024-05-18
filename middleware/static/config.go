@@ -15,6 +15,7 @@ type Config struct {
 	Next func(c fiber.Ctx) bool
 
 	// FS is the file system to serve the static files from.
+	// You can use interfaces compatible with fs.FS like embed.FS, os.DirFS etc.
 	//
 	// Optional. Default: nil
 	FS fs.FS

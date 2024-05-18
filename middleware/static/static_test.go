@@ -3,6 +3,7 @@ package static
 import (
 	"embed"
 	"io"
+	"io/fs"
 	"net/http/httptest"
 	"os"
 	"strings"
@@ -527,7 +528,8 @@ func Test_Static_FS_Prefix_Wildcard(t *testing.T) {
 	app := fiber.New()
 
 	app.Get("/test*", New("index.html", Config{
-		FS: os.DirFS("../../.github"),
+		FS:    os.DirFS("../../.github"),
+		Index: "not_index.html",
 	}))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/test/john/doe", nil)
@@ -540,4 +542,76 @@ func Test_Static_FS_Prefix_Wildcard(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Contains(t, string(body), "Test file")
+}
+
+func Test_isFile(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name       string
+		path       string
+		filesystem fs.FS
+		expected   bool
+		gotError   error
+	}{
+		{
+			name:       "file",
+			path:       "index.html",
+			filesystem: os.DirFS("../../.github"),
+			expected:   true,
+		},
+		{
+			name:       "file",
+			path:       "index2.html",
+			filesystem: os.DirFS("../../.github"),
+			expected:   false,
+			gotError:   fs.ErrNotExist,
+		},
+		{
+			name:       "directory",
+			path:       ".",
+			filesystem: os.DirFS("../../.github"),
+			expected:   false,
+		},
+		{
+			name:       "directory",
+			path:       "not_exists",
+			filesystem: os.DirFS("../../.github"),
+			expected:   false,
+			gotError:   fs.ErrNotExist,
+		},
+		{
+			name:       "directory",
+			path:       ".",
+			filesystem: os.DirFS("../../.github/testdata/fs/css"),
+			expected:   false,
+		},
+		{
+			name:       "file",
+			path:       "../../.github/testdata/fs/css/style.css",
+			filesystem: nil,
+			expected:   true,
+		},
+		{
+			name:       "file",
+			path:       "../../.github/testdata/fs/css/style2.css",
+			filesystem: nil,
+			expected:   false,
+			gotError:   fs.ErrNotExist,
+		},
+		{
+			name:       "directory",
+			path:       "../../.github/testdata/fs/css",
+			filesystem: nil,
+			expected:   false,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			actual, err := isFile(c.path, c.filesystem)
+			require.ErrorIs(t, err, c.gotError)
+			require.Equal(t, c.expected, actual)
+		})
+	}
 }

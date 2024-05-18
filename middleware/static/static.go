@@ -1,12 +1,14 @@
 package static
 
 import (
+	"io/fs"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
 
@@ -22,12 +24,8 @@ func New(root string, cfg ...Config) fiber.Handler {
 	var cacheControlValue string
 
 	// adjustments for io/fs compatibility
-	if config.FS != nil && root != "" {
+	if config.FS != nil && root == "" {
 		root = "."
-	}
-
-	if root != "." && !strings.HasPrefix(root, "/") {
-		root = "./" + root
 	}
 
 	return func(c fiber.Ctx) error {
@@ -77,14 +75,16 @@ func New(root string, cfg ...Config) fiber.Handler {
 				path := fctx.Path()
 
 				if len(path) >= prefixLen {
-					checkFile, err := isFile(root)
+					checkFile, err := isFile(root, fs.FS)
 					if err != nil {
 						return path
 					}
 
 					// If the root is a file, we need to reset the path to "/" always.
-					if checkFile {
+					if checkFile && fs.FS == nil {
 						path = append(path[0:0], '/')
+					} else if checkFile && fs.FS != nil {
+						path = utils.UnsafeBytes(root)
 					} else {
 						path = path[prefixLen:]
 						if len(path) == 0 || path[len(path)-1] != '/' {
@@ -145,10 +145,20 @@ func New(root string, cfg ...Config) fiber.Handler {
 }
 
 // isFile checks if the root is a file.
-func isFile(root string) (bool, error) {
-	file, err := os.Open(root)
-	if err != nil {
-		return false, err
+func isFile(root string, filesystem fs.FS) (bool, error) {
+	var file fs.File
+	var err error
+
+	if filesystem != nil {
+		file, err = filesystem.Open(root)
+		if err != nil {
+			return false, err
+		}
+	} else {
+		file, err = os.Open(root)
+		if err != nil {
+			return false, err
+		}
 	}
 
 	stat, err := file.Stat()
