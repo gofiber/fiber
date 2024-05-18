@@ -21,6 +21,15 @@ func New(root string, cfg ...Config) fiber.Handler {
 	var fileHandler fasthttp.RequestHandler
 	var cacheControlValue string
 
+	// adjustments for io/fs compatibility
+	if config.FS != nil && root != "" {
+		root = "."
+	}
+
+	if root != "." && !strings.HasPrefix(root, "/") {
+		root = "./" + root
+	}
+
 	return func(c fiber.Ctx) error {
 		// Don't execute middleware if Next returns true
 		if config.Next != nil && config.Next(c) {
@@ -51,6 +60,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 
 			fs := &fasthttp.FS{
 				Root:                 root,
+				FS:                   config.FS,
 				AllowEmptyRoot:       true,
 				GenerateIndexPages:   config.Browse,
 				AcceptByteRange:      config.ByteRange,
@@ -58,34 +68,36 @@ func New(root string, cfg ...Config) fiber.Handler {
 				CompressedFileSuffix: c.App().Config().CompressedFileSuffix,
 				CacheDuration:        config.CacheDuration,
 				IndexNames:           []string{"index.html"},
-				PathRewrite: func(fctx *fasthttp.RequestCtx) []byte {
-					path := fctx.Path()
-
-					if len(path) >= prefixLen {
-						checkFile, err := isFile(root)
-						if err != nil {
-							return path
-						}
-
-						if checkFile {
-							path = append(path[0:0], '/')
-						} else {
-							path = path[prefixLen:]
-							if len(path) == 0 || path[len(path)-1] != '/' {
-								path = append(path, '/')
-							}
-						}
-					}
-
-					if len(path) > 0 && path[0] != '/' {
-						path = append([]byte("/"), path...)
-					}
-
-					return path
-				},
 				PathNotFound: func(fctx *fasthttp.RequestCtx) {
 					fctx.Response.SetStatusCode(fiber.StatusNotFound)
 				},
+			}
+
+			fs.PathRewrite = func(fctx *fasthttp.RequestCtx) []byte {
+				path := fctx.Path()
+
+				if len(path) >= prefixLen {
+					checkFile, err := isFile(root)
+					if err != nil {
+						return path
+					}
+
+					// If the root is a file, we need to reset the path to "/" always.
+					if checkFile {
+						path = append(path[0:0], '/')
+					} else {
+						path = path[prefixLen:]
+						if len(path) == 0 || path[len(path)-1] != '/' {
+							path = append(path, '/')
+						}
+					}
+				}
+
+				if len(path) > 0 && path[0] != '/' {
+					path = append([]byte("/"), path...)
+				}
+
+				return path
 			}
 
 			maxAge := config.MaxAge

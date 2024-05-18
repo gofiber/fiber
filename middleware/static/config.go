@@ -1,6 +1,7 @@
 package static
 
 import (
+	"io/fs"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -12,6 +13,11 @@ type Config struct {
 	//
 	// Optional. Default: nil
 	Next func(c fiber.Ctx) bool
+
+	// FS is the file system to serve the static files from.
+	//
+	// Optional. Default: nil
+	FS fs.FS
 
 	// When set to true, the server tries minimizing CPU usage by caching compressed files.
 	// This works differently than the github.com/gofiber/compression middleware.

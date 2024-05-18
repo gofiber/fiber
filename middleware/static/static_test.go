@@ -1,8 +1,10 @@
 package static
 
 import (
+	"embed"
 	"io"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -448,4 +450,94 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
 	require.Contains(t, string(body), "color")
+}
+
+func Test_Static_FS(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/*", New("", Config{
+		FS:     os.DirFS("../../.github/testdata/fs"),
+		Browse: true,
+	}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/css/style.css", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+	require.Equal(t, fiber.MIMETextCSSCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err, "app.Test(req)")
+	require.Contains(t, string(body), "color")
+}
+
+//go:embed static.go config.go
+var fsTestFilesystem embed.FS
+
+func Test_Static_FS_Browse(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	app.Get("/embed*", New("", Config{
+		FS:     fsTestFilesystem,
+		Browse: true,
+	}))
+
+	app.Get("/dirfs*", New("", Config{
+		FS:     os.DirFS("../../.github/testdata/fs/css"),
+		Browse: true,
+	}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/dirfs", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err, "app.Test(req)")
+	require.Contains(t, string(body), "style.css")
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/dirfs/style.css", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+	require.Equal(t, fiber.MIMETextCSSCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
+
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err, "app.Test(req)")
+	require.Contains(t, string(body), "color")
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/embed", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
+
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err, "app.Test(req)")
+	require.Contains(t, string(body), "static.go")
+}
+
+func Test_Static_FS_Prefix_Wildcard(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Get("/test*", New("index.html", Config{
+		FS: os.DirFS("../../.github"),
+	}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/test/john/doe", nil)
+	resp, err := app.Test(req)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
+	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Contains(t, string(body), "Test file")
 }
