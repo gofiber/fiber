@@ -68,7 +68,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 				CompressedFileSuffix: c.App().Config().CompressedFileSuffix,
 				CacheDuration:        config.CacheDuration,
 				SkipCache:            config.CacheDuration < 0,
-				IndexNames:           []string{"index.html"},
+				IndexNames:           config.IndexNames,
 				PathNotFound: func(fctx *fasthttp.RequestCtx) {
 					fctx.Response.SetStatusCode(fiber.StatusNotFound)
 				},
@@ -107,10 +107,6 @@ func New(root string, cfg ...Config) fiber.Handler {
 			maxAge := config.MaxAge
 			if maxAge > 0 {
 				cacheControlValue = "public, max-age=" + strconv.Itoa(maxAge)
-			}
-
-			if config.Index != "" {
-				fs.IndexNames = []string{config.Index}
 			}
 
 			fileHandler = fs.NewRequestHandler()

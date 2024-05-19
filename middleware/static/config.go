@@ -41,10 +41,10 @@ type Config struct {
 	// Optional. Default: false.
 	Download bool `json:"download"`
 
-	// The name of the index file for serving a directory.
+	// The names of the index files for serving a directory.
 	//
-	// Optional. Default: "index.html".
-	Index string `json:"index"`
+	// Optional. Default: []string{"index.html"}.
+	IndexNames []string `json:"index"`
 
 	// Expiration duration for inactive file handlers.
 	// Use a negative time.Duration to disable it.
@@ -66,7 +66,7 @@ type Config struct {
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Index:         "index.html",
+	IndexNames:    []string{"index.html"},
 	CacheDuration: 10 * time.Second,
 }
 
@@ -81,8 +81,8 @@ func configDefault(config ...Config) Config {
 	cfg := config[0]
 
 	// Set default values
-	if cfg.Index == "" {
-		cfg.Index = ConfigDefault.Index
+	if cfg.IndexNames == nil {
+		cfg.IndexNames = ConfigDefault.IndexNames
 	}
 
 	if cfg.CacheDuration == 0 {

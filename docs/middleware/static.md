@@ -100,7 +100,7 @@ curl http://localhost:3000/static/john/doee # will show hello.html
 </details>
 
 :::caution
-If you want to define static routes using `Get`, you need to use the wildcard (`*`) operator at the end of the route.
+If you want to define static routes using `Get`, you need to put the wildcard (`*`) operator at the end of the route.
 :::
 
 ## Config
@@ -113,7 +113,7 @@ If you want to define static routes using `Get`, you need to use the wildcard (`
 | ByteRange       | `bool` | When set to true, enables byte range requests.                                                                             | `false`                  |
 | Browse       | `bool` | When set to true, enables directory browsing.                                                                             | `false`                  |
 | Download       | `bool` | When set to true, enables direct download.                                                                             | `false`                  |
-| Index       | `string` | The name of the index file for serving a directory.                                                                             | `index.html`                  |
+| IndexNames       | `[]string` | The names of the index files for serving a directory.                                                                             | `[]string{"index.html"}`                  |
 | CacheDuration       | `string` | Expiration duration for inactive file handlers.<br /><br />Use a negative time.Duration to disable it.                                                                             | `10 * time.Second`                  |
 | MaxAge       | `int` | The value for the Cache-Control HTTP-header that is set on the file response. MaxAge is defined in seconds.                                                                             | `0`                  |
 | ModifyResponse       | `fiber.Handler` | ModifyResponse defines a function that allows you to alter the response.                                                                             | `nil`                  |
@@ -123,7 +123,7 @@ If you want to define static routes using `Get`, you need to use the wildcard (`
 
 ```go
 var ConfigDefault = Config{
-	Index:         "index.html",
+	Index:         []string{"index.html"},
 	CacheDuration: 10 * time.Second,
 }
 ```

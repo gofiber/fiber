@@ -23,7 +23,7 @@ func Test_Static_Index_Default(t *testing.T) {
 	app.Get("", New("../../.github/"))
 
 	app.Get("test", New("", Config{
-		Index: "index.html",
+		IndexNames: []string{"index.html"},
 	}))
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
@@ -564,8 +564,8 @@ func Test_Static_FS_Prefix_Wildcard(t *testing.T) {
 	app := fiber.New()
 
 	app.Get("/test*", New("index.html", Config{
-		FS:    os.DirFS("../../.github"),
-		Index: "not_index.html",
+		FS:         os.DirFS("../../.github"),
+		IndexNames: []string{"not_index.html"},
 	}))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/test/john/doe", nil)
