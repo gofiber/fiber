@@ -74,6 +74,7 @@ func Test_Static_Direct(t *testing.T) {
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Contains(t, string(body), "test_routes")
+	t.Fail()
 }
 
 // go test -run Test_Static_MaxAge
@@ -114,6 +115,41 @@ func Test_Static_Custom_CacheControl(t *testing.T) {
 	normalResp, normalErr := app.Test(httptest.NewRequest(fiber.MethodGet, "/config.yml", nil))
 	require.NoError(t, normalErr, "app.Test(req)")
 	require.Equal(t, "", normalResp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
+}
+
+func Test_Static_Disable_Cache(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	file, err := os.Create("../../.github/test.txt")
+	require.NoError(t, err)
+	_, err = file.WriteString("Hello, World!")
+	require.NoError(t, err)
+
+	// Remove the file even if the test fails
+	defer os.Remove("../../.github/test.txt")
+
+	app.Get("/*", New("../../.github/", Config{
+		CacheDuration: -1,
+	}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test.txt", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, "", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Contains(t, string(body), "Hello, World!")
+
+	require.NoError(t, os.Remove("../../.github/test.txt"))
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/test.txt", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, "", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
+
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, string(body), "Cannot GET /test.txt")
 }
 
 // go test -run Test_Static_Download

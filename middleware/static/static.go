@@ -67,6 +67,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 				Compress:             config.Compress,
 				CompressedFileSuffix: c.App().Config().CompressedFileSuffix,
 				CacheDuration:        config.CacheDuration,
+				SkipCache:            config.CacheDuration < 0,
 				IndexNames:           []string{"index.html"},
 				PathNotFound: func(fctx *fasthttp.RequestCtx) {
 					fctx.Response.SetStatusCode(fiber.StatusNotFound)
