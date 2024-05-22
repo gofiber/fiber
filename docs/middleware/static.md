@@ -99,6 +99,36 @@ curl http://localhost:3000/static/john/doee # will show hello.html
 
 </details>
 
+```go
+package main
+
+import (
+  "github.com/gofiber/fiber/v3"
+  "github.com/gofiber/fiber/v3/middleware/static"
+)
+
+func main() {
+  app := fiber.New()
+  
+  app.Get("/files*", static.New("", static.Config{
+		FS:     os.DirFS("files"),
+		Browse: true,
+	}))
+  
+  app.Listen(":3000")
+}
+```
+
+<details>
+<summary>Test</summary>
+
+```sh
+curl http://localhost:3000/files/css/style.css
+curl http://localhost:3000/files/index.html
+```
+
+</details>
+
 :::caution
 If you want to define static routes using `Get`, you need to put the wildcard (`*`) operator at the end of the route.
 :::

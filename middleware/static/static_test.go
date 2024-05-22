@@ -74,7 +74,6 @@ func Test_Static_Direct(t *testing.T) {
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Contains(t, string(body), "test_routes")
-	t.Fail()
 }
 
 // go test -run Test_Static_MaxAge
@@ -512,6 +511,35 @@ func Test_Static_FS(t *testing.T) {
 	require.NoError(t, err, "app.Test(req)")
 	require.Contains(t, string(body), "color")
 }
+
+/*func Test_Static_FS_DifferentRoot(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Get("/*", New("fs", Config{
+		FS:         os.DirFS("../../.github/testdata"),
+		IndexNames: []string{"index2.html"},
+		Browse:     true,
+	}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err, "app.Test(req)")
+	require.Contains(t, string(body), "<h1>Hello, World!</h1>")
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/css/style.css", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+	require.Equal(t, fiber.MIMETextCSSCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
+
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err, "app.Test(req)")
+	require.Contains(t, string(body), "color")
+}*/
 
 //go:embed static.go config.go
 var fsTestFilesystem embed.FS
