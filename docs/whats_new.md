@@ -47,6 +47,7 @@ DRAFT section
 We have made several changes to the Fiber app, including:
 
 * Listen -> unified with config
+* Static -> has been removed and moved to [static middleware](./middleware/static.md)
 * app.Config properties moved to listen config
   * DisableStartupMessage
   * EnablePrefork -> previously Prefork
@@ -270,9 +271,8 @@ DRAFT section
 
 ### Filesystem
 
-:::caution
-DRAFT section
-:::
+We've decided to remove filesystem middleware to clear up the confusion between static and filesystem middleware. 
+Now, static middleware can do everything that filesystem middleware and static do. You can check out [static middleware](./middleware/static.md) or [migration guide](#📋-migration-guide) to see what has been changed.
 
 ### Monitor
 
@@ -294,6 +294,34 @@ Monitor middleware is now in Contrib package.
 
 
 ### 🚀 App
+
+#### Static
+
+Since we've removed `app.Static()`, you need to move methods to static middleware like the example below:
+
+```go
+// Before
+app.Static("/", "./public")
+app.Static("/prefix", "./public")
+app.Static("/prefix", "./public", Static{
+  Index: "index.htm",
+})
+app.Static("*", "./public/index.html")
+```
+
+```go
+// After
+app.Get("/*", static.New("./public"))
+app.Get("/prefix*", static.New("./public"))
+app.Get("/prefix*", static.New("./public", static.Config{
+  IndexNames: []string{"index.htm", "index.html"},
+}))
+app.Get("*", static.New("./public/index.html"))
+```
+
+:::caution
+You have to put `*` to the end of the route if you don't define static route with `app.Use`.
+:::
 
 ### 🗺 Router
 
@@ -328,4 +356,35 @@ app.Use(cors.New(cors.Config{
   ExposeHeaders: []string{"Content-Length"},
 }))
 ```
-...
+
+#### Filesystem
+
+You need to move filesystem middleware to static middleware due to it has been removed from the core.
+
+```go
+// Before
+app.Use(filesystem.New(filesystem.Config{
+	Root: http.Dir("./assets"),
+}))
+
+app.Use(filesystem.New(filesystem.Config{
+  Root:         http.Dir("./assets"),
+  Browse:       true,
+  Index:        "index.html",
+  MaxAge:       3600,
+}))
+```
+
+```go
+// After
+app.Use(static.New("", static.Config{
+	FS: os.DirFS("./assets"),
+}))
+
+app.Use(static.New("", static.Config{
+  FS:           os.DirFS("./assets"),
+  Browse:       true,
+  IndexNames:   []string{"index.html"},
+  MaxAge:       3600,
+}))
+```

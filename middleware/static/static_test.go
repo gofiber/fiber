@@ -126,7 +126,9 @@ func Test_Static_Disable_Cache(t *testing.T) {
 	require.NoError(t, err)
 
 	// Remove the file even if the test fails
-	defer os.Remove("../../.github/test.txt")
+	defer func() {
+		require.NoError(t, os.Remove("../../.github/test.txt"))
+	}()
 
 	app.Get("/*", New("../../.github/", Config{
 		CacheDuration: -1,
@@ -148,7 +150,7 @@ func Test_Static_Disable_Cache(t *testing.T) {
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.Equal(t, string(body), "Cannot GET /test.txt")
+	require.Equal(t, "Cannot GET /test.txt", string(body))
 }
 
 // go test -run Test_Static_Download

@@ -130,7 +130,7 @@ curl http://localhost:3000/files/index.html
 </details>
 
 :::caution
-If you want to define static routes using `Get`, you need to put the wildcard (`*`) operator at the end of the route.
+To define static routes using `Get`, append the wildcard (`*`) operator at the end of the route.
 :::
 
 ## Config
@@ -147,7 +147,6 @@ If you want to define static routes using `Get`, you need to put the wildcard (`
 | CacheDuration       | `string` | Expiration duration for inactive file handlers.<br /><br />Use a negative time.Duration to disable it.                                                                             | `10 * time.Second`                  |
 | MaxAge       | `int` | The value for the Cache-Control HTTP-header that is set on the file response. MaxAge is defined in seconds.                                                                             | `0`                  |
 | ModifyResponse       | `fiber.Handler` | ModifyResponse defines a function that allows you to alter the response.                                                                             | `nil`                  |
-
 
 ## Default Config
 
