@@ -127,7 +127,7 @@ func Test_Static_Disable_Cache(t *testing.T) {
 
 	// Remove the file even if the test fails
 	defer func() {
-		require.NoError(t, os.Remove("../../.github/test.txt"))
+		_ = os.Remove("../../.github/test.txt") //nolint:errcheck // not needed
 	}()
 
 	app.Get("/*", New("../../.github/", Config{
