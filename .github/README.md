@@ -388,7 +388,7 @@ curl -H "Origin: http://example.com" --verbose http://localhost:3000
 func main() {
     app := fiber.New()
 
-    app.Get("/", dtatic.New("./public"))
+    app.Get("/", static.New("./public"))
 
     app.Get("/demo", func(c fiber.Ctx) error {
         return c.SendString("This is a demo!")
