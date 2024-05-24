@@ -129,7 +129,7 @@ func (r *Response) Save(v any) error {
 	}
 }
 
-// Reset clear Response object.
+// Reset clears the Response object.
 func (r *Response) Reset() {
 	r.client = nil
 	r.request = nil

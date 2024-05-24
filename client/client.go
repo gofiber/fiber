@@ -117,7 +117,7 @@ func (c *Client) JSONMarshal() utils.JSONMarshal {
 	return c.jsonMarshal
 }
 
-// SetJSONMarshal Set json encoder.
+// SetJSONMarshal sets the JSON encoder.
 func (c *Client) SetJSONMarshal(f utils.JSONMarshal) *Client {
 	c.jsonMarshal = f
 	return c
@@ -475,7 +475,7 @@ func (c *Client) Debug() *Client {
 	return c
 }
 
-// DisableDebug disenable log debug level output.
+// DisableDebug disables log debug level output.
 func (c *Client) DisableDebug() *Client {
 	c.debug = false
 	return c
@@ -574,7 +574,7 @@ func (c *Client) Logger() log.CommonLogger {
 	return c.logger
 }
 
-// Reset clear Client object
+// Reset clears the Client object
 func (c *Client) Reset() {
 	c.fasthttp = &fasthttp.Client{}
 	c.baseURL = ""

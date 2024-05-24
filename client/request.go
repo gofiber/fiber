@@ -121,21 +121,19 @@ func (r *Request) SetContext(ctx context.Context) *Request {
 }
 
 // Header method returns header value via key,
-// this method will visit all field in the header,
-// then sort them.
+// this method will visit all field in the header.
 func (r *Request) Header(key string) []string {
 	return r.header.PeekMultiple(key)
 }
 
 // AddHeader method adds a single header field and its value in the request instance.
-// It will override header which set in client instance.
 func (r *Request) AddHeader(key, val string) *Request {
 	r.header.Add(key, val)
 	return r
 }
 
 // SetHeader method sets a single header field and its value in the request instance.
-// It will override header which set in client instance.
+// It will override header which has been set in client instance.
 func (r *Request) SetHeader(key, val string) *Request {
 	r.header.Del(key)
 	r.header.Set(key, val)
@@ -143,14 +141,13 @@ func (r *Request) SetHeader(key, val string) *Request {
 }
 
 // AddHeaders method adds multiple header fields and its values at one go in the request instance.
-// It will override header which set in client instance.
 func (r *Request) AddHeaders(h map[string][]string) *Request {
 	r.header.AddHeaders(h)
 	return r
 }
 
 // SetHeaders method sets multiple header fields and its values at one go in the request instance.
-// It will override header which set in client instance.
+// It will override header which has been set in client instance.
 func (r *Request) SetHeaders(h map[string]string) *Request {
 	r.header.SetHeaders(h)
 	return r
@@ -169,35 +166,33 @@ func (r *Request) Param(key string) []string {
 }
 
 // AddParam method adds a single param field and its value in the request instance.
-// It will override param which set in client instance.
 func (r *Request) AddParam(key, val string) *Request {
 	r.params.Add(key, val)
 	return r
 }
 
 // SetParam method sets a single param field and its value in the request instance.
-// It will override param which set in client instance.
+// It will override param which has been set in client instance.
 func (r *Request) SetParam(key, val string) *Request {
 	r.params.Set(key, val)
 	return r
 }
 
 // AddParams method adds multiple param fields and its values at one go in the request instance.
-// It will override param which set in client instance.
 func (r *Request) AddParams(m map[string][]string) *Request {
 	r.params.AddParams(m)
 	return r
 }
 
 // SetParams method sets multiple param fields and its values at one go in the request instance.
-// It will override param which set in client instance.
+// It will override param which has been set in client instance.
 func (r *Request) SetParams(m map[string]string) *Request {
 	r.params.SetParams(m)
 	return r
 }
 
 // SetParamsWithStruct method sets multiple param fields and its values at one go in the request instance.
-// It will override param which set in client instance.
+// It will override param which has been set in client instance.
 func (r *Request) SetParamsWithStruct(v any) *Request {
 	r.params.SetParamsWithStruct(v)
 	return r
@@ -217,7 +212,7 @@ func (r *Request) UserAgent() string {
 }
 
 // SetUserAgent method sets user agent in request.
-// It will override user agent which set in client instance.
+// It will override user agent which has been set in client instance.
 func (r *Request) SetUserAgent(ua string) *Request {
 	r.userAgent = ua
 	return r
@@ -326,14 +321,14 @@ func (r *Request) ResetPathParams() *Request {
 	return r
 }
 
-// SetJSON method sets json body in request.
+// SetJSON method sets JSON body in request.
 func (r *Request) SetJSON(v any) *Request {
 	r.body = v
 	r.bodyType = jsonBody
 	return r
 }
 
-// SetXML method sets xml body in request.
+// SetXML method sets XML body in request.
 func (r *Request) SetXML(v any) *Request {
 	r.body = v
 	r.bodyType = xmlBody
@@ -589,7 +584,7 @@ func (h *Header) PeekMultiple(key string) []string {
 	return res
 }
 
-// AddHeaders receive a map and add each value to header.
+// AddHeaders receives a map and add each value to header.
 func (h *Header) AddHeaders(r map[string][]string) {
 	for k, v := range r {
 		for _, vv := range v {
@@ -678,14 +673,14 @@ func (c Cookie) VisitAll(f func(key, val string)) {
 	}
 }
 
-// Reset clear the Cookie object.
+// Reset clears the Cookie object.
 func (c Cookie) Reset() {
 	for k := range c {
 		delete(c, k)
 	}
 }
 
-// PathParam is a map which to store the cookies.
+// PathParam is a map which to store path params.
 type PathParam map[string]string
 
 // Add method impl the method in WithStruct interface.
@@ -729,7 +724,7 @@ func (p PathParam) VisitAll(f func(key, val string)) {
 	}
 }
 
-// Reset clear the PathParams object.
+// Reset clear the PathParam object.
 func (p PathParam) Reset() {
 	for k := range p {
 		delete(p, k)
@@ -737,7 +732,7 @@ func (p PathParam) Reset() {
 }
 
 // FormData is a wrapper of fasthttp.Args,
-// and it be used for url encode body and file body.
+// and it is used for url encode body and file body.
 type FormData struct {
 	*fasthttp.Args
 }

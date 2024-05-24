@@ -2,7 +2,7 @@
 id: log
 title: 📃 Log
 description: Fiber's built-in log package
-sidebar_position: 7
+sidebar_position: 6
 ---
 
 We can use logs to observe program behavior, diagnose problems, or configure corresponding alarms.
