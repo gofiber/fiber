@@ -159,6 +159,27 @@ func Test_Static_Disable_Cache(t *testing.T) {
 	require.Equal(t, "Cannot GET /test.txt", string(body))
 }
 
+func Test_Static_NotFoundHandler(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Get("/*", New("../../.github", Config{
+		NotFoundHandler: func(c fiber.Ctx) error {
+			return c.SendString("Custom 404")
+		},
+	}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/not-found", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 404, resp.StatusCode, "Status code")
+	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
+	require.Equal(t, fiber.MIMETextPlainCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "Custom 404", string(body))
+}
+
 // go test -run Test_Static_Download
 func Test_Static_Download(t *testing.T) {
 	t.Parallel()

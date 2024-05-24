@@ -62,6 +62,11 @@ type Config struct {
 	//
 	// Optional. Default: nil
 	ModifyResponse fiber.Handler
+
+	// NotFoundHandler defines a function to handle when the path is not found.
+	//
+	// Optional. Default: nil
+	NotFoundHandler fiber.Handler
 }
 
 // ConfigDefault is the default config

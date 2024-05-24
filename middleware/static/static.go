@@ -86,7 +86,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 					// If the root is a file, we need to reset the path to "/" always.
 					switch {
 					case checkFile && fs.FS == nil:
-						path = append(path[0:0], '/')
+						path = []byte("/")
 					case checkFile && fs.FS != nil:
 						path = utils.UnsafeBytes(root)
 					default:
@@ -132,6 +132,11 @@ func New(root string, cfg ...Config) fiber.Handler {
 			}
 
 			return nil
+		}
+
+		// Return custom 404 handler if provided.
+		if config.NotFoundHandler != nil {
+			return config.NotFoundHandler(c)
 		}
 
 		// Reset response to default
