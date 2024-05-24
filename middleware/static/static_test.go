@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"net/http/httptest"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -123,13 +124,20 @@ func Test_Static_Custom_CacheControl(t *testing.T) {
 }
 
 func Test_Static_Disable_Cache(t *testing.T) {
+	// Skip on Windows. It's not possible to delete a file that is in use.
+	if runtime.GOOS == "windows" {
+		t.SkipNow()
+	}
+
 	t.Parallel()
+
 	app := fiber.New()
 
 	file, err := os.Create("../../.github/test.txt")
 	require.NoError(t, err)
 	_, err = file.WriteString("Hello, World!")
 	require.NoError(t, err)
+	require.NoError(t, file.Close())
 
 	// Remove the file even if the test fails
 	defer func() {
