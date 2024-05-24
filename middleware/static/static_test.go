@@ -64,6 +64,12 @@ func Test_Static_Direct(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(body), "Hello, World!")
 
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodPost, "/index.html", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 405, resp.StatusCode, "Status code")
+	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
+	require.Equal(t, fiber.MIMETextPlainCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
+
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/testdata/testRoutes.json", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
