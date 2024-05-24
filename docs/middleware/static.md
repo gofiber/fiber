@@ -111,9 +111,9 @@ func main() {
   app := fiber.New()
   
   app.Get("/files*", static.New("", static.Config{
-		FS:     os.DirFS("files"),
-		Browse: true,
-	}))
+    FS:     os.DirFS("files"),
+    Browse: true,
+  }))
   
   app.Listen(":3000")
 }
@@ -147,12 +147,17 @@ To define static routes using `Get`, append the wildcard (`*`) operator at the e
 | CacheDuration       | `string` | Expiration duration for inactive file handlers.<br /><br />Use a negative time.Duration to disable it.                                                                             | `10 * time.Second`                  |
 | MaxAge       | `int` | The value for the Cache-Control HTTP-header that is set on the file response. MaxAge is defined in seconds.                                                                             | `0`                  |
 | ModifyResponse       | `fiber.Handler` | ModifyResponse defines a function that allows you to alter the response.                                                                             | `nil`                  |
+| NotFoundHandler       | `fiber.Handler` | NotFoundHandler defines a function to handle when the path is not found.                                                                             | `nil`                  |
+
+:::info
+You can set `CacheDuration` config property to `-1` to disable caching.
+:::
 
 ## Default Config
 
 ```go
 var ConfigDefault = Config{
-	Index:         []string{"index.html"},
-	CacheDuration: 10 * time.Second,
+  Index:         []string{"index.html"},
+  CacheDuration: 10 * time.Second,
 }
 ```

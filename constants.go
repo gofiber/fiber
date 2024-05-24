@@ -20,6 +20,7 @@ const (
 	MIMETextHTML        = "text/html"
 	MIMETextPlain       = "text/plain"
 	MIMETextJavaScript  = "text/javascript"
+	MIMETextCSS         = "text/css"
 	MIMEApplicationXML  = "application/xml"
 	MIMEApplicationJSON = "application/json"
 	// Deprecated: use MIMETextJavaScript instead

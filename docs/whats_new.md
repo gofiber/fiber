@@ -272,7 +272,7 @@ DRAFT section
 ### Filesystem
 
 We've decided to remove filesystem middleware to clear up the confusion between static and filesystem middleware. 
-Now, static middleware can do everything that filesystem middleware and static do. You can check out [static middleware](./middleware/static.md) or [migration guide](#📋-migration-guide) to see what has been changed.
+Now, static middleware can do everything that filesystem middleware and static do. You can check out [static middleware](./middleware/static.md) or [migration guide](#-migration-guide) to see what has been changed.
 
 ### Monitor
 
@@ -364,7 +364,7 @@ You need to move filesystem middleware to static middleware due to it has been r
 ```go
 // Before
 app.Use(filesystem.New(filesystem.Config{
-	Root: http.Dir("./assets"),
+  Root: http.Dir("./assets"),
 }))
 
 app.Use(filesystem.New(filesystem.Config{
@@ -378,7 +378,7 @@ app.Use(filesystem.New(filesystem.Config{
 ```go
 // After
 app.Use(static.New("", static.Config{
-	FS: os.DirFS("./assets"),
+  FS: os.DirFS("./assets"),
 }))
 
 app.Use(static.New("", static.Config{
