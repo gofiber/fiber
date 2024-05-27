@@ -18,6 +18,8 @@ func New(root string, cfg ...Config) fiber.Handler
 
 ## Examples
 
+### Serving files from a directory
+
 ```go
 package main
 
@@ -44,6 +46,8 @@ curl http://localhost:3000/css/style.css
 ```
 
 </details>
+
+### Serving files from a directory with Use
 
 ```go
 package main
@@ -72,6 +76,8 @@ curl http://localhost:3000/css/style.css
 
 </details>
 
+### Serving a file
+
 ```go
 package main
 
@@ -99,6 +105,8 @@ curl http://localhost:3000/static/john/doee # will show hello.html
 
 </details>
 
+### Serving files using os.DirFS
+
 ```go
 package main
 
@@ -125,6 +133,34 @@ func main() {
 ```sh
 curl http://localhost:3000/files/css/style.css
 curl http://localhost:3000/files/index.html
+```
+
+</details>
+
+### SPA (Single Page Application)
+
+```go
+func main() {
+	app := fiber.New()
+	app.Use("/web", static.New("", static.Config{
+		FS: os.DirFS("dist"),
+	}))
+
+	app.Get("/web*", func(c fiber.Ctx) error {
+		return c.SendFile("dist/index.html")
+	})
+
+	app.Listen(":3000")
+}
+```
+
+<details>
+<summary>Test</summary>
+
+```sh
+curl http://localhost:3000/web/css/style.css
+curl http://localhost:3000/web/index.html
+curl http://localhost:3000/web
 ```
 
 </details>
