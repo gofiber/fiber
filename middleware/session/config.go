@@ -10,9 +10,9 @@ import (
 
 // Config defines the config for middleware.
 type Config struct {
-	// Allowed session duration
+	// Allowed session idle duration
 	// Optional. Default value 24 * time.Hour
-	Expiration time.Duration
+	IdleTimeout time.Duration
 
 	// Storage interface to store the session data
 	// Optional. Default value memory.New()
@@ -70,7 +70,7 @@ const (
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Expiration:   24 * time.Hour,
+	IdleTimeout:  24 * time.Hour,
 	KeyLookup:    "cookie:session_id",
 	KeyGenerator: utils.UUIDv4,
 	source:       "cookie",
@@ -88,8 +88,8 @@ func configDefault(config ...Config) Config {
 	cfg := config[0]
 
 	// Set default values
-	if int(cfg.Expiration.Seconds()) <= 0 {
-		cfg.Expiration = ConfigDefault.Expiration
+	if int(cfg.IdleTimeout.Seconds()) <= 0 {
+		cfg.IdleTimeout = ConfigDefault.IdleTimeout
 	}
 	if cfg.KeyLookup == "" {
 		cfg.KeyLookup = ConfigDefault.KeyLookup

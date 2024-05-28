@@ -13,13 +13,13 @@ import (
 )
 
 type Session struct {
-	id         string        // session id
-	fresh      bool          // if new session
-	ctx        fiber.Ctx     // fiber context
-	config     *Store        // store configuration
-	data       *data         // key value data
-	byteBuffer *bytes.Buffer // byte buffer for the en- and decode
-	exp        time.Duration // expiration of this session
+	id          string        // session id
+	fresh       bool          // if new session
+	ctx         fiber.Ctx     // fiber context
+	config      *Store        // store configuration
+	data        *data         // key value data
+	byteBuffer  *bytes.Buffer // byte buffer for the en- and decode
+	idleTimeout time.Duration // idleTimeout of this session
 }
 
 var sessionPool = sync.Pool{
@@ -42,7 +42,7 @@ func acquireSession() *Session {
 
 func releaseSession(s *Session) {
 	s.id = ""
-	s.exp = 0
+	s.idleTimeout = 0
 	s.ctx = nil
 	s.config = nil
 	if s.data != nil {
@@ -135,7 +135,7 @@ func (s *Session) Reset() error {
 		s.byteBuffer.Reset()
 	}
 	// Reset expiration
-	s.exp = 0
+	s.idleTimeout = 0
 
 	// Delete old id from storage
 	if err := s.config.Storage.Delete(s.id); err != nil {
@@ -167,9 +167,9 @@ func (s *Session) Save() error {
 		return nil
 	}
 
-	// Check if session has your own expiration, otherwise use default value
-	if s.exp <= 0 {
-		s.exp = s.config.Expiration
+	// Check if session has your own idle timeout, otherwise use default value
+	if s.idleTimeout <= 0 {
+		s.idleTimeout = s.config.IdleTimeout
 	}
 
 	// Update client cookie
@@ -189,7 +189,7 @@ func (s *Session) Save() error {
 	copy(encodedBytes, s.byteBuffer.Bytes())
 
 	// pass copied bytes with session id to provider
-	if err := s.config.Storage.Set(s.id, encodedBytes, s.exp); err != nil {
+	if err := s.config.Storage.Set(s.id, encodedBytes, s.idleTimeout); err != nil {
 		return err
 	}
 
@@ -209,8 +209,8 @@ func (s *Session) Keys() []string {
 }
 
 // SetExpiry sets a specific expiration for this session
-func (s *Session) SetExpiry(exp time.Duration) {
-	s.exp = exp
+func (s *Session) SetIdleTimeout(idleTimeout time.Duration) {
+	s.idleTimeout = idleTimeout
 }
 
 func (s *Session) setSession() {
@@ -226,8 +226,8 @@ func (s *Session) setSession() {
 		// Cookies are also session cookies if they do not specify the Expires or Max-Age attribute.
 		// refer: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie
 		if !s.config.CookieSessionOnly {
-			fcookie.SetMaxAge(int(s.exp.Seconds()))
-			fcookie.SetExpire(time.Now().Add(s.exp))
+			fcookie.SetMaxAge(int(s.idleTimeout.Seconds()))
+			fcookie.SetExpire(time.Now().Add(s.idleTimeout))
 		}
 		fcookie.SetSecure(s.config.CookieSecure)
 		fcookie.SetHTTPOnly(s.config.CookieHTTPOnly)
