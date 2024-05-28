@@ -365,7 +365,7 @@ func Test_Session_Save_Expiration(t *testing.T) {
 		sess.Set("name", "john")
 
 		// expire this session in 5 seconds
-		sess.SetExpiry(sessionDuration)
+		sess.SetIdleTimeout(sessionDuration)
 
 		// save session
 		err = sess.Save()
@@ -443,12 +443,12 @@ func Test_Session_Destroy(t *testing.T) {
 func Test_Session_Custom_Config(t *testing.T) {
 	t.Parallel()
 
-	store := New(Config{Expiration: time.Hour, KeyGenerator: func() string { return "very random" }})
-	require.Equal(t, time.Hour, store.Expiration)
+	store := New(Config{IdleTimeout: time.Hour, KeyGenerator: func() string { return "very random" }})
+	require.Equal(t, time.Hour, store.IdleTimeout)
 	require.Equal(t, "very random", store.KeyGenerator())
 
-	store = New(Config{Expiration: 0})
-	require.Equal(t, ConfigDefault.Expiration, store.Expiration)
+	store = New(Config{IdleTimeout: 0})
+	require.Equal(t, ConfigDefault.IdleTimeout, store.IdleTimeout)
 }
 
 // go test -run Test_Session_Cookie
