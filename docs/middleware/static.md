@@ -18,23 +18,18 @@ func New(root string, cfg ...Config) fiber.Handler
 
 ## Examples
 
+Import the middleware package that is part of the [Fiber](https://github.com/gofiber/fiber) web framework
+```go
+import(
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/static"
+)
+```
+
 ### Serving files from a directory
 
 ```go
-package main
-
-import (
-  "github.com/gofiber/fiber/v3"
-  "github.com/gofiber/fiber/v3/middleware/static"
-)
-
-func main() {
-  app := fiber.New()
-  
-  app.Get("/*", static.New("./public"))
-  
-  app.Listen(":3000")
-}
+app.Get("/*", static.New("./public"))
 ```
 
 <details>
@@ -50,20 +45,7 @@ curl http://localhost:3000/css/style.css
 ### Serving files from a directory with Use
 
 ```go
-package main
-
-import (
-  "github.com/gofiber/fiber/v3"
-  "github.com/gofiber/fiber/v3/middleware/static"
-)
-
-func main() {
-  app := fiber.New()
-  
-  app.Use("/", static.New("./public"))
-  
-  app.Listen(":3000")
-}
+app.Use("/", static.New("./public"))
 ```
 
 <details>
@@ -79,20 +61,7 @@ curl http://localhost:3000/css/style.css
 ### Serving a file
 
 ```go
-package main
-
-import (
-  "github.com/gofiber/fiber/v3"
-  "github.com/gofiber/fiber/v3/middleware/static"
-)
-
-func main() {
-  app := fiber.New()
-  
-  app.Use("/static", static.New("./public/hello.html"))
-  
-  app.Listen(":3000")
-}
+app.Use("/static", static.New("./public/hello.html"))
 ```
 
 <details>
@@ -108,23 +77,32 @@ curl http://localhost:3000/static/john/doee # will show hello.html
 ### Serving files using os.DirFS
 
 ```go
-package main
-
-import (
-  "github.com/gofiber/fiber/v3"
-  "github.com/gofiber/fiber/v3/middleware/static"
-)
-
-func main() {
-  app := fiber.New()
-  
-  app.Get("/files*", static.New("", static.Config{
+app.Get("/files*", static.New("", static.Config{
     FS:     os.DirFS("files"),
     Browse: true,
-  }))
-  
-  app.Listen(":3000")
-}
+}))
+```
+
+<details>
+<summary>Test</summary>
+
+```sh
+curl http://localhost:3000/files/css/style.css
+curl http://localhost:3000/files/index.html
+```
+
+</details>
+
+### Serving files using embed.FS
+
+```go
+//go:embed path/to/files
+var myfiles embed.FS
+
+app.Get("/files*", static.New("", static.Config{
+    FS:     myfiles,
+    Browse: true,
+}))
 ```
 
 <details>
@@ -140,18 +118,13 @@ curl http://localhost:3000/files/index.html
 ### SPA (Single Page Application)
 
 ```go
-func main() {
-	app := fiber.New()
-	app.Use("/web", static.New("", static.Config{
-		FS: os.DirFS("dist"),
-	}))
+app.Use("/web", static.New("", static.Config{
+    FS: os.DirFS("dist"),
+}))
 
-	app.Get("/web*", func(c fiber.Ctx) error {
-		return c.SendFile("dist/index.html")
-	})
-
-	app.Listen(":3000")
-}
+app.Get("/web*", func(c fiber.Ctx) error {
+    return c.SendFile("dist/index.html")
+})
 ```
 
 <details>
