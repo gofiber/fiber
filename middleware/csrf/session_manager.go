@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/fiber/v3/middleware/session"
 )
 
@@ -66,6 +67,9 @@ func (m *sessionManager) setRaw(c fiber.Ctx, key string, raw []byte, exp time.Du
 			return
 		}
 		storeSess.Set(m.key, &Token{key, raw, time.Now().Add(exp)})
+		if err := storeSess.Save(); err != nil {
+			log.Warn("csrf: failed to save session: ", err)
+		}
 	}
 }
 
@@ -82,5 +86,8 @@ func (m *sessionManager) delRaw(c fiber.Ctx) {
 			return
 		}
 		storeSess.Delete(m.key)
+		if err := storeSess.Save(); err != nil {
+			log.Warn("csrf: failed to save session: ", err)
+		}
 	}
 }
