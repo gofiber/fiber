@@ -1,6 +1,8 @@
 package session
 
 import (
+	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
@@ -38,7 +40,7 @@ type Middleware struct {
 
 // Middleware pool
 var middlewarePool = &sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return &Middleware{}
 	},
 }
@@ -94,9 +96,15 @@ func NewMiddleware(config MiddlewareConfig) fiber.Handler {
 	}
 }
 
+var ErrTypeAssertionFailed = errors.New("failed to type-assert to *Middleware")
+
 // acquireMiddleware returns a new Middleware from the pool
 func acquireMiddleware() *Middleware {
-	return middlewarePool.Get().(*Middleware)
+	middleware, ok := middlewarePool.Get().(*Middleware)
+	if !ok {
+		panic(fmt.Errorf("%w", ErrTypeAssertionFailed))
+	}
+	return middleware
 }
 
 // releaseMiddleware returns a Middleware to the pool
@@ -109,7 +117,12 @@ func releaseMiddleware(m *Middleware) {
 
 // FromContext returns the Middleware from the fiber context
 func FromContext(c fiber.Ctx) *Middleware {
-	return c.Locals(key).(*Middleware)
+	m, ok := c.Locals(key).(*Middleware)
+	if !ok {
+		log.Warn("session: Session middleware not registered. See https://docs.gofiber.io/middleware/session")
+		return nil
+	}
+	return m
 }
 
 func (m *Middleware) Set(key string, value any) {
@@ -159,7 +172,6 @@ func (m *Middleware) Reset() error {
 	err := m.Session.Reset()
 	m.hasChanged = true
 	return err
-
 }
 
 func (m *Middleware) reaquireSession() {
