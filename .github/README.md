@@ -203,15 +203,15 @@ func main() {
 func main() {
     app := fiber.New()
 
-    app.Static("/", "./public")
+    app.Get("/*", static.New("./public"))
     // => http://localhost:3000/js/script.js
     // => http://localhost:3000/css/style.css
 
-    app.Static("/prefix", "./public")
+    app.Get("/prefix*", static.New("./public"))
     // => http://localhost:3000/prefix/js/script.js
     // => http://localhost:3000/prefix/css/style.css
 
-    app.Static("*", "./public/index.html")
+    app.Get("*", static.New("./public/index.html"))
     // => http://localhost:3000/any/path/shows/index/html
 
     log.Fatal(app.Listen(":3000"))
@@ -388,7 +388,7 @@ curl -H "Origin: http://example.com" --verbose http://localhost:3000
 func main() {
     app := fiber.New()
 
-    app.Static("/", "./public")
+    app.Get("/", static.New("./public"))
 
     app.Get("/demo", func(c fiber.Ctx) error {
         return c.SendString("This is a demo!")
@@ -586,7 +586,6 @@ Here is a list of middleware that are included within the Fiber framework.
 | [etag](https://github.com/gofiber/fiber/tree/main/middleware/etag)                   | Allows for caches to be more efficient and save bandwidth, as a web server does not need to resend a full response if the content has not changed.                      |
 | [expvar](https://github.com/gofiber/fiber/tree/main/middleware/expvar)               | Serves via its HTTP server runtime exposed variants in the JSON format.                                                                                                 |
 | [favicon](https://github.com/gofiber/fiber/tree/main/middleware/favicon)             | Ignore favicon from logs or serve from memory if a file path is provided.                                                                                               |
-| [filesystem](https://github.com/gofiber/fiber/tree/main/middleware/filesystem)       | FileSystem middleware for Fiber.                                                                                                                                        |
 | [healthcheck](https://github.com/gofiber/fiber/tree/main/middleware/healthcheck)     | Liveness and Readiness probes for Fiber.                                                                                                                                |
 | [helmet](https://github.com/gofiber/fiber/tree/main/middleware/helmet)               | Helps secure your apps by setting various HTTP headers.                                                                                                                 |
 | [idempotency](https://github.com/gofiber/fiber/tree/main/middleware/idempotency)     | Allows for fault-tolerant APIs where duplicate requests do not erroneously cause the same action performed multiple times on the server-side.                           |
@@ -601,6 +600,7 @@ Here is a list of middleware that are included within the Fiber framework.
 | [rewrite](https://github.com/gofiber/fiber/tree/main/middleware/rewrite)             | Rewrites the URL path based on provided rules. It can be helpful for backward compatibility or just creating cleaner and more descriptive links.                        |
 | [session](https://github.com/gofiber/fiber/tree/main/middleware/session)             | Session middleware. NOTE: This middleware uses our Storage package.                                                                                                     |
 | [skip](https://github.com/gofiber/fiber/tree/main/middleware/skip)                   | Skip middleware that skips a wrapped handler if a predicate is true.                                                                                                    |
+| [static](https://github.com/gofiber/fiber/tree/main/middleware/static)                   | Static middleware for Fiber that serves static files such as **images**, **CSS,** and **JavaScript**.                                                                                                   |
 | [timeout](https://github.com/gofiber/fiber/tree/main/middleware/timeout)             | Adds a max time for a request and forwards to ErrorHandler if it is exceeded.                                                                                           |
 
 ## 🧬 External Middleware
