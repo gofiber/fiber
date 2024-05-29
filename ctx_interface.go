@@ -308,7 +308,7 @@ type Ctx interface {
 	// SendFile transfers the file from the given path.
 	// The file is not compressed by default, enable this by passing a 'true' argument
 	// Sets the Content-Type response HTTP header field based on the filenames extension.
-	SendFile(file string, compress ...bool) error
+	SendFile(file string, config ...SendFile) error
 
 	// SendStatus sets the HTTP status code and if the response body is empty,
 	// it sets the correct status message in the body.

@@ -11,6 +11,7 @@ import (
 	"compress/zlib"
 	"context"
 	"crypto/tls"
+	"embed"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -2970,19 +2971,152 @@ func Test_Ctx_SendFile(t *testing.T) {
 	app.ReleaseCtx(c)
 }
 
+func Test_Ctx_SendFile_Download(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	// fetch file content
+	f, err := os.Open("./ctx.go")
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, f.Close())
+	}()
+	expectFileContent, err := io.ReadAll(f)
+	require.NoError(t, err)
+	// fetch file info for the not modified test case
+	_, err = os.Stat("./ctx.go")
+	require.NoError(t, err)
+
+	// simple test case
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	err = c.SendFile("ctx.go", SendFile{
+		Download: true,
+	})
+	// check expectation
+	require.NoError(t, err)
+	require.Equal(t, expectFileContent, c.Response().Body())
+	require.Equal(t, "attachment", string(c.Response().Header.Peek(HeaderContentDisposition)))
+	require.Equal(t, StatusOK, c.Response().StatusCode())
+	app.ReleaseCtx(c)
+}
+
+func Test_Ctx_SendFile_MaxAge(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	// fetch file content
+	f, err := os.Open("./ctx.go")
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, f.Close())
+	}()
+	expectFileContent, err := io.ReadAll(f)
+	require.NoError(t, err)
+
+	// fetch file info for the not modified test case
+	_, err = os.Stat("./ctx.go")
+	require.NoError(t, err)
+
+	// simple test case
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	err = c.SendFile("ctx.go", SendFile{
+		MaxAge: 100,
+	})
+
+	// check expectation
+	require.NoError(t, err)
+	require.Equal(t, expectFileContent, c.Response().Body())
+	require.Equal(t, "public, max-age=100", string(c.Context().Response.Header.Peek(HeaderCacheControl)), "CacheControl Control")
+	require.Equal(t, StatusOK, c.Response().StatusCode())
+	app.ReleaseCtx(c)
+}
+
+func Test_Ctx_SendFile_Compressed(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	// fetch file content
+	f, err := os.Open("./ctx.go")
+	require.NoError(t, err)
+
+	defer func() {
+		require.NoError(t, f.Close())
+
+	}()
+	expectFileContent, err := io.ReadAll(f)
+	require.NoError(t, err)
+
+	// fetch file info for the not modified test case
+	_, err = os.Stat("./ctx.go")
+	require.NoError(t, err)
+
+	// simple test case
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	err = c.SendFile("./ctx.go", SendFile{
+		Compress: true,
+	})
+	require.NoError(t, err)
+
+	gz, err := gzip.NewReader(bytes.NewReader(c.Response().Body()))
+	require.NoError(t, err)
+
+	body, err := io.ReadAll(gz)
+	require.NoError(t, err)
+
+	require.Equal(t, expectFileContent, body)
+	require.Equal(t, "gzip", string(c.Response().Header.Peek(HeaderContentEncoding)))
+	require.Equal(t, StatusOK, c.Response().StatusCode())
+
+	app.ReleaseCtx(c)
+}
+
+//go:embed ctx.go
+var embedFile embed.FS
+
+func Test_Ctx_SendFile_EmbedFS(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	f, err := os.Open("./ctx.go")
+	require.NoError(t, err)
+
+	defer func() {
+		require.NoError(t, f.Close())
+	}()
+
+	expectFileContent, err := io.ReadAll(f)
+	require.NoError(t, err)
+
+	app.Get("/test", func(c Ctx) error {
+		return c.SendFile("ctx.go", SendFile{
+			FS: embedFile,
+		})
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, expectFileContent, body)
+}
+
 // go test -race -run Test_Ctx_SendFile_404
 func Test_Ctx_SendFile_404(t *testing.T) {
 	t.Parallel()
 	app := New()
 	app.Get("/", func(c Ctx) error {
-		err := c.SendFile(filepath.FromSlash("john_dow.go/"))
-		require.Error(t, err)
-		return err
+		return c.SendFile("ctx12.go")
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, StatusNotFound, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "sendfile: file ctx12.go not found", string(body))
 }
 
 // go test -race -run Test_Ctx_SendFile_Immutable
@@ -3048,6 +3182,40 @@ func Test_Ctx_SendFile_RestoreOriginalURL(t *testing.T) {
 
 	require.NoError(t, err1)
 	require.NoError(t, err2)
+}
+
+func Test_SendFile_withRoutes(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/file", func(c Ctx) error {
+		return c.SendFile("ctx.go")
+	})
+
+	app.Get("/file/download", func(c Ctx) error {
+		return c.SendFile("ctx.go", SendFile{
+			Download: true,
+		})
+	})
+
+	app.Get("/file/fs", func(c Ctx) error {
+		return c.SendFile("ctx.go", SendFile{
+			FS: os.DirFS("."),
+		})
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/file", nil))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/file/download", nil))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.Equal(t, "attachment", resp.Header.Get(HeaderContentDisposition))
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/file/fs", nil))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
 }
 
 // go test -run Test_Ctx_JSON

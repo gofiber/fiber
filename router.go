@@ -10,6 +10,7 @@ import (
 	"html"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/gofiber/utils/v2"
@@ -60,6 +61,11 @@ type Route struct {
 	Path     string    `json:"path"`   // Original registered route path
 	Params   []string  `json:"params"` // Case sensitive param keys
 	Handlers []Handler `json:"-"`      // Ctx handlers
+
+	sendFileOnce              sync.Once
+	sendFileFS                *fasthttp.FS
+	sendFileHandler           fasthttp.RequestHandler
+	sendFileCacheControlValue string
 }
 
 func (r *Route) match(detectionPath, path string, params *[maxParams]string) bool {
