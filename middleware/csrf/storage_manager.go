@@ -7,6 +7,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/memory"
+	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 )
 
@@ -41,7 +42,11 @@ func newStorageManager(storage fiber.Storage) *storageManager {
 }
 
 // get raw data from storage or memory
-func (m *storageManager) getRaw(key string) (raw []byte, err error) {
+func (m *storageManager) getRaw(key string) ([]byte, error) {
+	var (
+		raw []byte
+		err error
+	)
 	if m.storage != nil {
 		raw, err = m.storage.Get(key)
 		if err != nil {
@@ -59,30 +64,28 @@ func (m *storageManager) getRaw(key string) (raw []byte, err error) {
 }
 
 // set data to storage or memory
-func (m *storageManager) setRaw(key string, raw []byte, exp time.Duration) (err error) {
+func (m *storageManager) setRaw(key string, raw []byte, exp time.Duration) {
 	if m.storage != nil {
-		err = m.storage.Set(key, raw, exp)
+		err := m.storage.Set(key, raw, exp)
 		if err != nil {
-			return fmt.Errorf("%w: %s", ErrNotSetStorage, err.Error())
+			log.Warnf("csrf: failed to save session in storage: %s", err.Error())
+			return
 		}
 	} else {
 		// the key is crucial in crsf and sometimes a reference to another value which can be reused later(pool/unsafe values concept), so a copy is made here
 		m.memory.Set(utils.CopyString(key), raw, exp)
 	}
-
-	return nil
 }
 
 // delete data from storage or memory
-func (m *storageManager) delRaw(key string) (err error) {
+func (m *storageManager) delRaw(key string) {
 	if m.storage != nil {
-		err = m.storage.Delete(key)
+		err := m.storage.Delete(key)
 		if err != nil {
-			return fmt.Errorf("%w: %s", ErrNotSetStorage, err.Error())
+			log.Warnf("csrf: failed to delete session in storage: %s", err.Error())
+			return
 		}
 	} else {
 		m.memory.Delete(key)
 	}
-
-	return nil
 }

@@ -210,7 +210,7 @@ func HandlerFromContext(c fiber.Ctx) *Handler {
 
 // getRawFromStorage returns the raw value from the storage for the given token
 // returns nil if the token does not exist, is expired or is invalid
-func getRawFromStorage(c fiber.Ctx, token string, cfg Config, sessionManager *sessionManager, storageManager *storageManager) (raw []byte, err error) {
+func getRawFromStorage(c fiber.Ctx, token string, cfg Config, sessionManager *sessionManager, storageManager *storageManager) ([]byte, error) {
 	if cfg.Session != nil {
 		return sessionManager.getRaw(c, token, dummyValue)
 	}

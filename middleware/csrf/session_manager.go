@@ -26,7 +26,7 @@ func newSessionManager(s *session.Store, k string) *sessionManager {
 }
 
 // get token from session
-func (m *sessionManager) getRaw(c fiber.Ctx, key string, raw []byte) (rawToken []byte, err error) {
+func (m *sessionManager) getRaw(c fiber.Ctx, key string, raw []byte) ([]byte, error) {
 	sess, err := m.session.Get(c)
 	if err != nil {
 		return nil, err
