@@ -107,8 +107,8 @@ func New(config ...Config) fiber.Handler {
 			cookieToken := c.Cookies(cfg.CookieName)
 			if cookieToken != "" {
 				// In this case, handling error doesn't make sense because we have validations after the switch.
-				raw, _ := getRawFromStorage(c, cookieToken, cfg, sessionManager, storageManager)
-				if raw != nil {
+				raw, err := getRawFromStorage(c, cookieToken, cfg, sessionManager, storageManager)
+				if raw != nil && err == nil {
 					token = cookieToken // Token is valid, safe to set it
 				}
 			}
