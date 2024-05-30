@@ -1453,7 +1453,7 @@ func (c *DefaultCtx) SendFile(file string, config ...SendFile) error {
 	}
 
 	// https://github.com/valyala/fasthttp/blob/c7576cc10cabfc9c993317a2d3f8355497bea156/fs.go#L129-L134
-	route.sendFileOnce.Do(func() {
+	if route.sendFileFS == nil {
 		route.sendFileFS = &fasthttp.FS{
 			Root:                 "",
 			FS:                   cfg.FS,
@@ -1480,7 +1480,7 @@ func (c *DefaultCtx) SendFile(file string, config ...SendFile) error {
 		if maxAge > 0 {
 			route.sendFileCacheControlValue = "public, max-age=" + strconv.Itoa(maxAge)
 		}
-	})
+	}
 
 	// Keep original path for mutable params
 	c.pathOriginal = utils.CopyString(c.pathOriginal)

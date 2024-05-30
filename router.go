@@ -10,7 +10,6 @@ import (
 	"html"
 	"sort"
 	"strings"
-	"sync"
 	"sync/atomic"
 
 	"github.com/gofiber/utils/v2"
@@ -62,7 +61,6 @@ type Route struct {
 	Params   []string  `json:"params"` // Case sensitive param keys
 	Handlers []Handler `json:"-"`      // Ctx handlers
 
-	sendFileOnce              sync.Once
 	sendFileFS                *fasthttp.FS
 	sendFileHandler           fasthttp.RequestHandler
 	sendFileCacheControlValue string

@@ -3041,7 +3041,6 @@ func Test_Ctx_SendFile_Compressed(t *testing.T) {
 
 	defer func() {
 		require.NoError(t, f.Close())
-
 	}()
 	expectFileContent, err := io.ReadAll(f)
 	require.NoError(t, err)
