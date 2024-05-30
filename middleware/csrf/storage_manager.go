@@ -1,6 +1,7 @@
 package csrf
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -40,31 +41,48 @@ func newStorageManager(storage fiber.Storage) *storageManager {
 }
 
 // get raw data from storage or memory
-func (m *storageManager) getRaw(key string) []byte {
-	var raw []byte
+func (m *storageManager) getRaw(key string) (raw []byte, err error) {
 	if m.storage != nil {
-		raw, _ = m.storage.Get(key) //nolint:errcheck // TODO: Do not ignore error
+		raw, err = m.storage.Get(key)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %s", ErrNotGetStorage, err.Error())
+		}
 	} else {
-		raw, _ = m.memory.Get(key).([]byte) //nolint:errcheck // TODO: Do not ignore error
+		var ok bool
+		raw, ok = m.memory.Get(key).([]byte)
+		if !ok {
+			return nil, ErrNotGetStorage
+		}
 	}
-	return raw
+
+	return raw, nil
 }
 
 // set data to storage or memory
-func (m *storageManager) setRaw(key string, raw []byte, exp time.Duration) {
+func (m *storageManager) setRaw(key string, raw []byte, exp time.Duration) (err error) {
 	if m.storage != nil {
-		_ = m.storage.Set(key, raw, exp) //nolint:errcheck // TODO: Do not ignore error
+		err = m.storage.Set(key, raw, exp)
+		if err != nil {
+			return fmt.Errorf("%w: %s", ErrNotSetStorage, err.Error())
+		}
 	} else {
 		// the key is crucial in crsf and sometimes a reference to another value which can be reused later(pool/unsafe values concept), so a copy is made here
 		m.memory.Set(utils.CopyString(key), raw, exp)
 	}
+
+	return nil
 }
 
 // delete data from storage or memory
-func (m *storageManager) delRaw(key string) {
+func (m *storageManager) delRaw(key string) (err error) {
 	if m.storage != nil {
-		_ = m.storage.Delete(key) //nolint:errcheck // TODO: Do not ignore error
+		err = m.storage.Delete(key)
+		if err != nil {
+			return fmt.Errorf("%w: %s", ErrNotSetStorage, err.Error())
+		}
 	} else {
 		m.memory.Delete(key)
 	}
+
+	return nil
 }
