@@ -102,7 +102,7 @@ var ErrTypeAssertionFailed = errors.New("failed to type-assert to *Middleware")
 func acquireMiddleware() *Middleware {
 	middleware, ok := middlewarePool.Get().(*Middleware)
 	if !ok {
-		panic(fmt.Errorf("%w", ErrTypeAssertionFailed))
+		panic(ErrTypeAssertionFailed.Error())
 	}
 	return middleware
 }
