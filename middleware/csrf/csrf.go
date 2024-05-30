@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/log"
 )
 
 var (
@@ -18,8 +19,7 @@ var (
 	ErrRefererNoMatch  = errors.New("referer does not match host and is not a trusted origin")
 	ErrOriginInvalid   = errors.New("origin invalid")
 	ErrOriginNoMatch   = errors.New("origin does not match host and is not a trusted origin")
-	ErrNotGetStorage   = errors.New("csrf storage not found data")
-	ErrNotSetStorage   = errors.New("csrf storage not set data")
+	ErrNotGetStorage   = errors.New("unable to retrieve data from CSRF storage")
 
 	errOriginNotFound = errors.New("origin not supplied or is null") // internal error, will not be returned to the user
 	dummyValue        = []byte{'+'}
@@ -107,8 +107,8 @@ func New(config ...Config) fiber.Handler {
 			cookieToken := c.Cookies(cfg.CookieName)
 			if cookieToken != "" {
 				// In this case, handling error doesn't make sense because we have validations after the switch.
-				raw, err := getRawFromStorage(c, cookieToken, cfg, sessionManager, storageManager)
-				if raw != nil && err == nil {
+				raw, _ := getRawFromStorage(c, cookieToken, cfg, sessionManager, storageManager) //nolint:errcheck
+				if raw != nil {
 					token = cookieToken // Token is valid, safe to set it
 				}
 			}
@@ -152,6 +152,8 @@ func New(config ...Config) fiber.Handler {
 
 			raw, err := getRawFromStorage(c, extractedToken, cfg, sessionManager, storageManager)
 			if err != nil || raw == nil {
+				log.Error("Failed to retrieve CSRF token: ", err)
+
 				// If token is not in storage, expire the cookie
 				expireCSRFCookie(c, cfg)
 				// and return an error
