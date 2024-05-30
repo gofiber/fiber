@@ -2,15 +2,11 @@ package session
 
 import (
 	"errors"
-	"fmt"
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/log"
 )
-
-// key for looking up session middleware in request context
-const key = 0
 
 // Session defines the session middleware configuration
 type MiddlewareConfig struct {
@@ -34,16 +30,23 @@ type Middleware struct {
 	config     MiddlewareConfig
 	Session    *Session
 	ctx        *fiber.Ctx
-	hasChanged bool
+	hasChanged bool // TODO: use this to optimize interaction with the session store
 	mu         sync.RWMutex
 }
 
-// Middleware pool
-var middlewarePool = &sync.Pool{
-	New: func() any {
-		return &Middleware{}
-	},
-}
+// key for looking up session middleware in request context
+const key = 0
+
+var (
+	// ErrTypeAssertionFailed is returned when the type assertion failed
+	ErrTypeAssertionFailed = errors.New("failed to type-assert to *Middleware")
+
+	middlewarePool = &sync.Pool{
+		New: func() any {
+			return &Middleware{}
+		},
+	}
+)
 
 // Session is a middleware to manage session state
 //
@@ -96,8 +99,6 @@ func NewMiddleware(config MiddlewareConfig) fiber.Handler {
 	}
 }
 
-var ErrTypeAssertionFailed = errors.New("failed to type-assert to *Middleware")
-
 // acquireMiddleware returns a new Middleware from the pool
 func acquireMiddleware() *Middleware {
 	middleware, ok := middlewarePool.Get().(*Middleware)
@@ -134,9 +135,7 @@ func (m *Middleware) Set(key string, value any) {
 }
 
 func (m *Middleware) Get(key string) any {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
+	// no need to lock here, since the session has its own mutex
 	return m.Session.Get(key)
 }
 
