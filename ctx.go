@@ -41,6 +41,11 @@ type contextKey int
 // userContextKey define the key name for storing context.Context in *fasthttp.RequestCtx
 const userContextKey contextKey = 0 // __local_user_context__
 
+// DefaultCtx is the default implementation of the Ctx interface
+// generation tool `go install github.com/vburenin/ifacemaker@975a95966976eeb2d4365a7fb236e274c54da64c`
+// https://github.com/vburenin/ifacemaker/blob/975a95966976eeb2d4365a7fb236e274c54da64c/ifacemaker.go#L14-L30
+//
+//go:generate ifacemaker --file ctx.go --struct DefaultCtx --iface Ctx --pkg fiber --output ctx_interface_gen.go --not-exported true --iface-comment "Ctx represents the Context which hold the HTTP request and response.\nIt has methods for the request query string, parameters, body, HTTP headers and so on."
 type DefaultCtx struct {
 	app                 *App                 // Reference to *App
 	route               *Route               // Reference to *Route
@@ -1711,16 +1716,80 @@ func (c *DefaultCtx) Bind() *Bind {
 	return c.bind
 }
 
-// Convert a string value to a specified type, handling errors and optional default values.
-func Convert[T any](value string, convertor func(string) (T, error), defaultValue ...T) (T, error) {
-	converted, err := convertor(value)
-	if err != nil {
-		if len(defaultValue) > 0 {
-			return defaultValue[0], nil
-		}
+// Reset is a method to reset context fields by given request when to use server handlers.
+func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
+	// Reset route and handler index
+	c.indexRoute = -1
+	c.indexHandler = 0
+	// Reset matched flag
+	c.matched = false
+	// Set paths
+	c.pathOriginal = c.app.getString(fctx.URI().PathOriginal())
+	// Set method
+	c.method = c.app.getString(fctx.Request.Header.Method())
+	c.methodINT = c.app.methodInt(c.method)
+	// Attach *fasthttp.RequestCtx to ctx
+	c.fasthttp = fctx
+	// reset base uri
+	c.baseURI = ""
+	// Prettify path
+	c.configDependentPaths()
+}
 
-		return converted, fmt.Errorf("failed to convert: %w", err)
+// Release is a method to reset context fields when to use ReleaseCtx()
+func (c *DefaultCtx) release() {
+	c.route = nil
+	c.fasthttp = nil
+	c.bind = nil
+	c.redirectionMessages = c.redirectionMessages[:0]
+	c.viewBindMap = sync.Map{}
+	if c.redirect != nil {
+		ReleaseRedirect(c.redirect)
+		c.redirect = nil
 	}
+}
 
-	return converted, nil
+// Methods to use with next stack.
+func (c *DefaultCtx) getMethodINT() int {
+	return c.methodINT
+}
+
+func (c *DefaultCtx) getIndexRoute() int {
+	return c.indexRoute
+}
+
+func (c *DefaultCtx) getTreePath() string {
+	return c.treePath
+}
+
+func (c *DefaultCtx) getDetectionPath() string {
+	return c.detectionPath
+}
+
+func (c *DefaultCtx) getPathOriginal() string {
+	return c.pathOriginal
+}
+
+func (c *DefaultCtx) getValues() *[maxParams]string {
+	return &c.values
+}
+
+func (c *DefaultCtx) getMatched() bool {
+	return c.matched
+}
+
+func (c *DefaultCtx) setIndexHandler(handler int) {
+	c.indexHandler = handler
+}
+
+func (c *DefaultCtx) setIndexRoute(route int) {
+	c.indexRoute = route
+}
+
+func (c *DefaultCtx) setMatched(matched bool) {
+	c.matched = matched
+}
+
+func (c *DefaultCtx) setRoute(route *Route) {
+	c.route = route
 }
