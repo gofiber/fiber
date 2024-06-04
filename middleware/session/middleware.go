@@ -135,7 +135,9 @@ func (m *Middleware) Set(key string, value any) {
 }
 
 func (m *Middleware) Get(key string) any {
-	// no need to lock here, since the session has its own mutex
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	return m.Session.Get(key)
 }
 
