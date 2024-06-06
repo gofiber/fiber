@@ -27,6 +27,7 @@ func New(config ...Config) fiber.Handler {
 		// Catch panics
 		defer func() {
 			if r := recover(); r != nil {
+				fmt.Println(string(debug.Stack()))
 				if cfg.EnableStackTrace {
 					cfg.StackTraceHandler(c, r)
 				}
