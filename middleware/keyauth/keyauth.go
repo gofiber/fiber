@@ -19,23 +19,37 @@ const (
 	cookie = "cookie"
 )
 
+type extractorFunc func(c *fiber.Ctx) (string, error)
+
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Init config
 	cfg := configDefault(config...)
 
 	// Initialize
-	parts := strings.Split(cfg.KeyLookup, ":")
-	extractor := keyFromHeader(parts[1], cfg.AuthScheme)
-	switch parts[0] {
-	case query:
-		extractor = keyFromQuery(parts[1])
-	case form:
-		extractor = keyFromForm(parts[1])
-	case param:
-		extractor = keyFromParam(parts[1])
-	case cookie:
-		extractor = keyFromCookie(parts[1])
+
+	parts := strings.Split(cfg.KeyLookup, "|")
+
+	var extractor extractorFunc
+	if len(parts) <= 1 {
+		extractor = parseSingleExtractor(cfg.KeyLookup, cfg.AuthScheme)
+	} else {
+		subExtractors := []extractorFunc{}
+		for _, keyLookup := range parts {
+			subExtractors = append(subExtractors, parseSingleExtractor(keyLookup, cfg.AuthScheme))
+		}
+		extractor = func(c *fiber.Ctx) (string, error) {
+			for _, subExtractor := range subExtractors {
+				res, err := subExtractor(c)
+				if err == nil && res != "" {
+					return res, nil
+				}
+				if !errors.Is(err, ErrMissingOrMalformedAPIKey) {
+					return "", err
+				}
+			}
+			return "", ErrMissingOrMalformedAPIKey
+		}
 	}
 
 	// Return middleware handler
@@ -61,8 +75,24 @@ func New(config ...Config) fiber.Handler {
 	}
 }
 
+func parseSingleExtractor(keyLookup string, authScheme string) extractorFunc {
+	parts := strings.Split(keyLookup, ":")
+	extractor := keyFromHeader(parts[1], authScheme)
+	switch parts[0] {
+	case query:
+		extractor = keyFromQuery(parts[1])
+	case form:
+		extractor = keyFromForm(parts[1])
+	case param:
+		extractor = keyFromParam(parts[1])
+	case cookie:
+		extractor = keyFromCookie(parts[1])
+	}
+	return extractor
+}
+
 // keyFromHeader returns a function that extracts api key from the request header.
-func keyFromHeader(header, authScheme string) func(c *fiber.Ctx) (string, error) {
+func keyFromHeader(header, authScheme string) extractorFunc {
 	return func(c *fiber.Ctx) (string, error) {
 		auth := c.Get(header)
 		l := len(authScheme)
@@ -77,7 +107,7 @@ func keyFromHeader(header, authScheme string) func(c *fiber.Ctx) (string, error)
 }
 
 // keyFromQuery returns a function that extracts api key from the query string.
-func keyFromQuery(param string) func(c *fiber.Ctx) (string, error) {
+func keyFromQuery(param string) extractorFunc {
 	return func(c *fiber.Ctx) (string, error) {
 		key := c.Query(param)
 		if key == "" {
@@ -88,7 +118,7 @@ func keyFromQuery(param string) func(c *fiber.Ctx) (string, error) {
 }
 
 // keyFromForm returns a function that extracts api key from the form.
-func keyFromForm(param string) func(c *fiber.Ctx) (string, error) {
+func keyFromForm(param string) extractorFunc {
 	return func(c *fiber.Ctx) (string, error) {
 		key := c.FormValue(param)
 		if key == "" {
@@ -99,7 +129,7 @@ func keyFromForm(param string) func(c *fiber.Ctx) (string, error) {
 }
 
 // keyFromParam returns a function that extracts api key from the url param string.
-func keyFromParam(param string) func(c *fiber.Ctx) (string, error) {
+func keyFromParam(param string) extractorFunc {
 	return func(c *fiber.Ctx) (string, error) {
 		key, err := url.PathUnescape(c.Params(param))
 		if err != nil {
@@ -110,7 +140,7 @@ func keyFromParam(param string) func(c *fiber.Ctx) (string, error) {
 }
 
 // keyFromCookie returns a function that extracts api key from the named cookie.
-func keyFromCookie(name string) func(c *fiber.Ctx) (string, error) {
+func keyFromCookie(name string) extractorFunc {
 	return func(c *fiber.Ctx) (string, error) {
 		key := c.Cookies(name)
 		if key == "" {
