@@ -79,7 +79,7 @@ func New(config ...Config) fiber.Handler {
 	}
 }
 
-func parseSingleExtractor(keyLookup string, authScheme string) (extractorFunc, error) {
+func parseSingleExtractor(keyLookup, authScheme string) (extractorFunc, error) {
 	parts := strings.Split(keyLookup, ":")
 	if len(parts) <= 1 {
 		return nil, fmt.Errorf("invalid keyLookup")
