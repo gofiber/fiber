@@ -140,8 +140,8 @@ func TestMultipleKeyLookup(t *testing.T) {
 	// setup the fiber endpoint
 	app := fiber.New()
 	authMiddleware := New(Config{
-		KeyLookup:            "header:key",
-		AdditionalKeyLookups: []string{"cookie:key", "query:key"},
+		KeyLookup:          "header:key",
+		FallbackKeyLookups: []string{"cookie:key", "query:key"},
 		Validator: func(c *fiber.Ctx, key string) (bool, error) {
 			if key == CorrectKey {
 				return true, nil

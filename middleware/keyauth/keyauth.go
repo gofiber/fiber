@@ -34,12 +34,12 @@ func New(config ...Config) fiber.Handler {
 	if err != nil {
 		panic(fmt.Errorf("error creating middleware: invalid keyauth Config.KeyLookup: %w", err))
 	}
-	if len(cfg.AdditionalKeyLookups) > 0 {
+	if len(cfg.FallbackKeyLookups) > 0 {
 		subExtractors := map[string]extractorFunc{cfg.KeyLookup: extractor}
-		for _, keyLookup := range cfg.AdditionalKeyLookups {
+		for _, keyLookup := range cfg.FallbackKeyLookups {
 			subExtractors[keyLookup], err = parseSingleExtractor(keyLookup, cfg.AuthScheme)
 			if err != nil {
-				panic(fmt.Errorf("error creating middleware: invalid keyauth Config.AdditionalKeyLookups[%s]: %w", keyLookup, err))
+				panic(fmt.Errorf("error creating middleware: invalid keyauth Config.FallbackKeyLookups[%s]: %w", keyLookup, err))
 			}
 		}
 		extractor = func(c *fiber.Ctx) (string, error) {
