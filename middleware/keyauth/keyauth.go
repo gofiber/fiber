@@ -3,6 +3,7 @@ package keyauth
 
 import (
 	"errors"
+	"fmt"
 	"net/url"
 	"strings"
 
@@ -28,24 +29,27 @@ func New(config ...Config) fiber.Handler {
 
 	// Initialize
 
-	parts := strings.Split(cfg.KeyLookup, "|")
-
 	var extractor extractorFunc
-	if len(parts) <= 1 {
-		extractor = parseSingleExtractor(cfg.KeyLookup, cfg.AuthScheme)
-	} else {
-		subExtractors := []extractorFunc{}
-		for _, keyLookup := range parts {
-			subExtractors = append(subExtractors, parseSingleExtractor(keyLookup, cfg.AuthScheme))
+	extractor, err := parseSingleExtractor(cfg.KeyLookup, cfg.AuthScheme)
+	if err != nil {
+		panic(fmt.Errorf("error creating middleware: invalid keyauth Config.KeyLookup: %w", err))
+	}
+	if len(cfg.AdditionalKeyLookups) > 0 {
+		subExtractors := map[string]extractorFunc{cfg.KeyLookup: extractor}
+		for _, keyLookup := range cfg.AdditionalKeyLookups {
+			subExtractors[keyLookup], err = parseSingleExtractor(keyLookup, cfg.AuthScheme)
+			if err != nil {
+				panic(fmt.Errorf("error creating middleware: invalid keyauth Config.AdditionalKeyLookups[%s]: %w", keyLookup, err))
+			}
 		}
 		extractor = func(c *fiber.Ctx) (string, error) {
-			for _, subExtractor := range subExtractors {
+			for keyLookup, subExtractor := range subExtractors {
 				res, err := subExtractor(c)
 				if err == nil && res != "" {
 					return res, nil
 				}
 				if !errors.Is(err, ErrMissingOrMalformedAPIKey) {
-					return "", err
+					return "", fmt.Errorf("[%s] %w", keyLookup, err)
 				}
 			}
 			return "", ErrMissingOrMalformedAPIKey
@@ -75,9 +79,12 @@ func New(config ...Config) fiber.Handler {
 	}
 }
 
-func parseSingleExtractor(keyLookup string, authScheme string) extractorFunc {
+func parseSingleExtractor(keyLookup string, authScheme string) (extractorFunc, error) {
 	parts := strings.Split(keyLookup, ":")
-	extractor := keyFromHeader(parts[1], authScheme)
+	if len(parts) <= 1 {
+		return nil, fmt.Errorf("invalid keyLookup")
+	}
+	extractor := keyFromHeader(parts[1], authScheme) // in the event of an invalid prefix, it is interpreted as header:
 	switch parts[0] {
 	case query:
 		extractor = keyFromQuery(parts[1])
@@ -88,7 +95,7 @@ func parseSingleExtractor(keyLookup string, authScheme string) extractorFunc {
 	case cookie:
 		extractor = keyFromCookie(parts[1])
 	}
-	return extractor
+	return extractor, nil
 }
 
 // keyFromHeader returns a function that extracts api key from the request header.

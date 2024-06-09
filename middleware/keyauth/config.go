@@ -32,6 +32,10 @@ type Config struct {
 	// - "cookie:<name>"
 	KeyLookup string
 
+	// AdditionalKeyLookups is a slice of strings, containing secondary sources of keys if KeyLookup does not find one
+	// Each element should be a value used in KeyLookup
+	AdditionalKeyLookups []string
+
 	// AuthScheme to be used in the Authorization header.
 	// Optional. Default value "Bearer".
 	AuthScheme string
@@ -83,6 +87,9 @@ func configDefault(config ...Config) Config {
 		if cfg.AuthScheme == "" {
 			cfg.AuthScheme = ConfigDefault.AuthScheme
 		}
+	}
+	if cfg.AdditionalKeyLookups == nil {
+		cfg.AdditionalKeyLookups = []string{}
 	}
 	if cfg.Validator == nil {
 		panic("fiber: keyauth middleware requires a validator function")
