@@ -220,6 +220,7 @@ curl --header "Authorization: Bearer my-super-secret-key"  http://localhost:3000
 | SuccessHandler | `fiber.Handler`                          | SuccessHandler defines a function which is executed for a valid key.                                   | `nil`                         |
 | ErrorHandler   | `fiber.ErrorHandler`                     | ErrorHandler defines a function which is executed for an invalid key.                                  | `401 Invalid or expired key`  |
 | KeyLookup      | `string`                                 | KeyLookup is a string in the form of "`<source>:<name>`" that is used to extract key from the request. | "header:Authorization"        |
+| FallbackKeyLookups | `[]string` | If additional fallback sources of keys are required, they can be specified here in order of precedence | []string{} (empty) |
 | AuthScheme     | `string`                                 | AuthScheme to be used in the Authorization header.                                                     | "Bearer"                      |
 | Validator      | `func(fiber.Ctx, string) (bool, error)` | Validator is a function to validate the key.                                                           | A function for key validation |
 
@@ -237,6 +238,7 @@ var ConfigDefault = Config{
 		return c.Status(fiber.StatusUnauthorized).SendString("Invalid or expired API Key")
 	},
 	KeyLookup:  "header:" + fiber.HeaderAuthorization,
+	FallbackKeyLookups: []string{},
 	AuthScheme: "Bearer",
 }
 ```

@@ -3,6 +3,7 @@ package keyauth
 
 import (
 	"errors"
+	"fmt"
 	"net/url"
 	"strings"
 
@@ -28,23 +29,40 @@ const (
 	cookie = "cookie"
 )
 
+type extractorFunc func(c fiber.Ctx) (string, error)
+
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Init config
 	cfg := configDefault(config...)
 
 	// Initialize
-	parts := strings.Split(cfg.KeyLookup, ":")
-	extractor := keyFromHeader(parts[1], cfg.AuthScheme)
-	switch parts[0] {
-	case query:
-		extractor = keyFromQuery(parts[1])
-	case form:
-		extractor = keyFromForm(parts[1])
-	case param:
-		extractor = keyFromParam(parts[1])
-	case cookie:
-		extractor = keyFromCookie(parts[1])
+
+	var extractor extractorFunc
+	extractor, err := parseSingleExtractor(cfg.KeyLookup, cfg.AuthScheme)
+	if err != nil {
+		panic(fmt.Errorf("error creating middleware: invalid keyauth Config.KeyLookup: %w", err))
+	}
+	if len(cfg.FallbackKeyLookups) > 0 {
+		subExtractors := map[string]extractorFunc{cfg.KeyLookup: extractor}
+		for _, keyLookup := range cfg.FallbackKeyLookups {
+			subExtractors[keyLookup], err = parseSingleExtractor(keyLookup, cfg.AuthScheme)
+			if err != nil {
+				panic(fmt.Errorf("error creating middleware: invalid keyauth Config.FallbackKeyLookups[%s]: %w", keyLookup, err))
+			}
+		}
+		extractor = func(c fiber.Ctx) (string, error) {
+			for keyLookup, subExtractor := range subExtractors {
+				res, err := subExtractor(c)
+				if err == nil && res != "" {
+					return res, nil
+				}
+				if !errors.Is(err, ErrMissingOrMalformedAPIKey) {
+					return "", fmt.Errorf("[%s] %w", keyLookup, err)
+				}
+			}
+			return "", ErrMissingOrMalformedAPIKey
+		}
 	}
 
 	// Return middleware handler
@@ -78,6 +96,25 @@ func TokenFromContext(c fiber.Ctx) string {
 		return ""
 	}
 	return token
+}
+
+func parseSingleExtractor(keyLookup string, authScheme string) (extractorFunc, error) {
+	parts := strings.Split(keyLookup, ":")
+	if len(parts) <= 1 {
+		return nil, fmt.Errorf("invalid keyLookup")
+	}
+	extractor := keyFromHeader(parts[1], authScheme) // in the event of an invalid prefix, it is interpreted as header:
+	switch parts[0] {
+	case query:
+		extractor = keyFromQuery(parts[1])
+	case form:
+		extractor = keyFromForm(parts[1])
+	case param:
+		extractor = keyFromParam(parts[1])
+	case cookie:
+		extractor = keyFromCookie(parts[1])
+	}
+	return extractor, nil
 }
 
 // keyFromHeader returns a function that extracts api key from the request header.
