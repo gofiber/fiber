@@ -101,7 +101,7 @@ func TokenFromContext(c fiber.Ctx) string {
 func parseSingleExtractor(keyLookup string, authScheme string) (extractorFunc, error) {
 	parts := strings.Split(keyLookup, ":")
 	if len(parts) <= 1 {
-		return nil, fmt.Errorf("invalid keyLookup")
+		return nil, fmt.Errorf("invalid keyLookup: %s", keyLookup)
 	}
 	extractor := keyFromHeader(parts[1], authScheme) // in the event of an invalid prefix, it is interpreted as header:
 	switch parts[0] {
