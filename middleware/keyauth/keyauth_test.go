@@ -141,7 +141,7 @@ func TestMultipleKeyLookup(t *testing.T) {
 	authMiddleware := New(Config{
 		KeyLookup:          "header:key",
 		FallbackKeyLookups: []string{"cookie:key", "query:key"},
-		Validator: func(c fiber.Ctx, key string) (bool, error) {
+		Validator: func(_ fiber.Ctx, key string) (bool, error) {
 			if key == CorrectKey {
 				return true, nil
 			}
@@ -156,24 +156,24 @@ func TestMultipleKeyLookup(t *testing.T) {
 	// construct the test HTTP request
 	var req *http.Request
 	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/foo", nil)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 	q := req.URL.Query()
 	q.Add("key", CorrectKey)
 	req.URL.RawQuery = q.Encode()
 
 	res, err := app.Test(req, -1)
 
-	require.Equal(t, nil, err, desc)
+	require.NoError(t, err)
 
 	// test the body of the request
 	body, err := io.ReadAll(res.Body)
 	require.Equal(t, 200, res.StatusCode, desc)
 	// body
-	require.Equal(t, nil, err, desc)
+	require.NoError(t, err)
 	require.Equal(t, success, string(body), desc)
 
 	err = res.Body.Close()
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 }
 
 func Test_MultipleKeyAuth(t *testing.T) {
