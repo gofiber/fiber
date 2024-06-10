@@ -130,6 +130,30 @@ func Test_AuthSources(t *testing.T) {
 	}
 }
 
+func TestPanicOnInvalidConfiguration(t *testing.T) {
+	require.Panics(t, func() {
+		authMiddleware := New(Config{
+			KeyLookup: "invalid",
+		})
+		// We shouldn't even make it this far, but these next two lines prevent authMiddleware from being an unused variable.
+		app := fiber.New()
+		app.Use(authMiddleware)
+	})
+}
+
+func TestCustomKeyUtilityFunctionErrors(t *testing.T) {
+	const (
+		scheme = "Bearer"
+	)
+
+	// Invalid element while parsing
+	_, err := SingleKeyLookup("invalid", scheme)
+	require.Error(t, err)
+
+	_, err = MultipleKeySourceLookup([]string{"header:key", "invalid"}, scheme)
+	require.Error(t, err)
+}
+
 func TestMultipleKeyLookup(t *testing.T) {
 	const (
 		desc    = "auth with correct key"
@@ -178,6 +202,12 @@ func TestMultipleKeyLookup(t *testing.T) {
 
 	err = res.Body.Close()
 	require.NoError(t, err)
+
+	// construct a second request without proper key
+	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/foo", nil)
+	require.NoError(t, err)
+	_, err = app.Test(req, -1)
+	require.Error(t, err)
 }
 
 func Test_MultipleKeyAuth(t *testing.T) {
