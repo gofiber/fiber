@@ -137,6 +137,7 @@ func TestPanicOnInvalidConfiguration(t *testing.T) {
 		})
 		// We shouldn't even make it this far, but these next two lines prevent authMiddleware from being an unused variable.
 		app := fiber.New()
+		defer app.Shutdown()
 		app.Use(authMiddleware)
 	})
 }
