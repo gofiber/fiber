@@ -29,39 +29,17 @@ const (
 	cookie = "cookie"
 )
 
-type extractorFunc func(c fiber.Ctx) (string, error)
-
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Init config
 	cfg := configDefault(config...)
 
 	// Initialize
-
-	var extractor extractorFunc
-	extractor, err := parseSingleExtractor(cfg.KeyLookup, cfg.AuthScheme)
-	if err != nil {
-		panic(fmt.Errorf("error creating middleware: invalid keyauth Config.KeyLookup: %w", err))
-	}
-	if len(cfg.FallbackKeyLookups) > 0 {
-		subExtractors := map[string]extractorFunc{cfg.KeyLookup: extractor}
-		for _, keyLookup := range cfg.FallbackKeyLookups {
-			subExtractors[keyLookup], err = parseSingleExtractor(keyLookup, cfg.AuthScheme)
-			if err != nil {
-				panic(fmt.Errorf("error creating middleware: invalid keyauth Config.FallbackKeyLookups[%s]: %w", keyLookup, err))
-			}
-		}
-		extractor = func(c fiber.Ctx) (string, error) {
-			for keyLookup, subExtractor := range subExtractors {
-				res, err := subExtractor(c)
-				if err == nil && res != "" {
-					return res, nil
-				}
-				if !errors.Is(err, ErrMissingOrMalformedAPIKey) {
-					return "", fmt.Errorf("[%s] %w", keyLookup, err)
-				}
-			}
-			return "", ErrMissingOrMalformedAPIKey
+	if cfg.CustomKeyLookup == nil {
+		var err error
+		cfg.CustomKeyLookup, err = SingleKeyLookup(cfg.KeyLookup, cfg.AuthScheme)
+		if err != nil {
+			panic(fmt.Errorf("unable to create lookup function: %w", err))
 		}
 	}
 
@@ -73,7 +51,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Extract and verify key
-		key, err := extractor(c)
+		key, err := cfg.CustomKeyLookup(c)
 		if err != nil {
 			return cfg.ErrorHandler(c, err)
 		}
@@ -98,7 +76,32 @@ func TokenFromContext(c fiber.Ctx) string {
 	return token
 }
 
-func parseSingleExtractor(keyLookup, authScheme string) (extractorFunc, error) {
+// MultipleKeySourceLookup creates a CustomKeyLookup function that checks multiple sources until one is found
+// Each element should be specified according to the format used in KeyLookup
+func MultipleKeySourceLookup(keyLookups []string, authScheme string) (KeyauthKeyLookupFunc, error) {
+	subExtractors := map[string]KeyauthKeyLookupFunc{}
+	var err error
+	for _, keyLookup := range keyLookups {
+		subExtractors[keyLookup], err = SingleKeyLookup(keyLookup, authScheme)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return func(c fiber.Ctx) (string, error) {
+		for keyLookup, subExtractor := range subExtractors {
+			res, err := subExtractor(c)
+			if err == nil && res != "" {
+				return res, nil
+			}
+			if !errors.Is(err, ErrMissingOrMalformedAPIKey) {
+				return "", fmt.Errorf("[%s] %w", keyLookup, err)
+			}
+		}
+		return "", ErrMissingOrMalformedAPIKey
+	}, nil
+}
+
+func SingleKeyLookup(keyLookup, authScheme string) (KeyauthKeyLookupFunc, error) {
 	parts := strings.Split(keyLookup, ":")
 	if len(parts) <= 1 {
 		return nil, fmt.Errorf("invalid keyLookup: %s", keyLookup)

@@ -134,13 +134,17 @@ func TestMultipleKeyLookup(t *testing.T) {
 	const (
 		desc    = "auth with correct key"
 		success = "Success!"
+		scheme  = "Bearer"
 	)
 
 	// setup the fiber endpoint
 	app := fiber.New()
+
+	customKeyLookup, err := MultipleKeySourceLookup([]string{"header:key", "cookie:key", "query:key"}, scheme)
+	require.NoError(t, err)
+
 	authMiddleware := New(Config{
-		KeyLookup:          "header:key",
-		FallbackKeyLookups: []string{"cookie:key", "query:key"},
+		CustomKeyLookup: customKeyLookup,
 		Validator: func(_ fiber.Ctx, key string) (bool, error) {
 			if key == CorrectKey {
 				return true, nil
@@ -155,7 +159,7 @@ func TestMultipleKeyLookup(t *testing.T) {
 
 	// construct the test HTTP request
 	var req *http.Request
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/foo", nil)
+	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/foo", nil)
 	require.NoError(t, err)
 	q := req.URL.Query()
 	q.Add("key", CorrectKey)
