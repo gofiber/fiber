@@ -128,7 +128,7 @@ func Test_Logger_Done(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.Greater(t, buf.Len(), 0)
+	require.Positive(t, buf.Len(), 0)
 }
 
 // go test -run Test_Logger_ErrorTimeZone
@@ -625,7 +625,7 @@ func Test_Logger_ByteSent_Streaming(t *testing.T) {
 			for {
 				i++
 				msg := fmt.Sprintf("%d - the time is %v", i, time.Now())
-				fmt.Fprintf(w, "data: Message: %s\n\n", msg)
+				fmt.Fprintf(w, "data: Message: %s\n\n", msg) //nolint:errcheck // ignore error
 				err := w.Flush()
 				if err != nil {
 					break
