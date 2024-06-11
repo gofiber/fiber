@@ -3,6 +3,7 @@
 package cache
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -95,22 +96,20 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		// Only cache selected methods
-		var isExists bool
-		for _, method := range cfg.Methods {
-			if c.Method() == method {
-				isExists = true
-			}
-		}
+		requestMethod := c.Method()
 
-		if !isExists {
+		// Only cache selected methods
+		if !slices.Contains(cfg.Methods, requestMethod) {
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 			return c.Next()
 		}
 
 		// Get key from request
-		// TODO(allocation optimization): try to minimize the allocation from 2 to 1
-		key := cfg.KeyGenerator(c) + "_" + c.Method()
+		keyBuilder := strings.Builder{}
+		keyBuilder.WriteString(cfg.KeyGenerator(c))
+		keyBuilder.WriteString("_")
+		keyBuilder.WriteString(requestMethod)
+		key := keyBuilder.String()
 
 		// Get entry from pool
 		e := manager.get(key)
