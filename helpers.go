@@ -707,6 +707,20 @@ func IndexRune(str string, needle int32) bool {
 	return false
 }
 
+// Convert a string value to a specified type, handling errors and optional default values.
+func Convert[T any](value string, convertor func(string) (T, error), defaultValue ...T) (T, error) {
+	converted, err := convertor(value)
+	if err != nil {
+		if len(defaultValue) > 0 {
+			return defaultValue[0], nil
+		}
+
+		return converted, fmt.Errorf("failed to convert: %w", err)
+	}
+
+	return converted, nil
+}
+
 // assertValueType asserts the type of the result to the type of the value
 func assertValueType[V GenericType, T any](result T) V {
 	v, ok := any(result).(V)
