@@ -137,7 +137,10 @@ func TestPanicOnInvalidConfiguration(t *testing.T) {
 		})
 		// We shouldn't even make it this far, but these next two lines prevent authMiddleware from being an unused variable.
 		app := fiber.New()
-		defer app.Shutdown()
+		defer func() { // testing panics, defer block to ensure cleanup
+			err := app.Shutdown()
+			require.NoError(t, err)
+		}()
 		app.Use(authMiddleware)
 	})
 }
@@ -207,8 +210,11 @@ func TestMultipleKeyLookup(t *testing.T) {
 	// construct a second request without proper key
 	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/foo", nil)
 	require.NoError(t, err)
-	_, err = app.Test(req, -1)
-	require.Error(t, err)
+	res, err = app.Test(req, -1)
+	require.NoError(t, err)
+	errBody, err := io.ReadAll(res.Body)
+	require.NoError(t, err)
+	require.Equal(t, ErrMissingOrMalformedAPIKey.Error(), string(errBody))
 }
 
 func Test_MultipleKeyAuth(t *testing.T) {
