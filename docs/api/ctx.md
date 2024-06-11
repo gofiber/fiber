@@ -957,7 +957,7 @@ func (c Ctx) Locals(key any, value ...any) any
 
 ```go title="Example"
 
-// key is an unexported type for keys defined in this package.
+// keyType is an unexported type for keys defined in this package.
 // This prevents collisions with keys defined in other packages.
 type keyType int
 
