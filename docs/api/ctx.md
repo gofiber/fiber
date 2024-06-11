@@ -964,7 +964,7 @@ type keyType int
 // userKey is the key for user.User values in Contexts. It is
 // unexported; clients use user.NewContext and user.FromContext
 // instead of using this key directly.
-var userKey key
+var userKey keyType
 
 app.Use(func(c fiber.Ctx) error {
   c.Locals(userKey, "admin") // Stores the string "admin" under a non-exported type key
