@@ -900,10 +900,10 @@ app.Get("/", func(c *fiber.Ctx) error {
 
 ## Locals
 
-A method that stores variables scoped to the request and, therefore, are available only to the routes that match the request.
+A method that stores variables scoped to the request and, therefore, are available only to the routes that match the request. The stored variables are removed after the request is handled. If any of the stored data implements the `io.Closer` interface, its `Close` method will be called before it's removed.
 
 :::tip
-This is useful if you want to pass some **specific** data to the next middleware.
+This is useful if you want to pass some **specific** data to the next middleware. Remember to perform type assertions when retrieving the data to ensure it is of the expected type. You can also use a non-exported type as a key to avoid collisions.
 :::
 
 ```go title="Signature"
@@ -911,17 +911,20 @@ func (c *Ctx) Locals(key interface{}, value ...interface{}) interface{}
 ```
 
 ```go title="Example"
+type keyType struct{}
+var userKey keyType
+
 app.Use(func(c *fiber.Ctx) error {
-  c.Locals("user", "admin")
+  c.Locals(userKey, "admin") // Stores the string "admin" under a non-exported type key
   return c.Next()
 })
 
 app.Get("/admin", func(c *fiber.Ctx) error {
-  if c.Locals("user") == "admin" {
+  user, ok := c.Locals(userKey).(string) // Retrieves the data stored under the key and performs a type assertion
+  if ok && user == "admin" {
     return c.Status(fiber.StatusOK).SendString("Welcome, admin!")
   }
   return c.SendStatus(fiber.StatusForbidden)
-
 })
 ```
 
