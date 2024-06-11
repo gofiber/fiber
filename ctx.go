@@ -967,6 +967,10 @@ func (c *Ctx) Links(link ...string) {
 
 // Locals makes it possible to pass interface{} values under keys scoped to the request
 // and therefore available to all following routes that match the request.
+//
+// All the values are removed from ctx after returning from the top
+// RequestHandler. Additionally, Close method is called on each value
+// implementing io.Closer before removing the value from ctx.
 func (c *Ctx) Locals(key interface{}, value ...interface{}) interface{} {
 	if len(value) == 0 {
 		return c.fasthttp.UserValue(key)
