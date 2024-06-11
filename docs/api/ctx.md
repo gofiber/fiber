@@ -966,12 +966,12 @@ type keyType int
 // instead of using this key directly.
 var userKey key
 
-app.Use(func(c *fiber.Ctx) error {
+app.Use(func(c fiber.Ctx) error {
   c.Locals(userKey, "admin") // Stores the string "admin" under a non-exported type key
   return c.Next()
 })
 
-app.Get("/admin", func(c *fiber.Ctx) error {
+app.Get("/admin", func(c fiber.Ctx) error {
   user, ok := c.Locals(userKey).(string) // Retrieves the data stored under the key and performs a type assertion
   if ok && user == "admin" {
     return c.Status(fiber.StatusOK).SendString("Welcome, admin!")
