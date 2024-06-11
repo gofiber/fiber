@@ -105,11 +105,8 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Get key from request
-		keyBuilder := strings.Builder{}
-		keyBuilder.WriteString(cfg.KeyGenerator(c))
-		keyBuilder.WriteString("_")
-		keyBuilder.WriteString(requestMethod)
-		key := keyBuilder.String()
+		// TODO(allocation optimization): try to minimize the allocation from 2 to 1
+		key := cfg.KeyGenerator(c) + "_" + requestMethod
 
 		// Get entry from pool
 		e := manager.get(key)
