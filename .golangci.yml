@@ -236,11 +236,9 @@ linters-settings:
     time-layout: false # TODO: Set to true
     crypto-hash: true
     default-rpc-path: true
-    os-dev-null: true
     sql-isolation-level: true
     tls-signature-scheme: true
     constant-kind: true
-    syslog-priority: true
 
   wrapcheck:
     ignorePackageGlobs:
@@ -256,7 +254,7 @@ issues:
     - internal # TODO: Do not ignore interal packages
   exclude-rules:
     - linters:
-        - goerr113
+        - err113
       text: 'do not define dynamic errors, use wrapped static errors instead*'
     - path: log/.*\.go
       linters:
@@ -265,6 +263,7 @@ issues:
     - path: _test\.go
       linters:
         - bodyclose
+        - err113
   # fix: true
 
 linters:
@@ -286,7 +285,6 @@ linters:
     - errchkjson
     - errname
     - errorlint
-    - execinquery
     - exhaustive
     # - exhaustivestruct
     # - exhaustruct
@@ -306,7 +304,7 @@ linters:
     # - gocyclo
     # - godot
     # - godox
-    - goerr113
+    - err113
     - gofmt
     - gofumpt
     # - goheader
