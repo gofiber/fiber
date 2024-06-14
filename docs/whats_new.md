@@ -248,6 +248,10 @@ DRAFT section
 
 ## 🧬 Middlewares
 
+### Cache
+
+We are excited to introduce a new option in our caching middleware: Cache Invalidation. This feature provides greater control over cache management, allowing you to define a custom conditions for invalidating cache entries.
+
 ### CORS
 
 We've made some changes to the CORS middleware to improve its functionality and flexibility. Here's what's new:
