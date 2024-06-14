@@ -117,6 +117,11 @@ func New(config ...Config) fiber.Handler {
 		// Get timestamp
 		ts := atomic.LoadUint64(&timestamp)
 
+		// Invalidate cache if requested
+		if cfg.CacheInvalidation != nil && cfg.CacheInvalidation(c) && e != nil {
+			e.exp = ts - 1
+		}
+
 		// Check if entry is expired
 		if e.exp != 0 && ts >= e.exp {
 			deleteKey(key)
