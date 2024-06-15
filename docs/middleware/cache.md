@@ -71,6 +71,7 @@ app.Use(cache.New(cache.Config{
     },
 }))
 ```
+The `CacheInvalidator` function allows you to define custom conditions for cache invalidation. Return true if conditions such as specific query parameters or headers are met, which require the cache to be invalidated. For example, in this code, the cache is invalidated when the query parameter invalidateCache is set to true.
 
 ## Config
 
