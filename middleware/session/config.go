@@ -10,6 +10,21 @@ import (
 
 // Config defines the config for middleware.
 type Config struct {
+	// Next defines a function to skip this middleware when returned true.
+	//
+	// Optional. Default: nil
+	Next func(c fiber.Ctx) bool
+
+	// Store defines the session store
+	//
+	// Required.
+	Store *Store
+
+	// ErrorHandler defines a function which is executed for errors
+	//
+	// Optional. Default: nil
+	ErrorHandler func(*fiber.Ctx, error)
+
 	// Allowed session idle duration
 	// Optional. Default value 24 * time.Hour
 	IdleTimeout time.Duration

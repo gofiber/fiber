@@ -162,6 +162,12 @@ func (s *Session) refresh() {
 
 // Save will update the storage and client cookie
 func (s *Session) Save() error {
+	// If the session is being used in the handler, it should not be saved
+	if _, ok := s.ctx.Locals(key).(*Middleware); ok {
+		// Session is in use, so we do nothing and return
+		return nil
+	}
+
 	// Better safe than sorry
 	if s.data == nil {
 		return nil

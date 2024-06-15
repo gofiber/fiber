@@ -9,25 +9,9 @@ import (
 )
 
 // Session defines the session middleware configuration
-type MiddlewareConfig struct {
-	// Next defines a function to skip this middleware when returned true.
-	//
-	// Optional. Default: nil
-	Next func(c fiber.Ctx) bool
-
-	// Store defines the session store
-	//
-	// Required.
-	Store *Store
-
-	// ErrorHandler defines a function which is executed for errors
-	//
-	// Optional. Default: nil
-	ErrorHandler func(*fiber.Ctx, error)
-}
 
 type Middleware struct {
-	config     MiddlewareConfig
+	config     Config
 	Session    *Session
 	ctx        *fiber.Ctx
 	hasChanged bool // TODO: use this to optimize interaction with the session store
@@ -53,8 +37,18 @@ var (
 // Session middleware manages common session state between requests.
 // This middleware is dependent on the session store, which is responsible for
 // storing the session data.
-func NewMiddleware(config MiddlewareConfig) fiber.Handler {
-	return func(c fiber.Ctx) error {
+func New(config Config) fiber.Handler {
+	handler, _ := NewWithStore(config)
+	return handler
+}
+
+// NewWithStore returns a new session middleware with the given store
+func NewWithStore(config Config) (fiber.Handler, *Store) {
+	if config.Store == nil {
+		config.Store = newStore(config)
+	}
+
+	handler := func(c fiber.Ctx) error {
 		// Don't execute middleware if Next returns true
 		if config.Next != nil && config.Next(c) {
 			return c.Next()
@@ -97,6 +91,8 @@ func NewMiddleware(config MiddlewareConfig) fiber.Handler {
 
 		return stackErr
 	}
+
+	return handler, config.Store
 }
 
 // acquireMiddleware returns a new Middleware from the pool
@@ -110,7 +106,7 @@ func acquireMiddleware() *Middleware {
 
 // releaseMiddleware returns a Middleware to the pool
 func releaseMiddleware(m *Middleware) {
-	m.config = MiddlewareConfig{}
+	m.config = Config{}
 	m.Session = nil
 	m.ctx = nil
 	middlewarePool.Put(m)
@@ -186,4 +182,12 @@ func (m *Middleware) reaquireSession() {
 	}
 	m.Session = session
 	m.hasChanged = false
+}
+
+// Store returns the session store
+func (m *Middleware) Store() *Store {
+	// TODO: Ensure that session.Save() can not be called
+	// on the store directly if the session is the same as the one in the middleware
+	// context. This is to prevent the session Save from invalidating the session.
+	return m.config.Store
 }

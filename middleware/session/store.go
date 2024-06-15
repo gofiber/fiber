@@ -13,7 +13,10 @@ import (
 )
 
 // ErrEmptySessionID is an error that occurs when the session ID is empty.
-var ErrEmptySessionID = errors.New("session id cannot be empty")
+var (
+	ErrEmptySessionID                   = errors.New("session id cannot be empty")
+	ErrSessionAlreadyLoadedByMiddleware = errors.New("session already loaded by middleware")
+)
 
 type Store struct {
 	Config
@@ -21,7 +24,7 @@ type Store struct {
 
 var mux sync.Mutex
 
-func New(config ...Config) *Store {
+func newStore(config ...Config) *Store {
 	// Set default config
 	cfg := configDefault(config...)
 
@@ -41,7 +44,18 @@ func (*Store) RegisterType(i any) {
 }
 
 // Get will get/create a session
+//
+// This function will return an ErrSessionAlreadyLoadedByMiddleware if
+// the session is already loaded by the middleware
 func (s *Store) Get(c fiber.Ctx) (*Session, error) {
+	// If session is already loaded in the context,
+	// it should not be loaded again
+	_, ok := c.Locals(key).(*Middleware)
+	if ok {
+		return nil, ErrSessionAlreadyLoadedByMiddleware
+	}
+
+	// Get session based on context
 	var fresh bool
 	loadData := true
 
