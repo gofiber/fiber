@@ -55,7 +55,7 @@ func NewWithStore(config Config) (fiber.Handler, *Store) {
 		}
 
 		// Get the session
-		session, err := config.Store.Get(c)
+		session, err := config.Store.get(c)
 		if err != nil {
 			return err
 		}
