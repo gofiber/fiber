@@ -98,7 +98,7 @@ var ConfigDefault = Config{
     Expiration:   1 * time.Minute,
 	CacheHeader:  "X-Cache",
     CacheControl: false,
-    CacheInvalidator: nil,
+	CacheInvalidator: nil,
     KeyGenerator: func(c fiber.Ctx) string {
         return utils.CopyString(c.Path())
     },
