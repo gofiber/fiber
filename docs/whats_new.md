@@ -325,6 +325,51 @@ You have to put `*` to the end of the route if you don't define static route wit
 
 ### 🗺 Router
 
+The signatures for [`Add`](#middleware-registration) and [`Route`](#route-chaining) have been changed.
+
+To migrate [`Add`](#middleware-registration) you must change the `methods` in a slice.
+
+```go
+// Before
+app.Add(fiber.MethodPost, "/api", myHandler)
+```
+
+```go
+// After
+app.Add([]string{fiber.MethodPost}, "/api", myHandler)
+```
+
+To migrate [`Route`](#route-chaining) you need to read [this](#route-chaining).
+
+```go
+// Before
+app.Route("/api", func(apiGrp Router) {
+        apiGrp.Route("/user/:id?", func(userGrp Router) {
+            userGrp.Get("/", func(c fiber.Ctx) error {
+                // Get user
+                return c.JSON(fiber.Map{"message": "Get user", "id": c.Params("id")})
+            })
+            userGrp.Post("/", func(c fiber.Ctx) error {
+                // Create user
+                return c.JSON(fiber.Map{"message": "User created"})
+            })
+        })
+})
+```
+
+```go
+// After
+app.Route("/api").Route("/user/:id?")
+  .Get(func(c fiber.Ctx) error {
+    // Get user
+    return c.JSON(fiber.Map{"message": "Get user", "id": c.Params("id")})
+  })
+  .Post(func(c fiber.Ctx) error {
+    // Create user
+    return c.JSON(fiber.Map{"message": "User created"})
+  });
+```
+
 ### 🧠 Context
 
 ### 📎 Parser
