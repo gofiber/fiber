@@ -52,7 +52,7 @@ app.Use(cache.New(cache.Config{
         return time.Second * time.Duration(newCacheTime)
     },
     KeyGenerator: func(c fiber.Ctx) string {
-		return utils.CopyString(c.Path())
+  return utils.CopyString(c.Path())
     },
 }))
 
@@ -75,7 +75,7 @@ app.Use(cache.New(cache.Config{
 ## Config
 
 | Property             | Type                                           | Description                                                                                                                                                                                                                                                                                                    | Default                                                          |
-|:---------------------|:-----------------------------------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:-----------------------------------------------------------------|
+| :------------------- | :--------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------- |
 | Next                 | `func(fiber.Ctx) bool`                         | Next defines a function that is executed before creating the cache entry and can be used to execute the request without cache creation. If an entry already exists, it will be used. If you want to completely bypass the cache functionality in certain cases, you should use the [skip middleware](skip.md). | `nil`                                                            |
 | Expiration           | `time.Duration`                                | Expiration is the time that a cached response will live.                                                                                                                                                                                                                                                       | `1 * time.Minute`                                                |
 | CacheHeader          | `string`                                       | CacheHeader is the header on the response header that indicates the cache status, with the possible return values "hit," "miss," or "unreachable."                                                                                                                                                             | `X-Cache`                                                        |
@@ -96,9 +96,9 @@ app.Use(cache.New(cache.Config{
 var ConfigDefault = Config{
     Next:         nil,
     Expiration:   1 * time.Minute,
-	CacheHeader:  "X-Cache",
+    CacheHeader:  "X-Cache",
     CacheControl: false,
-	CacheInvalidator: nil,
+    CacheInvalidator: nil,
     KeyGenerator: func(c fiber.Ctx) string {
         return utils.CopyString(c.Path())
     },
