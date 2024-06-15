@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 )
 
@@ -92,6 +93,15 @@ var ConfigDefault = Config{
 	sessionName:  "session_id",
 }
 
+func DefaultErrorHandler(c *fiber.Ctx, err error) {
+	log.Errorf("session: %v", err)
+	if c != nil {
+		if err := (*c).SendStatus(fiber.StatusInternalServerError); err != nil {
+			log.Errorf("session: %v", err)
+		}
+	}
+}
+
 // Helper function to set default values
 func configDefault(config ...Config) Config {
 	// Return default config if nothing provided
@@ -129,6 +139,10 @@ func configDefault(config ...Config) Config {
 		panic("[session] source is not supported")
 	}
 	cfg.sessionName = selectors[1]
+
+	if cfg.ErrorHandler == nil {
+		cfg.ErrorHandler = DefaultErrorHandler
+	}
 
 	return cfg
 }

@@ -55,7 +55,7 @@ func NewWithStore(config Config) (fiber.Handler, *Store) {
 		}
 
 		// Get the session
-		session, err := config.Store.get(c)
+		session, err := config.Store.getSession(c)
 		if err != nil {
 			return err
 		}
@@ -82,7 +82,7 @@ func NewWithStore(config Config) (fiber.Handler, *Store) {
 			if config.ErrorHandler != nil {
 				config.ErrorHandler(&c, err)
 			} else {
-				log.Errorf("session: %v", err)
+				DefaultErrorHandler(&c, err)
 			}
 		}
 
@@ -176,12 +176,12 @@ func (m *Middleware) reaquireSession() {
 		return
 	}
 
-	session, err := m.config.Store.get(*m.ctx)
+	session, err := m.config.Store.getSession(*m.ctx)
 	if err != nil {
 		if m.config.ErrorHandler != nil {
 			m.config.ErrorHandler(m.ctx, err)
 		} else {
-			log.Errorf("session: %v", err)
+			DefaultErrorHandler(m.ctx, err)
 		}
 	}
 	m.Session = session

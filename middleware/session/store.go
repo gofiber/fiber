@@ -55,10 +55,10 @@ func (s *Store) Get(c fiber.Ctx) (*Session, error) {
 		return nil, ErrSessionAlreadyLoadedByMiddleware
 	}
 
-	return s.get(c)
+	return s.getSession(c)
 }
 
-func (s *Store) get(c fiber.Ctx) (*Session, error) {
+func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 	// Get session based on context
 	var fresh bool
 	loadData := true
