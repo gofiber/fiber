@@ -703,7 +703,7 @@ func Test_CacheInvalidation(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{
 		CacheControl: true,
-		CacheInvalidation: func(c fiber.Ctx) bool {
+		CacheInvalidator: func(c fiber.Ctx) bool {
 			return fiber.Query[bool](c, "invalidate")
 		},
 	}))

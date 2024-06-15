@@ -118,7 +118,7 @@ func New(config ...Config) fiber.Handler {
 		ts := atomic.LoadUint64(&timestamp)
 
 		// Invalidate cache if requested
-		if cfg.CacheInvalidation != nil && cfg.CacheInvalidation(c) && e != nil {
+		if cfg.CacheInvalidator != nil && cfg.CacheInvalidator(c) && e != nil {
 			e.exp = ts - 1
 		}
 

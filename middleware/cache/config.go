@@ -31,10 +31,10 @@ type Config struct {
 	// Optional. Default: false
 	CacheControl bool
 
-	// CacheInvalidation defines a function to invalidate the cache when returned true
+	// CacheInvalidator defines a function to invalidate the cache when returned true
 	//
 	// Optional. Default: nil
-	CacheInvalidation func(fiber.Ctx) bool
+	CacheInvalidator func(fiber.Ctx) bool
 
 	// Key allows you to generate custom keys, by default c.Path() is used
 	//
@@ -74,11 +74,11 @@ type Config struct {
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next:              nil,
-	Expiration:        1 * time.Minute,
-	CacheHeader:       "X-Cache",
-	CacheControl:      false,
-	CacheInvalidation: nil,
+	Next:             nil,
+	Expiration:       1 * time.Minute,
+	CacheHeader:      "X-Cache",
+	CacheControl:     false,
+	CacheInvalidator: nil,
 	KeyGenerator: func(c fiber.Ctx) string {
 		return utils.CopyString(c.Path())
 	},

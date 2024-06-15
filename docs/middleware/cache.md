@@ -62,11 +62,11 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
-You can also invalidate the cache by using the `CacheInvalidation` function as shown below:
+You can also invalidate the cache by using the `CacheInvalidator` function as shown below:
 
 ```go
 app.Use(cache.New(cache.Config{
-    CacheInvalidation: func(c fiber.Ctx) bool {
+    CacheInvalidator: func(c fiber.Ctx) bool {
         return fiber.Query[bool](c, "invalidateCache")
     },
 }))
@@ -80,7 +80,7 @@ app.Use(cache.New(cache.Config{
 | Expiration           | `time.Duration`                                | Expiration is the time that a cached response will live.                                                                                                                                                                                                                                                       | `1 * time.Minute`                                                |
 | CacheHeader          | `string`                                       | CacheHeader is the header on the response header that indicates the cache status, with the possible return values "hit," "miss," or "unreachable."                                                                                                                                                             | `X-Cache`                                                        |
 | CacheControl         | `bool`                                         | CacheControl enables client-side caching if set to true.                                                                                                                                                                                                                                                       | `false`                                                          |
-| CacheInvalidation    | `func(fiber.Ctx) bool`                         | CacheInvalidation defines a function that is executed before checking the cache entry. It can be used to invalidate the existing cache manually by returning true.                                                                                                                                             | `nil`                                                            |
+| CacheInvalidator     | `func(fiber.Ctx) bool`                         | CacheInvalidator defines a function that is executed before checking the cache entry. It can be used to invalidate the existing cache manually by returning true.                                                                                                                                              | `nil`                                                            |
 | KeyGenerator         | `func(fiber.Ctx) string`                       | Key allows you to generate custom keys.                                                                                                                                                                                                                                                                        | `func(c fiber.Ctx) string { return utils.CopyString(c.Path()) }` |
 | ExpirationGenerator  | `func(fiber.Ctx, *cache.Config) time.Duration` | ExpirationGenerator allows you to generate custom expiration keys based on the request.                                                                                                                                                                                                                        | `nil`                                                            |
 | Storage              | `fiber.Storage`                                | Store is used to store the state of the middleware.                                                                                                                                                                                                                                                            | In-memory store                                                  |
@@ -98,7 +98,7 @@ var ConfigDefault = Config{
     Expiration:   1 * time.Minute,
 	CacheHeader:  "X-Cache",
     CacheControl: false,
-    CacheInvalidation: nil,
+    CacheInvalidator: nil,
     KeyGenerator: func(c fiber.Ctx) string {
         return utils.CopyString(c.Path())
     },
