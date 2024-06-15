@@ -140,9 +140,5 @@ func configDefault(config ...Config) Config {
 	}
 	cfg.sessionName = selectors[1]
 
-	if cfg.ErrorHandler == nil {
-		cfg.ErrorHandler = DefaultErrorHandler
-	}
-
 	return cfg
 }
