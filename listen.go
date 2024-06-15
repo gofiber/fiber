@@ -351,32 +351,38 @@ func (app *App) startupMessage(addr string, isTLS bool, pids string, cfg ListenC
 		out = colorable.NewNonColorable(os.Stdout)
 	}
 
-	_, _ = fmt.Fprintf(out, "%s\n", fmt.Sprintf(figletFiberText, colors.Red+"v"+Version+colors.Reset))
-	_, _ = fmt.Fprintf(out, strings.Repeat("-", 50)+"\n")
+	fmt.Fprintf(out, "%s\n", fmt.Sprintf(figletFiberText, colors.Red+"v"+Version+colors.Reset)) //nolint:errcheck,revive // ignore error
+	fmt.Fprintf(out, strings.Repeat("-", 50)+"\n")                                              //nolint:errcheck,revive // ignore error
 
 	if host == "0.0.0.0" {
-		_, _ = fmt.Fprintf(out,
+		//nolint:errcheck,revive // ignore error
+		fmt.Fprintf(out,
 			"%sINFO%s Server started on: \t%s%s://127.0.0.1:%s%s (bound on host 0.0.0.0 and port %s)\n",
 			colors.Green, colors.Reset, colors.Blue, scheme, port, colors.Reset, port)
 	} else {
-		_, _ = fmt.Fprintf(out,
+		//nolint:errcheck,revive // ignore error
+		fmt.Fprintf(out,
 			"%sINFO%s Server started on: \t%s%s%s\n",
 			colors.Green, colors.Reset, colors.Blue, fmt.Sprintf("%s://%s:%s", scheme, host, port), colors.Reset)
 	}
 
 	if app.config.AppName != "" {
-		_, _ = fmt.Fprintf(out, "%sINFO%s Application name: \t\t%s%s%s\n", colors.Green, colors.Reset, colors.Blue, app.config.AppName, colors.Reset)
+		fmt.Fprintf(out, "%sINFO%s Application name: \t\t%s%s%s\n", colors.Green, colors.Reset, colors.Blue, app.config.AppName, colors.Reset) //nolint:errcheck,revive // ignore error
 	}
-	_, _ = fmt.Fprintf(out,
+
+	//nolint:errcheck,revive // ignore error
+	fmt.Fprintf(out,
 		"%sINFO%s Total handlers count: \t%s%s%s\n",
 		colors.Green, colors.Reset, colors.Blue, strconv.Itoa(int(app.handlersCount)), colors.Reset)
+
 	if isPrefork == "Enabled" {
-		_, _ = fmt.Fprintf(out, "%sINFO%s Prefork: \t\t\t%s%s%s\n", colors.Green, colors.Reset, colors.Blue, isPrefork, colors.Reset)
+		fmt.Fprintf(out, "%sINFO%s Prefork: \t\t\t%s%s%s\n", colors.Green, colors.Reset, colors.Blue, isPrefork, colors.Reset) //nolint:errcheck,revive // ignore error
 	} else {
-		_, _ = fmt.Fprintf(out, "%sINFO%s Prefork: \t\t\t%s%s%s\n", colors.Green, colors.Reset, colors.Red, isPrefork, colors.Reset)
+		fmt.Fprintf(out, "%sINFO%s Prefork: \t\t\t%s%s%s\n", colors.Green, colors.Reset, colors.Red, isPrefork, colors.Reset) //nolint:errcheck,revive // ignore error
 	}
-	_, _ = fmt.Fprintf(out, "%sINFO%s PID: \t\t\t%s%v%s\n", colors.Green, colors.Reset, colors.Blue, os.Getpid(), colors.Reset)
-	_, _ = fmt.Fprintf(out, "%sINFO%s Total process count: \t%s%s%s\n", colors.Green, colors.Reset, colors.Blue, procs, colors.Reset)
+
+	fmt.Fprintf(out, "%sINFO%s PID: \t\t\t%s%v%s\n", colors.Green, colors.Reset, colors.Blue, os.Getpid(), colors.Reset)       //nolint:errcheck,revive // ignore error
+	fmt.Fprintf(out, "%sINFO%s Total process count: \t%s%s%s\n", colors.Green, colors.Reset, colors.Blue, procs, colors.Reset) //nolint:errcheck,revive // ignore error
 
 	if cfg.EnablePrefork {
 		// Turn the `pids` variable (in the form ",a,b,c,d,e,f,etc") into a slice of PIDs
@@ -387,27 +393,30 @@ func (app *App) startupMessage(addr string, isTLS bool, pids string, cfg ListenC
 			}
 		}
 
-		_, _ = fmt.Fprintf(out, "%sINFO%s Child PIDs: \t\t%s", colors.Green, colors.Reset, colors.Blue)
+		fmt.Fprintf(out, "%sINFO%s Child PIDs: \t\t%s", colors.Green, colors.Reset, colors.Blue) //nolint:errcheck,revive // ignore error
 		totalPids := len(pidSlice)
 		rowTotalPidCount := 10
+
 		for i := 0; i < totalPids; i += rowTotalPidCount {
 			start := i
 			end := i + rowTotalPidCount
+
 			if end > totalPids {
 				end = totalPids
 			}
+
 			for n, pid := range pidSlice[start:end] {
-				_, _ = fmt.Fprintf(out, "%s", pid)
+				fmt.Fprintf(out, "%s", pid) //nolint:errcheck,revive // ignore error
 				if n+1 != len(pidSlice[start:end]) {
-					_, _ = fmt.Fprintf(out, ", ")
+					fmt.Fprintf(out, ", ") //nolint:errcheck,revive // ignore error
 				}
 			}
-			_, _ = fmt.Fprintf(out, "\n%s", colors.Reset)
+			fmt.Fprintf(out, "\n%s", colors.Reset) //nolint:errcheck,revive // ignore error
 		}
 	}
 
 	// add new Line as spacer
-	_, _ = fmt.Fprintf(out, "\n%s", colors.Reset)
+	fmt.Fprintf(out, "\n%s", colors.Reset) //nolint:errcheck,revive // ignore error
 }
 
 // printRoutesMessage print all routes with method, path, name and handlers
@@ -449,10 +458,12 @@ func (app *App) printRoutesMessage() {
 		return routes[i].path < routes[j].path
 	})
 
-	_, _ = fmt.Fprintf(w, "%smethod\t%s| %spath\t%s| %sname\t%s| %shandlers\t%s\n", colors.Blue, colors.White, colors.Green, colors.White, colors.Cyan, colors.White, colors.Yellow, colors.Reset)
-	_, _ = fmt.Fprintf(w, "%s------\t%s| %s----\t%s| %s----\t%s| %s--------\t%s\n", colors.Blue, colors.White, colors.Green, colors.White, colors.Cyan, colors.White, colors.Yellow, colors.Reset)
+	fmt.Fprintf(w, "%smethod\t%s| %spath\t%s| %sname\t%s| %shandlers\t%s\n", colors.Blue, colors.White, colors.Green, colors.White, colors.Cyan, colors.White, colors.Yellow, colors.Reset) //nolint:errcheck,revive // ignore error
+	fmt.Fprintf(w, "%s------\t%s| %s----\t%s| %s----\t%s| %s--------\t%s\n", colors.Blue, colors.White, colors.Green, colors.White, colors.Cyan, colors.White, colors.Yellow, colors.Reset) //nolint:errcheck,revive // ignore error
+
 	for _, route := range routes {
-		_, _ = fmt.Fprintf(w, "%s%s\t%s| %s%s\t%s| %s%s\t%s| %s%s%s\n", colors.Blue, route.method, colors.White, colors.Green, route.path, colors.White, colors.Cyan, route.name, colors.White, colors.Yellow, route.handlers, colors.Reset)
+		//nolint:errcheck,revive // ignore error
+		fmt.Fprintf(w, "%s%s\t%s| %s%s\t%s| %s%s\t%s| %s%s%s\n", colors.Blue, route.method, colors.White, colors.Green, route.path, colors.White, colors.Cyan, route.name, colors.White, colors.Yellow, route.handlers, colors.Reset)
 	}
 
 	_ = w.Flush() //nolint:errcheck // It is fine to ignore the error here
