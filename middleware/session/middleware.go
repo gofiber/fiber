@@ -37,32 +37,40 @@ var (
 // Session middleware manages common session state between requests.
 // This middleware is dependent on the session store, which is responsible for
 // storing the session data.
-func New(config Config) fiber.Handler {
-	handler, _ := NewWithStore(config)
+func New(config ...Config) fiber.Handler {
+	var handler fiber.Handler
+	if len(config) > 0 {
+		handler, _ = NewWithStore(config[0])
+	} else {
+		handler, _ = NewWithStore()
+	}
+
 	return handler
 }
 
 // NewWithStore returns a new session middleware with the given store
-func NewWithStore(config Config) (fiber.Handler, *Store) {
-	if config.Store == nil {
-		config.Store = newStore(config)
+func NewWithStore(config ...Config) (fiber.Handler, *Store) {
+	cfg := configDefault(config...)
+
+	if cfg.Store == nil {
+		cfg.Store = newStore(cfg)
 	}
 
 	handler := func(c fiber.Ctx) error {
 		// Don't execute middleware if Next returns true
-		if config.Next != nil && config.Next(c) {
+		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()
 		}
 
 		// Get the session
-		session, err := config.Store.getSession(c)
+		session, err := cfg.Store.getSession(c)
 		if err != nil {
 			return err
 		}
 
 		// get a middleware from the pool
 		m := acquireMiddleware()
-		m.config = config
+		m.config = cfg
 		m.Session = session
 		m.ctx = &c
 
@@ -79,8 +87,8 @@ func NewWithStore(config Config) (fiber.Handler, *Store) {
 		//
 		// It will also extend the session idle timeout automatically.
 		if err := session.saveSession(); err != nil {
-			if config.ErrorHandler != nil {
-				config.ErrorHandler(&c, err)
+			if cfg.ErrorHandler != nil {
+				cfg.ErrorHandler(&c, err)
 			} else {
 				DefaultErrorHandler(&c, err)
 			}
@@ -92,7 +100,7 @@ func NewWithStore(config Config) (fiber.Handler, *Store) {
 		return stackErr
 	}
 
-	return handler, config.Store
+	return handler, cfg.Store
 }
 
 // acquireMiddleware returns a new Middleware from the pool
