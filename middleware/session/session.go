@@ -168,6 +168,10 @@ func (s *Session) Save() error {
 		return nil
 	}
 
+	return s.save()
+}
+
+func (s *Session) save() error {
 	// Better safe than sorry
 	if s.data == nil {
 		return nil

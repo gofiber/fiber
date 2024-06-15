@@ -78,7 +78,7 @@ func NewWithStore(config Config) (fiber.Handler, *Store) {
 		// Without having to worry about calling Save()
 		//
 		// It will also extend the session idle timeout automatically.
-		if err := session.Save(); err != nil {
+		if err := session.save(); err != nil {
 			if config.ErrorHandler != nil {
 				config.ErrorHandler(&c, err)
 			} else {
@@ -186,8 +186,5 @@ func (m *Middleware) reaquireSession() {
 
 // Store returns the session store
 func (m *Middleware) Store() *Store {
-	// TODO: Ensure that session.Save() can not be called
-	// on the store directly if the session is the same as the one in the middleware
-	// context. This is to prevent the session Save from invalidating the session.
 	return m.config.Store
 }
