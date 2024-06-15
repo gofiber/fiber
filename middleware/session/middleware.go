@@ -75,10 +75,10 @@ func NewWithStore(config Config) (fiber.Handler, *Store) {
 		// Save the session
 		// This is done after the response is sent to the client
 		// It allows us to modify the session data during the request
-		// Without having to worry about calling Save()
+		// without having to worry about calling Save() on the session.
 		//
 		// It will also extend the session idle timeout automatically.
-		if err := session.save(); err != nil {
+		if err := session.saveSession(); err != nil {
 			if config.ErrorHandler != nil {
 				config.ErrorHandler(&c, err)
 			} else {
@@ -176,9 +176,13 @@ func (m *Middleware) reaquireSession() {
 		return
 	}
 
-	session, err := m.config.Store.Get(*m.ctx)
+	session, err := m.config.Store.get(*m.ctx)
 	if err != nil {
-		m.config.ErrorHandler(m.ctx, err)
+		if m.config.ErrorHandler != nil {
+			m.config.ErrorHandler(m.ctx, err)
+		} else {
+			log.Errorf("session: %v", err)
+		}
 	}
 	m.Session = session
 	m.hasChanged = false
