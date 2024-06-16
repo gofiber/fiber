@@ -246,5 +246,5 @@ var ConfigDefault = Config{
 ## CustomKeyLookup
 
 Two public utility functions are provided that may be useful when creating custom extraction:
-* `SingleKeyLookup(keyLookup string, authScheme string)`: This is the function that implements the default `KeyLookup` behavior, exposed to be used as a component of custom parsing logic
-* `MultipleKeySourceLookup(keyLookups []string, authScheme string)`: Creates a CustomKeyLookup function that checks each listed source using the above function until a key is found or the options are all exhausted
+* `DefaultKeyLookup(keyLookup string, authScheme string)`: This is the function that implements the default `KeyLookup` behavior, exposed to be used as a component of custom parsing logic
+* `MultipleKeySourceLookup(keyLookups []string, authScheme string)`: Creates a CustomKeyLookup function that checks each listed source using the above function until a key is found or the options are all exhausted. For example, `MultipleKeySourceLookup([]string{"header:Authorization", "header:x-api-key", "cookie:apikey"}, "Bearer")` would first check the standard Authorization header, checks the `x-api-key` header next, and finally checks for a cookie named `apikey`. If any of these contain a valid API key, the request continues. Otherwise, an error is returned.

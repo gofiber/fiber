@@ -151,7 +151,7 @@ func TestCustomKeyUtilityFunctionErrors(t *testing.T) {
 	)
 
 	// Invalid element while parsing
-	_, err := SingleKeyLookup("invalid", scheme)
+	_, err := DefaultKeyLookup("invalid", scheme)
 	require.Error(t, err)
 
 	_, err = MultipleKeySourceLookup([]string{"header:key", "invalid"}, scheme)

@@ -6,7 +6,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-type KeyauthKeyLookupFunc func(c fiber.Ctx) (string, error)
+type KeyLookupFunc func(c fiber.Ctx) (string, error)
 
 // Config defines the config for middleware.
 type Config struct {
@@ -34,7 +34,7 @@ type Config struct {
 	// - "cookie:<name>"
 	KeyLookup string
 
-	CustomKeyLookup KeyauthKeyLookupFunc
+	CustomKeyLookup KeyLookupFunc
 
 	// AuthScheme to be used in the Authorization header.
 	// Optional. Default value "Bearer".
