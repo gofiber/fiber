@@ -216,13 +216,13 @@ curl --header "Authorization: Bearer my-super-secret-key"  http://localhost:3000
 
 | Property        | Type                                     | Description                                                                                            | Default                       |
 |:----------------|:-----------------------------------------|:-------------------------------------------------------------------------------------------------------|:------------------------------|
-| Next            | `func(fiber.Ctx) bool`                  | Next defines a function to skip this middleware when returned true.                                    | `nil`                         |
+| Next            | `func(fiber.Ctx) bool`                   | Next defines a function to skip this middleware when returned true.                                    | `nil`                         |
 | SuccessHandler  | `fiber.Handler`                          | SuccessHandler defines a function which is executed for a valid key.                                   | `nil`                         |
 | ErrorHandler    | `fiber.ErrorHandler`                     | ErrorHandler defines a function which is executed for an invalid key.                                  | `401 Invalid or expired key`  |
 | KeyLookup       | `string`                                 | KeyLookup is a string in the form of "`<source>:<name>`" that is used to extract the key from the request. | "header:Authorization"        |
 | CustomKeyLookup | `KeyauthKeyLookupFunc` aka `func(c fiber.Ctx) (string, error)` | If more complex logic is required to extract the key from the request, an arbitrary function to extract it can be specified here. Utility helper functions are described below. |  `nil` |
 | AuthScheme      | `string`                                 | AuthScheme to be used in the Authorization header.                                                     | "Bearer"                      |
-| Validator       | `func(fiber.Ctx, string) (bool, error)` | Validator is a function to validate the key.                                                           | A function for key validation |
+| Validator       | `func(fiber.Ctx, string) (bool, error)`  | Validator is a function to validate the key.                                                           | A function for key validation |
 
 ## Default Config
 
