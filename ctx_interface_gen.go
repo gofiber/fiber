@@ -174,6 +174,10 @@ type Ctx interface {
 	Links(link ...string)
 	// Locals makes it possible to pass any values under keys scoped to the request
 	// and therefore available to all following routes that match the request.
+	//
+	// All the values are removed from ctx after returning from the top
+	// RequestHandler. Additionally, Close method is called on each value
+	// implementing io.Closer before removing the value from ctx.
 	Locals(key any, value ...any) any
 	// Location sets the response Location HTTP header to the specified path parameter.
 	Location(path string)
