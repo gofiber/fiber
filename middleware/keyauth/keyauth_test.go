@@ -142,7 +142,23 @@ func TestPanicOnInvalidConfiguration(t *testing.T) {
 			require.NoError(t, err)
 		}()
 		app.Use(authMiddleware)
-	})
+	}, "should panic if Validator is missing")
+
+	require.Panics(t, func() {
+		authMiddleware := New(Config{
+			KeyLookup: "invalid",
+			Validator: func(_ fiber.Ctx, _ string) (bool, error) {
+				return true, nil
+			},
+		})
+		// We shouldn't even make it this far, but these next two lines prevent authMiddleware from being an unused variable.
+		app := fiber.New()
+		defer func() { // testing panics, defer block to ensure cleanup
+			err := app.Shutdown()
+			require.NoError(t, err)
+		}()
+		app.Use(authMiddleware)
+	}, "should panic if CustomKeyLookup is not set AND KeyLookup has an invalid value")
 }
 
 func TestCustomKeyUtilityFunctionErrors(t *testing.T) {
@@ -152,10 +168,10 @@ func TestCustomKeyUtilityFunctionErrors(t *testing.T) {
 
 	// Invalid element while parsing
 	_, err := DefaultKeyLookup("invalid", scheme)
-	require.Error(t, err)
+	require.Error(t, err, "DefaultKeyLookup should fail for 'invalid' keyLookup")
 
 	_, err = MultipleKeySourceLookup([]string{"header:key", "invalid"}, scheme)
-	require.Error(t, err)
+	require.Error(t, err, "MultipleKeySourceLookup should fail for 'invalid' keyLookup")
 }
 
 func TestMultipleKeyLookup(t *testing.T) {

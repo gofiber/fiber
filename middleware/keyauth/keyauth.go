@@ -94,6 +94,7 @@ func MultipleKeySourceLookup(keyLookups []string, authScheme string) (KeyLookupF
 				return res, nil
 			}
 			if !errors.Is(err, ErrMissingOrMalformedAPIKey) {
+				// Defensive Code - not currently possible to hit
 				return "", fmt.Errorf("[%s] %w", keyLookup, err)
 			}
 		}
@@ -104,7 +105,7 @@ func MultipleKeySourceLookup(keyLookups []string, authScheme string) (KeyLookupF
 func DefaultKeyLookup(keyLookup, authScheme string) (KeyLookupFunc, error) {
 	parts := strings.Split(keyLookup, ":")
 	if len(parts) <= 1 {
-		return nil, fmt.Errorf("invalid keyLookup: %s", keyLookup)
+		return nil, fmt.Errorf("invalid keyLookup: %q, expected format 'source:name'", keyLookup)
 	}
 	extractor := KeyFromHeader(parts[1], authScheme) // in the event of an invalid prefix, it is interpreted as header:
 	switch parts[0] {
