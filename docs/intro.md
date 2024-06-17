@@ -167,19 +167,15 @@ app.Get("/api/*", func(c fiber.Ctx) error {
 ### Static files
 
 To serve static files such as **images**, **CSS**, and **JavaScript** files, replace your function handler with a file or directory string.
-
+You can check out [static middleware](./middleware/static.md) for more information.
 Function signature:
-
-```go
-app.Static(prefix, root string, config ...Static)
-```
 
 Use the following code to serve files in a directory named `./public`:
 
 ```go
 app := fiber.New()
 
-app.Static("/", "./public") 
+app.Get("/*", static.New("./public")) 
 
 app.Listen(":3000")
 ```

@@ -19,8 +19,6 @@ type Register interface {
 
 	Add(methods []string, handler Handler, middleware ...Handler) Register
 
-	Static(root string, config ...Static) Register
-
 	Route(path string) Register
 }
 
@@ -109,12 +107,6 @@ func (r *Registering) Patch(handler Handler, middleware ...Handler) Register {
 // Add allows you to specify multiple HTTP methods to register a route.
 func (r *Registering) Add(methods []string, handler Handler, middleware ...Handler) Register {
 	r.app.register(methods, r.path, nil, handler, middleware...)
-	return r
-}
-
-// Static will create a file server serving static files
-func (r *Registering) Static(root string, config ...Static) Register {
-	r.app.registerStatic(r.path, root, config...)
 	return r
 }
 

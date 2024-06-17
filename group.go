@@ -170,16 +170,6 @@ func (grp *Group) Add(methods []string, path string, handler Handler, middleware
 	return grp
 }
 
-// Static will create a file server serving static files
-func (grp *Group) Static(prefix, root string, config ...Static) Router {
-	grp.app.registerStatic(getGroupPath(grp.Prefix, prefix), root, config...)
-	if !grp.anyRouteDefined {
-		grp.anyRouteDefined = true
-	}
-
-	return grp
-}
-
 // All will register the handler on all HTTP methods
 func (grp *Group) All(path string, handler Handler, middleware ...Handler) Router {
 	_ = grp.Add(grp.app.config.RequestMethods, path, handler, middleware...)
