@@ -945,10 +945,10 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ## Locals
 
-A method that stores variables scoped to the request and, therefore, are available only to the routes that match the request.
+A method that stores variables scoped to the request and, therefore, are available only to the routes that match the request. The stored variables are removed after the request is handled. If any of the stored data implements the `io.Closer` interface, its `Close` method will be called before it's removed.
 
 :::tip
-This is useful if you want to pass some **specific** data to the next middleware.
+This is useful if you want to pass some **specific** data to the next middleware. Remember to perform type assertions when retrieving the data to ensure it is of the expected type. You can also use a non-exported type as a key to avoid collisions.
 :::
 
 ```go title="Signature"
@@ -957,26 +957,26 @@ func (c Ctx) Locals(key any, value ...any) any
 
 ```go title="Example"
 
-// key is an unexported type for keys defined in this package.
+// keyType is an unexported type for keys defined in this package.
 // This prevents collisions with keys defined in other packages.
-type key int
+type keyType int
 
 // userKey is the key for user.User values in Contexts. It is
 // unexported; clients use user.NewContext and user.FromContext
 // instead of using this key directly.
-var userKey key
+var userKey keyType
 
 app.Use(func(c fiber.Ctx) error {
-  c.Locals(userKey, "admin")
+  c.Locals(userKey, "admin") // Stores the string "admin" under a non-exported type key
   return c.Next()
 })
 
 app.Get("/admin", func(c fiber.Ctx) error {
-  if c.Locals(userKey) == "admin" {
+  user, ok := c.Locals(userKey).(string) // Retrieves the data stored under the key and performs a type assertion
+  if ok && user == "admin" {
     return c.Status(fiber.StatusOK).SendString("Welcome, admin!")
   }
   return c.SendStatus(fiber.StatusForbidden)
-
 })
 ```
 
