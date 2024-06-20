@@ -21,12 +21,8 @@ go get github.com/gofiber/fiber/v3
 ```
 
 ### Zero Allocation
-Because fiber is optimized for **high-performance** care is needed when using **fiber.Ctx**:
 
-- Some values returned from **fiber.Ctx** are **not** immutable by default, and **will** be re-used across requests.
-- **fiber.Ctx** is **not** thread-safe and **must not** be accessed concurrently by multiple goroutines, the immutable setting **does not** change this.
-
-As a rule of thumb, you **must** only use context values within the handler, and you **must not** keep any references. As soon as you return from the handler, any values you have obtained from the context will be re-used in future requests and will change below your feet. Here is an example:
+Fiber is optimized for **high-performance**, meaning values returned from **fiber.Ctx** are **not** immutable by default and **will** be re-used across requests. As a rule of thumb, you **must** only use context values within the handler and **must not** keep any references. Once you return from the handler, any values obtained from the context will be re-used in future requests. Here is an example:
 
 ```go
 func handler(c fiber.Ctx) error {
