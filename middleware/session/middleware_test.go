@@ -3,11 +3,216 @@ package session
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
+
+func TestMiddleware(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New())
+
+	app.Get("/get", func(c fiber.Ctx) error {
+		sess := FromContext(c)
+		if sess == nil {
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+		value, ok := sess.Get("key").(string)
+		if !ok {
+			return c.Status(fiber.StatusNotFound).SendString("key not found")
+		}
+		return c.SendString("value=" + value)
+	})
+
+	app.Post("/set", func(c fiber.Ctx) error {
+		sess := FromContext(c)
+		if sess == nil {
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+		// get a value from the body
+		value := c.FormValue("value")
+		sess.Set("key", value)
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	app.Post("/delete", func(c fiber.Ctx) error {
+		sess := FromContext(c)
+		if sess == nil {
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+		sess.Delete("key")
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	app.Post("/reset", func(c fiber.Ctx) error {
+		sess := FromContext(c)
+		if sess == nil {
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+		if err := sess.Reset(); err != nil {
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	app.Post("/destroy", func(c fiber.Ctx) error {
+		sess := FromContext(c)
+		if sess == nil {
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+		if err := sess.Destroy(); err != nil {
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	app.Post("/fresh", func(c fiber.Ctx) error {
+		sess := FromContext(c)
+		if sess == nil {
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+		// Reset the session to make it fresh
+		if err := sess.Reset(); err != nil {
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+		if sess.Fresh() {
+			return c.SendStatus(fiber.StatusOK)
+		}
+		return c.SendStatus(fiber.StatusInternalServerError)
+	})
+
+	// Test GET, SET, DELETE, RESET, DESTROY by sending requests to the respective routes
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.SetRequestURI("/get")
+	h := app.Handler()
+	h(ctx)
+	require.Equal(t, fiber.StatusNotFound, ctx.Response.StatusCode())
+	token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
+	token = strings.Split(strings.Split(token, ";")[0], "=")[1]
+	require.Equal(t, "key not found", string(ctx.Response.Body()))
+
+	// Test POST /set
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.SetRequestURI("/set")
+	ctx.Request.Header.Set("Content-Type", "application/x-www-form-urlencoded") // Set the Content-Type
+	ctx.Request.SetBodyString("value=hello")
+	ctx.Request.Header.SetCookie("session_id", token)
+	h(ctx)
+	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+
+	// Test GET /get to check if the value was set
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.SetRequestURI("/get")
+	ctx.Request.Header.SetCookie("session_id", token)
+	h(ctx)
+	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+	require.Equal(t, "value=hello", string(ctx.Response.Body()))
+
+	// Test POST /delete to delete the value
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.SetRequestURI("/delete")
+	ctx.Request.Header.SetCookie("session_id", token)
+	h(ctx)
+	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+
+	// Test GET /get to check if the value was deleted
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.SetRequestURI("/get")
+	ctx.Request.Header.SetCookie("session_id", token)
+	h(ctx)
+	require.Equal(t, fiber.StatusNotFound, ctx.Response.StatusCode())
+	require.Equal(t, "key not found", string(ctx.Response.Body()))
+
+	// Test POST /reset to reset the session
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.SetRequestURI("/reset")
+	ctx.Request.Header.SetCookie("session_id", token)
+	h(ctx)
+	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+	// verify we have a new session token
+	newToken := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
+	newToken = strings.Split(strings.Split(newToken, ";")[0], "=")[1]
+	require.NotEqual(t, token, newToken)
+	token = newToken
+
+	// Test POST /destroy to destroy the session
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.SetRequestURI("/destroy")
+	ctx.Request.Header.SetCookie("session_id", token)
+	h(ctx)
+	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+
+	// Verify the session cookie is set to expire
+	setCookieHeader := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
+	require.Contains(t, setCookieHeader, "expires=")
+	cookieParts := strings.Split(setCookieHeader, ";")
+	expired := false
+	for _, part := range cookieParts {
+		if strings.Contains(part, "expires=") {
+			part = strings.TrimSpace(part)
+			expiryDateStr := strings.TrimPrefix(part, "expires=")
+			// Correctly parse the date with "GMT" timezone
+			expiryDate, err := time.Parse(time.RFC1123, strings.TrimSpace(expiryDateStr))
+			require.NoError(t, err)
+			if expiryDate.Before(time.Now()) {
+				expired = true
+				break
+			}
+		}
+	}
+	require.True(t, expired, "Session cookie should be expired")
+
+	// Sleep so that the session expires
+	time.Sleep(1 * time.Second)
+
+	// Test GET /get to check if the session was destroyed
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.SetRequestURI("/get")
+	ctx.Request.Header.SetCookie("session_id", token)
+	h(ctx)
+	require.Equal(t, fiber.StatusNotFound, ctx.Response.StatusCode())
+	// check that we have a new session token
+	newToken = string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
+	parts := strings.Split(newToken, ";")
+	require.Greater(t, len(parts), 2)
+	valueParts := strings.Split(parts[0], "=")
+	require.Greater(t, len(valueParts), 1)
+	newToken = valueParts[1]
+	require.NotEqual(t, token, newToken)
+	token = newToken
+
+	// Test POST /fresh to check if the session is fresh
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.SetRequestURI("/fresh")
+	ctx.Request.Header.SetCookie("session_id", token)
+	h(ctx)
+	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+	// check that we have a new session token
+	newToken = string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
+	newToken = strings.Split(strings.Split(newToken, ";")[0], "=")[1]
+	require.NotEqual(t, token, newToken)
+}
 
 func TestNewWithStore(t *testing.T) {
 	t.Parallel()
@@ -36,7 +241,7 @@ func TestNewWithStore(t *testing.T) {
 	ctx := &fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
 	h(ctx)
-	require.Equal(t, 200, ctx.Response.StatusCode())
+	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
 	// Get session cookie
 	token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
 	token = strings.Split(strings.Split(token, ";")[0], "=")[1]
@@ -47,6 +252,6 @@ func TestNewWithStore(t *testing.T) {
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
 	ctx.Request.Header.SetCookie("session_id", token)
 	h(ctx)
-	require.Equal(t, 200, ctx.Response.StatusCode())
+	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
 	require.Equal(t, "value="+token, string(ctx.Response.Body()))
 }

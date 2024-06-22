@@ -15,6 +15,7 @@ type Middleware struct {
 	Session    *Session
 	ctx        *fiber.Ctx
 	hasChanged bool // TODO: use this to optimize interaction with the session store
+	destroyed  bool
 	mu         sync.RWMutex
 }
 
@@ -80,17 +81,20 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 		// Continue stack
 		stackErr := c.Next()
 
-		// Save the session
-		// This is done after the response is sent to the client
-		// It allows us to modify the session data during the request
-		// without having to worry about calling Save() on the session.
-		//
-		// It will also extend the session idle timeout automatically.
-		if err := session.saveSession(); err != nil {
-			if cfg.ErrorHandler != nil {
-				cfg.ErrorHandler(&c, err)
-			} else {
-				DefaultErrorHandler(&c, err)
+		if !m.destroyed {
+
+			// Save the session
+			// This is done after the response is sent to the client
+			// It allows us to modify the session data during the request
+			// without having to worry about calling Save() on the session.
+			//
+			// It will also extend the session idle timeout automatically.
+			if err := session.saveSession(); err != nil {
+				if cfg.ErrorHandler != nil {
+					cfg.ErrorHandler(&c, err)
+				} else {
+					DefaultErrorHandler(&c, err)
+				}
 			}
 		}
 
@@ -158,7 +162,7 @@ func (m *Middleware) Destroy() error {
 	defer m.mu.Unlock()
 
 	err := m.Session.Destroy()
-	m.reaquireSession()
+	m.destroyed = true
 	return err
 }
 
@@ -177,23 +181,6 @@ func (m *Middleware) Reset() error {
 	err := m.Session.Reset()
 	m.hasChanged = true
 	return err
-}
-
-func (m *Middleware) reaquireSession() {
-	if m.ctx == nil {
-		return
-	}
-
-	session, err := m.config.Store.getSession(*m.ctx)
-	if err != nil {
-		if m.config.ErrorHandler != nil {
-			m.config.ErrorHandler(m.ctx, err)
-		} else {
-			DefaultErrorHandler(m.ctx, err)
-		}
-	}
-	m.Session = session
-	m.hasChanged = false
 }
 
 // Store returns the session store

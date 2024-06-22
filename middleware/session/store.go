@@ -58,24 +58,28 @@ func (s *Store) Get(c fiber.Ctx) (*Session, error) {
 	return s.getSession(c)
 }
 
+// Get session based on context
 func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
-	// Get session based on context
 	var fresh bool
-	loadData := true
+	var rawData []byte
+	var err error
 
 	id := s.getSessionID(c)
 
-	if len(id) == 0 {
-		fresh = true
-		var err error
-		if id, err = s.responseCookies(c); err != nil {
+	// Attempt to fetch session data if an ID is provided
+	if len(id) > 0 {
+		rawData, err = s.Storage.Get(id)
+		// If error is nil and raw is nil then token is not in storage
+		if rawData == nil && err == nil {
+			id = "" // Reset ID to generate a new one
+		} else if err != nil {
 			return nil, err
 		}
 	}
 
-	// If no key exist, create new one
-	if len(id) == 0 {
-		loadData = false
+	// If no ID is provided or data not found in storage, generate a new ID
+	if len(id) == 0 || err != nil {
+		fresh = true
 		id = s.KeyGenerator()
 	}
 
@@ -86,26 +90,14 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 	sess.id = id
 	sess.fresh = fresh
 
-	// Fetch existing data
-	if loadData {
-		raw, err := s.Storage.Get(id)
-		// Unmarshal if we found data
-		switch {
-		case err != nil:
-			return nil, err
-
-		case raw != nil:
-			mux.Lock()
-			defer mux.Unlock()
-			sess.byteBuffer.Write(raw)
-			encCache := gob.NewDecoder(sess.byteBuffer)
-			err := encCache.Decode(&sess.data.Data)
-			if err != nil {
-				return nil, fmt.Errorf("failed to decode session data: %w", err)
-			}
-		default:
-			// both raw and err is nil, which means id is not in the storage
-			sess.fresh = true
+	// Decode session data if found
+	if rawData != nil {
+		mux.Lock()
+		defer mux.Unlock()
+		_, _ = sess.byteBuffer.Write(rawData) //nolint:errcheck // This will never fail
+		encCache := gob.NewDecoder(sess.byteBuffer)
+		if err := encCache.Decode(&sess.data.Data); err != nil {
+			return nil, fmt.Errorf("failed to decode session data: %w", err)
 		}
 	}
 
