@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"os"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -59,14 +60,14 @@ func New(config ...Config) fiber.Handler {
 	// Start routine to update statistics
 	once.Do(func() {
 		p, _ := process.NewProcess(int32(os.Getpid())) //nolint:errcheck // TODO: Handle error
-
-		updateStatistics(p)
+		numcpu := runtime.NumCPU()
+		updateStatistics(p, numcpu)
 
 		go func() {
 			for {
 				time.Sleep(cfg.Refresh)
 
-				updateStatistics(p)
+				updateStatistics(p, numcpu)
 			}
 		}()
 	})
@@ -101,10 +102,10 @@ func New(config ...Config) fiber.Handler {
 	}
 }
 
-func updateStatistics(p *process.Process) {
-	pidCPU, err := p.CPUPercent()
+func updateStatistics(p *process.Process, numcpu int) {
+	pidCPU, err := p.Percent(0)
 	if err == nil {
-		monitPIDCPU.Store(pidCPU / 10)
+		monitPIDCPU.Store(pidCPU / float64(numcpu))
 	}
 
 	if osCPU, err := cpu.Percent(0, false); err == nil && len(osCPU) > 0 {
