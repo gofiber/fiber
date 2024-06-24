@@ -300,6 +300,7 @@ const (
 	StrBr      = "br"
 	StrDeflate = "deflate"
 	StrBrotli  = "brotli"
+	StrZstd    = "zstd"
 )
 
 // Cookie SameSite

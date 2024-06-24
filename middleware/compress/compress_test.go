@@ -38,7 +38,7 @@ func Test_Compress_Gzip(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	req.Header.Set("Accept-Encoding", "gzip")
 
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, 10*time.Second)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
@@ -52,33 +52,38 @@ func Test_Compress_Gzip(t *testing.T) {
 // go test -run Test_Compress_Different_Level
 func Test_Compress_Different_Level(t *testing.T) {
 	t.Parallel()
-	levels := []Level{LevelBestSpeed, LevelBestCompression}
-	for _, level := range levels {
-		level := level
-		t.Run(fmt.Sprintf("level %d", level), func(t *testing.T) {
-			t.Parallel()
-			app := fiber.New()
+	levels := []Level{LevelDefault, LevelBestSpeed, LevelBestCompression}
+	algorithms := []string{"gzip", "deflate", "br", "zstd"}
 
-			app.Use(New(Config{Level: level}))
+	for _, algo := range algorithms {
+		algo := algo
+		for _, level := range levels {
+			level := level
+			t.Run(fmt.Sprintf("%s_level %d", algo, level), func(t *testing.T) {
+				t.Parallel()
+				app := fiber.New()
 
-			app.Get("/", func(c fiber.Ctx) error {
-				c.Set(fiber.HeaderContentType, fiber.MIMETextPlainCharsetUTF8)
-				return c.Send(filedata)
+				app.Use(New(Config{Level: level}))
+
+				app.Get("/", func(c fiber.Ctx) error {
+					c.Set(fiber.HeaderContentType, fiber.MIMETextPlainCharsetUTF8)
+					return c.Send(filedata)
+				})
+
+				req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+				req.Header.Set("Accept-Encoding", algo)
+
+				resp, err := app.Test(req, 10*time.Second)
+				require.NoError(t, err, "app.Test(req)")
+				require.Equal(t, 200, resp.StatusCode, "Status code")
+				require.Equal(t, algo, resp.Header.Get(fiber.HeaderContentEncoding))
+
+				// Validate that the file size has shrunk
+				body, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				require.Less(t, len(body), len(filedata))
 			})
-
-			req := httptest.NewRequest(fiber.MethodGet, "/", nil)
-			req.Header.Set("Accept-Encoding", "gzip")
-
-			resp, err := app.Test(req)
-			require.NoError(t, err, "app.Test(req)")
-			require.Equal(t, 200, resp.StatusCode, "Status code")
-			require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
-
-			// Validate that the file size has shrunk
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
-			require.Less(t, len(body), len(filedata))
-		})
+		}
 	}
 }
 
@@ -95,7 +100,7 @@ func Test_Compress_Deflate(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	req.Header.Set("Accept-Encoding", "deflate")
 
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, 10*time.Second)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.Equal(t, "deflate", resp.Header.Get(fiber.HeaderContentEncoding))
@@ -130,6 +135,30 @@ func Test_Compress_Brotli(t *testing.T) {
 	require.Less(t, len(body), len(filedata))
 }
 
+func Test_Compress_Zstd(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New())
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.Send(filedata)
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req.Header.Set("Accept-Encoding", "zstd")
+
+	resp, err := app.Test(req, 10*time.Second)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+	require.Equal(t, "zstd", resp.Header.Get(fiber.HeaderContentEncoding))
+
+	// Validate that the file size has shrunk
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Less(t, len(body), len(filedata))
+}
+
 func Test_Compress_Disabled(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -143,7 +172,7 @@ func Test_Compress_Disabled(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	req.Header.Set("Accept-Encoding", "br")
 
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, 10*time.Second)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
