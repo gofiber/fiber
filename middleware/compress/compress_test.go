@@ -11,6 +11,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 )
 
 var filedata []byte
@@ -219,4 +220,194 @@ func Test_Compress_Next(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+}
+
+// go test -bench=Benchmark_Compress
+func Benchmark_Compress(b *testing.B) {
+	tests := []struct {
+		name           string
+		acceptEncoding string
+	}{
+		{"Gzip", "gzip"},
+		{"Deflate", "deflate"},
+		{"Brotli", "br"},
+		{"Zstd", "zstd"},
+	}
+
+	for _, tt := range tests {
+		b.Run(tt.name, func(b *testing.B) {
+			app := fiber.New()
+			app.Use(New())
+			app.Get("/", func(c fiber.Ctx) error {
+				c.Set(fiber.HeaderContentType, fiber.MIMETextPlainCharsetUTF8)
+				return c.Send(filedata)
+			})
+
+			h := app.Handler()
+			fctx := &fasthttp.RequestCtx{}
+			fctx.Request.Header.SetMethod(fiber.MethodGet)
+			fctx.Request.SetRequestURI("/")
+
+			if tt.acceptEncoding != "" {
+				fctx.Request.Header.Set("Accept-Encoding", tt.acceptEncoding)
+			}
+
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			for i := 0; i < b.N; i++ {
+				h(fctx)
+			}
+		})
+	}
+}
+
+// go test -bench=Benchmark_Compress_Levels
+func Benchmark_Compress_Levels(b *testing.B) {
+	tests := []struct {
+		name           string
+		acceptEncoding string
+	}{
+		{"Gzip", "gzip"},
+		{"Deflate", "deflate"},
+		{"Brotli", "br"},
+		{"Zstd", "zstd"},
+	}
+
+	levels := []struct {
+		name  string
+		level Level
+	}{
+		{"LevelDisabled", LevelDisabled},
+		{"LevelDefault", LevelDefault},
+		{"LevelBestSpeed", LevelBestSpeed},
+		{"LevelBestCompression", LevelBestCompression},
+	}
+
+	for _, tt := range tests {
+		for _, lvl := range levels {
+			b.Run(tt.name+"_"+lvl.name, func(b *testing.B) {
+				app := fiber.New()
+				app.Use(New(Config{Level: lvl.level}))
+				app.Get("/", func(c fiber.Ctx) error {
+					c.Set(fiber.HeaderContentType, fiber.MIMETextPlainCharsetUTF8)
+					return c.Send(filedata)
+				})
+
+				h := app.Handler()
+				fctx := &fasthttp.RequestCtx{}
+				fctx.Request.Header.SetMethod(fiber.MethodGet)
+				fctx.Request.SetRequestURI("/")
+
+				if tt.acceptEncoding != "" {
+					fctx.Request.Header.Set("Accept-Encoding", tt.acceptEncoding)
+				}
+
+				b.ReportAllocs()
+				b.ResetTimer()
+
+				for i := 0; i < b.N; i++ {
+					h(fctx)
+				}
+			})
+		}
+	}
+}
+
+// go test -bench=Benchmark_Compress_Parallel
+func Benchmark_Compress_Parallel(b *testing.B) {
+	tests := []struct {
+		name           string
+		acceptEncoding string
+	}{
+		{"Gzip", "gzip"},
+		{"Deflate", "deflate"},
+		{"Brotli", "br"},
+		{"Zstd", "zstd"},
+	}
+
+	for _, tt := range tests {
+		b.Run(tt.name, func(b *testing.B) {
+			app := fiber.New()
+			app.Use(New())
+			app.Get("/", func(c fiber.Ctx) error {
+				c.Set(fiber.HeaderContentType, fiber.MIMETextPlainCharsetUTF8)
+				return c.Send(filedata)
+			})
+
+			h := app.Handler()
+
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			b.RunParallel(func(pb *testing.PB) {
+				fctx := &fasthttp.RequestCtx{}
+				fctx.Request.Header.SetMethod(fiber.MethodGet)
+				fctx.Request.SetRequestURI("/")
+
+				if tt.acceptEncoding != "" {
+					fctx.Request.Header.Set("Accept-Encoding", tt.acceptEncoding)
+				}
+
+				for pb.Next() {
+					h(fctx)
+				}
+			})
+		})
+	}
+}
+
+// go test -bench=Benchmark_Compress_Levels_Parallel
+func Benchmark_Compress_Levels_Parallel(b *testing.B) {
+	tests := []struct {
+		name           string
+		acceptEncoding string
+	}{
+		{"Gzip", "gzip"},
+		{"Deflate", "deflate"},
+		{"Brotli", "br"},
+		{"Zstd", "zstd"},
+	}
+
+	levels := []struct {
+		name  string
+		level Level
+	}{
+		{"LevelDisabled", LevelDisabled},
+		{"LevelDefault", LevelDefault},
+		{"LevelBestSpeed", LevelBestSpeed},
+		{"LevelBestCompression", LevelBestCompression},
+	}
+
+	for _, tt := range tests {
+		for _, lvl := range levels {
+			b.Run(tt.name+"_"+lvl.name, func(b *testing.B) {
+				app := fiber.New()
+				app.Use(New(Config{Level: lvl.level}))
+				app.Get("/", func(c fiber.Ctx) error {
+					c.Set(fiber.HeaderContentType, fiber.MIMETextPlainCharsetUTF8)
+					return c.Send(filedata)
+				})
+
+				h := app.Handler()
+
+				b.ReportAllocs()
+				b.ResetTimer()
+
+				b.RunParallel(func(pb *testing.PB) {
+					fctx := &fasthttp.RequestCtx{}
+					fctx.Request.Header.SetMethod(fiber.MethodGet)
+					fctx.Request.SetRequestURI("/")
+
+					if tt.acceptEncoding != "" {
+						fctx.Request.Header.Set("Accept-Encoding", tt.acceptEncoding)
+					}
+
+					for pb.Next() {
+						h(fctx)
+					}
+				})
+			})
+		}
+	}
 }
