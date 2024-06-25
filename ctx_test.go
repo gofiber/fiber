@@ -3118,6 +3118,88 @@ func Test_Ctx_SendFile_404(t *testing.T) {
 	require.Equal(t, "sendfile: file ctx12.go not found", string(body))
 }
 
+func Test_Ctx_SendFile_Multiple(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/test", func(c Ctx) error {
+		switch c.Query("file") {
+		case "1":
+			return c.SendFile("ctx.go")
+		case "2":
+			return c.SendFile("app.go")
+		case "3":
+			return c.SendFile("ctx.go", SendFile{
+				Download: true,
+			})
+		case "4":
+			return c.SendFile("app_test.go", SendFile{
+				FS: os.DirFS("."),
+			})
+		default:
+			return c.SendStatus(StatusNotFound)
+		}
+	})
+
+	app.Get("/test2", func(c Ctx) error {
+		return c.SendFile("ctx.go", SendFile{
+			Download: true,
+		})
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test?file=1", nil))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Contains(t, string(body), "type DefaultCtx struct")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test?file=2", nil))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Contains(t, string(body), "type App struct")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test?file=3", nil))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.Equal(t, "attachment", string(resp.Header.Get(HeaderContentDisposition)))
+
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Contains(t, string(body), "type DefaultCtx struct")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test?file=4", nil))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Contains(t, string(body), "Test_App_MethodNotAllowed")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2", nil))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.Equal(t, "attachment", string(resp.Header.Get(HeaderContentDisposition)))
+
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Contains(t, string(body), "type DefaultCtx struct")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2", nil))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.Equal(t, "attachment", string(resp.Header.Get(HeaderContentDisposition)))
+
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Contains(t, string(body), "type DefaultCtx struct")
+
+	require.Len(t, app.sendfiles, 4)
+}
+
 // go test -race -run Test_Ctx_SendFile_Immutable
 func Test_Ctx_SendFile_Immutable(t *testing.T) {
 	t.Parallel()

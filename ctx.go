@@ -1434,14 +1434,49 @@ type SendFile struct {
 	MaxAge int `json:"max_age"`
 }
 
+type sendFileStore struct {
+	filename          string
+	handler           fasthttp.RequestHandler
+	cacheControlValue string
+	config            SendFile
+}
+
+// compareConfig compares the current SendFile config with the new one
+// and returns true if they are different
+func (sf *sendFileStore) compareConfig(cfg SendFile) bool {
+	if sf.config.FS != cfg.FS {
+		return false
+	}
+
+	if sf.config.Compress != cfg.Compress {
+		return false
+	}
+
+	if sf.config.ByteRange != cfg.ByteRange {
+		return false
+	}
+
+	if sf.config.Download != cfg.Download {
+		return false
+	}
+
+	if sf.config.CacheDuration != cfg.CacheDuration {
+		return false
+	}
+
+	if sf.config.MaxAge != cfg.MaxAge {
+		return false
+	}
+
+	return true
+}
+
 // SendFile transfers the file from the given path.
 // The file is not compressed by default, enable this by passing a 'true' argument
 // Sets the Content-Type response HTTP header field based on the filenames extension.
 func (c *DefaultCtx) SendFile(file string, config ...SendFile) error {
 	// Save the filename, we will need it in the error message if the file isn't found
 	filename := file
-
-	route := c.Route()
 
 	var cfg SendFile
 	if len(config) > 0 {
@@ -1452,9 +1487,18 @@ func (c *DefaultCtx) SendFile(file string, config ...SendFile) error {
 		cfg.CacheDuration = 10 * time.Second
 	}
 
-	// https://github.com/valyala/fasthttp/blob/c7576cc10cabfc9c993317a2d3f8355497bea156/fs.go#L129-L134
-	if route.sendFileFS == nil {
-		route.sendFileFS = &fasthttp.FS{
+	var fsHandler fasthttp.RequestHandler
+	var cacheControlValue string
+	for _, sf := range c.app.sendfiles {
+		if sf.filename == filename && sf.compareConfig(cfg) {
+			fsHandler = sf.handler
+			cacheControlValue = sf.cacheControlValue
+			break
+		}
+	}
+
+	if fsHandler == nil {
+		fasthttpFS := &fasthttp.FS{
 			Root:                 "",
 			FS:                   cfg.FS,
 			AllowEmptyRoot:       true,
@@ -1471,21 +1515,32 @@ func (c *DefaultCtx) SendFile(file string, config ...SendFile) error {
 		}
 
 		if cfg.FS != nil {
-			route.sendFileFS.Root = "."
+			fasthttpFS.Root = "."
 		}
 
-		route.sendFileHandler = route.sendFileFS.NewRequestHandler()
+		sf := &sendFileStore{
+			filename: filename,
+			config:   cfg,
+			handler:  fasthttpFS.NewRequestHandler(),
+		}
 
 		maxAge := cfg.MaxAge
 		if maxAge > 0 {
-			route.sendFileCacheControlValue = "public, max-age=" + strconv.Itoa(maxAge)
+			sf.cacheControlValue = "public, max-age=" + strconv.Itoa(maxAge)
 		}
+
+		// set vars
+		fsHandler = sf.handler
+		cacheControlValue = sf.cacheControlValue
+
+		c.app.sendfiles = append(c.app.sendfiles, sf)
 	}
 
 	// Keep original path for mutable params
 	c.pathOriginal = utils.CopyString(c.pathOriginal)
 
 	// Disable compression
+	// TODO: support other compression algorithms
 	if cfg.Compress {
 		c.fasthttp.Request.Header.Set(HeaderAcceptEncoding, "gzip")
 	}
@@ -1520,7 +1575,7 @@ func (c *DefaultCtx) SendFile(file string, config ...SendFile) error {
 	status := c.fasthttp.Response.StatusCode()
 
 	// Serve file
-	route.sendFileHandler(c.fasthttp)
+	fsHandler(c.fasthttp)
 
 	// Sets the response Content-Disposition header to attachment if the Download option is true
 	if cfg.Download {
@@ -1542,8 +1597,8 @@ func (c *DefaultCtx) SendFile(file string, config ...SendFile) error {
 
 	// Apply cache control header
 	if status != StatusNotFound && status != StatusForbidden {
-		if len(route.sendFileCacheControlValue) > 0 {
-			c.Context().Response.Header.Set(HeaderCacheControl, route.sendFileCacheControlValue)
+		if len(cacheControlValue) > 0 {
+			c.Context().Response.Header.Set(HeaderCacheControl, cacheControlValue)
 		}
 
 		return nil

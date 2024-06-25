@@ -123,6 +123,8 @@ type App struct {
 	configured Config
 	// customConstraints is a list of external constraints
 	customConstraints []CustomConstraint
+
+	sendfiles []*sendFileStore
 }
 
 // Config is a struct holding the server settings.
@@ -441,6 +443,7 @@ func New(config ...Config) *App {
 		getString:     utils.UnsafeString,
 		latestRoute:   &Route{},
 		customBinders: []CustomBinder{},
+		sendfiles:     []*sendFileStore{},
 	}
 
 	// Create Ctx pool
