@@ -3197,7 +3197,7 @@ func Test_Ctx_SendFile_Multiple(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(body), "type DefaultCtx struct")
 
-	require.Len(t, app.sendfiles, 4)
+	require.Len(t, app.sendfiles, 3)
 }
 
 // go test -race -run Test_Ctx_SendFile_Immutable

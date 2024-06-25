@@ -1435,10 +1435,9 @@ type SendFile struct {
 }
 
 type sendFileStore struct {
-	filename          string
 	handler           fasthttp.RequestHandler
-	cacheControlValue string
 	config            SendFile
+	cacheControlValue string
 }
 
 // compareConfig compares the current SendFile config with the new one
@@ -1490,7 +1489,7 @@ func (c *DefaultCtx) SendFile(file string, config ...SendFile) error {
 	var fsHandler fasthttp.RequestHandler
 	var cacheControlValue string
 	for _, sf := range c.app.sendfiles {
-		if sf.filename == filename && sf.compareConfig(cfg) {
+		if sf.compareConfig(cfg) {
 			fsHandler = sf.handler
 			cacheControlValue = sf.cacheControlValue
 			break
@@ -1519,9 +1518,8 @@ func (c *DefaultCtx) SendFile(file string, config ...SendFile) error {
 		}
 
 		sf := &sendFileStore{
-			filename: filename,
-			config:   cfg,
-			handler:  fasthttpFS.NewRequestHandler(),
+			config:  cfg,
+			handler: fasthttpFS.NewRequestHandler(),
 		}
 
 		maxAge := cfg.MaxAge
