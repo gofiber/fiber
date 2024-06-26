@@ -1506,6 +1506,8 @@ func (c *DefaultCtx) SendFile(file string, config ...SendFile) error {
 
 	var fsHandler fasthttp.RequestHandler
 	var cacheControlValue string
+
+	c.app.sendfilesMutex.RLock()
 	for _, sf := range c.app.sendfiles {
 		if sf.compareConfig(cfg) {
 			fsHandler = sf.handler
@@ -1513,6 +1515,7 @@ func (c *DefaultCtx) SendFile(file string, config ...SendFile) error {
 			break
 		}
 	}
+	c.app.sendfilesMutex.RUnlock()
 
 	if fsHandler == nil {
 		fasthttpFS := &fasthttp.FS{

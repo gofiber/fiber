@@ -3196,7 +3196,7 @@ func Test_Ctx_SendFile_Multiple(t *testing.T) {
 		resp, err := app.Test(httptest.NewRequest(MethodGet, tc.url, nil))
 		require.NoError(t, err)
 		require.Equal(t, StatusOK, resp.StatusCode)
-		require.Equal(t, tc.contentDisposition, string(resp.Header.Get(HeaderContentDisposition)))
+		require.Equal(t, tc.contentDisposition, resp.Header.Get(HeaderContentDisposition))
 
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
