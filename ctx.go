@@ -218,6 +218,8 @@ func (c *DefaultCtx) tryDecodeBodyInOrder(
 			body, err = c.fasthttp.Request.BodyUnbrotli()
 		case StrDeflate:
 			body, err = c.fasthttp.Request.BodyInflate()
+		case StrZstd:
+			body, err = c.fasthttp.Request.BodyUnzstd()
 		default:
 			decodesRealized--
 			if len(encodings) == 1 {
@@ -1429,14 +1431,15 @@ func (c *DefaultCtx) SendFile(file string, compress ...bool) error {
 	sendFileOnce.Do(func() {
 		const cacheDuration = 10 * time.Second
 		sendFileFS = &fasthttp.FS{
-			Root:                 "",
-			AllowEmptyRoot:       true,
-			GenerateIndexPages:   false,
-			AcceptByteRange:      true,
-			Compress:             true,
-			CompressedFileSuffix: c.app.config.CompressedFileSuffix,
-			CacheDuration:        cacheDuration,
-			IndexNames:           []string{"index.html"},
+			Root:                   "",
+			AllowEmptyRoot:         true,
+			GenerateIndexPages:     false,
+			AcceptByteRange:        true,
+			Compress:               true,
+			CompressBrotli:         true,
+			CompressedFileSuffixes: c.app.config.CompressedFileSuffixes,
+			CacheDuration:          cacheDuration,
+			IndexNames:             []string{"index.html"},
 			PathNotFound: func(ctx *fasthttp.RequestCtx) {
 				ctx.Response.SetStatusCode(StatusNotFound)
 			},

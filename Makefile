@@ -37,6 +37,11 @@ lint:
 test:
 	go run gotest.tools/gotestsum@latest -f testname -- ./... -race -count=1 -shuffle=on
 
+## longtest: 🚦 Execute all tests 10x
+.PHONY: longtest
+longtest:
+	go run gotest.tools/gotestsum@latest -f testname -- ./... -race -count=10 -shuffle=on
+
 ## tidy: 📌 Clean and tidy dependencies
 .PHONY: tidy
 tidy:

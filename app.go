@@ -30,7 +30,7 @@ import (
 )
 
 // Version of current fiber package
-const Version = "3.0.0-beta.2"
+const Version = "3.0.0-beta.3"
 
 // Handler defines a function to serve HTTP requests.
 type Handler = func(Ctx) error
@@ -219,11 +219,11 @@ type Config struct {
 	// Default: 4096
 	WriteBufferSize int `json:"write_buffer_size"`
 
-	// CompressedFileSuffix adds suffix to the original file name and
+	// CompressedFileSuffixes adds suffix to the original file name and
 	// tries saving the resulting compressed file under the new file name.
 	//
-	// Default: ".fiber.gz"
-	CompressedFileSuffix string `json:"compressed_file_suffix"`
+	// Default: map[string]string{"gzip": ".fiber.gz", "br": ".fiber.br", "zstd": ".fiber.zst"}
+	CompressedFileSuffixes map[string]string `json:"compressed_file_suffixes"`
 
 	// ProxyHeader will enable c.IP() to return the value of the given header key
 	// By default c.IP() will return the Remote IP from the TCP connection
@@ -391,11 +391,10 @@ type RouteMessage struct {
 
 // Default Config values
 const (
-	DefaultBodyLimit            = 4 * 1024 * 1024
-	DefaultConcurrency          = 256 * 1024
-	DefaultReadBufferSize       = 4096
-	DefaultWriteBufferSize      = 4096
-	DefaultCompressedFileSuffix = ".fiber.gz"
+	DefaultBodyLimit       = 4 * 1024 * 1024
+	DefaultConcurrency     = 256 * 1024
+	DefaultReadBufferSize  = 4096
+	DefaultWriteBufferSize = 4096
 )
 
 // HTTP methods enabled by default
@@ -477,9 +476,14 @@ func New(config ...Config) *App {
 	if app.config.WriteBufferSize <= 0 {
 		app.config.WriteBufferSize = DefaultWriteBufferSize
 	}
-	if app.config.CompressedFileSuffix == "" {
-		app.config.CompressedFileSuffix = DefaultCompressedFileSuffix
+	if app.config.CompressedFileSuffixes == nil {
+		app.config.CompressedFileSuffixes = map[string]string{
+			"gzip": ".fiber.gz",
+			"br":   ".fiber.br",
+			"zstd": ".fiber.zst",
+		}
 	}
+
 	if app.config.Immutable {
 		app.getBytes, app.getString = getBytesImmutable, getStringImmutable
 	}
