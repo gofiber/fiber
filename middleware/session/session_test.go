@@ -133,11 +133,6 @@ func Test_Session_Types(t *testing.T) {
 	// the session string is no longer be 123
 	newSessionIDString := sess.ID()
 
-	app.ReleaseCtx(ctx)
-	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
-
-	ctx.Request().Header.SetCookie(store.sessionName, newSessionIDString)
-
 	type User struct {
 		Name string
 	}
