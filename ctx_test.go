@@ -3305,6 +3305,22 @@ func Test_SendFile_withRoutes(t *testing.T) {
 	require.Equal(t, StatusOK, resp.StatusCode)
 }
 
+func Benchmark_Ctx_SendFile(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	var err error
+	for n := 0; n < b.N; n++ {
+		err = c.SendFile("ctx.go")
+	}
+
+	require.NoError(b, err)
+	require.Contains(b, string(c.Response().Body()), "type DefaultCtx struct")
+}
+
 // go test -run Test_Ctx_JSON
 func Test_Ctx_JSON(t *testing.T) {
 	t.Parallel()
