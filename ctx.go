@@ -1441,7 +1441,9 @@ type sendFileStore struct {
 }
 
 // compareConfig compares the current SendFile config with the new one
-// and returns true if they are different
+// and returns true if they are different.
+//
+// Here we don't use reflect.DeepEqual because it is quite slow compared to manual comparison.
 func (sf *sendFileStore) compareConfig(cfg SendFile) bool {
 	if sf.config.FS != cfg.FS {
 		return false
@@ -1504,6 +1506,7 @@ func (c *DefaultCtx) SendFile(file string, config ...SendFile) error {
 			GenerateIndexPages:   false,
 			AcceptByteRange:      cfg.ByteRange,
 			Compress:             cfg.Compress,
+			CompressBrotli:       cfg.Compress,
 			CompressedFileSuffix: c.app.config.CompressedFileSuffix,
 			CacheDuration:        cfg.CacheDuration,
 			SkipCache:            cfg.CacheDuration < 0,
@@ -1531,16 +1534,18 @@ func (c *DefaultCtx) SendFile(file string, config ...SendFile) error {
 		fsHandler = sf.handler
 		cacheControlValue = sf.cacheControlValue
 
+		c.app.sendfilesMutex.Lock()
 		c.app.sendfiles = append(c.app.sendfiles, sf)
+		c.app.sendfilesMutex.Unlock()
 	}
 
 	// Keep original path for mutable params
 	c.pathOriginal = utils.CopyString(c.pathOriginal)
 
-	// Disable compression
-	// TODO: support other compression algorithms
-	if cfg.Compress {
-		c.fasthttp.Request.Header.Set(HeaderAcceptEncoding, "gzip")
+	// Delete the Accept-Encoding header if compression is disabled
+	if !cfg.Compress {
+		// https://github.com/valyala/fasthttp/blob/7cc6f4c513f9e0d3686142e0a1a5aa2f76b3194a/fs.go#L55
+		c.fasthttp.Request.Header.Del(HeaderAcceptEncoding)
 	}
 
 	// copy of https://github.com/valyala/fasthttp/blob/7cc6f4c513f9e0d3686142e0a1a5aa2f76b3194a/fs.go#L103-L121 with small adjustments

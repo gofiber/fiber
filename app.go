@@ -124,7 +124,8 @@ type App struct {
 	// customConstraints is a list of external constraints
 	customConstraints []CustomConstraint
 
-	sendfiles []*sendFileStore
+	sendfiles      []*sendFileStore
+	sendfilesMutex sync.Mutex
 }
 
 // Config is a struct holding the server settings.

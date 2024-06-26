@@ -3031,7 +3031,36 @@ func Test_Ctx_SendFile_MaxAge(t *testing.T) {
 	app.ReleaseCtx(c)
 }
 
-func Test_Ctx_SendFile_Compressed(t *testing.T) {
+func Test_Static_Compress(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/file", func(c Ctx) error {
+		return c.SendFile("ctx.go", SendFile{
+			Compress: true,
+		})
+	})
+
+	// Note: deflate is not supported by fasthttp.FS
+	algorithms := []string{"zstd", "gzip", "br"}
+	for _, algo := range algorithms {
+		algo := algo
+
+		t.Run(algo+"_compression", func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequest(MethodGet, "/file", nil)
+			req.Header.Set("Accept-Encoding", algo)
+			resp, err := app.Test(req, 10*time.Second)
+
+			require.NoError(t, err, "app.Test(req)")
+			require.Equal(t, 200, resp.StatusCode, "Status code")
+			require.NotEqual(t, "58726", resp.Header.Get(HeaderContentLength))
+		})
+	}
+}
+
+func Test_Ctx_SendFile_CompressGzipBody(t *testing.T) {
 	t.Parallel()
 	app := New()
 
@@ -3050,7 +3079,10 @@ func Test_Ctx_SendFile_Compressed(t *testing.T) {
 	require.NoError(t, err)
 
 	// simple test case
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	reqCtx := &fasthttp.RequestCtx{}
+	reqCtx.Request.Header.Add(HeaderAcceptEncoding, "gzip")
+
+	c := app.AcquireCtx(reqCtx)
 	err = c.SendFile("./ctx.go", SendFile{
 		Compress: true,
 	})
@@ -3120,6 +3152,7 @@ func Test_Ctx_SendFile_404(t *testing.T) {
 
 func Test_Ctx_SendFile_Multiple(t *testing.T) {
 	t.Parallel()
+
 	app := New()
 	app.Get("/test", func(c Ctx) error {
 		switch c.Query("file") {
@@ -3146,56 +3179,29 @@ func Test_Ctx_SendFile_Multiple(t *testing.T) {
 		})
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test?file=1", nil))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
+	testCases := []struct {
+		url                string
+		body               string
+		contentDisposition string
+	}{
+		{"/test?file=1", "type DefaultCtx struct", ""},
+		{"/test?file=2", "type App struct", ""},
+		{"/test?file=3", "type DefaultCtx struct", "attachment"},
+		{"/test?file=4", "Test_App_MethodNotAllowed", ""},
+		{"/test2", "type DefaultCtx struct", "attachment"},
+		{"/test2", "type DefaultCtx struct", "attachment"},
+	}
 
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Contains(t, string(body), "type DefaultCtx struct")
+	for _, tc := range testCases {
+		resp, err := app.Test(httptest.NewRequest(MethodGet, tc.url, nil))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		require.Equal(t, tc.contentDisposition, string(resp.Header.Get(HeaderContentDisposition)))
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test?file=2", nil))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Contains(t, string(body), "type App struct")
-
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test?file=3", nil))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	require.Equal(t, "attachment", string(resp.Header.Get(HeaderContentDisposition)))
-
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Contains(t, string(body), "type DefaultCtx struct")
-
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test?file=4", nil))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Contains(t, string(body), "Test_App_MethodNotAllowed")
-
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2", nil))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	require.Equal(t, "attachment", string(resp.Header.Get(HeaderContentDisposition)))
-
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Contains(t, string(body), "type DefaultCtx struct")
-
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2", nil))
-	require.NoError(t, err)
-	require.Equal(t, StatusOK, resp.StatusCode)
-	require.Equal(t, "attachment", string(resp.Header.Get(HeaderContentDisposition)))
-
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Contains(t, string(body), "type DefaultCtx struct")
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Contains(t, string(body), tc.body)
+	}
 
 	require.Len(t, app.sendfiles, 3)
 }
