@@ -30,7 +30,8 @@ func Test_Session(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, sess.Fresh())
 	token := sess.ID()
-	sess.Save()
+	err = sess.Save()
+	utils.AssertEqual(t, nil, err)
 
 	app.ReleaseCtx(ctx)
 	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
