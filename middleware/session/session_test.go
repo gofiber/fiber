@@ -29,7 +29,7 @@ func Test_Session(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, sess.Fresh())
 	token := sess.ID()
-	sess.Save()
+	require.NoError(t, sess.Save())
 
 	app.ReleaseCtx(ctx)
 	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})

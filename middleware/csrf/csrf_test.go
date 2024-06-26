@@ -88,7 +88,7 @@ func Test_CSRF_WithSession(t *testing.T) {
 
 	// the session string is no longer be 123
 	newSessionIDString := sess.ID()
-	sess.Save()
+	require.NoError(t, sess.Save())
 
 	app.AcquireCtx(ctx).Request().Header.SetCookie("_session", newSessionIDString)
 
@@ -223,7 +223,7 @@ func Test_CSRF_ExpiredToken_WithSession(t *testing.T) {
 
 	// get session id
 	newSessionIDString := sess.ID()
-	sess.Save()
+	require.NoError(t, sess.Save())
 
 	app.AcquireCtx(ctx).Request().Header.SetCookie("_session", newSessionIDString)
 
@@ -1093,7 +1093,7 @@ func Test_CSRF_DeleteToken_WithSession(t *testing.T) {
 
 	// the session string is no longer be 123
 	newSessionIDString := sess.ID()
-	sess.Save()
+	require.NoError(t, sess.Save())
 
 	app.AcquireCtx(ctx).Request().Header.SetCookie("_session", newSessionIDString)
 
