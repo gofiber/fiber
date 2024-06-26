@@ -4529,11 +4529,11 @@ func Test_Ctx_BodyStreamWriter(t *testing.T) {
 	ctx := &fasthttp.RequestCtx{}
 
 	ctx.SetBodyStreamWriter(func(w *bufio.Writer) {
-		fmt.Fprintf(w, "body writer line 1\n")
+		fmt.Fprintf(w, "body writer line 1\n") //nolint: errcheck // It is fine to ignore the error
 		if err := w.Flush(); err != nil {
 			t.Errorf("unexpected error: %s", err)
 		}
-		fmt.Fprintf(w, "body writer line 2\n")
+		fmt.Fprintf(w, "body writer line 2\n") //nolint: errcheck // It is fine to ignore the error
 	})
 
 	require.True(t, ctx.IsBodyStream())

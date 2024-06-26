@@ -21,9 +21,8 @@ go get github.com/gofiber/fiber/v3
 ```
 
 ### Zero Allocation
-Some values returned from **fiber.Ctx** are **not** immutable by default.
 
-Because fiber is optimized for **high-performance**, values returned from **fiber.Ctx** are **not** immutable by default and **will** be re-used across requests. As a rule of thumb, you **must** only use context values within the handler, and you **must not** keep any references. As soon as you return from the handler, any values you have obtained from the context will be re-used in future requests and will change below your feet. Here is an example:
+Fiber is optimized for **high-performance**, meaning values returned from **fiber.Ctx** are **not** immutable by default and **will** be re-used across requests. As a rule of thumb, you **must** only use context values within the handler and **must not** keep any references. Once you return from the handler, any values obtained from the context will be re-used in future requests. Here is an example:
 
 ```go
 func handler(c fiber.Ctx) error {
@@ -70,7 +69,7 @@ app := fiber.New(fiber.Config{
 })
 ```
 
-For more information, please check [**\#426**](https://github.com/gofiber/fiber/issues/426) and [**\#185**](https://github.com/gofiber/fiber/issues/185).
+For more information, please check [**\#426**](https://github.com/gofiber/fiber/issues/426), [**\#185**](https://github.com/gofiber/fiber/issues/185) and [**\#3012**](https://github.com/gofiber/fiber/issues/3012).
 
 ### Hello, World!
 

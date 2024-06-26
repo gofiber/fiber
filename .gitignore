@@ -19,7 +19,14 @@
 
 # Misc
 *.fiber.gz
+*.fiber.zst
+*.fiber.br
 *.fasthttp.gz
+*.fasthttp.zst
+*.fasthttp.br
+*.test.gz
+*.test.zst
+*.test.br
 *.pprof
 *.workspace
 

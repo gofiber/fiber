@@ -3,6 +3,7 @@
 package cache
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -95,22 +96,17 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		// Only cache selected methods
-		var isExists bool
-		for _, method := range cfg.Methods {
-			if c.Method() == method {
-				isExists = true
-			}
-		}
+		requestMethod := c.Method()
 
-		if !isExists {
+		// Only cache selected methods
+		if !slices.Contains(cfg.Methods, requestMethod) {
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 			return c.Next()
 		}
 
 		// Get key from request
 		// TODO(allocation optimization): try to minimize the allocation from 2 to 1
-		key := cfg.KeyGenerator(c) + "_" + c.Method()
+		key := cfg.KeyGenerator(c) + "_" + requestMethod
 
 		// Get entry from pool
 		e := manager.get(key)
@@ -120,6 +116,11 @@ func New(config ...Config) fiber.Handler {
 
 		// Get timestamp
 		ts := atomic.LoadUint64(&timestamp)
+
+		// Invalidate cache if requested
+		if cfg.CacheInvalidator != nil && cfg.CacheInvalidator(c) && e != nil {
+			e.exp = ts - 1
+		}
 
 		// Check if entry is expired
 		if e.exp != 0 && ts >= e.exp {

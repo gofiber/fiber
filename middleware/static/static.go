@@ -59,16 +59,17 @@ func New(root string, cfg ...Config) fiber.Handler {
 			}
 
 			fs := &fasthttp.FS{
-				Root:                 root,
-				FS:                   config.FS,
-				AllowEmptyRoot:       true,
-				GenerateIndexPages:   config.Browse,
-				AcceptByteRange:      config.ByteRange,
-				Compress:             config.Compress,
-				CompressedFileSuffix: c.App().Config().CompressedFileSuffix,
-				CacheDuration:        config.CacheDuration,
-				SkipCache:            config.CacheDuration < 0,
-				IndexNames:           config.IndexNames,
+				Root:                   root,
+				FS:                     config.FS,
+				AllowEmptyRoot:         true,
+				GenerateIndexPages:     config.Browse,
+				AcceptByteRange:        config.ByteRange,
+				Compress:               config.Compress,
+				CompressBrotli:         config.Compress, // Brotli compression won't work without this
+				CompressedFileSuffixes: c.App().Config().CompressedFileSuffixes,
+				CacheDuration:          config.CacheDuration,
+				SkipCache:              config.CacheDuration < 0,
+				IndexNames:             config.IndexNames,
 				PathNotFound: func(fctx *fasthttp.RequestCtx) {
 					fctx.Response.SetStatusCode(fiber.StatusNotFound)
 				},
@@ -122,6 +123,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 
 		// Return request if found and not forbidden
 		status := c.Context().Response.StatusCode()
+
 		if status != fiber.StatusNotFound && status != fiber.StatusForbidden {
 			if len(cacheControlValue) > 0 {
 				c.Context().Response.Header.Set(fiber.HeaderCacheControl, cacheControlValue)

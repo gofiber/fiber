@@ -30,12 +30,17 @@ format:
 ## lint: 🚨 Run lint checks
 .PHONY: lint
 lint:
-	go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.57.1 run ./...
+	go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.59.1 run ./...
 
 ## test: 🚦 Execute all tests
 .PHONY: test
 test:
 	go run gotest.tools/gotestsum@latest -f testname -- ./... -race -count=1 -shuffle=on
+
+## longtest: 🚦 Execute all tests 10x
+.PHONY: longtest
+longtest:
+	go run gotest.tools/gotestsum@latest -f testname -- ./... -race -count=10 -shuffle=on
 
 ## tidy: 📌 Clean and tidy dependencies
 .PHONY: tidy
