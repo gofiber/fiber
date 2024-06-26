@@ -824,35 +824,61 @@ func Benchmark_Bind_RespHeader_Map(b *testing.B) {
 	require.NoError(b, err)
 }
 
-// go test -run Test_Bind_Body
+// go test -run Test_Bind_Body_Compression
 func Test_Bind_Body(t *testing.T) {
 	t.Parallel()
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	reqBody := []byte(`{"name":"john"}`)
 
 	type Demo struct {
 		Name string `json:"name" xml:"name" form:"name" query:"name"`
 	}
 
-	{
-		var gzipJSON bytes.Buffer
-		w := gzip.NewWriter(&gzipJSON)
-		_, err := w.Write([]byte(`{"name":"john"}`))
-		require.NoError(t, err)
-		err = w.Close()
-		require.NoError(t, err)
-
+	// Helper function to test compressed bodies
+	testCompressedBody := func(t *testing.T, compressedBody []byte, encoding string) {
+		t.Helper()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		c.Request().Header.SetContentType(MIMEApplicationJSON)
-		c.Request().Header.Set(HeaderContentEncoding, "gzip")
-		c.Request().SetBody(gzipJSON.Bytes())
-		c.Request().Header.SetContentLength(len(gzipJSON.Bytes()))
+		c.Request().Header.Set(fasthttp.HeaderContentEncoding, encoding)
+		c.Request().SetBody(compressedBody)
+		c.Request().Header.SetContentLength(len(compressedBody))
 		d := new(Demo)
 		require.NoError(t, c.Bind().Body(d))
 		require.Equal(t, "john", d.Name)
-		c.Request().Header.Del(HeaderContentEncoding)
+		c.Request().Header.Del(fasthttp.HeaderContentEncoding)
 	}
 
-	testDecodeParser := func(contentType, body string) {
+	t.Run("Gzip", func(t *testing.T) {
+		t.Parallel()
+		compressedBody := fasthttp.AppendGzipBytes(nil, reqBody)
+		require.NotEqual(t, reqBody, compressedBody)
+		testCompressedBody(t, compressedBody, "gzip")
+	})
+
+	t.Run("Deflate", func(t *testing.T) {
+		t.Parallel()
+		compressedBody := fasthttp.AppendDeflateBytes(nil, reqBody)
+		require.NotEqual(t, reqBody, compressedBody)
+		testCompressedBody(t, compressedBody, "deflate")
+	})
+
+	t.Run("Brotli", func(t *testing.T) {
+		t.Parallel()
+		compressedBody := fasthttp.AppendBrotliBytes(nil, reqBody)
+		require.NotEqual(t, reqBody, compressedBody)
+		testCompressedBody(t, compressedBody, "br")
+	})
+
+	t.Run("Zstd", func(t *testing.T) {
+		t.Parallel()
+		compressedBody := fasthttp.AppendZstdBytes(nil, reqBody)
+		require.NotEqual(t, reqBody, compressedBody)
+		testCompressedBody(t, compressedBody, "zstd")
+	})
+
+	testDecodeParser := func(t *testing.T, contentType, body string) {
+		t.Helper()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		c.Request().Header.SetContentType(contentType)
 		c.Request().SetBody([]byte(body))
 		c.Request().Header.SetContentLength(len(body))
@@ -861,44 +887,68 @@ func Test_Bind_Body(t *testing.T) {
 		require.Equal(t, "john", d.Name)
 	}
 
-	testDecodeParser(MIMEApplicationJSON, `{"name":"john"}`)
-	testDecodeParser(MIMEApplicationXML, `<Demo><name>john</name></Demo>`)
-	testDecodeParser(MIMEApplicationForm, "name=john")
-	testDecodeParser(MIMEMultipartForm+`;boundary="b"`, "--b\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\njohn\r\n--b--")
+	t.Run("JSON", func(t *testing.T) {
+		testDecodeParser(t, MIMEApplicationJSON, `{"name":"john"}`)
+	})
 
-	testDecodeParserError := func(contentType, body string) {
+	t.Run("XML", func(t *testing.T) {
+		testDecodeParser(t, MIMEApplicationXML, `<Demo><name>john</name></Demo>`)
+	})
+
+	t.Run("Form", func(t *testing.T) {
+		testDecodeParser(t, MIMEApplicationForm, "name=john")
+	})
+
+	t.Run("MultipartForm", func(t *testing.T) {
+		testDecodeParser(t, MIMEMultipartForm+`;boundary="b"`, "--b\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\njohn\r\n--b--")
+	})
+
+	testDecodeParserError := func(t *testing.T, contentType, body string) {
+		t.Helper()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		c.Request().Header.SetContentType(contentType)
 		c.Request().SetBody([]byte(body))
 		c.Request().Header.SetContentLength(len(body))
 		require.Error(t, c.Bind().Body(nil))
 	}
 
-	testDecodeParserError("invalid-content-type", "")
-	testDecodeParserError(MIMEMultipartForm+`;boundary="b"`, "--b")
+	t.Run("ErrorInvalidContentType", func(t *testing.T) {
+		testDecodeParserError(t, "invalid-content-type", "")
+	})
+
+	t.Run("ErrorMalformedMultipart", func(t *testing.T) {
+		testDecodeParserError(t, MIMEMultipartForm+`;boundary="b"`, "--b")
+	})
 
 	type CollectionQuery struct {
 		Data []Demo `query:"data"`
 	}
 
-	c.Request().Reset()
-	c.Request().Header.SetContentType(MIMEApplicationForm)
-	c.Request().SetBody([]byte("data[0][name]=john&data[1][name]=doe"))
-	c.Request().Header.SetContentLength(len(c.Body()))
-	cq := new(CollectionQuery)
-	require.NoError(t, c.Bind().Body(cq))
-	require.Len(t, cq.Data, 2)
-	require.Equal(t, "john", cq.Data[0].Name)
-	require.Equal(t, "doe", cq.Data[1].Name)
+	t.Run("CollectionQuerySquareBrackets", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().Reset()
+		c.Request().Header.SetContentType(MIMEApplicationForm)
+		c.Request().SetBody([]byte("data[0][name]=john&data[1][name]=doe"))
+		c.Request().Header.SetContentLength(len(c.Body()))
+		cq := new(CollectionQuery)
+		require.NoError(t, c.Bind().Body(cq))
+		require.Len(t, cq.Data, 2)
+		require.Equal(t, "john", cq.Data[0].Name)
+		require.Equal(t, "doe", cq.Data[1].Name)
+	})
 
-	c.Request().Reset()
-	c.Request().Header.SetContentType(MIMEApplicationForm)
-	c.Request().SetBody([]byte("data.0.name=john&data.1.name=doe"))
-	c.Request().Header.SetContentLength(len(c.Body()))
-	cq = new(CollectionQuery)
-	require.NoError(t, c.Bind().Body(cq))
-	require.Len(t, cq.Data, 2)
-	require.Equal(t, "john", cq.Data[0].Name)
-	require.Equal(t, "doe", cq.Data[1].Name)
+	t.Run("CollectionQueryDotNotation", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().Reset()
+		c.Request().Header.SetContentType(MIMEApplicationForm)
+		c.Request().SetBody([]byte("data.0.name=john&data.1.name=doe"))
+		c.Request().Header.SetContentLength(len(c.Body()))
+		cq := new(CollectionQuery)
+		require.NoError(t, c.Bind().Body(cq))
+		require.Len(t, cq.Data, 2)
+		require.Equal(t, "john", cq.Data[0].Name)
+		require.Equal(t, "doe", cq.Data[1].Name)
+	})
 }
 
 // go test -run Test_Bind_Body_WithSetParserDecoder

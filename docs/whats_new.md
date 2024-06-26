@@ -263,6 +263,10 @@ We've updated several fields from a single string (containing comma-separated va
 - `Config.AllowHeaders`: Now accepts a slice of strings, each representing an allowed header.
 - `Config.ExposeHeaders`: Now accepts a slice of strings, each representing an exposed header.
 
+### Compression
+
+We've added support for `zstd` compression on top of `gzip`, `deflate`, and `brotli`.
+
 ### Session
 
 :::caution
