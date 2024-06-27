@@ -3091,6 +3091,8 @@ func Test_Ctx_SendFile_Compress_CheckCompressed(t *testing.T) {
 	}
 
 	t.Run("gzip", func(t *testing.T) {
+		t.Parallel()
+
 		gz, err := gzip.NewReader(sendFileBodyReader("gzip"))
 		require.NoError(t, err)
 
@@ -3100,6 +3102,8 @@ func Test_Ctx_SendFile_Compress_CheckCompressed(t *testing.T) {
 	})
 
 	t.Run("zstd", func(t *testing.T) {
+		t.Parallel()
+
 		zstdReader, err := zstd.NewReader(sendFileBodyReader("zstd"))
 		require.NoError(t, err)
 
@@ -3109,6 +3113,8 @@ func Test_Ctx_SendFile_Compress_CheckCompressed(t *testing.T) {
 	})
 
 	t.Run("br", func(t *testing.T) {
+		t.Parallel()
+
 		brReader := brotli.NewReader(sendFileBodyReader("br"))
 
 		body, err := io.ReadAll(brReader)
