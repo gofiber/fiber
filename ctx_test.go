@@ -28,8 +28,10 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/andybalholm/brotli"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/utils/v2"
+	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
@@ -3060,7 +3062,7 @@ func Test_Static_Compress(t *testing.T) {
 	}
 }
 
-func Test_Ctx_SendFile_CompressGzipBody(t *testing.T) {
+func Test_Ctx_SendFile_Compress_CheckCompressed(t *testing.T) {
 	t.Parallel()
 	app := New()
 
@@ -3071,34 +3073,48 @@ func Test_Ctx_SendFile_CompressGzipBody(t *testing.T) {
 	defer func() {
 		require.NoError(t, f.Close())
 	}()
-	expectFileContent, err := io.ReadAll(f)
+
+	expectedFileContent, err := io.ReadAll(f)
 	require.NoError(t, err)
 
-	// fetch file info for the not modified test case
-	_, err = os.Stat("./ctx.go")
-	require.NoError(t, err)
+	sendFileBodyReader := func(compression string) *bytes.Reader {
+		reqCtx := &fasthttp.RequestCtx{}
+		reqCtx.Request.Header.Add(HeaderAcceptEncoding, compression)
 
-	// simple test case
-	reqCtx := &fasthttp.RequestCtx{}
-	reqCtx.Request.Header.Add(HeaderAcceptEncoding, "gzip")
+		c := app.AcquireCtx(reqCtx)
+		err = c.SendFile("./ctx.go", SendFile{
+			Compress: true,
+		})
+		require.NoError(t, err)
 
-	c := app.AcquireCtx(reqCtx)
-	err = c.SendFile("./ctx.go", SendFile{
-		Compress: true,
+		return bytes.NewReader(c.Response().Body())
+	}
+
+	t.Run("gzip", func(t *testing.T) {
+		gz, err := gzip.NewReader(sendFileBodyReader("gzip"))
+		require.NoError(t, err)
+
+		body, err := io.ReadAll(gz)
+		require.NoError(t, err)
+		require.Equal(t, expectedFileContent, body)
 	})
-	require.NoError(t, err)
 
-	gz, err := gzip.NewReader(bytes.NewReader(c.Response().Body()))
-	require.NoError(t, err)
+	t.Run("zstd", func(t *testing.T) {
+		zstdReader, err := zstd.NewReader(sendFileBodyReader("zstd"))
+		require.NoError(t, err)
 
-	body, err := io.ReadAll(gz)
-	require.NoError(t, err)
+		body, err := io.ReadAll(zstdReader)
+		require.NoError(t, err)
+		require.Equal(t, expectedFileContent, body)
+	})
 
-	require.Equal(t, expectFileContent, body)
-	require.Equal(t, "gzip", string(c.Response().Header.Peek(HeaderContentEncoding)))
-	require.Equal(t, StatusOK, c.Response().StatusCode())
+	t.Run("br", func(t *testing.T) {
+		brReader := brotli.NewReader(sendFileBodyReader("br"))
 
-	app.ReleaseCtx(c)
+		body, err := io.ReadAll(brReader)
+		require.NoError(t, err)
+		require.Equal(t, expectedFileContent, body)
+	})
 }
 
 //go:embed ctx.go
