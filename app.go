@@ -124,7 +124,8 @@ type App struct {
 	// customConstraints is a list of external constraints
 	customConstraints []CustomConstraint
 	// sendfiles stores configurations for handling ctx.SendFile operations
-	sendfiles      []*sendFileStore
+	sendfiles []*sendFileStore
+	// sendfilesMutex is a mutex used for sendfile operations
 	sendfilesMutex sync.RWMutex
 }
 

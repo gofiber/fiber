@@ -1689,10 +1689,6 @@ app.Get("/", func(c fiber.Ctx) error {
 
 Transfers the file from the given path. Sets the [Content-Type](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type) response HTTP header field based on the **filenames** extension.
 
-:::caution
-Compression is not enabled by default. You need to pass config and enable `Compress` option.
-:::
-
 ```go title="Config" title="Config"
 // SendFile defines configuration options when to transfer file with SendFile.
 type SendFile struct {
