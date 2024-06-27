@@ -1690,11 +1690,52 @@ app.Get("/", func(c fiber.Ctx) error {
 Transfers the file from the given path. Sets the [Content-Type](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type) response HTTP header field based on the **filenames** extension.
 
 :::caution
-Method doesn´t use **gzipping** by default, set it to **true** to enable.
+Compression is not enabled by default. You need to pass config and enable `Compress` option.
 :::
 
+```go title="Config" title="Config"
+// SendFile defines configuration options when to transfer file with SendFile.
+type SendFile struct {
+  // FS is the file system to serve the static files from.
+  // You can use interfaces compatible with fs.FS like embed.FS, os.DirFS etc.
+  //
+  // Optional. Default: nil
+  FS fs.FS
+
+  // When set to true, the server tries minimizing CPU usage by caching compressed files.
+  // This works differently than the github.com/gofiber/compression middleware.
+  // You have to set Content-Encoding header to compress the file.
+  // Available compression methods are gzip, br, and zstd.
+  //
+  // Optional. Default value false
+  Compress bool `json:"compress"`
+
+  // When set to true, enables byte range requests.
+  //
+  // Optional. Default value false
+  ByteRange bool `json:"byte_range"`
+
+  // When set to true, enables direct download.
+  //
+  // Optional. Default: false.
+  Download bool `json:"download"`
+
+  // Expiration duration for inactive file handlers.
+  // Use a negative time.Duration to disable it.
+  //
+  // Optional. Default value 10 * time.Second.
+  CacheDuration time.Duration `json:"cache_duration"`
+
+  // The value for the Cache-Control HTTP-header
+  // that is set on the file response. MaxAge is defined in seconds.
+  //
+	// Optional. Default value 0.
+  MaxAge int `json:"max_age"`
+}
+```
+
 ```go title="Signature" title="Signature"
-func (c Ctx) SendFile(file string, compress ...bool) error
+func (c Ctx) SendFile(file string, config ...SendFile) error
 ```
 
 ```go title="Example"
@@ -1702,7 +1743,9 @@ app.Get("/not-found", func(c fiber.Ctx) error {
   return c.SendFile("./public/404.html");
 
   // Disable compression
-  return c.SendFile("./static/index.html", false);
+  return c.SendFile("./static/index.html", SendFile{
+    Compress: false,
+  });
 })
 ```
 
@@ -1717,7 +1760,35 @@ app.Get("/file-with-url-chars", func(c fiber.Ctx) error {
 ```
 
 :::info
-For sending files from embedded file system [this functionality](../middleware/static.md#serving-files-using-embedfs) can be used
+You can use multiple SendFile with different configurations in single route. Fiber creates different filesystem handler per config.
+:::
+
+```go title="Example"
+app.Get("/file", func(c fiber.Ctx) error {
+  switch c.Query("config") {
+    case "filesystem":
+      return c.SendFile("style.css", SendFile{
+        FS: os.DirFS(".")
+      })
+    case "filesystem-compress":
+      return c.SendFile("style.css", SendFile{
+        FS: os.DirFS("."),
+        Compress: true,
+      })
+    case "compress":
+      return c.SendFile("style.css", SendFile{
+        Compress: true,
+      })
+    default:
+      return c.SendFile("style.css")
+  }
+
+  return nil
+})
+```
+
+:::info
+For sending multiple files from embedded file system [this functionality](../middleware/static.md#serving-files-using-embedfs) can be used
 :::
 
 ## SendStatus

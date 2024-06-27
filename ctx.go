@@ -70,6 +70,84 @@ type DefaultCtx struct {
 	redirectionMessages []string             // Messages of the previous redirect
 }
 
+// SendFile defines configuration options when to transfer file with SendFile.
+type SendFile struct {
+	// FS is the file system to serve the static files from.
+	// You can use interfaces compatible with fs.FS like embed.FS, os.DirFS etc.
+	//
+	// Optional. Default: nil
+	FS fs.FS
+
+	// When set to true, the server tries minimizing CPU usage by caching compressed files.
+	// This works differently than the github.com/gofiber/compression middleware.
+	// You have to set Content-Encoding header to compress the file.
+	// Available compression methods are gzip, br, and zstd.
+	//
+	// Optional. Default value false
+	Compress bool `json:"compress"`
+
+	// When set to true, enables byte range requests.
+	//
+	// Optional. Default value false
+	ByteRange bool `json:"byte_range"`
+
+	// When set to true, enables direct download.
+	//
+	// Optional. Default: false.
+	Download bool `json:"download"`
+
+	// Expiration duration for inactive file handlers.
+	// Use a negative time.Duration to disable it.
+	//
+	// Optional. Default value 10 * time.Second.
+	CacheDuration time.Duration `json:"cache_duration"`
+
+	// The value for the Cache-Control HTTP-header
+	// that is set on the file response. MaxAge is defined in seconds.
+	//
+	// Optional. Default value 0.
+	MaxAge int `json:"max_age"`
+}
+
+// sendFileStore is used to keep the SendFile configuration and the handler.
+type sendFileStore struct {
+	handler           fasthttp.RequestHandler
+	config            SendFile
+	cacheControlValue string
+}
+
+// compareConfig compares the current SendFile config with the new one
+// and returns true if they are different.
+//
+// Here we don't use reflect.DeepEqual because it is quite slow compared to manual comparison.
+func (sf *sendFileStore) compareConfig(cfg SendFile) bool {
+	if sf.config.FS != cfg.FS {
+		return false
+	}
+
+	if sf.config.Compress != cfg.Compress {
+		return false
+	}
+
+	if sf.config.ByteRange != cfg.ByteRange {
+		return false
+	}
+
+	if sf.config.Download != cfg.Download {
+		return false
+	}
+
+	if sf.config.CacheDuration != cfg.CacheDuration {
+		return false
+	}
+
+	if sf.config.MaxAge != cfg.MaxAge {
+		return false
+	}
+
+	return true
+}
+
 // TLSHandler object
 type TLSHandler struct {
 	clientHelloInfo *tls.ClientHelloInfo
@@ -1413,79 +1491,6 @@ func (c *DefaultCtx) Send(body []byte) error {
 	// Write response body
 	c.fasthttp.Response.SetBodyRaw(body)
 	return nil
-}
-
-// SendFile defines configuration options when to transfer file with SendFileWithConfig.
-type SendFile struct {
-	// FS is the file system to serve the static files from.
-	// You can use interfaces compatible with fs.FS like embed.FS, os.DirFS etc.
-	//
-	// Optional. Default: nil
-	FS fs.FS
-
-	// When set to true, the server tries minimizing CPU usage by caching compressed files.
-	// This works differently than the github.com/gofiber/compression middleware.
-	// Optional. Default value false
-	Compress bool `json:"compress"`
-
-	// When set to true, enables byte range requests.
-	// Optional. Default value false
-	ByteRange bool `json:"byte_range"`
-
-	// When set to true, enables direct download.
-	//
-	// Optional. Default: false.
-	Download bool `json:"download"`
-
-	// Expiration duration for inactive file handlers.
-	// Use a negative time.Duration to disable it.
-	//
-	// Optional. Default value 10 * time.Second.
-	CacheDuration time.Duration `json:"cache_duration"`
-
-	// The value for the Cache-Control HTTP-header
-	// that is set on the file response. MaxAge is defined in seconds.
-	//
-	// Optional. Default value 0.
-	MaxAge int `json:"max_age"`
-}
-
-type sendFileStore struct {
-	handler           fasthttp.RequestHandler
-	config            SendFile
-	cacheControlValue string
-}
-
-// compareConfig compares the current SendFile config with the new one
-// and returns true if they are different.
-//
-// Here we don't use reflect.DeepEqual because it is quite slow compared to manual comparison.
-func (sf *sendFileStore) compareConfig(cfg SendFile) bool {
-	if sf.config.FS != cfg.FS {
-		return false
-	}
-
-	if sf.config.Compress != cfg.Compress {
-		return false
-	}
-
-	if sf.config.ByteRange != cfg.ByteRange {
-		return false
-	}
-
-	if sf.config.Download != cfg.Download {
-		return false
-	}
-
-	if sf.config.CacheDuration != cfg.CacheDuration {
-		return false
-	}
-
-	if sf.config.MaxAge != cfg.MaxAge {
-		return false
-	}
-
-	return true
 }
 
 // SendFile transfers the file from the given path.
