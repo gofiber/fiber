@@ -3070,9 +3070,9 @@ func Test_Ctx_SendFile_Compress_CheckCompressed(t *testing.T) {
 	f, err := os.Open("./ctx.go")
 	require.NoError(t, err)
 
-	defer func() {
+	t.Cleanup(func() {
 		require.NoError(t, f.Close())
-	}()
+	})
 
 	expectedFileContent, err := io.ReadAll(f)
 	require.NoError(t, err)
