@@ -671,7 +671,7 @@ Fiber adalah proyek sumber terbuka yang beroperasi dalam donasi untuk membayar t
 
 ## ⚠️ Lisensi
 
-Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Contributors](https://github.com/gofiber/fiber/graphs/contributors). `Fiber` adalah proyek gratis dan open-source dibawah [lisensi MIT](https://github.com/gofiber/fiber/blob/master/LICENSE). Logo resmi diciptakan oleh [Vic Shóstak](https://github.com/koddr) dan didistribusikan dalam lisensi [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) (CC BY-SA 4.0 International).
+Copyright (c) 2019-sekarang [Fenny](https://github.com/fenny) dan [Kontributor](https://github.com/gofiber/fiber/graphs/contributors). `Fiber` adalah proyek gratis dan open-source dibawah [lisensi MIT](https://github.com/gofiber/fiber/blob/master/LICENSE). Logo resmi diciptakan oleh [Vic Shóstak](https://github.com/koddr) dan didistribusikan dalam lisensi [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) (CC BY-SA 4.0 International).
 
 **Lisensi perpustakaan pihak-ketiga**
 
