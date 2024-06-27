@@ -461,8 +461,8 @@ func Benchmark_Redirect_Route_WithFlashMessages(b *testing.B) {
 	require.Equal(b, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT", c.GetRespHeader(HeaderSetCookie))
 }
 
-// go test -v -run=^$ -bench=Benchmark_Redirect_setFlash -benchmem -count=4
-func Benchmark_Redirect_setFlash(b *testing.B) {
+// go test -v -run=^$ -bench=Benchmark_Redirect_parseAndClearFlashMessages -benchmem -count=4
+func Benchmark_Redirect_parseAndClearFlashMessages(b *testing.B) {
 	app := New()
 	app.Get("/user", func(c Ctx) error {
 		return c.SendString("user")
@@ -488,6 +488,27 @@ func Benchmark_Redirect_setFlash(b *testing.B) {
 	require.Equal(b, "1", c.Redirect().OldInput("id"))
 	require.Equal(b, "tom", c.Redirect().OldInput("name"))
 	require.Equal(b, map[string]string{"id": "1", "name": "tom"}, c.Redirect().OldInputs())
+}
+
+// go test -v -run=^$ -bench=Benchmark_Redirect_processFlashMessages -benchmem -count=4
+func Benchmark_Redirect_processFlashMessages(b *testing.B) {
+	app := New()
+	app.Get("/user", func(c Ctx) error {
+		return c.SendString("user")
+	}).Name("user")
+
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+
+	c.Redirect().With("success", "1").With("message", "test")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		c.Redirect().processFlashMessages()
+	}
+
+	require.Equal(b, "fiber_flash=success:1,message:test; path=/; SameSite=Lax", c.GetRespHeader(HeaderSetCookie))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Redirect_Messages -benchmem -count=4
