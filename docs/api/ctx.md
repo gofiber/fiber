@@ -1760,6 +1760,18 @@ app.Get("/file-with-url-chars", func(c fiber.Ctx) error {
 ```
 
 :::info
+You can set `CacheDuration` config property to `-1` to disable caching.
+:::
+
+```go title="Example"
+app.Get("/file", func(c fiber.Ctx) error {
+  return c.SendFile("style.css", SendFile{
+    CacheDuration: -1,
+  })
+})
+```
+
+:::info
 You can use multiple SendFile with different configurations in single route. Fiber creates different filesystem handler per config.
 :::
 
