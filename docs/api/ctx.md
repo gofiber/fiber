@@ -384,9 +384,16 @@ type Cookie struct {
     Secure      bool      `json:"secure"`
     HTTPOnly    bool      `json:"http_only"`
     SameSite    string    `json:"same_site"`
+    Partitioned bool      `json:"chips"`
     SessionOnly bool      `json:"session_only"`
 }
 ```
+
+:::info
+
+Partitioned cookies allow to partition cookie jar by top-level site. You can check out [CHIPS](https://developers.google.com/privacy-sandbox/3pcd/chips) for more information.
+
+:::
 
 ```go title="Example"
 app.Get("/", func(c fiber.Ctx) error {

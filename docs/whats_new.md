@@ -186,6 +186,9 @@ To enable the routing changes above we had to slightly adjust the signature of t
 DRAFT section
 :::
 
+### New Features
+
+* Cookie now allows Partitioned cookies for [CHIPS](https://developers.google.com/privacy-sandbox/3pcd/chips) support.
 
 ### new methods
 

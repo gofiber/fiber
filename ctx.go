@@ -105,6 +105,7 @@ type Cookie struct {
 	Secure      bool      `json:"secure"`
 	HTTPOnly    bool      `json:"http_only"`
 	SameSite    string    `json:"same_site"`
+	Partitioned bool      `json:"partitioned"`
 	SessionOnly bool      `json:"session_only"`
 }
 
@@ -357,6 +358,10 @@ func (c *DefaultCtx) Cookie(cookie *Cookie) {
 	default:
 		fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
 	}
+
+	// CHIPS allows to partition cookie jar by top-level site.
+	// refer: https://developers.google.com/privacy-sandbox/3pcd/chips
+	fcookie.SetPartitioned(cookie.Partitioned)
 
 	c.fasthttp.Response.Header.SetCookie(fcookie)
 	fasthttp.ReleaseCookie(fcookie)
