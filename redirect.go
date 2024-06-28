@@ -182,6 +182,8 @@ func (r *Redirect) To(location string) error {
 	r.c.setCanonical(HeaderLocation, location)
 	r.c.Status(r.status)
 
+	r.processFlashMessages()
+
 	return nil
 }
 
@@ -198,38 +200,6 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 	location, err := r.c.getLocationFromRoute(r.c.App().GetRoute(name), cfg.Params)
 	if err != nil {
 		return err
-	}
-
-	// Flash messages
-	if len(r.messages) > 0 || len(r.oldInput) > 0 {
-		messageText := bytebufferpool.Get()
-		defer bytebufferpool.Put(messageText)
-
-		// flash messages
-		for i, message := range r.messages {
-			messageText.WriteString(message)
-			// when there are more messages or oldInput -> add a comma
-			if len(r.messages)-1 != i || (len(r.messages)-1 == i && len(r.oldInput) > 0) {
-				messageText.WriteString(CookieDataSeparator)
-			}
-		}
-		r.messages = r.messages[:0]
-
-		// old input data
-		i := 1
-		for k, v := range r.oldInput {
-			messageText.WriteString(OldInputDataPrefix + k + CookieDataAssigner + v)
-			if len(r.oldInput) != i {
-				messageText.WriteString(CookieDataSeparator)
-			}
-			i++
-		}
-
-		r.c.Cookie(&Cookie{
-			Name:        FlashCookieName,
-			Value:       r.c.app.getString(messageText.Bytes()),
-			SessionOnly: true,
-		})
 	}
 
 	// Check queries
@@ -270,8 +240,8 @@ func (r *Redirect) Back(fallback ...string) error {
 	return r.To(location)
 }
 
-// setFlash is a method to get flash messages before removing them
-func (r *Redirect) setFlash() {
+// parseAndClearFlashMessages is a method to get flash messages before removing them
+func (r *Redirect) parseAndClearFlashMessages() {
 	// parse flash messages
 	cookieValue := r.c.Cookies(FlashCookieName)
 
@@ -287,6 +257,42 @@ func (r *Redirect) setFlash() {
 	}
 
 	r.c.ClearCookie(FlashCookieName)
+}
+
+// processFlashMessages is a helper function to process flash messages and old input data
+// and set them as cookies
+func (r *Redirect) processFlashMessages() {
+	// Flash messages
+	if len(r.messages) > 0 || len(r.oldInput) > 0 {
+		messageText := bytebufferpool.Get()
+		defer bytebufferpool.Put(messageText)
+
+		// flash messages
+		for i, message := range r.messages {
+			messageText.WriteString(message)
+			// when there are more messages or oldInput -> add a comma
+			if len(r.messages)-1 != i || (len(r.messages)-1 == i && len(r.oldInput) > 0) {
+				messageText.WriteString(CookieDataSeparator)
+			}
+		}
+		r.messages = r.messages[:0]
+
+		// old input data
+		i := 1
+		for k, v := range r.oldInput {
+			messageText.WriteString(OldInputDataPrefix + k + CookieDataAssigner + v)
+			if len(r.oldInput) != i {
+				messageText.WriteString(CookieDataSeparator)
+			}
+			i++
+		}
+
+		r.c.Cookie(&Cookie{
+			Name:        FlashCookieName,
+			Value:       r.c.app.getString(messageText.Bytes()),
+			SessionOnly: true,
+		})
+	}
 }
 
 // parseMessage is a helper function to parse flash messages and old input data
