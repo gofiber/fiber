@@ -132,15 +132,3 @@ func (s *Store) Delete(id string) error {
 	}
 	return s.Storage.Delete(id)
 }
-
-// decodeSessionData decodes the session data from raw bytes.
-func (s *Session) decodeSessionData(rawData []byte) error {
-	mux.Lock()
-	defer mux.Unlock()
-	_, _ = s.byteBuffer.Write(rawData) //nolint:errcheck // This will never fail
-	encCache := gob.NewDecoder(s.byteBuffer)
-	if err := encCache.Decode(&s.data.Data); err != nil {
-		return fmt.Errorf("failed to decode session data: %w", err)
-	}
-	return nil
-}
