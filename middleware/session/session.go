@@ -292,8 +292,6 @@ func (s *Session) delSession() {
 
 // decodeSessionData decodes the session data from raw bytes.
 func (s *Session) decodeSessionData(rawData []byte) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	_, _ = s.byteBuffer.Write(rawData)
 	encCache := gob.NewDecoder(s.byteBuffer)
 	if err := encCache.Decode(&s.data.Data); err != nil {
