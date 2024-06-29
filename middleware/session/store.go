@@ -4,7 +4,6 @@ import (
 	"encoding/gob"
 	"errors"
 	"fmt"
-	"sync"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/internal/storage/memory"
@@ -13,9 +12,6 @@ import (
 
 // ErrEmptySessionID is an error that occurs when the session ID is empty.
 var ErrEmptySessionID = errors.New("session id cannot be empty")
-
-// mux is a global mutex for session operations.
-var mux sync.Mutex
 
 // sessionIDKey is the local key type used to store and retrieve the session ID in context.
 type sessionIDKey int

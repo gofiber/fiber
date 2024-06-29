@@ -14,6 +14,7 @@ import (
 )
 
 type Session struct {
+	mu         sync.RWMutex  // Mutex to protect non-data fields
 	id         string        // session id
 	fresh      bool          // if new session
 	ctx        *fiber.Ctx    // fiber context
@@ -57,11 +58,15 @@ func releaseSession(s *Session) {
 
 // Fresh is true if the current session is new
 func (s *Session) Fresh() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.fresh
 }
 
 // ID returns the session id
 func (s *Session) ID() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.id
 }
 
@@ -102,6 +107,9 @@ func (s *Session) Destroy() error {
 	// Reset local data
 	s.data.Reset()
 
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	// Use external Storage if exist
 	if err := s.config.Storage.Delete(s.id); err != nil {
 		return err
@@ -114,6 +122,9 @@ func (s *Session) Destroy() error {
 
 // Regenerate generates a new session id and delete the old one from Storage
 func (s *Session) Regenerate() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	// Delete old id from storage
 	if err := s.config.Storage.Delete(s.id); err != nil {
 		return err
@@ -138,6 +149,9 @@ func (s *Session) Reset() error {
 	// Reset expiration
 	s.exp = 0
 
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	// Delete old id from storage
 	if err := s.config.Storage.Delete(s.id); err != nil {
 		return err
@@ -154,10 +168,7 @@ func (s *Session) Reset() error {
 
 // refresh generates a new session, and set session.fresh to be true
 func (s *Session) refresh() {
-	// Create a new id
 	s.id = s.config.KeyGenerator()
-
-	// We assign a new id to the session, so the session must be fresh
 	s.fresh = true
 }
 
@@ -168,6 +179,9 @@ func (s *Session) Save() error {
 		return nil
 	}
 
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	// Check if session has your own expiration, otherwise use default value
 	if s.exp <= 0 {
 		s.exp = s.config.Expiration
@@ -177,25 +191,23 @@ func (s *Session) Save() error {
 	s.setSession()
 
 	// Convert data to bytes
-	mux.Lock()
-	defer mux.Unlock()
 	encCache := gob.NewEncoder(s.byteBuffer)
 	err := encCache.Encode(&s.data.Data)
 	if err != nil {
 		return fmt.Errorf("failed to encode data: %w", err)
 	}
 
-	// copy the data in buffer
+	// Copy the data in buffer
 	encodedBytes := make([]byte, s.byteBuffer.Len())
 	copy(encodedBytes, s.byteBuffer.Bytes())
 
-	// pass copied bytes with session id to provider
+	// Pass copied bytes with session id to provider
 	if err := s.config.Storage.Set(s.id, encodedBytes, s.exp); err != nil {
 		return err
 	}
 
 	// Release session
-	// TODO: It's not safe to use the Session after called Save()
+	// TODO: It's not safe to use the Session after calling Save()
 	releaseSession(s)
 
 	return nil
@@ -211,6 +223,8 @@ func (s *Session) Keys() []string {
 
 // SetExpiry sets a specific expiration for this session
 func (s *Session) SetExpiry(exp time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.exp = exp
 }
 
