@@ -1,6 +1,8 @@
 package session
 
 import (
+	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -855,4 +857,112 @@ func Benchmark_Session_Asserted_Parallel(b *testing.B) {
 			}
 		})
 	})
+}
+
+// go test -v -race -run Test_Session_Concurrency ./...
+func Test_Session_Concurrency(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	store := New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	var wg sync.WaitGroup
+	errChan := make(chan error, 10) // Buffered channel to collect errors
+	const numGoroutines = 10        // Number of concurrent goroutines to test
+
+	// Start numGoroutines goroutines
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			localCtx := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(localCtx)
+
+			sess, err := store.Get(localCtx)
+			if err != nil {
+				errChan <- err
+				return
+			}
+
+			// Set a value
+			sess.Set("name", "john")
+
+			// get the session id
+			id := sess.ID()
+
+			// Check if the session is fresh
+			if !sess.Fresh() {
+				errChan <- errors.New("session should be fresh")
+				return
+			}
+
+			// Save the session
+			if err := sess.Save(); err != nil {
+				errChan <- err
+				return
+			}
+
+			// Release the context
+			app.ReleaseCtx(localCtx)
+
+			// Acquire a new context
+			localCtx = app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(localCtx)
+
+			// Set the session id in the header
+			localCtx.Request().Header.SetCookie(store.sessionName, id)
+
+			// Get the session
+			sess, err = store.Get(localCtx)
+			if err != nil {
+				errChan <- err
+				return
+			}
+
+			// Get the value
+			name := sess.Get("name")
+			if name != "john" {
+				errChan <- errors.New("name should be john")
+				return
+			}
+
+			// Get ID from the session
+			if sess.ID() != id {
+				errChan <- errors.New("id should be the same")
+				return
+			}
+
+			// Check if the session is fresh
+			if sess.Fresh() {
+				errChan <- errors.New("session should not be fresh")
+				return
+			}
+
+			// Delete the key
+			sess.Delete("name")
+
+			// Get the value
+			name = sess.Get("name")
+			if name != nil {
+				errChan <- errors.New("name should be nil")
+				return
+			}
+
+			// Destroy the session
+			if err := sess.Destroy(); err != nil {
+				errChan <- err
+				return
+			}
+		}()
+	}
+
+	wg.Wait()      // Wait for all goroutines to finish
+	close(errChan) // Close the channel to signal no more errors will be sent
+
+	// Check for errors sent to errChan
+	for err := range errChan {
+		require.NoError(t, err)
+	}
 }
