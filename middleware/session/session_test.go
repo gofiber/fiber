@@ -864,8 +864,6 @@ func Test_Session_Concurrency(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	store := New()
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
 
 	var wg sync.WaitGroup
 	errChan := make(chan error, 10) // Buffered channel to collect errors
@@ -878,7 +876,6 @@ func Test_Session_Concurrency(t *testing.T) {
 			defer wg.Done()
 
 			localCtx := app.AcquireCtx(&fasthttp.RequestCtx{})
-			defer app.ReleaseCtx(localCtx)
 
 			sess, err := store.Get(localCtx)
 			if err != nil {
