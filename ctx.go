@@ -96,17 +96,17 @@ type RangeSet struct {
 
 // Cookie data for c.Cookie
 type Cookie struct {
-	Name        string    `json:"name"`
-	Value       string    `json:"value"`
-	Path        string    `json:"path"`
-	Domain      string    `json:"domain"`
-	MaxAge      int       `json:"max_age"`
-	Expires     time.Time `json:"expires"`
-	Secure      bool      `json:"secure"`
-	HTTPOnly    bool      `json:"http_only"`
-	SameSite    string    `json:"same_site"`
-	Partitioned bool      `json:"partitioned"`
-	SessionOnly bool      `json:"session_only"`
+	Name        string    `json:"name"`         // The name of the cookie
+	Value       string    `json:"value"`        // The value of the cookie
+	Path        string    `json:"path"`         // Specifies a URL path which is allowed to receive the cookie
+	Domain      string    `json:"domain"`       // Specifies the domain which is allowed to receive the cookie
+	MaxAge      int       `json:"max_age"`      // The maximum age (in seconds) of the cookie
+	Expires     time.Time `json:"expires"`      // The expiration date of the cookie
+	Secure      bool      `json:"secure"`       // Indicates that the cookie should only be transmitted over a secure HTTPS connection
+	HTTPOnly    bool      `json:"http_only"`    // Indicates that the cookie is accessible only through the HTTP protocol
+	SameSite    string    `json:"same_site"`    // Controls whether or not a cookie is sent with cross-site requests
+	Partitioned bool      `json:"partitioned"`  // Indicates if the cookie is stored in a partitioned cookie jar
+	SessionOnly bool      `json:"session_only"` // Indicates if the cookie is a session-only cookie
 }
 
 // Views is the interface that wraps the Render function.

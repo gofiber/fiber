@@ -375,25 +375,19 @@ func (c Ctx) Cookie(cookie *Cookie)
 
 ```go
 type Cookie struct {
-    Name        string    `json:"name"`
-    Value       string    `json:"value"`
-    Path        string    `json:"path"`
-    Domain      string    `json:"domain"`
-    MaxAge      int       `json:"max_age"`
-    Expires     time.Time `json:"expires"`
-    Secure      bool      `json:"secure"`
-    HTTPOnly    bool      `json:"http_only"`
-    SameSite    string    `json:"same_site"`
-    Partitioned bool      `json:"chips"`
-    SessionOnly bool      `json:"session_only"`
+	Name        string    `json:"name"`         // The name of the cookie
+	Value       string    `json:"value"`        // The value of the cookie
+	Path        string    `json:"path"`         // Specifies a URL path which is allowed to receive the cookie
+	Domain      string    `json:"domain"`       // Specifies the domain which is allowed to receive the cookie
+	MaxAge      int       `json:"max_age"`      // The maximum age (in seconds) of the cookie
+	Expires     time.Time `json:"expires"`      // The expiration date of the cookie
+	Secure      bool      `json:"secure"`       // Indicates that the cookie should only be transmitted over a secure HTTPS connection
+	HTTPOnly    bool      `json:"http_only"`    // Indicates that the cookie is accessible only through the HTTP protocol
+	SameSite    string    `json:"same_site"`    // Controls whether or not a cookie is sent with cross-site requests
+	Partitioned bool      `json:"partitioned"`  // Indicates if the cookie is stored in a partitioned cookie jar
+	SessionOnly bool      `json:"session_only"` // Indicates if the cookie is a session-only cookie
 }
 ```
-
-:::info
-
-Partitioned cookies allow to partition cookie jar by top-level site. You can check out [CHIPS](https://developers.google.com/privacy-sandbox/3pcd/chips) for more information.
-
-:::
 
 ```go title="Example"
 app.Get("/", func(c fiber.Ctx) error {
@@ -406,6 +400,26 @@ app.Get("/", func(c fiber.Ctx) error {
   // Set cookie
   c.Cookie(cookie)
   // ...
+})
+```
+
+:::info
+
+Partitioned cookies allow to partition the cookie jar by top-level site, enhancing user privacy by preventing cookies from being shared across different sites. This feature is particularly useful in scenarios where a user interacts with embedded third-party services that should not have access to the main site's cookies. You can check out [CHIPS](https://developers.google.com/privacy-sandbox/3pcd/chips) for more information.
+
+:::
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  // Create a new partitioned cookie
+  cookie := new(fiber.Cookie)
+  cookie.Name = "user_session"
+  cookie.Value = "abc123"
+  cookie.Partitioned = true  // This cookie will be stored in a separate jar when it's embeded into another website
+
+  // Set the cookie in the response
+  c.Cookie(cookie)
+  return c.SendString("Partitioned cookie set")
 })
 ```
 
