@@ -676,6 +676,86 @@ func Benchmark_Session(b *testing.B) {
 	})
 }
 
+// go test -v -run=^$ -bench=Benchmark_Session_Parallel -benchmem -count=4
+func Benchmark_Session_Parallel(b *testing.B) {
+	b.Run("default", func(b *testing.B) {
+		app, store := fiber.New(), New()
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				c := app.AcquireCtx(&fasthttp.RequestCtx{})
+				c.Request().Header.SetCookie(store.sessionName, "12356789")
+
+				sess, _ := store.Get(c) //nolint:errcheck // We're inside a benchmark
+				sess.Set("john", "doe")
+				_ = sess.Save() //nolint:errcheck // We're inside a benchmark
+				app.ReleaseCtx(c)
+			}
+		})
+	})
+
+	b.Run("storage", func(b *testing.B) {
+		app := fiber.New()
+		store := New(Config{
+			Storage: memory.New(),
+		})
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				c := app.AcquireCtx(&fasthttp.RequestCtx{})
+				c.Request().Header.SetCookie(store.sessionName, "12356789")
+
+				sess, _ := store.Get(c) //nolint:errcheck // We're inside a benchmark
+				sess.Set("john", "doe")
+				_ = sess.Save() //nolint:errcheck // We're inside a benchmark
+				app.ReleaseCtx(c)
+			}
+		})
+	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_Session_Asserted -benchmem -count=4
+func Benchmark_Session_Asserted(b *testing.B) {
+	b.Run("default", func(b *testing.B) {
+		app, store := fiber.New(), New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		c.Request().Header.SetCookie(store.sessionName, "12356789")
+
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			sess, err := store.Get(c)
+			utils.AssertEqual(b, nil, err)
+			sess.Set("john", "doe")
+			err = sess.Save()
+			utils.AssertEqual(b, nil, err)
+		}
+	})
+
+	b.Run("storage", func(b *testing.B) {
+		app := fiber.New()
+		store := New(Config{
+			Storage: memory.New(),
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		c.Request().Header.SetCookie(store.sessionName, "12356789")
+
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			sess, err := store.Get(c)
+			utils.AssertEqual(b, nil, err)
+			sess.Set("john", "doe")
+			err = sess.Save()
+			utils.AssertEqual(b, nil, err)
+		}
+	})
+}
+
 // go test -v -run=^$ -bench=Benchmark_Session_Asserted_Parallel -benchmem -count=4
 func Benchmark_Session_Asserted_Parallel(b *testing.B) {
 	b.Run("default", func(b *testing.B) {
