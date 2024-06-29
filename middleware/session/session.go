@@ -43,6 +43,7 @@ func acquireSession() *Session {
 }
 
 func releaseSession(s *Session) {
+	s.mu.Lock()
 	s.id = ""
 	s.exp = 0
 	s.ctx = nil
@@ -53,6 +54,7 @@ func releaseSession(s *Session) {
 	if s.byteBuffer != nil {
 		s.byteBuffer.Reset()
 	}
+	s.mu.Unlock()
 	sessionPool.Put(s)
 }
 
@@ -107,8 +109,8 @@ func (s *Session) Destroy() error {
 	// Reset local data
 	s.data.Reset()
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	// Use external Storage if exist
 	if err := s.config.Storage.Delete(s.id); err != nil {
@@ -142,15 +144,16 @@ func (s *Session) Reset() error {
 	if s.data != nil {
 		s.data.Reset()
 	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	// Reset byte buffer
 	if s.byteBuffer != nil {
 		s.byteBuffer.Reset()
 	}
 	// Reset expiration
 	s.exp = 0
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	// Delete old id from storage
 	if err := s.config.Storage.Delete(s.id); err != nil {
@@ -173,6 +176,11 @@ func (s *Session) refresh() {
 }
 
 // Save will update the storage and client cookie
+//
+// sess.Save() will save the session data to the storage and update the
+// client cookie, and it will release the session after saving.
+//
+// It's not safe to use the session after calling Save().
 func (s *Session) Save() error {
 	// Better safe than sorry
 	if s.data == nil {
@@ -180,7 +188,6 @@ func (s *Session) Save() error {
 	}
 
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	// Check if session has your own expiration, otherwise use default value
 	if s.exp <= 0 {
@@ -205,6 +212,8 @@ func (s *Session) Save() error {
 	if err := s.config.Storage.Set(s.id, encodedBytes, s.exp); err != nil {
 		return err
 	}
+
+	s.mu.Unlock()
 
 	// Release session
 	// TODO: It's not safe to use the Session after calling Save()
