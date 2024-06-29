@@ -28,10 +28,8 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/andybalholm/brotli"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/utils/v2"
-	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
@@ -3077,7 +3075,7 @@ func Test_Ctx_SendFile_Compress_CheckCompressed(t *testing.T) {
 	expectedFileContent, err := io.ReadAll(f)
 	require.NoError(t, err)
 
-	sendFileBodyReader := func(compression string) *bytes.Reader {
+	sendFileBodyReader := func(compression string) []byte {
 		reqCtx := &fasthttp.RequestCtx{}
 		reqCtx.Request.Header.Add(HeaderAcceptEncoding, compression)
 
@@ -3087,38 +3085,33 @@ func Test_Ctx_SendFile_Compress_CheckCompressed(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		return bytes.NewReader(c.Response().Body())
+		return c.Response().Body()
 	}
 
 	t.Run("gzip", func(t *testing.T) {
 		t.Parallel()
 
-		gz, err := gzip.NewReader(sendFileBodyReader("gzip"))
+		body, err := fasthttp.AppendGunzipBytes(nil, sendFileBodyReader("gzip"))
 		require.NoError(t, err)
 
-		body, err := io.ReadAll(gz)
-		require.NoError(t, err)
 		require.Equal(t, expectedFileContent, body)
 	})
 
 	t.Run("zstd", func(t *testing.T) {
 		t.Parallel()
 
-		zstdReader, err := zstd.NewReader(sendFileBodyReader("zstd"))
+		body, err := fasthttp.AppendUnzstdBytes(nil, sendFileBodyReader("zstd"))
 		require.NoError(t, err)
 
-		body, err := io.ReadAll(zstdReader)
-		require.NoError(t, err)
 		require.Equal(t, expectedFileContent, body)
 	})
 
 	t.Run("br", func(t *testing.T) {
 		t.Parallel()
 
-		brReader := brotli.NewReader(sendFileBodyReader("br"))
-
-		body, err := io.ReadAll(brReader)
+		body, err := fasthttp.AppendUnbrotliBytes(nil, sendFileBodyReader("br"))
 		require.NoError(t, err)
+
 		require.Equal(t, expectedFileContent, body)
 	})
 }
