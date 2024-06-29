@@ -176,8 +176,10 @@ func (s *Session) refresh() {
 
 // Save will update the storage and client cookie
 //
-// sess.Save() will save the session data to the storage and update the client cookie.
-// and it will release the session after saving. It's not safe to use the session after calling Save().
+// sess.Save() will save the session data to the storage and update the
+// client cookie, and it will release the session after saving.
+//
+// It's not safe to use the session after calling Save().
 func (s *Session) Save() error {
 	// Better safe than sorry
 	if s.data == nil {
