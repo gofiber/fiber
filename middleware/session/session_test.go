@@ -1,6 +1,8 @@
 package session
 
 import (
+	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -672,4 +674,231 @@ func Benchmark_Session(b *testing.B) {
 
 		utils.AssertEqual(b, nil, err)
 	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_Session_Parallel -benchmem -count=4
+func Benchmark_Session_Parallel(b *testing.B) {
+	b.Run("default", func(b *testing.B) {
+		app, store := fiber.New(), New()
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				c := app.AcquireCtx(&fasthttp.RequestCtx{})
+				c.Request().Header.SetCookie(store.sessionName, "12356789")
+
+				sess, _ := store.Get(c) //nolint:errcheck // We're inside a benchmark
+				sess.Set("john", "doe")
+				_ = sess.Save() //nolint:errcheck // We're inside a benchmark
+				app.ReleaseCtx(c)
+			}
+		})
+	})
+
+	b.Run("storage", func(b *testing.B) {
+		app := fiber.New()
+		store := New(Config{
+			Storage: memory.New(),
+		})
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				c := app.AcquireCtx(&fasthttp.RequestCtx{})
+				c.Request().Header.SetCookie(store.sessionName, "12356789")
+
+				sess, _ := store.Get(c) //nolint:errcheck // We're inside a benchmark
+				sess.Set("john", "doe")
+				_ = sess.Save() //nolint:errcheck // We're inside a benchmark
+				app.ReleaseCtx(c)
+			}
+		})
+	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_Session_Asserted -benchmem -count=4
+func Benchmark_Session_Asserted(b *testing.B) {
+	b.Run("default", func(b *testing.B) {
+		app, store := fiber.New(), New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		c.Request().Header.SetCookie(store.sessionName, "12356789")
+
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			sess, err := store.Get(c)
+			utils.AssertEqual(b, nil, err)
+			sess.Set("john", "doe")
+			err = sess.Save()
+			utils.AssertEqual(b, nil, err)
+		}
+	})
+
+	b.Run("storage", func(b *testing.B) {
+		app := fiber.New()
+		store := New(Config{
+			Storage: memory.New(),
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		c.Request().Header.SetCookie(store.sessionName, "12356789")
+
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			sess, err := store.Get(c)
+			utils.AssertEqual(b, nil, err)
+			sess.Set("john", "doe")
+			err = sess.Save()
+			utils.AssertEqual(b, nil, err)
+		}
+	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_Session_Asserted_Parallel -benchmem -count=4
+func Benchmark_Session_Asserted_Parallel(b *testing.B) {
+	b.Run("default", func(b *testing.B) {
+		app, store := fiber.New(), New()
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				c := app.AcquireCtx(&fasthttp.RequestCtx{})
+				c.Request().Header.SetCookie(store.sessionName, "12356789")
+
+				sess, err := store.Get(c)
+				utils.AssertEqual(b, nil, err)
+				sess.Set("john", "doe")
+				utils.AssertEqual(b, nil, sess.Save())
+				app.ReleaseCtx(c)
+			}
+		})
+	})
+
+	b.Run("storage", func(b *testing.B) {
+		app := fiber.New()
+		store := New(Config{
+			Storage: memory.New(),
+		})
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				c := app.AcquireCtx(&fasthttp.RequestCtx{})
+				c.Request().Header.SetCookie(store.sessionName, "12356789")
+
+				sess, err := store.Get(c)
+				utils.AssertEqual(b, nil, err)
+				sess.Set("john", "doe")
+				utils.AssertEqual(b, nil, sess.Save())
+				app.ReleaseCtx(c)
+			}
+		})
+	})
+}
+
+// go test -v -race -run Test_Session_Concurrency ./...
+func Test_Session_Concurrency(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	store := New()
+
+	var wg sync.WaitGroup
+	errChan := make(chan error, 10) // Buffered channel to collect errors
+	const numGoroutines = 10        // Number of concurrent goroutines to test
+
+	// Start numGoroutines goroutines
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			localCtx := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+			sess, err := store.Get(localCtx)
+			if err != nil {
+				errChan <- err
+				return
+			}
+
+			// Set a value
+			sess.Set("name", "john")
+
+			// get the session id
+			id := sess.ID()
+
+			// Check if the session is fresh
+			if !sess.Fresh() {
+				errChan <- errors.New("session should be fresh")
+				return
+			}
+
+			// Save the session
+			if err := sess.Save(); err != nil {
+				errChan <- err
+				return
+			}
+
+			// Release the context
+			app.ReleaseCtx(localCtx)
+
+			// Acquire a new context
+			localCtx = app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(localCtx)
+
+			// Set the session id in the header
+			localCtx.Request().Header.SetCookie(store.sessionName, id)
+
+			// Get the session
+			sess, err = store.Get(localCtx)
+			if err != nil {
+				errChan <- err
+				return
+			}
+
+			// Get the value
+			name := sess.Get("name")
+			if name != "john" {
+				errChan <- errors.New("name should be john")
+				return
+			}
+
+			// Get ID from the session
+			if sess.ID() != id {
+				errChan <- errors.New("id should be the same")
+				return
+			}
+
+			// Check if the session is fresh
+			if sess.Fresh() {
+				errChan <- errors.New("session should not be fresh")
+				return
+			}
+
+			// Delete the key
+			sess.Delete("name")
+
+			// Get the value
+			name = sess.Get("name")
+			if name != nil {
+				errChan <- errors.New("name should be nil")
+				return
+			}
+
+			// Destroy the session
+			if err := sess.Destroy(); err != nil {
+				errChan <- err
+				return
+			}
+		}()
+	}
+
+	wg.Wait()      // Wait for all goroutines to finish
+	close(errChan) // Close the channel to signal no more errors will be sent
+
+	// Check for errors sent to errChan
+	for err := range errChan {
+		utils.AssertEqual(t, nil, err)
+	}
 }
