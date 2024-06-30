@@ -130,6 +130,109 @@ func Test_AuthSources(t *testing.T) {
 	}
 }
 
+func TestPanicOnInvalidConfiguration(t *testing.T) {
+	require.Panics(t, func() {
+		authMiddleware := New(Config{
+			KeyLookup: "invalid",
+		})
+		// We shouldn't even make it this far, but these next two lines prevent authMiddleware from being an unused variable.
+		app := fiber.New()
+		defer func() { // testing panics, defer block to ensure cleanup
+			err := app.Shutdown()
+			require.NoError(t, err)
+		}()
+		app.Use(authMiddleware)
+	}, "should panic if Validator is missing")
+
+	require.Panics(t, func() {
+		authMiddleware := New(Config{
+			KeyLookup: "invalid",
+			Validator: func(_ fiber.Ctx, _ string) (bool, error) {
+				return true, nil
+			},
+		})
+		// We shouldn't even make it this far, but these next two lines prevent authMiddleware from being an unused variable.
+		app := fiber.New()
+		defer func() { // testing panics, defer block to ensure cleanup
+			err := app.Shutdown()
+			require.NoError(t, err)
+		}()
+		app.Use(authMiddleware)
+	}, "should panic if CustomKeyLookup is not set AND KeyLookup has an invalid value")
+}
+
+func TestCustomKeyUtilityFunctionErrors(t *testing.T) {
+	const (
+		scheme = "Bearer"
+	)
+
+	// Invalid element while parsing
+	_, err := DefaultKeyLookup("invalid", scheme)
+	require.Error(t, err, "DefaultKeyLookup should fail for 'invalid' keyLookup")
+
+	_, err = MultipleKeySourceLookup([]string{"header:key", "invalid"}, scheme)
+	require.Error(t, err, "MultipleKeySourceLookup should fail for 'invalid' keyLookup")
+}
+
+func TestMultipleKeyLookup(t *testing.T) {
+	const (
+		desc    = "auth with correct key"
+		success = "Success!"
+		scheme  = "Bearer"
+	)
+
+	// setup the fiber endpoint
+	app := fiber.New()
+
+	customKeyLookup, err := MultipleKeySourceLookup([]string{"header:key", "cookie:key", "query:key"}, scheme)
+	require.NoError(t, err)
+
+	authMiddleware := New(Config{
+		CustomKeyLookup: customKeyLookup,
+		Validator: func(_ fiber.Ctx, key string) (bool, error) {
+			if key == CorrectKey {
+				return true, nil
+			}
+			return false, ErrMissingOrMalformedAPIKey
+		},
+	})
+	app.Use(authMiddleware)
+	app.Get("/foo", func(c fiber.Ctx) error {
+		return c.SendString(success)
+	})
+
+	// construct the test HTTP request
+	var req *http.Request
+	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/foo", nil)
+	require.NoError(t, err)
+	q := req.URL.Query()
+	q.Add("key", CorrectKey)
+	req.URL.RawQuery = q.Encode()
+
+	res, err := app.Test(req, -1)
+
+	require.NoError(t, err)
+
+	// test the body of the request
+	body, err := io.ReadAll(res.Body)
+	require.Equal(t, 200, res.StatusCode, desc)
+	// body
+	require.NoError(t, err)
+	require.Equal(t, success, string(body), desc)
+
+	err = res.Body.Close()
+	require.NoError(t, err)
+
+	// construct a second request without proper key
+	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/foo", nil)
+	require.NoError(t, err)
+	res, err = app.Test(req, -1)
+	require.NoError(t, err)
+	errBody, err := io.ReadAll(res.Body)
+	require.NoError(t, err)
+	require.Equal(t, ErrMissingOrMalformedAPIKey.Error(), string(errBody))
+}
+
 func Test_MultipleKeyAuth(t *testing.T) {
 	// setup the fiber endpoint
 	app := fiber.New()
@@ -374,6 +477,55 @@ func Test_CustomNextFunc(t *testing.T) {
 	// Check that the response has the expected status code and body
 	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
 	require.Equal(t, string(body), ErrMissingOrMalformedAPIKey.Error())
+}
+
+func Test_TokenFromContext_None(t *testing.T) {
+	app := fiber.New()
+	// Define a test handler that checks TokenFromContext
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString(TokenFromContext(c))
+	})
+
+	// Verify a "" is sent back if nothing sets the token on the context.
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	// Send
+	res, err := app.Test(req)
+	require.NoError(t, err)
+
+	// Read the response body into a string
+	body, err := io.ReadAll(res.Body)
+	require.NoError(t, err)
+	require.Empty(t, body)
+}
+
+func Test_TokenFromContext(t *testing.T) {
+	app := fiber.New()
+	// Wire up keyauth middleware to set TokenFromContext now
+	app.Use(New(Config{
+		KeyLookup:  "header:Authorization",
+		AuthScheme: "Basic",
+		Validator: func(_ fiber.Ctx, key string) (bool, error) {
+			if key == CorrectKey {
+				return true, nil
+			}
+			return false, ErrMissingOrMalformedAPIKey
+		},
+	}))
+	// Define a test handler that checks TokenFromContext
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString(TokenFromContext(c))
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req.Header.Add("Authorization", "Basic "+CorrectKey)
+	// Send
+	res, err := app.Test(req)
+	require.NoError(t, err)
+
+	// Read the response body into a string
+	body, err := io.ReadAll(res.Body)
+	require.NoError(t, err)
+	require.Equal(t, CorrectKey, string(body))
 }
 
 func Test_AuthSchemeToken(t *testing.T) {
