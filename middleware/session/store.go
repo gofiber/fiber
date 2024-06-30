@@ -77,6 +77,10 @@ func (s *Store) Get(c fiber.Ctx) (*Session, error) {
 
 	// Create session object
 	sess := acquireSession()
+
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+
 	sess.ctx = c
 	sess.config = s
 	sess.id = id
@@ -84,6 +88,8 @@ func (s *Store) Get(c fiber.Ctx) (*Session, error) {
 
 	// Decode session data if found
 	if rawData != nil {
+		sess.data.Lock()
+		defer sess.data.Unlock()
 		if err := sess.decodeSessionData(rawData); err != nil {
 			return nil, fmt.Errorf("failed to decode session data: %w", err)
 		}
