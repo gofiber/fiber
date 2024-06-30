@@ -920,6 +920,11 @@ func Test_Ctx_Cookie(t *testing.T) {
 	cookie.MaxAge = 0
 	c.Cookie(cookie)
 	require.Equal(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
+
+	expect = "username=john; path=/; secure; SameSite=None; Partitioned"
+	cookie.Partitioned = true
+	c.Cookie(cookie)
+	require.Equal(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Cookie -benchmem -count=4
