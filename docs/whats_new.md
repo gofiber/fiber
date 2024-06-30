@@ -219,6 +219,7 @@ DRAFT section
 * Bind -> for Binding instead of View, us c.ViewBind()
 * Format -> Param: body interface{} -> handlers ...ResFmt
 * Redirect -> c.Redirect().To()
+* SendFile now supports different configurations using the config parameter.
 
 ---
 

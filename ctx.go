@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"mime/multipart"
 	"net"
 	"net/http"
@@ -67,6 +68,84 @@ type DefaultCtx struct {
 	bind                *Bind                // Default bind reference
 	redirect            *Redirect            // Default redirect reference
 	redirectionMessages []string             // Messages of the previous redirect
+}
+
+// SendFile defines configuration options when to transfer file with SendFile.
+type SendFile struct {
+	// FS is the file system to serve the static files from.
+	// You can use interfaces compatible with fs.FS like embed.FS, os.DirFS etc.
+	//
+	// Optional. Default: nil
+	FS fs.FS
+
+	// When set to true, the server tries minimizing CPU usage by caching compressed files.
+	// This works differently than the github.com/gofiber/compression middleware.
+	// You have to set Content-Encoding header to compress the file.
+	// Available compression methods are gzip, br, and zstd.
+	//
+	// Optional. Default value false
+	Compress bool `json:"compress"`
+
+	// When set to true, enables byte range requests.
+	//
+	// Optional. Default value false
+	ByteRange bool `json:"byte_range"`
+
+	// When set to true, enables direct download.
+	//
+	// Optional. Default: false.
+	Download bool `json:"download"`
+
+	// Expiration duration for inactive file handlers.
+	// Use a negative time.Duration to disable it.
+	//
+	// Optional. Default value 10 * time.Second.
+	CacheDuration time.Duration `json:"cache_duration"`
+
+	// The value for the Cache-Control HTTP-header
+	// that is set on the file response. MaxAge is defined in seconds.
+	//
+	// Optional. Default value 0.
+	MaxAge int `json:"max_age"`
+}
+
+// sendFileStore is used to keep the SendFile configuration and the handler.
+type sendFileStore struct {
+	handler           fasthttp.RequestHandler
+	config            SendFile
+	cacheControlValue string
+}
+
+// compareConfig compares the current SendFile config with the new one
+// and returns true if they are different.
+//
+// Here we don't use reflect.DeepEqual because it is quite slow compared to manual comparison.
+func (sf *sendFileStore) compareConfig(cfg SendFile) bool {
+	if sf.config.FS != cfg.FS {
+		return false
+	}
+
+	if sf.config.Compress != cfg.Compress {
+		return false
+	}
+
+	if sf.config.ByteRange != cfg.ByteRange {
+		return false
+	}
+
+	if sf.config.Download != cfg.Download {
+		return false
+	}
+
+	if sf.config.CacheDuration != cfg.CacheDuration {
+		return false
+	}
+
+	if sf.config.MaxAge != cfg.MaxAge {
+		return false
+	}
+
+	return true
 }
 
 // TLSHandler object
@@ -1414,48 +1493,87 @@ func (c *DefaultCtx) Send(body []byte) error {
 	return nil
 }
 
-var (
-	sendFileOnce    sync.Once
-	sendFileFS      *fasthttp.FS
-	sendFileHandler fasthttp.RequestHandler
-)
-
 // SendFile transfers the file from the given path.
 // The file is not compressed by default, enable this by passing a 'true' argument
 // Sets the Content-Type response HTTP header field based on the filenames extension.
-func (c *DefaultCtx) SendFile(file string, compress ...bool) error {
+func (c *DefaultCtx) SendFile(file string, config ...SendFile) error {
 	// Save the filename, we will need it in the error message if the file isn't found
 	filename := file
 
-	// https://github.com/valyala/fasthttp/blob/c7576cc10cabfc9c993317a2d3f8355497bea156/fs.go#L129-L134
-	sendFileOnce.Do(func() {
-		const cacheDuration = 10 * time.Second
-		sendFileFS = &fasthttp.FS{
+	var cfg SendFile
+	if len(config) > 0 {
+		cfg = config[0]
+	}
+
+	if cfg.CacheDuration == 0 {
+		cfg.CacheDuration = 10 * time.Second
+	}
+
+	var fsHandler fasthttp.RequestHandler
+	var cacheControlValue string
+
+	c.app.sendfilesMutex.RLock()
+	for _, sf := range c.app.sendfiles {
+		if sf.compareConfig(cfg) {
+			fsHandler = sf.handler
+			cacheControlValue = sf.cacheControlValue
+			break
+		}
+	}
+	c.app.sendfilesMutex.RUnlock()
+
+	if fsHandler == nil {
+		fasthttpFS := &fasthttp.FS{
 			Root:                   "",
+			FS:                     cfg.FS,
 			AllowEmptyRoot:         true,
 			GenerateIndexPages:     false,
-			AcceptByteRange:        true,
-			Compress:               true,
-			CompressBrotli:         true,
+			AcceptByteRange:        cfg.ByteRange,
+			Compress:               cfg.Compress,
+			CompressBrotli:         cfg.Compress,
 			CompressedFileSuffixes: c.app.config.CompressedFileSuffixes,
-			CacheDuration:          cacheDuration,
+			CacheDuration:          cfg.CacheDuration,
+			SkipCache:              cfg.CacheDuration < 0,
 			IndexNames:             []string{"index.html"},
 			PathNotFound: func(ctx *fasthttp.RequestCtx) {
 				ctx.Response.SetStatusCode(StatusNotFound)
 			},
 		}
-		sendFileHandler = sendFileFS.NewRequestHandler()
-	})
+
+		if cfg.FS != nil {
+			fasthttpFS.Root = "."
+		}
+
+		sf := &sendFileStore{
+			config:  cfg,
+			handler: fasthttpFS.NewRequestHandler(),
+		}
+
+		maxAge := cfg.MaxAge
+		if maxAge > 0 {
+			sf.cacheControlValue = "public, max-age=" + strconv.Itoa(maxAge)
+		}
+
+		// set vars
+		fsHandler = sf.handler
+		cacheControlValue = sf.cacheControlValue
+
+		c.app.sendfilesMutex.Lock()
+		c.app.sendfiles = append(c.app.sendfiles, sf)
+		c.app.sendfilesMutex.Unlock()
+	}
 
 	// Keep original path for mutable params
 	c.pathOriginal = utils.CopyString(c.pathOriginal)
-	// Disable compression
-	if len(compress) == 0 || !compress[0] {
+
+	// Delete the Accept-Encoding header if compression is disabled
+	if !cfg.Compress {
 		// https://github.com/valyala/fasthttp/blob/7cc6f4c513f9e0d3686142e0a1a5aa2f76b3194a/fs.go#L55
 		c.fasthttp.Request.Header.Del(HeaderAcceptEncoding)
 	}
+
 	// copy of https://github.com/valyala/fasthttp/blob/7cc6f4c513f9e0d3686142e0a1a5aa2f76b3194a/fs.go#L103-L121 with small adjustments
-	if len(file) == 0 || !filepath.IsAbs(file) {
+	if len(file) == 0 || (!filepath.IsAbs(file) && cfg.FS == nil) {
 		// extend relative path to absolute path
 		hasTrailingSlash := len(file) > 0 && (file[len(file)-1] == '/' || file[len(file)-1] == '\\')
 
@@ -1468,6 +1586,7 @@ func (c *DefaultCtx) SendFile(file string, compress ...bool) error {
 			file += "/"
 		}
 	}
+
 	// convert the path to forward slashes regardless the OS in order to set the URI properly
 	// the handler will convert back to OS path separator before opening the file
 	file = filepath.ToSlash(file)
@@ -1475,22 +1594,43 @@ func (c *DefaultCtx) SendFile(file string, compress ...bool) error {
 	// Restore the original requested URL
 	originalURL := utils.CopyString(c.OriginalURL())
 	defer c.fasthttp.Request.SetRequestURI(originalURL)
+
 	// Set new URI for fileHandler
 	c.fasthttp.Request.SetRequestURI(file)
+
 	// Save status code
 	status := c.fasthttp.Response.StatusCode()
+
 	// Serve file
-	sendFileHandler(c.fasthttp)
+	fsHandler(c.fasthttp)
+
+	// Sets the response Content-Disposition header to attachment if the Download option is true
+	if cfg.Download {
+		c.Attachment()
+	}
+
 	// Get the status code which is set by fasthttp
 	fsStatus := c.fasthttp.Response.StatusCode()
-	// Set the status code set by the user if it is different from the fasthttp status code and 200
-	if status != fsStatus && status != StatusOK {
-		c.Status(status)
-	}
+
 	// Check for error
 	if status != StatusNotFound && fsStatus == StatusNotFound {
 		return NewError(StatusNotFound, fmt.Sprintf("sendfile: file %s not found", filename))
 	}
+
+	// Set the status code set by the user if it is different from the fasthttp status code and 200
+	if status != fsStatus && status != StatusOK {
+		c.Status(status)
+	}
+
+	// Apply cache control header
+	if status != StatusNotFound && status != StatusForbidden {
+		if len(cacheControlValue) > 0 {
+			c.Context().Response.Header.Set(HeaderCacheControl, cacheControlValue)
+		}
+
+		return nil
+	}
+
 	return nil
 }
 
