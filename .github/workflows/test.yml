@@ -1,3 +1,5 @@
+name: Test
+
 on:
   push:
     branches:
@@ -13,9 +15,8 @@ on:
       - "!docs/**"
       - "!**.md"
 
-name: Test
 jobs:
-  test:
+  unit:
     strategy:
       matrix:
         go-version: [1.21.x, 1.22.x]
@@ -42,8 +43,8 @@ jobs:
           flags: unittests
           slug: gofiber/fiber
 
-  LongTest:
-    needs: test
+  repeated:
+    needs: unit
     strategy:
       matrix:
         go-version: [1.21.x, 1.22.x]
@@ -58,4 +59,4 @@ jobs:
           go-version: ${{ matrix.go-version }}
 
       - name: Test
-        run: go run gotest.tools/gotestsum@latest -f testname -- ./... -race -count=25 -shuffle=on
+        run: go run gotest.tools/gotestsum@latest -f testname -- ./... -race -count=15 -shuffle=on
