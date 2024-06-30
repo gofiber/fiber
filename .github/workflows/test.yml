@@ -15,7 +15,7 @@ on:
 
 name: Test
 jobs:
-  Build:
+  test:
     strategy:
       matrix:
         go-version: [1.21.x, 1.22.x]
@@ -30,11 +30,8 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
 
-      - name: Install gotestsum
-        run: go install gotest.tools/gotestsum@v1.11.0
-
       - name: Test
-        run: gotestsum -f testname -- ./... -race -count=1 -coverprofile=coverage.txt -covermode=atomic -shuffle=on
+        run: go run gotest.tools/gotestsum@latest -f testname -- ./... -race -count=1 -coverprofile=coverage.txt -covermode=atomic -shuffle=on
 
       - name: Upload coverage reports to Codecov
         if: ${{ matrix.platform == 'ubuntu-latest' && matrix.go-version == '1.22.x' }}
@@ -44,3 +41,21 @@ jobs:
           file: ./coverage.txt
           flags: unittests
           slug: gofiber/fiber
+
+  LongTest:
+    needs: test
+    strategy:
+      matrix:
+        go-version: [1.21.x, 1.22.x]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch Repository
+        uses: actions/checkout@v4
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+
+      - name: Test
+        run: go run gotest.tools/gotestsum@latest -f testname -- ./... -race -count=25 -shuffle=on
