@@ -26,20 +26,23 @@ func newSessionManager(s *session.Store, k string) *sessionManager {
 }
 
 // get token from session
-func (m *sessionManager) getRaw(c fiber.Ctx, key string, raw []byte) []byte {
+func (m *sessionManager) getRaw(c fiber.Ctx, key string, raw []byte) ([]byte, error) {
 	sess, err := m.session.Get(c)
 	if err != nil {
-		return nil
-	}
-	token, ok := sess.Get(m.key).(Token)
-	if ok {
-		if token.Expiration.Before(time.Now()) || key != token.Key || !compareTokens(raw, token.Raw) {
-			return nil
-		}
-		return token.Raw
+		log.Warn("csrf: failed to get session: ", err)
+		return nil, ErrTokenNotFound
 	}
 
-	return nil
+	token, ok := sess.Get(m.key).(Token)
+	if !ok {
+		return nil, ErrTokenInvalid
+	}
+
+	if token.Expiration.Before(time.Now()) || key != token.Key || !compareTokens(raw, token.Raw) {
+		return nil, ErrTokenInvalid
+	}
+
+	return token.Raw, nil
 }
 
 // set token in session

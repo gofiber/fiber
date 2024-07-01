@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/log"
 )
 
 var (
@@ -18,8 +19,10 @@ var (
 	ErrRefererNoMatch  = errors.New("referer does not match host and is not a trusted origin")
 	ErrOriginInvalid   = errors.New("origin invalid")
 	ErrOriginNoMatch   = errors.New("origin does not match host and is not a trusted origin")
-	errOriginNotFound  = errors.New("origin not supplied or is null") // internal error, will not be returned to the user
-	dummyValue         = []byte{'+'}
+	ErrNotGetStorage   = errors.New("unable to retrieve data from CSRF storage")
+
+	errOriginNotFound = errors.New("origin not supplied or is null") // internal error, will not be returned to the user
+	dummyValue        = []byte{'+'}
 )
 
 // Handler for CSRF middleware
@@ -102,10 +105,9 @@ func New(config ...Config) fiber.Handler {
 		switch c.Method() {
 		case fiber.MethodGet, fiber.MethodHead, fiber.MethodOptions, fiber.MethodTrace:
 			cookieToken := c.Cookies(cfg.CookieName)
-
 			if cookieToken != "" {
-				raw := getRawFromStorage(c, cookieToken, cfg, sessionManager, storageManager)
-
+				// In this case, handling error doesn't make sense because we have validations after the switch.
+				raw, _ := getRawFromStorage(c, cookieToken, cfg, sessionManager, storageManager) //nolint:errcheck //the details are in the comment above
 				if raw != nil {
 					token = cookieToken // Token is valid, safe to set it
 				}
@@ -148,9 +150,10 @@ func New(config ...Config) fiber.Handler {
 				return cfg.ErrorHandler(c, ErrTokenInvalid)
 			}
 
-			raw := getRawFromStorage(c, extractedToken, cfg, sessionManager, storageManager)
+			raw, err := getRawFromStorage(c, extractedToken, cfg, sessionManager, storageManager)
+			if err != nil || raw == nil {
+				log.Error("Failed to retrieve CSRF token: ", err)
 
-			if raw == nil {
 				// If token is not in storage, expire the cookie
 				expireCSRFCookie(c, cfg)
 				// and return an error
@@ -209,7 +212,7 @@ func HandlerFromContext(c fiber.Ctx) *Handler {
 
 // getRawFromStorage returns the raw value from the storage for the given token
 // returns nil if the token does not exist, is expired or is invalid
-func getRawFromStorage(c fiber.Ctx, token string, cfg Config, sessionManager *sessionManager, storageManager *storageManager) []byte {
+func getRawFromStorage(c fiber.Ctx, token string, cfg Config, sessionManager *sessionManager, storageManager *storageManager) ([]byte, error) {
 	if cfg.Session != nil {
 		return sessionManager.getRaw(c, token, dummyValue)
 	}
