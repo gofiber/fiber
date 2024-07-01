@@ -16,7 +16,9 @@ This middleware encrypts cookie values and not the cookie names.
 // Intitializes the middleware
 func New(config ...Config) fiber.Handler
 
-// Returns a random 16, 24, 32 bytes encoded string
+// GenerateKey returns a random string of 16, 24, or 32 bytes.
+// The length of the key determines the AES encryption algorithm used:
+// 16 bytes for AES-128, 24 bytes for AES-192, and 32 bytes for AES-256-GCM.
 func GenerateKey(length) string
 ```
 
