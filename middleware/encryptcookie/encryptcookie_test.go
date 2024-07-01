@@ -71,6 +71,32 @@ func Test_Middleware_InvalidKeys(t *testing.T) {
 	}
 }
 
+func Test_Middleware_InvalidBase64(t *testing.T) {
+	t.Parallel()
+	invalidBase64 := "invalid-base64-string-!@#"
+
+	t.Run("encryptor", func(t *testing.T) {
+		t.Parallel()
+		_, err := EncryptCookie("SomeText", invalidBase64)
+		require.Error(t, err)
+		require.ErrorContains(t, err, "failed to base64-decode key")
+	})
+
+	t.Run("decryptor_key", func(t *testing.T) {
+		t.Parallel()
+		_, err := DecryptCookie("SomeText", invalidBase64)
+		require.Error(t, err)
+		require.ErrorContains(t, err, "failed to base64-decode key")
+	})
+
+	t.Run("decryptor_value", func(t *testing.T) {
+		t.Parallel()
+		_, err := DecryptCookie(invalidBase64, GenerateKey(32))
+		require.Error(t, err)
+		require.ErrorContains(t, err, "failed to base64-decode value")
+	})
+}
+
 func Test_Middleware_Encrypt_Cookie(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
