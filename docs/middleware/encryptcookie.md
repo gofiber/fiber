@@ -16,8 +16,8 @@ This middleware encrypts cookie values and not the cookie names.
 // Intitializes the middleware
 func New(config ...Config) fiber.Handler
 
-// Returns a random 32 character long string
-func GenerateKey() string
+// Returns a random 16, 24, 32 bytes encoded string
+func GenerateKey(length) string
 ```
 
 ## Examples
@@ -55,9 +55,9 @@ app.Post("/", func(c fiber.Ctx) error {
 ```
 
 :::note
-`Key` must be a 32 character string. It's used to encrypt the values, so make sure it is random and keep it secret.
-You can run `openssl rand -base64 32` or call `encryptcookie.GenerateKey()` to create a random key for you.
-Make sure not to set `Key` to `encryptcookie.GenerateKey()` because that will create a new key every run.
+`Key` must be a 16, 24, or 32 bytes encoded string. It's used to encrypt the values, so make sure it is random and keep it secret.
+For example, you can run `openssl rand -base64 32` or call `encryptcookie.GenerateKey(32)` to create a random key for you.
+Make sure not to set `Key` to `encryptcookie.GenerateKey(32)` because that will create a new key every run of the application.
 :::
 
 ## Config
@@ -98,4 +98,23 @@ app.Use(csrf.New(csrf.Config{
 	CookieSecure:   true,
 	CookieHTTPOnly: false,
 }))
+```
+
+## Encryption Algorithms
+The default Encryptor and Decryptor functions use `AES-256-GCM` for encryption and decryption. If you need to use `AES-128` or `AES-192` instead, you can do so by changing the length of the key when calling `encryptcookie.GenerateKey(length)` or by providing a key of one of the following lengths:
+
+- AES-128 requires a 16-byte key.
+- AES-192 requires a 24-byte key.
+- AES-256 requires a 32-byte key.
+
+For example, to generate a key for AES-128:
+
+```go
+key := encryptcookie.GenerateKey(16)
+```
+
+And for AES-192:
+
+```go
+key := encryptcookie.GenerateKey(24)
 ```

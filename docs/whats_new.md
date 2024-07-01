@@ -275,6 +275,10 @@ We've updated several fields from a single string (containing comma-separated va
 
 We've added support for `zstd` compression on top of `gzip`, `deflate`, and `brotli`.
 
+### EncryptCookie
+
+Added support for specifying Key length when using `encryptcookie.GenerateKey(length)`. This allows the user to generate keys compatible with `AES-128`, `AES-192`, and `AES-256` (Default).
+
 ### Session
 
 :::caution
