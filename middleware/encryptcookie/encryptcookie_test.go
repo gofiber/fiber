@@ -1,6 +1,7 @@
 package encryptcookie
 
 import (
+	"crypto/rand"
 	"encoding/base64"
 	"net/http/httptest"
 	"strconv"
@@ -12,6 +13,63 @@ import (
 )
 
 var testKey = GenerateKey(32)
+
+func Test_Middleware_Panics(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Empty Key", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		require.Panics(t, func() {
+			app.Use(New(Config{
+				Key: "",
+			}))
+		})
+	})
+
+	t.Run("Invalid Key", func(t *testing.T) {
+		t.Parallel()
+		require.Panics(t, func() {
+			GenerateKey(11)
+		})
+	})
+}
+
+func Test_Middleware_InvalidKeys(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		length int
+	}{
+		{11},
+		{25},
+		{60},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(strconv.Itoa(tt.length)+"_length_encrypt", func(t *testing.T) {
+			t.Parallel()
+			key := make([]byte, tt.length)
+			_, err := rand.Read(key)
+			require.NoError(t, err)
+			keyString := base64.StdEncoding.EncodeToString(key)
+
+			_, err = EncryptCookie("SomeThing", keyString)
+			require.Error(t, err)
+		})
+
+		t.Run(strconv.Itoa(tt.length)+"_length_decrypt", func(t *testing.T) {
+			t.Parallel()
+			key := make([]byte, tt.length)
+			_, err := rand.Read(key)
+			require.NoError(t, err)
+			keyString := base64.StdEncoding.EncodeToString(key)
+
+			_, err = DecryptCookie("SomeThing", keyString)
+			require.Error(t, err)
+		})
+	}
+}
 
 func Test_Middleware_Encrypt_Cookie(t *testing.T) {
 	t.Parallel()
@@ -211,7 +269,7 @@ func Test_GenerateKey(t *testing.T) {
 
 	for _, tt := range tests {
 		tt := tt
-		t.Run(strconv.Itoa(tt.length)+"length", func(t *testing.T) {
+		t.Run(strconv.Itoa(tt.length)+"_length", func(t *testing.T) {
 			t.Parallel()
 			key := GenerateKey(tt.length)
 			decodedKey := decodeBase64(t, key)
