@@ -46,7 +46,7 @@ jobs:
   repeated:
     strategy:
       matrix:
-        go-version: [latest]
+        go-version: [stable]
     runs-on: ubuntu-latest
     steps:
       - name: Fetch Repository
