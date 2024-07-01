@@ -123,6 +123,10 @@ type App struct {
 	configured Config
 	// customConstraints is a list of external constraints
 	customConstraints []CustomConstraint
+	// sendfiles stores configurations for handling ctx.SendFile operations
+	sendfiles []*sendFileStore
+	// sendfilesMutex is a mutex used for sendfile operations
+	sendfilesMutex sync.RWMutex
 }
 
 // Config is a struct holding the server settings.
@@ -440,6 +444,7 @@ func New(config ...Config) *App {
 		getString:     utils.UnsafeString,
 		latestRoute:   &Route{},
 		customBinders: []CustomBinder{},
+		sendfiles:     []*sendFileStore{},
 	}
 
 	// Create Ctx pool

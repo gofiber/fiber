@@ -1,12 +1,6 @@
 # .github/release.yml
 
 changelog:
-  exclude:
-    labels:
-      - v2
-    authors:
-      - dependabot
-      - dependabot[bot]
   categories:
     - title: '❗ Breaking Changes'
       labels:

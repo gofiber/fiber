@@ -4,7 +4,6 @@ import (
 	"encoding/gob"
 	"errors"
 	"fmt"
-	"sync"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
@@ -13,9 +12,6 @@ import (
 
 // ErrEmptySessionID is an error that occurs when the session ID is empty.
 var ErrEmptySessionID = errors.New("session id cannot be empty")
-
-// mux is a global mutex for session operations.
-var mux sync.Mutex
 
 // sessionIDKey is the local key type used to store and retrieve the session ID in context.
 type sessionIDKey int
@@ -81,6 +77,10 @@ func (s *Store) Get(c fiber.Ctx) (*Session, error) {
 
 	// Create session object
 	sess := acquireSession()
+
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+
 	sess.ctx = c
 	sess.config = s
 	sess.id = id
@@ -88,6 +88,8 @@ func (s *Store) Get(c fiber.Ctx) (*Session, error) {
 
 	// Decode session data if found
 	if rawData != nil {
+		sess.data.Lock()
+		defer sess.data.Unlock()
 		if err := sess.decodeSessionData(rawData); err != nil {
 			return nil, fmt.Errorf("failed to decode session data: %w", err)
 		}
@@ -131,16 +133,4 @@ func (s *Store) Delete(id string) error {
 		return ErrEmptySessionID
 	}
 	return s.Storage.Delete(id)
-}
-
-// decodeSessionData decodes the session data from raw bytes.
-func (s *Session) decodeSessionData(rawData []byte) error {
-	mux.Lock()
-	defer mux.Unlock()
-	_, _ = s.byteBuffer.Write(rawData)
-	encCache := gob.NewDecoder(s.byteBuffer)
-	if err := encCache.Decode(&s.data.Data); err != nil {
-		return fmt.Errorf("failed to decode session data: %w", err)
-	}
-	return nil
 }

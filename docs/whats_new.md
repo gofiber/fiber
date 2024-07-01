@@ -186,6 +186,9 @@ To enable the routing changes above we had to slightly adjust the signature of t
 DRAFT section
 :::
 
+### New Features
+
+- Cookie now allows Partitioned cookies for [CHIPS](https://developers.google.com/privacy-sandbox/3pcd/chips) support. CHIPS (Cookies Having Independent Partitioned State) is a feature that improves privacy by allowing cookies to be partitioned by top-level site, mitigating cross-site tracking.
 
 ### new methods
 
@@ -219,6 +222,7 @@ DRAFT section
 * Bind -> for Binding instead of View, us c.ViewBind()
 * Format -> Param: body interface{} -> handlers ...ResFmt
 * Redirect -> c.Redirect().To()
+* SendFile now supports different configurations using the config parameter.
 
 ---
 

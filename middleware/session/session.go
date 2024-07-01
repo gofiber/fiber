@@ -13,6 +13,7 @@ import (
 )
 
 type Session struct {
+	mu         sync.RWMutex  // Mutex to protect non-data fields
 	id         string        // session id
 	fresh      bool          // if new session
 	ctx        fiber.Ctx     // fiber context
@@ -41,6 +42,7 @@ func acquireSession() *Session {
 }
 
 func releaseSession(s *Session) {
+	s.mu.Lock()
 	s.id = ""
 	s.exp = 0
 	s.ctx = nil
@@ -51,16 +53,21 @@ func releaseSession(s *Session) {
 	if s.byteBuffer != nil {
 		s.byteBuffer.Reset()
 	}
+	s.mu.Unlock()
 	sessionPool.Put(s)
 }
 
 // Fresh is true if the current session is new
 func (s *Session) Fresh() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.fresh
 }
 
 // ID returns the session id
 func (s *Session) ID() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.id
 }
 
@@ -101,6 +108,9 @@ func (s *Session) Destroy() error {
 	// Reset local data
 	s.data.Reset()
 
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	// Use external Storage if exist
 	if err := s.config.Storage.Delete(s.id); err != nil {
 		return err
@@ -113,6 +123,9 @@ func (s *Session) Destroy() error {
 
 // Regenerate generates a new session id and delete the old one from Storage
 func (s *Session) Regenerate() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	// Delete old id from storage
 	if err := s.config.Storage.Delete(s.id); err != nil {
 		return err
@@ -130,6 +143,10 @@ func (s *Session) Reset() error {
 	if s.data != nil {
 		s.data.Reset()
 	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	// Reset byte buffer
 	if s.byteBuffer != nil {
 		s.byteBuffer.Reset()
@@ -153,19 +170,23 @@ func (s *Session) Reset() error {
 
 // refresh generates a new session, and set session.fresh to be true
 func (s *Session) refresh() {
-	// Create a new id
 	s.id = s.config.KeyGenerator()
-
-	// We assign a new id to the session, so the session must be fresh
 	s.fresh = true
 }
 
 // Save will update the storage and client cookie
+//
+// sess.Save() will save the session data to the storage and update the
+// client cookie, and it will release the session after saving.
+//
+// It's not safe to use the session after calling Save().
 func (s *Session) Save() error {
 	// Better safe than sorry
 	if s.data == nil {
 		return nil
 	}
+
+	s.mu.Lock()
 
 	// Check if session has your own expiration, otherwise use default value
 	if s.exp <= 0 {
@@ -176,25 +197,25 @@ func (s *Session) Save() error {
 	s.setSession()
 
 	// Convert data to bytes
-	mux.Lock()
-	defer mux.Unlock()
 	encCache := gob.NewEncoder(s.byteBuffer)
 	err := encCache.Encode(&s.data.Data)
 	if err != nil {
 		return fmt.Errorf("failed to encode data: %w", err)
 	}
 
-	// copy the data in buffer
+	// Copy the data in buffer
 	encodedBytes := make([]byte, s.byteBuffer.Len())
 	copy(encodedBytes, s.byteBuffer.Bytes())
 
-	// pass copied bytes with session id to provider
+	// Pass copied bytes with session id to provider
 	if err := s.config.Storage.Set(s.id, encodedBytes, s.exp); err != nil {
 		return err
 	}
 
+	s.mu.Unlock()
+
 	// Release session
-	// TODO: It's not safe to use the Session after called Save()
+	// TODO: It's not safe to use the Session after calling Save()
 	releaseSession(s)
 
 	return nil
@@ -210,6 +231,8 @@ func (s *Session) Keys() []string {
 
 // SetExpiry sets a specific expiration for this session
 func (s *Session) SetExpiry(exp time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.exp = exp
 }
 
@@ -274,4 +297,14 @@ func (s *Session) delSession() {
 		s.ctx.Response().Header.SetCookie(fcookie)
 		fasthttp.ReleaseCookie(fcookie)
 	}
+}
+
+// decodeSessionData decodes the session data from raw bytes.
+func (s *Session) decodeSessionData(rawData []byte) error {
+	_, _ = s.byteBuffer.Write(rawData)
+	encCache := gob.NewDecoder(s.byteBuffer)
+	if err := encCache.Decode(&s.data.Data); err != nil {
+		return fmt.Errorf("failed to decode session data: %w", err)
+	}
+	return nil
 }
