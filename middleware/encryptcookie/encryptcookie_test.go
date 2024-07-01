@@ -440,6 +440,7 @@ func Benchmark_Middleware_Encrypt_Cookie_Parallel(b *testing.B) {
 		})
 	})
 }
+
 func Benchmark_Encrypt_Cookie_Next_Parallel(b *testing.B) {
 	app := fiber.New()
 
