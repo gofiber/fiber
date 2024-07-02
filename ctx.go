@@ -1069,11 +1069,13 @@ func (c *DefaultCtx) Params(key string, defaultValue ...string) string {
 	if key == "*" || key == "+" {
 		key += "1"
 	}
-	for i := range c.route.Params {
+
+	route := c.Route()
+	for i := range route.Params {
 		if len(key) != len(c.route.Params[i]) {
 			continue
 		}
-		if c.route.Params[i] == key || (!c.app.config.CaseSensitive && utils.EqualFold(c.route.Params[i], key)) {
+		if route.Params[i] == key || (!c.app.config.CaseSensitive && utils.EqualFold(route.Params[i], key)) {
 			// in case values are not here
 			if len(c.values) <= i || len(c.values[i]) == 0 {
 				break
