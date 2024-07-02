@@ -44,10 +44,9 @@ jobs:
           slug: gofiber/fiber
 
   repeated:
-    needs: unit
     strategy:
       matrix:
-        go-version: [1.21.x, 1.22.x]
+        go-version: [stable]
     runs-on: ubuntu-latest
     steps:
       - name: Fetch Repository
