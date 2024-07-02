@@ -25,12 +25,12 @@ type Config struct {
 
 	// Custom function to encrypt cookies.
 	//
-	// Optional. Default: EncryptCookie (using AES-256-GCM)
+	// Optional. Default: EncryptCookie (using AES-GCM)
 	Encryptor func(decryptedString, key string) (string, error)
 
 	// Custom function to decrypt cookies.
 	//
-	// Optional. Default: DecryptCookie (using AES-256-GCM)
+	// Optional. Default: DecryptCookie (using AES-GCM)
 	Decryptor func(encryptedString, key string) (string, error)
 }
 

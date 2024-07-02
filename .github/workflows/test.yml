@@ -44,9 +44,6 @@ jobs:
           slug: gofiber/fiber
 
   repeated:
-    strategy:
-      matrix:
-        go-version: [stable]
     runs-on: ubuntu-latest
     steps:
       - name: Fetch Repository
@@ -55,7 +52,7 @@ jobs:
       - name: Install Go
         uses: actions/setup-go@v5
         with:
-          go-version: ${{ matrix.go-version }}
+          go-version: stable
 
       - name: Test
         run: go run gotest.tools/gotestsum@latest -f testname -- ./... -race -count=15 -shuffle=on

@@ -12,8 +12,6 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-var testKey = GenerateKey(32)
-
 func Test_Middleware_Panics(t *testing.T) {
 	t.Parallel()
 
@@ -99,6 +97,7 @@ func Test_Middleware_InvalidBase64(t *testing.T) {
 
 func Test_Middleware_Encrypt_Cookie(t *testing.T) {
 	t.Parallel()
+	testKey := GenerateKey(32)
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -160,6 +159,7 @@ func Test_Middleware_Encrypt_Cookie(t *testing.T) {
 
 func Test_Encrypt_Cookie_Next(t *testing.T) {
 	t.Parallel()
+	testKey := GenerateKey(32)
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -184,6 +184,7 @@ func Test_Encrypt_Cookie_Next(t *testing.T) {
 
 func Test_Encrypt_Cookie_Except(t *testing.T) {
 	t.Parallel()
+	testKey := GenerateKey(32)
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -228,6 +229,7 @@ func Test_Encrypt_Cookie_Except(t *testing.T) {
 
 func Test_Encrypt_Cookie_Custom_Encryptor(t *testing.T) {
 	t.Parallel()
+	testKey := GenerateKey(32)
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -310,6 +312,7 @@ func Test_GenerateKey(t *testing.T) {
 }
 
 func Benchmark_Middleware_Encrypt_Cookie(b *testing.B) {
+	testKey := GenerateKey(32)
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -356,6 +359,7 @@ func Benchmark_Middleware_Encrypt_Cookie(b *testing.B) {
 }
 
 func Benchmark_Encrypt_Cookie_Next(b *testing.B) {
+	testKey := GenerateKey(32)
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -386,6 +390,7 @@ func Benchmark_Encrypt_Cookie_Next(b *testing.B) {
 }
 
 func Benchmark_Encrypt_Cookie_Except(b *testing.B) {
+	testKey := GenerateKey(32)
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -420,6 +425,7 @@ func Benchmark_Encrypt_Cookie_Except(b *testing.B) {
 }
 
 func Benchmark_Encrypt_Cookie_Custom_Encryptor(b *testing.B) {
+	testKey := GenerateKey(32)
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -474,6 +480,7 @@ func Benchmark_Encrypt_Cookie_Custom_Encryptor(b *testing.B) {
 }
 
 func Benchmark_Middleware_Encrypt_Cookie_Parallel(b *testing.B) {
+	testKey := GenerateKey(32)
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -526,6 +533,7 @@ func Benchmark_Middleware_Encrypt_Cookie_Parallel(b *testing.B) {
 }
 
 func Benchmark_Encrypt_Cookie_Next_Parallel(b *testing.B) {
+	testKey := GenerateKey(32)
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -556,6 +564,7 @@ func Benchmark_Encrypt_Cookie_Next_Parallel(b *testing.B) {
 }
 
 func Benchmark_Encrypt_Cookie_Except_Parallel(b *testing.B) {
+	testKey := GenerateKey(32)
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -590,6 +599,7 @@ func Benchmark_Encrypt_Cookie_Except_Parallel(b *testing.B) {
 }
 
 func Benchmark_Encrypt_Cookie_Custom_Encryptor_Parallel(b *testing.B) {
+	testKey := GenerateKey(32)
 	app := fiber.New()
 
 	app.Use(New(Config{

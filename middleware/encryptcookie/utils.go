@@ -10,6 +10,8 @@ import (
 	"io"
 )
 
+var ErrInvalidKeyLength = errors.New("encryption key must be 16, 24, or 32 bytes")
+
 // EncryptCookie Encrypts a cookie value with specific encryption key
 func EncryptCookie(value, key string) (string, error) {
 	keyDecoded, err := base64.StdEncoding.DecodeString(key)
@@ -19,7 +21,7 @@ func EncryptCookie(value, key string) (string, error) {
 
 	keyLen := len(keyDecoded)
 	if keyLen != 16 && keyLen != 24 && keyLen != 32 {
-		return "", errors.New("encryption key must be 16, 24, or 32 bytes")
+		return "", ErrInvalidKeyLength
 	}
 
 	block, err := aes.NewCipher(keyDecoded)
@@ -50,7 +52,7 @@ func DecryptCookie(value, key string) (string, error) {
 
 	keyLen := len(keyDecoded)
 	if keyLen != 16 && keyLen != 24 && keyLen != 32 {
-		return "", errors.New("encryption key must be 16, 24, or 32 bytes")
+		return "", ErrInvalidKeyLength
 	}
 
 	enc, err := base64.StdEncoding.DecodeString(value)
@@ -88,7 +90,7 @@ func DecryptCookie(value, key string) (string, error) {
 // 16 bytes for AES-128, 24 bytes for AES-192, and 32 bytes for AES-256-GCM.
 func GenerateKey(length int) string {
 	if length != 16 && length != 24 && length != 32 {
-		panic("encryption key length must be 16, 24, or 32 bytes")
+		panic(ErrInvalidKeyLength)
 	}
 
 	key := make([]byte, length)
