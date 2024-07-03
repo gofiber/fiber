@@ -365,7 +365,7 @@ func Benchmark_LogfKeyAndValues(b *testing.B) {
 	}
 }
 
-func Benchmark_LogfKeyAndValuesParallel(b *testing.B) {
+func Benchmark_LogfKeyAndValues_Parallel(b *testing.B) {
 	tests := []struct {
 		name          string
 		level         Level
