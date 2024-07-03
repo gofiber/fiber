@@ -7,7 +7,7 @@ sidebar_position: 6
 
 Logs serve as an essential tool for observing program behavior, diagnosing issues, and setting up corresponding alerts. Well-structured logs can significantly enhance search efficiency and streamline the troubleshooting process.
 
-Fiber offers a default mechanism for logging to standard output. Additionally, it provides several global functions, including log.Info, log.Errorf, log.Warnw, among others, to facilitate comprehensive logging capabilities.
+Fiber offers a default mechanism for logging to standard output. Additionally, it provides several global functions, including `log.Info`, `log.Errorf`, `log.Warnw`, among others, to facilitate comprehensive logging capabilities.
 
 ## Log levels
 
@@ -45,7 +45,7 @@ type AllLogger interface {
 Note: The Fatal level method will terminate the program after printing the log message. Please use it with caution.
 
 ### Basic Logging
-Logs of different levels can be directly printed. These will be entered into messageKey, with the default key being msg.
+Logs of different levels can be directly printed. These will be entered into `messageKey`, with the default key being `msg`.
 
 ```go
 log.Info("Hello, World!")
@@ -69,7 +69,7 @@ log.Fatalf("So Long, and Thanks for All the %s.", "banana")
 ```
 
 ### Key-Value Logging
-Print a message with key-value pairs. If the key and value are not paired correctly, the log will output ` KEYVALS UNPAIRED`.
+Print a message with key-value pairs. If the key and value are not paired correctly, the log will output `KEYVALS UNPAIRED`.
 
 ```go
 log.Debugw("", "Hello", "boy")
