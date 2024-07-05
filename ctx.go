@@ -1021,21 +1021,18 @@ func (c *DefaultCtx) ClientHelloInfo() *tls.ClientHelloInfo {
 
 // Next executes the next method in the stack that matches the current route.
 func (c *DefaultCtx) Next() error {
-	// Increment handler index
 	c.indexHandler++
-	var err error
-	// Did we execute all route handlers?
+
 	if c.indexHandler < len(c.route.Handlers) {
-		// Continue route stack
-		err = c.route.Handlers[c.indexHandler](c)
-	} else {
-		// Continue handler stack
-		if c.app.newCtxFunc != nil {
-			_, err = c.app.nextCustom(c)
-		} else {
-			_, err = c.app.next(c)
-		}
+		return c.route.Handlers[c.indexHandler](c)
 	}
+
+	if c.app.newCtxFunc != nil {
+		_, err := c.app.nextCustom(c)
+		return err
+	}
+
+	_, err := c.app.next(c)
 	return err
 }
 
