@@ -2372,6 +2372,25 @@ func Test_Ctx_Params(t *testing.T) {
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
+func Test_Ctx_Params_ErrorHandler_Panic_Issue_2832(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		ErrorHandler: func(c Ctx, _ error) error {
+			return c.SendString(c.Params("user"))
+		},
+		BodyLimit: 1 * 1024,
+	})
+
+	app.Get("/test/:user", func(_ Ctx) error {
+		return NewError(StatusInternalServerError, "error")
+	})
+
+	largeBody := make([]byte, 2*1024)
+	_, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", bytes.NewReader(largeBody)))
+	require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge, "app.Test(req)")
+}
+
 func Test_Ctx_Params_Case_Sensitive(t *testing.T) {
 	t.Parallel()
 	app := New(Config{CaseSensitive: true})
