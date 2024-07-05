@@ -542,6 +542,27 @@ func Benchmark_Router_Next(b *testing.B) {
 	require.Equal(b, 4, c.indexRoute)
 }
 
+// go test -v ./... -run=^$ -bench=Benchmark_Router_Next_Default -benchmem -count=4
+func Benchmark_Router_Next_Default(b *testing.B) {
+	app := New()
+	app.Get("/", func(_ Ctx) error {
+		return nil
+	})
+
+	h := app.Handler()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodGet)
+	fctx.Request.SetRequestURI("/")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		h(fctx)
+	}
+}
+
 // go test -v ./... -run=^$ -bench=Benchmark_Route_Match -benchmem -count=4
 func Benchmark_Route_Match(b *testing.B) {
 	var match bool
