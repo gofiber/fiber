@@ -63,12 +63,14 @@ func Test_Store_getSessionID(t *testing.T) {
 
 // go test -run Test_Store_Get
 // Regression: https://github.com/gofiber/fiber/issues/1408
+// Regression: https://github.com/gofiber/fiber/security/advisories/GHSA-98j2-3j3p-fw2v
 func Test_Store_Get(t *testing.T) {
+	// Regression: https://github.com/gofiber/fiber/security/advisories/GHSA-98j2-3j3p-fw2v
 	t.Parallel()
 	unexpectedID := "test-session-id"
 	// fiber instance
 	app := fiber.New()
-	t.Run("session should persisted even session is invalid", func(t *testing.T) {
+	t.Run("session should be re-generated if it is invalid", func(t *testing.T) {
 		t.Parallel()
 		// session store
 		store := New()
@@ -81,7 +83,7 @@ func Test_Store_Get(t *testing.T) {
 		acquiredSession, err := store.Get(ctx)
 		require.NoError(t, err)
 
-		require.Equal(t, unexpectedID, acquiredSession.ID())
+		require.NotEqual(t, unexpectedID, acquiredSession.ID())
 	})
 }
 

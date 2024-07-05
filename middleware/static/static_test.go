@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
@@ -717,5 +718,131 @@ func Test_isFile(t *testing.T) {
 			require.ErrorIs(t, err, c.gotError)
 			require.Equal(t, c.expected, actual)
 		})
+	}
+}
+
+func Test_Static_Compress(t *testing.T) {
+	t.Parallel()
+	dir := "../../.github/testdata/fs"
+	app := fiber.New()
+	app.Get("/*", New(dir, Config{
+		Compress: true,
+	}))
+
+	// Note: deflate is not supported by fasthttp.FS
+	algorithms := []string{"zstd", "gzip", "br"}
+
+	for _, algo := range algorithms {
+		algo := algo
+		t.Run(algo+"_compression", func(t *testing.T) {
+			t.Parallel()
+			// request non-compressable file (less than 200 bytes), Content Lengh will remain the same
+			req := httptest.NewRequest(fiber.MethodGet, "/css/style.css", nil)
+			req.Header.Set("Accept-Encoding", algo)
+			resp, err := app.Test(req, 10*time.Second)
+
+			require.NoError(t, err, "app.Test(req)")
+			require.Equal(t, 200, resp.StatusCode, "Status code")
+			require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
+			require.Equal(t, "46", resp.Header.Get(fiber.HeaderContentLength))
+
+			// request compressable file, ContentLenght will change
+			req = httptest.NewRequest(fiber.MethodGet, "/index.html", nil)
+			req.Header.Set("Accept-Encoding", algo)
+			resp, err = app.Test(req, 10*time.Second)
+
+			require.NoError(t, err, "app.Test(req)")
+			require.Equal(t, 200, resp.StatusCode, "Status code")
+			require.Equal(t, algo, resp.Header.Get(fiber.HeaderContentEncoding))
+			require.Greater(t, "299", resp.Header.Get(fiber.HeaderContentLength))
+		})
+	}
+}
+
+func Test_Static_Compress_WithoutEncoding(t *testing.T) {
+	t.Parallel()
+	dir := "../../.github/testdata/fs"
+	app := fiber.New()
+	app.Get("/*", New(dir, Config{
+		Compress:      true,
+		CacheDuration: 1 * time.Second,
+	}))
+
+	// request compressable file without encoding
+	req := httptest.NewRequest(fiber.MethodGet, "/index.html", nil)
+	resp, err := app.Test(req, 10*time.Second)
+
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
+	require.Equal(t, "299", resp.Header.Get(fiber.HeaderContentLength))
+
+	// request compressable file with different encodings
+	algorithms := []string{"zstd", "gzip", "br"}
+	fileSuffixes := map[string]string{
+		"gzip": ".fiber.gz",
+		"br":   ".fiber.br",
+		"zstd": ".fiber.zst",
+	}
+
+	for _, algo := range algorithms {
+		// Wait for cache to expire
+		time.Sleep(2 * time.Second)
+		fileName := "index.html"
+		compressedFileName := dir + "/index.html" + fileSuffixes[algo]
+
+		req = httptest.NewRequest(fiber.MethodGet, "/"+fileName, nil)
+		req.Header.Set("Accept-Encoding", algo)
+		resp, err = app.Test(req, 10*time.Second)
+
+		require.NoError(t, err, "app.Test(req)")
+		require.Equal(t, 200, resp.StatusCode, "Status code")
+		require.Equal(t, algo, resp.Header.Get(fiber.HeaderContentEncoding))
+		require.Greater(t, "299", resp.Header.Get(fiber.HeaderContentLength))
+
+		// verify suffixed file was created
+		_, err := os.Stat(compressedFileName)
+		require.NoError(t, err, "File should exist")
+	}
+}
+
+func Test_Static_Compress_WithFileSuffixes(t *testing.T) {
+	t.Parallel()
+	dir := "../../.github/testdata/fs"
+	fileSuffixes := map[string]string{
+		"gzip": ".test.gz",
+		"br":   ".test.br",
+		"zstd": ".test.zst",
+	}
+
+	app := fiber.New(fiber.Config{
+		CompressedFileSuffixes: fileSuffixes,
+	})
+	app.Get("/*", New(dir, Config{
+		Compress:      true,
+		CacheDuration: 1 * time.Second,
+	}))
+
+	// request compressable file with different encodings
+	algorithms := []string{"zstd", "gzip", "br"}
+
+	for _, algo := range algorithms {
+		// Wait for cache to expire
+		time.Sleep(2 * time.Second)
+		fileName := "index.html"
+		compressedFileName := dir + "/index.html" + fileSuffixes[algo]
+
+		req := httptest.NewRequest(fiber.MethodGet, "/"+fileName, nil)
+		req.Header.Set("Accept-Encoding", algo)
+		resp, err := app.Test(req, 10*time.Second)
+
+		require.NoError(t, err, "app.Test(req)")
+		require.Equal(t, 200, resp.StatusCode, "Status code")
+		require.Equal(t, algo, resp.Header.Get(fiber.HeaderContentEncoding))
+		require.Greater(t, "299", resp.Header.Get(fiber.HeaderContentLength))
+
+		// verify suffixed file was created
+		_, err = os.Stat(compressedFileName)
+		require.NoError(t, err, "File should exist")
 	}
 }

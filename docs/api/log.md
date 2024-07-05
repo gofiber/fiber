@@ -5,11 +5,9 @@ description: Fiber's built-in log package
 sidebar_position: 6
 ---
 
-We can use logs to observe program behavior, diagnose problems, or configure corresponding alarms.
-And defining a well structured log can improve search efficiency and facilitate handling of problems.
+Logs serve as an essential tool for observing program behavior, diagnosing issues, and setting up corresponding alerts. Well-structured logs can significantly enhance search efficiency and streamline the troubleshooting process.
 
-Fiber provides a default way to print logs in the standard output. 
-It also provides several global functions, such as `log.Info`, `log.Errorf`, `log.Warnw`, etc. 
+Fiber offers a default mechanism for logging to standard output. Additionally, it provides several global functions, including `log.Info`, `log.Errorf`, `log.Warnw`, among others, to facilitate comprehensive logging capabilities.
 
 ## Log levels
 
@@ -44,8 +42,10 @@ type AllLogger interface {
 ```
 
 ## Print log
-Note: The method of calling the Fatal level will interrupt the program running after printing the log, please use it with caution. 
-Directly print logs of different levels, which will be entered into messageKey, the default is msg.
+Note: The Fatal level method will terminate the program after printing the log message. Please use it with caution.
+
+### Basic Logging
+Logs of different levels can be directly printed. These will be entered into `messageKey`, with the default key being `msg`.
 
 ```go
 log.Info("Hello, World!")
@@ -56,7 +56,9 @@ log.Error("Houston, we have a problem.")
 log.Fatal("So Long, and Thanks for All the Fislog.")
 log.Panic("The system is down.")
 ```
-Format and print logs of different levels, all methods end with f
+
+### Formatted Logging
+Logs of different levels can be formatted before printing. All such methods end with an `f`.
 
 ```go
 log.Debugf("Hello %s", "boy")
@@ -66,7 +68,8 @@ log.Errorf("%s, we have a problem.", "Master Shifu")
 log.Fatalf("So Long, and Thanks for All the %s.", "banana")
 ```
 
-Print a message with the key and value, or `KEYVALS UNPAIRED` if the key and value are not a pair.
+### Key-Value Logging
+Print a message with key-value pairs. If the key and value are not paired correctly, the log will output `KEYVALS UNPAIRED`.
 
 ```go
 log.Debugw("", "Hello", "boy")
@@ -77,7 +80,7 @@ log.Fatalw("", "fruit", "banana")
 ```
 
 ## Global log
-If you are in a project and just want to use a simple log function that can be printed at any time in the global, we provide a global log.
+For projects that require a simple, global logging function to print messages at any time, Fiber provides a global log.
 
 ```go
 import "github.com/gofiber/fiber/v3/log"
@@ -86,8 +89,11 @@ log.Info("info")
 log.Warn("warn")
 ```
 
-The above is using the default `log.DefaultLogger` standard output. 
-You can also find an already implemented adaptation under contrib, or use your own implemented Logger and use `log.SetLogger` to set the global log logger.
+These global log functions allow you to log messages conveniently throughout your project.
+
+The above example uses the default `log.DefaultLogger` for standard output. You can also find various pre-implemented adapters under the [contrib](https://github.com/gofiber/contrib) package such as `fiberzap` and `fiberzerolog`, or you can implement your own logger and set it as the global logger using `log.SetLogger`.This flexibility allows you to tailor the logging behavior to suit your project's needs.
+
+Here's an example using a custom logger:
 
 ```go
 import (
@@ -107,8 +113,7 @@ fiberlog.SetLogger(customLogger)
 ```
 
 ## Set Level
-`log.SetLevel` sets the level of logs below which logs will not be output.
-The default logger is LevelTrace.
+`log.SetLevel` sets the minimum level of logs that will be output. The default log level is `LevelTrace`.
 
 Note that this method is not **concurrent-safe**.
 
@@ -117,9 +122,14 @@ import "github.com/gofiber/fiber/v3/log"
 
 log.SetLevel(log.LevelInfo)
 ```
+
+Setting the log level allows you to control the verbosity of the logs, filtering out messages below the specified level.
+
 ## Set output
 
-`log.SetOutput` sets the output destination of the logger. The default logger types the log in the console.
+`log.SetOutput` sets the output destination of the logger. By default, the logger outputs logs to the console.
+
+### Writing logs to stderr
 
 ```go
 var logger AllLogger = &defaultLogger{
@@ -128,7 +138,11 @@ var logger AllLogger = &defaultLogger{
 }
 ```
 
-Set the output destination to the file.
+This allows you to customize where the logs are written, such as to a file, an external logging service, or any other desired destination.
+
+### Writing logs to a file
+
+Set the output destination to the file, in this case `test.log`:
 
 ```go
 // Output to ./test.log file
@@ -138,7 +152,10 @@ if err != nil {
 }
 log.SetOutput(f)
 ```
-Set the output destination to the console and file.
+
+### Writing logs to both console and file
+
+The following example will write the logs to both `test.log` and `stdout`:
 
 ```go
 // Output to ./test.log file
@@ -146,10 +163,14 @@ file, _ := os.OpenFile("test.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 iw := io.MultiWriter(os.Stdout, file)
 log.SetOutput(iw)
 ```
+
 ## Bind context
-Set the context, using the following method will return a `CommonLogger` instance bound to the specified context
+
+To bind a logger to a specific context, use the following method. This will return a `CommonLogger` instance that is bound to the specified context.
+
 ```go
 commonLogger := log.WithContext(ctx)
 commonLogger.Info("info")
 ```
 
+Binding the logger to a context allows you to include context-specific information in your logs, improving traceability and debugging.

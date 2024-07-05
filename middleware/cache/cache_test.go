@@ -697,6 +697,40 @@ func Test_CustomCacheHeader(t *testing.T) {
 	require.Equal(t, cacheMiss, resp.Header.Get("Cache-Status"))
 }
 
+func Test_CacheInvalidation(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		CacheControl: true,
+		CacheInvalidator: func(c fiber.Ctx) bool {
+			return fiber.Query[bool](c, "invalidate")
+		},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString(time.Now().String())
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	respCached, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	bodyCached, err := io.ReadAll(respCached.Body)
+	require.NoError(t, err)
+	require.True(t, bytes.Equal(body, bodyCached))
+	require.NotEmpty(t, respCached.Header.Get(fiber.HeaderCacheControl))
+
+	respInvalidate, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/?invalidate=true", nil))
+	require.NoError(t, err)
+	bodyInvalidate, err := io.ReadAll(respInvalidate.Body)
+	require.NoError(t, err)
+	require.NotEqual(t, body, bodyInvalidate)
+}
+
 // Because time points are updated once every X milliseconds, entries in tests can often have
 // equal expiration times and thus be in an random order. This closure hands out increasing
 // time intervals to maintain strong ascending order of expiration

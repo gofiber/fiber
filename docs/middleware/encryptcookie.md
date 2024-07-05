@@ -16,8 +16,10 @@ This middleware encrypts cookie values and not the cookie names.
 // Intitializes the middleware
 func New(config ...Config) fiber.Handler
 
-// Returns a random 32 character long string
-func GenerateKey() string
+// GenerateKey returns a random string of 16, 24, or 32 bytes.
+// The length of the key determines the AES encryption algorithm used:
+// 16 bytes for AES-128, 24 bytes for AES-192, and 32 bytes for AES-256-GCM.
+func GenerateKey(length int) string
 ```
 
 ## Examples
@@ -55,9 +57,8 @@ app.Post("/", func(c fiber.Ctx) error {
 ```
 
 :::note
-`Key` must be a 32 character string. It's used to encrypt the values, so make sure it is random and keep it secret.
-You can run `openssl rand -base64 32` or call `encryptcookie.GenerateKey()` to create a random key for you.
-Make sure not to set `Key` to `encryptcookie.GenerateKey()` because that will create a new key every run.
+The `Key` parameter requires an encoded string of 16, 24, or 32 bytes for encryption, corresponding to AES-128, AES-192, and AES-256-GCM standards, respectively. Ensure the key is randomly generated and securely stored.
+To generate a 32 char key, use `openssl rand -base64 32` or `encryptcookie.GenerateKey(32)`. Avoid dynamically generating a new `Key` with `encryptcookie.GenerateKey(32)` at each application startup to prevent rendering previously encrypted data inaccessible.
 :::
 
 ## Config
@@ -83,6 +84,7 @@ var ConfigDefault = Config{
 ```
 
 ## Usage With Other Middlewares That Reads Or Modify Cookies
+
 Place the `encryptcookie` middleware before any other middleware that reads or modifies cookies. For example, if you are using the CSRF middleware, ensure that the `encryptcookie` middleware is placed before it. Failure to do so may prevent the CSRF middleware from reading the encrypted cookie.
 
 You may also choose to exclude certain cookies from encryption. For instance, if you are using the `CSRF` middleware with a frontend framework like Angular, and the framework reads the token from a cookie, you should exclude that cookie from encryption. This can be achieved by adding the cookie name to the Except array in the configuration:
@@ -98,4 +100,23 @@ app.Use(csrf.New(csrf.Config{
 	CookieSecure:   true,
 	CookieHTTPOnly: false,
 }))
+```
+
+## Encryption Algorithms
+
+The default Encryptor and Decryptor functions use `AES-256-GCM` for encryption and decryption. If you need to use `AES-128` or `AES-192` instead, you can do so by changing the length of the key when calling `encryptcookie.GenerateKey(length)` or by providing a key of one of the following lengths:
+- AES-128 requires a 16-byte key.
+- AES-192 requires a 24-byte key.
+- AES-256 requires a 32-byte key.
+
+For example, to generate a key for AES-128:
+
+```go
+key := encryptcookie.GenerateKey(16)
+```
+
+And for AES-192:
+
+```go
+key := encryptcookie.GenerateKey(24)
 ```

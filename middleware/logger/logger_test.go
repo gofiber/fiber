@@ -21,6 +21,42 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+func benchmarkSetup(b *testing.B, app *fiber.App, uri string) {
+	b.Helper()
+
+	h := app.Handler()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
+	fctx.Request.SetRequestURI(uri)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		h(fctx)
+	}
+}
+
+func benchmarkSetupParallel(b *testing.B, app *fiber.App, path string) {
+	b.Helper()
+
+	handler := app.Handler()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Request.Header.SetMethod(fiber.MethodGet)
+		fctx.Request.SetRequestURI(path)
+
+		for pb.Next() {
+			handler(fctx)
+		}
+	})
+}
+
 // go test -run Test_Logger
 func Test_Logger(t *testing.T) {
 	t.Parallel()
@@ -438,65 +474,6 @@ func Test_Logger_Data_Race(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp2.StatusCode)
 }
 
-// go test -v -run=^$ -bench=Benchmark_Logger -benchmem -count=4
-func Benchmark_Logger(b *testing.B) {
-	benchSetup := func(b *testing.B, app *fiber.App) {
-		b.Helper()
-
-		h := app.Handler()
-
-		fctx := &fasthttp.RequestCtx{}
-		fctx.Request.Header.SetMethod(fiber.MethodGet)
-		fctx.Request.SetRequestURI("/")
-
-		b.ReportAllocs()
-		b.ResetTimer()
-
-		for n := 0; n < b.N; n++ {
-			h(fctx)
-		}
-
-		require.Equal(b, 200, fctx.Response.Header.StatusCode())
-	}
-
-	b.Run("Base", func(bb *testing.B) {
-		app := fiber.New()
-		app.Use(New(Config{
-			Format: "${bytesReceived} ${bytesSent} ${status}",
-			Output: io.Discard,
-		}))
-		app.Get("/", func(c fiber.Ctx) error {
-			c.Set("test", "test")
-			return c.SendString("Hello, World!")
-		})
-		benchSetup(bb, app)
-	})
-
-	b.Run("DefaultFormat", func(bb *testing.B) {
-		app := fiber.New()
-		app.Use(New(Config{
-			Output: io.Discard,
-		}))
-		app.Get("/", func(c fiber.Ctx) error {
-			return c.SendString("Hello, World!")
-		})
-		benchSetup(bb, app)
-	})
-
-	b.Run("WithTagParameter", func(bb *testing.B) {
-		app := fiber.New()
-		app.Use(New(Config{
-			Format: "${bytesReceived} ${bytesSent} ${status} ${reqHeader:test}",
-			Output: io.Discard,
-		}))
-		app.Get("/", func(c fiber.Ctx) error {
-			c.Set("test", "test")
-			return c.SendString("Hello, World!")
-		})
-		benchSetup(bb, app)
-	})
-}
-
 // go test -run Test_Response_Header
 func Test_Response_Header(t *testing.T) {
 	t.Parallel()
@@ -665,4 +642,314 @@ func Test_Logger_EnableColors(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 	require.EqualValues(t, 1, *o)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Logger$ -benchmem -count=4
+func Benchmark_Logger(b *testing.B) {
+	b.Run("NoMiddleware", func(bb *testing.B) {
+		app := fiber.New()
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString("Hello, World!")
+		})
+		benchmarkSetup(bb, app, "/")
+	})
+
+	b.Run("WithBytesAndStatus", func(bb *testing.B) {
+		app := fiber.New()
+		app.Use(New(Config{
+			Format: "${bytesReceived} ${bytesSent} ${status}",
+			Output: io.Discard,
+		}))
+		app.Get("/", func(c fiber.Ctx) error {
+			c.Set("test", "test")
+			return c.SendString("Hello, World!")
+		})
+		benchmarkSetup(bb, app, "/")
+	})
+
+	b.Run("DefaultFormat", func(bb *testing.B) {
+		app := fiber.New()
+		app.Use(New(Config{
+			Output: io.Discard,
+		}))
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString("Hello, World!")
+		})
+		benchmarkSetup(bb, app, "/")
+	})
+
+	b.Run("DefaultFormatDisableColors", func(bb *testing.B) {
+		app := fiber.New()
+		app.Use(New(Config{
+			Output:        io.Discard,
+			DisableColors: true,
+		}))
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString("Hello, World!")
+		})
+		benchmarkSetup(bb, app, "/")
+	})
+
+	b.Run("WithTagParameter", func(bb *testing.B) {
+		app := fiber.New()
+		app.Use(New(Config{
+			Format: "${bytesReceived} ${bytesSent} ${status} ${reqHeader:test}",
+			Output: io.Discard,
+		}))
+		app.Get("/", func(c fiber.Ctx) error {
+			c.Set("test", "test")
+			return c.SendString("Hello, World!")
+		})
+		benchmarkSetup(bb, app, "/")
+	})
+
+	b.Run("WithLocals", func(bb *testing.B) {
+		app := fiber.New()
+		app.Use(New(Config{
+			Format: "${locals:demo}",
+			Output: io.Discard,
+		}))
+		app.Get("/", func(c fiber.Ctx) error {
+			c.Locals("demo", "johndoe")
+			return c.SendStatus(fiber.StatusOK)
+		})
+		benchmarkSetup(bb, app, "/")
+	})
+
+	b.Run("WithLocalsInt", func(bb *testing.B) {
+		app := fiber.New()
+		app.Use(New(Config{
+			Format: "${locals:demo}",
+			Output: io.Discard,
+		}))
+		app.Get("/int", func(c fiber.Ctx) error {
+			c.Locals("demo", 55)
+			return c.SendStatus(fiber.StatusOK)
+		})
+		benchmarkSetup(bb, app, "/int")
+	})
+
+	b.Run("WithCustomDone", func(bb *testing.B) {
+		app := fiber.New()
+		app.Use(New(Config{
+			Done: func(c fiber.Ctx, logString []byte) {
+				if c.Response().StatusCode() == fiber.StatusOK {
+					io.Discard.Write(logString) //nolint:errcheck // ignore error
+				}
+			},
+			Output: io.Discard,
+		}))
+		app.Get("/logging", func(ctx fiber.Ctx) error {
+			return ctx.SendStatus(fiber.StatusOK)
+		})
+		benchmarkSetup(bb, app, "/logging")
+	})
+
+	b.Run("WithAllTags", func(bb *testing.B) {
+		app := fiber.New()
+		app.Use(New(Config{
+			Format: "${pid}${reqHeaders}${referer}${scheme}${protocol}${ip}${ips}${host}${url}${ua}${body}${route}${black}${red}${green}${yellow}${blue}${magenta}${cyan}${white}${reset}${error}${reqHeader:test}${query:test}${form:test}${cookie:test}${non}",
+			Output: io.Discard,
+		}))
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString("Hello, World!")
+		})
+		benchmarkSetup(bb, app, "/")
+	})
+
+	b.Run("Streaming", func(bb *testing.B) {
+		app := fiber.New()
+		app.Use(New(Config{
+			Format: "${bytesReceived} ${bytesSent} ${status}",
+			Output: io.Discard,
+		}))
+		app.Get("/", func(c fiber.Ctx) error {
+			c.Set("Connection", "keep-alive")
+			c.Set("Transfer-Encoding", "chunked")
+			c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
+				var i int
+				for {
+					i++
+					msg := fmt.Sprintf("%d - the time is %v", i, time.Now())
+					fmt.Fprintf(w, "data: Message: %s\n\n", msg) //nolint:errcheck // ignore error
+					err := w.Flush()
+					if err != nil {
+						break
+					}
+					if i == 10 {
+						break
+					}
+				}
+			})
+			return nil
+		})
+		benchmarkSetup(bb, app, "/")
+	})
+
+	b.Run("WithBody", func(bb *testing.B) {
+		app := fiber.New()
+		app.Use(New(Config{
+			Format: "${resBody}",
+			Output: io.Discard,
+		}))
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString("Sample response body")
+		})
+		benchmarkSetup(bb, app, "/")
+	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_Logger_Parallel$ -benchmem -count=4
+func Benchmark_Logger_Parallel(b *testing.B) {
+	b.Run("NoMiddleware", func(bb *testing.B) {
+		app := fiber.New()
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString("Hello, World!")
+		})
+		benchmarkSetupParallel(bb, app, "/")
+	})
+
+	b.Run("WithBytesAndStatus", func(bb *testing.B) {
+		app := fiber.New()
+		app.Use(New(Config{
+			Format: "${bytesReceived} ${bytesSent} ${status}",
+			Output: io.Discard,
+		}))
+		app.Get("/", func(c fiber.Ctx) error {
+			c.Set("test", "test")
+			return c.SendString("Hello, World!")
+		})
+		benchmarkSetupParallel(bb, app, "/")
+	})
+
+	b.Run("DefaultFormat", func(bb *testing.B) {
+		app := fiber.New()
+		app.Use(New(Config{
+			Output: io.Discard,
+		}))
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString("Hello, World!")
+		})
+		benchmarkSetupParallel(bb, app, "/")
+	})
+
+	b.Run("DefaultFormatDisableColors", func(bb *testing.B) {
+		app := fiber.New()
+		app.Use(New(Config{
+			Output:        io.Discard,
+			DisableColors: true,
+		}))
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString("Hello, World!")
+		})
+		benchmarkSetupParallel(bb, app, "/")
+	})
+
+	b.Run("WithTagParameter", func(bb *testing.B) {
+		app := fiber.New()
+		app.Use(New(Config{
+			Format: "${bytesReceived} ${bytesSent} ${status} ${reqHeader:test}",
+			Output: io.Discard,
+		}))
+		app.Get("/", func(c fiber.Ctx) error {
+			c.Set("test", "test")
+			return c.SendString("Hello, World!")
+		})
+		benchmarkSetupParallel(bb, app, "/")
+	})
+
+	b.Run("WithLocals", func(bb *testing.B) {
+		app := fiber.New()
+		app.Use(New(Config{
+			Format: "${locals:demo}",
+			Output: io.Discard,
+		}))
+		app.Get("/", func(c fiber.Ctx) error {
+			c.Locals("demo", "johndoe")
+			return c.SendStatus(fiber.StatusOK)
+		})
+		benchmarkSetupParallel(bb, app, "/")
+	})
+
+	b.Run("WithLocalsInt", func(bb *testing.B) {
+		app := fiber.New()
+		app.Use(New(Config{
+			Format: "${locals:demo}",
+			Output: io.Discard,
+		}))
+		app.Get("/int", func(c fiber.Ctx) error {
+			c.Locals("demo", 55)
+			return c.SendStatus(fiber.StatusOK)
+		})
+		benchmarkSetupParallel(bb, app, "/int")
+	})
+
+	b.Run("WithCustomDone", func(bb *testing.B) {
+		app := fiber.New()
+		app.Use(New(Config{
+			Done: func(c fiber.Ctx, logString []byte) {
+				if c.Response().StatusCode() == fiber.StatusOK {
+					io.Discard.Write(logString) //nolint:errcheck // ignore error
+				}
+			},
+			Output: io.Discard,
+		}))
+		app.Get("/logging", func(ctx fiber.Ctx) error {
+			return ctx.SendStatus(fiber.StatusOK)
+		})
+		benchmarkSetupParallel(bb, app, "/logging")
+	})
+
+	b.Run("WithAllTags", func(bb *testing.B) {
+		app := fiber.New()
+		app.Use(New(Config{
+			Format: "${pid}${reqHeaders}${referer}${scheme}${protocol}${ip}${ips}${host}${url}${ua}${body}${route}${black}${red}${green}${yellow}${blue}${magenta}${cyan}${white}${reset}${error}${reqHeader:test}${query:test}${form:test}${cookie:test}${non}",
+			Output: io.Discard,
+		}))
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString("Hello, World!")
+		})
+		benchmarkSetupParallel(bb, app, "/")
+	})
+
+	b.Run("Streaming", func(bb *testing.B) {
+		app := fiber.New()
+		app.Use(New(Config{
+			Format: "${bytesReceived} ${bytesSent} ${status}",
+			Output: io.Discard,
+		}))
+		app.Get("/", func(c fiber.Ctx) error {
+			c.Set("Connection", "keep-alive")
+			c.Set("Transfer-Encoding", "chunked")
+			c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
+				var i int
+				for {
+					i++
+					msg := fmt.Sprintf("%d - the time is %v", i, time.Now())
+					fmt.Fprintf(w, "data: Message: %s\n\n", msg) //nolint:errcheck // ignore error
+					err := w.Flush()
+					if err != nil {
+						break
+					}
+					if i == 10 {
+						break
+					}
+				}
+			})
+			return nil
+		})
+		benchmarkSetupParallel(bb, app, "/")
+	})
+
+	b.Run("WithBody", func(bb *testing.B) {
+		app := fiber.New()
+		app.Use(New(Config{
+			Format: "${resBody}",
+			Output: io.Discard,
+		}))
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString("Sample response body")
+		})
+		benchmarkSetupParallel(bb, app, "/")
+	})
 }

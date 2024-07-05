@@ -69,3 +69,147 @@ func Test_Fiberlog_SetLevel(t *testing.T) {
 		})
 	}
 }
+
+func Benchmark_DefaultSystemLogger(b *testing.B) {
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = DefaultLogger()
+	}
+}
+
+func Benchmark_SetLogger(b *testing.B) {
+	setLog := &defaultLogger{
+		stdlog: log.New(os.Stderr, "", log.LstdFlags|log.Lshortfile|log.Lmicroseconds),
+		depth:  6,
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		SetLogger(setLog)
+	}
+}
+
+func Benchmark_Fiberlog_SetLevel(b *testing.B) {
+	mockLogger := &defaultLogger{}
+	SetLogger(mockLogger)
+
+	// Test cases
+	testCases := []struct {
+		name     string
+		level    Level
+		expected Level
+	}{
+		{
+			name:     "Test case 1",
+			level:    LevelDebug,
+			expected: LevelDebug,
+		},
+		{
+			name:     "Test case 2",
+			level:    LevelInfo,
+			expected: LevelInfo,
+		},
+		{
+			name:     "Test case 3",
+			level:    LevelWarn,
+			expected: LevelWarn,
+		},
+		{
+			name:     "Test case 4",
+			level:    LevelError,
+			expected: LevelError,
+		},
+		{
+			name:     "Test case 5",
+			level:    LevelFatal,
+			expected: LevelFatal,
+		},
+	}
+
+	for _, tc := range testCases {
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.Run(tc.name, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				SetLevel(tc.level)
+			}
+		})
+	}
+}
+
+func Benchmark_DefaultSystemLogger_Parallel(b *testing.B) {
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_ = DefaultLogger()
+		}
+	})
+}
+
+func Benchmark_SetLogger_Parallel(b *testing.B) {
+	setLog := &defaultLogger{
+		stdlog: log.New(os.Stderr, "", log.LstdFlags|log.Lshortfile|log.Lmicroseconds),
+		depth:  6,
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			SetLogger(setLog)
+		}
+	})
+}
+
+func Benchmark_Fiberlog_SetLevel_Parallel(b *testing.B) {
+	mockLogger := &defaultLogger{}
+	SetLogger(mockLogger)
+
+	// Test cases
+	testCases := []struct {
+		name     string
+		level    Level
+		expected Level
+	}{
+		{
+			name:     "Test case 1",
+			level:    LevelDebug,
+			expected: LevelDebug,
+		},
+		{
+			name:     "Test case 2",
+			level:    LevelInfo,
+			expected: LevelInfo,
+		},
+		{
+			name:     "Test case 3",
+			level:    LevelWarn,
+			expected: LevelWarn,
+		},
+		{
+			name:     "Test case 4",
+			level:    LevelError,
+			expected: LevelError,
+		},
+		{
+			name:     "Test case 5",
+			level:    LevelFatal,
+			expected: LevelFatal,
+		},
+	}
+
+	for _, tc := range testCases {
+		b.Run(tc.name+"_Parallel", func(bb *testing.B) {
+			bb.ReportAllocs()
+			bb.ResetTimer()
+			bb.RunParallel(func(pb *testing.PB) {
+				for pb.Next() {
+					SetLevel(tc.level)
+				}
+			})
+		})
+	}
+}

@@ -1060,8 +1060,8 @@ func Benchmark_CORS_NewHandler(b *testing.B) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_CORS_NewHandlerParallel -benchmem -count=4
-func Benchmark_CORS_NewHandlerParallel(b *testing.B) {
+// go test -v -run=^$ -bench=Benchmark_CORS_NewHandler_Parallel -benchmem -count=4
+func Benchmark_CORS_NewHandler_Parallel(b *testing.B) {
 	app := fiber.New()
 	c := New(Config{
 		AllowOrigins:     []string{"http://localhost", "http://example.com"},
@@ -1133,8 +1133,8 @@ func Benchmark_CORS_NewHandlerSingleOrigin(b *testing.B) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_CORS_NewHandlerSingleOriginParallel -benchmem -count=4
-func Benchmark_CORS_NewHandlerSingleOriginParallel(b *testing.B) {
+// go test -v -run=^$ -bench=Benchmark_CORS_NewHandlerSingleOrigin_Parallel -benchmem -count=4
+func Benchmark_CORS_NewHandlerSingleOrigin_Parallel(b *testing.B) {
 	app := fiber.New()
 	c := New(Config{
 		AllowOrigins:     []string{"http://example.com"},
@@ -1205,8 +1205,8 @@ func Benchmark_CORS_NewHandlerWildcard(b *testing.B) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_CORS_NewHandlerWildcardParallel -benchmem -count=4
-func Benchmark_CORS_NewHandlerWildcardParallel(b *testing.B) {
+// go test -v -run=^$ -bench=Benchmark_CORS_NewHandlerWildcard_Parallel -benchmem -count=4
+func Benchmark_CORS_NewHandlerWildcard_Parallel(b *testing.B) {
 	app := fiber.New()
 	c := New(Config{
 		AllowMethods:     []string{fiber.MethodGet, fiber.MethodPost, fiber.MethodPut, fiber.MethodDelete},
@@ -1279,8 +1279,8 @@ func Benchmark_CORS_NewHandlerPreflight(b *testing.B) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_CORS_NewHandlerPreflightParallel -benchmem -count=4
-func Benchmark_CORS_NewHandlerPreflightParallel(b *testing.B) {
+// go test -v -run=^$ -bench=Benchmark_CORS_NewHandlerPreflight_Parallel -benchmem -count=4
+func Benchmark_CORS_NewHandlerPreflight_Parallel(b *testing.B) {
 	app := fiber.New()
 	c := New(Config{
 		AllowOrigins:     []string{"http://localhost", "http://example.com"},
@@ -1354,8 +1354,8 @@ func Benchmark_CORS_NewHandlerPreflightSingleOrigin(b *testing.B) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_CORS_NewHandlerPreflightSingleOriginParallel -benchmem -count=4
-func Benchmark_CORS_NewHandlerPreflightSingleOriginParallel(b *testing.B) {
+// go test -v -run=^$ -bench=Benchmark_CORS_NewHandlerPreflightSingleOrigin_Parallel -benchmem -count=4
+func Benchmark_CORS_NewHandlerPreflightSingleOrigin_Parallel(b *testing.B) {
 	app := fiber.New()
 	c := New(Config{
 		AllowOrigins:     []string{"http://example.com"},
@@ -1428,8 +1428,8 @@ func Benchmark_CORS_NewHandlerPreflightWildcard(b *testing.B) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_CORS_NewHandlerPreflightWildcardParallel -benchmem -count=4
-func Benchmark_CORS_NewHandlerPreflightWildcardParallel(b *testing.B) {
+// go test -v -run=^$ -bench=Benchmark_CORS_NewHandlerPreflightWildcard_Parallel -benchmem -count=4
+func Benchmark_CORS_NewHandlerPreflightWildcard_Parallel(b *testing.B) {
 	app := fiber.New()
 	c := New(Config{
 		AllowMethods:     []string{fiber.MethodGet, fiber.MethodPost, fiber.MethodPut, fiber.MethodDelete},

@@ -186,6 +186,9 @@ To enable the routing changes above we had to slightly adjust the signature of t
 DRAFT section
 :::
 
+### New Features
+
+- Cookie now allows Partitioned cookies for [CHIPS](https://developers.google.com/privacy-sandbox/3pcd/chips) support. CHIPS (Cookies Having Independent Partitioned State) is a feature that improves privacy by allowing cookies to be partitioned by top-level site, mitigating cross-site tracking.
 
 ### new methods
 
@@ -219,6 +222,7 @@ DRAFT section
 * Bind -> for Binding instead of View, us c.ViewBind()
 * Format -> Param: body interface{} -> handlers ...ResFmt
 * Redirect -> c.Redirect().To()
+* SendFile now supports different configurations using the config parameter.
 
 ---
 
@@ -248,6 +252,10 @@ DRAFT section
 
 ## 🧬 Middlewares
 
+### Cache
+
+We are excited to introduce a new option in our caching middleware: Cache Invalidator. This feature provides greater control over cache management, allowing you to define a custom conditions for invalidating cache entries.
+
 ### CORS
 
 We've made some changes to the CORS middleware to improve its functionality and flexibility. Here's what's new:
@@ -262,6 +270,14 @@ We've updated several fields from a single string (containing comma-separated va
 - `Config.AllowMethods`: Now accepts a slice of strings, each representing an allowed method.
 - `Config.AllowHeaders`: Now accepts a slice of strings, each representing an allowed header.
 - `Config.ExposeHeaders`: Now accepts a slice of strings, each representing an exposed header.
+
+### Compression
+
+We've added support for `zstd` compression on top of `gzip`, `deflate`, and `brotli`.
+
+### EncryptCookie
+
+Added support for specifying Key length when using `encryptcookie.GenerateKey(length)`. This allows the user to generate keys compatible with `AES-128`, `AES-192`, and `AES-256` (Default).
 
 ### Session
 

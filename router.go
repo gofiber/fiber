@@ -225,7 +225,7 @@ func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 
 	// check flash messages
 	if strings.Contains(utils.UnsafeString(c.Request().Header.RawHeaders()), FlashCookieName) {
-		c.Redirect().setFlash()
+		c.Redirect().parseAndClearFlashMessages()
 	}
 
 	// Find match in stack

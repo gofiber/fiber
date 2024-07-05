@@ -10,11 +10,18 @@ import (
 	"io"
 )
 
+var ErrInvalidKeyLength = errors.New("encryption key must be 16, 24, or 32 bytes")
+
 // EncryptCookie Encrypts a cookie value with specific encryption key
 func EncryptCookie(value, key string) (string, error) {
 	keyDecoded, err := base64.StdEncoding.DecodeString(key)
 	if err != nil {
 		return "", fmt.Errorf("failed to base64-decode key: %w", err)
+	}
+
+	keyLen := len(keyDecoded)
+	if keyLen != 16 && keyLen != 24 && keyLen != 32 {
+		return "", ErrInvalidKeyLength
 	}
 
 	block, err := aes.NewCipher(keyDecoded)
@@ -29,11 +36,10 @@ func EncryptCookie(value, key string) (string, error) {
 
 	nonce := make([]byte, gcm.NonceSize())
 	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
-		return "", fmt.Errorf("failed to read: %w", err)
+		return "", fmt.Errorf("failed to read nonce: %w", err)
 	}
 
 	ciphertext := gcm.Seal(nonce, nonce, []byte(value), nil)
-
 	return base64.StdEncoding.EncodeToString(ciphertext), nil
 }
 
@@ -43,6 +49,12 @@ func DecryptCookie(value, key string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to base64-decode key: %w", err)
 	}
+
+	keyLen := len(keyDecoded)
+	if keyLen != 16 && keyLen != 24 && keyLen != 32 {
+		return "", ErrInvalidKeyLength
+	}
+
 	enc, err := base64.StdEncoding.DecodeString(value)
 	if err != nil {
 		return "", fmt.Errorf("failed to base64-decode value: %w", err)
@@ -65,7 +77,6 @@ func DecryptCookie(value, key string) (string, error) {
 	}
 
 	nonce, ciphertext := enc[:nonceSize], enc[nonceSize:]
-
 	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to decrypt ciphertext: %w", err)
@@ -74,16 +85,21 @@ func DecryptCookie(value, key string) (string, error) {
 	return string(plaintext), nil
 }
 
-// GenerateKey Generates an encryption key
-func GenerateKey() string {
-	const keyLen = 32
-	ret := make([]byte, keyLen)
+// GenerateKey returns a random string of 16, 24, or 32 bytes.
+// The length of the key determines the AES encryption algorithm used:
+// 16 bytes for AES-128, 24 bytes for AES-192, and 32 bytes for AES-256-GCM.
+func GenerateKey(length int) string {
+	if length != 16 && length != 24 && length != 32 {
+		panic(ErrInvalidKeyLength)
+	}
 
-	if _, err := rand.Read(ret); err != nil {
+	key := make([]byte, length)
+
+	if _, err := rand.Read(key); err != nil {
 		panic(err)
 	}
 
-	return base64.StdEncoding.EncodeToString(ret)
+	return base64.StdEncoding.EncodeToString(key)
 }
 
 // Check given cookie key is disabled for encryption or not
