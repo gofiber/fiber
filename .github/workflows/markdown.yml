@@ -1,10 +1,15 @@
 name: markdownlint
+
 on:
   push:
     branches:
       - master
       - main
+    paths:
+      - "**.md"
   pull_request:
+    paths:
+      - "**.md"
 
 jobs:
   markdownlint:
