@@ -63,6 +63,7 @@ app.Post("/", func(c fiber.Ctx) error {
 ### Binding into the Map
 
 Fiber supports binding into the `map[string]string` or `map[string][]string`. Here's an example:
+
 ```go
 app.Get("/", func(c fiber.Ctx) error {
     p := make(map[string][]string)
