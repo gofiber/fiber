@@ -18,26 +18,26 @@ func New(config ...Config) fiber.Handler
 package main
 
 import (
-  "github.com/gofiber/fiber/v3"
-  "github.com/gofiber/fiber/v3/middleware/helmet"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/helmet"
 )
 
 func main() {
-  app := fiber.New()
+    app := fiber.New()
 
-  app.Use(helmet.New())
+    app.Use(helmet.New())
 
-  app.Get("/", func(c fiber.Ctx) error {
-    return c.SendString("Welcome!")
-  })
+    app.Get("/", func(c fiber.Ctx) error {
+      return c.SendString("Welcome!")
+    })
 
-  app.Listen(":3000")
+    app.Listen(":3000")
 }
 ```
 
-**Test:**
+## Test
 
-```curl
+```bash
 curl -I http://localhost:3000
 ```
 

@@ -25,8 +25,8 @@ func New(config ...Config) fiber.Handler
 package main
 
 import (
-  "github.com/gofiber/fiber/v3"
-  "github.com/gofiber/fiber/v3/middleware/rewrite"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/rewrite"
 )
 
 func main() {
@@ -51,9 +51,9 @@ func main() {
 
 ```
 
-**Test:**
+## Test
 
-```curl
+```bash
 curl http://localhost:3000/old
 curl http://localhost:3000/old/hello
 ```

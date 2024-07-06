@@ -56,7 +56,7 @@ func main() {
 }
 ```
 
-**Test:**
+## Test
 
 ```bash
 # No api-key specified -> 400 missing 
