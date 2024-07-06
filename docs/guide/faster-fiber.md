@@ -6,14 +6,12 @@ sidebar_position: 7
 
 ## Custom JSON Encoder/Decoder
 
-Since Fiber v2.32.0, we use **encoding/json** as default json library due to stability and producibility. However, the standard library is a bit slow compared to 3rd party libraries. If you're not happy with the performance of **encoding/json**, we recommend you to use these libraries:
+Since Fiber v2.32.0, we have adopted `encoding/json` as the default JSON library for its stability and reliability. However, the standard library can be slower than some third-party alternatives. If you find the performance of `encoding/json` unsatisfactory, we suggest considering these libraries:
 
 - [goccy/go-json](https://github.com/goccy/go-json)
 - [bytedance/sonic](https://github.com/bytedance/sonic)
 - [segmentio/encoding](https://github.com/segmentio/encoding)
-- [mailru/easyjson](https://github.com/mailru/easyjson)
 - [minio/simdjson-go](https://github.com/minio/simdjson-go)
-- [wI2L/jettison](https://github.com/wI2L/jettison)
 
 ```go title="Example"
 package main

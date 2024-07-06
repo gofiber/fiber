@@ -167,7 +167,7 @@ You can set `CacheDuration` config property to `-1` to disable caching.
 
 ```go
 var ConfigDefault = Config{
-  Index:         []string{"index.html"},
-  CacheDuration: 10 * time.Second,
+    Index:         []string{"index.html"},
+    CacheDuration: 10 * time.Second,
 }
 ```

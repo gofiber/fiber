@@ -69,25 +69,25 @@ If you need to allow wildcard origins, use `AllowOrigins` with a wildcard `"*"` 
 ```go
 // dbCheckOrigin checks if the origin is in the list of allowed origins in the database.
 func dbCheckOrigin(db *sql.DB, origin string) bool {
-  // Placeholder query - adjust according to your database schema and query needs
-  query := "SELECT COUNT(*) FROM allowed_origins WHERE origin = $1"
-  
-  var count int
-  err := db.QueryRow(query, origin).Scan(&count)
-  if err != nil {
-    // Handle error (e.g., log it); for simplicity, we return false here
-    return false
-  }
-  
-  return count > 0
+    // Placeholder query - adjust according to your database schema and query needs
+    query := "SELECT COUNT(*) FROM allowed_origins WHERE origin = $1"
+    
+    var count int
+    err := db.QueryRow(query, origin).Scan(&count)
+    if err != nil {
+      // Handle error (e.g., log it); for simplicity, we return false here
+      return false
+    }
+    
+    return count > 0
 }
 
 // ...
 
 app.Use(cors.New(cors.Config{
-  AllowOriginsFunc: func(origin string) bool {
-    return dbCheckOrigin(db, origin)
-  },
+    AllowOriginsFunc: func(origin string) bool {
+      return dbCheckOrigin(db, origin)
+    },
 }))
 ```
 

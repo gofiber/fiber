@@ -25,7 +25,7 @@ Route paths, combined with a request method, define the endpoints at which reque
 ```go
 // This route path will match requests to the root route, "/":
 app.Get("/", func(c fiber.Ctx) error {
-      return c.SendString("root")
+    return c.SendString("root")
 })
 
 // This route path will match requests to "/about":
@@ -315,7 +315,7 @@ app.Use(func(c fiber.Ctx) error {
 })
 
 app.Get("/", func(c fiber.Ctx) error {
-  return c.SendString("Hello, World!")
+    return c.SendString("Hello, World!")
 })
 ```
 
