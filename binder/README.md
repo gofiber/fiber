@@ -1,6 +1,6 @@
 # Fiber Binders
 
-Binder is new request/response binding feature for Fiber. By aganist old Fiber parsers, it supports custom binder registration, struct validation, `map[string]string`, `map[string][]string` and more. It's introduced in Fiber v3 and a replacement of:
+Binder is a new request/response binding feature for Fiber. Against the old Fiber parsers, it supports custom binder registration, struct validation, `map[string]string`, `map[string][]string`, and more. It's introduced in Fiber v3 and a replacement of:
 
 - BodyParser
 - ParamsParser
@@ -25,7 +25,7 @@ Binder is new request/response binding feature for Fiber. By aganist old Fiber p
 
 ### Binding into the Struct
 
-Fiber supports binding into the struct with [gorilla/schema](https://github.com/gorilla/schema). Here's an example for it:
+Fiber supports binding into the struct with [gorilla/schema](https://github.com/gorilla/schema). Here's an example:
 
 ```go
 // Field names should start with an uppercase letter
@@ -62,8 +62,7 @@ app.Post("/", func(c fiber.Ctx) error {
 
 ### Binding into the Map
 
-Fiber supports binding into the `map[string]string` or `map[string][]string`. Here's an example for it:
-
+Fiber supports binding into the `map[string]string` or `map[string][]string`. Here's an example:
 ```go
 app.Get("/", func(c fiber.Ctx) error {
     p := make(map[string][]string)
@@ -115,7 +114,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ### Defining Custom Binder
 
-We didn't add much binder to make Fiber codebase minimal. But if you want to use your binders, it's easy to register and use them. Here's an example for TOML binder.
+We didn't add much binder to make Fiber codebase minimal. If you want to use your own binders, it's easy to register and use them. Here's an example for TOML binder.
 
 ```go
 type Person struct {

@@ -192,7 +192,7 @@ app.Post("/", func(c fiber.Ctx) error {
 
 Binds the request xml form body to a struct.
 
-It is important to specify the correct struct tag based on the content type to be parsed. For example, if you want to parse a XML body with a field called Pass, you would use a struct field of `xml:"pass"`.
+It is important to specify the correct struct tag based on the content type to be parsed. For example, if you want to parse an XML body with a field called Pass, you would use a struct field of `xml:"pass"`.
 
 ```go title="Signature"
 func (b *Bind) XML(out any) error

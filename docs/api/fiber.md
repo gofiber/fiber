@@ -111,7 +111,7 @@ app.Listen(":8080", fiber.ListenConfig{
 | <Reference id="listeneraddrfunc">ListenerAddrFunc</Reference>           | `func(addr net.Addr)`         | Allows accessing and customizing `net.Listener`.                                                                                              | `nil`   |
 | <Reference id="listenernetwork">ListenerNetwork</Reference>             | `string`                      | Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only). WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chosen. | `tcp4`  |
 | <Reference id="onshutdownerror">OnShutdownError</Reference>             | `func(err error)`             | Allows to customize error behavior when gracefully shutting down the server by given signal.  Prints error with `log.Fatalf()`                | `nil`   |
-| <Reference id="onshutdownsuccess">OnShutdownSuccess</Reference>         | `func()`                      | Allows to customize success behavior when gracefully shutting down the server by given signal.                                                | `nil`   |
+| <Reference id="onshutdownsuccess">OnShutdownSuccess</Reference>         | `func()`                      | Allows customizing success behavior when gracefully shutting down the server by given signal.                                                | `nil`   |
 | <Reference id="tlsconfigfunc">TLSConfigFunc</Reference>                 | `func(tlsConfig *tls.Config)` | Allows customizing `tls.Config` as you want.                                                                                                  | `nil`   |
 
 ### Listen

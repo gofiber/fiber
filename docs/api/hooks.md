@@ -7,7 +7,7 @@ sidebar_position: 7
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-With Fiber v2.30.0, you can execute custom user functions when to run some methods. Here is a list of this hooks:
+With Fiber v2.30.0, you can execute custom user functions when to run some methods. Here is a list of these hooks:
 
 - [OnRoute](#onroute)
 - [OnName](#onname)
@@ -217,4 +217,4 @@ func main() {
 </Tabs>
 
 :::caution
-OnName/OnRoute/OnGroup/OnGroupName hooks are mount-sensitive. If you use one of these routes on sub app and you mount it; paths of routes and groups will start with mount prefix.
+OnName/OnRoute/OnGroup/OnGroupName hooks are mount-sensitive. If you use one of these routes on sub app, and you mount it; paths of routes and groups will start with mount prefix.
