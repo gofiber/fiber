@@ -1,44 +1,41 @@
 # Key Authentication
 
-![Release](https://img.shields.io/github/release/gofiber/keyauth.svg)
-[![Discord](https://img.shields.io/badge/discord-join%20channel-7289DA)](https://gofiber.io/discord)
-![Test](https://github.com/gofiber/keyauth/workflows/Test/badge.svg)
-![Security](https://github.com/gofiber/keyauth/workflows/Security/badge.svg)
-![Linter](https://github.com/gofiber/keyauth/workflows/Linter/badge.svg)
+## Install
 
-Special thanks to [József Sallai](https://github.com/jozsefsallai) & [Ray Mayemir](https://github.com/raymayemir)
-
-### Install
-```
+```bash
 go get -u github.com/gofiber/fiber/v3
 go get -u github.com/gofiber/keyauth/v2
 ```
-### Example
+
+## Example
+
 ```go
 package main
 
 import (
-  "github.com/gofiber/fiber/v3"
-  "github.com/gofiber/keyauth/v2"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/middleware/keyauth"
 )
 
 func main() {
-  app := fiber.New()
-  
-  app.Use(keyauth.New(keyauth.Config{
-    KeyLookup: "cookie:access_token",
-    ContextKey: "my_token",
-  }))
-  
-  app.Get("/", func(c fiber.Ctx) error {
-    token := c.TokenFromContext(c) // "" is returned if not found
-    return c.SendString(token)
-  })
-  
-  app.Listen(":3000")
+    app := fiber.New()
+    
+    app.Use(keyauth.New(keyauth.Config{
+      KeyLookup: "cookie:access_token",
+      ContextKey: "my_token",
+    }))
+    
+    app.Get("/", func(c fiber.Ctx) error {
+      token := c.TokenFromContext(c) // "" is returned if not found
+      return c.SendString(token)
+    })
+    
+    app.Listen(":3000")
 }
 ```
-### Test
-```curl
+
+## Test
+
+```bash
 curl -v --cookie "access_token=hello_world" http://localhost:3000
 ```

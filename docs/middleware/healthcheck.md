@@ -29,6 +29,7 @@ func NewHealthChecker(config Config) fiber.Handler
 ## Examples
 
 Import the middleware package that is part of the [Fiber](https://github.com/gofiber/fiber) web framework
+
 ```go
 import(
     "github.com/gofiber/fiber/v3"
@@ -79,29 +80,30 @@ app.All(healthcheck.DefaultReadinessEndpoint, healthcheck.NewHealthChecker(healt
 
 ```go
 type Config struct {
-	// Next defines a function to skip this middleware when returned true. If this function returns true
+    // Next defines a function to skip this middleware when returned true. If this function returns true
     // and no other handlers are defined for the route, Fiber will return a status 404 Not Found, since
     // no other handlers were defined to return a different status.
-	//
-	// Optional. Default: nil
-	Next func(fiber.Ctx) bool
+    //
+    // Optional. Default: nil
+    Next func(fiber.Ctx) bool
 
-	// Function used for checking the liveness of the application. Returns true if the application
-	// is running and false if it is not. The liveness probe is typically used to indicate if 
-	// the application is in a state where it can handle requests (e.g., the server is up and running).
-	//
-	// Optional. Default: func(c fiber.Ctx) bool { return true }
-	Probe HealthChecker
+    // Function used for checking the liveness of the application. Returns true if the application
+    // is running and false if it is not. The liveness probe is typically used to indicate if 
+    // the application is in a state where it can handle requests (e.g., the server is up and running).
+    //
+    // Optional. Default: func(c fiber.Ctx) bool { return true }
+    Probe HealthChecker
 }
 ```
 
 ## Default Config
 
 The default configuration used by this middleware is defined as follows:
+
 ```go
 func defaultProbe(fiber.Ctx) bool { return true }
 
 var ConfigDefault = Config{
-	Probe:     defaultProbe,
+    Probe:     defaultProbe,
 }
 ```

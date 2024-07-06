@@ -82,7 +82,6 @@ app := fiber.New(fiber.Config{
 | <Reference id="writetimeout">WriteTimeout</Reference>                                 | `time.Duration`                                                   | The maximum duration before timing out writes of the response. The default timeout is unlimited.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | `nil`                                                                    |
 | <Reference id="xmlencoder">XMLEncoder</Reference>                                     | `utils.XMLMarshal`                                                | Allowing for flexibility in using another XML library for encoding.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | `xml.Marshal`                                                            |
 
-
 ## Server listening
 
 ### Config
@@ -114,7 +113,6 @@ app.Listen(":8080", fiber.ListenConfig{
 | <Reference id="onshutdownerror">OnShutdownError</Reference>             | `func(err error)`             | Allows to customize error behavior when gracefully shutting down the server by given signal.  Prints error with `log.Fatalf()`                | `nil`   |
 | <Reference id="onshutdownsuccess">OnShutdownSuccess</Reference>         | `func()`                      | Allows to customize success behavior when gracefully shutting down the server by given signal.                                                | `nil`   |
 | <Reference id="tlsconfigfunc">TLSConfigFunc</Reference>                 | `func(tlsConfig *tls.Config)` | Allows customizing `tls.Config` as you want.                                                                                                  | `nil`   |
-
 
 ### Listen
 
@@ -214,7 +212,6 @@ func (app *App) Shutdown() error
 func (app *App) ShutdownWithTimeout(timeout time.Duration) error
 func (app *App) ShutdownWithContext(ctx context.Context) error
 ```
-
 
 ## Helper functions
 

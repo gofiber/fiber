@@ -43,19 +43,19 @@ func (app *App) MountPath() string
 
 ```go title="Examples"
 func main() {
-	app := fiber.New()
-	one := fiber.New()
-	two := fiber.New()
-	three := fiber.New()
+    app := fiber.New()
+    one := fiber.New()
+    two := fiber.New()
+    three := fiber.New()
 
-	two.Use("/three", three)
-	one.Use("/two", two)
-	app.Use("/one", one)
+    two.Use("/three", three)
+    one.Use("/two", two)
+    app.Use("/one", one)
   
-	one.MountPath()   // "/one"
-	two.MountPath()   // "/one/two"
-	three.MountPath() // "/one/two/three"
-	app.MountPath()   // ""
+    one.MountPath()   // "/one"
+    two.MountPath()   // "/one/two"
+    three.MountPath() // "/one/two/three"
+    app.MountPath()   // ""
 }
 ```
 
@@ -91,7 +91,7 @@ func main() {
 
 ### Route
 
-Returns an instance of a single route, which you can then use to handle HTTP verbs with optional middleware. 
+Returns an instance of a single route, which you can then use to handle HTTP verbs with optional middleware.
 
 Similar to [`Express`](https://expressjs.com/de/api.html#app.route).
 
@@ -120,6 +120,7 @@ type Register interface {
   Route(path string) Register
 }
 ```
+
 </details>
 
 ```go title="Examples"
@@ -222,6 +223,7 @@ func main() {
   ]
 ]
 ```
+
 </details>
 
 ### Name
@@ -328,6 +330,7 @@ func main() {
   null
 ]
 ```
+
 </details>
 
 ### GetRoute
@@ -347,10 +350,10 @@ func main() {
     app.Get("/", handler).Name("index")
     
     data, _ := json.MarshalIndent(app.GetRoute("index"), "", "  ")
-	fmt.Print(string(data))
+    fmt.Print(string(data))
 
 
-	app.Listen(":3000")
+    app.Listen(":3000")
 }
 ```
 
@@ -365,6 +368,7 @@ func main() {
   "params": null
 }
 ```
+
 </details>
 
 ### GetRoutes
@@ -376,14 +380,15 @@ func (app *App) GetRoutes(filterUseOption ...bool) []Route
 ```
 
 When filterUseOption equal to true, it will filter the routes registered by the middleware.
+
 ```go title="Examples"
 func main() {
-	app := fiber.New()
-	app.Post("/", func (c fiber.Ctx) error {
-		return c.SendString("Hello, World!")
-	}).Name("index")
-	data, _ := json.MarshalIndent(app.GetRoutes(true), "", "  ")
-	fmt.Print(string(data))
+    app := fiber.New()
+    app.Post("/", func (c fiber.Ctx) error {
+        return c.SendString("Hello, World!")
+    }).Name("index")
+    data, _ := json.MarshalIndent(app.GetRoutes(true), "", "  ")
+    fmt.Print(string(data))
 }
 ```
 
@@ -400,6 +405,7 @@ func main() {
     }
 ]
 ```
+
 </details>
 
 ## Config
@@ -436,12 +442,12 @@ func (app *App) NewCtxFunc(function func(app *App) CustomCtx)
 
 ```go title="Examples"
 type CustomCtx struct {
-	DefaultCtx
+    DefaultCtx
 }
 
 // Custom method
 func (c *CustomCtx) Params(key string, defaultValue ...string) string {
-	return "prefix_" + c.DefaultCtx.Params(key)
+    return "prefix_" + c.DefaultCtx.Params(key)
 }
 
 app := New()
@@ -520,7 +526,6 @@ func (app *App) RegisterCustomConstraint(constraint CustomConstraint)
 ```
 
 See [Custom Constraint](../guide/routing.md#custom-constraint) section for more information.
-
 
 ## SetTLSHandler
 

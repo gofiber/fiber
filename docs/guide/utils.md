@@ -33,7 +33,6 @@ app.Get("/search", func(c fiber.Ctx) error) {
 })
 ```
 
-
 ### GetReqHeader
 
 GetReqHeader function utilizing Go's generics feature.

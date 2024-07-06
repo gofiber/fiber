@@ -15,14 +15,13 @@ Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more..
 
 :::
 
-
 ## Binders
 
 - [Body](#body)
-    - [Form](#form)
-    - [JSON](#json)
-    - [MultipartForm](#multipartform)
-    - [XML](#xml)
+  - [Form](#form)
+  - [JSON](#json)
+  - [MultipartForm](#multipartform)
+  - [XML](#xml)
 - [Cookie](#cookie)
 - [Header](#header)
 - [Query](#query)
@@ -80,7 +79,6 @@ app.Post("/", func(c fiber.Ctx) error {
 // curl -X POST "http://localhost:3000/?name=john&pass=doe"
 ```
 
-
 **The methods for the various bodies can also be used directly:**
 
 #### Form
@@ -88,7 +86,6 @@ app.Post("/", func(c fiber.Ctx) error {
 Binds the request form body to a struct.
 
 It is important to specify the correct struct tag based on the content type to be parsed. For example, if you want to parse a Form body with a field called Pass, you would use a struct field of `form:"pass"`.
-
 
 ```go title="Signature"
 func (b *Bind) Form(out any) error
@@ -124,7 +121,6 @@ app.Post("/", func(c fiber.Ctx) error {
 Binds the request json body to a struct.
 
 It is important to specify the correct struct tag based on the content type to be parsed. For example, if you want to parse a JSON body with a field called Pass, you would use a struct field of `json:"pass"`.
-
 
 ```go title="Signature"
 func (b *Bind) JSON(out any) error
@@ -162,7 +158,6 @@ Binds the request multipart form body to a struct.
 
 It is important to specify the correct struct tag based on the content type to be parsed. For example, if you want to parse a MultipartForm body with a field called Pass, you would use a struct field of `form:"pass"`.
 
-
 ```go title="Signature"
 func (b *Bind) MultipartForm(out any) error
 ```
@@ -199,7 +194,6 @@ Binds the request xml form body to a struct.
 
 It is important to specify the correct struct tag based on the content type to be parsed. For example, if you want to parse a XML body with a field called Pass, you would use a struct field of `xml:"pass"`.
 
-
 ```go title="Signature"
 func (b *Bind) XML(out any) error
 ```
@@ -228,7 +222,6 @@ app.Post("/", func(c fiber.Ctx) error {
 
 // curl -X POST -H "Content-Type: application/xml" --data "<login><name>john</name><pass>doe</pass></login>" localhost:3000
 ```
-
 
 ### Cookie
 
@@ -261,7 +254,6 @@ app.Get("/", func(c fiber.Ctx) error {
 // Run tests with the following curl command
 // curl.exe --cookie "name=Joseph; age=23; job=true" http://localhost:8000/
 ```
-
 
 ### Header
 
@@ -297,7 +289,6 @@ app.Get("/", func(c fiber.Ctx) error {
 
 // curl "http://localhost:3000/" -H "name: john" -H "pass: doe" -H "products: shoe,hat"
 ```
-
 
 ### Query
 
@@ -341,7 +332,6 @@ app.Get("/", func(c fiber.Ctx) error {
 :::info
 For more parser settings please look here [Config](fiber.md#enablesplittingonparsers)
 :::
-
 
 ### RespHeader
 
@@ -467,7 +457,6 @@ It's default behavior of binder.
 func (b *Bind) Should() *Bind
 ```
 
-
 ## SetParserDecoder
 
 Allow you to config BodyParser/QueryParser decoder, base on schema's options, providing possibility to add custom type for parsing.
@@ -542,7 +531,6 @@ app.Get("/query", func(c fiber.Ctx) error {
 
 ```
 
-
 ## Validation
 
 Validation is also possible with the binding methods. You can specify your validation rules using the `validate` struct tag.
@@ -585,6 +573,3 @@ app.Post("/", func(c fiber.Ctx) error {
     }
 })
 ```
-
-
-

@@ -21,6 +21,7 @@ type Views interface {
     Render(out io.Writer, name string, binding any, layout ...string) error
 }
 ```
+
 </TabItem>
 </Tabs>
 
@@ -77,7 +78,7 @@ func main() {
     engine := html.New("./views", ".html")
     // If you want other engine, just replace with following
     // Create a new engine with django
-	// engine := django.New("./views", ".django")
+    // engine := django.New("./views", ".django")
 
     app := fiber.New(fiber.Config{
         Views: engine,
@@ -92,6 +93,7 @@ func main() {
     log.Fatal(app.Listen(":3000"))
 }
 ```
+
 </TabItem>
 <TabItem value="index" label="views/index.html">
 
@@ -102,5 +104,6 @@ func main() {
 </body>
 </html>
 ```
+
 </TabItem>
 </Tabs>

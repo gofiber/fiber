@@ -24,6 +24,7 @@ import (
 ```
 
 After you initiate your Fiber app, you can use the following possibilities:
+
 ```go
 var count = expvar.NewInt("count")
 

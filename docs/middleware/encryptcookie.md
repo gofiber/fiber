@@ -4,7 +4,7 @@ id: encryptcookie
 
 # Encrypt Cookie
 
-Encrypt Cookie is a middleware for [Fiber](https://github.com/gofiber/fiber) that secures your cookie values through encryption. 
+Encrypt Cookie is a middleware for [Fiber](https://github.com/gofiber/fiber) that secures your cookie values through encryption.
 
 :::note
 This middleware encrypts cookie values and not the cookie names.
@@ -75,11 +75,11 @@ To generate a 32 char key, use `openssl rand -base64 32` or `encryptcookie.Gener
 
 ```go
 var ConfigDefault = Config{
-	Next:      nil,
-	Except:    []string{},
-	Key:       "",
-	Encryptor: EncryptCookie,
-	Decryptor: DecryptCookie,
+    Next:      nil,
+    Except:    []string{},
+    Key:       "",
+    Encryptor: EncryptCookie,
+    Decryptor: DecryptCookie,
 }
 ```
 
@@ -91,20 +91,21 @@ You may also choose to exclude certain cookies from encryption. For instance, if
 
 ```go
 app.Use(encryptcookie.New(encryptcookie.Config{
-	Key:    "secret-thirty-2-character-string",
-	Except: []string{csrf.ConfigDefault.CookieName}, // exclude CSRF cookie
+    Key:    "secret-thirty-2-character-string",
+    Except: []string{csrf.ConfigDefault.CookieName}, // exclude CSRF cookie
 }))
 app.Use(csrf.New(csrf.Config{
-	KeyLookup:      "header:" + csrf.HeaderName,
-	CookieSameSite: "Lax",
-	CookieSecure:   true,
-	CookieHTTPOnly: false,
+    KeyLookup:      "header:" + csrf.HeaderName,
+    CookieSameSite: "Lax",
+    CookieSecure:   true,
+    CookieHTTPOnly: false,
 }))
 ```
 
 ## Encryption Algorithms
 
 The default Encryptor and Decryptor functions use `AES-256-GCM` for encryption and decryption. If you need to use `AES-128` or `AES-192` instead, you can do so by changing the length of the key when calling `encryptcookie.GenerateKey(length)` or by providing a key of one of the following lengths:
+
 - AES-128 requires a 16-byte key.
 - AES-192 requires a 24-byte key.
 - AES-256 requires a 32-byte key.

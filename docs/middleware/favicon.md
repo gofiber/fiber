@@ -55,9 +55,9 @@ app.Use(favicon.New(favicon.Config{
 
 ```go
 var ConfigDefault = Config{
-	Next:         nil,
-	File:         "",
-	URL:          fPath,
-	CacheControl: "public, max-age=31536000",
+    Next:         nil,
+    File:         "",
+    URL:          fPath,
+    CacheControl: "public, max-age=31536000",
 }
 ```

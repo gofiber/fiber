@@ -58,6 +58,7 @@ func handler(c fiber.Ctx) error {
 | Generator  | `func() string`         | Generator defines a function to generate the unique identifier.                                   | utils.UUID     |
 
 ## Default Config
+
 The default config uses a fast UUID generator which will expose the number of
 requests made to the server. To conceal this value for better privacy, use the
 `utils.UUIDv4` generator.
@@ -66,6 +67,6 @@ requests made to the server. To conceal this value for better privacy, use the
 var ConfigDefault = Config{
     Next:       nil,
     Header:     fiber.HeaderXRequestID,
-	Generator:  utils.UUID,
+    Generator:  utils.UUID,
 }
 ```

@@ -13,6 +13,7 @@ func New(config ...Config) fiber.Handler
 ```
 
 ## Examples
+
 ```go
 package main
 
@@ -67,16 +68,16 @@ curl -I http://localhost:3000
 
 ```go
 var ConfigDefault = Config{
-	XSSProtection:             "0",
-	ContentTypeNosniff:        "nosniff",
-	XFrameOptions:             "SAMEORIGIN",
-	ReferrerPolicy:            "no-referrer",
-	CrossOriginEmbedderPolicy: "require-corp",
-	CrossOriginOpenerPolicy:   "same-origin",
-	CrossOriginResourcePolicy: "same-origin",
-	OriginAgentCluster:        "?1",
-	XDNSPrefetchControl:       "off",
-	XDownloadOptions:          "noopen",
-	XPermittedCrossDomain:     "none",
+    XSSProtection:             "0",
+    ContentTypeNosniff:        "nosniff",
+    XFrameOptions:             "SAMEORIGIN",
+    ReferrerPolicy:            "no-referrer",
+    CrossOriginEmbedderPolicy: "require-corp",
+    CrossOriginOpenerPolicy:   "same-origin",
+    CrossOriginResourcePolicy: "same-origin",
+    OriginAgentCluster:        "?1",
+    XDNSPrefetchControl:       "off",
+    XDownloadOptions:          "noopen",
+    XPermittedCrossDomain:     "none",
 }
 ```

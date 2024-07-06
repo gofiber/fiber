@@ -11,8 +11,8 @@ Make sure to enable fiber's `EnableTrustedProxyCheck` config option before using
 
 Also be aware that enabling support for early data in your reverse proxy (e.g. nginx, as done with a simple `ssl_early_data on;`) makes requests replayable. Refer to the following documents before continuing:
 
-- https://datatracker.ietf.org/doc/html/rfc8446#section-8
-- https://blog.trailofbits.com/2019/03/25/what-application-developers-need-to-know-about-tls-early-data-0rtt/
+- <https://datatracker.ietf.org/doc/html/rfc8446#section-8>
+- <https://blog.trailofbits.com/2019/03/25/what-application-developers-need-to-know-about-tls-early-data-0rtt/>
 
 By default, this middleware allows early data requests on safe HTTP request methods only and rejects the request otherwise, i.e. aborts the request before executing your handler. This behavior can be controlled by the `AllowEarlyData` config option.
 Safe HTTP methods — `GET`, `HEAD`, `OPTIONS` and `TRACE` — should not modify a state on the server.
@@ -30,8 +30,8 @@ Import the middleware package that is part of the Fiber web framework
 
 ```go
 import (
-	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/middleware/earlydata"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/earlydata"
 )
 ```
 
@@ -43,8 +43,8 @@ app.Use(earlydata.New())
 
 // Or extend your config for customization
 app.Use(earlydata.New(earlydata.Config{
-	Error: fiber.ErrTooEarly,
-	// ...
+    Error: fiber.ErrTooEarly,
+    // ...
 }))
 ```
 
@@ -61,13 +61,13 @@ app.Use(earlydata.New(earlydata.Config{
 
 ```go
 var ConfigDefault = Config{
-	IsEarlyData: func(c fiber.Ctx) bool {
-		return c.Get(DefaultHeaderName) == DefaultHeaderTrueValue
-	},
-	AllowEarlyData: func(c fiber.Ctx) bool {
-		return fiber.IsMethodSafe(c.Method())
-	},
-	Error: fiber.ErrTooEarly,
+    IsEarlyData: func(c fiber.Ctx) bool {
+        return c.Get(DefaultHeaderName) == DefaultHeaderTrueValue
+    },
+    AllowEarlyData: func(c fiber.Ctx) bool {
+        return fiber.IsMethodSafe(c.Method())
+    },
+    Error: fiber.ErrTooEarly,
 }
 ```
 
@@ -75,7 +75,7 @@ var ConfigDefault = Config{
 
 ```go
 const (
-	DefaultHeaderName      = "Early-Data"
-	DefaultHeaderTrueValue = "1"
+    DefaultHeaderName      = "Early-Data"
+    DefaultHeaderTrueValue = "1"
 )
 ```

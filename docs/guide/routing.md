@@ -20,7 +20,7 @@ import RoutingHandler from './../partials/routing/handler.md';
 
 Route paths, combined with a request method, define the endpoints at which requests can be made. Route paths can be **strings** or **string patterns**.
 
-**Examples of route paths based on strings**
+### Examples of route paths based on strings
 
 ```go
 // This route path will match requests to the root route, "/":
@@ -56,7 +56,7 @@ Greedy parameters are indicated by wildcard\(\*\) or plus\(+\) signs.
 
 The routing also offers the possibility to use optional parameters, for the named parameters these are marked with a final "?", unlike the plus sign which is not optional, you can use the wildcard character for a parameter range which is optional and greedy.
 
-**Example of define routes with route parameters**
+### Example of define routes with route parameters
 
 ```go
 // Parameters
@@ -143,6 +143,7 @@ app.Get("/v1/*/shop/*", handler)
 We have adapted the routing strongly to the express routing, but currently without the possibility of the regular expressions, because they are quite slow. The possibilities can be tested with version 0.1.7 \(express 4\) in the online [Express route tester](http://forbeslindesay.github.io/express-route-tester/).
 
 ### Constraints
+
 Route constraints execute when a match has occurred to the incoming URL and the URL path is tokenized into route values by parameters. The feature was introduced in `v2.37.0` and inspired by [.NET Core](https://docs.microsoft.com/en-us/aspnet/core/fundamentals/routing?view=aspnetcore-6.0#route-constraints).
 
 :::caution
@@ -172,7 +173,7 @@ Constraints aren't validation for parameters. If constraints aren't valid for a 
 
 ```go
 app.Get("/:test<min(5)>", func(c fiber.Ctx) error {
-  return c.SendString(c.Params("test"))
+    return c.SendString(c.Params("test"))
 })
 
 // curl -X GET http://localhost:3000/12
@@ -181,13 +182,15 @@ app.Get("/:test<min(5)>", func(c fiber.Ctx) error {
 // curl -X GET http://localhost:3000/1
 // Cannot GET /1
 ```
+
 </TabItem>
 <TabItem value="multiple-constraints" label="Multiple Constraints">
 
 You can use `;` for multiple constraints.
+
 ```go
 app.Get("/:test<min(100);maxLen(5)>", func(c fiber.Ctx) error {
-  return c.SendString(c.Params("test"))
+    return c.SendString(c.Params("test"))
 })
 
 // curl -X GET http://localhost:3000/120000
@@ -199,13 +202,15 @@ app.Get("/:test<min(100);maxLen(5)>", func(c fiber.Ctx) error {
 // curl -X GET http://localhost:3000/250
 // 250
 ```
+
 </TabItem>
 <TabItem value="regex-constraint" label="Regex Constraint">
 
 Fiber precompiles regex query when to register routes. So there're no performance overhead for regex constraint.
+
 ```go
 app.Get(`/:date<regex(\d{4}-\d{2}-\d{2})>`, func(c fiber.Ctx) error {
-  return c.SendString(c.Params("date"))
+    return c.SendString(c.Params("date"))
 })
 
 // curl -X GET http://localhost:3000/125
@@ -245,21 +250,21 @@ app.Get("/:test<int>?", func(c fiber.Ctx) error {
 
 Custom constraints can be added to Fiber using the `app.RegisterCustomConstraint` method. Your constraints have to be compatible with the `CustomConstraint` interface.
 
-It is a good idea to add external constraints to your project once you want to add more specific rules to your routes. 
+It is a good idea to add external constraints to your project once you want to add more specific rules to your routes.
 For example, you can add a constraint to check if a parameter is a valid ULID.
 
 ```go
 // CustomConstraint is an interface for custom constraints
 type CustomConstraint interface {
-	// Name returns the name of the constraint.
-	// This name is used in the constraint matching.
-	Name() string
+    // Name returns the name of the constraint.
+    // This name is used in the constraint matching.
+    Name() string
 
-	// Execute executes the constraint.
-	// It returns true if the constraint is matched and right.
-	// param is the parameter value to check.
-	// args are the constraint arguments.
-	Execute(param string, args ...string) bool
+    // Execute executes the constraint.
+    // It returns true if the constraint is matched and right.
+    // param is the parameter value to check.
+    // args are the constraint arguments.
+    Execute(param string, args ...string) bool
 }
 ```
 
@@ -267,30 +272,30 @@ You can check the example below:
 
 ```go
 type UlidConstraint struct {
-	fiber.CustomConstraint
+    fiber.CustomConstraint
 }
 
 func (*UlidConstraint) Name() string {
-	return "ulid"
+    return "ulid"
 }
 
 func (*UlidConstraint) Execute(param string, args ...string) bool {
-	_, err := ulid.Parse(param)
-	return err == nil
+    _, err := ulid.Parse(param)
+    return err == nil
 }
 
 func main() {
-	app := fiber.New()
-	app.RegisterCustomConstraint(&UlidConstraint{})
+    app := fiber.New()
+    app.RegisterCustomConstraint(&UlidConstraint{})
 
-	app.Get("/login/:id<ulid>", func(c fiber.Ctx) error {
-		return c.SendString("...")
-	})
+    app.Get("/login/:id<ulid>", func(c fiber.Ctx) error {
+        return c.SendString("...")
+    })
 
-	app.Listen(":3000")
+    app.Listen(":3000")
 
-	// /login/01HK7H9ZE5BFMK348CPYP14S0Z -> 200
-	// /login/12345 -> 404
+    // /login/01HK7H9ZE5BFMK348CPYP14S0Z -> 200
+    // /login/12345 -> 404
 }
 ```
 
@@ -302,11 +307,11 @@ Functions that are designed to make changes to the request or response are calle
 
 ```go
 app.Use(func(c fiber.Ctx) error {
-  // Set a custom header on all responses:
-  c.Set("X-Custom-Header", "Hello, World")
+    // Set a custom header on all responses:
+    c.Set("X-Custom-Header", "Hello, World")
 
-  // Go to next middleware:
-  return c.Next()
+    // Go to next middleware:
+    return c.Next()
 })
 
 app.Get("/", func(c fiber.Ctx) error {
@@ -322,26 +327,25 @@ app.Get("/", func(c fiber.Ctx) error {
 Adding routes dynamically after the application has started is not supported due to design and performance considerations. Make sure to define all your routes before the application starts.
 :::
 
-
 ## Grouping
 
 If you have many endpoints, you can organize your routes using `Group`.
 
 ```go
 func main() {
-  app := fiber.New()
+    app := fiber.New()
 
-  api := app.Group("/api", middleware) // /api
+    api := app.Group("/api", middleware) // /api
 
-  v1 := api.Group("/v1", middleware)   // /api/v1
-  v1.Get("/list", handler)             // /api/v1/list
-  v1.Get("/user", handler)             // /api/v1/user
+    v1 := api.Group("/v1", middleware)   // /api/v1
+    v1.Get("/list", handler)             // /api/v1/list
+    v1.Get("/user", handler)             // /api/v1/user
 
-  v2 := api.Group("/v2", middleware)   // /api/v2
-  v2.Get("/list", handler)             // /api/v2/list
-  v2.Get("/user", handler)             // /api/v2/user
+    v2 := api.Group("/v2", middleware)   // /api/v2
+    v2.Get("/list", handler)             // /api/v2/list
+    v2.Get("/user", handler)             // /api/v2/user
 
-  log.Fatal(app.Listen(":3000"))
+    log.Fatal(app.Listen(":3000"))
 }
 ```
 

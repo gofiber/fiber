@@ -1,0 +1,19 @@
+name: markdownlint
+on:
+  push:
+    branches:
+      - master
+      - main
+  pull_request:
+
+jobs:
+  markdownlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DavidAnson/markdownlint-cli2-action@v16
+        with:
+          globs: |
+            **/*.md
+            !.github

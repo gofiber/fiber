@@ -8,6 +8,7 @@ import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
 With Fiber v2.30.0, you can execute custom user functions when to run some methods. Here is a list of this hooks:
+
 - [OnRoute](#onroute)
 - [OnName](#onname)
 - [OnGroup](#ongroup)
@@ -18,6 +19,7 @@ With Fiber v2.30.0, you can execute custom user functions when to run some metho
 - [OnMount](#onmount)
 
 ## Constants
+
 ```go
 // Handlers define a function to create hooks for Fiber.
 type OnRouteHandler = func(Route) error
@@ -57,45 +59,46 @@ func (h *Hooks) OnName(handler ...OnNameHandler)
 package main
 
 import (
-	"fmt"
+    "fmt"
 
-	"github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3"
 )
 
 func main() {
-	app := fiber.New()
+    app := fiber.New()
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString(c.Route().Name)
-	}).Name("index")
+    app.Get("/", func(c fiber.Ctx) error {
+        return c.SendString(c.Route().Name)
+    }).Name("index")
 
-	app.Hooks().OnName(func(r fiber.Route) error {
-		fmt.Print("Name: " + r.Name + ", ")
+    app.Hooks().OnName(func(r fiber.Route) error {
+        fmt.Print("Name: " + r.Name + ", ")
 
-		return nil
-	})
+        return nil
+    })
 
-	app.Hooks().OnName(func(r fiber.Route) error {
-		fmt.Print("Method: " + r.Method + "\n")
+    app.Hooks().OnName(func(r fiber.Route) error {
+        fmt.Print("Method: " + r.Method + "\n")
 
-		return nil
-	})
+        return nil
+    })
 
-	app.Get("/add/user", func(c fiber.Ctx) error {
-		return c.SendString(c.Route().Name)
-	}).Name("addUser")
+    app.Get("/add/user", func(c fiber.Ctx) error {
+        return c.SendString(c.Route().Name)
+    }).Name("addUser")
 
-	app.Delete("/destroy/user", func(c fiber.Ctx) error {
-		return c.SendString(c.Route().Name)
-	}).Name("destroyUser")
+    app.Delete("/destroy/user", func(c fiber.Ctx) error {
+        return c.SendString(c.Route().Name)
+    }).Name("destroyUser")
 
-	app.Listen(":5000")
+    app.Listen(":5000")
 }
 
 // Results:
 // Name: addUser, Method: GET
 // Name: destroyUser, Method: DELETE
 ```
+
 </TabItem>
 </Tabs>
 
@@ -137,7 +140,7 @@ app := fiber.New(fiber.Config{
 
 app.Hooks().OnListen(func(listenData fiber.ListenData) error {
   if fiber.IsChild() {
-	  return nil
+      return nil
   }
   scheme := "http"
   if data.TLS {
@@ -184,26 +187,26 @@ func (h *Hooks) OnMount(handler ...OnMountHandler)
 package main
 
 import (
-	"fmt"
+    "fmt"
 
-	"github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3"
 )
 
 func main() {
-	app := New()
-	app.Get("/", testSimpleHandler).Name("x")
+    app := New()
+    app.Get("/", testSimpleHandler).Name("x")
 
-	subApp := New()
-	subApp.Get("/test", testSimpleHandler)
+    subApp := New()
+    subApp.Get("/test", testSimpleHandler)
 
-	subApp.Hooks().OnMount(func(parent *fiber.App) error {
-		fmt.Print("Mount path of parent app: "+parent.MountPath())
-		// ...
+    subApp.Hooks().OnMount(func(parent *fiber.App) error {
+        fmt.Print("Mount path of parent app: "+parent.MountPath())
+        // ...
 
-		return nil
-	})
+        return nil
+    })
 
-	app.Mount("/sub", subApp)
+    app.Mount("/sub", subApp)
 }
 
 // Result:
@@ -212,7 +215,6 @@ func main() {
 
 </TabItem>
 </Tabs>
-
 
 :::caution
 OnName/OnRoute/OnGroup/OnGroupName hooks are mount-sensitive. If you use one of these routes on sub app and you mount it; paths of routes and groups will start with mount prefix.

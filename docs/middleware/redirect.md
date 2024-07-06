@@ -63,6 +63,6 @@ curl http://localhost:3000/old/hello
 
 ```go
 var ConfigDefault = Config{
-	StatusCode: fiber.StatusFound,
+    StatusCode: fiber.StatusFound,
 }
 ```

@@ -54,10 +54,10 @@ We created a custom `CopyString` function that does the above and is available u
 
 ```go
 app.Get("/:foo", func(c fiber.Ctx) error {
-	// Variable is now immutable
-	result := utils.CopyString(c.Params("foo")) 
+    // Variable is now immutable
+    result := utils.CopyString(c.Params("foo")) 
 
-	// ...
+    // ...
 })
 ```
 
@@ -65,13 +65,13 @@ Alternatively, you can also use the `Immutable` setting. It will make all values
 
 ```go
 app := fiber.New(fiber.Config{
-	Immutable: true,
+    Immutable: true,
 })
 ```
 
 For more information, please check [**\#426**](https://github.com/gofiber/fiber/issues/426), [**\#185**](https://github.com/gofiber/fiber/issues/185) and [**\#3012**](https://github.com/gofiber/fiber/issues/3012).
 
-### Hello, World!
+### Hello, World
 
 Embedded below is essentially the most straightforward **Fiber** app you can create:
 
@@ -81,13 +81,13 @@ package main
 import "github.com/gofiber/fiber/v3"
 
 func main() {
-	app := fiber.New()
+    app := fiber.New()
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("Hello, World!")
-	})
+    app.Get("/", func(c fiber.Ctx) error {
+        return c.SendString("Hello, World!")
+    })
 
-	app.Listen(":3000")
+    app.Listen(":3000")
 }
 ```
 
@@ -115,48 +115,48 @@ app.Method(path string, ...func(fiber.Ctx) error)
 - `path` is a virtual path on the server
 - `func(fiber.Ctx) error` is a callback function containing the [Context](https://docs.gofiber.io/api/ctx) executed when the route is matched
 
-**Simple route**
+#### Simple route
 
 ```go
 // Respond with "Hello, World!" on root path, "/"
 app.Get("/", func(c fiber.Ctx) error {
-	return c.SendString("Hello, World!")
+    return c.SendString("Hello, World!")
 })
 ```
 
-**Parameters**
+#### Parameters
 
 ```go
 // GET http://localhost:8080/hello%20world
 
 app.Get("/:value", func(c fiber.Ctx) error {
-	return c.SendString("value: " + c.Params("value"))
-	// => Get request with value: hello world
+    return c.SendString("value: " + c.Params("value"))
+    // => Get request with value: hello world
 })
 ```
 
-**Optional parameter**
+#### Optional parameter
 
 ```go
 // GET http://localhost:3000/john
 
 app.Get("/:name?", func(c fiber.Ctx) error {
-	if c.Params("name") != "" {
-		return c.SendString("Hello " + c.Params("name"))
-		// => Hello john
-	}
-	return c.SendString("Where is john?")
+    if c.Params("name") != "" {
+        return c.SendString("Hello " + c.Params("name"))
+        // => Hello john
+    }
+    return c.SendString("Where is john?")
 })
 ```
 
-**Wildcards**
+#### Wildcards
 
 ```go
 // GET http://localhost:3000/api/user/john
 
 app.Get("/api/*", func(c fiber.Ctx) error {
-	return c.SendString("API path: " + c.Params("*"))
-	// => API path: user/john
+    return c.SendString("API path: " + c.Params("*"))
+    // => API path: user/john
 })
 ```
 

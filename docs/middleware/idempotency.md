@@ -6,7 +6,7 @@ id: idempotency
 
 Idempotency middleware for [Fiber](https://github.com/gofiber/fiber) allows for fault-tolerant APIs where duplicate requests — for example due to networking issues on the client-side — do not erroneously cause the same action performed multiple times on the server-side.
 
-Refer to https://datatracker.ietf.org/doc/html/draft-ietf-httpapi-idempotency-key-header-02 for a better understanding.
+Refer to <https://datatracker.ietf.org/doc/html/draft-ietf-httpapi-idempotency-key-header-02> for a better understanding.
 
 ## Signatures
 
@@ -22,8 +22,8 @@ Import the middleware package that is part of the Fiber web framework
 
 ```go
 import (
-	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/middleware/idempotency"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/idempotency"
 )
 ```
 
@@ -39,8 +39,8 @@ app.Use(idempotency.New())
 
 ```go
 app.Use(idempotency.New(idempotency.Config{
-	Lifetime: 42 * time.Minute,
-	// ...
+    Lifetime: 42 * time.Minute,
+    // ...
 }))
 ```
 
@@ -60,26 +60,26 @@ app.Use(idempotency.New(idempotency.Config{
 
 ```go
 var ConfigDefault = Config{
-	Next: func(c fiber.Ctx) bool {
-		// Skip middleware if the request was done using a safe HTTP method
-		return fiber.IsMethodSafe(c.Method())
-	},
+    Next: func(c fiber.Ctx) bool {
+        // Skip middleware if the request was done using a safe HTTP method
+        return fiber.IsMethodSafe(c.Method())
+    },
 
-	Lifetime: 30 * time.Minute,
+    Lifetime: 30 * time.Minute,
 
-	KeyHeader: "X-Idempotency-Key",
-	KeyHeaderValidate: func(k string) error {
-		if l, wl := len(k), 36; l != wl { // UUID length is 36 chars
-			return fmt.Errorf("%w: invalid length: %d != %d", ErrInvalidIdempotencyKey, l, wl)
-		}
+    KeyHeader: "X-Idempotency-Key",
+    KeyHeaderValidate: func(k string) error {
+        if l, wl := len(k), 36; l != wl { // UUID length is 36 chars
+            return fmt.Errorf("%w: invalid length: %d != %d", ErrInvalidIdempotencyKey, l, wl)
+        }
 
-		return nil
-	},
+        return nil
+    },
 
-	KeepResponseHeaders: nil,
+    KeepResponseHeaders: nil,
 
-	Lock: nil, // Set in configDefault so we don't allocate data here.
+    Lock: nil, // Set in configDefault so we don't allocate data here.
 
-	Storage: nil, // Set in configDefault so we don't allocate data here.
+    Storage: nil, // Set in configDefault so we don't allocate data here.
 }
 ```

@@ -18,8 +18,8 @@ Import the middleware package that is part of the Fiber web framework:
 
 ```go
 import (
-	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/middleware/csrf"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/csrf"
 )
 ```
 
@@ -31,12 +31,12 @@ app.Use(csrf.New())
 
 // Or extend your config for customization
 app.Use(csrf.New(csrf.Config{
-	KeyLookup:      "header:X-Csrf-Token",
-	CookieName:     "csrf_",
-	CookieSameSite: "Lax",
-	Expiration:     1 * time.Hour,
-	KeyGenerator:   utils.UUIDv4,
-	Extractor:      func(c fiber.Ctx) (string, error) { ... },
+    KeyLookup:      "header:X-Csrf-Token",
+    CookieName:     "csrf_",
+    CookieSameSite: "Lax",
+    Expiration:     1 * time.Hour,
+    KeyGenerator:   utils.UUIDv4,
+    Extractor:      func(c fiber.Ctx) (string, error) { ... },
 }))
 ```
 
@@ -48,27 +48,27 @@ Getting the CSRF token in a handler:
 
 ```go
 func handler(c fiber.Ctx) error {
-	handler := csrf.HandlerFromContext(c)
-	token := csrf.TokenFromContext(c)
-	if handler == nil {
-		panic("csrf middleware handler not registered")
-	}
-	cfg := handler.Config
-	if cfg == nil {
-		panic("csrf middleware handler has no config")
-	}
-	if !strings.Contains(cfg.KeyLookup, ":") {
-		panic("invalid KeyLookup format")
-	}
-	formKey := strings.Split(cfg.KeyLookup, ":")[1]
-	
-	tmpl := fmt.Sprintf(`<form action="/post" method="POST">
-		<input type="hidden" name="%s" value="%s">
-		<input type="text" name="message">
-		<input type="submit" value="Submit">
-	</form>`, formKey, token)
-	c.Set("Content-Type", "text/html")
-	return c.SendString(tmpl)
+    handler := csrf.HandlerFromContext(c)
+    token := csrf.TokenFromContext(c)
+    if handler == nil {
+        panic("csrf middleware handler not registered")
+    }
+    cfg := handler.Config
+    if cfg == nil {
+        panic("csrf middleware handler has no config")
+    }
+    if !strings.Contains(cfg.KeyLookup, ":") {
+        panic("invalid KeyLookup format")
+    }
+    formKey := strings.Split(cfg.KeyLookup, ":")[1]
+    
+    tmpl := fmt.Sprintf(`<form action="/post" method="POST">
+        <input type="hidden" name="%s" value="%s">
+        <input type="text" name="message">
+        <input type="submit" value="Submit">
+    </form>`, formKey, token)
+    c.Set("Content-Type", "text/html")
+    return c.SendString(tmpl)
 }
 ```
 
@@ -78,11 +78,11 @@ There are two basic use cases for the CSRF middleware:
 
 1. **Without Sessions**: This is the simplest way to use the middleware. It uses the Double Submit Cookie Pattern and does not require a user session.
 
-	- See GoFiber recipe [CSRF](https://github.com/gofiber/recipes/tree/master/csrf) for an example of using the CSRF middleware without a user session.
+    - See GoFiber recipe [CSRF](https://github.com/gofiber/recipes/tree/master/csrf) for an example of using the CSRF middleware without a user session.
 
 2. **With Sessions**: This is generally considered more secure. It uses the Synchronizer Token Pattern and requires a user session, and the use of pre-session, which prevents login CSRF attacks.
 
-	- See GoFiber recipe [CSRF with Session](https://github.com/gofiber/recipes/tree/master/csrf-with-session) for an example of using the CSRF middleware with a user session.
+    - See GoFiber recipe [CSRF with Session](https://github.com/gofiber/recipes/tree/master/csrf-with-session) for an example of using the CSRF middleware with a user session.
 
 ## Signatures
 
@@ -93,7 +93,6 @@ func HandlerFromContext(c fiber.Ctx) *Handler
 
 func (h *Handler) DeleteToken(c fiber.Ctx) error
 ```
-
 
 ## Config
 
@@ -122,14 +121,14 @@ func (h *Handler) DeleteToken(c fiber.Ctx) error
 
 ```go
 var ConfigDefault = Config{
-	KeyLookup:         "header:" + HeaderName,
-	CookieName:        "csrf_",
-	CookieSameSite:    "Lax",
-	Expiration:        1 * time.Hour,
-	KeyGenerator:      utils.UUIDv4,
-	ErrorHandler:      defaultErrorHandler,
-	Extractor:         FromHeader(HeaderName),
-	SessionKey:        "csrfToken",
+    KeyLookup:         "header:" + HeaderName,
+    CookieName:        "csrf_",
+    CookieSameSite:    "Lax",
+    Expiration:        1 * time.Hour,
+    KeyGenerator:      utils.UUIDv4,
+    ErrorHandler:      defaultErrorHandler,
+    Extractor:         FromHeader(HeaderName),
+    SessionKey:        "csrfToken",
 }
 ```
 
@@ -139,18 +138,18 @@ It's recommended to use this middleware with [fiber/middleware/session](https://
 
 ```go
 var ConfigDefault = Config{
-	KeyLookup:         "header:" + HeaderName,
-	CookieName:        "__Host-csrf_",
-	CookieSameSite:    "Lax",
-	CookieSecure:	   true,
-	CookieSessionOnly: true,
-	CookieHTTPOnly:    true,
-	Expiration:        1 * time.Hour,
-	KeyGenerator:      utils.UUIDv4,
-	ErrorHandler:      defaultErrorHandler,
-	Extractor:         FromHeader(HeaderName),
-	Session:           session.Store,
-	SessionKey:        "csrfToken",
+    KeyLookup:         "header:" + HeaderName,
+    CookieName:        "__Host-csrf_",
+    CookieSameSite:    "Lax",
+    CookieSecure:       true,
+    CookieSessionOnly: true,
+    CookieHTTPOnly:    true,
+    Expiration:        1 * time.Hour,
+    KeyGenerator:      utils.UUIDv4,
+    ErrorHandler:      defaultErrorHandler,
+    Extractor:         FromHeader(HeaderName),
+    Session:           session.Store,
+    SessionKey:        "csrfToken",
 }
 ```
 
@@ -166,7 +165,7 @@ In the following example, the CSRF middleware will allow requests from `trusted.
 
 ```go
 app.Use(csrf.New(csrf.Config{
-	TrustedOrigins: []string{"https://trusted.example.com"},
+    TrustedOrigins: []string{"https://trusted.example.com"},
 }))
 ```
 
@@ -176,7 +175,7 @@ In the following example, the CSRF middleware will allow requests from any subdo
 
 ```go
 app.Use(csrf.New(csrf.Config{
-	TrustedOrigins: []string{"https://*.example.com"},
+    TrustedOrigins: []string{"https://*.example.com"},
 }))
 ```
 
@@ -216,19 +215,19 @@ Example, returning a JSON response for API requests and rendering an error page 
 
 ```go
 app.Use(csrf.New(csrf.Config{
-	ErrorHandler: func(c fiber.Ctx, err error) error {
-		accepts := c.Accepts("html", "json")
-		path := c.Path()
-		if accepts == "json" || strings.HasPrefix(path, "/api/") {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-				"error": "Forbidden",
-			})
-		}
-		return c.Status(fiber.StatusForbidden).Render("error", fiber.Map{
-			"Title": "Forbidden",
-			"Status": fiber.StatusForbidden,
-		}, "layouts/main")
-	},
+    ErrorHandler: func(c fiber.Ctx, err error) error {
+        accepts := c.Accepts("html", "json")
+        path := c.Path()
+        if accepts == "json" || strings.HasPrefix(path, "/api/") {
+            return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+                "error": "Forbidden",
+            })
+        }
+        return c.Status(fiber.StatusForbidden).Render("error", fiber.Map{
+            "Title": "Forbidden",
+            "Status": fiber.StatusForbidden,
+        }, "layouts/main")
+    },
 }))
 ```
 
@@ -239,17 +238,17 @@ You can use any storage from our [storage](https://github.com/gofiber/storage/) 
 ```go
 storage := sqlite3.New() // From github.com/gofiber/storage/sqlite3
 app.Use(csrf.New(csrf.Config{
-	Storage: storage,
+    Storage: storage,
 }))
 ```
 
-# How It Works
+## How It Works
 
-## Token Generation
+### Token Generation
 
 CSRF tokens are generated on 'safe' requests and when the existing token has expired or hasn't been set yet. If `SingleUseToken` is `true`, a new token is generated after each use.  Retrieve the CSRF token using `csrf.TokenFromContext(c)`.
 
-## Security Considerations
+### Security Considerations
 
 This middleware is designed to protect against CSRF attacks but does not protect against other attack vectors, such as XSS. It should be used in combination with other security measures.
 
@@ -257,9 +256,9 @@ This middleware is designed to protect against CSRF attacks but does not protect
 Never use 'safe' methods to mutate data, for example, never use a GET request to modify a resource. This middleware will not protect against CSRF attacks on 'safe' methods.
 :::
 
-### Token Validation Patterns
+## Token Validation Patterns
 
-#### Double Submit Cookie Pattern (Default)
+### Double Submit Cookie Pattern (Default)
 
 By default, the middleware generates and stores tokens using the `fiber.Storage` interface. These tokens are not linked to any particular user session, and they are validated using the Double Submit Cookie pattern.  The token is stored in a cookie, and then sent as a header on requests. The middleware compares the cookie value with the header value to validate the token. This is a secure pattern that does not require a user session.
 
@@ -273,7 +272,7 @@ When using this pattern, it's important to set the `CookieSameSite` option to `L
 When using this pattern, this middleware uses our [Storage](https://github.com/gofiber/storage) package to support various databases through a single interface. The default configuration for Storage saves data to memory. See [Custom Storage/Database](#custom-storagedatabase) for customizing the storage.
 :::
 
-#### Synchronizer Token Pattern (with Session)
+### Synchronizer Token Pattern (with Session)
 
 When using this middleware with a user session, the middleware can be configured to store the token within the session. This method is recommended when using a user session, as it is generally more secure than the Double Submit Cookie Pattern.
 
@@ -283,7 +282,7 @@ When using this pattern it's important to regenerate the session when the author
 Pre-sessions are required and will be created automatically if not present. Use a session value to indicate authentication instead of relying on the presence of a session.
 :::
 
-### Defense In Depth
+## Defense In Depth
 
 When using this middleware, it's recommended to serve your pages over HTTPS, set the `CookieSecure` option to `true`, and set the `CookieSameSite` option to `Lax` or `Strict`. This ensures that the cookie is only sent over HTTPS and not on requests from external sites.
 
@@ -293,7 +292,7 @@ Cookie prefixes `__Host-` and `__Secure-` can be used to further secure the cook
 To use these prefixes, set the `CookieName` option to `__Host-csrf_` or `__Secure-csrf_`.
 :::
 
-### Referer Checking
+## Referer Checking
 
 For HTTPS requests, this middleware performs strict referer checking. Even if a subdomain can set or modify cookies on your domain, it can't force a user to post to your application, since that request won't come from your own exact domain.
 
@@ -303,11 +302,11 @@ When HTTPS requests are protected by CSRF, referer checking is always carried ou
 The Referer header is automatically included in requests by all modern browsers, including those made using the JS Fetch API. However, if you're making use of this middleware with a custom client, it's important to ensure that the client sends a valid Referer header.
 :::
 
-### Token Lifecycle
+## Token Lifecycle
 
 Tokens are valid until they expire or until they are deleted. By default, tokens are valid for 1 hour, and each subsequent request extends the expiration by 1 hour. The token only expires if the user doesn't make a request for the duration of the expiration time.
 
-#### Token Reuse
+### Token Reuse
 
 By default, tokens may be used multiple times. If you want to delete the token after it has been used, you can set the `SingleUseToken` option to `true`. This will delete the token after it has been used, and a new token will be generated on the next request.
 
@@ -315,16 +314,16 @@ By default, tokens may be used multiple times. If you want to delete the token a
 Using `SingleUseToken` comes with usability trade-offs and is not enabled by default. For example, it can interfere with the user experience if the user has multiple tabs open or uses the back button.
 :::
 
-#### Deleting Tokens
+### Deleting Tokens
 
 When the authorization status changes, the CSRF token MUST be deleted, and a new one generated. This can be done by calling `handler.DeleteToken(c)`.
 
 ```go
 handler := csrf.HandlerFromContext(ctx)
 if handler != nil {
-	if err := handler.DeleteToken(app.AcquireCtx(ctx)); err != nil {
-		// handle error
-	}
+    if err := handler.DeleteToken(app.AcquireCtx(ctx)); err != nil {
+        // handle error
+    }
 }
 ```
 
@@ -332,6 +331,6 @@ if handler != nil {
 If you are using this middleware with the fiber session middleware, then you can simply call `session.Destroy()`, `session.Regenerate()`, or `session.Reset()` to delete the session and the token stored therein.
 :::
 
-### BREACH
+## BREACH
 
 It's important to note that the token is sent as a header on every request. If you include the token in a page that is vulnerable to [BREACH](https://en.wikipedia.org/wiki/BREACH), an attacker may be able to extract the token. To mitigate this, ensure your pages are served over HTTPS, disable HTTP compression, and implement rate limiting for requests.

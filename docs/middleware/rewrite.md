@@ -20,6 +20,7 @@ func New(config ...Config) fiber.Handler
 | Rules    | `map[string]string`     | Rules defines the URL path rewrite rules. The values captured in asterisk can be retrieved by index. | (Required) |
 
 ### Examples
+
 ```go
 package main
 

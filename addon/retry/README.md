@@ -3,18 +3,18 @@
 Retry addon for [Fiber](https://github.com/gofiber/fiber) designed to apply retry mechanism for unsuccessful network
 operations. This addon uses exponential backoff algorithm with jitter. It calls the function multiple times and tries
 to make it successful. If all calls are failed, then, it returns error. It adds a jitter at each retry step because adding
-a jitter is a way to break synchronization across the client and avoid collision. 
+a jitter is a way to break synchronization across the client and avoid collision.
 
 ## Table of Contents
 
 - [Retry Addon](#retry-addon)
-  - [Table of Contents](#table-of-contents)
-  - [Signatures](#signatures)
-  - [Examples](#examples)
-    - [Default Config](#default-config)
-    - [Custom Config](#custom-config)
-    - [Config](#config)
-    - [Default Config Example](#default-config-example)
+- [Table of Contents](#table-of-contents)
+- [Signatures](#signatures)
+- [Examples](#examples)
+- [Default Config](#default-config)
+- [Custom Config](#custom-config)
+- [Config](#config)
+- [Default Config Example](#default-config-example)
 
 ## Signatures
 
@@ -42,10 +42,10 @@ retry.NewExponentialBackoff()
 
 ```go
 retry.NewExponentialBackoff(retry.Config{
-        InitialInterval: 2 * time.Second,
-        MaxBackoffTime:  64 * time.Second,
-        Multiplier:      2.0,
-        MaxRetryCount:   15,
+    InitialInterval: 2 * time.Second,
+    MaxBackoffTime:  64 * time.Second,
+    Multiplier:      2.0,
+    MaxRetryCount:   15,
 })
 ```
 
@@ -88,10 +88,10 @@ type Config struct {
 ```go
 // DefaultConfig is the default config for retry.
 var DefaultConfig = Config{
-	InitialInterval: 1 * time.Second,
-	MaxBackoffTime:  32 * time.Second,
-	Multiplier:      2.0,
-	MaxRetryCount:   10,
-	currentInterval: 1 * time.Second,
+    InitialInterval: 1 * time.Second,
+    MaxBackoffTime:  32 * time.Second,
+    Multiplier:      2.0,
+    MaxRetryCount:   10,
+    currentInterval: 1 * time.Second,
 }
 ```

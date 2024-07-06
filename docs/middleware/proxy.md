@@ -7,6 +7,7 @@ id: proxy
 Proxy middleware for [Fiber](https://github.com/gofiber/fiber) that allows you to proxy requests to multiple servers.
 
 ## Signatures
+
 // BalancerForward performs the given http request based on a round-robin balancer and fills the given http response.
 
 ```go
@@ -157,7 +158,7 @@ app.Use(proxy.Balancer(proxy.Config{
 | Property        | Type                                           | Description                                                                                                                                                                                                    | Default         |
 |:----------------|:-----------------------------------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:----------------|
 | Next            | `func(fiber.Ctx) bool`                        | Next defines a function to skip this middleware when returned true.                                                                                                                                            | `nil`           |
-| Servers         | `[]string`                                     | Servers defines a list of `<scheme>://<host>` HTTP servers, which are used in a round-robin manner. i.e.: "https://foobar.com, http://www.foobar.com"                                                            | (Required)      |
+| Servers         | `[]string`                                     | Servers defines a list of `<scheme>://<host>` HTTP servers, which are used in a round-robin manner. i.e.: "<https://foobar.com>, <http://www.foobar.com>"                                                            | (Required)      |
 | ModifyRequest   | `fiber.Handler`                                | ModifyRequest allows you to alter the request.                                                                                                                                                                 | `nil`           |
 | ModifyResponse  | `fiber.Handler`                                | ModifyResponse allows you to alter the response.                                                                                                                                                               | `nil`           |
 | Timeout         | `time.Duration`                                | Timeout is the request timeout used when calling the proxy client.                                                                                                                                             | 1 second        |

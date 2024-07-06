@@ -86,7 +86,7 @@ func dbCheckOrigin(db *sql.DB, origin string) bool {
 
 app.Use(cors.New(cors.Config{
   AllowOriginsFunc: func(origin string) bool {
-	return dbCheckOrigin(db, origin)
+    return dbCheckOrigin(db, origin)
   },
 }))
 ```
@@ -104,7 +104,7 @@ app.Use(cors.New(cors.Config{
 
 This will result in the following panic:
 
-```
+```text
 panic: [CORS] Configuration error: When 'AllowCredentials' is set to true, 'AllowOrigins' cannot contain a wildcard origin '*'. Please specify allowed origins explicitly or adjust 'AllowCredentials' setting.
 ```
 
@@ -130,22 +130,22 @@ If AllowOrigins is a zero value `[]string{}`, and AllowOriginsFunc is provided, 
 
 ```go
 var ConfigDefault = Config{
-	Next:             nil,
-	AllowOriginsFunc: nil,
-	AllowOrigins:     []string{"*"},
-	AllowMethods: []string{
-		fiber.MethodGet,
-		fiber.MethodPost,
-		fiber.MethodHead,
-		fiber.MethodPut,
-		fiber.MethodDelete,
-		fiber.MethodPatch,
-	},
-	AllowHeaders:        []string{},
-	AllowCredentials:    false,
-	ExposeHeaders:       []string{},
-	MaxAge:              0,
-	AllowPrivateNetwork: false,
+    Next:             nil,
+    AllowOriginsFunc: nil,
+    AllowOrigins:     []string{"*"},
+    AllowMethods: []string{
+        fiber.MethodGet,
+        fiber.MethodPost,
+        fiber.MethodHead,
+        fiber.MethodPut,
+        fiber.MethodDelete,
+        fiber.MethodPatch,
+    },
+    AllowHeaders:        []string{},
+    AllowCredentials:    false,
+    ExposeHeaders:       []string{},
+    MaxAge:              0,
+    AllowPrivateNetwork: false,
 }
 ```
 
@@ -163,7 +163,7 @@ app.Use(cors.New(cors.Config{
 }))
 ```
 
-# How It Works
+## How It Works
 
 The CORS middleware works by adding the necessary CORS headers to responses from your Fiber application. These headers tell browsers what origins, methods, and headers are allowed for cross-origin requests.
 
@@ -189,7 +189,7 @@ The `AllowMethods` option controls which HTTP methods are allowed. For example, 
 
 The `AllowHeaders` option specifies which headers are allowed in the actual request. The middleware sets the Access-Control-Allow-Headers response header to the value of `AllowHeaders`. This informs the client which headers it can use in the actual request.
 
-The `AllowCredentials` option indicates whether the response to the request can be exposed when the credentials flag is true. If `AllowCredentials` is set to `true`, the middleware adds the header `Access-Control-Allow-Credentials: true` to the response. To prevent security vulnerabilities, `AllowCredentials` cannot be set to `true` if `AllowOrigins` is set to a wildcard (`*`). 
+The `AllowCredentials` option indicates whether the response to the request can be exposed when the credentials flag is true. If `AllowCredentials` is set to `true`, the middleware adds the header `Access-Control-Allow-Credentials: true` to the response. To prevent security vulnerabilities, `AllowCredentials` cannot be set to `true` if `AllowOrigins` is set to a wildcard (`*`).
 
 The `ExposeHeaders` option defines a whitelist of headers that clients are allowed to access. If `ExposeHeaders` is set to `"X-Custom-Header"`, the middleware adds the header `Access-Control-Expose-Headers: X-Custom-Header` to the response.
 

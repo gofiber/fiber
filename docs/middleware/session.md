@@ -37,7 +37,9 @@ Storing `any` values are limited to built-ins Go types.
 :::
 
 ## Examples
+
 Import the middleware package that is part of the Fiber web framework
+
 ```go
 import (
   "github.com/gofiber/fiber/v3"
@@ -76,15 +78,15 @@ app.Get("/", func(c fiber.Ctx) error {
         panic(err)
     }
 
-	// Sets a specific expiration for this session
-	sess.SetExpiry(time.Second * 2)
+    // Sets a specific expiration for this session
+    sess.SetExpiry(time.Second * 2)
 
     // Save session
     if err := sess.Save(); err != nil {
-		panic(err)
-	}
+        panic(err)
+    }
 
-	return c.SendString(fmt.Sprintf("Welcome %v", name))
+    return c.SendString(fmt.Sprintf("Welcome %v", name))
 })
 ```
 
@@ -108,11 +110,11 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ```go
 var ConfigDefault = Config{
-	Expiration:   24 * time.Hour,
-	KeyLookup:    "cookie:session_id",
-	KeyGenerator: utils.UUIDv4,
-	source:       "cookie",
-	sessionName:  "session_id",
+    Expiration:   24 * time.Hour,
+    KeyLookup:    "cookie:session_id",
+    KeyGenerator: utils.UUIDv4,
+    source:       "cookie",
+    sessionName:  "session_id",
 }
 ```
 
@@ -120,9 +122,9 @@ var ConfigDefault = Config{
 
 ```go
 const (
-	SourceCookie   Source = "cookie"
-	SourceHeader   Source = "header"
-	SourceURLQuery Source = "query"
+    SourceCookie   Source = "cookie"
+    SourceHeader   Source = "header"
+    SourceURLQuery Source = "query"
 )
 ```
 
@@ -133,7 +135,7 @@ You can use any storage from our [storage](https://github.com/gofiber/storage/) 
 ```go
 storage := sqlite3.New() // From github.com/gofiber/storage/sqlite3
 store := session.New(session.Config{
-	Storage: storage,
+    Storage: storage,
 })
 ```
 
