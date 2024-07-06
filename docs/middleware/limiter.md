@@ -71,8 +71,8 @@ app.Use(limiter.New(limiter.Config{
 This means that every window will consider the previous window (if there was any). The given formula for the rate is:
 
 ```text
-weightOfPreviousWindpw = previous window's amount request * (whenNewWindow / Expiration)
-rate = weightOfPreviousWindpw + current window's amount request.
+weightOfPreviousWindow = previous window's amount request * (whenNewWindow / Expiration)
+rate = weightOfPreviousWindow + current window's amount request.
 ```
 
 ## Config
