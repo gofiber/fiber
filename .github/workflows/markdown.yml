@@ -15,9 +15,14 @@ jobs:
   markdownlint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Fetch Repository
+        uses: actions/checkout@v4
 
-      - uses: DavidAnson/markdownlint-cli2-action@v16
+      - name: Run markdownlint-cli2
+        uses: DavidAnson/markdownlint-cli2-action@v16
         with:
           globs: |
             **/*.md
+
+      - name: Markdown link check
+        uses: gaurav-nelson/github-action-markdown-link-check@v1
