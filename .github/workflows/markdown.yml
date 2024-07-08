@@ -6,10 +6,10 @@ on:
       - master
       - main
     paths:
-      - "**.md"
+      - "**/*.md"
   pull_request:
     paths:
-      - "**.md"
+      - "**/*.md"
 
 jobs:
   markdownlint:
@@ -23,18 +23,3 @@ jobs:
         with:
           globs: |
             **/*.md
-
-      - name: Run write-good
-        id: write-good
-        uses: tomwhross/write-good-action@v1.6
-
-      - run: echo "${{ steps.write-good.outputs.result }}"
-
-      - name: Post suggestions to Pull Request
-        uses: mshick/add-pr-comment@v2
-        if: ${{ steps.write-good.outputs.result }}
-        with:
-          message: |
-            ${{ steps.write-good.outputs.result }}
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          allow-repeats: false

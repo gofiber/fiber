@@ -183,8 +183,3 @@ http://localhost:3000/hello.html
 http://localhost:3000/js/jquery.js
 http://localhost:3000/css/style.css
 ```
-
-### Note
-
-For more information on how to build APIs in Go with Fiber, please check out this excellent article
-[on building an express-style API in Go with Fiber](https://blog.logrocket.com/express-style-api-go-fiber/).
