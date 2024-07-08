@@ -1,6 +1,7 @@
 package csrf
 
 import (
+	"fmt"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -1263,7 +1264,6 @@ func Test_CSRF_Cookie_Injection_Exploit(t *testing.T) {
 	ctx.Request.SetRequestURI("/")
 	h(ctx)
 	token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
-	token = strings.Split(strings.Split(token, ";")[0], "=")[1]
 
 	// Exploit CSRF token we just injected
 	ctx.Request.Reset()
@@ -1508,4 +1508,68 @@ func Test_CSRF_FromContextMethods_Invalid(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
+type mockStorage struct{}
+
+func (m *mockStorage) Get(key string) ([]byte, error) {
+	return nil, fmt.Errorf("not found")
+}
+
+func (m *mockStorage) Set(key string, val []byte, exp time.Duration) error {
+	return nil
+}
+
+func (m *mockStorage) Delete(key string) error {
+	return nil
+}
+
+func (m *mockStorage) Reset() error {
+	return nil
+}
+
+func (m *mockStorage) Close() error {
+	return nil
+}
+
+func Test_NotGetTokenInSessionStorage(t *testing.T) {
+	t.Parallel()
+
+	errHandler := func(c fiber.Ctx, err error) error {
+		require.Equal(t, ErrNotGetStorage.Error(), err.Error())
+		return c.Status(419).Send([]byte(err.Error()))
+	}
+
+	// &session.Store{}.Storage.Set(ConfigDefault.CookieName, "fiber", 300)
+
+	app := fiber.New()
+	app.Use(New(Config{
+		ErrorHandler: errHandler,
+		Session: &session.Store{
+			Config: session.Config{
+				Storage:        &mockStorage{},
+				KeyGenerator:   ConfigDefault.KeyGenerator,
+				KeyLookup:      ConfigDefault.KeyLookup,
+				Expiration:     ConfigDefault.Expiration,
+				CookieSameSite: "Lax",
+			},
+		},
+	}))
+
+	app.Post("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	h := app.Handler()
+	ctx := &fasthttp.RequestCtx{}
+
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, "fiber")
+	h(ctx)
+
+	require.Equal(t, 419, ctx.Response.StatusCode())
+	require.Equal(t, "invalid CSRF token", string(ctx.Response.Body()))
+
 }

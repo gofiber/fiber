@@ -1,6 +1,7 @@
 package csrf
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -29,11 +30,13 @@ func newSessionManager(s *session.Store, k string) *sessionManager {
 func (m *sessionManager) getRaw(c fiber.Ctx, key string, raw []byte) ([]byte, error) {
 	sess, err := m.session.Get(c)
 	if err != nil {
-		log.Warn("csrf: failed to get session: ", err)
-		return nil, ErrTokenNotFound
+		return nil, ErrNotGetStorage
 	}
 
+	fmt.Println("key: ", sess)
+
 	token, ok := sess.Get(m.key).(Token)
+	fmt.Println("key: ", token, ok)
 	if !ok {
 		return nil, ErrTokenInvalid
 	}
