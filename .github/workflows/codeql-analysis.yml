@@ -8,12 +8,12 @@ on:
     paths:
       - "**"
       - "!docs/**"
-      - "!**.md"
+      - "!**/*.md"
   pull_request:
     paths:
       - "**"
       - "!docs/**"
-      - "!**.md"
+      - "!**/*.md"
   schedule:
     - cron: "0 3 * * 6"
 

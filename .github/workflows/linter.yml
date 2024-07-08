@@ -6,7 +6,15 @@ on:
     branches:
       - master
       - main
+    paths:
+      - "**"
+      - "!docs/**"
+      - "!**/*.md"
   pull_request:
+    paths:
+      - "**"
+      - "!docs/**"
+      - "!**/*.md"
 
 permissions:
   # Required: allow read access to the content for analysis.
