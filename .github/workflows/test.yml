@@ -5,15 +5,11 @@ on:
     branches:
       - master
       - main
-    paths:
-      - "**"
-      - "!docs/**"
-      - "!**/*.md"
+    paths-ignore:
+      - "**/*.md"
   pull_request:
-    paths:
-      - "**"
-      - "!docs/**"
-      - "!**/*.md"
+    paths-ignore:
+      - "**/*.md"
 
 jobs:
   unit:

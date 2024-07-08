@@ -5,6 +5,7 @@ on:
     types: [opened, edited, milestoned]
   pull_request_target:
     types: [opened]
+
 permissions:
   contents: read
   issues: write
