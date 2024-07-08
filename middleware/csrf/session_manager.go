@@ -30,7 +30,7 @@ func newSessionManager(s *session.Store, k string) *sessionManager {
 func (m *sessionManager) getRaw(c fiber.Ctx, key string, raw []byte) ([]byte, error) {
 	sess, err := m.session.Get(c)
 	if err != nil {
-		return nil, ErrNotGetStorage
+		return nil, ErrStorageRetrievalFailed
 	}
 
 	fmt.Println("key: ", sess)

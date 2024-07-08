@@ -1536,7 +1536,7 @@ func Test_NotGetTokenInSessionStorage(t *testing.T) {
 	t.Parallel()
 
 	errHandler := func(c fiber.Ctx, err error) error {
-		require.Equal(t, ErrNotGetStorage.Error(), err.Error())
+		require.Equal(t, ErrStorageRetrievalFailed.Error(), err.Error())
 		return c.Status(419).Send([]byte(err.Error()))
 	}
 

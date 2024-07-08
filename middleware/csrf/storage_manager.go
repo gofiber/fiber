@@ -50,13 +50,13 @@ func (m *storageManager) getRaw(key string) ([]byte, error) {
 	if m.storage != nil {
 		raw, err = m.storage.Get(key)
 		if err != nil {
-			return nil, fmt.Errorf("%w: %s", ErrNotGetStorage, err.Error())
+			return nil, fmt.Errorf("%w: %s", ErrStorageRetrievalFailed, err.Error())
 		}
 	} else {
 		var ok bool
 		raw, ok = m.memory.Get(key).([]byte)
 		if !ok {
-			return nil, ErrNotGetStorage
+			return nil, ErrStorageRetrievalFailed
 		}
 	}
 
