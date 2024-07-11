@@ -82,6 +82,7 @@ rate = weightOfPreviousWindpw + current window's amount request.
 You can also calculate the limit dynamically using the MaxCalculator parameter. It's a function that receives the request's context as a parameter and allow you to calculate a different limit for each request separately.
 
 Example:
+
 ```go
 app.Use(limiter.New(limiter.Config{
     MaxCalculator:  func(c fiber.Ctx) int {
