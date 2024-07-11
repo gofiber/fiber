@@ -24,7 +24,7 @@ type Config struct {
 const (
 	DefaultLivenessEndpoint  = "/livez"
 	DefaultReadinessEndpoint = "/readyz"
-	DefaultStartupEndpoint = "/startupz"
+	DefaultStartupEndpoint   = "/startupz"
 )
 
 func defaultProbe(fiber.Ctx) bool { return true }

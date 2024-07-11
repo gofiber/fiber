@@ -99,15 +99,15 @@ type Config struct {
     // Optional. Default: nil
     Next func(fiber.Ctx) bool
 
-	// Function used for checking the liveness of the application. Returns true if the application
-	// is running and false if it is not. The liveness probe is typically used to indicate if 
-	// the application is in a state where it can handle requests (e.g., the server is up and running).
+    // Function used for checking the liveness of the application. Returns true if the application
+    // is running and false if it is not. The liveness probe is typically used to indicate if 
+    // the application is in a state where it can handle requests (e.g., the server is up and running).
     // The readiness probe is typically used to indicate if the application is ready to start accepting traffic (e.g., all necessary components 
     // are initialized and dependent services are available) and the startup probe typically used to 
     // indicate if the application has completed its startup sequence and is ready to proceed with
     // initialization and readiness checks
-	//
-	// Optional. Default: func(c fiber.Ctx) bool { return true }
+    //
+    // Optional. Default: func(c fiber.Ctx) bool { return true }
 	Probe HealthChecker
 }
 ```
