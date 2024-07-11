@@ -18,12 +18,13 @@ Import the middleware package that is part of the Fiber web framework
 
 ```go
 import (
-  "github.com/gofiber/fiber/v3"
-  expvarmw "github.com/gofiber/fiber/v3/middleware/expvar"
+    "github.com/gofiber/fiber/v3"
+    expvarmw "github.com/gofiber/fiber/v3/middleware/expvar"
 )
 ```
 
 After you initiate your Fiber app, you can use the following possibilities:
+
 ```go
 var count = expvar.NewInt("count")
 

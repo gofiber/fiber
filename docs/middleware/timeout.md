@@ -6,12 +6,11 @@ id: timeout
 
 There exist two distinct implementations of timeout middleware [Fiber](https://github.com/gofiber/fiber).
 
-**New**
+## New
 
-As a `fiber.Handler` wrapper, it creates a context with `context.WithTimeout` and pass it in `UserContext`. 
- 
+As a `fiber.Handler` wrapper, it creates a context with `context.WithTimeout` and pass it in `UserContext`.
+
 If the context passed executions (eg. DB ops, Http calls) takes longer than the given duration to return, the timeout error is set and forwarded to the centralized `ErrorHandler`.
-
 
 It does not cancel long running executions. Underlying executions must handle timeout by using `context.Context` parameter.
 
@@ -27,8 +26,8 @@ Import the middleware package that is part of the Fiber web framework
 
 ```go
 import (
-  "github.com/gofiber/fiber/v3"
-  "github.com/gofiber/fiber/v3/middleware/timeout"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/timeout"
 )
 ```
 
@@ -36,31 +35,31 @@ After you initiate your Fiber app, you can use the following possibilities:
 
 ```go
 func main() {
-	app := fiber.New()
-	h := func(c fiber.Ctx) error {
-		sleepTime, _ := time.ParseDuration(c.Params("sleepTime") + "ms")
-		if err := sleepWithContext(c.UserContext(), sleepTime); err != nil {
-			return fmt.Errorf("%w: execution error", err)
-		}
-		return nil
-	}
+    app := fiber.New()
+    h := func(c fiber.Ctx) error {
+        sleepTime, _ := time.ParseDuration(c.Params("sleepTime") + "ms")
+        if err := sleepWithContext(c.UserContext(), sleepTime); err != nil {
+            return fmt.Errorf("%w: execution error", err)
+        }
+        return nil
+    }
 
-	app.Get("/foo/:sleepTime", timeout.New(h, 2*time.Second))
-	log.Fatal(app.Listen(":3000"))
+    app.Get("/foo/:sleepTime", timeout.New(h, 2*time.Second))
+    log.Fatal(app.Listen(":3000"))
 }
 
 func sleepWithContext(ctx context.Context, d time.Duration) error {
-	timer := time.NewTimer(d)
+    timer := time.NewTimer(d)
 
-	select {
-	case <-ctx.Done():
-		if !timer.Stop() {
-			<-timer.C
-		}
-		return context.DeadlineExceeded
-	case <-timer.C:
-	}
-	return nil
+    select {
+    case <-ctx.Done():
+        if !timer.Stop() {
+            <-timer.C
+        }
+        return context.DeadlineExceeded
+    case <-timer.C:
+    }
+    return nil
 }
 ```
 
@@ -82,30 +81,30 @@ Use with custom error:
 var ErrFooTimeOut = errors.New("foo context canceled")
 
 func main() {
-	app := fiber.New()
-	h := func(c fiber.Ctx) error {
-		sleepTime, _ := time.ParseDuration(c.Params("sleepTime") + "ms")
-		if err := sleepWithContextWithCustomError(c.UserContext(), sleepTime); err != nil {
-			return fmt.Errorf("%w: execution error", err)
-		}
-		return nil
-	}
+    app := fiber.New()
+    h := func(c fiber.Ctx) error {
+        sleepTime, _ := time.ParseDuration(c.Params("sleepTime") + "ms")
+        if err := sleepWithContextWithCustomError(c.UserContext(), sleepTime); err != nil {
+            return fmt.Errorf("%w: execution error", err)
+        }
+        return nil
+    }
 
-	app.Get("/foo/:sleepTime", timeout.New(h, 2*time.Second, ErrFooTimeOut))
-	log.Fatal(app.Listen(":3000"))
+    app.Get("/foo/:sleepTime", timeout.New(h, 2*time.Second, ErrFooTimeOut))
+    log.Fatal(app.Listen(":3000"))
 }
 
 func sleepWithContextWithCustomError(ctx context.Context, d time.Duration) error {
-	timer := time.NewTimer(d)
-	select {
-	case <-ctx.Done():
-		if !timer.Stop() {
-			<-timer.C
-		}
-		return ErrFooTimeOut
-	case <-timer.C:
-	}
-	return nil
+    timer := time.NewTimer(d)
+    select {
+    case <-ctx.Done():
+        if !timer.Stop() {
+            <-timer.C
+        }
+        return ErrFooTimeOut
+    case <-timer.C:
+    }
+    return nil
 }
 ```
 
@@ -113,24 +112,24 @@ Sample usage with a DB call:
 
 ```go
 func main() {
-	app := fiber.New()
-	db, _ := gorm.Open(postgres.Open("postgres://localhost/foodb"), &gorm.Config{})
+    app := fiber.New()
+    db, _ := gorm.Open(postgres.Open("postgres://localhost/foodb"), &gorm.Config{})
 
-	handler := func(ctx fiber.Ctx) error {
-		tran := db.WithContext(ctx.UserContext()).Begin()
-		
-		if tran = tran.Exec("SELECT pg_sleep(50)"); tran.Error != nil {
-			return tran.Error
-		}
-		
-		if tran = tran.Commit(); tran.Error != nil {
-			return tran.Error
-		}
+    handler := func(ctx fiber.Ctx) error {
+        tran := db.WithContext(ctx.UserContext()).Begin()
+        
+        if tran = tran.Exec("SELECT pg_sleep(50)"); tran.Error != nil {
+            return tran.Error
+        }
+        
+        if tran = tran.Commit(); tran.Error != nil {
+            return tran.Error
+        }
 
-		return nil
-	}
+        return nil
+    }
 
-	app.Get("/foo", timeout.New(handler, 10*time.Second))
-	log.Fatal(app.Listen(":3000"))
+    app.Get("/foo", timeout.New(handler, 10*time.Second))
+    log.Fatal(app.Listen(":3000"))
 }
 ```

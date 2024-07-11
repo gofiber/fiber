@@ -7,9 +7,11 @@ id: logger
 Logger middleware for [Fiber](https://github.com/gofiber/fiber) that logs HTTP request/response details.
 
 ## Signatures
+
 ```go
 func New(config ...Config) fiber.Handler
 ```
+
 ## Examples
 
 Import the middleware package that is part of the Fiber web framework
@@ -88,7 +90,7 @@ app.Use(logger.New(logger.Config{
 }))
 ```
 
-:::tip 
+:::tip
 Writing to os.File is goroutine-safe, but if you are using a custom Output that is not goroutine-safe, make sure to implement locking to properly serialize writes.
 :::
 
@@ -112,6 +114,7 @@ Writing to os.File is goroutine-safe, but if you are using a custom Output that 
 | timeZoneLocation | `*time.Location`           | Internal field for the time zone location. (This is not a user-configurable field)                                               | -                                                                     |
 
 ## Default Config
+
 ```go
 var ConfigDefault = Config{
     Next:          nil,
@@ -126,6 +129,7 @@ var ConfigDefault = Config{
 ```
 
 ## Constants
+
 ```go
 // Logger variables
 const (

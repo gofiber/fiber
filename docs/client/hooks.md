@@ -18,43 +18,43 @@ You need to use `RequestHook func(*Client, *Request) error` function signature w
 
 ```go
 type Repository struct {
-	Name        string `json:"name"`
-	FullName    string `json:"full_name"`
-	Description string `json:"description"`
-	Homepage    string `json:"homepage"`
+    Name        string `json:"name"`
+    FullName    string `json:"full_name"`
+    Description string `json:"description"`
+    Homepage    string `json:"homepage"`
 
-	Owner struct {
-		Login string `json:"login"`
-	} `json:"owner"`
+    Owner struct {
+        Login string `json:"login"`
+    } `json:"owner"`
 }
 
 func main() {
-	cc := client.New()
+    cc := client.New()
 
-	cc.AddRequestHook(func(c *client.Client, r *client.Request) error {
-		r.SetURL("https://api.github.com/" + r.URL())
+    cc.AddRequestHook(func(c *client.Client, r *client.Request) error {
+        r.SetURL("https://api.github.com/" + r.URL())
 
-		return nil
-	})
+        return nil
+    })
 
-	resp, err := cc.Get("repos/gofiber/fiber")
-	if err != nil {
-		panic(err)
-	}
+    resp, err := cc.Get("repos/gofiber/fiber")
+    if err != nil {
+        panic(err)
+    }
 
-	var repo Repository
-	if err := resp.JSON(&repo); err != nil {
-		panic(err)
-	}
+    var repo Repository
+    if err := resp.JSON(&repo); err != nil {
+        panic(err)
+    }
 
-	fmt.Printf("Status code: %d\n", resp.StatusCode())
+    fmt.Printf("Status code: %d\n", resp.StatusCode())
 
-	fmt.Printf("Repository: %s\n", repo.FullName)
-	fmt.Printf("Description: %s\n", repo.Description)
-	fmt.Printf("Homepage: %s\n", repo.Homepage)
-	fmt.Printf("Owner: %s\n", repo.Owner.Login)
-	fmt.Printf("Name: %s\n", repo.Name)
-	fmt.Printf("Full Name: %s\n", repo.FullName)
+    fmt.Printf("Repository: %s\n", repo.FullName)
+    fmt.Printf("Description: %s\n", repo.Description)
+    fmt.Printf("Homepage: %s\n", repo.Homepage)
+    fmt.Printf("Owner: %s\n", repo.Owner.Login)
+    fmt.Printf("Name: %s\n", repo.Name)
+    fmt.Printf("Full Name: %s\n", repo.FullName)
 }
 ```
 
@@ -87,22 +87,22 @@ If any error returns from request hook execution, it will interrupt the request 
 
 ```go
 func main() {
-	cc := client.New()
+    cc := client.New()
 
-	cc.AddRequestHook(func(c *client.Client, r *client.Request) error {
-		fmt.Println("Hook 1")
-		return errors.New("error")
-	})
+    cc.AddRequestHook(func(c *client.Client, r *client.Request) error {
+        fmt.Println("Hook 1")
+        return errors.New("error")
+    })
 
-	cc.AddRequestHook(func(c *client.Client, r *client.Request) error {
-		fmt.Println("Hook 2")
-		return nil
-	})
+    cc.AddRequestHook(func(c *client.Client, r *client.Request) error {
+        fmt.Println("Hook 2")
+        return nil
+    })
 
-	_, err := cc.Get("https://example.com/")
-	if err != nil {
-		panic(err)
-	}
+    _, err := cc.Get("https://example.com/")
+    if err != nil {
+        panic(err)
+    }
 }
 ```
 
@@ -129,24 +129,24 @@ You need to use `ResponseHook func(*Client, *Response, *Request) error` function
 
 ```go
 func main() {
-	cc := client.New()
+    cc := client.New()
 
-	cc.AddResponseHook(func(c *client.Client, resp *client.Response, req *client.Request) error {
-		fmt.Printf("Response Status Code: %d\n", resp.StatusCode())
-		fmt.Printf("HTTP protocol: %s\n\n", resp.Protocol())
+    cc.AddResponseHook(func(c *client.Client, resp *client.Response, req *client.Request) error {
+        fmt.Printf("Response Status Code: %d\n", resp.StatusCode())
+        fmt.Printf("HTTP protocol: %s\n\n", resp.Protocol())
 
-		fmt.Println("Response Headers:")
-		resp.RawResponse.Header.VisitAll(func(key, value []byte) {
-			fmt.Printf("%s: %s\n", key, value)
-		})
+        fmt.Println("Response Headers:")
+        resp.RawResponse.Header.VisitAll(func(key, value []byte) {
+            fmt.Printf("%s: %s\n", key, value)
+        })
 
-		return nil
-	})
+        return nil
+    })
 
-	_, err := cc.Get("https://example.com/")
-	if err != nil {
-		panic(err)
-	}
+    _, err := cc.Get("https://example.com/")
+    if err != nil {
+        panic(err)
+    }
 }
 ```
 
@@ -185,27 +185,27 @@ If any error is returned from executing the response hook, it will return the er
 
 ```go
 func main() {
-	cc := client.New()
+    cc := client.New()
 
-	cc.AddResponseHook(func(c *client.Client, r1 *client.Response, r2 *client.Request) error {
-		fmt.Println("Hook 1")
-		return nil
-	})
+    cc.AddResponseHook(func(c *client.Client, r1 *client.Response, r2 *client.Request) error {
+        fmt.Println("Hook 1")
+        return nil
+    })
 
-	cc.AddResponseHook(func(c *client.Client, r1 *client.Response, r2 *client.Request) error {
-		fmt.Println("Hook 2")
-		return errors.New("error")
-	})
+    cc.AddResponseHook(func(c *client.Client, r1 *client.Response, r2 *client.Request) error {
+        fmt.Println("Hook 2")
+        return errors.New("error")
+    })
 
-	cc.AddResponseHook(func(c *client.Client, r1 *client.Response, r2 *client.Request) error {
-		fmt.Println("Hook 3")
-		return nil
-	})
+    cc.AddResponseHook(func(c *client.Client, r1 *client.Response, r2 *client.Request) error {
+        fmt.Println("Hook 3")
+        return nil
+    })
 
-	_, err := cc.Get("https://example.com/")
-	if err != nil {
-		panic(err)
-	}
+    _, err := cc.Get("https://example.com/")
+    if err != nil {
+        panic(err)
+    }
 }
 ```
 
@@ -231,22 +231,22 @@ Hooks work as FIFO (first-in-first-out). You need to check the order while addin
 
 ```go
 func main() {
-	cc := client.New()
+    cc := client.New()
 
-	cc.AddRequestHook(func(c *client.Client, r *client.Request) error {
-		fmt.Println("Hook 1")
-		return nil
-	})
+    cc.AddRequestHook(func(c *client.Client, r *client.Request) error {
+        fmt.Println("Hook 1")
+        return nil
+    })
 
-	cc.AddRequestHook(func(c *client.Client, r *client.Request) error {
-		fmt.Println("Hook 2")
-		return nil
-	})
+    cc.AddRequestHook(func(c *client.Client, r *client.Request) error {
+        fmt.Println("Hook 2")
+        return nil
+    })
 
-	_, err := cc.Get("https://example.com/")
-	if err != nil {
-		panic(err)
-	}
+    _, err := cc.Get("https://example.com/")
+    if err != nil {
+        panic(err)
+    }
 }
 ```
 
