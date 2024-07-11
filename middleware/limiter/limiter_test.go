@@ -2,6 +2,7 @@ package limiter
 
 import (
 	"io"
+	"math/rand"
 	"net/http/httptest"
 	"sync"
 	"testing"
@@ -13,6 +14,53 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
+
+// go test -run Test_Limiter_Concurrency_Store -race -v
+func Test_Limiter_With_Max_Calculator(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	max := rand.Intn(10)
+
+	app.Use(New(Config{
+		MaxCalculator: func(_ fiber.Ctx) int {
+			return max
+		},
+		Expiration: 2 * time.Second,
+		Storage:    memory.New(),
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("Hello tester!")
+	})
+
+	var wg sync.WaitGroup
+
+	for i := 0; i <= max-1; i++ {
+		wg.Add(1)
+		go func(wg *sync.WaitGroup) {
+			defer wg.Done()
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+			assert.NoError(t, err)
+			assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+			body, err := io.ReadAll(resp.Body)
+			assert.NoError(t, err)
+			assert.Equal(t, "Hello tester!", string(body))
+		}(&wg)
+	}
+
+	wg.Wait()
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, 429, resp.StatusCode)
+
+	time.Sleep(3 * time.Second)
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
+}
 
 // go test -run Test_Limiter_Concurrency_Store -race -v
 func Test_Limiter_Concurrency_Store(t *testing.T) {
