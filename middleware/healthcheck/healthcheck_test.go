@@ -36,7 +36,7 @@ func Test_HealthCheck_Strict_Routing_Default(t *testing.T) {
 
 	app.Get("/livez", NewHealthChecker())
 	app.Get("/readyz", NewHealthChecker())
-	app.Get("/startupz", NewHealthChecker())
+	app.Get(DefaultStartupEndpoint, NewHealthChecker())
 
 	shouldGiveOK(t, app, "/readyz")
 	shouldGiveOK(t, app, "/livez")
@@ -55,7 +55,7 @@ func Test_HealthCheck_Default(t *testing.T) {
 	app := fiber.New()
 	app.Get("/livez", NewHealthChecker())
 	app.Get("/readyz", NewHealthChecker())
-	app.Get("/startupz", NewHealthChecker())
+	app.Get(DefaultStartupEndpoint, NewHealthChecker())
 
 	shouldGiveOK(t, app, "/readyz")
 	shouldGiveOK(t, app, "/livez")
@@ -88,6 +88,11 @@ func Test_HealthCheck_Custom(t *testing.T) {
 			}
 		},
 	}))
+	app.Get(DefaultStartupEndpoint, NewHealthChecker(Config{
+		Probe: func(_ fiber.Ctx) bool {
+			return false
+		},
+	}))
 
 	// Setup custom liveness and readiness probes to simulate application health status
 	// Live should return 200 with GET request
@@ -104,6 +109,8 @@ func Test_HealthCheck_Custom(t *testing.T) {
 
 	// Ready should return 503 with GET request before the channel is closed
 	shouldGiveStatus(t, app, "/ready", fiber.StatusServiceUnavailable)
+
+	shouldGiveStatus(t, app, "/startupz", fiber.StatusServiceUnavailable)
 
 	// Ready should return 200 with GET request after the channel is closed
 	c1 <- struct{}{}
@@ -165,7 +172,7 @@ func Test_HealthCheck_Next(t *testing.T) {
 
 	app.Get("/readyz", checker)
 	app.Get("/livez", checker)
-	app.Get("/startupz", checker)
+	app.Get(DefaultStartupEndpoint, checker)
 
 	// This should give not found since there are no other handlers to execute
 	// so it's like the route isn't defined at all
