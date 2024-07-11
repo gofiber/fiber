@@ -6,6 +6,7 @@
 4. [Incident Response Process](#process)
 
 <a name="versions"></a>
+
 ## Supported Versions
 
 The table below shows the supported versions for Fiber which include security updates.
@@ -16,6 +17,7 @@ The table below shows the supported versions for Fiber which include security up
 | < 1.12.6  | :x:                |
 
 <a name="reporting"></a>
+
 ## Reporting security problems to Fiber
 
 **DO NOT CREATE AN ISSUE** to report a security problem. Instead, please
@@ -24,6 +26,7 @@ send us an e-mail at `team@gofiber.io` or join our discord server via
 to Fenny or any of the maintainers.
 
 <a name="contact"></a>
+
 ## Security Point of Contact
 
 The security point of contact is [Fenny](https://github.com/Fenny). Fenny responds
@@ -35,6 +38,7 @@ of contact are any of the [@maintainers](https://github.com/orgs/gofiber/teams/m
 The maintainers are the only other persons with administrative access to Fiber's source code.
 
 <a name="process"></a>
+
 ## Incident Response Process
 
 In case an incident is discovered or reported, we will follow the following
@@ -73,4 +77,4 @@ for all of it's members.
 We learn about critical software updates and security threats from these sources
 
 1. GitHub Security Alerts
-2. GitHub: https://status.github.com/ & [@githubstatus](https://twitter.com/githubstatus)
+2. GitHub: <https://status.github.com/> & [@githubstatus](https://twitter.com/githubstatus)

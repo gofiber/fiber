@@ -17,11 +17,11 @@ This structure allows users to easily access and manage the data returned by the
 
 ```go
 type Response struct {
-	client  *Client
-	request *Request
-	cookie  []*fasthttp.Cookie
+    client  *Client
+    request *Request
+    cookie  []*fasthttp.Cookie
 
-	RawResponse *fasthttp.Response
+    RawResponse *fasthttp.Response
 }
 ```
 
@@ -71,7 +71,7 @@ func (r *Response) Protocol() string
 ```go title="Example"
 resp, err := client.Get("https://httpbin.org/get")
 if err != nil {
-	panic(err)
+    panic(err)
 }
 
 fmt.Println(resp.Protocol())
@@ -80,7 +80,7 @@ fmt.Println(resp.Protocol())
 <details>
 <summary>Click here to see the result</summary>
 
-```
+```text
 HTTP/1.1
 ```
 
@@ -105,19 +105,19 @@ func (r *Response) Cookies() []*fasthttp.Cookie
 ```go title="Example"
 resp, err := client.Get("https://httpbin.org/cookies/set/go/fiber")
 if err != nil {
-	panic(err)
+    panic(err)
 }
 
 cookies := resp.Cookies()
 for _, cookie := range cookies {
-	fmt.Printf("%s => %s\n", string(cookie.Key()), string(cookie.Value()))
+    fmt.Printf("%s => %s\n", string(cookie.Key()), string(cookie.Value()))
 }
 ```
 
 <details>
 <summary>Click here to see the result</summary>
 
-```
+```text
 go => fiber
 ```
 
@@ -149,22 +149,22 @@ func (r *Response) JSON(v any) error
 
 ```go title="Example"
 type Body struct {
-	Slideshow struct {
-		Author string `json:"author"`
-		Date   string `json:"date"`
-		Title  string `json:"title"`
-	} `json:"slideshow"`
+    Slideshow struct {
+        Author string `json:"author"`
+        Date   string `json:"date"`
+        Title  string `json:"title"`
+    } `json:"slideshow"`
 }
 var out Body
 
 resp, err := client.Get("https://httpbin.org/json")
 if err != nil {
-	panic(err)
+    panic(err)
 }
 
 err = resp.JSON(&out)
 if err != nil {
-	panic(err)
+    panic(err)
 }
 
 fmt.Printf("%+v\n", out)
@@ -173,7 +173,7 @@ fmt.Printf("%+v\n", out)
 <details>
 <summary>Click here to see the result</summary>
 
-```
+```text
 {Slideshow:{Author:Yours Truly Date:date of publication Title:Sample Slide Show}}
 ```
 

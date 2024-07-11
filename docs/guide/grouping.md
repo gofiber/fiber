@@ -10,23 +10,23 @@ In general, the Group functionality in Fiber behaves similarly to ExpressJS. Gro
 
 ## Paths
 
-Like **Routing**, groups can also have paths that belong to a cluster.
+Like `Routing`, groups can also have paths that belong to a cluster.
 
 ```go
 func main() {
-  app := fiber.New()
+    app := fiber.New()
 
-  api := app.Group("/api", middleware) // /api
+    api := app.Group("/api", middleware) // /api
 
-  v1 := api.Group("/v1", middleware)   // /api/v1
-  v1.Get("/list", handler)             // /api/v1/list
-  v1.Get("/user", handler)             // /api/v1/user
+    v1 := api.Group("/v1", middleware)   // /api/v1
+    v1.Get("/list", handler)             // /api/v1/list
+    v1.Get("/user", handler)             // /api/v1/user
 
-  v2 := api.Group("/v2", middleware)   // /api/v2
-  v2.Get("/list", handler)             // /api/v2/list
-  v2.Get("/user", handler)             // /api/v2/user
+    v2 := api.Group("/v2", middleware)   // /api/v2
+    v2.Get("/list", handler)             // /api/v2/list
+    v2.Get("/user", handler)             // /api/v2/user
 
-  log.Fatal(app.Listen(":3000"))
+    log.Fatal(app.Listen(":3000"))
 }
 ```
 
@@ -34,19 +34,19 @@ A **Group** of paths can have an optional handler.
 
 ```go
 func main() {
-  app := fiber.New()
+    app := fiber.New()
 
-  api := app.Group("/api")      // /api
+    api := app.Group("/api")      // /api
 
-  v1 := api.Group("/v1")        // /api/v1
-  v1.Get("/list", handler)      // /api/v1/list
-  v1.Get("/user", handler)      // /api/v1/user
+    v1 := api.Group("/v1")        // /api/v1
+    v1.Get("/list", handler)      // /api/v1/list
+    v1.Get("/user", handler)      // /api/v1/user
 
-  v2 := api.Group("/v2")        // /api/v2
-  v2.Get("/list", handler)      // /api/v2/list
-  v2.Get("/user", handler)      // /api/v2/user
+    v2 := api.Group("/v2")        // /api/v2
+    v2.Get("/list", handler)      // /api/v2/list
+    v2.Get("/user", handler)      // /api/v2/user
 
-  log.Fatal(app.Listen(":3000"))
+    log.Fatal(app.Listen(":3000"))
 }
 ```
 

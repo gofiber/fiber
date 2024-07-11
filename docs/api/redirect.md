@@ -190,7 +190,6 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
-
 #### OldInputs
 
 Get old input data. Check [WithInput](#withinput) for more information.

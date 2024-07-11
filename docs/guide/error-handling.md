@@ -24,6 +24,7 @@ app.Get("/", func(c fiber.Ctx) error {
     return c.SendFile("file-does-not-exist")
 })
 ```
+
 </TabItem>
 </Tabs>
 

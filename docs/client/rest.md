@@ -10,36 +10,38 @@ toc_max_heading_level: 5
 The Fiber Client for Fiber v3 is a powerful HTTP client optimized for high performance and ease of use in server-side applications. Built on top of the robust FastHTTP library, it inherits FastHTTP's high-speed HTTP protocol implementation. The client is designed to make HTTP requests both internally within services or externally to other web services.
 
 ## Features
+
 - **Lightweight & Fast**: Leveraging the minimalistic design of FastHTTP, the Fiber Client is lightweight and extremely fast.
 - **Flexible Configuration**: Configure client-level settings such as timeouts, headers, and more, which apply to all requests. Specific requests can further override or merge these settings.
 - **Connection Pooling**: Manages a pool of persistent connections that reduce the overhead of repeatedly establishing connections.
 - **Timeouts & Retries**: Supports setting request timeouts and retry mechanisms to handle transient failures.
 
 ## Usage
+
 To use the Fiber Client, instantiate it with the desired configuration. Here's a simple example:
 
 ```go
 package main
 
 import (
-	"fmt"
-	"time"
+    "fmt"
+    "time"
 
-	"github.com/gofiber/fiber/v3/client"
+    "github.com/gofiber/fiber/v3/client"
 )
 
 func main() {
-	cc := client.New()
-	cc.SetTimeout(10 * time.Second)
+    cc := client.New()
+    cc.SetTimeout(10 * time.Second)
 
-	// Get request
-	resp, err := cc.Get("https://httpbin.org/get")
-	if err != nil {
-		panic(err)
-	}
+    // Get request
+    resp, err := cc.Get("https://httpbin.org/get")
+    if err != nil {
+        panic(err)
+    }
 
-	fmt.Printf("Status: %d\n", resp.StatusCode())
-	fmt.Printf("Body: %s\n", string(resp.Body()))
+    fmt.Printf("Status: %d\n", resp.StatusCode())
+    fmt.Printf("Body: %s\n", string(resp.Body()))
 }
 ```
 
@@ -47,49 +49,49 @@ You can check out [examples](examples.md) for more examples!
 
 ```go
 type Client struct {
-	mu sync.RWMutex
+    mu sync.RWMutex
 
-	fasthttp *fasthttp.Client
+    fasthttp *fasthttp.Client
 
-	baseURL   string
-	userAgent string
-	referer   string
-	header    *Header
-	params    *QueryParam
-	cookies   *Cookie
-	path      *PathParam
+    baseURL   string
+    userAgent string
+    referer   string
+    header    *Header
+    params    *QueryParam
+    cookies   *Cookie
+    path      *PathParam
 
-	debug bool
+    debug bool
 
-	timeout time.Duration
+    timeout time.Duration
 
-	// user defined request hooks
-	userRequestHooks []RequestHook
+    // user defined request hooks
+    userRequestHooks []RequestHook
 
-	// client package defined request hooks
-	builtinRequestHooks []RequestHook
+    // client package defined request hooks
+    builtinRequestHooks []RequestHook
 
-	// user defined response hooks
-	userResponseHooks []ResponseHook
+    // user defined response hooks
+    userResponseHooks []ResponseHook
 
-	// client package defined response hooks
-	builtinResponseHooks []ResponseHook
+    // client package defined response hooks
+    builtinResponseHooks []ResponseHook
 
-	jsonMarshal   utils.JSONMarshal
-	jsonUnmarshal utils.JSONUnmarshal
-	xmlMarshal    utils.XMLMarshal
-	xmlUnmarshal  utils.XMLUnmarshal
+    jsonMarshal   utils.JSONMarshal
+    jsonUnmarshal utils.JSONUnmarshal
+    xmlMarshal    utils.XMLMarshal
+    xmlUnmarshal  utils.XMLUnmarshal
 
-	cookieJar *CookieJar
+    cookieJar *CookieJar
 
-	// proxy
-	proxyURL string
+    // proxy
+    proxyURL string
 
-	// retry
-	retryConfig *RetryConfig
+    // retry
+    retryConfig *RetryConfig
 
-	// logger
-	logger log.CommonLogger
+    // logger
+    logger log.CommonLogger
 }
 ```
 
@@ -175,21 +177,21 @@ It can be used to configure request data while sending requests using Get, Post,
 
 ```go
 type Config struct {
-	Ctx context.Context
+    Ctx context.Context
 
-	UserAgent string
-	Referer   string
-	Header    map[string]string
-	Param     map[string]string
-	Cookie    map[string]string
-	PathParam map[string]string
+    UserAgent string
+    Referer   string
+    Header    map[string]string
+    Param     map[string]string
+    Cookie    map[string]string
+    PathParam map[string]string
 
-	Timeout      time.Duration
-	MaxRedirects int
+    Timeout      time.Duration
+    MaxRedirects int
 
-	Body     any
-	FormData map[string]string
-	File     []*File
+    Body     any
+    FormData map[string]string
+    File     []*File
 }
 ```
 
@@ -393,7 +395,7 @@ cc.SetBaseURL("https://httpbin.org/")
 
 resp, err := cc.Get("/get")
 if err != nil {
-	panic(err)
+    panic(err)
 }
 
 fmt.Println(string(resp.Body()))
@@ -402,12 +404,13 @@ fmt.Println(string(resp.Body()))
 <details>
 <summary>Click here to see the result</summary>
 
-```
+```json
 {
   "args": {}, 
   ...
 }
 ```
+
 </details>
 
 ### Header
@@ -441,7 +444,7 @@ func (c *Client) SetHeader(key, val string) *Client
 #### AddHeaders
 
 AddHeaders method adds multiple headers field and its values at one go in the client instance.
-These headers will be applied to all requests raised from this client instance. 
+These headers will be applied to all requests raised from this client instance.
 Also it can be overridden at request level headers options.
 
 ```go title="Signature"
@@ -451,7 +454,7 @@ func (c *Client) AddHeaders(h map[string][]string) *Client
 #### SetHeaders
 
 SetHeaders method sets multiple headers field and its values at one go in the client instance.
-These headers will be applied to all requests raised from this client instance. 
+These headers will be applied to all requests raised from this client instance.
 Also it can be overridden at request level headers options.
 
 ```go title="Signature"
@@ -489,7 +492,7 @@ func (c *Client) SetParam(key, val string) *Client
 #### AddParams
 
 AddParams method adds multiple query params field and its values at one go in the client instance.
-These params will be applied to all requests raised from this client instance. 
+These params will be applied to all requests raised from this client instance.
 Also it can be overridden at request level params options.
 
 ```go title="Signature"
@@ -499,7 +502,7 @@ func (c *Client) AddParams(m map[string][]string) *Client
 #### SetParams
 
 SetParams method sets multiple params field and its values at one go in the client instance.
-These params will be applied to all requests raised from this client instance. 
+These params will be applied to all requests raised from this client instance.
 Also it can be overridden at request level params options.
 
 ```go title="Signature"
@@ -509,7 +512,7 @@ func (c *Client) SetParams(m map[string]string) *Client
 #### SetParamsWithStruct
 
 SetParamsWithStruct method sets multiple params field and its values at one go in the client instance.
-These params will be applied to all requests raised from this client instance. 
+These params will be applied to all requests raised from this client instance.
 Also it can be overridden at request level params options.
 
 ```go title="Signature"
@@ -566,7 +569,7 @@ func (c *Client) SetPathParam(key, val string) *Client
 #### SetPathParams
 
 SetPathParams method sets multiple path params field and its values at one go in the client instance.
-These path params will be applied to all requests raised from this client instance. 
+These path params will be applied to all requests raised from this client instance.
 Also it can be overridden at request level path params options.
 
 ```go title="Signature"
@@ -576,7 +579,7 @@ func (c *Client) SetPathParams(m map[string]string) *Client
 #### SetPathParamsWithStruct
 
 SetPathParamsWithStruct method sets multiple path params field and its values at one go in the client instance.
-These path params will be applied to all requests raised from this client instance. 
+These path params will be applied to all requests raised from this client instance.
 Also it can be overridden at request level path params options.
 
 ```go title="Signature"
@@ -616,7 +619,7 @@ cc.SetCookie("john", "doe")
 
 resp, err := cc.Get("https://httpbin.org/cookies")
 if err != nil {
-	panic(err)
+    panic(err)
 }
 
 fmt.Println(string(resp.Body()))
@@ -625,19 +628,20 @@ fmt.Println(string(resp.Body()))
 <details>
 <summary>Click here to see the result</summary>
 
-```
+```json
 {
   "cookies": {
     "john": "doe"
   }
 }
 ```
+
 </details>
 
 #### SetCookies
 
 SetCookies method sets multiple cookies field and its values at one go in the client instance.
-These cookies will be applied to all requests raised from this client instance. 
+These cookies will be applied to all requests raised from this client instance.
 Also it can be overridden at request level cookie options.
 
 ```go title="Signature"
