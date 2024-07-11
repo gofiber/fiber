@@ -5,9 +5,11 @@ Before making any changes to this repository, we kindly request you to initiate 
 Please note: we have a [code of conduct](https://github.com/gofiber/fiber/blob/master/.github/CODE_OF_CONDUCT.md), please follow it in all your interactions with the `Fiber` project.
 
 ## Pull Requests or Commits
+
 Titles always we must use prefix according to below:
 
 > 🔥 Feature, ♻️ Refactor, 🩹 Fix, 🚨 Test, 📚 Doc, 🎨 Style
+
 - 🔥 Feature: Add flow to add person
 - ♻️ Refactor: Rename file X to Y
 - 🩹 Fix: Improve flow
@@ -17,7 +19,7 @@ Titles always we must use prefix according to below:
 
 All pull requests that contain a feature or fix are mandatory to have unit tests. Your PR is only to be merged if you respect this flow.
 
-# 👍 Contribute
+## 👍 Contribute
 
 If you want to say **thank you** and/or support the active development of `Fiber`:
 

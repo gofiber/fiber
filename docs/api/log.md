@@ -13,13 +13,13 @@ Fiber offers a default mechanism for logging to standard output. Additionally, i
 
 ```go
 const (
-	LevelTrace Level = iota
-	LevelDebug
-	LevelInfo
-	LevelWarn
-	LevelError
-	LevelFatal
-	LevelPanic
+    LevelTrace Level = iota
+    LevelDebug
+    LevelInfo
+    LevelWarn
+    LevelError
+    LevelFatal
+    LevelPanic
 )
 ```
 
@@ -42,9 +42,11 @@ type AllLogger interface {
 ```
 
 ## Print log
+
 Note: The Fatal level method will terminate the program after printing the log message. Please use it with caution.
 
 ### Basic Logging
+
 Logs of different levels can be directly printed. These will be entered into `messageKey`, with the default key being `msg`.
 
 ```go
@@ -58,6 +60,7 @@ log.Panic("The system is down.")
 ```
 
 ### Formatted Logging
+
 Logs of different levels can be formatted before printing. All such methods end with an `f`.
 
 ```go
@@ -69,6 +72,7 @@ log.Fatalf("So Long, and Thanks for All the %s.", "banana")
 ```
 
 ### Key-Value Logging
+
 Print a message with key-value pairs. If the key and value are not paired correctly, the log will output `KEYVALS UNPAIRED`.
 
 ```go
@@ -80,6 +84,7 @@ log.Fatalw("", "fruit", "banana")
 ```
 
 ## Global log
+
 For projects that require a simple, global logging function to print messages at any time, Fiber provides a global log.
 
 ```go
@@ -113,6 +118,7 @@ fiberlog.SetLogger(customLogger)
 ```
 
 ## Set Level
+
 `log.SetLevel` sets the minimum level of logs that will be output. The default log level is `LevelTrace`.
 
 Note that this method is not **concurrent-safe**.
