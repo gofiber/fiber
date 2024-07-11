@@ -108,7 +108,7 @@ type Config struct {
     // initialization and readiness checks
     //
     // Optional. Default: func(c fiber.Ctx) bool { return true }
-	Probe HealthChecker
+    Probe HealthChecker
 }
 ```
 
