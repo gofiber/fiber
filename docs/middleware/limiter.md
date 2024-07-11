@@ -99,7 +99,7 @@ app.Use(limiter.New(limiter.Config{
 |:-----------------------|:--------------------------|:--------------------------------------------------------------------------------------------|:-----------------------------------------|
 | Next                   | `func(fiber.Ctx) bool`   | Next defines a function to skip this middleware when returned true.                         | `nil`                                    |
 | Max                    | `int`                     | Max number of recent connections during `Expiration` seconds before sending a 429 response. | 5                                        |
-| MaxCalculator          | `int`                     | A function to calculate the max number of recent connections during `Expiration` seconds before sending a 429 response. | A function which returns the cfg.Max    |
+| MaxCalculator          | `func(fiber.Ctx) int`     | A function to calculate the max number of recent connections during `Expiration` seconds before sending a 429 response. | A function which returns the cfg.Max    |
 | KeyGenerator           | `func(fiber.Ctx) string` | KeyGenerator allows you to generate custom keys, by default c.IP() is used.                 | A function using c.IP() as the default   |
 | Expiration             | `time.Duration`           | Expiration is the time on how long to keep records of requests in memory.                   | 1 * time.Minute                          |
 | LimitReached           | `fiber.Handler`           | LimitReached is called when a request hits the limit.                                       | A function sending 429 response          |
