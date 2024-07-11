@@ -1,9 +1,7 @@
 package limiter
 
 import (
-	"crypto/rand"
 	"io"
-	"math/big"
 	"net/http/httptest"
 	"sync"
 	"testing"
@@ -60,13 +58,11 @@ func Test_Limiter_With_Max_Calculator_With_Zero(t *testing.T) {
 func Test_Limiter_With_Max_Calculator(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	max, err := rand.Int(rand.Reader, big.NewInt(10))
-
-	require.NoError(t, err)
+	max := 10
 
 	app.Use(New(Config{
 		MaxCalculator: func(_ fiber.Ctx) int {
-			return int(max.Int64())
+			return max
 		},
 		Expiration: 2 * time.Second,
 		Storage:    memory.New(),
@@ -78,7 +74,7 @@ func Test_Limiter_With_Max_Calculator(t *testing.T) {
 
 	var wg sync.WaitGroup
 
-	for i := 0; i <= int(max.Int64())-1; i++ {
+	for i := 0; i <= max-1; i++ {
 		wg.Add(1)
 		go func(wg *sync.WaitGroup) {
 			defer wg.Done()
