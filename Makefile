@@ -30,7 +30,7 @@ format:
 ## format: 🎨 Find markdown format issues (Requires markdownlint-cli)
 .PHONY: markdown
 format:
-	markdownlint-cli2 "**/*.md"
+	markdownlint-cli2 "**/*.md" "#vendor"
 
 ## lint: 🚨 Run lint checks
 .PHONY: lint

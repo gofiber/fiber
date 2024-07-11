@@ -77,4 +77,4 @@ for all of it's members.
 We learn about critical software updates and security threats from these sources
 
 1. GitHub Security Alerts
-2. GitHub: <https://status.github.com/> & [@githubstatus](https://twitter.com/githubstatus)
+2. GitHub: [https://status.github.com/](https://status.github.com/) & [@githubstatus](https://twitter.com/githubstatus)

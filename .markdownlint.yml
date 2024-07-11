@@ -227,7 +227,7 @@ MD053:
 # MD054/link-image-style : Link and image style : https://github.com/DavidAnson/markdownlint/blob/v0.34.0/doc/md054.md
 MD054:
   # Allow autolinks
-  autolink: true
+  autolink: false
   # Allow inline links and images
   inline: true
   # Allow full reference links and images

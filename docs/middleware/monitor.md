@@ -62,15 +62,15 @@ You can also access the API endpoint with
 
 ## Config
 
-| Property   | Type                    | Description                                                         | Default                                                                     |
-|:-----------|:------------------------|:--------------------------------------------------------------------|:----------------------------------------------------------------------------|
-| Title      | `string`                | Metrics page title                                                  | "Fiber Monitor"                                                             |
-| Refresh    | `time.Duration`         | Refresh period                                                      | 3 seconds                                                                   |
-| APIOnly    | `bool`                  | Whether the service should expose only the monitoring API           | false                                                                       |
-| Next       | `func(fiber.Ctx) bool` | Next defines a function to skip this middleware when returned true. | `nil`                                                                       |
-| CustomHead | `string`                | Custom HTML Code to Head Section(Before End)                        | empty                                                                       |
-| FontURL    | `string`                | FontURL for specify font resource path or URL                       | "<https://fonts.googleapis.com/css2?family=Roboto:wght@400;900&display=swap>" |
-| ChartJsURL | `string`                | ChartJsURL for specify ChartJS library path or URL                  | "<https://cdn.jsdelivr.net/npm/chart.js@2.9/dist/Chart.bundle.min.js>"        |
+| Property   | Type                    | Description                                                         | Default                                                                                             |
+|:-----------|:------------------------|:--------------------------------------------------------------------|:----------------------------------------------------------------------------------------------------|
+| Title      | `string`                | Metrics page title                                                  | "Fiber Monitor"                                                                                     |
+| Refresh    | `time.Duration`         | Refresh period                                                      | 3 seconds                                                                                           |
+| APIOnly    | `bool`                  | Whether the service should expose only the monitoring API           | false                                                                                               |
+| Next       | `func(fiber.Ctx) bool` | Next defines a function to skip this middleware when returned true. | `nil`                                                                                               |
+| CustomHead | `string`                | Custom HTML Code to Head Section(Before End)                        | empty                                                                                               |
+| FontURL    | `string`                | FontURL for specify font resource path or URL                       | "[fonts.googleapis.com](https://fonts.googleapis.com/css2?family=Roboto:wght@400;900&display=swap)" |
+| ChartJsURL | `string`                | ChartJsURL for specify ChartJS library path or URL                  | "[cdn.jsdelivr.net](https://cdn.jsdelivr.net/npm/chart.js@2.9/dist/Chart.bundle.min.js)"          |
 
 ## Default Config
 
