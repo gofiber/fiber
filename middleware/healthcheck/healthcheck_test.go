@@ -36,13 +36,17 @@ func Test_HealthCheck_Strict_Routing_Default(t *testing.T) {
 
 	app.Get("/livez", NewHealthChecker())
 	app.Get("/readyz", NewHealthChecker())
+	app.Get("/startupz", NewHealthChecker())
 
 	shouldGiveOK(t, app, "/readyz")
 	shouldGiveOK(t, app, "/livez")
+	shouldGiveOK(t, app, "/startupz")
 	shouldGiveNotFound(t, app, "/readyz/")
+	shouldGiveNotFound(t, app, "/startupz/")
 	shouldGiveNotFound(t, app, "/livez/")
 	shouldGiveNotFound(t, app, "/notDefined/readyz")
 	shouldGiveNotFound(t, app, "/notDefined/livez")
+	shouldGiveNotFound(t, app, "/notDefined/startupz")
 }
 
 func Test_HealthCheck_Default(t *testing.T) {
@@ -51,13 +55,17 @@ func Test_HealthCheck_Default(t *testing.T) {
 	app := fiber.New()
 	app.Get("/livez", NewHealthChecker())
 	app.Get("/readyz", NewHealthChecker())
+	app.Get("/startupz", NewHealthChecker())
 
 	shouldGiveOK(t, app, "/readyz")
 	shouldGiveOK(t, app, "/livez")
+	shouldGiveOK(t, app, "/startupz")
 	shouldGiveOK(t, app, "/readyz/")
 	shouldGiveOK(t, app, "/livez/")
+	shouldGiveOK(t, app, "/startupz/")
 	shouldGiveNotFound(t, app, "/notDefined/readyz")
 	shouldGiveNotFound(t, app, "/notDefined/livez")
+	shouldGiveNotFound(t, app, "/notDefined/startupz")
 }
 
 func Test_HealthCheck_Custom(t *testing.T) {
@@ -157,11 +165,13 @@ func Test_HealthCheck_Next(t *testing.T) {
 
 	app.Get("/readyz", checker)
 	app.Get("/livez", checker)
+	app.Get("/startupz", checker)
 
 	// This should give not found since there are no other handlers to execute
 	// so it's like the route isn't defined at all
 	shouldGiveNotFound(t, app, "/readyz")
 	shouldGiveNotFound(t, app, "/livez")
+	shouldGiveNotFound(t, app, "/startupz")
 }
 
 func Benchmark_HealthCheck(b *testing.B) {
@@ -169,6 +179,7 @@ func Benchmark_HealthCheck(b *testing.B) {
 
 	app.Get(DefaultLivenessEndpoint, NewHealthChecker())
 	app.Get(DefaultReadinessEndpoint, NewHealthChecker())
+	app.Get(DefaultStartupEndpoint, NewHealthChecker())
 
 	h := app.Handler()
 	fctx := &fasthttp.RequestCtx{}
@@ -190,6 +201,7 @@ func Benchmark_HealthCheck_Parallel(b *testing.B) {
 
 	app.Get(DefaultLivenessEndpoint, NewHealthChecker())
 	app.Get(DefaultReadinessEndpoint, NewHealthChecker())
+	app.Get(DefaultStartupEndpoint, NewHealthChecker())
 
 	h := app.Handler()
 
