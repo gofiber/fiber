@@ -4,7 +4,7 @@ id: healthcheck
 
 # Health Check
 
-Liveness and readiness probes middleware for [Fiber](https://github.com/gofiber/fiber) that provides two endpoints for checking the liveness and readiness state of HTTP applications.
+Liveness, readiness and startup probes middleware for [Fiber](https://github.com/gofiber/fiber) that provides three endpoints for checking the liveness, readiness and startup state of HTTP applications.
 
 ## Overview
 
@@ -14,6 +14,10 @@ Liveness and readiness probes middleware for [Fiber](https://github.com/gofiber/
 
 - **Readiness Probe**: Assesses if the application is ready to handle requests.
   - **Default Endpoint**: `/readyz`
+  - **Behavior**: By default returns `true` immediately when the server is operational.
+
+- **Startup Probe**: Assesses if the application is ready to handle requests.
+  - **Default Endpoint**: `/startupz`
   - **Behavior**: By default returns `true` immediately when the server is operational.
 
 - **HTTP Status Codes**:
@@ -43,6 +47,8 @@ After you initiate your [Fiber](https://github.com/gofiber/fiber) app, you can u
 app.Get(healthcheck.DefaultLivenessEndpoint, healthcheck.NewHealthChecker())
 // Provide a minimal config for readiness check
 app.Get(healthcheck.DefaultReadinessEndpoint, healthcheck.NewHealthChecker())
+// Provide a minimal config for startup check
+app.Get(healthcheck.DefaultStartupEndpoint, healthcheck.NewHealthChecker())
 // Provide a minimal config for check with custom endpoint
 app.Get("/live", healthcheck.NewHealthChecker())
 
@@ -54,6 +60,12 @@ app.Get(healthcheck.DefaultLivenessEndpoint, healthcheck.NewHealthChecker(health
 }))
 // And it works the same for readiness, just change the route
 app.Get(healthcheck.DefaultReadinessEndpoint, healthcheck.NewHealthChecker(healthcheck.Config{
+    Probe: func(c fiber.Ctx) bool {
+        return true
+    },
+}))
+// And it works the same for startup, just change the route
+app.Get(healthcheck.DefaultStartupEndpoint, healthcheck.NewHealthChecker(healthcheck.Config{
     Probe: func(c fiber.Ctx) bool {
         return true
     },
@@ -89,6 +101,10 @@ type Config struct {
 	// Function used for checking the liveness of the application. Returns true if the application
 	// is running and false if it is not. The liveness probe is typically used to indicate if 
 	// the application is in a state where it can handle requests (e.g., the server is up and running).
+    // The readiness probe is typically used to indicate if the application is ready to start accepting traffic (e.g., all necessary components 
+    // are initialized and dependent services are available) and the startup probe typically used to 
+    // indicate if the application has completed its startup sequence and is ready to proceed with
+    // initialization and readiness checks
 	//
 	// Optional. Default: func(c fiber.Ctx) bool { return true }
 	Probe HealthChecker
