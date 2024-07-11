@@ -16,7 +16,47 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// go test -run Test_Limiter_Concurrency_Store -race -v
+// go test -run Test_Limiter_With_Max_Calculator_With_Zero -race -v
+func Test_Limiter_With_Max_Calculator_With_Zero(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New(Config{
+		MaxCalculator: func(_ fiber.Ctx) int {
+			return 0
+		},
+		Expiration: 2 * time.Second,
+		Storage:    memory.New(),
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("Hello tester!")
+	})
+
+	var wg sync.WaitGroup
+
+	for i := 0; i <= 4; i++ {
+		wg.Add(1)
+		go func(wg *sync.WaitGroup) {
+			defer wg.Done()
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+			assert.NoError(t, err)
+			assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+			body, err := io.ReadAll(resp.Body)
+			assert.NoError(t, err)
+			assert.Equal(t, "Hello tester!", string(body))
+		}(&wg)
+	}
+
+	wg.Wait()
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
+}
+
+// go test -run Test_Limiter_With_Max_Calculator -race -v
 func Test_Limiter_With_Max_Calculator(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
