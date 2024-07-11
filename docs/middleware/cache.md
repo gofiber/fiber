@@ -52,7 +52,7 @@ app.Use(cache.New(cache.Config{
         return time.Second * time.Duration(newCacheTime)
     },
     KeyGenerator: func(c fiber.Ctx) string {
-		return utils.CopyString(c.Path())
+        return utils.CopyString(c.Path())
     },
 }))
 

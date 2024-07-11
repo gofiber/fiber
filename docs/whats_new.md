@@ -7,7 +7,7 @@ toc_max_heading_level: 3
 
 :::caution
 
-Its a draft, not finished yet.
+It's a draft, not finished yet.
 
 :::
 
@@ -20,6 +20,7 @@ We are excited to announce the release of Fiber v3! 🚀
 In this guide, we'll walk you through the most important changes in Fiber `v3` and show you how to migrate your existing Fiber `v2` applications to Fiber `v3`.
 
 Here's a quick overview of the changes in Fiber `v3`:
+
 - [🚀 App](#-app)
 - [🗺️ Router](#-router)
 - [🧠 Context](#-context)
@@ -46,33 +47,33 @@ DRAFT section
 
 We have made several changes to the Fiber app, including:
 
-* Listen -> unified with config
-* Static -> has been removed and moved to [static middleware](./middleware/static.md)
-* app.Config properties moved to listen config
-  * DisableStartupMessage
-  * EnablePrefork -> previously Prefork
-  * EnablePrintRoutes
-  * ListenerNetwork -> previously Network
+- Listen -> unified with config
+- Static -> has been removed and moved to [static middleware](./middleware/static.md)
+- app.Config properties moved to listen config
+  - DisableStartupMessage
+  - EnablePrefork -> previously Prefork
+  - EnablePrintRoutes
+  - ListenerNetwork -> previously Network
 
 ### new methods
 
-* RegisterCustomBinder
-* RegisterCustomConstraint
-* NewCtxFunc
+- RegisterCustomBinder
+- RegisterCustomConstraint
+- NewCtxFunc
 
 ### removed methods
 
-* Mount -> Use app.Use() instead
-* ListenTLS -> Use app.Listen() with tls.Config
-* ListenTLSWithCertificate -> Use app.Listen() with tls.Config
-* ListenMutualTLS -> Use app.Listen() with tls.Config
-* ListenMutualTLSWithCertificate -> Use app.Listen() with tls.Config
+- Mount -> Use app.Use() instead
+- ListenTLS -> Use app.Listen() with tls.Config
+- ListenTLSWithCertificate -> Use app.Listen() with tls.Config
+- ListenMutualTLS -> Use app.Listen() with tls.Config
+- ListenMutualTLSWithCertificate -> Use app.Listen() with tls.Config
 
 ### Methods changes
 
-* Test -> timeout changed to 1 second
-* Listen -> has a config parameter
-* Listener -> has a config parameter
+- Test -> timeout changed to 1 second
+- Listen -> has a config parameter
+- Listener -> has a config parameter
 
 ### CTX interface + customizable
 
@@ -141,6 +142,7 @@ app.Route("/api").Route("/user/:id?")
   })
 })
 ```
+
 </details>
 
 [Here](./api/app#route) you can find more information.
@@ -169,6 +171,7 @@ api.Get("/user", func(c *fiber.Ctx) error {
 // register subapp
 app.Use("/api", api)
 ```
+
 </details>
 
 To enable the routing changes above we had to slightly adjust the signature of the `Add` method.
@@ -192,37 +195,37 @@ DRAFT section
 
 ### new methods
 
-* AutoFormat -> ExpressJs like
-* Host -> ExpressJs like
-* Port -> ExpressJs like
-* IsProxyTrusted
-* Reset
-* Schema -> ExpressJs like
-* SendStream -> ExpressJs like
-* SendString -> ExpressJs like
-* String -> ExpressJs like
-* ViewBind -> instead of Bind
+- AutoFormat -> ExpressJs like
+- Host -> ExpressJs like
+- Port -> ExpressJs like
+- IsProxyTrusted
+- Reset
+- Schema -> ExpressJs like
+- SendStream -> ExpressJs like
+- SendString -> ExpressJs like
+- String -> ExpressJs like
+- ViewBind -> instead of Bind
 
 ### removed methods
 
-* AllParams -> c.Bind().URL() ?
-* ParamsInt -> Params Generic
-* QueryBool -> Query Generic
-* QueryFloat -> Query Generic
-* QueryInt -> Query Generic
-* BodyParser -> c.Bind().Body()
-* CookieParser -> c.Bind().Cookie()
-* ParamsParser -> c.Bind().URL()
-* RedirectToRoute -> c.Redirect().Route()
-* RedirectBack -> c.Redirect().Back()
-* ReqHeaderParser -> c.Bind().Header()
+- AllParams -> c.Bind().URL() ?
+- ParamsInt -> Params Generic
+- QueryBool -> Query Generic
+- QueryFloat -> Query Generic
+- QueryInt -> Query Generic
+- BodyParser -> c.Bind().Body()
+- CookieParser -> c.Bind().Cookie()
+- ParamsParser -> c.Bind().URL()
+- RedirectToRoute -> c.Redirect().Route()
+- RedirectBack -> c.Redirect().Back()
+- ReqHeaderParser -> c.Bind().Header()
 
 ### changed methods
 
-* Bind -> for Binding instead of View, us c.ViewBind()
-* Format -> Param: body interface{} -> handlers ...ResFmt
-* Redirect -> c.Redirect().To()
-* SendFile now supports different configurations using the config parameter.
+- Bind -> for Binding instead of View, us c.ViewBind()
+- Format -> Param: body interface{} -> handlers ...ResFmt
+- Redirect -> c.Redirect().To()
+- SendFile now supports different configurations using the config parameter.
 
 ---
 
@@ -230,7 +233,7 @@ DRAFT section
 
 The Gofiber client has been completely rebuilt. It includes numerous new features such as Cookiejar, request/response hooks, and more.
 You can take a look to [client docs](./client/rest.md) to see what's new with the client.
- 
+
 ## 📎 Binding
 
 :::caution
@@ -242,7 +245,6 @@ DRAFT section
 :::caution
 DRAFT section
 :::
-
 
 ## 🧰 Generic functions
 
@@ -261,9 +263,11 @@ We are excited to introduce a new option in our caching middleware: Cache Invali
 We've made some changes to the CORS middleware to improve its functionality and flexibility. Here's what's new:
 
 #### New Struct Fields
+
 - `Config.AllowPrivateNetwork`: This new field is a boolean that allows you to control whether private networks are allowed. This is related to the [Private Network Access (PNA)](https://wicg.github.io/private-network-access/) specification from the Web Incubator Community Group (WICG). When set to `true`, the CORS middleware will allow CORS preflight requests from private networks and respond with the `Access-Control-Allow-Private-Network: true` header. This could be useful in development environments or specific use cases, but should be done with caution due to potential security risks.
 
 #### Updated Struct Fields
+
 We've updated several fields from a single string (containing comma-separated values) to slices, allowing for more explicit declaration of multiple values. Here are the updated fields:
 
 - `Config.AllowOrigins`: Now accepts a slice of strings, each representing an allowed origin.
@@ -287,7 +291,7 @@ DRAFT section
 
 ### Filesystem
 
-We've decided to remove filesystem middleware to clear up the confusion between static and filesystem middleware. 
+We've decided to remove filesystem middleware to clear up the confusion between static and filesystem middleware.
 Now, static middleware can do everything that filesystem middleware and static do. You can check out [static middleware](./middleware/static.md) or [migration guide](#-migration-guide) to see what has been changed.
 
 ### Monitor
@@ -307,7 +311,6 @@ Monitor middleware is now in Contrib package.
 - [🔄 Redirect](#-redirect-1)
 - [🌎 Client package](#-client-package-1)
 - [🧬 Middlewares](#-middlewares-1)
-
 
 ### 🚀 App
 

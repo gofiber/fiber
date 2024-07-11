@@ -165,7 +165,6 @@ Performs content-negotiation on the [Accept](https://developer.mozilla.org/en-US
 The supported content types are `text/html`, `text/plain`, `application/json`, and `application/xml`.
 For more flexible content negotiation, use [Format](ctx.md#format).
 
-
 :::info
 If the header is **not** specified or there is **no** proper format, **text/plain** is used.
 :::
@@ -375,17 +374,17 @@ func (c Ctx) Cookie(cookie *Cookie)
 
 ```go
 type Cookie struct {
-	Name        string    `json:"name"`         // The name of the cookie
-	Value       string    `json:"value"`        // The value of the cookie
-	Path        string    `json:"path"`         // Specifies a URL path which is allowed to receive the cookie
-	Domain      string    `json:"domain"`       // Specifies the domain which is allowed to receive the cookie
-	MaxAge      int       `json:"max_age"`      // The maximum age (in seconds) of the cookie
-	Expires     time.Time `json:"expires"`      // The expiration date of the cookie
-	Secure      bool      `json:"secure"`       // Indicates that the cookie should only be transmitted over a secure HTTPS connection
-	HTTPOnly    bool      `json:"http_only"`    // Indicates that the cookie is accessible only through the HTTP protocol
-	SameSite    string    `json:"same_site"`    // Controls whether or not a cookie is sent with cross-site requests
-	Partitioned bool      `json:"partitioned"`  // Indicates if the cookie is stored in a partitioned cookie jar
-	SessionOnly bool      `json:"session_only"` // Indicates if the cookie is a session-only cookie
+    Name        string    `json:"name"`         // The name of the cookie
+    Value       string    `json:"value"`        // The value of the cookie
+    Path        string    `json:"path"`         // Specifies a URL path which is allowed to receive the cookie
+    Domain      string    `json:"domain"`       // Specifies the domain which is allowed to receive the cookie
+    MaxAge      int       `json:"max_age"`      // The maximum age (in seconds) of the cookie
+    Expires     time.Time `json:"expires"`      // The expiration date of the cookie
+    Secure      bool      `json:"secure"`       // Indicates that the cookie should only be transmitted over a secure HTTPS connection
+    HTTPOnly    bool      `json:"http_only"`    // Indicates that the cookie is accessible only through the HTTP protocol
+    SameSite    string    `json:"same_site"`    // Controls whether or not a cookie is sent with cross-site requests
+    Partitioned bool      `json:"partitioned"`  // Indicates if the cookie is stored in a partitioned cookie jar
+    SessionOnly bool      `json:"session_only"` // Indicates if the cookie is a session-only cookie
 }
 ```
 
@@ -1001,7 +1000,7 @@ app.Get("/admin", func(c fiber.Ctx) error {
 })
 ```
 
-An alternative version of the Locals method that takes advantage of Go's generics feature is also available. This version 
+An alternative version of the Locals method that takes advantage of Go's generics feature is also available. This version
 allows for the manipulation and retrieval of local values within a request's context with a more specific data type.
 
 ```go title="Signature"
@@ -1023,7 +1022,7 @@ app.Get("/test", func(c Ctx) error {
 })
 ````
 
-Make sure to understand and correctly implement the Locals method in both its standard and generic form for better control 
+Make sure to understand and correctly implement the Locals method in both its standard and generic form for better control
 over route-specific data within your application.
 
 ## Location
@@ -1206,9 +1205,8 @@ Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more..
 
 :::
 
-
-In certain scenarios, it can be useful to have an alternative approach to handle different types of parameters, not 
-just strings. This can be achieved using a generic Query function known as `Params[V GenericType](c Ctx, key string, defaultValue ...V) V`. 
+In certain scenarios, it can be useful to have an alternative approach to handle different types of parameters, not
+just strings. This can be achieved using a generic Query function known as `Params[V GenericType](c Ctx, key string, defaultValue ...V) V`.
 This function is capable of parsing a query string and returning a value of a type that is assumed and specified by `V GenericType`.
 
 ```go title="Signature"
@@ -1227,13 +1225,13 @@ app.Get("/user/:id", func(c fiber.Ctx) error{
 ```
 
 The generic Params function supports returning the following data types based on V GenericType:
+
 - Integer: int, int8, int16, int32, int64
 - Unsigned integer: uint, uint8, uint16, uint32, uint64
 - Floating-point numbers: float32, float64
 - Boolean: bool
 - String: string
 - Byte array: []byte
-
 
 ## Path
 
@@ -1303,11 +1301,11 @@ func (c Ctx) Queries() map[string]string
 // GET http://example.com/?name=alex&want_pizza=false&id=
 
 app.Get("/", func(c fiber.Ctx) error {
-	m := c.Queries()
-	m["name"] // "alex"
-	m["want_pizza"] // "false"
-	m["id"] // ""
-	// ...
+    m := c.Queries()
+    m["name"] // "alex"
+    m["want_pizza"] // "false"
+    m["id"] // ""
+    // ...
 })
 ```
 
@@ -1315,9 +1313,9 @@ app.Get("/", func(c fiber.Ctx) error {
 // GET http://example.com/?field1=value1&field1=value2&field2=value3
 
 app.Get("/", func (c fiber.Ctx) error {
-	m := c.Queries()
-	m["field1"] // "value2"
-	m["field2"] // value3
+    m := c.Queries()
+    m["field1"] // "value2"
+    m["field2"] // value3
 })
 ```
 
@@ -1325,10 +1323,10 @@ app.Get("/", func (c fiber.Ctx) error {
 // GET http://example.com/?list_a=1&list_a=2&list_a=3&list_b[]=1&list_b[]=2&list_b[]=3&list_c=1,2,3
 
 app.Get("/", func(c fiber.Ctx) error {
-	m := c.Queries()
-	m["list_a"] // "3"
-	m["list_b[]"] // "3"
-	m["list_c"] // "1,2,3"
+    m := c.Queries()
+    m["list_a"] // "3"
+    m["list_b[]"] // "3"
+    m["list_c"] // "1,2,3"
 })
 ```
 
@@ -1336,9 +1334,9 @@ app.Get("/", func(c fiber.Ctx) error {
 // GET /api/posts?filters.author.name=John&filters.category.name=Technology
 
 app.Get("/", func(c fiber.Ctx) error {
-	m := c.Queries()
-	m["filters.author.name"] // John
-	m["filters.category.name"] // Technology
+    m := c.Queries()
+    m["filters.author.name"] // John
+    m["filters.category.name"] // Technology
 })
 ```
 
@@ -1346,12 +1344,12 @@ app.Get("/", func(c fiber.Ctx) error {
 // GET /api/posts?tags=apple,orange,banana&filters[tags]=apple,orange,banana&filters[category][name]=fruits&filters.tags=apple,orange,banana&filters.category.name=fruits
 
 app.Get("/", func(c fiber.Ctx) error {
-	m := c.Queries()
-	m["tags"] // apple,orange,banana
-	m["filters[tags]"] // apple,orange,banana
-	m["filters[category][name]"] // fruits
-	m["filters.tags"] // apple,orange,banana
-	m["filters.category.name"] // fruits
+    m := c.Queries()
+    m["tags"] // apple,orange,banana
+    m["filters[tags]"] // apple,orange,banana
+    m["filters[category][name]"] // fruits
+    m["filters.tags"] // apple,orange,banana
+    m["filters.category.name"] // fruits
 })
 ```
 
@@ -1386,8 +1384,8 @@ Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more..
 
 :::
 
-In certain scenarios, it can be useful to have an alternative approach to handle different types of query parameters, not 
-just strings. This can be achieved using a generic Query function known as `Query[V GenericType](c Ctx, key string, defaultValue ...V) V`. 
+In certain scenarios, it can be useful to have an alternative approach to handle different types of query parameters, not
+just strings. This can be achieved using a generic Query function known as `Query[V GenericType](c Ctx, key string, defaultValue ...V) V`.
 This function is capable of parsing a query string and returning a value of a type that is assumed and specified by `V GenericType`.
 
 Here is the signature for the generic Query function:
@@ -1410,12 +1408,13 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
-In this case, `Query[V GenericType](c Ctx, key string, defaultValue ...V) V` can retrieve 'page' as an integer, 'brand' 
-as a string, and 'new' as a boolean. The function uses the appropriate parsing function for each specified type to ensure 
-the correct type is returned. This simplifies the retrieval process of different types of query parameters, making your 
+In this case, `Query[V GenericType](c Ctx, key string, defaultValue ...V) V` can retrieve 'page' as an integer, 'brand'
+as a string, and 'new' as a boolean. The function uses the appropriate parsing function for each specified type to ensure
+the correct type is returned. This simplifies the retrieval process of different types of query parameters, making your
 controller actions cleaner.
 
 The generic Query function supports returning the following data types based on V GenericType:
+
 - Integer: int, int8, int16, int32, int64
 - Unsigned integer: uint, uint8, uint16, uint32, uint64
 - Floating-point numbers: float32, float64
@@ -1463,7 +1462,6 @@ app.Get("/teapot", func(c fiber.Ctx) error {
     return c.Status(fiber.StatusTeapot).Send("🍵 short and stout 🍵")
 })
 ```
-
 
 ## Render
 
@@ -1746,7 +1744,7 @@ type SendFile struct {
   // The value for the Cache-Control HTTP-header
   // that is set on the file response. MaxAge is defined in seconds.
   //
-	// Optional. Default value 0.
+    // Optional. Default value 0.
   MaxAge int `json:"max_age"`
 }
 ```

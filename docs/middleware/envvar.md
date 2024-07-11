@@ -18,8 +18,8 @@ Import the middleware package that is part of the Fiber web framework
 
 ```go
 import (
-  "github.com/gofiber/fiber/v3"
-  "github.com/gofiber/fiber/v3/middleware/envvar"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/envvar"
 )
 ```
 
@@ -31,10 +31,10 @@ app.Use("/expose/envvars", envvar.New())
 
 // Or extend your config for customization
 app.Use("/expose/envvars", envvar.New(
-	envvar.Config{
-		ExportVars:  map[string]string{"testKey": "", "testDefaultKey": "testDefaultVal"},
-		ExcludeVars: map[string]string{"excludeKey": ""},
-	}),
+    envvar.Config{
+        ExportVars:  map[string]string{"testKey": "", "testDefaultKey": "testDefaultVal"},
+        ExcludeVars: map[string]string{"excludeKey": ""},
+    }),
 )
 ```
 
@@ -45,7 +45,8 @@ You will need to provide a path to use the envvar middleware.
 ## Response
 
 Http response contract:
-```
+
+```json
 {
   "vars": {
     "someEnvVariable": "someValue",

@@ -22,8 +22,8 @@ Import the middleware package that is part of the Fiber web framework
 
 ```go
 import (
-  "github.com/gofiber/fiber/v3"
-  "github.com/gofiber/fiber/v3/middleware/compress"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/compress"
 )
 ```
 
@@ -40,10 +40,10 @@ app.Use(compress.New(compress.Config{
 
 // Skip middleware for specific routes
 app.Use(compress.New(compress.Config{
-  Next:  func(c fiber.Ctx) bool {
-    return c.Path() == "/dont_compress"
-  },
-  Level: compress.LevelBestSpeed, // 1
+    Next:  func(c fiber.Ctx) bool {
+      return c.Path() == "/dont_compress"
+    },
+    Level: compress.LevelBestSpeed, // 1
 }))
 ```
 

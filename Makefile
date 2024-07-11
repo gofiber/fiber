@@ -27,6 +27,11 @@ coverage:
 format:
 	go run mvdan.cc/gofumpt@latest -w -l .
 
+## format: 🎨 Find markdown format issues (Requires markdownlint-cli)
+.PHONY: markdown
+format:
+	markdownlint-cli2 "**/*.md" "#vendor"
+
 ## lint: 🚨 Run lint checks
 .PHONY: lint
 lint:

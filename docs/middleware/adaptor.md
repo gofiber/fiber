@@ -7,6 +7,7 @@ id: adaptor
 Converter for net/http handlers to/from Fiber request handlers, special thanks to [@arsmn](https://github.com/arsmn)!
 
 ## Signatures
+
 | Name | Signature | Description
 | :--- | :--- | :---
 | HTTPHandler | `HTTPHandler(h http.Handler) fiber.Handler` | http.Handler -> fiber.Handler
@@ -21,149 +22,154 @@ Converter for net/http handlers to/from Fiber request handlers, special thanks t
 ## Examples
 
 ### net/http to Fiber
+
 ```go
 package main
 
 import (
-	"fmt"
-	"net/http"
+    "fmt"
+    "net/http"
 
-	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/middleware/adaptor"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/adaptor"
 )
 
 func main() {
-	// New fiber app
-	app := fiber.New()
+    // New fiber app
+    app := fiber.New()
 
-	// http.Handler -> fiber.Handler
-	app.Get("/", adaptor.HTTPHandler(handler(greet)))
+    // http.Handler -> fiber.Handler
+    app.Get("/", adaptor.HTTPHandler(handler(greet)))
 
-	// http.HandlerFunc -> fiber.Handler
-	app.Get("/func", adaptor.HTTPHandlerFunc(greet))
+    // http.HandlerFunc -> fiber.Handler
+    app.Get("/func", adaptor.HTTPHandlerFunc(greet))
 
-	// Listen on port 3000
-	app.Listen(":3000")
+    // Listen on port 3000
+    app.Listen(":3000")
 }
 
 func handler(f http.HandlerFunc) http.Handler {
-	return http.HandlerFunc(f)
+    return http.HandlerFunc(f)
 }
 
 func greet(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "Hello World!")
+    fmt.Fprint(w, "Hello World!")
 }
 ```
 
 ### net/http middleware to Fiber
+
 ```go
 package main
 
 import (
-	"log"
-	"net/http"
+    "log"
+    "net/http"
 
-	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/middleware/adaptor"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/adaptor"
 )
 
 func main() {
-	// New fiber app
-	app := fiber.New()
+    // New fiber app
+    app := fiber.New()
 
-	// http middleware -> fiber.Handler
-	app.Use(adaptor.HTTPMiddleware(logMiddleware))
+    // http middleware -> fiber.Handler
+    app.Use(adaptor.HTTPMiddleware(logMiddleware))
 
-	// Listen on port 3000
-	app.Listen(":3000")
+    // Listen on port 3000
+    app.Listen(":3000")
 }
 
 func logMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Println("log middleware")
-		next.ServeHTTP(w, r)
-	})
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        log.Println("log middleware")
+        next.ServeHTTP(w, r)
+    })
 }
 ```
 
 ### Fiber Handler to net/http
+
 ```go
 package main
 
 import (
-	"net/http"
+    "net/http"
 
-	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/middleware/adaptor"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/adaptor"
 )
 
 func main() {
-	// fiber.Handler -> http.Handler
-	http.Handle("/", adaptor.FiberHandler(greet))
+    // fiber.Handler -> http.Handler
+    http.Handle("/", adaptor.FiberHandler(greet))
 
-  	// fiber.Handler -> http.HandlerFunc
-	http.HandleFunc("/func", adaptor.FiberHandlerFunc(greet))
+      // fiber.Handler -> http.HandlerFunc
+    http.HandleFunc("/func", adaptor.FiberHandlerFunc(greet))
 
-	// Listen on port 3000
-	http.ListenAndServe(":3000", nil)
+    // Listen on port 3000
+    http.ListenAndServe(":3000", nil)
 }
 
 func greet(c fiber.Ctx) error {
-	return c.SendString("Hello World!")
+    return c.SendString("Hello World!")
 }
 ```
 
 ### Fiber App to net/http
+
 ```go
 package main
 
 import (
-	"net/http"
+    "net/http"
 
-	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/middleware/adaptor"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/adaptor"
 )
 
 func main() {
-	app := fiber.New()
+    app := fiber.New()
 
-	app.Get("/greet", greet)
+    app.Get("/greet", greet)
 
-	// Listen on port 3000
-	http.ListenAndServe(":3000", adaptor.FiberApp(app))
+    // Listen on port 3000
+    http.ListenAndServe(":3000", adaptor.FiberApp(app))
 }
 
 func greet(c fiber.Ctx) error {
-	return c.SendString("Hello World!")
+    return c.SendString("Hello World!")
 }
 ```
 
 ### Fiber Context to (net/http).Request
+
 ```go
 package main
 
 import (
-	"net/http"
+    "net/http"
 
-	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/middleware/adaptor"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/adaptor"
 )
 
 func main() {
-	app := fiber.New()
+    app := fiber.New()
 
-	app.Get("/greet", greetWithHTTPReq)
+    app.Get("/greet", greetWithHTTPReq)
 
-	// Listen on port 3000
-	http.ListenAndServe(":3000", adaptor.FiberApp(app))
+    // Listen on port 3000
+    http.ListenAndServe(":3000", adaptor.FiberApp(app))
 }
 
 func greetWithHTTPReq(c fiber.Ctx) error {
-	httpReq, err := adaptor.ConvertRequest(c, false)
-	if err != nil {
-		return err
-	}
+    httpReq, err := adaptor.ConvertRequest(c, false)
+    if err != nil {
+        return err
+    }
 
-	return c.SendString("Request URL: " + httpReq.URL.String())
+    return c.SendString("Request URL: " + httpReq.URL.String())
 }
 ```
