@@ -4,7 +4,7 @@ id: healthcheck
 
 # Health Check
 
-Liveness, readiness and startup probes middleware for [Fiber](https://github.com/gofiber/fiber) that provides three endpoints for checking the liveness, readiness and startup state of HTTP applications.
+Liveness, readiness and startup probes middleware for [Fiber](https://github.com/gofiber/fiber) that provides three endpoints for checking the liveness, readiness, and startup state of HTTP applications.
 
 ## Overview
 
@@ -16,7 +16,7 @@ Liveness, readiness and startup probes middleware for [Fiber](https://github.com
   - **Default Endpoint**: `/readyz`
   - **Behavior**: By default returns `true` immediately when the server is operational.
 
-- **Startup Probe**: Assesses if the application is ready to handle requests.
+- **Startup Probe**: Checks if the application has completed its startup sequence and is ready to proceed with initialization and readiness checks.
   - **Default Endpoint**: `/startupz`
   - **Behavior**: By default returns `true` immediately when the server is operational.
 
