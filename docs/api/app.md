@@ -582,4 +582,16 @@ RebuildTree is a method destined to rebuild the route tree stack and allow dynam
 func (app *App) RebuildTree() *App
 ```
 
-**NOTE**: This method should be used in the most careful way possible, since it's not currently possible to make it thread-safe (it would add a big performance overhead to do so) and calling it is very performance-intensive, so it's recommended to be used only in development mode and never concurrently.
+**NOTE**: This method should be used in the most careful way possible, since it's not currently possible to make it thread-safe (it would add a big performance overhead to do so) and calling it is very performance-intensive, so it's recommended to be used only in development mode and never concurrently. Here's an example of defining routes dynamically:
+
+```go
+app.Get("/define", func(c Ctx) error {
+	app.Get("/dynamically-defined", func(c Ctx) error {
+		return c.SendStatus(http.StatusOK)
+	})
+
+	app.RebuildTree()
+
+	return c.SendStatus(http.StatusOK)
+})
+```
