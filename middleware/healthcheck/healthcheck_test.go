@@ -34,8 +34,8 @@ func Test_HealthCheck_Strict_Routing_Default(t *testing.T) {
 		StrictRouting: true,
 	})
 
-	app.Get("/livez", NewHealthChecker())
-	app.Get("/readyz", NewHealthChecker())
+	app.Get(DefaultLivenessEndpoint, NewHealthChecker())
+	app.Get(DefaultReadinessEndpoint, NewHealthChecker())
 	app.Get(DefaultStartupEndpoint, NewHealthChecker())
 
 	shouldGiveOK(t, app, "/readyz")
@@ -53,8 +53,8 @@ func Test_HealthCheck_Default(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	app.Get("/livez", NewHealthChecker())
-	app.Get("/readyz", NewHealthChecker())
+	app.Get(DefaultLivenessEndpoint, NewHealthChecker())
+	app.Get(DefaultReadinessEndpoint, NewHealthChecker())
 	app.Get(DefaultStartupEndpoint, NewHealthChecker())
 
 	shouldGiveOK(t, app, "/readyz")
@@ -170,8 +170,8 @@ func Test_HealthCheck_Next(t *testing.T) {
 		},
 	})
 
-	app.Get("/readyz", checker)
-	app.Get("/livez", checker)
+	app.Get(DefaultLivenessEndpoint, checker)
+	app.Get(DefaultReadinessEndpoint, checker)
 	app.Get(DefaultStartupEndpoint, checker)
 
 	// This should give not found since there are no other handlers to execute
