@@ -586,12 +586,12 @@ func (app *App) RebuildTree() *App
 
 ```go
 app.Get("/define", func(c Ctx) error {
-	app.Get("/dynamically-defined", func(c Ctx) error {
-		return c.SendStatus(http.StatusOK)
-	})
+  app.Get("/dynamically-defined", func(c Ctx) error {
+  	return c.SendStatus(http.StatusOK)
+  })
 
-	app.RebuildTree()
+  app.RebuildTree()
 
-	return c.SendStatus(http.StatusOK)
+  return c.SendStatus(http.StatusOK)
 })
 ```
