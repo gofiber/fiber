@@ -391,7 +391,7 @@ app.Route("/api").Route("/user/:id?")
 
 ### 🗺 RebuildTree
 
-We have added a new method that allows the route tree stack to be rebuilt in runtime, with it you can add a route while your application is running and rebuild the route tree stack to make it registered and available for calls.
+We have added a new method that allows the route tree stack to be rebuilt in runtime, with it, you can add a route while your application is running and rebuild the route tree stack to make it registered and available for calls.
 
 You can find more reference on it in the [app](./api/app.md#rebuildtree):
 
@@ -411,7 +411,7 @@ app.Get("/define", func(c Ctx) error {  // Define a new route dynamically
 
 In this example, a new route is defined and then `RebuildTree()` is called to make sure the new route is registered and available.
 
-**Note:** Use this method with caution. It is **not** thread-safe and calling it can be very performance-intensive, so it should be used sparingly and only in 
+**Note:** Use this method with caution. It is **not** thread-safe and calling it can be very performance-intensive, so it should be used sparingly and only in
 development mode. Avoid using it concurrently.
 
 ### 🧠 Context
