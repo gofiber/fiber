@@ -549,7 +549,7 @@ func Benchmark_Redirect_Route_WithFlashMessages(b *testing.B) {
 	require.Equal(b, 302, c.Response().StatusCode())
 	require.Equal(b, "/user", string(c.Response().Header.Peek(HeaderLocation)))
 
-	equal := c.GetRespHeader(HeaderSetCookie) == "fiber_flash=success:1,message:test; path=/; SameSite=Lax" || c.GetRespHeader(HeaderSetCookie) == "fiber_flash=message:test,success:1; path=/; SameSite=Lax"
+	equal := c.GetRespHeader(HeaderSetCookie) == "fiber_flash=success:1,message:test; path=/; HttpOnly; SameSite=Lax" || c.GetRespHeader(HeaderSetCookie) == "fiber_flash=message:test,success:1; path=/; HttpOnly; SameSite=Lax"
 	require.True(b, equal)
 
 	c.Redirect().parseAndClearFlashMessages()
@@ -603,7 +603,7 @@ func Benchmark_Redirect_processFlashMessages(b *testing.B) {
 		c.Redirect().processFlashMessages()
 	}
 
-	require.Equal(b, "fiber_flash=success:1,message:test; path=/; SameSite=Lax", c.GetRespHeader(HeaderSetCookie))
+	require.Equal(b, "fiber_flash=success:1,message:test; path=/; HttpOnly; SameSite=Lax", c.GetRespHeader(HeaderSetCookie))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Redirect_Messages -benchmem -count=4
