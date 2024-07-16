@@ -124,22 +124,22 @@ The route method is now like [`Express`](https://expressjs.com/de/api.html#app.r
 
 ```go
 app.Route("/api").Route("/user/:id?")
-  .Get(func(c fiber.Ctx) error {
-    // Get user
-    return c.JSON(fiber.Map{"message": "Get user", "id": c.Params("id")})
-  })
-  .Post(func(c fiber.Ctx) error {
-    // Create user
-    return c.JSON(fiber.Map{"message": "User created"})
-  })
-  .Put(func(c fiber.Ctx) error {
-    // Update user
-    return c.JSON(fiber.Map{"message": "User updated", "id": c.Params("id")})
-  })
-  .Delete(func(c fiber.Ctx) error {
-    // Delete user
-    return c.JSON(fiber.Map{"message": "User deleted", "id": c.Params("id")})
-  })
+    .Get(func(c fiber.Ctx) error {
+        // Get user
+        return c.JSON(fiber.Map{"message": "Get user", "id": c.Params("id")})
+    })
+    .Post(func(c fiber.Ctx) error {
+        // Create user
+        return c.JSON(fiber.Map{"message": "User created"})
+    })
+    .Put(func(c fiber.Ctx) error {
+        // Update user
+        return c.JSON(fiber.Map{"message": "User updated", "id": c.Params("id")})
+    })
+    .Delete(func(c fiber.Ctx) error {
+        // Delete user
+        return c.JSON(fiber.Map{"message": "User deleted", "id": c.Params("id")})
+    })
 })
 ```
 
@@ -159,14 +159,14 @@ Registering a subapp is now also possible via the [`Use`](./api/app#use) method 
 ```go
 // register mulitple prefixes
 app.Use(["/v1", "/v2"], func(c *fiber.Ctx) error {
-  // Middleware for /v1 and /v2
-  return c.Next() 
+    // Middleware for /v1 and /v2
+    return c.Next() 
 })
 
 // define subapp
 api := fiber.New()
 api.Get("/user", func(c *fiber.Ctx) error {
-  return c.SendString("User")
+    return c.SendString("User")
 })
 // register subapp
 app.Use("/api", api)
@@ -242,9 +242,21 @@ DRAFT section
 
 ## 🔄 Redirect
 
-:::caution
-DRAFT section
-:::
+We are excited to introduce enhancements to the Redirect feature in this major release! These improvements enhance your ability to manage user navigation efficiently and effectively.
+
+The Redirect feature allows you to seamlessly redirect users to different URLs or routes within your application. It supports various use cases such as redirecting after form submissions, handling outdated links, and creating more intuitive navigation flows.
+
+### Key Features
+
+1. Flash Messages: Send and retrieve flash messages with ease. Use `With(key, value)` to send flash messages, and access them in the next request using `Messages()` or `Message(key)`.
+
+2. Old Input Data: Preserve and retrieve old input data across requests. Use `WithInput()` to store form data, which can then be accessed using `OldInputs()` or `OldInput(key)`.
+
+3. Customizable HTTP Status Codes: Set specific HTTP status codes for your redirects using the `Status(code)` method, with a default of `302 Found`.
+
+### Backend
+
+The Redirect feature leverages cookies to store flash messages and old input data, ensuring data persistence across redirects and making it easy to manage user data and messages. The cookies are fully configurable on a per-route basis using the `CookieConfig` param in the `RedirectConfig` struct.
 
 ## 🧰 Generic functions
 
@@ -323,7 +335,7 @@ Since we've removed `app.Static()`, you need to move methods to static middlewar
 app.Static("/", "./public")
 app.Static("/prefix", "./public")
 app.Static("/prefix", "./public", Static{
-  Index: "index.htm",
+    Index: "index.htm",
 })
 app.Static("*", "./public/index.html")
 ```
@@ -333,7 +345,7 @@ app.Static("*", "./public/index.html")
 app.Get("/*", static.New("./public"))
 app.Get("/prefix*", static.New("./public"))
 app.Get("/prefix*", static.New("./public", static.Config{
-  IndexNames: []string{"index.htm", "index.html"},
+    IndexNames: []string{"index.htm", "index.html"},
 }))
 app.Get("*", static.New("./public/index.html"))
 ```
@@ -363,30 +375,30 @@ To migrate [`Route`](#route-chaining) you need to read [this](#route-chaining).
 ```go
 // Before
 app.Route("/api", func(apiGrp Router) {
-        apiGrp.Route("/user/:id?", func(userGrp Router) {
-            userGrp.Get("/", func(c fiber.Ctx) error {
-                // Get user
-                return c.JSON(fiber.Map{"message": "Get user", "id": c.Params("id")})
-            })
-            userGrp.Post("/", func(c fiber.Ctx) error {
-                // Create user
-                return c.JSON(fiber.Map{"message": "User created"})
-            })
+    apiGrp.Route("/user/:id?", func(userGrp Router) {
+        userGrp.Get("/", func(c fiber.Ctx) error {
+            // Get user
+            return c.JSON(fiber.Map{"message": "Get user", "id": c.Params("id")})
         })
+        userGrp.Post("/", func(c fiber.Ctx) error {
+            // Create user
+            return c.JSON(fiber.Map{"message": "User created"})
+        })
+    })
 })
 ```
 
 ```go
 // After
 app.Route("/api").Route("/user/:id?")
-  .Get(func(c fiber.Ctx) error {
-    // Get user
-    return c.JSON(fiber.Map{"message": "Get user", "id": c.Params("id")})
-  })
-  .Post(func(c fiber.Ctx) error {
-    // Create user
-    return c.JSON(fiber.Map{"message": "User created"})
-  });
+    .Get(func(c fiber.Ctx) error {
+        // Get user
+        return c.JSON(fiber.Map{"message": "Get user", "id": c.Params("id")})
+    })
+    .Post(func(c fiber.Ctx) error {
+        // Create user
+        return c.JSON(fiber.Map{"message": "User created"})
+    });
 ```
 
 ### 🧠 Context
@@ -406,18 +418,18 @@ The CORS middleware has been updated to use slices instead of strings for the `A
 ```go
 // Before
 app.Use(cors.New(cors.Config{
-  AllowOrigins: "https://example.com,https://example2.com",
-  AllowMethods: strings.Join([]string{fiber.MethodGet, fiber.MethodPost}, ","),
-  AllowHeaders: "Content-Type",
-  ExposeHeaders: "Content-Length",
+    AllowOrigins: "https://example.com,https://example2.com",
+    AllowMethods: strings.Join([]string{fiber.MethodGet, fiber.MethodPost}, ","),
+    AllowHeaders: "Content-Type",
+    ExposeHeaders: "Content-Length",
 }))
 
 // After
 app.Use(cors.New(cors.Config{
-  AllowOrigins: []string{"https://example.com", "https://example2.com"},
-  AllowMethods: []string{fiber.MethodGet, fiber.MethodPost},
-  AllowHeaders: []string{"Content-Type"},
-  ExposeHeaders: []string{"Content-Length"},
+    AllowOrigins: []string{"https://example.com", "https://example2.com"},
+    AllowMethods: []string{fiber.MethodGet, fiber.MethodPost},
+    AllowHeaders: []string{"Content-Type"},
+    ExposeHeaders: []string{"Content-Length"},
 }))
 ```
 
@@ -428,27 +440,27 @@ You need to move filesystem middleware to static middleware due to it has been r
 ```go
 // Before
 app.Use(filesystem.New(filesystem.Config{
-  Root: http.Dir("./assets"),
+    Root: http.Dir("./assets"),
 }))
 
 app.Use(filesystem.New(filesystem.Config{
-  Root:         http.Dir("./assets"),
-  Browse:       true,
-  Index:        "index.html",
-  MaxAge:       3600,
+    Root:         http.Dir("./assets"),
+    Browse:       true,
+    Index:        "index.html",
+    MaxAge:       3600,
 }))
 ```
 
 ```go
 // After
 app.Use(static.New("", static.Config{
-  FS: os.DirFS("./assets"),
+    FS: os.DirFS("./assets"),
 }))
 
 app.Use(static.New("", static.Config{
-  FS:           os.DirFS("./assets"),
-  Browse:       true,
-  IndexNames:   []string{"index.html"},
-  MaxAge:       3600,
+    FS:           os.DirFS("./assets"),
+    Browse:       true,
+    IndexNames:   []string{"index.html"},
+    MaxAge:       3600,
 }))
 ```

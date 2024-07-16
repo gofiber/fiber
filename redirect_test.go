@@ -45,7 +45,7 @@ func Test_Redirect_To_WithFlashMessages(t *testing.T) {
 	require.Equal(t, 302, c.Response().StatusCode())
 	require.Equal(t, "http://example.com", string(c.Response().Header.Peek(HeaderLocation)))
 
-	equal := c.GetRespHeader(HeaderSetCookie) == "fiber_flash=success:1,message:test; path=/; SameSite=Lax" || c.GetRespHeader(HeaderSetCookie) == "fiber_flash=message:test,success:1; path=/; SameSite=Lax"
+	equal := c.GetRespHeader(HeaderSetCookie) == "fiber_flash=success:1,message:test; path=/; HttpOnly; SameSite=Lax" || c.GetRespHeader(HeaderSetCookie) == "fiber_flash=message:test,success:1; path=/; HttpOnly; SameSite=Lax"
 	require.True(t, equal)
 
 	c.Redirect().parseAndClearFlashMessages()
@@ -183,7 +183,7 @@ func Test_Redirect_Back_WithFlashMessages(t *testing.T) {
 	require.Equal(t, 302, c.Response().StatusCode())
 	require.Equal(t, "/", string(c.Response().Header.Peek(HeaderLocation)))
 
-	equal := c.GetRespHeader(HeaderSetCookie) == "fiber_flash=success:1,message:test; path=/; SameSite=Lax" || c.GetRespHeader(HeaderSetCookie) == "fiber_flash=message:test,success:1; path=/; SameSite=Lax"
+	equal := c.GetRespHeader(HeaderSetCookie) == "fiber_flash=success:1,message:test; path=/; HttpOnly; SameSite=Lax" || c.GetRespHeader(HeaderSetCookie) == "fiber_flash=message:test,success:1; path=/; HttpOnly; SameSite=Lax"
 	require.True(t, equal)
 
 	c.Redirect().parseAndClearFlashMessages()
@@ -226,11 +226,106 @@ func Test_Redirect_Route_WithFlashMessages(t *testing.T) {
 	require.Equal(t, 302, c.Response().StatusCode())
 	require.Equal(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
 
-	equal := c.GetRespHeader(HeaderSetCookie) == "fiber_flash=success:1,message:test; path=/; SameSite=Lax" || c.GetRespHeader(HeaderSetCookie) == "fiber_flash=message:test,success:1; path=/; SameSite=Lax"
+	equal := c.GetRespHeader(HeaderSetCookie) == "fiber_flash=success:1,message:test; path=/; HttpOnly; SameSite=Lax" || c.GetRespHeader(HeaderSetCookie) == "fiber_flash=message:test,success:1; path=/; HttpOnly; SameSite=Lax"
 	require.True(t, equal)
 
 	c.Redirect().parseAndClearFlashMessages()
 	require.Equal(t, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT", c.GetRespHeader(HeaderSetCookie))
+}
+
+// go test -run Test_Redirect_Route_WithFlashMessages_RedirectConfig
+func Test_Redirect_Route_WithFlashMessages_RedirectConfig(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/user", func(c Ctx) error {
+		return c.SendString("user")
+	}).Name("user")
+
+	tests := []struct {
+		name          string
+		cookieConfig  CookieConfig
+		expectedValue string
+	}{
+		{
+			name:          "Default RedirectConfig",
+			cookieConfig:  CookieConfig{},
+			expectedValue: "fiber_flash=success:1,message:test; path=/; HttpOnly; SameSite=Lax",
+		},
+		{
+			name: "Custom Cookie Name",
+			cookieConfig: CookieConfig{
+				Name: "custom_cookie_name",
+			},
+			expectedValue: "custom_cookie_name=success:1,message:test; path=/; SameSite=Lax",
+		},
+		{
+			name: "Custom Cookie Name and HttpOnly",
+			cookieConfig: CookieConfig{
+				Name:     "custom_cookie_name",
+				HTTPOnly: true,
+			},
+			expectedValue: "custom_cookie_name=success:1,message:test; path=/; HttpOnly; SameSite=Lax",
+		},
+		{
+			name: "Secure True",
+			cookieConfig: CookieConfig{
+				Secure: true,
+			},
+			expectedValue: "fiber_flash=success:1,message:test; path=/; secure; SameSite=Lax",
+		},
+		{
+			name: "HttpOnly True",
+			cookieConfig: CookieConfig{
+				Name:     "custom_flash_http",
+				HTTPOnly: true,
+			},
+			expectedValue: "custom_flash_http=success:1,message:test; path=/; HttpOnly; SameSite=Lax",
+		},
+		{
+			name: "SameSite None - RFC6265 - Secure False",
+			cookieConfig: CookieConfig{
+				Name:     "custom_flash_samesite",
+				SameSite: "None",
+				Secure:   false,
+			},
+			expectedValue: "custom_flash_samesite=success:1,message:test; path=/; secure; SameSite=None",
+		},
+		{
+			name: "SameSite None - RFC6265 - Default",
+			cookieConfig: CookieConfig{
+				Name:     "custom_flash_samesite",
+				SameSite: "None",
+			},
+			expectedValue: "custom_flash_samesite=success:1,message:test; path=/; secure; SameSite=None",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+
+			err := c.Redirect().With("success", "1").With("message", "test").Route("user", RedirectConfig{
+				CookieConfig: tt.cookieConfig,
+			})
+			require.NoError(t, err)
+			require.Equal(t, 302, c.Response().StatusCode())
+			require.Equal(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
+
+			setCookieHeader := c.GetRespHeader(HeaderSetCookie)
+			require.Equal(t, tt.expectedValue, setCookieHeader)
+
+			c.Redirect().parseAndClearFlashMessages()
+
+			if tt.cookieConfig.Name != "" {
+				require.Equal(t, c.GetRespHeader(HeaderSetCookie), tt.cookieConfig.Name+"=; expires=Tue, 10 Nov 2009 23:00:00 GMT")
+			} else {
+				require.Equal(t, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT", c.GetRespHeader(HeaderSetCookie))
+			}
+		})
+	}
 }
 
 // go test -run Test_Redirect_Route_WithOldInput
@@ -364,7 +459,7 @@ func Test_Redirect_Request(t *testing.T) {
 		}
 		req, resp := fasthttp.AcquireRequest(), fasthttp.AcquireResponse()
 		req.SetRequestURI("http://example.com" + tc.URL)
-		req.Header.SetCookie(FlashCookieName, tc.CookieValue)
+		req.Header.SetCookie("fiber_flash", tc.CookieValue)
 		err := client.DoRedirects(req, resp, 1)
 
 		require.NoError(t, err)

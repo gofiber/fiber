@@ -224,7 +224,7 @@ func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 	}
 
 	// check flash messages
-	if strings.Contains(utils.UnsafeString(c.Request().Header.RawHeaders()), FlashCookieName) {
+	if strings.Contains(utils.UnsafeString(c.Request().Header.RawHeaders()), c.Redirect().cookieConfig.Name) {
 		c.Redirect().parseAndClearFlashMessages()
 	}
 

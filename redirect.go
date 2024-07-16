@@ -24,9 +24,16 @@ var redirectPool = sync.Pool{
 	},
 }
 
+// CookieConfigDefault is the default cookie configuration
+var CookieConfigDefault = CookieConfig{
+	Name:     "fiber_flash",
+	HTTPOnly: true,
+	Secure:   false,
+	SameSite: "Lax",
+}
+
 // Cookie name to send flash messages when to use redirection.
 const (
-	FlashCookieName     = "fiber_flash"
 	OldInputDataPrefix  = "old_input_data_"
 	CookieDataSeparator = ","
 	CookieDataAssigner  = ":"
@@ -34,19 +41,28 @@ const (
 
 // Redirect is a struct that holds the redirect data.
 type Redirect struct {
-	c      *DefaultCtx // Embed ctx
-	status int         // Status code of redirection. Default: StatusFound
-
-	messages []string          // Flash messages
-	oldInput map[string]string // Old input data
+	c            *DefaultCtx       // Embed ctx
+	status       int               // Status code of redirection. Default: StatusFound
+	messages     []string          // Flash messages
+	oldInput     map[string]string // Old input data
+	cookieConfig CookieConfig      // Cookie configuration
 }
 
 // RedirectConfig A config to use with Redirect().Route()
 // You can specify queries or route parameters.
-// NOTE: We don't use net/url to parse parameters because of it has poor performance. You have to pass map.
+// NOTE: We don't use net/url to parse parameters because it has poor performance. You have to pass a map.
 type RedirectConfig struct {
-	Params  Map               // Route parameters
-	Queries map[string]string // Query map
+	Params       Map               // Route parameters
+	Queries      map[string]string // Query map
+	CookieConfig CookieConfig      // Cookie configuration
+}
+
+// CookieConfig is a struct that holds the cookie configuration for the redirect.
+type CookieConfig struct {
+	Name     string
+	HTTPOnly bool
+	Secure   bool
+	SameSite string
 }
 
 // AcquireRedirect return default Redirect reference from the redirect pool
@@ -56,6 +72,7 @@ func AcquireRedirect() *Redirect {
 		panic(errors.New("failed to type-assert to *Redirect"))
 	}
 
+	redirect.cookieConfig = CookieConfigDefault
 	return redirect
 }
 
@@ -82,7 +99,6 @@ func (r *Redirect) release() {
 // If status is not specified, status defaults to 302 Found.
 func (r *Redirect) Status(code int) *Redirect {
 	r.status = code
-
 	return r
 }
 
@@ -92,7 +108,6 @@ func (r *Redirect) Status(code int) *Redirect {
 // Note: You must use escape char before using ',' and ':' chars to avoid wrong parsing.
 func (r *Redirect) With(key, value string) *Redirect {
 	r.messages = append(r.messages, key+CookieDataAssigner+value)
-
 	return r
 }
 
@@ -181,7 +196,6 @@ func (r *Redirect) OldInput(key string) string {
 func (r *Redirect) To(location string) error {
 	r.c.setCanonical(HeaderLocation, location)
 	r.c.Status(r.status)
-
 	r.processFlashMessages()
 
 	return nil
@@ -191,10 +205,33 @@ func (r *Redirect) To(location string) error {
 // If you want to send queries or params to route, you should use config parameter.
 func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 	// Check config
-	cfg := RedirectConfig{}
+	cfg := RedirectConfig{CookieConfig: CookieConfigDefault}
+
 	if len(config) > 0 {
 		cfg = config[0]
 	}
+
+	if cfg.CookieConfig == (CookieConfig{}) {
+		cfg.CookieConfig = CookieConfigDefault
+	}
+
+	if cfg.CookieConfig.Name == "" {
+		cfg.CookieConfig.Name = CookieConfigDefault.Name
+	}
+
+	if cfg.CookieConfig.SameSite == "" {
+		cfg.CookieConfig.SameSite = CookieConfigDefault.SameSite
+	}
+
+	// RFC6265: If SameSite=None, the Secure attribute must be set
+	// https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis-14#name-storage-model
+	// Section 5.6.19
+	if utils.ToLower(cfg.CookieConfig.SameSite) == "none" {
+		cfg.CookieConfig.Secure = true // Ensure Secure is true if SameSite=None
+	}
+
+	// Set the cookie configuration in the Redirect struct
+	r.cookieConfig = cfg.CookieConfig
 
 	// Get location from route name
 	location, err := r.c.getLocationFromRoute(r.c.App().GetRoute(name), cfg.Params)
@@ -243,7 +280,7 @@ func (r *Redirect) Back(fallback ...string) error {
 // parseAndClearFlashMessages is a method to get flash messages before removing them
 func (r *Redirect) parseAndClearFlashMessages() {
 	// parse flash messages
-	cookieValue := r.c.Cookies(FlashCookieName)
+	cookieValue := r.c.Cookies(r.cookieConfig.Name)
 
 	var commaPos int
 	for {
@@ -256,7 +293,7 @@ func (r *Redirect) parseAndClearFlashMessages() {
 		cookieValue = cookieValue[commaPos+1:]
 	}
 
-	r.c.ClearCookie(FlashCookieName)
+	r.c.ClearCookie(r.cookieConfig.Name)
 }
 
 // processFlashMessages is a helper function to process flash messages and old input data
@@ -288,9 +325,12 @@ func (r *Redirect) processFlashMessages() {
 		}
 
 		r.c.Cookie(&Cookie{
-			Name:        FlashCookieName,
+			Name:        r.cookieConfig.Name,
 			Value:       r.c.app.getString(messageText.Bytes()),
 			SessionOnly: true,
+			HTTPOnly:    r.cookieConfig.HTTPOnly,
+			Secure:      r.cookieConfig.Secure,
+			SameSite:    r.cookieConfig.SameSite,
 		})
 	}
 }
