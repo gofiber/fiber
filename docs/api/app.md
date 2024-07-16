@@ -576,13 +576,17 @@ func (app *App) Hooks() *Hooks
 
 ## RebuildTree
 
-RebuildTree is a method destined to rebuild the route tree stack and allow dynamically route registers. It returns an app pointer.
+The RebuildTree method is designed to rebuild the route tree and enable dynamic route registration. It returns a pointer to the App instance.
 
 ```go title="Signature"
 func (app *App) RebuildTree() *App
 ```
 
-**NOTE**: This method should be used in the most careful way possible, since it's not currently possible to make it thread-safe (it would add a big performance overhead to do so) and calling it is very performance-intensive, so it's recommended to be used only in development mode and never concurrently. Here's an example of defining routes dynamically:
+**Note:** Use this method with caution. It is **not** thread-safe and calling it can be very performance-intensive, so it should be used sparingly and only in development mode. Avoid using it concurrently.
+
+### Example Usage
+
+Here’s an example of how to define and register routes dynamically:
 
 ```go
 app.Get("/define", func(c Ctx) error {  // Define a new route dynamically
@@ -595,3 +599,5 @@ app.Get("/define", func(c Ctx) error {  // Define a new route dynamically
     return c.SendStatus(http.StatusOK)
 })
 ```
+
+In this example, a new route is defined and then `RebuildTree()` is called to make sure the new route is registered and available.
