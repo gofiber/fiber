@@ -475,11 +475,10 @@ app.Use(static.New("", static.Config{
 
 ### Healthcheck
 
-#### Before Update
-
 Previously, the Healthcheck middleware was configured with a combined setup for liveliness and readiness probes:
 
 ```go
+//before
 app.Use(healthcheck.New(healthcheck.Config{
   LivenessProbe: func(c *fiber.Ctx) bool {
     return true
@@ -492,11 +491,11 @@ app.Use(healthcheck.New(healthcheck.Config{
 }))
 ```
 
-#### After Update
-
 With the new version, each health check endpoint is configured separately, allowing for more flexibility:
 
 ```go
+// after
+
 // Default liveness endpoint configuration
 app.Get(healthcheck.DefaultLivenessEndpoint, healthcheck.NewHealthChecker(healthcheck.Config{
   Probe: func(c *fiber.Ctx) bool {
