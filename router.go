@@ -375,6 +375,9 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 }
 
 func (app *App) addRoute(method string, route *Route, isMounted ...bool) {
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
+
 	// Check mounted routes
 	var mounted bool
 	if len(isMounted) > 0 {
@@ -400,12 +403,10 @@ func (app *App) addRoute(method string, route *Route, isMounted ...bool) {
 
 	// Execute onRoute hooks & change latestRoute if not adding mounted route
 	if !mounted {
-		app.mutex.Lock()
 		app.latestRoute = route
 		if err := app.hooks.executeOnRouteHooks(*route); err != nil {
 			panic(err)
 		}
-		app.mutex.Unlock()
 	}
 }
 
