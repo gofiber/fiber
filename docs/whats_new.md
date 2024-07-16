@@ -320,7 +320,7 @@ The Healthcheck middleware has been enhanced to support more than two routes, wi
 3. **Simplified Configuration**:
    - The configuration for each health check endpoint has been simplified. Each endpoint can be configured separately, allowing for more flexibility and readability.
 
-Refer to the [healthcheck middleware migration guide](./middleware/healthcheck.md) or the [general migration guide](#migration-guide) to review the changes.
+Refer to the [healthcheck middleware migration guide](./middleware/healthcheck.md) or the [general migration guide](#-migration-guide) to review the changes.
 
 ## 📋 Migration guide
 
