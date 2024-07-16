@@ -375,6 +375,9 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 }
 
 func (app *App) addRoute(method string, route *Route, isMounted ...bool) {
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
+
 	// Check mounted routes
 	var mounted bool
 	if len(isMounted) > 0 {
