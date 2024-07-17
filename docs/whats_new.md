@@ -256,7 +256,7 @@ DRAFT section
 
 ### Adaptor
 
-We are excited to announced that the adaptor middleware has been significantly improved to provide a faster and more efficient experience. Users will notice a nearly ~50% reduction in response times when handling requests through the middleware. Memory usage has been drastically reduced by about ~90%, which means the system runs leaner and more smoothly. Additionally, the middleware now uses fewer resources, with a ~70% reduction in memory allocations. These enhancements ensure a more reliable and efficient service, capable of handling higher loads with less strain on your system. These enhacements will allow you to benefit from the performance of fasthttp while using widely available net/http middlewares.
+The adaptor middleware has been significantly optimized for performance and efficiency. Key improvements include reduced response times, lower memory usage, and fewer memory allocations. These changes make the middleware more reliable and capable of handling higher loads effectively. Enhancements include the introduction of a `sync.Pool` for managing `fasthttp.RequestCtx` instances and better HTTP request and response handling between net/http and fasthttp contexts.
 
 | Payload Size | Metric           |     V2    |    V3    |    Percent Change |
 |--------------|------------------|-----------|----------|-------------------|
