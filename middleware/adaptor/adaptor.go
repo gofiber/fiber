@@ -14,12 +14,6 @@ import (
 	"github.com/valyala/fasthttp/fasthttpadaptor"
 )
 
-var reqPool = sync.Pool{
-	New: func() any {
-		return new(fasthttp.Request)
-	},
-}
-
 var ctxPool = sync.Pool{
 	New: func() any {
 		return new(fasthttp.RequestCtx)
@@ -138,9 +132,8 @@ func FiberApp(app *fiber.App) http.HandlerFunc {
 
 func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		req := reqPool.Get().(*fasthttp.Request) //nolint:forcetypeassert,errcheck // overlinting
-		req.Reset()
-		defer reqPool.Put(req)
+		req := fasthttp.AcquireRequest()
+		defer fasthttp.ReleaseRequest(req)
 
 		// Convert net/http -> fasthttp request
 		if r.Body != nil {
@@ -176,6 +169,7 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		// New fasthttp Ctx from pool
 		fctx := ctxPool.Get().(*fasthttp.RequestCtx) //nolint:forcetypeassert,errcheck // overlinting
 		fctx.Response.Reset()
+		fctx.Request.Reset()
 		defer ctxPool.Put(fctx)
 		fctx.Init(req, remoteAddr, nil)
 
