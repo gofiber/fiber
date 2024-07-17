@@ -254,6 +254,34 @@ DRAFT section
 
 ## 🧬 Middlewares
 
+### Adaptor
+
+We are excited to announced that the adaptor middleware has been significantly improved to provide a faster and more efficient experience. Users will notice a nearly ~50% reduction in response times when handling requests through the middleware. Memory usage has been drastically reduced by about ~90%, which means the system runs leaner and more smoothly. Additionally, the middleware now uses fewer resources, with a ~70% reduction in memory allocations. These enhancements ensure a more reliable and efficient service, capable of handling higher loads with less strain on your system. These enhacements will allow you to benefit from the performance of fasthttp while using widely available net/http middlewares.
+
+| Payload Size | Metric           |     V2    |    V3    |    Percent Change |
+|--------------|------------------|-----------|----------|-------------------|
+| 100KB        | Execution Time   | 1056 ns/op| 588.6 ns/op | -44.25%        |
+|              | Memory Usage     | 2644 B/op | 254 B/op    | -90.39%        |
+|              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
+| 500KB        | Execution Time   | 1061 ns/op| 562.9 ns/op | -46.94%        |
+|              | Memory Usage     | 2644 B/op | 248 B/op    | -90.62%        |
+|              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
+| 1MB          | Execution Time   | 1080 ns/op| 629.7 ns/op | -41.68%        |
+|              | Memory Usage     | 2646 B/op | 267 B/op    | -89.91%        |
+|              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
+| 5MB          | Execution Time   | 1093 ns/op| 540.3 ns/op | -50.58%        |
+|              | Memory Usage     | 2654 B/op | 254 B/op    | -90.43%        |
+|              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
+| 10MB         | Execution Time   | 1044 ns/op| 533.1 ns/op | -48.94%        |
+|              | Memory Usage     | 2665 B/op | 258 B/op    | -90.32%        |
+|              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
+| 25MB         | Execution Time   | 1069 ns/op| 540.7 ns/op | -49.42%        |
+|              | Memory Usage     | 2706 B/op | 289 B/op    | -89.32%        |
+|              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
+| 50MB         | Execution Time   | 1137 ns/op| 554.6 ns/op | -51.21%        |
+|              | Memory Usage     | 2734 B/op | 298 B/op    | -89.10%        |
+|              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
+
 ### Cache
 
 We are excited to introduce a new option in our caching middleware: Cache Invalidator. This feature provides greater control over cache management, allowing you to define a custom conditions for invalidating cache entries.
