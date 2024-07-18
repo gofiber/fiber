@@ -33,6 +33,7 @@ Here's a quick overview of the changes in Fiber `v3`:
   - [Session](#session)
   - [Filesystem](#filesystem)
   - [Monitor](#monitor)
+  - [Healthcheck](#healthcheck)
 - [📋 Migration guide](#-migration-guide)
 
 ## Drop for old Go versions
@@ -342,6 +343,25 @@ DRAFT section
 
 Monitor middleware is now in Contrib package.
 
+### Healthcheck
+
+The Healthcheck middleware has been enhanced to support more than two routes, with default endpoints for liveliness, readiness, and startup checks. Here's a detailed breakdown of the changes and how to use the new features.
+
+1. **Support for More Than Two Routes**:
+   - The updated middleware now supports multiple routes beyond the default liveliness and readiness endpoints. This allows for more granular health checks, such as startup probes.
+
+2. **Default Endpoints**:
+   - Three default endpoints are now available:
+     - **Liveness**: `/livez`
+     - **Readiness**: `/readyz`
+     - **Startup**: `/startupz`
+   - These endpoints can be customized or replaced with user-defined routes.
+
+3. **Simplified Configuration**:
+   - The configuration for each health check endpoint has been simplified. Each endpoint can be configured separately, allowing for more flexibility and readability.
+
+Refer to the [healthcheck middleware migration guide](./middleware/healthcheck.md) or the [general migration guide](#-migration-guide) to review the changes.
+
 ## 📋 Migration guide
 
 - [🚀 App](#-app-1)
@@ -491,4 +511,49 @@ app.Use(static.New("", static.Config{
     IndexNames:   []string{"index.html"},
     MaxAge:       3600,
 }))
+```
+
+### Healthcheck
+
+Previously, the Healthcheck middleware was configured with a combined setup for liveliness and readiness probes:
+
+```go
+//before
+app.Use(healthcheck.New(healthcheck.Config{
+  LivenessProbe: func(c *fiber.Ctx) bool {
+    return true
+  },
+  LivenessEndpoint: "/live",
+  ReadinessProbe: func(c *fiber.Ctx) bool {
+    return serviceA.Ready() && serviceB.Ready() && ...
+  },
+  ReadinessEndpoint: "/ready",
+}))
+```
+
+With the new version, each health check endpoint is configured separately, allowing for more flexibility:
+
+```go
+// after
+
+// Default liveness endpoint configuration
+app.Get(healthcheck.DefaultLivenessEndpoint, healthcheck.NewHealthChecker(healthcheck.Config{
+  Probe: func(c *fiber.Ctx) bool {
+    return true
+  },
+}))
+
+// Default readiness endpoint configuration
+app.Get(healthcheck.DefaultReadinessEndpoint, healthcheck.NewHealthChecker())
+
+// New default startup endpoint configuration
+// Default endpoint is /startupz
+app.Get(healthcheck.DefaultStartupEndpoint, healthcheck.NewHealthChecker(healthcheck.Config{
+  Probe: func(c *fiber.Ctx) bool {
+    return serviceA.Ready() && serviceB.Ready() && ...
+  },
+}))
+
+// Custom liveness endpoint configuration
+app.Get("/live", healthcheck.NewHealthChecker())
 ```
