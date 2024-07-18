@@ -386,13 +386,14 @@ func Test_Logger_AppendUint(t *testing.T) {
 	}))
 
 	app.Get("/", func(c *fiber.Ctx) error {
+		c.Response().Header.SetContentLength(5)
 		return c.SendString("hello")
 	})
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
-	utils.AssertEqual(t, "0 5 200", buf.String())
+	utils.AssertEqual(t, "-2 5 200", buf.String())
 }
 
 // go test -run Test_Logger_Data_Race -race
@@ -629,7 +630,7 @@ func Test_Logger_ByteSent_Streaming(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
-	utils.AssertEqual(t, "0 0 200", buf.String())
+	utils.AssertEqual(t, "-2 -1 200", buf.String())
 }
 
 // go test -run Test_Logger_EnableColors
