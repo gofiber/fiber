@@ -23,6 +23,11 @@ type Config struct {
 	// Optional. Default: 401 Invalid or expired key
 	ErrorHandler fiber.ErrorHandler
 
+	CustomKeyLookup KeyLookupFunc
+
+	// Validator is a function to validate key.
+	Validator func(fiber.Ctx, string) (bool, error)
+
 	// KeyLookup is a string in the form of "<source>:<name>" that is used
 	// to extract key from the request.
 	// Optional. Default value "header:Authorization".
@@ -34,14 +39,9 @@ type Config struct {
 	// - "cookie:<name>"
 	KeyLookup string
 
-	CustomKeyLookup KeyLookupFunc
-
 	// AuthScheme to be used in the Authorization header.
 	// Optional. Default value "Bearer".
 	AuthScheme string
-
-	// Validator is a function to validate key.
-	Validator func(fiber.Ctx, string) (bool, error)
 }
 
 // ConfigDefault is the default config

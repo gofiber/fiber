@@ -256,17 +256,17 @@ func getLatencyTimeUnits() []struct {
 			unit string
 			div  time.Duration
 		}{
-			{"ms", time.Millisecond},
-			{"s", time.Second},
+			{unit: "ms", div: time.Millisecond},
+			{unit: "s", div: time.Second},
 		}
 	}
 	return []struct {
 		unit string
 		div  time.Duration
 	}{
-		{"µs", time.Microsecond},
-		{"ms", time.Millisecond},
-		{"s", time.Second},
+		{unit: "µs", div: time.Microsecond},
+		{unit: "ms", div: time.Millisecond},
+		{unit: "s", div: time.Second},
 	}
 }
 

@@ -11,15 +11,15 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c fiber.Ctx) bool
 
-	// EnableStackTrace enables handling stack trace
-	//
-	// Optional. Default: false
-	EnableStackTrace bool
-
 	// StackTraceHandler defines a function to handle stack trace
 	//
 	// Optional. Default: defaultStackTraceHandler
 	StackTraceHandler func(c fiber.Ctx, e any)
+
+	// EnableStackTrace enables handling stack trace
+	//
+	// Optional. Default: false
+	EnableStackTrace bool
 }
 
 // ConfigDefault is the default config

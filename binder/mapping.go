@@ -12,9 +12,9 @@ import (
 
 // ParserConfig form decoder config for SetParserDecoder
 type ParserConfig struct {
-	IgnoreUnknownKeys bool
 	SetAliasTag       string
 	ParserType        []ParserType
+	IgnoreUnknownKeys bool
 	ZeroEmpty         bool
 }
 

@@ -31,11 +31,11 @@ import (
 // along with quality, specificity, parameters, and order.
 // Used for sorting accept headers.
 type acceptedType struct {
+	params      headerParams
 	spec        string
 	quality     float64
 	specificity int
 	order       int
-	params      headerParams
 }
 
 type headerParams map[string][]byte
@@ -474,7 +474,7 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 		}
 
 		// Add to accepted types
-		acceptedTypes = append(acceptedTypes, acceptedType{utils.UnsafeString(spec), quality, specificity, order, params})
+		acceptedTypes = append(acceptedTypes, acceptedType{spec: utils.UnsafeString(spec), quality: quality, specificity: specificity, order: order, params: params})
 	})
 
 	if len(acceptedTypes) > 1 {

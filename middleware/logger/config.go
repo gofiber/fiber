@@ -10,6 +10,11 @@ import (
 
 // Config defines the config for middleware.
 type Config struct {
+	// Output is a writer where logs are written
+	//
+	// Default: os.Stdout
+	Output io.Writer
+
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
@@ -25,6 +30,20 @@ type Config struct {
 	//
 	// Optional. Default: map[string]LogFunc
 	CustomTags map[string]LogFunc
+
+	// You can define specific things before the returning the handler: colors, template, etc.
+	//
+	// Optional. Default: beforeHandlerFunc
+	BeforeHandlerFunc func(Config)
+
+	// You can use custom loggers with Fiber by using this field.
+	// This field is really useful if you're using Zerolog, Zap, Logrus, apex/log etc.
+	// If you don't define anything for this field, it'll use default logger of Fiber.
+	//
+	// Optional. Default: defaultLogger
+	LoggerFunc func(c fiber.Ctx, data *Data, cfg Config) error
+
+	timeZoneLocation *time.Location
 
 	// Format defines the logging tags
 	//
@@ -46,31 +65,13 @@ type Config struct {
 	// Optional. Default: 500 * time.Millisecond
 	TimeInterval time.Duration
 
-	// Output is a writer where logs are written
-	//
-	// Default: os.Stdout
-	Output io.Writer
-
-	// You can define specific things before the returning the handler: colors, template, etc.
-	//
-	// Optional. Default: beforeHandlerFunc
-	BeforeHandlerFunc func(Config)
-
-	// You can use custom loggers with Fiber by using this field.
-	// This field is really useful if you're using Zerolog, Zap, Logrus, apex/log etc.
-	// If you don't define anything for this field, it'll use default logger of Fiber.
-	//
-	// Optional. Default: defaultLogger
-	LoggerFunc func(c fiber.Ctx, data *Data, cfg Config) error
-
 	// DisableColors defines if the logs output should be colorized
 	//
 	// Default: false
 	DisableColors bool
 
-	enableColors     bool
-	enableLatency    bool
-	timeZoneLocation *time.Location
+	enableColors  bool
+	enableLatency bool
 }
 
 const (

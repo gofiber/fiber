@@ -11,18 +11,6 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c fiber.Ctx) bool
 
-	// Array of cookie keys that should not be encrypted.
-	//
-	// Optional. Default: []
-	Except []string
-
-	// Base64 encoded unique key to encode & decode cookies.
-	//
-	// Required. Key length should be 16, 24, or 32 bytes when decoded
-	// if using the default EncryptCookie and DecryptCookie functions.
-	// You may use `encryptcookie.GenerateKey(length)` to generate a new key.
-	Key string
-
 	// Custom function to encrypt cookies.
 	//
 	// Optional. Default: EncryptCookie (using AES-GCM)
@@ -32,6 +20,18 @@ type Config struct {
 	//
 	// Optional. Default: DecryptCookie (using AES-GCM)
 	Decryptor func(encryptedString, key string) (string, error)
+
+	// Base64 encoded unique key to encode & decode cookies.
+	//
+	// Required. Key length should be 16, 24, or 32 bytes when decoded
+	// if using the default EncryptCookie and DecryptCookie functions.
+	// You may use `encryptcookie.GenerateKey(length)` to generate a new key.
+	Key string
+
+	// Array of cookie keys that should not be encrypted.
+	//
+	// Optional. Default: []
+	Except []string
 }
 
 // ConfigDefault is the default config

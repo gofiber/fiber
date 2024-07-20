@@ -966,7 +966,7 @@ func Test_Ctx_Format(t *testing.T) {
 		fmts := []ResFmt{}
 		for _, t := range types {
 			t := utils.CopyString(t)
-			fmts = append(fmts, ResFmt{t, func(_ Ctx) error {
+			fmts = append(fmts, ResFmt{MediaType: t, Handler: func(_ Ctx) error {
 				accepted = t
 				return nil
 			}})
@@ -988,11 +988,11 @@ func Test_Ctx_Format(t *testing.T) {
 	require.NotEqual(t, StatusNotAcceptable, c.Response().StatusCode())
 
 	myError := errors.New("this is an error")
-	err = c.Format(ResFmt{"text/html", func(_ Ctx) error { return myError }})
+	err = c.Format(ResFmt{MediaType: "text/html", Handler: func(_ Ctx) error { return myError }})
 	require.ErrorIs(t, err, myError)
 
 	c.Request().Header.Set(HeaderAccept, "application/json")
-	err = c.Format(ResFmt{"text/html", func(c Ctx) error { return c.SendStatus(StatusOK) }})
+	err = c.Format(ResFmt{MediaType: "text/html", Handler: func(c Ctx) error { return c.SendStatus(StatusOK) }})
 	require.Equal(t, StatusNotAcceptable, c.Response().StatusCode())
 	require.NoError(t, err)
 
@@ -1022,10 +1022,10 @@ func Benchmark_Ctx_Format(b *testing.B) {
 	b.Run("with arg allocation", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			err = c.Format(
-				ResFmt{"application/xml", fail},
-				ResFmt{"text/html", fail},
-				ResFmt{"text/plain;format=fixed", fail},
-				ResFmt{"text/plain;format=flowed", ok},
+				ResFmt{MediaType: "application/xml", Handler: fail},
+				ResFmt{MediaType: "text/html", Handler: fail},
+				ResFmt{MediaType: "text/plain;format=fixed", Handler: fail},
+				ResFmt{MediaType: "text/plain;format=flowed", Handler: ok},
 			)
 		}
 		require.NoError(b, err)
@@ -1033,10 +1033,10 @@ func Benchmark_Ctx_Format(b *testing.B) {
 
 	b.Run("pre-allocated args", func(b *testing.B) {
 		offers := []ResFmt{
-			{"application/xml", fail},
-			{"text/html", fail},
-			{"text/plain;format=fixed", fail},
-			{"text/plain;format=flowed", ok},
+			{MediaType: "application/xml", Handler: fail},
+			{MediaType: "text/html", Handler: fail},
+			{MediaType: "text/plain;format=fixed", Handler: fail},
+			{MediaType: "text/plain;format=flowed", Handler: ok},
 		}
 		for n := 0; n < b.N; n++ {
 			err = c.Format(offers...)
@@ -1047,8 +1047,8 @@ func Benchmark_Ctx_Format(b *testing.B) {
 	c.Request().Header.Set("Accept", "text/plain")
 	b.Run("text/plain", func(b *testing.B) {
 		offers := []ResFmt{
-			{"application/xml", fail},
-			{"text/plain", ok},
+			{MediaType: "application/xml", Handler: fail},
+			{MediaType: "text/plain", Handler: ok},
 		}
 		for n := 0; n < b.N; n++ {
 			err = c.Format(offers...)
@@ -1059,9 +1059,9 @@ func Benchmark_Ctx_Format(b *testing.B) {
 	c.Request().Header.Set("Accept", "json")
 	b.Run("json", func(b *testing.B) {
 		offers := []ResFmt{
-			{"xml", fail},
-			{"html", fail},
-			{"json", ok},
+			{MediaType: "xml", Handler: fail},
+			{MediaType: "html", Handler: fail},
+			{MediaType: "json", Handler: ok},
 		}
 		for n := 0; n < b.N; n++ {
 			err = c.Format(offers...)
@@ -2141,11 +2141,11 @@ func Test_Ctx_Locals_GenericCustomStruct(t *testing.T) {
 
 	app := New()
 	app.Use(func(c Ctx) error {
-		Locals[User](c, "user", User{"john", 18})
+		Locals[User](c, "user", User{name: "john", age: 18})
 		return c.Next()
 	})
 	app.Use("/test", func(c Ctx) error {
-		require.Equal(t, User{"john", 18}, Locals[User](c, "user"))
+		require.Equal(t, User{name: "john", age: 18}, Locals[User](c, "user"))
 		return nil
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
@@ -2697,13 +2697,13 @@ func Test_Ctx_Range(t *testing.T) {
 	testRange("bytes=")
 	testRange("bytes=500=")
 	testRange("bytes=500-300")
-	testRange("bytes=a-700", RangeSet{300, 999})
-	testRange("bytes=500-b", RangeSet{500, 999})
-	testRange("bytes=500-1000", RangeSet{500, 999})
-	testRange("bytes=500-700", RangeSet{500, 700})
-	testRange("bytes=0-0,2-1000", RangeSet{0, 0}, RangeSet{2, 999})
-	testRange("bytes=0-99,450-549,-100", RangeSet{0, 99}, RangeSet{450, 549}, RangeSet{900, 999})
-	testRange("bytes=500-700,601-999", RangeSet{500, 700}, RangeSet{601, 999})
+	testRange("bytes=a-700", RangeSet{Start: 300, End: 999})
+	testRange("bytes=500-b", RangeSet{Start: 500, End: 999})
+	testRange("bytes=500-1000", RangeSet{Start: 500, End: 999})
+	testRange("bytes=500-700", RangeSet{Start: 500, End: 700})
+	testRange("bytes=0-0,2-1000", RangeSet{Start: 0, End: 0}, RangeSet{Start: 2, End: 999})
+	testRange("bytes=0-99,450-549,-100", RangeSet{Start: 0, End: 99}, RangeSet{Start: 450, End: 549}, RangeSet{Start: 900, End: 999})
+	testRange("bytes=500-700,601-999", RangeSet{Start: 500, End: 700}, RangeSet{Start: 601, End: 999})
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Range -benchmem -count=4
@@ -2717,10 +2717,10 @@ func Benchmark_Ctx_Range(b *testing.B) {
 		start int
 		end   int
 	}{
-		{"bytes=-700", 300, 999},
-		{"bytes=500-", 500, 999},
-		{"bytes=500-1000", 500, 999},
-		{"bytes=0-700,800-1000", 0, 700},
+		{str: "bytes=-700", start: 300, end: 999},
+		{str: "bytes=500-", start: 500, end: 999},
+		{str: "bytes=500-1000", start: 500, end: 999},
+		{str: "bytes=0-700,800-1000", start: 0, end: 700},
 	}
 
 	for _, tc := range testCases {
@@ -3223,12 +3223,12 @@ func Test_Ctx_SendFile_Multiple(t *testing.T) {
 		body               string
 		contentDisposition string
 	}{
-		{"/test?file=1", "type DefaultCtx struct", ""},
-		{"/test?file=2", "type App struct", ""},
-		{"/test?file=3", "type DefaultCtx struct", "attachment"},
-		{"/test?file=4", "Test_App_MethodNotAllowed", ""},
-		{"/test2", "type DefaultCtx struct", "attachment"},
-		{"/test2", "type DefaultCtx struct", "attachment"},
+		{url: "/test?file=1", body: "type DefaultCtx struct", contentDisposition: ""},
+		{url: "/test?file=2", body: "type App struct", contentDisposition: ""},
+		{url: "/test?file=3", body: "type DefaultCtx struct", contentDisposition: "attachment"},
+		{url: "/test?file=4", body: "Test_App_MethodNotAllowed", contentDisposition: ""},
+		{url: "/test2", body: "type DefaultCtx struct", contentDisposition: "attachment"},
+		{url: "/test2", body: "type DefaultCtx struct", contentDisposition: "attachment"},
 	}
 
 	for _, tc := range testCases {

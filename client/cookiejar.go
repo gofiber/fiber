@@ -36,8 +36,8 @@ func ReleaseCookieJar(c *CookieJar) {
 
 // CookieJar manages cookie storage. It is used by the client to store cookies.
 type CookieJar struct {
-	mu          sync.Mutex
 	hostCookies map[string][]*fasthttp.Cookie
+	mu          sync.Mutex
 }
 
 // Get returns the cookies stored from a specific domain.

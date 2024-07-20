@@ -24,9 +24,9 @@ var (
 
 // Handler for CSRF middleware
 type Handler struct {
-	config         Config
 	sessionManager *sessionManager
 	storageManager *storageManager
+	config         Config
 }
 
 // The contextKey type is unexported to prevent collisions with context keys defined in
