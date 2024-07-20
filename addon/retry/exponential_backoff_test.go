@@ -11,10 +11,10 @@ import (
 func Test_ExponentialBackoff_Retry(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name       string
+		expErr     error
 		expBackoff *ExponentialBackoff
 		f          func() error
-		expErr     error
+		name       string
 	}{
 		{
 			name:       "With default values - successful",

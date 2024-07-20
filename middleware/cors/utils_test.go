@@ -10,8 +10,8 @@ import (
 func Test_NormalizeOrigin(t *testing.T) {
 	testCases := []struct {
 		origin         string
-		expectedValid  bool
 		expectedOrigin string
+		expectedValid  bool
 	}{
 		{origin: "http://example.com", expectedValid: true, expectedOrigin: "http://example.com"},                       // Simple case should work.
 		{origin: "http://example.com/", expectedValid: true, expectedOrigin: "http://example.com"},                      // Trailing slash should be removed.

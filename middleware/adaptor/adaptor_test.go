@@ -355,9 +355,9 @@ func (r *netHTTPBody) Close() error {
 }
 
 type netHTTPResponseWriter struct {
-	statusCode int
 	h          http.Header
 	body       []byte
+	statusCode int
 }
 
 func (w *netHTTPResponseWriter) StatusCode() int {

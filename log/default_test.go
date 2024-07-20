@@ -121,11 +121,11 @@ func Test_CtxLogger(t *testing.T) {
 func Test_LogfKeyAndValues(t *testing.T) {
 	tests := []struct {
 		name          string
-		level         Level
 		format        string
+		wantOutput    string
 		fmtArgs       []any
 		keysAndValues []any
-		wantOutput    string
+		level         Level
 	}{
 		{
 			name:          "test logf with debug level and key-values",
@@ -310,9 +310,9 @@ func Test_Tracew(t *testing.T) {
 func Benchmark_LogfKeyAndValues(b *testing.B) {
 	tests := []struct {
 		name          string
-		level         Level
 		format        string
 		keysAndValues []any
+		level         Level
 	}{
 		{
 			name:          "test logf with debug level and key-values",
@@ -368,9 +368,9 @@ func Benchmark_LogfKeyAndValues(b *testing.B) {
 func Benchmark_LogfKeyAndValues_Parallel(b *testing.B) {
 	tests := []struct {
 		name          string
-		level         Level
 		format        string
 		keysAndValues []any
+		level         Level
 	}{
 		{
 			name:          "debug level with key-values",

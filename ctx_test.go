@@ -509,8 +509,8 @@ func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
 		}
 	)
 	compressionTests := []struct {
-		contentEncoding string
 		compressWriter  func([]byte) ([]byte, error)
+		contentEncoding string
 	}{
 		{
 			contentEncoding: "gzip",
@@ -702,8 +702,8 @@ func Benchmark_Ctx_Body_With_Compression_Immutable(b *testing.B) {
 		}
 	)
 	compressionTests := []struct {
-		contentEncoding string
 		compressWriter  func([]byte) ([]byte, error)
+		contentEncoding string
 	}{
 		{
 			contentEncoding: "gzip",
@@ -1123,9 +1123,9 @@ func Test_Ctx_AutoFormat_Struct(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Message struct {
-		Recipients []string
 		Sender     string `xml:"sender,attr"`
-		Urgency    int    `xml:"urgency,attr"`
+		Recipients []string
+		Urgency    int `xml:"urgency,attr"`
 	}
 	data := Message{
 		Recipients: []string{"Alice", "Bob"},
@@ -1370,11 +1370,11 @@ func Test_Ctx_Binders(t *testing.T) {
 	}
 
 	type TestStruct struct {
+		Name            string
+		NameWithDefault string `json:"name2" xml:"Name2" form:"name2" cookie:"name2" query:"name2" params:"name2" header:"Name2"`
 		TestEmbeddedStruct
-		Name             string
 		Class            int
-		NameWithDefault  string `json:"name2" xml:"Name2" form:"name2" cookie:"name2" query:"name2" params:"name2" header:"Name2"`
-		ClassWithDefault int    `json:"class2" xml:"Class2" form:"class2" cookie:"class2" query:"class2" params:"class2" header:"Class2"`
+		ClassWithDefault int `json:"class2" xml:"Class2" form:"class2" cookie:"class2" query:"class2" params:"class2" header:"Class2"`
 	}
 
 	withValues := func(t *testing.T, actionFn func(c Ctx, testStruct *TestStruct) error) {

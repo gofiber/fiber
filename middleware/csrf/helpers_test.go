@@ -10,8 +10,8 @@ import (
 func Test_normalizeOrigin(t *testing.T) {
 	testCases := []struct {
 		origin         string
-		expectedValid  bool
 		expectedOrigin string
+		expectedValid  bool
 	}{
 		{origin: "http://example.com", expectedValid: true, expectedOrigin: "http://example.com"},                       // Simple case should work.
 		{origin: "HTTP://EXAMPLE.COM", expectedValid: true, expectedOrigin: "http://example.com"},                       // Case should be normalized.

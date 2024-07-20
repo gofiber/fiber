@@ -326,8 +326,8 @@ func Test_CORS_Subdomain(t *testing.T) {
 func Test_CORS_AllowOriginScheme(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		pattern           []string
 		reqOrigin         string
+		pattern           []string
 		shouldAllowOrigin bool
 	}{
 		{
@@ -682,9 +682,9 @@ func Test_CORS_AllowOriginsFunc(t *testing.T) {
 func Test_CORS_AllowOriginsAndAllowOriginsFunc_AllUseCases(t *testing.T) {
 	testCases := []struct {
 		Name           string
-		Config         Config
 		RequestOrigin  string
 		ResponseOrigin string
+		Config         Config
 	}{
 		{
 			Name: "AllowOriginsDefined/AllowOriginsFuncUndefined/OriginAllowed",
@@ -829,10 +829,10 @@ func Test_CORS_AllowOriginsAndAllowOriginsFunc_AllUseCases(t *testing.T) {
 func Test_CORS_AllowCredentials(t *testing.T) {
 	testCases := []struct {
 		Name                string
-		Config              Config
 		RequestOrigin       string
 		ResponseOrigin      string
 		ResponseCredentials string
+		Config              Config
 	}{
 		{
 			Name: "AllowOriginsFuncDefined",

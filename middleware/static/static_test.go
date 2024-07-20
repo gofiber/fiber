@@ -650,11 +650,11 @@ func Test_isFile(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
+		filesystem fs.FS
+		gotError   error
 		name       string
 		path       string
-		filesystem fs.FS
 		expected   bool
-		gotError   error
 	}{
 		{
 			name:       "file",
