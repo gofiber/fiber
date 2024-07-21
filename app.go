@@ -130,90 +130,40 @@ type App struct {
 }
 
 // Config is a struct holding the server settings.
-type Config struct {
-	// Views is the interface that wraps the Render function.
-	//
-	// Default: nil
-	Views Views `json:"-"`
-
-	// If you want to validate header/form/query... automatically when to bind, you can define struct validator.
-	// Fiber doesn't have default validator, so it'll skip validator step if you don't use any validator.
-	//
-	// Default: nil
-	StructValidator StructValidator
-
-	// CompressedFileSuffixes adds suffix to the original file name and
-	// tries saving the resulting compressed file under the new file name.
-	//
-	// Default: map[string]string{"gzip": ".fiber.gz", "br": ".fiber.br", "zstd": ".fiber.zst"}
-	CompressedFileSuffixes map[string]string `json:"compressed_file_suffixes"`
-
-	// ErrorHandler is executed when an error is returned from fiber.Handler.
-	//
-	// Default: DefaultErrorHandler
-	ErrorHandler ErrorHandler `json:"-"`
-
-	// When set by an external client of Fiber it will use the provided implementation of a
-	// JSONMarshal
-	//
-	// Allowing for flexibility in using another json library for encoding
-	// Default: json.Marshal
-	JSONEncoder utils.JSONMarshal `json:"-"`
-
-	// When set by an external client of Fiber it will use the provided implementation of a
-	// JSONUnmarshal
-	//
-	// Allowing for flexibility in using another json library for decoding
-	// Default: json.Unmarshal
-	JSONDecoder utils.JSONUnmarshal `json:"-"`
-
-	// XMLEncoder set by an external client of Fiber it will use the provided implementation of a
-	// XMLMarshal
-	//
-	// Allowing for flexibility in using another XML library for encoding
-	// Default: xml.Marshal
-	XMLEncoder utils.XMLMarshal `json:"-"`
-
-	trustedProxiesMap map[string]struct{}
-
-	// You can define custom color scheme. They'll be used for startup message, route list and some middlewares.
-	//
-	// Optional. Default: DefaultColors
-	ColorScheme Colors `json:"color_scheme"`
-
+type Config struct { //nolint:govet // Aligning the struct fields is not necessary. betteralign:ignore
 	// Enables the "Server: value" HTTP header.
 	//
 	// Default: ""
 	ServerHeader string `json:"server_header"`
 
-	// Views Layout is the global layout for all template render until override on Render function.
+	// When set to true, the router treats "/foo" and "/foo/" as different.
+	// By default this is disabled and both "/foo" and "/foo/" will execute the same handler.
 	//
-	// Default: ""
-	ViewsLayout string `json:"views_layout"`
+	// Default: false
+	StrictRouting bool `json:"strict_routing"`
 
-	// ProxyHeader will enable c.IP() to return the value of the given header key
-	// By default c.IP() will return the Remote IP from the TCP connection
-	// This property can be useful if you are behind a load balancer: X-Forwarded-*
-	// NOTE: headers are easily spoofed and the detected IP addresses are unreliable.
+	// When set to true, enables case sensitive routing.
+	// E.g. "/FoO" and "/foo" are treated as different routes.
+	// By default this is disabled and both "/FoO" and "/foo" will execute the same handler.
 	//
-	// Default: ""
-	ProxyHeader string `json:"proxy_header"`
+	// Default: false
+	CaseSensitive bool `json:"case_sensitive"`
 
-	// This function allows to setup app name for the app
+	// When set to true, this relinquishes the 0-allocation promise in certain
+	// cases in order to access the handler values (e.g. request bodies) in an
+	// immutable fashion so that these values are available even if you return
+	// from handler.
 	//
-	// Default: nil
-	AppName string `json:"app_name"`
+	// Default: false
+	Immutable bool `json:"immutable"`
 
-	// Read EnableTrustedProxyCheck doc.
+	// When set to true, converts all encoded characters in the route back
+	// before setting the path for the context, so that the routing,
+	// the returning of the current url from the context `ctx.Path()`
+	// and the parameters `ctx.Params(%key%)` with decoded characters will work
 	//
-	// Default: []string
-	TrustedProxies     []string `json:"trusted_proxies"`
-	trustedProxyRanges []*net.IPNet
-
-	// RequestMethods provides customizibility for HTTP methods. You can add/remove methods as you wish.
-	//
-	// Optional. Default: DefaultMethods
-	RequestMethods []string
+	// Default: false
+	UnescapePath bool `json:"unescape_path"`
 
 	// Max body size that the server accepts.
 	// -1 will decline any body size
@@ -225,6 +175,21 @@ type Config struct {
 	//
 	// Default: 256 * 1024
 	Concurrency int `json:"concurrency"`
+
+	// Views is the interface that wraps the Render function.
+	//
+	// Default: nil
+	Views Views `json:"-"`
+
+	// Views Layout is the global layout for all template render until override on Render function.
+	//
+	// Default: ""
+	ViewsLayout string `json:"views_layout"`
+
+	// PassLocalsToViews Enables passing of the locals set on a fiber.Ctx to the template engine
+	//
+	// Default: false
+	PassLocalsToViews bool `json:"pass_locals_to_views"`
 
 	// The amount of time allowed to read the full request including body.
 	// It is reset after the request handler has returned.
@@ -258,39 +223,19 @@ type Config struct {
 	// Default: 4096
 	WriteBufferSize int `json:"write_buffer_size"`
 
-	// When set to true, the router treats "/foo" and "/foo/" as different.
-	// By default this is disabled and both "/foo" and "/foo/" will execute the same handler.
+	// CompressedFileSuffixes adds suffix to the original file name and
+	// tries saving the resulting compressed file under the new file name.
 	//
-	// Default: false
-	StrictRouting bool `json:"strict_routing"`
+	// Default: map[string]string{"gzip": ".fiber.gz", "br": ".fiber.br", "zstd": ".fiber.zst"}
+	CompressedFileSuffixes map[string]string `json:"compressed_file_suffixes"`
 
-	// When set to true, enables case sensitive routing.
-	// E.g. "/FoO" and "/foo" are treated as different routes.
-	// By default this is disabled and both "/FoO" and "/foo" will execute the same handler.
+	// ProxyHeader will enable c.IP() to return the value of the given header key
+	// By default c.IP() will return the Remote IP from the TCP connection
+	// This property can be useful if you are behind a load balancer: X-Forwarded-*
+	// NOTE: headers are easily spoofed and the detected IP addresses are unreliable.
 	//
-	// Default: false
-	CaseSensitive bool `json:"case_sensitive"`
-
-	// When set to true, this relinquishes the 0-allocation promise in certain
-	// cases in order to access the handler values (e.g. request bodies) in an
-	// immutable fashion so that these values are available even if you return
-	// from handler.
-	//
-	// Default: false
-	Immutable bool `json:"immutable"`
-
-	// When set to true, converts all encoded characters in the route back
-	// before setting the path for the context, so that the routing,
-	// the returning of the current url from the context `ctx.Path()`
-	// and the parameters `ctx.Params(%key%)` with decoded characters will work
-	//
-	// Default: false
-	UnescapePath bool `json:"unescape_path"`
-
-	// PassLocalsToViews Enables passing of the locals set on a fiber.Ctx to the template engine
-	//
-	// Default: false
-	PassLocalsToViews bool `json:"pass_locals_to_views"`
+	// Default: ""
+	ProxyHeader string `json:"proxy_header"`
 
 	// GETOnly rejects all non-GET requests if set to true.
 	// This option is useful as anti-DoS protection for servers
@@ -299,6 +244,11 @@ type Config struct {
 	//
 	// Default: false
 	GETOnly bool `json:"get_only"`
+
+	// ErrorHandler is executed when an error is returned from fiber.Handler.
+	//
+	// Default: DefaultErrorHandler
+	ErrorHandler ErrorHandler `json:"-"`
 
 	// When set to true, disables keep-alive connections.
 	// The server will close incoming connections after sending the first response to client.
@@ -321,6 +271,11 @@ type Config struct {
 	//
 	// Default: false
 	DisableHeaderNormalizing bool `json:"disable_header_normalizing"`
+
+	// This function allows to setup app name for the app
+	//
+	// Default: nil
+	AppName string `json:"app_name"`
 
 	// StreamRequestBody enables request body streaming,
 	// and calls the handler sooner when given body is
@@ -349,6 +304,27 @@ type Config struct {
 	// Default: false
 	ReduceMemoryUsage bool `json:"reduce_memory_usage"`
 
+	// When set by an external client of Fiber it will use the provided implementation of a
+	// JSONMarshal
+	//
+	// Allowing for flexibility in using another json library for encoding
+	// Default: json.Marshal
+	JSONEncoder utils.JSONMarshal `json:"-"`
+
+	// When set by an external client of Fiber it will use the provided implementation of a
+	// JSONUnmarshal
+	//
+	// Allowing for flexibility in using another json library for decoding
+	// Default: json.Unmarshal
+	JSONDecoder utils.JSONUnmarshal `json:"-"`
+
+	// XMLEncoder set by an external client of Fiber it will use the provided implementation of a
+	// XMLMarshal
+	//
+	// Allowing for flexibility in using another XML library for encoding
+	// Default: xml.Marshal
+	XMLEncoder utils.XMLMarshal `json:"-"`
+
 	// If you find yourself behind some sort of proxy, like a load balancer,
 	// then certain header information may be sent to you using special X-Forwarded-* headers or the Forwarded header.
 	// For example, the Host HTTP header is usually used to return the requested host.
@@ -371,12 +347,35 @@ type Config struct {
 	// Default: false
 	EnableTrustedProxyCheck bool `json:"enable_trusted_proxy_check"`
 
+	// Read EnableTrustedProxyCheck doc.
+	//
+	// Default: []string
+	TrustedProxies     []string `json:"trusted_proxies"`
+	trustedProxiesMap  map[string]struct{}
+	trustedProxyRanges []*net.IPNet
+
 	// If set to true, c.IP() and c.IPs() will validate IP addresses before returning them.
 	// Also, c.IP() will return only the first valid IP rather than just the raw header
 	// WARNING: this has a performance cost associated with it.
 	//
 	// Default: false
 	EnableIPValidation bool `json:"enable_ip_validation"`
+
+	// You can define custom color scheme. They'll be used for startup message, route list and some middlewares.
+	//
+	// Optional. Default: DefaultColors
+	ColorScheme Colors `json:"color_scheme"`
+
+	// If you want to validate header/form/query... automatically when to bind, you can define struct validator.
+	// Fiber doesn't have default validator, so it'll skip validator step if you don't use any validator.
+	//
+	// Default: nil
+	StructValidator StructValidator
+
+	// RequestMethods provides customizibility for HTTP methods. You can add/remove methods as you wish.
+	//
+	// Optional. Default: DefaultMethods
+	RequestMethods []string
 
 	// EnableSplittingOnParsers splits the query/body/header parameters by comma when it's true.
 	// For example, you can use it to parse multiple values from a query parameter like this:
