@@ -3102,6 +3102,7 @@ func Test_Ctx_SendFile_Compress_CheckCompressed(t *testing.T) {
 	sendFileBodyReader := func(compression string, app *App) ([]byte, error) {
 		t.Helper()
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
 		c.Request().Header.Add(HeaderAcceptEncoding, compression)
 
 		err := c.SendFile("./ctx.go", SendFile{
