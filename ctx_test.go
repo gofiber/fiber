@@ -1137,7 +1137,7 @@ func Test_Ctx_AutoFormat_Struct(t *testing.T) {
 	err := c.AutoFormat(data)
 	require.NoError(t, err)
 	require.Equal(t,
-		`{"Recipients":["Alice","Bob"],"Sender":"Carol","Urgency":3}`,
+		`{"Sender":"Carol","Recipients":["Alice","Bob"],"Urgency":3}`,
 		string(c.Response().Body()),
 	)
 
