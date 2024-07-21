@@ -3099,7 +3099,7 @@ func Test_Ctx_SendFile_Compress_CheckCompressed(t *testing.T) {
 	expectedFileContent, err := io.ReadAll(f)
 	require.NoError(t, err)
 
-	sendFileBodyReader := func(compression string, app *App) ([]byte, error) {
+	sendFileBodyReader := func(compression string) ([]byte, error) {
 		t.Helper()
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(c)
@@ -3115,7 +3115,7 @@ func Test_Ctx_SendFile_Compress_CheckCompressed(t *testing.T) {
 	t.Run("gzip", func(t *testing.T) {
 		t.Parallel()
 
-		b, err := sendFileBodyReader("gzip", app)
+		b, err := sendFileBodyReader("gzip")
 		require.NoError(t, err)
 		body, err := fasthttp.AppendGunzipBytes(nil, b)
 		require.NoError(t, err)
@@ -3126,7 +3126,7 @@ func Test_Ctx_SendFile_Compress_CheckCompressed(t *testing.T) {
 	t.Run("zstd", func(t *testing.T) {
 		t.Parallel()
 
-		b, err := sendFileBodyReader("zstd", app)
+		b, err := sendFileBodyReader("zstd")
 		require.NoError(t, err)
 		body, err := fasthttp.AppendUnzstdBytes(nil, b)
 		require.NoError(t, err)
@@ -3137,7 +3137,7 @@ func Test_Ctx_SendFile_Compress_CheckCompressed(t *testing.T) {
 	t.Run("br", func(t *testing.T) {
 		t.Parallel()
 
-		b, err := sendFileBodyReader("br", app)
+		b, err := sendFileBodyReader("br")
 		require.NoError(t, err)
 		body, err := fasthttp.AppendUnbrotliBytes(nil, b)
 		require.NoError(t, err)
