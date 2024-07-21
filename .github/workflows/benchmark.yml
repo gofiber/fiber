@@ -9,6 +9,12 @@ on:
     paths-ignore:
       - "**/*.md"
 
+permissions:
+  # deployments permission to deploy GitHub pages website
+  deployments: write
+  # contents permission to update benchmark contents in gh-pages branch
+  contents: write
+
 name: Benchmark
 jobs:
   Compare:
@@ -26,24 +32,74 @@ jobs:
       - name: Run Benchmark
         run: set -o pipefail; go test ./... -benchmem -run=^$ -bench . | tee output.txt
 
-      - name: Get Previous Benchmark Results
-        uses: actions/cache@v4
+      # NOTE: Benchmarks could change with different CPU types
+      - name: Get GitHub Runner System Information
+        uses: kenchan0130/actions-system-info@v1
+        id: system-info
+
+      - name: Get Main branch SHA
+        id: get-main-branch-sha
+        run: |
+          SHA=$(git rev-parse origin/main)
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
+
+      - name: Get Benchmark Results from main branch
+        id: cache
+        uses: actions/cache/restore@v4
         with:
           path: ./cache
-          key: ${{ runner.os }}-benchmark
+          key: ${{ steps.get-main-branch-sha.outputs.sha }}-${{ runner.os }}-${{ steps.system-info.outputs.cpu-model }}-benchmark
 
-      - name: Save Benchmark Results
+      # This will only run if we have Benchmark Results from main branch
+      - name: Compare PR Benchmark Results with main branch
         uses: benchmark-action/github-action-benchmark@v1.20.3
+        if: steps.cache.outputs.cache-hit == 'true'
         with:
-          tool: "go"
+          tool: 'go'
           output-file-path: output.txt
-          github-token: ${{ secrets.BENCHMARK_TOKEN }}
+          external-data-json-path: ./cache/benchmark-data.json
+          # Do not save the data (This allows comparing benchmarks)
+          save-data-file: false
+          fail-on-alert: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          summary-always: true
+          alert-threshold: "150%"
+
+      - name: Store Benchmark Results for main branch
+        uses: benchmark-action/github-action-benchmark@v1.20.3
+        if: ${{ github.ref_name == 'main' }}
+        with:
+          tool: 'go'
+          output-file-path: output.txt
+          external-data-json-path: ./cache/benchmark-data.json
+          # Save the data to external file (cache)
+          save-data-file: true
+          fail-on-alert: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          summary-always: true
+          alert-threshold: "150%"
+
+      - name: Publish Benchmark Results to GitHub Pages
+        uses: benchmark-action/github-action-benchmark@v1.20.3
+        if: ${{ github.ref_name == 'main' }}
+        with:
+          tool: 'go'
+          output-file-path: output.txt
           benchmark-data-dir-path: "benchmarks"
           fail-on-alert: true
-          comment-on-alert: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
-          # Enable Job Summary for PRs - deactivated because of issues
-          #summary-always: ${{ github.event_name != 'push' && github.event_name != 'workflow_dispatch' }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          comment-on-alert: true
+          summary-always: true
+          # Save the data to external file (GitHub Pages)
+          save-data-file: true
+          alert-threshold: "150%"
           # TODO: reactivate it later -> when v3 is the stable one
           #auto-push: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
           auto-push: false
-          save-data-file: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+
+      - name: Update Benchmark Results cache
+        uses: actions/cache/save@v4
+        if: ${{ github.ref_name == 'main' }}
+        with:
+          path: ./cache
+          key: ${{ steps.get-main-branch-sha.outputs.sha }}-${{ runner.os }}-${{ steps.system-info.outputs.cpu-model }}-benchmark
