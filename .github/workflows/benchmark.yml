@@ -22,6 +22,8 @@ jobs:
     steps:
       - name: Fetch Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # to be able to retrieve the last commit in main
 
       - name: Install Go
         uses: actions/setup-go@v5
@@ -61,6 +63,7 @@ jobs:
           # Do not save the data (This allows comparing benchmarks)
           save-data-file: false
           fail-on-alert: true
+          comment-on-alert: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
           summary-always: true
           alert-threshold: "150%"
