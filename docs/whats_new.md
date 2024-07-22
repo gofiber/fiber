@@ -33,6 +33,7 @@ Here's a quick overview of the changes in Fiber `v3`:
   - [Session](#session)
   - [Filesystem](#filesystem)
   - [Monitor](#monitor)
+  - [Healthcheck](#healthcheck)
 - [📋 Migration guide](#-migration-guide)
 
 ## Drop for old Go versions
@@ -254,6 +255,34 @@ DRAFT section
 
 ## 🧬 Middlewares
 
+### Adaptor
+
+The adaptor middleware has been significantly optimized for performance and efficiency. Key improvements include reduced response times, lower memory usage, and fewer memory allocations. These changes make the middleware more reliable and capable of handling higher loads effectively. Enhancements include the introduction of a `sync.Pool` for managing `fasthttp.RequestCtx` instances and better HTTP request and response handling between net/http and fasthttp contexts.
+
+| Payload Size | Metric           |     V2    |    V3    |    Percent Change |
+|--------------|------------------|-----------|----------|-------------------|
+| 100KB        | Execution Time   | 1056 ns/op| 588.6 ns/op | -44.25%        |
+|              | Memory Usage     | 2644 B/op | 254 B/op    | -90.39%        |
+|              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
+| 500KB        | Execution Time   | 1061 ns/op| 562.9 ns/op | -46.94%        |
+|              | Memory Usage     | 2644 B/op | 248 B/op    | -90.62%        |
+|              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
+| 1MB          | Execution Time   | 1080 ns/op| 629.7 ns/op | -41.68%        |
+|              | Memory Usage     | 2646 B/op | 267 B/op    | -89.91%        |
+|              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
+| 5MB          | Execution Time   | 1093 ns/op| 540.3 ns/op | -50.58%        |
+|              | Memory Usage     | 2654 B/op | 254 B/op    | -90.43%        |
+|              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
+| 10MB         | Execution Time   | 1044 ns/op| 533.1 ns/op | -48.94%        |
+|              | Memory Usage     | 2665 B/op | 258 B/op    | -90.32%        |
+|              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
+| 25MB         | Execution Time   | 1069 ns/op| 540.7 ns/op | -49.42%        |
+|              | Memory Usage     | 2706 B/op | 289 B/op    | -89.32%        |
+|              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
+| 50MB         | Execution Time   | 1137 ns/op| 554.6 ns/op | -51.21%        |
+|              | Memory Usage     | 2734 B/op | 298 B/op    | -89.10%        |
+|              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
+
 ### Cache
 
 We are excited to introduce a new option in our caching middleware: Cache Invalidator. This feature provides greater control over cache management, allowing you to define a custom conditions for invalidating cache entries.
@@ -301,6 +330,25 @@ DRAFT section
 :::
 
 Monitor middleware is now in Contrib package.
+
+### Healthcheck
+
+The Healthcheck middleware has been enhanced to support more than two routes, with default endpoints for liveliness, readiness, and startup checks. Here's a detailed breakdown of the changes and how to use the new features.
+
+1. **Support for More Than Two Routes**:
+   - The updated middleware now supports multiple routes beyond the default liveliness and readiness endpoints. This allows for more granular health checks, such as startup probes.
+
+2. **Default Endpoints**:
+   - Three default endpoints are now available:
+     - **Liveness**: `/livez`
+     - **Readiness**: `/readyz`
+     - **Startup**: `/startupz`
+   - These endpoints can be customized or replaced with user-defined routes.
+
+3. **Simplified Configuration**:
+   - The configuration for each health check endpoint has been simplified. Each endpoint can be configured separately, allowing for more flexibility and readability.
+
+Refer to the [healthcheck middleware migration guide](./middleware/healthcheck.md) or the [general migration guide](#-migration-guide) to review the changes.
 
 ## 📋 Migration guide
 
@@ -389,6 +437,31 @@ app.Route("/api").Route("/user/:id?")
   });
 ```
 
+### 🗺 RebuildTree
+
+We have added a new method that allows the route tree stack to be rebuilt in runtime, with it, you can add a route while your application is running and rebuild the route tree stack to make it registered and available for calls.
+
+You can find more reference on it in the [app](./api/app.md#rebuildtree):
+
+#### Example Usage
+
+```go
+app.Get("/define", func(c Ctx) error {  // Define a new route dynamically
+    app.Get("/dynamically-defined", func(c Ctx) error {  // Adding a dynamically defined route
+        return c.SendStatus(http.StatusOK)
+    })
+
+    app.RebuildTree()  // Rebuild the route tree to register the new route
+
+    return c.SendStatus(http.StatusOK)
+})
+```
+
+In this example, a new route is defined and then `RebuildTree()` is called to make sure the new route is registered and available.
+
+**Note:** Use this method with caution. It is **not** thread-safe and calling it can be very performance-intensive, so it should be used sparingly and only in
+development mode. Avoid using it concurrently.
+
 ### 🧠 Context
 
 ### 📎 Parser
@@ -451,4 +524,49 @@ app.Use(static.New("", static.Config{
   IndexNames:   []string{"index.html"},
   MaxAge:       3600,
 }))
+```
+
+### Healthcheck
+
+Previously, the Healthcheck middleware was configured with a combined setup for liveliness and readiness probes:
+
+```go
+//before
+app.Use(healthcheck.New(healthcheck.Config{
+  LivenessProbe: func(c *fiber.Ctx) bool {
+    return true
+  },
+  LivenessEndpoint: "/live",
+  ReadinessProbe: func(c *fiber.Ctx) bool {
+    return serviceA.Ready() && serviceB.Ready() && ...
+  },
+  ReadinessEndpoint: "/ready",
+}))
+```
+
+With the new version, each health check endpoint is configured separately, allowing for more flexibility:
+
+```go
+// after
+
+// Default liveness endpoint configuration
+app.Get(healthcheck.DefaultLivenessEndpoint, healthcheck.NewHealthChecker(healthcheck.Config{
+  Probe: func(c *fiber.Ctx) bool {
+    return true
+  },
+}))
+
+// Default readiness endpoint configuration
+app.Get(healthcheck.DefaultReadinessEndpoint, healthcheck.NewHealthChecker())
+
+// New default startup endpoint configuration
+// Default endpoint is /startupz
+app.Get(healthcheck.DefaultStartupEndpoint, healthcheck.NewHealthChecker(healthcheck.Config{
+  Probe: func(c *fiber.Ctx) bool {
+    return serviceA.Ready() && serviceB.Ready() && ...
+  },
+}))
+
+// Custom liveness endpoint configuration
+app.Get("/live", healthcheck.NewHealthChecker())
 ```
