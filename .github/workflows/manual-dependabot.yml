@@ -1,0 +1,44 @@
+name: ManualDependabot
+
+on:
+  workflow_dispatch:
+    inputs:
+      package-manager:
+        description: 'The package manager to use'
+        required: true
+        default: 'gomod'
+      directory:
+        description: 'The directory to scan'
+        required: true
+        default: '/'
+
+permissions:
+  contents: read
+
+jobs:
+  dependabot:
+    permissions:
+      contents: write  # for Git to git push
+      pull-requests: write  # for repo-sync/pull-request to create pull requests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Checkout dependabot
+        run: |
+          cd /tmp/
+          git clone https://github.com/dependabot/dependabot-script
+
+      - name: Build image
+        run: |
+          cd /tmp/dependabot-script
+          docker build -t "dependabot/dependabot-script" -f Dockerfile .
+
+      - name: Run dependabot
+        env:
+          PACKAGE_MANAGER: ${{ github.event.inputs.package-manager }}
+          DIRECTORY: ${{ github.event.inputs.directory }}
+          GITHUB_ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          docker run -v $PWD:/src -e PROJECT_PATH=$GITHUB_REPOSITORY -e PACKAGE_MANAGER=$PACKAGE_MANAGER -e DIRECTORY=$DIRECTORY -e GITHUB_ACCESS_TOKEN=$GITHUB_ACCESS_TOKEN -e OPTIONS="$OPTIONS" dependabot/dependabot-script
