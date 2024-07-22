@@ -27,7 +27,7 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 	// Return new handler
 	return func(c fiber.Ctx) error {
 		// Generate max from generator, if no generator was provided the default value returned is 5
-		max := cfg.MaxCalculator(c)
+		max := cfg.MaxFunc(c)
 
 		// Don't execute middleware if Next returns true or if the max is 0
 		if (cfg.Next != nil && cfg.Next(c)) || max == 0 {

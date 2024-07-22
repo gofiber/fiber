@@ -20,7 +20,7 @@ func Test_Limiter_With_Max_Calculator_With_Zero(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		MaxCalculator: func(_ fiber.Ctx) int {
+		MaxFunc: func(_ fiber.Ctx) int {
 			return 0
 		},
 		Expiration: 2 * time.Second,
@@ -61,7 +61,7 @@ func Test_Limiter_With_Max_Calculator(t *testing.T) {
 	max := 10
 
 	app.Use(New(Config{
-		MaxCalculator: func(_ fiber.Ctx) int {
+		MaxFunc: func(_ fiber.Ctx) int {
 			return max
 		},
 		Expiration: 2 * time.Second,

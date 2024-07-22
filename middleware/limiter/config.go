@@ -23,7 +23,7 @@ type Config struct {
 	// Default: func(c fiber.Ctx) int {
 	//   return c.Max
 	// }
-	MaxCalculator func(c fiber.Ctx) int
+	MaxFunc func(c fiber.Ctx) int
 
 	// KeyGenerator allows you to generate custom keys, by default c.IP() is used
 	//
@@ -109,8 +109,8 @@ func configDefault(config ...Config) Config {
 	if cfg.LimiterMiddleware == nil {
 		cfg.LimiterMiddleware = ConfigDefault.LimiterMiddleware
 	}
-	if cfg.MaxCalculator == nil {
-		cfg.MaxCalculator = func(_ fiber.Ctx) int {
+	if cfg.MaxFunc == nil {
+		cfg.MaxFunc = func(_ fiber.Ctx) int {
 			return cfg.Max
 		}
 	}
