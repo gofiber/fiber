@@ -3099,23 +3099,25 @@ func Test_Ctx_SendFile_Compress_CheckCompressed(t *testing.T) {
 	expectedFileContent, err := io.ReadAll(f)
 	require.NoError(t, err)
 
-	sendFileBodyReader := func(compression string) []byte {
-		reqCtx := &fasthttp.RequestCtx{}
-		reqCtx.Request.Header.Add(HeaderAcceptEncoding, compression)
+	sendFileBodyReader := func(compression string) ([]byte, error) {
+		t.Helper()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		c.Request().Header.Add(HeaderAcceptEncoding, compression)
 
-		c := app.AcquireCtx(reqCtx)
-		err = c.SendFile("./ctx.go", SendFile{
+		err := c.SendFile("./ctx.go", SendFile{
 			Compress: true,
 		})
-		require.NoError(t, err)
 
-		return c.Response().Body()
+		return c.Response().Body(), err
 	}
 
 	t.Run("gzip", func(t *testing.T) {
 		t.Parallel()
 
-		body, err := fasthttp.AppendGunzipBytes(nil, sendFileBodyReader("gzip"))
+		b, err := sendFileBodyReader("gzip")
+		require.NoError(t, err)
+		body, err := fasthttp.AppendGunzipBytes(nil, b)
 		require.NoError(t, err)
 
 		require.Equal(t, expectedFileContent, body)
@@ -3124,7 +3126,9 @@ func Test_Ctx_SendFile_Compress_CheckCompressed(t *testing.T) {
 	t.Run("zstd", func(t *testing.T) {
 		t.Parallel()
 
-		body, err := fasthttp.AppendUnzstdBytes(nil, sendFileBodyReader("zstd"))
+		b, err := sendFileBodyReader("zstd")
+		require.NoError(t, err)
+		body, err := fasthttp.AppendUnzstdBytes(nil, b)
 		require.NoError(t, err)
 
 		require.Equal(t, expectedFileContent, body)
@@ -3133,7 +3137,9 @@ func Test_Ctx_SendFile_Compress_CheckCompressed(t *testing.T) {
 	t.Run("br", func(t *testing.T) {
 		t.Parallel()
 
-		body, err := fasthttp.AppendUnbrotliBytes(nil, sendFileBodyReader("br"))
+		b, err := sendFileBodyReader("br")
+		require.NoError(t, err)
+		body, err := fasthttp.AppendUnbrotliBytes(nil, b)
 		require.NoError(t, err)
 
 		require.Equal(t, expectedFileContent, body)
@@ -3242,6 +3248,8 @@ func Test_Ctx_SendFile_Multiple(t *testing.T) {
 		require.Contains(t, string(body), tc.body)
 	}
 
+	app.sendfilesMutex.RLock()
+	defer app.sendfilesMutex.RUnlock()
 	require.Len(t, app.sendfiles, 3)
 }
 
