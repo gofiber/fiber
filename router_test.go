@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
@@ -366,6 +367,33 @@ func Test_Router_NotFound_HTML_Inject(t *testing.T) {
 
 	require.Equal(t, 404, c.Response.StatusCode())
 	require.Equal(t, "Cannot DELETE /does/not/exist&lt;script&gt;alert(&#39;foo&#39;);&lt;/script&gt;", string(c.Response.Body()))
+}
+
+func Test_App_Rebuild_Tree(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	app.Get("/test", func(c Ctx) error {
+		app.Get("/dynamically-defined", func(c Ctx) error {
+			return c.SendStatus(http.StatusOK)
+		})
+
+		app.RebuildTree()
+
+		return c.SendStatus(http.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/dynamically-defined", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, http.StatusNotFound, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/dynamically-defined", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
 }
 
 //////////////////////////////////////////////

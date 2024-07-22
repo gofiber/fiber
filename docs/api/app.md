@@ -573,3 +573,31 @@ Hooks is a method to return [hooks](./hooks.md) property.
 ```go title="Signature"
 func (app *App) Hooks() *Hooks
 ```
+
+## RebuildTree
+
+The RebuildTree method is designed to rebuild the route tree and enable dynamic route registration. It returns a pointer to the App instance.
+
+```go title="Signature"
+func (app *App) RebuildTree() *App
+```
+
+**Note:** Use this method with caution. It is **not** thread-safe and calling it can be very performance-intensive, so it should be used sparingly and only in development mode. Avoid using it concurrently.
+
+### Example Usage
+
+Here’s an example of how to define and register routes dynamically:
+
+```go
+app.Get("/define", func(c Ctx) error {  // Define a new route dynamically
+    app.Get("/dynamically-defined", func(c Ctx) error {  // Adding a dynamically defined route
+        return c.SendStatus(http.StatusOK)
+    })
+
+    app.RebuildTree()  // Rebuild the route tree to register the new route
+
+    return c.SendStatus(http.StatusOK)
+})
+```
+
+In this example, a new route is defined and then `RebuildTree()` is called to make sure the new route is registered and available.
