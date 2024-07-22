@@ -1,3 +1,5 @@
+# https://github.com/dependabot/dependabot-script/blob/main/manual-github-actions.yaml
+# https://github.com/dependabot/dependabot-script?tab=readme-ov-file#github-actions-standalone
 name: ManualDependabot
 
 on:
