@@ -11,7 +11,6 @@ import (
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
 	"github.com/valyala/bytebufferpool"
-	"github.com/valyala/fasthttp"
 )
 
 // default logger for fiber
@@ -151,7 +150,7 @@ func beforeHandlerFunc(cfg Config) {
 
 func appendInt(output Buffer, v int) (int, error) {
 	old := output.Len()
-	output.Set(fasthttp.AppendUint(output.Bytes(), v))
+	output.Set(strconv.AppendInt(output.Bytes(), int64(v), 10))
 	return output.Len() - old, nil
 }
 

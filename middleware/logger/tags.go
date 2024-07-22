@@ -2,7 +2,6 @@ package logger
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
@@ -88,10 +87,10 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return output.Write(c.Body())
 		},
 		TagBytesReceived: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			return output.WriteString(strconv.Itoa((c.Request().Header.ContentLength())))
+			return appendInt(output, c.Request().Header.ContentLength())
 		},
 		TagBytesSent: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			return output.WriteString(strconv.Itoa((c.Response().Header.ContentLength())))
+			return appendInt(output, c.Response().Header.ContentLength())
 		},
 		TagRoute: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
 			return output.WriteString(c.Route().Path)
