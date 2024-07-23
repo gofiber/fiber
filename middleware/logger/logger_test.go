@@ -407,12 +407,38 @@ func Test_Response_Body(t *testing.T) {
 	require.Equal(t, expectedGetResponse, buf.String())
 
 	buf.Reset() // Reset buffer to test POST
-
 	_, err = app.Test(httptest.NewRequest(fiber.MethodPost, "/test", nil))
-	require.NoError(t, err)
 
 	expectedPostResponse := "Post in test"
+	require.NoError(t, err)
 	require.Equal(t, expectedPostResponse, buf.String())
+}
+
+// go test -run Test_Request_Body
+func Test_Request_Body(t *testing.T) {
+	t.Parallel()
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Format: "${bytesReceived} ${bytesSent} ${status}",
+		Output: buf,
+	}))
+
+	app.Post("/", func(c fiber.Ctx) error {
+		c.Response().Header.SetContentLength(5)
+		return c.SendString("World")
+	})
+
+	// Create a POST request with a body
+	body := []byte("Hello")
+	req := httptest.NewRequest(fiber.MethodPost, "/", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/octet-stream")
+
+	_, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, "5 5 200", buf.String())
 }
 
 // go test -run Test_Logger_AppendUint
@@ -432,10 +458,21 @@ func Test_Logger_AppendUint(t *testing.T) {
 		return c.SendString("hello")
 	})
 
+	app.Get("/content", func(c fiber.Ctx) error {
+		c.Response().Header.SetContentLength(5)
+		return c.SendString("hello")
+	})
+
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.Equal(t, "0 5 200", buf.String())
+	require.Equal(t, "-2 0 200", buf.String())
+
+	buf.Reset()
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/content", nil))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "-2 5 200", buf.String())
 }
 
 // go test -run Test_Logger_Data_Race -race
@@ -618,7 +655,9 @@ func Test_Logger_ByteSent_Streaming(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-	require.Equal(t, "0 0 200", buf.String())
+
+	// -2 means identity, -1 means chunked, 200 status
+	require.Equal(t, "-2 -1 200", buf.String())
 }
 
 type fakeOutput int
