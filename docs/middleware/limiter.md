@@ -43,6 +43,9 @@ app.Use(limiter.New(limiter.Config{
         return c.IP() == "127.0.0.1"
     },
     Max:          20,
+    MaxFunc: func(c fiber.Ctx) int {
+      return 20
+    },
     Expiration:     30 * time.Second,
     KeyGenerator:          func(c fiber.Ctx) string {
         return c.Get("x-forwarded-for")
@@ -75,12 +78,28 @@ weightOfPreviousWindow = previous window's amount request * (whenNewWindow / Exp
 rate = weightOfPreviousWindow + current window's amount request.
 ```
 
+## Dynamic limit
+
+You can also calculate the limit dynamically using the MaxFunc parameter. It's a function that receives the request's context as a parameter and allow you to calculate a different limit for each request separately.
+
+Example:
+
+```go
+app.Use(limiter.New(limiter.Config{
+    MaxFunc:  func(c fiber.Ctx) int {
+      return getUserLimit(ctx.Param("id"))
+    },
+    Expiration:     30 * time.Second,
+}))
+```
+
 ## Config
 
 | Property               | Type                      | Description                                                                                 | Default                                  |
 |:-----------------------|:--------------------------|:--------------------------------------------------------------------------------------------|:-----------------------------------------|
 | Next                   | `func(fiber.Ctx) bool`   | Next defines a function to skip this middleware when returned true.                         | `nil`                                    |
 | Max                    | `int`                     | Max number of recent connections during `Expiration` seconds before sending a 429 response. | 5                                        |
+| MaxFunc                | `func(fiber.Ctx) int`     | A function to calculate the max number of recent connections during `Expiration` seconds before sending a 429 response. | A function which returns the cfg.Max    |
 | KeyGenerator           | `func(fiber.Ctx) string` | KeyGenerator allows you to generate custom keys, by default c.IP() is used.                 | A function using c.IP() as the default   |
 | Expiration             | `time.Duration`           | Expiration is the time on how long to keep records of requests in memory.                   | 1 * time.Minute                          |
 | LimitReached           | `fiber.Handler`           | LimitReached is called when a request hits the limit.                                       | A function sending 429 response          |
@@ -101,6 +120,9 @@ A custom store can be used if it implements the `Storage` interface - more detai
 ```go
 var ConfigDefault = Config{
     Max:        5,
+    MaxFunc: func(c fiber.Ctx) int {
+      return 5
+    },
     Expiration: 1 * time.Minute,
     KeyGenerator: func(c fiber.Ctx) string {
         return c.IP()

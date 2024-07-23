@@ -15,7 +15,6 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 	var (
 		// Limiter variables
 		mux        = &sync.RWMutex{}
-		max        = strconv.Itoa(cfg.Max)
 		expiration = uint64(cfg.Expiration.Seconds())
 	)
 
@@ -27,8 +26,11 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 
 	// Return new handler
 	return func(c fiber.Ctx) error {
-		// Don't execute middleware if Next returns true
-		if cfg.Next != nil && cfg.Next(c) {
+		// Generate max from generator, if no generator was provided the default value returned is 5
+		max := cfg.MaxFunc(c)
+
+		// Don't execute middleware if Next returns true or if the max is 0
+		if (cfg.Next != nil && cfg.Next(c)) || max == 0 {
 			return c.Next()
 		}
 
@@ -60,7 +62,7 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 		resetInSec := e.exp - ts
 
 		// Set how many hits we have left
-		remaining := cfg.Max - e.currHits
+		remaining := max - e.currHits
 
 		// Update storage
 		manager.set(key, e, cfg.Expiration)
@@ -68,7 +70,7 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 		// Unlock entry
 		mux.Unlock()
 
-		// Check if hits exceed the cfg.Max
+		// Check if hits exceed the max
 		if remaining < 0 {
 			// Return response with Retry-After header
 			// https://tools.ietf.org/html/rfc6584
@@ -96,7 +98,7 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 		}
 
 		// We can continue, update RateLimit headers
-		c.Set(xRateLimitLimit, max)
+		c.Set(xRateLimitLimit, strconv.Itoa(max))
 		c.Set(xRateLimitRemaining, strconv.Itoa(remaining))
 		c.Set(xRateLimitReset, strconv.FormatUint(resetInSec, 10))
 
