@@ -83,8 +83,7 @@ func (m *manager) get(key string) *item {
 		return it
 	}
 	if it, _ = m.memory.Get(key).(*item); it == nil { //nolint:errcheck // We store nothing else in the pool
-		it = m.acquire()
-		return it
+		return nil
 	}
 	return it
 }

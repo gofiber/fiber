@@ -15,7 +15,7 @@ type heapEntry struct {
 // elements in constant time. It does so by handing out special indices
 // and tracking entry movement.
 //
-// indexdedHeap is used for quickly finding entries with the lowest
+// indexedHeap is used for quickly finding entries with the lowest
 // expiration timestamp and deleting arbitrary entries.
 type indexedHeap struct {
 	// Slice the heap is built on
