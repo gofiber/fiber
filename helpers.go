@@ -298,7 +298,7 @@ func paramsMatch(specParamStr headerParams, offerParams string) bool {
 	for specParam, specVal := range specParamStr {
 		foundParam := false
 		fasthttp.VisitHeaderParams(utils.UnsafeBytes(offerParams), func(key, value []byte) bool {
-			if utils.EqualFold(specParam, string(key)) {
+			if utils.EqualFold(specParam, utils.UnsafeString(key)) {
 				foundParam = true
 				allSpecParamsMatch = utils.EqualFold(specVal, value)
 				return false
@@ -423,29 +423,31 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 	forEachMediaRange(header, func(accept []byte) {
 		order++
 		spec, quality := accept, 1.0
-
 		var params headerParams
 
 		if i := bytes.IndexByte(accept, ';'); i != -1 {
 			spec = accept[:i]
 
-			// The vast majority of requests will have only the q parameter with
-			// no whitespace. Check this first to see if we can skip
-			// the more involved parsing.
-			if bytes.HasPrefix(accept[i:], []byte(";q=")) && bytes.IndexByte(accept[i+3:], ';') == -1 {
-				if q, err := fasthttp.ParseUfloat(bytes.TrimRight(accept[i+3:], " ")); err == nil {
+			// Optimized quality parsing
+			qIndex := i + 3
+			if bytes.HasPrefix(accept[i:], []byte(";q=")) && bytes.IndexByte(accept[qIndex:], ';') == -1 {
+				if q, err := fasthttp.ParseUfloat(accept[qIndex:]); err == nil {
 					quality = q
 				}
 			} else {
 				params, _ = headerParamPool.Get().(headerParams) //nolint:errcheck // only contains headerParams
+				for k := range params {
+					delete(params, k)
+				}
 				fasthttp.VisitHeaderParams(accept[i:], func(key, value []byte) bool {
-					if string(key) == "q" {
+					if len(key) == 1 && key[0] == 'q' {
 						if q, err := fasthttp.ParseUfloat(value); err == nil {
 							quality = q
 						}
 						return false
 					}
-					params[utils.UnsafeString(utils.ToLowerBytes(key))] = value
+					lowerKey := utils.UnsafeString(utils.ToLowerBytes(key))
+					params[lowerKey] = value
 					return true
 				})
 			}
@@ -457,13 +459,16 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 			}
 		}
 
-		spec = bytes.TrimRight(spec, " ")
+		spec = bytes.TrimSpace(spec)
 
-		// Get specificity
+		// Determine specificity
 		var specificity int
+
 		// check for wildcard this could be a mime */* or a wildcard character *
 		switch {
-		case string(spec) == "*/*" || string(spec) == "*":
+		case len(spec) == 1 && spec[0] == '*':
+			specificity = 1
+		case bytes.Equal(spec, []byte("*/*")):
 			specificity = 1
 		case bytes.HasSuffix(spec, []byte("/*")):
 			specificity = 2
@@ -474,7 +479,13 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 		}
 
 		// Add to accepted types
-		acceptedTypes = append(acceptedTypes, acceptedType{spec: utils.UnsafeString(spec), quality: quality, specificity: specificity, order: order, params: params})
+		acceptedTypes = append(acceptedTypes, acceptedType{
+			spec:        utils.UnsafeString(spec),
+			quality:     quality,
+			specificity: specificity,
+			order:       order,
+			params:      params,
+		})
 	})
 
 	if len(acceptedTypes) > 1 {
@@ -483,30 +494,24 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 	}
 
 	// Find the first offer that matches the accepted types
-	ret := ""
-	done := false
 	for _, acceptedType := range acceptedTypes {
-		if !done {
-			for _, offer := range offers {
-				if offer == "" {
-					continue
+		for _, offer := range offers {
+			if offer == "" {
+				continue
+			}
+			if isAccepted(acceptedType.spec, offer, acceptedType.params) {
+				if acceptedType.params != nil {
+					headerParamPool.Put(acceptedType.params)
 				}
-				if isAccepted(acceptedType.spec, offer, acceptedType.params) {
-					ret = offer
-					done = true
-					break
-				}
+				return offer
 			}
 		}
 		if acceptedType.params != nil {
-			for p := range acceptedType.params {
-				delete(acceptedType.params, p)
-			}
 			headerParamPool.Put(acceptedType.params)
 		}
 	}
 
-	return ret
+	return ""
 }
 
 // sortAcceptedTypes sorts accepted types by quality and specificity, preserving order of equal elements
