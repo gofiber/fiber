@@ -42,6 +42,7 @@ type Router interface {
 
 // Route is a struct that holds all metadata for each registered handler.
 type Route struct {
+	// ### important: always keep in sync with the copy method "app.copyRoute" ###
 	group *Group // Group instance. used for routes in groups
 
 	path string // Prettified path
