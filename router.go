@@ -54,7 +54,6 @@ type Route struct {
 	Params      []string    `json:"params"` // Case sensitive param keys
 	Handlers    []Handler   `json:"-"`      // Ctx handlers
 	routeParser routeParser // Parameter parser
-	// ### important: always keep in sync with the copy method "app.copyRoute" ###
 	// Data for routing
 	pos   uint32 // Position in stack -> important for the sort of the matched routes
 	use   bool   // USE matches path prefixes
