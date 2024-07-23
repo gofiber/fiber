@@ -19,13 +19,6 @@ type Config struct {
 	// Required. Default: map[string]string{}
 	Users map[string]string
 
-	// Realm is a string to define realm attribute of BasicAuth.
-	// the realm identifies the system to authenticate against
-	// and can be used by clients to save credentials
-	//
-	// Optional. Default: "Restricted".
-	Realm string
-
 	// Authorizer defines a function you can pass
 	// to check the credentials however you want.
 	// It will be called with a username and password
@@ -40,6 +33,13 @@ type Config struct {
 	//
 	// Optional. Default: nil
 	Unauthorized fiber.Handler
+
+	// Realm is a string to define realm attribute of BasicAuth.
+	// the realm identifies the system to authenticate against
+	// and can be used by clients to save credentials
+	//
+	// Optional. Default: "Restricted".
+	Realm string
 }
 
 // ConfigDefault is the default config

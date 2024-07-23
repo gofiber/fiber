@@ -10,14 +10,14 @@ import (
 )
 
 type Storage struct {
-	sync.RWMutex
 	data map[string]item // data
+	sync.RWMutex
 }
 
 type item struct {
+	v any // val
 	// max value is 4294967295 -> Sun Feb 07 2106 06:28:15 GMT+0000
 	e uint32 // exp
-	v any    // val
 }
 
 func New() *Storage {
@@ -46,7 +46,7 @@ func (s *Storage) Set(key string, val any, ttl time.Duration) {
 	if ttl > 0 {
 		exp = uint32(ttl.Seconds()) + utils.Timestamp()
 	}
-	i := item{exp, val}
+	i := item{e: exp, v: val}
 	s.Lock()
 	s.data[key] = i
 	s.Unlock()

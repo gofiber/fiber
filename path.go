@@ -28,20 +28,20 @@ type routeParser struct {
 // routeSegment holds the segment metadata
 type routeSegment struct {
 	// const information
-	Const string // constant part of the route
-	// parameter information
-	IsParam     bool   // Truth value that indicates whether it is a parameter or a constant part
-	ParamName   string // name of the parameter for access to it, for wildcards and plus parameters access iterators starting with 1 are added
-	ComparePart string // search part to find the end of the parameter
-	PartCount   int    // how often is the search part contained in the non-param segments? -> necessary for greedy search
-	IsGreedy    bool   // indicates whether the parameter is greedy or not, is used with wildcard and plus
-	IsOptional  bool   // indicates whether the parameter is optional or not
-	// common information
-	IsLast           bool          // shows if the segment is the last one for the route
-	HasOptionalSlash bool          // segment has the possibility of an optional slash
-	Constraints      []*Constraint // Constraint type if segment is a parameter, if not it will be set to noConstraint by default
-	Length           int           // length of the parameter for segment, when its 0 then the length is undetermined
+	Const       string        // constant part of the route
+	ParamName   string        // name of the parameter for access to it, for wildcards and plus parameters access iterators starting with 1 are added
+	ComparePart string        // search part to find the end of the parameter
+	Constraints []*Constraint // Constraint type if segment is a parameter, if not it will be set to noConstraint by default
+	PartCount   int           // how often is the search part contained in the non-param segments? -> necessary for greedy search
+	Length      int           // length of the parameter for segment, when its 0 then the length is undetermined
 	// future TODO: add support for optional groups "/abc(/def)?"
+	// parameter information
+	IsParam    bool // Truth value that indicates whether it is a parameter or a constant part
+	IsGreedy   bool // indicates whether the parameter is greedy or not, is used with wildcard and plus
+	IsOptional bool // indicates whether the parameter is optional or not
+	// common information
+	IsLast           bool // shows if the segment is the last one for the route
+	HasOptionalSlash bool // segment has the possibility of an optional slash
 }
 
 // different special routing signs
@@ -65,11 +65,11 @@ const (
 type TypeConstraint int16
 
 type Constraint struct {
-	ID                TypeConstraint
 	RegexCompiler     *regexp.Regexp
-	Data              []string
 	Name              string
+	Data              []string
 	customConstraints []CustomConstraint
+	ID                TypeConstraint
 }
 
 // CustomConstraint is an interface for custom constraints

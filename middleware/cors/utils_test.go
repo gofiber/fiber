@@ -10,33 +10,33 @@ import (
 func Test_NormalizeOrigin(t *testing.T) {
 	testCases := []struct {
 		origin         string
-		expectedValid  bool
 		expectedOrigin string
+		expectedValid  bool
 	}{
-		{"http://example.com", true, "http://example.com"},            // Simple case should work.
-		{"http://example.com/", true, "http://example.com"},           // Trailing slash should be removed.
-		{"http://example.com:3000", true, "http://example.com:3000"},  // Port should be preserved.
-		{"http://example.com:3000/", true, "http://example.com:3000"}, // Trailing slash should be removed.
-		{"http://", false, ""},                                                   // Invalid origin should not be accepted.
-		{"file:///etc/passwd", false, ""},                                        // File scheme should not be accepted.
-		{"https://*example.com", false, ""},                                      // Wildcard domain should not be accepted.
-		{"http://*.example.com", false, ""},                                      // Wildcard subdomain should not be accepted.
-		{"http://example.com/path", false, ""},                                   // Path should not be accepted.
-		{"http://example.com?query=123", false, ""},                              // Query should not be accepted.
-		{"http://example.com#fragment", false, ""},                               // Fragment should not be accepted.
-		{"http://localhost", true, "http://localhost"},                           // Localhost should be accepted.
-		{"http://127.0.0.1", true, "http://127.0.0.1"},                           // IPv4 address should be accepted.
-		{"http://[::1]", true, "http://[::1]"},                                   // IPv6 address should be accepted.
-		{"http://[::1]:8080", true, "http://[::1]:8080"},                         // IPv6 address with port should be accepted.
-		{"http://[::1]:8080/", true, "http://[::1]:8080"},                        // IPv6 address with port and trailing slash should be accepted.
-		{"http://[::1]:8080/path", false, ""},                                    // IPv6 address with port and path should not be accepted.
-		{"http://[::1]:8080?query=123", false, ""},                               // IPv6 address with port and query should not be accepted.
-		{"http://[::1]:8080#fragment", false, ""},                                // IPv6 address with port and fragment should not be accepted.
-		{"http://[::1]:8080/path?query=123#fragment", false, ""},                 // IPv6 address with port, path, query, and fragment should not be accepted.
-		{"http://[::1]:8080/path?query=123#fragment/", false, ""},                // IPv6 address with port, path, query, fragment, and trailing slash should not be accepted.
-		{"http://[::1]:8080/path?query=123#fragment/invalid", false, ""},         // IPv6 address with port, path, query, fragment, trailing slash, and invalid segment should not be accepted.
-		{"http://[::1]:8080/path?query=123#fragment/invalid/", false, ""},        // IPv6 address with port, path, query, fragment, trailing slash, and invalid segment with trailing slash should not be accepted.
-		{"http://[::1]:8080/path?query=123#fragment/invalid/segment", false, ""}, // IPv6 address with port, path, query, fragment, trailing slash, and invalid segment with additional segment should not be accepted.
+		{origin: "http://example.com", expectedValid: true, expectedOrigin: "http://example.com"},                       // Simple case should work.
+		{origin: "http://example.com/", expectedValid: true, expectedOrigin: "http://example.com"},                      // Trailing slash should be removed.
+		{origin: "http://example.com:3000", expectedValid: true, expectedOrigin: "http://example.com:3000"},             // Port should be preserved.
+		{origin: "http://example.com:3000/", expectedValid: true, expectedOrigin: "http://example.com:3000"},            // Trailing slash should be removed.
+		{origin: "http://", expectedValid: false, expectedOrigin: ""},                                                   // Invalid origin should not be accepted.
+		{origin: "file:///etc/passwd", expectedValid: false, expectedOrigin: ""},                                        // File scheme should not be accepted.
+		{origin: "https://*example.com", expectedValid: false, expectedOrigin: ""},                                      // Wildcard domain should not be accepted.
+		{origin: "http://*.example.com", expectedValid: false, expectedOrigin: ""},                                      // Wildcard subdomain should not be accepted.
+		{origin: "http://example.com/path", expectedValid: false, expectedOrigin: ""},                                   // Path should not be accepted.
+		{origin: "http://example.com?query=123", expectedValid: false, expectedOrigin: ""},                              // Query should not be accepted.
+		{origin: "http://example.com#fragment", expectedValid: false, expectedOrigin: ""},                               // Fragment should not be accepted.
+		{origin: "http://localhost", expectedValid: true, expectedOrigin: "http://localhost"},                           // Localhost should be accepted.
+		{origin: "http://127.0.0.1", expectedValid: true, expectedOrigin: "http://127.0.0.1"},                           // IPv4 address should be accepted.
+		{origin: "http://[::1]", expectedValid: true, expectedOrigin: "http://[::1]"},                                   // IPv6 address should be accepted.
+		{origin: "http://[::1]:8080", expectedValid: true, expectedOrigin: "http://[::1]:8080"},                         // IPv6 address with port should be accepted.
+		{origin: "http://[::1]:8080/", expectedValid: true, expectedOrigin: "http://[::1]:8080"},                        // IPv6 address with port and trailing slash should be accepted.
+		{origin: "http://[::1]:8080/path", expectedValid: false, expectedOrigin: ""},                                    // IPv6 address with port and path should not be accepted.
+		{origin: "http://[::1]:8080?query=123", expectedValid: false, expectedOrigin: ""},                               // IPv6 address with port and query should not be accepted.
+		{origin: "http://[::1]:8080#fragment", expectedValid: false, expectedOrigin: ""},                                // IPv6 address with port and fragment should not be accepted.
+		{origin: "http://[::1]:8080/path?query=123#fragment", expectedValid: false, expectedOrigin: ""},                 // IPv6 address with port, path, query, and fragment should not be accepted.
+		{origin: "http://[::1]:8080/path?query=123#fragment/", expectedValid: false, expectedOrigin: ""},                // IPv6 address with port, path, query, fragment, and trailing slash should not be accepted.
+		{origin: "http://[::1]:8080/path?query=123#fragment/invalid", expectedValid: false, expectedOrigin: ""},         // IPv6 address with port, path, query, fragment, trailing slash, and invalid segment should not be accepted.
+		{origin: "http://[::1]:8080/path?query=123#fragment/invalid/", expectedValid: false, expectedOrigin: ""},        // IPv6 address with port, path, query, fragment, trailing slash, and invalid segment with trailing slash should not be accepted.
+		{origin: "http://[::1]:8080/path?query=123#fragment/invalid/segment", expectedValid: false, expectedOrigin: ""}, // IPv6 address with port, path, query, fragment, trailing slash, and invalid segment with additional segment should not be accepted.
 	}
 
 	for _, tc := range testCases {
@@ -59,16 +59,16 @@ func Test_MatchScheme(t *testing.T) {
 		pattern  string
 		expected bool
 	}{
-		{"http://example.com", "http://example.com", true},           // Exact match should work.
-		{"https://example.com", "http://example.com", false},         // Scheme mismatch should matter.
-		{"http://example.com", "https://example.com", false},         // Scheme mismatch should matter.
-		{"http://example.com", "http://example.org", true},           // Different domains should not matter.
-		{"http://example.com", "http://example.com:8080", true},      // Port should not matter.
-		{"http://example.com:8080", "http://example.com", true},      // Port should not matter.
-		{"http://example.com:8080", "http://example.com:8081", true}, // Different ports should not matter.
-		{"http://localhost", "http://localhost", true},               // Localhost should match.
-		{"http://127.0.0.1", "http://127.0.0.1", true},               // IPv4 address should match.
-		{"http://[::1]", "http://[::1]", true},                       // IPv6 address should match.
+		{domain: "http://example.com", pattern: "http://example.com", expected: true},           // Exact match should work.
+		{domain: "https://example.com", pattern: "http://example.com", expected: false},         // Scheme mismatch should matter.
+		{domain: "http://example.com", pattern: "https://example.com", expected: false},         // Scheme mismatch should matter.
+		{domain: "http://example.com", pattern: "http://example.org", expected: true},           // Different domains should not matter.
+		{domain: "http://example.com", pattern: "http://example.com:8080", expected: true},      // Port should not matter.
+		{domain: "http://example.com:8080", pattern: "http://example.com", expected: true},      // Port should not matter.
+		{domain: "http://example.com:8080", pattern: "http://example.com:8081", expected: true}, // Different ports should not matter.
+		{domain: "http://localhost", pattern: "http://localhost", expected: true},               // Localhost should match.
+		{domain: "http://127.0.0.1", pattern: "http://127.0.0.1", expected: true},               // IPv4 address should match.
+		{domain: "http://[::1]", pattern: "http://[::1]", expected: true},                       // IPv6 address should match.
 	}
 
 	for _, tc := range testCases {
@@ -86,20 +86,20 @@ func Test_NormalizeDomain(t *testing.T) {
 		input          string
 		expectedOutput string
 	}{
-		{"http://example.com", "example.com"},                     // Simple case with http scheme.
-		{"https://example.com", "example.com"},                    // Simple case with https scheme.
-		{"http://example.com:3000", "example.com"},                // Case with port.
-		{"https://example.com:3000", "example.com"},               // Case with port and https scheme.
-		{"http://example.com/path", "example.com/path"},           // Case with path.
-		{"http://example.com?query=123", "example.com?query=123"}, // Case with query.
-		{"http://example.com#fragment", "example.com#fragment"},   // Case with fragment.
-		{"example.com", "example.com"},                            // Case without scheme.
-		{"example.com:8080", "example.com"},                       // Case without scheme but with port.
-		{"sub.example.com", "sub.example.com"},                    // Case with subdomain.
-		{"sub.sub.example.com", "sub.sub.example.com"},            // Case with nested subdomain.
-		{"http://localhost", "localhost"},                         // Case with localhost.
-		{"http://127.0.0.1", "127.0.0.1"},                         // Case with IPv4 address.
-		{"http://[::1]", "[::1]"},                                 // Case with IPv6 address.
+		{input: "http://example.com", expectedOutput: "example.com"},                     // Simple case with http scheme.
+		{input: "https://example.com", expectedOutput: "example.com"},                    // Simple case with https scheme.
+		{input: "http://example.com:3000", expectedOutput: "example.com"},                // Case with port.
+		{input: "https://example.com:3000", expectedOutput: "example.com"},               // Case with port and https scheme.
+		{input: "http://example.com/path", expectedOutput: "example.com/path"},           // Case with path.
+		{input: "http://example.com?query=123", expectedOutput: "example.com?query=123"}, // Case with query.
+		{input: "http://example.com#fragment", expectedOutput: "example.com#fragment"},   // Case with fragment.
+		{input: "example.com", expectedOutput: "example.com"},                            // Case without scheme.
+		{input: "example.com:8080", expectedOutput: "example.com"},                       // Case without scheme but with port.
+		{input: "sub.example.com", expectedOutput: "sub.example.com"},                    // Case with subdomain.
+		{input: "sub.sub.example.com", expectedOutput: "sub.sub.example.com"},            // Case with nested subdomain.
+		{input: "http://localhost", expectedOutput: "localhost"},                         // Case with localhost.
+		{input: "http://127.0.0.1", expectedOutput: "127.0.0.1"},                         // Case with IPv4 address.
+		{input: "http://[::1]", expectedOutput: "[::1]"},                                 // Case with IPv6 address.
 	}
 
 	for _, tc := range testCases {

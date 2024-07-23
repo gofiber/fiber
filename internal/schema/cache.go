@@ -26,10 +26,10 @@ func newCache() *cache {
 
 // cache caches meta-data about a struct.
 type cache struct {
-	l       sync.RWMutex
 	m       map[reflect.Type]*structInfo
 	regconv map[reflect.Type]Converter
 	tag     string
+	l       sync.RWMutex
 }
 
 // registerConverter registers a converter function for a custom type.

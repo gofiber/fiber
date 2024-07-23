@@ -422,11 +422,11 @@ func Test_Redirect_Request(t *testing.T) {
 
 	// Test cases
 	testCases := []struct {
+		ExpectedErr        error
 		URL                string
 		CookieValue        string
 		ExpectedBody       string
 		ExpectedStatusCode int
-		ExpectedErr        error
 	}{
 		{
 			URL:                "/",

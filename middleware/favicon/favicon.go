@@ -11,15 +11,16 @@ import (
 
 // Config defines the config for middleware.
 type Config struct {
+	// FileSystem is an optional alternate filesystem to search for the favicon in.
+	// An example of this could be an embedded or network filesystem
+	//
+	// Optional. Default: nil
+	FileSystem fs.FS `json:"-"`
+
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
 	Next func(c fiber.Ctx) bool
-
-	// Raw data of the favicon file
-	//
-	// Optional. Default: nil
-	Data []byte `json:"-"`
 
 	// File holds the path to an actual favicon that will be cached
 	//
@@ -31,16 +32,15 @@ type Config struct {
 	// Optional. Default: "/favicon.ico"
 	URL string `json:"url"`
 
-	// FileSystem is an optional alternate filesystem to search for the favicon in.
-	// An example of this could be an embedded or network filesystem
-	//
-	// Optional. Default: nil
-	FileSystem fs.FS `json:"-"`
-
 	// CacheControl defines how the Cache-Control header in the response should be set
 	//
 	// Optional. Default: "public, max-age=31536000"
 	CacheControl string `json:"cache_control"`
+
+	// Raw data of the favicon file
+	//
+	// Optional. Default: nil
+	Data []byte `json:"-"`
 }
 
 // ConfigDefault is the default config

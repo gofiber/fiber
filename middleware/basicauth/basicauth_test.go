@@ -47,9 +47,9 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 
 	tests := []struct {
 		url        string
-		statusCode int
 		username   string
 		password   string
+		statusCode int
 	}{
 		{
 			url:        "/testauth",
