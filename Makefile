@@ -29,7 +29,7 @@ format:
 
 ## format: 🎨 Find markdown format issues (Requires markdownlint-cli)
 .PHONY: markdown
-format:
+markdown:
 	markdownlint-cli2 "**/*.md" "#vendor"
 
 ## lint: 🚨 Run lint checks
