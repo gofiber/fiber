@@ -22,6 +22,13 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c fiber.Ctx) bool
 
+	// A function to dynamically calculate the max requests supported by the rate limiter middleware
+	//
+	// Default: func(c fiber.Ctx) int {
+	//   return c.Max
+	// }
+	MaxFunc func(c fiber.Ctx) int
+
 	// KeyGenerator allows you to generate custom keys, by default c.IP() is used
 	//
 	// Default: func(c fiber.Ctx) string {
@@ -100,6 +107,11 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.LimiterMiddleware == nil {
 		cfg.LimiterMiddleware = ConfigDefault.LimiterMiddleware
+	}
+	if cfg.MaxFunc == nil {
+		cfg.MaxFunc = func(_ fiber.Ctx) int {
+			return cfg.Max
+		}
 	}
 	return cfg
 }
