@@ -13,30 +13,6 @@ var ErrInvalidIdempotencyKey = errors.New("invalid idempotency key")
 
 // Config defines the config for middleware.
 type Config struct {
-	// Next defines a function to skip this middleware when returned true.
-	//
-	// Optional. Default: a function which skips the middleware on safe HTTP request method.
-	Next func(c fiber.Ctx) bool
-
-	// Lifetime is the maximum lifetime of an idempotency key.
-	//
-	// Optional. Default: 30 * time.Minute
-	Lifetime time.Duration
-
-	// KeyHeader is the name of the header that contains the idempotency key.
-	//
-	// Optional. Default: X-Idempotency-Key
-	KeyHeader string
-	// KeyHeaderValidate defines a function to validate the syntax of the idempotency header.
-	//
-	// Optional. Default: a function which ensures the header is 36 characters long (the size of an UUID).
-	KeyHeaderValidate func(string) error
-
-	// KeepResponseHeaders is a list of headers that should be kept from the original response.
-	//
-	// Optional. Default: nil (to keep all headers)
-	KeepResponseHeaders []string
-
 	// Lock locks an idempotency key.
 	//
 	// Optional. Default: an in-memory locker for this process only.
@@ -46,6 +22,30 @@ type Config struct {
 	//
 	// Optional. Default: an in-memory storage for this process only.
 	Storage fiber.Storage
+	// Next defines a function to skip this middleware when returned true.
+	//
+	// Optional. Default: a function which skips the middleware on safe HTTP request method.
+	Next func(c fiber.Ctx) bool
+
+	// KeyHeaderValidate defines a function to validate the syntax of the idempotency header.
+	//
+	// Optional. Default: a function which ensures the header is 36 characters long (the size of an UUID).
+	KeyHeaderValidate func(string) error
+
+	// KeyHeader is the name of the header that contains the idempotency key.
+	//
+	// Optional. Default: X-Idempotency-Key
+	KeyHeader string
+
+	// KeepResponseHeaders is a list of headers that should be kept from the original response.
+	//
+	// Optional. Default: nil (to keep all headers)
+	KeepResponseHeaders []string
+
+	// Lifetime is the maximum lifetime of an idempotency key.
+	//
+	// Optional. Default: 30 * time.Minute
+	Lifetime time.Duration
 }
 
 // ConfigDefault is the default config

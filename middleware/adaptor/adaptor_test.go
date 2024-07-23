@@ -274,7 +274,7 @@ func testFiberToHandlerFunc(t *testing.T, checkDefaultPort bool, app ...*fiber.A
 	var r http.Request
 
 	r.Method = expectedMethod
-	r.Body = &netHTTPBody{[]byte(expectedBody)}
+	r.Body = &netHTTPBody{b: []byte(expectedBody)}
 	r.RequestURI = expectedRequestURI
 	r.ContentLength = int64(expectedContentLength)
 	r.Host = expectedHost
@@ -355,9 +355,9 @@ func (r *netHTTPBody) Close() error {
 }
 
 type netHTTPResponseWriter struct {
-	statusCode int
 	h          http.Header
 	body       []byte
+	statusCode int
 }
 
 func (w *netHTTPResponseWriter) StatusCode() int {

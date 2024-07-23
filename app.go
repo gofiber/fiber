@@ -80,29 +80,16 @@ type ErrorHandler = func(Ctx, error) error
 
 // Error represents an error that occurred while handling a request.
 type Error struct {
-	Code    int    `json:"code"`
 	Message string `json:"message"`
+	Code    int    `json:"code"`
 }
 
 // App denotes the Fiber application.
 type App struct {
-	mutex sync.Mutex
-	// Route stack divided by HTTP methods
-	stack [][]*Route
-	// Route stack divided by HTTP methods and route prefixes
-	treeStack []map[string][]*Route
-	// contains the information if the route stack has been changed to build the optimized tree
-	routesRefreshed bool
-	// Amount of registered routes
-	routesCount uint32
-	// Amount of registered handlers
-	handlersCount uint32
 	// Ctx pool
 	pool sync.Pool
 	// Fasthttp server
 	server *fasthttp.Server
-	// App config
-	config Config
 	// Converts string to a byte slice
 	getBytes func(s string) (b []byte)
 	// Converts byte slice to a string
@@ -113,24 +100,37 @@ type App struct {
 	latestRoute *Route
 	// newCtxFunc
 	newCtxFunc func(app *App) CustomCtx
-	// custom binders
-	customBinders []CustomBinder
 	// TLS handler
 	tlsHandler *TLSHandler
 	// Mount fields
 	mountFields *mountFields
-	// Indicates if the value was explicitly configured
-	configured Config
+	// Route stack divided by HTTP methods
+	stack [][]*Route
+	// Route stack divided by HTTP methods and route prefixes
+	treeStack []map[string][]*Route
+	// custom binders
+	customBinders []CustomBinder
 	// customConstraints is a list of external constraints
 	customConstraints []CustomConstraint
 	// sendfiles stores configurations for handling ctx.SendFile operations
 	sendfiles []*sendFileStore
+	// App config
+	config Config
+	// Indicates if the value was explicitly configured
+	configured Config
 	// sendfilesMutex is a mutex used for sendfile operations
 	sendfilesMutex sync.RWMutex
+	mutex          sync.Mutex
+	// Amount of registered routes
+	routesCount uint32
+	// Amount of registered handlers
+	handlersCount uint32
+	// contains the information if the route stack has been changed to build the optimized tree
+	routesRefreshed bool
 }
 
 // Config is a struct holding the server settings.
-type Config struct {
+type Config struct { //nolint:govet // Aligning the struct fields is not necessary. betteralign:ignore
 	// Enables the "Server: value" HTTP header.
 	//
 	// Default: ""

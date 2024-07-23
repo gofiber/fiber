@@ -26,9 +26,9 @@ func Test_Bind_Query(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Query struct {
-		ID    int
 		Name  string
 		Hobby []string
+		ID    int
 	}
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
@@ -53,14 +53,14 @@ func Test_Bind_Query(t *testing.T) {
 	require.Empty(t, empty.Hobby)
 
 	type Query2 struct {
-		Bool            bool
-		ID              int
 		Name            string
 		Hobby           string
 		FavouriteDrinks []string
 		Empty           []string
 		Alloc           []string
 		No              []int64
+		ID              int
+		Bool            bool
 	}
 
 	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football&favouriteDrinks=milo,coke,pepsi&alloc=&no=1")
@@ -237,8 +237,8 @@ func Test_Bind_Query_Schema(t *testing.T) {
 	require.Equal(t, "nested.age is empty", c.Bind().Query(q2).Error())
 
 	type Node struct {
-		Value int   `query:"val,required"`
 		Next  *Node `query:"next,required"`
+		Value int   `query:"val,required"`
 	}
 	c.Request().URI().SetQueryString("val=1&next.val=3")
 	n := new(Node)
@@ -292,9 +292,9 @@ func Test_Bind_Header(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Header struct {
-		ID    int
 		Name  string
 		Hobby []string
+		ID    int
 	}
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
@@ -318,14 +318,14 @@ func Test_Bind_Header(t *testing.T) {
 	require.Empty(t, empty.Hobby)
 
 	type Header2 struct {
-		Bool            bool
-		ID              int
 		Name            string
 		Hobby           string
 		FavouriteDrinks []string
 		Empty           []string
 		Alloc           []string
 		No              []int64
+		ID              int
+		Bool            bool
 	}
 
 	c.Request().Header.Add("id", "2")
@@ -502,8 +502,8 @@ func Test_Bind_Header_Schema(t *testing.T) {
 	require.Equal(t, "Nested.age is empty", c.Bind().Header(h2).Error())
 
 	type Node struct {
-		Value int   `header:"Val,required"`
 		Next  *Node `header:"Next,required"`
+		Value int   `header:"Val,required"`
 	}
 	c.Request().Header.Add("Val", "1")
 	c.Request().Header.Add("Next.Val", "3")
@@ -533,9 +533,9 @@ func Test_Bind_RespHeader(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Header struct {
-		ID    int
 		Name  string
 		Hobby []string
+		ID    int
 	}
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
@@ -559,14 +559,14 @@ func Test_Bind_RespHeader(t *testing.T) {
 	require.Empty(t, empty.Hobby)
 
 	type Header2 struct {
-		Bool            bool
-		ID              int
 		Name            string
 		Hobby           string
 		FavouriteDrinks []string
 		Empty           []string
 		Alloc           []string
 		No              []int64
+		ID              int
+		Bool            bool
 	}
 
 	c.Response().Header.Add("id", "2")
@@ -635,9 +635,9 @@ func Benchmark_Bind_Query(b *testing.B) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Query struct {
-		ID    int
 		Name  string
 		Hobby []string
+		ID    int
 	}
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
@@ -708,9 +708,9 @@ func Benchmark_Bind_Query_Comma(b *testing.B) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Query struct {
-		ID    int
 		Name  string
 		Hobby []string
+		ID    int
 	}
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
@@ -732,9 +732,9 @@ func Benchmark_Bind_Header(b *testing.B) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type ReqHeader struct {
-		ID    int
 		Name  string
 		Hobby []string
+		ID    int
 	}
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
@@ -782,9 +782,9 @@ func Benchmark_Bind_RespHeader(b *testing.B) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type ReqHeader struct {
-		ID    int
 		Name  string
 		Hobby []string
+		ID    int
 	}
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
@@ -1252,9 +1252,9 @@ func Test_Bind_Cookie(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Cookie struct {
-		ID    int
 		Name  string
 		Hobby []string
+		ID    int
 	}
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
@@ -1278,14 +1278,14 @@ func Test_Bind_Cookie(t *testing.T) {
 	require.Empty(t, empty.Hobby)
 
 	type Cookie2 struct {
-		Bool            bool
-		ID              int
 		Name            string
 		Hobby           string
 		FavouriteDrinks []string
 		Empty           []string
 		Alloc           []string
 		No              []int64
+		ID              int
+		Bool            bool
 	}
 
 	c.Request().Header.SetCookie("id", "2")
@@ -1463,8 +1463,8 @@ func Test_Bind_Cookie_Schema(t *testing.T) {
 	require.Equal(t, "Nested.Age is empty", c.Bind().Cookie(h2).Error())
 
 	type Node struct {
-		Value int   `cookie:"Val,required"`
 		Next  *Node `cookie:"Next,required"`
+		Value int   `cookie:"Val,required"`
 	}
 	c.Request().Header.SetCookie("Val", "1")
 	c.Request().Header.SetCookie("Next.Val", "3")
@@ -1495,9 +1495,9 @@ func Benchmark_Bind_Cookie(b *testing.B) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Cookie struct {
-		ID    int
 		Name  string
 		Hobby []string
+		ID    int
 	}
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")

@@ -5,7 +5,7 @@ import (
 )
 
 type Token struct {
+	Expiration time.Time `json:"expiration"`
 	Key        string    `json:"key"`
 	Raw        []byte    `json:"raw"`
-	Expiration time.Time `json:"expiration"`
 }

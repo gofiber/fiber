@@ -19,9 +19,9 @@ import (
 type Response struct {
 	client  *Client
 	request *Request
-	cookie  []*fasthttp.Cookie
 
 	RawResponse *fasthttp.Response
+	cookie      []*fasthttp.Cookie
 }
 
 // setClient method sets client object in response instance.

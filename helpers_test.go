@@ -483,9 +483,9 @@ func Test_Utils_Parse_Address(t *testing.T) {
 	testCases := []struct {
 		addr, host, port string
 	}{
-		{"[::1]:3000", "[::1]", "3000"},
-		{"127.0.0.1:3000", "127.0.0.1", "3000"},
-		{"/path/to/unix/socket", "/path/to/unix/socket", ""},
+		{addr: "[::1]:3000", host: "[::1]", port: "3000"},
+		{addr: "127.0.0.1:3000", host: "127.0.0.1", port: "3000"},
+		{addr: "/path/to/unix/socket", host: "/path/to/unix/socket", port: ""},
 	}
 
 	for _, c := range testCases {
@@ -509,14 +509,14 @@ func Test_Utils_IsNoCache(t *testing.T) {
 		string
 		bool
 	}{
-		{"public", false},
-		{"no-cache", true},
-		{"public, no-cache, max-age=30", true},
-		{"public,no-cache", true},
-		{"public,no-cacheX", false},
-		{"no-cache, public", true},
-		{"Xno-cache, public", false},
-		{"max-age=30, no-cache,public", true},
+		{string: "public", bool: false},
+		{string: "no-cache", bool: true},
+		{string: "public, no-cache, max-age=30", bool: true},
+		{string: "public,no-cache", bool: true},
+		{string: "public,no-cacheX", bool: false},
+		{string: "no-cache, public", bool: true},
+		{string: "Xno-cache, public", bool: false},
+		{string: "max-age=30, no-cache,public", bool: true},
 	}
 
 	for _, c := range testCases {

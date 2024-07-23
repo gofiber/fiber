@@ -11,12 +11,12 @@ import (
 
 // Group struct
 type Group struct {
-	app             *App
-	parentGroup     *Group
-	name            string
-	anyRouteDefined bool
+	app         *App
+	parentGroup *Group
+	name        string
 
-	Prefix string
+	Prefix          string
+	anyRouteDefined bool
 }
 
 // Name Assign name to specific route or group itself.

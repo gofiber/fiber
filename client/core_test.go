@@ -22,8 +22,8 @@ func Test_AddMissing_Port(t *testing.T) {
 	}
 	tests := []struct {
 		name string
-		args args
 		want string
+		args args
 	}{
 		{
 			name: "do anything",

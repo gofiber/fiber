@@ -34,7 +34,7 @@ func Test_EnvVarHandler(t *testing.T) {
 		struct {
 			Vars map[string]string `json:"vars"`
 		}{
-			map[string]string{"testKey": "testVal"},
+			Vars: map[string]string{"testKey": "testVal"},
 		})
 	require.NoError(t, err)
 

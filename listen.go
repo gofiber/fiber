@@ -40,6 +40,36 @@ const (
 //
 // TODO: Add timeout for graceful shutdown.
 type ListenConfig struct {
+	// GracefulContext is a field to shutdown Fiber by given context gracefully.
+	//
+	// Default: nil
+	GracefulContext context.Context `json:"graceful_context"` //nolint:containedctx // It's needed to set context inside Listen.
+
+	// TLSConfigFunc allows customizing tls.Config as you want.
+	//
+	// Default: nil
+	TLSConfigFunc func(tlsConfig *tls.Config) `json:"tls_config_func"`
+
+	// ListenerFunc allows accessing and customizing net.Listener.
+	//
+	// Default: nil
+	ListenerAddrFunc func(addr net.Addr) `json:"listener_addr_func"`
+
+	// BeforeServeFunc allows customizing and accessing fiber app before serving the app.
+	//
+	// Default: nil
+	BeforeServeFunc func(app *App) error `json:"before_serve_func"`
+
+	// OnShutdownError allows to customize error behavior when to graceful shutdown server by given signal.
+	//
+	// Print error with log.Fatalf() by default.
+	// Default: nil
+	OnShutdownError func(err error)
+
+	// OnShutdownSuccess allows to customize success behavior when to graceful shutdown server by given signal.
+	//
+	// Default: nil
+	OnShutdownSuccess func()
 	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only)
 	// WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chosen.
 	//
@@ -64,26 +94,6 @@ type ListenConfig struct {
 	// Default : ""
 	CertClientFile string `json:"cert_client_file"`
 
-	// GracefulContext is a field to shutdown Fiber by given context gracefully.
-	//
-	// Default: nil
-	GracefulContext context.Context `json:"graceful_context"` //nolint:containedctx // It's needed to set context inside Listen.
-
-	// TLSConfigFunc allows customizing tls.Config as you want.
-	//
-	// Default: nil
-	TLSConfigFunc func(tlsConfig *tls.Config) `json:"tls_config_func"`
-
-	// ListenerFunc allows accessing and customizing net.Listener.
-	//
-	// Default: nil
-	ListenerAddrFunc func(addr net.Addr) `json:"listener_addr_func"`
-
-	// BeforeServeFunc allows customizing and accessing fiber app before serving the app.
-	//
-	// Default: nil
-	BeforeServeFunc func(app *App) error `json:"before_serve_func"`
-
 	// When set to true, it will not print out the «Fiber» ASCII art and listening address.
 	//
 	// Default: false
@@ -98,17 +108,6 @@ type ListenConfig struct {
 	//
 	// Default: false
 	EnablePrintRoutes bool `json:"enable_print_routes"`
-
-	// OnShutdownError allows to customize error behavior when to graceful shutdown server by given signal.
-	//
-	// Print error with log.Fatalf() by default.
-	// Default: nil
-	OnShutdownError func(err error)
-
-	// OnShutdownSuccess allows to customize success behavior when to graceful shutdown server by given signal.
-	//
-	// Default: nil
-	OnShutdownSuccess func()
 }
 
 // listenConfigDefault is a function to set default values of ListenConfig.

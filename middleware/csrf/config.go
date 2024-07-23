@@ -13,10 +13,39 @@ import (
 
 // Config defines the config for middleware.
 type Config struct {
+	// Store is used to store the state of the middleware
+	//
+	// Optional. Default: memory.New()
+	// Ignored if Session is set.
+	Storage fiber.Storage
+
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
 	Next func(c fiber.Ctx) bool
+
+	// Session is used to store the state of the middleware
+	//
+	// Optional. Default: nil
+	// If set, the middleware will use the session store instead of the storage
+	Session *session.Store
+
+	// KeyGenerator creates a new CSRF token
+	//
+	// Optional. Default: utils.UUID
+	KeyGenerator func() string
+
+	// ErrorHandler is executed when an error is returned from fiber.Handler.
+	//
+	// Optional. Default: DefaultErrorHandler
+	ErrorHandler fiber.ErrorHandler
+
+	// Extractor returns the csrf token
+	//
+	// If set this will be used in place of an Extractor based on KeyLookup.
+	//
+	// Optional. Default will create an Extractor based on KeyLookup.
+	Extractor func(c fiber.Ctx) (string, error)
 
 	// KeyLookup is a string in the form of "<source>:<key>" that is used
 	// to create an Extractor that extracts the token from the request.
@@ -45,44 +74,9 @@ type Config struct {
 	// Optional. Default value "".
 	CookiePath string
 
-	// Indicates if CSRF cookie is secure.
-	// Optional. Default value false.
-	CookieSecure bool
-
-	// Indicates if CSRF cookie is HTTP only.
-	// Optional. Default value false.
-	CookieHTTPOnly bool
-
 	// Value of SameSite cookie.
 	// Optional. Default value "Lax".
 	CookieSameSite string
-
-	// Decides whether cookie should last for only the browser sesison.
-	// Ignores Expiration if set to true
-	CookieSessionOnly bool
-
-	// Expiration is the duration before csrf token will expire
-	//
-	// Optional. Default: 1 * time.Hour
-	Expiration time.Duration
-
-	// SingleUseToken indicates if the CSRF token be destroyed
-	// and a new one generated on each use.
-	//
-	// Optional. Default: false
-	SingleUseToken bool
-
-	// Store is used to store the state of the middleware
-	//
-	// Optional. Default: memory.New()
-	// Ignored if Session is set.
-	Storage fiber.Storage
-
-	// Session is used to store the state of the middleware
-	//
-	// Optional. Default: nil
-	// If set, the middleware will use the session store instead of the storage
-	Session *session.Store
 
 	// SessionKey is the key used to store the token in the session
 	//
@@ -102,22 +96,28 @@ type Config struct {
 	// Optional. Default: []
 	TrustedOrigins []string
 
-	// KeyGenerator creates a new CSRF token
+	// Expiration is the duration before csrf token will expire
 	//
-	// Optional. Default: utils.UUID
-	KeyGenerator func() string
+	// Optional. Default: 1 * time.Hour
+	Expiration time.Duration
 
-	// ErrorHandler is executed when an error is returned from fiber.Handler.
-	//
-	// Optional. Default: DefaultErrorHandler
-	ErrorHandler fiber.ErrorHandler
+	// Indicates if CSRF cookie is secure.
+	// Optional. Default value false.
+	CookieSecure bool
 
-	// Extractor returns the csrf token
+	// Indicates if CSRF cookie is HTTP only.
+	// Optional. Default value false.
+	CookieHTTPOnly bool
+
+	// Decides whether cookie should last for only the browser sesison.
+	// Ignores Expiration if set to true
+	CookieSessionOnly bool
+
+	// SingleUseToken indicates if the CSRF token be destroyed
+	// and a new one generated on each use.
 	//
-	// If set this will be used in place of an Extractor based on KeyLookup.
-	//
-	// Optional. Default will create an Extractor based on KeyLookup.
-	Extractor func(c fiber.Ctx) (string, error)
+	// Optional. Default: false
+	SingleUseToken bool
 }
 
 const HeaderName = "X-Csrf-Token"
