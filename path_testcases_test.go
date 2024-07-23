@@ -10,8 +10,8 @@ import (
 
 type routeTestCase struct {
 	url          string
-	match        bool
 	params       []string
+	match        bool
 	partialCheck bool
 }
 

@@ -228,10 +228,10 @@ func Benchmark_Compress(b *testing.B) {
 		name           string
 		acceptEncoding string
 	}{
-		{"Gzip", "gzip"},
-		{"Deflate", "deflate"},
-		{"Brotli", "br"},
-		{"Zstd", "zstd"},
+		{name: "Gzip", acceptEncoding: "gzip"},
+		{name: "Deflate", acceptEncoding: "deflate"},
+		{name: "Brotli", acceptEncoding: "br"},
+		{name: "Zstd", acceptEncoding: "zstd"},
 	}
 
 	for _, tt := range tests {
@@ -268,20 +268,20 @@ func Benchmark_Compress_Levels(b *testing.B) {
 		name           string
 		acceptEncoding string
 	}{
-		{"Gzip", "gzip"},
-		{"Deflate", "deflate"},
-		{"Brotli", "br"},
-		{"Zstd", "zstd"},
+		{name: "Gzip", acceptEncoding: "gzip"},
+		{name: "Deflate", acceptEncoding: "deflate"},
+		{name: "Brotli", acceptEncoding: "br"},
+		{name: "Zstd", acceptEncoding: "zstd"},
 	}
 
 	levels := []struct {
 		name  string
 		level Level
 	}{
-		{"LevelDisabled", LevelDisabled},
-		{"LevelDefault", LevelDefault},
-		{"LevelBestSpeed", LevelBestSpeed},
-		{"LevelBestCompression", LevelBestCompression},
+		{name: "LevelDisabled", level: LevelDisabled},
+		{name: "LevelDefault", level: LevelDefault},
+		{name: "LevelBestSpeed", level: LevelBestSpeed},
+		{name: "LevelBestCompression", level: LevelBestCompression},
 	}
 
 	for _, tt := range tests {
@@ -320,10 +320,10 @@ func Benchmark_Compress_Parallel(b *testing.B) {
 		name           string
 		acceptEncoding string
 	}{
-		{"Gzip", "gzip"},
-		{"Deflate", "deflate"},
-		{"Brotli", "br"},
-		{"Zstd", "zstd"},
+		{name: "Gzip", acceptEncoding: "gzip"},
+		{name: "Deflate", acceptEncoding: "deflate"},
+		{name: "Brotli", acceptEncoding: "br"},
+		{name: "Zstd", acceptEncoding: "zstd"},
 	}
 
 	for _, tt := range tests {
@@ -363,20 +363,20 @@ func Benchmark_Compress_Levels_Parallel(b *testing.B) {
 		name           string
 		acceptEncoding string
 	}{
-		{"Gzip", "gzip"},
-		{"Deflate", "deflate"},
-		{"Brotli", "br"},
-		{"Zstd", "zstd"},
+		{name: "Gzip", acceptEncoding: "gzip"},
+		{name: "Deflate", acceptEncoding: "deflate"},
+		{name: "Brotli", acceptEncoding: "br"},
+		{name: "Zstd", acceptEncoding: "zstd"},
 	}
 
 	levels := []struct {
 		name  string
 		level Level
 	}{
-		{"LevelDisabled", LevelDisabled},
-		{"LevelDefault", LevelDefault},
-		{"LevelBestSpeed", LevelBestSpeed},
-		{"LevelBestCompression", LevelBestCompression},
+		{name: "LevelDisabled", level: LevelDisabled},
+		{name: "LevelDefault", level: LevelDefault},
+		{name: "LevelBestSpeed", level: LevelBestSpeed},
+		{name: "LevelBestCompression", level: LevelBestCompression},
 	}
 
 	for _, tt := range tests {

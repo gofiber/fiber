@@ -11,9 +11,8 @@ type Locker interface {
 }
 
 type MemoryLock struct {
-	mu sync.Mutex
-
 	keys map[string]*sync.Mutex
+	mu   sync.Mutex
 }
 
 func (l *MemoryLock) Lock(key string) error {

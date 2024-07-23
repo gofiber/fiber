@@ -41,15 +41,6 @@ type Config struct {
 	// Optional. Default value []string{}
 	AllowHeaders []string
 
-	// AllowCredentials indicates whether or not the response to the request
-	// can be exposed when the credentials flag is true. When used as part of
-	// a response to a preflight request, this indicates whether or not the
-	// actual request can be made using credentials. Note: If true, AllowOrigins
-	// cannot be set to true to prevent security vulnerabilities.
-	//
-	// Optional. Default value false.
-	AllowCredentials bool
-
 	// ExposeHeaders defines a whitelist headers that clients are allowed to
 	// access.
 	//
@@ -64,6 +55,15 @@ type Config struct {
 	//
 	// Optional. Default value 0.
 	MaxAge int
+
+	// AllowCredentials indicates whether or not the response to the request
+	// can be exposed when the credentials flag is true. When used as part of
+	// a response to a preflight request, this indicates whether or not the
+	// actual request can be made using credentials. Note: If true, AllowOrigins
+	// cannot be set to true to prevent security vulnerabilities.
+	//
+	// Optional. Default value false.
+	AllowCredentials bool
 
 	// AllowPrivateNetwork indicates whether the Access-Control-Allow-Private-Network
 	// response header should be set to true, allowing requests from private networks.

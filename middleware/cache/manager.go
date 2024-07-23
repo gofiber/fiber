@@ -11,12 +11,12 @@ import (
 // go:generate msgp
 // msgp -file="manager.go" -o="manager_msgp.go" -tests=false -unexported
 type item struct {
+	headers   map[string][]byte
 	body      []byte
 	ctype     []byte
 	cencoding []byte
 	status    int
 	exp       uint64
-	headers   map[string][]byte
 	// used for finding the item in an indexed heap
 	heapidx int
 }
