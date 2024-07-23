@@ -14,8 +14,47 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// go test -run Test_Limiter_With_Max_Calculator_With_Zero -race -v
-func Test_Limiter_With_Max_Calculator_With_Zero(t *testing.T) {
+// go test -run Test_Limiter_With_Max_Func_With_Zero -race -v
+func Test_Limiter_With_Max_Func_With_Zero_And_Limiter_Sliding(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New(Config{
+		MaxFunc:                func(_ fiber.Ctx) int { return 0 },
+		Expiration:             2 * time.Second,
+		SkipFailedRequests:     false,
+		SkipSuccessfulRequests: false,
+		LimiterMiddleware:      SlidingWindow{},
+	}))
+
+	app.Get("/:status", func(c fiber.Ctx) error {
+		if c.Params("status") == "fail" {
+			return c.SendStatus(400)
+		}
+		return c.SendStatus(200)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
+	require.NoError(t, err)
+	require.Equal(t, 400, resp.StatusCode)
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
+
+	time.Sleep(4*time.Second + 500*time.Millisecond)
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
+}
+
+// go test -run Test_Limiter_With_Max_Func_With_Zero -race -v
+func Test_Limiter_With_Max_Func_With_Zero(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
@@ -54,8 +93,8 @@ func Test_Limiter_With_Max_Calculator_With_Zero(t *testing.T) {
 	require.Equal(t, 200, resp.StatusCode)
 }
 
-// go test -run Test_Limiter_With_Max_Calculator -race -v
-func Test_Limiter_With_Max_Calculator(t *testing.T) {
+// go test -run Test_Limiter_With_Max_Func -race -v
+func Test_Limiter_With_Max_Func(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	max := 10
