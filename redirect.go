@@ -249,10 +249,10 @@ func (r *Redirect) parseAndClearFlashMessages() {
 	for {
 		commaPos = findNextNonEscapedCharsetPosition(cookieValue, []byte(CookieDataSeparator))
 		if commaPos == -1 {
-			r.c.redirectionMessages = append(r.c.redirectionMessages, strings.Trim(cookieValue, " "))
+			r.c.redirectionMessages = append(r.c.redirectionMessages, utils.Trim(cookieValue, ' '))
 			break
 		}
-		r.c.redirectionMessages = append(r.c.redirectionMessages, strings.Trim(cookieValue[:commaPos], " "))
+		r.c.redirectionMessages = append(r.c.redirectionMessages, utils.Trim(cookieValue[:commaPos], ' '))
 		cookieValue = cookieValue[commaPos+1:]
 	}
 

@@ -51,7 +51,7 @@ const (
 	optionalParam                byte = '?'  // concludes a parameter by name and makes it optional
 	paramStarterChar             byte = ':'  // start character for a parameter with name
 	slashDelimiter               byte = '/'  // separator for the route, unlike the other delimiters this character at the end can be optional
-	slashDelimiterStr                 = "/"  // separator for the route, unlike the other delimiters this character at the end can be optional
+	slashDelimiterStr            byte = '/'  // separator for the route, unlike the other delimiters this character at the end can be optional
 	escapeChar                   byte = '\\' // escape character
 	paramConstraintStart         byte = '<'  // start of type constraint for a parameter
 	paramConstraintEnd           byte = '>'  // end of type constraint for a parameter
@@ -161,7 +161,7 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 	}
 	// Strict routing, remove trailing slashes
 	if !config.StrictRouting && len(patternPretty) > 1 {
-		patternPretty = strings.TrimRight(patternPretty, "/")
+		patternPretty = utils.TrimRight(patternPretty, '/')
 	}
 
 	parser := parseRoute(patternPretty)
@@ -233,7 +233,7 @@ func addParameterMetaInfo(segs []*routeSegment) []*routeSegment {
 		} else {
 			comparePart = segs[i].Const
 			if len(comparePart) > 1 {
-				comparePart = strings.TrimRight(comparePart, slashDelimiterStr)
+				comparePart = utils.TrimRight(comparePart, slashDelimiterStr)
 			}
 		}
 	}
