@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/utils/v2"
 )
 
 var (
@@ -62,7 +63,7 @@ func New(config ...Config) fiber.Handler {
 
 	for _, origin := range cfg.TrustedOrigins {
 		if i := strings.Index(origin, "://*."); i != -1 {
-			trimmedOrigin := strings.TrimSpace(origin[:i+3] + origin[i+4:])
+			trimmedOrigin := utils.Trim(origin[:i+3]+origin[i+4:], ' ')
 			isValid, normalizedOrigin := normalizeOrigin(trimmedOrigin)
 			if !isValid {
 				panic("[CSRF] Invalid origin format in configuration:" + origin)
@@ -70,7 +71,7 @@ func New(config ...Config) fiber.Handler {
 			sd := subdomain{prefix: normalizedOrigin[:i+3], suffix: normalizedOrigin[i+3:]}
 			trustedSubOrigins = append(trustedSubOrigins, sd)
 		} else {
-			trimmedOrigin := strings.TrimSpace(origin)
+			trimmedOrigin := utils.Trim(origin, ' ')
 			isValid, normalizedOrigin := normalizeOrigin(trimmedOrigin)
 			if !isValid {
 				panic("[CSRF] Invalid origin format in configuration:" + origin)

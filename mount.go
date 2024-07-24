@@ -6,9 +6,10 @@ package fiber
 
 import (
 	"sort"
-	"strings"
 	"sync"
 	"sync/atomic"
+
+	"github.com/gofiber/utils/v2"
 )
 
 // Put fields related to mounting.
@@ -39,7 +40,7 @@ func newMountFields(app *App) *mountFields {
 // any of the fiber's sub apps are added to the application's error handlers
 // to be invoked on errors that happen within the prefix route.
 func (app *App) mount(prefix string, subApp *App) Router {
-	prefix = strings.TrimRight(prefix, "/")
+	prefix = utils.TrimRight(prefix, '/')
 	if prefix == "" {
 		prefix = "/"
 	}
@@ -69,7 +70,7 @@ func (app *App) mount(prefix string, subApp *App) Router {
 // compose them as a single service using Mount.
 func (grp *Group) mount(prefix string, subApp *App) Router {
 	groupPath := getGroupPath(grp.Prefix, prefix)
-	groupPath = strings.TrimRight(groupPath, "/")
+	groupPath = utils.TrimRight(groupPath, '/')
 	if groupPath == "" {
 		groupPath = "/"
 	}
