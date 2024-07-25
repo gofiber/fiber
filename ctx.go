@@ -339,12 +339,16 @@ func (c *DefaultCtx) Body() []byte {
 		encodingOrder      = []string{"", "", ""}
 	)
 
-	// faster than peek
-	c.Request().Header.VisitAll(func(key, value []byte) {
-		if c.app.getString(key) == HeaderContentEncoding {
-			headerEncoding = c.app.getString(value)
+	// Get Content-Encoding header
+	headerEncoding = utils.UnsafeString(c.Request().Header.ContentEncoding())
+
+	// If no encoding is provided, return the original body
+	if len(headerEncoding) == 0 {
+		if c.app.config.Immutable {
+			return utils.CopyBytes(c.fasthttp.Request.Body())
 		}
-	})
+		return c.fasthttp.Request.Body()
+	}
 
 	// Split and get the encodings list, in order to attend the
 	// rule defined at: https://www.rfc-editor.org/rfc/rfc9110#section-8.4-5
