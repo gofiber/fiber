@@ -60,9 +60,9 @@ type RedirectConfig struct {
 // CookieConfig is a struct that holds the cookie configuration for the redirect.
 type CookieConfig struct {
 	Name     string
+	SameSite string
 	HTTPOnly bool
 	Secure   bool
-	SameSite string
 }
 
 // AcquireRedirect return default Redirect reference from the redirect pool

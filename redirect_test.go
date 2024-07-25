@@ -244,8 +244,8 @@ func Test_Redirect_Route_WithFlashMessages_RedirectConfig(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		cookieConfig  CookieConfig
 		expectedValue string
+		cookieConfig  CookieConfig
 	}{
 		{
 			name:          "Default RedirectConfig",
