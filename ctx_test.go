@@ -366,6 +366,16 @@ func Test_Ctx_BodyRaw(t *testing.T) {
 	require.Equal(t, []byte("john=doe"), c.BodyRaw())
 }
 
+// go test -run Test_Ctx_BodyRaw_Immutable
+func Test_Ctx_BodyRaw_Immutable(t *testing.T) {
+	t.Parallel()
+	app := New(Config{Immutable: true})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+
+	c.Request().SetBodyRaw([]byte("john=doe"))
+	require.Equal(t, []byte("john=doe"), c.BodyRaw())
+}
+
 // go test -v -run=^$ -bench=Benchmark_Ctx_Body -benchmem -count=4
 func Benchmark_Ctx_Body(b *testing.B) {
 	const input = "john=doe"
@@ -388,6 +398,23 @@ func Benchmark_Ctx_BodyRaw(b *testing.B) {
 	const input = "john=doe"
 
 	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+
+	c.Request().SetBodyRaw([]byte(input))
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = c.BodyRaw()
+	}
+
+	require.Equal(b, []byte(input), c.BodyRaw())
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_BodyRaw_Immutable -benchmem -count=4
+func Benchmark_Ctx_BodyRaw_Immutable(b *testing.B) {
+	const input = "john=doe"
+
+	app := New(Config{Immutable: true})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	c.Request().SetBodyRaw([]byte(input))
