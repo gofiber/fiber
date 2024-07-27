@@ -273,10 +273,7 @@ func (c *DefaultCtx) BaseURL() string {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (c *DefaultCtx) BodyRaw() []byte {
-	if c.app.config.Immutable {
-		return utils.CopyBytes(c.fasthttp.Request.Body())
-	}
-	return c.fasthttp.Request.Body()
+	return c.getBody()
 }
 
 func (c *DefaultCtx) tryDecodeBodyInOrder(
@@ -344,20 +341,14 @@ func (c *DefaultCtx) Body() []byte {
 
 	// If no encoding is provided, return the original body
 	if len(headerEncoding) == 0 {
-		if c.app.config.Immutable {
-			return utils.CopyBytes(c.fasthttp.Request.Body())
-		}
-		return c.fasthttp.Request.Body()
+		return c.getBody()
 	}
 
 	// Split and get the encodings list, in order to attend the
 	// rule defined at: https://www.rfc-editor.org/rfc/rfc9110#section-8.4-5
 	encodingOrder = getSplicedStrList(headerEncoding, encodingOrder)
 	if len(encodingOrder) == 0 {
-		if c.app.config.Immutable {
-			return utils.CopyBytes(c.fasthttp.Request.Body())
-		}
-		return c.fasthttp.Request.Body()
+		return c.getBody()
 	}
 
 	var decodesRealized uint8
@@ -1911,6 +1902,14 @@ func (c *DefaultCtx) release() {
 		ReleaseRedirect(c.redirect)
 		c.redirect = nil
 	}
+}
+
+func (c *DefaultCtx) getBody() []byte {
+	if c.app.config.Immutable {
+		return utils.CopyBytes(c.fasthttp.Request.Body())
+	}
+
+	return c.fasthttp.Request.Body()
 }
 
 // Methods to use with next stack.
