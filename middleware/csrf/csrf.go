@@ -12,15 +12,17 @@ import (
 )
 
 var (
-	ErrTokenNotFound   = errors.New("csrf token not found")
-	ErrTokenInvalid    = errors.New("csrf token invalid")
-	ErrRefererNotFound = errors.New("referer not supplied")
-	ErrRefererInvalid  = errors.New("referer invalid")
-	ErrRefererNoMatch  = errors.New("referer does not match host and is not a trusted origin")
-	ErrOriginInvalid   = errors.New("origin invalid")
-	ErrOriginNoMatch   = errors.New("origin does not match host and is not a trusted origin")
-	errOriginNotFound  = errors.New("origin not supplied or is null") // internal error, will not be returned to the user
-	dummyValue         = []byte{'+'}
+	ErrTokenNotFound          = errors.New("csrf token not found")
+	ErrTokenInvalid           = errors.New("csrf token invalid")
+	ErrRefererNotFound        = errors.New("referer not supplied")
+	ErrRefererInvalid         = errors.New("referer invalid")
+	ErrRefererNoMatch         = errors.New("referer does not match host and is not a trusted origin")
+	ErrOriginInvalid          = errors.New("origin invalid")
+	ErrOriginNoMatch          = errors.New("origin does not match host and is not a trusted origin")
+	ErrStorageRetrievalFailed = errors.New("unable to retrieve data from CSRF storage")
+
+	errOriginNotFound = errors.New("origin not supplied or is null") // internal error, will not be returned to the user
+	dummyValue        = []byte{'+'}
 )
 
 // Handler for CSRF middleware
@@ -103,10 +105,12 @@ func New(config ...Config) fiber.Handler {
 		switch c.Method() {
 		case fiber.MethodGet, fiber.MethodHead, fiber.MethodOptions, fiber.MethodTrace:
 			cookieToken := c.Cookies(cfg.CookieName)
-
 			if cookieToken != "" {
-				raw := getRawFromStorage(c, cookieToken, cfg, sessionManager, storageManager)
-
+				raw, err := getRawFromStorage(c, cookieToken, cfg, sessionManager, storageManager)
+				if err != nil {
+					println("hereee+" + err.Error())
+					return cfg.ErrorHandler(c, err)
+				}
 				if raw != nil {
 					token = cookieToken // Token is valid, safe to set it
 				}
@@ -149,14 +153,18 @@ func New(config ...Config) fiber.Handler {
 				return cfg.ErrorHandler(c, ErrTokenInvalid)
 			}
 
-			raw := getRawFromStorage(c, extractedToken, cfg, sessionManager, storageManager)
+			raw, err := getRawFromStorage(c, extractedToken, cfg, sessionManager, storageManager)
+			if err != nil {
 
-			if raw == nil {
+				return cfg.ErrorHandler(c, err)
+			} else if raw == nil {
+
 				// If token is not in storage, expire the cookie
 				expireCSRFCookie(c, cfg)
 				// and return an error
-				return cfg.ErrorHandler(c, ErrTokenNotFound)
+				return cfg.ErrorHandler(c, ErrTokenInvalid)
 			}
+
 			if cfg.SingleUseToken {
 				// If token is single use, delete it from storage
 				deleteTokenFromStorage(c, extractedToken, cfg, sessionManager, storageManager)
@@ -210,7 +218,7 @@ func HandlerFromContext(c fiber.Ctx) *Handler {
 
 // getRawFromStorage returns the raw value from the storage for the given token
 // returns nil if the token does not exist, is expired or is invalid
-func getRawFromStorage(c fiber.Ctx, token string, cfg Config, sessionManager *sessionManager, storageManager *storageManager) []byte {
+func getRawFromStorage(c fiber.Ctx, token string, cfg Config, sessionManager *sessionManager, storageManager *storageManager) ([]byte, error) {
 	if cfg.Session != nil {
 		return sessionManager.getRaw(c, token, dummyValue)
 	}
