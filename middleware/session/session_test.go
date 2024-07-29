@@ -863,7 +863,7 @@ func Benchmark_Session_Asserted_Parallel(b *testing.B) {
 func Test_Session_Concurrency(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	store := New()
+	store := newStore()
 
 	var wg sync.WaitGroup
 	errChan := make(chan error, 10) // Buffered channel to collect errors
@@ -877,7 +877,7 @@ func Test_Session_Concurrency(t *testing.T) {
 
 			localCtx := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-			sess, err := store.Get(localCtx)
+			sess, err := store.getSession(localCtx)
 			if err != nil {
 				errChan <- err
 				return
