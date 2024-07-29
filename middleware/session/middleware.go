@@ -11,12 +11,12 @@ import (
 // Session defines the session middleware configuration
 
 type Middleware struct {
-	config     Config
 	Session    *Session
 	ctx        *fiber.Ctx
+	config     Config
+	mu         sync.RWMutex
 	hasChanged bool // TODO: use this to optimize interaction with the session store
 	destroyed  bool
-	mu         sync.RWMutex
 }
 
 // key for looking up session middleware in request context
@@ -82,7 +82,6 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 		stackErr := c.Next()
 
 		if !m.destroyed {
-
 			// Save the session
 			// This is done after the response is sent to the client
 			// It allows us to modify the session data during the request

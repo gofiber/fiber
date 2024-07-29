@@ -11,6 +11,10 @@ import (
 
 // Config defines the config for middleware.
 type Config struct {
+	// Storage interface to store the session data
+	// Optional. Default value memory.New()
+	Storage fiber.Storage
+
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
@@ -25,14 +29,6 @@ type Config struct {
 	//
 	// Optional. Default: nil
 	ErrorHandler func(*fiber.Ctx, error)
-
-	// Allowed session idle duration
-	// Optional. Default value 24 * time.Hour
-	IdleTimeout time.Duration
-
-	// Storage interface to store the session data
-	// Optional. Default value memory.New()
-	Storage fiber.Storage
 
 	// KeyGenerator generates the session key.
 	// Optional. Default value utils.UUIDv4
@@ -61,6 +57,11 @@ type Config struct {
 
 	// The session name
 	sessionName string
+
+	// Allowed session idle duration
+	// Optional. Default value 24 * time.Hour
+	IdleTimeout time.Duration
+
 	// Allowed session duration
 	// Optional. Default value 24 * time.Hour
 	Expiration time.Duration

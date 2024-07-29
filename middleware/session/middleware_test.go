@@ -95,7 +95,7 @@ func TestMiddleware(t *testing.T) {
 	token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
 	require.NotEmpty(t, token, "Expected Set-Cookie header to be present")
 	tokenParts := strings.SplitN(strings.SplitN(token, ";", 2)[0], "=", 2)
-	require.Equal(t, 2, len(tokenParts), "Expected Set-Cookie header to contain a token")
+	require.Len(t, tokenParts, 2, "Expected Set-Cookie header to contain a token")
 	token = tokenParts[1]
 	require.Equal(t, "key not found", string(ctx.Response.Body()))
 
@@ -151,7 +151,7 @@ func TestMiddleware(t *testing.T) {
 	newToken := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
 	require.NotEmpty(t, newToken, "Expected Set-Cookie header to be present")
 	newTokenParts := strings.SplitN(strings.SplitN(newToken, ";", 2)[0], "=", 2)
-	require.Equal(t, 2, len(newTokenParts), "Expected Set-Cookie header to contain a token")
+	require.Len(t, newTokenParts, 2, "Expected Set-Cookie header to contain a token")
 	newToken = newTokenParts[1]
 	require.NotEqual(t, token, newToken)
 	token = newToken
@@ -219,7 +219,7 @@ func TestMiddleware(t *testing.T) {
 	newToken = string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
 	require.NotEmpty(t, newToken, "Expected Set-Cookie header to be present")
 	newTokenParts = strings.SplitN(strings.SplitN(newToken, ";", 2)[0], "=", 2)
-	require.Equal(t, 2, len(newTokenParts), "Expected Set-Cookie header to contain a token")
+	require.Len(t, newTokenParts, 2, "Expected Set-Cookie header to contain a token")
 	newToken = newTokenParts[1]
 	require.NotEqual(t, token, newToken)
 }
