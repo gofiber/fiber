@@ -316,11 +316,11 @@ func Test_Utils_GetSplicedStrList(t *testing.T) {
 func Benchmark_Utils_GetSplicedStrList(b *testing.B) {
 	destination := make([]string, 5)
 	result := destination
-	const input = `deflate, gzip,br,brotli`
+	const input = `deflate, gzip,br,brotli,zstd`
 	for n := 0; n < b.N; n++ {
 		result = getSplicedStrList(input, destination)
 	}
-	require.Equal(b, []string{"deflate", "gzip", "br", "brotli"}, result)
+	require.Equal(b, []string{"deflate", "gzip", "br", "brotli", "zstd"}, result)
 }
 
 func Test_Utils_SortAcceptedTypes(t *testing.T) {

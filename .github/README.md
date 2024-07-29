@@ -1,4 +1,4 @@
-<p align="center">
+<h1 align="center">
   <a href="https://gofiber.io">
     <picture>
       <source height="125" media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/gofiber/docs/master/static/img/logo-dark.svg">
@@ -12,7 +12,7 @@
   <a href="https://goreportcard.com/report/github.com/gofiber/fiber/v3">
     <img src="https://img.shields.io/badge/%F0%9F%93%9D%20goreport-A%2B-75C46B?style=flat-square">
   </a>
-  <a href="https://codecov.io/gh/gofiber/fiber" > 
+  <a href="https://codecov.io/gh/gofiber/fiber" >
    <img alt="Codecov" src="https://img.shields.io/codecov/c/github/gofiber/fiber?token=3Cr92CwaPQ&style=flat-square&logo=codecov&label=codecov">
  </a>
   <a href="https://github.com/gofiber/fiber/actions?query=workflow%3ATest">
@@ -24,9 +24,9 @@
   <a href="https://gofiber.io/discord">
     <img src="https://img.shields.io/discord/704680098577514527?style=flat-square&label=%F0%9F%92%AC%20discord&color=00ACD7">
   </a>
-</p>
+</h1>
 <p align="center">
-  <em><b>Fiber</b> is an <a href="https://github.com/expressjs/express">Express</a> inspired <b>web framework</b> built on top of <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, the <b>fastest</b> HTTP engine for <a href="https://go.dev/doc/">Go</a>. Designed to <b>ease</b> things up for <b>fast</b> development with <b>zero memory allocation</b> and <b>performance</b> in mind.</em>
+  <em><b>Fiber</b> is an <a href="https://github.com/expressjs/express">Express</a> inspired <b>web framework</b> built on top of <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, the <b>fastest</b> HTTP engine for <a href="https://go.dev/doc/">Go</a>. Designed to <b>ease</b> things up for <b>fast</b> development with <a href="https://docs.gofiber.io/#zero-allocation"><b>zero memory allocation</b></a> and <b>performance</b> in mind.</em>
 </p>
 
 ---
@@ -57,7 +57,7 @@ This command fetches the Fiber package and adds it to your project's dependencie
 
 ## ⚡️ Quickstart
 
-Getting started with Fiber is easy. Here's a basic example to create a simple web server that responds with "Hello, World 👋!" on the root path. This example demonstrates initializing a new Fiber app, setting up a route, and starting the server. 
+Getting started with Fiber is easy. Here's a basic example to create a simple web server that responds with "Hello, World 👋!" on the root path. This example demonstrates initializing a new Fiber app, setting up a route, and starting the server.
 
 ```go
 package main
@@ -85,6 +85,10 @@ func main() {
 
 This simple server is easy to set up and run. It introduces the core concepts of Fiber: app initialization, route definition, and starting the server. Just run this Go program, and visit `http://localhost:3000` in your browser to see the message.
 
+## Zero Allocation
+
+Fiber is optimized for **high-performance**, meaning values returned from **fiber.Ctx** are **not** immutable by default and **will** be re-used across requests. As a rule of thumb, you **must** only use context values within the handler and **must not** keep any references. Once you return from the handler, any values obtained from the context will be re-used in future requests. Visit our [documentation](https://docs.gofiber.io/#zero-allocation) to learn more.
+
 ## 🤖 Benchmarks
 
 These tests are performed by [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) and [Go Web](https://github.com/smallnest/go-web-framework-benchmark). If you want to see all the results, please visit our [Wiki](https://docs.gofiber.io/extra/benchmarks).
@@ -96,19 +100,19 @@ These tests are performed by [TechEmpower](https://www.techempower.com/benchmark
 
 ## 🎯 Features
 
--   Robust [Routing](https://docs.gofiber.io/guide/routing)
--   Serve [Static Files](https://docs.gofiber.io/api/app#static)
--   Extreme [Performance](https://docs.gofiber.io/extra/benchmarks)
--   [Low Memory](https://docs.gofiber.io/extra/benchmarks) footprint
--   [API Endpoints](https://docs.gofiber.io/api/ctx)
--   [Middleware](https://docs.gofiber.io/category/-middleware) & [Next](https://docs.gofiber.io/api/ctx#next) support
--   [Rapid](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) server-side programming
--   [Template Engines](https://github.com/gofiber/template)
--   [WebSocket Support](https://github.com/gofiber/contrib/tree/main/websocket)
--   [Socket.io Support](https://github.com/gofiber/contrib/tree/main/socketio)
--   [Server-Sent Events](https://github.com/gofiber/recipes/tree/master/sse)
--   [Rate Limiter](https://docs.gofiber.io/api/middleware/limiter)
--   And much more, [explore Fiber](https://docs.gofiber.io/)
+- Robust [Routing](https://docs.gofiber.io/guide/routing)
+- Serve [Static Files](https://docs.gofiber.io/api/app#static)
+- Extreme [Performance](https://docs.gofiber.io/extra/benchmarks)
+- [Low Memory](https://docs.gofiber.io/extra/benchmarks) footprint
+- [API Endpoints](https://docs.gofiber.io/api/ctx)
+- [Middleware](https://docs.gofiber.io/category/-middleware) & [Next](https://docs.gofiber.io/api/ctx#next) support
+- [Rapid](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) server-side programming
+- [Template Engines](https://github.com/gofiber/template)
+- [WebSocket Support](https://github.com/gofiber/contrib/tree/main/websocket)
+- [Socket.io Support](https://github.com/gofiber/contrib/tree/main/socketio)
+- [Server-Sent Events](https://github.com/gofiber/recipes/tree/master/sse)
+- [Rate Limiter](https://docs.gofiber.io/api/middleware/limiter)
+- And much more, [explore Fiber](https://docs.gofiber.io/)
 
 ## 💡 Philosophy
 
@@ -120,14 +124,14 @@ We **listen** to our users in [issues](https://github.com/gofiber/fiber/issues),
 
 ## ⚠️ Limitations
 
--   Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber 3.0.0 has been tested with Go versions 1.21 and 1.22.
--   Fiber is not compatible with net/http interfaces. This means you will not be able to use projects like gqlgen, go-swagger, or any others which are part of the net/http ecosystem.
+- Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber v3 has been tested with Go versions 1.21 and 1.22.
+- Fiber is not compatible with net/http interfaces. This means you will not be able to use projects like gqlgen, go-swagger, or any others which are part of the net/http ecosystem.
 
 ## 👀 Examples
 
 Listed below are some of the common examples. If you want to see more code examples, please visit our [Recipes repository](https://github.com/gofiber/recipes) or visit our hosted [API documentation](https://docs.gofiber.io).
 
-#### 📖 [**Basic Routing**](https://docs.gofiber.io/#basic-routing)
+### 📖 [**Basic Routing**](https://docs.gofiber.io/#basic-routing)
 
 ```go
 func main() {
@@ -577,7 +581,7 @@ Here is a list of middleware that are included within the Fiber framework.
 | [adaptor](https://github.com/gofiber/fiber/tree/main/middleware/adaptor)             | Converter for net/http handlers to/from Fiber request handlers.                                                                                                         |
 | [basicauth](https://github.com/gofiber/fiber/tree/main/middleware/basicauth)         | Provides HTTP basic authentication. It calls the next handler for valid credentials and 401 Unauthorized for missing or invalid credentials.                            |
 | [cache](https://github.com/gofiber/fiber/tree/main/middleware/cache)                 | Intercept and cache HTTP responses.                                                                                                                                     |
-| [compress](https://github.com/gofiber/fiber/tree/main/middleware/compress)           | Compression middleware for Fiber, with support for `deflate`, `gzip` and `brotli`.                                                                                      |
+| [compress](https://github.com/gofiber/fiber/tree/main/middleware/compress)           | Compression middleware for Fiber, with support for `deflate`, `gzip`, `brotli` and `zstd`.                                                                                      |
 | [cors](https://github.com/gofiber/fiber/tree/main/middleware/cors)                   | Enable cross-origin resource sharing (CORS) with various options.                                                                                                       |
 | [csrf](https://github.com/gofiber/fiber/tree/main/middleware/csrf)                   | Protect from CSRF exploits.                                                                                                                                             |
 | [earlydata](https://github.com/gofiber/fiber/tree/main/middleware/earlydata)         | Adds support for TLS 1.3's early data ("0-RTT") feature.                                                                                                                |
@@ -630,14 +634,14 @@ If you want to say **Thank You** and/or support the active development of `Fiber
 
 To ensure your contributions are ready for a Pull Request, please use the following `Makefile` commands. These tools help maintain code quality, consistency.
 
-* **make help**: Display available commands.
-* **make audit**: Conduct quality checks.
-* **make benchmark**: Benchmark code performance.
-* **make coverage**: Generate test coverage report.
-* **make format**: Automatically format code.
-* **make lint**: Run lint checks.
-* **make test**: Execute all tests.
-* **make tidy**: Tidy dependencies.
+- **make help**: Display available commands.
+- **make audit**: Conduct quality checks.
+- **make benchmark**: Benchmark code performance.
+- **make coverage**: Generate test coverage report.
+- **make format**: Automatically format code.
+- **make lint**: Run lint checks.
+- **make test**: Execute all tests.
+- **make tidy**: Tidy dependencies.
 
 Run these commands to ensure your code adheres to project standards and best practices.
 

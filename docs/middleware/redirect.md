@@ -18,35 +18,35 @@ func New(config ...Config) fiber.Handler
 package main
 
 import (
-  "github.com/gofiber/fiber/v3"
-  "github.com/gofiber/fiber/v3/middleware/redirect"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/redirect"
 )
 
 func main() {
-  app := fiber.New()
-  
-  app.Use(redirect.New(redirect.Config{
-    Rules: map[string]string{
-      "/old":   "/new",
-      "/old/*": "/new/$1",
-    },
-    StatusCode: 301,
-  }))
-  
-  app.Get("/new", func(c fiber.Ctx) error {
-    return c.SendString("Hello, World!")
-  })
-  app.Get("/new/*", func(c fiber.Ctx) error {
-    return c.SendString("Wildcard: " + c.Params("*"))
-  })
-  
-  app.Listen(":3000")
+    app := fiber.New()
+    
+    app.Use(redirect.New(redirect.Config{
+      Rules: map[string]string{
+        "/old":   "/new",
+        "/old/*": "/new/$1",
+      },
+      StatusCode: 301,
+    }))
+    
+    app.Get("/new", func(c fiber.Ctx) error {
+      return c.SendString("Hello, World!")
+    })
+    app.Get("/new/*", func(c fiber.Ctx) error {
+      return c.SendString("Wildcard: " + c.Params("*"))
+    })
+    
+    app.Listen(":3000")
 }
 ```
 
-**Test:**
+## Test
 
-```curl
+```bash
 curl http://localhost:3000/old
 curl http://localhost:3000/old/hello
 ```
@@ -63,6 +63,6 @@ curl http://localhost:3000/old/hello
 
 ```go
 var ConfigDefault = Config{
-	StatusCode: fiber.StatusFound,
+    StatusCode: fiber.StatusFound,
 }
 ```

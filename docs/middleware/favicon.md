@@ -22,8 +22,8 @@ Import the middleware package that is part of the Fiber web framework
 
 ```go
 import (
-  "github.com/gofiber/fiber/v3"
-  "github.com/gofiber/fiber/v3/middleware/favicon"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/favicon"
 )
 ```
 
@@ -55,9 +55,9 @@ app.Use(favicon.New(favicon.Config{
 
 ```go
 var ConfigDefault = Config{
-	Next:         nil,
-	File:         "",
-	URL:          fPath,
-	CacheControl: "public, max-age=31536000",
+    Next:         nil,
+    File:         "",
+    URL:          fPath,
+    CacheControl: "public, max-age=31536000",
 }
 ```

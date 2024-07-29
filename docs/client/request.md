@@ -18,31 +18,30 @@ This structure is designed to be flexible and efficient, allowing users to easil
 
 ```go
 type Request struct {
-	url       string
-	method    string
-	userAgent string
-	boundary  string
-	referer   string
-	ctx       context.Context
-	header    *Header
-	params    *QueryParam
-	cookies   *Cookie
-	path      *PathParam
+    url       string
+    method    string
+    userAgent string
+    boundary  string
+    referer   string
+    ctx       context.Context
+    header    *Header
+    params    *QueryParam
+    cookies   *Cookie
+    path      *PathParam
 
-	timeout      time.Duration
-	maxRedirects int
+    timeout      time.Duration
+    maxRedirects int
 
-	client *Client
+    client *Client
 
-	body     any
-	formData *FormData
-	files    []*File
-	bodyType bodyType
+    body     any
+    formData *FormData
+    files    []*File
+    bodyType bodyType
 
-	RawRequest *fasthttp.Request
+    RawRequest *fasthttp.Request
 }
 ```
-
 
 ## REST Methods
 
@@ -207,6 +206,7 @@ func (r *Request) SetContext(ctx context.Context) *Request
 ## Header
 
 Header method returns header value via key, this method will visit all field in the header.
+
 ```go title="Signature"
 func (r *Request) Header(key string) []string
 ```
@@ -229,7 +229,7 @@ req.AddHeader("Test", "654321")
 
 resp, err := req.Get("https://httpbin.org/headers")
 if err != nil {
-	panic(err)
+    panic(err)
 }
 
 fmt.Println(resp.String())
@@ -271,7 +271,7 @@ req.SetHeader("Test", "654321")
 
 resp, err := req.Get("https://httpbin.org/headers")
 if err != nil {
-	panic(err)
+    panic(err)
 }
 
 fmt.Println(resp.String())
@@ -338,7 +338,7 @@ req.AddParam("hobbies", "basketball")
 
 resp, err := req.Get("https://httpbin.org/response-headers")
 if err != nil {
-	panic(err)
+    panic(err)
 }
 
 fmt.Println(string(resp.Body()))
@@ -401,19 +401,19 @@ req := client.AcquireRequest()
 defer client.ReleaseRequest(req)
 
 req.SetParamsWithStruct(struct {
-	Name    string   `json:"name"`
-	Hobbies []string `json:"hobbies"`
+    Name    string   `json:"name"`
+    Hobbies []string `json:"hobbies"`
 }{
-	Name: "John Doe",
-	Hobbies: []string{
-		"Football",
-		"Basketball",
-	},
+    Name: "John Doe",
+    Hobbies: []string{
+        "Football",
+        "Basketball",
+    },
 })
 
 resp, err := req.Get("https://httpbin.org/response-headers")
 if err != nil {
-	panic(err)
+    panic(err)
 }
 
 fmt.Println(string(resp.Body()))
@@ -525,13 +525,13 @@ req := client.AcquireRequest()
 defer client.ReleaseRequest(req)
 
 req.SetCookies(map[string]string{
-	"cookie1": "value1",
-	"cookie2": "value2",
+    "cookie1": "value1",
+    "cookie2": "value2",
 })
 
 resp, err := req.Get("https://httpbin.org/cookies")
 if err != nil {
-	panic(err)
+    panic(err)
 }
 
 fmt.Println(string(resp.Body()))
@@ -592,7 +592,7 @@ req.SetPathParam("base64", "R29maWJlcg==")
 
 resp, err := req.Get("https://httpbin.org/base64/:base64")
 if err != nil {
-	panic(err)
+    panic(err)
 }
 
 fmt.Println(string(resp.Body()))
@@ -691,7 +691,7 @@ req.AddFormData("points", "100")
 
 resp, err := req.Post("https://httpbin.org/post")
 if err != nil {
-	panic(err)
+    panic(err)
 }
 
 fmt.Println(string(resp.Body()))
@@ -735,7 +735,7 @@ req.SetFormData("email", "john@doe.com")
 
 resp, err := req.Post("https://httpbin.org/post")
 if err != nil {
-	panic(err)
+    panic(err)
 }
 
 fmt.Println(string(resp.Body()))
@@ -832,7 +832,7 @@ req.AddFile("test.txt")
 
 resp, err := req.Post("https://httpbin.org/post")
 if err != nil {
-	panic(err)
+    panic(err)
 }
 
 fmt.Println(string(resp.Body()))
@@ -872,7 +872,7 @@ req.AddFileWithReader("test.txt", io.NopCloser(buf))
 
 resp, err := req.Post("https://httpbin.org/post")
 if err != nil {
-	panic(err)
+    panic(err)
 }
 
 fmt.Println(string(resp.Body()))
@@ -928,7 +928,7 @@ req.SetTimeout(5 * time.Second)
 
 resp, err := req.Get("https://httpbin.org/delay/4")
 if err != nil {
-	panic(err)
+    panic(err)
 }
 
 fmt.Println(string(resp.Body()))
@@ -957,7 +957,7 @@ req.SetTimeout(5 * time.Second)
 
 resp, err := req.Get("https://httpbin.org/delay/6")
 if err != nil {
-	panic(err)
+    panic(err)
 }
 
 fmt.Println(string(resp.Body()))
@@ -1016,7 +1016,7 @@ Header is a wrapper which wrap http.Header, the header in client and request wil
 
 ```go
 type Header struct {
-	*fasthttp.RequestHeader
+    *fasthttp.RequestHeader
 }
 ```
 
@@ -1050,7 +1050,7 @@ QueryParam is a wrapper which wrap url.Values, the query string and formdata in 
 
 ```go
 type QueryParam struct {
-	*fasthttp.Args
+    *fasthttp.Args
 }
 ```
 
@@ -1229,7 +1229,7 @@ FormData is a wrapper of fasthttp.Args and it is used for url encode body and fi
 
 ```go
 type FormData struct {
-	*fasthttp.Args
+    *fasthttp.Args
 }
 ```
 
@@ -1295,10 +1295,10 @@ File is a struct which support send files via request.
 
 ```go
 type File struct {
-	name      string
-	fieldName string
-	path      string
-	reader    io.ReadCloser
+    name      string
+    fieldName string
+    path      string
+    reader    io.ReadCloser
 }
 ```
 

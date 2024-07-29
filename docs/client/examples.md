@@ -18,28 +18,29 @@ import TabItem from '@theme/TabItem';
 package main
 
 import (
-	"encoding/base64"
-	"fmt"
+    "encoding/base64"
+    "fmt"
 
-	"github.com/gofiber/fiber/v3/client"
+    "github.com/gofiber/fiber/v3/client"
 )
 
 func main() {
-	cc := client.New()
+    cc := client.New()
 
-	out := base64.StdEncoding.EncodeToString([]byte("john:doe"))
-	resp, err := cc.Get("http://localhost:3000", client.Config{
-		Header: map[string]string{
-			"Authorization": "Basic " + out,
-		},
-	})
-	if err != nil {
-		panic(err)
-	}
+    out := base64.StdEncoding.EncodeToString([]byte("john:doe"))
+    resp, err := cc.Get("http://localhost:3000", client.Config{
+        Header: map[string]string{
+            "Authorization": "Basic " + out,
+        },
+    })
+    if err != nil {
+        panic(err)
+    }
 
-	fmt.Print(string(resp.Body()))
+    fmt.Print(string(resp.Body()))
 }
 ```
+
 </TabItem>
 <TabItem value="server" label="Server">
 
@@ -47,27 +48,28 @@ func main() {
 package main
 
 import (
-	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/middleware/basicauth"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/basicauth"
 )
 
 func main() {
-	app := fiber.New()
-	app.Use(
-		basicauth.New(basicauth.Config{
-			Users: map[string]string{
-				"john": "doe",
-			},
-		}),
-	)
+    app := fiber.New()
+    app.Use(
+        basicauth.New(basicauth.Config{
+            Users: map[string]string{
+                "john": "doe",
+            },
+        }),
+    )
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("Hello, World!")
-	})
+    app.Get("/", func(c fiber.Ctx) error {
+        return c.SendString("Hello, World!")
+    })
 
-	app.Listen(":3000")
+    app.Listen(":3000")
 }
 ```
+
 </TabItem>
 </Tabs>
 
@@ -80,40 +82,41 @@ func main() {
 package main
 
 import (
-	"crypto/tls"
-	"crypto/x509"
-	"fmt"
-	"os"
+    "crypto/tls"
+    "crypto/x509"
+    "fmt"
+    "os"
 
-	"github.com/gofiber/fiber/v3/client"
+    "github.com/gofiber/fiber/v3/client"
 )
 
 func main() {
-	cc := client.New()
+    cc := client.New()
 
-	certPool, err := x509.SystemCertPool()
-	if err != nil {
-		panic(err)
-	}
+    certPool, err := x509.SystemCertPool()
+    if err != nil {
+        panic(err)
+    }
 
-	cert, err := os.ReadFile("ssl.cert")
-	if err != nil {
-		panic(err)
-	}
+    cert, err := os.ReadFile("ssl.cert")
+    if err != nil {
+        panic(err)
+    }
 
-	certPool.AppendCertsFromPEM(cert)
-	cc.SetTLSConfig(&tls.Config{
-		RootCAs: certPool,
-	})
+    certPool.AppendCertsFromPEM(cert)
+    cc.SetTLSConfig(&tls.Config{
+        RootCAs: certPool,
+    })
 
-	resp, err := cc.Get("https://localhost:3000")
-	if err != nil {
-		panic(err)
-	}
+    resp, err := cc.Get("https://localhost:3000")
+    if err != nil {
+        panic(err)
+    }
 
-	fmt.Print(string(resp.Body()))
+    fmt.Print(string(resp.Body()))
 }
 ```
+
 </TabItem>
 <TabItem value="server" label="Server">
 
@@ -121,25 +124,26 @@ func main() {
 package main
 
 import (
-	"github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3"
 )
 
 func main() {
-	app := fiber.New()
+    app := fiber.New()
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("Hello, World!")
-	})
+    app.Get("/", func(c fiber.Ctx) error {
+        return c.SendString("Hello, World!")
+    })
 
-	err := app.Listen(":3000", fiber.ListenConfig{
-		CertFile:    "ssl.cert",
-		CertKeyFile: "ssl.key",
-	})
-	if err != nil {
-		panic(err)
-	}
+    err := app.Listen(":3000", fiber.ListenConfig{
+        CertFile:    "ssl.cert",
+        CertKeyFile: "ssl.key",
+    })
+    if err != nil {
+        panic(err)
+    }
 }
 ```
+
 </TabItem>
 </Tabs>
 
@@ -149,20 +153,20 @@ func main() {
 
 ```go
 func main() {
-	jar := client.AcquireCookieJar()
-	defer client.ReleaseCookieJar(jar)
+    jar := client.AcquireCookieJar()
+    defer client.ReleaseCookieJar(jar)
 
-	cc := client.New()
-	cc.SetCookieJar(jar)
+    cc := client.New()
+    cc.SetCookieJar(jar)
 
-	jar.SetKeyValueBytes("httpbin.org", []byte("john"), []byte("doe"))
+    jar.SetKeyValueBytes("httpbin.org", []byte("john"), []byte("doe"))
 
-	resp, err := cc.Get("https://httpbin.org/cookies")
-	if err != nil {
-		panic(err)
-	}
+    resp, err := cc.Get("https://httpbin.org/cookies")
+    if err != nil {
+        panic(err)
+    }
 
-	fmt.Println(string(resp.Body()))
+    fmt.Println(string(resp.Body()))
 }
 ```
 
@@ -183,23 +187,23 @@ func main() {
 
 ```go
 func main() {
-	jar := client.AcquireCookieJar()
-	defer client.ReleaseCookieJar(jar)
+    jar := client.AcquireCookieJar()
+    defer client.ReleaseCookieJar(jar)
 
-	cc := client.New()
-	cc.SetCookieJar(jar)
+    cc := client.New()
+    cc.SetCookieJar(jar)
 
-	_, err := cc.Get("https://httpbin.org/cookies/set/john/doe")
-	if err != nil {
-		panic(err)
-	}
+    _, err := cc.Get("https://httpbin.org/cookies/set/john/doe")
+    if err != nil {
+        panic(err)
+    }
 
-	uri := fasthttp.AcquireURI()
-	defer fasthttp.ReleaseURI(uri)
+    uri := fasthttp.AcquireURI()
+    defer fasthttp.ReleaseURI(uri)
 
-	uri.SetHost("httpbin.org")
-	uri.SetPath("/cookies")
-	fmt.Println(jar.Get(uri))
+    uri.SetHost("httpbin.org")
+    uri.SetPath("/cookies")
+    fmt.Println(jar.Get(uri))
 }
 ```
 
@@ -216,23 +220,23 @@ func main() {
 
 ```go
 func main() {
-	jar := client.AcquireCookieJar()
-	defer client.ReleaseCookieJar(jar)
+    jar := client.AcquireCookieJar()
+    defer client.ReleaseCookieJar(jar)
 
-	cc := client.New()
-	cc.SetCookieJar(jar)
+    cc := client.New()
+    cc.SetCookieJar(jar)
 
-	_, err := cc.Get("https://httpbin.org/cookies/set/john/doe")
-	if err != nil {
-		panic(err)
-	}
+    _, err := cc.Get("https://httpbin.org/cookies/set/john/doe")
+    if err != nil {
+        panic(err)
+    }
 
-	resp, err := cc.Get("https://httpbin.org/cookies")
-	if err != nil {
-		panic(err)
-	}
+    resp, err := cc.Get("https://httpbin.org/cookies")
+    if err != nil {
+        panic(err)
+    }
 
-	fmt.Println(resp.String())
+    fmt.Println(resp.String())
 }
 ```
 

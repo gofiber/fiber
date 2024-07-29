@@ -165,7 +165,6 @@ Performs content-negotiation on the [Accept](https://developer.mozilla.org/en-US
 The supported content types are `text/html`, `text/plain`, `application/json`, and `application/xml`.
 For more flexible content negotiation, use [Format](ctx.md#format).
 
-
 :::info
 If the header is **not** specified or there is **no** proper format, **text/plain** is used.
 :::
@@ -375,16 +374,17 @@ func (c Ctx) Cookie(cookie *Cookie)
 
 ```go
 type Cookie struct {
-    Name        string    `json:"name"`
-    Value       string    `json:"value"`
-    Path        string    `json:"path"`
-    Domain      string    `json:"domain"`
-    MaxAge      int       `json:"max_age"`
-    Expires     time.Time `json:"expires"`
-    Secure      bool      `json:"secure"`
-    HTTPOnly    bool      `json:"http_only"`
-    SameSite    string    `json:"same_site"`
-    SessionOnly bool      `json:"session_only"`
+    Name        string    `json:"name"`         // The name of the cookie
+    Value       string    `json:"value"`        // The value of the cookie
+    Path        string    `json:"path"`         // Specifies a URL path which is allowed to receive the cookie
+    Domain      string    `json:"domain"`       // Specifies the domain which is allowed to receive the cookie
+    MaxAge      int       `json:"max_age"`      // The maximum age (in seconds) of the cookie
+    Expires     time.Time `json:"expires"`      // The expiration date of the cookie
+    Secure      bool      `json:"secure"`       // Indicates that the cookie should only be transmitted over a secure HTTPS connection
+    HTTPOnly    bool      `json:"http_only"`    // Indicates that the cookie is accessible only through the HTTP protocol
+    SameSite    string    `json:"same_site"`    // Controls whether or not a cookie is sent with cross-site requests
+    Partitioned bool      `json:"partitioned"`  // Indicates if the cookie is stored in a partitioned cookie jar
+    SessionOnly bool      `json:"session_only"` // Indicates if the cookie is a session-only cookie
 }
 ```
 
@@ -399,6 +399,26 @@ app.Get("/", func(c fiber.Ctx) error {
   // Set cookie
   c.Cookie(cookie)
   // ...
+})
+```
+
+:::info
+
+Partitioned cookies allow partitioning the cookie jar by top-level site, enhancing user privacy by preventing cookies from being shared across different sites. This feature is particularly useful in scenarios where a user interacts with embedded third-party services that should not have access to the main site's cookies. You can check out [CHIPS](https://developers.google.com/privacy-sandbox/3pcd/chips) for more information.
+
+:::
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  // Create a new partitioned cookie
+  cookie := new(fiber.Cookie)
+  cookie.Name = "user_session"
+  cookie.Value = "abc123"
+  cookie.Partitioned = true  // This cookie will be stored in a separate jar when it's embeded into another website
+
+  // Set the cookie in the response
+  c.Cookie(cookie)
+  return c.SendString("Partitioned cookie set")
 })
 ```
 
@@ -945,10 +965,10 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ## Locals
 
-A method that stores variables scoped to the request and, therefore, are available only to the routes that match the request.
+A method that stores variables scoped to the request and, therefore, are available only to the routes that match the request. The stored variables are removed after the request is handled. If any of the stored data implements the `io.Closer` interface, its `Close` method will be called before it's removed.
 
 :::tip
-This is useful if you want to pass some **specific** data to the next middleware.
+This is useful if you want to pass some **specific** data to the next middleware. Remember to perform type assertions when retrieving the data to ensure it is of the expected type. You can also use a non-exported type as a key to avoid collisions.
 :::
 
 ```go title="Signature"
@@ -957,30 +977,30 @@ func (c Ctx) Locals(key any, value ...any) any
 
 ```go title="Example"
 
-// key is an unexported type for keys defined in this package.
+// keyType is an unexported type for keys defined in this package.
 // This prevents collisions with keys defined in other packages.
-type key int
+type keyType int
 
 // userKey is the key for user.User values in Contexts. It is
 // unexported; clients use user.NewContext and user.FromContext
 // instead of using this key directly.
-var userKey key
+var userKey keyType
 
 app.Use(func(c fiber.Ctx) error {
-  c.Locals(userKey, "admin")
+  c.Locals(userKey, "admin") // Stores the string "admin" under a non-exported type key
   return c.Next()
 })
 
 app.Get("/admin", func(c fiber.Ctx) error {
-  if c.Locals(userKey) == "admin" {
+  user, ok := c.Locals(userKey).(string) // Retrieves the data stored under the key and performs a type assertion
+  if ok && user == "admin" {
     return c.Status(fiber.StatusOK).SendString("Welcome, admin!")
   }
   return c.SendStatus(fiber.StatusForbidden)
-
 })
 ```
 
-An alternative version of the Locals method that takes advantage of Go's generics feature is also available. This version 
+An alternative version of the Locals method that takes advantage of Go's generics feature is also available. This version
 allows for the manipulation and retrieval of local values within a request's context with a more specific data type.
 
 ```go title="Signature"
@@ -1002,7 +1022,7 @@ app.Get("/test", func(c Ctx) error {
 })
 ````
 
-Make sure to understand and correctly implement the Locals method in both its standard and generic form for better control 
+Make sure to understand and correctly implement the Locals method in both its standard and generic form for better control
 over route-specific data within your application.
 
 ## Location
@@ -1185,9 +1205,8 @@ Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more..
 
 :::
 
-
-In certain scenarios, it can be useful to have an alternative approach to handle different types of parameters, not 
-just strings. This can be achieved using a generic Query function known as `Params[V GenericType](c Ctx, key string, defaultValue ...V) V`. 
+In certain scenarios, it can be useful to have an alternative approach to handle different types of parameters, not
+just strings. This can be achieved using a generic Query function known as `Params[V GenericType](c Ctx, key string, defaultValue ...V) V`.
 This function is capable of parsing a query string and returning a value of a type that is assumed and specified by `V GenericType`.
 
 ```go title="Signature"
@@ -1206,13 +1225,13 @@ app.Get("/user/:id", func(c fiber.Ctx) error{
 ```
 
 The generic Params function supports returning the following data types based on V GenericType:
+
 - Integer: int, int8, int16, int32, int64
 - Unsigned integer: uint, uint8, uint16, uint32, uint64
 - Floating-point numbers: float32, float64
 - Boolean: bool
 - String: string
 - Byte array: []byte
-
 
 ## Path
 
@@ -1282,11 +1301,11 @@ func (c Ctx) Queries() map[string]string
 // GET http://example.com/?name=alex&want_pizza=false&id=
 
 app.Get("/", func(c fiber.Ctx) error {
-	m := c.Queries()
-	m["name"] // "alex"
-	m["want_pizza"] // "false"
-	m["id"] // ""
-	// ...
+    m := c.Queries()
+    m["name"] // "alex"
+    m["want_pizza"] // "false"
+    m["id"] // ""
+    // ...
 })
 ```
 
@@ -1294,9 +1313,9 @@ app.Get("/", func(c fiber.Ctx) error {
 // GET http://example.com/?field1=value1&field1=value2&field2=value3
 
 app.Get("/", func (c fiber.Ctx) error {
-	m := c.Queries()
-	m["field1"] // "value2"
-	m["field2"] // value3
+    m := c.Queries()
+    m["field1"] // "value2"
+    m["field2"] // value3
 })
 ```
 
@@ -1304,10 +1323,10 @@ app.Get("/", func (c fiber.Ctx) error {
 // GET http://example.com/?list_a=1&list_a=2&list_a=3&list_b[]=1&list_b[]=2&list_b[]=3&list_c=1,2,3
 
 app.Get("/", func(c fiber.Ctx) error {
-	m := c.Queries()
-	m["list_a"] // "3"
-	m["list_b[]"] // "3"
-	m["list_c"] // "1,2,3"
+    m := c.Queries()
+    m["list_a"] // "3"
+    m["list_b[]"] // "3"
+    m["list_c"] // "1,2,3"
 })
 ```
 
@@ -1315,9 +1334,9 @@ app.Get("/", func(c fiber.Ctx) error {
 // GET /api/posts?filters.author.name=John&filters.category.name=Technology
 
 app.Get("/", func(c fiber.Ctx) error {
-	m := c.Queries()
-	m["filters.author.name"] // John
-	m["filters.category.name"] // Technology
+    m := c.Queries()
+    m["filters.author.name"] // John
+    m["filters.category.name"] // Technology
 })
 ```
 
@@ -1325,12 +1344,12 @@ app.Get("/", func(c fiber.Ctx) error {
 // GET /api/posts?tags=apple,orange,banana&filters[tags]=apple,orange,banana&filters[category][name]=fruits&filters.tags=apple,orange,banana&filters.category.name=fruits
 
 app.Get("/", func(c fiber.Ctx) error {
-	m := c.Queries()
-	m["tags"] // apple,orange,banana
-	m["filters[tags]"] // apple,orange,banana
-	m["filters[category][name]"] // fruits
-	m["filters.tags"] // apple,orange,banana
-	m["filters.category.name"] // fruits
+    m := c.Queries()
+    m["tags"] // apple,orange,banana
+    m["filters[tags]"] // apple,orange,banana
+    m["filters[category][name]"] // fruits
+    m["filters.tags"] // apple,orange,banana
+    m["filters.category.name"] // fruits
 })
 ```
 
@@ -1365,8 +1384,8 @@ Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more..
 
 :::
 
-In certain scenarios, it can be useful to have an alternative approach to handle different types of query parameters, not 
-just strings. This can be achieved using a generic Query function known as `Query[V GenericType](c Ctx, key string, defaultValue ...V) V`. 
+In certain scenarios, it can be useful to have an alternative approach to handle different types of query parameters, not
+just strings. This can be achieved using a generic Query function known as `Query[V GenericType](c Ctx, key string, defaultValue ...V) V`.
 This function is capable of parsing a query string and returning a value of a type that is assumed and specified by `V GenericType`.
 
 Here is the signature for the generic Query function:
@@ -1389,12 +1408,13 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
-In this case, `Query[V GenericType](c Ctx, key string, defaultValue ...V) V` can retrieve 'page' as an integer, 'brand' 
-as a string, and 'new' as a boolean. The function uses the appropriate parsing function for each specified type to ensure 
-the correct type is returned. This simplifies the retrieval process of different types of query parameters, making your 
+In this case, `Query[V GenericType](c Ctx, key string, defaultValue ...V) V` can retrieve 'page' as an integer, 'brand'
+as a string, and 'new' as a boolean. The function uses the appropriate parsing function for each specified type to ensure
+the correct type is returned. This simplifies the retrieval process of different types of query parameters, making your
 controller actions cleaner.
 
 The generic Query function supports returning the following data types based on V GenericType:
+
 - Integer: int, int8, int16, int32, int64
 - Unsigned integer: uint, uint8, uint16, uint32, uint64
 - Floating-point numbers: float32, float64
@@ -1442,7 +1462,6 @@ app.Get("/teapot", func(c fiber.Ctx) error {
     return c.Status(fiber.StatusTeapot).Send("🍵 short and stout 🍵")
 })
 ```
-
 
 ## Render
 
@@ -1689,12 +1708,49 @@ app.Get("/", func(c fiber.Ctx) error {
 
 Transfers the file from the given path. Sets the [Content-Type](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type) response HTTP header field based on the **filenames** extension.
 
-:::caution
-Method doesn´t use **gzipping** by default, set it to **true** to enable.
-:::
+```go title="Config" title="Config"
+// SendFile defines configuration options when to transfer file with SendFile.
+type SendFile struct {
+  // FS is the file system to serve the static files from.
+  // You can use interfaces compatible with fs.FS like embed.FS, os.DirFS etc.
+  //
+  // Optional. Default: nil
+  FS fs.FS
+
+  // When set to true, the server tries minimizing CPU usage by caching compressed files.
+  // This works differently than the github.com/gofiber/compression middleware.
+  // You have to set Content-Encoding header to compress the file.
+  // Available compression methods are gzip, br, and zstd.
+  //
+  // Optional. Default value false
+  Compress bool `json:"compress"`
+
+  // When set to true, enables byte range requests.
+  //
+  // Optional. Default value false
+  ByteRange bool `json:"byte_range"`
+
+  // When set to true, enables direct download.
+  //
+  // Optional. Default: false.
+  Download bool `json:"download"`
+
+  // Expiration duration for inactive file handlers.
+  // Use a negative time.Duration to disable it.
+  //
+  // Optional. Default value 10 * time.Second.
+  CacheDuration time.Duration `json:"cache_duration"`
+
+  // The value for the Cache-Control HTTP-header
+  // that is set on the file response. MaxAge is defined in seconds.
+  //
+    // Optional. Default value 0.
+  MaxAge int `json:"max_age"`
+}
+```
 
 ```go title="Signature" title="Signature"
-func (c Ctx) SendFile(file string, compress ...bool) error
+func (c Ctx) SendFile(file string, config ...SendFile) error
 ```
 
 ```go title="Example"
@@ -1702,7 +1758,9 @@ app.Get("/not-found", func(c fiber.Ctx) error {
   return c.SendFile("./public/404.html");
 
   // Disable compression
-  return c.SendFile("./static/index.html", false);
+  return c.SendFile("./static/index.html", SendFile{
+    Compress: false,
+  });
 })
 ```
 
@@ -1717,7 +1775,47 @@ app.Get("/file-with-url-chars", func(c fiber.Ctx) error {
 ```
 
 :::info
-For sending files from embedded file system [this functionality](../middleware/static.md#serving-files-using-embedfs) can be used
+You can set `CacheDuration` config property to `-1` to disable caching.
+:::
+
+```go title="Example"
+app.Get("/file", func(c fiber.Ctx) error {
+  return c.SendFile("style.css", SendFile{
+    CacheDuration: -1,
+  })
+})
+```
+
+:::info
+You can use multiple SendFile with different configurations in single route. Fiber creates different filesystem handler per config.
+:::
+
+```go title="Example"
+app.Get("/file", func(c fiber.Ctx) error {
+  switch c.Query("config") {
+    case "filesystem":
+      return c.SendFile("style.css", SendFile{
+        FS: os.DirFS(".")
+      })
+    case "filesystem-compress":
+      return c.SendFile("style.css", SendFile{
+        FS: os.DirFS("."),
+        Compress: true,
+      })
+    case "compress":
+      return c.SendFile("style.css", SendFile{
+        Compress: true,
+      })
+    default:
+      return c.SendFile("style.css")
+  }
+
+  return nil
+})
+```
+
+:::info
+For sending multiple files from embedded file system [this functionality](../middleware/static.md#serving-files-using-embedfs) can be used
 :::
 
 ## SendStatus

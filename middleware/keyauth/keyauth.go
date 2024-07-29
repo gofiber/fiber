@@ -3,6 +3,7 @@ package keyauth
 
 import (
 	"errors"
+	"fmt"
 	"net/url"
 	"strings"
 
@@ -34,17 +35,12 @@ func New(config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
 
 	// Initialize
-	parts := strings.Split(cfg.KeyLookup, ":")
-	extractor := keyFromHeader(parts[1], cfg.AuthScheme)
-	switch parts[0] {
-	case query:
-		extractor = keyFromQuery(parts[1])
-	case form:
-		extractor = keyFromForm(parts[1])
-	case param:
-		extractor = keyFromParam(parts[1])
-	case cookie:
-		extractor = keyFromCookie(parts[1])
+	if cfg.CustomKeyLookup == nil {
+		var err error
+		cfg.CustomKeyLookup, err = DefaultKeyLookup(cfg.KeyLookup, cfg.AuthScheme)
+		if err != nil {
+			panic(fmt.Errorf("unable to create lookup function: %w", err))
+		}
 	}
 
 	// Return middleware handler
@@ -55,7 +51,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Extract and verify key
-		key, err := extractor(c)
+		key, err := cfg.CustomKeyLookup(c)
 		if err != nil {
 			return cfg.ErrorHandler(c, err)
 		}
@@ -80,8 +76,53 @@ func TokenFromContext(c fiber.Ctx) string {
 	return token
 }
 
+// MultipleKeySourceLookup creates a CustomKeyLookup function that checks multiple sources until one is found
+// Each element should be specified according to the format used in KeyLookup
+func MultipleKeySourceLookup(keyLookups []string, authScheme string) (KeyLookupFunc, error) {
+	subExtractors := map[string]KeyLookupFunc{}
+	var err error
+	for _, keyLookup := range keyLookups {
+		subExtractors[keyLookup], err = DefaultKeyLookup(keyLookup, authScheme)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return func(c fiber.Ctx) (string, error) {
+		for keyLookup, subExtractor := range subExtractors {
+			res, err := subExtractor(c)
+			if err == nil && res != "" {
+				return res, nil
+			}
+			if !errors.Is(err, ErrMissingOrMalformedAPIKey) {
+				// Defensive Code - not currently possible to hit
+				return "", fmt.Errorf("[%s] %w", keyLookup, err)
+			}
+		}
+		return "", ErrMissingOrMalformedAPIKey
+	}, nil
+}
+
+func DefaultKeyLookup(keyLookup, authScheme string) (KeyLookupFunc, error) {
+	parts := strings.Split(keyLookup, ":")
+	if len(parts) <= 1 {
+		return nil, fmt.Errorf("invalid keyLookup: %q, expected format 'source:name'", keyLookup)
+	}
+	extractor := KeyFromHeader(parts[1], authScheme) // in the event of an invalid prefix, it is interpreted as header:
+	switch parts[0] {
+	case query:
+		extractor = KeyFromQuery(parts[1])
+	case form:
+		extractor = KeyFromForm(parts[1])
+	case param:
+		extractor = KeyFromParam(parts[1])
+	case cookie:
+		extractor = KeyFromCookie(parts[1])
+	}
+	return extractor, nil
+}
+
 // keyFromHeader returns a function that extracts api key from the request header.
-func keyFromHeader(header, authScheme string) func(c fiber.Ctx) (string, error) {
+func KeyFromHeader(header, authScheme string) KeyLookupFunc {
 	return func(c fiber.Ctx) (string, error) {
 		auth := c.Get(header)
 		l := len(authScheme)
@@ -96,7 +137,7 @@ func keyFromHeader(header, authScheme string) func(c fiber.Ctx) (string, error) 
 }
 
 // keyFromQuery returns a function that extracts api key from the query string.
-func keyFromQuery(param string) func(c fiber.Ctx) (string, error) {
+func KeyFromQuery(param string) KeyLookupFunc {
 	return func(c fiber.Ctx) (string, error) {
 		key := fiber.Query[string](c, param)
 		if key == "" {
@@ -107,7 +148,7 @@ func keyFromQuery(param string) func(c fiber.Ctx) (string, error) {
 }
 
 // keyFromForm returns a function that extracts api key from the form.
-func keyFromForm(param string) func(c fiber.Ctx) (string, error) {
+func KeyFromForm(param string) KeyLookupFunc {
 	return func(c fiber.Ctx) (string, error) {
 		key := c.FormValue(param)
 		if key == "" {
@@ -118,7 +159,7 @@ func keyFromForm(param string) func(c fiber.Ctx) (string, error) {
 }
 
 // keyFromParam returns a function that extracts api key from the url param string.
-func keyFromParam(param string) func(c fiber.Ctx) (string, error) {
+func KeyFromParam(param string) KeyLookupFunc {
 	return func(c fiber.Ctx) (string, error) {
 		key, err := url.PathUnescape(c.Params(param))
 		if err != nil {
@@ -129,7 +170,7 @@ func keyFromParam(param string) func(c fiber.Ctx) (string, error) {
 }
 
 // keyFromCookie returns a function that extracts api key from the named cookie.
-func keyFromCookie(name string) func(c fiber.Ctx) (string, error) {
+func KeyFromCookie(name string) KeyLookupFunc {
 	return func(c fiber.Ctx) (string, error) {
 		key := c.Cookies(name)
 		if key == "" {

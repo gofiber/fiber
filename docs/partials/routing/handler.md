@@ -30,12 +30,12 @@ func (app *App) All(path string, handler Handler, middlewares ...Handler) Router
 ```go title="Examples"
 // Simple GET handler
 app.Get("/api/list", func(c fiber.Ctx) error {
-  return c.SendString("I'm a GET request!")
+    return c.SendString("I'm a GET request!")
 })
 
 // Simple POST handler
 app.Post("/api/register", func(c fiber.Ctx) error {
-  return c.SendString("I'm a POST request!")
+    return c.SendString("I'm a POST request!")
 })
 ```
 
@@ -71,7 +71,7 @@ app.Use([]string{"/api", "/home"}, func(c fiber.Ctx) error {
 
 // Attach multiple handlers 
 app.Use("/api", func(c fiber.Ctx) error {
-  c.Set("X-Custom-Header", random.String(32))
+    c.Set("X-Custom-Header", random.String(32))
     return c.Next()
 }, func(c fiber.Ctx) error {
     return c.Next()

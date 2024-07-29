@@ -19,6 +19,7 @@ func New(root string, cfg ...Config) fiber.Handler
 ## Examples
 
 Import the middleware package that is part of the [Fiber](https://github.com/gofiber/fiber) web framework
+
 ```go
 import(
     "github.com/gofiber/fiber/v3"
@@ -148,7 +149,7 @@ To define static routes using `Get`, append the wildcard (`*`) operator at the e
 |:-----------|:------------------------|:---------------------------------------------------------------------------------------------------------------------------|:-----------------------|
 | Next       | `func(fiber.Ctx) bool` | Next defines a function to skip this middleware when returned true.                                                                              | `nil`                  |
 | FS       | `fs.FS` | FS is the file system to serve the static files from.<br /><br />You can use interfaces compatible with fs.FS like embed.FS, os.DirFS etc.                                                 | `nil`                  |
-| Compress       | `bool` | When set to true, the server tries minimizing CPU usage by caching compressed files.<br /><br />This works differently than the github.com/gofiber/compression middleware.                                                                              | `false`                  |
+| Compress       | `bool` | When set to true, the server tries minimizing CPU usage by caching compressed files. The middleware will compress the response using `gzip`, `brotli`, or `zstd` compression depending on the [Accept-Encoding](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept-Encoding) header. <br /><br />This works differently than the github.com/gofiber/compression middleware.                                                                              | `false`                  |
 | ByteRange       | `bool` | When set to true, enables byte range requests.                                                                             | `false`                  |
 | Browse       | `bool` | When set to true, enables directory browsing.                                                                             | `false`                  |
 | Download       | `bool` | When set to true, enables direct download.                                                                             | `false`                  |
@@ -166,7 +167,7 @@ You can set `CacheDuration` config property to `-1` to disable caching.
 
 ```go
 var ConfigDefault = Config{
-  Index:         []string{"index.html"},
-  CacheDuration: 10 * time.Second,
+    Index:         []string{"index.html"},
+    CacheDuration: 10 * time.Second,
 }
 ```

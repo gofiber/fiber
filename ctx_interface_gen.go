@@ -174,6 +174,10 @@ type Ctx interface {
 	Links(link ...string)
 	// Locals makes it possible to pass any values under keys scoped to the request
 	// and therefore available to all following routes that match the request.
+	//
+	// All the values are removed from ctx after returning from the top
+	// RequestHandler. Additionally, Close method is called on each value
+	// implementing io.Closer before removing the value from ctx.
 	Locals(key any, value ...any) any
 	// Location sets the response Location HTTP header to the specified path parameter.
 	Location(path string)
@@ -269,7 +273,7 @@ type Ctx interface {
 	// SendFile transfers the file from the given path.
 	// The file is not compressed by default, enable this by passing a 'true' argument
 	// Sets the Content-Type response HTTP header field based on the filenames extension.
-	SendFile(file string, compress ...bool) error
+	SendFile(file string, config ...SendFile) error
 	// SendStatus sets the HTTP status code and if the response body is empty,
 	// it sets the correct status message in the body.
 	SendStatus(status int) error

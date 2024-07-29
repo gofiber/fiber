@@ -26,8 +26,8 @@ Import the middleware package that is part of the Fiber web framework
 
 ```go
 import (
-  "github.com/gofiber/fiber/v3"
-  "github.com/gofiber/fiber/v3/middleware/limiter"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/limiter"
 )
 ```
 
@@ -68,10 +68,11 @@ app.Use(limiter.New(limiter.Config{
 }))
 ```
 
-This means that every window will take into account the previous window(if there was any). The given formula for the rate is:
-```
-weightOfPreviousWindpw = previous window's amount request * (whenNewWindow / Expiration)
-rate = weightOfPreviousWindpw + current window's amount request.
+This means that every window will consider the previous window (if there was any). The given formula for the rate is:
+
+```text
+weightOfPreviousWindow = previous window's amount request * (whenNewWindow / Expiration)
+rate = weightOfPreviousWindow + current window's amount request.
 ```
 
 ## Config
@@ -119,7 +120,8 @@ You can use any storage from our [storage](https://github.com/gofiber/storage/) 
 
 ```go
 storage := sqlite3.New() // From github.com/gofiber/storage/sqlite3
+
 app.Use(limiter.New(limiter.Config{
-	Storage: storage,
+    Storage: storage,
 }))
 ```

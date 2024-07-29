@@ -13,30 +13,31 @@ func New(config ...Config) fiber.Handler
 ```
 
 ## Examples
+
 ```go
 package main
 
 import (
-  "github.com/gofiber/fiber/v3"
-  "github.com/gofiber/fiber/v3/middleware/helmet"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/helmet"
 )
 
 func main() {
-  app := fiber.New()
+    app := fiber.New()
 
-  app.Use(helmet.New())
+    app.Use(helmet.New())
 
-  app.Get("/", func(c fiber.Ctx) error {
-    return c.SendString("Welcome!")
-  })
+    app.Get("/", func(c fiber.Ctx) error {
+      return c.SendString("Welcome!")
+    })
 
-  app.Listen(":3000")
+    app.Listen(":3000")
 }
 ```
 
-**Test:**
+## Test
 
-```curl
+```bash
 curl -I http://localhost:3000
 ```
 
@@ -67,16 +68,16 @@ curl -I http://localhost:3000
 
 ```go
 var ConfigDefault = Config{
-	XSSProtection:             "0",
-	ContentTypeNosniff:        "nosniff",
-	XFrameOptions:             "SAMEORIGIN",
-	ReferrerPolicy:            "no-referrer",
-	CrossOriginEmbedderPolicy: "require-corp",
-	CrossOriginOpenerPolicy:   "same-origin",
-	CrossOriginResourcePolicy: "same-origin",
-	OriginAgentCluster:        "?1",
-	XDNSPrefetchControl:       "off",
-	XDownloadOptions:          "noopen",
-	XPermittedCrossDomain:     "none",
+    XSSProtection:             "0",
+    ContentTypeNosniff:        "nosniff",
+    XFrameOptions:             "SAMEORIGIN",
+    ReferrerPolicy:            "no-referrer",
+    CrossOriginEmbedderPolicy: "require-corp",
+    CrossOriginOpenerPolicy:   "same-origin",
+    CrossOriginResourcePolicy: "same-origin",
+    OriginAgentCluster:        "?1",
+    XDNSPrefetchControl:       "off",
+    XDownloadOptions:          "noopen",
+    XPermittedCrossDomain:     "none",
 }
 ```

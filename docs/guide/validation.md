@@ -27,18 +27,18 @@ app := fiber.New(fiber.Config{
 })
 
 type User struct {
-  Name string `json:"name" form:"name" query:"name" validate:"required"`
-  Age  int    `json:"age" form:"age" query:"age" validate:"gte=0,lte=100"`
+    Name string `json:"name" form:"name" query:"name" validate:"required"`
+    Age  int    `json:"age" form:"age" query:"age" validate:"gte=0,lte=100"`
 }
 
 app.Post("/", func(c fiber.Ctx) error {
-  user := new(User)
-  
-  // Works with all bind methods - Body, Query, Form, ...
-  if err := c.Bind().Body(user); err != nil { // <- here you receive the validation errors
-    return err
-  }
-  
-  return c.JSON(user)
+    user := new(User)
+    
+    // Works with all bind methods - Body, Query, Form, ...
+    if err := c.Bind().Body(user); err != nil { // <- here you receive the validation errors
+      return err
+    }
+    
+    return c.JSON(user)
 })
 ```
