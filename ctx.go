@@ -50,24 +50,24 @@ const userContextKey contextKey = 0 // __local_user_context__
 type DefaultCtx struct {
 	app                 *App                 // Reference to *App
 	route               *Route               // Reference to *Route
-	indexRoute          int                  // Index of the current route
-	indexHandler        int                  // Index of the current handler
-	method              string               // HTTP method
-	methodINT           int                  // HTTP method INT equivalent
-	baseURI             string               // HTTP base uri
-	path                string               // HTTP path with the modifications by the configuration -> string copy from pathBuffer
-	pathBuffer          []byte               // HTTP path buffer
-	detectionPath       string               // Route detection path                                  -> string copy from detectionPathBuffer
-	detectionPathBuffer []byte               // HTTP detectionPath buffer
-	treePath            string               // Path for the search in the tree
-	pathOriginal        string               // Original HTTP path
-	values              [maxParams]string    // Route parameter values
 	fasthttp            *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
-	matched             bool                 // Non use route matched
-	viewBindMap         sync.Map             // Default view map to bind template engine
 	bind                *Bind                // Default bind reference
 	redirect            *Redirect            // Default redirect reference
+	values              [maxParams]string    // Route parameter values
+	viewBindMap         sync.Map             // Default view map to bind template engine
+	method              string               // HTTP method
+	baseURI             string               // HTTP base uri
+	path                string               // HTTP path with the modifications by the configuration -> string copy from pathBuffer
+	detectionPath       string               // Route detection path                                  -> string copy from detectionPathBuffer
+	treePath            string               // Path for the search in the tree
+	pathOriginal        string               // Original HTTP path
+	pathBuffer          []byte               // HTTP path buffer
+	detectionPathBuffer []byte               // HTTP detectionPath buffer
 	redirectionMessages []string             // Messages of the previous redirect
+	indexRoute          int                  // Index of the current route
+	indexHandler        int                  // Index of the current handler
+	methodINT           int                  // HTTP method INT equivalent
+	matched             bool                 // Non use route matched
 }
 
 // SendFile defines configuration options when to transfer file with SendFile.
@@ -112,8 +112,8 @@ type SendFile struct {
 // sendFileStore is used to keep the SendFile configuration and the handler.
 type sendFileStore struct {
 	handler           fasthttp.RequestHandler
-	config            SendFile
 	cacheControlValue string
+	config            SendFile
 }
 
 // compareConfig compares the current SendFile config with the new one
@@ -175,15 +175,15 @@ type RangeSet struct {
 
 // Cookie data for c.Cookie
 type Cookie struct {
+	Expires     time.Time `json:"expires"`      // The expiration date of the cookie
 	Name        string    `json:"name"`         // The name of the cookie
 	Value       string    `json:"value"`        // The value of the cookie
 	Path        string    `json:"path"`         // Specifies a URL path which is allowed to receive the cookie
 	Domain      string    `json:"domain"`       // Specifies the domain which is allowed to receive the cookie
+	SameSite    string    `json:"same_site"`    // Controls whether or not a cookie is sent with cross-site requests
 	MaxAge      int       `json:"max_age"`      // The maximum age (in seconds) of the cookie
-	Expires     time.Time `json:"expires"`      // The expiration date of the cookie
 	Secure      bool      `json:"secure"`       // Indicates that the cookie should only be transmitted over a secure HTTPS connection
 	HTTPOnly    bool      `json:"http_only"`    // Indicates that the cookie is accessible only through the HTTP protocol
-	SameSite    string    `json:"same_site"`    // Controls whether or not a cookie is sent with cross-site requests
 	Partitioned bool      `json:"partitioned"`  // Indicates if the cookie is stored in a partitioned cookie jar
 	SessionOnly bool      `json:"session_only"` // Indicates if the cookie is a session-only cookie
 }
@@ -196,8 +196,8 @@ type Views interface {
 
 // ResFmt associates a Content Type to a fiber.Handler for c.Format
 type ResFmt struct {
-	MediaType string
 	Handler   func(Ctx) error
+	MediaType string
 }
 
 // Accepts checks if the specified extensions or content types are acceptable.
@@ -273,10 +273,7 @@ func (c *DefaultCtx) BaseURL() string {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (c *DefaultCtx) BodyRaw() []byte {
-	if c.app.config.Immutable {
-		return utils.CopyBytes(c.fasthttp.Request.Body())
-	}
-	return c.fasthttp.Request.Body()
+	return c.getBody()
 }
 
 func (c *DefaultCtx) tryDecodeBodyInOrder(
@@ -339,21 +336,19 @@ func (c *DefaultCtx) Body() []byte {
 		encodingOrder      = []string{"", "", ""}
 	)
 
-	// faster than peek
-	c.Request().Header.VisitAll(func(key, value []byte) {
-		if c.app.getString(key) == HeaderContentEncoding {
-			headerEncoding = c.app.getString(value)
-		}
-	})
+	// Get Content-Encoding header
+	headerEncoding = utils.UnsafeString(c.Request().Header.ContentEncoding())
+
+	// If no encoding is provided, return the original body
+	if len(headerEncoding) == 0 {
+		return c.getBody()
+	}
 
 	// Split and get the encodings list, in order to attend the
 	// rule defined at: https://www.rfc-editor.org/rfc/rfc9110#section-8.4-5
 	encodingOrder = getSplicedStrList(headerEncoding, encodingOrder)
 	if len(encodingOrder) == 0 {
-		if c.app.config.Immutable {
-			return utils.CopyBytes(c.fasthttp.Request.Body())
-		}
-		return c.fasthttp.Request.Body()
+		return c.getBody()
 	}
 
 	var decodesRealized uint8
@@ -778,7 +773,7 @@ iploop:
 			i++
 		}
 
-		s := strings.TrimRight(headerValue[i:j], " ")
+		s := utils.TrimRight(headerValue[i:j], ' ')
 
 		if c.app.config.EnableIPValidation {
 			// Skip validation if IP is clearly not IPv4/IPv6, otherwise validate without allocations
@@ -828,7 +823,7 @@ func (c *DefaultCtx) extractIPFromHeader(header string) string {
 				i++
 			}
 
-			s := strings.TrimRight(headerValue[i:j], " ")
+			s := utils.TrimRight(headerValue[i:j], ' ')
 
 			if c.app.config.EnableIPValidation {
 				if (!v6 && !v4) || (v6 && !utils.IsIPv6(s)) || (v4 && !utils.IsIPv4(s)) {
@@ -862,7 +857,7 @@ func (c *DefaultCtx) Is(extension string) bool {
 	}
 
 	return strings.HasPrefix(
-		strings.TrimLeft(utils.UnsafeString(c.fasthttp.Request.Header.ContentType()), " "),
+		utils.TrimLeft(utils.UnsafeString(c.fasthttp.Request.Header.ContentType()), ' '),
 		extensionHeader,
 	)
 }
@@ -939,7 +934,7 @@ func (c *DefaultCtx) Links(link ...string) {
 			bb.WriteString(`; rel="` + link[i] + `",`)
 		}
 	}
-	c.setCanonical(HeaderLink, strings.TrimRight(c.app.getString(bb.Bytes()), ","))
+	c.setCanonical(HeaderLink, utils.TrimRight(c.app.getString(bb.Bytes()), ','))
 	bytebufferpool.Put(bb)
 }
 
@@ -1285,8 +1280,8 @@ func (c *DefaultCtx) Range(size int) (Range, error) {
 			Start int
 			End   int
 		}{
-			start,
-			end,
+			Start: start,
+			End:   end,
 		})
 	}
 	if len(rangeData.Ranges) < 1 {
@@ -1810,7 +1805,7 @@ func (c *DefaultCtx) configDependentPaths() {
 	}
 	// If StrictRouting is disabled, we strip all trailing slashes
 	if !c.app.config.StrictRouting && len(c.detectionPathBuffer) > 1 && c.detectionPathBuffer[len(c.detectionPathBuffer)-1] == '/' {
-		c.detectionPathBuffer = bytes.TrimRight(c.detectionPathBuffer, "/")
+		c.detectionPathBuffer = utils.TrimRight(c.detectionPathBuffer, '/')
 	}
 	c.detectionPath = c.app.getString(c.detectionPathBuffer)
 
@@ -1907,6 +1902,14 @@ func (c *DefaultCtx) release() {
 		ReleaseRedirect(c.redirect)
 		c.redirect = nil
 	}
+}
+
+func (c *DefaultCtx) getBody() []byte {
+	if c.app.config.Immutable {
+		return utils.CopyBytes(c.fasthttp.Request.Body())
+	}
+
+	return c.fasthttp.Request.Body()
 }
 
 // Methods to use with next stack.

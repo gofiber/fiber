@@ -29,7 +29,7 @@ format:
 
 ## format: 🎨 Find markdown format issues (Requires markdownlint-cli)
 .PHONY: markdown
-format:
+markdown:
 	markdownlint-cli2 "**/*.md" "#vendor"
 
 ## lint: 🚨 Run lint checks
@@ -51,3 +51,8 @@ longtest:
 .PHONY: tidy
 tidy:
 	go mod tidy -v
+
+## betteralign: 📐 Optimize alignment of fields in structs
+.PHONY: betteralign
+betteralign:
+	go run github.com/dkorunic/betteralign/cmd/betteralign@latest -test_files -generated_files -apply ./...

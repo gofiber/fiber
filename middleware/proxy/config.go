@@ -15,14 +15,6 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c fiber.Ctx) bool
 
-	// Servers defines a list of <scheme>://<host> HTTP servers,
-	//
-	// which are used in a round-robin manner.
-	// i.e.: "https://foobar.com, http://www.foobar.com"
-	//
-	// Required
-	Servers []string
-
 	// ModifyRequest allows you to alter the request
 	//
 	// Optional. Default: nil
@@ -32,6 +24,22 @@ type Config struct {
 	//
 	// Optional. Default: nil
 	ModifyResponse fiber.Handler
+
+	// tls config for the http client.
+	TlsConfig *tls.Config //nolint:stylecheck,revive // TODO: Rename to "TLSConfig" in v3
+
+	// Client is custom client when client config is complex.
+	// Note that Servers, Timeout, WriteBufferSize, ReadBufferSize, TlsConfig
+	// and DialDualStack will not be used if the client are set.
+	Client *fasthttp.LBClient
+
+	// Servers defines a list of <scheme>://<host> HTTP servers,
+	//
+	// which are used in a round-robin manner.
+	// i.e.: "https://foobar.com, http://www.foobar.com"
+	//
+	// Required
+	Servers []string
 
 	// Timeout is the request timeout used when calling the proxy client
 	//
@@ -46,14 +54,6 @@ type Config struct {
 
 	// Per-connection buffer size for responses' writing.
 	WriteBufferSize int
-
-	// tls config for the http client.
-	TlsConfig *tls.Config //nolint:stylecheck,revive // TODO: Rename to "TLSConfig" in v3
-
-	// Client is custom client when client config is complex.
-	// Note that Servers, Timeout, WriteBufferSize, ReadBufferSize, TlsConfig
-	// and DialDualStack will not be used if the client are set.
-	Client *fasthttp.LBClient
 
 	// Attempt to connect to both ipv4 and ipv6 host addresses if set to true.
 	//

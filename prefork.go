@@ -72,8 +72,8 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg ListenConfig) er
 
 	// 👮 master process 👮
 	type child struct {
-		pid int
 		err error
+		pid int
 	}
 	// create variables
 	max := runtime.GOMAXPROCS(0)
@@ -131,7 +131,7 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg ListenConfig) er
 
 		// notify master if child crashes
 		go func() {
-			channel <- child{pid, cmd.Wait()}
+			channel <- child{pid: pid, err: cmd.Wait()}
 		}()
 	}
 

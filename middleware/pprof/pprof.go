@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp/fasthttpadaptor"
 )
 
@@ -71,7 +72,7 @@ func New(config ...Config) fiber.Handler {
 		default:
 			// pprof index only works with trailing slash
 			if strings.HasSuffix(path, "/") {
-				path = strings.TrimRight(path, "/")
+				path = utils.TrimRight(path, '/')
 			} else {
 				path = prefix + "/"
 			}

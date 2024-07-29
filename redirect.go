@@ -34,11 +34,11 @@ const (
 
 // Redirect is a struct that holds the redirect data.
 type Redirect struct {
-	c      *DefaultCtx // Embed ctx
-	status int         // Status code of redirection. Default: StatusFound
-
-	messages []string          // Flash messages
+	c        *DefaultCtx       // Embed ctx
 	oldInput map[string]string // Old input data
+
+	messages []string // Flash messages
+	status   int      // Status code of redirection. Default: StatusFound
 }
 
 // RedirectConfig A config to use with Redirect().Route()
@@ -249,10 +249,10 @@ func (r *Redirect) parseAndClearFlashMessages() {
 	for {
 		commaPos = findNextNonEscapedCharsetPosition(cookieValue, []byte(CookieDataSeparator))
 		if commaPos == -1 {
-			r.c.redirectionMessages = append(r.c.redirectionMessages, strings.Trim(cookieValue, " "))
+			r.c.redirectionMessages = append(r.c.redirectionMessages, utils.Trim(cookieValue, ' '))
 			break
 		}
-		r.c.redirectionMessages = append(r.c.redirectionMessages, strings.Trim(cookieValue[:commaPos], " "))
+		r.c.redirectionMessages = append(r.c.redirectionMessages, utils.Trim(cookieValue[:commaPos], ' '))
 		cookieValue = cookieValue[commaPos+1:]
 	}
 

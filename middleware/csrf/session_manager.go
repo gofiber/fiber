@@ -9,8 +9,8 @@ import (
 )
 
 type sessionManager struct {
-	key     string
 	session *session.Store
+	key     string
 }
 
 func newSessionManager(s *session.Store, k string) *sessionManager {
@@ -58,7 +58,7 @@ func (m *sessionManager) setRaw(c fiber.Ctx, key string, raw []byte, exp time.Du
 	sess := session.FromContext(c)
 	if sess != nil {
 		// the key is crucial in crsf and sometimes a reference to another value which can be reused later(pool/unsafe values concept), so a copy is made here
-		sess.Set(m.key, &Token{key, raw, time.Now().Add(exp)})
+		sess.Set(m.key, &Token{Key: key, Raw: raw, Expiration: time.Now().Add(exp)})
 	} else {
 		// Try to get the session from the store
 		storeSess, err := m.session.Get(c)
@@ -66,7 +66,7 @@ func (m *sessionManager) setRaw(c fiber.Ctx, key string, raw []byte, exp time.Du
 			// Handle error
 			return
 		}
-		storeSess.Set(m.key, &Token{key, raw, time.Now().Add(exp)})
+		storeSess.Set(m.key, &Token{Key: key, Raw: raw, Expiration: time.Now().Add(exp)})
 		if err := storeSess.Save(); err != nil {
 			log.Warn("csrf: failed to save session: ", err)
 		}

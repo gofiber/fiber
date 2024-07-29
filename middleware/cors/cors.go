@@ -6,6 +6,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/log"
+	"github.com/gofiber/utils/v2"
 )
 
 // New creates a new middleware handler
@@ -44,7 +45,7 @@ func New(config ...Config) fiber.Handler {
 			break
 		}
 		if i := strings.Index(origin, "://*."); i != -1 {
-			trimmedOrigin := strings.TrimSpace(origin[:i+3] + origin[i+4:])
+			trimmedOrigin := utils.Trim(origin[:i+3]+origin[i+4:], ' ')
 			isValid, normalizedOrigin := normalizeOrigin(trimmedOrigin)
 			if !isValid {
 				panic("[CORS] Invalid origin format in configuration: " + trimmedOrigin)
@@ -52,7 +53,7 @@ func New(config ...Config) fiber.Handler {
 			sd := subdomain{prefix: normalizedOrigin[:i+3], suffix: normalizedOrigin[i+3:]}
 			allowSOrigins = append(allowSOrigins, sd)
 		} else {
-			trimmedOrigin := strings.TrimSpace(origin)
+			trimmedOrigin := utils.Trim(origin, ' ')
 			isValid, normalizedOrigin := normalizeOrigin(trimmedOrigin)
 			if !isValid {
 				panic("[CORS] Invalid origin format in configuration: " + trimmedOrigin)

@@ -835,8 +835,8 @@ func Test_Client_Cookie(t *testing.T) {
 	t.Run("set cookies with struct", func(t *testing.T) {
 		t.Parallel()
 		type args struct {
-			CookieInt    int    `cookie:"int"`
 			CookieString string `cookie:"string"`
+			CookieInt    int    `cookie:"int"`
 		}
 
 		req := New().SetCookiesWithStruct(&args{
@@ -1087,12 +1087,12 @@ func Test_Client_QueryParam(t *testing.T) {
 		t.Parallel()
 
 		type args struct {
-			TInt      int
 			TString   string
-			TFloat    float64
-			TBool     bool
 			TSlice    []string
 			TIntSlice []int `param:"int_slice"`
+			TInt      int
+			TFloat    float64
+			TBool     bool
 		}
 
 		p := New()
@@ -1195,8 +1195,8 @@ func Test_Client_PathParam(t *testing.T) {
 	t.Run("set path params with struct", func(t *testing.T) {
 		t.Parallel()
 		type args struct {
-			CookieInt    int    `path:"int"`
 			CookieString string `path:"string"`
+			CookieInt    int    `path:"int"`
 		}
 
 		req := New().SetPathParamsWithStruct(&args{

@@ -38,7 +38,7 @@ func newStore(config ...Config) *Store {
 	}
 
 	return &Store{
-		cfg,
+		Config: cfg,
 	}
 }
 

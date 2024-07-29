@@ -34,21 +34,32 @@ var (
 // Fiber Client also provides an option to override
 // or merge most of the client settings at the request.
 type Client struct {
-	mu sync.RWMutex
+	// logger
+	logger log.CommonLogger
 
 	fasthttp *fasthttp.Client
+
+	header  *Header
+	params  *QueryParam
+	cookies *Cookie
+	path    *PathParam
+
+	jsonMarshal   utils.JSONMarshal
+	jsonUnmarshal utils.JSONUnmarshal
+	xmlMarshal    utils.XMLMarshal
+	xmlUnmarshal  utils.XMLUnmarshal
+
+	cookieJar *CookieJar
+
+	// retry
+	retryConfig *RetryConfig
 
 	baseURL   string
 	userAgent string
 	referer   string
-	header    *Header
-	params    *QueryParam
-	cookies   *Cookie
-	path      *PathParam
 
-	debug bool
-
-	timeout time.Duration
+	// proxy
+	proxyURL string
 
 	// user defined request hooks
 	userRequestHooks []RequestHook
@@ -62,21 +73,11 @@ type Client struct {
 	// client package defined response hooks
 	builtinResponseHooks []ResponseHook
 
-	jsonMarshal   utils.JSONMarshal
-	jsonUnmarshal utils.JSONUnmarshal
-	xmlMarshal    utils.XMLMarshal
-	xmlUnmarshal  utils.XMLUnmarshal
+	timeout time.Duration
 
-	cookieJar *CookieJar
+	mu sync.RWMutex
 
-	// proxy
-	proxyURL string
-
-	// retry
-	retryConfig *RetryConfig
-
-	// logger
-	logger log.CommonLogger
+	debug bool
 }
 
 // R raise a request from the client.
@@ -604,19 +605,20 @@ func (c *Client) Reset() {
 type Config struct {
 	Ctx context.Context //nolint:containedctx // It's needed to be stored in the config.
 
-	UserAgent string
-	Referer   string
+	Body      any
 	Header    map[string]string
 	Param     map[string]string
 	Cookie    map[string]string
 	PathParam map[string]string
 
+	FormData map[string]string
+
+	UserAgent string
+	Referer   string
+	File      []*File
+
 	Timeout      time.Duration
 	MaxRedirects int
-
-	Body     any
-	FormData map[string]string
-	File     []*File
 }
 
 // setConfigToRequest Set the parameters passed via Config to Request.

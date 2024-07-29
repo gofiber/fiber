@@ -21,12 +21,12 @@ type Config struct {
 	// "/users/*/orders/*": "/user/$1/order/$2",
 	Rules map[string]string
 
+	rulesRegex map[*regexp.Regexp]string
+
 	// The status code when redirecting
 	// This is ignored if Redirect is disabled
 	// Optional. Default: 302 Temporary Redirect
 	StatusCode int
-
-	rulesRegex map[*regexp.Regexp]string
 }
 
 // ConfigDefault is the default config

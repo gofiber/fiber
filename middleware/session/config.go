@@ -34,6 +34,10 @@ type Config struct {
 	// Optional. Default value memory.New()
 	Storage fiber.Storage
 
+	// KeyGenerator generates the session key.
+	// Optional. Default value utils.UUIDv4
+	KeyGenerator func() string
+
 	// KeyLookup is a string in the form of "<source>:<name>" that is used
 	// to extract session id from the request.
 	// Possible values: "header:<name>", "query:<name>" or "cookie:<name>"
@@ -48,6 +52,19 @@ type Config struct {
 	// Optional. Default value "".
 	CookiePath string
 
+	// Value of SameSite cookie.
+	// Optional. Default value "Lax".
+	CookieSameSite string
+
+	// Source defines where to obtain the session id
+	source Source
+
+	// The session name
+	sessionName string
+	// Allowed session duration
+	// Optional. Default value 24 * time.Hour
+	Expiration time.Duration
+
 	// Indicates if cookie is secure.
 	// Optional. Default value false.
 	CookieSecure bool
@@ -56,24 +73,10 @@ type Config struct {
 	// Optional. Default value false.
 	CookieHTTPOnly bool
 
-	// Value of SameSite cookie.
-	// Optional. Default value "Lax".
-	CookieSameSite string
-
 	// Decides whether cookie should last for only the browser sesison.
 	// Ignores Expiration if set to true
 	// Optional. Default value false.
 	CookieSessionOnly bool
-
-	// KeyGenerator generates the session key.
-	// Optional. Default value utils.UUIDv4
-	KeyGenerator func() string
-
-	// Source defines where to obtain the session id
-	source Source
-
-	// The session name
-	sessionName string
 }
 
 type Source string

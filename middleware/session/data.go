@@ -7,8 +7,8 @@ import (
 // go:generate msgp
 // msgp -file="data.go" -o="data_msgp.go" -tests=false -unexported
 type data struct {
-	sync.RWMutex
 	Data map[string]any
+	sync.RWMutex
 }
 
 var dataPool = sync.Pool{

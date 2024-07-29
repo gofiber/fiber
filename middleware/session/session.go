@@ -13,14 +13,14 @@ import (
 )
 
 type Session struct {
-	mu          sync.RWMutex  // Mutex to protect non-data fields
-	id          string        // session id
-	fresh       bool          // if new session
 	ctx         fiber.Ctx     // fiber context
 	config      *Store        // store configuration
 	data        *data         // key value data
 	byteBuffer  *bytes.Buffer // byte buffer for the en- and decode
+	id          string        // session id
 	idleTimeout time.Duration // idleTimeout of this session
+	mu          sync.RWMutex  // Mutex to protect non-data fields
+	fresh       bool          // if new session
 }
 
 var sessionPool = sync.Pool{

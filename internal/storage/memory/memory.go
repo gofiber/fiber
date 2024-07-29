@@ -11,10 +11,10 @@ import (
 
 // Storage interface that is implemented by storage providers
 type Storage struct {
-	mux        sync.RWMutex
 	db         map[string]entry
-	gcInterval time.Duration
 	done       chan struct{}
+	gcInterval time.Duration
+	mux        sync.RWMutex
 }
 
 type entry struct {
@@ -69,7 +69,7 @@ func (s *Storage) Set(key string, val []byte, exp time.Duration) error {
 		expire = uint32(exp.Seconds()) + utils.Timestamp()
 	}
 
-	e := entry{val, expire}
+	e := entry{data: val, expiry: expire}
 	s.mux.Lock()
 	s.db[key] = e
 	s.mux.Unlock()

@@ -43,23 +43,24 @@ type Router interface {
 // Route is a struct that holds all metadata for each registered handler.
 type Route struct {
 	// ### important: always keep in sync with the copy method "app.copyRoute" ###
-	// Data for routing
-	pos         uint32      // Position in stack -> important for the sort of the matched routes
-	use         bool        // USE matches path prefixes
-	mount       bool        // Indicated a mounted app on a specific route
-	star        bool        // Path equals '*'
-	root        bool        // Path equals '/'
-	path        string      // Prettified path
-	routeParser routeParser // Parameter parser
-	group       *Group      // Group instance. used for routes in groups
+	group *Group // Group instance. used for routes in groups
+
+	path string // Prettified path
 
 	// Public fields
 	Method string `json:"method"` // HTTP method
 	Name   string `json:"name"`   // Route's name
 	//nolint:revive // Having both a Path (uppercase) and a path (lowercase) is fine
-	Path     string    `json:"path"`   // Original registered route path
-	Params   []string  `json:"params"` // Case sensitive param keys
-	Handlers []Handler `json:"-"`      // Ctx handlers
+	Path        string      `json:"path"`   // Original registered route path
+	Params      []string    `json:"params"` // Case sensitive param keys
+	Handlers    []Handler   `json:"-"`      // Ctx handlers
+	routeParser routeParser // Parameter parser
+	// Data for routing
+	pos   uint32 // Position in stack -> important for the sort of the matched routes
+	use   bool   // USE matches path prefixes
+	mount bool   // Indicated a mounted app on a specific route
+	star  bool   // Path equals '*'
+	root  bool   // Path equals '/'
 }
 
 func (r *Route) match(detectionPath, path string, params *[maxParams]string) bool {
@@ -252,7 +253,7 @@ func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
 	}
 	// Strict routing, remove trailing slashes
 	if !app.config.StrictRouting && len(prettyPath) > 1 {
-		prettyPath = strings.TrimRight(prettyPath, "/")
+		prettyPath = utils.TrimRight(prettyPath, '/')
 	}
 
 	route.Path = prefixedPath
@@ -323,7 +324,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 		}
 		// Strict routing, remove trailing slashes
 		if !app.config.StrictRouting && len(pathPretty) > 1 {
-			pathPretty = strings.TrimRight(pathPretty, "/")
+			pathPretty = utils.TrimRight(pathPretty, '/')
 		}
 		// Is layer a middleware?
 		isUse := method == methodUse
