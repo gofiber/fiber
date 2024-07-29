@@ -71,17 +71,23 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 
 		// get a middleware from the pool
 		m := acquireMiddleware()
+		m.mu.Lock()
 		m.config = cfg
 		m.Session = session
 		m.ctx = &c
 
 		// Store the middleware in the context
 		c.Locals(key, m)
+		m.mu.Unlock()
 
 		// Continue stack
 		stackErr := c.Next()
 
-		if !m.destroyed {
+		m.mu.RLock()
+		destroyed := m.destroyed
+		m.mu.RUnlock()
+
+		if !destroyed {
 			// Save the session
 			// This is done after the response is sent to the client
 			// It allows us to modify the session data during the request
@@ -117,9 +123,13 @@ func acquireMiddleware() *Middleware {
 
 // releaseMiddleware returns a Middleware to the pool
 func releaseMiddleware(m *Middleware) {
+	m.mu.Lock()
 	m.config = Config{}
 	m.Session = nil
 	m.ctx = nil
+	m.destroyed = false
+	m.hasChanged = false
+	m.mu.Unlock()
 	middlewarePool.Put(m)
 }
 

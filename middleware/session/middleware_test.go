@@ -254,7 +254,10 @@ func TestNewWithStore(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
 	// Get session cookie
 	token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
-	token = strings.Split(strings.Split(token, ";")[0], "=")[1]
+	require.NotEmpty(t, token, "Expected Set-Cookie header to be present")
+	tokenParts := strings.SplitN(strings.SplitN(token, ";", 2)[0], "=", 2)
+	require.Len(t, tokenParts, 2, "Expected Set-Cookie header to contain a token")
+	token = tokenParts[1]
 	require.Equal(t, "value="+token, string(ctx.Response.Body()))
 
 	// Test GET request with cookie
