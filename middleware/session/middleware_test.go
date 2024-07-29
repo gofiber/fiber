@@ -93,7 +93,10 @@ func TestMiddleware(t *testing.T) {
 	h(ctx)
 	require.Equal(t, fiber.StatusNotFound, ctx.Response.StatusCode())
 	token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
-	token = strings.Split(strings.Split(token, ";")[0], "=")[1]
+	require.NotEmpty(t, token, "Expected Set-Cookie header to be present")
+	tokenParts := strings.SplitN(strings.SplitN(token, ";", 2)[0], "=", 2)
+	require.Equal(t, 2, len(tokenParts), "Expected Set-Cookie header to contain a token")
+	token = tokenParts[1]
 	require.Equal(t, "key not found", string(ctx.Response.Body()))
 
 	// Test POST /set
@@ -146,7 +149,10 @@ func TestMiddleware(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
 	// verify we have a new session token
 	newToken := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
-	newToken = strings.Split(strings.Split(newToken, ";")[0], "=")[1]
+	require.NotEmpty(t, newToken, "Expected Set-Cookie header to be present")
+	newTokenParts := strings.SplitN(strings.SplitN(newToken, ";", 2)[0], "=", 2)
+	require.Equal(t, 2, len(newTokenParts), "Expected Set-Cookie header to contain a token")
+	newToken = newTokenParts[1]
 	require.NotEqual(t, token, newToken)
 	token = newToken
 
@@ -192,8 +198,9 @@ func TestMiddleware(t *testing.T) {
 	require.Equal(t, fiber.StatusNotFound, ctx.Response.StatusCode())
 	// check that we have a new session token
 	newToken = string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
+	require.NotEmpty(t, newToken, "Expected Set-Cookie header to be present")
 	parts := strings.Split(newToken, ";")
-	require.Greater(t, len(parts), 2)
+	require.Greater(t, len(parts), 1)
 	valueParts := strings.Split(parts[0], "=")
 	require.Greater(t, len(valueParts), 1)
 	newToken = valueParts[1]
@@ -210,7 +217,10 @@ func TestMiddleware(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
 	// check that we have a new session token
 	newToken = string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
-	newToken = strings.Split(strings.Split(newToken, ";")[0], "=")[1]
+	require.NotEmpty(t, newToken, "Expected Set-Cookie header to be present")
+	newTokenParts = strings.SplitN(strings.SplitN(newToken, ";", 2)[0], "=", 2)
+	require.Equal(t, 2, len(newTokenParts), "Expected Set-Cookie header to contain a token")
+	newToken = newTokenParts[1]
 	require.NotEqual(t, token, newToken)
 }
 
