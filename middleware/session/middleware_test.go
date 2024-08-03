@@ -370,6 +370,14 @@ func Test_Session_WithConfig(t *testing.T) {
 	h(ctx)
 	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
 
+	// Check idle timeout not expired
+	ctx = &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.Header.SetCookie("session_id_test", token)
+	ctx.Request.SetRequestURI("/isFresh")
+	h(ctx)
+	require.Equal(t, fiber.StatusInternalServerError, ctx.Response.StatusCode())
+
 	// Test idle timeout
 	time.Sleep(1200 * time.Millisecond)
 	ctx = &fasthttp.RequestCtx{}
