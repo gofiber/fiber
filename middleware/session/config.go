@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 )
 
@@ -13,6 +14,21 @@ type Config struct {
 	// Storage interface to store the session data
 	// Optional. Default value memory.New()
 	Storage fiber.Storage
+
+	// Next defines a function to skip this middleware when returned true.
+	//
+	// Optional. Default: nil
+	Next func(c fiber.Ctx) bool
+
+	// Store defines the session store
+	//
+	// Required.
+	Store *Store
+
+	// ErrorHandler defines a function which is executed for errors
+	//
+	// Optional. Default: nil
+	ErrorHandler func(*fiber.Ctx, error)
 
 	// KeyGenerator generates the session key.
 	// Optional. Default value utils.UUIDv4
@@ -41,6 +57,11 @@ type Config struct {
 
 	// The session name
 	sessionName string
+
+	// Allowed session idle duration
+	// Optional. Default value 24 * time.Hour
+	IdleTimeout time.Duration
+
 	// Allowed session duration
 	// Optional. Default value 24 * time.Hour
 	Expiration time.Duration
@@ -69,11 +90,20 @@ const (
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Expiration:   24 * time.Hour,
+	IdleTimeout:  24 * time.Hour,
 	KeyLookup:    "cookie:session_id",
 	KeyGenerator: utils.UUIDv4,
 	source:       "cookie",
 	sessionName:  "session_id",
+}
+
+func DefaultErrorHandler(c *fiber.Ctx, err error) {
+	log.Errorf("session: %v", err)
+	if c != nil {
+		if err := (*c).SendStatus(fiber.StatusInternalServerError); err != nil {
+			log.Errorf("session: %v", err)
+		}
+	}
 }
 
 // Helper function to set default values
@@ -87,8 +117,8 @@ func configDefault(config ...Config) Config {
 	cfg := config[0]
 
 	// Set default values
-	if int(cfg.Expiration.Seconds()) <= 0 {
-		cfg.Expiration = ConfigDefault.Expiration
+	if int(cfg.IdleTimeout.Seconds()) <= 0 {
+		cfg.IdleTimeout = ConfigDefault.IdleTimeout
 	}
 	if cfg.KeyLookup == "" {
 		cfg.KeyLookup = ConfigDefault.KeyLookup

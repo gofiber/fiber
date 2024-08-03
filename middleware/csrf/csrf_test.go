@@ -70,7 +70,7 @@ func Test_CSRF_WithSession(t *testing.T) {
 	t.Parallel()
 
 	// session store
-	store := session.New(session.Config{
+	_, store := session.NewWithStore(session.Config{
 		KeyLookup: "cookie:_session",
 	})
 
@@ -205,7 +205,7 @@ func Test_CSRF_ExpiredToken_WithSession(t *testing.T) {
 	t.Parallel()
 
 	// session store
-	store := session.New(session.Config{
+	_, store := session.NewWithStore(session.Config{
 		KeyLookup: "cookie:_session",
 	})
 
@@ -1076,7 +1076,7 @@ func Test_CSRF_DeleteToken_WithSession(t *testing.T) {
 	t.Parallel()
 
 	// session store
-	store := session.New(session.Config{
+	_, store := session.NewWithStore(session.Config{
 		KeyLookup: "cookie:_session",
 	})
 

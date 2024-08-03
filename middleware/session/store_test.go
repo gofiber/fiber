@@ -20,7 +20,7 @@ func Test_Store_getSessionID(t *testing.T) {
 	t.Run("from cookie", func(t *testing.T) {
 		t.Parallel()
 		// session store
-		store := New()
+		store := newStore()
 		// fiber context
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 
@@ -33,7 +33,7 @@ func Test_Store_getSessionID(t *testing.T) {
 	t.Run("from header", func(t *testing.T) {
 		t.Parallel()
 		// session store
-		store := New(Config{
+		store := newStore(Config{
 			KeyLookup: "header:session_id",
 		})
 		// fiber context
@@ -48,7 +48,7 @@ func Test_Store_getSessionID(t *testing.T) {
 	t.Run("from url query", func(t *testing.T) {
 		t.Parallel()
 		// session store
-		store := New(Config{
+		store := newStore(Config{
 			KeyLookup: "query:session_id",
 		})
 		// fiber context
@@ -73,7 +73,7 @@ func Test_Store_Get(t *testing.T) {
 	t.Run("session should be re-generated if it is invalid", func(t *testing.T) {
 		t.Parallel()
 		// session store
-		store := New()
+		store := newStore()
 		// fiber context
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 
@@ -93,7 +93,7 @@ func Test_Store_DeleteSession(t *testing.T) {
 	// fiber instance
 	app := fiber.New()
 	// session store
-	store := New()
+	store := newStore()
 
 	// fiber context
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})

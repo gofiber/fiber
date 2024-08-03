@@ -11,7 +11,10 @@ import (
 )
 
 // ErrEmptySessionID is an error that occurs when the session ID is empty.
-var ErrEmptySessionID = errors.New("session id cannot be empty")
+var (
+	ErrEmptySessionID                   = errors.New("session id cannot be empty")
+	ErrSessionAlreadyLoadedByMiddleware = errors.New("session already loaded by middleware")
+)
 
 // sessionIDKey is the local key type used to store and retrieve the session ID in context.
 type sessionIDKey int
@@ -26,7 +29,7 @@ type Store struct {
 }
 
 // New creates a new session store with the provided configuration.
-func New(config ...Config) *Store {
+func newStore(config ...Config) *Store {
 	// Set default config
 	cfg := configDefault(config...)
 
@@ -44,8 +47,23 @@ func (*Store) RegisterType(i any) {
 	gob.Register(i)
 }
 
-// Get retrieves or creates a session for the given context.
+// Get will get/create a session
+//
+// This function will return an ErrSessionAlreadyLoadedByMiddleware if
+// the session is already loaded by the middleware
 func (s *Store) Get(c fiber.Ctx) (*Session, error) {
+	// If session is already loaded in the context,
+	// it should not be loaded again
+	_, ok := c.Locals(key).(*Middleware)
+	if ok {
+		return nil, ErrSessionAlreadyLoadedByMiddleware
+	}
+
+	return s.getSession(c)
+}
+
+// Get session based on context
+func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 	var rawData []byte
 	var err error
 
