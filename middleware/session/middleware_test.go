@@ -10,7 +10,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-func TestMiddleware(t *testing.T) {
+func Test_Session_Middleware(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
@@ -267,4 +267,115 @@ func TestNewWithStore(t *testing.T) {
 	h(ctx)
 	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
 	require.Equal(t, "value="+token, string(ctx.Response.Body()))
+}
+
+func Test_Session_FromSession(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	sess := FromContext(app.AcquireCtx(&fasthttp.RequestCtx{}))
+	require.Nil(t, sess)
+
+	app.Use(New())
+}
+
+func Test_Session_WithConfig(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Next: func(c fiber.Ctx) bool {
+			return c.Get("key") == "value"
+		},
+		IdleTimeout: 1 * time.Second,
+		KeyLookup:   "cookie:session_id_test",
+		KeyGenerator: func() string {
+			return "test"
+		},
+		source:      "cookie_test",
+		sessionName: "session_id_test",
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		sess := FromContext(c)
+		id := sess.ID()
+		return c.SendString("value=" + id)
+	})
+
+	app.Get("/isFresh", func(c fiber.Ctx) error {
+		sess := FromContext(c)
+		if sess.Fresh() {
+			return c.SendStatus(fiber.StatusOK)
+		}
+		return c.SendStatus(fiber.StatusInternalServerError)
+	})
+
+	app.Post("/", func(c fiber.Ctx) error {
+		sess := FromContext(c)
+		id := sess.ID()
+		c.Cookie(&fiber.Cookie{
+			Name:  "session_id_test",
+			Value: id,
+		})
+		return nil
+	})
+
+	h := app.Handler()
+
+	// Test GET request without cookie
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	h(ctx)
+	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+	// Get session cookie
+	token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
+	require.NotEmpty(t, token, "Expected Set-Cookie header to be present")
+	tokenParts := strings.SplitN(strings.SplitN(token, ";", 2)[0], "=", 2)
+	require.Len(t, tokenParts, 2, "Expected Set-Cookie header to contain a token")
+	token = tokenParts[1]
+	require.Equal(t, "value="+token, string(ctx.Response.Body()))
+
+	// Test GET request with cookie
+	ctx = &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.Header.SetCookie("session_id_test", token)
+	h(ctx)
+	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+	require.Equal(t, "value="+token, string(ctx.Response.Body()))
+
+	// Test POST request with cookie
+	ctx = &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.Header.SetCookie("session_id_test", token)
+	h(ctx)
+	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+
+	// Test POST request without cookie
+	ctx = &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	h(ctx)
+	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+
+	// Test POST request with wrong key
+	ctx = &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.Header.SetCookie("session_id", token)
+	h(ctx)
+	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+
+	// Test POST request with wrong value
+	ctx = &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.Header.SetCookie("session_id_test", "wrong")
+	h(ctx)
+	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+
+	// Test idle timeout
+	time.Sleep(1200 * time.Millisecond)
+	ctx = &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.Header.SetCookie("session_id_test", token)
+	ctx.Request.SetRequestURI("/isFresh")
+	h(ctx)
+	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
 }
