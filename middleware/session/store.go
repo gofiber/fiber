@@ -14,6 +14,7 @@ import (
 var (
 	ErrEmptySessionID                   = errors.New("session id cannot be empty")
 	ErrSessionAlreadyLoadedByMiddleware = errors.New("session already loaded by middleware")
+	ErrSessionIDNotFoundInStore         = errors.New("session ID not found in session store")
 )
 
 // sessionIDKey is the local key type used to store and retrieve the session ID in context.
@@ -153,7 +154,7 @@ func (s *Store) Delete(id string) error {
 	return s.Storage.Delete(id)
 }
 
-// GetSession retrieves a session by its ID from the storage.
+// GetSessionByID retrieves a session by its ID from the storage.
 // If the session is not found, it returns nil and an error.
 //
 // Note:
@@ -173,7 +174,7 @@ func (s *Store) Delete(id string) error {
 // Returns:
 //   - *Session: The session object if found, otherwise nil.
 //   - error: An error if the session retrieval fails or if the session ID is empty.
-func (s *Store) GetSession(id string) (*Session, error) {
+func (s *Store) GetSessionByID(id string) (*Session, error) {
 	if id == "" {
 		return nil, ErrEmptySessionID
 	}
@@ -183,7 +184,7 @@ func (s *Store) GetSession(id string) (*Session, error) {
 		return nil, err
 	}
 	if rawData == nil {
-		return nil, nil
+		return nil, ErrSessionIDNotFoundInStore
 	}
 
 	sess := acquireSession()

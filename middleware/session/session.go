@@ -48,11 +48,11 @@ func acquireSession() *Session {
 // to improve the performance of the session store.
 //
 // The session should not be used after calling this function.
-func (sess *Session) Release() {
-	if sess == nil {
+func (s *Session) Release() {
+	if s == nil {
 		return
 	}
-	releaseSession(sess)
+	releaseSession(s)
 }
 
 func releaseSession(s *Session) {

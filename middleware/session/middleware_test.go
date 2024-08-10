@@ -400,7 +400,7 @@ func Test_Session_Next(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		Next: func(c fiber.Ctx) bool {
+		Next: func(_ fiber.Ctx) bool {
 			muNext.RLock()
 			defer muNext.RUnlock()
 			return doNext
