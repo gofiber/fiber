@@ -63,7 +63,7 @@ type DefaultCtx struct {
 	pathOriginal        string               // Original HTTP path
 	pathBuffer          []byte               // HTTP path buffer
 	detectionPathBuffer []byte               // HTTP detectionPath buffer
-	redirectionMessages []string             // Messages of the previous redirect
+	flashMessages       redirectionMsgs      // Flash messages
 	indexRoute          int                  // Index of the current route
 	indexHandler        int                  // Index of the current handler
 	methodINT           int                  // HTTP method INT equivalent
@@ -1896,7 +1896,7 @@ func (c *DefaultCtx) release() {
 	c.route = nil
 	c.fasthttp = nil
 	c.bind = nil
-	c.redirectionMessages = c.redirectionMessages[:0]
+	c.flashMessages = c.flashMessages[:0]
 	c.viewBindMap = sync.Map{}
 	if c.redirect != nil {
 		ReleaseRedirect(c.redirect)
