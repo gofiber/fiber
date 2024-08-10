@@ -41,6 +41,20 @@ func acquireSession() *Session {
 	return s
 }
 
+// Release releases the session back to the pool.
+//
+// This function should be called after the session is no longer needed.
+// This function is used to reduce the number of allocations and
+// to improve the performance of the session store.
+//
+// The session should not be used after calling this function.
+func (sess *Session) Release() {
+	if sess == nil {
+		return
+	}
+	releaseSession(sess)
+}
+
 func releaseSession(s *Session) {
 	s.mu.Lock()
 	s.id = ""
@@ -223,10 +237,6 @@ func (s *Session) saveSession() error {
 	}
 
 	s.mu.Unlock()
-
-	// Release session
-	// TODO: It's not safe to use the Session after calling Save()
-	releaseSession(s)
 
 	return nil
 }

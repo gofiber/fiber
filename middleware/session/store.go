@@ -152,3 +152,53 @@ func (s *Store) Delete(id string) error {
 	}
 	return s.Storage.Delete(id)
 }
+
+// GetSession retrieves a session by its ID from the storage.
+// If the session is not found, it returns nil and an error.
+//
+// Note:
+// - Unlike session Middleware methods, Session methods do not automatically:
+//   - Load the session into the context
+//   - Save the session data to the storage and update the client cookie
+//
+// - Be aware of possible collisions if you are also using the session in a middleware.
+//
+// Usage:
+//   - If you modify a session returned by GetSession, you must call session.Save() to persist the changes.
+//   - When you are done with the session, you should call session.Release() to release the session back to the pool.
+//
+// Parameters:
+//   - id: The unique identifier of the session.
+//
+// Returns:
+//   - *Session: The session object if found, otherwise nil.
+//   - error: An error if the session retrieval fails or if the session ID is empty.
+func (s *Store) GetSession(id string) (*Session, error) {
+	if id == "" {
+		return nil, ErrEmptySessionID
+	}
+
+	rawData, err := s.Storage.Get(id)
+	if err != nil {
+		return nil, err
+	}
+	if rawData == nil {
+		return nil, nil
+	}
+
+	sess := acquireSession()
+
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+
+	sess.id = id
+	sess.config = s
+
+	sess.data.Lock()
+	defer sess.data.Unlock()
+	if err := sess.decodeSessionData(rawData); err != nil {
+		return nil, fmt.Errorf("failed to decode session data: %w", err)
+	}
+
+	return sess, nil
+}

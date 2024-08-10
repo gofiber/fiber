@@ -2,6 +2,7 @@ package session
 
 import (
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -224,7 +225,7 @@ func Test_Session_Middleware(t *testing.T) {
 	require.NotEqual(t, token, newToken)
 }
 
-func TestNewWithStore(t *testing.T) {
+func Test_Session_NewWithStore(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
@@ -386,4 +387,57 @@ func Test_Session_WithConfig(t *testing.T) {
 	ctx.Request.SetRequestURI("/isFresh")
 	h(ctx)
 	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+}
+
+func Test_Session_Next(t *testing.T) {
+	t.Parallel()
+
+	var (
+		doNext bool
+		muNext sync.RWMutex
+	)
+
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Next: func(c fiber.Ctx) bool {
+			muNext.RLock()
+			defer muNext.RUnlock()
+			return doNext
+		},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		sess := FromContext(c)
+		if sess == nil {
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+		id := sess.ID()
+		return c.SendString("value=" + id)
+	})
+
+	h := app.Handler()
+
+	// Test with Next returning false
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	h(ctx)
+	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+	// Get session cookie
+	token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
+	require.NotEmpty(t, token, "Expected Set-Cookie header to be present")
+	tokenParts := strings.SplitN(strings.SplitN(token, ";", 2)[0], "=", 2)
+	require.Len(t, tokenParts, 2, "Expected Set-Cookie header to contain a token")
+	token = tokenParts[1]
+	require.Equal(t, "value="+token, string(ctx.Response.Body()))
+
+	// Test with Next returning true
+	muNext.Lock()
+	doNext = true
+	muNext.Unlock()
+
+	ctx = &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	h(ctx)
+	require.Equal(t, fiber.StatusInternalServerError, ctx.Response.StatusCode())
 }

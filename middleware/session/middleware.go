@@ -101,6 +101,9 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 					DefaultErrorHandler(&c, err)
 				}
 			}
+
+			// Release the session back to the pool
+			releaseSession(session)
 		}
 
 		// release the middleware back to the pool
