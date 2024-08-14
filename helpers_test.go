@@ -5,7 +5,6 @@
 package fiber
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -533,8 +532,7 @@ func Test_Utils_IsNoCache(t *testing.T) {
 
 	for _, c := range testCases {
 		ok := isNoCache(c.string)
-		require.Equal(t, c.bool, ok,
-			fmt.Sprintf("want %t, got isNoCache(%s)=%t", c.bool, c.string, ok))
+		require.Equal(t, c.bool, ok, "want %t, got isNoCache(%s)=%t", c.bool, c.string, ok)
 	}
 }
 
