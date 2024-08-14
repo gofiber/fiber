@@ -9,15 +9,16 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
-// go:generate msgp
-// msgp -file="storage_manager.go" -o="storage_manager_msgp.go" -tests=false -unexported
+// msgp -file="storage_manager.go" -o="storage_manager_msgp.go" -tests=true -unexported
+//
+//go:generate msgp
 type item struct{}
 
 //msgp:ignore manager
 type storageManager struct {
-	pool    sync.Pool
-	memory  *memory.Storage
-	storage fiber.Storage
+	pool    sync.Pool       `msg:"-"` //nolint:revive // Ignore unexported type
+	memory  *memory.Storage `msg:"-"` //nolint:revive // Ignore unexported type
+	storage fiber.Storage   `msg:"-"` //nolint:revive // Ignore unexported type
 }
 
 func newStorageManager(storage fiber.Storage) *storageManager {

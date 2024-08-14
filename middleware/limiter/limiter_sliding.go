@@ -27,11 +27,11 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 
 	// Return new handler
 	return func(c fiber.Ctx) error {
-		// Generate max from generator, if no generator was provided the default value returned is 5
-		max := cfg.MaxFunc(c)
+		// Generate maxRequests from generator, if no generator was provided the default value returned is 5
+		maxRequests := cfg.MaxFunc(c)
 
 		// Don't execute middleware if Next returns true or if the max is 0
-		if (cfg.Next != nil && cfg.Next(c)) || max == 0 {
+		if (cfg.Next != nil && cfg.Next(c)) || maxRequests == 0 {
 			return c.Next()
 		}
 
@@ -129,7 +129,7 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 		}
 
 		// We can continue, update RateLimit headers
-		c.Set(xRateLimitLimit, strconv.Itoa(max))
+		c.Set(xRateLimitLimit, strconv.Itoa(maxRequests))
 		c.Set(xRateLimitRemaining, strconv.Itoa(remaining))
 		c.Set(xRateLimitReset, strconv.FormatUint(resetInSec, 10))
 
