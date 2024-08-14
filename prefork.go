@@ -76,9 +76,9 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg ListenConfig) er
 		pid int
 	}
 	// create variables
-	max_procs := runtime.GOMAXPROCS(0)
+	maxProcs := runtime.GOMAXPROCS(0)
 	childs := make(map[int]*exec.Cmd)
-	channel := make(chan child, max_procs)
+	channel := make(chan child, maxProcs)
 
 	// kill child procs when master exits
 	defer func() {
@@ -95,7 +95,7 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg ListenConfig) er
 	var pids []string
 
 	// launch child procs
-	for i := 0; i < max_procs; i++ {
+	for i := 0; i < maxProcs; i++ {
 		cmd := exec.Command(os.Args[0], os.Args[1:]...) //nolint:gosec // It's fine to launch the same process again
 		if testPreforkMaster {
 			// When test prefork master,
