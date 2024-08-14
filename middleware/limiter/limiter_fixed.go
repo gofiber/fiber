@@ -26,11 +26,11 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 
 	// Return new handler
 	return func(c fiber.Ctx) error {
-		// Generate max from generator, if no generator was provided the default value returned is 5
-		max := cfg.MaxFunc(c)
+		// Generate max_requests from generator, if no generator was provided the default value returned is 5
+		max_requests := cfg.MaxFunc(c)
 
 		// Don't execute middleware if Next returns true or if the max is 0
-		if (cfg.Next != nil && cfg.Next(c)) || max == 0 {
+		if (cfg.Next != nil && cfg.Next(c)) || max_requests == 0 {
 			return c.Next()
 		}
 
@@ -62,7 +62,7 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 		resetInSec := e.exp - ts
 
 		// Set how many hits we have left
-		remaining := max - e.currHits
+		remaining := max_requests - e.currHits
 
 		// Update storage
 		manager.set(key, e, cfg.Expiration)
@@ -98,7 +98,7 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 		}
 
 		// We can continue, update RateLimit headers
-		c.Set(xRateLimitLimit, strconv.Itoa(max))
+		c.Set(xRateLimitLimit, strconv.Itoa(max_requests))
 		c.Set(xRateLimitRemaining, strconv.Itoa(remaining))
 		c.Set(xRateLimitReset, strconv.FormatUint(resetInSec, 10))
 
