@@ -880,7 +880,7 @@ func Test_Cache_MaxBytesOrder(t *testing.T) {
 	for idx, tcase := range cases {
 		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, tcase[0], nil))
 		require.NoError(t, err)
-		require.Equal(t, tcase[1], rsp.Header.Get("X-Cache"), fmt.Sprintf("Case %v", idx))
+		require.Equal(t, tcase[1], rsp.Header.Get("X-Cache"), "Case %v", idx)
 	}
 }
 
@@ -914,7 +914,7 @@ func Test_Cache_MaxBytesSizes(t *testing.T) {
 	for idx, tcase := range cases {
 		rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, tcase[0], nil))
 		require.NoError(t, err)
-		require.Equal(t, tcase[1], rsp.Header.Get("X-Cache"), fmt.Sprintf("Case %v", idx))
+		require.Equal(t, tcase[1], rsp.Header.Get("X-Cache"), "Case %v", idx)
 	}
 }
 

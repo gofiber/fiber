@@ -6,15 +6,151 @@ import (
 	"github.com/tinylib/msgp/msgp"
 )
 
+// DecodeMsg implements msgp.Decodable
+func (z *response) DecodeMsg(dc *msgp.Reader) (err error) {
+	var field []byte
+	_ = field
+	var zb0001 uint32
+	zb0001, err = dc.ReadMapHeader()
+	if err != nil {
+		err = msgp.WrapError(err)
+		return
+	}
+	for zb0001 > 0 {
+		zb0001--
+		field, err = dc.ReadMapKeyPtr()
+		if err != nil {
+			err = msgp.WrapError(err)
+			return
+		}
+		switch msgp.UnsafeString(field) {
+		case "hs":
+			var zb0002 uint32
+			zb0002, err = dc.ReadMapHeader()
+			if err != nil {
+				err = msgp.WrapError(err, "Headers")
+				return
+			}
+			if z.Headers == nil {
+				z.Headers = make(map[string][]string, zb0002)
+			} else if len(z.Headers) > 0 {
+				for key := range z.Headers {
+					delete(z.Headers, key)
+				}
+			}
+			for zb0002 > 0 {
+				zb0002--
+				var za0001 string
+				var za0002 []string
+				za0001, err = dc.ReadString()
+				if err != nil {
+					err = msgp.WrapError(err, "Headers")
+					return
+				}
+				var zb0003 uint32
+				zb0003, err = dc.ReadArrayHeader()
+				if err != nil {
+					err = msgp.WrapError(err, "Headers", za0001)
+					return
+				}
+				if cap(za0002) >= int(zb0003) {
+					za0002 = (za0002)[:zb0003]
+				} else {
+					za0002 = make([]string, zb0003)
+				}
+				for za0003 := range za0002 {
+					za0002[za0003], err = dc.ReadString()
+					if err != nil {
+						err = msgp.WrapError(err, "Headers", za0001, za0003)
+						return
+					}
+				}
+				z.Headers[za0001] = za0002
+			}
+		case "b":
+			z.Body, err = dc.ReadBytes(z.Body)
+			if err != nil {
+				err = msgp.WrapError(err, "Body")
+				return
+			}
+		case "sc":
+			z.StatusCode, err = dc.ReadInt()
+			if err != nil {
+				err = msgp.WrapError(err, "StatusCode")
+				return
+			}
+		default:
+			err = dc.Skip()
+			if err != nil {
+				err = msgp.WrapError(err)
+				return
+			}
+		}
+	}
+	return
+}
+
+// EncodeMsg implements msgp.Encodable
+func (z *response) EncodeMsg(en *msgp.Writer) (err error) {
+	// map header, size 3
+	// write "hs"
+	err = en.Append(0x83, 0xa2, 0x68, 0x73)
+	if err != nil {
+		return
+	}
+	err = en.WriteMapHeader(uint32(len(z.Headers)))
+	if err != nil {
+		err = msgp.WrapError(err, "Headers")
+		return
+	}
+	for za0001, za0002 := range z.Headers {
+		err = en.WriteString(za0001)
+		if err != nil {
+			err = msgp.WrapError(err, "Headers")
+			return
+		}
+		err = en.WriteArrayHeader(uint32(len(za0002)))
+		if err != nil {
+			err = msgp.WrapError(err, "Headers", za0001)
+			return
+		}
+		for za0003 := range za0002 {
+			err = en.WriteString(za0002[za0003])
+			if err != nil {
+				err = msgp.WrapError(err, "Headers", za0001, za0003)
+				return
+			}
+		}
+	}
+	// write "b"
+	err = en.Append(0xa1, 0x62)
+	if err != nil {
+		return
+	}
+	err = en.WriteBytes(z.Body)
+	if err != nil {
+		err = msgp.WrapError(err, "Body")
+		return
+	}
+	// write "sc"
+	err = en.Append(0xa2, 0x73, 0x63)
+	if err != nil {
+		return
+	}
+	err = en.WriteInt(z.StatusCode)
+	if err != nil {
+		err = msgp.WrapError(err, "StatusCode")
+		return
+	}
+	return
+}
+
 // MarshalMsg implements msgp.Marshaler
 func (z *response) MarshalMsg(b []byte) (o []byte, err error) {
 	o = msgp.Require(b, z.Msgsize())
 	// map header, size 3
-	// string "sc"
-	o = append(o, 0x83, 0xa2, 0x73, 0x63)
-	o = msgp.AppendInt(o, z.StatusCode)
 	// string "hs"
-	o = append(o, 0xa2, 0x68, 0x73)
+	o = append(o, 0x83, 0xa2, 0x68, 0x73)
 	o = msgp.AppendMapHeader(o, uint32(len(z.Headers)))
 	for za0001, za0002 := range z.Headers {
 		o = msgp.AppendString(o, za0001)
@@ -26,6 +162,9 @@ func (z *response) MarshalMsg(b []byte) (o []byte, err error) {
 	// string "b"
 	o = append(o, 0xa1, 0x62)
 	o = msgp.AppendBytes(o, z.Body)
+	// string "sc"
+	o = append(o, 0xa2, 0x73, 0x63)
+	o = msgp.AppendInt(o, z.StatusCode)
 	return
 }
 
@@ -47,12 +186,6 @@ func (z *response) UnmarshalMsg(bts []byte) (o []byte, err error) {
 			return
 		}
 		switch msgp.UnsafeString(field) {
-		case "sc":
-			z.StatusCode, bts, err = msgp.ReadIntBytes(bts)
-			if err != nil {
-				err = msgp.WrapError(err, "StatusCode")
-				return
-			}
 		case "hs":
 			var zb0002 uint32
 			zb0002, bts, err = msgp.ReadMapHeaderBytes(bts)
@@ -102,6 +235,12 @@ func (z *response) UnmarshalMsg(bts []byte) (o []byte, err error) {
 				err = msgp.WrapError(err, "Body")
 				return
 			}
+		case "sc":
+			z.StatusCode, bts, err = msgp.ReadIntBytes(bts)
+			if err != nil {
+				err = msgp.WrapError(err, "StatusCode")
+				return
+			}
 		default:
 			bts, err = msgp.Skip(bts)
 			if err != nil {
@@ -116,7 +255,7 @@ func (z *response) UnmarshalMsg(bts []byte) (o []byte, err error) {
 
 // Msgsize returns an upper bound estimate of the number of bytes occupied by the serialized message
 func (z *response) Msgsize() (s int) {
-	s = 1 + 3 + msgp.IntSize + 3 + msgp.MapHeaderSize
+	s = 1 + 3 + msgp.MapHeaderSize
 	if z.Headers != nil {
 		for za0001, za0002 := range z.Headers {
 			_ = za0002
@@ -126,6 +265,6 @@ func (z *response) Msgsize() (s int) {
 			}
 		}
 	}
-	s += 2 + msgp.BytesPrefixSize + len(z.Body)
+	s += 2 + msgp.BytesPrefixSize + len(z.Body) + 3 + msgp.IntSize
 	return
 }

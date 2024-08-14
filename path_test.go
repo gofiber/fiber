@@ -5,7 +5,6 @@
 package fiber
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -142,9 +141,9 @@ func Test_Path_matchParams(t *testing.T) {
 		parser := parseRoute(testCollection.pattern)
 		for _, c := range testCollection.testCases {
 			match := parser.getMatch(c.url, c.url, &ctxParams, c.partialCheck)
-			require.Equal(t, c.match, match, fmt.Sprintf("route: '%s', url: '%s'", testCollection.pattern, c.url))
+			require.Equal(t, c.match, match, "route: '%s', url: '%s'", testCollection.pattern, c.url)
 			if match && len(c.params) > 0 {
-				require.Equal(t, c.params[0:len(c.params)], ctxParams[0:len(c.params)], fmt.Sprintf("route: '%s', url: '%s'", testCollection.pattern, c.url))
+				require.Equal(t, c.params[0:len(c.params)], ctxParams[0:len(c.params)], "route: '%s', url: '%s'", testCollection.pattern, c.url)
 			}
 		}
 	}
@@ -163,7 +162,7 @@ func Test_RoutePatternMatch(t *testing.T) {
 				continue
 			}
 			match := RoutePatternMatch(c.url, pattern)
-			require.Equal(t, c.match, match, fmt.Sprintf("route: '%s', url: '%s'", pattern, c.url))
+			require.Equal(t, c.match, match, "route: '%s', url: '%s'", pattern, c.url)
 		}
 	}
 	for _, testCase := range routeTestCases {
@@ -224,9 +223,9 @@ func Benchmark_Path_matchParams(t *testing.B) {
 						matchRes = true
 					}
 				}
-				require.Equal(t, c.match, matchRes, fmt.Sprintf("route: '%s', url: '%s'", testCollection.pattern, c.url))
+				require.Equal(t, c.match, matchRes, "route: '%s', url: '%s'", testCollection.pattern, c.url)
 				if matchRes && len(c.params) > 0 {
-					require.Equal(t, c.params[0:len(c.params)-1], ctxParams[0:len(c.params)-1], fmt.Sprintf("route: '%s', url: '%s'", testCollection.pattern, c.url))
+					require.Equal(t, c.params[0:len(c.params)-1], ctxParams[0:len(c.params)-1], "route: '%s', url: '%s'", testCollection.pattern, c.url)
 				}
 			})
 		}
@@ -257,7 +256,7 @@ func Benchmark_RoutePatternMatch(t *testing.B) {
 						matchRes = true
 					}
 				}
-				require.Equal(t, c.match, matchRes, fmt.Sprintf("route: '%s', url: '%s'", testCollection.pattern, c.url))
+				require.Equal(t, c.match, matchRes, "route: '%s', url: '%s'", testCollection.pattern, c.url)
 			})
 		}
 	}

@@ -35,7 +35,7 @@ markdown:
 ## lint: 🚨 Run lint checks
 .PHONY: lint
 lint:
-	go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.59.1 run ./...
+	go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.60.1 run ./...
 
 ## test: 🚦 Execute all tests
 .PHONY: test
@@ -56,3 +56,12 @@ tidy:
 .PHONY: betteralign
 betteralign:
 	go run github.com/dkorunic/betteralign/cmd/betteralign@latest -test_files -generated_files -apply ./...
+
+## tidy: ⚡️ Generate msgp
+.PHONY: msgp
+msgp:
+	go run github.com/tinylib/msgp@latest -file="middleware/cache/manager.go" -o="middleware/cache/manager_msgp.go" -tests=true -unexported
+	go run github.com/tinylib/msgp@latest -file="middleware/session/data.go" -o="middleware/session/data_msgp.go" -tests=true -unexported
+	go run github.com/tinylib/msgp@latest -file="middleware/csrf/storage_manager.go" -o="middleware/csrf/storage_manager_msgp.go" -tests=true -unexported
+	go run github.com/tinylib/msgp@latest -file="middleware/limiter/manager.go" -o="middleware/limiter/manager_msgp.go" -tests=true -unexported
+	go run github.com/tinylib/msgp@latest -file="middleware/idempotency/response.go" -o="middleware/idempotency/response_msgp.go" -tests=true -unexported

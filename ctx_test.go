@@ -867,7 +867,7 @@ func Test_Ctx_UserContext(t *testing.T) {
 		t.Parallel()
 		testKey := struct{}{}
 		testValue := "Test Value"
-		ctx := context.WithValue(context.Background(), testKey, testValue)
+		ctx := context.WithValue(context.Background(), testKey, testValue) //nolint: staticcheck // not needed for tests
 		require.Equal(t, testValue, ctx.Value(testKey))
 	})
 }
@@ -880,7 +880,7 @@ func Test_Ctx_SetUserContext(t *testing.T) {
 
 	testKey := struct{}{}
 	testValue := "Test Value"
-	ctx := context.WithValue(context.Background(), testKey, testValue)
+	ctx := context.WithValue(context.Background(), testKey, testValue) //nolint: staticcheck // not needed for tests
 	c.SetUserContext(ctx)
 	require.Equal(t, testValue, c.UserContext().Value(testKey))
 }
@@ -900,7 +900,7 @@ func Test_Ctx_UserContext_Multiple_Requests(t *testing.T) {
 		}
 
 		input := utils.CopyString(Query(c, "input", "NO_VALUE"))
-		ctx = context.WithValue(ctx, testKey, fmt.Sprintf("%s_%s", testValue, input))
+		ctx = context.WithValue(ctx, testKey, fmt.Sprintf("%s_%s", testValue, input)) //nolint: staticcheck // not needed for tests
 		c.SetUserContext(ctx)
 
 		return c.Status(StatusOK).SendString(fmt.Sprintf("resp_%s_returned", input))
