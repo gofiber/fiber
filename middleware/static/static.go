@@ -65,7 +65,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 				GenerateIndexPages:     config.Browse,
 				AcceptByteRange:        config.ByteRange,
 				Compress:               config.Compress,
-				CompressBrotli:         config.Compress, // Brotli compression won't work without this
+				CompressBrotli:         config.Compress,
 				CompressedFileSuffixes: c.App().Config().CompressedFileSuffixes,
 				CacheDuration:          config.CacheDuration,
 				SkipCache:              config.CacheDuration < 0,
@@ -100,6 +100,19 @@ func New(root string, cfg ...Config) fiber.Handler {
 
 				if len(path) > 0 && path[0] != '/' {
 					path = append([]byte("/"), path...)
+				}
+
+				// Perform explicit path validation
+				absRoot, err := filepath.Abs(root)
+				if err != nil {
+					fctx.Response.SetStatusCode(fiber.StatusInternalServerError)
+					return nil
+				}
+
+				absPath, err := filepath.Abs(filepath.Join(absRoot, string(path)))
+				if err != nil || !strings.HasPrefix(absPath, absRoot) {
+					fctx.Response.SetStatusCode(fiber.StatusForbidden)
+					return nil
 				}
 
 				return path
