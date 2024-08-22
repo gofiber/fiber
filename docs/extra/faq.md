@@ -32,7 +32,7 @@ app.Use(func(c fiber.Ctx) error {
 
 ## How can i use live reload ?
 
-[Air](https://github.com/cosmtrek/air) is a handy tool that automatically restarts your Go applications whenever the source code changes, making your development process faster and more efficient.
+[Air](https://github.com/air-verse/air) is a handy tool that automatically restarts your Go applications whenever the source code changes, making your development process faster and more efficient.
 
 To use Air in a Fiber project, follow these steps:
 
