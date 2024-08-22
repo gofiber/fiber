@@ -32,7 +32,7 @@ const (
 )
 
 // redirectionMsgs is a struct that used to store flash messages and old input data in cookie using MSGP.
-// msgp -file="redirect.go" -o="redirect_msgp.go" -tests=false -unexported
+// msgp -file="redirect.go" -o="redirect_msgp.go" -unexported
 //
 //msgp:ignore Redirect RedirectConfig OldInputData FlashMessage
 type redirectionMsg struct {
