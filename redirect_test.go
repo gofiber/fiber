@@ -226,6 +226,10 @@ func Test_Redirect_Route_WithFlashMessages(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	err := c.Redirect().With("success", "1").With("message", "test").Route("user")
+
+	require.Contains(t, c.redirect.messages, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
+	require.Contains(t, c.redirect.messages, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
+
 	require.NoError(t, err)
 	require.Equal(t, 302, c.Response().StatusCode())
 	require.Equal(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
@@ -254,6 +258,12 @@ func Test_Redirect_Route_WithOldInput(t *testing.T) {
 
 	c.Request().URI().SetQueryString("id=1&name=tom")
 	err := c.Redirect().With("success", "1").With("message", "test").WithInput().Route("user")
+
+	require.Contains(t, c.redirect.messages, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
+	require.Contains(t, c.redirect.messages, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
+	require.Contains(t, c.redirect.messages, redirectionMsg{key: "id", value: "1", isOldInput: true})
+	require.Contains(t, c.redirect.messages, redirectionMsg{key: "name", value: "tom", isOldInput: true})
+
 	require.NoError(t, err)
 	require.Equal(t, 302, c.Response().StatusCode())
 	require.Equal(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
