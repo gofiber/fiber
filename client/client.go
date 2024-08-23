@@ -7,9 +7,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"errors"
-	"fmt"
 	"io"
-	urlpkg "net/url"
 	"os"
 	"path/filepath"
 	"sync"
@@ -20,10 +18,10 @@ import (
 	"github.com/gofiber/utils/v2"
 
 	"github.com/valyala/fasthttp"
+	"github.com/valyala/fasthttp/fasthttpproxy"
 )
 
 var (
-	ErrInvalidProxyURL    = errors.New("invalid proxy url scheme")
 	ErrFailedToAppendCert = errors.New("failed to append certificate")
 )
 
@@ -57,9 +55,6 @@ type Client struct {
 	baseURL   string
 	userAgent string
 	referer   string
-
-	// proxy
-	proxyURL string
 
 	// user defined request hooks
 	userRequestHooks []RequestHook
@@ -229,16 +224,7 @@ func (c *Client) SetRootCertificateFromString(pem string) *Client {
 
 // SetProxyURL sets proxy url in client. It will apply via core to hostclient.
 func (c *Client) SetProxyURL(proxyURL string) error {
-	pURL, err := urlpkg.Parse(proxyURL)
-	if err != nil {
-		return fmt.Errorf("client: %w", err)
-	}
-
-	if pURL.Scheme != "http" && pURL.Scheme != "https" {
-		return fmt.Errorf("client: %w", ErrInvalidProxyURL)
-	}
-
-	c.proxyURL = pURL.String()
+	c.fasthttp.Dial = fasthttpproxy.FasthttpHTTPDialer(proxyURL)
 
 	return nil
 }
@@ -582,7 +568,6 @@ func (c *Client) Reset() {
 	c.timeout = 0
 	c.userAgent = ""
 	c.referer = ""
-	c.proxyURL = ""
 	c.retryConfig = nil
 	c.debug = false
 
