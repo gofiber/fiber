@@ -252,6 +252,8 @@ func Test_Redirect_Route_WithOldInput(t *testing.T) {
 	t.Parallel()
 
 	t.Run("Query", func(t *testing.T) {
+		t.Parallel()
+
 		app := New()
 		app.Get("/user", func(c Ctx) error {
 			return c.SendString("user")
@@ -285,6 +287,8 @@ func Test_Redirect_Route_WithOldInput(t *testing.T) {
 	})
 
 	t.Run("Form", func(t *testing.T) {
+		t.Parallel()
+
 		app := New()
 		app.Post("/user", func(c Ctx) error {
 			return c.SendString("user")
@@ -319,6 +323,8 @@ func Test_Redirect_Route_WithOldInput(t *testing.T) {
 	})
 
 	t.Run("MultipartForm", func(t *testing.T) {
+		t.Parallel()
+
 		app := New()
 		app.Get("/user", func(c Ctx) error {
 			return c.SendString("user")
