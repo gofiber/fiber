@@ -5,6 +5,8 @@
 package fiber
 
 import (
+	"bytes"
+	"mime/multipart"
 	"net/url"
 	"testing"
 
@@ -35,7 +37,7 @@ func Test_Redirect_To_WithFlashMessages(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	err := c.Redirect().With("success", "1").With("message", "test", 2).To("http://example.com")
+	err := c.Redirect().With("success", "2").With("success", "1").With("message", "test", 2).To("http://example.com")
 	require.NoError(t, err)
 	require.Equal(t, 302, c.Response().StatusCode())
 	require.Equal(t, "http://example.com", string(c.Response().Header.Peek(HeaderLocation)))
@@ -249,36 +251,114 @@ func Test_Redirect_Route_WithFlashMessages(t *testing.T) {
 func Test_Redirect_Route_WithOldInput(t *testing.T) {
 	t.Parallel()
 
-	app := New()
-	app.Get("/user", func(c Ctx) error {
-		return c.SendString("user")
-	}).Name("user")
+	t.Run("Query", func(t *testing.T) {
+		app := New()
+		app.Get("/user", func(c Ctx) error {
+			return c.SendString("user")
+		}).Name("user")
 
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+		c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
-	c.Request().URI().SetQueryString("id=1&name=tom")
-	err := c.Redirect().With("success", "1").With("message", "test").WithInput().Route("user")
+		c.Request().URI().SetQueryString("id=1&name=tom")
+		err := c.Redirect().With("success", "1").With("message", "test").WithInput().Route("user")
 
-	require.Contains(t, c.redirect.messages, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
-	require.Contains(t, c.redirect.messages, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
-	require.Contains(t, c.redirect.messages, redirectionMsg{key: "id", value: "1", isOldInput: true})
-	require.Contains(t, c.redirect.messages, redirectionMsg{key: "name", value: "tom", isOldInput: true})
+		require.Contains(t, c.redirect.messages, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
+		require.Contains(t, c.redirect.messages, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
+		require.Contains(t, c.redirect.messages, redirectionMsg{key: "id", value: "1", isOldInput: true})
+		require.Contains(t, c.redirect.messages, redirectionMsg{key: "name", value: "tom", isOldInput: true})
 
-	require.NoError(t, err)
-	require.Equal(t, 302, c.Response().StatusCode())
-	require.Equal(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
+		require.NoError(t, err)
+		require.Equal(t, 302, c.Response().StatusCode())
+		require.Equal(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
 
-	c.Context().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
+		c.Context().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
 
-	var msgs redirectionMsgs
-	_, err = msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
-	require.NoError(t, err)
+		var msgs redirectionMsgs
+		_, err = msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
+		require.NoError(t, err)
 
-	require.Len(t, msgs, 4)
-	require.Contains(t, msgs, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
-	require.Contains(t, msgs, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
-	require.Contains(t, msgs, redirectionMsg{key: "id", value: "1", level: 0, isOldInput: true})
-	require.Contains(t, msgs, redirectionMsg{key: "name", value: "tom", level: 0, isOldInput: true})
+		require.Len(t, msgs, 4)
+		require.Contains(t, msgs, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
+		require.Contains(t, msgs, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
+		require.Contains(t, msgs, redirectionMsg{key: "id", value: "1", level: 0, isOldInput: true})
+		require.Contains(t, msgs, redirectionMsg{key: "name", value: "tom", level: 0, isOldInput: true})
+	})
+
+	t.Run("Form", func(t *testing.T) {
+		app := New()
+		app.Post("/user", func(c Ctx) error {
+			return c.SendString("user")
+		}).Name("user")
+
+		c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+
+		c.Request().Header.Set(HeaderContentType, MIMEApplicationForm)
+		c.Request().SetBodyString("id=1&name=tom")
+		err := c.Redirect().With("success", "1").With("message", "test").WithInput().Route("user")
+
+		require.Contains(t, c.redirect.messages, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
+		require.Contains(t, c.redirect.messages, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
+		require.Contains(t, c.redirect.messages, redirectionMsg{key: "id", value: "1", isOldInput: true})
+		require.Contains(t, c.redirect.messages, redirectionMsg{key: "name", value: "tom", isOldInput: true})
+
+		require.NoError(t, err)
+		require.Equal(t, 302, c.Response().StatusCode())
+		require.Equal(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
+
+		c.Context().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
+
+		var msgs redirectionMsgs
+		_, err = msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
+		require.NoError(t, err)
+
+		require.Len(t, msgs, 4)
+		require.Contains(t, msgs, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
+		require.Contains(t, msgs, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
+		require.Contains(t, msgs, redirectionMsg{key: "id", value: "1", level: 0, isOldInput: true})
+		require.Contains(t, msgs, redirectionMsg{key: "name", value: "tom", level: 0, isOldInput: true})
+	})
+
+	t.Run("MultipartForm", func(t *testing.T) {
+		app := New()
+		app.Get("/user", func(c Ctx) error {
+			return c.SendString("user")
+		}).Name("user")
+
+		c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+
+		body := &bytes.Buffer{}
+		writer := multipart.NewWriter(body)
+
+		require.NoError(t, writer.WriteField("id", "1"))
+		require.NoError(t, writer.WriteField("name", "tom"))
+		require.NoError(t, writer.Close())
+
+		c.Request().SetBody(body.Bytes())
+		c.Request().Header.Set(HeaderContentType, writer.FormDataContentType())
+
+		err := c.Redirect().With("success", "1").With("message", "test").WithInput().Route("user")
+
+		require.Contains(t, c.redirect.messages, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
+		require.Contains(t, c.redirect.messages, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
+		require.Contains(t, c.redirect.messages, redirectionMsg{key: "id", value: "1", isOldInput: true})
+		require.Contains(t, c.redirect.messages, redirectionMsg{key: "name", value: "tom", isOldInput: true})
+
+		require.NoError(t, err)
+		require.Equal(t, 302, c.Response().StatusCode())
+		require.Equal(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
+
+		c.Context().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
+
+		var msgs redirectionMsgs
+		_, err = msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
+		require.NoError(t, err)
+
+		require.Len(t, msgs, 4)
+		require.Contains(t, msgs, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
+		require.Contains(t, msgs, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
+		require.Contains(t, msgs, redirectionMsg{key: "id", value: "1", level: 0, isOldInput: true})
+		require.Contains(t, msgs, redirectionMsg{key: "name", value: "tom", level: 0, isOldInput: true})
+	})
 }
 
 // go test -run Test_Redirect_parseAndClearFlashMessages
@@ -332,6 +412,8 @@ func Test_Redirect_parseAndClearFlashMessages(t *testing.T) {
 		Level: 0,
 	}, c.Redirect().Message("message"))
 
+	require.Equal(t, FlashMessage{}, c.Redirect().Message("not_message"))
+
 	require.Equal(t, []FlashMessage{
 		{
 			Key:   "success",
@@ -354,6 +436,8 @@ func Test_Redirect_parseAndClearFlashMessages(t *testing.T) {
 		Key:   "name",
 		Value: "tom",
 	}, c.Redirect().OldInput("name"))
+
+	require.Equal(t, OldInputData{}, c.Redirect().OldInput("not_name"))
 
 	require.Equal(t, []OldInputData{
 		{
