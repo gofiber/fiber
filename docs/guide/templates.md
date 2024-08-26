@@ -111,3 +111,60 @@ app.Get("/", func(c *fiber.Ctx) error {
 If the Fiber config option `PassLocalsToViews` is enabled, then all locals set using `ctx.Locals(key, value)` will be passed to the template. It is important to avoid clashing keys when using this setting.
 :::
 
+## Full Example
+
+<Tabs>
+<TabItem value="example" label="Example">
+
+```go
+package main
+
+import (
+    "log"
+    "github.com/gofiber/fiber/v2"
+    "github.com/gofiber/template/html/v2"
+)
+
+func main() {
+    // Initialize standard Go html template engine
+    engine := html.New("./views", ".html")
+    // If you want to use another engine,
+    // just replace with following:
+    // Create a new engine with django
+	// engine := django.New("./views", ".django")
+
+    app := fiber.New(fiber.Config{
+        Views: engine,
+    })
+    app.Get("/", func(c *fiber.Ctx) error {
+        // Render index template
+        return c.Render("index", fiber.Map{
+            "Title": "Go Fiber Template Example",
+            "Description": "An example template",
+            "Greeting": "Hello, world!",
+        });
+    })
+
+    log.Fatal(app.Listen(":3000"))
+}
+```
+</TabItem>
+<TabItem value="index" label="views/index.html">
+
+```html
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>{{.Title}}</title>
+        <meta name="description" content="{{.Description}}">
+    </head>
+    <body>
+        <h1>{{.Title}}</h1>
+        <p>{{.Greeting}}</p>
+    </body>
+</html>
+```
+
+</TabItem>
+</Tabs>
+
