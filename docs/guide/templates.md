@@ -111,6 +111,106 @@ app.Get("/", func(c *fiber.Ctx) error {
 If the Fiber config option `PassLocalsToViews` is enabled, then all locals set using `ctx.Locals(key, value)` will be passed to the template. It is important to avoid clashing keys when using this setting.
 :::
 
+## Advanced Templating
+
+### Custom Functions
+
+Fiber supports adding custom functions to templates.
+
+- AddFunc
+
+Adds a global function to all templates.
+
+```go title="Signature"
+func (e *Engine) AddFunc(name string, fn interface{}) IEngineCore
+```
+
+<Tabs>
+<TabItem value="add-func-example" label="AddFunc Example">
+
+```go
+// Add `ToUpper` to engine
+engine := html.New("./views", ".html")
+engine.AddFunc("ToUpper", func(s string) string {
+    return strings.ToUpper(s)
+}
+
+// Initialize Fiber App
+app := fiber.New(fiber.Config{
+    Views: engine,
+})
+
+app.Get("/", func (c *fiber.Ctx) error {
+    return c.Render("index", fiber.Map{
+        "Content": "hello, world!"
+    })
+})
+```
+
+</TabItem>
+<TabItem value="add-func-template" label="views/index.html">
+
+```html
+<!DOCTYPE html>
+<html>
+    <body>
+        <p>This will be in {{ToUpper "all caps"}}:</p>
+        <p>{{ToUpper .Content}}</p>
+    </body>
+</html>
+```
+
+</TabItem>
+</Tabs>
+
+- AddFuncMap
+
+Adds a Map of functions (keyed by name) to all templates.
+
+```go title="Signature"
+func (e *Engine) AddFuncMap(m map[string]interface{}) IEngineCore
+```
+
+<Tabs>
+<TabItem value="add-func-map-example" label="AddFuncMap Example">
+
+```go
+// Add `ToUpper` to engine
+engine := html.New("./views", ".html")
+engine.AddFuncMap(map[string]interface{}{
+    "ToUpper": func(s string) string {
+        return strings.ToUpper(s)
+    },
+})
+
+// Initialize Fiber App
+app := fiber.New(fiber.Config{
+    Views: engine,
+})
+
+app.Get("/", func (c *fiber.Ctx) error {
+    return c.Render("index", fiber.Map{
+        "Content": "hello, world!"
+    })
+})
+```
+
+</TabItem>
+<TabItem value="add-func-map-template" label="views/index.html">
+
+```html
+<!DOCTYPE html>
+<html>
+    <body>
+        <p>This will be in {{ToUpper "all caps"}}:</p>
+        <p>{{ToUpper .Content}}</p>
+    </body>
+</html>
+```
+
+</TabItem>
+</Tabs>
+
 ## Full Example
 
 <Tabs>
