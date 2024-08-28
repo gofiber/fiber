@@ -117,7 +117,7 @@ If the Fiber config option `PassLocalsToViews` is enabled, then all locals set u
 
 Fiber supports adding custom functions to templates.
 
-- AddFunc
+#### AddFunc
 
 Adds a global function to all templates.
 
