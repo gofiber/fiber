@@ -1578,7 +1578,7 @@ func Test_Client_SetProxyURL(t *testing.T) {
 	})
 
 	go func() {
-		require.NoError(t, proxyServer.Listen(":4500", fiber.ListenConfig{
+		assert.NoError(t, proxyServer.Listen(":4500", fiber.ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
