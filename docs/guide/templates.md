@@ -163,7 +163,7 @@ app.Get("/", func (c *fiber.Ctx) error {
 </TabItem>
 </Tabs>
 
-- AddFuncMap
+#### AddFuncMap
 
 Adds a Map of functions (keyed by name) to all templates.
 
