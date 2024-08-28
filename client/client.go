@@ -21,9 +21,7 @@ import (
 	"github.com/valyala/fasthttp/fasthttpproxy"
 )
 
-var (
-	ErrFailedToAppendCert = errors.New("failed to append certificate")
-)
+var ErrFailedToAppendCert = errors.New("failed to append certificate")
 
 // The Client is used to create a Fiber Client with
 // client-level settings that apply to all requests

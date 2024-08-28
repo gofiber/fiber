@@ -1577,9 +1577,13 @@ func Test_Client_SetProxyURL(t *testing.T) {
 		return nil
 	})
 
+	addrChan := make(chan string)
 	go func() {
-		assert.NoError(t, proxyServer.Listen(":4500", fiber.ListenConfig{
+		assert.NoError(t, proxyServer.Listen(":0", fiber.ListenConfig{
 			DisableStartupMessage: true,
+			ListenerAddrFunc: func(addr net.Addr) {
+				addrChan <- addr.String()
+			},
 		}))
 	}()
 
@@ -1593,7 +1597,7 @@ func Test_Client_SetProxyURL(t *testing.T) {
 		t.Parallel()
 
 		client := New()
-		err := client.SetProxyURL("localhost:4500")
+		err := client.SetProxyURL(<-addrChan)
 
 		require.NoError(t, err)
 
