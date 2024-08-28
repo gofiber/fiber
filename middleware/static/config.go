@@ -86,7 +86,7 @@ func configDefault(config ...Config) Config {
 	cfg := config[0]
 
 	// Set default values
-	if cfg.IndexNames == nil || len(cfg.IndexNames) == 0 {
+	if len(cfg.IndexNames) == 0 {
 		cfg.IndexNames = ConfigDefault.IndexNames
 	}
 

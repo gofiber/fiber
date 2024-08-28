@@ -97,11 +97,11 @@ func Test_Limiter_With_Max_Func_With_Zero(t *testing.T) {
 func Test_Limiter_With_Max_Func(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	max := 10
+	maxRequests := 10
 
 	app.Use(New(Config{
 		MaxFunc: func(_ fiber.Ctx) int {
-			return max
+			return maxRequests
 		},
 		Expiration: 2 * time.Second,
 		Storage:    memory.New(),
@@ -113,7 +113,7 @@ func Test_Limiter_With_Max_Func(t *testing.T) {
 
 	var wg sync.WaitGroup
 
-	for i := 0; i <= max-1; i++ {
+	for i := 0; i <= maxRequests-1; i++ {
 		wg.Add(1)
 		go func(wg *sync.WaitGroup) {
 			defer wg.Done()

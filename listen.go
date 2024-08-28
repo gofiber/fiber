@@ -351,7 +351,7 @@ func (app *App) startupMessage(addr string, isTLS bool, pids string, cfg ListenC
 	}
 
 	fmt.Fprintf(out, "%s\n", fmt.Sprintf(figletFiberText, colors.Red+"v"+Version+colors.Reset)) //nolint:errcheck,revive // ignore error
-	fmt.Fprintf(out, strings.Repeat("-", 50)+"\n")                                              //nolint:errcheck,revive // ignore error
+	fmt.Fprintf(out, strings.Repeat("-", 50)+"\n")                                              //nolint:errcheck,revive,govet // ignore error
 
 	if host == "0.0.0.0" {
 		//nolint:errcheck,revive // ignore error

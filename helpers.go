@@ -222,7 +222,7 @@ func getGroupPath(prefix, path string) string {
 		path = "/" + path
 	}
 
-	return strings.TrimRight(prefix, "/") + path
+	return utils.TrimRight(prefix, '/') + path
 }
 
 // acceptsOffer This function determines if an offer matches a given specification.
@@ -336,7 +336,7 @@ func getSplicedStrList(headerValue string, dst []string) []string {
 				dst = make([]string, len(dst)+(len(dst)>>1)+2)
 				copy(dst, oldSlice)
 			}
-			dst[insertIndex] = strings.TrimLeft(headerValue[lastElementEndsAt:index], " ")
+			dst[insertIndex] = utils.TrimLeft(headerValue[lastElementEndsAt:index], ' ')
 			lastElementEndsAt = uint8(index + 1)
 			insertIndex++
 		}
@@ -356,7 +356,7 @@ func forEachMediaRange(header []byte, functor func([]byte)) {
 
 	for len(header) > 0 {
 		n := 0
-		header = bytes.TrimLeft(header, " ")
+		header = utils.TrimLeft(header, ' ')
 		quotes := 0
 		escaping := false
 
@@ -459,7 +459,7 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 			}
 		}
 
-		spec = bytes.TrimSpace(spec)
+		spec = utils.Trim(spec, ' ')
 
 		// Determine specificity
 		var specificity int

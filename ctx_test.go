@@ -356,6 +356,26 @@ func Test_Ctx_Body(t *testing.T) {
 	require.Equal(t, []byte("john=doe"), c.Body())
 }
 
+// go test -run Test_Ctx_BodyRaw
+func Test_Ctx_BodyRaw(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+
+	c.Request().SetBodyRaw([]byte("john=doe"))
+	require.Equal(t, []byte("john=doe"), c.BodyRaw())
+}
+
+// go test -run Test_Ctx_BodyRaw_Immutable
+func Test_Ctx_BodyRaw_Immutable(t *testing.T) {
+	t.Parallel()
+	app := New(Config{Immutable: true})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+
+	c.Request().SetBodyRaw([]byte("john=doe"))
+	require.Equal(t, []byte("john=doe"), c.BodyRaw())
+}
+
 // go test -v -run=^$ -bench=Benchmark_Ctx_Body -benchmem -count=4
 func Benchmark_Ctx_Body(b *testing.B) {
 	const input = "john=doe"
@@ -371,6 +391,40 @@ func Benchmark_Ctx_Body(b *testing.B) {
 	}
 
 	require.Equal(b, []byte(input), c.Body())
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_BodyRaw -benchmem -count=4
+func Benchmark_Ctx_BodyRaw(b *testing.B) {
+	const input = "john=doe"
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+
+	c.Request().SetBodyRaw([]byte(input))
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = c.BodyRaw()
+	}
+
+	require.Equal(b, []byte(input), c.BodyRaw())
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_BodyRaw_Immutable -benchmem -count=4
+func Benchmark_Ctx_BodyRaw_Immutable(b *testing.B) {
+	const input = "john=doe"
+
+	app := New(Config{Immutable: true})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+
+	c.Request().SetBodyRaw([]byte(input))
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = c.BodyRaw()
+	}
+
+	require.Equal(b, []byte(input), c.BodyRaw())
 }
 
 // go test -run Test_Ctx_Body_Immutable
@@ -813,7 +867,7 @@ func Test_Ctx_UserContext(t *testing.T) {
 		t.Parallel()
 		testKey := struct{}{}
 		testValue := "Test Value"
-		ctx := context.WithValue(context.Background(), testKey, testValue)
+		ctx := context.WithValue(context.Background(), testKey, testValue) //nolint: staticcheck // not needed for tests
 		require.Equal(t, testValue, ctx.Value(testKey))
 	})
 }
@@ -826,7 +880,7 @@ func Test_Ctx_SetUserContext(t *testing.T) {
 
 	testKey := struct{}{}
 	testValue := "Test Value"
-	ctx := context.WithValue(context.Background(), testKey, testValue)
+	ctx := context.WithValue(context.Background(), testKey, testValue) //nolint: staticcheck // not needed for tests
 	c.SetUserContext(ctx)
 	require.Equal(t, testValue, c.UserContext().Value(testKey))
 }
@@ -846,7 +900,7 @@ func Test_Ctx_UserContext_Multiple_Requests(t *testing.T) {
 		}
 
 		input := utils.CopyString(Query(c, "input", "NO_VALUE"))
-		ctx = context.WithValue(ctx, testKey, fmt.Sprintf("%s_%s", testValue, input))
+		ctx = context.WithValue(ctx, testKey, fmt.Sprintf("%s_%s", testValue, input)) //nolint: staticcheck // not needed for tests
 		c.SetUserContext(ctx)
 
 		return c.Status(StatusOK).SendString(fmt.Sprintf("resp_%s_returned", input))

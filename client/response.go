@@ -8,7 +8,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 
 	"github.com/gofiber/utils/v2"
@@ -68,7 +67,7 @@ func (r *Response) Body() []byte {
 
 // String method returns the body of the server response as String.
 func (r *Response) String() string {
-	return strings.TrimSpace(string(r.Body()))
+	return utils.Trim(string(r.Body()), ' ')
 }
 
 // JSON method will unmarshal body to json.

@@ -40,6 +40,10 @@ func (b *formBinding) Bind(reqCtx *fasthttp.RequestCtx, out any) error {
 		}
 	})
 
+	if err != nil {
+		return err
+	}
+
 	return parse(b.Name(), out, data)
 }
 

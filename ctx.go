@@ -273,10 +273,7 @@ func (c *DefaultCtx) BaseURL() string {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (c *DefaultCtx) BodyRaw() []byte {
-	if c.app.config.Immutable {
-		return utils.CopyBytes(c.fasthttp.Request.Body())
-	}
-	return c.fasthttp.Request.Body()
+	return c.getBody()
 }
 
 func (c *DefaultCtx) tryDecodeBodyInOrder(
@@ -339,21 +336,19 @@ func (c *DefaultCtx) Body() []byte {
 		encodingOrder      = []string{"", "", ""}
 	)
 
-	// faster than peek
-	c.Request().Header.VisitAll(func(key, value []byte) {
-		if c.app.getString(key) == HeaderContentEncoding {
-			headerEncoding = c.app.getString(value)
-		}
-	})
+	// Get Content-Encoding header
+	headerEncoding = utils.UnsafeString(c.Request().Header.ContentEncoding())
+
+	// If no encoding is provided, return the original body
+	if len(headerEncoding) == 0 {
+		return c.getBody()
+	}
 
 	// Split and get the encodings list, in order to attend the
 	// rule defined at: https://www.rfc-editor.org/rfc/rfc9110#section-8.4-5
 	encodingOrder = getSplicedStrList(headerEncoding, encodingOrder)
 	if len(encodingOrder) == 0 {
-		if c.app.config.Immutable {
-			return utils.CopyBytes(c.fasthttp.Request.Body())
-		}
-		return c.fasthttp.Request.Body()
+		return c.getBody()
 	}
 
 	var decodesRealized uint8
@@ -778,7 +773,7 @@ iploop:
 			i++
 		}
 
-		s := strings.TrimRight(headerValue[i:j], " ")
+		s := utils.TrimRight(headerValue[i:j], ' ')
 
 		if c.app.config.EnableIPValidation {
 			// Skip validation if IP is clearly not IPv4/IPv6, otherwise validate without allocations
@@ -828,7 +823,7 @@ func (c *DefaultCtx) extractIPFromHeader(header string) string {
 				i++
 			}
 
-			s := strings.TrimRight(headerValue[i:j], " ")
+			s := utils.TrimRight(headerValue[i:j], ' ')
 
 			if c.app.config.EnableIPValidation {
 				if (!v6 && !v4) || (v6 && !utils.IsIPv6(s)) || (v4 && !utils.IsIPv4(s)) {
@@ -862,7 +857,7 @@ func (c *DefaultCtx) Is(extension string) bool {
 	}
 
 	return strings.HasPrefix(
-		strings.TrimLeft(utils.UnsafeString(c.fasthttp.Request.Header.ContentType()), " "),
+		utils.TrimLeft(utils.UnsafeString(c.fasthttp.Request.Header.ContentType()), ' '),
 		extensionHeader,
 	)
 }
@@ -939,7 +934,7 @@ func (c *DefaultCtx) Links(link ...string) {
 			bb.WriteString(`; rel="` + link[i] + `",`)
 		}
 	}
-	c.setCanonical(HeaderLink, strings.TrimRight(c.app.getString(bb.Bytes()), ","))
+	c.setCanonical(HeaderLink, utils.TrimRight(c.app.getString(bb.Bytes()), ','))
 	bytebufferpool.Put(bb)
 }
 
@@ -1810,7 +1805,7 @@ func (c *DefaultCtx) configDependentPaths() {
 	}
 	// If StrictRouting is disabled, we strip all trailing slashes
 	if !c.app.config.StrictRouting && len(c.detectionPathBuffer) > 1 && c.detectionPathBuffer[len(c.detectionPathBuffer)-1] == '/' {
-		c.detectionPathBuffer = bytes.TrimRight(c.detectionPathBuffer, "/")
+		c.detectionPathBuffer = utils.TrimRight(c.detectionPathBuffer, '/')
 	}
 	c.detectionPath = c.app.getString(c.detectionPathBuffer)
 
@@ -1907,6 +1902,14 @@ func (c *DefaultCtx) release() {
 		ReleaseRedirect(c.redirect)
 		c.redirect = nil
 	}
+}
+
+func (c *DefaultCtx) getBody() []byte {
+	if c.app.config.Immutable {
+		return utils.CopyBytes(c.fasthttp.Request.Body())
+	}
+
+	return c.fasthttp.Request.Body()
 }
 
 // Methods to use with next stack.

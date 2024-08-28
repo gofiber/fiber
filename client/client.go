@@ -674,7 +674,7 @@ func setConfigToRequest(req *Request, config ...Config) {
 		return
 	}
 
-	if cfg.File != nil && len(cfg.File) != 0 {
+	if len(cfg.File) != 0 {
 		req.AddFiles(cfg.File...)
 		return
 	}

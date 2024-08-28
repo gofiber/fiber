@@ -253,7 +253,7 @@ func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
 	}
 	// Strict routing, remove trailing slashes
 	if !app.config.StrictRouting && len(prettyPath) > 1 {
-		prettyPath = strings.TrimRight(prettyPath, "/")
+		prettyPath = utils.TrimRight(prettyPath, '/')
 	}
 
 	route.Path = prefixedPath
@@ -324,7 +324,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 		}
 		// Strict routing, remove trailing slashes
 		if !app.config.StrictRouting && len(pathPretty) > 1 {
-			pathPretty = strings.TrimRight(pathPretty, "/")
+			pathPretty = utils.TrimRight(pathPretty, '/')
 		}
 		// Is layer a middleware?
 		isUse := method == methodUse

@@ -84,7 +84,7 @@ func Test_Request_Context(t *testing.T) {
 
 	require.Nil(t, ctx.Value(key))
 
-	ctx = context.WithValue(ctx, key, "string")
+	ctx = context.WithValue(ctx, key, "string") //nolint: staticcheck // not needed for tests
 	req.SetContext(ctx)
 	ctx = req.Context()
 
@@ -1603,8 +1603,8 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 		require.Empty(b, string(p.Peek("TInt")))
 		require.Empty(b, string(p.Peek("TString")))
 		require.Empty(b, string(p.Peek("TFloat")))
-		require.Empty(b, len(p.PeekMulti("TSlice")))
-		require.Empty(b, len(p.PeekMulti("int_slice")))
+		require.Empty(b, p.PeekMulti("TSlice"))
+		require.Empty(b, p.PeekMulti("int_slice"))
 	})
 
 	b.Run("error type should ignore", func(b *testing.B) {
