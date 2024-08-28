@@ -73,7 +73,7 @@ func (c *Ctx) Render(name string, bind Map, layouts ...string) error
 ```
 
 :::info
-By default, [**ctx.Render\(\)**](../api/ctx.md#render) searches for the template name in the `ViewsLayout` path. To override this setting, provide the path(s) in the `layouts` argument
+By default, [**ctx.Render\(\)**](../api/ctx.md#render) searches for the template name in the `ViewsLayout` path. To override this setting, provide the path(s) in the `layouts` argument.
 :::
 
 
@@ -210,6 +210,8 @@ app.Get("/", func (c *fiber.Ctx) error {
 
 </TabItem>
 </Tabs>
+
+- For more advanced template documentation, please visit the [gofiber/template GitHub Repository](https://github.com/gofiber/template).
 
 ## Full Example
 
