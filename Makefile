@@ -65,3 +65,4 @@ msgp:
 	go run github.com/tinylib/msgp@latest -file="middleware/csrf/storage_manager.go" -o="middleware/csrf/storage_manager_msgp.go" -tests=true -unexported
 	go run github.com/tinylib/msgp@latest -file="middleware/limiter/manager.go" -o="middleware/limiter/manager_msgp.go" -tests=true -unexported
 	go run github.com/tinylib/msgp@latest -file="middleware/idempotency/response.go" -o="middleware/idempotency/response_msgp.go" -tests=true -unexported
+	go run github.com/tinylib/msgp@latest -file="redirect.go" -o="redirect_msgp.go" -tests=true -unexported
