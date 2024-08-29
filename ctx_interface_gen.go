@@ -330,6 +330,7 @@ type Ctx interface {
 	Reset(fctx *fasthttp.RequestCtx)
 	// Release is a method to reset context fields when to use ReleaseCtx()
 	release()
+	getBody() []byte
 	// Methods to use with next stack.
 	getMethodINT() int
 	getIndexRoute() int
