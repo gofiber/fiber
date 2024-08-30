@@ -72,12 +72,17 @@ type parentStruct struct {
 	index []int
 }
 
-func lookupTagScope(field reflect.StructField, opt bindCompileOption) (tagScope string) {
+func compileFieldDecoder(field reflect.StructField, index int, opt bindCompileOption, parent parentStruct) ([]decoder, error) {
+	if reflect.PtrTo(field.Type).Implements(bindUnmarshalerType) {
+		return []decoder{&fieldCtxDecoder{index: index, fieldName: field.Name, fieldType: field.Type}}, nil
+	}
+
 	var tags = []string{bindTagRespHeader, bindTagQuery, bindTagParam, bindTagHeader, bindTagCookie}
 	if opt.bodyDecoder {
 		tags = []string{bindTagForm, bindTagMultipart}
 	}
 
+	var tagScope = ""
 	for _, loopTagScope := range tags {
 		if _, ok := field.Tag.Lookup(loopTagScope); ok {
 			tagScope = loopTagScope
@@ -85,15 +90,6 @@ func lookupTagScope(field reflect.StructField, opt bindCompileOption) (tagScope 
 		}
 	}
 
-	return
-}
-
-func compileFieldDecoder(field reflect.StructField, index int, opt bindCompileOption, parent parentStruct) ([]decoder, error) {
-	if reflect.PtrTo(field.Type).Implements(bindUnmarshalerType) {
-		return []decoder{&fieldCtxDecoder{index: index, fieldName: field.Name, fieldType: field.Type}}, nil
-	}
-
-	tagScope := lookupTagScope(field, opt)
 	if tagScope == "" {
 		return nil, nil
 	}
@@ -206,56 +202,15 @@ func compileTextBasedDecoder(field reflect.StructField, index int, tagScope, tag
 	return []decoder{fieldDecoder}, nil
 }
 
-type subElem struct {
-	et             reflect.Type
-	tag            string
-	index          int
-	elementDecoder bind.TextDecoder
-}
-
 func compileSliceFieldTextBasedDecoder(field reflect.StructField, index int, tagScope string, tagContent string) ([]decoder, error) {
 	if field.Type.Kind() != reflect.Slice {
 		panic("BUG: unexpected type, expecting slice " + field.Type.String())
 	}
 
-	var elems []subElem
-	var elementUnmarshaler bind.TextDecoder
-	var err error
-
 	et := field.Type.Elem()
-	if et.Kind() == reflect.Struct {
-		elems = make([]subElem, et.NumField())
-		for i := 0; i < et.NumField(); i++ {
-			if !et.Field(i).IsExported() {
-				// ignore unexported field
-				continue
-			}
-
-			// Skip different tag scopes (main -> sub)
-			subScope := lookupTagScope(et.Field(i), bindCompileOption{})
-			if subScope != tagScope {
-				continue
-			}
-
-			elementUnmarshaler, err := bind.CompileTextDecoder(et.Field(i).Type)
-			if err != nil {
-				return nil, fmt.Errorf("failed to build slice binder: %w", err)
-			}
-
-			elem := subElem{
-				index:          i,
-				tag:            et.Field(i).Tag.Get(subScope),
-				et:             et.Field(i).Type,
-				elementDecoder: elementUnmarshaler,
-			}
-
-			elems = append(elems, elem)
-		}
-	} else {
-		elementUnmarshaler, err = bind.CompileTextDecoder(et)
-		if err != nil {
-			return nil, fmt.Errorf("failed to build slice binder: %w", err)
-		}
+	elementUnmarshaler, err := bind.CompileTextDecoder(et)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build slice binder: %w", err)
 	}
 
 	var eqBytes = bytes.Equal
@@ -281,8 +236,7 @@ func compileSliceFieldTextBasedDecoder(field reflect.StructField, index int, tag
 		return nil, errors.New("unexpected tag scope " + strconv.Quote(tagScope))
 	}
 
-	fieldSliceDecoder := &fieldSliceDecoder{
-		elems:          elems,
+	return []decoder{&fieldSliceDecoder{
 		fieldIndex:     index,
 		eqBytes:        eqBytes,
 		fieldName:      field.Name,
@@ -291,7 +245,5 @@ func compileSliceFieldTextBasedDecoder(field reflect.StructField, index int, tag
 		fieldType:      field.Type,
 		elementType:    et,
 		elementDecoder: elementUnmarshaler,
-	}
-
-	return []decoder{fieldSliceDecoder}, nil
+	}}, nil
 }
