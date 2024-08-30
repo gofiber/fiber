@@ -36,12 +36,13 @@ func (d *fieldCtxDecoder) Decode(ctx Ctx, reqValue reflect.Value) error {
 }
 
 type fieldTextDecoder struct {
-	index     int
-	fieldName string
-	tag       string // query,param,header,respHeader ...
-	reqField  string
-	dec       bind.TextDecoder
-	get       func(c Ctx, key string, defaultValue ...string) string
+	index            int
+	fieldName        string
+	tag              string // query,param,header,respHeader ...
+	reqField         string
+	dec              bind.TextDecoder
+	get              func(c Ctx, key string, defaultValue ...string) string
+	subFieldDecoders []decoder
 }
 
 func (d *fieldTextDecoder) Decode(ctx Ctx, reqValue reflect.Value) error {

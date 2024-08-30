@@ -14,7 +14,7 @@ var textUnmarshalerType = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem(
 
 func CompileTextDecoder(rt reflect.Type) (TextDecoder, error) {
 	// encoding.TextUnmarshaler
-	if reflect.PtrTo(rt).Implements(textUnmarshalerType) {
+	if reflect.PointerTo(rt).Implements(textUnmarshalerType) {
 		return &textUnmarshalEncoder{fieldType: rt}, nil
 	}
 

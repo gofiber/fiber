@@ -45,7 +45,7 @@ func compileReqParser(rt reflect.Type, opt bindCompileOption) (Decoder, error) {
 			continue
 		}
 
-		dec, err := compileFieldDecoder(el.Field(i), i, opt)
+		dec, err := compileFieldDecoder(el.Field(i), i, opt, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -67,11 +67,18 @@ func compileReqParser(rt reflect.Type, opt bindCompileOption) (Decoder, error) {
 	}, nil
 }
 
-func compileFieldDecoder(field reflect.StructField, index int, opt bindCompileOption) (decoder, error) {
-	if reflect.PtrTo(field.Type).Implements(bindUnmarshalerType) {
+type parentDecoder struct {
+	tagScope   string
+	tagContent string
+}
+
+func compileFieldDecoder(field reflect.StructField, index int, opt bindCompileOption, parent *parentDecoder) (decoder, error) {
+	// Custom unmarshaler
+	if reflect.PointerTo(field.Type).Implements(bindUnmarshalerType) {
 		return &fieldCtxDecoder{index: index, fieldName: field.Name, fieldType: field.Type}, nil
 	}
 
+	// Validate tag scope
 	var tags = []string{bindTagRespHeader, bindTagQuery, bindTagParam, bindTagHeader, bindTagCookie}
 	if opt.bodyDecoder {
 		tags = []string{bindTagForm, bindTagMultipart}
@@ -89,17 +96,24 @@ func compileFieldDecoder(field reflect.StructField, index int, opt bindCompileOp
 		return nil, nil
 	}
 
-	tagContent := field.Tag.Get(tagScope)
+	// If parent tag scope is present, just override it and append the parent tag content
+	var tagContent string
+	if parent != nil {
+		tagScope = parent.tagScope
+		tagContent = parent.tagContent + "." + field.Tag.Get(tagScope)
+	} else {
+		tagContent = field.Tag.Get(tagScope)
+	}
 
-	if reflect.PtrTo(field.Type).Implements(textUnmarshalerType) {
-		return compileTextBasedDecoder(field, index, tagScope, tagContent)
+	if reflect.PointerTo(field.Type).Implements(textUnmarshalerType) {
+		return compileTextBasedDecoder(field, index, tagScope, tagContent, opt)
 	}
 
 	if field.Type.Kind() == reflect.Slice {
 		return compileSliceFieldTextBasedDecoder(field, index, tagScope, tagContent)
 	}
 
-	return compileTextBasedDecoder(field, index, tagScope, tagContent)
+	return compileTextBasedDecoder(field, index, tagScope, tagContent, opt)
 }
 
 func formGetter(ctx Ctx, key string, defaultValue ...string) string {
@@ -120,7 +134,7 @@ func multipartGetter(ctx Ctx, key string, defaultValue ...string) string {
 	return v[0]
 }
 
-func compileTextBasedDecoder(field reflect.StructField, index int, tagScope, tagContent string) (decoder, error) {
+func compileTextBasedDecoder(field reflect.StructField, index int, tagScope, tagContent string, opt bindCompileOption) (decoder, error) {
 	var get func(ctx Ctx, key string, defaultValue ...string) string
 	switch tagScope {
 	case bindTagQuery:
@@ -141,19 +155,44 @@ func compileTextBasedDecoder(field reflect.StructField, index int, tagScope, tag
 		return nil, errors.New("unexpected tag scope " + strconv.Quote(tagScope))
 	}
 
+	fieldDecoder := &fieldTextDecoder{
+		index:     index,
+		fieldName: field.Name,
+		tag:       tagScope,
+		reqField:  tagContent,
+		get:       get,
+	}
+
+	// Support simple embeded structs
+	if field.Type.Kind() == reflect.Struct {
+		var decoders []decoder
+		for i := 0; i < field.Type.NumField(); i++ {
+			if !field.Type.Field(i).IsExported() {
+				// ignore unexported field
+				continue
+			}
+
+			dec, err := compileFieldDecoder(field.Type.Field(i), i, opt, &parentDecoder{tagScope: tagScope, tagContent: tagContent})
+			if err != nil {
+				return nil, err
+			}
+
+			decoders = append(decoders, dec)
+		}
+
+		fieldDecoder.subFieldDecoders = decoders
+
+		return fieldDecoder, nil
+	}
+
 	textDecoder, err := bind.CompileTextDecoder(field.Type)
 	if err != nil {
 		return nil, err
 	}
 
-	return &fieldTextDecoder{
-		index:     index,
-		fieldName: field.Name,
-		tag:       tagScope,
-		reqField:  tagContent,
-		dec:       textDecoder,
-		get:       get,
-	}, nil
+	fieldDecoder.dec = textDecoder
+
+	return fieldDecoder, nil
 }
 
 func compileSliceFieldTextBasedDecoder(field reflect.StructField, index int, tagScope string, tagContent string) (decoder, error) {
