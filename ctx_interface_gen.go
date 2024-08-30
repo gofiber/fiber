@@ -11,8 +11,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// Ctx represents the Context which hold the HTTP request and response.
-// It has methods for the request query string, parameters, body, HTTP headers and so on.
+// Ctx represents the Context which hold the HTTP request and response.\nIt has methods for the request query string, parameters, body, HTTP headers and so on.
 type Ctx interface {
 	// Accepts checks if the specified extensions or content types are acceptable.
 	Accepts(offers ...string) string
@@ -31,6 +30,8 @@ type Ctx interface {
 	Attachment(filename ...string)
 	// BaseURL returns (protocol + host + base path).
 	BaseURL() string
+	Bind() *Bind
+	Validate(v any) error
 	// BodyRaw contains the raw body submitted in a POST request.
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
@@ -322,10 +323,9 @@ type Ctx interface {
 	isLocalHost(address string) bool
 	// IsFromLocal will return true if request came from local.
 	IsFromLocal() bool
-	// Bind You can bind body, cookie, headers etc. into the map, map slice, struct easily by using Binding method.
-	// It gives custom binding support, detailed binding options and more.
-	// Replacement of: BodyParser, ParamsParser, GetReqHeaders, GetRespHeaders, AllParams, QueryParser, ReqHeaderParser
-	Bind() *Bind
+	// AllParams Params is used to get all route parameters.
+	// Using Params method to get params.
+	GetParams() map[string]string
 	// Reset is a method to reset context fields by given request when to use server handlers.
 	Reset(fctx *fasthttp.RequestCtx)
 	// Release is a method to reset context fields when to use ReleaseCtx()

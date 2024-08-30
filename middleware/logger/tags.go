@@ -99,9 +99,9 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return output.Write(c.Response().Body())
 		},
 		TagReqHeaders: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			out := c.GetRespHeaders()
-			fmt.Print(out)
+			out := c.GetReqHeaders()
 			reqHeaders := make([]string, 0)
+
 			for k, v := range out {
 				reqHeaders = append(reqHeaders, k+"="+strings.Join(v, ","))
 			}

@@ -21,12 +21,6 @@ type Bind struct {
 	strict bool
 }
 
-func (c *DefaultCtx) Bind() *Bind {
-	b := binderPool.Get().(*Bind)
-	b.ctx = c
-	return b
-}
-
 func (b *Bind) Strict() *Bind {
 	b.strict = true
 	return b
