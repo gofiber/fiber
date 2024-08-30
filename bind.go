@@ -41,7 +41,6 @@ type fieldTextDecoder struct {
 	fieldName   string
 	tag         string // query,param,header,respHeader ...
 	reqField    string
-	et          reflect.Type
 	dec         bind.TextDecoder
 	get         func(c Ctx, key string, defaultValue ...string) string
 }
@@ -53,26 +52,17 @@ func (d *fieldTextDecoder) Decode(ctx Ctx, reqValue reflect.Value) error {
 	}
 
 	var err error
-	for _, i := range d.parentIndex {
-		reqValue = reqValue.Field(i)
-	}
-
-	// Pointer support for struct elems
-	field := reqValue.Field(d.index)
-	if field.Kind() == reflect.Ptr {
-		elem := reflect.New(d.et)
-		err = d.dec.UnmarshalString(text, elem.Elem())
-		if err != nil {
-			return fmt.Errorf("unable to decode '%s' as %s: %w", text, d.reqField, err)
+	if len(d.parentIndex) > 0 {
+		for _, i := range d.parentIndex {
+			reqValue = reqValue.Field(i)
 		}
 
-		field.Set(elem)
+		err = d.dec.UnmarshalString(text, reqValue.Field(d.index))
 
-		return nil
+	} else {
+		err = d.dec.UnmarshalString(text, reqValue.Field(d.index))
 	}
 
-	// Non-pointer elems
-	err = d.dec.UnmarshalString(text, field)
 	if err != nil {
 		return fmt.Errorf("unable to decode '%s' as %s: %w", text, d.reqField, err)
 	}
