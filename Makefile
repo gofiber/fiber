@@ -27,7 +27,7 @@ coverage:
 format:
 	go run mvdan.cc/gofumpt@latest -w -l .
 
-## format: 🎨 Find markdown format issues (Requires markdownlint-cli)
+## markdown: 🎨 Find markdown format issues (Requires markdownlint-cli)
 .PHONY: markdown
 markdown:
 	markdownlint-cli2 "**/*.md" "#vendor"
@@ -57,7 +57,7 @@ tidy:
 betteralign:
 	go run github.com/dkorunic/betteralign/cmd/betteralign@latest -test_files -generated_files -apply ./...
 
-## tidy: ⚡️ Generate msgp && interface implementations
+## generate: ⚡️ Generate msgp && interface implementations
 .PHONY: generate
 generate:
 	go install github.com/tinylib/msgp@latest
