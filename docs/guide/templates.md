@@ -28,7 +28,6 @@ app := fiber.New(fiber.Config{
 })
 ```
 
-
 ### Supported Engines
 
 The Fiber team maintains a [templates](https://docs.gofiber.io/template) package that provides wrappers for multiple template engines:
@@ -47,7 +46,6 @@ The Fiber team maintains a [templates](https://docs.gofiber.io/template) package
 Custom template engines can implement the `Views` interface to be supported in Fiber.
 :::
 
-
 ```go title="Views interface"
 type Views interface {
     // Fiber executes Load() on app initialization to load/parse the templates
@@ -63,7 +61,6 @@ type Views interface {
 The `Render` method is linked to the [**ctx.Render\(\)**](../api/ctx.md#render) function that accepts a template name and binding data.
 :::
 
-
 ## Rendering Templates
 
 Once an engine is set up, a route handler can call the [**ctx.Render\(\)**](../api/ctx.md#render) function with a template name and binded data to send the rendered template.
@@ -76,9 +73,7 @@ func (c Ctx) Render(name string, bind Map, layouts ...string) error
 By default, [**ctx.Render\(\)**](../api/ctx.md#render) searches for the template name in the `ViewsLayout` path. To override this setting, provide the path(s) in the `layouts` argument.
 :::
 
-
 <Tabs>
-
 <TabItem value="example" label="Example">
 
 ```go
@@ -211,7 +206,7 @@ app.Get("/", func (c fiber.Ctx) error {
 </TabItem>
 </Tabs>
 
-- For more advanced template documentation, please visit the [gofiber/template GitHub Repository](https://github.com/gofiber/template).
+* For more advanced template documentation, please visit the [gofiber/template GitHub Repository](https://github.com/gofiber/template).
 
 ## Full Example
 
