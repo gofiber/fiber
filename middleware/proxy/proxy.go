@@ -214,10 +214,10 @@ func DomainForward(hostname, addr string, clients ...*fasthttp.Client) fiber.Han
 }
 
 type roundrobin struct {
-	sync.Mutex
+	pool []string
 
 	current int
-	pool    []string
+	sync.Mutex
 }
 
 // this method will return a string of addr server from list server.

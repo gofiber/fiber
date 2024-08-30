@@ -901,314 +901,6 @@ func Test_App_ShutdownWithContext(t *testing.T) {
 	}
 }
 
-// go test -run Test_App_Static_Index_Default
-func Test_App_Static_Index_Default(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	app.Static("/prefix", "./.github/workflows")
-	app.Static("", "./.github/")
-	app.Static("test", "", Static{Index: "index.html"})
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.NotEmpty(t, resp.Header.Get(HeaderContentLength))
-	require.Equal(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Contains(t, string(body), "Hello, World!")
-
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/not-found", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 404, resp.StatusCode, "Status code")
-	require.NotEmpty(t, resp.Header.Get(HeaderContentLength))
-	require.Equal(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
-
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "Cannot GET /not-found", string(body))
-}
-
-// go test -run Test_App_Static_Index
-func Test_App_Static_Direct(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	app.Static("/", "./.github")
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/index.html", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.NotEmpty(t, resp.Header.Get(HeaderContentLength))
-	require.Equal(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Contains(t, string(body), "Hello, World!")
-
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/testdata/testRoutes.json", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.NotEmpty(t, resp.Header.Get(HeaderContentLength))
-	require.Equal(t, MIMEApplicationJSON, resp.Header.Get("Content-Type"))
-	require.Equal(t, "", resp.Header.Get(HeaderCacheControl), "CacheControl Control")
-
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Contains(t, string(body), "test_routes")
-}
-
-// go test -run Test_App_Static_MaxAge
-func Test_App_Static_MaxAge(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	app.Static("/", "./.github", Static{MaxAge: 100})
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/index.html", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.NotEmpty(t, resp.Header.Get(HeaderContentLength))
-	require.Equal(t, "text/html; charset=utf-8", resp.Header.Get(HeaderContentType))
-	require.Equal(t, "public, max-age=100", resp.Header.Get(HeaderCacheControl), "CacheControl Control")
-}
-
-// go test -run Test_App_Static_Custom_CacheControl
-func Test_App_Static_Custom_CacheControl(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	app.Static("/", "./.github", Static{ModifyResponse: func(c Ctx) error {
-		if strings.Contains(c.GetRespHeader("Content-Type"), "text/html") {
-			c.Response().Header.Set("Cache-Control", "no-cache, no-store, must-revalidate")
-		}
-		return nil
-	}})
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/index.html", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, "no-cache, no-store, must-revalidate", resp.Header.Get(HeaderCacheControl), "CacheControl Control")
-
-	normalResp, normalErr := app.Test(httptest.NewRequest(MethodGet, "/config.yml", nil))
-	require.NoError(t, normalErr, "app.Test(req)")
-	require.Equal(t, "", normalResp.Header.Get(HeaderCacheControl), "CacheControl Control")
-}
-
-// go test -run Test_App_Static_Download
-func Test_App_Static_Download(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	app.Static("/fiber.png", "./.github/testdata/fs/img/fiber.png", Static{Download: true})
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/fiber.png", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.NotEmpty(t, resp.Header.Get(HeaderContentLength))
-	require.Equal(t, "image/png", resp.Header.Get(HeaderContentType))
-	require.Equal(t, `attachment`, resp.Header.Get(HeaderContentDisposition))
-}
-
-// go test -run Test_App_Static_Group
-func Test_App_Static_Group(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	grp := app.Group("/v1", func(c Ctx) error {
-		c.Set("Test-Header", "123")
-		return c.Next()
-	})
-
-	grp.Static("/v2", "./.github/index.html")
-
-	req := httptest.NewRequest(MethodGet, "/v1/v2", nil)
-	resp, err := app.Test(req)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.NotEmpty(t, resp.Header.Get(HeaderContentLength))
-	require.Equal(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
-	require.Equal(t, "123", resp.Header.Get("Test-Header"))
-
-	grp = app.Group("/v2")
-	grp.Static("/v3*", "./.github/index.html")
-
-	req = httptest.NewRequest(MethodGet, "/v2/v3/john/doe", nil)
-	resp, err = app.Test(req)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.NotEmpty(t, resp.Header.Get(HeaderContentLength))
-	require.Equal(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
-}
-
-func Test_App_Static_Wildcard(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	app.Static("*", "./.github/index.html")
-
-	req := httptest.NewRequest(MethodGet, "/yesyes/john/doe", nil)
-	resp, err := app.Test(req)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.NotEmpty(t, resp.Header.Get(HeaderContentLength))
-	require.Equal(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Contains(t, string(body), "Test file")
-}
-
-func Test_App_Static_Prefix_Wildcard(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	app.Static("/test/*", "./.github/index.html")
-
-	req := httptest.NewRequest(MethodGet, "/test/john/doe", nil)
-	resp, err := app.Test(req)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.NotEmpty(t, resp.Header.Get(HeaderContentLength))
-	require.Equal(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
-
-	app.Static("/my/nameisjohn*", "./.github/index.html")
-
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/my/nameisjohn/no/its/not", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.NotEmpty(t, resp.Header.Get(HeaderContentLength))
-	require.Equal(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Contains(t, string(body), "Test file")
-}
-
-func Test_App_Static_Prefix(t *testing.T) {
-	t.Parallel()
-	app := New()
-	app.Static("/john", "./.github")
-
-	req := httptest.NewRequest(MethodGet, "/john/index.html", nil)
-	resp, err := app.Test(req)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.NotEmpty(t, resp.Header.Get(HeaderContentLength))
-	require.Equal(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
-
-	app.Static("/prefix", "./.github/testdata")
-
-	req = httptest.NewRequest(MethodGet, "/prefix/index.html", nil)
-	resp, err = app.Test(req)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.NotEmpty(t, resp.Header.Get(HeaderContentLength))
-	require.Equal(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
-
-	app.Static("/single", "./.github/testdata/testRoutes.json")
-
-	req = httptest.NewRequest(MethodGet, "/single", nil)
-	resp, err = app.Test(req)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.NotEmpty(t, resp.Header.Get(HeaderContentLength))
-	require.Equal(t, MIMEApplicationJSON, resp.Header.Get(HeaderContentType))
-}
-
-func Test_App_Static_Trailing_Slash(t *testing.T) {
-	t.Parallel()
-	app := New()
-	app.Static("/john", "./.github")
-
-	req := httptest.NewRequest(MethodGet, "/john/", nil)
-	resp, err := app.Test(req)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.NotEmpty(t, resp.Header.Get(HeaderContentLength))
-	require.Equal(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
-
-	app.Static("/john_without_index", "./.github/testdata/fs/css")
-
-	req = httptest.NewRequest(MethodGet, "/john_without_index/", nil)
-	resp, err = app.Test(req)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 404, resp.StatusCode, "Status code")
-	require.NotEmpty(t, resp.Header.Get(HeaderContentLength))
-	require.Equal(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
-
-	app.Static("/john/", "./.github")
-
-	req = httptest.NewRequest(MethodGet, "/john/", nil)
-	resp, err = app.Test(req)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.NotEmpty(t, resp.Header.Get(HeaderContentLength))
-	require.Equal(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
-
-	req = httptest.NewRequest(MethodGet, "/john", nil)
-	resp, err = app.Test(req)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.NotEmpty(t, resp.Header.Get(HeaderContentLength))
-	require.Equal(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
-
-	app.Static("/john_without_index/", "./.github/testdata/fs/css")
-
-	req = httptest.NewRequest(MethodGet, "/john_without_index/", nil)
-	resp, err = app.Test(req)
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 404, resp.StatusCode, "Status code")
-	require.NotEmpty(t, resp.Header.Get(HeaderContentLength))
-	require.Equal(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
-}
-
-func Test_App_Static_Next(t *testing.T) {
-	t.Parallel()
-	app := New()
-	app.Static("/", ".github", Static{
-		Next: func(c Ctx) bool {
-			// If value of the header is any other from "skip"
-			// c.Next() will be invoked
-			return c.Get("X-Custom-Header") == "skip"
-		},
-	})
-	app.Get("/", func(c Ctx) error {
-		return c.SendString("You've skipped app.Static")
-	})
-
-	t.Run("app.Static is skipped: invoking Get handler", func(t *testing.T) {
-		t.Parallel()
-		req := httptest.NewRequest(MethodGet, "/", nil)
-		req.Header.Set("X-Custom-Header", "skip")
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, 200, resp.StatusCode)
-		require.NotEmpty(t, resp.Header.Get(HeaderContentLength))
-		require.Equal(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
-
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Contains(t, string(body), "You've skipped app.Static")
-	})
-
-	t.Run("app.Static is not skipped: serving index.html", func(t *testing.T) {
-		t.Parallel()
-		req := httptest.NewRequest(MethodGet, "/", nil)
-		req.Header.Set("X-Custom-Header", "don't skip")
-		resp, err := app.Test(req)
-		require.NoError(t, err)
-		require.Equal(t, 200, resp.StatusCode)
-		require.NotEmpty(t, resp.Header.Get(HeaderContentLength))
-		require.Equal(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
-
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Contains(t, string(body), "Hello, World!")
-	})
-}
-
 // go test -run Test_App_Mixed_Routes_WithSameLen
 func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
 	t.Parallel()
@@ -1220,7 +912,10 @@ func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
 		return c.Next()
 	})
 	// routes with the same length
-	app.Static("/tesbar", "./.github")
+	app.Get("/tesbar", func(c Ctx) error {
+		c.Type("html")
+		return c.Send([]byte("TEST_BAR"))
+	})
 	app.Get("/foobar", func(c Ctx) error {
 		c.Type("html")
 		return c.Send([]byte("FOO_BAR"))
@@ -1246,12 +941,11 @@ func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.NotEmpty(t, resp.Header.Get(HeaderContentLength))
 	require.Equal(t, "TestValue", resp.Header.Get("TestHeader"))
-	require.Equal(t, "text/html; charset=utf-8", resp.Header.Get(HeaderContentType))
+	require.Equal(t, "text/html", resp.Header.Get(HeaderContentType))
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.Contains(t, string(body), "Hello, World!")
-	require.True(t, strings.HasPrefix(string(body), "<!DOCTYPE html>"), "Response: "+string(body))
+	require.Contains(t, string(body), "TEST_BAR")
 }
 
 func Test_App_Group_Invalid(t *testing.T) {
@@ -1316,13 +1010,11 @@ func Test_App_Group(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodPost, "/test/v1/", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	// require.Equal(t, "/test/v1", resp.Header.Get("Location"), "Location")
 
 	api.Get("/users", dummyHandler)
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test/v1/UsErS", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	// require.Equal(t, "/test/v1/users", resp.Header.Get("Location"), "Location")
 }
 
 func Test_App_Route(t *testing.T) {
@@ -1408,16 +1100,6 @@ func Test_App_Next_Method(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 404, resp.StatusCode, "Status code")
-}
-
-// go test -v -run=^$ -bench=Benchmark_AcquireCtx -benchmem -count=4
-func Benchmark_AcquireCtx(b *testing.B) {
-	app := New()
-	for n := 0; n < b.N; n++ {
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-
-		app.ReleaseCtx(c)
-	}
 }
 
 // go test -v -run=^$ -bench=Benchmark_NewError -benchmem -count=4
@@ -1811,7 +1493,7 @@ func Test_App_AddCustomRequestMethod(t *testing.T) {
 	require.Equal(t, "TEST", appMethods[len(appMethods)-1])
 }
 
-func TestApp_GetRoutes(t *testing.T) {
+func Test_App_GetRoutes(t *testing.T) {
 	t.Parallel()
 	app := New()
 	app.Use(func(c Ctx) error {
@@ -1976,4 +1658,56 @@ func Test_Route_Naming_Issue_2671_2685(t *testing.T) {
 
 	sRoute2 := app.GetRoute("simple-route2")
 	require.Equal(t, "/simple-route", sRoute2.Path)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Communication_Flow -benchmem -count=4
+func Benchmark_Communication_Flow(b *testing.B) {
+	app := New()
+
+	app.Get("/", func(c Ctx) error {
+		return c.SendString("Hello, World!")
+	})
+
+	h := app.Handler()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodGet)
+	fctx.Request.SetRequestURI("/")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		h(fctx)
+	}
+
+	require.Equal(b, 200, fctx.Response.Header.StatusCode())
+	require.Equal(b, "Hello, World!", string(fctx.Response.Body()))
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_AcquireReleaseFlow -benchmem -count=4
+func Benchmark_Ctx_AcquireReleaseFlow(b *testing.B) {
+	app := New()
+
+	fctx := &fasthttp.RequestCtx{}
+
+	b.Run("withoutRequestCtx", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+
+		for n := 0; n < b.N; n++ {
+			c, _ := app.AcquireCtx(fctx).(*DefaultCtx) //nolint:errcheck // not needed
+			app.ReleaseCtx(c)
+		}
+	})
+
+	b.Run("withRequestCtx", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+
+		for n := 0; n < b.N; n++ {
+			c, _ := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck // not needed
+			app.ReleaseCtx(c)
+		}
+	})
 }

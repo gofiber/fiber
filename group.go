@@ -11,12 +11,12 @@ import (
 
 // Group struct
 type Group struct {
-	app             *App
-	parentGroup     *Group
-	name            string
-	anyRouteDefined bool
+	app         *App
+	parentGroup *Group
+	name        string
 
-	Prefix string
+	Prefix          string
+	anyRouteDefined bool
 }
 
 // Name Assign name to specific route or group itself.
@@ -163,16 +163,6 @@ func (grp *Group) Patch(path string, handler Handler, middleware ...Handler) Rou
 // Add allows you to specify multiple HTTP methods to register a route.
 func (grp *Group) Add(methods []string, path string, handler Handler, middleware ...Handler) Router {
 	grp.app.register(methods, getGroupPath(grp.Prefix, path), grp, handler, middleware...)
-	if !grp.anyRouteDefined {
-		grp.anyRouteDefined = true
-	}
-
-	return grp
-}
-
-// Static will create a file server serving static files
-func (grp *Group) Static(prefix, root string, config ...Static) Router {
-	grp.app.registerStatic(getGroupPath(grp.Prefix, prefix), root, config...)
 	if !grp.anyRouteDefined {
 		grp.anyRouteDefined = true
 	}

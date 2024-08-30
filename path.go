@@ -25,23 +25,23 @@ type routeParser struct {
 	plusCount     int             // number of plus parameters, used internally to give the plus parameter its number
 }
 
-// paramsSeg holds the segment metadata
+// routeSegment holds the segment metadata
 type routeSegment struct {
 	// const information
-	Const string // constant part of the route
-	// parameter information
-	IsParam     bool   // Truth value that indicates whether it is a parameter or a constant part
-	ParamName   string // name of the parameter for access to it, for wildcards and plus parameters access iterators starting with 1 are added
-	ComparePart string // search part to find the end of the parameter
-	PartCount   int    // how often is the search part contained in the non-param segments? -> necessary for greedy search
-	IsGreedy    bool   // indicates whether the parameter is greedy or not, is used with wildcard and plus
-	IsOptional  bool   // indicates whether the parameter is optional or not
-	// common information
-	IsLast           bool          // shows if the segment is the last one for the route
-	HasOptionalSlash bool          // segment has the possibility of an optional slash
-	Constraints      []*Constraint // Constraint type if segment is a parameter, if not it will be set to noConstraint by default
-	Length           int           // length of the parameter for segment, when its 0 then the length is undetermined
+	Const       string        // constant part of the route
+	ParamName   string        // name of the parameter for access to it, for wildcards and plus parameters access iterators starting with 1 are added
+	ComparePart string        // search part to find the end of the parameter
+	Constraints []*Constraint // Constraint type if segment is a parameter, if not it will be set to noConstraint by default
+	PartCount   int           // how often is the search part contained in the non-param segments? -> necessary for greedy search
+	Length      int           // length of the parameter for segment, when its 0 then the length is undetermined
 	// future TODO: add support for optional groups "/abc(/def)?"
+	// parameter information
+	IsParam    bool // Truth value that indicates whether it is a parameter or a constant part
+	IsGreedy   bool // indicates whether the parameter is greedy or not, is used with wildcard and plus
+	IsOptional bool // indicates whether the parameter is optional or not
+	// common information
+	IsLast           bool // shows if the segment is the last one for the route
+	HasOptionalSlash bool // segment has the possibility of an optional slash
 }
 
 // different special routing signs
@@ -51,7 +51,7 @@ const (
 	optionalParam                byte = '?'  // concludes a parameter by name and makes it optional
 	paramStarterChar             byte = ':'  // start character for a parameter with name
 	slashDelimiter               byte = '/'  // separator for the route, unlike the other delimiters this character at the end can be optional
-	slashDelimiterStr                 = "/"  // separator for the route, unlike the other delimiters this character at the end can be optional
+	slashDelimiterStr            byte = '/'  // separator for the route, unlike the other delimiters this character at the end can be optional
 	escapeChar                   byte = '\\' // escape character
 	paramConstraintStart         byte = '<'  // start of type constraint for a parameter
 	paramConstraintEnd           byte = '>'  // end of type constraint for a parameter
@@ -65,11 +65,11 @@ const (
 type TypeConstraint int16
 
 type Constraint struct {
-	ID                TypeConstraint
 	RegexCompiler     *regexp.Regexp
-	Data              []string
 	Name              string
+	Data              []string
 	customConstraints []CustomConstraint
+	ID                TypeConstraint
 }
 
 // CustomConstraint is an interface for custom constraints
@@ -161,7 +161,7 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 	}
 	// Strict routing, remove trailing slashes
 	if !config.StrictRouting && len(patternPretty) > 1 {
-		patternPretty = strings.TrimRight(patternPretty, "/")
+		patternPretty = utils.TrimRight(patternPretty, '/')
 	}
 
 	parser := parseRoute(patternPretty)
@@ -233,7 +233,7 @@ func addParameterMetaInfo(segs []*routeSegment) []*routeSegment {
 		} else {
 			comparePart = segs[i].Const
 			if len(comparePart) > 1 {
-				comparePart = strings.TrimRight(comparePart, slashDelimiterStr)
+				comparePart = utils.TrimRight(comparePart, slashDelimiterStr)
 			}
 		}
 	}
@@ -427,7 +427,7 @@ func findNextCharsetPosition(search string, charset []byte) int {
 	return nextPosition
 }
 
-// findNextCharsetPosition search the last char position from the charset
+// findLastCharsetPosition search the last char position from the charset
 func findLastCharsetPosition(search string, charset []byte) int {
 	lastPosition := -1
 	for _, char := range charset {
@@ -591,11 +591,12 @@ func findGreedyParamLen(s string, searchCount int, segment *routeSegment) int {
 	// check all from right to left segments
 	for i := segment.PartCount; i > 0 && searchCount > 0; i-- {
 		searchCount--
-		if constPosition := strings.LastIndex(s, segment.ComparePart); constPosition != -1 {
-			s = s[:constPosition]
-		} else {
+
+		constPosition := strings.LastIndex(s, segment.ComparePart)
+		if constPosition == -1 {
 			break
 		}
+		s = s[:constPosition]
 	}
 
 	return len(s)

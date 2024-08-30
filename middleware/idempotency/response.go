@@ -1,10 +1,12 @@
 package idempotency
 
-//go:generate msgp -o=response_msgp.go -io=false -unexported
+// response is a struct that represents the response of a request.
+// generation tool `go install github.com/tinylib/msgp@latest`
+//
+//go:generate msgp -o=response_msgp.go -tests=true -unexported
 type response struct {
-	StatusCode int `msg:"sc"`
-
 	Headers map[string][]string `msg:"hs"`
 
-	Body []byte `msg:"b"`
+	Body       []byte `msg:"b"`
+	StatusCode int    `msg:"sc"`
 }

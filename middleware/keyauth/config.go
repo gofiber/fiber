@@ -6,6 +6,8 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
+type KeyLookupFunc func(c fiber.Ctx) (string, error)
+
 // Config defines the config for middleware.
 type Config struct {
 	// Next defines a function to skip middleware.
@@ -21,6 +23,11 @@ type Config struct {
 	// Optional. Default: 401 Invalid or expired key
 	ErrorHandler fiber.ErrorHandler
 
+	CustomKeyLookup KeyLookupFunc
+
+	// Validator is a function to validate key.
+	Validator func(fiber.Ctx, string) (bool, error)
+
 	// KeyLookup is a string in the form of "<source>:<name>" that is used
 	// to extract key from the request.
 	// Optional. Default value "header:Authorization".
@@ -35,9 +42,6 @@ type Config struct {
 	// AuthScheme to be used in the Authorization header.
 	// Optional. Default value "Bearer".
 	AuthScheme string
-
-	// Validator is a function to validate key.
-	Validator func(fiber.Ctx, string) (bool, error)
 }
 
 // ConfigDefault is the default config
@@ -51,8 +55,9 @@ var ConfigDefault = Config{
 		}
 		return c.Status(fiber.StatusUnauthorized).SendString("Invalid or expired API Key")
 	},
-	KeyLookup:  "header:" + fiber.HeaderAuthorization,
-	AuthScheme: "Bearer",
+	KeyLookup:       "header:" + fiber.HeaderAuthorization,
+	CustomKeyLookup: nil,
+	AuthScheme:      "Bearer",
 }
 
 // Helper function to set default values

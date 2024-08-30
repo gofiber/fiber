@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"mime/multipart"
 	"net"
 	"net/http"
@@ -41,26 +42,109 @@ type contextKey int
 // userContextKey define the key name for storing context.Context in *fasthttp.RequestCtx
 const userContextKey contextKey = 0 // __local_user_context__
 
+// DefaultCtx is the default implementation of the Ctx interface
+// generation tool `go install github.com/vburenin/ifacemaker@975a95966976eeb2d4365a7fb236e274c54da64c`
+// https://github.com/vburenin/ifacemaker/blob/975a95966976eeb2d4365a7fb236e274c54da64c/ifacemaker.go#L14-L30
+//
+//go:generate ifacemaker --file ctx.go --struct DefaultCtx --iface Ctx --pkg fiber --output ctx_interface_gen.go --not-exported true --iface-comment "Ctx represents the Context which hold the HTTP request and response.\nIt has methods for the request query string, parameters, body, HTTP headers and so on."
 type DefaultCtx struct {
 	app                 *App                 // Reference to *App
 	route               *Route               // Reference to *Route
-	indexRoute          int                  // Index of the current route
-	indexHandler        int                  // Index of the current handler
+	fasthttp            *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
+	redirect            *Redirect            // Default redirect reference
+	values              [maxParams]string    // Route parameter values
+	viewBindMap         sync.Map             // Default view map to bind template engine
 	method              string               // HTTP method
-	methodINT           int                  // HTTP method INT equivalent
 	baseURI             string               // HTTP base uri
 	path                string               // HTTP path with the modifications by the configuration -> string copy from pathBuffer
-	pathBuffer          []byte               // HTTP path buffer
 	detectionPath       string               // Route detection path                                  -> string copy from detectionPathBuffer
-	detectionPathBuffer []byte               // HTTP detectionPath buffer
 	treePath            string               // Path for the search in the tree
 	pathOriginal        string               // Original HTTP path
-	values              [maxParams]string    // Route parameter values
-	fasthttp            *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
+	pathBuffer          []byte               // HTTP path buffer
+	detectionPathBuffer []byte               // HTTP detectionPath buffer
+	flashMessages       redirectionMsgs      // Flash messages
+	indexRoute          int                  // Index of the current route
+	indexHandler        int                  // Index of the current handler
+	methodINT           int                  // HTTP method INT equivalent
 	matched             bool                 // Non use route matched
-	viewBindMap         sync.Map             // Default view map to bind template engine
-	redirect            *Redirect            // Default redirect reference
-	redirectionMessages []string             // Messages of the previous redirect
+}
+
+// SendFile defines configuration options when to transfer file with SendFile.
+type SendFile struct {
+	// FS is the file system to serve the static files from.
+	// You can use interfaces compatible with fs.FS like embed.FS, os.DirFS etc.
+	//
+	// Optional. Default: nil
+	FS fs.FS
+
+	// When set to true, the server tries minimizing CPU usage by caching compressed files.
+	// This works differently than the github.com/gofiber/compression middleware.
+	// You have to set Content-Encoding header to compress the file.
+	// Available compression methods are gzip, br, and zstd.
+	//
+	// Optional. Default value false
+	Compress bool `json:"compress"`
+
+	// When set to true, enables byte range requests.
+	//
+	// Optional. Default value false
+	ByteRange bool `json:"byte_range"`
+
+	// When set to true, enables direct download.
+	//
+	// Optional. Default: false.
+	Download bool `json:"download"`
+
+	// Expiration duration for inactive file handlers.
+	// Use a negative time.Duration to disable it.
+	//
+	// Optional. Default value 10 * time.Second.
+	CacheDuration time.Duration `json:"cache_duration"`
+
+	// The value for the Cache-Control HTTP-header
+	// that is set on the file response. MaxAge is defined in seconds.
+	//
+	// Optional. Default value 0.
+	MaxAge int `json:"max_age"`
+}
+
+// sendFileStore is used to keep the SendFile configuration and the handler.
+type sendFileStore struct {
+	handler           fasthttp.RequestHandler
+	cacheControlValue string
+	config            SendFile
+}
+
+// compareConfig compares the current SendFile config with the new one
+// and returns true if they are different.
+//
+// Here we don't use reflect.DeepEqual because it is quite slow compared to manual comparison.
+func (sf *sendFileStore) compareConfig(cfg SendFile) bool {
+	if sf.config.FS != cfg.FS {
+		return false
+	}
+
+	if sf.config.Compress != cfg.Compress {
+		return false
+	}
+
+	if sf.config.ByteRange != cfg.ByteRange {
+		return false
+	}
+
+	if sf.config.Download != cfg.Download {
+		return false
+	}
+
+	if sf.config.CacheDuration != cfg.CacheDuration {
+		return false
+	}
+
+	if sf.config.MaxAge != cfg.MaxAge {
+		return false
+	}
+
+	return true
 }
 
 // TLSHandler object
@@ -90,16 +174,17 @@ type RangeSet struct {
 
 // Cookie data for c.Cookie
 type Cookie struct {
-	Name        string    `json:"name"`
-	Value       string    `json:"value"`
-	Path        string    `json:"path"`
-	Domain      string    `json:"domain"`
-	MaxAge      int       `json:"max_age"`
-	Expires     time.Time `json:"expires"`
-	Secure      bool      `json:"secure"`
-	HTTPOnly    bool      `json:"http_only"`
-	SameSite    string    `json:"same_site"`
-	SessionOnly bool      `json:"session_only"`
+	Expires     time.Time `json:"expires"`      // The expiration date of the cookie
+	Name        string    `json:"name"`         // The name of the cookie
+	Value       string    `json:"value"`        // The value of the cookie
+	Path        string    `json:"path"`         // Specifies a URL path which is allowed to receive the cookie
+	Domain      string    `json:"domain"`       // Specifies the domain which is allowed to receive the cookie
+	SameSite    string    `json:"same_site"`    // Controls whether or not a cookie is sent with cross-site requests
+	MaxAge      int       `json:"max_age"`      // The maximum age (in seconds) of the cookie
+	Secure      bool      `json:"secure"`       // Indicates that the cookie should only be transmitted over a secure HTTPS connection
+	HTTPOnly    bool      `json:"http_only"`    // Indicates that the cookie is accessible only through the HTTP protocol
+	Partitioned bool      `json:"partitioned"`  // Indicates if the cookie is stored in a partitioned cookie jar
+	SessionOnly bool      `json:"session_only"` // Indicates if the cookie is a session-only cookie
 }
 
 // Views is the interface that wraps the Render function.
@@ -110,8 +195,8 @@ type Views interface {
 
 // ResFmt associates a Content Type to a fiber.Handler for c.Format
 type ResFmt struct {
-	MediaType string
 	Handler   func(Ctx) error
+	MediaType string
 }
 
 // Accepts checks if the specified extensions or content types are acceptable.
@@ -183,6 +268,12 @@ func (c *DefaultCtx) BaseURL() string {
 	return c.baseURI
 }
 
+func (c *DefaultCtx) Bind() *Bind {
+	b := binderPool.Get().(*Bind)
+	b.ctx = c
+	return b
+}
+
 func (c *DefaultCtx) Validate(v any) error {
 	if c.app.config.Validator == nil {
 		return NilValidatorError{}
@@ -194,10 +285,7 @@ func (c *DefaultCtx) Validate(v any) error {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (c *DefaultCtx) BodyRaw() []byte {
-	if c.app.config.Immutable {
-		return utils.CopyBytes(c.fasthttp.Request.Body())
-	}
-	return c.fasthttp.Request.Body()
+	return c.getBody()
 }
 
 func (c *DefaultCtx) tryDecodeBodyInOrder(
@@ -219,6 +307,8 @@ func (c *DefaultCtx) tryDecodeBodyInOrder(
 			body, err = c.fasthttp.Request.BodyUnbrotli()
 		case StrDeflate:
 			body, err = c.fasthttp.Request.BodyInflate()
+		case StrZstd:
+			body, err = c.fasthttp.Request.BodyUnzstd()
 		default:
 			decodesRealized--
 			if len(encodings) == 1 {
@@ -258,21 +348,19 @@ func (c *DefaultCtx) Body() []byte {
 		encodingOrder      = []string{"", "", ""}
 	)
 
-	// faster than peek
-	c.Request().Header.VisitAll(func(key, value []byte) {
-		if c.app.getString(key) == HeaderContentEncoding {
-			headerEncoding = c.app.getString(value)
-		}
-	})
+	// Get Content-Encoding header
+	headerEncoding = utils.UnsafeString(c.Request().Header.ContentEncoding())
+
+	// If no encoding is provided, return the original body
+	if len(headerEncoding) == 0 {
+		return c.getBody()
+	}
 
 	// Split and get the encodings list, in order to attend the
 	// rule defined at: https://www.rfc-editor.org/rfc/rfc9110#section-8.4-5
 	encodingOrder = getSplicedStrList(headerEncoding, encodingOrder)
 	if len(encodingOrder) == 0 {
-		if c.app.config.Immutable {
-			return utils.CopyBytes(c.fasthttp.Request.Body())
-		}
-		return c.fasthttp.Request.Body()
+		return c.getBody()
 	}
 
 	var decodesRealized uint8
@@ -356,6 +444,10 @@ func (c *DefaultCtx) Cookie(cookie *Cookie) {
 	default:
 		fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
 	}
+
+	// CHIPS allows to partition cookie jar by top-level site.
+	// refer: https://developers.google.com/privacy-sandbox/3pcd/chips
+	fcookie.SetPartitioned(cookie.Partitioned)
 
 	c.fasthttp.Response.Header.SetCookie(fcookie)
 	fasthttp.ReleaseCookie(fcookie)
@@ -556,7 +648,14 @@ func (c *DefaultCtx) Fresh() bool {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (c *DefaultCtx) Get(key string, defaultValue ...string) string {
-	return defaultString(c.app.getString(c.fasthttp.Request.Header.Peek(key)), defaultValue)
+	return GetReqHeader(c, key, defaultValue...)
+}
+
+// GetReqHeader returns the HTTP request header specified by filed.
+// This function is generic and can handle differnet headers type values.
+func GetReqHeader[V GenericType](c Ctx, key string, defaultValue ...V) V {
+	var v V
+	return genericParseType[V](c.App().getString(c.Request().Header.Peek(key)), v, defaultValue...)
 }
 
 // GetRespHeader returns the HTTP response header specified by field.
@@ -593,6 +692,9 @@ func (c *DefaultCtx) GetReqHeaders() map[string][]string {
 
 // Host contains the host derived from the X-Forwarded-Host or Host HTTP header.
 // Returned value is only valid within the handler. Do not store any references.
+// In a network context, `Host` refers to the combination of a hostname and potentially a port number used for connecting,
+// while `Hostname` refers specifically to the name assigned to a device on a network, excluding any port information.
+// Example: URL: https://example.com:8080 -> Host: example.com:8080
 // Make copies or use the Immutable setting instead.
 // Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
 func (c *DefaultCtx) Host() string {
@@ -610,6 +712,7 @@ func (c *DefaultCtx) Host() string {
 
 // Hostname contains the hostname derived from the X-Forwarded-Host or Host HTTP header using the c.Host() method.
 // Returned value is only valid within the handler. Do not store any references.
+// Example: URL: https://example.com:8080 -> Hostname: example.com
 // Make copies or use the Immutable setting instead.
 // Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
 func (c *DefaultCtx) Hostname() string {
@@ -682,7 +785,7 @@ iploop:
 			i++
 		}
 
-		s := strings.TrimRight(headerValue[i:j], " ")
+		s := utils.TrimRight(headerValue[i:j], ' ')
 
 		if c.app.config.EnableIPValidation {
 			// Skip validation if IP is clearly not IPv4/IPv6, otherwise validate without allocations
@@ -732,7 +835,7 @@ func (c *DefaultCtx) extractIPFromHeader(header string) string {
 				i++
 			}
 
-			s := strings.TrimRight(headerValue[i:j], " ")
+			s := utils.TrimRight(headerValue[i:j], ' ')
 
 			if c.app.config.EnableIPValidation {
 				if (!v6 && !v4) || (v6 && !utils.IsIPv6(s)) || (v4 && !utils.IsIPv4(s)) {
@@ -766,7 +869,7 @@ func (c *DefaultCtx) Is(extension string) bool {
 	}
 
 	return strings.HasPrefix(
-		strings.TrimLeft(utils.UnsafeString(c.fasthttp.Request.Header.ContentType()), " "),
+		utils.TrimLeft(utils.UnsafeString(c.fasthttp.Request.Header.ContentType()), ' '),
 		extensionHeader,
 	)
 }
@@ -843,12 +946,16 @@ func (c *DefaultCtx) Links(link ...string) {
 			bb.WriteString(`; rel="` + link[i] + `",`)
 		}
 	}
-	c.setCanonical(HeaderLink, strings.TrimRight(c.app.getString(bb.Bytes()), ","))
+	c.setCanonical(HeaderLink, utils.TrimRight(c.app.getString(bb.Bytes()), ','))
 	bytebufferpool.Put(bb)
 }
 
 // Locals makes it possible to pass any values under keys scoped to the request
 // and therefore available to all following routes that match the request.
+//
+// All the values are removed from ctx after returning from the top
+// RequestHandler. Additionally, Close method is called on each value
+// implementing io.Closer before removing the value from ctx.
 func (c *DefaultCtx) Locals(key any, value ...any) any {
 	if len(value) == 0 {
 		return c.fasthttp.UserValue(key)
@@ -858,7 +965,12 @@ func (c *DefaultCtx) Locals(key any, value ...any) any {
 }
 
 // Locals function utilizing Go's generics feature.
-// This function allows for manipulating and retrieving local values within a request context with a more specific data type.
+// This function allows for manipulating and retrieving local values within a
+// request context with a more specific data type.
+//
+// All the values are removed from ctx after returning from the top
+// RequestHandler. Additionally, Close method is called on each value
+// implementing io.Closer before removing the value from ctx.
 func Locals[V any](c Ctx, key any, value ...V) V {
 	var v V
 	var ok bool
@@ -918,19 +1030,20 @@ func (c *DefaultCtx) ClientHelloInfo() *tls.ClientHelloInfo {
 func (c *DefaultCtx) Next() error {
 	// Increment handler index
 	c.indexHandler++
-	var err error
+
 	// Did we execute all route handlers?
 	if c.indexHandler < len(c.route.Handlers) {
 		// Continue route stack
-		err = c.route.Handlers[c.indexHandler](c)
-	} else {
-		// Continue handler stack
-		if c.app.newCtxFunc != nil {
-			_, err = c.app.nextCustom(c)
-		} else {
-			_, err = c.app.next(c)
-		}
+		return c.route.Handlers[c.indexHandler](c)
 	}
+
+	// Continue handler stack
+	if c.app.newCtxFunc != nil {
+		_, err := c.app.nextCustom(c)
+		return err
+	}
+
+	_, err := c.app.next(c)
 	return err
 }
 
@@ -964,11 +1077,13 @@ func (c *DefaultCtx) Params(key string, defaultValue ...string) string {
 	if key == "*" || key == "+" {
 		key += "1"
 	}
-	for i := range c.route.Params {
+
+	route := c.Route()
+	for i := range route.Params {
 		if len(key) != len(c.route.Params[i]) {
 			continue
 		}
-		if c.route.Params[i] == key || (!c.app.config.CaseSensitive && utils.EqualFold(c.route.Params[i], key)) {
+		if route.Params[i] == key || (!c.app.config.CaseSensitive && utils.EqualFold(route.Params[i], key)) {
 			// in case values are not here
 			if len(c.values) <= i || len(c.values[i]) == 0 {
 				break
@@ -979,22 +1094,22 @@ func (c *DefaultCtx) Params(key string, defaultValue ...string) string {
 	return defaultString("", defaultValue)
 }
 
-// ParamsInt is used to get an integer from the route parameters
-// it defaults to zero if the parameter is not found or if the
-// parameter cannot be converted to an integer
-// If a default value is given, it will return that value in case the param
-// doesn't exist or cannot be converted to an integer
-func (c *DefaultCtx) ParamsInt(key string, defaultValue ...int) (int, error) {
-	// Use Atoi to convert the param to an int or return zero and an error
-	value, err := strconv.Atoi(c.Params(key))
-	if err != nil {
-		if len(defaultValue) > 0 {
-			return defaultValue[0], nil
-		}
-		return 0, fmt.Errorf("failed to convert: %w", err)
-	}
-
-	return value, nil
+// Params is used to get the route parameters.
+// This function is generic and can handle differnet route parameters type values.
+//
+// Example:
+//
+// http://example.com/user/:user -> http://example.com/user/john
+// Params[string](c, "user") -> returns john
+//
+// http://example.com/id/:id -> http://example.com/user/114
+// Params[int](c, "id") ->  returns 114 as integer.
+//
+// http://example.com/id/:number -> http://example.com/id/john
+// Params[int](c, "number", 0) -> returns 0 because can't parse 'john' as integer.
+func Params[V GenericType](c Ctx, key string, defaultValue ...V) V {
+	var v V
+	return genericParseType(c.Params(key), v, defaultValue...)
 }
 
 // Path returns the path part of the request URL.
@@ -1114,73 +1229,11 @@ func (c *DefaultCtx) Queries() map[string]string {
 //	name := Query[string](c, "search") // Returns "john"
 //	age := Query[int](c, "age") // Returns 8
 //	unknown := Query[string](c, "unknown", "default") // Returns "default" since the query parameter "unknown" is not found
-func Query[V QueryType](c Ctx, key string, defaultValue ...V) V {
+func Query[V GenericType](c Ctx, key string, defaultValue ...V) V {
 	var v V
 	q := c.App().getString(c.Context().QueryArgs().Peek(key))
 
-	switch any(v).(type) {
-	case int:
-		return queryParseInt[V](q, 32, func(i int64) V { return assertValueType[V, int](int(i)) }, defaultValue...)
-	case int8:
-		return queryParseInt[V](q, 8, func(i int64) V { return assertValueType[V, int8](int8(i)) }, defaultValue...)
-	case int16:
-		return queryParseInt[V](q, 16, func(i int64) V { return assertValueType[V, int16](int16(i)) }, defaultValue...)
-	case int32:
-		return queryParseInt[V](q, 32, func(i int64) V { return assertValueType[V, int32](int32(i)) }, defaultValue...)
-	case int64:
-		return queryParseInt[V](q, 64, func(i int64) V { return assertValueType[V, int64](i) }, defaultValue...)
-	case uint:
-		return queryParseUint[V](q, 32, func(i uint64) V { return assertValueType[V, uint](uint(i)) }, defaultValue...)
-	case uint8:
-		return queryParseUint[V](q, 8, func(i uint64) V { return assertValueType[V, uint8](uint8(i)) }, defaultValue...)
-	case uint16:
-		return queryParseUint[V](q, 16, func(i uint64) V { return assertValueType[V, uint16](uint16(i)) }, defaultValue...)
-	case uint32:
-		return queryParseUint[V](q, 32, func(i uint64) V { return assertValueType[V, uint32](uint32(i)) }, defaultValue...)
-	case uint64:
-		return queryParseUint[V](q, 64, func(i uint64) V { return assertValueType[V, uint64](i) }, defaultValue...)
-	case float32:
-		return queryParseFloat[V](q, 32, func(i float64) V { return assertValueType[V, float32](float32(i)) }, defaultValue...)
-	case float64:
-		return queryParseFloat[V](q, 64, func(i float64) V { return assertValueType[V, float64](i) }, defaultValue...)
-	case bool:
-		return queryParseBool[V](q, func(b bool) V { return assertValueType[V, bool](b) }, defaultValue...)
-	case string:
-		if q == "" && len(defaultValue) > 0 {
-			return defaultValue[0]
-		}
-		return assertValueType[V, string](q)
-	case []byte:
-		if q == "" && len(defaultValue) > 0 {
-			return defaultValue[0]
-		}
-		return assertValueType[V, []byte](c.App().getBytes(q))
-	default:
-		if len(defaultValue) > 0 {
-			return defaultValue[0]
-		}
-		return v
-	}
-}
-
-type QueryType interface {
-	QueryTypeInteger | QueryTypeFloat | bool | string | []byte
-}
-
-type QueryTypeInteger interface {
-	QueryTypeIntegerSigned | QueryTypeIntegerUnsigned
-}
-
-type QueryTypeIntegerSigned interface {
-	int | int8 | int16 | int32 | int64
-}
-
-type QueryTypeIntegerUnsigned interface {
-	uint | uint8 | uint16 | uint32 | uint64
-}
-
-type QueryTypeFloat interface {
-	float32 | float64
+	return genericParseType[V](q, v, defaultValue...)
 }
 
 // Range returns a struct containing the type and a slice of ranges.
@@ -1239,8 +1292,8 @@ func (c *DefaultCtx) Range(size int) (Range, error) {
 			Start int
 			End   int
 		}{
-			start,
-			end,
+			Start: start,
+			End:   end,
 		})
 	}
 	if len(rangeData.Ranges) < 1 {
@@ -1263,9 +1316,9 @@ func (c *DefaultCtx) Redirect() *Redirect {
 	return c.redirect
 }
 
-// BindVars Add vars to default view var map binding to template engine.
+// ViewBind Add vars to default view var map binding to template engine.
 // Variables are read by the Render method and may be overwritten.
-func (c *DefaultCtx) BindVars(vars Map) error {
+func (c *DefaultCtx) ViewBind(vars Map) error {
 	// init viewBindMap - lazy map
 	for k, v := range vars {
 		c.viewBindMap.Store(k, v)
@@ -1455,47 +1508,87 @@ func (c *DefaultCtx) Send(body []byte) error {
 	return nil
 }
 
-var (
-	sendFileOnce    sync.Once
-	sendFileFS      *fasthttp.FS
-	sendFileHandler fasthttp.RequestHandler
-)
-
 // SendFile transfers the file from the given path.
 // The file is not compressed by default, enable this by passing a 'true' argument
 // Sets the Content-Type response HTTP header field based on the filenames extension.
-func (c *DefaultCtx) SendFile(file string, compress ...bool) error {
+func (c *DefaultCtx) SendFile(file string, config ...SendFile) error {
 	// Save the filename, we will need it in the error message if the file isn't found
 	filename := file
 
-	// https://github.com/valyala/fasthttp/blob/c7576cc10cabfc9c993317a2d3f8355497bea156/fs.go#L129-L134
-	sendFileOnce.Do(func() {
-		const cacheDuration = 10 * time.Second
-		sendFileFS = &fasthttp.FS{
-			Root:                 "",
-			AllowEmptyRoot:       true,
-			GenerateIndexPages:   false,
-			AcceptByteRange:      true,
-			Compress:             true,
-			CompressedFileSuffix: c.app.config.CompressedFileSuffix,
-			CacheDuration:        cacheDuration,
-			IndexNames:           []string{"index.html"},
+	var cfg SendFile
+	if len(config) > 0 {
+		cfg = config[0]
+	}
+
+	if cfg.CacheDuration == 0 {
+		cfg.CacheDuration = 10 * time.Second
+	}
+
+	var fsHandler fasthttp.RequestHandler
+	var cacheControlValue string
+
+	c.app.sendfilesMutex.RLock()
+	for _, sf := range c.app.sendfiles {
+		if sf.compareConfig(cfg) {
+			fsHandler = sf.handler
+			cacheControlValue = sf.cacheControlValue
+			break
+		}
+	}
+	c.app.sendfilesMutex.RUnlock()
+
+	if fsHandler == nil {
+		fasthttpFS := &fasthttp.FS{
+			Root:                   "",
+			FS:                     cfg.FS,
+			AllowEmptyRoot:         true,
+			GenerateIndexPages:     false,
+			AcceptByteRange:        cfg.ByteRange,
+			Compress:               cfg.Compress,
+			CompressBrotli:         cfg.Compress,
+			CompressedFileSuffixes: c.app.config.CompressedFileSuffixes,
+			CacheDuration:          cfg.CacheDuration,
+			SkipCache:              cfg.CacheDuration < 0,
+			IndexNames:             []string{"index.html"},
 			PathNotFound: func(ctx *fasthttp.RequestCtx) {
 				ctx.Response.SetStatusCode(StatusNotFound)
 			},
 		}
-		sendFileHandler = sendFileFS.NewRequestHandler()
-	})
+
+		if cfg.FS != nil {
+			fasthttpFS.Root = "."
+		}
+
+		sf := &sendFileStore{
+			config:  cfg,
+			handler: fasthttpFS.NewRequestHandler(),
+		}
+
+		maxAge := cfg.MaxAge
+		if maxAge > 0 {
+			sf.cacheControlValue = "public, max-age=" + strconv.Itoa(maxAge)
+		}
+
+		// set vars
+		fsHandler = sf.handler
+		cacheControlValue = sf.cacheControlValue
+
+		c.app.sendfilesMutex.Lock()
+		c.app.sendfiles = append(c.app.sendfiles, sf)
+		c.app.sendfilesMutex.Unlock()
+	}
 
 	// Keep original path for mutable params
 	c.pathOriginal = utils.CopyString(c.pathOriginal)
-	// Disable compression
-	if len(compress) == 0 || !compress[0] {
+
+	// Delete the Accept-Encoding header if compression is disabled
+	if !cfg.Compress {
 		// https://github.com/valyala/fasthttp/blob/7cc6f4c513f9e0d3686142e0a1a5aa2f76b3194a/fs.go#L55
 		c.fasthttp.Request.Header.Del(HeaderAcceptEncoding)
 	}
+
 	// copy of https://github.com/valyala/fasthttp/blob/7cc6f4c513f9e0d3686142e0a1a5aa2f76b3194a/fs.go#L103-L121 with small adjustments
-	if len(file) == 0 || !filepath.IsAbs(file) {
+	if len(file) == 0 || (!filepath.IsAbs(file) && cfg.FS == nil) {
 		// extend relative path to absolute path
 		hasTrailingSlash := len(file) > 0 && (file[len(file)-1] == '/' || file[len(file)-1] == '\\')
 
@@ -1508,6 +1601,7 @@ func (c *DefaultCtx) SendFile(file string, compress ...bool) error {
 			file += "/"
 		}
 	}
+
 	// convert the path to forward slashes regardless the OS in order to set the URI properly
 	// the handler will convert back to OS path separator before opening the file
 	file = filepath.ToSlash(file)
@@ -1515,22 +1609,43 @@ func (c *DefaultCtx) SendFile(file string, compress ...bool) error {
 	// Restore the original requested URL
 	originalURL := utils.CopyString(c.OriginalURL())
 	defer c.fasthttp.Request.SetRequestURI(originalURL)
+
 	// Set new URI for fileHandler
 	c.fasthttp.Request.SetRequestURI(file)
+
 	// Save status code
 	status := c.fasthttp.Response.StatusCode()
+
 	// Serve file
-	sendFileHandler(c.fasthttp)
+	fsHandler(c.fasthttp)
+
+	// Sets the response Content-Disposition header to attachment if the Download option is true
+	if cfg.Download {
+		c.Attachment()
+	}
+
 	// Get the status code which is set by fasthttp
 	fsStatus := c.fasthttp.Response.StatusCode()
-	// Set the status code set by the user if it is different from the fasthttp status code and 200
-	if status != fsStatus && status != StatusOK {
-		c.Status(status)
-	}
+
 	// Check for error
 	if status != StatusNotFound && fsStatus == StatusNotFound {
 		return NewError(StatusNotFound, fmt.Sprintf("sendfile: file %s not found", filename))
 	}
+
+	// Set the status code set by the user if it is different from the fasthttp status code and 200
+	if status != fsStatus && status != StatusOK {
+		c.Status(status)
+	}
+
+	// Apply cache control header
+	if status != StatusNotFound && status != StatusForbidden {
+		if len(cacheControlValue) > 0 {
+			c.Context().Response.Header.Set(HeaderCacheControl, cacheControlValue)
+		}
+
+		return nil
+	}
+
 	return nil
 }
 
@@ -1702,7 +1817,7 @@ func (c *DefaultCtx) configDependentPaths() {
 	}
 	// If StrictRouting is disabled, we strip all trailing slashes
 	if !c.app.config.StrictRouting && len(c.detectionPathBuffer) > 1 && c.detectionPathBuffer[len(c.detectionPathBuffer)-1] == '/' {
-		c.detectionPathBuffer = bytes.TrimRight(c.detectionPathBuffer, "/")
+		c.detectionPathBuffer = utils.TrimRight(c.detectionPathBuffer, '/')
 	}
 	c.detectionPath = c.app.getString(c.detectionPathBuffer)
 
@@ -1764,4 +1879,89 @@ func (c *DefaultCtx) GetParams() map[string]string {
 	}
 
 	return params
+}
+
+// Reset is a method to reset context fields by given request when to use server handlers.
+func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
+	// Reset route and handler index
+	c.indexRoute = -1
+	c.indexHandler = 0
+	// Reset matched flag
+	c.matched = false
+	// Set paths
+	c.pathOriginal = c.app.getString(fctx.URI().PathOriginal())
+	// Set method
+	c.method = c.app.getString(fctx.Request.Header.Method())
+	c.methodINT = c.app.methodInt(c.method)
+	// Attach *fasthttp.RequestCtx to ctx
+	c.fasthttp = fctx
+	// reset base uri
+	c.baseURI = ""
+	// Prettify path
+	c.configDependentPaths()
+}
+
+// Release is a method to reset context fields when to use ReleaseCtx()
+func (c *DefaultCtx) release() {
+	c.route = nil
+	c.fasthttp = nil
+	c.flashMessages = c.flashMessages[:0]
+	c.viewBindMap = sync.Map{}
+	if c.redirect != nil {
+		ReleaseRedirect(c.redirect)
+		c.redirect = nil
+	}
+}
+
+func (c *DefaultCtx) getBody() []byte {
+	if c.app.config.Immutable {
+		return utils.CopyBytes(c.fasthttp.Request.Body())
+	}
+
+	return c.fasthttp.Request.Body()
+}
+
+// Methods to use with next stack.
+func (c *DefaultCtx) getMethodINT() int {
+	return c.methodINT
+}
+
+func (c *DefaultCtx) getIndexRoute() int {
+	return c.indexRoute
+}
+
+func (c *DefaultCtx) getTreePath() string {
+	return c.treePath
+}
+
+func (c *DefaultCtx) getDetectionPath() string {
+	return c.detectionPath
+}
+
+func (c *DefaultCtx) getPathOriginal() string {
+	return c.pathOriginal
+}
+
+func (c *DefaultCtx) getValues() *[maxParams]string {
+	return &c.values
+}
+
+func (c *DefaultCtx) getMatched() bool {
+	return c.matched
+}
+
+func (c *DefaultCtx) setIndexHandler(handler int) {
+	c.indexHandler = handler
+}
+
+func (c *DefaultCtx) setIndexRoute(route int) {
+	c.indexRoute = route
+}
+
+func (c *DefaultCtx) setMatched(matched bool) {
+	c.matched = matched
+}
+
+func (c *DefaultCtx) setRoute(route *Route) {
+	c.route = route
 }

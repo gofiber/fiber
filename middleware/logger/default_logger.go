@@ -11,7 +11,6 @@ import (
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
 	"github.com/valyala/bytebufferpool"
-	"github.com/valyala/fasthttp"
 )
 
 // default logger for fiber
@@ -108,11 +107,12 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 	var err error
 	// Loop over template parts execute dynamic parts and add fixed parts to the buffer
 	for i, logFunc := range data.LogFuncChain {
-		if logFunc == nil {
+		switch {
+		case logFunc == nil:
 			buf.Write(data.TemplateChain[i])
-		} else if data.TemplateChain[i] == nil {
+		case data.TemplateChain[i] == nil:
 			_, err = logFunc(buf, c, data, "")
-		} else {
+		default:
 			_, err = logFunc(buf, c, data, utils.UnsafeString(data.TemplateChain[i]))
 		}
 		if err != nil {
@@ -150,7 +150,7 @@ func beforeHandlerFunc(cfg Config) {
 
 func appendInt(output Buffer, v int) (int, error) {
 	old := output.Len()
-	output.Set(fasthttp.AppendUint(output.Bytes(), v))
+	output.Set(strconv.AppendInt(output.Bytes(), int64(v), 10))
 	return output.Len() - old, nil
 }
 
@@ -160,7 +160,7 @@ func writeLog(w io.Writer, msg []byte) {
 		// Write error to output
 		if _, err := w.Write([]byte(err.Error())); err != nil {
 			// There is something wrong with the given io.Writer
-			_, _ = fmt.Fprintf(os.Stderr, "Failed to write to log, %v\n", err)
+			_, _ = fmt.Fprintf(os.Stderr, "Failed to write to log, %v\n", err) //nolint: errcheck // It is fine to ignore the error
 		}
 	}
 }

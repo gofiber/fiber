@@ -84,7 +84,7 @@ func Test_Request_Context(t *testing.T) {
 
 	require.Nil(t, ctx.Value(key))
 
-	ctx = context.WithValue(ctx, key, "string")
+	ctx = context.WithValue(ctx, key, "string") //nolint: staticcheck // not needed for tests
 	req.SetContext(ctx)
 	ctx = req.Context()
 
@@ -222,12 +222,12 @@ func Test_Request_QueryParam(t *testing.T) {
 		t.Parallel()
 
 		type args struct {
-			TInt      int
 			TString   string
-			TFloat    float64
-			TBool     bool
 			TSlice    []string
 			TIntSlice []int `param:"int_slice"`
+			TInt      int
+			TFloat    float64
+			TBool     bool
 		}
 
 		p := AcquireRequest()
@@ -334,8 +334,8 @@ func Test_Request_Cookie(t *testing.T) {
 	t.Run("set cookies with struct", func(t *testing.T) {
 		t.Parallel()
 		type args struct {
-			CookieInt    int    `cookie:"int"`
 			CookieString string `cookie:"string"`
+			CookieInt    int    `cookie:"int"`
 		}
 
 		req := AcquireRequest().SetCookiesWithStruct(&args{
@@ -396,8 +396,8 @@ func Test_Request_PathParam(t *testing.T) {
 	t.Run("set path params with struct", func(t *testing.T) {
 		t.Parallel()
 		type args struct {
-			CookieInt    int    `path:"int"`
 			CookieString string `path:"string"`
+			CookieInt    int    `path:"int"`
 		}
 
 		req := AcquireRequest().SetPathParamsWithStruct(&args{
@@ -510,12 +510,12 @@ func Test_Request_FormData(t *testing.T) {
 		t.Parallel()
 
 		type args struct {
-			TInt      int
 			TString   string
-			TFloat    float64
-			TBool     bool
 			TSlice    []string
 			TIntSlice []int `form:"int_slice"`
+			TInt      int
+			TFloat    float64
+			TBool     bool
 		}
 
 		p := AcquireRequest()
@@ -1251,7 +1251,7 @@ func Test_Request_MaxRedirects(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 
-		client := New().SetDial(func(_ string) (net.Conn, error) { return ln.Dial() }) //nolint:wrapcheck // not needed
+		client := New().SetDial(func(_ string) (net.Conn, error) { return ln.Dial() })
 
 		resp, err := AcquireRequest().
 			SetClient(client).
@@ -1270,7 +1270,7 @@ func Test_Request_MaxRedirects(t *testing.T) {
 	t.Run("error", func(t *testing.T) {
 		t.Parallel()
 
-		client := New().SetDial(func(_ string) (net.Conn, error) { return ln.Dial() }) //nolint:wrapcheck // not needed
+		client := New().SetDial(func(_ string) (net.Conn, error) { return ln.Dial() })
 
 		resp, err := AcquireRequest().
 			SetClient(client).
@@ -1284,7 +1284,7 @@ func Test_Request_MaxRedirects(t *testing.T) {
 	t.Run("MaxRedirects", func(t *testing.T) {
 		t.Parallel()
 
-		client := New().SetDial(func(_ string) (net.Conn, error) { return ln.Dial() }) //nolint:wrapcheck // not needed
+		client := New().SetDial(func(_ string) (net.Conn, error) { return ln.Dial() })
 
 		req := AcquireRequest().
 			SetClient(client).
@@ -1299,13 +1299,13 @@ func Test_SetValWithStruct(t *testing.T) {
 
 	// test SetValWithStruct vai QueryParam struct.
 	type args struct {
-		unexport  int
-		TInt      int
 		TString   string
-		TFloat    float64
-		TBool     bool
 		TSlice    []string
 		TIntSlice []int `param:"int_slice"`
+		unexport  int
+		TInt      int
+		TFloat    float64
+		TBool     bool
 	}
 
 	t.Run("the struct should be applied", func(t *testing.T) {
@@ -1453,13 +1453,13 @@ func Test_SetValWithStruct(t *testing.T) {
 func Benchmark_SetValWithStruct(b *testing.B) {
 	// test SetValWithStruct vai QueryParam struct.
 	type args struct {
-		unexport  int
-		TInt      int
 		TString   string
-		TFloat    float64
-		TBool     bool
 		TSlice    []string
 		TIntSlice []int `param:"int_slice"`
+		unexport  int
+		TInt      int
+		TFloat    float64
+		TBool     bool
 	}
 
 	b.Run("the struct should be applied", func(b *testing.B) {
@@ -1603,8 +1603,8 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 		require.Empty(b, string(p.Peek("TInt")))
 		require.Empty(b, string(p.Peek("TString")))
 		require.Empty(b, string(p.Peek("TFloat")))
-		require.Empty(b, len(p.PeekMulti("TSlice")))
-		require.Empty(b, len(p.PeekMulti("int_slice")))
+		require.Empty(b, p.PeekMulti("TSlice"))
+		require.Empty(b, p.PeekMulti("int_slice"))
 	})
 
 	b.Run("error type should ignore", func(b *testing.B) {

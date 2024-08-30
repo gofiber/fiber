@@ -14,6 +14,132 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// go test -run Test_Limiter_With_Max_Func_With_Zero -race -v
+func Test_Limiter_With_Max_Func_With_Zero_And_Limiter_Sliding(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New(Config{
+		MaxFunc:                func(_ fiber.Ctx) int { return 0 },
+		Expiration:             2 * time.Second,
+		SkipFailedRequests:     false,
+		SkipSuccessfulRequests: false,
+		LimiterMiddleware:      SlidingWindow{},
+	}))
+
+	app.Get("/:status", func(c fiber.Ctx) error {
+		if c.Params("status") == "fail" {
+			return c.SendStatus(400)
+		}
+		return c.SendStatus(200)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
+	require.NoError(t, err)
+	require.Equal(t, 400, resp.StatusCode)
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
+
+	time.Sleep(4*time.Second + 500*time.Millisecond)
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
+}
+
+// go test -run Test_Limiter_With_Max_Func_With_Zero -race -v
+func Test_Limiter_With_Max_Func_With_Zero(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New(Config{
+		MaxFunc: func(_ fiber.Ctx) int {
+			return 0
+		},
+		Expiration: 2 * time.Second,
+		Storage:    memory.New(),
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("Hello tester!")
+	})
+
+	var wg sync.WaitGroup
+
+	for i := 0; i <= 4; i++ {
+		wg.Add(1)
+		go func(wg *sync.WaitGroup) {
+			defer wg.Done()
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+			assert.NoError(t, err)
+			assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+			body, err := io.ReadAll(resp.Body)
+			assert.NoError(t, err)
+			assert.Equal(t, "Hello tester!", string(body))
+		}(&wg)
+	}
+
+	wg.Wait()
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
+}
+
+// go test -run Test_Limiter_With_Max_Func -race -v
+func Test_Limiter_With_Max_Func(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	maxRequests := 10
+
+	app.Use(New(Config{
+		MaxFunc: func(_ fiber.Ctx) int {
+			return maxRequests
+		},
+		Expiration: 2 * time.Second,
+		Storage:    memory.New(),
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("Hello tester!")
+	})
+
+	var wg sync.WaitGroup
+
+	for i := 0; i <= maxRequests-1; i++ {
+		wg.Add(1)
+		go func(wg *sync.WaitGroup) {
+			defer wg.Done()
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+			assert.NoError(t, err)
+			assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+			body, err := io.ReadAll(resp.Body)
+			assert.NoError(t, err)
+			assert.Equal(t, "Hello tester!", string(body))
+		}(&wg)
+	}
+
+	wg.Wait()
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, 429, resp.StatusCode)
+
+	time.Sleep(3 * time.Second)
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
+}
+
 // go test -run Test_Limiter_Concurrency_Store -race -v
 func Test_Limiter_Concurrency_Store(t *testing.T) {
 	t.Parallel()

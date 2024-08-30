@@ -87,13 +87,10 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return output.Write(c.Body())
 		},
 		TagBytesReceived: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			return appendInt(output, len(c.Request().Body()))
+			return appendInt(output, c.Request().Header.ContentLength())
 		},
 		TagBytesSent: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
-			if c.Response().Header.ContentLength() < 0 {
-				return appendInt(output, 0)
-			}
-			return appendInt(output, len(c.Response().Body()))
+			return appendInt(output, c.Response().Header.ContentLength())
 		},
 		TagRoute: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
 			return output.WriteString(c.Route().Path)

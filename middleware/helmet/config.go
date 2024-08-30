@@ -23,25 +23,9 @@ type Config struct {
 	// Possible values: "SAMEORIGIN", "DENY", "ALLOW-FROM uri"
 	XFrameOptions string
 
-	// HSTSMaxAge
-	// Optional. Default value 0.
-	HSTSMaxAge int
-
-	// HSTSExcludeSubdomains
-	// Optional. Default value false.
-	HSTSExcludeSubdomains bool
-
 	// ContentSecurityPolicy
 	// Optional. Default value "".
 	ContentSecurityPolicy string
-
-	// CSPReportOnly
-	// Optional. Default value false.
-	CSPReportOnly bool
-
-	// HSTSPreloadEnabled
-	// Optional. Default value false.
-	HSTSPreloadEnabled bool
 
 	// ReferrerPolicy
 	// Optional. Default value "ReferrerPolicy".
@@ -78,6 +62,22 @@ type Config struct {
 	// X-Permitted-Cross-Domain-Policies
 	// Optional. Default value "none".
 	XPermittedCrossDomain string
+
+	// HSTSMaxAge
+	// Optional. Default value 0.
+	HSTSMaxAge int
+
+	// HSTSExcludeSubdomains
+	// Optional. Default value false.
+	HSTSExcludeSubdomains bool
+
+	// CSPReportOnly
+	// Optional. Default value false.
+	CSPReportOnly bool
+
+	// HSTSPreloadEnabled
+	// Optional. Default value false.
+	HSTSPreloadEnabled bool
 }
 
 // ConfigDefault is the default config

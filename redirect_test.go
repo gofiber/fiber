@@ -2,20 +2,16 @@
 // 📝 Github Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
-//nolint:wrapcheck // We must not wrap errors in tests
 package fiber
 
 import (
-	"context"
-	"net"
+	"bytes"
+	"mime/multipart"
 	"net/url"
 	"testing"
-	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
-	"github.com/valyala/fasthttp/fasthttputil"
 )
 
 // go test -run Test_Redirect_To
@@ -33,6 +29,28 @@ func Test_Redirect_To(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 301, c.Response().StatusCode())
 	require.Equal(t, "http://example.com", string(c.Response().Header.Peek(HeaderLocation)))
+}
+
+// go test -run Test_Redirect_To_WithFlashMessages
+func Test_Redirect_To_WithFlashMessages(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	err := c.Redirect().With("success", "2").With("success", "1").With("message", "test", 2).To("http://example.com")
+	require.NoError(t, err)
+	require.Equal(t, 302, c.Response().StatusCode())
+	require.Equal(t, "http://example.com", string(c.Response().Header.Peek(HeaderLocation)))
+
+	c.Context().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
+
+	var msgs redirectionMsgs
+	_, err = msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
+	require.NoError(t, err)
+
+	require.Len(t, msgs, 2)
+	require.Contains(t, msgs, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
+	require.Contains(t, msgs, redirectionMsg{key: "message", value: "test", level: 2, isOldInput: false})
 }
 
 // go test -run Test_Redirect_Route_WithParams
@@ -71,6 +89,7 @@ func Test_Redirect_Route_WithParams_WithQueries(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, 302, c.Response().StatusCode())
+
 	// analysis of query parameters with url parsing, since a map pass is always randomly ordered
 	location, err := url.Parse(string(c.Response().Header.Peek(HeaderLocation)))
 	require.NoError(t, err, "url.Parse(location)")
@@ -150,6 +169,33 @@ func Test_Redirect_Back(t *testing.T) {
 	require.ErrorAs(t, err, &ErrRedirectBackNoFallback)
 }
 
+// go test -run Test_Redirect_Back_WithFlashMessages
+func Test_Redirect_Back_WithFlashMessages(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/user", func(c Ctx) error {
+		return c.SendString("user")
+	}).Name("user")
+
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+
+	err := c.Redirect().With("success", "1").With("message", "test").Back("/")
+	require.NoError(t, err)
+	require.Equal(t, 302, c.Response().StatusCode())
+	require.Equal(t, "/", string(c.Response().Header.Peek(HeaderLocation)))
+
+	c.Context().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
+
+	var msgs redirectionMsgs
+	_, err = msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
+	require.NoError(t, err)
+
+	require.Len(t, msgs, 2)
+	require.Contains(t, msgs, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
+	require.Contains(t, msgs, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
+}
+
 // go test -run Test_Redirect_Back_WithReferer
 func Test_Redirect_Back_WithReferer(t *testing.T) {
 	t.Parallel()
@@ -182,155 +228,233 @@ func Test_Redirect_Route_WithFlashMessages(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	err := c.Redirect().With("success", "1").With("message", "test").Route("user")
+
+	require.Contains(t, c.redirect.messages, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
+	require.Contains(t, c.redirect.messages, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
+
 	require.NoError(t, err)
 	require.Equal(t, 302, c.Response().StatusCode())
 	require.Equal(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
 
-	equal := c.GetRespHeader(HeaderSetCookie) == "fiber_flash=success:1,message:test; path=/; SameSite=Lax" || c.GetRespHeader(HeaderSetCookie) == "fiber_flash=message:test,success:1; path=/; SameSite=Lax"
-	require.True(t, equal)
+	c.Context().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
 
-	c.Redirect().setFlash()
-	require.Equal(t, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT", c.GetRespHeader(HeaderSetCookie))
+	var msgs redirectionMsgs
+	_, err = msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
+	require.NoError(t, err)
+
+	require.Len(t, msgs, 2)
+	require.Contains(t, msgs, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
+	require.Contains(t, msgs, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
 }
 
 // go test -run Test_Redirect_Route_WithOldInput
 func Test_Redirect_Route_WithOldInput(t *testing.T) {
 	t.Parallel()
 
-	app := New()
-	app.Get("/user", func(c Ctx) error {
-		return c.SendString("user")
-	}).Name("user")
+	t.Run("Query", func(t *testing.T) {
+		t.Parallel()
 
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+		app := New()
+		app.Get("/user", func(c Ctx) error {
+			return c.SendString("user")
+		}).Name("user")
 
-	c.Request().URI().SetQueryString("id=1&name=tom")
-	err := c.Redirect().With("success", "1").With("message", "test").WithInput().Route("user")
-	require.NoError(t, err)
-	require.Equal(t, 302, c.Response().StatusCode())
-	require.Equal(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
+		c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
-	require.Contains(t, c.GetRespHeader(HeaderSetCookie), "fiber_flash=")
-	require.Contains(t, c.GetRespHeader(HeaderSetCookie), "success:1")
-	require.Contains(t, c.GetRespHeader(HeaderSetCookie), "message:test")
+		c.Request().URI().SetQueryString("id=1&name=tom")
+		err := c.Redirect().With("success", "1").With("message", "test").WithInput().Route("user")
 
-	require.Contains(t, c.GetRespHeader(HeaderSetCookie), ",old_input_data_id:1")
-	require.Contains(t, c.GetRespHeader(HeaderSetCookie), ",old_input_data_name:tom")
-
-	c.Redirect().setFlash()
-	require.Equal(t, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT", c.GetRespHeader(HeaderSetCookie))
-}
-
-// go test -run Test_Redirect_setFlash
-func Test_Redirect_setFlash(t *testing.T) {
-	t.Parallel()
-
-	app := New()
-	app.Get("/user", func(c Ctx) error {
-		return c.SendString("user")
-	}).Name("user")
-
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
-
-	c.Request().Header.Set(HeaderCookie, "fiber_flash=success:1,message:test,old_input_data_name:tom,old_input_data_id:1")
-
-	c.Redirect().setFlash()
-
-	require.Equal(t, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT", c.GetRespHeader(HeaderSetCookie))
-
-	require.Equal(t, "1", c.Redirect().Message("success"))
-	require.Equal(t, "test", c.Redirect().Message("message"))
-	require.Equal(t, map[string]string{"success": "1", "message": "test"}, c.Redirect().Messages())
-
-	require.Equal(t, "1", c.Redirect().OldInput("id"))
-	require.Equal(t, "tom", c.Redirect().OldInput("name"))
-	require.Equal(t, map[string]string{"id": "1", "name": "tom"}, c.Redirect().OldInputs())
-}
-
-// go test -run Test_Redirect_Request
-func Test_Redirect_Request(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	app.Get("/", func(c Ctx) error {
-		return c.Redirect().With("key", "value").With("key2", "value2").With("co\\:m\\,ma", "Fi\\:ber\\, v3").Route("name")
-	})
-
-	app.Get("/with-inputs", func(c Ctx) error {
-		return c.Redirect().WithInput().With("key", "value").With("key2", "value2").Route("name")
-	})
-
-	app.Get("/just-inputs", func(c Ctx) error {
-		return c.Redirect().WithInput().Route("name")
-	})
-
-	app.Get("/redirected", func(c Ctx) error {
-		return c.JSON(Map{
-			"messages": c.Redirect().Messages(),
-			"inputs":   c.Redirect().OldInputs(),
-		})
-	}).Name("name")
-
-	// Start test server
-	ln := fasthttputil.NewInmemoryListener()
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
-		defer cancel()
-
-		err := app.Listener(ln, ListenConfig{
-			DisableStartupMessage: true,
-			GracefulContext:       ctx,
-		})
-
-		assert.NoError(t, err)
-	}()
-
-	// Test cases
-	testCases := []struct {
-		URL                string
-		CookieValue        string
-		ExpectedBody       string
-		ExpectedStatusCode int
-		ExpectedErr        error
-	}{
-		{
-			URL:                "/",
-			CookieValue:        "key:value,key2:value2,co\\:m\\,ma:Fi\\:ber\\, v3",
-			ExpectedBody:       `{"inputs":{},"messages":{"co:m,ma":"Fi:ber, v3","key":"value","key2":"value2"}}`,
-			ExpectedStatusCode: StatusOK,
-			ExpectedErr:        nil,
-		},
-		{
-			URL:                "/with-inputs?name=john&surname=doe",
-			CookieValue:        "key:value,key2:value2,key:value,key2:value2,old_input_data_name:john,old_input_data_surname:doe",
-			ExpectedBody:       `{"inputs":{"name":"john","surname":"doe"},"messages":{"key":"value","key2":"value2"}}`,
-			ExpectedStatusCode: StatusOK,
-			ExpectedErr:        nil,
-		},
-		{
-			URL:                "/just-inputs?name=john&surname=doe",
-			CookieValue:        "old_input_data_name:john,old_input_data_surname:doe",
-			ExpectedBody:       `{"inputs":{"name":"john","surname":"doe"},"messages":{}}`,
-			ExpectedStatusCode: StatusOK,
-			ExpectedErr:        nil,
-		},
-	}
-
-	for _, tc := range testCases {
-		client := &fasthttp.HostClient{
-			Dial: func(_ string) (net.Conn, error) {
-				return ln.Dial()
-			},
-		}
-		req, resp := fasthttp.AcquireRequest(), fasthttp.AcquireResponse()
-		req.SetRequestURI("http://example.com" + tc.URL)
-		req.Header.SetCookie(FlashCookieName, tc.CookieValue)
-		err := client.DoRedirects(req, resp, 1)
+		require.Contains(t, c.redirect.messages, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
+		require.Contains(t, c.redirect.messages, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
+		require.Contains(t, c.redirect.messages, redirectionMsg{key: "id", value: "1", isOldInput: true})
+		require.Contains(t, c.redirect.messages, redirectionMsg{key: "name", value: "tom", isOldInput: true})
 
 		require.NoError(t, err)
-		require.Equal(t, tc.ExpectedBody, string(resp.Body()))
-		require.Equal(t, tc.ExpectedStatusCode, resp.StatusCode())
+		require.Equal(t, 302, c.Response().StatusCode())
+		require.Equal(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
+
+		c.Context().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
+
+		var msgs redirectionMsgs
+		_, err = msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
+		require.NoError(t, err)
+
+		require.Len(t, msgs, 4)
+		require.Contains(t, msgs, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
+		require.Contains(t, msgs, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
+		require.Contains(t, msgs, redirectionMsg{key: "id", value: "1", level: 0, isOldInput: true})
+		require.Contains(t, msgs, redirectionMsg{key: "name", value: "tom", level: 0, isOldInput: true})
+	})
+
+	t.Run("Form", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+		app.Post("/user", func(c Ctx) error {
+			return c.SendString("user")
+		}).Name("user")
+
+		c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+
+		c.Request().Header.Set(HeaderContentType, MIMEApplicationForm)
+		c.Request().SetBodyString("id=1&name=tom")
+		err := c.Redirect().With("success", "1").With("message", "test").WithInput().Route("user")
+
+		require.Contains(t, c.redirect.messages, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
+		require.Contains(t, c.redirect.messages, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
+		require.Contains(t, c.redirect.messages, redirectionMsg{key: "id", value: "1", isOldInput: true})
+		require.Contains(t, c.redirect.messages, redirectionMsg{key: "name", value: "tom", isOldInput: true})
+
+		require.NoError(t, err)
+		require.Equal(t, 302, c.Response().StatusCode())
+		require.Equal(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
+
+		c.Context().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
+
+		var msgs redirectionMsgs
+		_, err = msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
+		require.NoError(t, err)
+
+		require.Len(t, msgs, 4)
+		require.Contains(t, msgs, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
+		require.Contains(t, msgs, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
+		require.Contains(t, msgs, redirectionMsg{key: "id", value: "1", level: 0, isOldInput: true})
+		require.Contains(t, msgs, redirectionMsg{key: "name", value: "tom", level: 0, isOldInput: true})
+	})
+
+	t.Run("MultipartForm", func(t *testing.T) {
+		t.Parallel()
+
+		app := New()
+		app.Get("/user", func(c Ctx) error {
+			return c.SendString("user")
+		}).Name("user")
+
+		c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+
+		body := &bytes.Buffer{}
+		writer := multipart.NewWriter(body)
+
+		require.NoError(t, writer.WriteField("id", "1"))
+		require.NoError(t, writer.WriteField("name", "tom"))
+		require.NoError(t, writer.Close())
+
+		c.Request().SetBody(body.Bytes())
+		c.Request().Header.Set(HeaderContentType, writer.FormDataContentType())
+
+		err := c.Redirect().With("success", "1").With("message", "test").WithInput().Route("user")
+
+		require.Contains(t, c.redirect.messages, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
+		require.Contains(t, c.redirect.messages, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
+		require.Contains(t, c.redirect.messages, redirectionMsg{key: "id", value: "1", isOldInput: true})
+		require.Contains(t, c.redirect.messages, redirectionMsg{key: "name", value: "tom", isOldInput: true})
+
+		require.NoError(t, err)
+		require.Equal(t, 302, c.Response().StatusCode())
+		require.Equal(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
+
+		c.Context().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
+
+		var msgs redirectionMsgs
+		_, err = msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
+		require.NoError(t, err)
+
+		require.Len(t, msgs, 4)
+		require.Contains(t, msgs, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
+		require.Contains(t, msgs, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
+		require.Contains(t, msgs, redirectionMsg{key: "id", value: "1", level: 0, isOldInput: true})
+		require.Contains(t, msgs, redirectionMsg{key: "name", value: "tom", level: 0, isOldInput: true})
+	})
+}
+
+// go test -run Test_Redirect_parseAndClearFlashMessages
+func Test_Redirect_parseAndClearFlashMessages(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/user", func(c Ctx) error {
+		return c.SendString("user")
+	}).Name("user")
+
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+
+	msgs := redirectionMsgs{
+		{
+			key:   "success",
+			value: "1",
+		},
+		{
+			key:   "message",
+			value: "test",
+		},
+		{
+			key:        "name",
+			value:      "tom",
+			isOldInput: true,
+		},
+		{
+			key:        "id",
+			value:      "1",
+			isOldInput: true,
+		},
 	}
+
+	val, err := msgs.MarshalMsg(nil)
+	require.NoError(t, err)
+
+	c.Request().Header.Set(HeaderCookie, "fiber_flash="+string(val))
+
+	c.Redirect().parseAndClearFlashMessages()
+
+	require.Equal(t, FlashMessage{
+		Key:   "success",
+		Value: "1",
+		Level: 0,
+	}, c.Redirect().Message("success"))
+
+	require.Equal(t, FlashMessage{
+		Key:   "message",
+		Value: "test",
+		Level: 0,
+	}, c.Redirect().Message("message"))
+
+	require.Equal(t, FlashMessage{}, c.Redirect().Message("not_message"))
+
+	require.Equal(t, []FlashMessage{
+		{
+			Key:   "success",
+			Value: "1",
+			Level: 0,
+		},
+		{
+			Key:   "message",
+			Value: "test",
+			Level: 0,
+		},
+	}, c.Redirect().Messages())
+
+	require.Equal(t, OldInputData{
+		Key:   "id",
+		Value: "1",
+	}, c.Redirect().OldInput("id"))
+
+	require.Equal(t, OldInputData{
+		Key:   "name",
+		Value: "tom",
+	}, c.Redirect().OldInput("name"))
+
+	require.Equal(t, OldInputData{}, c.Redirect().OldInput("not_name"))
+
+	require.Equal(t, []OldInputData{
+		{
+			Key:   "name",
+			Value: "tom",
+		},
+		{
+			Key:   "id",
+			Value: "1",
+		},
+	}, c.Redirect().OldInputs())
 }
 
 // go test -v -run=^$ -bench=Benchmark_Redirect_Route -benchmem -count=4
@@ -414,15 +538,39 @@ func Benchmark_Redirect_Route_WithFlashMessages(b *testing.B) {
 	require.Equal(b, 302, c.Response().StatusCode())
 	require.Equal(b, "/user", string(c.Response().Header.Peek(HeaderLocation)))
 
-	equal := c.GetRespHeader(HeaderSetCookie) == "fiber_flash=success:1,message:test; path=/; SameSite=Lax" || c.GetRespHeader(HeaderSetCookie) == "fiber_flash=message:test,success:1; path=/; SameSite=Lax"
-	require.True(b, equal)
+	c.Context().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
 
-	c.Redirect().setFlash()
-	require.Equal(b, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT", c.GetRespHeader(HeaderSetCookie))
+	var msgs redirectionMsgs
+	_, err = msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
+	require.NoError(b, err)
+
+	require.Contains(b, msgs, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
+	require.Contains(b, msgs, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
 }
 
-// go test -v -run=^$ -bench=Benchmark_Redirect_setFlash -benchmem -count=4
-func Benchmark_Redirect_setFlash(b *testing.B) {
+var testredirectionMsgs = redirectionMsgs{
+	{
+		key:   "success",
+		value: "1",
+	},
+	{
+		key:   "message",
+		value: "test",
+	},
+	{
+		key:        "name",
+		value:      "tom",
+		isOldInput: true,
+	},
+	{
+		key:        "id",
+		value:      "1",
+		isOldInput: true,
+	},
+}
+
+// go test -v -run=^$ -bench=Benchmark_Redirect_parseAndClearFlashMessages -benchmem -count=4
+func Benchmark_Redirect_parseAndClearFlashMessages(b *testing.B) {
 	app := New()
 	app.Get("/user", func(c Ctx) error {
 		return c.SendString("user")
@@ -430,24 +578,66 @@ func Benchmark_Redirect_setFlash(b *testing.B) {
 
 	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
-	c.Request().Header.Set(HeaderCookie, "fiber_flash=success:1,message:test,old_input_data_name:tom,old_input_data_id:1")
+	val, err := testredirectionMsgs.MarshalMsg(nil)
+	require.NoError(b, err)
+
+	c.Request().Header.Set(HeaderCookie, "fiber_flash="+string(val))
 
 	b.ReportAllocs()
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		c.Redirect().setFlash()
+		c.Redirect().parseAndClearFlashMessages()
 	}
 
-	require.Equal(b, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT", c.GetRespHeader(HeaderSetCookie))
+	require.Equal(b, FlashMessage{
+		Key:   "success",
+		Value: "1",
+	}, c.Redirect().Message("success"))
 
-	require.Equal(b, "1", c.Redirect().Message("success"))
-	require.Equal(b, "test", c.Redirect().Message("message"))
-	require.Equal(b, map[string]string{"success": "1", "message": "test"}, c.Redirect().Messages())
+	require.Equal(b, FlashMessage{
+		Key:   "message",
+		Value: "test",
+	}, c.Redirect().Message("message"))
 
-	require.Equal(b, "1", c.Redirect().OldInput("id"))
-	require.Equal(b, "tom", c.Redirect().OldInput("name"))
-	require.Equal(b, map[string]string{"id": "1", "name": "tom"}, c.Redirect().OldInputs())
+	require.Equal(b, OldInputData{
+		Key:   "id",
+		Value: "1",
+	}, c.Redirect().OldInput("id"))
+
+	require.Equal(b, OldInputData{
+		Key:   "name",
+		Value: "tom",
+	}, c.Redirect().OldInput("name"))
+}
+
+// go test -v -run=^$ -bench=Benchmark_Redirect_processFlashMessages -benchmem -count=4
+func Benchmark_Redirect_processFlashMessages(b *testing.B) {
+	app := New()
+	app.Get("/user", func(c Ctx) error {
+		return c.SendString("user")
+	}).Name("user")
+
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+
+	c.Redirect().With("success", "1").With("message", "test")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		c.Redirect().processFlashMessages()
+	}
+
+	c.Context().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
+
+	var msgs redirectionMsgs
+	_, err := msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
+	require.NoError(b, err)
+
+	require.Len(b, msgs, 2)
+	require.Contains(b, msgs, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
+	require.Contains(b, msgs, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
 }
 
 // go test -v -run=^$ -bench=Benchmark_Redirect_Messages -benchmem -count=4
@@ -459,10 +649,13 @@ func Benchmark_Redirect_Messages(b *testing.B) {
 
 	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
-	c.Request().Header.Set(HeaderCookie, "fiber_flash=success:1,message:test,old_input_data_name:tom,old_input_data_id:1")
-	c.Redirect().setFlash()
+	val, err := testredirectionMsgs.MarshalMsg(nil)
+	require.NoError(b, err)
 
-	var msgs map[string]string
+	c.Request().Header.Set(HeaderCookie, "fiber_flash="+string(val))
+	c.Redirect().parseAndClearFlashMessages()
+
+	var msgs []FlashMessage
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -471,8 +664,17 @@ func Benchmark_Redirect_Messages(b *testing.B) {
 		msgs = c.Redirect().Messages()
 	}
 
-	require.Equal(b, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT", c.GetRespHeader(HeaderSetCookie))
-	require.Equal(b, map[string]string{"success": "1", "message": "test"}, msgs)
+	require.Contains(b, msgs, FlashMessage{
+		Key:   "success",
+		Value: "1",
+		Level: 0,
+	})
+
+	require.Contains(b, msgs, FlashMessage{
+		Key:   "message",
+		Value: "test",
+		Level: 0,
+	})
 }
 
 // go test -v -run=^$ -bench=Benchmark_Redirect_OldInputs -benchmem -count=4
@@ -484,10 +686,13 @@ func Benchmark_Redirect_OldInputs(b *testing.B) {
 
 	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
-	c.Request().Header.Set(HeaderCookie, "fiber_flash=success:1,message:test,old_input_data_name:tom,old_input_data_id:1")
-	c.Redirect().setFlash()
+	val, err := testredirectionMsgs.MarshalMsg(nil)
+	require.NoError(b, err)
 
-	var oldInputs map[string]string
+	c.Request().Header.Set(HeaderCookie, "fiber_flash="+string(val))
+	c.Redirect().parseAndClearFlashMessages()
+
+	var oldInputs []OldInputData
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -496,8 +701,15 @@ func Benchmark_Redirect_OldInputs(b *testing.B) {
 		oldInputs = c.Redirect().OldInputs()
 	}
 
-	require.Equal(b, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT", c.GetRespHeader(HeaderSetCookie))
-	require.Equal(b, map[string]string{"id": "1", "name": "tom"}, oldInputs)
+	require.Contains(b, oldInputs, OldInputData{
+		Key:   "name",
+		Value: "tom",
+	})
+
+	require.Contains(b, oldInputs, OldInputData{
+		Key:   "id",
+		Value: "1",
+	})
 }
 
 // go test -v -run=^$ -bench=Benchmark_Redirect_Message -benchmem -count=4
@@ -509,10 +721,13 @@ func Benchmark_Redirect_Message(b *testing.B) {
 
 	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
-	c.Request().Header.Set(HeaderCookie, "fiber_flash=success:1,message:test,old_input_data_name:tom,old_input_data_id:1")
-	c.Redirect().setFlash()
+	val, err := testredirectionMsgs.MarshalMsg(nil)
+	require.NoError(b, err)
 
-	var msg string
+	c.Request().Header.Set(HeaderCookie, "fiber_flash="+string(val))
+	c.Redirect().parseAndClearFlashMessages()
+
+	var msg FlashMessage
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -521,8 +736,11 @@ func Benchmark_Redirect_Message(b *testing.B) {
 		msg = c.Redirect().Message("message")
 	}
 
-	require.Equal(b, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT", c.GetRespHeader(HeaderSetCookie))
-	require.Equal(b, "test", msg)
+	require.Equal(b, FlashMessage{
+		Key:   "message",
+		Value: "test",
+		Level: 0,
+	}, msg)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Redirect_OldInput -benchmem -count=4
@@ -534,10 +752,13 @@ func Benchmark_Redirect_OldInput(b *testing.B) {
 
 	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
-	c.Request().Header.Set(HeaderCookie, "fiber_flash=success:1,message:test,old_input_data_name:tom,old_input_data_id:1")
-	c.Redirect().setFlash()
+	val, err := testredirectionMsgs.MarshalMsg(nil)
+	require.NoError(b, err)
 
-	var input string
+	c.Request().Header.Set(HeaderCookie, "fiber_flash="+string(val))
+	c.Redirect().parseAndClearFlashMessages()
+
+	var input OldInputData
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -546,6 +767,8 @@ func Benchmark_Redirect_OldInput(b *testing.B) {
 		input = c.Redirect().OldInput("name")
 	}
 
-	require.Equal(b, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT", c.GetRespHeader(HeaderSetCookie))
-	require.Equal(b, "tom", input)
+	require.Equal(b, OldInputData{
+		Key:   "name",
+		Value: "tom",
+	}, input)
 }

@@ -8,13 +8,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestExponentialBackoff_Retry(t *testing.T) {
+func Test_ExponentialBackoff_Retry(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name       string
+		expErr     error
 		expBackoff *ExponentialBackoff
 		f          func() error
-		expErr     error
+		name       string
 	}{
 		{
 			name:       "With default values - successful",
@@ -60,7 +60,7 @@ func TestExponentialBackoff_Retry(t *testing.T) {
 	}
 }
 
-func TestExponentialBackoff_Next(t *testing.T) {
+func Test_ExponentialBackoff_Next(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name                 string

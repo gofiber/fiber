@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/utils/v2"
 )
 
 var (
@@ -24,9 +25,9 @@ var (
 
 // Handler for CSRF middleware
 type Handler struct {
-	config         *Config
 	sessionManager *sessionManager
 	storageManager *storageManager
+	config         Config
 }
 
 // The contextKey type is unexported to prevent collisions with context keys defined in
@@ -56,6 +57,36 @@ func New(config ...Config) fiber.Handler {
 		storageManager = newStorageManager(cfg.Storage)
 	}
 
+	// Pre-parse trusted origins
+	trustedOrigins := []string{}
+	trustedSubOrigins := []subdomain{}
+
+	for _, origin := range cfg.TrustedOrigins {
+		if i := strings.Index(origin, "://*."); i != -1 {
+			trimmedOrigin := utils.Trim(origin[:i+3]+origin[i+4:], ' ')
+			isValid, normalizedOrigin := normalizeOrigin(trimmedOrigin)
+			if !isValid {
+				panic("[CSRF] Invalid origin format in configuration:" + origin)
+			}
+			sd := subdomain{prefix: normalizedOrigin[:i+3], suffix: normalizedOrigin[i+3:]}
+			trustedSubOrigins = append(trustedSubOrigins, sd)
+		} else {
+			trimmedOrigin := utils.Trim(origin, ' ')
+			isValid, normalizedOrigin := normalizeOrigin(trimmedOrigin)
+			if !isValid {
+				panic("[CSRF] Invalid origin format in configuration:" + origin)
+			}
+			trustedOrigins = append(trustedOrigins, normalizedOrigin)
+		}
+	}
+
+	// Create the handler outside of the returned function
+	handler := &Handler{
+		config:         cfg,
+		sessionManager: sessionManager,
+		storageManager: storageManager,
+	}
+
 	// Return new handler
 	return func(c fiber.Ctx) error {
 		// Don't execute middleware if Next returns true
@@ -64,11 +95,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Store the CSRF handler in the context
-		c.Locals(handlerKey, &Handler{
-			config:         &cfg,
-			sessionManager: sessionManager,
-			storageManager: storageManager,
-		})
+		c.Locals(handlerKey, handler)
 
 		var token string
 
@@ -88,12 +115,12 @@ func New(config ...Config) fiber.Handler {
 			// Assume that anything not defined as 'safe' by RFC7231 needs protection
 
 			// Enforce an origin check for unsafe requests.
-			err := originMatchesHost(c, cfg.TrustedOrigins)
+			err := originMatchesHost(c, trustedOrigins, trustedSubOrigins)
 
 			// If there's no origin, enforce a referer check for HTTPS connections.
 			if errors.Is(err, errOriginNotFound) {
 				if c.Scheme() == "https" {
-					err = refererMatchesHost(c, cfg.TrustedOrigins)
+					err = refererMatchesHost(c, trustedOrigins, trustedSubOrigins)
 				} else {
 					// If it's not HTTPS, clear the error to allow the request to proceed.
 					err = nil
@@ -237,20 +264,15 @@ func setCSRFCookie(c fiber.Ctx, cfg Config, token string, expiry time.Duration) 
 // DeleteToken removes the token found in the context from the storage
 // and expires the CSRF cookie
 func (handler *Handler) DeleteToken(c fiber.Ctx) error {
-	// Get the config from the context
-	config := handler.config
-	if config == nil {
-		panic("CSRF Handler config not found in context")
-	}
 	// Extract token from the client request cookie
-	cookieToken := c.Cookies(config.CookieName)
+	cookieToken := c.Cookies(handler.config.CookieName)
 	if cookieToken == "" {
-		return config.ErrorHandler(c, ErrTokenNotFound)
+		return handler.config.ErrorHandler(c, ErrTokenNotFound)
 	}
 	// Remove the token from storage
-	deleteTokenFromStorage(c, cookieToken, *config, handler.sessionManager, handler.storageManager)
+	deleteTokenFromStorage(c, cookieToken, handler.config, handler.sessionManager, handler.storageManager)
 	// Expire the cookie
-	expireCSRFCookie(c, *config)
+	expireCSRFCookie(c, handler.config)
 	return nil
 }
 
@@ -262,8 +284,8 @@ func isFromCookie(extractor any) bool {
 // originMatchesHost checks that the origin header matches the host header
 // returns an error if the origin header is not present or is invalid
 // returns nil if the origin header is valid
-func originMatchesHost(c fiber.Ctx, trustedOrigins []string) error {
-	origin := c.Get(fiber.HeaderOrigin)
+func originMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins []subdomain) error {
+	origin := strings.ToLower(c.Get(fiber.HeaderOrigin))
 	if origin == "" || origin == "null" { // "null" is set by some browsers when the origin is a secure context https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin#description
 		return errOriginNotFound
 	}
@@ -273,23 +295,30 @@ func originMatchesHost(c fiber.Ctx, trustedOrigins []string) error {
 		return ErrOriginInvalid
 	}
 
-	if originURL.Host != c.Host() {
-		for _, trustedOrigin := range trustedOrigins {
-			if isTrustedSchemeAndDomain(trustedOrigin, origin) {
-				return nil
-			}
-		}
-		return ErrOriginNoMatch
+	if originURL.Scheme == c.Scheme() && originURL.Host == c.Host() {
+		return nil
 	}
 
-	return nil
+	for _, trustedOrigin := range trustedOrigins {
+		if origin == trustedOrigin {
+			return nil
+		}
+	}
+
+	for _, trustedSubOrigin := range trustedSubOrigins {
+		if trustedSubOrigin.match(origin) {
+			return nil
+		}
+	}
+
+	return ErrOriginNoMatch
 }
 
 // refererMatchesHost checks that the referer header matches the host header
 // returns an error if the referer header is not present or is invalid
 // returns nil if the referer header is valid
-func refererMatchesHost(c fiber.Ctx, trustedOrigins []string) error {
-	referer := c.Get(fiber.HeaderReferer)
+func refererMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins []subdomain) error {
+	referer := strings.ToLower(c.Get(fiber.HeaderReferer))
 	if referer == "" {
 		return ErrRefererNotFound
 	}
@@ -299,41 +328,23 @@ func refererMatchesHost(c fiber.Ctx, trustedOrigins []string) error {
 		return ErrRefererInvalid
 	}
 
-	if refererURL.Host != c.Host() {
-		for _, trustedOrigin := range trustedOrigins {
-			if isTrustedSchemeAndDomain(trustedOrigin, referer) {
-				return nil
-			}
+	if refererURL.Scheme == c.Scheme() && refererURL.Host == c.Host() {
+		return nil
+	}
+
+	referer = refererURL.String()
+
+	for _, trustedOrigin := range trustedOrigins {
+		if referer == trustedOrigin {
+			return nil
 		}
-		return ErrRefererNoMatch
 	}
 
-	return nil
-}
-
-// isTrustedSchemeAndDomain checks if the trustedProtoDomain is the same as the protoDomain
-// or if the protoDomain is a subdomain of the trustedProtoDomain where trustedProtoDomain
-// is prefixed with "https://." or "http://."
-func isTrustedSchemeAndDomain(trustedProtoDomain, protoDomain string) bool {
-	if trustedProtoDomain == protoDomain {
-		return true
+	for _, trustedSubOrigin := range trustedSubOrigins {
+		if trustedSubOrigin.match(referer) {
+			return nil
+		}
 	}
 
-	// Use constant prefixes for better readability and avoid magic numbers.
-	const httpsPrefix = "https://."
-	const httpPrefix = "http://."
-
-	if strings.HasPrefix(trustedProtoDomain, httpsPrefix) {
-		trustedProtoDomain = trustedProtoDomain[len(httpsPrefix):]
-		protoDomain = strings.TrimPrefix(protoDomain, "https://")
-		return strings.HasSuffix(protoDomain, "."+trustedProtoDomain)
-	}
-
-	if strings.HasPrefix(trustedProtoDomain, httpPrefix) {
-		trustedProtoDomain = trustedProtoDomain[len(httpPrefix):]
-		protoDomain = strings.TrimPrefix(protoDomain, "http://")
-		return strings.HasSuffix(protoDomain, "."+trustedProtoDomain)
-	}
-
-	return false
+	return ErrRefererNoMatch
 }

@@ -5,127 +5,25 @@ description: The app instance conventionally denotes the Fiber application.
 sidebar_position: 2
 ---
 
+import Reference from '@site/src/components/reference';
+
+## Routing
+
 import RoutingHandler from './../partials/routing/handler.md';
 
-## Static
-
-Use the **Static** method to serve static files such as **images**, **CSS,** and **JavaScript**.
-
-:::info
-By default, **Static** will serve `index.html` files in response to a request on a directory.
-:::
-
-```go title="Signature"
-func (app *App) Static(prefix, root string, config ...Static) Router
-```
-
-Use the following code to serve files in a directory named `./public`
-
-```go
-app.Static("/", "./public")
-
-// => http://localhost:3000/hello.html
-// => http://localhost:3000/js/jquery.js
-// => http://localhost:3000/css/style.css
-```
-
-```go title="Examples"
-// Serve files from multiple directories
-app.Static("/", "./public")
-
-// Serve files from "./files" directory:
-app.Static("/", "./files")
-```
-
-You can use any virtual path prefix \(_where the path does not actually exist in the file system_\) for files that are served by the **Static** method, specify a prefix path for the static directory, as shown below:
-
-```go title="Examples"
-app.Static("/static", "./public")
-
-// => http://localhost:3000/static/hello.html
-// => http://localhost:3000/static/js/jquery.js
-// => http://localhost:3000/static/css/style.css
-```
-
-If you want to have a little bit more control regarding the settings for serving static files. You could use the `fiber.Static` struct to enable specific settings.
-
-```go title="fiber.Static{}"
-// Static defines configuration options when defining static assets.
-type Static struct {
-    // When set to true, the server tries minimizing CPU usage by caching compressed files.
-    // This works differently than the github.com/gofiber/compression middleware.
-    // Optional. Default value false
-    Compress bool `json:"compress"`
-
-    // When set to true, enables byte range requests.
-    // Optional. Default value false
-    ByteRange bool `json:"byte_range"`
-
-    // When set to true, enables directory browsing.
-    // Optional. Default value false.
-    Browse bool `json:"browse"`
-
-    // When set to true, enables direct download.
-    // Optional. Default value false.
-    Download bool `json:"download"`
-
-    // The name of the index file for serving a directory.
-    // Optional. Default value "index.html".
-    Index string `json:"index"`
-
-    // Expiration duration for inactive file handlers.
-    // Use a negative time.Duration to disable it.
-    //
-    // Optional. Default value 10 * time.Second.
-    CacheDuration time.Duration `json:"cache_duration"`
-
-    // The value for the Cache-Control HTTP-header
-    // that is set on the file response. MaxAge is defined in seconds.
-    //
-    // Optional. Default value 0.
-    MaxAge int `json:"max_age"`
-
-    // ModifyResponse defines a function that allows you to alter the response.
-    //
-    // Optional. Default: nil
-    ModifyResponse Handler
-
-    // Next defines a function to skip this middleware when returned true.
-    //
-    // Optional. Default: nil
-    Next func(c Ctx) bool
-}
-```
-
-```go title="Example"
-// Custom config
-app.Static("/", "./public", fiber.Static{
-  Compress:      true,
-  ByteRange:     true,
-  Browse:        true,
-  Index:         "john.html",
-  CacheDuration: 10 * time.Second,
-  MaxAge:        3600,
-})
-```
-
-## Route Handlers
+### Route Handlers
 
 <RoutingHandler />
 
-## Mount
+### Mounting
 
-You can Mount Fiber instance by creating a `*Mount`
-
-```go title="Signature"
-func (a *App) Mount(prefix string, app *App) Router
-```
+You can Mount Fiber instance using the [`app.Use`](./app.md#use) method similar to [`express`](https://expressjs.com/en/api.html#router.use).
 
 ```go title="Examples"
 func main() {
     app := fiber.New()
     micro := fiber.New()
-    app.Mount("/john", micro) // GET /john/doe -> 200 OK
+    app.Use("/john", micro) // GET /john/doe -> 200 OK
 
     micro.Get("/doe", func(c fiber.Ctx) error {
         return c.SendStatus(fiber.StatusOK)
@@ -135,7 +33,7 @@ func main() {
 }
 ```
 
-## MountPath
+### MountPath
 
 The `MountPath` property contains one or more path patterns on which a sub-app was mounted.
 
@@ -145,19 +43,19 @@ func (app *App) MountPath() string
 
 ```go title="Examples"
 func main() {
-	app := fiber.New()
-	one := fiber.New()
-	two := fiber.New()
-	three := fiber.New()
+    app := fiber.New()
+    one := fiber.New()
+    two := fiber.New()
+    three := fiber.New()
 
-	two.Mount("/three", three)
-	one.Mount("/two", two)
-	app.Mount("/one", one)
+    two.Use("/three", three)
+    one.Use("/two", two)
+    app.Use("/one", one)
   
-	one.MountPath()   // "/one"
-	two.MountPath()   // "/one/two"
-	three.MountPath() // "/one/two/three"
-	app.MountPath()   // ""
+    one.MountPath()   // "/one"
+    two.MountPath()   // "/one/two"
+    three.MountPath() // "/one/two/three"
+    app.MountPath()   // ""
 }
 ```
 
@@ -165,7 +63,7 @@ func main() {
 Mounting order is important for MountPath. If you want to get mount paths properly, you should start mounting from the deepest app.
 :::
 
-## Group
+### Group
 
 You can group routes by creating a `*Group` struct.
 
@@ -191,60 +89,77 @@ func main() {
 }
 ```
 
-## Route
+### Route
 
-You can define routes with a common prefix inside the common function.
+Returns an instance of a single route, which you can then use to handle HTTP verbs with optional middleware.
+
+Similar to [`Express`](https://expressjs.com/de/api.html#app.route).
 
 ```go title="Signature"
-func (app *App) Route(prefix string, fn func(router Router), name ...string) Router
+func (app *App) Route(path string) Register
 ```
+
+<details>
+<summary>Click here to see the `Register` interface</summary>
+
+```go
+type Register interface {
+  All(handler Handler, middleware ...Handler) Register
+  Get(handler Handler, middleware ...Handler) Register
+  Head(handler Handler, middleware ...Handler) Register
+  Post(handler Handler, middleware ...Handler) Register
+  Put(handler Handler, middleware ...Handler) Register
+  Delete(handler Handler, middleware ...Handler) Register
+  Connect(handler Handler, middleware ...Handler) Register
+  Options(handler Handler, middleware ...Handler) Register
+  Trace(handler Handler, middleware ...Handler) Register
+  Patch(handler Handler, middleware ...Handler) Register
+
+  Add(methods []string, handler Handler, middleware ...Handler) Register
+
+  Route(path string) Register
+}
+```
+
+</details>
 
 ```go title="Examples"
 func main() {
   app := fiber.New()
 
-  app.Route("/test", func(api fiber.Router) {
-      api.Get("/foo", handler).Name("foo") // /test/foo (name: test.foo)
-      api.Get("/bar", handler).Name("bar") // /test/bar (name: test.bar)
-  }, "test.")
+  // use `Route` as chainable route declaration method
+  app.Route("/test").Get(func(c fiber.Ctx) error {
+    return c.SendString("GET /test")
+  })
+  
+  app.Route("/events").all(func(c fiber.Ctx) error {
+    // runs for all HTTP verbs first
+    // think of it as route specific middleware!
+  })
+  .get(func(c fiber.Ctx) error {
+    return c.SendString("GET /events")
+  })
+  .post(func(c fiber.Ctx) error {
+    // maybe add a new event...
+  })
+  
+  // combine multiple routes
+  app.Route("/v2").Route("/user").Get(func(c fiber.Ctx) error {
+    return c.SendString("GET /v2/user")
+  })
+  
+  // use multiple methods
+  app.Route("/api").Get(func(c fiber.Ctx) error {
+    return c.SendString("GET /api")
+  }).Post(func(c fiber.Ctx) error {
+    return c.SendString("POST /api")
+  })
 
   log.Fatal(app.Listen(":3000"))
 }
 ```
 
-## Server
-
-Server returns the underlying [fasthttp server](https://godoc.org/github.com/valyala/fasthttp#Server)
-
-```go title="Signature"
-func (app *App) Server() *fasthttp.Server
-```
-
-```go title="Examples"
-func main() {
-    app := fiber.New()
-
-    app.Server().MaxConnsPerIP = 1
-
-    // ...
-}
-```
-
-## Server Shutdown
-
-Shutdown gracefully shuts down the server without interrupting any active connections. Shutdown works by first closing all open listeners and then waits indefinitely for all connections to return to idle before shutting down.
-
-ShutdownWithTimeout will forcefully close any active connections after the timeout expires.
-
-ShutdownWithContext shuts down the server including by force if the context's deadline is exceeded.
-
-```go
-func (app *App) Shutdown() error
-func (app *App) ShutdownWithTimeout(timeout time.Duration) error
-func (app *App) ShutdownWithContext(ctx context.Context) error
-```
-
-## HandlersCount
+### HandlersCount
 
 This method returns the amount of registered handlers.
 
@@ -252,7 +167,7 @@ This method returns the amount of registered handlers.
 func (app *App) HandlersCount() uint32
 ```
 
-## Stack
+### Stack
 
 This method returns the original router stack
 
@@ -276,7 +191,10 @@ func main() {
 }
 ```
 
-```javascript title="Result"
+<details>
+<summary>Click here to see the result</summary>
+
+```json
 [
   [
     {
@@ -306,7 +224,9 @@ func main() {
 ]
 ```
 
-## Name
+</details>
+
+### Name
 
 This method assigns the name of latest created route.
 
@@ -342,7 +262,10 @@ func main() {
 }
 ```
 
-```javascript title="Result"
+<details>
+<summary>Click here to see the result</summary>
+
+```json
 [
   [
     {
@@ -408,7 +331,9 @@ func main() {
 ]
 ```
 
-## GetRoute
+</details>
+
+### GetRoute
 
 This method gets the route by name.
 
@@ -425,15 +350,17 @@ func main() {
     app.Get("/", handler).Name("index")
     
     data, _ := json.MarshalIndent(app.GetRoute("index"), "", "  ")
-	fmt.Print(string(data))
+    fmt.Print(string(data))
 
 
-	app.Listen(":3000")
-
+    app.Listen(":3000")
 }
 ```
 
-```javascript title="Result"
+<details>
+<summary>Click here to see the result</summary>
+
+```json
 {
   "method": "GET",
   "name": "index",
@@ -442,7 +369,9 @@ func main() {
 }
 ```
 
-## GetRoutes
+</details>
+
+### GetRoutes
 
 This method gets all routes.
 
@@ -451,18 +380,22 @@ func (app *App) GetRoutes(filterUseOption ...bool) []Route
 ```
 
 When filterUseOption equal to true, it will filter the routes registered by the middleware.
+
 ```go title="Examples"
 func main() {
-	app := fiber.New()
-	app.Post("/", func (c fiber.Ctx) error {
-		return c.SendString("Hello, World!")
-	}).Name("index")
-	data, _ := json.MarshalIndent(app.GetRoutes(true), "", "  ")
-	fmt.Print(string(data))
+    app := fiber.New()
+    app.Post("/", func (c fiber.Ctx) error {
+        return c.SendString("Hello, World!")
+    }).Name("index")
+    data, _ := json.MarshalIndent(app.GetRoutes(true), "", "  ")
+    fmt.Print(string(data))
 }
 ```
 
-```javascript title="Result"
+<details>
+<summary>Click here to see the result</summary>
+
+```json
 [
     {
         "method": "POST",
@@ -473,9 +406,11 @@ func main() {
 ]
 ```
 
+</details>
+
 ## Config
 
-Config returns the app config as value \( read-only \).
+Config returns the [app config](./fiber.md#config) as value \( read-only \).
 
 ```go title="Signature"
 func (app *App) Config() Config
@@ -483,138 +418,103 @@ func (app *App) Config() Config
 
 ## Handler
 
-Handler returns the server handler that can be used to serve custom \*fasthttp.RequestCtx requests.
+Handler returns the server handler that can be used to serve custom [`\*fasthttp.RequestCtx`](https://pkg.go.dev/github.com/valyala/fasthttp#RequestCtx) requests.
 
 ```go title="Signature"
 func (app *App) Handler() fasthttp.RequestHandler
 ```
 
-## Listen
+## ErrorHandler
 
-Listen serves HTTP requests from the given address.
+Errorhandler executes the process which was defined for the application in case of errors, this is used in some cases in middlewares.
 
 ```go title="Signature"
-func (app *App) Listen(addr string) error
+func (app *App) ErrorHandler(ctx Ctx, err error) error
+```
+
+## NewCtxFunc
+
+NewCtxFunc allows to customize the ctx struct as we want.
+
+```go title="Signature"
+func (app *App) NewCtxFunc(function func(app *App) CustomCtx)
 ```
 
 ```go title="Examples"
-// Listen on port :8080 
-app.Listen(":8080")
-
-// Custom host
-app.Listen("127.0.0.1:8080")
-```
-
-## ListenTLS
-
-ListenTLS serves HTTPs requests from the given address using certFile and keyFile paths to as TLS certificate and key file.
-
-```go title="Signature"
-func (app *App) ListenTLS(addr, certFile, keyFile string) error
-```
-
-```go title="Examples"
-app.ListenTLS(":443", "./cert.pem", "./cert.key");
-```
-
-Using `ListenTLS` defaults to the following config \( use `Listener` to provide your own config \)
-
-```go title="Default \*tls.Config"
-&tls.Config{
-    MinVersion:               tls.VersionTLS12,
-    Certificates: []tls.Certificate{
-        cert,
-    },
+type CustomCtx struct {
+    DefaultCtx
 }
-```
 
-## ListenTLSWithCertificate
-
-```go title="Signature"
-func (app *App) ListenTLS(addr string, cert tls.Certificate) error
-```
-
-```go title="Examples"
-app.ListenTLSWithCertificate(":443", cert);
-```
-
-Using `ListenTLSWithCertificate` defaults to the following config \( use `Listener` to provide your own config \)
-
-```go title="Default \*tls.Config"
-&tls.Config{
-    MinVersion:               tls.VersionTLS12,
-    Certificates: []tls.Certificate{
-        cert,
-    },
+// Custom method
+func (c *CustomCtx) Params(key string, defaultValue ...string) string {
+    return "prefix_" + c.DefaultCtx.Params(key)
 }
+
+app := New()
+app.NewCtxFunc(func(app *fiber.App) fiber.CustomCtx {
+    return &CustomCtx{
+        DefaultCtx: *NewDefaultCtx(app),
+    }
+})
+// curl http://localhost:3000/123
+app.Get("/:id", func(c Ctx) error {
+    // use custom method - output: prefix_123
+    return c.SendString(c.Params("id"))
+})
 ```
 
-## ListenMutualTLS
+## RegisterCustomBinder
 
-ListenMutualTLS serves HTTPs requests from the given address using certFile, keyFile and clientCertFile are the paths to TLS certificate and key file
+You can register custom binders to use as [`Bind().Custom("name")`](bind.md#custom).
+They should be compatible with CustomBinder interface.
 
 ```go title="Signature"
-func (app *App) ListenMutualTLS(addr, certFile, keyFile, clientCertFile string) error
+func (app *App) RegisterCustomBinder(binder CustomBinder)
 ```
 
 ```go title="Examples"
-app.ListenMutualTLS(":443", "./cert.pem", "./cert.key", "./ca-chain-cert.pem");
-```
+app := fiber.New()
 
-Using `ListenMutualTLS` defaults to the following config \( use `Listener` to provide your own config \)
-
-```go title="Default \*tls.Config"
-&tls.Config{
-	MinVersion: tls.VersionTLS12,
-	ClientAuth: tls.RequireAndVerifyClientCert,
-	ClientCAs:  clientCertPool,
-	Certificates: []tls.Certificate{
-		cert,
-	},
+// My custom binder
+customBinder := &customBinder{}
+// Name of custom binder, which will be used as Bind().Custom("name")
+func (*customBinder) Name() string {
+    return "custom"
 }
-```
-
-## ListenMutualTLSWithCertificate
-
-ListenMutualTLSWithCertificate serves HTTPs requests from the given address using certFile, keyFile and clientCertFile are the paths to TLS certificate and key file
-
-```go title="Signature"
-func (app *App) ListenMutualTLSWithCertificate(addr string, cert tls.Certificate, clientCertPool *x509.CertPool) error
-```
-
-```go title="Examples"
-app.ListenMutualTLSWithCertificate(":443", cert, clientCertPool);
-```
-
-Using `ListenMutualTLSWithCertificate` defaults to the following config \( use `Listener` to provide your own config \)
-
-```go title="Default \*tls.Config"
-&tls.Config{
-	MinVersion: tls.VersionTLS12,
-	ClientAuth: tls.RequireAndVerifyClientCert,
-	ClientCAs:  clientCertPool,
-	Certificates: []tls.Certificate{
-		cert,
-	},
+// Is used in the Body Bind method to check if the binder should be used for custom mime types
+func (*customBinder) MIMETypes() []string {
+    return []string{"application/yaml"}
 }
-```
+// Parse the body and bind it to the out interface
+func (*customBinder) Parse(c Ctx, out any) error {
+    // parse yaml body
+    return yaml.Unmarshal(c.Body(), out)
+}
+// Register custom binder
+app.RegisterCustomBinder(customBinder)
 
-## Listener
-
-You can pass your own [`net.Listener`](https://pkg.go.dev/net/#Listener) using the `Listener` method. This method can be used to enable **TLS/HTTPS** with a custom tls.Config.
-
-```go title="Signature"
-func (app *App) Listener(ln net.Listener) error
-```
-
-```go title="Examples"
-ln, _ := net.Listen("tcp", ":3000")
-
-cer, _:= tls.LoadX509KeyPair("server.crt", "server.key")
-
-ln = tls.NewListener(ln, &tls.Config{Certificates: []tls.Certificate{cer}})
-
-app.Listener(ln)
+// curl -X POST http://localhost:3000/custom -H "Content-Type: application/yaml" -d "name: John"
+app.Post("/custom", func(c Ctx) error {
+    var user User
+    // output: {Name:John}
+    // Custom binder is used by the name
+    if err := c.Bind().Custom("custom", &user); err != nil {
+        return err
+    }
+    // ...
+    return c.JSON(user)
+})
+// curl -X POST http://localhost:3000/normal -H "Content-Type: application/yaml" -d "name: Doe"
+app.Post("/normal", func(c Ctx) error {
+    var user User
+    // output: {Name:Doe}
+    // Custom binder is used by the mime type
+    if err := c.Bind().Body(&user); err != nil {
+        return err
+    }
+    // ...
+    return c.JSON(user)
+})
 ```
 
 ## RegisterCustomConstraint
@@ -626,6 +526,14 @@ func (app *App) RegisterCustomConstraint(constraint CustomConstraint)
 ```
 
 See [Custom Constraint](../guide/routing.md#custom-constraint) section for more information.
+
+## SetTLSHandler
+
+Use SetTLSHandler to set [ClientHelloInfo](https://datatracker.ietf.org/doc/html/rfc8446#section-4.1.2) when using TLS with Listener.
+
+```go title="Signature"
+func (app *App) SetTLSHandler(tlsHandler *TLSHandler)
+```
 
 ## Test
 
@@ -660,8 +568,36 @@ if resp.StatusCode == fiber.StatusOK {
 
 ## Hooks
 
-Hooks is a method to return [hooks](../guide/hooks.md) property.
+Hooks is a method to return [hooks](./hooks.md) property.
 
 ```go title="Signature"
 func (app *App) Hooks() *Hooks
 ```
+
+## RebuildTree
+
+The RebuildTree method is designed to rebuild the route tree and enable dynamic route registration. It returns a pointer to the App instance.
+
+```go title="Signature"
+func (app *App) RebuildTree() *App
+```
+
+**Note:** Use this method with caution. It is **not** thread-safe and calling it can be very performance-intensive, so it should be used sparingly and only in development mode. Avoid using it concurrently.
+
+### Example Usage
+
+Here’s an example of how to define and register routes dynamically:
+
+```go
+app.Get("/define", func(c Ctx) error {  // Define a new route dynamically
+    app.Get("/dynamically-defined", func(c Ctx) error {  // Adding a dynamically defined route
+        return c.SendStatus(http.StatusOK)
+    })
+
+    app.RebuildTree()  // Rebuild the route tree to register the new route
+
+    return c.SendStatus(http.StatusOK)
+})
+```
+
+In this example, a new route is defined and then `RebuildTree()` is called to make sure the new route is registered and available.

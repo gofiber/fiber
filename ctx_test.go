@@ -11,10 +11,12 @@ import (
 	"compress/zlib"
 	"context"
 	"crypto/tls"
+	"embed"
 	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"mime/multipart"
 	"net"
 	"net/http/httptest"
@@ -354,6 +356,26 @@ func Test_Ctx_Body(t *testing.T) {
 	require.Equal(t, []byte("john=doe"), c.Body())
 }
 
+// go test -run Test_Ctx_BodyRaw
+func Test_Ctx_BodyRaw(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+
+	c.Request().SetBodyRaw([]byte("john=doe"))
+	require.Equal(t, []byte("john=doe"), c.BodyRaw())
+}
+
+// go test -run Test_Ctx_BodyRaw_Immutable
+func Test_Ctx_BodyRaw_Immutable(t *testing.T) {
+	t.Parallel()
+	app := New(Config{Immutable: true})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+
+	c.Request().SetBodyRaw([]byte("john=doe"))
+	require.Equal(t, []byte("john=doe"), c.BodyRaw())
+}
+
 // go test -v -run=^$ -bench=Benchmark_Ctx_Body -benchmem -count=4
 func Benchmark_Ctx_Body(b *testing.B) {
 	const input = "john=doe"
@@ -369,6 +391,40 @@ func Benchmark_Ctx_Body(b *testing.B) {
 	}
 
 	require.Equal(b, []byte(input), c.Body())
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_BodyRaw -benchmem -count=4
+func Benchmark_Ctx_BodyRaw(b *testing.B) {
+	const input = "john=doe"
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+
+	c.Request().SetBodyRaw([]byte(input))
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = c.BodyRaw()
+	}
+
+	require.Equal(b, []byte(input), c.BodyRaw())
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_BodyRaw_Immutable -benchmem -count=4
+func Benchmark_Ctx_BodyRaw_Immutable(b *testing.B) {
+	const input = "john=doe"
+
+	app := New(Config{Immutable: true})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+
+	c.Request().SetBodyRaw([]byte(input))
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = c.BodyRaw()
+	}
+
+	require.Equal(b, []byte(input), c.BodyRaw())
 }
 
 // go test -run Test_Ctx_Body_Immutable
@@ -507,8 +563,8 @@ func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
 		}
 	)
 	compressionTests := []struct {
-		contentEncoding string
 		compressWriter  func([]byte) ([]byte, error)
+		contentEncoding string
 	}{
 		{
 			contentEncoding: "gzip",
@@ -700,8 +756,8 @@ func Benchmark_Ctx_Body_With_Compression_Immutable(b *testing.B) {
 		}
 	)
 	compressionTests := []struct {
-		contentEncoding string
 		compressWriter  func([]byte) ([]byte, error)
+		contentEncoding string
 	}{
 		{
 			contentEncoding: "gzip",
@@ -811,7 +867,7 @@ func Test_Ctx_UserContext(t *testing.T) {
 		t.Parallel()
 		testKey := struct{}{}
 		testValue := "Test Value"
-		ctx := context.WithValue(context.Background(), testKey, testValue)
+		ctx := context.WithValue(context.Background(), testKey, testValue) //nolint: staticcheck // not needed for tests
 		require.Equal(t, testValue, ctx.Value(testKey))
 	})
 }
@@ -824,7 +880,7 @@ func Test_Ctx_SetUserContext(t *testing.T) {
 
 	testKey := struct{}{}
 	testValue := "Test Value"
-	ctx := context.WithValue(context.Background(), testKey, testValue)
+	ctx := context.WithValue(context.Background(), testKey, testValue) //nolint: staticcheck // not needed for tests
 	c.SetUserContext(ctx)
 	require.Equal(t, testValue, c.UserContext().Value(testKey))
 }
@@ -844,7 +900,7 @@ func Test_Ctx_UserContext_Multiple_Requests(t *testing.T) {
 		}
 
 		input := utils.CopyString(Query(c, "input", "NO_VALUE"))
-		ctx = context.WithValue(ctx, testKey, fmt.Sprintf("%s_%s", testValue, input))
+		ctx = context.WithValue(ctx, testKey, fmt.Sprintf("%s_%s", testValue, input)) //nolint: staticcheck // not needed for tests
 		c.SetUserContext(ctx)
 
 		return c.Status(StatusOK).SendString(fmt.Sprintf("resp_%s_returned", input))
@@ -918,6 +974,11 @@ func Test_Ctx_Cookie(t *testing.T) {
 	cookie.MaxAge = 0
 	c.Cookie(cookie)
 	require.Equal(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
+
+	expect = "username=john; path=/; secure; SameSite=None; Partitioned"
+	cookie.Partitioned = true
+	c.Cookie(cookie)
+	require.Equal(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Cookie -benchmem -count=4
@@ -959,7 +1020,7 @@ func Test_Ctx_Format(t *testing.T) {
 		fmts := []ResFmt{}
 		for _, t := range types {
 			t := utils.CopyString(t)
-			fmts = append(fmts, ResFmt{t, func(_ Ctx) error {
+			fmts = append(fmts, ResFmt{MediaType: t, Handler: func(_ Ctx) error {
 				accepted = t
 				return nil
 			}})
@@ -981,11 +1042,11 @@ func Test_Ctx_Format(t *testing.T) {
 	require.NotEqual(t, StatusNotAcceptable, c.Response().StatusCode())
 
 	myError := errors.New("this is an error")
-	err = c.Format(ResFmt{"text/html", func(_ Ctx) error { return myError }})
+	err = c.Format(ResFmt{MediaType: "text/html", Handler: func(_ Ctx) error { return myError }})
 	require.ErrorIs(t, err, myError)
 
 	c.Request().Header.Set(HeaderAccept, "application/json")
-	err = c.Format(ResFmt{"text/html", func(c Ctx) error { return c.SendStatus(StatusOK) }})
+	err = c.Format(ResFmt{MediaType: "text/html", Handler: func(c Ctx) error { return c.SendStatus(StatusOK) }})
 	require.Equal(t, StatusNotAcceptable, c.Response().StatusCode())
 	require.NoError(t, err)
 
@@ -1015,10 +1076,10 @@ func Benchmark_Ctx_Format(b *testing.B) {
 	b.Run("with arg allocation", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			err = c.Format(
-				ResFmt{"application/xml", fail},
-				ResFmt{"text/html", fail},
-				ResFmt{"text/plain;format=fixed", fail},
-				ResFmt{"text/plain;format=flowed", ok},
+				ResFmt{MediaType: "application/xml", Handler: fail},
+				ResFmt{MediaType: "text/html", Handler: fail},
+				ResFmt{MediaType: "text/plain;format=fixed", Handler: fail},
+				ResFmt{MediaType: "text/plain;format=flowed", Handler: ok},
 			)
 		}
 		require.NoError(b, err)
@@ -1026,10 +1087,10 @@ func Benchmark_Ctx_Format(b *testing.B) {
 
 	b.Run("pre-allocated args", func(b *testing.B) {
 		offers := []ResFmt{
-			{"application/xml", fail},
-			{"text/html", fail},
-			{"text/plain;format=fixed", fail},
-			{"text/plain;format=flowed", ok},
+			{MediaType: "application/xml", Handler: fail},
+			{MediaType: "text/html", Handler: fail},
+			{MediaType: "text/plain;format=fixed", Handler: fail},
+			{MediaType: "text/plain;format=flowed", Handler: ok},
 		}
 		for n := 0; n < b.N; n++ {
 			err = c.Format(offers...)
@@ -1040,8 +1101,8 @@ func Benchmark_Ctx_Format(b *testing.B) {
 	c.Request().Header.Set("Accept", "text/plain")
 	b.Run("text/plain", func(b *testing.B) {
 		offers := []ResFmt{
-			{"application/xml", fail},
-			{"text/plain", ok},
+			{MediaType: "application/xml", Handler: fail},
+			{MediaType: "text/plain", Handler: ok},
 		}
 		for n := 0; n < b.N; n++ {
 			err = c.Format(offers...)
@@ -1052,9 +1113,9 @@ func Benchmark_Ctx_Format(b *testing.B) {
 	c.Request().Header.Set("Accept", "json")
 	b.Run("json", func(b *testing.B) {
 		offers := []ResFmt{
-			{"xml", fail},
-			{"html", fail},
-			{"json", ok},
+			{MediaType: "xml", Handler: fail},
+			{MediaType: "html", Handler: fail},
+			{MediaType: "json", Handler: ok},
 		}
 		for n := 0; n < b.N; n++ {
 			err = c.Format(offers...)
@@ -1116,9 +1177,9 @@ func Test_Ctx_AutoFormat_Struct(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Message struct {
-		Recipients []string
 		Sender     string `xml:"sender,attr"`
-		Urgency    int    `xml:"urgency,attr"`
+		Recipients []string
+		Urgency    int `xml:"urgency,attr"`
 	}
 	data := Message{
 		Recipients: []string{"Alice", "Bob"},
@@ -1130,7 +1191,7 @@ func Test_Ctx_AutoFormat_Struct(t *testing.T) {
 	err := c.AutoFormat(data)
 	require.NoError(t, err)
 	require.Equal(t,
-		`{"Recipients":["Alice","Bob"],"Sender":"Carol","Urgency":3}`,
+		`{"Sender":"Carol","Recipients":["Alice","Bob"],"Urgency":3}`,
 		string(c.Response().Body()),
 	)
 
@@ -1363,6 +1424,18 @@ func Test_Ctx_Get(t *testing.T) {
 	require.Equal(t, "utf-8, iso-8859-1;q=0.5", c.Get(HeaderAcceptCharset))
 	require.Equal(t, "Monster", c.Get(HeaderReferer))
 	require.Equal(t, "default", c.Get("unknown", "default"))
+}
+
+// go test -run Test_Ctx_GetReqHeader
+func Test_Ctx_GetReqHeader(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Request().Header.Set("foo", "bar")
+	c.Request().Header.Set("id", "123")
+	require.Equal(t, 123, GetReqHeader[int](c, "id"))
+	require.Equal(t, "bar", GetReqHeader[string](c, "foo"))
 }
 
 // go test -run Test_Ctx_Host
@@ -2018,11 +2091,11 @@ func Test_Ctx_Locals_GenericCustomStruct(t *testing.T) {
 
 	app := New()
 	app.Use(func(c Ctx) error {
-		Locals[User](c, "user", User{"john", 18})
+		Locals[User](c, "user", User{name: "john", age: 18})
 		return c.Next()
 	})
 	app.Use("/test", func(c Ctx) error {
-		require.Equal(t, User{"john", 18}, Locals[User](c, "user"))
+		require.Equal(t, User{name: "john", age: 18}, Locals[User](c, "user"))
 		return nil
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
@@ -2212,8 +2285,11 @@ func Test_Ctx_Params(t *testing.T) {
 	})
 	app.Get("/test3/*/blafasel/*", func(c Ctx) error {
 		require.Equal(t, "1111", c.Params("*1"))
+		require.Equal(t, 1111, Params(c, "*1", 0))
 		require.Equal(t, "2222", c.Params("*2"))
+		require.Equal(t, 2222, Params(c, "*2", 0))
 		require.Equal(t, "1111", c.Params("*"))
+		require.Equal(t, 1111, Params(c, "*", 0))
 		return nil
 	})
 	app.Get("/test4/:optional?", func(c Ctx) error {
@@ -2244,6 +2320,25 @@ func Test_Ctx_Params(t *testing.T) {
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test5/first/second", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+}
+
+func Test_Ctx_Params_ErrorHandler_Panic_Issue_2832(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		ErrorHandler: func(c Ctx, _ error) error {
+			return c.SendString(c.Params("user"))
+		},
+		BodyLimit: 1 * 1024,
+	})
+
+	app.Get("/test/:user", func(_ Ctx) error {
+		return NewError(StatusInternalServerError, "error")
+	})
+
+	largeBody := make([]byte, 2*1024)
+	_, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", bytes.NewReader(largeBody)))
+	require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge, "app.Test(req)")
 }
 
 func Test_Ctx_Params_Case_Sensitive(t *testing.T) {
@@ -2527,433 +2622,6 @@ func Benchmark_Ctx_Query(b *testing.B) {
 	require.Equal(b, "john", res)
 }
 
-// go test -run Test_Ctx_QuerySignedInt
-func Test_Ctx_QuerySignedInt(t *testing.T) {
-	t.Parallel()
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-
-	c.Request().URI().SetQueryString("search=john&age=8")
-	// int
-	require.Equal(t, 0, Query[int](c, "foo"))
-	require.Equal(t, 8, Query[int](c, "age", 12))
-	require.Equal(t, 0, Query[int](c, "search"))
-	require.Equal(t, 1, Query[int](c, "search", 1))
-	require.Equal(t, 0, Query[int](c, "id"))
-	require.Equal(t, 2, Query[int](c, "id", 2))
-
-	// int8
-	require.Equal(t, int8(0), Query[int8](c, "foo"))
-	require.Equal(t, int8(8), Query[int8](c, "age", 12))
-	require.Equal(t, int8(0), Query[int8](c, "search"))
-	require.Equal(t, int8(1), Query[int8](c, "search", 1))
-	require.Equal(t, int8(0), Query[int8](c, "id"))
-	require.Equal(t, int8(2), Query[int8](c, "id", 2))
-
-	// int16
-	require.Equal(t, int16(0), Query[int16](c, "foo"))
-	require.Equal(t, int16(8), Query[int16](c, "age", 12))
-	require.Equal(t, int16(0), Query[int16](c, "search"))
-	require.Equal(t, int16(1), Query[int16](c, "search", 1))
-	require.Equal(t, int16(0), Query[int16](c, "id"))
-	require.Equal(t, int16(2), Query[int16](c, "id", 2))
-
-	// int32
-	require.Equal(t, int32(0), Query[int32](c, "foo"))
-	require.Equal(t, int32(8), Query[int32](c, "age", 12))
-	require.Equal(t, int32(0), Query[int32](c, "search"))
-	require.Equal(t, int32(1), Query[int32](c, "search", 1))
-	require.Equal(t, int32(0), Query[int32](c, "id"))
-	require.Equal(t, int32(2), Query[int32](c, "id", 2))
-
-	// int64
-	require.Equal(t, int64(0), Query[int64](c, "foo"))
-	require.Equal(t, int64(8), Query[int64](c, "age", 12))
-	require.Equal(t, int64(0), Query[int64](c, "search"))
-	require.Equal(t, int64(1), Query[int64](c, "search", 1))
-	require.Equal(t, int64(0), Query[int64](c, "id"))
-	require.Equal(t, int64(2), Query[int64](c, "id", 2))
-}
-
-// go test -v -run=^$ -bench=Benchmark_Ctx_QuerySignedInt -benchmem -count=4
-func Benchmark_Ctx_QuerySignedInt(b *testing.B) {
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	c.Request().URI().SetQueryString("search=john&age=8")
-	var res int
-	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		res = Query[int](c, "age")
-	}
-	require.Equal(b, 8, res)
-}
-
-// go test -run Test_Ctx_QueryBoundarySignedInt
-func Test_Ctx_QueryBoundarySignedInt(t *testing.T) {
-	t.Parallel()
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	var q string
-
-	// int
-	q = fmt.Sprintf("minus=%s&plus=%s&minus_over=%s&plus_over=%s", "2147483647", "-2147483648", "-2147483649", "2147483648")
-	c.Request().URI().SetQueryString(q)
-	require.Equal(t, 2147483647, Query[int](c, "minus"))
-	require.Equal(t, -2147483648, Query[int](c, "plus"))
-	require.Equal(t, 0, Query[int](c, "minus_over"))
-	require.Equal(t, 0, Query[int](c, "plus_over"))
-
-	// int8
-	q = fmt.Sprintf("minus=%s&plus=%s&minus_over=%s&plus_over=%s", "127", "-128", "-129", "128")
-	c.Request().URI().SetQueryString(q)
-	require.Equal(t, int8(127), Query[int8](c, "minus"))
-	require.Equal(t, int8(-128), Query[int8](c, "plus"))
-	require.Equal(t, int8(0), Query[int8](c, "minus_over"))
-	require.Equal(t, int8(0), Query[int8](c, "plus_over"))
-
-	// int16
-	q = fmt.Sprintf("minus=%s&plus=%s&minus_over=%s&plus_over=%s", "32767", "-32768", "-32769", "32768")
-	c.Request().URI().SetQueryString(q)
-	require.Equal(t, int16(32767), Query[int16](c, "minus"))
-	require.Equal(t, int16(-32768), Query[int16](c, "plus"))
-	require.Equal(t, int16(0), Query[int16](c, "minus_over"))
-	require.Equal(t, int16(0), Query[int16](c, "plus_over"))
-
-	// int32
-	q = fmt.Sprintf("minus=%s&plus=%s&minus_over=%s&plus_over=%s", "2147483647", "-2147483648", "-2147483649", "2147483648")
-	c.Request().URI().SetQueryString(q)
-	require.Equal(t, int32(2147483647), Query[int32](c, "minus"))
-	require.Equal(t, int32(-2147483648), Query[int32](c, "plus"))
-	require.Equal(t, int32(0), Query[int32](c, "minus_over"))
-	require.Equal(t, int32(0), Query[int32](c, "plus_over"))
-
-	// int64
-	q = fmt.Sprintf("minus=%s&plus=%s", "-9223372036854775808", "9223372036854775807")
-	c.Request().URI().SetQueryString(q)
-	require.Equal(t, int64(-9223372036854775808), Query[int64](c, "minus"))
-	require.Equal(t, int64(9223372036854775807), Query[int64](c, "plus"))
-}
-
-// go test -v -run=^$ -bench=Benchmark_Ctx_QueryBoundarySignedInt -benchmem -count=4
-func Benchmark_Ctx_QueryBoundarySignedInt(b *testing.B) {
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	c.Request().URI().SetQueryString("search=john&age=8")
-	var res int
-	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		res = Query[int](c, "age")
-	}
-	require.Equal(b, 8, res)
-}
-
-// go test -run Test_Ctx_QueryUnsignedInt
-func Test_Ctx_QueryUnsignedInt(t *testing.T) {
-	t.Parallel()
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-
-	c.Request().URI().SetQueryString("search=john&age=8")
-	// uint
-	require.Equal(t, uint(0), Query[uint](c, "foo"))
-	require.Equal(t, uint(8), Query[uint](c, "age", 12))
-	require.Equal(t, uint(0), Query[uint](c, "search"))
-	require.Equal(t, uint(1), Query[uint](c, "search", 1))
-	require.Equal(t, uint(0), Query[uint](c, "id"))
-	require.Equal(t, uint(2), Query[uint](c, "id", 2))
-
-	// uint8
-	require.Equal(t, uint8(0), Query[uint8](c, "foo"))
-	require.Equal(t, uint8(8), Query[uint8](c, "age", 12))
-	require.Equal(t, uint8(0), Query[uint8](c, "search"))
-	require.Equal(t, uint8(1), Query[uint8](c, "search", 1))
-	require.Equal(t, uint8(0), Query[uint8](c, "id"))
-	require.Equal(t, uint8(2), Query[uint8](c, "id", 2))
-
-	// uint16
-	require.Equal(t, uint16(0), Query[uint16](c, "foo"))
-	require.Equal(t, uint16(8), Query[uint16](c, "age", 12))
-	require.Equal(t, uint16(0), Query[uint16](c, "search"))
-	require.Equal(t, uint16(1), Query[uint16](c, "search", 1))
-	require.Equal(t, uint16(0), Query[uint16](c, "id"))
-	require.Equal(t, uint16(2), Query[uint16](c, "id", 2))
-
-	// uint32
-	require.Equal(t, uint32(0), Query[uint32](c, "foo"))
-	require.Equal(t, uint32(8), Query[uint32](c, "age", 12))
-	require.Equal(t, uint32(0), Query[uint32](c, "search"))
-	require.Equal(t, uint32(1), Query[uint32](c, "search", 1))
-	require.Equal(t, uint32(0), Query[uint32](c, "id"))
-	require.Equal(t, uint32(2), Query[uint32](c, "id", 2))
-
-	// uint64
-	require.Equal(t, uint64(0), Query[uint64](c, "foo"))
-	require.Equal(t, uint64(8), Query[uint64](c, "age", 12))
-	require.Equal(t, uint64(0), Query[uint64](c, "search"))
-	require.Equal(t, uint64(1), Query[uint64](c, "search", 1))
-	require.Equal(t, uint64(0), Query[uint64](c, "id"))
-	require.Equal(t, uint64(2), Query[uint64](c, "id", 2))
-}
-
-// go test -v -run=^$ -bench=Benchmark_Ctx_QueryUnsignedInt -benchmem -count=4
-func Benchmark_Ctx_QueryUnsignedInt(b *testing.B) {
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	c.Request().URI().SetQueryString("search=john&age=8")
-	var res uint
-	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		res = Query[uint](c, "age")
-	}
-	require.Equal(b, uint(8), res)
-}
-
-// go test -run Test_Ctx_QueryBoundaryUnsignedInt
-func Test_Ctx_QueryBoundaryUnsignedInt(t *testing.T) {
-	t.Parallel()
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	var q string
-
-	// uint
-	q = fmt.Sprintf("minus=%s&plus=%s&minus_over=%s&plus_over=%s", "0", "4294967295", "4294967296", "4294967297")
-	c.Request().URI().SetQueryString(q)
-	require.Equal(t, uint(0), Query[uint](c, "minus"))
-	require.Equal(t, uint(4294967295), Query[uint](c, "plus"))
-	require.Equal(t, uint(0), Query[uint](c, "minus_over"))
-	require.Equal(t, uint(0), Query[uint](c, "plus_over"))
-
-	// uint8
-	q = fmt.Sprintf("minus=%s&plus=%s&minus_over=%s&plus_over=%s", "0", "255", "256", "257")
-	c.Request().URI().SetQueryString(q)
-	require.Equal(t, uint8(0), Query[uint8](c, "minus"))
-	require.Equal(t, uint8(255), Query[uint8](c, "plus"))
-	require.Equal(t, uint8(0), Query[uint8](c, "minus_over"))
-	require.Equal(t, uint8(0), Query[uint8](c, "plus_over"))
-
-	// uint16
-	q = fmt.Sprintf("minus=%s&plus=%s&minus_over=%s&plus_over=%s", "0", "65535", "65536", "65537")
-	c.Request().URI().SetQueryString(q)
-	require.Equal(t, uint16(0), Query[uint16](c, "minus"))
-	require.Equal(t, uint16(65535), Query[uint16](c, "plus"))
-	require.Equal(t, uint16(0), Query[uint16](c, "minus_over"))
-	require.Equal(t, uint16(0), Query[uint16](c, "plus_over"))
-
-	// uint32
-	q = fmt.Sprintf("minus=%s&plus=%s&minus_over=%s&plus_over=%s", "0", "4294967295", "4294967296", "4294967297")
-	c.Request().URI().SetQueryString(q)
-	require.Equal(t, uint32(0), Query[uint32](c, "minus"))
-	require.Equal(t, uint32(4294967295), Query[uint32](c, "plus"))
-	require.Equal(t, uint32(0), Query[uint32](c, "minus_over"))
-	require.Equal(t, uint32(0), Query[uint32](c, "plus_over"))
-
-	// uint64
-	q = fmt.Sprintf("minus=%s&plus=%s", "0", "18446744073709551615")
-	c.Request().URI().SetQueryString(q)
-	require.Equal(t, uint64(0), Query[uint64](c, "minus"))
-	require.Equal(t, uint64(18446744073709551615), Query[uint64](c, "plus"))
-}
-
-// go test -v -run=^$ -bench=Benchmark_Ctx_QueryBoundaryUnsignedInt -benchmem -count=4
-func Benchmark_Ctx_QueryBoundaryUnsignedInt(b *testing.B) {
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	c.Request().URI().SetQueryString("search=john&age=8")
-	var res uint
-	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		res = Query[uint](c, "age")
-	}
-	require.Equal(b, uint(8), res)
-}
-
-// go test -run Test_Ctx_QueryFloat
-func Test_Ctx_QueryFloat(t *testing.T) {
-	t.Parallel()
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-
-	c.Request().URI().SetQueryString("name=alex&amount=32.23&id=")
-
-	// float32
-	require.InEpsilon(t, float32(32.23), Query[float32](c, "amount"), epsilon)
-	require.InEpsilon(t, float32(32.23), Query[float32](c, "amount", 3.123), epsilon)
-	require.InEpsilon(t, float32(87.123), Query[float32](c, "name", 87.123), epsilon)
-	require.InDelta(t, float32(0), Query[float32](c, "name"), 0)
-	require.InEpsilon(t, float32(12.87), Query[float32](c, "id", 12.87), epsilon)
-	require.InDelta(t, float32(0), Query[float32](c, "id"), 0)
-
-	// float64
-	require.InEpsilon(t, 32.23, Query[float64](c, "amount"), epsilon)
-	require.InEpsilon(t, 32.23, Query[float64](c, "amount", 3.123), epsilon)
-	require.InEpsilon(t, 87.123, Query[float64](c, "name", 87.123), epsilon)
-	require.InDelta(t, float64(0), Query[float64](c, "name"), 0)
-	require.InEpsilon(t, 12.87, Query[float64](c, "id", 12.87), epsilon)
-	require.InDelta(t, float64(0), Query[float64](c, "id"), 0)
-}
-
-// go test -v -run=^$ -bench=Benchmark_Ctx_QueryFloat -benchmem -count=4
-func Benchmark_Ctx_QueryFloat(b *testing.B) {
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	c.Request().URI().SetQueryString("search=john&age=8")
-	var res float32
-	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		res = Query[float32](c, "age")
-	}
-	require.InEpsilon(b, float32(8), res, epsilon)
-}
-
-// go test -run Test_Ctx_QueryBool
-func Test_Ctx_QueryBool(t *testing.T) {
-	t.Parallel()
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-
-	c.Request().URI().SetQueryString("name=alex&want_pizza=false&id=")
-
-	require.False(t, Query[bool](c, "want_pizza"))
-	require.False(t, Query[bool](c, "want_pizza", true))
-	require.False(t, Query[bool](c, "name"))
-	require.True(t, Query[bool](c, "name", true))
-	require.False(t, Query[bool](c, "id"))
-	require.True(t, Query[bool](c, "id", true))
-}
-
-// go test -v -run=^$ -bench=Benchmark_Ctx_QueryBool -benchmem -count=4
-func Benchmark_Ctx_QueryBool(b *testing.B) {
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	c.Request().URI().SetQueryString("search=john&age=8")
-	var res bool
-	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		res = Query[bool](c, "age")
-	}
-	require.False(b, res)
-}
-
-// go test -run Test_Ctx_QueryString
-func Test_Ctx_QueryString(t *testing.T) {
-	t.Parallel()
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-
-	c.Request().URI().SetQueryString("name=alex&amount=32.23&id=")
-
-	require.Equal(t, "alex", Query[string](c, "name"))
-	require.Equal(t, "alex", Query[string](c, "name", "john"))
-	require.Equal(t, "32.23", Query[string](c, "amount"))
-	require.Equal(t, "32.23", Query[string](c, "amount", "3.123"))
-	require.Equal(t, "", Query[string](c, "id"))
-	require.Equal(t, "12.87", Query[string](c, "id", "12.87"))
-}
-
-// go test -v -run=^$ -bench=Benchmark_Ctx_QueryString -benchmem -count=4
-func Benchmark_Ctx_QueryString(b *testing.B) {
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	c.Request().URI().SetQueryString("search=john&age=8")
-	var res string
-	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		res = Query[string](c, "age")
-	}
-	require.Equal(b, "8", res)
-}
-
-// go test -run Test_Ctx_QueryBytes
-func Test_Ctx_QueryBytes(t *testing.T) {
-	t.Parallel()
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-
-	c.Request().URI().SetQueryString("name=alex&amount=32.23&id=")
-
-	require.Equal(t, []byte("alex"), Query[[]byte](c, "name"))
-	require.Equal(t, []byte("alex"), Query[[]byte](c, "name", []byte("john")))
-	require.Equal(t, []byte("32.23"), Query[[]byte](c, "amount"))
-	require.Equal(t, []byte("32.23"), Query[[]byte](c, "amount", []byte("3.123")))
-	require.Equal(t, []byte(nil), Query[[]byte](c, "id"))
-	require.Equal(t, []byte("12.87"), Query[[]byte](c, "id", []byte("12.87")))
-}
-
-// go test -v -run=^$ -bench=Benchmark_Ctx_QueryBytes -benchmem -count=4
-func Benchmark_Ctx_QueryBytes(b *testing.B) {
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	c.Request().URI().SetQueryString("search=john&age=8")
-	var res []byte
-	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		res = Query[[]byte](c, "age")
-	}
-	require.Equal(b, []byte("8"), res)
-}
-
-// go test -run Test_Ctx_QueryWithoutGenericDataType
-func Test_Ctx_QueryWithoutGenericDataType(t *testing.T) {
-	t.Parallel()
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-
-	c.Request().URI().SetQueryString("name=alex&amount=32.23&isAgent=true&id=32")
-
-	require.Equal(t, "alex", Query(c, "name", "john"))
-	require.Equal(t, "john", Query(c, "unknown", "john"))
-	require.Equal(t, 32, Query(c, "id", 3))
-	require.Equal(t, 3, Query(c, "unknown", 3))
-	require.Equal(t, int8(32), Query(c, "id", int8(3)))
-	require.Equal(t, int8(3), Query(c, "unknown", int8(3)))
-	require.Equal(t, int16(32), Query(c, "id", int16(3)))
-	require.Equal(t, int16(3), Query(c, "unknown", int16(3)))
-	require.Equal(t, int32(32), Query(c, "id", int32(3)))
-	require.Equal(t, int32(3), Query(c, "unknown", int32(3)))
-	require.Equal(t, int64(32), Query(c, "id", int64(3)))
-	require.Equal(t, int64(3), Query(c, "unknown", int64(3)))
-	require.Equal(t, uint(32), Query(c, "id", uint(3)))
-	require.Equal(t, uint(3), Query(c, "unknown", uint(3)))
-	require.Equal(t, uint8(32), Query(c, "id", uint8(3)))
-	require.Equal(t, uint8(3), Query(c, "unknown", uint8(3)))
-	require.Equal(t, uint16(32), Query(c, "id", uint16(3)))
-	require.Equal(t, uint16(3), Query(c, "unknown", uint16(3)))
-	require.Equal(t, uint32(32), Query(c, "id", uint32(3)))
-	require.Equal(t, uint32(3), Query(c, "unknown", uint32(3)))
-	require.Equal(t, uint64(32), Query(c, "id", uint64(3)))
-	require.Equal(t, uint64(3), Query(c, "unknown", uint64(3)))
-	require.InEpsilon(t, 32.23, Query(c, "amount", 3.123), epsilon)
-	require.InEpsilon(t, 3.123, Query(c, "unknown", 3.123), epsilon)
-	require.InEpsilon(t, float32(32.23), Query(c, "amount", float32(3.123)), epsilon)
-	require.InEpsilon(t, float32(3.123), Query(c, "unknown", float32(3.123)), epsilon)
-	require.True(t, Query(c, "isAgent", false))
-	require.False(t, Query(c, "unknown", false))
-	require.Equal(t, []byte("alex"), Query(c, "name", []byte("john")))
-	require.Equal(t, []byte("john"), Query(c, "unknown", []byte("john")))
-}
-
-// go test -v -run=^$ -bench=Benchmark_Ctx_QueryWithoutGenericDataType -benchmem -count=4
-func Benchmark_Ctx_QueryWithoutGenericDataType(b *testing.B) {
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	c.Request().URI().SetQueryString("search=john&age=8")
-	var res int
-	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		res = Query(c, "age", 3)
-	}
-	require.Equal(b, 8, res)
-}
-
 // go test -run Test_Ctx_Range
 func Test_Ctx_Range(t *testing.T) {
 	t.Parallel()
@@ -2979,13 +2647,13 @@ func Test_Ctx_Range(t *testing.T) {
 	testRange("bytes=")
 	testRange("bytes=500=")
 	testRange("bytes=500-300")
-	testRange("bytes=a-700", RangeSet{300, 999})
-	testRange("bytes=500-b", RangeSet{500, 999})
-	testRange("bytes=500-1000", RangeSet{500, 999})
-	testRange("bytes=500-700", RangeSet{500, 700})
-	testRange("bytes=0-0,2-1000", RangeSet{0, 0}, RangeSet{2, 999})
-	testRange("bytes=0-99,450-549,-100", RangeSet{0, 99}, RangeSet{450, 549}, RangeSet{900, 999})
-	testRange("bytes=500-700,601-999", RangeSet{500, 700}, RangeSet{601, 999})
+	testRange("bytes=a-700", RangeSet{Start: 300, End: 999})
+	testRange("bytes=500-b", RangeSet{Start: 500, End: 999})
+	testRange("bytes=500-1000", RangeSet{Start: 500, End: 999})
+	testRange("bytes=500-700", RangeSet{Start: 500, End: 700})
+	testRange("bytes=0-0,2-1000", RangeSet{Start: 0, End: 0}, RangeSet{Start: 2, End: 999})
+	testRange("bytes=0-99,450-549,-100", RangeSet{Start: 0, End: 99}, RangeSet{Start: 450, End: 549}, RangeSet{Start: 900, End: 999})
+	testRange("bytes=500-700,601-999", RangeSet{Start: 500, End: 700}, RangeSet{Start: 601, End: 999})
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Range -benchmem -count=4
@@ -2999,10 +2667,10 @@ func Benchmark_Ctx_Range(b *testing.B) {
 		start int
 		end   int
 	}{
-		{"bytes=-700", 300, 999},
-		{"bytes=500-", 500, 999},
-		{"bytes=500-1000", 500, 999},
-		{"bytes=0-700,800-1000", 0, 700},
+		{str: "bytes=-700", start: 300, end: 999},
+		{str: "bytes=500-", start: 500, end: 999},
+		{str: "bytes=500-1000", start: 500, end: 999},
+		{str: "bytes=0-700,800-1000", start: 0, end: 700},
 	}
 
 	for _, tc := range testCases {
@@ -3277,19 +2945,262 @@ func Test_Ctx_SendFile(t *testing.T) {
 	app.ReleaseCtx(c)
 }
 
+func Test_Ctx_SendFile_Download(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	// fetch file content
+	f, err := os.Open("./ctx.go")
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, f.Close())
+	}()
+	expectFileContent, err := io.ReadAll(f)
+	require.NoError(t, err)
+	// fetch file info for the not modified test case
+	_, err = os.Stat("./ctx.go")
+	require.NoError(t, err)
+
+	// simple test case
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	err = c.SendFile("ctx.go", SendFile{
+		Download: true,
+	})
+	// check expectation
+	require.NoError(t, err)
+	require.Equal(t, expectFileContent, c.Response().Body())
+	require.Equal(t, "attachment", string(c.Response().Header.Peek(HeaderContentDisposition)))
+	require.Equal(t, StatusOK, c.Response().StatusCode())
+	app.ReleaseCtx(c)
+}
+
+func Test_Ctx_SendFile_MaxAge(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	// fetch file content
+	f, err := os.Open("./ctx.go")
+	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, f.Close())
+	}()
+	expectFileContent, err := io.ReadAll(f)
+	require.NoError(t, err)
+
+	// fetch file info for the not modified test case
+	_, err = os.Stat("./ctx.go")
+	require.NoError(t, err)
+
+	// simple test case
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	err = c.SendFile("ctx.go", SendFile{
+		MaxAge: 100,
+	})
+
+	// check expectation
+	require.NoError(t, err)
+	require.Equal(t, expectFileContent, c.Response().Body())
+	require.Equal(t, "public, max-age=100", string(c.Context().Response.Header.Peek(HeaderCacheControl)), "CacheControl Control")
+	require.Equal(t, StatusOK, c.Response().StatusCode())
+	app.ReleaseCtx(c)
+}
+
+func Test_Static_Compress(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/file", func(c Ctx) error {
+		return c.SendFile("ctx.go", SendFile{
+			Compress: true,
+		})
+	})
+
+	// Note: deflate is not supported by fasthttp.FS
+	algorithms := []string{"zstd", "gzip", "br"}
+	for _, algo := range algorithms {
+		algo := algo
+
+		t.Run(algo+"_compression", func(t *testing.T) {
+			t.Parallel()
+
+			req := httptest.NewRequest(MethodGet, "/file", nil)
+			req.Header.Set("Accept-Encoding", algo)
+			resp, err := app.Test(req, 10*time.Second)
+
+			require.NoError(t, err, "app.Test(req)")
+			require.Equal(t, 200, resp.StatusCode, "Status code")
+			require.NotEqual(t, "58726", resp.Header.Get(HeaderContentLength))
+		})
+	}
+}
+
+func Test_Ctx_SendFile_Compress_CheckCompressed(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	// fetch file content
+	f, err := os.Open("./ctx.go")
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		require.NoError(t, f.Close())
+	})
+
+	expectedFileContent, err := io.ReadAll(f)
+	require.NoError(t, err)
+
+	sendFileBodyReader := func(compression string) ([]byte, error) {
+		t.Helper()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		c.Request().Header.Add(HeaderAcceptEncoding, compression)
+
+		err := c.SendFile("./ctx.go", SendFile{
+			Compress: true,
+		})
+
+		return c.Response().Body(), err
+	}
+
+	t.Run("gzip", func(t *testing.T) {
+		t.Parallel()
+
+		b, err := sendFileBodyReader("gzip")
+		require.NoError(t, err)
+		body, err := fasthttp.AppendGunzipBytes(nil, b)
+		require.NoError(t, err)
+
+		require.Equal(t, expectedFileContent, body)
+	})
+
+	t.Run("zstd", func(t *testing.T) {
+		t.Parallel()
+
+		b, err := sendFileBodyReader("zstd")
+		require.NoError(t, err)
+		body, err := fasthttp.AppendUnzstdBytes(nil, b)
+		require.NoError(t, err)
+
+		require.Equal(t, expectedFileContent, body)
+	})
+
+	t.Run("br", func(t *testing.T) {
+		t.Parallel()
+
+		b, err := sendFileBodyReader("br")
+		require.NoError(t, err)
+		body, err := fasthttp.AppendUnbrotliBytes(nil, b)
+		require.NoError(t, err)
+
+		require.Equal(t, expectedFileContent, body)
+	})
+}
+
+//go:embed ctx.go
+var embedFile embed.FS
+
+func Test_Ctx_SendFile_EmbedFS(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	f, err := os.Open("./ctx.go")
+	require.NoError(t, err)
+
+	defer func() {
+		require.NoError(t, f.Close())
+	}()
+
+	expectFileContent, err := io.ReadAll(f)
+	require.NoError(t, err)
+
+	app.Get("/test", func(c Ctx) error {
+		return c.SendFile("ctx.go", SendFile{
+			FS: embedFile,
+		})
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, expectFileContent, body)
+}
+
 // go test -race -run Test_Ctx_SendFile_404
 func Test_Ctx_SendFile_404(t *testing.T) {
 	t.Parallel()
 	app := New()
 	app.Get("/", func(c Ctx) error {
-		err := c.SendFile(filepath.FromSlash("john_dow.go/"))
-		require.Error(t, err)
-		return err
+		return c.SendFile("ctx12.go")
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, StatusNotFound, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "sendfile: file ctx12.go not found", string(body))
+}
+
+func Test_Ctx_SendFile_Multiple(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/test", func(c Ctx) error {
+		switch c.Query("file") {
+		case "1":
+			return c.SendFile("ctx.go")
+		case "2":
+			return c.SendFile("app.go")
+		case "3":
+			return c.SendFile("ctx.go", SendFile{
+				Download: true,
+			})
+		case "4":
+			return c.SendFile("app_test.go", SendFile{
+				FS: os.DirFS("."),
+			})
+		default:
+			return c.SendStatus(StatusNotFound)
+		}
+	})
+
+	app.Get("/test2", func(c Ctx) error {
+		return c.SendFile("ctx.go", SendFile{
+			Download: true,
+		})
+	})
+
+	testCases := []struct {
+		url                string
+		body               string
+		contentDisposition string
+	}{
+		{url: "/test?file=1", body: "type DefaultCtx struct", contentDisposition: ""},
+		{url: "/test?file=2", body: "type App struct", contentDisposition: ""},
+		{url: "/test?file=3", body: "type DefaultCtx struct", contentDisposition: "attachment"},
+		{url: "/test?file=4", body: "Test_App_MethodNotAllowed", contentDisposition: ""},
+		{url: "/test2", body: "type DefaultCtx struct", contentDisposition: "attachment"},
+		{url: "/test2", body: "type DefaultCtx struct", contentDisposition: "attachment"},
+	}
+
+	for _, tc := range testCases {
+		resp, err := app.Test(httptest.NewRequest(MethodGet, tc.url, nil))
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+		require.Equal(t, tc.contentDisposition, resp.Header.Get(HeaderContentDisposition))
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Contains(t, string(body), tc.body)
+	}
+
+	app.sendfilesMutex.RLock()
+	defer app.sendfilesMutex.RUnlock()
+	require.Len(t, app.sendfiles, 3)
 }
 
 // go test -race -run Test_Ctx_SendFile_Immutable
@@ -3355,6 +3266,56 @@ func Test_Ctx_SendFile_RestoreOriginalURL(t *testing.T) {
 
 	require.NoError(t, err1)
 	require.NoError(t, err2)
+}
+
+func Test_SendFile_withRoutes(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/file", func(c Ctx) error {
+		return c.SendFile("ctx.go")
+	})
+
+	app.Get("/file/download", func(c Ctx) error {
+		return c.SendFile("ctx.go", SendFile{
+			Download: true,
+		})
+	})
+
+	app.Get("/file/fs", func(c Ctx) error {
+		return c.SendFile("ctx.go", SendFile{
+			FS: os.DirFS("."),
+		})
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/file", nil))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/file/download", nil))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.Equal(t, "attachment", resp.Header.Get(HeaderContentDisposition))
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/file/fs", nil))
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+}
+
+func Benchmark_Ctx_SendFile(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	var err error
+	for n := 0; n < b.N; n++ {
+		err = c.SendFile("ctx.go")
+	}
+
+	require.NoError(b, err)
+	require.Contains(b, string(c.Response().Body()), "type DefaultCtx struct")
 }
 
 // go test -run Test_Ctx_JSON
@@ -3748,13 +3709,13 @@ func Test_Ctx_RenderWithLocals(t *testing.T) {
 	})
 }
 
-func Test_Ctx_RenderWithBindVars(t *testing.T) {
+func Test_Ctx_RenderWithViewBind(t *testing.T) {
 	t.Parallel()
 
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	err := c.BindVars(Map{
+	err := c.ViewBind(Map{
 		"Title": "Hello, World!",
 	})
 	require.NoError(t, err)
@@ -3769,12 +3730,12 @@ func Test_Ctx_RenderWithBindVars(t *testing.T) {
 	require.Equal(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
 }
 
-func Test_Ctx_RenderWithOverwrittenBind(t *testing.T) {
+func Test_Ctx_RenderWithOverwrittenViewBind(t *testing.T) {
 	t.Parallel()
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	err := c.BindVars(Map{
+	err := c.ViewBind(Map{
 		"Title": "Hello, World!",
 	})
 	require.NoError(t, err)
@@ -3791,7 +3752,7 @@ func Test_Ctx_RenderWithOverwrittenBind(t *testing.T) {
 	require.Equal(t, "<h1>Hello from Fiber!</h1>", string(c.Response().Body()))
 }
 
-func Test_Ctx_RenderWithBindVarsLocals(t *testing.T) {
+func Test_Ctx_RenderWithViewBindLocals(t *testing.T) {
 	t.Parallel()
 	app := New(Config{
 		PassLocalsToViews: true,
@@ -3799,7 +3760,7 @@ func Test_Ctx_RenderWithBindVarsLocals(t *testing.T) {
 
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	err := c.BindVars(Map{
+	err := c.ViewBind(Map{
 		"Title": "Hello, World!",
 	})
 	require.NoError(t, err)
@@ -3835,7 +3796,7 @@ func Test_Ctx_RenderWithLocalsAndBinding(t *testing.T) {
 	require.Equal(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
 }
 
-func Benchmark_Ctx_RenderWithLocalsAndBindVars(b *testing.B) {
+func Benchmark_Ctx_RenderWithLocalsAndViewBind(b *testing.B) {
 	engine := &testTemplateEngine{}
 	err := engine.Load()
 	require.NoError(b, err)
@@ -3845,7 +3806,7 @@ func Benchmark_Ctx_RenderWithLocalsAndBindVars(b *testing.B) {
 	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	err = c.BindVars(Map{
+	err = c.ViewBind(Map{
 		"Title": "Hello, World!",
 	})
 	require.NoError(b, err)
@@ -3885,7 +3846,7 @@ func Benchmark_Ctx_RenderLocals(b *testing.B) {
 	require.Equal(b, "<h1>Hello, World!</h1>", string(c.Response().Body()))
 }
 
-func Benchmark_Ctx_RenderBindVars(b *testing.B) {
+func Benchmark_Ctx_RenderViewBind(b *testing.B) {
 	engine := &testTemplateEngine{}
 	err := engine.Load()
 	require.NoError(b, err)
@@ -3893,7 +3854,7 @@ func Benchmark_Ctx_RenderBindVars(b *testing.B) {
 	app.config.Views = engine
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	err = c.BindVars(Map{
+	err = c.ViewBind(Map{
 		"Title": "Hello, World!",
 	})
 	require.NoError(b, err)
@@ -4581,11 +4542,11 @@ func Test_Ctx_BodyStreamWriter(t *testing.T) {
 	ctx := &fasthttp.RequestCtx{}
 
 	ctx.SetBodyStreamWriter(func(w *bufio.Writer) {
-		fmt.Fprintf(w, "body writer line 1\n")
+		fmt.Fprintf(w, "body writer line 1\n") //nolint: errcheck // It is fine to ignore the error
 		if err := w.Flush(); err != nil {
 			t.Errorf("unexpected error: %s", err)
 		}
-		fmt.Fprintf(w, "body writer line 2\n")
+		fmt.Fprintf(w, "body writer line 2\n") //nolint: errcheck // It is fine to ignore the error
 	})
 
 	require.True(t, ctx.IsBodyStream())
@@ -4642,91 +4603,6 @@ func Benchmark_Ctx_String(b *testing.B) {
 		str = ctx.String()
 	}
 	require.Equal(b, "#0000000000000000 - 0.0.0.0:0 <-> 0.0.0.0:0 - GET http:///", str)
-}
-
-func TestCtx_ParamsInt(t *testing.T) {
-	// Create a test context and set some strings (or params)
-	// create a fake app to be used within this test
-	t.Parallel()
-	app := New()
-
-	// Create some test endpoints
-
-	// For the user id I will use the number 1111, so I should be able to get the number
-	// 1111 from the Ctx
-	app.Get("/test/:user", func(c Ctx) error {
-		// require.Equal(t, "john", c.Params("user"))
-
-		num, err := c.ParamsInt("user")
-
-		// Check the number matches
-		require.Equal(t, 1111, num)
-
-		// Check no errors are returned, because we want NO errors in this one
-		require.NoError(t, err)
-
-		return nil
-	})
-
-	// In this test case, there will be a bad request where the expected number is NOT
-	// a number in the path
-	app.Get("/testnoint/:user", func(c Ctx) error {
-		// require.Equal(t, "john", c.Params("user"))
-
-		num, err := c.ParamsInt("user")
-
-		// Check the number matches
-		require.Equal(t, 0, num)
-
-		// Check an error is returned, because we want NO errors in this one
-		require.Error(t, err)
-
-		return nil
-	})
-
-	// For the user id I will use the number 2222, so I should be able to get the number
-	// 2222 from the Ctx even when the default value is specified
-	app.Get("/testignoredefault/:user", func(c Ctx) error {
-		// require.Equal(t, "john", c.Params("user"))
-
-		num, err := c.ParamsInt("user", 1111)
-
-		// Check the number matches
-		require.Equal(t, 2222, num)
-
-		// Check no errors are returned, because we want NO errors in this one
-		require.NoError(t, err)
-
-		return nil
-	})
-
-	// In this test case, there will be a bad request where the expected number is NOT
-	// a number in the path, default value of 1111 should be used instead
-	app.Get("/testdefault/:user", func(c Ctx) error {
-		// require.Equal(t, "john", c.Params("user"))
-
-		num, err := c.ParamsInt("user", 1111)
-
-		// Check the number matches
-		require.Equal(t, 1111, num)
-
-		// Check an error is returned, because we want NO errors in this one
-		require.NoError(t, err)
-
-		return nil
-	})
-
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/test/1111", nil))
-	require.NoError(t, err)
-
-	_, err = app.Test(httptest.NewRequest(MethodGet, "/testnoint/xd", nil))
-	require.NoError(t, err)
-
-	_, err = app.Test(httptest.NewRequest(MethodGet, "/testignoredefault/2222", nil))
-	require.NoError(t, err)
-
-	_, err = app.Test(httptest.NewRequest(MethodGet, "/testdefault/xd", nil))
-	require.NoError(t, err)
 }
 
 // go test -run Test_Ctx_IsFromLocal_X_Forwarded
@@ -4951,4 +4827,1428 @@ func Benchmark_Ctx_GetReqHeaders(b *testing.B) {
 		"Foo":          {"bar"},
 		"Test":         {"Hello, World 👋!"},
 	}, headers)
+}
+
+// go test -run Test_GenericParseTypeInts
+func Test_GenericParseTypeInts(t *testing.T) {
+	t.Parallel()
+	type genericTypes[v GenericType] struct {
+		value v
+		str   string
+	}
+
+	ints := []genericTypes[int]{
+		{
+			value: 0,
+			str:   "0",
+		},
+		{
+			value: 1,
+			str:   "1",
+		},
+		{
+			value: 2,
+			str:   "2",
+		},
+		{
+			value: 3,
+			str:   "3",
+		},
+		{
+			value: 4,
+			str:   "4",
+		},
+		{
+			value: 2147483647,
+			str:   "2147483647",
+		},
+		{
+			value: -2147483648,
+			str:   "-2147483648",
+		},
+		{
+			value: -1,
+			str:   "-1",
+		},
+	}
+
+	for _, test := range ints {
+		var v int
+		tt := test
+		t.Run("test_genericParseTypeInts", func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.value, genericParseType(tt.str, v))
+			require.Equal(t, tt.value, genericParseType[int](tt.str, v))
+		})
+	}
+}
+
+// go test -run Test_GenericParseTypeInt8s
+func Test_GenericParseTypeInt8s(t *testing.T) {
+	t.Parallel()
+
+	type genericTypes[v GenericType] struct {
+		value v
+		str   string
+	}
+
+	int8s := []genericTypes[int8]{
+		{
+			value: int8(0),
+			str:   "0",
+		},
+		{
+			value: int8(1),
+			str:   "1",
+		},
+		{
+			value: int8(2),
+			str:   "2",
+		},
+		{
+			value: int8(3),
+			str:   "3",
+		},
+		{
+			value: int8(4),
+			str:   "4",
+		},
+		{
+			value: int8(math.MaxInt8),
+			str:   strconv.Itoa(math.MaxInt8),
+		},
+		{
+			value: int8(math.MinInt8),
+			str:   strconv.Itoa(math.MinInt8),
+		},
+	}
+
+	for _, test := range int8s {
+		var v int8
+		tt := test
+		t.Run("test_genericParseTypeInt8s", func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.value, genericParseType(tt.str, v))
+			require.Equal(t, tt.value, genericParseType[int8](tt.str, v))
+		})
+	}
+}
+
+// go test -run Test_GenericParseTypeInt16s
+func Test_GenericParseTypeInt16s(t *testing.T) {
+	t.Parallel()
+	type genericTypes[v GenericType] struct {
+		value v
+		str   string
+	}
+
+	int16s := []genericTypes[int16]{
+		{
+			value: int16(0),
+			str:   "0",
+		},
+		{
+			value: int16(1),
+			str:   "1",
+		},
+		{
+			value: int16(2),
+			str:   "2",
+		},
+		{
+			value: int16(3),
+			str:   "3",
+		},
+		{
+			value: int16(4),
+			str:   "4",
+		},
+		{
+			value: int16(math.MaxInt16),
+			str:   strconv.Itoa(math.MaxInt16),
+		},
+		{
+			value: int16(math.MinInt16),
+			str:   strconv.Itoa(math.MinInt16),
+		},
+	}
+
+	for _, test := range int16s {
+		var v int16
+		tt := test
+		t.Run("test_genericParseTypeInt16s", func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.value, genericParseType(tt.str, v))
+			require.Equal(t, tt.value, genericParseType[int16](tt.str, v))
+		})
+	}
+}
+
+// go test -run Test_GenericParseTypeInt32s
+func Test_GenericParseTypeInt32s(t *testing.T) {
+	t.Parallel()
+	type genericTypes[v GenericType] struct {
+		value v
+		str   string
+	}
+
+	int32s := []genericTypes[int32]{
+		{
+			value: int32(0),
+			str:   "0",
+		},
+		{
+			value: int32(1),
+			str:   "1",
+		},
+		{
+			value: int32(2),
+			str:   "2",
+		},
+		{
+			value: int32(3),
+			str:   "3",
+		},
+		{
+			value: int32(4),
+			str:   "4",
+		},
+		{
+			value: int32(math.MaxInt32),
+			str:   strconv.Itoa(math.MaxInt32),
+		},
+		{
+			value: int32(math.MinInt32),
+			str:   strconv.Itoa(math.MinInt32),
+		},
+	}
+
+	for _, test := range int32s {
+		var v int32
+		tt := test
+		t.Run("test_genericParseTypeInt32s", func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.value, genericParseType(tt.str, v))
+			require.Equal(t, tt.value, genericParseType[int32](tt.str, v))
+		})
+	}
+}
+
+// go test -run Test_GenericParseTypeInt64s
+func Test_GenericParseTypeInt64s(t *testing.T) {
+	t.Parallel()
+	type genericTypes[v GenericType] struct {
+		value v
+		str   string
+	}
+
+	int64s := []genericTypes[int64]{
+		{
+			value: int64(0),
+			str:   "0",
+		},
+		{
+			value: int64(1),
+			str:   "1",
+		},
+		{
+			value: int64(2),
+			str:   "2",
+		},
+		{
+			value: int64(3),
+			str:   "3",
+		},
+		{
+			value: int64(4),
+			str:   "4",
+		},
+		{
+			value: int64(math.MaxInt64),
+			str:   strconv.Itoa(math.MaxInt64),
+		},
+		{
+			value: int64(math.MinInt64),
+			str:   strconv.Itoa(math.MinInt64),
+		},
+	}
+
+	for _, test := range int64s {
+		var v int64
+		tt := test
+		t.Run("test_genericParseTypeInt64s", func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.value, genericParseType(tt.str, v))
+			require.Equal(t, tt.value, genericParseType[int64](tt.str, v))
+		})
+	}
+}
+
+// go test -run Test_GenericParseTypeUints
+func Test_GenericParseTypeUints(t *testing.T) {
+	t.Parallel()
+	type genericTypes[v GenericType] struct {
+		value v
+		str   string
+	}
+
+	uints := []genericTypes[uint]{
+		{
+			value: uint(0),
+			str:   "0",
+		},
+		{
+			value: uint(1),
+			str:   "1",
+		},
+		{
+			value: uint(2),
+			str:   "2",
+		},
+		{
+			value: uint(3),
+			str:   "3",
+		},
+		{
+			value: uint(4),
+			str:   "4",
+		},
+	}
+
+	for _, test := range uints {
+		var v uint
+		tt := test
+		t.Run("test_genericParseTypeUints", func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.value, genericParseType(tt.str, v))
+			require.Equal(t, tt.value, genericParseType[uint](tt.str, v))
+		})
+	}
+}
+
+// go test -run Test_GenericParseTypeUints
+func Test_GenericParseTypeUint8s(t *testing.T) {
+	t.Parallel()
+	type genericTypes[v GenericType] struct {
+		value v
+		str   string
+	}
+
+	uint8s := []genericTypes[uint8]{
+		{
+			value: uint8(0),
+			str:   "0",
+		},
+		{
+			value: uint8(1),
+			str:   "1",
+		},
+		{
+			value: uint8(2),
+			str:   "2",
+		},
+		{
+			value: uint8(3),
+			str:   "3",
+		},
+		{
+			value: uint8(4),
+			str:   "4",
+		},
+		{
+			value: uint8(math.MaxUint8),
+			str:   strconv.Itoa(math.MaxUint8),
+		},
+	}
+
+	for _, test := range uint8s {
+		var v uint8
+		tt := test
+		t.Run("test_genericParseTypeUint8s", func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.value, genericParseType(tt.str, v))
+			require.Equal(t, tt.value, genericParseType[uint8](tt.str, v))
+		})
+	}
+}
+
+// go test -run Test_GenericParseTypeUint16s
+func Test_GenericParseTypeUint16s(t *testing.T) {
+	t.Parallel()
+
+	type genericTypes[v GenericType] struct {
+		value v
+		str   string
+	}
+
+	uint16s := []genericTypes[uint16]{
+		{
+			value: uint16(0),
+			str:   "0",
+		},
+		{
+			value: uint16(1),
+			str:   "1",
+		},
+		{
+			value: uint16(2),
+			str:   "2",
+		},
+		{
+			value: uint16(3),
+			str:   "3",
+		},
+		{
+			value: uint16(4),
+			str:   "4",
+		},
+		{
+			value: uint16(math.MaxUint16),
+			str:   strconv.Itoa(math.MaxUint16),
+		},
+	}
+
+	for _, test := range uint16s {
+		var v uint16
+		tt := test
+		t.Run("test_genericParseTypeUint16s", func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.value, genericParseType(tt.str, v))
+			require.Equal(t, tt.value, genericParseType[uint16](tt.str, v))
+		})
+	}
+}
+
+// go test -run Test_GenericParseTypeUint32s
+func Test_GenericParseTypeUint32s(t *testing.T) {
+	t.Parallel()
+
+	type genericTypes[v GenericType] struct {
+		value v
+		str   string
+	}
+
+	uint32s := []genericTypes[uint32]{
+		{
+			value: uint32(0),
+			str:   "0",
+		},
+		{
+			value: uint32(1),
+			str:   "1",
+		},
+		{
+			value: uint32(2),
+			str:   "2",
+		},
+		{
+			value: uint32(3),
+			str:   "3",
+		},
+		{
+			value: uint32(4),
+			str:   "4",
+		},
+		{
+			value: uint32(math.MaxUint32),
+			str:   strconv.Itoa(math.MaxUint32),
+		},
+	}
+
+	for _, test := range uint32s {
+		var v uint32
+		tt := test
+		t.Run("test_genericParseTypeUint32s", func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.value, genericParseType(tt.str, v))
+			require.Equal(t, tt.value, genericParseType[uint32](tt.str, v))
+		})
+	}
+}
+
+// go test -run Test_GenericParseTypeUint64s
+func Test_GenericParseTypeUint64s(t *testing.T) {
+	t.Parallel()
+	type genericTypes[v GenericType] struct {
+		value v
+		str   string
+	}
+
+	uint64s := []genericTypes[uint64]{
+		{
+			value: uint64(0),
+			str:   "0",
+		},
+		{
+			value: uint64(1),
+			str:   "1",
+		},
+		{
+			value: uint64(2),
+			str:   "2",
+		},
+		{
+			value: uint64(3),
+			str:   "3",
+		},
+		{
+			value: uint64(4),
+			str:   "4",
+		},
+	}
+
+	for _, test := range uint64s {
+		var v uint64
+		tt := test
+		t.Run("test_genericParseTypeUint64s", func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.value, genericParseType(tt.str, v))
+			require.Equal(t, tt.value, genericParseType[uint64](tt.str, v))
+		})
+	}
+}
+
+// go test -run Test_GenericParseTypeFloat32s
+func Test_GenericParseTypeFloat32s(t *testing.T) {
+	t.Parallel()
+
+	type genericTypes[v GenericType] struct {
+		value v
+		str   string
+	}
+
+	float32s := []genericTypes[float32]{
+		{
+			value: float32(3.1415),
+			str:   "3.1415",
+		},
+		{
+			value: float32(1.234),
+			str:   "1.234",
+		},
+		{
+			value: float32(2),
+			str:   "2",
+		},
+		{
+			value: float32(3),
+			str:   "3",
+		},
+	}
+
+	for _, test := range float32s {
+		var v float32
+		tt := test
+		t.Run("test_genericParseTypeFloat32s", func(t *testing.T) {
+			t.Parallel()
+			require.InEpsilon(t, tt.value, genericParseType(tt.str, v), epsilon)
+			require.InEpsilon(t, tt.value, genericParseType[float32](tt.str, v), epsilon)
+		})
+	}
+}
+
+// go test -run Test_GenericParseTypeFloat64s
+func Test_GenericParseTypeFloat64s(t *testing.T) {
+	t.Parallel()
+
+	type genericTypes[v GenericType] struct {
+		value v
+		str   string
+	}
+
+	float64s := []genericTypes[float64]{
+		{
+			value: float64(3.1415),
+			str:   "3.1415",
+		},
+		{
+			value: float64(1.234),
+			str:   "1.234",
+		},
+		{
+			value: float64(2),
+			str:   "2",
+		},
+		{
+			value: float64(3),
+			str:   "3",
+		},
+	}
+
+	for _, test := range float64s {
+		var v float64
+		tt := test
+		t.Run("test_genericParseTypeFloat64s", func(t *testing.T) {
+			t.Parallel()
+			require.InEpsilon(t, tt.value, genericParseType(tt.str, v), epsilon)
+			require.InEpsilon(t, tt.value, genericParseType[float64](tt.str, v), epsilon)
+		})
+	}
+}
+
+// go test -run Test_GenericParseTypeArrayBytes
+func Test_GenericParseTypeArrayBytes(t *testing.T) {
+	t.Parallel()
+
+	type genericTypes[v GenericType] struct {
+		value v
+		str   string
+	}
+
+	arrBytes := []genericTypes[[]byte]{
+		{
+			value: []byte("alex"),
+			str:   "alex",
+		},
+		{
+			value: []byte("32.23"),
+			str:   "32.23",
+		},
+		{
+			value: []byte(nil),
+			str:   "",
+		},
+		{
+			value: []byte("john"),
+			str:   "john",
+		},
+	}
+
+	for _, test := range arrBytes {
+		var v []byte
+		tt := test
+		t.Run("test_genericParseTypeArrayBytes", func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.value, genericParseType(tt.str, v, []byte(nil)))
+			require.Equal(t, tt.value, genericParseType[[]byte](tt.str, v, []byte(nil)))
+		})
+	}
+}
+
+// go test -run Test_GenericParseTypeBoolean
+func Test_GenericParseTypeBoolean(t *testing.T) {
+	t.Parallel()
+
+	type genericTypes[v GenericType] struct {
+		value v
+		str   string
+	}
+
+	bools := []genericTypes[bool]{
+		{
+			str:   "True",
+			value: true,
+		},
+		{
+			str:   "False",
+			value: false,
+		},
+		{
+			str:   "true",
+			value: true,
+		},
+		{
+			str:   "false",
+			value: false,
+		},
+	}
+
+	for _, test := range bools {
+		var v bool
+		tt := test
+		t.Run("test_genericParseTypeBoolean", func(t *testing.T) {
+			t.Parallel()
+			if tt.value {
+				require.True(t, genericParseType(tt.str, v))
+				require.True(t, genericParseType[bool](tt.str, v))
+			} else {
+				require.False(t, genericParseType(tt.str, v))
+				require.False(t, genericParseType[bool](tt.str, v))
+			}
+		})
+	}
+}
+
+// go test -run Test_GenericParseTypeString
+func Test_GenericParseTypeString(t *testing.T) {
+	t.Parallel()
+
+	tests := []string{"john", "doe", "hello", "fiber"}
+
+	for _, test := range tests {
+		var v string
+		tt := test
+		t.Run("test_genericParseTypeString", func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt, genericParseType(tt, v))
+			require.Equal(t, tt, genericParseType[string](tt, v))
+		})
+	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_GenericParseTypeInts -benchmem -count=4
+func Benchmark_GenericParseTypeInts(b *testing.B) {
+	type genericTypes[v GenericType] struct {
+		value v
+		str   string
+	}
+
+	ints := []genericTypes[int]{
+		{
+			value: 0,
+			str:   "0",
+		},
+		{
+			value: 1,
+			str:   "1",
+		},
+		{
+			value: 2,
+			str:   "2",
+		},
+		{
+			value: 3,
+			str:   "3",
+		},
+		{
+			value: 4,
+			str:   "4",
+		},
+	}
+
+	int8s := []genericTypes[int8]{
+		{
+			value: int8(0),
+			str:   "0",
+		},
+		{
+			value: int8(1),
+			str:   "1",
+		},
+		{
+			value: int8(2),
+			str:   "2",
+		},
+		{
+			value: int8(3),
+			str:   "3",
+		},
+		{
+			value: int8(4),
+			str:   "4",
+		},
+	}
+
+	int16s := []genericTypes[int16]{
+		{
+			value: int16(0),
+			str:   "0",
+		},
+		{
+			value: int16(1),
+			str:   "1",
+		},
+		{
+			value: int16(2),
+			str:   "2",
+		},
+		{
+			value: int16(3),
+			str:   "3",
+		},
+		{
+			value: int16(4),
+			str:   "4",
+		},
+	}
+
+	int32s := []genericTypes[int32]{
+		{
+			value: int32(0),
+			str:   "0",
+		},
+		{
+			value: int32(1),
+			str:   "1",
+		},
+		{
+			value: int32(2),
+			str:   "2",
+		},
+		{
+			value: int32(3),
+			str:   "3",
+		},
+		{
+			value: int32(4),
+			str:   "4",
+		},
+	}
+
+	int64s := []genericTypes[int64]{
+		{
+			value: int64(0),
+			str:   "0",
+		},
+		{
+			value: int64(1),
+			str:   "1",
+		},
+		{
+			value: int64(2),
+			str:   "2",
+		},
+		{
+			value: int64(3),
+			str:   "3",
+		},
+		{
+			value: int64(4),
+			str:   "4",
+		},
+	}
+
+	for _, test := range ints {
+		b.Run("bench_genericParseTypeInts", func(b *testing.B) {
+			var res int
+			b.ReportAllocs()
+			b.ResetTimer()
+			for n := 0; n < b.N; n++ {
+				res = genericParseType(test.str, res)
+			}
+			require.Equal(b, test.value, res)
+		})
+	}
+
+	for _, test := range int8s {
+		b.Run("benchmark_genericParseTypeInt8s", func(b *testing.B) {
+			var res int8
+			b.ReportAllocs()
+			b.ResetTimer()
+			for n := 0; n < b.N; n++ {
+				res = genericParseType(test.str, res)
+			}
+			require.Equal(b, test.value, res)
+		})
+	}
+
+	for _, test := range int16s {
+		b.Run("benchmark_genericParseTypeInt16s", func(b *testing.B) {
+			var res int16
+			b.ReportAllocs()
+			b.ResetTimer()
+			for n := 0; n < b.N; n++ {
+				res = genericParseType(test.str, res)
+			}
+			require.Equal(b, test.value, res)
+		})
+	}
+
+	for _, test := range int32s {
+		b.Run("benchmark_genericParseType32Ints", func(b *testing.B) {
+			var res int32
+			b.ReportAllocs()
+			b.ResetTimer()
+			for n := 0; n < b.N; n++ {
+				res = genericParseType(test.str, res)
+			}
+			require.Equal(b, test.value, res)
+		})
+	}
+
+	for _, test := range int64s {
+		b.Run("benchmark_genericParseTypeInt64s", func(b *testing.B) {
+			var res int64
+			b.ReportAllocs()
+			b.ResetTimer()
+			for n := 0; n < b.N; n++ {
+				res = genericParseType(test.str, res)
+			}
+			require.Equal(b, test.value, res)
+		})
+	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_GenericParseTypeUints -benchmem -count=4
+func Benchmark_GenericParseTypeUints(b *testing.B) {
+	type genericTypes[v GenericType] struct {
+		value v
+		str   string
+	}
+
+	uints := []genericTypes[uint]{
+		{
+			value: uint(0),
+			str:   "0",
+		},
+		{
+			value: uint(1),
+			str:   "1",
+		},
+		{
+			value: uint(2),
+			str:   "2",
+		},
+		{
+			value: uint(3),
+			str:   "3",
+		},
+		{
+			value: uint(4),
+			str:   "4",
+		},
+	}
+
+	uint8s := []genericTypes[uint8]{
+		{
+			value: uint8(0),
+			str:   "0",
+		},
+		{
+			value: uint8(1),
+			str:   "1",
+		},
+		{
+			value: uint8(2),
+			str:   "2",
+		},
+		{
+			value: uint8(3),
+			str:   "3",
+		},
+		{
+			value: uint8(4),
+			str:   "4",
+		},
+	}
+
+	uint16s := []genericTypes[uint16]{
+		{
+			value: uint16(0),
+			str:   "0",
+		},
+		{
+			value: uint16(1),
+			str:   "1",
+		},
+		{
+			value: uint16(2),
+			str:   "2",
+		},
+		{
+			value: uint16(3),
+			str:   "3",
+		},
+		{
+			value: uint16(4),
+			str:   "4",
+		},
+	}
+
+	uint32s := []genericTypes[uint32]{
+		{
+			value: uint32(0),
+			str:   "0",
+		},
+		{
+			value: uint32(1),
+			str:   "1",
+		},
+		{
+			value: uint32(2),
+			str:   "2",
+		},
+		{
+			value: uint32(3),
+			str:   "3",
+		},
+		{
+			value: uint32(4),
+			str:   "4",
+		},
+	}
+
+	uint64s := []genericTypes[uint64]{
+		{
+			value: uint64(0),
+			str:   "0",
+		},
+		{
+			value: uint64(1),
+			str:   "1",
+		},
+		{
+			value: uint64(2),
+			str:   "2",
+		},
+		{
+			value: uint64(3),
+			str:   "3",
+		},
+		{
+			value: uint64(4),
+			str:   "4",
+		},
+	}
+
+	for _, test := range uints {
+		b.Run("benchamark_genericParseTypeUints", func(b *testing.B) {
+			var res uint
+			b.ReportAllocs()
+			b.ResetTimer()
+			for n := 0; n < b.N; n++ {
+				res = genericParseType(test.str, res)
+			}
+			require.Equal(b, test.value, res)
+		})
+	}
+
+	for _, test := range uint8s {
+		b.Run("benchamark_genericParseTypeUint8s", func(b *testing.B) {
+			var res uint8
+			b.ReportAllocs()
+			b.ResetTimer()
+			for n := 0; n < b.N; n++ {
+				res = genericParseType(test.str, res)
+			}
+			require.Equal(b, test.value, res)
+		})
+	}
+
+	for _, test := range uint16s {
+		b.Run("benchamark_genericParseTypeUint16s", func(b *testing.B) {
+			var res uint16
+			b.ReportAllocs()
+			b.ResetTimer()
+			for n := 0; n < b.N; n++ {
+				res = genericParseType(test.str, res)
+			}
+			require.Equal(b, test.value, res)
+		})
+	}
+
+	for _, test := range uint32s {
+		b.Run("benchamark_genericParseTypeUint32s", func(b *testing.B) {
+			var res uint32
+			b.ReportAllocs()
+			b.ResetTimer()
+			for n := 0; n < b.N; n++ {
+				res = genericParseType(test.str, res)
+			}
+			require.Equal(b, test.value, res)
+		})
+	}
+
+	for _, test := range uint64s {
+		b.Run("benchamark_genericParseTypeUint64s", func(b *testing.B) {
+			var res uint64
+			b.ReportAllocs()
+			b.ResetTimer()
+			for n := 0; n < b.N; n++ {
+				res = genericParseType(test.str, res)
+			}
+			require.Equal(b, test.value, res)
+		})
+	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_GenericParseTypeFloats -benchmem -count=4
+func Benchmark_GenericParseTypeFloats(b *testing.B) {
+	type genericTypes[v GenericType] struct {
+		value v
+		str   string
+	}
+
+	float32s := []genericTypes[float32]{
+		{
+			value: float32(3.1415),
+			str:   "3.1415",
+		},
+		{
+			value: float32(1.234),
+			str:   "1.234",
+		},
+		{
+			value: float32(2),
+			str:   "2",
+		},
+		{
+			value: float32(3),
+			str:   "3",
+		},
+	}
+
+	float64s := []genericTypes[float64]{
+		{
+			value: float64(3.1415),
+			str:   "3.1415",
+		},
+		{
+			value: float64(1.234),
+			str:   "1.234",
+		},
+		{
+			value: float64(2),
+			str:   "2",
+		},
+		{
+			value: float64(3),
+			str:   "3",
+		},
+	}
+
+	for _, test := range float32s {
+		b.Run("benchmark_genericParseTypeFloat32s", func(b *testing.B) {
+			var res float32
+			b.ReportAllocs()
+			b.ResetTimer()
+			for n := 0; n < b.N; n++ {
+				res = genericParseType(test.str, res)
+			}
+			require.InEpsilon(b, test.value, res, epsilon)
+		})
+	}
+
+	for _, test := range float64s {
+		b.Run("benchmark_genericParseTypeFloat32s", func(b *testing.B) {
+			var res float64
+			b.ReportAllocs()
+			b.ResetTimer()
+			for n := 0; n < b.N; n++ {
+				res = genericParseType(test.str, res)
+			}
+			require.InEpsilon(b, test.value, res, epsilon)
+		})
+	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_GenericParseTypeArrayBytes -benchmem -count=4
+func Benchmark_GenericParseTypeArrayBytes(b *testing.B) {
+	type genericTypes[v GenericType] struct {
+		value v
+		str   string
+	}
+
+	arrBytes := []genericTypes[[]byte]{
+		{
+			value: []byte("alex"),
+			str:   "alex",
+		},
+		{
+			value: []byte("32.23"),
+			str:   "32.23",
+		},
+		{
+			value: []byte(nil),
+			str:   "",
+		},
+		{
+			value: []byte("john"),
+			str:   "john",
+		},
+	}
+
+	for _, test := range arrBytes {
+		b.Run("Benchmark_GenericParseTypeArrayBytes", func(b *testing.B) {
+			var res []byte
+			b.ReportAllocs()
+			b.ResetTimer()
+			for n := 0; n < b.N; n++ {
+				res = genericParseType(test.str, res, []byte(nil))
+			}
+			require.Equal(b, test.value, res)
+		})
+	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_GenericParseTypeBoolean -benchmem -count=4
+func Benchmark_GenericParseTypeBoolean(b *testing.B) {
+	type genericTypes[v GenericType] struct {
+		value v
+		str   string
+	}
+
+	bools := []genericTypes[bool]{
+		{
+			str:   "True",
+			value: true,
+		},
+		{
+			str:   "False",
+			value: false,
+		},
+		{
+			str:   "true",
+			value: true,
+		},
+		{
+			str:   "false",
+			value: false,
+		},
+	}
+
+	for _, test := range bools {
+		b.Run("Benchmark_GenericParseTypeBoolean", func(b *testing.B) {
+			var res bool
+			b.ReportAllocs()
+			b.ResetTimer()
+			for n := 0; n < b.N; n++ {
+				res = genericParseType(test.str, res)
+			}
+			if test.value {
+				require.True(b, res)
+			} else {
+				require.False(b, res)
+			}
+		})
+	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_GenericParseTypeString -benchmem -count=4
+func Benchmark_GenericParseTypeString(b *testing.B) {
+	tests := []string{"john", "doe", "hello", "fiber"}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for _, test := range tests {
+		b.Run("benchmark_genericParseTypeString", func(b *testing.B) {
+			var res string
+			b.ReportAllocs()
+			b.ResetTimer()
+			for n := 0; n < b.N; n++ {
+				res = genericParseType(test, res)
+			}
+
+			require.Equal(b, test, res)
+		})
+	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_IsProxyTrusted -benchmem -count=4
+func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
+	// Scenario without trusted proxy check
+	b.Run("NoProxyCheck", func(b *testing.B) {
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().SetRequestURI("http://google.com:8080/test")
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			c.IsProxyTrusted()
+		}
+		app.ReleaseCtx(c)
+	})
+
+	// Scenario without trusted proxy check in parallel
+	b.Run("NoProxyCheckParallel", func(b *testing.B) {
+		app := New()
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			c.Request().SetRequestURI("http://google.com:8080/test")
+			for pb.Next() {
+				c.IsProxyTrusted()
+			}
+			app.ReleaseCtx(c)
+		})
+	})
+
+	// Scenario with trusted proxy check simple
+	b.Run("WithProxyCheckSimple", func(b *testing.B) {
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().SetRequestURI("http://google.com/test")
+		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			c.IsProxyTrusted()
+		}
+		app.ReleaseCtx(c)
+	})
+
+	// Scenario with trusted proxy check simple in parallel
+	b.Run("WithProxyCheckSimpleParallel", func(b *testing.B) {
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+		})
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			c.Request().SetRequestURI("http://google.com/")
+			c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+			for pb.Next() {
+				c.IsProxyTrusted()
+			}
+			app.ReleaseCtx(c)
+		})
+	})
+
+	// Scenario with trusted proxy check
+	b.Run("WithProxyCheck", func(b *testing.B) {
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+			TrustedProxies:          []string{"0.0.0.0"},
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().SetRequestURI("http://google.com/test")
+		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			c.IsProxyTrusted()
+		}
+		app.ReleaseCtx(c)
+	})
+
+	// Scenario with trusted proxy check in parallel
+	b.Run("WithProxyCheckParallel", func(b *testing.B) {
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+			TrustedProxies:          []string{"0.0.0.0"},
+		})
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			c.Request().SetRequestURI("http://google.com/")
+			c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+			for pb.Next() {
+				c.IsProxyTrusted()
+			}
+			app.ReleaseCtx(c)
+		})
+	})
+
+	// Scenario with trusted proxy check with subnet
+	b.Run("WithProxyCheckSubnet", func(b *testing.B) {
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+			TrustedProxies:          []string{"0.0.0.0/8"},
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().SetRequestURI("http://google.com/test")
+		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			c.IsProxyTrusted()
+		}
+		app.ReleaseCtx(c)
+	})
+
+	// Scenario with trusted proxy check with subnet in parallel
+	b.Run("WithProxyCheckParallelSubnet", func(b *testing.B) {
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+			TrustedProxies:          []string{"0.0.0.0/8"},
+		})
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			c.Request().SetRequestURI("http://google.com/")
+			c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+			for pb.Next() {
+				c.IsProxyTrusted()
+			}
+			app.ReleaseCtx(c)
+		})
+	})
+
+	// Scenario with trusted proxy check with multiple subnet
+	b.Run("WithProxyCheckMultipleSubnet", func(b *testing.B) {
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+			TrustedProxies:          []string{"192.168.0.0/24", "10.0.0.0/16", "0.0.0.0/8"},
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().SetRequestURI("http://google.com/test")
+		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			c.IsProxyTrusted()
+		}
+		app.ReleaseCtx(c)
+	})
+
+	// Scenario with trusted proxy check with multiple subnet in parallel
+	b.Run("WithProxyCheckParallelMultipleSubnet", func(b *testing.B) {
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+			TrustedProxies:          []string{"192.168.0.0/24", "10.0.0.0/16", "0.0.0.0/8"},
+		})
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			c.Request().SetRequestURI("http://google.com/")
+			c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+			for pb.Next() {
+				c.IsProxyTrusted()
+			}
+			app.ReleaseCtx(c)
+		})
+	})
+
+	// Scenario with trusted proxy check with all subnets
+	b.Run("WithProxyCheckAllSubnets", func(b *testing.B) {
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+			TrustedProxies: []string{
+				"127.0.0.0/8",     // Loopback addresses
+				"169.254.0.0/16",  // Link-Local addresses
+				"fe80::/10",       // Link-Local addresses
+				"192.168.0.0/16",  // Private Network addresses
+				"172.16.0.0/12",   // Private Network addresses
+				"10.0.0.0/8",      // Private Network addresses
+				"fc00::/7",        // Unique Local addresses
+				"173.245.48.0/20", // My custom range
+				"0.0.0.0/8",       // All IPv4 addresses
+			},
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().SetRequestURI("http://google.com/test")
+		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			c.IsProxyTrusted()
+		}
+		app.ReleaseCtx(c)
+	})
+
+	// Scenario with trusted proxy check with all subnets in parallel
+	b.Run("WithProxyCheckParallelAllSubnets", func(b *testing.B) {
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+			TrustedProxies: []string{
+				"127.0.0.0/8",     // Loopback addresses
+				"169.254.0.0/16",  // Link-Local addresses
+				"fe80::/10",       // Link-Local addresses
+				"192.168.0.0/16",  // Private Network addresses
+				"172.16.0.0/12",   // Private Network addresses
+				"10.0.0.0/8",      // Private Network addresses
+				"fc00::/7",        // Unique Local addresses
+				"173.245.48.0/20", // My custom range
+				"0.0.0.0/8",       // All IPv4 addresses
+			},
+		})
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			c.Request().SetRequestURI("http://google.com/")
+			c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+			for pb.Next() {
+				c.IsProxyTrusted()
+			}
+			app.ReleaseCtx(c)
+		})
+	})
 }

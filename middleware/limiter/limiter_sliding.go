@@ -16,7 +16,6 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 	var (
 		// Limiter variables
 		mux        = &sync.RWMutex{}
-		max        = strconv.Itoa(cfg.Max)
 		expiration = uint64(cfg.Expiration.Seconds())
 	)
 
@@ -28,8 +27,11 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 
 	// Return new handler
 	return func(c fiber.Ctx) error {
-		// Don't execute middleware if Next returns true
-		if cfg.Next != nil && cfg.Next(c) {
+		// Generate maxRequests from generator, if no generator was provided the default value returned is 5
+		maxRequests := cfg.MaxFunc(c)
+
+		// Don't execute middleware if Next returns true or if the max is 0
+		if (cfg.Next != nil && cfg.Next(c)) || maxRequests == 0 {
 			return c.Next()
 		}
 
@@ -127,7 +129,7 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 		}
 
 		// We can continue, update RateLimit headers
-		c.Set(xRateLimitLimit, max)
+		c.Set(xRateLimitLimit, strconv.Itoa(maxRequests))
 		c.Set(xRateLimitRemaining, strconv.Itoa(remaining))
 		c.Set(xRateLimitReset, strconv.FormatUint(resetInSec, 10))
 

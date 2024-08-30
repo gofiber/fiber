@@ -1,0 +1,26 @@
+# .github/release.yml
+
+changelog:
+  categories:
+    - title: '❗ Breaking Changes'
+      labels:
+        - '❗ BreakingChange'
+    - title: '🚀 New Features'
+      labels:
+        - '✏️ Feature'
+        - '📝 Proposal'
+    - title: '🧹 Updates'
+      labels:
+        - '🧹 Updates'
+    - title: '🐛 Bug Fixes'
+      labels:
+        - '☢️ Bug'
+    - title: '🛠️ Maintenance'
+      labels:
+        - '🤖 Dependencies'
+    - title: '📚 Documentation'
+      labels:
+        - '📒 Documentation'
+    - title: 'Other Changes'
+      labels:
+        - '*'

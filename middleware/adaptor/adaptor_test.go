@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -42,31 +43,31 @@ func Test_HTTPHandler(t *testing.T) {
 	callsCount := 0
 	nethttpH := func(w http.ResponseWriter, r *http.Request) {
 		callsCount++
-		require.Equal(t, expectedMethod, r.Method, "Method")
-		require.Equal(t, expectedProto, r.Proto, "Proto")
-		require.Equal(t, expectedProtoMajor, r.ProtoMajor, "ProtoMajor")
-		require.Equal(t, expectedProtoMinor, r.ProtoMinor, "ProtoMinor")
-		require.Equal(t, expectedRequestURI, r.RequestURI, "RequestURI")
-		require.Equal(t, expectedContentLength, int(r.ContentLength), "ContentLength")
-		require.Empty(t, r.TransferEncoding, "TransferEncoding")
-		require.Equal(t, expectedHost, r.Host, "Host")
-		require.Equal(t, expectedRemoteAddr, r.RemoteAddr, "RemoteAddr")
+		assert.Equal(t, expectedMethod, r.Method, "Method")
+		assert.Equal(t, expectedProto, r.Proto, "Proto")
+		assert.Equal(t, expectedProtoMajor, r.ProtoMajor, "ProtoMajor")
+		assert.Equal(t, expectedProtoMinor, r.ProtoMinor, "ProtoMinor")
+		assert.Equal(t, expectedRequestURI, r.RequestURI, "RequestURI")
+		assert.Equal(t, expectedContentLength, int(r.ContentLength), "ContentLength")
+		assert.Empty(t, r.TransferEncoding, "TransferEncoding")
+		assert.Equal(t, expectedHost, r.Host, "Host")
+		assert.Equal(t, expectedRemoteAddr, r.RemoteAddr, "RemoteAddr")
 
 		body, err := io.ReadAll(r.Body)
-		require.NoError(t, err)
-		require.Equal(t, expectedBody, string(body), "Body")
-		require.Equal(t, expectedURL, r.URL, "URL")
-		require.Equal(t, expectedContextValue, r.Context().Value(expectedContextKey), "Context")
+		assert.NoError(t, err)
+		assert.Equal(t, expectedBody, string(body), "Body")
+		assert.Equal(t, expectedURL, r.URL, "URL")
+		assert.Equal(t, expectedContextValue, r.Context().Value(expectedContextKey), "Context")
 
 		for k, expectedV := range expectedHeader {
 			v := r.Header.Get(k)
-			require.Equal(t, expectedV, v, "Header")
+			assert.Equal(t, expectedV, v, "Header")
 		}
 
 		w.Header().Set("Header1", "value1")
 		w.Header().Set("Header2", "value2")
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "request body is %q", body)
+		fmt.Fprintf(w, "request body is %q", body) //nolint:errcheck // not needed
 	}
 	fiberH := HTTPHandlerFunc(http.HandlerFunc(nethttpH))
 	fiberH = setFiberContextValueMiddleware(fiberH, expectedContextKey, expectedContextValue)
@@ -273,7 +274,7 @@ func testFiberToHandlerFunc(t *testing.T, checkDefaultPort bool, app ...*fiber.A
 	var r http.Request
 
 	r.Method = expectedMethod
-	r.Body = &netHTTPBody{[]byte(expectedBody)}
+	r.Body = &netHTTPBody{b: []byte(expectedBody)}
 	r.RequestURI = expectedRequestURI
 	r.ContentLength = int64(expectedContentLength)
 	r.Host = expectedHost
@@ -354,9 +355,9 @@ func (r *netHTTPBody) Close() error {
 }
 
 type netHTTPResponseWriter struct {
-	statusCode int
 	h          http.Header
 	body       []byte
+	statusCode int
 }
 
 func (w *netHTTPResponseWriter) StatusCode() int {

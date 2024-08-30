@@ -8,7 +8,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 
 	"github.com/gofiber/utils/v2"
@@ -19,9 +18,9 @@ import (
 type Response struct {
 	client  *Client
 	request *Request
-	cookie  []*fasthttp.Cookie
 
 	RawResponse *fasthttp.Response
+	cookie      []*fasthttp.Cookie
 }
 
 // setClient method sets client object in response instance.
@@ -68,7 +67,7 @@ func (r *Response) Body() []byte {
 
 // String method returns the body of the server response as String.
 func (r *Response) String() string {
-	return strings.TrimSpace(string(r.Body()))
+	return utils.Trim(string(r.Body()), ' ')
 }
 
 // JSON method will unmarshal body to json.
@@ -129,7 +128,7 @@ func (r *Response) Save(v any) error {
 	}
 }
 
-// Reset clear Response object.
+// Reset clears the Response object.
 func (r *Response) Reset() {
 	r.client = nil
 	r.request = nil

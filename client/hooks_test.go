@@ -183,11 +183,12 @@ func Test_Parser_Request_URL(t *testing.T) {
 
 		flag1, flag2, flag3 := false, false, false
 		for _, v := range values["bar"] {
-			if v == "foo1" {
+			switch v {
+			case "foo1":
 				flag1 = true
-			} else if v == "foo2" {
+			case "foo2":
 				flag2 = true
-			} else if v == "foo" {
+			case "foo":
 				flag3 = true
 			}
 		}

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
@@ -332,128 +333,6 @@ func Test_Router_Handler_Catch_Error(t *testing.T) {
 	require.Equal(t, StatusInternalServerError, c.Response.Header.StatusCode())
 }
 
-func Test_Route_Static_Root(t *testing.T) {
-	t.Parallel()
-
-	dir := "./.github/testdata/fs/css"
-	app := New()
-	app.Static("/", dir, Static{
-		Browse: true,
-	})
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/style.css", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Contains(t, app.getString(body), "color")
-
-	app = New()
-	app.Static("/", dir)
-
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 404, resp.StatusCode, "Status code")
-
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/style.css", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Contains(t, app.getString(body), "color")
-}
-
-func Test_Route_Static_HasPrefix(t *testing.T) {
-	t.Parallel()
-
-	dir := "./.github/testdata/fs/css"
-	app := New()
-	app.Static("/static", dir, Static{
-		Browse: true,
-	})
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/static", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/style.css", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Contains(t, app.getString(body), "color")
-
-	app = New()
-	app.Static("/static/", dir, Static{
-		Browse: true,
-	})
-
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/style.css", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Contains(t, app.getString(body), "color")
-
-	app = New()
-	app.Static("/static", dir)
-
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 404, resp.StatusCode, "Status code")
-
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 404, resp.StatusCode, "Status code")
-
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/style.css", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Contains(t, app.getString(body), "color")
-
-	app = New()
-	app.Static("/static/", dir)
-
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 404, resp.StatusCode, "Status code")
-
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 404, resp.StatusCode, "Status code")
-
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/style.css", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-
-	body, err = io.ReadAll(resp.Body)
-	require.NoError(t, err, "app.Test(req)")
-	require.Contains(t, app.getString(body), "color")
-}
-
 func Test_Router_NotFound(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -488,6 +367,33 @@ func Test_Router_NotFound_HTML_Inject(t *testing.T) {
 
 	require.Equal(t, 404, c.Response.StatusCode())
 	require.Equal(t, "Cannot DELETE /does/not/exist&lt;script&gt;alert(&#39;foo&#39;);&lt;/script&gt;", string(c.Response.Body()))
+}
+
+func Test_App_Rebuild_Tree(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	app.Get("/test", func(c Ctx) error {
+		app.Get("/dynamically-defined", func(c Ctx) error {
+			return c.SendStatus(http.StatusOK)
+		})
+
+		app.RebuildTree()
+
+		return c.SendStatus(http.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/dynamically-defined", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, http.StatusNotFound, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/dynamically-defined", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
 }
 
 //////////////////////////////////////////////
@@ -662,6 +568,27 @@ func Benchmark_Router_Next(b *testing.B) {
 	require.NoError(b, err)
 	require.True(b, res)
 	require.Equal(b, 4, c.indexRoute)
+}
+
+// go test -v ./... -run=^$ -bench=Benchmark_Router_Next_Default -benchmem -count=4
+func Benchmark_Router_Next_Default(b *testing.B) {
+	app := New()
+	app.Get("/", func(_ Ctx) error {
+		return nil
+	})
+
+	h := app.Handler()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodGet)
+	fctx.Request.SetRequestURI("/")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		h(fctx)
+	}
 }
 
 // go test -v ./... -run=^$ -bench=Benchmark_Route_Match -benchmem -count=4
