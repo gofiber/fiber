@@ -70,6 +70,7 @@ func compileReqParser(rt reflect.Type, opt bindCompileOption) (Decoder, error) {
 type parentDecoder struct {
 	tagScope   string
 	tagContent string
+	isSlice    bool
 }
 
 func compileFieldDecoder(field reflect.StructField, index int, opt bindCompileOption, parent *parentDecoder) (decoder, error) {
@@ -100,20 +101,22 @@ func compileFieldDecoder(field reflect.StructField, index int, opt bindCompileOp
 	var tagContent string
 	if parent != nil {
 		tagScope = parent.tagScope
-		tagContent = parent.tagContent + "." + field.Tag.Get(tagScope)
+		if parent.isSlice {
+			tagContent = parent.tagContent + ".NUM." + field.Tag.Get(tagScope)
+		} else {
+			tagContent = parent.tagContent + "." + field.Tag.Get(tagScope)
+		}
 	} else {
 		tagContent = field.Tag.Get(tagScope)
 	}
 
-	if reflect.PointerTo(field.Type).Implements(textUnmarshalerType) {
-		return compileTextBasedDecoder(field, index, tagScope, tagContent, opt)
-	}
-
 	if field.Type.Kind() == reflect.Slice {
-		return compileSliceFieldTextBasedDecoder(field, index, tagScope, tagContent)
+		return compileSliceFieldTextBasedDecoder(field, index, tagScope, tagContent, opt)
 	}
 
-	return compileTextBasedDecoder(field, index, tagScope, tagContent, opt)
+	isTextMarshaler := reflect.PointerTo(field.Type).Implements(textUnmarshalerType)
+
+	return compileTextBasedDecoder(field, index, tagScope, tagContent, opt, isTextMarshaler)
 }
 
 func formGetter(ctx Ctx, key string, defaultValue ...string) string {
@@ -134,7 +137,7 @@ func multipartGetter(ctx Ctx, key string, defaultValue ...string) string {
 	return v[0]
 }
 
-func compileTextBasedDecoder(field reflect.StructField, index int, tagScope, tagContent string, opt bindCompileOption) (decoder, error) {
+func compileTextBasedDecoder(field reflect.StructField, index int, tagScope, tagContent string, opt bindCompileOption, isTextMarshaler ...bool) (decoder, error) {
 	var get func(ctx Ctx, key string, defaultValue ...string) string
 	switch tagScope {
 	case bindTagQuery:
@@ -156,11 +159,16 @@ func compileTextBasedDecoder(field reflect.StructField, index int, tagScope, tag
 	}
 
 	fieldDecoder := &fieldTextDecoder{
-		index:     index,
-		fieldName: field.Name,
-		tag:       tagScope,
-		reqField:  tagContent,
-		get:       get,
+		fieldIndex: index,
+		fieldName:  field.Name,
+		tag:        tagScope,
+		reqKey:     tagContent,
+		get:        get,
+	}
+
+	// Check if the field implements encoding.TextUnmarshaler
+	if len(isTextMarshaler) > 0 && isTextMarshaler[0] {
+		fieldDecoder.isTextMarshaler = true
 	}
 
 	// Support simple embeded structs
@@ -195,16 +203,12 @@ func compileTextBasedDecoder(field reflect.StructField, index int, tagScope, tag
 	return fieldDecoder, nil
 }
 
-func compileSliceFieldTextBasedDecoder(field reflect.StructField, index int, tagScope string, tagContent string) (decoder, error) {
+func compileSliceFieldTextBasedDecoder(field reflect.StructField, index int, tagScope string, tagContent string, opt bindCompileOption) (decoder, error) {
 	if field.Type.Kind() != reflect.Slice {
 		panic("BUG: unexpected type, expecting slice " + field.Type.String())
 	}
 
 	et := field.Type.Elem()
-	elementUnmarshaler, err := bind.CompileTextDecoder(et)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build slice binder: %w", err)
-	}
 
 	var eqBytes = bytes.Equal
 	var visitAll func(Ctx, func(key, value []byte))
@@ -229,14 +233,43 @@ func compileSliceFieldTextBasedDecoder(field reflect.StructField, index int, tag
 		return nil, errors.New("unexpected tag scope " + strconv.Quote(tagScope))
 	}
 
-	return &fieldSliceDecoder{
-		fieldIndex:     index,
-		eqBytes:        eqBytes,
-		fieldName:      field.Name,
-		visitAll:       visitAll,
-		reqKey:         []byte(tagContent),
-		fieldType:      field.Type,
-		elementType:    et,
-		elementDecoder: elementUnmarshaler,
-	}, nil
+	sliceDecoder := &fieldSliceDecoder{
+		fieldIndex:  index,
+		eqBytes:     eqBytes,
+		fieldName:   field.Name,
+		visitAll:    visitAll,
+		reqKey:      []byte(tagContent),
+		fieldType:   field.Type,
+		elementType: et,
+	}
+
+	// support struct slices
+	if et.Kind() == reflect.Struct {
+		var decoders []decoder
+		for i := 0; i < et.NumField(); i++ {
+			if !et.Field(i).IsExported() {
+				// ignore unexported field
+				continue
+			}
+
+			dec, err := compileFieldDecoder(et.Field(i), i, opt, &parentDecoder{tagScope: tagScope, tagContent: tagContent, isSlice: true})
+			if err != nil {
+				return nil, err
+			}
+
+			decoders = append(decoders, dec)
+		}
+		sliceDecoder.subFieldDecoders = decoders
+
+		return sliceDecoder, nil
+	}
+
+	elementUnmarshaler, err := bind.CompileTextDecoder(et)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build slice binder: %w", err)
+	}
+
+	sliceDecoder.elementDecoder = elementUnmarshaler
+
+	return sliceDecoder, nil
 }

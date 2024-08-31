@@ -1,6 +1,7 @@
 package fiber
 
 import (
+	"encoding"
 	"fmt"
 	"reflect"
 
@@ -15,6 +16,7 @@ type Binder interface {
 // it's created with field index
 type decoder interface {
 	Decode(ctx Ctx, reqValue reflect.Value) error
+	Kind() string
 }
 
 type fieldCtxDecoder struct {
@@ -35,26 +37,51 @@ func (d *fieldCtxDecoder) Decode(ctx Ctx, reqValue reflect.Value) error {
 	return nil
 }
 
+func (d *fieldCtxDecoder) Kind() string {
+	return "ctx"
+}
+
 type fieldTextDecoder struct {
-	index            int
+	fieldIndex       int
 	fieldName        string
 	tag              string // query,param,header,respHeader ...
-	reqField         string
+	reqKey           string
 	dec              bind.TextDecoder
 	get              func(c Ctx, key string, defaultValue ...string) string
 	subFieldDecoders []decoder
+	isTextMarshaler  bool
 }
 
 func (d *fieldTextDecoder) Decode(ctx Ctx, reqValue reflect.Value) error {
-	text := d.get(ctx, d.reqField)
+	text := d.get(ctx, d.reqKey)
 	if text == "" {
 		return nil
 	}
 
-	err := d.dec.UnmarshalString(text, reqValue.Field(d.index))
+	field := reqValue.Field(d.fieldIndex)
+
+	if d.isTextMarshaler {
+		unmarshaler, ok := field.Addr().Interface().(encoding.TextUnmarshaler)
+		if !ok {
+			return fmt.Errorf("field %s does not implement encoding.TextUnmarshaler", d.fieldName)
+		}
+
+		err := unmarshaler.UnmarshalText([]byte(text))
+		if err != nil {
+			return fmt.Errorf("unable to decode '%s' as %s: %w", text, d.reqKey, err)
+		}
+
+		return nil
+	}
+
+	err := d.dec.UnmarshalString(text, field)
 	if err != nil {
-		return fmt.Errorf("unable to decode '%s' as %s: %w", text, d.reqField, err)
+		return fmt.Errorf("unable to decode '%s' as %s: %w", text, d.reqKey, err)
 	}
 
 	return nil
+}
+
+func (d *fieldTextDecoder) Kind() string {
+	return "text"
 }

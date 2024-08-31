@@ -15,10 +15,11 @@ type fieldSliceDecoder struct {
 	fieldType  reflect.Type
 	reqKey     []byte
 	// [utils.EqualFold] for headers and [bytes.Equal] for query/params.
-	eqBytes        func([]byte, []byte) bool
-	elementType    reflect.Type
-	elementDecoder bind.TextDecoder
-	visitAll       func(Ctx, func(key []byte, value []byte))
+	eqBytes          func([]byte, []byte) bool
+	elementType      reflect.Type
+	elementDecoder   bind.TextDecoder
+	visitAll         func(Ctx, func(key []byte, value []byte))
+	subFieldDecoders []decoder
 }
 
 func (d *fieldSliceDecoder) Decode(ctx Ctx, reqValue reflect.Value) error {
@@ -57,6 +58,10 @@ func (d *fieldSliceDecoder) Decode(ctx Ctx, reqValue reflect.Value) error {
 
 	reqValue.Field(d.fieldIndex).Set(rv)
 	return nil
+}
+
+func (d *fieldSliceDecoder) Kind() string {
+	return "slice"
 }
 
 func visitQuery(ctx Ctx, f func(key []byte, value []byte)) {
