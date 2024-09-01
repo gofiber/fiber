@@ -100,7 +100,10 @@ func compileFieldDecoder(field reflect.StructField, index int, opt bindCompileOp
 	// If parent tag scope is present, just override it and append the parent tag content
 	var tagContent string
 	if parent != nil {
-		tagScope = parent.tagScope
+		if tagScope != parent.tagScope {
+			return nil, nil
+		}
+
 		if parent.isSlice {
 			tagContent = parent.tagContent + ".NUM." + field.Tag.Get(tagScope)
 		} else {
@@ -185,7 +188,9 @@ func compileTextBasedDecoder(field reflect.StructField, index int, tagScope, tag
 				return nil, err
 			}
 
-			decoders = append(decoders, dec)
+			if dec != nil {
+				decoders = append(decoders, dec)
+			}
 		}
 
 		fieldDecoder.subFieldDecoders = decoders

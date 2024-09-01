@@ -121,7 +121,48 @@ func Test_Bind_BasicType(t *testing.T) {
 		U:    []uint{99},
 		S:    []string{"john"},
 	}, q2)
+}
 
+func Test_Bind_NestedStruct(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	type AddressPayload struct {
+		Country  string `query:"country"`
+		Country2 string `respHeader:"country"`
+	}
+
+	type Address struct {
+		City    string         `query:"city"`
+		Zip     int            `query:"zip"`
+		Payload AddressPayload `query:"payload"`
+	}
+
+	type User struct {
+		Name    string  `query:"name"`
+		Age     int     `query:"age"`
+		Address Address `query:"address"`
+	}
+
+	c.Request().URI().SetQueryString("name=john&age=30&address.city=NY&address.zip=10001&address.payload.country=US&address.payload.country2=US")
+
+	var u User
+	require.NoError(t, c.Bind().Req(&u).Err())
+
+	require.Equal(t, User{
+		Name: "john",
+		Age:  30,
+		Address: Address{
+			City: "NY",
+			Zip:  10001,
+			Payload: AddressPayload{
+				Country:  "US",
+				Country2: "",
+			},
+		},
+	}, u)
 }
 
 // go test -run Test_Bind_Query -v

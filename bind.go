@@ -53,12 +53,23 @@ type fieldTextDecoder struct {
 }
 
 func (d *fieldTextDecoder) Decode(ctx Ctx, reqValue reflect.Value) error {
+	field := reqValue.Field(d.fieldIndex)
+
+	// Support for sub fields
+	if len(d.subFieldDecoders) > 0 {
+		for _, subFieldDecoder := range d.subFieldDecoders {
+			err := subFieldDecoder.Decode(ctx, field)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
 	text := d.get(ctx, d.reqKey)
 	if text == "" {
 		return nil
 	}
-
-	field := reqValue.Field(d.fieldIndex)
 
 	if d.isTextMarshaler {
 		unmarshaler, ok := field.Addr().Interface().(encoding.TextUnmarshaler)
