@@ -447,6 +447,44 @@ func Benchmark_Bind_by_hand(b *testing.B) {
 	}
 }
 
+func Benchmark_Bind_NestedStruct(b *testing.B) {
+	type tokenStruct struct {
+		Token string `header:"x-auth"`
+	}
+
+	type reqStruct struct {
+		ID string `params:"id"`
+
+		I int `query:"I"`
+		J int `query:"j"`
+		K int `query:"k"`
+
+		Token tokenStruct `header:"token"`
+	}
+
+	app := New()
+
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	ctx.values = [maxParams]string{"id string"}
+	ctx.route = &Route{Params: []string{"id"}}
+
+	var u = fasthttp.URI{}
+	u.SetQueryString("j=1&I=123&k=-1")
+	ctx.Request().SetURI(&u)
+
+	ctx.Request().Header.Set("token.x-auth", "bearer tt")
+
+	for i := 0; i < b.N; i++ {
+		var req reqStruct
+
+		err := ctx.Bind().Req(&req).Err()
+		if err != nil {
+			b.Error(err)
+			b.FailNow()
+		}
+	}
+}
+
 func Benchmark_Bind(b *testing.B) {
 	ctx := getBenchCtx()
 	for i := 0; i < b.N; i++ {
