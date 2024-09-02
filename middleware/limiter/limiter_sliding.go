@@ -89,14 +89,14 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 		//               ^            ^               ^          ^
 		//              ts         e.exp   End sample window   End next window
 		//               <------------>
-		// 				   resetInSec
+		// 				   Reset In Sec
 		// resetInSec = e.exp - ts - time until end of current window.
 		// duration + expiration = end of next window.
 		// Because we don't want to garbage collect in the middle of a window
 		// we add the expiration to the duration.
 		// Otherwise after the end of "sample window", attackers could launch
 		// a new request with the full window length.
-		manager.set(key, e, time.Duration(resetInSec+expiration)*time.Second)
+		manager.set(key, e, time.Duration(resetInSec+expiration)*time.Second) //nolint:gosec // Not a concern
 
 		// Unlock entry
 		mux.Unlock()

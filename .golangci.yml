@@ -278,7 +278,7 @@ linters:
     - depguard
     - dogsled
     # - dupl
-    # - dupword # TODO: Enable
+    - dupword # TODO: Enable
     - durationcheck
     - errcheck
     - errchkjson
@@ -287,7 +287,7 @@ linters:
     - exhaustive
     # - exhaustivestruct
     # - exhaustruct
-    - exportloopref
+    - copyloopvar
     - forbidigo
     - forcetypeassert
     # - funlen
@@ -298,7 +298,7 @@ linters:
     # - gochecknoinits # TODO: Enable
     - gochecksumtype
     # - gocognit
-    # - goconst # TODO: Enable
+    - goconst # TODO: Enable
     - gocritic
     # - gocyclo
     # - godot
@@ -307,9 +307,8 @@ linters:
     - gofmt
     - gofumpt
     # - goheader
-    # - goimports
-    # - golint
-    # - gomnd # TODO: Enable
+    - goimports
+    # - mnd # TODO: Enable
     - gomoddirectives
     # - gomodguard
     - goprintffuncname

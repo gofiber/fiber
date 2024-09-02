@@ -1340,7 +1340,7 @@ func Test_SetValWithStruct(t *testing.T) {
 
 		require.True(t, func() bool {
 			for _, v := range p.PeekMulti("TSlice") {
-				if string(v) == "bar" {
+				if string(v) == "bar" { //nolint:goconst // test
 					return true
 				}
 			}
