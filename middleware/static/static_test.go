@@ -723,7 +723,7 @@ func Test_isFile(t *testing.T) {
 
 func Test_Static_Compress(t *testing.T) {
 	t.Parallel()
-	dir := "../../.github/testdata/fs"
+	dir := "../../.github/testdata/fs" //nolint:goconst // test
 	app := fiber.New()
 	app.Get("/*", New(dir, Config{
 		Compress: true,
@@ -733,7 +733,6 @@ func Test_Static_Compress(t *testing.T) {
 	algorithms := []string{"zstd", "gzip", "br"}
 
 	for _, algo := range algorithms {
-		algo := algo
 		t.Run(algo+"_compression", func(t *testing.T) {
 			t.Parallel()
 			// request non-compressable file (less than 200 bytes), Content Lengh will remain the same

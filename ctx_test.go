@@ -908,7 +908,6 @@ func Test_Ctx_UserContext_Multiple_Requests(t *testing.T) {
 
 	// Consecutive Requests
 	for i := 1; i <= 10; i++ {
-		i := i
 		t.Run(fmt.Sprintf("request_%d", i), func(t *testing.T) {
 			t.Parallel()
 			resp, err := app.Test(httptest.NewRequest(MethodGet, fmt.Sprintf("/?input=%d", i), nil))
@@ -3122,8 +3121,6 @@ func Test_Static_Compress(t *testing.T) {
 	// Note: deflate is not supported by fasthttp.FS
 	algorithms := []string{"zstd", "gzip", "br"}
 	for _, algo := range algorithms {
-		algo := algo
-
 		t.Run(algo+"_compression", func(t *testing.T) {
 			t.Parallel()
 
@@ -3338,7 +3335,6 @@ func Test_Ctx_SendFile_Immutable(t *testing.T) {
 	}
 
 	for _, endpoint := range endpointsForTest {
-		endpoint := endpoint
 		t.Run(endpoint, func(t *testing.T) {
 			t.Parallel()
 			// 1st try

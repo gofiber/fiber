@@ -44,7 +44,6 @@ func Test_Middleware_InvalidKeys(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(strconv.Itoa(tt.length)+"_length_encrypt", func(t *testing.T) {
 			t.Parallel()
 			key := make([]byte, tt.length)
@@ -296,7 +295,6 @@ func Test_GenerateKey(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(strconv.Itoa(tt.length)+"_length", func(t *testing.T) {
 			t.Parallel()
 			key := GenerateKey(tt.length)

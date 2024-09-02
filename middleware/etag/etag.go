@@ -3,6 +3,7 @@ package etag
 import (
 	"bytes"
 	"hash/crc32"
+	"math"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/valyala/bytebufferpool"
@@ -56,8 +57,15 @@ func New(config ...Config) fiber.Handler {
 			bb.Write(weakPrefix)
 		}
 
+		// Write ETag
 		bb.WriteByte('"')
-		bb.B = appendUint(bb.Bytes(), uint32(len(body)))
+
+		bodyLength := len(body)
+		if bodyLength > math.MaxUint32 {
+			return c.SendStatus(fiber.StatusRequestEntityTooLarge)
+		}
+
+		bb.B = appendUint(bb.Bytes(), uint32(bodyLength)) //nolint:gosec // Body length is validated above
 		bb.WriteByte('-')
 		bb.B = appendUint(bb.Bytes(), crc32.Checksum(body, crc32q))
 		bb.WriteByte('"')

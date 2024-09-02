@@ -100,7 +100,6 @@ func Test_Pprof_Subs(t *testing.T) {
 	}
 
 	for _, sub := range subs {
-		sub := sub
 		t.Run(sub, func(t *testing.T) {
 			target := "/debug/pprof/" + sub
 			if sub == "profile" {
@@ -128,7 +127,6 @@ func Test_Pprof_Subs_WithPrefix(t *testing.T) {
 	}
 
 	for _, sub := range subs {
-		sub := sub
 		t.Run(sub, func(t *testing.T) {
 			target := "/federated-fiber/debug/pprof/" + sub
 			if sub == "profile" {
