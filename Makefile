@@ -27,7 +27,7 @@ coverage:
 format:
 	go run mvdan.cc/gofumpt@latest -w -l .
 
-## format: 🎨 Find markdown format issues (Requires markdownlint-cli)
+## markdown: 🎨 Find markdown format issues (Requires markdownlint-cli)
 .PHONY: markdown
 markdown:
 	markdownlint-cli2 "**/*.md" "#vendor"
@@ -57,11 +57,9 @@ tidy:
 betteralign:
 	go run github.com/dkorunic/betteralign/cmd/betteralign@latest -test_files -generated_files -apply ./...
 
-## tidy: ⚡️ Generate msgp
-.PHONY: msgp
-msgp:
-	go run github.com/tinylib/msgp@latest -file="middleware/cache/manager.go" -o="middleware/cache/manager_msgp.go" -tests=true -unexported
-	go run github.com/tinylib/msgp@latest -file="middleware/session/data.go" -o="middleware/session/data_msgp.go" -tests=true -unexported
-	go run github.com/tinylib/msgp@latest -file="middleware/csrf/storage_manager.go" -o="middleware/csrf/storage_manager_msgp.go" -tests=true -unexported
-	go run github.com/tinylib/msgp@latest -file="middleware/limiter/manager.go" -o="middleware/limiter/manager_msgp.go" -tests=true -unexported
-	go run github.com/tinylib/msgp@latest -file="middleware/idempotency/response.go" -o="middleware/idempotency/response_msgp.go" -tests=true -unexported
+## generate: ⚡️ Generate msgp && interface implementations
+.PHONY: generate
+generate:
+	go install github.com/tinylib/msgp@latest
+	go install github.com/vburenin/ifacemaker@975a95966976eeb2d4365a7fb236e274c54da64c
+	go generate ./...

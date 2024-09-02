@@ -11,7 +11,7 @@ import (
 
 // msgp -file="storage_manager.go" -o="storage_manager_msgp.go" -tests=true -unexported
 //
-//go:generate msgp
+//go:generate msgp -o=storage_manager_msgp.go -tests=true -unexported
 type item struct{}
 
 //msgp:ignore manager

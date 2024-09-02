@@ -49,8 +49,8 @@ app.Use(cors.New())
 
 // Or extend your config for customization
 app.Use(cors.New(cors.Config{
-    AllowOrigins: "https://gofiber.io, https://gofiber.net",
-    AllowHeaders: "Origin, Content-Type, Accept",
+    AllowOrigins: []string{"https://gofiber.io", "https://gofiber.net"},
+    AllowHeaders: []string{"Origin", "Content-Type", "Accept"},
 }))
 ```
 
