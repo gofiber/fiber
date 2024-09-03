@@ -358,7 +358,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 			Handlers: handlers,
 		}
 		// Increment global handler count
-		atomic.AddUint32(&app.handlersCount, uint32(len(handlers)))
+		atomic.AddUint32(&app.handlersCount, uint32(len(handlers))) //nolint:gosec // Not a concern
 
 		// Middleware route matches all HTTP methods
 		if isUse {

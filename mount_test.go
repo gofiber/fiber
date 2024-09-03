@@ -347,7 +347,7 @@ func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
 	app := New()
 
 	tsf := func(c Ctx, _ error) error {
-		return c.Status(200).SendString("hi, i'm a custom sub sub fiber error")
+		return c.Status(200).SendString("hi, i'm a custom sub fiber error 2")
 	}
 	tripleSubFiber := New(Config{
 		ErrorHandler: tsf,
@@ -394,7 +394,7 @@ func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
 
 	b, err = io.ReadAll(resp2.Body)
 	require.NoError(t, err, "iotuil.ReadAll()")
-	require.Equal(t, "hi, i'm a custom sub sub fiber error", string(b), "Third fiber Response body")
+	require.Equal(t, "hi, i'm a custom sub fiber error 2", string(b), "Third fiber Response body")
 }
 
 // go test -run Test_Mount_Route_Names
