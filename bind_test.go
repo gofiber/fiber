@@ -165,6 +165,146 @@ func Test_Bind_NestedStruct(t *testing.T) {
 	}, u)
 }
 
+func Test_Bind_Slice_NestedStruct(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	type Person struct {
+		Name string `query:"name"`
+		Age  int    `query:"age"`
+	}
+
+	type CollectionQuery struct {
+		Data []Person `query:"data"`
+	}
+
+	c.Request().URI().SetQueryString("data.0.name=john&data.0.age=10&data.1.name=doe&data.1.age=12")
+
+	var cq CollectionQuery
+
+	require.NoError(t, c.Bind().Req(&cq).Err())
+
+	require.Equal(t, CollectionQuery{
+		Data: []Person{
+			{Name: "john", Age: 10},
+			{Name: "doe", Age: 12},
+		},
+	}, cq)
+}
+
+func Benchmark_Bind_Slice_NestedStruct(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	type Person struct {
+		Name string `query:"name"`
+		Age  int    `query:"age"`
+	}
+
+	type CollectionQuery struct {
+		Data []Person `query:"data"`
+	}
+
+	c.Request().URI().SetQueryString("data.0.name=john&data.0.age=10&data.1.name=doe&data.1.age=12")
+
+	var cq CollectionQuery
+
+	for i := 0; i < b.N; i++ {
+		_ = c.Bind().Req(&cq)
+	}
+
+	require.NoError(b, c.Bind().Req(&cq).Err())
+
+	require.Equal(b, CollectionQuery{
+		Data: []Person{
+			{Name: "john", Age: 10},
+			{Name: "doe", Age: 12},
+		},
+	}, cq)
+}
+
+func Test_Bind_Slice_NestedStruct2(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	type Person struct {
+		Name string `query:"name"`
+		Age  int    `query:"age"`
+	}
+
+	type Family struct {
+		Name    string   `query:"name"`
+		Members []Person `query:"members"`
+	}
+
+	type CollectionQuery struct {
+		Data []Family `query:"data"`
+	}
+
+	c.Request().URI().SetQueryString("data.0.name=doe&data.0.members.0.name=john&data.0.members.0.age=10&data.0.members.1.name=doe&data.0.members.1.age=12&data.0.members.2.name=doe&data.0.members.2.age=12")
+
+	var cq CollectionQuery
+
+	require.NoError(t, c.Bind().Req(&cq).Err())
+
+	require.Equal(t, CollectionQuery{
+		Data: []Family{
+			{
+				Name: "doe",
+				Members: []Person{
+					{Name: "john", Age: 10},
+					{Name: "doe", Age: 12},
+				},
+			},
+		},
+	}, cq)
+}
+
+func Test_Bind_Slice_NestedStruct3(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	type Test2 struct {
+		Name string `query:"name"`
+		Age  int    `query:"age"`
+	}
+
+	type Person struct {
+		Name string `query:"name"`
+		Age  int    `query:"age"`
+		Test Test2  `query:"test"`
+	}
+
+	type CollectionQuery struct {
+		Data []Person `query:"data"`
+	}
+
+	c.Request().URI().SetQueryString("data.0.name=john&data.0.age=10&data.0.test.name=doe&data.0.test.age=12")
+
+	var cq CollectionQuery
+
+	require.NoError(t, c.Bind().Req(&cq).Err())
+
+	require.Equal(t, CollectionQuery{
+		Data: []Person{
+			{
+				Name: "john",
+				Age:  10,
+				Test: Test2{
+					Name: "doe",
+					Age:  12,
+				},
+			},
+		},
+	}, cq)
+}
+
 // go test -run Test_Bind_Query -v
 func Test_Bind_Query(t *testing.T) {
 	t.Parallel()

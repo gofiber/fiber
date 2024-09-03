@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
+	"strings"
 
 	"github.com/gofiber/fiber/v3/internal/bind"
 	"github.com/gofiber/utils/v2"
@@ -29,6 +30,13 @@ var bindUnmarshalerType = reflect.TypeOf((*Binder)(nil)).Elem()
 type bindCompileOption struct {
 	bodyDecoder bool // to parse `form` or `multipart/form-data`
 	reqDecoder  bool // to parse header/cookie/param/query/header/respHeader
+}
+
+type requestKeyFragment struct {
+	key   string
+	num   int
+	index int
+	isNum bool
 }
 
 func compileReqParser(rt reflect.Type, opt bindCompileOption) (Decoder, error) {
@@ -169,6 +177,22 @@ func compileTextBasedDecoder(field reflect.StructField, index int, tagScope, tag
 		get:        get,
 	}
 
+	// append fragments
+	if strings.Contains(tagContent, ".") {
+		pieces := strings.Split(tagContent, ".")
+		frags := make([]requestKeyFragment, 0, len(pieces))
+
+		for _, piece := range pieces {
+			if piece == "NUM" {
+				frags = append(frags, requestKeyFragment{num: -1, isNum: true})
+				continue
+			}
+
+			frags = append(frags, requestKeyFragment{key: piece})
+		}
+		fieldDecoder.fragments = frags
+	}
+
 	// Check if the field implements encoding.TextUnmarshaler
 	if len(isTextMarshaler) > 0 && isTextMarshaler[0] {
 		fieldDecoder.isTextMarshaler = true
@@ -246,6 +270,22 @@ func compileSliceFieldTextBasedDecoder(field reflect.StructField, index int, tag
 		reqKey:      []byte(tagContent),
 		fieldType:   field.Type,
 		elementType: et,
+	}
+
+	// append fragments
+	if strings.Contains(tagContent, ".") {
+		pieces := strings.Split(tagContent, ".")
+		frags := make([]requestKeyFragment, 0, len(pieces))
+
+		for _, piece := range pieces {
+			if piece == "NUM" {
+				frags = append(frags, requestKeyFragment{num: -1, isNum: true})
+				continue
+			}
+
+			frags = append(frags, requestKeyFragment{key: piece})
+		}
+		sliceDecoder.fragments = frags
 	}
 
 	// support struct slices

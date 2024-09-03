@@ -50,6 +50,7 @@ type fieldTextDecoder struct {
 	get              func(c Ctx, key string, defaultValue ...string) string
 	subFieldDecoders []decoder
 	isTextMarshaler  bool
+	fragments        []requestKeyFragment
 }
 
 func (d *fieldTextDecoder) Decode(ctx Ctx, reqValue reflect.Value) error {
