@@ -1306,21 +1306,34 @@ func parseParamSquareBrackets(k string) (string, error) {
 	defer bytebufferpool.Put(bb)
 
 	kbytes := []byte(k)
+	openBracketsCount := 0
 
 	for i, b := range kbytes {
-		if b == '[' && kbytes[i+1] != ']' {
-			if err := bb.WriteByte('.'); err != nil {
-				return "", fmt.Errorf("failed to write: %w", err)
+		if b == '[' {
+			openBracketsCount += 1
+			if i+1 < len(kbytes) && kbytes[i+1] != ']' {
+				if err := bb.WriteByte('.'); err != nil {
+					return "", fmt.Errorf("failed to write: %w", err)
+				}
 			}
+			continue
 		}
 
-		if b == '[' || b == ']' {
+		if b == ']' {
+			openBracketsCount -= 1
+			if openBracketsCount < 0 {
+				return "", errors.New("unmatched brackets")
+			}
 			continue
 		}
 
 		if err := bb.WriteByte(b); err != nil {
 			return "", fmt.Errorf("failed to write: %w", err)
 		}
+	}
+
+	if openBracketsCount > 0 {
+		return "", errors.New("unmatched brackets")
 	}
 
 	return bb.String(), nil
