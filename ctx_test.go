@@ -4794,7 +4794,7 @@ func Test_Ctx_QueryParser_Schema(t *testing.T) {
 	utils.AssertEqual(t, "doe", cq.Data[1].Name)
 	utils.AssertEqual(t, 12, cq.Data[1].Age)
 
-	c.Request().URI().SetQueryString("data[0][name]=john&data[0][age]=10&data[1][name=doe&data[1][age]=12")
+	c.Request().URI().SetQueryString("data[0][name]=john&data[0][age]=10&data[1]name]=doe&data[1][age]=12")
 	cq = new(CollectionQuery)
 	utils.AssertEqual(t, "unmatched brackets", c.QueryParser(cq).Error())
 
