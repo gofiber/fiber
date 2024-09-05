@@ -4508,6 +4508,10 @@ func Test_Ctx_QueryParser(t *testing.T) {
 	utils.AssertEqual(t, nil, c.QueryParser(empty))
 	utils.AssertEqual(t, 0, len(empty.Hobby))
 
+	c.Request().URI().SetQueryString("id=1&name[=tom")
+	q = new(Query)
+	utils.AssertEqual(t, "unmatched brackets", c.QueryParser(q).Error())
+
 	type Query2 struct {
 		Bool            bool
 		ID              int
@@ -4789,6 +4793,10 @@ func Test_Ctx_QueryParser_Schema(t *testing.T) {
 	utils.AssertEqual(t, 10, cq.Data[0].Age)
 	utils.AssertEqual(t, "doe", cq.Data[1].Name)
 	utils.AssertEqual(t, 12, cq.Data[1].Age)
+
+	c.Request().URI().SetQueryString("data[0][name]=john&data[0][age]=10&data[1][name=doe&data[1][age]=12")
+	cq = new(CollectionQuery)
+	utils.AssertEqual(t, "unmatched brackets", c.QueryParser(cq).Error())
 
 	c.Request().URI().SetQueryString("data.0.name=john&data.0.age=10&data.1.name=doe&data.1.age=12")
 	cq = new(CollectionQuery)
