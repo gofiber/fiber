@@ -1310,7 +1310,7 @@ func parseParamSquareBrackets(k string) (string, error) {
 
 	for i, b := range kbytes {
 		if b == '[' {
-			openBracketsCount += 1
+			openBracketsCount++
 			if i+1 < len(kbytes) && kbytes[i+1] != ']' {
 				if err := bb.WriteByte('.'); err != nil {
 					return "", fmt.Errorf("failed to write: %w", err)
@@ -1320,7 +1320,7 @@ func parseParamSquareBrackets(k string) (string, error) {
 		}
 
 		if b == ']' {
-			openBracketsCount -= 1
+			openBracketsCount--
 			if openBracketsCount < 0 {
 				return "", errors.New("unmatched brackets")
 			}
