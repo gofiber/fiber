@@ -33,34 +33,34 @@ func Test_EqualFieldType(t *testing.T) {
 
 func Test_ParseParamSquareBrackets(t *testing.T) {
 	tests := []struct {
+		err      error
 		input    string
 		expected string
-		err      error
 	}{
 		{
+			err:      nil,
 			input:    "foo[bar]",
 			expected: "foo.bar",
-			err:      nil,
 		},
 		{
+			err:      nil,
 			input:    "foo[bar][baz]",
 			expected: "foo.bar.baz",
-			err:      nil,
 		},
 		{
+			err:      errors.New("unmatched brackets"),
 			input:    "foo[bar",
 			expected: "",
-			err:      errors.New("unmatched brackets"),
 		},
 		{
+			err:      errors.New("unmatched brackets"),
 			input:    "foo[bar][baz",
 			expected: "",
-			err:      errors.New("unmatched brackets"),
 		},
 		{
+			err:      errors.New("unmatched brackets"),
 			input:    "foo]bar[",
 			expected: "",
-			err:      errors.New("unmatched brackets"),
 		},
 	}
 
