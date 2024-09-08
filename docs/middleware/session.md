@@ -212,6 +212,21 @@ func (s *Store) GetSessionByID(id string) (*Session, error)
 
 ## Examples
 
+:::note
+**Security Note**: Fiber’s session middleware uses cookies with `SameSite=Lax` by default, which provides basic CSRF protection for most GET requests. However, for comprehensive security—especially for POST requests or sensitive operations (e.g., account changes, transactions, form submissions)—it is strongly recommended to use CSRF protection middleware.
+
+### Recommendations:
+1. **Session Middleware Without CSRF**:
+   - You can use the `session` middleware without the `csrf` middleware or rely solely on `SameSite=Lax` for basic protection in low-risk scenarios.
+
+2. **Double Submit Cookie Pattern**:
+   - You can implement the **double submit cookie pattern** (via custom, third-party, or built-in middleware), where the CSRF token is stored in a cookie, and the request includes the token in a hidden field or header. In this approach, there is no need to pass the `session.Store` to the `csrf` middleware. Simply apply the `session.New()` and `csrf.New()` middleware to the routes you want to protect.
+
+3. **Recommended Approach**:
+   - For stronger protection, especially in high-risk scenarios, use the `csrf` middleware with the session store. This method implements the **Synchronizer Token Pattern**, providing robust defense by associating the CSRF token with the user’s session. This approach requires passing the `session.Store` to the `csrf` middleware.
+   - Ensure the CSRF token is embedded in forms or included in a header for POST requests and verified on the server side for incoming requests. This adds a crucial security layer for state-changing actions.
+:::
+
 ### As a Middleware Handler (Recommended)
 
 ```go
