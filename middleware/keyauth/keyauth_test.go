@@ -23,8 +23,8 @@ func Test_AuthSources(t *testing.T) {
 		authTokenName string
 		description   string
 		APIKey        string
-		expectedCode  int
 		expectedBody  string
+		expectedCode  int
 	}{
 		{
 			route:         "/",
@@ -282,8 +282,8 @@ func Test_MultipleKeyAuth(t *testing.T) {
 		route        string
 		description  string
 		APIKey       string
-		expectedCode int
 		expectedBody string
+		expectedCode int
 	}{
 		// No auth needed for /
 		{

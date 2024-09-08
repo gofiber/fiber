@@ -19,6 +19,7 @@ func New(root string, cfg ...Config) fiber.Handler
 ## Examples
 
 Import the middleware package that is part of the [Fiber](https://github.com/gofiber/fiber) web framework
+
 ```go
 import(
     "github.com/gofiber/fiber/v3"
@@ -166,7 +167,7 @@ You can set `CacheDuration` config property to `-1` to disable caching.
 
 ```go
 var ConfigDefault = Config{
-  Index:         []string{"index.html"},
-  CacheDuration: 10 * time.Second,
+    Index:         []string{"index.html"},
+    CacheDuration: 10 * time.Second,
 }
 ```

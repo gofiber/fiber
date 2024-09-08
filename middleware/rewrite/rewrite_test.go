@@ -9,6 +9,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 )
 
 func Test_New(t *testing.T) {
@@ -169,4 +170,210 @@ func Test_Rewrite(t *testing.T) {
 	resp, err = app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+}
+
+func Benchmark_Rewrite(b *testing.B) {
+	// Helper function to create a new Fiber app with rewrite middleware
+	createApp := func(config Config) *fiber.App {
+		app := fiber.New()
+		app.Use(New(config))
+		return app
+	}
+
+	// Benchmark: Rewrite with Next function always returns true
+	b.Run("Next always true", func(b *testing.B) {
+		app := createApp(Config{
+			Next: func(fiber.Ctx) bool {
+				return true
+			},
+			Rules: map[string]string{
+				"/old": "/new",
+			},
+		})
+
+		reqCtx := &fasthttp.RequestCtx{}
+		reqCtx.Request.SetRequestURI("/old")
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			app.Handler()(reqCtx)
+		}
+	})
+
+	// Benchmark: Rewrite with Next function always returns false
+	b.Run("Next always false", func(b *testing.B) {
+		app := createApp(Config{
+			Next: func(fiber.Ctx) bool {
+				return false
+			},
+			Rules: map[string]string{
+				"/old": "/new",
+			},
+		})
+
+		reqCtx := &fasthttp.RequestCtx{}
+		reqCtx.Request.SetRequestURI("/old")
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			app.Handler()(reqCtx)
+		}
+	})
+
+	// Benchmark: Rewrite with tokens
+	b.Run("Rewrite with tokens", func(b *testing.B) {
+		app := createApp(Config{
+			Rules: map[string]string{
+				"/users/*/orders/*": "/user/$1/order/$2",
+			},
+		})
+
+		reqCtx := &fasthttp.RequestCtx{}
+		reqCtx.Request.SetRequestURI("/users/123/orders/456")
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			app.Handler()(reqCtx)
+		}
+	})
+
+	// Benchmark: Non-matching request, handled by default route
+	b.Run("NonMatch with default", func(b *testing.B) {
+		app := createApp(Config{
+			Rules: map[string]string{
+				"/users/*/orders/*": "/user/$1/order/$2",
+			},
+		})
+		app.Use(func(c fiber.Ctx) error {
+			return c.SendStatus(fiber.StatusOK)
+		})
+
+		reqCtx := &fasthttp.RequestCtx{}
+		reqCtx.Request.SetRequestURI("/not-matching-any-rule")
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			app.Handler()(reqCtx)
+		}
+	})
+
+	// Benchmark: Non-matching request, with no default route
+	b.Run("NonMatch without default", func(b *testing.B) {
+		app := createApp(Config{
+			Rules: map[string]string{
+				"/users/*/orders/*": "/user/$1/order/$2",
+			},
+		})
+
+		reqCtx := &fasthttp.RequestCtx{}
+		reqCtx.Request.SetRequestURI("/not-matching-any-rule")
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			app.Handler()(reqCtx)
+		}
+	})
+}
+
+func Benchmark_Rewrite_Parallel(b *testing.B) {
+	// Helper function to create a new Fiber app with rewrite middleware
+	createApp := func(config Config) *fiber.App {
+		app := fiber.New()
+		app.Use(New(config))
+		return app
+	}
+
+	// Parallel Benchmark: Rewrite with Next function always returns true
+	b.Run("Next always true", func(b *testing.B) {
+		app := createApp(Config{
+			Next: func(fiber.Ctx) bool {
+				return true
+			},
+			Rules: map[string]string{
+				"/old": "/new",
+			},
+		})
+
+		b.RunParallel(func(pb *testing.PB) {
+			reqCtx := &fasthttp.RequestCtx{}
+			reqCtx.Request.SetRequestURI("/old")
+			for pb.Next() {
+				app.Handler()(reqCtx)
+			}
+		})
+	})
+
+	// Parallel Benchmark: Rewrite with Next function always returns false
+	b.Run("Next always false", func(b *testing.B) {
+		app := createApp(Config{
+			Next: func(fiber.Ctx) bool {
+				return false
+			},
+			Rules: map[string]string{
+				"/old": "/new",
+			},
+		})
+
+		b.RunParallel(func(pb *testing.PB) {
+			reqCtx := &fasthttp.RequestCtx{}
+			reqCtx.Request.SetRequestURI("/old")
+			for pb.Next() {
+				app.Handler()(reqCtx)
+			}
+		})
+	})
+
+	// Parallel Benchmark: Rewrite with tokens
+	b.Run("Rewrite with tokens", func(b *testing.B) {
+		app := createApp(Config{
+			Rules: map[string]string{
+				"/users/*/orders/*": "/user/$1/order/$2",
+			},
+		})
+
+		b.RunParallel(func(pb *testing.PB) {
+			reqCtx := &fasthttp.RequestCtx{}
+			reqCtx.Request.SetRequestURI("/users/123/orders/456")
+			for pb.Next() {
+				app.Handler()(reqCtx)
+			}
+		})
+	})
+
+	// Parallel Benchmark: Non-matching request, handled by default route
+	b.Run("NonMatch with default", func(b *testing.B) {
+		app := createApp(Config{
+			Rules: map[string]string{
+				"/users/*/orders/*": "/user/$1/order/$2",
+			},
+		})
+		app.Use(func(c fiber.Ctx) error {
+			return c.SendStatus(fiber.StatusOK)
+		})
+
+		b.RunParallel(func(pb *testing.PB) {
+			reqCtx := &fasthttp.RequestCtx{}
+			reqCtx.Request.SetRequestURI("/not-matching-any-rule")
+			for pb.Next() {
+				app.Handler()(reqCtx)
+			}
+		})
+	})
+
+	// Parallel Benchmark: Non-matching request, with no default route
+	b.Run("NonMatch without default", func(b *testing.B) {
+		app := createApp(Config{
+			Rules: map[string]string{
+				"/users/*/orders/*": "/user/$1/order/$2",
+			},
+		})
+
+		b.RunParallel(func(pb *testing.PB) {
+			reqCtx := &fasthttp.RequestCtx{}
+			reqCtx.Request.SetRequestURI("/not-matching-any-rule")
+			for pb.Next() {
+				app.Handler()(reqCtx)
+			}
+		})
+	})
 }

@@ -27,10 +27,15 @@ coverage:
 format:
 	go run mvdan.cc/gofumpt@latest -w -l .
 
+## markdown: 🎨 Find markdown format issues (Requires markdownlint-cli)
+.PHONY: markdown
+markdown:
+	markdownlint-cli2 "**/*.md" "#vendor"
+
 ## lint: 🚨 Run lint checks
 .PHONY: lint
 lint:
-	go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.59.1 run ./...
+	go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.60.3 run ./...
 
 ## test: 🚦 Execute all tests
 .PHONY: test
@@ -46,3 +51,15 @@ longtest:
 .PHONY: tidy
 tidy:
 	go mod tidy -v
+
+## betteralign: 📐 Optimize alignment of fields in structs
+.PHONY: betteralign
+betteralign:
+	go run github.com/dkorunic/betteralign/cmd/betteralign@latest -test_files -generated_files -apply ./...
+
+## generate: ⚡️ Generate msgp && interface implementations
+.PHONY: generate
+generate:
+	go install github.com/tinylib/msgp@latest
+	go install github.com/vburenin/ifacemaker@975a95966976eeb2d4365a7fb236e274c54da64c
+	go generate ./...

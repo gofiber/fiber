@@ -8,15 +8,16 @@ import (
 	"github.com/gofiber/fiber/v3/internal/memory"
 )
 
-// go:generate msgp
-// msgp -file="manager.go" -o="manager_msgp.go" -tests=false -unexported
+// msgp -file="manager.go" -o="manager_msgp.go" -tests=true -unexported
+//
+//go:generate msgp -o=manager_msgp.go -tests=true -unexported
 type item struct {
+	headers   map[string][]byte
 	body      []byte
 	ctype     []byte
 	cencoding []byte
 	status    int
 	exp       uint64
-	headers   map[string][]byte
 	// used for finding the item in an indexed heap
 	heapidx int
 }
@@ -83,8 +84,7 @@ func (m *manager) get(key string) *item {
 		return it
 	}
 	if it, _ = m.memory.Get(key).(*item); it == nil { //nolint:errcheck // We store nothing else in the pool
-		it = m.acquire()
-		return it
+		return nil
 	}
 	return it
 }

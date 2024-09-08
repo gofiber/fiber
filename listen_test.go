@@ -79,10 +79,10 @@ func Test_Listen_Graceful_Shutdown(t *testing.T) {
 	}
 
 	testCases := []struct {
-		Time               time.Duration
-		ExpectedBody       string
-		ExpectedStatusCode int
 		ExpectedErr        error
+		ExpectedBody       string
+		Time               time.Duration
+		ExpectedStatusCode int
 	}{
 		{Time: 500 * time.Millisecond, ExpectedBody: "example.com", ExpectedStatusCode: StatusOK, ExpectedErr: nil},
 		{Time: 3 * time.Second, ExpectedBody: "", ExpectedStatusCode: StatusOK, ExpectedErr: errors.New("InmemoryListener is already closed: use of closed network connection")},

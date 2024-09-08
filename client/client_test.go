@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/bytebufferpool"
+	"github.com/valyala/fasthttp"
 )
 
 func startTestServerWithPort(t *testing.T, beforeStarting func(app *fiber.App)) (*fiber.App, string) {
@@ -835,8 +836,8 @@ func Test_Client_Cookie(t *testing.T) {
 	t.Run("set cookies with struct", func(t *testing.T) {
 		t.Parallel()
 		type args struct {
-			CookieInt    int    `cookie:"int"`
 			CookieString string `cookie:"string"`
+			CookieInt    int    `cookie:"int"`
 		}
 
 		req := New().SetCookiesWithStruct(&args{
@@ -1087,12 +1088,12 @@ func Test_Client_QueryParam(t *testing.T) {
 		t.Parallel()
 
 		type args struct {
-			TInt      int
 			TString   string
-			TFloat    float64
-			TBool     bool
 			TSlice    []string
 			TIntSlice []int `param:"int_slice"`
+			TInt      int
+			TFloat    float64
+			TBool     bool
 		}
 
 		p := New()
@@ -1195,8 +1196,8 @@ func Test_Client_PathParam(t *testing.T) {
 	t.Run("set path params with struct", func(t *testing.T) {
 		t.Parallel()
 		type args struct {
-			CookieInt    int    `path:"int"`
 			CookieString string `path:"string"`
+			CookieInt    int    `path:"int"`
 		}
 
 		req := New().SetPathParamsWithStruct(&args{
@@ -1422,7 +1423,7 @@ func Test_Set_Config_To_Request(t *testing.T) {
 		key := struct{}{}
 
 		ctx := context.Background()
-		ctx = context.WithValue(ctx, key, "v1")
+		ctx = context.WithValue(ctx, key, "v1") //nolint: staticcheck // not needed for tests
 
 		req := AcquireRequest()
 
@@ -1539,10 +1540,52 @@ func Test_Client_SetProxyURL(t *testing.T) {
 
 	app, dial, start := createHelperServer(t)
 	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("hello world")
+		return c.SendString(c.Get("isProxy"))
 	})
 
 	go start()
+
+	fasthttpClient := &fasthttp.Client{
+		Dial:                     dial,
+		NoDefaultUserAgentHeader: true,
+		DisablePathNormalizing:   true,
+	}
+
+	// Create a simple proxy sever
+	proxyServer := fiber.New()
+
+	proxyServer.Use("*", func(c fiber.Ctx) error {
+		req := fasthttp.AcquireRequest()
+		resp := fasthttp.AcquireResponse()
+
+		req.SetRequestURI(c.BaseURL())
+		req.Header.SetMethod(fasthttp.MethodGet)
+
+		c.Request().Header.VisitAll(func(key, value []byte) {
+			req.Header.AddBytesKV(key, value)
+		})
+
+		req.Header.Set("isProxy", "true")
+
+		if err := fasthttpClient.Do(req, resp); err != nil {
+			return err
+		}
+
+		c.Status(resp.StatusCode())
+		c.Context().SetBody(resp.Body())
+
+		return nil
+	})
+
+	addrChan := make(chan string)
+	go func() {
+		assert.NoError(t, proxyServer.Listen(":0", fiber.ListenConfig{
+			DisableStartupMessage: true,
+			ListenerAddrFunc: func(addr net.Addr) {
+				addrChan <- addr.String()
+			},
+		}))
+	}()
 
 	t.Cleanup(func() {
 		require.NoError(t, app.Shutdown())
@@ -1552,31 +1595,27 @@ func Test_Client_SetProxyURL(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
-		client := New().SetDial(dial)
-		err := client.SetProxyURL("http://test.com")
 
-		require.NoError(t, err)
-
-		_, err = client.Get("http://localhost:3000")
-
-		require.NoError(t, err)
-	})
-
-	t.Run("wrong url", func(t *testing.T) {
-		t.Parallel()
 		client := New()
+		err := client.SetProxyURL(<-addrChan)
 
-		err := client.SetProxyURL(":this is not a url")
+		require.NoError(t, err)
 
-		require.Error(t, err)
+		resp, err := client.Get("http://localhost:3000")
+		require.NoError(t, err)
+
+		require.Equal(t, 200, resp.StatusCode())
+		require.Equal(t, "true", string(resp.Body()))
 	})
 
 	t.Run("error", func(t *testing.T) {
 		t.Parallel()
 		client := New()
 
-		err := client.SetProxyURL("htgdftp://test.com")
+		err := client.SetProxyURL(":this is not a proxy")
+		require.NoError(t, err)
 
+		_, err = client.Get("http://localhost:3000")
 		require.Error(t, err)
 	})
 }

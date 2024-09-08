@@ -38,13 +38,12 @@ func Test_Middleware_InvalidKeys(t *testing.T) {
 	tests := []struct {
 		length int
 	}{
-		{11},
-		{25},
-		{60},
+		{length: 11},
+		{length: 25},
+		{length: 60},
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(strconv.Itoa(tt.length)+"_length_encrypt", func(t *testing.T) {
 			t.Parallel()
 			key := make([]byte, tt.length)
@@ -283,9 +282,9 @@ func Test_GenerateKey(t *testing.T) {
 	tests := []struct {
 		length int
 	}{
-		{16},
-		{24},
-		{32},
+		{length: 16},
+		{length: 24},
+		{length: 32},
 	}
 
 	decodeBase64 := func(t *testing.T, s string) []byte {
@@ -296,7 +295,6 @@ func Test_GenerateKey(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(strconv.Itoa(tt.length)+"_length", func(t *testing.T) {
 			t.Parallel()
 			key := GenerateKey(tt.length)
@@ -649,9 +647,9 @@ func Benchmark_GenerateKey(b *testing.B) {
 	tests := []struct {
 		length int
 	}{
-		{16},
-		{24},
-		{32},
+		{length: 16},
+		{length: 24},
+		{length: 32},
 	}
 
 	for _, tt := range tests {
@@ -667,9 +665,9 @@ func Benchmark_GenerateKey_Parallel(b *testing.B) {
 	tests := []struct {
 		length int
 	}{
-		{16},
-		{24},
-		{32},
+		{length: 16},
+		{length: 24},
+		{length: 32},
 	}
 
 	for _, tt := range tests {

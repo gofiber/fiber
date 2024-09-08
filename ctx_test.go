@@ -356,6 +356,26 @@ func Test_Ctx_Body(t *testing.T) {
 	require.Equal(t, []byte("john=doe"), c.Body())
 }
 
+// go test -run Test_Ctx_BodyRaw
+func Test_Ctx_BodyRaw(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+
+	c.Request().SetBodyRaw([]byte("john=doe"))
+	require.Equal(t, []byte("john=doe"), c.BodyRaw())
+}
+
+// go test -run Test_Ctx_BodyRaw_Immutable
+func Test_Ctx_BodyRaw_Immutable(t *testing.T) {
+	t.Parallel()
+	app := New(Config{Immutable: true})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+
+	c.Request().SetBodyRaw([]byte("john=doe"))
+	require.Equal(t, []byte("john=doe"), c.BodyRaw())
+}
+
 // go test -v -run=^$ -bench=Benchmark_Ctx_Body -benchmem -count=4
 func Benchmark_Ctx_Body(b *testing.B) {
 	const input = "john=doe"
@@ -371,6 +391,40 @@ func Benchmark_Ctx_Body(b *testing.B) {
 	}
 
 	require.Equal(b, []byte(input), c.Body())
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_BodyRaw -benchmem -count=4
+func Benchmark_Ctx_BodyRaw(b *testing.B) {
+	const input = "john=doe"
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+
+	c.Request().SetBodyRaw([]byte(input))
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = c.BodyRaw()
+	}
+
+	require.Equal(b, []byte(input), c.BodyRaw())
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_BodyRaw_Immutable -benchmem -count=4
+func Benchmark_Ctx_BodyRaw_Immutable(b *testing.B) {
+	const input = "john=doe"
+
+	app := New(Config{Immutable: true})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+
+	c.Request().SetBodyRaw([]byte(input))
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = c.BodyRaw()
+	}
+
+	require.Equal(b, []byte(input), c.BodyRaw())
 }
 
 // go test -run Test_Ctx_Body_Immutable
@@ -509,8 +563,8 @@ func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
 		}
 	)
 	compressionTests := []struct {
-		contentEncoding string
 		compressWriter  func([]byte) ([]byte, error)
+		contentEncoding string
 	}{
 		{
 			contentEncoding: "gzip",
@@ -702,8 +756,8 @@ func Benchmark_Ctx_Body_With_Compression_Immutable(b *testing.B) {
 		}
 	)
 	compressionTests := []struct {
-		contentEncoding string
 		compressWriter  func([]byte) ([]byte, error)
+		contentEncoding string
 	}{
 		{
 			contentEncoding: "gzip",
@@ -813,7 +867,7 @@ func Test_Ctx_UserContext(t *testing.T) {
 		t.Parallel()
 		testKey := struct{}{}
 		testValue := "Test Value"
-		ctx := context.WithValue(context.Background(), testKey, testValue)
+		ctx := context.WithValue(context.Background(), testKey, testValue) //nolint: staticcheck // not needed for tests
 		require.Equal(t, testValue, ctx.Value(testKey))
 	})
 }
@@ -826,7 +880,7 @@ func Test_Ctx_SetUserContext(t *testing.T) {
 
 	testKey := struct{}{}
 	testValue := "Test Value"
-	ctx := context.WithValue(context.Background(), testKey, testValue)
+	ctx := context.WithValue(context.Background(), testKey, testValue) //nolint: staticcheck // not needed for tests
 	c.SetUserContext(ctx)
 	require.Equal(t, testValue, c.UserContext().Value(testKey))
 }
@@ -846,7 +900,7 @@ func Test_Ctx_UserContext_Multiple_Requests(t *testing.T) {
 		}
 
 		input := utils.CopyString(Query(c, "input", "NO_VALUE"))
-		ctx = context.WithValue(ctx, testKey, fmt.Sprintf("%s_%s", testValue, input))
+		ctx = context.WithValue(ctx, testKey, fmt.Sprintf("%s_%s", testValue, input)) //nolint: staticcheck // not needed for tests
 		c.SetUserContext(ctx)
 
 		return c.Status(StatusOK).SendString(fmt.Sprintf("resp_%s_returned", input))
@@ -854,7 +908,6 @@ func Test_Ctx_UserContext_Multiple_Requests(t *testing.T) {
 
 	// Consecutive Requests
 	for i := 1; i <= 10; i++ {
-		i := i
 		t.Run(fmt.Sprintf("request_%d", i), func(t *testing.T) {
 			t.Parallel()
 			resp, err := app.Test(httptest.NewRequest(MethodGet, fmt.Sprintf("/?input=%d", i), nil))
@@ -966,7 +1019,7 @@ func Test_Ctx_Format(t *testing.T) {
 		fmts := []ResFmt{}
 		for _, t := range types {
 			t := utils.CopyString(t)
-			fmts = append(fmts, ResFmt{t, func(_ Ctx) error {
+			fmts = append(fmts, ResFmt{MediaType: t, Handler: func(_ Ctx) error {
 				accepted = t
 				return nil
 			}})
@@ -988,11 +1041,11 @@ func Test_Ctx_Format(t *testing.T) {
 	require.NotEqual(t, StatusNotAcceptable, c.Response().StatusCode())
 
 	myError := errors.New("this is an error")
-	err = c.Format(ResFmt{"text/html", func(_ Ctx) error { return myError }})
+	err = c.Format(ResFmt{MediaType: "text/html", Handler: func(_ Ctx) error { return myError }})
 	require.ErrorIs(t, err, myError)
 
 	c.Request().Header.Set(HeaderAccept, "application/json")
-	err = c.Format(ResFmt{"text/html", func(c Ctx) error { return c.SendStatus(StatusOK) }})
+	err = c.Format(ResFmt{MediaType: "text/html", Handler: func(c Ctx) error { return c.SendStatus(StatusOK) }})
 	require.Equal(t, StatusNotAcceptable, c.Response().StatusCode())
 	require.NoError(t, err)
 
@@ -1022,10 +1075,10 @@ func Benchmark_Ctx_Format(b *testing.B) {
 	b.Run("with arg allocation", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			err = c.Format(
-				ResFmt{"application/xml", fail},
-				ResFmt{"text/html", fail},
-				ResFmt{"text/plain;format=fixed", fail},
-				ResFmt{"text/plain;format=flowed", ok},
+				ResFmt{MediaType: "application/xml", Handler: fail},
+				ResFmt{MediaType: "text/html", Handler: fail},
+				ResFmt{MediaType: "text/plain;format=fixed", Handler: fail},
+				ResFmt{MediaType: "text/plain;format=flowed", Handler: ok},
 			)
 		}
 		require.NoError(b, err)
@@ -1033,10 +1086,10 @@ func Benchmark_Ctx_Format(b *testing.B) {
 
 	b.Run("pre-allocated args", func(b *testing.B) {
 		offers := []ResFmt{
-			{"application/xml", fail},
-			{"text/html", fail},
-			{"text/plain;format=fixed", fail},
-			{"text/plain;format=flowed", ok},
+			{MediaType: "application/xml", Handler: fail},
+			{MediaType: "text/html", Handler: fail},
+			{MediaType: "text/plain;format=fixed", Handler: fail},
+			{MediaType: "text/plain;format=flowed", Handler: ok},
 		}
 		for n := 0; n < b.N; n++ {
 			err = c.Format(offers...)
@@ -1047,8 +1100,8 @@ func Benchmark_Ctx_Format(b *testing.B) {
 	c.Request().Header.Set("Accept", "text/plain")
 	b.Run("text/plain", func(b *testing.B) {
 		offers := []ResFmt{
-			{"application/xml", fail},
-			{"text/plain", ok},
+			{MediaType: "application/xml", Handler: fail},
+			{MediaType: "text/plain", Handler: ok},
 		}
 		for n := 0; n < b.N; n++ {
 			err = c.Format(offers...)
@@ -1059,9 +1112,9 @@ func Benchmark_Ctx_Format(b *testing.B) {
 	c.Request().Header.Set("Accept", "json")
 	b.Run("json", func(b *testing.B) {
 		offers := []ResFmt{
-			{"xml", fail},
-			{"html", fail},
-			{"json", ok},
+			{MediaType: "xml", Handler: fail},
+			{MediaType: "html", Handler: fail},
+			{MediaType: "json", Handler: ok},
 		}
 		for n := 0; n < b.N; n++ {
 			err = c.Format(offers...)
@@ -1123,9 +1176,9 @@ func Test_Ctx_AutoFormat_Struct(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Message struct {
-		Recipients []string
 		Sender     string `xml:"sender,attr"`
-		Urgency    int    `xml:"urgency,attr"`
+		Recipients []string
+		Urgency    int `xml:"urgency,attr"`
 	}
 	data := Message{
 		Recipients: []string{"Alice", "Bob"},
@@ -1137,7 +1190,7 @@ func Test_Ctx_AutoFormat_Struct(t *testing.T) {
 	err := c.AutoFormat(data)
 	require.NoError(t, err)
 	require.Equal(t,
-		`{"Recipients":["Alice","Bob"],"Sender":"Carol","Urgency":3}`,
+		`{"Sender":"Carol","Recipients":["Alice","Bob"],"Urgency":3}`,
 		string(c.Response().Body()),
 	)
 
@@ -1370,11 +1423,11 @@ func Test_Ctx_Binders(t *testing.T) {
 	}
 
 	type TestStruct struct {
+		Name            string
+		NameWithDefault string `json:"name2" xml:"Name2" form:"name2" cookie:"name2" query:"name2" params:"name2" header:"Name2"`
 		TestEmbeddedStruct
-		Name             string
 		Class            int
-		NameWithDefault  string `json:"name2" xml:"Name2" form:"name2" cookie:"name2" query:"name2" params:"name2" header:"Name2"`
-		ClassWithDefault int    `json:"class2" xml:"Class2" form:"class2" cookie:"class2" query:"class2" params:"class2" header:"Class2"`
+		ClassWithDefault int `json:"class2" xml:"Class2" form:"class2" cookie:"class2" query:"class2" params:"class2" header:"Class2"`
 	}
 
 	withValues := func(t *testing.T, actionFn func(c Ctx, testStruct *TestStruct) error) {
@@ -2141,11 +2194,11 @@ func Test_Ctx_Locals_GenericCustomStruct(t *testing.T) {
 
 	app := New()
 	app.Use(func(c Ctx) error {
-		Locals[User](c, "user", User{"john", 18})
+		Locals[User](c, "user", User{name: "john", age: 18})
 		return c.Next()
 	})
 	app.Use("/test", func(c Ctx) error {
-		require.Equal(t, User{"john", 18}, Locals[User](c, "user"))
+		require.Equal(t, User{name: "john", age: 18}, Locals[User](c, "user"))
 		return nil
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
@@ -2697,13 +2750,13 @@ func Test_Ctx_Range(t *testing.T) {
 	testRange("bytes=")
 	testRange("bytes=500=")
 	testRange("bytes=500-300")
-	testRange("bytes=a-700", RangeSet{300, 999})
-	testRange("bytes=500-b", RangeSet{500, 999})
-	testRange("bytes=500-1000", RangeSet{500, 999})
-	testRange("bytes=500-700", RangeSet{500, 700})
-	testRange("bytes=0-0,2-1000", RangeSet{0, 0}, RangeSet{2, 999})
-	testRange("bytes=0-99,450-549,-100", RangeSet{0, 99}, RangeSet{450, 549}, RangeSet{900, 999})
-	testRange("bytes=500-700,601-999", RangeSet{500, 700}, RangeSet{601, 999})
+	testRange("bytes=a-700", RangeSet{Start: 300, End: 999})
+	testRange("bytes=500-b", RangeSet{Start: 500, End: 999})
+	testRange("bytes=500-1000", RangeSet{Start: 500, End: 999})
+	testRange("bytes=500-700", RangeSet{Start: 500, End: 700})
+	testRange("bytes=0-0,2-1000", RangeSet{Start: 0, End: 0}, RangeSet{Start: 2, End: 999})
+	testRange("bytes=0-99,450-549,-100", RangeSet{Start: 0, End: 99}, RangeSet{Start: 450, End: 549}, RangeSet{Start: 900, End: 999})
+	testRange("bytes=500-700,601-999", RangeSet{Start: 500, End: 700}, RangeSet{Start: 601, End: 999})
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Range -benchmem -count=4
@@ -2717,10 +2770,10 @@ func Benchmark_Ctx_Range(b *testing.B) {
 		start int
 		end   int
 	}{
-		{"bytes=-700", 300, 999},
-		{"bytes=500-", 500, 999},
-		{"bytes=500-1000", 500, 999},
-		{"bytes=0-700,800-1000", 0, 700},
+		{str: "bytes=-700", start: 300, end: 999},
+		{str: "bytes=500-", start: 500, end: 999},
+		{str: "bytes=500-1000", start: 500, end: 999},
+		{str: "bytes=0-700,800-1000", start: 0, end: 700},
 	}
 
 	for _, tc := range testCases {
@@ -3068,8 +3121,6 @@ func Test_Static_Compress(t *testing.T) {
 	// Note: deflate is not supported by fasthttp.FS
 	algorithms := []string{"zstd", "gzip", "br"}
 	for _, algo := range algorithms {
-		algo := algo
-
 		t.Run(algo+"_compression", func(t *testing.T) {
 			t.Parallel()
 
@@ -3099,23 +3150,25 @@ func Test_Ctx_SendFile_Compress_CheckCompressed(t *testing.T) {
 	expectedFileContent, err := io.ReadAll(f)
 	require.NoError(t, err)
 
-	sendFileBodyReader := func(compression string) []byte {
-		reqCtx := &fasthttp.RequestCtx{}
-		reqCtx.Request.Header.Add(HeaderAcceptEncoding, compression)
+	sendFileBodyReader := func(compression string) ([]byte, error) {
+		t.Helper()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		c.Request().Header.Add(HeaderAcceptEncoding, compression)
 
-		c := app.AcquireCtx(reqCtx)
-		err = c.SendFile("./ctx.go", SendFile{
+		err := c.SendFile("./ctx.go", SendFile{
 			Compress: true,
 		})
-		require.NoError(t, err)
 
-		return c.Response().Body()
+		return c.Response().Body(), err
 	}
 
 	t.Run("gzip", func(t *testing.T) {
 		t.Parallel()
 
-		body, err := fasthttp.AppendGunzipBytes(nil, sendFileBodyReader("gzip"))
+		b, err := sendFileBodyReader("gzip")
+		require.NoError(t, err)
+		body, err := fasthttp.AppendGunzipBytes(nil, b)
 		require.NoError(t, err)
 
 		require.Equal(t, expectedFileContent, body)
@@ -3124,7 +3177,9 @@ func Test_Ctx_SendFile_Compress_CheckCompressed(t *testing.T) {
 	t.Run("zstd", func(t *testing.T) {
 		t.Parallel()
 
-		body, err := fasthttp.AppendUnzstdBytes(nil, sendFileBodyReader("zstd"))
+		b, err := sendFileBodyReader("zstd")
+		require.NoError(t, err)
+		body, err := fasthttp.AppendUnzstdBytes(nil, b)
 		require.NoError(t, err)
 
 		require.Equal(t, expectedFileContent, body)
@@ -3133,7 +3188,9 @@ func Test_Ctx_SendFile_Compress_CheckCompressed(t *testing.T) {
 	t.Run("br", func(t *testing.T) {
 		t.Parallel()
 
-		body, err := fasthttp.AppendUnbrotliBytes(nil, sendFileBodyReader("br"))
+		b, err := sendFileBodyReader("br")
+		require.NoError(t, err)
+		body, err := fasthttp.AppendUnbrotliBytes(nil, b)
 		require.NoError(t, err)
 
 		require.Equal(t, expectedFileContent, body)
@@ -3223,12 +3280,12 @@ func Test_Ctx_SendFile_Multiple(t *testing.T) {
 		body               string
 		contentDisposition string
 	}{
-		{"/test?file=1", "type DefaultCtx struct", ""},
-		{"/test?file=2", "type App struct", ""},
-		{"/test?file=3", "type DefaultCtx struct", "attachment"},
-		{"/test?file=4", "Test_App_MethodNotAllowed", ""},
-		{"/test2", "type DefaultCtx struct", "attachment"},
-		{"/test2", "type DefaultCtx struct", "attachment"},
+		{url: "/test?file=1", body: "type DefaultCtx struct", contentDisposition: ""},
+		{url: "/test?file=2", body: "type App struct", contentDisposition: ""},
+		{url: "/test?file=3", body: "type DefaultCtx struct", contentDisposition: "attachment"},
+		{url: "/test?file=4", body: "Test_App_MethodNotAllowed", contentDisposition: ""},
+		{url: "/test2", body: "type DefaultCtx struct", contentDisposition: "attachment"},
+		{url: "/test2", body: "type DefaultCtx struct", contentDisposition: "attachment"},
 	}
 
 	for _, tc := range testCases {
@@ -3242,6 +3299,8 @@ func Test_Ctx_SendFile_Multiple(t *testing.T) {
 		require.Contains(t, string(body), tc.body)
 	}
 
+	app.sendfilesMutex.RLock()
+	defer app.sendfilesMutex.RUnlock()
 	require.Len(t, app.sendfiles, 3)
 }
 
@@ -3276,7 +3335,6 @@ func Test_Ctx_SendFile_Immutable(t *testing.T) {
 	}
 
 	for _, endpoint := range endpointsForTest {
-		endpoint := endpoint
 		t.Run(endpoint, func(t *testing.T) {
 			t.Parallel()
 			// 1st try

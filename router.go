@@ -43,23 +43,24 @@ type Router interface {
 // Route is a struct that holds all metadata for each registered handler.
 type Route struct {
 	// ### important: always keep in sync with the copy method "app.copyRoute" ###
-	// Data for routing
-	pos         uint32      // Position in stack -> important for the sort of the matched routes
-	use         bool        // USE matches path prefixes
-	mount       bool        // Indicated a mounted app on a specific route
-	star        bool        // Path equals '*'
-	root        bool        // Path equals '/'
-	path        string      // Prettified path
-	routeParser routeParser // Parameter parser
-	group       *Group      // Group instance. used for routes in groups
+	group *Group // Group instance. used for routes in groups
+
+	path string // Prettified path
 
 	// Public fields
 	Method string `json:"method"` // HTTP method
 	Name   string `json:"name"`   // Route's name
 	//nolint:revive // Having both a Path (uppercase) and a path (lowercase) is fine
-	Path     string    `json:"path"`   // Original registered route path
-	Params   []string  `json:"params"` // Case sensitive param keys
-	Handlers []Handler `json:"-"`      // Ctx handlers
+	Path        string      `json:"path"`   // Original registered route path
+	Params      []string    `json:"params"` // Case sensitive param keys
+	Handlers    []Handler   `json:"-"`      // Ctx handlers
+	routeParser routeParser // Parameter parser
+	// Data for routing
+	pos   uint32 // Position in stack -> important for the sort of the matched routes
+	use   bool   // USE matches path prefixes
+	mount bool   // Indicated a mounted app on a specific route
+	star  bool   // Path equals '*'
+	root  bool   // Path equals '/'
 }
 
 func (r *Route) match(detectionPath, path string, params *[maxParams]string) bool {
@@ -252,7 +253,7 @@ func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
 	}
 	// Strict routing, remove trailing slashes
 	if !app.config.StrictRouting && len(prettyPath) > 1 {
-		prettyPath = strings.TrimRight(prettyPath, "/")
+		prettyPath = utils.TrimRight(prettyPath, '/')
 	}
 
 	route.Path = prefixedPath
@@ -323,7 +324,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 		}
 		// Strict routing, remove trailing slashes
 		if !app.config.StrictRouting && len(pathPretty) > 1 {
-			pathPretty = strings.TrimRight(pathPretty, "/")
+			pathPretty = utils.TrimRight(pathPretty, '/')
 		}
 		// Is layer a middleware?
 		isUse := method == methodUse
@@ -357,7 +358,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 			Handlers: handlers,
 		}
 		// Increment global handler count
-		atomic.AddUint32(&app.handlersCount, uint32(len(handlers)))
+		atomic.AddUint32(&app.handlersCount, uint32(len(handlers))) //nolint:gosec // Not a concern
 
 		// Middleware route matches all HTTP methods
 		if isUse {
@@ -375,6 +376,9 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 }
 
 func (app *App) addRoute(method string, route *Route, isMounted ...bool) {
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
+
 	// Check mounted routes
 	var mounted bool
 	if len(isMounted) > 0 {
@@ -400,13 +404,26 @@ func (app *App) addRoute(method string, route *Route, isMounted ...bool) {
 
 	// Execute onRoute hooks & change latestRoute if not adding mounted route
 	if !mounted {
-		app.mutex.Lock()
 		app.latestRoute = route
 		if err := app.hooks.executeOnRouteHooks(*route); err != nil {
 			panic(err)
 		}
-		app.mutex.Unlock()
 	}
+}
+
+// BuildTree rebuilds the prefix tree from the previously registered routes.
+// This method is useful when you want to register routes dynamically after the app has started.
+// It is not recommended to use this method on production environments because rebuilding
+// the tree is performance-intensive and not thread-safe in runtime. Since building the tree
+// is only done in the startupProcess of the app, this method does not makes sure that the
+// routeTree is being safely changed, as it would add a great deal of overhead in the request.
+// Latest benchmark results showed a degradation from 82.79 ns/op to 94.48 ns/op and can be found in:
+// https://github.com/gofiber/fiber/issues/2769#issuecomment-2227385283
+func (app *App) RebuildTree() *App {
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
+
+	return app.buildTree()
 }
 
 // buildTree build the prefix tree from the previously registered routes

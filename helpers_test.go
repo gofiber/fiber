@@ -5,7 +5,6 @@
 package fiber
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -138,6 +137,8 @@ func Benchmark_Utils_GetOffer(b *testing.B) {
 		},
 	}
 
+	b.ReportAllocs()
+	b.ResetTimer()
 	for _, tc := range testCases {
 		accept := []byte(tc.accept)
 		b.Run(tc.description, func(b *testing.B) {
@@ -205,6 +206,8 @@ func Benchmark_Utils_ParamsMatch(b *testing.B) {
 		"appLe": []byte("orange"),
 		"param": []byte("foo"),
 	}
+	b.ReportAllocs()
+	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		match = paramsMatch(specParams, `;param=foo; apple=orange`)
 	}
@@ -317,6 +320,8 @@ func Benchmark_Utils_GetSplicedStrList(b *testing.B) {
 	destination := make([]string, 5)
 	result := destination
 	const input = `deflate, gzip,br,brotli,zstd`
+	b.ReportAllocs()
+	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		result = getSplicedStrList(input, destination)
 	}
@@ -359,6 +364,8 @@ func Test_Utils_SortAcceptedTypes(t *testing.T) {
 // go test -v -run=^$ -bench=Benchmark_Utils_SortAcceptedTypes_Sorted -benchmem -count=4
 func Benchmark_Utils_SortAcceptedTypes_Sorted(b *testing.B) {
 	acceptedTypes := make([]acceptedType, 3)
+	b.ReportAllocs()
+	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		acceptedTypes[0] = acceptedType{spec: "text/html", quality: 1, specificity: 1, order: 0}
 		acceptedTypes[1] = acceptedType{spec: "text/*", quality: 0.5, specificity: 1, order: 1}
@@ -373,6 +380,8 @@ func Benchmark_Utils_SortAcceptedTypes_Sorted(b *testing.B) {
 // go test -v -run=^$ -bench=Benchmark_Utils_SortAcceptedTypes_Unsorted -benchmem -count=4
 func Benchmark_Utils_SortAcceptedTypes_Unsorted(b *testing.B) {
 	acceptedTypes := make([]acceptedType, 11)
+	b.ReportAllocs()
+	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		acceptedTypes[0] = acceptedType{spec: "text/html", quality: 1, specificity: 3, order: 0}
 		acceptedTypes[1] = acceptedType{spec: "text/*", quality: 0.5, specificity: 2, order: 1}
@@ -452,9 +461,10 @@ func Test_Utils_getGroupPath(t *testing.T) {
 }
 
 // go test -v -run=^$ -bench=Benchmark_Utils_ -benchmem -count=3
-
 func Benchmark_Utils_getGroupPath(b *testing.B) {
 	var res string
+	b.ReportAllocs()
+	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		_ = getGroupPath("/v1/long/path/john/doe", "/why/this/name/is/so/awesome")
 		_ = getGroupPath("/v1", "/")
@@ -467,7 +477,8 @@ func Benchmark_Utils_getGroupPath(b *testing.B) {
 func Benchmark_Utils_Unescape(b *testing.B) {
 	unescaped := ""
 	dst := make([]byte, 0)
-
+	b.ReportAllocs()
+	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		source := "/cr%C3%A9er"
 		pathBytes := utils.UnsafeBytes(source)
@@ -483,9 +494,9 @@ func Test_Utils_Parse_Address(t *testing.T) {
 	testCases := []struct {
 		addr, host, port string
 	}{
-		{"[::1]:3000", "[::1]", "3000"},
-		{"127.0.0.1:3000", "127.0.0.1", "3000"},
-		{"/path/to/unix/socket", "/path/to/unix/socket", ""},
+		{addr: "[::1]:3000", host: "[::1]", port: "3000"},
+		{addr: "127.0.0.1:3000", host: "127.0.0.1", port: "3000"},
+		{addr: "/path/to/unix/socket", host: "/path/to/unix/socket", port: ""},
 	}
 
 	for _, c := range testCases {
@@ -509,26 +520,27 @@ func Test_Utils_IsNoCache(t *testing.T) {
 		string
 		bool
 	}{
-		{"public", false},
-		{"no-cache", true},
-		{"public, no-cache, max-age=30", true},
-		{"public,no-cache", true},
-		{"public,no-cacheX", false},
-		{"no-cache, public", true},
-		{"Xno-cache, public", false},
-		{"max-age=30, no-cache,public", true},
+		{string: "public", bool: false},
+		{string: "no-cache", bool: true},
+		{string: "public, no-cache, max-age=30", bool: true},
+		{string: "public,no-cache", bool: true},
+		{string: "public,no-cacheX", bool: false},
+		{string: "no-cache, public", bool: true},
+		{string: "Xno-cache, public", bool: false},
+		{string: "max-age=30, no-cache,public", bool: true},
 	}
 
 	for _, c := range testCases {
 		ok := isNoCache(c.string)
-		require.Equal(t, c.bool, ok,
-			fmt.Sprintf("want %t, got isNoCache(%s)=%t", c.bool, c.string, ok))
+		require.Equal(t, c.bool, ok, "want %t, got isNoCache(%s)=%t", c.bool, c.string, ok)
 	}
 }
 
 // go test -v -run=^$ -bench=Benchmark_Utils_IsNoCache -benchmem -count=4
 func Benchmark_Utils_IsNoCache(b *testing.B) {
 	var ok bool
+	b.ReportAllocs()
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = isNoCache("public")
 		_ = isNoCache("no-cache")
@@ -544,7 +556,10 @@ func Benchmark_Utils_IsNoCache(b *testing.B) {
 func Benchmark_SlashRecognition(b *testing.B) {
 	search := "wtf/1234"
 	var result bool
+
 	b.Run("indexBytes", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
 		result = false
 		for i := 0; i < b.N; i++ {
 			if strings.IndexByte(search, slashDelimiter) != -1 {
@@ -554,6 +569,8 @@ func Benchmark_SlashRecognition(b *testing.B) {
 		require.True(b, result)
 	})
 	b.Run("forEach", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
 		result = false
 		c := int32(slashDelimiter)
 		for i := 0; i < b.N; i++ {
@@ -567,6 +584,8 @@ func Benchmark_SlashRecognition(b *testing.B) {
 		require.True(b, result)
 	})
 	b.Run("IndexRune", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
 		result = false
 		c := int32(slashDelimiter)
 		for i := 0; i < b.N; i++ {

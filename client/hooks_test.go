@@ -35,7 +35,6 @@ func Test_Rand_String(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got := randString(tt.args)
@@ -188,7 +187,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 				flag1 = true
 			case "foo2":
 				flag2 = true
-			case "foo":
+			case "foo": //nolint:goconst // test
 				flag3 = true
 			}
 		}

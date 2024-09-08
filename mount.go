@@ -6,23 +6,24 @@ package fiber
 
 import (
 	"sort"
-	"strings"
 	"sync"
 	"sync/atomic"
+
+	"github.com/gofiber/utils/v2"
 )
 
 // Put fields related to mounting.
 type mountFields struct {
 	// Mounted and main apps
 	appList map[string]*App
+	// Prefix of app if it was mounted
+	mountPath string
 	// Ordered keys of apps (sorted by key length for Render)
 	appListKeys []string
 	// check added routes of sub-apps
 	subAppsRoutesAdded sync.Once
 	// check mounted sub-apps
 	subAppsProcessed sync.Once
-	// Prefix of app if it was mounted
-	mountPath string
 }
 
 // Create empty mountFields instance
@@ -39,7 +40,7 @@ func newMountFields(app *App) *mountFields {
 // any of the fiber's sub apps are added to the application's error handlers
 // to be invoked on errors that happen within the prefix route.
 func (app *App) mount(prefix string, subApp *App) Router {
-	prefix = strings.TrimRight(prefix, "/")
+	prefix = utils.TrimRight(prefix, '/')
 	if prefix == "" {
 		prefix = "/"
 	}
@@ -69,7 +70,7 @@ func (app *App) mount(prefix string, subApp *App) Router {
 // compose them as a single service using Mount.
 func (grp *Group) mount(prefix string, subApp *App) Router {
 	groupPath := getGroupPath(grp.Prefix, prefix)
-	groupPath = strings.TrimRight(groupPath, "/")
+	groupPath = utils.TrimRight(groupPath, '/')
 	if groupPath == "" {
 		groupPath = "/"
 	}
@@ -187,7 +188,7 @@ func (app *App) processSubAppsRoutes() {
 				// If not, update the route's position and continue
 				route.pos = routePos
 				if !route.use || (route.use && m == 0) {
-					handlersCount += uint32(len(route.Handlers))
+					handlersCount += uint32(len(route.Handlers)) //nolint:gosec // Not a concern
 				}
 				continue
 			}
@@ -218,7 +219,7 @@ func (app *App) processSubAppsRoutes() {
 			atomic.AddUint32(&app.routesCount, ^uint32(0))
 			i--
 			// Increase the parent app's route count to account for the sub-app's routes
-			atomic.AddUint32(&app.routesCount, uint32(len(subRoutes)))
+			atomic.AddUint32(&app.routesCount, uint32(len(subRoutes))) //nolint:gosec // Not a concern
 
 			// Mark the parent app's routes as refreshed
 			app.routesRefreshed = true

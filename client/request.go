@@ -40,28 +40,30 @@ var ErrClientNil = errors.New("client can not be nil")
 
 // Request is a struct which contains the request data.
 type Request struct {
-	url       string
-	method    string
-	userAgent string
-	boundary  string
-	referer   string
-	ctx       context.Context //nolint:containedctx // It's needed to be stored in the request.
-	header    *Header
-	params    *QueryParam
-	cookies   *Cookie
-	path      *PathParam
+	ctx context.Context //nolint:containedctx // It's needed to be stored in the request.
+
+	body    any
+	header  *Header
+	params  *QueryParam
+	cookies *Cookie
+	path    *PathParam
+
+	client *Client
+
+	formData *FormData
+
+	RawRequest *fasthttp.Request
+	url        string
+	method     string
+	userAgent  string
+	boundary   string
+	referer    string
+	files      []*File
 
 	timeout      time.Duration
 	maxRedirects int
 
-	client *Client
-
-	body     any
-	formData *FormData
-	files    []*File
 	bodyType bodyType
-
-	RawRequest *fasthttp.Request
 }
 
 // Method returns http method in request.
@@ -782,10 +784,10 @@ func (f *FormData) Reset() {
 
 // File is a struct which support send files via request.
 type File struct {
+	reader    io.ReadCloser
 	name      string
 	fieldName string
 	path      string
-	reader    io.ReadCloser
 }
 
 // SetName method sets file name.

@@ -4,11 +4,12 @@ import (
 	"sync"
 )
 
-// go:generate msgp
-// msgp -file="data.go" -o="data_msgp.go" -tests=false -unexported
+// msgp -file="data.go" -o="data_msgp.go" -tests=true -unexported
+//
+//go:generate msgp -o=data_msgp.go -tests=true -unexported
 type data struct {
-	sync.RWMutex
-	Data map[string]any
+	Data         map[string]any
+	sync.RWMutex `msg:"-"`
 }
 
 var dataPool = sync.Pool{
