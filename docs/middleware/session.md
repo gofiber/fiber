@@ -213,7 +213,7 @@ func (s *Store) GetSessionByID(id string) (*Session, error)
 ## Examples
 
 :::note
-**Security Note**: Fiber’s session middleware uses cookies with `SameSite=Lax` by default, which provides basic CSRF protection for most GET requests. However, for comprehensive security—especially for POST requests or sensitive operations (e.g., account changes, transactions, form submissions)—it is strongly recommended to use CSRF protection middleware.
+**Security Note**: Fiber’s session middleware uses cookies with `SameSite=Lax` by default, which provides basic CSRF protection for most GET requests. However, for comprehensive security—especially for POST requests or sensitive operations (e.g., account changes, transactions, form submissions)—it is strongly recommended to use CSRF protection middleware. Fiber provides a `csrf` middleware that can be used in conjunction with the `session` middleware for robust protection. Find more information in the [CSRF Middleware](https://docs.gofiber.io/api/middleware/csrf) documentation.
 
 ### Recommendations:
 1. **Session Middleware Without CSRF**:
