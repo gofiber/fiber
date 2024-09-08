@@ -28,7 +28,7 @@ We recommend using the `Middleware` handler for better integration with other mi
 - [Examples](#examples)
   - [As a Middleware Handler (Recommended)](#as-a-middleware-handler-recommended)
   - [Using a Custom Storage](#using-a-custom-storage)
-  - [Session without Middleware Handler](#session-without-middleware-handler)
+  - [Session Without Middleware Handler](#session-without-middleware-handler)
   - [Using Custom Types in Session Data](#using-custom-types-in-session-data)
 - [Config](#config)
 - [Default Config](#default-config)
@@ -38,7 +38,7 @@ We recommend using the `Middleware` handler for better integration with other mi
 ### v2 to v3
 
 - The `New` function signature has changed in v3. It now returns a `*Middleware` instead of a `*Store`. You can access the store using the `Store` method on the `*Middleware` or by using the `NewWithStore` function.
-  
+
 While it's still possible to work with the `*Store` directly, we recommend using the `Middleware` handler for better integration with other Fiber middlewares.
 
 For more information about changes in Fiber v3, see [What's New](https://github.com/gofiber/fiber/blob/main/docs/whats_new.md).
@@ -215,7 +215,8 @@ func (s *Store) GetSessionByID(id string) (*Session, error)
 :::note
 **Security Note**: Fiber’s session middleware uses cookies with `SameSite=Lax` by default, which provides basic CSRF protection for most GET requests. However, for comprehensive security—especially for POST requests or sensitive operations (e.g., account changes, transactions, form submissions)—it is strongly recommended to use CSRF protection middleware. Fiber provides a `csrf` middleware that can be used in conjunction with the `session` middleware for robust protection. Find more information in the [CSRF Middleware](https://docs.gofiber.io/api/middleware/csrf) documentation.
 
-### Recommendations:
+### Recommendations
+
 1. **Session Middleware Without CSRF**:
    - You can use the `session` middleware without the `csrf` middleware or rely solely on `SameSite=Lax` for basic protection in low-risk scenarios.
 
@@ -225,6 +226,7 @@ func (s *Store) GetSessionByID(id string) (*Session, error)
 3. **Recommended Approach**:
    - For stronger protection, especially in high-risk scenarios, use the `csrf` middleware with the session store. This method implements the **Synchronizer Token Pattern**, providing robust defense by associating the CSRF token with the user’s session. This approach requires passing the `session.Store` to the `csrf` middleware.
    - Ensure the CSRF token is embedded in forms or included in a header for POST requests and verified on the server side for incoming requests. This adds a crucial security layer for state-changing actions.
+
 :::
 
 ### As a Middleware Handler (Recommended)
@@ -304,7 +306,7 @@ func main() {
 }
 ```
 
-### Session without Middleware Handler
+### Session Without Middleware Handler
 
 This example shows how to work with sessions directly without the middleware handler.
 
@@ -345,6 +347,64 @@ func main() {
     log.Fatal(app.Listen(":3000
 
 "))
+}
+```
+
+### Using Custom Types in Session Data
+
+Session data can only be of the following types by default:
+
+- `string`
+- `int`
+- `int8`
+- `int16`
+- `int32`
+- `int64`
+- `uint`
+- `uint8`
+- `uint16`
+- `uint32`
+- `uint64`
+- `bool`
+- `float32`
+- `float64`
+- `[]byte`
+- `complex64`
+- `complex128`
+- `interface{}`
+
+To support other types in session data, you can register custom types. Here is an example of how to register a custom type:
+
+```go
+package main
+
+import (
+    "log"
+
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/session/v3"
+    "github.com/gofiber/session/v3/middleware/session"
+)
+
+type User struct {
+    Name string
+    Age  int
+}
+
+func main() {
+    // Create a new Fiber app
+    app := fiber.New()
+
+    // Initialize custom session config
+    sessionMiddleware, sessionStore := session.NewWithStore()
+
+    // Register custom type
+    sessionStore.RegisterType(User{})
+
+    // Use the session middleware
+    app.Use(sessionMiddleware)
+
+    ...
 }
 ```
 
