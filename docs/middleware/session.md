@@ -36,6 +36,7 @@ We recommend using the `Middleware` handler for better integration with other mi
 ## Migration Guide
 
 ### v2 to v3
+
 - In version 3, the `New` function signature has been updated. It now returns a Fiber middleware handler instead of a `*Store`. To access the store, you can use the `Store` method on the `*Middleware` (obtained by calling `session.FromContext(c)` in a handler where the middleware is applied) or utilize the `NewWithStore` function.
 
 While it's still possible to work with the `*Store` directly, we recommend using the `Middleware` handler for better integration with other Fiber middlewares.
