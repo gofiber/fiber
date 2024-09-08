@@ -57,9 +57,7 @@ func Test_Compress_Different_Level(t *testing.T) {
 	algorithms := []string{"gzip", "deflate", "br", "zstd"}
 
 	for _, algo := range algorithms {
-		algo := algo
 		for _, level := range levels {
-			level := level
 			t.Run(fmt.Sprintf("%s_level %d", algo, level), func(t *testing.T) {
 				t.Parallel()
 				app := fiber.New()

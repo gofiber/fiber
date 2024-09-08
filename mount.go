@@ -188,7 +188,7 @@ func (app *App) processSubAppsRoutes() {
 				// If not, update the route's position and continue
 				route.pos = routePos
 				if !route.use || (route.use && m == 0) {
-					handlersCount += uint32(len(route.Handlers))
+					handlersCount += uint32(len(route.Handlers)) //nolint:gosec // Not a concern
 				}
 				continue
 			}
@@ -219,7 +219,7 @@ func (app *App) processSubAppsRoutes() {
 			atomic.AddUint32(&app.routesCount, ^uint32(0))
 			i--
 			// Increase the parent app's route count to account for the sub-app's routes
-			atomic.AddUint32(&app.routesCount, uint32(len(subRoutes)))
+			atomic.AddUint32(&app.routesCount, uint32(len(subRoutes))) //nolint:gosec // Not a concern
 
 			// Mark the parent app's routes as refreshed
 			app.routesRefreshed = true

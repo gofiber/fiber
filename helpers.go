@@ -326,7 +326,7 @@ func getSplicedStrList(headerValue string, dst []string) []string {
 	var (
 		index             int
 		character         rune
-		lastElementEndsAt uint8
+		lastElementEndsAt int
 		insertIndex       int
 	)
 	for index, character = range headerValue + "$" {
@@ -337,7 +337,7 @@ func getSplicedStrList(headerValue string, dst []string) []string {
 				copy(dst, oldSlice)
 			}
 			dst[insertIndex] = utils.TrimLeft(headerValue[lastElementEndsAt:index], ' ')
-			lastElementEndsAt = uint8(index + 1)
+			lastElementEndsAt = index + 1
 			insertIndex++
 		}
 	}
@@ -766,6 +766,7 @@ func genericParseBool[V GenericType](str string, parser func(bool) V, defaultVal
 	return genericParseDefault[V](err, func() V { return parser(result) }, defaultValue...)
 }
 
+//nolint:gosec // Casting in this function is not a concern
 func genericParseType[V GenericType](str string, v V, defaultValue ...V) V {
 	switch any(v).(type) {
 	case int:
