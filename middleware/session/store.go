@@ -44,14 +44,35 @@ func newStore(config ...Config) *Store {
 }
 
 // RegisterType registers a custom type for encoding/decoding into any storage provider.
+//
+// Parameters:
+//   - i: The custom type to register.
+//
+// Usage:
+//
+//	store.RegisterType(MyCustomType{})
 func (*Store) RegisterType(i any) {
 	gob.Register(i)
 }
 
-// Get will get/create a session
+// Get will get/create a session.
 //
 // This function will return an ErrSessionAlreadyLoadedByMiddleware if
-// the session is already loaded by the middleware
+// the session is already loaded by the middleware.
+//
+// Parameters:
+//   - c: The Fiber context.
+//
+// Returns:
+//   - *Session: The session object.
+//   - error: An error if the session retrieval fails or if the session is already loaded by the middleware.
+//
+// Usage:
+//
+//	sess, err := store.Get(c)
+//	if err != nil {
+//	    // handle error
+//	}
 func (s *Store) Get(c fiber.Ctx) (*Session, error) {
 	// If session is already loaded in the context,
 	// it should not be loaded again
@@ -63,7 +84,21 @@ func (s *Store) Get(c fiber.Ctx) (*Session, error) {
 	return s.getSession(c)
 }
 
-// Get session based on context
+// getSession retrieves a session based on the context.
+//
+// Parameters:
+//   - c: The Fiber context.
+//
+// Returns:
+//   - *Session: The session object.
+//   - error: An error if the session retrieval fails.
+//
+// Usage:
+//
+//	sess, err := store.getSession(c)
+//	if err != nil {
+//	    // handle error
+//	}
 func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 	var rawData []byte
 	var err error
@@ -118,6 +153,16 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 }
 
 // getSessionID returns the session ID from cookies, headers, or query string.
+//
+// Parameters:
+//   - c: The Fiber context.
+//
+// Returns:
+//   - string: The session ID.
+//
+// Usage:
+//
+//	id := store.getSessionID(c)
 func (s *Store) getSessionID(c fiber.Ctx) string {
 	id := c.Cookies(s.sessionName)
 	if len(id) > 0 {
@@ -142,11 +187,34 @@ func (s *Store) getSessionID(c fiber.Ctx) string {
 }
 
 // Reset deletes all sessions from the storage.
+//
+// Returns:
+//   - error: An error if the reset operation fails.
+//
+// Usage:
+//
+//	err := store.Reset()
+//	if err != nil {
+//	    // handle error
+//	}
 func (s *Store) Reset() error {
 	return s.Storage.Reset()
 }
 
 // Delete deletes a session by its ID.
+//
+// Parameters:
+//   - id: The unique identifier of the session.
+//
+// Returns:
+//   - error: An error if the deletion fails or if the session ID is empty.
+//
+// Usage:
+//
+//	err := store.Delete(id)
+//	if err != nil {
+//	    // handle error
+//	}
 func (s *Store) Delete(id string) error {
 	if id == "" {
 		return ErrEmptySessionID
@@ -174,6 +242,13 @@ func (s *Store) Delete(id string) error {
 // Returns:
 //   - *Session: The session object if found, otherwise nil.
 //   - error: An error if the session retrieval fails or if the session ID is empty.
+//
+// Usage:
+//
+//	sess, err := store.GetSessionByID(id)
+//	if err != nil {
+//	    // handle error
+//	}
 func (s *Store) GetSessionByID(id string) (*Session, error) {
 	if id == "" {
 		return nil, ErrEmptySessionID

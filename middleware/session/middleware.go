@@ -8,8 +8,7 @@ import (
 	"github.com/gofiber/fiber/v3/log"
 )
 
-// Session defines the session middleware configuration
-
+// Middleware defines the session middleware configuration
 type Middleware struct {
 	Session    *Session
 	ctx        *fiber.Ctx
@@ -33,11 +32,17 @@ var (
 	}
 )
 
-// Session is a middleware to manage session state
+// New creates a new session middleware with the given configuration.
 //
-// Session middleware manages common session state between requests.
-// This middleware is dependent on the session store, which is responsible for
-// storing the session data.
+// Parameters:
+//   - config: Variadic parameter to override default config.
+//
+// Returns:
+//   - fiber.Handler: The Fiber handler for the session middleware.
+//
+// Usage:
+//
+//	app.Use(session.New())
 func New(config ...Config) fiber.Handler {
 	var handler fiber.Handler
 	if len(config) > 0 {
@@ -49,7 +54,18 @@ func New(config ...Config) fiber.Handler {
 	return handler
 }
 
-// NewWithStore returns a new session middleware with the given store
+// NewWithStore returns a new session middleware with the given store.
+//
+// Parameters:
+//   - config: Variadic parameter to override default config.
+//
+// Returns:
+//   - fiber.Handler: The Fiber handler for the session middleware.
+//   - *Store: The session store.
+//
+// Usage:
+//
+//	handler, store := session.NewWithStore()
 func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 	cfg := configDefault(config...)
 
@@ -115,7 +131,14 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 	return handler, cfg.Store
 }
 
-// acquireMiddleware returns a new Middleware from the pool
+// acquireMiddleware returns a new Middleware from the pool.
+//
+// Returns:
+//   - *Middleware: The middleware object.
+//
+// Usage:
+//
+//	m := acquireMiddleware()
 func acquireMiddleware() *Middleware {
 	middleware, ok := middlewarePool.Get().(*Middleware)
 	if !ok {
@@ -124,7 +147,14 @@ func acquireMiddleware() *Middleware {
 	return middleware
 }
 
-// releaseMiddleware returns a Middleware to the pool
+// releaseMiddleware returns a Middleware to the pool.
+//
+// Parameters:
+//   - m: The middleware object to release.
+//
+// Usage:
+//
+//	releaseMiddleware(m)
 func releaseMiddleware(m *Middleware) {
 	m.mu.Lock()
 	m.config = Config{}
@@ -136,7 +166,17 @@ func releaseMiddleware(m *Middleware) {
 	middlewarePool.Put(m)
 }
 
-// FromContext returns the Middleware from the fiber context
+// FromContext returns the Middleware from the Fiber context.
+//
+// Parameters:
+//   - c: The Fiber context.
+//
+// Returns:
+//   - *Middleware: The middleware object if found, otherwise nil.
+//
+// Usage:
+//
+//	m := session.FromContext(c)
 func FromContext(c fiber.Ctx) *Middleware {
 	m, ok := c.Locals(key).(*Middleware)
 	if !ok {
@@ -146,6 +186,15 @@ func FromContext(c fiber.Ctx) *Middleware {
 	return m
 }
 
+// Set sets a key-value pair in the session.
+//
+// Parameters:
+//   - key: The key to set.
+//   - value: The value to set.
+//
+// Usage:
+//
+//	m.Set("key", "value")
 func (m *Middleware) Set(key string, value any) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -154,6 +203,17 @@ func (m *Middleware) Set(key string, value any) {
 	m.hasChanged = true
 }
 
+// Get retrieves a value from the session by key.
+//
+// Parameters:
+//   - key: The key to retrieve.
+//
+// Returns:
+//   - any: The value associated with the key.
+//
+// Usage:
+//
+//	value := m.Get("key")
 func (m *Middleware) Get(key string) any {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -161,6 +221,14 @@ func (m *Middleware) Get(key string) any {
 	return m.Session.Get(key)
 }
 
+// Delete removes a key-value pair from the session.
+//
+// Parameters:
+//   - key: The key to delete.
+//
+// Usage:
+//
+//	m.Delete("key")
 func (m *Middleware) Delete(key string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -169,6 +237,14 @@ func (m *Middleware) Delete(key string) {
 	m.hasChanged = true
 }
 
+// Destroy destroys the session.
+//
+// Returns:
+//   - error: An error if the destruction fails.
+//
+// Usage:
+//
+//	err := m.Destroy()
 func (m *Middleware) Destroy() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -178,14 +254,38 @@ func (m *Middleware) Destroy() error {
 	return err
 }
 
+// Fresh checks if the session is fresh.
+//
+// Returns:
+//   - bool: True if the session is fresh, otherwise false.
+//
+// Usage:
+//
+//	isFresh := m.Fresh()
 func (m *Middleware) Fresh() bool {
 	return m.Session.Fresh()
 }
 
+// ID returns the session ID.
+//
+// Returns:
+//   - string: The session ID.
+//
+// Usage:
+//
+//	id := m.ID()
 func (m *Middleware) ID() string {
 	return m.Session.ID()
 }
 
+// Reset resets the session.
+//
+// Returns:
+//   - error: An error if the reset fails.
+//
+// Usage:
+//
+//	err := m.Reset()
 func (m *Middleware) Reset() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -195,7 +295,14 @@ func (m *Middleware) Reset() error {
 	return err
 }
 
-// Store returns the session store
+// Store returns the session store.
+//
+// Returns:
+//   - *Store: The session store.
+//
+// Usage:
+//
+//	store := m.Store()
 func (m *Middleware) Store() *Store {
 	return m.config.Store
 }

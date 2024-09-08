@@ -74,7 +74,7 @@ type Config struct {
 	// Optional. Default value false.
 	CookieHTTPOnly bool
 
-	// Decides whether cookie should last for only the browser sesison.
+	// Decides whether cookie should last for only the browser session.
 	// Ignores Expiration if set to true
 	// Optional. Default value false.
 	CookieSessionOnly bool
@@ -97,6 +97,15 @@ var ConfigDefault = Config{
 	sessionName:  "session_id",
 }
 
+// DefaultErrorHandler logs the error and sends a 500 status code.
+//
+// Parameters:
+//   - c: The Fiber context.
+//   - err: The error to handle.
+//
+// Usage:
+//
+//	DefaultErrorHandler(c, err)
 func DefaultErrorHandler(c *fiber.Ctx, err error) {
 	log.Errorf("session: %v", err)
 	if c != nil {
@@ -106,7 +115,18 @@ func DefaultErrorHandler(c *fiber.Ctx, err error) {
 	}
 }
 
-// Helper function to set default values
+// configDefault sets default values for the Config struct.
+//
+// Parameters:
+//   - config: Variadic parameter to override default config.
+//
+// Returns:
+//   - Config: The configuration with default values set.
+//
+// Usage:
+//
+//	cfg := configDefault()
+//	cfg := configDefault(customConfig)
 func configDefault(config ...Config) Config {
 	// Return default config if nothing provided
 	if len(config) < 1 {

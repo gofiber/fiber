@@ -12,6 +12,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// Session represents a user session.
 type Session struct {
 	ctx         fiber.Ctx     // fiber context
 	config      *Store        // store configuration
@@ -29,6 +30,14 @@ var sessionPool = sync.Pool{
 	},
 }
 
+// acquireSession returns a new Session from the pool.
+//
+// Returns:
+//   - *Session: The session object.
+//
+// Usage:
+//
+//	s := acquireSession()
 func acquireSession() *Session {
 	s := sessionPool.Get().(*Session) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
 	if s.data == nil {
@@ -48,6 +57,10 @@ func acquireSession() *Session {
 // to improve the performance of the session store.
 //
 // The session should not be used after calling this function.
+//
+// Usage:
+//
+//	s.Release()
 func (s *Session) Release() {
 	if s == nil {
 		return
@@ -71,21 +84,45 @@ func releaseSession(s *Session) {
 	sessionPool.Put(s)
 }
 
-// Fresh is true if the current session is new
+// Fresh returns true if the current session is new.
+//
+// Returns:
+//   - bool: True if the session is fresh, otherwise false.
+//
+// Usage:
+//
+//	isFresh := s.Fresh()
 func (s *Session) Fresh() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.fresh
 }
 
-// ID returns the session id
+// ID returns the session id.
+//
+// Returns:
+//   - string: The session ID.
+//
+// Usage:
+//
+//	id := s.ID()
 func (s *Session) ID() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.id
 }
 
-// Get will return the value
+// Get returns the value associated with the given key.
+//
+// Parameters:
+//   - key: The key to retrieve.
+//
+// Returns:
+//   - any: The value associated with the key.
+//
+// Usage:
+//
+//	value := s.Get("key")
 func (s *Session) Get(key string) any {
 	// Better safe than sorry
 	if s.data == nil {
@@ -94,7 +131,15 @@ func (s *Session) Get(key string) any {
 	return s.data.Get(key)
 }
 
-// Set will update or create a new key value
+// Set updates or creates a new key-value pair in the session.
+//
+// Parameters:
+//   - key: The key to set.
+//   - val: The value to set.
+//
+// Usage:
+//
+//	s.Set("key", "value")
 func (s *Session) Set(key string, val any) {
 	// Better safe than sorry
 	if s.data == nil {
@@ -103,7 +148,14 @@ func (s *Session) Set(key string, val any) {
 	s.data.Set(key, val)
 }
 
-// Delete will delete the value
+// Delete removes the key-value pair from the session.
+//
+// Parameters:
+//   - key: The key to delete.
+//
+// Usage:
+//
+//	s.Delete("key")
 func (s *Session) Delete(key string) {
 	// Better safe than sorry
 	if s.data == nil {
@@ -112,7 +164,14 @@ func (s *Session) Delete(key string) {
 	s.data.Delete(key)
 }
 
-// Destroy will delete the session from Storage and expire session cookie
+// Destroy deletes the session from storage and expires the session cookie.
+//
+// Returns:
+//   - error: An error if the destruction fails.
+//
+// Usage:
+//
+//	err := s.Destroy()
 func (s *Session) Destroy() error {
 	// Better safe than sorry
 	if s.data == nil {
@@ -135,7 +194,14 @@ func (s *Session) Destroy() error {
 	return nil
 }
 
-// Regenerate generates a new session id and delete the old one from Storage
+// Regenerate generates a new session id and deletes the old one from storage.
+//
+// Returns:
+//   - error: An error if the regeneration fails.
+//
+// Usage:
+//
+//	err := s.Regenerate()
 func (s *Session) Regenerate() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -151,7 +217,14 @@ func (s *Session) Regenerate() error {
 	return nil
 }
 
-// Reset generates a new session id, deletes the old one from storage, and resets the associated data
+// Reset generates a new session id, deletes the old one from storage, and resets the associated data.
+//
+// Returns:
+//   - error: An error if the reset fails.
+//
+// Usage:
+//
+//	err := s.Reset()
 func (s *Session) Reset() error {
 	// Reset local data
 	if s.data != nil {
@@ -182,18 +255,25 @@ func (s *Session) Reset() error {
 	return nil
 }
 
-// refresh generates a new session, and set session.fresh to be true
+// refresh generates a new session, and sets session.fresh to be true.
 func (s *Session) refresh() {
 	s.id = s.config.KeyGenerator()
 	s.fresh = true
 }
 
-// Save will update the storage and client cookie
+// Save updates the storage and client cookie.
 //
 // sess.Save() will save the session data to the storage and update the
 // client cookie, and it will release the session after saving.
 //
 // It's not safe to use the session after calling Save().
+//
+// Returns:
+//   - error: An error if the save operation fails.
+//
+// Usage:
+//
+//	err := s.Save()
 func (s *Session) Save() error {
 	// If the session is being used in the handler, it should not be saved
 	if _, ok := s.ctx.Locals(key).(*Middleware); ok {
@@ -241,7 +321,14 @@ func (s *Session) saveSession() error {
 	return nil
 }
 
-// Keys will retrieve all keys in current session
+// Keys retrieves all keys in the current session.
+//
+// Returns:
+//   - []string: A slice of all keys in the session.
+//
+// Usage:
+//
+//	keys := s.Keys()
 func (s *Session) Keys() []string {
 	if s.data == nil {
 		return []string{}
@@ -249,7 +336,14 @@ func (s *Session) Keys() []string {
 	return s.data.Keys()
 }
 
-// SetExpiry sets a specific expiration for this session
+// SetIdleTimeout sets a specific expiration for this session.
+//
+// Parameters:
+//   - idleTimeout: The duration for the idle timeout.
+//
+// Usage:
+//
+//	s.SetIdleTimeout(time.Hour)
 func (s *Session) SetIdleTimeout(idleTimeout time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -320,6 +414,16 @@ func (s *Session) delSession() {
 }
 
 // decodeSessionData decodes the session data from raw bytes.
+//
+// Parameters:
+//   - rawData: The raw byte data to decode.
+//
+// Returns:
+//   - error: An error if the decoding fails.
+//
+// Usage:
+//
+//	err := s.decodeSessionData(rawData)
 func (s *Session) decodeSessionData(rawData []byte) error {
 	_, _ = s.byteBuffer.Write(rawData)
 	encCache := gob.NewDecoder(s.byteBuffer)
