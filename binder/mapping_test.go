@@ -62,6 +62,26 @@ func Test_ParseParamSquareBrackets(t *testing.T) {
 			input:    "foo]bar[",
 			expected: "",
 		},
+		{
+			err:      nil,
+			input:    "foo[bar[baz]]",
+			expected: "foo.bar.baz",
+		},
+		{
+			err:      nil,
+			input:    "",
+			expected: "",
+		},
+		{
+			err:      nil,
+			input:    "[]",
+			expected: "",
+		},
+		{
+			err:      nil,
+			input:    "foo[]",
+			expected: "foo",
+		},
 	}
 
 	for _, tt := range tests {
