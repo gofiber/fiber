@@ -19,7 +19,7 @@ Import the middleware package that is part of the Fiber web framework
 ```go
 import (
     "github.com/gofiber/fiber/v3"
-    "github.com/gofiber/fiber/v3/middleware/recover"
+    recoverer "github.com/gofiber/fiber/v3/middleware/recover"
 )
 ```
 
@@ -27,7 +27,7 @@ After you initiate your Fiber app, you can use the following possibilities:
 
 ```go
 // Initialize default config
-app.Use(recover.New())
+app.Use(recoverer.New())
 
 // This panic will be caught by the middleware
 app.Get("/", func(c fiber.Ctx) error {
