@@ -39,6 +39,8 @@ As of v3, we recommend using the middleware handler for session management. Howe
 
 - **Session Lifecycle Management**: The `*Store.Save` method no longer releases the instance automatically. You must manually call `sess.Release()` after using the session to manage its lifecycle properly.
 
+- **Expiration Handling**: Previously, the `Expiration` field represented the maximum session duration before expiration. However, it would extend every time the session was saved, making its behavior a mix between session duration and session idle timeout. The `Expiration` field has been removed and replaced with the `IdleTimeout` field, which explicitly defines the session's idle timeout period. Users who need to set a maximum session duration must now implement this logic themselves using data stored in the session.
+
 For more details about Fiber v3, see [What’s New](https://github.com/gofiber/fiber/blob/main/docs/whats_new.md).
 
 ### Migrating v2 to v3 Example (Legacy Approach)
@@ -107,6 +109,8 @@ app.Get("/", func(c *fiber.Ctx) error {
 ```
 
 ### v3 Example (Recommended Middleware Handler)
+
+Do not call `sess.Release()` when using the middleware handler. `sess.Save()` is also not required, as the middleware automatically saves the session data.
 
 For the recommended approach, use the middleware handler. See the [Middleware Handler (Recommended)](#middleware-handler-recommended) section for details.
 
