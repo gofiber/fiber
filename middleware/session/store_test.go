@@ -12,7 +12,7 @@ import (
 // go test -run Test_Store_getSessionID
 func Test_Store_getSessionID(t *testing.T) {
 	t.Parallel()
-	expectedID := testSessionID
+	expectedID := "test-session-id"
 
 	// fiber instance
 	app := fiber.New()
@@ -67,7 +67,7 @@ func Test_Store_getSessionID(t *testing.T) {
 func Test_Store_Get(t *testing.T) {
 	// Regression: https://github.com/gofiber/fiber/security/advisories/GHSA-98j2-3j3p-fw2v
 	t.Parallel()
-	unexpectedID := testSessionID
+	unexpectedID := "test-session-id"
 	// fiber instance
 	app := fiber.New()
 	t.Run("session should be re-generated if it is invalid", func(t *testing.T) {

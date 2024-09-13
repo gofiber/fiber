@@ -8,11 +8,10 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
-
-const testSessionID = "test-session-id"
 
 // go test -run Test_Session
 func Test_Session(t *testing.T) {
@@ -982,8 +981,8 @@ func Test_Session_Release(t *testing.T) {
 	sess := acquireSession()
 	sess.ctx = ctx
 	sess.config = store
-	sess.id = testSessionID
-	sess.Set("key", "value")
+	rid, _ := uuid.NewRandom()
+	sess.id = rid.String()
 
 	// release the session
 	sess.Release()
