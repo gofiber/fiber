@@ -441,3 +441,29 @@ func Test_Session_Next(t *testing.T) {
 	h(ctx)
 	require.Equal(t, fiber.StatusInternalServerError, ctx.Response.StatusCode())
 }
+
+func Test_Session_Middleware_Store(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	handler, sessionStore := NewWithStore()
+
+	app.Use(handler)
+
+	app.Get("/", func(c fiber.Ctx) error {
+		sess := FromContext(c)
+		st := sess.Store()
+		if st != sessionStore {
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	h := app.Handler()
+
+	// Test GET request
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	h(ctx)
+	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+}
