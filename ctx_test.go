@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"text/template"
 	"time"
@@ -4354,6 +4355,44 @@ func Test_Ctx_SendStreamWriter(t *testing.T) {
 	err = c.SendStreamWriter(func(_ *bufio.Writer) {})
 	require.NoError(t, err)
 	require.Empty(t, c.Response().Body())
+}
+
+// go test -run Test_Ctx_SendStreamWriter_Interrupted
+func Test_Ctx_SendStreamWriter_Interrupted(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	var mutex sync.Mutex
+	startChan := make(chan bool)
+	interruptStreamWriter := func() {
+		<-startChan
+		time.Sleep(5 * time.Millisecond)
+		mutex.Lock()
+		c.Response().CloseBodyStream() //nolint:errcheck // It is fine to ignore the error
+		mutex.Unlock()
+	}
+	err := c.SendStreamWriter(func(w *bufio.Writer) {
+		go interruptStreamWriter()
+
+		startChan <- true
+		for lineNum := 1; lineNum <= 5; lineNum++ {
+			mutex.Lock()
+			fmt.Fprintf(w, "Line %d\n", lineNum) //nolint:errcheck, revive // It is fine to ignore the error
+			mutex.Unlock()
+
+			if err := w.Flush(); err != nil {
+				if lineNum < 3 {
+					t.Errorf("unexpected error: %s", err)
+				}
+				return
+			}
+
+			time.Sleep(1500 * time.Microsecond)
+		}
+	})
+	require.NoError(t, err)
+	require.Equal(t, "Line 1\nLine 2\nLine 3\n", string(c.Response().Body()))
 }
 
 // go test -run Test_Ctx_Set
