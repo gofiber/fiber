@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -115,4 +116,85 @@ func Test_Store_DeleteSession(t *testing.T) {
 
 	// The session ID should be different now, because the old session was deleted
 	require.NotEqual(t, sessionID, session.ID())
+}
+
+func TestStore_Get_SessionAlreadyLoaded(t *testing.T) {
+	// Create a new Fiber app
+	app := fiber.New()
+
+	// Create a new context
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	// Mock middleware and set it in the context
+	middleware := &Middleware{}
+	ctx.Locals(key, middleware)
+
+	// Create a new store
+	store := &Store{}
+
+	// Call the Get method
+	sess, err := store.Get(ctx)
+
+	// Assert that the error is ErrSessionAlreadyLoadedByMiddleware
+	assert.Nil(t, sess)
+	assert.Equal(t, ErrSessionAlreadyLoadedByMiddleware, err)
+}
+
+func TestStore_Delete(t *testing.T) {
+	// Create a new store
+	store := newStore()
+
+	t.Run("delete with empty session ID", func(t *testing.T) {
+		err := store.Delete("")
+		assert.Error(t, err)
+		assert.Equal(t, ErrEmptySessionID, err)
+	})
+
+	t.Run("delete non-existing session", func(t *testing.T) {
+		err := store.Delete("non-existing-session-id")
+		assert.NoError(t, err)
+	})
+}
+
+func Test_Store_GetSessionByID(t *testing.T) {
+	t.Parallel()
+	// Create a new store
+	store := newStore()
+
+	t.Run("empty session ID", func(t *testing.T) {
+		t.Parallel()
+		sess, err := store.GetSessionByID("")
+		require.Error(t, err)
+		assert.Nil(t, sess)
+		assert.Equal(t, ErrEmptySessionID, err)
+	})
+
+	t.Run("non-existent session ID", func(t *testing.T) {
+		t.Parallel()
+		sess, err := store.GetSessionByID("non-existent-session-id")
+		require.Error(t, err)
+		assert.Nil(t, sess)
+		assert.Equal(t, ErrSessionIDNotFoundInStore, err)
+	})
+
+	t.Run("valid session ID", func(t *testing.T) {
+		t.Parallel()
+		// Create a new session
+		ctx := fiber.New().AcquireCtx(&fasthttp.RequestCtx{})
+		session, err := store.Get(ctx)
+		require.NoError(t, err)
+
+		// Save the session ID
+		sessionID := session.ID()
+
+		// Save the session
+		err = session.Save()
+		require.NoError(t, err)
+
+		// Retrieve the session by ID
+		retrievedSession, err := store.GetSessionByID(sessionID)
+		require.NoError(t, err)
+		assert.NotNil(t, retrievedSession)
+		assert.Equal(t, sessionID, retrievedSession.ID())
+	})
 }
