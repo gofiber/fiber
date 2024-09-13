@@ -4327,6 +4327,35 @@ func Test_Ctx_SendStream(t *testing.T) {
 	require.Equal(t, "Hello bufio", string(c.Response().Body()))
 }
 
+// go test -run Test_Ctx_SendStreamWriter
+func Test_Ctx_SendStreamWriter(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	err := c.SendStreamWriter(func(w *bufio.Writer) {
+		w.WriteString("Don't crash please") //nolint:errcheck, revive // It is fine to ignore the error
+	})
+	require.NoError(t, err)
+	require.Equal(t, "Don't crash please", string(c.Response().Body()))
+
+	err = c.SendStreamWriter(func(w *bufio.Writer) {
+		for lineNum := 1; lineNum <= 5; lineNum++ {
+			fmt.Fprintf(w, "Line %d\n", lineNum) //nolint:errcheck, revive // It is fine to ignore the error
+			if err := w.Flush(); err != nil {
+				t.Errorf("unexpected error: %s", err)
+				return
+			}
+		}
+	})
+	require.NoError(t, err)
+	require.Equal(t, "Line 1\nLine 2\nLine 3\nLine 4\nLine 5\n", string(c.Response().Body()))
+
+	err = c.SendStreamWriter(func(_ *bufio.Writer) {})
+	require.NoError(t, err)
+	require.Empty(t, c.Response().Body())
+}
+
 // go test -run Test_Ctx_Set
 func Test_Ctx_Set(t *testing.T) {
 	t.Parallel()
