@@ -99,12 +99,12 @@ func (d *data) Delete(key string) {
 //
 //	keys := d.Keys()
 func (d *data) Keys() []string {
-	d.Lock()
+	d.RLock()
 	keys := make([]string, 0, len(d.Data))
 	for k := range d.Data {
 		keys = append(keys, k)
 	}
-	d.Unlock()
+	d.RUnlock()
 	return keys
 }
 
@@ -117,5 +117,7 @@ func (d *data) Keys() []string {
 //
 //	length := d.Len()
 func (d *data) Len() int {
+	d.RLock()
+	defer d.RUnlock()
 	return len(d.Data)
 }
