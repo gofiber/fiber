@@ -58,9 +58,15 @@ func acquireSession() *Session {
 //
 // The session should not be used after calling this function.
 //
+// Important: The Release function should only be used when accessing the session directly,
+// for example, when you have called func (s *Session) Get(ctx) to get the session.
+// It should not be used when using the session with a *Middleware handler in the request
+// call stack, as the middleware will still need to access the session.
+//
 // Usage:
 //
-//	s.Release()
+//	sess := session.Get(ctx)
+//	defer sess.Release()
 func (s *Session) Release() {
 	if s == nil {
 		return
@@ -264,9 +270,7 @@ func (s *Session) refresh() {
 // Save updates the storage and client cookie.
 //
 // sess.Save() will save the session data to the storage and update the
-// client cookie, and it will release the session after saving.
-//
-// It's not safe to use the session after calling Save().
+// client cookie.
 //
 // Returns:
 //   - error: An error if the save operation fails.

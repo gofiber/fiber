@@ -5,18 +5,18 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
 
 func TestConfigDefault(t *testing.T) {
 	// Test default config
 	cfg := configDefault()
-	assert.Equal(t, 24*time.Hour, cfg.IdleTimeout)
-	assert.Equal(t, "cookie:session_id", cfg.KeyLookup)
-	assert.NotNil(t, cfg.KeyGenerator)
-	assert.Equal(t, SourceCookie, cfg.source)
-	assert.Equal(t, "session_id", cfg.sessionName)
+	require.Equal(t, 24*time.Hour, cfg.IdleTimeout)
+	require.Equal(t, "cookie:session_id", cfg.KeyLookup)
+	require.NotNil(t, cfg.KeyGenerator)
+	require.Equal(t, SourceCookie, cfg.source)
+	require.Equal(t, "session_id", cfg.sessionName)
 }
 
 func TestConfigDefaultWithCustomConfig(t *testing.T) {
@@ -27,11 +27,11 @@ func TestConfigDefaultWithCustomConfig(t *testing.T) {
 		KeyGenerator: func() string { return "custom_key" },
 	}
 	cfg := configDefault(customConfig)
-	assert.Equal(t, 48*time.Hour, cfg.IdleTimeout)
-	assert.Equal(t, "header:custom_session_id", cfg.KeyLookup)
-	assert.NotNil(t, cfg.KeyGenerator)
-	assert.Equal(t, SourceHeader, cfg.source)
-	assert.Equal(t, "custom_session_id", cfg.sessionName)
+	require.Equal(t, 48*time.Hour, cfg.IdleTimeout)
+	require.Equal(t, "header:custom_session_id", cfg.KeyLookup)
+	require.NotNil(t, cfg.KeyGenerator)
+	require.Equal(t, SourceHeader, cfg.source)
+	require.Equal(t, "custom_session_id", cfg.sessionName)
 }
 
 func TestDefaultErrorHandler(t *testing.T) {
@@ -43,17 +43,17 @@ func TestDefaultErrorHandler(t *testing.T) {
 
 	// Test DefaultErrorHandler
 	DefaultErrorHandler(&ctx, fiber.ErrInternalServerError)
-	assert.Equal(t, fiber.StatusInternalServerError, ctx.Response().StatusCode())
+	require.Equal(t, fiber.StatusInternalServerError, ctx.Response().StatusCode())
 }
 
 func TestInvalidKeyLookupFormat(t *testing.T) {
-	assert.PanicsWithValue(t, "[session] KeyLookup must in the form of <source>:<name>", func() {
+	require.PanicsWithValue(t, "[session] KeyLookup must in the form of <source>:<name>", func() {
 		configDefault(Config{KeyLookup: "invalid_format"})
 	})
 }
 
 func TestUnsupportedSource(t *testing.T) {
-	assert.PanicsWithValue(t, "[session] source is not supported", func() {
+	require.PanicsWithValue(t, "[session] source is not supported", func() {
 		configDefault(Config{KeyLookup: "unsupported:session_id"})
 	})
 }

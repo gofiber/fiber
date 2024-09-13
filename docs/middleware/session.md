@@ -4,11 +4,9 @@ id: session
 
 # Session Middleware for [Fiber](https://github.com/gofiber/fiber)
 
-The `session` middleware provides session handling for Fiber applications. It leverages the [Storage](https://github.com/gofiber/storage) package to offer support for multiple databases through a unified interface. By default, session data is stored in memory, but you can easily switch to other storage options, as shown in the examples below.
+The `session` middleware provides session management for Fiber applications, utilizing the [Storage](https://github.com/gofiber/storage) package for multi-database support via a unified interface. By default, session data is stored in memory, but custom storage options are easily configurable (see examples below).
 
-:::note
-We recommend using the `Middleware` handler for better integration with other middleware. See the [As a Middleware Handler (Recommended)](#as-a-middleware-handler-recommended) section for details.
-:::
+As of v3, we recommend using the middleware handler for session management. However, for backward compatibility, v2's session methods are still available, allowing you to continue using the session management techniques from earlier versions of Fiber. Both methods are demonstrated in the examples.
 
 ## Table of Contents
 
@@ -26,10 +24,10 @@ We recommend using the `Middleware` handler for better integration with other mi
   - [Session Methods](#session-methods)
   - [Store Methods](#store-methods)
 - [Examples](#examples)
-  - [As a Middleware Handler (Recommended)](#as-a-middleware-handler-recommended)
-  - [Using a Custom Storage](#using-a-custom-storage)
+  - [Middleware Handler (Recommended)](#middleware-handler-recommended)
+  - [Custom Storage Example](#custom-storage-example)
   - [Session Without Middleware Handler](#session-without-middleware-handler)
-  - [Using Custom Types in Session Data](#using-custom-types-in-session-data)
+  - [Custom Types in Session Data](#custom-types-in-session-data)
 - [Config](#config)
 - [Default Config](#default-config)
 
@@ -37,13 +35,23 @@ We recommend using the `Middleware` handler for better integration with other mi
 
 ### v2 to v3
 
-- In version 3, the `New` function signature has been updated. It now returns a Fiber middleware handler instead of a `*Store`. To access the store, you can use the `Store` method on the `*Middleware` (obtained by calling `session.FromContext(c)` in a handler where the middleware is applied) or utilize the `NewWithStore` function.
+- **Function Signature Change**: In v3, the `New` function now returns a middleware handler instead of a `*Store`. To access the store, use the `Store` method on `*Middleware` (obtained from `session.FromContext(c)` in a handler) or use `NewWithStore`.
 
-While it's still possible to work with the `*Store` directly, we recommend using the `Middleware` handler for better integration with other Fiber middlewares.
+- **Session Lifecycle Management**: The `*Store.Save` method no longer releases the instance automatically. You must manually call `sess.Release()` after using the session to manage its lifecycle properly.
 
-For more information about changes in Fiber v3, see [What's New](https://github.com/gofiber/fiber/blob/main/docs/whats_new.md).
+For more details about Fiber v3, see [What’s New](https://github.com/gofiber/fiber/blob/main/docs/whats_new.md).
 
-#### v2 Example
+### Migrating v2 to v3 Example (Legacy Approach)
+
+To convert a v2 example to use the v3 legacy approach, follow these steps:
+
+1. **Initialize with Store**: Use `session.NewWithStore()` to obtain both the middleware handler and store.
+2. **Retrieve Session**: Access the session store using the `store.Get(c)` method.
+3. **Release Session**: Ensure that you call `sess.Release()` after you are done with the session to manage its lifecycle.
+
+#### Example Conversion
+
+**v2 Example:**
 
 ```go
 store := session.New()
@@ -53,7 +61,7 @@ app.Get("/", func(c *fiber.Ctx) error {
     if err != nil {
         return err
     }
-    
+
     key, ok := sess.Get("key").(string)
     if !ok {
         return c.SendStatus(fiber.StatusInternalServerError)
@@ -70,7 +78,7 @@ app.Get("/", func(c *fiber.Ctx) error {
 })
 ```
 
-#### v3 Example (Using Store)
+**v3 Legacy Approach:**
 
 ```go
 _, store := session.NewWithStore()
@@ -80,7 +88,8 @@ app.Get("/", func(c *fiber.Ctx) error {
     if err != nil {
         return err
     }
-    
+    defer sess.Release() // Important: Release the session
+
     key, ok := sess.Get("key").(string)
     if !ok {
         return c.SendStatus(fiber.StatusInternalServerError)
@@ -97,15 +106,15 @@ app.Get("/", func(c *fiber.Ctx) error {
 })
 ```
 
-#### v3 Example (Using Middleware)
+### v3 Example (Recommended Middleware Handler)
 
-See the [As a Middleware Handler (Recommended)](#as-a-middleware-handler-recommended) section for details.
+For the recommended approach, use the middleware handler. See the [Middleware Handler (Recommended)](#middleware-handler-recommended) section for details.
 
 ## Types
 
 ### Config
 
-The configuration for the session middleware.
+Defines the configuration options for the session middleware.
 
 ```go
 type Config struct {
@@ -128,7 +137,7 @@ type Config struct {
 
 ### Middleware
 
-The `Middleware` struct encapsulates the session middleware configuration and storage. It is created using the `New` or `NewWithStorage` function and used as a `fiber.Handler`.
+The `Middleware` struct encapsulates the session middleware configuration and storage, created via `New` or `NewWithStore`.
 
 ```go
 type Middleware struct {
@@ -138,7 +147,7 @@ type Middleware struct {
 
 ### Session
 
-The `Session` struct is used to interact with session data. You can retrieve it from the `Middleware` using the `FromContext` method or from the `Store` using the `Get` method.
+Represents a user session, accessible through `FromContext` or `Store.Get`.
 
 ```go
 type Session struct {}
@@ -146,7 +155,7 @@ type Session struct {}
 
 ### Store
 
-The `Store` struct is used to manage session data. It is created using the `NewWithStore` function or by calling the `Store` method on a `Middleware`.
+Handles session data management and is created using `NewWithStore` or by accessing the `Store` method of a middleware instance.
 
 ```go
 type Store struct {
@@ -172,8 +181,6 @@ func DefaultErrorHandler(c *fiber.Ctx, err error)
 
 ### Middleware Methods
 
-Used to interact with session data when using the middleware handler.
-
 ```go
 func (m *Middleware) Set(key string, value any)
 func (m *Middleware) Get(key string) any
@@ -185,8 +192,6 @@ func (m *Middleware) Store() *Store
 
 ### Session Methods
 
-If using the middleware handler, you generally won't need to use these methods directly.
-
 ```go
 func (s *Session) Fresh() bool
 func (s *Session) ID() string
@@ -194,6 +199,7 @@ func (s *Session) Get(key string) any
 func (s *Session) Set(key string, val any)
 func (s *Session) Destroy() error
 func (s *Session) Regenerate() error
+func (s *Session) Release()
 func (s *Session) Reset() error
 func (s *Session) Save() error
 func (s *Session) Keys() []string
@@ -213,34 +219,18 @@ func (s *Store) GetSessionByID(id string) (*Session, error)
 ## Examples
 
 :::note
-**Security Note**: Fiber’s session middleware uses cookies with `SameSite=Lax` by default, which provides basic CSRF protection for most GET requests. However, for comprehensive security—especially for POST requests or sensitive operations (e.g., account changes, transactions, form submissions)—it is strongly recommended to use CSRF protection middleware. Fiber provides a `csrf` middleware that can be used in conjunction with the `session` middleware for robust protection. Find more information in the [CSRF Middleware](https://docs.gofiber.io/api/middleware/csrf) documentation.
-
-### Recommendations
-
-1. **Session Middleware Without CSRF**:
-   - You can use the `session` middleware without the `csrf` middleware or rely solely on `SameSite=Lax` for basic protection in low-risk scenarios.
-
-2. **Double Submit Cookie Pattern**:
-   - You can implement the **double submit cookie pattern** (via custom, third-party, or built-in middleware), where the CSRF token is stored in a cookie, and the request includes the token in a hidden field or header. In this approach, there is no need to pass the `session.Store` to the `csrf` middleware. Simply apply the `session.New()` and `csrf.New()` middleware to the routes you want to protect.
-
-3. **Recommended Approach**:
-   - For stronger protection, especially in high-risk scenarios, use the `csrf` middleware with the session store. This method implements the **Synchronizer Token Pattern**, providing robust defense by associating the CSRF token with the user’s session. This approach requires passing the `session.Store` to the `csrf` middleware.
-   - Ensure the CSRF token is embedded in forms or included in a header for POST requests and verified on the server side for incoming requests. This adds a crucial security layer for state-changing actions.
-
+**Security Notice**: For robust security, especially during sensitive operations like account changes or transactions, consider using CSRF protection. Fiber provides a [CSRF Middleware](https://docs.gofiber.io/api/middleware/csrf) that can be used with sessions to prevent CSRF attacks.
 :::
 
-### As a Middleware Handler (Recommended)
+### Middleware Handler (Recommended)
 
 ```go
 package main
 
 import (
-    "fmt"
-    "log"
-
     "github.com/gofiber/fiber/v3"
-    "github.com/gofiber/session/v3"
-    "github.com/gofiber/session/v3/middleware/csrf"
+    "github.com/gofiber/fiber/v3/middleware/csrf"
+    "github.com/gofiber/fiber/v3/middleware/session"
 )
 
 func main() {
@@ -249,7 +239,6 @@ func main() {
     sessionMiddleware, sessionStore := session.NewWithStore()
 
     app.Use(sessionMiddleware)
-
     app.Use(csrf.New(csrf.Config{
         Store: sessionStore,
     }))
@@ -265,27 +254,23 @@ func main() {
             return c.SendString("Welcome anonymous user!")
         }
 
-        return c.SendString(fmt.Sprintf("Welcome %v", name))
+        return c.SendString("Welcome " + name)
     })
 
-    log.Fatal(app.Listen(":3000"))
+    app.Listen(":3000")
 }
 ```
 
-### Using a Custom Storage
-
-This example shows how to use the `sqlite3` storage from the [Fiber storage package](https://github.com/gofiber/storage).
+### Custom Storage Example
 
 ```go
 package main
 
 import (
-    "log"
-
     "github.com/gofiber/fiber/v3"
     "github.com/gofiber/storage/sqlite3"
-    "github.com/gofiber/session/v3"
-    "github.com/gofiber/session/v3/middleware/csrf"
+    "github.com/gofiber/fiber/v3/middleware/csrf"
+    "github.com/gofiber/fiber/v3/middleware/session"
 )
 
 func main() {
@@ -297,28 +282,23 @@ func main() {
     })
 
     app.Use(sessionMiddleware)
-
     app.Use(csrf.New(csrf.Config{
         Store: sessionStore,
     }))
 
-    log.Fatal(app.Listen(":3000"))
+    app.Listen(":3000")
 }
 ```
 
 ### Session Without Middleware Handler
 
-This example shows how to work with sessions directly without the middleware handler.
-
 ```go
 package main
 
 import (
-    "log"
-
     "github.com/gofiber/fiber/v3"
-    "github.com/gofiber/session/v3"
-    "github.com/gofiber/session/v3/middleware/csrf"
+    "github.com/gofiber/fiber/v3/middleware/csrf"
+    "github.com/gofiber/fiber/v3/middleware/session"
 )
 
 func main() {
@@ -341,16 +321,14 @@ func main() {
             return c.SendString("Welcome anonymous user!")
         }
 
-        return c.SendString(fmt.Sprintf("Welcome %v", name))
+        return c.SendString("Welcome " + name)
     })
 
-    log.Fatal(app.Listen(":3000
-
-"))
+    app.Listen(":3000")
 }
 ```
 
-### Using Custom Types in Session Data
+### Custom Types in Session Data
 
 Session data can only be of the following types by default:
 
@@ -379,11 +357,8 @@ To support other types in session data, you can register custom types. Here is a
 package main
 
 import (
-    "log"
-
     "github.com/gofiber/fiber/v3"
-    "github.com/gofiber/session/v3"
-    "github.com/gofiber/session/v3/middleware/session"
+    "github.com/gofiber/fiber/v3/middleware/session"
 )
 
 type User struct {
@@ -392,40 +367,34 @@ type User struct {
 }
 
 func main() {
-    // Create a new Fiber app
     app := fiber.New()
 
-    // Initialize custom session config
     sessionMiddleware, sessionStore := session.NewWithStore()
-
-    // Register custom type
     sessionStore.RegisterType(User{})
 
-    // Use the session middleware
     app.Use(sessionMiddleware)
 
-    ...
+    app.Listen(":3000")
 }
 ```
 
 ## Config
 
-| Property                | Type            | Description                                                                                                   | Default               |
-|:------------------------|:----------------|:--------------------------------------------------------------------------------------------------------------|:----------------------|
-| Storage                 | `fiber.Storage` | Storage interface to store the session data.                                                                  | `memory.New()`        |
-| Next                    | `func(c fiber.Ctx) bool` | Function to skip this middleware when returned true.                                                 | `nil`                 |
-| Store                   | `*Store`        | Defines the session store.                                                                                    | `nil` (Required)      |
-| ErrorHandler            | `func(*fiber.Ctx, error)` | Function executed for errors.                                                                       | `nil`                 |
-| KeyGenerator            | `func() string` | KeyGenerator generates the session key.                                                                       | `utils.UUIDv4`        |
-| KeyLookup               | `string`        | KeyLookup is a string in the form of "`<source>:<name>`" that is used to extract session id from the request. | `"cookie:session_id"` |
-| CookieDomain            | `string`        | Domain of the cookie.                                                                                         | `""`                  |
-| CookiePath              | `string`        | Path of the cookie.                                                                                           | `""`                  |
-| CookieSameSite          | `string`        | Value of SameSite cookie.                                                                                     | `"Lax"`               |
-| IdleTimeout             | `time.Duration` | Allowed session idle duration.                                                                                | `24 * time.Hour`      |
-| Expiration              | `time.Duration` | Allowed session duration.                                                                                     | `24 * time.Hour`      |
-| CookieSecure            | `bool`          | Indicates if cookie is secure.                                                                                | `false`               |
-| CookieHTTPOnly          | `bool`          | Indicates if cookie is HTTP only.                                                                             | `false`               |
-| CookieSessionOnly       | `bool`          | Decides whether cookie should last for only the browser session. Ignores Expiration if set to true.           | `false`               |
+| Property              | Type                           | Description                                                                                | Default                   |
+|-----------------------|--------------------------------|--------------------------------------------------------------------------------------------|---------------------------|
+| **Storage**           | `fiber.Storage`                | Defines where session data is stored.                                                      | `nil` (in-memory storage) |
+| **Next**              | `func(c fiber.Ctx) bool`       | Function to skip this middleware under certain conditions.                                 | `nil`                     |
+| **ErrorHandler**      | `func(c fiber.Ctx, err error)` | Custom error handler for session middleware errors.                                        | `nil`                     |
+| **KeyGenerator**      | `func() string`                | Function to generate session IDs.                                                          | `UUID()`                  |
+| **KeyLookup**         | `string`                       | Key used to store session ID in cookie or header.                                          | `"cookie:session_id"`     |
+| **CookieDomain**      | `string`                       | The domain scope of the session cookie.                                                    | `""`                      |
+| **CookiePath**        | `string`                       | The path scope of the session cookie.                                                      | `"/"`                     |
+| **CookieSameSite**    | `string`                       | The SameSite attribute of the session cookie.                                              | `"Lax"`                   |
+| **IdleTimeout**       | `time.Duration`                | Maximum duration of inactivity before session expires.                                     | `0` (no idle timeout)     |
+| **Expiration**        | `time.Duration`                | Maximum session duration before expiration.                                                | `24 * time.Hour`          |
+| **CookieSecure**      | `bool`                         | Ensures session cookie is only sent over HTTPS.                                            | `false`                   |
+| **CookieHTTPOnly**    | `bool`                         | Ensures session cookie is not accessible to JavaScript (HTTP only).                        | `true`                    |
+| **CookieSessionOnly** | `bool`                         | Prevents session cookie from being saved after the session ends (cookie expires on close). | `false`                   |
 
 ## Default Config
 

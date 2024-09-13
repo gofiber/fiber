@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -13,7 +12,7 @@ import (
 // go test -run Test_Store_getSessionID
 func Test_Store_getSessionID(t *testing.T) {
 	t.Parallel()
-	expectedID := "test-session-id"
+	expectedID := testSessionID
 
 	// fiber instance
 	app := fiber.New()
@@ -68,7 +67,7 @@ func Test_Store_getSessionID(t *testing.T) {
 func Test_Store_Get(t *testing.T) {
 	// Regression: https://github.com/gofiber/fiber/security/advisories/GHSA-98j2-3j3p-fw2v
 	t.Parallel()
-	unexpectedID := "test-session-id"
+	unexpectedID := testSessionID
 	// fiber instance
 	app := fiber.New()
 	t.Run("session should be re-generated if it is invalid", func(t *testing.T) {
@@ -136,8 +135,8 @@ func TestStore_Get_SessionAlreadyLoaded(t *testing.T) {
 	sess, err := store.Get(ctx)
 
 	// Assert that the error is ErrSessionAlreadyLoadedByMiddleware
-	assert.Nil(t, sess)
-	assert.Equal(t, ErrSessionAlreadyLoadedByMiddleware, err)
+	require.Nil(t, sess)
+	require.Equal(t, ErrSessionAlreadyLoadedByMiddleware, err)
 }
 
 func TestStore_Delete(t *testing.T) {
@@ -146,13 +145,13 @@ func TestStore_Delete(t *testing.T) {
 
 	t.Run("delete with empty session ID", func(t *testing.T) {
 		err := store.Delete("")
-		assert.Error(t, err)
-		assert.Equal(t, ErrEmptySessionID, err)
+		require.Error(t, err)
+		require.Equal(t, ErrEmptySessionID, err)
 	})
 
 	t.Run("delete non-existing session", func(t *testing.T) {
 		err := store.Delete("non-existing-session-id")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	})
 }
 
@@ -165,16 +164,16 @@ func Test_Store_GetSessionByID(t *testing.T) {
 		t.Parallel()
 		sess, err := store.GetSessionByID("")
 		require.Error(t, err)
-		assert.Nil(t, sess)
-		assert.Equal(t, ErrEmptySessionID, err)
+		require.Nil(t, sess)
+		require.Equal(t, ErrEmptySessionID, err)
 	})
 
 	t.Run("non-existent session ID", func(t *testing.T) {
 		t.Parallel()
 		sess, err := store.GetSessionByID("non-existent-session-id")
 		require.Error(t, err)
-		assert.Nil(t, sess)
-		assert.Equal(t, ErrSessionIDNotFoundInStore, err)
+		require.Nil(t, sess)
+		require.Equal(t, ErrSessionIDNotFoundInStore, err)
 	})
 
 	t.Run("valid session ID", func(t *testing.T) {
@@ -194,7 +193,7 @@ func Test_Store_GetSessionByID(t *testing.T) {
 		// Retrieve the session by ID
 		retrievedSession, err := store.GetSessionByID(sessionID)
 		require.NoError(t, err)
-		assert.NotNil(t, retrievedSession)
-		assert.Equal(t, sessionID, retrievedSession.ID())
+		require.NotNil(t, retrievedSession)
+		require.Equal(t, sessionID, retrievedSession.ID())
 	})
 }

@@ -12,6 +12,8 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+const testSessionID = "test-session-id"
+
 // go test -run Test_Session
 func Test_Session(t *testing.T) {
 	t.Parallel()
@@ -962,4 +964,34 @@ func Test_Session_Concurrency(t *testing.T) {
 	for err := range errChan {
 		require.NoError(t, err)
 	}
+}
+
+// go test -v race -run Test_Session_Release -count 4
+func Test_Session_Release(t *testing.T) {
+	t.Parallel()
+
+	// session store
+	store := newStore()
+	// fiber instance
+	app := fiber.New()
+	// fiber context
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	// acquire a new session
+	sess := acquireSession()
+	sess.ctx = ctx
+	sess.config = store
+	sess.id = testSessionID
+	sess.Set("key", "value")
+
+	// release the session
+	sess.Release()
+
+	// assertions
+	require.Empty(t, sess.id)
+	require.Nil(t, sess.ctx)
+	require.Nil(t, sess.config)
+	require.Empty(t, sess.Keys())
+	require.Zero(t, sess.byteBuffer.Len())
 }
