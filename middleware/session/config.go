@@ -62,9 +62,10 @@ type Config struct {
 	// Optional. Default value 24 * time.Hour
 	IdleTimeout time.Duration
 
-	// Allowed session duration
-	// Optional. Default value 24 * time.Hour
-	Expiration time.Duration
+	// TODO: Implement this, or remove and leave it to the user to implement
+	// // Allowed session duration
+	// // Optional. Default value 24 * time.Hour
+	// Expiration time.Duration
 
 	// Indicates if cookie is secure.
 	// Optional. Default value false.
