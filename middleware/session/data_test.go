@@ -15,7 +15,7 @@ func TestKeys(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
 		defer dataPool.Put(d)
-		d.Reset() // Ensure data is reset
+		defer d.Reset()
 		keys := d.Keys()
 		require.Empty(t, keys, "Expected no keys in empty data")
 	})
@@ -25,7 +25,7 @@ func TestKeys(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
 		defer dataPool.Put(d)
-		d.Reset() // Ensure data is reset
+		defer d.Reset()
 		d.Set("key1", "value1")
 		keys := d.Keys()
 		require.Len(t, keys, 1, "Expected one key")
@@ -37,7 +37,7 @@ func TestKeys(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
 		defer dataPool.Put(d)
-		d.Reset() // Ensure data is reset
+		defer d.Reset()
 		d.Set("key1", "value1")
 		d.Set("key2", "value2")
 		d.Set("key3", "value3")
@@ -53,7 +53,7 @@ func TestKeys(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
 		defer dataPool.Put(d)
-		d.Reset() // Ensure data is reset
+		defer d.Reset()
 		d.Set("key1", "value1")
 		d.Set("key2", "value2")
 		d.Set("key3", "value3")
@@ -82,7 +82,7 @@ func TestData_Len(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
 		defer dataPool.Put(d)
-		d.Reset() // Ensure data is reset
+		defer d.Reset()
 		length := d.Len()
 		require.Equal(t, 0, length, "Expected length to be 0 for empty data")
 	})
@@ -92,7 +92,7 @@ func TestData_Len(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
 		defer dataPool.Put(d)
-		d.Reset() // Ensure data is reset
+		defer d.Reset()
 		d.Set("key1", "value1")
 		length := d.Len()
 		require.Equal(t, 1, length, "Expected length to be 1 when one key is set")
@@ -103,7 +103,7 @@ func TestData_Len(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
 		defer dataPool.Put(d)
-		d.Reset() // Ensure data is reset
+		defer d.Reset()
 		d.Set("key1", "value1")
 		d.Set("key2", "value2")
 		d.Set("key3", "value3")
@@ -116,7 +116,7 @@ func TestData_Len(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
 		defer dataPool.Put(d)
-		d.Reset() // Ensure data is reset
+		defer d.Reset()
 		d.Set("key1", "value1")
 		d.Set("key2", "value2")
 		d.Set("key3", "value3")
@@ -145,7 +145,7 @@ func TestData_Get(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
 		defer dataPool.Put(d)
-		d.Reset() // Ensure data is reset
+		defer d.Reset()
 		value := d.Get("non-existent-key")
 		require.Nil(t, value, "Expected nil for non-existent key")
 	})
@@ -155,7 +155,7 @@ func TestData_Get(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
 		defer dataPool.Put(d)
-		d.Reset() // Ensure data is reset
+		defer d.Reset()
 		d.Set("key1", "value1")
 		value := d.Get("key1")
 		require.Equal(t, "value1", value, "Expected value1 for key1")
@@ -185,7 +185,7 @@ func TestData_Delete(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
 		defer dataPool.Put(d)
-		d.Reset() // Ensure data is reset
+		defer d.Reset()
 		d.Set("key1", "value1")
 		d.Delete("key1")
 		value := d.Get("key1")
@@ -197,7 +197,7 @@ func TestData_Delete(t *testing.T) {
 		t.Parallel()
 		d := acquireData()
 		defer dataPool.Put(d)
-		d.Reset() // Ensure data is reset
+		defer d.Reset()
 		d.Delete("non-existent-key")
 		// No assertion needed, just ensure no panic or error
 	})
