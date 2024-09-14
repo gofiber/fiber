@@ -23,6 +23,8 @@ type mountFields struct {
 	subAppsProcessed sync.Once
 	// Prefix of app if it was mounted
 	mountPath string
+	// Parent app of the current app
+	parentApp *App
 }
 
 // Create empty mountFields instance
@@ -50,6 +52,7 @@ func (app *App) Mount(prefix string, subApp *App) Router {
 
 		subApp.mountFields.mountPath = path
 		app.mountFields.appList[path] = subApp
+		subApp.mountFields.parentApp = app
 	}
 
 	// register mounted group
@@ -97,6 +100,14 @@ func (grp *Group) Mount(prefix string, subApp *App) Router {
 // The MountPath property contains one or more path patterns on which a sub-app was mounted.
 func (app *App) MountPath() string {
 	return app.mountFields.mountPath
+}
+
+// FullMountPath returns the full mount path of the app, including the parent app's mount path.
+func (app *App) FullMountPath() string {
+	if app.mountFields.parentApp == nil {
+		return app.mountFields.mountPath
+	}
+	return getGroupPath(app.mountFields.parentApp.FullMountPath(), app.mountFields.mountPath)
 }
 
 // hasMountedApps Checks if there are any mounted apps in the current application.
