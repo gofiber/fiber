@@ -14,6 +14,11 @@ import (
 	"github.com/valyala/fasthttp/fasthttpadaptor"
 )
 
+type disableLogger struct{}
+
+func (*disableLogger) Printf(string, ...any) {
+}
+
 var ctxPool = sync.Pool{
 	New: func() any {
 		return new(fasthttp.RequestCtx)
@@ -171,7 +176,7 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		fctx.Response.Reset()
 		fctx.Request.Reset()
 		defer ctxPool.Put(fctx)
-		fctx.Init(req, remoteAddr, nil)
+		fctx.Init(req, remoteAddr, &disableLogger{})
 
 		if len(h) > 0 {
 			// New fiber Ctx
