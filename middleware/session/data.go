@@ -29,7 +29,12 @@ var dataPool = sync.Pool{
 //
 //	d := acquireData()
 func acquireData() *data {
-	return dataPool.Get().(*data) //nolint:forcetypeassert // We store nothing else in the pool
+	obj := dataPool.Get()
+	if d, ok := obj.(*data); ok {
+		return d
+	}
+	// Handle unexpected type in the pool
+	panic("unexpected type in data pool")
 }
 
 // Reset clears the data map and resets the data object.
@@ -39,8 +44,8 @@ func acquireData() *data {
 //	d.Reset()
 func (d *data) Reset() {
 	d.Lock()
+	defer d.Unlock()
 	d.Data = make(map[string]any)
-	d.Unlock()
 }
 
 // Get retrieves a value from the data map by key.
@@ -56,9 +61,8 @@ func (d *data) Reset() {
 //	value := d.Get("key")
 func (d *data) Get(key string) any {
 	d.RLock()
-	v := d.Data[key]
-	d.RUnlock()
-	return v
+	defer d.RUnlock()
+	return d.Data[key]
 }
 
 // Set updates or creates a new key-value pair in the data map.
@@ -72,8 +76,8 @@ func (d *data) Get(key string) any {
 //	d.Set("key", "value")
 func (d *data) Set(key string, value any) {
 	d.Lock()
+	defer d.Unlock()
 	d.Data[key] = value
-	d.Unlock()
 }
 
 // Delete removes a key-value pair from the data map.
@@ -86,8 +90,8 @@ func (d *data) Set(key string, value any) {
 //	d.Delete("key")
 func (d *data) Delete(key string) {
 	d.Lock()
+	defer d.Unlock()
 	delete(d.Data, key)
-	d.Unlock()
 }
 
 // Keys retrieves all keys in the data map.
@@ -100,11 +104,11 @@ func (d *data) Delete(key string) {
 //	keys := d.Keys()
 func (d *data) Keys() []string {
 	d.RLock()
+	defer d.RUnlock()
 	keys := make([]string, 0, len(d.Data))
 	for k := range d.Data {
 		keys = append(keys, k)
 	}
-	d.RUnlock()
 	return keys
 }
 
