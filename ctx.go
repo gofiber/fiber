@@ -1843,7 +1843,7 @@ func (c *DefaultCtx) IsProxyTrusted() bool {
 
 var localHosts = [...]string{"127.0.0.1", "::1"}
 
-// IsLocalHost will return true if address is a localhost address.
+// isLocalHost will return true if address is a localhost address.
 func (*DefaultCtx) isLocalHost(address string) bool {
 	for _, h := range localHosts {
 		if address == h {
