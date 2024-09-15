@@ -1714,6 +1714,16 @@ func Test_Ctx_IsProxyTrusted(t *testing.T) {
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		require.False(t, c.IsProxyTrusted())
 	}
+
+	{
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+
+			TrustInternalIPs: true,
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		require.False(t, c.IsProxyTrusted())
+	}
 }
 
 // go test -run Test_Ctx_Hostname
@@ -6338,6 +6348,42 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 				"173.245.48.0/20", // My custom range
 				"0.0.0.0/8",       // All IPv4 addresses
 			},
+		})
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			c.Request().SetRequestURI("http://google.com/")
+			c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+			for pb.Next() {
+				c.IsProxyTrusted()
+			}
+			app.ReleaseCtx(c)
+		})
+	})
+
+	// Scenario with trusted proxy check with TrustInternalIPs true
+	b.Run("WithProxyCheckOnlyTrustInternalIPs", func(b *testing.B) {
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+			TrustInternalIPs:        true,
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().SetRequestURI("http://google.com/test")
+		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			c.IsProxyTrusted()
+		}
+		app.ReleaseCtx(c)
+	})
+
+	// Scenario with trusted proxy check with all subnets with TrustInternalIPs true in parallel
+	b.Run("WithProxyCheckParallelOnlyTrustInternalIPs", func(b *testing.B) {
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+			TrustInternalIPs:        true,
 		})
 		b.ReportAllocs()
 		b.ResetTimer()

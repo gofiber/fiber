@@ -344,6 +344,9 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	//   3. c.Host() and c.Hostname() WON'T get value from X-Forwarded-Host header, fasthttp.Request.URI().Host()
 	//    will be used to get the hostname.
 	//
+	// If you wish to trust all internal ip addresses (loopback, private, and link-local unicast)
+	// without manually adding them to TrustedProxies whitelist, enable TrustInternalIPs.
+	//
 	// Default: false
 	EnableTrustedProxyCheck bool `json:"enable_trusted_proxy_check"`
 
@@ -353,6 +356,11 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	TrustedProxies     []string `json:"trusted_proxies"`
 	trustedProxiesMap  map[string]struct{}
 	trustedProxyRanges []*net.IPNet
+
+	// Read EnableTrustedProxyCheck doc.
+	//
+	// Default: false
+	TrustInternalIPs bool `json:"trust_internal_ips"`
 
 	// If set to true, c.IP() and c.IPs() will validate IP addresses before returning them.
 	// Also, c.IP() will return only the first valid IP rather than just the raw header
