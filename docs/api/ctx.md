@@ -812,7 +812,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ## IsFromLocal
 
-Returns true if request came from localhost
+Returns true if request came from localhost.
 
 ```go title="Signature"
 func (c Ctx) IsFromLocal() bool {
