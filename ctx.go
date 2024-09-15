@@ -1828,6 +1828,10 @@ func (c *DefaultCtx) IsProxyTrusted() bool {
 
 	ip := c.fasthttp.RemoteIP()
 
+	if c.app.config.TrustInternalIPs && c.isInternalHost(ip) {
+		return true
+	}
+
 	if _, trusted := c.app.config.trustedProxiesMap[ip.String()]; trusted {
 		return true
 	}
@@ -1839,6 +1843,11 @@ func (c *DefaultCtx) IsProxyTrusted() bool {
 	}
 
 	return false
+}
+
+// isInternalHost will return true if address is an internal address.
+func (*DefaultCtx) isInternalHost(ip net.IP) bool {
+	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()
 }
 
 var localHosts = [...]string{"127.0.0.1", "::1"}
