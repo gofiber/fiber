@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"bytes"
 	"fmt"
 	"html"
 	"sort"
@@ -357,6 +358,10 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 		IndexNames:           []string{"index.html"},
 		PathRewrite: func(fctx *fasthttp.RequestCtx) []byte {
 			path := fctx.Path()
+			mountPath := app.FullMountPath()
+			if n := len(mountPath); n > 0 && bytes.Equal(path[:n], utils.UnsafeBytes(mountPath)) {
+				path = path[n:]
+			}
 			if len(path) >= prefixLen {
 				if isStar && app.getString(path[0:prefixLen]) == prefix {
 					path = append(path[0:0], '/')
