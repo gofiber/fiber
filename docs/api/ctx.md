@@ -831,7 +831,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ## IsProxyTrusted
 
 Checks trustworthiness of remote ip.
-If [`EnableTrustedProxyCheck`](fiber.md#enabletrustedproxycheck) false, it returns true
+If [`EnableTrustedProxyCheck`](fiber.md#enabletrustedproxycheck) false, it returns true.
 IsProxyTrusted can check remote ip by proxy ranges and ip map.
 
 ```go title="Signature"
@@ -845,6 +845,8 @@ app := fiber.New(fiber.Config{
   EnableTrustedProxyCheck: true,
   // TrustedProxies is a list of trusted proxy IP addresses
   TrustedProxies: []string{"0.8.0.0", "0.8.0.1"},
+  // TrustInternalIPs can be used to trust all private/loopback/linklocal-unicast addresses
+  TrustInternalIPs: true,
 })
         
 
