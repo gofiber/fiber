@@ -76,7 +76,6 @@ func (s *Session) Release() {
 
 func releaseSession(s *Session) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.id = ""
 	s.idleTimeout = 0
 	s.ctx = nil
@@ -87,6 +86,7 @@ func releaseSession(s *Session) {
 	if s.byteBuffer != nil {
 		s.byteBuffer.Reset()
 	}
+	s.mu.Unlock()
 	sessionPool.Put(s)
 }
 
@@ -130,7 +130,6 @@ func (s *Session) ID() string {
 //
 //	value := s.Get("key")
 func (s *Session) Get(key string) any {
-	// Better safe than sorry
 	if s.data == nil {
 		return nil
 	}
@@ -147,7 +146,6 @@ func (s *Session) Get(key string) any {
 //
 //	s.Set("key", "value")
 func (s *Session) Set(key string, val any) {
-	// Better safe than sorry
 	if s.data == nil {
 		return
 	}
@@ -163,7 +161,6 @@ func (s *Session) Set(key string, val any) {
 //
 //	s.Delete("key")
 func (s *Session) Delete(key string) {
-	// Better safe than sorry
 	if s.data == nil {
 		return
 	}
@@ -179,7 +176,6 @@ func (s *Session) Delete(key string) {
 //
 //	err := s.Destroy()
 func (s *Session) Destroy() error {
-	// Better safe than sorry
 	if s.data == nil {
 		return nil
 	}
@@ -289,7 +285,6 @@ func (s *Session) Save() error {
 }
 
 func (s *Session) saveSession() error {
-	// Better safe than sorry
 	if s.data == nil {
 		return nil
 	}
