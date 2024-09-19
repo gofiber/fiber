@@ -314,9 +314,9 @@ Added support for specifying Key length when using `encryptcookie.GenerateKey(le
 
 ### Session
 
-The Session middleware has undergone key changes in v3 to improve functionality and flexibility. While v2 methods remain available for backward compatibility, we now recommend using the new middleware handler for session management. 
+The Session middleware has undergone key changes in v3 to improve functionality and flexibility. While v2 methods remain available for backward compatibility, we now recommend using the new middleware handler for session management.
 
-#### Key Updates:
+#### Key Updates
 
 - **New Middleware Handler**: The `New` function now returns a middleware handler instead of a `*Store`. To access the session store, use the `Store` method on the middleware, or opt for `NewWithStore` for custom store integration.
 
