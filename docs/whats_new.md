@@ -314,9 +314,17 @@ Added support for specifying Key length when using `encryptcookie.GenerateKey(le
 
 ### Session
 
-:::caution
-DRAFT section
-:::
+The Session middleware has undergone key changes in v3 to improve functionality and flexibility. While v2 methods remain available for backward compatibility, we now recommend using the new middleware handler for session management. 
+
+#### Key Updates:
+
+- **New Middleware Handler**: The `New` function now returns a middleware handler instead of a `*Store`. To access the session store, use the `Store` method on the middleware, or opt for `NewWithStore` for custom store integration.
+
+- **Manual Session Release**: Session instances are no longer automatically released after being saved. To ensure proper lifecycle management, you must manually call `sess.Release()`.
+
+- **Idle Timeout**: The `Expiration` field has been replaced with `IdleTimeout`, which strictly handles session inactivity. If you require a maximum session duration, you'll need to implement it within your own session data.
+
+For more details on these changes and migration instructions, check the [Session Middleware Migration Guide](./middleware/session.md#migration-guide).
 
 ### Filesystem
 
