@@ -86,7 +86,7 @@ func Test_HTTPHandler(t *testing.T) {
 	remoteAddr, err := net.ResolveTCPAddr("tcp", expectedRemoteAddr)
 	require.NoError(t, err)
 
-	fctx.Init(&req, remoteAddr, nil)
+	fctx.Init(&req, remoteAddr, &disableLogger{})
 	app := fiber.New()
 	ctx := app.AcquireCtx(&fctx)
 	defer app.ReleaseCtx(ctx)
@@ -413,6 +413,10 @@ func Benchmark_FiberHandlerFunc(b *testing.B) {
 		bodyContent []byte
 	}{
 		{
+			name:        "No Content",
+			bodyContent: nil, // No body content case
+		},
+		{
 			name:        "100KB",
 			bodyContent: make([]byte, 100*1024),
 		},
@@ -450,7 +454,14 @@ func Benchmark_FiberHandlerFunc(b *testing.B) {
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
 			w := httptest.NewRecorder()
-			bodyBuffer := bytes.NewBuffer(bm.bodyContent)
+			var bodyBuffer *bytes.Buffer
+
+			// Handle the "No Content" case where bodyContent is nil
+			if bm.bodyContent != nil {
+				bodyBuffer = bytes.NewBuffer(bm.bodyContent)
+			} else {
+				bodyBuffer = bytes.NewBuffer([]byte{}) // Empty buffer for no content
+			}
 
 			r := http.Request{
 				Method: http.MethodPost,
@@ -476,6 +487,10 @@ func Benchmark_FiberHandlerFunc_Parallel(b *testing.B) {
 		name        string
 		bodyContent []byte
 	}{
+		{
+			name:        "No Content",
+			bodyContent: nil, // No body content case
+		},
 		{
 			name:        "100KB",
 			bodyContent: make([]byte, 100*1024),
@@ -513,7 +528,15 @@ func Benchmark_FiberHandlerFunc_Parallel(b *testing.B) {
 
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
-			bodyBuffer := bytes.NewBuffer(bm.bodyContent)
+			var bodyBuffer *bytes.Buffer
+
+			// Handle the "No Content" case where bodyContent is nil
+			if bm.bodyContent != nil {
+				bodyBuffer = bytes.NewBuffer(bm.bodyContent)
+			} else {
+				bodyBuffer = bytes.NewBuffer([]byte{}) // Empty buffer for no content
+			}
+
 			b.ReportAllocs()
 			b.ResetTimer()
 

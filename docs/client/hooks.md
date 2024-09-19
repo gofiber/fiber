@@ -2,7 +2,7 @@
 id: hooks
 title: 🎣 Hooks
 description: >-
-  Hooks are used to manipulate request/response proccess of Fiber client.
+  Hooks are used to manipulate request/response process of Fiber client.
 sidebar_position: 4
 ---
 
@@ -77,7 +77,7 @@ There are also some builtin request hooks provide some functionalities for Fiber
 
 - [parserRequestURL](https://github.com/gofiber/fiber/blob/main/client/hooks.go#L62): parserRequestURL customizes the URL according to the path params and query params. It's necessary for `PathParam` and `QueryParam` methods.
 
-- [parserRequestHeader](https://github.com/gofiber/fiber/blob/main/client/hooks.go#L113): parserRequestHeader sets request headers, cookies, body type, referer, user agent according to client and request proeprties. It's necessary to make request header and cookiejar methods functional.
+- [parserRequestHeader](https://github.com/gofiber/fiber/blob/main/client/hooks.go#L113): parserRequestHeader sets request headers, cookies, body type, referer, user agent according to client and request properties. It's necessary to make request header and cookiejar methods functional.
 
 - [parserRequestBody](https://github.com/gofiber/fiber/blob/main/client/hooks.go#L178): parserRequestBody serializes the body automatically. It is useful for XML, JSON, form, file bodies.
 

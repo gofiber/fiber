@@ -65,7 +65,7 @@ func New(config ...Config) fiber.Handler {
 			return c.SendStatus(fiber.StatusRequestEntityTooLarge)
 		}
 
-		bb.B = appendUint(bb.Bytes(), uint32(bodyLength)) //nolint:gosec // Body length is validated above
+		bb.B = appendUint(bb.Bytes(), uint32(bodyLength))
 		bb.WriteByte('-')
 		bb.B = appendUint(bb.Bytes(), crc32.Checksum(body, crc32q))
 		bb.WriteByte('"')
