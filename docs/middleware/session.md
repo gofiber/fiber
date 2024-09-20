@@ -402,8 +402,7 @@ func main() {
 | **CookieDomain**      | `string`                       | The domain scope of the session cookie.                                                    | `""`                      |
 | **CookiePath**        | `string`                       | The path scope of the session cookie.                                                      | `"/"`                     |
 | **CookieSameSite**    | `string`                       | The SameSite attribute of the session cookie.                                              | `"Lax"`                   |
-| **IdleTimeout**       | `time.Duration`                | Maximum duration of inactivity before session expires.                                     | `0` (no idle timeout)     |
-| **Expiration**        | `time.Duration`                | Maximum session duration before expiration.                                                | `30 * time.Minute`        |
+| **IdleTimeout**       | `time.Duration`                | Maximum duration of inactivity before session expires.                                     | `30 * time.Minute`        |
 | **CookieSecure**      | `bool`                         | Ensures session cookie is only sent over HTTPS.                                            | `false`                   |
 | **CookieHTTPOnly**    | `bool`                         | Ensures session cookie is not accessible to JavaScript (HTTP only).                        | `true`                    |
 | **CookieSessionOnly** | `bool`                         | Prevents session cookie from being saved after the session ends (cookie expires on close). | `false`                   |

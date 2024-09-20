@@ -268,6 +268,8 @@ func (s *Session) refresh() {
 // sess.Save() will save the session data to the storage and update the
 // client cookie.
 //
+// Checks if the session is being used in the handler, if so, it will not save the session.
+//
 // Returns:
 //   - error: An error if the save operation fails.
 //
@@ -276,9 +278,11 @@ func (s *Session) refresh() {
 //	err := s.Save()
 func (s *Session) Save() error {
 	// If the session is being used in the handler, it should not be saved
-	if _, ok := s.ctx.Locals(key).(*Middleware); ok {
-		// Session is in use, so we do nothing and return
-		return nil
+	if m, ok := s.ctx.Locals(key).(*Middleware); ok {
+		if m.Session == s {
+			// Session is in use, so we do nothing and return
+			return nil
+		}
 	}
 
 	return s.saveSession()

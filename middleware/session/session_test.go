@@ -534,7 +534,9 @@ func Test_Session_Cookie(t *testing.T) {
 	sess.Release()
 
 	// cookie should be set on Save ( even if empty data )
-	require.Len(t, ctx.Response().Header.PeekCookie(store.sessionName), 84)
+	cookie := ctx.Response().Header.PeekCookie(store.sessionName)
+	require.NotNil(t, cookie)
+	require.Regexp(t, `^session_id=[a-f0-9\-]{36}; max-age=\d+; path=/; SameSite=Lax$`, string(cookie))
 }
 
 // go test -run Test_Session_Cookie_In_Response

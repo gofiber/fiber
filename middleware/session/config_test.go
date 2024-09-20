@@ -12,7 +12,7 @@ import (
 func TestConfigDefault(t *testing.T) {
 	// Test default config
 	cfg := configDefault()
-	require.Equal(t, 24*time.Hour, cfg.IdleTimeout)
+	require.Equal(t, 30*time.Minute, cfg.IdleTimeout)
 	require.Equal(t, "cookie:session_id", cfg.KeyLookup)
 	require.NotNil(t, cfg.KeyGenerator)
 	require.Equal(t, SourceCookie, cfg.source)
