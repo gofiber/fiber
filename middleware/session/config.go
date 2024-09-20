@@ -1,13 +1,11 @@
 package session
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/log"
-	"github.com/gofiber/session"
 	"github.com/gofiber/utils/v2"
 )
 
@@ -20,7 +18,7 @@ type Config struct {
 
 	// Next defines a function to skip this middleware when it returns true.
 	// Optional. Default: nil
-	Next func(c *fiber.Ctx) bool
+	Next func(c fiber.Ctx) bool
 
 	// Store defines the session store.
 	//
@@ -181,12 +179,4 @@ func configDefault(config ...Config) Config {
 	cfg.sessionName = selectors[1]
 
 	return cfg
-}
-
-// Example for Config struct.
-func ExampleConfig() {
-	cfg := session.Config{
-		IdleTimeout: 10 * time.Minute,
-	}
-	fmt.Println(cfg.IdleTimeout)
 }

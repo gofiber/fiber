@@ -47,13 +47,13 @@ func TestDefaultErrorHandler(t *testing.T) {
 }
 
 func TestInvalidKeyLookupFormat(t *testing.T) {
-	require.PanicsWithValue(t, "[session] KeyLookup must in the form of <source>:<name>", func() {
+	require.PanicsWithValue(t, "[session] KeyLookup must be in the format '<source>:<name>'", func() {
 		configDefault(Config{KeyLookup: "invalid_format"})
 	})
 }
 
 func TestUnsupportedSource(t *testing.T) {
-	require.PanicsWithValue(t, "[session] source is not supported", func() {
+	require.PanicsWithValue(t, "[session] unsupported source in KeyLookup", func() {
 		configDefault(Config{KeyLookup: "unsupported:session_id"})
 	})
 }
