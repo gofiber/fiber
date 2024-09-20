@@ -51,6 +51,10 @@ To convert a v2 example to use the v3 legacy approach, follow these steps:
 2. **Retrieve Session**: Access the session store using the `store.Get(c)` method.
 3. **Release Session**: Ensure that you call `sess.Release()` after you are done with the session to manage its lifecycle.
 
+:::note
+When using the legacy approach, the IdleTimeout will only be updated when the session is saved.
+:::
+
 #### Example Conversion
 
 **v2 Example:**
