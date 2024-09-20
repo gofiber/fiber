@@ -65,9 +65,6 @@ type Config struct {
 
 	// IdleTimeout defines the maximum duration of inactivity before the session expires.
 	//
-	// If set to a negative value, the session will never expire.
-	// Use this cautiously as it may lead to security issues.
-	//
 	// Note: The idle timeout is updated on each `Save()` call. If a middleware handler is used, `Save()` is called automatically.
 	//
 	// Optional. Default: 30 * time.Minute
