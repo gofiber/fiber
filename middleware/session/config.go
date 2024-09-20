@@ -59,13 +59,8 @@ type Config struct {
 	sessionName string
 
 	// Allowed session idle duration
-	// Optional. Default value 24 * time.Hour
+	// Optional. Default value 30 * time.Minute.
 	IdleTimeout time.Duration
-
-	// TODO: Implement this, or remove and leave it to the user to implement
-	// // Allowed session duration
-	// // Optional. Default value 24 * time.Hour
-	// Expiration time.Duration
 
 	// Indicates if cookie is secure.
 	// Optional. Default value false.
@@ -76,7 +71,7 @@ type Config struct {
 	CookieHTTPOnly bool
 
 	// Decides whether cookie should last for only the browser session.
-	// Ignores Expiration if set to true
+	// Ignores IdleTimeout if set to true
 	// Optional. Default value false.
 	CookieSessionOnly bool
 }
@@ -91,7 +86,7 @@ const (
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	IdleTimeout:  24 * time.Hour,
+	IdleTimeout:  30 * time.Minute,
 	KeyLookup:    "cookie:session_id",
 	KeyGenerator: utils.UUIDv4,
 	source:       "cookie",

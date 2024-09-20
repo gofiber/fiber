@@ -292,7 +292,7 @@ func (s *Session) saveSession() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Check if session has your own expiration, otherwise use default value
+	// Check is the session has an idle timeout
 	if s.idleTimeout <= 0 {
 		s.idleTimeout = s.config.IdleTimeout
 	}
@@ -330,7 +330,7 @@ func (s *Session) Keys() []string {
 	return s.data.Keys()
 }
 
-// SetIdleTimeout sets a specific expiration for this session.
+// SetIdleTimeout sets a specific idle timeout for the session.
 //
 // Parameters:
 //   - idleTimeout: The duration for the idle timeout.

@@ -226,6 +226,10 @@ func (s *Store) GetSessionByID(id string) (*Session, error)
 **Security Notice**: For robust security, especially during sensitive operations like account changes or transactions, consider using CSRF protection. Fiber provides a [CSRF Middleware](https://docs.gofiber.io/api/middleware/csrf) that can be used with sessions to prevent CSRF attacks.
 :::
 
+:::note
+**Middleware Order**: The order of middleware matters. The session middleware should come before any handler or middleware that uses the session (for example, the CSRF middleware).
+:::
+
 ### Middleware Handler (Recommended)
 
 ```go
@@ -395,7 +399,7 @@ func main() {
 | **CookiePath**        | `string`                       | The path scope of the session cookie.                                                      | `"/"`                     |
 | **CookieSameSite**    | `string`                       | The SameSite attribute of the session cookie.                                              | `"Lax"`                   |
 | **IdleTimeout**       | `time.Duration`                | Maximum duration of inactivity before session expires.                                     | `0` (no idle timeout)     |
-| **Expiration**        | `time.Duration`                | Maximum session duration before expiration.                                                | `24 * time.Hour`          |
+| **Expiration**        | `time.Duration`                | Maximum session duration before expiration.                                                | `30 * time.Minute`        |
 | **CookieSecure**      | `bool`                         | Ensures session cookie is only sent over HTTPS.                                            | `false`                   |
 | **CookieHTTPOnly**    | `bool`                         | Ensures session cookie is not accessible to JavaScript (HTTP only).                        | `true`                    |
 | **CookieSessionOnly** | `bool`                         | Prevents session cookie from being saved after the session ends (cookie expires on close). | `false`                   |
@@ -413,8 +417,7 @@ session.Config{
     CookieDomain:      "",
     CookiePath:        "",
     CookieSameSite:    "Lax",
-    IdleTimeout:       24 * time.Hour,
-    Expiration:        24 * time.Hour,
+    IdleTimeout:       30 * time.Minute,
     CookieSecure:      false,
     CookieHTTPOnly:    false,
     CookieSessionOnly: false,

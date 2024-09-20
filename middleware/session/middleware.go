@@ -10,12 +10,11 @@ import (
 
 // Middleware defines the session middleware configuration
 type Middleware struct {
-	Session    *Session
-	ctx        *fiber.Ctx
-	config     Config
-	mu         sync.RWMutex
-	hasChanged bool // TODO: use this to optimize interaction with the session store
-	destroyed  bool
+	Session   *Session
+	ctx       *fiber.Ctx
+	config    Config
+	mu        sync.RWMutex
+	destroyed bool
 }
 
 // key for looking up session middleware in request context
@@ -161,7 +160,6 @@ func releaseMiddleware(m *Middleware) {
 	m.Session = nil
 	m.ctx = nil
 	m.destroyed = false
-	m.hasChanged = false
 	m.mu.Unlock()
 	middlewarePool.Put(m)
 }
@@ -201,7 +199,6 @@ func (m *Middleware) Set(key string, value any) {
 	defer m.mu.Unlock()
 
 	m.Session.Set(key, value)
-	m.hasChanged = true
 }
 
 // Get retrieves a value from the session by key.
@@ -235,7 +232,6 @@ func (m *Middleware) Delete(key string) {
 	defer m.mu.Unlock()
 
 	m.Session.Delete(key)
-	m.hasChanged = true
 }
 
 // Destroy destroys the session.
@@ -292,7 +288,6 @@ func (m *Middleware) Reset() error {
 	defer m.mu.Unlock()
 
 	err := m.Session.Reset()
-	m.hasChanged = true
 	return err
 }
 
