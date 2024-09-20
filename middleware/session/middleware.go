@@ -1,3 +1,5 @@
+// Package session provides session management middleware for Fiber.
+// This middleware allows you to manage user sessions, including storing session data in the store.
 package session
 
 import (
