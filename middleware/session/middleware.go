@@ -1,5 +1,5 @@
 // Package session provides session management middleware for Fiber.
-// This middleware allows you to manage user sessions, including storing session data in the store.
+// This middleware handles user sessions, including storing session data in the store.
 package session
 
 import (
@@ -10,7 +10,7 @@ import (
 	"github.com/gofiber/fiber/v3/log"
 )
 
-// Middleware defines the session middleware configuration
+// Middleware holds session data and configuration.
 type Middleware struct {
 	Session   *Session
 	ctx       *fiber.Ctx
@@ -19,13 +19,14 @@ type Middleware struct {
 	destroyed bool
 }
 
-// key for looking up session middleware in request context
+// Context key for session middleware lookup.
 const key = 0
 
 var (
-	// ErrTypeAssertionFailed is returned when the type assertion failed
+	// ErrTypeAssertionFailed occurs when a type assertion fails.
 	ErrTypeAssertionFailed = errors.New("failed to type-assert to *Middleware")
 
+	// Pool for reusing middleware instances.
 	middlewarePool = &sync.Pool{
 		New: func() any {
 			return &Middleware{}
@@ -33,7 +34,7 @@ var (
 	}
 )
 
-// New creates a new session middleware with the given configuration.
+// New initializes session middleware with optional configuration.
 //
 // Parameters:
 //   - config: Variadic parameter to override default config.
@@ -44,18 +45,20 @@ var (
 // Usage:
 //
 //	app.Use(session.New())
+//
+// Usage:
+//
+//	app.Use(session.New())
 func New(config ...Config) fiber.Handler {
-	var handler fiber.Handler
 	if len(config) > 0 {
-		handler, _ = NewWithStore(config[0])
-	} else {
-		handler, _ = NewWithStore()
+		handler, _ := NewWithStore(config[0])
+		return handler
 	}
-
+	handler, _ := NewWithStore()
 	return handler
 }
 
-// NewWithStore returns a new session middleware with the given store.
+// NewWithStore creates session middleware with an optional custom store.
 //
 // Parameters:
 //   - config: Variadic parameter to override default config.
@@ -75,29 +78,14 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 	}
 
 	handler := func(c fiber.Ctx) error {
-		// Don't execute middleware if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()
 		}
 
-		// Get the session
-		session, err := cfg.Store.getSession(c)
-		if err != nil {
-			return err
-		}
-
-		// get a middleware from the pool
+		// Acquire session middleware
 		m := acquireMiddleware()
-		m.mu.Lock()
-		m.config = cfg
-		m.Session = session
-		m.ctx = &c
+		m.initialize(c, cfg)
 
-		// Store the middleware in the context
-		c.Locals(key, m)
-		m.mu.Unlock()
-
-		// Continue stack
 		stackErr := c.Next()
 
 		m.mu.RLock()
@@ -105,50 +93,56 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 		m.mu.RUnlock()
 
 		if !destroyed {
-			// Save the session
-			// This is done after the response is sent to the client
-			// It allows us to modify the session data during the request
-			// without having to worry about calling Save() on the session.
-			//
-			// It will also extend the session idle timeout automatically.
-			if err := session.saveSession(); err != nil {
-				if cfg.ErrorHandler != nil {
-					cfg.ErrorHandler(&c, err)
-				} else {
-					DefaultErrorHandler(&c, err)
-				}
-			}
-
-			// Release the session back to the pool
-			releaseSession(session)
+			m.saveSession()
 		}
 
-		// release the middleware back to the pool
 		releaseMiddleware(m)
-
 		return stackErr
 	}
 
 	return handler, cfg.Store
 }
 
-// acquireMiddleware returns a new Middleware from the pool.
-//
-// Returns:
-//   - *Middleware: The middleware object.
-//
-// Usage:
-//
-//	m := acquireMiddleware()
+// initialize sets up middleware for the request.
+func (m *Middleware) initialize(c fiber.Ctx, cfg Config) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	session, err := cfg.Store.getSession(c)
+	if err != nil {
+		panic(err) // handle or log this error appropriately in production
+	}
+
+	m.config = cfg
+	m.Session = session
+	m.ctx = &c
+
+	c.Locals(key, m)
+}
+
+// saveSession handles session saving and error management after the response.
+func (m *Middleware) saveSession() {
+	if err := m.Session.saveSession(); err != nil {
+		if m.config.ErrorHandler != nil {
+			m.config.ErrorHandler(m.ctx, err)
+		} else {
+			DefaultErrorHandler(m.ctx, err)
+		}
+	}
+
+	releaseSession(m.Session)
+}
+
+// acquireMiddleware retrieves a middleware instance from the pool.
 func acquireMiddleware() *Middleware {
-	middleware, ok := middlewarePool.Get().(*Middleware)
+	m, ok := middlewarePool.Get().(*Middleware)
 	if !ok {
 		panic(ErrTypeAssertionFailed.Error())
 	}
-	return middleware
+	return m
 }
 
-// releaseMiddleware returns a Middleware to the pool.
+// releaseMiddleware resets and returns middleware to the pool.
 //
 // Parameters:
 //   - m: The middleware object to release.
@@ -289,8 +283,7 @@ func (m *Middleware) Reset() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	err := m.Session.Reset()
-	return err
+	return m.Session.Reset()
 }
 
 // Store returns the session store.

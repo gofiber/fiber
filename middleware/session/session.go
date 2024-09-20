@@ -17,7 +17,7 @@ type Session struct {
 	ctx         fiber.Ctx     // fiber context
 	config      *Store        // store configuration
 	data        *data         // key value data
-	byteBuffer  *bytes.Buffer // byte buffer for the en- and decode
+	byteBuffer  *bytes.Buffer // byte buffer for encoding/decoding
 	id          string        // session id
 	idleTimeout time.Duration // idleTimeout of this session
 	mu          sync.RWMutex  // Mutex to protect non-data fields
@@ -26,7 +26,9 @@ type Session struct {
 
 var sessionPool = sync.Pool{
 	New: func() any {
-		return new(Session)
+		return &Session{
+			byteBuffer: new(bytes.Buffer),
+		}
 	},
 }
 
@@ -42,9 +44,6 @@ func acquireSession() *Session {
 	s := sessionPool.Get().(*Session) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
 	if s.data == nil {
 		s.data = acquireData()
-	}
-	if s.byteBuffer == nil {
-		s.byteBuffer = new(bytes.Buffer)
 	}
 	s.fresh = true
 	return s
@@ -90,7 +89,7 @@ func releaseSession(s *Session) {
 	sessionPool.Put(s)
 }
 
-// Fresh returns true if the current session is new.
+// Fresh returns whether the session is new
 //
 // Returns:
 //   - bool: True if the session is fresh, otherwise false.
@@ -104,7 +103,7 @@ func (s *Session) Fresh() bool {
 	return s.fresh
 }
 
-// ID returns the session id.
+// ID returns the session ID
 //
 // Returns:
 //   - string: The session ID.
@@ -263,12 +262,10 @@ func (s *Session) refresh() {
 	s.fresh = true
 }
 
-// Save updates the storage and client cookie.
+// Save saves the session data and updates the cookie
 //
-// sess.Save() will save the session data to the storage and update the
-// client cookie.
-//
-// Checks if the session is being used in the handler, if so, it will not save the session.
+// Note: If the session is being used in the handler, calling Save will have
+// no effect and the session will automatically be saved when the handler returns.
 //
 // Returns:
 //   - error: An error if the save operation fails.
@@ -288,6 +285,7 @@ func (s *Session) Save() error {
 	return s.saveSession()
 }
 
+// saveSession encodes session data to saves it to storage.
 func (s *Session) saveSession() error {
 	if s.data == nil {
 		return nil
@@ -296,7 +294,7 @@ func (s *Session) saveSession() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Check is the session has an idle timeout
+	// Set idleTimeout if not already set
 	if s.idleTimeout <= 0 {
 		s.idleTimeout = s.config.IdleTimeout
 	}
@@ -304,9 +302,11 @@ func (s *Session) saveSession() error {
 	// Update client cookie
 	s.setSession()
 
-	// Convert data to bytes
+	// Encode session data
 	encCache := gob.NewEncoder(s.byteBuffer)
+	s.data.RLock()
 	err := encCache.Encode(&s.data.Data)
+	s.data.RUnlock()
 	if err != nil {
 		return fmt.Errorf("failed to encode data: %w", err)
 	}
@@ -334,7 +334,7 @@ func (s *Session) Keys() []string {
 	return s.data.Keys()
 }
 
-// SetIdleTimeout sets a specific idle timeout for the session.
+// SetIdleTimeout used when saving the session on the next call to `Save()`.
 //
 // Parameters:
 //   - idleTimeout: The duration for the idle timeout.
@@ -411,7 +411,7 @@ func (s *Session) delSession() {
 	}
 }
 
-// decodeSessionData decodes the session data from raw bytes.
+// decodeSessionData decodes session data from raw bytes
 //
 // Parameters:
 //   - rawData: The raw byte data to decode.
