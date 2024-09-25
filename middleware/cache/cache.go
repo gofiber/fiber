@@ -117,7 +117,7 @@ func New(config ...Config) fiber.Handler {
 		// Get timestamp
 		ts := atomic.LoadUint64(&timestamp)
 
-		// Cache Entry not found
+		// Cache Entry found
 		if e != nil {
 			// Invalidate cache if requested
 			if cfg.CacheInvalidator != nil && cfg.CacheInvalidator(c) {
