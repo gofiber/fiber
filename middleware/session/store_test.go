@@ -20,7 +20,7 @@ func Test_Store_getSessionID(t *testing.T) {
 	t.Run("from cookie", func(t *testing.T) {
 		t.Parallel()
 		// session store
-		store := newStore()
+		store := NewStore()
 		// fiber context
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 
@@ -33,7 +33,7 @@ func Test_Store_getSessionID(t *testing.T) {
 	t.Run("from header", func(t *testing.T) {
 		t.Parallel()
 		// session store
-		store := newStore(Config{
+		store := NewStore(Config{
 			KeyLookup: "header:session_id",
 		})
 		// fiber context
@@ -48,7 +48,7 @@ func Test_Store_getSessionID(t *testing.T) {
 	t.Run("from url query", func(t *testing.T) {
 		t.Parallel()
 		// session store
-		store := newStore(Config{
+		store := NewStore(Config{
 			KeyLookup: "query:session_id",
 		})
 		// fiber context
@@ -73,7 +73,7 @@ func Test_Store_Get(t *testing.T) {
 	t.Run("session should be re-generated if it is invalid", func(t *testing.T) {
 		t.Parallel()
 		// session store
-		store := newStore()
+		store := NewStore()
 		// fiber context
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 
@@ -93,7 +93,7 @@ func Test_Store_DeleteSession(t *testing.T) {
 	// fiber instance
 	app := fiber.New()
 	// session store
-	store := newStore()
+	store := NewStore()
 
 	// fiber context
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -126,7 +126,7 @@ func TestStore_Get_SessionAlreadyLoaded(t *testing.T) {
 
 	// Mock middleware and set it in the context
 	middleware := &Middleware{}
-	ctx.Locals(key, middleware)
+	ctx.Locals(middlewareContextKey, middleware)
 
 	// Create a new store
 	store := &Store{}
@@ -141,7 +141,7 @@ func TestStore_Get_SessionAlreadyLoaded(t *testing.T) {
 
 func TestStore_Delete(t *testing.T) {
 	// Create a new store
-	store := newStore()
+	store := NewStore()
 
 	t.Run("delete with empty session ID", func(t *testing.T) {
 		err := store.Delete("")
@@ -158,7 +158,7 @@ func TestStore_Delete(t *testing.T) {
 func Test_Store_GetSessionByID(t *testing.T) {
 	t.Parallel()
 	// Create a new store
-	store := newStore()
+	store := NewStore()
 
 	t.Run("empty session ID", func(t *testing.T) {
 		t.Parallel()

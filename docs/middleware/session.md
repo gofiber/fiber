@@ -35,7 +35,7 @@ As of v3, we recommend using the middleware handler for session management. Howe
 
 ### v2 to v3
 
-- **Function Signature Change**: In v3, the `New` function now returns a middleware handler instead of a `*Store`. To access the store, use the `Store` method on `*Middleware` (obtained from `session.FromContext(c)` in a handler) or use `NewWithStore`.
+- **Function Signature Change**: In v3, the `New` function now returns a middleware handler instead of a `*Store`. To access the store, use the `Store` method on `*Middleware` (obtained from `session.FromContext(c)` in a handler) or use `NewStore` or `NewWithStore`.
 
 - **Session Lifecycle Management**: The `*Store.Save` method no longer releases the instance automatically. You must manually call `sess.Release()` after using the session to manage its lifecycle properly.
 
@@ -47,7 +47,7 @@ For more details about Fiber v3, see [What’s New](https://github.com/gofiber/f
 
 To convert a v2 example to use the v3 legacy approach, follow these steps:
 
-1. **Initialize with Store**: Use `session.NewWithStore()` to obtain both the middleware handler and store.
+1. **Initialize with Store**: Use `session.NewStore()` to obtain a store.
 2. **Retrieve Session**: Access the session store using the `store.Get(c)` method.
 3. **Release Session**: Ensure that you call `sess.Release()` after you are done with the session to manage its lifecycle.
 
@@ -87,7 +87,7 @@ app.Get("/", func(c *fiber.Ctx) error {
 **v3 Legacy Approach:**
 
 ```go
-_, store := session.NewWithStore()
+store := session.NewStore()
 
 app.Get("/", func(c *fiber.Ctx) error {
     sess, err := store.Get(c)
@@ -163,7 +163,7 @@ type Session struct {}
 
 ### Store
 
-Handles session data management and is created using `NewWithStore` or by accessing the `Store` method of a middleware instance.
+Handles session data management and is created using `NewStore`, `NewWithStore` or by accessing the `Store` method of a middleware instance.
 
 ```go
 type Store struct {
@@ -316,7 +316,7 @@ import (
 func main() {
     app := fiber.New()
 
-    _, sessionStore := session.NewWithStore()
+    sessionStore := session.NewStore()
 
     app.Use(csrf.New(csrf.Config{
         Store: sessionStore,
@@ -327,6 +327,7 @@ func main() {
         if err != nil {
             return c.SendStatus(fiber.StatusInternalServerError)
         }
+        defer sess.Release()
 
         name, ok := sess.Get("name").(string)
         if !ok {
@@ -334,6 +335,29 @@ func main() {
         }
 
         return c.SendString("Welcome " + name)
+    })
+
+    app.Post("/login", func(c *fiber.Ctx) error {
+        sess, err := sessionStore.Get(c)
+        if err != nil {
+            return c.SendStatus(fiber.StatusInternalServerError)
+        }
+        defer sess.Release()
+
+        if !sess.Fresh() {
+            if err := sess.Regenerate(); err != nil {
+                return c.SendStatus(fiber.StatusInternalServerError)
+            }
+        }
+
+        sess.Set("name", "John Doe")
+
+        err = sess.Save()
+        if err != nil {
+            return c.SendStatus(fiber.StatusInternalServerError)
+        }
+
+        return c.SendString("Logged in!")
     })
 
     app.Listen(":3000")

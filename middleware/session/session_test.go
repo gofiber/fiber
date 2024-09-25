@@ -17,7 +17,7 @@ func Test_Session(t *testing.T) {
 	t.Parallel()
 
 	// session store
-	store := newStore()
+	store := NewStore()
 
 	// fiber instance
 	app := fiber.New()
@@ -118,7 +118,7 @@ func Test_Session_Types(t *testing.T) {
 	t.Parallel()
 
 	// session store
-	store := newStore()
+	store := NewStore()
 
 	// fiber instance
 	app := fiber.New()
@@ -293,7 +293,7 @@ func Test_Session_Types(t *testing.T) {
 func Test_Session_Store_Reset(t *testing.T) {
 	t.Parallel()
 	// session store
-	store := newStore()
+	store := NewStore()
 	// fiber instance
 	app := fiber.New()
 	// fiber context
@@ -334,7 +334,7 @@ func Test_Session_Save(t *testing.T) {
 	t.Run("save to cookie", func(t *testing.T) {
 		t.Parallel()
 		// session store
-		store := newStore()
+		store := NewStore()
 		// fiber instance
 		app := fiber.New()
 		// fiber context
@@ -355,7 +355,7 @@ func Test_Session_Save(t *testing.T) {
 	t.Run("save to header", func(t *testing.T) {
 		t.Parallel()
 		// session store
-		store := newStore(Config{
+		store := NewStore(Config{
 			KeyLookup: "header:session_id",
 		})
 		// fiber instance
@@ -387,7 +387,7 @@ func Test_Session_Save_Expiration(t *testing.T) {
 
 		const sessionDuration = 5 * time.Second
 		// session store
-		store := newStore()
+		store := NewStore()
 		// fiber instance
 		app := fiber.New()
 		// fiber context
@@ -446,7 +446,7 @@ func Test_Session_Destroy(t *testing.T) {
 	t.Run("destroy from cookie", func(t *testing.T) {
 		t.Parallel()
 		// session store
-		store := newStore()
+		store := NewStore()
 		// fiber instance
 		app := fiber.New()
 		// fiber context
@@ -467,7 +467,7 @@ func Test_Session_Destroy(t *testing.T) {
 	t.Run("destroy from header", func(t *testing.T) {
 		t.Parallel()
 		// session store
-		store := newStore(Config{
+		store := NewStore(Config{
 			KeyLookup: "header:session_id",
 		})
 		// fiber instance
@@ -507,11 +507,11 @@ func Test_Session_Destroy(t *testing.T) {
 func Test_Session_Custom_Config(t *testing.T) {
 	t.Parallel()
 
-	store := newStore(Config{IdleTimeout: time.Hour, KeyGenerator: func() string { return "very random" }})
+	store := NewStore(Config{IdleTimeout: time.Hour, KeyGenerator: func() string { return "very random" }})
 	require.Equal(t, time.Hour, store.IdleTimeout)
 	require.Equal(t, "very random", store.KeyGenerator())
 
-	store = newStore(Config{IdleTimeout: 0})
+	store = NewStore(Config{IdleTimeout: 0})
 	require.Equal(t, ConfigDefault.IdleTimeout, store.IdleTimeout)
 }
 
@@ -519,7 +519,7 @@ func Test_Session_Custom_Config(t *testing.T) {
 func Test_Session_Cookie(t *testing.T) {
 	t.Parallel()
 	// session store
-	store := newStore()
+	store := NewStore()
 	// fiber instance
 	app := fiber.New()
 	// fiber context
@@ -543,7 +543,7 @@ func Test_Session_Cookie(t *testing.T) {
 // Regression: https://github.com/gofiber/fiber/pull/1191
 func Test_Session_Cookie_In_Middleware_Chain(t *testing.T) {
 	t.Parallel()
-	store := newStore()
+	store := NewStore()
 	app := fiber.New()
 
 	// fiber context
@@ -575,7 +575,7 @@ func Test_Session_Cookie_In_Middleware_Chain(t *testing.T) {
 // Regression: https://github.com/gofiber/fiber/issues/1365
 func Test_Session_Deletes_Single_Key(t *testing.T) {
 	t.Parallel()
-	store := newStore()
+	store := NewStore()
 	app := fiber.New()
 
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -617,7 +617,7 @@ func Test_Session_Reset(t *testing.T) {
 	app := fiber.New()
 
 	// session store
-	store := newStore()
+	store := NewStore()
 
 	t.Run("reset session data and id, and set fresh to be true", func(t *testing.T) {
 		t.Parallel()
@@ -691,7 +691,7 @@ func Test_Session_Regenerate(t *testing.T) {
 	t.Run("set fresh to be true when regenerating a session", func(t *testing.T) {
 		t.Parallel()
 		// session store
-		store := newStore()
+		store := NewStore()
 		// a random session uuid
 		originalSessionUUIDString := ""
 		// fiber context
@@ -740,7 +740,7 @@ func Test_Session_Regenerate(t *testing.T) {
 // go test -v -run=^$ -bench=Benchmark_Session -benchmem -count=4
 func Benchmark_Session(b *testing.B) {
 	b.Run("default", func(b *testing.B) {
-		app, store := fiber.New(), newStore()
+		app, store := fiber.New(), NewStore()
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(c)
 		c.Request().Header.SetCookie(store.sessionName, "12356789")
@@ -758,7 +758,7 @@ func Benchmark_Session(b *testing.B) {
 
 	b.Run("storage", func(b *testing.B) {
 		app := fiber.New()
-		store := newStore(Config{
+		store := NewStore(Config{
 			Storage: memory.New(),
 		})
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -780,7 +780,7 @@ func Benchmark_Session(b *testing.B) {
 // go test -v -run=^$ -bench=Benchmark_Session_Parallel -benchmem -count=4
 func Benchmark_Session_Parallel(b *testing.B) {
 	b.Run("default", func(b *testing.B) {
-		app, store := fiber.New(), newStore()
+		app, store := fiber.New(), NewStore()
 		b.ReportAllocs()
 		b.ResetTimer()
 		b.RunParallel(func(pb *testing.PB) {
@@ -801,7 +801,7 @@ func Benchmark_Session_Parallel(b *testing.B) {
 
 	b.Run("storage", func(b *testing.B) {
 		app := fiber.New()
-		store := newStore(Config{
+		store := NewStore(Config{
 			Storage: memory.New(),
 		})
 		b.ReportAllocs()
@@ -826,7 +826,7 @@ func Benchmark_Session_Parallel(b *testing.B) {
 // go test -v -run=^$ -bench=Benchmark_Session_Asserted -benchmem -count=4
 func Benchmark_Session_Asserted(b *testing.B) {
 	b.Run("default", func(b *testing.B) {
-		app, store := fiber.New(), newStore()
+		app, store := fiber.New(), NewStore()
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(c)
 		c.Request().Header.SetCookie(store.sessionName, "12356789")
@@ -845,7 +845,7 @@ func Benchmark_Session_Asserted(b *testing.B) {
 
 	b.Run("storage", func(b *testing.B) {
 		app := fiber.New()
-		store := newStore(Config{
+		store := NewStore(Config{
 			Storage: memory.New(),
 		})
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -868,7 +868,7 @@ func Benchmark_Session_Asserted(b *testing.B) {
 // go test -v -run=^$ -bench=Benchmark_Session_Asserted_Parallel -benchmem -count=4
 func Benchmark_Session_Asserted_Parallel(b *testing.B) {
 	b.Run("default", func(b *testing.B) {
-		app, store := fiber.New(), newStore()
+		app, store := fiber.New(), NewStore()
 		b.ReportAllocs()
 		b.ResetTimer()
 		b.RunParallel(func(pb *testing.PB) {
@@ -888,7 +888,7 @@ func Benchmark_Session_Asserted_Parallel(b *testing.B) {
 
 	b.Run("storage", func(b *testing.B) {
 		app := fiber.New()
-		store := newStore(Config{
+		store := NewStore(Config{
 			Storage: memory.New(),
 		})
 		b.ReportAllocs()
@@ -913,7 +913,7 @@ func Benchmark_Session_Asserted_Parallel(b *testing.B) {
 func Test_Session_Concurrency(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
-	store := newStore()
+	store := NewStore()
 
 	var wg sync.WaitGroup
 	errChan := make(chan error, 10) // Buffered channel to collect errors

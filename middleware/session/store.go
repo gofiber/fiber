@@ -30,7 +30,17 @@ type Store struct {
 }
 
 // New creates a new session store with the provided configuration.
-func newStore(config ...Config) *Store {
+//
+// Parameters:
+//   - config: Variadic parameter to override default config.
+//
+// Returns:
+//   - *Store: The session store.
+//
+// Usage:
+//
+//	store := session.New()
+func NewStore(config ...Config) *Store {
 	// Set default config
 	cfg := configDefault(config...)
 
@@ -76,7 +86,7 @@ func (*Store) RegisterType(i any) {
 func (s *Store) Get(c fiber.Ctx) (*Session, error) {
 	// If session is already loaded in the context,
 	// it should not be loaded again
-	_, ok := c.Locals(key).(*Middleware)
+	_, ok := c.Locals(middlewareContextKey).(*Middleware)
 	if ok {
 		return nil, ErrSessionAlreadyLoadedByMiddleware
 	}

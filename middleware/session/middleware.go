@@ -20,7 +20,12 @@ type Middleware struct {
 }
 
 // Context key for session middleware lookup.
-const key = 0
+type middlewareKey int
+
+const (
+	// middlewareContextKey is the key used to store the *Middleware in the context locals.
+	middlewareContextKey middlewareKey = iota
+)
 
 var (
 	// ErrTypeAssertionFailed occurs when a type assertion fails.
@@ -74,7 +79,7 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 	cfg := configDefault(config...)
 
 	if cfg.Store == nil {
-		cfg.Store = newStore(cfg)
+		cfg.Store = NewStore(cfg)
 	}
 
 	handler := func(c fiber.Ctx) error {
@@ -117,7 +122,7 @@ func (m *Middleware) initialize(c fiber.Ctx, cfg Config) {
 	m.Session = session
 	m.ctx = &c
 
-	c.Locals(key, m)
+	c.Locals(middlewareContextKey, m)
 }
 
 // saveSession handles session saving and error management after the response.
@@ -172,7 +177,7 @@ func releaseMiddleware(m *Middleware) {
 //
 //	m := session.FromContext(c)
 func FromContext(c fiber.Ctx) *Middleware {
-	m, ok := c.Locals(key).(*Middleware)
+	m, ok := c.Locals(middlewareContextKey).(*Middleware)
 	if !ok {
 		// TODO: since this may be called we may not want to log this except in debug mode?
 		log.Warn("session: Session middleware not registered. See https://docs.gofiber.io/middleware/session")
@@ -190,11 +195,11 @@ func FromContext(c fiber.Ctx) *Middleware {
 // Usage:
 //
 //	m.Set("key", "value")
-func (m *Middleware) Set(key string, value any) {
+func (m *Middleware) Set(middlewareContextKey string, value any) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.Session.Set(key, value)
+	m.Session.Set(middlewareContextKey, value)
 }
 
 // Get retrieves a value from the session by key.
@@ -208,11 +213,11 @@ func (m *Middleware) Set(key string, value any) {
 // Usage:
 //
 //	value := m.Get("key")
-func (m *Middleware) Get(key string) any {
+func (m *Middleware) Get(middlewareContextKey string) any {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	return m.Session.Get(key)
+	return m.Session.Get(middlewareContextKey)
 }
 
 // Delete removes a key-value pair from the session.
@@ -223,11 +228,11 @@ func (m *Middleware) Get(key string) any {
 // Usage:
 //
 //	m.Delete("key")
-func (m *Middleware) Delete(key string) {
+func (m *Middleware) Delete(middlewareContextKey string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.Session.Delete(key)
+	m.Session.Delete(middlewareContextKey)
 }
 
 // Destroy destroys the session.

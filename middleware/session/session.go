@@ -275,7 +275,7 @@ func (s *Session) refresh() {
 //	err := s.Save()
 func (s *Session) Save() error {
 	// If the session is being used in the handler, it should not be saved
-	if m, ok := s.ctx.Locals(key).(*Middleware); ok {
+	if m, ok := s.ctx.Locals(middlewareContextKey).(*Middleware); ok {
 		if m.Session == s {
 			// Session is in use, so we do nothing and return
 			return nil

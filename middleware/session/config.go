@@ -147,7 +147,7 @@ func configDefault(config ...Config) Config {
 	cfg := config[0]
 
 	// Set default values where necessary.
-	if int(cfg.IdleTimeout.Seconds()) <= 0 {
+	if cfg.IdleTimeout <= 0 {
 		cfg.IdleTimeout = ConfigDefault.IdleTimeout
 	}
 	if cfg.KeyLookup == "" {
