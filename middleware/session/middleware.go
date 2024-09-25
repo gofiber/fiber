@@ -195,11 +195,11 @@ func FromContext(c fiber.Ctx) *Middleware {
 // Usage:
 //
 //	m.Set("key", "value")
-func (m *Middleware) Set(middlewareContextKey string, value any) {
+func (m *Middleware) Set(key string, value any) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.Session.Set(middlewareContextKey, value)
+	m.Session.Set(key, value)
 }
 
 // Get retrieves a value from the session by key.
@@ -213,11 +213,11 @@ func (m *Middleware) Set(middlewareContextKey string, value any) {
 // Usage:
 //
 //	value := m.Get("key")
-func (m *Middleware) Get(middlewareContextKey string) any {
+func (m *Middleware) Get(key string) any {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	return m.Session.Get(middlewareContextKey)
+	return m.Session.Get(key)
 }
 
 // Delete removes a key-value pair from the session.
@@ -228,11 +228,11 @@ func (m *Middleware) Get(middlewareContextKey string) any {
 // Usage:
 //
 //	m.Delete("key")
-func (m *Middleware) Delete(middlewareContextKey string) {
+func (m *Middleware) Delete(key string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.Session.Delete(middlewareContextKey)
+	m.Session.Delete(key)
 }
 
 // Destroy destroys the session.
