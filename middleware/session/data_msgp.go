@@ -7,18 +7,6 @@ import (
 )
 
 // DecodeMsg implements msgp.Decodable
-//
-// This method decodes the session data from the provided msgp.Reader.
-//
-// Parameters:
-//   - dc: The msgp.Reader to decode from.
-//
-// Returns:
-//   - error: An error if the decoding fails.
-//
-// Usage:
-//
-//	err := d.DecodeMsg(reader)
 func (z *data) DecodeMsg(dc *msgp.Reader) (err error) {
 	var field []byte
 	_ = field
@@ -36,36 +24,6 @@ func (z *data) DecodeMsg(dc *msgp.Reader) (err error) {
 			return
 		}
 		switch msgp.UnsafeString(field) {
-		case "Data":
-			var zb0002 uint32
-			zb0002, err = dc.ReadMapHeader()
-			if err != nil {
-				err = msgp.WrapError(err, "Data")
-				return
-			}
-			if z.Data == nil {
-				z.Data = make(map[any]any, zb0002)
-			} else if len(z.Data) > 0 {
-				for key := range z.Data {
-					delete(z.Data, key)
-				}
-			}
-			for zb0002 > 0 {
-				zb0002--
-				var za0001 any
-				var za0002 any
-				za0001, err = dc.ReadIntf()
-				if err != nil {
-					err = msgp.WrapError(err, "Data")
-					return
-				}
-				za0002, err = dc.ReadIntf()
-				if err != nil {
-					err = msgp.WrapError(err, "Data", za0001)
-					return
-				}
-				z.Data[za0001] = za0002
-			}
 		default:
 			err = dc.Skip()
 			if err != nil {
@@ -78,98 +36,26 @@ func (z *data) DecodeMsg(dc *msgp.Reader) (err error) {
 }
 
 // EncodeMsg implements msgp.Encodable
-//
-// This method encodes the session data to the provided msgp.Writer.
-//
-// Parameters:
-//   - en: The msgp.Writer to encode to.
-//
-// Returns:
-//   - error: An error if the encoding fails.
-//
-// Usage:
-//
-//	err := d.EncodeMsg(writer)
-func (z *data) EncodeMsg(en *msgp.Writer) (err error) {
-	// map header, size 1
-	// write "Data"
-	err = en.Append(0x81, 0xa4, 0x44, 0x61, 0x74, 0x61)
+func (z data) EncodeMsg(en *msgp.Writer) (err error) {
+	// map header, size 0
+	_ = z
+	err = en.Append(0x80)
 	if err != nil {
 		return
-	}
-	err = en.WriteMapHeader(uint32(len(z.Data)))
-	if err != nil {
-		err = msgp.WrapError(err, "Data")
-		return
-	}
-	for za0001, za0002 := range z.Data {
-		keyStr, ok := za0001.(string)
-		if !ok {
-			return msgp.WrapError(err, "Data", za0001)
-		}
-		err = en.WriteString(keyStr)
-		if err != nil {
-			err = msgp.WrapError(err, "Data")
-			return
-		}
-		err = en.WriteIntf(za0002)
-		if err != nil {
-			err = msgp.WrapError(err, "Data", keyStr)
-			return
-		}
 	}
 	return
 }
 
 // MarshalMsg implements msgp.Marshaler
-//
-// This method marshals the session data into a byte slice.
-//
-// Parameters:
-//   - b: The byte slice to marshal into.
-//
-// Returns:
-//   - []byte: The marshaled byte slice.
-//   - error: An error if the marshaling fails.
-//
-// Usage:
-//
-//	b, err := d.MarshalMsg(nil)
-func (z *data) MarshalMsg(b []byte) (o []byte, err error) {
+func (z data) MarshalMsg(b []byte) (o []byte, err error) {
 	o = msgp.Require(b, z.Msgsize())
-	// map header, size 1
-	// string "Data"
-	o = append(o, 0x81, 0xa4, 0x44, 0x61, 0x74, 0x61)
-	o = msgp.AppendMapHeader(o, uint32(len(z.Data)))
-	for za0001, za0002 := range z.Data {
-		keyStr, ok := za0001.(string)
-		if !ok {
-			return nil, msgp.WrapError(err, "Data", za0001)
-		}
-		o = msgp.AppendString(o, keyStr)
-		o, err = msgp.AppendIntf(o, za0002)
-		if err != nil {
-			err = msgp.WrapError(err, "Data", keyStr)
-			return
-		}
-	}
+	// map header, size 0
+	_ = z
+	o = append(o, 0x80)
 	return
 }
 
 // UnmarshalMsg implements msgp.Unmarshaler
-//
-// This method unmarshals the session data from a byte slice.
-//
-// Parameters:
-//   - bts: The byte slice to unmarshal from.
-//
-// Returns:
-//   - []byte: The remaining byte slice after unmarshaling.
-//   - error: An error if the unmarshaling fails.
-//
-// Usage:
-//
-//	b, err := d.UnmarshalMsg(bts)
 func (z *data) UnmarshalMsg(bts []byte) (o []byte, err error) {
 	var field []byte
 	_ = field
@@ -187,36 +73,6 @@ func (z *data) UnmarshalMsg(bts []byte) (o []byte, err error) {
 			return
 		}
 		switch msgp.UnsafeString(field) {
-		case "Data":
-			var zb0002 uint32
-			zb0002, bts, err = msgp.ReadMapHeaderBytes(bts)
-			if err != nil {
-				err = msgp.WrapError(err, "Data")
-				return
-			}
-			if z.Data == nil {
-				z.Data = make(map[any]any, zb0002)
-			} else if len(z.Data) > 0 {
-				for key := range z.Data {
-					delete(z.Data, key)
-				}
-			}
-			for zb0002 > 0 {
-				var za0001 any
-				var za0002 any
-				zb0002--
-				za0001, bts, err = msgp.ReadIntfBytes(bts)
-				if err != nil {
-					err = msgp.WrapError(err, "Data")
-					return
-				}
-				za0002, bts, err = msgp.ReadIntfBytes(bts)
-				if err != nil {
-					err = msgp.WrapError(err, "Data", za0001)
-					return
-				}
-				z.Data[za0001] = za0002
-			}
 		default:
 			bts, err = msgp.Skip(bts)
 			if err != nil {
@@ -230,25 +86,7 @@ func (z *data) UnmarshalMsg(bts []byte) (o []byte, err error) {
 }
 
 // Msgsize returns an upper bound estimate of the number of bytes occupied by the serialized message
-//
-// This method returns the estimated size of the serialized session data.
-//
-// Returns:
-//   - int: The estimated size in bytes.
-//
-// Usage:
-//
-//	size := d.Msgsize()
-func (z *data) Msgsize() (s int) {
-	s = 1 + 5 + msgp.MapHeaderSize
-	if z.Data != nil {
-		for za0001, za0002 := range z.Data {
-			keyStr, ok := za0001.(string)
-			if !ok {
-				continue
-			}
-			s += msgp.StringPrefixSize + len(keyStr) + msgp.GuessSize(za0002)
-		}
-	}
+func (z data) Msgsize() (s int) {
+	s = 1
 	return
 }
