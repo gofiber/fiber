@@ -151,7 +151,7 @@ func (s *Session) Get(key any) any {
 // Usage:
 //
 //	s.Set("key", "value")
-func (s *Session) Set(key any, val any) {
+func (s *Session) Set(key, val any) {
 	if s.data == nil {
 		return
 	}
@@ -447,8 +447,6 @@ func (s *Session) decodeSessionData(rawData []byte) error {
 //
 //	expiration := s.expiration()
 func (s *Session) expiration() time.Time {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	expiration, ok := s.Get(expirationKey).(time.Time)
 	if ok {
 		return expiration
@@ -476,7 +474,5 @@ func (s *Session) isExpired() bool {
 //
 //	s.setExpiration(time.Now().Add(time.Hour))
 func (s *Session) setExpiration(expiration time.Time) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.Set(expirationKey, expiration)
 }

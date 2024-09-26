@@ -324,6 +324,8 @@ The Session middleware has undergone key changes in v3 to improve functionality 
 
 - **Idle Timeout**: The `Expiration` field has been replaced with `IdleTimeout`, which strictly handles session inactivity. If you require a maximum session duration, you'll need to implement it within your own session data.
 
+- **Absolute Timeout**: The `AbsoluteTimeout` field has been added. If you need to set an absolute session timeout, you can use this field to define the duration.
+
 For more details on these changes and migration instructions, check the [Session Middleware Migration Guide](./middleware/session.md#migration-guide).
 
 ### Filesystem

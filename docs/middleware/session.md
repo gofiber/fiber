@@ -39,7 +39,7 @@ As of v3, we recommend using the middleware handler for session management. Howe
 
 - **Session Lifecycle Management**: The `*Store.Save` method no longer releases the instance automatically. You must manually call `sess.Release()` after using the session to manage its lifecycle properly.
 
-- **Expiration Handling**: Previously, the `Expiration` field represented the maximum session duration before expiration. However, it would extend every time the session was saved, making its behavior a mix between session duration and session idle timeout. The `Expiration` field has been removed and replaced with the `IdleTimeout` field, which explicitly defines the session's idle timeout period. Users who need to set a maximum session duration must now implement this logic themselves using data stored in the session.
+- **Expiration Handling**: Previously, the `Expiration` field represented the maximum session duration before expiration. However, it would extend every time the session was saved, making its behavior a mix between session duration and session idle timeout. The `Expiration` field has been removed and replaced with `IdleTimeout` and `AbsoluteTimeout` fields, which explicitly defines the session's idle and absolute timeout periods.
 
 For more details about Fiber v3, see [What’s New](https://github.com/gofiber/fiber/blob/main/docs/whats_new.md).
 
@@ -52,7 +52,7 @@ To convert a v2 example to use the v3 legacy approach, follow these steps:
 3. **Release Session**: Ensure that you call `sess.Release()` after you are done with the session to manage its lifecycle.
 
 :::note
-When using the legacy approach, the IdleTimeout will only be updated when the session is saved.
+When using the legacy approach, the IdleTimeout will be updated when the session is saved.
 :::
 
 #### Example Conversion
@@ -427,6 +427,7 @@ func main() {
 | **CookiePath**        | `string`                       | The path scope of the session cookie.                                                      | `"/"`                     |
 | **CookieSameSite**    | `string`                       | The SameSite attribute of the session cookie.                                              | `"Lax"`                   |
 | **IdleTimeout**       | `time.Duration`                | Maximum duration of inactivity before session expires.                                     | `30 * time.Minute`        |
+| **AbsoluteTimeout**   | `time.Duration`                | Maximum duration before session expires.                                                   | `0` (no expiration)       |
 | **CookieSecure**      | `bool`                         | Ensures session cookie is only sent over HTTPS.                                            | `false`                   |
 | **CookieHTTPOnly**    | `bool`                         | Ensures session cookie is not accessible to JavaScript (HTTP only).                        | `true`                    |
 | **CookieSessionOnly** | `bool`                         | Prevents session cookie from being saved after the session ends (cookie expires on close). | `false`                   |
@@ -445,6 +446,7 @@ session.Config{
     CookiePath:        "",
     CookieSameSite:    "Lax",
     IdleTimeout:       30 * time.Minute,
+    AbsoluteTimeout:   0,
     CookieSecure:      false,
     CookieHTTPOnly:    false,
     CookieSessionOnly: false,

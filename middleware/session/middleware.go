@@ -195,7 +195,7 @@ func FromContext(c fiber.Ctx) *Middleware {
 // Usage:
 //
 //	m.Set("key", "value")
-func (m *Middleware) Set(key any, value any) {
+func (m *Middleware) Set(key, value any) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

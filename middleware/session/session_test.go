@@ -357,8 +357,8 @@ func Test_Session_KeyTypes(t *testing.T) {
 
 	// verify unregistered keys types are not allowed
 	var (
-		unregisteredKey   unregisteredKeyType   = 0
-		unregisteredValue unregisteredValueType = 1
+		unregisteredKey   unregisteredKeyType
+		unregisteredValue unregisteredValueType
 	)
 	sess.Set(unregisteredKey, "test")
 	err = sess.Save()
@@ -373,7 +373,7 @@ func Test_Session_KeyTypes(t *testing.T) {
 	err = sess.Save()
 	require.NoError(t, err)
 
-	sess.Reset()
+	require.NoError(t, sess.Reset())
 
 	var (
 		kbool                     = true

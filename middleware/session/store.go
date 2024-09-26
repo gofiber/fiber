@@ -154,11 +154,14 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 	// Decode session data if found
 	if rawData != nil {
 		sess.data.Lock()
-		defer sess.data.Unlock()
-		if err := sess.decodeSessionData(rawData); err != nil {
+		err := sess.decodeSessionData(rawData)
+		sess.data.Unlock()
+		if err != nil {
+			sess.mu.Unlock()
 			return nil, fmt.Errorf("failed to decode session data: %w", err)
 		}
 	}
+
 	sess.mu.Unlock()
 
 	if fresh && s.AbsoluteTimeout > 0 {
@@ -285,7 +288,6 @@ func (s *Store) GetSessionByID(id string) (*Session, error) {
 	sess := acquireSession()
 
 	sess.mu.Lock()
-	defer sess.mu.Unlock()
 
 	sess.id = id
 	sess.config = s
@@ -294,8 +296,10 @@ func (s *Store) GetSessionByID(id string) (*Session, error) {
 	decodeErr := sess.decodeSessionData(rawData)
 	sess.data.Unlock()
 	if decodeErr != nil {
+		sess.mu.Unlock()
 		return nil, fmt.Errorf("failed to decode session data: %w", err)
 	}
+	sess.mu.Unlock()
 
 	if s.AbsoluteTimeout > 0 {
 		if sess.isExpired() {

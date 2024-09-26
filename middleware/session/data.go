@@ -74,7 +74,7 @@ func (d *data) Get(key any) any {
 // Usage:
 //
 //	d.Set("key", "value")
-func (d *data) Set(key any, value any) {
+func (d *data) Set(key, value any) {
 	d.Lock()
 	defer d.Unlock()
 	d.Data[key] = value
