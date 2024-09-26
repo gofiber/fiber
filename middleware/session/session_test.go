@@ -614,7 +614,7 @@ func Test_Session_Save_IdleTimeout(t *testing.T) {
 	})
 }
 
-func Test_Session_Save_Absolute(t *testing.T) {
+func Test_Session_Save_AbsoluteTimeout(t *testing.T) {
 	t.Parallel()
 
 	t.Run("save to cookie", func(t *testing.T) {
