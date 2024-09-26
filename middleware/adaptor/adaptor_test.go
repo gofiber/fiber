@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -198,6 +199,49 @@ func Test_HTTPMiddleware(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "okay", resp.Header.Get("context_okay"))
 	require.Equal(t, "okay", resp.Header.Get("context_second_okay"))
+}
+
+func Test_HTTPMiddlewareWithCookies(t *testing.T) {
+	nethttpMW := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+
+	app := fiber.New()
+	app.Use(HTTPMiddleware(nethttpMW))
+	app.Post("/", func(c fiber.Ctx) error {
+		// RETURNING CURRENT COOKIES TO RESPONSE
+		var cookies []string = strings.Split(c.Get("Cookie"), "; ")
+		for _, cookie := range cookies {
+			c.Set("Set-Cookie", cookie)
+		}
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodPost, "/", nil)
+	require.NoError(t, err)
+	req.AddCookie(&http.Cookie{Name: "cookieOne", Value: "valueCookieOne"})
+	req.AddCookie(&http.Cookie{Name: "cookieTwo", Value: "valueCookieTwo"})
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	cookies := resp.Cookies()
+	require.Len(t, cookies, 2)
+	for _, cookie := range cookies {
+		switch cookie.Name {
+		case "cookieOne":
+			require.Equal(t, "valueCookieOne", cookie.Value)
+		case "cookieTwo":
+			require.Equal(t, "valueCookieTwo", cookie.Value)
+		default:
+			t.Error("unexpected cookie key")
+		}
+	}
 }
 
 func Test_FiberHandler(t *testing.T) {

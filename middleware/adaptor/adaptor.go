@@ -101,6 +101,8 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 			c.Request().SetHost(r.Host)
 			c.Request().Header.SetHost(r.Host)
 
+			// Remove all cookies before setting, see https://github.com/valyala/fasthttp/pull/1864
+			c.Request().Header.DelAllCookies()
 			for key, val := range r.Header {
 				for _, v := range val {
 					c.Request().Header.Set(key, v)
