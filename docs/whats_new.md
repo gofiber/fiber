@@ -30,6 +30,7 @@ Here's a quick overview of the changes in Fiber `v3`:
 - [🧰 Generic functions](#-generic-functions)
 - [🧬 Middlewares](#-middlewares)
   - [CORS](#cors)
+  - [CSRF](#csrf)
   - [Session](#session)
   - [Filesystem](#filesystem)
   - [Monitor](#monitor)
@@ -503,6 +504,24 @@ app.Use(cors.New(cors.Config{
   ExposeHeaders: []string{"Content-Length"},
 }))
 ```
+
+#### CSRF
+
+- **Field Renaming**: The `Expiration` field in the CSRF middleware configuration has been renamed to `IdleTimeout` to better describe its functionality. Additionally, the default value has been reduced from 1 hour to 30 minutes. Update your code as follows:
+
+```go
+// Before
+app.Use(csrf.New(csrf.Config{
+  Expiration: 10 * time.Minute,
+}))
+
+// After
+app.Use(csrf.New(csrf.Config{
+  IdleTimeout: 10 * time.Minute,
+}))
+```
+
+- **Session Key Removal**: The `SessionKey` field has been removed from the CSRF middleware configuration. The session key is now an unexported constant within the middleware to avoid potential key collisions in the session store.
 
 #### Filesystem
 
