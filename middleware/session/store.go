@@ -50,9 +50,16 @@ func NewStore(config ...Config) *Store {
 		cfg.Storage = memory.New()
 	}
 
-	return &Store{
+	store := &Store{
 		Config: cfg,
 	}
+
+	if cfg.AbsoluteTimeout > 0 {
+		store.RegisterType(expirationKey)
+		store.RegisterType(time.Time{})
+	}
+
+	return store
 }
 
 // RegisterType registers a custom type for encoding/decoding into any storage provider.
@@ -245,7 +252,7 @@ func (s *Store) Delete(id string) error {
 	return s.Storage.Delete(id)
 }
 
-// GetSessionByID retrieves a session by its ID from the storage.
+// GetByID retrieves a session by its ID from the storage.
 // If the session is not found, it returns nil and an error.
 //
 // Note:
@@ -256,7 +263,7 @@ func (s *Store) Delete(id string) error {
 // - Be aware of possible collisions if you are also using the session in a middleware.
 //
 // Usage:
-//   - If you modify a session returned by GetSession, you must call session.Save() to persist the changes.
+//   - If you modify a session returned by GetByID, you must call session.Save() to persist the changes.
 //   - When you are done with the session, you should call session.Release() to release the session back to the pool.
 //
 // Parameters:
@@ -268,11 +275,11 @@ func (s *Store) Delete(id string) error {
 //
 // Usage:
 //
-//	sess, err := store.GetSessionByID(id)
+//	sess, err := store.GetByID(id)
 //	if err != nil {
 //	    // handle error
 //	}
-func (s *Store) GetSessionByID(id string) (*Session, error) {
+func (s *Store) GetByID(id string) (*Session, error) {
 	if id == "" {
 		return nil, ErrEmptySessionID
 	}

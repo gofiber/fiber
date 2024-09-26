@@ -219,9 +219,9 @@ func (s *Session) SetIdleTimeout(idleTimeout time.Duration)
 ```go
 func (*Store) RegisterType(i any)
 func (s *Store) Get(c fiber.Ctx) (*Session, error)
+func (s *Store) GetByID(id string) (*Session, error)
 func (s *Store) Reset() error
 func (s *Store) Delete(id string) error
-func (s *Store) GetSessionByID(id string) (*Session, error)
 ```
 
 ## Examples

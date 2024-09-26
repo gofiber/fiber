@@ -155,14 +155,14 @@ func TestStore_Delete(t *testing.T) {
 	})
 }
 
-func Test_Store_GetSessionByID(t *testing.T) {
+func Test_Store_GetByID(t *testing.T) {
 	t.Parallel()
 	// Create a new store
 	store := NewStore()
 
 	t.Run("empty session ID", func(t *testing.T) {
 		t.Parallel()
-		sess, err := store.GetSessionByID("")
+		sess, err := store.GetByID("")
 		require.Error(t, err)
 		require.Nil(t, sess)
 		require.Equal(t, ErrEmptySessionID, err)
@@ -170,7 +170,7 @@ func Test_Store_GetSessionByID(t *testing.T) {
 
 	t.Run("non-existent session ID", func(t *testing.T) {
 		t.Parallel()
-		sess, err := store.GetSessionByID("non-existent-session-id")
+		sess, err := store.GetByID("non-existent-session-id")
 		require.Error(t, err)
 		require.Nil(t, sess)
 		require.Equal(t, ErrSessionIDNotFoundInStore, err)
@@ -191,7 +191,7 @@ func Test_Store_GetSessionByID(t *testing.T) {
 		require.NoError(t, err)
 
 		// Retrieve the session by ID
-		retrievedSession, err := store.GetSessionByID(sessionID)
+		retrievedSession, err := store.GetByID(sessionID)
 		require.NoError(t, err)
 		require.NotNil(t, retrievedSession)
 		require.Equal(t, sessionID, retrievedSession.ID())

@@ -554,7 +554,7 @@ func Test_Session_Save(t *testing.T) {
 	})
 }
 
-func Test_Session_Save_Expiration(t *testing.T) {
+func Test_Session_Save_IdleTimeout(t *testing.T) {
 	t.Parallel()
 
 	t.Run("save to cookie", func(t *testing.T) {
@@ -611,6 +611,71 @@ func Test_Session_Save_Expiration(t *testing.T) {
 		require.NoError(t, err)
 		require.Nil(t, sess.Get("name"))
 		require.NotEqual(t, sess.ID(), token)
+	})
+}
+
+func Test_Session_Save_Absolute(t *testing.T) {
+	t.Parallel()
+
+	t.Run("save to cookie", func(t *testing.T) {
+		t.Parallel()
+
+		const absoluteTimeout = 5 * time.Second
+		// session store
+		store := NewStore(Config{
+			AbsoluteTimeout: absoluteTimeout,
+		})
+		// fiber instance
+		app := fiber.New()
+		// fiber context
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+
+		// get session
+		sess, err := store.Get(ctx)
+		require.NoError(t, err)
+
+		// set value
+		sess.Set("name", "john")
+
+		token := sess.ID()
+
+		// save session
+		err = sess.Save()
+		require.NoError(t, err)
+
+		sess.Release()
+		app.ReleaseCtx(ctx)
+		ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+
+		// here you need to get the old session yet
+		ctx.Request().Header.SetCookie(store.sessionName, token)
+		sess, err = store.Get(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "john", sess.Get("name"))
+
+		// just to make sure the session has been expired
+		time.Sleep(absoluteTimeout + (10 * time.Millisecond))
+
+		sess.Release()
+
+		app.ReleaseCtx(ctx)
+		ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+
+		// here you should get a new session
+		ctx.Request().Header.SetCookie(store.sessionName, token)
+		sess, err = store.Get(ctx)
+		defer sess.Release()
+		require.NoError(t, err)
+		require.Nil(t, sess.Get("name"))
+		require.NotEqual(t, sess.ID(), token)
+
+		// try to get expired session by id
+		sess, err = store.GetByID(token)
+		require.Error(t, err)
+		require.ErrorIs(t, err, ErrSessionIDNotFoundInStore)
+		require.Nil(t, sess)
 	})
 }
 
