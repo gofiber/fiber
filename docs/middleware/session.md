@@ -136,7 +136,7 @@ type Config struct {
     CookiePath        string
     CookieSameSite    string
     IdleTimeout       time.Duration
-    Expiration        time.Duration
+    AbsoluteTimeout   time.Duration
     CookieSecure      bool
     CookieHTTPOnly    bool
     CookieSessionOnly bool
