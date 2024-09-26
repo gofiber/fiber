@@ -46,7 +46,7 @@ func Test_Session(t *testing.T) {
 
 	// get keys
 	keys := sess.Keys()
-	require.Equal(t, []string{}, keys)
+	require.Equal(t, []any{}, keys)
 
 	// get value
 	name := sess.Get("name")
@@ -60,7 +60,7 @@ func Test_Session(t *testing.T) {
 	require.Equal(t, "john", name)
 
 	keys = sess.Keys()
-	require.Equal(t, []string{"name"}, keys)
+	require.Equal(t, []any{"name"}, keys)
 
 	// delete key
 	sess.Delete("name")
@@ -71,7 +71,7 @@ func Test_Session(t *testing.T) {
 
 	// get keys
 	keys = sess.Keys()
-	require.Equal(t, []string{}, keys)
+	require.Equal(t, []any{}, keys)
 
 	// get id
 	id := sess.ID()
@@ -325,6 +325,181 @@ func Test_Session_Store_Reset(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, sess.Fresh())
 	require.Nil(t, sess.Get("hello"))
+}
+
+func Test_Session_KeyTypes(t *testing.T) {
+	t.Parallel()
+
+	// session store
+	store := NewStore()
+	// fiber instance
+	app := fiber.New()
+	// fiber context
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	// get session
+	sess, err := store.Get(ctx)
+	require.NoError(t, err)
+	require.True(t, sess.Fresh())
+
+	type Person struct {
+		Name string
+	}
+
+	type unexportedKey int
+
+	// register non-default types
+	store.RegisterType(Person{})
+	store.RegisterType(unexportedKey(0))
+
+	type unregisteredKeyType int
+	type unregisteredValueType int
+
+	// verify unregistered keys types are not allowed
+	var (
+		unregisteredKey   unregisteredKeyType   = 0
+		unregisteredValue unregisteredValueType = 1
+	)
+	sess.Set(unregisteredKey, "test")
+	err = sess.Save()
+	require.Error(t, err)
+	sess.Delete(unregisteredKey)
+	err = sess.Save()
+	require.NoError(t, err)
+	sess.Set("abc", unregisteredValue)
+	err = sess.Save()
+	require.Error(t, err)
+	sess.Delete("abc")
+	err = sess.Save()
+	require.NoError(t, err)
+
+	sess.Reset()
+
+	var (
+		kbool                     = true
+		kstring                   = "str"
+		kint                      = 13
+		kint8          int8       = 13
+		kint16         int16      = 13
+		kint32         int32      = 13
+		kint64         int64      = 13
+		kuint          uint       = 13
+		kuint8         uint8      = 13
+		kuint16        uint16     = 13
+		kuint32        uint32     = 13
+		kuint64        uint64     = 13
+		kuintptr       uintptr    = 13
+		kbyte          byte       = 'k'
+		krune                     = 'k'
+		kfloat32       float32    = 13
+		kfloat64       float64    = 13
+		kcomplex64     complex64  = 13
+		kcomplex128    complex128 = 13
+		kuser                     = Person{Name: "John"}
+		kunexportedKey            = unexportedKey(13)
+	)
+
+	var (
+		vbool                     = true
+		vstring                   = "str"
+		vint                      = 13
+		vint8          int8       = 13
+		vint16         int16      = 13
+		vint32         int32      = 13
+		vint64         int64      = 13
+		vuint          uint       = 13
+		vuint8         uint8      = 13
+		vuint16        uint16     = 13
+		vuint32        uint32     = 13
+		vuint64        uint64     = 13
+		vuintptr       uintptr    = 13
+		vbyte          byte       = 'k'
+		vrune                     = 'k'
+		vfloat32       float32    = 13
+		vfloat64       float64    = 13
+		vcomplex64     complex64  = 13
+		vcomplex128    complex128 = 13
+		vuser                     = Person{Name: "John"}
+		vunexportedKey            = unexportedKey(13)
+	)
+
+	keys := []any{
+		kbool,
+		kstring,
+		kint,
+		kint8,
+		kint16,
+		kint32,
+		kint64,
+		kuint,
+		kuint8,
+		kuint16,
+		kuint32,
+		kuint64,
+		kuintptr,
+		kbyte,
+		krune,
+		kfloat32,
+		kfloat64,
+		kcomplex64,
+		kcomplex128,
+		kuser,
+		kunexportedKey,
+	}
+
+	values := []any{
+		vbool,
+		vstring,
+		vint,
+		vint8,
+		vint16,
+		vint32,
+		vint64,
+		vuint,
+		vuint8,
+		vuint16,
+		vuint32,
+		vuint64,
+		vuintptr,
+		vbyte,
+		vrune,
+		vfloat32,
+		vfloat64,
+		vcomplex64,
+		vcomplex128,
+		vuser,
+		vunexportedKey,
+	}
+
+	// loop test all key value pairs
+	for i, key := range keys {
+		sess.Set(key, values[i])
+	}
+
+	id := sess.ID()
+	ctx.Request().Header.SetCookie(store.sessionName, id)
+	// save session
+	err = sess.Save()
+	require.NoError(t, err)
+
+	sess.Release()
+	app.ReleaseCtx(ctx)
+	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	ctx.Request().Header.SetCookie(store.sessionName, id)
+
+	// get session
+	sess, err = store.Get(ctx)
+	require.NoError(t, err)
+	defer sess.Release()
+	require.False(t, sess.Fresh())
+
+	// loop test all key value pairs
+	for i, key := range keys {
+		// get value
+		result := sess.Get(key)
+		require.Equal(t, values[i], result)
+	}
 }
 
 // go test -run Test_Session_Save
@@ -661,7 +836,7 @@ func Test_Session_Reset(t *testing.T) {
 
 		// Check that the session data has been reset
 		keys := acquiredSession.Keys()
-		require.Equal(t, []string{}, keys)
+		require.Equal(t, []any{}, keys)
 
 		// Set a new value for 'name' and check that it's updated
 		acquiredSession.Set("name", "john")

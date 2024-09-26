@@ -195,7 +195,7 @@ func FromContext(c fiber.Ctx) *Middleware {
 // Usage:
 //
 //	m.Set("key", "value")
-func (m *Middleware) Set(key string, value any) {
+func (m *Middleware) Set(key any, value any) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -213,7 +213,7 @@ func (m *Middleware) Set(key string, value any) {
 // Usage:
 //
 //	value := m.Get("key")
-func (m *Middleware) Get(key string) any {
+func (m *Middleware) Get(key any) any {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -228,7 +228,7 @@ func (m *Middleware) Get(key string) any {
 // Usage:
 //
 //	m.Delete("key")
-func (m *Middleware) Delete(key string) {
+func (m *Middleware) Delete(key any) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

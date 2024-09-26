@@ -43,7 +43,7 @@ func (z *data) DecodeMsg(dc *msgp.Reader) (err error) {
                 return
             }
             if z.Data == nil {
-                z.Data = make(map[string]interface{}, zb0002)
+                z.Data = make(map[any]any, zb0002)
             } else if len(z.Data) > 0 {
                 for key := range z.Data {
                     delete(z.Data, key)
@@ -51,9 +51,9 @@ func (z *data) DecodeMsg(dc *msgp.Reader) (err error) {
             }
             for zb0002 > 0 {
                 zb0002--
-                var za0001 string
-                var za0002 interface{}
-                za0001, err = dc.ReadString()
+                var za0001 any
+                var za0002 any
+                za0001, err = dc.ReadIntf()
                 if err != nil {
                     err = msgp.WrapError(err, "Data")
                     return
@@ -101,14 +101,18 @@ func (z *data) EncodeMsg(en *msgp.Writer) (err error) {
         return
     }
     for za0001, za0002 := range z.Data {
-        err = en.WriteString(za0001)
+        keyStr, ok := za0001.(string)
+        if !ok {
+            return msgp.WrapError(err, "Data", za0001)
+        }
+        err = en.WriteString(keyStr)
         if err != nil {
             err = msgp.WrapError(err, "Data")
             return
         }
         err = en.WriteIntf(za0002)
         if err != nil {
-            err = msgp.WrapError(err, "Data", za0001)
+            err = msgp.WrapError(err, "Data", keyStr)
             return
         }
     }
@@ -135,10 +139,14 @@ func (z *data) MarshalMsg(b []byte) (o []byte, err error) {
     o = append(o, 0x81, 0xa4, 0x44, 0x61, 0x74, 0x61)
     o = msgp.AppendMapHeader(o, uint32(len(z.Data)))
     for za0001, za0002 := range z.Data {
-        o = msgp.AppendString(o, za0001)
+        keyStr, ok := za0001.(string)
+        if !ok {
+            return nil, msgp.WrapError(err, "Data", za0001)
+        }
+        o = msgp.AppendString(o, keyStr)
         o, err = msgp.AppendIntf(o, za0002)
         if err != nil {
-            err = msgp.WrapError(err, "Data", za0001)
+            err = msgp.WrapError(err, "Data", keyStr)
             return
         }
     }
@@ -183,17 +191,17 @@ func (z *data) UnmarshalMsg(bts []byte) (o []byte, err error) {
                 return
             }
             if z.Data == nil {
-                z.Data = make(map[string]interface{}, zb0002)
+                z.Data = make(map[any]any, zb0002)
             } else if len(z.Data) > 0 {
                 for key := range z.Data {
                     delete(z.Data, key)
                 }
             }
             for zb0002 > 0 {
-                var za0001 string
-                var za0002 interface{}
+                var za0001 any
+                var za0002 any
                 zb0002--
-                za0001, bts, err = msgp.ReadStringBytes(bts)
+                za0001, bts, err = msgp.ReadIntfBytes(bts)
                 if err != nil {
                     err = msgp.WrapError(err, "Data")
                     return
@@ -230,8 +238,11 @@ func (z *data) Msgsize() (s int) {
     s = 1 + 5 + msgp.MapHeaderSize
     if z.Data != nil {
         for za0001, za0002 := range z.Data {
-            _ = za0002
-            s += msgp.StringPrefixSize + len(za0001) + msgp.GuessSize(za0002)
+            keyStr, ok := za0001.(string)
+            if !ok {
+                continue
+            }
+            s += msgp.StringPrefixSize + len(keyStr) + msgp.GuessSize(za0002)
         }
     }
     return

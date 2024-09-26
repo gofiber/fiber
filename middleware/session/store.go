@@ -4,9 +4,11 @@ import (
 	"encoding/gob"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
+	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 )
 
@@ -143,7 +145,6 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 	sess := acquireSession()
 
 	sess.mu.Lock()
-	defer sess.mu.Unlock()
 
 	sess.ctx = c
 	sess.config = s
@@ -156,6 +157,15 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 		defer sess.data.Unlock()
 		if err := sess.decodeSessionData(rawData); err != nil {
 			return nil, fmt.Errorf("failed to decode session data: %w", err)
+		}
+	}
+	sess.mu.Unlock()
+
+	if fresh && s.AbsoluteTimeout > 0 {
+		sess.setExpiration(time.Now().Add(s.AbsoluteTimeout))
+	} else if sess.isExpired() {
+		if err := sess.Reset(); err != nil {
+			return nil, fmt.Errorf("failed to reset session: %w", err)
 		}
 	}
 
@@ -281,9 +291,19 @@ func (s *Store) GetSessionByID(id string) (*Session, error) {
 	sess.config = s
 
 	sess.data.Lock()
-	defer sess.data.Unlock()
-	if err := sess.decodeSessionData(rawData); err != nil {
+	decodeErr := sess.decodeSessionData(rawData)
+	sess.data.Unlock()
+	if decodeErr != nil {
 		return nil, fmt.Errorf("failed to decode session data: %w", err)
+	}
+
+	if s.AbsoluteTimeout > 0 {
+		if sess.isExpired() {
+			if err := sess.Destroy(); err != nil {
+				log.Errorf("failed to destroy expired session: %v", err)
+			}
+			return nil, ErrSessionIDNotFoundInStore
+		}
 	}
 
 	return sess, nil

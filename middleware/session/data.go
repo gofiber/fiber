@@ -8,14 +8,14 @@ import (
 //
 //go:generate msgp -o=data_msgp.go -tests=true -unexported
 type data struct {
-	Data         map[string]any
+	Data         map[any]any
 	sync.RWMutex `msg:"-"`
 }
 
 var dataPool = sync.Pool{
 	New: func() any {
 		d := new(data)
-		d.Data = make(map[string]any)
+		d.Data = make(map[any]any)
 		return d
 	},
 }
@@ -45,7 +45,7 @@ func acquireData() *data {
 func (d *data) Reset() {
 	d.Lock()
 	defer d.Unlock()
-	d.Data = make(map[string]any)
+	d.Data = make(map[any]any)
 }
 
 // Get retrieves a value from the data map by key.
@@ -59,7 +59,7 @@ func (d *data) Reset() {
 // Usage:
 //
 //	value := d.Get("key")
-func (d *data) Get(key string) any {
+func (d *data) Get(key any) any {
 	d.RLock()
 	defer d.RUnlock()
 	return d.Data[key]
@@ -74,7 +74,7 @@ func (d *data) Get(key string) any {
 // Usage:
 //
 //	d.Set("key", "value")
-func (d *data) Set(key string, value any) {
+func (d *data) Set(key any, value any) {
 	d.Lock()
 	defer d.Unlock()
 	d.Data[key] = value
@@ -88,7 +88,7 @@ func (d *data) Set(key string, value any) {
 // Usage:
 //
 //	d.Delete("key")
-func (d *data) Delete(key string) {
+func (d *data) Delete(key any) {
 	d.Lock()
 	defer d.Unlock()
 	delete(d.Data, key)
@@ -97,15 +97,15 @@ func (d *data) Delete(key string) {
 // Keys retrieves all keys in the data map.
 //
 // Returns:
-//   - []string: A slice of all keys in the data map.
+//   - []any: A slice of all keys in the data map.
 //
 // Usage:
 //
 //	keys := d.Keys()
-func (d *data) Keys() []string {
+func (d *data) Keys() []any {
 	d.RLock()
 	defer d.RUnlock()
-	keys := make([]string, 0, len(d.Data))
+	keys := make([]any, 0, len(d.Data))
 	for k := range d.Data {
 		keys = append(keys, k)
 	}

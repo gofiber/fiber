@@ -24,6 +24,13 @@ type Session struct {
 	fresh       bool          // if new session
 }
 
+type expirationKeyType int
+
+const (
+	// sessionIDContextKey is the key used to store the session ID in the context locals.
+	expirationKey expirationKeyType = iota
+)
+
 var sessionPool = sync.Pool{
 	New: func() any {
 		return &Session{
@@ -128,7 +135,7 @@ func (s *Session) ID() string {
 // Usage:
 //
 //	value := s.Get("key")
-func (s *Session) Get(key string) any {
+func (s *Session) Get(key any) any {
 	if s.data == nil {
 		return nil
 	}
@@ -144,7 +151,7 @@ func (s *Session) Get(key string) any {
 // Usage:
 //
 //	s.Set("key", "value")
-func (s *Session) Set(key string, val any) {
+func (s *Session) Set(key any, val any) {
 	if s.data == nil {
 		return
 	}
@@ -159,7 +166,7 @@ func (s *Session) Set(key string, val any) {
 // Usage:
 //
 //	s.Delete("key")
-func (s *Session) Delete(key string) {
+func (s *Session) Delete(key any) {
 	if s.data == nil {
 		return
 	}
@@ -327,9 +334,9 @@ func (s *Session) saveSession() error {
 // Usage:
 //
 //	keys := s.Keys()
-func (s *Session) Keys() []string {
+func (s *Session) Keys() []any {
 	if s.data == nil {
-		return []string{}
+		return []any{}
 	}
 	return s.data.Keys()
 }
@@ -429,4 +436,47 @@ func (s *Session) decodeSessionData(rawData []byte) error {
 		return fmt.Errorf("failed to decode session data: %w", err)
 	}
 	return nil
+}
+
+// expiration returns the session expiration time or a zero time if not set.
+//
+// Returns:
+//   - time.Time: The session expiration time, or a zero time if not set.
+//
+// Usage:
+//
+//	expiration := s.expiration()
+func (s *Session) expiration() time.Time {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	expiration, ok := s.Get(expirationKey).(time.Time)
+	if ok {
+		return expiration
+	}
+	return time.Time{}
+}
+
+// isExpired returns true if the session is expired.
+//
+// If the session expiration time is zero, the session is considered to never expire.
+//
+// Returns:
+//   - bool: True if the session is expired, otherwise false.
+func (s *Session) isExpired() bool {
+	expiration := s.expiration()
+	return !expiration.IsZero() && time.Now().After(expiration)
+}
+
+// setExpiration sets the session expiration time.
+//
+// Parameters:
+//   - expiration: The session expiration time.
+//
+// Usage:
+//
+//	s.setExpiration(time.Now().Add(time.Hour))
+func (s *Session) setExpiration(expiration time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Set(expirationKey, expiration)
 }

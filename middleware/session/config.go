@@ -70,6 +70,13 @@ type Config struct {
 	// Optional. Default: 30 * time.Minute
 	IdleTimeout time.Duration
 
+	// AbsoluteTimeout defines the maximum duration of the session before it expires.
+	//
+	// If set to 0, the session will not have an absolute timeout, and will expire after the idle timeout.
+	//
+	// Optional. Default: 0
+	AbsoluteTimeout time.Duration
+
 	// CookieSecure specifies if the session cookie should be secure.
 	//
 	// Optional. Default: false
