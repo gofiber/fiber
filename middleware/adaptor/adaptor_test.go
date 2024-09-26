@@ -202,6 +202,14 @@ func Test_HTTPMiddleware(t *testing.T) {
 }
 
 func Test_HTTPMiddlewareWithCookies(t *testing.T) {
+	const (
+		cookieHeader    = "Cookie"
+		setCookieHeader = "Set-Cookie"
+		cookieOneName   = "cookieOne"
+		cookieTwoName   = "cookieTwo"
+		cookieOneValue  = "valueCookieOne"
+		cookieTwoValue  = "valueCookieTwo"
+	)
 	nethttpMW := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
@@ -216,32 +224,56 @@ func Test_HTTPMiddlewareWithCookies(t *testing.T) {
 	app.Use(HTTPMiddleware(nethttpMW))
 	app.Post("/", func(c fiber.Ctx) error {
 		// RETURNING CURRENT COOKIES TO RESPONSE
-		var cookies []string = strings.Split(c.Get("Cookie"), "; ")
+		var cookies []string = strings.Split(c.Get(cookieHeader), "; ")
 		for _, cookie := range cookies {
-			c.Set("Set-Cookie", cookie)
+			c.Set(setCookieHeader, cookie)
 		}
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodPost, "/", nil)
-	require.NoError(t, err)
-	req.AddCookie(&http.Cookie{Name: "cookieOne", Value: "valueCookieOne"})
-	req.AddCookie(&http.Cookie{Name: "cookieTwo", Value: "valueCookieTwo"})
+	// Test case for POST request with cookies
+	t.Run("POST request with cookies", func(t *testing.T) {
+		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodPost, "/", nil)
+		require.NoError(t, err)
+		req.AddCookie(&http.Cookie{Name: cookieOneName, Value: cookieOneValue})
+		req.AddCookie(&http.Cookie{Name: cookieTwoName, Value: cookieTwoValue})
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	cookies := resp.Cookies()
-	require.Len(t, cookies, 2)
-	for _, cookie := range cookies {
-		switch cookie.Name {
-		case "cookieOne":
-			require.Equal(t, "valueCookieOne", cookie.Value)
-		case "cookieTwo":
-			require.Equal(t, "valueCookieTwo", cookie.Value)
-		default:
-			t.Error("unexpected cookie key")
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		cookies := resp.Cookies()
+		require.Len(t, cookies, 2)
+		for _, cookie := range cookies {
+			switch cookie.Name {
+			case cookieOneName:
+				require.Equal(t, cookieOneValue, cookie.Value)
+			case cookieTwoName:
+				require.Equal(t, cookieTwoValue, cookie.Value)
+			default:
+				t.Error("unexpected cookie key")
+			}
 		}
-	}
+	})
+
+	// New test case for GET request
+	t.Run("GET request", func(t *testing.T) {
+		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/", nil)
+		require.NoError(t, err)
+
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusMethodNotAllowed, resp.StatusCode)
+	})
+
+	// New test case for request without cookies
+	t.Run("POST request without cookies", func(t *testing.T) {
+		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodPost, "/", nil)
+		require.NoError(t, err)
+
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		require.Empty(t, resp.Cookies())
+	})
 }
 
 func Test_FiberHandler(t *testing.T) {
