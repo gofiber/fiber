@@ -217,7 +217,7 @@ func Test_CSRF_ExpiredToken(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		Expiration: 1 * time.Second,
+		IdleTimeout: 1 * time.Second,
 	}))
 
 	app.Post("/", func(c fiber.Ctx) error {
@@ -284,8 +284,8 @@ func Test_CSRF_ExpiredToken_WithSession(t *testing.T) {
 
 	// middleware config
 	config := Config{
-		Session:    store,
-		Expiration: 1 * time.Second,
+		Session:     store,
+		IdleTimeout: 1 * time.Second,
 	}
 
 	// middleware

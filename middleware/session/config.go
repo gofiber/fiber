@@ -157,6 +157,10 @@ func configDefault(config ...Config) Config {
 	if cfg.IdleTimeout <= 0 {
 		cfg.IdleTimeout = ConfigDefault.IdleTimeout
 	}
+	// Ensure AbsoluteTimeout is greater than or equal to IdleTimeout.
+	if cfg.AbsoluteTimeout > 0 && cfg.AbsoluteTimeout < cfg.IdleTimeout {
+		panic("[session] AbsoluteTimeout must be greater than or equal to IdleTimeout")
+	}
 	if cfg.KeyLookup == "" {
 		cfg.KeyLookup = ConfigDefault.KeyLookup
 	}

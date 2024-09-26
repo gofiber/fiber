@@ -10,17 +10,24 @@ import (
 
 type sessionManager struct {
 	session *session.Store
-	key     string
 }
 
-func newSessionManager(s *session.Store, k string) *sessionManager {
+type sessionKeyType int
+
+const (
+	sessionKey sessionKeyType = 0
+)
+
+func newSessionManager(s *session.Store) *sessionManager {
 	// Create new storage handler
-	sessionManager := &sessionManager{
-		key: k,
-	}
+	sessionManager := new(sessionManager)
 	if s != nil {
 		// Use provided storage if provided
 		sessionManager.session = s
+
+		// Register the sessionKeyType and Token type
+		s.RegisterType(sessionKeyType(0))
+		s.RegisterType(Token{})
 	}
 	return sessionManager
 }
@@ -32,7 +39,7 @@ func (m *sessionManager) getRaw(c fiber.Ctx, key string, raw []byte) []byte {
 	var ok bool
 
 	if sess != nil {
-		token, ok = sess.Get(m.key).(Token)
+		token, ok = sess.Get(sessionKey).(Token)
 	} else {
 		// Try to get the session from the store
 		storeSess, err := m.session.Get(c)
@@ -40,7 +47,7 @@ func (m *sessionManager) getRaw(c fiber.Ctx, key string, raw []byte) []byte {
 			// Handle error
 			return nil
 		}
-		token, ok = storeSess.Get(m.key).(Token)
+		token, ok = storeSess.Get(sessionKey).(Token)
 	}
 
 	if ok {
@@ -58,7 +65,7 @@ func (m *sessionManager) setRaw(c fiber.Ctx, key string, raw []byte, exp time.Du
 	sess := session.FromContext(c)
 	if sess != nil {
 		// the key is crucial in crsf and sometimes a reference to another value which can be reused later(pool/unsafe values concept), so a copy is made here
-		sess.Set(m.key, &Token{Key: key, Raw: raw, Expiration: time.Now().Add(exp)})
+		sess.Set(sessionKey, Token{Key: key, Raw: raw, Expiration: time.Now().Add(exp)})
 	} else {
 		// Try to get the session from the store
 		storeSess, err := m.session.Get(c)
@@ -66,7 +73,7 @@ func (m *sessionManager) setRaw(c fiber.Ctx, key string, raw []byte, exp time.Du
 			// Handle error
 			return
 		}
-		storeSess.Set(m.key, &Token{Key: key, Raw: raw, Expiration: time.Now().Add(exp)})
+		storeSess.Set(sessionKey, Token{Key: key, Raw: raw, Expiration: time.Now().Add(exp)})
 		if err := storeSess.Save(); err != nil {
 			log.Warn("csrf: failed to save session: ", err)
 		}
@@ -77,7 +84,7 @@ func (m *sessionManager) setRaw(c fiber.Ctx, key string, raw []byte, exp time.Du
 func (m *sessionManager) delRaw(c fiber.Ctx) {
 	sess := session.FromContext(c)
 	if sess != nil {
-		sess.Delete(m.key)
+		sess.Delete(sessionKey)
 	} else {
 		// Try to get the session from the store
 		storeSess, err := m.session.Get(c)
@@ -85,7 +92,7 @@ func (m *sessionManager) delRaw(c fiber.Ctx) {
 			// Handle error
 			return
 		}
-		storeSess.Delete(m.key)
+		storeSess.Delete(sessionKey)
 		if err := storeSess.Save(); err != nil {
 			log.Warn("csrf: failed to save session: ", err)
 		}
