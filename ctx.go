@@ -624,7 +624,7 @@ func (c *DefaultCtx) Fresh() bool {
 				if err != nil {
 					return false
 				}
-				return lastModifiedTime.Before(modifiedSinceTime)
+				return lastModifiedTime.Compare(modifiedSinceTime) != 1
 			}
 		}
 	}
