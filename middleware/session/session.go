@@ -24,11 +24,11 @@ type Session struct {
 	fresh       bool          // if new session
 }
 
-type expirationKeyType int
+type absExpirationKeyType int
 
 const (
 	// sessionIDContextKey is the key used to store the session ID in the context locals.
-	expirationKey expirationKeyType = iota
+	absExpirationKey absExpirationKeyType = iota
 )
 
 var sessionPool = sync.Pool{
@@ -438,34 +438,35 @@ func (s *Session) decodeSessionData(rawData []byte) error {
 	return nil
 }
 
-// expiration returns the session expiration time or a zero time if not set.
+// absExpiration returns the session absolute expiration time or a zero time if not set.
 //
 // Returns:
-//   - time.Time: The session expiration time, or a zero time if not set.
+//   - time.Time: The session absolute expiration time. Zero time if not set.
 //
 // Usage:
 //
-//	expiration := s.expiration()
-func (s *Session) expiration() time.Time {
-	expiration, ok := s.Get(expirationKey).(time.Time)
+//	expiration := s.absExpiration()
+func (s *Session) absExpiration() time.Time {
+	absExpiration, ok := s.Get(absExpirationKey).(time.Time)
 	if ok {
-		return expiration
+		return absExpiration
 	}
 	return time.Time{}
 }
 
-// isExpired returns true if the session is expired.
+// isAbsExpired returns true if the session is expired.
 //
-// If the session expiration time is zero, the session is considered to never expire.
+// If the session has an absolute expiration time set, this function will return true if the
+// current time is after the absolute expiration time.
 //
 // Returns:
 //   - bool: True if the session is expired, otherwise false.
-func (s *Session) isExpired() bool {
-	expiration := s.expiration()
-	return !expiration.IsZero() && time.Now().After(expiration)
+func (s *Session) isAbsExpired() bool {
+	absExpiration := s.absExpiration()
+	return !absExpiration.IsZero() && time.Now().After(absExpiration)
 }
 
-// setExpiration sets the session expiration time.
+// setAbsoluteExpiration sets the absolute session expiration time.
 //
 // Parameters:
 //   - expiration: The session expiration time.
@@ -473,6 +474,6 @@ func (s *Session) isExpired() bool {
 // Usage:
 //
 //	s.setExpiration(time.Now().Add(time.Hour))
-func (s *Session) setExpiration(expiration time.Time) {
-	s.Set(expirationKey, expiration)
+func (s *Session) setAbsExpiration(absExpiration time.Time) {
+	s.Set(absExpirationKey, absExpiration)
 }

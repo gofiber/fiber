@@ -623,6 +623,7 @@ func Test_Session_Save_Absolute(t *testing.T) {
 		const absoluteTimeout = 5 * time.Second
 		// session store
 		store := NewStore(Config{
+			IdleTimeout:     5 * time.Second,
 			AbsoluteTimeout: absoluteTimeout,
 		})
 		// fiber instance

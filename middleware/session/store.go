@@ -14,7 +14,7 @@ import (
 
 // ErrEmptySessionID is an error that occurs when the session ID is empty.
 var (
-	ErrEmptySessionID                   = errors.New("session id cannot be empty")
+	ErrEmptySessionID                   = errors.New("session ID cannot be empty")
 	ErrSessionAlreadyLoadedByMiddleware = errors.New("session already loaded by middleware")
 	ErrSessionIDNotFoundInStore         = errors.New("session ID not found in session store")
 )
@@ -55,7 +55,7 @@ func NewStore(config ...Config) *Store {
 	}
 
 	if cfg.AbsoluteTimeout > 0 {
-		store.RegisterType(expirationKey)
+		store.RegisterType(absExpirationKey)
 		store.RegisterType(time.Time{})
 	}
 
@@ -172,8 +172,8 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 	sess.mu.Unlock()
 
 	if fresh && s.AbsoluteTimeout > 0 {
-		sess.setExpiration(time.Now().Add(s.AbsoluteTimeout))
-	} else if sess.isExpired() {
+		sess.setAbsExpiration(time.Now().Add(s.AbsoluteTimeout))
+	} else if sess.isAbsExpired() {
 		if err := sess.Reset(); err != nil {
 			return nil, fmt.Errorf("failed to reset session: %w", err)
 		}
@@ -309,7 +309,7 @@ func (s *Store) GetByID(id string) (*Session, error) {
 	sess.mu.Unlock()
 
 	if s.AbsoluteTimeout > 0 {
-		if sess.isExpired() {
+		if sess.isAbsExpired() {
 			if err := sess.Destroy(); err != nil {
 				log.Errorf("failed to destroy expired session: %v", err)
 			}
