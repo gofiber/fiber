@@ -55,9 +55,11 @@ func Test_Bind_Query(t *testing.T) {
 	type Query2 struct {
 		Name            string
 		Hobby           string
+		Default         string `query:"default,default:hello"`
 		FavouriteDrinks []string
 		Empty           []string
 		Alloc           []string
+		Defaults        []string `query:"defaults,default:hello|world"`
 		No              []int64
 		ID              int
 		Bool            bool
@@ -76,13 +78,15 @@ func Test_Bind_Query(t *testing.T) {
 	require.Equal(t, nilSlice, q2.Empty)
 	require.Equal(t, []string{""}, q2.Alloc)
 	require.Equal(t, []int64{1}, q2.No)
+	require.Equal(t, "hello", q2.Default)
+	require.Equal(t, []string{"hello", "world"}, q2.Defaults)
 
 	type RequiredQuery struct {
 		Name string `query:"name,required"`
 	}
 	rq := new(RequiredQuery)
 	c.Request().URI().SetQueryString("")
-	require.Equal(t, "name is empty", c.Bind().Query(rq).Error())
+	require.Equal(t, "bind: name is empty", c.Bind().Query(rq).Error())
 
 	type ArrayQuery struct {
 		Data []string
@@ -204,7 +208,7 @@ func Test_Bind_Query_Schema(t *testing.T) {
 
 	c.Request().URI().SetQueryString("namex=tom&nested.age=10")
 	q = new(Query1)
-	require.Equal(t, "name is empty", c.Bind().Query(q).Error())
+	require.Equal(t, "bind: name is empty", c.Bind().Query(q).Error())
 
 	c.Request().URI().SetQueryString("name=tom&nested.agex=10")
 	q = new(Query1)
@@ -212,7 +216,7 @@ func Test_Bind_Query_Schema(t *testing.T) {
 
 	c.Request().URI().SetQueryString("name=tom&test.age=10")
 	q = new(Query1)
-	require.Equal(t, "nested is empty", c.Bind().Query(q).Error())
+	require.Equal(t, "bind: nested is empty", c.Bind().Query(q).Error())
 
 	type Query2 struct {
 		Name   string `query:"name"`
@@ -230,11 +234,11 @@ func Test_Bind_Query_Schema(t *testing.T) {
 
 	c.Request().URI().SetQueryString("nested.agex=10")
 	q2 = new(Query2)
-	require.Equal(t, "nested.age is empty", c.Bind().Query(q2).Error())
+	require.Equal(t, "bind: nested.age is empty", c.Bind().Query(q2).Error())
 
 	c.Request().URI().SetQueryString("nested.agex=10")
 	q2 = new(Query2)
-	require.Equal(t, "nested.age is empty", c.Bind().Query(q2).Error())
+	require.Equal(t, "bind: nested.age is empty", c.Bind().Query(q2).Error())
 
 	type Node struct {
 		Next  *Node `query:"next,required"`
@@ -248,7 +252,7 @@ func Test_Bind_Query_Schema(t *testing.T) {
 
 	c.Request().URI().SetQueryString("next.val=2")
 	n = new(Node)
-	require.Equal(t, "val is empty", c.Bind().Query(n).Error())
+	require.Equal(t, "bind: val is empty", c.Bind().Query(n).Error())
 
 	c.Request().URI().SetQueryString("val=3&next.value=2")
 	n = new(Node)
@@ -354,7 +358,7 @@ func Test_Bind_Header(t *testing.T) {
 	}
 	rh := new(RequiredHeader)
 	c.Request().Header.Del("name")
-	require.Equal(t, "name is empty", c.Bind().Header(rh).Error())
+	require.Equal(t, "bind: name is empty", c.Bind().Header(rh).Error())
 }
 
 // go test -run Test_Bind_Header_Map -v
@@ -463,7 +467,7 @@ func Test_Bind_Header_Schema(t *testing.T) {
 
 	c.Request().Header.Del("Name")
 	q = new(Header1)
-	require.Equal(t, "Name is empty", c.Bind().Header(q).Error())
+	require.Equal(t, "bind: Name is empty", c.Bind().Header(q).Error())
 
 	c.Request().Header.Add("Name", "tom")
 	c.Request().Header.Del("Nested.Age")
@@ -473,7 +477,7 @@ func Test_Bind_Header_Schema(t *testing.T) {
 
 	c.Request().Header.Del("Nested.Agex")
 	q = new(Header1)
-	require.Equal(t, "Nested is empty", c.Bind().Header(q).Error())
+	require.Equal(t, "bind: Nested is empty", c.Bind().Header(q).Error())
 
 	c.Request().Header.Del("Nested.Agex")
 	c.Request().Header.Del("Name")
@@ -499,7 +503,7 @@ func Test_Bind_Header_Schema(t *testing.T) {
 	c.Request().Header.Del("Nested.Age")
 	c.Request().Header.Add("Nested.Agex", "10")
 	h2 = new(Header2)
-	require.Equal(t, "Nested.age is empty", c.Bind().Header(h2).Error())
+	require.Equal(t, "bind: Nested.age is empty", c.Bind().Header(h2).Error())
 
 	type Node struct {
 		Next  *Node `header:"Next,required"`
@@ -514,7 +518,7 @@ func Test_Bind_Header_Schema(t *testing.T) {
 
 	c.Request().Header.Del("Val")
 	n = new(Node)
-	require.Equal(t, "Val is empty", c.Bind().Header(n).Error())
+	require.Equal(t, "bind: Val is empty", c.Bind().Header(n).Error())
 
 	c.Request().Header.Add("Val", "3")
 	c.Request().Header.Del("Next.Val")
@@ -595,7 +599,7 @@ func Test_Bind_RespHeader(t *testing.T) {
 	}
 	rh := new(RequiredHeader)
 	c.Response().Header.Del("name")
-	require.Equal(t, "name is empty", c.Bind().RespHeader(rh).Error())
+	require.Equal(t, "bind: name is empty", c.Bind().RespHeader(rh).Error())
 }
 
 // go test -run Test_Bind_RespHeader_Map -v
@@ -648,7 +652,40 @@ func Benchmark_Bind_Query(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		err = c.Bind().Query(q)
 	}
+
 	require.NoError(b, err)
+	require.Equal(b, "tom", q.Name)
+	require.Equal(b, 1, q.ID)
+	require.Len(b, q.Hobby, 2)
+}
+
+// go test -v  -run=^$ -bench=Benchmark_Bind_Query_Default -benchmem -count=4
+func Benchmark_Bind_Query_Default(b *testing.B) {
+	var err error
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	type Query struct {
+		Name  string   `query:"name,default:tom"`
+		Hobby []string `query:"hobby,default:football|basketball"`
+		ID    int      `query:"id,default:1"`
+	}
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+	c.Request().URI().SetQueryString("")
+	q := new(Query)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		*q = Query{}
+		err = c.Bind().Query(q)
+	}
+
+	require.NoError(b, err)
+	require.Equal(b, "tom", q.Name)
+	require.Equal(b, 1, q.ID)
+	require.Len(b, q.Hobby, 2)
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Bind_Query_Map -benchmem -count=4
@@ -1314,7 +1351,7 @@ func Test_Bind_Cookie(t *testing.T) {
 	}
 	rh := new(RequiredCookie)
 	c.Request().Header.DelCookie("name")
-	require.Equal(t, "name is empty", c.Bind().Cookie(rh).Error())
+	require.Equal(t, "bind: name is empty", c.Bind().Cookie(rh).Error())
 }
 
 // go test -run Test_Bind_Cookie_Map -v
@@ -1424,7 +1461,7 @@ func Test_Bind_Cookie_Schema(t *testing.T) {
 
 	c.Request().Header.DelCookie("Name")
 	q = new(Cookie1)
-	require.Equal(t, "Name is empty", c.Bind().Cookie(q).Error())
+	require.Equal(t, "bind: Name is empty", c.Bind().Cookie(q).Error())
 
 	c.Request().Header.SetCookie("Name", "tom")
 	c.Request().Header.DelCookie("Nested.Age")
@@ -1434,7 +1471,7 @@ func Test_Bind_Cookie_Schema(t *testing.T) {
 
 	c.Request().Header.DelCookie("Nested.Agex")
 	q = new(Cookie1)
-	require.Equal(t, "Nested is empty", c.Bind().Cookie(q).Error())
+	require.Equal(t, "bind: Nested is empty", c.Bind().Cookie(q).Error())
 
 	c.Request().Header.DelCookie("Nested.Agex")
 	c.Request().Header.DelCookie("Name")
@@ -1460,7 +1497,7 @@ func Test_Bind_Cookie_Schema(t *testing.T) {
 	c.Request().Header.DelCookie("Nested.Age")
 	c.Request().Header.SetCookie("Nested.Agex", "10")
 	h2 = new(Cookie2)
-	require.Equal(t, "Nested.Age is empty", c.Bind().Cookie(h2).Error())
+	require.Equal(t, "bind: Nested.Age is empty", c.Bind().Cookie(h2).Error())
 
 	type Node struct {
 		Next  *Node `cookie:"Next,required"`
@@ -1475,7 +1512,7 @@ func Test_Bind_Cookie_Schema(t *testing.T) {
 
 	c.Request().Header.DelCookie("Val")
 	n = new(Node)
-	require.Equal(t, "Val is empty", c.Bind().Cookie(n).Error())
+	require.Equal(t, "bind: Val is empty", c.Bind().Cookie(n).Error())
 
 	c.Request().Header.SetCookie("Val", "3")
 	c.Request().Header.DelCookie("Next.Val")
@@ -1591,7 +1628,7 @@ func Test_Bind_Must(t *testing.T) {
 	c.Request().URI().SetQueryString("")
 	err := c.Bind().Must().Query(rq)
 	require.Equal(t, StatusBadRequest, c.Response().StatusCode())
-	require.Equal(t, "Bad request: name is empty", err.Error())
+	require.Equal(t, "Bad request: bind: name is empty", err.Error())
 }
 
 // simple struct validator for testing
