@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -512,6 +513,23 @@ func Test_Utils_TestConn_Deadline(t *testing.T) {
 	require.NoError(t, conn.SetDeadline(time.Time{}))
 	require.NoError(t, conn.SetReadDeadline(time.Time{}))
 	require.NoError(t, conn.SetWriteDeadline(time.Time{}))
+}
+
+func Test_Utils_TestConn_Closed_Write(t *testing.T) {
+	t.Parallel()
+	conn := &testConn{}
+
+	_, err := conn.Write([]byte("Hello World"))
+	require.NoError(t, err)
+
+	conn.Close()
+	_, err = conn.Write([]byte("This should fail"))
+	require.ErrorIs(t, err, errors.New("testConn is closed"))
+
+	buffer := make([]byte, 12)
+	_, err = conn.Read(buffer)
+	require.NoError(t, err)
+	require.Equal(t, []byte("Hello World"), buffer)
 }
 
 func Test_Utils_IsNoCache(t *testing.T) {
