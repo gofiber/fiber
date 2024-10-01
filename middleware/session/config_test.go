@@ -42,7 +42,7 @@ func TestDefaultErrorHandler(t *testing.T) {
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	// Test DefaultErrorHandler
-	DefaultErrorHandler(&ctx, fiber.ErrInternalServerError)
+	DefaultErrorHandler(ctx, fiber.ErrInternalServerError)
 	require.Equal(t, fiber.StatusInternalServerError, ctx.Response().StatusCode())
 }
 

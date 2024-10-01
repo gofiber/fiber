@@ -28,7 +28,7 @@ type Config struct {
 	// ErrorHandler defines a function to handle errors.
 	//
 	// Optional. Default: nil
-	ErrorHandler func(*fiber.Ctx, error)
+	ErrorHandler func(fiber.Ctx, error)
 
 	// KeyGenerator generates the session key.
 	//
@@ -123,10 +123,10 @@ var ConfigDefault = Config{
 // Usage:
 //
 //	DefaultErrorHandler(c, err)
-func DefaultErrorHandler(c *fiber.Ctx, err error) {
+func DefaultErrorHandler(c fiber.Ctx, err error) {
 	log.Errorf("session: %v", err)
 	if c != nil {
-		if sendErr := (*c).SendStatus(fiber.StatusInternalServerError); sendErr != nil {
+		if sendErr := (c).SendStatus(fiber.StatusInternalServerError); sendErr != nil {
 			log.Errorf("session: %v", sendErr)
 		}
 	}

@@ -12,7 +12,7 @@ import (
 // Middleware holds session data and configuration.
 type Middleware struct {
 	Session   *Session
-	ctx       *fiber.Ctx
+	ctx       fiber.Ctx
 	config    Config
 	mu        sync.RWMutex
 	destroyed bool
@@ -119,7 +119,7 @@ func (m *Middleware) initialize(c fiber.Ctx, cfg Config) {
 
 	m.config = cfg
 	m.Session = session
-	m.ctx = &c
+	m.ctx = c
 
 	c.Locals(middlewareContextKey, m)
 }

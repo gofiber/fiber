@@ -93,7 +93,7 @@ app.Get("/", func(c *fiber.Ctx) error {
 ```go
 store := session.NewStore()
 
-app.Get("/", func(c *fiber.Ctx) error {
+app.Get("/", func(c fiber.Ctx) error {
     sess, err := store.Get(c)
     if err != nil {
         return err
@@ -131,9 +131,9 @@ Defines the configuration options for the session middleware.
 ```go
 type Config struct {
     Storage           fiber.Storage
-    Next              func(c *fiber.Ctx) bool
+    Next              func(fiber.Ctx) bool
     Store             *Store
-    ErrorHandler      func(*fiber.Ctx, error)
+    ErrorHandler      func(fiber.Ctx, error)
     KeyGenerator      func() string
     KeyLookup         string
     CookieDomain      string
@@ -188,7 +188,7 @@ func FromContext(c fiber.Ctx) *Middleware
 ### Config Methods
 
 ```go
-func DefaultErrorHandler(c *fiber.Ctx, err error)
+func DefaultErrorHandler(fiber.Ctx, err error)
 ```
 
 ### Middleware Methods
@@ -259,7 +259,7 @@ func main() {
         Store: sessionStore,
     }))
 
-    app.Get("/", func(c *fiber.Ctx) error {
+    app.Get("/", func(c fiber.Ctx) error {
         sess := session.FromContext(c)
         if sess == nil {
             return c.SendStatus(fiber.StatusInternalServerError)
@@ -326,7 +326,7 @@ func main() {
         Store: sessionStore,
     }))
 
-    app.Get("/", func(c *fiber.Ctx) error {
+    app.Get("/", func(c fiber.Ctx) error {
         sess, err := sessionStore.Get(c)
         if err != nil {
             return c.SendStatus(fiber.StatusInternalServerError)
@@ -341,7 +341,7 @@ func main() {
         return c.SendString("Welcome " + name)
     })
 
-    app.Post("/login", func(c *fiber.Ctx) error {
+    app.Post("/login", func(c fiber.Ctx) error {
         sess, err := sessionStore.Get(c)
         if err != nil {
             return c.SendStatus(fiber.StatusInternalServerError)
