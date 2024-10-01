@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/log"
 )
 
 // Middleware holds session data and configuration.
@@ -179,8 +178,6 @@ func releaseMiddleware(m *Middleware) {
 func FromContext(c fiber.Ctx) *Middleware {
 	m, ok := c.Locals(middlewareContextKey).(*Middleware)
 	if !ok {
-		// TODO: since this may be called we may not want to log this except in debug mode?
-		log.Warn("session: Session middleware not registered. See https://docs.gofiber.io/middleware/session")
 		return nil
 	}
 	return m

@@ -121,7 +121,7 @@ func TestData_Len(t *testing.T) {
 		d.Set("key2", "value2")
 		d.Set("key3", "value3")
 
-		done := make(chan bool)
+		done := make(chan bool, 2) // Buffered channel with size 2
 		go func() {
 			length := d.Len()
 			assert.Equal(t, 3, length, "Expected length to be 3 during concurrent access")
