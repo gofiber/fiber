@@ -625,7 +625,7 @@ func (c *DefaultCtx) Fresh() bool {
 				if err != nil {
 					return false
 				}
-				return lastModifiedTime.Before(modifiedSinceTime)
+				return lastModifiedTime.Compare(modifiedSinceTime) != 1
 			}
 		}
 	}
@@ -1849,21 +1849,9 @@ func (c *DefaultCtx) IsProxyTrusted() bool {
 	return false
 }
 
-var localHosts = [...]string{"127.0.0.1", "::1"}
-
-// IsLocalHost will return true if address is a localhost address.
-func (*DefaultCtx) isLocalHost(address string) bool {
-	for _, h := range localHosts {
-		if address == h {
-			return true
-		}
-	}
-	return false
-}
-
 // IsFromLocal will return true if request came from local.
 func (c *DefaultCtx) IsFromLocal() bool {
-	return c.isLocalHost(c.fasthttp.RemoteIP().String())
+	return c.fasthttp.RemoteIP().IsLoopback()
 }
 
 // Bind You can bind body, cookie, headers etc. into the map, map slice, struct easily by using Binding method.

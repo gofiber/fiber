@@ -321,8 +321,6 @@ type Ctx interface {
 	// If EnableTrustedProxyCheck false, it returns true
 	// IsProxyTrusted can check remote ip by proxy ranges and ip map.
 	IsProxyTrusted() bool
-	// IsLocalHost will return true if address is a localhost address.
-	isLocalHost(address string) bool
 	// IsFromLocal will return true if request came from local.
 	IsFromLocal() bool
 	// Bind You can bind body, cookie, headers etc. into the map, map slice, struct easily by using Binding method.
