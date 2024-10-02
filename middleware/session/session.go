@@ -17,7 +17,6 @@ type Session struct {
 	ctx         fiber.Ctx     // fiber context
 	config      *Store        // store configuration
 	data        *data         // key value data
-	byteBuffer  *bytes.Buffer // byte buffer for encoding/decoding
 	id          string        // session id
 	idleTimeout time.Duration // idleTimeout of this session
 	mu          sync.RWMutex  // Mutex to protect non-data fields
@@ -31,11 +30,16 @@ const (
 	absExpirationKey absExpirationKeyType = iota
 )
 
+// Session pool for reusing byte buffers.
+var byteBufferPool = sync.Pool{
+	New: func() any {
+		return new(bytes.Buffer)
+	},
+}
+
 var sessionPool = sync.Pool{
 	New: func() any {
-		return &Session{
-			byteBuffer: new(bytes.Buffer),
-		}
+		return &Session{}
 	},
 }
 
@@ -88,9 +92,6 @@ func releaseSession(s *Session) {
 	s.config = nil
 	if s.data != nil {
 		s.data.Reset()
-	}
-	if s.byteBuffer != nil {
-		s.byteBuffer.Reset()
 	}
 	s.mu.Unlock()
 	sessionPool.Put(s)
@@ -242,10 +243,6 @@ func (s *Session) Reset() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Reset byte buffer
-	if s.byteBuffer != nil {
-		s.byteBuffer.Reset()
-	}
 	// Reset expiration
 	s.idleTimeout = 0
 
@@ -310,17 +307,12 @@ func (s *Session) saveSession() error {
 	s.setSession()
 
 	// Encode session data
-	encCache := gob.NewEncoder(s.byteBuffer)
 	s.data.RLock()
-	err := encCache.Encode(&s.data.Data)
+	encodedBytes, err := s.encodeSessionData()
 	s.data.RUnlock()
 	if err != nil {
 		return fmt.Errorf("failed to encode data: %w", err)
 	}
-
-	// Copy the data in buffer
-	encodedBytes := make([]byte, s.byteBuffer.Len())
-	copy(encodedBytes, s.byteBuffer.Bytes())
 
 	// Pass copied bytes with session id to provider
 	return s.config.Storage.Set(s.id, encodedBytes, s.idleTimeout)
@@ -430,12 +422,42 @@ func (s *Session) delSession() {
 //
 //	err := s.decodeSessionData(rawData)
 func (s *Session) decodeSessionData(rawData []byte) error {
-	_, _ = s.byteBuffer.Write(rawData)
-	encCache := gob.NewDecoder(s.byteBuffer)
-	if err := encCache.Decode(&s.data.Data); err != nil {
+	byteBuffer := byteBufferPool.Get().(*bytes.Buffer) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
+	defer byteBufferPool.Put(byteBuffer)
+	defer byteBuffer.Reset()
+	_, _ = byteBuffer.Write(rawData)
+	decCache := gob.NewDecoder(byteBuffer)
+	if err := decCache.Decode(&s.data.Data); err != nil {
 		return fmt.Errorf("failed to decode session data: %w", err)
 	}
 	return nil
+}
+
+// encodeSessionData encodes session data to raw bytes
+//
+// Parameters:
+//   - rawData: The raw byte data to encode.
+//
+// Returns:
+//   - error: An error if the encoding fails.
+//
+// Usage:
+//
+//	err := s.encodeSessionData(rawData)
+func (s *Session) encodeSessionData() ([]byte, error) {
+	byteBuffer := byteBufferPool.Get().(*bytes.Buffer) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
+	defer byteBufferPool.Put(byteBuffer)
+	defer byteBuffer.Reset()
+	encCache := gob.NewEncoder(byteBuffer)
+	if err := encCache.Encode(&s.data.Data); err != nil {
+		return nil, fmt.Errorf("failed to encode session data: %w", err)
+	}
+	// Copy the bytes
+	// Copy the data in buffer
+	encodedBytes := make([]byte, byteBuffer.Len())
+	copy(encodedBytes, byteBuffer.Bytes())
+
+	return encodedBytes, nil
 }
 
 // absExpiration returns the session absolute expiration time or a zero time if not set.
