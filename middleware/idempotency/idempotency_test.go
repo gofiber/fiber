@@ -82,7 +82,10 @@ func Test_Idempotency(t *testing.T) {
 		if idempotencyKey != "" {
 			req.Header.Set("X-Idempotency-Key", idempotencyKey)
 		}
-		resp, err := app.Test(req, 15*time.Second)
+		resp, err := app.Test(req, fiber.TestConfig{
+			Timeout: 15*time.Second,
+			ErrOnTimeout: true,
+		})
 		require.NoError(t, err)
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)

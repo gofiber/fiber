@@ -540,7 +540,7 @@ func (app *App) SetTLSHandler(tlsHandler *TLSHandler)
 Testing your application is done with the **Test** method. Use this method for creating `_test.go` files or when you need to debug your routing logic. The default timeout is `1s` if you want to disable a timeout altogether, pass `-1` as a second argument.
 
 ```go title="Signature"
-func (app *App) Test(req *http.Request, msTimeout ...int) (*http.Response, error)
+func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, error)
 ```
 
 ```go title="Examples"

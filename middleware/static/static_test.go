@@ -738,7 +738,10 @@ func Test_Static_Compress(t *testing.T) {
 			// request non-compressable file (less than 200 bytes), Content Lengh will remain the same
 			req := httptest.NewRequest(fiber.MethodGet, "/css/style.css", nil)
 			req.Header.Set("Accept-Encoding", algo)
-			resp, err := app.Test(req, 10*time.Second)
+			resp, err := app.Test(req, fiber.TestConfig{
+				Timeout: 10*time.Second,
+				ErrOnTimeout: true,
+			})
 
 			require.NoError(t, err, "app.Test(req)")
 			require.Equal(t, 200, resp.StatusCode, "Status code")
@@ -748,7 +751,10 @@ func Test_Static_Compress(t *testing.T) {
 			// request compressable file, ContentLenght will change
 			req = httptest.NewRequest(fiber.MethodGet, "/index.html", nil)
 			req.Header.Set("Accept-Encoding", algo)
-			resp, err = app.Test(req, 10*time.Second)
+			resp, err = app.Test(req, fiber.TestConfig{
+				Timeout: 10*time.Second,
+				ErrOnTimeout: true,
+			})
 
 			require.NoError(t, err, "app.Test(req)")
 			require.Equal(t, 200, resp.StatusCode, "Status code")
@@ -769,7 +775,10 @@ func Test_Static_Compress_WithoutEncoding(t *testing.T) {
 
 	// request compressable file without encoding
 	req := httptest.NewRequest(fiber.MethodGet, "/index.html", nil)
-	resp, err := app.Test(req, 10*time.Second)
+	resp, err := app.Test(req, fiber.TestConfig{
+		Timeout: 10*time.Second,
+		ErrOnTimeout: true,
+	})
 
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
@@ -792,7 +801,10 @@ func Test_Static_Compress_WithoutEncoding(t *testing.T) {
 
 		req = httptest.NewRequest(fiber.MethodGet, "/"+fileName, nil)
 		req.Header.Set("Accept-Encoding", algo)
-		resp, err = app.Test(req, 10*time.Second)
+		resp, err = app.Test(req, fiber.TestConfig{
+			Timeout: 10*time.Second,
+			ErrOnTimeout: true,
+		})
 
 		require.NoError(t, err, "app.Test(req)")
 		require.Equal(t, 200, resp.StatusCode, "Status code")
@@ -833,7 +845,10 @@ func Test_Static_Compress_WithFileSuffixes(t *testing.T) {
 
 		req := httptest.NewRequest(fiber.MethodGet, "/"+fileName, nil)
 		req.Header.Set("Accept-Encoding", algo)
-		resp, err := app.Test(req, 10*time.Second)
+		resp, err := app.Test(req, fiber.TestConfig{
+			Timeout: 10*time.Second,
+			ErrOnTimeout: true,
+		})
 
 		require.NoError(t, err, "app.Test(req)")
 		require.Equal(t, 200, resp.StatusCode, "Status code")
