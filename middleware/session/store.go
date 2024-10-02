@@ -297,24 +297,22 @@ func (s *Store) GetByID(id string) (*Session, error) {
 
 	sess.mu.Lock()
 
-	sess.id = id
 	sess.config = s
+	sess.id = id
+	sess.fresh = false
 
 	sess.data.Lock()
 	decodeErr := sess.decodeSessionData(rawData)
 	sess.data.Unlock()
+	sess.mu.Unlock()
 	if decodeErr != nil {
-		sess.mu.Unlock()
 		return nil, fmt.Errorf("failed to decode session data: %w", err)
 	}
-	sess.mu.Unlock()
 
 	if s.AbsoluteTimeout > 0 {
 		if sess.isAbsExpired() {
-			err := sess.config.Storage.Delete(sess.ID())
-			sess.Release()
-			if err != nil {
-				log.Errorf("failed to delete expired session: %v", err)
+			if err := sess.Destroy(); err != nil {
+				log.Errorf("failed to destroy session: %v", err)
 			}
 			return nil, ErrSessionIDNotFoundInStore
 		}

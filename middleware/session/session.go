@@ -278,6 +278,10 @@ func (s *Session) refresh() {
 //
 //	err := s.Save()
 func (s *Session) Save() error {
+	if s.ctx == nil {
+		return s.saveSession()
+	}
+
 	// If the session is being used in the handler, it should not be saved
 	if m, ok := s.ctx.Locals(middlewareContextKey).(*Middleware); ok {
 		if m.Session == s {
@@ -348,6 +352,10 @@ func (s *Session) SetIdleTimeout(idleTimeout time.Duration) {
 }
 
 func (s *Session) setSession() {
+	if s.ctx == nil {
+		return
+	}
+
 	if s.config.source == SourceHeader {
 		s.ctx.Request().Header.SetBytesV(s.config.sessionName, []byte(s.id))
 		s.ctx.Response().Header.SetBytesV(s.config.sessionName, []byte(s.id))
@@ -380,6 +388,10 @@ func (s *Session) setSession() {
 }
 
 func (s *Session) delSession() {
+	if s.ctx == nil {
+		return
+	}
+
 	if s.config.source == SourceHeader {
 		s.ctx.Request().Header.Del(s.config.sessionName)
 		s.ctx.Response().Header.Del(s.config.sessionName)

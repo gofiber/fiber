@@ -181,6 +181,7 @@ func Test_Store_GetByID(t *testing.T) {
 		// Create a new session
 		ctx := fiber.New().AcquireCtx(&fasthttp.RequestCtx{})
 		session, err := store.Get(ctx)
+		defer session.Release()
 		require.NoError(t, err)
 
 		// Save the session ID
@@ -192,8 +193,26 @@ func Test_Store_GetByID(t *testing.T) {
 
 		// Retrieve the session by ID
 		retrievedSession, err := store.GetByID(sessionID)
+		defer retrievedSession.Release()
 		require.NoError(t, err)
 		require.NotNil(t, retrievedSession)
 		require.Equal(t, sessionID, retrievedSession.ID())
+
+		// Call Save on the retrieved session
+		retrievedSession.Set("key", "value")
+		err = retrievedSession.Save()
+		require.NoError(t, err)
+
+		// Call Other Session methods
+		require.Equal(t, "value", retrievedSession.Get("key"))
+		require.False(t, retrievedSession.Fresh())
+
+		require.NoError(t, retrievedSession.Reset())
+		require.NoError(t, retrievedSession.Destroy())
+		require.IsType(t, []any{}, retrievedSession.Keys())
+		require.NoError(t, retrievedSession.Regenerate())
+		require.NotPanics(t, func() {
+			retrievedSession.Release()
+		})
 	})
 }
