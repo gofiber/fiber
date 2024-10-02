@@ -229,22 +229,27 @@ func (s *Store) Delete(id string) error
 ```
 
 :::note
+
 #### `GetByID` Method
 
 The `GetByID` method retrieves a session from storage using its session ID. Unlike `Get`, which ties the session to a `fiber.Ctx` (request-response cycle), `GetByID` operates independently of any HTTP context. This makes it ideal for scenarios such as background processing, scheduled tasks, or non-HTTP-related session management.
 
-##### Key Features:
+##### Key Features
+
 - **Context Independence**: Sessions retrieved via `GetByID` are not bound to `fiber.Ctx`. This means the session can be manipulated in contexts that aren't tied to an active HTTP request-response cycle.
 - **Background Task Suitability**: Use this method when you need to manage sessions outside of the standard HTTP workflow, such as in scheduled jobs, background tasks, or any non-HTTP context where session data needs to be accessed or modified.
 
-##### Usage Considerations:
+##### Usage Considerations
+
 - **Manual Persistence**: Since there is no associated `fiber.Ctx`, changes made to the session (e.g., modifying data) will **not** automatically be saved to storage. You **must** call `session.Save()` explicitly to persist any updates to storage.
 - **No Automatic Cookie Handling**: Any updates made to the session will **not** affect the client-side cookies. If the session changes need to be reflected in the client (e.g., in a future HTTP response), you will need to handle this manually by setting the cookies via other methods.
 - **Resource Management**: After using a session retrieved by `GetByID`, you should call `session.Release()` to properly release the session back to the pool and free up resources.
 
-##### Example Use Cases:
+##### Example Use Cases
+
 - **Scheduled Jobs**: Retrieve and update session data periodically without triggering an HTTP request.
 - **Background Processing**: Manage sessions for tasks running in the background, such as user inactivity checks or batch processing.
+
 :::
 
 ## Examples
