@@ -193,7 +193,6 @@ func Test_Store_GetByID(t *testing.T) {
 
 		// Retrieve the session by ID
 		retrievedSession, err := store.GetByID(sessionID)
-		defer retrievedSession.Release()
 		require.NoError(t, err)
 		require.NotNil(t, retrievedSession)
 		require.Equal(t, sessionID, retrievedSession.ID())

@@ -165,6 +165,7 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 		sess.data.Unlock()
 		if err != nil {
 			sess.mu.Unlock()
+			sess.Release()
 			return nil, fmt.Errorf("failed to decode session data: %w", err)
 		}
 	}
@@ -306,12 +307,14 @@ func (s *Store) GetByID(id string) (*Session, error) {
 	sess.data.Unlock()
 	sess.mu.Unlock()
 	if decodeErr != nil {
-		return nil, fmt.Errorf("failed to decode session data: %w", err)
+		sess.Release()
+		return nil, fmt.Errorf("failed to decode session data: %w", decodeErr)
 	}
 
 	if s.AbsoluteTimeout > 0 {
 		if sess.isAbsExpired() {
 			if err := sess.Destroy(); err != nil {
+				sess.Release()
 				log.Errorf("failed to destroy session: %v", err)
 			}
 			return nil, ErrSessionIDNotFoundInStore
