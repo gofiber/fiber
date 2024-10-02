@@ -257,15 +257,21 @@ func (s *Store) Delete(id string) error {
 // GetByID retrieves a session by its ID from the storage.
 // If the session is not found, it returns nil and an error.
 //
-// Note:
-// - Unlike session Middleware methods, Session methods do not automatically:
-//   - Load the session into the context
-//   - Save the session data to the storage and update the client cookie
+// Unlike session middleware methods, this function does not automatically:
 //
-// - Be aware of possible collisions if you are also using the session in a middleware.
+//   - Load the session into the request context.
 //
-// Usage:
+//   - Save the session data to the storage or update the client cookie.
+//
+// Important Notes:
+//
+//   - The session object returned by GetByID does not have a context associated with it.
+//
+//   - When using this method alongside session middleware, there is a potential for collisions,
+//     so be mindful of interactions between manually retrieved sessions and middleware-managed sessions.
+//
 //   - If you modify a session returned by GetByID, you must call session.Save() to persist the changes.
+//
 //   - When you are done with the session, you should call session.Release() to release the session back to the pool.
 //
 // Parameters:
