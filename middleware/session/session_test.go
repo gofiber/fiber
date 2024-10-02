@@ -8,6 +8,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -1259,31 +1260,31 @@ func Test_Session_Concurrency(t *testing.T) {
 	}
 }
 
-// func TestStore_Get_DecodeSessionDataError(t *testing.T) {
-// 	// Initialize a new store with default config
-// 	store := NewStore()
+func Test_Session_StoreGetDecodeSessionDataError(t *testing.T) {
+	// Initialize a new store with default config
+	store := NewStore()
 
-// 	// Create a new Fiber app
-// 	app := fiber.New()
+	// Create a new Fiber app
+	app := fiber.New()
 
-// 	// Generate a fake session ID
-// 	sessionID := uuid.New().String()
+	// Generate a fake session ID
+	sessionID := uuid.New().String()
 
-// 	// Store invalid session data to simulate decode error
-// 	err := store.Storage.Set(sessionID, []byte("invalid data"), 0)
-// 	require.NoError(t, err, "Failed to set invalid session data")
+	// Store invalid session data to simulate decode error
+	err := store.Storage.Set(sessionID, []byte("invalid data"), 0)
+	require.NoError(t, err, "Failed to set invalid session data")
 
-// 	// Create a new request context
-// 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-// 	defer app.ReleaseCtx(c)
+	// Create a new request context
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
 
-// 	// Set the session ID in cookies
-// 	c.Request().Header.SetCookie(store.sessionName, sessionID)
+	// Set the session ID in cookies
+	c.Request().Header.SetCookie(store.sessionName, sessionID)
 
-// 	// Attempt to get the session
-// 	_, err = store.Get(c)
-// 	require.Error(t, err, "Expected error due to invalid session data, but got nil")
+	// Attempt to get the session
+	_, err = store.Get(c)
+	require.Error(t, err, "Expected error due to invalid session data, but got nil")
 
-// 	// Check that the error message is as expected
-// 	require.Contains(t, err.Error(), "failed to decode session data", "Unexpected error message")
-// }
+	// Check that the error message is as expected
+	require.Contains(t, err.Error(), "failed to decode session data", "Unexpected error message")
+}
