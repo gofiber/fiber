@@ -1315,5 +1315,4 @@ func Test_Session_StoreGetDecodeSessionDataError(t *testing.T) {
 
 	// Check that the error message is as expected
 	require.ErrorContains(t, err, "failed to decode session data", "Unexpected error")
-
 }
