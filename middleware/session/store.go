@@ -177,6 +177,7 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 		if err := sess.Reset(); err != nil {
 			return nil, fmt.Errorf("failed to reset session: %w", err)
 		}
+		sess.setAbsExpiration(time.Now().Add(s.AbsoluteTimeout))
 	}
 
 	return sess, nil
@@ -310,8 +311,10 @@ func (s *Store) GetByID(id string) (*Session, error) {
 
 	if s.AbsoluteTimeout > 0 {
 		if sess.isAbsExpired() {
-			if err := sess.Destroy(); err != nil {
-				log.Errorf("failed to destroy expired session: %v", err)
+			err := sess.config.Storage.Delete(sess.ID())
+			sess.Release()
+			if err != nil {
+				log.Errorf("failed to delete expired session: %v", err)
 			}
 			return nil, ErrSessionIDNotFoundInStore
 		}

@@ -621,12 +621,16 @@ func Test_Session_Save_AbsoluteTimeout(t *testing.T) {
 	t.Run("save to cookie", func(t *testing.T) {
 		t.Parallel()
 
-		const absoluteTimeout = 5 * time.Second
+		const absoluteTimeout = 1 * time.Second
 		// session store
 		store := NewStore(Config{
-			IdleTimeout:     5 * time.Second,
+			IdleTimeout:     absoluteTimeout,
 			AbsoluteTimeout: absoluteTimeout,
 		})
+
+		// force change to IdleTimeout
+		store.Config.IdleTimeout = 10 * time.Second
+
 		// fiber instance
 		app := fiber.New()
 		// fiber context
@@ -657,21 +661,35 @@ func Test_Session_Save_AbsoluteTimeout(t *testing.T) {
 		require.Equal(t, "john", sess.Get("name"))
 
 		// just to make sure the session has been expired
-		time.Sleep(absoluteTimeout + (10 * time.Millisecond))
+		time.Sleep(absoluteTimeout + (100 * time.Millisecond))
 
 		sess.Release()
 
 		app.ReleaseCtx(ctx)
 		ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
 
 		// here you should get a new session
 		ctx.Request().Header.SetCookie(store.sessionName, token)
 		sess, err = store.Get(ctx)
-		defer sess.Release()
 		require.NoError(t, err)
 		require.Nil(t, sess.Get("name"))
 		require.NotEqual(t, sess.ID(), token)
+		require.True(t, sess.Fresh())
+		require.IsType(t, time.Time{}, sess.Get(absExpirationKey))
+
+		token = sess.ID()
+
+		sess.Set("name", "john")
+
+		// save session
+		err = sess.Save()
+		require.NoError(t, err)
+
+		sess.Release()
+		app.ReleaseCtx(ctx)
+
+		// just to make sure the session has been expired
+		time.Sleep(absoluteTimeout + (100 * time.Millisecond))
 
 		// try to get expired session by id
 		sess, err = store.GetByID(token)
@@ -1287,4 +1305,15 @@ func Test_Session_StoreGetDecodeSessionDataError(t *testing.T) {
 
 	// Check that the error message is as expected
 	require.Contains(t, err.Error(), "failed to decode session data", "Unexpected error message")
+
+	// Check that the error is as expected
+	require.ErrorContains(t, err, "failed to decode session data", "Unexpected error")
+
+	// Attempt to get the session by ID
+	_, err = store.GetByID(sessionID)
+	require.Error(t, err, "Expected error due to invalid session data, but got nil")
+
+	// Check that the error message is as expected
+	require.ErrorContains(t, err, "failed to decode session data", "Unexpected error")
+
 }
