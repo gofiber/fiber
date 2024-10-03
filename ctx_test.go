@@ -1397,6 +1397,10 @@ func Test_Ctx_Fresh(t *testing.T) {
 	require.False(t, c.Fresh())
 
 	c.Request().Header.Set(HeaderIfModifiedSince, "Wed, 21 Oct 2015 07:28:00 GMT")
+	require.True(t, c.Fresh())
+
+	c.Request().Header.Set(HeaderIfModifiedSince, "Wed, 21 Oct 2015 07:27:59 GMT")
+	c.Response().Header.Set(HeaderLastModified, "Wed, 21 Oct 2015 07:28:00 GMT")
 	require.False(t, c.Fresh())
 }
 
@@ -1407,6 +1411,18 @@ func Benchmark_Ctx_Fresh_WithNoCache(b *testing.B) {
 
 	c.Request().Header.Set(HeaderIfNoneMatch, "*")
 	c.Request().Header.Set(HeaderCacheControl, "no-cache")
+	for n := 0; n < b.N; n++ {
+		c.Fresh()
+	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_Fresh_LastModified -benchmem -count=4
+func Benchmark_Ctx_Fresh_LastModified(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Response().Header.Set(HeaderLastModified, "Wed, 21 Oct 2015 07:28:00 GMT")
+	c.Request().Header.Set(HeaderIfModifiedSince, "Wed, 21 Oct 2015 07:28:00 GMT")
 	for n := 0; n < b.N; n++ {
 		c.Fresh()
 	}
