@@ -566,6 +566,32 @@ if resp.StatusCode == fiber.StatusOK {
 }
 ```
 
+If not provided, TestConfig is set to the following defaults:
+
+```go title="Default TestConfig"
+config := fiber.TestConfig{
+  Timeout:      time.Second(),
+  ErrOnTimeout: true,
+}
+```
+
+:::caution
+
+This is **not** the same as supplying an empty `TestConfig{}` to
+`app.Test(), but rather be the equivalent of supplying:
+
+```go title="Empty TestConfig"
+cfg := fiber.TestConfig{
+  Timeout:      0,
+  ErrOnTimeout: false,
+}
+```
+
+This would make a Test that instantly times out,
+which would always result in a "test: empty response" error.
+
+:::
+
 ## Hooks
 
 Hooks is a method to return [hooks](./hooks.md) property.
