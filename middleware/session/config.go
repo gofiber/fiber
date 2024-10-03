@@ -125,7 +125,7 @@ var ConfigDefault = Config{
 //	DefaultErrorHandler(c, err)
 func DefaultErrorHandler(c fiber.Ctx, err error) {
 	log.Errorf("session: %v", err)
-	if sendErr := (c).SendStatus(fiber.StatusInternalServerError); sendErr != nil {
+	if sendErr := c.SendStatus(fiber.StatusInternalServerError); sendErr != nil {
 		log.Errorf("session: %v", sendErr)
 	}
 }
