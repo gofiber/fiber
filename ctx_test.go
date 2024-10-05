@@ -27,6 +27,7 @@ import (
 
 	"text/template"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/gofiber/fiber/v3/eventemitter"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/utils"
@@ -2098,6 +2099,29 @@ func Test_Ctx_JSON(t *testing.T) {
 	testEmpty("", `""`)
 	testEmpty(0, "0")
 	testEmpty([]int{}, "[]")
+}
+
+func Test_Ctx_CBOR(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	utils.AssertEqual(t, true, c.CBOR(complex(1, 1)) != nil)
+	c.CBOR(Map{ // map has no order
+		"Name": "Grame",
+		"Age":  20,
+	})
+	marshalled, _ := cbor.Marshal(Map{ // map has no order
+		"Name": "Grame",
+		"Age":  20,
+	})
+	utils.AssertEqual(t, marshalled, c.Response().Body())
+	c.CBOR(nil)
+	marshalledNil, _ := cbor.Marshal(nil)
+	utils.AssertEqual(t, marshalledNil, c.Response().Body())
+	c.CBOR("Testing String")
+	marshalledStr, _ := cbor.Marshal("Testing String")
+	utils.AssertEqual(t, marshalledStr, c.Response().Body())
 }
 
 // go test -run=^$ -bench=Benchmark_Ctx_JSON -benchmem -count=4

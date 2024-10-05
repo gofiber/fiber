@@ -23,6 +23,7 @@ import (
 
 	"encoding/json"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/gofiber/fiber/v3/eventemitter"
 	"github.com/gofiber/fiber/v3/utils"
 	"github.com/valyala/fasthttp"
@@ -316,6 +317,20 @@ type Config struct {
 	// Default: json.Unmarshal
 	JSONDecoder utils.JSONUnmarshal `json:"-"`
 
+	// When set by an external client of Fiber it will use the provided implementation of a
+	// CBORUnmarshal
+	//
+	// Allowing for flexibility in using another cbor library for decoding
+	// Default: cbor.Unmarshal
+	CBORDecoder utils.CBORUnmarshal `json:"-"`
+
+	// When set by an external client of Fiber it will use the provided implementation of a
+	// CBORMarshal
+	//
+	// Allowing for flexibility in using another cbor library for encoding
+	// Default: cbor.Marshal
+	CBOREncoder utils.CBORMarshal `json:"-"`
+
 	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only)
 	// WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chose.
 	//
@@ -464,6 +479,12 @@ func New(config ...Config) *App {
 	}
 	if app.config.JSONDecoder == nil {
 		app.config.JSONDecoder = json.Unmarshal
+	}
+	if app.config.CBORDecoder == nil {
+		app.config.CBORDecoder = cbor.Unmarshal
+	}
+	if app.config.CBOREncoder == nil {
+		app.config.CBOREncoder = cbor.Marshal
 	}
 	if app.config.Network == "" {
 		app.config.Network = NetworkTCP4

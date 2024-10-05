@@ -698,6 +698,16 @@ func (c *Ctx) JSON(data any) error {
 	return nil
 }
 
+func (c *Ctx) CBOR(data any) error {
+	raw, err := c.app.config.CBOREncoder(data)
+	if err != nil {
+		return err
+	}
+	c.fasthttp.Response.SetBodyRaw(raw)
+	c.fasthttp.Response.Header.SetContentType(MIMEApplicationCBOR)
+	return nil
+}
+
 // JSONP sends a JSON response with JSONP support.
 // This method is identical to JSON, except that it opts-in to JSONP callback support.
 // By default, the callback name is simply callback.

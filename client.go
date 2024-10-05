@@ -162,17 +162,20 @@ type Agent struct {
 	// HostClient is an embedded fasthttp HostClient
 	*fasthttp.HostClient
 
-	req               *Request
-	resp              *Response
-	dest              []byte
-	args              *Args
-	timeout           time.Duration
-	errs              []error
-	formFiles         []*FormFile
-	debugWriter       io.Writer
-	mw                multipartWriter
-	jsonEncoder       utils.JSONMarshal
-	jsonDecoder       utils.JSONUnmarshal
+	req         *Request
+	resp        *Response
+	dest        []byte
+	args        *Args
+	timeout     time.Duration
+	errs        []error
+	formFiles   []*FormFile
+	debugWriter io.Writer
+	mw          multipartWriter
+	jsonEncoder utils.JSONMarshal
+	jsonDecoder utils.JSONUnmarshal
+	cborEncoder utils.CBORMarshal
+	cborDecoder utils.CBORUnmarshal
+
 	maxRedirectsCount int
 	boundary          string
 	reuse             bool
@@ -700,6 +703,20 @@ func (a *Agent) JSONEncoder(jsonEncoder utils.JSONMarshal) *Agent {
 // JSONDecoder sets custom json decoder.
 func (a *Agent) JSONDecoder(jsonDecoder utils.JSONUnmarshal) *Agent {
 	a.jsonDecoder = jsonDecoder
+
+	return a
+}
+
+// CBOREncoder sets custom cbor encoder.
+func (a *Agent) CBOREncoder(cborEncoder utils.CBORMarshal) *Agent {
+	a.cborEncoder = cborEncoder
+
+	return a
+}
+
+// CBORDecoder sets custom cbor decoder.
+func (a *Agent) CBORDecoder(cborDecoder utils.CBORUnmarshal) *Agent {
+	a.cborDecoder = cborDecoder
 
 	return a
 }

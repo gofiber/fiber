@@ -9,8 +9,10 @@ require (
 )
 
 require (
+	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
 	github.com/philhofer/fwd v1.1.1 // indirect
 	github.com/savsgio/gotils v0.0.0-20220401102855-e56b59f40436 // indirect
+	github.com/x448/float16 v0.8.4 // indirect
 	golang.org/x/sys v0.0.0-20220818161305-2296e01440c6 // indirect
 )
 
