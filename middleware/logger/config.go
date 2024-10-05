@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	fiberlog "github.com/gofiber/fiber/v3/log"
 )
 
 // Config defines the config for middleware.
@@ -42,6 +43,8 @@ type Config struct {
 	//
 	// Optional. Default: defaultLogger
 	LoggerFunc func(c fiber.Ctx, data *Data, cfg Config) error
+
+	Logger fiberlog.AllLogger
 
 	timeZoneLocation *time.Location
 

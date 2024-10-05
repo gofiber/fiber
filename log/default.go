@@ -210,6 +210,10 @@ func (l *defaultLogger) SetOutput(writer io.Writer) {
 	l.stdlog.SetOutput(writer)
 }
 
+func (l *defaultLogger) SetFlags(flag int) {
+	l.stdlog.SetFlags(flag)
+}
+
 // DefaultLogger returns the default logger.
 func DefaultLogger() AllLogger {
 	return logger
