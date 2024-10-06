@@ -190,7 +190,7 @@ func Test_Logger_Fiber_Logger(t *testing.T) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	customLoggerFunc := func(c fiber.Ctx, data *Data, cfg Config) error {
+	customLoggerFunc := func(_ fiber.Ctx, data *Data, cfg Config) error {
 		cfg.Logger.SetOutput(cfg.Output)
 		cfg.Logger.SetFlags(0)
 		cfg.Logger.Error(data.ChainErr.Error())
@@ -765,6 +765,28 @@ func Benchmark_Logger(b *testing.B) {
 		benchmarkSetup(bb, app, "/")
 	})
 
+	b.Run("DefaultFormatWithFiberLog", func(bb *testing.B) {
+		app := fiber.New()
+		customLoggerFunc := func(c fiber.Ctx, data *Data, cfg Config) error {
+			cfg.Logger.SetOutput(cfg.Output)
+			cfg.Logger.Infof("%3d | %13v | %15s | %-7s | %-"+data.ErrPaddingStr+"s %s\n",
+				c.Response().StatusCode(),
+				data.Stop.Sub(data.Start),
+				c.IP(), c.Method(), c.Path(), "",
+			)
+			return nil
+		}
+		app.Use(New(Config{
+			Output:     io.Discard,
+			Logger:     fiberlog.DefaultLogger(),
+			LoggerFunc: customLoggerFunc,
+		}))
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString("Hello, World!")
+		})
+		benchmarkSetup(bb, app, "/")
+	})
+
 	b.Run("WithTagParameter", func(bb *testing.B) {
 		app := fiber.New()
 		app.Use(New(Config{
@@ -912,13 +934,10 @@ func Benchmark_Logger_Parallel(b *testing.B) {
 		app := fiber.New()
 		customLoggerFunc := func(c fiber.Ctx, data *Data, cfg Config) error {
 			cfg.Logger.SetOutput(cfg.Output)
-			cfg.Logger.SetFlags(0)
-			cfg.Logger.Infof("%s | %3d | %13v | %15s | %-7s | %-"+data.ErrPaddingStr+"s %s\n",
-				data.Timestamp.Load().(string),
+			cfg.Logger.Infof("%3d | %13v | %15s | %-7s | %-"+data.ErrPaddingStr+"s %s\n",
 				c.Response().StatusCode(),
 				data.Stop.Sub(data.Start),
-				c.IP(), c.Method(), c.Path(),
-				"",
+				c.IP(), c.Method(), c.Path(), "",
 			)
 			return nil
 		}
