@@ -88,6 +88,19 @@ app.Use(logger.New(logger.Config{
 app.Use(logger.New(logger.Config{
     DisableColors: true,
 }))
+
+// Use Custom Logger with Fiber Logger Interface
+customLoggerFunc := func(c fiber.Ctx, data *logger.Data, cfg logger.Config) error {
+    cfg.Logger.SetOutput(cfg.Output)
+    cfg.Logger.SetFlags(0)
+    cfg.Logger.Infof("%3d | %15s | %-7s\n", c.Response().StatusCode(), c.IP(), c.Method())
+    return nil
+}
+app.Use(logger.New(logger.Config{
+    Output:     buf,
+    Logger:     fiberlog.DefaultLogger(),
+    LoggerFunc: customLoggerFunc,
+}))
 ```
 
 :::tip
@@ -108,8 +121,8 @@ Writing to os.File is goroutine-safe, but if you are using a custom Output that 
 | TimeZone         | `string`                   | TimeZone can be specified, such as "UTC" and "America/New_York" and "Asia/Chongqing", etc                                        | `"Local"`                                                             |
 | TimeInterval     | `time.Duration`            | TimeInterval is the delay before the timestamp is updated.                                                                       | `500 * time.Millisecond`                                              |
 | Output           | `io.Writer`                | Output is a writer where logs are written.                                                                                       | `os.Stdout`                                                           |
-| LoggerFunc           | `func(c fiber.Ctx, data *Data, cfg Config) error`  | You can use custom loggers with Fiber by using this field. This field is really useful if you're using Zerolog, Zap, Logrus, apex/log etc. If you don't define anything for this field, it'll use default logger of Fiber.  | `see default_logger.go defaultLoggerInstance`                                                           |
-| Logger           | `fiberlog.AllLogger`  |   |                                                           |
+| LoggerFunc           | `func(c fiber.Ctx, data *Data, cfg Config) error`  | You can use custom loggers with Fiber by using this field. This field is really useful if you're using Zerolog, Zap, Logrus, apex/log etc. If you don't define anything for this field, it'll use the default logger of Fiber.  | `see default_logger.go defaultLoggerInstance`                                                           |
+| Logger           | `fiberlog.AllLogger`  | Logger allows the use of a custom logger that implements the AllLogger interface. This field can be used in the LoggerFunc to do the logging. If you don't define LoggerFunc, this field will be ignored. |  `nil`                                                        |
 | DisableColors    | `bool`                     | DisableColors defines if the logs output should be colorized.                                                                    | `false`                                                               |
 | enableColors     | `bool`                     | Internal field for enabling colors in the log output. (This is not a user-configurable field)                                    | -                                                                     |
 | enableLatency    | `bool`                     | Internal field for enabling latency measurement in logs. (This is not a user-configurable field)                                 | -                                                                     |
