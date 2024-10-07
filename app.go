@@ -129,6 +129,8 @@ type App struct {
 	handlersCount uint32
 	// contains the information if the route stack has been changed to build the optimized tree
 	routesRefreshed bool
+	// state management
+	state *State
 }
 
 // Config is a struct holding the server settings.
@@ -138,7 +140,7 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// Default: ""
 	ServerHeader string `json:"server_header"`
 
-	// When set to true, the router treats "/foo" and "/foo/" as different.
+	// When set to Ftrue, the router treats "/foo" and "/foo/" as different.
 	// By default this is disabled and both "/foo" and "/foo/" will execute the same handler.
 	//
 	// Default: false
@@ -514,6 +516,9 @@ func New(config ...Config) *App {
 
 	// Define mountFields
 	app.mountFields = newMountFields(app)
+
+	// Define state
+	app.state = newState()
 
 	// Override config if provided
 	if len(config) > 0 {
@@ -950,6 +955,11 @@ func (app *App) Server() *fasthttp.Server {
 // Hooks returns the hook struct to register hooks.
 func (app *App) Hooks() *Hooks {
 	return app.hooks
+}
+
+// State returns the state struct to store global data in order to share it between handlers.
+func (app *App) State() *State {
+	return app.state
 }
 
 var ErrTestGotEmptyResponse = errors.New("test: got empty response")
