@@ -1,11 +1,13 @@
 package csrf
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/memory"
+	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 )
 
@@ -41,20 +43,35 @@ func newStorageManager(storage fiber.Storage) *storageManager {
 }
 
 // get raw data from storage or memory
-func (m *storageManager) getRaw(key string) []byte {
-	var raw []byte
+func (m *storageManager) getRaw(key string) ([]byte, error) {
+	var (
+		raw []byte
+		err error
+	)
 	if m.storage != nil {
-		raw, _ = m.storage.Get(key) //nolint:errcheck // TODO: Do not ignore error
+		raw, err = m.storage.Get(key)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %s", ErrStorageRetrievalFailed, err.Error())
+		}
 	} else {
-		raw, _ = m.memory.Get(key).([]byte) //nolint:errcheck // TODO: Do not ignore error
+		var ok bool
+		raw, ok = m.memory.Get(key).([]byte)
+		if !ok {
+			return nil, ErrStorageRetrievalFailed
+		}
 	}
-	return raw
+
+	return raw, nil
 }
 
 // set data to storage or memory
 func (m *storageManager) setRaw(key string, raw []byte, exp time.Duration) {
 	if m.storage != nil {
-		_ = m.storage.Set(key, raw, exp) //nolint:errcheck // TODO: Do not ignore error
+		err := m.storage.Set(key, raw, exp)
+		if err != nil {
+			log.Warnf("csrf: failed to save session in storage: %s", err.Error())
+			return
+		}
 	} else {
 		// the key is crucial in crsf and sometimes a reference to another value which can be reused later(pool/unsafe values concept), so a copy is made here
 		m.memory.Set(utils.CopyString(key), raw, exp)
@@ -64,7 +81,11 @@ func (m *storageManager) setRaw(key string, raw []byte, exp time.Duration) {
 // delete data from storage or memory
 func (m *storageManager) delRaw(key string) {
 	if m.storage != nil {
-		_ = m.storage.Delete(key) //nolint:errcheck // TODO: Do not ignore error
+		err := m.storage.Delete(key)
+		if err != nil {
+			log.Warnf("csrf: failed to delete session in storage: %s", err.Error())
+			return
+		}
 	} else {
 		m.memory.Delete(key)
 	}
