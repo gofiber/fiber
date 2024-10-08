@@ -866,7 +866,7 @@ func (app *App) Hooks() *Hooks {
 }
 
 // TestConfig is a struct holding Test settings
-type TestConfig struct { //nolint:govet // Aligning the struct fields is not necessary. betteralign:ignore 
+type TestConfig struct {
 	// Sets a timeout duration for the test.
 	//
 	// Default: time.Second
@@ -883,9 +883,9 @@ type TestConfig struct { //nolint:govet // Aligning the struct fields is not nec
 // Config is optional and defaults to a 1s error on timeout,
 // -1 timeout will disable it completely.
 func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, error) {
-    // Default config
+	// Default config
 	cfg := TestConfig{
-		Timeout: time.Second,
+		Timeout:      time.Second,
 		ErrOnTimeout: true,
 	}
 
@@ -935,7 +935,7 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 		select {
 		case err = <-channel:
 		case <-time.After(cfg.Timeout):
-			conn.Close()
+			conn.Close() //nolint:errcheck, revive // It is fine to ignore the error here
 			if cfg.ErrOnTimeout {
 				return nil, fmt.Errorf("test: timeout error after %s", cfg.Timeout)
 			}
@@ -956,7 +956,7 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 	// Convert raw http response to *http.Response
 	res, err := http.ReadResponse(buffer, req)
 	if err != nil {
-		if err == io.ErrUnexpectedEOF {
+		if errors.Is(err, io.ErrUnexpectedEOF) {
 			return nil, fmt.Errorf("test: got empty response")
 		}
 		return nil, fmt.Errorf("failed to read response: %w", err)

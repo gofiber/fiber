@@ -105,7 +105,7 @@ func Test_AuthSources(t *testing.T) {
 				}
 
 				res, err := app.Test(req, fiber.TestConfig{
-					Timeout: -1,
+					Timeout:      -1,
 					ErrOnTimeout: false,
 				})
 
@@ -213,7 +213,7 @@ func TestMultipleKeyLookup(t *testing.T) {
 	req.URL.RawQuery = q.Encode()
 
 	res, err := app.Test(req, fiber.TestConfig{
-		Timeout: -1,
+		Timeout:      -1,
 		ErrOnTimeout: false,
 	})
 
@@ -233,7 +233,7 @@ func TestMultipleKeyLookup(t *testing.T) {
 	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/foo", nil)
 	require.NoError(t, err)
 	res, err = app.Test(req, fiber.TestConfig{
-		Timeout: -1,
+		Timeout:      -1,
 		ErrOnTimeout: false,
 	})
 	require.NoError(t, err)
@@ -360,7 +360,7 @@ func Test_MultipleKeyAuth(t *testing.T) {
 		}
 
 		res, err := app.Test(req, fiber.TestConfig{
-			Timeout: -1,
+			Timeout:      -1,
 			ErrOnTimeout: false,
 		})
 

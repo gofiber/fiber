@@ -106,7 +106,7 @@ func Test_Pprof_Subs(t *testing.T) {
 				target += "?seconds=1"
 			}
 			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, target, nil), fiber.TestConfig{
-				Timeout: 5*time.Second,
+				Timeout:      5 * time.Second,
 				ErrOnTimeout: true,
 			})
 			require.NoError(t, err)
@@ -136,7 +136,7 @@ func Test_Pprof_Subs_WithPrefix(t *testing.T) {
 				target += "?seconds=1"
 			}
 			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, target, nil), fiber.TestConfig{
-				Timeout: 5*time.Second,
+				Timeout:      5 * time.Second,
 				ErrOnTimeout: true,
 			})
 			require.NoError(t, err)

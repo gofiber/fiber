@@ -40,7 +40,7 @@ func Test_Compress_Gzip(t *testing.T) {
 	req.Header.Set("Accept-Encoding", "gzip")
 
 	resp, err := app.Test(req, fiber.TestConfig{
-		Timeout: 10*time.Second,
+		Timeout:      10 * time.Second,
 		ErrOnTimeout: true,
 	})
 	require.NoError(t, err, "app.Test(req)")
@@ -76,7 +76,7 @@ func Test_Compress_Different_Level(t *testing.T) {
 				req.Header.Set("Accept-Encoding", algo)
 
 				resp, err := app.Test(req, fiber.TestConfig{
-					Timeout: 10*time.Second,
+					Timeout:      10 * time.Second,
 					ErrOnTimeout: true,
 				})
 				require.NoError(t, err, "app.Test(req)")
@@ -106,7 +106,7 @@ func Test_Compress_Deflate(t *testing.T) {
 	req.Header.Set("Accept-Encoding", "deflate")
 
 	resp, err := app.Test(req, fiber.TestConfig{
-		Timeout: 10*time.Second,
+		Timeout:      10 * time.Second,
 		ErrOnTimeout: true,
 	})
 	require.NoError(t, err, "app.Test(req)")
@@ -133,7 +133,7 @@ func Test_Compress_Brotli(t *testing.T) {
 	req.Header.Set("Accept-Encoding", "br")
 
 	resp, err := app.Test(req, fiber.TestConfig{
-		Timeout: 10*time.Second,
+		Timeout:      10 * time.Second,
 		ErrOnTimeout: true,
 	})
 	require.NoError(t, err, "app.Test(req)")
@@ -160,7 +160,7 @@ func Test_Compress_Zstd(t *testing.T) {
 	req.Header.Set("Accept-Encoding", "zstd")
 
 	resp, err := app.Test(req, fiber.TestConfig{
-		Timeout: 10*time.Second,
+		Timeout:      10 * time.Second,
 		ErrOnTimeout: true,
 	})
 	require.NoError(t, err, "app.Test(req)")
@@ -187,7 +187,7 @@ func Test_Compress_Disabled(t *testing.T) {
 	req.Header.Set("Accept-Encoding", "br")
 
 	resp, err := app.Test(req, fiber.TestConfig{
-		Timeout: 10*time.Second,
+		Timeout:      10 * time.Second,
 		ErrOnTimeout: true,
 	})
 	require.NoError(t, err, "app.Test(req)")
