@@ -160,7 +160,7 @@ func (b *Bind) MultipartForm(out any) error {
 // It supports decoding the following content types based on the Content-Type header:
 // application/json, application/xml, application/x-www-form-urlencoded, multipart/form-data
 // If none of the content types above are matched, it'll take a look custom binders by checking the MIMETypes() method of custom binder.
-// If there're no custom binder for mşme type of body, it will return a ErrUnprocessableEntity error.
+// If there're no custom binder for mime type of body, it will return a ErrUnprocessableEntity error.
 func (b *Bind) Body(out any) error {
 	// Get content-type
 	ctype := utils.ToLower(utils.UnsafeString(b.ctx.Context().Request.Header.ContentType()))
