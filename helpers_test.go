@@ -5,7 +5,6 @@
 package fiber
 
 import (
-	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -515,21 +514,46 @@ func Test_Utils_TestConn_Deadline(t *testing.T) {
 	require.NoError(t, conn.SetWriteDeadline(time.Time{}))
 }
 
+func Test_Utils_TestConn_ReadWrite(t *testing.T) {
+	t.Parallel()
+	conn := &testConn{}
+
+	// Verify read of request
+	_, err := conn.r.Write([]byte("Request"))
+	require.NoError(t, err)
+
+	req := make([]byte, 7)
+	_, err = conn.Read(req)
+	require.NoError(t, err)
+	require.Equal(t, []byte("Request"), req)
+
+	// Verify write of response
+	_, err = conn.Write([]byte("Response"))
+	require.NoError(t, err)
+
+	res := make([]byte, 8)
+	_, err = conn.w.Read(res)
+	require.NoError(t, err)
+	require.Equal(t, []byte("Response"), res)
+}
+
 func Test_Utils_TestConn_Closed_Write(t *testing.T) {
 	t.Parallel()
 	conn := &testConn{}
 
-	_, err := conn.Write([]byte("Hello World"))
+	// Verify write of response
+	_, err := conn.Write([]byte("Response 1\n"))
 	require.NoError(t, err)
 
+	// Close early, write should fail
 	conn.Close()
-	_, err = conn.Write([]byte("This should fail"))
-	require.ErrorIs(t, err, errors.New("testConn is closed"))
+	_, err = conn.Write([]byte("Response 2\n"))
+	require.Error(t, err)
 
-	buffer := make([]byte, 12)
-	_, err = conn.Read(buffer)
+	res := make([]byte, 11)
+	_, err = conn.w.Read(res)
 	require.NoError(t, err)
-	require.Equal(t, []byte("Hello World"), buffer)
+	require.Equal(t, []byte("Response 1\n"), res)
 }
 
 func Test_Utils_IsNoCache(t *testing.T) {
