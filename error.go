@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/gofiber/fiber/v3/internal/schema"
+	"github.com/gofiber/schema"
 )
 
 // Wrap and return this for unreachable code if panicking is undesirable (i.e., in a handler).

@@ -16,6 +16,7 @@ require (
 require (
 	github.com/andybalholm/brotli v1.1.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/gofiber/schema v0.0.0-20240930192558-a38168951d4b // indirect
 	github.com/klauspost/compress v1.17.9 // indirect
 	github.com/philhofer/fwd v1.1.3-0.20240612014219-fbbf4953d986 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
