@@ -325,11 +325,7 @@ Now, static middleware can do everything that filesystem middleware and static d
 
 ### Monitor
 
-:::caution
-DRAFT section
-:::
-
-Monitor middleware is now in Contrib package.
+Monitor middleware is migrated to the [Contrib package](https://github.com/gofiber/contrib/tree/main/monitor) with [PR #1172](https://github.com/gofiber/contrib/pull/1172).
 
 ### Healthcheck
 
@@ -526,7 +522,7 @@ app.Use(static.New("", static.Config{
 }))
 ```
 
-### Healthcheck
+#### Healthcheck
 
 Previously, the Healthcheck middleware was configured with a combined setup for liveliness and readiness probes:
 
@@ -569,4 +565,24 @@ app.Get(healthcheck.DefaultStartupEndpoint, healthcheck.NewHealthChecker(healthc
 
 // Custom liveness endpoint configuration
 app.Get("/live", healthcheck.NewHealthChecker())
+```
+
+#### Monitor
+
+Since v3 the Monitor middleware has been moved to the [Contrib package](https://github.com/gofiber/contrib/tree/main/monitor)
+
+```go
+// Before
+import "github.com/gofiber/fiber/v2/middleware/monitor"
+
+app.Use("/metrics", monitor.New())
+```
+
+You only need to change the import path to the contrib package.
+
+```go
+// After
+import "github.com/gofiber/contrib/monitor"
+
+app.Use("/metrics", monitor.New())
 ```
