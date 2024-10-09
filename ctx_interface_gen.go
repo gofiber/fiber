@@ -3,6 +3,7 @@
 package fiber
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
 	"io"
@@ -282,6 +283,8 @@ type Ctx interface {
 	SendString(body string) error
 	// SendStream sets response body stream and optional body size.
 	SendStream(stream io.Reader, size ...int) error
+	// SendStreamWriter sets response body stream writer
+	SendStreamWriter(streamWriter func(*bufio.Writer)) error
 	// Set sets the response's HTTP header field to the specified key, value.
 	Set(key, val string)
 	setCanonical(key, val string)
