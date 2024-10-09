@@ -957,7 +957,7 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 	res, err := http.ReadResponse(buffer, req)
 	if err != nil {
 		if errors.Is(err, io.ErrUnexpectedEOF) {
-			return nil, fmt.Errorf("test: got empty response")
+			return nil, errors.New("test: got empty response")
 		}
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
