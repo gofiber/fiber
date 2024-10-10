@@ -37,11 +37,6 @@ func normalizeOrigin(origin string) (bool, string) {
 		return false, ""
 	}
 
-	// Validate the scheme is either http or https
-	if parsedOrigin.Scheme != "http" && parsedOrigin.Scheme != "https" {
-		return false, ""
-	}
-
 	// Don't allow a wildcard with a protocol
 	// wildcards cannot be used within any other value. For example, the following header is not valid:
 	// Access-Control-Allow-Origin: https://*
