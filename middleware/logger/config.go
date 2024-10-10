@@ -114,6 +114,7 @@ var ConfigDefault = Config{
 	Output:            os.Stdout,
 	BeforeHandlerFunc: beforeHandlerFunc,
 	LoggerFunc:        defaultLoggerInstance,
+	Logger:            nil,
 	enableColors:      true,
 }
 
