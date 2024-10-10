@@ -20,7 +20,7 @@ func Test_Store_getSessionID(t *testing.T) {
 	t.Run("from cookie", func(t *testing.T) {
 		t.Parallel()
 		// session store
-		store := New()
+		store := NewStore()
 		// fiber context
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 
@@ -33,7 +33,7 @@ func Test_Store_getSessionID(t *testing.T) {
 	t.Run("from header", func(t *testing.T) {
 		t.Parallel()
 		// session store
-		store := New(Config{
+		store := NewStore(Config{
 			KeyLookup: "header:session_id",
 		})
 		// fiber context
@@ -48,7 +48,7 @@ func Test_Store_getSessionID(t *testing.T) {
 	t.Run("from url query", func(t *testing.T) {
 		t.Parallel()
 		// session store
-		store := New(Config{
+		store := NewStore(Config{
 			KeyLookup: "query:session_id",
 		})
 		// fiber context
@@ -73,7 +73,7 @@ func Test_Store_Get(t *testing.T) {
 	t.Run("session should be re-generated if it is invalid", func(t *testing.T) {
 		t.Parallel()
 		// session store
-		store := New()
+		store := NewStore()
 		// fiber context
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 
@@ -93,7 +93,7 @@ func Test_Store_DeleteSession(t *testing.T) {
 	// fiber instance
 	app := fiber.New()
 	// session store
-	store := New()
+	store := NewStore()
 
 	// fiber context
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -115,4 +115,103 @@ func Test_Store_DeleteSession(t *testing.T) {
 
 	// The session ID should be different now, because the old session was deleted
 	require.NotEqual(t, sessionID, session.ID())
+}
+
+func TestStore_Get_SessionAlreadyLoaded(t *testing.T) {
+	// Create a new Fiber app
+	app := fiber.New()
+
+	// Create a new context
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	// Mock middleware and set it in the context
+	middleware := &Middleware{}
+	ctx.Locals(middlewareContextKey, middleware)
+
+	// Create a new store
+	store := &Store{}
+
+	// Call the Get method
+	sess, err := store.Get(ctx)
+
+	// Assert that the error is ErrSessionAlreadyLoadedByMiddleware
+	require.Nil(t, sess)
+	require.Equal(t, ErrSessionAlreadyLoadedByMiddleware, err)
+}
+
+func TestStore_Delete(t *testing.T) {
+	// Create a new store
+	store := NewStore()
+
+	t.Run("delete with empty session ID", func(t *testing.T) {
+		err := store.Delete("")
+		require.Error(t, err)
+		require.Equal(t, ErrEmptySessionID, err)
+	})
+
+	t.Run("delete non-existing session", func(t *testing.T) {
+		err := store.Delete("non-existing-session-id")
+		require.NoError(t, err)
+	})
+}
+
+func Test_Store_GetByID(t *testing.T) {
+	t.Parallel()
+	// Create a new store
+	store := NewStore()
+
+	t.Run("empty session ID", func(t *testing.T) {
+		t.Parallel()
+		sess, err := store.GetByID("")
+		require.Error(t, err)
+		require.Nil(t, sess)
+		require.Equal(t, ErrEmptySessionID, err)
+	})
+
+	t.Run("non-existent session ID", func(t *testing.T) {
+		t.Parallel()
+		sess, err := store.GetByID("non-existent-session-id")
+		require.Error(t, err)
+		require.Nil(t, sess)
+		require.Equal(t, ErrSessionIDNotFoundInStore, err)
+	})
+
+	t.Run("valid session ID", func(t *testing.T) {
+		t.Parallel()
+		// Create a new session
+		ctx := fiber.New().AcquireCtx(&fasthttp.RequestCtx{})
+		session, err := store.Get(ctx)
+		defer session.Release()
+		require.NoError(t, err)
+
+		// Save the session ID
+		sessionID := session.ID()
+
+		// Save the session
+		err = session.Save()
+		require.NoError(t, err)
+
+		// Retrieve the session by ID
+		retrievedSession, err := store.GetByID(sessionID)
+		require.NoError(t, err)
+		require.NotNil(t, retrievedSession)
+		require.Equal(t, sessionID, retrievedSession.ID())
+
+		// Call Save on the retrieved session
+		retrievedSession.Set("key", "value")
+		err = retrievedSession.Save()
+		require.NoError(t, err)
+
+		// Call Other Session methods
+		require.Equal(t, "value", retrievedSession.Get("key"))
+		require.False(t, retrievedSession.Fresh())
+
+		require.NoError(t, retrievedSession.Reset())
+		require.NoError(t, retrievedSession.Destroy())
+		require.IsType(t, []any{}, retrievedSession.Keys())
+		require.NoError(t, retrievedSession.Regenerate())
+		require.NotPanics(t, func() {
+			retrievedSession.Release()
+		})
+	})
 }
