@@ -878,16 +878,18 @@ func (app *App) ShutdownWithTimeout(timeout time.Duration) error {
 //
 // ShutdownWithContext does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
 func (app *App) ShutdownWithContext(ctx context.Context) error {
-	if app.hooks != nil {
-		// TODO: check should be defered?
-		app.hooks.executeOnShutdownHooks()
-	}
-
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
+
 	if app.server == nil {
 		return ErrNotRunning
 	}
+
+	// Execute shutdown hooks in a deferred function
+	if app.hooks != nil {
+		defer app.hooks.executeOnShutdownHooks()
+	}
+
 	return app.server.ShutdownWithContext(ctx)
 }
 
