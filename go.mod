@@ -3,6 +3,7 @@ module github.com/gofiber/fiber/v3
 go 1.22
 
 require (
+	github.com/gofiber/schema v1.2.0
 	github.com/gofiber/utils/v2 v2.0.0-beta.6
 	github.com/google/uuid v1.6.0
 	github.com/mattn/go-colorable v0.1.13
