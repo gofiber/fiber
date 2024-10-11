@@ -573,3 +573,40 @@ app.Post("/", func(c fiber.Ctx) error {
     }
 })
 ```
+
+## Default Fields
+
+You can set default values for fields in the struct by using the `default` struct tag. Supported types:
+
+- bool
+- float variants (float32, float64)
+- int variants (int, int8, int16, int32, int64)
+- uint variants (uint, uint8, uint16, uint32, uint64)
+- string
+- a slice of the above types. As shown in the example above, **| should be used to separate between slice items**.
+- a pointer to one of the above types **(pointer to slice and slice of pointers are not supported)**.
+
+```go title="Example"
+type Person struct {
+    Name     string     `query:"name,default:john"`
+    Pass     string     `query:"pass"`
+    Products []string   `query:"products,default:shoe|hat"`
+}
+
+app.Get("/", func(c fiber.Ctx) error {
+    p := new(Person)
+
+    if err := c.Bind().Query(p); err != nil {
+        return err
+    }
+
+    log.Println(p.Name)        // john
+    log.Println(p.Pass)        // doe
+    log.Println(p.Products)    // ["shoe,hat"]    
+    
+    // ...
+})
+// Run tests with the following curl command
+
+// curl "http://localhost:3000/?pass=doe"
+```
