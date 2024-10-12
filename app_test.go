@@ -912,7 +912,7 @@ func Test_App_ShutdownWithContext(t *testing.T) {
 	select {
     case err := <-serverErr:
         assert.NoError(t, err, "Server should have shut down without error")
-    default:
+    // default:
         // Server is still running, which is expected as the long-running request prevented full shutdown
     }
 }
