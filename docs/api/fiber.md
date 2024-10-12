@@ -205,7 +205,7 @@ Shutdown gracefully shuts down the server without interrupting any active connec
 
 ShutdownWithTimeout will forcefully close any active connections after the timeout expires.
 
-ShutdownWithContext shuts down the server including by force if the context's deadline is exceeded.
+ShutdownWithContext shuts down the server including by force if the context's deadline is exceeded.Shutdown hooks will still be executed, even if an error occurs during the shutdown process, as they are deferred to ensure cleanup happens regardless of errors.
 
 ```go
 func (app *App) Shutdown() error
