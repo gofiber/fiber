@@ -22,6 +22,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"sync/atomic"
 
 	"github.com/gofiber/utils/v2"
 
