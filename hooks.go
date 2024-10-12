@@ -53,7 +53,7 @@ func newHooks(app *App) *Hooks {
 	}
 }
 
-// OnRoute is a hook to execute user functions on each route registeration.
+// OnRoute is a hook to execute user functions on each route registration.
 // Also you can get route properties by route parameter.
 func (h *Hooks) OnRoute(handler ...OnRouteHandler) {
 	h.app.mutex.Lock()
@@ -71,7 +71,7 @@ func (h *Hooks) OnName(handler ...OnNameHandler) {
 	h.app.mutex.Unlock()
 }
 
-// OnGroup is a hook to execute user functions on each group registeration.
+// OnGroup is a hook to execute user functions on each group registration.
 // Also you can get group properties by group parameter.
 func (h *Hooks) OnGroup(handler ...OnGroupHandler) {
 	h.app.mutex.Lock()
