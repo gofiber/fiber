@@ -34,7 +34,7 @@ type OnMountHandler = func(*App) error
 
 ## OnRoute
 
-OnRoute is a hook to execute user functions on each route registeration. Also you can get route properties by **route** parameter.
+OnRoute is a hook to execute user functions on each route registration. Also you can get route properties by **route** parameter.
 
 ```go title="Signature"
 func (h *Hooks) OnRoute(handler ...OnRouteHandler)
@@ -104,7 +104,7 @@ func main() {
 
 ## OnGroup
 
-OnGroup is a hook to execute user functions on each group registeration. Also you can get group properties by **group** parameter.
+OnGroup is a hook to execute user functions on each group registration. Also you can get group properties by **group** parameter.
 
 ```go title="Signature"
 func (h *Hooks) OnGroup(handler ...OnGroupHandler)
