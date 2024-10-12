@@ -860,9 +860,9 @@ func Test_App_ShutdownWithContext(t *testing.T) {
 	t.Parallel()
 
 	app := New()
-	shutdownHookCalled := false
+	var shutdownHookCalled int32
     app.Hooks().OnShutdown(func() error {
-        shutdownHookCalled = true
+        atomic.StoreInt32(&shutdownHookCalled, 1)
         return nil
     })
 
@@ -907,7 +907,7 @@ func Test_App_ShutdownWithContext(t *testing.T) {
         assert.True(t, errors.Is(err, context.DeadlineExceeded), "Expected DeadlineExceeded error")
     }
 
-	assert.True(t, shutdownHookCalled, "Shutdown hook was not called")
+	assert.Equal(t, int32(1), atomic.LoadInt32(&shutdownHookCalled), "Shutdown hook was not called")
 
 	select {
     case err := <-serverErr:
