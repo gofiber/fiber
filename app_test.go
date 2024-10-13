@@ -20,9 +20,9 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
-	"sync/atomic"
 
 	"github.com/gofiber/utils/v2"
 
@@ -861,11 +861,11 @@ func Test_App_ShutdownWithContext(t *testing.T) {
 	t.Parallel()
 
 	app := New()
-	var shutdownHookCalled int32
-    app.Hooks().OnShutdown(func() error {
-        atomic.StoreInt32(&shutdownHookCalled, 1)
-        return nil
-    })
+	var shutdownHookCalled atomic.Int32
+	app.Hooks().OnShutdown(func() error {
+		shutdownHookCalled.Store(1)
+		return nil
+	})
 
 	app.Get("/", func(ctx Ctx) error {
 		time.Sleep(5 * time.Second)
@@ -874,48 +874,47 @@ func Test_App_ShutdownWithContext(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-    serverErr := make(chan error, 1)
-    go func() {
-        serverErr <- app.Listener(ln)
-    }()
+	serverErr := make(chan error, 1)
+	go func() {
+		serverErr <- app.Listener(ln)
+	}()
 
-    time.Sleep(100 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
-    clientDone := make(chan struct{})
-    go func() {
-        conn, err := ln.Dial()
-        assert.NoError(t, err)
-        _, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n"))
-        assert.NoError(t, err)
-        close(clientDone)
-    }()
-	
+	clientDone := make(chan struct{})
+	go func() {
+		conn, err := ln.Dial()
+		assert.NoError(t, err)
+		_, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n"))
+		assert.NoError(t, err)
+		close(clientDone)
+	}()
+
 	<-clientDone
-    time.Sleep(100 * time.Millisecond)
+	// Sleep to ensure the server has started processing the request
+	time.Sleep(100 * time.Millisecond)
 
 	shutdownErr := make(chan error, 1)
-    go func() {
-        ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-        defer cancel()
-        shutdownErr <- app.ShutdownWithContext(ctx)
-    }()
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
+		shutdownErr <- app.ShutdownWithContext(ctx)
+	}()
 
 	select {
-    case <-time.After(2 * time.Second):
-        t.Fatal("shutdown did not complete in time")
-    case err := <-shutdownErr:
-        assert.Error(t, err, "Expected shutdown to return an error due to timeout")
-        assert.True(t, errors.Is(err, context.DeadlineExceeded), "Expected DeadlineExceeded error")
-    }
+	case <-time.After(2 * time.Second):
+		t.Fatal("shutdown did not complete in time")
+	case err := <-shutdownErr:
+		require.Error(t, err, "Expected shutdown to return an error due to timeout")
+		require.ErrorIs(t, err, context.DeadlineExceeded, "Expected DeadlineExceeded error")
+	}
 
-	assert.Equal(t, int32(1), atomic.LoadInt32(&shutdownHookCalled), "Shutdown hook was not called")
+	assert.Equal(t, int32(1), shutdownHookCalled.Load(), "Shutdown hook was not called")
 
-	select {
-    case err := <-serverErr:
-        assert.NoError(t, err, "Server should have shut down without error")
-    // default:
-        // Server is still running, which is expected as the long-running request prevented full shutdown
-    }
+	err := <-serverErr
+	assert.NoError(t, err, "Server should have shut down without error")
+	// default:
+	// Server is still running, which is expected as the long-running request prevented full shutdown
 }
 
 // go test -run Test_App_Mixed_Routes_WithSameLen
