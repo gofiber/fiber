@@ -182,6 +182,19 @@ func Test_Logger_ErrorTimeZone(t *testing.T) {
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
 
+type dumbLogger struct {
+	logger fiberlog.AllLogger
+}
+
+func (l *dumbLogger) Write(p []byte) (n int, err error) {
+	l.logger.Error(string(p))
+	return len(p), nil
+}
+
+func LoggerToWriter(customLogger fiberlog.AllLogger) io.Writer {
+	return &dumbLogger{logger: customLogger}
+}
+
 // go test -run Test_Logger_Fiber_Logger
 func Test_Logger_Fiber_Logger(t *testing.T) {
 	t.Parallel()
@@ -190,17 +203,12 @@ func Test_Logger_Fiber_Logger(t *testing.T) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	customLoggerFunc := func(_ fiber.Ctx, data *Data, cfg Config) error {
-		cfg.Logger.SetOutput(cfg.Output)
-		cfg.Logger.SetFlags(0)
-		cfg.Logger.Error(data.ChainErr.Error())
-		return nil
-	}
-
+	logger := fiberlog.DefaultLogger()
+	logger.SetFlags(0)
+	logger.SetOutput(buf)
 	app.Use(New(Config{
-		Output:     buf,
-		Logger:     fiberlog.DefaultLogger(),
-		LoggerFunc: customLoggerFunc,
+		Format: "${error}",
+		Output: LoggerToWriter(logger),
 	}))
 
 	app.Get("/", func(_ fiber.Ctx) error {
@@ -767,19 +775,10 @@ func Benchmark_Logger(b *testing.B) {
 
 	b.Run("DefaultFormatWithFiberLog", func(bb *testing.B) {
 		app := fiber.New()
-		customLoggerFunc := func(c fiber.Ctx, data *Data, cfg Config) error {
-			cfg.Logger.SetOutput(cfg.Output)
-			cfg.Logger.Infof("%3d | %13v | %15s | %-7s | %-"+data.ErrPaddingStr+"s %s\n",
-				c.Response().StatusCode(),
-				data.Stop.Sub(data.Start),
-				c.IP(), c.Method(), c.Path(), "",
-			)
-			return nil
-		}
+		logger := fiberlog.DefaultLogger()
+		logger.SetOutput(io.Discard)
 		app.Use(New(Config{
-			Output:     io.Discard,
-			Logger:     fiberlog.DefaultLogger(),
-			LoggerFunc: customLoggerFunc,
+			Output: LoggerToWriter(logger),
 		}))
 		app.Get("/", func(c fiber.Ctx) error {
 			return c.SendString("Hello, World!")
@@ -932,19 +931,10 @@ func Benchmark_Logger_Parallel(b *testing.B) {
 
 	b.Run("DefaultFormatWithFiberLog", func(bb *testing.B) {
 		app := fiber.New()
-		customLoggerFunc := func(c fiber.Ctx, data *Data, cfg Config) error {
-			cfg.Logger.SetOutput(cfg.Output)
-			cfg.Logger.Infof("%3d | %13v | %15s | %-7s | %-"+data.ErrPaddingStr+"s %s\n",
-				c.Response().StatusCode(),
-				data.Stop.Sub(data.Start),
-				c.IP(), c.Method(), c.Path(), "",
-			)
-			return nil
-		}
+		logger := fiberlog.DefaultLogger()
+		logger.SetOutput(io.Discard)
 		app.Use(New(Config{
-			Output:     io.Discard,
-			Logger:     fiberlog.DefaultLogger(),
-			LoggerFunc: customLoggerFunc,
+			Output: LoggerToWriter(logger),
 		}))
 		app.Get("/", func(c fiber.Ctx) error {
 			return c.SendString("Hello, World!")
