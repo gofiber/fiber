@@ -13,30 +13,31 @@ func Test_normalizeOrigin(t *testing.T) {
 		expectedValid  bool
 		expectedOrigin string
 	}{
-		{"http://example.com", true, "http://example.com"},            // Simple case should work.
-		{"http://example.com/", true, "http://example.com"},           // Trailing slash should be removed.
-		{"http://example.com:3000", true, "http://example.com:3000"},  // Port should be preserved.
-		{"http://example.com:3000/", true, "http://example.com:3000"}, // Trailing slash should be removed.
-		{"http://", false, ""},                                                   // Invalid origin should not be accepted.
-		{"file:///etc/passwd", false, ""},                                        // File scheme should not be accepted.
-		{"https://*example.com", false, ""},                                      // Wildcard domain should not be accepted.
-		{"http://*.example.com", false, ""},                                      // Wildcard subdomain should not be accepted.
-		{"http://example.com/path", false, ""},                                   // Path should not be accepted.
-		{"http://example.com?query=123", false, ""},                              // Query should not be accepted.
-		{"http://example.com#fragment", false, ""},                               // Fragment should not be accepted.
-		{"http://localhost", true, "http://localhost"},                           // Localhost should be accepted.
-		{"http://127.0.0.1", true, "http://127.0.0.1"},                           // IPv4 address should be accepted.
-		{"http://[::1]", true, "http://[::1]"},                                   // IPv6 address should be accepted.
-		{"http://[::1]:8080", true, "http://[::1]:8080"},                         // IPv6 address with port should be accepted.
-		{"http://[::1]:8080/", true, "http://[::1]:8080"},                        // IPv6 address with port and trailing slash should be accepted.
-		{"http://[::1]:8080/path", false, ""},                                    // IPv6 address with port and path should not be accepted.
-		{"http://[::1]:8080?query=123", false, ""},                               // IPv6 address with port and query should not be accepted.
-		{"http://[::1]:8080#fragment", false, ""},                                // IPv6 address with port and fragment should not be accepted.
-		{"http://[::1]:8080/path?query=123#fragment", false, ""},                 // IPv6 address with port, path, query, and fragment should not be accepted.
-		{"http://[::1]:8080/path?query=123#fragment/", false, ""},                // IPv6 address with port, path, query, fragment, and trailing slash should not be accepted.
-		{"http://[::1]:8080/path?query=123#fragment/invalid", false, ""},         // IPv6 address with port, path, query, fragment, trailing slash, and invalid segment should not be accepted.
-		{"http://[::1]:8080/path?query=123#fragment/invalid/", false, ""},        // IPv6 address with port, path, query, fragment, trailing slash, and invalid segment with trailing slash should not be accepted.
-		{"http://[::1]:8080/path?query=123#fragment/invalid/segment", false, ""}, // IPv6 address with port, path, query, fragment, trailing slash, and invalid segment with additional segment should not be accepted.
+		{origin: "http://example.com", expectedValid: true, expectedOrigin: "http://example.com"},                       // Simple case should work.
+		{origin: "http://example.com/", expectedValid: true, expectedOrigin: "http://example.com"},                      // Trailing slash should be removed.
+		{origin: "http://example.com:3000", expectedValid: true, expectedOrigin: "http://example.com:3000"},             // Port should be preserved.
+		{origin: "http://example.com:3000/", expectedValid: true, expectedOrigin: "http://example.com:3000"},            // Trailing slash should be removed.
+		{origin: "app://example.com/", expectedValid: true, expectedOrigin: "app://example.com"},                        // App scheme should be accepted.
+		{origin: "http://", expectedValid: false, expectedOrigin: ""},                                                   // Invalid origin should not be accepted.
+		{origin: "file:///etc/passwd", expectedValid: false, expectedOrigin: ""},                                        // File scheme should not be accepted.
+		{origin: "https://*example.com", expectedValid: false, expectedOrigin: ""},                                      // Wildcard domain should not be accepted.
+		{origin: "http://*.example.com", expectedValid: false, expectedOrigin: ""},                                      // Wildcard subdomain should not be accepted.
+		{origin: "http://example.com/path", expectedValid: false, expectedOrigin: ""},                                   // Path should not be accepted.
+		{origin: "http://example.com?query=123", expectedValid: false, expectedOrigin: ""},                              // Query should not be accepted.
+		{origin: "http://example.com#fragment", expectedValid: false, expectedOrigin: ""},                               // Fragment should not be accepted.
+		{origin: "http://localhost", expectedValid: true, expectedOrigin: "http://localhost"},                           // Localhost should be accepted.
+		{origin: "http://127.0.0.1", expectedValid: true, expectedOrigin: "http://127.0.0.1"},                           // IPv4 address should be accepted.
+		{origin: "http://[::1]", expectedValid: true, expectedOrigin: "http://[::1]"},                                   // IPv6 address should be accepted.
+		{origin: "http://[::1]:8080", expectedValid: true, expectedOrigin: "http://[::1]:8080"},                         // IPv6 address with port should be accepted.
+		{origin: "http://[::1]:8080/", expectedValid: true, expectedOrigin: "http://[::1]:8080"},                        // IPv6 address with port and trailing slash should be accepted.
+		{origin: "http://[::1]:8080/path", expectedValid: false, expectedOrigin: ""},                                    // IPv6 address with port and path should not be accepted.
+		{origin: "http://[::1]:8080?query=123", expectedValid: false, expectedOrigin: ""},                               // IPv6 address with port and query should not be accepted.
+		{origin: "http://[::1]:8080#fragment", expectedValid: false, expectedOrigin: ""},                                // IPv6 address with port and fragment should not be accepted.
+		{origin: "http://[::1]:8080/path?query=123#fragment", expectedValid: false, expectedOrigin: ""},                 // IPv6 address with port, path, query, and fragment should not be accepted.
+		{origin: "http://[::1]:8080/path?query=123#fragment/", expectedValid: false, expectedOrigin: ""},                // IPv6 address with port, path, query, fragment, and trailing slash should not be accepted.
+		{origin: "http://[::1]:8080/path?query=123#fragment/invalid", expectedValid: false, expectedOrigin: ""},         // IPv6 address with port, path, query, fragment, trailing slash, and invalid segment should not be accepted.
+		{origin: "http://[::1]:8080/path?query=123#fragment/invalid/", expectedValid: false, expectedOrigin: ""},        // IPv6 address with port, path, query, fragment, trailing slash, and invalid segment with trailing slash should not be accepted.
+		{origin: "http://[::1]:8080/path?query=123#fragment/invalid/segment", expectedValid: false, expectedOrigin: ""}, // IPv6 address with port, path, query, fragment, trailing slash, and invalid segment with additional segment should not be accepted.
 	}
 
 	for _, tc := range testCases {
