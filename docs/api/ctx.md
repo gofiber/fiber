@@ -1871,6 +1871,47 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+## SendStreamWriter
+
+Sets the response body stream writer.
+
+:::note
+The argument `streamWriter` represents a function that populates
+the response body using a buffered stream writer.
+:::
+
+```go title="Signature"
+func (c Ctx) SendStreamWriter(streamWriter func(*bufio.Writer)) error
+```
+
+```go title="Example"
+app.Get("/", func (c fiber.Ctx) error {
+  return c.SendStreamWriter(func(w *bufio.Writer) {
+    fmt.Fprintf(w, "Hello, World!\n")
+  })
+  // => "Hello, World!"
+})
+```
+
+:::info
+To flush data before the function returns, you can call `w.Flush()`
+on the provided writer. Otherwise, the buffered stream flushes after
+`streamWriter` returns.
+:::
+
+```go title="Example"
+app.Get("/wait", func(c fiber.Ctx) error {
+  return c.SendStreamWriter(func(w *bufio.Writer) {
+    fmt.Fprintf(w, "Waiting for 10 seconds\n")
+    if err := w.Flush(); err != nil {
+      log.Print("User quit early")
+    }
+    time.Sleep(10 * time.Second)
+    fmt.Fprintf(w, "Done!\n")
+  })
+})
+```
+
 ## Set
 
 Sets the response’s HTTP header field to the specified `key`, `value`.
