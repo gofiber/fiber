@@ -374,7 +374,7 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// Default: nil
 	StructValidator StructValidator
 
-	// RequestMethods provides customizibility for HTTP methods. You can add/remove methods as you wish.
+	// RequestMethods provides customizability for HTTP methods. You can add/remove methods as you wish.
 	//
 	// Optional. Default: DefaultMethods
 	RequestMethods []string
