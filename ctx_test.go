@@ -1669,7 +1669,6 @@ func Test_Ctx_IsProxyTrusted(t *testing.T) {
 	{
 		app := New(Config{
 			TrustProxy: true,
-
 			TrustProxyConfig: TrustProxyConfig{
 				Proxies: []string{},
 			},
@@ -1690,7 +1689,6 @@ func Test_Ctx_IsProxyTrusted(t *testing.T) {
 	{
 		app := New(Config{
 			TrustProxy: true,
-
 			TrustProxyConfig: TrustProxyConfig{
 				Proxies: []string{"127.0.0.1/8"},
 			},
@@ -1701,7 +1699,6 @@ func Test_Ctx_IsProxyTrusted(t *testing.T) {
 	{
 		app := New(Config{
 			TrustProxy: true,
-
 			TrustProxyConfig: TrustProxyConfig{
 				Proxies: []string{"0.0.0.0"},
 			},
