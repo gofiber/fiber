@@ -55,6 +55,8 @@ We have made several changes to the Fiber app, including:
   - EnablePrefork -> previously Prefork
   - EnablePrintRoutes
   - ListenerNetwork -> previously Network
+- app.Config.EnabledTrustedProxyCheck -> has been moved to app.Config.TrustProxy
+  - TrustedProxies -> has been moved to TrustProxyConfig.Proxies
 
 ### new methods
 
@@ -385,6 +387,35 @@ app.Get("*", static.New("./public/index.html"))
 :::caution
 You have to put `*` to the end of the route if you don't define static route with `app.Use`.
 :::
+
+#### Trusted Proxies
+
+We've renamed `EnableTrustedProxyCheck` to `TrustProxy` and moved `TrustedProxies` to `TrustProxyConfig`.
+
+```go
+// Before
+app := fiber.New(fiber.Config{
+  // EnableTrustedProxyCheck enables the trusted proxy check.
+  EnableTrustedProxyCheck: true,
+  // TrustedProxies is a list of trusted proxy IP ranges/addresses.
+  TrustedProxies: []string{"0.8.0.0", "127.0.0.0/8", "::1/128"},
+})
+```
+
+```go
+// After
+app := fiber.New(fiber.Config{
+  // TrustProxy enables the trusted proxy check
+  TrustProxy: true,
+  // TrustProxyConfig allows for configuring trusted proxies.
+  TrustProxyConfig: fiber.TrustProxyConfig{
+    // Proxies is a list of trusted proxy IP ranges/addresses.
+    Proxies: []string{"0.8.0.0"},
+    // Trust all loop-back IP addresses (127.0.0.0/8, ::1/128)
+    Loopback: true,
+  }
+})
+```
 
 ### 🗺 Router
 
