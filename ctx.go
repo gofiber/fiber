@@ -1828,8 +1828,8 @@ func (c *DefaultCtx) IsProxyTrusted() bool {
 
 	ip := c.fasthttp.RemoteIP()
 
-	if (c.app.config.TrustProxyConfig.Private && ip.IsPrivate()) ||
-		(c.app.config.TrustProxyConfig.Loopback && ip.IsLoopback()) ||
+	if (c.app.config.TrustProxyConfig.Loopback && ip.IsLoopback()) ||
+		(c.app.config.TrustProxyConfig.Private && ip.IsPrivate()) ||
 		(c.app.config.TrustProxyConfig.LinkLocal && ip.IsLinkLocalUnicast()) {
 		return true
 	}
