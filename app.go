@@ -338,7 +338,7 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	//   2. c.IP() get value from ProxyHeader header.
 	//   3. c.Host() and c.Hostname() get value from X-Forwarded-Host header
 	// But if request ip NOT in TrustProxyConfig.Proxies whitelist, then:
-	//   1. c.Scheme() WON't get value from X-Forwarded-Proto, X-Forwarded-Protocol, X-Forwarded-Ssl or X-Url-Scheme header,
+	//   1. c.Scheme() WON'T get value from X-Forwarded-Proto, X-Forwarded-Protocol, X-Forwarded-Ssl or X-Url-Scheme header,
 	//    will return https in case when tls connection is handled by the app, of http otherwise
 	//   2. c.IP() WON'T get value from ProxyHeader header, will return RemoteIP() from fasthttp context
 	//   3. c.Host() and c.Hostname() WON'T get value from X-Forwarded-Host header, fasthttp.Request.URI().Host()
@@ -349,12 +349,12 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// you can set TrustProxyConfig.Loopback, TrustProxyConfig.LinkLocal, or TrustProxyConfig.Private to true.
 	//
 	// Default: false
-	TrustProxy bool `json:"enable_trusted_proxy_check"`
+	TrustProxy bool `json:"trust_proxy"`
 
 	// Read TrustProxy doc.
 	//
 	// Default: DefaultTrustProxyConfig
-	TrustProxyConfig TrustProxyConfig `json:"trusted_proxy_config"`
+	TrustProxyConfig TrustProxyConfig `json:"trust_proxy_config"`
 
 	// If set to true, c.IP() and c.IPs() will validate IP addresses before returning them.
 	// Also, c.IP() will return only the first valid IP rather than just the raw header
