@@ -571,7 +571,12 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 			app.config.TrustProxyConfig.ranges = append(app.config.TrustProxyConfig.ranges, ipNet)
 		}
 	} else {
-		app.config.TrustProxyConfig.ips[ipAddress] = struct{}{}
+		ip := net.ParseIP(ipAddress)
+		if ip == nil {
+			log.Warnf("IP address %q could not be parsed", ipAddress)
+		} else {
+			app.config.TrustProxyConfig.ips[ipAddress] = struct{}{}
+		}
 	}
 }
 
