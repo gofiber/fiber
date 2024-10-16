@@ -333,11 +333,11 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// If you are behind a proxy, you should enable TrustProxy to prevent header spoofing.
 	// If you enable TrustProxy and do not provide a TrustProxyConfig, Fiber will skip
 	// all headers that could be spoofed.
-	// If request ip in TrustProxyConfig.Proxies whitelist, then:
+	// If request ip in TrustProxyConfig.Proxies allowlist, then:
 	//   1. c.Scheme() get value from X-Forwarded-Proto, X-Forwarded-Protocol, X-Forwarded-Ssl or X-Url-Scheme header
 	//   2. c.IP() get value from ProxyHeader header.
 	//   3. c.Host() and c.Hostname() get value from X-Forwarded-Host header
-	// But if request ip NOT in TrustProxyConfig.Proxies whitelist, then:
+	// But if request ip NOT in TrustProxyConfig.Proxies allowlist, then:
 	//   1. c.Scheme() WON'T get value from X-Forwarded-Proto, X-Forwarded-Protocol, X-Forwarded-Ssl or X-Url-Scheme header,
 	//    will return https in case when tls connection is handled by the app, of http otherwise
 	//   2. c.IP() WON'T get value from ProxyHeader header, will return RemoteIP() from fasthttp context
@@ -345,7 +345,7 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	//    will be used to get the hostname.
 	//
 	// To automatically trust all loopback, link-local, or private IP addresses,
-	// without manually adding them to the TrustProxyConfig.Proxies whitelist,
+	// without manually adding them to the TrustProxyConfig.Proxies allowlist,
 	// you can set TrustProxyConfig.Loopback, TrustProxyConfig.LinkLocal, or TrustProxyConfig.Private to true.
 	//
 	// Default: false
