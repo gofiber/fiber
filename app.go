@@ -339,7 +339,7 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	//   3. c.Host() and c.Hostname() get value from X-Forwarded-Host header
 	// But if the request IP is NOT in the TrustProxyConfig.Proxies allowlist, then:
 	//   1. c.Scheme() WON'T get value from X-Forwarded-Proto, X-Forwarded-Protocol, X-Forwarded-Ssl or X-Url-Scheme header,
-	//    will return https in case when tls connection is handled by the app, of http otherwise
+	//    will return https when a TLS connection is handled by the app, or http otherwise.
 	//   2. c.IP() WON'T get value from ProxyHeader header, will return RemoteIP() from fasthttp context
 	//   3. c.Host() and c.Hostname() WON'T get value from X-Forwarded-Host header, fasthttp.Request.URI().Host()
 	//    will be used to get the hostname.
