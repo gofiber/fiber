@@ -41,7 +41,7 @@ func (b *Bind) Must() *Bind {
 
 // Check Should/Must errors and return it by usage.
 func (b *Bind) returnErr(err error) error {
-	if !b.should {
+	if !b.should && err != nil {
 		b.ctx.Status(StatusBadRequest)
 		return NewError(StatusBadRequest, "Bad request: "+err.Error())
 	}
