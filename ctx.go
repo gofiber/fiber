@@ -155,7 +155,7 @@ type TLSHandler struct {
 
 // GetClientInfo Callback function to set ClientHelloInfo
 // Must comply with the method structure of https://cs.opensource.google/go/go/+/refs/tags/go1.20:src/crypto/tls/common.go;l=554-563
-// Since we overlay the method of the tls config in the listener method
+// Since we overlay the method of the TLS config in the listener method
 func (t *TLSHandler) GetClientInfo(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	t.clientHelloInfo = info
 	return nil, nil //nolint:nilnil // Not returning anything useful here is probably fine
@@ -684,7 +684,7 @@ func (c *DefaultCtx) GetReqHeaders() map[string][]string {
 // while `Hostname` refers specifically to the name assigned to a device on a network, excluding any port information.
 // Example: URL: https://example.com:8080 -> Host: example.com:8080
 // Make copies or use the Immutable setting instead.
-// Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
+// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
 func (c *DefaultCtx) Host() string {
 	if c.IsProxyTrusted() {
 		if host := c.Get(HeaderXForwardedHost); len(host) > 0 {
@@ -702,7 +702,7 @@ func (c *DefaultCtx) Host() string {
 // Returned value is only valid within the handler. Do not store any references.
 // Example: URL: https://example.com:8080 -> Hostname: example.com
 // Make copies or use the Immutable setting instead.
-// Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
+// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
 func (c *DefaultCtx) Hostname() string {
 	addr, _ := parseAddr(c.Host())
 
@@ -720,7 +720,7 @@ func (c *DefaultCtx) Port() string {
 
 // IP returns the remote IP address of the request.
 // If ProxyHeader and IP Validation is configured, it will parse that header and return the first valid IP address.
-// Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
+// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
 func (c *DefaultCtx) IP() string {
 	if c.IsProxyTrusted() && len(c.app.config.ProxyHeader) > 0 {
 		return c.extractIPFromHeader(c.app.config.ProxyHeader)
@@ -1116,7 +1116,7 @@ func (c *DefaultCtx) Path(override ...string) string {
 }
 
 // Scheme contains the request protocol string: http or https for TLS requests.
-// Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
+// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
 func (c *DefaultCtx) Scheme() string {
 	if c.fasthttp.IsTLS() {
 		return schemeHTTPS
@@ -1819,20 +1819,26 @@ func (c *DefaultCtx) configDependentPaths() {
 }
 
 // IsProxyTrusted checks trustworthiness of remote ip.
-// If EnableTrustedProxyCheck false, it returns true
+// If Config.TrustProxy false, it returns true
 // IsProxyTrusted can check remote ip by proxy ranges and ip map.
 func (c *DefaultCtx) IsProxyTrusted() bool {
-	if !c.app.config.EnableTrustedProxyCheck {
+	if !c.app.config.TrustProxy {
 		return true
 	}
 
 	ip := c.fasthttp.RemoteIP()
 
-	if _, trusted := c.app.config.trustedProxiesMap[ip.String()]; trusted {
+	if (c.app.config.TrustProxyConfig.Loopback && ip.IsLoopback()) ||
+		(c.app.config.TrustProxyConfig.Private && ip.IsPrivate()) ||
+		(c.app.config.TrustProxyConfig.LinkLocal && ip.IsLinkLocalUnicast()) {
 		return true
 	}
 
-	for _, ipNet := range c.app.config.trustedProxyRanges {
+	if _, trusted := c.app.config.TrustProxyConfig.ips[ip.String()]; trusted {
+		return true
+	}
+
+	for _, ipNet := range c.app.config.TrustProxyConfig.ranges {
 		if ipNet.Contains(ip) {
 			return true
 		}
