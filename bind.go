@@ -41,12 +41,12 @@ func (b *Bind) Must() *Bind {
 
 // Check Should/Must errors and return it by usage.
 func (b *Bind) returnErr(err error) error {
-	if !b.should && err != nil {
-		b.ctx.Status(StatusBadRequest)
-		return NewError(StatusBadRequest, "Bad request: "+err.Error())
+	if err == nil || b.should {
+		return err
 	}
 
-	return err
+	b.ctx.Status(StatusBadRequest)
+	return NewError(StatusBadRequest, "Bad request: "+err.Error())
 }
 
 // Struct validation.
