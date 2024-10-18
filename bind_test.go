@@ -19,6 +19,15 @@ import (
 
 const helloWorld = "hello world"
 
+// go test -run Test_returnErr -v
+func Test_returnErr(t *testing.T) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	err := c.Bind().Must().returnErr(nil)
+	require.Equal(t, nil, err)
+}
+
 // go test -run Test_Bind_Query -v
 func Test_Bind_Query(t *testing.T) {
 	t.Parallel()
