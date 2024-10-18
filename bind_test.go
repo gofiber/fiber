@@ -25,7 +25,7 @@ func Test_returnErr(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	err := c.Bind().Must().returnErr(nil)
-	require.NoError(t, nil, err)
+	require.NoError(t, err)
 }
 
 // go test -run Test_Bind_Query -v
