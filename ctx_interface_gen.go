@@ -271,8 +271,8 @@ type Ctx interface {
 	// From this point onward the body argument must not be changed.
 	Send(body []byte) error
 	// SendFile transfers the file from the given path.
-	// The file is not compressed by default, enable this by passing a 'true' argument
-	// Sets the Content-Type response HTTP header field based on the filenames extension.
+	// The file is not compressed by default, enable this by passing a 'true' argument.
+	// Sets the Content-Type response HTTP header field based on the file format.
 	SendFile(file string, config ...SendFile) error
 	// SendStatus sets the HTTP status code and if the response body is empty,
 	// it sets the correct status message in the body.

@@ -1709,7 +1709,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ## SendFile
 
-Transfers the file from the given path. Sets the [Content-Type](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type) response HTTP header field based on the **filenames** extension.
+Transfers the file from the given path. Sets the [Content-Type](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type) response HTTP header field based on the **file format**.
 
 ```go title="Config" title="Config"
 // SendFile defines configuration options when to transfer file with SendFile.

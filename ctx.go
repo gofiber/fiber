@@ -1497,8 +1497,8 @@ func (c *DefaultCtx) Send(body []byte) error {
 }
 
 // SendFile transfers the file from the given path.
-// The file is not compressed by default, enable this by passing a 'true' argument
-// Sets the Content-Type response HTTP header field based on the filenames extension.
+// The file is not compressed by default, enable this by passing a 'true' argument.
+// Sets the Content-Type response HTTP header field based on the file format.
 func (c *DefaultCtx) SendFile(file string, config ...SendFile) error {
 	// Save the filename, we will need it in the error message if the file isn't found
 	filename := file
