@@ -1725,29 +1725,29 @@ type SendFile struct {
   // You have to set Content-Encoding header to compress the file.
   // Available compression methods are gzip, br, and zstd.
   //
-  // Optional. Default value false
+  // Optional. Default: false
   Compress bool `json:"compress"`
 
   // When set to true, enables byte range requests.
   //
-  // Optional. Default value false
+  // Optional. Default: false
   ByteRange bool `json:"byte_range"`
 
   // When set to true, enables direct download.
   //
-  // Optional. Default: false.
+  // Optional. Default: false
   Download bool `json:"download"`
 
   // Expiration duration for inactive file handlers.
   // Use a negative time.Duration to disable it.
   //
-  // Optional. Default value 10 * time.Second.
+  // Optional. Default: 10 * time.Second
   CacheDuration time.Duration `json:"cache_duration"`
 
   // The value for the Cache-Control HTTP-header
   // that is set on the file response. MaxAge is defined in seconds.
   //
-    // Optional. Default value 0.
+  // Optional. Default: 0
   MaxAge int `json:"max_age"`
 }
 ```
