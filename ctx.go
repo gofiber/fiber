@@ -883,6 +883,24 @@ func (c *DefaultCtx) JSON(data any, ctype ...string) error {
 	return nil
 }
 
+// CBOR converts any interface or string to cbor encoded bytes.
+// If the ctype parameter is given, this method will set the
+// Content-Type header equal to ctype. If ctype is not given,
+// The Content-Type header will be set to application/cbor.
+func (c *DefaultCtx) CBOR(data any, ctype ...string) error {
+	raw, err := c.app.config.CBOREncoder(data)
+	if err != nil {
+		return err
+	}
+	c.fasthttp.Response.SetBodyRaw(raw)
+	if len(ctype) > 0 {
+		c.fasthttp.Response.Header.SetContentType(ctype[0])
+	} else {
+		c.fasthttp.Response.Header.SetContentType(MIMEApplicationCBOR)
+	}
+	return nil
+}
+
 // JSONP sends a JSON response with JSONP support.
 // This method is identical to JSON, except that it opts-in to JSONP callback support.
 // By default, the callback name is simply callback.

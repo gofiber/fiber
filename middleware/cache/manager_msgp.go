@@ -52,6 +52,9 @@ func (z *item) DecodeMsg(dc *msgp.Reader) (err error) {
 					err = msgp.WrapError(err, "headers", za0001)
 					return
 				}
+				if za0002 == nil {
+					za0002 = make([]byte, 0)
+				}
 				z.headers[za0001] = za0002
 			}
 		case "body":
@@ -266,6 +269,9 @@ func (z *item) UnmarshalMsg(bts []byte) (o []byte, err error) {
 				if err != nil {
 					err = msgp.WrapError(err, "headers", za0001)
 					return
+				}
+				if za0002 == nil {
+					za0002 = make([]byte, 0)
 				}
 				z.headers[za0001] = za0002
 			}
