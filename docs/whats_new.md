@@ -196,6 +196,8 @@ DRAFT section
 
 - Cookie now allows Partitioned cookies for [CHIPS](https://developers.google.com/privacy-sandbox/3pcd/chips) support. CHIPS (Cookies Having Independent Partitioned State) is a feature that improves privacy by allowing cookies to be partitioned by top-level site, mitigating cross-site tracking.
 
+- Introducing [CBOR](https://cbor.io/) binary encoding format for response body. CBOR is a binary data serialization format that is both compact and efficient, making it ideal for use in web applications.
+
 ### new methods
 
 - AutoFormat -> ExpressJs like
@@ -208,6 +210,7 @@ DRAFT section
 - SendString -> ExpressJs like
 - String -> ExpressJs like
 - ViewBind -> instead of Bind
+- CBOR -> for CBOR encoding
 
 ### removed methods
 
