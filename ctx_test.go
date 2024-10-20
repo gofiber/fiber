@@ -3581,22 +3581,27 @@ func Test_Ctx_CBOR(t *testing.T) {
 
 	require.Error(t, c.CBOR(complex(1, 1)))
 
+	type dummyStruct struct {
+		Name string
+		Age  int
+	}
+
 	// Test without ctype
-	err := c.CBOR(Map{ // map has no order
-		"Name": "Grame",
-		"Age":  20,
+	err := c.CBOR(dummyStruct{ // map has no order
+		Name: "Grame",
+		Age:  20,
 	})
 	require.NoError(t, err)
 	require.Equal(t, `a2644e616d65654772616d656341676514`, hex.EncodeToString(c.Response().Body()))
 	require.Equal(t, "application/cbor", string(c.Response().Header.Peek("content-type")))
 
 	// Test with ctype
-	err = c.CBOR(Map{ // map has no order
-		"Name": "Grame",
-		"Age":  20,
+	err = c.CBOR(dummyStruct{ // map has no order
+		Name: "Grame",
+		Age:  20,
 	}, "application/problem+cbor")
 	require.NoError(t, err)
-	require.Equal(t, `a26341676514644e616d65654772616d65`, hex.EncodeToString(c.Response().Body()))
+	require.Equal(t, `a2644e616d65654772616d656341676514`, hex.EncodeToString(c.Response().Body()))
 	require.Equal(t, "application/problem+cbor", string(c.Response().Header.Peek("content-type")))
 
 	testEmpty := func(v any, r string) {
