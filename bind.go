@@ -120,6 +120,13 @@ func (b *Bind) JSON(out any) error {
 	return b.validateStruct(out)
 }
 
+func (b *Bind) CBOR(out any) error {
+	if err := b.returnErr(binder.CBORBinder.Bind(b.ctx.Body(), b.ctx.App().Config().CBORDecoder, out)); err != nil {
+		return err
+	}
+	return b.validateStruct(out)
+}
+
 // XML binds the body string into the struct.
 func (b *Bind) XML(out any) error {
 	if err := b.returnErr(binder.XMLBinder.Bind(b.ctx.Body(), out)); err != nil {
@@ -182,6 +189,8 @@ func (b *Bind) Body(out any) error {
 		return b.JSON(out)
 	case MIMETextXML, MIMEApplicationXML:
 		return b.XML(out)
+	case MIMEApplicationCBOR:
+		return b.CBOR(out)
 	case MIMEApplicationForm:
 		return b.Form(out)
 	case MIMEMultipartForm:

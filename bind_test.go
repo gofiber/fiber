@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/gofiber/fiber/v3/binder"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -927,6 +928,11 @@ func Test_Bind_Body(t *testing.T) {
 	t.Run("JSON", func(t *testing.T) {
 		testDecodeParser(t, MIMEApplicationJSON, `{"name":"john"}`)
 	})
+	t.Run("CBOR", func(t *testing.T) {
+		enc, _ := cbor.Marshal(&Demo{Name: "john"})
+		str := string(enc)
+		testDecodeParser(t, MIMEApplicationCBOR, str)
+	})
 
 	t.Run("XML", func(t *testing.T) {
 		testDecodeParser(t, MIMEApplicationXML, `<Demo><name>john</name></Demo>`)
@@ -1078,6 +1084,32 @@ func Benchmark_Bind_Body_XML(b *testing.B) {
 	body := []byte("<Demo><name>john</name></Demo>")
 	c.Request().SetBody(body)
 	c.Request().Header.SetContentType(MIMEApplicationXML)
+	c.Request().Header.SetContentLength(len(body))
+	d := new(Demo)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		err = c.Bind().Body(d)
+	}
+	require.NoError(b, err)
+	require.Equal(b, "john", d.Name)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Bind_Body_CBOR -benchmem -count=4
+func Benchmark_Bind_Body_CBOR(b *testing.B) {
+	var err error
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	type Demo struct {
+		Name string `json:"name"`
+	}
+	body, _ := cbor.Marshal(&Demo{Name: "john"})
+	c.Request().SetBody(body)
+	c.Request().Header.SetContentType(MIMEApplicationCBOR)
 	c.Request().Header.SetContentLength(len(body))
 	d := new(Demo)
 
@@ -1710,9 +1742,13 @@ func Test_Bind_RepeatParserWithSameStruct(t *testing.T) {
 		require.NoError(t, c.Bind().Body(r))
 		require.Equal(t, "body_param", r.BodyParam)
 	}
+	cb, _ := cbor.Marshal(&Request{
+		BodyParam: "body_param",
+	})
 
 	testDecodeParser(MIMEApplicationJSON, `{"body_param":"body_param"}`)
 	testDecodeParser(MIMEApplicationXML, `<Demo><body_param>body_param</body_param></Demo>`)
+	testDecodeParser(MIMEApplicationCBOR, string(cb))
 	testDecodeParser(MIMEApplicationForm, "body_param=body_param")
 	testDecodeParser(MIMEMultipartForm+`;boundary="b"`, "--b\r\nContent-Disposition: form-data; name=\"body_param\"\r\n\r\nbody_param\r\n--b--")
 }
