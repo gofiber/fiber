@@ -34,6 +34,7 @@ const (
 	formBody
 	filesBody
 	rawBody
+	cborBody
 )
 
 var ErrClientNil = errors.New("client can not be nil")
@@ -334,6 +335,12 @@ func (r *Request) SetJSON(v any) *Request {
 func (r *Request) SetXML(v any) *Request {
 	r.body = v
 	r.bodyType = xmlBody
+	return r
+}
+
+func (r *Request) SetCBOR(v any) *Request {
+	r.body = v
+	r.bodyType = cborBody
 	return r
 }
 

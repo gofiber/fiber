@@ -23,6 +23,7 @@ var (
 	headerAccept = "Accept"
 
 	applicationJSON   = "application/json"
+	applicationCBOR   = "application/cbor"
 	applicationXML    = "application/xml"
 	applicationForm   = "application/x-www-form-urlencoded"
 	multipartFormData = "multipart/form-data"
@@ -129,6 +130,8 @@ func parserRequestHeader(c *Client, req *Request) error {
 		req.RawRequest.Header.Set(headerAccept, applicationJSON)
 	case xmlBody:
 		req.RawRequest.Header.SetContentType(applicationXML)
+	case cborBody:
+		req.RawRequest.Header.SetContentType(applicationCBOR)
 	case formBody:
 		req.RawRequest.Header.SetContentType(applicationForm)
 	case filesBody:

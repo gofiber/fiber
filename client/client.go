@@ -44,6 +44,8 @@ type Client struct {
 	jsonUnmarshal utils.JSONUnmarshal
 	xmlMarshal    utils.XMLMarshal
 	xmlUnmarshal  utils.XMLUnmarshal
+	cborMarshal   utils.CBORMarshal
+	cborUnmarshal utils.CBORUnmarshal
 
 	cookieJar *CookieJar
 
@@ -147,6 +149,28 @@ func (c *Client) XMLUnmarshal() utils.XMLUnmarshal {
 // SetXMLUnmarshal Set xml decoder.
 func (c *Client) SetXMLUnmarshal(f utils.XMLUnmarshal) *Client {
 	c.xmlUnmarshal = f
+	return c
+}
+
+// CBORMarshal returns xml marshal function in Core.
+func (c *Client) CBORMarshal() utils.CBORMarshal {
+	return c.cborMarshal
+}
+
+// SetCBORMarshal Set xml encoder.
+func (c *Client) SetCBORMarshal(f utils.CBORMarshal) *Client {
+	c.cborMarshal = f
+	return c
+}
+
+// CBORUnmarshal returns xml unmarshal function in Core.
+func (c *Client) CBORUnmarshal() utils.CBORUnmarshal {
+	return c.cborUnmarshal
+}
+
+// SetCBORUnmarshal Set xml decoder.
+func (c *Client) SetCBORUnmarshal(f utils.CBORUnmarshal) *Client {
+	c.cborUnmarshal = f
 	return c
 }
 
