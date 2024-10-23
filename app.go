@@ -872,7 +872,7 @@ type TestConfig struct {
 	// Default: time.Second
 	Timeout time.Duration
 
-	// FailOnTimeout specified whether the test
+	// FailOnTimeout specifies whether the test
 	// should return a timeout error if the HTTP response
 	// exceeds the Timeout duration.
 	// Default: true
