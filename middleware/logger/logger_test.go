@@ -301,8 +301,8 @@ func Test_Logger_WithLatency(t *testing.T) {
 
 		// Create a new HTTP request to the test route
 		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), fiber.TestConfig{
-			Timeout:      3 * time.Second,
-			ErrOnTimeout: true,
+			Timeout:       3 * time.Second,
+			FailOnTimeout: true,
 		})
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode)
@@ -346,8 +346,8 @@ func Test_Logger_WithLatency_DefaultFormat(t *testing.T) {
 
 		// Create a new HTTP request to the test route
 		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), fiber.TestConfig{
-			Timeout:      2 * time.Second,
-			ErrOnTimeout: true,
+			Timeout:       2 * time.Second,
+			FailOnTimeout: true,
 		})
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode)

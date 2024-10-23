@@ -867,16 +867,16 @@ func (app *App) Hooks() *Hooks {
 
 // TestConfig is a struct holding Test settings
 type TestConfig struct {
-	// Sets a timeout duration for the test.
-	//
+	// Timeout defines the maximum duration a
+	// test can run before timing out.
 	// Default: time.Second
 	Timeout time.Duration
 
-	// When set to true, the test will discard the
-	// current http response and give a timeout error.
-	//
+	// FailOnTimeout specified whether the test
+	// should return a timeout error if the HTTP response
+	// exceeds the Timeout duration.
 	// Default: true
-	ErrOnTimeout bool
+	FailOnTimeout bool
 }
 
 // Test is used for internal debugging by passing a *http.Request.
@@ -885,8 +885,8 @@ type TestConfig struct {
 func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, error) {
 	// Default config
 	cfg := TestConfig{
-		Timeout:      time.Second,
-		ErrOnTimeout: true,
+		Timeout:       time.Second,
+		FailOnTimeout: true,
 	}
 
 	// Override config if provided
@@ -936,7 +936,7 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 		case err = <-channel:
 		case <-time.After(cfg.Timeout):
 			conn.Close() //nolint:errcheck, revive // It is fine to ignore the error here
-			if cfg.ErrOnTimeout {
+			if cfg.FailOnTimeout {
 				return nil, fmt.Errorf("test: timeout error after %s", cfg.Timeout)
 			}
 		}

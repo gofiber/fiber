@@ -3143,8 +3143,8 @@ func Test_Static_Compress(t *testing.T) {
 			req := httptest.NewRequest(MethodGet, "/file", nil)
 			req.Header.Set("Accept-Encoding", algo)
 			resp, err := app.Test(req, TestConfig{
-				Timeout:      10 * time.Second,
-				ErrOnTimeout: true,
+				Timeout:       10 * time.Second,
+				FailOnTimeout: true,
 			})
 
 			require.NoError(t, err, "app.Test(req)")

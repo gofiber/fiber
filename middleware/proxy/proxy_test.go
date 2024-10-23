@@ -111,8 +111,8 @@ func Test_Proxy(t *testing.T) {
 	})
 
 	resp, err := target.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), fiber.TestConfig{
-		Timeout:      2 * time.Second,
-		ErrOnTimeout: true,
+		Timeout:       2 * time.Second,
+		FailOnTimeout: true,
 	})
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
@@ -176,8 +176,8 @@ func Test_Proxy_Balancer_IPv6_Upstream(t *testing.T) {
 	})
 
 	resp, err := target.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), fiber.TestConfig{
-		Timeout:      2 * time.Second,
-		ErrOnTimeout: true,
+		Timeout:       2 * time.Second,
+		FailOnTimeout: true,
 	})
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
@@ -202,8 +202,8 @@ func Test_Proxy_Balancer_IPv6_Upstream_With_DialDualStack(t *testing.T) {
 	})
 
 	resp, err := target.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), fiber.TestConfig{
-		Timeout:      2 * time.Second,
-		ErrOnTimeout: true,
+		Timeout:       2 * time.Second,
+		FailOnTimeout: true,
 	})
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
@@ -231,8 +231,8 @@ func Test_Proxy_Balancer_IPv4_Upstream_With_DialDualStack(t *testing.T) {
 	})
 
 	resp, err := target.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), fiber.TestConfig{
-		Timeout:      2 * time.Second,
-		ErrOnTimeout: true,
+		Timeout:       2 * time.Second,
+		FailOnTimeout: true,
 	})
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
@@ -412,8 +412,8 @@ func Test_Proxy_Timeout_Slow_Server(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), fiber.TestConfig{
-		Timeout:      2 * time.Second,
-		ErrOnTimeout: true,
+		Timeout:       2 * time.Second,
+		FailOnTimeout: true,
 	})
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
@@ -439,8 +439,8 @@ func Test_Proxy_With_Timeout(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), fiber.TestConfig{
-		Timeout:      2 * time.Second,
-		ErrOnTimeout: true,
+		Timeout:       2 * time.Second,
+		FailOnTimeout: true,
 	})
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
@@ -540,8 +540,8 @@ func Test_Proxy_DoRedirects_RestoreOriginalURL(t *testing.T) {
 	})
 
 	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), fiber.TestConfig{
-		Timeout:      2 * time.Second,
-		ErrOnTimeout: true,
+		Timeout:       2 * time.Second,
+		FailOnTimeout: true,
 	})
 	require.NoError(t, err1)
 	_, err := io.ReadAll(resp.Body)
@@ -581,8 +581,8 @@ func Test_Proxy_DoTimeout_RestoreOriginalURL(t *testing.T) {
 	})
 
 	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), fiber.TestConfig{
-		Timeout:      2 * time.Second,
-		ErrOnTimeout: true,
+		Timeout:       2 * time.Second,
+		FailOnTimeout: true,
 	})
 	require.NoError(t, err1)
 	body, err := io.ReadAll(resp.Body)
@@ -605,8 +605,8 @@ func Test_Proxy_DoTimeout_Timeout(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), fiber.TestConfig{
-		Timeout:      2 * time.Second,
-		ErrOnTimeout: true,
+		Timeout:       2 * time.Second,
+		FailOnTimeout: true,
 	})
 	require.NoError(t, err)
 	body, err := io.ReadAll(resp.Body)
@@ -652,8 +652,8 @@ func Test_Proxy_DoDeadline_PastDeadline(t *testing.T) {
 	})
 
 	_, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), fiber.TestConfig{
-		Timeout:      1 * time.Second,
-		ErrOnTimeout: true,
+		Timeout:       1 * time.Second,
+		FailOnTimeout: true,
 	})
 	require.Equal(t, errors.New("test: timeout error after 1s"), err1)
 }
@@ -748,8 +748,8 @@ func Test_ProxyBalancer_Custom_Client(t *testing.T) {
 	})
 
 	resp, err := target.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), fiber.TestConfig{
-		Timeout:      2 * time.Second,
-		ErrOnTimeout: true,
+		Timeout:       2 * time.Second,
+		FailOnTimeout: true,
 	})
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)

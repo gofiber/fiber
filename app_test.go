@@ -1125,8 +1125,8 @@ func Test_Test_Timeout(t *testing.T) {
 	app.Get("/", testEmptyHandler)
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil), TestConfig{
-		Timeout:      -1,
-		ErrOnTimeout: false,
+		Timeout:       -1,
+		FailOnTimeout: false,
 	})
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
@@ -1137,8 +1137,8 @@ func Test_Test_Timeout(t *testing.T) {
 	})
 
 	_, err = app.Test(httptest.NewRequest(MethodGet, "/timeout", nil), TestConfig{
-		Timeout:      20 * time.Millisecond,
-		ErrOnTimeout: true,
+		Timeout:       20 * time.Millisecond,
+		FailOnTimeout: true,
 	})
 	require.Error(t, err, "app.Test(req)")
 }
@@ -1439,8 +1439,8 @@ func Test_App_Test_no_timeout_infinitely(t *testing.T) {
 
 		req := httptest.NewRequest(MethodGet, "/", nil)
 		_, err = app.Test(req, TestConfig{
-			Timeout:      -1,
-			ErrOnTimeout: true,
+			Timeout:       -1,
+			FailOnTimeout: true,
 		})
 	}()
 
@@ -1470,8 +1470,8 @@ func Test_App_Test_timeout(t *testing.T) {
 	})
 
 	_, err := app.Test(httptest.NewRequest(MethodGet, "/", nil), TestConfig{
-		Timeout:      100 * time.Millisecond,
-		ErrOnTimeout: true,
+		Timeout:       100 * time.Millisecond,
+		FailOnTimeout: true,
 	})
 	require.Equal(t, errors.New("test: timeout error after 100ms"), err)
 }
@@ -1486,8 +1486,8 @@ func Test_App_Test_timeout_empty_response(t *testing.T) {
 	})
 
 	_, err := app.Test(httptest.NewRequest(MethodGet, "/", nil), TestConfig{
-		Timeout:      100 * time.Millisecond,
-		ErrOnTimeout: false,
+		Timeout:       100 * time.Millisecond,
+		FailOnTimeout: false,
 	})
 	require.Equal(t, errors.New("test: got empty response"), err)
 }
