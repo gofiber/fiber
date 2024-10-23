@@ -1859,7 +1859,6 @@ func (c *DefaultCtx) Bind() *Bind {
 	if c.bind == nil {
 		c.bind = &Bind{
 			ctx:    c,
-			should: true,
 		}
 	}
 	return c.bind

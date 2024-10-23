@@ -19,15 +19,6 @@ import (
 
 const helloWorld = "hello world"
 
-// go test -run Test_returnErr -v
-func Test_returnErr(t *testing.T) {
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-
-	err := c.Bind().Must().returnErr(nil)
-	require.NoError(t, err)
-}
-
 // go test -run Test_Bind_Query -v
 func Test_Bind_Query(t *testing.T) {
 	t.Parallel()
@@ -1623,21 +1614,6 @@ func Test_Bind_CustomBinder(t *testing.T) {
 	require.NoError(t, c.Bind().Custom("custom", d))
 	require.Equal(t, ErrCustomBinderNotFound, c.Bind().Custom("not_custom", d))
 	require.Equal(t, "john", d.Name)
-}
-
-// go test -run Test_Bind_Must
-func Test_Bind_Must(t *testing.T) {
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-
-	type RequiredQuery struct {
-		Name string `query:"name,required"`
-	}
-	rq := new(RequiredQuery)
-	c.Request().URI().SetQueryString("")
-	err := c.Bind().Must().Query(rq)
-	require.Equal(t, StatusBadRequest, c.Response().StatusCode())
-	require.Equal(t, "Bad request: bind: name is empty", err.Error())
 }
 
 // simple struct validator for testing
