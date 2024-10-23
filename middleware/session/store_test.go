@@ -23,6 +23,7 @@ func Test_Store_getSessionID(t *testing.T) {
 		store := NewStore()
 		// fiber context
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
 
 		// set cookie
 		ctx.Request().Header.SetCookie(store.sessionName, expectedID)
@@ -38,6 +39,7 @@ func Test_Store_getSessionID(t *testing.T) {
 		})
 		// fiber context
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
 
 		// set header
 		ctx.Request().Header.Set(store.sessionName, expectedID)
@@ -53,6 +55,7 @@ func Test_Store_getSessionID(t *testing.T) {
 		})
 		// fiber context
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
 
 		// set url parameter
 		ctx.Request().SetRequestURI(fmt.Sprintf("/path?%s=%s", store.sessionName, expectedID))
@@ -76,6 +79,7 @@ func Test_Store_Get(t *testing.T) {
 		store := NewStore()
 		// fiber context
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
 
 		// set cookie
 		ctx.Request().Header.SetCookie(store.sessionName, unexpectedID)
@@ -97,6 +101,7 @@ func Test_Store_DeleteSession(t *testing.T) {
 
 	// fiber context
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
 
 	// Create a new session
 	session, err := store.Get(ctx)
@@ -123,6 +128,7 @@ func TestStore_Get_SessionAlreadyLoaded(t *testing.T) {
 
 	// Create a new context
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
 
 	// Mock middleware and set it in the context
 	middleware := &Middleware{}
@@ -178,10 +184,12 @@ func Test_Store_GetByID(t *testing.T) {
 
 	t.Run("valid session ID", func(t *testing.T) {
 		t.Parallel()
+		app := fiber.New()
 		// Create a new session
-		ctx := fiber.New().AcquireCtx(&fasthttp.RequestCtx{})
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 		session, err := store.Get(ctx)
 		defer session.Release()
+		defer app.ReleaseCtx(ctx)
 		require.NoError(t, err)
 
 		// Save the session ID
