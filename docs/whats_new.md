@@ -144,7 +144,6 @@ app.Route("/api").Route("/user/:id?")
     // Delete user
     return c.JSON(fiber.Map{"message": "User deleted", "id": c.Params("id")})
   })
-})
 ```
 
 </details>
