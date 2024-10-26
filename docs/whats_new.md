@@ -30,6 +30,7 @@ Here's a quick overview of the changes in Fiber `v3`:
 - [🧰 Generic functions](#-generic-functions)
 - [🧬 Middlewares](#-middlewares)
   - [CORS](#cors)
+  - [CSRF](#csrf)
   - [Session](#session)
   - [Filesystem](#filesystem)
   - [Monitor](#monitor)
@@ -143,7 +144,6 @@ app.Route("/api").Route("/user/:id?")
     // Delete user
     return c.JSON(fiber.Map{"message": "User deleted", "id": c.Params("id")})
   })
-})
 ```
 
 </details>
@@ -319,9 +319,19 @@ Added support for specifying Key length when using `encryptcookie.GenerateKey(le
 
 ### Session
 
-:::caution
-DRAFT section
-:::
+The Session middleware has undergone key changes in v3 to improve functionality and flexibility. While v2 methods remain available for backward compatibility, we now recommend using the new middleware handler for session management.
+
+#### Key Updates
+
+- **New Middleware Handler**: The `New` function now returns a middleware handler instead of a `*Store`. To access the session store, use the `Store` method on the middleware, or opt for `NewStore` or `NewWithStore` for custom store integration.
+
+- **Manual Session Release**: Session instances are no longer automatically released after being saved. To ensure proper lifecycle management, you must manually call `sess.Release()`.
+
+- **Idle Timeout**: The `Expiration` field has been replaced with `IdleTimeout`, which handles session inactivity. If the session is idle for the specified duration, it will expire. The idle timeout is updated when the session is saved. If you are using the middleware handler, the idle timeout will be updated automatically.
+
+- **Absolute Timeout**: The `AbsoluteTimeout` field has been added. If you need to set an absolute session timeout, you can use this field to define the duration. The session will expire after the specified duration, regardless of activity.
+
+For more details on these changes and migration instructions, check the [Session Middleware Migration Guide](./middleware/session.md#migration-guide).
 
 ### Filesystem
 
@@ -523,6 +533,24 @@ app.Use(cors.New(cors.Config{
   ExposeHeaders: []string{"Content-Length"},
 }))
 ```
+
+#### CSRF
+
+- **Field Renaming**: The `Expiration` field in the CSRF middleware configuration has been renamed to `IdleTimeout` to better describe its functionality. Additionally, the default value has been reduced from 1 hour to 30 minutes. Update your code as follows:
+
+```go
+// Before
+app.Use(csrf.New(csrf.Config{
+  Expiration: 10 * time.Minute,
+}))
+
+// After
+app.Use(csrf.New(csrf.Config{
+  IdleTimeout: 10 * time.Minute,
+}))
+```
+
+- **Session Key Removal**: The `SessionKey` field has been removed from the CSRF middleware configuration. The session key is now an unexported constant within the middleware to avoid potential key collisions in the session store.
 
 #### Filesystem
 
