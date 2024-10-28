@@ -173,17 +173,19 @@ func Test_EarlyData(t *testing.T) {
 		trustedRun(t, app)
 	})
 
-	t.Run("config with EnableTrustedProxyCheck", func(t *testing.T) {
+	t.Run("config with TrustProxy", func(t *testing.T) {
 		app := appWithConfig(t, &fiber.Config{
-			EnableTrustedProxyCheck: true,
+			TrustProxy: true,
 		})
 		untrustedRun(t, app)
 	})
-	t.Run("config with EnableTrustedProxyCheck and trusted TrustedProxies", func(t *testing.T) {
+	t.Run("config with TrustProxy and trusted TrustProxyConfig.Proxies", func(t *testing.T) {
 		app := appWithConfig(t, &fiber.Config{
-			EnableTrustedProxyCheck: true,
-			TrustedProxies: []string{
-				"0.0.0.0",
+			TrustProxy: true,
+			TrustProxyConfig: fiber.TrustProxyConfig{
+				Proxies: []string{
+					"0.0.0.0",
+				},
 			},
 		})
 		trustedRun(t, app)

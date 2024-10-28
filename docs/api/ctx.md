@@ -831,7 +831,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ## IsProxyTrusted
 
 Checks trustworthiness of remote ip.
-If [`EnableTrustedProxyCheck`](fiber.md#enabletrustedproxycheck) false, it returns true
+If [`TrustProxy`](fiber.md#trustproxy) false, it returns true
 IsProxyTrusted can check remote ip by proxy ranges and ip map.
 
 ```go title="Signature"
@@ -841,10 +841,13 @@ func (c Ctx) IsProxyTrusted() bool
 ```go title="Example"
 
 app := fiber.New(fiber.Config{
-  // EnableTrustedProxyCheck enables the trusted proxy check
-  EnableTrustedProxyCheck: true,
-  // TrustedProxies is a list of trusted proxy IP addresses
-  TrustedProxies: []string{"0.8.0.0", "0.8.0.1"},
+  // TrustProxy enables the trusted proxy check
+  TrustProxy: true,
+  // TrustProxyConfig allows for configuring trusted proxies.
+  // Proxies is a list of trusted proxy IP ranges/addresses
+  TrustProxyConfig: fiber.TrustProxyConfig{
+    Proxies: []string{"0.8.0.0", "0.8.0.1"},
+  }
 })
         
 
@@ -1640,7 +1643,7 @@ app.Post("/", func(c fiber.Ctx) error {
 Contains the request protocol string: http or https for TLS requests.
 
 :::info
-Please use [`Config.EnableTrustedProxyCheck`](fiber.md#enabletrustedproxycheck) to prevent header spoofing, in case when your app is behind the proxy.
+Please use [`Config.TrustProxy`](fiber.md#trustproxy) to prevent header spoofing, in case when your app is behind the proxy.
 :::
 
 ```go title="Signature"
