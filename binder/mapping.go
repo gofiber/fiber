@@ -1,13 +1,16 @@
 package binder
 
 import (
+	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"sync"
 
-	"github.com/gofiber/fiber/v3/internal/schema"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
+
+	"github.com/gofiber/schema"
 )
 
 // ParserConfig form decoder config for SetParserDecoder
@@ -92,7 +95,11 @@ func parseToStruct(aliasTag string, out any, data map[string][]string) error {
 	// Set alias tag
 	schemaDecoder.SetAliasTag(aliasTag)
 
-	return schemaDecoder.Decode(out, data)
+	if err := schemaDecoder.Decode(out, data); err != nil {
+		return fmt.Errorf("bind: %w", err)
+	}
+
+	return nil
 }
 
 // Parse data into the map
@@ -132,21 +139,34 @@ func parseParamSquareBrackets(k string) (string, error) {
 	defer bytebufferpool.Put(bb)
 
 	kbytes := []byte(k)
+	openBracketsCount := 0
 
 	for i, b := range kbytes {
-		if b == '[' && kbytes[i+1] != ']' {
-			if err := bb.WriteByte('.'); err != nil {
-				return "", err //nolint:wrapcheck // unnecessary to wrap it
+		if b == '[' {
+			openBracketsCount++
+			if i+1 < len(kbytes) && kbytes[i+1] != ']' {
+				if err := bb.WriteByte('.'); err != nil {
+					return "", err //nolint:wrapcheck // unnecessary to wrap it
+				}
 			}
+			continue
 		}
 
-		if b == '[' || b == ']' {
+		if b == ']' {
+			openBracketsCount--
+			if openBracketsCount < 0 {
+				return "", errors.New("unmatched brackets")
+			}
 			continue
 		}
 
 		if err := bb.WriteByte(b); err != nil {
 			return "", err //nolint:wrapcheck // unnecessary to wrap it
 		}
+	}
+
+	if openBracketsCount > 0 {
+		return "", errors.New("unmatched brackets")
 	}
 
 	return bb.String(), nil

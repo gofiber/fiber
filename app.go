@@ -142,7 +142,7 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// Default: false
 	StrictRouting bool `json:"strict_routing"`
 
-	// When set to true, enables case sensitive routing.
+	// When set to true, enables case-sensitive routing.
 	// E.g. "/FoO" and "/foo" are treated as different routes.
 	// By default this is disabled and both "/FoO" and "/foo" will execute the same handler.
 	//
@@ -330,29 +330,31 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// For example, the Host HTTP header is usually used to return the requested host.
 	// But when you’re behind a proxy, the actual host may be stored in an X-Forwarded-Host header.
 	//
-	// If you are behind a proxy, you should enable TrustedProxyCheck to prevent header spoofing.
-	// If you enable EnableTrustedProxyCheck and leave TrustedProxies empty Fiber will skip
+	// If you are behind a proxy, you should enable TrustProxy to prevent header spoofing.
+	// If you enable TrustProxy and do not provide a TrustProxyConfig, Fiber will skip
 	// all headers that could be spoofed.
-	// If request ip in TrustedProxies whitelist then:
+	// If the request IP is in the TrustProxyConfig.Proxies allowlist, then:
 	//   1. c.Scheme() get value from X-Forwarded-Proto, X-Forwarded-Protocol, X-Forwarded-Ssl or X-Url-Scheme header
 	//   2. c.IP() get value from ProxyHeader header.
 	//   3. c.Host() and c.Hostname() get value from X-Forwarded-Host header
-	// But if request ip NOT in Trusted Proxies whitelist then:
-	//   1. c.Scheme() WON't get value from X-Forwarded-Proto, X-Forwarded-Protocol, X-Forwarded-Ssl or X-Url-Scheme header,
-	//    will return https in case when tls connection is handled by the app, of http otherwise
+	// But if the request IP is NOT in the TrustProxyConfig.Proxies allowlist, then:
+	//   1. c.Scheme() WON'T get value from X-Forwarded-Proto, X-Forwarded-Protocol, X-Forwarded-Ssl or X-Url-Scheme header,
+	//    will return https when a TLS connection is handled by the app, or http otherwise.
 	//   2. c.IP() WON'T get value from ProxyHeader header, will return RemoteIP() from fasthttp context
 	//   3. c.Host() and c.Hostname() WON'T get value from X-Forwarded-Host header, fasthttp.Request.URI().Host()
 	//    will be used to get the hostname.
 	//
-	// Default: false
-	EnableTrustedProxyCheck bool `json:"enable_trusted_proxy_check"`
-
-	// Read EnableTrustedProxyCheck doc.
+	// To automatically trust all loopback, link-local, or private IP addresses,
+	// without manually adding them to the TrustProxyConfig.Proxies allowlist,
+	// you can set TrustProxyConfig.Loopback, TrustProxyConfig.LinkLocal, or TrustProxyConfig.Private to true.
 	//
-	// Default: []string
-	TrustedProxies     []string `json:"trusted_proxies"`
-	trustedProxiesMap  map[string]struct{}
-	trustedProxyRanges []*net.IPNet
+	// Default: false
+	TrustProxy bool `json:"trust_proxy"`
+
+	// Read TrustProxy doc.
+	//
+	// Default: DefaultTrustProxyConfig
+	TrustProxyConfig TrustProxyConfig `json:"trust_proxy_config"`
 
 	// If set to true, c.IP() and c.IPs() will validate IP addresses before returning them.
 	// Also, c.IP() will return only the first valid IP rather than just the raw header
@@ -372,7 +374,7 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// Default: nil
 	StructValidator StructValidator
 
-	// RequestMethods provides customizibility for HTTP methods. You can add/remove methods as you wish.
+	// RequestMethods provides customizability for HTTP methods. You can add/remove methods as you wish.
 	//
 	// Optional. Default: DefaultMethods
 	RequestMethods []string
@@ -383,6 +385,36 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	//
 	// Optional. Default: false
 	EnableSplittingOnParsers bool `json:"enable_splitting_on_parsers"`
+}
+
+// Default TrustProxyConfig
+var DefaultTrustProxyConfig = TrustProxyConfig{}
+
+// TrustProxyConfig is a struct for configuring trusted proxies if Config.TrustProxy is true.
+type TrustProxyConfig struct {
+	ips map[string]struct{}
+
+	// Proxies is a list of trusted proxy IP addresses or CIDR ranges.
+	//
+	// Default: []string
+	Proxies []string `json:"proxies"`
+
+	ranges []*net.IPNet
+
+	// LinkLocal enables trusting all link-local IP ranges (e.g., 169.254.0.0/16, fe80::/10).
+	//
+	// Default: false
+	LinkLocal bool `json:"link_local"`
+
+	// Loopback enables trusting all loopback IP ranges (e.g., 127.0.0.0/8, ::1/128).
+	//
+	// Default: false
+	Loopback bool `json:"loopback"`
+
+	// Private enables trusting all private IP ranges (e.g., 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, fc00::/7).
+	//
+	// Default: false
+	Private bool `json:"private"`
 }
 
 // RouteMessage is some message need to be print when server starts
@@ -510,8 +542,8 @@ func New(config ...Config) *App {
 		app.config.RequestMethods = DefaultMethods
 	}
 
-	app.config.trustedProxiesMap = make(map[string]struct{}, len(app.config.TrustedProxies))
-	for _, ipAddress := range app.config.TrustedProxies {
+	app.config.TrustProxyConfig.ips = make(map[string]struct{}, len(app.config.TrustProxyConfig.Proxies))
+	for _, ipAddress := range app.config.TrustProxyConfig.Proxies {
 		app.handleTrustedProxy(ipAddress)
 	}
 
@@ -529,17 +561,22 @@ func New(config ...Config) *App {
 	return app
 }
 
-// Adds an ip address to trustedProxyRanges or trustedProxiesMap based on whether it is an IP range or not
+// Adds an ip address to TrustProxyConfig.ranges or TrustProxyConfig.ips based on whether it is an IP range or not
 func (app *App) handleTrustedProxy(ipAddress string) {
 	if strings.Contains(ipAddress, "/") {
 		_, ipNet, err := net.ParseCIDR(ipAddress)
 		if err != nil {
 			log.Warnf("IP range %q could not be parsed: %v", ipAddress, err)
 		} else {
-			app.config.trustedProxyRanges = append(app.config.trustedProxyRanges, ipNet)
+			app.config.TrustProxyConfig.ranges = append(app.config.TrustProxyConfig.ranges, ipNet)
 		}
 	} else {
-		app.config.trustedProxiesMap[ipAddress] = struct{}{}
+		ip := net.ParseIP(ipAddress)
+		if ip == nil {
+			log.Warnf("IP address %q could not be parsed", ipAddress)
+		} else {
+			app.config.TrustProxyConfig.ips[ipAddress] = struct{}{}
+		}
 	}
 }
 

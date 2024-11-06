@@ -34,7 +34,7 @@ app.Use(csrf.New(csrf.Config{
     KeyLookup:      "header:X-Csrf-Token",
     CookieName:     "csrf_",
     CookieSameSite: "Lax",
-    Expiration:     1 * time.Hour,
+    IdleTimeout:    30 * time.Minute,
     KeyGenerator:   utils.UUIDv4,
     Extractor:      func(c fiber.Ctx) (string, error) { ... },
 }))
@@ -106,15 +106,14 @@ func (h *Handler) DeleteToken(c fiber.Ctx) error
 | CookieSecure      | `bool`                             | Indicates if the CSRF cookie is secure.                                                                                                                                                                                                                                                      | false                        |
 | CookieHTTPOnly    | `bool`                             | Indicates if the CSRF cookie is HTTP-only.                                                                                                                                                                                                                                                   | false                        |
 | CookieSameSite    | `string`                           | Value of SameSite cookie.                                                                                                                                                                                                                                                                    | "Lax"                        |
-| CookieSessionOnly | `bool`                             | Decides whether the cookie should last for only the browser session. Ignores Expiration if set to true.                                                                                                                                                                                      | false                        |
-| Expiration        | `time.Duration`                    | Expiration is the duration before the CSRF token will expire.                                                                                                                                                                                                                                | 1 * time.Hour                |
+| CookieSessionOnly | `bool`                             | Decides whether the cookie should last for only the browser session. (cookie expires on close).                                                                                                                                                                                              | false                        |
+| IdleTimeout       | `time.Duration`                    | IdleTimeout is the duration of inactivity before the CSRF token will expire.                                                                                                                                                                                                                 | 30 * time.Minute             |
 | KeyGenerator      | `func() string`                    | KeyGenerator creates a new CSRF token.                                                                                                                                                                                                                                                       | utils.UUID                   |
 | ErrorHandler      | `fiber.ErrorHandler`               | ErrorHandler is executed when an error is returned from fiber.Handler.                                                                                                                                                                                                                       | DefaultErrorHandler          |
 | Extractor         | `func(fiber.Ctx) (string, error)`  | Extractor returns the CSRF token. If set, this will be used in place of an Extractor based on KeyLookup.                                                                                                                                                                                     | Extractor based on KeyLookup |
 | SingleUseToken    | `bool`                             | SingleUseToken indicates if the CSRF token be destroyed and a new one generated on each use. (See TokenLifecycle)                                                                                                                                                                            | false                        |
 | Storage           | `fiber.Storage`                    | Store is used to store the state of the middleware.                                                                                                                                                                                                                                          | `nil`                        |
 | Session           | `*session.Store`                   | Session is used to store the state of the middleware. Overrides Storage if set.                                                                                                                                                                                                              | `nil`                        |
-| SessionKey        | `string`                           | SessionKey is the key used to store the token in the session.                                                                                                                                                                                                                                | "csrfToken"                  |
 | TrustedOrigins    | `[]string`                         | TrustedOrigins is a list of trusted origins for unsafe requests. This supports subdomain matching, so you can use a value like "https://*.example.com" to allow any subdomain of example.com to submit requests.                                                                             | `[]`                         |
 
 ### Default Config
@@ -124,11 +123,10 @@ var ConfigDefault = Config{
     KeyLookup:         "header:" + HeaderName,
     CookieName:        "csrf_",
     CookieSameSite:    "Lax",
-    Expiration:        1 * time.Hour,
+    IdleTimeout:       30 * time.Minute,
     KeyGenerator:      utils.UUIDv4,
     ErrorHandler:      defaultErrorHandler,
     Extractor:         FromHeader(HeaderName),
-    SessionKey:        "csrfToken",
 }
 ```
 
@@ -144,12 +142,11 @@ var ConfigDefault = Config{
     CookieSecure:       true,
     CookieSessionOnly: true,
     CookieHTTPOnly:    true,
-    Expiration:        1 * time.Hour,
+    IdleTimeout:       30 * time.Minute,
     KeyGenerator:      utils.UUIDv4,
     ErrorHandler:      defaultErrorHandler,
     Extractor:         FromHeader(HeaderName),
     Session:           session.Store,
-    SessionKey:        "csrfToken",
 }
 ```
 
@@ -304,7 +301,7 @@ The Referer header is automatically included in requests by all modern browsers,
 
 ## Token Lifecycle
 
-Tokens are valid until they expire or until they are deleted. By default, tokens are valid for 1 hour, and each subsequent request extends the expiration by 1 hour. The token only expires if the user doesn't make a request for the duration of the expiration time.
+Tokens are valid until they expire or until they are deleted. By default, tokens are valid for 30 minutes, and each subsequent request extends the expiration by the idle timeout. The token only expires if the user doesn't make a request for the duration of the idle timeout.
 
 ### Token Reuse
 

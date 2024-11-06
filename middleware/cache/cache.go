@@ -63,7 +63,7 @@ func New(config ...Config) fiber.Handler {
 	var (
 		// Cache settings
 		mux       = &sync.RWMutex{}
-		timestamp = uint64(time.Now().Unix())
+		timestamp = uint64(time.Now().Unix()) //nolint:gosec //Not a concern
 	)
 	// Create manager to simplify storage operations ( see manager.go )
 	manager := newManager(cfg.Storage)
@@ -75,7 +75,7 @@ func New(config ...Config) fiber.Handler {
 	// Update timestamp in the configured interval
 	go func() {
 		for {
-			atomic.StoreUint64(&timestamp, uint64(time.Now().Unix()))
+			atomic.StoreUint64(&timestamp, uint64(time.Now().Unix())) //nolint:gosec //Not a concern
 			time.Sleep(timestampUpdatePeriod)
 		}
 	}()
@@ -117,7 +117,7 @@ func New(config ...Config) fiber.Handler {
 		// Get timestamp
 		ts := atomic.LoadUint64(&timestamp)
 
-		// Cache Entry not found
+		// Cache Entry found
 		if e != nil {
 			// Invalidate cache if requested
 			if cfg.CacheInvalidator != nil && cfg.CacheInvalidator(c) {

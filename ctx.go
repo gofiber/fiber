@@ -83,29 +83,29 @@ type SendFile struct {
 	// You have to set Content-Encoding header to compress the file.
 	// Available compression methods are gzip, br, and zstd.
 	//
-	// Optional. Default value false
+	// Optional. Default: false
 	Compress bool `json:"compress"`
 
 	// When set to true, enables byte range requests.
 	//
-	// Optional. Default value false
+	// Optional. Default: false
 	ByteRange bool `json:"byte_range"`
 
 	// When set to true, enables direct download.
 	//
-	// Optional. Default: false.
+	// Optional. Default: false
 	Download bool `json:"download"`
 
 	// Expiration duration for inactive file handlers.
 	// Use a negative time.Duration to disable it.
 	//
-	// Optional. Default value 10 * time.Second.
+	// Optional. Default: 10 * time.Second
 	CacheDuration time.Duration `json:"cache_duration"`
 
 	// The value for the Cache-Control HTTP-header
 	// that is set on the file response. MaxAge is defined in seconds.
 	//
-	// Optional. Default value 0.
+	// Optional. Default: 0
 	MaxAge int `json:"max_age"`
 }
 
@@ -155,7 +155,7 @@ type TLSHandler struct {
 
 // GetClientInfo Callback function to set ClientHelloInfo
 // Must comply with the method structure of https://cs.opensource.google/go/go/+/refs/tags/go1.20:src/crypto/tls/common.go;l=554-563
-// Since we overlay the method of the tls config in the listener method
+// Since we overlay the method of the TLS config in the listener method
 func (t *TLSHandler) GetClientInfo(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	t.clientHelloInfo = info
 	return nil, nil //nolint:nilnil // Not returning anything useful here is probably fine
@@ -624,7 +624,7 @@ func (c *DefaultCtx) Fresh() bool {
 				if err != nil {
 					return false
 				}
-				return lastModifiedTime.Before(modifiedSinceTime)
+				return lastModifiedTime.Compare(modifiedSinceTime) != 1
 			}
 		}
 	}
@@ -684,7 +684,7 @@ func (c *DefaultCtx) GetReqHeaders() map[string][]string {
 // while `Hostname` refers specifically to the name assigned to a device on a network, excluding any port information.
 // Example: URL: https://example.com:8080 -> Host: example.com:8080
 // Make copies or use the Immutable setting instead.
-// Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
+// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
 func (c *DefaultCtx) Host() string {
 	if c.IsProxyTrusted() {
 		if host := c.Get(HeaderXForwardedHost); len(host) > 0 {
@@ -702,7 +702,7 @@ func (c *DefaultCtx) Host() string {
 // Returned value is only valid within the handler. Do not store any references.
 // Example: URL: https://example.com:8080 -> Hostname: example.com
 // Make copies or use the Immutable setting instead.
-// Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
+// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
 func (c *DefaultCtx) Hostname() string {
 	addr, _ := parseAddr(c.Host())
 
@@ -720,7 +720,7 @@ func (c *DefaultCtx) Port() string {
 
 // IP returns the remote IP address of the request.
 // If ProxyHeader and IP Validation is configured, it will parse that header and return the first valid IP address.
-// Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
+// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
 func (c *DefaultCtx) IP() string {
 	if c.IsProxyTrusted() && len(c.app.config.ProxyHeader) > 0 {
 		return c.extractIPFromHeader(c.app.config.ProxyHeader)
@@ -1116,7 +1116,7 @@ func (c *DefaultCtx) Path(override ...string) string {
 }
 
 // Scheme contains the request protocol string: http or https for TLS requests.
-// Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
+// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
 func (c *DefaultCtx) Scheme() string {
 	if c.fasthttp.IsTLS() {
 		return schemeHTTPS
@@ -1496,9 +1496,10 @@ func (c *DefaultCtx) Send(body []byte) error {
 	return nil
 }
 
-// SendFile transfers the file from the given path.
-// The file is not compressed by default, enable this by passing a 'true' argument
-// Sets the Content-Type response HTTP header field based on the filenames extension.
+// SendFile transfers the file from the specified path.
+// By default, the file is not compressed. To enable compression, set SendFile.Compress to true.
+// The Content-Type response HTTP header field is set based on the file's extension.
+// If the file extension is missing or invalid, the Content-Type is detected from the file's format.
 func (c *DefaultCtx) SendFile(file string, config ...SendFile) error {
 	// Save the filename, we will need it in the error message if the file isn't found
 	filename := file
@@ -1819,20 +1820,26 @@ func (c *DefaultCtx) configDependentPaths() {
 }
 
 // IsProxyTrusted checks trustworthiness of remote ip.
-// If EnableTrustedProxyCheck false, it returns true
+// If Config.TrustProxy false, it returns true
 // IsProxyTrusted can check remote ip by proxy ranges and ip map.
 func (c *DefaultCtx) IsProxyTrusted() bool {
-	if !c.app.config.EnableTrustedProxyCheck {
+	if !c.app.config.TrustProxy {
 		return true
 	}
 
 	ip := c.fasthttp.RemoteIP()
 
-	if _, trusted := c.app.config.trustedProxiesMap[ip.String()]; trusted {
+	if (c.app.config.TrustProxyConfig.Loopback && ip.IsLoopback()) ||
+		(c.app.config.TrustProxyConfig.Private && ip.IsPrivate()) ||
+		(c.app.config.TrustProxyConfig.LinkLocal && ip.IsLinkLocalUnicast()) {
 		return true
 	}
 
-	for _, ipNet := range c.app.config.trustedProxyRanges {
+	if _, trusted := c.app.config.TrustProxyConfig.ips[ip.String()]; trusted {
+		return true
+	}
+
+	for _, ipNet := range c.app.config.TrustProxyConfig.ranges {
 		if ipNet.Contains(ip) {
 			return true
 		}
@@ -1841,21 +1848,9 @@ func (c *DefaultCtx) IsProxyTrusted() bool {
 	return false
 }
 
-var localHosts = [...]string{"127.0.0.1", "::1"}
-
-// IsLocalHost will return true if address is a localhost address.
-func (*DefaultCtx) isLocalHost(address string) bool {
-	for _, h := range localHosts {
-		if address == h {
-			return true
-		}
-	}
-	return false
-}
-
 // IsFromLocal will return true if request came from local.
 func (c *DefaultCtx) IsFromLocal() bool {
-	return c.isLocalHost(c.fasthttp.RemoteIP().String())
+	return c.fasthttp.RemoteIP().IsLoopback()
 }
 
 // Bind You can bind body, cookie, headers etc. into the map, map slice, struct easily by using Binding method.
