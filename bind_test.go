@@ -929,7 +929,10 @@ func Test_Bind_Body(t *testing.T) {
 		testDecodeParser(t, MIMEApplicationJSON, `{"name":"john"}`)
 	})
 	t.Run("CBOR", func(t *testing.T) {
-		enc, _ := cbor.Marshal(&Demo{Name: "john"})
+		enc, err := cbor.Marshal(&Demo{Name: "john"})
+		if err != nil {
+			t.Error(err)
+		}
 		str := string(enc)
 		testDecodeParser(t, MIMEApplicationCBOR, str)
 	})
@@ -1107,7 +1110,10 @@ func Benchmark_Bind_Body_CBOR(b *testing.B) {
 	type Demo struct {
 		Name string `json:"name"`
 	}
-	body, _ := cbor.Marshal(&Demo{Name: "john"})
+	body, err := cbor.Marshal(&Demo{Name: "john"})
+	if err != nil {
+		b.Error(err)
+	}
 	c.Request().SetBody(body)
 	c.Request().Header.SetContentType(MIMEApplicationCBOR)
 	c.Request().Header.SetContentLength(len(body))
@@ -1742,9 +1748,12 @@ func Test_Bind_RepeatParserWithSameStruct(t *testing.T) {
 		require.NoError(t, c.Bind().Body(r))
 		require.Equal(t, "body_param", r.BodyParam)
 	}
-	cb, _ := cbor.Marshal(&Request{
+	cb, err := cbor.Marshal(&Request{
 		BodyParam: "body_param",
 	})
+	if err != nil {
+		t.Error(err)
+	}
 
 	testDecodeParser(MIMEApplicationJSON, `{"body_param":"body_param"}`)
 	testDecodeParser(MIMEApplicationXML, `<Demo><body_param>body_param</body_param></Demo>`)

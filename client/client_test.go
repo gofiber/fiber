@@ -205,7 +205,10 @@ func Test_Client_Marshal(t *testing.T) {
 
 	t.Run("set cbor marshal", func(t *testing.T) {
 		t.Parallel()
-		bs, _ := hex.DecodeString("f6")
+		bs, err := hex.DecodeString("f6")
+		if err != nil {
+			t.Error(err)
+		}
 		client := New().
 			SetCBORMarshal(func(_ any) ([]byte, error) {
 				return bs, nil
@@ -218,7 +221,7 @@ func Test_Client_Marshal(t *testing.T) {
 
 	t.Run("set cbor marshal error", func(t *testing.T) {
 		t.Parallel()
-		client := New().SetCBORMarshal(func(v any) ([]byte, error) {
+		client := New().SetCBORMarshal(func(_ any) ([]byte, error) {
 			return nil, errors.New("invalid struct")
 		})
 

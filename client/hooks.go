@@ -192,6 +192,12 @@ func parserRequestBody(c *Client, req *Request) error {
 			return err
 		}
 		req.RawRequest.SetBody(body)
+	case cborBody:
+		body, err := c.cborMarshal(req.body)
+		if err != nil {
+			return err
+		}
+		req.RawRequest.SetBody(body)
 	case formBody:
 		req.RawRequest.SetBody(req.formData.QueryString())
 	case filesBody:
