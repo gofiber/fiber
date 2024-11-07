@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/gofiber/fiber/v3/log"
 
 	"github.com/gofiber/utils/v2"
@@ -722,6 +723,8 @@ func New() *Client {
 		jsonMarshal:          json.Marshal,
 		jsonUnmarshal:        json.Unmarshal,
 		xmlMarshal:           xml.Marshal,
+		cborMarshal:          cbor.Marshal,
+		cborUnmarshal:        cbor.Unmarshal,
 		xmlUnmarshal:         xml.Unmarshal,
 		logger:               log.DefaultLogger(),
 	}

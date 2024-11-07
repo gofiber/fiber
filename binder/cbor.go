@@ -7,7 +7,7 @@ import (
 type cborBinding struct{}
 
 func (*cborBinding) Name() string {
-	return "json"
+	return "cbor"
 }
 
 func (*cborBinding) Bind(body []byte, cborDecoder utils.CBORUnmarshal, out any) error {

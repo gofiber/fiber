@@ -914,11 +914,11 @@ func Test_Bind_Body(t *testing.T) {
 		testCompressedBody(t, compressedBody, "zstd")
 	})
 
-	testDecodeParser := func(t *testing.T, contentType, body string) {
+	testDecodeParser := func(t *testing.T, contentType string, body []byte) {
 		t.Helper()
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		c.Request().Header.SetContentType(contentType)
-		c.Request().SetBody([]byte(body))
+		c.Request().SetBody(body)
 		c.Request().Header.SetContentLength(len(body))
 		d := new(Demo)
 		require.NoError(t, c.Bind().Body(d))
@@ -926,27 +926,26 @@ func Test_Bind_Body(t *testing.T) {
 	}
 
 	t.Run("JSON", func(t *testing.T) {
-		testDecodeParser(t, MIMEApplicationJSON, `{"name":"john"}`)
+		testDecodeParser(t, MIMEApplicationJSON, []byte(`{"name":"john"}`))
 	})
 	t.Run("CBOR", func(t *testing.T) {
 		enc, err := cbor.Marshal(&Demo{Name: "john"})
 		if err != nil {
 			t.Error(err)
 		}
-		str := string(enc)
-		testDecodeParser(t, MIMEApplicationCBOR, str)
+		testDecodeParser(t, MIMEApplicationCBOR, enc)
 	})
 
 	t.Run("XML", func(t *testing.T) {
-		testDecodeParser(t, MIMEApplicationXML, `<Demo><name>john</name></Demo>`)
+		testDecodeParser(t, MIMEApplicationXML, []byte(`<Demo><name>john</name></Demo>`))
 	})
 
 	t.Run("Form", func(t *testing.T) {
-		testDecodeParser(t, MIMEApplicationForm, "name=john")
+		testDecodeParser(t, MIMEApplicationForm, []byte("name=john"))
 	})
 
 	t.Run("MultipartForm", func(t *testing.T) {
-		testDecodeParser(t, MIMEMultipartForm+`;boundary="b"`, "--b\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\njohn\r\n--b--")
+		testDecodeParser(t, MIMEMultipartForm+`;boundary="b"`, []byte("--b\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\njohn\r\n--b--"))
 	})
 
 	testDecodeParserError := func(t *testing.T, contentType, body string) {
