@@ -9,13 +9,13 @@ require (
 	github.com/mattn/go-colorable v0.1.13
 	github.com/mattn/go-isatty v0.0.20
 	github.com/stretchr/testify v1.9.0
-	github.com/tinylib/msgp v1.2.1
+	github.com/tinylib/msgp v1.2.4
 	github.com/valyala/bytebufferpool v1.0.0
-	github.com/valyala/fasthttp v1.56.0
+	github.com/valyala/fasthttp v1.57.0
 )
 
 require (
-	github.com/andybalholm/brotli v1.1.0 // indirect
+	github.com/andybalholm/brotli v1.1.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/fxamacker/cbor/v2 v2.7.0 // direct
 	github.com/klauspost/compress v1.17.9 // indirect

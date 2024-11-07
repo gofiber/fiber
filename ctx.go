@@ -83,29 +83,29 @@ type SendFile struct {
 	// You have to set Content-Encoding header to compress the file.
 	// Available compression methods are gzip, br, and zstd.
 	//
-	// Optional. Default value false
+	// Optional. Default: false
 	Compress bool `json:"compress"`
 
 	// When set to true, enables byte range requests.
 	//
-	// Optional. Default value false
+	// Optional. Default: false
 	ByteRange bool `json:"byte_range"`
 
 	// When set to true, enables direct download.
 	//
-	// Optional. Default: false.
+	// Optional. Default: false
 	Download bool `json:"download"`
 
 	// Expiration duration for inactive file handlers.
 	// Use a negative time.Duration to disable it.
 	//
-	// Optional. Default value 10 * time.Second.
+	// Optional. Default: 10 * time.Second
 	CacheDuration time.Duration `json:"cache_duration"`
 
 	// The value for the Cache-Control HTTP-header
 	// that is set on the file response. MaxAge is defined in seconds.
 	//
-	// Optional. Default value 0.
+	// Optional. Default: 0
 	MaxAge int `json:"max_age"`
 }
 
@@ -1514,9 +1514,10 @@ func (c *DefaultCtx) Send(body []byte) error {
 	return nil
 }
 
-// SendFile transfers the file from the given path.
-// The file is not compressed by default, enable this by passing a 'true' argument
-// Sets the Content-Type response HTTP header field based on the filenames extension.
+// SendFile transfers the file from the specified path.
+// By default, the file is not compressed. To enable compression, set SendFile.Compress to true.
+// The Content-Type response HTTP header field is set based on the file's extension.
+// If the file extension is missing or invalid, the Content-Type is detected from the file's format.
 func (c *DefaultCtx) SendFile(file string, config ...SendFile) error {
 	// Save the filename, we will need it in the error message if the file isn't found
 	filename := file
