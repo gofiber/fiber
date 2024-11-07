@@ -1891,18 +1891,18 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
-## SetUserContext
+## SetContext
 
 Sets the user specified implementation for context interface.
 
 ```go title="Signature"
-func (c Ctx) SetUserContext(ctx context.Context)
+func (c Ctx) SetContext(ctx context.Context)
 ```
 
 ```go title="Example"
 app.Get("/", func(c fiber.Ctx) error {
   ctx := context.Background()
-  c.SetUserContext(ctx)
+  c.SetContext(ctx)
   // Here ctx could be any context implementation
 
   // ...
@@ -2005,18 +2005,18 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
-## UserContext
+## Context
 
-UserContext returns a context implementation that was set by user earlier
+Context returns a context implementation that was set by user earlier
 or returns a non-nil, empty context, if it was not set earlier.
 
 ```go title="Signature"
-func (c Ctx) UserContext() context.Context
+func (c Ctx) Context() context.Context
 ```
 
 ```go title="Example"
 app.Get("/", func(c fiber.Ctx) error {
-  ctx := c.UserContext()
+  ctx := c.Context()
   // ctx is context implementation set by user
 
   // ...
