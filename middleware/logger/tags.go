@@ -200,7 +200,7 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return output.WriteString(fmt.Sprintf("%13v", latency))
 		},
 		TagTime: func(output Buffer, _ fiber.Ctx, data *Data, _ string) (int, error) {
-			return output.WriteString(data.Timestamp.Load().(string)) //nolint:forcetypeassert // We always store a string in here
+			return output.WriteString(data.Timestamp.Load().(string)) //nolint:forcetypeassert,errcheck // We always store a string in here
 		},
 	}
 	// merge with custom tags from user
