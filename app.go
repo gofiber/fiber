@@ -142,7 +142,7 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// Default: false
 	StrictRouting bool `json:"strict_routing"`
 
-	// When set to true, enables case sensitive routing.
+	// When set to true, enables case-sensitive routing.
 	// E.g. "/FoO" and "/foo" are treated as different routes.
 	// By default this is disabled and both "/FoO" and "/foo" will execute the same handler.
 	//

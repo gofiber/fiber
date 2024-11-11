@@ -5,60 +5,98 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 )
 
-// Config defines the config for middleware.
+// Config defines the configuration for the session middleware.
 type Config struct {
-	// Storage interface to store the session data
-	// Optional. Default value memory.New()
+	// Storage interface for storing session data.
+	//
+	// Optional. Default: memory.New()
 	Storage fiber.Storage
 
+	// Next defines a function to skip this middleware when it returns true.
+	// Optional. Default: nil
+	Next func(c fiber.Ctx) bool
+
+	// Store defines the session store.
+	//
+	// Required.
+	Store *Store
+
+	// ErrorHandler defines a function to handle errors.
+	//
+	// Optional. Default: nil
+	ErrorHandler func(fiber.Ctx, error)
+
 	// KeyGenerator generates the session key.
-	// Optional. Default value utils.UUIDv4
+	//
+	// Optional. Default: utils.UUIDv4
 	KeyGenerator func() string
 
-	// KeyLookup is a string in the form of "<source>:<name>" that is used
-	// to extract session id from the request.
-	// Possible values: "header:<name>", "query:<name>" or "cookie:<name>"
-	// Optional. Default value "cookie:session_id".
+	// KeyLookup is a string in the format "<source>:<name>" used to extract the session ID from the request.
+	//
+	// Possible values: "header:<name>", "query:<name>", "cookie:<name>"
+	//
+	// Optional. Default: "cookie:session_id"
 	KeyLookup string
 
-	// Domain of the cookie.
-	// Optional. Default value "".
+	// CookieDomain defines the domain of the session cookie.
+	//
+	// Optional. Default: ""
 	CookieDomain string
 
-	// Path of the cookie.
-	// Optional. Default value "".
+	// CookiePath defines the path of the session cookie.
+	//
+	// Optional. Default: ""
 	CookiePath string
 
-	// Value of SameSite cookie.
-	// Optional. Default value "Lax".
+	// CookieSameSite specifies the SameSite attribute of the cookie.
+	//
+	// Optional. Default: "Lax"
 	CookieSameSite string
 
-	// Source defines where to obtain the session id
+	// Source defines where to obtain the session ID.
 	source Source
 
-	// The session name
+	// sessionName is the name of the session.
 	sessionName string
-	// Allowed session duration
-	// Optional. Default value 24 * time.Hour
-	Expiration time.Duration
 
-	// Indicates if cookie is secure.
-	// Optional. Default value false.
+	// IdleTimeout defines the maximum duration of inactivity before the session expires.
+	//
+	// Note: The idle timeout is updated on each `Save()` call. If a middleware handler is used, `Save()` is called automatically.
+	//
+	// Optional. Default: 30 * time.Minute
+	IdleTimeout time.Duration
+
+	// AbsoluteTimeout defines the maximum duration of the session before it expires.
+	//
+	// If set to 0, the session will not have an absolute timeout, and will expire after the idle timeout.
+	//
+	// Optional. Default: 0
+	AbsoluteTimeout time.Duration
+
+	// CookieSecure specifies if the session cookie should be secure.
+	//
+	// Optional. Default: false
 	CookieSecure bool
 
-	// Indicates if cookie is HTTP only.
-	// Optional. Default value false.
+	// CookieHTTPOnly specifies if the session cookie should be HTTP-only.
+	//
+	// Optional. Default: false
 	CookieHTTPOnly bool
 
-	// Decides whether cookie should last for only the browser sesison.
-	// Ignores Expiration if set to true
-	// Optional. Default value false.
+	// CookieSessionOnly determines if the cookie should expire when the browser session ends.
+	//
+	// If true, the cookie will be deleted when the browser is closed.
+	// Note: This will not delete the session data from the store.
+	//
+	// Optional. Default: false
 	CookieSessionOnly bool
 }
 
+// Source represents the type of session ID source.
 type Source string
 
 const (
@@ -67,28 +105,59 @@ const (
 	SourceURLQuery Source = "query"
 )
 
-// ConfigDefault is the default config
+// ConfigDefault provides the default configuration.
 var ConfigDefault = Config{
-	Expiration:   24 * time.Hour,
+	IdleTimeout:  30 * time.Minute,
 	KeyLookup:    "cookie:session_id",
 	KeyGenerator: utils.UUIDv4,
-	source:       "cookie",
+	source:       SourceCookie,
 	sessionName:  "session_id",
 }
 
-// Helper function to set default values
+// DefaultErrorHandler logs the error and sends a 500 status code.
+//
+// Parameters:
+//   - c: The Fiber context.
+//   - err: The error to handle.
+//
+// Usage:
+//
+//	DefaultErrorHandler(c, err)
+func DefaultErrorHandler(c fiber.Ctx, err error) {
+	log.Errorf("session: %v", err)
+	if sendErr := c.SendStatus(fiber.StatusInternalServerError); sendErr != nil {
+		log.Errorf("session: %v", sendErr)
+	}
+}
+
+// configDefault sets default values for the Config struct.
+//
+// Parameters:
+//   - config: Variadic parameter to override the default config.
+//
+// Returns:
+//   - Config: The configuration with default values set.
+//
+// Usage:
+//
+//	cfg := configDefault()
+//	cfg := configDefault(customConfig)
 func configDefault(config ...Config) Config {
-	// Return default config if nothing provided
+	// Return default config if none provided.
 	if len(config) < 1 {
 		return ConfigDefault
 	}
 
-	// Override default config
+	// Override default config with provided config.
 	cfg := config[0]
 
-	// Set default values
-	if int(cfg.Expiration.Seconds()) <= 0 {
-		cfg.Expiration = ConfigDefault.Expiration
+	// Set default values where necessary.
+	if cfg.IdleTimeout <= 0 {
+		cfg.IdleTimeout = ConfigDefault.IdleTimeout
+	}
+	// Ensure AbsoluteTimeout is greater than or equal to IdleTimeout.
+	if cfg.AbsoluteTimeout > 0 && cfg.AbsoluteTimeout < cfg.IdleTimeout {
+		panic("[session] AbsoluteTimeout must be greater than or equal to IdleTimeout")
 	}
 	if cfg.KeyLookup == "" {
 		cfg.KeyLookup = ConfigDefault.KeyLookup
@@ -97,10 +166,11 @@ func configDefault(config ...Config) Config {
 		cfg.KeyGenerator = ConfigDefault.KeyGenerator
 	}
 
+	// Parse KeyLookup into source and session name.
 	selectors := strings.Split(cfg.KeyLookup, ":")
 	const numSelectors = 2
 	if len(selectors) != numSelectors {
-		panic("[session] KeyLookup must in the form of <source>:<name>")
+		panic("[session] KeyLookup must be in the format '<source>:<name>'")
 	}
 	switch Source(selectors[0]) {
 	case SourceCookie:
@@ -110,7 +180,7 @@ func configDefault(config ...Config) Config {
 	case SourceURLQuery:
 		cfg.source = SourceURLQuery
 	default:
-		panic("[session] source is not supported")
+		panic("[session] unsupported source in KeyLookup")
 	}
 	cfg.sessionName = selectors[1]
 

@@ -3122,6 +3122,49 @@ func Test_Ctx_SendFile(t *testing.T) {
 	app.ReleaseCtx(c)
 }
 
+// go test -race -run Test_Ctx_SendFile_ContentType
+func Test_Ctx_SendFile_ContentType(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	// 1) simple case
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	err := c.SendFile("./.github/testdata/fs/img/fiber.png")
+	// check expectation
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, c.Response().StatusCode())
+	require.Equal(t, "image/png", string(c.Response().Header.Peek(HeaderContentType)))
+	app.ReleaseCtx(c)
+
+	// 2) set by valid file extension, not file header
+	// see: https://github.com/valyala/fasthttp/blob/d795f13985f16622a949ea9fc3459cf54dc78b3e/fs.go#L1638
+	c = app.AcquireCtx(&fasthttp.RequestCtx{})
+	err = c.SendFile("./.github/testdata/fs/img/fiberpng.jpeg")
+	// check expectation
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, c.Response().StatusCode())
+	require.Equal(t, "image/jpeg", string(c.Response().Header.Peek(HeaderContentType)))
+	app.ReleaseCtx(c)
+
+	// 3) set by file header if extension is invalid
+	c = app.AcquireCtx(&fasthttp.RequestCtx{})
+	err = c.SendFile("./.github/testdata/fs/img/fiberpng.notvalidext")
+	// check expectation
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, c.Response().StatusCode())
+	require.Equal(t, "image/png", string(c.Response().Header.Peek(HeaderContentType)))
+	app.ReleaseCtx(c)
+
+	// 4) set by file header if extension is missing
+	c = app.AcquireCtx(&fasthttp.RequestCtx{})
+	err = c.SendFile("./.github/testdata/fs/img/fiberpng")
+	// check expectation
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, c.Response().StatusCode())
+	require.Equal(t, "image/png", string(c.Response().Header.Peek(HeaderContentType)))
+	app.ReleaseCtx(c)
+}
+
 func Test_Ctx_SendFile_Download(t *testing.T) {
 	t.Parallel()
 	app := New()

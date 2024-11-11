@@ -78,11 +78,6 @@ type Config struct {
 	// Optional. Default value "Lax".
 	CookieSameSite string
 
-	// SessionKey is the key used to store the token in the session
-	//
-	// Default: "csrfToken"
-	SessionKey string
-
 	// TrustedOrigins is a list of trusted origins for unsafe requests.
 	// For requests that use the Origin header, the origin must match the
 	// Host header or one of the TrustedOrigins.
@@ -96,10 +91,10 @@ type Config struct {
 	// Optional. Default: []
 	TrustedOrigins []string
 
-	// Expiration is the duration before csrf token will expire
+	// IdleTimeout is the duration of time the CSRF token is valid.
 	//
-	// Optional. Default: 1 * time.Hour
-	Expiration time.Duration
+	// Optional. Default: 30 * time.Minute
+	IdleTimeout time.Duration
 
 	// Indicates if CSRF cookie is secure.
 	// Optional. Default value false.
@@ -127,11 +122,10 @@ var ConfigDefault = Config{
 	KeyLookup:      "header:" + HeaderName,
 	CookieName:     "csrf_",
 	CookieSameSite: "Lax",
-	Expiration:     1 * time.Hour,
+	IdleTimeout:    30 * time.Minute,
 	KeyGenerator:   utils.UUIDv4,
 	ErrorHandler:   defaultErrorHandler,
 	Extractor:      FromHeader(HeaderName),
-	SessionKey:     "csrfToken",
 }
 
 // default ErrorHandler that process return error from fiber.Handler
@@ -153,8 +147,8 @@ func configDefault(config ...Config) Config {
 	if cfg.KeyLookup == "" {
 		cfg.KeyLookup = ConfigDefault.KeyLookup
 	}
-	if int(cfg.Expiration.Seconds()) <= 0 {
-		cfg.Expiration = ConfigDefault.Expiration
+	if cfg.IdleTimeout <= 0 {
+		cfg.IdleTimeout = ConfigDefault.IdleTimeout
 	}
 	if cfg.CookieName == "" {
 		cfg.CookieName = ConfigDefault.CookieName
@@ -167,9 +161,6 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.ErrorHandler == nil {
 		cfg.ErrorHandler = ConfigDefault.ErrorHandler
-	}
-	if cfg.SessionKey == "" {
-		cfg.SessionKey = ConfigDefault.SessionKey
 	}
 
 	// Generate the correct extractor to get the token from the correct location

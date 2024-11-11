@@ -56,7 +56,7 @@ jobs:
 
       # This will only run if we have Benchmark Results from main branch
       - name: Compare PR Benchmark Results with main branch
-        uses: benchmark-action/github-action-benchmark@v1.20.3
+        uses: benchmark-action/github-action-benchmark@v1.20.4
         if: steps.cache.outputs.cache-hit == 'true'
         with:
           tool: 'go'
@@ -72,7 +72,7 @@ jobs:
           alert-threshold: "150%"
 
       - name: Store Benchmark Results for main branch
-        uses: benchmark-action/github-action-benchmark@v1.20.3
+        uses: benchmark-action/github-action-benchmark@v1.20.4
         if: ${{ github.ref_name == 'main' }}
         with:
           tool: 'go'
@@ -86,7 +86,7 @@ jobs:
           alert-threshold: "150%"
 
       - name: Publish Benchmark Results to GitHub Pages
-        uses: benchmark-action/github-action-benchmark@v1.20.3
+        uses: benchmark-action/github-action-benchmark@v1.20.4
         if: ${{ github.ref_name == 'main' }}
         with:
           tool: 'go'

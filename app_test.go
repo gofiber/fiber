@@ -451,9 +451,9 @@ func Test_App_Use_CaseSensitive(t *testing.T) {
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
-	// check the detected path when the case insensitive recognition is activated
+	// check the detected path when the case-insensitive recognition is activated
 	app.config.CaseSensitive = false
-	// check the case sensitive feature
+	// check the case-sensitive feature
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/AbC", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
