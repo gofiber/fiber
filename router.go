@@ -302,6 +302,20 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 		if method != methodUse && app.methodInt(method) == -1 {
 			panic(fmt.Sprintf("add: invalid http method %s\n", method))
 		}
+		//lock
+		app.mutex.Lock()
+		// *** Duplicate Route Handling ***
+		routeExists := app.checkRouteExists(method, pathRaw)
+		if routeExists {
+
+			// Decrement global handler count
+			atomic.AddUint32(&app.handlersCount, ^uint32(len(handlers)-1)) //nolint:gosec // Not a concern
+
+			// Decrement global routes count
+			atomic.AddUint32(&app.routesCount, ^uint32(0))
+			app.removeRoute(method, pathRaw)
+		}
+		app.mutex.Unlock()
 		// is mounted app
 		isMount := group != nil && group.app != app
 		// A route requires atleast one ctx handler
@@ -375,6 +389,29 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 	}
 }
 
+// Helper function to check if a route with the same method and path already exists
+func (app *App) checkRouteExists(method, path string) bool {
+	m := app.methodInt(method)
+	for _, r := range app.stack[m] {
+		if r.path == path {
+			return true
+		}
+	}
+	return false
+}
+
+// Helper function to remove an existing route (used for overwriting)
+func (app *App) removeRoute(method, path string) {
+	m := app.methodInt(method)
+	newStack := make([]*Route, 0, len(app.stack[m]))
+	for _, r := range app.stack[m] {
+		if r.path != path {
+			newStack = append(newStack, r)
+		}
+	}
+	app.stack[m] = newStack
+}
+
 func (app *App) addRoute(method string, route *Route, isMounted ...bool) {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
@@ -411,11 +448,80 @@ func (app *App) addRoute(method string, route *Route, isMounted ...bool) {
 	}
 }
 
+func routeNames(routes []Route) []string {
+	names := make([]string, len(routes))
+
+	for _, route := range routes {
+		names = append(names, route.path)
+	}
+
+	return names
+}
+
+// RemoveRoute is used to remove a route from the stack
+// TODO sholud Remove Route only be called dynamically? Can you use it to remove the /define route, leaving the app without
+// any thing on the stack but the GET /hello Route? prefix /he?
+// TODO does this need to call RebuildTree?
+func (app *App) RemoveRoute(path string, methods ...string) {
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
+
+	routeNames := routeNames(app.GetRoutes())
+
+	// found will go away when this is refactored
+	found := false
+	// func contains([]string) bool
+	// usage:
+	// contains(app.GetRoutes())
+	for _, routeName := range routeNames {
+		if strings.Contains(routeName, path) {
+			break
+		}
+	}
+	// if !contains(app.GetRoutes())
+	// Nothing to do so return
+	if !found {
+		return
+	}
+
+	// Remove route from tree stack
+	// TOOD write tests for this.
+	// Not required? Would you want to run this in any other scenario? Does it harm anything to do it?
+
+	for _, method := range methods {
+		// Uppercase HTTP methods
+		method = utils.ToUpper(method)
+
+		// Get unique HTTP method identifier
+		m := app.methodInt(method)
+		if m == -1 {
+			continue // Skip invalid HTTP methods
+		}
+
+		// Create a new stack without the route
+		newStack := make([]*Route, 0, len(app.stack[m]))
+		for _, route := range app.stack[m] {
+			if route.Path != path {
+				newStack = append(newStack, route)
+			}
+		}
+
+		// Update the stack
+		app.stack[m] = newStack
+	}
+
+	app.routesRefreshed = true
+	// // Rebuild the tree if it has been built before
+	// if !app.routesRefreshed {
+	// 	app.buildTree()
+	// }
+}
+
 // BuildTree rebuilds the prefix tree from the previously registered routes.
 // This method is useful when you want to register routes dynamically after the app has started.
 // It is not recommended to use this method on production environments because rebuilding
 // the tree is performance-intensive and not thread-safe in runtime. Since building the tree
-// is only done in the startupProcess of the app, this method does not makes sure that the
+// is only done in the startupProcess of the app, this method does not make sure that the
 // routeTree is being safely changed, as it would add a great deal of overhead in the request.
 // Latest benchmark results showed a degradation from 82.79 ns/op to 94.48 ns/op and can be found in:
 // https://github.com/gofiber/fiber/issues/2769#issuecomment-2227385283

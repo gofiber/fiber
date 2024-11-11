@@ -12,6 +12,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"reflect"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/utils/v2"
@@ -394,6 +397,168 @@ func Test_App_Rebuild_Tree(t *testing.T) {
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/dynamically-defined", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
+}
+
+func Test_App_Remove_Route(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	middleware1 := func(c Ctx) error {
+		return c.Next()
+	}
+
+	_ = middleware1
+
+	app.Get("/test", func(c Ctx) error {
+
+		// app.RemoveRoute("/dynamically-defined", MethodHead, MethodGet)
+
+		app.Get("/dynamically-defined", func(c Ctx) error {
+			return c.SendStatus(http.StatusOK)
+		})
+
+		app.RebuildTree()
+
+		return c.SendStatus(http.StatusOK)
+	})
+
+	app.Get("/test", func(c Ctx) error {
+		// app.RemoveRoute("/dynamically-defined", MethodHead, MethodGet)
+
+		app.Get("/dynamically-defined", func(c Ctx) error {
+			return c.SendStatus(http.StatusOK)
+		})
+
+		app.RebuildTree()
+
+		return c.SendStatus(http.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/dynamically-defined", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, http.StatusNotFound, resp.StatusCode, "Status code")
+	require.Equal(t, uint32(1), app.handlersCount)
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
+	require.Equal(t, uint32(2), app.handlersCount)
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/dynamically-defined", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
+	require.Equal(t, uint32(2), app.handlersCount)
+
+	// When dynaically addding routes why are more handlers are added for duplicate entry but
+	// when they are added statically only they do no?
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
+	require.Equal(t, uint32(2), app.handlersCount)
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/dynamically-defined", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
+	require.Equal(t, uint32(2), app.handlersCount)
+	require.Equal(t, uint32(2), app.routesCount)
+
+	// from app.printRoutesMessage()
+	var routes []RouteMessage
+	for _, routeStack := range app.stack {
+		for _, route := range routeStack {
+			var newRoute RouteMessage
+			newRoute.name = route.Name
+			newRoute.method = route.Method
+			newRoute.path = route.Path
+			for _, handler := range route.Handlers {
+				newRoute.handlers += runtime.FuncForPC(reflect.ValueOf(handler).Pointer()).Name() + " "
+			}
+			routes = append(routes, newRoute)
+		}
+	}
+	for _, route := range routes {
+		require.Equal(t, 1, strings.Count(route.handlers, " "))
+	}
+}
+
+func Test_App_Remove_Route_With_Middleware(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	middleware1 := func(c Ctx) error {
+		return c.Next()
+	}
+
+	app.Get("/test", func(c Ctx) error {
+
+		// app.RemoveRoute("/dynamically-defined", MethodHead, MethodGet)
+
+		app.Get("/dynamically-defined", func(c Ctx) error {
+			return c.SendStatus(http.StatusOK)
+		})
+
+		app.RebuildTree()
+
+		return c.SendStatus(http.StatusOK)
+	}, middleware1)
+
+	app.Get("/test", func(c Ctx) error {
+		// app.RemoveRoute("/dynamically-defined", MethodHead, MethodGet)
+
+		app.Get("/dynamically-defined", func(c Ctx) error {
+			return c.SendStatus(http.StatusOK)
+		})
+
+		app.RebuildTree()
+
+		return c.SendStatus(http.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/dynamically-defined", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, http.StatusNotFound, resp.StatusCode, "Status code")
+	require.Equal(t, uint32(2), app.handlersCount)
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
+	require.Equal(t, uint32(3), app.handlersCount)
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/dynamically-defined", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
+	require.Equal(t, uint32(3), app.handlersCount)
+
+	// When dynaically addding routes why are more handlers are added for duplicate entry but
+	// when they are added statically only they do no?
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
+	require.Equal(t, uint32(2), app.handlersCount)
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/dynamically-defined", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
+	require.Equal(t, uint32(2), app.handlersCount)
+	require.Equal(t, uint32(2), app.routesCount)
+
+	// from app.printRoutesMessage()
+	var routes []RouteMessage
+	for _, routeStack := range app.stack {
+		for _, route := range routeStack {
+			var newRoute RouteMessage
+			newRoute.name = route.Name
+			newRoute.method = route.Method
+			newRoute.path = route.Path
+			for _, handler := range route.Handlers {
+				newRoute.handlers += runtime.FuncForPC(reflect.ValueOf(handler).Pointer()).Name() + " "
+			}
+			routes = append(routes, newRoute)
+		}
+	}
+	for _, route := range routes {
+		require.Equal(t, 1, strings.Count(route.handlers, " "))
+	}
 }
 
 //////////////////////////////////////////////
