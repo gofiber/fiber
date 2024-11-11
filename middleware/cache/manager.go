@@ -50,7 +50,7 @@ func newManager(storage fiber.Storage) *manager {
 
 // acquire returns an *entry from the sync.Pool
 func (m *manager) acquire() *item {
-	return m.pool.Get().(*item) //nolint:forcetypeassert // We store nothing else in the pool
+	return m.pool.Get().(*item) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
 }
 
 // release and reset *entry to sync.Pool
