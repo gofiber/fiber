@@ -2,7 +2,6 @@ package proxy
 
 import (
 	"crypto/tls"
-	"errors"
 	"io"
 	"net"
 	"net/http/httptest"
