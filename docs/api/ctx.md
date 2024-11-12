@@ -354,15 +354,20 @@ app.Get("/hello", func(c fiber.Ctx) error {
 
 ## Context
 
-Returns [\*fasthttp.RequestCtx](https://godoc.org/github.com/valyala/fasthttp#RequestCtx) that is compatible with the context.Context interface that requires a deadline, a cancellation signal, and other values across API boundaries.
+Context returns a context implementation that was set by user earlier or returns a non-nil, empty context, if it was not set earlier.
 
 ```go title="Signature"
-func (c Ctx) Context() *fasthttp.RequestCtx
+func (c Ctx) Context() context.Context
 ```
 
-:::info
-Please read the [Fasthttp Documentation](https://pkg.go.dev/github.com/valyala/fasthttp?tab=doc) for more information.
-:::
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  ctx := c.Context()
+  // ctx is context implementation set by user
+
+  // ...
+})
+```
 
 ## Cookie
 
@@ -1489,6 +1494,19 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+## RequestCtx
+
+Returns [\*fasthttp.RequestCtx](https://godoc.org/github.com/valyala/fasthttp#RequestCtx) that is compatible with the context.Context interface that requires a deadline, a cancellation signal, and other values across API boundaries.
+
+```go title="Signature"
+func (c Ctx) RequestCtx() *fasthttp.RequestCtx
+```
+
+:::info
+Please read the [Fasthttp Documentation](https://pkg.go.dev/github.com/valyala/fasthttp?tab=doc) for more information.
+:::
+
+
 ## Response
 
 Response return the [\*fasthttp.Response](https://godoc.org/github.com/valyala/fasthttp#Response) pointer
@@ -1893,7 +1911,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ## SetContext
 
-Sets the user specified implementation for context interface.
+Sets the user specified implementation for context.Context interface.
 
 ```go title="Signature"
 func (c Ctx) SetContext(ctx context.Context)
@@ -2000,24 +2018,6 @@ app.Get("/", func(c fiber.Ctx) error {
   c.Type("png")   // => "image/png"
 
   c.Type("json", "utf-8")  // => "application/json; charset=utf-8"
-
-  // ...
-})
-```
-
-## Context
-
-Context returns a context implementation that was set by user earlier
-or returns a non-nil, empty context, if it was not set earlier.
-
-```go title="Signature"
-func (c Ctx) Context() context.Context
-```
-
-```go title="Example"
-app.Get("/", func(c fiber.Ctx) error {
-  ctx := c.Context()
-  // ctx is context implementation set by user
 
   // ...
 })
