@@ -18,6 +18,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -974,7 +975,7 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 		case <-time.After(cfg.Timeout):
 			conn.Close() //nolint:errcheck, revive // It is fine to ignore the error here
 			if cfg.FailOnTimeout {
-				return nil, fmt.Errorf("test: timeout error after %s", cfg.Timeout)
+				return nil, os.ErrDeadlineExceeded
 			}
 		}
 	} else {
