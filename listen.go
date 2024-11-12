@@ -72,6 +72,12 @@ type ListenConfig struct {
 	// Default: nil
 	OnShutdownSuccess func()
 
+	// AutoCertManager is a acme manager for go crypto package.
+	// If you want to use acme, you have to provide it.
+	//
+	// Default : nil
+	AutoCertManager *autocert.Manager
+
 	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only)
 	// WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chosen.
 	//
@@ -95,12 +101,6 @@ type ListenConfig struct {
 	//
 	// Default : ""
 	CertClientFile string `json:"cert_client_file"`
-
-	// AutoCertManager is a acme manager for go crypto package.
-	// If you want to use acme, you have to provide it.
-	//
-	// Default : nil
-	AutoCertManager *autocert.Manager
 
 	// When set to true, it will not print out the «Fiber» ASCII art and listening address.
 	//
