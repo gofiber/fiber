@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -655,7 +656,7 @@ func Test_Proxy_DoDeadline_PastDeadline(t *testing.T) {
 		Timeout:       1 * time.Second,
 		FailOnTimeout: true,
 	})
-	require.Equal(t, errors.New("test: timeout error after 1s"), err1)
+	require.Equal(t, os.ErrDeadlineExceeded, err1)
 }
 
 // go test -race -run Test_Proxy_Do_HTTP_Prefix_URL

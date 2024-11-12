@@ -16,6 +16,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"reflect"
 	"regexp"
 	"runtime"
@@ -1473,7 +1474,7 @@ func Test_App_Test_timeout(t *testing.T) {
 		Timeout:       100 * time.Millisecond,
 		FailOnTimeout: true,
 	})
-	require.Equal(t, errors.New("test: timeout error after 100ms"), err)
+	require.Equal(t, os.ErrDeadlineExceeded, err)
 }
 
 func Test_App_Test_timeout_empty_response(t *testing.T) {
