@@ -1091,6 +1091,39 @@ func Benchmark_Bind_Body_XML(b *testing.B) {
 	require.Equal(b, "john", d.Name)
 }
 
+// go test -run Test_Bind_Body_Form_Embedded
+func Test_Bind_Body_Form_Embedded(b *testing.T) {
+	var err error
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	type EmbededDemo struct {
+		EmbededStrings []string
+		EmbededString  string
+	}
+
+	type Demo struct {
+		SomeString      string
+		SomeOtherString string
+		Strings         []string
+		EmbededDemo
+	}
+	body := []byte("SomeString=john%2Clong&SomeOtherString=long%2Cjohn&Strings=long%2Cjohn&EmbededStrings=john%2Clong&EmbededString=johny%2Cwalker")
+	c.Request().SetBody(body)
+	c.Request().Header.SetContentType(MIMEApplicationForm)
+	c.Request().Header.SetContentLength(len(body))
+	d := new(Demo)
+
+	err = c.Bind().Body(d)
+
+	require.NoError(b, err)
+	require.Equal(b, []string{"long", "john"}, d.Strings)
+	require.Equal(b, []string{"john", "long"}, d.EmbededStrings)
+	require.Equal(b, "johny,walker", d.EmbededString)
+	require.Equal(b, "john,long", d.SomeString)
+	require.Equal(b, "long,john", d.SomeOtherString)
+}
+
 // go test -v -run=^$ -bench=Benchmark_Bind_Body_Form -benchmem -count=4
 func Benchmark_Bind_Body_Form(b *testing.B) {
 	var err error

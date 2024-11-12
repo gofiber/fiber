@@ -203,9 +203,15 @@ func equalFieldType(out any, kind reflect.Kind, key string) bool {
 		// Does the field type equals input?
 		if structFieldKind != kind {
 			// Is the field an embedded struct?
-			if structFieldKind == reflect.Struct {
+			if structFieldKind == reflect.Struct && typeField.Anonymous {
 				// Loop over embedded struct fields
 				for j := 0; j < structField.NumField(); j++ {
+					fNm := utils.ToLower(structField.Type().Field(j).Name)
+					if fNm != key {
+						//this is not the field that we are looking for
+						continue
+					}
+
 					structFieldField := structField.Field(j)
 
 					// Can this embedded field be changed?
