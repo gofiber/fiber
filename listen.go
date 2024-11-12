@@ -185,8 +185,10 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 		// Attach the tlsHandler to the config
 		app.SetTLSHandler(tlsHandler)
 	} else if cfg.AutoCertManager != nil {
-		tlsConfig.GetCertificate = cfg.AutoCertManager.GetCertificate
-		tlsConfig.NextProtos = append(tlsConfig.NextProtos, "http/1.1", "acme-tls/1")
+		tlsConfig = &tls.Config{
+			GetCertificate: cfg.AutoCertManager.GetCertificate,
+			NextProtos:     []string{"http/1.1", "acme-tls/1"},
+		}
 	}
 
 	if cfg.TLSConfigFunc != nil {
