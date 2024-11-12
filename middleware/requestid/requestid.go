@@ -39,8 +39,8 @@ func New(config ...Config) fiber.Handler {
 		c.Locals(requestIDKey, rid)
 
 		// Add the request ID to UserContext
-		ctx := context.WithValue(c.UserContext(), requestIDKey, rid)
-		c.SetUserContext(ctx)
+		ctx := context.WithValue(c.Context(), requestIDKey, rid)
+		c.SetContext(ctx)
 
 		// Continue stack
 		return c.Next()

@@ -90,7 +90,7 @@ func Test_RequestID_FromUserContext(t *testing.T) {
 	var ctxVal string
 
 	app.Use(func(c fiber.Ctx) error {
-		ctxVal = FromUserContext(c.UserContext())
+		ctxVal = FromUserContext(c.Context())
 		return c.Next()
 	})
 
