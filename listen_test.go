@@ -19,6 +19,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttputil"
+	"golang.org/x/crypto/acme"
+	"golang.org/x/crypto/acme/autocert"
 )
 
 // go test -run Test_Listen
@@ -145,6 +147,38 @@ func Test_Listen_TLS(t *testing.T) {
 	}))
 }
 
+// go test -run Test_Listen_Acme_TLS
+func Test_Listen_Acme_TLS(t *testing.T) {
+	// Certificate manager
+	m := &autocert.Manager{
+		Prompt: autocert.AcceptTOS,
+		// Replace with your domain
+		HostPolicy: autocert.HostWhitelist("example.com"),
+		// Folder to store the certificates
+		Cache: autocert.DirCache("./certs"),
+		// Define the Client for test
+		Client: &acme.Client{
+			DirectoryURL: "https://acme-staging-v02.api.letsencrypt.org/directory",
+		},
+	}
+
+	app := New()
+
+	// invalid port
+	require.Error(t, app.Listen(":99999", ListenConfig{
+		AutoCertManager: m,
+	}))
+
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+		assert.NoError(t, app.Shutdown())
+	}()
+
+	require.NoError(t, app.Listen(":0", ListenConfig{
+		AutoCertManager: m,
+	}))
+}
+
 // go test -run Test_Listen_TLS_Prefork
 func Test_Listen_TLS_Prefork(t *testing.T) {
 	testPreforkMaster = true
@@ -169,6 +203,42 @@ func Test_Listen_TLS_Prefork(t *testing.T) {
 		EnablePrefork:         true,
 		CertFile:              "./.github/testdata/ssl.pem",
 		CertKeyFile:           "./.github/testdata/ssl.key",
+	}))
+}
+
+// go test -run Test_Listen_Acme_TLS_Prefork
+func Test_Listen_Acme_TLS_Prefork(t *testing.T) {
+	// Certificate manager
+	m := &autocert.Manager{
+		Prompt: autocert.AcceptTOS,
+		// Replace with your domain
+		HostPolicy: autocert.HostWhitelist("example.com"),
+		// Folder to store the certificates
+		Cache: autocert.DirCache("./certs"),
+		// Define the Client for test
+		Client: &acme.Client{
+			DirectoryURL: "https://acme-staging-v02.api.letsencrypt.org/directory",
+		},
+	}
+
+	app := New()
+
+	// invalid port
+	require.Error(t, app.Listen(":0", ListenConfig{
+		DisableStartupMessage: true,
+		EnablePrefork:         true,
+		AutoCertManager:       m,
+	}))
+
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+		assert.NoError(t, app.Shutdown())
+	}()
+
+	require.NoError(t, app.Listen(":99999", ListenConfig{
+		DisableStartupMessage: true,
+		EnablePrefork:         true,
+		AutoCertManager:       m,
 	}))
 }
 
