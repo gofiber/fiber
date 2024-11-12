@@ -74,3 +74,27 @@ func Test_RequestID_FromContext(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, reqID, ctxVal)
 }
+
+// go test -run Test_RequestID_FromUserContext
+func Test_RequestID_FromUserContext(t *testing.T) {
+	t.Parallel()
+	reqID := "ThisIsARequestId"
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Generator: func() string {
+			return reqID
+		},
+	}))
+
+	var ctxVal string
+
+	app.Use(func(c fiber.Ctx) error {
+		ctxVal = FromUserContext(c.UserContext())
+		return c.Next()
+	})
+
+	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, reqID, ctxVal)
+}

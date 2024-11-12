@@ -1,6 +1,8 @@
 package requestid
 
 import (
+	"context"
+
 	"github.com/gofiber/fiber/v3"
 )
 
@@ -36,6 +38,10 @@ func New(config ...Config) fiber.Handler {
 		// Add the request ID to locals
 		c.Locals(requestIDKey, rid)
 
+		// Add the request ID to UserContext
+		ctx := context.WithValue(c.UserContext(), requestIDKey, rid)
+		c.SetUserContext(ctx)
+
 		// Continue stack
 		return c.Next()
 	}
@@ -45,6 +51,16 @@ func New(config ...Config) fiber.Handler {
 // If there is no request ID, an empty string is returned.
 func FromContext(c fiber.Ctx) string {
 	if rid, ok := c.Locals(requestIDKey).(string); ok {
+		return rid
+	}
+	return ""
+}
+
+// FromUserContext returns the request ID from the UserContext.
+// If there is no request ID, an empty string is returned.
+// Compared to Local, UserContext is more suitable for transmitting requests between microservices
+func FromUserContext(ctx context.Context) string {
+	if rid, ok := ctx.Value(requestIDKey).(string); ok {
 		return rid
 	}
 	return ""
