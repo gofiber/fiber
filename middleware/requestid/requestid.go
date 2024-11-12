@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/log"
 )
 
 // The contextKey type is unexported to prevent collisions with context keys defined in
@@ -49,19 +50,18 @@ func New(config ...Config) fiber.Handler {
 
 // FromContext returns the request ID from context.
 // If there is no request ID, an empty string is returned.
-func FromContext(c fiber.Ctx) string {
-	if rid, ok := c.Locals(requestIDKey).(string); ok {
-		return rid
-	}
-	return ""
-}
-
-// FromUserContext returns the request ID from the UserContext.
-// If there is no request ID, an empty string is returned.
-// Compared to Local, UserContext is more suitable for transmitting requests between microservices
-func FromUserContext(ctx context.Context) string {
-	if rid, ok := ctx.Value(requestIDKey).(string); ok {
-		return rid
+func FromContext(c interface{}) string {
+	switch ctx := c.(type) {
+	case fiber.Ctx:
+		if rid, ok := ctx.Locals(requestIDKey).(string); ok {
+			return rid
+		}
+	case context.Context:
+		if rid, ok := ctx.Value(requestIDKey).(string); ok {
+			return rid
+		}
+	default:
+		log.Errorf("Unsupported context type: %T", c)
 	}
 	return ""
 }
