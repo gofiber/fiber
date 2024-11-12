@@ -1470,6 +1470,7 @@ func (*DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path stri
 	if err != nil {
 		return fmt.Errorf("failed to open: %w", err)
 	}
+	defer file.Close() //nolint:errcheck // not needed
 
 	content, err := io.ReadAll(file)
 	if err != nil {
