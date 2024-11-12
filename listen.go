@@ -22,6 +22,7 @@ import (
 	"github.com/gofiber/fiber/v3/log"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
+	"golang.org/x/crypto/acme/autocert"
 )
 
 // Figlet text to show Fiber ASCII art on startup message
@@ -70,6 +71,7 @@ type ListenConfig struct {
 	//
 	// Default: nil
 	OnShutdownSuccess func()
+
 	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only)
 	// WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chosen.
 	//
@@ -93,6 +95,12 @@ type ListenConfig struct {
 	//
 	// Default : ""
 	CertClientFile string `json:"cert_client_file"`
+
+	// AutoCertManager is a acme manager for go crypto package.
+	// If you want to use acme, you have to provide it.
+	//
+	// Default : nil
+	AutoCertManager *autocert.Manager
 
 	// When set to true, it will not print out the «Fiber» ASCII art and listening address.
 	//
@@ -176,6 +184,9 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 
 		// Attach the tlsHandler to the config
 		app.SetTLSHandler(tlsHandler)
+	} else if cfg.AutoCertManager != nil {
+		tlsConfig.GetCertificate = cfg.AutoCertManager.GetCertificate
+		tlsConfig.NextProtos = append(tlsConfig.NextProtos, "http/1.1", "acme-tls/1")
 	}
 
 	if cfg.TLSConfigFunc != nil {
