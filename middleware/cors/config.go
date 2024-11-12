@@ -41,7 +41,7 @@ type Config struct {
 	// Optional. Default value []string{}
 	AllowHeaders []string
 
-	// ExposeHeaders defines a whitelist headers that clients are allowed to
+	// ExposeHeaders defines an allowlist of headers that clients are allowed to
 	// access.
 	//
 	// Optional. Default value []string{}.
