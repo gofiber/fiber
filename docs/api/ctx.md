@@ -1506,7 +1506,6 @@ func (c Ctx) RequestCtx() *fasthttp.RequestCtx
 Please read the [Fasthttp Documentation](https://pkg.go.dev/github.com/valyala/fasthttp?tab=doc) for more information.
 :::
 
-
 ## Response
 
 Response return the [\*fasthttp.Response](https://godoc.org/github.com/valyala/fasthttp#Response) pointer
