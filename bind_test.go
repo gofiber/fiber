@@ -1098,17 +1098,18 @@ func Test_Bind_Body_Form_Embedded(b *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	type EmbeddedDemo struct {
-		EmbeddedStrings []string `form:"embedded_strings"`
 		EmbeddedString  string   `form:"embedded_string"`
+		EmbeddedStrings []string `form:"embedded_strings"`
 	}
 
 	type Demo struct {
-		SomeString      string   `form:"some_string"`
-		SomeOtherString string   `form:"some_other_string"`
-		Strings         []string `form:"strings"`
+		String       string   `form:"some_string"`
+		OtherString  string   `form:"some_other_string"`
+		Strings      []string `form:"strings"`
+		OtherStrings []string `form:"other_strings"`
 		EmbeddedDemo
 	}
-	body := []byte("SomeString=john%2Clong&SomeOtherString=long%2Cjohn&Strings=long%2Cjohn&EmbededStrings=john%2Clong&EmbededString=johny%2Cwalker")
+	body := []byte("some_string=john%2Clong&some_other_string=long&some_other_string=long&strings=long%2Cjohn&embedded_strings=john%2Clongest&embedded_string=johny%2Cwalker&other_strings=long&other_strings=johny")
 	c.Request().SetBody(body)
 	c.Request().Header.SetContentType(MIMEApplicationForm)
 	c.Request().Header.SetContentLength(len(body))
@@ -1117,11 +1118,13 @@ func Test_Bind_Body_Form_Embedded(b *testing.T) {
 	err = c.Bind().Body(d)
 
 	require.NoError(b, err)
+	require.Equal(b, "john,long", d.String)
 	require.Equal(b, []string{"long", "john"}, d.Strings)
-	require.Equal(b, []string{"john", "long"}, d.EmbeddedStrings)
+	//! only one value is taken
+	require.Equal(b, "long", d.OtherString)
+	require.Equal(b, []string{"long", "johny"}, d.OtherStrings)
 	require.Equal(b, "johny,walker", d.EmbeddedString)
-	require.Equal(b, "john,long", d.SomeString)
-	require.Equal(b, "long,john", d.SomeOtherString)
+	require.Equal(b, []string{"john", "longest"}, d.EmbeddedStrings)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Bind_Body_Form -benchmem -count=4

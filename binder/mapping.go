@@ -172,7 +172,18 @@ func parseParamSquareBrackets(k string) (string, error) {
 	return bb.String(), nil
 }
 
-func equalFieldType(out any, kind reflect.Kind, key string) bool {
+func appendValue(to map[string][]string, rawValue string, out any, k string, bindingName string) {
+	if strings.Contains(rawValue, ",") && equalFieldType(out, reflect.Slice, k, bindingName) {
+		values := strings.Split(rawValue, ",")
+		for i := 0; i < len(values); i++ {
+			to[k] = append(to[k], values[i])
+		}
+	} else {
+		to[k] = append(to[k], rawValue)
+	}
+}
+
+func equalFieldType(out any, kind reflect.Kind, key string, bindingName string) bool {
 	// Get type of interface
 	outTyp := reflect.TypeOf(out).Elem()
 	key = utils.ToLower(key)
@@ -196,51 +207,52 @@ func equalFieldType(out any, kind reflect.Kind, key string) bool {
 		if !structField.CanSet() {
 			continue
 		}
+
 		// Get field key data
 		typeField := outTyp.Field(i)
 		// Get type of field key
 		structFieldKind := structField.Kind()
-		// Does the field type equals input?
-		if structFieldKind != kind {
-			// Is the field an embedded struct?
-			if structFieldKind == reflect.Struct && typeField.Anonymous {
-				// Loop over embedded struct fields
-				for j := 0; j < structField.NumField(); j++ {
-					fNm := utils.ToLower(structField.Type().Field(j).Name)
-					if fNm != key {
-						//this is not the field that we are looking for
-						continue
-					}
 
-					structFieldField := structField.Field(j)
-
-					// Can this embedded field be changed?
-					if !structFieldField.CanSet() {
-						continue
-					}
-
-					// Is the embedded struct field type equal to the input?
-					if structFieldField.Kind() == kind {
-						return true
-					}
-				}
-			}
-
-			continue
-		}
-		// Get tag from field if exist
-		inputFieldName := typeField.Tag.Get(QueryBinder.Name())
-		if inputFieldName == "" {
-			inputFieldName = typeField.Name
-		} else {
-			inputFieldName = strings.Split(inputFieldName, ",")[0]
-		}
 		// Compare field/tag with provided key
-		if utils.ToLower(inputFieldName) == key {
-			return true
+		if getFieldKey(typeField, bindingName) == key {
+			return structFieldKind == kind
+		}
+
+		// Is the field an embedded struct?
+		if typeField.Anonymous {
+			// Loop over embedded struct fields
+			for j := 0; j < structField.NumField(); j++ {
+				if getFieldKey(structField.Type().Field(j), bindingName) != key {
+					// this is not the field that we are looking for
+					continue
+				}
+
+				structFieldField := structField.Field(j)
+
+				// Can this embedded field be changed?
+				if !structFieldField.CanSet() {
+					continue
+				}
+
+				// Is the embedded struct field type equal to the input?
+				return structFieldField.Kind() == kind
+			}
 		}
 	}
 	return false
+}
+
+// Get binding key for a field
+func getFieldKey(typeField reflect.StructField, bindingName string) string {
+	// Get tag from field if exist
+	inputFieldName := typeField.Tag.Get(bindingName)
+	if inputFieldName == "" {
+		inputFieldName = typeField.Name
+	} else {
+		inputFieldName = strings.Split(inputFieldName, ",")[0]
+	}
+	// Compare field key
+	return utils.ToLower(inputFieldName)
 }
 
 // Get content type from content type header
