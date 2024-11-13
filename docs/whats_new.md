@@ -75,7 +75,7 @@ We have made several changes to the Fiber app, including:
 
 ### Methods changes
 
-- Test -> timeout changed to 1 second
+- Test -> Replaced timeout with a config parameter
 - Listen -> has a config parameter
 - Listener -> has a config parameter
 
@@ -182,6 +182,41 @@ To enable the routing changes above we had to slightly adjust the signature of t
 ```diff
 -    Add(method, path string, handlers ...Handler) Router
 +    Add(methods []string, path string, handler Handler, middleware ...Handler) Router
+```
+
+### Test Config
+
+The `app.Test()` method now allows users to customize their test configurations:
+
+<details>
+<summary>Example</summary>
+
+```go
+// Create a test app with a handler to test
+app := fiber.New()
+app.Get("/", func(c fiber.Ctx) {
+  return c.SendString("hello world")
+})
+
+// Define the HTTP request and custom TestConfig to test the handler
+req := httptest.NewRequest(MethodGet, "/", nil)
+testConfig := fiber.TestConfig{
+  Timeout:       -1,
+  FailOnTimeout: false,
+}
+
+// Test the handler using the request and testConfig
+resp, err := app.Test(req, testConfig)
+```
+
+</details>
+
+To provide configurable testing capabilities, we had to change
+the signature of the `Test` method.
+
+```diff
+-    Test(req *http.Request, timeout ...time.Duration) (*http.Response, error)
++    Test(req *http.Request, config ...fiber.TestConfig) (*http.Response, error)
 ```
 
 ---
