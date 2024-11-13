@@ -6,13 +6,11 @@ sidebar_position: 4
 toc_max_heading_level: 4
 ---
 
-Bindings are used to parse the request/response body, query parameters, cookies and much more into a struct.
+Bindings are used to parse the request/response body, query parameters, cookies, and much more into a struct.
 
 :::info
-
-All binder returned value are only valid within the handler. Do not store any references.  
+All binder returned values are only valid within the handler. Do not store any references.  
 Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
-
 :::
 
 ## Binders
@@ -32,22 +30,21 @@ Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more..
 
 Binds the request body to a struct.
 
-It is important to specify the correct struct tag based on the content type to be parsed. For example, if you want to parse a JSON body with a field called Pass, you would use a struct field of `json:"pass"`.
+It is important to specify the correct struct tag based on the content type to be parsed. For example, if you want to parse a JSON body with a field called `Pass`, you would use a struct field with `json:"pass"`.
 
-| content-type                        | struct tag |
+| Content-Type                        | Struct Tag |
 | ----------------------------------- | ---------- |
-| `application/x-www-form-urlencoded` | form       |
-| `multipart/form-data`               | form       |
-| `application/json`                  | json       |
-| `application/xml`                   | xml        |
-| `text/xml`                          | xml        |
+| `application/x-www-form-urlencoded` | `form`     |
+| `multipart/form-data`               | `form`     |
+| `application/json`                  | `json`     |
+| `application/xml`                   | `xml`      |
+| `text/xml`                          | `xml`      |
 
 ```go title="Signature"
 func (b *Bind) Body(out any) error
 ```
 
 ```go title="Example"
-// Field names should start with an uppercase letter
 type Person struct {
     Name string `json:"name" xml:"name" form:"name"`
     Pass string `json:"pass" xml:"pass" form:"pass"`
@@ -65,34 +62,35 @@ app.Post("/", func(c fiber.Ctx) error {
     
     // ...
 })
-
-// Run tests with the following curl commands
-
-// curl -X POST -H "Content-Type: application/json" --data "{\"name\":\"john\",\"pass\":\"doe\"}" localhost:3000
-
-// curl -X POST -H "Content-Type: application/xml" --data "<login><name>john</name><pass>doe</pass></login>" localhost:3000
-
-// curl -X POST -H "Content-Type: application/x-www-form-urlencoded" --data "name=john&pass=doe" localhost:3000
-
-// curl -X POST -F name=john -F pass=doe http://localhost:3000
-
-// curl -X POST "http://localhost:3000/?name=john&pass=doe"
 ```
 
-**The methods for the various bodies can also be used directly:**
+Run tests with the following `curl` commands:
 
-#### Form
+```bash
+# JSON
+curl -X POST -H "Content-Type: application/json" --data "{\"name\":\"john\",\"pass\":\"doe\"}" localhost:3000
+
+# XML
+curl -X POST -H "Content-Type: application/xml" --data "<login><name>john</name><pass>doe</pass></login>" localhost:3000
+
+# Form URL-Encoded
+curl -X POST -H "Content-Type: application/x-www-form-urlencoded" --data "name=john&pass=doe" localhost:3000
+
+# Multipart Form
+curl -X POST -F name=john -F pass=doe http://localhost:3000
+```
+
+### Form
 
 Binds the request form body to a struct.
 
-It is important to specify the correct struct tag based on the content type to be parsed. For example, if you want to parse a Form body with a field called Pass, you would use a struct field of `form:"pass"`.
+It is important to specify the correct struct tag based on the content type to be parsed. For example, if you want to parse a form body with a field called `Pass`, you would use a struct field with `form:"pass"`.
 
 ```go title="Signature"
 func (b *Bind) Form(out any) error
 ```
 
 ```go title="Example"
-// Field names should start with an uppercase letter
 type Person struct {
     Name string `form:"name"`
     Pass string `form:"pass"`
@@ -110,24 +108,25 @@ app.Post("/", func(c fiber.Ctx) error {
     
     // ...
 })
-
-// Run tests with the following curl commands
-
-// curl -X POST -H "Content-Type: application/x-www-form-urlencoded" --data "name=john&pass=doe" localhost:3000
 ```
 
-#### JSON
+Run tests with the following `curl` command:
 
-Binds the request json body to a struct.
+```bash
+curl -X POST -H "Content-Type: application/x-www-form-urlencoded" --data "name=john&pass=doe" localhost:3000
+```
 
-It is important to specify the correct struct tag based on the content type to be parsed. For example, if you want to parse a JSON body with a field called Pass, you would use a struct field of `json:"pass"`.
+### JSON
+
+Binds the request JSON body to a struct.
+
+It is important to specify the correct struct tag based on the content type to be parsed. For example, if you want to parse a JSON body with a field called `Pass`, you would use a struct field with `json:"pass"`.
 
 ```go title="Signature"
 func (b *Bind) JSON(out any) error
 ```
 
 ```go title="Example"
-// Field names should start with an uppercase letter
 type Person struct {
     Name string `json:"name"`
     Pass string `json:"pass"`
@@ -145,25 +144,25 @@ app.Post("/", func(c fiber.Ctx) error {
     
     // ...
 })
-
-// Run tests with the following curl commands
-
-// curl -X POST -H "Content-Type: application/json" --data "{\"name\":\"john\",\"pass\":\"doe\"}" localhost:3000
-
 ```
 
-#### MultipartForm
+Run tests with the following `curl` command:
+
+```bash
+curl -X POST -H "Content-Type: application/json" --data "{\"name\":\"john\",\"pass\":\"doe\"}" localhost:3000
+```
+
+### MultipartForm
 
 Binds the request multipart form body to a struct.
 
-It is important to specify the correct struct tag based on the content type to be parsed. For example, if you want to parse a MultipartForm body with a field called Pass, you would use a struct field of `form:"pass"`.
+It is important to specify the correct struct tag based on the content type to be parsed. For example, if you want to parse a multipart form body with a field called `Pass`, you would use a struct field with `form:"pass"`.
 
 ```go title="Signature"
 func (b *Bind) MultipartForm(out any) error
 ```
 
 ```go title="Example"
-// Field names should start with an uppercase letter
 type Person struct {
     Name string `form:"name"`
     Pass string `form:"pass"`
@@ -181,25 +180,25 @@ app.Post("/", func(c fiber.Ctx) error {
     
     // ...
 })
-
-// Run tests with the following curl commands
-
-// curl -X POST -H "Content-Type: multipart/form-data" -F "name=john" -F "pass=doe" localhost:3000
-
 ```
 
-#### XML
+Run tests with the following `curl` command:
 
-Binds the request xml form body to a struct.
+```bash
+curl -X POST -H "Content-Type: multipart/form-data" -F "name=john" -F "pass=doe" localhost:3000
+```
 
-It is important to specify the correct struct tag based on the content type to be parsed. For example, if you want to parse an XML body with a field called Pass, you would use a struct field of `xml:"pass"`.
+### XML
+
+Binds the request XML body to a struct.
+
+It is important to specify the correct struct tag based on the content type to be parsed. For example, if you want to parse an XML body with a field called `Pass`, you would use a struct field with `xml:"pass"`.
 
 ```go title="Signature"
 func (b *Bind) XML(out any) error
 ```
 
 ```go title="Example"
-// Field names should start with an uppercase letter
 type Person struct {
     Name string `xml:"name"`
     Pass string `xml:"pass"`
@@ -217,27 +216,28 @@ app.Post("/", func(c fiber.Ctx) error {
     
     // ...
 })
+```
 
-// Run tests with the following curl commands
+Run tests with the following `curl` command:
 
-// curl -X POST -H "Content-Type: application/xml" --data "<login><name>john</name><pass>doe</pass></login>" localhost:3000
+```bash
+curl -X POST -H "Content-Type: application/xml" --data "<login><name>john</name><pass>doe</pass></login>" localhost:3000
 ```
 
 ### Cookie
 
-This method is similar to [Body-Binding](#body), but for cookie parameters.
-It is important to use the struct tag "cookie". For example, if you want to parse a cookie with a field called Age, you would use a struct field of `cookie:"age"`.
+This method is similar to [Body Binding](#body), but for cookie parameters.  
+It is important to use the struct tag `cookie`. For example, if you want to parse a cookie with a field called `Age`, you would use a struct field with `cookie:"age"`.
 
 ```go title="Signature"
 func (b *Bind) Cookie(out any) error
 ```
 
 ```go title="Example"
-// Field names should start with an uppercase letter
 type Person struct {
-    Name     string  `cookie:"name"`
-    Age      int     `cookie:"age"`
-    Job      bool    `cookie:"job"`
+    Name string `cookie:"name"`
+    Age  int    `cookie:"age"`
+    Job  bool   `cookie:"job"`
 }
 
 app.Get("/", func(c fiber.Ctx) error {
@@ -247,29 +247,32 @@ app.Get("/", func(c fiber.Ctx) error {
         return err
     }
     
-    log.Println(p.Name)     // Joseph
-    log.Println(p.Age)      // 23
-    log.Println(p.Job)      // true
+    log.Println(p.Name)  // Joseph
+    log.Println(p.Age)   // 23
+    log.Println(p.Job)   // true
 })
-// Run tests with the following curl command
-// curl.exe --cookie "name=Joseph; age=23; job=true" http://localhost:8000/
+```
+
+Run tests with the following `curl` command:
+
+```bash
+curl --cookie "name=Joseph; age=23; job=true" http://localhost:8000/
 ```
 
 ### Header
 
-This method is similar to [Body-Binding](#body), but for request headers.
-It is important to use the struct tag "header". For example, if you want to parse a request header with a field called Pass, you would use a struct field of `header:"pass"`.
+This method is similar to [Body Binding](#body), but for request headers.  
+It is important to use the struct tag `header`. For example, if you want to parse a request header with a field called `Pass`, you would use a struct field with `header:"pass"`.
 
 ```go title="Signature"
 func (b *Bind) Header(out any) error
 ```
 
 ```go title="Example"
-// Field names should start with an uppercase letter
 type Person struct {
-    Name     string     `header:"name"`
-    Pass     string     `header:"pass"`
-    Products []string   `header:"products"`
+    Name     string   `header:"name"`
+    Pass     string   `header:"pass"`
+    Products []string `header:"products"`
 }
 
 app.Get("/", func(c fiber.Ctx) error {
@@ -281,30 +284,32 @@ app.Get("/", func(c fiber.Ctx) error {
     
     log.Println(p.Name)     // john
     log.Println(p.Pass)     // doe
-    log.Println(p.Products) // [shoe, hat]
+    log.Println(p.Products) // [shoe hat]
     
     // ...
 })
-// Run tests with the following curl command
+```
 
-// curl "http://localhost:3000/" -H "name: john" -H "pass: doe" -H "products: shoe,hat"
+Run tests with the following `curl` command:
+
+```bash
+curl "http://localhost:3000/" -H "name: john" -H "pass: doe" -H "products: shoe,hat"
 ```
 
 ### Query
 
-This method is similar to [Body-Binding](#body), but for query parameters.
-It is important to use the struct tag "query". For example, if you want to parse a query parameter with a field called Pass, you would use a struct field of `query:"pass"`.
+This method is similar to [Body Binding](#body), but for query parameters.  
+It is important to use the struct tag `query`. For example, if you want to parse a query parameter with a field called `Pass`, you would use a struct field with `query:"pass"`.
 
 ```go title="Signature"
 func (b *Bind) Query(out any) error
 ```
 
 ```go title="Example"
-// Field names should start with an uppercase letter
 type Person struct {
-    Name     string     `query:"name"`
-    Pass     string     `query:"pass"`
-    Products []string   `query:"products"`
+    Name     string   `query:"name"`
+    Pass     string   `query:"pass"`
+    Products []string `query:"products"`
 }
 
 app.Get("/", func(c fiber.Ctx) error {
@@ -314,40 +319,41 @@ app.Get("/", func(c fiber.Ctx) error {
         return err
     }
     
-    log.Println(p.Name)        // john
-    log.Println(p.Pass)        // doe
-    // fiber.Config{EnableSplittingOnParsers: false} - default
-    log.Println(p.Products)    // ["shoe,hat"]
-    // fiber.Config{EnableSplittingOnParsers: true}
+    log.Println(p.Name)     // john
+    log.Println(p.Pass)     // doe
+    // Depending on fiber.Config{EnableSplittingOnParsers: false} - default
+    log.Println(p.Products) // ["shoe,hat"]
+    // With fiber.Config{EnableSplittingOnParsers: true}
     // log.Println(p.Products) // ["shoe", "hat"]
-    
     
     // ...
 })
-// Run tests with the following curl command
+```
 
-// curl "http://localhost:3000/?name=john&pass=doe&products=shoe,hat"
+Run tests with the following `curl` command:
+
+```bash
+curl "http://localhost:3000/?name=john&pass=doe&products=shoe,hat"
 ```
 
 :::info
-For more parser settings please look here [Config](fiber.md#enablesplittingonparsers)
+For more parser settings, please refer to [Config](fiber.md#enablesplittingonparsers)
 :::
 
 ### RespHeader
 
-This method is similar to [Body-Binding](#body), but for response headers.
-It is important to use the struct tag "respHeader". For example, if you want to parse a request header with a field called Pass, you would use a struct field of `respHeader:"pass"`.
+This method is similar to [Body Binding](#body), but for response headers.
+It is important to use the struct tag `respHeader`. For example, if you want to parse a response header with a field called `Pass`, you would use a struct field with `respHeader:"pass"`.
 
 ```go title="Signature"
-func (b *Bind) Header(out any) error
+func (b *Bind) RespHeader(out any) error
 ```
 
 ```go title="Example"
-// Field names should start with an uppercase letter
 type Person struct {
-    Name     string     `respHeader:"name"`
-    Pass     string     `respHeader:"pass"`
-    Products []string   `respHeader:"products"`
+    Name     string   `respHeader:"name"`
+    Pass     string   `respHeader:"pass"`
+    Products []string `respHeader:"products"`
 }
 
 app.Get("/", func(c fiber.Ctx) error {
@@ -359,18 +365,22 @@ app.Get("/", func(c fiber.Ctx) error {
     
     log.Println(p.Name)     // john
     log.Println(p.Pass)     // doe
-    log.Println(p.Products) // [shoe, hat]
+    log.Println(p.Products) // [shoe hat]
     
     // ...
 })
-// Run tests with the following curl command
+```
 
-// curl "http://localhost:3000/" -H "name: john" -H "pass: doe" -H "products: shoe,hat"
+Run tests with the following `curl` command:
+
+```bash
+curl "http://localhost:3000/" -H "name: john" -H "pass: doe" -H "products: shoe,hat"
 ```
 
 ### URI
 
-This method is similar to [Body-Binding](#body), but for path parameters. It is important to use the struct tag "uri". For example, if you want to parse a path parameter with a field called Pass, you would use a struct field of uri:"pass"
+This method is similar to [Body Binding](#body), but for path parameters.  
+It is important to use the struct tag `uri`. For example, if you want to parse a path parameter with a field called `Pass`, you would use a struct field with `uri:"pass"`.
 
 ```go title="Signature"
 func (b *Bind) URI(out any) error
@@ -379,20 +389,24 @@ func (b *Bind) URI(out any) error
 ```go title="Example"
 // GET http://example.com/user/111
 app.Get("/user/:id", func(c fiber.Ctx) error {
-    param := struct {ID uint `uri:"id"`}{}
+    param := struct {
+        ID uint `uri:"id"`
+    }{}
     
-    c.Bind().URI(&param) // "{"id": 111}"
+    if err := c.Bind().URI(&param); err != nil {
+        return err
+    }
     
     // ...
+    return c.SendString(fmt.Sprintf("User ID: %d", param.ID))
 })
-
 ```
 
 ## Custom
 
 To use custom binders, you have to use this method.
 
-You can register them from [RegisterCustomBinder](./app.md#registercustombinder) method of Fiber instance.
+You can register them using the [RegisterCustomBinder](./app.md#registercustombinder) method of the Fiber instance.
 
 ```go title="Signature"
 func (b *Bind) Custom(name string, dest any) error
@@ -402,56 +416,65 @@ func (b *Bind) Custom(name string, dest any) error
 app := fiber.New()
 
 // My custom binder
-customBinder := &customBinder{}
-// Name of custom binder, which will be used as Bind().Custom("name")
-func (*customBinder) Name() string {
+type customBinder struct{}
+
+func (cb *customBinder) Name() string {
     return "custom"
 }
-// Is used in the Body Bind method to check if the binder should be used for custom mime types
-func (*customBinder) MIMETypes() []string {
+
+func (cb *customBinder) MIMETypes() []string {
     return []string{"application/yaml"}
 }
-// Parse the body and bind it to the out interface
-func (*customBinder) Parse(c Ctx, out any) error {
-    // parse yaml body
+
+func (cb *customBinder) Parse(c fiber.Ctx, out any) error {
+    // parse YAML body
     return yaml.Unmarshal(c.Body(), out)
 }
-// Register custom binder
-app.RegisterCustomBinder(customBinder)
 
-// curl -X POST http://localhost:3000/custom -H "Content-Type: application/yaml" -d "name: John"
-app.Post("/custom", func(c Ctx) error {
+// Register custom binder
+app.RegisterCustomBinder(&customBinder{})
+
+type User struct {
+    Name string `yaml:"name"`
+}
+
+app.Post("/custom", func(c fiber.Ctx) error {
     var user User
-    // output: {Name:John}
-    // Custom binder is used by the name
+    // Use Custom binder by name
     if err := c.Bind().Custom("custom", &user); err != nil {
         return err
     }
-    // ...
     return c.JSON(user)
 })
 ```
 
-Internally they are also used in the [Body](#body) method.
-For this the MIMETypes method is used to check if the custom binder should be used for the given content type.
+Internally, custom binders are also used in the [Body](#body) method.  
+The `MIMETypes` method is used to check if the custom binder should be used for the given content type.
 
 ## Options
 
-For more control over the error handling, you can use the following methods.
+For more control over error handling, you can use the following methods.
 
 ### Must
 
-If you want to handle binder errors automatically, you can use Must.
-If there's an error it'll return error and 400 as HTTP status.
+If you want to handle binder errors automatically, you can use `Must`.  
+If there's an error, it will return the error and set HTTP status to `400 Bad Request`.
 
 ```go title="Signature"
 func (b *Bind) Must() *Bind
 ```
 
+```go title="Example"
+app.Get("/coffee", func(c fiber.Ctx) error {
+    // => HTTP - GET 301 /teapot 
+    return c.Redirect().Status(fiber.StatusMovedPermanently).To("/teapot")
+})
+```
+
 ### Should
 
-To handle binder errors manually, you can prefer Should method.
-It's default behavior of binder.
+To handle binder errors manually, you can use the `Should` method.  
+It's the default behavior of the binder.
 
 ```go title="Signature"
 func (b *Bind) Should() *Bind
@@ -459,7 +482,7 @@ func (b *Bind) Should() *Bind
 
 ## SetParserDecoder
 
-Allow you to config BodyParser/QueryParser decoder, base on schema's options, providing possibility to add custom type for parsing.
+Allows you to configure the BodyParser/QueryParser decoder based on schema options, providing the possibility to add custom types for parsing.
 
 ```go title="Signature"
 func SetParserDecoder(parserConfig fiber.ParserConfig{
@@ -477,34 +500,34 @@ func SetParserDecoder(parserConfig fiber.ParserConfig{
 
 type CustomTime time.Time
 
-// String() returns the time in string
+// String returns the time in string format
 func (ct *CustomTime) String() string {
     t := time.Time(*ct).String()
-        return t
-    }
-    
-    // Register the converter for CustomTime type format as 2006-01-02
-    var timeConverter = func(value string) reflect.Value {
-    fmt.Println("timeConverter", value)
+    return t
+}
+
+// Converter for CustomTime type with format "2006-01-02"
+var timeConverter = func(value string) reflect.Value {
+    fmt.Println("timeConverter:", value)
     if v, err := time.Parse("2006-01-02", value); err == nil {
-        return reflect.ValueOf(v)
+        return reflect.ValueOf(CustomTime(v))
     }
     return reflect.Value{}
 }
 
 customTime := fiber.ParserType{
-    Customtype: CustomTime{},
+    CustomType: CustomTime{},
     Converter:  timeConverter,
 }
 
-// Add setting to the Decoder
+// Add custom type to the Decoder settings
 fiber.SetParserDecoder(fiber.ParserConfig{
     IgnoreUnknownKeys: true,
     ParserType:        []fiber.ParserType{customTime},
     ZeroEmpty:         true,
 })
 
-// Example to use CustomType, you pause custom time format not in RFC3339
+// Example using CustomTime with non-RFC3339 format
 type Demo struct {
     Date  CustomTime `form:"date" query:"date"`
     Title string     `form:"title" query:"title"`
@@ -513,31 +536,38 @@ type Demo struct {
 
 app.Post("/body", func(c fiber.Ctx) error {
     var d Demo
-    c.BodyParser(&d)
-    fmt.Println("d.Date", d.Date.String())
+    if err := c.Bind().Body(&d); err != nil {
+        return err
+    }
+    fmt.Println("d.Date:", d.Date.String())
     return c.JSON(d)
 })
 
 app.Get("/query", func(c fiber.Ctx) error {
     var d Demo
-    c.QueryParser(&d)
-    fmt.Println("d.Date", d.Date.String())
+    if err := c.Bind().Query(&d); err != nil {
+        return err
+    }
+    fmt.Println("d.Date:", d.Date.String())
     return c.JSON(d)
 })
 
-// curl -X POST -F title=title -F body=body -F date=2021-10-20 http://localhost:3000/body
+// Run tests with the following curl commands:
 
-// curl -X GET "http://localhost:3000/query?title=title&body=body&date=2021-10-20"
+# Body Binding
+curl -X POST -F title=title -F body=body -F date=2021-10-20 http://localhost:3000/body
 
+# Query Binding
+curl -X GET "http://localhost:3000/query?title=title&body=body&date=2021-10-20"
 ```
 
 ## Validation
 
 Validation is also possible with the binding methods. You can specify your validation rules using the `validate` struct tag.
 
-Specify your struct validator in the [config](./fiber.md#structvalidator)
+Specify your struct validator in the [config](./fiber.md#structvalidator).
 
-Setup your validator in the config:
+### Setup Your Validator in the Config
 
 ```go title="Example"
 import "github.com/go-playground/validator/v10"
@@ -546,18 +576,18 @@ type structValidator struct {
     validate *validator.Validate
 }
 
-// Validator needs to implement the Validate method
+// Validate method implementation
 func (v *structValidator) Validate(out any) error {
     return v.validate.Struct(out)
 }
 
-// Setup your validator in the config
+// Setup your validator in the Fiber config
 app := fiber.New(fiber.Config{
     StructValidator: &structValidator{validate: validator.New()},
 })
 ```
 
-Usage of the validation in the binding methods:
+### Usage of Validation in Binding Methods
 
 ```go title="Example"
 type Person struct {
@@ -568,7 +598,7 @@ type Person struct {
 app.Post("/", func(c fiber.Ctx) error {
     p := new(Person)
     
-    if err := c.Bind().JSON(p); err != nil {// <- here you receive the validation errors
+    if err := c.Bind().JSON(p); err != nil { // Receives validation errors
         return err
     }
 })
@@ -578,19 +608,19 @@ app.Post("/", func(c fiber.Ctx) error {
 
 You can set default values for fields in the struct by using the `default` struct tag. Supported types:
 
-- bool
-- float variants (float32, float64)
-- int variants (int, int8, int16, int32, int64)
-- uint variants (uint, uint8, uint16, uint32, uint64)
-- string
-- a slice of the above types. As shown in the example above, **| should be used to separate between slice items**.
-- a pointer to one of the above types **(pointer to slice and slice of pointers are not supported)**.
+- `bool`
+- Float variants (`float32`, `float64`)
+- Int variants (`int`, `int8`, `int16`, `int32`, `int64`)
+- Uint variants (`uint`, `uint8`, `uint16`, `uint32`, `uint64`)
+- `string`
+- A slice of the above types. Use `|` to separate slice items.
+- A pointer to one of the above types (**pointers to slices and slices of pointers are not supported**).
 
 ```go title="Example"
 type Person struct {
-    Name     string     `query:"name,default:john"`
-    Pass     string     `query:"pass"`
-    Products []string   `query:"products,default:shoe|hat"`
+    Name     string   `query:"name,default=John"`
+    Pass     string   `query:"pass"`
+    Products []string `query:"products,default=shoe|hat"`
 }
 
 app.Get("/", func(c fiber.Ctx) error {
@@ -600,13 +630,16 @@ app.Get("/", func(c fiber.Ctx) error {
         return err
     }
 
-    log.Println(p.Name)        // john
-    log.Println(p.Pass)        // doe
-    log.Println(p.Products)    // ["shoe,hat"]    
+    log.Println(p.Name)     // John
+    log.Println(p.Pass)     // doe
+    log.Println(p.Products) // ["shoe", "hat"]
     
     // ...
 })
-// Run tests with the following curl command
+```
 
-// curl "http://localhost:3000/?pass=doe"
+Run tests with the following `curl` command:
+
+```bash
+curl "http://localhost:3000/?pass=doe"
 ```

@@ -17,18 +17,28 @@ import RoutingHandler from './../partials/routing/handler.md';
 
 ### Mounting
 
-You can Mount Fiber instance using the [`app.Use`](./app.md#use) method similar to [`express`](https://expressjs.com/en/api.html#router.use).
+You can mount a Fiber instance using the [`app.Use`](./app.md#use) method, similar to [`Express`](https://expressjs.com/en/api.html#router.use).
 
-```go title="Examples"
+```go title="Example"
+package main
+
+import (
+    "log"
+
+    "github.com/gofiber/fiber/v3"
+)
+
 func main() {
     app := fiber.New()
     micro := fiber.New()
+    
+    // Mount the micro app on the "/john" route
     app.Use("/john", micro) // GET /john/doe -> 200 OK
-
+    
     micro.Get("/doe", func(c fiber.Ctx) error {
         return c.SendStatus(fiber.StatusOK)
     })
-
+    
     log.Fatal(app.Listen(":3000"))
 }
 ```
@@ -40,8 +50,16 @@ The `MountPath` property contains one or more path patterns on which a sub-app w
 ```go title="Signature"
 func (app *App) MountPath() string
 ```
+    
+```go title="Example"
+package main
 
-```go title="Examples"
+import (
+    "fmt"
+
+    "github.com/gofiber/fiber/v3"
+)
+
 func main() {
     app := fiber.New()
     one := fiber.New()
@@ -51,16 +69,17 @@ func main() {
     two.Use("/three", three)
     one.Use("/two", two)
     app.Use("/one", one)
-  
-    one.MountPath()   // "/one"
-    two.MountPath()   // "/one/two"
-    three.MountPath() // "/one/two/three"
-    app.MountPath()   // ""
+    
+    fmt.Println("Mount paths:")
+    fmt.Println("one.MountPath():", one.MountPath())       // "/one"
+    fmt.Println("two.MountPath():", two.MountPath())       // "/one/two"
+    fmt.Println("three.MountPath():", three.MountPath())   // "/one/two/three"
+    fmt.Println("app.MountPath():", app.MountPath())       // ""
 }
 ```
 
 :::caution
-Mounting order is important for MountPath. If you want to get mount paths properly, you should start mounting from the deepest app.
+Mounting order is important for `MountPath`. To get mount paths properly, you should start mounting from the deepest app.
 :::
 
 ### Group
@@ -70,22 +89,34 @@ You can group routes by creating a `*Group` struct.
 ```go title="Signature"
 func (app *App) Group(prefix string, handlers ...Handler) Router
 ```
+    
+```go title="Example"
+package main
 
-```go title="Examples"
+import (
+    "log"
+
+    "github.com/gofiber/fiber/v3"
+)
+
 func main() {
-  app := fiber.New()
+    app := fiber.New()
 
-  api := app.Group("/api", handler)  // /api
+    api := app.Group("/api", handler)  // /api
 
-  v1 := api.Group("/v1", handler)   // /api/v1
-  v1.Get("/list", handler)          // /api/v1/list
-  v1.Get("/user", handler)          // /api/v1/user
+    v1 := api.Group("/v1", handler)    // /api/v1
+    v1.Get("/list", handler)           // /api/v1/list
+    v1.Get("/user", handler)           // /api/v1/user
 
-  v2 := api.Group("/v2", handler)   // /api/v2
-  v2.Get("/list", handler)          // /api/v2/list
-  v2.Get("/user", handler)          // /api/v2/user
+    v2 := api.Group("/v2", handler)    // /api/v2
+    v2.Get("/list", handler)           // /api/v2/list
+    v2.Get("/user", handler)           // /api/v2/user
 
-  log.Fatal(app.Listen(":3000"))
+    log.Fatal(app.Listen(":3000"))
+}
+
+func handler(c fiber.Ctx) error {
+    return c.SendString("Handler response")
 }
 ```
 
@@ -104,64 +135,73 @@ func (app *App) Route(path string) Register
 
 ```go
 type Register interface {
-  All(handler Handler, middleware ...Handler) Register
-  Get(handler Handler, middleware ...Handler) Register
-  Head(handler Handler, middleware ...Handler) Register
-  Post(handler Handler, middleware ...Handler) Register
-  Put(handler Handler, middleware ...Handler) Register
-  Delete(handler Handler, middleware ...Handler) Register
-  Connect(handler Handler, middleware ...Handler) Register
-  Options(handler Handler, middleware ...Handler) Register
-  Trace(handler Handler, middleware ...Handler) Register
-  Patch(handler Handler, middleware ...Handler) Register
+    All(handler Handler, middleware ...Handler) Register
+    Get(handler Handler, middleware ...Handler) Register
+    Head(handler Handler, middleware ...Handler) Register
+    Post(handler Handler, middleware ...Handler) Register
+    Put(handler Handler, middleware ...Handler) Register
+    Delete(handler Handler, middleware ...Handler) Register
+    Connect(handler Handler, middleware ...Handler) Register
+    Options(handler Handler, middleware ...Handler) Register
+    Trace(handler Handler, middleware ...Handler) Register
+    Patch(handler Handler, middleware ...Handler) Register
 
-  Add(methods []string, handler Handler, middleware ...Handler) Register
+    Add(methods []string, handler Handler, middleware ...Handler) Register
 
-  Route(path string) Register
+    Route(path string) Register
 }
 ```
 
 </details>
 
-```go title="Examples"
+```go title="Example"
+package main
+
+import (
+    "log"
+
+    "github.com/gofiber/fiber/v3"
+)
+
 func main() {
-  app := fiber.New()
+    app := fiber.New()
 
-  // use `Route` as chainable route declaration method
-  app.Route("/test").Get(func(c fiber.Ctx) error {
-    return c.SendString("GET /test")
-  })
-  
-  app.Route("/events").all(func(c fiber.Ctx) error {
-    // runs for all HTTP verbs first
-    // think of it as route specific middleware!
-  })
-  .get(func(c fiber.Ctx) error {
-    return c.SendString("GET /events")
-  })
-  .post(func(c fiber.Ctx) error {
-    // maybe add a new event...
-  })
-  
-  // combine multiple routes
-  app.Route("/v2").Route("/user").Get(func(c fiber.Ctx) error {
-    return c.SendString("GET /v2/user")
-  })
-  
-  // use multiple methods
-  app.Route("/api").Get(func(c fiber.Ctx) error {
-    return c.SendString("GET /api")
-  }).Post(func(c fiber.Ctx) error {
-    return c.SendString("POST /api")
-  })
+    // Use `Route` as a chainable route declaration method
+    app.Route("/test").Get(func(c fiber.Ctx) error {
+        return c.SendString("GET /test")
+    })
 
-  log.Fatal(app.Listen(":3000"))
+    app.Route("/events").All(func(c fiber.Ctx) error {
+        // Runs for all HTTP verbs first
+        // Think of it as route-specific middleware!
+    }).
+    Get(func(c fiber.Ctx) error {
+        return c.SendString("GET /events")
+    }).
+    Post(func(c fiber.Ctx) error {
+        // Maybe add a new event...
+        return c.SendString("POST /events")
+    })
+
+    // Combine multiple routes
+    app.Route("/v2").Route("/user").Get(func(c fiber.Ctx) error {
+        return c.SendString("GET /v2/user")
+    })
+
+    // Use multiple methods
+    app.Route("/api").Get(func(c fiber.Ctx) error {
+        return c.SendString("GET /api")
+    }).Post(func(c fiber.Ctx) error {
+        return c.SendString("POST /api")
+    })
+
+    log.Fatal(app.Listen(":3000"))
 }
 ```
 
 ### HandlersCount
 
-This method returns the amount of registered handlers.
+This method returns the number of registered handlers.
 
 ```go title="Signature"
 func (app *App) HandlersCount() uint32
@@ -169,14 +209,21 @@ func (app *App) HandlersCount() uint32
 
 ### Stack
 
-This method returns the original router stack
+This method returns the original router stack.
 
 ```go title="Signature"
 func (app *App) Stack() [][]*Route
 ```
 
-```go title="Examples"
-var handler = func(c fiber.Ctx) error { return nil }
+```go title="Example"
+package main
+
+import (
+    "encoding/json"
+    "log"
+
+    "github.com/gofiber/fiber/v3"
+)
 
 func main() {
     app := fiber.New()
@@ -184,10 +231,10 @@ func main() {
     app.Get("/john/:age", handler)
     app.Post("/register", handler)
 
-    data, _ := json.MarshalIndent(app.Stack(), "", "  ")
+    data, _err_ := json.MarshalIndent(app.Stack(), "", "  ")
     fmt.Println(string(data))
 
-    app.Listen(":3000")
+    log.Fatal(app.Listen(":3000"))
 }
 ```
 
@@ -228,25 +275,32 @@ func main() {
 
 ### Name
 
-This method assigns the name of latest created route.
+This method assigns the name to the latest created route.
 
 ```go title="Signature"
 func (app *App) Name(name string) Router
 ```
 
-```go title="Examples"
-var handler = func(c fiber.Ctx) error { return nil }
+```go title="Example"
+package main
+
+import (
+    "encoding/json"
+    "fmt"
+    "log"
+
+    "github.com/gofiber/fiber/v3"
+)
 
 func main() {
+    var handler = func(c fiber.Ctx) error { return nil }
+
     app := fiber.New()
 
     app.Get("/", handler)
     app.Name("index")
-
     app.Get("/doe", handler).Name("home")
-
     app.Trace("/tracer", handler).Name("tracert")
-
     app.Delete("/delete", handler).Name("delete")
 
     a := app.Group("/a")
@@ -255,10 +309,9 @@ func main() {
     a.Get("/test", handler).Name("test")
 
     data, _ := json.MarshalIndent(app.Stack(), "", "  ")
-    fmt.Print(string(data))
+    fmt.Println(string(data))
 
-    app.Listen(":3000")
-
+    log.Fatal(app.Listen(":3000"))
 }
 ```
 
@@ -335,25 +388,34 @@ func main() {
 
 ### GetRoute
 
-This method gets the route by name.
+This method retrieves a route by its name.
 
 ```go title="Signature"
 func (app *App) GetRoute(name string) Route
 ```
 
-```go title="Examples"
-var handler = func(c fiber.Ctx) error { return nil }
+```go title="Example"
+package main
+
+import (
+    "encoding/json"
+    "fmt"
+    "log"
+
+    "github.com/gofiber/fiber/v3"
+)
 
 func main() {
     app := fiber.New()
 
     app.Get("/", handler).Name("index")
     
-    data, _ := json.MarshalIndent(app.GetRoute("index"), "", "  ")
-    fmt.Print(string(data))
+    route := app.GetRoute("index")
 
+    data, _ := json.MarshalIndent(route, "", "  ")
+    fmt.Println(string(data))
 
-    app.Listen(":3000")
+    log.Fatal(app.Listen(":3000"))
 }
 ```
 
@@ -373,22 +435,38 @@ func main() {
 
 ### GetRoutes
 
-This method gets all routes.
+This method retrieves all routes.
 
 ```go title="Signature"
 func (app *App) GetRoutes(filterUseOption ...bool) []Route
 ```
 
-When filterUseOption equal to true, it will filter the routes registered by the middleware.
+When `filterUseOption` is set to `true`, it filters out routes registered by middleware.
 
-```go title="Examples"
+```go title="Example"
+package main
+
+import (
+    "encoding/json"
+    "fmt"
+    "log"
+
+    "github.com/gofiber/fiber/v3"
+)
+
 func main() {
     app := fiber.New()
-    app.Post("/", func (c fiber.Ctx) error {
+
+    app.Post("/", func(c fiber.Ctx) error {
         return c.SendString("Hello, World!")
     }).Name("index")
-    data, _ := json.MarshalIndent(app.GetRoutes(true), "", "  ")
-    fmt.Print(string(data))
+
+    routes := app.GetRoutes(true)
+
+    data, _ := json.MarshalIndent(routes, "", "  ")
+    fmt.Println(string(data))
+
+    log.Fatal(app.Listen(":3000"))
 }
 ```
 
@@ -410,7 +488,7 @@ func main() {
 
 ## Config
 
-Config returns the [app config](./fiber.md#config) as value \( read-only \).
+`Config` returns the [app config](./fiber.md#config) as a value (read-only).
 
 ```go title="Signature"
 func (app *App) Config() Config
@@ -418,7 +496,7 @@ func (app *App) Config() Config
 
 ## Handler
 
-Handler returns the server handler that can be used to serve custom [`\*fasthttp.RequestCtx`](https://pkg.go.dev/github.com/valyala/fasthttp#RequestCtx) requests.
+`Handler` returns the server handler that can be used to serve custom [`*fasthttp.RequestCtx`](https://pkg.go.dev/github.com/valyala/fasthttp#RequestCtx) requests.
 
 ```go title="Signature"
 func (app *App) Handler() fasthttp.RequestHandler
@@ -426,7 +504,7 @@ func (app *App) Handler() fasthttp.RequestHandler
 
 ## ErrorHandler
 
-Errorhandler executes the process which was defined for the application in case of errors, this is used in some cases in middlewares.
+`ErrorHandler` executes the process defined for the application in case of errors. This is used in some cases in middlewares.
 
 ```go title="Signature"
 func (app *App) ErrorHandler(ctx Ctx, err error) error
@@ -434,15 +512,23 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error
 
 ## NewCtxFunc
 
-NewCtxFunc allows to customize the ctx struct as we want.
+`NewCtxFunc` allows you to customize the `ctx` struct as needed.
 
 ```go title="Signature"
 func (app *App) NewCtxFunc(function func(app *App) CustomCtx)
 ```
 
-```go title="Examples"
+```go title="Example"
+package main
+
+import (
+    "fmt"
+
+    "github.com/gofiber/fiber/v3"
+)
+
 type CustomCtx struct {
-    DefaultCtx
+    fiber.DefaultCtx
 }
 
 // Custom method
@@ -450,125 +536,156 @@ func (c *CustomCtx) Params(key string, defaultValue ...string) string {
     return "prefix_" + c.DefaultCtx.Params(key)
 }
 
-app := New()
-app.NewCtxFunc(func(app *fiber.App) fiber.CustomCtx {
-    return &CustomCtx{
-        DefaultCtx: *NewDefaultCtx(app),
-    }
-})
-// curl http://localhost:3000/123
-app.Get("/:id", func(c Ctx) error {
-    // use custom method - output: prefix_123
-    return c.SendString(c.Params("id"))
-})
+func main() {
+    app := fiber.New()
+
+    app.NewCtxFunc(func(app *fiber.App) fiber.CustomCtx {
+        return &CustomCtx{
+            DefaultCtx: *fiber.NewDefaultCtx(app),
+        }
+    })
+
+    app.Get("/:id", func(c fiber.Ctx) error {
+        // Use custom method - output: prefix_123
+        return c.SendString(c.Params("id"))
+    })
+
+    log.Fatal(app.Listen(":3000"))
+}
 ```
 
 ## RegisterCustomBinder
 
-You can register custom binders to use as [`Bind().Custom("name")`](bind.md#custom).
-They should be compatible with CustomBinder interface.
+You can register custom binders to use with [`Bind().Custom("name")`](bind.md#custom). They should be compatible with the `CustomBinder` interface.
 
 ```go title="Signature"
 func (app *App) RegisterCustomBinder(binder CustomBinder)
 ```
 
-```go title="Examples"
-app := fiber.New()
+```go title="Example"
+package main
 
-// My custom binder
-customBinder := &customBinder{}
-// Name of custom binder, which will be used as Bind().Custom("name")
-func (*customBinder) Name() string {
+import (
+    "log"
+
+    "github.com/gofiber/fiber/v3"
+    "gopkg.in/yaml.v2"
+)
+
+type User struct {
+    Name string `yaml:"name"`
+}
+
+type customBinder struct{}
+
+func (cb *customBinder) Name() string {
     return "custom"
 }
-// Is used in the Body Bind method to check if the binder should be used for custom mime types
-func (*customBinder) MIMETypes() []string {
+
+func (cb *customBinder) MIMETypes() []string {
     return []string{"application/yaml"}
 }
-// Parse the body and bind it to the out interface
-func (*customBinder) Parse(c Ctx, out any) error {
-    // parse yaml body
+
+func (cb *customBinder) Parse(c fiber.Ctx, out any) error {
+    // Parse YAML body
     return yaml.Unmarshal(c.Body(), out)
 }
-// Register custom binder
-app.RegisterCustomBinder(customBinder)
 
-// curl -X POST http://localhost:3000/custom -H "Content-Type: application/yaml" -d "name: John"
-app.Post("/custom", func(c Ctx) error {
-    var user User
-    // output: {Name:John}
-    // Custom binder is used by the name
-    if err := c.Bind().Custom("custom", &user); err != nil {
-        return err
-    }
-    // ...
-    return c.JSON(user)
-})
-// curl -X POST http://localhost:3000/normal -H "Content-Type: application/yaml" -d "name: Doe"
-app.Post("/normal", func(c Ctx) error {
-    var user User
-    // output: {Name:Doe}
-    // Custom binder is used by the mime type
-    if err := c.Bind().Body(&user); err != nil {
-        return err
-    }
-    // ...
-    return c.JSON(user)
-})
+func main() {
+    app := fiber.New()
+
+    // Register custom binder
+    app.RegisterCustomBinder(&customBinder{})
+
+    app.Post("/custom", func(c fiber.Ctx) error {
+        var user User
+        // Use Custom binder by name
+        if err := c.Bind().Custom("custom", &user); err != nil {
+            return err
+        }
+        return c.JSON(user)
+    })
+
+    app.Post("/normal", func(c fiber.Ctx) error {
+        var user User
+        // Custom binder is used by the MIME type
+        if err := c.Bind().Body(&user); err != nil {
+            return err
+        }
+        return c.JSON(user)
+    })
+
+    log.Fatal(app.Listen(":3000"))
+}
 ```
 
 ## RegisterCustomConstraint
 
-RegisterCustomConstraint allows to register custom constraint.
-
+`RegisterCustomConstraint` allows you to register custom constraints.
+    
 ```go title="Signature"
 func (app *App) RegisterCustomConstraint(constraint CustomConstraint)
 ```
 
-See [Custom Constraint](../guide/routing.md#custom-constraint) section for more information.
+See the [Custom Constraint](../guide/routing.md#custom-constraint) section for more information.
 
 ## SetTLSHandler
 
-Use SetTLSHandler to set [ClientHelloInfo](https://datatracker.ietf.org/doc/html/rfc8446#section-4.1.2) when using TLS with Listener.
-
+Use `SetTLSHandler` to set [`ClientHelloInfo`](https://datatracker.ietf.org/doc/html/rfc8446#section-4.1.2) when using TLS with a `Listener`.
+    
 ```go title="Signature"
 func (app *App) SetTLSHandler(tlsHandler *TLSHandler)
 ```
 
 ## Test
 
-Testing your application is done with the **Test** method. Use this method for creating `_test.go` files or when you need to debug your routing logic. The default timeout is `1s` if you want to disable a timeout altogether, pass `-1` as a second argument.
+Testing your application is done with the `Test` method. Use this method for creating `_test.go` files or when you need to debug your routing logic. The default timeout is `1s`; to disable a timeout altogether, pass `-1` as the second argument.
 
 ```go title="Signature"
 func (app *App) Test(req *http.Request, msTimeout ...int) (*http.Response, error)
 ```
 
-```go title="Examples"
-// Create route with GET method for test:
-app.Get("/", func(c fiber.Ctx) error {
-  fmt.Println(c.BaseURL())              // => http://google.com
-  fmt.Println(c.Get("X-Custom-Header")) // => hi
+```go title="Example"
+package main
 
-  return c.SendString("hello, World!")
-})
+import (
+    "fmt"
+    "io"
+    "log"
+    "net/http"
+    "net/http/httptest"
 
-// http.Request
-req := httptest.NewRequest("GET", "http://google.com", nil)
-req.Header.Set("X-Custom-Header", "hi")
+    "github.com/gofiber/fiber/v3"
+)
 
-// http.Response
-resp, _ := app.Test(req)
+func main() {
+    app := fiber.New()
+    
+    // Create route with GET method for test:
+    app.Get("/", func(c fiber.Ctx) error {
+        fmt.Println(c.BaseURL())              // => http://google.com
+        fmt.Println(c.Get("X-Custom-Header")) // => hi
+        return c.SendString("hello, World!")
+    })
 
-// Do something with results:
-if resp.StatusCode == fiber.StatusOK {
-  body, _ := io.ReadAll(resp.Body)
-  fmt.Println(string(body)) // => Hello, World!
+    // Create http.Request
+    req := httptest.NewRequest("GET", "http://google.com", nil)
+    req.Header.Set("X-Custom-Header", "hi")
+
+    // Perform the test
+    resp, _ := app.Test(req)
+
+    // Do something with the results:
+    if resp.StatusCode == fiber.StatusOK {
+        body, _ := io.ReadAll(resp.Body)
+        fmt.Println(string(body)) // => hello, World!
+    }
 }
 ```
 
 ## Hooks
 
-Hooks is a method to return [hooks](./hooks.md) property.
+`Hooks` is a method to return the [hooks](./hooks.md) property.
 
 ```go title="Signature"
 func (app *App) Hooks() *Hooks
@@ -576,7 +693,7 @@ func (app *App) Hooks() *Hooks
 
 ## RebuildTree
 
-The RebuildTree method is designed to rebuild the route tree and enable dynamic route registration. It returns a pointer to the App instance.
+The `RebuildTree` method is designed to rebuild the route tree and enable dynamic route registration. It returns a pointer to the `App` instance.
 
 ```go title="Signature"
 func (app *App) RebuildTree() *App
@@ -588,16 +705,32 @@ func (app *App) RebuildTree() *App
 
 Here’s an example of how to define and register routes dynamically:
 
-```go
-app.Get("/define", func(c Ctx) error {  // Define a new route dynamically
-    app.Get("/dynamically-defined", func(c Ctx) error {  // Adding a dynamically defined route
-        return c.SendStatus(http.StatusOK)
+```go title="Example"
+package main
+
+import (
+    "log"
+
+    "github.com/gofiber/fiber/v3"
+)
+
+func main() {
+    app := fiber.New()
+
+    app.Get("/define", func(c fiber.Ctx) error {
+        // Define a new route dynamically
+        app.Get("/dynamically-defined", func(c fiber.Ctx) error {
+            return c.SendStatus(fiber.StatusOK)
+        })
+
+        // Rebuild the route tree to register the new route
+        app.RebuildTree()
+
+        return c.SendStatus(fiber.StatusOK)
     })
 
-    app.RebuildTree()  // Rebuild the route tree to register the new route
-
-    return c.SendStatus(http.StatusOK)
-})
+    log.Fatal(app.Listen(":3000"))
+}
 ```
 
-In this example, a new route is defined and then `RebuildTree()` is called to make sure the new route is registered and available.
+In this example, a new route is defined and then `RebuildTree()` is called to ensure the new route is registered and available.
