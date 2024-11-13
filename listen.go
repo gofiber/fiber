@@ -187,6 +187,7 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 		app.SetTLSHandler(tlsHandler)
 	} else if cfg.AutoCertManager != nil {
 		tlsConfig = &tls.Config{
+			MinVersion:     tls.VersionTLS12,
 			GetCertificate: cfg.AutoCertManager.GetCertificate,
 			NextProtos:     []string{"http/1.1", "acme-tls/1"},
 		}
