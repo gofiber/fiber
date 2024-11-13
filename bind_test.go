@@ -1118,8 +1118,8 @@ func Test_Bind_Body_Form_Embedded(b *testing.T) {
 
 	require.NoError(b, err)
 	require.Equal(b, []string{"long", "john"}, d.Strings)
-	require.Equal(b, []string{"john", "long"}, d.EmbededStrings)
-	require.Equal(b, "johny,walker", d.EmbededString)
+	require.Equal(b, []string{"john", "long"}, d.EmbeddedStrings)
+	require.Equal(b, "johny,walker", d.EmbeddedString)
 	require.Equal(b, "john,long", d.SomeString)
 	require.Equal(b, "long,john", d.SomeOtherString)
 }
