@@ -1097,16 +1097,16 @@ func Test_Bind_Body_Form_Embedded(b *testing.T) {
 
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	type EmbededDemo struct {
-		EmbededStrings []string
-		EmbededString  string
+	type EmbeddedDemo struct {
+		EmbeddedStrings []string `form:"embedded_strings"`
+		EmbeddedString  string   `form:"embedded_string"`
 	}
 
 	type Demo struct {
-		SomeString      string
-		SomeOtherString string
-		Strings         []string
-		EmbededDemo
+		SomeString      string   `form:"some_string"`
+		SomeOtherString string   `form:"some_other_string"`
+		Strings         []string `form:"strings"`
+		EmbeddedDemo
 	}
 	body := []byte("SomeString=john%2Clong&SomeOtherString=long%2Cjohn&Strings=long%2Cjohn&EmbededStrings=john%2Clong&EmbededString=johny%2Cwalker")
 	c.Request().SetBody(body)
