@@ -72,10 +72,11 @@ type ListenConfig struct {
 	// Default: nil
 	OnShutdownSuccess func()
 
-	// AutoCertManager is a acme manager for go crypto package.
-	// If you want to use acme, you have to provide it.
+	// AutoCertManager manages TLS certificates automatically using the ACME protocol,
+	// enabling integration with Let's Encrypt or other ACME-compatible providers.
+	// Provide an *autocert.Manager instance to enable automatic certificate management.
 	//
-	// Default : nil
+	// Default: nil
 	AutoCertManager *autocert.Manager
 
 	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only)

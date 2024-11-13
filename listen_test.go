@@ -149,13 +149,18 @@ func Test_Listen_TLS(t *testing.T) {
 
 // go test -run Test_Listen_Acme_TLS
 func Test_Listen_Acme_TLS(t *testing.T) {
+	dir, _ := os.Getwd()
+	dir, err := os.MkdirTemp(dir, "certs")
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
 	// Certificate manager
 	m := &autocert.Manager{
 		Prompt: autocert.AcceptTOS,
 		// Replace with your domain
 		HostPolicy: autocert.HostWhitelist("example.com"),
 		// Folder to store the certificates
-		Cache: autocert.DirCache("./certs"),
+		Cache: autocert.DirCache(dir),
 		// Define the Client for test
 		Client: &acme.Client{
 			DirectoryURL: "https://acme-staging-v02.api.letsencrypt.org/directory",
@@ -166,7 +171,8 @@ func Test_Listen_Acme_TLS(t *testing.T) {
 
 	// invalid port
 	require.Error(t, app.Listen(":99999", ListenConfig{
-		AutoCertManager: m,
+		DisableStartupMessage: true,
+		AutoCertManager:       m,
 	}))
 
 	go func() {
@@ -175,7 +181,8 @@ func Test_Listen_Acme_TLS(t *testing.T) {
 	}()
 
 	require.NoError(t, app.Listen(":0", ListenConfig{
-		AutoCertManager: m,
+		DisableStartupMessage: true,
+		AutoCertManager:       m,
 	}))
 }
 
@@ -208,13 +215,16 @@ func Test_Listen_TLS_Prefork(t *testing.T) {
 
 // go test -run Test_Listen_Acme_TLS_Prefork
 func Test_Listen_Acme_TLS_Prefork(t *testing.T) {
+	dir, _ := os.MkdirTemp(".", "./certs")
+	defer os.RemoveAll(dir)
+
 	// Certificate manager
 	m := &autocert.Manager{
 		Prompt: autocert.AcceptTOS,
 		// Replace with your domain
 		HostPolicy: autocert.HostWhitelist("example.com"),
 		// Folder to store the certificates
-		Cache: autocert.DirCache("./certs"),
+		Cache: autocert.DirCache(dir),
 		// Define the Client for test
 		Client: &acme.Client{
 			DirectoryURL: "https://acme-staging-v02.api.letsencrypt.org/directory",
