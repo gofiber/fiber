@@ -234,7 +234,7 @@ func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 	if app.newCtxFunc != nil {
 		_, err = app.nextCustom(c)
 	} else {
-		_, err = app.next(c.(*DefaultCtx))
+		_, err = app.next(c.(*DefaultCtx)) //nolint:errcheck // It is fine to ignore the error here
 	}
 	if err != nil {
 		if catch := c.App().ErrorHandler(c, err); catch != nil {

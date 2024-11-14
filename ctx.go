@@ -382,26 +382,26 @@ func (c *DefaultCtx) ClearCookie(key ...string) {
 	})
 }
 
-// Context returns *fasthttp.RequestCtx that carries a deadline
+// RequestCtx returns *fasthttp.RequestCtx that carries a deadline
 // a cancellation signal, and other values across API boundaries.
-func (c *DefaultCtx) Context() *fasthttp.RequestCtx {
+func (c *DefaultCtx) RequestCtx() *fasthttp.RequestCtx {
 	return c.fasthttp
 }
 
-// UserContext returns a context implementation that was set by
+// Context returns a context implementation that was set by
 // user earlier or returns a non-nil, empty context,if it was not set earlier.
-func (c *DefaultCtx) UserContext() context.Context {
+func (c *DefaultCtx) Context() context.Context {
 	ctx, ok := c.fasthttp.UserValue(userContextKey).(context.Context)
 	if !ok {
 		ctx = context.Background()
-		c.SetUserContext(ctx)
+		c.SetContext(ctx)
 	}
 
 	return ctx
 }
 
-// SetUserContext sets a context implementation by user.
-func (c *DefaultCtx) SetUserContext(ctx context.Context) {
+// SetContext sets a context implementation by user.
+func (c *DefaultCtx) SetContext(ctx context.Context) {
 	c.fasthttp.SetUserValue(userContextKey, ctx)
 }
 
@@ -1189,8 +1189,8 @@ func (c *DefaultCtx) Query(key string, defaultValue ...string) string {
 // Queries()["filters[customer][name]"] == "Alice"
 // Queries()["filters[status]"] == "pending"
 func (c *DefaultCtx) Queries() map[string]string {
-	m := make(map[string]string, c.Context().QueryArgs().Len())
-	c.Context().QueryArgs().VisitAll(func(key, value []byte) {
+	m := make(map[string]string, c.RequestCtx().QueryArgs().Len())
+	c.RequestCtx().QueryArgs().VisitAll(func(key, value []byte) {
 		m[c.app.getString(key)] = c.app.getString(value)
 	})
 	return m
@@ -1219,7 +1219,7 @@ func (c *DefaultCtx) Queries() map[string]string {
 //	unknown := Query[string](c, "unknown", "default") // Returns "default" since the query parameter "unknown" is not found
 func Query[V GenericType](c Ctx, key string, defaultValue ...V) V {
 	var v V
-	q := c.App().getString(c.Context().QueryArgs().Peek(key))
+	q := c.App().getString(c.RequestCtx().QueryArgs().Peek(key))
 
 	return genericParseType[V](q, v, defaultValue...)
 }
@@ -1470,6 +1470,7 @@ func (*DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path stri
 	if err != nil {
 		return fmt.Errorf("failed to open: %w", err)
 	}
+	defer file.Close() //nolint:errcheck // not needed
 
 	content, err := io.ReadAll(file)
 	if err != nil {
@@ -1629,7 +1630,7 @@ func (c *DefaultCtx) SendFile(file string, config ...SendFile) error {
 	// Apply cache control header
 	if status != StatusNotFound && status != StatusForbidden {
 		if len(cacheControlValue) > 0 {
-			c.Context().Response.Header.Set(HeaderCacheControl, cacheControlValue)
+			c.RequestCtx().Response.Header.Set(HeaderCacheControl, cacheControlValue)
 		}
 
 		return nil

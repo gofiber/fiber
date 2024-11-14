@@ -843,24 +843,24 @@ func Benchmark_Ctx_Body_With_Compression_Immutable(b *testing.B) {
 	}
 }
 
+// go test -run Test_Ctx_RequestCtx
+func Test_Ctx_RequestCtx(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	require.Equal(t, "*fasthttp.RequestCtx", fmt.Sprintf("%T", c.RequestCtx()))
+}
+
 // go test -run Test_Ctx_Context
 func Test_Ctx_Context(t *testing.T) {
 	t.Parallel()
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	require.Equal(t, "*fasthttp.RequestCtx", fmt.Sprintf("%T", c.Context()))
-}
-
-// go test -run Test_Ctx_UserContext
-func Test_Ctx_UserContext(t *testing.T) {
-	t.Parallel()
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-
 	t.Run("Nil_Context", func(t *testing.T) {
 		t.Parallel()
-		ctx := c.UserContext()
+		ctx := c.Context()
 		require.Equal(t, ctx, context.Background())
 	})
 	t.Run("ValueContext", func(t *testing.T) {
@@ -872,8 +872,8 @@ func Test_Ctx_UserContext(t *testing.T) {
 	})
 }
 
-// go test -run Test_Ctx_SetUserContext
-func Test_Ctx_SetUserContext(t *testing.T) {
+// go test -run Test_Ctx_SetContext
+func Test_Ctx_SetContext(t *testing.T) {
 	t.Parallel()
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -881,19 +881,19 @@ func Test_Ctx_SetUserContext(t *testing.T) {
 	testKey := struct{}{}
 	testValue := "Test Value"
 	ctx := context.WithValue(context.Background(), testKey, testValue) //nolint: staticcheck // not needed for tests
-	c.SetUserContext(ctx)
-	require.Equal(t, testValue, c.UserContext().Value(testKey))
+	c.SetContext(ctx)
+	require.Equal(t, testValue, c.Context().Value(testKey))
 }
 
-// go test -run Test_Ctx_UserContext_Multiple_Requests
-func Test_Ctx_UserContext_Multiple_Requests(t *testing.T) {
+// go test -run Test_Ctx_Context_Multiple_Requests
+func Test_Ctx_Context_Multiple_Requests(t *testing.T) {
 	t.Parallel()
 	testKey := struct{}{}
 	testValue := "foobar-value"
 
 	app := New()
 	app.Get("/", func(c Ctx) error {
-		ctx := c.UserContext()
+		ctx := c.Context()
 
 		if ctx.Value(testKey) != nil {
 			return c.SendStatus(StatusInternalServerError)
@@ -901,7 +901,7 @@ func Test_Ctx_UserContext_Multiple_Requests(t *testing.T) {
 
 		input := utils.CopyString(Query(c, "input", "NO_VALUE"))
 		ctx = context.WithValue(ctx, testKey, fmt.Sprintf("%s_%s", testValue, input)) //nolint: staticcheck // not needed for tests
-		c.SetUserContext(ctx)
+		c.SetContext(ctx)
 
 		return c.Status(StatusOK).SendString(fmt.Sprintf("resp_%s_returned", input))
 	})
@@ -913,7 +913,7 @@ func Test_Ctx_UserContext_Multiple_Requests(t *testing.T) {
 			resp, err := app.Test(httptest.NewRequest(MethodGet, fmt.Sprintf("/?input=%d", i), nil))
 
 			require.NoError(t, err, "Unexpected error from response")
-			require.Equal(t, StatusOK, resp.StatusCode, "context.Context returned from c.UserContext() is reused")
+			require.Equal(t, StatusOK, resp.StatusCode, "context.Context returned from c.Context() is reused")
 
 			b, err := io.ReadAll(resp.Body)
 			require.NoError(t, err, "Unexpected error from reading response body")
@@ -1189,7 +1189,7 @@ func Test_Ctx_AutoFormat_Struct(t *testing.T) {
 	c.Request().Header.Set(HeaderAccept, MIMEApplicationJSON)
 	err := c.AutoFormat(data)
 	require.NoError(t, err)
-	require.Equal(t,
+	require.JSONEq(t,
 		`{"Sender":"Carol","Recipients":["Alice","Bob"],"Urgency":3}`,
 		string(c.Response().Body()),
 	)
@@ -3220,7 +3220,7 @@ func Test_Ctx_SendFile_MaxAge(t *testing.T) {
 	// check expectation
 	require.NoError(t, err)
 	require.Equal(t, expectFileContent, c.Response().Body())
-	require.Equal(t, "public, max-age=100", string(c.Context().Response.Header.Peek(HeaderCacheControl)), "CacheControl Control")
+	require.Equal(t, "public, max-age=100", string(c.RequestCtx().Response.Header.Peek(HeaderCacheControl)), "CacheControl Control")
 	require.Equal(t, StatusOK, c.Response().StatusCode())
 	app.ReleaseCtx(c)
 }
@@ -3549,7 +3549,7 @@ func Test_Ctx_JSON(t *testing.T) {
 		"Age":  20,
 	})
 	require.NoError(t, err)
-	require.Equal(t, `{"Age":20,"Name":"Grame"}`, string(c.Response().Body()))
+	require.JSONEq(t, `{"Age":20,"Name":"Grame"}`, string(c.Response().Body()))
 	require.Equal(t, "application/json", string(c.Response().Header.Peek("content-type")))
 
 	// Test with ctype
@@ -3558,7 +3558,7 @@ func Test_Ctx_JSON(t *testing.T) {
 		"Age":  20,
 	}, "application/problem+json")
 	require.NoError(t, err)
-	require.Equal(t, `{"Age":20,"Name":"Grame"}`, string(c.Response().Body()))
+	require.JSONEq(t, `{"Age":20,"Name":"Grame"}`, string(c.Response().Body()))
 	require.Equal(t, "application/problem+json", string(c.Response().Header.Peek("content-type")))
 
 	testEmpty := func(v any, r string) {
@@ -3612,7 +3612,7 @@ func Benchmark_Ctx_JSON(b *testing.B) {
 		err = c.JSON(data)
 	}
 	require.NoError(b, err)
-	require.Equal(b, `{"Name":"Grame","Age":20}`, string(c.Response().Body()))
+	require.JSONEq(b, `{"Name":"Grame","Age":20}`, string(c.Response().Body()))
 }
 
 // go test -run=^$ -bench=Benchmark_Ctx_JSON_Ctype -benchmem -count=4
@@ -3635,7 +3635,7 @@ func Benchmark_Ctx_JSON_Ctype(b *testing.B) {
 		err = c.JSON(data, "application/problem+json")
 	}
 	require.NoError(b, err)
-	require.Equal(b, `{"Name":"Grame","Age":20}`, string(c.Response().Body()))
+	require.JSONEq(b, `{"Name":"Grame","Age":20}`, string(c.Response().Body()))
 	require.Equal(b, "application/problem+json", string(c.Response().Header.Peek("content-type")))
 }
 

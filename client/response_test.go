@@ -375,7 +375,7 @@ func Test_Response_Save(t *testing.T) {
 
 		data, err := io.ReadAll(file)
 		require.NoError(t, err)
-		require.Equal(t, "{\"status\":\"success\"}", string(data))
+		require.JSONEq(t, "{\"status\":\"success\"}", string(data))
 	})
 
 	t.Run("io.Writer", func(t *testing.T) {
@@ -396,7 +396,7 @@ func Test_Response_Save(t *testing.T) {
 
 		err = resp.Save(buf)
 		require.NoError(t, err)
-		require.Equal(t, "{\"status\":\"success\"}", buf.String())
+		require.JSONEq(t, "{\"status\":\"success\"}", buf.String())
 	})
 
 	t.Run("error type", func(t *testing.T) {
