@@ -464,13 +464,6 @@ If there's an error, it will return the error and set HTTP status to `400 Bad Re
 func (b *Bind) Must() *Bind
 ```
 
-```go title="Example"
-app.Get("/coffee", func(c fiber.Ctx) error {
-    // => HTTP - GET 301 /teapot 
-    return c.Redirect().Status(fiber.StatusMovedPermanently).To("/teapot")
-})
-```
-
 ### Should
 
 To handle binder errors manually, you can use the `Should` method.  

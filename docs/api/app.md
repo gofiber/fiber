@@ -50,7 +50,7 @@ The `MountPath` property contains one or more path patterns on which a sub-app w
 ```go title="Signature"
 func (app *App) MountPath() string
 ```
-    
+
 ```go title="Example"
 package main
 
@@ -89,7 +89,7 @@ You can group routes by creating a `*Group` struct.
 ```go title="Signature"
 func (app *App) Group(prefix string, handlers ...Handler) Router
 ```
-    
+
 ```go title="Example"
 package main
 
@@ -622,7 +622,7 @@ func main() {
 ## RegisterCustomConstraint
 
 `RegisterCustomConstraint` allows you to register custom constraints.
-    
+
 ```go title="Signature"
 func (app *App) RegisterCustomConstraint(constraint CustomConstraint)
 ```
@@ -632,7 +632,7 @@ See the [Custom Constraint](../guide/routing.md#custom-constraint) section for m
 ## SetTLSHandler
 
 Use `SetTLSHandler` to set [`ClientHelloInfo`](https://datatracker.ietf.org/doc/html/rfc8446#section-4.1.2) when using TLS with a `Listener`.
-    
+
 ```go title="Signature"
 func (app *App) SetTLSHandler(tlsHandler *TLSHandler)
 ```
