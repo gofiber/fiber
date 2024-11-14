@@ -645,10 +645,11 @@ import (
 
 func main() {
     app := fiber.New(fiber.Config{
-        // Trust all proxies (use with caution)
+        // Configure trusted proxies - WARNING: Only trust proxies you control
+        // Using TrustProxy: true with unrestricted IPs can lead to IP spoofing
         TrustProxy: true,
         TrustProxyConfig: fiber.TrustProxyConfig{
-            Proxies: []string{"0.0.0.0", "1.1.1.1/30"}, // IP address or IP address range
+            Proxies: []string{"10.0.0.0/8", "172.16.0.0/12"}, // Example: Internal network ranges only
         },
         ProxyHeader: fiber.HeaderXForwardedFor,
     })
