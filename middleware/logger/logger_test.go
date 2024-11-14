@@ -632,7 +632,7 @@ func Test_Logger_ByteSent_Streaming(t *testing.T) {
 	app.Get("/", func(c fiber.Ctx) error {
 		c.Set("Connection", "keep-alive")
 		c.Set("Transfer-Encoding", "chunked")
-		c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
+		c.RequestCtx().SetBodyStreamWriter(func(w *bufio.Writer) {
 			var i int
 			for {
 				i++
@@ -803,7 +803,7 @@ func Benchmark_Logger(b *testing.B) {
 		app.Get("/", func(c fiber.Ctx) error {
 			c.Set("Connection", "keep-alive")
 			c.Set("Transfer-Encoding", "chunked")
-			c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
+			c.RequestCtx().SetBodyStreamWriter(func(w *bufio.Writer) {
 				var i int
 				for {
 					i++
@@ -958,7 +958,7 @@ func Benchmark_Logger_Parallel(b *testing.B) {
 		app.Get("/", func(c fiber.Ctx) error {
 			c.Set("Connection", "keep-alive")
 			c.Set("Transfer-Encoding", "chunked")
-			c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
+			c.RequestCtx().SetBodyStreamWriter(func(w *bufio.Writer) {
 				var i int
 				for {
 					i++
