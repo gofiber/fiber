@@ -58,7 +58,7 @@ func Test_RequestID_FromContext(t *testing.T) {
 	reqID := "ThisIsARequestId"
 
 	type args struct {
-		inputFunc func(c fiber.Ctx) interface{}
+		inputFunc func(c fiber.Ctx) any
 	}
 
 	tests := []struct {
@@ -68,7 +68,7 @@ func Test_RequestID_FromContext(t *testing.T) {
 		{
 			name: "From fiber.Ctx",
 			args: args{
-				inputFunc: func(c fiber.Ctx) interface{} {
+				inputFunc: func(c fiber.Ctx) any {
 					return c
 				},
 			},
@@ -76,7 +76,7 @@ func Test_RequestID_FromContext(t *testing.T) {
 		{
 			name: "From context.Context",
 			args: args{
-				inputFunc: func(c fiber.Ctx) interface{} {
+				inputFunc: func(c fiber.Ctx) any {
 					return c.Context()
 				},
 			},

@@ -50,7 +50,7 @@ func New(config ...Config) fiber.Handler {
 
 // FromContext returns the request ID from context.
 // If there is no request ID, an empty string is returned.
-func FromContext(c interface{}) string {
+func FromContext(c any) string {
 	switch ctx := c.(type) {
 	case fiber.Ctx:
 		if rid, ok := ctx.Locals(requestIDKey).(string); ok {
