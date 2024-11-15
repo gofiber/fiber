@@ -50,6 +50,9 @@ func New(config ...Config) fiber.Handler {
 
 // FromContext returns the request ID from context.
 // If there is no request ID, an empty string is returned.
+// Supported context types:
+// - fiber.Ctx: Retrieves request ID from Locals
+// - context.Context: Retrieves request ID from context values
 func FromContext(c any) string {
 	switch ctx := c.(type) {
 	case fiber.Ctx:
@@ -61,7 +64,7 @@ func FromContext(c any) string {
 			return rid
 		}
 	default:
-		log.Errorf("Unsupported context type: %T", c)
+		log.Errorf("Unsupported context type: %T. Expected fiber.Ctx or context.Context", c)
 	}
 	return ""
 }

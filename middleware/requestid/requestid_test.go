@@ -62,8 +62,8 @@ func Test_RequestID_FromContext(t *testing.T) {
 	}
 
 	tests := []struct {
-		name string
 		args args
+		name string
 	}{
 		{
 			name: "From fiber.Ctx",
@@ -84,7 +84,6 @@ func Test_RequestID_FromContext(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt // Re bind variables
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
