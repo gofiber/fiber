@@ -83,9 +83,9 @@ app.Get("/", func(c fiber.Ctx) error {
 // curl "http://localhost:3000/?name=john&pass=doe&products=shoe,hat"
 ```
 
-### Behaviors of Should/Must
+### Behaviors of Should/WithAutoHandling
 
-Normally, Fiber returns binder error directly. However; if you want to handle it automatically, you can prefer `Must()`.
+Normally, Fiber returns binder error directly. However; if you want to handle it automatically, you can prefer `WithAutoHandling()`.
 
 If there's an error it'll return error and 400 as HTTP status. Here's an example for it:
 
@@ -99,7 +99,7 @@ type Person struct {
 app.Get("/", func(c fiber.Ctx) error {
     p := new(Person)
 
-    if err := c.Bind().Must().JSON(p); err != nil {
+    if err := c.Bind().WithAutoHandling().JSON(p); err != nil {
         return err 
         // Status code: 400 
         // Response: Bad request: name is empty

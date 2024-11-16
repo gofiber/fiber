@@ -439,13 +439,13 @@ For this the MIMETypes method is used to check if the custom binder should be us
 
 For more control over the error handling, you can use the following methods.
 
-### Must
+### WithAutoHandling
 
-If you want to handle binder errors automatically, you can use Must.
+If you want to handle binder errors automatically, you can use WithAutoHandling.
 If there's an error it'll return error and 400 as HTTP status.
 
 ```go title="Signature"
-func (b *Bind) Must() *Bind
+func (b *Bind) WithAutoHandling() *Bind
 ```
 
 ### Should

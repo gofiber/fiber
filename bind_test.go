@@ -24,7 +24,7 @@ func Test_returnErr(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	err := c.Bind().Must().returnErr(nil)
+	err := c.Bind().WithAutoHandling().returnErr(nil)
 	require.NoError(t, err)
 }
 
@@ -1625,8 +1625,8 @@ func Test_Bind_CustomBinder(t *testing.T) {
 	require.Equal(t, "john", d.Name)
 }
 
-// go test -run Test_Bind_Must
-func Test_Bind_Must(t *testing.T) {
+// go test -run Test_Bind_WithAutoHandling
+func Test_Bind_WithAutoHandling(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
@@ -1635,7 +1635,7 @@ func Test_Bind_Must(t *testing.T) {
 	}
 	rq := new(RequiredQuery)
 	c.Request().URI().SetQueryString("")
-	err := c.Bind().Must().Query(rq)
+	err := c.Bind().WithAutoHandling().Query(rq)
 	require.Equal(t, StatusBadRequest, c.Response().StatusCode())
 	require.Equal(t, "Bad request: bind: name is empty", err.Error())
 }

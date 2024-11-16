@@ -31,15 +31,15 @@ func (b *Bind) Should() *Bind {
 	return b
 }
 
-// Must If you want to handle binder errors automatically, you can use Must.
+// If you want to handle binder errors automatically, you can use WithAutoHandling.
 // If there's an error it'll return error and 400 as HTTP status.
-func (b *Bind) Must() *Bind {
+func (b *Bind) WithAutoHandling() *Bind {
 	b.should = false
 
 	return b
 }
 
-// Check Should/Must errors and return it by usage.
+// Check Should/WithAutoHandling errors and return it by usage.
 func (b *Bind) returnErr(err error) error {
 	if err == nil || b.should {
 		return err
@@ -62,7 +62,7 @@ func (b *Bind) validateStruct(out any) error {
 // Custom To use custom binders, you have to use this method.
 // You can register them from RegisterCustomBinder method of Fiber instance.
 // They're checked by name, if it's not found, it will return an error.
-// NOTE: Should/Must is still valid for Custom binders.
+// NOTE: Should/WithAutoHandling is still valid for Custom binders.
 func (b *Bind) Custom(name string, dest any) error {
 	binders := b.ctx.App().customBinders
 	for _, customBinder := range binders {
@@ -92,7 +92,7 @@ func (b *Bind) RespHeader(out any) error {
 	return b.validateStruct(out)
 }
 
-// Cookie binds the requesr cookie strings into the struct, map[string]string and map[string][]string.
+// Cookie binds the request cookie strings into the struct, map[string]string and map[string][]string.
 // NOTE: If your cookie is like key=val1,val2; they'll be binded as an slice if your map is map[string][]string. Else, it'll use last element of cookie.
 func (b *Bind) Cookie(out any) error {
 	if err := b.returnErr(binder.CookieBinder.Bind(b.ctx.Context(), out)); err != nil {
