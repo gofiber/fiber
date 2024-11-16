@@ -6,7 +6,7 @@ sidebar_position: 5
 toc_max_heading_level: 5
 ---
 
-The redirect package is used to redirect the context (request) to a different URL or route.
+The redirect methods are used to redirect the context (request) to a different URL or route.
 
 ## Redirect Methods
 
