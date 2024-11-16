@@ -704,8 +704,8 @@ Here is a list of middleware that are included within the Fiber framework.
 
 List of externally hosted middleware modules and maintained by the [Fiber team](https://github.com/orgs/gofiber/people).
 
-| Middleware                                      | Description                                                                                                           |
-|-------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------|
+| Middleware                                        | Description                                                                                                           |
+| :------------------------------------------------ | :-------------------------------------------------------------------------------------------------------------------- |
 | [contrib](https://github.com/gofiber/contrib)   | Third-party middlewares                                                                                               |
 | [storage](https://github.com/gofiber/storage)   | Premade storage drivers that implement the Storage interface, designed to be used with various Fiber middlewares.     |
 | [template](https://github.com/gofiber/template) | This package contains 9 template engines that can be used with Fiber `v3`. Go version 1.22 or higher is required.      |

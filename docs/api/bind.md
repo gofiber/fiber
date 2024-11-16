@@ -163,6 +163,7 @@ func (b *Bind) MultipartForm(out any) error
 ```
 
 ```go title="Example"
+// Field names should start with an uppercase letter
 type Person struct {
     Name string `form:"name"`
     Pass string `form:"pass"`
@@ -199,6 +200,7 @@ func (b *Bind) XML(out any) error
 ```
 
 ```go title="Example"
+// Field names should start with an uppercase letter
 type Person struct {
     Name string `xml:"name"`
     Pass string `xml:"pass"`
@@ -438,6 +440,7 @@ type User struct {
     Name string `yaml:"name"`
 }
 
+// curl -X POST http://localhost:3000/custom -H "Content-Type: application/yaml" -d "name: John"
 app.Post("/custom", func(c fiber.Ctx) error {
     var user User
     // Use Custom binder by name
@@ -611,9 +614,9 @@ You can set default values for fields in the struct by using the `default` struc
 
 ```go title="Example"
 type Person struct {
-    Name     string   `query:"name,default=John"`
-    Pass     string   `query:"pass"`
-    Products []string `query:"products,default=shoe|hat"`
+    Name     string     `query:"name,default:john"`
+    Pass     string     `query:"pass"`
+    Products []string   `query:"products,default:shoe|hat"`
 }
 
 app.Get("/", func(c fiber.Ctx) error {

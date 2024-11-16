@@ -225,13 +225,15 @@ import (
     "github.com/gofiber/fiber/v3"
 )
 
+var handler = func(c fiber.Ctx) error { return nil }
+
 func main() {
     app := fiber.New()
 
     app.Get("/john/:age", handler)
     app.Post("/register", handler)
 
-    data, _err_ := json.MarshalIndent(app.Stack(), "", "  ")
+    data, _ := json.MarshalIndent(app.Stack(), "", "  ")
     fmt.Println(string(data))
 
     log.Fatal(app.Listen(":3000"))
@@ -496,7 +498,7 @@ func (app *App) Config() Config
 
 ## Handler
 
-`Handler` returns the server handler that can be used to serve custom [`*fasthttp.RequestCtx`](https://pkg.go.dev/github.com/valyala/fasthttp#RequestCtx) requests.
+`Handler` returns the server handler that can be used to serve custom [`\*fasthttp.RequestCtx`](https://pkg.go.dev/github.com/valyala/fasthttp#RequestCtx) requests.
 
 ```go title="Signature"
 func (app *App) Handler() fasthttp.RequestHandler
@@ -578,15 +580,15 @@ type User struct {
 
 type customBinder struct{}
 
-func (cb *customBinder) Name() string {
+func (*customBinder) Name() string {
     return "custom"
 }
 
-func (cb *customBinder) MIMETypes() []string {
+func (*customBinder) MIMETypes() []string {
     return []string{"application/yaml"}
 }
 
-func (cb *customBinder) Parse(c fiber.Ctx, out any) error {
+func (*customBinder) Parse(c fiber.Ctx, out any) error {
     // Parse YAML body
     return yaml.Unmarshal(c.Body(), out)
 }
