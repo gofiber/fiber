@@ -45,14 +45,14 @@ type Ctx interface {
 	// ClearCookie expires a specific cookie by key on the client side.
 	// If no key is provided it expires all cookies that came with the request.
 	ClearCookie(key ...string)
-	// Context returns *fasthttp.RequestCtx that carries a deadline
+	// RequestCtx returns *fasthttp.RequestCtx that carries a deadline
 	// a cancellation signal, and other values across API boundaries.
-	Context() *fasthttp.RequestCtx
-	// UserContext returns a context implementation that was set by
+	RequestCtx() *fasthttp.RequestCtx
+	// Context returns a context implementation that was set by
 	// user earlier or returns a non-nil, empty context,if it was not set earlier.
-	UserContext() context.Context
-	// SetUserContext sets a context implementation by user.
-	SetUserContext(ctx context.Context)
+	Context() context.Context
+	// SetContext sets a context implementation by user.
+	SetContext(ctx context.Context)
 	// Cookie sets a cookie by passing a cookie struct.
 	Cookie(cookie *Cookie)
 	// Cookies are used for getting a cookie value by key.
@@ -270,9 +270,10 @@ type Ctx interface {
 	// Send sets the HTTP response body without copying it.
 	// From this point onward the body argument must not be changed.
 	Send(body []byte) error
-	// SendFile transfers the file from the given path.
-	// The file is not compressed by default, enable this by passing a 'true' argument
-	// Sets the Content-Type response HTTP header field based on the filenames extension.
+	// SendFile transfers the file from the specified path.
+	// By default, the file is not compressed. To enable compression, set SendFile.Compress to true.
+	// The Content-Type response HTTP header field is set based on the file's extension.
+	// If the file extension is missing or invalid, the Content-Type is detected from the file's format.
 	SendFile(file string, config ...SendFile) error
 	// SendStatus sets the HTTP status code and if the response body is empty,
 	// it sets the correct status message in the body.

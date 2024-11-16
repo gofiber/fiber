@@ -52,7 +52,7 @@ type Route struct {
 	Name   string `json:"name"`   // Route's name
 	//nolint:revive // Having both a Path (uppercase) and a path (lowercase) is fine
 	Path        string      `json:"path"`   // Original registered route path
-	Params      []string    `json:"params"` // Case sensitive param keys
+	Params      []string    `json:"params"` // Case-sensitive param keys
 	Handlers    []Handler   `json:"-"`      // Ctx handlers
 	routeParser routeParser // Parameter parser
 	// Data for routing
@@ -234,7 +234,7 @@ func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 	if app.newCtxFunc != nil {
 		_, err = app.nextCustom(c)
 	} else {
-		_, err = app.next(c.(*DefaultCtx))
+		_, err = app.next(c.(*DefaultCtx)) //nolint:errcheck // It is fine to ignore the error here
 	}
 	if err != nil {
 		if catch := c.App().ErrorHandler(c, err); catch != nil {
@@ -316,7 +316,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 		if pathRaw[0] != '/' {
 			pathRaw = "/" + pathRaw
 		}
-		// Create a stripped path in-case sensitive / trailing slashes
+		// Create a stripped path in case-sensitive / trailing slashes
 		pathPretty := pathRaw
 		// Case-sensitive routing, all to lowercase
 		if !app.config.CaseSensitive {

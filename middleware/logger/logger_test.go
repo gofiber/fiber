@@ -305,8 +305,7 @@ func Test_Logger_WithLatency(t *testing.T) {
 		require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 		// Assert that the log output contains the expected latency value in the current time unit
-		require.True(t, bytes.HasSuffix(buff.Bytes(), []byte(tu.unit)),
-			fmt.Sprintf("Expected latency to be in %s, got %s", tu.unit, buff.String()))
+		require.True(t, bytes.HasSuffix(buff.Bytes(), []byte(tu.unit)), "Expected latency to be in %s, got %s", tu.unit, buff.String())
 
 		// Reset the buffer
 		buff.Reset()
@@ -350,8 +349,7 @@ func Test_Logger_WithLatency_DefaultFormat(t *testing.T) {
 		// parse out the latency value from the log output
 		latency := bytes.Split(buff.Bytes(), []byte(" | "))[2]
 		// Assert that the latency value is in the current time unit
-		require.True(t, bytes.HasSuffix(latency, []byte(tu.unit)),
-			fmt.Sprintf("Expected latency to be in %s, got %s", tu.unit, latency))
+		require.True(t, bytes.HasSuffix(latency, []byte(tu.unit)), "Expected latency to be in %s, got %s", tu.unit, latency)
 
 		// Reset the buffer
 		buff.Reset()
@@ -634,7 +632,7 @@ func Test_Logger_ByteSent_Streaming(t *testing.T) {
 	app.Get("/", func(c fiber.Ctx) error {
 		c.Set("Connection", "keep-alive")
 		c.Set("Transfer-Encoding", "chunked")
-		c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
+		c.RequestCtx().SetBodyStreamWriter(func(w *bufio.Writer) {
 			var i int
 			for {
 				i++
@@ -805,7 +803,7 @@ func Benchmark_Logger(b *testing.B) {
 		app.Get("/", func(c fiber.Ctx) error {
 			c.Set("Connection", "keep-alive")
 			c.Set("Transfer-Encoding", "chunked")
-			c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
+			c.RequestCtx().SetBodyStreamWriter(func(w *bufio.Writer) {
 				var i int
 				for {
 					i++
@@ -960,7 +958,7 @@ func Benchmark_Logger_Parallel(b *testing.B) {
 		app.Get("/", func(c fiber.Ctx) error {
 			c.Set("Connection", "keep-alive")
 			c.Set("Transfer-Encoding", "chunked")
-			c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
+			c.RequestCtx().SetBodyStreamWriter(func(w *bufio.Writer) {
 				var i int
 				for {
 					i++

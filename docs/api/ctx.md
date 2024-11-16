@@ -354,15 +354,20 @@ app.Get("/hello", func(c fiber.Ctx) error {
 
 ## Context
 
-Returns [\*fasthttp.RequestCtx](https://godoc.org/github.com/valyala/fasthttp#RequestCtx) that is compatible with the context.Context interface that requires a deadline, a cancellation signal, and other values across API boundaries.
+Context returns a context implementation that was set by user earlier or returns a non-nil, empty context, if it was not set earlier.
 
 ```go title="Signature"
-func (c Ctx) Context() *fasthttp.RequestCtx
+func (c Ctx) Context() context.Context
 ```
 
-:::info
-Please read the [Fasthttp Documentation](https://pkg.go.dev/github.com/valyala/fasthttp?tab=doc) for more information.
-:::
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  ctx := c.Context()
+  // ctx is context implementation set by user
+
+  // ...
+})
+```
 
 ## Cookie
 
@@ -1489,6 +1494,18 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+## RequestCtx
+
+Returns [\*fasthttp.RequestCtx](https://godoc.org/github.com/valyala/fasthttp#RequestCtx) that is compatible with the context.Context interface that requires a deadline, a cancellation signal, and other values across API boundaries.
+
+```go title="Signature"
+func (c Ctx) RequestCtx() *fasthttp.RequestCtx
+```
+
+:::info
+Please read the [Fasthttp Documentation](https://pkg.go.dev/github.com/valyala/fasthttp?tab=doc) for more information.
+:::
+
 ## Response
 
 Response return the [\*fasthttp.Response](https://godoc.org/github.com/valyala/fasthttp#Response) pointer
@@ -1709,7 +1726,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ## SendFile
 
-Transfers the file from the given path. Sets the [Content-Type](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type) response HTTP header field based on the **filenames** extension.
+Transfers the file from the given path. Sets the [Content-Type](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type) response HTTP header field based on the **file** extension or format.
 
 ```go title="Config" title="Config"
 // SendFile defines configuration options when to transfer file with SendFile.
@@ -1725,29 +1742,29 @@ type SendFile struct {
   // You have to set Content-Encoding header to compress the file.
   // Available compression methods are gzip, br, and zstd.
   //
-  // Optional. Default value false
+  // Optional. Default: false
   Compress bool `json:"compress"`
 
   // When set to true, enables byte range requests.
   //
-  // Optional. Default value false
+  // Optional. Default: false
   ByteRange bool `json:"byte_range"`
 
   // When set to true, enables direct download.
   //
-  // Optional. Default: false.
+  // Optional. Default: false
   Download bool `json:"download"`
 
   // Expiration duration for inactive file handlers.
   // Use a negative time.Duration to disable it.
   //
-  // Optional. Default value 10 * time.Second.
+  // Optional. Default: 10 * time.Second
   CacheDuration time.Duration `json:"cache_duration"`
 
   // The value for the Cache-Control HTTP-header
   // that is set on the file response. MaxAge is defined in seconds.
   //
-    // Optional. Default value 0.
+  // Optional. Default: 0
   MaxAge int `json:"max_age"`
 }
 ```
@@ -1761,7 +1778,7 @@ app.Get("/not-found", func(c fiber.Ctx) error {
   return c.SendFile("./public/404.html");
 
   // Disable compression
-  return c.SendFile("./static/index.html", SendFile{
+  return c.SendFile("./static/index.html", fiber.SendFile{
     Compress: false,
   });
 })
@@ -1783,7 +1800,7 @@ You can set `CacheDuration` config property to `-1` to disable caching.
 
 ```go title="Example"
 app.Get("/file", func(c fiber.Ctx) error {
-  return c.SendFile("style.css", SendFile{
+  return c.SendFile("style.css", fiber.SendFile{
     CacheDuration: -1,
   })
 })
@@ -1797,16 +1814,16 @@ You can use multiple SendFile with different configurations in single route. Fib
 app.Get("/file", func(c fiber.Ctx) error {
   switch c.Query("config") {
     case "filesystem":
-      return c.SendFile("style.css", SendFile{
+      return c.SendFile("style.css", fiber.SendFile{
         FS: os.DirFS(".")
       })
     case "filesystem-compress":
-      return c.SendFile("style.css", SendFile{
+      return c.SendFile("style.css", fiber.SendFile{
         FS: os.DirFS("."),
         Compress: true,
       })
     case "compress":
-      return c.SendFile("style.css", SendFile{
+      return c.SendFile("style.css", fiber.SendFile{
         Compress: true,
       })
     default:
@@ -1891,18 +1908,18 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
-## SetUserContext
+## SetContext
 
-Sets the user specified implementation for context interface.
+Sets the user specified implementation for context.Context interface.
 
 ```go title="Signature"
-func (c Ctx) SetUserContext(ctx context.Context)
+func (c Ctx) SetContext(ctx context.Context)
 ```
 
 ```go title="Example"
 app.Get("/", func(c fiber.Ctx) error {
   ctx := context.Background()
-  c.SetUserContext(ctx)
+  c.SetContext(ctx)
   // Here ctx could be any context implementation
 
   // ...
@@ -2000,24 +2017,6 @@ app.Get("/", func(c fiber.Ctx) error {
   c.Type("png")   // => "image/png"
 
   c.Type("json", "utf-8")  // => "application/json; charset=utf-8"
-
-  // ...
-})
-```
-
-## UserContext
-
-UserContext returns a context implementation that was set by user earlier
-or returns a non-nil, empty context, if it was not set earlier.
-
-```go title="Signature"
-func (c Ctx) UserContext() context.Context
-```
-
-```go title="Example"
-app.Get("/", func(c fiber.Ctx) error {
-  ctx := c.UserContext()
-  // ctx is context implementation set by user
 
   // ...
 })

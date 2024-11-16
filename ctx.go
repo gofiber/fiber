@@ -83,29 +83,29 @@ type SendFile struct {
 	// You have to set Content-Encoding header to compress the file.
 	// Available compression methods are gzip, br, and zstd.
 	//
-	// Optional. Default value false
+	// Optional. Default: false
 	Compress bool `json:"compress"`
 
 	// When set to true, enables byte range requests.
 	//
-	// Optional. Default value false
+	// Optional. Default: false
 	ByteRange bool `json:"byte_range"`
 
 	// When set to true, enables direct download.
 	//
-	// Optional. Default: false.
+	// Optional. Default: false
 	Download bool `json:"download"`
 
 	// Expiration duration for inactive file handlers.
 	// Use a negative time.Duration to disable it.
 	//
-	// Optional. Default value 10 * time.Second.
+	// Optional. Default: 10 * time.Second
 	CacheDuration time.Duration `json:"cache_duration"`
 
 	// The value for the Cache-Control HTTP-header
 	// that is set on the file response. MaxAge is defined in seconds.
 	//
-	// Optional. Default value 0.
+	// Optional. Default: 0
 	MaxAge int `json:"max_age"`
 }
 
@@ -382,26 +382,26 @@ func (c *DefaultCtx) ClearCookie(key ...string) {
 	})
 }
 
-// Context returns *fasthttp.RequestCtx that carries a deadline
+// RequestCtx returns *fasthttp.RequestCtx that carries a deadline
 // a cancellation signal, and other values across API boundaries.
-func (c *DefaultCtx) Context() *fasthttp.RequestCtx {
+func (c *DefaultCtx) RequestCtx() *fasthttp.RequestCtx {
 	return c.fasthttp
 }
 
-// UserContext returns a context implementation that was set by
+// Context returns a context implementation that was set by
 // user earlier or returns a non-nil, empty context,if it was not set earlier.
-func (c *DefaultCtx) UserContext() context.Context {
+func (c *DefaultCtx) Context() context.Context {
 	ctx, ok := c.fasthttp.UserValue(userContextKey).(context.Context)
 	if !ok {
 		ctx = context.Background()
-		c.SetUserContext(ctx)
+		c.SetContext(ctx)
 	}
 
 	return ctx
 }
 
-// SetUserContext sets a context implementation by user.
-func (c *DefaultCtx) SetUserContext(ctx context.Context) {
+// SetContext sets a context implementation by user.
+func (c *DefaultCtx) SetContext(ctx context.Context) {
 	c.fasthttp.SetUserValue(userContextKey, ctx)
 }
 
@@ -1189,8 +1189,8 @@ func (c *DefaultCtx) Query(key string, defaultValue ...string) string {
 // Queries()["filters[customer][name]"] == "Alice"
 // Queries()["filters[status]"] == "pending"
 func (c *DefaultCtx) Queries() map[string]string {
-	m := make(map[string]string, c.Context().QueryArgs().Len())
-	c.Context().QueryArgs().VisitAll(func(key, value []byte) {
+	m := make(map[string]string, c.RequestCtx().QueryArgs().Len())
+	c.RequestCtx().QueryArgs().VisitAll(func(key, value []byte) {
 		m[c.app.getString(key)] = c.app.getString(value)
 	})
 	return m
@@ -1219,7 +1219,7 @@ func (c *DefaultCtx) Queries() map[string]string {
 //	unknown := Query[string](c, "unknown", "default") // Returns "default" since the query parameter "unknown" is not found
 func Query[V GenericType](c Ctx, key string, defaultValue ...V) V {
 	var v V
-	q := c.App().getString(c.Context().QueryArgs().Peek(key))
+	q := c.App().getString(c.RequestCtx().QueryArgs().Peek(key))
 
 	return genericParseType[V](q, v, defaultValue...)
 }
@@ -1470,6 +1470,7 @@ func (*DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path stri
 	if err != nil {
 		return fmt.Errorf("failed to open: %w", err)
 	}
+	defer file.Close() //nolint:errcheck // not needed
 
 	content, err := io.ReadAll(file)
 	if err != nil {
@@ -1496,9 +1497,10 @@ func (c *DefaultCtx) Send(body []byte) error {
 	return nil
 }
 
-// SendFile transfers the file from the given path.
-// The file is not compressed by default, enable this by passing a 'true' argument
-// Sets the Content-Type response HTTP header field based on the filenames extension.
+// SendFile transfers the file from the specified path.
+// By default, the file is not compressed. To enable compression, set SendFile.Compress to true.
+// The Content-Type response HTTP header field is set based on the file's extension.
+// If the file extension is missing or invalid, the Content-Type is detected from the file's format.
 func (c *DefaultCtx) SendFile(file string, config ...SendFile) error {
 	// Save the filename, we will need it in the error message if the file isn't found
 	filename := file
@@ -1628,7 +1630,7 @@ func (c *DefaultCtx) SendFile(file string, config ...SendFile) error {
 	// Apply cache control header
 	if status != StatusNotFound && status != StatusForbidden {
 		if len(cacheControlValue) > 0 {
-			c.Context().Response.Header.Set(HeaderCacheControl, cacheControlValue)
+			c.RequestCtx().Response.Header.Set(HeaderCacheControl, cacheControlValue)
 		}
 
 		return nil
