@@ -626,7 +626,7 @@ app.Get("/", func(c fiber.Ctx) error {
         return err
     }
 
-    log.Println(p.Name)     // John
+    log.Println(p.Name)     // john
     log.Println(p.Pass)     // doe
     log.Println(p.Products) // ["shoe", "hat"]
     
