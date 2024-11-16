@@ -1600,7 +1600,7 @@ func Test_Client_SetProxyURL(t *testing.T) {
 		}
 
 		c.Status(resp.StatusCode())
-		c.Context().SetBody(resp.Body())
+		c.RequestCtx().SetBody(resp.Body())
 
 		return nil
 	})

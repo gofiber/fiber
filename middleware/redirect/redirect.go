@@ -30,7 +30,7 @@ func New(config ...Config) fiber.Handler {
 		for k, v := range cfg.rulesRegex {
 			replacer := captureTokens(k, c.Path())
 			if replacer != nil {
-				queryString := string(c.Context().QueryArgs().QueryString())
+				queryString := string(c.RequestCtx().QueryArgs().QueryString())
 				if queryString != "" {
 					queryString = "?" + queryString
 				}

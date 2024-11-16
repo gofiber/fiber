@@ -232,6 +232,9 @@ DRAFT section
 - Format -> Param: body interface{} -> handlers ...ResFmt
 - Redirect -> c.Redirect().To()
 - SendFile now supports different configurations using the config parameter.
+- Context has been renamed to RequestCtx which corresponds to the FastHTTP Request Context.
+- UserContext has been renamed to Context which returns a context.Context object.
+- SetUserContext has been renamed to SetContext.
 
 ---
 

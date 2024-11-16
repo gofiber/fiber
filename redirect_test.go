@@ -42,7 +42,7 @@ func Test_Redirect_To_WithFlashMessages(t *testing.T) {
 	require.Equal(t, 302, c.Response().StatusCode())
 	require.Equal(t, "http://example.com", string(c.Response().Header.Peek(HeaderLocation)))
 
-	c.Context().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
+	c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
 
 	var msgs redirectionMsgs
 	_, err = msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
@@ -185,7 +185,7 @@ func Test_Redirect_Back_WithFlashMessages(t *testing.T) {
 	require.Equal(t, 302, c.Response().StatusCode())
 	require.Equal(t, "/", string(c.Response().Header.Peek(HeaderLocation)))
 
-	c.Context().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
+	c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
 
 	var msgs redirectionMsgs
 	_, err = msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
@@ -236,7 +236,7 @@ func Test_Redirect_Route_WithFlashMessages(t *testing.T) {
 	require.Equal(t, 302, c.Response().StatusCode())
 	require.Equal(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
 
-	c.Context().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
+	c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
 
 	var msgs redirectionMsgs
 	_, err = msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
@@ -273,7 +273,7 @@ func Test_Redirect_Route_WithOldInput(t *testing.T) {
 		require.Equal(t, 302, c.Response().StatusCode())
 		require.Equal(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
 
-		c.Context().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
+		c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
 
 		var msgs redirectionMsgs
 		_, err = msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
@@ -309,7 +309,7 @@ func Test_Redirect_Route_WithOldInput(t *testing.T) {
 		require.Equal(t, 302, c.Response().StatusCode())
 		require.Equal(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
 
-		c.Context().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
+		c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
 
 		var msgs redirectionMsgs
 		_, err = msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
@@ -353,7 +353,7 @@ func Test_Redirect_Route_WithOldInput(t *testing.T) {
 		require.Equal(t, 302, c.Response().StatusCode())
 		require.Equal(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
 
-		c.Context().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
+		c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
 
 		var msgs redirectionMsgs
 		_, err = msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
@@ -538,7 +538,7 @@ func Benchmark_Redirect_Route_WithFlashMessages(b *testing.B) {
 	require.Equal(b, 302, c.Response().StatusCode())
 	require.Equal(b, "/user", string(c.Response().Header.Peek(HeaderLocation)))
 
-	c.Context().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
+	c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
 
 	var msgs redirectionMsgs
 	_, err = msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
@@ -629,7 +629,7 @@ func Benchmark_Redirect_processFlashMessages(b *testing.B) {
 		c.Redirect().processFlashMessages()
 	}
 
-	c.Context().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
+	c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
 
 	var msgs redirectionMsgs
 	_, err := msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
