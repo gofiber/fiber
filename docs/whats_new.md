@@ -76,6 +76,7 @@ We have made several changes to the Fiber app, including:
 ### Methods changes
 
 - Test -> Replaced timeout with a config parameter
+  - -1 represents no timeout -> 0 represents no timeout
 - Listen -> has a config parameter
 - Listener -> has a config parameter
 
@@ -201,7 +202,7 @@ app.Get("/", func(c fiber.Ctx) {
 // Define the HTTP request and custom TestConfig to test the handler
 req := httptest.NewRequest(MethodGet, "/", nil)
 testConfig := fiber.TestConfig{
-  Timeout:       -1,
+  Timeout:       0,
   FailOnTimeout: false,
 }
 

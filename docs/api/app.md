@@ -641,7 +641,7 @@ func (app *App) SetTLSHandler(tlsHandler *TLSHandler)
 
 ## Test
 
-Testing your application is done with the `Test` method. Use this method for creating `_test.go` files or when you need to debug your routing logic. The default timeout is `1s`; to disable a timeout altogether, pass a `TestConfig` struct with `Timeout: -1`.
+Testing your application is done with the `Test` method. Use this method for creating `_test.go` files or when you need to debug your routing logic. The default timeout is `1s`; to disable a timeout altogether, pass a `TestConfig` struct with `Timeout: 0`.
 
 ```go title="Signature"
 func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, error)
@@ -706,8 +706,7 @@ cfg := fiber.TestConfig{
 }
 ```
 
-This would make a Test that instantly times out,
-which would always result in a "test: empty response" error.
+This would make a Test that has no timeout.
 
 :::
 

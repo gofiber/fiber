@@ -1126,8 +1126,7 @@ func Test_Test_Timeout(t *testing.T) {
 	app.Get("/", testEmptyHandler)
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil), TestConfig{
-		Timeout:       -1,
-		FailOnTimeout: false,
+		Timeout: 0,
 	})
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
@@ -1440,8 +1439,7 @@ func Test_App_Test_no_timeout_infinitely(t *testing.T) {
 
 		req := httptest.NewRequest(MethodGet, "/", nil)
 		_, err = app.Test(req, TestConfig{
-			Timeout:       -1,
-			FailOnTimeout: true,
+			Timeout: 0,
 		})
 	}()
 

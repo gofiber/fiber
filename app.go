@@ -919,7 +919,7 @@ type TestConfig struct {
 
 // Test is used for internal debugging by passing a *http.Request.
 // Config is optional and defaults to a 1s error on timeout,
-// -1 timeout will disable it completely.
+// 0 timeout will disable it completely.
 func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, error) {
 	// Default config
 	cfg := TestConfig{
@@ -968,7 +968,7 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 	}()
 
 	// Wait for callback
-	if cfg.Timeout >= 0 {
+	if cfg.Timeout > 0 {
 		// With timeout
 		select {
 		case err = <-channel:

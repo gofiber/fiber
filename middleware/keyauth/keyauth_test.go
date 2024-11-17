@@ -15,8 +15,7 @@ import (
 const CorrectKey = "specials: !$%,.#\"!?~`<>@$^*(){}[]|/\\123"
 
 var testConfig = fiber.TestConfig{
-	Timeout:       -1,
-	FailOnTimeout: false,
+	Timeout: 0,
 }
 
 func Test_AuthSources(t *testing.T) {
