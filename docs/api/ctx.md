@@ -1160,7 +1160,7 @@ app.Get("/user/*", func(c fiber.Ctx) error {
 })
 ```
 
-Unnamed route parameters (*, +) can be fetched by the **character** and the **counter** in the route.
+Unnamed route parameters \(\*, +\) can be fetched by the **character** and the **counter** in the route.
 
 ```go title="Example"
 // ROUTE: /v1/*/shop/*
