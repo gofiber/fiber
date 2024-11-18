@@ -101,7 +101,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ## App
 
-Returns the [*App](app.md) reference so you can easily access all application settings.
+Returns the [\*App](app.md) reference so you can easily access all application settings.
 
 ```go title="Signature"
 func (c fiber.Ctx) App() *App
