@@ -1469,7 +1469,7 @@ Please read the [Fasthttp Documentation](https://pkg.go.dev/github.com/valyala/f
 
 ## Response
 
-Returns the [*fasthttp.Response](https://pkg.go.dev/github.com/valyala/fasthttp#Response) pointer.
+Returns the [\*fasthttp.Response](https://pkg.go.dev/github.com/valyala/fasthttp#Response) pointer.
 
 ```go title="Signature"
 func (c fiber.Ctx) Response() *fasthttp.Response
