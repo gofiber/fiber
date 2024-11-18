@@ -1136,7 +1136,7 @@ Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more..
 This method can be used to get the route parameters. You can pass an optional default value that will be returned if the param key does not exist.
 
 :::info
-Defaults to an empty string (`""`) if the param **doesn't** exist.
+Defaults to an empty string \(`""`\) if the param **doesn't** exist.
 :::
 
 ```go title="Signature"
