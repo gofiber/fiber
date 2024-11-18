@@ -2082,7 +2082,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ## XHR
 
-A boolean property that is `true` if the request’s [X-Requested-With](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Requested-With) header field is `XMLHttpRequest`, indicating that the request was issued by a client library (such as [jQuery](https://api.jquery.com/jQuery.ajax/)).
+A boolean property that is `true` if the request’s [X-Requested-With](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers) header field is [XMLHttpRequest](https://developer.mozilla.org/en-US/docs/Web/API/XMLHttpRequest), indicating that the request was issued by a client library (such as [jQuery](https://api.jquery.com/jQuery.ajax/)).
 
 ```go title="Signature"
 func (c fiber.Ctx) XHR() bool
