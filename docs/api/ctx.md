@@ -1457,7 +1457,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ## RequestCtx
 
-Returns [*fasthttp.RequestCtx](https://pkg.go.dev/github.com/valyala/fasthttp#RequestCtx) that is compatible with the `context.Context` interface that requires a deadline, a cancellation signal, and other values across API boundaries.
+Returns [\*fasthttp.RequestCtx](https://pkg.go.dev/github.com/valyala/fasthttp#RequestCtx) that is compatible with the `context.Context` interface that requires a deadline, a cancellation signal, and other values across API boundaries.
 
 ```go title="Signature"
 func (c fiber.Ctx) RequestCtx() *fasthttp.RequestCtx
