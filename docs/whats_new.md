@@ -221,6 +221,7 @@ the signature of the `Test` method.
 ```
 
 The `TestConfig` struct provides the following configuration options:
+
 - `Timeout`:
   - The duration to wait before timing out the test. Use 0 for no timeout.
 - `FailOnTimeout`:
