@@ -220,6 +220,33 @@ the signature of the `Test` method.
 +    Test(req *http.Request, config ...fiber.TestConfig) (*http.Response, error)
 ```
 
+The `TestConfig` struct provides the following configuration options:
+- `Timeout`:
+  - The duration to wait before timing out the test. Use 0 for no timeout.
+- `FailOnTimeout`:
+  - When true, the test will return an `os.ErrDeadlineExceeded` if the test exceeds the `Timeout` duration.
+  - When false, the test will return the partial response received before timing out.
+
+If a custom `TestConfig` isn't provided, then the following will be used:
+
+```go
+testConfig := fiber.TestConfig{
+  Timeout:       time.Second,
+  FailOnTimeout: true,
+}
+```
+
+**Note:** Using this default is **NOT** the same as providing an empty `TestConfig` as an argument to `app.Test()`.
+
+An empty `TestConfig` is the equivalent of:
+
+```go
+testConfig := fiber.TestConfig{
+  Timeout:       0,
+  FailOnTimeout: false,
+}
+```
+
 ---
 
 ## 🧠 Context
