@@ -222,9 +222,8 @@ the signature of the `Test` method.
 
 The `TestConfig` struct provides the following configuration options:
 
-- `Timeout`:
-  - The duration to wait before timing out the test. Use 0 for no timeout.
-- `FailOnTimeout`:
+- `Timeout`: The duration to wait before timing out the test. Use 0 for no timeout.
+- `FailOnTimeout`: Controls the behavior when a timeout occurs:
   - When true, the test will return an `os.ErrDeadlineExceeded` if the test exceeds the `Timeout` duration.
   - When false, the test will return the partial response received before timing out.
 
