@@ -462,6 +462,7 @@ For more control over error handling, you can use the following methods.
 
 If you want to handle binder errors automatically, you can use `WithAutoHandling`.  
 If there's an error, it will return the error and set HTTP status to `400 Bad Request`.
+This function does NOT panic therefor you must still return on error explicitly
 
 ```go title="Signature"
 func (b *Bind) WithAutoHandling() *Bind
