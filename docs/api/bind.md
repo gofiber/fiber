@@ -468,13 +468,13 @@ This function does NOT panic therefor you must still return on error explicitly
 func (b *Bind) WithAutoHandling() *Bind
 ```
 
-### Should
+### WithoutAutoHandling
 
-To handle binder errors manually, you can use the `Should` method.  
+To handle binder errors manually, you can use the `WithoutAutoHandling` method.  
 It's the default behavior of the binder.
 
 ```go title="Signature"
-func (b *Bind) Should() *Bind
+func (b *Bind) WithoutAutoHandling() *Bind
 ```
 
 ## SetParserDecoder

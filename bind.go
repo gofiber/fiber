@@ -19,29 +19,30 @@ type StructValidator interface {
 
 // Bind struct
 type Bind struct {
-	ctx    Ctx
-	should bool
+	ctx        Ctx
+	dontHandle bool
 }
 
-// Should To handle binder errors manually, you can prefer Should method.
+// If you want to handle binder errors manually, you can use `WithoutAutoHandling`.
 // It's default behavior of binder.
-func (b *Bind) Should() *Bind {
-	b.should = true
+func (b *Bind) WithoutAutoHandling() *Bind {
+	b.dontHandle = true
 
 	return b
 }
 
-// If you want to handle binder errors automatically, you can use WithAutoHandling.
-// If there's an error it'll return error and 400 as HTTP status.
+// If you want to handle binder errors automatically, you can use `WithAutoHandling`.  
+// If there's an error, it will return the error and set HTTP status to `400 Bad Request`.
+// You must still return on error explicitly
 func (b *Bind) WithAutoHandling() *Bind {
-	b.should = false
+	b.dontHandle = false
 
 	return b
 }
 
-// Check Should/WithAutoHandling errors and return it by usage.
+// Check WithAutoHandling/WithoutAutoHandling errors and return it by usage.
 func (b *Bind) returnErr(err error) error {
-	if err == nil || b.should {
+	if err == nil || b.dontHandle {
 		return err
 	}
 
@@ -62,7 +63,7 @@ func (b *Bind) validateStruct(out any) error {
 // Custom To use custom binders, you have to use this method.
 // You can register them from RegisterCustomBinder method of Fiber instance.
 // They're checked by name, if it's not found, it will return an error.
-// NOTE: Should/WithAutoHandling is still valid for Custom binders.
+// NOTE: WithAutoHandling/WithAutoHandling is still valid for Custom binders.
 func (b *Bind) Custom(name string, dest any) error {
 	binders := b.ctx.App().customBinders
 	for _, customBinder := range binders {
