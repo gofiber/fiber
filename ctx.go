@@ -1861,7 +1861,7 @@ func (c *DefaultCtx) Bind() *Bind {
 	if c.bind == nil {
 		c.bind = &Bind{
 			ctx       : c,
-			dontHandle: true,
+			dontHandleErrs: true,
 		}
 	}
 	return c.bind

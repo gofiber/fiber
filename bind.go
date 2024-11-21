@@ -20,13 +20,13 @@ type StructValidator interface {
 // Bind struct
 type Bind struct {
 	ctx        Ctx
-	dontHandle bool
+	dontHandleErrs bool
 }
 
 // If you want to handle binder errors manually, you can use `WithoutAutoHandling`.
 // It's default behavior of binder.
 func (b *Bind) WithoutAutoHandling() *Bind {
-	b.dontHandle = true
+	b.dontHandleErrs = true
 
 	return b
 }
@@ -35,14 +35,14 @@ func (b *Bind) WithoutAutoHandling() *Bind {
 // If there's an error, it will return the error and set HTTP status to `400 Bad Request`.
 // You must still return on error explicitly
 func (b *Bind) WithAutoHandling() *Bind {
-	b.dontHandle = false
+	b.dontHandleErrs = false
 
 	return b
 }
 
 // Check WithAutoHandling/WithoutAutoHandling errors and return it by usage.
 func (b *Bind) returnErr(err error) error {
-	if err == nil || b.dontHandle {
+	if err == nil || b.dontHandleErrs {
 		return err
 	}
 
