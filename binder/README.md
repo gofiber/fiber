@@ -83,7 +83,7 @@ app.Get("/", func(c fiber.Ctx) error {
 // curl "http://localhost:3000/?name=john&pass=doe&products=shoe,hat"
 ```
 
-### Behaviors of WithAutoHandling/WithAutoHandlingWithStatus
+### Behaviors of WithAutoHandling/WithoutAutoHandling
 
 Normally, Fiber returns binder error directly. However; if you want to handle it automatically, you can prefer `WithAutoHandling()`.
 
