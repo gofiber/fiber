@@ -16,6 +16,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"reflect"
 	"regexp"
 	"runtime"
@@ -451,9 +452,9 @@ func Test_App_Use_CaseSensitive(t *testing.T) {
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
-	// check the detected path when the case insensitive recognition is activated
+	// check the detected path when the case-insensitive recognition is activated
 	app.config.CaseSensitive = false
-	// check the case sensitive feature
+	// check the case-sensitive feature
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/AbC", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
@@ -1124,7 +1125,9 @@ func Test_Test_Timeout(t *testing.T) {
 
 	app.Get("/", testEmptyHandler)
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil), -1)
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil), TestConfig{
+		Timeout: 0,
+	})
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
@@ -1133,7 +1136,10 @@ func Test_Test_Timeout(t *testing.T) {
 		return nil
 	})
 
-	_, err = app.Test(httptest.NewRequest(MethodGet, "/timeout", nil), 20*time.Millisecond)
+	_, err = app.Test(httptest.NewRequest(MethodGet, "/timeout", nil), TestConfig{
+		Timeout:       20 * time.Millisecond,
+		FailOnTimeout: true,
+	})
 	require.Error(t, err, "app.Test(req)")
 }
 
@@ -1432,7 +1438,9 @@ func Test_App_Test_no_timeout_infinitely(t *testing.T) {
 		})
 
 		req := httptest.NewRequest(MethodGet, "/", nil)
-		_, err = app.Test(req, -1)
+		_, err = app.Test(req, TestConfig{
+			Timeout: 0,
+		})
 	}()
 
 	tk := time.NewTimer(5 * time.Second)
@@ -1460,8 +1468,27 @@ func Test_App_Test_timeout(t *testing.T) {
 		return nil
 	})
 
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/", nil), 100*time.Millisecond)
-	require.Equal(t, errors.New("test: timeout error after 100ms"), err)
+	_, err := app.Test(httptest.NewRequest(MethodGet, "/", nil), TestConfig{
+		Timeout:       100 * time.Millisecond,
+		FailOnTimeout: true,
+	})
+	require.Equal(t, os.ErrDeadlineExceeded, err)
+}
+
+func Test_App_Test_timeout_empty_response(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/", func(_ Ctx) error {
+		time.Sleep(1 * time.Second)
+		return nil
+	})
+
+	_, err := app.Test(httptest.NewRequest(MethodGet, "/", nil), TestConfig{
+		Timeout:       100 * time.Millisecond,
+		FailOnTimeout: false,
+	})
+	require.Equal(t, errors.New("test: got empty response"), err)
 }
 
 func Test_App_SetTLSHandler(t *testing.T) {

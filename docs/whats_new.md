@@ -30,6 +30,7 @@ Here's a quick overview of the changes in Fiber `v3`:
 - [🧰 Generic functions](#-generic-functions)
 - [🧬 Middlewares](#-middlewares)
   - [CORS](#cors)
+  - [CSRF](#csrf)
   - [Session](#session)
   - [Filesystem](#filesystem)
   - [Monitor](#monitor)
@@ -55,6 +56,8 @@ We have made several changes to the Fiber app, including:
   - EnablePrefork -> previously Prefork
   - EnablePrintRoutes
   - ListenerNetwork -> previously Network
+- app.Config.EnabledTrustedProxyCheck -> has been moved to app.Config.TrustProxy
+  - TrustedProxies -> has been moved to TrustProxyConfig.Proxies
 
 ### new methods
 
@@ -72,7 +75,8 @@ We have made several changes to the Fiber app, including:
 
 ### Methods changes
 
-- Test -> timeout changed to 1 second
+- Test -> Replaced timeout with a config parameter
+  - -1 represents no timeout -> 0 represents no timeout
 - Listen -> has a config parameter
 - Listener -> has a config parameter
 
@@ -141,7 +145,6 @@ app.Route("/api").Route("/user/:id?")
     // Delete user
     return c.JSON(fiber.Map{"message": "User deleted", "id": c.Params("id")})
   })
-})
 ```
 
 </details>
@@ -180,6 +183,68 @@ To enable the routing changes above we had to slightly adjust the signature of t
 ```diff
 -    Add(method, path string, handlers ...Handler) Router
 +    Add(methods []string, path string, handler Handler, middleware ...Handler) Router
+```
+
+### Test Config
+
+The `app.Test()` method now allows users to customize their test configurations:
+
+<details>
+<summary>Example</summary>
+
+```go
+// Create a test app with a handler to test
+app := fiber.New()
+app.Get("/", func(c fiber.Ctx) {
+  return c.SendString("hello world")
+})
+
+// Define the HTTP request and custom TestConfig to test the handler
+req := httptest.NewRequest(MethodGet, "/", nil)
+testConfig := fiber.TestConfig{
+  Timeout:       0,
+  FailOnTimeout: false,
+}
+
+// Test the handler using the request and testConfig
+resp, err := app.Test(req, testConfig)
+```
+
+</details>
+
+To provide configurable testing capabilities, we had to change
+the signature of the `Test` method.
+
+```diff
+-    Test(req *http.Request, timeout ...time.Duration) (*http.Response, error)
++    Test(req *http.Request, config ...fiber.TestConfig) (*http.Response, error)
+```
+
+The `TestConfig` struct provides the following configuration options:
+
+- `Timeout`: The duration to wait before timing out the test. Use 0 for no timeout.
+- `FailOnTimeout`: Controls the behavior when a timeout occurs:
+  - When true, the test will return an `os.ErrDeadlineExceeded` if the test exceeds the `Timeout` duration.
+  - When false, the test will return the partial response received before timing out.
+
+If a custom `TestConfig` isn't provided, then the following will be used:
+
+```go
+testConfig := fiber.TestConfig{
+  Timeout:       time.Second,
+  FailOnTimeout: true,
+}
+```
+
+**Note:** Using this default is **NOT** the same as providing an empty `TestConfig` as an argument to `app.Test()`.
+
+An empty `TestConfig` is the equivalent of:
+
+```go
+testConfig := fiber.TestConfig{
+  Timeout:       0,
+  FailOnTimeout: false,
+}
 ```
 
 ---
@@ -227,6 +292,9 @@ DRAFT section
 - Format -> Param: body interface{} -> handlers ...ResFmt
 - Redirect -> c.Redirect().To()
 - SendFile now supports different configurations using the config parameter.
+- Context has been renamed to RequestCtx which corresponds to the FastHTTP Request Context.
+- UserContext has been renamed to Context which returns a context.Context object.
+- SetUserContext has been renamed to SetContext.
 
 ---
 
@@ -314,9 +382,19 @@ Added support for specifying Key length when using `encryptcookie.GenerateKey(le
 
 ### Session
 
-:::caution
-DRAFT section
-:::
+The Session middleware has undergone key changes in v3 to improve functionality and flexibility. While v2 methods remain available for backward compatibility, we now recommend using the new middleware handler for session management.
+
+#### Key Updates
+
+- **New Middleware Handler**: The `New` function now returns a middleware handler instead of a `*Store`. To access the session store, use the `Store` method on the middleware, or opt for `NewStore` or `NewWithStore` for custom store integration.
+
+- **Manual Session Release**: Session instances are no longer automatically released after being saved. To ensure proper lifecycle management, you must manually call `sess.Release()`.
+
+- **Idle Timeout**: The `Expiration` field has been replaced with `IdleTimeout`, which handles session inactivity. If the session is idle for the specified duration, it will expire. The idle timeout is updated when the session is saved. If you are using the middleware handler, the idle timeout will be updated automatically.
+
+- **Absolute Timeout**: The `AbsoluteTimeout` field has been added. If you need to set an absolute session timeout, you can use this field to define the duration. The session will expire after the specified duration, regardless of activity.
+
+For more details on these changes and migration instructions, check the [Session Middleware Migration Guide](./middleware/session.md#migration-guide).
 
 ### Filesystem
 
@@ -325,11 +403,7 @@ Now, static middleware can do everything that filesystem middleware and static d
 
 ### Monitor
 
-:::caution
-DRAFT section
-:::
-
-Monitor middleware is now in Contrib package.
+Monitor middleware is migrated to the [Contrib package](https://github.com/gofiber/contrib/tree/main/monitor) with [PR #1172](https://github.com/gofiber/contrib/pull/1172).
 
 ### Healthcheck
 
@@ -389,6 +463,35 @@ app.Get("*", static.New("./public/index.html"))
 :::caution
 You have to put `*` to the end of the route if you don't define static route with `app.Use`.
 :::
+
+#### Trusted Proxies
+
+We've renamed `EnableTrustedProxyCheck` to `TrustProxy` and moved `TrustedProxies` to `TrustProxyConfig`.
+
+```go
+// Before
+app := fiber.New(fiber.Config{
+  // EnableTrustedProxyCheck enables the trusted proxy check.
+  EnableTrustedProxyCheck: true,
+  // TrustedProxies is a list of trusted proxy IP ranges/addresses.
+  TrustedProxies: []string{"0.8.0.0", "127.0.0.0/8", "::1/128"},
+})
+```
+
+```go
+// After
+app := fiber.New(fiber.Config{
+  // TrustProxy enables the trusted proxy check
+  TrustProxy: true,
+  // TrustProxyConfig allows for configuring trusted proxies.
+  TrustProxyConfig: fiber.TrustProxyConfig{
+    // Proxies is a list of trusted proxy IP ranges/addresses.
+    Proxies: []string{"0.8.0.0"},
+    // Trust all loop-back IP addresses (127.0.0.0/8, ::1/128)
+    Loopback: true,
+  }
+})
+```
 
 ### 🗺 Router
 
@@ -494,6 +597,24 @@ app.Use(cors.New(cors.Config{
 }))
 ```
 
+#### CSRF
+
+- **Field Renaming**: The `Expiration` field in the CSRF middleware configuration has been renamed to `IdleTimeout` to better describe its functionality. Additionally, the default value has been reduced from 1 hour to 30 minutes. Update your code as follows:
+
+```go
+// Before
+app.Use(csrf.New(csrf.Config{
+  Expiration: 10 * time.Minute,
+}))
+
+// After
+app.Use(csrf.New(csrf.Config{
+  IdleTimeout: 10 * time.Minute,
+}))
+```
+
+- **Session Key Removal**: The `SessionKey` field has been removed from the CSRF middleware configuration. The session key is now an unexported constant within the middleware to avoid potential key collisions in the session store.
+
 #### Filesystem
 
 You need to move filesystem middleware to static middleware due to it has been removed from the core.
@@ -526,7 +647,7 @@ app.Use(static.New("", static.Config{
 }))
 ```
 
-### Healthcheck
+#### Healthcheck
 
 Previously, the Healthcheck middleware was configured with a combined setup for liveliness and readiness probes:
 
@@ -569,4 +690,24 @@ app.Get(healthcheck.DefaultStartupEndpoint, healthcheck.NewHealthChecker(healthc
 
 // Custom liveness endpoint configuration
 app.Get("/live", healthcheck.NewHealthChecker())
+```
+
+#### Monitor
+
+Since v3 the Monitor middleware has been moved to the [Contrib package](https://github.com/gofiber/contrib/tree/main/monitor)
+
+```go
+// Before
+import "github.com/gofiber/fiber/v2/middleware/monitor"
+
+app.Use("/metrics", monitor.New())
+```
+
+You only need to change the import path to the contrib package.
+
+```go
+// After
+import "github.com/gofiber/contrib/monitor"
+
+app.Use("/metrics", monitor.New())
 ```

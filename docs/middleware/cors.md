@@ -118,7 +118,7 @@ panic: [CORS] Configuration error: When 'AllowCredentials' is set to true, 'Allo
 | AllowOrigins         | `[]string`                  | AllowOrigins defines a list of origins that may access the resource. This supports subdomain matching, so you can use a value like "https://*.example.com" to allow any subdomain of example.com to submit requests. If the special wildcard `"*"` is present in the list, all origins will be allowed.                                                              | `["*"]`                                 |
 | AllowOriginsFunc     | `func(origin string) bool`  | `AllowOriginsFunc` is a function that dynamically determines whether to allow a request based on its origin. If this function returns `true`, the 'Access-Control-Allow-Origin' response header will be set to the request's 'origin' header. This function is only used if the request's origin doesn't match any origin in `AllowOrigins`.                         | `nil`                                   |
 | AllowPrivateNetwork  | `bool`                      | Indicates whether the `Access-Control-Allow-Private-Network` response header should be set to `true`, allowing requests from private networks. This aligns with modern security practices for web applications interacting with private networks.                                                                                                                    | `false`                                 |
-| ExposeHeaders        | `string`                    | ExposeHeaders defines whitelist headers that clients are allowed to access.                                                                                                                                                                                                                                                                                          | `[]`                                    |
+| ExposeHeaders        | `string`                    | ExposeHeaders defines an allowlist of headers that clients are allowed to access.                                                                                                                                                                                                                                                                                    | `[]`                                    |
 | MaxAge               | `int`                       | MaxAge indicates how long (in seconds) the results of a preflight request can be cached. If you pass MaxAge 0, the Access-Control-Max-Age header will not be added and the browser will use 5 seconds by default. To disable caching completely, pass MaxAge value negative. It will set the Access-Control-Max-Age header to 0.                                     | `0`                                     |
 | Next                 | `func(fiber.Ctx) bool`      | Next defines a function to skip this middleware when returned true.                                                                                                                                                                                                                                                                                                  | `nil`                                   |
 
@@ -191,7 +191,7 @@ The `AllowHeaders` option specifies which headers are allowed in the actual requ
 
 The `AllowCredentials` option indicates whether the response to the request can be exposed when the credentials flag is true. If `AllowCredentials` is set to `true`, the middleware adds the header `Access-Control-Allow-Credentials: true` to the response. To prevent security vulnerabilities, `AllowCredentials` cannot be set to `true` if `AllowOrigins` is set to a wildcard (`*`).
 
-The `ExposeHeaders` option defines a whitelist of headers that clients are allowed to access. If `ExposeHeaders` is set to `"X-Custom-Header"`, the middleware adds the header `Access-Control-Expose-Headers: X-Custom-Header` to the response.
+The `ExposeHeaders` option defines an allowlist of headers that clients are allowed to access. If `ExposeHeaders` is set to `"X-Custom-Header"`, the middleware adds the header `Access-Control-Expose-Headers: X-Custom-Header` to the response.
 
 The `MaxAge` option indicates how long the results of a preflight request can be cached. If `MaxAge` is set to `3600`, the middleware adds the header `Access-Control-Max-Age: 3600` to the response.
 
@@ -207,7 +207,7 @@ When configuring CORS, misconfiguration can potentially expose your application 
 
 - **Use Credentials Carefully**: If your application needs to support credentials in cross-origin requests, ensure `AllowCredentials` is set to `true` and specify exact origins in `AllowOrigins`. Do not use a wildcard origin in this case.
 
-- **Limit Exposed Headers**: Only whitelist headers that are necessary for the client-side application by setting `ExposeHeaders` appropriately. This minimizes the risk of exposing sensitive information.
+- **Limit Exposed Headers**: Only allowlist headers that are necessary for the client-side application by setting `ExposeHeaders` appropriately. This minimizes the risk of exposing sensitive information.
 
 ### Common Pitfalls
 

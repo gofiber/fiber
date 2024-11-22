@@ -844,24 +844,24 @@ func Benchmark_Ctx_Body_With_Compression_Immutable(b *testing.B) {
 	}
 }
 
+// go test -run Test_Ctx_RequestCtx
+func Test_Ctx_RequestCtx(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	require.Equal(t, "*fasthttp.RequestCtx", fmt.Sprintf("%T", c.RequestCtx()))
+}
+
 // go test -run Test_Ctx_Context
 func Test_Ctx_Context(t *testing.T) {
 	t.Parallel()
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	require.Equal(t, "*fasthttp.RequestCtx", fmt.Sprintf("%T", c.Context()))
-}
-
-// go test -run Test_Ctx_UserContext
-func Test_Ctx_UserContext(t *testing.T) {
-	t.Parallel()
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-
 	t.Run("Nil_Context", func(t *testing.T) {
 		t.Parallel()
-		ctx := c.UserContext()
+		ctx := c.Context()
 		require.Equal(t, ctx, context.Background())
 	})
 	t.Run("ValueContext", func(t *testing.T) {
@@ -873,8 +873,8 @@ func Test_Ctx_UserContext(t *testing.T) {
 	})
 }
 
-// go test -run Test_Ctx_SetUserContext
-func Test_Ctx_SetUserContext(t *testing.T) {
+// go test -run Test_Ctx_SetContext
+func Test_Ctx_SetContext(t *testing.T) {
 	t.Parallel()
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -882,19 +882,19 @@ func Test_Ctx_SetUserContext(t *testing.T) {
 	testKey := struct{}{}
 	testValue := "Test Value"
 	ctx := context.WithValue(context.Background(), testKey, testValue) //nolint: staticcheck // not needed for tests
-	c.SetUserContext(ctx)
-	require.Equal(t, testValue, c.UserContext().Value(testKey))
+	c.SetContext(ctx)
+	require.Equal(t, testValue, c.Context().Value(testKey))
 }
 
-// go test -run Test_Ctx_UserContext_Multiple_Requests
-func Test_Ctx_UserContext_Multiple_Requests(t *testing.T) {
+// go test -run Test_Ctx_Context_Multiple_Requests
+func Test_Ctx_Context_Multiple_Requests(t *testing.T) {
 	t.Parallel()
 	testKey := struct{}{}
 	testValue := "foobar-value"
 
 	app := New()
 	app.Get("/", func(c Ctx) error {
-		ctx := c.UserContext()
+		ctx := c.Context()
 
 		if ctx.Value(testKey) != nil {
 			return c.SendStatus(StatusInternalServerError)
@@ -902,7 +902,7 @@ func Test_Ctx_UserContext_Multiple_Requests(t *testing.T) {
 
 		input := utils.CopyString(Query(c, "input", "NO_VALUE"))
 		ctx = context.WithValue(ctx, testKey, fmt.Sprintf("%s_%s", testValue, input)) //nolint: staticcheck // not needed for tests
-		c.SetUserContext(ctx)
+		c.SetContext(ctx)
 
 		return c.Status(StatusOK).SendString(fmt.Sprintf("resp_%s_returned", input))
 	})
@@ -914,7 +914,7 @@ func Test_Ctx_UserContext_Multiple_Requests(t *testing.T) {
 			resp, err := app.Test(httptest.NewRequest(MethodGet, fmt.Sprintf("/?input=%d", i), nil))
 
 			require.NoError(t, err, "Unexpected error from response")
-			require.Equal(t, StatusOK, resp.StatusCode, "context.Context returned from c.UserContext() is reused")
+			require.Equal(t, StatusOK, resp.StatusCode, "context.Context returned from c.Context() is reused")
 
 			b, err := io.ReadAll(resp.Body)
 			require.NoError(t, err, "Unexpected error from reading response body")
@@ -1190,7 +1190,7 @@ func Test_Ctx_AutoFormat_Struct(t *testing.T) {
 	c.Request().Header.Set(HeaderAccept, MIMEApplicationJSON)
 	err := c.AutoFormat(data)
 	require.NoError(t, err)
-	require.Equal(t,
+	require.JSONEq(t,
 		`{"Sender":"Carol","Recipients":["Alice","Bob"],"Urgency":3}`,
 		string(c.Response().Body()),
 	)
@@ -1573,7 +1573,7 @@ func Test_Ctx_Host_UntrustedProxy(t *testing.T) {
 	t.Parallel()
 	// Don't trust any proxy
 	{
-		app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{}})
+		app := New(Config{TrustProxy: true, TrustProxyConfig: TrustProxyConfig{Proxies: []string{}}})
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		c.Request().SetRequestURI("http://google.com/test")
 		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
@@ -1582,7 +1582,7 @@ func Test_Ctx_Host_UntrustedProxy(t *testing.T) {
 	}
 	// Trust to specific proxy list
 	{
-		app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.8.0.0", "0.8.0.1"}})
+		app := New(Config{TrustProxy: true, TrustProxyConfig: TrustProxyConfig{Proxies: []string{"0.8.0.0", "0.8.0.1"}}})
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		c.Request().SetRequestURI("http://google.com/test")
 		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
@@ -1595,7 +1595,7 @@ func Test_Ctx_Host_UntrustedProxy(t *testing.T) {
 func Test_Ctx_Host_TrustedProxy(t *testing.T) {
 	t.Parallel()
 	{
-		app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.0.0.0", "0.8.0.1"}})
+		app := New(Config{TrustProxy: true, TrustProxyConfig: TrustProxyConfig{Proxies: []string{"0.0.0.0", "0.8.0.1"}}})
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		c.Request().SetRequestURI("http://google.com/test")
 		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
@@ -1608,7 +1608,7 @@ func Test_Ctx_Host_TrustedProxy(t *testing.T) {
 func Test_Ctx_Host_TrustedProxyRange(t *testing.T) {
 	t.Parallel()
 
-	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.0.0.0/30"}})
+	app := New(Config{TrustProxy: true, TrustProxyConfig: TrustProxyConfig{Proxies: []string{"0.0.0.0/30"}}})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	c.Request().SetRequestURI("http://google.com/test")
 	c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
@@ -1620,7 +1620,7 @@ func Test_Ctx_Host_TrustedProxyRange(t *testing.T) {
 func Test_Ctx_Host_UntrustedProxyRange(t *testing.T) {
 	t.Parallel()
 
-	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"1.0.0.0/30"}})
+	app := New(Config{TrustProxy: true, TrustProxyConfig: TrustProxyConfig{Proxies: []string{"1.0.0.0/30"}}})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	c.Request().SetRequestURI("http://google.com/test")
 	c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
@@ -1654,7 +1654,7 @@ func Test_Ctx_IsProxyTrusted(t *testing.T) {
 	}
 	{
 		app := New(Config{
-			EnableTrustedProxyCheck: false,
+			TrustProxy: false,
 		})
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		require.True(t, c.IsProxyTrusted())
@@ -1662,26 +1662,16 @@ func Test_Ctx_IsProxyTrusted(t *testing.T) {
 
 	{
 		app := New(Config{
-			EnableTrustedProxyCheck: true,
+			TrustProxy: true,
 		})
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		require.False(t, c.IsProxyTrusted())
 	}
 	{
 		app := New(Config{
-			EnableTrustedProxyCheck: true,
-
-			TrustedProxies: []string{},
-		})
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		require.False(t, c.IsProxyTrusted())
-	}
-	{
-		app := New(Config{
-			EnableTrustedProxyCheck: true,
-
-			TrustedProxies: []string{
-				"127.0.0.1",
+			TrustProxy: true,
+			TrustProxyConfig: TrustProxyConfig{
+				Proxies: []string{},
 			},
 		})
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -1689,10 +1679,9 @@ func Test_Ctx_IsProxyTrusted(t *testing.T) {
 	}
 	{
 		app := New(Config{
-			EnableTrustedProxyCheck: true,
-
-			TrustedProxies: []string{
-				"127.0.0.1/8",
+			TrustProxy: true,
+			TrustProxyConfig: TrustProxyConfig{
+				Proxies: []string{"127.0.0.1"},
 			},
 		})
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -1700,21 +1689,19 @@ func Test_Ctx_IsProxyTrusted(t *testing.T) {
 	}
 	{
 		app := New(Config{
-			EnableTrustedProxyCheck: true,
-
-			TrustedProxies: []string{
-				"0.0.0.0",
+			TrustProxy: true,
+			TrustProxyConfig: TrustProxyConfig{
+				Proxies: []string{"127.0.0.1/8"},
 			},
 		})
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-		require.True(t, c.IsProxyTrusted())
+		require.False(t, c.IsProxyTrusted())
 	}
 	{
 		app := New(Config{
-			EnableTrustedProxyCheck: true,
-
-			TrustedProxies: []string{
-				"0.0.0.1/31",
+			TrustProxy: true,
+			TrustProxyConfig: TrustProxyConfig{
+				Proxies: []string{"0.0.0.0"},
 			},
 		})
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -1722,10 +1709,49 @@ func Test_Ctx_IsProxyTrusted(t *testing.T) {
 	}
 	{
 		app := New(Config{
-			EnableTrustedProxyCheck: true,
-
-			TrustedProxies: []string{
-				"0.0.0.1/31junk",
+			TrustProxy: true,
+			TrustProxyConfig: TrustProxyConfig{
+				Proxies: []string{"0.0.0.1/31"},
+			},
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		require.True(t, c.IsProxyTrusted())
+	}
+	{
+		app := New(Config{
+			TrustProxy: true,
+			TrustProxyConfig: TrustProxyConfig{
+				Proxies: []string{"0.0.0.1/31junk"},
+			},
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		require.False(t, c.IsProxyTrusted())
+	}
+	{
+		app := New(Config{
+			TrustProxy: true,
+			TrustProxyConfig: TrustProxyConfig{
+				Private: true,
+			},
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		require.False(t, c.IsProxyTrusted())
+	}
+	{
+		app := New(Config{
+			TrustProxy: true,
+			TrustProxyConfig: TrustProxyConfig{
+				Loopback: true,
+			},
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		require.False(t, c.IsProxyTrusted())
+	}
+	{
+		app := New(Config{
+			TrustProxy: true,
+			TrustProxyConfig: TrustProxyConfig{
+				LinkLocal: true,
 			},
 		})
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -1759,7 +1785,10 @@ func Benchmark_Ctx_Hostname(b *testing.B) {
 	}
 	// Trust to specific proxy list
 	{
-		app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.8.0.0", "0.8.0.1"}})
+		app := New(Config{
+			TrustProxy:       true,
+			TrustProxyConfig: TrustProxyConfig{Proxies: []string{"0.8.0.0", "0.8.0.1"}},
+		})
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		c.Request().SetRequestURI("http://google.com/test")
 		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
@@ -1772,7 +1801,10 @@ func Benchmark_Ctx_Hostname(b *testing.B) {
 func Test_Ctx_Hostname_TrustedProxy(t *testing.T) {
 	t.Parallel()
 	{
-		app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.0.0.0", "0.8.0.1"}})
+		app := New(Config{
+			TrustProxy:       true,
+			TrustProxyConfig: TrustProxyConfig{Proxies: []string{"0.0.0.0", "0.8.0.1"}},
+		})
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		c.Request().SetRequestURI("http://google.com/test")
 		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
@@ -1785,7 +1817,10 @@ func Test_Ctx_Hostname_TrustedProxy(t *testing.T) {
 func Test_Ctx_Hostname_TrustedProxy_Multiple(t *testing.T) {
 	t.Parallel()
 	{
-		app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.0.0.0", "0.8.0.1"}})
+		app := New(Config{
+			TrustProxy:       true,
+			TrustProxyConfig: TrustProxyConfig{Proxies: []string{"0.0.0.0", "0.8.0.1"}},
+		})
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		c.Request().SetRequestURI("http://google.com/test")
 		c.Request().Header.Set(HeaderXForwardedHost, "google1.com, google2.com")
@@ -1798,7 +1833,10 @@ func Test_Ctx_Hostname_TrustedProxy_Multiple(t *testing.T) {
 func Test_Ctx_Hostname_TrustedProxyRange(t *testing.T) {
 	t.Parallel()
 
-	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.0.0.0/30"}})
+	app := New(Config{
+		TrustProxy:       true,
+		TrustProxyConfig: TrustProxyConfig{Proxies: []string{"0.0.0.0/30"}},
+	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	c.Request().SetRequestURI("http://google.com/test")
 	c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
@@ -1810,7 +1848,10 @@ func Test_Ctx_Hostname_TrustedProxyRange(t *testing.T) {
 func Test_Ctx_Hostname_UntrustedProxyRange(t *testing.T) {
 	t.Parallel()
 
-	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"1.0.0.0/30"}})
+	app := New(Config{
+		TrustProxy:       true,
+		TrustProxyConfig: TrustProxyConfig{Proxies: []string{"1.0.0.0/30"}},
+	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	c.Request().SetRequestURI("http://google.com/test")
 	c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
@@ -1928,7 +1969,11 @@ func Test_Ctx_IP_ProxyHeader_With_IP_Validation(t *testing.T) {
 // go test -run Test_Ctx_IP_UntrustedProxy
 func Test_Ctx_IP_UntrustedProxy(t *testing.T) {
 	t.Parallel()
-	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.8.0.1"}, ProxyHeader: HeaderXForwardedFor})
+	app := New(Config{
+		TrustProxy:       true,
+		TrustProxyConfig: TrustProxyConfig{Proxies: []string{"0.8.0.1"}},
+		ProxyHeader:      HeaderXForwardedFor,
+	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	c.Request().Header.Set(HeaderXForwardedFor, "0.0.0.1")
 	require.Equal(t, "0.0.0.0", c.IP())
@@ -1937,7 +1982,11 @@ func Test_Ctx_IP_UntrustedProxy(t *testing.T) {
 // go test -run Test_Ctx_IP_TrustedProxy
 func Test_Ctx_IP_TrustedProxy(t *testing.T) {
 	t.Parallel()
-	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.0.0.0"}, ProxyHeader: HeaderXForwardedFor})
+	app := New(Config{
+		TrustProxy:       true,
+		TrustProxyConfig: TrustProxyConfig{Proxies: []string{"0.0.0.0"}},
+		ProxyHeader:      HeaderXForwardedFor,
+	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	c.Request().Header.Set(HeaderXForwardedFor, "0.0.0.1")
 	require.Equal(t, "0.0.0.1", c.IP())
@@ -2614,7 +2663,7 @@ func Benchmark_Ctx_Scheme(b *testing.B) {
 // go test -run Test_Ctx_Scheme_TrustedProxy
 func Test_Ctx_Scheme_TrustedProxy(t *testing.T) {
 	t.Parallel()
-	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.0.0.0"}})
+	app := New(Config{TrustProxy: true, TrustProxyConfig: TrustProxyConfig{Proxies: []string{"0.0.0.0"}}})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Request().Header.Set(HeaderXForwardedProto, schemeHTTPS)
@@ -2639,7 +2688,10 @@ func Test_Ctx_Scheme_TrustedProxy(t *testing.T) {
 // go test -run Test_Ctx_Scheme_TrustedProxyRange
 func Test_Ctx_Scheme_TrustedProxyRange(t *testing.T) {
 	t.Parallel()
-	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.0.0.0/30"}})
+	app := New(Config{
+		TrustProxy:       true,
+		TrustProxyConfig: TrustProxyConfig{Proxies: []string{"0.0.0.0/30"}},
+	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Request().Header.Set(HeaderXForwardedProto, schemeHTTPS)
@@ -2664,7 +2716,10 @@ func Test_Ctx_Scheme_TrustedProxyRange(t *testing.T) {
 // go test -run Test_Ctx_Scheme_UntrustedProxyRange
 func Test_Ctx_Scheme_UntrustedProxyRange(t *testing.T) {
 	t.Parallel()
-	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"1.1.1.1/30"}})
+	app := New(Config{
+		TrustProxy:       true,
+		TrustProxyConfig: TrustProxyConfig{Proxies: []string{"1.1.1.1/30"}},
+	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Request().Header.Set(HeaderXForwardedProto, schemeHTTPS)
@@ -2689,7 +2744,10 @@ func Test_Ctx_Scheme_UntrustedProxyRange(t *testing.T) {
 // go test -run Test_Ctx_Scheme_UnTrustedProxy
 func Test_Ctx_Scheme_UnTrustedProxy(t *testing.T) {
 	t.Parallel()
-	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.8.0.1"}})
+	app := New(Config{
+		TrustProxy:       true,
+		TrustProxyConfig: TrustProxyConfig{Proxies: []string{"0.8.0.1"}},
+	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Request().Header.Set(HeaderXForwardedProto, schemeHTTPS)
@@ -3065,6 +3123,49 @@ func Test_Ctx_SendFile(t *testing.T) {
 	app.ReleaseCtx(c)
 }
 
+// go test -race -run Test_Ctx_SendFile_ContentType
+func Test_Ctx_SendFile_ContentType(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	// 1) simple case
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	err := c.SendFile("./.github/testdata/fs/img/fiber.png")
+	// check expectation
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, c.Response().StatusCode())
+	require.Equal(t, "image/png", string(c.Response().Header.Peek(HeaderContentType)))
+	app.ReleaseCtx(c)
+
+	// 2) set by valid file extension, not file header
+	// see: https://github.com/valyala/fasthttp/blob/d795f13985f16622a949ea9fc3459cf54dc78b3e/fs.go#L1638
+	c = app.AcquireCtx(&fasthttp.RequestCtx{})
+	err = c.SendFile("./.github/testdata/fs/img/fiberpng.jpeg")
+	// check expectation
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, c.Response().StatusCode())
+	require.Equal(t, "image/jpeg", string(c.Response().Header.Peek(HeaderContentType)))
+	app.ReleaseCtx(c)
+
+	// 3) set by file header if extension is invalid
+	c = app.AcquireCtx(&fasthttp.RequestCtx{})
+	err = c.SendFile("./.github/testdata/fs/img/fiberpng.notvalidext")
+	// check expectation
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, c.Response().StatusCode())
+	require.Equal(t, "image/png", string(c.Response().Header.Peek(HeaderContentType)))
+	app.ReleaseCtx(c)
+
+	// 4) set by file header if extension is missing
+	c = app.AcquireCtx(&fasthttp.RequestCtx{})
+	err = c.SendFile("./.github/testdata/fs/img/fiberpng")
+	// check expectation
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, c.Response().StatusCode())
+	require.Equal(t, "image/png", string(c.Response().Header.Peek(HeaderContentType)))
+	app.ReleaseCtx(c)
+}
+
 func Test_Ctx_SendFile_Download(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -3120,7 +3221,7 @@ func Test_Ctx_SendFile_MaxAge(t *testing.T) {
 	// check expectation
 	require.NoError(t, err)
 	require.Equal(t, expectFileContent, c.Response().Body())
-	require.Equal(t, "public, max-age=100", string(c.Context().Response.Header.Peek(HeaderCacheControl)), "CacheControl Control")
+	require.Equal(t, "public, max-age=100", string(c.RequestCtx().Response.Header.Peek(HeaderCacheControl)), "CacheControl Control")
 	require.Equal(t, StatusOK, c.Response().StatusCode())
 	app.ReleaseCtx(c)
 }
@@ -3143,7 +3244,10 @@ func Test_Static_Compress(t *testing.T) {
 
 			req := httptest.NewRequest(MethodGet, "/file", nil)
 			req.Header.Set("Accept-Encoding", algo)
-			resp, err := app.Test(req, 10*time.Second)
+			resp, err := app.Test(req, TestConfig{
+				Timeout:       10 * time.Second,
+				FailOnTimeout: true,
+			})
 
 			require.NoError(t, err, "app.Test(req)")
 			require.Equal(t, 200, resp.StatusCode, "Status code")
@@ -3449,7 +3553,7 @@ func Test_Ctx_JSON(t *testing.T) {
 		"Age":  20,
 	})
 	require.NoError(t, err)
-	require.Equal(t, `{"Age":20,"Name":"Grame"}`, string(c.Response().Body()))
+	require.JSONEq(t, `{"Age":20,"Name":"Grame"}`, string(c.Response().Body()))
 	require.Equal(t, "application/json", string(c.Response().Header.Peek("content-type")))
 
 	// Test with ctype
@@ -3458,7 +3562,7 @@ func Test_Ctx_JSON(t *testing.T) {
 		"Age":  20,
 	}, "application/problem+json")
 	require.NoError(t, err)
-	require.Equal(t, `{"Age":20,"Name":"Grame"}`, string(c.Response().Body()))
+	require.JSONEq(t, `{"Age":20,"Name":"Grame"}`, string(c.Response().Body()))
 	require.Equal(t, "application/problem+json", string(c.Response().Header.Peek("content-type")))
 
 	testEmpty := func(v any, r string) {
@@ -3512,7 +3616,7 @@ func Benchmark_Ctx_JSON(b *testing.B) {
 		err = c.JSON(data)
 	}
 	require.NoError(b, err)
-	require.Equal(b, `{"Name":"Grame","Age":20}`, string(c.Response().Body()))
+	require.JSONEq(b, `{"Name":"Grame","Age":20}`, string(c.Response().Body()))
 }
 
 // go test -run=^$ -bench=Benchmark_Ctx_JSON_Ctype -benchmem -count=4
@@ -3535,7 +3639,7 @@ func Benchmark_Ctx_JSON_Ctype(b *testing.B) {
 		err = c.JSON(data, "application/problem+json")
 	}
 	require.NoError(b, err)
-	require.Equal(b, `{"Name":"Grame","Age":20}`, string(c.Response().Body()))
+	require.JSONEq(b, `{"Name":"Grame","Age":20}`, string(c.Response().Body()))
 	require.Equal(b, "application/problem+json", string(c.Response().Header.Peek("content-type")))
 }
 
@@ -6241,7 +6345,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	// Scenario with trusted proxy check simple
 	b.Run("WithProxyCheckSimple", func(b *testing.B) {
 		app := New(Config{
-			EnableTrustedProxyCheck: true,
+			TrustProxy: true,
 		})
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		c.Request().SetRequestURI("http://google.com/test")
@@ -6257,7 +6361,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	// Scenario with trusted proxy check simple in parallel
 	b.Run("WithProxyCheckSimpleParallel", func(b *testing.B) {
 		app := New(Config{
-			EnableTrustedProxyCheck: true,
+			TrustProxy: true,
 		})
 		b.ReportAllocs()
 		b.ResetTimer()
@@ -6275,8 +6379,10 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	// Scenario with trusted proxy check
 	b.Run("WithProxyCheck", func(b *testing.B) {
 		app := New(Config{
-			EnableTrustedProxyCheck: true,
-			TrustedProxies:          []string{"0.0.0.0"},
+			TrustProxy: true,
+			TrustProxyConfig: TrustProxyConfig{
+				Proxies: []string{"0.0.0.0"},
+			},
 		})
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		c.Request().SetRequestURI("http://google.com/test")
@@ -6292,8 +6398,198 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	// Scenario with trusted proxy check in parallel
 	b.Run("WithProxyCheckParallel", func(b *testing.B) {
 		app := New(Config{
-			EnableTrustedProxyCheck: true,
-			TrustedProxies:          []string{"0.0.0.0"},
+			TrustProxy: true,
+			TrustProxyConfig: TrustProxyConfig{
+				Proxies: []string{"0.0.0.0"},
+			},
+		})
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			c.Request().SetRequestURI("http://google.com/")
+			c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+			for pb.Next() {
+				c.IsProxyTrusted()
+			}
+			app.ReleaseCtx(c)
+		})
+	})
+
+	// Scenario with trusted proxy check allow private
+	b.Run("WithProxyCheckAllowPrivate", func(b *testing.B) {
+		app := New(Config{
+			TrustProxy: true,
+			TrustProxyConfig: TrustProxyConfig{
+				Private: true,
+			},
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().SetRequestURI("http://google.com/test")
+		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			c.IsProxyTrusted()
+		}
+		app.ReleaseCtx(c)
+	})
+
+	// Scenario with trusted proxy check allow private in parallel
+	b.Run("WithProxyCheckAllowPrivateParallel", func(b *testing.B) {
+		app := New(Config{
+			TrustProxy: true,
+			TrustProxyConfig: TrustProxyConfig{
+				Private: true,
+			},
+		})
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			c.Request().SetRequestURI("http://google.com/")
+			c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+			for pb.Next() {
+				c.IsProxyTrusted()
+			}
+			app.ReleaseCtx(c)
+		})
+	})
+
+	// Scenario with trusted proxy check allow private as subnets
+	b.Run("WithProxyCheckAllowPrivateAsSubnets", func(b *testing.B) {
+		app := New(Config{
+			TrustProxy: true,
+			TrustProxyConfig: TrustProxyConfig{
+				Proxies: []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7"},
+			},
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().SetRequestURI("http://google.com/test")
+		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			c.IsProxyTrusted()
+		}
+		app.ReleaseCtx(c)
+	})
+
+	// Scenario with trusted proxy check allow private as subnets in parallel
+	b.Run("WithProxyCheckAllowPrivateAsSubnetsParallel", func(b *testing.B) {
+		app := New(Config{
+			TrustProxy: true,
+			TrustProxyConfig: TrustProxyConfig{
+				Proxies: []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7"},
+			},
+		})
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			c.Request().SetRequestURI("http://google.com/")
+			c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+			for pb.Next() {
+				c.IsProxyTrusted()
+			}
+			app.ReleaseCtx(c)
+		})
+	})
+
+	// Scenario with trusted proxy check allow private, loopback, and link-local
+	b.Run("WithProxyCheckAllowAll", func(b *testing.B) {
+		app := New(Config{
+			TrustProxy: true,
+			TrustProxyConfig: TrustProxyConfig{
+				Private:   true,
+				Loopback:  true,
+				LinkLocal: true,
+			},
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().SetRequestURI("http://google.com/test")
+		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			c.IsProxyTrusted()
+		}
+		app.ReleaseCtx(c)
+	})
+
+	// Scenario with trusted proxy check allow private, loopback, and link-local in parallel
+	b.Run("WithProxyCheckAllowAllParallel", func(b *testing.B) {
+		app := New(Config{
+			TrustProxy: true,
+			TrustProxyConfig: TrustProxyConfig{
+				Private:   true,
+				Loopback:  true,
+				LinkLocal: true,
+			},
+		})
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			c.Request().SetRequestURI("http://google.com/")
+			c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+			for pb.Next() {
+				c.IsProxyTrusted()
+			}
+			app.ReleaseCtx(c)
+		})
+	})
+
+	// Scenario with trusted proxy check allow private, loopback, and link-local as subnets
+	b.Run("WithProxyCheckAllowAllowAllAsSubnets", func(b *testing.B) {
+		app := New(Config{
+			TrustProxy: true,
+			TrustProxyConfig: TrustProxyConfig{
+				Proxies: []string{
+					// Link-local
+					"169.254.0.0/16",
+					"fe80::/10",
+					// Loopback
+					"127.0.0.0/8",
+					"::1/128",
+					// Private
+					"10.0.0.0/8",
+					"172.16.0.0/12",
+					"192.168.0.0/16",
+					"fc00::/7",
+				},
+			},
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().SetRequestURI("http://google.com/test")
+		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			c.IsProxyTrusted()
+		}
+		app.ReleaseCtx(c)
+	})
+
+	// Scenario with trusted proxy check allow private, loopback, and link-local as subnets in parallel
+	b.Run("WithProxyCheckAllowAllowAllAsSubnetsParallel", func(b *testing.B) {
+		app := New(Config{
+			TrustProxy: true,
+			TrustProxyConfig: TrustProxyConfig{
+				Proxies: []string{
+					// Link-local
+					"169.254.0.0/16",
+					"fe80::/10",
+					// Loopback
+					"127.0.0.0/8",
+					"::1/128",
+					// Private
+					"10.0.0.0/8",
+					"172.16.0.0/12",
+					"192.168.0.0/16",
+					"fc00::/7",
+				},
+			},
 		})
 		b.ReportAllocs()
 		b.ResetTimer()
@@ -6311,8 +6607,10 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	// Scenario with trusted proxy check with subnet
 	b.Run("WithProxyCheckSubnet", func(b *testing.B) {
 		app := New(Config{
-			EnableTrustedProxyCheck: true,
-			TrustedProxies:          []string{"0.0.0.0/8"},
+			TrustProxy: true,
+			TrustProxyConfig: TrustProxyConfig{
+				Proxies: []string{"0.0.0.0/8"},
+			},
 		})
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		c.Request().SetRequestURI("http://google.com/test")
@@ -6328,8 +6626,10 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	// Scenario with trusted proxy check with subnet in parallel
 	b.Run("WithProxyCheckParallelSubnet", func(b *testing.B) {
 		app := New(Config{
-			EnableTrustedProxyCheck: true,
-			TrustedProxies:          []string{"0.0.0.0/8"},
+			TrustProxy: true,
+			TrustProxyConfig: TrustProxyConfig{
+				Proxies: []string{"0.0.0.0/8"},
+			},
 		})
 		b.ReportAllocs()
 		b.ResetTimer()
@@ -6347,8 +6647,10 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	// Scenario with trusted proxy check with multiple subnet
 	b.Run("WithProxyCheckMultipleSubnet", func(b *testing.B) {
 		app := New(Config{
-			EnableTrustedProxyCheck: true,
-			TrustedProxies:          []string{"192.168.0.0/24", "10.0.0.0/16", "0.0.0.0/8"},
+			TrustProxy: true,
+			TrustProxyConfig: TrustProxyConfig{
+				Proxies: []string{"192.168.0.0/24", "10.0.0.0/16", "0.0.0.0/8"},
+			},
 		})
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		c.Request().SetRequestURI("http://google.com/test")
@@ -6364,8 +6666,10 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	// Scenario with trusted proxy check with multiple subnet in parallel
 	b.Run("WithProxyCheckParallelMultipleSubnet", func(b *testing.B) {
 		app := New(Config{
-			EnableTrustedProxyCheck: true,
-			TrustedProxies:          []string{"192.168.0.0/24", "10.0.0.0/16", "0.0.0.0/8"},
+			TrustProxy: true,
+			TrustProxyConfig: TrustProxyConfig{
+				Proxies: []string{"192.168.0.0/24", "10.0.0.0/16", "0.0.0.0/8"},
+			},
 		})
 		b.ReportAllocs()
 		b.ResetTimer()
@@ -6383,17 +6687,19 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	// Scenario with trusted proxy check with all subnets
 	b.Run("WithProxyCheckAllSubnets", func(b *testing.B) {
 		app := New(Config{
-			EnableTrustedProxyCheck: true,
-			TrustedProxies: []string{
-				"127.0.0.0/8",     // Loopback addresses
-				"169.254.0.0/16",  // Link-Local addresses
-				"fe80::/10",       // Link-Local addresses
-				"192.168.0.0/16",  // Private Network addresses
-				"172.16.0.0/12",   // Private Network addresses
-				"10.0.0.0/8",      // Private Network addresses
-				"fc00::/7",        // Unique Local addresses
-				"173.245.48.0/20", // My custom range
-				"0.0.0.0/8",       // All IPv4 addresses
+			TrustProxy: true,
+			TrustProxyConfig: TrustProxyConfig{
+				Proxies: []string{
+					"127.0.0.0/8",     // Loopback addresses
+					"169.254.0.0/16",  // Link-Local addresses
+					"fe80::/10",       // Link-Local addresses
+					"192.168.0.0/16",  // Private Network addresses
+					"172.16.0.0/12",   // Private Network addresses
+					"10.0.0.0/8",      // Private Network addresses
+					"fc00::/7",        // Unique Local addresses
+					"173.245.48.0/20", // My custom range
+					"0.0.0.0/8",       // All IPv4 addresses
+				},
 			},
 		})
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -6410,17 +6716,19 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 	// Scenario with trusted proxy check with all subnets in parallel
 	b.Run("WithProxyCheckParallelAllSubnets", func(b *testing.B) {
 		app := New(Config{
-			EnableTrustedProxyCheck: true,
-			TrustedProxies: []string{
-				"127.0.0.0/8",     // Loopback addresses
-				"169.254.0.0/16",  // Link-Local addresses
-				"fe80::/10",       // Link-Local addresses
-				"192.168.0.0/16",  // Private Network addresses
-				"172.16.0.0/12",   // Private Network addresses
-				"10.0.0.0/8",      // Private Network addresses
-				"fc00::/7",        // Unique Local addresses
-				"173.245.48.0/20", // My custom range
-				"0.0.0.0/8",       // All IPv4 addresses
+			TrustProxy: true,
+			TrustProxyConfig: TrustProxyConfig{
+				Proxies: []string{
+					"127.0.0.0/8",     // Loopback addresses
+					"169.254.0.0/16",  // Link-Local addresses
+					"fe80::/10",       // Link-Local addresses
+					"192.168.0.0/16",  // Private Network addresses
+					"172.16.0.0/12",   // Private Network addresses
+					"10.0.0.0/8",      // Private Network addresses
+					"fc00::/7",        // Unique Local addresses
+					"173.245.48.0/20", // My custom range
+					"0.0.0.0/8",       // All IPv4 addresses
+				},
 			},
 		})
 		b.ReportAllocs()

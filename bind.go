@@ -95,7 +95,7 @@ func (b *Bind) RespHeader(out any) error {
 // Cookie binds the requesr cookie strings into the struct, map[string]string and map[string][]string.
 // NOTE: If your cookie is like key=val1,val2; they'll be binded as an slice if your map is map[string][]string. Else, it'll use last element of cookie.
 func (b *Bind) Cookie(out any) error {
-	if err := b.returnErr(binder.CookieBinder.Bind(b.ctx.Context(), out)); err != nil {
+	if err := b.returnErr(binder.CookieBinder.Bind(b.ctx.RequestCtx(), out)); err != nil {
 		return err
 	}
 
@@ -104,7 +104,7 @@ func (b *Bind) Cookie(out any) error {
 
 // Query binds the query string into the struct, map[string]string and map[string][]string.
 func (b *Bind) Query(out any) error {
-	if err := b.returnErr(binder.QueryBinder.Bind(b.ctx.Context(), out)); err != nil {
+	if err := b.returnErr(binder.QueryBinder.Bind(b.ctx.RequestCtx(), out)); err != nil {
 		return err
 	}
 
@@ -131,7 +131,7 @@ func (b *Bind) XML(out any) error {
 
 // Form binds the form into the struct, map[string]string and map[string][]string.
 func (b *Bind) Form(out any) error {
-	if err := b.returnErr(binder.FormBinder.Bind(b.ctx.Context(), out)); err != nil {
+	if err := b.returnErr(binder.FormBinder.Bind(b.ctx.RequestCtx(), out)); err != nil {
 		return err
 	}
 
@@ -149,7 +149,7 @@ func (b *Bind) URI(out any) error {
 
 // MultipartForm binds the multipart form into the struct, map[string]string and map[string][]string.
 func (b *Bind) MultipartForm(out any) error {
-	if err := b.returnErr(binder.FormBinder.BindMultipart(b.ctx.Context(), out)); err != nil {
+	if err := b.returnErr(binder.FormBinder.BindMultipart(b.ctx.RequestCtx(), out)); err != nil {
 		return err
 	}
 
@@ -160,10 +160,10 @@ func (b *Bind) MultipartForm(out any) error {
 // It supports decoding the following content types based on the Content-Type header:
 // application/json, application/xml, application/x-www-form-urlencoded, multipart/form-data
 // If none of the content types above are matched, it'll take a look custom binders by checking the MIMETypes() method of custom binder.
-// If there're no custom binder for mşme type of body, it will return a ErrUnprocessableEntity error.
+// If there're no custom binder for mime type of body, it will return a ErrUnprocessableEntity error.
 func (b *Bind) Body(out any) error {
 	// Get content-type
-	ctype := utils.ToLower(utils.UnsafeString(b.ctx.Context().Request.Header.ContentType()))
+	ctype := utils.ToLower(utils.UnsafeString(b.ctx.RequestCtx().Request.Header.ContentType()))
 	ctype = binder.FilterFlags(utils.ParseVendorSpecificContentType(ctype))
 
 	// Check custom binders

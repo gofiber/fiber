@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -161,7 +162,7 @@ func Test_HTTPMiddleware(t *testing.T) {
 	app := fiber.New()
 	app.Use(HTTPMiddleware(nethttpMW))
 	app.Post("/", func(c fiber.Ctx) error {
-		value := c.Context().Value(TestContextKey)
+		value := c.RequestCtx().Value(TestContextKey)
 		val, ok := value.(string)
 		if !ok {
 			t.Error("unexpected error on type-assertion")
@@ -169,7 +170,7 @@ func Test_HTTPMiddleware(t *testing.T) {
 		if value != nil {
 			c.Set("context_okay", val)
 		}
-		value = c.Context().Value(TestContextSecondKey)
+		value = c.RequestCtx().Value(TestContextSecondKey)
 		if value != nil {
 			val, ok := value.(string)
 			if !ok {
@@ -198,6 +199,81 @@ func Test_HTTPMiddleware(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "okay", resp.Header.Get("context_okay"))
 	require.Equal(t, "okay", resp.Header.Get("context_second_okay"))
+}
+
+func Test_HTTPMiddlewareWithCookies(t *testing.T) {
+	const (
+		cookieHeader    = "Cookie"
+		setCookieHeader = "Set-Cookie"
+		cookieOneName   = "cookieOne"
+		cookieTwoName   = "cookieTwo"
+		cookieOneValue  = "valueCookieOne"
+		cookieTwoValue  = "valueCookieTwo"
+	)
+	nethttpMW := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+
+	app := fiber.New()
+	app.Use(HTTPMiddleware(nethttpMW))
+	app.Post("/", func(c fiber.Ctx) error {
+		// RETURNING CURRENT COOKIES TO RESPONSE
+		var cookies []string = strings.Split(c.Get(cookieHeader), "; ")
+		for _, cookie := range cookies {
+			c.Set(setCookieHeader, cookie)
+		}
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	// Test case for POST request with cookies
+	t.Run("POST request with cookies", func(t *testing.T) {
+		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodPost, "/", nil)
+		require.NoError(t, err)
+		req.AddCookie(&http.Cookie{Name: cookieOneName, Value: cookieOneValue})
+		req.AddCookie(&http.Cookie{Name: cookieTwoName, Value: cookieTwoValue})
+
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		cookies := resp.Cookies()
+		require.Len(t, cookies, 2)
+		for _, cookie := range cookies {
+			switch cookie.Name {
+			case cookieOneName:
+				require.Equal(t, cookieOneValue, cookie.Value)
+			case cookieTwoName:
+				require.Equal(t, cookieTwoValue, cookie.Value)
+			default:
+				t.Error("unexpected cookie key")
+			}
+		}
+	})
+
+	// New test case for GET request
+	t.Run("GET request", func(t *testing.T) {
+		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/", nil)
+		require.NoError(t, err)
+
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusMethodNotAllowed, resp.StatusCode)
+	})
+
+	// New test case for request without cookies
+	t.Run("POST request without cookies", func(t *testing.T) {
+		req, err := http.NewRequestWithContext(context.Background(), fiber.MethodPost, "/", nil)
+		require.NoError(t, err)
+
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		require.Empty(t, resp.Cookies())
+	})
 }
 
 func Test_FiberHandler(t *testing.T) {
@@ -240,12 +316,12 @@ func testFiberToHandlerFunc(t *testing.T, checkDefaultPort bool, app ...*fiber.A
 	fiberH := func(c fiber.Ctx) error {
 		callsCount++
 		require.Equal(t, expectedMethod, c.Method(), "Method")
-		require.Equal(t, expectedRequestURI, string(c.Context().RequestURI()), "RequestURI")
-		require.Equal(t, expectedContentLength, c.Context().Request.Header.ContentLength(), "ContentLength")
+		require.Equal(t, expectedRequestURI, string(c.RequestCtx().RequestURI()), "RequestURI")
+		require.Equal(t, expectedContentLength, c.RequestCtx().Request.Header.ContentLength(), "ContentLength")
 		require.Equal(t, expectedHost, c.Hostname(), "Host")
 		require.Equal(t, expectedHost, string(c.Request().Header.Host()), "Host")
 		require.Equal(t, "http://"+expectedHost, c.BaseURL(), "BaseURL")
-		require.Equal(t, expectedRemoteAddr, c.Context().RemoteAddr().String(), "RemoteAddr")
+		require.Equal(t, expectedRemoteAddr, c.RequestCtx().RemoteAddr().String(), "RemoteAddr")
 
 		body := string(c.Body())
 		require.Equal(t, expectedBody, body, "Body")
@@ -316,8 +392,8 @@ func Test_FiberHandler_RequestNilBody(t *testing.T) {
 	fiberH := func(c fiber.Ctx) error {
 		callsCount++
 		require.Equal(t, expectedMethod, c.Method(), "Method")
-		require.Equal(t, expectedRequestURI, string(c.Context().RequestURI()), "RequestURI")
-		require.Equal(t, expectedContentLength, c.Context().Request.Header.ContentLength(), "ContentLength")
+		require.Equal(t, expectedRequestURI, string(c.RequestCtx().RequestURI()), "RequestURI")
+		require.Equal(t, expectedContentLength, c.RequestCtx().Request.Header.ContentLength(), "ContentLength")
 
 		_, err := c.Write([]byte("request body is nil"))
 		return err

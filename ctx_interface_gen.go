@@ -46,14 +46,14 @@ type Ctx interface {
 	// ClearCookie expires a specific cookie by key on the client side.
 	// If no key is provided it expires all cookies that came with the request.
 	ClearCookie(key ...string)
-	// Context returns *fasthttp.RequestCtx that carries a deadline
+	// RequestCtx returns *fasthttp.RequestCtx that carries a deadline
 	// a cancellation signal, and other values across API boundaries.
-	Context() *fasthttp.RequestCtx
-	// UserContext returns a context implementation that was set by
+	RequestCtx() *fasthttp.RequestCtx
+	// Context returns a context implementation that was set by
 	// user earlier or returns a non-nil, empty context,if it was not set earlier.
-	UserContext() context.Context
-	// SetUserContext sets a context implementation by user.
-	SetUserContext(ctx context.Context)
+	Context() context.Context
+	// SetContext sets a context implementation by user.
+	SetContext(ctx context.Context)
 	// Cookie sets a cookie by passing a cookie struct.
 	Cookie(cookie *Cookie)
 	// Cookies are used for getting a cookie value by key.
@@ -128,19 +128,19 @@ type Ctx interface {
 	// while `Hostname` refers specifically to the name assigned to a device on a network, excluding any port information.
 	// Example: URL: https://example.com:8080 -> Host: example.com:8080
 	// Make copies or use the Immutable setting instead.
-	// Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
+	// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
 	Host() string
 	// Hostname contains the hostname derived from the X-Forwarded-Host or Host HTTP header using the c.Host() method.
 	// Returned value is only valid within the handler. Do not store any references.
 	// Example: URL: https://example.com:8080 -> Hostname: example.com
 	// Make copies or use the Immutable setting instead.
-	// Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
+	// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
 	Hostname() string
 	// Port returns the remote port of the request.
 	Port() string
 	// IP returns the remote IP address of the request.
 	// If ProxyHeader and IP Validation is configured, it will parse that header and return the first valid IP address.
-	// Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
+	// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
 	IP() string
 	// extractIPsFromHeader will return a slice of IPs it found given a header name in the order they appear.
 	// When IP validation is enabled, any invalid IPs will be omitted.
@@ -210,7 +210,7 @@ type Ctx interface {
 	// Optionally, you could override the path.
 	Path(override ...string) string
 	// Scheme contains the request protocol string: http or https for TLS requests.
-	// Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
+	// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
 	Scheme() string
 	// Protocol returns the HTTP protocol of request: HTTP/1.1 and HTTP/2.
 	Protocol() string
@@ -271,9 +271,10 @@ type Ctx interface {
 	// Send sets the HTTP response body without copying it.
 	// From this point onward the body argument must not be changed.
 	Send(body []byte) error
-	// SendFile transfers the file from the given path.
-	// The file is not compressed by default, enable this by passing a 'true' argument
-	// Sets the Content-Type response HTTP header field based on the filenames extension.
+	// SendFile transfers the file from the specified path.
+	// By default, the file is not compressed. To enable compression, set SendFile.Compress to true.
+	// The Content-Type response HTTP header field is set based on the file's extension.
+	// If the file extension is missing or invalid, the Content-Type is detected from the file's format.
 	SendFile(file string, config ...SendFile) error
 	// SendStatus sets the HTTP status code and if the response body is empty,
 	// it sets the correct status message in the body.
@@ -318,7 +319,7 @@ type Ctx interface {
 	// here the features for caseSensitive, decoded paths, strict paths are evaluated
 	configDependentPaths()
 	// IsProxyTrusted checks trustworthiness of remote ip.
-	// If EnableTrustedProxyCheck false, it returns true
+	// If Config.TrustProxy false, it returns true
 	// IsProxyTrusted can check remote ip by proxy ranges and ip map.
 	IsProxyTrusted() bool
 	// IsFromLocal will return true if request came from local.
