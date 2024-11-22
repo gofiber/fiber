@@ -641,10 +641,10 @@ func (app *App) SetTLSHandler(tlsHandler *TLSHandler)
 
 ## Test
 
-Testing your application is done with the `Test` method. Use this method for creating `_test.go` files or when you need to debug your routing logic. The default timeout is `1s`; to disable a timeout altogether, pass `-1` as the second argument.
+Testing your application is done with the `Test` method. Use this method for creating `_test.go` files or when you need to debug your routing logic. The default timeout is `1s`; to disable a timeout altogether, pass a `TestConfig` struct with `Timeout: 0`.
 
 ```go title="Signature"
-func (app *App) Test(req *http.Request, msTimeout ...int) (*http.Response, error)
+func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, error)
 ```
 
 ```go title="Example"
@@ -684,6 +684,31 @@ func main() {
     }
 }
 ```
+
+If not provided, TestConfig is set to the following defaults:
+
+```go title="Default TestConfig"
+config := fiber.TestConfig{
+  Timeout:      time.Second(),
+  FailOnTimeout: true,
+}
+```
+
+:::caution
+
+This is **not** the same as supplying an empty `TestConfig{}` to
+`app.Test(), but rather be the equivalent of supplying:
+
+```go title="Empty TestConfig"
+cfg := fiber.TestConfig{
+  Timeout:      0,
+  FailOnTimeout: false,
+}
+```
+
+This would make a Test that has no timeout.
+
+:::
 
 ## Hooks
 
