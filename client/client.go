@@ -680,8 +680,13 @@ func New() *Client {
 	// trie to use a pool to reduce the cost of memory allocation
 	// for the fiber client and the fasthttp client
 	// if possible also for other structs -> request header, cookie, query param, path param...
+	return NewWithClient(&fasthttp.Client{})
+}
+
+// NewWithClient creates and returns a new Client object from an eisting client object.
+func NewWithClient(c *fasthttp.Client) *Client {
 	return &Client{
-		fasthttp: &fasthttp.Client{},
+		fasthttp: c,
 		header: &Header{
 			RequestHeader: &fasthttp.RequestHeader{},
 		},
