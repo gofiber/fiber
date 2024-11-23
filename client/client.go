@@ -685,6 +685,9 @@ func New() *Client {
 
 // NewWithClient creates and returns a new Client object from an existing client.
 func NewWithClient(c *fasthttp.Client) *Client {
+	if c == nil {
+		panic("fasthttp.Client must not be nil")
+	}
 	return &Client{
 		fasthttp: c,
 		header: &Header{
