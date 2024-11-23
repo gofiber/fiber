@@ -55,6 +55,17 @@ func startTestServerWithPort(t *testing.T, beforeStarting func(app *fiber.App)) 
 	return nil, ""
 }
 
+func Test_New_With_Client(t *testing.T) {
+	t.Parallel()
+
+	c := &fasthttp.Client{
+		MaxConnsPerHost: 5,
+	}
+	client := NewWithClient(c)
+
+	require.NotNil(t, client)
+}
+
 func Test_Client_Add_Hook(t *testing.T) {
 	t.Parallel()
 
