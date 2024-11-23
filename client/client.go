@@ -683,7 +683,7 @@ func New() *Client {
 	return NewWithClient(&fasthttp.Client{})
 }
 
-// NewWithClient creates and returns a new Client object from an eisting client object.
+// NewWithClient creates and returns a new Client object from an existing client object.
 func NewWithClient(c *fasthttp.Client) *Client {
 	return &Client{
 		fasthttp: c,
