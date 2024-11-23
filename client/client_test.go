@@ -65,7 +65,7 @@ func Test_New_With_Client(t *testing.T) {
 			MaxConnsPerHost: 5,
 		}
 		client := NewWithClient(c)
-	
+
 		require.NotNil(t, client)
 	})
 
