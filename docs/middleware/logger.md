@@ -90,26 +90,20 @@ app.Use(logger.New(logger.Config{
 }))
 
 // Use Custom Logger with Fiber Logger Interface
-type dumbLogger struct {
-	logger fiberlog.AllLogger
-    level  log.Level
-}
-
-func (l *dumbLogger) Write(p []byte) (n int, err error) {
-	switch l.level {
-	case log.LevelDebug:
-		l.logger.Debug(string(p))
-	case log.LevelError:
-		l.logger.Error(string(p))
-    }
-	return len(p), nil
-}
-
 func LoggerToWriter(customLogger fiberlog.AllLogger, level fiberlog.Level) io.Writer {
-	return &dumbLogger{
-        logger: customLogger,
-        level: level,
-    }
+	return &struct {
+		Write func(p []byte) (n int, err error)
+	}{
+		Write: func(p []byte) (n int, err error) {
+			switch level {
+			case fiberlog.LevelDebug:
+				customLogger.Debug(string(p))
+			case fiberlog.LevelError:
+				customLogger.Error(string(p))
+			}
+			return len(p), nil
+		},
+	}
 }
 
 app.Use(logger.New(logger.Config{
