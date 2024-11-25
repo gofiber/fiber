@@ -4483,7 +4483,7 @@ func Test_Ctx_SendStreamWriter_Interrupted(t *testing.T) {
 	app.Get("/", func(c Ctx) error {
 		return c.SendStreamWriter(func(w *bufio.Writer) {
 			for lineNum := 1; lineNum <= 5; lineNum++ {
-				fmt.Fprintf(w, "Line %d\n", lineNum) //nolint:errcheck, revive // It is fine to ignore the error
+				fmt.Fprintf(w, "Line %d\n", lineNum) //nolint:errcheck // It is fine to ignore the error
 
 				if err := w.Flush(); err != nil {
 					if lineNum < 3 {
