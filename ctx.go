@@ -640,7 +640,7 @@ func (c *DefaultCtx) Get(key string, defaultValue ...string) string {
 }
 
 // GetReqHeader returns the HTTP request header specified by filed.
-// This function is generic and can handle differnet headers type values.
+// This function is generic and can handle different headers type values.
 func GetReqHeader[V GenericType](c Ctx, key string, defaultValue ...V) V {
 	var v V
 	return genericParseType[V](c.App().getString(c.Request().Header.Peek(key)), v, defaultValue...)
@@ -1083,7 +1083,7 @@ func (c *DefaultCtx) Params(key string, defaultValue ...string) string {
 }
 
 // Params is used to get the route parameters.
-// This function is generic and can handle differnet route parameters type values.
+// This function is generic and can handle different route parameters type values.
 //
 // Example:
 //
@@ -1860,8 +1860,8 @@ func (c *DefaultCtx) IsFromLocal() bool {
 func (c *DefaultCtx) Bind() *Bind {
 	if c.bind == nil {
 		c.bind = &Bind{
-			ctx:    c,
-			should: true,
+			ctx:            c,
+			dontHandleErrs: true,
 		}
 	}
 	return c.bind
