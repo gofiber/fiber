@@ -24,7 +24,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 	"text/template"
 	"time"
@@ -4481,38 +4480,36 @@ func Test_Ctx_SendStreamWriter(t *testing.T) {
 func Test_Ctx_SendStreamWriter_Interrupted(t *testing.T) {
 	t.Parallel()
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	app.Get("/", func(c Ctx) error {
+		return c.SendStreamWriter(func(w *bufio.Writer) {
+			for lineNum := 1; lineNum <= 5; lineNum++ {
+				fmt.Fprintf(w, "Line %d\n", lineNum) //nolint:errcheck, revive // It is fine to ignore the error
 
-	var mutex sync.Mutex
-	startChan := make(chan bool)
-	interruptStreamWriter := func() {
-		<-startChan
-		time.Sleep(5 * time.Millisecond)
-		mutex.Lock()
-		c.Response().CloseBodyStream() //nolint:errcheck // It is fine to ignore the error
-		mutex.Unlock()
-	}
-	err := c.SendStreamWriter(func(w *bufio.Writer) {
-		go interruptStreamWriter()
-
-		startChan <- true
-		for lineNum := 1; lineNum <= 5; lineNum++ {
-			mutex.Lock()
-			fmt.Fprintf(w, "Line %d\n", lineNum) //nolint:errcheck, revive // It is fine to ignore the error
-			mutex.Unlock()
-
-			if err := w.Flush(); err != nil {
-				if lineNum < 3 {
-					t.Errorf("unexpected error: %s", err)
+				if err := w.Flush(); err != nil {
+					if lineNum < 3 {
+						t.Errorf("unexpected error: %s", err)
+					}
+					return
 				}
-				return
-			}
 
-			time.Sleep(1500 * time.Microsecond)
-		}
+				time.Sleep(400 * time.Millisecond)
+			}
+		})
 	})
+
+	req := httptest.NewRequest(MethodGet, "/", nil)
+	testConfig := TestConfig{
+		Timeout:       1 * time.Second,
+		FailOnTimeout: false,
+	}
+	resp, err := app.Test(req, testConfig)
 	require.NoError(t, err)
-	require.Equal(t, "Line 1\nLine 2\nLine 3\n", string(c.Response().Body()))
+
+	body, err := io.ReadAll(resp.Body)
+	t.Logf("%v", err)
+	require.EqualError(t, err, "unexpected EOF")
+
+	require.Equal(t, "Line 1\nLine 2\nLine 3\n", string(body))
 }
 
 // go test -run Test_Ctx_Set
