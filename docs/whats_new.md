@@ -306,6 +306,7 @@ func (c Ctx) SendStreamWriter(streamWriter func(w *bufio.Writer))
 ```
 
 With this new method, you can implement:
+
 - Server-Side Events (SSE)
 - Large file downloads
 - Live data streaming
