@@ -268,6 +268,7 @@ DRAFT section
 - Reset
 - Schema -> ExpressJs like
 - SendStream -> ExpressJs like
+- SendStreamWriter
 - SendString -> ExpressJs like
 - String -> ExpressJs like
 - ViewBind -> instead of Bind
@@ -295,6 +296,42 @@ DRAFT section
 - Context has been renamed to RequestCtx which corresponds to the FastHTTP Request Context.
 - UserContext has been renamed to Context which returns a context.Context object.
 - SetUserContext has been renamed to SetContext.
+
+### SendStreamWriter
+
+In v3, we added support for buffered streaming by providing the new method `SendStreamWriter()`.
+
+```go
+func (c Ctx) SendStreamWriter(streamWriter func(w *bufio.Writer))
+```
+
+With this new method, you can implement:
+- Server-Side Events (SSE)
+- Large file downloads
+- Live data streaming
+
+```go
+app.Get("/sse", func(c fiber.Ctx) {
+  c.Set("Content-Type", "text/event-stream")
+  c.Set("Cache-Control", "no-cache")
+  c.Set("Connection", "keep-alive")
+  c.Set("Transfer-Encoding", "chunked")
+
+  return c.SendStreamWriter(func(w *bufio.Writer) {
+    for {
+      fmt.Fprintf(w, "event: my-event\n")
+      fmt.Fprintf(w, "data: Hello SSE\n\n")
+
+      if err := w.Flush(); err != nil {
+        log.Print("Client disconnected!")
+        return
+      }
+    }
+  })
+})
+```
+
+You can find more details about this feature in [/docs/api/ctx.md](./api/ctx.md).
 
 ---
 
