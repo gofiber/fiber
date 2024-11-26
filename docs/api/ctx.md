@@ -1897,7 +1897,7 @@ app.Get("/wait", func(c fiber.Ctx) error {
     // Send progress over time
     time.Sleep(time.Second)
     for i := 0; i < 9; i++ {
-      fmt.Fprintf("Still waiting...\n")
+      fmt.Fprintf(w, "Still waiting...\n")
       if err := w.Flush(); err != nil {
         // If client disconnected, cancel work and finish
         log.Print("Client disconnected!")
