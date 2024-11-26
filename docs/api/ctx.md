@@ -1875,19 +1875,38 @@ app.Get("/", func (c fiber.Ctx) error {
 ```
 
 :::info
-To flush data before the function returns, you can call `w.Flush()`
+To send data before `streamWriter` returns, you can call `w.Flush()`
 on the provided writer. Otherwise, the buffered stream flushes after
 `streamWriter` returns.
+:::
+
+:::note
+`w.Flush()` will return an error if the client disconnects before `streamWriter` finishes writing a response.
 :::
 
 ```go title="Example"
 app.Get("/wait", func(c fiber.Ctx) error {
   return c.SendStreamWriter(func(w *bufio.Writer) {
-    fmt.Fprintf(w, "Waiting for 10 seconds\n")
+    // Begin Work
+    fmt.Fprintf(w, "Please wait for 10 seconds\n")
     if err := w.Flush(); err != nil {
-      log.Print("User quit early")
+      log.Print("Client disconnected!")
+      return
     }
-    time.Sleep(10 * time.Second)
+
+    // Send progress over time
+    time.Sleep(time.Second)
+    for i := 0; i < 9; i++ {
+      fmt.Fprintf("Still waiting...\n")
+      if err := w.Flush(); err != nil {
+        // If client disconnected, cancel work and finish
+        log.Print("Client disconnected!")
+        return
+      }
+      time.Sleep(time.Second)
+    }
+
+    // Finish
     fmt.Fprintf(w, "Done!\n")
   })
 })
