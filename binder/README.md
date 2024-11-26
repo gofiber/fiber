@@ -1,16 +1,18 @@
 # Fiber Binders
 
-Binder is a new request/response binding feature for Fiber. Against the old Fiber parsers, it supports custom binder registration, struct validation, `map[string]string`, `map[string][]string`, and more. It's introduced in Fiber v3 and a replacement of:
+**Binder** is a new request/response binding feature for Fiber introduced in Fiber v3. It replaces the old Fiber parsers and offers enhanced capabilities such as custom binder registration, struct validation, support for `map[string]string`, `map[string][]string`, and more. Binder replaces the following components:
 
-- BodyParser
-- ParamsParser
-- GetReqHeaders
-- GetRespHeaders
-- AllParams
-- QueryParser
-- ReqHeaderParser
+- `BodyParser`
+- `ParamsParser`
+- `GetReqHeaders`
+- `GetRespHeaders`
+- `AllParams`
+- `QueryParser`
+- `ReqHeaderParser`
 
 ## Default Binders
+
+Fiber provides several default binders out of the box:
 
 - [Form](form.go)
 - [Query](query.go)
@@ -23,12 +25,12 @@ Binder is a new request/response binding feature for Fiber. Against the old Fibe
 
 ## Guides
 
-### Binding into the Struct
+### Binding into a Struct
 
-Fiber supports binding into the struct with [gorilla/schema](https://github.com/gorilla/schema). Here's an example:
+Fiber supports binding request data directly into a struct using [gorilla/schema](https://github.com/gorilla/schema). Here's an example:
 
 ```go
-// Field names should start with an uppercase letter
+// Field names must start with an uppercase letter
 type Person struct {
     Name string `json:"name" xml:"name" form:"name"`
     Pass string `json:"pass" xml:"pass" form:"pass"`
@@ -41,56 +43,63 @@ app.Post("/", func(c fiber.Ctx) error {
         return err
     }
 
-    log.Println(p.Name) // john
-    log.Println(p.Pass) // doe
+    log.Println(p.Name) // Output: john
+    log.Println(p.Pass) // Output: doe
 
-    // ...
+    // Additional logic...
 })
 
 // Run tests with the following curl commands:
 
-// curl -X POST -H "Content-Type: application/json" --data "{\"name\":\"john\",\"pass\":\"doe\"}" localhost:3000
+// JSON
+curl -X POST -H "Content-Type: application/json" --data "{\"name\":\"john\",\"pass\":\"doe\"}" localhost:3000
 
-// curl -X POST -H "Content-Type: application/xml" --data "<login><name>john</name><pass>doe</pass></login>" localhost:3000
+// XML
+curl -X POST -H "Content-Type: application/xml" --data "<login><name>john</name><pass>doe</pass></login>" localhost:3000
 
-// curl -X POST -H "Content-Type: application/x-www-form-urlencoded" --data "name=john&pass=doe" localhost:3000
+// URL-Encoded Form
+curl -X POST -H "Content-Type: application/x-www-form-urlencoded" --data "name=john&pass=doe" localhost:3000
 
-// curl -X POST -F name=john -F pass=doe http://localhost:3000
+// Multipart Form
+curl -X POST -F name=john -F pass=doe http://localhost:3000
 
-// curl -X POST "http://localhost:3000/?name=john&pass=doe"
+// Query Parameters
+curl -X POST "http://localhost:3000/?name=john&pass=doe"
 ```
 
-### Binding into the Map
+### Binding into a Map
 
-Fiber supports binding into the `map[string]string` or `map[string][]string`. Here's an example:
+Fiber allows binding request data into a `map[string]string` or `map[string][]string`. Here's an example:
 
 ```go
 app.Get("/", func(c fiber.Ctx) error {
-    p := make(map[string][]string)
+    params := make(map[string][]string)
 
-    if err := c.Bind().Query(p); err != nil {
+    if err := c.Bind().Query(params); err != nil {
         return err
     }
 
-    log.Println(p["name"])     // john
-    log.Println(p["pass"])     // doe
-    log.Println(p["products"]) // [shoe, hat]
+    log.Println(params["name"])     // Output: [john]
+    log.Println(params["pass"])     // Output: [doe]
+    log.Println(params["products"]) // Output: [shoe hat]
 
-    // ...
+    // Additional logic...
+    return nil
 })
+
 // Run tests with the following curl command:
 
-// curl "http://localhost:3000/?name=john&pass=doe&products=shoe,hat"
+curl "http://localhost:3000/?name=john&pass=doe&products=shoe&products=hat"
 ```
 
-### Behaviors of Should/Must
+### Automatic Error Handling with `WithAutoHandling`
 
-Normally, Fiber returns binder error directly. However; if you want to handle it automatically, you can prefer `Must()`.
+By default, Fiber returns binder errors directly. To handle errors automatically and return a `400 Bad Request` status, use the `WithAutoHandling()` method.
 
-If there's an error it'll return error and 400 as HTTP status. Here's an example for it:
+**Example:**
 
 ```go
-// Field names should start with an uppercase letter
+// Field names must start with an uppercase letter
 type Person struct {
     Name string `json:"name,required"`
     Pass string `json:"pass"`
@@ -99,23 +108,24 @@ type Person struct {
 app.Get("/", func(c fiber.Ctx) error {
     p := new(Person)
 
-    if err := c.Bind().Must().JSON(p); err != nil {
+    if err := c.Bind().WithAutoHandling().JSON(p); err != nil {
         return err 
-        // Status code: 400 
+        // Automatically returns status code 400
         // Response: Bad request: name is empty
     }
 
-    // ...
+    // Additional logic...
+    return nil
 })
 
 // Run tests with the following curl command:
 
-// curl -X GET -H "Content-Type: application/json" --data "{\"pass\":\"doe\"}" localhost:3000
+curl -X GET -H "Content-Type: application/json" --data "{\"pass\":\"doe\"}" localhost:3000
 ```
 
-### Defining Custom Binder
+### Defining a Custom Binder
 
-We didn't add much binder to make Fiber codebase minimal. If you want to use your own binders, it's easy to register and use them. Here's an example for TOML binder.
+Fiber maintains a minimal codebase by not including every possible binder. If you need to use a custom binder, you can easily register and utilize it. Here's an example of creating a `toml` binder.
 
 ```go
 type Person struct {
@@ -147,24 +157,26 @@ func main() {
             return err
         }
 
-        // or you can use like:
+        // Alternatively, specify the custom binder:
         // if err := c.Bind().Custom("toml", out); err != nil {
-        //      return err
+        //     return err
         // }
 
-        return c.SendString(out.Pass) // test
+        return c.SendString(out.Pass) // Output: test
     })
 
     app.Listen(":3000")
 }
 
-// curl -X GET -H "Content-Type: application/toml" --data "name = 'bar'
-// pass = 'test'" localhost:3000
+// Run tests with the following curl command:
+
+curl -X GET -H "Content-Type: application/toml" --data "name = 'bar'
+pass = 'test'" localhost:3000
 ```
 
-### Defining Custom Validator
+### Defining a Custom Validator
 
-All Fiber binders supporting struct validation if you defined validator inside of the config. You can create own validator, or use [go-playground/validator](https://github.com/go-playground/validator), [go-ozzo/ozzo-validation](https://github.com/go-ozzo/ozzo-validation)... Here's an example of simple custom validator:
+All Fiber binders support struct validation if a validator is defined in the configuration. You can create your own validator or use existing ones like [go-playground/validator](https://github.com/go-playground/validator) or [go-ozzo/ozzo-validation](https://github.com/go-ozzo/ozzo-validation). Here's an example of a simple custom validator:
 
 ```go
 type Query struct {
@@ -174,27 +186,29 @@ type Query struct {
 type structValidator struct{}
 
 func (v *structValidator) Engine() any {
-    return ""
+    return nil // Implement if using an external validation engine
 }
 
 func (v *structValidator) ValidateStruct(out any) error {
-    out = reflect.ValueOf(out).Elem().Interface()
-    sq := out.(Query)
+    data := reflect.ValueOf(out).Elem().Interface()
+    query := data.(Query)
 
-    if sq.Name != "john" {
-        return errors.New("you should have entered right name!")
+    if query.Name != "john" {
+        return errors.New("you should have entered the correct name!")
     }
 
     return nil
 }
 
 func main() {
-    app := fiber.New(fiber.Config{StructValidator: &structValidator{}})
+    app := fiber.New(fiber.Config{
+        StructValidator: &structValidator{},
+    })
 
     app.Get("/", func(c fiber.Ctx) error {
         out := new(Query)
         if err := c.Bind().Query(out); err != nil {
-            return err // you should have entered right name!
+            return err // Returns: you should have entered the correct name!
         }
         return c.SendString(out.Name)
     })
@@ -204,5 +218,5 @@ func main() {
 
 // Run tests with the following curl command:
 
-// curl "http://localhost:3000/?name=efe"
+curl "http://localhost:3000/?name=efe"
 ```
