@@ -1852,6 +1852,66 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+## SendStreamWriter
+
+Sets the response body stream writer.
+
+:::note
+The argument `streamWriter` represents a function that populates
+the response body using a buffered stream writer.
+:::
+
+```go title="Signature"
+func (c Ctx) SendStreamWriter(streamWriter func(*bufio.Writer)) error
+```
+
+```go title="Example"
+app.Get("/", func (c fiber.Ctx) error {
+  return c.SendStreamWriter(func(w *bufio.Writer) {
+    fmt.Fprintf(w, "Hello, World!\n")
+  })
+  // => "Hello, World!"
+})
+```
+
+:::info
+To send data before `streamWriter` returns, you can call `w.Flush()`
+on the provided writer. Otherwise, the buffered stream flushes after
+`streamWriter` returns.
+:::
+
+:::note
+`w.Flush()` will return an error if the client disconnects before `streamWriter` finishes writing a response.
+:::
+
+```go title="Example"
+app.Get("/wait", func(c fiber.Ctx) error {
+  return c.SendStreamWriter(func(w *bufio.Writer) {
+    // Begin Work
+    fmt.Fprintf(w, "Please wait for 10 seconds\n")
+    if err := w.Flush(); err != nil {
+      log.Print("Client disconnected!")
+      return
+    }
+
+    // Send progress over time
+    time.Sleep(time.Second)
+    for i := 0; i < 9; i++ {
+      fmt.Fprintf(w, "Still waiting...\n")
+      if err := w.Flush(); err != nil {
+        // If client disconnected, cancel work and finish
+        log.Print("Client disconnected!")
+        return
+      }
+      time.Sleep(time.Second)
+    }
+
+    // Finish
+    fmt.Fprintf(w, "Done!\n")
+  })
+})
+```
+
 ## Set
 
 Sets the response’s HTTP header field to the specified `key`, `value`.

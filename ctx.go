@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/tls"
@@ -1667,6 +1668,13 @@ func (c *DefaultCtx) SendStream(stream io.Reader, size ...int) error {
 	} else {
 		c.fasthttp.Response.SetBodyStream(stream, -1)
 	}
+
+	return nil
+}
+
+// SendStreamWriter sets response body stream writer
+func (c *DefaultCtx) SendStreamWriter(streamWriter func(*bufio.Writer)) error {
+	c.fasthttp.Response.SetBodyStreamWriter(fasthttp.StreamWriter(streamWriter))
 
 	return nil
 }
