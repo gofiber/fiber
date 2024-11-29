@@ -149,10 +149,11 @@ func Test_Listen_TLS(t *testing.T) {
 
 // go test -run Test_Listen_Acme_TLS
 func Test_Listen_Acme_TLS(t *testing.T) {
-	dir, _ := os.Getwd()
-	dir, err := os.MkdirTemp(dir, "certs")
+	dir, err := os.Getwd()
 	require.NoError(t, err)
-	defer os.RemoveAll(dir)
+	dir, err = os.MkdirTemp(dir, "certs")
+	require.NoError(t, err)
+	defer os.RemoveAll(dir) //nolint:errcheck // ignore error
 
 	// Certificate manager
 	m := &autocert.Manager{
@@ -215,8 +216,9 @@ func Test_Listen_TLS_Prefork(t *testing.T) {
 
 // go test -run Test_Listen_Acme_TLS_Prefork
 func Test_Listen_Acme_TLS_Prefork(t *testing.T) {
-	dir, _ := os.MkdirTemp(".", "./certs")
-	defer os.RemoveAll(dir)
+	dir, err := os.MkdirTemp(".", "./certs")
+	require.NoError(t, err)
+	defer os.RemoveAll(dir) //nolint:errcheck // ignore error
 
 	// Certificate manager
 	m := &autocert.Manager{
