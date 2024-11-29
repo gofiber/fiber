@@ -191,10 +191,6 @@ func (l *dumbLogger) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
-func LoggerToWriter(customLogger fiberlog.AllLogger) io.Writer {
-	return &dumbLogger{logger: customLogger}
-}
-
 // go test -run Test_Logger_Fiber_Logger
 func Test_Logger_Fiber_Logger(t *testing.T) {
 	t.Parallel()
@@ -208,7 +204,7 @@ func Test_Logger_Fiber_Logger(t *testing.T) {
 	logger.SetOutput(buf)
 	app.Use(New(Config{
 		Format: "${error}",
-		Output: LoggerToWriter(logger),
+		Output: LoggerToWriter(logger, fiberlog.LevelError),
 	}))
 
 	app.Get("/", func(_ fiber.Ctx) error {
@@ -219,6 +215,18 @@ func Test_Logger_Fiber_Logger(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 	require.Equal(t, "[Error] some random error\n", buf.String())
+
+	require.Panics(t, func() {
+		LoggerToWriter(logger, fiberlog.LevelPanic)
+	})
+
+	require.Panics(t, func() {
+		LoggerToWriter(logger, fiberlog.LevelFatal)
+	})
+
+	require.Panics(t, func() {
+		LoggerToWriter(nil, fiberlog.LevelFatal)
+	})
 }
 
 type fakeErrorOutput int
@@ -778,7 +786,7 @@ func Benchmark_Logger(b *testing.B) {
 		logger := fiberlog.DefaultLogger()
 		logger.SetOutput(io.Discard)
 		app.Use(New(Config{
-			Output: LoggerToWriter(logger),
+			Output: LoggerToWriter(logger, fiberlog.LevelDebug),
 		}))
 		app.Get("/", func(c fiber.Ctx) error {
 			return c.SendString("Hello, World!")
@@ -934,7 +942,7 @@ func Benchmark_Logger_Parallel(b *testing.B) {
 		logger := fiberlog.DefaultLogger()
 		logger.SetOutput(io.Discard)
 		app.Use(New(Config{
-			Output: LoggerToWriter(logger),
+			Output: LoggerToWriter(logger, fiberlog.LevelDebug),
 		}))
 		app.Get("/", func(c fiber.Ctx) error {
 			return c.SendString("Hello, World!")

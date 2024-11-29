@@ -88,27 +88,43 @@ app.Use(logger.New(logger.Config{
 app.Use(logger.New(logger.Config{
     DisableColors: true,
 }))
+```
 
-// Use Custom Logger with Fiber Logger Interface
-func LoggerToWriter(customLogger fiberlog.AllLogger, level fiberlog.Level) io.Writer {
-	return &struct {
-		Write func(p []byte) (n int, err error)
-	}{
-		Write: func(p []byte) (n int, err error) {
-			switch level {
-			case fiberlog.LevelDebug:
-				customLogger.Debug(string(p))
-			case fiberlog.LevelError:
-				customLogger.Error(string(p))
-			}
-			return len(p), nil
-		},
-	}
+### Use Logger Middleware with Other Loggers
+
+In order to use Fiber logger middleware with other loggers such as zerolog, zap, logrus; you can use `LoggerToWriter` helper which converts Fiber logger to a writer, which is compatible with the middleware.
+
+```go
+package main
+
+import (
+	"github.com/gofiber/contrib/fiberzap/v2"
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/log"
+	"github.com/gofiber/fiber/v3/middleware/logger"
+)
+
+func main() {
+	// Create a new Fiber instance
+	app := fiber.New()
+
+	zap := fiberzap.NewLogger(fiberzap.LoggerConfig{
+		ExtraKeys: []string{"request_id"},
+	})
+
+	// Use the logger middleware with zerolog logger
+	app.Use(logger.New(logger.Config{
+		Output: logger.LoggerToWriter(zap, log.LevelDebug),
+	}))
+
+	// Define a route
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("Hello, World!")
+	})
+
+	// Start server on http://localhost:3000
+	app.Listen(":3000")
 }
-
-app.Use(logger.New(logger.Config{
-    Output:     LoggerToWriter(fiberlog.DefaultLogger(), fiberlog.LevelError),
-}))
 ```
 
 :::tip
