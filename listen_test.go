@@ -216,7 +216,7 @@ func Test_Listen_TLS_Prefork(t *testing.T) {
 
 // go test -run Test_Listen_Acme_TLS_Prefork
 func Test_Listen_Acme_TLS_Prefork(t *testing.T) {
-	dir, err := os.MkdirTemp(".", "./certs")
+	dir, err := os.MkdirTemp(".", "certs")
 	require.NoError(t, err)
 	defer os.RemoveAll(dir) //nolint:errcheck // ignore error
 
