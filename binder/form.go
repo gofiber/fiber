@@ -1,7 +1,6 @@
 package binder
 
 import (
-	"reflect"
 	"strings"
 
 	"github.com/gofiber/utils/v2"
@@ -30,14 +29,7 @@ func (b *formBinding) Bind(reqCtx *fasthttp.RequestCtx, out any) error {
 			k, err = parseParamSquareBrackets(k)
 		}
 
-		if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
-			values := strings.Split(v, ",")
-			for i := 0; i < len(values); i++ {
-				data[k] = append(data[k], values[i])
-			}
-		} else {
-			data[k] = append(data[k], v)
-		}
+		appendValue(data, v, out, k, b.Name())
 	})
 
 	if err != nil {

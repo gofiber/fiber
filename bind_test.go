@@ -1100,6 +1100,42 @@ func Benchmark_Bind_Body_XML(b *testing.B) {
 	require.Equal(b, "john", d.Name)
 }
 
+// go test -run Test_Bind_Body_Form_Embedded
+func Test_Bind_Body_Form_Embedded(b *testing.T) {
+	var err error
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	type EmbeddedDemo struct {
+		EmbeddedString  string   `form:"embedded_string"`
+		EmbeddedStrings []string `form:"embedded_strings"`
+	}
+
+	type Demo struct {
+		String       string   `form:"some_string"`
+		OtherString  string   `form:"some_other_string"`
+		Strings      []string `form:"strings"`
+		OtherStrings []string `form:"other_strings"`
+		EmbeddedDemo
+	}
+	body := []byte("some_string=john%2Clong&some_other_string=long&some_other_string=long&strings=long%2Cjohn&embedded_strings=john%2Clongest&embedded_string=johny%2Cwalker&other_strings=long&other_strings=johny")
+	c.Request().SetBody(body)
+	c.Request().Header.SetContentType(MIMEApplicationForm)
+	c.Request().Header.SetContentLength(len(body))
+	d := new(Demo)
+
+	err = c.Bind().Body(d)
+
+	require.NoError(b, err)
+	require.Equal(b, "john,long", d.String)
+	require.Equal(b, []string{"long", "john"}, d.Strings)
+	//! only one value is taken
+	require.Equal(b, "long", d.OtherString)
+	require.Equal(b, []string{"long", "johny"}, d.OtherStrings)
+	require.Equal(b, "johny,walker", d.EmbeddedString)
+	require.Equal(b, []string{"john", "longest"}, d.EmbeddedStrings)
+}
+
 // go test -v -run=^$ -bench=Benchmark_Bind_Body_Form -benchmem -count=4
 func Benchmark_Bind_Body_Form(b *testing.B) {
 	var err error

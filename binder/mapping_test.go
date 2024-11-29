@@ -10,25 +10,25 @@ import (
 
 func Test_EqualFieldType(t *testing.T) {
 	var out int
-	require.False(t, equalFieldType(&out, reflect.Int, "key"))
+	require.False(t, equalFieldType(&out, reflect.Int, "key", "query"))
 
 	var dummy struct{ f string }
-	require.False(t, equalFieldType(&dummy, reflect.String, "key"))
+	require.False(t, equalFieldType(&dummy, reflect.String, "key", "query"))
 
 	var dummy2 struct{ f string }
-	require.False(t, equalFieldType(&dummy2, reflect.String, "f"))
+	require.False(t, equalFieldType(&dummy2, reflect.String, "f", "query"))
 
 	var user struct {
 		Name    string
 		Address string `query:"address"`
 		Age     int    `query:"AGE"`
 	}
-	require.True(t, equalFieldType(&user, reflect.String, "name"))
-	require.True(t, equalFieldType(&user, reflect.String, "Name"))
-	require.True(t, equalFieldType(&user, reflect.String, "address"))
-	require.True(t, equalFieldType(&user, reflect.String, "Address"))
-	require.True(t, equalFieldType(&user, reflect.Int, "AGE"))
-	require.True(t, equalFieldType(&user, reflect.Int, "age"))
+	require.True(t, equalFieldType(&user, reflect.String, "name", "query"))
+	require.True(t, equalFieldType(&user, reflect.String, "Name", "query"))
+	require.True(t, equalFieldType(&user, reflect.String, "address", "query"))
+	require.True(t, equalFieldType(&user, reflect.String, "Address", "query"))
+	require.True(t, equalFieldType(&user, reflect.Int, "AGE", "query"))
+	require.True(t, equalFieldType(&user, reflect.Int, "age", "query"))
 }
 
 func Test_ParseParamSquareBrackets(t *testing.T) {

@@ -1,9 +1,6 @@
 package binder
 
 import (
-	"reflect"
-	"strings"
-
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -20,14 +17,7 @@ func (b *headerBinding) Bind(req *fasthttp.Request, out any) error {
 		k := utils.UnsafeString(key)
 		v := utils.UnsafeString(val)
 
-		if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
-			values := strings.Split(v, ",")
-			for i := 0; i < len(values); i++ {
-				data[k] = append(data[k], values[i])
-			}
-		} else {
-			data[k] = append(data[k], v)
-		}
+		appendValue(data, v, out, k, b.Name())
 	})
 
 	return parse(b.Name(), out, data)
