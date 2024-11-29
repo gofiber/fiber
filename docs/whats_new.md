@@ -751,9 +751,6 @@ func main() {
 }
 ```
 
-
-
-
 ### Filesystem
 
 We've decided to remove filesystem middleware to clear up the confusion between static and filesystem middleware.

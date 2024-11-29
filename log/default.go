@@ -215,10 +215,6 @@ func (l *defaultLogger) GetLoggerInstance() any {
 	return l.stdlog
 }
 
-func (l *defaultLogger) SetFlags(flag int) {
-	l.stdlog.SetFlags(flag)
-}
-
 // DefaultLogger returns the default logger.
 func DefaultLogger() AllLogger {
 	return logger
