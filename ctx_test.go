@@ -3668,11 +3668,6 @@ func Test_Ctx_CBOR(t *testing.T) {
 	err = c.CBOR(func() {})
 	require.Error(t, err)
 
-	type SomeStruct struct {
-		Name string `cbor:"name"`
-		Pass string `cbor:"pass"`
-	}
-
 	t.Run("custom cbor encoder", func(t *testing.T) {
 		t.Parallel()
 

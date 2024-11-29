@@ -943,6 +943,16 @@ func Test_Bind_Body(t *testing.T) {
 			t.Error(err)
 		}
 		testDecodeParser(t, MIMEApplicationCBOR, enc)
+
+		// Test invalid CBOR data
+		t.Run("Invalid", func(t *testing.T) {
+			invalidData := []byte{0xFF, 0xFF} // Invalid CBOR data
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			c.Request().Header.SetContentType(MIMEApplicationCBOR)
+			c.Request().SetBody(invalidData)
+			d := new(Demo)
+			require.Error(t, c.Bind().Body(d))
+		})
 	})
 
 	t.Run("XML", func(t *testing.T) {

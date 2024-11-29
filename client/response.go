@@ -75,7 +75,7 @@ func (r *Response) JSON(v any) error {
 	return r.client.jsonUnmarshal(r.Body(), v)
 }
 
-// CBOR method will unmarshal body to cbor.
+// CBOR method will unmarshal body to CBOR.
 func (r *Response) CBOR(v any) error {
 	return r.client.cborUnmarshal(r.Body(), v)
 }

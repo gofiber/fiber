@@ -1476,8 +1476,7 @@ func Test_Set_Config_To_Request(t *testing.T) {
 		var key ctxKey = struct{}{}
 
 		ctx := context.Background()
-		ctx = context.WithValue(ctx, key, "v1") //nolint: staticcheck // not needed for tests
-
+		ctx = context.WithValue(ctx, key, "v1")
 		req := AcquireRequest()
 
 		setConfigToRequest(req, Config{Ctx: ctx})

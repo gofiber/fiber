@@ -884,7 +884,7 @@ func (c *DefaultCtx) JSON(data any, ctype ...string) error {
 	return nil
 }
 
-// CBOR converts any interface or string to cbor encoded bytes.
+// CBOR converts any interface or string to CBOR encoded bytes.
 // If the ctype parameter is given, this method will set the
 // Content-Type header equal to ctype. If ctype is not given,
 // The Content-Type header will be set to application/cbor.

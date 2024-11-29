@@ -926,7 +926,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ## CBOR
 
-CBOR converts any interface or string to cbor encoded bytes.
+CBOR converts any interface or string to CBOR encoded bytes.
 
 :::info
 CBOR also sets the content header to the `ctype` parameter. If no `ctype` is passed in, the header is set to `application/cbor`.

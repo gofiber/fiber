@@ -231,7 +231,7 @@ curl -X POST -H "Content-Type: application/xml" --data "<login><name>john</name>
 
 Binds the request CBOR body to a struct.
 
-It is important to specify the correct struct tag based on the content type to be parsed. For example, if you want to parse an CBOR body with a field called `Pass`, you would use a struct field with `cbor:"pass"`.
+It is important to specify the correct struct tag based on the content type to be parsed. For example, if you want to parse a CBOR body with a field called `Pass`, you would use a struct field with `cbor:"pass"`.
 
 ```go title="Signature"
 func (b *Bind) CBOR(out any) error

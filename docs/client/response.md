@@ -189,7 +189,7 @@ func (r *Response) XML(v any) error
 
 ## CBOR
 
-CBOR method will unmarshal body to cbor.
+CBOR method will unmarshal body to CBOR.
 
 ```go title="Signature"
 func (r *Response) CBOR(v any) error

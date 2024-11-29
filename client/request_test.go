@@ -85,7 +85,7 @@ func Test_Request_Context(t *testing.T) {
 
 	require.Nil(t, ctx.Value(key))
 
-	ctx = context.WithValue(ctx, key, "string") //nolint: staticcheck // not needed for tests
+	ctx = context.WithValue(ctx, key, "string")
 	req.SetContext(ctx)
 	ctx = req.Context()
 
