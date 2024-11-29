@@ -26,6 +26,7 @@ Here's a quick overview of the changes in Fiber `v3`:
   - [CORS](#cors)
   - [CSRF](#csrf)
   - [Session](#session)
+  - [Logger](#logger)
   - [Filesystem](#filesystem)
   - [Monitor](#monitor)
   - [Healthcheck](#healthcheck)
@@ -703,6 +704,48 @@ The Session middleware has undergone key changes in v3 to improve functionality 
 - **Absolute Timeout**: The `AbsoluteTimeout` field has been added. If you need to set an absolute session timeout, you can use this field to define the duration. The session will expire after the specified duration, regardless of activity.
 
 For more details on these changes and migration instructions, check the [Session Middleware Migration Guide](./middleware/session.md#migration-guide).
+
+### Logger
+
+New helper function called `LoggerToWriter` has been added to the logger middleware. 
+This function allows you to use 3rd party loggers such as `logrus` or `zap` with the Fiber logger middleware without any extra afford. For example, you can use `zap` with Fiber logger middleware like this:
+
+```go
+package main
+
+import (
+	"github.com/gofiber/contrib/fiberzap/v2"
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/log"
+	"github.com/gofiber/fiber/v3/middleware/logger"
+)
+
+func main() {
+	// Create a new Fiber instance
+	app := fiber.New()
+
+  // Create a new zap logger which is compatible with Fiber AllLogger interface
+	zap := fiberzap.NewLogger(fiberzap.LoggerConfig{
+		ExtraKeys: []string{"request_id"},
+	})
+
+	// Use the logger middleware with zerolog logger
+	app.Use(logger.New(logger.Config{
+		Output: logger.LoggerToWriter(zap, log.LevelDebug),
+	}))
+
+	// Define a route
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("Hello, World!")
+	})
+
+	// Start server on http://localhost:3000
+	app.Listen(":3000")
+}
+```
+
+
+
 
 ### Filesystem
 

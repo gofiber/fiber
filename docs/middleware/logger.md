@@ -108,6 +108,7 @@ func main() {
 	// Create a new Fiber instance
 	app := fiber.New()
 
+    // Create a new zap logger which is compatible with Fiber AllLogger interface
 	zap := fiberzap.NewLogger(fiberzap.LoggerConfig{
 		ExtraKeys: []string{"request_id"},
 	})
