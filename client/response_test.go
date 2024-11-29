@@ -240,6 +240,18 @@ func Test_Response_Body(t *testing.T) {
 			app.Get("/xml", func(c fiber.Ctx) error {
 				return c.SendString("<status><name>success</name></status>")
 			})
+
+			app.Get("/cbor", func(c fiber.Ctx) error {
+				type cborData struct {
+					Name string `cbor:"name"`
+					Age  int    `cbor:"age"`
+				}
+
+				return c.CBOR(cborData{
+					Name: "foo",
+					Age:  12,
+				})
+			})
 		})
 
 		return server
@@ -325,6 +337,36 @@ func Test_Response_Body(t *testing.T) {
 		err = resp.XML(tmp)
 		require.NoError(t, err)
 		require.Equal(t, "success", tmp.Status)
+		resp.Close()
+	})
+
+	t.Run("cbor body", func(t *testing.T) {
+		t.Parallel()
+		type cborData struct {
+			Name string `cbor:"name"`
+			Age  int    `cbor:"age"`
+		}
+
+		data := cborData{
+			Name: "foo",
+			Age:  12,
+		}
+
+		server := setupApp()
+		defer server.stop()
+
+		client := New().SetDial(server.dial())
+
+		resp, err := AcquireRequest().
+			SetClient(client).
+			Get("http://example.com/cbor")
+
+		require.NoError(t, err)
+
+		tmp := &cborData{}
+		err = resp.CBOR(tmp)
+		require.NoError(t, err)
+		require.Equal(t, data, *tmp)
 		resp.Close()
 	})
 }

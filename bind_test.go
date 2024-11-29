@@ -1750,6 +1750,7 @@ func Test_Bind_RepeatParserWithSameStruct(t *testing.T) {
 	cb, err := cbor.Marshal(&Request{
 		BodyParam: "body_param",
 	})
+
 	if err != nil {
 		t.Error(err)
 	}

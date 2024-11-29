@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -454,6 +455,30 @@ func Test_Parser_Request_Body(t *testing.T) {
 		err := parserRequestBody(client, req)
 		require.NoError(t, err)
 		require.Equal(t, []byte("<body><name>foo</name></body>"), req.RawRequest.Body())
+	})
+
+	t.Run("CBOR body", func(t *testing.T) {
+		t.Parallel()
+		type cborData struct {
+			Name string `cbor:"name"`
+			Age  int    `cbor:"age"`
+		}
+
+		data := cborData{
+			Name: "foo",
+			Age:  12,
+		}
+
+		client := New()
+		req := AcquireRequest().
+			SetCBOR(data)
+
+		err := parserRequestBody(client, req)
+		require.NoError(t, err)
+
+		encoded, err := cbor.Marshal(data)
+		require.NoError(t, err)
+		require.Equal(t, encoded, req.RawRequest.Body())
 	})
 
 	t.Run("form data body", func(t *testing.T) {
