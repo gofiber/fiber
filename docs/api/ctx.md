@@ -924,6 +924,54 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+## CBOR
+
+CBOR converts any interface or string to cbor encoded bytes.
+
+:::info
+CBOR also sets the content header to the `ctype` parameter. If no `ctype` is passed in, the header is set to `application/cblor`.
+:::
+
+```go title="Signature"
+func (c fiber.Ctx) CBOR(data any, ctype ...string) error
+```
+
+```go title="Example"
+type SomeStruct struct {
+  Name string `cbor:"name"`
+  Age  uint8 `cbor:"age"`
+}
+
+app.Get("/cbor", func(c fiber.Ctx) error {
+  // Create data struct:
+  data := SomeStruct{
+    Name: "Grame",
+    Age:  20,
+  }
+
+  return c.CBOR(data)
+  // => Content-Type: application/cbor
+  // => \xa2dnameeGramecage\x14
+
+  return c.CBOR(fiber.Map{
+    "name": "Grame",
+    "age":  20,
+  })
+  // => Content-Type: application/cbor
+  // => \xa2dnameeGramecage\x14
+
+  return c.CBOR(fiber.Map{
+    "type":     "https://example.com/probs/out-of-credit",
+    "title":    "You do not have enough credit.",
+    "status":   403,
+    "detail":   "Your current balance is 30, but that costs 50.",
+    "instance": "/account/12345/msgs/abc",
+  })
+  // => Content-Type: application/cbor
+  // => \xa5dtypex'https://example.com/probs/out-of-creditetitlex\x1eYou do not have enough credit.fstatus\x19\x01\x93fdetailx.Your current balance is 30, but that costs 50.hinstancew/account/12345/msgs/abc
+})
+```
+
 ## Links
 
 Joins the links followed by the property to populate the response’s [Link](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Link) HTTP header field.

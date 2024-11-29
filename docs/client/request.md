@@ -657,6 +657,14 @@ SetXML method sets XML body in request.
 func (r *Request) SetXML(v any) *Request
 ```
 
+## SetCBOR
+
+SetCBOR method sets CBOR body in request.
+
+```go title="Signature"
+func (r *Request) SetCBOR(v any) *Request
+```
+
 ## SetRawBody
 
 SetRawBody method sets body with raw data in request.

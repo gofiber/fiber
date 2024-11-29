@@ -20,6 +20,7 @@ Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more..
   - [JSON](#json)
   - [MultipartForm](#multipartform)
   - [XML](#xml)
+  - [CBOR](#cbor)
 - [Cookie](#cookie)
 - [Header](#header)
 - [Query](#query)
@@ -224,6 +225,43 @@ Run tests with the following `curl` command:
 
 ```bash
 curl -X POST -H "Content-Type: application/xml" --data "<login><name>john</name><pass>doe</pass></login>" localhost:3000
+```
+
+### CBOR
+
+Binds the request CBOR body to a struct.
+
+It is important to specify the correct struct tag based on the content type to be parsed. For example, if you want to parse an CBOR body with a field called `Pass`, you would use a struct field with `cbor:"pass"`.
+
+```go title="Signature"
+func (b *Bind) CBOR(out any) error
+```
+
+```go title="Example"
+// Field names should start with an uppercase letter
+type Person struct {
+    Name string `cbor:"name"`
+    Pass string `cbor:"pass"`
+}
+
+app.Post("/", func(c fiber.Ctx) error {
+    p := new(Person)
+    
+    if err := c.Bind().CBOR(p); err != nil {
+        return err
+    }
+    
+    log.Println(p.Name) // john
+    log.Println(p.Pass) // doe
+    
+    // ...
+})
+```
+
+Run tests with the following `curl` command:
+
+```bash
+curl -X POST -H "Content-Type: application/cbor" --data "\xa2dnamedjohndpasscdoe" localhost:3000
 ```
 
 ### Cookie

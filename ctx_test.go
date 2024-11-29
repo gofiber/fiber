@@ -29,6 +29,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
@@ -3667,6 +3668,19 @@ func Test_Ctx_CBOR(t *testing.T) {
 
 	err = c.CBOR(func() {})
 	require.Error(t, err)
+
+	type SomeStruct struct {
+		Name string `cbor:"name"`
+		Pass string `cbor:"pass"`
+	}
+
+	data := SomeStruct{
+		Name: "john",
+		Pass: "doe",
+	}
+
+	a, _ := cbor.Marshal(data)
+	require.Equal(t, "", string(a))
 
 	t.Run("custom cbor encoder", func(t *testing.T) {
 		t.Parallel()

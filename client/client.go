@@ -153,23 +153,23 @@ func (c *Client) SetXMLUnmarshal(f utils.XMLUnmarshal) *Client {
 	return c
 }
 
-// CBORMarshal returns xml marshal function in Core.
+// CBORMarshal returns CBOR marshal function in Core.
 func (c *Client) CBORMarshal() utils.CBORMarshal {
 	return c.cborMarshal
 }
 
-// SetCBORMarshal Set xml encoder.
+// SetCBORMarshal sets CBOR encoder.
 func (c *Client) SetCBORMarshal(f utils.CBORMarshal) *Client {
 	c.cborMarshal = f
 	return c
 }
 
-// CBORUnmarshal returns xml unmarshal function in Core.
+// CBORUnmarshal returns CBOR unmarshal function in Core.
 func (c *Client) CBORUnmarshal() utils.CBORUnmarshal {
 	return c.cborUnmarshal
 }
 
-// SetCBORUnmarshal Set xml decoder.
+// SetCBORUnmarshal sets CBOR decoder.
 func (c *Client) SetCBORUnmarshal(f utils.CBORUnmarshal) *Client {
 	c.cborUnmarshal = f
 	return c
