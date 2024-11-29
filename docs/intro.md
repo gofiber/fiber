@@ -17,7 +17,7 @@ First, [download](https://go.dev/dl/) and install Go. Version `1.22` or higher i
 Installation is done using the [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
 
 ```bash
-go get github.com/gofiber/fiber/v3
+go install github.com/gofiber/fiber/v2@latest
 ```
 
 ### Zero Allocation
