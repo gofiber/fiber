@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/gofiber/fiber/v3/log"
 	"github.com/mattn/go-colorable"
@@ -37,8 +38,6 @@ const (
 )
 
 // ListenConfig is a struct to customize startup of Fiber.
-//
-// TODO: Add timeout for graceful shutdown.
 type ListenConfig struct {
 	// GracefulContext is a field to shutdown Fiber by given context gracefully.
 	//
@@ -93,6 +92,13 @@ type ListenConfig struct {
 	//
 	// Default : ""
 	CertClientFile string `json:"cert_client_file"`
+
+	// When the graceful shutdown begins, use this field to set the timeout
+	// duration. If the timeout is reached, OnShutdownError will be called.
+	// The default value is 0, which means the timeout setting is disabled.
+	//
+	// Default: 0
+	GracefulShutdownTimeout time.Duration `json:"graceful_shutdown_timeout"`
 
 	// When set to true, it will not print out the «Fiber» ASCII art and listening address.
 	//
@@ -472,8 +478,17 @@ func (app *App) printRoutesMessage() {
 func (app *App) gracefulShutdown(ctx context.Context, cfg ListenConfig) {
 	<-ctx.Done()
 
-	if err := app.Shutdown(); err != nil { //nolint:contextcheck // TODO: Implement it
+	var err error
+
+	if cfg.GracefulShutdownTimeout != 0 {
+		err = app.ShutdownWithTimeout(cfg.GracefulShutdownTimeout) //nolint:contextcheck // TODO: Implement it
+	} else {
+		err = app.Shutdown() //nolint:contextcheck // TODO: Implement it
+	}
+
+	if err != nil {
 		cfg.OnShutdownError(err)
+		return
 	}
 
 	if success := cfg.OnShutdownSuccess; success != nil {

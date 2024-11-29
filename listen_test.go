@@ -115,6 +115,113 @@ func Test_Listen_Graceful_Shutdown(t *testing.T) {
 	mu.Unlock()
 }
 
+// go test -run Test_Listen_Graceful_Shutdown_Timeout
+func Test_Listen_Graceful_Shutdown_Timeout(t *testing.T) {
+	var mu sync.Mutex
+	var shutdownSuccess bool
+	var shutdownTimeoutError error
+
+	app := New()
+
+	app.Get("/", func(c Ctx) error {
+		return c.SendString(c.Hostname())
+	})
+
+	ln := fasthttputil.NewInmemoryListener()
+	errs := make(chan error)
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
+		errs <- app.Listener(ln, ListenConfig{
+			DisableStartupMessage:   true,
+			GracefulContext:         ctx,
+			GracefulShutdownTimeout: 500 * time.Millisecond,
+			OnShutdownSuccess: func() {
+				mu.Lock()
+				shutdownSuccess = true
+				mu.Unlock()
+			},
+			OnShutdownError: func(err error) {
+				mu.Lock()
+				shutdownTimeoutError = err
+				mu.Unlock()
+			},
+		})
+	}()
+
+	// Server readiness check
+	for i := 0; i < 10; i++ {
+		conn, err := ln.Dial()
+		// To test a graceful shutdown timeout, do not close the connection.
+		if err == nil {
+			_ = conn
+			break
+		}
+		// Wait a bit before retrying
+		time.Sleep(100 * time.Millisecond)
+		if i == 9 {
+			t.Fatalf("Server did not become ready in time: %v", err)
+		}
+	}
+
+	testCases := []struct {
+		ExpectedErr             error
+		ExpectedShutdownError   error
+		ExpectedBody            string
+		Time                    time.Duration
+		ExpectedStatusCode      int
+		ExpectedShutdownSuccess bool
+	}{
+		{
+			Time:                    100 * time.Millisecond,
+			ExpectedBody:            "example.com",
+			ExpectedStatusCode:      StatusOK,
+			ExpectedErr:             nil,
+			ExpectedShutdownError:   nil,
+			ExpectedShutdownSuccess: false,
+		},
+		{
+			Time:                    3 * time.Second,
+			ExpectedBody:            "",
+			ExpectedStatusCode:      StatusOK,
+			ExpectedErr:             errors.New("InmemoryListener is already closed: use of closed network connection"),
+			ExpectedShutdownError:   context.DeadlineExceeded,
+			ExpectedShutdownSuccess: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		time.Sleep(tc.Time)
+
+		req := fasthttp.AcquireRequest()
+		req.SetRequestURI("http://example.com")
+
+		client := fasthttp.HostClient{}
+		client.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
+
+		resp := fasthttp.AcquireResponse()
+		err := client.Do(req, resp)
+
+		require.Equal(t, tc.ExpectedErr, err)
+		require.Equal(t, tc.ExpectedStatusCode, resp.StatusCode())
+		require.Equal(t, tc.ExpectedBody, string(resp.Body()))
+		mu.Lock()
+		require.Equal(t, tc.ExpectedShutdownSuccess, shutdownSuccess)
+		require.Equal(t, tc.ExpectedShutdownError, shutdownTimeoutError)
+		mu.Unlock()
+
+		fasthttp.ReleaseRequest(req)
+		fasthttp.ReleaseResponse(resp)
+	}
+
+	mu.Lock()
+	err := <-errs
+	require.NoError(t, err)
+	mu.Unlock()
+}
+
 // go test -run Test_Listen_Prefork
 func Test_Listen_Prefork(t *testing.T) {
 	testPreforkMaster = true
