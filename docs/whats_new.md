@@ -68,7 +68,6 @@ We have made several changes to the Fiber app, including:
 - **Listen**: Now has a configuration parameter.
 - **Listener**: Now has a configuration parameter.
 
-
 ### CTX interface + customizable
 
 Fiber v3 introduces a more customizable `Ctx` interface, allowing developers to create their own context classes. This flexibility enables you to extend the default context with additional methods and properties tailored to your application's needs.
@@ -141,7 +140,6 @@ Here's an example of how to create and use a custom `Ctx` class in Fiber v3:
 In this example, the `CustomCtx` struct extends the default `fiber.Ctx` with a custom method. The `CustomCtxMiddleware` middleware replaces the default context with the custom context, and the route handler uses the custom context to call the custom method. This approach allows you to encapsulate additional logic and data within the context, making it easier to manage and access throughout your application.
 
 </details>
-
 
 ## 🗺 Router
 
@@ -509,32 +507,32 @@ curl "http://localhost:3000/convert?value=abc"
 package main
 
 import (
-	"github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3"
 )
 
 func main() {
-	app := fiber.New()
+    app := fiber.New()
 
-	app.Use("/user/:id", func(c fiber.Ctx) error {
-		// ask database for user
-		// ...
-		// set local values from database
-		fiber.Locals[string](c, "user", "john")
-		fiber.Locals[int](c, "age", 25)
-		// ...
+    app.Use("/user/:id", func(c fiber.Ctx) error {
+        // ask database for user
+        // ...
+        // set local values from database
+        fiber.Locals[string](c, "user", "john")
+        fiber.Locals[int](c, "age", 25)
+        // ...
 
-		return c.Next()
-	})
+        return c.Next()
+    })
 
-	app.Get("/user/*", func(c fiber.Ctx) error {
-		// get local values
-		name := fiber.Locals[string](c, "user")
-		age := fiber.Locals[int](c, "age")
-		// ...
-		return c.JSON(fiber.Map{"name": name, "age": age})
-	})
+    app.Get("/user/*", func(c fiber.Ctx) error {
+        // get local values
+        name := fiber.Locals[string](c, "user")
+        age := fiber.Locals[int](c, "age")
+        // ...
+        return c.JSON(fiber.Map{"name": name, "age": age})
+    })
 
-	app.Listen(":3000")
+    app.Listen(":3000")
 }
 ```
 
@@ -609,6 +607,7 @@ curl "http://localhost:3000/query?age=25"
 curl "http://localhost:3000/query?age=abc"
 # Output: 0
 ```
+
 </details>
 
 <details>
@@ -640,6 +639,7 @@ curl -H "User-Agent: CustomAgent" "http://localhost:3000/header"
 curl "http://localhost:3000/header"
 # Output: "Unknown"
 ```
+
 </details>
 
 ## 🧬 Middlewares
@@ -957,119 +957,119 @@ The `Parser` section in Fiber v3 has undergone significant changes to improve fu
 
 1. **BodyParser**: Use `c.Bind().Body()` instead of `c.BodyParser()`.
 
-<details>
-<summary>Example</summary>
+    <details>
+    <summary>Example</summary>
 
-```go
-// Before
-app.Post("/user", func(c *fiber.Ctx) error {
-  var user User
-  if err := c.BodyParser(&user); err != nil {
-    return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
-  }
-  return c.JSON(user)
-})
-```
+    ```go
+    // Before
+    app.Post("/user", func(c *fiber.Ctx) error {
+      var user User
+      if err := c.BodyParser(&user); err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+      }
+      return c.JSON(user)
+    })
+    ```
 
-```go
-// After
-app.Post("/user", func(c fiber.Ctx) error {
-  var user User
-  if err := c.Bind().Body(&user); err != nil {
-    return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
-  }
-  return c.JSON(user)
-})
-```
+    ```go
+    // After
+    app.Post("/user", func(c fiber.Ctx) error {
+      var user User
+      if err := c.Bind().Body(&user); err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+      }
+      return c.JSON(user)
+    })
+    ```
 
-</details>
+    </details>
 
 2. **ParamsParser**: Use `c.Bind().URL()` instead of `c.ParamsParser()`.
 
-<details>
-<summary>Example</summary>
+    <details>
+    <summary>Example</summary>
 
-```go
-// Before
-app.Get("/user/:id", func(c *fiber.Ctx) error {
-  var params Params
-  if err := c.ParamsParser(&params); err != nil {
-    return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
-  }
-  return c.JSON(params)
-})
-```
+    ```go
+    // Before
+    app.Get("/user/:id", func(c *fiber.Ctx) error {
+      var params Params
+      if err := c.ParamsParser(&params); err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+      }
+      return c.JSON(params)
+    })
+    ```
 
-```go
-// After
-app.Get("/user/:id", func(c fiber.Ctx) error {
-  var params Params
-  if err := c.Bind().URL(&params); err != nil {
-    return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
-  }
-  return c.JSON(params)
-})
-```
+    ```go
+    // After
+    app.Get("/user/:id", func(c fiber.Ctx) error {
+      var params Params
+      if err := c.Bind().URL(&params); err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+      }
+      return c.JSON(params)
+    })
+    ```
 
-</details>
+    </details>
 
 3. **QueryParser**: Use `c.Bind().Query()` instead of `c.QueryParser()`.
 
-<details>
-<summary>Example</summary>
+    <details>
+    <summary>Example</summary>
 
-```go
-// Before
-app.Get("/search", func(c *fiber.Ctx) error {
-  var query Query
-  if err := c.QueryParser(&query); err != nil {
-    return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
-  }
-  return c.JSON(query)
-})
-```
+    ```go
+    // Before
+    app.Get("/search", func(c *fiber.Ctx) error {
+      var query Query
+      if err := c.QueryParser(&query); err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+      }
+      return c.JSON(query)
+    })
+    ```
 
-```go
-// After
-app.Get("/search", func(c fiber.Ctx) error {
-  var query Query
-  if err := c.Bind().Query(&query); err != nil {
-    return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
-  }
-  return c.JSON(query)
-})
-```
+    ```go
+    // After
+    app.Get("/search", func(c fiber.Ctx) error {
+      var query Query
+      if err := c.Bind().Query(&query); err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+      }
+      return c.JSON(query)
+    })
+    ```
 
-</details>
+    </details>
 
 4. **CookieParser**: Use `c.Bind().Cookie()` instead of `c.CookieParser()`.
 
-<details>
-<summary>Example</summary>
+    <details>
+    <summary>Example</summary>
 
-```go
-// Before
-app.Get("/cookie", func(c *fiber.Ctx) error {
-  var cookie Cookie
-  if err := c.CookieParser(&cookie); err != nil {
-    return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
-  }
-  return c.JSON(cookie)
-})
-```
+    ```go
+    // Before
+    app.Get("/cookie", func(c *fiber.Ctx) error {
+      var cookie Cookie
+      if err := c.CookieParser(&cookie); err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+      }
+      return c.JSON(cookie)
+    })
+    ```
 
-```go
-// After
-app.Get("/cookie", func(c fiber.Ctx) error {
-  var cookie Cookie
-  if err := c.Bind().Cookie(&cookie); err != nil {
-    return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
-  }
-  return c.JSON(cookie)
-})
-```
+    ```go
+    // After
+    app.Get("/cookie", func(c fiber.Ctx) error {
+      var cookie Cookie
+      if err := c.Bind().Cookie(&cookie); err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+      }
+      return c.JSON(cookie)
+    })
+    ```
 
-</details>
+    </details>
 
 #### 🔄 Redirect
 
@@ -1079,63 +1079,66 @@ Fiber v3 enhances the redirect functionality by introducing new methods and impr
 
 1. **RedirectToRoute**: Use `c.Redirect().Route()` instead of `c.RedirectToRoute()`.
 
-<details>
-<summary>Example</summary>
+    <details>
+    <summary>Example</summary>
 
-```go
-// Before
-app.Get("/old", func(c *fiber.Ctx) error {
-  return c.RedirectToRoute("newRoute")
-})
-```
+    ```go
+    // Before
+    app.Get("/old", func(c *fiber.Ctx) error {
+      return c.RedirectToRoute("newRoute")
+    })
+    ```
 
-```go
-// After
-app.Get("/old", func(c fiber.Ctx) error {
-  return c.Redirect().Route("newRoute")
-})
-```
-</details>
+    ```go
+    // After
+    app.Get("/old", func(c fiber.Ctx) error {
+      return c.Redirect().Route("newRoute")
+    })
+    ```
+
+    </details>
 
 2. **RedirectBack**: Use `c.Redirect().Back()` instead of `c.RedirectBack()`.
 
-<details>
-<summary>Example</summary>
+    <details>
+    <summary>Example</summary>
 
-```go
-// Before
-app.Get("/back", func(c *fiber.Ctx) error {
-  return c.RedirectBack()
-})
-```
+    ```go
+    // Before
+    app.Get("/back", func(c *fiber.Ctx) error {
+      return c.RedirectBack()
+    })
+    ```
 
-```go
-// After
-app.Get("/back", func(c fiber.Ctx) error {
-  return c.Redirect().Back()
-})
-```
-</details>
+    ```go
+    // After
+    app.Get("/back", func(c fiber.Ctx) error {
+      return c.Redirect().Back()
+    })
+    ```
+
+    </details>
 
 3. **Redirect**: Use `c.Redirect().To()` instead of `c.Redirect()`.
 
-<details>
-<summary>Example</summary>
+    <details>
+    <summary>Example</summary>
 
-```go
-// Before
-app.Get("/old", func(c *fiber.Ctx) error {
-  return c.Redirect("/new")
-})
-```
+    ```go
+    // Before
+    app.Get("/old", func(c *fiber.Ctx) error {
+      return c.Redirect("/new")
+    })
+    ```
 
-```go
-// After
-app.Get("/old", func(c fiber.Ctx) error {
-  return c.Redirect().To("/new")
-})
-```
-</details>
+    ```go
+    // After
+    app.Get("/old", func(c fiber.Ctx) error {
+      return c.Redirect().To("/new")
+    })
+    ```
+
+    </details>
 
 ### 🌎 Client package
 
@@ -1149,7 +1152,7 @@ Fiber v3 introduces a completely rebuilt client package with numerous new featur
 
 #### Migration Instructions
 
-**Import Path**
+**Import Path**:
 
 Update the import path to the new client package.
 
@@ -1159,6 +1162,7 @@ Update the import path to the new client package.
 ```go
 import "github.com/gofiber/fiber/v2/client"
 ```
+
 </details>
 
 <details>
@@ -1167,6 +1171,7 @@ import "github.com/gofiber/fiber/v2/client"
 ```go
 import "github.com/gofiber/fiber/v3/client"
 ```
+
 </details>
 
 :::caution
