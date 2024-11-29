@@ -68,76 +68,63 @@ We have made several changes to the Fiber app, including:
 - **Listen**: Now has a configuration parameter.
 - **Listener**: Now has a configuration parameter.
 
-### CTX interface + customizable
+### Custom Ctx Interface in Fiber v3
 
-Fiber v3 introduces a more customizable `Ctx` interface, allowing developers to create their own context classes. This flexibility enables you to extend the default context with additional methods and properties tailored to your application's needs.
+Fiber v3 introduces a customizable `Ctx` interface, allowing developers to extend and modify the context to fit their needs. This feature provides greater flexibility and control over request handling.
 
-#### Idea Behind Custom `Ctx` Classes
+#### Idea Behind Custom Ctx Classes
 
-The primary idea behind using custom `Ctx` classes is to provide a way to encapsulate additional logic and data within the context, making it easier to manage and access throughout your application. This can be particularly useful for adding custom middleware, handling specific request/response patterns, or integrating with other libraries.
+The idea behind custom `Ctx` classes is to give developers the ability to extend the default context with additional methods and properties tailored to the specific requirements of their application. This allows for better request handling and easier implementation of specific logic.
+
+#### NewCtxFunc
+
+The `NewCtxFunc` method allows you to customize the `Ctx` struct as needed.
+
+```go title="Signature"
+func (app *App) NewCtxFunc(function func(app *App) CustomCtx)
+```
 
 <details>
 <summary>Example</summary>
 
-Here's an example of how to create and use a custom `Ctx` class in Fiber v3:
+Here’s an example of how to customize the `Ctx` interface:
 
-1. **Define a Custom Context Class**:
-   Create a new struct that embeds the default `fiber.Ctx` and add any additional methods or properties you need.
+```go
+package main
 
-   ```go
-   package main
+import (
+    "log"
+    "github.com/gofiber/fiber/v3"
+)
 
-   import (
-     "github.com/gofiber/fiber/v3"
-   )
+type CustomCtx struct {
+    fiber.Ctx
+}
 
-   // CustomCtx extends the default fiber.Ctx
-   type CustomCtx struct {
-     fiber.Ctx
-   }
+// Custom method
+func (c *CustomCtx) CustomMethod() string {
+    return "custom value"
+}
 
-   // NewCustomCtx creates a new instance of CustomCtx
-   func NewCustomCtx(c fiber.Ctx) *CustomCtx {
-     return &CustomCtx{Ctx: c}
-   }
+func main() {
+    app := fiber.New()
 
-   // CustomMethod is an example of a custom method
-   func (c *CustomCtx) CustomMethod() string {
-     return "This is a custom method"
-   }
-   ```
+    app.NewCtxFunc(func(app *fiber.App) fiber.Ctx {
+        return &CustomCtx{
+            Ctx: *fiber.NewCtx(app),
+        }
+    })
 
-2. **Middleware to Use Custom Context**:
-   Create middleware that replaces the default context with your custom context.
+    app.Get("/", func(c fiber.Ctx) error {
+        customCtx := c.(*CustomCtx)
+        return c.SendString(customCtx.CustomMethod())
+    })
 
-   ```go
-   func CustomCtxMiddleware(c fiber.Ctx) error {
-     customCtx := NewCustomCtx(c)
-     return customCtx.Next()
-   }
-   ```
+    log.Fatal(app.Listen(":3000"))
+}
+```
 
-3. **Use Custom Context in Handlers**:
-   Use the custom context in your route handlers.
-
-   ```go
-   func main() {
-     app := fiber.New()
-
-     // Use the custom context middleware
-     app.Use(CustomCtxMiddleware)
-
-     // Define a route that uses the custom context
-     app.Get("/", func(c fiber.Ctx) error {
-       customCtx := c.(*CustomCtx)
-       return customCtx.SendString(customCtx.CustomMethod())
-     })
-
-     app.Listen(":3000")
-   }
-   ```
-
-In this example, the `CustomCtx` struct extends the default `fiber.Ctx` with a custom method. The `CustomCtxMiddleware` middleware replaces the default context with the custom context, and the route handler uses the custom context to call the custom method. This approach allows you to encapsulate additional logic and data within the context, making it easier to manage and access throughout your application.
+In this example, a custom context `CustomCtx` is created with an additional method `CustomMethod`. The `NewCtxFunc` method is used to replace the default context with the custom one.
 
 </details>
 
