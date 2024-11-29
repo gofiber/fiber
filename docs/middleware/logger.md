@@ -163,6 +163,7 @@ var ConfigDefault = Config{
     TimeInterval:  500 * time.Millisecond,
     Output:        os.Stdout,
     DisableColors: false,
+    LoggerFunc:    defaultLoggerInstance,
 }
 ```
 
