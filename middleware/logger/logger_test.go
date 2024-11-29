@@ -1,3 +1,4 @@
+//nolint:depguard // Because we test logging :D
 package logger
 
 import (
@@ -181,15 +182,6 @@ func Test_Logger_ErrorTimeZone(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
-}
-
-type dumbLogger struct {
-	logger fiberlog.AllLogger
-}
-
-func (l *dumbLogger) Write(p []byte) (n int, err error) {
-	l.logger.Error(string(p))
-	return len(p), nil
 }
 
 // go test -run Test_Logger_Fiber_Logger

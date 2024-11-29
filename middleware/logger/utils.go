@@ -43,11 +43,11 @@ func statusColor(code int, colors fiber.Colors) string {
 }
 
 type customLoggerWriter struct {
-	level          fiberlog.Level
 	loggerInstance fiberlog.AllLogger
+	level          fiberlog.Level
 }
 
-func (cl *customLoggerWriter) Write(p []byte) (n int, err error) {
+func (cl *customLoggerWriter) Write(p []byte) (int, error) {
 	switch cl.level {
 	case fiberlog.LevelInfo:
 		cl.loggerInstance.Info(utils.UnsafeString(p))
@@ -59,6 +59,8 @@ func (cl *customLoggerWriter) Write(p []byte) (n int, err error) {
 		cl.loggerInstance.Debug(utils.UnsafeString(p))
 	case fiberlog.LevelError:
 		cl.loggerInstance.Error(utils.UnsafeString(p))
+	default:
+		return 0, nil
 	}
 
 	return len(p), nil
