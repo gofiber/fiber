@@ -55,6 +55,29 @@ func startTestServerWithPort(t *testing.T, beforeStarting func(app *fiber.App)) 
 	return nil, ""
 }
 
+func Test_New_With_Client(t *testing.T) {
+	t.Parallel()
+
+	t.Run("with valid client", func(t *testing.T) {
+		t.Parallel()
+
+		c := &fasthttp.Client{
+			MaxConnsPerHost: 5,
+		}
+		client := NewWithClient(c)
+
+		require.NotNil(t, client)
+	})
+
+	t.Run("with nil client", func(t *testing.T) {
+		t.Parallel()
+
+		require.PanicsWithValue(t, "fasthttp.Client must not be nil", func() {
+			NewWithClient(nil)
+		})
+	})
+}
+
 func Test_Client_Add_Hook(t *testing.T) {
 	t.Parallel()
 
