@@ -1448,7 +1448,9 @@ func Test_Set_Config_To_Request(t *testing.T) {
 
 	t.Run("set ctx", func(t *testing.T) {
 		t.Parallel()
-		key := struct{}{}
+
+		type ctxKey struct{}
+		var key ctxKey = struct{}{}
 
 		ctx := context.Background()
 		ctx = context.WithValue(ctx, key, "v1") //nolint: staticcheck // not needed for tests
