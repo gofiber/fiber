@@ -209,7 +209,7 @@ func Test_Listen_Graceful_Shutdown_Timeout(t *testing.T) {
 			require.Equal(t, tc.ExpectedStatusCode, resp.StatusCode())
 			require.Equal(t, tc.ExpectedBody, string(resp.Body()))
 		} else {
-			require.Equal(t, tc.ExpectedErr, err)
+			require.ErrorIs(t, err, tc.ExpectedErr)
 		}
 
 		mu.Lock()
