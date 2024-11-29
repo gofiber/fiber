@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -200,8 +201,12 @@ func Test_Logger_Fiber_Logger(t *testing.T) {
 	defer bytebufferpool.Put(buf)
 
 	logger := fiberlog.DefaultLogger()
-	logger.SetFlags(0)
+	stdlogger, ok := logger.GetLoggerInstance().(*log.Logger)
+	require.True(t, ok)
+
+	stdlogger.SetFlags(0)
 	logger.SetOutput(buf)
+
 	app.Use(New(Config{
 		Format: "${error}",
 		Output: LoggerToWriter(logger, fiberlog.LevelError),

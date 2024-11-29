@@ -186,3 +186,19 @@ commonLogger.Info("info")
 ```
 
 Binding the logger to a context allows you to include context-specific information in your logs, improving traceability and debugging.
+
+## GetLoggerInstance
+You can use GetLoggerInstance to retrieve the logger instance. It is useful when you need to access underlying methods of the logger.
+To retrieve the logger instance, use the following method:
+
+```go
+logger := fiberlog.DefaultLogger() // Call DefaultLogger to get the default logger instance
+
+stdlogger, ok := logger.GetLoggerInstance().(*log.Logger) // Get the logger instance and assert it to *log.Logger
+if !ok {
+    panic("logger is not *log.Logger")
+}
+
+stdlogger.SetFlags(0) // Hide timestamp by setting flags to 0
+```
+

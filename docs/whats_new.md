@@ -22,6 +22,7 @@ Here's a quick overview of the changes in Fiber `v3`:
 - [🔄️ Redirect](#-redirect)
 - [🌎 Client package](#-client-package)
 - [🧰 Generic functions](#-generic-functions)
+- [📃 Log](#-log)
 - [🧬 Middlewares](#-middlewares)
   - [CORS](#cors)
   - [CSRF](#csrf)
@@ -629,6 +630,12 @@ curl "http://localhost:3000/header"
 ```
 
 </details>
+
+## 📃 Log
+
+`fiber.AllLogger` interface now has a new method called `GetLoggerInstance`. This method can be used to get the underlying logger instance from the Fiber logger middleware. This is useful when you want to configure the logger middleware with a custom logger and still want to access the underlying logger instance. 
+
+You can find more details about this feature in [/docs/api/log.md](./api/log.md#getloggerinstance).
 
 ## 🧬 Middlewares
 
