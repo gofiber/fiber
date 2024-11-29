@@ -75,7 +75,8 @@ We have made several changes to the Fiber app, including:
 
 ### Methods changes
 
-- Test -> timeout changed to 1 second
+- Test -> Replaced timeout with a config parameter
+  - -1 represents no timeout -> 0 represents no timeout
 - Listen -> has a config parameter
 - Listener -> has a config parameter
 
@@ -184,6 +185,68 @@ To enable the routing changes above we had to slightly adjust the signature of t
 +    Add(methods []string, path string, handler Handler, middleware ...Handler) Router
 ```
 
+### Test Config
+
+The `app.Test()` method now allows users to customize their test configurations:
+
+<details>
+<summary>Example</summary>
+
+```go
+// Create a test app with a handler to test
+app := fiber.New()
+app.Get("/", func(c fiber.Ctx) {
+  return c.SendString("hello world")
+})
+
+// Define the HTTP request and custom TestConfig to test the handler
+req := httptest.NewRequest(MethodGet, "/", nil)
+testConfig := fiber.TestConfig{
+  Timeout:       0,
+  FailOnTimeout: false,
+}
+
+// Test the handler using the request and testConfig
+resp, err := app.Test(req, testConfig)
+```
+
+</details>
+
+To provide configurable testing capabilities, we had to change
+the signature of the `Test` method.
+
+```diff
+-    Test(req *http.Request, timeout ...time.Duration) (*http.Response, error)
++    Test(req *http.Request, config ...fiber.TestConfig) (*http.Response, error)
+```
+
+The `TestConfig` struct provides the following configuration options:
+
+- `Timeout`: The duration to wait before timing out the test. Use 0 for no timeout.
+- `FailOnTimeout`: Controls the behavior when a timeout occurs:
+  - When true, the test will return an `os.ErrDeadlineExceeded` if the test exceeds the `Timeout` duration.
+  - When false, the test will return the partial response received before timing out.
+
+If a custom `TestConfig` isn't provided, then the following will be used:
+
+```go
+testConfig := fiber.TestConfig{
+  Timeout:       time.Second,
+  FailOnTimeout: true,
+}
+```
+
+**Note:** Using this default is **NOT** the same as providing an empty `TestConfig` as an argument to `app.Test()`.
+
+An empty `TestConfig` is the equivalent of:
+
+```go
+testConfig := fiber.TestConfig{
+  Timeout:       0,
+  FailOnTimeout: false,
+}
+```
+
 ---
 
 ## 🧠 Context
@@ -207,6 +270,7 @@ DRAFT section
 - Reset
 - Schema -> ExpressJs like
 - SendStream -> ExpressJs like
+- SendStreamWriter
 - SendString -> ExpressJs like
 - String -> ExpressJs like
 - ViewBind -> instead of Bind
@@ -235,6 +299,43 @@ DRAFT section
 - Context has been renamed to RequestCtx which corresponds to the FastHTTP Request Context.
 - UserContext has been renamed to Context which returns a context.Context object.
 - SetUserContext has been renamed to SetContext.
+
+### SendStreamWriter
+
+In v3, we added support for buffered streaming by providing the new method `SendStreamWriter()`.
+
+```go
+func (c Ctx) SendStreamWriter(streamWriter func(w *bufio.Writer))
+```
+
+With this new method, you can implement:
+
+- Server-Side Events (SSE)
+- Large file downloads
+- Live data streaming
+
+```go
+app.Get("/sse", func(c fiber.Ctx) {
+  c.Set("Content-Type", "text/event-stream")
+  c.Set("Cache-Control", "no-cache")
+  c.Set("Connection", "keep-alive")
+  c.Set("Transfer-Encoding", "chunked")
+
+  return c.SendStreamWriter(func(w *bufio.Writer) {
+    for {
+      fmt.Fprintf(w, "event: my-event\n")
+      fmt.Fprintf(w, "data: Hello SSE\n\n")
+
+      if err := w.Flush(); err != nil {
+        log.Print("Client disconnected!")
+        return
+      }
+    }
+  })
+})
+```
+
+You can find more details about this feature in [/docs/api/ctx.md](./api/ctx.md).
 
 ---
 

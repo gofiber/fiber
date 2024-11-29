@@ -20,6 +20,15 @@ import (
 
 const helloWorld = "hello world"
 
+// go test -run Test_returnErr -v
+func Test_returnErr(t *testing.T) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	err := c.Bind().WithAutoHandling().returnErr(nil)
+	require.NoError(t, err)
+}
+
 // go test -run Test_Bind_Query -v
 func Test_Bind_Query(t *testing.T) {
 	t.Parallel()
@@ -1653,8 +1662,8 @@ func Test_Bind_CustomBinder(t *testing.T) {
 	require.Equal(t, "john", d.Name)
 }
 
-// go test -run Test_Bind_Must
-func Test_Bind_Must(t *testing.T) {
+// go test -run Test_Bind_WithAutoHandling
+func Test_Bind_WithAutoHandling(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
@@ -1663,7 +1672,7 @@ func Test_Bind_Must(t *testing.T) {
 	}
 	rq := new(RequiredQuery)
 	c.Request().URI().SetQueryString("")
-	err := c.Bind().Must().Query(rq)
+	err := c.Bind().WithAutoHandling().Query(rq)
 	require.Equal(t, StatusBadRequest, c.Response().StatusCode())
 	require.Equal(t, "Bad request: bind: name is empty", err.Error())
 }
