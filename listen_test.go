@@ -204,9 +204,14 @@ func Test_Listen_Graceful_Shutdown_Timeout(t *testing.T) {
 		resp := fasthttp.AcquireResponse()
 		err := client.Do(req, resp)
 
-		require.Equal(t, tc.ExpectedErr, err)
-		require.Equal(t, tc.ExpectedStatusCode, resp.StatusCode())
-		require.Equal(t, tc.ExpectedBody, string(resp.Body()))
+		if err == nil {
+			require.NoError(t, err)
+			require.Equal(t, tc.ExpectedStatusCode, resp.StatusCode())
+			require.Equal(t, tc.ExpectedBody, string(resp.Body()))
+		} else {
+			require.ErrorIs(t, err, tc.ExpectedErr)
+		}
+
 		mu.Lock()
 		require.Equal(t, tc.ExpectedShutdownSuccess, shutdownSuccess)
 		require.Equal(t, tc.ExpectedShutdownError, shutdownTimeoutError)
