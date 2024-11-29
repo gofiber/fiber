@@ -3,6 +3,7 @@
 package fiber
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
 	"io"
@@ -45,14 +46,14 @@ type Ctx interface {
 	// ClearCookie expires a specific cookie by key on the client side.
 	// If no key is provided it expires all cookies that came with the request.
 	ClearCookie(key ...string)
-	// Context returns *fasthttp.RequestCtx that carries a deadline
+	// RequestCtx returns *fasthttp.RequestCtx that carries a deadline
 	// a cancellation signal, and other values across API boundaries.
-	Context() *fasthttp.RequestCtx
-	// UserContext returns a context implementation that was set by
+	RequestCtx() *fasthttp.RequestCtx
+	// Context returns a context implementation that was set by
 	// user earlier or returns a non-nil, empty context,if it was not set earlier.
-	UserContext() context.Context
-	// SetUserContext sets a context implementation by user.
-	SetUserContext(ctx context.Context)
+	Context() context.Context
+	// SetContext sets a context implementation by user.
+	SetContext(ctx context.Context)
 	// Cookie sets a cookie by passing a cookie struct.
 	Cookie(cookie *Cookie)
 	// Cookies are used for getting a cookie value by key.
@@ -283,6 +284,8 @@ type Ctx interface {
 	SendString(body string) error
 	// SendStream sets response body stream and optional body size.
 	SendStream(stream io.Reader, size ...int) error
+	// SendStreamWriter sets response body stream writer
+	SendStreamWriter(streamWriter func(*bufio.Writer)) error
 	// Set sets the response's HTTP header field to the specified key, value.
 	Set(key, val string)
 	setCanonical(key, val string)

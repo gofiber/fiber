@@ -25,7 +25,7 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 		if path == "/debug/vars" {
-			expvarhandler.ExpvarHandler(c.Context())
+			expvarhandler.ExpvarHandler(c.RequestCtx())
 			return nil
 		}
 

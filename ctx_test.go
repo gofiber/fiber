@@ -843,24 +843,24 @@ func Benchmark_Ctx_Body_With_Compression_Immutable(b *testing.B) {
 	}
 }
 
+// go test -run Test_Ctx_RequestCtx
+func Test_Ctx_RequestCtx(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	require.Equal(t, "*fasthttp.RequestCtx", fmt.Sprintf("%T", c.RequestCtx()))
+}
+
 // go test -run Test_Ctx_Context
 func Test_Ctx_Context(t *testing.T) {
 	t.Parallel()
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	require.Equal(t, "*fasthttp.RequestCtx", fmt.Sprintf("%T", c.Context()))
-}
-
-// go test -run Test_Ctx_UserContext
-func Test_Ctx_UserContext(t *testing.T) {
-	t.Parallel()
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-
 	t.Run("Nil_Context", func(t *testing.T) {
 		t.Parallel()
-		ctx := c.UserContext()
+		ctx := c.Context()
 		require.Equal(t, ctx, context.Background())
 	})
 	t.Run("ValueContext", func(t *testing.T) {
@@ -872,8 +872,8 @@ func Test_Ctx_UserContext(t *testing.T) {
 	})
 }
 
-// go test -run Test_Ctx_SetUserContext
-func Test_Ctx_SetUserContext(t *testing.T) {
+// go test -run Test_Ctx_SetContext
+func Test_Ctx_SetContext(t *testing.T) {
 	t.Parallel()
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -881,19 +881,19 @@ func Test_Ctx_SetUserContext(t *testing.T) {
 	testKey := struct{}{}
 	testValue := "Test Value"
 	ctx := context.WithValue(context.Background(), testKey, testValue) //nolint: staticcheck // not needed for tests
-	c.SetUserContext(ctx)
-	require.Equal(t, testValue, c.UserContext().Value(testKey))
+	c.SetContext(ctx)
+	require.Equal(t, testValue, c.Context().Value(testKey))
 }
 
-// go test -run Test_Ctx_UserContext_Multiple_Requests
-func Test_Ctx_UserContext_Multiple_Requests(t *testing.T) {
+// go test -run Test_Ctx_Context_Multiple_Requests
+func Test_Ctx_Context_Multiple_Requests(t *testing.T) {
 	t.Parallel()
 	testKey := struct{}{}
 	testValue := "foobar-value"
 
 	app := New()
 	app.Get("/", func(c Ctx) error {
-		ctx := c.UserContext()
+		ctx := c.Context()
 
 		if ctx.Value(testKey) != nil {
 			return c.SendStatus(StatusInternalServerError)
@@ -901,7 +901,7 @@ func Test_Ctx_UserContext_Multiple_Requests(t *testing.T) {
 
 		input := utils.CopyString(Query(c, "input", "NO_VALUE"))
 		ctx = context.WithValue(ctx, testKey, fmt.Sprintf("%s_%s", testValue, input)) //nolint: staticcheck // not needed for tests
-		c.SetUserContext(ctx)
+		c.SetContext(ctx)
 
 		return c.Status(StatusOK).SendString(fmt.Sprintf("resp_%s_returned", input))
 	})
@@ -913,7 +913,7 @@ func Test_Ctx_UserContext_Multiple_Requests(t *testing.T) {
 			resp, err := app.Test(httptest.NewRequest(MethodGet, fmt.Sprintf("/?input=%d", i), nil))
 
 			require.NoError(t, err, "Unexpected error from response")
-			require.Equal(t, StatusOK, resp.StatusCode, "context.Context returned from c.UserContext() is reused")
+			require.Equal(t, StatusOK, resp.StatusCode, "context.Context returned from c.Context() is reused")
 
 			b, err := io.ReadAll(resp.Body)
 			require.NoError(t, err, "Unexpected error from reading response body")
@@ -3220,7 +3220,7 @@ func Test_Ctx_SendFile_MaxAge(t *testing.T) {
 	// check expectation
 	require.NoError(t, err)
 	require.Equal(t, expectFileContent, c.Response().Body())
-	require.Equal(t, "public, max-age=100", string(c.Context().Response.Header.Peek(HeaderCacheControl)), "CacheControl Control")
+	require.Equal(t, "public, max-age=100", string(c.RequestCtx().Response.Header.Peek(HeaderCacheControl)), "CacheControl Control")
 	require.Equal(t, StatusOK, c.Response().StatusCode())
 	app.ReleaseCtx(c)
 }
@@ -3243,7 +3243,10 @@ func Test_Static_Compress(t *testing.T) {
 
 			req := httptest.NewRequest(MethodGet, "/file", nil)
 			req.Header.Set("Accept-Encoding", algo)
-			resp, err := app.Test(req, 10*time.Second)
+			resp, err := app.Test(req, TestConfig{
+				Timeout:       10 * time.Second,
+				FailOnTimeout: true,
+			})
 
 			require.NoError(t, err, "app.Test(req)")
 			require.Equal(t, 200, resp.StatusCode, "Status code")
@@ -4442,6 +4445,71 @@ func Test_Ctx_SendStream(t *testing.T) {
 	err = c.SendStream(bufio.NewReader(bytes.NewReader([]byte("Hello bufio"))))
 	require.NoError(t, err)
 	require.Equal(t, "Hello bufio", string(c.Response().Body()))
+}
+
+// go test -run Test_Ctx_SendStreamWriter
+func Test_Ctx_SendStreamWriter(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	err := c.SendStreamWriter(func(w *bufio.Writer) {
+		w.WriteString("Don't crash please") //nolint:errcheck, revive // It is fine to ignore the error
+	})
+	require.NoError(t, err)
+	require.Equal(t, "Don't crash please", string(c.Response().Body()))
+
+	err = c.SendStreamWriter(func(w *bufio.Writer) {
+		for lineNum := 1; lineNum <= 5; lineNum++ {
+			fmt.Fprintf(w, "Line %d\n", lineNum) //nolint:errcheck, revive // It is fine to ignore the error
+			if err := w.Flush(); err != nil {
+				t.Errorf("unexpected error: %s", err)
+				return
+			}
+		}
+	})
+	require.NoError(t, err)
+	require.Equal(t, "Line 1\nLine 2\nLine 3\nLine 4\nLine 5\n", string(c.Response().Body()))
+
+	err = c.SendStreamWriter(func(_ *bufio.Writer) {})
+	require.NoError(t, err)
+	require.Empty(t, c.Response().Body())
+}
+
+// go test -run Test_Ctx_SendStreamWriter_Interrupted
+func Test_Ctx_SendStreamWriter_Interrupted(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", func(c Ctx) error {
+		return c.SendStreamWriter(func(w *bufio.Writer) {
+			for lineNum := 1; lineNum <= 5; lineNum++ {
+				fmt.Fprintf(w, "Line %d\n", lineNum) //nolint:errcheck // It is fine to ignore the error
+
+				if err := w.Flush(); err != nil {
+					if lineNum < 3 {
+						t.Errorf("unexpected error: %s", err)
+					}
+					return
+				}
+
+				time.Sleep(400 * time.Millisecond)
+			}
+		})
+	})
+
+	req := httptest.NewRequest(MethodGet, "/", nil)
+	testConfig := TestConfig{
+		Timeout:       1 * time.Second,
+		FailOnTimeout: false,
+	}
+	resp, err := app.Test(req, testConfig)
+	require.NoError(t, err)
+
+	body, err := io.ReadAll(resp.Body)
+	t.Logf("%v", err)
+	require.EqualError(t, err, "unexpected EOF")
+
+	require.Equal(t, "Line 1\nLine 2\nLine 3\n", string(body))
 }
 
 // go test -run Test_Ctx_Set

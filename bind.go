@@ -19,34 +19,35 @@ type StructValidator interface {
 
 // Bind struct
 type Bind struct {
-	ctx    Ctx
-	should bool
+	ctx            Ctx
+	dontHandleErrs bool
 }
 
-// Should To handle binder errors manually, you can prefer Should method.
+// If you want to handle binder errors manually, you can use `WithoutAutoHandling`.
 // It's default behavior of binder.
-func (b *Bind) Should() *Bind {
-	b.should = true
+func (b *Bind) WithoutAutoHandling() *Bind {
+	b.dontHandleErrs = true
 
 	return b
 }
 
-// Must If you want to handle binder errors automatically, you can use Must.
-// If there's an error it'll return error and 400 as HTTP status.
-func (b *Bind) Must() *Bind {
-	b.should = false
+// If you want to handle binder errors automatically, you can use `WithAutoHandling`.
+// If there's an error, it will return the error and set HTTP status to `400 Bad Request`.
+// You must still return on error explicitly
+func (b *Bind) WithAutoHandling() *Bind {
+	b.dontHandleErrs = false
 
 	return b
 }
 
-// Check Should/Must errors and return it by usage.
+// Check WithAutoHandling/WithoutAutoHandling errors and return it by usage.
 func (b *Bind) returnErr(err error) error {
-	if !b.should {
-		b.ctx.Status(StatusBadRequest)
-		return NewError(StatusBadRequest, "Bad request: "+err.Error())
+	if err == nil || b.dontHandleErrs {
+		return err
 	}
 
-	return err
+	b.ctx.Status(StatusBadRequest)
+	return NewError(StatusBadRequest, "Bad request: "+err.Error())
 }
 
 // Struct validation.
@@ -62,7 +63,7 @@ func (b *Bind) validateStruct(out any) error {
 // Custom To use custom binders, you have to use this method.
 // You can register them from RegisterCustomBinder method of Fiber instance.
 // They're checked by name, if it's not found, it will return an error.
-// NOTE: Should/Must is still valid for Custom binders.
+// NOTE: WithAutoHandling/WithAutoHandling is still valid for Custom binders.
 func (b *Bind) Custom(name string, dest any) error {
 	binders := b.ctx.App().customBinders
 	for _, customBinder := range binders {
@@ -92,10 +93,10 @@ func (b *Bind) RespHeader(out any) error {
 	return b.validateStruct(out)
 }
 
-// Cookie binds the requesr cookie strings into the struct, map[string]string and map[string][]string.
+// Cookie binds the request cookie strings into the struct, map[string]string and map[string][]string.
 // NOTE: If your cookie is like key=val1,val2; they'll be binded as an slice if your map is map[string][]string. Else, it'll use last element of cookie.
 func (b *Bind) Cookie(out any) error {
-	if err := b.returnErr(binder.CookieBinder.Bind(b.ctx.Context(), out)); err != nil {
+	if err := b.returnErr(binder.CookieBinder.Bind(b.ctx.RequestCtx(), out)); err != nil {
 		return err
 	}
 
@@ -104,7 +105,7 @@ func (b *Bind) Cookie(out any) error {
 
 // Query binds the query string into the struct, map[string]string and map[string][]string.
 func (b *Bind) Query(out any) error {
-	if err := b.returnErr(binder.QueryBinder.Bind(b.ctx.Context(), out)); err != nil {
+	if err := b.returnErr(binder.QueryBinder.Bind(b.ctx.RequestCtx(), out)); err != nil {
 		return err
 	}
 
@@ -131,7 +132,7 @@ func (b *Bind) XML(out any) error {
 
 // Form binds the form into the struct, map[string]string and map[string][]string.
 func (b *Bind) Form(out any) error {
-	if err := b.returnErr(binder.FormBinder.Bind(b.ctx.Context(), out)); err != nil {
+	if err := b.returnErr(binder.FormBinder.Bind(b.ctx.RequestCtx(), out)); err != nil {
 		return err
 	}
 
@@ -149,7 +150,7 @@ func (b *Bind) URI(out any) error {
 
 // MultipartForm binds the multipart form into the struct, map[string]string and map[string][]string.
 func (b *Bind) MultipartForm(out any) error {
-	if err := b.returnErr(binder.FormBinder.BindMultipart(b.ctx.Context(), out)); err != nil {
+	if err := b.returnErr(binder.FormBinder.BindMultipart(b.ctx.RequestCtx(), out)); err != nil {
 		return err
 	}
 
@@ -163,7 +164,7 @@ func (b *Bind) MultipartForm(out any) error {
 // If there're no custom binder for mime type of body, it will return a ErrUnprocessableEntity error.
 func (b *Bind) Body(out any) error {
 	// Get content-type
-	ctype := utils.ToLower(utils.UnsafeString(b.ctx.Context().Request.Header.ContentType()))
+	ctype := utils.ToLower(utils.UnsafeString(b.ctx.RequestCtx().Request.Header.ContentType()))
 	ctype = binder.FilterFlags(utils.ParseVendorSpecificContentType(ctype))
 
 	// Check custom binders
