@@ -659,7 +659,8 @@ func (r *Request) SetXML(v any) *Request
 
 ## SetCBOR
 
-SetCBOR method sets CBOR body in request.
+SetCBOR method sets the request body using CBOR (Concise Binary Object Representation) encoding format.
+It automatically sets the Content-Type header to "application/cbor".
 
 ```go title="Signature"
 func (r *Request) SetCBOR(v any) *Request

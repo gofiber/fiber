@@ -1756,13 +1756,9 @@ func Test_Bind_RepeatParserWithSameStruct(t *testing.T) {
 		require.NoError(t, c.Bind().Body(r))
 		require.Equal(t, "body_param", r.BodyParam)
 	}
-	cb, err := cbor.Marshal(&Request{
-		BodyParam: "body_param",
-	})
 
-	if err != nil {
-		t.Error(err)
-	}
+	cb, err := cbor.Marshal(&Request{BodyParam: "body_param"})
+	require.NoError(t, err, "Failed to marshal CBOR data")
 
 	testDecodeParser(MIMEApplicationJSON, `{"body_param":"body_param"}`)
 	testDecodeParser(MIMEApplicationXML, `<Demo><body_param>body_param</body_param></Demo>`)
