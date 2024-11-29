@@ -3658,6 +3658,13 @@ func Test_Ctx_CBOR(t *testing.T) {
 	testEmpty(0, "00")
 	testEmpty([]int{}, "80")
 
+	// Test invalid types
+	err = c.CBOR(make(chan int))
+	require.Error(t, err)
+
+	err = c.CBOR(func() {})
+	require.Error(t, err)
+
 	t.Run("custom cbor encoder", func(t *testing.T) {
 		t.Parallel()
 
