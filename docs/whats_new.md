@@ -2,14 +2,8 @@
 id: whats_new
 title: 🆕 Whats New in v3
 sidebar_position: 2
-toc_max_heading_level: 3
+toc_max_heading_level: 4
 ---
-
-:::caution
-
-It's a draft, not finished yet.
-
-:::
 
 [//]: # (https://github.com/gofiber/fiber/releases/tag/v3.0.0-beta.2)
 
@@ -43,46 +37,96 @@ Fiber `v3` drops support for Go versions below `1.22`. We recommend upgrading to
 
 ## 🚀 App
 
-:::caution
-DRAFT section
-:::
-
 We have made several changes to the Fiber app, including:
 
-- Listen -> unified with config
-- Static -> has been removed and moved to [static middleware](./middleware/static.md)
-- app.Config properties moved to listen config
-  - DisableStartupMessage
-  - EnablePrefork -> previously Prefork
-  - EnablePrintRoutes
-  - ListenerNetwork -> previously Network
-- app.Config.EnabledTrustedProxyCheck -> has been moved to app.Config.TrustProxy
-  - TrustedProxies -> has been moved to TrustProxyConfig.Proxies
+- **Listen**: The `Listen` method has been unified with the configuration, allowing for more streamlined setup.
+- **Static**: The `Static` method has been removed and its functionality has been moved to the [static middleware](./middleware/static.md).
+- **app.Config properties**: Several properties have been moved to the listen configuration:
+  - `DisableStartupMessage`
+  - `EnablePrefork` (previously `Prefork`)
+  - `EnablePrintRoutes`
+  - `ListenerNetwork` (previously `Network`)
+- **Trusted Proxy Configuration**: The `EnabledTrustedProxyCheck` has been moved to `app.Config.TrustProxy`, and `TrustedProxies` has been moved to `TrustProxyConfig.Proxies`.
 
-### new methods
+### New Methods
 
-- RegisterCustomBinder
-- RegisterCustomConstraint
-- NewCtxFunc
+- **RegisterCustomBinder**: Allows for the registration of custom binders.
+- **RegisterCustomConstraint**: Allows for the registration of custom constraints.
+- **NewCtxFunc**: Introduces a new context function.
 
-### removed methods
+### Removed Methods
 
-- Mount -> Use app.Use() instead
-- ListenTLS -> Use app.Listen() with tls.Config
-- ListenTLSWithCertificate -> Use app.Listen() with tls.Config
-- ListenMutualTLS -> Use app.Listen() with tls.Config
-- ListenMutualTLSWithCertificate -> Use app.Listen() with tls.Config
+- **Mount**: Use `app.Use()` instead.
+- **ListenTLS**: Use `app.Listen()` with `tls.Config`.
+- **ListenTLSWithCertificate**: Use `app.Listen()` with `tls.Config`.
+- **ListenMutualTLS**: Use `app.Listen()` with `tls.Config`.
+- **ListenMutualTLSWithCertificate**: Use `app.Listen()` with `tls.Config`.
 
-### Methods changes
+### Method Changes
 
-- Test -> Replaced timeout with a config parameter
-  - -1 represents no timeout -> 0 represents no timeout
-- Listen -> has a config parameter
-- Listener -> has a config parameter
+- **Test**: The `Test` method has replaced the timeout parameter with a configuration parameter. `-1` represents no timeout, and `0` represents no timeout.
+- **Listen**: Now has a configuration parameter.
+- **Listener**: Now has a configuration parameter.
 
-### CTX interface + customizable
+### Custom Ctx Interface in Fiber v3
 
----
+Fiber v3 introduces a customizable `Ctx` interface, allowing developers to extend and modify the context to fit their needs. This feature provides greater flexibility and control over request handling.
+
+#### Idea Behind Custom Ctx Classes
+
+The idea behind custom `Ctx` classes is to give developers the ability to extend the default context with additional methods and properties tailored to the specific requirements of their application. This allows for better request handling and easier implementation of specific logic.
+
+#### NewCtxFunc
+
+The `NewCtxFunc` method allows you to customize the `Ctx` struct as needed.
+
+```go title="Signature"
+func (app *App) NewCtxFunc(function func(app *App) CustomCtx)
+```
+
+<details>
+<summary>Example</summary>
+
+Here’s an example of how to customize the `Ctx` interface:
+
+```go
+package main
+
+import (
+    "log"
+    "github.com/gofiber/fiber/v3"
+)
+
+type CustomCtx struct {
+    fiber.Ctx
+}
+
+// Custom method
+func (c *CustomCtx) CustomMethod() string {
+    return "custom value"
+}
+
+func main() {
+    app := fiber.New()
+
+    app.NewCtxFunc(func(app *fiber.App) fiber.Ctx {
+        return &CustomCtx{
+            Ctx: *fiber.NewCtx(app),
+        }
+    })
+
+    app.Get("/", func(c fiber.Ctx) error {
+        customCtx := c.(*CustomCtx)
+        return c.SendString(customCtx.CustomMethod())
+    })
+
+    log.Fatal(app.Listen(":3000"))
+}
+```
+
+In this example, a custom context `CustomCtx` is created with an additional method `CustomMethod`. The `NewCtxFunc` method is used to replace the default context with the custom one.
+
+</details>
 
 ## 🗺 Router
 
@@ -162,14 +206,14 @@ Registering a subapp is now also possible via the [`Use`](./api/app#use) method 
 
 ```go
 // register mulitple prefixes
-app.Use(["/v1", "/v2"], func(c *fiber.Ctx) error {
+app.Use(["/v1", "/v2"], func(c fiber.Ctx) error {
   // Middleware for /v1 and /v2
   return c.Next() 
 })
 
 // define subapp
 api := fiber.New()
-api.Get("/user", func(c *fiber.Ctx) error {
+api.Get("/user", func(c fiber.Ctx) error {
   return c.SendString("User")
 })
 // register subapp
@@ -247,58 +291,50 @@ testConfig := fiber.TestConfig{
 }
 ```
 
----
-
 ## 🧠 Context
-
-:::caution
-DRAFT section
-:::
 
 ### New Features
 
 - Cookie now allows Partitioned cookies for [CHIPS](https://developers.google.com/privacy-sandbox/3pcd/chips) support. CHIPS (Cookies Having Independent Partitioned State) is a feature that improves privacy by allowing cookies to be partitioned by top-level site, mitigating cross-site tracking.
 
-- Introducing [CBOR](https://cbor.io/) binary encoding format for both request & response body. CBOR is a binary data serialization format that is both compact and efficient, making it ideal for use in web applications.
+### New Methods
 
-### new methods
+- **AutoFormat**: Similar to Express.js, automatically formats the response based on the request's `Accept` header.
+- **Host**: Similar to Express.js, returns the host name of the request.
+- **Port**: Similar to Express.js, returns the port number of the request.
+- **IsProxyTrusted**: Checks the trustworthiness of the remote IP.
+- **Reset**: Resets context fields for server handlers.
+- **Schema**: Similar to Express.js, returns the schema (HTTP or HTTPS) of the request.
+- **SendStream**: Similar to Express.js, sends a stream as the response.
+- **SendStreamWriter**: Sends a stream using a writer function.
+- **SendString**: Similar to Express.js, sends a string as the response.
+- **String**: Similar to Express.js, converts a value to a string.
+- **ViewBind**: Binds data to a view, replacing the old `Bind` method.
+- **CBOR**: Introducing [CBOR](https://cbor.io/) binary encoding format for both request & response body. CBOR is a binary data serialization format which is both compact and efficient, making it ideal for use in web applications.
 
-- AutoFormat -> ExpressJs like
-- Host -> ExpressJs like
-- Port -> ExpressJs like
-- IsProxyTrusted
-- Reset
-- Schema -> ExpressJs like
-- SendStream -> ExpressJs like
-- SendStreamWriter
-- SendString -> ExpressJs like
-- String -> ExpressJs like
-- ViewBind -> instead of Bind
-- CBOR -> for CBOR encoding and decoding
+### Removed Methods
 
-### removed methods
+- **AllParams**: Use `c.Bind().URL()` instead.
+- **ParamsInt**: Use `Params` with generic types.
+- **QueryBool**: Use `Query` with generic types.
+- **QueryFloat**: Use `Query` with generic types.
+- **QueryInt**: Use `Query` with generic types.
+- **BodyParser**: Use `c.Bind().Body()` instead.
+- **CookieParser**: Use `c.Bind().Cookie()` instead.
+- **ParamsParser**: Use `c.Bind().URL()` instead.
+- **RedirectToRoute**: Use `c.Redirect().Route()` instead.
+- **RedirectBack**: Use `c.Redirect().Back()` instead.
+- **ReqHeaderParser**: Use `c.Bind().Header()` instead.
 
-- AllParams -> c.Bind().URL() ?
-- ParamsInt -> Params Generic
-- QueryBool -> Query Generic
-- QueryFloat -> Query Generic
-- QueryInt -> Query Generic
-- BodyParser -> c.Bind().Body()
-- CookieParser -> c.Bind().Cookie()
-- ParamsParser -> c.Bind().URL()
-- RedirectToRoute -> c.Redirect().Route()
-- RedirectBack -> c.Redirect().Back()
-- ReqHeaderParser -> c.Bind().Header()
+### Changed Methods
 
-### changed methods
-
-- Bind -> for Binding instead of View, us c.ViewBind()
-- Format -> Param: body interface{} -> handlers ...ResFmt
-- Redirect -> c.Redirect().To()
-- SendFile now supports different configurations using the config parameter.
-- Context has been renamed to RequestCtx which corresponds to the FastHTTP Request Context.
-- UserContext has been renamed to Context which returns a context.Context object.
-- SetUserContext has been renamed to SetContext.
+- **Bind**: Now used for binding instead of view binding. Use `c.ViewBind()` for view binding.
+- **Format**: Parameter changed from `body interface{}` to `handlers ...ResFmt`.
+- **Redirect**: Use `c.Redirect().To()` instead.
+- **SendFile**: Now supports different configurations using a config parameter.
+- **Context**: Renamed to `RequestCtx` to correspond with the FastHTTP Request Context.
+- **UserContext**: Renamed to `Context`, which returns a `context.Context` object.
+- **SetUserContext**: Renamed to `SetContext`.
 
 ### SendStreamWriter
 
@@ -346,21 +382,253 @@ You can take a look to [client docs](./client/rest.md) to see what's new with th
 
 ## 📎 Binding
 
-:::caution
-DRAFT section
-:::
+Fiber v3 introduces a new binding mechanism that simplifies the process of binding request data to structs. The new binding system supports binding from various sources such as URL parameters, query parameters, headers, and request bodies. This unified approach makes it easier to handle different types of request data in a consistent manner.
+
+### New Features
+
+- Unified binding from URL parameters, query parameters, headers, and request bodies.
+- Support for custom binders and constraints.
+- Improved error handling and validation.
+
+<details>
+<summary>Example</summary>
+
+```go
+type User struct {
+  ID    int    `params:"id"`
+  Name  string `json:"name"`
+  Email string `json:"email"`
+}
+
+app.Post("/user/:id", func(c fiber.Ctx) error {
+  var user User
+  if err := c.Bind().Body(&user); err != nil {
+    return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+  }
+  return c.JSON(user)
+})
+```
+
+In this example, the `Bind` method is used to bind the request body to the `User` struct. The `Body` method of the `Bind` class performs the actual binding.
+
+</details>
 
 ## 🔄 Redirect
 
-:::caution
-DRAFT section
-:::
+Fiber v3 enhances the redirect functionality by introducing new methods and improving existing ones. The new redirect methods provide more flexibility and control over the redirection process.
+
+### New Methods
+
+- `Redirect().To()`: Redirects to a specific URL.
+- `Redirect().Route()`: Redirects to a named route.
+- `Redirect().Back()`: Redirects to the previous URL.
+
+<details>
+<summary>Example</summary>
+
+```go
+app.Get("/old", func(c fiber.Ctx) error {
+  return c.Redirect().To("/new")
+})
+
+app.Get("/new", func(c fiber.Ctx) error {
+  return c.SendString("Welcome to the new route!")
+})
+```
+
+</details>
 
 ## 🧰 Generic functions
 
-:::caution
-DRAFT section
-:::
+Fiber v3 introduces new generic functions that provide additional utility and flexibility for developers. These functions are designed to simplify common tasks and improve code readability.
+
+### New Generic Functions
+
+- **Convert**: Converts a value with a specified converter function and default value.
+- **Locals**: Retrieves or sets local values within a request context.
+- **Params**: Retrieves route parameters and can handle various types of route parameters.
+- **Query**: Retrieves the value of a query parameter from the request URI and can handle various types of query parameters.
+- **GetReqHeader**: Returns the HTTP request header specified by the field and can handle various types of header values.
+
+### Example
+
+<details>
+<summary>Convert</summary>
+
+```go
+package main
+
+import (
+  "strconv"
+  "github.com/gofiber/fiber/v3"
+)
+
+func main() {
+  app := fiber.New()
+
+  app.Get("/convert", func(c fiber.Ctx) error {
+    value, err := Convert[string](c.Query("value"), strconv.Atoi, 0)
+    if err != nil {
+      return c.Status(fiber.StatusBadRequest).SendString(err.Error())
+    }
+    return c.JSON(value)
+  })
+
+  app.Listen(":3000")
+}
+```
+
+```sh
+curl "http://localhost:3000/convert?value=123"
+# Output: 123
+
+curl "http://localhost:3000/convert?value=abc"
+# Output: "failed to convert: strconv.Atoi: parsing \"abc\": invalid syntax"
+```
+
+</details>
+
+<details>
+<summary>Locals</summary>
+
+```go
+package main
+
+import (
+    "github.com/gofiber/fiber/v3"
+)
+
+func main() {
+    app := fiber.New()
+
+    app.Use("/user/:id", func(c fiber.Ctx) error {
+        // ask database for user
+        // ...
+        // set local values from database
+        fiber.Locals[string](c, "user", "john")
+        fiber.Locals[int](c, "age", 25)
+        // ...
+
+        return c.Next()
+    })
+
+    app.Get("/user/*", func(c fiber.Ctx) error {
+        // get local values
+        name := fiber.Locals[string](c, "user")
+        age := fiber.Locals[int](c, "age")
+        // ...
+        return c.JSON(fiber.Map{"name": name, "age": age})
+    })
+
+    app.Listen(":3000")
+}
+```
+
+```sh
+curl "http://localhost:3000/user/5"
+# Output: {"name":"john","age":25}
+```
+
+</details>
+
+<details>
+<summary>Params</summary>
+
+```go
+package main
+
+import (
+  "github.com/gofiber/fiber/v3"
+)
+
+func main() {
+  app := fiber.New()
+
+  app.Get("/params/:id", func(c fiber.Ctx) error {
+    id := Params[int](c, "id", 0)
+    return c.JSON(id)
+  })
+
+  app.Listen(":3000")
+}
+
+```
+
+```sh
+curl "http://localhost:3000/params/123"
+# Output: 123
+
+curl "http://localhost:3000/params/abc"
+# Output: 0
+```
+
+</details>
+
+<details>
+<summary>Query</summary>
+
+```go
+package main
+
+import (
+  "github.com/gofiber/fiber/v3"
+)
+
+func main() {
+  app := fiber.New()
+
+  app.Get("/query", func(c fiber.Ctx) error {
+    age := Query[int](c, "age", 0)
+    return c.JSON(age)
+  })
+
+  app.Listen(":3000")
+}
+
+```
+
+```sh
+
+curl "http://localhost:3000/query?age=25"
+# Output: 25
+
+curl "http://localhost:3000/query?age=abc"
+# Output: 0
+```
+
+</details>
+
+<details>
+<summary>GetReqHeader</summary>
+
+```go
+package main
+
+import (
+  "github.com/gofiber/fiber/v3"
+)
+
+func main() {
+  app := fiber.New()
+
+  app.Get("/header", func(c fiber.Ctx) error {
+    userAgent := GetReqHeader[string](c, "User-Agent", "Unknown")
+    return c.JSON(userAgent)
+  })
+
+  app.Listen(":3000")
+}
+```
+
+```sh
+curl -H "User-Agent: CustomAgent" "http://localhost:3000/header"
+# Output: "CustomAgent"
+
+curl "http://localhost:3000/header"
+# Output: "Unknown"
+```
+
+</details>
 
 ## 🧬 Middlewares
 
@@ -555,16 +823,16 @@ To migrate [`Route`](#route-chaining) you need to read [this](#route-chaining).
 ```go
 // Before
 app.Route("/api", func(apiGrp Router) {
-        apiGrp.Route("/user/:id?", func(userGrp Router) {
-            userGrp.Get("/", func(c fiber.Ctx) error {
-                // Get user
-                return c.JSON(fiber.Map{"message": "Get user", "id": c.Params("id")})
-            })
-            userGrp.Post("/", func(c fiber.Ctx) error {
-                // Create user
-                return c.JSON(fiber.Map{"message": "User created"})
-            })
+    apiGrp.Route("/user/:id?", func(userGrp Router) {
+        userGrp.Get("/", func(c fiber.Ctx) error {
+            // Get user
+            return c.JSON(fiber.Map{"message": "Get user", "id": c.Params("id")})
         })
+        userGrp.Post("/", func(c fiber.Ctx) error {
+            // Create user
+            return c.JSON(fiber.Map{"message": "User created"})
+        })
+    })
 })
 ```
 
@@ -608,11 +876,295 @@ development mode. Avoid using it concurrently.
 
 ### 🧠 Context
 
-### 📎 Parser
+Fiber v3 introduces several new features and changes to the Ctx interface, enhancing its functionality and flexibility.
 
-### 🔄 Redirect
+- **ParamsInt**: Use `Params` with generic types.
+- **QueryBool**: Use `Query` with generic types.
+- **QueryFloat**: Use `Query` with generic types.
+- **QueryInt**: Use `Query` with generic types.
+- **Bind**: Now used for binding instead of view binding. Use `c.ViewBind()` for view binding.
+
+In Fiber v3, the `Ctx` parameter in handlers is now an interface, which means the `*` symbol is no longer used. Here is an example demonstrating this change:
+
+<details>
+<summary>Example</summary>
+
+**Before**:
+
+```go
+package main
+
+import (
+  "github.com/gofiber/fiber/v2"
+)
+
+func main() {
+  app := fiber.New()
+
+  // Route Handler with *fiber.Ctx
+  app.Get("/", func(c *fiber.Ctx) error {
+    return c.SendString("Hello, World!")
+  })
+
+  app.Listen(":3000")
+}
+```
+
+**After**:
+
+```go
+package main
+
+import (
+  "github.com/gofiber/fiber/v3"
+)
+
+func main() {
+  app := fiber.New()
+
+  // Route Handler without *fiber.Ctx
+  app.Get("/", func(c fiber.Ctx) error {
+    return c.SendString("Hello, World!")
+  })
+
+  app.Listen(":3000")
+}
+```
+
+**Explanation**:
+
+In this example, the `Ctx` parameter in the handler is used as an interface (`fiber.Ctx`) instead of a pointer (`*fiber.Ctx`). This change allows for more flexibility and customization in Fiber v3.
+
+</details>
+
+#### 📎 Parser
+
+The `Parser` section in Fiber v3 has undergone significant changes to improve functionality and flexibility.
+
+##### Migration Instructions
+
+1. **BodyParser**: Use `c.Bind().Body()` instead of `c.BodyParser()`.
+
+    <details>
+    <summary>Example</summary>
+
+    ```go
+    // Before
+    app.Post("/user", func(c *fiber.Ctx) error {
+      var user User
+      if err := c.BodyParser(&user); err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+      }
+      return c.JSON(user)
+    })
+    ```
+
+    ```go
+    // After
+    app.Post("/user", func(c fiber.Ctx) error {
+      var user User
+      if err := c.Bind().Body(&user); err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+      }
+      return c.JSON(user)
+    })
+    ```
+
+    </details>
+
+2. **ParamsParser**: Use `c.Bind().URL()` instead of `c.ParamsParser()`.
+
+    <details>
+    <summary>Example</summary>
+
+    ```go
+    // Before
+    app.Get("/user/:id", func(c *fiber.Ctx) error {
+      var params Params
+      if err := c.ParamsParser(&params); err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+      }
+      return c.JSON(params)
+    })
+    ```
+
+    ```go
+    // After
+    app.Get("/user/:id", func(c fiber.Ctx) error {
+      var params Params
+      if err := c.Bind().URL(&params); err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+      }
+      return c.JSON(params)
+    })
+    ```
+
+    </details>
+
+3. **QueryParser**: Use `c.Bind().Query()` instead of `c.QueryParser()`.
+
+    <details>
+    <summary>Example</summary>
+
+    ```go
+    // Before
+    app.Get("/search", func(c *fiber.Ctx) error {
+      var query Query
+      if err := c.QueryParser(&query); err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+      }
+      return c.JSON(query)
+    })
+    ```
+
+    ```go
+    // After
+    app.Get("/search", func(c fiber.Ctx) error {
+      var query Query
+      if err := c.Bind().Query(&query); err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+      }
+      return c.JSON(query)
+    })
+    ```
+
+    </details>
+
+4. **CookieParser**: Use `c.Bind().Cookie()` instead of `c.CookieParser()`.
+
+    <details>
+    <summary>Example</summary>
+
+    ```go
+    // Before
+    app.Get("/cookie", func(c *fiber.Ctx) error {
+      var cookie Cookie
+      if err := c.CookieParser(&cookie); err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+      }
+      return c.JSON(cookie)
+    })
+    ```
+
+    ```go
+    // After
+    app.Get("/cookie", func(c fiber.Ctx) error {
+      var cookie Cookie
+      if err := c.Bind().Cookie(&cookie); err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+      }
+      return c.JSON(cookie)
+    })
+    ```
+
+    </details>
+
+#### 🔄 Redirect
+
+Fiber v3 enhances the redirect functionality by introducing new methods and improving existing ones. The new redirect methods provide more flexibility and control over the redirection process.
+
+##### Migration Instructions
+
+1. **RedirectToRoute**: Use `c.Redirect().Route()` instead of `c.RedirectToRoute()`.
+
+    <details>
+    <summary>Example</summary>
+
+    ```go
+    // Before
+    app.Get("/old", func(c *fiber.Ctx) error {
+      return c.RedirectToRoute("newRoute")
+    })
+    ```
+
+    ```go
+    // After
+    app.Get("/old", func(c fiber.Ctx) error {
+      return c.Redirect().Route("newRoute")
+    })
+    ```
+
+    </details>
+
+2. **RedirectBack**: Use `c.Redirect().Back()` instead of `c.RedirectBack()`.
+
+    <details>
+    <summary>Example</summary>
+
+    ```go
+    // Before
+    app.Get("/back", func(c *fiber.Ctx) error {
+      return c.RedirectBack()
+    })
+    ```
+
+    ```go
+    // After
+    app.Get("/back", func(c fiber.Ctx) error {
+      return c.Redirect().Back()
+    })
+    ```
+
+    </details>
+
+3. **Redirect**: Use `c.Redirect().To()` instead of `c.Redirect()`.
+
+    <details>
+    <summary>Example</summary>
+
+    ```go
+    // Before
+    app.Get("/old", func(c *fiber.Ctx) error {
+      return c.Redirect("/new")
+    })
+    ```
+
+    ```go
+    // After
+    app.Get("/old", func(c fiber.Ctx) error {
+      return c.Redirect().To("/new")
+    })
+    ```
+
+    </details>
 
 ### 🌎 Client package
+
+Fiber v3 introduces a completely rebuilt client package with numerous new features such as Cookiejar, request/response hooks, and more. Here is a guide to help you migrate from Fiber v2 to Fiber v3.
+
+#### New Features
+
+- **Cookiejar**: Manage cookies automatically.
+- **Request/Response Hooks**: Customize request and response handling.
+- **Improved Error Handling**: Better error management and reporting.
+
+#### Migration Instructions
+
+**Import Path**:
+
+Update the import path to the new client package.
+
+<details>
+<summary>Before</summary>
+
+```go
+import "github.com/gofiber/fiber/v2/client"
+```
+
+</details>
+
+<details>
+<summary>After</summary>
+
+```go
+import "github.com/gofiber/fiber/v3/client"
+```
+
+</details>
+
+:::caution
+DRAFT section
+:::
 
 ### 🧬 Middlewares
 
@@ -695,11 +1247,11 @@ Previously, the Healthcheck middleware was configured with a combined setup for 
 ```go
 //before
 app.Use(healthcheck.New(healthcheck.Config{
-  LivenessProbe: func(c *fiber.Ctx) bool {
+  LivenessProbe: func(c fiber.Ctx) bool {
     return true
   },
   LivenessEndpoint: "/live",
-  ReadinessProbe: func(c *fiber.Ctx) bool {
+  ReadinessProbe: func(c fiber.Ctx) bool {
     return serviceA.Ready() && serviceB.Ready() && ...
   },
   ReadinessEndpoint: "/ready",
@@ -713,7 +1265,7 @@ With the new version, each health check endpoint is configured separately, allow
 
 // Default liveness endpoint configuration
 app.Get(healthcheck.DefaultLivenessEndpoint, healthcheck.NewHealthChecker(healthcheck.Config{
-  Probe: func(c *fiber.Ctx) bool {
+  Probe: func(c fiber.Ctx) bool {
     return true
   },
 }))
@@ -724,7 +1276,7 @@ app.Get(healthcheck.DefaultReadinessEndpoint, healthcheck.NewHealthChecker())
 // New default startup endpoint configuration
 // Default endpoint is /startupz
 app.Get(healthcheck.DefaultStartupEndpoint, healthcheck.NewHealthChecker(healthcheck.Config{
-  Probe: func(c *fiber.Ctx) bool {
+  Probe: func(c fiber.Ctx) bool {
     return serviceA.Ready() && serviceB.Ready() && ...
   },
 }))
