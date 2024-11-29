@@ -82,7 +82,7 @@ type Client struct {
     xmlMarshal    utils.XMLMarshal
     xmlUnmarshal  utils.XMLUnmarshal
     cborMarshal   utils.CBORMarshal
-	  cborUnmarshal utils.CBORUnmarshal
+    cborUnmarshal utils.CBORUnmarshal
 
     cookieJar *CookieJar
 
