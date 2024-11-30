@@ -95,12 +95,20 @@ type Client struct {
 }
 ```
 
- New
+### New
 
 New creates and returns a new Client object.
 
 ```go title="Signature"
 func New() *Client
+```
+
+### NewWithClient
+
+NewWithClient creates and returns a new Client object from an existing client object.
+
+```go title="Signature"
+func NewWithClient(c *fasthttp.Client) *Client
 ```
 
 ## REST Methods
