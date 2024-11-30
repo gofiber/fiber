@@ -98,33 +98,33 @@ In order to use Fiber logger middleware with other loggers such as zerolog, zap,
 package main
 
 import (
-	"github.com/gofiber/contrib/fiberzap/v2"
-	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/log"
-	"github.com/gofiber/fiber/v3/middleware/logger"
+    "github.com/gofiber/contrib/fiberzap/v2"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/log"
+    "github.com/gofiber/fiber/v3/middleware/logger"
 )
 
 func main() {
-	// Create a new Fiber instance
-	app := fiber.New()
+    // Create a new Fiber instance
+    app := fiber.New()
 
     // Create a new zap logger which is compatible with Fiber AllLogger interface
-	zap := fiberzap.NewLogger(fiberzap.LoggerConfig{
-		ExtraKeys: []string{"request_id"},
-	})
+    zap := fiberzap.NewLogger(fiberzap.LoggerConfig{
+        ExtraKeys: []string{"request_id"},
+    })
 
-	// Use the logger middleware with zerolog logger
-	app.Use(logger.New(logger.Config{
-		Output: logger.LoggerToWriter(zap, log.LevelDebug),
-	}))
+    // Use the logger middleware with zerolog logger
+    app.Use(logger.New(logger.Config{
+        Output: logger.LoggerToWriter(zap, log.LevelDebug),
+    }))
 
-	// Define a route
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("Hello, World!")
-	})
+    // Define a route
+    app.Get("/", func(c fiber.Ctx) error {
+        return c.SendString("Hello, World!")
+    })
 
-	// Start server on http://localhost:3000
-	app.Listen(":3000")
+    // Start server on http://localhost:3000
+    app.Listen(":3000")
 }
 ```
 

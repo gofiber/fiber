@@ -202,4 +202,3 @@ if !ok {
 
 stdlogger.SetFlags(0) // Hide timestamp by setting flags to 0
 ```
-
