@@ -187,11 +187,12 @@ func Test_Logger_ErrorTimeZone(t *testing.T) {
 
 // go test -run Test_Logger_Fiber_Logger
 func Test_Logger_LoggerToWriter(t *testing.T) {
-	t.Parallel()
 	app := fiber.New()
 
 	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
+	t.Cleanup(func() {
+		bytebufferpool.Put(buf)
+	})
 
 	logger := fiberlog.DefaultLogger()
 	stdlogger, ok := logger.Logger().(*log.Logger)
@@ -201,8 +202,8 @@ func Test_Logger_LoggerToWriter(t *testing.T) {
 	logger.SetOutput(buf)
 
 	testCases := []struct {
-		level    fiberlog.Level
 		levelStr string
+		level    fiberlog.Level
 	}{
 		{
 			level:    fiberlog.LevelTrace,
