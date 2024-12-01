@@ -25,9 +25,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
-
 	"github.com/valyala/fasthttp"
 )
 
@@ -320,6 +320,20 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// Default: json.Unmarshal
 	JSONDecoder utils.JSONUnmarshal `json:"-"`
 
+	// When set by an external client of Fiber it will use the provided implementation of a
+	// CBORMarshal
+	//
+	// Allowing for flexibility in using another cbor library for encoding
+	// Default: cbor.Marshal
+	CBOREncoder utils.CBORMarshal `json:"-"`
+
+	// When set by an external client of Fiber it will use the provided implementation of a
+	// CBORUnmarshal
+	//
+	// Allowing for flexibility in using another cbor library for decoding
+	// Default: cbor.Unmarshal
+	CBORDecoder utils.CBORUnmarshal `json:"-"`
+
 	// XMLEncoder set by an external client of Fiber it will use the provided implementation of a
 	// XMLMarshal
 	//
@@ -536,6 +550,12 @@ func New(config ...Config) *App {
 	}
 	if app.config.JSONDecoder == nil {
 		app.config.JSONDecoder = json.Unmarshal
+	}
+	if app.config.CBOREncoder == nil {
+		app.config.CBOREncoder = cbor.Marshal
+	}
+	if app.config.CBORDecoder == nil {
+		app.config.CBORDecoder = cbor.Unmarshal
 	}
 	if app.config.XMLEncoder == nil {
 		app.config.XMLEncoder = xml.Marshal
