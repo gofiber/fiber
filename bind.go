@@ -23,7 +23,7 @@ type Bind struct {
 	dontHandleErrs bool
 }
 
-// If you want to handle binder errors manually, you can use `WithoutAutoHandling`.
+// WithoutAutoHandling If you want to handle binder errors manually, you can use `WithoutAutoHandling`.
 // It's default behavior of binder.
 func (b *Bind) WithoutAutoHandling() *Bind {
 	b.dontHandleErrs = true
@@ -31,7 +31,7 @@ func (b *Bind) WithoutAutoHandling() *Bind {
 	return b
 }
 
-// If you want to handle binder errors automatically, you can use `WithAutoHandling`.
+// WithAutoHandling If you want to handle binder errors automatically, you can use `WithAutoHandling`.
 // If there's an error, it will return the error and set HTTP status to `400 Bad Request`.
 // You must still return on error explicitly
 func (b *Bind) WithAutoHandling() *Bind {
@@ -121,6 +121,14 @@ func (b *Bind) JSON(out any) error {
 	return b.validateStruct(out)
 }
 
+// CBOR binds the body string into the struct.
+func (b *Bind) CBOR(out any) error {
+	if err := b.returnErr(binder.CBORBinder.Bind(b.ctx.Body(), b.ctx.App().Config().CBORDecoder, out)); err != nil {
+		return err
+	}
+	return b.validateStruct(out)
+}
+
 // XML binds the body string into the struct.
 func (b *Bind) XML(out any) error {
 	if err := b.returnErr(binder.XMLBinder.Bind(b.ctx.Body(), out)); err != nil {
@@ -183,6 +191,8 @@ func (b *Bind) Body(out any) error {
 		return b.JSON(out)
 	case MIMETextXML, MIMEApplicationXML:
 		return b.XML(out)
+	case MIMEApplicationCBOR:
+		return b.CBOR(out)
 	case MIMEApplicationForm:
 		return b.Form(out)
 	case MIMEMultipartForm:

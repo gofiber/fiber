@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"crypto/tls"
+	"encoding/hex"
 	"errors"
 	"io"
 	"net"
@@ -223,6 +224,33 @@ func Test_Client_Marshal(t *testing.T) {
 		val, err := client.XMLMarshal()(nil)
 		require.Nil(t, val)
 		require.Equal(t, errors.New("empty xml"), err)
+	})
+
+	t.Run("set cbor marshal", func(t *testing.T) {
+		t.Parallel()
+		bs, err := hex.DecodeString("f6")
+		if err != nil {
+			t.Error(err)
+		}
+		client := New().
+			SetCBORMarshal(func(_ any) ([]byte, error) {
+				return bs, nil
+			})
+		val, err := client.CBORMarshal()(nil)
+
+		require.NoError(t, err)
+		require.Equal(t, bs, val)
+	})
+
+	t.Run("set cbor marshal error", func(t *testing.T) {
+		t.Parallel()
+		client := New().SetCBORMarshal(func(_ any) ([]byte, error) {
+			return nil, errors.New("invalid struct")
+		})
+
+		val, err := client.CBORMarshal()(nil)
+		require.Nil(t, val)
+		require.Equal(t, errors.New("invalid struct"), err)
 	})
 
 	t.Run("set xml unmarshal", func(t *testing.T) {
@@ -1443,11 +1471,12 @@ func Test_Set_Config_To_Request(t *testing.T) {
 
 	t.Run("set ctx", func(t *testing.T) {
 		t.Parallel()
-		key := struct{}{}
+
+		type ctxKey struct{}
+		var key ctxKey = struct{}{}
 
 		ctx := context.Background()
-		ctx = context.WithValue(ctx, key, "v1") //nolint: staticcheck // not needed for tests
-
+		ctx = context.WithValue(ctx, key, "v1")
 		req := AcquireRequest()
 
 		setConfigToRequest(req, Config{Ctx: ctx})

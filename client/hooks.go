@@ -23,6 +23,7 @@ var (
 	headerAccept = "Accept"
 
 	applicationJSON   = "application/json"
+	applicationCBOR   = "application/cbor"
 	applicationXML    = "application/xml"
 	applicationForm   = "application/x-www-form-urlencoded"
 	multipartFormData = "multipart/form-data"
@@ -129,6 +130,8 @@ func parserRequestHeader(c *Client, req *Request) error {
 		req.RawRequest.Header.Set(headerAccept, applicationJSON)
 	case xmlBody:
 		req.RawRequest.Header.SetContentType(applicationXML)
+	case cborBody:
+		req.RawRequest.Header.SetContentType(applicationCBOR)
 	case formBody:
 		req.RawRequest.Header.SetContentType(applicationForm)
 	case filesBody:
@@ -185,6 +188,12 @@ func parserRequestBody(c *Client, req *Request) error {
 		req.RawRequest.SetBody(body)
 	case xmlBody:
 		body, err := c.xmlMarshal(req.body)
+		if err != nil {
+			return err
+		}
+		req.RawRequest.SetBody(body)
+	case cborBody:
+		body, err := c.cborMarshal(req.body)
 		if err != nil {
 			return err
 		}
