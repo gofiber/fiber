@@ -633,9 +633,9 @@ curl "http://localhost:3000/header"
 
 ## 📃 Log
 
-`fiber.AllLogger` interface now has a new method called `GetLoggerInstance`. This method can be used to get the underlying logger instance from the Fiber logger middleware. This is useful when you want to configure the logger middleware with a custom logger and still want to access the underlying logger instance. 
+`fiber.AllLogger` interface now has a new method called `Logger`. This method can be used to get the underlying logger instance from the Fiber logger middleware. This is useful when you want to configure the logger middleware with a custom logger and still want to access the underlying logger instance. 
 
-You can find more details about this feature in [/docs/api/log.md](./api/log.md#getloggerinstance).
+You can find more details about this feature in [/docs/api/log.md](./api/log.md#logger).
 
 ## 🧬 Middlewares
 

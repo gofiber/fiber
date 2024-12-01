@@ -210,8 +210,8 @@ func (l *defaultLogger) SetOutput(writer io.Writer) {
 	l.stdlog.SetOutput(writer)
 }
 
-// GetLoggerInstance returns the logger instance. It can be used to adjust the logger configurations in case of need.
-func (l *defaultLogger) GetLoggerInstance() any {
+// Logger returns the logger instance. It can be used to adjust the logger configurations in case of need.
+func (l *defaultLogger) Logger() any {
 	return l.stdlog
 }
 

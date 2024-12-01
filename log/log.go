@@ -62,8 +62,8 @@ type ControlLogger interface {
 	// SetOutput sets the logger output.
 	SetOutput(w io.Writer)
 
-	// GetLoggerInstance returns the logger instance. It can be used to adjust the logger configurations in case of need.
-	GetLoggerInstance() any
+	// Logger returns the logger instance. It can be used to adjust the logger configurations in case of need.
+	Logger() any
 }
 
 // AllLogger is the combination of Logger, FormatLogger, CtxLogger and ControlLogger.

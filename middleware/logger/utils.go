@@ -49,14 +49,14 @@ type customLoggerWriter struct {
 
 func (cl *customLoggerWriter) Write(p []byte) (int, error) {
 	switch cl.level {
-	case fiberlog.LevelInfo:
-		cl.loggerInstance.Info(utils.UnsafeString(p))
 	case fiberlog.LevelTrace:
 		cl.loggerInstance.Trace(utils.UnsafeString(p))
-	case fiberlog.LevelWarn:
-		cl.loggerInstance.Warn(utils.UnsafeString(p))
 	case fiberlog.LevelDebug:
 		cl.loggerInstance.Debug(utils.UnsafeString(p))
+	case fiberlog.LevelInfo:
+		cl.loggerInstance.Info(utils.UnsafeString(p))
+	case fiberlog.LevelWarn:
+		cl.loggerInstance.Warn(utils.UnsafeString(p))
 	case fiberlog.LevelError:
 		cl.loggerInstance.Error(utils.UnsafeString(p))
 	default:
@@ -70,9 +70,9 @@ func (cl *customLoggerWriter) Write(p []byte) (int, error) {
 // You can integrate 3rd party loggers such as zerolog, logrus, etc. to logger middleware using this function.
 //
 // Valid levels: fiberlog.LevelInfo, fiberlog.LevelTrace, fiberlog.LevelWarn, fiberlog.LevelDebug, fiberlog.LevelError
-func LoggerToWriter(customLogger fiberlog.AllLogger, level fiberlog.Level) io.Writer {
+func LoggerToWriter(logger fiberlog.AllLogger, level fiberlog.Level) io.Writer {
 	// Check if customLogger is nil
-	if customLogger == nil {
+	if logger == nil {
 		fiberlog.Panic("LoggerToWriter: customLogger must not be nil")
 	}
 
@@ -83,6 +83,6 @@ func LoggerToWriter(customLogger fiberlog.AllLogger, level fiberlog.Level) io.Wr
 
 	return &customLoggerWriter{
 		level:          level,
-		loggerInstance: customLogger,
+		loggerInstance: logger,
 	}
 }

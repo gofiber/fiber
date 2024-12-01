@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"runtime"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -185,7 +186,7 @@ func Test_Logger_ErrorTimeZone(t *testing.T) {
 }
 
 // go test -run Test_Logger_Fiber_Logger
-func Test_Logger_Fiber_Logger(t *testing.T) {
+func Test_Logger_LoggerToWriter(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
@@ -193,37 +194,71 @@ func Test_Logger_Fiber_Logger(t *testing.T) {
 	defer bytebufferpool.Put(buf)
 
 	logger := fiberlog.DefaultLogger()
-	stdlogger, ok := logger.GetLoggerInstance().(*log.Logger)
+	stdlogger, ok := logger.Logger().(*log.Logger)
 	require.True(t, ok)
 
 	stdlogger.SetFlags(0)
 	logger.SetOutput(buf)
 
-	app.Use(New(Config{
-		Format: "${error}",
-		Output: LoggerToWriter(logger, fiberlog.LevelError),
-	}))
+	testCases := []struct {
+		level    fiberlog.Level
+		levelStr string
+	}{
+		{
+			level:    fiberlog.LevelTrace,
+			levelStr: "Trace",
+		},
+		{
+			level:    fiberlog.LevelDebug,
+			levelStr: "Debug",
+		},
+		{
+			level:    fiberlog.LevelInfo,
+			levelStr: "Info",
+		},
+		{
+			level:    fiberlog.LevelWarn,
+			levelStr: "Warn",
+		},
+		{
+			level:    fiberlog.LevelError,
+			levelStr: "Error",
+		},
+	}
 
-	app.Get("/", func(_ fiber.Ctx) error {
-		return errors.New("some random error")
-	})
+	for _, tc := range testCases {
+		level := strconv.Itoa(int(tc.level))
+		t.Run(level, func(t *testing.T) {
+			buf.Reset()
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
-	require.Equal(t, "[Error] some random error\n", buf.String())
+			app.Use("/"+level, New(Config{
+				Format: "${error}",
+				Output: LoggerToWriter(logger, tc.
+					level),
+			}))
 
-	require.Panics(t, func() {
-		LoggerToWriter(logger, fiberlog.LevelPanic)
-	})
+			app.Get("/"+level, func(_ fiber.Ctx) error {
+				return errors.New("some random error")
+			})
 
-	require.Panics(t, func() {
-		LoggerToWriter(logger, fiberlog.LevelFatal)
-	})
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/"+level, nil))
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+			require.Equal(t, "["+tc.levelStr+"] some random error\n", buf.String())
+		})
 
-	require.Panics(t, func() {
-		LoggerToWriter(nil, fiberlog.LevelFatal)
-	})
+		require.Panics(t, func() {
+			LoggerToWriter(logger, fiberlog.LevelPanic)
+		})
+
+		require.Panics(t, func() {
+			LoggerToWriter(logger, fiberlog.LevelFatal)
+		})
+
+		require.Panics(t, func() {
+			LoggerToWriter(nil, fiberlog.LevelFatal)
+		})
+	}
 }
 
 type fakeErrorOutput int
