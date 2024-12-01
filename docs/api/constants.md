@@ -47,9 +47,10 @@ const (
     MIMEApplicationXMLCharsetUTF8        = "application/xml; charset=utf-8"
     MIMEApplicationJSONCharsetUTF8       = "application/json; charset=utf-8"
     MIMEApplicationJavaScriptCharsetUTF8 = "application/javascript; charset=utf-8"
-)```
+)
+```
 
-### HTTP status codes were copied from net/http.
+### HTTP status codes were copied from net/http
 
 ```go
 const (
