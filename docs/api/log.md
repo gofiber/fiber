@@ -36,7 +36,7 @@ type CommonLogger interface {
 
 type AllLogger interface {
     CommonLogger
-    ControlLogger
+    ConfigurableLogger
     WithLogger
 }
 ```
