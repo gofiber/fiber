@@ -310,6 +310,7 @@ testConfig := fiber.TestConfig{
 - **SendString**: Similar to Express.js, sends a string as the response.
 - **String**: Similar to Express.js, converts a value to a string.
 - **ViewBind**: Binds data to a view, replacing the old `Bind` method.
+- **CBOR**: Introducing [CBOR](https://cbor.io/) binary encoding format for both request & response body. CBOR is a binary data serialization format which is both compact and efficient, making it ideal for use in web applications.
 
 ### Removed Methods
 

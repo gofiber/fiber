@@ -22,6 +22,7 @@ Fiber provides several default binders out of the box:
 - [Cookie](cookie.go)
 - [JSON](json.go)
 - [XML](xml.go)
+- [CBOR](cbor.go)
 
 ## Guides
 
