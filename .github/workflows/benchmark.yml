@@ -62,7 +62,8 @@ jobs:
               next
             }
             { print }
-          ' duplicate_benchmarks.txt output.txt > output.txt
+          ' duplicate_benchmarks.txt output.txt > output_prefixed.txt
+          mv output_prefixed.txt output.txt
       ### end
 
       # NOTE: Benchmarks could change with different CPU types
