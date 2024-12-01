@@ -158,7 +158,7 @@ func Test_Bind_Query_WithSetParserDecoder(t *testing.T) {
 	}
 
 	nonRFCTime := binder.ParserType{
-		Customtype: NonRFCTime{},
+		CustomType: NonRFCTime{},
 		Converter:  nonRFCConverter,
 	}
 
@@ -412,7 +412,7 @@ func Test_Bind_Header_WithSetParserDecoder(t *testing.T) {
 	}
 
 	nonRFCTime := binder.ParserType{
-		Customtype: NonRFCTime{},
+		CustomType: NonRFCTime{},
 		Converter:  nonRFCConverter,
 	}
 
@@ -1027,7 +1027,7 @@ func Test_Bind_Body_WithSetParserDecoder(t *testing.T) {
 	}
 
 	customTime := binder.ParserType{
-		Customtype: CustomTime{},
+		CustomType: CustomTime{},
 		Converter:  timeConverter,
 	}
 
@@ -1451,7 +1451,7 @@ func Test_Bind_Cookie_WithSetParserDecoder(t *testing.T) {
 	}
 
 	nonRFCTime := binder.ParserType{
-		Customtype: NonRFCTime{},
+		CustomType: NonRFCTime{},
 		Converter:  nonRFCConverter,
 	}
 

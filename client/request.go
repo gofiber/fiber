@@ -338,6 +338,7 @@ func (r *Request) SetXML(v any) *Request {
 	return r
 }
 
+// SetCBOR method sets CBOR body in request.
 func (r *Request) SetCBOR(v any) *Request {
 	r.body = v
 	r.bodyType = cborBody

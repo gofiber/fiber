@@ -8,12 +8,15 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// queryBinding is the query binder for query request body.
 type queryBinding struct{}
 
+// Name returns the binding name.
 func (*queryBinding) Name() string {
 	return "query"
 }
 
+// Bind parses the request query and returns the result.
 func (b *queryBinding) Bind(reqCtx *fasthttp.RequestCtx, out any) error {
 	data := make(map[string][]string)
 	var err error
