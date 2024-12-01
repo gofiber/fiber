@@ -1,6 +1,6 @@
 module github.com/gofiber/fiber/v3
 
-go 1.22
+go 1.23
 
 require (
 	github.com/gofiber/schema v1.2.0
