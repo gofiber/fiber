@@ -50,7 +50,7 @@ const (
 )
 ```
 
-### HTTP status codes were copied from net/http.
+### HTTP status codes were copied from net/http
 
 ```go
 const (
