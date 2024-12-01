@@ -717,6 +717,9 @@ For more details on these changes and migration instructions, check the [Session
 
 New helper function called `LoggerToWriter` has been added to the logger middleware. This function allows you to use 3rd party loggers such as `logrus` or `zap` with the Fiber logger middleware without any extra afford. For example, you can use `zap` with Fiber logger middleware like this:
 
+<details>
+<summary>Example</summary>
+
 ```go
 package main
 
@@ -750,6 +753,8 @@ func main() {
     app.Listen(":3000")
 }
 ```
+
+</details>
 
 ### Filesystem
 
