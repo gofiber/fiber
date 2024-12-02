@@ -935,8 +935,6 @@ func ReleaseFile(f *File) {
 // The field name is specified by `tagName`.
 // `v` is a struct containing some data.
 // Note: This method supports all values that can be converted to an interface.
-// In Fiber v2, SetValWithStruct sets non-zero values only. Starting from v3,
-// it sets values regardless of whether they are zero or non-zero.
 func SetValWithStruct(p WithStruct, tagName string, v any) {
 	valueOfV := reflect.ValueOf(v)
 	typeOfV := reflect.TypeOf(v)
