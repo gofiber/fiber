@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"path/filepath"
 	"reflect"
@@ -929,11 +930,13 @@ func ReleaseFile(f *File) {
 	filePool.Put(f)
 }
 
-// SetValWithStruct Set some values using structs.
-// `p` is a structure that implements the WithStruct interface,
-// The field name can be specified by `tagName`.
-// `v` is a struct include some data.
-// Note: This method only supports simple types and nested structs are not currently supported.
+// SetValWithStruct sets values using a struct.
+// `p` is a structure that implements the WithStruct interface.
+// The field name is specified by `tagName`.
+// `v` is a struct containing some data.
+// Note: This method supports all values that can be converted to an interface.
+// In Fiber v2, SetValWithStruct sets non-zero values only. Starting from v3,
+// it sets values regardless of whether they are zero or non-zero.
 func SetValWithStruct(p WithStruct, tagName string, v any) {
 	valueOfV := reflect.ValueOf(v)
 	typeOfV := reflect.TypeOf(v)
@@ -947,15 +950,20 @@ func SetValWithStruct(p WithStruct, tagName string, v any) {
 	}
 
 	// Boring type judge.
-	// TODO: cover more types and complex data structure.
-	var setVal func(name string, value reflect.Value)
+	var setVal func(name string, val reflect.Value)
 	setVal = func(name string, val reflect.Value) {
 		switch val.Kind() {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 			p.Add(name, strconv.Itoa(int(val.Int())))
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+			p.Add(name, strconv.FormatUint(val.Uint(), 10))
+		case reflect.Complex128, reflect.Complex64:
+			p.Add(name, strconv.FormatComplex(val.Complex(), 'f', -1, 128))
 		case reflect.Bool:
 			if val.Bool() {
 				p.Add(name, "true")
+			} else {
+				p.Add(name, "false")
 			}
 		case reflect.String:
 			p.Add(name, val.String())
@@ -966,6 +974,9 @@ func SetValWithStruct(p WithStruct, tagName string, v any) {
 				setVal(name, val.Index(i))
 			}
 		default:
+			if val.CanInterface() {
+				p.Add(name, fmt.Sprintf("%#v", val.Interface()))
+			}
 		}
 	}
 
@@ -980,9 +991,6 @@ func SetValWithStruct(p WithStruct, tagName string, v any) {
 			name = field.Name
 		}
 		val := valueOfV.Field(i)
-		if val.IsZero() {
-			continue
-		}
 		// To cover slice and array, we delete the val then add it.
 		p.Del(name)
 		setVal(name, val)
