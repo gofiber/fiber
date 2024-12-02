@@ -1381,6 +1381,15 @@ func Test_SetValWithStruct(t *testing.T) {
 
 		require.True(t, func() bool {
 			for _, v := range p.PeekMulti("int_slice") {
+				if string(v) == "0" {
+					return true
+				}
+			}
+			return false
+		}())
+
+		require.True(t, func() bool {
+			for _, v := range p.PeekMulti("int_slice") {
 				if string(v) == "1" {
 					return true
 				}
@@ -1525,6 +1534,15 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 		require.True(b, func() bool {
 			for _, v := range p.PeekMulti("TSlice") {
 				if string(v) == "bar" {
+					return true
+				}
+			}
+			return false
+		}())
+
+		require.True(b, func() bool {
+			for _, v := range p.PeekMulti("int_slice") {
+				if string(v) == "0" {
 					return true
 				}
 			}
