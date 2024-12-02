@@ -273,7 +273,9 @@ func parserRequestBodyFile(req *Request) error {
 		}
 
 		// Copy the file from reader to multipart writer
-		io.CopyBuffer(w, v.reader, fileBuf)
+		if _, err := io.CopyBuffer(w, v.reader, fileBuf); err != nil {
+			return fmt.Errorf("failed to copy file data: %w", err)
+		}
 
 		if err := v.reader.Close(); err != nil {
 			return fmt.Errorf("close file error: %w", err)
