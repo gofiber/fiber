@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/xml"
+	"fmt"
 	"io"
 	"net"
 	"os"
@@ -197,6 +198,84 @@ func Test_Response_Header(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "bar", resp.Header("foo"))
 	resp.Close()
+}
+
+func Test_Response_Headers(t *testing.T) {
+	t.Parallel()
+
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error {
+			c.Response().Header.Add("foo", "bar")
+			c.Response().Header.Add("foo", "bar2")
+			c.Response().Header.Add("foo2", "bar")
+
+			return c.SendString("helo world")
+		})
+	})
+	defer server.stop()
+
+	client := New().SetDial(server.dial())
+
+	resp, err := AcquireRequest().
+		SetClient(client).
+		Get("http://example.com")
+
+	require.NoError(t, err)
+
+	headers := make(map[string][]string)
+	for k, v := range resp.Headers() {
+		headers[k] = make([]string, 0)
+		for _, value := range v {
+			fmt.Print(string(value))
+			headers[k] = append(headers[k], string(value))
+		}
+	}
+
+	require.Contains(t, headers["Foo"], "bar")
+	require.Contains(t, headers["Foo"], "bar2")
+	require.Contains(t, headers["Foo2"], "bar")
+
+	resp.Close()
+}
+
+func Benchmark_Headers(b *testing.B) {
+	server := startTestServer(
+		b,
+		func(app *fiber.App) {
+			app.Get("/", func(c fiber.Ctx) error {
+				c.Response().Header.Add("foo", "bar")
+				c.Response().Header.Add("foo", "bar2")
+				c.Response().Header.Add("foo", "bar3")
+
+				c.Response().Header.Add("foo2", "bar")
+				c.Response().Header.Add("foo2", "bar2")
+				c.Response().Header.Add("foo2", "bar3")
+
+				return c.SendString("helo world")
+			})
+		},
+	)
+
+	defer server.stop()
+
+	client := New().SetDial(server.dial())
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	var err error
+	var resp *Response
+	for i := 0; i < b.N; i++ {
+		resp, err = AcquireRequest().
+			SetClient(client).
+			Get("http://example.com")
+
+		for range resp.Headers() {
+		}
+
+		resp.Close()
+	}
+	require.NoError(b, err)
 }
 
 func Test_Response_Cookie(t *testing.T) {

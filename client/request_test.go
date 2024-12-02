@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"maps"
 	"mime/multipart"
 	"net"
 	"os"
@@ -157,6 +158,40 @@ func Test_Request_Header(t *testing.T) {
 	})
 }
 
+func Test_Request_Headers(t *testing.T) {
+	t.Parallel()
+
+	req := AcquireRequest()
+	req.AddHeaders(map[string][]string{
+		"foo": {"bar", "fiber"},
+		"bar": {"foo"},
+	})
+
+	headers := maps.Collect(req.Headers())
+
+	require.Contains(t, headers["Foo"], "fiber")
+	require.Contains(t, headers["Foo"], "bar")
+	require.Contains(t, headers["Bar"], "foo")
+
+	require.Len(t, headers, 2)
+}
+
+func Benchmark_Request_Headers(b *testing.B) {
+	req := AcquireRequest()
+	req.AddHeaders(map[string][]string{
+		"foo": {"bar", "fiber"},
+		"bar": {"foo"},
+	})
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		for range req.Headers() {
+		}
+	}
+}
+
 func Test_Request_QueryParam(t *testing.T) {
 	t.Parallel()
 
@@ -282,6 +317,40 @@ func Test_Request_QueryParam(t *testing.T) {
 	})
 }
 
+func Test_Request_Params(t *testing.T) {
+	t.Parallel()
+
+	req := AcquireRequest()
+	req.AddParams(map[string][]string{
+		"foo": {"bar", "fiber"},
+		"bar": {"foo"},
+	})
+
+	pathParams := maps.Collect(req.Params())
+
+	require.Contains(t, pathParams["foo"], "bar")
+	require.Contains(t, pathParams["foo"], "fiber")
+	require.Contains(t, pathParams["bar"], "foo")
+
+	require.Len(t, pathParams, 2)
+}
+
+func Benchmark_Request_Params(b *testing.B) {
+	req := AcquireRequest()
+	req.AddParams(map[string][]string{
+		"foo": {"bar", "fiber"},
+		"bar": {"foo"},
+	})
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		for range req.Params() {
+		}
+	}
+}
+
 func Test_Request_UA(t *testing.T) {
 	t.Parallel()
 
@@ -364,6 +433,39 @@ func Test_Request_Cookie(t *testing.T) {
 	})
 }
 
+func Test_Request_Cookies(t *testing.T) {
+	t.Parallel()
+
+	req := AcquireRequest()
+	req.SetCookies(map[string]string{
+		"foo": "bar",
+		"bar": "foo",
+	})
+
+	cookies := maps.Collect(req.Cookies())
+
+	require.Equal(t, "bar", cookies["foo"])
+	require.Equal(t, "foo", cookies["bar"])
+
+	require.Len(t, cookies, 2)
+}
+
+func Benchmark_Request_Cookies(b *testing.B) {
+	req := AcquireRequest()
+	req.SetCookies(map[string]string{
+		"foo": "bar",
+		"bar": "foo",
+	})
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		for range req.Cookies() {
+		}
+	}
+}
+
 func Test_Request_PathParam(t *testing.T) {
 	t.Parallel()
 
@@ -439,6 +541,39 @@ func Test_Request_PathParam(t *testing.T) {
 		require.Equal(t, "", req.PathParam("foo"))
 		require.Equal(t, "", req.PathParam("bar"))
 	})
+}
+
+func Test_Request_PathParams(t *testing.T) {
+	t.Parallel()
+
+	req := AcquireRequest()
+	req.SetPathParams(map[string]string{
+		"foo": "bar",
+		"bar": "foo",
+	})
+
+	pathParams := maps.Collect(req.PathParams())
+
+	require.Equal(t, "bar", pathParams["foo"])
+	require.Equal(t, "foo", pathParams["bar"])
+
+	require.Len(t, pathParams, 2)
+}
+
+func Benchmark_Request_PathParams(b *testing.B) {
+	req := AcquireRequest()
+	req.SetPathParams(map[string]string{
+		"foo": "bar",
+		"bar": "foo",
+	})
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		for range req.PathParams() {
+		}
+	}
 }
 
 func Test_Request_FormData(t *testing.T) {
@@ -608,6 +743,40 @@ func Test_Request_File(t *testing.T) {
 		require.Equal(t, "tmp.txt", req.File("tmp.txt").name)
 		require.Equal(t, "foo.txt", req.File("foo.txt").name)
 	})
+}
+
+func Test_Request_Files(t *testing.T) {
+	t.Parallel()
+
+	req := AcquireRequest()
+	req.AddFile("../.github/index.html")
+	req.AddFiles(AcquireFile(SetFileName("tmp.txt")))
+
+	files := req.Files()
+
+	require.Equal(t, "../.github/index.html", files[0].path)
+	require.Nil(t, files[0].reader)
+
+	require.Equal(t, "tmp.txt", files[1].name)
+	require.Nil(t, files[1].reader)
+
+	require.Len(t, files, 2)
+}
+
+func Benchmark_Request_Files(b *testing.B) {
+	req := AcquireRequest()
+	req.AddFile("../.github/index.html")
+	req.AddFiles(AcquireFile(SetFileName("tmp.txt")))
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		for k, v := range req.Files() {
+			_ = k
+			_ = v
+		}
+	}
 }
 
 func Test_Request_Timeout(t *testing.T) {
@@ -1179,6 +1348,40 @@ func Test_Request_Body_With_Server(t *testing.T) {
 			"hello",
 		)
 	})
+}
+
+func Test_Request_FormDatas(t *testing.T) {
+	t.Parallel()
+
+	req := AcquireRequest()
+	req.AddFormDatas(map[string][]string{
+		"foo": {"bar", "fiber"},
+		"bar": {"foo"},
+	})
+
+	pathParams := maps.Collect(req.FormDatas())
+
+	require.Contains(t, pathParams["foo"], "bar")
+	require.Contains(t, pathParams["foo"], "fiber")
+	require.Contains(t, pathParams["bar"], "foo")
+
+	require.Len(t, pathParams, 2)
+}
+
+func Benchmark_Request_FormDatas(b *testing.B) {
+	req := AcquireRequest()
+	req.AddFormDatas(map[string][]string{
+		"foo": {"bar", "fiber"},
+		"bar": {"foo"},
+	})
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		for range req.FormDatas() {
+		}
+	}
 }
 
 func Test_Request_Error_Body_With_Server(t *testing.T) {
