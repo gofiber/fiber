@@ -8,12 +8,15 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// headerBinding is the header binder for header request body.
 type headerBinding struct{}
 
+// Name returns the binding name.
 func (*headerBinding) Name() string {
 	return "header"
 }
 
+// Bind parses the request header and returns the result.
 func (b *headerBinding) Bind(req *fasthttp.Request, out any) error {
 	data := make(map[string][]string)
 	req.Header.VisitAll(func(key, val []byte) {

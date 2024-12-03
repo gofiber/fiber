@@ -12,6 +12,7 @@ import (
 	"context"
 	"crypto/tls"
 	"embed"
+	"encoding/hex"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -3616,6 +3617,98 @@ func Benchmark_Ctx_JSON(b *testing.B) {
 	}
 	require.NoError(b, err)
 	require.JSONEq(b, `{"Name":"Grame","Age":20}`, string(c.Response().Body()))
+}
+
+// go test -run Test_Ctx_CBOR
+func Test_Ctx_CBOR(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	require.Error(t, c.CBOR(complex(1, 1)))
+
+	type dummyStruct struct {
+		Name string
+		Age  int
+	}
+
+	// Test without ctype
+	err := c.CBOR(dummyStruct{ // map has no order
+		Name: "Grame",
+		Age:  20,
+	})
+	require.NoError(t, err)
+	require.Equal(t, `a2644e616d65654772616d656341676514`, hex.EncodeToString(c.Response().Body()))
+	require.Equal(t, "application/cbor", string(c.Response().Header.Peek("content-type")))
+
+	// Test with ctype
+	err = c.CBOR(dummyStruct{ // map has no order
+		Name: "Grame",
+		Age:  20,
+	}, "application/problem+cbor")
+	require.NoError(t, err)
+	require.Equal(t, `a2644e616d65654772616d656341676514`, hex.EncodeToString(c.Response().Body()))
+	require.Equal(t, "application/problem+cbor", string(c.Response().Header.Peek("content-type")))
+
+	testEmpty := func(v any, r string) {
+		err := c.CBOR(v)
+		require.NoError(t, err)
+		require.Equal(t, r, hex.EncodeToString(c.Response().Body()))
+	}
+
+	testEmpty(nil, "f6")
+	testEmpty("", `60`)
+	testEmpty(0, "00")
+	testEmpty([]int{}, "80")
+
+	// Test invalid types
+	err = c.CBOR(make(chan int))
+	require.Error(t, err)
+
+	err = c.CBOR(func() {})
+	require.Error(t, err)
+
+	t.Run("custom cbor encoder", func(t *testing.T) {
+		t.Parallel()
+
+		app := New(Config{
+			CBOREncoder: func(_ any) ([]byte, error) {
+				return []byte(hex.EncodeToString([]byte("random"))), nil
+			},
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+		err := c.CBOR(Map{ // map has no order
+			"Name": "Grame",
+			"Age":  20,
+		})
+		require.NoError(t, err)
+		require.Equal(t, `72616e646f6d`, string(c.Response().Body()))
+		require.Equal(t, "application/cbor", string(c.Response().Header.Peek("content-type")))
+	})
+}
+
+// go test -run=^$ -bench=Benchmark_Ctx_CBOR -benchmem -count=4
+func Benchmark_Ctx_CBOR(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	type SomeStruct struct {
+		Name string
+		Age  uint8
+	}
+	data := SomeStruct{
+		Name: "Grame",
+		Age:  20,
+	}
+	var err error
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		err = c.CBOR(data)
+	}
+	require.NoError(b, err)
+	require.Equal(b, `a2644e616d65654772616d656341676514`, hex.EncodeToString(c.Response().Body()))
 }
 
 // go test -run=^$ -bench=Benchmark_Ctx_JSON_Ctype -benchmem -count=4

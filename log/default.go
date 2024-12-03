@@ -210,6 +210,11 @@ func (l *defaultLogger) SetOutput(writer io.Writer) {
 	l.stdlog.SetOutput(writer)
 }
 
+// Logger returns the logger instance. It can be used to adjust the logger configurations in case of need.
+func (l *defaultLogger) Logger() any {
+	return l.stdlog
+}
+
 // DefaultLogger returns the default logger.
 func DefaultLogger() AllLogger {
 	return logger
