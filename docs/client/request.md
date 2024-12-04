@@ -214,7 +214,6 @@ func (r *Request) Header(key string) []string
 ### Headers
 
 Headers returns all headers in the request using an iterator. You can use `maps.Collect()` to collect all headers into a map.
-
 The returned value is valid until the request object is released. Any future calls to Headers method will return the modified value. Do not store references to returned value. Make copies instead.
 
 ```go title="Signature"
