@@ -271,7 +271,6 @@ func Benchmark_Headers(b *testing.B) {
 			_ = k
 			_ = v
 		}
-
 	}
 }
 
