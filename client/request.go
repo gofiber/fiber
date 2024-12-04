@@ -138,7 +138,9 @@ func (r *Request) Header(key string) []string {
 // Any future calls to Headers method will return the modified value. Do not store references to returned value. Make copies instead.
 func (r *Request) Headers() iter.Seq2[string, []string] {
 	return func(yield func(string, []string) bool) {
-		keys := r.header.PeekKeys()
+		peekKeys := r.header.PeekKeys()
+		keys := make([][]byte, len(peekKeys))
+		copy(keys, peekKeys) // It is necessary to have immutable byte slice.
 
 		for _, key := range keys {
 			vals := r.header.PeekAll(utils.UnsafeString(key))
