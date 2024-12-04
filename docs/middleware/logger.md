@@ -90,6 +90,44 @@ app.Use(logger.New(logger.Config{
 }))
 ```
 
+### Use Logger Middleware with Other Loggers
+
+In order to use Fiber logger middleware with other loggers such as zerolog, zap, logrus; you can use `LoggerToWriter` helper which converts Fiber logger to a writer, which is compatible with the middleware.
+
+```go
+package main
+
+import (
+    "github.com/gofiber/contrib/fiberzap/v2"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/log"
+    "github.com/gofiber/fiber/v3/middleware/logger"
+)
+
+func main() {
+    // Create a new Fiber instance
+    app := fiber.New()
+
+    // Create a new zap logger which is compatible with Fiber AllLogger interface
+    zap := fiberzap.NewLogger(fiberzap.LoggerConfig{
+        ExtraKeys: []string{"request_id"},
+    })
+
+    // Use the logger middleware with zerolog logger
+    app.Use(logger.New(logger.Config{
+        Output: logger.LoggerToWriter(zap, log.LevelDebug),
+    }))
+
+    // Define a route
+    app.Get("/", func(c fiber.Ctx) error {
+        return c.SendString("Hello, World!")
+    })
+
+    // Start server on http://localhost:3000
+    app.Listen(":3000")
+}
+```
+
 :::tip
 Writing to os.File is goroutine-safe, but if you are using a custom Output that is not goroutine-safe, make sure to implement locking to properly serialize writes.
 :::
@@ -108,6 +146,7 @@ Writing to os.File is goroutine-safe, but if you are using a custom Output that 
 | TimeZone         | `string`                   | TimeZone can be specified, such as "UTC" and "America/New_York" and "Asia/Chongqing", etc                                        | `"Local"`                                                             |
 | TimeInterval     | `time.Duration`            | TimeInterval is the delay before the timestamp is updated.                                                                       | `500 * time.Millisecond`                                              |
 | Output           | `io.Writer`                | Output is a writer where logs are written.                                                                                       | `os.Stdout`                                                           |
+| LoggerFunc | `func(c fiber.Ctx, data *Data, cfg Config) error` | Custom logger function for integration with logging libraries (Zerolog, Zap, Logrus, etc). Defaults to Fiber's default logger if not defined. | `see default_logger.go defaultLoggerInstance` |
 | DisableColors    | `bool`                     | DisableColors defines if the logs output should be colorized.                                                                    | `false`                                                               |
 | enableColors     | `bool`                     | Internal field for enabling colors in the log output. (This is not a user-configurable field)                                    | -                                                                     |
 | enableLatency    | `bool`                     | Internal field for enabling latency measurement in logs. (This is not a user-configurable field)                                 | -                                                                     |
@@ -125,6 +164,7 @@ var ConfigDefault = Config{
     TimeInterval:  500 * time.Millisecond,
     Output:        os.Stdout,
     DisableColors: false,
+    LoggerFunc:    defaultLoggerInstance,
 }
 ```
 

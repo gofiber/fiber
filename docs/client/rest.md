@@ -81,6 +81,8 @@ type Client struct {
     jsonUnmarshal utils.JSONUnmarshal
     xmlMarshal    utils.XMLMarshal
     xmlUnmarshal  utils.XMLUnmarshal
+    cborMarshal   utils.CBORMarshal
+    cborUnmarshal utils.CBORUnmarshal
 
     cookieJar *CookieJar
 
@@ -312,6 +314,40 @@ SetXMLUnmarshal sets the XML decoder.
 
 ```go title="Signature"
 func (c *Client) SetXMLUnmarshal(f utils.XMLUnmarshal) *Client
+```
+
+### CBOR
+
+#### CBORMarshal
+
+CBORMarshal returns CBOR marshal function in Core.
+
+```go title="Signature"
+func (c *Client) CBORMarshal() utils.CBORMarshal
+```
+
+#### CBORUnmarshal
+
+CBORUnmarshal returns CBOR unmarshal function in Core.
+
+```go title="Signature"
+func (c *Client) CBORUnmarshal() utils.CBORUnmarshal
+```
+
+#### SetCBORMarshal
+
+SetCBORMarshal sets CBOR encoder.
+
+```go title="Signature"
+func (c *Client) SetCBORMarshal(f utils.CBORMarshal) *Client
+```
+
+#### SetCBORUnmarshal
+
+SetCBORUnmarshal sets CBOR decoder.
+
+```go title="Signature"
+func (c *Client) SetCBORUnmarshal(f utils.CBORUnmarshal) *Client
 ```
 
 ### TLS

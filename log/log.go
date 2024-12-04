@@ -52,17 +52,27 @@ type CommonLogger interface {
 	WithLogger
 }
 
-// ControlLogger provides methods to config a logger.
-type ControlLogger interface {
+// ConfigurableLogger provides methods to config a logger.
+type ConfigurableLogger interface {
+	// SetLevel sets logging level.
+	//
+	// Available levels: Trace, Debug, Info, Warn, Error, Fatal, Panic.
 	SetLevel(level Level)
+
+	// SetOutput sets the logger output.
 	SetOutput(w io.Writer)
+
+	// Logger returns the logger instance. It can be used to adjust the logger configurations in case of need.
+	Logger() any
 }
 
-// AllLogger is the combination of Logger, FormatLogger, CtxLogger and ControlLogger.
+// AllLogger is the combination of Logger, FormatLogger, CtxLogger and ConfigurableLogger.
 // Custom extensions can be made through AllLogger
 type AllLogger interface {
 	CommonLogger
-	ControlLogger
+	ConfigurableLogger
+
+	// WithContext returns a new logger with the given context.
 	WithContext(ctx context.Context) CommonLogger
 }
 
