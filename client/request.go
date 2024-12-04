@@ -729,9 +729,9 @@ type QueryParam struct {
 }
 
 // Keys method returns all keys in the query params.
-func (f *QueryParam) Keys() []string {
-	keys := make([]string, f.Len())
-	f.VisitAll(func(key, value []byte) {
+func (p *QueryParam) Keys() []string {
+	keys := make([]string, 0, p.Len())
+	p.VisitAll(func(key, _ []byte) {
 		keys = append(keys, utils.UnsafeString(key))
 	})
 
@@ -870,8 +870,8 @@ type FormData struct {
 
 // Keys method returns all keys in the form data.
 func (f *FormData) Keys() []string {
-	keys := make([]string, f.Len())
-	f.VisitAll(func(key, value []byte) {
+	keys := make([]string, 0, f.Len())
+	f.VisitAll(func(key, _ []byte) {
 		keys = append(keys, utils.UnsafeString(key))
 	})
 

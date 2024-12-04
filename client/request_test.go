@@ -187,7 +187,9 @@ func Benchmark_Request_Headers(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		for range req.Headers() {
+		for k, v := range req.Headers() {
+			_ = k
+			_ = v
 		}
 	}
 }
@@ -346,7 +348,9 @@ func Benchmark_Request_Params(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		for range req.Params() {
+		for k, v := range req.Params() {
+			_ = k
+			_ = v
 		}
 	}
 }
@@ -461,7 +465,9 @@ func Benchmark_Request_Cookies(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		for range req.Cookies() {
+		for k, v := range req.Cookies() {
+			_ = k
+			_ = v
 		}
 	}
 }
@@ -571,7 +577,9 @@ func Benchmark_Request_PathParams(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		for range req.PathParams() {
+		for k, v := range req.PathParams() {
+			_ = k
+			_ = v
 		}
 	}
 }
@@ -1379,7 +1387,9 @@ func Benchmark_Request_FormDatas(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		for range req.FormDatas() {
+		for k, v := range req.FormDatas() {
+			_ = k
+			_ = v
 		}
 	}
 }

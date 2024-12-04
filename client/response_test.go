@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/xml"
-	"fmt"
 	"io"
 	"net"
 	"os"
@@ -224,11 +223,7 @@ func Test_Response_Headers(t *testing.T) {
 
 	headers := make(map[string][]string)
 	for k, v := range resp.Headers() {
-		headers[k] = make([]string, 0)
-		for _, value := range v {
-			fmt.Print(string(value))
-			headers[k] = append(headers[k], string(value))
-		}
+		headers[k] = append(headers[k], v...)
 	}
 
 	require.Contains(t, headers["Foo"], "bar")
@@ -270,7 +265,9 @@ func Benchmark_Headers(b *testing.B) {
 			SetClient(client).
 			Get("http://example.com")
 
-		for range resp.Headers() {
+		for k, v := range resp.Headers() {
+			_ = k
+			_ = v
 		}
 
 		resp.Close()
