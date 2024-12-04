@@ -95,9 +95,9 @@ type ListenConfig struct {
 
 	// When the graceful shutdown begins, use this field to set the timeout
 	// duration. If the timeout is reached, OnShutdownError will be called.
-	// The default value is 0, which means the timeout setting is disabled.
+	// Set to 0 to disable the timeout and wait indefinitely.
 	//
-	// Default: 0
+	// Default: 10 * time.Second
 	ShutdownTimeout time.Duration `json:"shutdown_timeout"`
 
 	// When set to true, it will not print out the «Fiber» ASCII art and listening address.
@@ -122,8 +122,9 @@ func listenConfigDefault(config ...ListenConfig) ListenConfig {
 		return ListenConfig{
 			ListenerNetwork: NetworkTCP4,
 			OnShutdownError: func(err error) {
-				log.Fatalf("shutdown: %v", err) //nolint:revive // It's an optipn
+				log.Fatalf("shutdown: %v", err) //nolint:revive // It's an option
 			},
+			ShutdownTimeout: 10 * time.Second,
 		}
 	}
 
@@ -134,7 +135,7 @@ func listenConfigDefault(config ...ListenConfig) ListenConfig {
 
 	if cfg.OnShutdownError == nil {
 		cfg.OnShutdownError = func(err error) {
-			log.Fatalf("shutdown: %v", err) //nolint:revive // It's an optipn
+			log.Fatalf("shutdown: %v", err) //nolint:revive // It's an option
 		}
 	}
 
