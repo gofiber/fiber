@@ -251,28 +251,28 @@ func Benchmark_Headers(b *testing.B) {
 		},
 	)
 
-	defer server.stop()
-
 	client := New().SetDial(server.dial())
+
+	resp, err := AcquireRequest().
+		SetClient(client).
+		Get("http://example.com")
+	require.NoError(b, err)
+
+	b.Cleanup(func() {
+		resp.Close()
+		server.stop()
+	})
 
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	var err error
-	var resp *Response
 	for i := 0; i < b.N; i++ {
-		resp, err = AcquireRequest().
-			SetClient(client).
-			Get("http://example.com")
-
 		for k, v := range resp.Headers() {
 			_ = k
 			_ = v
 		}
 
-		resp.Close()
 	}
-	require.NoError(b, err)
 }
 
 func Test_Response_Cookie(t *testing.T) {
