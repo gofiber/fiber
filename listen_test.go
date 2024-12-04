@@ -135,9 +135,9 @@ func Test_Listen_Graceful_Shutdown_Timeout(t *testing.T) {
 		defer cancel()
 
 		errs <- app.Listener(ln, ListenConfig{
-			DisableStartupMessage:   true,
-			GracefulContext:         ctx,
-			GracefulShutdownTimeout: 500 * time.Millisecond,
+			DisableStartupMessage: true,
+			GracefulContext:       ctx,
+			ShutdownTimeout:       500 * time.Millisecond,
 			OnShutdownSuccess: func() {
 				mu.Lock()
 				shutdownSuccess = true

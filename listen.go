@@ -98,7 +98,7 @@ type ListenConfig struct {
 	// The default value is 0, which means the timeout setting is disabled.
 	//
 	// Default: 0
-	GracefulShutdownTimeout time.Duration `json:"graceful_shutdown_timeout"`
+	ShutdownTimeout time.Duration `json:"shutdown_timeout"`
 
 	// When set to true, it will not print out the «Fiber» ASCII art and listening address.
 	//
@@ -480,8 +480,8 @@ func (app *App) gracefulShutdown(ctx context.Context, cfg ListenConfig) {
 
 	var err error
 
-	if cfg.GracefulShutdownTimeout != 0 {
-		err = app.ShutdownWithTimeout(cfg.GracefulShutdownTimeout) //nolint:contextcheck // TODO: Implement it
+	if cfg.ShutdownTimeout != 0 {
+		err = app.ShutdownWithTimeout(cfg.ShutdownTimeout) //nolint:contextcheck // TODO: Implement it
 	} else {
 		err = app.Shutdown() //nolint:contextcheck // TODO: Implement it
 	}
