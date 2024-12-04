@@ -94,9 +94,43 @@ Header method returns the response headers.
 func (r *Response) Header(key string) string
 ```
 
+## Headers
+
+Headers returns all headers in the response using an iterator. You can use `maps.Collect()` to collect all headers into a map.
+The returned value is valid until the response object is released. Any future calls to Headers method will return the modified value. Do not store references to returned value. Make copies instead.
+
+```go title="Signature"
+func (r *Response) Headers() iter.Seq2[string, []string] 
+```
+
+```go title="Example"
+resp, err := client.Get("https://httpbin.org/get")
+if err != nil {
+    panic(err)
+}
+
+for key, values := range resp.Headers() {
+    fmt.Printf("%s => %s\n", key, strings.Join(values, ", "))
+}
+```
+
+<details>
+
+<summary>Click here to see the result</summary>
+
+```text
+Date => Wed, 04 Dec 2024 15:28:29 GMT
+Connection => keep-alive
+Access-Control-Allow-Origin => *
+Access-Control-Allow-Credentials => true
+```
+
+</details>
+
 ## Cookies
 
 Cookies method to access all the response cookies.
+The returned value is valid until the response object is released. Any future calls to Cookies method will return the modified value. Do not store references to returned value. Make copies instead.
 
 ```go title="Signature"
 func (r *Response) Cookies() []*fasthttp.Cookie

@@ -211,6 +211,38 @@ Header method returns header value via key, this method will visit all field in 
 func (r *Request) Header(key string) []string
 ```
 
+### Headers
+
+Headers returns all headers in the request using an iterator. You can use `maps.Collect()` to collect all headers into a map.
+
+The returned value is valid until the request object is released. Any future calls to Headers method will return the modified value. Do not store references to returned value. Make copies instead.
+
+```go title="Signature"
+func (r *Request) Headers() iter.Seq2[string, []string]
+```
+
+```go title="Example"
+req := client.AcquireRequest()
+
+req.AddHeader("Golang", "Fiber")
+req.AddHeader("Test", "123456")
+req.AddHeader("Test", "654321")
+
+for k, v := range req.Headers() {
+  fmt.Printf("Header Key: %s, Header Value: %v\n", k, v)
+}
+```
+
+<details>
+<summary>Click here to see the result</summary>
+
+```sh
+Header Key: Golang, Header Value: [Fiber]
+Header Key: Test, Header Value: [123456 654321]
+```
+
+</details>
+
 ### AddHeader
 
 AddHeader method adds a single header field and its value in the request instance.
@@ -318,6 +350,15 @@ Param method returns params value via key, this method will visit all field in t
 
 ```go title="Signature"
 func (r *Request) Param(key string) []string
+```
+
+### Params
+
+Params returns all params in the request using an iterator. You can use `maps.Collect()` to collect all params into a map.
+The returned value is valid until the request object is released. Any future calls to Params method will return the modified value. Do not store references to returned value. Make copies instead.
+
+```go title="Signature"
+func (r *Request) Params() iter.Seq2[string, []string]
 ```
 
 ### AddParam
@@ -502,6 +543,14 @@ Cookie returns the cookie set in the request instance. If the cookie doesn't exi
 func (r *Request) Cookie(key string) string
 ```
 
+### Cookies
+
+Cookies returns all cookies in the request using an iterator. You can use `maps.Collect()` to collect all cookies into a map.
+
+```go title="Signature"
+func (r *Request) Cookies() iter.Seq2[string, string]
+```
+
 ### SetCookie
 
 SetCookie method sets a single cookie field and its value in the request instance.
@@ -573,6 +622,14 @@ PathParam returns the path param set in the request instance. If the path param 
 
 ```go title="Signature"
 func (r *Request) PathParam(key string) string
+```
+
+### PathParams
+
+PathParams returns all path params in the request using an iterator. You can use `maps.Collect()` to collect all path params into a map.
+
+```go title="Signature"
+func (r *Request) PathParams() iter.Seq2[string, string]
 ```
 
 ### SetPathParam
@@ -680,6 +737,14 @@ FormData method returns form data value via key, this method will visit all fiel
 
 ```go title="Signature"
 func (r *Request) FormData(key string) []string
+```
+
+### FormDatas
+
+FormDatas returns all form data in the request using an iterator. You can use `maps.Collect()` to collect all form data into a map.
+
+```go title="Signature"
+func (r *Request) FormDatas() iter.Seq2[string, []string]
 ```
 
 ### AddFormData
@@ -815,6 +880,15 @@ If the name field is empty, it will try to match path.
 
 ```go title="Signature"
 func (r *Request) File(name string) *File
+```
+
+### Files
+
+Files method returns all files in request instance.
+The returned value is valid until the request object is released. Any future calls to Files method will return the modified value. Do not store references to returned value. Make copies instead.
+
+```go title="Signature"
+func (r *Request) Files() []*File
 ```
 
 ### FileByPath
@@ -1063,6 +1137,14 @@ type QueryParam struct {
 }
 ```
 
+### Keys
+
+Keys method returns all keys in the query params.
+
+```go title="Signature"
+func (p *QueryParam) Keys() []string
+```
+
 ### AddParams
 
 AddParams receive a map and add each value to param.
@@ -1240,6 +1322,14 @@ FormData is a wrapper of fasthttp.Args and it is used for url encode body and fi
 type FormData struct {
     *fasthttp.Args
 }
+```
+
+### Keys
+
+Keys method returns all keys in the form data.
+
+```go title="Signature"
+func (f *FormData) Keys() []string
 ```
 
 ### AddData

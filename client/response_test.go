@@ -208,7 +208,7 @@ func Test_Response_Headers(t *testing.T) {
 			c.Response().Header.Add("foo", "bar2")
 			c.Response().Header.Add("foo2", "bar")
 
-			return c.SendString("helo world")
+			return c.SendString("hello world")
 		})
 	})
 	defer server.stop()
@@ -226,9 +226,13 @@ func Test_Response_Headers(t *testing.T) {
 		headers[k] = append(headers[k], v...)
 	}
 
+	require.Equal(t, "hello world", resp.String())
+
 	require.Contains(t, headers["Foo"], "bar")
 	require.Contains(t, headers["Foo"], "bar2")
 	require.Contains(t, headers["Foo2"], "bar")
+
+	require.Len(t, headers, 3) // Foo + Foo2 + Date
 
 	resp.Close()
 }
