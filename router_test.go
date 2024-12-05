@@ -400,15 +400,7 @@ func Test_App_Remove_Route(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	middleware1 := func(c Ctx) error {
-		return c.Next()
-	}
-
-	_ = middleware1
-
 	app.Get("/test", func(c Ctx) error {
-
-		// app.RemoveRoute("/dynamically-defined", MethodHead, MethodGet)
 
 		app.Get("/dynamically-defined", func(c Ctx) error {
 			return c.SendStatus(http.StatusOK)
@@ -420,7 +412,6 @@ func Test_App_Remove_Route(t *testing.T) {
 	})
 
 	app.Get("/test", func(c Ctx) error {
-		// app.RemoveRoute("/dynamically-defined", MethodHead, MethodGet)
 
 		app.Get("/dynamically-defined", func(c Ctx) error {
 			return c.SendStatus(http.StatusOK)
@@ -446,8 +437,6 @@ func Test_App_Remove_Route(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
 	require.Equal(t, uint32(2), app.handlersCount)
 
-	// When dynaically addding routes why are more handlers are added for duplicate entry but
-	// when they are added statically only they do no?
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
@@ -489,8 +478,6 @@ func Test_App_Remove_Route_With_Middleware(t *testing.T) {
 
 	app.Get("/test", func(c Ctx) error {
 
-		// app.RemoveRoute("/dynamically-defined", MethodHead, MethodGet)
-
 		app.Get("/dynamically-defined", func(c Ctx) error {
 			return c.SendStatus(http.StatusOK)
 		})
@@ -501,7 +488,6 @@ func Test_App_Remove_Route_With_Middleware(t *testing.T) {
 	}, middleware1)
 
 	app.Get("/test", func(c Ctx) error {
-		// app.RemoveRoute("/dynamically-defined", MethodHead, MethodGet)
 
 		app.Get("/dynamically-defined", func(c Ctx) error {
 			return c.SendStatus(http.StatusOK)
@@ -527,8 +513,6 @@ func Test_App_Remove_Route_With_Middleware(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
 	require.Equal(t, uint32(3), app.handlersCount)
 
-	// When dynaically addding routes why are more handlers are added for duplicate entry but
-	// when they are added statically only they do no?
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
