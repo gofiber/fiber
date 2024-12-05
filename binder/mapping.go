@@ -32,7 +32,7 @@ var (
 	// decoderPoolMap helps to improve binders
 	decoderPoolMap = map[string]*sync.Pool{}
 	// tags is used to classify parser's pool
-	tags = []string{HeaderBinder.Name(), RespHeaderBinder.Name(), CookieBinder.Name(), QueryBinder.Name(), FormBinder.Name(), URIBinder.Name()}
+	tags = []string{"header", "respHeader", "cookie", "query", "form", "uri"}
 )
 
 // SetParserDecoder allow globally change the option of form decoder, update decoderPool
@@ -223,7 +223,7 @@ func equalFieldType(out any, kind reflect.Kind, key string) bool {
 			continue
 		}
 		// Get tag from field if exist
-		inputFieldName := typeField.Tag.Get(QueryBinder.Name())
+		inputFieldName := typeField.Tag.Get("query") // Name of query binder
 		if inputFieldName == "" {
 			inputFieldName = typeField.Name
 		} else {

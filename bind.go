@@ -1,6 +1,8 @@
 package fiber
 
 import (
+	"encoding/xml"
+
 	"github.com/gofiber/fiber/v3/binder"
 	"github.com/gofiber/utils/v2"
 )
@@ -77,7 +79,16 @@ func (b *Bind) Custom(name string, dest any) error {
 
 // Header binds the request header strings into the struct, map[string]string and map[string][]string.
 func (b *Bind) Header(out any) error {
-	if err := b.returnErr(binder.HeaderBinder.Bind(b.ctx.Request(), out)); err != nil {
+	bind := binder.GetFromThePool[*binder.HeaderBinding](&binder.HeaderBinderPool)
+	bind.EnableSplitting = b.ctx.App().config.EnableSplittingOnParsers
+
+	// Reset & put binder
+	defer func() {
+		bind.EnableSplitting = false
+		binder.PutToThePool(&binder.HeaderBinderPool, bind)
+	}()
+
+	if err := b.returnErr(bind.Bind(b.ctx.Request(), out)); err != nil {
 		return err
 	}
 
@@ -86,7 +97,16 @@ func (b *Bind) Header(out any) error {
 
 // RespHeader binds the response header strings into the struct, map[string]string and map[string][]string.
 func (b *Bind) RespHeader(out any) error {
-	if err := b.returnErr(binder.RespHeaderBinder.Bind(b.ctx.Response(), out)); err != nil {
+	bind := binder.GetFromThePool[*binder.RespHeaderBinding](&binder.RespHeaderBinderPool)
+	bind.EnableSplitting = b.ctx.App().config.EnableSplittingOnParsers
+
+	// Reset & put binder
+	defer func() {
+		bind.EnableSplitting = false
+		binder.PutToThePool(&binder.RespHeaderBinderPool, bind)
+	}()
+
+	if err := b.returnErr(bind.Bind(b.ctx.Response(), out)); err != nil {
 		return err
 	}
 
@@ -96,7 +116,16 @@ func (b *Bind) RespHeader(out any) error {
 // Cookie binds the request cookie strings into the struct, map[string]string and map[string][]string.
 // NOTE: If your cookie is like key=val1,val2; they'll be binded as an slice if your map is map[string][]string. Else, it'll use last element of cookie.
 func (b *Bind) Cookie(out any) error {
-	if err := b.returnErr(binder.CookieBinder.Bind(b.ctx.RequestCtx(), out)); err != nil {
+	bind := binder.GetFromThePool[*binder.CookieBinding](&binder.CookieBinderPool)
+	bind.EnableSplitting = b.ctx.App().config.EnableSplittingOnParsers
+
+	// Reset & put binder
+	defer func() {
+		bind.EnableSplitting = false
+		binder.PutToThePool(&binder.CookieBinderPool, bind)
+	}()
+
+	if err := b.returnErr(bind.Bind(b.ctx.RequestCtx(), out)); err != nil {
 		return err
 	}
 
@@ -105,7 +134,16 @@ func (b *Bind) Cookie(out any) error {
 
 // Query binds the query string into the struct, map[string]string and map[string][]string.
 func (b *Bind) Query(out any) error {
-	if err := b.returnErr(binder.QueryBinder.Bind(b.ctx.RequestCtx(), out)); err != nil {
+	bind := binder.GetFromThePool[*binder.QueryBinding](&binder.QueryBinderPool)
+	bind.EnableSplitting = b.ctx.App().config.EnableSplittingOnParsers
+
+	// Reset & put binder
+	defer func() {
+		bind.EnableSplitting = false
+		binder.PutToThePool(&binder.QueryBinderPool, bind)
+	}()
+
+	if err := b.returnErr(bind.Bind(b.ctx.RequestCtx(), out)); err != nil {
 		return err
 	}
 
@@ -114,7 +152,16 @@ func (b *Bind) Query(out any) error {
 
 // JSON binds the body string into the struct.
 func (b *Bind) JSON(out any) error {
-	if err := b.returnErr(binder.JSONBinder.Bind(b.ctx.Body(), b.ctx.App().Config().JSONDecoder, out)); err != nil {
+	bind := binder.GetFromThePool[*binder.JSONBinding](&binder.JSONBinderPool)
+	bind.JSONDecoder = b.ctx.App().Config().JSONDecoder
+
+	// Reset & put binder
+	defer func() {
+		bind.JSONDecoder = nil
+		binder.PutToThePool(&binder.JSONBinderPool, bind)
+	}()
+
+	if err := b.returnErr(bind.Bind(b.ctx.Body(), out)); err != nil {
 		return err
 	}
 
@@ -123,7 +170,16 @@ func (b *Bind) JSON(out any) error {
 
 // CBOR binds the body string into the struct.
 func (b *Bind) CBOR(out any) error {
-	if err := b.returnErr(binder.CBORBinder.Bind(b.ctx.Body(), b.ctx.App().Config().CBORDecoder, out)); err != nil {
+	bind := binder.GetFromThePool[*binder.CBORBinding](&binder.CBORBinderPool)
+	bind.CBORDecoder = b.ctx.App().Config().CBORDecoder
+
+	// Reset & put binder
+	defer func() {
+		bind.CBORDecoder = nil
+		binder.PutToThePool(&binder.CBORBinderPool, bind)
+	}()
+
+	if err := b.returnErr(bind.Bind(b.ctx.Body(), out)); err != nil {
 		return err
 	}
 	return b.validateStruct(out)
@@ -131,7 +187,16 @@ func (b *Bind) CBOR(out any) error {
 
 // XML binds the body string into the struct.
 func (b *Bind) XML(out any) error {
-	if err := b.returnErr(binder.XMLBinder.Bind(b.ctx.Body(), out)); err != nil {
+	bind := binder.GetFromThePool[*binder.XMLBinding](&binder.XMLBinderPool)
+	bind.XMLDecoder = xml.Unmarshal
+
+	// Reset & put binder
+	defer func() {
+		bind.XMLDecoder = nil
+		binder.PutToThePool(&binder.XMLBinderPool, bind)
+	}()
+
+	if err := b.returnErr(bind.Bind(b.ctx.Body(), out)); err != nil {
 		return err
 	}
 
@@ -140,7 +205,16 @@ func (b *Bind) XML(out any) error {
 
 // Form binds the form into the struct, map[string]string and map[string][]string.
 func (b *Bind) Form(out any) error {
-	if err := b.returnErr(binder.FormBinder.Bind(b.ctx.RequestCtx(), out)); err != nil {
+	bind := binder.GetFromThePool[*binder.FormBinding](&binder.FormBinderPool)
+	bind.EnableSplitting = b.ctx.App().config.EnableSplittingOnParsers
+
+	// Reset & put binder
+	defer func() {
+		bind.EnableSplitting = false
+		binder.PutToThePool(&binder.FormBinderPool, bind)
+	}()
+
+	if err := b.returnErr(bind.Bind(b.ctx.RequestCtx(), out)); err != nil {
 		return err
 	}
 
@@ -149,7 +223,14 @@ func (b *Bind) Form(out any) error {
 
 // URI binds the route parameters into the struct, map[string]string and map[string][]string.
 func (b *Bind) URI(out any) error {
-	if err := b.returnErr(binder.URIBinder.Bind(b.ctx.Route().Params, b.ctx.Params, out)); err != nil {
+	bind := binder.GetFromThePool[*binder.URIBinding](&binder.URIBinderPool)
+
+	// Reset & put binder
+	defer func() {
+		binder.PutToThePool(&binder.URIBinderPool, bind)
+	}()
+
+	if err := b.returnErr(bind.Bind(b.ctx.Route().Params, b.ctx.Params, out)); err != nil {
 		return err
 	}
 
@@ -158,7 +239,16 @@ func (b *Bind) URI(out any) error {
 
 // MultipartForm binds the multipart form into the struct, map[string]string and map[string][]string.
 func (b *Bind) MultipartForm(out any) error {
-	if err := b.returnErr(binder.FormBinder.BindMultipart(b.ctx.RequestCtx(), out)); err != nil {
+	bind := binder.GetFromThePool[*binder.FormBinding](&binder.FormBinderPool)
+	bind.EnableSplitting = b.ctx.App().config.EnableSplittingOnParsers
+
+	// Reset & put binder
+	defer func() {
+		bind.EnableSplitting = false
+		binder.PutToThePool(&binder.FormBinderPool, bind)
+	}()
+
+	if err := b.returnErr(bind.BindMultipart(b.ctx.RequestCtx(), out)); err != nil {
 		return err
 	}
 

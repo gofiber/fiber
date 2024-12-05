@@ -8,16 +8,18 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// formBinding is the form binder for form request body.
-type formBinding struct{}
+// FormBinding is the form binder for form request body.
+type FormBinding struct {
+	EnableSplitting bool
+}
 
 // Name returns the binding name.
-func (*formBinding) Name() string {
+func (*FormBinding) Name() string {
 	return "form"
 }
 
 // Bind parses the request body and returns the result.
-func (b *formBinding) Bind(reqCtx *fasthttp.RequestCtx, out any) error {
+func (b *FormBinding) Bind(reqCtx *fasthttp.RequestCtx, out any) error {
 	data := make(map[string][]string)
 	var err error
 
@@ -33,7 +35,7 @@ func (b *formBinding) Bind(reqCtx *fasthttp.RequestCtx, out any) error {
 			k, err = parseParamSquareBrackets(k)
 		}
 
-		if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
+		if b.EnableSplitting && strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
 			values := strings.Split(v, ",")
 			for i := 0; i < len(values); i++ {
 				data[k] = append(data[k], values[i])
@@ -51,7 +53,7 @@ func (b *formBinding) Bind(reqCtx *fasthttp.RequestCtx, out any) error {
 }
 
 // BindMultipart parses the request body and returns the result.
-func (b *formBinding) BindMultipart(reqCtx *fasthttp.RequestCtx, out any) error {
+func (b *FormBinding) BindMultipart(reqCtx *fasthttp.RequestCtx, out any) error {
 	data, err := reqCtx.MultipartForm()
 	if err != nil {
 		return err
