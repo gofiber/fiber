@@ -1,8 +1,6 @@
 package fiber
 
 import (
-	"encoding/xml"
-
 	"github.com/gofiber/fiber/v3/binder"
 	"github.com/gofiber/utils/v2"
 )
@@ -188,7 +186,7 @@ func (b *Bind) CBOR(out any) error {
 // XML binds the body string into the struct.
 func (b *Bind) XML(out any) error {
 	bind := binder.GetFromThePool[*binder.XMLBinding](&binder.XMLBinderPool)
-	bind.XMLDecoder = xml.Unmarshal
+	bind.XMLDecoder = b.ctx.App().config.XMLDecoder
 
 	// Reset & put binder
 	defer func() {
