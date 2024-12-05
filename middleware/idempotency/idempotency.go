@@ -51,7 +51,7 @@ func New(config ...Config) fiber.Handler {
 
 			for header, vals := range res.Headers {
 				for _, val := range vals {
-					c.Context().Response.Header.Add(header, val)
+					c.RequestCtx().Response.Header.Add(header, val)
 				}
 			}
 

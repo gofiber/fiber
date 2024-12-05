@@ -2,10 +2,10 @@ package proxy
 
 import (
 	"crypto/tls"
-	"errors"
 	"io"
 	"net"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -110,7 +110,10 @@ func Test_Proxy(t *testing.T) {
 		return c.SendStatus(fiber.StatusTeapot)
 	})
 
-	resp, err := target.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), 2*time.Second)
+	resp, err := target.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), fiber.TestConfig{
+		Timeout:       2 * time.Second,
+		FailOnTimeout: true,
+	})
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
 
@@ -172,7 +175,10 @@ func Test_Proxy_Balancer_IPv6_Upstream(t *testing.T) {
 		return c.SendStatus(fiber.StatusTeapot)
 	})
 
-	resp, err := target.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), 2*time.Second)
+	resp, err := target.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), fiber.TestConfig{
+		Timeout:       2 * time.Second,
+		FailOnTimeout: true,
+	})
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
 
@@ -195,7 +201,10 @@ func Test_Proxy_Balancer_IPv6_Upstream_With_DialDualStack(t *testing.T) {
 		return c.SendStatus(fiber.StatusTeapot)
 	})
 
-	resp, err := target.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), 2*time.Second)
+	resp, err := target.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), fiber.TestConfig{
+		Timeout:       2 * time.Second,
+		FailOnTimeout: true,
+	})
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
 
@@ -221,7 +230,10 @@ func Test_Proxy_Balancer_IPv4_Upstream_With_DialDualStack(t *testing.T) {
 		return c.SendStatus(fiber.StatusTeapot)
 	})
 
-	resp, err := target.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), 2*time.Second)
+	resp, err := target.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), fiber.TestConfig{
+		Timeout:       2 * time.Second,
+		FailOnTimeout: true,
+	})
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
 
@@ -399,7 +411,10 @@ func Test_Proxy_Timeout_Slow_Server(t *testing.T) {
 		Timeout: 600 * time.Millisecond,
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), 2*time.Second)
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), fiber.TestConfig{
+		Timeout:       2 * time.Second,
+		FailOnTimeout: true,
+	})
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
@@ -423,7 +438,10 @@ func Test_Proxy_With_Timeout(t *testing.T) {
 		Timeout: 100 * time.Millisecond,
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), 2*time.Second)
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), fiber.TestConfig{
+		Timeout:       2 * time.Second,
+		FailOnTimeout: true,
+	})
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 
@@ -521,7 +539,10 @@ func Test_Proxy_DoRedirects_RestoreOriginalURL(t *testing.T) {
 		return DoRedirects(c, "http://google.com", 1)
 	})
 
-	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), 2*time.Second)
+	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), fiber.TestConfig{
+		Timeout:       2 * time.Second,
+		FailOnTimeout: true,
+	})
 	require.NoError(t, err1)
 	_, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -559,7 +580,10 @@ func Test_Proxy_DoTimeout_RestoreOriginalURL(t *testing.T) {
 		return DoTimeout(c, "http://"+addr, time.Second)
 	})
 
-	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), 2*time.Second)
+	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), fiber.TestConfig{
+		Timeout:       2 * time.Second,
+		FailOnTimeout: true,
+	})
 	require.NoError(t, err1)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -580,7 +604,10 @@ func Test_Proxy_DoTimeout_Timeout(t *testing.T) {
 		return DoTimeout(c, "http://"+addr, time.Second)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), 2*time.Second)
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), fiber.TestConfig{
+		Timeout:       2 * time.Second,
+		FailOnTimeout: true,
+	})
 	require.NoError(t, err)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -624,8 +651,11 @@ func Test_Proxy_DoDeadline_PastDeadline(t *testing.T) {
 		return DoDeadline(c, "http://"+addr, time.Now().Add(2*time.Second))
 	})
 
-	_, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), 1*time.Second)
-	require.Equal(t, errors.New("test: timeout error after 1s"), err1)
+	_, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), fiber.TestConfig{
+		Timeout:       1 * time.Second,
+		FailOnTimeout: true,
+	})
+	require.Equal(t, os.ErrDeadlineExceeded, err1)
 }
 
 // go test -race -run Test_Proxy_Do_HTTP_Prefix_URL
@@ -717,7 +747,10 @@ func Test_ProxyBalancer_Custom_Client(t *testing.T) {
 		return c.SendStatus(fiber.StatusTeapot)
 	})
 
-	resp, err := target.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), 2*time.Second)
+	resp, err := target.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), fiber.TestConfig{
+		Timeout:       2 * time.Second,
+		FailOnTimeout: true,
+	})
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
 

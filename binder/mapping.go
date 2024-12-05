@@ -24,7 +24,7 @@ type ParserConfig struct {
 // ParserType require two element, type and converter for register.
 // Use ParserType with BodyParser for parsing custom type in form data.
 type ParserType struct {
-	Customtype any
+	CustomType any
 	Converter  func(string) reflect.Value
 }
 
@@ -51,7 +51,7 @@ func decoderBuilder(parserConfig ParserConfig) any {
 		decoder.SetAliasTag(parserConfig.SetAliasTag)
 	}
 	for _, v := range parserConfig.ParserType {
-		decoder.RegisterConverter(reflect.ValueOf(v.Customtype).Interface(), v.Converter)
+		decoder.RegisterConverter(reflect.ValueOf(v.CustomType).Interface(), v.Converter)
 	}
 	decoder.ZeroEmpty(parserConfig.ZeroEmpty)
 	return decoder

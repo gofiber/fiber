@@ -41,7 +41,7 @@ func (h indexedHeap) Swap(i, j int) {
 }
 
 func (h *indexedHeap) Push(x any) {
-	h.pushInternal(x.(heapEntry)) //nolint:forcetypeassert // Forced type assertion required to implement the heap.Interface interface
+	h.pushInternal(x.(heapEntry)) //nolint:forcetypeassert,errcheck // Forced type assertion required to implement the heap.Interface interface
 }
 
 func (h *indexedHeap) Pop() any {

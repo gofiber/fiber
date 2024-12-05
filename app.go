@@ -14,18 +14,20 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
-
 	"github.com/valyala/fasthttp"
 )
 
@@ -318,6 +320,20 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// Default: json.Unmarshal
 	JSONDecoder utils.JSONUnmarshal `json:"-"`
 
+	// When set by an external client of Fiber it will use the provided implementation of a
+	// CBORMarshal
+	//
+	// Allowing for flexibility in using another cbor library for encoding
+	// Default: cbor.Marshal
+	CBOREncoder utils.CBORMarshal `json:"-"`
+
+	// When set by an external client of Fiber it will use the provided implementation of a
+	// CBORUnmarshal
+	//
+	// Allowing for flexibility in using another cbor library for decoding
+	// Default: cbor.Unmarshal
+	CBORDecoder utils.CBORUnmarshal `json:"-"`
+
 	// XMLEncoder set by an external client of Fiber it will use the provided implementation of a
 	// XMLMarshal
 	//
@@ -534,6 +550,12 @@ func New(config ...Config) *App {
 	}
 	if app.config.JSONDecoder == nil {
 		app.config.JSONDecoder = json.Unmarshal
+	}
+	if app.config.CBOREncoder == nil {
+		app.config.CBOREncoder = cbor.Marshal
+	}
+	if app.config.CBORDecoder == nil {
+		app.config.CBORDecoder = cbor.Unmarshal
 	}
 	if app.config.XMLEncoder == nil {
 		app.config.XMLEncoder = xml.Marshal
@@ -901,13 +923,33 @@ func (app *App) Hooks() *Hooks {
 	return app.hooks
 }
 
+// TestConfig is a struct holding Test settings
+type TestConfig struct {
+	// Timeout defines the maximum duration a
+	// test can run before timing out.
+	// Default: time.Second
+	Timeout time.Duration
+
+	// FailOnTimeout specifies whether the test
+	// should return a timeout error if the HTTP response
+	// exceeds the Timeout duration.
+	// Default: true
+	FailOnTimeout bool
+}
+
 // Test is used for internal debugging by passing a *http.Request.
-// Timeout is optional and defaults to 1s, -1 will disable it completely.
-func (app *App) Test(req *http.Request, timeout ...time.Duration) (*http.Response, error) {
-	// Set timeout
-	to := 1 * time.Second
-	if len(timeout) > 0 {
-		to = timeout[0]
+// Config is optional and defaults to a 1s error on timeout,
+// 0 timeout will disable it completely.
+func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, error) {
+	// Default config
+	cfg := TestConfig{
+		Timeout:       time.Second,
+		FailOnTimeout: true,
+	}
+
+	// Override config if provided
+	if len(config) > 0 {
+		cfg = config[0]
 	}
 
 	// Add Content-Length if not provided with body
@@ -946,12 +988,15 @@ func (app *App) Test(req *http.Request, timeout ...time.Duration) (*http.Respons
 	}()
 
 	// Wait for callback
-	if to >= 0 {
+	if cfg.Timeout > 0 {
 		// With timeout
 		select {
 		case err = <-channel:
-		case <-time.After(to):
-			return nil, fmt.Errorf("test: timeout error after %s", to)
+		case <-time.After(cfg.Timeout):
+			conn.Close() //nolint:errcheck, revive // It is fine to ignore the error here
+			if cfg.FailOnTimeout {
+				return nil, os.ErrDeadlineExceeded
+			}
 		}
 	} else {
 		// Without timeout
@@ -969,6 +1014,9 @@ func (app *App) Test(req *http.Request, timeout ...time.Duration) (*http.Respons
 	// Convert raw http response to *http.Response
 	res, err := http.ReadResponse(buffer, req)
 	if err != nil {
+		if errors.Is(err, io.ErrUnexpectedEOF) {
+			return nil, errors.New("test: got empty response")
+		}
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 

@@ -240,6 +240,18 @@ func Test_Response_Body(t *testing.T) {
 			app.Get("/xml", func(c fiber.Ctx) error {
 				return c.SendString("<status><name>success</name></status>")
 			})
+
+			app.Get("/cbor", func(c fiber.Ctx) error {
+				type cborData struct {
+					Name string `cbor:"name"`
+					Age  int    `cbor:"age"`
+				}
+
+				return c.CBOR(cborData{
+					Name: "foo",
+					Age:  12,
+				})
+			})
 		})
 
 		return server
@@ -327,6 +339,36 @@ func Test_Response_Body(t *testing.T) {
 		require.Equal(t, "success", tmp.Status)
 		resp.Close()
 	})
+
+	t.Run("cbor body", func(t *testing.T) {
+		t.Parallel()
+		type cborData struct {
+			Name string `cbor:"name"`
+			Age  int    `cbor:"age"`
+		}
+
+		data := cborData{
+			Name: "foo",
+			Age:  12,
+		}
+
+		server := setupApp()
+		defer server.stop()
+
+		client := New().SetDial(server.dial())
+
+		resp, err := AcquireRequest().
+			SetClient(client).
+			Get("http://example.com/cbor")
+
+		require.NoError(t, err)
+
+		tmp := &cborData{}
+		err = resp.CBOR(tmp)
+		require.NoError(t, err)
+		require.Equal(t, data, *tmp)
+		resp.Close()
+	})
 }
 
 func Test_Response_Save(t *testing.T) {
@@ -375,7 +417,7 @@ func Test_Response_Save(t *testing.T) {
 
 		data, err := io.ReadAll(file)
 		require.NoError(t, err)
-		require.Equal(t, "{\"status\":\"success\"}", string(data))
+		require.JSONEq(t, "{\"status\":\"success\"}", string(data))
 	})
 
 	t.Run("io.Writer", func(t *testing.T) {
@@ -396,7 +438,7 @@ func Test_Response_Save(t *testing.T) {
 
 		err = resp.Save(buf)
 		require.NoError(t, err)
-		require.Equal(t, "{\"status\":\"success\"}", buf.String())
+		require.JSONEq(t, "{\"status\":\"success\"}", buf.String())
 	})
 
 	t.Run("error type", func(t *testing.T) {

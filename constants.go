@@ -23,6 +23,7 @@ const (
 	MIMETextCSS         = "text/css"
 	MIMEApplicationXML  = "application/xml"
 	MIMEApplicationJSON = "application/json"
+	MIMEApplicationCBOR = "application/cbor"
 	// Deprecated: use MIMETextJavaScript instead
 	MIMEApplicationJavaScript = "application/javascript"
 	MIMEApplicationForm       = "application/x-www-form-urlencoded"

@@ -51,26 +51,59 @@ func Test_RequestID_Next(t *testing.T) {
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
 
-// go test -run Test_RequestID_Locals
+// go test -run Test_RequestID_FromContext
 func Test_RequestID_FromContext(t *testing.T) {
 	t.Parallel()
+
 	reqID := "ThisIsARequestId"
 
-	app := fiber.New()
-	app.Use(New(Config{
-		Generator: func() string {
-			return reqID
+	type args struct {
+		inputFunc func(c fiber.Ctx) any
+	}
+
+	tests := []struct {
+		args args
+		name string
+	}{
+		{
+			name: "From fiber.Ctx",
+			args: args{
+				inputFunc: func(c fiber.Ctx) any {
+					return c
+				},
+			},
 		},
-	}))
+		{
+			name: "From context.Context",
+			args: args{
+				inputFunc: func(c fiber.Ctx) any {
+					return c.Context()
+				},
+			},
+		},
+	}
 
-	var ctxVal string
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	app.Use(func(c fiber.Ctx) error {
-		ctxVal = FromContext(c)
-		return c.Next()
-	})
+			app := fiber.New()
+			app.Use(New(Config{
+				Generator: func() string {
+					return reqID
+				},
+			}))
 
-	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
-	require.NoError(t, err)
-	require.Equal(t, reqID, ctxVal)
+			var ctxVal string
+
+			app.Use(func(c fiber.Ctx) error {
+				ctxVal = FromContext(tt.args.inputFunc(c))
+				return c.Next()
+			})
+
+			_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+			require.NoError(t, err)
+			require.Equal(t, reqID, ctxVal)
+		})
+	}
 }

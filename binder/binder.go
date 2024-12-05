@@ -20,4 +20,5 @@ var (
 	URIBinder        = &uriBinding{}
 	XMLBinder        = &xmlBinding{}
 	JSONBinder       = &jsonBinding{}
+	CBORBinder       = &cborBinding{}
 )
