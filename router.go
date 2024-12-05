@@ -309,6 +309,8 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 		if app.routeExists(method, pathRaw) {
 			//Decrement global handler count
 			atomic.AddUint32(&app.handlersCount, ^uint32(len(handlers)-1)) //nolint:gosec // Not a concern
+			// Decrement global route position
+			atomic.AddUint32(&app.routesCount, ^uint32(0))
 			app.removeRoute(pathRaw, []string{method})
 		}
 		app.mutex.Unlock()
@@ -425,7 +427,7 @@ func (app *App) removeRoute(path string, methods []string) {
 		}
 
 		// Remove route from tree stack
-		app.stack[m] = slices.Delete(app.stack[m], 1, 1)
+		app.stack[m] = slices.Delete(app.stack[m], index, index+1)
 	}
 
 	// TODO THIS
