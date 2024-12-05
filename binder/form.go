@@ -8,12 +8,15 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// formBinding is the form binder for form request body.
 type formBinding struct{}
 
+// Name returns the binding name.
 func (*formBinding) Name() string {
 	return "form"
 }
 
+// Bind parses the request body and returns the result.
 func (b *formBinding) Bind(reqCtx *fasthttp.RequestCtx, out any) error {
 	data := make(map[string][]string)
 	var err error
@@ -47,6 +50,7 @@ func (b *formBinding) Bind(reqCtx *fasthttp.RequestCtx, out any) error {
 	return parse(b.Name(), out, data)
 }
 
+// BindMultipart parses the request body and returns the result.
 func (b *formBinding) BindMultipart(reqCtx *fasthttp.RequestCtx, out any) error {
 	data, err := reqCtx.MultipartForm()
 	if err != nil {

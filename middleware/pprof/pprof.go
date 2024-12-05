@@ -48,27 +48,27 @@ func New(config ...Config) fiber.Handler {
 		// Switch on trimmed path against constant strings
 		switch path {
 		case "/":
-			pprofIndex(c.Context())
+			pprofIndex(c.RequestCtx())
 		case "/cmdline":
-			pprofCmdline(c.Context())
+			pprofCmdline(c.RequestCtx())
 		case "/profile":
-			pprofProfile(c.Context())
+			pprofProfile(c.RequestCtx())
 		case "/symbol":
-			pprofSymbol(c.Context())
+			pprofSymbol(c.RequestCtx())
 		case "/trace":
-			pprofTrace(c.Context())
+			pprofTrace(c.RequestCtx())
 		case "/allocs":
-			pprofAllocs(c.Context())
+			pprofAllocs(c.RequestCtx())
 		case "/block":
-			pprofBlock(c.Context())
+			pprofBlock(c.RequestCtx())
 		case "/goroutine":
-			pprofGoroutine(c.Context())
+			pprofGoroutine(c.RequestCtx())
 		case "/heap":
-			pprofHeap(c.Context())
+			pprofHeap(c.RequestCtx())
 		case "/mutex":
-			pprofMutex(c.Context())
+			pprofMutex(c.RequestCtx())
 		case "/threadcreate":
-			pprofThreadcreate(c.Context())
+			pprofThreadcreate(c.RequestCtx())
 		default:
 			// pprof index only works with trailing slash
 			if strings.HasSuffix(path, "/") {

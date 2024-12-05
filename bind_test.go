@@ -12,12 +12,22 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/gofiber/fiber/v3/binder"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
 
 const helloWorld = "hello world"
+
+// go test -run Test_returnErr -v
+func Test_returnErr(t *testing.T) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	err := c.Bind().WithAutoHandling().returnErr(nil)
+	require.NoError(t, err)
+}
 
 // go test -run Test_Bind_Query -v
 func Test_Bind_Query(t *testing.T) {
@@ -148,7 +158,7 @@ func Test_Bind_Query_WithSetParserDecoder(t *testing.T) {
 	}
 
 	nonRFCTime := binder.ParserType{
-		Customtype: NonRFCTime{},
+		CustomType: NonRFCTime{},
 		Converter:  nonRFCConverter,
 	}
 
@@ -402,7 +412,7 @@ func Test_Bind_Header_WithSetParserDecoder(t *testing.T) {
 	}
 
 	nonRFCTime := binder.ParserType{
-		Customtype: NonRFCTime{},
+		CustomType: NonRFCTime{},
 		Converter:  nonRFCConverter,
 	}
 
@@ -913,11 +923,11 @@ func Test_Bind_Body(t *testing.T) {
 		testCompressedBody(t, compressedBody, "zstd")
 	})
 
-	testDecodeParser := func(t *testing.T, contentType, body string) {
+	testDecodeParser := func(t *testing.T, contentType string, body []byte) {
 		t.Helper()
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		c.Request().Header.SetContentType(contentType)
-		c.Request().SetBody([]byte(body))
+		c.Request().SetBody(body)
 		c.Request().Header.SetContentLength(len(body))
 		d := new(Demo)
 		require.NoError(t, c.Bind().Body(d))
@@ -925,19 +935,36 @@ func Test_Bind_Body(t *testing.T) {
 	}
 
 	t.Run("JSON", func(t *testing.T) {
-		testDecodeParser(t, MIMEApplicationJSON, `{"name":"john"}`)
+		testDecodeParser(t, MIMEApplicationJSON, []byte(`{"name":"john"}`))
+	})
+	t.Run("CBOR", func(t *testing.T) {
+		enc, err := cbor.Marshal(&Demo{Name: "john"})
+		if err != nil {
+			t.Error(err)
+		}
+		testDecodeParser(t, MIMEApplicationCBOR, enc)
+
+		// Test invalid CBOR data
+		t.Run("Invalid", func(t *testing.T) {
+			invalidData := []byte{0xFF, 0xFF} // Invalid CBOR data
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			c.Request().Header.SetContentType(MIMEApplicationCBOR)
+			c.Request().SetBody(invalidData)
+			d := new(Demo)
+			require.Error(t, c.Bind().Body(d))
+		})
 	})
 
 	t.Run("XML", func(t *testing.T) {
-		testDecodeParser(t, MIMEApplicationXML, `<Demo><name>john</name></Demo>`)
+		testDecodeParser(t, MIMEApplicationXML, []byte(`<Demo><name>john</name></Demo>`))
 	})
 
 	t.Run("Form", func(t *testing.T) {
-		testDecodeParser(t, MIMEApplicationForm, "name=john")
+		testDecodeParser(t, MIMEApplicationForm, []byte("name=john"))
 	})
 
 	t.Run("MultipartForm", func(t *testing.T) {
-		testDecodeParser(t, MIMEMultipartForm+`;boundary="b"`, "--b\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\njohn\r\n--b--")
+		testDecodeParser(t, MIMEMultipartForm+`;boundary="b"`, []byte("--b\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\njohn\r\n--b--"))
 	})
 
 	testDecodeParserError := func(t *testing.T, contentType, body string) {
@@ -1000,7 +1027,7 @@ func Test_Bind_Body_WithSetParserDecoder(t *testing.T) {
 	}
 
 	customTime := binder.ParserType{
-		Customtype: CustomTime{},
+		CustomType: CustomTime{},
 		Converter:  timeConverter,
 	}
 
@@ -1078,6 +1105,35 @@ func Benchmark_Bind_Body_XML(b *testing.B) {
 	body := []byte("<Demo><name>john</name></Demo>")
 	c.Request().SetBody(body)
 	c.Request().Header.SetContentType(MIMEApplicationXML)
+	c.Request().Header.SetContentLength(len(body))
+	d := new(Demo)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		err = c.Bind().Body(d)
+	}
+	require.NoError(b, err)
+	require.Equal(b, "john", d.Name)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Bind_Body_CBOR -benchmem -count=4
+func Benchmark_Bind_Body_CBOR(b *testing.B) {
+	var err error
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	type Demo struct {
+		Name string `json:"name"`
+	}
+	body, err := cbor.Marshal(&Demo{Name: "john"})
+	if err != nil {
+		b.Error(err)
+	}
+	c.Request().SetBody(body)
+	c.Request().Header.SetContentType(MIMEApplicationCBOR)
 	c.Request().Header.SetContentLength(len(body))
 	d := new(Demo)
 
@@ -1395,7 +1451,7 @@ func Test_Bind_Cookie_WithSetParserDecoder(t *testing.T) {
 	}
 
 	nonRFCTime := binder.ParserType{
-		Customtype: NonRFCTime{},
+		CustomType: NonRFCTime{},
 		Converter:  nonRFCConverter,
 	}
 
@@ -1616,8 +1672,8 @@ func Test_Bind_CustomBinder(t *testing.T) {
 	require.Equal(t, "john", d.Name)
 }
 
-// go test -run Test_Bind_Must
-func Test_Bind_Must(t *testing.T) {
+// go test -run Test_Bind_WithAutoHandling
+func Test_Bind_WithAutoHandling(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
@@ -1626,7 +1682,7 @@ func Test_Bind_Must(t *testing.T) {
 	}
 	rq := new(RequiredQuery)
 	c.Request().URI().SetQueryString("")
-	err := c.Bind().Must().Query(rq)
+	err := c.Bind().WithAutoHandling().Query(rq)
 	require.Equal(t, StatusBadRequest, c.Response().StatusCode())
 	require.Equal(t, "Bad request: bind: name is empty", err.Error())
 }
@@ -1711,8 +1767,12 @@ func Test_Bind_RepeatParserWithSameStruct(t *testing.T) {
 		require.Equal(t, "body_param", r.BodyParam)
 	}
 
+	cb, err := cbor.Marshal(&Request{BodyParam: "body_param"})
+	require.NoError(t, err, "Failed to marshal CBOR data")
+
 	testDecodeParser(MIMEApplicationJSON, `{"body_param":"body_param"}`)
 	testDecodeParser(MIMEApplicationXML, `<Demo><body_param>body_param</body_param></Demo>`)
+	testDecodeParser(MIMEApplicationCBOR, string(cb))
 	testDecodeParser(MIMEApplicationForm, "body_param=body_param")
 	testDecodeParser(MIMEMultipartForm+`;boundary="b"`, "--b\r\nContent-Disposition: form-data; name=\"body_param\"\r\n\r\nbody_param\r\n--b--")
 }

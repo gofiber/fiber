@@ -1,7 +1,11 @@
 package logger
 
 import (
+	"io"
+
 	"github.com/gofiber/fiber/v3"
+	fiberlog "github.com/gofiber/fiber/v3/log"
+	"github.com/gofiber/utils/v2"
 )
 
 func methodColor(method string, colors fiber.Colors) string {
@@ -35,5 +39,50 @@ func statusColor(code int, colors fiber.Colors) string {
 		return colors.Yellow
 	default:
 		return colors.Red
+	}
+}
+
+type customLoggerWriter struct {
+	loggerInstance fiberlog.AllLogger
+	level          fiberlog.Level
+}
+
+func (cl *customLoggerWriter) Write(p []byte) (int, error) {
+	switch cl.level {
+	case fiberlog.LevelTrace:
+		cl.loggerInstance.Trace(utils.UnsafeString(p))
+	case fiberlog.LevelDebug:
+		cl.loggerInstance.Debug(utils.UnsafeString(p))
+	case fiberlog.LevelInfo:
+		cl.loggerInstance.Info(utils.UnsafeString(p))
+	case fiberlog.LevelWarn:
+		cl.loggerInstance.Warn(utils.UnsafeString(p))
+	case fiberlog.LevelError:
+		cl.loggerInstance.Error(utils.UnsafeString(p))
+	default:
+		return 0, nil
+	}
+
+	return len(p), nil
+}
+
+// LoggerToWriter is a helper function that returns an io.Writer that writes to a custom logger.
+// You can integrate 3rd party loggers such as zerolog, logrus, etc. to logger middleware using this function.
+//
+// Valid levels: fiberlog.LevelInfo, fiberlog.LevelTrace, fiberlog.LevelWarn, fiberlog.LevelDebug, fiberlog.LevelError
+func LoggerToWriter(logger fiberlog.AllLogger, level fiberlog.Level) io.Writer {
+	// Check if customLogger is nil
+	if logger == nil {
+		fiberlog.Panic("LoggerToWriter: customLogger must not be nil")
+	}
+
+	// Check if level is valid
+	if level == fiberlog.LevelFatal || level == fiberlog.LevelPanic {
+		fiberlog.Panic("LoggerToWriter: invalid level")
+	}
+
+	return &customLoggerWriter{
+		level:          level,
+		loggerInstance: logger,
 	}
 }

@@ -1,3 +1,4 @@
+//nolint:depguard // Because we test logging :D
 package logger
 
 import (
@@ -6,15 +7,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"runtime"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/fiber/v3/middleware/requestid"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/bytebufferpool"
@@ -181,6 +185,83 @@ func Test_Logger_ErrorTimeZone(t *testing.T) {
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
 
+// go test -run Test_Logger_Fiber_Logger
+func Test_Logger_LoggerToWriter(t *testing.T) {
+	app := fiber.New()
+
+	buf := bytebufferpool.Get()
+	t.Cleanup(func() {
+		bytebufferpool.Put(buf)
+	})
+
+	logger := fiberlog.DefaultLogger()
+	stdlogger, ok := logger.Logger().(*log.Logger)
+	require.True(t, ok)
+
+	stdlogger.SetFlags(0)
+	logger.SetOutput(buf)
+
+	testCases := []struct {
+		levelStr string
+		level    fiberlog.Level
+	}{
+		{
+			level:    fiberlog.LevelTrace,
+			levelStr: "Trace",
+		},
+		{
+			level:    fiberlog.LevelDebug,
+			levelStr: "Debug",
+		},
+		{
+			level:    fiberlog.LevelInfo,
+			levelStr: "Info",
+		},
+		{
+			level:    fiberlog.LevelWarn,
+			levelStr: "Warn",
+		},
+		{
+			level:    fiberlog.LevelError,
+			levelStr: "Error",
+		},
+	}
+
+	for _, tc := range testCases {
+		level := strconv.Itoa(int(tc.level))
+		t.Run(level, func(t *testing.T) {
+			buf.Reset()
+
+			app.Use("/"+level, New(Config{
+				Format: "${error}",
+				Output: LoggerToWriter(logger, tc.
+					level),
+			}))
+
+			app.Get("/"+level, func(_ fiber.Ctx) error {
+				return errors.New("some random error")
+			})
+
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/"+level, nil))
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+			require.Equal(t, "["+tc.levelStr+"] some random error\n", buf.String())
+		})
+
+		require.Panics(t, func() {
+			LoggerToWriter(logger, fiberlog.LevelPanic)
+		})
+
+		require.Panics(t, func() {
+			LoggerToWriter(logger, fiberlog.LevelFatal)
+		})
+
+		require.Panics(t, func() {
+			LoggerToWriter(nil, fiberlog.LevelFatal)
+		})
+	}
+}
+
 type fakeErrorOutput int
 
 func (o *fakeErrorOutput) Write([]byte) (int, error) {
@@ -300,13 +381,15 @@ func Test_Logger_WithLatency(t *testing.T) {
 		sleepDuration = 1 * tu.div
 
 		// Create a new HTTP request to the test route
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), 3*time.Second)
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), fiber.TestConfig{
+			Timeout:       3 * time.Second,
+			FailOnTimeout: true,
+		})
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 		// Assert that the log output contains the expected latency value in the current time unit
-		require.True(t, bytes.HasSuffix(buff.Bytes(), []byte(tu.unit)),
-			fmt.Sprintf("Expected latency to be in %s, got %s", tu.unit, buff.String()))
+		require.True(t, bytes.HasSuffix(buff.Bytes(), []byte(tu.unit)), "Expected latency to be in %s, got %s", tu.unit, buff.String())
 
 		// Reset the buffer
 		buff.Reset()
@@ -342,7 +425,10 @@ func Test_Logger_WithLatency_DefaultFormat(t *testing.T) {
 		sleepDuration = 1 * tu.div
 
 		// Create a new HTTP request to the test route
-		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), 2*time.Second)
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil), fiber.TestConfig{
+			Timeout:       2 * time.Second,
+			FailOnTimeout: true,
+		})
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
@@ -350,8 +436,7 @@ func Test_Logger_WithLatency_DefaultFormat(t *testing.T) {
 		// parse out the latency value from the log output
 		latency := bytes.Split(buff.Bytes(), []byte(" | "))[2]
 		// Assert that the latency value is in the current time unit
-		require.True(t, bytes.HasSuffix(latency, []byte(tu.unit)),
-			fmt.Sprintf("Expected latency to be in %s, got %s", tu.unit, latency))
+		require.True(t, bytes.HasSuffix(latency, []byte(tu.unit)), "Expected latency to be in %s, got %s", tu.unit, latency)
 
 		// Reset the buffer
 		buff.Reset()
@@ -634,7 +719,7 @@ func Test_Logger_ByteSent_Streaming(t *testing.T) {
 	app.Get("/", func(c fiber.Ctx) error {
 		c.Set("Connection", "keep-alive")
 		c.Set("Transfer-Encoding", "chunked")
-		c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
+		c.RequestCtx().SetBodyStreamWriter(func(w *bufio.Writer) {
 			var i int
 			for {
 				i++
@@ -729,6 +814,19 @@ func Benchmark_Logger(b *testing.B) {
 		benchmarkSetup(bb, app, "/")
 	})
 
+	b.Run("DefaultFormatWithFiberLog", func(bb *testing.B) {
+		app := fiber.New()
+		logger := fiberlog.DefaultLogger()
+		logger.SetOutput(io.Discard)
+		app.Use(New(Config{
+			Output: LoggerToWriter(logger, fiberlog.LevelDebug),
+		}))
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString("Hello, World!")
+		})
+		benchmarkSetup(bb, app, "/")
+	})
+
 	b.Run("WithTagParameter", func(bb *testing.B) {
 		app := fiber.New()
 		app.Use(New(Config{
@@ -805,7 +903,7 @@ func Benchmark_Logger(b *testing.B) {
 		app.Get("/", func(c fiber.Ctx) error {
 			c.Set("Connection", "keep-alive")
 			c.Set("Transfer-Encoding", "chunked")
-			c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
+			c.RequestCtx().SetBodyStreamWriter(func(w *bufio.Writer) {
 				var i int
 				for {
 					i++
@@ -865,6 +963,19 @@ func Benchmark_Logger_Parallel(b *testing.B) {
 		app := fiber.New()
 		app.Use(New(Config{
 			Output: io.Discard,
+		}))
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString("Hello, World!")
+		})
+		benchmarkSetupParallel(bb, app, "/")
+	})
+
+	b.Run("DefaultFormatWithFiberLog", func(bb *testing.B) {
+		app := fiber.New()
+		logger := fiberlog.DefaultLogger()
+		logger.SetOutput(io.Discard)
+		app.Use(New(Config{
+			Output: LoggerToWriter(logger, fiberlog.LevelDebug),
 		}))
 		app.Get("/", func(c fiber.Ctx) error {
 			return c.SendString("Hello, World!")
@@ -960,7 +1071,7 @@ func Benchmark_Logger_Parallel(b *testing.B) {
 		app.Get("/", func(c fiber.Ctx) error {
 			c.Set("Connection", "keep-alive")
 			c.Set("Transfer-Encoding", "chunked")
-			c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
+			c.RequestCtx().SetBodyStreamWriter(func(w *bufio.Writer) {
 				var i int
 				for {
 					i++

@@ -141,7 +141,7 @@ func (r *Redirect) With(key, value string, level ...uint8) *Redirect {
 // You can get them by using: Redirect().OldInputs(), Redirect().OldInput()
 func (r *Redirect) WithInput() *Redirect {
 	// Get content-type
-	ctype := utils.ToLower(utils.UnsafeString(r.c.Context().Request.Header.ContentType()))
+	ctype := utils.ToLower(utils.UnsafeString(r.c.RequestCtx().Request.Header.ContentType()))
 	ctype = binder.FilterFlags(utils.ParseVendorSpecificContentType(ctype))
 
 	oldInput := make(map[string]string)

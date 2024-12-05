@@ -93,7 +93,7 @@ func (l *defaultLogger) privateLogw(lv Level, format string, keysAndValues []any
 			if i > 0 || format != "" {
 				buf.WriteByte(' ')
 			}
-			buf.WriteString(keysAndValues[i].(string)) //nolint:forcetypeassert // Keys must be strings
+			buf.WriteString(keysAndValues[i].(string)) //nolint:forcetypeassert,errcheck // Keys must be strings
 			buf.WriteByte('=')
 			buf.WriteString(utils.ToString(keysAndValues[i+1]))
 		}
@@ -208,6 +208,11 @@ func (l *defaultLogger) SetLevel(level Level) {
 
 func (l *defaultLogger) SetOutput(writer io.Writer) {
 	l.stdlog.SetOutput(writer)
+}
+
+// Logger returns the logger instance. It can be used to adjust the logger configurations in case of need.
+func (l *defaultLogger) Logger() any {
+	return l.stdlog
 }
 
 // DefaultLogger returns the default logger.

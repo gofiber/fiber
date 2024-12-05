@@ -16,6 +16,11 @@ import (
 
 var filedata []byte
 
+var testConfig = fiber.TestConfig{
+	Timeout:       10 * time.Second,
+	FailOnTimeout: true,
+}
+
 func init() {
 	dat, err := os.ReadFile("../../.github/README.md")
 	if err != nil {
@@ -39,7 +44,7 @@ func Test_Compress_Gzip(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	req.Header.Set("Accept-Encoding", "gzip")
 
-	resp, err := app.Test(req, 10*time.Second)
+	resp, err := app.Test(req, testConfig)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
@@ -72,7 +77,7 @@ func Test_Compress_Different_Level(t *testing.T) {
 				req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 				req.Header.Set("Accept-Encoding", algo)
 
-				resp, err := app.Test(req, 10*time.Second)
+				resp, err := app.Test(req, testConfig)
 				require.NoError(t, err, "app.Test(req)")
 				require.Equal(t, 200, resp.StatusCode, "Status code")
 				require.Equal(t, algo, resp.Header.Get(fiber.HeaderContentEncoding))
@@ -99,7 +104,7 @@ func Test_Compress_Deflate(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	req.Header.Set("Accept-Encoding", "deflate")
 
-	resp, err := app.Test(req, 10*time.Second)
+	resp, err := app.Test(req, testConfig)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.Equal(t, "deflate", resp.Header.Get(fiber.HeaderContentEncoding))
@@ -123,7 +128,7 @@ func Test_Compress_Brotli(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	req.Header.Set("Accept-Encoding", "br")
 
-	resp, err := app.Test(req, 10*time.Second)
+	resp, err := app.Test(req, testConfig)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.Equal(t, "br", resp.Header.Get(fiber.HeaderContentEncoding))
@@ -147,7 +152,7 @@ func Test_Compress_Zstd(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	req.Header.Set("Accept-Encoding", "zstd")
 
-	resp, err := app.Test(req, 10*time.Second)
+	resp, err := app.Test(req, testConfig)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.Equal(t, "zstd", resp.Header.Get(fiber.HeaderContentEncoding))
@@ -171,7 +176,7 @@ func Test_Compress_Disabled(t *testing.T) {
 	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	req.Header.Set("Accept-Encoding", "br")
 
-	resp, err := app.Test(req, 10*time.Second)
+	resp, err := app.Test(req, testConfig)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))

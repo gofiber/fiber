@@ -221,6 +221,22 @@ func Test_SetLevel(t *testing.T) {
 	require.Equal(t, "[?8] ", setLogger.level.toString())
 }
 
+func Test_Logger(t *testing.T) {
+	underlyingLogger := log.New(os.Stderr, "", log.LstdFlags|log.Lshortfile|log.Lmicroseconds)
+	setLogger := &defaultLogger{
+		stdlog: underlyingLogger,
+		depth:  4,
+	}
+
+	require.Equal(t, underlyingLogger, setLogger.Logger())
+
+	logger, ok := setLogger.Logger().(*log.Logger)
+	require.True(t, ok)
+
+	logger.SetFlags(log.LstdFlags | log.Lshortfile | log.Lmicroseconds)
+	require.Equal(t, log.LstdFlags|log.Lshortfile|log.Lmicroseconds, setLogger.stdlog.Flags())
+}
+
 func Test_Debugw(t *testing.T) {
 	initDefaultLogger()
 

@@ -14,6 +14,10 @@ import (
 
 const CorrectKey = "specials: !$%,.#\"!?~`<>@$^*(){}[]|/\\123"
 
+var testConfig = fiber.TestConfig{
+	Timeout: 0,
+}
+
 func Test_AuthSources(t *testing.T) {
 	// define test cases
 	testSources := []string{"header", "cookie", "query", "param", "form"}
@@ -104,7 +108,7 @@ func Test_AuthSources(t *testing.T) {
 					req.URL.Path = r
 				}
 
-				res, err := app.Test(req, -1)
+				res, err := app.Test(req, testConfig)
 
 				require.NoError(t, err, test.description)
 
@@ -209,7 +213,7 @@ func TestMultipleKeyLookup(t *testing.T) {
 	q.Add("key", CorrectKey)
 	req.URL.RawQuery = q.Encode()
 
-	res, err := app.Test(req, -1)
+	res, err := app.Test(req, testConfig)
 
 	require.NoError(t, err)
 
@@ -226,7 +230,7 @@ func TestMultipleKeyLookup(t *testing.T) {
 	// construct a second request without proper key
 	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/foo", nil)
 	require.NoError(t, err)
-	res, err = app.Test(req, -1)
+	res, err = app.Test(req, testConfig)
 	require.NoError(t, err)
 	errBody, err := io.ReadAll(res.Body)
 	require.NoError(t, err)
@@ -350,7 +354,7 @@ func Test_MultipleKeyAuth(t *testing.T) {
 			req.Header.Set("key", test.APIKey)
 		}
 
-		res, err := app.Test(req, -1)
+		res, err := app.Test(req, testConfig)
 
 		require.NoError(t, err, test.description)
 
