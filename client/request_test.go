@@ -1318,7 +1318,7 @@ func Test_SetValWithStruct(t *testing.T) {
 	t.Parallel()
 
 	// test SetValWithStruct via QueryParam struct.
-	type args struct { //nolint:govet // Aligning the struct fields is not necessary.
+	type args struct {
 		TString   string
 		TSlice    []string
 		TIntSlice []int `param:"int_slice"`
@@ -1469,7 +1469,7 @@ func Test_SetValWithStruct(t *testing.T) {
 
 func Benchmark_SetValWithStruct(b *testing.B) {
 	// test SetValWithStruct via QueryParam struct.
-	type args struct { //nolint:govet // Aligning the struct fields is not necessary.
+	type args struct {
 		TString   string
 		TSlice    []string
 		TIntSlice []int `param:"int_slice"`

@@ -973,6 +973,8 @@ func SetValWithStruct(p WithStruct, tagName string, v any) {
 			for i := 0; i < val.Len(); i++ {
 				setVal(name, val.Index(i))
 			}
+		default:
+			return
 		}
 	}
 
