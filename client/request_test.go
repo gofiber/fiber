@@ -1317,14 +1317,16 @@ func Test_Request_MaxRedirects(t *testing.T) {
 func Test_SetValWithStruct(t *testing.T) {
 	t.Parallel()
 
-	// test SetValWithStruct vai QueryParam struct.
+	// test SetValWithStruct via QueryParam struct.
 	type args struct {
 		TString   string
 		TSlice    []string
 		TIntSlice []int `param:"int_slice"`
 		unexport  int
 		TInt      int
+		TUint     uint
 		TFloat    float64
+		TComplex  complex128
 		TBool     bool
 	}
 
@@ -1337,18 +1339,22 @@ func Test_SetValWithStruct(t *testing.T) {
 		SetValWithStruct(p, "param", args{
 			unexport:  5,
 			TInt:      5,
+			TUint:     5,
 			TString:   "string",
 			TFloat:    3.1,
+			TComplex:  3 + 4i,
 			TBool:     false,
 			TSlice:    []string{"foo", "bar"},
-			TIntSlice: []int{1, 2},
+			TIntSlice: []int{0, 1, 2},
 		})
 
 		require.Equal(t, "", string(p.Peek("unexport")))
 		require.Equal(t, []byte("5"), p.Peek("TInt"))
+		require.Equal(t, []byte("5"), p.Peek("TUint"))
 		require.Equal(t, []byte("string"), p.Peek("TString"))
 		require.Equal(t, []byte("3.1"), p.Peek("TFloat"))
-		require.Equal(t, "", string(p.Peek("TBool")))
+		require.Equal(t, []byte("(3+4i)"), p.Peek("TComplex"))
+		require.Equal(t, []byte("false"), p.Peek("TBool"))
 		require.True(t, func() bool {
 			for _, v := range p.PeekMulti("TSlice") {
 				if string(v) == "foo" {
@@ -1361,6 +1367,15 @@ func Test_SetValWithStruct(t *testing.T) {
 		require.True(t, func() bool {
 			for _, v := range p.PeekMulti("TSlice") {
 				if string(v) == "bar" { //nolint:goconst // test
+					return true
+				}
+			}
+			return false
+		}())
+
+		require.True(t, func() bool {
+			for _, v := range p.PeekMulti("int_slice") {
+				if string(v) == "0" {
 					return true
 				}
 			}
@@ -1442,24 +1457,6 @@ func Test_SetValWithStruct(t *testing.T) {
 		}())
 	})
 
-	t.Run("the zero val should be ignore", func(t *testing.T) {
-		t.Parallel()
-		p := &QueryParam{
-			Args: fasthttp.AcquireArgs(),
-		}
-		SetValWithStruct(p, "param", &args{
-			TInt:    0,
-			TString: "",
-			TFloat:  0.0,
-		})
-
-		require.Equal(t, "", string(p.Peek("TInt")))
-		require.Equal(t, "", string(p.Peek("TString")))
-		require.Equal(t, "", string(p.Peek("TFloat")))
-		require.Empty(t, p.PeekMulti("TSlice"))
-		require.Empty(t, p.PeekMulti("int_slice"))
-	})
-
 	t.Run("error type should ignore", func(t *testing.T) {
 		t.Parallel()
 		p := &QueryParam{
@@ -1471,14 +1468,16 @@ func Test_SetValWithStruct(t *testing.T) {
 }
 
 func Benchmark_SetValWithStruct(b *testing.B) {
-	// test SetValWithStruct vai QueryParam struct.
+	// test SetValWithStruct via QueryParam struct.
 	type args struct {
 		TString   string
 		TSlice    []string
 		TIntSlice []int `param:"int_slice"`
 		unexport  int
 		TInt      int
+		TUint     uint
 		TFloat    float64
+		TComplex  complex128
 		TBool     bool
 	}
 
@@ -1494,19 +1493,23 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 			SetValWithStruct(p, "param", args{
 				unexport:  5,
 				TInt:      5,
+				TUint:     5,
 				TString:   "string",
 				TFloat:    3.1,
+				TComplex:  3 + 4i,
 				TBool:     false,
 				TSlice:    []string{"foo", "bar"},
-				TIntSlice: []int{1, 2},
+				TIntSlice: []int{0, 1, 2},
 			})
 		}
 
 		require.Equal(b, "", string(p.Peek("unexport")))
 		require.Equal(b, []byte("5"), p.Peek("TInt"))
+		require.Equal(b, []byte("5"), p.Peek("TUint"))
 		require.Equal(b, []byte("string"), p.Peek("TString"))
 		require.Equal(b, []byte("3.1"), p.Peek("TFloat"))
-		require.Equal(b, "", string(p.Peek("TBool")))
+		require.Equal(b, []byte("(3+4i)"), p.Peek("TComplex"))
+		require.Equal(b, []byte("false"), p.Peek("TBool"))
 		require.True(b, func() bool {
 			for _, v := range p.PeekMulti("TSlice") {
 				if string(v) == "foo" {
@@ -1519,6 +1522,15 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 		require.True(b, func() bool {
 			for _, v := range p.PeekMulti("TSlice") {
 				if string(v) == "bar" {
+					return true
+				}
+			}
+			return false
+		}())
+
+		require.True(b, func() bool {
+			for _, v := range p.PeekMulti("int_slice") {
+				if string(v) == "0" {
 					return true
 				}
 			}
@@ -1602,29 +1614,6 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 			}
 			return false
 		}())
-	})
-
-	b.Run("the zero val should be ignore", func(b *testing.B) {
-		p := &QueryParam{
-			Args: fasthttp.AcquireArgs(),
-		}
-
-		b.ReportAllocs()
-		b.StartTimer()
-
-		for i := 0; i < b.N; i++ {
-			SetValWithStruct(p, "param", &args{
-				TInt:    0,
-				TString: "",
-				TFloat:  0.0,
-			})
-		}
-
-		require.Empty(b, string(p.Peek("TInt")))
-		require.Empty(b, string(p.Peek("TString")))
-		require.Empty(b, string(p.Peek("TFloat")))
-		require.Empty(b, p.PeekMulti("TSlice"))
-		require.Empty(b, p.PeekMulti("int_slice"))
 	})
 
 	b.Run("error type should ignore", func(b *testing.B) {
