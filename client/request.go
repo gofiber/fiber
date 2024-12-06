@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"path/filepath"
 	"reflect"
@@ -930,11 +929,14 @@ func ReleaseFile(f *File) {
 	filePool.Put(f)
 }
 
-// SetValWithStruct sets values using a struct.
-// `p` is a structure that implements the WithStruct interface.
-// The field name is specified by `tagName`.
-// `v` is a struct containing some data.
-// Note: This method supports all values that can be converted to an interface.
+// SetValWithStruct stores the fields of `v` into `p`.
+// `tagName` specifies the key used to store into `p`. If not specified,
+// the field name is used by default.
+// `v` is a struct or a pointer to a struct containing some data.
+// Fields in `v` should be string, int, int8, int16, int32, int64, uint,
+// uint8, uint16, uint32, uint64, float32, float64, complex64,
+// complex128 or bool. Arrays or slices are inserted sequentially with the
+// same key. Other types are ignored.
 func SetValWithStruct(p WithStruct, tagName string, v any) {
 	valueOfV := reflect.ValueOf(v)
 	typeOfV := reflect.TypeOf(v)
@@ -955,7 +957,9 @@ func SetValWithStruct(p WithStruct, tagName string, v any) {
 			p.Add(name, strconv.Itoa(int(val.Int())))
 		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
 			p.Add(name, strconv.FormatUint(val.Uint(), 10))
-		case reflect.Complex128, reflect.Complex64:
+		case reflect.Float32, reflect.Float64:
+			p.Add(name, strconv.FormatFloat(val.Float(), 'f', -1, 64))
+		case reflect.Complex64, reflect.Complex128:
 			p.Add(name, strconv.FormatComplex(val.Complex(), 'f', -1, 128))
 		case reflect.Bool:
 			if val.Bool() {
@@ -965,15 +969,9 @@ func SetValWithStruct(p WithStruct, tagName string, v any) {
 			}
 		case reflect.String:
 			p.Add(name, val.String())
-		case reflect.Float32, reflect.Float64:
-			p.Add(name, strconv.FormatFloat(val.Float(), 'f', -1, 64))
 		case reflect.Slice, reflect.Array:
 			for i := 0; i < val.Len(); i++ {
 				setVal(name, val.Index(i))
-			}
-		default:
-			if val.CanInterface() {
-				p.Add(name, fmt.Sprintf("%#v", val.Interface()))
 			}
 		}
 	}

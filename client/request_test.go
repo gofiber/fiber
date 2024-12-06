@@ -1327,9 +1327,7 @@ func Test_SetValWithStruct(t *testing.T) {
 		TUint     uint
 		TFloat    float64
 		TComplex  complex128
-		TFunc     func()
 		TBool     bool
-		TMap      map[int]int
 	}
 
 	t.Run("the struct should be applied", func(t *testing.T) {
@@ -1348,8 +1346,6 @@ func Test_SetValWithStruct(t *testing.T) {
 			TBool:     false,
 			TSlice:    []string{"foo", "bar"},
 			TIntSlice: []int{0, 1, 2},
-			TFunc:     func() {},
-			TMap:      map[int]int{1: 2},
 		})
 
 		require.Equal(t, "", string(p.Peek("unexport")))
@@ -1359,8 +1355,6 @@ func Test_SetValWithStruct(t *testing.T) {
 		require.Equal(t, []byte("3.1"), p.Peek("TFloat"))
 		require.Equal(t, []byte("(3+4i)"), p.Peek("TComplex"))
 		require.Equal(t, []byte("false"), p.Peek("TBool"))
-		require.Contains(t, string(p.Peek("TFunc")), "(func())")
-		require.Equal(t, []byte("map[int]int{1:2}"), p.Peek("TMap"))
 		require.True(t, func() bool {
 			for _, v := range p.PeekMulti("TSlice") {
 				if string(v) == "foo" {
@@ -1485,8 +1479,6 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 		TFloat    float64
 		TComplex  complex128
 		TBool     bool
-		TFunc     func()
-		TMap      map[int]int
 	}
 
 	b.Run("the struct should be applied", func(b *testing.B) {
@@ -1508,8 +1500,6 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 				TBool:     false,
 				TSlice:    []string{"foo", "bar"},
 				TIntSlice: []int{0, 1, 2},
-				TFunc:     func() {},
-				TMap:      map[int]int{1: 2},
 			})
 		}
 
@@ -1520,8 +1510,6 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 		require.Equal(b, []byte("3.1"), p.Peek("TFloat"))
 		require.Equal(b, []byte("(3+4i)"), p.Peek("TComplex"))
 		require.Equal(b, []byte("false"), p.Peek("TBool"))
-		require.Contains(b, string(p.Peek("TFunc")), "(func())")
-		require.Equal(b, []byte("map[int]int{1:2}"), p.Peek("TMap"))
 		require.True(b, func() bool {
 			for _, v := range p.PeekMulti("TSlice") {
 				if string(v) == "foo" {
