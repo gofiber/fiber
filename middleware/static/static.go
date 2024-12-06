@@ -102,6 +102,19 @@ func New(root string, cfg ...Config) fiber.Handler {
 					path = append([]byte("/"), path...)
 				}
 
+				// Perform explicit path validation
+				absRoot, err := filepath.Abs(root)
+				if err != nil {
+					fctx.Response.SetStatusCode(fiber.StatusInternalServerError)
+					return nil
+				}
+
+				absPath, err := filepath.Abs(filepath.Join(absRoot, string(path)))
+				if err != nil || !strings.HasPrefix(absPath, absRoot) {
+					fctx.Response.SetStatusCode(fiber.StatusForbidden)
+					return nil
+				}
+
 				return path
 			}
 
