@@ -57,5 +57,27 @@ func (b *formBinding) BindMultipart(reqCtx *fasthttp.RequestCtx, out any) error 
 		return err
 	}
 
+	for key, values := range data.Value {
+		if strings.Contains(key, "[") {
+			k, err := parseParamSquareBrackets(key)
+			if err != nil {
+				return err
+			}
+			data.Value[k] = values
+			delete(data.Value, key) // Remove bracket notation and use dot instead
+		}
+
+		for _, v := range values {
+			if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, key) {
+				delete(data.Value, key)
+
+				values := strings.Split(v, ",")
+				for i := 0; i < len(values); i++ {
+					data.Value[key] = append(data.Value[key], values[i])
+				}
+			}
+		}
+	}
+
 	return parse(b.Name(), out, data.Value)
 }

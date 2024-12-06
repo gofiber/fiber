@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"mime/multipart"
 	"net/http/httptest"
 	"reflect"
 	"testing"
@@ -988,6 +989,48 @@ func Test_Bind_Body(t *testing.T) {
 		Data []Demo `query:"data"`
 	}
 
+	t.Run("MultipartCollectionQueryDotNotation", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().Reset()
+
+		buf := &bytes.Buffer{}
+		writer := multipart.NewWriter(buf)
+		writer.WriteField("data.0.name", "john")
+		writer.WriteField("data.1.name", "doe")
+		writer.Close()
+
+		c.Request().Header.SetContentType(writer.FormDataContentType())
+		c.Request().SetBody(buf.Bytes())
+		c.Request().Header.SetContentLength(len(c.Body()))
+
+		cq := new(CollectionQuery)
+		require.NoError(t, c.Bind().Body(cq))
+		require.Len(t, cq.Data, 2)
+		require.Equal(t, "john", cq.Data[0].Name)
+		require.Equal(t, "doe", cq.Data[1].Name)
+	})
+
+	t.Run("MultipartCollectionQuerySquareBrackets", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().Reset()
+
+		buf := &bytes.Buffer{}
+		writer := multipart.NewWriter(buf)
+		writer.WriteField("data[0][name]", "john")
+		writer.WriteField("data[1][name]", "doe")
+		writer.Close()
+
+		c.Request().Header.SetContentType(writer.FormDataContentType())
+		c.Request().SetBody(buf.Bytes())
+		c.Request().Header.SetContentLength(len(c.Body()))
+
+		cq := new(CollectionQuery)
+		require.NoError(t, c.Bind().Body(cq))
+		require.Len(t, cq.Data, 2)
+		require.Equal(t, "john", cq.Data[0].Name)
+		require.Equal(t, "doe", cq.Data[1].Name)
+	})
+
 	t.Run("CollectionQuerySquareBrackets", func(t *testing.T) {
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		c.Request().Reset()
@@ -1180,13 +1223,25 @@ func Benchmark_Bind_Body_MultipartForm(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	type Demo struct {
+	type Person struct {
 		Name string `form:"name"`
+		Age  int    `form:"age"`
 	}
 
-	body := []byte("--b\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\njohn\r\n--b--")
+	type Demo struct {
+		Name    string   `form:"name"`
+		Persons []Person `form:"persons"`
+	}
+
+	buf := &bytes.Buffer{}
+	writer := multipart.NewWriter(buf)
+	writer.WriteField("name", "john")
+
+	writer.Close()
+	body := buf.Bytes()
+
 	c.Request().SetBody(body)
-	c.Request().Header.SetContentType(MIMEMultipartForm + `;boundary="b"`)
+	c.Request().Header.SetContentType(MIMEMultipartForm + `;boundary=` + writer.Boundary())
 	c.Request().Header.SetContentLength(len(body))
 	d := new(Demo)
 
@@ -1196,8 +1251,57 @@ func Benchmark_Bind_Body_MultipartForm(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		err = c.Bind().Body(d)
 	}
+
 	require.NoError(b, err)
 	require.Equal(b, "john", d.Name)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Bind_Body_MultipartForm_Nested -benchmem -count=4
+func Benchmark_Bind_Body_MultipartForm_Nested(b *testing.B) {
+	var err error
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	type Person struct {
+		Name string `form:"name"`
+		Age  int    `form:"age"`
+	}
+
+	type Demo struct {
+		Name    string   `form:"name"`
+		Persons []Person `form:"persons"`
+	}
+
+	buf := &bytes.Buffer{}
+	writer := multipart.NewWriter(buf)
+	writer.WriteField("name", "john")
+	writer.WriteField("persons.0.name", "john")
+	writer.WriteField("persons[0][age]", "10")
+	writer.WriteField("persons[1][name]", "doe")
+	writer.WriteField("persons.1.age", "20")
+
+	writer.Close()
+	body := buf.Bytes()
+
+	c.Request().SetBody(body)
+	c.Request().Header.SetContentType(MIMEMultipartForm + `;boundary=` + writer.Boundary())
+	c.Request().Header.SetContentLength(len(body))
+	d := new(Demo)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		err = c.Bind().Body(d)
+	}
+
+	require.NoError(b, err)
+	require.Equal(b, "john", d.Name)
+	require.Equal(b, "john", d.Persons[0].Name)
+	require.Equal(b, 10, d.Persons[0].Age)
+	require.Equal(b, "doe", d.Persons[1].Name)
+	require.Equal(b, 20, d.Persons[1].Age)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Bind_Body_Form_Map -benchmem -count=4
