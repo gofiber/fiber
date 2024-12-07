@@ -995,9 +995,9 @@ func Test_Bind_Body(t *testing.T) {
 
 		buf := &bytes.Buffer{}
 		writer := multipart.NewWriter(buf)
-		require.NoError(t, writer.WriteField("data.0.name", "john"))
-		require.NoError(t, writer.WriteField("data.1.name", "doe"))
-		require.NoError(t, writer.Close())
+		require.NoError(b, writer.WriteField("data.0.name", "john"))
+		require.NoError(b, writer.WriteField("data.1.name", "doe"))
+		require.NoError(b, writer.Close())
 
 		c.Request().Header.SetContentType(writer.FormDataContentType())
 		c.Request().SetBody(buf.Bytes())
@@ -1016,9 +1016,9 @@ func Test_Bind_Body(t *testing.T) {
 
 		buf := &bytes.Buffer{}
 		writer := multipart.NewWriter(buf)
-		require.NoError(t, writer.WriteField("data[0][name]", "john"))
-		require.NoError(t, writer.WriteField("data[1][name]", "doe"))
-		require.NoError(t, writer.Close())
+		require.NoError(b, writer.WriteField("data[0][name]", "john"))
+		require.NoError(b, writer.WriteField("data[1][name]", "doe"))
+		require.NoError(b, writer.Close())
 
 		c.Request().Header.SetContentType(writer.FormDataContentType())
 		c.Request().SetBody(buf.Bytes())
@@ -1235,8 +1235,8 @@ func Benchmark_Bind_Body_MultipartForm(b *testing.B) {
 
 	buf := &bytes.Buffer{}
 	writer := multipart.NewWriter(buf)
-	require.NoError(t, writer.WriteField("name", "john"))
-	require.NoError(t, writer.Close())
+	require.NoError(b, writer.WriteField("name", "john"))
+	require.NoError(b, writer.Close())
 	body := buf.Bytes()
 
 	c.Request().SetBody(body)
@@ -1274,12 +1274,12 @@ func Benchmark_Bind_Body_MultipartForm_Nested(b *testing.B) {
 
 	buf := &bytes.Buffer{}
 	writer := multipart.NewWriter(buf)
-	require.NoError(t, writer.WriteField("name", "john"))
-	require.NoError(t, writer.WriteField("persons.0.name", "john"))
-	require.NoError(t, writer.WriteField("persons[0][age]", "10"))
-	require.NoError(t, writer.WriteField("persons[1][name]", "doe"))
-	require.NoError(t, writer.WriteField("persons.1.age", "20"))
-	require.NoError(t, writer.Close())
+	require.NoError(b, writer.WriteField("name", "john"))
+	require.NoError(b, writer.WriteField("persons.0.name", "john"))
+	require.NoError(b, writer.WriteField("persons[0][age]", "10"))
+	require.NoError(b, writer.WriteField("persons[1][name]", "doe"))
+	require.NoError(b, writer.WriteField("persons.1.age", "20"))
+	require.NoError(b, writer.Close())
 	body := buf.Bytes()
 
 	c.Request().SetBody(body)
