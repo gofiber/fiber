@@ -995,9 +995,9 @@ func Test_Bind_Body(t *testing.T) {
 
 		buf := &bytes.Buffer{}
 		writer := multipart.NewWriter(buf)
-		require.NoError(b, writer.WriteField("data.0.name", "john"))
-		require.NoError(b, writer.WriteField("data.1.name", "doe"))
-		require.NoError(b, writer.Close())
+		require.NoError(t, writer.WriteField("data.0.name", "john"))
+		require.NoError(t, writer.WriteField("data.1.name", "doe"))
+		require.NoError(t, writer.Close())
 
 		c.Request().Header.SetContentType(writer.FormDataContentType())
 		c.Request().SetBody(buf.Bytes())
@@ -1016,9 +1016,9 @@ func Test_Bind_Body(t *testing.T) {
 
 		buf := &bytes.Buffer{}
 		writer := multipart.NewWriter(buf)
-		require.NoError(b, writer.WriteField("data[0][name]", "john"))
-		require.NoError(b, writer.WriteField("data[1][name]", "doe"))
-		require.NoError(b, writer.Close())
+		require.NoError(t, writer.WriteField("data[0][name]", "john"))
+		require.NoError(t, writer.WriteField("data[1][name]", "doe"))
+		require.NoError(t, writer.Close())
 
 		c.Request().Header.SetContentType(writer.FormDataContentType())
 		c.Request().SetBody(buf.Bytes())
