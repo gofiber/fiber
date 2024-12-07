@@ -995,9 +995,9 @@ func Test_Bind_Body(t *testing.T) {
 
 		buf := &bytes.Buffer{}
 		writer := multipart.NewWriter(buf)
-		writer.WriteField("data.0.name", "john")
-		writer.WriteField("data.1.name", "doe")
-		writer.Close()
+		require.NoError(t, writer.WriteField("data.0.name", "john"))
+		require.NoError(t, writer.WriteField("data.1.name", "doe"))
+		require.NoError(t, writer.Close())
 
 		c.Request().Header.SetContentType(writer.FormDataContentType())
 		c.Request().SetBody(buf.Bytes())
@@ -1016,9 +1016,9 @@ func Test_Bind_Body(t *testing.T) {
 
 		buf := &bytes.Buffer{}
 		writer := multipart.NewWriter(buf)
-		writer.WriteField("data[0][name]", "john")
-		writer.WriteField("data[1][name]", "doe")
-		writer.Close()
+		require.NoError(t, writer.WriteField("data[0][name]", "john"))
+		require.NoError(t, writer.WriteField("data[1][name]", "doe"))
+		require.NoError(t, writer.Close())
 
 		c.Request().Header.SetContentType(writer.FormDataContentType())
 		c.Request().SetBody(buf.Bytes())
@@ -1235,9 +1235,8 @@ func Benchmark_Bind_Body_MultipartForm(b *testing.B) {
 
 	buf := &bytes.Buffer{}
 	writer := multipart.NewWriter(buf)
-	writer.WriteField("name", "john")
-
-	writer.Close()
+	require.NoError(t, writer.WriteField("name", "john"))
+	require.NoError(t, writer.Close())
 	body := buf.Bytes()
 
 	c.Request().SetBody(body)
@@ -1275,13 +1274,12 @@ func Benchmark_Bind_Body_MultipartForm_Nested(b *testing.B) {
 
 	buf := &bytes.Buffer{}
 	writer := multipart.NewWriter(buf)
-	writer.WriteField("name", "john")
-	writer.WriteField("persons.0.name", "john")
-	writer.WriteField("persons[0][age]", "10")
-	writer.WriteField("persons[1][name]", "doe")
-	writer.WriteField("persons.1.age", "20")
-
-	writer.Close()
+	require.NoError(t, writer.WriteField("name", "john"))
+	require.NoError(t, writer.WriteField("persons.0.name", "john"))
+	require.NoError(t, writer.WriteField("persons[0][age]", "10"))
+	require.NoError(t, writer.WriteField("persons[1][name]", "doe"))
+	require.NoError(t, writer.WriteField("persons.1.age", "20"))
+	require.NoError(t, writer.Close())
 	body := buf.Bytes()
 
 	c.Request().SetBody(body)
