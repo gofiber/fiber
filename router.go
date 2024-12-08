@@ -437,9 +437,8 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 
 		route := app.stack[m][index]
 
-		handlerCount := len(route.Handlers)
-		//Decrement global handler count
-		atomic.AddUint32(&app.handlersCount, ^uint32(handlerCount-1)) // nolint:gosec // Not a concern
+		// Decrement global handler count
+		atomic.AddUint32(&app.handlersCount, ^uint32(len(route.Handlers)-1)) // nolint:gosec // Not a concern
 		// Decrement global route position
 		atomic.AddUint32(&app.routesCount, ^uint32(0))
 
