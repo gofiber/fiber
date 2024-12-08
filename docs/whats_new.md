@@ -209,14 +209,14 @@ Registering a subapp is now also possible via the [`Use`](./api/app#use) method 
 ```go
 // register mulitple prefixes
 app.Use(["/v1", "/v2"], func(c fiber.Ctx) error {
-  // Middleware for /v1 and /v2
-  return c.Next() 
+    // Middleware for /v1 and /v2
+    return c.Next() 
 })
 
 // define subapp
 api := fiber.New()
 api.Get("/user", func(c fiber.Ctx) error {
-  return c.SendString("User")
+    return c.SendString("User")
 })
 // register subapp
 app.Use("/api", api)
@@ -242,14 +242,14 @@ The `app.Test()` method now allows users to customize their test configurations:
 // Create a test app with a handler to test
 app := fiber.New()
 app.Get("/", func(c fiber.Ctx) {
-  return c.SendString("hello world")
+    return c.SendString("hello world")
 })
 
 // Define the HTTP request and custom TestConfig to test the handler
 req := httptest.NewRequest(MethodGet, "/", nil)
 testConfig := fiber.TestConfig{
-  Timeout:       0,
-  FailOnTimeout: false,
+    Timeout:       0,
+    FailOnTimeout: false,
 }
 
 // Test the handler using the request and testConfig
@@ -277,8 +277,8 @@ If a custom `TestConfig` isn't provided, then the following will be used:
 
 ```go
 testConfig := fiber.TestConfig{
-  Timeout:       time.Second,
-  FailOnTimeout: true,
+    Timeout:       time.Second,
+    FailOnTimeout: true,
 }
 ```
 
@@ -288,8 +288,8 @@ An empty `TestConfig` is the equivalent of:
 
 ```go
 testConfig := fiber.TestConfig{
-  Timeout:       0,
-  FailOnTimeout: false,
+    Timeout:       0,
+    FailOnTimeout: false,
 }
 ```
 
@@ -340,7 +340,7 @@ testConfig := fiber.TestConfig{
 
 ### SendStreamWriter
 
-In v3, we added support for buffered streaming by providing the new method `SendStreamWriter()`.
+In v3, we introduced support for buffered streaming with the addition of the `SendStreamWriter` method:
 
 ```go
 func (c Ctx) SendStreamWriter(streamWriter func(w *bufio.Writer))
@@ -354,22 +354,22 @@ With this new method, you can implement:
 
 ```go
 app.Get("/sse", func(c fiber.Ctx) {
-  c.Set("Content-Type", "text/event-stream")
-  c.Set("Cache-Control", "no-cache")
-  c.Set("Connection", "keep-alive")
-  c.Set("Transfer-Encoding", "chunked")
+    c.Set("Content-Type", "text/event-stream")
+    c.Set("Cache-Control", "no-cache")
+    c.Set("Connection", "keep-alive")
+    c.Set("Transfer-Encoding", "chunked")
 
-  return c.SendStreamWriter(func(w *bufio.Writer) {
-    for {
-      fmt.Fprintf(w, "event: my-event\n")
-      fmt.Fprintf(w, "data: Hello SSE\n\n")
+    return c.SendStreamWriter(func(w *bufio.Writer) {
+        for {
+            fmt.Fprintf(w, "event: my-event\n")
+            fmt.Fprintf(w, "data: Hello SSE\n\n")
 
-      if err := w.Flush(); err != nil {
-        log.Print("Client disconnected!")
-        return
-      }
-    }
-  })
+            if err := w.Flush(); err != nil {
+                log.Print("Client disconnected!")
+                return
+            }
+        }
+    })
 })
 ```
 
@@ -397,17 +397,17 @@ Fiber v3 introduces a new binding mechanism that simplifies the process of bindi
 
 ```go
 type User struct {
-  ID    int    `params:"id"`
-  Name  string `json:"name"`
-  Email string `json:"email"`
+    ID    int    `params:"id"`
+    Name  string `json:"name"`
+    Email string `json:"email"`
 }
 
 app.Post("/user/:id", func(c fiber.Ctx) error {
-  var user User
-  if err := c.Bind().Body(&user); err != nil {
-    return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
-  }
-  return c.JSON(user)
+    var user User
+    if err := c.Bind().Body(&user); err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+    }
+    return c.JSON(user)
 })
 ```
 
@@ -553,7 +553,6 @@ func main() {
 
     app.Listen(":3000")
 }
-
 ```
 
 ```sh
@@ -590,7 +589,6 @@ func main() {
 ```
 
 ```sh
-
 curl "http://localhost:3000/query?age=25"
 # Output: 25
 
@@ -902,9 +900,9 @@ app.Route("/api").Route("/user/:id?")
 
 ### 🗺 RebuildTree
 
-We have added a new method that allows the route tree stack to be rebuilt in runtime, with it, you can add a route while your application is running and rebuild the route tree stack to make it registered and available for calls.
+We introduced a new method that enables rebuilding the route tree stack at runtime. This allows you to add routes dynamically while your application is running and update the route tree to make the new routes available for use.
 
-You can find more reference on it in the [app](./api/app.md#rebuildtree):
+For more details, refer to the [app documentation](./api/app.md#rebuildtree):
 
 #### Example Usage
 
@@ -920,10 +918,9 @@ app.Get("/define", func(c Ctx) error {  // Define a new route dynamically
 })
 ```
 
-In this example, a new route is defined and then `RebuildTree()` is called to make sure the new route is registered and available.
+In this example, a new route is defined, and `RebuildTree()` is called to ensure the new route is registered and available.
 
-**Note:** Use this method with caution. It is **not** thread-safe and calling it can be very performance-intensive, so it should be used sparingly and only in
-development mode. Avoid using it concurrently.
+Note: Use this method with caution. It is **not** thread-safe and can be very performance-intensive. Therefore, it should be used sparingly and primarily in development mode. It should not be invoke concurrently.
 
 ### 🧠 Context
 
@@ -975,7 +972,7 @@ func main() {
 
     // Route Handler without *fiber.Ctx
     app.Get("/", func(c fiber.Ctx) error {
-      return c.SendString("Hello, World!")
+        return c.SendString("Hello, World!")
     })
 
     app.Listen(":3000")
@@ -1226,18 +1223,18 @@ The CORS middleware has been updated to use slices instead of strings for the `A
 ```go
 // Before
 app.Use(cors.New(cors.Config{
-  AllowOrigins: "https://example.com,https://example2.com",
-  AllowMethods: strings.Join([]string{fiber.MethodGet, fiber.MethodPost}, ","),
-  AllowHeaders: "Content-Type",
-  ExposeHeaders: "Content-Length",
+    AllowOrigins: "https://example.com,https://example2.com",
+    AllowMethods: strings.Join([]string{fiber.MethodGet, fiber.MethodPost}, ","),
+    AllowHeaders: "Content-Type",
+    ExposeHeaders: "Content-Length",
 }))
 
 // After
 app.Use(cors.New(cors.Config{
-  AllowOrigins: []string{"https://example.com", "https://example2.com"},
-  AllowMethods: []string{fiber.MethodGet, fiber.MethodPost},
-  AllowHeaders: []string{"Content-Type"},
-  ExposeHeaders: []string{"Content-Length"},
+    AllowOrigins: []string{"https://example.com", "https://example2.com"},
+    AllowMethods: []string{fiber.MethodGet, fiber.MethodPost},
+    AllowHeaders: []string{"Content-Type"},
+    ExposeHeaders: []string{"Content-Length"},
 }))
 ```
 
