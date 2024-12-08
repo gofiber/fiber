@@ -306,7 +306,8 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 
 		// Duplicate Route Handling
 		if app.routeExists(method, pathRaw) {
-			app.deleteRoute(pathRaw, []string{method}, len(handlers))
+			matchPathFunc := func(r *Route) bool { return r.Path == pathRaw }
+			app.deleteRoute([]string{method}, matchPathFunc)
 		}
 
 		// is mounted app
@@ -364,7 +365,6 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 			Method:   method,
 			Handlers: handlers,
 		}
-		// Should this use a mutex lock?
 		// Increment global handler count
 		atomic.AddUint32(&app.handlersCount, uint32(len(handlers))) //nolint:gosec // Not a concern
 
@@ -384,29 +384,41 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 }
 
 func (app *App) routeExists(method string, pathRaw string) bool {
+	pathToCheck := pathRaw
+	if !app.config.CaseSensitive {
+		pathToCheck = utils.ToLower(pathToCheck)
+	}
+
 	return slices.ContainsFunc(app.stack[app.methodInt(method)], func(r *Route) bool {
-		return r.path == pathRaw
+		routePath := r.path
+		if !app.config.CaseSensitive {
+			routePath = utils.ToLower(routePath)
+		}
+
+		return routePath == pathToCheck
 	})
 }
 
-// RemoveRoute is used to remove a route from the stack
-// You should call RebuildTree after using this to ensure consistency of the tree
-func (app *App) RemoveRoute(path string, middlewareCount int, methods ...string) {
-	app.deleteRoute(path, methods, middlewareCount)
+// RemoveRoute is used to remove a route from the stack by path.
+// This only needs to be called to remove a route, route registration prevents duplicate routes.
+// You should call RebuildTree after using this to ensure consistency of the tree.
+func (app *App) RemoveRoute(path string, methods ...string) {
+	pathMatchFunc := func(r *Route) bool { return r.Path == path }
+	app.deleteRoute(methods, pathMatchFunc)
 }
 
-func (app *App) deleteRoute(path string, methods []string, middlewareCount int) {
+// RemoveRouteByName is used to remove a route from the stack by name.
+// This only needs to be called to remove a route, route registration prevents duplicate routes.
+// You should call RebuildTree after using this to ensure consistency of the tree.
+func (app *App) RemoveRouteByName(name string, methods ...string) {
+	matchFunc := func(r *Route) bool { return r.Name == name }
+	app.deleteRoute(methods, matchFunc)
+}
+
+func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
-	if middlewareCount == 0 {
-		middlewareCount++
-	}
-
-	//Decrement global handler count
-	atomic.AddUint32(&app.handlersCount, ^uint32(middlewareCount-1)) //nolint:gosec // Not a concern
-	// Decrement global route position
-	atomic.AddUint32(&app.routesCount, ^uint32(0))
 	for _, method := range methods {
 		// Uppercase HTTP methods
 		method = utils.ToUpper(method)
@@ -418,12 +430,18 @@ func (app *App) deleteRoute(path string, methods []string, middlewareCount int) 
 		}
 
 		// Find the index of the route to remove
-		index := slices.IndexFunc(app.stack[m], func(r *Route) bool {
-			return r.Path == path
-		})
+		index := slices.IndexFunc(app.stack[m], matchFunc)
 		if index == -1 {
 			continue // Route not found
 		}
+
+		route := app.stack[m][index]
+
+		handlerCount := len(route.Handlers)
+		//Decrement global handler count
+		atomic.AddUint32(&app.handlersCount, ^uint32(handlerCount-1)) // nolint:gosec // Not a concern
+		// Decrement global route position
+		atomic.AddUint32(&app.routesCount, ^uint32(0))
 
 		// Remove route from tree stack
 		app.stack[m] = slices.Delete(app.stack[m], index, index+1)
