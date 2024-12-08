@@ -72,11 +72,10 @@ type ListenConfig struct {
 	OnShutdownSuccess func()
 
 	// AutoCertManager manages TLS certificates automatically using the ACME protocol,
-	// enabling integration with Let's Encrypt or other ACME-compatible providers.
-	// Provide an *autocert.Manager instance to enable automatic certificate management.
+	// Enables integration with Let's Encrypt or other ACME-compatible providers.
 	//
 	// Default: nil
-	AutoCertManager *autocert.Manager
+	AutoCertManager *autocert.Manager `json:"auto_cert_manager"`
 
 	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only)
 	// WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chosen.
