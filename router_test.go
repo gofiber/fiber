@@ -372,22 +372,15 @@ func Test_Router_NotFound_HTML_Inject(t *testing.T) {
 	require.Equal(t, "Cannot DELETE /does/not/exist&lt;script&gt;alert(&#39;foo&#39;);&lt;/script&gt;", string(c.Response.Body()))
 }
 
-func testRequest(tb testing.TB, app *App, path string, expectedStatus int) *http.Response {
-	resp, err := app.Test(httptest.NewRequest(MethodGet, path, nil))
-	require.NoError(tb, err, "app.Test(req)")
-	require.Equal(tb, expectedStatus, resp.StatusCode, "Status code")
-	return resp
-}
-
 func Test_App_Rebuild_Tree(t *testing.T) {
 	t.Parallel()
 	app := New()
 
 	registerTreeManipulationRoutes(app)
 
-	testRequest(t, app, "/dynamically-defined", http.StatusNotFound)
-	testRequest(t, app, "/test", http.StatusOK)
-	testRequest(t, app, "/dynamically-defined", http.StatusOK)
+	verifyRequest(t, app, "/dynamically-defined", http.StatusNotFound)
+	verifyRequest(t, app, "/test", http.StatusOK)
+	verifyRequest(t, app, "/dynamically-defined", http.StatusOK)
 }
 
 func Test_App_Remove_Route(t *testing.T) {
@@ -397,20 +390,50 @@ func Test_App_Remove_Route(t *testing.T) {
 	registerTreeManipulationRoutes(app)
 	registerTreeManipulationRoutes(app)
 
-	testRequest(t, app, "/dynamically-defined", http.StatusNotFound)
+	verifyRequest(t, app, "/dynamically-defined", http.StatusNotFound)
 	require.Equal(t, uint32(1), app.handlersCount)
 
-	testRequest(t, app, "/test", http.StatusOK)
+	verifyRequest(t, app, "/test", http.StatusOK)
 	require.Equal(t, uint32(2), app.handlersCount)
 
-	testRequest(t, app, "/dynamically-defined", http.StatusOK)
+	verifyRequest(t, app, "/dynamically-defined", http.StatusOK)
 	require.Equal(t, uint32(2), app.handlersCount)
 
-	testRequest(t, app, "/test", http.StatusOK)
+	verifyRequest(t, app, "/test", http.StatusOK)
 	require.Equal(t, uint32(2), app.handlersCount)
 
-	testRequest(t, app, "/dynamically-defined", http.StatusOK)
+	verifyRequest(t, app, "/dynamically-defined", http.StatusOK)
 	require.Equal(t, uint32(2), app.handlersCount)
+	require.Equal(t, uint32(2), app.routesCount)
+
+	verifyRouteHandlerCounts(t, app)
+}
+
+func Test_App_Remove_Route_With_Middleware(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	middleware := func(c Ctx) error {
+		return c.Next()
+	}
+
+	registerTreeManipulationRoutes(app, middleware)
+	registerTreeManipulationRoutes(app)
+
+	verifyRequest(t, app, "/dynamically-defined", http.StatusNotFound)
+	require.Equal(t, uint32(2), app.handlersCount)
+
+	verifyRequest(t, app, "/test", http.StatusOK)
+	require.Equal(t, uint32(3), app.handlersCount)
+
+	verifyRequest(t, app, "/dynamically-defined", http.StatusOK)
+	require.Equal(t, uint32(3), app.handlersCount)
+
+	verifyRequest(t, app, "/test", http.StatusOK)
+	require.Equal(t, uint32(3), app.handlersCount)
+
+	verifyRequest(t, app, "/dynamically-defined", http.StatusOK)
+	require.Equal(t, uint32(3), app.handlersCount)
 	require.Equal(t, uint32(2), app.routesCount)
 
 	verifyRouteHandlerCounts(t, app)
@@ -429,34 +452,14 @@ func registerTreeManipulationRoutes(app *App, middleware ...func(Ctx) error) {
 
 }
 
-func Test_App_Remove_Route_With_Middleware(t *testing.T) {
-	t.Parallel()
-	app := New()
+func verifyRequest(tb testing.TB, app *App, path string, expectedStatus int) *http.Response {
+	tb.Helper()
 
-	middleware := func(c Ctx) error {
-		return c.Next()
-	}
+	resp, err := app.Test(httptest.NewRequest(MethodGet, path, nil))
+	require.NoError(tb, err, "app.Test(req)")
+	require.Equal(tb, expectedStatus, resp.StatusCode, "Status code")
 
-	registerTreeManipulationRoutes(app, middleware)
-	registerTreeManipulationRoutes(app)
-
-	testRequest(t, app, "/dynamically-defined", http.StatusNotFound)
-	require.Equal(t, uint32(2), app.handlersCount)
-
-	testRequest(t, app, "/test", http.StatusOK)
-	require.Equal(t, uint32(3), app.handlersCount)
-
-	testRequest(t, app, "/dynamically-defined", http.StatusOK)
-	require.Equal(t, uint32(3), app.handlersCount)
-
-	testRequest(t, app, "/test", http.StatusOK)
-	require.Equal(t, uint32(3), app.handlersCount)
-
-	testRequest(t, app, "/dynamically-defined", http.StatusOK)
-	require.Equal(t, uint32(3), app.handlersCount)
-	require.Equal(t, uint32(2), app.routesCount)
-
-	verifyRouteHandlerCounts(t, app)
+	return resp
 }
 
 // this is taken from listen.go's printRoutesMessage app method
