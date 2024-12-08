@@ -387,6 +387,23 @@ func Test_App_Remove_Route(t *testing.T) {
 	t.Parallel()
 	app := New()
 
+	app.Get("/test", func(c Ctx) error {
+		return c.SendStatus(http.StatusOK)
+	})
+
+	app.RemoveRoute("/test", 0, http.MethodGet)
+	app.RebuildTree()
+
+	verifyRequest(t, app, "/test", http.StatusNotFound)
+	require.Equal(t, uint32(0), app.handlersCount)
+	require.Equal(t, uint32(0), app.routesCount)
+	verifyRouteHandlerCounts(t, app, 0)
+}
+
+func Test_App_Route_Registration_Prevent_Duplicate(t *testing.T) {
+	t.Parallel()
+	app := New()
+
 	registerTreeManipulationRoutes(app)
 	registerTreeManipulationRoutes(app)
 
@@ -406,10 +423,10 @@ func Test_App_Remove_Route(t *testing.T) {
 	require.Equal(t, uint32(2), app.handlersCount)
 	require.Equal(t, uint32(2), app.routesCount)
 
-	verifyRouteHandlerCounts(t, app)
+	verifyRouteHandlerCounts(t, app, 1)
 }
 
-func Test_App_Remove_Route_With_Middleware(t *testing.T) {
+func Test_Route_Registration_Prevent_Duplicate_With_Middleware(t *testing.T) {
 	t.Parallel()
 	app := New()
 
@@ -436,10 +453,11 @@ func Test_App_Remove_Route_With_Middleware(t *testing.T) {
 	require.Equal(t, uint32(3), app.handlersCount)
 	require.Equal(t, uint32(2), app.routesCount)
 
-	verifyRouteHandlerCounts(t, app)
+	verifyRouteHandlerCounts(t, app, 1)
 }
 
 func registerTreeManipulationRoutes(app *App, middleware ...func(Ctx) error) {
+
 	app.Get("/test", func(c Ctx) error {
 		app.Get("/dynamically-defined", func(c Ctx) error {
 			return c.SendStatus(http.StatusOK)
@@ -463,7 +481,7 @@ func verifyRequest(tb testing.TB, app *App, path string, expectedStatus int) *ht
 }
 
 // this is taken from listen.go's printRoutesMessage app method
-func verifyRouteHandlerCounts(tb testing.TB, app *App) {
+func verifyRouteHandlerCounts(tb testing.TB, app *App, expectedRoutesCount int) {
 	tb.Helper()
 
 	var routes []RouteMessage
@@ -485,7 +503,7 @@ func verifyRouteHandlerCounts(tb testing.TB, app *App) {
 	}
 
 	for _, route := range routes {
-		require.Equal(tb, 1, strings.Count(route.handlers, " "))
+		require.Equal(tb, expectedRoutesCount, strings.Count(route.handlers, " "))
 	}
 }
 

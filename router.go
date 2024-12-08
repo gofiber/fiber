@@ -305,16 +305,9 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 		}
 
 		// Duplicate Route Handling
-		app.mutex.Lock()
 		if app.routeExists(method, pathRaw) {
-			// TODO does RemoveRoute also need these operations?
-			//Decrement global handler count
-			atomic.AddUint32(&app.handlersCount, ^uint32(len(handlers)-1)) //nolint:gosec // Not a concern
-			// Decrement global route position
-			atomic.AddUint32(&app.routesCount, ^uint32(0))
-			app.deleteRoute(pathRaw, []string{method})
+			app.deleteRoute(pathRaw, []string{method}, len(handlers))
 		}
-		app.mutex.Unlock()
 
 		// is mounted app
 		isMount := group != nil && group.app != app
@@ -398,14 +391,22 @@ func (app *App) routeExists(method string, pathRaw string) bool {
 
 // RemoveRoute is used to remove a route from the stack
 // You should call RebuildTree after using this to ensure consistency of the tree
-// TODO write tests for this that explicitally delete a route right after adding it
-func (app *App) RemoveRoute(path string, methods ...string) {
-	app.mutex.Lock()
-	defer app.mutex.Unlock()
-	app.deleteRoute(path, methods)
+func (app *App) RemoveRoute(path string, middlewareCount int, methods ...string) {
+	app.deleteRoute(path, methods, middlewareCount)
 }
 
-func (app *App) deleteRoute(path string, methods []string) {
+func (app *App) deleteRoute(path string, methods []string, middlewareCount int) {
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
+
+	if middlewareCount == 0 {
+		middlewareCount++
+	}
+
+	//Decrement global handler count
+	atomic.AddUint32(&app.handlersCount, ^uint32(middlewareCount-1)) //nolint:gosec // Not a concern
+	// Decrement global route position
+	atomic.AddUint32(&app.routesCount, ^uint32(0))
 	for _, method := range methods {
 		// Uppercase HTTP methods
 		method = utils.ToUpper(method)
