@@ -372,164 +372,117 @@ func Test_Router_NotFound_HTML_Inject(t *testing.T) {
 	require.Equal(t, "Cannot DELETE /does/not/exist&lt;script&gt;alert(&#39;foo&#39;);&lt;/script&gt;", string(c.Response.Body()))
 }
 
+func testRequest(tb testing.TB, app *App, path string, expectedStatus int) *http.Response {
+	resp, err := app.Test(httptest.NewRequest(MethodGet, path, nil))
+	require.NoError(tb, err, "app.Test(req)")
+	require.Equal(tb, expectedStatus, resp.StatusCode, "Status code")
+	return resp
+}
+
 func Test_App_Rebuild_Tree(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	app.Get("/test", func(c Ctx) error {
-		app.Get("/dynamically-defined", func(c Ctx) error {
-			return c.SendStatus(http.StatusOK)
-		})
+	registerTreeManipulationRoutes(app)
 
-		app.RebuildTree()
-
-		return c.SendStatus(http.StatusOK)
-	})
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/dynamically-defined", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, http.StatusNotFound, resp.StatusCode, "Status code")
-
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
-
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/dynamically-defined", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
+	testRequest(t, app, "/dynamically-defined", http.StatusNotFound)
+	testRequest(t, app, "/test", http.StatusOK)
+	testRequest(t, app, "/dynamically-defined", http.StatusOK)
 }
 
 func Test_App_Remove_Route(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	app.Get("/test", func(c Ctx) error {
+	registerTreeManipulationRoutes(app)
+	registerTreeManipulationRoutes(app)
 
-		app.Get("/dynamically-defined", func(c Ctx) error {
-			return c.SendStatus(http.StatusOK)
-		})
-
-		app.RebuildTree()
-
-		return c.SendStatus(http.StatusOK)
-	})
-
-	app.Get("/test", func(c Ctx) error {
-
-		app.Get("/dynamically-defined", func(c Ctx) error {
-			return c.SendStatus(http.StatusOK)
-		})
-
-		app.RebuildTree()
-
-		return c.SendStatus(http.StatusOK)
-	})
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/dynamically-defined", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, http.StatusNotFound, resp.StatusCode, "Status code")
+	testRequest(t, app, "/dynamically-defined", http.StatusNotFound)
 	require.Equal(t, uint32(1), app.handlersCount)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
+	testRequest(t, app, "/test", http.StatusOK)
 	require.Equal(t, uint32(2), app.handlersCount)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/dynamically-defined", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
+	testRequest(t, app, "/dynamically-defined", http.StatusOK)
 	require.Equal(t, uint32(2), app.handlersCount)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
+	testRequest(t, app, "/test", http.StatusOK)
 	require.Equal(t, uint32(2), app.handlersCount)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/dynamically-defined", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
+	testRequest(t, app, "/dynamically-defined", http.StatusOK)
 	require.Equal(t, uint32(2), app.handlersCount)
 	require.Equal(t, uint32(2), app.routesCount)
 
-	verifyRouteHandlerCounts(app, t)
+	verifyRouteHandlerCounts(t, app)
+}
+
+func registerTreeManipulationRoutes(app *App, middleware ...func(Ctx) error) {
+	app.Get("/test", func(c Ctx) error {
+		app.Get("/dynamically-defined", func(c Ctx) error {
+			return c.SendStatus(http.StatusOK)
+		})
+
+		app.RebuildTree()
+
+		return c.SendStatus(http.StatusOK)
+	}, middleware...)
+
 }
 
 func Test_App_Remove_Route_With_Middleware(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	middleware1 := func(c Ctx) error {
+	middleware := func(c Ctx) error {
 		return c.Next()
 	}
 
-	app.Get("/test", func(c Ctx) error {
+	registerTreeManipulationRoutes(app, middleware)
+	registerTreeManipulationRoutes(app)
 
-		app.Get("/dynamically-defined", func(c Ctx) error {
-			return c.SendStatus(http.StatusOK)
-		})
-
-		app.RebuildTree()
-
-		return c.SendStatus(http.StatusOK)
-	}, middleware1)
-
-	app.Get("/test", func(c Ctx) error {
-
-		app.Get("/dynamically-defined", func(c Ctx) error {
-			return c.SendStatus(http.StatusOK)
-		})
-
-		app.RebuildTree()
-
-		return c.SendStatus(http.StatusOK)
-	})
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/dynamically-defined", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, http.StatusNotFound, resp.StatusCode, "Status code")
+	testRequest(t, app, "/dynamically-defined", http.StatusNotFound)
 	require.Equal(t, uint32(2), app.handlersCount)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
+	testRequest(t, app, "/test", http.StatusOK)
 	require.Equal(t, uint32(3), app.handlersCount)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/dynamically-defined", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
+	testRequest(t, app, "/dynamically-defined", http.StatusOK)
 	require.Equal(t, uint32(3), app.handlersCount)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
+	testRequest(t, app, "/test", http.StatusOK)
 	require.Equal(t, uint32(3), app.handlersCount)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/dynamically-defined", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
+	testRequest(t, app, "/dynamically-defined", http.StatusOK)
 	require.Equal(t, uint32(3), app.handlersCount)
 	require.Equal(t, uint32(2), app.routesCount)
 
-	verifyRouteHandlerCounts(app, t)
+	verifyRouteHandlerCounts(t, app)
 }
 
-// this is taken from app.printRoutesMessage()
-func verifyRouteHandlerCounts(app *App, t testing.TB) {
+// this is taken from listen.go's printRoutesMessage app method
+func verifyRouteHandlerCounts(tb testing.TB, app *App) {
+	tb.Helper()
+
 	var routes []RouteMessage
 	for _, routeStack := range app.stack {
+
 		for _, route := range routeStack {
-			var newRoute RouteMessage
-			newRoute.name = route.Name
-			newRoute.method = route.Method
-			newRoute.path = route.Path
-			for _, handler := range route.Handlers {
-				newRoute.handlers += runtime.FuncForPC(reflect.ValueOf(handler).Pointer()).Name() + " "
+			routeMsg := RouteMessage{
+				name:   route.Name,
+				method: route.Method,
+				path:   route.Path,
 			}
-			routes = append(routes, newRoute)
+
+			for _, handler := range route.Handlers {
+				routeMsg.handlers += runtime.FuncForPC(reflect.ValueOf(handler).Pointer()).Name() + " "
+			}
+
+			routes = append(routes, routeMsg)
 		}
 	}
+
 	for _, route := range routes {
-		require.Equal(t, 1, strings.Count(route.handlers, " "))
+		require.Equal(tb, 1, strings.Count(route.handlers, " "))
 	}
 }
 

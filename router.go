@@ -307,11 +307,12 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 		// Duplicate Route Handling
 		app.mutex.Lock()
 		if app.routeExists(method, pathRaw) {
+			// TODO does RemoveRoute also need these operations?
 			//Decrement global handler count
 			atomic.AddUint32(&app.handlersCount, ^uint32(len(handlers)-1)) //nolint:gosec // Not a concern
 			// Decrement global route position
 			atomic.AddUint32(&app.routesCount, ^uint32(0))
-			app.removeRoute(pathRaw, []string{method})
+			app.deleteRoute(pathRaw, []string{method})
 		}
 		app.mutex.Unlock()
 
@@ -391,23 +392,20 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 
 func (app *App) routeExists(method string, pathRaw string) bool {
 	return slices.ContainsFunc(app.stack[app.methodInt(method)], func(r *Route) bool {
-		if r.path == pathRaw {
-			return true
-		}
-		return false
+		return r.path == pathRaw
 	})
 }
 
 // RemoveRoute is used to remove a route from the stack
-// TODO should Remove Route only be called dynamically? Can you use it to remove the /define route, leaving the app without
-// any thing on the stack but the GET /hello Route? prefix /he?
+// You should call RebuildTree after using this to ensure consistency of the tree
+// TODO write tests for this that explicitally delete a route right after adding it
 func (app *App) RemoveRoute(path string, methods ...string) {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
-	app.removeRoute(path, methods)
+	app.deleteRoute(path, methods)
 }
 
-func (app *App) removeRoute(path string, methods []string) {
+func (app *App) deleteRoute(path string, methods []string) {
 	for _, method := range methods {
 		// Uppercase HTTP methods
 		method = utils.ToUpper(method)
@@ -430,13 +428,7 @@ func (app *App) removeRoute(path string, methods []string) {
 		app.stack[m] = slices.Delete(app.stack[m], index, index+1)
 	}
 
-	// TODO THIS
 	app.routesRefreshed = true
-	// OR THIS
-	// // rebuild the tree if it has been built before
-	// if !app.routesRefreshed {
-	// 	app.buildTree()
-	// }
 }
 
 func (app *App) addRoute(method string, route *Route, isMounted ...bool) {
