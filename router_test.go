@@ -427,6 +427,8 @@ func verifyRouteHandlerCounts(tb testing.TB, app *App, expectedRoutesCount int) 
 }
 
 func verifyThereAreNoRoutes(tb testing.TB, app *App) {
+	tb.Helper()
+
 	require.Equal(tb, uint32(0), app.handlersCount)
 	require.Equal(tb, uint32(0), app.routesCount)
 	verifyRouteHandlerCounts(tb, app, 0)
