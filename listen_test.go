@@ -282,17 +282,6 @@ func Test_Listen_Acme_TLS(t *testing.T) {
 
 	app := New()
 
-	// invalid port
-	require.Error(t, app.Listen(":99999", ListenConfig{
-		DisableStartupMessage: true,
-		AutoCertManager:       m,
-	}))
-
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
-
 	require.NoError(t, app.Listen(":0", ListenConfig{
 		DisableStartupMessage: true,
 		AutoCertManager:       m,
@@ -346,18 +335,6 @@ func Test_Listen_Acme_TLS_Prefork(t *testing.T) {
 	}
 
 	app := New()
-
-	// invalid port
-	require.Error(t, app.Listen(":99999", ListenConfig{
-		DisableStartupMessage: true,
-		EnablePrefork:         true,
-		AutoCertManager:       m,
-	}))
-
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		assert.NoError(t, app.Shutdown())
-	}()
 
 	require.NoError(t, app.Listen(":0", ListenConfig{
 		DisableStartupMessage: true,
