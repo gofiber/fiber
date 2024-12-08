@@ -477,6 +477,7 @@ func Test_App_Remove_Route_Nested(t *testing.T) {
 	v1 := api.Group("/v1")
 	v1.Get("/test", sendStatusOK)
 
+	verifyRequest(t, app, "/api/v1/test", http.StatusOK)
 	app.RemoveRoute("/api/v1/test", http.MethodGet)
 
 	verifyThereAreNoRoutes(t, app)
@@ -487,6 +488,7 @@ func Test_App_Remove_Route_Parameterized(t *testing.T) {
 	app := New()
 
 	app.Get("/test/:id", sendStatusOK)
+	verifyRequest(t, app, "/test/:id", http.StatusOK)
 	app.RemoveRoute("/test/:id", http.MethodGet)
 
 	verifyThereAreNoRoutes(t, app)
