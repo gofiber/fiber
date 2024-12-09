@@ -134,20 +134,6 @@ In this example, a custom context `CustomCtx` is created with an additional meth
 
 We have added native support for automatic certificates management from Let's Encrypt and any other ACME-based providers.
 
-```go
-// Certificate manager
-certManager := &autocert.Manager{
-    Prompt: autocert.AcceptTOS,
-    // Replace with your domain name
-    HostPolicy: autocert.HostWhitelist("example.com"),
-    // Folder to store the certificates
-    Cache: autocert.DirCache("./certs"),
-}
-
-app.Listen(":444", fiber.ListenConfig{
-    AutoCertManager:    certManager,
-}))
-```
 
 ## 🗺 Router
 
