@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -254,7 +255,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 
 		err := parserRequestHeader(client, req)
 		require.NoError(t, err)
-		require.Equal(t, []byte(applicationJSON), req.RawRequest.Header.ContentType())
+		require.Equal(t, []byte(applicationJSON), req.RawRequest.Header.ContentType()) //nolint:testifylint // test
 	})
 
 	t.Run("auto set xml header", func(t *testing.T) {
@@ -297,8 +298,8 @@ func Test_Parser_Request_Header(t *testing.T) {
 
 		err := parserRequestHeader(client, req)
 		require.NoError(t, err)
-		require.True(t, strings.Contains(string(req.RawRequest.Header.MultipartFormBoundary()), "--FiberFormBoundary"))
-		require.True(t, strings.Contains(string(req.RawRequest.Header.ContentType()), multipartFormData))
+		require.Contains(t, string(req.RawRequest.Header.MultipartFormBoundary()), "--FiberFormBoundary")
+		require.Contains(t, string(req.RawRequest.Header.ContentType()), multipartFormData)
 	})
 
 	t.Run("ua should have default value", func(t *testing.T) {
@@ -436,7 +437,7 @@ func Test_Parser_Request_Body(t *testing.T) {
 
 		err := parserRequestBody(client, req)
 		require.NoError(t, err)
-		require.Equal(t, []byte("{\"name\":\"foo\"}"), req.RawRequest.Body())
+		require.Equal(t, []byte("{\"name\":\"foo\"}"), req.RawRequest.Body()) //nolint:testifylint // test
 	})
 
 	t.Run("xml body", func(t *testing.T) {
@@ -454,6 +455,30 @@ func Test_Parser_Request_Body(t *testing.T) {
 		err := parserRequestBody(client, req)
 		require.NoError(t, err)
 		require.Equal(t, []byte("<body><name>foo</name></body>"), req.RawRequest.Body())
+	})
+
+	t.Run("CBOR body", func(t *testing.T) {
+		t.Parallel()
+		type cborData struct {
+			Name string `cbor:"name"`
+			Age  int    `cbor:"age"`
+		}
+
+		data := cborData{
+			Name: "foo",
+			Age:  12,
+		}
+
+		client := New()
+		req := AcquireRequest().
+			SetCBOR(data)
+
+		err := parserRequestBody(client, req)
+		require.NoError(t, err)
+
+		encoded, err := cbor.Marshal(data)
+		require.NoError(t, err)
+		require.Equal(t, encoded, req.RawRequest.Body())
 	})
 
 	t.Run("form data body", func(t *testing.T) {
@@ -489,8 +514,8 @@ func Test_Parser_Request_Body(t *testing.T) {
 
 		err := parserRequestBody(client, req)
 		require.NoError(t, err)
-		require.True(t, strings.Contains(string(req.RawRequest.Body()), "----FiberFormBoundary"))
-		require.True(t, strings.Contains(string(req.RawRequest.Body()), "world"))
+		require.Contains(t, string(req.RawRequest.Body()), "----FiberFormBoundary")
+		require.Contains(t, string(req.RawRequest.Body()), "world")
 	})
 
 	t.Run("file and form data", func(t *testing.T) {
@@ -502,9 +527,9 @@ func Test_Parser_Request_Body(t *testing.T) {
 
 		err := parserRequestBody(client, req)
 		require.NoError(t, err)
-		require.True(t, strings.Contains(string(req.RawRequest.Body()), "----FiberFormBoundary"))
-		require.True(t, strings.Contains(string(req.RawRequest.Body()), "world"))
-		require.True(t, strings.Contains(string(req.RawRequest.Body()), "bar"))
+		require.Contains(t, string(req.RawRequest.Body()), "----FiberFormBoundary")
+		require.Contains(t, string(req.RawRequest.Body()), "world")
+		require.Contains(t, string(req.RawRequest.Body()), "bar")
 	})
 
 	t.Run("raw body", func(t *testing.T) {

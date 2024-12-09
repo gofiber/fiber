@@ -894,7 +894,7 @@ func Test_Cache_MaxBytesSizes(t *testing.T) {
 	}))
 
 	app.Get("/*", func(c fiber.Ctx) error {
-		path := c.Context().URI().LastPathSegment()
+		path := c.RequestCtx().URI().LastPathSegment()
 		size, err := strconv.Atoi(string(path))
 		require.NoError(t, err)
 		return c.Send(make([]byte, size))

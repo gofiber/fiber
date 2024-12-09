@@ -20,7 +20,7 @@ func Test_WithContextTimeout(t *testing.T) {
 	h := New(func(c fiber.Ctx) error {
 		sleepTime, err := time.ParseDuration(c.Params("sleepTime") + "ms")
 		require.NoError(t, err)
-		if err := sleepWithContext(c.UserContext(), sleepTime, context.DeadlineExceeded); err != nil {
+		if err := sleepWithContext(c.Context(), sleepTime, context.DeadlineExceeded); err != nil {
 			return fmt.Errorf("%w: l2 wrap", fmt.Errorf("%w: l1 wrap ", err))
 		}
 		return nil
@@ -52,7 +52,7 @@ func Test_WithContextTimeoutWithCustomError(t *testing.T) {
 	h := New(func(c fiber.Ctx) error {
 		sleepTime, err := time.ParseDuration(c.Params("sleepTime") + "ms")
 		require.NoError(t, err)
-		if err := sleepWithContext(c.UserContext(), sleepTime, ErrFooTimeOut); err != nil {
+		if err := sleepWithContext(c.Context(), sleepTime, ErrFooTimeOut); err != nil {
 			return fmt.Errorf("%w: execution error", err)
 		}
 		return nil

@@ -127,7 +127,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 		})
 
 		// Serve file
-		fileHandler(c.Context())
+		fileHandler(c.RequestCtx())
 
 		// Sets the response Content-Disposition header to attachment if the Download option is true
 		if config.Download {
@@ -135,11 +135,11 @@ func New(root string, cfg ...Config) fiber.Handler {
 		}
 
 		// Return request if found and not forbidden
-		status := c.Context().Response.StatusCode()
+		status := c.RequestCtx().Response.StatusCode()
 
 		if status != fiber.StatusNotFound && status != fiber.StatusForbidden {
 			if len(cacheControlValue) > 0 {
-				c.Context().Response.Header.Set(fiber.HeaderCacheControl, cacheControlValue)
+				c.RequestCtx().Response.Header.Set(fiber.HeaderCacheControl, cacheControlValue)
 			}
 
 			if config.ModifyResponse != nil {
@@ -155,9 +155,9 @@ func New(root string, cfg ...Config) fiber.Handler {
 		}
 
 		// Reset response to default
-		c.Context().SetContentType("") // Issue #420
-		c.Context().Response.SetStatusCode(fiber.StatusOK)
-		c.Context().Response.SetBodyString("")
+		c.RequestCtx().SetContentType("") // Issue #420
+		c.RequestCtx().Response.SetStatusCode(fiber.StatusOK)
+		c.RequestCtx().Response.SetBodyString("")
 
 		// Next middleware
 		return c.Next()

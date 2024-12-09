@@ -80,11 +80,12 @@ func Test_Request_Context(t *testing.T) {
 
 	req := AcquireRequest()
 	ctx := req.Context()
-	key := struct{}{}
+	type ctxKey struct{}
+	var key ctxKey = struct{}{}
 
 	require.Nil(t, ctx.Value(key))
 
-	ctx = context.WithValue(ctx, key, "string") //nolint: staticcheck // not needed for tests
+	ctx = context.WithValue(ctx, key, "string")
 	req.SetContext(ctx)
 	ctx = req.Context()
 
@@ -1003,6 +1004,25 @@ func Test_Request_Body_With_Server(t *testing.T) {
 				})
 			},
 			"<args><content>hello</content></args>",
+		)
+	})
+
+	t.Run("cbor body", func(t *testing.T) {
+		t.Parallel()
+		testRequest(t,
+			func(c fiber.Ctx) error {
+				require.Equal(t, "application/cbor", string(c.Request().Header.ContentType()))
+				return c.SendString(string(c.Request().Body()))
+			},
+			func(agent *Request) {
+				type args struct {
+					Content string `cbor:"content"`
+				}
+				agent.SetCBOR(args{
+					Content: "hello",
+				})
+			},
+			"\xa1gcontentehello",
 		)
 	})
 

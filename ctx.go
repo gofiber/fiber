@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/tls"
@@ -382,26 +383,26 @@ func (c *DefaultCtx) ClearCookie(key ...string) {
 	})
 }
 
-// Context returns *fasthttp.RequestCtx that carries a deadline
+// RequestCtx returns *fasthttp.RequestCtx that carries a deadline
 // a cancellation signal, and other values across API boundaries.
-func (c *DefaultCtx) Context() *fasthttp.RequestCtx {
+func (c *DefaultCtx) RequestCtx() *fasthttp.RequestCtx {
 	return c.fasthttp
 }
 
-// UserContext returns a context implementation that was set by
+// Context returns a context implementation that was set by
 // user earlier or returns a non-nil, empty context,if it was not set earlier.
-func (c *DefaultCtx) UserContext() context.Context {
+func (c *DefaultCtx) Context() context.Context {
 	ctx, ok := c.fasthttp.UserValue(userContextKey).(context.Context)
 	if !ok {
 		ctx = context.Background()
-		c.SetUserContext(ctx)
+		c.SetContext(ctx)
 	}
 
 	return ctx
 }
 
-// SetUserContext sets a context implementation by user.
-func (c *DefaultCtx) SetUserContext(ctx context.Context) {
+// SetContext sets a context implementation by user.
+func (c *DefaultCtx) SetContext(ctx context.Context) {
 	c.fasthttp.SetUserValue(userContextKey, ctx)
 }
 
@@ -640,7 +641,7 @@ func (c *DefaultCtx) Get(key string, defaultValue ...string) string {
 }
 
 // GetReqHeader returns the HTTP request header specified by filed.
-// This function is generic and can handle differnet headers type values.
+// This function is generic and can handle different headers type values.
 func GetReqHeader[V GenericType](c Ctx, key string, defaultValue ...V) V {
 	var v V
 	return genericParseType[V](c.App().getString(c.Request().Header.Peek(key)), v, defaultValue...)
@@ -883,6 +884,24 @@ func (c *DefaultCtx) JSON(data any, ctype ...string) error {
 	return nil
 }
 
+// CBOR converts any interface or string to CBOR encoded bytes.
+// If the ctype parameter is given, this method will set the
+// Content-Type header equal to ctype. If ctype is not given,
+// The Content-Type header will be set to application/cbor.
+func (c *DefaultCtx) CBOR(data any, ctype ...string) error {
+	raw, err := c.app.config.CBOREncoder(data)
+	if err != nil {
+		return err
+	}
+	c.fasthttp.Response.SetBodyRaw(raw)
+	if len(ctype) > 0 {
+		c.fasthttp.Response.Header.SetContentType(ctype[0])
+	} else {
+		c.fasthttp.Response.Header.SetContentType(MIMEApplicationCBOR)
+	}
+	return nil
+}
+
 // JSONP sends a JSON response with JSONP support.
 // This method is identical to JSON, except that it opts-in to JSONP callback support.
 // By default, the callback name is simply callback.
@@ -1083,7 +1102,7 @@ func (c *DefaultCtx) Params(key string, defaultValue ...string) string {
 }
 
 // Params is used to get the route parameters.
-// This function is generic and can handle differnet route parameters type values.
+// This function is generic and can handle different route parameters type values.
 //
 // Example:
 //
@@ -1189,8 +1208,8 @@ func (c *DefaultCtx) Query(key string, defaultValue ...string) string {
 // Queries()["filters[customer][name]"] == "Alice"
 // Queries()["filters[status]"] == "pending"
 func (c *DefaultCtx) Queries() map[string]string {
-	m := make(map[string]string, c.Context().QueryArgs().Len())
-	c.Context().QueryArgs().VisitAll(func(key, value []byte) {
+	m := make(map[string]string, c.RequestCtx().QueryArgs().Len())
+	c.RequestCtx().QueryArgs().VisitAll(func(key, value []byte) {
 		m[c.app.getString(key)] = c.app.getString(value)
 	})
 	return m
@@ -1219,7 +1238,7 @@ func (c *DefaultCtx) Queries() map[string]string {
 //	unknown := Query[string](c, "unknown", "default") // Returns "default" since the query parameter "unknown" is not found
 func Query[V GenericType](c Ctx, key string, defaultValue ...V) V {
 	var v V
-	q := c.App().getString(c.Context().QueryArgs().Peek(key))
+	q := c.App().getString(c.RequestCtx().QueryArgs().Peek(key))
 
 	return genericParseType[V](q, v, defaultValue...)
 }
@@ -1470,6 +1489,7 @@ func (*DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path stri
 	if err != nil {
 		return fmt.Errorf("failed to open: %w", err)
 	}
+	defer file.Close() //nolint:errcheck // not needed
 
 	content, err := io.ReadAll(file)
 	if err != nil {
@@ -1629,7 +1649,7 @@ func (c *DefaultCtx) SendFile(file string, config ...SendFile) error {
 	// Apply cache control header
 	if status != StatusNotFound && status != StatusForbidden {
 		if len(cacheControlValue) > 0 {
-			c.Context().Response.Header.Set(HeaderCacheControl, cacheControlValue)
+			c.RequestCtx().Response.Header.Set(HeaderCacheControl, cacheControlValue)
 		}
 
 		return nil
@@ -1666,6 +1686,13 @@ func (c *DefaultCtx) SendStream(stream io.Reader, size ...int) error {
 	} else {
 		c.fasthttp.Response.SetBodyStream(stream, -1)
 	}
+
+	return nil
+}
+
+// SendStreamWriter sets response body stream writer
+func (c *DefaultCtx) SendStreamWriter(streamWriter func(*bufio.Writer)) error {
+	c.fasthttp.Response.SetBodyStreamWriter(fasthttp.StreamWriter(streamWriter))
 
 	return nil
 }
@@ -1859,8 +1886,8 @@ func (c *DefaultCtx) IsFromLocal() bool {
 func (c *DefaultCtx) Bind() *Bind {
 	if c.bind == nil {
 		c.bind = &Bind{
-			ctx:    c,
-			should: true,
+			ctx:            c,
+			dontHandleErrs: true,
 		}
 	}
 	return c.bind
