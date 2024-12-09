@@ -19,8 +19,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttputil"
-	"golang.org/x/crypto/acme"
-	"golang.org/x/crypto/acme/autocert"
 )
 
 // go test -run Test_Listen
@@ -259,35 +257,6 @@ func Test_Listen_TLS(t *testing.T) {
 	}))
 }
 
-// go test -run Test_Listen_Acme_TLS
-func Test_Listen_Acme_TLS(t *testing.T) {
-	dir, err := os.Getwd()
-	require.NoError(t, err)
-	dir, err = os.MkdirTemp(dir, "certs")
-	require.NoError(t, err)
-	defer os.RemoveAll(dir) //nolint:errcheck // ignore error
-
-	// Certificate manager
-	m := &autocert.Manager{
-		Prompt: autocert.AcceptTOS,
-		// Replace with your domain
-		HostPolicy: autocert.HostWhitelist("example.com"),
-		// Folder to store the certificates
-		Cache: autocert.DirCache(dir),
-		// Define the Client for test
-		Client: &acme.Client{
-			DirectoryURL: "https://acme-staging-v02.api.letsencrypt.org/directory",
-		},
-	}
-
-	app := New()
-
-	require.NoError(t, app.Listen(":0", ListenConfig{
-		DisableStartupMessage: true,
-		AutoCertManager:       m,
-	}))
-}
-
 // go test -run Test_Listen_TLS_Prefork
 func Test_Listen_TLS_Prefork(t *testing.T) {
 	testPreforkMaster = true
@@ -312,34 +281,6 @@ func Test_Listen_TLS_Prefork(t *testing.T) {
 		EnablePrefork:         true,
 		CertFile:              "./.github/testdata/ssl.pem",
 		CertKeyFile:           "./.github/testdata/ssl.key",
-	}))
-}
-
-// go test -run Test_Listen_Acme_TLS_Prefork
-func Test_Listen_Acme_TLS_Prefork(t *testing.T) {
-	dir, err := os.MkdirTemp(".", "certs")
-	require.NoError(t, err)
-	defer os.RemoveAll(dir) //nolint:errcheck // ignore error
-
-	// Certificate manager
-	m := &autocert.Manager{
-		Prompt: autocert.AcceptTOS,
-		// Replace with your domain
-		HostPolicy: autocert.HostWhitelist("example.com"),
-		// Folder to store the certificates
-		Cache: autocert.DirCache(dir),
-		// Define the Client for test
-		Client: &acme.Client{
-			DirectoryURL: "https://acme-staging-v02.api.letsencrypt.org/directory",
-		},
-	}
-
-	app := New()
-
-	require.NoError(t, app.Listen(":0", ListenConfig{
-		DisableStartupMessage: true,
-		EnablePrefork:         true,
-		AutoCertManager:       m,
 	}))
 }
 

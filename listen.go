@@ -199,7 +199,7 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 		}
 	}
 
-	if cfg.TLSConfigFunc != nil {
+	if tlsConfig != nil && cfg.TLSConfigFunc != nil {
 		cfg.TLSConfigFunc(tlsConfig)
 	}
 
