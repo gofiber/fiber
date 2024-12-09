@@ -242,6 +242,29 @@ Header Key: Test, Header Value: [123456 654321]
 
 </details>
 
+```go title="Example with maps.Collect()"
+req := client.AcquireRequest()
+
+req.AddHeader("Golang", "Fiber")
+req.AddHeader("Test", "123456")
+req.AddHeader("Test", "654321")
+
+headers := maps.Collect(req.Headers()) // Collect all headers into a map
+for k, v := range headers {
+  fmt.Printf("Header Key: %s, Header Value: %v\n", k, v)
+}
+```
+
+<details>
+<summary>Click here to see the result</summary>
+
+```sh
+Header Key: Golang, Header Value: [Fiber]
+Header Key: Test, Header Value: [123456 654321]
+```
+
+</details>
+
 ### AddHeader
 
 AddHeader method adds a single header field and its value in the request instance.

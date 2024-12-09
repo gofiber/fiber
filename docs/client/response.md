@@ -127,6 +127,31 @@ Access-Control-Allow-Credentials => true
 
 </details>
 
+```go title="Example with maps.Collect()"
+resp, err := client.Get("https://httpbin.org/get")
+if err != nil {
+    panic(err)
+}
+
+headers := maps.Collect(resp.Headers()) // Collect all headers into a map
+for key, values := range headers {
+    fmt.Printf("%s => %s\n", key, strings.Join(values, ", "))
+}
+```
+
+<details>
+
+<summary>Click here to see the result</summary>
+
+```text
+Date => Wed, 04 Dec 2024 15:28:29 GMT
+Connection => keep-alive
+Access-Control-Allow-Origin => *
+Access-Control-Allow-Credentials => true
+```
+
+</details>
+
 ## Cookies
 
 Cookies method to access all the response cookies.
