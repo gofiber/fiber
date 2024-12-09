@@ -199,6 +199,85 @@ func Test_Response_Header(t *testing.T) {
 	resp.Close()
 }
 
+func Test_Response_Headers(t *testing.T) {
+	t.Parallel()
+
+	server := startTestServer(t, func(app *fiber.App) {
+		app.Get("/", func(c fiber.Ctx) error {
+			c.Response().Header.Add("foo", "bar")
+			c.Response().Header.Add("foo", "bar2")
+			c.Response().Header.Add("foo2", "bar")
+
+			return c.SendString("hello world")
+		})
+	})
+	defer server.stop()
+
+	client := New().SetDial(server.dial())
+
+	resp, err := AcquireRequest().
+		SetClient(client).
+		Get("http://example.com")
+
+	require.NoError(t, err)
+
+	headers := make(map[string][]string)
+	for k, v := range resp.Headers() {
+		headers[k] = append(headers[k], v...)
+	}
+
+	require.Equal(t, "hello world", resp.String())
+
+	require.Contains(t, headers["Foo"], "bar")
+	require.Contains(t, headers["Foo"], "bar2")
+	require.Contains(t, headers["Foo2"], "bar")
+
+	require.Len(t, headers, 3) // Foo + Foo2 + Date
+
+	resp.Close()
+}
+
+func Benchmark_Headers(b *testing.B) {
+	server := startTestServer(
+		b,
+		func(app *fiber.App) {
+			app.Get("/", func(c fiber.Ctx) error {
+				c.Response().Header.Add("foo", "bar")
+				c.Response().Header.Add("foo", "bar2")
+				c.Response().Header.Add("foo", "bar3")
+
+				c.Response().Header.Add("foo2", "bar")
+				c.Response().Header.Add("foo2", "bar2")
+				c.Response().Header.Add("foo2", "bar3")
+
+				return c.SendString("helo world")
+			})
+		},
+	)
+
+	client := New().SetDial(server.dial())
+
+	resp, err := AcquireRequest().
+		SetClient(client).
+		Get("http://example.com")
+	require.NoError(b, err)
+
+	b.Cleanup(func() {
+		resp.Close()
+		server.stop()
+	})
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		for k, v := range resp.Headers() {
+			_ = k
+			_ = v
+		}
+	}
+}
+
 func Test_Response_Cookie(t *testing.T) {
 	t.Parallel()
 
