@@ -183,7 +183,7 @@ certManager := &autocert.Manager{
 
 app.Listen(":444", fiber.ListenConfig{
     AutoCertManager:    certManager,
-}))
+})
 ```
 
 ### Listener
