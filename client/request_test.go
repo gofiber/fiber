@@ -1358,7 +1358,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 	})
 }
 
-func Test_Request_FormDatas(t *testing.T) {
+func Test_Request_AllFormData(t *testing.T) {
 	t.Parallel()
 
 	req := AcquireRequest()
@@ -1367,7 +1367,7 @@ func Test_Request_FormDatas(t *testing.T) {
 		"bar": {"foo"},
 	})
 
-	pathParams := maps.Collect(req.FormDatas())
+	pathParams := maps.Collect(req.AllFormData())
 
 	require.Contains(t, pathParams["foo"], "bar")
 	require.Contains(t, pathParams["foo"], "fiber")
@@ -1376,7 +1376,7 @@ func Test_Request_FormDatas(t *testing.T) {
 	require.Len(t, pathParams, 2)
 }
 
-func Benchmark_Request_FormDatas(b *testing.B) {
+func Benchmark_Request_AllFormData(b *testing.B) {
 	req := AcquireRequest()
 	req.AddFormDatas(map[string][]string{
 		"foo": {"bar", "fiber"},
@@ -1387,7 +1387,7 @@ func Benchmark_Request_FormDatas(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		for k, v := range req.FormDatas() {
+		for k, v := range req.AllFormData() {
 			_ = k
 			_ = v
 		}

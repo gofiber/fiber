@@ -738,12 +738,12 @@ FormData method returns form data value via key, this method will visit all fiel
 func (r *Request) FormData(key string) []string
 ```
 
-### FormDatas
+### AllFormData
 
-FormDatas returns all form data in the request using an iterator. You can use `maps.Collect()` to collect all form data into a map.
+AllFormData returns all form data in the request using an iterator. You can use `maps.Collect()` to collect all form data into a map.
 
 ```go title="Signature"
-func (r *Request) FormDatas() iter.Seq2[string, []string]
+func (r *Request) AllFormData() iter.Seq2[string, []string]
 ```
 
 ### AddFormData

@@ -454,12 +454,12 @@ func (r *Request) FormData(key string) []string {
 	return res
 }
 
-// FormDatas method returns all form datas in request instance.
+// AllFormData method returns all form datas in request instance.
 // You can use maps.Collect() to collect all cookies into a map.
 //
 // The returned value is valid until the request object is released.
 // Any future calls to FormDatas method will return the modified value. Do not store references to returned value. Make copies instead.
-func (r *Request) FormDatas() iter.Seq2[string, []string] {
+func (r *Request) AllFormData() iter.Seq2[string, []string] {
 	return func(yield func(string, []string) bool) {
 		keys := r.formData.Keys()
 
