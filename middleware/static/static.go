@@ -98,6 +98,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 					}
 				}
 
+				// Add a leading slash if missing
 				if len(path) > 0 && path[0] != '/' {
 					path = append([]byte("/"), path...)
 				}
@@ -109,13 +110,21 @@ func New(root string, cfg ...Config) fiber.Handler {
 					return nil
 				}
 
-				absPath, err := filepath.Abs(filepath.Join(absRoot, string(path)))
-				if err != nil || !strings.HasPrefix(absPath, absRoot) {
+				// Replace backslashes with slashes
+				safePath := strings.ReplaceAll(string(path), "\\", "/")
+
+				// Clean the path and resolve it against the root
+				cleanPath := filepath.Clean("/" + safePath)
+				absPath := filepath.Join(absRoot, cleanPath)
+				relPath, err := filepath.Rel(absRoot, absPath)
+
+				// Check if the resolved path is within the root
+				if err != nil || strings.HasPrefix(relPath, "..") {
 					fctx.Response.SetStatusCode(fiber.StatusForbidden)
 					return nil
 				}
 
-				return path
+				return []byte(cleanPath)
 			}
 
 			maxAge := config.MaxAge

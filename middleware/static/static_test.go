@@ -412,7 +412,7 @@ func Test_Static_Next(t *testing.T) {
 func Test_Route_Static_Root(t *testing.T) {
 	t.Parallel()
 
-	dir := "../../.github/testdata/fs/css"
+	dir := "../../.github/testdata/fs/css" //nolint:goconst // test
 	app := fiber.New()
 	app.Get("/*", New(dir, Config{
 		Browse: true,
@@ -849,4 +849,115 @@ func Test_Static_Compress_WithFileSuffixes(t *testing.T) {
 		_, err = os.Stat(compressedFileName)
 		require.NoError(t, err, "File should exist")
 	}
+}
+
+func Test_Static_PathTraversal(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	// Serve only from "../../.github/testdata/fs/css"
+	// This directory should contain `style.css` but not `index.html` or anything above it.
+	rootDir := "../../.github/testdata/fs/css"
+	app.Get("/*", New(rootDir))
+
+	// A valid request: should succeed
+	validReq := httptest.NewRequest(fiber.MethodGet, "/style.css", nil)
+	validResp, err := app.Test(validReq)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, validResp.StatusCode, "Status code")
+	require.Equal(t, fiber.MIMETextCSSCharsetUTF8, validResp.Header.Get(fiber.HeaderContentType))
+	validBody, err := io.ReadAll(validResp.Body)
+	require.NoError(t, err, "app.Test(req)")
+	require.Contains(t, string(validBody), "color")
+
+	// Helper function to assert that a given path is blocked.
+	// Blocked can mean different status codes depending on what triggered the block.
+	// We'll accept 400 or 404 as "blocked" statuses:
+	// - 404 is the expected blocked response in most cases.
+	// - 400 might occur if fasthttp rejects the request before it's even processed (e.g., null bytes).
+	assertTraversalBlocked := func(path string) {
+		req := httptest.NewRequest(fiber.MethodGet, path, nil)
+		resp, err := app.Test(req)
+		require.NoError(t, err, "app.Test(req)")
+
+		status := resp.StatusCode
+		require.Truef(t, status == 400 || status == 404,
+			"Status code for path traversal %s should be 400 or 404, got %d", path, status)
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		// If we got a 404, we expect the "Cannot GET" message because that's how fiber handles NotFound by default.
+		if status == 404 {
+			require.Contains(t, string(body), "Cannot GET",
+				"Blocked traversal should have a Cannot GET message for %s", path)
+		} else {
+			require.Contains(t, string(body), "Are you a hacker?",
+				"Blocked traversal should have a Cannot GET message for %s", path)
+		}
+	}
+
+	// Basic attempts to escape the directory
+	assertTraversalBlocked("/index.html..")
+	assertTraversalBlocked("/style.css..")
+	assertTraversalBlocked("/../index.html")
+	assertTraversalBlocked("/../../index.html")
+	assertTraversalBlocked("/../../../index.html")
+
+	// Attempts with double slashes
+	assertTraversalBlocked("//../index.html")
+	assertTraversalBlocked("/..//index.html")
+
+	// Encoded attempts: `%2e` is '.' and `%2f` is '/'
+	assertTraversalBlocked("/..%2findex.html")        // ../index.html
+	assertTraversalBlocked("/%2e%2e/index.html")      // ../index.html
+	assertTraversalBlocked("/%2e%2e%2f%2e%2e/secret") // ../../../secret
+
+	// Mixed encoded and normal attempts
+	assertTraversalBlocked("/%2e%2e/../index.html")  // ../../index.html
+	assertTraversalBlocked("/..%2f..%2fsecret.json") // ../../../secret.json
+
+	// Attempts with current directory references
+	assertTraversalBlocked("/./../index.html")
+	assertTraversalBlocked("/././../index.html")
+
+	// Windows-style path attempts (backslashes):
+	assertTraversalBlocked("/..\\index.html")
+	assertTraversalBlocked("/..\\..\\index.html")
+
+	// Trailing slashes
+	assertTraversalBlocked("/../")
+	assertTraversalBlocked("/../../")
+
+	// Attempts to load files from an absolute path outside the root
+	assertTraversalBlocked("/" + rootDir + "/../../index.html")
+
+	// Additional edge cases:
+
+	// Double-encoded `..`
+	assertTraversalBlocked("/%252e%252e/index.html") // double-encoded .. -> ../index.html after double decoding
+
+	// Multiple levels of encoding and traversal
+	assertTraversalBlocked("/%2e%2e%2F..%2f%2e%2e%2fWINDOWS")       // multiple ups and unusual pattern
+	assertTraversalBlocked("/%2e%2e%2F..%2f%2e%2e%2f%2e%2e/secret") // more complex chain of ../
+
+	// Null byte attempts
+	assertTraversalBlocked("/index.html%00.jpg")
+	assertTraversalBlocked("/%00index.html")
+	assertTraversalBlocked("/somefolder%00/something")
+	assertTraversalBlocked("/%00/index.html")
+
+	// Attempts to access known system files
+	assertTraversalBlocked("/etc/passwd")
+	assertTraversalBlocked("/etc/")
+
+	// Complex mixed attempts with encoded slashes and dots
+	assertTraversalBlocked("/..%2F..%2F..%2F..%2Fetc%2Fpasswd")
+
+	// Attempts inside subdirectories with encoded traversal
+	assertTraversalBlocked("/somefolder/%2e%2e%2findex.html")
+	assertTraversalBlocked("/somefolder/%2e%2e%2f%2e%2e%2findex.html")
+
+	// Backslash encoded attempts
+	assertTraversalBlocked("/%5C..%5Cindex.html")
 }
