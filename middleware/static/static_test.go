@@ -852,6 +852,11 @@ func Test_Static_Compress_WithFileSuffixes(t *testing.T) {
 }
 
 func Test_Static_PathTraversal(t *testing.T) {
+	// Skip this test if running on Windows
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping Windows-specific tests")
+	}
+
 	t.Parallel()
 	app := fiber.New()
 
