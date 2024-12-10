@@ -110,11 +110,8 @@ func New(root string, cfg ...Config) fiber.Handler {
 					return nil
 				}
 
-				// Replace backslashes with slashes
-				safePath := strings.ReplaceAll(string(path), "\\", "/")
-
 				// Clean the path and resolve it against the root
-				cleanPath := filepath.Clean("/" + safePath)
+				cleanPath := filepath.Clean("/" + utils.UnsafeString(path))
 				absPath := filepath.Join(absRoot, cleanPath)
 				relPath, err := filepath.Rel(absRoot, absPath)
 

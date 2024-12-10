@@ -921,10 +921,6 @@ func Test_Static_PathTraversal(t *testing.T) {
 	assertTraversalBlocked("/./../index.html")
 	assertTraversalBlocked("/././../index.html")
 
-	// Windows-style path attempts (backslashes):
-	assertTraversalBlocked("/..\\index.html")
-	assertTraversalBlocked("/..\\..\\index.html")
-
 	// Trailing slashes
 	assertTraversalBlocked("/../")
 	assertTraversalBlocked("/../../")
@@ -960,4 +956,76 @@ func Test_Static_PathTraversal(t *testing.T) {
 
 	// Backslash encoded attempts
 	assertTraversalBlocked("/%5C..%5Cindex.html")
+}
+
+func Test_Static_PathTraversal_WindowsOnly(t *testing.T) {
+	// Skip this test if not running on Windows
+	if runtime.GOOS != "windows" {
+		t.Skip("Skipping Windows-specific tests")
+	}
+
+	t.Parallel()
+	app := fiber.New()
+
+	// Serve only from "../../.github/testdata/fs/css"
+	rootDir := "../../.github/testdata/fs/css"
+	app.Get("/*", New(rootDir))
+
+	// A valid request (relative path without backslash):
+	validReq := httptest.NewRequest(fiber.MethodGet, "/style.css", nil)
+	validResp, err := app.Test(validReq)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, validResp.StatusCode, "Status code for valid file on Windows")
+	body, err := io.ReadAll(validResp.Body)
+	require.NoError(t, err, "app.Test(req)")
+	require.Contains(t, string(body), "color")
+
+	// Helper to test blocked responses
+	assertTraversalBlocked := func(path string) {
+		req := httptest.NewRequest(fiber.MethodGet, path, nil)
+		resp, err := app.Test(req)
+		require.NoError(t, err, "app.Test(req)")
+
+		// We expect a blocked request to return either 400 or 404
+		status := resp.StatusCode
+		require.Containsf(t, []int{400, 404}, status,
+			"Status code for path traversal %s should be 400 or 404, got %d", path, status)
+
+		// If it's a 404, we expect a "Cannot GET" message
+		if status == 404 {
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			require.Contains(t, string(body), "Cannot GET",
+				"Blocked traversal should have a 'Cannot GET' message for %s", path)
+		} else {
+			require.Contains(t, string(body), "Are you a hacker?",
+				"Blocked traversal should have a Cannot GET message for %s", path)
+		}
+	}
+
+	// Windows-specific traversal attempts
+	// Backslashes are treated as directory separators on Windows.
+	assertTraversalBlocked("/..\\index.html")
+	assertTraversalBlocked("/..\\..\\index.html")
+
+	// Attempt with a path that might try to reference Windows drives or absolute paths
+	// Note: These are artificial tests to ensure no drive-letter escapes are allowed.
+	assertTraversalBlocked("/C:\\Windows\\System32\\cmd.exe")
+	assertTraversalBlocked("/C:/Windows/System32/cmd.exe")
+
+	// Attempt with UNC-like paths (though unlikely in a web context, good to test)
+	assertTraversalBlocked("//server\\share\\secret.txt")
+
+	// Attempt using a mixture of forward and backward slashes
+	assertTraversalBlocked("/..\\..\\/index.html")
+
+	// Attempt that includes a null-byte on Windows
+	assertTraversalBlocked("/index.html%00.txt")
+
+	// Check behavior on an obviously non-existent and suspicious file
+	assertTraversalBlocked("/\\this\\path\\does\\not\\exist\\..")
+
+	// Attempts involving relative traversal and current directory reference
+	assertTraversalBlocked("/.\\../index.html")
+	assertTraversalBlocked("/./..\\index.html")
 }
