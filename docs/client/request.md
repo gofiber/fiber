@@ -211,6 +211,60 @@ Header method returns header value via key, this method will visit all field in 
 func (r *Request) Header(key string) []string
 ```
 
+### Headers
+
+Headers returns all headers in the request using an iterator. You can use `maps.Collect()` to collect all headers into a map.
+The returned value is valid until the request object is released. Any future calls to Headers method will return the modified value. Do not store references to returned value. Make copies instead.
+
+```go title="Signature"
+func (r *Request) Headers() iter.Seq2[string, []string]
+```
+
+<details>
+<summary>Example</summary>
+
+```go title="Example"
+req := client.AcquireRequest()
+
+req.AddHeader("Golang", "Fiber")
+req.AddHeader("Test", "123456")
+req.AddHeader("Test", "654321")
+
+for k, v := range req.Headers() {
+  fmt.Printf("Header Key: %s, Header Value: %v\n", k, v)
+}
+```
+
+```sh
+Header Key: Golang, Header Value: [Fiber]
+Header Key: Test, Header Value: [123456 654321]
+```
+
+</details>
+
+<details>
+<summary>Example with maps.Collect()</summary>
+
+```go title="Example with maps.Collect()"
+req := client.AcquireRequest()
+
+req.AddHeader("Golang", "Fiber")
+req.AddHeader("Test", "123456")
+req.AddHeader("Test", "654321")
+
+headers := maps.Collect(req.Headers()) // Collect all headers into a map
+for k, v := range headers {
+  fmt.Printf("Header Key: %s, Header Value: %v\n", k, v)
+}
+```
+
+```sh
+Header Key: Golang, Header Value: [Fiber]
+Header Key: Test, Header Value: [123456 654321]
+```
+
+</details>
+
 ### AddHeader
 
 AddHeader method adds a single header field and its value in the request instance.
@@ -218,6 +272,9 @@ AddHeader method adds a single header field and its value in the request instanc
 ```go title="Signature"
 func (r *Request) AddHeader(key, val string) *Request
 ```
+
+<details>
+<summary>Example</summary>
 
 ```go title="Example"
 req := client.AcquireRequest()
@@ -234,9 +291,6 @@ if err != nil {
 
 fmt.Println(resp.String())
 ```
-
-<details>
-<summary>Click here to see the result</summary>
 
 ```json
 {
@@ -262,6 +316,9 @@ It will override the header which has been set in the client instance.
 func (r *Request) SetHeader(key, val string) *Request
 ```
 
+<details>
+<summary>Example</summary>
+
 ```go title="Example"
 req := client.AcquireRequest()
 defer client.ReleaseRequest(req)
@@ -276,9 +333,6 @@ if err != nil {
 
 fmt.Println(resp.String())
 ```
-
-<details>
-<summary>Click here to see the result</summary>
 
 ```json
 {
@@ -320,6 +374,15 @@ Param method returns params value via key, this method will visit all field in t
 func (r *Request) Param(key string) []string
 ```
 
+### Params
+
+Params returns all params in the request using an iterator. You can use `maps.Collect()` to collect all params into a map.
+The returned value is valid until the request object is released. Any future calls to Params method will return the modified value. Do not store references to returned value. Make copies instead.
+
+```go title="Signature"
+func (r *Request) Params() iter.Seq2[string, []string]
+```
+
 ### AddParam
 
 AddParam method adds a single param field and its value in the request instance.
@@ -327,6 +390,9 @@ AddParam method adds a single param field and its value in the request instance.
 ```go title="Signature"
 func (r *Request) AddParam(key, val string) *Request
 ```
+
+<details>
+<summary>Example</summary>
 
 ```go title="Example"
 req := client.AcquireRequest()
@@ -343,9 +409,6 @@ if err != nil {
 
 fmt.Println(string(resp.Body()))
 ```
-
-<details>
-<summary>Click here to see the result</summary>
 
 ```json
 {
@@ -396,6 +459,9 @@ It will override param, which has been set in client instance.
 func (r *Request) SetParamsWithStruct(v any) *Request
 ```
 
+<details>
+<summary>Example</summary>
+
 ```go title="Example"
 req := client.AcquireRequest()
 defer client.ReleaseRequest(req)
@@ -418,9 +484,6 @@ if err != nil {
 
 fmt.Println(string(resp.Body()))
 ```
-
-<details>
-<summary>Click here to see the result</summary>
 
 ```json
 {
@@ -502,6 +565,14 @@ Cookie returns the cookie set in the request instance. If the cookie doesn't exi
 func (r *Request) Cookie(key string) string
 ```
 
+### Cookies
+
+Cookies returns all cookies in the request using an iterator. You can use `maps.Collect()` to collect all cookies into a map.
+
+```go title="Signature"
+func (r *Request) Cookies() iter.Seq2[string, string]
+```
+
 ### SetCookie
 
 SetCookie method sets a single cookie field and its value in the request instance.
@@ -520,6 +591,9 @@ It will override the cookie which is set in the client instance.
 func (r *Request) SetCookies(m map[string]string) *Request
 ```
 
+<details>
+<summary>Example</summary>
+
 ```go title="Example"
 req := client.AcquireRequest()
 defer client.ReleaseRequest(req)
@@ -536,9 +610,6 @@ if err != nil {
 
 fmt.Println(string(resp.Body()))
 ```
-
-<details>
-<summary>Click here to see the result</summary>
 
 ```json
 {
@@ -575,6 +646,14 @@ PathParam returns the path param set in the request instance. If the path param 
 func (r *Request) PathParam(key string) string
 ```
 
+### PathParams
+
+PathParams returns all path params in the request using an iterator. You can use `maps.Collect()` to collect all path params into a map.
+
+```go title="Signature"
+func (r *Request) PathParams() iter.Seq2[string, string]
+```
+
 ### SetPathParam
 
 SetPathParam method sets a single path param field and its value in the request instance.
@@ -583,6 +662,9 @@ It will override path param which set in client instance.
 ```go title="Signature"
 func (r *Request) SetPathParam(key, val string) *Request
 ```
+
+<details>
+<summary>Example</summary>
 
 ```go title="Example"
 req := client.AcquireRequest()
@@ -597,9 +679,6 @@ if err != nil {
 
 fmt.Println(string(resp.Body()))
 ```
-
-<details>
-<summary>Click here to see the result</summary>
 
 ```plaintext
 Gofiber
@@ -682,6 +761,14 @@ FormData method returns form data value via key, this method will visit all fiel
 func (r *Request) FormData(key string) []string
 ```
 
+### AllFormData
+
+AllFormData returns all form data in the request using an iterator. You can use `maps.Collect()` to collect all form data into a map.
+
+```go title="Signature"
+func (r *Request) AllFormData() iter.Seq2[string, []string]
+```
+
 ### AddFormData
 
 AddFormData method adds a single form data field and its value in the request instance.
@@ -689,6 +776,9 @@ AddFormData method adds a single form data field and its value in the request in
 ```go title="Signature"
 func (r *Request) AddFormData(key, val string) *Request
 ```
+
+<details>
+<summary>Example</summary>
 
 ```go title="Example"
 req := client.AcquireRequest()
@@ -705,9 +795,6 @@ if err != nil {
 
 fmt.Println(string(resp.Body()))
 ```
-
-<details>
-<summary>Click here to see the result</summary>
 
 ```json
 {
@@ -735,6 +822,9 @@ SetFormData method sets a single form data field and its value in the request in
 func (r *Request) SetFormData(key, val string) *Request 
 ```
 
+<details>
+<summary>Example</summary>
+
 ```go title="Example"
 req := client.AcquireRequest()
 defer client.ReleaseRequest(req)
@@ -749,9 +839,6 @@ if err != nil {
 
 fmt.Println(string(resp.Body()))
 ```
-
-<details>
-<summary>Click here to see the result</summary>
 
 ```json
 {
@@ -817,6 +904,15 @@ If the name field is empty, it will try to match path.
 func (r *Request) File(name string) *File
 ```
 
+### Files
+
+Files method returns all files in request instance.
+The returned value is valid until the request object is released. Any future calls to Files method will return the modified value. Do not store references to returned value. Make copies instead.
+
+```go title="Signature"
+func (r *Request) Files() []*File
+```
+
 ### FileByPath
 
 FileByPath returns file ptr store in request obj by path.
@@ -833,6 +929,9 @@ AddFile method adds a single file field and its value in the request instance vi
 func (r *Request) AddFile(path string) *Request
 ```
 
+<details>
+<summary>Example</summary>
+
 ```go title="Example"
 req := client.AcquireRequest()
 defer client.ReleaseRequest(req)
@@ -846,9 +945,6 @@ if err != nil {
 
 fmt.Println(string(resp.Body()))
 ```
-
-<details>
-<summary>Click here to see the result</summary>
 
 ```json
 {
@@ -872,6 +968,9 @@ AddFileWithReader method adds a single field and its value in the request instan
 func (r *Request) AddFileWithReader(name string, reader io.ReadCloser) *Request
 ```
 
+<details>
+<summary>Example</summary>
+
 ```go title="Example"
 req := client.AcquireRequest()
 defer client.ReleaseRequest(req)
@@ -886,9 +985,6 @@ if err != nil {
 
 fmt.Println(string(resp.Body()))
 ```
-
-<details>
-<summary>Click here to see the result</summary>
 
 ```json
 {
@@ -929,6 +1025,9 @@ It will override timeout which set in client instance.
 func (r *Request) SetTimeout(t time.Duration) *Request
 ```
 
+<details>
+<summary>Example 1</summary>
+
 ```go title="Example 1"
 req := client.AcquireRequest()
 defer client.ReleaseRequest(req)
@@ -943,9 +1042,6 @@ if err != nil {
 fmt.Println(string(resp.Body()))
 ```
 
-<details>
-<summary>Click here to see the result</summary>
-
 ```json
 {
   "args": {}, 
@@ -957,6 +1053,9 @@ fmt.Println(string(resp.Body()))
 ```
 
 </details>
+
+<details>
+<summary>Example 2</summary>
 
 ```go title="Example 2"
 req := client.AcquireRequest()
@@ -971,9 +1070,6 @@ if err != nil {
 
 fmt.Println(string(resp.Body()))
 ```
-
-<details>
-<summary>Click here to see the result</summary>
 
 ```shell
 panic: timeout or cancel
@@ -1061,6 +1157,14 @@ QueryParam is a wrapper which wrap url.Values, the query string and formdata in 
 type QueryParam struct {
     *fasthttp.Args
 }
+```
+
+### Keys
+
+Keys method returns all keys in the query params.
+
+```go title="Signature"
+func (p *QueryParam) Keys() []string
 ```
 
 ### AddParams
@@ -1240,6 +1344,14 @@ FormData is a wrapper of fasthttp.Args and it is used for url encode body and fi
 type FormData struct {
     *fasthttp.Args
 }
+```
+
+### Keys
+
+Keys method returns all keys in the form data.
+
+```go title="Signature"
+func (f *FormData) Keys() []string
 ```
 
 ### AddData

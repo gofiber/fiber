@@ -1,7 +1,6 @@
 package client
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -241,8 +240,8 @@ func parserRequestBodyFile(req *Request) error {
 		return fmt.Errorf("write formdata error: %w", err)
 	}
 
-	// add file
-	b := make([]byte, 512)
+	// add files
+	fileBuf := make([]byte, 1<<20) // Allocate 1MB buffer
 	for i, v := range req.files {
 		if v.name == "" && v.path == "" {
 			return ErrFileNoName
@@ -273,24 +272,12 @@ func parserRequestBodyFile(req *Request) error {
 			return fmt.Errorf("create file error: %w", err)
 		}
 
-		for {
-			n, err := v.reader.Read(b)
-			if err != nil && !errors.Is(err, io.EOF) {
-				return fmt.Errorf("read file error: %w", err)
-			}
-
-			if errors.Is(err, io.EOF) {
-				break
-			}
-
-			_, err = w.Write(b[:n])
-			if err != nil {
-				return fmt.Errorf("write file error: %w", err)
-			}
+		// Copy the file from reader to multipart writer
+		if _, err := io.CopyBuffer(w, v.reader, fileBuf); err != nil {
+			return fmt.Errorf("failed to copy file data: %w", err)
 		}
 
-		err = v.reader.Close()
-		if err != nil {
+		if err := v.reader.Close(); err != nil {
 			return fmt.Errorf("close file error: %w", err)
 		}
 	}
