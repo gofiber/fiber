@@ -8,12 +8,15 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// respHeaderBinding is the respHeader binder for response header.
 type respHeaderBinding struct{}
 
+// Name returns the binding name.
 func (*respHeaderBinding) Name() string {
 	return "respHeader"
 }
 
+// Bind parses the response header and returns the result.
 func (b *respHeaderBinding) Bind(resp *fasthttp.Response, out any) error {
 	data := make(map[string][]string)
 	resp.Header.VisitAll(func(key, val []byte) {

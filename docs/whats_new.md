@@ -22,10 +22,12 @@ Here's a quick overview of the changes in Fiber `v3`:
 - [🔄️ Redirect](#-redirect)
 - [🌎 Client package](#-client-package)
 - [🧰 Generic functions](#-generic-functions)
+- [📃 Log](#-log)
 - [🧬 Middlewares](#-middlewares)
   - [CORS](#cors)
   - [CSRF](#csrf)
   - [Session](#session)
+  - [Logger](#logger)
   - [Filesystem](#filesystem)
   - [Monitor](#monitor)
   - [Healthcheck](#healthcheck)
@@ -33,7 +35,7 @@ Here's a quick overview of the changes in Fiber `v3`:
 
 ## Drop for old Go versions
 
-Fiber `v3` drops support for Go versions below `1.22`. We recommend upgrading to Go `1.22` or higher to use Fiber `v3`.
+Fiber `v3` drops support for Go versions below `1.23`. We recommend upgrading to Go `1.23` or higher to use Fiber `v3`.
 
 ## 🚀 App
 
@@ -128,6 +130,25 @@ In this example, a custom context `CustomCtx` is created with an additional meth
 
 </details>
 
+#### TLS AutoCert support (ACME / Let's Encrypt)
+
+We have added native support for automatic certificates management from Let's Encrypt and any other ACME-based providers.
+
+```go
+// Certificate manager
+certManager := &autocert.Manager{
+    Prompt: autocert.AcceptTOS,
+    // Replace with your domain name
+    HostPolicy: autocert.HostWhitelist("example.com"),
+    // Folder to store the certificates
+    Cache: autocert.DirCache("./certs"),
+}
+
+app.Listen(":444", fiber.ListenConfig{
+    AutoCertManager:    certManager,
+})
+```
+
 ## 🗺 Router
 
 We have slightly adapted our router interface
@@ -173,22 +194,22 @@ The route method is now like [`Express`](https://expressjs.com/de/api.html#app.r
 
 ```go
 app.Route("/api").Route("/user/:id?")
-  .Get(func(c fiber.Ctx) error {
-    // Get user
-    return c.JSON(fiber.Map{"message": "Get user", "id": c.Params("id")})
-  })
-  .Post(func(c fiber.Ctx) error {
-    // Create user
-    return c.JSON(fiber.Map{"message": "User created"})
-  })
-  .Put(func(c fiber.Ctx) error {
-    // Update user
-    return c.JSON(fiber.Map{"message": "User updated", "id": c.Params("id")})
-  })
-  .Delete(func(c fiber.Ctx) error {
-    // Delete user
-    return c.JSON(fiber.Map{"message": "User deleted", "id": c.Params("id")})
-  })
+    .Get(func(c fiber.Ctx) error {
+        // Get user
+        return c.JSON(fiber.Map{"message": "Get user", "id": c.Params("id")})
+    })
+    .Post(func(c fiber.Ctx) error {
+        // Create user
+        return c.JSON(fiber.Map{"message": "User created"})
+    })
+    .Put(func(c fiber.Ctx) error {
+        // Update user
+        return c.JSON(fiber.Map{"message": "User updated", "id": c.Params("id")})
+    })
+    .Delete(func(c fiber.Ctx) error {
+        // Delete user
+        return c.JSON(fiber.Map{"message": "User deleted", "id": c.Params("id")})
+    })
 ```
 
 </details>
@@ -207,14 +228,14 @@ Registering a subapp is now also possible via the [`Use`](./api/app#use) method 
 ```go
 // register mulitple prefixes
 app.Use(["/v1", "/v2"], func(c fiber.Ctx) error {
-  // Middleware for /v1 and /v2
-  return c.Next() 
+    // Middleware for /v1 and /v2
+    return c.Next() 
 })
 
 // define subapp
 api := fiber.New()
 api.Get("/user", func(c fiber.Ctx) error {
-  return c.SendString("User")
+    return c.SendString("User")
 })
 // register subapp
 app.Use("/api", api)
@@ -240,14 +261,14 @@ The `app.Test()` method now allows users to customize their test configurations:
 // Create a test app with a handler to test
 app := fiber.New()
 app.Get("/", func(c fiber.Ctx) {
-  return c.SendString("hello world")
+    return c.SendString("hello world")
 })
 
 // Define the HTTP request and custom TestConfig to test the handler
 req := httptest.NewRequest(MethodGet, "/", nil)
 testConfig := fiber.TestConfig{
-  Timeout:       0,
-  FailOnTimeout: false,
+    Timeout:       0,
+    FailOnTimeout: false,
 }
 
 // Test the handler using the request and testConfig
@@ -275,8 +296,8 @@ If a custom `TestConfig` isn't provided, then the following will be used:
 
 ```go
 testConfig := fiber.TestConfig{
-  Timeout:       time.Second,
-  FailOnTimeout: true,
+    Timeout:       time.Second,
+    FailOnTimeout: true,
 }
 ```
 
@@ -286,8 +307,8 @@ An empty `TestConfig` is the equivalent of:
 
 ```go
 testConfig := fiber.TestConfig{
-  Timeout:       0,
-  FailOnTimeout: false,
+    Timeout:       0,
+    FailOnTimeout: false,
 }
 ```
 
@@ -310,6 +331,7 @@ testConfig := fiber.TestConfig{
 - **SendString**: Similar to Express.js, sends a string as the response.
 - **String**: Similar to Express.js, converts a value to a string.
 - **ViewBind**: Binds data to a view, replacing the old `Bind` method.
+- **CBOR**: Introducing [CBOR](https://cbor.io/) binary encoding format for both request & response body. CBOR is a binary data serialization format which is both compact and efficient, making it ideal for use in web applications.
 
 ### Removed Methods
 
@@ -337,7 +359,7 @@ testConfig := fiber.TestConfig{
 
 ### SendStreamWriter
 
-In v3, we added support for buffered streaming by providing the new method `SendStreamWriter()`.
+In v3, we introduced support for buffered streaming with the addition of the `SendStreamWriter` method:
 
 ```go
 func (c Ctx) SendStreamWriter(streamWriter func(w *bufio.Writer))
@@ -351,22 +373,22 @@ With this new method, you can implement:
 
 ```go
 app.Get("/sse", func(c fiber.Ctx) {
-  c.Set("Content-Type", "text/event-stream")
-  c.Set("Cache-Control", "no-cache")
-  c.Set("Connection", "keep-alive")
-  c.Set("Transfer-Encoding", "chunked")
+    c.Set("Content-Type", "text/event-stream")
+    c.Set("Cache-Control", "no-cache")
+    c.Set("Connection", "keep-alive")
+    c.Set("Transfer-Encoding", "chunked")
 
-  return c.SendStreamWriter(func(w *bufio.Writer) {
-    for {
-      fmt.Fprintf(w, "event: my-event\n")
-      fmt.Fprintf(w, "data: Hello SSE\n\n")
+    return c.SendStreamWriter(func(w *bufio.Writer) {
+        for {
+            fmt.Fprintf(w, "event: my-event\n")
+            fmt.Fprintf(w, "data: Hello SSE\n\n")
 
-      if err := w.Flush(); err != nil {
-        log.Print("Client disconnected!")
-        return
-      }
-    }
-  })
+            if err := w.Flush(); err != nil {
+                log.Print("Client disconnected!")
+                return
+            }
+        }
+    })
 })
 ```
 
@@ -394,17 +416,17 @@ Fiber v3 introduces a new binding mechanism that simplifies the process of bindi
 
 ```go
 type User struct {
-  ID    int    `params:"id"`
-  Name  string `json:"name"`
-  Email string `json:"email"`
+    ID    int    `params:"id"`
+    Name  string `json:"name"`
+    Email string `json:"email"`
 }
 
 app.Post("/user/:id", func(c fiber.Ctx) error {
-  var user User
-  if err := c.Bind().Body(&user); err != nil {
-    return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
-  }
-  return c.JSON(user)
+    var user User
+    if err := c.Bind().Body(&user); err != nil {
+        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+    }
+    return c.JSON(user)
 })
 ```
 
@@ -427,11 +449,11 @@ Fiber v3 enhances the redirect functionality by introducing new methods and impr
 
 ```go
 app.Get("/old", func(c fiber.Ctx) error {
-  return c.Redirect().To("/new")
+    return c.Redirect().To("/new")
 })
 
 app.Get("/new", func(c fiber.Ctx) error {
-  return c.SendString("Welcome to the new route!")
+    return c.SendString("Welcome to the new route!")
 })
 ```
 
@@ -458,22 +480,22 @@ Fiber v3 introduces new generic functions that provide additional utility and fl
 package main
 
 import (
-  "strconv"
-  "github.com/gofiber/fiber/v3"
+    "strconv"
+    "github.com/gofiber/fiber/v3"
 )
 
 func main() {
-  app := fiber.New()
+    app := fiber.New()
 
-  app.Get("/convert", func(c fiber.Ctx) error {
-    value, err := Convert[string](c.Query("value"), strconv.Atoi, 0)
-    if err != nil {
-      return c.Status(fiber.StatusBadRequest).SendString(err.Error())
-    }
-    return c.JSON(value)
-  })
+    app.Get("/convert", func(c fiber.Ctx) error {
+        value, err := Convert[string](c.Query("value"), strconv.Atoi, 0)
+        if err != nil {
+            return c.Status(fiber.StatusBadRequest).SendString(err.Error())
+        }
+        return c.JSON(value)
+    })
 
-  app.Listen(":3000")
+    app.Listen(":3000")
 }
 ```
 
@@ -537,20 +559,19 @@ curl "http://localhost:3000/user/5"
 package main
 
 import (
-  "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3"
 )
 
 func main() {
-  app := fiber.New()
+    app := fiber.New()
 
-  app.Get("/params/:id", func(c fiber.Ctx) error {
-    id := Params[int](c, "id", 0)
-    return c.JSON(id)
-  })
+    app.Get("/params/:id", func(c fiber.Ctx) error {
+        id := Params[int](c, "id", 0)
+        return c.JSON(id)
+    })
 
-  app.Listen(":3000")
+    app.Listen(":3000")
 }
-
 ```
 
 ```sh
@@ -570,24 +591,23 @@ curl "http://localhost:3000/params/abc"
 package main
 
 import (
-  "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3"
 )
 
 func main() {
-  app := fiber.New()
+    app := fiber.New()
 
-  app.Get("/query", func(c fiber.Ctx) error {
-    age := Query[int](c, "age", 0)
-    return c.JSON(age)
-  })
+    app.Get("/query", func(c fiber.Ctx) error {
+        age := Query[int](c, "age", 0)
+        return c.JSON(age)
+    })
 
-  app.Listen(":3000")
+    app.Listen(":3000")
 }
 
 ```
 
 ```sh
-
 curl "http://localhost:3000/query?age=25"
 # Output: 25
 
@@ -604,18 +624,18 @@ curl "http://localhost:3000/query?age=abc"
 package main
 
 import (
-  "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3"
 )
 
 func main() {
-  app := fiber.New()
+    app := fiber.New()
 
-  app.Get("/header", func(c fiber.Ctx) error {
-    userAgent := GetReqHeader[string](c, "User-Agent", "Unknown")
-    return c.JSON(userAgent)
-  })
+    app.Get("/header", func(c fiber.Ctx) error {
+        userAgent := GetReqHeader[string](c, "User-Agent", "Unknown")
+        return c.JSON(userAgent)
+    })
 
-  app.Listen(":3000")
+    app.Listen(":3000")
 }
 ```
 
@@ -628,6 +648,12 @@ curl "http://localhost:3000/header"
 ```
 
 </details>
+
+## 📃 Log
+
+`fiber.AllLogger` interface now has a new method called `Logger`. This method can be used to get the underlying logger instance from the Fiber logger middleware. This is useful when you want to configure the logger middleware with a custom logger and still want to access the underlying logger instance.
+
+You can find more details about this feature in [/docs/api/log.md](./api/log.md#logger).
 
 ## 🧬 Middlewares
 
@@ -704,6 +730,49 @@ The Session middleware has undergone key changes in v3 to improve functionality 
 
 For more details on these changes and migration instructions, check the [Session Middleware Migration Guide](./middleware/session.md#migration-guide).
 
+### Logger
+
+New helper function called `LoggerToWriter` has been added to the logger middleware. This function allows you to use 3rd party loggers such as `logrus` or `zap` with the Fiber logger middleware without any extra afford. For example, you can use `zap` with Fiber logger middleware like this:
+
+<details>
+<summary>Example</summary>
+
+```go
+package main
+
+import (
+    "github.com/gofiber/contrib/fiberzap/v2"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/log"
+    "github.com/gofiber/fiber/v3/middleware/logger"
+)
+
+func main() {
+    // Create a new Fiber instance
+    app := fiber.New()
+
+    // Create a new zap logger which is compatible with Fiber AllLogger interface
+    zap := fiberzap.NewLogger(fiberzap.LoggerConfig{
+        ExtraKeys: []string{"request_id"},
+    })
+
+    // Use the logger middleware with zerolog logger
+    app.Use(logger.New(logger.Config{
+        Output: logger.LoggerToWriter(zap, log.LevelDebug),
+    }))
+
+    // Define a route
+    app.Get("/", func(c fiber.Ctx) error {
+        return c.SendString("Hello, World!")
+    })
+
+    // Start server on http://localhost:3000
+    app.Listen(":3000")
+}
+```
+
+</details>
+
 ### Filesystem
 
 We've decided to remove filesystem middleware to clear up the confusion between static and filesystem middleware.
@@ -753,7 +822,7 @@ Since we've removed `app.Static()`, you need to move methods to static middlewar
 app.Static("/", "./public")
 app.Static("/prefix", "./public")
 app.Static("/prefix", "./public", Static{
-  Index: "index.htm",
+    Index: "index.htm",
 })
 app.Static("*", "./public/index.html")
 ```
@@ -763,7 +832,7 @@ app.Static("*", "./public/index.html")
 app.Get("/*", static.New("./public"))
 app.Get("/prefix*", static.New("./public"))
 app.Get("/prefix*", static.New("./public", static.Config{
-  IndexNames: []string{"index.htm", "index.html"},
+    IndexNames: []string{"index.htm", "index.html"},
 }))
 app.Get("*", static.New("./public/index.html"))
 ```
@@ -779,25 +848,25 @@ We've renamed `EnableTrustedProxyCheck` to `TrustProxy` and moved `TrustedProxie
 ```go
 // Before
 app := fiber.New(fiber.Config{
-  // EnableTrustedProxyCheck enables the trusted proxy check.
-  EnableTrustedProxyCheck: true,
-  // TrustedProxies is a list of trusted proxy IP ranges/addresses.
-  TrustedProxies: []string{"0.8.0.0", "127.0.0.0/8", "::1/128"},
+    // EnableTrustedProxyCheck enables the trusted proxy check.
+    EnableTrustedProxyCheck: true,
+    // TrustedProxies is a list of trusted proxy IP ranges/addresses.
+    TrustedProxies: []string{"0.8.0.0", "127.0.0.0/8", "::1/128"},
 })
 ```
 
 ```go
 // After
 app := fiber.New(fiber.Config{
-  // TrustProxy enables the trusted proxy check
-  TrustProxy: true,
-  // TrustProxyConfig allows for configuring trusted proxies.
-  TrustProxyConfig: fiber.TrustProxyConfig{
-    // Proxies is a list of trusted proxy IP ranges/addresses.
-    Proxies: []string{"0.8.0.0"},
-    // Trust all loop-back IP addresses (127.0.0.0/8, ::1/128)
-    Loopback: true,
-  }
+    // TrustProxy enables the trusted proxy check
+    TrustProxy: true,
+    // TrustProxyConfig allows for configuring trusted proxies.
+    TrustProxyConfig: fiber.TrustProxyConfig{
+        // Proxies is a list of trusted proxy IP ranges/addresses.
+        Proxies: []string{"0.8.0.0"},
+        // Trust all loop-back IP addresses (127.0.0.0/8, ::1/128)
+        Loopback: true,
+    }
 })
 ```
 
@@ -838,21 +907,21 @@ app.Route("/api", func(apiGrp Router) {
 ```go
 // After
 app.Route("/api").Route("/user/:id?")
-  .Get(func(c fiber.Ctx) error {
-    // Get user
-    return c.JSON(fiber.Map{"message": "Get user", "id": c.Params("id")})
-  })
-  .Post(func(c fiber.Ctx) error {
-    // Create user
-    return c.JSON(fiber.Map{"message": "User created"})
-  });
+    .Get(func(c fiber.Ctx) error {
+        // Get user
+        return c.JSON(fiber.Map{"message": "Get user", "id": c.Params("id")})
+    })
+    .Post(func(c fiber.Ctx) error {
+        // Create user
+        return c.JSON(fiber.Map{"message": "User created"})
+    });
 ```
 
 ### 🗺 RebuildTree
 
-We have added a new method that allows the route tree stack to be rebuilt in runtime, with it, you can add a route while your application is running and rebuild the route tree stack to make it registered and available for calls.
+We introduced a new method that enables rebuilding the route tree stack at runtime. This allows you to add routes dynamically while your application is running and update the route tree to make the new routes available for use.
 
-You can find more reference on it in the [app](./api/app.md#rebuildtree):
+For more details, refer to the [app documentation](./api/app.md#rebuildtree):
 
 #### Example Usage
 
@@ -868,10 +937,9 @@ app.Get("/define", func(c Ctx) error {  // Define a new route dynamically
 })
 ```
 
-In this example, a new route is defined and then `RebuildTree()` is called to make sure the new route is registered and available.
+In this example, a new route is defined, and `RebuildTree()` is called to ensure the new route is registered and available.
 
-**Note:** Use this method with caution. It is **not** thread-safe and calling it can be very performance-intensive, so it should be used sparingly and only in
-development mode. Avoid using it concurrently.
+Note: Use this method with caution. It is **not** thread-safe and can be very performance-intensive. Therefore, it should be used sparingly and primarily in development mode. It should not be invoke concurrently.
 
 ### 🧠 Context
 
@@ -894,18 +962,18 @@ In Fiber v3, the `Ctx` parameter in handlers is now an interface, which means th
 package main
 
 import (
-  "github.com/gofiber/fiber/v2"
+    "github.com/gofiber/fiber/v2"
 )
 
 func main() {
-  app := fiber.New()
+    app := fiber.New()
 
-  // Route Handler with *fiber.Ctx
-  app.Get("/", func(c *fiber.Ctx) error {
-    return c.SendString("Hello, World!")
-  })
+    // Route Handler with *fiber.Ctx
+    app.Get("/", func(c *fiber.Ctx) error {
+        return c.SendString("Hello, World!")
+    })
 
-  app.Listen(":3000")
+    app.Listen(":3000")
 }
 ```
 
@@ -915,18 +983,18 @@ func main() {
 package main
 
 import (
-  "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3"
 )
 
 func main() {
-  app := fiber.New()
+    app := fiber.New()
 
-  // Route Handler without *fiber.Ctx
-  app.Get("/", func(c fiber.Ctx) error {
-    return c.SendString("Hello, World!")
-  })
+    // Route Handler without *fiber.Ctx
+    app.Get("/", func(c fiber.Ctx) error {
+        return c.SendString("Hello, World!")
+    })
 
-  app.Listen(":3000")
+    app.Listen(":3000")
 }
 ```
 
@@ -950,22 +1018,22 @@ The `Parser` section in Fiber v3 has undergone significant changes to improve fu
     ```go
     // Before
     app.Post("/user", func(c *fiber.Ctx) error {
-      var user User
-      if err := c.BodyParser(&user); err != nil {
-        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
-      }
-      return c.JSON(user)
+        var user User
+        if err := c.BodyParser(&user); err != nil {
+            return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+        }
+        return c.JSON(user)
     })
     ```
 
     ```go
     // After
     app.Post("/user", func(c fiber.Ctx) error {
-      var user User
-      if err := c.Bind().Body(&user); err != nil {
-        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
-      }
-      return c.JSON(user)
+        var user User
+        if err := c.Bind().Body(&user); err != nil {
+            return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+        }
+        return c.JSON(user)
     })
     ```
 
@@ -979,22 +1047,22 @@ The `Parser` section in Fiber v3 has undergone significant changes to improve fu
     ```go
     // Before
     app.Get("/user/:id", func(c *fiber.Ctx) error {
-      var params Params
-      if err := c.ParamsParser(&params); err != nil {
-        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
-      }
-      return c.JSON(params)
+        var params Params
+        if err := c.ParamsParser(&params); err != nil {
+            return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+        }
+        return c.JSON(params)
     })
     ```
 
     ```go
     // After
     app.Get("/user/:id", func(c fiber.Ctx) error {
-      var params Params
-      if err := c.Bind().URL(&params); err != nil {
-        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
-      }
-      return c.JSON(params)
+        var params Params
+        if err := c.Bind().URL(&params); err != nil {
+            return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+        }
+        return c.JSON(params)
     })
     ```
 
@@ -1008,22 +1076,22 @@ The `Parser` section in Fiber v3 has undergone significant changes to improve fu
     ```go
     // Before
     app.Get("/search", func(c *fiber.Ctx) error {
-      var query Query
-      if err := c.QueryParser(&query); err != nil {
-        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
-      }
-      return c.JSON(query)
+        var query Query
+        if err := c.QueryParser(&query); err != nil {
+            return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+        }
+        return c.JSON(query)
     })
     ```
 
     ```go
     // After
     app.Get("/search", func(c fiber.Ctx) error {
-      var query Query
-      if err := c.Bind().Query(&query); err != nil {
-        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
-      }
-      return c.JSON(query)
+        var query Query
+        if err := c.Bind().Query(&query); err != nil {
+            return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+        }
+        return c.JSON(query)
     })
     ```
 
@@ -1037,22 +1105,22 @@ The `Parser` section in Fiber v3 has undergone significant changes to improve fu
     ```go
     // Before
     app.Get("/cookie", func(c *fiber.Ctx) error {
-      var cookie Cookie
-      if err := c.CookieParser(&cookie); err != nil {
-        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
-      }
-      return c.JSON(cookie)
+        var cookie Cookie
+        if err := c.CookieParser(&cookie); err != nil {
+            return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+        }
+        return c.JSON(cookie)
     })
     ```
 
     ```go
     // After
     app.Get("/cookie", func(c fiber.Ctx) error {
-      var cookie Cookie
-      if err := c.Bind().Cookie(&cookie); err != nil {
-        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
-      }
-      return c.JSON(cookie)
+        var cookie Cookie
+        if err := c.Bind().Cookie(&cookie); err != nil {
+            return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+        }
+        return c.JSON(cookie)
     })
     ```
 
@@ -1072,14 +1140,14 @@ Fiber v3 enhances the redirect functionality by introducing new methods and impr
     ```go
     // Before
     app.Get("/old", func(c *fiber.Ctx) error {
-      return c.RedirectToRoute("newRoute")
+        return c.RedirectToRoute("newRoute")
     })
     ```
 
     ```go
     // After
     app.Get("/old", func(c fiber.Ctx) error {
-      return c.Redirect().Route("newRoute")
+        return c.Redirect().Route("newRoute")
     })
     ```
 
@@ -1093,14 +1161,14 @@ Fiber v3 enhances the redirect functionality by introducing new methods and impr
     ```go
     // Before
     app.Get("/back", func(c *fiber.Ctx) error {
-      return c.RedirectBack()
+        return c.RedirectBack()
     })
     ```
 
     ```go
     // After
     app.Get("/back", func(c fiber.Ctx) error {
-      return c.Redirect().Back()
+        return c.Redirect().Back()
     })
     ```
 
@@ -1114,14 +1182,14 @@ Fiber v3 enhances the redirect functionality by introducing new methods and impr
     ```go
     // Before
     app.Get("/old", func(c *fiber.Ctx) error {
-      return c.Redirect("/new")
+        return c.Redirect("/new")
     })
     ```
 
     ```go
     // After
     app.Get("/old", func(c fiber.Ctx) error {
-      return c.Redirect().To("/new")
+        return c.Redirect().To("/new")
     })
     ```
 
@@ -1174,18 +1242,18 @@ The CORS middleware has been updated to use slices instead of strings for the `A
 ```go
 // Before
 app.Use(cors.New(cors.Config{
-  AllowOrigins: "https://example.com,https://example2.com",
-  AllowMethods: strings.Join([]string{fiber.MethodGet, fiber.MethodPost}, ","),
-  AllowHeaders: "Content-Type",
-  ExposeHeaders: "Content-Length",
+    AllowOrigins: "https://example.com,https://example2.com",
+    AllowMethods: strings.Join([]string{fiber.MethodGet, fiber.MethodPost}, ","),
+    AllowHeaders: "Content-Type",
+    ExposeHeaders: "Content-Length",
 }))
 
 // After
 app.Use(cors.New(cors.Config{
-  AllowOrigins: []string{"https://example.com", "https://example2.com"},
-  AllowMethods: []string{fiber.MethodGet, fiber.MethodPost},
-  AllowHeaders: []string{"Content-Type"},
-  ExposeHeaders: []string{"Content-Length"},
+    AllowOrigins: []string{"https://example.com", "https://example2.com"},
+    AllowMethods: []string{fiber.MethodGet, fiber.MethodPost},
+    AllowHeaders: []string{"Content-Type"},
+    ExposeHeaders: []string{"Content-Length"},
 }))
 ```
 
@@ -1196,12 +1264,12 @@ app.Use(cors.New(cors.Config{
 ```go
 // Before
 app.Use(csrf.New(csrf.Config{
-  Expiration: 10 * time.Minute,
+    Expiration: 10 * time.Minute,
 }))
 
 // After
 app.Use(csrf.New(csrf.Config{
-  IdleTimeout: 10 * time.Minute,
+    IdleTimeout: 10 * time.Minute,
 }))
 ```
 
@@ -1214,28 +1282,28 @@ You need to move filesystem middleware to static middleware due to it has been r
 ```go
 // Before
 app.Use(filesystem.New(filesystem.Config{
-  Root: http.Dir("./assets"),
+    Root: http.Dir("./assets"),
 }))
 
 app.Use(filesystem.New(filesystem.Config{
-  Root:         http.Dir("./assets"),
-  Browse:       true,
-  Index:        "index.html",
-  MaxAge:       3600,
+    Root:         http.Dir("./assets"),
+    Browse:       true,
+    Index:        "index.html",
+    MaxAge:       3600,
 }))
 ```
 
 ```go
 // After
 app.Use(static.New("", static.Config{
-  FS: os.DirFS("./assets"),
+    FS: os.DirFS("./assets"),
 }))
 
 app.Use(static.New("", static.Config{
-  FS:           os.DirFS("./assets"),
-  Browse:       true,
-  IndexNames:   []string{"index.html"},
-  MaxAge:       3600,
+    FS:           os.DirFS("./assets"),
+    Browse:       true,
+    IndexNames:   []string{"index.html"},
+    MaxAge:       3600,
 }))
 ```
 
@@ -1246,14 +1314,14 @@ Previously, the Healthcheck middleware was configured with a combined setup for 
 ```go
 //before
 app.Use(healthcheck.New(healthcheck.Config{
-  LivenessProbe: func(c fiber.Ctx) bool {
-    return true
-  },
-  LivenessEndpoint: "/live",
-  ReadinessProbe: func(c fiber.Ctx) bool {
-    return serviceA.Ready() && serviceB.Ready() && ...
-  },
-  ReadinessEndpoint: "/ready",
+    LivenessProbe: func(c fiber.Ctx) bool {
+        return true
+    },
+    LivenessEndpoint: "/live",
+    ReadinessProbe: func(c fiber.Ctx) bool {
+        return serviceA.Ready() && serviceB.Ready() && ...
+    },
+    ReadinessEndpoint: "/ready",
 }))
 ```
 
@@ -1264,9 +1332,9 @@ With the new version, each health check endpoint is configured separately, allow
 
 // Default liveness endpoint configuration
 app.Get(healthcheck.DefaultLivenessEndpoint, healthcheck.NewHealthChecker(healthcheck.Config{
-  Probe: func(c fiber.Ctx) bool {
-    return true
-  },
+    Probe: func(c fiber.Ctx) bool {
+        return true
+    },
 }))
 
 // Default readiness endpoint configuration
@@ -1275,9 +1343,9 @@ app.Get(healthcheck.DefaultReadinessEndpoint, healthcheck.NewHealthChecker())
 // New default startup endpoint configuration
 // Default endpoint is /startupz
 app.Get(healthcheck.DefaultStartupEndpoint, healthcheck.NewHealthChecker(healthcheck.Config{
-  Probe: func(c fiber.Ctx) bool {
-    return serviceA.Ready() && serviceB.Ready() && ...
-  },
+    Probe: func(c fiber.Ctx) bool {
+        return serviceA.Ready() && serviceB.Ready() && ...
+    },
 }))
 
 // Custom liveness endpoint configuration

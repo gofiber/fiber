@@ -12,7 +12,7 @@ These docs are for **Fiber v3**, which was released on **Month xx, 202x**.
 
 ### Installation
 
-First, [download](https://go.dev/dl/) and install Go. Version `1.22` or higher is required.
+First, [download](https://go.dev/dl/) and install Go. Version `1.23` or higher is required.
 
 Installation is done using the [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
 

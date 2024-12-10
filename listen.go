@@ -18,10 +18,12 @@ import (
 	"strconv"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/gofiber/fiber/v3/log"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
+	"golang.org/x/crypto/acme/autocert"
 )
 
 // Figlet text to show Fiber ASCII art on startup message
@@ -37,8 +39,6 @@ const (
 )
 
 // ListenConfig is a struct to customize startup of Fiber.
-//
-// TODO: Add timeout for graceful shutdown.
 type ListenConfig struct {
 	// GracefulContext is a field to shutdown Fiber by given context gracefully.
 	//
@@ -70,6 +70,13 @@ type ListenConfig struct {
 	//
 	// Default: nil
 	OnShutdownSuccess func()
+
+	// AutoCertManager manages TLS certificates automatically using the ACME protocol,
+	// Enables integration with Let's Encrypt or other ACME-compatible providers.
+	//
+	// Default: nil
+	AutoCertManager *autocert.Manager `json:"auto_cert_manager"`
+
 	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only)
 	// WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chosen.
 	//
@@ -94,6 +101,13 @@ type ListenConfig struct {
 	// Default : ""
 	CertClientFile string `json:"cert_client_file"`
 
+	// When the graceful shutdown begins, use this field to set the timeout
+	// duration. If the timeout is reached, OnShutdownError will be called.
+	// Set to 0 to disable the timeout and wait indefinitely.
+	//
+	// Default: 10 * time.Second
+	ShutdownTimeout time.Duration `json:"shutdown_timeout"`
+
 	// When set to true, it will not print out the «Fiber» ASCII art and listening address.
 	//
 	// Default: false
@@ -116,8 +130,9 @@ func listenConfigDefault(config ...ListenConfig) ListenConfig {
 		return ListenConfig{
 			ListenerNetwork: NetworkTCP4,
 			OnShutdownError: func(err error) {
-				log.Fatalf("shutdown: %v", err) //nolint:revive // It's an optipn
+				log.Fatalf("shutdown: %v", err) //nolint:revive // It's an option
 			},
+			ShutdownTimeout: 10 * time.Second,
 		}
 	}
 
@@ -128,7 +143,7 @@ func listenConfigDefault(config ...ListenConfig) ListenConfig {
 
 	if cfg.OnShutdownError == nil {
 		cfg.OnShutdownError = func(err error) {
-			log.Fatalf("shutdown: %v", err) //nolint:revive // It's an optipn
+			log.Fatalf("shutdown: %v", err) //nolint:revive // It's an option
 		}
 	}
 
@@ -176,9 +191,15 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 
 		// Attach the tlsHandler to the config
 		app.SetTLSHandler(tlsHandler)
+	} else if cfg.AutoCertManager != nil {
+		tlsConfig = &tls.Config{
+			MinVersion:     tls.VersionTLS12,
+			GetCertificate: cfg.AutoCertManager.GetCertificate,
+			NextProtos:     []string{"http/1.1", "acme-tls/1"},
+		}
 	}
 
-	if cfg.TLSConfigFunc != nil {
+	if tlsConfig != nil && cfg.TLSConfigFunc != nil {
 		cfg.TLSConfigFunc(tlsConfig)
 	}
 
@@ -472,8 +493,17 @@ func (app *App) printRoutesMessage() {
 func (app *App) gracefulShutdown(ctx context.Context, cfg ListenConfig) {
 	<-ctx.Done()
 
-	if err := app.Shutdown(); err != nil { //nolint:contextcheck // TODO: Implement it
+	var err error
+
+	if cfg.ShutdownTimeout != 0 {
+		err = app.ShutdownWithTimeout(cfg.ShutdownTimeout) //nolint:contextcheck // TODO: Implement it
+	} else {
+		err = app.Shutdown() //nolint:contextcheck // TODO: Implement it
+	}
+
+	if err != nil {
 		cfg.OnShutdownError(err)
+		return
 	}
 
 	if success := cfg.OnShutdownSuccess; success != nil {

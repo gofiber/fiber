@@ -68,6 +68,9 @@ Protocol method returns the HTTP response protocol used for the request.
 func (r *Response) Protocol() string
 ```
 
+<details>
+<summary>Example</summary>
+
 ```go title="Example"
 resp, err := client.Get("https://httpbin.org/get")
 if err != nil {
@@ -76,9 +79,6 @@ if err != nil {
 
 fmt.Println(resp.Protocol())
 ```
-
-<details>
-<summary>Click here to see the result</summary>
 
 ```text
 HTTP/1.1
@@ -94,13 +94,73 @@ Header method returns the response headers.
 func (r *Response) Header(key string) string
 ```
 
+## Headers
+
+Headers returns all headers in the response using an iterator. You can use `maps.Collect()` to collect all headers into a map.
+The returned value is valid until the response object is released. Any future calls to Headers method will return the modified value. Do not store references to returned value. Make copies instead.
+
+```go title="Signature"
+func (r *Response) Headers() iter.Seq2[string, []string] 
+```
+
+<details>
+<summary>Example</summary>
+
+```go title="Example"
+resp, err := client.Get("https://httpbin.org/get")
+if err != nil {
+    panic(err)
+}
+
+for key, values := range resp.Headers() {
+    fmt.Printf("%s => %s\n", key, strings.Join(values, ", "))
+}
+```
+
+```text
+Date => Wed, 04 Dec 2024 15:28:29 GMT
+Connection => keep-alive
+Access-Control-Allow-Origin => *
+Access-Control-Allow-Credentials => true
+```
+
+</details>
+
+<details>
+<summary>Example with maps.Collect()</summary>
+
+```go title="Example with maps.Collect()"
+resp, err := client.Get("https://httpbin.org/get")
+if err != nil {
+    panic(err)
+}
+
+headers := maps.Collect(resp.Headers()) // Collect all headers into a map
+for key, values := range headers {
+    fmt.Printf("%s => %s\n", key, strings.Join(values, ", "))
+}
+```
+
+```text
+Date => Wed, 04 Dec 2024 15:28:29 GMT
+Connection => keep-alive
+Access-Control-Allow-Origin => *
+Access-Control-Allow-Credentials => true
+```
+
+</details>
+
 ## Cookies
 
 Cookies method to access all the response cookies.
+The returned value is valid until the response object is released. Any future calls to Cookies method will return the modified value. Do not store references to returned value. Make copies instead.
 
 ```go title="Signature"
 func (r *Response) Cookies() []*fasthttp.Cookie
 ```
+
+<details>
+<summary>Example</summary>
 
 ```go title="Example"
 resp, err := client.Get("https://httpbin.org/cookies/set/go/fiber")
@@ -113,9 +173,6 @@ for _, cookie := range cookies {
     fmt.Printf("%s => %s\n", string(cookie.Key()), string(cookie.Value()))
 }
 ```
-
-<details>
-<summary>Click here to see the result</summary>
 
 ```text
 go => fiber
@@ -147,6 +204,9 @@ JSON method will unmarshal body to json.
 func (r *Response) JSON(v any) error
 ```
 
+<details>
+<summary>Example</summary>
+
 ```go title="Example"
 type Body struct {
     Slideshow struct {
@@ -170,9 +230,6 @@ if err != nil {
 fmt.Printf("%+v\n", out)
 ```
 
-<details>
-<summary>Click here to see the result</summary>
-
 ```text
 {Slideshow:{Author:Yours Truly Date:date of publication Title:Sample Slide Show}}
 ```
@@ -185,6 +242,14 @@ XML method will unmarshal body to xml.
 
 ```go title="Signature"
 func (r *Response) XML(v any) error
+```
+
+## CBOR
+
+CBOR method will unmarshal body to CBOR.
+
+```go title="Signature"
+func (r *Response) CBOR(v any) error
 ```
 
 ## Save

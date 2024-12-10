@@ -39,7 +39,7 @@ Fiber v3 is currently in beta and under active development. While it offers exci
 
 ## ⚙️ Installation
 
-Fiber requires **Go version `1.22` or higher** to run. If you need to install or upgrade Go, visit the [official Go download page](https://go.dev/dl/). To start setting up your project, create a new directory for your project and navigate into it. Then, initialize your project with Go modules by executing the following command in your terminal:
+Fiber requires **Go version `1.23` or higher** to run. If you need to install or upgrade Go, visit the [official Go download page](https://go.dev/dl/). To start setting up your project, create a new directory for your project and navigate into it. Then, initialize your project with Go modules by executing the following command in your terminal:
 
 ```bash
 go mod init github.com/your/repo
@@ -124,7 +124,7 @@ We **listen** to our users in [issues](https://github.com/gofiber/fiber/issues),
 
 ## ⚠️ Limitations
 
-- Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber v3 has been tested with Go versions 1.22 and 1.23.
+- Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber v3 has been tested with Go version 1.23.
 - Fiber is not compatible with net/http interfaces. This means you will not be able to use projects like gqlgen, go-swagger, or any others which are part of the net/http ecosystem.
 
 ## 👀 Examples
@@ -708,7 +708,7 @@ List of externally hosted middleware modules and maintained by the [Fiber team](
 | :------------------------------------------------ | :-------------------------------------------------------------------------------------------------------------------- |
 | [contrib](https://github.com/gofiber/contrib)   | Third-party middlewares                                                                                               |
 | [storage](https://github.com/gofiber/storage)   | Premade storage drivers that implement the Storage interface, designed to be used with various Fiber middlewares.     |
-| [template](https://github.com/gofiber/template) | This package contains 9 template engines that can be used with Fiber `v3`. Go version 1.22 or higher is required.      |
+| [template](https://github.com/gofiber/template) | This package contains 9 template engines that can be used with Fiber `v3`. Go version 1.23 or higher is required.      |
 
 ## 🕶️ Awesome List
 

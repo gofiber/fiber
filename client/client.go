@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/gofiber/fiber/v3/log"
 
 	"github.com/gofiber/utils/v2"
@@ -44,6 +45,8 @@ type Client struct {
 	jsonUnmarshal utils.JSONUnmarshal
 	xmlMarshal    utils.XMLMarshal
 	xmlUnmarshal  utils.XMLUnmarshal
+	cborMarshal   utils.CBORMarshal
+	cborUnmarshal utils.CBORUnmarshal
 
 	cookieJar *CookieJar
 
@@ -147,6 +150,28 @@ func (c *Client) XMLUnmarshal() utils.XMLUnmarshal {
 // SetXMLUnmarshal Set xml decoder.
 func (c *Client) SetXMLUnmarshal(f utils.XMLUnmarshal) *Client {
 	c.xmlUnmarshal = f
+	return c
+}
+
+// CBORMarshal returns CBOR marshal function in Core.
+func (c *Client) CBORMarshal() utils.CBORMarshal {
+	return c.cborMarshal
+}
+
+// SetCBORMarshal sets CBOR encoder.
+func (c *Client) SetCBORMarshal(f utils.CBORMarshal) *Client {
+	c.cborMarshal = f
+	return c
+}
+
+// CBORUnmarshal returns CBOR unmarshal function in Core.
+func (c *Client) CBORUnmarshal() utils.CBORUnmarshal {
+	return c.cborUnmarshal
+}
+
+// SetCBORUnmarshal sets CBOR decoder.
+func (c *Client) SetCBORUnmarshal(f utils.CBORUnmarshal) *Client {
+	c.cborUnmarshal = f
 	return c
 }
 
@@ -706,6 +731,8 @@ func NewWithClient(c *fasthttp.Client) *Client {
 		jsonMarshal:          json.Marshal,
 		jsonUnmarshal:        json.Unmarshal,
 		xmlMarshal:           xml.Marshal,
+		cborMarshal:          cbor.Marshal,
+		cborUnmarshal:        cbor.Unmarshal,
 		xmlUnmarshal:         xml.Unmarshal,
 		logger:               log.DefaultLogger(),
 	}
