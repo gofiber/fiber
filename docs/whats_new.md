@@ -49,6 +49,7 @@ We have made several changes to the Fiber app, including:
   - `EnablePrintRoutes`
   - `ListenerNetwork` (previously `Network`)
 - **Trusted Proxy Configuration**: The `EnabledTrustedProxyCheck` has been moved to `app.Config.TrustProxy`, and `TrustedProxies` has been moved to `TrustProxyConfig.Proxies`.
+- **XMLDecoder Config Property**: The `XMLDecoder` property has been added to allow usage of 3rd-party XML libraries in XML binder.
 
 ### New Methods
 
