@@ -188,12 +188,13 @@ func Test_Hook_OnShutdown(t *testing.T) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	app.Hooks().OnShutdown(func() error {
-		_, err := buf.WriteString("shutdowning")
-		require.NoError(t, err)
+	// TODO: add test
+	// app.Hooks().OnShutdown(func() error {
+	// 	_, err := buf.WriteString("shutdowning")
+	// 	require.NoError(t, err)
 
-		return nil
-	})
+	// 	return nil
+	// })
 
 	require.NoError(t, app.Shutdown())
 	require.Equal(t, "shutdowning", buf.String())

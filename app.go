@@ -907,10 +907,11 @@ func (app *App) ShutdownWithContext(ctx context.Context) error {
 		return ErrNotRunning
 	}
 
-	// Execute shutdown hooks in a deferred function
+	// Execute the Shutdown hook
 	if app.hooks != nil {
-		defer app.hooks.executeOnShutdownHooks()
+		app.hooks.executeOnPreShutdownHooks()
 	}
+	defer app.hooks.executeOnPostShutdownHooks(nil)
 
 	return app.server.ShutdownWithContext(ctx)
 }
