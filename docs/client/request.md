@@ -220,6 +220,9 @@ The returned value is valid until the request object is released. Any future cal
 func (r *Request) Headers() iter.Seq2[string, []string]
 ```
 
+<details>
+<summary>Example</summary>
+
 ```go title="Example"
 req := client.AcquireRequest()
 
@@ -232,15 +235,15 @@ for k, v := range req.Headers() {
 }
 ```
 
-<details>
-<summary>Click here to see the result</summary>
-
 ```sh
 Header Key: Golang, Header Value: [Fiber]
 Header Key: Test, Header Value: [123456 654321]
 ```
 
 </details>
+
+<details>
+<summary>Example with maps.Collect()</summary>
 
 ```go title="Example with maps.Collect()"
 req := client.AcquireRequest()
@@ -254,9 +257,6 @@ for k, v := range headers {
   fmt.Printf("Header Key: %s, Header Value: %v\n", k, v)
 }
 ```
-
-<details>
-<summary>Click here to see the result</summary>
 
 ```sh
 Header Key: Golang, Header Value: [Fiber]
@@ -273,6 +273,9 @@ AddHeader method adds a single header field and its value in the request instanc
 func (r *Request) AddHeader(key, val string) *Request
 ```
 
+<details>
+<summary>Example</summary>
+
 ```go title="Example"
 req := client.AcquireRequest()
 defer client.ReleaseRequest(req)
@@ -288,9 +291,6 @@ if err != nil {
 
 fmt.Println(resp.String())
 ```
-
-<details>
-<summary>Click here to see the result</summary>
 
 ```json
 {
@@ -316,6 +316,9 @@ It will override the header which has been set in the client instance.
 func (r *Request) SetHeader(key, val string) *Request
 ```
 
+<details>
+<summary>Example</summary>
+
 ```go title="Example"
 req := client.AcquireRequest()
 defer client.ReleaseRequest(req)
@@ -330,9 +333,6 @@ if err != nil {
 
 fmt.Println(resp.String())
 ```
-
-<details>
-<summary>Click here to see the result</summary>
 
 ```json
 {
@@ -391,6 +391,9 @@ AddParam method adds a single param field and its value in the request instance.
 func (r *Request) AddParam(key, val string) *Request
 ```
 
+<details>
+<summary>Example</summary>
+
 ```go title="Example"
 req := client.AcquireRequest()
 defer client.ReleaseRequest(req)
@@ -406,9 +409,6 @@ if err != nil {
 
 fmt.Println(string(resp.Body()))
 ```
-
-<details>
-<summary>Click here to see the result</summary>
 
 ```json
 {
@@ -459,6 +459,9 @@ It will override param, which has been set in client instance.
 func (r *Request) SetParamsWithStruct(v any) *Request
 ```
 
+<details>
+<summary>Example</summary>
+
 ```go title="Example"
 req := client.AcquireRequest()
 defer client.ReleaseRequest(req)
@@ -481,9 +484,6 @@ if err != nil {
 
 fmt.Println(string(resp.Body()))
 ```
-
-<details>
-<summary>Click here to see the result</summary>
 
 ```json
 {
@@ -591,6 +591,9 @@ It will override the cookie which is set in the client instance.
 func (r *Request) SetCookies(m map[string]string) *Request
 ```
 
+<details>
+<summary>Example</summary>
+
 ```go title="Example"
 req := client.AcquireRequest()
 defer client.ReleaseRequest(req)
@@ -607,9 +610,6 @@ if err != nil {
 
 fmt.Println(string(resp.Body()))
 ```
-
-<details>
-<summary>Click here to see the result</summary>
 
 ```json
 {
@@ -663,6 +663,9 @@ It will override path param which set in client instance.
 func (r *Request) SetPathParam(key, val string) *Request
 ```
 
+<details>
+<summary>Example</summary>
+
 ```go title="Example"
 req := client.AcquireRequest()
 defer client.ReleaseRequest(req)
@@ -676,9 +679,6 @@ if err != nil {
 
 fmt.Println(string(resp.Body()))
 ```
-
-<details>
-<summary>Click here to see the result</summary>
 
 ```plaintext
 Gofiber
@@ -777,6 +777,9 @@ AddFormData method adds a single form data field and its value in the request in
 func (r *Request) AddFormData(key, val string) *Request
 ```
 
+<details>
+<summary>Example</summary>
+
 ```go title="Example"
 req := client.AcquireRequest()
 defer client.ReleaseRequest(req)
@@ -792,9 +795,6 @@ if err != nil {
 
 fmt.Println(string(resp.Body()))
 ```
-
-<details>
-<summary>Click here to see the result</summary>
 
 ```json
 {
@@ -822,6 +822,9 @@ SetFormData method sets a single form data field and its value in the request in
 func (r *Request) SetFormData(key, val string) *Request 
 ```
 
+<details>
+<summary>Example</summary>
+
 ```go title="Example"
 req := client.AcquireRequest()
 defer client.ReleaseRequest(req)
@@ -836,9 +839,6 @@ if err != nil {
 
 fmt.Println(string(resp.Body()))
 ```
-
-<details>
-<summary>Click here to see the result</summary>
 
 ```json
 {
@@ -929,6 +929,9 @@ AddFile method adds a single file field and its value in the request instance vi
 func (r *Request) AddFile(path string) *Request
 ```
 
+<details>
+<summary>Example</summary>
+
 ```go title="Example"
 req := client.AcquireRequest()
 defer client.ReleaseRequest(req)
@@ -942,9 +945,6 @@ if err != nil {
 
 fmt.Println(string(resp.Body()))
 ```
-
-<details>
-<summary>Click here to see the result</summary>
 
 ```json
 {
@@ -968,6 +968,9 @@ AddFileWithReader method adds a single field and its value in the request instan
 func (r *Request) AddFileWithReader(name string, reader io.ReadCloser) *Request
 ```
 
+<details>
+<summary>Example</summary>
+
 ```go title="Example"
 req := client.AcquireRequest()
 defer client.ReleaseRequest(req)
@@ -982,9 +985,6 @@ if err != nil {
 
 fmt.Println(string(resp.Body()))
 ```
-
-<details>
-<summary>Click here to see the result</summary>
 
 ```json
 {
@@ -1025,6 +1025,9 @@ It will override timeout which set in client instance.
 func (r *Request) SetTimeout(t time.Duration) *Request
 ```
 
+<details>
+<summary>Example 1</summary>
+
 ```go title="Example 1"
 req := client.AcquireRequest()
 defer client.ReleaseRequest(req)
@@ -1039,9 +1042,6 @@ if err != nil {
 fmt.Println(string(resp.Body()))
 ```
 
-<details>
-<summary>Click here to see the result</summary>
-
 ```json
 {
   "args": {}, 
@@ -1053,6 +1053,9 @@ fmt.Println(string(resp.Body()))
 ```
 
 </details>
+
+<details>
+<summary>Example 2</summary>
 
 ```go title="Example 2"
 req := client.AcquireRequest()
@@ -1067,9 +1070,6 @@ if err != nil {
 
 fmt.Println(string(resp.Body()))
 ```
-
-<details>
-<summary>Click here to see the result</summary>
 
 ```shell
 panic: timeout or cancel
