@@ -98,11 +98,30 @@ func New(root string, cfg ...Config) fiber.Handler {
 					}
 				}
 
+				// Add a leading slash if missing
 				if len(path) > 0 && path[0] != '/' {
 					path = append([]byte("/"), path...)
 				}
 
-				return path
+				// Perform explicit path validation
+				absRoot, err := filepath.Abs(root)
+				if err != nil {
+					fctx.Response.SetStatusCode(fiber.StatusInternalServerError)
+					return nil
+				}
+
+				// Clean the path and resolve it against the root
+				cleanPath := filepath.Clean(utils.UnsafeString(path))
+				absPath := filepath.Join(absRoot, cleanPath)
+				relPath, err := filepath.Rel(absRoot, absPath)
+
+				// Check if the resolved path is within the root
+				if err != nil || strings.HasPrefix(relPath, "..") {
+					fctx.Response.SetStatusCode(fiber.StatusForbidden)
+					return nil
+				}
+
+				return []byte(cleanPath)
 			}
 
 			maxAge := config.MaxAge
