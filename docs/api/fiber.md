@@ -114,8 +114,9 @@ app.Listen(":8080", fiber.ListenConfig{
 | <Reference id="listeneraddrfunc">ListenerAddrFunc</Reference>           | `func(addr net.Addr)`         | Allows accessing and customizing `net.Listener`.                                                                                              | `nil`   |
 | <Reference id="listenernetwork">ListenerNetwork</Reference>             | `string`                      | Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only). WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chosen. | `tcp4`  |
 | <Reference id="onshutdownerror">OnShutdownError</Reference>             | `func(err error)`             | Allows to customize error behavior when gracefully shutting down the server by given signal.  Prints error with `log.Fatalf()`                | `nil`   |
-| <Reference id="onshutdownsuccess">OnShutdownSuccess</Reference>         | `func()`                      | Allows customizing success behavior when gracefully shutting down the server by given signal.                                                | `nil`   |
+| <Reference id="onshutdownsuccess">OnShutdownSuccess</Reference>         | `func()`                      | Allows customizing success behavior when gracefully shutting down the server by given signal.                                                 | `nil`   |
 | <Reference id="tlsconfigfunc">TLSConfigFunc</Reference>                 | `func(tlsConfig *tls.Config)` | Allows customizing `tls.Config` as you want.                                                                                                  | `nil`   |
+| <Reference id="autocertmanager">AutoCertManager</Reference>                 | `func(tlsConfig *tls.Config)` | Manages TLS certificates automatically using the ACME protocol. Enables integration with Let's Encrypt or other ACME-compatible providers.                                                            | `nil`   |
 
 ### Listen
 
@@ -164,6 +165,25 @@ app.Listen(":443", fiber.ListenConfig{CertClientFile: "./ca-chain-cert.pem"})
 
 ```go title="Examples"
 app.Listen(":443", fiber.ListenConfig{CertFile: "./cert.pem", CertKeyFile: "./cert.key", CertClientFile: "./ca-chain-cert.pem"})
+```
+
+#### TLS AutoCert support (ACME / Let's Encrypt)
+
+Provides automatic access to certificates management from Let's Encrypt and any other ACME-based providers.
+
+```go title="Examples"
+// Certificate manager
+certManager := &autocert.Manager{
+    Prompt: autocert.AcceptTOS,
+    // Replace with your domain name
+    HostPolicy: autocert.HostWhitelist("example.com"),
+    // Folder to store the certificates
+    Cache: autocert.DirCache("./certs"),
+}
+
+app.Listen(":444", fiber.ListenConfig{
+    AutoCertManager:    certManager,
+})
 ```
 
 ### Listener
