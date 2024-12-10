@@ -111,7 +111,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 				}
 
 				// Clean the path and resolve it against the root
-				cleanPath := filepath.Clean("/" + utils.UnsafeString(path))
+				cleanPath := filepath.Clean(utils.UnsafeString(path))
 				absPath := filepath.Join(absRoot, cleanPath)
 				relPath, err := filepath.Rel(absRoot, absPath)
 
