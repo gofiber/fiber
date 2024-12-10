@@ -58,7 +58,7 @@ app.Post("/", func(c fiber.Ctx) error {
 
 :::note
 The `Key` parameter requires an encoded string of 16, 24, or 32 bytes for encryption, corresponding to AES-128, AES-192, and AES-256-GCM standards, respectively. Ensure the key is randomly generated and securely stored.
-To generate a 32 char key, use `openssl rand -base64 32` or `encryptcookie.GenerateKey(32)`. Avoid dynamically generating a new `Key` with `encryptcookie.GenerateKey(32)` at each application startup to prevent rendering previously encrypted data inaccessible.
+To generate a 32 char key, use `openssl rand -base64 24 | cut -c1-32` or `encryptcookie.GenerateKey(32)`. Avoid dynamically generating a new `Key` with `encryptcookie.GenerateKey(32)` at each application startup to prevent rendering previously encrypted data inaccessible.
 :::
 
 ## Config
