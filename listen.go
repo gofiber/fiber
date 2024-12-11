@@ -502,11 +502,9 @@ func (app *App) gracefulShutdown(ctx context.Context, cfg ListenConfig) {
 	}
 
 	if err != nil {
-		cfg.OnShutdownError(err)
+		app.hooks.executeOnPostShutdownHooks(err)
 		return
 	}
 
-	if success := cfg.OnShutdownSuccess; success != nil {
-		success()
-	}
+	app.hooks.executeOnPostShutdownHooks(nil)
 }

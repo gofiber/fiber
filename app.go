@@ -911,7 +911,6 @@ func (app *App) ShutdownWithContext(ctx context.Context) error {
 	if app.hooks != nil {
 		app.hooks.executeOnPreShutdownHooks()
 	}
-	defer app.hooks.executeOnPostShutdownHooks(nil)
 
 	return app.server.ShutdownWithContext(ctx)
 }

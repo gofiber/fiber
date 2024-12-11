@@ -181,20 +181,38 @@ func Test_Hook_OnGroupName_Error(t *testing.T) {
 	grp.Get("/test", testSimpleHandler)
 }
 
-func Test_Hook_OnShutdown(t *testing.T) {
+// func Test_Hook_OnShutdown(t *testing.T) {
+// 	t.Parallel()
+// 	app := New()
+
+// 	buf := bytebufferpool.Get()
+// 	defer bytebufferpool.Put(buf)
+
+// 	// TODO: add test
+// 	app.Hooks().OnShutdown(func() error {
+// 		_, err := buf.WriteString("shutdowning")
+// 		require.NoError(t, err)
+
+// 		return nil
+// 	})
+
+// 	require.NoError(t, app.Shutdown())
+// 	require.Equal(t, "shutdowning", buf.String())
+// }
+
+func Test_Hook_OnPrehutdown(t *testing.T) {
 	t.Parallel()
 	app := New()
 
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	// TODO: add test
-	// app.Hooks().OnShutdown(func() error {
-	// 	_, err := buf.WriteString("shutdowning")
-	// 	require.NoError(t, err)
+	app.Hooks().OnPreShutdown(func() error {
+		_, err := buf.WriteString("shutdowning")
+		require.NoError(t, err)
 
-	// 	return nil
-	// })
+		return nil
+	})
 
 	require.NoError(t, app.Shutdown())
 	require.Equal(t, "shutdowning", buf.String())
