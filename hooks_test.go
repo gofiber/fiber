@@ -181,25 +181,6 @@ func Test_Hook_OnGroupName_Error(t *testing.T) {
 	grp.Get("/test", testSimpleHandler)
 }
 
-// func Test_Hook_OnShutdown(t *testing.T) {
-// 	t.Parallel()
-// 	app := New()
-
-// 	buf := bytebufferpool.Get()
-// 	defer bytebufferpool.Put(buf)
-
-// 	// TODO: add test
-// 	app.Hooks().OnShutdown(func() error {
-// 		_, err := buf.WriteString("shutdowning")
-// 		require.NoError(t, err)
-
-// 		return nil
-// 	})
-
-// 	require.NoError(t, app.Shutdown())
-// 	require.Equal(t, "shutdowning", buf.String())
-// }
-
 func Test_Hook_OnPrehutdown(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -208,14 +189,84 @@ func Test_Hook_OnPrehutdown(t *testing.T) {
 	defer bytebufferpool.Put(buf)
 
 	app.Hooks().OnPreShutdown(func() error {
-		_, err := buf.WriteString("shutdowning")
+		_, err := buf.WriteString("pre-shutdowning")
 		require.NoError(t, err)
 
 		return nil
 	})
 
 	require.NoError(t, app.Shutdown())
-	require.Equal(t, "shutdowning", buf.String())
+	require.Equal(t, "pre-shutdowning", buf.String())
+}
+
+func Test_Hook_OnPostShutdown(t *testing.T) {
+	t.Run("should execute post shutdown hook with error", func(t *testing.T) {
+		app := New()
+
+		hookCalled := false
+		var receivedErr error
+		expectedErr := errors.New("test shutdown error")
+
+		app.Hooks().OnPostShutdown(func(err error) error {
+			hookCalled = true
+			receivedErr = err
+			return nil
+		})
+
+		go func() {
+			_ = app.Listen(":0")
+		}()
+
+		time.Sleep(100 * time.Millisecond)
+
+		app.hooks.executeOnPostShutdownHooks(expectedErr)
+
+		if !hookCalled {
+			t.Fatal("hook was not called")
+		}
+
+		if receivedErr != expectedErr {
+			t.Fatalf("hook received wrong error: want %v, got %v", expectedErr, receivedErr)
+		}
+	})
+
+	t.Run("should execute multiple hooks in order", func(t *testing.T) {
+		app := New()
+
+		execution := make([]int, 0)
+
+		app.Hooks().OnPostShutdown(func(err error) error {
+			execution = append(execution, 1)
+			return nil
+		})
+
+		app.Hooks().OnPostShutdown(func(err error) error {
+			execution = append(execution, 2)
+			return nil
+		})
+
+		app.hooks.executeOnPostShutdownHooks(nil)
+
+		if len(execution) != 2 {
+			t.Fatalf("expected 2 hooks to execute, got %d", len(execution))
+		}
+
+		if execution[0] != 1 || execution[1] != 2 {
+			t.Fatal("hooks executed in wrong order")
+		}
+	})
+
+	t.Run("should handle hook error", func(t *testing.T) {
+		app := New()
+		hookErr := errors.New("hook error")
+
+		app.Hooks().OnPostShutdown(func(err error) error {
+			return hookErr
+		})
+
+		// Should not panic
+		app.hooks.executeOnPostShutdownHooks(nil)
+	})
 }
 
 func Test_Hook_OnListen(t *testing.T) {

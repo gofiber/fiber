@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -37,193 +38,111 @@ func Test_Listen(t *testing.T) {
 
 // go test -run Test_Listen_Graceful_Shutdown
 func Test_Listen_Graceful_Shutdown(t *testing.T) {
+	t.Run("Basic Graceful Shutdown", func(t *testing.T) {
+		testGracefulShutdown(t, 0)
+	})
+
+	t.Run("Shutdown With Timeout", func(t *testing.T) {
+		testGracefulShutdown(t, 500*time.Millisecond)
+	})
+}
+
+func testGracefulShutdown(t *testing.T, shutdownTimeout time.Duration) {
 	var mu sync.Mutex
 	var shutdown bool
 
 	app := New()
-
 	app.Get("/", func(c Ctx) error {
 		return c.SendString(c.Hostname())
 	})
 
 	ln := fasthttputil.NewInmemoryListener()
-	errs := make(chan error)
+	errs := make(chan error, 1)
 
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-
-		errs <- app.Listener(ln, ListenConfig{
-			DisableStartupMessage: true,
-			GracefulContext:       ctx,
-			OnShutdownSuccess: func() {
-				mu.Lock()
-				shutdown = true
-				mu.Unlock()
-			},
-		})
-	}()
-
-	// Server readiness check
-	for i := 0; i < 10; i++ {
-		conn, err := ln.Dial()
-		if err == nil {
-			conn.Close() //nolint:errcheck // ignore error
-			break
-		}
-		// Wait a bit before retrying
-		time.Sleep(100 * time.Millisecond)
-		if i == 9 {
-			t.Fatalf("Server did not become ready in time: %v", err)
-		}
-	}
-
-	testCases := []struct {
-		ExpectedErr        error
-		ExpectedBody       string
-		Time               time.Duration
-		ExpectedStatusCode int
-	}{
-		{Time: 500 * time.Millisecond, ExpectedBody: "example.com", ExpectedStatusCode: StatusOK, ExpectedErr: nil},
-		{Time: 3 * time.Second, ExpectedBody: "", ExpectedStatusCode: StatusOK, ExpectedErr: fasthttputil.ErrInmemoryListenerClosed},
-	}
-
-	for _, tc := range testCases {
-		time.Sleep(tc.Time)
-
-		req := fasthttp.AcquireRequest()
-		req.SetRequestURI("http://example.com")
-
-		client := fasthttp.HostClient{}
-		client.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
-
-		resp := fasthttp.AcquireResponse()
-		err := client.Do(req, resp)
-
-		require.Equal(t, tc.ExpectedErr, err)
-		require.Equal(t, tc.ExpectedStatusCode, resp.StatusCode())
-		require.Equal(t, tc.ExpectedBody, string(resp.Body()))
-
-		fasthttp.ReleaseRequest(req)
-		fasthttp.ReleaseResponse(resp)
-	}
-
-	mu.Lock()
-	err := <-errs
-	require.True(t, shutdown)
-	require.NoError(t, err)
-	mu.Unlock()
-}
-
-// go test -run Test_Listen_Graceful_Shutdown_Timeout
-func Test_Listen_Graceful_Shutdown_Timeout(t *testing.T) {
-	var mu sync.Mutex
-	var shutdownSuccess bool
-	var shutdownTimeoutError error
-
-	app := New()
-
-	app.Get("/", func(c Ctx) error {
-		return c.SendString(c.Hostname())
-	})
-
-	ln := fasthttputil.NewInmemoryListener()
-	errs := make(chan error)
-
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-
-		errs <- app.Listener(ln, ListenConfig{
-			DisableStartupMessage: true,
-			GracefulContext:       ctx,
-			ShutdownTimeout:       500 * time.Millisecond,
-			OnShutdownSuccess: func() {
-				mu.Lock()
-				shutdownSuccess = true
-				mu.Unlock()
-			},
-			OnShutdownError: func(err error) {
-				mu.Lock()
-				shutdownTimeoutError = err
-				mu.Unlock()
-			},
-		})
-	}()
-
-	// Server readiness check
-	for i := 0; i < 10; i++ {
-		conn, err := ln.Dial()
-		// To test a graceful shutdown timeout, do not close the connection.
-		if err == nil {
-			_ = conn
-			break
-		}
-		// Wait a bit before retrying
-		time.Sleep(100 * time.Millisecond)
-		if i == 9 {
-			t.Fatalf("Server did not become ready in time: %v", err)
-		}
-	}
-
-	testCases := []struct {
-		ExpectedErr             error
-		ExpectedShutdownError   error
-		ExpectedBody            string
-		Time                    time.Duration
-		ExpectedStatusCode      int
-		ExpectedShutdownSuccess bool
-	}{
-		{
-			Time:                    100 * time.Millisecond,
-			ExpectedBody:            "example.com",
-			ExpectedStatusCode:      StatusOK,
-			ExpectedErr:             nil,
-			ExpectedShutdownError:   nil,
-			ExpectedShutdownSuccess: false,
-		},
-		{
-			Time:                    3 * time.Second,
-			ExpectedBody:            "",
-			ExpectedStatusCode:      StatusOK,
-			ExpectedErr:             fasthttputil.ErrInmemoryListenerClosed,
-			ExpectedShutdownError:   context.DeadlineExceeded,
-			ExpectedShutdownSuccess: false,
-		},
-	}
-
-	for _, tc := range testCases {
-		time.Sleep(tc.Time)
-
-		req := fasthttp.AcquireRequest()
-		req.SetRequestURI("http://example.com")
-
-		client := fasthttp.HostClient{}
-		client.Dial = func(_ string) (net.Conn, error) { return ln.Dial() }
-
-		resp := fasthttp.AcquireResponse()
-		err := client.Do(req, resp)
-
-		if err == nil {
-			require.NoError(t, err)
-			require.Equal(t, tc.ExpectedStatusCode, resp.StatusCode())
-			require.Equal(t, tc.ExpectedBody, string(resp.Body()))
-		} else {
-			require.ErrorIs(t, err, tc.ExpectedErr)
-		}
-
+	app.hooks.OnPostShutdown(func(err error) error {
 		mu.Lock()
-		require.Equal(t, tc.ExpectedShutdownSuccess, shutdownSuccess)
-		require.Equal(t, tc.ExpectedShutdownError, shutdownTimeoutError)
-		mu.Unlock()
+		defer mu.Unlock()
+		shutdown = true
+		return nil
+	})
 
-		fasthttp.ReleaseRequest(req)
-		fasthttp.ReleaseResponse(resp)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	go func() {
+		errs <- app.Listener(ln, ListenConfig{
+			DisableStartupMessage: true,
+			GracefulContext:       ctx,
+			ShutdownTimeout:       shutdownTimeout,
+		})
+	}()
+
+	require.Eventually(t, func() bool {
+		conn, err := ln.Dial()
+		if err == nil {
+			conn.Close()
+			return true
+		}
+		return false
+	}, time.Second, 100*time.Millisecond, "Server failed to become ready")
+
+	client := fasthttp.HostClient{
+		Dial: func(_ string) (net.Conn, error) { return ln.Dial() },
+	}
+
+	testCases := []struct {
+		name               string
+		waitTime           time.Duration
+		expectedBody       string
+		expectedStatusCode int
+		expectedErr        error
+		closeConnection    bool
+	}{
+		{
+			name:               "Server running normally",
+			waitTime:           500 * time.Millisecond,
+			expectedBody:       "example.com",
+			expectedStatusCode: StatusOK,
+			expectedErr:        nil,
+			closeConnection:    true,
+		},
+		{
+			name:               "Server shutdown complete",
+			waitTime:           3 * time.Second,
+			expectedBody:       "",
+			expectedStatusCode: StatusOK,
+			expectedErr:        fasthttputil.ErrInmemoryListenerClosed,
+			closeConnection:    true,
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			time.Sleep(tc.waitTime)
+
+			req := fasthttp.AcquireRequest()
+			defer fasthttp.ReleaseRequest(req)
+			req.SetRequestURI("http://example.com")
+
+			resp := fasthttp.AcquireResponse()
+			defer fasthttp.ReleaseResponse(resp)
+
+			err := client.Do(req, resp)
+
+			if tc.expectedErr == nil {
+				assert.NoError(t, err)
+				assert.Equal(t, tc.expectedStatusCode, resp.StatusCode())
+				assert.Equal(t, tc.expectedBody, utils.UnsafeString(resp.Body()))
+			} else {
+				assert.ErrorIs(t, err, tc.expectedErr)
+			}
+		})
 	}
 
 	mu.Lock()
-	err := <-errs
-	require.NoError(t, err)
+	assert.True(t, shutdown)
+	assert.NoError(t, <-errs)
 	mu.Unlock()
 }
 

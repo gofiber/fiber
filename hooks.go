@@ -6,12 +6,11 @@ import (
 
 // OnRouteHandler Handlers define a function to create hooks for Fiber.
 type (
-	OnRouteHandler     = func(Route) error
-	OnNameHandler      = OnRouteHandler
-	OnGroupHandler     = func(Group) error
-	OnGroupNameHandler = OnGroupHandler
-	OnListenHandler    = func(ListenData) error
-	// OnShutdownHandler     = func() error
+	OnRouteHandler        = func(Route) error
+	OnNameHandler         = OnRouteHandler
+	OnGroupHandler        = func(Group) error
+	OnGroupNameHandler    = OnGroupHandler
+	OnListenHandler       = func(ListenData) error
 	OnPreShutdownHandler  = func() error
 	OnPostShutdownHandler = func(error) error
 	OnForkHandler         = func(int) error
@@ -24,12 +23,11 @@ type Hooks struct {
 	app *App
 
 	// Hooks
-	onRoute     []OnRouteHandler
-	onName      []OnNameHandler
-	onGroup     []OnGroupHandler
-	onGroupName []OnGroupNameHandler
-	onListen    []OnListenHandler
-	// onShutdown     []OnShutdownHandler
+	onRoute        []OnRouteHandler
+	onName         []OnNameHandler
+	onGroup        []OnGroupHandler
+	onGroupName    []OnGroupNameHandler
+	onListen       []OnListenHandler
 	onPreShutdown  []OnPreShutdownHandler
 	onPostShutdown []OnPostShutdownHandler
 	onFork         []OnForkHandler
@@ -45,13 +43,12 @@ type ListenData struct {
 
 func newHooks(app *App) *Hooks {
 	return &Hooks{
-		app:         app,
-		onRoute:     make([]OnRouteHandler, 0),
-		onGroup:     make([]OnGroupHandler, 0),
-		onGroupName: make([]OnGroupNameHandler, 0),
-		onName:      make([]OnNameHandler, 0),
-		onListen:    make([]OnListenHandler, 0),
-		// onShutdown:     make([]OnShutdownHandler, 0),
+		app:            app,
+		onRoute:        make([]OnRouteHandler, 0),
+		onGroup:        make([]OnGroupHandler, 0),
+		onGroupName:    make([]OnGroupNameHandler, 0),
+		onName:         make([]OnNameHandler, 0),
+		onListen:       make([]OnListenHandler, 0),
 		onPreShutdown:  make([]OnPreShutdownHandler, 0),
 		onPostShutdown: make([]OnPostShutdownHandler, 0),
 		onFork:         make([]OnForkHandler, 0),
@@ -101,14 +98,6 @@ func (h *Hooks) OnListen(handler ...OnListenHandler) {
 	h.onListen = append(h.onListen, handler...)
 	h.app.mutex.Unlock()
 }
-
-// TODO：To be deleted, replaced by OnPreShutdown and OnPostShutdown
-// OnShutdown is a hook to execute user functions after Shutdown.
-// func (h *Hooks) OnShutdown(handler ...OnShutdownHandler) {
-// 	h.app.mutex.Lock()
-// 	h.onShutdown = append(h.onShutdown, handler...)
-// 	h.app.mutex.Unlock()
-// }
 
 // OnPreShutdown is a hook to execute user functions before Shutdown.
 func (h *Hooks) OnPreShutdown(handler ...OnPreShutdownHandler) {
@@ -211,14 +200,6 @@ func (h *Hooks) executeOnListenHooks(listenData ListenData) error {
 
 	return nil
 }
-
-// func (h *Hooks) executeOnShutdownHooks() {
-// 	for _, v := range h.onShutdown {
-// 		if err := v(); err != nil {
-// 			log.Errorf("failed to call shutdown hook: %v", err)
-// 		}
-// 	}
-// }
 
 func (h *Hooks) executeOnPreShutdownHooks() {
 	for _, v := range h.onPreShutdown {

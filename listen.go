@@ -60,17 +60,6 @@ type ListenConfig struct {
 	// Default: nil
 	BeforeServeFunc func(app *App) error `json:"before_serve_func"`
 
-	// OnShutdownError allows to customize error behavior when to graceful shutdown server by given signal.
-	//
-	// Print error with log.Fatalf() by default.
-	// Default: nil
-	OnShutdownError func(err error)
-
-	// OnShutdownSuccess allows to customize success behavior when to graceful shutdown server by given signal.
-	//
-	// Default: nil
-	OnShutdownSuccess func()
-
 	// AutoCertManager manages TLS certificates automatically using the ACME protocol,
 	// Enables integration with Let's Encrypt or other ACME-compatible providers.
 	//
@@ -129,9 +118,6 @@ func listenConfigDefault(config ...ListenConfig) ListenConfig {
 	if len(config) < 1 {
 		return ListenConfig{
 			ListenerNetwork: NetworkTCP4,
-			OnShutdownError: func(err error) {
-				log.Fatalf("shutdown: %v", err) //nolint:revive // It's an option
-			},
 			ShutdownTimeout: 10 * time.Second,
 		}
 	}
@@ -139,12 +125,6 @@ func listenConfigDefault(config ...ListenConfig) ListenConfig {
 	cfg := config[0]
 	if cfg.ListenerNetwork == "" {
 		cfg.ListenerNetwork = NetworkTCP4
-	}
-
-	if cfg.OnShutdownError == nil {
-		cfg.OnShutdownError = func(err error) {
-			log.Fatalf("shutdown: %v", err) //nolint:revive // It's an option
-		}
 	}
 
 	return cfg
