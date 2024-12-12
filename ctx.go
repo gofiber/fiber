@@ -340,7 +340,11 @@ func (c *Ctx) Body() []byte {
 	// rule defined at: https://www.rfc-editor.org/rfc/rfc9110#section-8.4-5
 	encodingOrder = getSplicedStrList(headerEncoding, encodingOrder)
 	if len(encodingOrder) == 0 {
-		return c.fasthttp.Request.Body()
+		body = c.fasthttp.Request.Body()
+		if c.app.config.Immutable {
+			return utils.CopyBytes(body)
+		}
+		return body
 	}
 
 	var decodesRealized uint8
