@@ -268,7 +268,7 @@ func (c *Ctx) BaseURL() string {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (c *Ctx) BodyRaw() []byte {
-	return c.fasthttp.Request.Body()
+	return c.getBody()
 }
 
 func (c *Ctx) tryDecodeBodyInOrder(
@@ -340,7 +340,7 @@ func (c *Ctx) Body() []byte {
 	// rule defined at: https://www.rfc-editor.org/rfc/rfc9110#section-8.4-5
 	encodingOrder = getSplicedStrList(headerEncoding, encodingOrder)
 	if len(encodingOrder) == 0 {
-		return c.fasthttp.Request.Body()
+		return c.getBody()
 	}
 
 	var decodesRealized uint8
@@ -354,6 +354,9 @@ func (c *Ctx) Body() []byte {
 		return []byte(err.Error())
 	}
 
+	if c.app.config.Immutable {
+		return utils.CopyBytes(body)
+	}
 	return body
 }
 
@@ -2003,4 +2006,12 @@ func (*Ctx) isLocalHost(address string) bool {
 // IsFromLocal will return true if request came from local.
 func (c *Ctx) IsFromLocal() bool {
 	return c.isLocalHost(c.fasthttp.RemoteIP().String())
+}
+
+func (c *Ctx) getBody() []byte {
+	if c.app.config.Immutable {
+		return utils.CopyBytes(c.fasthttp.Request.Body())
+	}
+
+	return c.fasthttp.Request.Body()
 }
