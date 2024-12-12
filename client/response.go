@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"iter"
 	"os"
 	"path/filepath"
 	"sync"
@@ -55,7 +56,33 @@ func (r *Response) Header(key string) string {
 	return utils.UnsafeString(r.RawResponse.Header.Peek(key))
 }
 
+// Headers returns all headers in the response using an iterator.
+// You can use maps.Collect() to collect all headers into a map.
+//
+// The returned value is valid until the response object is released.
+// Any future calls to Headers method will return the modified value. Do not store references to returned value. Make copies instead.
+func (r *Response) Headers() iter.Seq2[string, []string] {
+	return func(yield func(string, []string) bool) {
+		keys := r.RawResponse.Header.PeekKeys()
+
+		for _, key := range keys {
+			vals := r.RawResponse.Header.PeekAll(utils.UnsafeString(key))
+			valsStr := make([]string, len(vals))
+			for i, v := range vals {
+				valsStr[i] = utils.UnsafeString(v)
+			}
+
+			if !yield(utils.UnsafeString(key), valsStr) {
+				return
+			}
+		}
+	}
+}
+
 // Cookies method to access all the response cookies.
+//
+// The returned value is valid until the response object is released.
+// Any future calls to Cookies method will return the modified value. Do not store references to returned value. Make copies instead.
 func (r *Response) Cookies() []*fasthttp.Cookie {
 	return r.cookie
 }

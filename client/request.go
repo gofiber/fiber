@@ -5,8 +5,10 @@ import (
 	"context"
 	"errors"
 	"io"
+	"iter"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -129,6 +131,31 @@ func (r *Request) Header(key string) []string {
 	return r.header.PeekMultiple(key)
 }
 
+// Headers returns all headers in the request using an iterator.
+// You can use maps.Collect() to collect all headers into a map.
+//
+// The returned value is valid until the request object is released.
+// Any future calls to Headers method will return the modified value. Do not store references to returned value. Make copies instead.
+func (r *Request) Headers() iter.Seq2[string, []string] {
+	return func(yield func(string, []string) bool) {
+		peekKeys := r.header.PeekKeys()
+		keys := make([][]byte, len(peekKeys))
+		copy(keys, peekKeys) // It is necessary to have immutable byte slice.
+
+		for _, key := range keys {
+			vals := r.header.PeekAll(utils.UnsafeString(key))
+			valsStr := make([]string, len(vals))
+			for i, v := range vals {
+				valsStr[i] = utils.UnsafeString(v)
+			}
+
+			if !yield(utils.UnsafeString(key), valsStr) {
+				return
+			}
+		}
+	}
+}
+
 // AddHeader method adds a single header field and its value in the request instance.
 func (r *Request) AddHeader(key, val string) *Request {
 	r.header.Add(key, val)
@@ -166,6 +193,33 @@ func (r *Request) Param(key string) []string {
 	}
 
 	return res
+}
+
+// Params returns all params in the request using an iterator.
+// You can use maps.Collect() to collect all params into a map.
+//
+// The returned value is valid until the request object is released.
+// Any future calls to Params method will return the modified value. Do not store references to returned value. Make copies instead.
+func (r *Request) Params() iter.Seq2[string, []string] {
+	return func(yield func(string, []string) bool) {
+		keys := r.params.Keys()
+
+		for _, key := range keys {
+			if key == "" {
+				continue
+			}
+
+			vals := r.params.PeekMulti(key)
+			valsStr := make([]string, len(vals))
+			for i, v := range vals {
+				valsStr[i] = utils.UnsafeString(v)
+			}
+
+			if !yield(key, valsStr) {
+				return
+			}
+		}
+	}
 }
 
 // AddParam method adds a single param field and its value in the request instance.
@@ -254,6 +308,18 @@ func (r *Request) Cookie(key string) string {
 	return ""
 }
 
+// Cookies returns all cookies in the cookies using an iterator.
+// You can use maps.Collect() to collect all cookies into a map.
+func (r *Request) Cookies() iter.Seq2[string, string] {
+	return func(yield func(string, string) bool) {
+		r.cookies.VisitAll(func(key, val string) {
+			if !yield(key, val) {
+				return
+			}
+		})
+	}
+}
+
 // SetCookie method sets a single cookie field and its value in the request instance.
 // It will override cookie which set in client instance.
 func (r *Request) SetCookie(key, val string) *Request {
@@ -289,6 +355,18 @@ func (r *Request) PathParam(key string) string {
 	}
 
 	return ""
+}
+
+// PathParams returns all path params in request instance.
+// You can use maps.Collect() to collect all cookies into a map.
+func (r *Request) PathParams() iter.Seq2[string, string] {
+	return func(yield func(string, string) bool) {
+		r.path.VisitAll(func(key, val string) {
+			if !yield(key, val) {
+				return
+			}
+		})
+	}
 }
 
 // SetPathParam method sets a single path param field and its value in the request instance.
@@ -376,6 +454,33 @@ func (r *Request) FormData(key string) []string {
 	return res
 }
 
+// AllFormData method returns all form datas in request instance.
+// You can use maps.Collect() to collect all cookies into a map.
+//
+// The returned value is valid until the request object is released.
+// Any future calls to FormDatas method will return the modified value. Do not store references to returned value. Make copies instead.
+func (r *Request) AllFormData() iter.Seq2[string, []string] {
+	return func(yield func(string, []string) bool) {
+		keys := r.formData.Keys()
+
+		for _, key := range keys {
+			if key == "" {
+				continue
+			}
+
+			vals := r.formData.PeekMulti(key)
+			valsStr := make([]string, len(vals))
+			for i, v := range vals {
+				valsStr[i] = utils.UnsafeString(v)
+			}
+
+			if !yield(key, valsStr) {
+				return
+			}
+		}
+	}
+}
+
 // AddFormData method adds a single form data field and its value in the request instance.
 func (r *Request) AddFormData(key, val string) *Request {
 	r.formData.AddData(key, val)
@@ -433,6 +538,14 @@ func (r *Request) File(name string) *File {
 	}
 
 	return nil
+}
+
+// Files method returns all files in request instance.
+//
+// The returned value is valid until the request object is released.
+// Any future calls to Files method will return the modified value. Do not store references to returned value. Make copies instead.
+func (r *Request) Files() []*File {
+	return r.files
 }
 
 // FileByPath returns file ptr store in request obj by path.
@@ -617,6 +730,16 @@ type QueryParam struct {
 	*fasthttp.Args
 }
 
+// Keys method returns all keys in the query params.
+func (p *QueryParam) Keys() []string {
+	keys := make([]string, 0, p.Len())
+	p.VisitAll(func(key, _ []byte) {
+		keys = append(keys, utils.UnsafeString(key))
+	})
+
+	return slices.Compact(keys)
+}
+
 // AddParams receive a map and add each value to param.
 func (p *QueryParam) AddParams(r map[string][]string) {
 	for k, v := range r {
@@ -745,6 +868,16 @@ func (p PathParam) Reset() {
 // and it is used for url encode body and file body.
 type FormData struct {
 	*fasthttp.Args
+}
+
+// Keys method returns all keys in the form data.
+func (f *FormData) Keys() []string {
+	keys := make([]string, 0, f.Len())
+	f.VisitAll(func(key, _ []byte) {
+		keys = append(keys, utils.UnsafeString(key))
+	})
+
+	return slices.Compact(keys)
 }
 
 // AddData method is a wrapper of Args's Add method.

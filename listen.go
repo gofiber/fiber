@@ -23,6 +23,7 @@ import (
 	"github.com/gofiber/fiber/v3/log"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
+	"golang.org/x/crypto/acme/autocert"
 )
 
 // Figlet text to show Fiber ASCII art on startup message
@@ -69,6 +70,13 @@ type ListenConfig struct {
 	//
 	// Default: nil
 	OnShutdownSuccess func()
+
+	// AutoCertManager manages TLS certificates automatically using the ACME protocol,
+	// Enables integration with Let's Encrypt or other ACME-compatible providers.
+	//
+	// Default: nil
+	AutoCertManager *autocert.Manager `json:"auto_cert_manager"`
+
 	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only)
 	// WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chosen.
 	//
@@ -183,9 +191,15 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 
 		// Attach the tlsHandler to the config
 		app.SetTLSHandler(tlsHandler)
+	} else if cfg.AutoCertManager != nil {
+		tlsConfig = &tls.Config{
+			MinVersion:     tls.VersionTLS12,
+			GetCertificate: cfg.AutoCertManager.GetCertificate,
+			NextProtos:     []string{"http/1.1", "acme-tls/1"},
+		}
 	}
 
-	if cfg.TLSConfigFunc != nil {
+	if tlsConfig != nil && cfg.TLSConfigFunc != nil {
 		cfg.TLSConfigFunc(tlsConfig)
 	}
 
