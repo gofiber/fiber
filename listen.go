@@ -50,6 +50,11 @@ type ListenConfig struct {
 	// Default: nil
 	TLSConfigFunc func(tlsConfig *tls.Config) `json:"tls_config_func"`
 
+	// TLSMinVersion allows to set tls minimum version.
+	//
+	// Default: VersionTLS12
+	TLSMinVersion uint16 `json:"tls_min_version"`
+
 	// ListenerFunc allows accessing and customizing net.Listener.
 	//
 	// Default: nil
@@ -128,6 +133,7 @@ type ListenConfig struct {
 func listenConfigDefault(config ...ListenConfig) ListenConfig {
 	if len(config) < 1 {
 		return ListenConfig{
+			TLSMinVersion:   tls.VersionTLS12,
 			ListenerNetwork: NetworkTCP4,
 			OnShutdownError: func(err error) {
 				log.Fatalf("shutdown: %v", err) //nolint:revive // It's an option
@@ -145,6 +151,10 @@ func listenConfigDefault(config ...ListenConfig) ListenConfig {
 		cfg.OnShutdownError = func(err error) {
 			log.Fatalf("shutdown: %v", err) //nolint:revive // It's an option
 		}
+	}
+
+	if cfg.TLSMinVersion == 0 {
+		cfg.TLSMinVersion = tls.VersionTLS12
 	}
 
 	return cfg
@@ -169,7 +179,7 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 
 		tlsHandler := &TLSHandler{}
 		tlsConfig = &tls.Config{
-			MinVersion: tls.VersionTLS12,
+			MinVersion: cfg.TLSMinVersion,
 			Certificates: []tls.Certificate{
 				cert,
 			},
@@ -193,7 +203,7 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 		app.SetTLSHandler(tlsHandler)
 	} else if cfg.AutoCertManager != nil {
 		tlsConfig = &tls.Config{
-			MinVersion:     tls.VersionTLS12,
+			MinVersion:     cfg.TLSMinVersion,
 			GetCertificate: cfg.AutoCertManager.GetCertificate,
 			NextProtos:     []string{"http/1.1", "acme-tls/1"},
 		}
