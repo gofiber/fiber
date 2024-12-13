@@ -18,17 +18,16 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// WithStruct Implementing this interface allows data to
-// be stored from a struct via reflect.
+// WithStruct is implemented by types that allow data to be stored from a struct via reflection.
 type WithStruct interface {
 	Add(name, obj string)
 	Del(name string)
 }
 
-// Types of request bodies.
+// bodyType defines the type of request body.
 type bodyType int
 
-// Enumeration definition of the request body type.
+// Enumeration of request body types.
 const (
 	noBody bodyType = iota
 	jsonBody
@@ -39,11 +38,11 @@ const (
 	cborBody
 )
 
-var ErrClientNil = errors.New("client can not be nil")
+var ErrClientNil = errors.New("client cannot be nil")
 
-// Request is a struct which contains the request data.
+// Request contains all data related to an HTTP request.
 type Request struct {
-	ctx context.Context //nolint:containedctx // It's needed to be stored in the request.
+	ctx context.Context //nolint:containedctx // Context is needed to be stored in the request.
 
 	body    any
 	header  *Header
@@ -69,35 +68,35 @@ type Request struct {
 	bodyType bodyType
 }
 
-// Method returns http method in request.
+// Method returns the HTTP method set in the Request.
 func (r *Request) Method() string {
 	return r.method
 }
 
-// SetMethod will set method for Request object,
-// user should use request method to set method.
+// SetMethod sets the HTTP method for the Request.
+// It is recommended to use the specialized methods (e.g., Get, Post) instead.
 func (r *Request) SetMethod(method string) *Request {
 	r.method = method
 	return r
 }
 
-// URL returns request url in Request instance.
+// URL returns the URL set in the Request.
 func (r *Request) URL() string {
 	return r.url
 }
 
-// SetURL will set url for Request object.
+// SetURL sets the URL for the Request.
 func (r *Request) SetURL(url string) *Request {
 	r.url = url
 	return r
 }
 
-// Client get Client instance in Request.
+// Client returns the Client instance associated with this Request.
 func (r *Request) Client() *Client {
 	return r.client
 }
 
-// SetClient method sets client in request instance.
+// SetClient sets the Client instance for the Request.
 func (r *Request) SetClient(c *Client) *Request {
 	if c == nil {
 		panic(ErrClientNil)
@@ -107,8 +106,8 @@ func (r *Request) SetClient(c *Client) *Request {
 	return r
 }
 
-// Context returns the Context if its already set in request
-// otherwise it creates new one using `context.Background()`.
+// Context returns the context associated with the Request.
+// If not set, a background context is returned.
 func (r *Request) Context() context.Context {
 	if r.ctx == nil {
 		return context.Background()
@@ -116,26 +115,22 @@ func (r *Request) Context() context.Context {
 	return r.ctx
 }
 
-// SetContext sets the context.Context for current Request. It allows
-// to interrupt the request execution if ctx.Done() channel is closed.
-// See https://blog.golang.org/context article and the "context" package
-// documentation.
+// SetContext sets the context for the Request, allowing request cancellation if ctx is done.
 func (r *Request) SetContext(ctx context.Context) *Request {
 	r.ctx = ctx
 	return r
 }
 
-// Header method returns header value via key,
-// this method will visit all field in the header.
+// Header returns all values associated with the given header key.
 func (r *Request) Header(key string) []string {
 	return r.header.PeekMultiple(key)
 }
 
-// Headers returns all headers in the request using an iterator.
-// You can use maps.Collect() to collect all headers into a map.
+// Headers returns an iterator over all headers in the Request.
+// Use maps.Collect() to gather them into a map if needed.
 //
-// The returned value is valid until the request object is released.
-// Any future calls to Headers method will return the modified value. Do not store references to returned value. Make copies instead.
+// The returned values are only valid until the request object is released.
+// Do not store references to returned values; make copies instead.
 func (r *Request) Headers() iter.Seq2[string, []string] {
 	return func(yield func(string, []string) bool) {
 		peekKeys := r.header.PeekKeys()
@@ -156,50 +151,46 @@ func (r *Request) Headers() iter.Seq2[string, []string] {
 	}
 }
 
-// AddHeader method adds a single header field and its value in the request instance.
+// AddHeader adds a single header field and value to the Request.
 func (r *Request) AddHeader(key, val string) *Request {
 	r.header.Add(key, val)
 	return r
 }
 
-// SetHeader method sets a single header field and its value in the request instance.
-// It will override header which has been set in client instance.
+// SetHeader sets a single header field and value in the Request, overriding any previously set value.
 func (r *Request) SetHeader(key, val string) *Request {
 	r.header.Del(key)
 	r.header.Set(key, val)
 	return r
 }
 
-// AddHeaders method adds multiple header fields and its values at one go in the request instance.
+// AddHeaders adds multiple header fields and values at once.
 func (r *Request) AddHeaders(h map[string][]string) *Request {
 	r.header.AddHeaders(h)
 	return r
 }
 
-// SetHeaders method sets multiple header fields and its values at one go in the request instance.
-// It will override header which has been set in client instance.
+// SetHeaders sets multiple header fields and values at once, overriding previously set values.
 func (r *Request) SetHeaders(h map[string]string) *Request {
 	r.header.SetHeaders(h)
 	return r
 }
 
-// Param method returns params value via key,
-// this method will visit all field in the query param.
+// Param returns all values associated with the given query parameter.
 func (r *Request) Param(key string) []string {
 	var res []string
 	tmp := r.params.PeekMulti(key)
 	for _, v := range tmp {
 		res = append(res, utils.UnsafeString(v))
 	}
-
 	return res
 }
 
-// Params returns all params in the request using an iterator.
-// You can use maps.Collect() to collect all params into a map.
+// Params returns an iterator over all query parameters in the Request.
+// Use maps.Collect() to gather them into a map if needed.
 //
-// The returned value is valid until the request object is released.
-// Any future calls to Params method will return the modified value. Do not store references to returned value. Make copies instead.
+// The returned values are only valid until the request object is released.
+// Do not store references to returned values; make copies instead.
 func (r *Request) Params() iter.Seq2[string, []string] {
 	return func(yield func(string, []string) bool) {
 		keys := r.params.Keys()
@@ -222,40 +213,37 @@ func (r *Request) Params() iter.Seq2[string, []string] {
 	}
 }
 
-// AddParam method adds a single param field and its value in the request instance.
+// AddParam adds a single query parameter and value to the Request.
 func (r *Request) AddParam(key, val string) *Request {
 	r.params.Add(key, val)
 	return r
 }
 
-// SetParam method sets a single param field and its value in the request instance.
-// It will override param which has been set in client instance.
+// SetParam sets a single query parameter and value in the Request, overriding any previously set value.
 func (r *Request) SetParam(key, val string) *Request {
 	r.params.Set(key, val)
 	return r
 }
 
-// AddParams method adds multiple param fields and its values at one go in the request instance.
+// AddParams adds multiple query parameters and their values at once.
 func (r *Request) AddParams(m map[string][]string) *Request {
 	r.params.AddParams(m)
 	return r
 }
 
-// SetParams method sets multiple param fields and its values at one go in the request instance.
-// It will override param which has been set in client instance.
+// SetParams sets multiple query parameters and their values at once, overriding previously set values.
 func (r *Request) SetParams(m map[string]string) *Request {
 	r.params.SetParams(m)
 	return r
 }
 
-// SetParamsWithStruct method sets multiple param fields and its values at one go in the request instance.
-// It will override param which has been set in client instance.
+// SetParamsWithStruct sets multiple query parameters from a struct, overriding previously set values.
 func (r *Request) SetParamsWithStruct(v any) *Request {
 	r.params.SetParamsWithStruct(v)
 	return r
 }
 
-// DelParams method deletes single or multiple param fields ant its values.
+// DelParams deletes one or more query parameters.
 func (r *Request) DelParams(key ...string) *Request {
 	for _, v := range key {
 		r.params.Del(v)
@@ -263,44 +251,41 @@ func (r *Request) DelParams(key ...string) *Request {
 	return r
 }
 
-// UserAgent returns user agent in request instance.
+// UserAgent returns the User-Agent header set in the Request.
 func (r *Request) UserAgent() string {
 	return r.userAgent
 }
 
-// SetUserAgent method sets user agent in request.
-// It will override user agent which has been set in client instance.
+// SetUserAgent sets the User-Agent header, overriding any previously set value.
 func (r *Request) SetUserAgent(ua string) *Request {
 	r.userAgent = ua
 	return r
 }
 
-// Boundary returns boundary in multipart boundary.
+// Boundary returns the multipart boundary used by the Request.
 func (r *Request) Boundary() string {
 	return r.boundary
 }
 
-// SetBoundary method sets multipart boundary.
+// SetBoundary sets the multipart boundary.
 func (r *Request) SetBoundary(b string) *Request {
 	r.boundary = b
-
 	return r
 }
 
-// Referer returns referer in request instance.
+// Referer returns the Referer header set in the Request.
 func (r *Request) Referer() string {
 	return r.referer
 }
 
-// SetReferer method sets referer in request.
-// It will override referer which set in client instance.
+// SetReferer sets the Referer header, overriding any previously set value.
 func (r *Request) SetReferer(referer string) *Request {
 	r.referer = referer
 	return r
 }
 
-// Cookie returns the cookie be set in request instance.
-// if cookie doesn't exist, return empty string.
+// Cookie returns the value of a named cookie.
+// If the cookie does not exist, an empty string is returned.
 func (r *Request) Cookie(key string) string {
 	if val, ok := (*r.cookies)[key]; ok {
 		return val
@@ -308,8 +293,8 @@ func (r *Request) Cookie(key string) string {
 	return ""
 }
 
-// Cookies returns all cookies in the cookies using an iterator.
-// You can use maps.Collect() to collect all cookies into a map.
+// Cookies returns an iterator over all cookies.
+// Use maps.Collect() to gather them into a map if needed.
 func (r *Request) Cookies() iter.Seq2[string, string] {
 	return func(yield func(string, string) bool) {
 		r.cookies.VisitAll(func(key, val string) {
@@ -320,45 +305,41 @@ func (r *Request) Cookies() iter.Seq2[string, string] {
 	}
 }
 
-// SetCookie method sets a single cookie field and its value in the request instance.
-// It will override cookie which set in client instance.
+// SetCookie sets a single cookie, overriding any previously set value.
 func (r *Request) SetCookie(key, val string) *Request {
 	r.cookies.SetCookie(key, val)
 	return r
 }
 
-// SetCookies method sets multiple cookie fields and its values at one go in the request instance.
-// It will override cookie which set in client instance.
+// SetCookies sets multiple cookies at once, overriding previously set values.
 func (r *Request) SetCookies(m map[string]string) *Request {
 	r.cookies.SetCookies(m)
 	return r
 }
 
-// SetCookiesWithStruct method sets multiple cookie fields and its values at one go in the request instance.
-// It will override cookie which set in client instance.
+// SetCookiesWithStruct sets multiple cookies from a struct, overriding previously set values.
 func (r *Request) SetCookiesWithStruct(v any) *Request {
 	r.cookies.SetCookiesWithStruct(v)
 	return r
 }
 
-// DelCookies method deletes single or multiple cookie fields ant its values.
+// DelCookies deletes one or more cookies.
 func (r *Request) DelCookies(key ...string) *Request {
 	r.cookies.DelCookies(key...)
 	return r
 }
 
-// PathParam returns the path param be set in request instance.
-// if path param doesn't exist, return empty string.
+// PathParam returns the value of a named path parameter.
+// If the parameter does not exist, an empty string is returned.
 func (r *Request) PathParam(key string) string {
 	if val, ok := (*r.path)[key]; ok {
 		return val
 	}
-
 	return ""
 }
 
-// PathParams returns all path params in request instance.
-// You can use maps.Collect() to collect all cookies into a map.
+// PathParams returns an iterator over all path parameters.
+// Use maps.Collect() to gather them into a map if needed.
 func (r *Request) PathParams() iter.Seq2[string, string] {
 	return func(yield func(string, string) bool) {
 		r.path.VisitAll(func(key, val string) {
@@ -369,96 +350,91 @@ func (r *Request) PathParams() iter.Seq2[string, string] {
 	}
 }
 
-// SetPathParam method sets a single path param field and its value in the request instance.
-// It will override path param which set in client instance.
+// SetPathParam sets a single path parameter and value, overriding any previously set value.
 func (r *Request) SetPathParam(key, val string) *Request {
 	r.path.SetParam(key, val)
 	return r
 }
 
-// SetPathParams method sets multiple path param fields and its values at one go in the request instance.
-// It will override path param which set in client instance.
+// SetPathParams sets multiple path parameters and values at once, overriding previously set values.
 func (r *Request) SetPathParams(m map[string]string) *Request {
 	r.path.SetParams(m)
 	return r
 }
 
-// SetPathParamsWithStruct method sets multiple path param fields and its values at one go in the request instance.
-// It will override path param which set in client instance.
+// SetPathParamsWithStruct sets multiple path parameters from a struct, overriding previously set values.
 func (r *Request) SetPathParamsWithStruct(v any) *Request {
 	r.path.SetParamsWithStruct(v)
 	return r
 }
 
-// DelPathParams method deletes single or multiple path param fields ant its values.
+// DelPathParams deletes one or more path parameters.
 func (r *Request) DelPathParams(key ...string) *Request {
 	r.path.DelParams(key...)
 	return r
 }
 
-// ResetPathParams deletes all path params.
+// ResetPathParams deletes all path parameters.
 func (r *Request) ResetPathParams() *Request {
 	r.path.Reset()
 	return r
 }
 
-// SetJSON method sets JSON body in request.
+// SetJSON sets the request body to a JSON-encoded value.
 func (r *Request) SetJSON(v any) *Request {
 	r.body = v
 	r.bodyType = jsonBody
 	return r
 }
 
-// SetXML method sets XML body in request.
+// SetXML sets the request body to an XML-encoded value.
 func (r *Request) SetXML(v any) *Request {
 	r.body = v
 	r.bodyType = xmlBody
 	return r
 }
 
-// SetCBOR method sets CBOR body in request.
+// SetCBOR sets the request body to a CBOR-encoded value.
 func (r *Request) SetCBOR(v any) *Request {
 	r.body = v
 	r.bodyType = cborBody
 	return r
 }
 
-// SetRawBody method sets body with raw data in request.
+// SetRawBody sets the request body to raw bytes.
 func (r *Request) SetRawBody(v []byte) *Request {
 	r.body = v
 	r.bodyType = rawBody
 	return r
 }
 
-// resetBody will clear body object and set bodyType
-// if body type is formBody and filesBody, the new body type will be ignored.
+// resetBody clears the existing body. If the current body type is filesBody and
+// the new type is formBody, the formBody setting is ignored to preserve files.
 func (r *Request) resetBody(t bodyType) {
 	r.body = nil
 
-	// Set form data after set file ignore.
+	// If bodyType is filesBody and we attempt to set formBody, ignore the change.
 	if r.bodyType == filesBody && t == formBody {
 		return
 	}
 	r.bodyType = t
 }
 
-// FormData method returns form data value via key,
-// this method will visit all field in the form data.
+// FormData returns all values associated with a form field.
 func (r *Request) FormData(key string) []string {
 	var res []string
 	tmp := r.formData.PeekMulti(key)
 	for _, v := range tmp {
 		res = append(res, utils.UnsafeString(v))
 	}
-
 	return res
 }
 
-// AllFormData method returns all form datas in request instance.
-// You can use maps.Collect() to collect all cookies into a map.
+// AllFormData returns an iterator over all form fields.
+// Use maps.Collect() to gather them into a map if needed.
 //
-// The returned value is valid until the request object is released.
-// Any future calls to FormDatas method will return the modified value. Do not store references to returned value. Make copies instead.
+// The returned values are only valid until the request object is released.
+// Do not store references to returned values; make copies instead.
 func (r *Request) AllFormData() iter.Seq2[string, []string] {
 	return func(yield func(string, []string) bool) {
 		keys := r.formData.Keys()
@@ -481,51 +457,50 @@ func (r *Request) AllFormData() iter.Seq2[string, []string] {
 	}
 }
 
-// AddFormData method adds a single form data field and its value in the request instance.
+// AddFormData adds a single form field and value to the Request.
 func (r *Request) AddFormData(key, val string) *Request {
 	r.formData.AddData(key, val)
 	r.resetBody(formBody)
 	return r
 }
 
-// SetFormData method sets a single form data field and its value in the request instance.
+// SetFormData sets a single form field and value, overriding any previously set value.
 func (r *Request) SetFormData(key, val string) *Request {
 	r.formData.SetData(key, val)
 	r.resetBody(formBody)
 	return r
 }
 
-// AddFormDatas method adds multiple form data fields and its values in the request instance.
+// AddFormDatas adds multiple form fields and values to the Request.
 func (r *Request) AddFormDatas(m map[string][]string) *Request {
 	r.formData.AddDatas(m)
 	r.resetBody(formBody)
 	return r
 }
 
-// SetFormDatas method sets multiple form data fields and its values in the request instance.
+// SetFormDatas sets multiple form fields and values at once, overriding previously set values.
 func (r *Request) SetFormDatas(m map[string]string) *Request {
 	r.formData.SetDatas(m)
 	r.resetBody(formBody)
 	return r
 }
 
-// SetFormDatasWithStruct method sets multiple form data fields
-// and its values in the request instance via struct.
+// SetFormDatasWithStruct sets multiple form fields from a struct, overriding previously set values.
 func (r *Request) SetFormDatasWithStruct(v any) *Request {
 	r.formData.SetDatasWithStruct(v)
 	r.resetBody(formBody)
 	return r
 }
 
-// DelFormDatas method deletes multiple form data fields and its value in the request instance.
+// DelFormDatas deletes one or more form fields.
 func (r *Request) DelFormDatas(key ...string) *Request {
 	r.formData.DelDatas(key...)
 	r.resetBody(formBody)
 	return r
 }
 
-// File returns file ptr store in request obj by name.
-// If name field is empty, it will try to match path.
+// File returns the file associated with the given name.
+// If no name was provided during addition, it attempts to match by the file's base name.
 func (r *Request) File(name string) *File {
 	for _, v := range r.files {
 		if v.name == "" {
@@ -536,132 +511,125 @@ func (r *Request) File(name string) *File {
 			return v
 		}
 	}
-
 	return nil
 }
 
-// Files method returns all files in request instance.
+// Files returns all files added to the Request.
 //
-// The returned value is valid until the request object is released.
-// Any future calls to Files method will return the modified value. Do not store references to returned value. Make copies instead.
+// The returned values are only valid until the request object is released.
+// Do not store references to returned values; make copies instead.
 func (r *Request) Files() []*File {
 	return r.files
 }
 
-// FileByPath returns file ptr store in request obj by path.
+// FileByPath returns the file associated with the given file path.
 func (r *Request) FileByPath(path string) *File {
 	for _, v := range r.files {
 		if v.path == path {
 			return v
 		}
 	}
-
 	return nil
 }
 
-// AddFile method adds single file field
-// and its value in the request instance via file path.
+// AddFile adds a single file by its path.
 func (r *Request) AddFile(path string) *Request {
 	r.files = append(r.files, AcquireFile(SetFilePath(path)))
 	r.resetBody(filesBody)
 	return r
 }
 
-// AddFileWithReader method adds single field
-// and its value in the request instance via reader.
+// AddFileWithReader adds a file using an io.ReadCloser.
 func (r *Request) AddFileWithReader(name string, reader io.ReadCloser) *Request {
 	r.files = append(r.files, AcquireFile(SetFileName(name), SetFileReader(reader)))
 	r.resetBody(filesBody)
 	return r
 }
 
-// AddFiles method adds multiple file fields
-// and its value in the request instance via File instance.
+// AddFiles adds multiple files at once.
 func (r *Request) AddFiles(files ...*File) *Request {
 	r.files = append(r.files, files...)
 	r.resetBody(filesBody)
 	return r
 }
 
-// Timeout returns the length of timeout in request.
+// Timeout returns the timeout duration set in the Request.
 func (r *Request) Timeout() time.Duration {
 	return r.timeout
 }
 
-// SetTimeout method sets timeout field and its values at one go in the request instance.
-// It will override timeout which set in client instance.
+// SetTimeout sets the timeout for the Request, overriding any previously set value.
 func (r *Request) SetTimeout(t time.Duration) *Request {
 	r.timeout = t
 	return r
 }
 
-// MaxRedirects returns the max redirects count in request.
+// MaxRedirects returns the maximum number of redirects configured for the Request.
 func (r *Request) MaxRedirects() int {
 	return r.maxRedirects
 }
 
-// SetMaxRedirects method sets the maximum number of redirects at one go in the request instance.
-// It will override max redirect which set in client instance.
+// SetMaxRedirects sets the maximum number of redirects, overriding any previously set value.
 func (r *Request) SetMaxRedirects(count int) *Request {
 	r.maxRedirects = count
 	return r
 }
 
-// checkClient method checks whether the client has been set in request.
+// checkClient ensures that a Client is set. If none is set, it defaults to the global defaultClient.
 func (r *Request) checkClient() {
 	if r.client == nil {
 		r.SetClient(defaultClient)
 	}
 }
 
-// Get Send get request.
+// Get sends a GET request to the given URL.
 func (r *Request) Get(url string) (*Response, error) {
 	return r.SetURL(url).SetMethod(fiber.MethodGet).Send()
 }
 
-// Post Send post request.
+// Post sends a POST request to the given URL.
 func (r *Request) Post(url string) (*Response, error) {
 	return r.SetURL(url).SetMethod(fiber.MethodPost).Send()
 }
 
-// Head Send head request.
+// Head sends a HEAD request to the given URL.
 func (r *Request) Head(url string) (*Response, error) {
 	return r.SetURL(url).SetMethod(fiber.MethodHead).Send()
 }
 
-// Put Send put request.
+// Put sends a PUT request to the given URL.
 func (r *Request) Put(url string) (*Response, error) {
 	return r.SetURL(url).SetMethod(fiber.MethodPut).Send()
 }
 
-// Delete Send Delete request.
+// Delete sends a DELETE request to the given URL.
 func (r *Request) Delete(url string) (*Response, error) {
 	return r.SetURL(url).SetMethod(fiber.MethodDelete).Send()
 }
 
-// Options Send Options request.
+// Options sends an OPTIONS request to the given URL.
 func (r *Request) Options(url string) (*Response, error) {
 	return r.SetURL(url).SetMethod(fiber.MethodOptions).Send()
 }
 
-// Patch Send patch request.
+// Patch sends a PATCH request to the given URL.
 func (r *Request) Patch(url string) (*Response, error) {
 	return r.SetURL(url).SetMethod(fiber.MethodPatch).Send()
 }
 
-// Custom Send custom request.
+// Custom sends a request with a custom HTTP method to the given URL.
 func (r *Request) Custom(url, method string) (*Response, error) {
 	return r.SetURL(url).SetMethod(method).Send()
 }
 
-// Send a request.
+// Send executes the Request.
 func (r *Request) Send() (*Response, error) {
 	r.checkClient()
-
 	return newCore().execute(r.Context(), r.Client(), r)
 }
 
-// Reset clear Request object, used by ReleaseRequest method.
+// Reset clears the Request object, returning it to its default state.
+// Used by ReleaseRequest to recycle the object.
 func (r *Request) Reset() {
 	r.url = ""
 	r.method = fiber.MethodGet
@@ -688,26 +656,24 @@ func (r *Request) Reset() {
 	r.RawRequest.Reset()
 }
 
-// Header is a wrapper which wrap http.Header,
-// the header in client and request will store in it.
+// Header wraps fasthttp.RequestHeader, storing headers for both client and request.
 type Header struct {
 	*fasthttp.RequestHeader
 }
 
-// PeekMultiple methods returns multiple field in header with same key.
+// PeekMultiple returns multiple values of a header field with the same key.
 func (h *Header) PeekMultiple(key string) []string {
 	var res []string
 	byteKey := []byte(key)
-	h.RequestHeader.VisitAll(func(key, value []byte) {
-		if bytes.EqualFold(key, byteKey) {
+	h.RequestHeader.VisitAll(func(k, value []byte) {
+		if bytes.EqualFold(k, byteKey) {
 			res = append(res, utils.UnsafeString(value))
 		}
 	})
-
 	return res
 }
 
-// AddHeaders receives a map and add each value to header.
+// AddHeaders adds multiple headers from a map.
 func (h *Header) AddHeaders(r map[string][]string) {
 	for k, v := range r {
 		for _, vv := range v {
@@ -716,7 +682,7 @@ func (h *Header) AddHeaders(r map[string][]string) {
 	}
 }
 
-// SetHeaders will override all headers.
+// SetHeaders sets multiple headers from a map, overriding previously set values.
 func (h *Header) SetHeaders(r map[string]string) {
 	for k, v := range r {
 		h.Del(k)
@@ -724,23 +690,21 @@ func (h *Header) SetHeaders(r map[string]string) {
 	}
 }
 
-// QueryParam is a wrapper which wrap url.Values,
-// the query string and formdata in client and request will store in it.
+// QueryParam wraps fasthttp.Args for query parameters.
 type QueryParam struct {
 	*fasthttp.Args
 }
 
-// Keys method returns all keys in the query params.
+// Keys returns all keys from the query parameters.
 func (p *QueryParam) Keys() []string {
 	keys := make([]string, 0, p.Len())
 	p.VisitAll(func(key, _ []byte) {
 		keys = append(keys, utils.UnsafeString(key))
 	})
-
 	return slices.Compact(keys)
 }
 
-// AddParams receive a map and add each value to param.
+// AddParams adds multiple parameters from a map.
 func (p *QueryParam) AddParams(r map[string][]string) {
 	for k, v := range r {
 		for _, vv := range v {
@@ -749,148 +713,148 @@ func (p *QueryParam) AddParams(r map[string][]string) {
 	}
 }
 
-// SetParams will override all params.
+// SetParams sets multiple parameters from a map, overriding previously set values.
 func (p *QueryParam) SetParams(r map[string]string) {
 	for k, v := range r {
 		p.Set(k, v)
 	}
 }
 
-// SetParamsWithStruct will override all params with struct or pointer of struct.
-// Now nested structs are not currently supported.
+// SetParamsWithStruct sets multiple parameters from a struct.
+// Nested structs are not currently supported.
 func (p *QueryParam) SetParamsWithStruct(v any) {
 	SetValWithStruct(p, "param", v)
 }
 
-// Cookie is a map which to store the cookies.
+// Cookie is a map used to store cookies.
 type Cookie map[string]string
 
-// Add method impl the method in WithStruct interface.
+// Add adds a cookie key-value pair.
 func (c Cookie) Add(key, val string) {
 	c[key] = val
 }
 
-// Del method impl the method in WithStruct interface.
+// Del deletes a cookie by key.
 func (c Cookie) Del(key string) {
 	delete(c, key)
 }
 
-// SetCookie method sets a single val in Cookie.
+// SetCookie sets a single cookie value.
 func (c Cookie) SetCookie(key, val string) {
 	c[key] = val
 }
 
-// SetCookies method sets multiple val in Cookie.
+// SetCookies sets multiple cookies from a map.
 func (c Cookie) SetCookies(m map[string]string) {
 	for k, v := range m {
 		c[k] = v
 	}
 }
 
-// SetCookiesWithStruct method sets multiple val in Cookie via a struct.
+// SetCookiesWithStruct sets cookies from a struct.
+// Nested structs are not currently supported.
 func (c Cookie) SetCookiesWithStruct(v any) {
 	SetValWithStruct(c, "cookie", v)
 }
 
-// DelCookies method deletes multiple val in Cookie.
+// DelCookies deletes multiple cookies by keys.
 func (c Cookie) DelCookies(key ...string) {
 	for _, v := range key {
 		c.Del(v)
 	}
 }
 
-// VisitAll method receive a function which can travel the all val.
+// VisitAll iterates through all cookies, calling f for each.
 func (c Cookie) VisitAll(f func(key, val string)) {
 	for k, v := range c {
 		f(k, v)
 	}
 }
 
-// Reset clears the Cookie object.
+// Reset clears the Cookie map.
 func (c Cookie) Reset() {
 	for k := range c {
 		delete(c, k)
 	}
 }
 
-// PathParam is a map which to store path params.
+// PathParam is a map used to store path parameters.
 type PathParam map[string]string
 
-// Add method impl the method in WithStruct interface.
+// Add adds a path parameter key-value pair.
 func (p PathParam) Add(key, val string) {
 	p[key] = val
 }
 
-// Del method impl the method in WithStruct interface.
+// Del deletes a path parameter by key.
 func (p PathParam) Del(key string) {
 	delete(p, key)
 }
 
-// SetParam method sets a single val in PathParam.
+// SetParam sets a single path parameter.
 func (p PathParam) SetParam(key, val string) {
 	p[key] = val
 }
 
-// SetParams method sets multiple val in PathParam.
+// SetParams sets multiple path parameters from a map.
 func (p PathParam) SetParams(m map[string]string) {
 	for k, v := range m {
 		p[k] = v
 	}
 }
 
-// SetParamsWithStruct method sets multiple val in PathParam via a struct.
+// SetParamsWithStruct sets multiple path parameters from a struct.
+// Nested structs are not currently supported.
 func (p PathParam) SetParamsWithStruct(v any) {
 	SetValWithStruct(p, "path", v)
 }
 
-// DelParams method deletes multiple val in PathParams.
+// DelParams deletes multiple path parameters.
 func (p PathParam) DelParams(key ...string) {
 	for _, v := range key {
 		p.Del(v)
 	}
 }
 
-// VisitAll method receive a function which can travel the all val.
+// VisitAll iterates through all path parameters, calling f for each.
 func (p PathParam) VisitAll(f func(key, val string)) {
 	for k, v := range p {
 		f(k, v)
 	}
 }
 
-// Reset clear the PathParam object.
+// Reset clears the PathParam map.
 func (p PathParam) Reset() {
 	for k := range p {
 		delete(p, k)
 	}
 }
 
-// FormData is a wrapper of fasthttp.Args,
-// and it is used for url encode body and file body.
+// FormData wraps fasthttp.Args for URL-encoded bodies and form data.
 type FormData struct {
 	*fasthttp.Args
 }
 
-// Keys method returns all keys in the form data.
+// Keys returns all keys from the form data.
 func (f *FormData) Keys() []string {
 	keys := make([]string, 0, f.Len())
 	f.VisitAll(func(key, _ []byte) {
 		keys = append(keys, utils.UnsafeString(key))
 	})
-
 	return slices.Compact(keys)
 }
 
-// AddData method is a wrapper of Args's Add method.
+// AddData adds a single form field.
 func (f *FormData) AddData(key, val string) {
 	f.Add(key, val)
 }
 
-// SetData method is a wrapper of Args's Set method.
+// SetData sets a single form field, overriding previously set values.
 func (f *FormData) SetData(key, val string) {
 	f.Set(key, val)
 }
 
-// AddDatas method supports add multiple fields.
+// AddDatas adds multiple form fields from a map.
 func (f *FormData) AddDatas(m map[string][]string) {
 	for k, v := range m {
 		for _, vv := range v {
@@ -899,31 +863,32 @@ func (f *FormData) AddDatas(m map[string][]string) {
 	}
 }
 
-// SetDatas method supports set multiple fields.
+// SetDatas sets multiple form fields from a map, overriding previously set values.
 func (f *FormData) SetDatas(m map[string]string) {
 	for k, v := range m {
 		f.Set(k, v)
 	}
 }
 
-// SetDatasWithStruct method supports set multiple fields via a struct.
+// SetDatasWithStruct sets multiple form fields from a struct.
+// Nested structs are not currently supported.
 func (f *FormData) SetDatasWithStruct(v any) {
 	SetValWithStruct(f, "form", v)
 }
 
-// DelDatas method deletes multiple fields.
+// DelDatas deletes multiple form fields.
 func (f *FormData) DelDatas(key ...string) {
 	for _, v := range key {
 		f.Del(v)
 	}
 }
 
-// Reset clear the FormData object.
+// Reset clears the FormData object.
 func (f *FormData) Reset() {
 	f.Args.Reset()
 }
 
-// File is a struct which support send files via request.
+// File represents a file to be sent with the request.
 type File struct {
 	reader    io.ReadCloser
 	name      string
@@ -931,28 +896,27 @@ type File struct {
 	path      string
 }
 
-// SetName method sets file name.
+// SetName sets the file's name.
 func (f *File) SetName(n string) {
 	f.name = n
 }
 
-// SetFieldName method sets key of file in the body.
+// SetFieldName sets the key associated with the file in the body.
 func (f *File) SetFieldName(n string) {
 	f.fieldName = n
 }
 
-// SetPath method set file path.
+// SetPath sets the file's path.
 func (f *File) SetPath(p string) {
 	f.path = p
 }
 
-// SetReader method can receive a io.ReadCloser
-// which will be closed in parserBody hook.
+// SetReader sets the file's reader, which will be closed in the parserBody hook.
 func (f *File) SetReader(r io.ReadCloser) {
 	f.reader = r
 }
 
-// Reset clear the File object.
+// Reset clears the File object.
 func (f *File) Reset() {
 	f.name = ""
 	f.fieldName = ""
@@ -975,22 +939,17 @@ var requestPool = &sync.Pool{
 	},
 }
 
-// AcquireRequest returns an empty request object from the pool.
-//
-// The returned request may be returned to the pool with ReleaseRequest when no longer needed.
-// This allows reducing GC load.
+// AcquireRequest returns a new (pooled) Request object.
 func AcquireRequest() *Request {
 	req, ok := requestPool.Get().(*Request)
 	if !ok {
 		panic(errors.New("failed to type-assert to *Request"))
 	}
-
 	return req
 }
 
-// ReleaseRequest returns the object acquired via AcquireRequest to the pool.
-//
-// Do not access the released Request object, otherwise data races may occur.
+// ReleaseRequest returns the Request object to the pool.
+// Do not use the released Request afterward to avoid data races.
 func ReleaseRequest(req *Request) {
 	req.Reset()
 	requestPool.Put(req)
@@ -998,43 +957,38 @@ func ReleaseRequest(req *Request) {
 
 var filePool sync.Pool
 
-// SetFileFunc The methods as follows is used by AcquireFile method.
-// You can set file field via these method.
+// SetFileFunc defines a function that modifies a File object.
 type SetFileFunc func(f *File)
 
-// SetFileName method sets file name.
+// SetFileName sets the file name.
 func SetFileName(n string) SetFileFunc {
 	return func(f *File) {
 		f.SetName(n)
 	}
 }
 
-// SetFileFieldName method sets key of file in the body.
+// SetFileFieldName sets the file's field name.
 func SetFileFieldName(p string) SetFileFunc {
 	return func(f *File) {
 		f.SetFieldName(p)
 	}
 }
 
-// SetFilePath method set file path.
+// SetFilePath sets the file path.
 func SetFilePath(p string) SetFileFunc {
 	return func(f *File) {
 		f.SetPath(p)
 	}
 }
 
-// SetFileReader method can receive a io.ReadCloser
+// SetFileReader sets the file's reader.
 func SetFileReader(r io.ReadCloser) SetFileFunc {
 	return func(f *File) {
 		f.SetReader(r)
 	}
 }
 
-// AcquireFile returns an File object from the pool.
-// And you can set field in the File with SetFileFunc.
-//
-// The returned file may be returned to the pool with ReleaseFile when no longer needed.
-// This allows reducing GC load.
+// AcquireFile returns a (pooled) File object and applies the provided SetFileFunc functions to it.
 func AcquireFile(setter ...SetFileFunc) *File {
 	fv := filePool.Get()
 	if fv != nil {
@@ -1054,24 +1008,23 @@ func AcquireFile(setter ...SetFileFunc) *File {
 	return f
 }
 
-// ReleaseFile returns the object acquired via AcquireFile to the pool.
-//
-// Do not access the released File object, otherwise data races may occur.
+// ReleaseFile returns the File object to the pool.
+// Do not use the released File afterward to avoid data races.
 func ReleaseFile(f *File) {
 	f.Reset()
 	filePool.Put(f)
 }
 
-// SetValWithStruct Set some values using structs.
-// `p` is a structure that implements the WithStruct interface,
-// The field name can be specified by `tagName`.
-// `v` is a struct include some data.
-// Note: This method only supports simple types and nested structs are not currently supported.
+// SetValWithStruct sets values using a struct. The struct's fields are examined via reflection.
+// `p` is a type that implements WithStruct. `tagName` defines the struct tag to look for.
+// `v` is the struct containing data.
+//
+// Only simple types are supported; nested structs are not currently supported.
 func SetValWithStruct(p WithStruct, tagName string, v any) {
 	valueOfV := reflect.ValueOf(v)
 	typeOfV := reflect.TypeOf(v)
 
-	// The v should be struct or point of struct
+	// The value should be a struct or a pointer to a struct.
 	if typeOfV.Kind() == reflect.Pointer && typeOfV.Elem().Kind() == reflect.Struct {
 		valueOfV = valueOfV.Elem()
 		typeOfV = typeOfV.Elem()
@@ -1079,9 +1032,8 @@ func SetValWithStruct(p WithStruct, tagName string, v any) {
 		return
 	}
 
-	// Boring type judge.
-	// TODO: cover more types and complex data structure.
-	var setVal func(name string, value reflect.Value)
+	// A helper function to set values.
+	var setVal func(name string, val reflect.Value)
 	setVal = func(name string, val reflect.Value) {
 		switch val.Kind() {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
@@ -1099,6 +1051,7 @@ func SetValWithStruct(p WithStruct, tagName string, v any) {
 				setVal(name, val.Index(i))
 			}
 		default:
+			// Unsupported type is ignored.
 		}
 	}
 
@@ -1116,7 +1069,7 @@ func SetValWithStruct(p WithStruct, tagName string, v any) {
 		if val.IsZero() {
 			continue
 		}
-		// To cover slice and array, we delete the val then add it.
+		// Clear existing value before adding a new one.
 		p.Del(name)
 		setVal(name, val)
 	}
