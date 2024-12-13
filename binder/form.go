@@ -65,6 +65,8 @@ func (b *formBinding) BindMultipart(reqCtx *fasthttp.RequestCtx, out any) error 
 			}
 			data.Value[k] = values
 			delete(data.Value, key) // Remove bracket notation and use dot instead
+
+			key = k // We have to update key in case bracket notation and slice type are used at the same time
 		}
 
 		for _, v := range values {
