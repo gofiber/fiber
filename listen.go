@@ -50,11 +50,6 @@ type ListenConfig struct {
 	// Default: nil
 	TLSConfigFunc func(tlsConfig *tls.Config) `json:"tls_config_func"`
 
-	// TLSMinVersion allows to set tls minimum version.
-	//
-	// Default: VersionTLS12
-	TLSMinVersion uint16 `json:"tls_min_version"`
-
 	// ListenerFunc allows accessing and customizing net.Listener.
 	//
 	// Default: nil
@@ -112,6 +107,11 @@ type ListenConfig struct {
 	//
 	// Default: 10 * time.Second
 	ShutdownTimeout time.Duration `json:"shutdown_timeout"`
+
+	// TLSMinVersion allows to set tls minimum version.
+	//
+	// Default: VersionTLS12
+	TLSMinVersion uint16 `json:"tls_min_version"`
 
 	// When set to true, it will not print out the «Fiber» ASCII art and listening address.
 	//
