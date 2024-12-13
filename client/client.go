@@ -283,7 +283,9 @@ func (c *Client) AddHeaders(h map[string][]string) *Client {
 	return c
 }
 
-// SetHeaders sets multiple header fields and their values in the client.
+// SetHeaders method sets multiple headers field and its values at one go in the client instance.
+// These headers will be applied to all requests created from this client instance. Also it can be
+// overridden at request level headers options.
 func (c *Client) SetHeaders(h map[string]string) *Client {
 	c.header.SetHeaders(h)
 	return c
@@ -301,6 +303,7 @@ func (c *Client) Param(key string) []string {
 }
 
 // AddParam adds a single query parameter and its value to the client.
+// These params will be applied to all requests created from this client instance.
 func (c *Client) AddParam(key, val string) *Client {
 	c.params.Add(key, val)
 	return c

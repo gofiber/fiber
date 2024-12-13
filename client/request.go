@@ -116,6 +116,7 @@ func (r *Request) Context() context.Context {
 }
 
 // SetContext sets the context for the Request, allowing request cancellation if ctx is done.
+// See https://blog.golang.org/context article and the "context" package documentation.
 func (r *Request) SetContext(ctx context.Context) *Request {
 	r.ctx = ctx
 	return r
