@@ -28,9 +28,9 @@ var (
 	multipartFormData = "multipart/form-data"
 
 	letterBytes   = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	letterIdxBits = 6                     // 6 bits to represent a letter index
-	letterIdxMask = 1<<letterIdxBits - 1  // All 1-bits, as many as letterIdxBits
-	letterIdxMax  = 63 / letterIdxBits    // # of letter indices fitting into 63 bits
+	letterIdxBits = 6                    // 6 bits to represent a letter index
+	letterIdxMask = 1<<letterIdxBits - 1 // All 1-bits, as many as letterIdxBits
+	letterIdxMax  = 63 / letterIdxBits   // # of letter indices fitting into 63 bits
 )
 
 // randString returns a random string of length n.

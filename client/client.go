@@ -45,14 +45,14 @@ type Client struct {
 	cborMarshal   utils.CBORMarshal
 	cborUnmarshal utils.CBORUnmarshal
 
-	cookieJar    *CookieJar
-	retryConfig  *RetryConfig
-	baseURL      string
-	userAgent    string
-	referer      string
-	userRequestHooks    []RequestHook
-	builtinRequestHooks []RequestHook
-	userResponseHooks   []ResponseHook
+	cookieJar            *CookieJar
+	retryConfig          *RetryConfig
+	baseURL              string
+	userAgent            string
+	referer              string
+	userRequestHooks     []RequestHook
+	builtinRequestHooks  []RequestHook
+	userResponseHooks    []ResponseHook
 	builtinResponseHooks []ResponseHook
 
 	timeout time.Duration
@@ -545,17 +545,17 @@ func (c *Client) Reset() {
 // JSON is used as the default serialization mechanism. The priority is:
 // Body > FormData > File.
 type Config struct {
-	Ctx         context.Context //nolint:containedctx // It's needed to be stored in the config.
-	Body        any
-	Header      map[string]string
-	Param       map[string]string
-	Cookie      map[string]string
-	PathParam   map[string]string
-	FormData    map[string]string
-	UserAgent   string
-	Referer     string
-	File        []*File
-	Timeout     time.Duration
+	Ctx          context.Context //nolint:containedctx // It's needed to be stored in the config.
+	Body         any
+	Header       map[string]string
+	Param        map[string]string
+	Cookie       map[string]string
+	PathParam    map[string]string
+	FormData     map[string]string
+	UserAgent    string
+	Referer      string
+	File         []*File
+	Timeout      time.Duration
 	MaxRedirects int
 }
 
