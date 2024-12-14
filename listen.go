@@ -111,6 +111,7 @@ type ListenConfig struct {
 	// TLSMinVersion allows to set tls minimum version.
 	//
 	// Default: VersionTLS12
+	// WARNING: TLS1.0 and TLS1.1 versions are not supported.
 	TLSMinVersion uint16 `json:"tls_min_version"`
 
 	// When set to true, it will not print out the «Fiber» ASCII art and listening address.
@@ -155,6 +156,10 @@ func listenConfigDefault(config ...ListenConfig) ListenConfig {
 
 	if cfg.TLSMinVersion == 0 {
 		cfg.TLSMinVersion = tls.VersionTLS12
+	}
+
+	if cfg.TLSMinVersion != tls.VersionTLS12 && cfg.TLSMinVersion != tls.VersionTLS13 {
+		panic("Supported TLS versions: 1.2, 1.3")
 	}
 
 	return cfg
