@@ -1061,7 +1061,7 @@ func SetValWithStruct(p WithStruct, tagName string, v any) {
 				setVal(name, val.Index(i))
 			}
 		default:
-			// Unsupported type is ignored.
+			return
 		}
 	}
 
@@ -1076,10 +1076,7 @@ func SetValWithStruct(p WithStruct, tagName string, v any) {
 			name = field.Name
 		}
 		val := valueOfV.Field(i)
-		if val.IsZero() {
-			continue
-		}
-		// Clear existing value before adding a new one.
+		// To cover slice and array, we delete the val then add it.
 		p.Del(name)
 		setVal(name, val)
 	}
