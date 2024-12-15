@@ -233,6 +233,26 @@ func Test_Listen_Prefork(t *testing.T) {
 
 	app := New()
 
+	require.Panics(t, func() {
+		_ = app.Listen(":443", ListenConfig{TLSMinVersion: tls.VersionTLS10}) //nolint:errcheck // ignore error
+	})
+	require.Panics(t, func() {
+		_ = app.Listen(":443", ListenConfig{TLSMinVersion: tls.VersionTLS11}) //nolint:errcheck // ignore error
+	})
+
+	require.Panics(t, func() {
+		_ = app.Listen(":443", ListenConfig{DisableStartupMessage: true, EnablePrefork: true, TLSMinVersion: tls.VersionTLS10}) //nolint:errcheck // ignore error
+	})
+	require.Panics(t, func() {
+		_ = app.Listen(":443", ListenConfig{DisableStartupMessage: true, EnablePrefork: true, TLSMinVersion: tls.VersionTLS11}) //nolint:errcheck // ignore error
+	})
+}
+
+// go test -run Test_Listen_TLSMinVersion
+func Test_Listen_TLSMinVersion(t *testing.T) {
+	testPreforkMaster = true
+
+	app := New()
 	require.NoError(t, app.Listen(":99999", ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
 }
 

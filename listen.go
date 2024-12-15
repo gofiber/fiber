@@ -159,7 +159,7 @@ func listenConfigDefault(config ...ListenConfig) ListenConfig {
 	}
 
 	if cfg.TLSMinVersion != tls.VersionTLS12 && cfg.TLSMinVersion != tls.VersionTLS13 {
-		panic("Supported TLS versions: 1.2, 1.3")
+		panic("unsupported TLS version, please use tls.VersionTLS12 or tls.VersionTLS13")
 	}
 
 	return cfg
@@ -183,7 +183,7 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 		}
 
 		tlsHandler := &TLSHandler{}
-		tlsConfig = &tls.Config{
+		tlsConfig = &tls.Config{ //nolint:gosec // This is a user input
 			MinVersion: cfg.TLSMinVersion,
 			Certificates: []tls.Certificate{
 				cert,
@@ -207,7 +207,7 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 		// Attach the tlsHandler to the config
 		app.SetTLSHandler(tlsHandler)
 	} else if cfg.AutoCertManager != nil {
-		tlsConfig = &tls.Config{
+		tlsConfig = &tls.Config{ //nolint:gosec // This is a user input
 			MinVersion:     cfg.TLSMinVersion,
 			GetCertificate: cfg.AutoCertManager.GetCertificate,
 			NextProtos:     []string{"http/1.1", "acme-tls/1"},
