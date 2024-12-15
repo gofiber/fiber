@@ -1020,7 +1020,10 @@ func ReleaseFile(f *File) {
 // `p` is a type that implements WithStruct. `tagName` defines the struct tag to look for.
 // `v` is the struct containing data.
 //
-// Only simple types are supported; nested structs are not currently supported.
+// Fields in `v` should be string, int, int8, int16, int32, int64, uint,
+// uint8, uint16, uint32, uint64, float32, float64, complex64,
+// complex128 or bool. Arrays or slices are inserted sequentially with the
+// same key. Other types are ignored.
 func SetValWithStruct(p WithStruct, tagName string, v any) {
 	valueOfV := reflect.ValueOf(v)
 	typeOfV := reflect.TypeOf(v)
@@ -1039,20 +1042,27 @@ func SetValWithStruct(p WithStruct, tagName string, v any) {
 		switch val.Kind() {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 			p.Add(name, strconv.Itoa(int(val.Int())))
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+			p.Add(name, strconv.FormatUint(val.Uint(), 10))
+		case reflect.Float32, reflect.Float64:
+			p.Add(name, strconv.FormatFloat(val.Float(), 'f', -1, 64))
+		case reflect.Complex64, reflect.Complex128:
+			p.Add(name, strconv.FormatComplex(val.Complex(), 'f', -1, 128))
 		case reflect.Bool:
 			if val.Bool() {
 				p.Add(name, "true")
+			} else {
+				p.Add(name, "false")
 			}
 		case reflect.String:
 			p.Add(name, val.String())
-		case reflect.Float32, reflect.Float64:
-			p.Add(name, strconv.FormatFloat(val.Float(), 'f', -1, 64))
 		case reflect.Slice, reflect.Array:
 			for i := 0; i < val.Len(); i++ {
 				setVal(name, val.Index(i))
 			}
 		default:
 			// Unsupported type is ignored.
+			return
 		}
 	}
 
