@@ -1062,7 +1062,6 @@ func SetValWithStruct(p WithStruct, tagName string, v any) {
 			}
 		default:
 			// Unsupported type is ignored.
-			return
 		}
 	}
 
