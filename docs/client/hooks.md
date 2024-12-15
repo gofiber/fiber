@@ -2,19 +2,35 @@
 id: hooks
 title: 🎣 Hooks
 description: >-
-  Hooks are used to manipulate request/response process of Fiber client.
+  Hooks are used to manipulate the request/response process of the Fiber client.
 sidebar_position: 4
 ---
 
-With hooks, you can manipulate the client on before request/after response stages or more complex logging/tracing cases.
+Hooks allow you to intercept and modify the request or response flow of the Fiber client. They are particularly useful for:
 
-There are 2 kinds of hooks:
+- Changing request parameters (e.g., URL, headers) before sending the request.
+- Logging request and response details.
+- Integrating complex tracing or monitoring tools.
+- Handling authentication, retries, or other custom logic.
+
+There are two kinds of hooks:
 
 ## Request Hooks
 
-They are called before the HTTP request has been sent. You can use them make changes on Request object.
+**Request hooks** are functions executed before the HTTP request is sent. They follow the signature:
 
-You need to use `RequestHook func(*Client, *Request) error` function signature while creating the hooks. You can use request hooks to change host URL, log request properties etc. Here is an example about how to create request hooks:
+```go
+type RequestHook func(*Client, *Request) error
+```
+
+A request hook receives both the `Client` and the `Request` objects, allowing you to modify the request before it leaves your application. For example, you could:
+
+- Change the host URL.
+- Log request details (method, URL, headers).
+- Add or modify headers or query parameters.
+- Intercept and apply custom authentication logic.
+
+**Example:**
 
 ```go
 type Repository struct {
@@ -31,9 +47,9 @@ type Repository struct {
 func main() {
     cc := client.New()
 
+    // Add a request hook that modifies the request URL before sending.
     cc.AddRequestHook(func(c *client.Client, r *client.Request) error {
         r.SetURL("https://api.github.com/" + r.URL())
-
         return nil
     })
 
@@ -48,7 +64,6 @@ func main() {
     }
 
     fmt.Printf("Status code: %d\n", resp.StatusCode())
-
     fmt.Printf("Repository: %s\n", repo.FullName)
     fmt.Printf("Description: %s\n", repo.Description)
     fmt.Printf("Homepage: %s\n", repo.Homepage)
@@ -73,17 +88,17 @@ Full Name: gofiber/fiber
 
 </details>
 
-There are also some builtin request hooks provide some functionalities for Fiber client. Here is a list of them:
+### Built-in Request Hooks
 
-- [parserRequestURL](https://github.com/gofiber/fiber/blob/main/client/hooks.go#L62): parserRequestURL customizes the URL according to the path params and query params. It's necessary for `PathParam` and `QueryParam` methods.
+Fiber provides some built-in request hooks:
 
-- [parserRequestHeader](https://github.com/gofiber/fiber/blob/main/client/hooks.go#L113): parserRequestHeader sets request headers, cookies, body type, referer, user agent according to client and request properties. It's necessary to make request header and cookiejar methods functional.
+- **parserRequestURL**: Normalizes and customizes the URL based on path and query parameters. Required for `PathParam` and `QueryParam` methods.
+- **parserRequestHeader**: Sets request headers, cookies, content type, referer, and user agent based on client and request properties.
+- **parserRequestBody**: Automatically serializes the request body (JSON, XML, form, file uploads, etc.).
 
-- [parserRequestBody](https://github.com/gofiber/fiber/blob/main/client/hooks.go#L178): parserRequestBody serializes the body automatically. It is useful for XML, JSON, form, file bodies.
+If any request hook returns an error, the request is interrupted and the error is returned immediately.
 
-:::info
-If any error returns from request hook execution, it will interrupt the request and return the error.
-:::
+**Example with Multiple Hooks:**
 
 ```go
 func main() {
@@ -123,9 +138,15 @@ exit status 2
 
 ## Response Hooks
 
-They are called after the HTTP response has been completed. You can use them to get some information about response and request.
+**Response hooks** are functions executed after the HTTP response is received. They follow the signature:
 
-You need to use `ResponseHook func(*Client, *Response, *Request) error` function signature while creating the hooks. You can use response hook for logging, tracing etc. Here is an example about how to create response hooks:
+```go
+type ResponseHook func(*Client, *Response, *Request) error
+```
+
+A response hook receives the `Client`, `Response`, and `Request` objects, allowing you to inspect and modify the response or perform additional actions such as logging, tracing, or processing response data.
+
+**Example:**
 
 ```go
 func main() {
@@ -173,15 +194,18 @@ X-Cache: HIT
 
 </details>
 
-There are also some builtin request hooks provide some functionalities for Fiber client. Here is a list of them:
+### Built-in Response Hooks
 
-- [parserResponseCookie](https://github.com/gofiber/fiber/blob/main/client/hooks.go#L293): parserResponseCookie parses cookies and saves into the response objects and cookiejar if it's exists.
+Fiber provides built-in response hooks:
 
-- [logger](https://github.com/gofiber/fiber/blob/main/client/hooks.go#L319): logger prints some RawRequest and RawResponse information. It uses [log.CommonLogger](https://github.com/gofiber/fiber/blob/main/log/log.go#L49) interface for logging.
+- **parserResponseCookie**: Parses cookies from the response and stores them in the response object and cookie jar if available.
+- **logger**: Logs information about the raw request and response. It uses the `log.CommonLogger` interface.
 
 :::info
-If any error is returned from executing the response hook, it will return the error without executing other response hooks.
+If a response hook returns an error, it stops executing any further hooks and returns the error.
 :::
+
+**Example with Multiple Response Hooks:**
 
 ```go
 func main() {
@@ -225,9 +249,11 @@ exit status 2
 
 </details>
 
-:::info
-Hooks work as FIFO (first-in-first-out). You need to check the order while adding the hooks.
-:::
+## Hook Execution Order
+
+Hooks run in FIFO order (First-In-First-Out). That means hooks are executed in the order they were added. Keep this in mind when adding multiple hooks, as the order can affect the outcome.
+
+**Example:**
 
 ```go
 func main() {
