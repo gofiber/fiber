@@ -108,9 +108,9 @@ type ListenConfig struct {
 	// Default: 10 * time.Second
 	ShutdownTimeout time.Duration `json:"shutdown_timeout"`
 
-	// TLSMinVersion allows to set tls minimum version.
+	// TLSMinVersion allows to set TLS minimum version.
 	//
-	// Default: VersionTLS12
+	// Default: tls.VersionTLS12
 	// WARNING: TLS1.0 and TLS1.1 versions are not supported.
 	TLSMinVersion uint16 `json:"tls_min_version"`
 
