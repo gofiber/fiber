@@ -276,6 +276,7 @@ func (r *Response) Reset()
 **Close** releases both the associated `Request` and `Response` objects back to their pools.
 
 ⚠️ **WARNING**: After calling `Close`, any attempt to use the request or response may result in data races or undefined behavior. Ensure all processing is complete before closing.
+
 ```go title="Signature"
 func (r *Response) Close()
 ```
