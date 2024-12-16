@@ -96,7 +96,9 @@ Fiber provides some built-in request hooks:
 - **parserRequestHeader**: Sets request headers, cookies, content type, referer, and user agent based on client and request properties.
 - **parserRequestBody**: Automatically serializes the request body (JSON, XML, form, file uploads, etc.).
 
+:::info
 If any request hook returns an error, the request is interrupted and the error is returned immediately.
+:::
 
 **Example with Multiple Hooks:**
 
