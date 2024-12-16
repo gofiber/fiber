@@ -1,4 +1,4 @@
-// The code has been taken from https://github.com/valyala/fasthttp/pull/526 originally.
+// The code was originally taken from https://github.com/valyala/fasthttp/pull/526.
 package client
 
 import (
@@ -18,7 +18,7 @@ var cookieJarPool = sync.Pool{
 	},
 }
 
-// AcquireCookieJar returns an empty CookieJar object from pool.
+// AcquireCookieJar returns an empty CookieJar object from the pool.
 func AcquireCookieJar() *CookieJar {
 	jar, ok := cookieJarPool.Get().(*CookieJar)
 	if !ok {
@@ -28,22 +28,23 @@ func AcquireCookieJar() *CookieJar {
 	return jar
 }
 
-// ReleaseCookieJar returns CookieJar to the pool.
+// ReleaseCookieJar returns a CookieJar object to the pool.
 func ReleaseCookieJar(c *CookieJar) {
 	c.Release()
 	cookieJarPool.Put(c)
 }
 
-// CookieJar manages cookie storage. It is used by the client to store cookies.
+// CookieJar manages cookie storage for the client. It stores cookies keyed by host.
 type CookieJar struct {
 	hostCookies map[string][]*fasthttp.Cookie
 	mu          sync.Mutex
 }
 
-// Get returns the cookies stored from a specific domain.
-// If there were no cookies related with host returned slice will be nil.
+// Get returns all cookies stored for a given URI. If there are no cookies for the
+// provided host, the returned slice will be nil.
 //
-// CookieJar keeps a copy of the cookies, so the returned cookies can be released safely.
+// The CookieJar keeps its own copies of cookies, so it is safe to release the returned
+// cookies after use.
 func (cj *CookieJar) Get(uri *fasthttp.URI) []*fasthttp.Cookie {
 	if uri == nil {
 		return nil
@@ -52,7 +53,7 @@ func (cj *CookieJar) Get(uri *fasthttp.URI) []*fasthttp.Cookie {
 	return cj.getByHostAndPath(uri.Host(), uri.Path())
 }
 
-// get returns the cookies stored from a specific host and path.
+// getByHostAndPath returns cookies stored for a specific host and path.
 func (cj *CookieJar) getByHostAndPath(host, path []byte) []*fasthttp.Cookie {
 	if cj.hostCookies == nil {
 		return nil
@@ -84,8 +85,7 @@ func (cj *CookieJar) getByHostAndPath(host, path []byte) []*fasthttp.Cookie {
 	return newCookies
 }
 
-// getCookiesByHost returns the cookies stored from a specific host.
-// If cookies are expired they will be deleted.
+// getCookiesByHost returns cookies stored for a specific host, removing any that have expired.
 func (cj *CookieJar) getCookiesByHost(host string) []*fasthttp.Cookie {
 	cj.mu.Lock()
 	defer cj.mu.Unlock()
@@ -95,7 +95,8 @@ func (cj *CookieJar) getCookiesByHost(host string) []*fasthttp.Cookie {
 
 	for i := 0; i < len(cookies); i++ {
 		c := cookies[i]
-		if !c.Expire().Equal(fasthttp.CookieExpireUnlimited) && c.Expire().Before(now) { // release cookie if expired
+		// Remove expired cookies.
+		if !c.Expire().Equal(fasthttp.CookieExpireUnlimited) && c.Expire().Before(now) {
 			cookies = append(cookies[:i], cookies[i+1:]...)
 			fasthttp.ReleaseCookie(c)
 			i--
@@ -105,23 +106,21 @@ func (cj *CookieJar) getCookiesByHost(host string) []*fasthttp.Cookie {
 	return cookies
 }
 
-// Set sets cookies for a specific host.
-// The host is get from uri.Host().
-// If the cookie key already exists it will be replaced by the new cookie value.
+// Set stores the given cookies for the specified URI host. If a cookie key already exists,
+// it will be replaced by the new cookie value.
 //
-// CookieJar keeps a copy of the cookies, so the parsed cookies can be released safely.
+// CookieJar stores copies of the provided cookies, so they may be safely released after use.
 func (cj *CookieJar) Set(uri *fasthttp.URI, cookies ...*fasthttp.Cookie) {
 	if uri == nil {
 		return
 	}
-
 	cj.SetByHost(uri.Host(), cookies...)
 }
 
-// SetByHost sets cookies for a specific host.
-// If the cookie key already exists it will be replaced by the new cookie value.
+// SetByHost stores the given cookies for the specified host. If a cookie key already exists,
+// it will be replaced by the new cookie value.
 //
-// CookieJar keeps a copy of the cookies, so the parsed cookies can be released safely.
+// CookieJar stores copies of the provided cookies, so they may be safely released after use.
 func (cj *CookieJar) SetByHost(host []byte, cookies ...*fasthttp.Cookie) {
 	hostStr := utils.UnsafeString(host)
 
@@ -134,26 +133,25 @@ func (cj *CookieJar) SetByHost(host []byte, cookies ...*fasthttp.Cookie) {
 
 	hostCookies, ok := cj.hostCookies[hostStr]
 	if !ok {
-		// If the key does not exist in the map, then we must make a copy for the key to avoid unsafe usage.
+		// If the key does not exist in the map, make a copy to avoid unsafe usage.
 		hostStr = string(host)
 	}
 
 	for _, cookie := range cookies {
-		c := searchCookieByKeyAndPath(cookie.Key(), cookie.Path(), hostCookies)
-		if c == nil {
-			// If the cookie does not exist in the slice, let's acquire new cookie and store it.
-			c = fasthttp.AcquireCookie()
-			hostCookies = append(hostCookies, c)
+		existing := searchCookieByKeyAndPath(cookie.Key(), cookie.Path(), hostCookies)
+		if existing == nil {
+			// If the cookie does not exist, acquire a new one.
+			existing = fasthttp.AcquireCookie()
+			hostCookies = append(hostCookies, existing)
 		}
-		c.CopyTo(cookie) // override cookie properties
+		existing.CopyTo(cookie) // Override cookie properties.
 	}
 	cj.hostCookies[hostStr] = hostCookies
 }
 
-// SetKeyValue sets a cookie by key and value for a specific host.
+// SetKeyValue sets a cookie for the specified host with the given key and value.
 //
-// This function prevents extra allocations by making repeated cookies
-// not being duplicated.
+// This function helps prevent extra allocations by avoiding duplication of repeated cookies.
 func (cj *CookieJar) SetKeyValue(host, key, value string) {
 	c := fasthttp.AcquireCookie()
 	c.SetKey(key)
@@ -162,10 +160,9 @@ func (cj *CookieJar) SetKeyValue(host, key, value string) {
 	cj.SetByHost(utils.UnsafeBytes(host), c)
 }
 
-// SetKeyValueBytes sets a cookie by key and value for a specific host.
+// SetKeyValueBytes sets a cookie for the specified host using byte slices for the key and value.
 //
-// This function prevents extra allocations by making repeated cookies
-// not being duplicated.
+// This function helps prevent extra allocations by avoiding duplication of repeated cookies.
 func (cj *CookieJar) SetKeyValueBytes(host string, key, value []byte) {
 	c := fasthttp.AcquireCookie()
 	c.SetKeyBytes(key)
@@ -174,17 +171,16 @@ func (cj *CookieJar) SetKeyValueBytes(host string, key, value []byte) {
 	cj.SetByHost(utils.UnsafeBytes(host), c)
 }
 
-// dumpCookiesToReq dumps the stored cookies to the request.
+// dumpCookiesToReq writes the stored cookies to the given request.
 func (cj *CookieJar) dumpCookiesToReq(req *fasthttp.Request) {
 	uri := req.URI()
-
 	cookies := cj.getByHostAndPath(uri.Host(), uri.Path())
 	for _, cookie := range cookies {
 		req.Header.SetCookieBytesKV(cookie.Key(), cookie.Value())
 	}
 }
 
-// parseCookiesFromResp parses the response cookies and stores them.
+// parseCookiesFromResp parses the cookies from the response and stores them for the specified host and path.
 func (cj *CookieJar) parseCookiesFromResp(host, path []byte, resp *fasthttp.Response) {
 	hostStr := utils.UnsafeString(host)
 
@@ -194,35 +190,36 @@ func (cj *CookieJar) parseCookiesFromResp(host, path []byte, resp *fasthttp.Resp
 	if cj.hostCookies == nil {
 		cj.hostCookies = make(map[string][]*fasthttp.Cookie)
 	}
+
 	cookies, ok := cj.hostCookies[hostStr]
 	if !ok {
-		// If the key does not exist in the map then
-		// we must make a copy for the key to avoid unsafe usage.
+		// If the key does not exist in the map, make a copy to avoid unsafe usage.
 		hostStr = string(host)
 	}
 
 	now := time.Now()
 	resp.Header.VisitAllCookie(func(key, value []byte) {
-		isCreated := false
+		created := false
 		c := searchCookieByKeyAndPath(key, path, cookies)
 		if c == nil {
-			c, isCreated = fasthttp.AcquireCookie(), true
+			c, created = fasthttp.AcquireCookie(), true
 		}
 
 		_ = c.ParseBytes(value) //nolint:errcheck // ignore error
 		if c.Expire().Equal(fasthttp.CookieExpireUnlimited) || c.Expire().After(now) {
 			cookies = append(cookies, c)
-		} else if isCreated {
+		} else if created {
 			fasthttp.ReleaseCookie(c)
 		}
 	})
 	cj.hostCookies[hostStr] = cookies
 }
 
-// Release releases all cookie values.
+// Release releases all stored cookies. After this, the CookieJar is empty.
 func (cj *CookieJar) Release() {
-	// FOllOW-UP performance optimization
-	// currently a race condition is found because the reset method modifies a value which is not a copy but a reference -> solution should be to make a copy
+	// FOLLOW-UP performance optimization:
+	// Currently, a race condition is found because the reset method modifies a value
+	// that is not a copy but a reference. A solution would be to make a copy.
 	// for _, v := range cj.hostCookies {
 	//	  for _, c := range v {
 	//		fasthttp.ReleaseCookie(c)
@@ -231,7 +228,7 @@ func (cj *CookieJar) Release() {
 	cj.hostCookies = nil
 }
 
-// searchCookieByKeyAndPath searches for a cookie by key and path.
+// searchCookieByKeyAndPath looks up a cookie by its key and path from the provided slice of cookies.
 func searchCookieByKeyAndPath(key, path []byte, cookies []*fasthttp.Cookie) *fasthttp.Cookie {
 	for _, c := range cookies {
 		if bytes.Equal(key, c.Key()) {
@@ -240,6 +237,5 @@ func searchCookieByKeyAndPath(key, path []byte, cookies []*fasthttp.Cookie) *fas
 			}
 		}
 	}
-
 	return nil
 }

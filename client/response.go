@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"iter"
 	"os"
 	"path/filepath"
 	"sync"
@@ -14,7 +15,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// Response is the result of a request. This object is used to access the response data.
+// Response represents the result of a request. It provides access to the response data.
 type Response struct {
 	client  *Client
 	request *Request
@@ -23,76 +24,101 @@ type Response struct {
 	cookie      []*fasthttp.Cookie
 }
 
-// setClient method sets client object in response instance.
-// Use core object in the client.
+// setClient sets the client instance in the response. The client object is used by core functionalities.
 func (r *Response) setClient(c *Client) {
 	r.client = c
 }
 
-// setRequest method sets Request object in response instance.
-// The request will be released when the Response.Close is called.
+// setRequest sets the request object in the response. The request is released when Response.Close is called.
 func (r *Response) setRequest(req *Request) {
 	r.request = req
 }
 
-// Status method returns the HTTP status string for the executed request.
+// Status returns the HTTP status message of the executed request.
 func (r *Response) Status() string {
 	return string(r.RawResponse.Header.StatusMessage())
 }
 
-// StatusCode method returns the HTTP status code for the executed request.
+// StatusCode returns the HTTP status code of the executed request.
 func (r *Response) StatusCode() int {
 	return r.RawResponse.StatusCode()
 }
 
-// Protocol method returns the HTTP response protocol used for the request.
+// Protocol returns the HTTP protocol used for the request.
 func (r *Response) Protocol() string {
 	return string(r.RawResponse.Header.Protocol())
 }
 
-// Header method returns the response headers.
+// Header returns the value of the specified response header field.
 func (r *Response) Header(key string) string {
 	return utils.UnsafeString(r.RawResponse.Header.Peek(key))
 }
 
-// Cookies method to access all the response cookies.
+// Headers returns all headers in the response using an iterator.
+// Use maps.Collect() to gather them into a map if needed.
+//
+// The returned values are valid only until the response object is released.
+// Do not store references to returned values; make copies instead.
+func (r *Response) Headers() iter.Seq2[string, []string] {
+	return func(yield func(string, []string) bool) {
+		keys := r.RawResponse.Header.PeekKeys()
+		for _, key := range keys {
+			vals := r.RawResponse.Header.PeekAll(utils.UnsafeString(key))
+			valsStr := make([]string, len(vals))
+			for i, v := range vals {
+				valsStr[i] = utils.UnsafeString(v)
+			}
+
+			if !yield(utils.UnsafeString(key), valsStr) {
+				return
+			}
+		}
+	}
+}
+
+// Cookies returns all cookies set by the response.
+//
+// The returned values are valid only until the response object is released.
+// Do not store references to returned values; make copies instead.
 func (r *Response) Cookies() []*fasthttp.Cookie {
 	return r.cookie
 }
 
-// Body method returns HTTP response as []byte array for the executed request.
+// Body returns the HTTP response body as a byte slice.
 func (r *Response) Body() []byte {
 	return r.RawResponse.Body()
 }
 
-// String method returns the body of the server response as String.
+// String returns the response body as a trimmed string.
 func (r *Response) String() string {
 	return utils.Trim(string(r.Body()), ' ')
 }
 
-// JSON method will unmarshal body to json.
+// JSON unmarshals the response body into the given interface{} using JSON.
 func (r *Response) JSON(v any) error {
 	return r.client.jsonUnmarshal(r.Body(), v)
 }
 
-// CBOR method will unmarshal body to CBOR.
+// CBOR unmarshals the response body into the given interface{} using CBOR.
 func (r *Response) CBOR(v any) error {
 	return r.client.cborUnmarshal(r.Body(), v)
 }
 
-// XML method will unmarshal body to xml.
+// XML unmarshals the response body into the given interface{} using XML.
 func (r *Response) XML(v any) error {
 	return r.client.xmlUnmarshal(r.Body(), v)
 }
 
-// Save method will save the body to a file or io.Writer.
+// Save writes the response body to a file or io.Writer.
+// If a string path is provided, it creates directories if needed, then writes to a file.
+// If an io.Writer is provided, it writes directly to it.
 func (r *Response) Save(v any) error {
 	switch p := v.(type) {
 	case string:
 		file := filepath.Clean(p)
 		dir := filepath.Dir(file)
 
-		// create directory
+		// Create directory if it doesn't exist
 		if _, err := os.Stat(dir); err != nil {
 			if !errors.Is(err, fs.ErrNotExist) {
 				return fmt.Errorf("failed to check directory: %w", err)
@@ -103,22 +129,21 @@ func (r *Response) Save(v any) error {
 			}
 		}
 
-		// create file
+		// Create and write to file
 		outFile, err := os.Create(file)
 		if err != nil {
 			return fmt.Errorf("failed to create file: %w", err)
 		}
 		defer func() { _ = outFile.Close() }() //nolint:errcheck // not needed
 
-		_, err = io.Copy(outFile, bytes.NewReader(r.Body()))
-		if err != nil {
+		if _, err = io.Copy(outFile, bytes.NewReader(r.Body())); err != nil {
 			return fmt.Errorf("failed to write response body to file: %w", err)
 		}
 
 		return nil
+
 	case io.Writer:
-		_, err := io.Copy(p, bytes.NewReader(r.Body()))
-		if err != nil {
+		if _, err := io.Copy(p, bytes.NewReader(r.Body())); err != nil {
 			return fmt.Errorf("failed to write response body to io.Writer: %w", err)
 		}
 		defer func() {
@@ -126,14 +151,14 @@ func (r *Response) Save(v any) error {
 				_ = pc.Close() //nolint:errcheck // not needed
 			}
 		}()
-
 		return nil
+
 	default:
 		return ErrNotSupportSaveMethod
 	}
 }
 
-// Reset clears the Response object.
+// Reset clears the Response object, making it ready for reuse.
 func (r *Response) Reset() {
 	r.client = nil
 	r.request = nil
@@ -147,8 +172,8 @@ func (r *Response) Reset() {
 	r.RawResponse.Reset()
 }
 
-// Close method will release Request object and Response object,
-// after call Close please don't use these object.
+// Close releases both the Request and Response objects back to their pools.
+// After calling Close, do not use these objects.
 func (r *Response) Close() {
 	if r.request != nil {
 		tmp := r.request
@@ -167,10 +192,8 @@ var responsePool = &sync.Pool{
 	},
 }
 
-// AcquireResponse returns an empty response object from the pool.
-//
-// The returned response may be returned to the pool with ReleaseResponse when no longer needed.
-// This allows reducing GC load.
+// AcquireResponse returns a new (pooled) Response object.
+// When done, release it with ReleaseResponse to reduce GC load.
 func AcquireResponse() *Response {
 	resp, ok := responsePool.Get().(*Response)
 	if !ok {
@@ -179,9 +202,8 @@ func AcquireResponse() *Response {
 	return resp
 }
 
-// ReleaseResponse returns the object acquired via AcquireResponse to the pool.
-//
-// Do not access the released Response object, otherwise data races may occur.
+// ReleaseResponse returns the Response object to the pool.
+// Do not use the released Response afterward to avoid data races.
 func ReleaseResponse(resp *Response) {
 	resp.Reset()
 	responsePool.Put(resp)
