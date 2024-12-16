@@ -8,16 +8,18 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// queryBinding is the query binder for query request body.
-type queryBinding struct{}
+// QueryBinding is the query binder for query request body.
+type QueryBinding struct {
+	EnableSplitting bool
+}
 
 // Name returns the binding name.
-func (*queryBinding) Name() string {
+func (*QueryBinding) Name() string {
 	return "query"
 }
 
 // Bind parses the request query and returns the result.
-func (b *queryBinding) Bind(reqCtx *fasthttp.RequestCtx, out any) error {
+func (b *QueryBinding) Bind(reqCtx *fasthttp.RequestCtx, out any) error {
 	data := make(map[string][]string)
 	var err error
 
@@ -33,7 +35,7 @@ func (b *queryBinding) Bind(reqCtx *fasthttp.RequestCtx, out any) error {
 			k, err = parseParamSquareBrackets(k)
 		}
 
-		if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
+		if b.EnableSplitting && strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
 			values := strings.Split(v, ",")
 			for i := 0; i < len(values); i++ {
 				data[k] = append(data[k], values[i])
