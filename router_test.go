@@ -868,3 +868,24 @@ type routeJSON struct {
 	TestRoutes []testRoute `json:"test_routes"`
 	GithubAPI  []testRoute `json:"github_api"`
 }
+
+// go test -v ./... -run=^$ -bench=Benchmark_Router_Next_Default -benchmem -count=4
+func Benchmark_Router_Next_Default(b *testing.B) {
+	app := New()
+	app.Get("/", func(_ *Ctx) error {
+		return nil
+	})
+
+	h := app.Handler()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodGet)
+	fctx.Request.SetRequestURI("/")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		h(fctx)
+	}
+}
