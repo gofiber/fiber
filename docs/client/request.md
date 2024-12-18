@@ -825,36 +825,36 @@ fmt.Println(string(resp.Body()))
 
 </details>
 
-### AddFormDatas
+### AddFormDataWithMap
 
-**AddFormDatas** adds multiple form data fields and values from a map of string slices.
+**AddFormDataWithMap** adds multiple form data fields and values from a map of string slices.
 
 ```go title="Signature"
-func (r *Request) AddFormDatas(m map[string][]string) *Request
+func (r *Request) AddFormDataWithMap(m map[string][]string) *Request
 ```
 
-### SetFormDatas
+### SetFormDataWithMap
 
-**SetFormDatas** sets multiple form data fields from a map of strings.
+**SetFormDataWithMap** sets multiple form data fields from a map of strings.
 
 ```go title="Signature"
-func (r *Request) SetFormDatas(m map[string]string) *Request
+func (r *Request) SetFormDataWithMap(m map[string]string) *Request
 ```
 
-### SetFormDatasWithStruct
+### SetFormDataWithStruct
 
-**SetFormDatasWithStruct** sets multiple form data fields from a struct.
+**SetFormDataWithStruct** sets multiple form data fields from a struct.
 
 ```go title="Signature"
-func (r *Request) SetFormDatasWithStruct(v any) *Request
+func (r *Request) SetFormDataWithStruct(v any) *Request
 ```
 
-### DelFormDatas
+### DelFormData
 
-**DelFormDatas** deletes one or more form data fields by their keys.
+**DelFormData** deletes one or more form data fields by their keys.
 
 ```go title="Signature"
-func (r *Request) DelFormDatas(key ...string) *Request
+func (r *Request) DelFormData(key ...string) *Request
 ```
 
 ## File
@@ -1311,52 +1311,52 @@ type FormData struct {
 func (f *FormData) Keys() []string
 ```
 
-### AddData
+### Add
 
-**AddData** adds a single form field key-value pair.
+**Add** adds a single form field key-value pair.
 
 ```go title="Signature"
-func (f *FormData) AddData(key, val string)
+func (f *FormData) Add(key, val string)
 ```
 
-### SetData
+### Set
 
-**SetData** sets a single form field key-value pair, overriding any previously set values.
+**Set** sets a single form field key-value pair, overriding any previously set values.
 
 ```go title="Signature"
-func (f *FormData) SetData(key, val string)
+func (f *FormData) Set(key, val string)
 ```
 
-### AddDatas
+### AddWithMap
 
-**AddDatas** adds multiple form fields from a map of string slices.
+**AddWithMap** adds multiple form fields from a map of string slices.
 
 ```go title="Signature"
-func (f *FormData) AddDatas(m map[string][]string)
+func (f *FormData) AddWithMap(m map[string][]string)
 ```
 
-### SetDatas
+### SetWithMap
 
-**SetDatas** sets multiple form fields from a map of strings.
+**SetWithMap** sets multiple form fields from a map of strings.
 
 ```go title="Signature"
-func (f *FormData) SetDatas(m map[string]string)
+func (f *FormData) SetWithMap(m map[string]string)
 ```
 
-### SetDatasWithStruct
+### SetWithStruct
 
-**SetDatasWithStruct** sets multiple form fields from a struct.
+**SetWithStruct** sets multiple form fields from a struct.
 
 ```go title="Signature"
-func (f *FormData) SetDatasWithStruct(v any)
+func (f *FormData) SetWithStruct(v any)
 ```
 
-### DelDatas
+### DelData
 
-**DelDatas** deletes one or more form fields by their keys.
+**DelData** deletes one or more form fields by their keys.
 
 ```go title="Signature"
-func (f *FormData) DelDatas(key ...string)
+func (f *FormData) DelData(key ...string)
 ```
 
 ### Reset

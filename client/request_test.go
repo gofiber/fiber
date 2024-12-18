@@ -615,7 +615,7 @@ func Test_Request_FormData(t *testing.T) {
 		req := AcquireRequest()
 		defer ReleaseRequest(req)
 		req.SetFormData("foo", "bar").
-			AddFormDatas(map[string][]string{
+			AddFormDataWithMap(map[string][]string{
 				"foo": {"fiber", "buaa"},
 				"bar": {"foo"},
 			})
@@ -636,7 +636,7 @@ func Test_Request_FormData(t *testing.T) {
 		req := AcquireRequest()
 		defer ReleaseRequest(req)
 		req.SetFormData("foo", "bar").
-			SetFormDatas(map[string]string{
+			SetFormDataWithMap(map[string]string{
 				"foo": "fiber",
 				"bar": "foo",
 			})
@@ -664,7 +664,7 @@ func Test_Request_FormData(t *testing.T) {
 
 		p := AcquireRequest()
 		defer ReleaseRequest(p)
-		p.SetFormDatasWithStruct(&args{
+		p.SetFormDataWithStruct(&args{
 			TInt:      5,
 			TString:   "string",
 			TFloat:    3.1,
@@ -702,10 +702,10 @@ func Test_Request_FormData(t *testing.T) {
 		req := AcquireRequest()
 		defer ReleaseRequest(req)
 		req.SetFormData("foo", "bar").
-			SetFormDatas(map[string]string{
+			SetFormDataWithMap(map[string]string{
 				"foo": "fiber",
 				"bar": "foo",
-			}).DelFormDatas("foo", "bar")
+			}).DelFormData("foo", "bar")
 
 		res := req.FormData("foo")
 		require.Empty(t, res)
@@ -1212,7 +1212,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 			},
 			func(agent *Request) {
 				agent.SetFormData("foo", "bar").
-					SetFormDatas(map[string]string{
+					SetFormDataWithMap(map[string]string{
 						"bar":   "baz",
 						"fiber": "fast",
 					})
@@ -1362,7 +1362,7 @@ func Test_Request_AllFormData(t *testing.T) {
 	t.Parallel()
 
 	req := AcquireRequest()
-	req.AddFormDatas(map[string][]string{
+	req.AddFormDataWithMap(map[string][]string{
 		"foo": {"bar", "fiber"},
 		"bar": {"foo"},
 	})
@@ -1378,7 +1378,7 @@ func Test_Request_AllFormData(t *testing.T) {
 
 func Benchmark_Request_AllFormData(b *testing.B) {
 	req := AcquireRequest()
-	req.AddFormDatas(map[string][]string{
+	req.AddFormDataWithMap(map[string][]string{
 		"foo": {"bar", "fiber"},
 		"bar": {"foo"},
 	})

@@ -279,7 +279,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 		t.Parallel()
 		client := New()
 		req := AcquireRequest().
-			SetFormDatas(map[string]string{
+			SetFormDataWithMap(map[string]string{
 				"foo":  "bar",
 				"ball": "cricle and square",
 			})
@@ -485,7 +485,7 @@ func Test_Parser_Request_Body(t *testing.T) {
 		t.Parallel()
 		client := New()
 		req := AcquireRequest().
-			SetFormDatas(map[string]string{
+			SetFormDataWithMap(map[string]string{
 				"ball": "cricle and square",
 			})
 
@@ -498,7 +498,7 @@ func Test_Parser_Request_Body(t *testing.T) {
 		t.Parallel()
 		client := New()
 		req := AcquireRequest().
-			SetFormDatas(map[string]string{
+			SetFormDataWithMap(map[string]string{
 				"": "",
 			})
 

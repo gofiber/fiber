@@ -460,42 +460,42 @@ func (r *Request) AllFormData() iter.Seq2[string, []string] {
 
 // AddFormData adds a single form field and value to the Request.
 func (r *Request) AddFormData(key, val string) *Request {
-	r.formData.AddData(key, val)
+	r.formData.Add(key, val)
 	r.resetBody(formBody)
 	return r
 }
 
 // SetFormData sets a single form field and value, overriding any previously set value.
 func (r *Request) SetFormData(key, val string) *Request {
-	r.formData.SetData(key, val)
+	r.formData.Set(key, val)
 	r.resetBody(formBody)
 	return r
 }
 
-// AddFormDatas adds multiple form fields and values to the Request.
-func (r *Request) AddFormDatas(m map[string][]string) *Request {
-	r.formData.AddDatas(m)
+// AddFormDataWithMap adds multiple form fields and values to the Request.
+func (r *Request) AddFormDataWithMap(m map[string][]string) *Request {
+	r.formData.AddWithMap(m)
 	r.resetBody(formBody)
 	return r
 }
 
-// SetFormDatas sets multiple form fields and values at once, overriding previously set values.
-func (r *Request) SetFormDatas(m map[string]string) *Request {
-	r.formData.SetDatas(m)
+// SetFormDataWithMap sets multiple form fields and values at once, overriding previously set values.
+func (r *Request) SetFormDataWithMap(m map[string]string) *Request {
+	r.formData.SetWithMap(m)
 	r.resetBody(formBody)
 	return r
 }
 
-// SetFormDatasWithStruct sets multiple form fields from a struct, overriding previously set values.
-func (r *Request) SetFormDatasWithStruct(v any) *Request {
-	r.formData.SetDatasWithStruct(v)
+// SetFormDataWithStruct sets multiple form fields from a struct, overriding previously set values.
+func (r *Request) SetFormDataWithStruct(v any) *Request {
+	r.formData.SetWithStruct(v)
 	r.resetBody(formBody)
 	return r
 }
 
-// DelFormDatas deletes one or more form fields.
-func (r *Request) DelFormDatas(key ...string) *Request {
-	r.formData.DelDatas(key...)
+// DelFormData deletes one or more form fields.
+func (r *Request) DelFormData(key ...string) *Request {
+	r.formData.DelData(key...)
 	r.resetBody(formBody)
 	return r
 }
@@ -845,18 +845,18 @@ func (f *FormData) Keys() []string {
 	return slices.Compact(keys)
 }
 
-// AddData adds a single form field.
-func (f *FormData) AddData(key, val string) {
-	f.Add(key, val)
+// Add adds a single form field.
+func (f *FormData) Add(key, val string) {
+	f.Args.Add(key, val)
 }
 
-// SetData sets a single form field, overriding previously set values.
-func (f *FormData) SetData(key, val string) {
-	f.Set(key, val)
+// Set sets a single form field, overriding previously set values.
+func (f *FormData) Set(key, val string) {
+	f.Args.Set(key, val)
 }
 
-// AddDatas adds multiple form fields from a map.
-func (f *FormData) AddDatas(m map[string][]string) {
+// AddWithMap adds multiple form fields from a map.
+func (f *FormData) AddWithMap(m map[string][]string) {
 	for k, v := range m {
 		for _, vv := range v {
 			f.Add(k, vv)
@@ -864,23 +864,23 @@ func (f *FormData) AddDatas(m map[string][]string) {
 	}
 }
 
-// SetDatas sets multiple form fields from a map, overriding previously set values.
-func (f *FormData) SetDatas(m map[string]string) {
+// SetWithMap sets multiple form fields from a map, overriding previously set values.
+func (f *FormData) SetWithMap(m map[string]string) {
 	for k, v := range m {
 		f.Set(k, v)
 	}
 }
 
-// SetDatasWithStruct sets multiple form fields from a struct.
+// SetWithStruct sets multiple form fields from a struct.
 // Nested structs are not currently supported.
-func (f *FormData) SetDatasWithStruct(v any) {
+func (f *FormData) SetWithStruct(v any) {
 	SetValWithStruct(f, "form", v)
 }
 
-// DelDatas deletes multiple form fields.
-func (f *FormData) DelDatas(key ...string) {
+// DelData deletes multiple form fields.
+func (f *FormData) DelData(key ...string) {
 	for _, v := range key {
-		f.Del(v)
+		f.Args.Del(v)
 	}
 }
 
