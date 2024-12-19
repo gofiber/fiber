@@ -608,7 +608,7 @@ func setConfigToRequest(req *Request, config ...Config) {
 	}
 
 	if cfg.FormData != nil {
-		req.SetFormDatas(cfg.FormData)
+		req.SetFormDataWithMap(cfg.FormData)
 		return
 	}
 
