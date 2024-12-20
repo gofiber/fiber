@@ -1978,3 +1978,8 @@ func (c *DefaultCtx) setMatched(matched bool) {
 func (c *DefaultCtx) setRoute(route *Route) {
 	c.route = route
 }
+
+func (c *DefaultCtx) Drop() error {
+	//nolint:wrapcheck // This must not be wrapped
+	return c.RequestCtx().Conn().Close()
+}

@@ -350,4 +350,5 @@ type Ctx interface {
 	setIndexRoute(route int)
 	setMatched(matched bool)
 	setRoute(route *Route)
+	Drop() error
 }
