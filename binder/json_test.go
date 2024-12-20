@@ -20,10 +20,9 @@ func Test_JSON_Binding_Bind(t *testing.T) {
 	}
 
 	type User struct {
-		Name string `json:"name"`
-		Age  int    `json:"age"`
-
+		Name  string `json:"name"`
 		Posts []Post `json:"posts"`
+		Age   int    `json:"age"`
 	}
 	var user User
 
@@ -46,10 +45,9 @@ func Benchmark_JSON_Binding_Bind(b *testing.B) {
 	}
 
 	type User struct {
-		Name string `json:"name"`
-		Age  int    `json:"age"`
-
+		Name  string   `json:"name"`
 		Posts []string `json:"posts"`
+		Age   int      `json:"age"`
 	}
 
 	var user User

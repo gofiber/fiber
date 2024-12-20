@@ -105,9 +105,9 @@ func parseToStruct(aliasTag string, out any, data map[string][]string) error {
 // Parse data into the map
 // thanks to https://github.com/gin-gonic/gin/blob/master/binding/binding.go
 func parseToMap(ptr any, data map[string][]string) error {
-	fmt.Print(ptr)
 	elem := reflect.TypeOf(ptr).Elem()
-	fmt.Print(elem.Kind())
+
+	//nolint:exhaustive // it's not necessary to check all types
 	switch elem.Kind() {
 	case reflect.Slice:
 		newMap, ok := ptr.(map[string][]string)
@@ -123,8 +123,6 @@ func parseToMap(ptr any, data map[string][]string) error {
 		if !ok {
 			return ErrMapNotConvertable
 		}
-
-		fmt.Print(newMap)
 
 		for k, v := range data {
 			if len(v) == 0 {

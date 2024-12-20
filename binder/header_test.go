@@ -16,11 +16,10 @@ func Test_HeaderBinder_Bind(t *testing.T) {
 	require.Equal(t, "header", b.Name())
 
 	type User struct {
-		Name  string   `header:"name"`
-		Names []string `header:"names"`
-		Age   int      `header:"age"`
-
-		Posts []string `header:"posts"`
+		Name  string   `header:"Name"`
+		Names []string `header:"Names"`
+		Posts []string `header:"Posts"`
+		Age   int      `header:"Age"`
 	}
 	var user User
 
@@ -56,10 +55,9 @@ func Benchmark_HeaderBinder_Bind(b *testing.B) {
 	}
 
 	type User struct {
-		Name string `query:"name"`
-		Age  int    `query:"age"`
-
-		Posts []string `query:"posts"`
+		Name  string   `header:"Name"`
+		Posts []string `header:"Posts"`
+		Age   int      `header:"Age"`
 	}
 	var user User
 
@@ -68,7 +66,16 @@ func Benchmark_HeaderBinder_Bind(b *testing.B) {
 	req.Header.Set("age", "42")
 	req.Header.Set("posts", "post1,post2,post3")
 
+	var err error
 	for i := 0; i < b.N; i++ {
-		_ = binder.Bind(req, &user)
+		err = binder.Bind(req, &user)
 	}
+
+	require.NoError(b, err)
+	require.Equal(b, "john", user.Name)
+	require.Equal(b, 42, user.Age)
+	require.Len(b, user.Posts, 3)
+	require.Contains(b, user.Posts, "post1")
+	require.Contains(b, user.Posts, "post2")
+	require.Contains(b, user.Posts, "post3")
 }

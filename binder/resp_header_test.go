@@ -16,10 +16,9 @@ func Test_RespHeaderBinder_Bind(t *testing.T) {
 	require.Equal(t, "respHeader", b.Name())
 
 	type User struct {
-		Name string `respHeader:"name"`
-		Age  int    `respHeader:"age"`
-
+		Name  string   `respHeader:"name"`
 		Posts []string `respHeader:"posts"`
+		Age   int      `respHeader:"age"`
 	}
 	var user User
 
@@ -42,17 +41,15 @@ func Test_RespHeaderBinder_Bind(t *testing.T) {
 
 func Benchmark_RespHeaderBinder_Bind(b *testing.B) {
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	binder := &RespHeaderBinding{
 		EnableSplitting: true,
 	}
 
 	type User struct {
-		Name string `respHeader:"name"`
-		Age  int    `respHeader:"age"`
-
+		Name  string   `respHeader:"name"`
 		Posts []string `respHeader:"posts"`
+		Age   int      `respHeader:"age"`
 	}
 	var user User
 
@@ -65,11 +62,14 @@ func Benchmark_RespHeaderBinder_Bind(b *testing.B) {
 		fasthttp.ReleaseResponse(resp)
 	})
 
-	b.StartTimer()
+	b.ResetTimer()
+
+	var err error
 	for i := 0; i < b.N; i++ {
-		_ = binder.Bind(resp, &user)
+		err = binder.Bind(resp, &user)
 	}
 
+	require.NoError(b, err)
 	require.Equal(b, "john", user.Name)
 	require.Equal(b, 42, user.Age)
 	require.Equal(b, []string{"post1", "post2", "post3"}, user.Posts)

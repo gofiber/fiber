@@ -44,7 +44,6 @@ func Test_EqualFieldType(t *testing.T) {
 	require.True(t, equalFieldType(&user2, reflect.String, "user.Address"))
 	require.True(t, equalFieldType(&user2, reflect.Int, "user.AGE"))
 	require.True(t, equalFieldType(&user2, reflect.Int, "user.age"))
-
 }
 
 func Test_ParseParamSquareBrackets(t *testing.T) {
@@ -141,11 +140,10 @@ func Test_parseToMap(t *testing.T) {
 	require.Len(t, m2["key2"], 1)
 	require.Len(t, m2["key3"], 1)
 
-	// Test map[string]interface{}
-	m3 := make(map[string]interface{})
+	// Test map[string]any
+	m3 := make(map[string]any)
 	err = parseToMap(m3, inputMap)
 	require.ErrorIs(t, err, ErrMapNotConvertable)
-
 }
 
 func Test_FilterFlags(t *testing.T) {

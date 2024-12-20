@@ -21,13 +21,10 @@ func Test_XMLBinding_Bind(t *testing.T) {
 	}
 
 	type User struct {
-		Name string `xml:"name"`
-		Age  int    `xml:"age"`
-
-		Posts []Posts `xml:"posts>post"`
-
-		// This field should be ignored
-		Ignore string `xml:"-"`
+		Name   string  `xml:"name"`
+		Ignore string  `xml:"-"`
+		Posts  []Posts `xml:"posts>post"`
+		Age    int     `xml:"age"`
 	}
 
 	user := new(User)
@@ -92,10 +89,9 @@ func Benchmark_XMLBinding_Bind(b *testing.B) {
 	}
 
 	type User struct {
-		Name string `xml:"name"`
-		Age  int    `xml:"age"`
-
+		Name  string  `xml:"name"`
 		Posts []Posts `xml:"posts>post"`
+		Age   int     `xml:"age"`
 	}
 
 	user := new(User)
@@ -117,12 +113,14 @@ func Benchmark_XMLBinding_Bind(b *testing.B) {
 
 	b.StartTimer()
 
+	var err error
 	for i := 0; i < b.N; i++ {
-		_ = binder.Bind(data, user)
+		err = binder.Bind(data, user)
 	}
+	require.NoError(b, err)
 
 	user = new(User)
-	err := binder.Bind(data, user)
+	err = binder.Bind(data, user)
 	require.NoError(b, err)
 
 	require.Equal(b, "john", user.Name)

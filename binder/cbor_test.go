@@ -21,10 +21,9 @@ func Test_CBORBinder_Bind(t *testing.T) {
 
 	type User struct {
 		Name  string   `cbor:"name"`
+		Posts []Post   `cbor:"posts"`
 		Names []string `cbor:"names"`
 		Age   int      `cbor:"age"`
-
-		Posts []Post `cbor:"posts"`
 	}
 	var user User
 

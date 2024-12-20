@@ -22,9 +22,8 @@ func Test_CookieBinder_Bind(t *testing.T) {
 	type User struct {
 		Name  string   `form:"name"`
 		Names []string `form:"names"`
+		Posts []Post   `form:"posts"`
 		Age   int      `form:"age"`
-
-		Posts []Post `form:"posts"`
 	}
 	var user User
 
@@ -56,10 +55,9 @@ func Benchmark_CookieBinder_Bind(b *testing.B) {
 	}
 
 	type User struct {
-		Name string `query:"name"`
-		Age  int    `query:"age"`
-
+		Name  string   `query:"name"`
 		Posts []string `query:"posts"`
+		Age   int      `query:"age"`
 	}
 	var user User
 
@@ -71,10 +69,12 @@ func Benchmark_CookieBinder_Bind(b *testing.B) {
 
 	b.ResetTimer()
 
+	var err error
 	for i := 0; i < b.N; i++ {
-		_ = binder.Bind(req, &user)
+		err = binder.Bind(req, &user)
 	}
 
+	require.NoError(b, err)
 	require.Equal(b, "john", user.Name)
 	require.Equal(b, 42, user.Age)
 	require.Len(b, user.Posts, 3)
