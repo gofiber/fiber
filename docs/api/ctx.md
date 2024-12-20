@@ -480,7 +480,7 @@ app.Get("/", func(c fiber.Ctx) error {
     return c.Drop()
   }
 
-  return c.SendString("Hello, " + name)
+  return c.SendString("Hello World!")
 })
 ```
 
