@@ -1980,7 +1980,6 @@ func (c *DefaultCtx) setRoute(route *Route) {
 }
 
 func (c *DefaultCtx) Drop() error {
-	conn := c.RequestCtx().Conn()
 	//nolint:wrapcheck // This must not be wrapped
-	return conn.Close()
+	return c.RequestCtx().Conn().Close()
 }

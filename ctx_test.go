@@ -5852,13 +5852,28 @@ func Test_Ctx_Drop(t *testing.T) {
 	t.Parallel()
 
 	app := New()
+
+	// Handler that calls Drop
 	app.Get("/block-me", func(c Ctx) error {
 		return c.Drop()
 	})
 
+	// Additional handler that just calls return
+	app.Get("/no-response", func(c Ctx) error {
+		return nil
+	})
+
+	// Test the Drop method
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/block-me", nil))
 	require.Error(t, err)
 	require.Nil(t, resp)
+
+	// Test the no-response handler
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/no-response", nil))
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Equal(t, 200, resp.StatusCode)
+	require.Equal(t, "0", resp.Header.Get("Content-Length"))
 }
 
 // go test -run Test_GenericParseTypeString
