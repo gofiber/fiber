@@ -5847,6 +5847,20 @@ func Test_GenericParseTypeBoolean(t *testing.T) {
 	}
 }
 
+// go test -run Test_Ctx_Drop -v
+func Test_Ctx_Drop(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/block-me", func(c Ctx) error {
+		return c.Drop()
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/block-me", nil))
+	require.Error(t, err)
+	require.Nil(t, resp)
+}
+
 // go test -run Test_GenericParseTypeString
 func Test_GenericParseTypeString(t *testing.T) {
 	t.Parallel()
