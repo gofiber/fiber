@@ -5859,7 +5859,7 @@ func Test_Ctx_Drop(t *testing.T) {
 	})
 
 	// Additional handler that just calls return
-	app.Get("/no-response", func(c Ctx) error {
+	app.Get("/no-response", func(_ Ctx) error {
 		return nil
 	})
 
