@@ -8,22 +8,24 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// respHeaderBinding is the respHeader binder for response header.
-type respHeaderBinding struct{}
+// RespHeaderBinding is the respHeader binder for response header.
+type RespHeaderBinding struct {
+	EnableSplitting bool
+}
 
 // Name returns the binding name.
-func (*respHeaderBinding) Name() string {
+func (*RespHeaderBinding) Name() string {
 	return "respHeader"
 }
 
 // Bind parses the response header and returns the result.
-func (b *respHeaderBinding) Bind(resp *fasthttp.Response, out any) error {
+func (b *RespHeaderBinding) Bind(resp *fasthttp.Response, out any) error {
 	data := make(map[string][]string)
 	resp.Header.VisitAll(func(key, val []byte) {
 		k := utils.UnsafeString(key)
 		v := utils.UnsafeString(val)
 
-		if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
+		if b.EnableSplitting && strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
 			values := strings.Split(v, ",")
 			for i := 0; i < len(values); i++ {
 				data[k] = append(data[k], values[i])
