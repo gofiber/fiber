@@ -62,6 +62,10 @@ func Benchmark_HeaderBinder_Bind(b *testing.B) {
 	var user User
 
 	req := fasthttp.AcquireRequest()
+	b.Cleanup(func() {
+		fasthttp.ReleaseRequest(req)
+	})
+
 	req.Header.Set("name", "john")
 	req.Header.Set("age", "42")
 	req.Header.Set("posts", "post1,post2,post3")

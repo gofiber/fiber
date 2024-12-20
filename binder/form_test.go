@@ -133,13 +133,16 @@ func Benchmark_FormBinder_BindMultipart(b *testing.B) {
 	}
 
 	type User struct {
-		Name  string   `query:"name"`
-		Posts []string `query:"posts"`
-		Age   int      `query:"age"`
+		Name  string   `form:"name"`
+		Posts []string `form:"posts"`
+		Age   int      `form:"age"`
 	}
 	var user User
 
 	req := fasthttp.AcquireRequest()
+	b.Cleanup(func() {
+		fasthttp.ReleaseRequest(req)
+	})
 
 	buf := &bytes.Buffer{}
 	mw := multipart.NewWriter(buf)
