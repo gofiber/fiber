@@ -19,11 +19,11 @@ func (*FormBinding) Name() string {
 }
 
 // Bind parses the request body and returns the result.
-func (b *FormBinding) Bind(reqCtx *fasthttp.RequestCtx, out any) error {
+func (b *FormBinding) Bind(req *fasthttp.Request, out any) error {
 	data := make(map[string][]string)
 	var err error
 
-	reqCtx.PostArgs().VisitAll(func(key, val []byte) {
+	req.PostArgs().VisitAll(func(key, val []byte) {
 		if err != nil {
 			return
 		}
@@ -53,8 +53,8 @@ func (b *FormBinding) Bind(reqCtx *fasthttp.RequestCtx, out any) error {
 }
 
 // BindMultipart parses the request body and returns the result.
-func (b *FormBinding) BindMultipart(reqCtx *fasthttp.RequestCtx, out any) error {
-	data, err := reqCtx.MultipartForm()
+func (b *FormBinding) BindMultipart(req *fasthttp.Request, out any) error {
+	data, err := req.MultipartForm()
 	if err != nil {
 		return err
 	}

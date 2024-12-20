@@ -19,11 +19,11 @@ func (*QueryBinding) Name() string {
 }
 
 // Bind parses the request query and returns the result.
-func (b *QueryBinding) Bind(reqCtx *fasthttp.RequestCtx, out any) error {
+func (b *QueryBinding) Bind(reqCtx *fasthttp.Request, out any) error {
 	data := make(map[string][]string)
 	var err error
 
-	reqCtx.QueryArgs().VisitAll(func(key, val []byte) {
+	reqCtx.URI().QueryArgs().VisitAll(func(key, val []byte) {
 		if err != nil {
 			return
 		}

@@ -123,7 +123,7 @@ func (b *Bind) Cookie(out any) error {
 		binder.PutToThePool(&binder.CookieBinderPool, bind)
 	}()
 
-	if err := b.returnErr(bind.Bind(b.ctx.RequestCtx(), out)); err != nil {
+	if err := b.returnErr(bind.Bind(&b.ctx.RequestCtx().Request, out)); err != nil {
 		return err
 	}
 
@@ -141,7 +141,7 @@ func (b *Bind) Query(out any) error {
 		binder.PutToThePool(&binder.QueryBinderPool, bind)
 	}()
 
-	if err := b.returnErr(bind.Bind(b.ctx.RequestCtx(), out)); err != nil {
+	if err := b.returnErr(bind.Bind(&b.ctx.RequestCtx().Request, out)); err != nil {
 		return err
 	}
 
@@ -212,7 +212,7 @@ func (b *Bind) Form(out any) error {
 		binder.PutToThePool(&binder.FormBinderPool, bind)
 	}()
 
-	if err := b.returnErr(bind.Bind(b.ctx.RequestCtx(), out)); err != nil {
+	if err := b.returnErr(bind.Bind(&b.ctx.RequestCtx().Request, out)); err != nil {
 		return err
 	}
 
@@ -246,7 +246,7 @@ func (b *Bind) MultipartForm(out any) error {
 		binder.PutToThePool(&binder.FormBinderPool, bind)
 	}()
 
-	if err := b.returnErr(bind.BindMultipart(b.ctx.RequestCtx(), out)); err != nil {
+	if err := b.returnErr(bind.BindMultipart(&b.ctx.RequestCtx().Request, out)); err != nil {
 		return err
 	}
 

@@ -19,11 +19,11 @@ func (*CookieBinding) Name() string {
 }
 
 // Bind parses the request cookie and returns the result.
-func (b *CookieBinding) Bind(reqCtx *fasthttp.RequestCtx, out any) error {
+func (b *CookieBinding) Bind(req *fasthttp.Request, out any) error {
 	data := make(map[string][]string)
 	var err error
 
-	reqCtx.Request.Header.VisitAllCookie(func(key, val []byte) {
+	req.Header.VisitAllCookie(func(key, val []byte) {
 		if err != nil {
 			return
 		}
