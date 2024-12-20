@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"maps"
 	"mime/multipart"
 	"net"
 	"os"
@@ -157,6 +158,42 @@ func Test_Request_Header(t *testing.T) {
 	})
 }
 
+func Test_Request_Headers(t *testing.T) {
+	t.Parallel()
+
+	req := AcquireRequest()
+	req.AddHeaders(map[string][]string{
+		"foo": {"bar", "fiber"},
+		"bar": {"foo"},
+	})
+
+	headers := maps.Collect(req.Headers())
+
+	require.Contains(t, headers["Foo"], "fiber")
+	require.Contains(t, headers["Foo"], "bar")
+	require.Contains(t, headers["Bar"], "foo")
+
+	require.Len(t, headers, 2)
+}
+
+func Benchmark_Request_Headers(b *testing.B) {
+	req := AcquireRequest()
+	req.AddHeaders(map[string][]string{
+		"foo": {"bar", "fiber"},
+		"bar": {"foo"},
+	})
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		for k, v := range req.Headers() {
+			_ = k
+			_ = v
+		}
+	}
+}
+
 func Test_Request_QueryParam(t *testing.T) {
 	t.Parallel()
 
@@ -282,6 +319,42 @@ func Test_Request_QueryParam(t *testing.T) {
 	})
 }
 
+func Test_Request_Params(t *testing.T) {
+	t.Parallel()
+
+	req := AcquireRequest()
+	req.AddParams(map[string][]string{
+		"foo": {"bar", "fiber"},
+		"bar": {"foo"},
+	})
+
+	pathParams := maps.Collect(req.Params())
+
+	require.Contains(t, pathParams["foo"], "bar")
+	require.Contains(t, pathParams["foo"], "fiber")
+	require.Contains(t, pathParams["bar"], "foo")
+
+	require.Len(t, pathParams, 2)
+}
+
+func Benchmark_Request_Params(b *testing.B) {
+	req := AcquireRequest()
+	req.AddParams(map[string][]string{
+		"foo": {"bar", "fiber"},
+		"bar": {"foo"},
+	})
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		for k, v := range req.Params() {
+			_ = k
+			_ = v
+		}
+	}
+}
+
 func Test_Request_UA(t *testing.T) {
 	t.Parallel()
 
@@ -364,6 +437,41 @@ func Test_Request_Cookie(t *testing.T) {
 	})
 }
 
+func Test_Request_Cookies(t *testing.T) {
+	t.Parallel()
+
+	req := AcquireRequest()
+	req.SetCookies(map[string]string{
+		"foo": "bar",
+		"bar": "foo",
+	})
+
+	cookies := maps.Collect(req.Cookies())
+
+	require.Equal(t, "bar", cookies["foo"])
+	require.Equal(t, "foo", cookies["bar"])
+
+	require.Len(t, cookies, 2)
+}
+
+func Benchmark_Request_Cookies(b *testing.B) {
+	req := AcquireRequest()
+	req.SetCookies(map[string]string{
+		"foo": "bar",
+		"bar": "foo",
+	})
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		for k, v := range req.Cookies() {
+			_ = k
+			_ = v
+		}
+	}
+}
+
 func Test_Request_PathParam(t *testing.T) {
 	t.Parallel()
 
@@ -441,6 +549,41 @@ func Test_Request_PathParam(t *testing.T) {
 	})
 }
 
+func Test_Request_PathParams(t *testing.T) {
+	t.Parallel()
+
+	req := AcquireRequest()
+	req.SetPathParams(map[string]string{
+		"foo": "bar",
+		"bar": "foo",
+	})
+
+	pathParams := maps.Collect(req.PathParams())
+
+	require.Equal(t, "bar", pathParams["foo"])
+	require.Equal(t, "foo", pathParams["bar"])
+
+	require.Len(t, pathParams, 2)
+}
+
+func Benchmark_Request_PathParams(b *testing.B) {
+	req := AcquireRequest()
+	req.SetPathParams(map[string]string{
+		"foo": "bar",
+		"bar": "foo",
+	})
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		for k, v := range req.PathParams() {
+			_ = k
+			_ = v
+		}
+	}
+}
+
 func Test_Request_FormData(t *testing.T) {
 	t.Parallel()
 
@@ -472,7 +615,7 @@ func Test_Request_FormData(t *testing.T) {
 		req := AcquireRequest()
 		defer ReleaseRequest(req)
 		req.SetFormData("foo", "bar").
-			AddFormDatas(map[string][]string{
+			AddFormDataWithMap(map[string][]string{
 				"foo": {"fiber", "buaa"},
 				"bar": {"foo"},
 			})
@@ -493,7 +636,7 @@ func Test_Request_FormData(t *testing.T) {
 		req := AcquireRequest()
 		defer ReleaseRequest(req)
 		req.SetFormData("foo", "bar").
-			SetFormDatas(map[string]string{
+			SetFormDataWithMap(map[string]string{
 				"foo": "fiber",
 				"bar": "foo",
 			})
@@ -521,7 +664,7 @@ func Test_Request_FormData(t *testing.T) {
 
 		p := AcquireRequest()
 		defer ReleaseRequest(p)
-		p.SetFormDatasWithStruct(&args{
+		p.SetFormDataWithStruct(&args{
 			TInt:      5,
 			TString:   "string",
 			TFloat:    3.1,
@@ -559,10 +702,10 @@ func Test_Request_FormData(t *testing.T) {
 		req := AcquireRequest()
 		defer ReleaseRequest(req)
 		req.SetFormData("foo", "bar").
-			SetFormDatas(map[string]string{
+			SetFormDataWithMap(map[string]string{
 				"foo": "fiber",
 				"bar": "foo",
-			}).DelFormDatas("foo", "bar")
+			}).DelFormData("foo", "bar")
 
 		res := req.FormData("foo")
 		require.Empty(t, res)
@@ -608,6 +751,40 @@ func Test_Request_File(t *testing.T) {
 		require.Equal(t, "tmp.txt", req.File("tmp.txt").name)
 		require.Equal(t, "foo.txt", req.File("foo.txt").name)
 	})
+}
+
+func Test_Request_Files(t *testing.T) {
+	t.Parallel()
+
+	req := AcquireRequest()
+	req.AddFile("../.github/index.html")
+	req.AddFiles(AcquireFile(SetFileName("tmp.txt")))
+
+	files := req.Files()
+
+	require.Equal(t, "../.github/index.html", files[0].path)
+	require.Nil(t, files[0].reader)
+
+	require.Equal(t, "tmp.txt", files[1].name)
+	require.Nil(t, files[1].reader)
+
+	require.Len(t, files, 2)
+}
+
+func Benchmark_Request_Files(b *testing.B) {
+	req := AcquireRequest()
+	req.AddFile("../.github/index.html")
+	req.AddFiles(AcquireFile(SetFileName("tmp.txt")))
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		for k, v := range req.Files() {
+			_ = k
+			_ = v
+		}
+	}
 }
 
 func Test_Request_Timeout(t *testing.T) {
@@ -1035,7 +1212,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 			},
 			func(agent *Request) {
 				agent.SetFormData("foo", "bar").
-					SetFormDatas(map[string]string{
+					SetFormDataWithMap(map[string]string{
 						"bar":   "baz",
 						"fiber": "fast",
 					})
@@ -1181,6 +1358,42 @@ func Test_Request_Body_With_Server(t *testing.T) {
 	})
 }
 
+func Test_Request_AllFormData(t *testing.T) {
+	t.Parallel()
+
+	req := AcquireRequest()
+	req.AddFormDataWithMap(map[string][]string{
+		"foo": {"bar", "fiber"},
+		"bar": {"foo"},
+	})
+
+	pathParams := maps.Collect(req.AllFormData())
+
+	require.Contains(t, pathParams["foo"], "bar")
+	require.Contains(t, pathParams["foo"], "fiber")
+	require.Contains(t, pathParams["bar"], "foo")
+
+	require.Len(t, pathParams, 2)
+}
+
+func Benchmark_Request_AllFormData(b *testing.B) {
+	req := AcquireRequest()
+	req.AddFormDataWithMap(map[string][]string{
+		"foo": {"bar", "fiber"},
+		"bar": {"foo"},
+	})
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		for k, v := range req.AllFormData() {
+			_ = k
+			_ = v
+		}
+	}
+}
+
 func Test_Request_Error_Body_With_Server(t *testing.T) {
 	t.Parallel()
 	t.Run("json error", func(t *testing.T) {
@@ -1317,14 +1530,16 @@ func Test_Request_MaxRedirects(t *testing.T) {
 func Test_SetValWithStruct(t *testing.T) {
 	t.Parallel()
 
-	// test SetValWithStruct vai QueryParam struct.
+	// test SetValWithStruct via QueryParam struct.
 	type args struct {
 		TString   string
 		TSlice    []string
 		TIntSlice []int `param:"int_slice"`
 		unexport  int
 		TInt      int
+		TUint     uint
 		TFloat    float64
+		TComplex  complex128
 		TBool     bool
 	}
 
@@ -1337,18 +1552,22 @@ func Test_SetValWithStruct(t *testing.T) {
 		SetValWithStruct(p, "param", args{
 			unexport:  5,
 			TInt:      5,
+			TUint:     5,
 			TString:   "string",
 			TFloat:    3.1,
+			TComplex:  3 + 4i,
 			TBool:     false,
 			TSlice:    []string{"foo", "bar"},
-			TIntSlice: []int{1, 2},
+			TIntSlice: []int{0, 1, 2},
 		})
 
 		require.Equal(t, "", string(p.Peek("unexport")))
 		require.Equal(t, []byte("5"), p.Peek("TInt"))
+		require.Equal(t, []byte("5"), p.Peek("TUint"))
 		require.Equal(t, []byte("string"), p.Peek("TString"))
 		require.Equal(t, []byte("3.1"), p.Peek("TFloat"))
-		require.Equal(t, "", string(p.Peek("TBool")))
+		require.Equal(t, []byte("(3+4i)"), p.Peek("TComplex"))
+		require.Equal(t, []byte("false"), p.Peek("TBool"))
 		require.True(t, func() bool {
 			for _, v := range p.PeekMulti("TSlice") {
 				if string(v) == "foo" {
@@ -1361,6 +1580,15 @@ func Test_SetValWithStruct(t *testing.T) {
 		require.True(t, func() bool {
 			for _, v := range p.PeekMulti("TSlice") {
 				if string(v) == "bar" { //nolint:goconst // test
+					return true
+				}
+			}
+			return false
+		}())
+
+		require.True(t, func() bool {
+			for _, v := range p.PeekMulti("int_slice") {
+				if string(v) == "0" {
 					return true
 				}
 			}
@@ -1442,24 +1670,6 @@ func Test_SetValWithStruct(t *testing.T) {
 		}())
 	})
 
-	t.Run("the zero val should be ignore", func(t *testing.T) {
-		t.Parallel()
-		p := &QueryParam{
-			Args: fasthttp.AcquireArgs(),
-		}
-		SetValWithStruct(p, "param", &args{
-			TInt:    0,
-			TString: "",
-			TFloat:  0.0,
-		})
-
-		require.Equal(t, "", string(p.Peek("TInt")))
-		require.Equal(t, "", string(p.Peek("TString")))
-		require.Equal(t, "", string(p.Peek("TFloat")))
-		require.Empty(t, p.PeekMulti("TSlice"))
-		require.Empty(t, p.PeekMulti("int_slice"))
-	})
-
 	t.Run("error type should ignore", func(t *testing.T) {
 		t.Parallel()
 		p := &QueryParam{
@@ -1471,14 +1681,16 @@ func Test_SetValWithStruct(t *testing.T) {
 }
 
 func Benchmark_SetValWithStruct(b *testing.B) {
-	// test SetValWithStruct vai QueryParam struct.
+	// test SetValWithStruct via QueryParam struct.
 	type args struct {
 		TString   string
 		TSlice    []string
 		TIntSlice []int `param:"int_slice"`
 		unexport  int
 		TInt      int
+		TUint     uint
 		TFloat    float64
+		TComplex  complex128
 		TBool     bool
 	}
 
@@ -1494,19 +1706,23 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 			SetValWithStruct(p, "param", args{
 				unexport:  5,
 				TInt:      5,
+				TUint:     5,
 				TString:   "string",
 				TFloat:    3.1,
+				TComplex:  3 + 4i,
 				TBool:     false,
 				TSlice:    []string{"foo", "bar"},
-				TIntSlice: []int{1, 2},
+				TIntSlice: []int{0, 1, 2},
 			})
 		}
 
 		require.Equal(b, "", string(p.Peek("unexport")))
 		require.Equal(b, []byte("5"), p.Peek("TInt"))
+		require.Equal(b, []byte("5"), p.Peek("TUint"))
 		require.Equal(b, []byte("string"), p.Peek("TString"))
 		require.Equal(b, []byte("3.1"), p.Peek("TFloat"))
-		require.Equal(b, "", string(p.Peek("TBool")))
+		require.Equal(b, []byte("(3+4i)"), p.Peek("TComplex"))
+		require.Equal(b, []byte("false"), p.Peek("TBool"))
 		require.True(b, func() bool {
 			for _, v := range p.PeekMulti("TSlice") {
 				if string(v) == "foo" {
@@ -1519,6 +1735,15 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 		require.True(b, func() bool {
 			for _, v := range p.PeekMulti("TSlice") {
 				if string(v) == "bar" {
+					return true
+				}
+			}
+			return false
+		}())
+
+		require.True(b, func() bool {
+			for _, v := range p.PeekMulti("int_slice") {
+				if string(v) == "0" {
 					return true
 				}
 			}
@@ -1602,29 +1827,6 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 			}
 			return false
 		}())
-	})
-
-	b.Run("the zero val should be ignore", func(b *testing.B) {
-		p := &QueryParam{
-			Args: fasthttp.AcquireArgs(),
-		}
-
-		b.ReportAllocs()
-		b.StartTimer()
-
-		for i := 0; i < b.N; i++ {
-			SetValWithStruct(p, "param", &args{
-				TInt:    0,
-				TString: "",
-				TFloat:  0.0,
-			})
-		}
-
-		require.Empty(b, string(p.Peek("TInt")))
-		require.Empty(b, string(p.Peek("TString")))
-		require.Empty(b, string(p.Peek("TFloat")))
-		require.Empty(b, p.PeekMulti("TSlice"))
-		require.Empty(b, p.PeekMulti("int_slice"))
 	})
 
 	b.Run("error type should ignore", func(b *testing.B) {
