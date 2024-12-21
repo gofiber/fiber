@@ -5876,6 +5876,34 @@ func Test_Ctx_Drop(t *testing.T) {
 	require.Equal(t, "0", resp.Header.Get("Content-Length"))
 }
 
+// go test -run Test_Ctx_DropWithMiddleware -v
+func Test_Ctx_DropWithMiddleware(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	// Middleware that calls Drop
+	app.Use(func(c Ctx) error {
+		err := c.Next()
+		c.Response().Header.Set("X-Test", "test")
+		return err
+	})
+
+	// Handler that calls Drop
+	app.Get("/block-me", func(c Ctx) error {
+		return c.Drop()
+	})
+
+	// Test the Drop method
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/block-me", nil))
+	require.Error(t, err)
+	require.Nil(t, resp)
+	require.Panics(t, func() {
+		// panic: cannot read response body after it was closed
+		require.Equal(t, "test", resp.Header.Get("X-Test"))
+	})
+}
+
 // go test -run Test_GenericParseTypeString
 func Test_GenericParseTypeString(t *testing.T) {
 	t.Parallel()
