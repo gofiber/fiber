@@ -1979,7 +1979,9 @@ func (c *DefaultCtx) setRoute(route *Route) {
 	c.route = route
 }
 
-// Drop closes the connection without sending a response.
+// Drop closes the underlying connection without sending any response headers or body.
+// This can be useful for silently terminating client connections, such as in DDoS mitigation
+// or when blocking access to sensitive endpoints.
 func (c *DefaultCtx) Drop() error {
 	//nolint:wrapcheck // error wrapping is avoided to keep the operation lightweight and focused on connection closure.
 	return c.RequestCtx().Conn().Close()
