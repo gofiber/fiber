@@ -5872,7 +5872,7 @@ func Test_Ctx_Drop(t *testing.T) {
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/no-response", nil))
 	require.NoError(t, err)
 	require.NotNil(t, resp)
-	require.Equal(t, 200, resp.StatusCode)
+	require.Equal(t, StatusOK, resp.StatusCode)
 	require.Equal(t, "0", resp.Header.Get("Content-Length"))
 }
 

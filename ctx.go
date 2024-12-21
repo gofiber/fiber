@@ -1979,6 +1979,7 @@ func (c *DefaultCtx) setRoute(route *Route) {
 	c.route = route
 }
 
+// Drop closes the connection without sending a response.
 func (c *DefaultCtx) Drop() error {
 	//nolint:wrapcheck // This must not be wrapped
 	return c.RequestCtx().Conn().Close()
