@@ -889,3 +889,26 @@ func Benchmark_Router_Next_Default(b *testing.B) {
 		h(fctx)
 	}
 }
+
+// go test -v ./... -run=^$ -bench=Benchmark_Router_Next_Default_Parallel -benchmem -count=4
+func Benchmark_Router_Next_Default_Parallel(b *testing.B) {
+	app := New()
+	app.Get("/", func(_ *Ctx) error {
+		return nil
+	})
+
+	h := app.Handler()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			fctx := &fasthttp.RequestCtx{}
+			fctx.Request.Header.SetMethod(MethodGet)
+			fctx.Request.SetRequestURI("/")
+
+			h(fctx)
+		}
+	})
+}
