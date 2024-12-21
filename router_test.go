@@ -604,11 +604,11 @@ func Benchmark_Router_Next_Default_Parallel(b *testing.B) {
 	b.ResetTimer()
 
 	b.RunParallel(func(pb *testing.PB) {
-		for pb.Next() {
-			fctx := &fasthttp.RequestCtx{}
-			fctx.Request.Header.SetMethod(MethodGet)
-			fctx.Request.SetRequestURI("/")
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Request.Header.SetMethod(MethodGet)
+		fctx.Request.SetRequestURI("/")
 
+		for pb.Next() {
 			h(fctx)
 		}
 	})
