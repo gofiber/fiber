@@ -5885,7 +5885,7 @@ func Test_Ctx_DropWithMiddleware(t *testing.T) {
 	// Middleware that calls Drop
 	app.Use(func(c Ctx) error {
 		err := c.Next()
-		c.Response().Header.Set("X-Test", "test")
+		c.Set("X-Test", "test")
 		return err
 	})
 
@@ -5898,10 +5898,6 @@ func Test_Ctx_DropWithMiddleware(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/block-me", nil))
 	require.Error(t, err)
 	require.Nil(t, resp)
-	require.Panics(t, func() {
-		// panic: cannot read response body after it was closed
-		require.Equal(t, "test", resp.Header.Get("X-Test"))
-	})
 }
 
 // go test -run Test_GenericParseTypeString
