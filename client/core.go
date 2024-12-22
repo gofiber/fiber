@@ -16,23 +16,21 @@ import (
 
 var boundary = "--FiberFormBoundary"
 
-// RequestHook is a function that receives Agent and Request,
-// it can change the data in Request and Agent.
-//
-// Called before a request is sent.
+// RequestHook is a function invoked before the request is sent.
+// It receives a Client and a Request, allowing you to modify the Request or Client data.
 type RequestHook func(*Client, *Request) error
 
-// ResponseHook is a function that receives Agent, Response and Request,
-// it can change the data is Response or deal with some effects.
-//
-// Called after a response has been received.
+// ResponseHook is a function invoked after a response is received.
+// It receives a Client, Response, and Request, allowing you to modify the Response data
+// or perform actions based on the response.
 type ResponseHook func(*Client, *Response, *Request) error
 
-// RetryConfig is an alias for config in the `addon/retry` package.
+// RetryConfig is an alias for the `retry.Config` type from the `addon/retry` package.
 type RetryConfig = retry.Config
 
-// addMissingPort will add the corresponding port number for host.
-func addMissingPort(addr string, isTLS bool) string { //revive:disable-line:flag-parameter // Accepting a bool param named isTLS if fine here
+// addMissingPort appends the appropriate port number to the given address if it doesn't have one.
+// If isTLS is true, it uses port 443; otherwise, it uses port 80.
+func addMissingPort(addr string, isTLS bool) string { //revive:disable-line:flag-parameter
 	n := strings.Index(addr, ":")
 	if n >= 0 {
 		return addr
@@ -44,15 +42,14 @@ func addMissingPort(addr string, isTLS bool) string { //revive:disable-line:flag
 	return net.JoinHostPort(addr, strconv.Itoa(port))
 }
 
-// `core` stores middleware and plugin definitions,
-// and defines the execution process
+// core stores middleware and plugin definitions and defines the request execution process.
 type core struct {
 	client *Client
 	req    *Request
-	ctx    context.Context //nolint:containedctx // It's needed to be stored in the core.
+	ctx    context.Context //nolint:containedctx // Context is needed here.
 }
 
-// getRetryConfig returns the retry configuration of the client.
+// getRetryConfig returns a copy of the client's retry configuration.
 func (c *core) getRetryConfig() *RetryConfig {
 	c.client.mu.RLock()
 	defer c.client.mu.RUnlock()
@@ -70,19 +67,16 @@ func (c *core) getRetryConfig() *RetryConfig {
 	}
 }
 
-// execFunc is the core function of the client.
-// It sends the request and receives the response.
+// execFunc is the core logic to send the request and receive the response.
+// It leverages the fasthttp client, optionally with retries or redirects.
 func (c *core) execFunc() (*Response, error) {
 	resp := AcquireResponse()
 	resp.setClient(c.client)
 	resp.setRequest(c.req)
 
-	// To avoid memory allocation reuse of data structures such as errch.
 	done := int32(0)
 	errCh, reqv := acquireErrChan(), fasthttp.AcquireRequest()
-	defer func() {
-		releaseErrChan(errCh)
-	}()
+	defer releaseErrChan(errCh)
 
 	c.req.RawRequest.CopyTo(reqv)
 	cfg := c.getRetryConfig()
@@ -96,11 +90,11 @@ func (c *core) execFunc() (*Response, error) {
 		}()
 
 		if cfg != nil {
+			// Use an exponential backoff retry strategy.
 			err = retry.NewExponentialBackoff(*cfg).Retry(func() error {
 				if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
 					return c.client.fasthttp.DoRedirects(reqv, respv, c.req.maxRedirects)
 				}
-
 				return c.client.fasthttp.Do(reqv, respv)
 			})
 		} else {
@@ -124,7 +118,7 @@ func (c *core) execFunc() (*Response, error) {
 	select {
 	case err := <-errCh:
 		if err != nil {
-			// When get error should release Response
+			// Release the response if an error occurs.
 			ReleaseResponse(resp)
 			return nil, err
 		}
@@ -136,21 +130,19 @@ func (c *core) execFunc() (*Response, error) {
 	}
 }
 
-// preHooks Exec request hook
+// preHooks runs all request hooks before sending the request.
 func (c *core) preHooks() error {
 	c.client.mu.Lock()
 	defer c.client.mu.Unlock()
 
 	for _, f := range c.client.userRequestHooks {
-		err := f(c.client, c.req)
-		if err != nil {
+		if err := f(c.client, c.req); err != nil {
 			return err
 		}
 	}
 
 	for _, f := range c.client.builtinRequestHooks {
-		err := f(c.client, c.req)
-		if err != nil {
+		if err := f(c.client, c.req); err != nil {
 			return err
 		}
 	}
@@ -158,21 +150,19 @@ func (c *core) preHooks() error {
 	return nil
 }
 
-// afterHooks Exec response hooks
+// afterHooks runs all response hooks after receiving the response.
 func (c *core) afterHooks(resp *Response) error {
 	c.client.mu.Lock()
 	defer c.client.mu.Unlock()
 
 	for _, f := range c.client.builtinResponseHooks {
-		err := f(c.client, resp, c.req)
-		if err != nil {
+		if err := f(c.client, resp, c.req); err != nil {
 			return err
 		}
 	}
 
 	for _, f := range c.client.userResponseHooks {
-		err := f(c.client, resp, c.req)
-		if err != nil {
+		if err := f(c.client, resp, c.req); err != nil {
 			return err
 		}
 	}
@@ -180,7 +170,7 @@ func (c *core) afterHooks(resp *Response) error {
 	return nil
 }
 
-// timeout deals with timeout
+// timeout applies the configured timeout to the request, if any.
 func (c *core) timeout() context.CancelFunc {
 	var cancel context.CancelFunc
 
@@ -193,35 +183,32 @@ func (c *core) timeout() context.CancelFunc {
 	return cancel
 }
 
-// execute will exec each hooks and plugins.
+// execute runs all hooks, applies timeouts, sends the request, and runs response hooks.
 func (c *core) execute(ctx context.Context, client *Client, req *Request) (*Response, error) {
-	// keep a reference, because pass param is boring
+	// Store references locally.
 	c.ctx = ctx
 	c.client = client
 	c.req = req
 
-	// The built-in hooks will be executed only
-	// after the user-defined hooks are executed.
-	err := c.preHooks()
-	if err != nil {
+	// Execute pre request hooks (user-defined and built-in).
+	if err := c.preHooks(); err != nil {
 		return nil, err
 	}
 
+	// Apply timeout if specified.
 	cancel := c.timeout()
 	if cancel != nil {
 		defer cancel()
 	}
 
-	// Do http request
+	// Perform the actual HTTP request.
 	resp, err := c.execFunc()
 	if err != nil {
 		return nil, err
 	}
 
-	// The built-in hooks will be executed only
-	// before the user-defined hooks are executed.
-	err = c.afterHooks(resp)
-	if err != nil {
+	// Execute after response hooks (built-in and then user-defined).
+	if err := c.afterHooks(resp); err != nil {
 		resp.Close()
 		return nil, err
 	}
@@ -235,38 +222,35 @@ var errChanPool = &sync.Pool{
 	},
 }
 
-// acquireErrChan returns an empty error chan from the pool.
+// acquireErrChan returns an empty error channel from the pool.
 //
-// The returned error chan may be returned to the pool with releaseErrChan when no longer needed.
-// This allows reducing GC load.
+// The returned channel may be returned to the pool with releaseErrChan when no longer needed,
+// reducing GC load.
 func acquireErrChan() chan error {
 	ch, ok := errChanPool.Get().(chan error)
 	if !ok {
 		panic(errors.New("failed to type-assert to chan error"))
 	}
-
 	return ch
 }
 
-// releaseErrChan returns the object acquired via acquireErrChan to the pool.
+// releaseErrChan returns the error channel to the pool.
 //
-// Do not access the released core object, otherwise data races may occur.
+// Do not use the released channel afterward to avoid data races.
 func releaseErrChan(ch chan error) {
 	errChanPool.Put(ch)
 }
 
-// newCore returns an empty core object.
+// newCore returns a new core object.
 func newCore() *core {
-	c := &core{}
-
-	return c
+	return &core{}
 }
 
 var (
 	ErrTimeoutOrCancel      = errors.New("timeout or cancel")
-	ErrURLFormat            = errors.New("the url is a mistake")
-	ErrNotSupportSchema     = errors.New("the protocol is not support, only http or https")
-	ErrFileNoName           = errors.New("the file should have name")
+	ErrURLFormat            = errors.New("the URL is incorrect")
+	ErrNotSupportSchema     = errors.New("protocol not supported; only http or https are allowed")
+	ErrFileNoName           = errors.New("the file should have a name")
 	ErrBodyType             = errors.New("the body type should be []byte")
-	ErrNotSupportSaveMethod = errors.New("file path and io.Writer are supported")
+	ErrNotSupportSaveMethod = errors.New("only file paths and io.Writer are supported")
 )

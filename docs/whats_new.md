@@ -130,6 +130,14 @@ In this example, a custom context `CustomCtx` is created with an additional meth
 
 </details>
 
+### Configurable TLS Minimum Version
+
+We have added support for configuring the TLS minimum version. This field allows you to set the TLS minimum version for TLSAutoCert and the server listener.
+
+```go
+app.Listen(":444", fiber.ListenConfig{TLSMinVersion: tls.VersionTLS12})
+```
+
 #### TLS AutoCert support (ACME / Let's Encrypt)
 
 We have added native support for automatic certificates management from Let's Encrypt and any other ACME-based providers.
