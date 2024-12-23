@@ -61,3 +61,9 @@ func (b *FormBinding) BindMultipart(req *fasthttp.Request, out any) error {
 
 	return parse(b.Name(), out, data.Value)
 }
+
+// Reset resets the FormBinding binder and puts it back to the binder pool.
+func (b *FormBinding) Reset() {
+	b.EnableSplitting = false
+	PutToThePool(&FormBinderPool, b)
+}

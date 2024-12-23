@@ -47,3 +47,9 @@ func (b *CookieBinding) Bind(req *fasthttp.Request, out any) error {
 
 	return parse(b.Name(), out, data)
 }
+
+// Reset resets the CookieBinding binder and puts it back to the binder pool.
+func (b *CookieBinding) Reset() {
+	b.EnableSplitting = false
+	PutToThePool(&CookieBinderPool, b)
+}

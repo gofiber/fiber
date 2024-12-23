@@ -17,3 +17,8 @@ func (b *URIBinding) Bind(params []string, paramsFunc func(key string, defaultVa
 
 	return parse(b.Name(), out, data)
 }
+
+// Reset puts URI binding back to the pool.
+func (b *URIBinding) Reset() {
+	PutToThePool(&URIBinderPool, b)
+}

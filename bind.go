@@ -82,8 +82,7 @@ func (b *Bind) Header(out any) error {
 
 	// Reset & put binder
 	defer func() {
-		bind.EnableSplitting = false
-		binder.PutToThePool(&binder.HeaderBinderPool, bind)
+		bind.Reset()
 	}()
 
 	if err := b.returnErr(bind.Bind(b.ctx.Request(), out)); err != nil {
@@ -100,8 +99,7 @@ func (b *Bind) RespHeader(out any) error {
 
 	// Reset & put binder
 	defer func() {
-		bind.EnableSplitting = false
-		binder.PutToThePool(&binder.RespHeaderBinderPool, bind)
+		bind.Reset()
 	}()
 
 	if err := b.returnErr(bind.Bind(b.ctx.Response(), out)); err != nil {
@@ -119,8 +117,7 @@ func (b *Bind) Cookie(out any) error {
 
 	// Reset & put binder
 	defer func() {
-		bind.EnableSplitting = false
-		binder.PutToThePool(&binder.CookieBinderPool, bind)
+		bind.Reset()
 	}()
 
 	if err := b.returnErr(bind.Bind(&b.ctx.RequestCtx().Request, out)); err != nil {
@@ -137,8 +134,7 @@ func (b *Bind) Query(out any) error {
 
 	// Reset & put binder
 	defer func() {
-		bind.EnableSplitting = false
-		binder.PutToThePool(&binder.QueryBinderPool, bind)
+		bind.Reset()
 	}()
 
 	if err := b.returnErr(bind.Bind(&b.ctx.RequestCtx().Request, out)); err != nil {
@@ -155,8 +151,7 @@ func (b *Bind) JSON(out any) error {
 
 	// Reset & put binder
 	defer func() {
-		bind.JSONDecoder = nil
-		binder.PutToThePool(&binder.JSONBinderPool, bind)
+		bind.Reset()
 	}()
 
 	if err := b.returnErr(bind.Bind(b.ctx.Body(), out)); err != nil {
@@ -173,8 +168,7 @@ func (b *Bind) CBOR(out any) error {
 
 	// Reset & put binder
 	defer func() {
-		bind.CBORDecoder = nil
-		binder.PutToThePool(&binder.CBORBinderPool, bind)
+		bind.Reset()
 	}()
 
 	if err := b.returnErr(bind.Bind(b.ctx.Body(), out)); err != nil {
@@ -190,8 +184,7 @@ func (b *Bind) XML(out any) error {
 
 	// Reset & put binder
 	defer func() {
-		bind.XMLDecoder = nil
-		binder.PutToThePool(&binder.XMLBinderPool, bind)
+		bind.Reset()
 	}()
 
 	if err := b.returnErr(bind.Bind(b.ctx.Body(), out)); err != nil {
@@ -208,8 +201,7 @@ func (b *Bind) Form(out any) error {
 
 	// Reset & put binder
 	defer func() {
-		bind.EnableSplitting = false
-		binder.PutToThePool(&binder.FormBinderPool, bind)
+		bind.Reset()
 	}()
 
 	if err := b.returnErr(bind.Bind(&b.ctx.RequestCtx().Request, out)); err != nil {
@@ -225,7 +217,7 @@ func (b *Bind) URI(out any) error {
 
 	// Reset & put binder
 	defer func() {
-		binder.PutToThePool(&binder.URIBinderPool, bind)
+		bind.Reset()
 	}()
 
 	if err := b.returnErr(bind.Bind(b.ctx.Route().Params, b.ctx.Params, out)); err != nil {
@@ -242,8 +234,7 @@ func (b *Bind) MultipartForm(out any) error {
 
 	// Reset & put binder
 	defer func() {
-		bind.EnableSplitting = false
-		binder.PutToThePool(&binder.FormBinderPool, bind)
+		bind.Reset()
 	}()
 
 	if err := b.returnErr(bind.BindMultipart(&b.ctx.RequestCtx().Request, out)); err != nil {

@@ -51,3 +51,9 @@ func (b *QueryBinding) Bind(reqCtx *fasthttp.Request, out any) error {
 
 	return parse(b.Name(), out, data)
 }
+
+// Reset resets the QueryBinding binder and puts it back to the binder pool.
+func (b *QueryBinding) Reset() {
+	b.EnableSplitting = false
+	PutToThePool(&QueryBinderPool, b)
+}

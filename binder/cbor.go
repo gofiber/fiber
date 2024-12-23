@@ -18,3 +18,9 @@ func (*CBORBinding) Name() string {
 func (b *CBORBinding) Bind(body []byte, out any) error {
 	return b.CBORDecoder(body, out)
 }
+
+// Reset resets the CBORBinding binder and puts it back to the binder pool.
+func (b *CBORBinding) Reset() {
+	b.CBORDecoder = nil
+	PutToThePool(&CBORBinderPool, b)
+}
