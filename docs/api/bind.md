@@ -83,7 +83,7 @@ curl -X POST -F name=john -F pass=doe http://localhost:3000
 
 ### Form
 
-Binds the request form body to a struct.
+Binds the request or multipart form body data to a struct.
 
 It is important to specify the correct struct tag based on the content type to be parsed. For example, if you want to parse a form body with a field called `Pass`, you would use a struct field with `form:"pass"`.
 
@@ -111,10 +111,14 @@ app.Post("/", func(c fiber.Ctx) error {
 })
 ```
 
-Run tests with the following `curl` command:
+Run tests with the following `curl` commands for both `application/x-www-form-urlencoded` and `multipart/form-data`:
 
 ```bash
 curl -X POST -H "Content-Type: application/x-www-form-urlencoded" --data "name=john&pass=doe" localhost:3000
+```
+
+```bash
+curl -X POST -H "Content-Type: multipart/form-data" -F "name=john" -F "pass=doe" localhost:3000
 ```
 
 ### JSON
@@ -151,43 +155,6 @@ Run tests with the following `curl` command:
 
 ```bash
 curl -X POST -H "Content-Type: application/json" --data "{\"name\":\"john\",\"pass\":\"doe\"}" localhost:3000
-```
-
-### MultipartForm
-
-Binds the request multipart form body to a struct.
-
-It is important to specify the correct struct tag based on the content type to be parsed. For example, if you want to parse a multipart form body with a field called `Pass`, you would use a struct field with `form:"pass"`.
-
-```go title="Signature"
-func (b *Bind) MultipartForm(out any) error
-```
-
-```go title="Example"
-// Field names should start with an uppercase letter
-type Person struct {
-    Name string `form:"name"`
-    Pass string `form:"pass"`
-}
-
-app.Post("/", func(c fiber.Ctx) error {
-    p := new(Person)
-    
-    if err := c.Bind().MultipartForm(p); err != nil {
-        return err
-    }
-    
-    log.Println(p.Name) // john
-    log.Println(p.Pass) // doe
-    
-    // ...
-})
-```
-
-Run tests with the following `curl` command:
-
-```bash
-curl -X POST -H "Content-Type: multipart/form-data" -F "name=john" -F "pass=doe" localhost:3000
 ```
 
 ### XML

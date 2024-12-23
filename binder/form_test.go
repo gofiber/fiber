@@ -118,7 +118,7 @@ func Test_FormBinder_BindMultipart(t *testing.T) {
 		fasthttp.ReleaseRequest(req)
 	})
 
-	err := b.BindMultipart(req, &user)
+	err := b.Bind(req, &user)
 
 	require.NoError(t, err)
 	require.Equal(t, "john", user.Name)
@@ -164,7 +164,7 @@ func Benchmark_FormBinder_BindMultipart(b *testing.B) {
 
 	var err error
 	for i := 0; i < b.N; i++ {
-		err = binder.BindMultipart(req, &user)
+		err = binder.Bind(req, &user)
 	}
 
 	require.NoError(b, err)

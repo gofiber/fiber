@@ -8,6 +8,8 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+const MIMEMultipartForm string = "multipart/form-data"
+
 // FormBinding is the form binder for form request body.
 type FormBinding struct {
 	EnableSplitting bool
@@ -22,6 +24,11 @@ func (*FormBinding) Name() string {
 func (b *FormBinding) Bind(req *fasthttp.Request, out any) error {
 	data := make(map[string][]string)
 	var err error
+
+	// Handle multipart form
+	if FilterFlags(utils.UnsafeString(req.Header.ContentType())) == MIMEMultipartForm {
+		return b.bindMultipart(req, out)
+	}
 
 	req.PostArgs().VisitAll(func(key, val []byte) {
 		if err != nil {
@@ -52,8 +59,8 @@ func (b *FormBinding) Bind(req *fasthttp.Request, out any) error {
 	return parse(b.Name(), out, data)
 }
 
-// BindMultipart parses the request body and returns the result.
-func (b *FormBinding) BindMultipart(req *fasthttp.Request, out any) error {
+// bindMultipart parses the request body and returns the result.
+func (b *FormBinding) bindMultipart(req *fasthttp.Request, out any) error {
 	data, err := req.MultipartForm()
 	if err != nil {
 		return err

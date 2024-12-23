@@ -195,6 +195,9 @@ func (b *Bind) XML(out any) error {
 }
 
 // Form binds the form into the struct, map[string]string and map[string][]string.
+// If Content-Type is "application/x-www-form-urlencoded" or "multipart/form-data", it will bind the form values.
+//
+// Binding multipart files is not supported yet.
 func (b *Bind) Form(out any) error {
 	bind := binder.GetFromThePool[*binder.FormBinding](&binder.FormBinderPool)
 	bind.EnableSplitting = b.ctx.App().config.EnableSplittingOnParsers
@@ -221,23 +224,6 @@ func (b *Bind) URI(out any) error {
 	}()
 
 	if err := b.returnErr(bind.Bind(b.ctx.Route().Params, b.ctx.Params, out)); err != nil {
-		return err
-	}
-
-	return b.validateStruct(out)
-}
-
-// MultipartForm binds the multipart form into the struct, map[string]string and map[string][]string.
-func (b *Bind) MultipartForm(out any) error {
-	bind := binder.GetFromThePool[*binder.FormBinding](&binder.FormBinderPool)
-	bind.EnableSplitting = b.ctx.App().config.EnableSplittingOnParsers
-
-	// Reset & put binder
-	defer func() {
-		bind.Reset()
-	}()
-
-	if err := b.returnErr(bind.BindMultipart(&b.ctx.RequestCtx().Request, out)); err != nil {
 		return err
 	}
 
@@ -272,10 +258,8 @@ func (b *Bind) Body(out any) error {
 		return b.XML(out)
 	case MIMEApplicationCBOR:
 		return b.CBOR(out)
-	case MIMEApplicationForm:
+	case MIMEApplicationForm, MIMEMultipartForm:
 		return b.Form(out)
-	case MIMEMultipartForm:
-		return b.MultipartForm(out)
 	}
 
 	// No suitable content type found
