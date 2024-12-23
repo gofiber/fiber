@@ -761,3 +761,56 @@ func main() {
 ```
 
 In this example, a new route is defined and then `RebuildTree()` is called to ensure the new route is registered and available.
+
+
+## RemoveRoute
+
+This method removes a route by path.  You must call the `RebuildTree()` method after the remove in to ensure the route is removed.
+
+```go title="Signature"
+func (app *App) RemoveRoute(path string, methods ...string)
+```
+
+This method removes a route by name
+```go title="Signature"
+func (app *App) RemoveRouteByName(name string, methods ...string)
+```
+
+```go title="Example"
+package main
+
+import (
+    "log"
+
+    "github.com/gofiber/fiber/v3"
+)
+
+func main() {
+    app := fiber.New()
+
+    app.Get("/api/feature-a", func(c *fiber.Ctx) error {
+           app.RemoveRoute("/api/feature", fiber.MethodGet)
+           app.RebuildTree()
+           // Redefine route
+           app.Get("/api/feature", func(c *fiber.Ctx) error {
+                   return c.SendString("Testing feature-a")
+           })
+
+           app.RebuildTree()
+           return c.SendStatus(fiber.StatusOK)
+    })
+    app.Get("/api/feature-b", func(c *fiber.Ctx) error {
+           app.RemoveRoute("/api/feature", fiber.MethodGet)
+           app.RebuildTree()
+           // Redefine route
+           app.Get("/api/feature", func(c *fiber.Ctx) error {
+                   return c.SendString("Testing feature-b")
+           })
+
+           app.RebuildTree()
+           return c.SendStatus(fiber.StatusOK)
+    })
+
+    log.Fatal(app.Listen(":3000"))
+}
+```
