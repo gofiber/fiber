@@ -18,7 +18,6 @@ Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more..
 - [Body](#body)
   - [Form](#form)
   - [JSON](#json)
-  - [MultipartForm](#multipartform)
   - [XML](#xml)
   - [CBOR](#cbor)
 - [Cookie](#cookie)
