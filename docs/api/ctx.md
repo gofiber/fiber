@@ -463,6 +463,27 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+## Drop
+
+Terminates the client connection silently without sending any HTTP headers or response body.
+
+This can be used for scenarios where you want to block certain requests without notifying the client, such as mitigating
+DDoS attacks or protecting sensitive endpoints from unauthorized access.
+
+```go title="Signature"
+func (c fiber.Ctx) Drop() error
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  if c.IP() == "192.168.1.1" {
+    return c.Drop()
+  }
+
+  return c.SendString("Hello World!")
+})
+```
+
 ## Format
 
 Performs content-negotiation on the [Accept](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept) HTTP header. It uses [Accepts](ctx.md#accepts) to select a proper format from the supplied offers. A default handler can be provided by setting the `MediaType` to `"default"`. If no offers match and no default is provided, a 406 (Not Acceptable) response is sent. The Content-Type is automatically set when a handler is selected.
