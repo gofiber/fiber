@@ -36,6 +36,8 @@ func Test_URIBinding_Bind(t *testing.T) {
 	require.Equal(t, "john", user.Name)
 	require.Equal(t, 42, user.Age)
 	require.Equal(t, []string{"post1,post2,post3"}, user.Posts)
+
+	b.Reset()
 }
 
 func Benchmark_URIBinding_Bind(b *testing.B) {

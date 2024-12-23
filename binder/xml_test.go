@@ -51,6 +51,9 @@ func Test_XMLBinding_Bind(t *testing.T) {
 	require.Len(t, user.Posts, 2)
 	require.Equal(t, "post1", user.Posts[0].Title)
 	require.Equal(t, "post2", user.Posts[1].Title)
+
+	b.Reset()
+	require.Nil(t, b.XMLDecoder)
 }
 
 func Test_XMLBinding_Bind_error(t *testing.T) {

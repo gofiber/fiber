@@ -44,6 +44,9 @@ func Test_CookieBinder_Bind(t *testing.T) {
 	require.Equal(t, 42, user.Age)
 	require.Contains(t, user.Names, "john")
 	require.Contains(t, user.Names, "doe")
+
+	b.Reset()
+	require.False(t, b.EnableSplitting)
 }
 
 func Benchmark_CookieBinder_Bind(b *testing.B) {

@@ -48,6 +48,9 @@ func Test_FormBinder_Bind(t *testing.T) {
 	require.Equal(t, "post3", user.Posts[2].Title)
 	require.Contains(t, user.Names, "john")
 	require.Contains(t, user.Names, "doe")
+
+	b.Reset()
+	require.False(t, b.EnableSplitting)
 }
 
 func Benchmark_FormBinder_Bind(b *testing.B) {

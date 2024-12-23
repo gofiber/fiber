@@ -55,6 +55,9 @@ func Test_CBORBinder_Bind(t *testing.T) {
 	require.Equal(t, "post3", user.Posts[2].Title)
 	require.Contains(t, user.Names, "john")
 	require.Contains(t, user.Names, "doe")
+
+	b.Reset()
+	require.Nil(t, b.CBORDecoder)
 }
 
 func Benchmark_CBORBinder_Bind(b *testing.B) {

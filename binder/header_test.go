@@ -44,6 +44,9 @@ func Test_HeaderBinder_Bind(t *testing.T) {
 	require.Equal(t, "post3", user.Posts[2])
 	require.Contains(t, user.Names, "john")
 	require.Contains(t, user.Names, "doe")
+
+	b.Reset()
+	require.False(t, b.EnableSplitting)
 }
 
 func Benchmark_HeaderBinder_Bind(b *testing.B) {

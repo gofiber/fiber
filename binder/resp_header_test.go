@@ -37,6 +37,9 @@ func Test_RespHeaderBinder_Bind(t *testing.T) {
 	require.Equal(t, "john", user.Name)
 	require.Equal(t, 42, user.Age)
 	require.Equal(t, []string{"post1", "post2", "post3"}, user.Posts)
+
+	b.Reset()
+	require.False(t, b.EnableSplitting)
 }
 
 func Benchmark_RespHeaderBinder_Bind(b *testing.B) {

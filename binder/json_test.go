@@ -34,6 +34,9 @@ func Test_JSON_Binding_Bind(t *testing.T) {
 	require.Equal(t, "post1", user.Posts[0].Title)
 	require.Equal(t, "post2", user.Posts[1].Title)
 	require.Equal(t, "post3", user.Posts[2].Title)
+
+	b.Reset()
+	require.Nil(t, b.JSONDecoder)
 }
 
 func Benchmark_JSON_Binding_Bind(b *testing.B) {
