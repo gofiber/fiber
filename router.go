@@ -100,11 +100,9 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) boo
 		} else if len(detectionPath) >= plen && detectionPath[:plen] == r.path {
 			return true
 		}
-	} else {
+	} else if len(r.path) == len(detectionPath) && detectionPath == r.path {
 		// Check exact match
-		if len(r.path) == len(detectionPath) && detectionPath == r.path {
-			return true
-		}
+		return true
 	}
 
 	// No match
@@ -239,7 +237,7 @@ func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 
 	// Efficient flash cookie check using bytes.Index
 	rawHeaders := c.Request().Header.RawHeaders()
-	if len(rawHeaders) > 0 && bytes.Index(rawHeaders, []byte(FlashCookieName)) != -1 {
+	if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, []byte(FlashCookieName)) {
 		c.Redirect().parseAndClearFlashMessages()
 	}
 
@@ -360,7 +358,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 			Handlers: handlers,
 		}
 
-		atomic.AddUint32(&app.handlersCount, uint32(len(handlers)))
+		atomic.AddUint32(&app.handlersCount, uint32(len(handlers))) //nolint:gosec // Not a concern
 		if isUse {
 			for _, m := range app.config.RequestMethods {
 				r := route
