@@ -620,10 +620,16 @@ func GetTrimmedParam(param string) string {
 
 // RemoveEscapeChar remove escape characters
 func RemoveEscapeChar(word string) string {
-	if strings.IndexByte(word, escapeChar) != -1 {
-		return strings.ReplaceAll(word, string(escapeChar), "")
+	b := []byte(word)
+	dst := 0
+	for src := 0; src < len(b); src++ {
+		if b[src] == '\\' {
+			continue
+		}
+		b[dst] = b[src]
+		dst++
 	}
-	return word
+	return string(b[:dst])
 }
 
 func getParamConstraintType(constraintPart string) TypeConstraint {
