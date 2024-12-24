@@ -116,7 +116,8 @@ app.Listen(":8080", fiber.ListenConfig{
 | <Reference id="onshutdownerror">OnShutdownError</Reference>             | `func(err error)`             | Allows to customize error behavior when gracefully shutting down the server by given signal.  Prints error with `log.Fatalf()`                | `nil`   |
 | <Reference id="onshutdownsuccess">OnShutdownSuccess</Reference>         | `func()`                      | Allows customizing success behavior when gracefully shutting down the server by given signal.                                                 | `nil`   |
 | <Reference id="tlsconfigfunc">TLSConfigFunc</Reference>                 | `func(tlsConfig *tls.Config)` | Allows customizing `tls.Config` as you want.                                                                                                  | `nil`   |
-| <Reference id="autocertmanager">AutoCertManager</Reference>                 | `func(tlsConfig *tls.Config)` | Manages TLS certificates automatically using the ACME protocol. Enables integration with Let's Encrypt or other ACME-compatible providers.                                                            | `nil`   |
+| <Reference id="autocertmanager">AutoCertManager</Reference>             | `*autocert.Manager`           | Manages TLS certificates automatically using the ACME protocol. Enables integration with Let's Encrypt or other ACME-compatible providers.    | `nil`   |
+| <Reference id="tlsminversion">TLSMinVersion</Reference>                 | `uint16`                      | Allows customizing the TLS minimum version.    | `tls.VersionTLS12`   |
 
 ### Listen
 

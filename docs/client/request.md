@@ -6,15 +6,15 @@ description: >-
 sidebar_position: 2
 ---
 
-The `Request` structure in Gofiber's HTTP client represents an HTTP request. It encapsulates all the necessary information required to send a request to a server. This includes:
+The `Request` structure in Gofiber's HTTP client represents an HTTP request. It encapsulates all the necessary information needed to send a request to a server, including:
 
-- **URL**: The URL to which the request is sent.
-- **Method**: The HTTP method used (GET, POST, PUT, DELETE, etc.).
-- **Headers**: HTTP headers that provide additional information about the request or the needed responses.
-- **Body**: The data sent with the request, typically used with POST and PUT methods.
-- **Query Parameters**: Parameters that are appended to the URL, used to modify the request or to provide additional information.
+- **URL**: The endpoint to which the request is sent.
+- **Method**: The HTTP method (GET, POST, PUT, DELETE, etc.).
+- **Headers**: Key-value pairs that provide additional information about the request or guide how the response should be processed.
+- **Body**: The data sent with the request, commonly used with methods like POST and PUT.
+- **Query Parameters**: Parameters appended to the URL to pass additional data or modify the request's behavior.
 
-This structure is designed to be flexible and efficient, allowing users to easily construct and modify HTTP requests according to their needs.
+This structure is designed to be both flexible and efficient, allowing you to easily build and modify HTTP requests as needed.
 
 ```go
 type Request struct {
@@ -47,8 +47,7 @@ type Request struct {
 
 ### Get
 
-Get sends the GET request.
-It sets the URL and HTTP method, and then it sends the request.
+**Get** sends a GET request to the specified URL. It sets the URL and HTTP method, then dispatches the request to the server.
 
 ```go title="Signature"
 func (r *Request) Get(url string) (*Response, error)
@@ -56,8 +55,7 @@ func (r *Request) Get(url string) (*Response, error)
 
 ### Post
 
-Post sends the POST request.
-It sets the URL and HTTP method, and then it sends the request.
+**Post** sends a POST request. It sets the URL and method to POST, then sends the request.
 
 ```go title="Signature"
 func (r *Request) Post(url string) (*Response, error)
@@ -65,8 +63,7 @@ func (r *Request) Post(url string) (*Response, error)
 
 ### Put
 
-Put sends the PUT request.
-It sets the URL and HTTP method, and then it sends the request.
+**Put** sends a PUT request. It sets the URL and method to PUT, then sends the request.
 
 ```go title="Signature"
 func (r *Request) Put(url string) (*Response, error)
@@ -74,8 +71,7 @@ func (r *Request) Put(url string) (*Response, error)
 
 ### Patch
 
-Patch sends the PATCH request.
-It sets the URL and HTTP method, and then it sends the request.
+**Patch** sends a PATCH request. It sets the URL and method to PATCH, then sends the request.
 
 ```go title="Signature"
 func (r *Request) Patch(url string) (*Response, error)
@@ -83,8 +79,7 @@ func (r *Request) Patch(url string) (*Response, error)
 
 ### Delete
 
-Delete sends the DELETE request.
-It sets the URL and HTTP method, and then it sends the request.
+**Delete** sends a DELETE request. It sets the URL and method to DELETE, then sends the request.
 
 ```go title="Signature"
 func (r *Request) Delete(url string) (*Response, error)
@@ -92,8 +87,7 @@ func (r *Request) Delete(url string) (*Response, error)
 
 ### Head
 
-Head sends the HEAD request.
-It sets the URL and HTTP method, and then it sends the request.
+**Head** sends a HEAD request. It sets the URL and method to HEAD, then sends the request.
 
 ```go title="Signature"
 func (r *Request) Head(url string) (*Response, error)
@@ -101,8 +95,7 @@ func (r *Request) Head(url string) (*Response, error)
 
 ### Options
 
-Options sends the OPTIONS request.
-It sets the URL and HTTP method, and then it sends the request.
+**Options** sends an OPTIONS request. It sets the URL and method to OPTIONS, then sends the request.
 
 ```go title="Signature"
 func (r *Request) Options(url string) (*Response, error)
@@ -110,9 +103,7 @@ func (r *Request) Options(url string) (*Response, error)
 
 ### Custom
 
-Custom sends a request with custom HTTP method.
-It sets the URL and HTTP method, and then it sends the request.
-You can use Custom to send requests with methods like TRACE, CONNECT.
+**Custom** sends a request using a custom HTTP method. For example, you can use this to send a TRACE or CONNECT request.
 
 ```go title="Signature"
 func (r *Request) Custom(url, method string) (*Response, error)
@@ -120,9 +111,7 @@ func (r *Request) Custom(url, method string) (*Response, error)
 
 ## AcquireRequest
 
-AcquireRequest returns an empty request object from the pool.
-The returned request may be returned to the pool with ReleaseRequest when no longer needed.
-This allows reducing GC load.
+**AcquireRequest** returns a new (pooled) `Request` object. When you are done with the request, call `ReleaseRequest` to return it to the pool and reduce GC load.
 
 ```go title="Signature"
 func AcquireRequest() *Request
@@ -130,8 +119,7 @@ func AcquireRequest() *Request
 
 ## ReleaseRequest
 
-ReleaseRequest returns the object acquired via AcquireRequest to the pool.
-Do not access the released Request object; otherwise, data races may occur.
+**ReleaseRequest** returns the `Request` object back to the pool. Do not use the request after releasing it, as this may cause data races.
 
 ```go title="Signature"
 func ReleaseRequest(req *Request)
@@ -139,7 +127,7 @@ func ReleaseRequest(req *Request)
 
 ## Method
 
-Method returns HTTP method in request.
+**Method** returns the current HTTP method set for the request.
 
 ```go title="Signature"
 func (r *Request) Method() string
@@ -147,7 +135,7 @@ func (r *Request) Method() string
 
 ## SetMethod
 
-SetMethod will set method for Request object. The user should use request method to set method.
+**SetMethod** sets the HTTP method for the `Request` object. Typically, you should use the specialized request methods (`Get`, `Post`, etc.) instead of calling `SetMethod` directly.
 
 ```go title="Signature"
 func (r *Request) SetMethod(method string) *Request
@@ -155,7 +143,7 @@ func (r *Request) SetMethod(method string) *Request
 
 ## URL
 
-URL returns request url in Request instance.
+**URL** returns the current URL set in the `Request`.
 
 ```go title="Signature"
 func (r *Request) URL() string
@@ -163,7 +151,7 @@ func (r *Request) URL() string
 
 ## SetURL
 
-SetURL will set url for Request object.
+**SetURL** sets the URL for the `Request` object.
 
 ```go title="Signature"
 func (r *Request) SetURL(url string) *Request
@@ -171,7 +159,7 @@ func (r *Request) SetURL(url string) *Request
 
 ## Client
 
-Client gets the Client instance of Request.
+**Client** retrieves the `Client` instance associated with the `Request`.
 
 ```go title="Signature"
 func (r *Request) Client() *Client
@@ -179,8 +167,7 @@ func (r *Request) Client() *Client
 
 ## SetClient
 
-SetClient method sets client of request instance.
-If the client given is null, it will panic.
+**SetClient** assigns a `Client` to the `Request`. If the provided client is `nil`, it will panic.
 
 ```go title="Signature"
 func (r *Request) SetClient(c *Client) *Request
@@ -188,7 +175,7 @@ func (r *Request) SetClient(c *Client) *Request
 
 ## Context
 
-Context returns the Context if it's already set in the request; otherwise, it returns `context.Background()`.
+**Context** returns the `context.Context` of the request, or `context.Background()` if none is set.
 
 ```go title="Signature"
 func (r *Request) Context() context.Context
@@ -196,8 +183,7 @@ func (r *Request) Context() context.Context
 
 ## SetContext
 
-SetContext sets the context.Context for current Request. It allows interruption of the request execution if the ctx.Done() channel is closed.
-See [the article](https://blog.golang.org/context) and the [context](https://pkg.go.dev/context) package documentation.
+**SetContext** sets the `context.Context` for the request, allowing you to cancel or time out the request. See the [Go blog](https://blog.golang.org/context) and [context](https://pkg.go.dev/context) docs for more details.
 
 ```go title="Signature"
 func (r *Request) SetContext(ctx context.Context) *Request
@@ -205,7 +191,7 @@ func (r *Request) SetContext(ctx context.Context) *Request
 
 ## Header
 
-Header method returns header value via key, this method will visit all field in the header.
+**Header** returns all values for the specified header key. It searches all header fields stored in the request.
 
 ```go title="Signature"
 func (r *Request) Header(key string) []string
@@ -213,8 +199,7 @@ func (r *Request) Header(key string) []string
 
 ### Headers
 
-Headers returns all headers in the request using an iterator. You can use `maps.Collect()` to collect all headers into a map.
-The returned value is valid until the request object is released. Any future calls to Headers method will return the modified value. Do not store references to returned value. Make copies instead.
+**Headers** returns an iterator over all headers in the request. Use `maps.Collect()` to transform them into a map if needed. The returned values are valid only until the request is released. Make copies as required.
 
 ```go title="Signature"
 func (r *Request) Headers() iter.Seq2[string, []string]
@@ -267,7 +252,7 @@ Header Key: Test, Header Value: [123456 654321]
 
 ### AddHeader
 
-AddHeader method adds a single header field and its value in the request instance.
+**AddHeader** adds a single header field and its value to the request.
 
 ```go title="Signature"
 func (r *Request) AddHeader(key, val string) *Request
@@ -309,8 +294,7 @@ fmt.Println(resp.String())
 
 ### SetHeader
 
-SetHeader method sets a single header field and its value in the request instance.
-It will override the header which has been set in the client instance.
+**SetHeader** sets a single header field and its value, overriding any previously set header with the same key.
 
 ```go title="Signature"
 func (r *Request) SetHeader(key, val string) *Request
@@ -351,7 +335,7 @@ fmt.Println(resp.String())
 
 ### AddHeaders
 
-AddHeaders method adds multiple header fields and its values at one go in the request instance.
+**AddHeaders** adds multiple headers at once from a map of string slices.
 
 ```go title="Signature"
 func (r *Request) AddHeaders(h map[string][]string) *Request
@@ -359,8 +343,7 @@ func (r *Request) AddHeaders(h map[string][]string) *Request
 
 ### SetHeaders
 
-SetHeaders method sets multiple header fields and its values at one go in the request instance.
-It will override the header which has been set in the client instance.
+**SetHeaders** sets multiple headers at once from a map of strings, overriding any previously set headers.
 
 ```go title="Signature"
 func (r *Request) SetHeaders(h map[string]string) *Request
@@ -368,7 +351,7 @@ func (r *Request) SetHeaders(h map[string]string) *Request
 
 ## Param
 
-Param method returns params value via key, this method will visit all field in the query param.
+**Param** returns all values associated with a given query parameter key.
 
 ```go title="Signature"
 func (r *Request) Param(key string) []string
@@ -376,8 +359,7 @@ func (r *Request) Param(key string) []string
 
 ### Params
 
-Params returns all params in the request using an iterator. You can use `maps.Collect()` to collect all params into a map.
-The returned value is valid until the request object is released. Any future calls to Params method will return the modified value. Do not store references to returned value. Make copies instead.
+**Params** returns an iterator over all query parameters. Use `maps.Collect()` if you need them in a map. The returned values are valid only until the request is released.
 
 ```go title="Signature"
 func (r *Request) Params() iter.Seq2[string, []string]
@@ -385,7 +367,7 @@ func (r *Request) Params() iter.Seq2[string, []string]
 
 ### AddParam
 
-AddParam method adds a single param field and its value in the request instance.
+**AddParam** adds a single query parameter key-value pair.
 
 ```go title="Signature"
 func (r *Request) AddParam(key, val string) *Request
@@ -426,8 +408,7 @@ fmt.Println(string(resp.Body()))
 
 ### SetParam
 
-SetParam method sets a single param field and its value in the request instance.
-It will override param, which has been set in client instance.
+**SetParam** sets a single query parameter key-value pair, overriding any previously set values for that key.
 
 ```go title="Signature"
 func (r *Request) SetParam(key, val string) *Request
@@ -435,7 +416,7 @@ func (r *Request) SetParam(key, val string) *Request
 
 ### AddParams
 
-AddParams method adds multiple param fields and its values at one go in the request instance.
+**AddParams** adds multiple query parameters from a map of string slices.
 
 ```go title="Signature"
 func (r *Request) AddParams(m map[string][]string) *Request
@@ -443,8 +424,7 @@ func (r *Request) AddParams(m map[string][]string) *Request
 
 ### SetParams
 
-SetParams method sets multiple param fields and its values at one go in the request instance.
-It will override param, which has been set in client instance.
+**SetParams** sets multiple query parameters from a map of strings, overriding previously set values.
 
 ```go title="Signature"
 func (r *Request) SetParams(m map[string]string) *Request
@@ -452,8 +432,7 @@ func (r *Request) SetParams(m map[string]string) *Request
 
 ### SetParamsWithStruct
 
-SetParamsWithStruct method sets multiple param fields and its values at one go in the request instance.
-It will override param, which has been set in client instance.
+**SetParamsWithStruct** sets multiple query parameters from a struct. Nested structs are not supported.
 
 ```go title="Signature"
 func (r *Request) SetParamsWithStruct(v any) *Request
@@ -501,7 +480,7 @@ fmt.Println(string(resp.Body()))
 
 ### DelParams
 
-DelParams method deletes single or multiple param fields and their values.
+**DelParams** removes one or more query parameters by their keys.
 
 ```go title="Signature"
 func (r *Request) DelParams(key ...string) *Request
@@ -509,7 +488,7 @@ func (r *Request) DelParams(key ...string) *Request
 
 ## UserAgent
 
-UserAgent returns user agent in request instance.
+**UserAgent** returns the user agent currently set in the request.
 
 ```go title="Signature"
 func (r *Request) UserAgent() string
@@ -517,8 +496,7 @@ func (r *Request) UserAgent() string
 
 ## SetUserAgent
 
-SetUserAgent method sets user agent in request.
-It will override the user agent which has been set in the client instance.
+**SetUserAgent** sets the user agent header for the request, overriding the one set at the client level if any.
 
 ```go title="Signature"
 func (r *Request) SetUserAgent(ua string) *Request
@@ -526,7 +504,7 @@ func (r *Request) SetUserAgent(ua string) *Request
 
 ## Boundary
 
-Boundary returns boundary in multipart boundary.
+**Boundary** returns the multipart boundary used by the request.
 
 ```go title="Signature"
 func (r *Request) Boundary() string
@@ -534,7 +512,7 @@ func (r *Request) Boundary() string
 
 ## SetBoundary
 
-SetBoundary method sets multipart boundary.
+**SetBoundary** sets the multipart boundary for file uploads.
 
 ```go title="Signature"
 func (r *Request) SetBoundary(b string) *Request
@@ -542,7 +520,7 @@ func (r *Request) SetBoundary(b string) *Request
 
 ## Referer
 
-Referer returns referer in request instance.
+**Referer** returns the Referer header value currently set in the request.
 
 ```go title="Signature"
 func (r *Request) Referer() string
@@ -550,8 +528,7 @@ func (r *Request) Referer() string
 
 ## SetReferer
 
-SetReferer method sets referer in request.
-It will override referer which set in client instance.
+**SetReferer** sets the Referer header for the request, overriding the one set at the client level if any.
 
 ```go title="Signature"
 func (r *Request) SetReferer(referer string) *Request
@@ -559,7 +536,7 @@ func (r *Request) SetReferer(referer string) *Request
 
 ## Cookie
 
-Cookie returns the cookie set in the request instance. If the cookie doesn't exist, returns empty string.
+**Cookie** returns the value of the specified cookie. If the cookie does not exist, it returns an empty string.
 
 ```go title="Signature"
 func (r *Request) Cookie(key string) string
@@ -567,7 +544,7 @@ func (r *Request) Cookie(key string) string
 
 ### Cookies
 
-Cookies returns all cookies in the request using an iterator. You can use `maps.Collect()` to collect all cookies into a map.
+**Cookies** returns an iterator over all cookies set in the request. Use `maps.Collect()` to gather them into a map.
 
 ```go title="Signature"
 func (r *Request) Cookies() iter.Seq2[string, string]
@@ -575,8 +552,7 @@ func (r *Request) Cookies() iter.Seq2[string, string]
 
 ### SetCookie
 
-SetCookie method sets a single cookie field and its value in the request instance.
-It will override the cookie which is set in the client instance.
+**SetCookie** sets a single cookie key-value pair, overriding any previously set cookie with the same key.
 
 ```go title="Signature"
 func (r *Request) SetCookie(key, val string) *Request
@@ -584,8 +560,7 @@ func (r *Request) SetCookie(key, val string) *Request
 
 ### SetCookies
 
-SetCookies method sets multiple cookie fields and its values at one go in the request instance.
-It will override the cookie which is set in the client instance.
+**SetCookies** sets multiple cookies from a map, overriding previously set values.
 
 ```go title="Signature"
 func (r *Request) SetCookies(m map[string]string) *Request
@@ -623,8 +598,7 @@ fmt.Println(string(resp.Body()))
 
 ### SetCookiesWithStruct
 
-SetCookiesWithStruct method sets multiple cookie fields and its values at one go in the request instance.
-It will override the cookie which is set in the client instance.
+**SetCookiesWithStruct** sets multiple cookies from a struct.
 
 ```go title="Signature"
 func (r *Request) SetCookiesWithStruct(v any) *Request
@@ -632,7 +606,7 @@ func (r *Request) SetCookiesWithStruct(v any) *Request
 
 ### DelCookies
 
-DelCookies method deletes single or multiple cookie fields ant its values.
+**DelCookies** removes one or more cookies by their keys.
 
 ```go title="Signature"
 func (r *Request) DelCookies(key ...string) *Request
@@ -640,7 +614,7 @@ func (r *Request) DelCookies(key ...string) *Request
 
 ## PathParam
 
-PathParam returns the path param set in the request instance. If the path param doesn't exist, return empty string.
+**PathParam** returns the value of a named path parameter. If not found, returns an empty string.
 
 ```go title="Signature"
 func (r *Request) PathParam(key string) string
@@ -648,7 +622,7 @@ func (r *Request) PathParam(key string) string
 
 ### PathParams
 
-PathParams returns all path params in the request using an iterator. You can use `maps.Collect()` to collect all path params into a map.
+**PathParams** returns an iterator over all path parameters in the request. Use `maps.Collect()` to convert them into a map.
 
 ```go title="Signature"
 func (r *Request) PathParams() iter.Seq2[string, string]
@@ -656,8 +630,7 @@ func (r *Request) PathParams() iter.Seq2[string, string]
 
 ### SetPathParam
 
-SetPathParam method sets a single path param field and its value in the request instance.
-It will override path param which set in client instance.
+**SetPathParam** sets a single path parameter key-value pair, overriding previously set values.
 
 ```go title="Signature"
 func (r *Request) SetPathParam(key, val string) *Request
@@ -688,8 +661,7 @@ Gofiber
 
 ### SetPathParams
 
-SetPathParams method sets multiple path param fields and its values at one go in the request instance.
-It will override path param which set in client instance.
+**SetPathParams** sets multiple path parameters at once, overriding previously set values.
 
 ```go title="Signature"
 func (r *Request) SetPathParams(m map[string]string) *Request
@@ -697,8 +669,7 @@ func (r *Request) SetPathParams(m map[string]string) *Request
 
 ### SetPathParamsWithStruct
 
-SetPathParamsWithStruct method sets multiple path param fields and its values at one go in the request instance.
-It will override path param which set in client instance.
+**SetPathParamsWithStruct** sets multiple path parameters from a struct.
 
 ```go title="Signature"
 func (r *Request) SetPathParamsWithStruct(v any) *Request
@@ -706,7 +677,7 @@ func (r *Request) SetPathParamsWithStruct(v any) *Request
 
 ### DelPathParams
 
-DelPathParams method deletes single or multiple path param fields ant its values.
+**DelPathParams** deletes one or more path parameters by their keys.
 
 ```go title="Signature"
 func (r *Request) DelPathParams(key ...string) *Request
@@ -714,7 +685,7 @@ func (r *Request) DelPathParams(key ...string) *Request
 
 ### ResetPathParams
 
-ResetPathParams deletes all path params.
+**ResetPathParams** deletes all path parameters.
 
 ```go title="Signature"
 func (r *Request) ResetPathParams() *Request
@@ -722,7 +693,7 @@ func (r *Request) ResetPathParams() *Request
 
 ## SetJSON
 
-SetJSON method sets JSON body in request.
+**SetJSON** sets the request body to a JSON-encoded payload.
 
 ```go title="Signature"
 func (r *Request) SetJSON(v any) *Request
@@ -730,7 +701,7 @@ func (r *Request) SetJSON(v any) *Request
 
 ## SetXML
 
-SetXML method sets XML body in request.
+**SetXML** sets the request body to an XML-encoded payload.
 
 ```go title="Signature"
 func (r *Request) SetXML(v any) *Request
@@ -738,8 +709,7 @@ func (r *Request) SetXML(v any) *Request
 
 ## SetCBOR
 
-SetCBOR method sets the request body using [CBOR](https://cbor.io/) encoding format.
-It automatically sets the Content-Type header to `"application/cbor"`.
+**SetCBOR** sets the request body to a CBOR-encoded payload. It automatically sets the `Content-Type` to `application/cbor`.
 
 ```go title="Signature"
 func (r *Request) SetCBOR(v any) *Request
@@ -747,7 +717,7 @@ func (r *Request) SetCBOR(v any) *Request
 
 ## SetRawBody
 
-SetRawBody method sets body with raw data in request.
+**SetRawBody** sets the request body to raw bytes.
 
 ```go title="Signature"
 func (r *Request) SetRawBody(v []byte) *Request
@@ -755,7 +725,7 @@ func (r *Request) SetRawBody(v []byte) *Request
 
 ## FormData
 
-FormData method returns form data value via key, this method will visit all field in the form data.
+**FormData** returns all values associated with the given form data field.
 
 ```go title="Signature"
 func (r *Request) FormData(key string) []string
@@ -763,7 +733,7 @@ func (r *Request) FormData(key string) []string
 
 ### AllFormData
 
-AllFormData returns all form data in the request using an iterator. You can use `maps.Collect()` to collect all form data into a map.
+**AllFormData** returns an iterator over all form data fields. Use `maps.Collect()` if needed.
 
 ```go title="Signature"
 func (r *Request) AllFormData() iter.Seq2[string, []string]
@@ -771,7 +741,7 @@ func (r *Request) AllFormData() iter.Seq2[string, []string]
 
 ### AddFormData
 
-AddFormData method adds a single form data field and its value in the request instance.
+**AddFormData** adds a single form data key-value pair.
 
 ```go title="Signature"
 func (r *Request) AddFormData(key, val string) *Request
@@ -816,10 +786,10 @@ fmt.Println(string(resp.Body()))
 
 ### SetFormData
 
-SetFormData method sets a single form data field and its value in the request instance.
+**SetFormData** sets a single form data field, overriding any previously set values.
 
 ```go title="Signature"
-func (r *Request) SetFormData(key, val string) *Request 
+func (r *Request) SetFormData(key, val string) *Request
 ```
 
 <details>
@@ -855,50 +825,41 @@ fmt.Println(string(resp.Body()))
 
 </details>
 
-### AddFormDatas
+### AddFormDataWithMap
 
-AddFormDatas method adds multiple form data fields and its values in the request instance.
+**AddFormDataWithMap** adds multiple form data fields and values from a map of string slices.
 
 ```go title="Signature"
-func (r *Request) AddFormDatas(m map[string][]string) *Request
+func (r *Request) AddFormDataWithMap(m map[string][]string) *Request
 ```
 
-### SetFormDatas
+### SetFormDataWithMap
 
-SetFormDatas method sets multiple form data fields and its values in the request instance.
+**SetFormDataWithMap** sets multiple form data fields from a map of strings.
 
 ```go title="Signature"
-func (r *Request) SetFormDatas(m map[string]string) *Request
+func (r *Request) SetFormDataWithMap(m map[string]string) *Request
 ```
 
-### SetFormDatas
+### SetFormDataWithStruct
 
-SetFormDatas method sets multiple form data fields and its values in the request instance.
+**SetFormDataWithStruct** sets multiple form data fields from a struct.
 
 ```go title="Signature"
-func (r *Request) SetFormDatas(m map[string]string) *Request
+func (r *Request) SetFormDataWithStruct(v any) *Request
 ```
 
-### SetFormDatasWithStruct
+### DelFormData
 
-SetFormDatasWithStruct method sets multiple form data fields and its values in the request instance via struct.
-
-```go title="Signature"
-func (r *Request) SetFormDatasWithStruct(v any) *Request
-```
-
-### DelFormDatas
-
-DelFormDatas method deletes multiple form data fields and its value in the request instance.
+**DelFormData** deletes one or more form data fields by their keys.
 
 ```go title="Signature"
-func (r *Request) DelFormDatas(key ...string) *Request
+func (r *Request) DelFormData(key ...string) *Request
 ```
 
 ## File
 
-File returns file ptr store in request obj by name.
-If the name field is empty, it will try to match path.
+**File** returns a file from the request by its name. If no name was provided, it attempts to match by path.
 
 ```go title="Signature"
 func (r *Request) File(name string) *File
@@ -906,8 +867,7 @@ func (r *Request) File(name string) *File
 
 ### Files
 
-Files method returns all files in request instance.
-The returned value is valid until the request object is released. Any future calls to Files method will return the modified value. Do not store references to returned value. Make copies instead.
+**Files** returns all files in the request as a slice. The returned slice is valid only until the request is released.
 
 ```go title="Signature"
 func (r *Request) Files() []*File
@@ -915,7 +875,7 @@ func (r *Request) Files() []*File
 
 ### FileByPath
 
-FileByPath returns file ptr store in request obj by path.
+**FileByPath** returns a file from the request by its file path.
 
 ```go title="Signature"
 func (r *Request) FileByPath(path string) *File
@@ -923,7 +883,7 @@ func (r *Request) FileByPath(path string) *File
 
 ### AddFile
 
-AddFile method adds a single file field and its value in the request instance via file path.
+**AddFile** adds a single file to the request from a file path.
 
 ```go title="Signature"
 func (r *Request) AddFile(path string) *Request
@@ -962,7 +922,7 @@ fmt.Println(string(resp.Body()))
 
 ### AddFileWithReader
 
-AddFileWithReader method adds a single field and its value in the request instance via reader.
+**AddFileWithReader** adds a single file to the request from an `io.ReadCloser`.
 
 ```go title="Signature"
 func (r *Request) AddFileWithReader(name string, reader io.ReadCloser) *Request
@@ -1002,7 +962,7 @@ fmt.Println(string(resp.Body()))
 
 ### AddFiles
 
-AddFiles method adds multiple file fields and its value in the request instance via File instance.
+**AddFiles** adds multiple files to the request at once.
 
 ```go title="Signature"
 func (r *Request) AddFiles(files ...*File) *Request
@@ -1010,7 +970,7 @@ func (r *Request) AddFiles(files ...*File) *Request
 
 ## Timeout
 
-Timeout returns the length of timeout in request.
+**Timeout** returns the timeout duration set in the request.
 
 ```go title="Signature"
 func (r *Request) Timeout() time.Duration
@@ -1018,8 +978,7 @@ func (r *Request) Timeout() time.Duration
 
 ## SetTimeout
 
-SetTimeout method sets the timeout field and its values at one go in the request instance.
-It will override timeout which set in client instance.
+**SetTimeout** sets a timeout for the request, overriding any timeout set at the client level.
 
 ```go title="Signature"
 func (r *Request) SetTimeout(t time.Duration) *Request
@@ -1084,7 +1043,7 @@ exit status 2
 
 ## MaxRedirects
 
-MaxRedirects returns the max redirects count in the request.
+**MaxRedirects** returns the maximum number of redirects allowed for the request.
 
 ```go title="Signature"
 func (r *Request) MaxRedirects() int
@@ -1092,8 +1051,7 @@ func (r *Request) MaxRedirects() int
 
 ## SetMaxRedirects
 
-SetMaxRedirects method sets the maximum number of redirects at one go in the request instance.
-It will override max redirect, which is set in the client instance.
+**SetMaxRedirects** sets the maximum number of redirects for the request, overriding the client's setting.
 
 ```go title="Signature"
 func (r *Request) SetMaxRedirects(count int) *Request
@@ -1101,7 +1059,7 @@ func (r *Request) SetMaxRedirects(count int) *Request
 
 ## Send
 
-Send sends HTTP request.
+**Send** executes the HTTP request and returns a `Response`.
 
 ```go title="Signature"
 func (r *Request) Send() (*Response, error)
@@ -1109,7 +1067,7 @@ func (r *Request) Send() (*Response, error)
 
 ## Reset
 
-Reset clears Request object, used by ReleaseRequest method.
+**Reset** clears the `Request` object, making it ready for reuse. This is used by `ReleaseRequest`.
 
 ```go title="Signature"
 func (r *Request) Reset()
@@ -1117,7 +1075,7 @@ func (r *Request) Reset()
 
 ## Header
 
-Header is a wrapper which wrap http.Header, the header in client and request will store in it.
+**Header** is a wrapper around `fasthttp.RequestHeader`, storing headers for both the client and request.
 
 ```go
 type Header struct {
@@ -1127,7 +1085,7 @@ type Header struct {
 
 ### PeekMultiple
 
-PeekMultiple methods returns multiple field in header with same key.
+**PeekMultiple** returns multiple values associated with the same header key.
 
 ```go title="Signature"
 func (h *Header) PeekMultiple(key string) []string
@@ -1135,7 +1093,7 @@ func (h *Header) PeekMultiple(key string) []string
 
 ### AddHeaders
 
-AddHeaders receives a map and add each value to header.
+**AddHeaders** adds multiple headers from a map of string slices.
 
 ```go title="Signature"
 func (h *Header) AddHeaders(r map[string][]string)
@@ -1143,7 +1101,7 @@ func (h *Header) AddHeaders(r map[string][]string)
 
 ### SetHeaders
 
-SetHeaders will override all headers.
+**SetHeaders** sets multiple headers from a map of strings, overriding previously set headers.
 
 ```go title="Signature"
 func (h *Header) SetHeaders(r map[string]string)
@@ -1151,7 +1109,7 @@ func (h *Header) SetHeaders(r map[string]string)
 
 ## QueryParam
 
-QueryParam is a wrapper which wrap url.Values, the query string and formdata in client and request will store in it.
+**QueryParam** is a wrapper around `fasthttp.Args`, storing query parameters.
 
 ```go
 type QueryParam struct {
@@ -1161,7 +1119,7 @@ type QueryParam struct {
 
 ### Keys
 
-Keys method returns all keys in the query params.
+**Keys** returns all keys in the query parameters.
 
 ```go title="Signature"
 func (p *QueryParam) Keys() []string
@@ -1169,7 +1127,7 @@ func (p *QueryParam) Keys() []string
 
 ### AddParams
 
-AddParams receive a map and add each value to param.
+**AddParams** adds multiple query parameters from a map of string slices.
 
 ```go title="Signature"
 func (p *QueryParam) AddParams(r map[string][]string)
@@ -1177,7 +1135,7 @@ func (p *QueryParam) AddParams(r map[string][]string)
 
 ### SetParams
 
-SetParams will override all params.
+**SetParams** sets multiple query parameters from a map of strings, overriding previously set values.
 
 ```go title="Signature"
 func (p *QueryParam) SetParams(r map[string]string)
@@ -1185,8 +1143,7 @@ func (p *QueryParam) SetParams(r map[string]string)
 
 ### SetParamsWithStruct
 
-SetParamsWithStruct will override all params with struct or pointer of struct.
-Nested structs are not currently supported.
+**SetParamsWithStruct** sets multiple query parameters from a struct. Nested structs are not supported.
 
 ```go title="Signature"
 func (p *QueryParam) SetParamsWithStruct(v any)
@@ -1194,7 +1151,7 @@ func (p *QueryParam) SetParamsWithStruct(v any)
 
 ## Cookie
 
-Cookie is a map which to store the cookies.
+**Cookie** is a map that stores cookies.
 
 ```go
 type Cookie map[string]string
@@ -1202,7 +1159,7 @@ type Cookie map[string]string
 
 ### Add
 
-Add method impl the method in WithStruct interface.
+**Add** adds a cookie key-value pair.
 
 ```go title="Signature"
 func (c Cookie) Add(key, val string)
@@ -1210,7 +1167,7 @@ func (c Cookie) Add(key, val string)
 
 ### Del
 
-Del method impl the method in WithStruct interface.
+**Del** removes a cookie by its key.
 
 ```go title="Signature"
 func (c Cookie) Del(key string)
@@ -1218,7 +1175,7 @@ func (c Cookie) Del(key string)
 
 ### SetCookie
 
-SetCookie method sets a single val in Cookie.
+**SetCookie** sets a single cookie key-value pair, overriding previously set values.
 
 ```go title="Signature"
 func (c Cookie) SetCookie(key, val string)
@@ -1226,7 +1183,7 @@ func (c Cookie) SetCookie(key, val string)
 
 ### SetCookies
 
-SetCookies method sets multiple val in Cookie.
+**SetCookies** sets multiple cookies from a map of strings.
 
 ```go title="Signature"
 func (c Cookie) SetCookies(m map[string]string)
@@ -1234,7 +1191,7 @@ func (c Cookie) SetCookies(m map[string]string)
 
 ### SetCookiesWithStruct
 
-SetCookiesWithStruct method sets multiple val in Cookie via a struct.
+**SetCookiesWithStruct** sets multiple cookies from a struct.
 
 ```go title="Signature"
 func (c Cookie) SetCookiesWithStruct(v any)
@@ -1242,7 +1199,7 @@ func (c Cookie) SetCookiesWithStruct(v any)
 
 ### DelCookies
 
-DelCookies method deletes multiple val in Cookie.
+**DelCookies** deletes one or more cookies by their keys.
 
 ```go title="Signature"
 func (c Cookie) DelCookies(key ...string)
@@ -1250,7 +1207,7 @@ func (c Cookie) DelCookies(key ...string)
 
 ### VisitAll
 
-VisitAll method receive a function which can travel the all val.
+**VisitAll** iterates over all cookies and executes a given function.
 
 ```go title="Signature"
 func (c Cookie) VisitAll(f func(key, val string))
@@ -1258,7 +1215,7 @@ func (c Cookie) VisitAll(f func(key, val string))
 
 ### Reset
 
-Reset clears the Cookie object.
+**Reset** clears all cookies.
 
 ```go title="Signature"
 func (c Cookie) Reset()
@@ -1266,7 +1223,7 @@ func (c Cookie) Reset()
 
 ## PathParam
 
-PathParam is a map which to store path params.
+**PathParam** is a map that stores path parameters.
 
 ```go
 type PathParam map[string]string
@@ -1274,7 +1231,7 @@ type PathParam map[string]string
 
 ### Add
 
-Add method impl the method in WithStruct interface.
+**Add** adds a path parameter key-value pair.
 
 ```go title="Signature"
 func (p PathParam) Add(key, val string)
@@ -1282,7 +1239,7 @@ func (p PathParam) Add(key, val string)
 
 ### Del
 
-Del method impl the method in WithStruct interface.
+**Del** removes a path parameter by its key.
 
 ```go title="Signature"
 func (p PathParam) Del(key string)
@@ -1290,7 +1247,7 @@ func (p PathParam) Del(key string)
 
 ### SetParam
 
-SetParam method sets a single val in PathParam.
+**SetParam** sets a single path parameter key-value pair, overriding previously set values.
 
 ```go title="Signature"
 func (p PathParam) SetParam(key, val string)
@@ -1298,7 +1255,7 @@ func (p PathParam) SetParam(key, val string)
 
 ### SetParams
 
-SetParams method sets multiple val in PathParam.
+**SetParams** sets multiple path parameters from a map of strings.
 
 ```go title="Signature"
 func (p PathParam) SetParams(m map[string]string)
@@ -1306,7 +1263,7 @@ func (p PathParam) SetParams(m map[string]string)
 
 ### SetParamsWithStruct
 
-SetParamsWithStruct method sets multiple val in PathParam via a struct.
+**SetParamsWithStruct** sets multiple path parameters from a struct.
 
 ```go title="Signature"
 func (p PathParam) SetParamsWithStruct(v any)
@@ -1314,7 +1271,7 @@ func (p PathParam) SetParamsWithStruct(v any)
 
 ### DelParams
 
-DelParams method deletes multiple val in PathParams.
+**DelParams** deletes one or more path parameters by their keys.
 
 ```go title="Signature"
 func (p PathParam) DelParams(key ...string)
@@ -1322,7 +1279,7 @@ func (p PathParam) DelParams(key ...string)
 
 ### VisitAll
 
-VisitAll method receive a function which can travel the all val.
+**VisitAll** iterates over all path parameters and executes the provided function.
 
 ```go title="Signature"
 func (p PathParam) VisitAll(f func(key, val string))
@@ -1330,7 +1287,7 @@ func (p PathParam) VisitAll(f func(key, val string))
 
 ### Reset
 
-Reset clears the PathParam object.
+**Reset** clears all path parameters.
 
 ```go title="Signature"
 func (p PathParam) Reset()
@@ -1338,7 +1295,7 @@ func (p PathParam) Reset()
 
 ## FormData
 
-FormData is a wrapper of fasthttp.Args and it is used for url encode body and file body.
+**FormData** is a wrapper around `fasthttp.Args`, used to handle URL-encoded and form-data (multipart) request bodies.
 
 ```go
 type FormData struct {
@@ -1348,63 +1305,63 @@ type FormData struct {
 
 ### Keys
 
-Keys method returns all keys in the form data.
+**Keys** returns all form data keys.
 
 ```go title="Signature"
 func (f *FormData) Keys() []string
 ```
 
-### AddData
+### Add
 
-AddData method is a wrapper of Args's Add method.
+**Add** adds a single form field key-value pair.
 
 ```go title="Signature"
-func (f *FormData) AddData(key, val string)
+func (f *FormData) Add(key, val string)
 ```
 
-### SetData
+### Set
 
-SetData method is a wrapper of Args's Set method.
+**Set** sets a single form field key-value pair, overriding any previously set values.
 
 ```go title="Signature"
-func (f *FormData) SetData(key, val string)
+func (f *FormData) Set(key, val string)
 ```
 
-### AddDatas
+### AddWithMap
 
-AddDatas method supports add multiple fields.
+**AddWithMap** adds multiple form fields from a map of string slices.
 
 ```go title="Signature"
-func (f *FormData) AddDatas(m map[string][]string)
+func (f *FormData) AddWithMap(m map[string][]string)
 ```
 
-### SetDatas
+### SetWithMap
 
-SetDatas method supports set multiple fields.
+**SetWithMap** sets multiple form fields from a map of strings.
 
 ```go title="Signature"
-func (f *FormData) SetDatas(m map[string]string)
+func (f *FormData) SetWithMap(m map[string]string)
 ```
 
-### SetDatasWithStruct
+### SetWithStruct
 
-SetDatasWithStruct method supports set multiple fields via a struct.
+**SetWithStruct** sets multiple form fields from a struct.
 
 ```go title="Signature"
-func (f *FormData) SetDatasWithStruct(v any)
+func (f *FormData) SetWithStruct(v any)
 ```
 
-### DelDatas
+### DelData
 
-DelDatas method deletes multiple fields.
+**DelData** deletes one or more form fields by their keys.
 
 ```go title="Signature"
-func (f *FormData) DelDatas(key ...string)
+func (f *FormData) DelData(key ...string)
 ```
 
 ### Reset
 
-Reset clear the FormData object.
+**Reset** clears all form data fields.
 
 ```go title="Signature"
 func (f *FormData) Reset()
@@ -1412,7 +1369,7 @@ func (f *FormData) Reset()
 
 ## File
 
-File is a struct which support send files via request.
+**File** represents a file to be uploaded. It can be specified by name, path, or an `io.ReadCloser`.
 
 ```go
 type File struct {
@@ -1425,11 +1382,7 @@ type File struct {
 
 ### AcquireFile
 
-AcquireFile returns a File object from the pool.
-And you can set field in the File with SetFileFunc.
-
-The returned file may be returned to the pool with ReleaseFile when no longer needed.
-This allows reducing GC load.
+**AcquireFile** returns a `File` from the pool and applies any provided `SetFileFunc` functions to it. Release it with `ReleaseFile` when done.
 
 ```go title="Signature"
 func AcquireFile(setter ...SetFileFunc) *File
@@ -1437,8 +1390,7 @@ func AcquireFile(setter ...SetFileFunc) *File
 
 ### ReleaseFile
 
-ReleaseFile returns the object acquired via AcquireFile to the pool.
-Do not access the released File object, otherwise data races may occur.
+**ReleaseFile** returns the `File` to the pool. Do not use the file afterward.
 
 ```go title="Signature"
 func ReleaseFile(f *File)
@@ -1446,7 +1398,7 @@ func ReleaseFile(f *File)
 
 ### SetName
 
-SetName method sets file name.
+**SetName** sets the file's name.
 
 ```go title="Signature"
 func (f *File) SetName(n string)
@@ -1454,7 +1406,7 @@ func (f *File) SetName(n string)
 
 ### SetFieldName
 
-SetFieldName method sets key of file in the body.
+**SetFieldName** sets the field name of the file in the multipart form.
 
 ```go title="Signature"
 func (f *File) SetFieldName(n string)
@@ -1462,7 +1414,7 @@ func (f *File) SetFieldName(n string)
 
 ### SetPath
 
-SetPath method set file path.
+**SetPath** sets the file's path.
 
 ```go title="Signature"
 func (f *File) SetPath(p string)
@@ -1470,7 +1422,7 @@ func (f *File) SetPath(p string)
 
 ### SetReader
 
-SetReader method can receive an io.ReadCloser which will be closed in parserBody hook.
+**SetReader** sets the file's `io.ReadCloser`. The reader is closed automatically when the request body is parsed.
 
 ```go title="Signature"
 func (f *File) SetReader(r io.ReadCloser)
@@ -1478,7 +1430,7 @@ func (f *File) SetReader(r io.ReadCloser)
 
 ### Reset
 
-Reset clear the File object.
+**Reset** clears the file's fields.
 
 ```go title="Signature"
 func (f *File) Reset()

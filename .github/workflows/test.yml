@@ -32,7 +32,7 @@ jobs:
 
       - name: Upload coverage reports to Codecov
         if: ${{ matrix.platform == 'ubuntu-latest' && matrix.go-version == '1.23.x' }}
-        uses: codecov/codecov-action@v5.1.1
+        uses: codecov/codecov-action@v5.1.2
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           file: ./coverage.txt
