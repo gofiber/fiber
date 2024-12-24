@@ -146,10 +146,8 @@ func (r *Redirect) WithInput() *Redirect {
 
 	oldInput := make(map[string]string)
 	switch ctype {
-	case MIMEApplicationForm:
+	case MIMEApplicationForm, MIMEMultipartForm:
 		_ = r.c.Bind().Form(oldInput) //nolint:errcheck // not needed
-	case MIMEMultipartForm:
-		_ = r.c.Bind().MultipartForm(oldInput) //nolint:errcheck // not needed
 	default:
 		_ = r.c.Bind().Query(oldInput) //nolint:errcheck // not needed
 	}

@@ -1433,7 +1433,9 @@ func Benchmark_Ctx_Fresh_LastModified(b *testing.B) {
 func Test_Ctx_Binders(t *testing.T) {
 	t.Parallel()
 	// setup
-	app := New()
+	app := New(Config{
+		EnableSplittingOnParsers: true,
+	})
 
 	type TestEmbeddedStruct struct {
 		Names []string `query:"names"`
