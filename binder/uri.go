@@ -19,6 +19,6 @@ func (b *URIBinding) Bind(params []string, paramsFunc func(key string, defaultVa
 }
 
 // Reset resets URIBinding binder.
-func (b *URIBinding) Reset() {
+func (*URIBinding) Reset() {
 	// Nothing to reset
 }
