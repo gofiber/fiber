@@ -19,8 +19,7 @@ func (b *JSONBinding) Bind(body []byte, out any) error {
 	return b.JSONDecoder(body, out)
 }
 
-// Reset resets the JSONBinding binder and puts it back to the binder pool.
+// Reset resets the JSONBinding binder.
 func (b *JSONBinding) Reset() {
 	b.JSONDecoder = nil
-	PutToThePool(&JSONBinderPool, b)
 }

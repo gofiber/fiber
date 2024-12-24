@@ -38,8 +38,7 @@ func (b *RespHeaderBinding) Bind(resp *fasthttp.Response, out any) error {
 	return parse(b.Name(), out, data)
 }
 
-// Reset resets the RespHeaderBinding binder and puts it back to the binder pool.
+// Reset resets the RespHeaderBinding binder.
 func (b *RespHeaderBinding) Reset() {
 	b.EnableSplitting = false
-	PutToThePool(&RespHeaderBinderPool, b)
 }

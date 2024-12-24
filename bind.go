@@ -83,6 +83,7 @@ func (b *Bind) Header(out any) error {
 	// Reset & put binder
 	defer func() {
 		bind.Reset()
+		binder.PutToThePool(&binder.HeaderBinderPool, bind)
 	}()
 
 	if err := b.returnErr(bind.Bind(b.ctx.Request(), out)); err != nil {
@@ -100,6 +101,7 @@ func (b *Bind) RespHeader(out any) error {
 	// Reset & put binder
 	defer func() {
 		bind.Reset()
+		binder.PutToThePool(&binder.RespHeaderBinderPool, bind)
 	}()
 
 	if err := b.returnErr(bind.Bind(b.ctx.Response(), out)); err != nil {
@@ -118,6 +120,7 @@ func (b *Bind) Cookie(out any) error {
 	// Reset & put binder
 	defer func() {
 		bind.Reset()
+		binder.PutToThePool(&binder.CookieBinderPool, bind)
 	}()
 
 	if err := b.returnErr(bind.Bind(&b.ctx.RequestCtx().Request, out)); err != nil {
@@ -135,6 +138,7 @@ func (b *Bind) Query(out any) error {
 	// Reset & put binder
 	defer func() {
 		bind.Reset()
+		binder.PutToThePool(&binder.QueryBinderPool, bind)
 	}()
 
 	if err := b.returnErr(bind.Bind(&b.ctx.RequestCtx().Request, out)); err != nil {
@@ -152,6 +156,7 @@ func (b *Bind) JSON(out any) error {
 	// Reset & put binder
 	defer func() {
 		bind.Reset()
+		binder.PutToThePool(&binder.JSONBinderPool, bind)
 	}()
 
 	if err := b.returnErr(bind.Bind(b.ctx.Body(), out)); err != nil {
@@ -169,6 +174,7 @@ func (b *Bind) CBOR(out any) error {
 	// Reset & put binder
 	defer func() {
 		bind.Reset()
+		binder.PutToThePool(&binder.CBORBinderPool, bind)
 	}()
 
 	if err := b.returnErr(bind.Bind(b.ctx.Body(), out)); err != nil {
@@ -185,6 +191,7 @@ func (b *Bind) XML(out any) error {
 	// Reset & put binder
 	defer func() {
 		bind.Reset()
+		binder.PutToThePool(&binder.XMLBinderPool, bind)
 	}()
 
 	if err := b.returnErr(bind.Bind(b.ctx.Body(), out)); err != nil {
@@ -205,6 +212,7 @@ func (b *Bind) Form(out any) error {
 	// Reset & put binder
 	defer func() {
 		bind.Reset()
+		binder.PutToThePool(&binder.FormBinderPool, bind)
 	}()
 
 	if err := b.returnErr(bind.Bind(&b.ctx.RequestCtx().Request, out)); err != nil {
@@ -220,7 +228,7 @@ func (b *Bind) URI(out any) error {
 
 	// Reset & put binder
 	defer func() {
-		bind.Reset()
+		binder.PutToThePool(&binder.URIBinderPool, bind)
 	}()
 
 	if err := b.returnErr(bind.Bind(b.ctx.Route().Params, b.ctx.Params, out)); err != nil {

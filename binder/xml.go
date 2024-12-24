@@ -25,8 +25,7 @@ func (b *XMLBinding) Bind(body []byte, out any) error {
 	return nil
 }
 
-// Reset puts XML binding back to the pool.
+// Reset resets the XMLBinding binder.
 func (b *XMLBinding) Reset() {
 	b.XMLDecoder = nil
-	PutToThePool(&XMLBinderPool, b)
 }
