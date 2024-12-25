@@ -107,7 +107,7 @@ func Benchmark_MemoryLock_Parallel(b *testing.B) {
 		})
 	})
 
-	b.Run("Repeated3TimesKeys", func(b *testing.B) {
+	b.Run("RepeatedKeys", func(b *testing.B) {
 		lock := idempotency.NewMemoryLock()
 		var keyI atomic.Int32
 		b.RunParallel(func(p *testing.PB) {
