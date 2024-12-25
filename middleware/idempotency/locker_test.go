@@ -97,8 +97,12 @@ func Benchmark_MemoryLock_Parallel(b *testing.B) {
 			for p.Next() {
 				i := int(keyI.Add(1)) % len(keys)
 				key := keys[i]
-				lock.Lock(key)
-				lock.Unlock(key)
+				if err := lock.Lock(key); err != nil {
+					b.Fatal(err)
+				}
+				if err := lock.Unlock(key); err != nil {
+					b.Fatal(err)
+				}
 			}
 		})
 	})
@@ -111,8 +115,12 @@ func Benchmark_MemoryLock_Parallel(b *testing.B) {
 				// Division by 3 ensures that index will be repreated exactly 3 times
 				i := int(keyI.Add(1)) / 3 % len(keys)
 				key := keys[i]
-				lock.Lock(key)
-				lock.Unlock(key)
+				if err := lock.Lock(key); err != nil {
+					b.Fatal(err)
+				}
+				if err := lock.Unlock(key); err != nil {
+					b.Fatal(err)
+				}
 			}
 		})
 	})
