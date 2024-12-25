@@ -32,6 +32,14 @@ func (l *MemoryLock) Lock(key string) error {
 
 	lock.mu.Lock()
 
+	lock.locked--
+	if lock.locked <= 0 {
+		// This happens if countedLock is used to Lock and Unlock the same number of times
+		// So, we can delete the key to prevent memory leak
+		delete(l.keys, key)
+	}
+	l.mu.Unlock()
+
 	return nil
 }
 
@@ -43,14 +51,6 @@ func (l *MemoryLock) Unlock(key string) error {
 		l.mu.Unlock()
 		return nil
 	}
-
-	lock.locked--
-	if lock.locked <= 0 {
-		// This happens if countedLock is used to Lock and Unlock the same number of times
-		// So, we can delete the key to prevent memory leak
-		delete(l.keys, key)
-	}
-	l.mu.Unlock()
 
 	lock.mu.Unlock()
 
