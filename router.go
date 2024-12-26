@@ -93,7 +93,6 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) boo
 		plen := len(r.path)
 		if r.root {
 			// If r.root is '/', it matches everything starting at '/'
-			// Actually, if it's a middleware root, it should match always at '/'
 			if len(detectionPath) > 0 && detectionPath[0] == '/' {
 				return true
 			}
@@ -235,7 +234,7 @@ func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	// Efficient flash cookie check using bytes.Index
+	// check flash messages
 	rawHeaders := c.Request().Header.RawHeaders()
 	if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, []byte(FlashCookieName)) {
 		c.Redirect().parseAndClearFlashMessages()
@@ -358,13 +357,19 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 			Handlers: handlers,
 		}
 
+		// Increment global handler count
 		atomic.AddUint32(&app.handlersCount, uint32(len(handlers))) //nolint:gosec // Not a concern
+
+		// Middleware route matches all HTTP methods
 		if isUse {
+			// Add route to all HTTP methods stack
 			for _, m := range app.config.RequestMethods {
+				// Create a route copy to avoid duplicates during compression
 				r := route
 				app.addRoute(m, &r, isMount)
 			}
 		} else {
+			// Add route to stack
 			app.addRoute(method, &route, isMount)
 		}
 	}
