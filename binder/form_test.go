@@ -93,9 +93,14 @@ func Test_FormBinder_BindMultipart(t *testing.T) {
 	}
 	require.Equal(t, "form", b.Name())
 
+	type Post struct {
+		Title string `form:"title"`
+	}
+
 	type User struct {
 		Name  string   `form:"name"`
 		Names []string `form:"names"`
+		Posts []Post   `form:"posts"`
 		Age   int      `form:"age"`
 	}
 	var user User
@@ -106,9 +111,13 @@ func Test_FormBinder_BindMultipart(t *testing.T) {
 	mw := multipart.NewWriter(buf)
 
 	require.NoError(t, mw.WriteField("name", "john"))
-	require.NoError(t, mw.WriteField("names", "john"))
+	require.NoError(t, mw.WriteField("names", "john,eric"))
 	require.NoError(t, mw.WriteField("names", "doe"))
 	require.NoError(t, mw.WriteField("age", "42"))
+	require.NoError(t, mw.WriteField("posts[0][title]", "post1"))
+	require.NoError(t, mw.WriteField("posts[1][title]", "post2"))
+	require.NoError(t, mw.WriteField("posts[2][title]", "post3"))
+
 	require.NoError(t, mw.Close())
 
 	req.Header.SetContentType(mw.FormDataContentType())
@@ -125,6 +134,12 @@ func Test_FormBinder_BindMultipart(t *testing.T) {
 	require.Equal(t, 42, user.Age)
 	require.Contains(t, user.Names, "john")
 	require.Contains(t, user.Names, "doe")
+	require.Contains(t, user.Names, "eric")
+	require.Len(t, user.Posts, 3)
+	require.Equal(t, "post1", user.Posts[0].Title)
+	require.Equal(t, "post2", user.Posts[1].Title)
+	require.Equal(t, "post3", user.Posts[2].Title)
+
 }
 
 func Benchmark_FormBinder_BindMultipart(b *testing.B) {
