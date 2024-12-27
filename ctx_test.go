@@ -1433,7 +1433,9 @@ func Benchmark_Ctx_Fresh_LastModified(b *testing.B) {
 func Test_Ctx_Binders(t *testing.T) {
 	t.Parallel()
 	// setup
-	app := New()
+	app := New(Config{
+		EnableSplittingOnParsers: true,
+	})
 
 	type TestEmbeddedStruct struct {
 		Names []string `query:"names"`
@@ -5845,6 +5847,59 @@ func Test_GenericParseTypeBoolean(t *testing.T) {
 			}
 		})
 	}
+}
+
+// go test -run Test_Ctx_Drop -v
+func Test_Ctx_Drop(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	// Handler that calls Drop
+	app.Get("/block-me", func(c Ctx) error {
+		return c.Drop()
+	})
+
+	// Additional handler that just calls return
+	app.Get("/no-response", func(_ Ctx) error {
+		return nil
+	})
+
+	// Test the Drop method
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/block-me", nil))
+	require.Error(t, err)
+	require.Nil(t, resp)
+
+	// Test the no-response handler
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/no-response", nil))
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.Equal(t, "0", resp.Header.Get("Content-Length"))
+}
+
+// go test -run Test_Ctx_DropWithMiddleware -v
+func Test_Ctx_DropWithMiddleware(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	// Middleware that calls Drop
+	app.Use(func(c Ctx) error {
+		err := c.Next()
+		c.Set("X-Test", "test")
+		return err
+	})
+
+	// Handler that calls Drop
+	app.Get("/block-me", func(c Ctx) error {
+		return c.Drop()
+	})
+
+	// Test the Drop method
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/block-me", nil))
+	require.Error(t, err)
+	require.Nil(t, resp)
 }
 
 // go test -run Test_GenericParseTypeString

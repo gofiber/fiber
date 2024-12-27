@@ -341,6 +341,13 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// Default: xml.Marshal
 	XMLEncoder utils.XMLMarshal `json:"-"`
 
+	// XMLDecoder set by an external client of Fiber it will use the provided implementation of a
+	// XMLUnmarshal
+	//
+	// Allowing for flexibility in using another XML library for decoding
+	// Default: xml.Unmarshal
+	XMLDecoder utils.XMLUnmarshal `json:"-"`
+
 	// If you find yourself behind some sort of proxy, like a load balancer,
 	// then certain header information may be sent to you using special X-Forwarded-* headers or the Forwarded header.
 	// For example, the Host HTTP header is usually used to return the requested host.
@@ -559,6 +566,9 @@ func New(config ...Config) *App {
 	}
 	if app.config.XMLEncoder == nil {
 		app.config.XMLEncoder = xml.Marshal
+	}
+	if app.config.XMLDecoder == nil {
+		app.config.XMLDecoder = xml.Unmarshal
 	}
 	if len(app.config.RequestMethods) == 0 {
 		app.config.RequestMethods = DefaultMethods
