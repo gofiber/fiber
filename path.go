@@ -58,7 +58,7 @@ const (
 	paramConstraintSeparator     byte = ';'  // separator of type constraints for a parameter
 	paramConstraintDataStart     byte = '('  // start of data of type constraint for a parameter
 	paramConstraintDataEnd       byte = ')'  // end of data of type constraint for a parameter
-	paramConstraintDataSeparator byte = ','  // separator of datas of type constraint for a parameter
+	paramConstraintDataSeparator byte = ','  // separator of data of type constraint for a parameter
 )
 
 // TypeConstraint parameter constraint types

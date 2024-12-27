@@ -33,7 +33,9 @@ func Test_returnErr(t *testing.T) {
 // go test -run Test_Bind_Query -v
 func Test_Bind_Query(t *testing.T) {
 	t.Parallel()
-	app := New()
+	app := New(Config{
+		EnableSplittingOnParsers: true,
+	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Query struct {
@@ -112,7 +114,9 @@ func Test_Bind_Query(t *testing.T) {
 func Test_Bind_Query_Map(t *testing.T) {
 	t.Parallel()
 
-	app := New()
+	app := New(Config{
+		EnableSplittingOnParsers: true,
+	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Request().SetBody([]byte(``))
@@ -319,13 +323,13 @@ func Test_Bind_Header(t *testing.T) {
 	c.Request().Header.Add("Hobby", "golang,fiber")
 	q := new(Header)
 	require.NoError(t, c.Bind().Header(q))
-	require.Len(t, q.Hobby, 2)
+	require.Len(t, q.Hobby, 1)
 
 	c.Request().Header.Del("hobby")
 	c.Request().Header.Add("Hobby", "golang,fiber,go")
 	q = new(Header)
 	require.NoError(t, c.Bind().Header(q))
-	require.Len(t, q.Hobby, 3)
+	require.Len(t, q.Hobby, 1)
 
 	empty := new(Header)
 	c.Request().Header.Del("hobby")
@@ -358,7 +362,7 @@ func Test_Bind_Header(t *testing.T) {
 	require.Equal(t, "go,fiber", h2.Hobby)
 	require.True(t, h2.Bool)
 	require.Equal(t, "Jane Doe", h2.Name) // check value get overwritten
-	require.Equal(t, []string{"milo", "coke", "pepsi"}, h2.FavouriteDrinks)
+	require.Equal(t, []string{"milo,coke,pepsi"}, h2.FavouriteDrinks)
 	var nilSlice []string
 	require.Equal(t, nilSlice, h2.Empty)
 	require.Equal(t, []string{""}, h2.Alloc)
@@ -387,13 +391,13 @@ func Test_Bind_Header_Map(t *testing.T) {
 	c.Request().Header.Add("Hobby", "golang,fiber")
 	q := make(map[string][]string, 0)
 	require.NoError(t, c.Bind().Header(&q))
-	require.Len(t, q["Hobby"], 2)
+	require.Len(t, q["Hobby"], 1)
 
 	c.Request().Header.Del("hobby")
 	c.Request().Header.Add("Hobby", "golang,fiber,go")
 	q = make(map[string][]string, 0)
 	require.NoError(t, c.Bind().Header(&q))
-	require.Len(t, q["Hobby"], 3)
+	require.Len(t, q["Hobby"], 1)
 
 	empty := make(map[string][]string, 0)
 	c.Request().Header.Del("hobby")
@@ -544,7 +548,9 @@ func Test_Bind_Header_Schema(t *testing.T) {
 // go test -run Test_Bind_Resp_Header -v
 func Test_Bind_RespHeader(t *testing.T) {
 	t.Parallel()
-	app := New()
+	app := New(Config{
+		EnableSplittingOnParsers: true,
+	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Header struct {
@@ -628,13 +634,13 @@ func Test_Bind_RespHeader_Map(t *testing.T) {
 	c.Response().Header.Add("Hobby", "golang,fiber")
 	q := make(map[string][]string, 0)
 	require.NoError(t, c.Bind().RespHeader(&q))
-	require.Len(t, q["Hobby"], 2)
+	require.Len(t, q["Hobby"], 1)
 
 	c.Response().Header.Del("hobby")
 	c.Response().Header.Add("Hobby", "golang,fiber,go")
 	q = make(map[string][]string, 0)
 	require.NoError(t, c.Bind().RespHeader(&q))
-	require.Len(t, q["Hobby"], 3)
+	require.Len(t, q["Hobby"], 1)
 
 	empty := make(map[string][]string, 0)
 	c.Response().Header.Del("hobby")
@@ -752,7 +758,9 @@ func Benchmark_Bind_Query_WithParseParam(b *testing.B) {
 func Benchmark_Bind_Query_Comma(b *testing.B) {
 	var err error
 
-	app := New()
+	app := New(Config{
+		EnableSplittingOnParsers: true,
+	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Query struct {
@@ -1438,7 +1446,9 @@ func Benchmark_Bind_URI_Map(b *testing.B) {
 func Test_Bind_Cookie(t *testing.T) {
 	t.Parallel()
 
-	app := New()
+	app := New(Config{
+		EnableSplittingOnParsers: true,
+	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Cookie struct {
@@ -1511,7 +1521,9 @@ func Test_Bind_Cookie(t *testing.T) {
 func Test_Bind_Cookie_Map(t *testing.T) {
 	t.Parallel()
 
-	app := New()
+	app := New(Config{
+		EnableSplittingOnParsers: true,
+	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Request().SetBody([]byte(``))

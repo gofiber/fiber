@@ -166,25 +166,9 @@ func Test_Session_Middleware(t *testing.T) {
 	h(ctx)
 	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
 
-	// Verify the session cookie is set to expire
+	// Verify the session cookie has expired
 	setCookieHeader := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
-	require.Contains(t, setCookieHeader, "expires=")
-	cookieParts := strings.Split(setCookieHeader, ";")
-	expired := false
-	for _, part := range cookieParts {
-		if strings.Contains(part, "expires=") {
-			part = strings.TrimSpace(part)
-			expiryDateStr := strings.TrimPrefix(part, "expires=")
-			// Correctly parse the date with "GMT" timezone
-			expiryDate, err := time.Parse(time.RFC1123, strings.TrimSpace(expiryDateStr))
-			require.NoError(t, err)
-			if expiryDate.Before(time.Now()) {
-				expired = true
-				break
-			}
-		}
-	}
-	require.True(t, expired, "Session cookie should be expired")
+	require.Contains(t, setCookieHeader, "max-age=0")
 
 	// Sleep so that the session expires
 	time.Sleep(1 * time.Second)
