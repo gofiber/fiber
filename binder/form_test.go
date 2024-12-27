@@ -139,7 +139,6 @@ func Test_FormBinder_BindMultipart(t *testing.T) {
 	require.Equal(t, "post1", user.Posts[0].Title)
 	require.Equal(t, "post2", user.Posts[1].Title)
 	require.Equal(t, "post3", user.Posts[2].Title)
-
 }
 
 func Benchmark_FormBinder_BindMultipart(b *testing.B) {
