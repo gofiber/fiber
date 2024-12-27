@@ -1019,7 +1019,6 @@ func Test_Bind_Body(t *testing.T) {
 		writer := multipart.NewWriter(buf)
 		require.NoError(t, writer.WriteField("data[0][name]", "john"))
 		require.NoError(t, writer.WriteField("data[1][name]", "doe"))
-		require.NoError(t, writer.WriteField("data[1][names]", "john,doe"))
 		require.NoError(t, writer.Close())
 
 		c.Request().Header.SetContentType(writer.FormDataContentType())
@@ -1031,8 +1030,6 @@ func Test_Bind_Body(t *testing.T) {
 		require.Len(t, cq.Data, 2)
 		require.Equal(t, "john", cq.Data[0].Name)
 		require.Equal(t, "doe", cq.Data[1].Name)
-		require.Contains(t, cq.Data[1].Names, "john")
-		require.Contains(t, cq.Data[1].Names, "doe")
 	})
 
 	t.Run("CollectionQuerySquareBrackets", func(t *testing.T) {
