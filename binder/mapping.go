@@ -107,8 +107,7 @@ func parseToStruct(aliasTag string, out any, data map[string][]string) error {
 func parseToMap(ptr any, data map[string][]string) error {
 	elem := reflect.TypeOf(ptr).Elem()
 
-	//nolint:exhaustive // it's not necessary to check all types
-	switch elem.Kind() {
+	switch elem.Kind() { //nolint:exhaustive // it's not necessary to check all types
 	case reflect.Slice:
 		newMap, ok := ptr.(map[string][]string)
 		if !ok {
@@ -129,7 +128,6 @@ func parseToMap(ptr any, data map[string][]string) error {
 				newMap[k] = ""
 				continue
 			}
-
 			newMap[k] = v[len(v)-1]
 		}
 	}

@@ -6,6 +6,7 @@ package fiber
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"html"
 	"sort"
@@ -214,16 +215,14 @@ func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
 	// Acquire DefaultCtx from the pool
 	ctx, ok := app.AcquireCtx(rctx).(*DefaultCtx)
 	if !ok {
-		// Should not happen, but just in case:
-		panic("defaultRequestHandler: failed to type-assert *DefaultCtx")
+		panic(errors.New("requestHandler: failed to type-assert to *DefaultCtx"))
 	}
 
 	defer app.ReleaseCtx(ctx)
 
 	// Check if the HTTP method is valid
-	// (e.g., methodInt returns -1 if it's not found in app.config.RequestMethods)
 	if ctx.methodINT == -1 {
-		_ = ctx.SendStatus(StatusNotImplemented)
+		_ = ctx.SendStatus(StatusNotImplemented) //nolint:errcheck // Always return nil
 		return
 	}
 
@@ -237,8 +236,9 @@ func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
 	_, err := app.next(ctx)
 	if err != nil {
 		if catch := ctx.App().ErrorHandler(ctx, err); catch != nil {
-			_ = ctx.SendStatus(StatusInternalServerError)
+			_ = ctx.SendStatus(StatusInternalServerError) //nolint:errcheck // Always return nil
 		}
+		// TODO: Do we need to return here?
 	}
 }
 
@@ -246,15 +246,14 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 	// Acquire CustomCtx from the pool
 	c, ok := app.AcquireCtx(rctx).(CustomCtx)
 	if !ok {
-		// Should not happen, but just in case:
-		panic("customRequestHandler: failed to type-assert CustomCtx")
+		panic(errors.New("requestHandler: failed to type-assert to CustomCtx"))
 	}
 
 	defer app.ReleaseCtx(c)
 
 	// Check if the HTTP method is valid
 	if app.methodInt(c.Method()) == -1 {
-		_ = c.SendStatus(StatusNotImplemented)
+		_ = c.SendStatus(StatusNotImplemented) //nolint:errcheck // Always return nil
 		return
 	}
 
@@ -268,8 +267,9 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 	_, err := app.nextCustom(c)
 	if err != nil {
 		if catch := c.App().ErrorHandler(c, err); catch != nil {
-			_ = c.SendStatus(StatusInternalServerError)
+			_ = c.SendStatus(StatusInternalServerError) //nolint:errcheck // Always return nil
 		}
+		// TODO: Do we need to return here?
 	}
 }
 
