@@ -616,6 +616,10 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 // Note: It doesn't allow adding new methods, only customizing exist methods.
 func (app *App) NewCtxFunc(function func(app *App) CustomCtx) {
 	app.newCtxFunc = function
+
+	if app.server != nil {
+		app.server.Handler = app.customRequestHandler
+	}
 }
 
 // RegisterCustomConstraint allows to register custom constraint.
@@ -868,7 +872,11 @@ func (app *App) Config() Config {
 func (app *App) Handler() fasthttp.RequestHandler { //revive:disable-line:confusing-naming // Having both a Handler() (uppercase) and a handler() (lowercase) is fine. TODO: Use nolint:revive directive instead. See https://github.com/golangci/golangci-lint/issues/3476
 	// prepare the server for the start
 	app.startupProcess()
-	return app.requestHandler
+	if app.newCtxFunc != nil {
+		return app.customRequestHandler
+	} else {
+		return app.defaultRequestHandler
+	}
 }
 
 // Stack returns the raw router stack.
@@ -1057,7 +1065,11 @@ func (app *App) init() *App {
 	}
 
 	// fasthttp server settings
-	app.server.Handler = app.requestHandler
+	if app.newCtxFunc != nil {
+		app.server.Handler = app.customRequestHandler
+	} else {
+		app.server.Handler = app.defaultRequestHandler
+	}
 	app.server.Name = app.config.ServerHeader
 	app.server.Concurrency = app.config.Concurrency
 	app.server.NoDefaultDate = app.config.DisableDefaultDate

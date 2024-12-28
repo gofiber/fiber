@@ -6,7 +6,6 @@ package fiber
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"html"
 	"sort"
@@ -211,48 +210,66 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 	return false, err
 }
 
-func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
-	// Acquire context
-	var c CustomCtx
-	var ok bool
-	if app.newCtxFunc != nil {
-		c, ok = app.AcquireCtx(rctx).(CustomCtx)
-		if !ok {
-			panic(errors.New("requestHandler: failed to type-assert to CustomCtx"))
-		}
-	} else {
-		c, ok = app.AcquireCtx(rctx).(*DefaultCtx)
-		if !ok {
-			panic(errors.New("requestHandler: failed to type-assert to *DefaultCtx"))
-		}
+func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
+	// Acquire DefaultCtx from the pool
+	ctx, ok := app.AcquireCtx(rctx).(*DefaultCtx)
+	if !ok {
+		// Should not happen, but just in case:
+		panic("defaultRequestHandler: failed to type-assert *DefaultCtx")
 	}
-	defer app.ReleaseCtx(c)
 
-	// handle invalid http method directly
-	if app.methodInt(c.Method()) == -1 {
-		_ = c.SendStatus(StatusNotImplemented) //nolint:errcheck // Always return nil
+	defer app.ReleaseCtx(ctx)
+
+	// Check if the HTTP method is valid
+	// (e.g., methodInt returns -1 if it's not found in app.config.RequestMethods)
+	if ctx.methodINT == -1 {
+		_ = ctx.SendStatus(StatusNotImplemented)
 		return
 	}
 
-	// check flash messages
+	// Optional: Check flash messages
+	rawHeaders := ctx.Request().Header.RawHeaders()
+	if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, []byte(FlashCookieName)) {
+		ctx.Redirect().parseAndClearFlashMessages()
+	}
+
+	// Attempt to match a route and execute the chain
+	_, err := app.next(ctx)
+	if err != nil {
+		if catch := ctx.App().ErrorHandler(ctx, err); catch != nil {
+			_ = ctx.SendStatus(StatusInternalServerError)
+		}
+	}
+}
+
+func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
+	// Acquire CustomCtx from the pool
+	c, ok := app.AcquireCtx(rctx).(CustomCtx)
+	if !ok {
+		// Should not happen, but just in case:
+		panic("customRequestHandler: failed to type-assert CustomCtx")
+	}
+
+	defer app.ReleaseCtx(c)
+
+	// Check if the HTTP method is valid
+	if app.methodInt(c.Method()) == -1 {
+		_ = c.SendStatus(StatusNotImplemented)
+		return
+	}
+
+	// Optional: Check flash messages
 	rawHeaders := c.Request().Header.RawHeaders()
 	if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, []byte(FlashCookieName)) {
 		c.Redirect().parseAndClearFlashMessages()
 	}
 
-	// Find match in stack
-	var err error
-	if app.newCtxFunc != nil {
-		_, err = app.nextCustom(c)
-	} else {
-		_, err = app.next(c.(*DefaultCtx)) //nolint:errcheck // It is fine to ignore the error here
-	}
-
+	// Attempt to match a route and execute the chain
+	_, err := app.nextCustom(c)
 	if err != nil {
 		if catch := c.App().ErrorHandler(c, err); catch != nil {
-			_ = c.SendStatus(StatusInternalServerError) //nolint:errcheck // It is fine to ignore the error here
+			_ = c.SendStatus(StatusInternalServerError)
 		}
-		// TODO: Do we need to return here?
 	}
 }
 
