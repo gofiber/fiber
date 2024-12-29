@@ -131,12 +131,6 @@ func Test_Ctx_CustomCtx(t *testing.T) {
 func Test_Ctx_CustomCtx_and_Method(t *testing.T) {
 	t.Parallel()
 
-	defer func() {
-		if err := recover(); err != nil {
-			require.Equal(t, "add: invalid http method JANE\n", fmt.Sprintf("%v", err))
-		}
-	}()
-
 	// Create app with custom request methods
 	methods := append(DefaultMethods, "JOHN") //nolint:gocritic // We want a new slice here
 	app := New(Config{
@@ -157,10 +151,9 @@ func Test_Ctx_CustomCtx_and_Method(t *testing.T) {
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
 	// Add a new method
-	app.Add([]string{"JANE"}, "/doe", testEmptyHandler)
-	resp, err = app.Test(httptest.NewRequest("JANE", "/doe", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+	require.Panics(t, func() {
+		app.Add([]string{"JANE"}, "/jane", testEmptyHandler)
+	})
 }
 
 // go test -run Test_Ctx_Accepts_EmptyAccept
