@@ -59,11 +59,7 @@ func Test_LoadSheddingTimeout(t *testing.T) {
 		loadSheddingHandler,
 		nil,
 	))
-	app.Get("/", func(c fiber.Ctx) error {
-		// Simulate long-running request without creating goroutines
-		time.Sleep(2 * time.Second)
-		return c.SendString("This should not appear")
-	})
+	app.Get("/", timeoutHandler)
 
 	// Create a custom request
 	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
