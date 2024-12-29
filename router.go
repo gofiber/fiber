@@ -244,30 +244,30 @@ func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
 
 func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 	// Acquire CustomCtx from the pool
-	c, ok := app.AcquireCtx(rctx).(CustomCtx)
+	ctx, ok := app.AcquireCtx(rctx).(CustomCtx)
 	if !ok {
 		panic(errors.New("requestHandler: failed to type-assert to CustomCtx"))
 	}
 
-	defer app.ReleaseCtx(c)
+	defer app.ReleaseCtx(ctx)
 
 	// Check if the HTTP method is valid
-	if app.methodInt(c.Method()) == -1 {
-		_ = c.SendStatus(StatusNotImplemented) //nolint:errcheck // Always return nil
+	if app.methodInt(ctx.Method()) == -1 {
+		_ = ctx.SendStatus(StatusNotImplemented) //nolint:errcheck // Always return nil
 		return
 	}
 
 	// Optional: Check flash messages
-	rawHeaders := c.Request().Header.RawHeaders()
+	rawHeaders := ctx.Request().Header.RawHeaders()
 	if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, []byte(FlashCookieName)) {
-		c.Redirect().parseAndClearFlashMessages()
+		ctx.Redirect().parseAndClearFlashMessages()
 	}
 
 	// Attempt to match a route and execute the chain
-	_, err := app.nextCustom(c)
+	_, err := app.nextCustom(ctx)
 	if err != nil {
-		if catch := c.App().ErrorHandler(c, err); catch != nil {
-			_ = c.SendStatus(StatusInternalServerError) //nolint:errcheck // Always return nil
+		if catch := ctx.App().ErrorHandler(ctx, err); catch != nil {
+			_ = ctx.SendStatus(StatusInternalServerError) //nolint:errcheck // Always return nil
 		}
 		// TODO: Do we need to return here?
 	}

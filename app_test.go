@@ -606,7 +606,40 @@ func Test_App_Add_Method_Test(t *testing.T) {
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusNotImplemented, resp.StatusCode, "Status code")
 
+	// Add a new method
 	app.Add([]string{"JANE"}, "/doe", testEmptyHandler)
+
+	resp, err = app.Test(httptest.NewRequest("JANE", "/doe", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+}
+
+func Test_App_All_Method_Test(t *testing.T) {
+	t.Parallel()
+	defer func() {
+		if err := recover(); err != nil {
+			require.Equal(t, "add: invalid http method JANE\n", fmt.Sprintf("%v", err))
+		}
+	}()
+
+	methods := append(DefaultMethods, "JOHN") //nolint:gocritic // We want a new slice here
+	app := New(Config{
+		RequestMethods: methods,
+	})
+
+	// Add a new method with All
+	app.All("/doe", testEmptyHandler)
+
+	resp, err := app.Test(httptest.NewRequest("JOHN", "/doe", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	// Add a new method
+	app.Add([]string{"JANE"}, "/doe", testEmptyHandler)
+
+	resp, err = app.Test(httptest.NewRequest("JANE", "/doe", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
 // go test -run Test_App_GETOnly
