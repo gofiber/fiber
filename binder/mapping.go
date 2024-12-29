@@ -249,3 +249,21 @@ func FilterFlags(content string) string {
 	}
 	return content
 }
+
+func formatBindData(out any, data map[string][]string, key, value string, enableSplitting, supportBracketNotation bool) error { //nolint:revive // it's okay
+	var err error
+	if supportBracketNotation && strings.Contains(key, "[") {
+		key, err = parseParamSquareBrackets(key)
+	}
+
+	if enableSplitting && strings.Contains(value, ",") && equalFieldType(out, reflect.Slice, key) {
+		values := strings.Split(value, ",")
+		for i := 0; i < len(values); i++ {
+			data[key] = append(data[key], values[i])
+		}
+	} else {
+		data[key] = append(data[key], value)
+	}
+
+	return err
+}

@@ -37,19 +37,7 @@ func (b *FormBinding) Bind(req *fasthttp.Request, out any) error {
 
 		k := utils.UnsafeString(key)
 		v := utils.UnsafeString(val)
-
-		if strings.Contains(k, "[") {
-			k, err = parseParamSquareBrackets(k)
-		}
-
-		if b.EnableSplitting && strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
-			values := strings.Split(v, ",")
-			for i := 0; i < len(values); i++ {
-				data[k] = append(data[k], values[i])
-			}
-		} else {
-			data[k] = append(data[k], v)
-		}
+		err = formatBindData(out, data, k, v, b.EnableSplitting, true)
 	})
 
 	if err != nil {
