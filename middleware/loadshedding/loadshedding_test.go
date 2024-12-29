@@ -53,20 +53,24 @@ func Test_LoadSheddingTimeout(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	// Middleware without exclusions
+	// Middleware with a 1-second timeout
 	app.Use(loadshedding.New(
-		1*time.Second, // Set timeout for the middleware
+		1*time.Second, // Middleware timeout
 		loadSheddingHandler,
 		nil,
 	))
-	app.Get("/", timeoutHandler)
+	app.Get("/", func(c fiber.Ctx) error {
+		// Simulate long-running request without creating goroutines
+		time.Sleep(2 * time.Second)
+		return c.SendString("This should not appear")
+	})
 
-	// Create a custom HTTP client with a sufficient timeout
+	// Create a custom request
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 
 	// Test timeout behavior
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	resp, err := app.Test(req, fiber.TestConfig{
-		Timeout: 3 * time.Second,
+		Timeout: 3 * time.Second, // Ensure the test timeout exceeds middleware timeout
 	})
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusServiceUnavailable, resp.StatusCode)

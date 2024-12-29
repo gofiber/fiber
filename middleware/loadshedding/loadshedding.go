@@ -11,34 +11,34 @@ import (
 // If a request exceeds the specified timeout, a custom load-shedding handler is executed.
 func New(timeout time.Duration, loadSheddingHandler fiber.Handler, exclude func(fiber.Ctx) bool) fiber.Handler {
 	return func(c fiber.Ctx) error {
-		// Skip load-shedding for excluded requests
+		// Skip load-shedding logic for requests matching the exclusion criteria
 		if exclude != nil && exclude(c) {
 			return c.Next()
 		}
 
-		// Create a context with the specified timeout
+		// Create a context with a timeout for the current request
 		ctx, cancel := context.WithTimeout(c.Context(), timeout)
 		defer cancel()
 
-		// Channel to signal request completion
+		// Set the new context with a timeout
+		c.SetContext(ctx)
+
+		// Process the request and capture any error
+		err := c.Next()
+
+		// Create a channel to signal when request processing completes
 		done := make(chan error, 1)
 
-		// Capture the current handler execution
-		handler := func() error {
-			return c.Next()
-		}
-
-		// Process the handler in a separate goroutine
+		// Send the result of the request processing to the channel
 		go func() {
-			done <- handler()
+			done <- err
 		}()
 
+		// Handle either request completion or timeout
 		select {
-		case <-ctx.Done():
-			// Timeout occurred; invoke the load-shedding handler
+		case <-ctx.Done(): // Triggered if the timeout expires
 			return loadSheddingHandler(c)
-		case err := <-done:
-			// Request completed successfully; return any handler error
+		case err := <-done: // Triggered if request processing completes
 			return err
 		}
 	}
