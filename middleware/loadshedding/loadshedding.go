@@ -25,6 +25,7 @@ func New(timeout time.Duration, loadSheddingHandler fiber.Handler, exclude func(
 
 		// Process the handler in a separate goroutine
 		go func() {
+			c.SetContext(ctx)
 			done <- c.Next()
 		}()
 
