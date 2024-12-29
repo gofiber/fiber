@@ -592,24 +592,24 @@ func Test_App_Add_Method_Test(t *testing.T) {
 		RequestMethods: methods,
 	})
 
-	app.Add([]string{"JOHN"}, "/doe", testEmptyHandler)
+	app.Add([]string{"JOHN"}, "/john", testEmptyHandler)
 
-	resp, err := app.Test(httptest.NewRequest("JOHN", "/doe", nil))
+	resp, err := app.Test(httptest.NewRequest("JOHN", "/john", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/doe", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/john", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest("UNKNOWN", "/doe", nil))
+	resp, err = app.Test(httptest.NewRequest("UNKNOWN", "/john", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusNotImplemented, resp.StatusCode, "Status code")
 
 	// Add a new method
-	app.Add([]string{"JANE"}, "/doe", testEmptyHandler)
+	app.Add([]string{"JANE"}, "/jane", testEmptyHandler)
 
-	resp, err = app.Test(httptest.NewRequest("JANE", "/doe", nil))
+	resp, err = app.Test(httptest.NewRequest("JANE", "/jane", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
