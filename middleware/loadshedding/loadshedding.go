@@ -23,10 +23,14 @@ func New(timeout time.Duration, loadSheddingHandler fiber.Handler, exclude func(
 		// Channel to signal request completion
 		done := make(chan error, 1)
 
+		// Capture the current handler execution
+		handler := func() error {
+			return c.Next()
+		}
+
 		// Process the handler in a separate goroutine
 		go func() {
-			c.SetContext(ctx)
-			done <- c.Next()
+			done <- handler()
 		}()
 
 		select {
