@@ -7,6 +7,7 @@ package fiber
 import (
 	"bytes"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"hash/crc32"
 	"io"
@@ -1150,4 +1151,76 @@ func IndexRune(str string, needle int32) bool {
 		}
 	}
 	return false
+}
+
+func parseParamSquareBrackets(k string) (string, error) {
+	bb := bytebufferpool.Get()
+	defer bytebufferpool.Put(bb)
+
+	kbytes := []byte(k)
+	openBracketsCount := 0
+
+	for i, b := range kbytes {
+		if b == '[' {
+			openBracketsCount++
+			if i+1 < len(kbytes) && kbytes[i+1] != ']' {
+				if err := bb.WriteByte('.'); err != nil {
+					return "", fmt.Errorf("failed to write: %w", err)
+				}
+			}
+			continue
+		}
+
+		if b == ']' {
+			openBracketsCount--
+			if openBracketsCount < 0 {
+				return "", errors.New("unmatched brackets")
+			}
+			continue
+		}
+
+		if err := bb.WriteByte(b); err != nil {
+			return "", fmt.Errorf("failed to write: %w", err)
+		}
+	}
+
+	if openBracketsCount > 0 {
+		return "", errors.New("unmatched brackets")
+	}
+
+	return bb.String(), nil
+}
+
+func formatParserData(out interface{}, data map[string][]string, aliasTag, key string, value interface{}, enableSplitting, supportBracketNotation bool) error { //nolint:revive // it's okay
+	var err error
+	if supportBracketNotation && strings.Contains(key, "[") {
+		key, err = parseParamSquareBrackets(key)
+		if err != nil {
+			return err
+		}
+	}
+
+	switch v := value.(type) {
+	case string:
+		assignBindData(out, data, aliasTag, key, v, enableSplitting)
+	case []string:
+		for _, val := range v {
+			assignBindData(out, data, aliasTag, key, val, enableSplitting)
+		}
+	default:
+		return fmt.Errorf("unsupported value type: %T", value)
+	}
+
+	return err
+}
+
+func assignBindData(out interface{}, data map[string][]string, aliasTag, key, value string, enableSplitting bool) { //nolint:revive // it's okay
+	if enableSplitting && strings.Contains(value, ",") && equalFieldType(out, reflect.Slice, key, aliasTag) {
+		values := strings.Split(value, ",")
+		for i := 0; i < len(values); i++ {
+			data[key] = append(data[key], values[i])
+		}
+	} else {
+		data[key] = append(data[key], value)
+	}
 }

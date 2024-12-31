@@ -610,6 +610,48 @@ func Test_Ctx_BodyParser(t *testing.T) {
 	utils.AssertEqual(t, 2, len(cq.Data))
 	utils.AssertEqual(t, "john", cq.Data[0].Name)
 	utils.AssertEqual(t, "doe", cq.Data[1].Name)
+
+	t.Run("MultipartCollectionQueryDotNotation", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().Reset()
+
+		buf := &bytes.Buffer{}
+		writer := multipart.NewWriter(buf)
+		utils.AssertEqual(t, nil, writer.WriteField("data.0.name", "john"))
+		utils.AssertEqual(t, nil, writer.WriteField("data.1.name", "doe"))
+		utils.AssertEqual(t, nil, writer.Close())
+
+		c.Request().Header.SetContentType(writer.FormDataContentType())
+		c.Request().SetBody(buf.Bytes())
+		c.Request().Header.SetContentLength(len(c.Body()))
+
+		cq := new(CollectionQuery)
+		utils.AssertEqual(t, nil, c.BodyParser(cq))
+		utils.AssertEqual(t, len(cq.Data), 2)
+		utils.AssertEqual(t, "john", cq.Data[0].Name)
+		utils.AssertEqual(t, "doe", cq.Data[1].Name)
+	})
+
+	t.Run("MultipartCollectionQuerySquareBrackets", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().Reset()
+
+		buf := &bytes.Buffer{}
+		writer := multipart.NewWriter(buf)
+		utils.AssertEqual(t, nil, writer.WriteField("data[0][name]", "john"))
+		utils.AssertEqual(t, nil, writer.WriteField("data[1][name]", "doe"))
+		utils.AssertEqual(t, nil, writer.Close())
+
+		c.Request().Header.SetContentType(writer.FormDataContentType())
+		c.Request().SetBody(buf.Bytes())
+		c.Request().Header.SetContentLength(len(c.Body()))
+
+		cq := new(CollectionQuery)
+		utils.AssertEqual(t, nil, c.BodyParser(cq))
+		utils.AssertEqual(t, len(cq.Data), 2)
+		utils.AssertEqual(t, "john", cq.Data[0].Name)
+		utils.AssertEqual(t, "doe", cq.Data[1].Name)
+	})
 }
 
 func Test_Ctx_ParamParser(t *testing.T) {
