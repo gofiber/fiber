@@ -107,7 +107,7 @@ func parseToStruct(aliasTag string, out any, data map[string][]string) error {
 func parseToMap(ptr any, data map[string][]string) error {
 	elem := reflect.TypeOf(ptr).Elem()
 
-	switch elem.Kind() { //nolint:exhaustive // it's not necessary to check all types
+	switch elem.Kind() {
 	case reflect.Slice:
 		newMap, ok := ptr.(map[string][]string)
 		if !ok {
@@ -130,6 +130,8 @@ func parseToMap(ptr any, data map[string][]string) error {
 			}
 			newMap[k] = v[len(v)-1]
 		}
+	default:
+		return nil // it's not necessary to check all types
 	}
 
 	return nil
@@ -246,4 +248,38 @@ func FilterFlags(content string) string {
 		}
 	}
 	return content
+}
+
+func formatBindData[T any](out any, data map[string][]string, key string, value T, enableSplitting, supportBracketNotation bool) error { //nolint:revive // it's okay
+	var err error
+	if supportBracketNotation && strings.Contains(key, "[") {
+		key, err = parseParamSquareBrackets(key)
+		if err != nil {
+			return err
+		}
+	}
+
+	switch v := any(value).(type) {
+	case string:
+		assignBindData(out, data, key, v, enableSplitting)
+	case []string:
+		for _, val := range v {
+			assignBindData(out, data, key, val, enableSplitting)
+		}
+	default:
+		return fmt.Errorf("unsupported value type: %T", value)
+	}
+
+	return err
+}
+
+func assignBindData(out any, data map[string][]string, key, value string, enableSplitting bool) { //nolint:revive // it's okay
+	if enableSplitting && strings.Contains(value, ",") && equalFieldType(out, reflect.Slice, key) {
+		values := strings.Split(value, ",")
+		for i := 0; i < len(values); i++ {
+			data[key] = append(data[key], values[i])
+		}
+	} else {
+		data[key] = append(data[key], value)
+	}
 }
