@@ -128,7 +128,6 @@ func parseToMap(ptr any, data map[string][]string) error {
 				newMap[k] = ""
 				continue
 			}
-
 			newMap[k] = v[len(v)-1]
 		}
 	default:
