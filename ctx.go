@@ -406,28 +406,30 @@ func (c *Ctx) BodyParser(out interface{}) error {
 			k := c.app.getString(key)
 			v := c.app.getString(val)
 
-			if strings.Contains(k, "[") {
-				k, err = parseParamSquareBrackets(k)
-			}
-
-			if c.app.config.EnableSplittingOnParsers && strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k, bodyTag) {
-				values := strings.Split(v, ",")
-				for i := 0; i < len(values); i++ {
-					data[k] = append(data[k], values[i])
-				}
-			} else {
-				data[k] = append(data[k], v)
-			}
+			err = formatParserData(out, data, bodyTag, k, v, c.app.config.EnableSplittingOnParsers, true)
 		})
+
+		if err != nil {
+			return err
+		}
 
 		return c.parseToStruct(bodyTag, out, data)
 	}
 	if strings.HasPrefix(ctype, MIMEMultipartForm) {
-		data, err := c.fasthttp.MultipartForm()
+		multipartForm, err := c.fasthttp.MultipartForm()
 		if err != nil {
 			return err
 		}
-		return c.parseToStruct(bodyTag, out, data.Value)
+
+		data := make(map[string][]string)
+		for key, values := range multipartForm.Value {
+			err = formatParserData(out, data, bodyTag, key, values, c.app.config.EnableSplittingOnParsers, true)
+			if err != nil {
+				return err
+			}
+		}
+
+		return c.parseToStruct(bodyTag, out, data)
 	}
 	if strings.HasPrefix(ctype, MIMETextXML) || strings.HasPrefix(ctype, MIMEApplicationXML) {
 		if err := xml.Unmarshal(c.Body(), out); err != nil {
@@ -531,18 +533,7 @@ func (c *Ctx) CookieParser(out interface{}) error {
 		k := c.app.getString(key)
 		v := c.app.getString(val)
 
-		if strings.Contains(k, "[") {
-			k, err = parseParamSquareBrackets(k)
-		}
-
-		if c.app.config.EnableSplittingOnParsers && strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k, cookieTag) {
-			values := strings.Split(v, ",")
-			for i := 0; i < len(values); i++ {
-				data[k] = append(data[k], values[i])
-			}
-		} else {
-			data[k] = append(data[k], v)
-		}
+		err = formatParserData(out, data, cookieTag, k, v, c.app.config.EnableSplittingOnParsers, true)
 	})
 	if err != nil {
 		return err
@@ -1283,18 +1274,7 @@ func (c *Ctx) QueryParser(out interface{}) error {
 		k := c.app.getString(key)
 		v := c.app.getString(val)
 
-		if strings.Contains(k, "[") {
-			k, err = parseParamSquareBrackets(k)
-		}
-
-		if c.app.config.EnableSplittingOnParsers && strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k, queryTag) {
-			values := strings.Split(v, ",")
-			for i := 0; i < len(values); i++ {
-				data[k] = append(data[k], values[i])
-			}
-		} else {
-			data[k] = append(data[k], v)
-		}
+		err = formatParserData(out, data, queryTag, k, v, c.app.config.EnableSplittingOnParsers, true)
 	})
 
 	if err != nil {
@@ -1340,6 +1320,40 @@ func parseParamSquareBrackets(k string) (string, error) {
 	}
 
 	return bb.String(), nil
+}
+
+func formatParserData(out interface{}, data map[string][]string, aliasTag, key string, value interface{}, enableSplitting, supportBracketNotation bool) error { //nolint:revive // it's okay
+	var err error
+	if supportBracketNotation && strings.Contains(key, "[") {
+		key, err = parseParamSquareBrackets(key)
+		if err != nil {
+			return err
+		}
+	}
+
+	switch v := value.(type) {
+	case string:
+		assignBindData(out, data, aliasTag, key, v, enableSplitting)
+	case []string:
+		for _, val := range v {
+			assignBindData(out, data, aliasTag, key, val, enableSplitting)
+		}
+	default:
+		return fmt.Errorf("unsupported value type: %T", value)
+	}
+
+	return err
+}
+
+func assignBindData(out interface{}, data map[string][]string, aliasTag, key, value string, enableSplitting bool) { //nolint:revive // it's okay
+	if enableSplitting && strings.Contains(value, ",") && equalFieldType(out, reflect.Slice, key, aliasTag) {
+		values := strings.Split(value, ",")
+		for i := 0; i < len(values); i++ {
+			data[key] = append(data[key], values[i])
+		}
+	} else {
+		data[key] = append(data[key], value)
+	}
 }
 
 // ReqHeaderParser binds the request header strings to a struct.
