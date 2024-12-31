@@ -1,9 +1,6 @@
 package binder
 
 import (
-	"reflect"
-	"strings"
-
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -49,32 +46,20 @@ func (b *FormBinding) Bind(req *fasthttp.Request, out any) error {
 
 // bindMultipart parses the request body and returns the result.
 func (b *FormBinding) bindMultipart(req *fasthttp.Request, out any) error {
-	data, err := req.MultipartForm()
+	multipartForm, err := req.MultipartForm()
 	if err != nil {
 		return err
 	}
 
-	temp := make(map[string][]string)
-	for key, values := range data.Value {
-		if strings.Contains(key, "[") {
-			k, err := parseParamSquareBrackets(key)
-			if err != nil {
-				return err
-			}
-
-			key = k // We have to update key in case bracket notation and slice type are used at the same time
-		}
-
-		for _, v := range values {
-			if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, key) {
-				temp[key] = strings.Split(v, ",")
-			} else {
-				temp[key] = append(temp[key], v)
-			}
+	data := make(map[string][]string)
+	for key, values := range multipartForm.Value {
+		err = formatBindData(out, data, key, values, b.EnableSplitting, true)
+		if err != nil {
+			return err
 		}
 	}
 
-	return parse(b.Name(), out, temp)
+	return parse(b.Name(), out, data)
 }
 
 // Reset resets the FormBinding binder.
