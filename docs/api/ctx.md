@@ -1506,7 +1506,7 @@ app.Get("/teapot", func(c fiber.Ctx) error {
 Renders a view with data and sends a `text/html` response. By default, `Render` uses the default [**Go Template engine**](https://pkg.go.dev/html/template/). If you want to use another view engine, please take a look at our [**Template middleware**](https://docs.gofiber.io/template).
 
 ```go title="Signature"
-func (c fiber.Ctx) Render(name string, bind Map, layouts ...string) error
+func (c fiber.Ctx) Render(name string, bind any, layouts ...string) error
 ```
 
 ## Request
