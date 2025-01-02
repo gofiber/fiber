@@ -1369,7 +1369,7 @@ func (c *DefaultCtx) GetRouteURL(routeName string, params Map) (string, error) {
 
 // Render a template with data and sends a text/html response.
 // We support the following engines: https://github.com/gofiber/template
-func (c *DefaultCtx) Render(name string, bind Map, layouts ...string) error {
+func (c *DefaultCtx) Render(name string, bind any, layouts ...string) error {
 	// Get new buffer from pool
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)

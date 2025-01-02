@@ -12,8 +12,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// Ctx represents the Context which hold the HTTP request and response.
-// It has methods for the request query string, parameters, body, HTTP headers and so on.
+// Ctx represents the Context which hold the HTTP request and response.\nIt has methods for the request query string, parameters, body, HTTP headers and so on.
 type Ctx interface {
 	// Accepts checks if the specified extensions or content types are acceptable.
 	Accepts(offers ...string) string
@@ -263,7 +262,7 @@ type Ctx interface {
 	GetRouteURL(routeName string, params Map) (string, error)
 	// Render a template with data and sends a text/html response.
 	// We support the following engines: https://github.com/gofiber/template
-	Render(name string, bind Map, layouts ...string) error
+	Render(name string, bind any, layouts ...string) error
 	renderExtensions(bind any)
 	// Route returns the matched Route struct.
 	Route() *Route
