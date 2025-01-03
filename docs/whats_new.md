@@ -31,6 +31,7 @@ Here's a quick overview of the changes in Fiber `v3`:
   - [Filesystem](#filesystem)
   - [Monitor](#monitor)
   - [Healthcheck](#healthcheck)
+  - [Load shedding](#loadshedding)
 - [📋 Migration guide](#-migration-guide)
 
 ## Drop for old Go versions
@@ -810,6 +811,15 @@ The Healthcheck middleware has been enhanced to support more than two routes, wi
 
 Refer to the [healthcheck middleware migration guide](./middleware/healthcheck.md) or the [general migration guide](#-migration-guide) to review the changes.
 
+### Load shedding
+We've added **Load Shedding Middleware**.It ensures system stability under high load by enforcing timeouts on request processing. This mechanism allows the application to shed excessive load gracefully and maintain responsiveness.
+
+**Functionality**
+- **Timeout Enforcement**: Automatically terminates requests exceeding a specified processing time.
+- **Custom Response**: Uses a configurable load-shedding handler to define the response for shed requests.
+- **Request Exclusion**: Allows certain requests to bypass load-shedding logic through an exclusion filter.
+
+This middleware is designed to enhance server resilience and improve the user experience during periods of high traffic.
 ## 📋 Migration guide
 
 - [🚀 App](#-app-1)
@@ -1359,6 +1369,34 @@ app.Get(healthcheck.DefaultStartupEndpoint, healthcheck.NewHealthChecker(healthc
 
 // Custom liveness endpoint configuration
 app.Get("/live", healthcheck.NewHealthChecker())
+```
+
+#### Load shedding
+This middleware uses `context.WithTimeout` to manage the lifecycle of requests. If a request exceeds the specified timeout, the custom load-shedding handler is triggered, ensuring the system remains stable under stress.
+
+**Key Parameters**
+
+`timeout` (`time.Duration`): The maximum time a request is allowed to process. Requests exceeding this time are terminated.
+
+`loadSheddingHandler` (`fiber.Handler`): A custom handler that executes when a request exceeds the timeout. Typically used to return a `503 Service Unavailable` response or a custom message.
+
+`exclude` (`func(fiber.Ctx) bool`): A filter function to exclude specific requests from being subjected to the load-shedding logic (optional).
+
+**Usage Example**
+
+```go
+import "github.com/gofiber/fiber/v3/middleware/loadshedding
+
+app.Use(loadshedding.New(
+    10*time.Second, // Timeout duration
+    func(c fiber.Ctx) error { // Load shedding response
+        return c.Status(fiber.StatusServiceUnavailable).
+            SendString("Service overloaded, try again later.")
+    },
+    func(c fiber.Ctx) bool { // Exclude health checks
+        return c.Path() == "/health"
+    },
+))
 ```
 
 #### Monitor
