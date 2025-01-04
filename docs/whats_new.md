@@ -31,7 +31,7 @@ Here's a quick overview of the changes in Fiber `v3`:
   - [Filesystem](#filesystem)
   - [Monitor](#monitor)
   - [Healthcheck](#healthcheck)
-  - [Load shedding](#-load-shedding)
+  - [Load shedding](#load-shedding)
 - [📋 Migration guide](#-migration-guide)
 
 ## Drop for old Go versions
