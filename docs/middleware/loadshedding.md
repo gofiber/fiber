@@ -9,14 +9,14 @@ enforcing timeouts on request processing. It helps manage server load effectivel
 exceed a specified timeout duration. This is especially useful in high-traffic scenarios, where preventing server
 overload is critical to maintaining service availability and performance.
 
-### Features
+## Features
 
 - **Request Timeout Enforcement**: Ensures that no request exceeds the specified processing time.
 - **Customizable Response**: Allows you to define a specific response for timed-out requests.
 - **Exclusion Criteria**: Provides flexibility to exclude specific requests from load-shedding logic.
 - **Improved Stability**: Helps prevent server crashes under heavy load by shedding excess requests.
 
-### Use Cases
+## Use Cases
 
 - **High-Traffic Scenarios**: Protect critical resources by shedding long-running or resource-intensive requests.
 - **Health Check Protection**: Exclude endpoints like `/health` to ensure critical monitoring remains unaffected.
