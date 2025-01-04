@@ -39,6 +39,7 @@ func New(timeout time.Duration, loadSheddingHandler fiber.Handler, exclude func 
 | `exclude`             | `func(fiber.Ctx) bool`              | Optional function to exclude specific requests from load-shedding logic.                       | `nil`    |
 
 ## Example Usage
+
 Import the middleware package and integrate it into your Fiber application:
 
 ```go
