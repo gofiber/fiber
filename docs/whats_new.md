@@ -1388,7 +1388,7 @@ This middleware uses `context.WithTimeout` to manage the lifecycle of requests. 
 
 `exclude` (`func(fiber.Ctx) bool`): A filter function to exclude specific requests from being subjected to the load-shedding logic (optional).
 
-#### Usage Example
+##### Usage Example
 
 ```go
 import "github.com/gofiber/fiber/v3/middleware/loadshedding
