@@ -811,19 +811,17 @@ The Healthcheck middleware has been enhanced to support more than two routes, wi
 
 Refer to the [healthcheck middleware migration guide](./middleware/healthcheck.md) or the [general migration guide](#-migration-guide) to review the changes.
 
-### Load shedding
+### Load Shedding
 
-We've added **Load Shedding Middleware**.It ensures system stability under high load by enforcing timeouts on request processing. This mechanism allows the application to shed excessive load gracefully and maintain responsiveness.
+We’ve introduced the **Load Shedding Middleware** to keep your system stable under heavy load. It automatically terminates requests that exceed a specified processing time, enabling the application to gracefully shed excessive load while maintaining responsiveness.
 
 #### Functionality
 
-- **Timeout Enforcement**: Automatically terminates requests exceeding a specified processing time.
+- **Timeout Enforcement**: Automatically terminates requests that exceed the defined maximum processing time.
+- **Customizable Response**: Supports a configurable load-shedding handler to define the response for timed-out requests.
+- **Exclusion Logic**: Allows certain requests or routes to bypass the load-shedding mechanism based on defined rules.
 
-- **Custom Response**: Uses a configurable load-shedding handler to define the response for shed requests.
-
-- **Request Exclusion**: Allows certain requests to bypass load-shedding logic through an exclusion filter.
-
-This middleware is designed to enhance server resilience and improve the user experience during periods of high traffic.
+By applying timeouts and shedding excess load, this middleware helps your server remain resilient and ensures a smoother user experience during high-traffic periods.
 
 ## 📋 Migration guide
 
