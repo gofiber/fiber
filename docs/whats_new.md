@@ -497,7 +497,7 @@ func main() {
     app := fiber.New()
 
     app.Get("/convert", func(c fiber.Ctx) error {
-        value, err := Convert[string](c.Query("value"), strconv.Atoi, 0)
+        value, err := fiber.Convert[string](c.Query("value"), strconv.Atoi, 0)
         if err != nil {
             return c.Status(fiber.StatusBadRequest).SendString(err.Error())
         }
@@ -575,7 +575,7 @@ func main() {
     app := fiber.New()
 
     app.Get("/params/:id", func(c fiber.Ctx) error {
-        id := Params[int](c, "id", 0)
+        id := fiber.Params[int](c, "id", 0)
         return c.JSON(id)
     })
 
@@ -607,7 +607,7 @@ func main() {
     app := fiber.New()
 
     app.Get("/query", func(c fiber.Ctx) error {
-        age := Query[int](c, "age", 0)
+        age := fiber.Query[int](c, "age", 0)
         return c.JSON(age)
     })
 
@@ -640,7 +640,7 @@ func main() {
     app := fiber.New()
 
     app.Get("/header", func(c fiber.Ctx) error {
-        userAgent := GetReqHeader[string](c, "User-Agent", "Unknown")
+        userAgent := fiber.GetReqHeader[string](c, "User-Agent", "Unknown")
         return c.JSON(userAgent)
     })
 
