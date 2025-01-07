@@ -12,6 +12,11 @@ import (
 // any of the specified errors occur, fiber.ErrRequestTimeout is returned.
 func New(h fiber.Handler, timeout time.Duration, tErrs ...error) fiber.Handler {
 	return func(ctx fiber.Ctx) error {
+		// If timeout <= 0, skip context.WithTimeout and run the handler as-is.
+		if timeout <= 0 {
+			return runHandler(ctx, h, tErrs)
+		}
+
 		// Create a context with the specified timeout; any operation exceeding
 		// this deadline will be canceled automatically.
 		timeoutContext, cancel := context.WithTimeout(ctx.Context(), timeout)
@@ -37,6 +42,16 @@ func New(h fiber.Handler, timeout time.Duration, tErrs ...error) fiber.Handler {
 		}
 		return err
 	}
+}
+
+// runHandler executes the handler and returns fiber.ErrRequestTimeout if it
+// sees a deadline exceeded error or one of the custom "timeout-like" errors.
+func runHandler(c fiber.Ctx, h fiber.Handler, tErrs []error) error {
+	err := h(c)
+	if err != nil && (errors.Is(err, context.DeadlineExceeded) || isCustomError(err, tErrs)) {
+		return fiber.ErrRequestTimeout
+	}
+	return err
 }
 
 // isCustomError checks whether err matches any error in errList using errors.Is.
