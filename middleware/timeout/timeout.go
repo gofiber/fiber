@@ -11,27 +11,27 @@ import (
 // New sets a request timeout, runs the handler in a separate Goroutine, and
 // returns fiber.ErrRequestTimeout when the timeout or any of the specified errors occur.
 func New(h fiber.Handler, timeout time.Duration, tErrs ...error) fiber.Handler {
-	return func(c fiber.Ctx) error {
+	return func(ctx fiber.Ctx) error {
 		// Create a context with a timeout
-		ctx, cancel := context.WithTimeout(c.Context(), timeout)
+		timeoutContext, cancel := context.WithTimeout(ctx.Context(), timeout)
 		defer cancel()
 
 		// Attach the new context to the Fiber context
-		c.SetContext(ctx)
+		ctx.SetContext(timeoutContext)
 
 		// Channel to capture the handler's result (error)
 		done := make(chan error, 1)
 
 		// Execute the handler in a separate Goroutine
 		go func() {
-			done <- h(c)
+			done <- h(ctx)
 		}()
 
 		// Wait for either the timeout or the handler to finish
 		select {
-		case <-ctx.Done():
+		case <-timeoutContext.Done():
 			// Triggered if the timeout occurs or the context is canceled
-			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			if errors.Is(timeoutContext.Err(), context.DeadlineExceeded) {
 				return fiber.ErrRequestTimeout
 			}
 			// For other context cancellations, we can still treat them the same
