@@ -8,51 +8,43 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-// New sets a request timeout, runs the handler in a separate Goroutine, and
-// returns fiber.ErrRequestTimeout when the timeout or any of the specified errors occur.
+// New enforces a timeout for each incoming request. If the timeout expires or
+// any of the specified errors occur, fiber.ErrRequestTimeout is returned.
 func New(h fiber.Handler, timeout time.Duration, tErrs ...error) fiber.Handler {
 	return func(ctx fiber.Ctx) error {
-		// Create a context with a timeout
+		// Create a context with the specified timeout; any operation exceeding
+		// this deadline will be canceled automatically.
 		timeoutContext, cancel := context.WithTimeout(ctx.Context(), timeout)
 		defer cancel()
 
-		// Attach the new context to the Fiber context
+		// Attach the timeout-bound context to the current Fiber context.
 		ctx.SetContext(timeoutContext)
 
-		// Channel to capture the handler's result (error)
-		done := make(chan error, 1)
+		// Execute the wrapped handler synchronously.
+		err := h(ctx)
 
-		// Execute the handler in a separate Goroutine
-		go func() {
-			done <- h(ctx)
-		}()
+		// If the context has timed out, return a request timeout error.
+		if timeoutContext.Err() != nil && errors.Is(timeoutContext.Err(), context.DeadlineExceeded) {
+			return fiber.ErrRequestTimeout
+		}
 
-		// Wait for either the timeout or the handler to finish
-		select {
-		case <-timeoutContext.Done():
-			// Triggered if the timeout occurs or the context is canceled
-			if errors.Is(timeoutContext.Err(), context.DeadlineExceeded) {
+		// If the handler returned an error, check whether it's a deadline exceeded
+		// error or any other listed timeout-triggering error.
+		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) || isCustomError(err, tErrs) {
 				return fiber.ErrRequestTimeout
 			}
-			// For other context cancellations, we can still treat them the same
-			return fiber.ErrRequestTimeout
+		}
+		return err
+	}
+}
 
-		case err := <-done:
-			// If the handler returned an error
-			if err != nil {
-				// Check if it's a deadline exceeded error
-				if errors.Is(err, context.DeadlineExceeded) {
-					return fiber.ErrRequestTimeout
-				}
-				// Check against any custom errors in the list
-				for _, timeoutErr := range tErrs {
-					if errors.Is(err, timeoutErr) {
-						return fiber.ErrRequestTimeout
-					}
-				}
-			}
-			// Otherwise, return the handler's error or nil
-			return err
+// isCustomError checks whether err matches any error in errList using errors.Is.
+func isCustomError(err error, errList []error) bool {
+	for _, e := range errList {
+		if errors.Is(err, e) {
+			return true
 		}
 	}
+	return false
 }
