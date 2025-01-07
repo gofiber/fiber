@@ -22,23 +22,15 @@ func New(h fiber.Handler, timeout time.Duration, tErrs ...error) fiber.Handler {
 		timeoutContext, cancel := context.WithTimeout(ctx.Context(), timeout)
 		defer cancel()
 
-		// Attach the timeout-bound context to the current Fiber context.
+		// Replace the default Fiber context with our timeout-bound context.
 		ctx.SetContext(timeoutContext)
 
-		// Execute the wrapped handler synchronously.
-		err := h(ctx)
+		// Run the handler and check for relevant errors.
+		err := runHandler(ctx, h, tErrs)
 
-		// If the context has timed out, return a request timeout error.
-		if timeoutContext.Err() != nil && errors.Is(timeoutContext.Err(), context.DeadlineExceeded) {
+		// If the context actually timed out, return a timeout error.
+		if errors.Is(timeoutContext.Err(), context.DeadlineExceeded) {
 			return fiber.ErrRequestTimeout
-		}
-
-		// If the handler returned an error, check whether it's a deadline exceeded
-		// error or any other listed timeout-triggering error.
-		if err != nil {
-			if errors.Is(err, context.DeadlineExceeded) || isCustomError(err, tErrs) {
-				return fiber.ErrRequestTimeout
-			}
 		}
 		return err
 	}
@@ -47,7 +39,9 @@ func New(h fiber.Handler, timeout time.Duration, tErrs ...error) fiber.Handler {
 // runHandler executes the handler and returns fiber.ErrRequestTimeout if it
 // sees a deadline exceeded error or one of the custom "timeout-like" errors.
 func runHandler(c fiber.Ctx, h fiber.Handler, tErrs []error) error {
+	// Execute the wrapped handler synchronously.
 	err := h(c)
+	// If the context has timed out, return a request timeout error.
 	if err != nil && (errors.Is(err, context.DeadlineExceeded) || isCustomError(err, tErrs)) {
 		return fiber.ErrRequestTimeout
 	}
