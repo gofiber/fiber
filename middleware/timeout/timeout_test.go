@@ -35,6 +35,7 @@ func sleepWithContext(ctx context.Context, d time.Duration, te error) error {
 
 // TestTimeout_Success tests a handler that completes within the allotted timeout.
 func TestTimeout_Success(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	// Our middleware wraps a handler that sleeps for 10ms, well under the 50ms limit.
@@ -54,6 +55,7 @@ func TestTimeout_Success(t *testing.T) {
 
 // TestTimeout_Exceeded tests a handler that exceeds the provided timeout.
 func TestTimeout_Exceeded(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	// This handler sleeps 200ms, exceeding the 100ms limit.
@@ -72,6 +74,7 @@ func TestTimeout_Exceeded(t *testing.T) {
 
 // TestTimeout_CustomError tests that returning a user-defined error is also treated as a timeout.
 func TestTimeout_CustomError(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	// This handler sleeps 50ms and returns errCustomTimeout if canceled.
@@ -94,6 +97,7 @@ func TestTimeout_CustomError(t *testing.T) {
 // that is neither a deadline exceeded nor a custom 'timeout' error, it is
 // propagated as a regular 500 (internal server error).
 func TestTimeout_UnmatchedError(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Get("/unmatched", New(func(_ fiber.Ctx) error {
@@ -110,6 +114,7 @@ func TestTimeout_UnmatchedError(t *testing.T) {
 // TestTimeout_ZeroDuration tests the edge case where the timeout is set to zero.
 // Usually this means the request can never exceed a 'deadline' – effectively no timeout.
 func TestTimeout_ZeroDuration(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Get("/zero", New(func(c fiber.Ctx) error {
