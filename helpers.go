@@ -612,6 +612,8 @@ func isNoCache(cacheControl string) bool {
 	return true
 }
 
+var errTestConnClosed = errors.New("testConn is closed")
+
 type testConn struct {
 	r        bytes.Buffer
 	w        bytes.Buffer
@@ -631,7 +633,7 @@ func (c *testConn) Write(b []byte) (int, error) {
 	defer c.Unlock()
 
 	if c.isClosed {
-		return 0, errors.New("testConn is closed")
+		return 0, errTestConnClosed
 	}
 	return c.w.Write(b) //nolint:wrapcheck // This must not be wrapped
 }
