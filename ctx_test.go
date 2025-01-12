@@ -5896,7 +5896,7 @@ func Test_Ctx_Drop(t *testing.T) {
 
 	// Test the Drop method
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/block-me", nil))
-	require.Error(t, err)
+	require.ErrorIs(t, err, ErrTestGotEmptyResponse)
 	require.Nil(t, resp)
 
 	// Test the no-response handler
@@ -5927,7 +5927,7 @@ func Test_Ctx_DropWithMiddleware(t *testing.T) {
 
 	// Test the Drop method
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/block-me", nil))
-	require.Error(t, err)
+	require.ErrorIs(t, err, ErrTestGotEmptyResponse)
 	require.Nil(t, resp)
 }
 
