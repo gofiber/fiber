@@ -1514,12 +1514,12 @@ func Test_App_Test_drop_empty_response(t *testing.T) {
 	t.Parallel()
 
 	app := New()
-	app.Get("/", func (c Ctx) error {
+	app.Get("/", func(c Ctx) error {
 		return c.Drop()
 	})
 
 	_, err := app.Test(httptest.NewRequest(MethodGet, "/", nil), TestConfig{
-		Timeout: 0,
+		Timeout:       0,
 		FailOnTimeout: false,
 	})
 	require.ErrorIs(t, err, ErrTestGotEmptyResponse)
