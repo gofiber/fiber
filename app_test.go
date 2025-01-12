@@ -1491,7 +1491,7 @@ func Test_App_Test_timeout(t *testing.T) {
 		Timeout:       100 * time.Millisecond,
 		FailOnTimeout: true,
 	})
-	require.Equal(t, os.ErrDeadlineExceeded, err)
+	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
 }
 
 func Test_App_Test_timeout_empty_response(t *testing.T) {
@@ -1507,7 +1507,7 @@ func Test_App_Test_timeout_empty_response(t *testing.T) {
 		Timeout:       100 * time.Millisecond,
 		FailOnTimeout: false,
 	})
-	require.Equal(t, errors.New("test: got empty response"), err)
+	require.ErrorIs(t, err, ErrTestGotEmptyResponse)
 }
 
 func Test_App_SetTLSHandler(t *testing.T) {
