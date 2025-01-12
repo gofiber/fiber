@@ -1511,18 +1511,18 @@ func Test_App_Test_timeout_empty_response(t *testing.T) {
 }
 
 func Test_App_Test_drop_empty_response(t *testing.T) {
-    t.Parallel()
+	t.Parallel()
 
-    app := New()
-    app.Get("/", func (c Ctx) error {
-        return c.Drop()
-    })
+	app := New()
+	app.Get("/", func (c Ctx) error {
+		return c.Drop()
+	})
 
-    _, err := app.Test(httptest.NewRequest(MethodGet, "/", nil), TestConfig{
-        Timeout: 0,
-        FailOnTimeout: false,
-    })
-    require.ErrorIs(t, err, ErrTestGotEmptyResponse)
+	_, err := app.Test(httptest.NewRequest(MethodGet, "/", nil), TestConfig{
+		Timeout: 0,
+		FailOnTimeout: false,
+	})
+	require.ErrorIs(t, err, ErrTestGotEmptyResponse)
 }
 
 func Test_App_SetTLSHandler(t *testing.T) {
