@@ -5949,6 +5949,21 @@ func Test_Ctx_End(t *testing.T) {
 	require.Equal(t, "Hello, World!", string(body))
 }
 
+// go test -run Test_Ctx_End_after_timeout
+func Test_Ctx_End_after_timeout(t *testing.T) {
+	app := New()
+
+	// Early flushing handler
+	app.Get("/", func(c Ctx) error {
+		time.Sleep(2 * time.Second)
+		return c.End()
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+	require.Nil(t, resp)
+}
+
 // go test -run Test_Ctx_End_with_drop_middleware
 func Test_Ctx_End_with_drop_middleware(t *testing.T) {
 	app := New()
