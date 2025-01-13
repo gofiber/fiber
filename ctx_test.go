@@ -5936,17 +5936,17 @@ func Test_Ctx_End(t *testing.T) {
 	app := New()
 
 	app.Get("/", func(c Ctx) error {
-		c.SendString("Hello, World!")
+		c.SendString("Hello, World!") //nolint:errcheck // unnecessary to check error
 		return c.End()
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.NotNil(t, resp)
-	require.Equal(t, resp.StatusCode, 200)
+	require.Equal(t, 200, resp.StatusCode)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "io.ReadAll(resp.Body)")
-	require.Equal(t, string(body), "Hello, World!")
+	require.Equal(t, "Hello, World!", string(body))
 }
 
 // go test -run Test_Ctx_End_with_drop_middleware
@@ -5956,20 +5956,20 @@ func Test_Ctx_End_with_drop_middleware(t *testing.T) {
 	// Middleware that will drop connections
 	// that persist after c.Next()
 	app.Use(func(c Ctx) error {
-		c.Next()
+		c.Next() //nolint:errcheck // unnecessary to check error
 		return c.Drop()
 	})
 
 	// Early flushing handler
 	app.Get("/", func(c Ctx) error {
-		c.SendStatus(StatusOK)
+		c.SendStatus(StatusOK) //nolint:errcheck // unnecessary to check error
 		return c.End()
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.NotNil(t, resp)
-	require.Equal(t, resp.StatusCode, 200)
+	require.Equal(t, 200, resp.StatusCode)
 }
 
 // go test -run Test_Ctx_End_after_drop
@@ -5989,7 +5989,7 @@ func Test_Ctx_End_after_drop(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
-	require.Error(t, err)
+	require.ErrorIs(t, err, ErrTestGotEmptyResponse)
 	require.Nil(t, resp)
 }
 
