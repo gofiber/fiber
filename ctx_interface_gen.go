@@ -12,7 +12,8 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// Ctx represents the Context which hold the HTTP request and response.\nIt has methods for the request query string, parameters, body, HTTP headers and so on.
+// Ctx represents the Context which hold the HTTP request and response.
+// It has methods for the request query string, parameters, body, HTTP headers and so on.
 type Ctx interface {
 	// Accepts checks if the specified extensions or content types are acceptable.
 	Accepts(offers ...string) string
@@ -353,4 +354,6 @@ type Ctx interface {
 	// This can be useful for silently terminating client connections, such as in DDoS mitigation
 	// or when blocking access to sensitive endpoints.
 	Drop() error
+	// End immediately flushes the current response and closes the underlying connection.
+	End() error
 }

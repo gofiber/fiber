@@ -5931,6 +5931,68 @@ func Test_Ctx_DropWithMiddleware(t *testing.T) {
 	require.Nil(t, resp)
 }
 
+// go test -run Test_Ctx_End
+func Test_Ctx_End(t *testing.T) {
+	app := New()
+
+	app.Get("/", func(c Ctx) error {
+		c.SendString("Hello, World!")
+		return c.End()
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Equal(t, resp.StatusCode, 200)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err, "io.ReadAll(resp.Body)")
+	require.Equal(t, string(body), "Hello, World!")
+}
+
+// go test -run Test_Ctx_End_with_drop_middleware
+func Test_Ctx_End_with_drop_middleware(t *testing.T) {
+	app := New()
+
+	// Middleware that will drop connections
+	// that persist after c.Next()
+	app.Use(func(c Ctx) error {
+		c.Next()
+		return c.Drop()
+	})
+
+	// Early flushing handler
+	app.Get("/", func(c Ctx) error {
+		c.SendStatus(StatusOK)
+		return c.End()
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Equal(t, resp.StatusCode, 200)
+}
+
+// go test -run Test_Ctx_End_after_drop
+func Test_Ctx_End_after_drop(t *testing.T) {
+	app := New()
+
+	// Middleware that ends the request
+	// after c.Next()
+	app.Use(func(c Ctx) error {
+		c.Next() //nolint:errcheck // unnecessary to check error
+		return c.End()
+	})
+
+	// Early flushing handler
+	app.Get("/", func(c Ctx) error {
+		return c.Drop()
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	require.Error(t, err)
+	require.Nil(t, resp)
+}
+
 // go test -run Test_GenericParseTypeString
 func Test_GenericParseTypeString(t *testing.T) {
 	t.Parallel()

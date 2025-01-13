@@ -341,6 +341,7 @@ testConfig := fiber.TestConfig{
 - **String**: Similar to Express.js, converts a value to a string.
 - **ViewBind**: Binds data to a view, replacing the old `Bind` method.
 - **CBOR**: Introducing [CBOR](https://cbor.io/) binary encoding format for both request & response body. CBOR is a binary data serialization format which is both compact and efficient, making it ideal for use in web applications.
+- **End**: Similar to Express.js, immediately flushes the current response and closes the underlying connection.
 
 ### Removed Methods
 
@@ -402,6 +403,41 @@ app.Get("/sse", func(c fiber.Ctx) {
 ```
 
 You can find more details about this feature in [/docs/api/ctx.md](./api/ctx.md).
+
+### End
+
+In v3, we introduced a new method to match the Express.js API's `res.end()` method.
+
+```go
+func (c Ctx) End()
+```
+
+With this method, you can:
+
+- Stop middleware from controlling the connection after a handler further up the method chain
+  by immediately flushing the current response and closing the connection.
+- Use `return c.End()` as an alternative to `return nil`
+
+```go
+app.Use(func (c fiber.Ctx) error {
+  err := c.Next()
+  if err != nil {
+    log.Println("Got error: %v", err)
+    return c.SendString(err.Error()) // Will be unsuccessful since the response ended below
+  }
+  return nil
+})
+
+app.Get("/hello", func (c fiber.Ctx) error {
+  query := c.Query("name", "")
+  if query == "" {
+    c.SendString("You don't have a name?")
+    c.End() // Closes the underlying connection
+    return errors.New("No name provided")
+  }
+  return c.SendString("Hello, " + query + "!")
+})
+```
 
 ---
 
