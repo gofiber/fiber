@@ -941,6 +941,8 @@ func (app *App) Hooks() *Hooks {
 	return app.hooks
 }
 
+var ErrTestGotEmptyResponse = errors.New("test: got empty response")
+
 // TestConfig is a struct holding Test settings
 type TestConfig struct {
 	// Timeout defines the maximum duration a
@@ -1022,7 +1024,7 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 	}
 
 	// Check for errors
-	if err != nil && !errors.Is(err, fasthttp.ErrGetOnly) {
+	if err != nil && !errors.Is(err, fasthttp.ErrGetOnly) && !errors.Is(err, errTestConnClosed) {
 		return nil, err
 	}
 
@@ -1033,7 +1035,7 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 	res, err := http.ReadResponse(buffer, req)
 	if err != nil {
 		if errors.Is(err, io.ErrUnexpectedEOF) {
-			return nil, errors.New("test: got empty response")
+			return nil, ErrTestGotEmptyResponse
 		}
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
