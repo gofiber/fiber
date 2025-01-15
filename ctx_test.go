@@ -5943,7 +5943,7 @@ func Test_Ctx_End(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.NotNil(t, resp)
-	require.Equal(t, 200, resp.StatusCode)
+	require.Equal(t, StatusOK, resp.StatusCode)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "io.ReadAll(resp.Body)")
 	require.Equal(t, "Hello, World!", string(body))
@@ -5984,7 +5984,7 @@ func Test_Ctx_End_with_drop_middleware(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.NotNil(t, resp)
-	require.Equal(t, 200, resp.StatusCode)
+	require.Equal(t, StatusOK, resp.StatusCode)
 }
 
 // go test -run Test_Ctx_End_after_drop
