@@ -420,22 +420,22 @@ With this method, you can:
 
 ```go
 app.Use(func (c fiber.Ctx) error {
-  err := c.Next()
-  if err != nil {
-    log.Println("Got error: %v", err)
-    return c.SendString(err.Error()) // Will be unsuccessful since the response ended below
-  }
-  return nil
+    err := c.Next()
+    if err != nil {
+        log.Println("Got error: %v", err)
+        return c.SendString(err.Error()) // Will be unsuccessful since the response ended below
+    }
+    return nil
 })
 
 app.Get("/hello", func (c fiber.Ctx) error {
-  query := c.Query("name", "")
-  if query == "" {
-    c.SendString("You don't have a name?")
-    c.End() // Closes the underlying connection
-    return errors.New("No name provided")
-  }
-  return c.SendString("Hello, " + query + "!")
+    query := c.Query("name", "")
+    if query == "" {
+        c.SendString("You don't have a name?")
+        c.End() // Closes the underlying connection
+        return errors.New("No name provided")
+    }
+    return c.SendString("Hello, " + query + "!")
 })
 ```
 

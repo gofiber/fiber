@@ -494,8 +494,8 @@ func (c fiber.Ctx) End() error
 
 ```go title="Example"
 app.Get("/", func(c fiber.Ctx) error {
-  c.SendString("Hello World!")
-  return c.End()
+    c.SendString("Hello World!")
+    return c.End()
 })
 ```
 
@@ -509,26 +509,26 @@ when they regain control after calling `c.Next()`.
 ```go title="Example"
 // Error Logging/Responding middleware
 app.Use(func(c fiber.Ctx) error {
-  err := c.Next()
+    err := c.Next()
   
-  // Log errors & write the error to the response
-  if err != nil {
-    log.Printf("Got error in middleware: %v", err)
-    return c.Writef("(got error %v)", err)
-  }
+    // Log errors & write the error to the response
+    if err != nil {
+        log.Printf("Got error in middleware: %v", err)
+        return c.Writef("(got error %v)", err)
+    }
 
-  // No errors occured
-  return nil
+    // No errors occured
+    return nil
 })
 
 // Handler with simulated error
 app.Get("/", func(c fiber.Ctx) error {
-  // Closes the connection instantly after writing from this handler
-  // and disallow further modification of its response
-  defer c.End()
+    // Closes the connection instantly after writing from this handler
+    // and disallow further modification of its response
+    defer c.End()
 
-  c.SendString("Hello, ... I forgot what comes next!")
-  return errors.New("some error")
+    c.SendString("Hello, ... I forgot what comes next!")
+    return errors.New("some error")
 })
 ```
 
