@@ -6,7 +6,7 @@ require (
 	github.com/gofiber/schema v1.2.0
 	github.com/gofiber/utils/v2 v2.0.0-beta.7
 	github.com/google/uuid v1.6.0
-	github.com/mattn/go-colorable v0.1.13
+	github.com/mattn/go-colorable v0.1.14
 	github.com/mattn/go-isatty v0.0.20
 	github.com/stretchr/testify v1.10.0
 	github.com/tinylib/msgp v1.2.5
