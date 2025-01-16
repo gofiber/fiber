@@ -1986,3 +1986,20 @@ func (c *DefaultCtx) Drop() error {
 	//nolint:wrapcheck // error wrapping is avoided to keep the operation lightweight and focused on connection closure.
 	return c.RequestCtx().Conn().Close()
 }
+
+// End immediately flushes the current response and closes the underlying connection.
+func (c *DefaultCtx) End() error {
+	ctx := c.RequestCtx()
+	conn := ctx.Conn()
+
+	bw := bufio.NewWriter(conn)
+	if err := ctx.Response.Write(bw); err != nil {
+		return err
+	}
+
+	if err := bw.Flush(); err != nil {
+		return err //nolint:wrapcheck // unnecessary to wrap it
+	}
+
+	return conn.Close() //nolint:wrapcheck // unnecessary to wrap it
+}

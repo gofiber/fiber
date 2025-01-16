@@ -5931,6 +5931,83 @@ func Test_Ctx_DropWithMiddleware(t *testing.T) {
 	require.Nil(t, resp)
 }
 
+// go test -run Test_Ctx_End
+func Test_Ctx_End(t *testing.T) {
+	app := New()
+
+	app.Get("/", func(c Ctx) error {
+		c.SendString("Hello, World!") //nolint:errcheck // unnecessary to check error
+		return c.End()
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err, "io.ReadAll(resp.Body)")
+	require.Equal(t, "Hello, World!", string(body))
+}
+
+// go test -run Test_Ctx_End_after_timeout
+func Test_Ctx_End_after_timeout(t *testing.T) {
+	app := New()
+
+	// Early flushing handler
+	app.Get("/", func(c Ctx) error {
+		time.Sleep(2 * time.Second)
+		return c.End()
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+	require.Nil(t, resp)
+}
+
+// go test -run Test_Ctx_End_with_drop_middleware
+func Test_Ctx_End_with_drop_middleware(t *testing.T) {
+	app := New()
+
+	// Middleware that will drop connections
+	// that persist after c.Next()
+	app.Use(func(c Ctx) error {
+		c.Next() //nolint:errcheck // unnecessary to check error
+		return c.Drop()
+	})
+
+	// Early flushing handler
+	app.Get("/", func(c Ctx) error {
+		c.SendStatus(StatusOK) //nolint:errcheck // unnecessary to check error
+		return c.End()
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Equal(t, StatusOK, resp.StatusCode)
+}
+
+// go test -run Test_Ctx_End_after_drop
+func Test_Ctx_End_after_drop(t *testing.T) {
+	app := New()
+
+	// Middleware that ends the request
+	// after c.Next()
+	app.Use(func(c Ctx) error {
+		c.Next() //nolint:errcheck // unnecessary to check error
+		return c.End()
+	})
+
+	// Early flushing handler
+	app.Get("/", func(c Ctx) error {
+		return c.Drop()
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	require.ErrorIs(t, err, ErrTestGotEmptyResponse)
+	require.Nil(t, resp)
+}
+
 // go test -run Test_GenericParseTypeString
 func Test_GenericParseTypeString(t *testing.T) {
 	t.Parallel()
