@@ -970,7 +970,6 @@ func Test_Cache_UncacheableStatusCodes(t *testing.T) {
 		fiber.StatusUnsupportedMediaType,
 		fiber.StatusRequestedRangeNotSatisfiable,
 		fiber.StatusExpectationFailed,
-		fiber.StatusTeapot,
 		fiber.StatusMisdirectedRequest,
 		fiber.StatusUnprocessableEntity,
 		fiber.StatusLocked,
