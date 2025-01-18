@@ -925,9 +925,7 @@ func Test_Cache_UncacheableStatusCodes(t *testing.T) {
 
 	app.Get("/:statusCode", func(c fiber.Ctx) error {
 		statusCode, err := strconv.Atoi(c.Params("statusCode"))
-		if err != nil {
-			return err
-		}
+		require.NoError(t, err)
 		return c.Status(statusCode).SendString("foo")
 	})
 
