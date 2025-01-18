@@ -918,6 +918,90 @@ func Test_Cache_MaxBytesSizes(t *testing.T) {
 	}
 }
 
+func Test_Cache_UncacheableStatusCodes(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New())
+
+	app.Get("/:statusCode", func(c fiber.Ctx) error {
+		statusCode, err := strconv.Atoi(c.Params("statusCode"))
+		if err != nil {
+			return err
+		}
+		return c.Status(statusCode).SendString("foo")
+	})
+
+	uncacheableStatusCodes := []int{
+		// Informational responses
+		fiber.StatusContinue,
+		fiber.StatusSwitchingProtocols,
+		fiber.StatusProcessing,
+		fiber.StatusEarlyHints,
+
+		// Successful responses
+		fiber.StatusCreated,
+		fiber.StatusAccepted,
+		fiber.StatusResetContent,
+		fiber.StatusMultiStatus,
+		fiber.StatusAlreadyReported,
+		fiber.StatusIMUsed,
+
+		// Redirection responses
+		fiber.StatusFound,
+		fiber.StatusSeeOther,
+		fiber.StatusNotModified,
+		fiber.StatusUseProxy,
+		fiber.StatusSwitchProxy,
+		fiber.StatusTemporaryRedirect,
+		fiber.StatusPermanentRedirect,
+
+		// Client error responses
+		fiber.StatusBadRequest,
+		fiber.StatusUnauthorized,
+		fiber.StatusPaymentRequired,
+		fiber.StatusForbidden,
+		fiber.StatusNotAcceptable,
+		fiber.StatusProxyAuthRequired,
+		fiber.StatusRequestTimeout,
+		fiber.StatusConflict,
+		fiber.StatusLengthRequired,
+		fiber.StatusPreconditionFailed,
+		fiber.StatusRequestEntityTooLarge,
+		fiber.StatusUnsupportedMediaType,
+		fiber.StatusRequestedRangeNotSatisfiable,
+		fiber.StatusExpectationFailed,
+		fiber.StatusTeapot,
+		fiber.StatusMisdirectedRequest,
+		fiber.StatusUnprocessableEntity,
+		fiber.StatusLocked,
+		fiber.StatusFailedDependency,
+		fiber.StatusTooEarly,
+		fiber.StatusUpgradeRequired,
+		fiber.StatusPreconditionRequired,
+		fiber.StatusTooManyRequests,
+		fiber.StatusRequestHeaderFieldsTooLarge,
+		fiber.StatusUnavailableForLegalReasons,
+
+		// Server error responses
+		fiber.StatusInternalServerError,
+		fiber.StatusBadGateway,
+		fiber.StatusServiceUnavailable,
+		fiber.StatusGatewayTimeout,
+		fiber.StatusHTTPVersionNotSupported,
+		fiber.StatusVariantAlsoNegotiates,
+		fiber.StatusInsufficientStorage,
+		fiber.StatusLoopDetected,
+		fiber.StatusNotExtended,
+		fiber.StatusNetworkAuthenticationRequired,
+	}
+	for _, v := range uncacheableStatusCodes {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, fmt.Sprintf("/%d", v), nil))
+		require.NoError(t, err)
+		require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+		require.Equal(t, v, resp.StatusCode)
+	}
+}
+
 // go test -v -run=^$ -bench=Benchmark_Cache -benchmem -count=4
 func Benchmark_Cache(b *testing.B) {
 	app := fiber.New()
