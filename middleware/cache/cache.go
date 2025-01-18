@@ -51,7 +51,7 @@ var ignoreHeaders = map[string]any{
 var cacheableStatusCodes = []int{
 	fiber.StatusOK, fiber.StatusNonAuthoritativeInformation, fiber.StatusNoContent, fiber.StatusPartialContent,
 	fiber.StatusMultipleChoices, fiber.StatusMovedPermanently,
-	fiber.StatusNotFound, fiber.StatusMethodNotAllowed, fiber.StatusGone, fiber.StatusRequestURITooLong,
+	fiber.StatusNotFound, fiber.StatusMethodNotAllowed, fiber.StatusGone, fiber.StatusTeapot, fiber.StatusRequestURITooLong,
 	fiber.StatusNotImplemented,
 }
 
