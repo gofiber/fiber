@@ -426,11 +426,11 @@ malicious connections before the server establishes a connection.
 
 ```go
 app.Get("/", func(c fiber.Ctx) error {
-  if c.IP() == "192.168.1.1" {
-    return c.Drop()
-  }
+    if c.IP() == "192.168.1.1" {
+        return c.Drop()
+    }
 
-  return c.SendString("Hello World!")
+    return c.SendString("Hello World!")
 })
 ```
 
