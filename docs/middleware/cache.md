@@ -10,6 +10,31 @@ Request Directives<br />
 `Cache-Control: no-cache` will return the up-to-date response but still caches it. You will always get a `miss` cache status.<br />
 `Cache-Control: no-store` will refrain from caching. You will always get the up-to-date response.
 
+Cacheable Status Codes<br />
+
+This middleware caches responses with the following status codes according to RFC7231:
+
+- `200: OK`
+- `203: Non-Authoritative Information`
+- `204: No Content`
+- `206: Partial Content`
+- `300: Multiple Choices`
+- `301: Moved Permanently`
+- `404: Not Found`
+- `405: Method Not Allowed`
+- `410: Gone`
+- `414: URI Too Long`
+- `501: Not Implemented`
+
+Additionally, `418: I'm a teapot` is not originally cacheable but is cached by this middleware.
+If the status code is other than these, you will always get an `unreachable` cache status.  
+
+For more information about cacheable status codes or RFC7231, please refer to the following resources:
+
+- [Cacheable - MDN Web Docs](https://developer.mozilla.org/en-US/docs/Glossary/Cacheable)
+
+- [RFC7231 - Hypertext Transfer Protocol (HTTP/1.1): Semantics and Content](https://datatracker.ietf.org/doc/html/rfc7231)
+
 ## Signatures
 
 ```go
