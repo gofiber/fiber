@@ -341,8 +341,8 @@ testConfig := fiber.TestConfig{
 - **String**: Similar to Express.js, converts a value to a string.
 - **ViewBind**: Binds data to a view, replacing the old `Bind` method.
 - **CBOR**: Introducing [CBOR](https://cbor.io/) binary encoding format for both request & response body. CBOR is a binary data serialization format which is both compact and efficient, making it ideal for use in web applications.
-- **End**: Similar to Express.js, immediately flushes the current response and closes the underlying connection.
 - **Drop**: Terminates the client connection silently without sending any HTTP headers or response body. This can be used for scenarios where you want to block certain requests without notifying the client, such as mitigating DDoS attacks or protecting sensitive endpoints from unauthorized access.
+- **End**: Similar to Express.js, immediately flushes the current response and closes the underlying connection.
 
 ### Removed Methods
 
@@ -400,6 +400,37 @@ app.Get("/sse", func(c fiber.Ctx) {
             }
         }
     })
+})
+```
+
+You can find more details about this feature in [/docs/api/ctx.md](./api/ctx.md).
+
+### Drop
+
+In v3, we introduced support to silently terminate requests through `Drop`.
+
+```go
+func (c Ctx) Drop()
+```
+
+With this method, you can:
+
+- Block certain requests without notifying the client to mitigate DDoS attacks
+- Protect sensitive endpoints from unauthorized access without leaking errors.
+
+:::caution
+While this feature adds the ability to drop connections, it is still **highly recommended** to use additional
+measures (such as **firewalls**, **proxies**, etc.) to further protect your server endpoints by blocking
+malicious connections before the server establishes a connection.
+:::
+
+```go
+app.Get("/", func(c fiber.Ctx) error {
+    if c.IP() == "192.168.1.1" {
+        return c.Drop()
+    }
+
+    return c.SendString("Hello World!")
 })
 ```
 
