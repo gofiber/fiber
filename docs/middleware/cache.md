@@ -27,7 +27,7 @@ This middleware caches responses with the following status codes according to RF
 - `501: Not Implemented`
 
 Additionally, `418: I'm a teapot` is not originally cacheable but is cached by this middleware.
-If the status code is other than these, you will always get an `unreachable` cache status.  
+If the status code is other than these, you will always get an `unreachable` cache status.
 
 For more information about cacheable status codes or RFC7231, please refer to the following resources:
 
