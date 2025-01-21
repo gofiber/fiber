@@ -59,7 +59,10 @@ func New(config ...Config) fiber.Handler {
 		valid, err := cfg.Validator(c, key)
 
 		if err == nil && valid {
+			// Store in both Locals and Context
 			c.Locals(tokenKey, key)
+			ctx := context.WithValue(c.Context(), tokenKey, key)
+			c.SetContext(ctx)
 			return cfg.SuccessHandler(c)
 		}
 		return cfg.ErrorHandler(c, err)
@@ -68,12 +71,20 @@ func New(config ...Config) fiber.Handler {
 
 // TokenFromContext returns the bearer token from the request context.
 // returns an empty string if the token does not exist
-func TokenFromContext(c fiber.Ctx) string {
-	token, ok := c.Locals(tokenKey).(string)
-	if !ok {
-		return ""
+func TokenFromContext(c any) string {
+	switch ctx := c.(type) {
+	case context.Context:
+		if token, ok := ctx.Value(tokenKey).(string); ok {
+			return token
+		}
+	case fiber.Ctx:
+		if token, ok := ctx.Locals(tokenKey).(string); ok {
+			return token
+		}
+	default:
+		log.Errorf("Unsupported context type: %T. Expected fiber.Ctx or context.Context", c)
 	}
-	return token
+	return ""
 }
 
 // MultipleKeySourceLookup creates a CustomKeyLookup function that checks multiple sources until one is found
