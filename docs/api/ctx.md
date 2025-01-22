@@ -276,6 +276,12 @@ It is important to specify the correct struct tag based on the content type to b
 | `application/xml`                   | xml        |
 | `text/xml`                          | xml        |
 
+:::note
+
+When handling `multipart/form-data`, only the form values can be directly assigned to the struct fields. Files included in the request are not automatically assigned to the struct. You must handle files separately using [`FormFile`](#FormFile) or other file-specific methods.
+
+:::
+
 ```go title="Signature"
 func (c *Ctx) BodyParser(out interface{}) error
 ```
