@@ -2,6 +2,7 @@
 package keyauth
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/url"
