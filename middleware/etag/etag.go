@@ -80,7 +80,7 @@ func New(config ...Config) fiber.Handler {
 			// Check if server's ETag is weak
 			if bytes.Equal(clientEtag[2:], etag) || bytes.Equal(clientEtag[2:], etag[2:]) {
 				// W/1 == 1 || W/1 == W/1
-				c.Context().ResetBody()
+				c.RequestCtx().ResetBody()
 
 				return c.SendStatus(fiber.StatusNotModified)
 			}
@@ -92,7 +92,7 @@ func New(config ...Config) fiber.Handler {
 
 		if bytes.Contains(clientEtag, etag) {
 			// 1 == 1
-			c.Context().ResetBody()
+			c.RequestCtx().ResetBody()
 
 			return c.SendStatus(fiber.StatusNotModified)
 		}

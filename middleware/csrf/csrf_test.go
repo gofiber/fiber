@@ -70,7 +70,7 @@ func Test_CSRF_WithSession(t *testing.T) {
 	t.Parallel()
 
 	// session store
-	store := session.New(session.Config{
+	store := session.NewStore(session.Config{
 		KeyLookup: "cookie:_session",
 	})
 
@@ -156,13 +156,68 @@ func Test_CSRF_WithSession(t *testing.T) {
 	}
 }
 
+// go test -run Test_CSRF_WithSession_Middleware
+func Test_CSRF_WithSession_Middleware(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	// session mw
+	smh, sstore := session.NewWithStore()
+
+	// csrf mw
+	cmh := New(Config{
+		Session: sstore,
+	})
+
+	app.Use(smh)
+
+	app.Use(cmh)
+
+	app.Get("/", func(c fiber.Ctx) error {
+		sess := session.FromContext(c)
+		sess.Set("hello", "world")
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	app.Post("/", func(c fiber.Ctx) error {
+		sess := session.FromContext(c)
+		if sess.Get("hello") != "world" {
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	h := app.Handler()
+	ctx := &fasthttp.RequestCtx{}
+
+	// Generate CSRF token and session_id
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	h(ctx)
+	csrfTokenParts := strings.Split(string(ctx.Response.Header.Peek(fiber.HeaderSetCookie)), ";")
+	require.Greater(t, len(csrfTokenParts), 2)
+	csrfToken := strings.Split(csrfTokenParts[0], "=")[1]
+	require.NotEmpty(t, csrfToken)
+	sessionID := strings.Split(csrfTokenParts[1], "=")[1]
+	require.NotEmpty(t, sessionID)
+
+	// Use the CSRF token and session_id
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.Header.Set(HeaderName, csrfToken)
+	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, csrfToken)
+	ctx.Request.Header.SetCookie("session_id", sessionID)
+	h(ctx)
+	require.Equal(t, 200, ctx.Response.StatusCode())
+}
+
 // go test -run Test_CSRF_ExpiredToken
 func Test_CSRF_ExpiredToken(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New(Config{
-		Expiration: 1 * time.Second,
+		IdleTimeout: 1 * time.Second,
 	}))
 
 	app.Post("/", func(c fiber.Ctx) error {
@@ -205,7 +260,7 @@ func Test_CSRF_ExpiredToken_WithSession(t *testing.T) {
 	t.Parallel()
 
 	// session store
-	store := session.New(session.Config{
+	store := session.NewStore(session.Config{
 		KeyLookup: "cookie:_session",
 	})
 
@@ -229,8 +284,8 @@ func Test_CSRF_ExpiredToken_WithSession(t *testing.T) {
 
 	// middleware config
 	config := Config{
-		Session:    store,
-		Expiration: 1 * time.Second,
+		Session:     store,
+		IdleTimeout: 1 * time.Second,
 	}
 
 	// middleware
@@ -1076,7 +1131,7 @@ func Test_CSRF_DeleteToken_WithSession(t *testing.T) {
 	t.Parallel()
 
 	// session store
-	store := session.New(session.Config{
+	store := session.NewStore(session.Config{
 		KeyLookup: "cookie:_session",
 	})
 

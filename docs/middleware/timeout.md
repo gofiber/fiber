@@ -8,7 +8,7 @@ There exist two distinct implementations of timeout middleware [Fiber](https://g
 
 ## New
 
-As a `fiber.Handler` wrapper, it creates a context with `context.WithTimeout` and pass it in `UserContext`.
+As a `fiber.Handler` wrapper, it creates a context with `context.WithTimeout` which is then used with `c.Context()`.
 
 If the context passed executions (eg. DB ops, Http calls) takes longer than the given duration to return, the timeout error is set and forwarded to the centralized `ErrorHandler`.
 
@@ -38,7 +38,7 @@ func main() {
     app := fiber.New()
     h := func(c fiber.Ctx) error {
         sleepTime, _ := time.ParseDuration(c.Params("sleepTime") + "ms")
-        if err := sleepWithContext(c.UserContext(), sleepTime); err != nil {
+        if err := sleepWithContext(c.Context(), sleepTime); err != nil {
             return fmt.Errorf("%w: execution error", err)
         }
         return nil
@@ -84,7 +84,7 @@ func main() {
     app := fiber.New()
     h := func(c fiber.Ctx) error {
         sleepTime, _ := time.ParseDuration(c.Params("sleepTime") + "ms")
-        if err := sleepWithContextWithCustomError(c.UserContext(), sleepTime); err != nil {
+        if err := sleepWithContextWithCustomError(c.Context(), sleepTime); err != nil {
             return fmt.Errorf("%w: execution error", err)
         }
         return nil
@@ -116,7 +116,7 @@ func main() {
     db, _ := gorm.Open(postgres.Open("postgres://localhost/foodb"), &gorm.Config{})
 
     handler := func(ctx fiber.Ctx) error {
-        tran := db.WithContext(ctx.UserContext()).Begin()
+        tran := db.WithContext(ctx.Context()).Begin()
         
         if tran = tran.Exec("SELECT pg_sleep(50)"); tran.Error != nil {
             return tran.Error

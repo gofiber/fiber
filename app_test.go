@@ -16,6 +16,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"reflect"
 	"regexp"
 	"runtime"
@@ -451,9 +452,9 @@ func Test_App_Use_CaseSensitive(t *testing.T) {
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
-	// check the detected path when the case insensitive recognition is activated
+	// check the detected path when the case-insensitive recognition is activated
 	app.config.CaseSensitive = false
-	// check the case sensitive feature
+	// check the case-sensitive feature
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/AbC", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
@@ -580,32 +581,51 @@ func Test_App_Use_StrictRouting(t *testing.T) {
 
 func Test_App_Add_Method_Test(t *testing.T) {
 	t.Parallel()
-	defer func() {
-		if err := recover(); err != nil {
-			require.Equal(t, "add: invalid http method JANE\n", fmt.Sprintf("%v", err))
-		}
-	}()
 
 	methods := append(DefaultMethods, "JOHN") //nolint:gocritic // We want a new slice here
 	app := New(Config{
 		RequestMethods: methods,
 	})
 
-	app.Add([]string{"JOHN"}, "/doe", testEmptyHandler)
+	app.Add([]string{"JOHN"}, "/john", testEmptyHandler)
+
+	resp, err := app.Test(httptest.NewRequest("JOHN", "/john", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/john", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest("UNKNOWN", "/john", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusNotImplemented, resp.StatusCode, "Status code")
+
+	// Add a new method
+	require.Panics(t, func() {
+		app.Add([]string{"JANE"}, "/jane", testEmptyHandler)
+	})
+}
+
+func Test_App_All_Method_Test(t *testing.T) {
+	t.Parallel()
+
+	methods := append(DefaultMethods, "JOHN") //nolint:gocritic // We want a new slice here
+	app := New(Config{
+		RequestMethods: methods,
+	})
+
+	// Add a new method with All
+	app.All("/doe", testEmptyHandler)
 
 	resp, err := app.Test(httptest.NewRequest("JOHN", "/doe", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/doe", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode, "Status code")
-
-	resp, err = app.Test(httptest.NewRequest("UNKNOWN", "/doe", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusNotImplemented, resp.StatusCode, "Status code")
-
-	app.Add([]string{"JANE"}, "/doe", testEmptyHandler)
+	// Add a new method
+	require.Panics(t, func() {
+		app.Add([]string{"JANE"}, "/jane", testEmptyHandler)
+	})
 }
 
 // go test -run Test_App_GETOnly
@@ -1124,7 +1144,9 @@ func Test_Test_Timeout(t *testing.T) {
 
 	app.Get("/", testEmptyHandler)
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil), -1)
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil), TestConfig{
+		Timeout: 0,
+	})
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
@@ -1133,7 +1155,10 @@ func Test_Test_Timeout(t *testing.T) {
 		return nil
 	})
 
-	_, err = app.Test(httptest.NewRequest(MethodGet, "/timeout", nil), 20*time.Millisecond)
+	_, err = app.Test(httptest.NewRequest(MethodGet, "/timeout", nil), TestConfig{
+		Timeout:       20 * time.Millisecond,
+		FailOnTimeout: true,
+	})
 	require.Error(t, err, "app.Test(req)")
 }
 
@@ -1432,7 +1457,9 @@ func Test_App_Test_no_timeout_infinitely(t *testing.T) {
 		})
 
 		req := httptest.NewRequest(MethodGet, "/", nil)
-		_, err = app.Test(req, -1)
+		_, err = app.Test(req, TestConfig{
+			Timeout: 0,
+		})
 	}()
 
 	tk := time.NewTimer(5 * time.Second)
@@ -1460,8 +1487,42 @@ func Test_App_Test_timeout(t *testing.T) {
 		return nil
 	})
 
-	_, err := app.Test(httptest.NewRequest(MethodGet, "/", nil), 100*time.Millisecond)
-	require.Equal(t, errors.New("test: timeout error after 100ms"), err)
+	_, err := app.Test(httptest.NewRequest(MethodGet, "/", nil), TestConfig{
+		Timeout:       100 * time.Millisecond,
+		FailOnTimeout: true,
+	})
+	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+}
+
+func Test_App_Test_timeout_empty_response(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/", func(_ Ctx) error {
+		time.Sleep(1 * time.Second)
+		return nil
+	})
+
+	_, err := app.Test(httptest.NewRequest(MethodGet, "/", nil), TestConfig{
+		Timeout:       100 * time.Millisecond,
+		FailOnTimeout: false,
+	})
+	require.ErrorIs(t, err, ErrTestGotEmptyResponse)
+}
+
+func Test_App_Test_drop_empty_response(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/", func(c Ctx) error {
+		return c.Drop()
+	})
+
+	_, err := app.Test(httptest.NewRequest(MethodGet, "/", nil), TestConfig{
+		Timeout:       0,
+		FailOnTimeout: false,
+	})
+	require.ErrorIs(t, err, ErrTestGotEmptyResponse)
 }
 
 func Test_App_SetTLSHandler(t *testing.T) {

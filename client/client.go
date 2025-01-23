@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/gofiber/fiber/v3/log"
 
 	"github.com/gofiber/utils/v2"
@@ -23,16 +24,13 @@ import (
 
 var ErrFailedToAppendCert = errors.New("failed to append certificate")
 
-// The Client is used to create a Fiber Client with
-// client-level settings that apply to all requests
-// raise from the client.
+// Client is used to create a Fiber client with client-level settings that
+// apply to all requests made by the client.
 //
-// Fiber Client also provides an option to override
-// or merge most of the client settings at the request.
+// The Fiber client also provides an option to override or merge most of the
+// client settings at the request level.
 type Client struct {
-	// logger
-	logger log.CommonLogger
-
+	logger   log.CommonLogger
 	fasthttp *fasthttp.Client
 
 	header  *Header
@@ -44,46 +42,35 @@ type Client struct {
 	jsonUnmarshal utils.JSONUnmarshal
 	xmlMarshal    utils.XMLMarshal
 	xmlUnmarshal  utils.XMLUnmarshal
+	cborMarshal   utils.CBORMarshal
+	cborUnmarshal utils.CBORUnmarshal
 
-	cookieJar *CookieJar
-
-	// retry
-	retryConfig *RetryConfig
-
-	baseURL   string
-	userAgent string
-	referer   string
-
-	// user defined request hooks
-	userRequestHooks []RequestHook
-
-	// client package defined request hooks
-	builtinRequestHooks []RequestHook
-
-	// user defined response hooks
-	userResponseHooks []ResponseHook
-
-	// client package defined response hooks
+	cookieJar            *CookieJar
+	retryConfig          *RetryConfig
+	baseURL              string
+	userAgent            string
+	referer              string
+	userRequestHooks     []RequestHook
+	builtinRequestHooks  []RequestHook
+	userResponseHooks    []ResponseHook
 	builtinResponseHooks []ResponseHook
 
 	timeout time.Duration
-
-	mu sync.RWMutex
-
-	debug bool
+	mu      sync.RWMutex
+	debug   bool
 }
 
-// R raise a request from the client.
+// R creates a new Request associated with the client.
 func (c *Client) R() *Request {
 	return AcquireRequest().SetClient(c)
 }
 
-// RequestHook Request returns user-defined request hooks.
+// RequestHook returns the user-defined request hooks.
 func (c *Client) RequestHook() []RequestHook {
 	return c.userRequestHooks
 }
 
-// AddRequestHook Add user-defined request hooks.
+// AddRequestHook adds user-defined request hooks.
 func (c *Client) AddRequestHook(h ...RequestHook) *Client {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -92,12 +79,12 @@ func (c *Client) AddRequestHook(h ...RequestHook) *Client {
 	return c
 }
 
-// ResponseHook return user-define response hooks.
+// ResponseHook returns the user-defined response hooks.
 func (c *Client) ResponseHook() []ResponseHook {
 	return c.userResponseHooks
 }
 
-// AddResponseHook Add user-defined response hooks.
+// AddResponseHook adds user-defined response hooks.
 func (c *Client) AddResponseHook(h ...ResponseHook) *Client {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -106,52 +93,74 @@ func (c *Client) AddResponseHook(h ...ResponseHook) *Client {
 	return c
 }
 
-// JSONMarshal returns json marshal function in Core.
+// JSONMarshal returns the JSON marshal function used by the client.
 func (c *Client) JSONMarshal() utils.JSONMarshal {
 	return c.jsonMarshal
 }
 
-// SetJSONMarshal sets the JSON encoder.
+// SetJSONMarshal sets the JSON marshal function to use.
 func (c *Client) SetJSONMarshal(f utils.JSONMarshal) *Client {
 	c.jsonMarshal = f
 	return c
 }
 
-// JSONUnmarshal returns json unmarshal function in Core.
+// JSONUnmarshal returns the JSON unmarshal function used by the client.
 func (c *Client) JSONUnmarshal() utils.JSONUnmarshal {
 	return c.jsonUnmarshal
 }
 
-// Set json decoder.
+// SetJSONUnmarshal sets the JSON unmarshal function to use.
 func (c *Client) SetJSONUnmarshal(f utils.JSONUnmarshal) *Client {
 	c.jsonUnmarshal = f
 	return c
 }
 
-// XMLMarshal returns xml marshal function in Core.
+// XMLMarshal returns the XML marshal function used by the client.
 func (c *Client) XMLMarshal() utils.XMLMarshal {
 	return c.xmlMarshal
 }
 
-// SetXMLMarshal Set xml encoder.
+// SetXMLMarshal sets the XML marshal function to use.
 func (c *Client) SetXMLMarshal(f utils.XMLMarshal) *Client {
 	c.xmlMarshal = f
 	return c
 }
 
-// XMLUnmarshal returns xml unmarshal function in Core.
+// XMLUnmarshal returns the XML unmarshal function used by the client.
 func (c *Client) XMLUnmarshal() utils.XMLUnmarshal {
 	return c.xmlUnmarshal
 }
 
-// SetXMLUnmarshal Set xml decoder.
+// SetXMLUnmarshal sets the XML unmarshal function to use.
 func (c *Client) SetXMLUnmarshal(f utils.XMLUnmarshal) *Client {
 	c.xmlUnmarshal = f
 	return c
 }
 
-// TLSConfig returns tlsConfig in client.
-// If client don't have tlsConfig, this function will init it.
+// CBORMarshal returns the CBOR marshal function used by the client.
+func (c *Client) CBORMarshal() utils.CBORMarshal {
+	return c.cborMarshal
+}
+
+// SetCBORMarshal sets the CBOR marshal function to use.
+func (c *Client) SetCBORMarshal(f utils.CBORMarshal) *Client {
+	c.cborMarshal = f
+	return c
+}
+
+// CBORUnmarshal returns the CBOR unmarshal function used by the client.
+func (c *Client) CBORUnmarshal() utils.CBORUnmarshal {
+	return c.cborUnmarshal
+}
+
+// SetCBORUnmarshal sets the CBOR unmarshal function to use.
+func (c *Client) SetCBORUnmarshal(f utils.CBORUnmarshal) *Client {
+	c.cborUnmarshal = f
+	return c
+}
+
+// TLSConfig returns the client's TLS configuration.
+// If none is set, it initializes a new one.
 func (c *Client) TLSConfig() *tls.Config {
 	if c.fasthttp.TLSConfig == nil {
 		c.fasthttp.TLSConfig = &tls.Config{
@@ -162,20 +171,20 @@ func (c *Client) TLSConfig() *tls.Config {
 	return c.fasthttp.TLSConfig
 }
 
-// SetTLSConfig sets tlsConfig in client.
+// SetTLSConfig sets the TLS configuration for the client.
 func (c *Client) SetTLSConfig(config *tls.Config) *Client {
 	c.fasthttp.TLSConfig = config
 	return c
 }
 
-// SetCertificates method sets client certificates into client.
+// SetCertificates adds certificates to the client's TLS configuration.
 func (c *Client) SetCertificates(certs ...tls.Certificate) *Client {
 	config := c.TLSConfig()
 	config.Certificates = append(config.Certificates, certs...)
 	return c
 }
 
-// SetRootCertificate adds one or more root certificates into client.
+// SetRootCertificate adds one or more root certificates to the client's TLS configuration.
 func (c *Client) SetRootCertificate(path string) *Client {
 	cleanPath := filepath.Clean(path)
 	file, err := os.Open(cleanPath)
@@ -205,7 +214,7 @@ func (c *Client) SetRootCertificate(path string) *Client {
 	return c
 }
 
-// SetRootCertificateFromString method adds one or more root certificates into client.
+// SetRootCertificateFromString adds one or more root certificates from a string to the client's TLS configuration.
 func (c *Client) SetRootCertificateFromString(pem string) *Client {
 	config := c.TLSConfig()
 
@@ -220,19 +229,18 @@ func (c *Client) SetRootCertificateFromString(pem string) *Client {
 	return c
 }
 
-// SetProxyURL sets proxy url in client. It will apply via core to hostclient.
+// SetProxyURL sets the proxy URL for the client. This affects all subsequent requests.
 func (c *Client) SetProxyURL(proxyURL string) error {
 	c.fasthttp.Dial = fasthttpproxy.FasthttpHTTPDialer(proxyURL)
-
 	return nil
 }
 
-// RetryConfig returns retry config in client.
+// RetryConfig returns the current retry configuration.
 func (c *Client) RetryConfig() *RetryConfig {
 	return c.retryConfig
 }
 
-// SetRetryConfig sets retry config in client which is impl by addon/retry package.
+// SetRetryConfig sets the retry configuration for the client.
 func (c *Client) SetRetryConfig(config *RetryConfig) *Client {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -241,58 +249,49 @@ func (c *Client) SetRetryConfig(config *RetryConfig) *Client {
 	return c
 }
 
-// BaseURL returns baseurl in Client instance.
+// BaseURL returns the client's base URL.
 func (c *Client) BaseURL() string {
 	return c.baseURL
 }
 
-// SetBaseURL Set baseUrl which is prefix of real url.
+// SetBaseURL sets the base URL prefix for all requests made by the client.
 func (c *Client) SetBaseURL(url string) *Client {
 	c.baseURL = url
 	return c
 }
 
-// Header method returns header value via key,
-// this method will visit all field in the header,
-// then sort them.
+// Header returns all header values associated with the provided key.
 func (c *Client) Header(key string) []string {
 	return c.header.PeekMultiple(key)
 }
 
-// AddHeader method adds a single header field and its value in the client instance.
-// These headers will be applied to all requests raised from this client instance.
-// Also, it can be overridden at request level header options.
+// AddHeader adds a single header field and its value to the client. These headers apply to all requests.
 func (c *Client) AddHeader(key, val string) *Client {
 	c.header.Add(key, val)
 	return c
 }
 
-// SetHeader method sets a single header field and its value in the client instance.
-// These headers will be applied to all requests raised from this client instance.
-// Also, it can be overridden at request level header options.
+// SetHeader sets a single header field and its value in the client.
 func (c *Client) SetHeader(key, val string) *Client {
 	c.header.Set(key, val)
 	return c
 }
 
-// AddHeaders method adds multiple headers field and its values at one go in the client instance.
-// These headers will be applied to all requests raised from this client instance. Also it can be
-// overridden at request level headers options.
+// AddHeaders adds multiple header fields and their values to the client.
 func (c *Client) AddHeaders(h map[string][]string) *Client {
 	c.header.AddHeaders(h)
 	return c
 }
 
 // SetHeaders method sets multiple headers field and its values at one go in the client instance.
-// These headers will be applied to all requests raised from this client instance. Also it can be
+// These headers will be applied to all requests created from this client instance. Also it can be
 // overridden at request level headers options.
 func (c *Client) SetHeaders(h map[string]string) *Client {
 	c.header.SetHeaders(h)
 	return c
 }
 
-// Param method returns params value via key,
-// this method will visit all field in the query param.
+// Param returns all values of the specified query parameter.
 func (c *Client) Param(key string) []string {
 	res := []string{}
 	tmp := c.params.PeekMulti(key)
@@ -303,47 +302,38 @@ func (c *Client) Param(key string) []string {
 	return res
 }
 
-// AddParam method adds a single query param field and its value in the client instance.
-// These params will be applied to all requests raised from this client instance.
-// Also, it can be overridden at request level param options.
+// AddParam adds a single query parameter and its value to the client.
+// These params will be applied to all requests created from this client instance.
 func (c *Client) AddParam(key, val string) *Client {
 	c.params.Add(key, val)
 	return c
 }
 
-// SetParam method sets a single query param field and its value in the client instance.
-// These params will be applied to all requests raised from this client instance.
-// Also, it can be overridden at request level param options.
+// SetParam sets a single query parameter and its value in the client.
 func (c *Client) SetParam(key, val string) *Client {
 	c.params.Set(key, val)
 	return c
 }
 
-// AddParams method adds multiple query params field and its values at one go in the client instance.
-// These params will be applied to all requests raised from this client instance. Also it can be
-// overridden at request level params options.
+// AddParams adds multiple query parameters and their values to the client.
 func (c *Client) AddParams(m map[string][]string) *Client {
 	c.params.AddParams(m)
 	return c
 }
 
-// SetParams method sets multiple params field and its values at one go in the client instance.
-// These params will be applied to all requests raised from this client instance. Also it can be
-// overridden at request level params options.
+// SetParams sets multiple query parameters and their values in the client.
 func (c *Client) SetParams(m map[string]string) *Client {
 	c.params.SetParams(m)
 	return c
 }
 
-// SetParamsWithStruct method sets multiple params field and its values at one go in the client instance.
-// These params will be applied to all requests raised from this client instance. Also it can be
-// overridden at request level params options.
+// SetParamsWithStruct sets multiple query parameters and their values using a struct.
 func (c *Client) SetParamsWithStruct(v any) *Client {
 	c.params.SetParamsWithStruct(v)
 	return c
 }
 
-// DelParams method deletes single or multiple params field and its values in client.
+// DelParams deletes one or more query parameters and their values from the client.
 func (c *Client) DelParams(key ...string) *Client {
 	for _, v := range key {
 		c.params.Del(v)
@@ -351,64 +341,51 @@ func (c *Client) DelParams(key ...string) *Client {
 	return c
 }
 
-// SetUserAgent method sets userAgent field and its value in the client instance.
-// This ua will be applied to all requests raised from this client instance.
-// Also it can be overridden at request level ua options.
+// SetUserAgent sets the User-Agent header for the client.
 func (c *Client) SetUserAgent(ua string) *Client {
 	c.userAgent = ua
 	return c
 }
 
-// SetReferer method sets referer field and its value in the client instance.
-// This referer will be applied to all requests raised from this client instance.
-// Also it can be overridden at request level referer options.
+// SetReferer sets the Referer header for the client.
 func (c *Client) SetReferer(r string) *Client {
 	c.referer = r
 	return c
 }
 
-// PathParam returns the path param be set in request instance.
-// if path param doesn't exist, return empty string.
+// PathParam returns the value of the specified path parameter. Returns an empty string if it does not exist.
 func (c *Client) PathParam(key string) string {
 	if val, ok := (*c.path)[key]; ok {
 		return val
 	}
-
 	return ""
 }
 
-// SetPathParam method sets a single path param field and its value in the client instance.
-// These path params will be applied to all requests raised from this client instance.
-// Also it can be overridden at request level path params options.
+// SetPathParam sets a single path parameter and its value in the client.
 func (c *Client) SetPathParam(key, val string) *Client {
 	c.path.SetParam(key, val)
 	return c
 }
 
-// SetPathParams method sets multiple path params field and its values at one go in the client instance.
-// These path params will be applied to all requests raised from this client instance. Also it can be
-// overridden at request level path params options.
+// SetPathParams sets multiple path parameters and their values in the client.
 func (c *Client) SetPathParams(m map[string]string) *Client {
 	c.path.SetParams(m)
 	return c
 }
 
-// SetPathParamsWithStruct method sets multiple path params field and its values at one go in the client instance.
-// These path params will be applied to all requests raised from this client instance. Also it can be
-// overridden at request level path params options.
+// SetPathParamsWithStruct sets multiple path parameters and their values using a struct.
 func (c *Client) SetPathParamsWithStruct(v any) *Client {
 	c.path.SetParamsWithStruct(v)
 	return c
 }
 
-// DelPathParams method deletes single or multiple path params field and its values in client.
+// DelPathParams deletes one or more path parameters and their values from the client.
 func (c *Client) DelPathParams(key ...string) *Client {
 	c.path.DelParams(key...)
 	return c
 }
 
-// Cookie returns the cookie be set in request instance.
-// if cookie doesn't exist, return empty string.
+// Cookie returns the value of the specified cookie. Returns an empty string if it does not exist.
 func (c *Client) Cookie(key string) string {
 	if val, ok := (*c.cookies)[key]; ok {
 		return val
@@ -416,127 +393,111 @@ func (c *Client) Cookie(key string) string {
 	return ""
 }
 
-// SetCookie method sets a single cookie field and its value in the client instance.
-// These cookies will be applied to all requests raised from this client instance.
-// Also it can be overridden at request level cookie options.
+// SetCookie sets a single cookie and its value in the client.
 func (c *Client) SetCookie(key, val string) *Client {
 	c.cookies.SetCookie(key, val)
 	return c
 }
 
-// SetCookies method sets multiple cookies field and its values at one go in the client instance.
-// These cookies will be applied to all requests raised from this client instance. Also it can be
-// overridden at request level cookie options.
+// SetCookies sets multiple cookies and their values in the client.
 func (c *Client) SetCookies(m map[string]string) *Client {
 	c.cookies.SetCookies(m)
 	return c
 }
 
-// SetCookiesWithStruct method sets multiple cookies field and its values at one go in the client instance.
-// These cookies will be applied to all requests raised from this client instance. Also it can be
-// overridden at request level cookies options.
+// SetCookiesWithStruct sets multiple cookies and their values using a struct.
 func (c *Client) SetCookiesWithStruct(v any) *Client {
 	c.cookies.SetCookiesWithStruct(v)
 	return c
 }
 
-// DelCookies method deletes single or multiple cookies field and its values in client.
+// DelCookies deletes one or more cookies and their values from the client.
 func (c *Client) DelCookies(key ...string) *Client {
 	c.cookies.DelCookies(key...)
 	return c
 }
 
-// SetTimeout method sets timeout val in client instance.
-// This value will be applied to all requests raised from this client instance.
-// Also, it can be overridden at request level timeout options.
+// SetTimeout sets the timeout value for the client. This applies to all requests unless overridden at the request level.
 func (c *Client) SetTimeout(t time.Duration) *Client {
 	c.timeout = t
 	return c
 }
 
-// Debug enable log debug level output.
+// Debug enables debug-level logging output.
 func (c *Client) Debug() *Client {
 	c.debug = true
 	return c
 }
 
-// DisableDebug disables log debug level output.
+// DisableDebug disables debug-level logging output.
 func (c *Client) DisableDebug() *Client {
 	c.debug = false
 	return c
 }
 
-// SetCookieJar sets cookie jar in client instance.
+// SetCookieJar sets the cookie jar for the client.
 func (c *Client) SetCookieJar(cookieJar *CookieJar) *Client {
 	c.cookieJar = cookieJar
 	return c
 }
 
-// Get provide an API like axios which send get request.
+// Get sends a GET request to the specified URL, similar to axios.
 func (c *Client) Get(url string, cfg ...Config) (*Response, error) {
 	req := AcquireRequest().SetClient(c)
 	setConfigToRequest(req, cfg...)
-
 	return req.Get(url)
 }
 
-// Post provide an API like axios which send post request.
+// Post sends a POST request to the specified URL, similar to axios.
 func (c *Client) Post(url string, cfg ...Config) (*Response, error) {
 	req := AcquireRequest().SetClient(c)
 	setConfigToRequest(req, cfg...)
-
 	return req.Post(url)
 }
 
-// Head provide a API like axios which send head request.
+// Head sends a HEAD request to the specified URL, similar to axios.
 func (c *Client) Head(url string, cfg ...Config) (*Response, error) {
 	req := AcquireRequest().SetClient(c)
 	setConfigToRequest(req, cfg...)
-
 	return req.Head(url)
 }
 
-// Put provide an API like axios which send put request.
+// Put sends a PUT request to the specified URL, similar to axios.
 func (c *Client) Put(url string, cfg ...Config) (*Response, error) {
 	req := AcquireRequest().SetClient(c)
 	setConfigToRequest(req, cfg...)
-
 	return req.Put(url)
 }
 
-// Delete provide an API like axios which send delete request.
+// Delete sends a DELETE request to the specified URL, similar to axios.
 func (c *Client) Delete(url string, cfg ...Config) (*Response, error) {
 	req := AcquireRequest().SetClient(c)
 	setConfigToRequest(req, cfg...)
-
 	return req.Delete(url)
 }
 
-// Options provide an API like axios which send options request.
+// Options sends an OPTIONS request to the specified URL, similar to axios.
 func (c *Client) Options(url string, cfg ...Config) (*Response, error) {
 	req := AcquireRequest().SetClient(c)
 	setConfigToRequest(req, cfg...)
-
 	return req.Options(url)
 }
 
-// Patch provide an API like axios which send patch request.
+// Patch sends a PATCH request to the specified URL, similar to axios.
 func (c *Client) Patch(url string, cfg ...Config) (*Response, error) {
 	req := AcquireRequest().SetClient(c)
 	setConfigToRequest(req, cfg...)
-
 	return req.Patch(url)
 }
 
-// Custom provide an API like axios which send custom request.
+// Custom sends a request with a custom method to the specified URL, similar to axios.
 func (c *Client) Custom(url, method string, cfg ...Config) (*Response, error) {
 	req := AcquireRequest().SetClient(c)
 	setConfigToRequest(req, cfg...)
-
 	return req.Custom(url, method)
 }
 
-// SetDial sets dial function in client.
+// SetDial sets the custom dial function for the client.
 func (c *Client) SetDial(dial fasthttp.DialFunc) *Client {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -545,7 +506,7 @@ func (c *Client) SetDial(dial fasthttp.DialFunc) *Client {
 	return c
 }
 
-// SetLogger sets logger instance in client.
+// SetLogger sets the logger instance used by the client.
 func (c *Client) SetLogger(logger log.CommonLogger) *Client {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -554,12 +515,12 @@ func (c *Client) SetLogger(logger log.CommonLogger) *Client {
 	return c
 }
 
-// Logger returns logger instance of client.
+// Logger returns the logger instance used by the client.
 func (c *Client) Logger() log.CommonLogger {
 	return c.logger
 }
 
-// Reset clears the Client object
+// Reset resets the client to its default state, clearing most configurations.
 func (c *Client) Reset() {
 	c.fasthttp = &fasthttp.Client{}
 	c.baseURL = ""
@@ -580,31 +541,25 @@ func (c *Client) Reset() {
 	c.params.Reset()
 }
 
-// Config for easy to set the request parameters, it should be
-// noted that when setting the request body will use JSON as
-// the default serialization mechanism, while the priority of
-// Body is higher than FormData, and the priority of FormData
-// is higher than File.
+// Config is used to easily set request parameters. Note that when setting a request body,
+// JSON is used as the default serialization mechanism. The priority is:
+// Body > FormData > File.
 type Config struct {
-	Ctx context.Context //nolint:containedctx // It's needed to be stored in the config.
-
-	Body      any
-	Header    map[string]string
-	Param     map[string]string
-	Cookie    map[string]string
-	PathParam map[string]string
-
-	FormData map[string]string
-
-	UserAgent string
-	Referer   string
-	File      []*File
-
+	Ctx          context.Context //nolint:containedctx // It's needed to be stored in the config.
+	Body         any
+	Header       map[string]string
+	Param        map[string]string
+	Cookie       map[string]string
+	PathParam    map[string]string
+	FormData     map[string]string
+	UserAgent    string
+	Referer      string
+	File         []*File
 	Timeout      time.Duration
 	MaxRedirects int
 }
 
-// setConfigToRequest Set the parameters passed via Config to Request.
+// setConfigToRequest sets the parameters passed via Config to the Request.
 func setConfigToRequest(req *Request, config ...Config) {
 	if len(config) == 0 {
 		return
@@ -653,7 +608,7 @@ func setConfigToRequest(req *Request, config ...Config) {
 	}
 
 	if cfg.FormData != nil {
-		req.SetFormDatas(cfg.FormData)
+		req.SetFormDataWithMap(cfg.FormData)
 		return
 	}
 
@@ -669,19 +624,25 @@ var (
 	defaultUserAgent = "fiber"
 )
 
-// init acquire a default client.
 func init() {
 	defaultClient = New()
 }
 
 // New creates and returns a new Client object.
 func New() *Client {
-	// FOllOW-UP performance optimization
-	// trie to use a pool to reduce the cost of memory allocation
-	// for the fiber client and the fasthttp client
-	// if possible also for other structs -> request header, cookie, query param, path param...
+	// Follow-up performance optimizations:
+	// Try to use a pool to reduce the memory allocation cost for the Fiber client and the fasthttp client.
+	// If possible, also consider pooling other structs (e.g., request headers, cookies, query parameters, path parameters).
+	return NewWithClient(&fasthttp.Client{})
+}
+
+// NewWithClient creates and returns a new Client object from an existing fasthttp.Client.
+func NewWithClient(c *fasthttp.Client) *Client {
+	if c == nil {
+		panic("fasthttp.Client must not be nil")
+	}
 	return &Client{
-		fasthttp: &fasthttp.Client{},
+		fasthttp: c,
 		header: &Header{
 			RequestHeader: &fasthttp.RequestHeader{},
 		},
@@ -698,17 +659,19 @@ func New() *Client {
 		jsonMarshal:          json.Marshal,
 		jsonUnmarshal:        json.Unmarshal,
 		xmlMarshal:           xml.Marshal,
+		cborMarshal:          cbor.Marshal,
+		cborUnmarshal:        cbor.Unmarshal,
 		xmlUnmarshal:         xml.Unmarshal,
 		logger:               log.DefaultLogger(),
 	}
 }
 
-// C get default client.
+// C returns the default client.
 func C() *Client {
 	return defaultClient
 }
 
-// Replace the defaultClient, the returned function can undo.
+// Replace replaces the defaultClient with a new one, returning a function to restore the old client.
 func Replace(c *Client) func() {
 	replaceMu.Lock()
 	defer replaceMu.Unlock()
@@ -724,37 +687,37 @@ func Replace(c *Client) func() {
 	}
 }
 
-// Get send a get request use defaultClient, a convenient method.
+// Get sends a GET request using the default client.
 func Get(url string, cfg ...Config) (*Response, error) {
 	return C().Get(url, cfg...)
 }
 
-// Post send a post request use defaultClient, a convenient method.
+// Post sends a POST request using the default client.
 func Post(url string, cfg ...Config) (*Response, error) {
 	return C().Post(url, cfg...)
 }
 
-// Head send a head request use defaultClient, a convenient method.
+// Head sends a HEAD request using the default client.
 func Head(url string, cfg ...Config) (*Response, error) {
 	return C().Head(url, cfg...)
 }
 
-// Put send a put request use defaultClient, a convenient method.
+// Put sends a PUT request using the default client.
 func Put(url string, cfg ...Config) (*Response, error) {
 	return C().Put(url, cfg...)
 }
 
-// Delete send a delete request use defaultClient, a convenient method.
+// Delete sends a DELETE request using the default client.
 func Delete(url string, cfg ...Config) (*Response, error) {
 	return C().Delete(url, cfg...)
 }
 
-// Options send a options request use defaultClient, a convenient method.
+// Options sends an OPTIONS request using the default client.
 func Options(url string, cfg ...Config) (*Response, error) {
 	return C().Options(url, cfg...)
 }
 
-// Patch send a patch request use defaultClient, a convenient method.
+// Patch sends a PATCH request using the default client.
 func Patch(url string, cfg ...Config) (*Response, error) {
 	return C().Patch(url, cfg...)
 }

@@ -7,7 +7,7 @@ sidebar_position: 7
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-With Fiber v2.30.0, you can execute custom user functions when to run some methods. Here is a list of these hooks:
+With Fiber you can execute custom user functions at specific method execution points. Here is a list of these hooks:
 
 - [OnRoute](#onroute)
 - [OnName](#onname)
@@ -21,7 +21,7 @@ With Fiber v2.30.0, you can execute custom user functions when to run some metho
 ## Constants
 
 ```go
-// Handlers define a function to create hooks for Fiber.
+// Handlers define functions to create hooks for Fiber.
 type OnRouteHandler = func(Route) error
 type OnNameHandler = OnRouteHandler
 type OnGroupHandler = func(Group) error
@@ -34,7 +34,7 @@ type OnMountHandler = func(*App) error
 
 ## OnRoute
 
-OnRoute is a hook to execute user functions on each route registeration. Also you can get route properties by **route** parameter.
+`OnRoute` is a hook to execute user functions on each route registration. You can access route properties via the **route** parameter.
 
 ```go title="Signature"
 func (h *Hooks) OnRoute(handler ...OnRouteHandler)
@@ -42,10 +42,10 @@ func (h *Hooks) OnRoute(handler ...OnRouteHandler)
 
 ## OnName
 
-OnName is a hook to execute user functions on each route naming. Also you can get route properties by **route** parameter.
+`OnName` is a hook to execute user functions on each route naming. You can access route properties via the **route** parameter.
 
 :::caution
-OnName only works with naming routes, not groups.
+`OnName` only works with named routes, not groups.
 :::
 
 ```go title="Signature"
@@ -73,13 +73,11 @@ func main() {
 
     app.Hooks().OnName(func(r fiber.Route) error {
         fmt.Print("Name: " + r.Name + ", ")
-
         return nil
     })
 
     app.Hooks().OnName(func(r fiber.Route) error {
         fmt.Print("Method: " + r.Method + "\n")
-
         return nil
     })
 
@@ -104,7 +102,7 @@ func main() {
 
 ## OnGroup
 
-OnGroup is a hook to execute user functions on each group registeration. Also you can get group properties by **group** parameter.
+`OnGroup` is a hook to execute user functions on each group registration. You can access group properties via the **group** parameter.
 
 ```go title="Signature"
 func (h *Hooks) OnGroup(handler ...OnGroupHandler)
@@ -112,10 +110,10 @@ func (h *Hooks) OnGroup(handler ...OnGroupHandler)
 
 ## OnGroupName
 
-OnGroupName is a hook to execute user functions on each group naming. Also you can get group properties by **group** parameter.
+`OnGroupName` is a hook to execute user functions on each group naming. You can access group properties via the **group** parameter.
 
 :::caution
-OnGroupName only works with naming groups, not routes.
+`OnGroupName` only works with named groups, not routes.
 :::
 
 ```go title="Signature"
@@ -124,7 +122,7 @@ func (h *Hooks) OnGroupName(handler ...OnGroupNameHandler)
 
 ## OnListen
 
-OnListen is a hook to execute user functions on Listen, ListenTLS, Listener.
+`OnListen` is a hook to execute user functions on `Listen`, `ListenTLS`, and `Listener`.
 
 ```go title="Signature"
 func (h *Hooks) OnListen(handler ...OnListenHandler)
@@ -134,23 +132,35 @@ func (h *Hooks) OnListen(handler ...OnListenHandler)
 <TabItem value="onlisten-example" label="OnListen Example">
 
 ```go
-app := fiber.New(fiber.Config{
-  DisableStartupMessage: true,
-})
+package main
 
-app.Hooks().OnListen(func(listenData fiber.ListenData) error {
-  if fiber.IsChild() {
-      return nil
-  }
-  scheme := "http"
-  if data.TLS {
-    scheme = "https"
-  }
-  log.Println(scheme + "://" + listenData.Host + ":" + listenData.Port)
-  return nil
-})
+import (
+    "log"
+    "os"
 
-app.Listen(":5000")
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/log"
+)
+
+func main() {
+    app := fiber.New(fiber.Config{
+        DisableStartupMessage: true,
+    })
+
+    app.Hooks().OnListen(func(listenData fiber.ListenData) error {
+        if fiber.IsChild() {
+            return nil
+        }
+        scheme := "http"
+        if listenData.TLS {
+            scheme = "https"
+        }
+        log.Println(scheme + "://" + listenData.Host + ":" + listenData.Port)
+        return nil
+    })
+
+    app.Listen(":5000")
+}
 ```
 
 </TabItem>
@@ -158,7 +168,7 @@ app.Listen(":5000")
 
 ## OnFork
 
-OnFork is a hook to execute user functions on Fork.
+`OnFork` is a hook to execute user functions on fork.
 
 ```go title="Signature"
 func (h *Hooks) OnFork(handler ...OnForkHandler)
@@ -166,7 +176,7 @@ func (h *Hooks) OnFork(handler ...OnForkHandler)
 
 ## OnShutdown
 
-OnShutdown is a hook to execute user functions after Shutdown.
+`OnShutdown` is a hook to execute user functions after shutdown.
 
 ```go title="Signature"
 func (h *Hooks) OnShutdown(handler ...OnShutdownHandler)
@@ -174,10 +184,10 @@ func (h *Hooks) OnShutdown(handler ...OnShutdownHandler)
 
 ## OnMount
 
-OnMount is a hook to execute user function after mounting process. The mount event is fired when sub-app is mounted on a parent app. The parent app is passed as a parameter. It works for app and group mounting.
+`OnMount` is a hook to execute user functions after the mounting process. The mount event is fired when a sub-app is mounted on a parent app. The parent app is passed as a parameter. It works for both app and group mounting.
 
 ```go title="Signature"
-func (h *Hooks) OnMount(handler ...OnMountHandler) 
+func (h *Hooks) OnMount(handler ...OnMountHandler)
 ```
 
 <Tabs>
@@ -193,24 +203,27 @@ import (
 )
 
 func main() {
-    app := New()
+    app := fiber.New()
     app.Get("/", testSimpleHandler).Name("x")
 
-    subApp := New()
+    subApp := fiber.New()
     subApp.Get("/test", testSimpleHandler)
 
     subApp.Hooks().OnMount(func(parent *fiber.App) error {
-        fmt.Print("Mount path of parent app: "+parent.MountPath())
-        // ...
-
+        fmt.Print("Mount path of parent app: " + parent.MountPath())
+        // Additional custom logic...
         return nil
     })
 
     app.Mount("/sub", subApp)
 }
 
+func testSimpleHandler(c fiber.Ctx) error {
+    return c.SendString("Hello, Fiber!")
+}
+
 // Result:
-// Mount path of parent app: 
+// Mount path of parent app: /sub
 ```
 
 </TabItem>

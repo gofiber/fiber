@@ -27,7 +27,7 @@ coverage:
 format:
 	go run mvdan.cc/gofumpt@latest -w -l .
 
-## markdown: 🎨 Find markdown format issues (Requires markdownlint-cli)
+## markdown: 🎨 Find markdown format issues (Requires markdownlint-cli2)
 .PHONY: markdown
 markdown:
 	markdownlint-cli2 "**/*.md" "#vendor"
@@ -35,7 +35,7 @@ markdown:
 ## lint: 🚨 Run lint checks
 .PHONY: lint
 lint:
-	go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.61.0 run ./...
+	go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.62.2 run ./...
 
 ## test: 🚦 Execute all tests
 .PHONY: test

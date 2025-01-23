@@ -7,18 +7,18 @@ sidebar_position: 1
 toc_max_heading_level: 5
 ---
 
-The Fiber Client for Fiber v3 is a powerful HTTP client optimized for high performance and ease of use in server-side applications. Built on top of the robust FastHTTP library, it inherits FastHTTP's high-speed HTTP protocol implementation. The client is designed to make HTTP requests both internally within services or externally to other web services.
+The Fiber Client for Fiber v3 is a powerful HTTP client optimized for high performance and ease of use in server-side applications. Built atop the FastHTTP library, it inherits FastHTTP's high-speed HTTP protocol implementation. The client is designed for making both internal requests (within a microservices architecture) and external requests to other web services.
 
 ## Features
 
-- **Lightweight & Fast**: Leveraging the minimalistic design of FastHTTP, the Fiber Client is lightweight and extremely fast.
-- **Flexible Configuration**: Configure client-level settings such as timeouts, headers, and more, which apply to all requests. Specific requests can further override or merge these settings.
-- **Connection Pooling**: Manages a pool of persistent connections that reduce the overhead of repeatedly establishing connections.
-- **Timeouts & Retries**: Supports setting request timeouts and retry mechanisms to handle transient failures.
+- **Lightweight & Fast**: Due to its FastHTTP foundation, the Fiber Client is both lightweight and extremely performant.
+- **Flexible Configuration**: Set client-level configurations (e.g., timeouts, headers) that apply to all requests, while still allowing overrides at the individual request level.
+- **Connection Pooling**: Maintains a pool of persistent connections, minimizing the overhead of establishing new connections for each request.
+- **Timeouts & Retries**: Supports request-level timeouts and configurable retries to handle transient errors gracefully.
 
 ## Usage
 
-To use the Fiber Client, instantiate it with the desired configuration. Here's a simple example:
+Instantiate the Fiber Client with your desired configurations, then send requests:
 
 ```go
 package main
@@ -34,7 +34,7 @@ func main() {
     cc := client.New()
     cc.SetTimeout(10 * time.Second)
 
-    // Get request
+    // Send a GET request
     resp, err := cc.Get("https://httpbin.org/get")
     if err != nil {
         panic(err)
@@ -45,7 +45,7 @@ func main() {
 }
 ```
 
-You can check out [examples](examples.md) for more examples!
+Check out [examples](examples.md) for more detailed usage examples.
 
 ```go
 type Client struct {
@@ -65,22 +65,24 @@ type Client struct {
 
     timeout time.Duration
 
-    // user defined request hooks
+    // user-defined request hooks
     userRequestHooks []RequestHook
 
-    // client package defined request hooks
+    // client package-defined request hooks
     builtinRequestHooks []RequestHook
 
-    // user defined response hooks
+    // user-defined response hooks
     userResponseHooks []ResponseHook
 
-    // client package defined response hooks
+    // client package-defined response hooks
     builtinResponseHooks []ResponseHook
 
     jsonMarshal   utils.JSONMarshal
     jsonUnmarshal utils.JSONUnmarshal
     xmlMarshal    utils.XMLMarshal
     xmlUnmarshal  utils.XMLUnmarshal
+    cborMarshal   utils.CBORMarshal
+    cborUnmarshal utils.CBORUnmarshal
 
     cookieJar *CookieJar
 
@@ -95,19 +97,29 @@ type Client struct {
 }
 ```
 
- New
+### New
 
-New creates and returns a new Client object.
+**New** creates and returns a new Client object.
 
 ```go title="Signature"
 func New() *Client
 ```
 
+### NewWithClient
+
+**NewWithClient** creates and returns a new Client object from an existing `fasthttp.Client`.
+
+```go title="Signature"
+func NewWithClient(c *fasthttp.Client) *Client
+```
+
 ## REST Methods
+
+The following methods send HTTP requests using the configured client:
 
 ### Get
 
-Get provides an API like axios which sends a get request.
+Sends a GET request, similar to axios.
 
 ```go title="Signature"
 func (c *Client) Get(url string, cfg ...Config) (*Response, error)
@@ -115,7 +127,7 @@ func (c *Client) Get(url string, cfg ...Config) (*Response, error)
 
 ### Post
 
-Post provides an API like axios which send post request.
+Sends a POST request, similar to axios.
 
 ```go title="Signature"
 func (c *Client) Post(url string, cfg ...Config) (*Response, error)
@@ -123,7 +135,7 @@ func (c *Client) Post(url string, cfg ...Config) (*Response, error)
 
 ### Put
 
-Put provides an API like axios which send put request.
+Sends a PUT request, similar to axios.
 
 ```go title="Signature"
 func (c *Client) Put(url string, cfg ...Config) (*Response, error)
@@ -131,7 +143,7 @@ func (c *Client) Put(url string, cfg ...Config) (*Response, error)
 
 ### Patch
 
-Patch provides an API like axios which send patch request.
+Sends a PATCH request, similar to axios.
 
 ```go title="Signature"
 func (c *Client) Patch(url string, cfg ...Config) (*Response, error)
@@ -139,7 +151,7 @@ func (c *Client) Patch(url string, cfg ...Config) (*Response, error)
 
 ### Delete
 
-Delete provides an API like axios which send delete request.
+Sends a DELETE request, similar to axios.
 
 ```go title="Signature"
 func (c *Client) Delete(url string, cfg ...Config) (*Response, error)
@@ -147,7 +159,7 @@ func (c *Client) Delete(url string, cfg ...Config) (*Response, error)
 
 ### Head
 
-Head provides an API like axios which send head request.
+Sends a HEAD request, similar to axios.
 
 ```go title="Signature"
 func (c *Client) Head(url string, cfg ...Config) (*Response, error)
@@ -155,7 +167,7 @@ func (c *Client) Head(url string, cfg ...Config) (*Response, error)
 
 ### Options
 
-Options provides an API like axios which send options request.
+Sends an OPTIONS request, similar to axios.
 
 ```go title="Signature"
 func (c *Client) Options(url string, cfg ...Config) (*Response, error)
@@ -163,7 +175,7 @@ func (c *Client) Options(url string, cfg ...Config) (*Response, error)
 
 ### Custom
 
-Custom provides an API like axios which send custom request.
+Sends a custom HTTP request, similar to axios, allowing you to specify any method.
 
 ```go title="Signature"
 func (c *Client) Custom(url, method string, cfg ...Config) (*Response, error)
@@ -171,9 +183,11 @@ func (c *Client) Custom(url, method string, cfg ...Config) (*Response, error)
 
 ## Request Configuration
 
-Config for easy to set the request parameters, it should be noted that when setting the request body will use JSON as the default serialization mechanism, while the priority of Body is higher than FormData, and the priority of FormData is higher than File.
+The `Config` type helps configure request parameters. When setting the request body, JSON is used as the default serialization. The priority of the body sources is:
 
-It can be used to configure request data while sending requests using Get, Post, etc.
+1. Body
+2. FormData
+3. File
 
 ```go
 type Config struct {
@@ -195,187 +209,223 @@ type Config struct {
 }
 ```
 
-### R
+## R
 
-R raise a request from the client.
-It acquires a request from the pool. You have to release it using `ReleaseRequest()` when it's no longer needed.
+**R** creates a new `Request` object from the client's request pool. Use `ReleaseRequest()` to return it to the pool when done.
 
 ```go title="Signature"
 func (c *Client) R() *Request
 ```
 
-### Hooks
+## Hooks
 
-#### RequestHook
+Hooks allow you to add custom logic before a request is sent or after a response is received.
 
-RequestHook Request returns user-defined request hooks.
+### RequestHook
+
+**RequestHook** returns user-defined request hooks.
 
 ```go title="Signature"
 func (c *Client) RequestHook() []RequestHook
 ```
 
-#### ResponseHook
+### ResponseHook
 
-ResponseHook return user-define response hooks.
+**ResponseHook** returns user-defined response hooks.
 
 ```go title="Signature"
 func (c *Client) ResponseHook() []ResponseHook
 ```
 
-#### AddRequestHook
+### AddRequestHook
 
-AddRequestHook Add user-defined request hooks.
+Adds one or more user-defined request hooks.
 
 ```go title="Signature"
 func (c *Client) AddRequestHook(h ...RequestHook) *Client
 ```
 
-#### AddResponseHook
+### AddResponseHook
 
-AddResponseHook Add user-defined response hooks.
+Adds one or more user-defined response hooks.
 
 ```go title="Signature"
 func (c *Client) AddResponseHook(h ...ResponseHook) *Client
 ```
 
-### JSON
+## JSON
 
-#### JSONMarshal
+### JSONMarshal
 
-JSONMarshal returns json marshal function in Core.
+Returns the JSON marshaler function used by the client.
 
 ```go title="Signature"
 func (c *Client) JSONMarshal() utils.JSONMarshal
 ```
 
-#### JSONUnmarshal
+### JSONUnmarshal
 
-JSONUnmarshal returns json unmarshal function in Core.
+Returns the JSON unmarshaller function used by the client.
 
 ```go title="Signature"
 func (c *Client) JSONUnmarshal() utils.JSONUnmarshal
 ```
 
-#### SetJSONMarshal
+### SetJSONMarshal
 
-SetJSONMarshal sets the JSON encoder.
+Sets a custom JSON marshaler.
 
 ```go title="Signature"
 func (c *Client) SetJSONMarshal(f utils.JSONMarshal) *Client
 ```
 
-#### SetJSONUnmarshal
+### SetJSONUnmarshal
 
-Set the JSON decoder.
+Sets a custom JSON unmarshaller.
 
 ```go title="Signature"
 func (c *Client) SetJSONUnmarshal(f utils.JSONUnmarshal) *Client
 ```
 
-### XML
+## XML
 
-#### XMLMarshal
+### XMLMarshal
 
-XMLMarshal returns xml marshal function in Core.
+Returns the XML marshaler function used by the client.
 
 ```go title="Signature"
 func (c *Client) XMLMarshal() utils.XMLMarshal
 ```
 
-#### XMLUnmarshal
+### XMLUnmarshal
 
-XMLUnmarshal returns xml unmarshal function in Core.
+Returns the XML unmarshaller function used by the client.
 
 ```go title="Signature"
 func (c *Client) XMLUnmarshal() utils.XMLUnmarshal
 ```
 
-#### SetXMLMarshal
+### SetXMLMarshal
 
-SetXMLMarshal sets the XML encoder.
+Sets a custom XML marshaler.
 
 ```go title="Signature"
 func (c *Client) SetXMLMarshal(f utils.XMLMarshal) *Client
 ```
 
-#### SetXMLUnmarshal
+### SetXMLUnmarshal
 
-SetXMLUnmarshal sets the XML decoder.
+Sets a custom XML unmarshaller.
 
 ```go title="Signature"
 func (c *Client) SetXMLUnmarshal(f utils.XMLUnmarshal) *Client
 ```
 
-### TLS
+## CBOR
 
-#### TLSConfig
+### CBORMarshal
 
-TLSConfig returns tlsConfig in client.
-If the client doesn't have a tlsConfig, this function will initialize it.
+Returns the CBOR marshaler function used by the client.
+
+```go title="Signature"
+func (c *Client) CBORMarshal() utils.CBORMarshal
+```
+
+### CBORUnmarshal
+
+Returns the CBOR unmarshaller function used by the client.
+
+```go title="Signature"
+func (c *Client) CBORUnmarshal() utils.CBORUnmarshal
+```
+
+### SetCBORMarshal
+
+Sets a custom CBOR marshaler.
+
+```go title="Signature"
+func (c *Client) SetCBORMarshal(f utils.CBORMarshal) *Client
+```
+
+### SetCBORUnmarshal
+
+Sets a custom CBOR unmarshaller.
+
+```go title="Signature"
+func (c *Client) SetCBORUnmarshal(f utils.CBORUnmarshal) *Client
+```
+
+## TLS
+
+### TLSConfig
+
+Returns the client's TLS configuration. If none is set, it initializes a new one.
 
 ```go title="Signature"
 func (c *Client) TLSConfig() *tls.Config
 ```
 
-#### SetTLSConfig
+### SetTLSConfig
 
-SetTLSConfig sets tlsConfig in client.
+Sets the TLS configuration for the client.
 
 ```go title="Signature"
 func (c *Client) SetTLSConfig(config *tls.Config) *Client
 ```
 
-#### SetCertificates
+### SetCertificates
 
-SetCertificates method sets client certificates into client.
+Adds client certificates to the TLS configuration.
 
 ```go title="Signature"
 func (c *Client) SetCertificates(certs ...tls.Certificate) *Client
 ```
 
-#### SetRootCertificate
+### SetRootCertificate
 
-SetRootCertificate adds one or more root certificates into client.
+Adds one or more root certificates to the client's trust store.
 
 ```go title="Signature"
 func (c *Client) SetRootCertificate(path string) *Client
 ```
 
-#### SetRootCertificateFromString
+### SetRootCertificateFromString
 
-SetRootCertificateFromString method adds one or more root certificates into the client.
+Adds one or more root certificates from a string.
 
 ```go title="Signature"
 func (c *Client) SetRootCertificateFromString(pem string) *Client
 ```
 
-### SetProxyURL
+## SetProxyURL
 
-SetProxyURL sets proxy url in client. It will apply via core to hostclient.
+Sets a proxy URL for the client. All subsequent requests will use this proxy.
 
 ```go title="Signature"
 func (c *Client) SetProxyURL(proxyURL string) error
 ```
 
-### RetryConfig
+## RetryConfig
 
-RetryConfig returns retry config in client.
+Returns the retry configuration of the client.
 
 ```go title="Signature"
 func (c *Client) RetryConfig() *RetryConfig
 ```
 
-### SetRetryConfig
+## SetRetryConfig
 
-SetRetryConfig sets retry config in client, which is impl by addon/retry package.
+Sets the retry configuration for the client.
 
 ```go title="Signature"
 func (c *Client) SetRetryConfig(config *RetryConfig) *Client
 ```
 
+## BaseURL
+
 ### BaseURL
 
-BaseURL returns baseurl in Client instance.
+**BaseURL** returns the base URL currently set in the client.
 
 ```go title="Signature"
 func (c *Client) BaseURL() string
@@ -383,11 +433,13 @@ func (c *Client) BaseURL() string
 
 ### SetBaseURL
 
-SetBaseURL Set baseUrl which is prefix of real url.
+Sets a base URL prefix for all requests made by the client.
 
 ```go title="Signature"
 func (c *Client) SetBaseURL(url string) *Client
 ```
+
+**Example:**
 
 ```go title="Example"
 cc := client.New()
@@ -406,132 +458,118 @@ fmt.Println(string(resp.Body()))
 
 ```json
 {
-  "args": {}, 
+  "args": {},
   ...
 }
 ```
 
 </details>
 
+## Headers
+
 ### Header
 
-Header method returns header value via key, this method will visit all field in the header
+Retrieves all values of a header key at the client level. The returned values apply to all requests.
 
 ```go title="Signature"
 func (c *Client) Header(key string) []string
 ```
 
-#### AddHeader
+### AddHeader
 
-AddHeader method adds a single header field and its value in the client instance.
-These headers will be applied to all requests raised from this client instance.
-Also, it can be overridden at request level header options.
+Adds a single header to all requests initiated by this client.
 
 ```go title="Signature"
 func (c *Client) AddHeader(key, val string) *Client
 ```
 
-#### SetHeader
+### SetHeader
 
-SetHeader method sets a single header field and its value in the client instance.
-These headers will be applied to all requests raised from this client instance.
-Also, it can be overridden at request level header options.
+Sets a single header, overriding any existing headers with the same key.
 
 ```go title="Signature"
 func (c *Client) SetHeader(key, val string) *Client
 ```
 
-#### AddHeaders
+### AddHeaders
 
-AddHeaders method adds multiple headers field and its values at one go in the client instance.
-These headers will be applied to all requests raised from this client instance.
-Also it can be overridden at request level headers options.
+Adds multiple headers at once, all applying to all future requests from this client.
 
 ```go title="Signature"
 func (c *Client) AddHeaders(h map[string][]string) *Client
 ```
 
-#### SetHeaders
+### SetHeaders
 
-SetHeaders method sets multiple headers field and its values at one go in the client instance.
-These headers will be applied to all requests raised from this client instance.
-Also it can be overridden at request level headers options.
+Sets multiple headers at once, overriding previously set headers.
 
 ```go title="Signature"
 func (c *Client) SetHeaders(h map[string]string) *Client
 ```
 
+## Query Parameters
+
 ### Param
 
-Param method returns params value via key, this method will visit all field in the query param.
+Returns the values for a given query parameter key.
 
 ```go title="Signature"
 func (c *Client) Param(key string) []string
 ```
 
-#### AddParam
+### AddParam
 
-AddParam method adds a single query param field and its value in the client instance.
-These params will be applied to all requests raised from this client instance.
-Also, it can be overridden at request level param options.
+Adds a single query parameter for all requests.
 
 ```go title="Signature"
 func (c *Client) AddParam(key, val string) *Client
 ```
 
-#### SetParam
+### SetParam
 
-SetParam method sets a single query param field and its value in the client instance.
-These params will be applied to all requests raised from this client instance.
-Also, it can be overridden at request level param options.
+Sets a single query parameter, overriding previously set values.
 
 ```go title="Signature"
 func (c *Client) SetParam(key, val string) *Client
 ```
 
-#### AddParams
+### AddParams
 
-AddParams method adds multiple query params field and its values at one go in the client instance.
-These params will be applied to all requests raised from this client instance.
-Also it can be overridden at request level params options.
+Adds multiple query parameters from a map of string slices.
 
 ```go title="Signature"
 func (c *Client) AddParams(m map[string][]string) *Client
 ```
 
-#### SetParams
+### SetParams
 
-SetParams method sets multiple params field and its values at one go in the client instance.
-These params will be applied to all requests raised from this client instance.
-Also it can be overridden at request level params options.
+Sets multiple query parameters from a map, overriding previously set values.
 
 ```go title="Signature"
 func (c *Client) SetParams(m map[string]string) *Client
 ```
 
-#### SetParamsWithStruct
+### SetParamsWithStruct
 
-SetParamsWithStruct method sets multiple params field and its values at one go in the client instance.
-These params will be applied to all requests raised from this client instance.
-Also it can be overridden at request level params options.
+Sets multiple query parameters from a struct. Nested structs are not currently supported.
 
 ```go title="Signature"
 func (c *Client) SetParamsWithStruct(v any) *Client
 ```
 
-#### DelParams
+### DelParams
 
-DelParams method deletes single or multiple params field and its values in client.
+Deletes one or more query parameters.
 
 ```go title="Signature"
 func (c *Client) DelParams(key ...string) *Client
 ```
 
+## UserAgent & Referer
+
 ### SetUserAgent
 
-SetUserAgent method sets the userAgent field and its value in the client instance.
-This ua will be applied to all requests raised from this client instance.
-Also it can be overridden at request level ua options.
+Sets the user agent header for all requests.
 
 ```go title="Signature"
 func (c *Client) SetUserAgent(ua string) *Client
@@ -539,79 +577,73 @@ func (c *Client) SetUserAgent(ua string) *Client
 
 ### SetReferer
 
-SetReferer method sets referer field and its value in the client instance.
-This referer will be applied to all requests raised from this client instance.
-Also it can be overridden at request level referer options.
+Sets the referer header for all requests.
 
 ```go title="Signature"
 func (c *Client) SetReferer(r string) *Client
 ```
 
+## Path Parameters
+
 ### PathParam
 
-PathParam returns the path param be set in request instance.
-If the path param doesn't exist, return empty string.
+Returns the value of a named path parameter, if set.
 
 ```go title="Signature"
 func (c *Client) PathParam(key string) string
 ```
 
-#### SetPathParam
+### SetPathParam
 
-SetPathParam method sets a single path param field and its value in the client instance.
-These path params will be applied to all requests raised from this client instance.
-Also it can be overridden at request level path params options.
+Sets a single path parameter.
 
 ```go title="Signature"
 func (c *Client) SetPathParam(key, val string) *Client
 ```
 
-#### SetPathParams
+### SetPathParams
 
-SetPathParams method sets multiple path params field and its values at one go in the client instance.
-These path params will be applied to all requests raised from this client instance.
-Also it can be overridden at request level path params options.
+Sets multiple path parameters at once.
 
 ```go title="Signature"
 func (c *Client) SetPathParams(m map[string]string) *Client
 ```
 
-#### SetPathParamsWithStruct
+### SetPathParamsWithStruct
 
-SetPathParamsWithStruct method sets multiple path params field and its values at one go in the client instance.
-These path params will be applied to all requests raised from this client instance.
-Also it can be overridden at request level path params options.
+Sets multiple path parameters from a struct.
 
 ```go title="Signature"
 func (c *Client) SetPathParamsWithStruct(v any) *Client
 ```
 
-#### DelPathParams
+### DelPathParams
 
-DelPathParams method deletes single or multiple path params field and its values in client.
+Deletes one or more path parameters.
 
 ```go title="Signature"
 func (c *Client) DelPathParams(key ...string) *Client
 ```
 
+## Cookies
+
 ### Cookie
 
-Cookie returns the cookie be set in request instance.
-If cookie doesn't exist, return empty string.
+Returns the value of a named cookie if set at the client level.
 
 ```go title="Signature"
 func (c *Client) Cookie(key string) string
 ```
 
-#### SetCookie
+### SetCookie
 
-SetCookie method sets a single cookie field and its value in the client instance.
-These cookies will be applied to all requests raised from this client instance.
-Also it can be overridden at request level cookie options.
+Sets a single cookie for all requests.
 
 ```go title="Signature"
 func (c *Client) SetCookie(key, val string) *Client
 ```
+
+**Example:**
 
 ```go title="Example"
 cc := client.New()
@@ -638,71 +670,73 @@ fmt.Println(string(resp.Body()))
 
 </details>
 
-#### SetCookies
+### SetCookies
 
-SetCookies method sets multiple cookies field and its values at one go in the client instance.
-These cookies will be applied to all requests raised from this client instance.
-Also it can be overridden at request level cookie options.
+Sets multiple cookies at once.
 
 ```go title="Signature"
 func (c *Client) SetCookies(m map[string]string) *Client
 ```
 
-#### SetCookiesWithStruct
+### SetCookiesWithStruct
 
-SetCookiesWithStruct method sets multiple cookies field and its values at one go in the client instance.
-These cookies will be applied to all requests raised from this client instance.
-Also it can be overridden at request level cookies options.
+Sets multiple cookies from a struct.
 
 ```go title="Signature"
 func (c *Client) SetCookiesWithStruct(v any) *Client
 ```
 
-#### DelCookies
+### DelCookies
 
-DelCookies method deletes single or multiple cookies field and its values in client.
+Deletes one or more cookies.
 
 ```go title="Signature"
 func (c *Client) DelCookies(key ...string) *Client
 ```
 
+## Timeout
+
 ### SetTimeout
 
-SetTimeout method sets timeout val in client instance.
-This value will be applied to all requests raised from this client instance.
-Also, it can be overridden at request level timeout options.
+Sets a default timeout for all requests, which can be overridden per request.
 
 ```go title="Signature"
 func (c *Client) SetTimeout(t time.Duration) *Client
 ```
 
+## Debugging
+
 ### Debug
 
-Debug enable log debug level output.
+Enables debug-level logging output.
 
 ```go title="Signature"
 func (c *Client) Debug() *Client
 ```
 
-#### DisableDebug
+### DisableDebug
 
-DisableDebug disables log debug level output.
+Disables debug-level logging output.
 
 ```go title="Signature"
 func (c *Client) DisableDebug() *Client
 ```
 
+## Cookie Jar
+
 ### SetCookieJar
 
-SetCookieJar sets cookie jar in client instance.
+Assigns a cookie jar to the client to store and manage cookies across requests.
 
 ```go title="Signature"
 func (c *Client) SetCookieJar(cookieJar *CookieJar) *Client
 ```
 
+## Dial & Logger
+
 ### SetDial
 
-SetDial sets dial function in client.
+Sets a custom dial function.
 
 ```go title="Signature"
 func (c *Client) SetDial(dial fasthttp.DialFunc) *Client
@@ -710,7 +744,7 @@ func (c *Client) SetDial(dial fasthttp.DialFunc) *Client
 
 ### SetLogger
 
-SetLogger sets logger instance in client.
+Sets the logger instance used by the client.
 
 ```go title="Signature"
 func (c *Client) SetLogger(logger log.CommonLogger) *Client
@@ -718,15 +752,17 @@ func (c *Client) SetLogger(logger log.CommonLogger) *Client
 
 ### Logger
 
-Logger returns logger instance of client.
+Returns the current logger instance.
 
 ```go title="Signature"
 func (c *Client) Logger() log.CommonLogger
 ```
 
+## Reset
+
 ### Reset
 
-Reset clears the Client object
+Clears and resets the client to its default state.
 
 ```go title="Signature"
 func (c *Client) Reset()
@@ -734,12 +770,11 @@ func (c *Client) Reset()
 
 ## Default Client
 
-Default client is default client object of Gofiber and created using `New()`.
-You can configurate it as you wish or replace it with another clients.
+Fiber provides a default client (created with `New()`). You can configure it or replace it as needed.
 
 ### C
 
-C gets default client.
+**C** returns the default client.
 
 ```go title="Signature"
 func C() *Client
@@ -803,10 +838,10 @@ func Options(url string, cfg ...Config) (*Response, error)
 
 ### Replace
 
-Replace the defaultClient, the returned function can undo.
+**Replace** replaces the default client with a new one. It returns a function that can restore the old client.
 
 :::caution
-The default client should not be changed concurrently.
+Do not modify the default client concurrently.
 :::
 
 ```go title="Signature"

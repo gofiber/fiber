@@ -514,6 +514,48 @@ func Test_Utils_TestConn_Deadline(t *testing.T) {
 	require.NoError(t, conn.SetWriteDeadline(time.Time{}))
 }
 
+func Test_Utils_TestConn_ReadWrite(t *testing.T) {
+	t.Parallel()
+	conn := &testConn{}
+
+	// Verify read of request
+	_, err := conn.r.Write([]byte("Request"))
+	require.NoError(t, err)
+
+	req := make([]byte, 7)
+	_, err = conn.Read(req)
+	require.NoError(t, err)
+	require.Equal(t, []byte("Request"), req)
+
+	// Verify write of response
+	_, err = conn.Write([]byte("Response"))
+	require.NoError(t, err)
+
+	res := make([]byte, 8)
+	_, err = conn.w.Read(res)
+	require.NoError(t, err)
+	require.Equal(t, []byte("Response"), res)
+}
+
+func Test_Utils_TestConn_Closed_Write(t *testing.T) {
+	t.Parallel()
+	conn := &testConn{}
+
+	// Verify write of response
+	_, err := conn.Write([]byte("Response 1\n"))
+	require.NoError(t, err)
+
+	// Close early, write should fail
+	conn.Close() //nolint:errcheck, revive // It is fine to ignore the error here
+	_, err = conn.Write([]byte("Response 2\n"))
+	require.ErrorIs(t, err, errTestConnClosed)
+
+	res := make([]byte, 11)
+	_, err = conn.w.Read(res)
+	require.NoError(t, err)
+	require.Equal(t, []byte("Response 1\n"), res)
+}
+
 func Test_Utils_IsNoCache(t *testing.T) {
 	t.Parallel()
 	testCases := []struct {

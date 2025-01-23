@@ -4,12 +4,22 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
-type jsonBinding struct{}
+// JSONBinding is the JSON binder for JSON request body.
+type JSONBinding struct {
+	JSONDecoder utils.JSONUnmarshal
+}
 
-func (*jsonBinding) Name() string {
+// Name returns the binding name.
+func (*JSONBinding) Name() string {
 	return "json"
 }
 
-func (*jsonBinding) Bind(body []byte, jsonDecoder utils.JSONUnmarshal, out any) error {
-	return jsonDecoder(body, out)
+// Bind parses the request body as JSON and returns the result.
+func (b *JSONBinding) Bind(body []byte, out any) error {
+	return b.JSONDecoder(body, out)
+}
+
+// Reset resets the JSONBinding binder.
+func (b *JSONBinding) Reset() {
+	b.JSONDecoder = nil
 }
