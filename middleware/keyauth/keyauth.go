@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/log"
 )
 
 // The contextKey type is unexported to prevent collisions with context keys defined in
