@@ -1838,26 +1838,26 @@ func (c *Ctx) String() string {
 	buf := bytebufferpool.Get()
 
 	// Start with the ID, converting it to a hex string without fmt.Sprintf
-	buf.WriteByte('#')
+	buf.WriteByte('#') //nolint:errcheck // Not needed here
 	// Convert ID to hexadecimal
 	id := strconv.FormatUint(c.fasthttp.ID(), 16)
 	// Pad with leading zeros to ensure 16 characters
 	for i := 0; i < (16 - len(id)); i++ {
-		buf.WriteByte('0')
+		buf.WriteByte('0') //nolint:errcheck // Not needed here
 	}
-	buf.WriteString(id)
-	buf.WriteString(" - ")
+	buf.WriteString(id)    //nolint:errcheck // Not needed here
+	buf.WriteString(" - ") //nolint:errcheck // Not needed here
 
 	// Add local and remote addresses directly
-	buf.WriteString(c.fasthttp.LocalAddr().String())
-	buf.WriteString(" <-> ")
-	buf.WriteString(c.fasthttp.RemoteAddr().String())
-	buf.WriteString(" - ")
+	buf.WriteString(c.fasthttp.LocalAddr().String())  //nolint:errcheck // Not needed here
+	buf.WriteString(" <-> ")                          //nolint:errcheck // Not needed here
+	buf.WriteString(c.fasthttp.RemoteAddr().String()) //nolint:errcheck // Not needed here
+	buf.WriteString(" - ")                            //nolint:errcheck // Not needed here
 
 	// Add method and URI
-	buf.Write(c.fasthttp.Request.Header.Method())
-	buf.WriteByte(' ')
-	buf.Write(c.fasthttp.URI().FullURI())
+	buf.Write(c.fasthttp.Request.Header.Method()) //nolint:errcheck // Not needed here
+	buf.WriteByte(' ')                            //nolint:errcheck // Not needed here
+	buf.Write(c.fasthttp.URI().FullURI())         //nolint:errcheck // Not needed here
 
 	// Allocate string
 	str := buf.String()
