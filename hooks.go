@@ -13,13 +13,13 @@ type (
 	OnListenHandler    = func(ListenData) error
 	OnShutdownHandler  = func() error
 	OnForkHandler      = func(int) error
-	OnMountHandler     = func(*App[Ctx[any]]) error
+	OnMountHandler     = func(*App[any]) error
 )
 
 // Hooks is a struct to use it with App.
 type Hooks struct {
 	// Embed app
-	app *App[Ctx[any]]
+	app *App[any]
 
 	// Hooks
 	onRoute     []OnRouteHandler

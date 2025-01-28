@@ -15,7 +15,7 @@ import (
 // Put fields related to mounting.
 type mountFields struct {
 	// Mounted and main apps
-	appList map[string]*App[Ctx[any]]
+	appList map[string]*App[any]
 	// Prefix of app if it was mounted
 	mountPath string
 	// Ordered keys of apps (sorted by key length for Render)

@@ -50,7 +50,7 @@ const userContextKey contextKey = 0 // __local_user_context__
 //go:generate ifacemaker --file ctx.go --struct DefaultCtx --iface Ctx --pkg fiber --output ctx_interface.go --not-exported true --iface-comment "Ctx represents the Context which hold the HTTP request and response.\nIt has methods for the request query string, parameters, body, HTTP headers and so on."
 //go:generate go run ctx_interface_gen.go
 type DefaultCtx struct {
-	app                 *App[Ctx[any]]       // Reference to *App
+	app                 *App[any]            // Reference to *App
 	route               *Route               // Reference to *Route
 	fasthttp            *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	bind                *Bind                // Default bind reference

@@ -37,7 +37,7 @@ const Version = "3.0.0-beta.4"
 // Handler defines a function to serve HTTP requests.
 type Handler = func(Ctx[any]) error
 
-type customCtxFunc = func(app *App[Ctx[any]]) CustomCtx[Ctx[any]]
+type customCtxFunc = func(app *App[any]) CustomCtx[any]
 
 // Map is a shortcut for map[string]any, useful for JSON returns
 type Map map[string]any
@@ -89,7 +89,7 @@ type Error struct {
 }
 
 // App denotes the Fiber application.
-type App[TCtx Ctx[TCtx]] struct {
+type App[TCtx any] struct {
 	// Ctx pool
 	pool sync.Pool
 	// Fasthttp server
@@ -493,7 +493,7 @@ func DefaultErrorHandler(c Ctx[any], err error) error {
 //	    ServerHeader: "Fiber",
 //	})
 func New(config ...Config) *App[DefaultCtx] {
-	app := newApp[DefaultCtx](config...)
+	app := newApp[any](config...)
 
 	// Init app
 	app.init()

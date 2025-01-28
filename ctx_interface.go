@@ -24,7 +24,7 @@ type Ctx[T any] interface {
 	// AcceptsLanguages checks if the specified language is acceptable.
 	AcceptsLanguages(offers ...string) string
 	// App returns the *App[T] reference to the instance of the Fiber application
-	App() *App[Ctx[T]]
+	App() *App[T]
 	// Append the specified value to the HTTP response header field.
 	// If the header is not already set, it creates the header with the specified value.
 	Append(field string, values ...string)
