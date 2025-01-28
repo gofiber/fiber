@@ -45,9 +45,9 @@ func GetReqHeader[V any](c Ctx, key string, defaultValue ...V) V
 ```go title="Example"
 app.Get("/search", func(c fiber.Ctx) error {
     // curl -X GET http://example.com/search -H "X-Request-ID: 12345" -H "X-Request-Name: John"
-    GetReqHeader[int](c, "X-Request-ID")               // => returns 12345 as integer.
-    GetReqHeader[string](c, "X-Request-Name")          // => returns "John" as string.
-    GetReqHeader[string](c, "unknownParam", "default") // => returns "default" as string.
+    fiber.GetReqHeader[int](c, "X-Request-ID")               // => returns 12345 as integer.
+    fiber.GetReqHeader[string](c, "X-Request-Name")          // => returns "John" as string.
+    fiber.GetReqHeader[string](c, "unknownParam", "default") // => returns "default" as string.
     // ...
 })
 ```
@@ -97,8 +97,8 @@ func Params[V any](c Ctx, key string, defaultValue ...V) V
 ```go title="Example"
 app.Get("/user/:user/:id", func(c fiber.Ctx) error {
     // http://example.com/user/john/25
-    Params[int](c, "id")               // => returns 25 as integer.
-    Params[int](c, "unknownParam", 99) // => returns the default 99 as integer.
+    fiber.Params[int](c, "id")               // => returns 25 as integer.
+    fiber.Params[int](c, "unknownParam", 99) // => returns the default 99 as integer.
     // ...
     return c.SendString("Hello, " + fiber.Params[string](c, "user"))
 })
@@ -116,9 +116,9 @@ func Query[V any](c Ctx, key string, defaultValue ...V) V
 ```go title="Example"
 app.Get("/search", func(c fiber.Ctx) error {
     // http://example.com/search?name=john&age=25
-    Query[string](c, "name")                    // => returns "john"
-    Query[int](c, "age")                        // => returns 25 as integer.
-    Query[string](c, "unknownParam", "default") // => returns "default" as string.
+    fiber.Query[string](c, "name")                    // => returns "john"
+    fiber.Query[int](c, "age")                        // => returns 25 as integer.
+    fiber.Query[string](c, "unknownParam", "default") // => returns "default" as string.
     // ...
 })
 ```

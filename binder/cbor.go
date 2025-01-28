@@ -4,15 +4,22 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
-// cborBinding is the CBOR binder for CBOR request body.
-type cborBinding struct{}
+// CBORBinding is the CBOR binder for CBOR request body.
+type CBORBinding struct {
+	CBORDecoder utils.CBORUnmarshal
+}
 
 // Name returns the binding name.
-func (*cborBinding) Name() string {
+func (*CBORBinding) Name() string {
 	return "cbor"
 }
 
 // Bind parses the request body as CBOR and returns the result.
-func (*cborBinding) Bind(body []byte, cborDecoder utils.CBORUnmarshal, out any) error {
-	return cborDecoder(body, out)
+func (b *CBORBinding) Bind(body []byte, out any) error {
+	return b.CBORDecoder(body, out)
+}
+
+// Reset resets the CBORBinding binder.
+func (b *CBORBinding) Reset() {
+	b.CBORDecoder = nil
 }

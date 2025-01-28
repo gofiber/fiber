@@ -127,6 +127,35 @@ func Test_Ctx_CustomCtx(t *testing.T) {
 	require.Equal(t, "prefix_v3", string(body))
 }
 
+// go test -run Test_Ctx_CustomCtx
+func Test_Ctx_CustomCtx_and_Method(t *testing.T) {
+	t.Parallel()
+
+	// Create app with custom request methods
+	methods := append(DefaultMethods, "JOHN") //nolint:gocritic // We want a new slice here
+	app := New(Config{
+		RequestMethods: methods,
+	})
+
+	// Create custom context
+	app.NewCtxFunc(func(app *App) CustomCtx {
+		return &customCtx{
+			DefaultCtx: *NewDefaultCtx(app),
+		}
+	})
+
+	// Add route with custom method
+	app.Add([]string{"JOHN"}, "/doe", testEmptyHandler)
+	resp, err := app.Test(httptest.NewRequest("JOHN", "/doe", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	// Add a new method
+	require.Panics(t, func() {
+		app.Add([]string{"JANE"}, "/jane", testEmptyHandler)
+	})
+}
+
 // go test -run Test_Ctx_Accepts_EmptyAccept
 func Test_Ctx_Accepts_EmptyAccept(t *testing.T) {
 	t.Parallel()
@@ -1433,7 +1462,9 @@ func Benchmark_Ctx_Fresh_LastModified(b *testing.B) {
 func Test_Ctx_Binders(t *testing.T) {
 	t.Parallel()
 	// setup
-	app := New()
+	app := New(Config{
+		EnableSplittingOnParsers: true,
+	})
 
 	type TestEmbeddedStruct struct {
 		Names []string `query:"names"`
@@ -5865,7 +5896,7 @@ func Test_Ctx_Drop(t *testing.T) {
 
 	// Test the Drop method
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/block-me", nil))
-	require.Error(t, err)
+	require.ErrorIs(t, err, ErrTestGotEmptyResponse)
 	require.Nil(t, resp)
 
 	// Test the no-response handler
@@ -5896,7 +5927,84 @@ func Test_Ctx_DropWithMiddleware(t *testing.T) {
 
 	// Test the Drop method
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/block-me", nil))
-	require.Error(t, err)
+	require.ErrorIs(t, err, ErrTestGotEmptyResponse)
+	require.Nil(t, resp)
+}
+
+// go test -run Test_Ctx_End
+func Test_Ctx_End(t *testing.T) {
+	app := New()
+
+	app.Get("/", func(c Ctx) error {
+		c.SendString("Hello, World!") //nolint:errcheck // unnecessary to check error
+		return c.End()
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err, "io.ReadAll(resp.Body)")
+	require.Equal(t, "Hello, World!", string(body))
+}
+
+// go test -run Test_Ctx_End_after_timeout
+func Test_Ctx_End_after_timeout(t *testing.T) {
+	app := New()
+
+	// Early flushing handler
+	app.Get("/", func(c Ctx) error {
+		time.Sleep(2 * time.Second)
+		return c.End()
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+	require.Nil(t, resp)
+}
+
+// go test -run Test_Ctx_End_with_drop_middleware
+func Test_Ctx_End_with_drop_middleware(t *testing.T) {
+	app := New()
+
+	// Middleware that will drop connections
+	// that persist after c.Next()
+	app.Use(func(c Ctx) error {
+		c.Next() //nolint:errcheck // unnecessary to check error
+		return c.Drop()
+	})
+
+	// Early flushing handler
+	app.Get("/", func(c Ctx) error {
+		c.SendStatus(StatusOK) //nolint:errcheck // unnecessary to check error
+		return c.End()
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Equal(t, StatusOK, resp.StatusCode)
+}
+
+// go test -run Test_Ctx_End_after_drop
+func Test_Ctx_End_after_drop(t *testing.T) {
+	app := New()
+
+	// Middleware that ends the request
+	// after c.Next()
+	app.Use(func(c Ctx) error {
+		c.Next() //nolint:errcheck // unnecessary to check error
+		return c.End()
+	})
+
+	// Early flushing handler
+	app.Get("/", func(c Ctx) error {
+		return c.Drop()
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	require.ErrorIs(t, err, ErrTestGotEmptyResponse)
 	require.Nil(t, resp)
 }
 

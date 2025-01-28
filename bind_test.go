@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"mime/multipart"
 	"net/http/httptest"
 	"reflect"
 	"testing"
@@ -32,7 +33,9 @@ func Test_returnErr(t *testing.T) {
 // go test -run Test_Bind_Query -v
 func Test_Bind_Query(t *testing.T) {
 	t.Parallel()
-	app := New()
+	app := New(Config{
+		EnableSplittingOnParsers: true,
+	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Query struct {
@@ -111,7 +114,9 @@ func Test_Bind_Query(t *testing.T) {
 func Test_Bind_Query_Map(t *testing.T) {
 	t.Parallel()
 
-	app := New()
+	app := New(Config{
+		EnableSplittingOnParsers: true,
+	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Request().SetBody([]byte(``))
@@ -318,13 +323,13 @@ func Test_Bind_Header(t *testing.T) {
 	c.Request().Header.Add("Hobby", "golang,fiber")
 	q := new(Header)
 	require.NoError(t, c.Bind().Header(q))
-	require.Len(t, q.Hobby, 2)
+	require.Len(t, q.Hobby, 1)
 
 	c.Request().Header.Del("hobby")
 	c.Request().Header.Add("Hobby", "golang,fiber,go")
 	q = new(Header)
 	require.NoError(t, c.Bind().Header(q))
-	require.Len(t, q.Hobby, 3)
+	require.Len(t, q.Hobby, 1)
 
 	empty := new(Header)
 	c.Request().Header.Del("hobby")
@@ -357,7 +362,7 @@ func Test_Bind_Header(t *testing.T) {
 	require.Equal(t, "go,fiber", h2.Hobby)
 	require.True(t, h2.Bool)
 	require.Equal(t, "Jane Doe", h2.Name) // check value get overwritten
-	require.Equal(t, []string{"milo", "coke", "pepsi"}, h2.FavouriteDrinks)
+	require.Equal(t, []string{"milo,coke,pepsi"}, h2.FavouriteDrinks)
 	var nilSlice []string
 	require.Equal(t, nilSlice, h2.Empty)
 	require.Equal(t, []string{""}, h2.Alloc)
@@ -386,13 +391,13 @@ func Test_Bind_Header_Map(t *testing.T) {
 	c.Request().Header.Add("Hobby", "golang,fiber")
 	q := make(map[string][]string, 0)
 	require.NoError(t, c.Bind().Header(&q))
-	require.Len(t, q["Hobby"], 2)
+	require.Len(t, q["Hobby"], 1)
 
 	c.Request().Header.Del("hobby")
 	c.Request().Header.Add("Hobby", "golang,fiber,go")
 	q = make(map[string][]string, 0)
 	require.NoError(t, c.Bind().Header(&q))
-	require.Len(t, q["Hobby"], 3)
+	require.Len(t, q["Hobby"], 1)
 
 	empty := make(map[string][]string, 0)
 	c.Request().Header.Del("hobby")
@@ -543,7 +548,9 @@ func Test_Bind_Header_Schema(t *testing.T) {
 // go test -run Test_Bind_Resp_Header -v
 func Test_Bind_RespHeader(t *testing.T) {
 	t.Parallel()
-	app := New()
+	app := New(Config{
+		EnableSplittingOnParsers: true,
+	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Header struct {
@@ -627,13 +634,13 @@ func Test_Bind_RespHeader_Map(t *testing.T) {
 	c.Response().Header.Add("Hobby", "golang,fiber")
 	q := make(map[string][]string, 0)
 	require.NoError(t, c.Bind().RespHeader(&q))
-	require.Len(t, q["Hobby"], 2)
+	require.Len(t, q["Hobby"], 1)
 
 	c.Response().Header.Del("hobby")
 	c.Response().Header.Add("Hobby", "golang,fiber,go")
 	q = make(map[string][]string, 0)
 	require.NoError(t, c.Bind().RespHeader(&q))
-	require.Len(t, q["Hobby"], 3)
+	require.Len(t, q["Hobby"], 1)
 
 	empty := make(map[string][]string, 0)
 	c.Response().Header.Del("hobby")
@@ -751,7 +758,9 @@ func Benchmark_Bind_Query_WithParseParam(b *testing.B) {
 func Benchmark_Bind_Query_Comma(b *testing.B) {
 	var err error
 
-	app := New()
+	app := New(Config{
+		EnableSplittingOnParsers: true,
+	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Query struct {
@@ -878,7 +887,8 @@ func Test_Bind_Body(t *testing.T) {
 	reqBody := []byte(`{"name":"john"}`)
 
 	type Demo struct {
-		Name string `json:"name" xml:"name" form:"name" query:"name"`
+		Name  string   `json:"name" xml:"name" form:"name" query:"name"`
+		Names []string `json:"names" xml:"names" form:"names" query:"names"`
 	}
 
 	// Helper function to test compressed bodies
@@ -987,6 +997,48 @@ func Test_Bind_Body(t *testing.T) {
 	type CollectionQuery struct {
 		Data []Demo `query:"data"`
 	}
+
+	t.Run("MultipartCollectionQueryDotNotation", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().Reset()
+
+		buf := &bytes.Buffer{}
+		writer := multipart.NewWriter(buf)
+		require.NoError(t, writer.WriteField("data.0.name", "john"))
+		require.NoError(t, writer.WriteField("data.1.name", "doe"))
+		require.NoError(t, writer.Close())
+
+		c.Request().Header.SetContentType(writer.FormDataContentType())
+		c.Request().SetBody(buf.Bytes())
+		c.Request().Header.SetContentLength(len(c.Body()))
+
+		cq := new(CollectionQuery)
+		require.NoError(t, c.Bind().Body(cq))
+		require.Len(t, cq.Data, 2)
+		require.Equal(t, "john", cq.Data[0].Name)
+		require.Equal(t, "doe", cq.Data[1].Name)
+	})
+
+	t.Run("MultipartCollectionQuerySquareBrackets", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().Reset()
+
+		buf := &bytes.Buffer{}
+		writer := multipart.NewWriter(buf)
+		require.NoError(t, writer.WriteField("data[0][name]", "john"))
+		require.NoError(t, writer.WriteField("data[1][name]", "doe"))
+		require.NoError(t, writer.Close())
+
+		c.Request().Header.SetContentType(writer.FormDataContentType())
+		c.Request().SetBody(buf.Bytes())
+		c.Request().Header.SetContentLength(len(c.Body()))
+
+		cq := new(CollectionQuery)
+		require.NoError(t, c.Bind().Body(cq))
+		require.Len(t, cq.Data, 2)
+		require.Equal(t, "john", cq.Data[0].Name)
+		require.Equal(t, "doe", cq.Data[1].Name)
+	})
 
 	t.Run("CollectionQuerySquareBrackets", func(t *testing.T) {
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -1184,9 +1236,14 @@ func Benchmark_Bind_Body_MultipartForm(b *testing.B) {
 		Name string `form:"name"`
 	}
 
-	body := []byte("--b\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\njohn\r\n--b--")
+	buf := &bytes.Buffer{}
+	writer := multipart.NewWriter(buf)
+	require.NoError(b, writer.WriteField("name", "john"))
+	require.NoError(b, writer.Close())
+	body := buf.Bytes()
+
 	c.Request().SetBody(body)
-	c.Request().Header.SetContentType(MIMEMultipartForm + `;boundary="b"`)
+	c.Request().Header.SetContentType(MIMEMultipartForm + `;boundary=` + writer.Boundary())
 	c.Request().Header.SetContentLength(len(body))
 	d := new(Demo)
 
@@ -1196,8 +1253,56 @@ func Benchmark_Bind_Body_MultipartForm(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		err = c.Bind().Body(d)
 	}
+
 	require.NoError(b, err)
 	require.Equal(b, "john", d.Name)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Bind_Body_MultipartForm_Nested -benchmem -count=4
+func Benchmark_Bind_Body_MultipartForm_Nested(b *testing.B) {
+	var err error
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	type Person struct {
+		Name string `form:"name"`
+		Age  int    `form:"age"`
+	}
+
+	type Demo struct {
+		Name    string   `form:"name"`
+		Persons []Person `form:"persons"`
+	}
+
+	buf := &bytes.Buffer{}
+	writer := multipart.NewWriter(buf)
+	require.NoError(b, writer.WriteField("name", "john"))
+	require.NoError(b, writer.WriteField("persons.0.name", "john"))
+	require.NoError(b, writer.WriteField("persons[0][age]", "10"))
+	require.NoError(b, writer.WriteField("persons[1][name]", "doe"))
+	require.NoError(b, writer.WriteField("persons.1.age", "20"))
+	require.NoError(b, writer.Close())
+	body := buf.Bytes()
+
+	c.Request().SetBody(body)
+	c.Request().Header.SetContentType(MIMEMultipartForm + `;boundary=` + writer.Boundary())
+	c.Request().Header.SetContentLength(len(body))
+	d := new(Demo)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		err = c.Bind().Body(d)
+	}
+
+	require.NoError(b, err)
+	require.Equal(b, "john", d.Name)
+	require.Equal(b, "john", d.Persons[0].Name)
+	require.Equal(b, 10, d.Persons[0].Age)
+	require.Equal(b, "doe", d.Persons[1].Name)
+	require.Equal(b, 20, d.Persons[1].Age)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Bind_Body_Form_Map -benchmem -count=4
@@ -1341,7 +1446,9 @@ func Benchmark_Bind_URI_Map(b *testing.B) {
 func Test_Bind_Cookie(t *testing.T) {
 	t.Parallel()
 
-	app := New()
+	app := New(Config{
+		EnableSplittingOnParsers: true,
+	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Cookie struct {
@@ -1414,7 +1521,9 @@ func Test_Bind_Cookie(t *testing.T) {
 func Test_Bind_Cookie_Map(t *testing.T) {
 	t.Parallel()
 
-	app := New()
+	app := New(Config{
+		EnableSplittingOnParsers: true,
+	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Request().SetBody([]byte(``))

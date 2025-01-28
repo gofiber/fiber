@@ -32,7 +32,7 @@ var (
 	// decoderPoolMap helps to improve binders
 	decoderPoolMap = map[string]*sync.Pool{}
 	// tags is used to classify parser's pool
-	tags = []string{HeaderBinder.Name(), RespHeaderBinder.Name(), CookieBinder.Name(), QueryBinder.Name(), FormBinder.Name(), URIBinder.Name()}
+	tags = []string{"header", "respHeader", "cookie", "query", "form", "uri"}
 )
 
 // SetParserDecoder allow globally change the option of form decoder, update decoderPool
@@ -107,8 +107,8 @@ func parseToStruct(aliasTag string, out any, data map[string][]string) error {
 func parseToMap(ptr any, data map[string][]string) error {
 	elem := reflect.TypeOf(ptr).Elem()
 
-	// map[string][]string
-	if elem.Kind() == reflect.Slice {
+	switch elem.Kind() {
+	case reflect.Slice:
 		newMap, ok := ptr.(map[string][]string)
 		if !ok {
 			return ErrMapNotConvertable
@@ -117,18 +117,21 @@ func parseToMap(ptr any, data map[string][]string) error {
 		for k, v := range data {
 			newMap[k] = v
 		}
+	case reflect.String, reflect.Interface:
+		newMap, ok := ptr.(map[string]string)
+		if !ok {
+			return ErrMapNotConvertable
+		}
 
-		return nil
-	}
-
-	// map[string]string
-	newMap, ok := ptr.(map[string]string)
-	if !ok {
-		return ErrMapNotConvertable
-	}
-
-	for k, v := range data {
-		newMap[k] = v[len(v)-1]
+		for k, v := range data {
+			if len(v) == 0 {
+				newMap[k] = ""
+				continue
+			}
+			newMap[k] = v[len(v)-1]
+		}
+	default:
+		return nil // it's not necessary to check all types
 	}
 
 	return nil
@@ -223,7 +226,7 @@ func equalFieldType(out any, kind reflect.Kind, key string) bool {
 			continue
 		}
 		// Get tag from field if exist
-		inputFieldName := typeField.Tag.Get(QueryBinder.Name())
+		inputFieldName := typeField.Tag.Get("query") // Name of query binder
 		if inputFieldName == "" {
 			inputFieldName = typeField.Name
 		} else {
@@ -245,4 +248,38 @@ func FilterFlags(content string) string {
 		}
 	}
 	return content
+}
+
+func formatBindData[T any](out any, data map[string][]string, key string, value T, enableSplitting, supportBracketNotation bool) error { //nolint:revive // it's okay
+	var err error
+	if supportBracketNotation && strings.Contains(key, "[") {
+		key, err = parseParamSquareBrackets(key)
+		if err != nil {
+			return err
+		}
+	}
+
+	switch v := any(value).(type) {
+	case string:
+		assignBindData(out, data, key, v, enableSplitting)
+	case []string:
+		for _, val := range v {
+			assignBindData(out, data, key, val, enableSplitting)
+		}
+	default:
+		return fmt.Errorf("unsupported value type: %T", value)
+	}
+
+	return err
+}
+
+func assignBindData(out any, data map[string][]string, key, value string, enableSplitting bool) { //nolint:revive // it's okay
+	if enableSplitting && strings.Contains(value, ",") && equalFieldType(out, reflect.Slice, key) {
+		values := strings.Split(value, ",")
+		for i := 0; i < len(values); i++ {
+			data[key] = append(data[key], values[i])
+		}
+	} else {
+		data[key] = append(data[key], value)
+	}
 }
