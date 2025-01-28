@@ -35,7 +35,9 @@ import (
 const Version = "3.0.0-beta.4"
 
 // Handler defines a function to serve HTTP requests.
-type Handler = func(Ctx) error
+type Handler = func(Ctx[any]) error
+
+type customCtxFunc = func(app *App[Ctx[any]]) CustomCtx[Ctx[any]]
 
 // Map is a shortcut for map[string]any, useful for JSON returns
 type Map map[string]any
@@ -78,7 +80,7 @@ type Storage interface {
 //	 return c.Status(code).SendString(err.Error())
 //	}
 //	app := fiber.New(cfg)
-type ErrorHandler = func(Ctx, error) error
+type ErrorHandler = func(Ctx[any], error) error
 
 // Error represents an error that occurred while handling a request.
 type Error struct {
@@ -87,7 +89,7 @@ type Error struct {
 }
 
 // App denotes the Fiber application.
-type App struct {
+type App[TCtx Ctx[TCtx]] struct {
 	// Ctx pool
 	pool sync.Pool
 	// Fasthttp server
@@ -101,7 +103,7 @@ type App struct {
 	// Latest route & group
 	latestRoute *Route
 	// newCtxFunc
-	newCtxFunc func(app *App) CustomCtx
+	newCtxFunc customCtxFunc
 	// TLS handler
 	tlsHandler *TLSHandler
 	// Mount fields
@@ -470,7 +472,7 @@ var DefaultMethods = []string{
 }
 
 // DefaultErrorHandler that process return errors from handlers
-func DefaultErrorHandler(c Ctx, err error) error {
+func DefaultErrorHandler(c Ctx[any], err error) error {
 	code := StatusInternalServerError
 	var e *Error
 	if errors.As(err, &e) {
@@ -490,9 +492,49 @@ func DefaultErrorHandler(c Ctx, err error) error {
 //	    Prefork: true,
 //	    ServerHeader: "Fiber",
 //	})
-func New(config ...Config) *App {
+func New(config ...Config) *App[DefaultCtx] {
+	app := newApp[DefaultCtx](config...)
+
+	// Init app
+	app.init()
+
+	return app
+}
+
+// NewWithCustomCtx creates a new Fiber named instance with a custom context.
+//
+//	app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx[MyCustomCtx] {
+//		return &MyCustomCtx{
+//			DefaultCtx: *fiber.NewDefaultCtx(app),
+//		}
+//	})
+//
+// You can pass optional configuration options by passing a Config struct:
+//
+//	app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx[MyCustomCtx] {
+//		return &MyCustomCtx{
+//			DefaultCtx: *fiber.NewDefaultCtx(app),
+//		}
+//	}, fiber.Config{
+//	    Prefork: true,
+//	    ServerHeader: "Fiber",
+//	})
+func NewWithCustomCtx[TCtx Ctx[TCtx]](newCtxFunc customCtxFunc, config ...Config) *App[TCtx] {
+	app := newApp[TCtx](config...)
+
+	// Set newCtxFunc
+	app.newCtxFunc = newCtxFunc
+
+	// Init app
+	app.init()
+
+	return app
+}
+
+// newApp creates a new Fiber named instance.
+func newApp[TCtx Ctx[TCtx]](config ...Config) *App[TCtx] {
 	// Create a new app
-	app := &App{
+	app := &App[TCtx]{
 		// Create config
 		config:        Config{},
 		getBytes:      utils.UnsafeBytes,
@@ -586,15 +628,12 @@ func New(config ...Config) *App {
 	// Override colors
 	app.config.ColorScheme = defaultColors(app.config.ColorScheme)
 
-	// Init app
-	app.init()
-
 	// Return app
 	return app
 }
 
 // Adds an ip address to TrustProxyConfig.ranges or TrustProxyConfig.ips based on whether it is an IP range or not
-func (app *App) handleTrustedProxy(ipAddress string) {
+func (app *App[TCtx]) handleTrustedProxy(ipAddress string) {
 	if strings.Contains(ipAddress, "/") {
 		_, ipNet, err := net.ParseCIDR(ipAddress)
 		if err != nil {
@@ -612,29 +651,19 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 	}
 }
 
-// NewCtxFunc allows to customize ctx methods as we want.
-// Note: It doesn't allow adding new methods, only customizing exist methods.
-func (app *App) NewCtxFunc(function func(app *App) CustomCtx) {
-	app.newCtxFunc = function
-
-	if app.server != nil {
-		app.server.Handler = app.customRequestHandler
-	}
-}
-
 // RegisterCustomConstraint allows to register custom constraint.
-func (app *App) RegisterCustomConstraint(constraint CustomConstraint) {
+func (app *App[TCtx]) RegisterCustomConstraint(constraint CustomConstraint) {
 	app.customConstraints = append(app.customConstraints, constraint)
 }
 
 // RegisterCustomBinder Allows to register custom binders to use as Bind().Custom("name").
 // They should be compatible with CustomBinder interface.
-func (app *App) RegisterCustomBinder(binder CustomBinder) {
+func (app *App[TCtx]) RegisterCustomBinder(binder CustomBinder) {
 	app.customBinders = append(app.customBinders, binder)
 }
 
 // SetTLSHandler Can be used to set ClientHelloInfo when using TLS with Listener.
-func (app *App) SetTLSHandler(tlsHandler *TLSHandler) {
+func (app *App[TCtx]) SetTLSHandler(tlsHandler *TLSHandler) {
 	// Attach the tlsHandler to the config
 	app.mutex.Lock()
 	app.tlsHandler = tlsHandler
@@ -642,7 +671,7 @@ func (app *App) SetTLSHandler(tlsHandler *TLSHandler) {
 }
 
 // Name Assign name to specific route.
-func (app *App) Name(name string) Router {
+func (app *App[TCtx]) Name(name string) Router {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
@@ -668,7 +697,7 @@ func (app *App) Name(name string) Router {
 }
 
 // GetRoute Get route by name
-func (app *App) GetRoute(name string) Route {
+func (app *App[TCtx]) GetRoute(name string) Route {
 	for _, routes := range app.stack {
 		for _, route := range routes {
 			if route.Name == name {
@@ -681,7 +710,7 @@ func (app *App) GetRoute(name string) Route {
 }
 
 // GetRoutes Get all routes. When filterUseOption equal to true, it will filter the routes registered by the middleware.
-func (app *App) GetRoutes(filterUseOption ...bool) []Route {
+func (app *App[TCtx]) GetRoutes(filterUseOption ...bool) []Route {
 	var rs []Route
 	var filterUse bool
 	if len(filterUseOption) != 0 {
@@ -719,9 +748,9 @@ func (app *App) GetRoutes(filterUseOption ...bool) []Route {
 //		app.Use("/mounted-path", subApp)
 //
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
-func (app *App) Use(args ...any) Router {
+func (app *App[TCtx]) Use(args ...any) Router {
 	var prefix string
-	var subApp *App
+	var subApp *App[TCtx]
 	var prefixes []string
 	var handlers []Handler
 
@@ -758,66 +787,66 @@ func (app *App) Use(args ...any) Router {
 
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
-func (app *App) Get(path string, handler Handler, middleware ...Handler) Router {
+func (app *App[TCtx]) Get(path string, handler Handler, middleware ...Handler) Router {
 	return app.Add([]string{MethodGet}, path, handler, middleware...)
 }
 
 // Head registers a route for HEAD methods that asks for a response identical
 // to that of a GET request, but without the response body.
-func (app *App) Head(path string, handler Handler, middleware ...Handler) Router {
+func (app *App[TCtx]) Head(path string, handler Handler, middleware ...Handler) Router {
 	return app.Add([]string{MethodHead}, path, handler, middleware...)
 }
 
 // Post registers a route for POST methods that is used to submit an entity to the
 // specified resource, often causing a change in state or side effects on the server.
-func (app *App) Post(path string, handler Handler, middleware ...Handler) Router {
+func (app *App[TCtx]) Post(path string, handler Handler, middleware ...Handler) Router {
 	return app.Add([]string{MethodPost}, path, handler, middleware...)
 }
 
 // Put registers a route for PUT methods that replaces all current representations
 // of the target resource with the request payload.
-func (app *App) Put(path string, handler Handler, middleware ...Handler) Router {
+func (app *App[TCtx]) Put(path string, handler Handler, middleware ...Handler) Router {
 	return app.Add([]string{MethodPut}, path, handler, middleware...)
 }
 
 // Delete registers a route for DELETE methods that deletes the specified resource.
-func (app *App) Delete(path string, handler Handler, middleware ...Handler) Router {
+func (app *App[TCtx]) Delete(path string, handler Handler, middleware ...Handler) Router {
 	return app.Add([]string{MethodDelete}, path, handler, middleware...)
 }
 
 // Connect registers a route for CONNECT methods that establishes a tunnel to the
 // server identified by the target resource.
-func (app *App) Connect(path string, handler Handler, middleware ...Handler) Router {
+func (app *App[TCtx]) Connect(path string, handler Handler, middleware ...Handler) Router {
 	return app.Add([]string{MethodConnect}, path, handler, middleware...)
 }
 
 // Options registers a route for OPTIONS methods that is used to describe the
 // communication options for the target resource.
-func (app *App) Options(path string, handler Handler, middleware ...Handler) Router {
+func (app *App[TCtx]) Options(path string, handler Handler, middleware ...Handler) Router {
 	return app.Add([]string{MethodOptions}, path, handler, middleware...)
 }
 
 // Trace registers a route for TRACE methods that performs a message loop-back
 // test along the path to the target resource.
-func (app *App) Trace(path string, handler Handler, middleware ...Handler) Router {
+func (app *App[TCtx]) Trace(path string, handler Handler, middleware ...Handler) Router {
 	return app.Add([]string{MethodTrace}, path, handler, middleware...)
 }
 
 // Patch registers a route for PATCH methods that is used to apply partial
 // modifications to a resource.
-func (app *App) Patch(path string, handler Handler, middleware ...Handler) Router {
+func (app *App[TCtx]) Patch(path string, handler Handler, middleware ...Handler) Router {
 	return app.Add([]string{MethodPatch}, path, handler, middleware...)
 }
 
 // Add allows you to specify multiple HTTP methods to register a route.
-func (app *App) Add(methods []string, path string, handler Handler, middleware ...Handler) Router {
+func (app *App[TCtx]) Add(methods []string, path string, handler Handler, middleware ...Handler) Router {
 	app.register(methods, path, nil, handler, middleware...)
 
 	return app
 }
 
 // All will register the handler on all HTTP methods
-func (app *App) All(path string, handler Handler, middleware ...Handler) Router {
+func (app *App[TCtx]) All(path string, handler Handler, middleware ...Handler) Router {
 	return app.Add(app.config.RequestMethods, path, handler, middleware...)
 }
 
@@ -825,7 +854,7 @@ func (app *App) All(path string, handler Handler, middleware ...Handler) Router 
 //
 //	api := app.Group("/api")
 //	api.Get("/users", handler)
-func (app *App) Group(prefix string, handlers ...Handler) Router {
+func (app *App[TCtx]) Group(prefix string, handlers ...Handler) Router {
 	grp := &Group{Prefix: prefix, app: app}
 	if len(handlers) > 0 {
 		app.register([]string{methodUse}, prefix, grp, nil, handlers...)
@@ -839,7 +868,7 @@ func (app *App) Group(prefix string, handlers ...Handler) Router {
 
 // Route is used to define routes with a common prefix inside the common function.
 // Uses Group method to define new sub-router.
-func (app *App) Route(path string) Register {
+func (app *App[TCtx]) Route(path string) Register {
 	// Create new route
 	route := &Registering{app: app, path: path}
 
@@ -864,12 +893,12 @@ func NewError(code int, message ...string) *Error {
 }
 
 // Config returns the app config as value ( read-only ).
-func (app *App) Config() Config {
+func (app *App[TCtx]) Config() Config {
 	return app.config
 }
 
 // Handler returns the server handler.
-func (app *App) Handler() fasthttp.RequestHandler { //revive:disable-line:confusing-naming // Having both a Handler() (uppercase) and a handler() (lowercase) is fine. TODO: Use nolint:revive directive instead. See https://github.com/golangci/golangci-lint/issues/3476
+func (app *App[TCtx]) Handler() fasthttp.RequestHandler { //revive:disable-line:confusing-naming // Having both a Handler() (uppercase) and a handler() (lowercase) is fine. TODO: Use nolint:revive directive instead. See https://github.com/golangci/golangci-lint/issues/3476
 	// prepare the server for the start
 	app.startupProcess()
 
@@ -880,12 +909,12 @@ func (app *App) Handler() fasthttp.RequestHandler { //revive:disable-line:confus
 }
 
 // Stack returns the raw router stack.
-func (app *App) Stack() [][]*Route {
+func (app *App[TCtx]) Stack() [][]*Route {
 	return app.stack
 }
 
 // HandlersCount returns the amount of registered handlers.
-func (app *App) HandlersCount() uint32 {
+func (app *App[TCtx]) HandlersCount() uint32 {
 	return app.handlersCount
 }
 
@@ -895,7 +924,7 @@ func (app *App) HandlersCount() uint32 {
 // Make sure the program doesn't exit and waits instead for Shutdown to return.
 //
 // Shutdown does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
-func (app *App) Shutdown() error {
+func (app *App[TCtx]) Shutdown() error {
 	return app.ShutdownWithContext(context.Background())
 }
 
@@ -906,7 +935,7 @@ func (app *App) Shutdown() error {
 // Make sure the program doesn't exit and waits instead for ShutdownWithTimeout to return.
 //
 // ShutdownWithTimeout does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
-func (app *App) ShutdownWithTimeout(timeout time.Duration) error {
+func (app *App[TCtx]) ShutdownWithTimeout(timeout time.Duration) error {
 	ctx, cancelFunc := context.WithTimeout(context.Background(), timeout)
 	defer cancelFunc()
 	return app.ShutdownWithContext(ctx)
@@ -917,7 +946,7 @@ func (app *App) ShutdownWithTimeout(timeout time.Duration) error {
 // Make sure the program doesn't exit and waits instead for ShutdownWithTimeout to return.
 //
 // ShutdownWithContext does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
-func (app *App) ShutdownWithContext(ctx context.Context) error {
+func (app *App[TCtx]) ShutdownWithContext(ctx context.Context) error {
 	if app.hooks != nil {
 		// TODO: check should be defered?
 		app.hooks.executeOnShutdownHooks()
@@ -932,12 +961,12 @@ func (app *App) ShutdownWithContext(ctx context.Context) error {
 }
 
 // Server returns the underlying fasthttp server
-func (app *App) Server() *fasthttp.Server {
+func (app *App[TCtx]) Server() *fasthttp.Server {
 	return app.server
 }
 
 // Hooks returns the hook struct to register hooks.
-func (app *App) Hooks() *Hooks {
+func (app *App[TCtx]) Hooks() *Hooks {
 	return app.hooks
 }
 
@@ -960,7 +989,7 @@ type TestConfig struct {
 // Test is used for internal debugging by passing a *http.Request.
 // Config is optional and defaults to a 1s error on timeout,
 // 0 timeout will disable it completely.
-func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, error) {
+func (app *App[TCtx]) Test(req *http.Request, config ...TestConfig) (*http.Response, error) {
 	// Default config
 	cfg := TestConfig{
 		Timeout:       time.Second,
@@ -1048,7 +1077,7 @@ type disableLogger struct{}
 func (*disableLogger) Printf(string, ...any) {
 }
 
-func (app *App) init() *App {
+func (app *App[TCtx]) init() *App[TCtx] {
 	// lock application
 	app.mutex.Lock()
 
@@ -1100,7 +1129,7 @@ func (app *App) init() *App {
 // sub fibers by their prefixes and if it finds a match, it uses that
 // error handler. Otherwise it uses the configured error handler for
 // the app, which if not set is the DefaultErrorHandler.
-func (app *App) ErrorHandler(ctx Ctx, err error) error {
+func (app *App[TCtx]) ErrorHandler(ctx Ctx[TCtx], err error) error {
 	var (
 		mountedErrHandler  ErrorHandler
 		mountedPrefixParts int
@@ -1129,7 +1158,7 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error {
 // serverErrorHandler is a wrapper around the application's error handler method
 // user for the fasthttp server configuration. It maps a set of fasthttp errors to fiber
 // errors before calling the application's error handler method.
-func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
+func (app *App[TCtx]) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 	// Acquire Ctx with fasthttp request from pool
 	c := app.AcquireCtx(fctx)
 	defer app.ReleaseCtx(c)
@@ -1164,7 +1193,7 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 }
 
 // startupProcess Is the method which executes all the necessary processes just before the start of the server.
-func (app *App) startupProcess() *App {
+func (app *App[TCtx]) startupProcess() *App[TCtx] {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
@@ -1177,7 +1206,7 @@ func (app *App) startupProcess() *App {
 }
 
 // Run onListen hooks. If they return an error, panic.
-func (app *App) runOnListenHooks(listenData ListenData) {
+func (app *App[TCtx]) runOnListenHooks(listenData ListenData) {
 	if err := app.hooks.executeOnListenHooks(listenData); err != nil {
 		panic(err)
 	}

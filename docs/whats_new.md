@@ -73,6 +73,8 @@ We have made several changes to the Fiber app, including:
 
 ### Custom Ctx Interface in Fiber v3
 
+TODO - Add more details 
+
 Fiber v3 introduces a customizable `Ctx` interface, allowing developers to extend and modify the context to fit their needs. This feature provides greater flexibility and control over request handling.
 
 #### Idea Behind Custom Ctx Classes
@@ -81,10 +83,12 @@ The idea behind custom `Ctx` classes is to give developers the ability to extend
 
 #### NewCtxFunc
 
+TODO change example
+
 The `NewCtxFunc` method allows you to customize the `Ctx` struct as needed.
 
 ```go title="Signature"
-func (app *App) NewCtxFunc(function func(app *App) CustomCtx)
+func (app *App[TCtx]) NewCtxFunc(function func(app *App) CustomCtx)
 ```
 
 <details>

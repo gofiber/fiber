@@ -400,7 +400,7 @@ func Test_App_Rebuild_Tree(t *testing.T) {
 ///////////////// BENCHMARKS /////////////////
 //////////////////////////////////////////////
 
-func registerDummyRoutes(app *App) {
+func registerDummyRoutes(app *App[TCtx]) {
 	h := func(_ Ctx) error {
 		return nil
 	}

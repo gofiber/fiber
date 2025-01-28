@@ -108,7 +108,7 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) boo
 	return false
 }
 
-func (app *App) nextCustom(c CustomCtx) (bool, error) { //nolint: unparam // bool param might be useful for testing
+func (app *App[TCtx]) nextCustom(c CustomCtx[TCtx]) (bool, error) { //nolint: unparam // bool param might be useful for testing
 	// Get stack length
 	tree, ok := app.treeStack[c.getMethodINT()][c.getTreePath()]
 	if !ok {
@@ -156,7 +156,7 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) { //nolint: unparam // boo
 	return false, err
 }
 
-func (app *App) next(c *DefaultCtx) (bool, error) {
+func (app *App[TCtx]) next(c *DefaultCtx) (bool, error) {
 	// Get stack length
 	tree, ok := app.treeStack[c.methodINT][c.treePath]
 	if !ok {
@@ -211,7 +211,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 	return false, err
 }
 
-func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
+func (app *App[TCtx]) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
 	// Acquire DefaultCtx from the pool
 	ctx, ok := app.AcquireCtx(rctx).(*DefaultCtx)
 	if !ok {
@@ -242,7 +242,7 @@ func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
 	}
 }
 
-func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
+func (app *App[TCtx]) customRequestHandler(rctx *fasthttp.RequestCtx) {
 	// Acquire CustomCtx from the pool
 	ctx, ok := app.AcquireCtx(rctx).(CustomCtx)
 	if !ok {
@@ -273,7 +273,7 @@ func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
 	}
 }
 
-func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
+func (app *App[TCtx]) addPrefixToRoute(prefix string, route *Route) *Route {
 	prefixedPath := getGroupPath(prefix, route.Path)
 	prettyPath := prefixedPath
 	// Case-sensitive routing, all to lowercase
@@ -294,7 +294,7 @@ func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
 	return route
 }
 
-func (*App) copyRoute(route *Route) *Route {
+func (*App[TCtx]) copyRoute(route *Route) *Route {
 	return &Route{
 		// Router booleans
 		use:   route.use,
@@ -318,7 +318,7 @@ func (*App) copyRoute(route *Route) *Route {
 	}
 }
 
-func (app *App) register(methods []string, pathRaw string, group *Group, handler Handler, middleware ...Handler) {
+func (app *App[TCtx]) register(methods []string, pathRaw string, group *Group, handler Handler, middleware ...Handler) {
 	handlers := middleware
 	if handler != nil {
 		handlers = append(handlers, handler)
@@ -392,7 +392,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 	}
 }
 
-func (app *App) addRoute(method string, route *Route, isMounted ...bool) {
+func (app *App[TCtx]) addRoute(method string, route *Route, isMounted ...bool) {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
@@ -436,7 +436,7 @@ func (app *App) addRoute(method string, route *Route, isMounted ...bool) {
 // routeTree is being safely changed, as it would add a great deal of overhead in the request.
 // Latest benchmark results showed a degradation from 82.79 ns/op to 94.48 ns/op and can be found in:
 // https://github.com/gofiber/fiber/issues/2769#issuecomment-2227385283
-func (app *App) RebuildTree() *App {
+func (app *App[TCtx]) RebuildTree() *App[TCtx] {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
@@ -444,7 +444,7 @@ func (app *App) RebuildTree() *App {
 }
 
 // buildTree build the prefix tree from the previously registered routes
-func (app *App) buildTree() *App {
+func (app *App[TCtx]) buildTree() *App[TCtx] {
 	if !app.routesRefreshed {
 		return app
 	}

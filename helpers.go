@@ -93,7 +93,7 @@ func readContent(rf io.ReaderFrom, name string) (int64, error) {
 }
 
 // quoteString escape special characters in a given string
-func (app *App) quoteString(raw string) string {
+func (app *App[TCtx]) quoteString(raw string) string {
 	bb := bytebufferpool.Get()
 	quoted := app.getString(fasthttp.AppendQuotedArg(bb.B, app.getBytes(raw)))
 	bytebufferpool.Put(bb)
@@ -101,7 +101,7 @@ func (app *App) quoteString(raw string) string {
 }
 
 // Scan stack if other methods match the request
-func (app *App) methodExist(c *DefaultCtx) bool {
+func (app *App[TCtx]) methodExist(c *DefaultCtx) bool {
 	var exists bool
 
 	methods := app.config.RequestMethods
@@ -146,7 +146,7 @@ func (app *App) methodExist(c *DefaultCtx) bool {
 }
 
 // Scan stack if other methods match the request
-func (app *App) methodExistCustom(c CustomCtx) bool {
+func (app *App[TCtx]) methodExistCustom(c CustomCtx[TCtx]) bool {
 	var exists bool
 	methods := app.config.RequestMethods
 	for i := 0; i < len(methods); i++ {
@@ -551,7 +551,7 @@ func matchEtag(s, etag string) bool {
 	return false
 }
 
-func (app *App) isEtagStale(etag string, noneMatchBytes []byte) bool {
+func (app *App[TCtx]) isEtagStale(etag string, noneMatchBytes []byte) bool {
 	var start, end int
 
 	// Adapted from:
@@ -661,7 +661,7 @@ func getBytesImmutable(s string) []byte {
 }
 
 // HTTP methods and their unique INTs
-func (app *App) methodInt(s string) int {
+func (app *App[TCtx]) methodInt(s string) int {
 	// For better performance
 	if len(app.configured.RequestMethods) == 0 {
 		// TODO: Use iota instead

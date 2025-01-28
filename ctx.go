@@ -47,9 +47,10 @@ const userContextKey contextKey = 0 // __local_user_context__
 // generation tool `go install github.com/vburenin/ifacemaker@975a95966976eeb2d4365a7fb236e274c54da64c`
 // https://github.com/vburenin/ifacemaker/blob/975a95966976eeb2d4365a7fb236e274c54da64c/ifacemaker.go#L14-L30
 //
-//go:generate ifacemaker --file ctx.go --struct DefaultCtx --iface Ctx --pkg fiber --output ctx_interface_gen.go --not-exported true --iface-comment "Ctx represents the Context which hold the HTTP request and response.\nIt has methods for the request query string, parameters, body, HTTP headers and so on."
+//go:generate ifacemaker --file ctx.go --struct DefaultCtx --iface Ctx --pkg fiber --output ctx_interface.go --not-exported true --iface-comment "Ctx represents the Context which hold the HTTP request and response.\nIt has methods for the request query string, parameters, body, HTTP headers and so on."
+//go:generate go run ctx_interface_gen.go
 type DefaultCtx struct {
-	app                 *App                 // Reference to *App
+	app                 *App[Ctx[any]]       // Reference to *App
 	route               *Route               // Reference to *Route
 	fasthttp            *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	bind                *Bind                // Default bind reference
@@ -197,7 +198,7 @@ type Views interface {
 
 // ResFmt associates a Content Type to a fiber.Handler for c.Format
 type ResFmt struct {
-	Handler   func(Ctx) error
+	Handler   func(Ctx[any]) error
 	MediaType string
 }
 
@@ -222,7 +223,7 @@ func (c *DefaultCtx) AcceptsLanguages(offers ...string) string {
 }
 
 // App returns the *App reference to the instance of the Fiber application
-func (c *DefaultCtx) App() *App {
+func (c *DefaultCtx) App() *App[DefaultCtx] {
 	return c.app
 }
 
@@ -642,7 +643,7 @@ func (c *DefaultCtx) Get(key string, defaultValue ...string) string {
 
 // GetReqHeader returns the HTTP request header specified by filed.
 // This function is generic and can handle different headers type values.
-func GetReqHeader[V GenericType](c Ctx, key string, defaultValue ...V) V {
+func GetReqHeader[V GenericType](c Ctx[any], key string, defaultValue ...V) V {
 	var v V
 	return genericParseType[V](c.App().getString(c.Request().Header.Peek(key)), v, defaultValue...)
 }
@@ -978,7 +979,7 @@ func (c *DefaultCtx) Locals(key any, value ...any) any {
 // All the values are removed from ctx after returning from the top
 // RequestHandler. Additionally, Close method is called on each value
 // implementing io.Closer before removing the value from ctx.
-func Locals[V any](c Ctx, key any, value ...V) V {
+func Locals[V any](c Ctx[any], key any, value ...V) V {
 	var v V
 	var ok bool
 	if len(value) == 0 {
@@ -1114,7 +1115,7 @@ func (c *DefaultCtx) Params(key string, defaultValue ...string) string {
 //
 // http://example.com/id/:number -> http://example.com/id/john
 // Params[int](c, "number", 0) -> returns 0 because can't parse 'john' as integer.
-func Params[V GenericType](c Ctx, key string, defaultValue ...V) V {
+func Params[V GenericType](c Ctx[any], key string, defaultValue ...V) V {
 	var v V
 	return genericParseType(c.Params(key), v, defaultValue...)
 }
@@ -1236,7 +1237,7 @@ func (c *DefaultCtx) Queries() map[string]string {
 //	name := Query[string](c, "search") // Returns "john"
 //	age := Query[int](c, "age") // Returns 8
 //	unknown := Query[string](c, "unknown", "default") // Returns "default" since the query parameter "unknown" is not found
-func Query[V GenericType](c Ctx, key string, defaultValue ...V) V {
+func Query[V GenericType](c Ctx[any], key string, defaultValue ...V) V {
 	var v V
 	q := c.App().getString(c.RequestCtx().QueryArgs().Peek(key))
 
@@ -1730,7 +1731,7 @@ func (c *DefaultCtx) Stale() bool {
 
 // Status sets the HTTP status for the response.
 // This method is chainable.
-func (c *DefaultCtx) Status(status int) Ctx {
+func (c *DefaultCtx) Status(status int) Ctx[DefaultCtx] {
 	c.fasthttp.Response.SetStatusCode(status)
 	return c
 }
@@ -1775,7 +1776,7 @@ func (c *DefaultCtx) String() string {
 }
 
 // Type sets the Content-Type HTTP header to the MIME type specified by the file extension.
-func (c *DefaultCtx) Type(extension string, charset ...string) Ctx {
+func (c *DefaultCtx) Type(extension string, charset ...string) Ctx[DefaultCtx] {
 	if len(charset) > 0 {
 		c.fasthttp.Response.Header.SetContentType(utils.GetMIME(extension) + "; charset=" + charset[0])
 	} else {

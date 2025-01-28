@@ -111,7 +111,7 @@ func Test_Ctx_CustomCtx(t *testing.T) {
 
 	app := New()
 
-	app.NewCtxFunc(func(app *App) CustomCtx {
+	app.NewCtxFunc(func(app *App[TCtx]) CustomCtx {
 		return &customCtx{
 			DefaultCtx: *NewDefaultCtx(app),
 		}
@@ -138,7 +138,7 @@ func Test_Ctx_CustomCtx_and_Method(t *testing.T) {
 	})
 
 	// Create custom context
-	app.NewCtxFunc(func(app *App) CustomCtx {
+	app.NewCtxFunc(func(app *App[TCtx]) CustomCtx {
 		return &customCtx{
 			DefaultCtx: *NewDefaultCtx(app),
 		}
