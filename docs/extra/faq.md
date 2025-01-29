@@ -83,12 +83,12 @@ Fiber currently supports 9 template engines in our [gofiber/template](https://do
 * [ace](https://docs.gofiber.io/template/ace/)
 * [amber](https://docs.gofiber.io/template/amber/)
 * [django](https://docs.gofiber.io/template/django/)
-* [handlebars](https://docs.gofiber.io/template/handlebars)
-* [html](https://docs.gofiber.io/template/html)
-* [jet](https://docs.gofiber.io/template/jet)
-* [mustache](https://docs.gofiber.io/template/mustache)
-* [pug](https://docs.gofiber.io/template/pug)
-* [slim](https://docs.gofiber.io/template/slim)
+* [handlebars](https://docs.gofiber.io/template/handlebars/)
+* [html](https://docs.gofiber.io/template/html/)
+* [jet](https://docs.gofiber.io/template/jet/)
+* [mustache](https://docs.gofiber.io/template/mustache/)
+* [pug](https://docs.gofiber.io/template/pug/)
+* [slim](https://docs.gofiber.io/template/slim/)
 
 To learn more about using Templates in Fiber, see [Templates](../guide/templates.md).
 

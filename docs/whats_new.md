@@ -350,14 +350,14 @@ testConfig := fiber.TestConfig{
 
 ### Removed Methods
 
-- **AllParams**: Use `c.Bind().URL()` instead.
+- **AllParams**: Use `c.Bind().URI()` instead.
 - **ParamsInt**: Use `Params` with generic types.
 - **QueryBool**: Use `Query` with generic types.
 - **QueryFloat**: Use `Query` with generic types.
 - **QueryInt**: Use `Query` with generic types.
 - **BodyParser**: Use `c.Bind().Body()` instead.
 - **CookieParser**: Use `c.Bind().Cookie()` instead.
-- **ParamsParser**: Use `c.Bind().URL()` instead.
+- **ParamsParser**: Use `c.Bind().URI()` instead.
 - **RedirectToRoute**: Use `c.Redirect().Route()` instead.
 - **RedirectBack**: Use `c.Redirect().Back()` instead.
 - **ReqHeaderParser**: Use `c.Bind().Header()` instead.
@@ -1121,7 +1121,7 @@ The `Parser` section in Fiber v3 has undergone significant changes to improve fu
 
     </details>
 
-2. **ParamsParser**: Use `c.Bind().URL()` instead of `c.ParamsParser()`.
+2. **ParamsParser**: Use `c.Bind().URI()` instead of `c.ParamsParser()`.
 
     <details>
     <summary>Example</summary>
@@ -1141,7 +1141,7 @@ The `Parser` section in Fiber v3 has undergone significant changes to improve fu
     // After
     app.Get("/user/:id", func(c fiber.Ctx) error {
         var params Params
-        if err := c.Bind().URL(&params); err != nil {
+        if err := c.Bind().URI(&params); err != nil {
             return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
         }
         return c.JSON(params)
