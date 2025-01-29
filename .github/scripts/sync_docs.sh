@@ -20,10 +20,10 @@ git clone https://${TOKEN}@${REPO_URL} fiber-docs
 # Handle push event
 if [ "$EVENT" == "push" ]; then
   latest_commit=$(git rev-parse --short HEAD)
-  log_output=$(git log --oneline ${BRANCH} HEAD~1..HEAD --name-status -- docs/)
-  if [[ $log_output != "" ]]; then
+  #log_output=$(git log --oneline ${BRANCH} HEAD~1..HEAD --name-status -- docs/)
+  #if [[ $log_output != "" ]]; then
     cp -a docs/* fiber-docs/docs/${REPO_DIR}
-  fi
+  #fi
 
 # Handle release event
 elif [ "$EVENT" == "release" ]; then
