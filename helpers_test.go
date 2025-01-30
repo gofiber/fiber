@@ -625,13 +625,13 @@ func Benchmark_SlashRecognition(b *testing.B) {
 		}
 		require.True(b, result)
 	})
-	b.Run("IndexRune", func(b *testing.B) {
+	b.Run("strings.ContainsRune", func(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		result = false
 		c := int32(slashDelimiter)
 		for i := 0; i < b.N; i++ {
-			result = IndexRune(search, c)
+			result = strings.ContainsRune(search, c)
 		}
 		require.True(b, result)
 	})
