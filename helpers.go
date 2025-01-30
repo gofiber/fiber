@@ -728,15 +728,6 @@ func IsMethodIdempotent(m string) bool {
 	}
 }
 
-func IndexRune(str string, needle int32) bool {
-	for _, b := range str {
-		if b == needle {
-			return true
-		}
-	}
-	return false
-}
-
 // Convert a string value to a specified type, handling errors and optional default values.
 func Convert[T any](value string, convertor func(string) (T, error), defaultValue ...T) (T, error) {
 	converted, err := convertor(value)
