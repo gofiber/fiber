@@ -265,7 +265,7 @@ type Ctx interface {
 	// We support the following engines: https://github.com/gofiber/template
 	Render(name string, bind any, layouts ...string) error
 	renderExtensions(bind any)
-	// Res returns a convenience type whose API is limited to operations
+	// Req returns a convenience type whose API is limited to operations
 	// on the incoming request.
 	Req() Req
 	// Res returns a convenience type whose API is limited to operations

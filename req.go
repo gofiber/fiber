@@ -1,5 +1,9 @@
 package fiber
 
+import (
+	"mime/multipart"
+)
+
 //go:generate ifacemaker --file req.go --struct DefaultReq --iface Req --pkg fiber --output req_interface_gen.go --not-exported true --iface-comment "Req"
 type DefaultReq struct {
 	ctx *DefaultCtx
@@ -33,6 +37,14 @@ func (r *DefaultReq) Cookies(key string, defaultValue ...string) string {
 	return r.ctx.Cookies(key, defaultValue...)
 }
 
+func (r *DefaultReq) FormFile(key string) (*multipart.FileHeader, error) {
+	return r.ctx.FormFile(key)
+}
+
+func (r *DefaultReq) FormValue(key string, defaultValue ...string) string {
+	return r.ctx.FormValue(key, defaultValue...)
+}
+
 func (r *DefaultReq) Fresh() bool {
 	return r.ctx.Fresh()
 }
@@ -55,6 +67,10 @@ func (r *DefaultReq) IP() string {
 
 func (r *DefaultReq) Is(extension string) bool {
 	return r.ctx.Is(extension)
+}
+
+func (r *DefaultReq) IsFromLocal() bool {
+	return r.ctx.IsFromLocal()
 }
 
 func (r *DefaultReq) IPs() []string {
@@ -83,6 +99,10 @@ func (r *DefaultReq) Protocol() string {
 
 func (r *DefaultReq) Query(key string, defaultValue ...string) string {
 	return r.ctx.Query(key, defaultValue...)
+}
+
+func (r *DefaultReq) Queries() map[string]string {
+	return r.ctx.Queries()
 }
 
 func (r *DefaultReq) Range(size int) (Range, error) {

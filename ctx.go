@@ -1465,7 +1465,7 @@ func (c *DefaultCtx) renderExtensions(bind any) {
 	}
 }
 
-// Res returns a convenience type whose API is limited to operations
+// Req returns a convenience type whose API is limited to operations
 // on the incoming request.
 func (c *DefaultCtx) Req() Req {
 	return c.req

@@ -46,7 +46,7 @@ func Test_Ctx_Accepts(t *testing.T) {
 
 	c.Request().Header.Set(HeaderAccept, "text/html,application/xhtml+xml,application/xml;q=0.9")
 	require.Equal(t, "", c.Accepts(""))
-	require.Equal(t, "", c.Accepts())
+	require.Equal(t, "", c.Req().Accepts())
 	require.Equal(t, ".xml", c.Accepts(".xml"))
 	require.Equal(t, "", c.Accepts(".john"))
 	require.Equal(t, "application/xhtml+xml", c.Accepts("application/xml", "application/xml+rss", "application/yaml", "application/xhtml+xml"), "must use client-preferred mime type")
@@ -57,13 +57,13 @@ func Test_Ctx_Accepts(t *testing.T) {
 	c.Request().Header.Set(HeaderAccept, "text/*, application/json")
 	require.Equal(t, "html", c.Accepts("html"))
 	require.Equal(t, "text/html", c.Accepts("text/html"))
-	require.Equal(t, "json", c.Accepts("json", "text"))
+	require.Equal(t, "json", c.Req().Accepts("json", "text"))
 	require.Equal(t, "application/json", c.Accepts("application/json"))
 	require.Equal(t, "", c.Accepts("image/png"))
 	require.Equal(t, "", c.Accepts("png"))
 
 	c.Request().Header.Set(HeaderAccept, "text/html, application/json")
-	require.Equal(t, "text/*", c.Accepts("text/*"))
+	require.Equal(t, "text/*", c.Req().Accepts("text/*"))
 
 	c.Request().Header.Set(HeaderAccept, "*/*")
 	require.Equal(t, "html", c.Accepts("html"))
@@ -968,46 +968,46 @@ func Test_Ctx_Cookie(t *testing.T) {
 		Expires: expire,
 		// SameSite: CookieSameSiteStrictMode, // default is "lax"
 	}
-	c.Cookie(cookie)
+	c.Res().Cookie(cookie)
 	expect := "username=john; expires=" + httpdate + "; path=/; SameSite=Lax"
-	require.Equal(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
+	require.Equal(t, expect, c.Res().Get(HeaderSetCookie))
 
 	expect = "username=john; expires=" + httpdate + "; path=/"
 	cookie.SameSite = CookieSameSiteDisabled
-	c.Cookie(cookie)
-	require.Equal(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
+	c.Res().Cookie(cookie)
+	require.Equal(t, expect, c.Res().Get(HeaderSetCookie))
 
 	expect = "username=john; expires=" + httpdate + "; path=/; SameSite=Strict"
 	cookie.SameSite = CookieSameSiteStrictMode
-	c.Cookie(cookie)
-	require.Equal(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
+	c.Res().Cookie(cookie)
+	require.Equal(t, expect, c.Res().Get(HeaderSetCookie))
 
 	expect = "username=john; expires=" + httpdate + "; path=/; secure; SameSite=None"
 	cookie.Secure = true
 	cookie.SameSite = CookieSameSiteNoneMode
-	c.Cookie(cookie)
-	require.Equal(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
+	c.Res().Cookie(cookie)
+	require.Equal(t, expect, c.Res().Get(HeaderSetCookie))
 
 	expect = "username=john; path=/; secure; SameSite=None"
 	// should remove expires and max-age headers
 	cookie.SessionOnly = true
 	cookie.Expires = expire
 	cookie.MaxAge = 10000
-	c.Cookie(cookie)
-	require.Equal(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
+	c.Res().Cookie(cookie)
+	require.Equal(t, expect, c.Res().Get(HeaderSetCookie))
 
 	expect = "username=john; path=/; secure; SameSite=None"
 	// should remove expires and max-age headers when no expire and no MaxAge (default time)
 	cookie.SessionOnly = false
 	cookie.Expires = time.Time{}
 	cookie.MaxAge = 0
-	c.Cookie(cookie)
-	require.Equal(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
+	c.Res().Cookie(cookie)
+	require.Equal(t, expect, c.Res().Get(HeaderSetCookie))
 
 	expect = "username=john; path=/; secure; SameSite=None; Partitioned"
 	cookie.Partitioned = true
-	c.Cookie(cookie)
-	require.Equal(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
+	c.Res().Cookie(cookie)
+	require.Equal(t, expect, c.Res().Get(HeaderSetCookie))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Cookie -benchmem -count=4
@@ -1033,8 +1033,8 @@ func Test_Ctx_Cookies(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Request().Header.Set("Cookie", "john=doe")
-	require.Equal(t, "doe", c.Cookies("john"))
-	require.Equal(t, "default", c.Cookies("unknown", "default"))
+	require.Equal(t, "doe", c.Req().Cookies("john"))
+	require.Equal(t, "default", c.Req().Cookies("unknown", "default"))
 }
 
 // go test -run Test_Ctx_Format
@@ -1058,13 +1058,13 @@ func Test_Ctx_Format(t *testing.T) {
 	}
 
 	c.Request().Header.Set(HeaderAccept, `text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7`)
-	err := c.Format(formatHandlers("application/xhtml+xml", "application/xml", "foo/bar")...)
+	err := c.Res().Format(formatHandlers("application/xhtml+xml", "application/xml", "foo/bar")...)
 	require.Equal(t, "application/xhtml+xml", accepted)
 	require.Equal(t, "application/xhtml+xml", c.GetRespHeader(HeaderContentType))
 	require.NoError(t, err)
 	require.NotEqual(t, StatusNotAcceptable, c.Response().StatusCode())
 
-	err = c.Format(formatHandlers("foo/bar;a=b")...)
+	err = c.Res().Format(formatHandlers("foo/bar;a=b")...)
 	require.Equal(t, "foo/bar;a=b", accepted)
 	require.Equal(t, "foo/bar;a=b", c.GetRespHeader(HeaderContentType))
 	require.NoError(t, err)
@@ -1165,7 +1165,7 @@ func Test_Ctx_AutoFormat(t *testing.T) {
 	require.Equal(t, "Hello, World!", string(c.Response().Body()))
 
 	c.Request().Header.Set(HeaderAccept, MIMETextHTML)
-	err = c.AutoFormat("Hello, World!")
+	err = c.Res().AutoFormat("Hello, World!")
 	require.NoError(t, err)
 	require.Equal(t, "<p>Hello, World!</p>", string(c.Response().Body()))
 
@@ -1175,7 +1175,7 @@ func Test_Ctx_AutoFormat(t *testing.T) {
 	require.Equal(t, `"Hello, World!"`, string(c.Response().Body()))
 
 	c.Request().Header.Set(HeaderAccept, MIMETextPlain)
-	err = c.AutoFormat(complex(1, 1))
+	err = c.Res().AutoFormat(complex(1, 1))
 	require.NoError(t, err)
 	require.Equal(t, "(1+1i)", string(c.Response().Body()))
 
@@ -2939,7 +2939,7 @@ func Test_Ctx_SaveFile(t *testing.T) {
 	app := New()
 
 	app.Post("/test", func(c Ctx) error {
-		fh, err := c.FormFile("file")
+		fh, err := c.Req().FormFile("file")
 		require.NoError(t, err)
 
 		tempFile, err := os.CreateTemp(os.TempDir(), "test-")
@@ -3075,7 +3075,7 @@ func Test_Ctx_ClearCookie(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Request().Header.Set(HeaderCookie, "john=doe")
-	c.ClearCookie("john")
+	c.Res().ClearCookie("john")
 	require.True(t, strings.HasPrefix(string(c.Response().Header.Peek(HeaderSetCookie)), "john=; expires="))
 
 	c.Request().Header.Set(HeaderCookie, "test1=dummy")
@@ -3104,7 +3104,7 @@ func Test_Ctx_Download(t *testing.T) {
 	require.Equal(t, expect, c.Response().Body())
 	require.Equal(t, `attachment; filename="Awesome+File%21"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
 
-	require.NoError(t, c.Download("ctx.go"))
+	require.NoError(t, c.Res().Download("ctx.go"))
 	require.Equal(t, `attachment; filename="ctx.go"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
 }
 
@@ -3136,7 +3136,7 @@ func Test_Ctx_SendFile(t *testing.T) {
 
 	// test with custom error code
 	c = app.AcquireCtx(&fasthttp.RequestCtx{})
-	err = c.Status(StatusInternalServerError).SendFile("ctx.go")
+	err = c.Res().Status(StatusInternalServerError).SendFile("ctx.go")
 	// check expectation
 	require.NoError(t, err)
 	require.Equal(t, expectFileContent, c.Response().Body())
@@ -3161,7 +3161,7 @@ func Test_Ctx_SendFile_ContentType(t *testing.T) {
 
 	// 1) simple case
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	err := c.SendFile("./.github/testdata/fs/img/fiber.png")
+	err := c.Res().SendFile("./.github/testdata/fs/img/fiber.png")
 	// check expectation
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, c.Response().StatusCode())
@@ -3782,7 +3782,7 @@ func Test_Ctx_JSONP(t *testing.T) {
 	require.Equal(t, `callback({"Age":20,"Name":"Grame"});`, string(c.Response().Body()))
 	require.Equal(t, "text/javascript; charset=utf-8", string(c.Response().Header.Peek("content-type")))
 
-	err = c.JSONP(Map{
+	err = c.Res().JSONP(Map{
 		"Name": "Grame",
 		"Age":  20,
 	}, "john")
@@ -4006,7 +4006,7 @@ func Test_Ctx_Render(t *testing.T) {
 	err = c.Render("./.github/testdata/template-non-exists.html", nil)
 	require.Error(t, err)
 
-	err = c.Render("./.github/testdata/template-invalid.html", nil)
+	err = c.Res().Render("./.github/testdata/template-invalid.html", nil)
 	require.Error(t, err)
 }
 
@@ -4907,7 +4907,7 @@ func Test_Ctx_Queries(t *testing.T) {
 
 	c.Request().URI().SetQueryString("tags=apple,orange,banana&filters[tags]=apple,orange,banana&filters[category][name]=fruits&filters.tags=apple,orange,banana&filters.category.name=fruits")
 
-	queries = c.Queries()
+	queries = c.Req().Queries()
 	require.Equal(t, "apple,orange,banana", queries["tags"])
 	require.Equal(t, "apple,orange,banana", queries["filters[tags]"])
 	require.Equal(t, "fruits", queries["filters[category][name]"])
@@ -5055,7 +5055,7 @@ func Test_Ctx_IsFromLocal_X_Forwarded(t *testing.T) {
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		c.Request().Header.Set(HeaderXForwardedFor, "93.46.8.90")
 
-		require.False(t, c.IsFromLocal())
+		require.False(t, c.Req().IsFromLocal())
 	}
 }
 
@@ -5088,8 +5088,8 @@ func Test_Ctx_IsFromLocal_RemoteAddr(t *testing.T) {
 		fastCtx := &fasthttp.RequestCtx{}
 		fastCtx.SetRemoteAddr(localIPv6)
 		c := app.AcquireCtx(fastCtx)
-		require.Equal(t, "::1", c.IP())
-		require.True(t, c.IsFromLocal())
+		require.Equal(t, "::1", c.Req().IP())
+		require.True(t, c.Req().IsFromLocal())
 	}
 	// Test for the case fasthttp remoteAddr is set to "0:0:0:0:0:0:0:1".
 	{

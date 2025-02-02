@@ -2,6 +2,10 @@
 
 package fiber
 
+import (
+	"mime/multipart"
+)
+
 // Req
 type Req interface {
 	Accepts(offers ...string) string
@@ -11,12 +15,15 @@ type Req interface {
 	BaseURL() string
 	Body() []byte
 	Cookies(key string, defaultValue ...string) string
+	FormFile(key string) (*multipart.FileHeader, error)
+	FormValue(key string, defaultValue ...string) string
 	Fresh() bool
 	Get(key string, defaultValue ...string) string
 	Host() string
 	Hostname() string
 	IP() string
 	Is(extension string) bool
+	IsFromLocal() bool
 	IPs() []string
 	Method() string
 	OriginalURL() string
@@ -24,6 +31,7 @@ type Req interface {
 	Path() string
 	Protocol() string
 	Query(key string, defaultValue ...string) string
+	Queries() map[string]string
 	Range(size int) (Range, error)
 	Route() *Route
 	Secure() bool
