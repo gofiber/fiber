@@ -11,7 +11,7 @@ import (
 
 // Group struct
 type Group struct {
-	app         *App[any]
+	app         *App[Ctx]
 	parentGroup *Group
 	name        string
 

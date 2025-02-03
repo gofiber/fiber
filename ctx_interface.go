@@ -12,9 +12,9 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// T represents the Context which hold the HTTP request and response.
+// Ctx represents the Context which hold the HTTP request and response.
 // It has methods for the request query string, parameters, body, HTTP headers and so on.
-type Ctx[T any] interface {
+type CtxGeneric[T any] interface {
 	// Accepts checks if the specified extensions or content types are acceptable.
 	Accepts(offers ...string) string
 	// AcceptsCharsets checks if the specified charset is acceptable.

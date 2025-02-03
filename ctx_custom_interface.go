@@ -11,7 +11,7 @@ import (
 )
 
 type CustomCtx[T any] interface {
-	Ctx[T]
+	CtxGeneric[T]
 
 	// Reset is a method to reset context fields by given request when to use server handlers.
 	Reset(fctx *fasthttp.RequestCtx)
@@ -30,7 +30,7 @@ type CustomCtx[T any] interface {
 	setRoute(route *Route)
 }
 
-func NewDefaultCtx(app *App[DefaultCtx]) *DefaultCtx {
+func NewDefaultCtx(app *App[*DefaultCtx]) *DefaultCtx {
 	// return ctx
 	return &DefaultCtx{
 		// Set app reference
@@ -38,8 +38,8 @@ func NewDefaultCtx(app *App[DefaultCtx]) *DefaultCtx {
 	}
 }
 
-func (app *App[TCtx]) newCtx() Ctx[TCtx] {
-	var c Ctx[TCtx]
+func (app *App[TCtx]) newCtx() CtxGeneric[TCtx] {
+	var c CtxGeneric[TCtx]
 
 	if app.newCtxFunc != nil {
 		c = app.newCtxFunc(app)
@@ -51,8 +51,8 @@ func (app *App[TCtx]) newCtx() Ctx[TCtx] {
 }
 
 // AcquireCtx retrieves a new Ctx from the pool.
-func (app *App[TCtx]) AcquireCtx(fctx *fasthttp.RequestCtx) Ctx[TCtx] {
-	ctx, ok := app.pool.Get().(Ctx)
+func (app *App[TCtx]) AcquireCtx(fctx *fasthttp.RequestCtx) CtxGeneric[TCtx] {
+	ctx, ok := app.pool.Get().(CtxGeneric[TCtx])
 
 	if !ok {
 		panic(errors.New("failed to type-assert to Ctx"))
@@ -63,7 +63,7 @@ func (app *App[TCtx]) AcquireCtx(fctx *fasthttp.RequestCtx) Ctx[TCtx] {
 }
 
 // ReleaseCtx releases the ctx back into the pool.
-func (app *App[TCtx]) ReleaseCtx(c Ctx[TCtx]) {
+func (app *App[TCtx]) ReleaseCtx(c CtxGeneric[TCtx]) {
 	c.release()
 	app.pool.Put(c)
 }

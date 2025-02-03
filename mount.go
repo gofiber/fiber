@@ -15,7 +15,7 @@ import (
 // Put fields related to mounting.
 type mountFields struct {
 	// Mounted and main apps
-	appList map[string]*App[any]
+	appList map[string]*App[Ctx]
 	// Prefix of app if it was mounted
 	mountPath string
 	// Ordered keys of apps (sorted by key length for Render)
@@ -68,7 +68,7 @@ func (app *App[TCtx]) mount(prefix string, subApp *App[TCtx]) Router {
 // Mount attaches another app instance as a sub-router along a routing path.
 // It's very useful to split up a large API as many independent routers and
 // compose them as a single service using Mount.
-func (grp *Group) mount(prefix string, subApp *App[Ctx[any]]) Router {
+func (grp *Group) mount(prefix string, subApp *App[Ctx]) Router {
 	groupPath := getGroupPath(grp.Prefix, prefix)
 	groupPath = utils.TrimRight(groupPath, '/')
 	if groupPath == "" {

@@ -40,8 +40,8 @@ func patchCtxFile(input []byte) ([]byte, error) {
 	scanner := bufio.NewScanner(in)
 	var outBuf bytes.Buffer
 
-	regexCtx := regexp.MustCompile(`\bCtx\b`)
-	regexApp := regexp.MustCompile(`\*\bApp\b`)
+	regexCtx := regexp.MustCompile(`(\*Default)Ctx`)
+	regexApp := regexp.MustCompile(`\*App(\[\w+])?`)
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -50,8 +50,8 @@ func patchCtxFile(input []byte) ([]byte, error) {
 		//  => "type Ctx interface {" -> "type Ctx[T any] interface {"
 		if strings.HasPrefix(line, "type") {
 			line = strings.Replace(line,
-				"type Ctx interface {",
-				"type Ctx[T any] interface {",
+				"type CtxGeneric interface {",
+				"type CtxGeneric[T any] interface {",
 				1,
 			)
 		} else {
@@ -64,7 +64,6 @@ func patchCtxFile(input []byte) ([]byte, error) {
 
 			// C) App with generic type
 			if strings.Contains(line, "App") {
-				// TODO: check this part
 				line = regexApp.ReplaceAllString(line, "*App[T]")
 			}
 		}

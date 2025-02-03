@@ -35,9 +35,9 @@ import (
 const Version = "3.0.0-beta.4"
 
 // Handler defines a function to serve HTTP requests.
-type Handler = func(Ctx[any]) error
+type Handler = func(ctx Ctx) error
 
-type customCtxFunc = func(app *App[any]) CustomCtx[any]
+type customCtxFunc = func(app *App[Ctx]) CustomCtx[Ctx]
 
 // Map is a shortcut for map[string]any, useful for JSON returns
 type Map map[string]any
@@ -80,7 +80,7 @@ type Storage interface {
 //	 return c.Status(code).SendString(err.Error())
 //	}
 //	app := fiber.New(cfg)
-type ErrorHandler = func(Ctx[any], error) error
+type ErrorHandler = func(Ctx, error) error
 
 // Error represents an error that occurred while handling a request.
 type Error struct {
@@ -89,7 +89,7 @@ type Error struct {
 }
 
 // App denotes the Fiber application.
-type App[TCtx any] struct {
+type App[TCtx CtxGeneric[TCtx]] struct {
 	// Ctx pool
 	pool sync.Pool
 	// Fasthttp server
@@ -472,7 +472,7 @@ var DefaultMethods = []string{
 }
 
 // DefaultErrorHandler that process return errors from handlers
-func DefaultErrorHandler(c Ctx[any], err error) error {
+func DefaultErrorHandler(c Ctx, err error) error {
 	code := StatusInternalServerError
 	var e *Error
 	if errors.As(err, &e) {
@@ -493,7 +493,7 @@ func DefaultErrorHandler(c Ctx[any], err error) error {
 //	    ServerHeader: "Fiber",
 //	})
 func New(config ...Config) *App[DefaultCtx] {
-	app := newApp[any](config...)
+	app := newApp[DefaultCtx](config...)
 
 	// Init app
 	app.init()
@@ -519,7 +519,7 @@ func New(config ...Config) *App[DefaultCtx] {
 //	    Prefork: true,
 //	    ServerHeader: "Fiber",
 //	})
-func NewWithCustomCtx[TCtx Ctx[TCtx]](newCtxFunc customCtxFunc, config ...Config) *App[TCtx] {
+func NewWithCustomCtx[TCtx CtxGeneric[TCtx]](newCtxFunc customCtxFunc, config ...Config) *App[TCtx] {
 	app := newApp[TCtx](config...)
 
 	// Set newCtxFunc
@@ -532,7 +532,7 @@ func NewWithCustomCtx[TCtx Ctx[TCtx]](newCtxFunc customCtxFunc, config ...Config
 }
 
 // newApp creates a new Fiber named instance.
-func newApp[TCtx Ctx[TCtx]](config ...Config) *App[TCtx] {
+func newApp[TCtx CtxGeneric[TCtx]](config ...Config) *App[TCtx] {
 	// Create a new app
 	app := &App[TCtx]{
 		// Create config
@@ -1129,7 +1129,7 @@ func (app *App[TCtx]) init() *App[TCtx] {
 // sub fibers by their prefixes and if it finds a match, it uses that
 // error handler. Otherwise it uses the configured error handler for
 // the app, which if not set is the DefaultErrorHandler.
-func (app *App[TCtx]) ErrorHandler(ctx Ctx[TCtx], err error) error {
+func (app *App[TCtx]) ErrorHandler(ctx CtxGeneric[TCtx], err error) error {
 	var (
 		mountedErrHandler  ErrorHandler
 		mountedPrefixParts int

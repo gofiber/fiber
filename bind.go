@@ -9,7 +9,7 @@ import (
 type CustomBinder interface {
 	Name() string
 	MIMETypes() []string
-	Parse(c Ctx[any], out any) error
+	Parse(c Ctx, out any) error
 }
 
 // StructValidator is an interface to register custom struct validator for binding.
@@ -19,7 +19,7 @@ type StructValidator interface {
 
 // Bind struct
 type Bind struct {
-	ctx            Ctx[any]
+	ctx            Ctx
 	dontHandleErrs bool
 }
 
