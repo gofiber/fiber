@@ -51,7 +51,7 @@ const userContextKey contextKey = 0 // __local_user_context__
 //go:generate go run ctx_interface_gen.go
 type DefaultCtx struct {
 	app                 *App[*DefaultCtx]    // Reference to *App
-	route               *Route               // Reference to *Route
+	route               *Route[*DefaultCtx]  // Reference to *Route
 	fasthttp            *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	bind                *Bind                // Default bind reference
 	redirect            *Redirect            // Default redirect reference
@@ -1048,6 +1048,7 @@ func (c *DefaultCtx) Next() error {
 	}
 
 	// Continue handler stack
+	// TODO: reduce this with generics
 	if c.app.newCtxFunc != nil {
 		_, err := c.app.nextCustom(c)
 		return err
@@ -1063,6 +1064,7 @@ func (c *DefaultCtx) RestartRouting() error {
 	var err error
 
 	c.indexRoute = -1
+	// TODO: reduce this with generics
 	if c.app.newCtxFunc != nil {
 		_, err = c.app.nextCustom(c)
 	} else {
@@ -1978,7 +1980,7 @@ func (c *DefaultCtx) setMatched(matched bool) {
 	c.matched = matched
 }
 
-func (c *DefaultCtx) setRoute(route *Route) {
+func (c *DefaultCtx) setRoute(route *Route[*DefaultCtx]) {
 	c.route = route
 }
 

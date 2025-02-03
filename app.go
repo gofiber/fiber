@@ -35,7 +35,7 @@ import (
 const Version = "3.0.0-beta.4"
 
 // Handler defines a function to serve HTTP requests.
-type Handler = func(ctx Ctx) error
+type Handler[TCtx CtxGeneric[TCtx]] = func(ctx TCtx) error
 
 // Map is a shortcut for map[string]any, useful for JSON returns
 type Map map[string]any
@@ -78,7 +78,7 @@ type Storage interface {
 //	 return c.Status(code).SendString(err.Error())
 //	}
 //	app := fiber.New(cfg)
-type ErrorHandler = func(Ctx, error) error
+type ErrorHandler[TCtx CtxGeneric[TCtx]] = func(TCtx, error) error
 
 // Error represents an error that occurred while handling a request.
 type Error struct {
@@ -97,19 +97,19 @@ type App[TCtx CtxGeneric[TCtx]] struct {
 	// Converts byte slice to a string
 	getString func(b []byte) string
 	// Hooks
-	hooks *Hooks
+	hooks *Hooks[TCtx]
 	// Latest route & group
-	latestRoute *Route
+	latestRoute *Route[TCtx]
 	// newCtxFunc
 	newCtxFunc func(app *App[TCtx]) CustomCtx[TCtx]
 	// TLS handler
 	tlsHandler *TLSHandler
 	// Mount fields
-	mountFields *mountFields
+	mountFields *mountFields[TCtx]
 	// Route stack divided by HTTP methods
-	stack [][]*Route
+	stack [][]*Route[TCtx]
 	// Route stack divided by HTTP methods and route prefixes
-	treeStack []map[string][]*Route
+	treeStack []map[string][]*Route[TCtx]
 	// custom binders
 	customBinders []CustomBinder
 	// customConstraints is a list of external constraints
@@ -117,9 +117,9 @@ type App[TCtx CtxGeneric[TCtx]] struct {
 	// sendfiles stores configurations for handling ctx.SendFile operations
 	sendfiles []*sendFileStore
 	// App config
-	config Config
+	config Config[TCtx]
 	// Indicates if the value was explicitly configured
-	configured Config
+	configured Config[TCtx]
 	// sendfilesMutex is a mutex used for sendfile operations
 	sendfilesMutex sync.RWMutex
 	mutex          sync.Mutex
@@ -132,7 +132,7 @@ type App[TCtx CtxGeneric[TCtx]] struct {
 }
 
 // Config is a struct holding the server settings.
-type Config struct { //nolint:govet // Aligning the struct fields is not necessary. betteralign:ignore
+type Config[TCtx CtxGeneric[TCtx]] struct { //nolint:govet // Aligning the struct fields is not necessary. betteralign:ignore
 	// Enables the "Server: value" HTTP header.
 	//
 	// Default: ""
@@ -250,7 +250,7 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// ErrorHandler is executed when an error is returned from fiber.Handler.
 	//
 	// Default: DefaultErrorHandler
-	ErrorHandler ErrorHandler `json:"-"`
+	ErrorHandler ErrorHandler[TCtx] `json:"-"`
 
 	// When set to true, disables keep-alive connections.
 	// The server will close incoming connections after sending the first response to client.
@@ -470,7 +470,7 @@ var DefaultMethods = []string{
 }
 
 // DefaultErrorHandler that process return errors from handlers
-func DefaultErrorHandler(c Ctx, err error) error {
+func DefaultErrorHandler[TCtx CtxGeneric[TCtx]](c TCtx, err error) error {
 	code := StatusInternalServerError
 	var e *Error
 	if errors.As(err, &e) {
@@ -490,7 +490,7 @@ func DefaultErrorHandler(c Ctx, err error) error {
 //	    Prefork: true,
 //	    ServerHeader: "Fiber",
 //	})
-func New(config ...Config) *App[*DefaultCtx] {
+func New(config ...Config[*DefaultCtx]) *App[*DefaultCtx] {
 	app := newApp[*DefaultCtx](config...)
 
 	// Init app
@@ -517,7 +517,7 @@ func New(config ...Config) *App[*DefaultCtx] {
 //	    Prefork: true,
 //	    ServerHeader: "Fiber",
 //	})
-func NewWithCustomCtx[TCtx CtxGeneric[TCtx]](newCtxFunc func(app *App[TCtx]) CustomCtx[TCtx], config ...Config) *App[TCtx] {
+func NewWithCustomCtx[TCtx CtxGeneric[TCtx]](newCtxFunc func(app *App[TCtx]) CustomCtx[TCtx], config ...Config[TCtx]) *App[TCtx] {
 	app := newApp[TCtx](config...)
 
 	// Set newCtxFunc
@@ -530,14 +530,14 @@ func NewWithCustomCtx[TCtx CtxGeneric[TCtx]](newCtxFunc func(app *App[TCtx]) Cus
 }
 
 // newApp creates a new Fiber named instance.
-func newApp[TCtx CtxGeneric[TCtx]](config ...Config) *App[TCtx] {
+func newApp[TCtx CtxGeneric[TCtx]](config ...Config[TCtx]) *App[TCtx] {
 	// Create a new app
 	app := &App[TCtx]{
 		// Create config
-		config:        Config{},
+		config:        Config[TCtx]{},
 		getBytes:      utils.UnsafeBytes,
 		getString:     utils.UnsafeString,
-		latestRoute:   &Route{},
+		latestRoute:   &Route[TCtx]{},
 		customBinders: []CustomBinder{},
 		sendfiles:     []*sendFileStore{},
 	}
@@ -550,7 +550,7 @@ func newApp[TCtx CtxGeneric[TCtx]](config ...Config) *App[TCtx] {
 	}
 
 	// Define hooks
-	app.hooks = newHooks(app)
+	app.hooks = newHooks[TCtx](app)
 
 	// Define mountFields
 	app.mountFields = newMountFields(app)
@@ -589,7 +589,7 @@ func newApp[TCtx CtxGeneric[TCtx]](config ...Config) *App[TCtx] {
 	}
 
 	if app.config.ErrorHandler == nil {
-		app.config.ErrorHandler = DefaultErrorHandler
+		app.config.ErrorHandler = DefaultErrorHandler[TCtx]
 	}
 
 	if app.config.JSONEncoder == nil {
@@ -620,8 +620,8 @@ func newApp[TCtx CtxGeneric[TCtx]](config ...Config) *App[TCtx] {
 	}
 
 	// Create router stack
-	app.stack = make([][]*Route, len(app.config.RequestMethods))
-	app.treeStack = make([]map[string][]*Route, len(app.config.RequestMethods))
+	app.stack = make([][]*Route[TCtx], len(app.config.RequestMethods))
+	app.treeStack = make([]map[string][]*Route[TCtx], len(app.config.RequestMethods))
 
 	// Override colors
 	app.config.ColorScheme = defaultColors(app.config.ColorScheme)
@@ -669,7 +669,7 @@ func (app *App[TCtx]) SetTLSHandler(tlsHandler *TLSHandler) {
 }
 
 // Name Assign name to specific route.
-func (app *App[TCtx]) Name(name string) Router {
+func (app *App[TCtx]) Name(name string) Router[TCtx] {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
@@ -695,7 +695,7 @@ func (app *App[TCtx]) Name(name string) Router {
 }
 
 // GetRoute Get route by name
-func (app *App[TCtx]) GetRoute(name string) Route {
+func (app *App[TCtx]) GetRoute(name string) Route[TCtx] {
 	for _, routes := range app.stack {
 		for _, route := range routes {
 			if route.Name == name {
@@ -704,12 +704,12 @@ func (app *App[TCtx]) GetRoute(name string) Route {
 		}
 	}
 
-	return Route{}
+	return Route[TCtx]{}
 }
 
 // GetRoutes Get all routes. When filterUseOption equal to true, it will filter the routes registered by the middleware.
-func (app *App[TCtx]) GetRoutes(filterUseOption ...bool) []Route {
-	var rs []Route
+func (app *App[TCtx]) GetRoutes(filterUseOption ...bool) []Route[TCtx] {
+	var rs []Route[TCtx]
 	var filterUse bool
 	if len(filterUseOption) != 0 {
 		filterUse = filterUseOption[0]
@@ -746,11 +746,11 @@ func (app *App[TCtx]) GetRoutes(filterUseOption ...bool) []Route {
 //		app.Use("/mounted-path", subApp)
 //
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
-func (app *App[TCtx]) Use(args ...any) Router {
+func (app *App[TCtx]) Use(args ...any) Router[TCtx] {
 	var prefix string
 	var subApp *App[TCtx]
 	var prefixes []string
-	var handlers []Handler
+	var handlers []Handler[TCtx]
 
 	for i := 0; i < len(args); i++ {
 		switch arg := args[i].(type) {
@@ -760,7 +760,7 @@ func (app *App[TCtx]) Use(args ...any) Router {
 			subApp = arg
 		case []string:
 			prefixes = arg
-		case Handler:
+		case Handler[TCtx]:
 			handlers = append(handlers, arg)
 		default:
 			panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
@@ -785,66 +785,66 @@ func (app *App[TCtx]) Use(args ...any) Router {
 
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
-func (app *App[TCtx]) Get(path string, handler Handler, middleware ...Handler) Router {
+func (app *App[TCtx]) Get(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx] {
 	return app.Add([]string{MethodGet}, path, handler, middleware...)
 }
 
 // Head registers a route for HEAD methods that asks for a response identical
 // to that of a GET request, but without the response body.
-func (app *App[TCtx]) Head(path string, handler Handler, middleware ...Handler) Router {
+func (app *App[TCtx]) Head(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx] {
 	return app.Add([]string{MethodHead}, path, handler, middleware...)
 }
 
 // Post registers a route for POST methods that is used to submit an entity to the
 // specified resource, often causing a change in state or side effects on the server.
-func (app *App[TCtx]) Post(path string, handler Handler, middleware ...Handler) Router {
+func (app *App[TCtx]) Post(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx] {
 	return app.Add([]string{MethodPost}, path, handler, middleware...)
 }
 
 // Put registers a route for PUT methods that replaces all current representations
 // of the target resource with the request payload.
-func (app *App[TCtx]) Put(path string, handler Handler, middleware ...Handler) Router {
+func (app *App[TCtx]) Put(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx] {
 	return app.Add([]string{MethodPut}, path, handler, middleware...)
 }
 
 // Delete registers a route for DELETE methods that deletes the specified resource.
-func (app *App[TCtx]) Delete(path string, handler Handler, middleware ...Handler) Router {
+func (app *App[TCtx]) Delete(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx] {
 	return app.Add([]string{MethodDelete}, path, handler, middleware...)
 }
 
 // Connect registers a route for CONNECT methods that establishes a tunnel to the
 // server identified by the target resource.
-func (app *App[TCtx]) Connect(path string, handler Handler, middleware ...Handler) Router {
+func (app *App[TCtx]) Connect(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx] {
 	return app.Add([]string{MethodConnect}, path, handler, middleware...)
 }
 
 // Options registers a route for OPTIONS methods that is used to describe the
 // communication options for the target resource.
-func (app *App[TCtx]) Options(path string, handler Handler, middleware ...Handler) Router {
+func (app *App[TCtx]) Options(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx] {
 	return app.Add([]string{MethodOptions}, path, handler, middleware...)
 }
 
 // Trace registers a route for TRACE methods that performs a message loop-back
 // test along the path to the target resource.
-func (app *App[TCtx]) Trace(path string, handler Handler, middleware ...Handler) Router {
+func (app *App[TCtx]) Trace(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx] {
 	return app.Add([]string{MethodTrace}, path, handler, middleware...)
 }
 
 // Patch registers a route for PATCH methods that is used to apply partial
 // modifications to a resource.
-func (app *App[TCtx]) Patch(path string, handler Handler, middleware ...Handler) Router {
+func (app *App[TCtx]) Patch(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx] {
 	return app.Add([]string{MethodPatch}, path, handler, middleware...)
 }
 
 // Add allows you to specify multiple HTTP methods to register a route.
-func (app *App[TCtx]) Add(methods []string, path string, handler Handler, middleware ...Handler) Router {
+func (app *App[TCtx]) Add(methods []string, path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx] {
 	app.register(methods, path, nil, handler, middleware...)
 
 	return app
 }
 
 // All will register the handler on all HTTP methods
-func (app *App[TCtx]) All(path string, handler Handler, middleware ...Handler) Router {
+func (app *App[TCtx]) All(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx] {
 	return app.Add(app.config.RequestMethods, path, handler, middleware...)
 }
 
@@ -852,8 +852,8 @@ func (app *App[TCtx]) All(path string, handler Handler, middleware ...Handler) R
 //
 //	api := app.Group("/api")
 //	api.Get("/users", handler)
-func (app *App[TCtx]) Group(prefix string, handlers ...Handler) Router {
-	grp := &Group{Prefix: prefix, app: app}
+func (app *App[TCtx]) Group(prefix string, handlers ...Handler[TCtx]) Router[TCtx] {
+	grp := &Group[TCtx]{Prefix: prefix, app: app}
 	if len(handlers) > 0 {
 		app.register([]string{methodUse}, prefix, grp, nil, handlers...)
 	}
@@ -866,9 +866,9 @@ func (app *App[TCtx]) Group(prefix string, handlers ...Handler) Router {
 
 // Route is used to define routes with a common prefix inside the common function.
 // Uses Group method to define new sub-router.
-func (app *App[TCtx]) Route(path string) Register {
+func (app *App[TCtx]) Route(path string) Register[TCtx] {
 	// Create new route
-	route := &Registering{app: app, path: path}
+	route := &Registering[TCtx]{app: app, path: path}
 
 	return route
 }
@@ -891,7 +891,7 @@ func NewError(code int, message ...string) *Error {
 }
 
 // Config returns the app config as value ( read-only ).
-func (app *App[TCtx]) Config() Config {
+func (app *App[TCtx]) Config() Config[TCtx] {
 	return app.config
 }
 
@@ -900,14 +900,11 @@ func (app *App[TCtx]) Handler() fasthttp.RequestHandler { //revive:disable-line:
 	// prepare the server for the start
 	app.startupProcess()
 
-	if app.newCtxFunc != nil {
-		return app.customRequestHandler
-	}
-	return app.defaultRequestHandler
+	return app.requestHandler
 }
 
 // Stack returns the raw router stack.
-func (app *App[TCtx]) Stack() [][]*Route {
+func (app *App[TCtx]) Stack() [][]*Route[TCtx] {
 	return app.stack
 }
 
@@ -964,7 +961,7 @@ func (app *App[TCtx]) Server() *fasthttp.Server {
 }
 
 // Hooks returns the hook struct to register hooks.
-func (app *App[TCtx]) Hooks() *Hooks {
+func (app *App[TCtx]) Hooks() *Hooks[TCtx] {
 	return app.hooks
 }
 
@@ -1094,11 +1091,7 @@ func (app *App[TCtx]) init() *App[TCtx] {
 	}
 
 	// fasthttp server settings
-	if app.newCtxFunc != nil {
-		app.server.Handler = app.customRequestHandler
-	} else {
-		app.server.Handler = app.defaultRequestHandler
-	}
+	app.server.Handler = app.requestHandler
 	app.server.Name = app.config.ServerHeader
 	app.server.Concurrency = app.config.Concurrency
 	app.server.NoDefaultDate = app.config.DisableDefaultDate
@@ -1127,9 +1120,9 @@ func (app *App[TCtx]) init() *App[TCtx] {
 // sub fibers by their prefixes and if it finds a match, it uses that
 // error handler. Otherwise it uses the configured error handler for
 // the app, which if not set is the DefaultErrorHandler.
-func (app *App[TCtx]) ErrorHandler(ctx CtxGeneric[TCtx], err error) error {
+func (app *App[TCtx]) ErrorHandler(ctx TCtx, err error) error {
 	var (
-		mountedErrHandler  ErrorHandler
+		mountedErrHandler  ErrorHandler[TCtx]
 		mountedPrefixParts int
 	)
 

@@ -24,7 +24,7 @@ type CtxGeneric[T any] interface {
 	// AcceptsLanguages checks if the specified language is acceptable.
 	AcceptsLanguages(offers ...string) string
 	// App returns the *App[T] reference to the instance of the Fiber application
-	App() *App[*DefaultCtx]
+	App() *App[T]
 	// Append the specified value to the HTTP response header field.
 	// If the header is not already set, it creates the header with the specified value.
 	Append(field string, values ...string)
@@ -258,7 +258,7 @@ type CtxGeneric[T any] interface {
 	// Variables are read by the Render method and may be overwritten.
 	ViewBind(vars Map) error
 	// getLocationFromRoute get URL location from route using parameters
-	getLocationFromRoute(route Route, params Map) (string, error)
+	getLocationFromRoute(route Route[T], params Map) (string, error)
 	// GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
 	GetRouteURL(routeName string, params Map) (string, error)
 	// Render a template with data and sends a text/html response.
@@ -266,7 +266,7 @@ type CtxGeneric[T any] interface {
 	Render(name string, bind any, layouts ...string) error
 	renderExtensions(bind any)
 	// Route returns the matched Route struct.
-	Route() *Route
+	Route() *Route[T]
 	// SaveFile saves any multipart file to disk.
 	SaveFile(fileheader *multipart.FileHeader, path string) error
 	// SaveFileToStorage saves any multipart file to an external storage system.
@@ -349,7 +349,7 @@ type CtxGeneric[T any] interface {
 	setIndexHandler(handler int)
 	setIndexRoute(route int)
 	setMatched(matched bool)
-	setRoute(route *Route)
+	setRoute(route *Route[T])
 	// Drop closes the underlying connection without sending any response headers or body.
 	// This can be useful for silently terminating client connections, such as in DDoS mitigation
 	// or when blocking access to sensitive endpoints.

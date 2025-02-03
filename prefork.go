@@ -35,7 +35,7 @@ func IsChild() bool {
 }
 
 // prefork manages child processes to make use of the OS REUSEPORT or REUSEADDR feature
-func (app *App[TCtx]) prefork(addr string, tlsConfig *tls.Config, cfg ListenConfig) error {
+func (app *App[TCtx]) prefork(addr string, tlsConfig *tls.Config, cfg ListenConfig[TCtx]) error {
 	var ln net.Listener
 	var err error
 

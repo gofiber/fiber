@@ -27,10 +27,10 @@ type CustomCtx[T any] interface {
 	setIndexHandler(handler int)
 	setIndexRoute(route int)
 	setMatched(matched bool)
-	setRoute(route *Route)
+	setRoute(route *Route[T])
 }
 
-func NewDefaultCtx(app *App[*DefaultCtx]) *DefaultCtx {
+func NewDefaultCtx[TCtx *DefaultCtx](app *App[*DefaultCtx]) TCtx {
 	// return ctx
 	return &DefaultCtx{
 		// Set app reference
@@ -41,6 +41,7 @@ func NewDefaultCtx(app *App[*DefaultCtx]) *DefaultCtx {
 func (app *App[TCtx]) newCtx() CtxGeneric[TCtx] {
 	var c CtxGeneric[TCtx]
 
+	// TODO: fix this with generics ?
 	if app.newCtxFunc != nil {
 		c = app.newCtxFunc(app)
 	} else {
@@ -51,8 +52,8 @@ func (app *App[TCtx]) newCtx() CtxGeneric[TCtx] {
 }
 
 // AcquireCtx retrieves a new Ctx from the pool.
-func (app *App[TCtx]) AcquireCtx(fctx *fasthttp.RequestCtx) CtxGeneric[TCtx] {
-	ctx, ok := app.pool.Get().(CtxGeneric[TCtx])
+func (app *App[TCtx]) AcquireCtx(fctx *fasthttp.RequestCtx) TCtx {
+	ctx, ok := app.pool.Get().(TCtx)
 
 	if !ok {
 		panic(errors.New("failed to type-assert to Ctx"))
@@ -63,7 +64,7 @@ func (app *App[TCtx]) AcquireCtx(fctx *fasthttp.RequestCtx) CtxGeneric[TCtx] {
 }
 
 // ReleaseCtx releases the ctx back into the pool.
-func (app *App[TCtx]) ReleaseCtx(c CtxGeneric[TCtx]) {
+func (app *App[TCtx]) ReleaseCtx(c TCtx) {
 	c.release()
 	app.pool.Put(c)
 }

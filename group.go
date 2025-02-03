@@ -10,9 +10,9 @@ import (
 )
 
 // Group struct
-type Group struct {
-	app         *App[*DefaultCtx]
-	parentGroup *Group
+type Group[TCtx CtxGeneric[TCtx]] struct {
+	app         *App[TCtx]
+	parentGroup *Group[TCtx]
 	name        string
 
 	Prefix          string
@@ -23,7 +23,7 @@ type Group struct {
 //
 // If this method is used before any route added to group, it'll set group name and OnGroupNameHook will be used.
 // Otherwise, it'll set route name and OnName hook will be used.
-func (grp *Group) Name(name string) Router {
+func (grp *Group[TCtx]) Name(name string) Router[TCtx] {
 	if grp.anyRouteDefined {
 		grp.app.Name(name)
 
@@ -66,21 +66,21 @@ func (grp *Group) Name(name string) Router {
 //		app.Use("/mounted-path", subApp)
 //
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
-func (grp *Group) Use(args ...any) Router {
-	var subApp *App
+func (grp *Group[TCtx]) Use(args ...any) Router[TCtx] {
+	var subApp *App[TCtx]
 	var prefix string
 	var prefixes []string
-	var handlers []Handler
+	var handlers []Handler[TCtx]
 
 	for i := 0; i < len(args); i++ {
 		switch arg := args[i].(type) {
 		case string:
 			prefix = arg
-		case *App:
+		case *App[TCtx]:
 			subApp = arg
 		case []string:
 			prefixes = arg
-		case Handler:
+		case Handler[TCtx]:
 			handlers = append(handlers, arg)
 		default:
 			panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
@@ -109,59 +109,59 @@ func (grp *Group) Use(args ...any) Router {
 
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
-func (grp *Group) Get(path string, handler Handler, middleware ...Handler) Router {
+func (grp *Group[TCtx]) Get(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx] {
 	return grp.Add([]string{MethodGet}, path, handler, middleware...)
 }
 
 // Head registers a route for HEAD methods that asks for a response identical
 // to that of a GET request, but without the response body.
-func (grp *Group) Head(path string, handler Handler, middleware ...Handler) Router {
+func (grp *Group[TCtx]) Head(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx] {
 	return grp.Add([]string{MethodHead}, path, handler, middleware...)
 }
 
 // Post registers a route for POST methods that is used to submit an entity to the
 // specified resource, often causing a change in state or side effects on the server.
-func (grp *Group) Post(path string, handler Handler, middleware ...Handler) Router {
+func (grp *Group[TCtx]) Post(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx] {
 	return grp.Add([]string{MethodPost}, path, handler, middleware...)
 }
 
 // Put registers a route for PUT methods that replaces all current representations
 // of the target resource with the request payload.
-func (grp *Group) Put(path string, handler Handler, middleware ...Handler) Router {
+func (grp *Group[TCtx]) Put(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx] {
 	return grp.Add([]string{MethodPut}, path, handler, middleware...)
 }
 
 // Delete registers a route for DELETE methods that deletes the specified resource.
-func (grp *Group) Delete(path string, handler Handler, middleware ...Handler) Router {
+func (grp *Group[TCtx]) Delete(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx] {
 	return grp.Add([]string{MethodDelete}, path, handler, middleware...)
 }
 
 // Connect registers a route for CONNECT methods that establishes a tunnel to the
 // server identified by the target resource.
-func (grp *Group) Connect(path string, handler Handler, middleware ...Handler) Router {
+func (grp *Group[TCtx]) Connect(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx] {
 	return grp.Add([]string{MethodConnect}, path, handler, middleware...)
 }
 
 // Options registers a route for OPTIONS methods that is used to describe the
 // communication options for the target resource.
-func (grp *Group) Options(path string, handler Handler, middleware ...Handler) Router {
+func (grp *Group[TCtx]) Options(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx] {
 	return grp.Add([]string{MethodOptions}, path, handler, middleware...)
 }
 
 // Trace registers a route for TRACE methods that performs a message loop-back
 // test along the path to the target resource.
-func (grp *Group) Trace(path string, handler Handler, middleware ...Handler) Router {
+func (grp *Group[TCtx]) Trace(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx] {
 	return grp.Add([]string{MethodTrace}, path, handler, middleware...)
 }
 
 // Patch registers a route for PATCH methods that is used to apply partial
 // modifications to a resource.
-func (grp *Group) Patch(path string, handler Handler, middleware ...Handler) Router {
+func (grp *Group[TCtx]) Patch(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx] {
 	return grp.Add([]string{MethodPatch}, path, handler, middleware...)
 }
 
 // Add allows you to specify multiple HTTP methods to register a route.
-func (grp *Group) Add(methods []string, path string, handler Handler, middleware ...Handler) Router {
+func (grp *Group[TCtx]) Add(methods []string, path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx] {
 	grp.app.register(methods, getGroupPath(grp.Prefix, path), grp, handler, middleware...)
 	if !grp.anyRouteDefined {
 		grp.anyRouteDefined = true
@@ -171,7 +171,7 @@ func (grp *Group) Add(methods []string, path string, handler Handler, middleware
 }
 
 // All will register the handler on all HTTP methods
-func (grp *Group) All(path string, handler Handler, middleware ...Handler) Router {
+func (grp *Group[TCtx]) All(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx] {
 	_ = grp.Add(grp.app.config.RequestMethods, path, handler, middleware...)
 	return grp
 }
@@ -180,14 +180,14 @@ func (grp *Group) All(path string, handler Handler, middleware ...Handler) Route
 //
 //	api := app.Group("/api")
 //	api.Get("/users", handler)
-func (grp *Group) Group(prefix string, handlers ...Handler) Router {
+func (grp *Group[TCtx]) Group(prefix string, handlers ...Handler[TCtx]) Router[TCtx] {
 	prefix = getGroupPath(grp.Prefix, prefix)
 	if len(handlers) > 0 {
 		grp.app.register([]string{methodUse}, prefix, grp, nil, handlers...)
 	}
 
 	// Create new group
-	newGrp := &Group{Prefix: prefix, app: grp.app, parentGroup: grp}
+	newGrp := &Group[TCtx]{Prefix: prefix, app: grp.app, parentGroup: grp}
 	if err := grp.app.hooks.executeOnGroupHooks(*newGrp); err != nil {
 		panic(err)
 	}
@@ -197,9 +197,9 @@ func (grp *Group) Group(prefix string, handlers ...Handler) Router {
 
 // Route is used to define routes with a common prefix inside the common function.
 // Uses Group method to define new sub-router.
-func (grp *Group) Route(path string) Register {
+func (grp *Group[TCtx]) Route(path string) Register[TCtx] {
 	// Create new group
-	register := &Registering{app: grp.app, path: getGroupPath(grp.Prefix, path)}
+	register := &Registering[TCtx]{app: grp.app, path: getGroupPath(grp.Prefix, path)}
 
 	return register
 }

@@ -113,9 +113,9 @@ func (app *App[TCtx]) methodExist(c *DefaultCtx) bool {
 		// Reset stack index
 		c.setIndexRoute(-1)
 
-		tree, ok := c.App().treeStack[i][c.getTreePath()]
+		tree, ok := app.treeStack[i][c.getTreePath()]
 		if !ok {
-			tree = c.App().treeStack[i][""]
+			tree = app.treeStack[i][""]
 		}
 		// Get stack length
 		lenr := len(tree) - 1
@@ -148,6 +148,7 @@ func (app *App[TCtx]) methodExist(c *DefaultCtx) bool {
 // Scan stack if other methods match the request
 func (app *App[TCtx]) methodExistCustom(c CustomCtx[TCtx]) bool {
 	var exists bool
+
 	methods := app.config.RequestMethods
 	for i := 0; i < len(methods); i++ {
 		// Skip original method
@@ -157,9 +158,9 @@ func (app *App[TCtx]) methodExistCustom(c CustomCtx[TCtx]) bool {
 		// Reset stack index
 		c.setIndexRoute(-1)
 
-		tree, ok := c.App().treeStack[i][c.getTreePath()]
+		tree, ok := app.treeStack[i][c.getTreePath()]
 		if !ok {
-			tree = c.App().treeStack[i][""]
+			tree = app.treeStack[i][""]
 		}
 		// Get stack length
 		lenr := len(tree) - 1
@@ -190,9 +191,9 @@ func (app *App[TCtx]) methodExistCustom(c CustomCtx[TCtx]) bool {
 }
 
 // uniqueRouteStack drop all not unique routes from the slice
-func uniqueRouteStack(stack []*Route) []*Route {
-	var unique []*Route
-	m := make(map[*Route]int)
+func uniqueRouteStack[TCtx CtxGeneric[TCtx]](stack []*Route[TCtx]) []*Route[TCtx] {
+	var unique []*Route[TCtx]
+	m := make(map[*Route[TCtx]]int)
 	for _, v := range stack {
 		if _, ok := m[v]; !ok {
 			// Unique key found. Record position and collect

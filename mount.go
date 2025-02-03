@@ -13,9 +13,9 @@ import (
 )
 
 // Put fields related to mounting.
-type mountFields struct {
+type mountFields[TCtx CtxGeneric[TCtx]] struct {
 	// Mounted and main apps
-	appList map[string]*App[*DefaultCtx]
+	appList map[string]*App[TCtx]
 	// Prefix of app if it was mounted
 	mountPath string
 	// Ordered keys of apps (sorted by key length for Render)
@@ -27,9 +27,9 @@ type mountFields struct {
 }
 
 // Create empty mountFields instance
-func newMountFields(app *App[*DefaultCtx]) *mountFields {
-	return &mountFields{
-		appList:     map[string]*App[*DefaultCtx]{"": app},
+func newMountFields[TCtx CtxGeneric[TCtx]](app *App[TCtx]) *mountFields[TCtx] {
+	return &mountFields[TCtx]{
+		appList:     map[string]*App[TCtx]{"": app},
 		appListKeys: make([]string, 0),
 	}
 }
@@ -39,7 +39,7 @@ func newMountFields(app *App[*DefaultCtx]) *mountFields {
 // compose them as a single service using Mount. The fiber's error handler and
 // any of the fiber's sub apps are added to the application's error handlers
 // to be invoked on errors that happen within the prefix route.
-func (app *App[TCtx]) mount(prefix string, subApp *App[TCtx]) Router {
+func (app *App[TCtx]) mount(prefix string, subApp *App[TCtx]) Router[TCtx] {
 	prefix = utils.TrimRight(prefix, '/')
 	if prefix == "" {
 		prefix = "/"
@@ -54,7 +54,7 @@ func (app *App[TCtx]) mount(prefix string, subApp *App[TCtx]) Router {
 	}
 
 	// register mounted group
-	mountGroup := &Group{Prefix: prefix, app: subApp}
+	mountGroup := &Group[TCtx]{Prefix: prefix, app: subApp}
 	app.register([]string{methodUse}, prefix, mountGroup, nil)
 
 	// Execute onMount hooks
@@ -68,7 +68,7 @@ func (app *App[TCtx]) mount(prefix string, subApp *App[TCtx]) Router {
 // Mount attaches another app instance as a sub-router along a routing path.
 // It's very useful to split up a large API as many independent routers and
 // compose them as a single service using Mount.
-func (grp *Group) mount(prefix string, subApp *App[Ctx]) Router {
+func (grp *Group[TCtx]) mount(prefix string, subApp *App[TCtx]) Router[TCtx] {
 	groupPath := getGroupPath(grp.Prefix, prefix)
 	groupPath = utils.TrimRight(groupPath, '/')
 	if groupPath == "" {
@@ -84,7 +84,7 @@ func (grp *Group) mount(prefix string, subApp *App[Ctx]) Router {
 	}
 
 	// register mounted group
-	mountGroup := &Group{Prefix: groupPath, app: subApp}
+	mountGroup := &Group[TCtx]{Prefix: groupPath, app: subApp}
 	grp.app.register([]string{methodUse}, groupPath, mountGroup, nil)
 
 	// Execute onMount hooks
@@ -194,7 +194,7 @@ func (app *App[TCtx]) processSubAppsRoutes() {
 			}
 
 			// Create a slice to hold the sub-app's routes
-			subRoutes := make([]*Route, len(route.group.app.stack[m]))
+			subRoutes := make([]*Route[TCtx], len(route.group.app.stack[m]))
 
 			// Iterate over the sub-app's routes
 			for j, subAppRoute := range route.group.app.stack[m] {
@@ -209,7 +209,7 @@ func (app *App[TCtx]) processSubAppsRoutes() {
 			}
 
 			// Insert the sub-app's routes into the parent app's stack
-			newStack := make([]*Route, len(app.stack[m])+len(subRoutes)-1)
+			newStack := make([]*Route[TCtx], len(app.stack[m])+len(subRoutes)-1)
 			copy(newStack[:i], app.stack[m][:i])
 			copy(newStack[i:i+len(subRoutes)], subRoutes)
 			copy(newStack[i+len(subRoutes):], app.stack[m][i+1:])

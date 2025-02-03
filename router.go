@@ -6,9 +6,7 @@ package fiber
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
-	"html"
 	"sort"
 	"sync/atomic"
 
@@ -17,33 +15,33 @@ import (
 )
 
 // Router defines all router handle interface, including app and group router.
-type Router interface {
-	Use(args ...any) Router
+type Router[TCtx CtxGeneric[TCtx]] interface {
+	Use(args ...any) Router[TCtx]
 
-	Get(path string, handler Handler, middleware ...Handler) Router
-	Head(path string, handler Handler, middleware ...Handler) Router
-	Post(path string, handler Handler, middleware ...Handler) Router
-	Put(path string, handler Handler, middleware ...Handler) Router
-	Delete(path string, handler Handler, middleware ...Handler) Router
-	Connect(path string, handler Handler, middleware ...Handler) Router
-	Options(path string, handler Handler, middleware ...Handler) Router
-	Trace(path string, handler Handler, middleware ...Handler) Router
-	Patch(path string, handler Handler, middleware ...Handler) Router
+	Get(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx]
+	Head(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx]
+	Post(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx]
+	Put(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx]
+	Delete(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx]
+	Connect(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx]
+	Options(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx]
+	Trace(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx]
+	Patch(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx]
 
-	Add(methods []string, path string, handler Handler, middleware ...Handler) Router
-	All(path string, handler Handler, middleware ...Handler) Router
+	Add(methods []string, path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx]
+	All(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx]
 
-	Group(prefix string, handlers ...Handler) Router
+	Group(prefix string, handlers ...Handler[TCtx]) Router[TCtx]
 
-	Route(path string) Register
+	Route(path string) Register[TCtx]
 
-	Name(name string) Router
+	Name(name string) Router[TCtx]
 }
 
 // Route is a struct that holds all metadata for each registered handler.
-type Route struct {
+type Route[TCtx CtxGeneric[TCtx]] struct {
 	// ### important: always keep in sync with the copy method "app.copyRoute" ###
-	group *Group // Group instance. used for routes in groups
+	group *Group[TCtx] // Group instance. used for routes in groups
 
 	path string // Prettified path
 
@@ -51,10 +49,10 @@ type Route struct {
 	Method string `json:"method"` // HTTP method
 	Name   string `json:"name"`   // Route's name
 	//nolint:revive // Having both a Path (uppercase) and a path (lowercase) is fine
-	Path        string      `json:"path"`   // Original registered route path
-	Params      []string    `json:"params"` // Case-sensitive param keys
-	Handlers    []Handler   `json:"-"`      // Ctx handlers
-	routeParser routeParser // Parameter parser
+	Path        string          `json:"path"`   // Original registered route path
+	Params      []string        `json:"params"` // Case-sensitive param keys
+	Handlers    []Handler[TCtx] `json:"-"`      // Ctx handlers
+	routeParser routeParser     // Parameter parser
 	// Data for routing
 	pos   uint32 // Position in stack -> important for the sort of the matched routes
 	use   bool   // USE matches path prefixes
@@ -63,7 +61,7 @@ type Route struct {
 	root  bool   // Path equals '/'
 }
 
-func (r *Route) match(detectionPath, path string, params *[maxParams]string) bool {
+func (r *Route[TCtx]) match(detectionPath, path string, params *[maxParams]string) bool {
 	// root detectionPath check
 	if r.root && len(detectionPath) == 1 && detectionPath[0] == '/' {
 		return true
@@ -108,7 +106,7 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) boo
 	return false
 }
 
-func (app *App[TCtx]) nextCustom(c CustomCtx[TCtx]) (bool, error) { //nolint: unparam // bool param might be useful for testing
+func (app *App[TCtx]) next(c TCtx) (bool, error) { //nolint: unparam // bool param might be useful for testing
 	// Get stack length
 	tree, ok := app.treeStack[c.getMethodINT()][c.getTreePath()]
 	if !ok {
@@ -156,98 +154,9 @@ func (app *App[TCtx]) nextCustom(c CustomCtx[TCtx]) (bool, error) { //nolint: un
 	return false, err
 }
 
-func (app *App[TCtx]) next(c *DefaultCtx) (bool, error) {
-	// Get stack length
-	tree, ok := app.treeStack[c.methodINT][c.treePath]
-	if !ok {
-		tree = app.treeStack[c.methodINT][""]
-	}
-	lenTree := len(tree) - 1
-
-	// Loop over the route stack starting from previous index
-	for c.indexRoute < lenTree {
-		// Increment route index
-		c.indexRoute++
-
-		// Get *Route
-		route := tree[c.indexRoute]
-
-		var match bool
-		var err error
-		// skip for mounted apps
-		if route.mount {
-			continue
-		}
-
-		// Check if it matches the request path
-		match = route.match(c.detectionPath, c.path, &c.values)
-		if !match {
-			// No match, next route
-			continue
-		}
-		// Pass route reference and param values
-		c.route = route
-
-		// Non use handler matched
-		if !c.matched && !route.use {
-			c.matched = true
-		}
-
-		// Execute first handler of route
-		c.indexHandler = 0
-		if len(route.Handlers) > 0 {
-			err = route.Handlers[0](c)
-		}
-		return match, err // Stop scanning the stack
-	}
-
-	// If c.Next() does not match, return 404
-	err := NewError(StatusNotFound, "Cannot "+c.method+" "+html.EscapeString(c.pathOriginal))
-	if !c.matched && app.methodExist(c) {
-		// If no match, scan stack again if other methods match the request
-		// Moved from app.handler because middleware may break the route chain
-		err = ErrMethodNotAllowed
-	}
-	return false, err
-}
-
-func (app *App[TCtx]) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
+func (app *App[TCtx]) requestHandler(rctx *fasthttp.RequestCtx) {
 	// Acquire DefaultCtx from the pool
-	ctx, ok := app.AcquireCtx(rctx).(*DefaultCtx)
-	if !ok {
-		panic(errors.New("requestHandler: failed to type-assert to *DefaultCtx"))
-	}
-
-	defer app.ReleaseCtx(ctx)
-
-	// Check if the HTTP method is valid
-	if ctx.methodINT == -1 {
-		_ = ctx.SendStatus(StatusNotImplemented) //nolint:errcheck // Always return nil
-		return
-	}
-
-	// Optional: Check flash messages
-	rawHeaders := ctx.Request().Header.RawHeaders()
-	if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, []byte(FlashCookieName)) {
-		ctx.Redirect().parseAndClearFlashMessages()
-	}
-
-	// Attempt to match a route and execute the chain
-	_, err := app.next(ctx)
-	if err != nil {
-		if catch := ctx.App().ErrorHandler(ctx, err); catch != nil {
-			_ = ctx.SendStatus(StatusInternalServerError) //nolint:errcheck // Always return nil
-		}
-		// TODO: Do we need to return here?
-	}
-}
-
-func (app *App[TCtx]) customRequestHandler(rctx *fasthttp.RequestCtx) {
-	// Acquire CustomCtx from the pool
-	ctx, ok := app.AcquireCtx(rctx).(CustomCtx)
-	if !ok {
-		panic(errors.New("requestHandler: failed to type-assert to CustomCtx"))
-	}
+	ctx := app.AcquireCtx(rctx)
 
 	defer app.ReleaseCtx(ctx)
 
@@ -264,16 +173,16 @@ func (app *App[TCtx]) customRequestHandler(rctx *fasthttp.RequestCtx) {
 	}
 
 	// Attempt to match a route and execute the chain
-	_, err := app.nextCustom(ctx)
+	_, err := app.next(ctx)
 	if err != nil {
-		if catch := ctx.App().ErrorHandler(ctx, err); catch != nil {
+		if catch := app.ErrorHandler(ctx, err); catch != nil {
 			_ = ctx.SendStatus(StatusInternalServerError) //nolint:errcheck // Always return nil
 		}
 		// TODO: Do we need to return here?
 	}
 }
 
-func (app *App[TCtx]) addPrefixToRoute(prefix string, route *Route) *Route {
+func (app *App[TCtx]) addPrefixToRoute(prefix string, route *Route[TCtx]) *Route[TCtx] {
 	prefixedPath := getGroupPath(prefix, route.Path)
 	prettyPath := prefixedPath
 	// Case-sensitive routing, all to lowercase
@@ -294,8 +203,8 @@ func (app *App[TCtx]) addPrefixToRoute(prefix string, route *Route) *Route {
 	return route
 }
 
-func (*App[TCtx]) copyRoute(route *Route) *Route {
-	return &Route{
+func (*App[TCtx]) copyRoute(route *Route[TCtx]) *Route[TCtx] {
+	return &Route[TCtx]{
 		// Router booleans
 		use:   route.use,
 		mount: route.mount,
@@ -318,7 +227,7 @@ func (*App[TCtx]) copyRoute(route *Route) *Route {
 	}
 }
 
-func (app *App[TCtx]) register(methods []string, pathRaw string, group *Group, handler Handler, middleware ...Handler) {
+func (app *App[TCtx]) register(methods []string, pathRaw string, group *Group[TCtx], handler Handler[TCtx], middleware ...Handler[TCtx]) {
 	handlers := middleware
 	if handler != nil {
 		handlers = append(handlers, handler)
@@ -358,7 +267,7 @@ func (app *App[TCtx]) register(methods []string, pathRaw string, group *Group, h
 		isStar := pathClean == "/*"
 		isRoot := pathClean == "/"
 
-		route := Route{
+		route := Route[TCtx]{
 			use:   isUse,
 			mount: isMount,
 			star:  isStar,
@@ -392,7 +301,7 @@ func (app *App[TCtx]) register(methods []string, pathRaw string, group *Group, h
 	}
 }
 
-func (app *App[TCtx]) addRoute(method string, route *Route, isMounted ...bool) {
+func (app *App[TCtx]) addRoute(method string, route *Route[TCtx], isMounted ...bool) {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
@@ -428,7 +337,7 @@ func (app *App[TCtx]) addRoute(method string, route *Route, isMounted ...bool) {
 	}
 }
 
-// BuildTree rebuilds the prefix tree from the previously registered routes.
+// RebuildTree BuildTree rebuilds the prefix tree from the previously registered routes.
 // This method is useful when you want to register routes dynamically after the app has started.
 // It is not recommended to use this method on production environments because rebuilding
 // the tree is performance-intensive and not thread-safe in runtime. Since building the tree
@@ -451,7 +360,7 @@ func (app *App[TCtx]) buildTree() *App[TCtx] {
 
 	// loop all the methods and stacks and create the prefix tree
 	for m := range app.config.RequestMethods {
-		tsMap := make(map[string][]*Route)
+		tsMap := make(map[string][]*Route[TCtx])
 		for _, route := range app.stack[m] {
 			treePath := ""
 			if len(route.routeParser.segs) > 0 && len(route.routeParser.segs[0].Const) >= 3 {
@@ -469,7 +378,7 @@ func (app *App[TCtx]) buildTree() *App[TCtx] {
 		for treePart := range tsMap {
 			if treePart != "" {
 				// merge global tree routes in current tree stack
-				tsMap[treePart] = uniqueRouteStack(append(tsMap[treePart], tsMap[""]...))
+				tsMap[treePart] = uniqueRouteStack[TCtx](append(tsMap[treePart], tsMap[""]...))
 			}
 			// sort tree slices with the positions
 			slc := tsMap[treePart]

@@ -39,7 +39,7 @@ const (
 )
 
 // ListenConfig is a struct to customize startup of Fiber.
-type ListenConfig struct {
+type ListenConfig[TCtx CtxGeneric[TCtx]] struct {
 	// GracefulContext is a field to shutdown Fiber by given context gracefully.
 	//
 	// Default: nil
@@ -58,7 +58,7 @@ type ListenConfig struct {
 	// BeforeServeFunc allows customizing and accessing fiber app before serving the app.
 	//
 	// Default: nil
-	BeforeServeFunc func(app *App[*DefaultCtx]) error `json:"before_serve_func"`
+	BeforeServeFunc func(app *App[TCtx]) error `json:"before_serve_func"`
 
 	// OnShutdownError allows to customize error behavior when to graceful shutdown server by given signal.
 	//
@@ -131,9 +131,9 @@ type ListenConfig struct {
 }
 
 // listenConfigDefault is a function to set default values of ListenConfig.
-func listenConfigDefault(config ...ListenConfig) ListenConfig {
+func listenConfigDefault[TCtx CtxGeneric[TCtx]](config ...ListenConfig[TCtx]) ListenConfig[TCtx] {
 	if len(config) < 1 {
-		return ListenConfig{
+		return ListenConfig[TCtx]{
 			TLSMinVersion:   tls.VersionTLS12,
 			ListenerNetwork: NetworkTCP4,
 			OnShutdownError: func(err error) {
@@ -171,8 +171,8 @@ func listenConfigDefault(config ...ListenConfig) ListenConfig {
 //	app.Listen(":8080")
 //	app.Listen("127.0.0.1:8080")
 //	app.Listen(":8080", ListenConfig{EnablePrefork: true})
-func (app *App[TCtx]) Listen(addr string, config ...ListenConfig) error {
-	cfg := listenConfigDefault(config...)
+func (app *App[TCtx]) Listen(addr string, config ...ListenConfig[TCtx]) error {
+	cfg := listenConfigDefault[TCtx](config...)
 
 	// Configure TLS
 	var tlsConfig *tls.Config
@@ -258,7 +258,7 @@ func (app *App[TCtx]) Listen(addr string, config ...ListenConfig) error {
 
 // Listener serves HTTP requests from the given listener.
 // You should enter custom ListenConfig to customize startup. (prefork, startup message, graceful shutdown...)
-func (app *App[TCtx]) Listener(ln net.Listener, config ...ListenConfig) error {
+func (app *App[TCtx]) Listener(ln net.Listener, config ...ListenConfig[TCtx]) error {
 	cfg := listenConfigDefault(config...)
 
 	// Graceful shutdown
@@ -294,7 +294,7 @@ func (app *App[TCtx]) Listener(ln net.Listener, config ...ListenConfig) error {
 }
 
 // Create listener function.
-func (*App[TCtx]) createListener(addr string, tlsConfig *tls.Config, cfg ListenConfig) (net.Listener, error) {
+func (*App[TCtx]) createListener(addr string, tlsConfig *tls.Config, cfg ListenConfig[TCtx]) (net.Listener, error) {
 	var listener net.Listener
 	var err error
 
@@ -317,7 +317,7 @@ func (*App[TCtx]) createListener(addr string, tlsConfig *tls.Config, cfg ListenC
 	return listener, nil
 }
 
-func (app *App[TCtx]) printMessages(cfg ListenConfig, ln net.Listener) {
+func (app *App[TCtx]) printMessages(cfg ListenConfig[TCtx], ln net.Listener) {
 	// Print startup message
 	if !cfg.DisableStartupMessage {
 		app.startupMessage(ln.Addr().String(), getTLSConfig(ln) != nil, "", cfg)
@@ -330,7 +330,7 @@ func (app *App[TCtx]) printMessages(cfg ListenConfig, ln net.Listener) {
 }
 
 // prepareListenData create an slice of ListenData
-func (*App[TCtx]) prepareListenData(addr string, isTLS bool, cfg ListenConfig) ListenData { //revive:disable-line:flag-parameter // Accepting a bool param named isTLS if fine here
+func (*App[TCtx]) prepareListenData(addr string, isTLS bool, cfg ListenConfig[TCtx]) ListenData { //revive:disable-line:flag-parameter // Accepting a bool param named isTLS if fine here
 	host, port := parseAddr(addr)
 	if host == "" {
 		if cfg.ListenerNetwork == NetworkTCP6 {
@@ -348,7 +348,7 @@ func (*App[TCtx]) prepareListenData(addr string, isTLS bool, cfg ListenConfig) L
 }
 
 // startupMessage prepares the startup message with the handler number, port, address and other information
-func (app *App[TCtx]) startupMessage(addr string, isTLS bool, pids string, cfg ListenConfig) { //nolint: revive // Accepting a bool param named isTLS if fine here
+func (app *App[TCtx]) startupMessage(addr string, isTLS bool, pids string, cfg ListenConfig[TCtx]) { //nolint: revive // Accepting a bool param named isTLS if fine here
 	// ignore child processes
 	if IsChild() {
 		return
@@ -505,7 +505,7 @@ func (app *App[TCtx]) printRoutesMessage() {
 }
 
 // shutdown goroutine
-func (app *App[TCtx]) gracefulShutdown(ctx context.Context, cfg ListenConfig) {
+func (app *App[TCtx]) gracefulShutdown(ctx context.Context, cfg ListenConfig[TCtx]) {
 	<-ctx.Done()
 
 	var err error

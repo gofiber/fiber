@@ -262,7 +262,7 @@ func Test_Ctx_App(t *testing.T) {
 	app.config.BodyLimit = 1000
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	require.Equal(t, 1000, c.App().config.BodyLimit)
+	require.Equal(t, 1000, app.config.BodyLimit)
 }
 
 // go test -run Test_Ctx_Append
