@@ -58,7 +58,7 @@ type ListenConfig struct {
 	// BeforeServeFunc allows customizing and accessing fiber app before serving the app.
 	//
 	// Default: nil
-	BeforeServeFunc func(app *App[any]) error `json:"before_serve_func"`
+	BeforeServeFunc func(app *App[*DefaultCtx]) error `json:"before_serve_func"`
 
 	// OnShutdownError allows to customize error behavior when to graceful shutdown server by given signal.
 	//

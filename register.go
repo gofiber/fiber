@@ -26,7 +26,7 @@ var _ (Register) = (*Registering)(nil)
 
 // Registering struct
 type Registering struct {
-	app *App[any]
+	app *App[*DefaultCtx]
 
 	path string
 }

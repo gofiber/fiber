@@ -13,13 +13,13 @@ type (
 	OnListenHandler    = func(ListenData) error
 	OnShutdownHandler  = func() error
 	OnForkHandler      = func(int) error
-	OnMountHandler     = func(*App[Ctx]) error
+	OnMountHandler     = func(*App[*DefaultCtx]) error
 )
 
 // Hooks is a struct to use it with App.
 type Hooks struct {
 	// Embed app
-	app *App[Ctx]
+	app *App[*DefaultCtx]
 
 	// Hooks
 	onRoute     []OnRouteHandler
@@ -39,7 +39,7 @@ type ListenData struct {
 	TLS  bool
 }
 
-func newHooks(app *App[Ctx]) *Hooks {
+func newHooks(app *App[*DefaultCtx]) *Hooks {
 	return &Hooks{
 		app:         app,
 		onRoute:     make([]OnRouteHandler, 0),

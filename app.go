@@ -37,8 +37,6 @@ const Version = "3.0.0-beta.4"
 // Handler defines a function to serve HTTP requests.
 type Handler = func(ctx Ctx) error
 
-type customCtxFunc = func(app *App[Ctx]) CustomCtx[Ctx]
-
 // Map is a shortcut for map[string]any, useful for JSON returns
 type Map map[string]any
 
@@ -103,7 +101,7 @@ type App[TCtx CtxGeneric[TCtx]] struct {
 	// Latest route & group
 	latestRoute *Route
 	// newCtxFunc
-	newCtxFunc customCtxFunc
+	newCtxFunc func(app *App[TCtx]) CustomCtx[TCtx]
 	// TLS handler
 	tlsHandler *TLSHandler
 	// Mount fields
@@ -492,8 +490,8 @@ func DefaultErrorHandler(c Ctx, err error) error {
 //	    Prefork: true,
 //	    ServerHeader: "Fiber",
 //	})
-func New(config ...Config) *App[DefaultCtx] {
-	app := newApp[DefaultCtx](config...)
+func New(config ...Config) *App[*DefaultCtx] {
+	app := newApp[*DefaultCtx](config...)
 
 	// Init app
 	app.init()
@@ -519,7 +517,7 @@ func New(config ...Config) *App[DefaultCtx] {
 //	    Prefork: true,
 //	    ServerHeader: "Fiber",
 //	})
-func NewWithCustomCtx[TCtx CtxGeneric[TCtx]](newCtxFunc customCtxFunc, config ...Config) *App[TCtx] {
+func NewWithCustomCtx[TCtx CtxGeneric[TCtx]](newCtxFunc func(app *App[TCtx]) CustomCtx[TCtx], config ...Config) *App[TCtx] {
 	app := newApp[TCtx](config...)
 
 	// Set newCtxFunc
@@ -758,7 +756,7 @@ func (app *App[TCtx]) Use(args ...any) Router {
 		switch arg := args[i].(type) {
 		case string:
 			prefix = arg
-		case *App:
+		case *App[TCtx]:
 			subApp = arg
 		case []string:
 			prefixes = arg

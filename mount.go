@@ -15,7 +15,7 @@ import (
 // Put fields related to mounting.
 type mountFields struct {
 	// Mounted and main apps
-	appList map[string]*App[Ctx]
+	appList map[string]*App[*DefaultCtx]
 	// Prefix of app if it was mounted
 	mountPath string
 	// Ordered keys of apps (sorted by key length for Render)
@@ -27,9 +27,9 @@ type mountFields struct {
 }
 
 // Create empty mountFields instance
-func newMountFields(app *App[any]) *mountFields {
+func newMountFields(app *App[*DefaultCtx]) *mountFields {
 	return &mountFields{
-		appList:     map[string]*App[any]{"": app},
+		appList:     map[string]*App[*DefaultCtx]{"": app},
 		appListKeys: make([]string, 0),
 	}
 }
