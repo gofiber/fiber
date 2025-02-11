@@ -894,7 +894,9 @@ func Test_App_ShutdownWithContext(t *testing.T) {
 
 		go func() {
 			serverStarted <- true
-			_ = app.Listener(ln)
+			if err := app.Listener(ln); err != nil {
+				t.Errorf("Failed to start listener: %v", err)
+			}
 		}()
 
 		<-serverStarted
@@ -936,7 +938,9 @@ func Test_App_ShutdownWithContext(t *testing.T) {
 
 		ln := fasthttputil.NewInmemoryListener()
 		go func() {
-			_ = app.Listener(ln)
+			if err := app.Listener(ln); err != nil {
+				t.Errorf("Failed to start listener: %v", err)
+			}
 		}()
 
 		time.Sleep(100 * time.Millisecond)
@@ -965,8 +969,14 @@ func Test_App_ShutdownWithContext(t *testing.T) {
 
 		// Start long request
 		go func() {
-			conn, _ := ln.Dial()
-			_, _ = conn.Write([]byte("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n"))
+			conn, err := ln.Dial()
+			if err != nil {
+				t.Errorf("Failed to dial: %v", err)
+				return
+			}
+			if _, err := conn.Write([]byte("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n")); err != nil {
+				t.Errorf("Failed to write: %v", err)
+			}
 		}()
 
 		time.Sleep(100 * time.Millisecond) // Wait for request to start
