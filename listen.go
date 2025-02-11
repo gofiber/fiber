@@ -134,12 +134,6 @@ func listenConfigDefault(config ...ListenConfig) ListenConfig {
 		cfg.ListenerNetwork = NetworkTCP4
 	}
 
-	if cfg.OnShutdownError == nil {
-		cfg.OnShutdownError = func(err error) {
-			log.Fatalf("shutdown: %v", err) //nolint:revive // It's an option
-		}
-	}
-
 	if cfg.TLSMinVersion == 0 {
 		cfg.TLSMinVersion = tls.VersionTLS12
 	}

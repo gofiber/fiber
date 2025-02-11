@@ -21,7 +21,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
-	"sync/atomic"
+	"sync"
 	"testing"
 	"time"
 
@@ -880,62 +880,103 @@ func Test_App_ShutdownWithTimeout(t *testing.T) {
 func Test_App_ShutdownWithContext(t *testing.T) {
 	t.Parallel()
 
-	app := New()
-	var shutdownHookCalled atomic.Int32
+	t.Run("successful shutdown", func(t *testing.T) {
+		t.Parallel()
+		app := New()
 
-	app.Hooks().OnPreShutdown(func() error {
-		shutdownHookCalled.Store(1)
-		return nil
-	})
+		// Fast request that should complete
+		app.Get("/", func(c Ctx) error {
+			return c.SendString("OK")
+		})
 
-	app.Get("/", func(ctx Ctx) error {
-		time.Sleep(5 * time.Second)
-		return ctx.SendString("body")
-	})
+		ln := fasthttputil.NewInmemoryListener()
+		serverStarted := make(chan bool, 1)
 
-	ln := fasthttputil.NewInmemoryListener()
+		go func() {
+			serverStarted <- true
+			_ = app.Listener(ln)
+		}()
 
-	serverErr := make(chan error, 1)
-	go func() {
-		serverErr <- app.Listener(ln)
-	}()
+		<-serverStarted
 
-	time.Sleep(100 * time.Millisecond)
-
-	clientDone := make(chan struct{})
-	go func() {
+		// Execute normal request
 		conn, err := ln.Dial()
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		_, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n"))
-		assert.NoError(t, err)
-		close(clientDone)
-	}()
+		require.NoError(t, err)
 
-	<-clientDone
-	// Sleep to ensure the server has started processing the request
-	time.Sleep(100 * time.Millisecond)
-
-	shutdownErr := make(chan error, 1)
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		// Shutdown with sufficient timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		shutdownErr <- app.ShutdownWithContext(ctx)
-	}()
 
-	select {
-	case <-time.After(2 * time.Second):
-		t.Fatal("shutdown did not complete in time")
-	case err := <-shutdownErr:
-		require.Error(t, err, "Expected shutdown to return an error due to timeout")
-		require.ErrorIs(t, err, context.DeadlineExceeded, "Expected DeadlineExceeded error")
-	}
+		err = app.ShutdownWithContext(ctx)
+		require.NoError(t, err, "Expected successful shutdown")
+	})
 
-	assert.Equal(t, int32(1), shutdownHookCalled.Load(), "Shutdown hook was not called")
+	t.Run("shutdown with hooks", func(t *testing.T) {
+		t.Parallel()
+		app := New()
 
-	err := <-serverErr
-	assert.NoError(t, err, "Server should have shut down without error")
-	// default:
-	// Server is still running, which is expected as the long-running request prevented full shutdown
+		hookOrder := make([]string, 0)
+		var hookMutex sync.Mutex
+
+		app.Hooks().OnPreShutdown(func() error {
+			hookMutex.Lock()
+			hookOrder = append(hookOrder, "pre")
+			hookMutex.Unlock()
+			return nil
+		})
+
+		app.Hooks().OnPostShutdown(func(err error) error {
+			hookMutex.Lock()
+			hookOrder = append(hookOrder, "post")
+			hookMutex.Unlock()
+			return nil
+		})
+
+		ln := fasthttputil.NewInmemoryListener()
+		go func() {
+			_ = app.Listener(ln)
+		}()
+
+		time.Sleep(100 * time.Millisecond)
+
+		err := app.ShutdownWithContext(context.Background())
+		require.NoError(t, err)
+
+		require.Equal(t, []string{"pre", "post"}, hookOrder, "Hooks should execute in order")
+	})
+
+	t.Run("timeout with long running request", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+
+		app.Get("/", func(c Ctx) error {
+			time.Sleep(2 * time.Second)
+			return c.SendString("OK")
+		})
+
+		ln := fasthttputil.NewInmemoryListener()
+		go func() {
+			_ = app.Listener(ln)
+		}()
+
+		time.Sleep(100 * time.Millisecond)
+
+		// Start long request
+		go func() {
+			conn, _ := ln.Dial()
+			_, _ = conn.Write([]byte("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n"))
+		}()
+
+		time.Sleep(100 * time.Millisecond) // Wait for request to start
+
+		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		defer cancel()
+
+		err := app.ShutdownWithContext(ctx)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+	})
 }
 
 // go test -run Test_App_Mixed_Routes_WithSameLen
