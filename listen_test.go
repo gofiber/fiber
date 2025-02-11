@@ -48,6 +48,8 @@ func Test_Listen_Graceful_Shutdown(t *testing.T) {
 }
 
 func testGracefulShutdown(t *testing.T, shutdownTimeout time.Duration) {
+	t.Helper()
+
 	var mu sync.Mutex
 	var shutdown bool
 
@@ -59,7 +61,7 @@ func testGracefulShutdown(t *testing.T, shutdownTimeout time.Duration) {
 	ln := fasthttputil.NewInmemoryListener()
 	errs := make(chan error, 1)
 
-	app.hooks.OnPostShutdown(func(err error) error {
+	app.hooks.OnPostShutdown(func(_ error) error {
 		mu.Lock()
 		defer mu.Unlock()
 		shutdown = true
@@ -80,7 +82,9 @@ func testGracefulShutdown(t *testing.T, shutdownTimeout time.Duration) {
 	require.Eventually(t, func() bool {
 		conn, err := ln.Dial()
 		if err == nil {
-			conn.Close()
+			if err := conn.Close(); err != nil {
+				t.Logf("error closing connection: %v", err)
+			}
 			return true
 		}
 		return false
@@ -90,14 +94,16 @@ func testGracefulShutdown(t *testing.T, shutdownTimeout time.Duration) {
 		Dial: func(_ string) (net.Conn, error) { return ln.Dial() },
 	}
 
-	testCases := []struct {
+	type testCase struct {
 		name               string
-		waitTime           time.Duration
-		expectedBody       string
-		expectedStatusCode int
 		expectedErr        error
+		expectedBody       string
+		waitTime           time.Duration
+		expectedStatusCode int
 		closeConnection    bool
-	}{
+	}
+
+	testCases := []testCase{
 		{
 			name:               "Server running normally",
 			waitTime:           500 * time.Millisecond,
@@ -117,7 +123,6 @@ func testGracefulShutdown(t *testing.T, shutdownTimeout time.Duration) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			time.Sleep(tc.waitTime)
 
@@ -131,18 +136,18 @@ func testGracefulShutdown(t *testing.T, shutdownTimeout time.Duration) {
 			err := client.Do(req, resp)
 
 			if tc.expectedErr == nil {
-				assert.NoError(t, err)
-				assert.Equal(t, tc.expectedStatusCode, resp.StatusCode())
-				assert.Equal(t, tc.expectedBody, utils.UnsafeString(resp.Body()))
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedStatusCode, resp.StatusCode())
+				require.Equal(t, tc.expectedBody, utils.UnsafeString(resp.Body()))
 			} else {
-				assert.ErrorIs(t, err, tc.expectedErr)
+				require.ErrorIs(t, err, tc.expectedErr)
 			}
 		})
 	}
 
 	mu.Lock()
-	assert.True(t, shutdown)
-	assert.NoError(t, <-errs)
+	require.True(t, shutdown)
+	require.NoError(t, <-errs)
 	mu.Unlock()
 }
 

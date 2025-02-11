@@ -214,7 +214,9 @@ func Test_Hook_OnPostShutdown(t *testing.T) {
 		})
 
 		go func() {
-			_ = app.Listen(":0")
+			if err := app.Listen(":0"); err != nil {
+				t.Errorf("Failed to start listener: %v", err)
+			}
 		}()
 
 		time.Sleep(100 * time.Millisecond)
@@ -225,7 +227,7 @@ func Test_Hook_OnPostShutdown(t *testing.T) {
 			t.Fatal("hook was not called")
 		}
 
-		if receivedErr != expectedErr {
+		if !errors.Is(receivedErr, expectedErr) {
 			t.Fatalf("hook received wrong error: want %v, got %v", expectedErr, receivedErr)
 		}
 	})
@@ -235,12 +237,12 @@ func Test_Hook_OnPostShutdown(t *testing.T) {
 
 		execution := make([]int, 0)
 
-		app.Hooks().OnPostShutdown(func(err error) error {
+		app.Hooks().OnPostShutdown(func(_ error) error {
 			execution = append(execution, 1)
 			return nil
 		})
 
-		app.Hooks().OnPostShutdown(func(err error) error {
+		app.Hooks().OnPostShutdown(func(_ error) error {
 			execution = append(execution, 2)
 			return nil
 		})
@@ -256,11 +258,11 @@ func Test_Hook_OnPostShutdown(t *testing.T) {
 		}
 	})
 
-	t.Run("should handle hook error", func(t *testing.T) {
+	t.Run("should handle hook error", func(_ *testing.T) {
 		app := New()
 		hookErr := errors.New("hook error")
 
-		app.Hooks().OnPostShutdown(func(err error) error {
+		app.Hooks().OnPostShutdown(func(_ error) error {
 			return hookErr
 		})
 

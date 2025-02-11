@@ -929,7 +929,7 @@ func Test_App_ShutdownWithContext(t *testing.T) {
 			return nil
 		})
 
-		app.Hooks().OnPostShutdown(func(err error) error {
+		app.Hooks().OnPostShutdown(func(_ error) error {
 			hookMutex.Lock()
 			hookOrder = append(hookOrder, "post")
 			hookMutex.Unlock()
@@ -962,7 +962,9 @@ func Test_App_ShutdownWithContext(t *testing.T) {
 
 		ln := fasthttputil.NewInmemoryListener()
 		go func() {
-			_ = app.Listener(ln)
+			if err := app.Listener(ln); err != nil {
+				t.Errorf("Failed to start listener: %v", err)
+			}
 		}()
 
 		time.Sleep(100 * time.Millisecond)
