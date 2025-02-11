@@ -1,42 +1,33 @@
 package binder
 
 import (
-	"reflect"
-	"strings"
-
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
 
-// cookieBinding is the cookie binder for cookie request body.
-type cookieBinding struct{}
+// CookieBinding is the cookie binder for cookie request body.
+type CookieBinding struct {
+	EnableSplitting bool
+}
 
 // Name returns the binding name.
-func (*cookieBinding) Name() string {
+func (*CookieBinding) Name() string {
 	return "cookie"
 }
 
 // Bind parses the request cookie and returns the result.
-func (b *cookieBinding) Bind(reqCtx *fasthttp.RequestCtx, out any) error {
+func (b *CookieBinding) Bind(req *fasthttp.Request, out any) error {
 	data := make(map[string][]string)
 	var err error
 
-	reqCtx.Request.Header.VisitAllCookie(func(key, val []byte) {
+	req.Header.VisitAllCookie(func(key, val []byte) {
 		if err != nil {
 			return
 		}
 
 		k := utils.UnsafeString(key)
 		v := utils.UnsafeString(val)
-
-		if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
-			values := strings.Split(v, ",")
-			for i := 0; i < len(values); i++ {
-				data[k] = append(data[k], values[i])
-			}
-		} else {
-			data[k] = append(data[k], v)
-		}
+		err = formatBindData(out, data, k, v, b.EnableSplitting, false)
 	})
 
 	if err != nil {
@@ -44,4 +35,9 @@ func (b *cookieBinding) Bind(reqCtx *fasthttp.RequestCtx, out any) error {
 	}
 
 	return parse(b.Name(), out, data)
+}
+
+// Reset resets the CookieBinding binder.
+func (b *CookieBinding) Reset() {
+	b.EnableSplitting = false
 }

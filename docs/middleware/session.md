@@ -2,7 +2,7 @@
 id: session
 ---
 
-# Session Middleware for [Fiber](https://github.com/gofiber/fiber)
+# Session
 
 The `session` middleware provides session management for Fiber applications, utilizing the [Storage](https://github.com/gofiber/storage) package for multi-database support via a unified interface. By default, session data is stored in memory, but custom storage options are easily configurable (see examples below).
 

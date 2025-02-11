@@ -49,6 +49,7 @@ We have made several changes to the Fiber app, including:
   - `EnablePrintRoutes`
   - `ListenerNetwork` (previously `Network`)
 - **Trusted Proxy Configuration**: The `EnabledTrustedProxyCheck` has been moved to `app.Config.TrustProxy`, and `TrustedProxies` has been moved to `TrustProxyConfig.Proxies`.
+- **XMLDecoder Config Property**: The `XMLDecoder` property has been added to allow usage of 3rd-party XML libraries in XML binder.
 
 ### New Methods
 
@@ -129,6 +130,14 @@ func main() {
 In this example, a custom context `CustomCtx` is created with an additional method `CustomMethod`. The `NewCtxFunc` method is used to replace the default context with the custom one.
 
 </details>
+
+### Configurable TLS Minimum Version
+
+We have added support for configuring the TLS minimum version. This field allows you to set the TLS minimum version for TLSAutoCert and the server listener.
+
+```go
+app.Listen(":444", fiber.ListenConfig{TLSMinVersion: tls.VersionTLS12})
+```
 
 #### TLS AutoCert support (ACME / Let's Encrypt)
 
@@ -332,17 +341,19 @@ testConfig := fiber.TestConfig{
 - **String**: Similar to Express.js, converts a value to a string.
 - **ViewBind**: Binds data to a view, replacing the old `Bind` method.
 - **CBOR**: Introducing [CBOR](https://cbor.io/) binary encoding format for both request & response body. CBOR is a binary data serialization format which is both compact and efficient, making it ideal for use in web applications.
+- **Drop**: Terminates the client connection silently without sending any HTTP headers or response body. This can be used for scenarios where you want to block certain requests without notifying the client, such as mitigating DDoS attacks or protecting sensitive endpoints from unauthorized access.
+- **End**: Similar to Express.js, immediately flushes the current response and closes the underlying connection.
 
 ### Removed Methods
 
-- **AllParams**: Use `c.Bind().URL()` instead.
+- **AllParams**: Use `c.Bind().URI()` instead.
 - **ParamsInt**: Use `Params` with generic types.
 - **QueryBool**: Use `Query` with generic types.
 - **QueryFloat**: Use `Query` with generic types.
 - **QueryInt**: Use `Query` with generic types.
 - **BodyParser**: Use `c.Bind().Body()` instead.
 - **CookieParser**: Use `c.Bind().Cookie()` instead.
-- **ParamsParser**: Use `c.Bind().URL()` instead.
+- **ParamsParser**: Use `c.Bind().URI()` instead.
 - **RedirectToRoute**: Use `c.Redirect().Route()` instead.
 - **RedirectBack**: Use `c.Redirect().Back()` instead.
 - **ReqHeaderParser**: Use `c.Bind().Header()` instead.
@@ -393,6 +404,72 @@ app.Get("/sse", func(c fiber.Ctx) {
 ```
 
 You can find more details about this feature in [/docs/api/ctx.md](./api/ctx.md).
+
+### Drop
+
+In v3, we introduced support to silently terminate requests through `Drop`.
+
+```go
+func (c Ctx) Drop()
+```
+
+With this method, you can:
+
+- Block certain requests without notifying the client to mitigate DDoS attacks
+- Protect sensitive endpoints from unauthorized access without leaking errors.
+
+:::caution
+While this feature adds the ability to drop connections, it is still **highly recommended** to use additional
+measures (such as **firewalls**, **proxies**, etc.) to further protect your server endpoints by blocking
+malicious connections before the server establishes a connection.
+:::
+
+```go
+app.Get("/", func(c fiber.Ctx) error {
+    if c.IP() == "192.168.1.1" {
+        return c.Drop()
+    }
+
+    return c.SendString("Hello World!")
+})
+```
+
+You can find more details about this feature in [/docs/api/ctx.md](./api/ctx.md).
+
+### End
+
+In v3, we introduced a new method to match the Express.js API's `res.end()` method.
+
+```go
+func (c Ctx) End()
+```
+
+With this method, you can:
+
+- Stop middleware from controlling the connection after a handler further up the method chain
+  by immediately flushing the current response and closing the connection.
+- Use `return c.End()` as an alternative to `return nil`
+
+```go
+app.Use(func (c fiber.Ctx) error {
+    err := c.Next()
+    if err != nil {
+        log.Println("Got error: %v", err)
+        return c.SendString(err.Error()) // Will be unsuccessful since the response ended below
+    }
+    return nil
+})
+
+app.Get("/hello", func (c fiber.Ctx) error {
+    query := c.Query("name", "")
+    if query == "" {
+        c.SendString("You don't have a name?")
+        c.End() // Closes the underlying connection
+        return errors.New("No name provided")
+    }
+    return c.SendString("Hello, " + query + "!")
+})
+```
 
 ---
 
@@ -488,7 +565,7 @@ func main() {
     app := fiber.New()
 
     app.Get("/convert", func(c fiber.Ctx) error {
-        value, err := Convert[string](c.Query("value"), strconv.Atoi, 0)
+        value, err := fiber.Convert[string](c.Query("value"), strconv.Atoi, 0)
         if err != nil {
             return c.Status(fiber.StatusBadRequest).SendString(err.Error())
         }
@@ -566,7 +643,7 @@ func main() {
     app := fiber.New()
 
     app.Get("/params/:id", func(c fiber.Ctx) error {
-        id := Params[int](c, "id", 0)
+        id := fiber.Params[int](c, "id", 0)
         return c.JSON(id)
     })
 
@@ -598,7 +675,7 @@ func main() {
     app := fiber.New()
 
     app.Get("/query", func(c fiber.Ctx) error {
-        age := Query[int](c, "age", 0)
+        age := fiber.Query[int](c, "age", 0)
         return c.JSON(age)
     })
 
@@ -631,7 +708,7 @@ func main() {
     app := fiber.New()
 
     app.Get("/header", func(c fiber.Ctx) error {
-        userAgent := GetReqHeader[string](c, "User-Agent", "Unknown")
+        userAgent := fiber.GetReqHeader[string](c, "User-Agent", "Unknown")
         return c.JSON(userAgent)
     })
 
@@ -687,7 +764,8 @@ The adaptor middleware has been significantly optimized for performance and effi
 
 ### Cache
 
-We are excited to introduce a new option in our caching middleware: Cache Invalidator. This feature provides greater control over cache management, allowing you to define a custom conditions for invalidating cache entries.
+We are excited to introduce a new option in our caching middleware: Cache Invalidator. This feature provides greater control over cache management, allowing you to define a custom conditions for invalidating cache entries.  
+Additionally, the caching middleware has been optimized to avoid caching non-cacheable status codes, as defined by the [HTTP standards](https://datatracker.ietf.org/doc/html/rfc7231#section-6.1). This improvement enhances cache accuracy and reduces unnecessary cache storage usage.
 
 ### CORS
 
@@ -1039,7 +1117,7 @@ The `Parser` section in Fiber v3 has undergone significant changes to improve fu
 
     </details>
 
-2. **ParamsParser**: Use `c.Bind().URL()` instead of `c.ParamsParser()`.
+2. **ParamsParser**: Use `c.Bind().URI()` instead of `c.ParamsParser()`.
 
     <details>
     <summary>Example</summary>
@@ -1059,7 +1137,7 @@ The `Parser` section in Fiber v3 has undergone significant changes to improve fu
     // After
     app.Get("/user/:id", func(c fiber.Ctx) error {
         var params Params
-        if err := c.Bind().URL(&params); err != nil {
+        if err := c.Bind().URI(&params); err != nil {
             return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
         }
         return c.JSON(params)

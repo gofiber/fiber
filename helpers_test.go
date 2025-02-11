@@ -548,7 +548,7 @@ func Test_Utils_TestConn_Closed_Write(t *testing.T) {
 	// Close early, write should fail
 	conn.Close() //nolint:errcheck, revive // It is fine to ignore the error here
 	_, err = conn.Write([]byte("Response 2\n"))
-	require.Error(t, err)
+	require.ErrorIs(t, err, errTestConnClosed)
 
 	res := make([]byte, 11)
 	_, err = conn.w.Read(res)
@@ -625,13 +625,13 @@ func Benchmark_SlashRecognition(b *testing.B) {
 		}
 		require.True(b, result)
 	})
-	b.Run("IndexRune", func(b *testing.B) {
+	b.Run("strings.ContainsRune", func(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		result = false
 		c := int32(slashDelimiter)
 		for i := 0; i < b.N; i++ {
-			result = IndexRune(search, c)
+			result = strings.ContainsRune(search, c)
 		}
 		require.True(b, result)
 	})

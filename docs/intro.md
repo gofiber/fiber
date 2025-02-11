@@ -163,7 +163,7 @@ app.Get("/api/*", func(c fiber.Ctx) error {
 
 ### Static Files
 
-To serve static files such as **images**, **CSS**, and **JavaScript** files, use the `Static` method with a directory path. For more information, refer to the [static middleware](./middleware/static.md).
+To serve static files such as **images**, **CSS**, and **JavaScript** files, use the [static middleware](./middleware/static.md).
 
 Use the following code to serve files in a directory named `./public`:
 
@@ -172,12 +172,13 @@ package main
 
 import (
     "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/static"
 )
 
 func main() {
     app := fiber.New()
 
-    app.Static("/", "./public")
+    app.Use("/", static.New("./public"))
 
     app.Listen(":3000")
 }

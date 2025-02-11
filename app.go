@@ -32,7 +32,7 @@ import (
 )
 
 // Version of current fiber package
-const Version = "3.0.0-beta.3"
+const Version = "3.0.0-beta.4"
 
 // Handler defines a function to serve HTTP requests.
 type Handler = func(Ctx) error
@@ -341,6 +341,13 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// Default: xml.Marshal
 	XMLEncoder utils.XMLMarshal `json:"-"`
 
+	// XMLDecoder set by an external client of Fiber it will use the provided implementation of a
+	// XMLUnmarshal
+	//
+	// Allowing for flexibility in using another XML library for decoding
+	// Default: xml.Unmarshal
+	XMLDecoder utils.XMLUnmarshal `json:"-"`
+
 	// If you find yourself behind some sort of proxy, like a load balancer,
 	// then certain header information may be sent to you using special X-Forwarded-* headers or the Forwarded header.
 	// For example, the Host HTTP header is usually used to return the requested host.
@@ -560,6 +567,9 @@ func New(config ...Config) *App {
 	if app.config.XMLEncoder == nil {
 		app.config.XMLEncoder = xml.Marshal
 	}
+	if app.config.XMLDecoder == nil {
+		app.config.XMLDecoder = xml.Unmarshal
+	}
 	if len(app.config.RequestMethods) == 0 {
 		app.config.RequestMethods = DefaultMethods
 	}
@@ -606,6 +616,10 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 // Note: It doesn't allow adding new methods, only customizing exist methods.
 func (app *App) NewCtxFunc(function func(app *App) CustomCtx) {
 	app.newCtxFunc = function
+
+	if app.server != nil {
+		app.server.Handler = app.customRequestHandler
+	}
 }
 
 // RegisterCustomConstraint allows to register custom constraint.
@@ -858,7 +872,11 @@ func (app *App) Config() Config {
 func (app *App) Handler() fasthttp.RequestHandler { //revive:disable-line:confusing-naming // Having both a Handler() (uppercase) and a handler() (lowercase) is fine. TODO: Use nolint:revive directive instead. See https://github.com/golangci/golangci-lint/issues/3476
 	// prepare the server for the start
 	app.startupProcess()
-	return app.requestHandler
+
+	if app.newCtxFunc != nil {
+		return app.customRequestHandler
+	}
+	return app.defaultRequestHandler
 }
 
 // Stack returns the raw router stack.
@@ -924,6 +942,8 @@ func (app *App) Server() *fasthttp.Server {
 func (app *App) Hooks() *Hooks {
 	return app.hooks
 }
+
+var ErrTestGotEmptyResponse = errors.New("test: got empty response")
 
 // TestConfig is a struct holding Test settings
 type TestConfig struct {
@@ -1006,7 +1026,7 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 	}
 
 	// Check for errors
-	if err != nil && !errors.Is(err, fasthttp.ErrGetOnly) {
+	if err != nil && !errors.Is(err, fasthttp.ErrGetOnly) && !errors.Is(err, errTestConnClosed) {
 		return nil, err
 	}
 
@@ -1017,7 +1037,7 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 	res, err := http.ReadResponse(buffer, req)
 	if err != nil {
 		if errors.Is(err, io.ErrUnexpectedEOF) {
-			return nil, errors.New("test: got empty response")
+			return nil, ErrTestGotEmptyResponse
 		}
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -1049,7 +1069,11 @@ func (app *App) init() *App {
 	}
 
 	// fasthttp server settings
-	app.server.Handler = app.requestHandler
+	if app.newCtxFunc != nil {
+		app.server.Handler = app.customRequestHandler
+	} else {
+		app.server.Handler = app.defaultRequestHandler
+	}
 	app.server.Name = app.config.ServerHeader
 	app.server.Concurrency = app.config.Concurrency
 	app.server.NoDefaultDate = app.config.DisableDefaultDate

@@ -463,6 +463,75 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+## Drop
+
+Terminates the client connection silently without sending any HTTP headers or response body.
+
+This can be used for scenarios where you want to block certain requests without notifying the client, such as mitigating
+DDoS attacks or protecting sensitive endpoints from unauthorized access.
+
+```go title="Signature"
+func (c fiber.Ctx) Drop() error
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  if c.IP() == "192.168.1.1" {
+    return c.Drop()
+  }
+
+  return c.SendString("Hello World!")
+})
+```
+
+## End
+
+End immediately flushes the current response and closes the underlying connection.
+
+```go title="Signature"
+func (c fiber.Ctx) End() error
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+    c.SendString("Hello World!")
+    return c.End()
+})
+```
+
+:::caution
+Calling `c.End()` will disallow further writes to the underlying connection.
+:::
+
+End can be used to stop a middleware from modifying a response of a handler/other middleware down the method chain
+when they regain control after calling `c.Next()`.
+
+```go title="Example"
+// Error Logging/Responding middleware
+app.Use(func(c fiber.Ctx) error {
+    err := c.Next()
+  
+    // Log errors & write the error to the response
+    if err != nil {
+        log.Printf("Got error in middleware: %v", err)
+        return c.Writef("(got error %v)", err)
+    }
+
+    // No errors occured
+    return nil
+})
+
+// Handler with simulated error
+app.Get("/", func(c fiber.Ctx) error {
+    // Closes the connection instantly after writing from this handler
+    // and disallow further modification of its response
+    defer c.End()
+
+    c.SendString("Hello, ... I forgot what comes next!")
+    return errors.New("some error")
+})
+```
+
 ## Format
 
 Performs content-negotiation on the [Accept](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept) HTTP header. It uses [Accepts](ctx.md#accepts) to select a proper format from the supplied offers. A default handler can be provided by setting the `MediaType` to `"default"`. If no offers match and no default is provided, a 406 (Not Acceptable) response is sent. The Content-Type is automatically set when a handler is selected.
@@ -1485,7 +1554,7 @@ app.Get("/teapot", func(c fiber.Ctx) error {
 Renders a view with data and sends a `text/html` response. By default, `Render` uses the default [**Go Template engine**](https://pkg.go.dev/html/template/). If you want to use another view engine, please take a look at our [**Template middleware**](https://docs.gofiber.io/template).
 
 ```go title="Signature"
-func (c fiber.Ctx) Render(name string, bind Map, layouts ...string) error
+func (c fiber.Ctx) Render(name string, bind any, layouts ...string) error
 ```
 
 ## Request

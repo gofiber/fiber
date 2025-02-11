@@ -58,7 +58,7 @@ const (
 	paramConstraintSeparator     byte = ';'  // separator of type constraints for a parameter
 	paramConstraintDataStart     byte = '('  // start of data of type constraint for a parameter
 	paramConstraintDataEnd       byte = ')'  // end of data of type constraint for a parameter
-	paramConstraintDataSeparator byte = ','  // separator of datas of type constraint for a parameter
+	paramConstraintDataSeparator byte = ','  // separator of data of type constraint for a parameter
 )
 
 // TypeConstraint parameter constraint types
@@ -620,10 +620,16 @@ func GetTrimmedParam(param string) string {
 
 // RemoveEscapeChar remove escape characters
 func RemoveEscapeChar(word string) string {
-	if strings.IndexByte(word, escapeChar) != -1 {
-		return strings.ReplaceAll(word, string(escapeChar), "")
+	b := []byte(word)
+	dst := 0
+	for src := 0; src < len(b); src++ {
+		if b[src] == '\\' {
+			continue
+		}
+		b[dst] = b[src]
+		dst++
 	}
-	return word
+	return string(b[:dst])
 }
 
 func getParamConstraintType(constraintPart string) TypeConstraint {

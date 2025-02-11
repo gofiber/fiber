@@ -1369,7 +1369,7 @@ func (c *DefaultCtx) GetRouteURL(routeName string, params Map) (string, error) {
 
 // Render a template with data and sends a text/html response.
 // We support the following engines: https://github.com/gofiber/template
-func (c *DefaultCtx) Render(name string, bind Map, layouts ...string) error {
+func (c *DefaultCtx) Render(name string, bind any, layouts ...string) error {
 	// Get new buffer from pool
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
@@ -1977,4 +1977,29 @@ func (c *DefaultCtx) setMatched(matched bool) {
 
 func (c *DefaultCtx) setRoute(route *Route) {
 	c.route = route
+}
+
+// Drop closes the underlying connection without sending any response headers or body.
+// This can be useful for silently terminating client connections, such as in DDoS mitigation
+// or when blocking access to sensitive endpoints.
+func (c *DefaultCtx) Drop() error {
+	//nolint:wrapcheck // error wrapping is avoided to keep the operation lightweight and focused on connection closure.
+	return c.RequestCtx().Conn().Close()
+}
+
+// End immediately flushes the current response and closes the underlying connection.
+func (c *DefaultCtx) End() error {
+	ctx := c.RequestCtx()
+	conn := ctx.Conn()
+
+	bw := bufio.NewWriter(conn)
+	if err := ctx.Response.Write(bw); err != nil {
+		return err
+	}
+
+	if err := bw.Flush(); err != nil {
+		return err //nolint:wrapcheck // unnecessary to wrap it
+	}
+
+	return conn.Close() //nolint:wrapcheck // unnecessary to wrap it
 }
