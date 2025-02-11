@@ -97,10 +97,10 @@ func testGracefulShutdown(t *testing.T, shutdownTimeout time.Duration) {
 	type testCase struct {
 		name               string
 		expectedErr        error
-		expectedBody       string
 		waitTime           time.Duration
 		expectedStatusCode int
 		closeConnection    bool
+		expectedBody       string
 	}
 
 	testCases := []testCase{
