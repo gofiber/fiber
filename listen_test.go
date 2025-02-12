@@ -68,10 +68,10 @@ func testGracefulShutdown(t *testing.T, shutdownTimeout time.Duration) {
 		return nil
 	})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
 	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
 		errs <- app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 			GracefulContext:       ctx,
