@@ -994,7 +994,7 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 	app.startupProcess()
 
 	// Serve conn to server
-	channel := make(chan error)
+	channel := make(chan error, 1)
 	go func() {
 		var returned bool
 		defer func() {
