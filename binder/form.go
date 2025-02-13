@@ -1,6 +1,8 @@
 package binder
 
 import (
+	"mime/multipart"
+
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -59,7 +61,15 @@ func (b *FormBinding) bindMultipart(req *fasthttp.Request, out any) error {
 		}
 	}
 
-	return parse(b.Name(), out, data)
+	files := make(map[string][]*multipart.FileHeader)
+	for key, values := range multipartForm.File {
+		err = formatBindData(out, files, key, values, b.EnableSplitting, true)
+		if err != nil {
+			return err
+		}
+	}
+
+	return parse(b.Name(), out, data, files)
 }
 
 // Reset resets the FormBinding binder.

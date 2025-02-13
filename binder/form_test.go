@@ -2,6 +2,7 @@ package binder
 
 import (
 	"bytes"
+	"io"
 	"mime/multipart"
 	"testing"
 
@@ -98,10 +99,12 @@ func Test_FormBinder_BindMultipart(t *testing.T) {
 	}
 
 	type User struct {
-		Name  string   `form:"name"`
-		Names []string `form:"names"`
-		Posts []Post   `form:"posts"`
-		Age   int      `form:"age"`
+		Name    string                  `form:"name"`
+		Names   []string                `form:"names"`
+		Posts   []Post                  `form:"posts"`
+		Age     int                     `form:"age"`
+		Avatar  *multipart.FileHeader   `form:"avatar"`
+		Avatars []*multipart.FileHeader `form:"avatars"`
 	}
 	var user User
 
@@ -118,6 +121,24 @@ func Test_FormBinder_BindMultipart(t *testing.T) {
 	require.NoError(t, mw.WriteField("posts[1][title]", "post2"))
 	require.NoError(t, mw.WriteField("posts[2][title]", "post3"))
 
+	writer, err := mw.CreateFormFile("avatar", "avatar.txt")
+	require.NoError(t, err)
+
+	_, err = writer.Write([]byte("avatar"))
+	require.NoError(t, err)
+
+	writer, err = mw.CreateFormFile("avatars", "avatar1.txt")
+	require.NoError(t, err)
+
+	_, err = writer.Write([]byte("avatar1"))
+	require.NoError(t, err)
+
+	writer, err = mw.CreateFormFile("avatars", "avatar2.txt")
+	require.NoError(t, err)
+
+	_, err = writer.Write([]byte("avatar2"))
+	require.NoError(t, err)
+
 	require.NoError(t, mw.Close())
 
 	req.Header.SetContentType(mw.FormDataContentType())
@@ -127,7 +148,7 @@ func Test_FormBinder_BindMultipart(t *testing.T) {
 		fasthttp.ReleaseRequest(req)
 	})
 
-	err := b.Bind(req, &user)
+	err = b.Bind(req, &user)
 
 	require.NoError(t, err)
 	require.Equal(t, "john", user.Name)
@@ -139,6 +160,38 @@ func Test_FormBinder_BindMultipart(t *testing.T) {
 	require.Equal(t, "post1", user.Posts[0].Title)
 	require.Equal(t, "post2", user.Posts[1].Title)
 	require.Equal(t, "post3", user.Posts[2].Title)
+
+	require.NotNil(t, user.Avatar)
+	require.Equal(t, "avatar.txt", user.Avatar.Filename)
+	require.Equal(t, "application/octet-stream", user.Avatar.Header.Get("Content-Type"))
+
+	file, err := user.Avatar.Open()
+	require.NoError(t, err)
+
+	content, err := io.ReadAll(file)
+	require.NoError(t, err)
+	require.Equal(t, "avatar", string(content))
+
+	require.Len(t, user.Avatars, 2)
+	require.Equal(t, "avatar1.txt", user.Avatars[0].Filename)
+	require.Equal(t, "application/octet-stream", user.Avatars[0].Header.Get("Content-Type"))
+
+	file, err = user.Avatars[0].Open()
+	require.NoError(t, err)
+
+	content, err = io.ReadAll(file)
+	require.NoError(t, err)
+	require.Equal(t, "avatar1", string(content))
+
+	require.Equal(t, "avatar2.txt", user.Avatars[1].Filename)
+	require.Equal(t, "application/octet-stream", user.Avatars[1].Header.Get("Content-Type"))
+
+	file, err = user.Avatars[1].Open()
+	require.NoError(t, err)
+
+	content, err = io.ReadAll(file)
+	require.NoError(t, err)
+	require.Equal(t, "avatar2", string(content))
 }
 
 func Benchmark_FormBinder_BindMultipart(b *testing.B) {
