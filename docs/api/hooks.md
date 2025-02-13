@@ -16,6 +16,8 @@ With Fiber you can execute custom user functions at specific method execution po
 - [OnListen](#onlisten)
 - [OnFork](#onfork)
 - [OnShutdown](#onshutdown)
+  - [OnPreShutdown](#onpreshutdown)
+  - [OnPostShutdown](#onpostshutdown)
 - [OnMount](#onmount)
 
 ## Constants
@@ -28,7 +30,8 @@ type OnGroupHandler = func(Group) error
 type OnGroupNameHandler = OnGroupHandler
 type OnListenHandler = func(ListenData) error
 type OnForkHandler = func(int) error
-type OnShutdownHandler = func() error
+type OnPreShutdownHandler  = func() error
+type OnPostShutdownHandler = func(error) error
 type OnMountHandler = func(*App) error
 ```
 
@@ -176,10 +179,28 @@ func (h *Hooks) OnFork(handler ...OnForkHandler)
 
 ## OnShutdown
 
+in v3, `OnShutdown` is split into `OnPreShutdown` and `OnPostShutdown`.
+
 `OnShutdown` is a hook to execute user functions after shutdown.
 
 ```go title="Signature"
 func (h *Hooks) OnShutdown(handler ...OnShutdownHandler)
+```
+
+### OnPreShutdown
+
+`OnPreShutdown` is a hook to execute user functions before shutdown.
+
+```go title="Signature"
+func (h *Hooks) OnPreShutdown(handler ...OnPreShutdownHandler)
+```
+
+### OnPostShutdown
+
+`OnPostShutdown` is a hook to execute user functions after shutdown.
+
+```go title="Signature"
+func (h *Hooks) OnPostShutdown(handler ...OnPostShutdownHandler)
 ```
 
 ## OnMount
