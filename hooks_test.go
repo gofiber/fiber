@@ -3,6 +3,7 @@ package fiber
 import (
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -203,12 +204,15 @@ func Test_Hook_OnPostShutdown(t *testing.T) {
 	t.Run("should execute post shutdown hook with error", func(t *testing.T) {
 		app := New()
 		expectedErr := errors.New("test shutdown error")
+		var wg sync.WaitGroup
+		wg.Add(1)
 
 		// Use channels to synchronize and pass results
 		hookResult := make(chan struct {
 			err    error
 			called bool
-		}, 1)
+		}, 1) // Buffer size of 1 prevents deadlock
+		defer close(hookResult)
 
 		app.Hooks().OnPostShutdown(func(err error) error {
 			hookResult <- struct {
@@ -223,8 +227,10 @@ func Test_Hook_OnPostShutdown(t *testing.T) {
 
 		// Use channel to make sure the server is up
 		serverReady := make(chan struct{})
+		defer close(serverReady)
 
 		go func() {
+			defer wg.Done()
 			serverReady <- struct{}{} // Signal that the server is ready to start
 			if err := app.Listen(":0"); err != nil {
 				t.Errorf("Failed to start listener: %v", err)
@@ -236,7 +242,16 @@ func Test_Hook_OnPostShutdown(t *testing.T) {
 		app.hooks.executeOnPostShutdownHooks(expectedErr)
 
 		// Wait for the hook to finish executing and get the result
-		result := <-hookResult
+		var result struct {
+			err    error
+			called bool
+		}
+
+		select {
+		case result = <-hookResult:
+		case <-time.After(5 * time.Second):
+			t.Fatal("Hook execution timeout")
+		}
 
 		if !result.called {
 			t.Fatal("hook was not called")
@@ -245,6 +260,7 @@ func Test_Hook_OnPostShutdown(t *testing.T) {
 		if !errors.Is(result.err, expectedErr) {
 			t.Fatalf("hook received wrong error: want %v, got %v", expectedErr, result.err)
 		}
+		wg.Wait() // Ensure server goroutine completes
 	})
 
 	t.Run("should execute multiple hooks in order", func(t *testing.T) {
