@@ -58,6 +58,91 @@ func testErrorResponse(t *testing.T, err error, resp *http.Response, expectedBod
 	require.Equal(t, expectedBodyError, string(body), "Response body")
 }
 
+func Test_App_Test_Goroutine_Leak_Compare(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		handler    Handler
+		name       string
+		timeout    time.Duration
+		sleepTime  time.Duration
+		expectLeak bool
+	}{
+		{
+			name: "With timeout (potential leak)",
+			handler: func(c Ctx) error {
+				time.Sleep(300 * time.Millisecond) // Simulate time-consuming operation
+				return c.SendString("ok")
+			},
+			timeout:    50 * time.Millisecond,  // // Short timeout to ensure triggering
+			sleepTime:  500 * time.Millisecond, // Wait time longer than handler execution time
+			expectLeak: true,
+		},
+		{
+			name: "Without timeout (no leak)",
+			handler: func(c Ctx) error {
+				return c.SendString("ok") // Return immediately
+			},
+			timeout:    0, // Disable timeout
+			sleepTime:  100 * time.Millisecond,
+			expectLeak: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New()
+
+			// Record initial goroutine count
+			initialGoroutines := runtime.NumGoroutine()
+			t.Logf("[%s] Initial goroutines: %d", tc.name, initialGoroutines)
+
+			app.Get("/", tc.handler)
+
+			// Send 10 requests
+			numRequests := 10
+			for i := 0; i < numRequests; i++ {
+				req := httptest.NewRequest(MethodGet, "/", nil)
+
+				if tc.timeout > 0 {
+					_, err := app.Test(req, TestConfig{
+						Timeout:       tc.timeout,
+						FailOnTimeout: true,
+					})
+					require.Error(t, err)
+					require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+				} else if resp, err := app.Test(req); err != nil {
+					t.Errorf("unexpected error: %v", err)
+				} else {
+					require.Equal(t, 200, resp.StatusCode)
+				}
+			}
+
+			// Wait for normal goroutines to complete
+			time.Sleep(tc.sleepTime)
+
+			// Check final goroutine count
+			finalGoroutines := runtime.NumGoroutine()
+			leakedGoroutines := finalGoroutines - initialGoroutines
+			t.Logf("[%s] Final goroutines: %d (leaked: %d)",
+				tc.name, finalGoroutines, leakedGoroutines)
+
+			if tc.expectLeak {
+				// before fix: If blocking exists, leaked goroutines should be at least equal to request count
+				// after fix: If no blocking exists, leaked goroutines should be less than request count
+				if leakedGoroutines >= numRequests {
+					t.Errorf("[%s] Expected at least %d leaked goroutines, but got %d",
+						tc.name, numRequests, leakedGoroutines)
+				}
+			} else if leakedGoroutines >= numRequests { // If no blocking exists, leaked goroutines should be less than request count
+				t.Errorf("[%s] Expected less than %d leaked goroutines, but got %d",
+					tc.name, numRequests, leakedGoroutines)
+			}
+		})
+	}
+}
+
 func Test_App_MethodNotAllowed(t *testing.T) {
 	t.Parallel()
 	app := New()
