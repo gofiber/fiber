@@ -99,12 +99,12 @@ func Test_FormBinder_BindMultipart(t *testing.T) {
 	}
 
 	type User struct {
+		Avatar  *multipart.FileHeader   `form:"avatar"`
 		Name    string                  `form:"name"`
 		Names   []string                `form:"names"`
 		Posts   []Post                  `form:"posts"`
-		Age     int                     `form:"age"`
-		Avatar  *multipart.FileHeader   `form:"avatar"`
 		Avatars []*multipart.FileHeader `form:"avatars"`
+		Age     int                     `form:"age"`
 	}
 	var user User
 

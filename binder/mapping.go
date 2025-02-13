@@ -262,14 +262,28 @@ func formatBindData[T, K any](out any, data map[string][]T, key string, value K,
 
 	switch v := any(value).(type) {
 	case string:
-		assignBindData(out, any(data).(map[string][]string), key, v, enableSplitting)
+		dataMap, ok := any(data).(map[string][]string)
+		if !ok {
+			return fmt.Errorf("unsupported value type: %T", value)
+		}
+
+		assignBindData(out, dataMap, key, v, enableSplitting)
 	case []string:
+		dataMap, ok := any(data).(map[string][]string)
+		if !ok {
+			return fmt.Errorf("unsupported value type: %T", value)
+		}
+
 		for _, val := range v {
-			assignBindData(out, any(data).(map[string][]string), key, val, enableSplitting)
+			assignBindData(out, dataMap, key, val, enableSplitting)
 		}
 	case []*multipart.FileHeader:
 		for _, val := range v {
-			data[key] = append(data[key], any(val).(T))
+			valT, ok := any(val).(T)
+			if !ok {
+				return fmt.Errorf("unsupported value type: %T", value)
+			}
+			data[key] = append(data[key], valT)
 		}
 	default:
 		return fmt.Errorf("unsupported value type: %T", value)

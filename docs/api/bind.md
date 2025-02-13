@@ -152,7 +152,6 @@ Run tests with the following `curl` command:
 curl -X POST -H "Content-Type: multipart/form-data" -F "name=john" -F "pass=doe" -F 'avatar=@filename' localhost:3000
 ```
 
-
 ### JSON
 
 Binds the request JSON body to a struct.
