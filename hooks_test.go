@@ -202,33 +202,48 @@ func Test_Hook_OnPrehutdown(t *testing.T) {
 func Test_Hook_OnPostShutdown(t *testing.T) {
 	t.Run("should execute post shutdown hook with error", func(t *testing.T) {
 		app := New()
-
-		hookCalled := false
-		var receivedErr error
 		expectedErr := errors.New("test shutdown error")
 
+		// Use channels to synchronize and pass results
+		hookResult := make(chan struct {
+			err    error
+			called bool
+		}, 1)
+
 		app.Hooks().OnPostShutdown(func(err error) error {
-			hookCalled = true
-			receivedErr = err
+			hookResult <- struct {
+				err    error
+				called bool
+			}{
+				err:    err,
+				called: true,
+			}
 			return nil
 		})
 
+		// Use channel to make sure the server is up
+		serverReady := make(chan struct{})
+
 		go func() {
+			serverReady <- struct{}{} // Signal that the server is ready to start
 			if err := app.Listen(":0"); err != nil {
 				t.Errorf("Failed to start listener: %v", err)
 			}
 		}()
 
-		time.Sleep(100 * time.Millisecond)
+		<-serverReady // Wait for the server to be ready
 
 		app.hooks.executeOnPostShutdownHooks(expectedErr)
 
-		if !hookCalled {
+		// Wait for the hook to finish executing and get the result
+		result := <-hookResult
+
+		if !result.called {
 			t.Fatal("hook was not called")
 		}
 
-		if !errors.Is(receivedErr, expectedErr) {
-			t.Fatalf("hook received wrong error: want %v, got %v", expectedErr, receivedErr)
+		if !errors.Is(result.err, expectedErr) {
+			t.Fatalf("hook received wrong error: want %v, got %v", expectedErr, result.err)
 		}
 	})
 

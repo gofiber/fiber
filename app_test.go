@@ -846,20 +846,29 @@ func Test_App_ShutdownWithTimeout(t *testing.T) {
 	})
 
 	ln := fasthttputil.NewInmemoryListener()
+	serverReady := make(chan struct{}) // Signal that the server is ready to start
+
 	go func() {
+		serverReady <- struct{}{}
 		err := app.Listener(ln)
 		assert.NoError(t, err)
 	}()
 
-	time.Sleep(1 * time.Second)
+	<-serverReady // Waiting for the server to be ready
+
+	// Create a connection and send a request
+	connReady := make(chan struct{})
 	go func() {
 		conn, err := ln.Dial()
 		assert.NoError(t, err)
 
 		_, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: google.com\r\n\r\n"))
 		assert.NoError(t, err)
+
+		connReady <- struct{}{} // Signal that the request has been sent
 	}()
-	time.Sleep(1 * time.Second)
+
+	<-connReady // Waiting for the request to be sent
 
 	shutdownErr := make(chan error)
 	go func() {
