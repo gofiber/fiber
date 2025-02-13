@@ -964,7 +964,9 @@ func Test_App_ShutdownWithContext(t *testing.T) {
 		t.Parallel()
 		app := New()
 
+		requestStarted := make(chan struct{})
 		app.Get("/", func(c Ctx) error {
+			close(requestStarted)
 			time.Sleep(2 * time.Second)
 			return c.SendString("OK")
 		})
@@ -976,7 +978,12 @@ func Test_App_ShutdownWithContext(t *testing.T) {
 			}
 		}()
 
-		time.Sleep(100 * time.Millisecond)
+		select {
+		case <-requestStarted:
+			// Request has started processing
+		case <-time.After(time.Second):
+			t.Fatal("Request did not start in time")
+		}
 
 		// Start long request
 		go func() {
