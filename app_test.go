@@ -1050,8 +1050,12 @@ func Test_App_ShutdownWithContext(t *testing.T) {
 		app := New()
 
 		requestStarted := make(chan struct{})
+		requestProcessing := make(chan struct{})
+
 		app.Get("/", func(c Ctx) error {
 			close(requestStarted)
+			// Wait for signal to continue processing the request
+			<-requestProcessing
 			time.Sleep(2 * time.Second)
 			return c.SendString("OK")
 		})
@@ -1063,14 +1067,10 @@ func Test_App_ShutdownWithContext(t *testing.T) {
 			}
 		}()
 
-		select {
-		case <-requestStarted:
-			// Request has started processing
-		case <-time.After(time.Second):
-			t.Fatal("Request did not start in time")
-		}
+		// Ensure server is fully started
+		time.Sleep(100 * time.Millisecond)
 
-		// Start long request
+		// Start a long-running request
 		go func() {
 			conn, err := ln.Dial()
 			if err != nil {
@@ -1082,8 +1082,16 @@ func Test_App_ShutdownWithContext(t *testing.T) {
 			}
 		}()
 
-		time.Sleep(100 * time.Millisecond) // Wait for request to start
+		// Wait for request to start
+		select {
+		case <-requestStarted:
+			// Request has started, signal to continue processing
+			close(requestProcessing)
+		case <-time.After(2 * time.Second):
+			t.Fatal("Request did not start in time")
+		}
 
+		// Attempt shutdown, should timeout
 		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 		defer cancel()
 
