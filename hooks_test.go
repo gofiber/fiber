@@ -3,7 +3,6 @@ package fiber
 import (
 	"errors"
 	"fmt"
-	"sync"
 	"testing"
 	"time"
 
@@ -204,63 +203,33 @@ func Test_Hook_OnPostShutdown(t *testing.T) {
 	t.Run("should execute post shutdown hook with error", func(t *testing.T) {
 		app := New()
 		expectedErr := errors.New("test shutdown error")
-		var wg sync.WaitGroup
-		wg.Add(1)
 
-		// Use channels to synchronize and pass results
-		hookCalled := make(chan struct {
-			err    error
-			called bool
-		}, 1)
+		hookCalled := make(chan error, 1)
 		defer close(hookCalled)
 
 		app.Hooks().OnPostShutdown(func(err error) error {
-			hookCalled <- struct {
-				err    error
-				called bool
-			}{
-				err:    err,
-				called: true,
-			}
+			hookCalled <- err
 			return nil
 		})
 
-		// Start server in goroutine
 		go func() {
-			defer wg.Done()
-			// Ignore errors when shutting down the server
 			if err := app.Listen(":0"); err != nil {
-				if !errors.Is(err, errors.New("server closed")) {
-					t.Errorf("unexpected error: %v", err)
-				}
+				return
 			}
 		}()
-		// Wait a bit for the server to start
+
 		time.Sleep(100 * time.Millisecond)
 
-		// Trigger shutdown with our expected error
-		go app.hooks.executeOnPostShutdownHooks(expectedErr)
+		app.hooks.executeOnPostShutdownHooks(expectedErr)
 
-		// Wait for hook to be called with timeout
 		select {
-		case result := <-hookCalled:
-			if !result.called {
-				t.Error("hook was not called")
-			}
-			if !errors.Is(result.err, expectedErr) {
-				t.Errorf("hook received wrong error: want %v, got %v", expectedErr, result.err)
-			}
-		case <-time.After(3 * time.Second):
+		case err := <-hookCalled:
+			require.Equal(t, expectedErr, err)
+		case <-time.After(time.Second):
 			t.Fatal("hook execution timeout")
 		}
 
-		// Shutdown the server
-		if err := app.Shutdown(); err != nil {
-			t.Errorf("shutdown error: %v", err)
-		}
-
-		// Wait for server goroutine to complete
-		wg.Wait()
+		require.NoError(t, app.Shutdown())
 	})
 
 	t.Run("should execute multiple hooks in order", func(t *testing.T) {
@@ -280,13 +249,8 @@ func Test_Hook_OnPostShutdown(t *testing.T) {
 
 		app.hooks.executeOnPostShutdownHooks(nil)
 
-		if len(execution) != 2 {
-			t.Fatalf("expected 2 hooks to execute, got %d", len(execution))
-		}
-
-		if execution[0] != 1 || execution[1] != 2 {
-			t.Fatal("hooks executed in wrong order")
-		}
+		require.Len(t, execution, 2, "expected 2 hooks to execute")
+		require.Equal(t, []int{1, 2}, execution, "hooks executed in wrong order")
 	})
 
 	t.Run("should handle hook error", func(_ *testing.T) {
