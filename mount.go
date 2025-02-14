@@ -13,9 +13,9 @@ import (
 )
 
 // Put fields related to mounting.
-type mountFields struct {
+type mountFields[TCtx CtxGeneric[TCtx]] struct {
 	// Mounted and main apps
-	appList map[string]*App
+	appList map[string]*App[TCtx]
 	// Prefix of app if it was mounted
 	mountPath string
 	// Ordered keys of apps (sorted by key length for Render)
@@ -27,9 +27,9 @@ type mountFields struct {
 }
 
 // Create empty mountFields instance
-func newMountFields(app *App) *mountFields {
-	return &mountFields{
-		appList:     map[string]*App{"": app},
+func newMountFields[TCtx CtxGeneric[TCtx]](app *App[TCtx]) *mountFields[TCtx] {
+	return &mountFields[TCtx]{
+		appList:     map[string]*App[TCtx]{"": app},
 		appListKeys: make([]string, 0),
 	}
 }
@@ -39,7 +39,7 @@ func newMountFields(app *App) *mountFields {
 // compose them as a single service using Mount. The fiber's error handler and
 // any of the fiber's sub apps are added to the application's error handlers
 // to be invoked on errors that happen within the prefix route.
-func (app *App) mount(prefix string, subApp *App) Router {
+func (app *App[TCtx]) mount(prefix string, subApp *App[TCtx]) Router[TCtx] {
 	prefix = utils.TrimRight(prefix, '/')
 	if prefix == "" {
 		prefix = "/"
@@ -54,7 +54,7 @@ func (app *App) mount(prefix string, subApp *App) Router {
 	}
 
 	// register mounted group
-	mountGroup := &Group{Prefix: prefix, app: subApp}
+	mountGroup := &Group[TCtx]{Prefix: prefix, app: subApp}
 	app.register([]string{methodUse}, prefix, mountGroup, nil)
 
 	// Execute onMount hooks
@@ -68,7 +68,7 @@ func (app *App) mount(prefix string, subApp *App) Router {
 // Mount attaches another app instance as a sub-router along a routing path.
 // It's very useful to split up a large API as many independent routers and
 // compose them as a single service using Mount.
-func (grp *Group) mount(prefix string, subApp *App) Router {
+func (grp *Group[TCtx]) mount(prefix string, subApp *App[TCtx]) Router[TCtx] {
 	groupPath := getGroupPath(grp.Prefix, prefix)
 	groupPath = utils.TrimRight(groupPath, '/')
 	if groupPath == "" {
@@ -84,7 +84,7 @@ func (grp *Group) mount(prefix string, subApp *App) Router {
 	}
 
 	// register mounted group
-	mountGroup := &Group{Prefix: groupPath, app: subApp}
+	mountGroup := &Group[TCtx]{Prefix: groupPath, app: subApp}
 	grp.app.register([]string{methodUse}, groupPath, mountGroup, nil)
 
 	// Execute onMount hooks
@@ -96,17 +96,17 @@ func (grp *Group) mount(prefix string, subApp *App) Router {
 }
 
 // The MountPath property contains one or more path patterns on which a sub-app was mounted.
-func (app *App) MountPath() string {
+func (app *App[TCtx]) MountPath() string {
 	return app.mountFields.mountPath
 }
 
 // hasMountedApps Checks if there are any mounted apps in the current application.
-func (app *App) hasMountedApps() bool {
+func (app *App[TCtx]) hasMountedApps() bool {
 	return len(app.mountFields.appList) > 1
 }
 
 // mountStartupProcess Handles the startup process of mounted apps by appending sub-app routes, generating app list keys, and processing sub-app routes.
-func (app *App) mountStartupProcess() {
+func (app *App[TCtx]) mountStartupProcess() {
 	if app.hasMountedApps() {
 		// add routes of sub-apps
 		app.mountFields.subAppsProcessed.Do(func() {
@@ -121,7 +121,7 @@ func (app *App) mountStartupProcess() {
 }
 
 // generateAppListKeys generates app list keys for Render, should work after appendSubAppLists
-func (app *App) generateAppListKeys() {
+func (app *App[TCtx]) generateAppListKeys() {
 	for key := range app.mountFields.appList {
 		app.mountFields.appListKeys = append(app.mountFields.appListKeys, key)
 	}
@@ -132,7 +132,7 @@ func (app *App) generateAppListKeys() {
 }
 
 // appendSubAppLists supports nested for sub apps
-func (app *App) appendSubAppLists(appList map[string]*App, parent ...string) {
+func (app *App[TCtx]) appendSubAppLists(appList map[string]*App[TCtx], parent ...string) {
 	// Optimize: Cache parent prefix
 	parentPrefix := ""
 	if len(parent) > 0 {
@@ -161,7 +161,7 @@ func (app *App) appendSubAppLists(appList map[string]*App, parent ...string) {
 }
 
 // processSubAppsRoutes adds routes of sub-apps recursively when the server is started
-func (app *App) processSubAppsRoutes() {
+func (app *App[TCtx]) processSubAppsRoutes() {
 	for prefix, subApp := range app.mountFields.appList {
 		// skip real app
 		if prefix == "" {
@@ -194,7 +194,7 @@ func (app *App) processSubAppsRoutes() {
 			}
 
 			// Create a slice to hold the sub-app's routes
-			subRoutes := make([]*Route, len(route.group.app.stack[m]))
+			subRoutes := make([]*Route[TCtx], len(route.group.app.stack[m]))
 
 			// Iterate over the sub-app's routes
 			for j, subAppRoute := range route.group.app.stack[m] {
@@ -209,7 +209,7 @@ func (app *App) processSubAppsRoutes() {
 			}
 
 			// Insert the sub-app's routes into the parent app's stack
-			newStack := make([]*Route, len(app.stack[m])+len(subRoutes)-1)
+			newStack := make([]*Route[TCtx], len(app.stack[m])+len(subRoutes)-1)
 			copy(newStack[:i], app.stack[m][:i])
 			copy(newStack[i:i+len(subRoutes)], subRoutes)
 			copy(newStack[i+len(subRoutes):], app.stack[m][i+1:])

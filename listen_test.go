@@ -464,9 +464,9 @@ func Test_Listen_BeforeServeFunc(t *testing.T) {
 	}()
 
 	wantErr := errors.New("test")
-	require.ErrorIs(t, app.Listen(":0", ListenConfig{
+	require.ErrorIs(t, app.Listen(":0", ListenConfig[*DefaultCtx]{
 		DisableStartupMessage: true,
-		BeforeServeFunc: func(fiber *App) error {
+		BeforeServeFunc: func(fiber *App[*DefaultCtx]) error {
 			handlers = fiber.HandlersCount()
 
 			return wantErr

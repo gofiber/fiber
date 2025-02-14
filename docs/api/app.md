@@ -48,7 +48,7 @@ func main() {
 The `MountPath` property contains one or more path patterns on which a sub-app was mounted.
 
 ```go title="Signature"
-func (app *App) MountPath() string
+func (app *App[TCtx]) MountPath() string
 ```
 
 ```go title="Example"
@@ -87,7 +87,7 @@ Mounting order is important for `MountPath`. To get mount paths properly, you sh
 You can group routes by creating a `*Group` struct.
 
 ```go title="Signature"
-func (app *App) Group(prefix string, handlers ...Handler) Router
+func (app *App[TCtx]) Group(prefix string, handlers ...Handler) Router
 ```
 
 ```go title="Example"
@@ -127,7 +127,7 @@ Returns an instance of a single route, which you can then use to handle HTTP ver
 Similar to [`Express`](https://expressjs.com/de/api.html#app.route).
 
 ```go title="Signature"
-func (app *App) Route(path string) Register
+func (app *App[TCtx]) Route(path string) Register
 ```
 
 <details>
@@ -204,7 +204,7 @@ func main() {
 This method returns the number of registered handlers.
 
 ```go title="Signature"
-func (app *App) HandlersCount() uint32
+func (app *App[TCtx]) HandlersCount() uint32
 ```
 
 ### Stack
@@ -212,7 +212,7 @@ func (app *App) HandlersCount() uint32
 This method returns the original router stack.
 
 ```go title="Signature"
-func (app *App) Stack() [][]*Route
+func (app *App[TCtx]) Stack() [][]*Route
 ```
 
 ```go title="Example"
@@ -280,7 +280,7 @@ func main() {
 This method assigns the name to the latest created route.
 
 ```go title="Signature"
-func (app *App) Name(name string) Router
+func (app *App[TCtx]) Name(name string) Router
 ```
 
 ```go title="Example"
@@ -513,6 +513,8 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error
 ```
 
 ## NewCtxFunc
+
+TODO: remove this section and replace with the new fiber.NewWithCustomCtx ...
 
 `NewCtxFunc` allows you to customize the `ctx` struct as needed.
 
