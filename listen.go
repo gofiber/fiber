@@ -91,7 +91,7 @@ type ListenConfig struct {
 	CertClientFile string `json:"cert_client_file"`
 
 	// When the graceful shutdown begins, use this field to set the timeout
-	// duration. If the timeout is reached, OnShutdownError will be called.
+	// duration. If the timeout is reached, OnPostShutdown will be called with the error.
 	// Set to 0 to disable the timeout and wait indefinitely.
 	//
 	// Default: 10 * time.Second
