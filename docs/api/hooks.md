@@ -179,7 +179,7 @@ func (h *Hooks) OnFork(handler ...OnForkHandler)
 
 ## OnShutdown
 
-in v3, `OnShutdown` is split into `OnPreShutdown` and `OnPostShutdown`.
+Since v3, the `OnShutdown` hook is split into `OnPreShutdown` and `OnPostShutdown`.
 
 `OnShutdown` is a hook to execute user functions after shutdown.
 
