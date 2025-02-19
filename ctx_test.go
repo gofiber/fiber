@@ -5524,7 +5524,7 @@ func Test_GenericParseTypeUints(t *testing.T) {
 		},
 		{
 			value: ^uint(0),
-			str:   fmt.Sprintf("%d", ^uint(0)),
+			str:   strconv.FormatUint(uint64(^uint(0)), 10),
 		},
 	}
 
