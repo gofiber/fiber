@@ -2,6 +2,7 @@ package binder
 
 import (
 	"errors"
+	"mime/multipart"
 	"reflect"
 	"testing"
 
@@ -176,4 +177,77 @@ func Test_FilterFlags(t *testing.T) {
 			require.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestFormatBindData(t *testing.T) {
+	t.Run("string value with valid key", func(t *testing.T) {
+		out := struct{}{}
+		data := make(map[string][]string)
+		err := formatBindData(out, data, "name", "John", false, false)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(data["name"]) != 1 || data["name"][0] != "John" {
+			t.Fatalf("expected data[\"name\"] = [John], got %v", data["name"])
+		}
+	})
+
+	t.Run("unsupported value type", func(t *testing.T) {
+		out := struct{}{}
+		data := make(map[string][]string)
+		err := formatBindData(out, data, "age", 30, false, false) // int is unsupported
+		if err == nil {
+			t.Fatal("expected an error, got nil")
+		}
+	})
+
+	t.Run("bracket notation parsing error", func(t *testing.T) {
+		out := struct{}{}
+		data := make(map[string][]string)
+		err := formatBindData(out, data, "invalid[", "value", false, true) // malformed bracket notation
+		if err == nil {
+			t.Fatal("expected an error, got nil")
+		}
+	})
+
+	t.Run("handling multipart file headers", func(t *testing.T) {
+		out := struct{}{}
+		data := make(map[string][]*multipart.FileHeader)
+		files := []*multipart.FileHeader{
+			{Filename: "file1.txt"},
+			{Filename: "file2.txt"},
+		}
+		err := formatBindData(out, data, "files", files, false, false)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(data["files"]) != 2 {
+			t.Fatalf("expected 2 files, got %d", len(data["files"]))
+		}
+	})
+
+	t.Run("type casting error", func(t *testing.T) {
+		out := struct{}{}
+		data := map[string][]int{} // Incorrect type to force a casting error
+		err := formatBindData(out, data, "key", "value", false, false)
+		require.Equal(t, err.Error(), "unsupported value type: string")
+	})
+}
+
+func TestAssignBindData(t *testing.T) {
+	t.Run("splitting enabled with comma", func(t *testing.T) {
+		out := struct {
+			Colors []string `query:"colors"`
+		}{}
+		data := make(map[string][]string)
+		assignBindData(&out, data, "colors", "red,blue,green", true)
+		require.Len(t, data["colors"], 3)
+	})
+
+	t.Run("splitting disabled", func(t *testing.T) {
+		out := []string{}
+		data := make(map[string][]string)
+		assignBindData(out, data, "color", "red,blue", false)
+		require.Len(t, data["color"], 1)
+	})
 }
