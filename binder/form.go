@@ -1,6 +1,9 @@
 package binder
 
 import (
+	"reflect"
+	"strings"
+
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -52,10 +55,43 @@ func (b *FormBinding) bindMultipart(req *fasthttp.Request, out any) error {
 	}
 
 	data := make(map[string][]string)
+
+	// Bind form values
 	for key, values := range multipartForm.Value {
 		err = formatBindData(out, data, key, values, b.EnableSplitting, true)
 		if err != nil {
 			return err
+		}
+	}
+
+	// Check struct type
+	outValue := reflect.ValueOf(out)
+	if outValue.Kind() == reflect.Ptr {
+		outValue = outValue.Elem()
+	}
+
+	// If it's a struct, process files
+	if outValue.Kind() == reflect.Struct {
+		// Bind files
+		for key, fileHeaders := range multipartForm.File {
+			if len(fileHeaders) > 0 {
+				field := outValue.FieldByNameFunc(func(s string) bool {
+					// Check form tag
+					field, ok := outValue.Type().FieldByName(s)
+					if !ok {
+						return false
+					}
+					formTag := field.Tag.Get("form")
+					if formTag == "" {
+						return strings.EqualFold(s, key)
+					}
+					return strings.EqualFold(strings.Split(formTag, ",")[0], key)
+				})
+
+				if field.IsValid() && field.Type().AssignableTo(reflect.TypeOf(fileHeaders[0])) {
+					field.Set(reflect.ValueOf(fileHeaders[0]))
+				}
+			}
 		}
 	}
 

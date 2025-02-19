@@ -141,6 +141,181 @@ func Test_FormBinder_BindMultipart(t *testing.T) {
 	require.Equal(t, "post3", user.Posts[2].Title)
 }
 
+func Test_FormBinder_ShouldBindMultipartFormWithOnlyFiles(t *testing.T) {
+	t.Parallel()
+
+	b := &FormBinding{
+		EnableSplitting: true,
+	}
+
+	type Document struct {
+		File1 *multipart.FileHeader `form:"file1"`
+		File2 *multipart.FileHeader `form:"file2"`
+	}
+
+	var doc Document
+
+	// Create test request
+	req := fasthttp.AcquireRequest()
+	t.Cleanup(func() {
+		fasthttp.ReleaseRequest(req)
+	})
+
+	// Create multipart form
+	buf := &bytes.Buffer{}
+	mw := multipart.NewWriter(buf)
+
+	// Add file 1
+	file1Writer, err := mw.CreateFormFile("file1", "test1.txt")
+	require.NoError(t, err)
+	_, err = file1Writer.Write([]byte("test content 1"))
+	require.NoError(t, err)
+
+	// Add file 2
+	file2Writer, err := mw.CreateFormFile("file2", "test2.txt")
+	require.NoError(t, err)
+	_, err = file2Writer.Write([]byte("test content 2"))
+	require.NoError(t, err)
+
+	require.NoError(t, mw.Close())
+
+	// Setup request
+	req.Header.SetContentType(mw.FormDataContentType())
+	req.SetBody(buf.Bytes())
+
+	// Test bind operation
+	err = b.Bind(req, &doc)
+	require.NoError(t, err)
+
+	// Check results
+	require.NotNil(t, doc.File1)
+	require.Equal(t, "test1.txt", doc.File1.Filename)
+
+	require.NotNil(t, doc.File2)
+	require.Equal(t, "test2.txt", doc.File2.Filename)
+}
+
+func Test_FormBinder_ShouldBindMultipartFormWithMixedFileAndStringFields(t *testing.T) {
+	t.Parallel()
+
+	b := &FormBinding{
+		EnableSplitting: true,
+	}
+
+	type Person struct {
+		File1      *multipart.FileHeader `form:"file1"`
+		File2      *multipart.FileHeader `form:"file2"`
+		TestString string                `form:"test_string"`
+	}
+
+	var person Person
+
+	// Create test request
+	req := fasthttp.AcquireRequest()
+	t.Cleanup(func() {
+		fasthttp.ReleaseRequest(req)
+	})
+
+	// Create multipart form
+	buf := &bytes.Buffer{}
+	mw := multipart.NewWriter(buf)
+
+	// Add file 1
+	file1Writer, err := mw.CreateFormFile("file1", "test1.txt")
+	require.NoError(t, err)
+	_, err = file1Writer.Write([]byte("test content 1"))
+	require.NoError(t, err)
+
+	// Add file 2
+	file2Writer, err := mw.CreateFormFile("file2", "test2.txt")
+	require.NoError(t, err)
+	_, err = file2Writer.Write([]byte("test content 2"))
+	require.NoError(t, err)
+
+	// Add string field
+	require.NoError(t, mw.WriteField("test_string", "test string value"))
+
+	require.NoError(t, mw.Close())
+
+	// Setup request
+	req.Header.SetContentType(mw.FormDataContentType())
+	req.SetBody(buf.Bytes())
+
+	// Test bind operation
+	err = b.Bind(req, &person)
+	require.NoError(t, err)
+
+	// Check results
+	require.NotNil(t, person.File1)
+	require.Equal(t, "test1.txt", person.File1.Filename)
+
+	require.NotNil(t, person.File2)
+	require.Equal(t, "test2.txt", person.File2.Filename)
+
+	require.Equal(t, "test string value", person.TestString)
+}
+
+func Test_FormBinder_ShouldBindMultipartFormWithMixedFileAndNumberFields(t *testing.T) {
+	t.Parallel()
+
+	b := &FormBinding{
+		EnableSplitting: true,
+	}
+
+	type Document struct {
+		File1    *multipart.FileHeader `form:"file1"`
+		File2    *multipart.FileHeader `form:"file2"`
+		FileSize int64                 `form:"file_size"` // Dosya boyutu için int64 alan
+
+	}
+
+	var doc Document
+
+	// Create test request
+	req := fasthttp.AcquireRequest()
+	t.Cleanup(func() {
+		fasthttp.ReleaseRequest(req)
+	})
+
+	// Create multipart form
+	buf := &bytes.Buffer{}
+	mw := multipart.NewWriter(buf)
+
+	// Add file 1
+	file1Writer, err := mw.CreateFormFile("file1", "test1.txt")
+	require.NoError(t, err)
+	_, err = file1Writer.Write([]byte("test content 1"))
+	require.NoError(t, err)
+
+	// Add file 2
+	file2Writer, err := mw.CreateFormFile("file2", "test2.txt")
+	require.NoError(t, err)
+	_, err = file2Writer.Write([]byte("test content 2"))
+	require.NoError(t, err)
+
+	// Add number field
+	require.NoError(t, mw.WriteField("file_size", "1024"))
+
+	require.NoError(t, mw.Close())
+
+	// Setup request
+	req.Header.SetContentType(mw.FormDataContentType())
+	req.SetBody(buf.Bytes())
+
+	// Test bind operation
+	err = b.Bind(req, &doc)
+	require.NoError(t, err)
+
+	// Check results
+	require.NotNil(t, doc.File1)
+	require.Equal(t, "test1.txt", doc.File1.Filename)
+
+	require.NotNil(t, doc.File2)
+	require.Equal(t, "test2.txt", doc.File2.Filename)
+
+	require.Equal(t, int64(1024), doc.FileSize)
+}
+
 func Benchmark_FormBinder_BindMultipart(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -185,4 +360,58 @@ func Benchmark_FormBinder_BindMultipart(b *testing.B) {
 	require.Equal(b, "john", user.Name)
 	require.Equal(b, 42, user.Age)
 	require.Len(b, user.Posts, 3)
+}
+
+func Benchmark_FormBinder_BindMultipartWithMixedTypes(b *testing.B) {
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	binder := &FormBinding{
+		EnableSplitting: true,
+	}
+
+	type Document struct {
+		File1    *multipart.FileHeader `form:"file1"`
+		Name     string                `form:"name"`
+		FileSize int64                 `form:"file_size"`
+	}
+	var doc Document
+
+	// Create initial request template
+	req := fasthttp.AcquireRequest()
+	b.Cleanup(func() {
+		fasthttp.ReleaseRequest(req)
+	})
+
+	// Create form data template
+	buf := &bytes.Buffer{}
+	mw := multipart.NewWriter(buf)
+
+	// Add files
+	file1Writer, err := mw.CreateFormFile("file1", "test1.txt")
+	require.NoError(b, err)
+	_, err = file1Writer.Write([]byte("test content 1"))
+	require.NoError(b, err)
+
+	// Add string and number fields
+	require.NoError(b, mw.WriteField("name", "test document"))
+	require.NoError(b, mw.WriteField("file_size", "1024"))
+	require.NoError(b, mw.Close())
+
+	// Setup request
+	req.Header.SetContentType(mw.FormDataContentType())
+	req.SetBody(buf.Bytes())
+
+	b.ResetTimer()
+
+	// Run benchmark
+	for i := 0; i < b.N; i++ {
+		err = binder.Bind(req, &doc)
+	}
+
+	// Verify results
+	require.NoError(b, err)
+	require.NotNil(b, doc.File1)
+	require.Equal(b, "test document", doc.Name)
+	require.Equal(b, int64(1024), doc.FileSize)
 }
