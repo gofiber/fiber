@@ -230,7 +230,7 @@ func TestFormatBindData(t *testing.T) {
 		out := struct{}{}
 		data := map[string][]int{} // Incorrect type to force a casting error
 		err := formatBindData(out, data, "key", "value", false, false)
-		require.Equal(t, err.Error(), "unsupported value type: string")
+		require.Equal(t, "unsupported value type: string", err.Error())
 	})
 }
 
