@@ -1,6 +1,8 @@
 package binder
 
 import (
+	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 
@@ -47,6 +49,34 @@ func (b *FormBinding) Bind(req *fasthttp.Request, out any) error {
 	return parse(b.Name(), out, data)
 }
 
+// safeSet safely sets a reflect.Value, recovering from any panics
+func safeSet(field reflect.Value, value reflect.Value) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			switch x := r.(type) {
+			case string:
+				err = errors.New(x)
+			case error:
+				err = x
+			default:
+				err = fmt.Errorf("unknown panic during field assignment: %v", r)
+			}
+		}
+	}()
+
+	if !field.CanSet() {
+		return fmt.Errorf("field cannot be set")
+	}
+
+	if !value.Type().AssignableTo(field.Type()) {
+		return fmt.Errorf("cannot assign value of type %v to field of type %v",
+			value.Type(), field.Type())
+	}
+
+	field.Set(value)
+	return nil
+}
+
 // bindMultipart parses the request body and returns the result.
 func (b *FormBinding) bindMultipart(req *fasthttp.Request, out any) error {
 	multipartForm, err := req.MultipartForm()
@@ -88,8 +118,24 @@ func (b *FormBinding) bindMultipart(req *fasthttp.Request, out any) error {
 					return strings.EqualFold(strings.Split(formTag, ",")[0], key)
 				})
 
-				if field.IsValid() && field.Type().AssignableTo(reflect.TypeOf(fileHeaders[0])) {
-					field.Set(reflect.ValueOf(fileHeaders[0]))
+				if field.IsValid() {
+					if field.Type().Kind() == reflect.Slice && field.Type().Elem().AssignableTo(reflect.TypeOf(fileHeaders[0])) {
+						// Handle multiple files
+						slice := reflect.MakeSlice(field.Type(), len(fileHeaders), len(fileHeaders))
+						for i, fh := range fileHeaders {
+							if err := safeSet(slice.Index(i), reflect.ValueOf(fh)); err != nil {
+								return fmt.Errorf("failed to set file at index %d: %w", i, err)
+							}
+						}
+						if err := safeSet(field, slice); err != nil {
+							return fmt.Errorf("failed to set files slice: %w", err)
+						}
+					} else if field.Type().AssignableTo(reflect.TypeOf(fileHeaders[0])) {
+						// Handle single file
+						if err := safeSet(field, reflect.ValueOf(fileHeaders[0])); err != nil {
+							return fmt.Errorf("failed to set single file: %w", err)
+						}
+					}
 				}
 			}
 		}

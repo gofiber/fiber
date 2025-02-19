@@ -315,6 +315,55 @@ func Test_FormBinder_ShouldBindMultipartFormWithMixedFileAndNumberFields(t *test
 	require.Equal(t, int64(1024), doc.FileSize)
 }
 
+func Test_FormBinder_ShouldBindMultipartFormWithMultipleFiles(t *testing.T) {
+	t.Parallel()
+
+	b := &FormBinding{
+		EnableSplitting: true,
+	}
+
+	type Document struct {
+		Files []*multipart.FileHeader `form:"files"`
+	}
+
+	var doc Document
+
+	// Create test request
+	req := fasthttp.AcquireRequest()
+	t.Cleanup(func() {
+		fasthttp.ReleaseRequest(req)
+	})
+
+	// Create multipart form
+	buf := &bytes.Buffer{}
+	mw := multipart.NewWriter(buf)
+
+	// Add multiple files
+	filenames := []string{"test1.txt", "test2.txt", "test3.txt"}
+	for _, filename := range filenames {
+		fileWriter, err := mw.CreateFormFile("files", filename)
+		require.NoError(t, err)
+		_, err = fileWriter.Write([]byte("test content"))
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, mw.Close())
+
+	// Setup request
+	req.Header.SetContentType(mw.FormDataContentType())
+	req.SetBody(buf.Bytes())
+
+	// Test bind operation
+	err := b.Bind(req, &doc)
+	require.NoError(t, err)
+
+	// Check results
+	require.Len(t, doc.Files, 3)
+	for i, file := range doc.Files {
+		require.Equal(t, filenames[i], file.Filename)
+	}
+}
+
 func Benchmark_FormBinder_BindMultipart(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
