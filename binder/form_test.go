@@ -265,8 +265,7 @@ func Test_FormBinder_ShouldBindMultipartFormWithMixedFileAndNumberFields(t *test
 	type Document struct {
 		File1    *multipart.FileHeader `form:"file1"`
 		File2    *multipart.FileHeader `form:"file2"`
-		FileSize int64                 `form:"file_size"` // Dosya boyutu için int64 alan
-
+		FileSize int64                 `form:"file_size"`
 	}
 
 	var doc Document
