@@ -5522,6 +5522,10 @@ func Test_GenericParseTypeUints(t *testing.T) {
 			value: uint(4),
 			str:   "4",
 		},
+		{
+			value: ^uint(0),
+			str:   fmt.Sprintf("%d", ^uint(0)),
+		},
 	}
 
 	for _, test := range uints {
