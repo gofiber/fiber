@@ -60,17 +60,6 @@ type ListenConfig struct {
 	// Default: nil
 	BeforeServeFunc func(app *App) error `json:"before_serve_func"`
 
-	// OnShutdownError allows to customize error behavior when to graceful shutdown server by given signal.
-	//
-	// Print error with log.Fatalf() by default.
-	// Default: nil
-	OnShutdownError func(err error)
-
-	// OnShutdownSuccess allows to customize success behavior when to graceful shutdown server by given signal.
-	//
-	// Default: nil
-	OnShutdownSuccess func()
-
 	// AutoCertManager manages TLS certificates automatically using the ACME protocol,
 	// Enables integration with Let's Encrypt or other ACME-compatible providers.
 	//
@@ -102,7 +91,7 @@ type ListenConfig struct {
 	CertClientFile string `json:"cert_client_file"`
 
 	// When the graceful shutdown begins, use this field to set the timeout
-	// duration. If the timeout is reached, OnShutdownError will be called.
+	// duration. If the timeout is reached, OnPostShutdown will be called with the error.
 	// Set to 0 to disable the timeout and wait indefinitely.
 	//
 	// Default: 10 * time.Second
@@ -136,9 +125,6 @@ func listenConfigDefault(config ...ListenConfig) ListenConfig {
 		return ListenConfig{
 			TLSMinVersion:   tls.VersionTLS12,
 			ListenerNetwork: NetworkTCP4,
-			OnShutdownError: func(err error) {
-				log.Fatalf("shutdown: %v", err) //nolint:revive // It's an option
-			},
 			ShutdownTimeout: 10 * time.Second,
 		}
 	}
@@ -146,12 +132,6 @@ func listenConfigDefault(config ...ListenConfig) ListenConfig {
 	cfg := config[0]
 	if cfg.ListenerNetwork == "" {
 		cfg.ListenerNetwork = NetworkTCP4
-	}
-
-	if cfg.OnShutdownError == nil {
-		cfg.OnShutdownError = func(err error) {
-			log.Fatalf("shutdown: %v", err) //nolint:revive // It's an option
-		}
 	}
 
 	if cfg.TLSMinVersion == 0 {
@@ -517,11 +497,9 @@ func (app *App) gracefulShutdown(ctx context.Context, cfg ListenConfig) {
 	}
 
 	if err != nil {
-		cfg.OnShutdownError(err)
+		app.hooks.executeOnPostShutdownHooks(err)
 		return
 	}
 
-	if success := cfg.OnShutdownSuccess; success != nil {
-		success()
-	}
+	app.hooks.executeOnPostShutdownHooks(nil)
 }
