@@ -6,8 +6,6 @@ id: adaptor
 
 The `adaptor` package provides utilities for converting between Fiber and `net/http`. It allows seamless integration of `net/http` handlers, middleware, and requests into Fiber applications, and vice versa.
 
-Special thanks to [@arsmn](https://github.com/arsmn) for contributions!
-
 ## Features
 
 - Convert `net/http` handlers and middleware to Fiber handlers.
@@ -23,8 +21,8 @@ Special thanks to [@arsmn](https://github.com/arsmn) for contributions!
 | `HTTPMiddleware`            | `HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler`            | Converts `http.Handler` middleware to `fiber.Handler` middleware |
 | `FiberHandler`              | `FiberHandler(h fiber.Handler) http.Handler`                                  | Converts `fiber.Handler` to `http.Handler`                       |
 | `FiberHandlerFunc`          | `FiberHandlerFunc(h fiber.Handler) http.HandlerFunc`                          | Converts `fiber.Handler` to `http.HandlerFunc`                   |
-| `FiberApp`                  | `FiberApp(app *fiber.App) http.HandlerFunc`                                   | Converts an entire Fiber app to an `http.HandlerFunc`            |
-| `ConvertRequest`            | `ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error)`          | Converts `fiber.Ctx` into an `http.Request`                      |
+| `FiberApp`                  | `FiberApp(app *fiber.App) http.HandlerFunc`                                   | Converts an entire Fiber app to a `http.HandlerFunc`             |
+| `ConvertRequest`            | `ConvertRequest(c fiber.Ctx, forServer bool) (*http.Request, error)`          | Converts `fiber.Ctx` into a `http.Request`                       |
 | `CopyContextToFiberContext` | `CopyContextToFiberContext(context any, requestContext *fasthttp.RequestCtx)` | Copies `context.Context` to `fasthttp.RequestCtx`                |
 
 ---
@@ -48,7 +46,7 @@ import (
 func main() {
     app := fiber.New()
 
-    // Convert an http.Handler to a Fiber handler
+    // Convert a http.Handler to a Fiber handler
     app.Get("/", adaptor.HTTPHandler(http.HandlerFunc(helloHandler)))
 
     app.Listen(":3000")
@@ -59,7 +57,7 @@ func helloHandler(w http.ResponseWriter, r *http.Request) {
 }
 ```
 
-### 2. Using `net/http` Middleware in Fiber
+### 2. Using `net/http` Middleware with Fiber
 
 Middleware written for `net/http` can be used in Fiber:
 
@@ -76,7 +74,7 @@ import (
 func main() {
     app := fiber.New()
 
-    // Apply an http middleware in Fiber
+    // Apply a http middleware in Fiber
     app.Use(adaptor.HTTPMiddleware(loggingMiddleware))
 
     app.Get("/", func(c fiber.Ctx) error {
@@ -148,7 +146,7 @@ func main() {
 
 ### 5. Converting Fiber Context (`fiber.Ctx`) to `http.Request`
 
-If you need to use an `http.Request` inside a Fiber handler:
+If you need to use a `http.Request` inside a Fiber handler:
 
 ```go
 package main

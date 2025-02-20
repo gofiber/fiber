@@ -178,7 +178,7 @@ If more information is needed, please refer to this issue [#750](https://github.
 
 ## How can I handle conversions between Fiber and net/http?
 
-The `adaptor` package provides utilities for converting between Fiber and `net/http`. It allows seamless integration of `net/http` handlers, middleware, and requests into Fiber applications, and vice versa.
+The `adaptor` middleware provides utilities for converting between Fiber and `net/http`. It allows seamless integration of `net/http` handlers, middleware, and requests into Fiber applications, and vice versa.
 
 For details on how to:
 
