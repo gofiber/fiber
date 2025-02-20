@@ -120,6 +120,38 @@ curl -X POST -H "Content-Type: application/x-www-form-urlencoded" --data "name=j
 curl -X POST -H "Content-Type: multipart/form-data" -F "name=john" -F "pass=doe" localhost:3000
 ```
 
+:::info
+If you need to bind multipart file, you can use `*multipart.FileHeader`, `*[]*multipart.FileHeader` or `[]*multipart.FileHeader` as a field type.
+:::
+
+```go title="Example"
+type Person struct {
+    Name string                `form:"name"`
+    Pass string                `form:"pass"`
+    Avatar *multipart.FileHeader `form:"avatar"`
+}
+
+app.Post("/", func(c fiber.Ctx) error {
+    p := new(Person)
+    
+    if err := c.Bind().Form(p); err != nil {
+        return err
+    }
+    
+    log.Println(p.Name) // john
+    log.Println(p.Pass) // doe
+    log.Println(p.Avatar.Filename) // file.txt
+    
+    // ...
+})
+```
+
+Run tests with the following `curl` command:
+
+```bash
+curl -X POST -H "Content-Type: multipart/form-data" -F "name=john" -F "pass=doe" -F 'avatar=@filename' localhost:3000
+```
+
 ### JSON
 
 Binds the request JSON body to a struct.
