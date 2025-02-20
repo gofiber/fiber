@@ -54,6 +54,8 @@ type DefaultCtx struct {
 	fasthttp            *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	bind                *Bind                // Default bind reference
 	redirect            *Redirect            // Default redirect reference
+	req                 *DefaultReq          // Default request api reference
+	res                 *DefaultRes          // Default response api reference
 	values              [maxParams]string    // Route parameter values
 	viewBindMap         sync.Map             // Default view map to bind template engine
 	method              string               // HTTP method
@@ -1461,6 +1463,18 @@ func (c *DefaultCtx) renderExtensions(bind any) {
 	if len(c.app.mountFields.appListKeys) == 0 {
 		c.app.generateAppListKeys()
 	}
+}
+
+// Req returns a convenience type whose API is limited to operations
+// on the incoming request.
+func (c *DefaultCtx) Req() Req {
+	return c.req
+}
+
+// Res returns a convenience type whose API is limited to operations
+// on the outgoing response.
+func (c *DefaultCtx) Res() Res {
+	return c.res
 }
 
 // Route returns the matched Route struct.
