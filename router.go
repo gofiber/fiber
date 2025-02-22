@@ -319,9 +319,10 @@ func (*App) copyRoute(route *Route) *Route {
 }
 
 func (app *App) register(methods []string, pathRaw string, group *Group, handlers ...Handler) {
-	// A route requires atleast one ctx handler
-	if group == nil && len(handlers) == 0 {
-		panic(fmt.Sprintf("missing handler in route: %s\n", pathRaw))
+	// A regular route requires at least one ctx handler
+	isMount := group != nil && group.app != app
+	if len(handlers) == 0 && !isMount {
+		panic(fmt.Sprintf("missing handler/middleware in route: %s\n", pathRaw))
 	}
 
 	// Precompute path normalization ONCE
@@ -347,11 +348,6 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 		method = utils.ToUpper(method)
 		if method != methodUse && app.methodInt(method) == -1 {
 			panic(fmt.Sprintf("add: invalid http method %s\n", method))
-		}
-
-		isMount := group != nil && group.app != app
-		if len(handlers) == 0 && !isMount {
-			panic(fmt.Sprintf("missing handler/middleware in route: %s\n", pathRaw))
 		}
 
 		isUse := method == methodUse
