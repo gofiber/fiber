@@ -758,55 +758,55 @@ func (app *App) Use(args ...any) Router {
 
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
-func (app *App) Get(path string, handler Handler, middleware ...Handler) Router {
-	return app.Add([]string{MethodGet}, path, handler, middleware...)
+func (app *App) Get(path string, handler Handler, handlers ...Handler) Router {
+	return app.Add([]string{MethodGet}, path, handler, handlers...)
 }
 
 // Head registers a route for HEAD methods that asks for a response identical
 // to that of a GET request, but without the response body.
-func (app *App) Head(path string, handler Handler, middleware ...Handler) Router {
-	return app.Add([]string{MethodHead}, path, handler, middleware...)
+func (app *App) Head(path string, handler Handler, handlers ...Handler) Router {
+	return app.Add([]string{MethodHead}, path, handler, handlers...)
 }
 
 // Post registers a route for POST methods that is used to submit an entity to the
 // specified resource, often causing a change in state or side effects on the server.
-func (app *App) Post(path string, handler Handler, middleware ...Handler) Router {
-	return app.Add([]string{MethodPost}, path, handler, middleware...)
+func (app *App) Post(path string, handler Handler, handlers ...Handler) Router {
+	return app.Add([]string{MethodPost}, path, handler, handlers...)
 }
 
 // Put registers a route for PUT methods that replaces all current representations
 // of the target resource with the request payload.
-func (app *App) Put(path string, handler Handler, middleware ...Handler) Router {
-	return app.Add([]string{MethodPut}, path, handler, middleware...)
+func (app *App) Put(path string, handler Handler, handlers ...Handler) Router {
+	return app.Add([]string{MethodPut}, path, handler, handlers...)
 }
 
 // Delete registers a route for DELETE methods that deletes the specified resource.
-func (app *App) Delete(path string, handler Handler, middleware ...Handler) Router {
-	return app.Add([]string{MethodDelete}, path, handler, middleware...)
+func (app *App) Delete(path string, handler Handler, handlers ...Handler) Router {
+	return app.Add([]string{MethodDelete}, path, handler, handlers...)
 }
 
 // Connect registers a route for CONNECT methods that establishes a tunnel to the
 // server identified by the target resource.
-func (app *App) Connect(path string, handler Handler, middleware ...Handler) Router {
-	return app.Add([]string{MethodConnect}, path, handler, middleware...)
+func (app *App) Connect(path string, handler Handler, handlers ...Handler) Router {
+	return app.Add([]string{MethodConnect}, path, handler, handlers...)
 }
 
 // Options registers a route for OPTIONS methods that is used to describe the
 // communication options for the target resource.
-func (app *App) Options(path string, handler Handler, middleware ...Handler) Router {
-	return app.Add([]string{MethodOptions}, path, handler, middleware...)
+func (app *App) Options(path string, handler Handler, handlers ...Handler) Router {
+	return app.Add([]string{MethodOptions}, path, handler, handlers...)
 }
 
 // Trace registers a route for TRACE methods that performs a message loop-back
 // test along the path to the target resource.
-func (app *App) Trace(path string, handler Handler, middleware ...Handler) Router {
-	return app.Add([]string{MethodTrace}, path, handler, middleware...)
+func (app *App) Trace(path string, handler Handler, handlers ...Handler) Router {
+	return app.Add([]string{MethodTrace}, path, handler, handlers...)
 }
 
 // Patch registers a route for PATCH methods that is used to apply partial
 // modifications to a resource.
-func (app *App) Patch(path string, handler Handler, middleware ...Handler) Router {
-	return app.Add([]string{MethodPatch}, path, handler, middleware...)
+func (app *App) Patch(path string, handler Handler, handlers ...Handler) Router {
+	return app.Add([]string{MethodPatch}, path, handler, handlers...)
 }
 
 // Add allows you to specify multiple HTTP methods to register a route.
