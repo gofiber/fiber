@@ -320,9 +320,14 @@ func (*App) copyRoute(route *Route) *Route {
 
 func (app *App) register(methods []string, pathRaw string, group *Group, handlers ...Handler) {
 	// A regular route requires at least one ctx handler
-	isMount := group != nil && group.app != app
-	if len(handlers) == 0 && !isMount {
-		panic(fmt.Sprintf("missing handler/middleware in route: %s\n", pathRaw))
+	if len(handlers) == 0 && group == nil {
+		panic(fmt.Sprintf("missing handler/middleware in route: %s", pathRaw))
+	}
+	// No nil handlers allowed
+	for _, h := range handlers {
+		if nil == h {
+			panic(fmt.Sprintf("nil handler in route: %s", pathRaw))
+		}
 	}
 
 	// Precompute path normalization ONCE
@@ -343,6 +348,8 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 
 	parsedRaw := parseRoute(pathRaw, app.customConstraints...)
 	parsedPretty := parseRoute(pathPretty, app.customConstraints...)
+
+	isMount := group != nil && group.app != app
 
 	for _, method := range methods {
 		method = utils.ToUpper(method)

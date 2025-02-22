@@ -327,12 +327,28 @@ func Test_Router_Register_Missing_Handler(t *testing.T) {
 	t.Parallel()
 
 	app := New()
-	defer func() {
-		if err := recover(); err != nil {
-			require.Equal(t, "missing handler/middleware in route: /doe\n", fmt.Sprintf("%v", err))
-		}
-	}()
-	app.register([]string{"USE"}, "/doe", nil, nil)
+
+	t.Run("No Handler", func(t *testing.T) {
+		defer func() {
+			if err := recover(); err != nil {
+				require.Equal(t, "missing handler/middleware in route: /doe", fmt.Sprintf("%v", err))
+			} else {
+				t.Fatalf("expected panic, but no panic occurred")
+			}
+		}()
+		app.register([]string{"USE"}, "/doe", nil)
+	})
+
+	t.Run("Nil Handler", func(t *testing.T) {
+		defer func() {
+			if err := recover(); err != nil {
+				require.Equal(t, "nil handler in route: /doe", fmt.Sprintf("%v", err))
+			} else {
+				t.Fatalf("expected panic, but no panic occurred")
+			}
+		}()
+		app.register([]string{"USE"}, "/doe", nil, nil)
+	})
 }
 
 func Test_Ensure_Router_Interface_Implementation(t *testing.T) {

@@ -482,6 +482,8 @@ func Test_App_Use_Params(t *testing.T) {
 	defer func() {
 		if err := recover(); err != nil {
 			require.Equal(t, "use: invalid handler func()\n", fmt.Sprintf("%v", err))
+		} else {
+			t.Fatalf("expected panic, but no panic occurred")
 		}
 	}()
 
@@ -1058,6 +1060,8 @@ func Test_App_Group_Invalid(t *testing.T) {
 	defer func() {
 		if err := recover(); err != nil {
 			require.Equal(t, "use: invalid handler int\n", fmt.Sprintf("%v", err))
+		} else {
+			t.Fatalf("expected panic, but no panic occurred")
 		}
 	}()
 	New().Group("/").Use(1)
@@ -1288,6 +1292,8 @@ func Test_App_Init_Error_View(t *testing.T) {
 	defer func() {
 		if err := recover(); err != nil {
 			require.Equal(t, "implement me", fmt.Sprintf("%v", err))
+		} else {
+			t.Fatalf("expected panic, but no panic occurred")
 		}
 	}()
 

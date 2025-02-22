@@ -86,6 +86,8 @@ func Test_Hook_OnName_Error(t *testing.T) {
 	defer func() {
 		if err := recover(); err != nil {
 			require.Equal(t, "unknown error", fmt.Sprintf("%v", err))
+		} else {
+			t.Fatalf("expected panic, but no panic occurred")
 		}
 	}()
 
@@ -170,6 +172,8 @@ func Test_Hook_OnGroupName_Error(t *testing.T) {
 	defer func() {
 		if err := recover(); err != nil {
 			require.Equal(t, "unknown error", fmt.Sprintf("%v", err))
+		} else {
+			t.Fatalf("expected panic, but no panic occurred")
 		}
 	}()
 
