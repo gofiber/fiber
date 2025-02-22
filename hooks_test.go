@@ -181,22 +181,89 @@ func Test_Hook_OnGroupName_Error(t *testing.T) {
 	grp.Get("/test", testSimpleHandler)
 }
 
-func Test_Hook_OnShutdown(t *testing.T) {
+func Test_Hook_OnPrehutdown(t *testing.T) {
 	t.Parallel()
 	app := New()
 
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	app.Hooks().OnShutdown(func() error {
-		_, err := buf.WriteString("shutdowning")
+	app.Hooks().OnPreShutdown(func() error {
+		_, err := buf.WriteString("pre-shutdowning")
 		require.NoError(t, err)
 
 		return nil
 	})
 
 	require.NoError(t, app.Shutdown())
-	require.Equal(t, "shutdowning", buf.String())
+	require.Equal(t, "pre-shutdowning", buf.String())
+}
+
+func Test_Hook_OnPostShutdown(t *testing.T) {
+	t.Run("should execute post shutdown hook with error", func(t *testing.T) {
+		app := New()
+		expectedErr := errors.New("test shutdown error")
+
+		hookCalled := make(chan error, 1)
+		defer close(hookCalled)
+
+		app.Hooks().OnPostShutdown(func(err error) error {
+			hookCalled <- err
+			return nil
+		})
+
+		go func() {
+			if err := app.Listen(":0"); err != nil {
+				return
+			}
+		}()
+
+		time.Sleep(100 * time.Millisecond)
+
+		app.hooks.executeOnPostShutdownHooks(expectedErr)
+
+		select {
+		case err := <-hookCalled:
+			require.Equal(t, expectedErr, err)
+		case <-time.After(time.Second):
+			t.Fatal("hook execution timeout")
+		}
+
+		require.NoError(t, app.Shutdown())
+	})
+
+	t.Run("should execute multiple hooks in order", func(t *testing.T) {
+		app := New()
+
+		execution := make([]int, 0)
+
+		app.Hooks().OnPostShutdown(func(_ error) error {
+			execution = append(execution, 1)
+			return nil
+		})
+
+		app.Hooks().OnPostShutdown(func(_ error) error {
+			execution = append(execution, 2)
+			return nil
+		})
+
+		app.hooks.executeOnPostShutdownHooks(nil)
+
+		require.Len(t, execution, 2, "expected 2 hooks to execute")
+		require.Equal(t, []int{1, 2}, execution, "hooks executed in wrong order")
+	})
+
+	t.Run("should handle hook error", func(_ *testing.T) {
+		app := New()
+		hookErr := errors.New("hook error")
+
+		app.Hooks().OnPostShutdown(func(_ error) error {
+			return hookErr
+		})
+
+		// Should not panic
+		app.hooks.executeOnPostShutdownHooks(nil)
+	})
 }
 
 func Test_Hook_OnListen(t *testing.T) {
