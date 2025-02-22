@@ -176,8 +176,6 @@ func main() {
 func (h *Hooks) OnFork(handler ...OnForkHandler)
 ```
 
-
-
 ## OnPreShutdown
 
 `OnPreShutdown` is a hook to execute user functions before shutdown.
