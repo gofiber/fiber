@@ -323,28 +323,22 @@ func getSplicedStrList(headerValue string, dst []string) []string {
 		return nil
 	}
 
-	var (
-		index             int
-		character         rune
-		lastElementEndsAt int
-		insertIndex       int
-	)
-	for index, character = range headerValue + "$" {
-		if character == ',' || index == len(headerValue) {
-			if insertIndex >= len(dst) {
-				oldSlice := dst
-				dst = make([]string, len(dst)+(len(dst)>>1)+2)
-				copy(dst, oldSlice)
-			}
-			dst[insertIndex] = utils.TrimLeft(headerValue[lastElementEndsAt:index], ' ')
-			lastElementEndsAt = index + 1
-			insertIndex++
+	dst = dst[:0]
+	r := 0
+	h := true
+	for i, c := range headerValue {
+		if c == ',' {
+			dst = append(dst, headerValue[r:i])
+			r = i + 1
+			h = true
+		} else if c == ' ' && h {
+			r = i + 1
+		} else {
+			h = false
 		}
 	}
+	dst = append(dst, headerValue[r:])
 
-	if len(dst) > insertIndex {
-		dst = dst[:insertIndex]
-	}
 	return dst
 }
 
