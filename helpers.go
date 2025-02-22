@@ -325,16 +325,17 @@ func getSplicedStrList(headerValue string, dst []string) []string {
 
 	dst = dst[:0]
 	r := 0
-	h := true
+	leading := true
 	for i, c := range headerValue {
-		if c == ',' {
+		switch {
+		case c == ',':
 			dst = append(dst, headerValue[r:i])
 			r = i + 1
-			h = true
-		} else if c == ' ' && h {
+			leading = true
+		case c == ' ' && leading:
 			r = i + 1
-		} else {
-			h = false
+		default:
+			leading = false
 		}
 	}
 	dst = append(dst, headerValue[r:])
