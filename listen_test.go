@@ -45,6 +45,10 @@ func Test_Listen_Graceful_Shutdown(t *testing.T) {
 	t.Run("Shutdown With Timeout", func(t *testing.T) {
 		testGracefulShutdown(t, 500*time.Millisecond)
 	})
+
+	t.Run("Shutdown With Timeout Error", func(t *testing.T) {
+		testGracefulShutdown(t, 1*time.Nanosecond)
+	})
 }
 
 func testGracefulShutdown(t *testing.T, shutdownTimeout time.Duration) {
@@ -52,19 +56,22 @@ func testGracefulShutdown(t *testing.T, shutdownTimeout time.Duration) {
 
 	var mu sync.Mutex
 	var shutdown bool
+	var receivedErr error
 
 	app := New()
 	app.Get("/", func(c Ctx) error {
+		time.Sleep(10 * time.Millisecond)
 		return c.SendString(c.Hostname())
 	})
 
 	ln := fasthttputil.NewInmemoryListener()
 	errs := make(chan error, 1)
 
-	app.hooks.OnPostShutdown(func(_ error) error {
+	app.hooks.OnPostShutdown(func(err error) error {
 		mu.Lock()
 		defer mu.Unlock()
 		shutdown = true
+		receivedErr = err
 		return nil
 	})
 
@@ -147,6 +154,10 @@ func testGracefulShutdown(t *testing.T, shutdownTimeout time.Duration) {
 
 	mu.Lock()
 	require.True(t, shutdown)
+	if shutdownTimeout == 1*time.Nanosecond {
+		require.Error(t, receivedErr)
+		require.ErrorIs(t, receivedErr, context.DeadlineExceeded)
+	}
 	require.NoError(t, <-errs)
 	mu.Unlock()
 }
