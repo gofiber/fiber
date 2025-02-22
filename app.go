@@ -750,7 +750,7 @@ func (app *App) Use(args ...any) Router {
 			return app
 		}
 
-		app.register([]string{methodUse}, prefix, nil, nil, handlers...)
+		app.register([]string{methodUse}, prefix, nil, handlers...)
 	}
 
 	return app
@@ -810,15 +810,15 @@ func (app *App) Patch(path string, handler Handler, middleware ...Handler) Route
 }
 
 // Add allows you to specify multiple HTTP methods to register a route.
-func (app *App) Add(methods []string, path string, handler Handler, middleware ...Handler) Router {
-	app.register(methods, path, nil, handler, middleware...)
+func (app *App) Add(methods []string, path string, handler Handler, handlers ...Handler) Router {
+	app.register(methods, path, nil, append([]Handler{handler}, handlers...)...)
 
 	return app
 }
 
 // All will register the handler on all HTTP methods
-func (app *App) All(path string, handler Handler, middleware ...Handler) Router {
-	return app.Add(app.config.RequestMethods, path, handler, middleware...)
+func (app *App) All(path string, handler Handler, handlers ...Handler) Router {
+	return app.Add(app.config.RequestMethods, path, handler, handlers...)
 }
 
 // Group is used for Routes with common prefix to define a new sub-router with optional middleware.
@@ -828,7 +828,7 @@ func (app *App) All(path string, handler Handler, middleware ...Handler) Router 
 func (app *App) Group(prefix string, handlers ...Handler) Router {
 	grp := &Group{Prefix: prefix, app: app}
 	if len(handlers) > 0 {
-		app.register([]string{methodUse}, prefix, grp, nil, handlers...)
+		app.register([]string{methodUse}, prefix, grp, handlers...)
 	}
 	if err := app.hooks.executeOnGroupHooks(*grp); err != nil {
 		panic(err)

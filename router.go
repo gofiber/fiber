@@ -20,18 +20,18 @@ import (
 type Router interface {
 	Use(args ...any) Router
 
-	Get(path string, handler Handler, middleware ...Handler) Router
-	Head(path string, handler Handler, middleware ...Handler) Router
-	Post(path string, handler Handler, middleware ...Handler) Router
-	Put(path string, handler Handler, middleware ...Handler) Router
-	Delete(path string, handler Handler, middleware ...Handler) Router
-	Connect(path string, handler Handler, middleware ...Handler) Router
-	Options(path string, handler Handler, middleware ...Handler) Router
-	Trace(path string, handler Handler, middleware ...Handler) Router
-	Patch(path string, handler Handler, middleware ...Handler) Router
+	Get(path string, handler Handler, handlers ...Handler) Router
+	Head(path string, handler Handler, handlers ...Handler) Router
+	Post(path string, handler Handler, handlers ...Handler) Router
+	Put(path string, handler Handler, handlers ...Handler) Router
+	Delete(path string, handler Handler, handlers ...Handler) Router
+	Connect(path string, handler Handler, handlers ...Handler) Router
+	Options(path string, handler Handler, handlers ...Handler) Router
+	Trace(path string, handler Handler, handlers ...Handler) Router
+	Patch(path string, handler Handler, handlers ...Handler) Router
 
-	Add(methods []string, path string, handler Handler, middleware ...Handler) Router
-	All(path string, handler Handler, middleware ...Handler) Router
+	Add(methods []string, path string, handler Handler, handlers ...Handler) Router
+	All(path string, handler Handler, handlers ...Handler) Router
 
 	Group(prefix string, handlers ...Handler) Router
 
@@ -318,10 +318,10 @@ func (*App) copyRoute(route *Route) *Route {
 	}
 }
 
-func (app *App) register(methods []string, pathRaw string, group *Group, handler Handler, middleware ...Handler) {
-	handlers := middleware
-	if handler != nil {
-		handlers = append(handlers, handler)
+func (app *App) register(methods []string, pathRaw string, group *Group, handlers ...Handler) {
+	// A route requires atleast one ctx handler
+	if group == nil && len(handlers) == 0 {
+		panic(fmt.Sprintf("missing handler in route: %s\n", pathRaw))
 	}
 
 	// Precompute path normalization ONCE

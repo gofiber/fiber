@@ -45,8 +45,8 @@ type Registering struct {
 //	})
 //
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
-func (r *Registering) All(handler Handler, middleware ...Handler) Register {
-	r.app.register([]string{methodUse}, r.path, nil, handler, middleware...)
+func (r *Registering) All(handler Handler, handlers ...Handler) Register {
+	r.app.register([]string{methodUse}, r.path, nil, append([]Handler{handler}, handlers...)...)
 	return r
 }
 
@@ -105,8 +105,8 @@ func (r *Registering) Patch(handler Handler, middleware ...Handler) Register {
 }
 
 // Add allows you to specify multiple HTTP methods to register a route.
-func (r *Registering) Add(methods []string, handler Handler, middleware ...Handler) Register {
-	r.app.register(methods, r.path, nil, handler, middleware...)
+func (r *Registering) Add(methods []string, handler Handler, handlers ...Handler) Register {
+	r.app.register(methods, r.path, nil, append([]Handler{handler}, handlers...)...)
 	return r
 }
 

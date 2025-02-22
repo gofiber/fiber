@@ -31,6 +31,39 @@ func init() {
 	}
 }
 
+func Test_Route_Handler_Order(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	var order []int
+
+	handler1 := func(c Ctx) error {
+		order = append(order, 1)
+		return c.Next()
+	}
+	handler2 := func(c Ctx) error {
+		order = append(order, 2)
+		return c.Next()
+	}
+	handler3 := func(c Ctx) error {
+		order = append(order, 3)
+		return c.Next()
+	}
+
+	app.Get("/test", handler1, handler2, handler3, func(c Ctx) error {
+		order = append(order, 4)
+		return c.SendStatus(200)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+
+	expectedOrder := []int{1, 2, 3, 4}
+	require.Equal(t, expectedOrder, order, "Handler order")
+}
+
 func Test_Route_Match_SameLength(t *testing.T) {
 	t.Parallel()
 
