@@ -321,12 +321,12 @@ func (*App) copyRoute(route *Route) *Route {
 func (app *App) register(methods []string, pathRaw string, group *Group, handlers ...Handler) {
 	// A regular route requires at least one ctx handler
 	if len(handlers) == 0 && group == nil {
-		panic(fmt.Sprintf("missing handler/middleware in route: %s", pathRaw))
+		panic(fmt.Sprintf("missing handler/middleware in route: %s\n", pathRaw))
 	}
 	// No nil handlers allowed
 	for _, h := range handlers {
 		if nil == h {
-			panic(fmt.Sprintf("nil handler in route: %s", pathRaw))
+			panic(fmt.Sprintf("nil handler in route: %s\n", pathRaw))
 		}
 	}
 

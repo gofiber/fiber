@@ -7,7 +7,6 @@ package fiber
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -329,25 +328,19 @@ func Test_Router_Register_Missing_Handler(t *testing.T) {
 	app := New()
 
 	t.Run("No Handler", func(t *testing.T) {
-		defer func() {
-			if err := recover(); err != nil {
-				require.Equal(t, "missing handler/middleware in route: /doe", fmt.Sprintf("%v", err))
-			} else {
-				t.Fatalf("expected panic, but no panic occurred")
-			}
-		}()
-		app.register([]string{"USE"}, "/doe", nil)
+		t.Parallel()
+
+		require.PanicsWithValue(t, "missing handler/middleware in route: /doe\n", func() {
+			app.register([]string{"USE"}, "/doe", nil)
+		})
 	})
 
 	t.Run("Nil Handler", func(t *testing.T) {
-		defer func() {
-			if err := recover(); err != nil {
-				require.Equal(t, "nil handler in route: /doe", fmt.Sprintf("%v", err))
-			} else {
-				t.Fatalf("expected panic, but no panic occurred")
-			}
-		}()
-		app.register([]string{"USE"}, "/doe", nil, nil)
+		t.Parallel()
+
+		require.PanicsWithValue(t, "nil handler in route: /doe\n", func() {
+			app.register([]string{"USE"}, "/doe", nil, nil)
+		})
 	})
 }
 

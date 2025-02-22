@@ -2,7 +2,6 @@ package fiber
 
 import (
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
@@ -83,19 +82,14 @@ func Test_Hook_OnName(t *testing.T) {
 func Test_Hook_OnName_Error(t *testing.T) {
 	t.Parallel()
 	app := New()
-	defer func() {
-		if err := recover(); err != nil {
-			require.Equal(t, "unknown error", fmt.Sprintf("%v", err))
-		} else {
-			t.Fatalf("expected panic, but no panic occurred")
-		}
-	}()
 
 	app.Hooks().OnName(func(_ Route) error {
 		return errors.New("unknown error")
 	})
 
-	app.Get("/", testSimpleHandler).Name("index")
+	require.PanicsWithError(t, "unknown error", func() {
+		app.Get("/", testSimpleHandler).Name("index")
+	})
 }
 
 func Test_Hook_OnGroup(t *testing.T) {
@@ -169,20 +163,14 @@ func Test_Hook_OnGroupName(t *testing.T) {
 func Test_Hook_OnGroupName_Error(t *testing.T) {
 	t.Parallel()
 	app := New()
-	defer func() {
-		if err := recover(); err != nil {
-			require.Equal(t, "unknown error", fmt.Sprintf("%v", err))
-		} else {
-			t.Fatalf("expected panic, but no panic occurred")
-		}
-	}()
 
 	app.Hooks().OnGroupName(func(_ Group) error {
 		return errors.New("unknown error")
 	})
 
-	grp := app.Group("/x").Name("x.")
-	grp.Get("/test", testSimpleHandler)
+	require.PanicsWithError(t, "unknown error", func() {
+		_ = app.Group("/x").Name("x.")
+	})
 }
 
 func Test_Hook_OnShutdown(t *testing.T) {
