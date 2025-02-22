@@ -324,21 +324,21 @@ func getSplicedStrList(headerValue string, dst []string) []string {
 	}
 
 	dst = dst[:0]
-	r := 0
-	leading := true
+	segmentStart := 0
+	isLeadingSpace := true
 	for i, c := range headerValue {
 		switch {
 		case c == ',':
-			dst = append(dst, headerValue[r:i])
-			r = i + 1
-			leading = true
-		case c == ' ' && leading:
-			r = i + 1
+			dst = append(dst, headerValue[segmentStart:i])
+			segmentStart = i + 1
+			isLeadingSpace = true
+		case c == ' ' && isLeadingSpace:
+			segmentStart = i + 1
 		default:
-			leading = false
+			isLeadingSpace = false
 		}
 	}
-	dst = append(dst, headerValue[r:])
+	dst = append(dst, headerValue[segmentStart:])
 
 	return dst
 }
