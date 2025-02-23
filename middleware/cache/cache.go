@@ -35,17 +35,17 @@ const (
 	noStore = "no-store"
 )
 
-var ignoreHeaders = map[string]any{
-	"Connection":          nil,
-	"Keep-Alive":          nil,
-	"Proxy-Authenticate":  nil,
-	"Proxy-Authorization": nil,
-	"TE":                  nil,
-	"Trailers":            nil,
-	"Transfer-Encoding":   nil,
-	"Upgrade":             nil,
-	"Content-Type":        nil, // already stored explicitly by the cache manager
-	"Content-Encoding":    nil, // already stored explicitly by the cache manager
+var ignoreHeaders = map[string]struct{}{
+	"Connection":          {},
+	"Keep-Alive":          {},
+	"Proxy-Authenticate":  {},
+	"Proxy-Authorization": {},
+	"TE":                  {},
+	"Trailers":            {},
+	"Transfer-Encoding":   {},
+	"Upgrade":             {},
+	"Content-Type":        {}, // already stored explicitly by the cache manager
+	"Content-Encoding":    {}, // already stored explicitly by the cache manager
 }
 
 var cacheableStatusCodes = map[int]bool{
