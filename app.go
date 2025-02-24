@@ -894,6 +894,13 @@ func (app *App) HandlersCount() uint32 {
 //
 // Make sure the program doesn't exit and waits instead for Shutdown to return.
 //
+// Important: app.Listen() must be called in a separate goroutine, otherwise shutdown hooks will not work
+// as Listen() is a blocking operation. Example:
+//
+//	go app.Listen(":3000")
+//	// ...
+//	app.Shutdown()
+//
 // Shutdown does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
 func (app *App) Shutdown() error {
 	return app.ShutdownWithContext(context.Background())
@@ -918,17 +925,21 @@ func (app *App) ShutdownWithTimeout(timeout time.Duration) error {
 //
 // ShutdownWithContext does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
 func (app *App) ShutdownWithContext(ctx context.Context) error {
-	if app.hooks != nil {
-		// TODO: check should be defered?
-		app.hooks.executeOnShutdownHooks()
-	}
-
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
+
+	var err error
+
 	if app.server == nil {
 		return ErrNotRunning
 	}
-	return app.server.ShutdownWithContext(ctx)
+
+	// Execute the Shutdown hook
+	app.hooks.executeOnPreShutdownHooks()
+	defer app.hooks.executeOnPostShutdownHooks(err)
+
+	err = app.server.ShutdownWithContext(ctx)
+	return err
 }
 
 // Server returns the underlying fasthttp server
