@@ -480,14 +480,10 @@ func Test_App_Use_Params(t *testing.T) {
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
-	defer func() {
-		if err := recover(); err != nil {
-			require.Equal(t, "use: invalid handler func()\n", fmt.Sprintf("%v", err))
-		}
-	}()
-
-	app.Use("/:param/*", func() {
-		// this should panic
+	require.PanicsWithValue(t, "use: invalid handler func()\n", func() {
+		app.Use("/:param/*", func() {
+			// this should panic
+		})
 	})
 }
 
@@ -1149,12 +1145,10 @@ func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
 
 func Test_App_Group_Invalid(t *testing.T) {
 	t.Parallel()
-	defer func() {
-		if err := recover(); err != nil {
-			require.Equal(t, "use: invalid handler int\n", fmt.Sprintf("%v", err))
-		}
-	}()
-	New().Group("/").Use(1)
+
+	require.PanicsWithValue(t, "use: invalid handler int\n", func() {
+		New().Group("/").Use(1)
+	})
 }
 
 func Test_App_Group(t *testing.T) {
@@ -1379,14 +1373,10 @@ func Test_App_Init_Error_View(t *testing.T) {
 	t.Parallel()
 	app := New(Config{Views: invalidView{}})
 
-	defer func() {
-		if err := recover(); err != nil {
-			require.Equal(t, "implement me", fmt.Sprintf("%v", err))
-		}
-	}()
-
-	err := app.config.Views.Render(nil, "", nil)
-	require.NoError(t, err)
+	require.PanicsWithValue(t, "implement me", func() {
+		//nolint:errcheck // not needed
+		_ = app.config.Views.Render(nil, "", nil)
+	})
 }
 
 // go test -run Test_App_Stack

@@ -7,7 +7,6 @@ package fiber
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -29,6 +28,39 @@ func init() {
 	if err := json.Unmarshal(dat, &routesFixture); err != nil {
 		panic(err)
 	}
+}
+
+func Test_Route_Handler_Order(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	var order []int
+
+	handler1 := func(c Ctx) error {
+		order = append(order, 1)
+		return c.Next()
+	}
+	handler2 := func(c Ctx) error {
+		order = append(order, 2)
+		return c.Next()
+	}
+	handler3 := func(c Ctx) error {
+		order = append(order, 3)
+		return c.Next()
+	}
+
+	app.Get("/test", handler1, handler2, handler3, func(c Ctx) error {
+		order = append(order, 4)
+		return c.SendStatus(200)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+
+	expectedOrder := []int{1, 2, 3, 4}
+	require.Equal(t, expectedOrder, order, "Handler order")
 }
 
 func Test_Route_Match_SameLength(t *testing.T) {
@@ -294,12 +326,22 @@ func Test_Router_Register_Missing_Handler(t *testing.T) {
 	t.Parallel()
 
 	app := New()
-	defer func() {
-		if err := recover(); err != nil {
-			require.Equal(t, "missing handler/middleware in route: /doe\n", fmt.Sprintf("%v", err))
-		}
-	}()
-	app.register([]string{"USE"}, "/doe", nil, nil)
+
+	t.Run("No Handler", func(t *testing.T) {
+		t.Parallel()
+
+		require.PanicsWithValue(t, "missing handler/middleware in route: /doe\n", func() {
+			app.register([]string{"USE"}, "/doe", nil)
+		})
+	})
+
+	t.Run("Nil Handler", func(t *testing.T) {
+		t.Parallel()
+
+		require.PanicsWithValue(t, "nil handler in route: /doe\n", func() {
+			app.register([]string{"USE"}, "/doe", nil, nil)
+		})
+	})
 }
 
 func Test_Ensure_Router_Interface_Implementation(t *testing.T) {
