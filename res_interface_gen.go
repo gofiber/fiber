@@ -2,15 +2,18 @@
 
 package fiber
 
+import (
+	"bufio"
+)
+
 // Res
 type Res interface {
-	Locals(key any, value ...any) any
 	Append(field string, values ...string)
 	Attachment(filename ...string)
 	AutoFormat(body any) error
 	CBOR(body any, ctype ...string) error
-	Cookie(cookie *Cookie)
 	ClearCookie(key ...string)
+	Cookie(cookie *Cookie)
 	Download(file string, filename ...string) error
 	Format(handlers ...ResFmt) error
 	Get(key string, defaultValue ...string) string
@@ -18,13 +21,18 @@ type Res interface {
 	JSONP(data any, callback ...string) error
 	Links(link ...string)
 	Location(path string)
-	Render(name string, bind Map, layouts ...string) error
+	Render(name string, bind any, layouts ...string) error
 	Send(body []byte) error
 	SendFile(file string, config ...SendFile) error
 	SendStatus(status int) error
+	SendString(body string) error
+	SendStreamWriter(streamWriter func(*bufio.Writer)) error
 	Set(key, val string)
-	Status(status int) Res
-	Type(extension string, charset ...string) Res
+	Status(status int) Ctx
+	Type(extension string, charset ...string) Ctx
 	Vary(fields ...string)
+	Write(p []byte) (int, error)
+	Writef(f string, a ...any) (int, error)
+	WriteString(s string) (int, error)
 	XML(data any) error
 }

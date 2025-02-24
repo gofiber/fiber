@@ -3,6 +3,7 @@
 package fiber
 
 import (
+	"crypto/tls"
 	"mime/multipart"
 )
 
@@ -14,6 +15,8 @@ type Req interface {
 	AcceptsLanguages(offers ...string) string
 	BaseURL() string
 	Body() []byte
+	BodyRaw() []byte
+	ClientHelloInfo() *tls.ClientHelloInfo
 	Cookies(key string, defaultValue ...string) string
 	FormFile(key string) (*multipart.FileHeader, error)
 	FormValue(key string, defaultValue ...string) string
@@ -22,18 +25,23 @@ type Req interface {
 	Host() string
 	Hostname() string
 	IP() string
+	IPs() []string
 	Is(extension string) bool
 	IsFromLocal() bool
-	IPs() []string
-	Method() string
+	IsProxyTrusted() bool
+	Method(override ...string) string
+	MultipartForm() (*multipart.Form, error)
 	OriginalURL() string
 	Params(key string, defaultValue ...string) string
-	Path() string
+	Path(override ...string) string
+	Port() string
 	Protocol() string
-	Query(key string, defaultValue ...string) string
 	Queries() map[string]string
+	Query(key string, defaultValue ...string) string
 	Range(size int) (Range, error)
 	Route() *Route
+	SaveFile(fileheader *multipart.FileHeader, path string) error
+	SaveFileToStorage(fileheader *multipart.FileHeader, path string, storage Storage) error
 	Secure() bool
 	Stale() bool
 	Subdomains(offset ...int) []string

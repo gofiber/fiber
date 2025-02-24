@@ -1,6 +1,7 @@
 package fiber
 
 import (
+	"crypto/tls"
 	"mime/multipart"
 )
 
@@ -31,6 +32,14 @@ func (r *DefaultReq) BaseURL() string {
 
 func (r *DefaultReq) Body() []byte {
 	return r.ctx.Body()
+}
+
+func (r *DefaultReq) BodyRaw() []byte {
+	return r.ctx.BodyRaw()
+}
+
+func (r *DefaultReq) ClientHelloInfo() *tls.ClientHelloInfo {
+	return r.ctx.ClientHelloInfo()
 }
 
 func (r *DefaultReq) Cookies(key string, defaultValue ...string) string {
@@ -65,6 +74,10 @@ func (r *DefaultReq) IP() string {
 	return r.ctx.IP()
 }
 
+func (r *DefaultReq) IPs() []string {
+	return r.ctx.IPs()
+}
+
 func (r *DefaultReq) Is(extension string) bool {
 	return r.ctx.Is(extension)
 }
@@ -73,12 +86,16 @@ func (r *DefaultReq) IsFromLocal() bool {
 	return r.ctx.IsFromLocal()
 }
 
-func (r *DefaultReq) IPs() []string {
-	return r.ctx.IPs()
+func (r *DefaultReq) IsProxyTrusted() bool {
+	return r.ctx.IsProxyTrusted()
 }
 
-func (r *DefaultReq) Method() string {
-	return r.ctx.Method()
+func (r *DefaultReq) Method(override ...string) string {
+	return r.ctx.Method(override...)
+}
+
+func (r *DefaultReq) MultipartForm() (*multipart.Form, error) {
+	return r.ctx.MultipartForm()
 }
 
 func (r *DefaultReq) OriginalURL() string {
@@ -89,20 +106,24 @@ func (r *DefaultReq) Params(key string, defaultValue ...string) string {
 	return r.ctx.Params(key, defaultValue...)
 }
 
-func (r *DefaultReq) Path() string {
-	return r.ctx.Path()
+func (r *DefaultReq) Path(override ...string) string {
+	return r.ctx.Path(override...)
+}
+
+func (r *DefaultReq) Port() string {
+	return r.ctx.Port()
 }
 
 func (r *DefaultReq) Protocol() string {
 	return r.ctx.Protocol()
 }
 
-func (r *DefaultReq) Query(key string, defaultValue ...string) string {
-	return r.ctx.Query(key, defaultValue...)
-}
-
 func (r *DefaultReq) Queries() map[string]string {
 	return r.ctx.Queries()
+}
+
+func (r *DefaultReq) Query(key string, defaultValue ...string) string {
+	return r.ctx.Query(key, defaultValue...)
 }
 
 func (r *DefaultReq) Range(size int) (Range, error) {
@@ -111,6 +132,14 @@ func (r *DefaultReq) Range(size int) (Range, error) {
 
 func (r *DefaultReq) Route() *Route {
 	return r.ctx.Route()
+}
+
+func (r *DefaultReq) SaveFile(fileheader *multipart.FileHeader, path string) error {
+	return r.ctx.SaveFile(fileheader, path)
+}
+
+func (r *DefaultReq) SaveFileToStorage(fileheader *multipart.FileHeader, path string, storage Storage) error {
+	return r.ctx.SaveFileToStorage(fileheader, path, storage)
 }
 
 func (r *DefaultReq) Secure() bool {
