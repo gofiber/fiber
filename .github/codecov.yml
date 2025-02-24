@@ -1,0 +1,9 @@
+# ignore files or directories to be scanned by codecov
+ignore:
+  - "./docs/"
+
+coverage:
+  status:
+    project:
+      default:
+        threshold: 1%
