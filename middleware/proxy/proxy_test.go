@@ -501,18 +501,24 @@ func Test_Proxy_Do_RestoreOriginalURL(t *testing.T) {
 // go test -race -run Test_Proxy_Do_WithRealURL
 func Test_Proxy_Do_WithRealURL(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
-	app.Get("/test", func(c fiber.Ctx) error {
-		return Do(c, "https://www.google.com")
+
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		return c.SendString("mock response")
 	})
 
-	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
-	require.NoError(t, err1)
+	app := fiber.New()
+	app.Get("/test", func(c fiber.Ctx) error {
+		return Do(c, "http://"+addr)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, "/test", resp.Request.URL.String())
+
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.Contains(t, string(body), "https://www.google.com/")
+	require.Equal(t, "mock response", string(body))
 }
 
 // go test -race -run Test_Proxy_Do_WithRedirect
