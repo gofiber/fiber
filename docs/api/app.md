@@ -780,6 +780,34 @@ func (app *App) RebuildTree() *App
 
 ### Example Usage
 
-Here's an example of how to define and register routes dynamically:
+Here’s an example of how to define and register routes dynamically:
 
+```go title="Example"
+package main
+
+import (
+    "log"
+
+    "github.com/gofiber/fiber/v3"
+)
+
+func main() {
+    app := fiber.New()
+
+    app.Get("/define", func(c fiber.Ctx) error {
+        // Define a new route dynamically
+        app.Get("/dynamically-defined", func(c fiber.Ctx) error {
+            return c.SendStatus(fiber.StatusOK)
+        })
+
+        // Rebuild the route tree to register the new route
+        app.RebuildTree()
+
+        return c.SendStatus(fiber.StatusOK)
+    })
+
+    log.Fatal(app.Listen(":3000"))
+}
 ```
+
+In this example, a new route is defined and then `RebuildTree()` is called to ensure the new route is registered and available.
