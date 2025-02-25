@@ -3,14 +3,13 @@ package client
 import (
 	"fmt"
 	"io"
-	"math/rand"
+	"math/rand/v2"
 	"mime/multipart"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
@@ -18,9 +17,10 @@ import (
 
 var (
 	protocolCheck = regexp.MustCompile(`^https?://.*$`)
+)
 
-	headerAccept = "Accept"
-
+const (
+	headerAccept      = "Accept"
 	applicationJSON   = "application/json"
 	applicationCBOR   = "application/cbor"
 	applicationXML    = "application/xml"
@@ -30,25 +30,24 @@ var (
 	letterBytes   = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	letterIdxBits = 6                    // 6 bits to represent a letter index
 	letterIdxMask = 1<<letterIdxBits - 1 // All 1-bits, as many as letterIdxBits
-	letterIdxMax  = 63 / letterIdxBits   // # of letter indices fitting into 63 bits
+	letterIdxMax  = 64 / letterIdxBits   // # of letter indices fitting into 64 bits
 )
 
 // randString returns a random string of length n.
 func randString(n int) string {
 	b := make([]byte, n)
 	length := len(letterBytes)
-	src := rand.NewSource(time.Now().UnixNano())
 
-	for i, cache, remain := n-1, src.Int63(), letterIdxMax; i >= 0; {
+	for i, cache, remain := n-1, rand.Uint64(), letterIdxMax; i >= 0; {
 		if remain == 0 {
-			cache, remain = src.Int63(), letterIdxMax
+			cache, remain = rand.Uint64(), letterIdxMax
 		}
 
-		if idx := int(cache & int64(letterIdxMask)); idx < length {
+		if idx := int(cache & letterIdxMask); idx < length {
 			b[i] = letterBytes[idx]
 			i--
 		}
-		cache >>= int64(letterIdxBits)
+		cache >>= letterIdxBits
 		remain--
 	}
 
