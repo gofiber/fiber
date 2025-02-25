@@ -55,7 +55,7 @@ func (app *App[TCtx]) mount(prefix string, subApp *App[TCtx]) Router[TCtx] {
 
 	// register mounted group
 	mountGroup := &Group[TCtx]{Prefix: prefix, app: subApp}
-	app.register([]string{methodUse}, prefix, mountGroup, nil)
+	app.register([]string{methodUse}, prefix, mountGroup)
 
 	// Execute onMount hooks
 	if err := subApp.hooks.executeOnMountHooks(app); err != nil {
@@ -85,7 +85,7 @@ func (grp *Group[TCtx]) mount(prefix string, subApp *App[TCtx]) Router[TCtx] {
 
 	// register mounted group
 	mountGroup := &Group[TCtx]{Prefix: groupPath, app: subApp}
-	grp.app.register([]string{methodUse}, groupPath, mountGroup, nil)
+	grp.app.register([]string{methodUse}, groupPath, mountGroup)
 
 	// Execute onMount hooks
 	if err := subApp.hooks.executeOnMountHooks(grp.app); err != nil {

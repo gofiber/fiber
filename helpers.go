@@ -193,12 +193,10 @@ func (app *App[TCtx]) methodExistCustom(c CustomCtx[TCtx]) bool {
 // uniqueRouteStack drop all not unique routes from the slice
 func uniqueRouteStack[TCtx CtxGeneric[TCtx]](stack []*Route[TCtx]) []*Route[TCtx] {
 	var unique []*Route[TCtx]
-	m := make(map[*Route[TCtx]]int)
+	m := make(map[*Route[TCtx]]struct{})
 	for _, v := range stack {
 		if _, ok := m[v]; !ok {
-			// Unique key found. Record position and collect
-			// in result.
-			m[v] = len(unique)
+			m[v] = struct{}{}
 			unique = append(unique, v)
 		}
 	}
@@ -324,28 +322,23 @@ func getSplicedStrList(headerValue string, dst []string) []string {
 		return nil
 	}
 
-	var (
-		index             int
-		character         rune
-		lastElementEndsAt int
-		insertIndex       int
-	)
-	for index, character = range headerValue + "$" {
-		if character == ',' || index == len(headerValue) {
-			if insertIndex >= len(dst) {
-				oldSlice := dst
-				dst = make([]string, len(dst)+(len(dst)>>1)+2)
-				copy(dst, oldSlice)
-			}
-			dst[insertIndex] = utils.TrimLeft(headerValue[lastElementEndsAt:index], ' ')
-			lastElementEndsAt = index + 1
-			insertIndex++
+	dst = dst[:0]
+	segmentStart := 0
+	isLeadingSpace := true
+	for i, c := range headerValue {
+		switch {
+		case c == ',':
+			dst = append(dst, headerValue[segmentStart:i])
+			segmentStart = i + 1
+			isLeadingSpace = true
+		case c == ' ' && isLeadingSpace:
+			segmentStart = i + 1
+		default:
+			isLeadingSpace = false
 		}
 	}
+	dst = append(dst, headerValue[segmentStart:])
 
-	if len(dst) > insertIndex {
-		dst = dst[:insertIndex]
-	}
 	return dst
 }
 
@@ -797,7 +790,7 @@ func genericParseType[V GenericType](str string, v V, defaultValue ...V) V {
 	case int64:
 		return genericParseInt[V](str, 64, func(i int64) V { return assertValueType[V, int64](i) }, defaultValue...)
 	case uint:
-		return genericParseUint[V](str, 32, func(i uint64) V { return assertValueType[V, uint](uint(i)) }, defaultValue...)
+		return genericParseUint[V](str, 0, func(i uint64) V { return assertValueType[V, uint](uint(i)) }, defaultValue...)
 	case uint8:
 		return genericParseUint[V](str, 8, func(i uint64) V { return assertValueType[V, uint8](uint8(i)) }, defaultValue...)
 	case uint16:

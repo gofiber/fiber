@@ -16,6 +16,8 @@ In this guide, we'll walk you through the most important changes in Fiber `v3` a
 Here's a quick overview of the changes in Fiber `v3`:
 
 - [🚀 App](#-app)
+- [🎣 Hooks](#-hooks)
+- [🚀 Listen](#-listen)
 - [🗺️ Router](#-router)
 - [🧠 Context](#-context)
 - [📎 Binding](#-binding)
@@ -161,6 +163,63 @@ app.Listen(":444", fiber.ListenConfig{
     AutoCertManager:    certManager,
 })
 ```
+
+## 🎣 Hooks
+
+We have made several changes to the Fiber hooks, including:
+
+- Added new shutdown hooks to provide better control over the shutdown process:
+  - `OnPreShutdown` - Executes before the server starts shutting down
+  - `OnPostShutdown` - Executes after the server has shut down, receives any shutdown error
+- Deprecated `OnShutdown` in favor of the new pre/post shutdown hooks
+- Improved shutdown hook execution order and reliability
+- Added mutex protection for hook registration and execution
+
+Important: When using shutdown hooks, ensure app.Listen() is called in a separate goroutine:
+
+```go
+// Correct usage
+go app.Listen(":3000")
+// ... register shutdown hooks
+app.Shutdown()
+
+// Incorrect usage - hooks won't work
+app.Listen(":3000") // This blocks
+app.Shutdown()      // Never reached
+```
+
+## 🚀 Listen
+
+We have made several changes to the Fiber listen, including:
+
+- Removed `OnShutdownError` and `OnShutdownSuccess` from `ListenerConfig` in favor of using `OnPostShutdown` hook which receives the shutdown error
+
+```go
+app := fiber.New()
+
+// Before - using ListenerConfig callbacks
+app.Listen(":3000", fiber.ListenerConfig{
+    OnShutdownError: func(err error) {
+        log.Printf("Shutdown error: %v", err)
+    },
+    OnShutdownSuccess: func() {
+        log.Println("Shutdown successful")
+    },
+})
+
+// After - using OnPostShutdown hook
+app.Hooks().OnPostShutdown(func(err error) error {
+    if err != nil {
+        log.Printf("Shutdown error: %v", err)
+    } else {
+        log.Println("Shutdown successful")
+    }
+    return nil
+})
+go app.Listen(":3000")
+```
+
+This change simplifies the shutdown handling by consolidating the shutdown callbacks into a single hook that receives the error status.
 
 ## 🗺 Router
 
@@ -491,6 +550,7 @@ Fiber v3 introduces a new binding mechanism that simplifies the process of bindi
 - Unified binding from URL parameters, query parameters, headers, and request bodies.
 - Support for custom binders and constraints.
 - Improved error handling and validation.
+- Support multipart file binding for `*multipart.FileHeader`, `*[]*multipart.FileHeader`, and `[]*multipart.FileHeader` field types.
 
 <details>
 <summary>Example</summary>

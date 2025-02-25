@@ -9,22 +9,22 @@ Registers a route bound to a specific [HTTP method](https://developer.mozilla.or
 
 ```go title="Signatures"
 // HTTP methods
-func (app *App[TCtx]) Get(path string, handler Handler, middlewares ...Handler) Router
-func (app *App[TCtx]) Head(path string, handler Handler, middlewares ...Handler) Router
-func (app *App[TCtx]) Post(path string, handler Handler, middlewares ...Handler) Router
-func (app *App[TCtx]) Put(path string, handler Handler, middlewares ...Handler) Router
-func (app *App[TCtx]) Delete(path string, handler Handler, middlewares ...Handler) Router
-func (app *App[TCtx]) Connect(path string, handler Handler, middlewares ...Handler) Router
-func (app *App[TCtx]) Options(path string, handler Handler, middlewares ...Handler) Router
-func (app *App[TCtx]) Trace(path string, handler Handler, middlewares ...Handler) Router
-func (app *App[TCtx]) Patch(path string, handler Handler, middlewares ...Handler) Router
+func (app *App[TCtx]) Get(path string, handler Handler, handlers ...Handler) Router
+func (app *App[TCtx]) Head(path string, handler Handler, handlers ...Handler) Router
+func (app *App[TCtx]) Post(path string, handler Handler, handlers ...Handler) Router
+func (app *App[TCtx]) Put(path string, handler Handler, handlers ...Handler) Router
+func (app *App[TCtx]) Delete(path string, handler Handler, handlers ...Handler) Router
+func (app *App[TCtx]) Connect(path string, handler Handler, handlers ...Handler) Router
+func (app *App[TCtx]) Options(path string, handler Handler, handlers ...Handler) Router
+func (app *App[TCtx]) Trace(path string, handler Handler, handlers ...Handler) Router
+func (app *App[TCtx]) Patch(path string, handler Handler, handlers ...Handler) Router
 
 // Add allows you to specify a method as value
-func (app *App[TCtx]) Add(method, path string, handler Handler, middlewares ...Handler) Router
+func (app *App[TCtx]) Add(method, path string, handler Handler, handlers ...Handler) Router
 
 // All will register the route on all HTTP methods
 // Almost the same as app.Use but not bound to prefixes
-func (app *App[TCtx]) All(path string, handler Handler, middlewares ...Handler) Router
+func (app *App[TCtx]) All(path string, handler Handler, handlers ...Handler) Router
 ```
 
 ```go title="Examples"
@@ -47,9 +47,9 @@ Can be used for middleware packages and prefix catchers. These routes will only 
 func (app *App[TCtx]) Use(args ...any) Router
 
 // Different usage variations
-func (app *App[TCtx]) Use(handler Handler, middlewares ...Handler) Router
-func (app *App[TCtx]) Use(path string, handler Handler, middlewares ...Handler) Router
-func (app *App[TCtx]) Use(paths []string, handler Handler, middlewares ...Handler) Router
+func (app *App[TCtx]) Use(handler Handler, handlers ...Handler) Router
+func (app *App[TCtx]) Use(path string, handler Handler, handlers ...Handler) Router
+func (app *App[TCtx]) Use(paths []string, handler Handler, handlers ...Handler) Router
 func (app *App[TCtx]) Use(path string, app *App) Router
 ```
 

@@ -18,18 +18,18 @@ import (
 type Router[TCtx CtxGeneric[TCtx]] interface {
 	Use(args ...any) Router[TCtx]
 
-	Get(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx]
-	Head(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx]
-	Post(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx]
-	Put(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx]
-	Delete(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx]
-	Connect(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx]
-	Options(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx]
-	Trace(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx]
-	Patch(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx]
+	Get(path string, handler Handler[TCtx], handlers ...Handler[TCtx]) Router[TCtx]
+	Head(path string, handler Handler[TCtx], handlers ...Handler[TCtx]) Router[TCtx]
+	Post(path string, handler Handler[TCtx], handlers ...Handler[TCtx]) Router[TCtx]
+	Put(path string, handler Handler[TCtx], handlers ...Handler[TCtx]) Router[TCtx]
+	Delete(path string, handler Handler[TCtx], handlers ...Handler[TCtx]) Router[TCtx]
+	Connect(path string, handler Handler[TCtx], handlers ...Handler[TCtx]) Router[TCtx]
+	Options(path string, handler Handler[TCtx], handlers ...Handler[TCtx]) Router[TCtx]
+	Trace(path string, handler Handler[TCtx], handlers ...Handler[TCtx]) Router[TCtx]
+	Patch(path string, handler Handler[TCtx], handlers ...Handler[TCtx]) Router[TCtx]
 
-	Add(methods []string, path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx]
-	All(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx]
+	Add(methods []string, path string, handler Handler[TCtx], handlers ...Handler[TCtx]) Router[TCtx]
+	All(path string, handler Handler[TCtx], handlers ...Handler[TCtx]) Router[TCtx]
 
 	Group(prefix string, handlers ...Handler[TCtx]) Router[TCtx]
 
@@ -227,10 +227,16 @@ func (*App[TCtx]) copyRoute(route *Route[TCtx]) *Route[TCtx] {
 	}
 }
 
-func (app *App[TCtx]) register(methods []string, pathRaw string, group *Group[TCtx], handler Handler[TCtx], middleware ...Handler[TCtx]) {
-	handlers := middleware
-	if handler != nil {
-		handlers = append(handlers, handler)
+func (app *App[TCtx]) register(methods []string, pathRaw string, group *Group[TCtx], handlers ...Handler[TCtx]) {
+	// A regular route requires at least one ctx handler
+	if len(handlers) == 0 && group == nil {
+		panic(fmt.Sprintf("missing handler/middleware in route: %s\n", pathRaw))
+	}
+	// No nil handlers allowed
+	for _, h := range handlers {
+		if nil == h {
+			panic(fmt.Sprintf("nil handler in route: %s\n", pathRaw))
+		}
 	}
 
 	// Precompute path normalization ONCE
@@ -252,15 +258,12 @@ func (app *App[TCtx]) register(methods []string, pathRaw string, group *Group[TC
 	parsedRaw := parseRoute(pathRaw, app.customConstraints...)
 	parsedPretty := parseRoute(pathPretty, app.customConstraints...)
 
+	isMount := group != nil && group.app != app
+
 	for _, method := range methods {
 		method = utils.ToUpper(method)
 		if method != methodUse && app.methodInt(method) == -1 {
 			panic(fmt.Sprintf("add: invalid http method %s\n", method))
-		}
-
-		isMount := group != nil && group.app != app
-		if len(handlers) == 0 && !isMount {
-			panic(fmt.Sprintf("missing handler/middleware in route: %s\n", pathRaw))
 		}
 
 		isUse := method == methodUse

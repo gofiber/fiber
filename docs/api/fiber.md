@@ -111,11 +111,9 @@ app.Listen(":8080", fiber.ListenConfig{
 | <Reference id="enableprefork">EnablePrefork</Reference>                 | `bool`                        | When set to true, this will spawn multiple Go processes listening on the same port.                                                           | `false` |
 | <Reference id="enableprintroutes">EnablePrintRoutes</Reference>         | `bool`                        | If set to true, will print all routes with their method, path, and handler.                                                                   | `false` |
 | <Reference id="gracefulcontext">GracefulContext</Reference>             | `context.Context`             | Field to shutdown Fiber by given context gracefully.                                                                                          | `nil`   |
-| <Reference id="ShutdownTimeout">ShutdownTimeout</Reference>             | `time.Duration`               | Specifies the maximum duration to wait for the server to gracefully shutdown. When the timeout is reached, the graceful shutdown process is interrupted and forcibly terminated, and the `context.DeadlineExceeded` error is passed to the `OnShutdownError` callback. Set to 0 to disable the timeout and wait indefinitely. | `10 * time.Second`   |
+| <Reference id="ShutdownTimeout">ShutdownTimeout</Reference>             | `time.Duration`               | Specifies the maximum duration to wait for the server to gracefully shutdown. When the timeout is reached, the graceful shutdown process is interrupted and forcibly terminated, and the `context.DeadlineExceeded` error is passed to the `OnPostShutdown` callback. Set to 0 to disable the timeout and wait indefinitely. | `10 * time.Second`   |
 | <Reference id="listeneraddrfunc">ListenerAddrFunc</Reference>           | `func(addr net.Addr)`         | Allows accessing and customizing `net.Listener`.                                                                                              | `nil`   |
 | <Reference id="listenernetwork">ListenerNetwork</Reference>             | `string`                      | Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only). WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chosen. | `tcp4`  |
-| <Reference id="onshutdownerror">OnShutdownError</Reference>             | `func(err error)`             | Allows to customize error behavior when gracefully shutting down the server by given signal.  Prints error with `log.Fatalf()`                | `nil`   |
-| <Reference id="onshutdownsuccess">OnShutdownSuccess</Reference>         | `func()`                      | Allows customizing success behavior when gracefully shutting down the server by given signal.                                                 | `nil`   |
 | <Reference id="tlsconfigfunc">TLSConfigFunc</Reference>                 | `func(tlsConfig *tls.Config)` | Allows customizing `tls.Config` as you want.                                                                                                  | `nil`   |
 | <Reference id="autocertmanager">AutoCertManager</Reference>             | `*autocert.Manager`           | Manages TLS certificates automatically using the ACME protocol. Enables integration with Let's Encrypt or other ACME-compatible providers.    | `nil`   |
 | <Reference id="tlsminversion">TLSMinVersion</Reference>                 | `uint16`                      | Allows customizing the TLS minimum version.    | `tls.VersionTLS12`   |
@@ -230,7 +228,7 @@ Shutdown gracefully shuts down the server without interrupting any active connec
 
 ShutdownWithTimeout will forcefully close any active connections after the timeout expires.
 
-ShutdownWithContext shuts down the server including by force if the context's deadline is exceeded.
+ShutdownWithContext shuts down the server including by force if the context's deadline is exceeded. Shutdown hooks will still be executed, even if an error occurs during the shutdown process, as they are deferred to ensure cleanup happens regardless of errors.
 
 ```go
 func (app *App) Shutdown() error

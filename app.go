@@ -777,7 +777,7 @@ func (app *App[TCtx]) Use(args ...any) Router[TCtx] {
 			return app
 		}
 
-		app.register([]string{methodUse}, prefix, nil, nil, handlers...)
+		app.register([]string{methodUse}, prefix, nil, handlers...)
 	}
 
 	return app
@@ -785,67 +785,67 @@ func (app *App[TCtx]) Use(args ...any) Router[TCtx] {
 
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
-func (app *App[TCtx]) Get(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx] {
-	return app.Add([]string{MethodGet}, path, handler, middleware...)
+func (app *App[TCtx]) Get(path string, handler Handler[TCtx], handlers ...Handler[TCtx]) Router[TCtx] {
+	return app.Add([]string{MethodGet}, path, handler, handlers...)
 }
 
 // Head registers a route for HEAD methods that asks for a response identical
 // to that of a GET request, but without the response body.
-func (app *App[TCtx]) Head(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx] {
-	return app.Add([]string{MethodHead}, path, handler, middleware...)
+func (app *App[TCtx]) Head(path string, handler Handler[TCtx], handlers ...Handler[TCtx]) Router[TCtx] {
+	return app.Add([]string{MethodHead}, path, handler, handlers...)
 }
 
 // Post registers a route for POST methods that is used to submit an entity to the
 // specified resource, often causing a change in state or side effects on the server.
-func (app *App[TCtx]) Post(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx] {
-	return app.Add([]string{MethodPost}, path, handler, middleware...)
+func (app *App[TCtx]) Post(path string, handler Handler[TCtx], handlers ...Handler[TCtx]) Router[TCtx] {
+	return app.Add([]string{MethodPost}, path, handler, handlers...)
 }
 
 // Put registers a route for PUT methods that replaces all current representations
 // of the target resource with the request payload.
-func (app *App[TCtx]) Put(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx] {
-	return app.Add([]string{MethodPut}, path, handler, middleware...)
+func (app *App[TCtx]) Put(path string, handler Handler[TCtx], handlers ...Handler[TCtx]) Router[TCtx] {
+	return app.Add([]string{MethodPut}, path, handler, handlers...)
 }
 
 // Delete registers a route for DELETE methods that deletes the specified resource.
-func (app *App[TCtx]) Delete(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx] {
-	return app.Add([]string{MethodDelete}, path, handler, middleware...)
+func (app *App[TCtx]) Delete(path string, handler Handler[TCtx], handlers ...Handler[TCtx]) Router[TCtx] {
+	return app.Add([]string{MethodDelete}, path, handler, handlers...)
 }
 
 // Connect registers a route for CONNECT methods that establishes a tunnel to the
 // server identified by the target resource.
-func (app *App[TCtx]) Connect(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx] {
-	return app.Add([]string{MethodConnect}, path, handler, middleware...)
+func (app *App[TCtx]) Connect(path string, handler Handler[TCtx], handlers ...Handler[TCtx]) Router[TCtx] {
+	return app.Add([]string{MethodConnect}, path, handler, handlers...)
 }
 
 // Options registers a route for OPTIONS methods that is used to describe the
 // communication options for the target resource.
-func (app *App[TCtx]) Options(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx] {
-	return app.Add([]string{MethodOptions}, path, handler, middleware...)
+func (app *App[TCtx]) Options(path string, handler Handler[TCtx], handlers ...Handler[TCtx]) Router[TCtx] {
+	return app.Add([]string{MethodOptions}, path, handler, handlers...)
 }
 
 // Trace registers a route for TRACE methods that performs a message loop-back
 // test along the path to the target resource.
-func (app *App[TCtx]) Trace(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx] {
-	return app.Add([]string{MethodTrace}, path, handler, middleware...)
+func (app *App[TCtx]) Trace(path string, handler Handler[TCtx], handlers ...Handler[TCtx]) Router[TCtx] {
+	return app.Add([]string{MethodTrace}, path, handler, handlers...)
 }
 
 // Patch registers a route for PATCH methods that is used to apply partial
 // modifications to a resource.
-func (app *App[TCtx]) Patch(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx] {
-	return app.Add([]string{MethodPatch}, path, handler, middleware...)
+func (app *App[TCtx]) Patch(path string, handler Handler[TCtx], handlers ...Handler[TCtx]) Router[TCtx] {
+	return app.Add([]string{MethodPatch}, path, handler, handlers...)
 }
 
 // Add allows you to specify multiple HTTP methods to register a route.
-func (app *App[TCtx]) Add(methods []string, path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx] {
-	app.register(methods, path, nil, handler, middleware...)
+func (app *App[TCtx]) Add(methods []string, path string, handler Handler[TCtx], handlers ...Handler[TCtx]) Router[TCtx] {
+	app.register(methods, path, nil, append([]Handler{handler}, handlers...)...)
 
 	return app
 }
 
 // All will register the handler on all HTTP methods
-func (app *App[TCtx]) All(path string, handler Handler[TCtx], middleware ...Handler[TCtx]) Router[TCtx] {
-	return app.Add(app.config.RequestMethods, path, handler, middleware...)
+func (app *App[TCtx]) All(path string, handler Handler[TCtx], handlers ...Handler[TCtx]) Router[TCtx] {
+	return app.Add(app.config.RequestMethods, path, handler, handlers...)
 }
 
 // Group is used for Routes with common prefix to define a new sub-router with optional middleware.
@@ -855,7 +855,7 @@ func (app *App[TCtx]) All(path string, handler Handler[TCtx], middleware ...Hand
 func (app *App[TCtx]) Group(prefix string, handlers ...Handler[TCtx]) Router[TCtx] {
 	grp := &Group[TCtx]{Prefix: prefix, app: app}
 	if len(handlers) > 0 {
-		app.register([]string{methodUse}, prefix, grp, nil, handlers...)
+		app.register([]string{methodUse}, prefix, grp, handlers...)
 	}
 	if err := app.hooks.executeOnGroupHooks(*grp); err != nil {
 		panic(err)
@@ -918,6 +918,13 @@ func (app *App[TCtx]) HandlersCount() uint32 {
 //
 // Make sure the program doesn't exit and waits instead for Shutdown to return.
 //
+// Important: app.Listen() must be called in a separate goroutine, otherwise shutdown hooks will not work
+// as Listen() is a blocking operation. Example:
+//
+//	go app.Listen(":3000")
+//	// ...
+//	app.Shutdown()
+//
 // Shutdown does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
 func (app *App[TCtx]) Shutdown() error {
 	return app.ShutdownWithContext(context.Background())
@@ -942,17 +949,21 @@ func (app *App[TCtx]) ShutdownWithTimeout(timeout time.Duration) error {
 //
 // ShutdownWithContext does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
 func (app *App[TCtx]) ShutdownWithContext(ctx context.Context) error {
-	if app.hooks != nil {
-		// TODO: check should be defered?
-		app.hooks.executeOnShutdownHooks()
-	}
-
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
+
+	var err error
+
 	if app.server == nil {
 		return ErrNotRunning
 	}
-	return app.server.ShutdownWithContext(ctx)
+
+	// Execute the Shutdown hook
+	app.hooks.executeOnPreShutdownHooks()
+	defer app.hooks.executeOnPostShutdownHooks(err)
+
+	err = app.server.ShutdownWithContext(ctx)
+	return err
 }
 
 // Server returns the underlying fasthttp server
@@ -1018,7 +1029,7 @@ func (app *App[TCtx]) Test(req *http.Request, config ...TestConfig) (*http.Respo
 	app.startupProcess()
 
 	// Serve conn to server
-	channel := make(chan error)
+	channel := make(chan error, 1)
 	go func() {
 		var returned bool
 		defer func() {
