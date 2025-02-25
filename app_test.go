@@ -1943,9 +1943,9 @@ func Benchmark_Ctx_AcquireReleaseFlow(b *testing.B) {
 }
 
 type Response struct {
-	Code    int    `json:"code"`
 	Data    any    `json:"data"`
 	Message string `json:"message"`
+	Code    int    `json:"code"`
 }
 
 type testCustomCtx struct {
@@ -1979,6 +1979,8 @@ func Test_App_CustomCtx_With_Use(t *testing.T) {
 	t.Parallel()
 
 	t.Run("without middleware", func(t *testing.T) {
+		t.Parallel()
+
 		app := New()
 		app.NewCtxFunc(func(app *App) CustomCtx {
 			return &testCustomCtx{
@@ -1997,11 +1999,13 @@ func Test_App_CustomCtx_With_Use(t *testing.T) {
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
 
-		expected := `{"code":200,"data":{"a":"b"},"message":"OK"}`
+		expected := `{"data":{"a":"b"},"message":"OK","code":200}`
 		require.Equal(t, expected, string(body))
 	})
 
 	t.Run("with middleware", func(t *testing.T) {
+		t.Parallel()
+
 		app := New()
 		app.NewCtxFunc(func(app *App) CustomCtx {
 			return &testCustomCtx{
@@ -2030,7 +2034,7 @@ func Test_App_CustomCtx_With_Use(t *testing.T) {
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
 
-		expected := `{"code":200,"data":{"a":"b"},"message":"OK"}`
+		expected := `{"data":{"a":"b"},"message":"OK","code":200}`
 		require.Equal(t, expected, string(body),
 			"Custom context JSON format is lost when using middleware")
 	})
