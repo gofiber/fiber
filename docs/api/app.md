@@ -556,6 +556,56 @@ func main() {
 }
 ```
 
+:::tip Using with Middleware
+When using `NewCtxFunc` together with middleware (`app.Use`), you need to override the `Next()` method in your custom context to preserve the context type throughout the middleware chain:
+
+```go
+type CustomCtx struct {
+    fiber.DefaultCtx
+}
+
+// Override Next method to preserve CustomCtx type
+func (c *CustomCtx) Next() error {
+    // Increment handler index
+    c.indexHandler++
+
+    // Did we execute all route handlers?
+    if c.indexHandler < len(c.route.Handlers) {
+        // Continue route stack
+        return c.route.Handlers[c.indexHandler](c)
+    }
+
+    // Continue handler stack
+    _, err := c.app.nextCustom(c)
+    return err
+}
+
+func main() {
+    app := fiber.New()
+
+    // Set custom context
+    app.NewCtxFunc(func(app *fiber.App) fiber.CustomCtx {
+        return &CustomCtx{
+            DefaultCtx: *fiber.NewDefaultCtx(app),
+        }
+    })
+
+    // Use middleware
+    app.Use(func(c fiber.Ctx) error {
+        fmt.Printf("Context type in middleware: %T\n", c)
+        return c.Next()
+    })
+
+    // Route handler
+    app.Get("/", func(c fiber.Ctx) error {
+        return c.JSON(fiber.Map{"hello": "world"})
+    })
+}
+```
+
+This ensures that your custom context type is maintained throughout the entire request lifecycle, including middleware execution.
+:::
+
 ## RegisterCustomBinder
 
 You can register custom binders to use with [`Bind().Custom("name")`](bind.md#custom). They should be compatible with the `CustomBinder` interface.
@@ -730,34 +780,6 @@ func (app *App) RebuildTree() *App
 
 ### Example Usage
 
-Here’s an example of how to define and register routes dynamically:
+Here's an example of how to define and register routes dynamically:
 
-```go title="Example"
-package main
-
-import (
-    "log"
-
-    "github.com/gofiber/fiber/v3"
-)
-
-func main() {
-    app := fiber.New()
-
-    app.Get("/define", func(c fiber.Ctx) error {
-        // Define a new route dynamically
-        app.Get("/dynamically-defined", func(c fiber.Ctx) error {
-            return c.SendStatus(fiber.StatusOK)
-        })
-
-        // Rebuild the route tree to register the new route
-        app.RebuildTree()
-
-        return c.SendStatus(fiber.StatusOK)
-    })
-
-    log.Fatal(app.Listen(":3000"))
-}
 ```
-
-In this example, a new route is defined and then `RebuildTree()` is called to ensure the new route is registered and available.

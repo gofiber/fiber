@@ -1941,3 +1941,97 @@ func Benchmark_Ctx_AcquireReleaseFlow(b *testing.B) {
 		}
 	})
 }
+
+type Response struct {
+	Code    int    `json:"code"`
+	Data    any    `json:"data"`
+	Message string `json:"message"`
+}
+
+type testCustomCtx struct {
+	*DefaultCtx
+}
+
+func (c *testCustomCtx) JSON(data any, ctype ...string) error {
+	return c.DefaultCtx.JSON(Response{
+		Code:    StatusOK,
+		Data:    data,
+		Message: utils.StatusMessage(StatusOK),
+	}, ctype...)
+}
+
+func (c *testCustomCtx) Next() error {
+	// Increment handler index
+	c.indexHandler++
+
+	// Did we execute all route handlers?
+	if c.indexHandler < len(c.route.Handlers) {
+		// Continue route stack
+		return c.route.Handlers[c.indexHandler](c)
+	}
+
+	// Continue handler stack
+	_, err := c.app.nextCustom(c)
+	return err
+}
+
+func Test_App_CustomCtx_With_Use(t *testing.T) {
+	t.Parallel()
+
+	t.Run("without middleware", func(t *testing.T) {
+		app := New()
+		app.NewCtxFunc(func(app *App) CustomCtx {
+			return &testCustomCtx{
+				DefaultCtx: NewDefaultCtx(app),
+			}
+		})
+
+		app.Get("/test", func(c Ctx) error {
+			return c.JSON(Map{"a": "b"})
+		})
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+		require.NoError(t, err)
+		require.Equal(t, 200, resp.StatusCode)
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		expected := `{"code":200,"data":{"a":"b"},"message":"OK"}`
+		require.Equal(t, expected, string(body))
+	})
+
+	t.Run("with middleware", func(t *testing.T) {
+		app := New()
+		app.NewCtxFunc(func(app *App) CustomCtx {
+			return &testCustomCtx{
+				DefaultCtx: NewDefaultCtx(app),
+			}
+		})
+
+		app.Use(func(c Ctx) error {
+			t.Logf("Before Next() - context type: %T", c)
+			err := c.Next()
+			t.Logf("After Next() - context type: %T", c)
+			return err
+		})
+
+		app.Get("/test", func(c Ctx) error {
+			if _, ok := c.(*testCustomCtx); !ok {
+				t.Logf("Handler received context of type: %T", c)
+			}
+			return c.JSON(Map{"a": "b"})
+		})
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+		require.NoError(t, err)
+		require.Equal(t, 200, resp.StatusCode)
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		expected := `{"code":200,"data":{"a":"b"},"message":"OK"}`
+		require.Equal(t, expected, string(body),
+			"Custom context JSON format is lost when using middleware")
+	})
+}
