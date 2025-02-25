@@ -1,6 +1,6 @@
 module github.com/gofiber/fiber/v3
 
-go 1.23
+go 1.23.0
 
 require (
 	github.com/gofiber/schema v1.2.0
@@ -12,7 +12,7 @@ require (
 	github.com/tinylib/msgp v1.2.5
 	github.com/valyala/bytebufferpool v1.0.0
 	github.com/valyala/fasthttp v1.59.0
-	golang.org/x/crypto v0.33.0
+	golang.org/x/crypto v0.35.0
 )
 
 require (
