@@ -15,9 +15,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-var (
-	protocolCheck = regexp.MustCompile(`^https?://.*$`)
-)
+var protocolCheck = regexp.MustCompile(`^https?://.*$`)
 
 const (
 	headerAccept      = "Accept"
@@ -33,17 +31,19 @@ const (
 	letterIdxMax  = 64 / letterIdxBits   // # of letter indices fitting into 64 bits
 )
 
-// randString returns a random string of length n.
-func randString(n int) string {
+// unsafeRandString returns a random string of length n.
+func unsafeRandString(n int) string {
 	b := make([]byte, n)
-	length := len(letterBytes)
+	const length = uint64(len(letterBytes))
 
+	//nolint:gosec // Not a concern
 	for i, cache, remain := n-1, rand.Uint64(), letterIdxMax; i >= 0; {
 		if remain == 0 {
+			//nolint:gosec // Not a concern
 			cache, remain = rand.Uint64(), letterIdxMax
 		}
 
-		if idx := int(cache & letterIdxMask); idx < length {
+		if idx := cache & letterIdxMask; idx < length {
 			b[i] = letterBytes[idx]
 			i--
 		}
@@ -133,7 +133,7 @@ func parserRequestHeader(c *Client, req *Request) error {
 		req.RawRequest.Header.SetContentType(multipartFormData)
 		// If boundary is default, append a random string to it.
 		if req.boundary == boundary {
-			req.boundary += randString(16)
+			req.boundary += unsafeRandString(16)
 		}
 		req.RawRequest.Header.SetMultipartFormBoundary(req.boundary)
 	default:
