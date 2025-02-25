@@ -135,18 +135,18 @@ func (app *App) Route(path string) Register
 
 ```go
 type Register interface {
-    All(handler Handler, middleware ...Handler) Register
-    Get(handler Handler, middleware ...Handler) Register
-    Head(handler Handler, middleware ...Handler) Register
-    Post(handler Handler, middleware ...Handler) Register
-    Put(handler Handler, middleware ...Handler) Register
-    Delete(handler Handler, middleware ...Handler) Register
-    Connect(handler Handler, middleware ...Handler) Register
-    Options(handler Handler, middleware ...Handler) Register
-    Trace(handler Handler, middleware ...Handler) Register
-    Patch(handler Handler, middleware ...Handler) Register
+    All(handler Handler, handlers ...Handler) Register
+    Get(handler Handler, handlers ...Handler) Register
+    Head(handler Handler, handlers ...Handler) Register
+    Post(handler Handler, handlers ...Handler) Register
+    Put(handler Handler, handlers ...Handler) Register
+    Delete(handler Handler, handlers ...Handler) Register
+    Connect(handler Handler, handlers ...Handler) Register
+    Options(handler Handler, handlers ...Handler) Register
+    Trace(handler Handler, handlers ...Handler) Register
+    Patch(handler Handler, handlers ...Handler) Register
 
-    Add(methods []string, handler Handler, middleware ...Handler) Register
+    Add(methods []string, handler Handler, handlers ...Handler) Register
 
     Route(path string) Register
 }
