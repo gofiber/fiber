@@ -38,7 +38,7 @@ func Test_Rand_String(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := randString(tt.args)
+			got := unsafeRandString(tt.args)
 			require.Len(t, got, tt.args)
 		})
 	}

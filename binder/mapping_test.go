@@ -2,6 +2,7 @@ package binder
 
 import (
 	"errors"
+	"mime/multipart"
 	"reflect"
 	"testing"
 
@@ -9,6 +10,8 @@ import (
 )
 
 func Test_EqualFieldType(t *testing.T) {
+	t.Parallel()
+
 	var out int
 	require.False(t, equalFieldType(&out, reflect.Int, "key"))
 
@@ -47,6 +50,8 @@ func Test_EqualFieldType(t *testing.T) {
 }
 
 func Test_ParseParamSquareBrackets(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		err      error
 		input    string
@@ -101,6 +106,8 @@ func Test_ParseParamSquareBrackets(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
+			t.Parallel()
+
 			result, err := parseParamSquareBrackets(tt.input)
 			if tt.err != nil {
 				require.Error(t, err)
@@ -114,6 +121,8 @@ func Test_ParseParamSquareBrackets(t *testing.T) {
 }
 
 func Test_parseToMap(t *testing.T) {
+	t.Parallel()
+
 	inputMap := map[string][]string{
 		"key1": {"value1", "value2"},
 		"key2": {"value3"},
@@ -147,6 +156,8 @@ func Test_parseToMap(t *testing.T) {
 }
 
 func Test_FilterFlags(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		input    string
 		expected string
@@ -172,8 +183,163 @@ func Test_FilterFlags(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
+			t.Parallel()
+
 			result := FilterFlags(tt.input)
 			require.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestFormatBindData(t *testing.T) {
+	t.Parallel()
+
+	t.Run("string value with valid key", func(t *testing.T) {
+		t.Parallel()
+
+		out := struct{}{}
+		data := make(map[string][]string)
+		err := formatBindData(out, data, "name", "John", false, false)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(data["name"]) != 1 || data["name"][0] != "John" {
+			t.Fatalf("expected data[\"name\"] = [John], got %v", data["name"])
+		}
+	})
+
+	t.Run("unsupported value type", func(t *testing.T) {
+		t.Parallel()
+
+		out := struct{}{}
+		data := make(map[string][]string)
+		err := formatBindData(out, data, "age", 30, false, false) // int is unsupported
+		if err == nil {
+			t.Fatal("expected an error, got nil")
+		}
+	})
+
+	t.Run("bracket notation parsing error", func(t *testing.T) {
+		t.Parallel()
+
+		out := struct{}{}
+		data := make(map[string][]string)
+		err := formatBindData(out, data, "invalid[", "value", false, true) // malformed bracket notation
+		if err == nil {
+			t.Fatal("expected an error, got nil")
+		}
+	})
+
+	t.Run("handling multipart file headers", func(t *testing.T) {
+		t.Parallel()
+
+		out := struct{}{}
+		data := make(map[string][]*multipart.FileHeader)
+		files := []*multipart.FileHeader{
+			{Filename: "file1.txt"},
+			{Filename: "file2.txt"},
+		}
+		err := formatBindData(out, data, "files", files, false, false)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(data["files"]) != 2 {
+			t.Fatalf("expected 2 files, got %d", len(data["files"]))
+		}
+	})
+
+	t.Run("type casting error", func(t *testing.T) {
+		t.Parallel()
+
+		out := struct{}{}
+		data := map[string][]int{} // Incorrect type to force a casting error
+		err := formatBindData(out, data, "key", "value", false, false)
+		require.Equal(t, "unsupported value type: string", err.Error())
+	})
+}
+
+func TestAssignBindData(t *testing.T) {
+	t.Parallel()
+
+	t.Run("splitting enabled with comma", func(t *testing.T) {
+		t.Parallel()
+
+		out := struct {
+			Colors []string `query:"colors"`
+		}{}
+		data := make(map[string][]string)
+		assignBindData(&out, data, "colors", "red,blue,green", true)
+		require.Len(t, data["colors"], 3)
+	})
+
+	t.Run("splitting disabled", func(t *testing.T) {
+		t.Parallel()
+
+		var out []string
+		data := make(map[string][]string)
+		assignBindData(out, data, "color", "red,blue", false)
+		require.Len(t, data["color"], 1)
+	})
+}
+
+func Test_parseToStruct_MismatchedData(t *testing.T) {
+	t.Parallel()
+
+	type User struct {
+		Name string `query:"name"`
+		Age  int    `query:"age"`
+	}
+
+	data := map[string][]string{
+		"name": {"John"},
+		"age":  {"invalidAge"},
+	}
+
+	err := parseToStruct("query", &User{}, data)
+	require.Error(t, err)
+	require.EqualError(t, err, "bind: schema: error converting value for \"age\"")
+}
+
+func Test_formatBindData_ErrorCases(t *testing.T) {
+	t.Parallel()
+
+	t.Run("unsupported value type int", func(t *testing.T) {
+		t.Parallel()
+
+		out := struct{}{}
+		data := make(map[string][]string)
+		err := formatBindData(out, data, "age", 30, false, false) // int is unsupported
+		require.Error(t, err)
+		require.EqualError(t, err, "unsupported value type: int")
+	})
+
+	t.Run("unsupported value type map", func(t *testing.T) {
+		t.Parallel()
+
+		out := struct{}{}
+		data := make(map[string][]string)
+		err := formatBindData(out, data, "map", map[string]string{"key": "value"}, false, false) // map is unsupported
+		require.Error(t, err)
+		require.EqualError(t, err, "unsupported value type: map[string]string")
+	})
+
+	t.Run("bracket notation parsing error", func(t *testing.T) {
+		t.Parallel()
+
+		out := struct{}{}
+		data := make(map[string][]string)
+		err := formatBindData(out, data, "invalid[", "value", false, true) // malformed bracket notation
+		require.Error(t, err)
+		require.EqualError(t, err, "unmatched brackets")
+	})
+
+	t.Run("type casting error for []string", func(t *testing.T) {
+		t.Parallel()
+
+		out := struct{}{}
+		data := make(map[string][]string)
+		err := formatBindData(out, data, "names", 123, false, false) // invalid type for []string
+		require.Error(t, err)
+		require.EqualError(t, err, "unsupported value type: int")
+	})
 }
