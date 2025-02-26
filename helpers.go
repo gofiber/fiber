@@ -512,10 +512,6 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 // e.g., text/html;a=1;b=2 comes before text/html;a=1
 // See: https://www.rfc-editor.org/rfc/rfc9110#name-content-negotiation-fields
 func sortAcceptedTypes(at []acceptedType) {
-	if len(at) < 2 {
-		return
-	}
-
 	for i := 1; i < len(at); i++ {
 		lo, hi := 0, i-1
 		for lo <= hi {
