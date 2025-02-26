@@ -113,7 +113,7 @@ type Config struct {
 }
 ```
 
-## Default Config
+## Default Config Example
 
 ```go
 // DefaultConfig is the default config for retry.
