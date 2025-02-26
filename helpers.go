@@ -483,7 +483,7 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 
 	if len(acceptedTypes) > 1 {
 		// Sort accepted types by quality and specificity, preserving order of equal elements
-		sortAcceptedTypes(&acceptedTypes)
+		sortAcceptedTypes(acceptedTypes)
 	}
 
 	// Find the first offer that matches the accepted types
@@ -511,11 +511,10 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 // A type with parameters has higher priority than an equivalent one without parameters.
 // e.g., text/html;a=1;b=2 comes before text/html;a=1
 // See: https://www.rfc-editor.org/rfc/rfc9110#name-content-negotiation-fields
-func sortAcceptedTypes(acceptedTypes *[]acceptedType) {
-	if acceptedTypes == nil || len(*acceptedTypes) < 2 {
+func sortAcceptedTypes(at []acceptedType) {
+	if len(at) < 2 {
 		return
 	}
-	at := *acceptedTypes
 
 	for i := 1; i < len(at); i++ {
 		lo, hi := 0, i-1
@@ -523,7 +522,7 @@ func sortAcceptedTypes(acceptedTypes *[]acceptedType) {
 			mid := (lo + hi) / 2
 			if at[i].quality < at[mid].quality ||
 				(at[i].quality == at[mid].quality && at[i].specificity < at[mid].specificity) ||
-				(at[i].quality == at[mid].quality && at[i].specificity < at[mid].specificity && len(at[i].params) < len(at[mid].params)) ||
+				(at[i].quality == at[mid].quality && at[i].specificity == at[mid].specificity && len(at[i].params) < len(at[mid].params)) ||
 				(at[i].quality == at[mid].quality && at[i].specificity == at[mid].specificity && len(at[i].params) == len(at[mid].params) && at[i].order > at[mid].order) {
 				lo = mid + 1
 			} else {
