@@ -24,12 +24,42 @@ func NewExponentialBackoff(config ...Config) *ExponentialBackoff
 
 ## Examples
 
-Firstly, import the addon from Fiber,
-
 ```go
+package main
+
 import (
+    "fmt"
+
     "github.com/gofiber/fiber/v3/addon/retry"
+    "github.com/gofiber/fiber/v3/client"
 )
+
+func main() {
+    expBackoff := retry.NewExponentialBackoff(retry.Config{})
+
+    // Local variables that will be used inside of Retry
+    var resp *client.Response
+    var err error
+
+    // Retry a network request and return an error to signify to try again
+    err = expBackoff.Retry(func() error {
+        client := client.New()
+        resp, err = client.Get("https://gofiber.io")
+        if err != nil {
+            return fmt.Errorf("GET gofiber.io failed: %w", err)
+        }
+        if resp.StatusCode() != 200 {
+            return fmt.Errorf("GET gofiber.io did not return OK 200")
+        }
+        return nil
+    })
+
+    // If all retries failed, panic
+    if err != nil {
+        panic(err)
+    }
+    fmt.Printf("GET gofiber.io succeeded with status code %d\n", resp.StatusCode())
+}
 ```
 
 ## Default Config
@@ -58,24 +88,24 @@ type Config struct {
     //
     // Optional. Default: 1 * time.Second
     InitialInterval time.Duration
-    
+
     // MaxBackoffTime defines maximum time duration for backoff algorithm. When
     // the algorithm is reached this time, rest of the retries will be maximum
     // 32 seconds.
     //
     // Optional. Default: 32 * time.Second
     MaxBackoffTime time.Duration
-    
+
     // Multiplier defines multiplier number of the backoff algorithm.
     //
     // Optional. Default: 2.0
     Multiplier float64
-    
+
     // MaxRetryCount defines maximum retry count for the backoff algorithm.
     //
     // Optional. Default: 10
     MaxRetryCount int
-    
+
     // currentInterval tracks the current waiting time.
     //
     // Optional. Default: 1 * time.Second
@@ -83,7 +113,7 @@ type Config struct {
 }
 ```
 
-## Default Config Example
+## Default Config
 
 ```go
 // DefaultConfig is the default config for retry.
