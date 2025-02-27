@@ -174,22 +174,17 @@ func Test_Logger_Done(t *testing.T) {
 func Test_Logger_Filter(t *testing.T) {
 	t.Parallel()
 
-	// Log only 404 status codes
 	t.Run("Test Not Found", func(t *testing.T) {
 		t.Parallel()
 		app := fiber.New()
 
-		// Create a logging middleware that filters logs to only include 404 status codes
+		logOutput := bytes.Buffer{}
+
+		// Create a single logging middleware with both filter and output capture
 		app.Use(New(Config{
 			Filter: func(c fiber.Ctx) bool {
 				return c.Response().StatusCode() == fiber.StatusNotFound
 			},
-		}))
-
-		logOutput := bytes.Buffer{}
-
-		// Redirect log output to the logOutput buffer
-		app.Use(New(Config{
 			Output: &logOutput,
 		}))
 
@@ -198,38 +193,33 @@ func Test_Logger_Filter(t *testing.T) {
 		require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 
 		// Verify the log output contains the "404" message
-		require.Contains(t, logOutput.String(), "404") // Check if the log contains "404"
+		require.Contains(t, logOutput.String(), "404")
 	})
 
-	// Subtest for 200 status code
 	t.Run("Test OK", func(t *testing.T) {
 		t.Parallel()
 		app := fiber.New()
 
-		// Create a logging middleware that filters logs to only include 404 status codes
+		logOutput := bytes.Buffer{}
+
+		// Create a single logging middleware with both filter and output capture
 		app.Use(New(Config{
 			Filter: func(c fiber.Ctx) bool {
 				return c.Response().StatusCode() == fiber.StatusNotFound
 			},
+			Output: &logOutput,
 		}))
-
-		logOutput := bytes.Buffer{}
 
 		app.Get("/", func(c fiber.Ctx) error {
 			return c.SendStatus(fiber.StatusOK)
 		})
-
-		// Redirect log output to the logOutput buffer
-		app.Use(New(Config{
-			Output: &logOutput,
-		}))
 
 		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 		// Verify the log output does not contain the "200" message
-		require.NotContains(t, logOutput.String(), "200") // Check if the log does not contain "200"
+		require.NotContains(t, logOutput.String(), "200")
 	})
 }
 
