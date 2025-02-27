@@ -109,11 +109,6 @@ type Config struct {
     //
     // Optional. Default: 10
     MaxRetryCount int
-
-    // currentInterval tracks the current waiting time.
-    //
-    // Optional. Default: 1 * time.Second
-    currentInterval time.Duration
 }
 ```
 
