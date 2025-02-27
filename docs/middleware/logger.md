@@ -139,6 +139,7 @@ Writing to os.File is goroutine-safe, but if you are using a custom Output that 
 | Property         | Type                       | Description                                                                                                                      | Default                                                               |
 |:-----------------|:---------------------------|:---------------------------------------------------------------------------------------------------------------------------------|:----------------------------------------------------------------------|
 | Next             | `func(fiber.Ctx) bool`    | Next defines a function to skip this middleware when returned true.                                                              | `nil`                                                                 |
+| Filter           | `func(fiber.Ctx) bool` | Filter is a function that is called before the log string for a request is written to Output, and pass the log string as parameter. | `nil`                                                                 |
 | Done             | `func(fiber.Ctx, []byte)` | Done is a function that is called after the log string for a request is written to Output, and pass the log string as parameter. | `nil`                                                                 |
 | CustomTags       | `map[string]LogFunc`       | tagFunctions defines the custom tag action.                                                                                      | `map[string]LogFunc`                                                  |
 | Format           | `string`                   | Format defines the logging tags.                                                                                                 | `[${time}] ${ip} ${status} - ${latency} ${method} ${path} ${error}\n` |
@@ -157,6 +158,7 @@ Writing to os.File is goroutine-safe, but if you are using a custom Output that 
 ```go
 var ConfigDefault = Config{
     Next:          nil,
+    Filter         nil,
     Done:          nil,
     Format:        "[${time}] ${ip} ${status} - ${latency} ${method} ${path} ${error}\n",
     TimeFormat:    "15:04:05",

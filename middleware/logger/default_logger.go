@@ -90,6 +90,11 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 			buf.WriteString("\n")
 		}
 
+		// Check if Filter is defined and call it
+		if cfg.Filter != nil && !cfg.Filter(c) {
+			return nil // Skip logging if Filter returns false
+		}
+
 		// Write buffer to output
 		writeLog(cfg.Output, buf.Bytes())
 
