@@ -171,6 +171,45 @@ func Test_Logger_Done(t *testing.T) {
 	require.Positive(t, buf.Len(), 0)
 }
 
+func Test_Logger_Filter(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	var logOutput bytes.Buffer // 用于捕获日志输出
+
+	// 创建一个日志中间件，Filter只记录404状态的日志
+	app.Use(New(Config{
+		Output: &logOutput, // 将日志输出重定向到logOutput
+		Filter: func(c fiber.Ctx) bool {
+			return c.Response().StatusCode() == fiber.StatusNotFound
+		},
+	}))
+
+	// 测试404状态码
+	t.Run("Test Not Found", func(t *testing.T) {
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/nonexistent", nil))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+
+		// 验证日志输出是否包含404的日志
+		require.Contains(t, logOutput.String(), "404") // 检查日志中是否包含404
+	})
+
+	// 测试200状态码
+	t.Run("Test OK", func(t *testing.T) {
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendStatus(fiber.StatusOK)
+		})
+
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+		// 验证日志输出是否不包含200的日志
+		require.NotContains(t, logOutput.String(), "200") // 检查日志中是否不包含200
+	})
+}
+
 // go test -run Test_Logger_ErrorTimeZone
 func Test_Logger_ErrorTimeZone(t *testing.T) {
 	t.Parallel()
