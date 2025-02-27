@@ -176,6 +176,7 @@ func Test_Logger_Filter(t *testing.T) {
 	app := fiber.New()
 
 	var logOutput bytes.Buffer // Buffer to capture log output
+	var mu sync.Mutex
 
 	// Create a logging middleware that filters logs to only include 404 status codes
 	app.Use(New(Config{
@@ -194,6 +195,8 @@ func Test_Logger_Filter(t *testing.T) {
 		require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 
 		// Verify the log output contains the "404" message
+		mu.Lock()
+		defer mu.Unlock()
 		require.Contains(t, logOutput.String(), "404") // Check if the log contains "404"
 	})
 
@@ -210,6 +213,8 @@ func Test_Logger_Filter(t *testing.T) {
 		require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 		// Verify the log output does not contain the "200" message
+		mu.Lock()
+		defer mu.Unlock()
 		require.NotContains(t, logOutput.String(), "200") // Check if the log does not contain "200"
 	})
 }
