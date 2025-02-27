@@ -3,11 +3,11 @@ on:
     branches:
       - master
       - main
-    paths-ignore:
-      - "**/*.md"
+    paths:
+      - "**.go"
   pull_request:
-    paths-ignore:
-      - "**/*.md"
+    paths:
+      - "**.go"
 
 permissions:
   # deployments permission to deploy GitHub pages website
