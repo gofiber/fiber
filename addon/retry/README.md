@@ -19,7 +19,7 @@ a jitter is a way to break synchronization across the client and avoid collision
 ## Signatures
 
 ```go
-func NewExponentialBackoff(config ...Config) *ExponentialBackoff
+func NewExponentialBackoff(config ...retry.Config) *retry.ExponentialBackoff
 ```
 
 ## Examples
