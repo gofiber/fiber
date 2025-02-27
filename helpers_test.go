@@ -303,6 +303,26 @@ func Test_Utils_GetSplicedStrList(t *testing.T) {
 			headerValue:  "gzip,",
 			expectedList: []string{"gzip", ""},
 		},
+		{
+			description:  "has a space between words",
+			headerValue:  "  foo bar, hello  world",
+			expectedList: []string{"foo bar", "hello  world"},
+		},
+		{
+			description:  "single comma",
+			headerValue:  ",",
+			expectedList: []string{"", ""},
+		},
+		{
+			description:  "multiple comma",
+			headerValue:  ",,",
+			expectedList: []string{"", "", ""},
+		},
+		{
+			description:  "comma with space",
+			headerValue:  ",  ,",
+			expectedList: []string{"", "", ""},
+		},
 	}
 
 	for _, tc := range testCases {

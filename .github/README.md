@@ -124,7 +124,7 @@ We **listen** to our users in [issues](https://github.com/gofiber/fiber/issues),
 
 ## ⚠️ Limitations
 
-- Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber v3 has been tested with Go version 1.23.
+- Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber v3 has been tested with Go version 1.23 or higher.
 - Fiber is not compatible with net/http interfaces. This means you will not be able to use projects like gqlgen, go-swagger, or any others which are part of the net/http ecosystem.
 
 ## 👀 Examples
@@ -708,7 +708,7 @@ List of externally hosted middleware modules and maintained by the [Fiber team](
 | :------------------------------------------------ | :-------------------------------------------------------------------------------------------------------------------- |
 | [contrib](https://github.com/gofiber/contrib)   | Third-party middlewares                                                                                               |
 | [storage](https://github.com/gofiber/storage)   | Premade storage drivers that implement the Storage interface, designed to be used with various Fiber middlewares.     |
-| [template](https://github.com/gofiber/template) | This package contains 9 template engines that can be used with Fiber `v3`. Go version 1.23 or higher is required.      |
+| [template](https://github.com/gofiber/template) | This package contains 9 template engines that can be used with Fiber.      |
 
 ## 🕶️ Awesome List
 
