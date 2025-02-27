@@ -175,28 +175,32 @@ func Test_Logger_Filter(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	var logOutput bytes.Buffer // 用于捕获日志输出
+	var logOutput bytes.Buffer // Buffer to capture log output
 
-	// 创建一个日志中间件，Filter只记录404状态的日志
+	// Create a logging middleware that filters logs to only include 404 status codes
 	app.Use(New(Config{
-		Output: &logOutput, // 将日志输出重定向到logOutput
+		Output: &logOutput, // Redirect log output to the logOutput buffer
 		Filter: func(c fiber.Ctx) bool {
 			return c.Response().StatusCode() == fiber.StatusNotFound
 		},
 	}))
 
-	// 测试404状态码
+	// Log only 404 status codes
 	t.Run("Test Not Found", func(t *testing.T) {
+		t.Parallel()
+
 		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/nonexistent", nil))
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 
-		// 验证日志输出是否包含404的日志
-		require.Contains(t, logOutput.String(), "404") // 检查日志中是否包含404
+		// Verify the log output contains the "404" message
+		require.Contains(t, logOutput.String(), "404") // Check if the log contains "404"
 	})
 
-	// 测试200状态码
+	// Subtest for 200 status code
 	t.Run("Test OK", func(t *testing.T) {
+		t.Parallel()
+
 		app.Get("/", func(c fiber.Ctx) error {
 			return c.SendStatus(fiber.StatusOK)
 		})
@@ -205,8 +209,8 @@ func Test_Logger_Filter(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
-		// 验证日志输出是否不包含200的日志
-		require.NotContains(t, logOutput.String(), "200") // 检查日志中是否不包含200
+		// Verify the log output does not contain the "200" message
+		require.NotContains(t, logOutput.String(), "200") // Check if the log does not contain "200"
 	})
 }
 
