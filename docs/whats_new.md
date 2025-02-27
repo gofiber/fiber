@@ -988,10 +988,10 @@ func main() {
         panic(err)
     }
     fmt.Printf("GET gofiber.io succeeded with status code %d\n", resp.StatusCode())
-}```
+}
+```
 
 </details>
-
 
 ## 📋 Migration guide
 
