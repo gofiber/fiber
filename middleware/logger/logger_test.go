@@ -175,12 +175,8 @@ func Test_Logger_Filter(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	var logOutput bytes.Buffer // Buffer to capture log output
-	var mu sync.Mutex
-
 	// Create a logging middleware that filters logs to only include 404 status codes
 	app.Use(New(Config{
-		Output: &logOutput, // Redirect log output to the logOutput buffer
 		Filter: func(c fiber.Ctx) bool {
 			return c.Response().StatusCode() == fiber.StatusNotFound
 		},
@@ -190,13 +186,18 @@ func Test_Logger_Filter(t *testing.T) {
 	t.Run("Test Not Found", func(t *testing.T) {
 		t.Parallel()
 
+		logOutput := bytes.Buffer{}
+
+		// Redirect log output to the logOutput buffer
+		app.Use(New(Config{
+			Output: &logOutput,
+		}))
+
 		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/nonexistent", nil))
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 
 		// Verify the log output contains the "404" message
-		mu.Lock()
-		defer mu.Unlock()
 		require.Contains(t, logOutput.String(), "404") // Check if the log contains "404"
 	})
 
@@ -204,17 +205,22 @@ func Test_Logger_Filter(t *testing.T) {
 	t.Run("Test OK", func(t *testing.T) {
 		t.Parallel()
 
+		logOutput := bytes.Buffer{}
+
 		app.Get("/", func(c fiber.Ctx) error {
 			return c.SendStatus(fiber.StatusOK)
 		})
+
+		// Redirect log output to the logOutput buffer
+		app.Use(New(Config{
+			Output: &logOutput,
+		}))
 
 		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 		// Verify the log output does not contain the "200" message
-		mu.Lock()
-		defer mu.Unlock()
 		require.NotContains(t, logOutput.String(), "200") // Check if the log does not contain "200"
 	})
 }
