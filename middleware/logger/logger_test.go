@@ -173,18 +173,18 @@ func Test_Logger_Done(t *testing.T) {
 
 func Test_Logger_Filter(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
-
-	// Create a logging middleware that filters logs to only include 404 status codes
-	app.Use(New(Config{
-		Filter: func(c fiber.Ctx) bool {
-			return c.Response().StatusCode() == fiber.StatusNotFound
-		},
-	}))
 
 	// Log only 404 status codes
 	t.Run("Test Not Found", func(t *testing.T) {
 		t.Parallel()
+		app := fiber.New()
+
+		// Create a logging middleware that filters logs to only include 404 status codes
+		app.Use(New(Config{
+			Filter: func(c fiber.Ctx) bool {
+				return c.Response().StatusCode() == fiber.StatusNotFound
+			},
+		}))
 
 		logOutput := bytes.Buffer{}
 
@@ -204,6 +204,14 @@ func Test_Logger_Filter(t *testing.T) {
 	// Subtest for 200 status code
 	t.Run("Test OK", func(t *testing.T) {
 		t.Parallel()
+		app := fiber.New()
+
+		// Create a logging middleware that filters logs to only include 404 status codes
+		app.Use(New(Config{
+			Filter: func(c fiber.Ctx) bool {
+				return c.Response().StatusCode() == fiber.StatusNotFound
+			},
+		}))
 
 		logOutput := bytes.Buffer{}
 
