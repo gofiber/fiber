@@ -152,11 +152,11 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 		pattern = "/" + pattern
 	}
 
-	patternPretty := pattern
+	patternPretty := []byte(pattern)
 
 	// Case-sensitive routing, all to lowercase
 	if !config.CaseSensitive {
-		patternPretty = utils.ToLower(patternPretty)
+		patternPretty = utils.ToLowerBytes(patternPretty)
 		path = utils.ToLower(path)
 	}
 	// Strict routing, remove trailing slashes
@@ -164,12 +164,12 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 		patternPretty = utils.TrimRight(patternPretty, '/')
 	}
 
-	parser := parseRoute(patternPretty)
+	parser := parseRoute(string(patternPretty))
 
-	if patternPretty == "/" && path == "/" {
+	if string(patternPretty) == "/" && path == "/" {
 		return true
 		// '*' wildcard matches any path
-	} else if patternPretty == "/*" {
+	} else if string(patternPretty) == "/*" {
 		return true
 	}
 
@@ -180,12 +180,9 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 		}
 	}
 	// Check for a simple match
-	patternPretty = RemoveEscapeChar(patternPretty)
-	if len(patternPretty) == len(path) && patternPretty == path {
-		return true
-	}
-	// No match
-	return false
+	patternPretty = RemoveEscapeCharBytes(patternPretty)
+
+	return string(patternPretty) == path
 }
 
 // parseRoute analyzes the route and divides it into segments for constant areas and parameters,
@@ -618,7 +615,7 @@ func GetTrimmedParam(param string) string {
 	return param[start:end]
 }
 
-// RemoveEscapeChar remove escape characters
+// RemoveEscapeChar removes escape characters
 func RemoveEscapeChar(word string) string {
 	b := []byte(word)
 	dst := 0
@@ -630,6 +627,18 @@ func RemoveEscapeChar(word string) string {
 		dst++
 	}
 	return string(b[:dst])
+}
+
+// RemoveEscapeCharBytes removes escape characters
+func RemoveEscapeCharBytes(word []byte) []byte {
+	dst := 0
+	for src := 0; src < len(word); src++ {
+		if word[src] != '\\' {
+			word[dst] = word[src]
+			dst++
+		}
+	}
+	return word[:dst]
 }
 
 func getParamConstraintType(constraintPart string) TypeConstraint {
