@@ -189,23 +189,19 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 // this information is needed later when assigning the requests to the declared routes
 func parseRoute(pattern string, customConstraints ...CustomConstraint) routeParser {
 	parser := routeParser{}
-	part := ""
+	var n int
+	var seg *routeSegment
 	for len(pattern) > 0 {
 		nextParamPosition := findNextParamPosition(pattern)
 		// handle the parameter part
 		if nextParamPosition == 0 {
-			processedPart, seg := parser.analyseParameterPart(pattern, customConstraints...)
-			parser.params, parser.segs, part = append(parser.params, seg.ParamName), append(parser.segs, seg), processedPart
+			n, seg = parser.analyseParameterPart(pattern, customConstraints...)
+			parser.params, parser.segs = append(parser.params, seg.ParamName), append(parser.segs, seg)
 		} else {
-			processedPart, seg := parser.analyseConstantPart(pattern, nextParamPosition)
-			parser.segs, part = append(parser.segs, seg), processedPart
+			n, seg = parser.analyseConstantPart(pattern, nextParamPosition)
+			parser.segs = append(parser.segs, seg)
 		}
-
-		// reduce the pattern by the processed parts
-		if len(part) == len(pattern) {
-			break
-		}
-		pattern = pattern[len(part):]
+		pattern = pattern[n:]
 	}
 	// mark last segment
 	if len(parser.segs) > 0 {
@@ -280,7 +276,7 @@ func findNextParamPosition(pattern string) int {
 }
 
 // analyseConstantPart find the end of the constant part and create the route segment
-func (*routeParser) analyseConstantPart(pattern string, nextParamPosition int) (string, *routeSegment) {
+func (*routeParser) analyseConstantPart(pattern string, nextParamPosition int) (int, *routeSegment) {
 	// handle the constant part
 	processedPart := pattern
 	if nextParamPosition != -1 {
@@ -288,14 +284,14 @@ func (*routeParser) analyseConstantPart(pattern string, nextParamPosition int) (
 		processedPart = pattern[:nextParamPosition]
 	}
 	constPart := RemoveEscapeChar(processedPart)
-	return processedPart, &routeSegment{
+	return len(processedPart), &routeSegment{
 		Const:  constPart,
 		Length: len(constPart),
 	}
 }
 
 // analyseParameterPart find the parameter end and create the route segment
-func (routeParser *routeParser) analyseParameterPart(pattern string, customConstraints ...CustomConstraint) (string, *routeSegment) {
+func (routeParser *routeParser) analyseParameterPart(pattern string, customConstraints ...CustomConstraint) (int, *routeSegment) {
 	isWildCard := pattern[0] == wildcardParam
 	isPlusParam := pattern[0] == plusParam
 
@@ -326,6 +322,7 @@ func (routeParser *routeParser) analyseParameterPart(pattern string, customConst
 
 	// cut params part
 	processedPart := pattern[0 : parameterEndPosition+1]
+	n := parameterEndPosition + 1
 	paramName := RemoveEscapeChar(GetTrimmedParam(processedPart))
 
 	// Check has constraint
@@ -399,7 +396,7 @@ func (routeParser *routeParser) analyseParameterPart(pattern string, customConst
 		segment.Constraints = constraints
 	}
 
-	return processedPart, segment
+	return n, segment
 }
 
 // isInCharset check is the given character in the charset list
