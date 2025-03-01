@@ -171,6 +171,58 @@ func Test_Logger_Done(t *testing.T) {
 	require.Positive(t, buf.Len(), 0)
 }
 
+func Test_Logger_Filter(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Test Not Found", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+
+		logOutput := bytes.Buffer{}
+
+		// Create a single logging middleware with both filter and output capture
+		app.Use(New(Config{
+			Filter: func(c fiber.Ctx) bool {
+				return c.Response().StatusCode() == fiber.StatusNotFound
+			},
+			Output: &logOutput,
+		}))
+
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/nonexistent", nil))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+
+		// Verify the log output contains the "404" message
+		require.Contains(t, logOutput.String(), "404")
+	})
+
+	t.Run("Test OK", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+
+		logOutput := bytes.Buffer{}
+
+		// Create a single logging middleware with both filter and output capture
+		app.Use(New(Config{
+			Filter: func(c fiber.Ctx) bool {
+				return c.Response().StatusCode() == fiber.StatusNotFound
+			},
+			Output: &logOutput,
+		}))
+
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendStatus(fiber.StatusOK)
+		})
+
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+		// Verify the log output does not contain the "200" message
+		require.NotContains(t, logOutput.String(), "200")
+	})
+}
+
 // go test -run Test_Logger_ErrorTimeZone
 func Test_Logger_ErrorTimeZone(t *testing.T) {
 	t.Parallel()

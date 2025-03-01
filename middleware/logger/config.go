@@ -20,6 +20,12 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c fiber.Ctx) bool
 
+	// Filter is a function that is called before writing the log string.
+	// If it returns true, the log will be written; otherwise, it will be skipped.
+	//
+	// Optional. Default: nil
+	Filter func(c fiber.Ctx) bool
+
 	// Done is a function that is called after the log string for a request is written to Output,
 	// and pass the log string as parameter.
 	//
@@ -98,6 +104,7 @@ type LogFunc func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (in
 // ConfigDefault is the default config
 var ConfigDefault = Config{
 	Next:              nil,
+	Filter:            nil,
 	Done:              nil,
 	Format:            defaultFormat,
 	TimeFormat:        "15:04:05",
@@ -125,6 +132,9 @@ func configDefault(config ...Config) Config {
 	// Set default values
 	if cfg.Next == nil {
 		cfg.Next = ConfigDefault.Next
+	}
+	if cfg.Filter == nil {
+		cfg.Filter = ConfigDefault.Filter
 	}
 	if cfg.Done == nil {
 		cfg.Done = ConfigDefault.Done
