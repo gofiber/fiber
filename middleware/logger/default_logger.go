@@ -15,6 +15,11 @@ import (
 
 // default logger for fiber
 func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
+	// Check if Filter is defined and call it
+	if cfg.Filter != nil && !cfg.Filter(c) {
+		return nil // Skip logging if Filter returns false
+	}
+
 	// Alias colors
 	colors := c.App().Config().ColorScheme
 
@@ -88,11 +93,6 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 			buf.WriteString(" ")
 			buf.WriteString(formatErr)
 			buf.WriteString("\n")
-		}
-
-		// Check if Filter is defined and call it
-		if cfg.Filter != nil && !cfg.Filter(c) {
-			return nil // Skip logging if Filter returns false
 		}
 
 		// Write buffer to output
