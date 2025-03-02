@@ -30,7 +30,7 @@ app.Use(func(c fiber.Ctx) error {
 })
 ```
 
-## How can i use live reload ?
+## How can I use live reload?
 
 [Air](https://github.com/air-verse/air) is a handy tool that automatically restarts your Go applications whenever the source code changes, making your development process faster and more efficient.
 
@@ -83,12 +83,12 @@ Fiber currently supports 9 template engines in our [gofiber/template](https://do
 * [ace](https://docs.gofiber.io/template/ace/)
 * [amber](https://docs.gofiber.io/template/amber/)
 * [django](https://docs.gofiber.io/template/django/)
-* [handlebars](https://docs.gofiber.io/template/handlebars)
-* [html](https://docs.gofiber.io/template/html)
-* [jet](https://docs.gofiber.io/template/jet)
-* [mustache](https://docs.gofiber.io/template/mustache)
-* [pug](https://docs.gofiber.io/template/pug)
-* [slim](https://docs.gofiber.io/template/slim)
+* [handlebars](https://docs.gofiber.io/template/handlebars/)
+* [html](https://docs.gofiber.io/template/html/)
+* [jet](https://docs.gofiber.io/template/jet/)
+* [mustache](https://docs.gofiber.io/template/mustache/)
+* [pug](https://docs.gofiber.io/template/pug/)
+* [slim](https://docs.gofiber.io/template/slim/)
 
 To learn more about using Templates in Fiber, see [Templates](../guide/templates.md).
 
@@ -99,10 +99,12 @@ If you have questions or just want to have a chat, feel free to join us via this
 
 ![](/img/support-discord.png)
 
-## Does fiber support sub domain routing ?
+## Does Fiber support subdomain routing?
 
 Yes we do, here are some examples:
-This example works v2
+
+<details>
+<summary>Example</summary>
 
 ```go
 package main
@@ -170,4 +172,18 @@ func main() {
 }
 ```
 
+</details>
+
 If more information is needed, please refer to this issue [#750](https://github.com/gofiber/fiber/issues/750)
+
+## How can I handle conversions between Fiber and net/http?
+
+The `adaptor` middleware provides utilities for converting between Fiber and `net/http`. It allows seamless integration of `net/http` handlers, middleware, and requests into Fiber applications, and vice versa.
+
+For details on how to:
+
+* Convert `net/http` handlers to Fiber handlers
+* Convert Fiber handlers to `net/http` handlers
+* Convert `fiber.Ctx` to `http.Request`
+
+See the dedicated documentation: [Adaptor Documentation](../middleware/adaptor.md).

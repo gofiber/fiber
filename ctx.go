@@ -1569,6 +1569,7 @@ func (c *DefaultCtx) SendFile(file string, config ...SendFile) error {
 			AcceptByteRange:        cfg.ByteRange,
 			Compress:               cfg.Compress,
 			CompressBrotli:         cfg.Compress,
+			CompressZstd:           cfg.Compress,
 			CompressedFileSuffixes: c.app.config.CompressedFileSuffixes,
 			CacheDuration:          cfg.CacheDuration,
 			SkipCache:              cfg.CacheDuration < 0,

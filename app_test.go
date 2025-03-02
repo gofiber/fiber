@@ -21,6 +21,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -55,6 +56,91 @@ func testErrorResponse(t *testing.T, err error, resp *http.Response, expectedBod
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, expectedBodyError, string(body), "Response body")
+}
+
+func Test_App_Test_Goroutine_Leak_Compare(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		handler    Handler
+		name       string
+		timeout    time.Duration
+		sleepTime  time.Duration
+		expectLeak bool
+	}{
+		{
+			name: "With timeout (potential leak)",
+			handler: func(c Ctx) error {
+				time.Sleep(300 * time.Millisecond) // Simulate time-consuming operation
+				return c.SendString("ok")
+			},
+			timeout:    50 * time.Millisecond,  // // Short timeout to ensure triggering
+			sleepTime:  500 * time.Millisecond, // Wait time longer than handler execution time
+			expectLeak: true,
+		},
+		{
+			name: "Without timeout (no leak)",
+			handler: func(c Ctx) error {
+				return c.SendString("ok") // Return immediately
+			},
+			timeout:    0, // Disable timeout
+			sleepTime:  100 * time.Millisecond,
+			expectLeak: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New()
+
+			// Record initial goroutine count
+			initialGoroutines := runtime.NumGoroutine()
+			t.Logf("[%s] Initial goroutines: %d", tc.name, initialGoroutines)
+
+			app.Get("/", tc.handler)
+
+			// Send 10 requests
+			numRequests := 10
+			for i := 0; i < numRequests; i++ {
+				req := httptest.NewRequest(MethodGet, "/", nil)
+
+				if tc.timeout > 0 {
+					_, err := app.Test(req, TestConfig{
+						Timeout:       tc.timeout,
+						FailOnTimeout: true,
+					})
+					require.Error(t, err)
+					require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+				} else if resp, err := app.Test(req); err != nil {
+					t.Errorf("unexpected error: %v", err)
+				} else {
+					require.Equal(t, 200, resp.StatusCode)
+				}
+			}
+
+			// Wait for normal goroutines to complete
+			time.Sleep(tc.sleepTime)
+
+			// Check final goroutine count
+			finalGoroutines := runtime.NumGoroutine()
+			leakedGoroutines := finalGoroutines - initialGoroutines
+			t.Logf("[%s] Final goroutines: %d (leaked: %d)",
+				tc.name, finalGoroutines, leakedGoroutines)
+
+			if tc.expectLeak {
+				// before fix: If blocking exists, leaked goroutines should be at least equal to request count
+				// after fix: If no blocking exists, leaked goroutines should be less than request count
+				if leakedGoroutines >= numRequests {
+					t.Errorf("[%s] Expected at least %d leaked goroutines, but got %d",
+						tc.name, numRequests, leakedGoroutines)
+				}
+			} else if leakedGoroutines >= numRequests { // If no blocking exists, leaked goroutines should be less than request count
+				t.Errorf("[%s] Expected less than %d leaked goroutines, but got %d",
+					tc.name, numRequests, leakedGoroutines)
+			}
+		})
+	}
 }
 
 func Test_App_MethodNotAllowed(t *testing.T) {
@@ -394,14 +480,10 @@ func Test_App_Use_Params(t *testing.T) {
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
-	defer func() {
-		if err := recover(); err != nil {
-			require.Equal(t, "use: invalid handler func()\n", fmt.Sprintf("%v", err))
-		}
-	}()
-
-	app.Use("/:param/*", func() {
-		// this should panic
+	require.PanicsWithValue(t, "use: invalid handler func()\n", func() {
+		app.Use("/:param/*", func() {
+			// this should panic
+		})
 	})
 }
 
@@ -845,20 +927,29 @@ func Test_App_ShutdownWithTimeout(t *testing.T) {
 	})
 
 	ln := fasthttputil.NewInmemoryListener()
+	serverReady := make(chan struct{}) // Signal that the server is ready to start
+
 	go func() {
+		serverReady <- struct{}{}
 		err := app.Listener(ln)
 		assert.NoError(t, err)
 	}()
 
-	time.Sleep(1 * time.Second)
+	<-serverReady // Waiting for the server to be ready
+
+	// Create a connection and send a request
+	connReady := make(chan struct{})
 	go func() {
 		conn, err := ln.Dial()
 		assert.NoError(t, err)
 
 		_, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: google.com\r\n\r\n"))
 		assert.NoError(t, err)
+
+		connReady <- struct{}{} // Signal that the request has been sent
 	}()
-	time.Sleep(1 * time.Second)
+
+	<-connReady // Waiting for the request to be sent
 
 	shutdownErr := make(chan error)
 	go func() {
@@ -879,46 +970,130 @@ func Test_App_ShutdownWithTimeout(t *testing.T) {
 func Test_App_ShutdownWithContext(t *testing.T) {
 	t.Parallel()
 
-	app := New()
-	app.Get("/", func(ctx Ctx) error {
-		time.Sleep(5 * time.Second)
-		return ctx.SendString("body")
+	t.Run("successful shutdown", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+
+		// Fast request that should complete
+		app.Get("/", func(c Ctx) error {
+			return c.SendString("OK")
+		})
+
+		ln := fasthttputil.NewInmemoryListener()
+		serverStarted := make(chan bool, 1)
+
+		go func() {
+			serverStarted <- true
+			if err := app.Listener(ln); err != nil {
+				t.Errorf("Failed to start listener: %v", err)
+			}
+		}()
+
+		<-serverStarted
+
+		// Execute normal request
+		conn, err := ln.Dial()
+		require.NoError(t, err)
+		_, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n"))
+		require.NoError(t, err)
+
+		// Shutdown with sufficient timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		err = app.ShutdownWithContext(ctx)
+		require.NoError(t, err, "Expected successful shutdown")
 	})
 
-	ln := fasthttputil.NewInmemoryListener()
+	t.Run("shutdown with hooks", func(t *testing.T) {
+		t.Parallel()
+		app := New()
 
-	go func() {
-		err := app.Listener(ln)
-		assert.NoError(t, err)
-	}()
+		hookOrder := make([]string, 0)
+		var hookMutex sync.Mutex
 
-	time.Sleep(1 * time.Second)
+		app.Hooks().OnPreShutdown(func() error {
+			hookMutex.Lock()
+			hookOrder = append(hookOrder, "pre")
+			hookMutex.Unlock()
+			return nil
+		})
 
-	go func() {
-		conn, err := ln.Dial()
-		assert.NoError(t, err)
+		app.Hooks().OnPostShutdown(func(_ error) error {
+			hookMutex.Lock()
+			hookOrder = append(hookOrder, "post")
+			hookMutex.Unlock()
+			return nil
+		})
 
-		_, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: google.com\r\n\r\n"))
-		assert.NoError(t, err)
-	}()
+		ln := fasthttputil.NewInmemoryListener()
+		go func() {
+			if err := app.Listener(ln); err != nil {
+				t.Errorf("Failed to start listener: %v", err)
+			}
+		}()
 
-	time.Sleep(1 * time.Second)
+		time.Sleep(100 * time.Millisecond)
 
-	shutdownErr := make(chan error)
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-		defer cancel()
-		shutdownErr <- app.ShutdownWithContext(ctx)
-	}()
+		err := app.ShutdownWithContext(context.Background())
+		require.NoError(t, err)
 
-	select {
-	case <-time.After(5 * time.Second):
-		t.Fatal("idle connections not closed on shutdown")
-	case err := <-shutdownErr:
-		if err == nil || !errors.Is(err, context.DeadlineExceeded) {
-			t.Fatalf("unexpected err %v. Expecting %v", err, context.DeadlineExceeded)
+		require.Equal(t, []string{"pre", "post"}, hookOrder, "Hooks should execute in order")
+	})
+
+	t.Run("timeout with long running request", func(t *testing.T) {
+		t.Parallel()
+		app := New()
+
+		requestStarted := make(chan struct{})
+		requestProcessing := make(chan struct{})
+
+		app.Get("/", func(c Ctx) error {
+			close(requestStarted)
+			// Wait for signal to continue processing the request
+			<-requestProcessing
+			time.Sleep(2 * time.Second)
+			return c.SendString("OK")
+		})
+
+		ln := fasthttputil.NewInmemoryListener()
+		go func() {
+			if err := app.Listener(ln); err != nil {
+				t.Errorf("Failed to start listener: %v", err)
+			}
+		}()
+
+		// Ensure server is fully started
+		time.Sleep(100 * time.Millisecond)
+
+		// Start a long-running request
+		go func() {
+			conn, err := ln.Dial()
+			if err != nil {
+				t.Errorf("Failed to dial: %v", err)
+				return
+			}
+			if _, err := conn.Write([]byte("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n")); err != nil {
+				t.Errorf("Failed to write: %v", err)
+			}
+		}()
+
+		// Wait for request to start
+		select {
+		case <-requestStarted:
+			// Request has started, signal to continue processing
+			close(requestProcessing)
+		case <-time.After(2 * time.Second):
+			t.Fatal("Request did not start in time")
 		}
-	}
+
+		// Attempt shutdown, should timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		defer cancel()
+
+		err := app.ShutdownWithContext(ctx)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+	})
 }
 
 // go test -run Test_App_Mixed_Routes_WithSameLen
@@ -970,12 +1145,10 @@ func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
 
 func Test_App_Group_Invalid(t *testing.T) {
 	t.Parallel()
-	defer func() {
-		if err := recover(); err != nil {
-			require.Equal(t, "use: invalid handler int\n", fmt.Sprintf("%v", err))
-		}
-	}()
-	New().Group("/").Use(1)
+
+	require.PanicsWithValue(t, "use: invalid handler int\n", func() {
+		New().Group("/").Use(1)
+	})
 }
 
 func Test_App_Group(t *testing.T) {
@@ -1200,14 +1373,10 @@ func Test_App_Init_Error_View(t *testing.T) {
 	t.Parallel()
 	app := New(Config{Views: invalidView{}})
 
-	defer func() {
-		if err := recover(); err != nil {
-			require.Equal(t, "implement me", fmt.Sprintf("%v", err))
-		}
-	}()
-
-	err := app.config.Views.Render(nil, "", nil)
-	require.NoError(t, err)
+	require.PanicsWithValue(t, "implement me", func() {
+		//nolint:errcheck // not needed
+		_ = app.config.Views.Render(nil, "", nil)
+	})
 }
 
 // go test -run Test_App_Stack

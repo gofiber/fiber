@@ -5522,6 +5522,10 @@ func Test_GenericParseTypeUints(t *testing.T) {
 			value: uint(4),
 			str:   "4",
 		},
+		{
+			value: ^uint(0),
+			str:   strconv.FormatUint(uint64(^uint(0)), 10),
+		},
 	}
 
 	for _, test := range uints {

@@ -16,6 +16,8 @@ In this guide, we'll walk you through the most important changes in Fiber `v3` a
 Here's a quick overview of the changes in Fiber `v3`:
 
 - [🚀 App](#-app)
+- [🎣 Hooks](#-hooks)
+- [🚀 Listen](#-listen)
 - [🗺️ Router](#-router)
 - [🧠 Context](#-context)
 - [📎 Binding](#-binding)
@@ -31,6 +33,7 @@ Here's a quick overview of the changes in Fiber `v3`:
   - [Filesystem](#filesystem)
   - [Monitor](#monitor)
   - [Healthcheck](#healthcheck)
+- [🔌 Addons](#-addons)
 - [📋 Migration guide](#-migration-guide)
 
 ## Drop for old Go versions
@@ -157,6 +160,63 @@ app.Listen(":444", fiber.ListenConfig{
     AutoCertManager:    certManager,
 })
 ```
+
+## 🎣 Hooks
+
+We have made several changes to the Fiber hooks, including:
+
+- Added new shutdown hooks to provide better control over the shutdown process:
+  - `OnPreShutdown` - Executes before the server starts shutting down
+  - `OnPostShutdown` - Executes after the server has shut down, receives any shutdown error
+- Deprecated `OnShutdown` in favor of the new pre/post shutdown hooks
+- Improved shutdown hook execution order and reliability
+- Added mutex protection for hook registration and execution
+
+Important: When using shutdown hooks, ensure app.Listen() is called in a separate goroutine:
+
+```go
+// Correct usage
+go app.Listen(":3000")
+// ... register shutdown hooks
+app.Shutdown()
+
+// Incorrect usage - hooks won't work
+app.Listen(":3000") // This blocks
+app.Shutdown()      // Never reached
+```
+
+## 🚀 Listen
+
+We have made several changes to the Fiber listen, including:
+
+- Removed `OnShutdownError` and `OnShutdownSuccess` from `ListenerConfig` in favor of using `OnPostShutdown` hook which receives the shutdown error
+
+```go
+app := fiber.New()
+
+// Before - using ListenerConfig callbacks
+app.Listen(":3000", fiber.ListenerConfig{
+    OnShutdownError: func(err error) {
+        log.Printf("Shutdown error: %v", err)
+    },
+    OnShutdownSuccess: func() {
+        log.Println("Shutdown successful")
+    },
+})
+
+// After - using OnPostShutdown hook
+app.Hooks().OnPostShutdown(func(err error) error {
+    if err != nil {
+        log.Printf("Shutdown error: %v", err)
+    } else {
+        log.Println("Shutdown successful")
+    }
+    return nil
+})
+go app.Listen(":3000")
+```
+
+This change simplifies the shutdown handling by consolidating the shutdown callbacks into a single hook that receives the error status.
 
 ## 🗺 Router
 
@@ -346,14 +406,14 @@ testConfig := fiber.TestConfig{
 
 ### Removed Methods
 
-- **AllParams**: Use `c.Bind().URL()` instead.
+- **AllParams**: Use `c.Bind().URI()` instead.
 - **ParamsInt**: Use `Params` with generic types.
 - **QueryBool**: Use `Query` with generic types.
 - **QueryFloat**: Use `Query` with generic types.
 - **QueryInt**: Use `Query` with generic types.
 - **BodyParser**: Use `c.Bind().Body()` instead.
 - **CookieParser**: Use `c.Bind().Cookie()` instead.
-- **ParamsParser**: Use `c.Bind().URL()` instead.
+- **ParamsParser**: Use `c.Bind().URI()` instead.
 - **RedirectToRoute**: Use `c.Redirect().Route()` instead.
 - **RedirectBack**: Use `c.Redirect().Back()` instead.
 - **ReqHeaderParser**: Use `c.Bind().Header()` instead.
@@ -487,6 +547,7 @@ Fiber v3 introduces a new binding mechanism that simplifies the process of bindi
 - Unified binding from URL parameters, query parameters, headers, and request bodies.
 - Support for custom binders and constraints.
 - Improved error handling and validation.
+- Support multipart file binding for `*multipart.FileHeader`, `*[]*multipart.FileHeader`, and `[]*multipart.FileHeader` field types.
 
 <details>
 <summary>Example</summary>
@@ -879,6 +940,59 @@ The Healthcheck middleware has been enhanced to support more than two routes, wi
 
 Refer to the [healthcheck middleware migration guide](./middleware/healthcheck.md) or the [general migration guide](#-migration-guide) to review the changes.
 
+## 🔌 Addons
+
+In v3, Fiber introduced Addons. Addons are additional useful packages that can be used in Fiber.
+
+### Retry
+
+The Retry addon is a new addon that implements a retry mechanism for unsuccessful network operations. It uses an exponential backoff algorithm with jitter.
+It calls the function multiple times and tries to make it successful. If all calls are failed, then, it returns an error.
+It adds a jitter at each retry step because adding a jitter is a way to break synchronization across the client and avoid collision.
+
+<details>
+<summary>Example</summary>
+
+```go
+package main
+
+import (
+    "fmt"
+
+    "github.com/gofiber/fiber/v3/addon/retry"
+    "github.com/gofiber/fiber/v3/client"
+)
+
+func main() {
+    expBackoff := retry.NewExponentialBackoff(retry.Config{})
+
+    // Local variables that will be used inside of Retry
+    var resp *client.Response
+    var err error
+
+    // Retry a network request and return an error to signify to try again
+    err = expBackoff.Retry(func() error {
+        client := client.New()
+        resp, err = client.Get("https://gofiber.io")
+        if err != nil {
+            return fmt.Errorf("GET gofiber.io failed: %w", err)
+        }
+        if resp.StatusCode() != 200 {
+            return fmt.Errorf("GET gofiber.io did not return OK 200")
+        }
+        return nil
+    })
+
+    // If all retries failed, panic
+    if err != nil {
+        panic(err)
+    }
+    fmt.Printf("GET gofiber.io succeeded with status code %d\n", resp.StatusCode())
+}
+```
+
+</details>
+
 ## 📋 Migration guide
 
 - [🚀 App](#-app-1)
@@ -1117,7 +1231,7 @@ The `Parser` section in Fiber v3 has undergone significant changes to improve fu
 
     </details>
 
-2. **ParamsParser**: Use `c.Bind().URL()` instead of `c.ParamsParser()`.
+2. **ParamsParser**: Use `c.Bind().URI()` instead of `c.ParamsParser()`.
 
     <details>
     <summary>Example</summary>
@@ -1137,7 +1251,7 @@ The `Parser` section in Fiber v3 has undergone significant changes to improve fu
     // After
     app.Get("/user/:id", func(c fiber.Ctx) error {
         var params Params
-        if err := c.Bind().URL(&params); err != nil {
+        if err := c.Bind().URI(&params); err != nil {
             return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
         }
         return c.JSON(params)
