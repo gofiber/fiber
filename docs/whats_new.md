@@ -912,6 +912,29 @@ func main() {
 
 </details>
 
+The `Filter` is a function that is called before the log string for a request is written to Output. If it returns true, the log will be written; otherwise, it will be skipped.
+
+<details>
+<summary>Example</summary>
+
+```go
+app.Use(logger.New(logger.Config{
+    Filter: func(c fiber.Ctx) bool {
+        // Skip logging for 404 requests
+        return c.Response().StatusCode() == fiber.StatusNotFound
+    },
+}))
+
+app.Use(logger.New(logger.Config{
+    Filter: func(c fiber.Ctx) bool {
+        // Only log requests with status code 200
+        return c.Response().StatusCode() == fiber.StatusOK
+    },
+}))
+```
+
+</details>
+
 ### Filesystem
 
 We've decided to remove filesystem middleware to clear up the confusion between static and filesystem middleware.
@@ -939,26 +962,6 @@ The Healthcheck middleware has been enhanced to support more than two routes, wi
    - The configuration for each health check endpoint has been simplified. Each endpoint can be configured separately, allowing for more flexibility and readability.
 
 Refer to the [healthcheck middleware migration guide](./middleware/healthcheck.md) or the [general migration guide](#-migration-guide) to review the changes.
-
-### Filter
-
-The `Filter` is a function that is called before the log string for a request is written to Output. If it returns true, the log will be written; otherwise, it will be skipped.
-
-```go
-app.Use(logger.New(logger.Config{
-    Filter: func(c fiber.Ctx) bool {
-        // Skip logging for 404 requests
-        return c.Response().StatusCode() == fiber.StatusNotFound
-    },
-}))
-
-app.Use(logger.New(logger.Config{
-    Filter: func(c fiber.Ctx) bool {
-        // Only log requests with status code 200
-        return c.Response().StatusCode() == fiber.StatusOK
-    },
-}))
-```
 
 ## 🔌 Addons
 
