@@ -58,7 +58,7 @@ func Benchmark_FormBinder_Bind(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	binder := &QueryBinding{
+	binder := &FormBinding{
 		EnableSplitting: true,
 	}
 
@@ -70,7 +70,7 @@ func Benchmark_FormBinder_Bind(b *testing.B) {
 	var user User
 
 	req := fasthttp.AcquireRequest()
-	req.URI().SetQueryString("name=john&age=42&posts=post1,post2,post3")
+	req.SetBodyString("name=john&age=42&posts=post1,post2,post3")
 	req.Header.SetContentType("application/x-www-form-urlencoded")
 
 	b.ResetTimer()
