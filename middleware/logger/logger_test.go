@@ -171,6 +171,8 @@ func Test_Logger_Done(t *testing.T) {
 	require.Positive(t, buf.Len(), 0)
 }
 
+// Test_Logger_Filter tests the Filter functionality of the logger middleware.
+// It verifies that logs are written or skipped based on the filter condition.
 func Test_Logger_Filter(t *testing.T) {
 	t.Parallel()
 

@@ -921,7 +921,7 @@ The `Filter` is a function that is called before the log string for a request is
 app.Use(logger.New(logger.Config{
     Filter: func(c fiber.Ctx) bool {
         // log status code >= 400
-        return c.Response().StatusCode() >= fiber.StatusNotFound
+        return c.Response().StatusCode() >= fiber.StatusBadRequest
     },
 }))
 
