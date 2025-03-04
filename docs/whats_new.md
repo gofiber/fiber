@@ -912,6 +912,36 @@ func main() {
 
 </details>
 
+The `Filter` is a function that is called before the log string for a request is written to Output. If it returns true, the log will be written; otherwise, it will be skipped.
+
+<details>
+<summary>Example</summary>
+
+```go
+app.Use(logger.New(logger.Config{
+    Filter: func(c fiber.Ctx) bool {
+        // log status code >= 400
+        return c.Response().StatusCode() >= fiber.StatusBadRequest
+    },
+}))
+
+app.Use(logger.New(logger.Config{
+    Filter: func(c fiber.Ctx) bool {
+        // log status code == 404
+        return c.Response().StatusCode() == fiber.StatusNotFound
+    },
+}))
+
+app.Use(logger.New(logger.Config{
+    Filter: func(c fiber.Ctx) bool {
+        // log status code != 200
+        return c.Response().StatusCode() != fiber.StatusOK
+    },
+}))
+```
+
+</details>
+
 ### Filesystem
 
 We've decided to remove filesystem middleware to clear up the confusion between static and filesystem middleware.
