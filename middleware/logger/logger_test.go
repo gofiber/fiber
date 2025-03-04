@@ -183,6 +183,7 @@ func Test_Logger_Filter(t *testing.T) {
 		// Create a single logging middleware with both filter and output capture
 		app.Use(New(Config{
 			Filter: func(c fiber.Ctx) bool {
+				// log status code == 404
 				return c.Response().StatusCode() == fiber.StatusNotFound
 			},
 			Output: &logOutput,
@@ -205,7 +206,8 @@ func Test_Logger_Filter(t *testing.T) {
 		// Create a single logging middleware with both filter and output capture
 		app.Use(New(Config{
 			Filter: func(c fiber.Ctx) bool {
-				return c.Response().StatusCode() == fiber.StatusNotFound
+				// log status code != 200
+				return c.Response().StatusCode() != fiber.StatusOK
 			},
 			Output: &logOutput,
 		}))

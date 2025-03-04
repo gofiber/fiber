@@ -920,15 +920,22 @@ The `Filter` is a function that is called before the log string for a request is
 ```go
 app.Use(logger.New(logger.Config{
     Filter: func(c fiber.Ctx) bool {
-        // Skip logging for 404 requests
+        // log status code >= 400
+        return c.Response().StatusCode() >= fiber.StatusNotFound
+    },
+}))
+
+app.Use(logger.New(logger.Config{
+    Filter: func(c fiber.Ctx) bool {
+        // log status code == 404
         return c.Response().StatusCode() == fiber.StatusNotFound
     },
 }))
 
 app.Use(logger.New(logger.Config{
     Filter: func(c fiber.Ctx) bool {
-        // Only log requests with status code 200
-        return c.Response().StatusCode() == fiber.StatusOK
+        // log status code != 200
+        return c.Response().StatusCode() != fiber.StatusOK
     },
 }))
 ```
