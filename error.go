@@ -40,7 +40,7 @@ var (
 	ErrNoHandlers = errors.New("format: at least one handler is required, but none were set")
 )
 
-// gorilla/schema errors
+// gofiber/schema errors
 type (
 	// ConversionError Conversion error exposes the internal schema.ConversionError for public use.
 	ConversionError = schema.ConversionError
