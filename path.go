@@ -123,8 +123,6 @@ var (
 	parameterConstraintSeparatorChars = []byte{paramConstraintSeparator}
 	// list of parameter constraint data start
 	parameterConstraintDataStartChars = []byte{paramConstraintDataStart}
-	// list of parameter constraint data end
-	parameterConstraintDataEndChars = []byte{paramConstraintDataEnd}
 	// list of parameter constraint data separator
 	parameterConstraintDataSeparatorChars = []byte{paramConstraintDataSeparator}
 )
@@ -317,7 +315,7 @@ func (routeParser *routeParser) analyseParameterPart(pattern string, customConst
 	// find constraint part if exists in the parameter part and remove it
 	if parameterEndPosition > 0 {
 		parameterConstraintStart = findNextNonEscapedCharsetPosition(pattern[0:parameterEndPosition], parameterConstraintStartChars)
-		parameterConstraintEnd = findLastCharsetPosition(pattern[0:parameterEndPosition+1], parameterConstraintEndChars)
+		parameterConstraintEnd = strings.LastIndexByte(pattern[0:parameterEndPosition+1], paramConstraintEnd)
 	}
 
 	// cut params part
@@ -335,7 +333,7 @@ func (routeParser *routeParser) analyseParameterPart(pattern string, customConst
 
 		for _, c := range userConstraints {
 			start := findNextNonEscapedCharsetPosition(c, parameterConstraintDataStartChars)
-			end := findLastCharsetPosition(c, parameterConstraintDataEndChars)
+			end := strings.LastIndexByte(c, paramConstraintDataEnd)
 
 			// Assign constraint
 			if start != -1 && end != -1 {
@@ -419,18 +417,6 @@ func findNextCharsetPosition(search string, charset []byte) int {
 	}
 
 	return nextPosition
-}
-
-// findLastCharsetPosition search the last char position from the charset
-func findLastCharsetPosition(search string, charset []byte) int {
-	lastPosition := -1
-	for _, char := range charset {
-		if pos := strings.LastIndexByte(search, char); pos != -1 && (pos < lastPosition || lastPosition == -1) {
-			lastPosition = pos
-		}
-	}
-
-	return lastPosition
 }
 
 // findNextCharsetPositionConstraint search the next char position from the charset
