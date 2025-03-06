@@ -1,6 +1,8 @@
 package session
 
 import (
+	"io"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -450,4 +452,51 @@ func Test_Session_Middleware_Store(t *testing.T) {
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
 	h(ctx)
 	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+}
+
+func Test_Session_GoContext(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	// Create session store
+	_ = NewStore()
+
+	// Setup session middleware
+	app.Use(New())
+
+	// Setup test route
+	app.Get("/test", func(c fiber.Ctx) error {
+		// Get session from Fiber context
+		sess := FromContext(c)
+
+		// Set a value
+		sess.Set("test_key", "test_value")
+
+		// Get the session from Go context
+		goCtxSess := FromGoContext(c.Context())
+
+		// Verify both sessions are the same
+		if goCtxSess == nil {
+			return c.Status(fiber.StatusInternalServerError).SendString("Session not found in Go context")
+		}
+
+		// Get value from Go context session
+		val := goCtxSess.Get("test_key")
+
+		// Verify value is correct
+		if val != "test_value" {
+			return c.Status(fiber.StatusInternalServerError).SendString("Wrong value in Go context session")
+		}
+
+		return c.SendString("success")
+	})
+
+	// Make request
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "success", string(body))
 }

@@ -3,6 +3,7 @@
 package session
 
 import (
+	"context"
 	"errors"
 	"sync"
 
@@ -89,6 +90,10 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 		// Acquire session middleware
 		m := acquireMiddleware()
 		m.initialize(c, cfg)
+
+		// Add session to Go context
+		ctx := context.WithValue(c.Context(), sessionContextKey, m.Session)
+		c.SetContext(ctx)
 
 		stackErr := c.Next()
 

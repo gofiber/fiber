@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"encoding/gob"
 	"errors"
 	"fmt"
@@ -100,7 +101,16 @@ func (s *Store) Get(c fiber.Ctx) (*Session, error) {
 		return nil, ErrSessionAlreadyLoadedByMiddleware
 	}
 
-	return s.getSession(c)
+	sess, err := s.getSession(c)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add session to Go context
+	ctx := context.WithValue(c.Context(), sessionContextKey, sess)
+	c.SetContext(ctx)
+
+	return sess, nil
 }
 
 // getSession retrieves a session based on the context.
