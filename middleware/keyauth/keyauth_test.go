@@ -561,7 +561,7 @@ func Test_TokenFromContext(t *testing.T) {
 
 	t.Run("invalid context type", func(t *testing.T) {
 		require.Panics(t, func() {
-			token := TokenFromContext("invalid")
+			_ := TokenFromContext("invalid")
 		})
 	})
 }
