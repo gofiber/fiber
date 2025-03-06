@@ -127,6 +127,7 @@ func (m *Middleware) initialize(c fiber.Ctx, cfg Config) {
 	m.ctx = c
 
 	c.Locals(middlewareContextKey, m)
+	c.SetContext(context.WithValue(c.Context(), sessionContextKey, session))
 }
 
 // saveSession handles session saving and error management after the response.

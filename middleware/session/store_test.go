@@ -2,8 +2,6 @@ package session
 
 import (
 	"fmt"
-	"io"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -224,56 +222,4 @@ func Test_Store_GetByID(t *testing.T) {
 			retrievedSession.Release()
 		})
 	})
-}
-
-func Test_Store_Get_GoContext(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-	store := NewStore()
-
-	app.Get("/direct-get", func(c fiber.Ctx) error {
-		// Get session directly from store (not using middleware)
-		sess, err := store.Get(c)
-		if err != nil {
-			return err
-		}
-		defer sess.Release()
-
-		// Set some data
-		sess.Set("name", "JIeJaitt")
-
-		// Now get session from Go context
-		goCtxSess := FromGoContext(c.Context())
-
-		// Verify the session exists in Go context
-		if goCtxSess == nil {
-			return c.Status(fiber.StatusInternalServerError).SendString("Session not found in Go context")
-		}
-
-		// Verify it's the same session
-		if goCtxSess.ID() != sess.ID() {
-			return c.Status(fiber.StatusInternalServerError).SendString("Session IDs don't match")
-		}
-
-		// Verify data is accessible from Go context session
-		if goCtxSess.Get("name") != "JIeJaitt" {
-			return c.Status(fiber.StatusInternalServerError).SendString("Wrong value in Go context session")
-		}
-
-		// Save session
-		if err := sess.Save(); err != nil {
-			return err
-		}
-
-		return c.SendString("success")
-	})
-
-	// Make request
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/direct-get", nil))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "success", string(body))
 }

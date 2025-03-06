@@ -1,7 +1,6 @@
 package session
 
 import (
-	"context"
 	"encoding/gob"
 	"errors"
 	"fmt"
@@ -105,10 +104,6 @@ func (s *Store) Get(c fiber.Ctx) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	// Add session to Go context
-	ctx := context.WithValue(c.Context(), sessionContextKey, sess)
-	c.SetContext(ctx)
 
 	return sess, nil
 }
