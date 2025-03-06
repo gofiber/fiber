@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/log"
 )
 
 // The contextKey type is unexported to prevent collisions with context keys defined in
@@ -84,7 +83,7 @@ func TokenFromContext(c any) string {
 			return token
 		}
 	default:
-		log.Errorf("Unsupported context type: %T. Expected fiber.Ctx or context.Context", c)
+		panic("unsupported context type, expected fiber.Ctx or context.Context")
 	}
 	return ""
 }
