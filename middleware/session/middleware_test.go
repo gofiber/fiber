@@ -506,8 +506,7 @@ func Test_Session_GoContext_EdgeCases(t *testing.T) {
 	t.Parallel()
 
 	// Test with nil context
-	//nolint:nilnil // Intentionally testing nil context behavior
-	sess := FromGoContext(nil)
+	sess := FromGoContext(nil) //nolint:nilnil // Intentionally testing nil context behavior
 	require.Nil(t, sess, "Session should be nil with nil context")
 
 	// Test with context that doesn't have a session
