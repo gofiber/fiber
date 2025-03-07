@@ -3,6 +3,7 @@
 package session
 
 import (
+	"context"
 	"errors"
 	"sync"
 
@@ -90,6 +91,10 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 		m := acquireMiddleware()
 		m.initialize(c, cfg)
 
+		// Add session to Go context
+		ctx := context.WithValue(c.Context(), sessionContextKey, m.Session)
+		c.SetContext(ctx)
+
 		stackErr := c.Next()
 
 		m.mu.RLock()
@@ -122,6 +127,7 @@ func (m *Middleware) initialize(c fiber.Ctx, cfg Config) {
 	m.ctx = c
 
 	c.Locals(middlewareContextKey, m)
+	c.SetContext(context.WithValue(c.Context(), sessionContextKey, session))
 }
 
 // saveSession handles session saving and error management after the response.
