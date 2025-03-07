@@ -7,6 +7,7 @@
 package fiber
 
 import (
+	"bytes"
 	"regexp"
 	"strconv"
 	"strings"
@@ -308,7 +309,7 @@ func (routeParser *routeParser) analyseParameterPart(pattern string, customConst
 		parameterEndPosition = 0
 	case parameterEndPosition == -1:
 		parameterEndPosition = len(pattern) - 1
-	case !isInCharset(pattern[parameterEndPosition+1], parameterDelimiterChars):
+	case bytes.IndexByte(parameterDelimiterChars, pattern[parameterEndPosition+1]) == -1:
 		parameterEndPosition++
 	}
 
@@ -395,16 +396,6 @@ func (routeParser *routeParser) analyseParameterPart(pattern string, customConst
 	}
 
 	return n, segment
-}
-
-// isInCharset check is the given character in the charset list
-func isInCharset(searchChar byte, charset []byte) bool {
-	for _, char := range charset {
-		if char == searchChar {
-			return true
-		}
-	}
-	return false
 }
 
 // findNextCharsetPosition search the next char position from the charset
