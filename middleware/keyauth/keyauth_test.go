@@ -503,33 +503,67 @@ func Test_TokenFromContext_None(t *testing.T) {
 }
 
 func Test_TokenFromContext(t *testing.T) {
-	app := fiber.New()
-	// Wire up keyauth middleware to set TokenFromContext now
-	app.Use(New(Config{
-		KeyLookup:  "header:Authorization",
-		AuthScheme: "Basic",
-		Validator: func(_ fiber.Ctx, key string) (bool, error) {
-			if key == CorrectKey {
-				return true, nil
-			}
-			return false, ErrMissingOrMalformedAPIKey
-		},
-	}))
-	// Define a test handler that checks TokenFromContext
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString(TokenFromContext(c))
+	// Test that TokenFromContext returns the correct token
+	t.Run("fiber.Ctx", func(t *testing.T) {
+		app := fiber.New()
+		app.Use(New(Config{
+			KeyLookup:  "header:Authorization",
+			AuthScheme: "Basic",
+			Validator: func(_ fiber.Ctx, key string) (bool, error) {
+				if key == CorrectKey {
+					return true, nil
+				}
+				return false, ErrMissingOrMalformedAPIKey
+			},
+		}))
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString(TokenFromContext(c))
+		})
+
+		req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+		req.Header.Add("Authorization", "Basic "+CorrectKey)
+		res, err := app.Test(req)
+		require.NoError(t, err)
+
+		body, err := io.ReadAll(res.Body)
+		require.NoError(t, err)
+		require.Equal(t, CorrectKey, string(body))
 	})
 
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
-	req.Header.Add("Authorization", "Basic "+CorrectKey)
-	// Send
-	res, err := app.Test(req)
-	require.NoError(t, err)
+	t.Run("context.Context", func(t *testing.T) {
+		app := fiber.New()
+		app.Use(New(Config{
+			KeyLookup:  "header:Authorization",
+			AuthScheme: "Basic",
+			Validator: func(_ fiber.Ctx, key string) (bool, error) {
+				if key == CorrectKey {
+					return true, nil
+				}
+				return false, ErrMissingOrMalformedAPIKey
+			},
+		}))
+		// Verify that TokenFromContext works with context.Context
+		app.Get("/", func(c fiber.Ctx) error {
+			ctx := c.Context()
+			token := TokenFromContext(ctx)
+			return c.SendString(token)
+		})
 
-	// Read the response body into a string
-	body, err := io.ReadAll(res.Body)
-	require.NoError(t, err)
-	require.Equal(t, CorrectKey, string(body))
+		req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+		req.Header.Add("Authorization", "Basic "+CorrectKey)
+		res, err := app.Test(req)
+		require.NoError(t, err)
+
+		body, err := io.ReadAll(res.Body)
+		require.NoError(t, err)
+		require.Equal(t, CorrectKey, string(body))
+	})
+
+	t.Run("invalid context type", func(t *testing.T) {
+		require.Panics(t, func() {
+			_ = TokenFromContext("invalid")
+		})
+	})
 }
 
 func Test_AuthSchemeToken(t *testing.T) {
