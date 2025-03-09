@@ -170,7 +170,7 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 		patternPretty = utils.TrimRight(patternPretty, '/')
 	}
 
-	parser := routerParserPool.Get().(*routeParser)
+	parser, _ := routerParserPool.Get().(*routeParser) //nolint:errcheck // only contains routeParser
 	parser.reset()
 	parser.parseRoute(string(patternPretty))
 	defer routerParserPool.Put(parser)
@@ -312,7 +312,7 @@ func (*routeParser) analyseConstantPart(pattern string, nextParamPosition int) (
 }
 
 // analyseParameterPart find the parameter end and create the route segment
-func (routeParser *routeParser) analyseParameterPart(pattern string, customConstraints ...CustomConstraint) (int, *routeSegment) {
+func (parser *routeParser) analyseParameterPart(pattern string, customConstraints ...CustomConstraint) (int, *routeSegment) {
 	isWildCard := pattern[0] == wildcardParam
 	isPlusParam := pattern[0] == plusParam
 
@@ -399,11 +399,11 @@ func (routeParser *routeParser) analyseParameterPart(pattern string, customConst
 
 	// add access iterator to wildcard and plus
 	if isWildCard {
-		routeParser.wildCardCount++
-		paramName += strconv.Itoa(routeParser.wildCardCount)
+		parser.wildCardCount++
+		paramName += strconv.Itoa(parser.wildCardCount)
 	} else if isPlusParam {
-		routeParser.plusCount++
-		paramName += strconv.Itoa(routeParser.plusCount)
+		parser.plusCount++
+		paramName += strconv.Itoa(parser.plusCount)
 	}
 
 	segment := &routeSegment{
@@ -487,9 +487,9 @@ func splitNonEscaped(s, sep string) []string {
 }
 
 // getMatch parses the passed url and tries to match it against the route segments and determine the parameter positions
-func (routeParser *routeParser) getMatch(detectionPath, path string, params *[maxParams]string, partialCheck bool) bool { //nolint: revive // Accepting a bool param is fine here
+func (parser *routeParser) getMatch(detectionPath, path string, params *[maxParams]string, partialCheck bool) bool { //nolint: revive // Accepting a bool param is fine here
 	var i, paramsIterator, partLen int
-	for _, segment := range routeParser.segs {
+	for _, segment := range parser.segs {
 		partLen = len(detectionPath)
 		// check const segment
 		if !segment.IsParam {
