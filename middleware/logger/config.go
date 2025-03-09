@@ -20,8 +20,8 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c fiber.Ctx) bool
 
-	// Filter is a function that is called before writing the log string.
-	// If it returns true, the log will be written; otherwise, it will be skipped.
+	// Filter is a function that is called before writing the log string to Output,
+	// If it returns true, the log will be skipped; otherwise, the log will be written.
 	//
 	// Optional. Default: nil
 	Filter func(c fiber.Ctx) bool

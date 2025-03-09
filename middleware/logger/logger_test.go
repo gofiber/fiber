@@ -182,11 +182,10 @@ func Test_Logger_Filter(t *testing.T) {
 
 		logOutput := bytes.Buffer{}
 
-		// Create a single logging middleware with both filter and output capture
+		// Return true to skip logging for all requests != 404
 		app.Use(New(Config{
 			Filter: func(c fiber.Ctx) bool {
-				// log status code == 404
-				return c.Response().StatusCode() == fiber.StatusNotFound
+				return c.Response().StatusCode() != fiber.StatusNotFound
 			},
 			Output: &logOutput,
 		}))
@@ -195,7 +194,7 @@ func Test_Logger_Filter(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 
-		// Verify the log output contains the "404" message
+		// Expect logs for the 404 request
 		require.Contains(t, logOutput.String(), "404")
 	})
 
@@ -205,11 +204,10 @@ func Test_Logger_Filter(t *testing.T) {
 
 		logOutput := bytes.Buffer{}
 
-		// Create a single logging middleware with both filter and output capture
+		// Return true to skip logging for all requests == 200
 		app.Use(New(Config{
 			Filter: func(c fiber.Ctx) bool {
-				// log status code != 200
-				return c.Response().StatusCode() != fiber.StatusOK
+				return c.Response().StatusCode() == fiber.StatusOK
 			},
 			Output: &logOutput,
 		}))
@@ -222,8 +220,95 @@ func Test_Logger_Filter(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
-		// Verify the log output does not contain the "200" message
+		// We skip logging for status == 200, so "200" should not appear
 		require.NotContains(t, logOutput.String(), "200")
+	})
+
+	t.Run("Always Skip", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+
+		logOutput := bytes.Buffer{}
+
+		// Filter always returns true => skip all logs
+		app.Use(New(Config{
+			Filter: func(_ fiber.Ctx) bool {
+				return true // always skip
+			},
+			Output: &logOutput,
+		}))
+
+		app.Get("/something", func(c fiber.Ctx) error {
+			return c.Status(fiber.StatusTeapot).SendString("I'm a teapot")
+		})
+
+		_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/something", nil))
+		require.NoError(t, err)
+
+		// Expect NO logs
+		require.Empty(t, logOutput.String())
+	})
+
+	t.Run("Never Skip", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+
+		logOutput := bytes.Buffer{}
+
+		// Filter always returns false => never skip logs
+		app.Use(New(Config{
+			Filter: func(_ fiber.Ctx) bool {
+				return false // never skip
+			},
+			Output: &logOutput,
+		}))
+
+		app.Get("/always", func(c fiber.Ctx) error {
+			return c.Status(fiber.StatusTeapot).SendString("Teapot again")
+		})
+
+		_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/always", nil))
+		require.NoError(t, err)
+
+		// Expect some logging - check any substring
+		require.Contains(t, logOutput.String(), strconv.Itoa(fiber.StatusTeapot))
+	})
+
+	t.Run("Skip /healthz", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+
+		logOutput := bytes.Buffer{}
+
+		// Filter returns true (skip logs) if the request path is /healthz
+		app.Use(New(Config{
+			Filter: func(c fiber.Ctx) bool {
+				return c.Path() == "/healthz"
+			},
+			Output: &logOutput,
+		}))
+
+		// Normal route
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString("Hello World!")
+		})
+		// Health route
+		app.Get("/healthz", func(c fiber.Ctx) error {
+			return c.SendString("OK")
+		})
+
+		// Request to "/" -> should be logged
+		_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+		require.NoError(t, err)
+		require.Contains(t, logOutput.String(), "200")
+
+		// Reset output buffer
+		logOutput.Reset()
+
+		// Request to "/healthz" -> should be skipped
+		_, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/healthz", nil))
+		require.NoError(t, err)
+		require.Empty(t, logOutput.String())
 	})
 }
 

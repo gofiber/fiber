@@ -912,7 +912,7 @@ func main() {
 
 </details>
 
-The `Filter` is a function that is called before the log string for a request is written to Output. If it returns true, the log will be written; otherwise, it will be skipped.
+The `Filter` is a function that is called before writing the log string to `Output`. If it returns true, the log will be skipped; otherwise, the log will be written.
 
 <details>
 <summary>Example</summary>
@@ -920,22 +920,17 @@ The `Filter` is a function that is called before the log string for a request is
 ```go
 app.Use(logger.New(logger.Config{
     Filter: func(c fiber.Ctx) bool {
-        // log status code >= 400
-        return c.Response().StatusCode() >= fiber.StatusBadRequest
+        // Skip logging HTTP 200 requests
+        return c.Response().StatusCode() == fiber.StatusOK
     },
 }))
+```
 
+```go
 app.Use(logger.New(logger.Config{
     Filter: func(c fiber.Ctx) bool {
-        // log status code == 404
-        return c.Response().StatusCode() == fiber.StatusNotFound
-    },
-}))
-
-app.Use(logger.New(logger.Config{
-    Filter: func(c fiber.Ctx) bool {
-        // log status code != 200
-        return c.Response().StatusCode() != fiber.StatusOK
+        // Only log errors
+        return c.Response().StatusCode() < 400
     },
 }))
 ```
