@@ -15,10 +15,10 @@ import (
 
 // default logger for fiber
 func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
-	// Check if Filter is defined and call it.
-	// Now, if Filter(c) == true, we SKIP logging:
+	// Check if Skip is defined and call it.
+	// Now, if Skip(c) == true, we SKIP logging:
 	if cfg.Skip != nil && cfg.Skip(c) {
-		return nil // Skip logging if Filter returns true
+		return nil // Skip logging if Skip returns true
 	}
 
 	// Alias colors
