@@ -10,21 +10,20 @@ import (
 
 // Config defines the config for middleware.
 type Config struct {
-	// Output is a writer where logs are written
+	// Stream is a writer where logs are written
 	//
 	// Default: os.Stdout
-	Output io.Writer
+	Stream io.Writer
 
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
 	Next func(c fiber.Ctx) bool
 
-	// Filter is a function that is called before writing the log string to Output,
-	// If it returns true, the log will be skipped; otherwise, the log will be written.
+	// Skip is a function to determine if logging is skipped or written to Stream.
 	//
 	// Optional. Default: nil
-	Filter func(c fiber.Ctx) bool
+	Skip func(c fiber.Ctx) bool
 
 	// Done is a function that is called after the log string for a request is written to Output,
 	// and pass the log string as parameter.
@@ -104,13 +103,13 @@ type LogFunc func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (in
 // ConfigDefault is the default config
 var ConfigDefault = Config{
 	Next:              nil,
-	Filter:            nil,
+	Skip:              nil,
 	Done:              nil,
 	Format:            defaultFormat,
 	TimeFormat:        "15:04:05",
 	TimeZone:          "Local",
 	TimeInterval:      500 * time.Millisecond,
-	Output:            os.Stdout,
+	Stream:            os.Stdout,
 	BeforeHandlerFunc: beforeHandlerFunc,
 	LoggerFunc:        defaultLoggerInstance,
 	enableColors:      true,
@@ -133,8 +132,8 @@ func configDefault(config ...Config) Config {
 	if cfg.Next == nil {
 		cfg.Next = ConfigDefault.Next
 	}
-	if cfg.Filter == nil {
-		cfg.Filter = ConfigDefault.Filter
+	if cfg.Skip == nil {
+		cfg.Skip = ConfigDefault.Skip
 	}
 	if cfg.Done == nil {
 		cfg.Done = ConfigDefault.Done
@@ -151,8 +150,8 @@ func configDefault(config ...Config) Config {
 	if int(cfg.TimeInterval) <= 0 {
 		cfg.TimeInterval = ConfigDefault.TimeInterval
 	}
-	if cfg.Output == nil {
-		cfg.Output = ConfigDefault.Output
+	if cfg.Stream == nil {
+		cfg.Stream = ConfigDefault.Stream
 	}
 
 	if cfg.BeforeHandlerFunc == nil {
@@ -164,7 +163,7 @@ func configDefault(config ...Config) Config {
 	}
 
 	// Enable colors if no custom format or output is given
-	if !cfg.DisableColors && cfg.Output == ConfigDefault.Output {
+	if !cfg.DisableColors && cfg.Stream == ConfigDefault.Stream {
 		cfg.enableColors = true
 	}
 

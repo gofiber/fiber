@@ -912,14 +912,14 @@ func main() {
 
 </details>
 
-The `Filter` is a function that is called before writing the log string to `Output`. If it returns true, the log will be skipped; otherwise, the log will be written.
+The `Skip` is a function to determine if logging is skipped or written to `Stream`.
 
 <details>
-<summary>Example</summary>
+<summary>Example Usage</summary>
 
 ```go
 app.Use(logger.New(logger.Config{
-    Filter: func(c fiber.Ctx) bool {
+    Skip: func(c fiber.Ctx) bool {
         // Skip logging HTTP 200 requests
         return c.Response().StatusCode() == fiber.StatusOK
     },
@@ -928,8 +928,8 @@ app.Use(logger.New(logger.Config{
 
 ```go
 app.Use(logger.New(logger.Config{
-    Filter: func(c fiber.Ctx) bool {
-        // Only log errors
+    Skip: func(c fiber.Ctx) bool {
+        // Only log errors, similar to an error.log
         return c.Response().StatusCode() < 400
     },
 }))
