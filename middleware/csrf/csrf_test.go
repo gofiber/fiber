@@ -1,6 +1,9 @@
 package csrf
 
 import (
+	"context"
+	"io"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -1561,6 +1564,180 @@ func Test_CSRF_FromContextMethods_Invalid(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
+// Test_CSRF_GoContext Test for getting token and handler from Go standard context
+func Test_CSRF_GoContext(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New())
+
+	app.Get("/", func(c fiber.Ctx) error {
+		// Get token and handler from fiber.Ctx
+		fiberToken := TokenFromContext(c)
+		fiberHandler := HandlerFromContext(c)
+		require.NotEmpty(t, fiberToken)
+		require.NotNil(t, fiberHandler)
+
+		// Get token and handle from context.Contextr
+		goCtx := c.Context()
+		goToken := TokenFromContext(goCtx)
+		goHandler := HandlerFromContext(goCtx)
+
+		// Verify that the data obtained in both ways is consistent
+		require.Equal(t, fiberToken, goToken)
+		require.Equal(t, fiberHandler, goHandler)
+
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
+// Test_CSRF_UnsupportedContext Test for passing in unsupported context types
+func Test_CSRF_UnsupportedContext(t *testing.T) {
+	t.Parallel()
+
+	// Using unsupported context types
+	invalidCtx := "not a context"
+
+	token := TokenFromContext(invalidCtx)
+	require.Empty(t, token)
+
+	handler := HandlerFromContext(invalidCtx)
+	require.Nil(t, handler)
+}
+
+// Test_CSRF_ServiceLayer Testing the use of Go standard contexts in the service layer
+func Test_CSRF_ServiceLayer(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New())
+
+	app.Get("/service", func(c fiber.Ctx) error {
+		// Simulate passing context to a service layer function
+		result := simulateServiceLayer(c.Context())
+		return c.SendString(result)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/service", nil))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "Token found in service layer", string(body))
+}
+
+// simulateServiceLayer Simulates a service layer function that requires access to a CSRF token
+func simulateServiceLayer(ctx context.Context) string {
+	token := TokenFromContext(ctx)
+	if token == "" {
+		return "No token found in service layer"
+	}
+	return "Token found in service layer"
+}
+
+// Test_CSRF_TokenConsistency Test for token consistency over the request cycle
+func Test_CSRF_TokenConsistency(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	var fiberCtxToken string
+	var goCtxToken string
+
+	// First middleware, logging tokens in advance
+	app.Use(func(c fiber.Ctx) error {
+		c.Locals("before_middleware", true)
+		return c.Next()
+	})
+
+	// CSRF middleware
+	app.Use(New())
+
+	// Third middleware, check tokens
+	app.Use(func(c fiber.Ctx) error {
+		// Check that the token is set correctly
+		fiberCtxToken = TokenFromContext(c)
+		goCtxToken = TokenFromContext(c.Context())
+
+		require.NotEmpty(t, fiberCtxToken)
+		require.Equal(t, fiberCtxToken, goCtxToken)
+
+		return c.Next()
+	})
+
+	app.Get("/", func(c fiber.Ctx) error {
+		// Verify that the token in the route processor matches the one in the middleware
+		routeToken := TokenFromContext(c)
+		require.Equal(t, fiberCtxToken, routeToken)
+
+		routeGoToken := TokenFromContext(c.Context())
+		require.Equal(t, goCtxToken, routeGoToken)
+
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
+// Test_CSRF_CrossRequest Testing cross-request token passing
+func Test_CSRF_CrossRequest(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New())
+
+	app.Get("/token", func(c fiber.Ctx) error {
+		token := TokenFromContext(c)
+		require.NotEmpty(t, token)
+		return c.SendString(token)
+	})
+
+	app.Post("/verify", func(c fiber.Ctx) error {
+		token := TokenFromContext(c)
+		require.NotEmpty(t, token)
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	// Get token
+	getReq := httptest.NewRequest(fiber.MethodGet, "/token", nil)
+	resp, err := app.Test(getReq)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	token := string(body)
+	require.NotEmpty(t, token)
+
+	// Get cookie from response
+	var csrfCookie string
+	for _, cookie := range resp.Cookies() {
+		if cookie.Name == ConfigDefault.CookieName {
+			csrfCookie = cookie.Value
+			break
+		}
+	}
+	require.NotEmpty(t, csrfCookie)
+
+	// Validate token
+	postReq := httptest.NewRequest(fiber.MethodPost, "/verify", nil)
+	postReq.Header.Set(HeaderName, token)
+	postReq.AddCookie(&http.Cookie{
+		Name:  ConfigDefault.CookieName,
+		Value: csrfCookie,
+	})
+
+	resp, err = app.Test(postReq)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
