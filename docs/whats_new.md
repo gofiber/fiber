@@ -912,6 +912,31 @@ func main() {
 
 </details>
 
+The `Skip` is a function to determine if logging is skipped or written to `Stream`.
+
+<details>
+<summary>Example Usage</summary>
+
+```go
+app.Use(logger.New(logger.Config{
+    Skip: func(c fiber.Ctx) bool {
+        // Skip logging HTTP 200 requests
+        return c.Response().StatusCode() == fiber.StatusOK
+    },
+}))
+```
+
+```go
+app.Use(logger.New(logger.Config{
+    Skip: func(c fiber.Ctx) bool {
+        // Only log errors, similar to an error.log
+        return c.Response().StatusCode() < 400
+    },
+}))
+```
+
+</details>
+
 ### Filesystem
 
 We've decided to remove filesystem middleware to clear up the confusion between static and filesystem middleware.
