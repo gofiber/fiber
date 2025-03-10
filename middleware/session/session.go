@@ -2,6 +2,7 @@ package session
 
 import (
 	"bytes"
+	"context"
 	"encoding/gob"
 	"fmt"
 	"sync"
@@ -28,6 +29,15 @@ type absExpirationKeyType int
 const (
 	// sessionIDContextKey is the key used to store the session ID in the context locals.
 	absExpirationKey absExpirationKeyType = iota
+)
+
+// The contextKey type is unexported to prevent collisions with context keys defined in
+// other packages.
+type contextKey int
+
+const (
+	// sessionContextKey is the key used to store the *Session in the Go context.
+	sessionContextKey contextKey = iota
 )
 
 // Session pool for reusing byte buffers.
@@ -510,4 +520,16 @@ func (s *Session) isAbsExpired() bool {
 //	s.setExpiration(time.Now().Add(time.Hour))
 func (s *Session) setAbsExpiration(absExpiration time.Time) {
 	s.Set(absExpirationKey, absExpiration)
+}
+
+// FromGoContext returns the Session from the go context.
+// If there is no session, nil is returned.
+func FromGoContext(ctx context.Context) *Session {
+	if ctx == nil {
+		return nil
+	}
+	if sess, ok := ctx.Value(sessionContextKey).(*Session); ok {
+		return sess
+	}
+	return nil
 }

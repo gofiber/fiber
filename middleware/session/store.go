@@ -100,7 +100,12 @@ func (s *Store) Get(c fiber.Ctx) (*Session, error) {
 		return nil, ErrSessionAlreadyLoadedByMiddleware
 	}
 
-	return s.getSession(c)
+	sess, err := s.getSession(c)
+	if err != nil {
+		return nil, err
+	}
+
+	return sess, nil
 }
 
 // getSession retrieves a session based on the context.
