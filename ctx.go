@@ -1349,7 +1349,7 @@ func (c *DefaultCtx) getLocationFromRoute(route Route, params Map) (string, erro
 
 		for key, val := range params {
 			isSame := key == segment.ParamName || (!c.app.config.CaseSensitive && utils.EqualFold(key, segment.ParamName))
-			isGreedy := segment.IsGreedy && len(key) == 1 && isInCharset(key[0], greedyParameters)
+			isGreedy := segment.IsGreedy && len(key) == 1 && bytes.IndexByte(greedyParameters, key[0]) != -1
 			if isSame || isGreedy {
 				_, err := buf.WriteString(utils.ToString(val))
 				if err != nil {
