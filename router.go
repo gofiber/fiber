@@ -358,12 +358,6 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 			panic(fmt.Sprintf("add: invalid http method %s\n", method))
 		}
 
-		// Duplicate Route Handling
-		if app.routeExists(method, pathRaw) {
-			matchPathFunc := func(r *Route) bool { return r.Path == pathRaw }
-			app.deleteRoute([]string{method}, matchPathFunc)
-		}
-
 		isUse := method == methodUse
 		isStar := pathClean == "/*"
 		isRoot := pathClean == "/"
@@ -402,27 +396,32 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 	}
 }
 
-func (app *App) routeExists(method, pathRaw string) bool {
-	pathToCheck := pathRaw
-	if !app.config.CaseSensitive {
-		pathToCheck = utils.ToLower(pathToCheck)
+func (app *App) normalizePath(path string) string {
+	if path == "" {
+		path = "/"
 	}
-
-	return slices.ContainsFunc(app.stack[app.methodInt(method)], func(r *Route) bool {
-		routePath := r.path
-		if !app.config.CaseSensitive {
-			routePath = utils.ToLower(routePath)
-		}
-
-		return routePath == pathToCheck
-	})
+	if path[0] != '/' {
+		path = "/" + path
+	}
+	if !app.config.CaseSensitive {
+		path = utils.ToLower(path)
+	}
+	if !app.config.StrictRouting && len(path) > 1 {
+		path = utils.TrimRight(path, '/')
+	}
+	return RemoveEscapeChar(path)
 }
 
 // RemoveRoute is used to remove a route from the stack by path.
 // This only needs to be called to remove a route, route registration prevents duplicate routes.
 // You should call RebuildTree after using this to ensure consistency of the tree.
 func (app *App) RemoveRoute(path string, methods ...string) {
-	pathMatchFunc := func(r *Route) bool { return r.Path == path }
+	// Normalize same as register uses
+	norm := app.normalizePath(path)
+
+	pathMatchFunc := func(r *Route) bool {
+		return r.path == norm // compare private normalized path
+	}
 	app.deleteRoute(methods, pathMatchFunc)
 }
 
@@ -472,7 +471,6 @@ func (app *App) addRoute(method string, route *Route, isMounted ...bool) {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
-	// Check mounted routes
 	var mounted bool
 	if len(isMounted) > 0 {
 		mounted = isMounted[0]
@@ -481,19 +479,40 @@ func (app *App) addRoute(method string, route *Route, isMounted ...bool) {
 	// Get unique HTTP method identifier
 	m := app.methodInt(method)
 
-	// prevent identically route registration
-	l := len(app.stack[m])
-	if l > 0 && app.stack[m][l-1].Path == route.Path && route.use == app.stack[m][l-1].use && !route.mount && !app.stack[m][l-1].mount {
-		preRoute := app.stack[m][l-1]
-		preRoute.Handlers = append(preRoute.Handlers, route.Handlers...)
-	} else {
-		// Increment global route position
-		route.pos = atomic.AddUint32(&app.routesCount, 1)
-		route.Method = method
-		// Add route to the stack
-		app.stack[m] = append(app.stack[m], route)
-		app.routesRefreshed = true
+	// Check for an existing route with the same normalized path,
+	// same "use" flag, mount flag, and method.
+	// If found, replace the old route with the new one.
+	for i, existing := range app.stack[m] {
+		if existing.path == route.path &&
+			existing.use == route.use &&
+			existing.mount == route.mount &&
+			existing.Method == route.Method {
+			if route.use { // middleware: merge handlers instead of replacing
+				app.stack[m][i].Handlers = append(existing.Handlers, route.Handlers...) //nolint:gocritic // Not a concern
+			} else {
+				// For non-middleware routes, replace as before
+				atomic.AddUint32(&app.handlersCount, ^uint32(len(existing.Handlers)-1)) //nolint:gosec // Not a concern
+				route.pos = existing.pos
+				app.stack[m][i] = route
+			}
+			app.routesRefreshed = true
+			if !mounted {
+				app.latestRoute = route
+				if err := app.hooks.executeOnRouteHooks(*route); err != nil {
+					panic(err)
+				}
+			}
+			return
+		}
 	}
+
+	// No duplicate route exists; add the new route normally.
+	route.pos = atomic.AddUint32(&app.routesCount, 1)
+	route.Method = method
+
+	// Add route to the stack
+	app.stack[m] = append(app.stack[m], route)
+	app.routesRefreshed = true
 
 	// Execute onRoute hooks & change latestRoute if not adding mounted route
 	if !mounted {
