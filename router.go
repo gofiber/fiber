@@ -338,6 +338,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 	if pathRaw[0] != '/' {
 		pathRaw = "/" + pathRaw
 	}
+
 	pathPretty := pathRaw
 	if !app.config.CaseSensitive {
 		pathPretty = utils.ToLower(pathPretty)
@@ -345,17 +346,22 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 	if !app.config.StrictRouting && len(pathPretty) > 1 {
 		pathPretty = utils.TrimRight(pathPretty, '/')
 	}
-	pathClean := RemoveEscapeChar(pathPretty)
 
+	pathClean := RemoveEscapeChar(pathPretty)
 	parsedRaw := parseRoute(pathRaw, app.customConstraints...)
 	parsedPretty := parseRoute(pathPretty, app.customConstraints...)
-
 	isMount := group != nil && group.app != app
 
 	for _, method := range methods {
 		method = utils.ToUpper(method)
 		if method != methodUse && app.methodInt(method) == -1 {
 			panic(fmt.Sprintf("add: invalid http method %s\n", method))
+		}
+
+		// Duplicate Route Handling
+		if app.routeExists(method, pathRaw) {
+			matchPathFunc := func(r *Route) bool { return r.Path == pathRaw }
+			app.deleteRoute([]string{method}, matchPathFunc)
 		}
 
 		isUse := method == methodUse
