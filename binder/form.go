@@ -1,8 +1,7 @@
 package binder
 
 import (
-	"reflect"
-	"strings"
+	"mime/multipart"
 
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
@@ -37,19 +36,7 @@ func (b *FormBinding) Bind(req *fasthttp.Request, out any) error {
 
 		k := utils.UnsafeString(key)
 		v := utils.UnsafeString(val)
-
-		if strings.Contains(k, "[") {
-			k, err = parseParamSquareBrackets(k)
-		}
-
-		if b.EnableSplitting && strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
-			values := strings.Split(v, ",")
-			for i := 0; i < len(values); i++ {
-				data[k] = append(data[k], values[i])
-			}
-		} else {
-			data[k] = append(data[k], v)
-		}
+		err = formatBindData(out, data, k, v, b.EnableSplitting, true)
 	})
 
 	if err != nil {
@@ -61,12 +48,28 @@ func (b *FormBinding) Bind(req *fasthttp.Request, out any) error {
 
 // bindMultipart parses the request body and returns the result.
 func (b *FormBinding) bindMultipart(req *fasthttp.Request, out any) error {
-	data, err := req.MultipartForm()
+	multipartForm, err := req.MultipartForm()
 	if err != nil {
 		return err
 	}
 
-	return parse(b.Name(), out, data.Value)
+	data := make(map[string][]string)
+	for key, values := range multipartForm.Value {
+		err = formatBindData(out, data, key, values, b.EnableSplitting, true)
+		if err != nil {
+			return err
+		}
+	}
+
+	files := make(map[string][]*multipart.FileHeader)
+	for key, values := range multipartForm.File {
+		err = formatBindData(out, files, key, values, b.EnableSplitting, true)
+		if err != nil {
+			return err
+		}
+	}
+
+	return parse(b.Name(), out, data, files)
 }
 
 // Reset resets the FormBinding binder.

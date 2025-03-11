@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"mime/multipart"
 	"net/http/httptest"
 	"reflect"
 	"testing"
@@ -886,7 +887,8 @@ func Test_Bind_Body(t *testing.T) {
 	reqBody := []byte(`{"name":"john"}`)
 
 	type Demo struct {
-		Name string `json:"name" xml:"name" form:"name" query:"name"`
+		Name  string   `json:"name" xml:"name" form:"name" query:"name"`
+		Names []string `json:"names" xml:"names" form:"names" query:"names"`
 	}
 
 	// Helper function to test compressed bodies
@@ -995,6 +997,48 @@ func Test_Bind_Body(t *testing.T) {
 	type CollectionQuery struct {
 		Data []Demo `query:"data"`
 	}
+
+	t.Run("MultipartCollectionQueryDotNotation", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().Reset()
+
+		buf := &bytes.Buffer{}
+		writer := multipart.NewWriter(buf)
+		require.NoError(t, writer.WriteField("data.0.name", "john"))
+		require.NoError(t, writer.WriteField("data.1.name", "doe"))
+		require.NoError(t, writer.Close())
+
+		c.Request().Header.SetContentType(writer.FormDataContentType())
+		c.Request().SetBody(buf.Bytes())
+		c.Request().Header.SetContentLength(len(c.Body()))
+
+		cq := new(CollectionQuery)
+		require.NoError(t, c.Bind().Body(cq))
+		require.Len(t, cq.Data, 2)
+		require.Equal(t, "john", cq.Data[0].Name)
+		require.Equal(t, "doe", cq.Data[1].Name)
+	})
+
+	t.Run("MultipartCollectionQuerySquareBrackets", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().Reset()
+
+		buf := &bytes.Buffer{}
+		writer := multipart.NewWriter(buf)
+		require.NoError(t, writer.WriteField("data[0][name]", "john"))
+		require.NoError(t, writer.WriteField("data[1][name]", "doe"))
+		require.NoError(t, writer.Close())
+
+		c.Request().Header.SetContentType(writer.FormDataContentType())
+		c.Request().SetBody(buf.Bytes())
+		c.Request().Header.SetContentLength(len(c.Body()))
+
+		cq := new(CollectionQuery)
+		require.NoError(t, c.Bind().Body(cq))
+		require.Len(t, cq.Data, 2)
+		require.Equal(t, "john", cq.Data[0].Name)
+		require.Equal(t, "doe", cq.Data[1].Name)
+	})
 
 	t.Run("CollectionQuerySquareBrackets", func(t *testing.T) {
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -1192,9 +1236,14 @@ func Benchmark_Bind_Body_MultipartForm(b *testing.B) {
 		Name string `form:"name"`
 	}
 
-	body := []byte("--b\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\njohn\r\n--b--")
+	buf := &bytes.Buffer{}
+	writer := multipart.NewWriter(buf)
+	require.NoError(b, writer.WriteField("name", "john"))
+	require.NoError(b, writer.Close())
+	body := buf.Bytes()
+
 	c.Request().SetBody(body)
-	c.Request().Header.SetContentType(MIMEMultipartForm + `;boundary="b"`)
+	c.Request().Header.SetContentType(MIMEMultipartForm + `;boundary=` + writer.Boundary())
 	c.Request().Header.SetContentLength(len(body))
 	d := new(Demo)
 
@@ -1204,8 +1253,56 @@ func Benchmark_Bind_Body_MultipartForm(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		err = c.Bind().Body(d)
 	}
+
 	require.NoError(b, err)
 	require.Equal(b, "john", d.Name)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Bind_Body_MultipartForm_Nested -benchmem -count=4
+func Benchmark_Bind_Body_MultipartForm_Nested(b *testing.B) {
+	var err error
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	type Person struct {
+		Name string `form:"name"`
+		Age  int    `form:"age"`
+	}
+
+	type Demo struct {
+		Name    string   `form:"name"`
+		Persons []Person `form:"persons"`
+	}
+
+	buf := &bytes.Buffer{}
+	writer := multipart.NewWriter(buf)
+	require.NoError(b, writer.WriteField("name", "john"))
+	require.NoError(b, writer.WriteField("persons.0.name", "john"))
+	require.NoError(b, writer.WriteField("persons[0][age]", "10"))
+	require.NoError(b, writer.WriteField("persons[1][name]", "doe"))
+	require.NoError(b, writer.WriteField("persons.1.age", "20"))
+	require.NoError(b, writer.Close())
+	body := buf.Bytes()
+
+	c.Request().SetBody(body)
+	c.Request().Header.SetContentType(MIMEMultipartForm + `;boundary=` + writer.Boundary())
+	c.Request().Header.SetContentLength(len(body))
+	d := new(Demo)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		err = c.Bind().Body(d)
+	}
+
+	require.NoError(b, err)
+	require.Equal(b, "john", d.Name)
+	require.Equal(b, "john", d.Persons[0].Name)
+	require.Equal(b, 10, d.Persons[0].Age)
+	require.Equal(b, "doe", d.Persons[1].Name)
+	require.Equal(b, 20, d.Persons[1].Age)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Bind_Body_Form_Map -benchmem -count=4

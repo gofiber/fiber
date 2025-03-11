@@ -15,6 +15,12 @@ import (
 
 // default logger for fiber
 func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
+	// Check if Skip is defined and call it.
+	// Now, if Skip(c) == true, we SKIP logging:
+	if cfg.Skip != nil && cfg.Skip(c) {
+		return nil // Skip logging if Skip returns true
+	}
+
 	// Alias colors
 	colors := c.App().Config().ColorScheme
 
@@ -91,7 +97,7 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 		}
 
 		// Write buffer to output
-		writeLog(cfg.Output, buf.Bytes())
+		writeLog(cfg.Stream, buf.Bytes())
 
 		if cfg.Done != nil {
 			cfg.Done(c, buf.Bytes())
@@ -125,7 +131,7 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 		buf.WriteString(err.Error())
 	}
 
-	writeLog(cfg.Output, buf.Bytes())
+	writeLog(cfg.Stream, buf.Bytes())
 
 	if cfg.Done != nil {
 		cfg.Done(c, buf.Bytes())
@@ -141,9 +147,9 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 func beforeHandlerFunc(cfg Config) {
 	// If colors are enabled, check terminal compatibility
 	if cfg.enableColors {
-		cfg.Output = colorable.NewColorableStdout()
+		cfg.Stream = colorable.NewColorableStdout()
 		if os.Getenv("TERM") == "dumb" || os.Getenv("NO_COLOR") == "1" || (!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd())) {
-			cfg.Output = colorable.NewNonColorable(os.Stdout)
+			cfg.Stream = colorable.NewNonColorable(os.Stdout)
 		}
 	}
 }

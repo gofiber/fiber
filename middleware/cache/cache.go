@@ -35,17 +35,32 @@ const (
 	noStore = "no-store"
 )
 
-var ignoreHeaders = map[string]any{
-	"Connection":          nil,
-	"Keep-Alive":          nil,
-	"Proxy-Authenticate":  nil,
-	"Proxy-Authorization": nil,
-	"TE":                  nil,
-	"Trailers":            nil,
-	"Transfer-Encoding":   nil,
-	"Upgrade":             nil,
-	"Content-Type":        nil, // already stored explicitly by the cache manager
-	"Content-Encoding":    nil, // already stored explicitly by the cache manager
+var ignoreHeaders = map[string]struct{}{
+	"Connection":          {},
+	"Keep-Alive":          {},
+	"Proxy-Authenticate":  {},
+	"Proxy-Authorization": {},
+	"TE":                  {},
+	"Trailers":            {},
+	"Transfer-Encoding":   {},
+	"Upgrade":             {},
+	"Content-Type":        {}, // already stored explicitly by the cache manager
+	"Content-Encoding":    {}, // already stored explicitly by the cache manager
+}
+
+var cacheableStatusCodes = map[int]bool{
+	fiber.StatusOK:                          true,
+	fiber.StatusNonAuthoritativeInformation: true,
+	fiber.StatusNoContent:                   true,
+	fiber.StatusPartialContent:              true,
+	fiber.StatusMultipleChoices:             true,
+	fiber.StatusMovedPermanently:            true,
+	fiber.StatusNotFound:                    true,
+	fiber.StatusMethodNotAllowed:            true,
+	fiber.StatusGone:                        true,
+	fiber.StatusRequestURITooLong:           true,
+	fiber.StatusTeapot:                      true,
+	fiber.StatusNotImplemented:              true,
 }
 
 // New creates a new middleware handler
@@ -168,6 +183,12 @@ func New(config ...Config) fiber.Handler {
 		// Continue stack, return err to Fiber if exist
 		if err := c.Next(); err != nil {
 			return err
+		}
+
+		// Don't cache response if status code is not cacheable
+		if !cacheableStatusCodes[c.Response().StatusCode()] {
+			c.Set(cfg.CacheHeader, cacheUnreachable)
+			return nil
 		}
 
 		// lock entry back and unlock on finish

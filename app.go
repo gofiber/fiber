@@ -32,7 +32,7 @@ import (
 )
 
 // Version of current fiber package
-const Version = "3.0.0-beta.3"
+const Version = "3.0.0-beta.4"
 
 // Handler defines a function to serve HTTP requests.
 type Handler = func(Ctx) error
@@ -616,6 +616,10 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 // Note: It doesn't allow adding new methods, only customizing exist methods.
 func (app *App) NewCtxFunc(function func(app *App) CustomCtx) {
 	app.newCtxFunc = function
+
+	if app.server != nil {
+		app.server.Handler = app.customRequestHandler
+	}
 }
 
 // RegisterCustomConstraint allows to register custom constraint.
@@ -746,7 +750,7 @@ func (app *App) Use(args ...any) Router {
 			return app
 		}
 
-		app.register([]string{methodUse}, prefix, nil, nil, handlers...)
+		app.register([]string{methodUse}, prefix, nil, handlers...)
 	}
 
 	return app
@@ -754,67 +758,67 @@ func (app *App) Use(args ...any) Router {
 
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
-func (app *App) Get(path string, handler Handler, middleware ...Handler) Router {
-	return app.Add([]string{MethodGet}, path, handler, middleware...)
+func (app *App) Get(path string, handler Handler, handlers ...Handler) Router {
+	return app.Add([]string{MethodGet}, path, handler, handlers...)
 }
 
 // Head registers a route for HEAD methods that asks for a response identical
 // to that of a GET request, but without the response body.
-func (app *App) Head(path string, handler Handler, middleware ...Handler) Router {
-	return app.Add([]string{MethodHead}, path, handler, middleware...)
+func (app *App) Head(path string, handler Handler, handlers ...Handler) Router {
+	return app.Add([]string{MethodHead}, path, handler, handlers...)
 }
 
 // Post registers a route for POST methods that is used to submit an entity to the
 // specified resource, often causing a change in state or side effects on the server.
-func (app *App) Post(path string, handler Handler, middleware ...Handler) Router {
-	return app.Add([]string{MethodPost}, path, handler, middleware...)
+func (app *App) Post(path string, handler Handler, handlers ...Handler) Router {
+	return app.Add([]string{MethodPost}, path, handler, handlers...)
 }
 
 // Put registers a route for PUT methods that replaces all current representations
 // of the target resource with the request payload.
-func (app *App) Put(path string, handler Handler, middleware ...Handler) Router {
-	return app.Add([]string{MethodPut}, path, handler, middleware...)
+func (app *App) Put(path string, handler Handler, handlers ...Handler) Router {
+	return app.Add([]string{MethodPut}, path, handler, handlers...)
 }
 
 // Delete registers a route for DELETE methods that deletes the specified resource.
-func (app *App) Delete(path string, handler Handler, middleware ...Handler) Router {
-	return app.Add([]string{MethodDelete}, path, handler, middleware...)
+func (app *App) Delete(path string, handler Handler, handlers ...Handler) Router {
+	return app.Add([]string{MethodDelete}, path, handler, handlers...)
 }
 
 // Connect registers a route for CONNECT methods that establishes a tunnel to the
 // server identified by the target resource.
-func (app *App) Connect(path string, handler Handler, middleware ...Handler) Router {
-	return app.Add([]string{MethodConnect}, path, handler, middleware...)
+func (app *App) Connect(path string, handler Handler, handlers ...Handler) Router {
+	return app.Add([]string{MethodConnect}, path, handler, handlers...)
 }
 
 // Options registers a route for OPTIONS methods that is used to describe the
 // communication options for the target resource.
-func (app *App) Options(path string, handler Handler, middleware ...Handler) Router {
-	return app.Add([]string{MethodOptions}, path, handler, middleware...)
+func (app *App) Options(path string, handler Handler, handlers ...Handler) Router {
+	return app.Add([]string{MethodOptions}, path, handler, handlers...)
 }
 
 // Trace registers a route for TRACE methods that performs a message loop-back
 // test along the path to the target resource.
-func (app *App) Trace(path string, handler Handler, middleware ...Handler) Router {
-	return app.Add([]string{MethodTrace}, path, handler, middleware...)
+func (app *App) Trace(path string, handler Handler, handlers ...Handler) Router {
+	return app.Add([]string{MethodTrace}, path, handler, handlers...)
 }
 
 // Patch registers a route for PATCH methods that is used to apply partial
 // modifications to a resource.
-func (app *App) Patch(path string, handler Handler, middleware ...Handler) Router {
-	return app.Add([]string{MethodPatch}, path, handler, middleware...)
+func (app *App) Patch(path string, handler Handler, handlers ...Handler) Router {
+	return app.Add([]string{MethodPatch}, path, handler, handlers...)
 }
 
 // Add allows you to specify multiple HTTP methods to register a route.
-func (app *App) Add(methods []string, path string, handler Handler, middleware ...Handler) Router {
-	app.register(methods, path, nil, handler, middleware...)
+func (app *App) Add(methods []string, path string, handler Handler, handlers ...Handler) Router {
+	app.register(methods, path, nil, append([]Handler{handler}, handlers...)...)
 
 	return app
 }
 
 // All will register the handler on all HTTP methods
-func (app *App) All(path string, handler Handler, middleware ...Handler) Router {
-	return app.Add(app.config.RequestMethods, path, handler, middleware...)
+func (app *App) All(path string, handler Handler, handlers ...Handler) Router {
+	return app.Add(app.config.RequestMethods, path, handler, handlers...)
 }
 
 // Group is used for Routes with common prefix to define a new sub-router with optional middleware.
@@ -824,7 +828,7 @@ func (app *App) All(path string, handler Handler, middleware ...Handler) Router 
 func (app *App) Group(prefix string, handlers ...Handler) Router {
 	grp := &Group{Prefix: prefix, app: app}
 	if len(handlers) > 0 {
-		app.register([]string{methodUse}, prefix, grp, nil, handlers...)
+		app.register([]string{methodUse}, prefix, grp, handlers...)
 	}
 	if err := app.hooks.executeOnGroupHooks(*grp); err != nil {
 		panic(err)
@@ -868,7 +872,11 @@ func (app *App) Config() Config {
 func (app *App) Handler() fasthttp.RequestHandler { //revive:disable-line:confusing-naming // Having both a Handler() (uppercase) and a handler() (lowercase) is fine. TODO: Use nolint:revive directive instead. See https://github.com/golangci/golangci-lint/issues/3476
 	// prepare the server for the start
 	app.startupProcess()
-	return app.requestHandler
+
+	if app.newCtxFunc != nil {
+		return app.customRequestHandler
+	}
+	return app.defaultRequestHandler
 }
 
 // Stack returns the raw router stack.
@@ -885,6 +893,13 @@ func (app *App) HandlersCount() uint32 {
 // Shutdown works by first closing all open listeners and then waiting indefinitely for all connections to return to idle before shutting down.
 //
 // Make sure the program doesn't exit and waits instead for Shutdown to return.
+//
+// Important: app.Listen() must be called in a separate goroutine, otherwise shutdown hooks will not work
+// as Listen() is a blocking operation. Example:
+//
+//	go app.Listen(":3000")
+//	// ...
+//	app.Shutdown()
 //
 // Shutdown does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
 func (app *App) Shutdown() error {
@@ -910,17 +925,21 @@ func (app *App) ShutdownWithTimeout(timeout time.Duration) error {
 //
 // ShutdownWithContext does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
 func (app *App) ShutdownWithContext(ctx context.Context) error {
-	if app.hooks != nil {
-		// TODO: check should be defered?
-		app.hooks.executeOnShutdownHooks()
-	}
-
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
+
+	var err error
+
 	if app.server == nil {
 		return ErrNotRunning
 	}
-	return app.server.ShutdownWithContext(ctx)
+
+	// Execute the Shutdown hook
+	app.hooks.executeOnPreShutdownHooks()
+	defer app.hooks.executeOnPostShutdownHooks(err)
+
+	err = app.server.ShutdownWithContext(ctx)
+	return err
 }
 
 // Server returns the underlying fasthttp server
@@ -932,6 +951,8 @@ func (app *App) Server() *fasthttp.Server {
 func (app *App) Hooks() *Hooks {
 	return app.hooks
 }
+
+var ErrTestGotEmptyResponse = errors.New("test: got empty response")
 
 // TestConfig is a struct holding Test settings
 type TestConfig struct {
@@ -984,7 +1005,7 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 	app.startupProcess()
 
 	// Serve conn to server
-	channel := make(chan error)
+	channel := make(chan error, 1)
 	go func() {
 		var returned bool
 		defer func() {
@@ -1014,7 +1035,7 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 	}
 
 	// Check for errors
-	if err != nil && !errors.Is(err, fasthttp.ErrGetOnly) {
+	if err != nil && !errors.Is(err, fasthttp.ErrGetOnly) && !errors.Is(err, errTestConnClosed) {
 		return nil, err
 	}
 
@@ -1025,7 +1046,7 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 	res, err := http.ReadResponse(buffer, req)
 	if err != nil {
 		if errors.Is(err, io.ErrUnexpectedEOF) {
-			return nil, errors.New("test: got empty response")
+			return nil, ErrTestGotEmptyResponse
 		}
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
@@ -1057,7 +1078,11 @@ func (app *App) init() *App {
 	}
 
 	// fasthttp server settings
-	app.server.Handler = app.requestHandler
+	if app.newCtxFunc != nil {
+		app.server.Handler = app.customRequestHandler
+	} else {
+		app.server.Handler = app.defaultRequestHandler
+	}
 	app.server.Name = app.config.ServerHeader
 	app.server.Concurrency = app.config.Concurrency
 	app.server.NoDefaultDate = app.config.DisableDefaultDate

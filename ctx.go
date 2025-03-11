@@ -54,6 +54,8 @@ type DefaultCtx struct {
 	fasthttp            *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	bind                *Bind                // Default bind reference
 	redirect            *Redirect            // Default redirect reference
+	req                 *DefaultReq          // Default request api reference
+	res                 *DefaultRes          // Default response api reference
 	values              [maxParams]string    // Route parameter values
 	viewBindMap         sync.Map             // Default view map to bind template engine
 	method              string               // HTTP method
@@ -1347,7 +1349,7 @@ func (c *DefaultCtx) getLocationFromRoute(route Route, params Map) (string, erro
 
 		for key, val := range params {
 			isSame := key == segment.ParamName || (!c.app.config.CaseSensitive && utils.EqualFold(key, segment.ParamName))
-			isGreedy := segment.IsGreedy && len(key) == 1 && isInCharset(key[0], greedyParameters)
+			isGreedy := segment.IsGreedy && len(key) == 1 && bytes.IndexByte(greedyParameters, key[0]) != -1
 			if isSame || isGreedy {
 				_, err := buf.WriteString(utils.ToString(val))
 				if err != nil {
@@ -1369,7 +1371,7 @@ func (c *DefaultCtx) GetRouteURL(routeName string, params Map) (string, error) {
 
 // Render a template with data and sends a text/html response.
 // We support the following engines: https://github.com/gofiber/template
-func (c *DefaultCtx) Render(name string, bind Map, layouts ...string) error {
+func (c *DefaultCtx) Render(name string, bind any, layouts ...string) error {
 	// Get new buffer from pool
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
@@ -1461,6 +1463,18 @@ func (c *DefaultCtx) renderExtensions(bind any) {
 	if len(c.app.mountFields.appListKeys) == 0 {
 		c.app.generateAppListKeys()
 	}
+}
+
+// Req returns a convenience type whose API is limited to operations
+// on the incoming request.
+func (c *DefaultCtx) Req() Req {
+	return c.req
+}
+
+// Res returns a convenience type whose API is limited to operations
+// on the outgoing response.
+func (c *DefaultCtx) Res() Res {
+	return c.res
 }
 
 // Route returns the matched Route struct.
@@ -1555,6 +1569,7 @@ func (c *DefaultCtx) SendFile(file string, config ...SendFile) error {
 			AcceptByteRange:        cfg.ByteRange,
 			Compress:               cfg.Compress,
 			CompressBrotli:         cfg.Compress,
+			CompressZstd:           cfg.Compress,
 			CompressedFileSuffixes: c.app.config.CompressedFileSuffixes,
 			CacheDuration:          cfg.CacheDuration,
 			SkipCache:              cfg.CacheDuration < 0,
@@ -1985,4 +2000,21 @@ func (c *DefaultCtx) setRoute(route *Route) {
 func (c *DefaultCtx) Drop() error {
 	//nolint:wrapcheck // error wrapping is avoided to keep the operation lightweight and focused on connection closure.
 	return c.RequestCtx().Conn().Close()
+}
+
+// End immediately flushes the current response and closes the underlying connection.
+func (c *DefaultCtx) End() error {
+	ctx := c.RequestCtx()
+	conn := ctx.Conn()
+
+	bw := bufio.NewWriter(conn)
+	if err := ctx.Response.Write(bw); err != nil {
+		return err
+	}
+
+	if err := bw.Flush(); err != nil {
+		return err //nolint:wrapcheck // unnecessary to wrap it
+	}
+
+	return conn.Close() //nolint:wrapcheck // unnecessary to wrap it
 }

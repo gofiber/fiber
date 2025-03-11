@@ -303,6 +303,26 @@ func Test_Utils_GetSplicedStrList(t *testing.T) {
 			headerValue:  "gzip,",
 			expectedList: []string{"gzip", ""},
 		},
+		{
+			description:  "has a space between words",
+			headerValue:  "  foo bar, hello  world",
+			expectedList: []string{"foo bar", "hello  world"},
+		},
+		{
+			description:  "single comma",
+			headerValue:  ",",
+			expectedList: []string{"", ""},
+		},
+		{
+			description:  "multiple comma",
+			headerValue:  ",,",
+			expectedList: []string{"", "", ""},
+		},
+		{
+			description:  "comma with space",
+			headerValue:  ",  ,",
+			expectedList: []string{"", "", ""},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -334,7 +354,6 @@ func Test_Utils_SortAcceptedTypes(t *testing.T) {
 		{spec: "text/html", quality: 1, specificity: 3, order: 0},
 		{spec: "text/*", quality: 0.5, specificity: 2, order: 1},
 		{spec: "*/*", quality: 0.1, specificity: 1, order: 2},
-		{spec: "application/json", quality: 0.999, specificity: 3, order: 3},
 		{spec: "application/xml", quality: 1, specificity: 3, order: 4},
 		{spec: "application/pdf", quality: 1, specificity: 3, order: 5},
 		{spec: "image/png", quality: 1, specificity: 3, order: 6},
@@ -343,8 +362,9 @@ func Test_Utils_SortAcceptedTypes(t *testing.T) {
 		{spec: "image/gif", quality: 1, specificity: 3, order: 9},
 		{spec: "text/plain", quality: 1, specificity: 3, order: 10},
 		{spec: "application/json", quality: 0.999, specificity: 3, params: headerParams{"a": []byte("1")}, order: 11},
+		{spec: "application/json", quality: 0.999, specificity: 3, order: 3},
 	}
-	sortAcceptedTypes(&acceptedTypes)
+	sortAcceptedTypes(acceptedTypes)
 	require.Equal(t, []acceptedType{
 		{spec: "text/html", quality: 1, specificity: 3, order: 0},
 		{spec: "application/xml", quality: 1, specificity: 3, order: 4},
@@ -370,7 +390,7 @@ func Benchmark_Utils_SortAcceptedTypes_Sorted(b *testing.B) {
 		acceptedTypes[0] = acceptedType{spec: "text/html", quality: 1, specificity: 1, order: 0}
 		acceptedTypes[1] = acceptedType{spec: "text/*", quality: 0.5, specificity: 1, order: 1}
 		acceptedTypes[2] = acceptedType{spec: "*/*", quality: 0.1, specificity: 1, order: 2}
-		sortAcceptedTypes(&acceptedTypes)
+		sortAcceptedTypes(acceptedTypes)
 	}
 	require.Equal(b, "text/html", acceptedTypes[0].spec)
 	require.Equal(b, "text/*", acceptedTypes[1].spec)
@@ -394,7 +414,7 @@ func Benchmark_Utils_SortAcceptedTypes_Unsorted(b *testing.B) {
 		acceptedTypes[8] = acceptedType{spec: "image/*", quality: 1, specificity: 2, order: 8}
 		acceptedTypes[9] = acceptedType{spec: "image/gif", quality: 1, specificity: 3, order: 9}
 		acceptedTypes[10] = acceptedType{spec: "text/plain", quality: 1, specificity: 3, order: 10}
-		sortAcceptedTypes(&acceptedTypes)
+		sortAcceptedTypes(acceptedTypes)
 	}
 	require.Equal(b, []acceptedType{
 		{spec: "text/html", quality: 1, specificity: 3, order: 0},
@@ -548,7 +568,7 @@ func Test_Utils_TestConn_Closed_Write(t *testing.T) {
 	// Close early, write should fail
 	conn.Close() //nolint:errcheck, revive // It is fine to ignore the error here
 	_, err = conn.Write([]byte("Response 2\n"))
-	require.Error(t, err)
+	require.ErrorIs(t, err, errTestConnClosed)
 
 	res := make([]byte, 11)
 	_, err = conn.w.Read(res)
@@ -625,13 +645,13 @@ func Benchmark_SlashRecognition(b *testing.B) {
 		}
 		require.True(b, result)
 	})
-	b.Run("IndexRune", func(b *testing.B) {
+	b.Run("strings.ContainsRune", func(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		result = false
 		c := int32(slashDelimiter)
 		for i := 0; i < b.N; i++ {
-			result = IndexRune(search, c)
+			result = strings.ContainsRune(search, c)
 		}
 		require.True(b, result)
 	})

@@ -28,7 +28,7 @@ Fiber provides several default binders out of the box:
 
 ### Binding into a Struct
 
-Fiber supports binding request data directly into a struct using [gorilla/schema](https://github.com/gorilla/schema). Here's an example:
+Fiber supports binding request data directly into a struct using [gofiber/schema](https://github.com/gofiber/schema). Here's an example:
 
 ```go
 // Field names must start with an uppercase letter

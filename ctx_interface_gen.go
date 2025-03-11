@@ -263,8 +263,14 @@ type Ctx interface {
 	GetRouteURL(routeName string, params Map) (string, error)
 	// Render a template with data and sends a text/html response.
 	// We support the following engines: https://github.com/gofiber/template
-	Render(name string, bind Map, layouts ...string) error
+	Render(name string, bind any, layouts ...string) error
 	renderExtensions(bind any)
+	// Req returns a convenience type whose API is limited to operations
+	// on the incoming request.
+	Req() Req
+	// Res returns a convenience type whose API is limited to operations
+	// on the outgoing response.
+	Res() Res
 	// Route returns the matched Route struct.
 	Route() *Route
 	// SaveFile saves any multipart file to disk.
@@ -350,5 +356,10 @@ type Ctx interface {
 	setIndexRoute(route int)
 	setMatched(matched bool)
 	setRoute(route *Route)
+	// Drop closes the underlying connection without sending any response headers or body.
+	// This can be useful for silently terminating client connections, such as in DDoS mitigation
+	// or when blocking access to sensitive endpoints.
 	Drop() error
+	// End immediately flushes the current response and closes the underlying connection.
+	End() error
 }
