@@ -1316,3 +1316,177 @@ func Test_Session_StoreGetDecodeSessionDataError(t *testing.T) {
 	// Check that the error message is as expected
 	require.ErrorContains(t, err, "failed to decode session data", "Unexpected error")
 }
+
+// Test_Session_GetAndSetInContext tests the functionality of GetAndSetInContext method
+// which retrieves a session and stores it in the context.
+func Test_Session_GetAndSetInContext(t *testing.T) {
+	t.Parallel()
+
+	t.Run("new_session_creation_and_context_storage", func(t *testing.T) {
+		t.Parallel()
+
+		// Setup test environment
+		store := NewStore()
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+
+		// Test creating a new session and storing in context
+		sess, err := store.GetAndSetInContext(ctx)
+
+		// Verify operation success and session creation
+		require.NoError(t, err, "should not error when creating new session")
+		require.NotNil(t, sess, "session should not be nil")
+		require.True(t, sess.Fresh(), "new session should be marked as fresh")
+
+		// Capture session ID for reference
+		sessionID := sess.ID()
+		require.NotEmpty(t, sessionID, "session ID should not be empty")
+
+		// Verify session was properly set in Go context
+		// The session is stored directly in the context, not as middleware
+		val := ctx.Context().Value(middlewareContextKey)
+		sessionFromCtx, ok := val.(*Session)
+		if !ok {
+			t.Fatalf("session should be accessible from context")
+		}
+		require.Equal(t, sessionID, sessionFromCtx.ID(), "session ID should match between original and context-retrieved session")
+
+		// Properly save and release resources
+		require.NoError(t, sess.Save(), "session save should succeed")
+		sess.Release()
+	})
+
+	t.Run("session_retrieval_and_data_persistence", func(t *testing.T) {
+		t.Parallel()
+
+		// Setup test environment
+		store := NewStore()
+		app := fiber.New()
+
+		// Step 1: Create initial session
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		sess, err := store.GetAndSetInContext(ctx)
+		require.NoError(t, err, "should create initial session without error")
+
+		// Set test data and save
+		sessionID := sess.ID()
+		sess.Set("testKey", "testValue")
+		require.NoError(t, sess.Save(), "should save session without error")
+		sess.Release()
+		app.ReleaseCtx(ctx)
+
+		// Step 2: Retrieve session in a new context using cookie
+		ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+		ctx.Request().Header.SetCookie(store.sessionName, sessionID)
+
+		// Get and verify session
+		retrievedSess, err := store.GetAndSetInContext(ctx)
+		defer retrievedSess.Release()
+
+		// Verify operation success and correct session retrieval
+		require.NoError(t, err, "should retrieve existing session without error")
+		require.NotNil(t, retrievedSess, "retrieved session should not be nil")
+		require.False(t, retrievedSess.Fresh(), "retrieved session should not be fresh")
+		require.Equal(t, sessionID, retrievedSess.ID(), "session ID should be preserved")
+
+		// Verify data persistence
+		require.Equal(t, "testValue", retrievedSess.Get("testKey"), "session data should persist between requests")
+
+		// Verify session in context matches direct retrieval
+		val := ctx.Context().Value(middlewareContextKey)
+		sessionFromCtx, ok := val.(*Session)
+		if !ok {
+			t.Fatalf("session should be accessible from context")
+		}
+		require.NotNil(t, sessionFromCtx, "session should exist in context")
+		require.Equal(t, sessionID, sessionFromCtx.ID(), "session IDs should match")
+		require.Equal(t, "testValue", sessionFromCtx.Get("testKey"), "session data should be accessible from context")
+	})
+
+	t.Run("session_data_modification", func(t *testing.T) {
+		t.Parallel()
+
+		// Setup test environment
+		store := NewStore()
+		app := fiber.New()
+
+		// Create and save initial session
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		sess, err := store.GetAndSetInContext(ctx)
+		require.NoError(t, err, "should create session without error")
+		sessionID := sess.ID()
+		require.NoError(t, sess.Save(), "should save session without error")
+		sess.Release()
+		app.ReleaseCtx(ctx)
+
+		// Retrieve and modify session
+		ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+		ctx.Request().Header.SetCookie(store.sessionName, sessionID)
+
+		sess, err = store.GetAndSetInContext(ctx)
+		require.NoError(t, err, "should retrieve session without error")
+
+		// Modify session data
+		sess.Set("modifiedKey", "modifiedValue")
+		require.NoError(t, sess.Save(), "should save modified session without error")
+
+		// Verify context has updated data immediately
+		val := ctx.Context().Value(middlewareContextKey)
+		sessionFromCtx, ok := val.(*Session)
+		if !ok {
+			t.Fatalf("session should be accessible from context")
+		}
+		require.Equal(t, "modifiedValue", sessionFromCtx.Get("modifiedKey"), "session in context should have updated data")
+
+		sess.Release()
+	})
+}
+
+// go test -run Test_Session_GetAndSetInContext_Error
+func Test_Session_GetAndSetInContext_Error(t *testing.T) {
+	t.Parallel()
+
+	// Create a new store with mock storage that returns an error
+	mockStore := NewStore(Config{
+		Storage: &errorStorage{},
+	})
+
+	// Create a new fiber instance
+	app := fiber.New()
+
+	// Create a new fiber context
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	// Attempt to get and set session in context
+	sess, err := mockStore.GetAndSetInContext(ctx)
+	require.Error(t, err, "should return error when storage fails")
+	require.Nil(t, sess, "session should be nil on error")
+	require.Contains(t, err.Error(), "mock error", "error should be from storage")
+}
+
+// errorStorage implements Storage interface for error testing
+type errorStorage struct{}
+
+func (*errorStorage) Get(string) ([]byte, error) {
+	return nil, errors.New("mock error: Get failed")
+}
+
+func (*errorStorage) Set(string, []byte, time.Duration) error {
+	return errors.New("mock error: Set failed")
+}
+
+func (*errorStorage) Delete(string) error {
+	return errors.New("mock error: Delete failed")
+}
+
+func (*errorStorage) Reset() error {
+	return errors.New("mock error: Reset failed")
+}
+
+func (*errorStorage) Close() error {
+	return errors.New("mock error: Close failed")
+}

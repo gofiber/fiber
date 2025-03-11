@@ -31,15 +31,6 @@ const (
 	absExpirationKey absExpirationKeyType = iota
 )
 
-// The contextKey type is unexported to prevent collisions with context keys defined in
-// other packages.
-type contextKey int
-
-const (
-	// sessionContextKey is the key used to store the *Session in the Go context.
-	sessionContextKey contextKey = iota
-)
-
 // Session pool for reusing byte buffers.
 var byteBufferPool = sync.Pool{
 	New: func() any {
@@ -522,14 +513,14 @@ func (s *Session) setAbsExpiration(absExpiration time.Time) {
 	s.Set(absExpirationKey, absExpiration)
 }
 
-// FromGoContext returns the Session from the go context.
-// If there is no session, nil is returned.
-func FromGoContext(ctx context.Context) *Session {
-	if ctx == nil {
-		return nil
+// GetAndSetInContext Get the session and store it in the Go context
+func (s *Store) GetAndSetInContext(c fiber.Ctx) (*Session, error) {
+	sess, err := s.Get(c)
+	if err != nil {
+		return nil, err
 	}
-	if sess, ok := ctx.Value(sessionContextKey).(*Session); ok {
-		return sess
-	}
-	return nil
+
+	// Add to Go context
+	c.SetContext(context.WithValue(c.Context(), middlewareContextKey, sess))
+	return sess, nil
 }

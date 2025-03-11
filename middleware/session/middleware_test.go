@@ -455,7 +455,7 @@ func Test_Session_Middleware_Store(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
 }
 
-func Test_Session_GoContext(t *testing.T) {
+func Test_Session_Context(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
@@ -474,7 +474,7 @@ func Test_Session_GoContext(t *testing.T) {
 		sess.Set("test_key", "test_value")
 
 		// Get the session from Go context
-		goCtxSess := FromGoContext(c.Context())
+		goCtxSess := FromContext(c.Context())
 
 		// Verify both sessions are the same
 		if goCtxSess == nil {
@@ -506,11 +506,11 @@ func Test_Session_GoContext_EdgeCases(t *testing.T) {
 	t.Parallel()
 
 	// Test with nil context
-	sess := FromGoContext(nil) //nolint:staticcheck // Intentionally testing nil context behavior
+	sess := FromContext(nil) //nolint:staticcheck // Intentionally testing nil context behavior
 	require.Nil(t, sess, "Session should be nil with nil context")
 
 	// Test with context that doesn't have a session
 	ctx := context.Background()
-	sess = FromGoContext(ctx)
+	sess = FromContext(ctx)
 	require.Nil(t, sess, "Session should be nil when not in context")
 }

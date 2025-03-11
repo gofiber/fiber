@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/log"
 )
 
 // Middleware holds session data and configuration.
@@ -92,7 +93,7 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 		m.initialize(c, cfg)
 
 		// Add session to Go context
-		ctx := context.WithValue(c.Context(), sessionContextKey, m.Session)
+		ctx := context.WithValue(c.Context(), middlewareContextKey, m)
 		c.SetContext(ctx)
 
 		stackErr := c.Next()
@@ -127,7 +128,7 @@ func (m *Middleware) initialize(c fiber.Ctx, cfg Config) {
 	m.ctx = c
 
 	c.Locals(middlewareContextKey, m)
-	c.SetContext(context.WithValue(c.Context(), sessionContextKey, session))
+	c.SetContext(context.WithValue(c.Context(), middlewareContextKey, session))
 }
 
 // saveSession handles session saving and error management after the response.
@@ -170,23 +171,25 @@ func releaseMiddleware(m *Middleware) {
 	middlewarePool.Put(m)
 }
 
-// FromContext returns the Middleware from the Fiber context.
-//
-// Parameters:
-//   - c: The Fiber context.
-//
-// Returns:
-//   - *Middleware: The middleware object if found, otherwise nil.
-//
-// Usage:
-//
-//	m := session.FromContext(c)
-func FromContext(c fiber.Ctx) *Middleware {
-	m, ok := c.Locals(middlewareContextKey).(*Middleware)
-	if !ok {
-		return nil
+// FromContext returns the session from context.
+// Supported context types:
+// - fiber.Ctx: Retrieves session from Locals
+// - context.Context: Retrieves session from context values
+// If there is no session, nil is returned.
+func FromContext(c any) *Middleware {
+	switch ctx := c.(type) {
+	case fiber.Ctx:
+		if m, ok := ctx.Locals(middlewareContextKey).(*Middleware); ok && m != nil {
+			return m
+		}
+	case context.Context:
+		if m, ok := ctx.Value(middlewareContextKey).(*Middleware); ok {
+			return m
+		}
+	default:
+		log.Errorf("Unsupported context type: %T. Expected fiber.Ctx or context.Context", c)
 	}
-	return m
+	return nil
 }
 
 // Set sets a key-value pair in the session.
