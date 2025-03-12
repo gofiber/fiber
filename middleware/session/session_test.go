@@ -2,7 +2,6 @@ package session
 
 import (
 	"errors"
-	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -1553,7 +1552,7 @@ type mockGetErrorStorage struct {
 
 func (m *mockGetErrorStorage) Get(id string) ([]byte, error) {
 	if id == "session-with-error" {
-		return nil, fmt.Errorf("mock get error")
+		return nil, errors.New("mock get error")
 	}
 	return m.realStorage.Get(id)
 }
