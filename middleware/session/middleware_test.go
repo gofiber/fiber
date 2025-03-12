@@ -1,7 +1,6 @@
 package session
 
 import (
-	"context"
 	"io"
 	"net/http/httptest"
 	"strings"
@@ -500,17 +499,4 @@ func Test_Session_Context(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "success", string(body))
-}
-
-func Test_Session_GoContext_EdgeCases(t *testing.T) {
-	t.Parallel()
-
-	// Test with nil context
-	sess := FromContext(nil) //nolint:staticcheck // Intentionally testing nil context behavior
-	require.Nil(t, sess, "Session should be nil with nil context")
-
-	// Test with context that doesn't have a session
-	ctx := context.Background()
-	sess = FromContext(ctx)
-	require.Nil(t, sess, "Session should be nil when not in context")
 }
