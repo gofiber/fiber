@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/log"
 )
 
 // Middleware holds session data and configuration.
@@ -178,16 +177,16 @@ func releaseMiddleware(m *Middleware) {
 // If there is no Middleware, nil is returned.
 func FromContext(c any) *Middleware {
 	switch ctx := c.(type) {
-	case fiber.Ctx:
-		if m, ok := ctx.Locals(middlewareContextKey).(*Middleware); ok && m != nil {
-			return m
-		}
 	case context.Context:
 		if m, ok := ctx.Value(middlewareContextKey).(*Middleware); ok {
 			return m
 		}
+	case fiber.Ctx:
+		if m, ok := ctx.Locals(middlewareContextKey).(*Middleware); ok && m != nil {
+			return m
+		}
 	default:
-		log.Errorf("Unsupported context type: %T. Expected fiber.Ctx or context.Context", c)
+		panic("unsupported context type, expected fiber.Ctx or context.Context")
 	}
 	return nil
 }
