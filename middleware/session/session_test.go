@@ -2,6 +2,7 @@ package session
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -1445,48 +1446,130 @@ func Test_Session_GetAndSetInContext(t *testing.T) {
 	})
 }
 
-// go test -run Test_Session_GetAndSetInContext_Error
+// Test_Session_GetAndSetInContext_Error tests error scenarios for the GetAndSetInContext method.
+// It verifies proper error handling when session retrieval fails.
 func Test_Session_GetAndSetInContext_Error(t *testing.T) {
 	t.Parallel()
 
-	// Create a new store with mock storage that returns an error
-	mockStore := NewStore(Config{
-		Storage: &errorStorage{},
+	const (
+		testSessionID         = "test-session-id"
+		errorSessionID        = "session-with-error"
+		invalidSessionDataMsg = "failed to decode session data"
+		mockGetErrorMsg       = "mock get error"
+	)
+
+	t.Run("invalid_session_data", func(t *testing.T) {
+		t.Parallel()
+
+		// Create a store with a fixed session ID for testing
+		store := NewStore()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+
+		// Set the session ID in the request cookie
+		ctx.Request().Header.SetCookie(store.sessionName, testSessionID)
+
+		// Store invalid data with the same session ID
+		err := store.Storage.Set(testSessionID, []byte("invalid data"), 0)
+		require.NoError(t, err, "Failed to set invalid session data")
+
+		// Try to get the session - this should fail with decode error
+		sess, err := store.GetAndSetInContext(ctx)
+
+		// Verify error
+		require.Error(t, err, "Expected error due to invalid session data")
+		require.Nil(t, sess, "Session should be nil when error occurs")
+		require.Contains(t, err.Error(), invalidSessionDataMsg, "Error should mention decode failure")
+
+		// Verify nothing was stored in context
+		ctxValue := ctx.Context().Value(middlewareContextKey)
+		require.Nil(t, ctxValue, "Context should not contain session on error")
 	})
 
-	// Create a new fiber instance
-	app := fiber.New()
+	t.Run("storage_error", func(t *testing.T) {
+		t.Parallel()
 
-	// Create a new fiber context
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
+		// Create a store with mock storage
+		mockStorage := &mockGetErrorStorage{
+			realStorage: memory.New(),
+		}
+		store := NewStore(Config{
+			Storage: mockStorage,
+		})
 
-	// Attempt to get and set session in context
-	sess, err := mockStore.GetAndSetInContext(ctx)
-	require.Error(t, err, "should return error when storage fails")
-	require.Nil(t, sess, "session should be nil on error")
-	require.Contains(t, err.Error(), "mock error", "error should be from storage")
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+
+		// Set cookie to trigger error in the mock storage
+		ctx.Request().Header.SetCookie(store.sessionName, errorSessionID)
+
+		// Try to get the session
+		sess, err := store.GetAndSetInContext(ctx)
+
+		// Verify error
+		require.Error(t, err, "Expected error from storage")
+		require.Nil(t, sess, "Session should be nil when error occurs")
+		require.Contains(t, err.Error(), mockGetErrorMsg, "Error should come from mock storage")
+
+		// Verify nothing was stored in context
+		ctxValue := ctx.Context().Value(middlewareContextKey)
+		require.Nil(t, ctxValue, "Context should not contain session on error")
+	})
+
+	t.Run("empty_session_id", func(t *testing.T) {
+		t.Parallel()
+
+		// In this test we'll verify that a new session is created when no ID exists
+		store := NewStore()
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+
+		// No session ID in request
+		sess, err := store.GetAndSetInContext(ctx)
+
+		// Should not error, but create new session
+		require.NoError(t, err, "Should not error with empty session ID")
+		require.NotNil(t, sess, "Should create new session")
+		require.True(t, sess.Fresh(), "New session should be fresh")
+
+		// Verify session was stored in context
+		ctxValue := ctx.Context().Value(middlewareContextKey)
+		require.NotNil(t, ctxValue, "Session should be stored in context")
+		storedSession, ok := ctxValue.(*Session)
+		require.True(t, ok, "Context value should be a Session")
+		require.Equal(t, sess.ID(), storedSession.ID(), "Session IDs should match")
+	})
 }
 
-// errorStorage implements Storage interface for error testing
-type errorStorage struct{}
-
-func (*errorStorage) Get(string) ([]byte, error) {
-	return nil, errors.New("mock error: Get failed")
+// mockGetErrorStorage implements Storage interface but returns errors only for Get operations
+// with a specific session ID
+type mockGetErrorStorage struct {
+	realStorage fiber.Storage
 }
 
-func (*errorStorage) Set(string, []byte, time.Duration) error {
-	return errors.New("mock error: Set failed")
+func (m *mockGetErrorStorage) Get(id string) ([]byte, error) {
+	if id == "session-with-error" {
+		return nil, fmt.Errorf("mock get error")
+	}
+	return m.realStorage.Get(id)
 }
 
-func (*errorStorage) Delete(string) error {
-	return errors.New("mock error: Delete failed")
+func (m *mockGetErrorStorage) Set(id string, val []byte, ttl time.Duration) error {
+	return m.realStorage.Set(id, val, ttl)
 }
 
-func (*errorStorage) Reset() error {
-	return errors.New("mock error: Reset failed")
+func (m *mockGetErrorStorage) Delete(id string) error {
+	return m.realStorage.Delete(id)
 }
 
-func (*errorStorage) Close() error {
-	return errors.New("mock error: Close failed")
+func (m *mockGetErrorStorage) Reset() error {
+	return m.realStorage.Reset()
+}
+
+func (m *mockGetErrorStorage) Close() error {
+	return m.realStorage.Close()
 }

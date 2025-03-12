@@ -173,9 +173,9 @@ func releaseMiddleware(m *Middleware) {
 
 // FromContext returns the session from context.
 // Supported context types:
-// - fiber.Ctx: Retrieves session from Locals
-// - context.Context: Retrieves session from context values
-// If there is no session, nil is returned.
+// - fiber.Ctx: Retrieves Middleware from Locals
+// - context.Context: Retrieves Middleware from context values
+// If there is no Middleware, nil is returned.
 func FromContext(c any) *Middleware {
 	switch ctx := c.(type) {
 	case fiber.Ctx:
