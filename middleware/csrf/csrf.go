@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 )
 
@@ -229,7 +228,7 @@ func HandlerFromContext(c any) *Handler {
 			return handler
 		}
 	default:
-		log.Errorf("Unsupported context type: %T. Expected fiber.Ctx or context.Context", c)
+		return nil
 	}
 	return nil
 }
