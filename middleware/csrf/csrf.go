@@ -208,7 +208,7 @@ func TokenFromContext(c any) string {
 			return token
 		}
 	default:
-		log.Errorf("Unsupported context type: %T. Expected fiber.Ctx or context.Context", c)
+		panic("unsupported context type, expected fiber.Ctx or context.Context")
 	}
 	return ""
 }

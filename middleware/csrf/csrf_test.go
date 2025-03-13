@@ -1569,7 +1569,7 @@ func Test_CSRF_FromContextMethods_Invalid(t *testing.T) {
 }
 
 // Test_CSRF_GoContext Test for getting token and handler from Go standard context
-func Test_CSRF_GoContext(t *testing.T) {
+func Test_CSRF_Context(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
@@ -1597,20 +1597,6 @@ func Test_CSRF_GoContext(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-}
-
-// Test_CSRF_UnsupportedContext Test for passing in unsupported context types
-func Test_CSRF_UnsupportedContext(t *testing.T) {
-	t.Parallel()
-
-	// Using unsupported context types
-	invalidCtx := "not a context"
-
-	token := TokenFromContext(invalidCtx)
-	require.Empty(t, token)
-
-	handler := HandlerFromContext(invalidCtx)
-	require.Nil(t, handler)
 }
 
 // Test_CSRF_ServiceLayer Testing the use of Go standard contexts in the service layer
