@@ -28,7 +28,7 @@ type Config struct {
 	ContentSecurityPolicy string
 
 	// ReferrerPolicy
-	// Optional. Default value "ReferrerPolicy".
+	// Optional. Default value "no-referrer".
 	ReferrerPolicy string
 
 	// Permissions-Policy
