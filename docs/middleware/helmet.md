@@ -54,7 +54,7 @@ curl -I http://localhost:3000
 | ContentSecurityPolicy     | `string`                | ContentSecurityPolicy                       | ""               |
 | CSPReportOnly             | `bool`                  | CSPReportOnly                               | false            |
 | HSTSPreloadEnabled        | `bool`                  | HSTSPreloadEnabled                          | false            |
-| ReferrerPolicy            | `string`                | ReferrerPolicy                              | "ReferrerPolicy" |
+| ReferrerPolicy            | `string`                | ReferrerPolicy                              | "no-referrer" |
 | PermissionPolicy          | `string`                | Permissions-Policy                          | ""               |
 | CrossOriginEmbedderPolicy | `string`                | Cross-Origin-Embedder-Policy                | "require-corp"   |
 | CrossOriginOpenerPolicy   | `string`                | Cross-Origin-Opener-Policy                  | "same-origin"    |
