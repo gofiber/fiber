@@ -198,12 +198,12 @@ func New(config ...Config) fiber.Handler {
 // - context.Context: Retrieves token from context values
 func TokenFromContext(c any) string {
 	switch ctx := c.(type) {
-	case fiber.Ctx:
-		if token, ok := ctx.Locals(tokenKey).(string); ok {
-			return token
-		}
 	case context.Context:
 		if token, ok := ctx.Value(tokenKey).(string); ok {
+			return token
+		}
+	case fiber.Ctx:
+		if token, ok := ctx.Locals(tokenKey).(string); ok {
 			return token
 		}
 	default:
