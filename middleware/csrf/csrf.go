@@ -1,6 +1,7 @@
 package csrf
 
 import (
+	"context"
 	"errors"
 	"net/url"
 	"reflect"
@@ -180,29 +181,56 @@ func New(config ...Config) fiber.Handler {
 		// Store the token in the context
 		c.Locals(tokenKey, token)
 
+		// Store the token in the Go context
+		ctx := context.WithValue(c.Context(), tokenKey, token)
+		ctx = context.WithValue(ctx, handlerKey, handler)
+		c.SetContext(ctx)
+
 		// Continue stack
 		return c.Next()
 	}
 }
 
-// TokenFromContext returns the token found in the context
-// returns an empty string if the token does not exist
-func TokenFromContext(c fiber.Ctx) string {
-	token, ok := c.Locals(tokenKey).(string)
-	if !ok {
-		return ""
+// TokenFromContext returns the token from context.
+// If there is no token, an empty string is returned.
+// Supported context types:
+// - fiber.Ctx: Retrieves token from Locals
+// - context.Context: Retrieves token from context values
+func TokenFromContext(c any) string {
+	switch ctx := c.(type) {
+	case context.Context:
+		if token, ok := ctx.Value(tokenKey).(string); ok {
+			return token
+		}
+	case fiber.Ctx:
+		if token, ok := ctx.Locals(tokenKey).(string); ok {
+			return token
+		}
+	default:
+		panic("unsupported context type, expected fiber.Ctx or context.Context")
 	}
-	return token
+	return ""
 }
 
-// HandlerFromContext returns the Handler found in the context
-// returns nil if the handler does not exist
-func HandlerFromContext(c fiber.Ctx) *Handler {
-	handler, ok := c.Locals(handlerKey).(*Handler)
-	if !ok {
+// HandlerFromContext returns the Handler from context.
+// If there is no handler, nil is returned.
+// Supported context types:
+// - fiber.Ctx: Retrieves handler from Locals
+// - context.Context: Retrieves handler from context values
+func HandlerFromContext(c any) *Handler {
+	switch ctx := c.(type) {
+	case fiber.Ctx:
+		if handler, ok := ctx.Locals(handlerKey).(*Handler); ok {
+			return handler
+		}
+	case context.Context:
+		if handler, ok := ctx.Value(handlerKey).(*Handler); ok {
+			return handler
+		}
+	default:
 		return nil
 	}
-	return handler
+	return nil
 }
 
 // getRawFromStorage returns the raw value from the storage for the given token
