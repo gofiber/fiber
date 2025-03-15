@@ -255,7 +255,7 @@ issues:
   max-same-issues: 0
   uniq-by-line: false
   exclude-dirs:
-    - internal # TODO: Do not ignore interal packages
+    - internal # TODO: Do not ignore internal packages
   exclude-files:
     - '_msgp\.go'
     - '_msgp_test\.go'

@@ -566,7 +566,7 @@ func Test_Utils_TestConn_Closed_Write(t *testing.T) {
 	require.NoError(t, err)
 
 	// Close early, write should fail
-	conn.Close() //nolint:errcheck, revive // It is fine to ignore the error here
+	conn.Close() //nolint:errcheck,revive // It is fine to ignore the error here
 	_, err = conn.Write([]byte("Response 2\n"))
 	require.ErrorIs(t, err, errTestConnClosed)
 

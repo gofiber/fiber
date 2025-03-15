@@ -328,7 +328,7 @@ func (*App) prepareListenData(addr string, isTLS bool, cfg ListenConfig) ListenD
 }
 
 // startupMessage prepares the startup message with the handler number, port, address and other information
-func (app *App) startupMessage(addr string, isTLS bool, pids string, cfg ListenConfig) { //nolint: revive // Accepting a bool param named isTLS if fine here
+func (app *App) startupMessage(addr string, isTLS bool, pids string, cfg ListenConfig) { //nolint:revive // Accepting a bool param named isTLS if fine here
 	// ignore child processes
 	if IsChild() {
 		return
