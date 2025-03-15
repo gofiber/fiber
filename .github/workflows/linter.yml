@@ -39,3 +39,5 @@ jobs:
           # NOTE: Keep this in sync with the version from .golangci.yml
           version: v1.64.7
           skip-cache: true
+          verify: true
+          args: --config=.golangci.yml
