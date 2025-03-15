@@ -1316,3 +1316,259 @@ func Test_Session_StoreGetDecodeSessionDataError(t *testing.T) {
 	// Check that the error message is as expected
 	require.ErrorContains(t, err, "failed to decode session data", "Unexpected error")
 }
+
+// Test_Session_GetAndSetInContext tests the functionality of GetAndSetInContext method
+// which retrieves a session and stores it in the context.
+func Test_Session_GetAndSetInContext(t *testing.T) {
+	t.Parallel()
+
+	t.Run("new_session_creation_and_context_storage", func(t *testing.T) {
+		t.Parallel()
+
+		// Setup test environment
+		store := NewStore()
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+
+		// Test creating a new session and storing in context
+		sess, err := store.GetAndSetInContext(ctx)
+
+		// Verify operation success and session creation
+		require.NoError(t, err, "should not error when creating new session")
+		require.NotNil(t, sess, "session should not be nil")
+		require.True(t, sess.Fresh(), "new session should be marked as fresh")
+
+		// Capture session ID for reference
+		sessionID := sess.ID()
+		require.NotEmpty(t, sessionID, "session ID should not be empty")
+
+		// Verify session was properly set in Go context
+		// The session is stored directly in the context, not as middleware
+		val := ctx.Context().Value(middlewareContextKey)
+		sessionFromCtx, ok := val.(*Session)
+		if !ok {
+			t.Fatalf("session should be accessible from context")
+		}
+		require.Equal(t, sessionID, sessionFromCtx.ID(), "session ID should match between original and context-retrieved session")
+
+		// Properly save and release resources
+		require.NoError(t, sess.Save(), "session save should succeed")
+		sess.Release()
+	})
+
+	t.Run("session_retrieval_and_data_persistence", func(t *testing.T) {
+		t.Parallel()
+
+		// Setup test environment
+		store := NewStore()
+		app := fiber.New()
+
+		// Step 1: Create initial session
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		sess, err := store.GetAndSetInContext(ctx)
+		require.NoError(t, err, "should create initial session without error")
+
+		// Set test data and save
+		sessionID := sess.ID()
+		sess.Set("testKey", "testValue")
+		require.NoError(t, sess.Save(), "should save session without error")
+		sess.Release()
+		app.ReleaseCtx(ctx)
+
+		// Step 2: Retrieve session in a new context using cookie
+		ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+		ctx.Request().Header.SetCookie(store.sessionName, sessionID)
+
+		// Get and verify session
+		retrievedSess, err := store.GetAndSetInContext(ctx)
+		defer retrievedSess.Release()
+
+		// Verify operation success and correct session retrieval
+		require.NoError(t, err, "should retrieve existing session without error")
+		require.NotNil(t, retrievedSess, "retrieved session should not be nil")
+		require.False(t, retrievedSess.Fresh(), "retrieved session should not be fresh")
+		require.Equal(t, sessionID, retrievedSess.ID(), "session ID should be preserved")
+
+		// Verify data persistence
+		require.Equal(t, "testValue", retrievedSess.Get("testKey"), "session data should persist between requests")
+
+		// Verify session in context matches direct retrieval
+		val := ctx.Context().Value(middlewareContextKey)
+		sessionFromCtx, ok := val.(*Session)
+		if !ok {
+			t.Fatalf("session should be accessible from context")
+		}
+		require.NotNil(t, sessionFromCtx, "session should exist in context")
+		require.Equal(t, sessionID, sessionFromCtx.ID(), "session IDs should match")
+		require.Equal(t, "testValue", sessionFromCtx.Get("testKey"), "session data should be accessible from context")
+	})
+
+	t.Run("session_data_modification", func(t *testing.T) {
+		t.Parallel()
+
+		// Setup test environment
+		store := NewStore()
+		app := fiber.New()
+
+		// Create and save initial session
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		sess, err := store.GetAndSetInContext(ctx)
+		require.NoError(t, err, "should create session without error")
+		sessionID := sess.ID()
+		require.NoError(t, sess.Save(), "should save session without error")
+		sess.Release()
+		app.ReleaseCtx(ctx)
+
+		// Retrieve and modify session
+		ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+		ctx.Request().Header.SetCookie(store.sessionName, sessionID)
+
+		sess, err = store.GetAndSetInContext(ctx)
+		require.NoError(t, err, "should retrieve session without error")
+
+		// Modify session data
+		sess.Set("modifiedKey", "modifiedValue")
+		require.NoError(t, sess.Save(), "should save modified session without error")
+
+		// Verify context has updated data immediately
+		val := ctx.Context().Value(middlewareContextKey)
+		sessionFromCtx, ok := val.(*Session)
+		if !ok {
+			t.Fatalf("session should be accessible from context")
+		}
+		require.Equal(t, "modifiedValue", sessionFromCtx.Get("modifiedKey"), "session in context should have updated data")
+
+		sess.Release()
+	})
+}
+
+// Test_Session_GetAndSetInContext_Error tests error scenarios for the GetAndSetInContext method.
+// It verifies proper error handling when session retrieval fails.
+func Test_Session_GetAndSetInContext_Error(t *testing.T) {
+	t.Parallel()
+
+	const (
+		testSessionID         = "test-session-id"
+		errorSessionID        = "session-with-error"
+		invalidSessionDataMsg = "failed to decode session data"
+		mockGetErrorMsg       = "mock get error"
+	)
+
+	t.Run("invalid_session_data", func(t *testing.T) {
+		t.Parallel()
+
+		// Create a store with a fixed session ID for testing
+		store := NewStore()
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+
+		// Set the session ID in the request cookie
+		ctx.Request().Header.SetCookie(store.sessionName, testSessionID)
+
+		// Store invalid data with the same session ID
+		err := store.Storage.Set(testSessionID, []byte("invalid data"), 0)
+		require.NoError(t, err, "Failed to set invalid session data")
+
+		// Try to get the session - this should fail with decode error
+		sess, err := store.GetAndSetInContext(ctx)
+
+		// Verify error
+		require.Error(t, err, "Expected error due to invalid session data")
+		require.Nil(t, sess, "Session should be nil when error occurs")
+		require.Contains(t, err.Error(), invalidSessionDataMsg, "Error should mention decode failure")
+
+		// Verify nothing was stored in context
+		ctxValue := ctx.Context().Value(middlewareContextKey)
+		require.Nil(t, ctxValue, "Context should not contain session on error")
+	})
+
+	t.Run("storage_error", func(t *testing.T) {
+		t.Parallel()
+
+		// Create a store with mock storage
+		mockStorage := &mockGetErrorStorage{
+			realStorage: memory.New(),
+		}
+		store := NewStore(Config{
+			Storage: mockStorage,
+		})
+
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+
+		// Set cookie to trigger error in the mock storage
+		ctx.Request().Header.SetCookie(store.sessionName, errorSessionID)
+
+		// Try to get the session
+		sess, err := store.GetAndSetInContext(ctx)
+
+		// Verify error
+		require.Error(t, err, "Expected error from storage")
+		require.Nil(t, sess, "Session should be nil when error occurs")
+		require.Contains(t, err.Error(), mockGetErrorMsg, "Error should come from mock storage")
+
+		// Verify nothing was stored in context
+		ctxValue := ctx.Context().Value(middlewareContextKey)
+		require.Nil(t, ctxValue, "Context should not contain session on error")
+	})
+
+	t.Run("empty_session_id", func(t *testing.T) {
+		t.Parallel()
+
+		// In this test we'll verify that a new session is created when no ID exists
+		store := NewStore()
+		app := fiber.New()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+
+		// No session ID in request
+		sess, err := store.GetAndSetInContext(ctx)
+
+		// Should not error, but create new session
+		require.NoError(t, err, "Should not error with empty session ID")
+		require.NotNil(t, sess, "Should create new session")
+		require.True(t, sess.Fresh(), "New session should be fresh")
+
+		// Verify session was stored in context
+		ctxValue := ctx.Context().Value(middlewareContextKey)
+		require.NotNil(t, ctxValue, "Session should be stored in context")
+		storedSession, ok := ctxValue.(*Session)
+		require.True(t, ok, "Context value should be a Session")
+		require.Equal(t, sess.ID(), storedSession.ID(), "Session IDs should match")
+	})
+}
+
+// mockGetErrorStorage implements Storage interface but returns errors only for Get operations
+// with a specific session ID
+type mockGetErrorStorage struct {
+	realStorage fiber.Storage
+}
+
+func (m *mockGetErrorStorage) Get(id string) ([]byte, error) {
+	if id == "session-with-error" {
+		return nil, errors.New("mock get error")
+	}
+	return m.realStorage.Get(id)
+}
+
+func (m *mockGetErrorStorage) Set(id string, val []byte, ttl time.Duration) error {
+	return m.realStorage.Set(id, val, ttl)
+}
+
+func (m *mockGetErrorStorage) Delete(id string) error {
+	return m.realStorage.Delete(id)
+}
+
+func (m *mockGetErrorStorage) Reset() error {
+	return m.realStorage.Reset()
+}
+
+func (m *mockGetErrorStorage) Close() error {
+	return m.realStorage.Close()
+}

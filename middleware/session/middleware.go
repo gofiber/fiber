@@ -3,6 +3,7 @@
 package session
 
 import (
+	"context"
 	"errors"
 	"sync"
 
@@ -90,6 +91,10 @@ func NewWithStore(config ...Config) (fiber.Handler, *Store) {
 		m := acquireMiddleware()
 		m.initialize(c, cfg)
 
+		// Add session to Go context
+		ctx := context.WithValue(c.Context(), middlewareContextKey, m)
+		c.SetContext(ctx)
+
 		stackErr := c.Next()
 
 		m.mu.RLock()
@@ -122,6 +127,7 @@ func (m *Middleware) initialize(c fiber.Ctx, cfg Config) {
 	m.ctx = c
 
 	c.Locals(middlewareContextKey, m)
+	c.SetContext(context.WithValue(c.Context(), middlewareContextKey, session))
 }
 
 // saveSession handles session saving and error management after the response.
@@ -164,23 +170,25 @@ func releaseMiddleware(m *Middleware) {
 	middlewarePool.Put(m)
 }
 
-// FromContext returns the Middleware from the Fiber context.
-//
-// Parameters:
-//   - c: The Fiber context.
-//
-// Returns:
-//   - *Middleware: The middleware object if found, otherwise nil.
-//
-// Usage:
-//
-//	m := session.FromContext(c)
-func FromContext(c fiber.Ctx) *Middleware {
-	m, ok := c.Locals(middlewareContextKey).(*Middleware)
-	if !ok {
-		return nil
+// FromContext returns the session from context.
+// Supported context types:
+// - fiber.Ctx: Retrieves Middleware from Locals
+// - context.Context: Retrieves Middleware from context values
+// If there is no Middleware, nil is returned.
+func FromContext(c any) *Middleware {
+	switch ctx := c.(type) {
+	case context.Context:
+		if m, ok := ctx.Value(middlewareContextKey).(*Middleware); ok {
+			return m
+		}
+	case fiber.Ctx:
+		if m, ok := ctx.Locals(middlewareContextKey).(*Middleware); ok && m != nil {
+			return m
+		}
+	default:
+		panic("unsupported context type, expected fiber.Ctx or context.Context")
 	}
-	return m
+	return nil
 }
 
 // Set sets a key-value pair in the session.

@@ -2,6 +2,7 @@ package session
 
 import (
 	"bytes"
+	"context"
 	"encoding/gob"
 	"fmt"
 	"sync"
@@ -510,4 +511,16 @@ func (s *Session) isAbsExpired() bool {
 //	s.setExpiration(time.Now().Add(time.Hour))
 func (s *Session) setAbsExpiration(absExpiration time.Time) {
 	s.Set(absExpirationKey, absExpiration)
+}
+
+// GetAndSetInContext Get the session and store it in the Go context
+func (s *Store) GetAndSetInContext(c fiber.Ctx) (*Session, error) {
+	sess, err := s.Get(c)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add to Go context
+	c.SetContext(context.WithValue(c.Context(), middlewareContextKey, sess))
+	return sess, nil
 }
