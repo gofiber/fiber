@@ -7,7 +7,6 @@ run:
 
 output:
   sort-results: true
-  uniq-by-line: false
 
 linters-settings:
   depguard:
@@ -97,6 +96,11 @@ linters-settings:
       global:
         # show-ignored: true # TODO: Enable this
         audit: true
+
+  staticcheck:
+    checks:
+      - all
+      - '-SA4023' # disable the rule SA4023
 
   govet:
     enable-all: true
@@ -249,8 +253,12 @@ issues:
   exclude-case-sensitive: true
   max-issues-per-linter: 0
   max-same-issues: 0
+  uniq-by-line: false
   exclude-dirs:
     - internal # TODO: Do not ignore interal packages
+  exclude-files:
+    - '_msgp\.go'
+    - '_msgp_test\.go'
   exclude-rules:
     - linters:
         - err113
@@ -358,7 +366,6 @@ linters:
     - stylecheck
     # - tagalign # TODO: Enable
     - tagliatelle
-    - tenv
     - testableexamples
     - testifylint
     # - testpackage # TODO: Enable
