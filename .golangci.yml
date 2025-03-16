@@ -253,9 +253,8 @@ issues:
   exclude-case-sensitive: true
   max-issues-per-linter: 0
   max-same-issues: 0
-  uniq-by-line: false
   exclude-dirs:
-    - internal # TODO: Do not ignore interal packages
+    - internal # TODO: Do not ignore internal packages
   exclude-files:
     - '_msgp\.go'
     - '_msgp_test\.go'
@@ -271,7 +270,10 @@ issues:
       linters:
         - bodyclose
         - err113
-  # fix: true
+    - source: 'fmt.Fprintf?'
+      linters:
+        - errcheck
+        - revive
 
 linters:
   enable:
