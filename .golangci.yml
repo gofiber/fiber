@@ -7,7 +7,6 @@ run:
 
 output:
   sort-results: true
-  uniq-by-line: false
 
 linters-settings:
   depguard:
@@ -187,7 +186,7 @@ linters-settings:
       - name: unchecked-type-assertion
         disabled: true # TODO: Do not disable
       - name: unhandled-error
-        arguments: ['bytes\.Buffer\.Write']
+        disabled: true
 
   stylecheck:
     checks:
@@ -250,7 +249,10 @@ issues:
   max-issues-per-linter: 0
   max-same-issues: 0
   exclude-dirs:
-    - internal # TODO: Do not ignore interal packages
+    - internal # TODO: Do not ignore internal packages
+  exclude-files:
+    - '_msgp\.go'
+    - '_msgp_test\.go'
   exclude-rules:
     - linters:
         - err113
@@ -263,7 +265,10 @@ issues:
       linters:
         - bodyclose
         - err113
-  # fix: true
+    - source: 'fmt.Fprintf?'
+      linters:
+        - errcheck
+        - revive
 
 linters:
   enable:
@@ -358,7 +363,6 @@ linters:
     - stylecheck
     # - tagalign # TODO: Enable
     - tagliatelle
-    - tenv
     - testableexamples
     - testifylint
     # - testpackage # TODO: Enable
