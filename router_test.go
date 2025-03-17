@@ -600,7 +600,7 @@ func Benchmark_Router_Next(b *testing.B) {
 	var res bool
 	var err error
 
-	c := app.AcquireCtx(request).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(request).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
@@ -825,7 +825,7 @@ func Benchmark_Router_Github_API(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			c.URI().SetPath(routesFixture.TestRoutes[i].Path)
 
-			ctx := app.AcquireCtx(c).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+			ctx := app.AcquireCtx(c).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 			match, err = app.next(ctx)
 			app.ReleaseCtx(ctx)

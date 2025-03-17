@@ -51,16 +51,16 @@ func getTLSConfig(ln net.Listener) *tls.Config {
 	}
 
 	// Copy value from pointer
-	if val := reflect.Indirect(pointer); val.Type() != nil {
+	if val := reflect.Indirect(pointer); val.IsValid() {
 		// Get private field from value
-		if field := val.FieldByName("config"); field.Type() != nil {
+		if field := val.FieldByName("config"); field.IsValid() {
 			// Copy value from pointer field (unsafe)
 			newval := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())) //nolint:gosec // Probably the only way to extract the *tls.Config from a net.Listener. TODO: Verify there really is no easier way without using unsafe.
-			if newval.Type() == nil {
+			if !newval.IsValid() {
 				return nil
 			}
 			// Get element from pointer
-			if elem := newval.Elem(); elem.Type() != nil {
+			if elem := newval.Elem(); elem.IsValid() {
 				// Cast value to *tls.Config
 				c, ok := elem.Interface().(*tls.Config)
 				if !ok {
