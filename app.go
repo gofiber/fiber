@@ -14,6 +14,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -777,6 +778,14 @@ func (app *App) Add(method, path string, handlers ...Handler) Router {
 func (app *App) Static(prefix, root string, config ...Static) Router {
 	app.registerStatic(prefix, root, config...)
 
+	return app
+}
+
+// StaticFilesystem Supports Serving Static Resources from an Embed.FS File System
+//
+// The filesystem parameter can directly accept an embed.FS instance.
+func (app *App) StaticFilesystem(prefix string, filesystem fs.FS, config ...Static) Router {
+	app.registerStaticFS(prefix, filesystem, config...)
 	return app
 }
 
