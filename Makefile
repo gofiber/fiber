@@ -35,7 +35,7 @@ markdown:
 ## lint: 🚨 Run lint checks
 .PHONY: lint
 lint:
-	go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.62.2 run ./...
+	golangci-lint run
 
 ## test: 🚦 Execute all tests
 .PHONY: test
