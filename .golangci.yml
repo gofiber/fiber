@@ -186,8 +186,6 @@ linters-settings:
       - name: unchecked-type-assertion
         disabled: true # TODO: Do not disable
       - name: unhandled-error
-        arguments: ['bytes\.Buffer\.Write']
-      - name: unhandled-error
         disabled: true
 
   stylecheck:
