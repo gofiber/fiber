@@ -97,11 +97,6 @@ linters-settings:
         # show-ignored: true # TODO: Enable this
         audit: true
 
-  staticcheck:
-    checks:
-      - all
-      - '-SA4023' # disable the rule SA4023
-
   govet:
     enable-all: true
     disable:

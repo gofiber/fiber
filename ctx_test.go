@@ -4578,7 +4578,7 @@ func Test_Ctx_SendStreamWriter(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	err := c.SendStreamWriter(func(w *bufio.Writer) {
-		w.WriteString("Don't crash please") //nolint:errcheck,revive // It is fine to ignore the error
+		w.WriteString("Don't crash please") //nolint:errcheck // It is fine to ignore the error
 	})
 	require.NoError(t, err)
 	require.Equal(t, "Don't crash please", string(c.Response().Body()))
