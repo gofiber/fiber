@@ -35,8 +35,7 @@ markdown:
 ## lint: 🚨 Run lint checks
 .PHONY: lint
 lint:
-	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.64.7
-	golangci-lint run ./...
+	golangci-lint run
 
 ## test: 🚦 Execute all tests
 .PHONY: test

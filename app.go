@@ -1024,7 +1024,7 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 		select {
 		case err = <-channel:
 		case <-time.After(cfg.Timeout):
-			conn.Close() //nolint:errcheck,revive // It is fine to ignore the error here
+			conn.Close() //nolint:errcheck // It is fine to ignore the error here
 			if cfg.FailOnTimeout {
 				return nil, os.ErrDeadlineExceeded
 			}
