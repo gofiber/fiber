@@ -865,7 +865,7 @@ func Test_Logger_ByteSent_Streaming(t *testing.T) {
 			for {
 				i++
 				msg := fmt.Sprintf("%d - the time is %v", i, time.Now())
-				fmt.Fprintf(w, "data: Message: %s\n\n", msg) //nolint:errcheck // ignore error
+				fmt.Fprintf(w, "data: Message: %s\n\n", msg)
 				err := w.Flush()
 				if err != nil {
 					break
@@ -1049,7 +1049,7 @@ func Benchmark_Logger(b *testing.B) {
 				for {
 					i++
 					msg := fmt.Sprintf("%d - the time is %v", i, time.Now())
-					fmt.Fprintf(w, "data: Message: %s\n\n", msg) //nolint:errcheck // ignore error
+					fmt.Fprintf(w, "data: Message: %s\n\n", msg)
 					err := w.Flush()
 					if err != nil {
 						break
@@ -1217,7 +1217,7 @@ func Benchmark_Logger_Parallel(b *testing.B) {
 				for {
 					i++
 					msg := fmt.Sprintf("%d - the time is %v", i, time.Now())
-					fmt.Fprintf(w, "data: Message: %s\n\n", msg) //nolint:errcheck // ignore error
+					fmt.Fprintf(w, "data: Message: %s\n\n", msg)
 					err := w.Flush()
 					if err != nil {
 						break

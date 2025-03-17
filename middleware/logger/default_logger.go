@@ -166,7 +166,7 @@ func writeLog(w io.Writer, msg []byte) {
 		// Write error to output
 		if _, err := w.Write([]byte(err.Error())); err != nil {
 			// There is something wrong with the given io.Writer
-			_, _ = fmt.Fprintf(os.Stderr, "Failed to write to log, %v\n", err) //nolint: errcheck // It is fine to ignore the error
+			_, _ = fmt.Fprintf(os.Stderr, "Failed to write to log, %v\n", err)
 		}
 	}
 }
