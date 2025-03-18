@@ -36,6 +36,11 @@ func TestState_GetString(t *testing.T) {
 	s, ok = st.GetString("num")
 	require.False(t, ok)
 	require.Equal(t, "", s)
+
+	// missing key should return false
+	s, ok = st.GetString("missing")
+	require.False(t, ok)
+	require.Equal(t, "", s)
 }
 
 func TestState_GetInt(t *testing.T) {
@@ -50,6 +55,11 @@ func TestState_GetInt(t *testing.T) {
 	// wrong type should return zero value
 	st.Set("str", "abc")
 	i, ok = st.GetInt("str")
+	require.False(t, ok)
+	require.Equal(t, 0, i)
+
+	// missing key should return zero value
+	i, ok = st.GetInt("missing")
 	require.False(t, ok)
 	require.Equal(t, 0, i)
 }
@@ -68,6 +78,11 @@ func TestState_GetBool(t *testing.T) {
 	b, ok = st.GetBool("num")
 	require.False(t, ok)
 	require.False(t, b)
+
+	// missing key should return false
+	b, ok = st.GetBool("missing")
+	require.False(t, ok)
+	require.False(t, b)
 }
 
 func TestState_GetFloat64(t *testing.T) {
@@ -82,6 +97,11 @@ func TestState_GetFloat64(t *testing.T) {
 	// wrong type should return zero value
 	st.Set("int", 10)
 	f, ok = st.GetFloat64("int")
+	require.False(t, ok)
+	require.Equal(t, 0.0, f)
+
+	// missing key should return zero value
+	f, ok = st.GetFloat64("missing")
 	require.False(t, ok)
 	require.Equal(t, 0.0, f)
 }
