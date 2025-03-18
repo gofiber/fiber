@@ -28,7 +28,7 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 	buf := bytebufferpool.Get()
 
 	// Default output when no custom Format or io.Writer is given
-	if cfg.Format == defaultFormat {
+	if cfg.Format == FormatDefault {
 		// Format error if exist
 		formatErr := ""
 		if cfg.enableColors {

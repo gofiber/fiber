@@ -1,7 +1,7 @@
 package logger
 
 const (
-	FormatDefault   = "${time}] ${ip} ${status} - ${latency} ${method} ${path} ${error}"
+	FormatDefault   = "[${time}] ${ip} ${status} - ${latency} ${method} ${path} ${error}\n"
 	FormatCommonLog = "${ip} - - [${time}] \"${method} ${url} ${protocol}\" ${status} ${bytesSent}\n"
 	FormatCombined  = "${ip} - - [${time}] \"${method} ${url} ${protocol}\" ${status} ${bytesSent} \"${referer}\" \"${ua}\"\n"
 	FormatJSON      = "{\"time\":\"${time}\",\"ip\":\"${ip}\",\"method\":\"${method}\",\"url\":\"${url}\",\"status\":${status},\"bytesSent\":${bytesSent}}\n"

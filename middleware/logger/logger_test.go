@@ -467,7 +467,7 @@ func Test_Logger_All(t *testing.T) {
 	require.Equal(t, expected, buf.String())
 }
 
-func Test_Logger_CLF(t *testing.T) {
+func Test_Logger_CLF_Format_With_Name(t *testing.T) {
 	t.Parallel()
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
@@ -488,8 +488,155 @@ func Test_Logger_CLF(t *testing.T) {
 		fiber.MethodGet, "/?foo=bar", "HTTP/1.1",
 		fiber.StatusNotFound,
 		0)
-	logAnswer := buf.String()
-	require.Equal(t, expected, logAnswer)
+	logResponse := buf.String()
+	require.Equal(t, expected, logResponse)
+}
+
+func Test_Logger_CLF_Format_With_Const(t *testing.T) {
+	t.Parallel()
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Format: FormatCommonLog,
+		Stream: buf,
+	}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/?foo=bar", nil))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+
+	expected := fmt.Sprintf("0.0.0.0 - - [%s] \"%s %s %s\" %d %d\n",
+		time.Now().Format("15:04:05"),
+		fiber.MethodGet, "/?foo=bar", "HTTP/1.1",
+		fiber.StatusNotFound,
+		0)
+	logResponse := buf.String()
+	require.Equal(t, expected, logResponse)
+}
+
+func Test_Logger_Combined_CLF_Format_With_Name(t *testing.T) {
+	t.Parallel()
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Format: "combined",
+		Stream: buf,
+	}))
+	const expectedUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36"
+	const expectedReferer = "http://example.com"
+	req := httptest.NewRequest(fiber.MethodGet, "/?foo=bar", nil)
+	req.Header.Set("Referer", expectedReferer)
+	req.Header.Set("User-Agent", expectedUA)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+
+	expected := fmt.Sprintf("0.0.0.0 - - [%s] \"%s %s %s\" %d %d \"%s\" \"%s\"\n",
+		time.Now().Format("15:04:05"),
+		fiber.MethodGet, "/?foo=bar", "HTTP/1.1",
+		fiber.StatusNotFound,
+		0,
+		expectedReferer,
+		expectedUA)
+	logResponse := buf.String()
+	require.Equal(t, expected, logResponse)
+}
+
+func Test_Logger_Combined_CLF_Format_With_Const(t *testing.T) {
+	t.Parallel()
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Format: FormatCombined,
+		Stream: buf,
+	}))
+	const expectedUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36"
+	const expectedReferer = "http://example.com"
+	req := httptest.NewRequest(fiber.MethodGet, "/?foo=bar", nil)
+	req.Header.Set("Referer", expectedReferer)
+	req.Header.Set("User-Agent", expectedUA)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+
+	expected := fmt.Sprintf("0.0.0.0 - - [%s] \"%s %s %s\" %d %d \"%s\" \"%s\"\n",
+		time.Now().Format("15:04:05"),
+		fiber.MethodGet, "/?foo=bar", "HTTP/1.1",
+		fiber.StatusNotFound,
+		0,
+		expectedReferer,
+		expectedUA)
+	logResponse := buf.String()
+	require.Equal(t, expected, logResponse)
+}
+
+func Test_Logger_Json_Format_With_Name(t *testing.T) {
+	t.Parallel()
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Format: "json",
+		Stream: buf,
+	}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/?foo=bar", nil)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+
+	expected := fmt.Sprintf(
+		"{\"time\":\"%s\",\"ip\":\"%s\",\"method\":\"%s\",\"url\":\"%s\",\"status\":%d,\"bytesSent\":%d}\n",
+		time.Now().Format("15:04:05"),
+		"0.0.0.0",
+		fiber.MethodGet,
+		"/?foo=bar",
+		fiber.StatusNotFound,
+		0,
+	)
+	logResponse := buf.String()
+	require.Equal(t, expected, logResponse)
+}
+
+func Test_Logger_Json_Format_With_Const(t *testing.T) {
+	t.Parallel()
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Format: FormatJSON,
+		Stream: buf,
+	}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/?foo=bar", nil)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+
+	expected := fmt.Sprintf(
+		"{\"time\":\"%s\",\"ip\":\"%s\",\"method\":\"%s\",\"url\":\"%s\",\"status\":%d,\"bytesSent\":%d}\n",
+		time.Now().Format("15:04:05"),
+		"0.0.0.0",
+		fiber.MethodGet,
+		"/?foo=bar",
+		fiber.StatusNotFound,
+		0,
+	)
+	logResponse := buf.String()
+	require.Equal(t, expected, logResponse)
 }
 
 func getLatencyTimeUnits() []struct {

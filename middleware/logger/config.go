@@ -116,7 +116,7 @@ var ConfigDefault = Config{
 	Next:              nil,
 	Skip:              nil,
 	Done:              nil,
-	Format:            defaultFormat,
+	Format:            FormatDefault,
 	TimeFormat:        "15:04:05",
 	TimeZone:          "Local",
 	TimeInterval:      500 * time.Millisecond,
@@ -125,9 +125,6 @@ var ConfigDefault = Config{
 	LoggerFunc:        defaultLoggerInstance,
 	enableColors:      true,
 }
-
-// default logging format for Fiber's default logger
-var defaultFormat = "[${time}] ${ip} ${status} - ${latency} ${method} ${path} ${error}\n"
 
 // Helper function to set default values
 func configDefault(config ...Config) Config {
