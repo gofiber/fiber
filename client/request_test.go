@@ -451,6 +451,14 @@ func Test_Request_Cookies(t *testing.T) {
 	require.Equal(t, "bar", cookies["foo"])
 	require.Equal(t, "foo", cookies["bar"])
 
+	require.NotPanics(t, func() {
+		for _, v := range req.Cookies() {
+			if v == "bar" {
+				break
+			}
+		}
+	})
+
 	require.Len(t, cookies, 2)
 }
 
@@ -564,6 +572,14 @@ func Test_Request_PathParams(t *testing.T) {
 	require.Equal(t, "foo", pathParams["bar"])
 
 	require.Len(t, pathParams, 2)
+
+	require.NotPanics(t, func() {
+		for _, v := range req.PathParams() {
+			if v == "bar" {
+				break
+			}
+		}
+	})
 }
 
 func Benchmark_Request_PathParams(b *testing.B) {
