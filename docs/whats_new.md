@@ -937,6 +937,28 @@ app.Use(logger.New(logger.Config{
 
 </details>
 
+#### Predefined Formats
+
+Logger provides predefined formats that you can use by name or directly by specifying the format string.
+<details>
+
+<summary>Example Usage</summary>
+
+```go
+app.Use(logger.New(logger.Config{
+    Format: "common", // or logger.FormatCommon, 
+}))
+
+app.Use(logger.New(logger.Config{
+    Format: "combined", // or logger.FormatCombined,
+}))
+
+app.Use(logger.New(logger.Config{
+    Format: "json", // or logger.FormatJSON,
+}))
+```
+</details>
+
 ### Filesystem
 
 We've decided to remove filesystem middleware to clear up the confusion between static and filesystem middleware.
