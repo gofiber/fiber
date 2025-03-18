@@ -1121,6 +1121,7 @@ func Params[V GenericType](c Ctx, key string, defaultValue ...V) V {
 
 // Path returns the path part of the request URL.
 // Optionally, you could override the path.
+// Make copies or use the Immutable setting to use the value outside the Handler.
 func (c *DefaultCtx) Path(override ...string) string {
 	if len(override) != 0 && string(c.path) != override[0] {
 		// Set new path to context
@@ -1853,6 +1854,8 @@ func (c *DefaultCtx) configDependentPaths() {
 	c.treePath = ""
 	const maxDetectionPaths = 3
 	if len(c.detectionPath) >= maxDetectionPaths {
+		// c.treePath is only used by Fiber and is not exposed to the user
+		// so we can use utils.UnsafeString instead of c.app.getString
 		c.treePath = utils.UnsafeString(c.detectionPath[:maxDetectionPaths])
 	}
 }
