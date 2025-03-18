@@ -92,18 +92,18 @@ func TestState_GetFloat64(t *testing.T) {
 	st.Set("pi", 3.14)
 	f, ok := st.GetFloat64("pi")
 	require.True(t, ok)
-	require.Equal(t, 3.14, f)
+	require.InDelta(t, 3.14, f, 0.0001)
 
 	// wrong type should return zero value
 	st.Set("int", 10)
 	f, ok = st.GetFloat64("int")
 	require.False(t, ok)
-	require.Equal(t, 0.0, f)
+	require.InDelta(t, 0.0, f, 0.0001)
 
 	// missing key should return zero value
 	f, ok = st.GetFloat64("missing")
 	require.False(t, ok)
-	require.Equal(t, 0.0, f)
+	require.InDelta(t, 0.0, f, 0.0001)
 }
 
 func TestState_MustGet(t *testing.T) {
@@ -170,7 +170,7 @@ func TestState_Len(t *testing.T) {
 	require.Equal(t, 1, st.Len())
 }
 
-type testCase[T any] struct {
+type testCase[T any] struct { //nolint:govet // It does not really matter for test
 	name     string
 	key      string
 	value    any
@@ -179,6 +179,8 @@ type testCase[T any] struct {
 }
 
 func runGenericTest[T any](t *testing.T, getter func(*State, string) (T, bool), tests []testCase[T]) {
+	t.Helper()
+
 	st := newState()
 	for _, tc := range tests {
 		st.Set(tc.key, tc.value)

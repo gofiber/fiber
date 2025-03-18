@@ -1,6 +1,8 @@
 package fiber
 
-import "sync"
+import (
+	"sync"
+)
 
 // State is a key-value store for Fiber's app in order to be used as a global storage for the app's dependencies.
 // It's a thread-safe implementation of a map[string]any, using sync.Map.
@@ -48,7 +50,7 @@ func (s *State) GetInt(key string) (int, bool) {
 }
 
 // GetBool retrieves a bool value from the State.
-func (s *State) GetBool(key string) (bool, bool) {
+func (s *State) GetBool(key string) (value, ok bool) { //nolint:nonamedreturns // Better idea to use named returns here
 	dep, ok := s.Get(key)
 	if ok {
 		depBool, okCast := dep.(bool)
@@ -92,7 +94,12 @@ func (s *State) Clear() {
 func (s *State) Keys() []string {
 	keys := make([]string, 0)
 	s.dependencies.Range(func(key, _ any) bool {
-		keys = append(keys, key.(string))
+		keyStr, ok := key.(string)
+		if !ok {
+			return false
+		}
+
+		keys = append(keys, keyStr)
 		return true
 	})
 

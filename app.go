@@ -106,6 +106,8 @@ type App struct {
 	tlsHandler *TLSHandler
 	// Mount fields
 	mountFields *mountFields
+	// state management
+	state *State
 	// Route stack divided by HTTP methods
 	stack [][]*Route
 	// Route stack divided by HTTP methods and route prefixes
@@ -129,8 +131,6 @@ type App struct {
 	handlersCount uint32
 	// contains the information if the route stack has been changed to build the optimized tree
 	routesRefreshed bool
-	// state management
-	state *State
 }
 
 // Config is a struct holding the server settings.
