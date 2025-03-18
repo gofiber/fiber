@@ -460,6 +460,8 @@ func TestConstraint_CheckConstraint(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			result := tc.constraint.CheckConstraint(tc.param)
 			require.Equal(t, tc.expectedResult, result)
 		})
@@ -468,10 +470,10 @@ func TestConstraint_CheckConstraint(t *testing.T) {
 
 type mockCustomConstraint struct{}
 
-func (m *mockCustomConstraint) Name() string {
+func (*mockCustomConstraint) Name() string {
 	return "custom"
 }
 
-func (m *mockCustomConstraint) Execute(_ string, _ ...string) bool {
+func (*mockCustomConstraint) Execute(_ string, _ ...string) bool {
 	return true
 }
