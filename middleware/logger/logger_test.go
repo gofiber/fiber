@@ -467,6 +467,31 @@ func Test_Logger_All(t *testing.T) {
 	require.Equal(t, expected, buf.String())
 }
 
+func Test_Logger_CLF(t *testing.T) {
+	t.Parallel()
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Format: "common",
+		Stream: buf,
+	}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/?foo=bar", nil))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+
+	expected := fmt.Sprintf("0.0.0.0 - - [%s] \"%s %s %s\" %d %d\n",
+		time.Now().Format("15:04:05"),
+		fiber.MethodGet, "/?foo=bar", "HTTP/1.1",
+		fiber.StatusNotFound,
+		0)
+	logAnswer := buf.String()
+	require.Equal(t, expected, logAnswer)
+}
+
 func getLatencyTimeUnits() []struct {
 	unit string
 	div  time.Duration

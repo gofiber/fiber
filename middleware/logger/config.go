@@ -50,9 +50,20 @@ type Config struct {
 
 	timeZoneLocation *time.Location
 
-	// Format defines the logging tags
+	// Format defines the logging format for the middleware.
 	//
-	// Optional. Default: [${time}] ${ip} ${status} - ${latency} ${method} ${path} ${error}
+	// You can customize the log output by defining a format string with placeholders
+	// such as: ${time}, ${ip}, ${status}, ${method}, ${path}, ${latency}, ${error}, etc.
+	// The full list of available placeholders can be found in 'tags.go' or at
+	// 'https://docs.gofiber.io/api/middleware/logger/#constants'.
+	//
+	// Alternatively, you can use one of the predefined formats:
+	//   - "default"    → Uses the default log format: "[${time}] ${ip} ${status} - ${latency} ${method} ${path} ${error}"
+	//   - "common"     → Uses the Common Log Format (CLF): "${ip} - - [${time}] "${method} ${url} ${protocol}" ${status} ${bytesSent}"
+	//   - "combined"   → Uses the Combined Log Format: "${ip} - - [${time}] "${method} ${url} ${protocol}" ${status} ${bytesSent} "${referer}" "${ua}""
+	//   - "json"       → Uses the JSON structured log format: "{"time":"${time}","ip":"${ip}","method":"${method}","url":"${url}","status":${status},"bytesSent":${bytesSent}}"
+	//
+	// If no format is specified, the default format is used: "[${time}] ${ip} ${status} - ${latency} ${method} ${path} ${error}"
 	Format string
 
 	// TimeFormat https://programming.guide/go/format-parse-string-time-date-example.html

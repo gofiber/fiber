@@ -31,6 +31,10 @@ func New(config ...Config) fiber.Handler {
 	// Create correct timeformat
 	timestamp.Store(time.Now().In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
 
+	if logFormat, exists := LoggerConfig[cfg.Format]; exists {
+		cfg.Format = logFormat
+	}
+
 	// Update date/time every 500 milliseconds in a separate go routine
 	if strings.Contains(cfg.Format, "${"+TagTime+"}") {
 		go func() {
@@ -40,7 +44,6 @@ func New(config ...Config) fiber.Handler {
 			}
 		}()
 	}
-
 	// Set PID once
 	pid := strconv.Itoa(os.Getpid())
 
