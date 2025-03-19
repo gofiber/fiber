@@ -267,33 +267,33 @@ This example demonstrates how to track the number of requests using the State.
 package main
 
 import (
-	"fmt"
-	"github.com/gofiber/fiber/v3"
+    "fmt"
+    "github.com/gofiber/fiber/v3"
 )
 
 func main() {
-	app := fiber.New()
+    app := fiber.New()
 
-	// Initialize state with a counter.
-	app.State().Set("requestCount", 0)
+    // Initialize state with a counter.
+    app.State().Set("requestCount", 0)
 
-	// Middleware: Increase counter for every request.
-	app.Use(func(c fiber.Ctx) error {
-		count := fiber.GetStateWithDefault(app.State(), "requestCount", 0)
-		app.State().Set("requestCount", count+1)
-		return c.Next()
-	})
+    // Middleware: Increase counter for every request.
+    app.Use(func(c fiber.Ctx) error {
+        count := fiber.GetStateWithDefault(app.State(), "requestCount", 0)
+        app.State().Set("requestCount", count+1)
+        return c.Next()
+    })
 
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.SendString("Hello World!")
-	})
+    app.Get("/", func(c fiber.Ctx) error {
+        return c.SendString("Hello World!")
+    })
 
-	app.Get("/stats", func(c fiber.Ctx) error {
-		count := fiber.GetStateWithDefault(c.App().State(), "requestCount", 0)
-		return c.SendString(fmt.Sprintf("Total requests: %d", count))
-	})
+    app.Get("/stats", func(c fiber.Ctx) error {
+        count := fiber.GetStateWithDefault(c.App().State(), "requestCount", 0)
+        return c.SendString(fmt.Sprintf("Total requests: %d", count))
+    })
 
-	app.Listen(":3000")
+    app.Listen(":3000")
 }
 ```
 
@@ -305,40 +305,40 @@ This example shows how to configure different settings based on the environment.
 package main
 
 import (
-	"os"
+    "os"
 
-	"github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3"
 )
 
 func main() {
-	app := fiber.New()
+    app := fiber.New()
 
-	// Determine environment.
-	environment := os.Getenv("ENV")
-	if environment == "" {
-		environment = "development"
-	}
-	app.State().Set("environment", environment)
+    // Determine environment.
+    environment := os.Getenv("ENV")
+    if environment == "" {
+        environment = "development"
+    }
+    app.State().Set("environment", environment)
 
-	// Set environment-specific configurations.
-	if environment == "development" {
-		app.State().Set("apiUrl", "http://localhost:8080/api")
-		app.State().Set("debug", true)
-	} else {
-		app.State().Set("apiUrl", "https://api.production.com")
-		app.State().Set("debug", false)
-	}
+    // Set environment-specific configurations.
+    if environment == "development" {
+    app.State().Set("apiUrl", "http://localhost:8080/api")
+        app.State().Set("debug", true)
+    } else {
+        app.State().Set("apiUrl", "https://api.production.com")
+        app.State().Set("debug", false)
+    }
 
-	app.Get("/config", func(c fiber.Ctx) error {
-		config := map[string]any{
-			"environment": environment,
-			"apiUrl":      fiber.GetStateWithDefault(app.State(), "apiUrl", ""),
-			"debug":       fiber.GetStateWithDefault(app.State(), "debug", false),
-		}
-		return c.JSON(config)
-	})
+    app.Get("/config", func(c fiber.Ctx) error {
+        config := map[string]any{
+            "environment": environment,
+            "apiUrl":      fiber.GetStateWithDefault(app.State(), "apiUrl", ""),
+            "debug":       fiber.GetStateWithDefault(app.State(), "debug", false),
+        }
+        return c.JSON(config)
+    })
 
-	app.Listen(":3000")
+    app.Listen(":3000")
 }
 ```
 
@@ -350,81 +350,80 @@ This example demonstrates how to use the State for dependency injection in a Fib
 package main
 
 import (
-	"context"
-	"fmt"
-	"log"
+    "context"
+    "fmt"
+    "log"
 
-	"github.com/gofiber/fiber/v3"
-	"github.com/redis/go-redis/v9"
+    "github.com/gofiber/fiber/v3"
+    "github.com/redis/go-redis/v9"
 )
 
 type User struct {
-	ID    int    `query:"id"`
-	Name  string `query:"name"`
-	Email string `query:"email"`
+    ID    int    `query:"id"`
+    Name  string `query:"name"`
+    Email string `query:"email"`
 }
 
 func main() {
-	app := fiber.New()
-	ctx := context.Background()
+    app := fiber.New()
+    ctx := context.Background()
 
-	// Initialize Redis client.
-	rdb := redis.NewClient(&redis.Options{
-		Addr:     "localhost:6379",
-		Password: "",
-		DB:       0,
-	})
+    // Initialize Redis client.
+    rdb := redis.NewClient(&redis.Options{
+        Addr:     "localhost:6379",
+        Password: "",
+        DB:       0,
+    })
 
-	// Check the Redis connection.
-	if err := rdb.Ping(ctx).Err(); err != nil {
-		log.Fatalf("Could not connect to Redis: %v", err)
-	}
+    // Check the Redis connection.
+    if err := rdb.Ping(ctx).Err(); err != nil {
+	    log.Fatalf("Could not connect to Redis: %v", err)
+    }
 
-	// Inject the Redis client into Fiber's State for dependency injection.
-	app.State().Set("redis", rdb)
+    // Inject the Redis client into Fiber's State for dependency injection.
+    app.State().Set("redis", rdb)
 
-	app.Get("/user/create", func(c fiber.Ctx) error {
-		var user User
-		if err := c.Bind().Query(&user); err != nil {
-			return c.Status(fiber.StatusBadRequest).SendString(err.Error())
-		}
+    app.Get("/user/create", func(c fiber.Ctx) error {
+        var user User
+        if err := c.Bind().Query(&user); err != nil {
+            return c.Status(fiber.StatusBadRequest).SendString(err.Error())
+        }
 
-		// Save the user to the database.
-		rdb, ok := fiber.GetState[*redis.Client](app.State(), "redis")
-		if !ok {
-			return c.Status(fiber.StatusInternalServerError).SendString("Redis client not found")
-		}
+        // Save the user to the database.
+        rdb, ok := fiber.GetState[*redis.Client](app.State(), "redis")
+        if !ok {
+            return c.Status(fiber.StatusInternalServerError).SendString("Redis client not found")
+        }
 
-		// Save the user to the database.
-		key := fmt.Sprintf("user:%d", user.ID)
-		err := rdb.HSet(ctx, key, "name", user.Name, "email", user.Email).Err()
-		if err != nil {
-			return c.Status(fiber.StatusInternalServerError).SendString(err.Error())
-		}
+        // Save the user to the database.
+        key := fmt.Sprintf("user:%d", user.ID)
+        err := rdb.HSet(ctx, key, "name", user.Name, "email", user.Email).Err()
+        if err != nil {
+            return c.Status(fiber.StatusInternalServerError).SendString(err.Error())
+        }
 
-		return c.JSON(user)
+        return c.JSON(user)
+    })
 
-	})
+    app.Get("/user/:id", func(c fiber.Ctx) error {
+        id := c.Params("id")
 
-	app.Get("/user/:id", func(c fiber.Ctx) error {
-		id := c.Params("id")
+        rdb, ok := fiber.GetState[*redis.Client](app.State(), "redis")
+        if !ok {
+            return c.Status(fiber.StatusInternalServerError).SendString("Redis client not found")
+        }
 
-		rdb, ok := fiber.GetState[*redis.Client](app.State(), "redis")
-		if !ok {
-			return c.Status(fiber.StatusInternalServerError).SendString("Redis client not found")
-		}
+        key := fmt.Sprintf("user:%s", id)
+        user, err := rdb.HGetAll(ctx, key).Result()
+        if err == redis.Nil {
+            return c.Status(fiber.StatusNotFound).SendString("User not found")
+        } else if err != nil {
+            return c.Status(fiber.StatusInternalServerError).SendString(err.Error())
+        }
 
-		key := fmt.Sprintf("user:%s", id)
-		user, err := rdb.HGetAll(ctx, key).Result()
-		if err == redis.Nil {
-			return c.Status(fiber.StatusNotFound).SendString("User not found")
-		} else if err != nil {
-			return c.Status(fiber.StatusInternalServerError).SendString(err.Error())
-		}
+        return c.JSON(user)
+    })
 
-		return c.JSON(user)
-	})
-
-	app.Listen(":3000")
+    app.Listen(":3000")
 }
 ```
