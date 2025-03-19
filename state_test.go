@@ -120,6 +120,15 @@ func TestState_MustGet(t *testing.T) {
 	})
 }
 
+func TestState_Has(t *testing.T) {
+	t.Parallel()
+
+	st := newState()
+
+	st.Set("key", "value")
+	require.True(t, st.Has("key"))
+}
+
 func TestState_Delete(t *testing.T) {
 	t.Parallel()
 	st := newState()
@@ -421,6 +430,22 @@ func BenchmarkState_GetStateWithDefault(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		key := "key" + strconv.Itoa(i%n)
 		GetStateWithDefault[int](st, key, 0)
+	}
+}
+
+func BenchmarkState_Has(b *testing.B) {
+	b.ReportAllocs()
+
+	st := newState()
+	n := 1000
+	// pre-populate the state
+	for i := 0; i < n; i++ {
+		st.Set("key"+strconv.Itoa(i), i)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		st.Has("key" + strconv.Itoa(i%n))
 	}
 }
 

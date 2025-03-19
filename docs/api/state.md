@@ -130,6 +130,22 @@ if ratio, ok := app.State().GetFloat64("scalingFactor"); ok {
 }
 ```
 
+### Has
+
+Has checks if a key exists in the State.
+
+```go title="Signature"
+func (s *State) Has(key string) bool
+```
+
+**Usage Example:**
+
+```go
+if app.State().Has("appName") {
+    fmt.Println("App Name is set.")
+}
+```
+
 ### Delete
 
 Delete removes a key-value pair from the State.

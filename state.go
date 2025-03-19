@@ -84,6 +84,13 @@ func (s *State) GetFloat64(key string) (float64, bool) {
 	return 0, false
 }
 
+// Has checks if a key is present in the State.
+// It returns a boolean indicating if the key is present.
+func (s *State) Has(key string) bool {
+	_, ok := s.Get(key)
+	return ok
+}
+
 // Delete removes a key-value pair from the State.
 func (s *State) Delete(key string) {
 	s.dependencies.Delete(key)
