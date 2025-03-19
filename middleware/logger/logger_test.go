@@ -537,9 +537,9 @@ func Test_Logger_Combined_CLF_Format_With_Name(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 
-	expected := fmt.Sprintf("0.0.0.0 - - [%s] \"%q %q %q\" %d %d \"%q\" \"%q\"\n",
+	expected := fmt.Sprintf("0.0.0.0 - - [%s] %q %d %d %q %q\n",
 		time.Now().Format("15:04:05"),
-		fiber.MethodGet, "/?foo=bar", "HTTP/1.1",
+		fmt.Sprintf("%s %s %s", fiber.MethodGet, "/?foo=bar", "HTTP/1.1"),
 		fiber.StatusNotFound,
 		0,
 		expectedReferer,
@@ -568,9 +568,9 @@ func Test_Logger_Combined_CLF_Format_With_Const(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 
-	expected := fmt.Sprintf("0.0.0.0 - - [%s] \"%q %q %q\" %d %d \"%q\" \"%q\"\n",
+	expected := fmt.Sprintf("0.0.0.0 - - [%s] %q %d %d %q %q\n",
 		time.Now().Format("15:04:05"),
-		fiber.MethodGet, "/?foo=bar", "HTTP/1.1",
+		fmt.Sprintf("%s %s %s", fiber.MethodGet, "/?foo=bar", "HTTP/1.1"),
 		fiber.StatusNotFound,
 		0,
 		expectedReferer,
@@ -597,7 +597,7 @@ func Test_Logger_Json_Format_With_Name(t *testing.T) {
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 
 	expected := fmt.Sprintf(
-		"{\"time\":\"%q\",\"ip\":\"%q\",\"method\":\"%q\",\"url\":\"%q\",\"status\":%d,\"bytesSent\":%d}\n",
+		"{\"time\":%q,\"ip\":%q,\"method\":%q,\"url\":%q,\"status\":%d,\"bytesSent\":%d}\n",
 		time.Now().Format("15:04:05"),
 		"0.0.0.0",
 		fiber.MethodGet,
@@ -627,7 +627,7 @@ func Test_Logger_Json_Format_With_Const(t *testing.T) {
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 
 	expected := fmt.Sprintf(
-		"{\"time\":\"%q\",\"ip\":\"%q\",\"method\":\"%q\",\"url\":\"%q\",\"status\":%d,\"bytesSent\":%d}\n",
+		"{\"time\":%q,\"ip\":%q,\"method\":%q,\"url\":%q,\"status\":%d,\"bytesSent\":%d}\n",
 		time.Now().Format("15:04:05"),
 		"0.0.0.0",
 		fiber.MethodGet,
