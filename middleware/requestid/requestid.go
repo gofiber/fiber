@@ -55,12 +55,12 @@ func New(config ...Config) fiber.Handler {
 // - context.Context: Retrieves request ID from context values
 func FromContext(c any) string {
 	switch ctx := c.(type) {
-	case fiber.Ctx:
-		if rid, ok := ctx.Locals(requestIDKey).(string); ok {
-			return rid
-		}
 	case context.Context:
 		if rid, ok := ctx.Value(requestIDKey).(string); ok {
+			return rid
+		}
+	case fiber.Ctx:
+		if rid, ok := ctx.Locals(requestIDKey).(string); ok {
 			return rid
 		}
 	default:

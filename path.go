@@ -674,6 +674,8 @@ func getParamConstraintType(constraintPart string) TypeConstraint {
 
 // CheckConstraint validates if a param matches the given constraint
 // Returns true if the param passes the constraint check, false otherwise
+//
+//nolint:errcheck // TODO: Properly check _all_ errors in here, log them or immediately return
 func (c *Constraint) CheckConstraint(param string) bool {
 	// First check if there's a custom constraint with the same name
 	// This allows custom constraints to override built-in constraints
@@ -682,6 +684,11 @@ func (c *Constraint) CheckConstraint(param string) bool {
 			return cc.Execute(param, c.Data...)
 		}
 	}
+
+	var (
+		err error
+		num int
+	)
 
 	// Validate constraint has required data
 	needOneData := []TypeConstraint{minLenConstraint, maxLenConstraint, lenConstraint, minConstraint, maxConstraint, datetimeConstraint, regexConstraint}
@@ -699,23 +706,16 @@ func (c *Constraint) CheckConstraint(param string) bool {
 		}
 	}
 
-	// Check constraints
+	// check constraints
 	switch c.ID {
 	case noConstraint:
-		// If we reach here with noConstraint, it means we didn't find a matching custom constraint above
-		return false
+		return true
 	case intConstraint:
-		if _, err := strconv.Atoi(param); err != nil {
-			return false
-		}
+		_, err = strconv.Atoi(param)
 	case boolConstraint:
-		if _, err := strconv.ParseBool(param); err != nil {
-			return false
-		}
+		_, err = strconv.ParseBool(param)
 	case floatConstraint:
-		if _, err := strconv.ParseFloat(param, 32); err != nil {
-			return false
-		}
+		_, err = strconv.ParseFloat(param, 32)
 	case alphaConstraint:
 		for _, r := range param {
 			if !unicode.IsLetter(r) {
@@ -723,88 +723,57 @@ func (c *Constraint) CheckConstraint(param string) bool {
 			}
 		}
 	case guidConstraint:
-		if _, err := uuid.Parse(param); err != nil {
-			return false
-		}
+		_, err = uuid.Parse(param)
 	case minLenConstraint:
-		data, err := strconv.Atoi(c.Data[0])
-		if err != nil {
-			return false
-		}
+		data, _ := strconv.Atoi(c.Data[0])
+
 		if len(param) < data {
 			return false
 		}
 	case maxLenConstraint:
-		data, err := strconv.Atoi(c.Data[0])
-		if err != nil {
-			return false
-		}
+		data, _ := strconv.Atoi(c.Data[0])
+
 		if len(param) > data {
 			return false
 		}
 	case lenConstraint:
-		data, err := strconv.Atoi(c.Data[0])
-		if err != nil {
-			return false
-		}
+		data, _ := strconv.Atoi(c.Data[0])
+
 		if len(param) != data {
 			return false
 		}
 	case betweenLenConstraint:
-		data, err := strconv.Atoi(c.Data[0])
-		if err != nil {
-			return false
-		}
-		data2, err := strconv.Atoi(c.Data[1])
-		if err != nil {
-			return false
-		}
+		data, _ := strconv.Atoi(c.Data[0])
+		data2, _ := strconv.Atoi(c.Data[1])
 		length := len(param)
 		if length < data || length > data2 {
 			return false
 		}
 	case minConstraint:
-		data, err := strconv.Atoi(c.Data[0])
-		if err != nil {
-			return false
-		}
-		num, err := strconv.Atoi(param)
-		if err != nil {
-			return false
-		}
-		if num < data {
+		data, _ := strconv.Atoi(c.Data[0])
+		num, err = strconv.Atoi(param)
+
+		if err != nil || num < data {
 			return false
 		}
 	case maxConstraint:
-		data, err := strconv.Atoi(c.Data[0])
-		if err != nil {
-			return false
-		}
-		num, err := strconv.Atoi(param)
-		if err != nil {
-			return false
-		}
-		if num > data {
+		data, _ := strconv.Atoi(c.Data[0])
+		num, err = strconv.Atoi(param)
+
+		if err != nil || num > data {
 			return false
 		}
 	case rangeConstraint:
-		data, err := strconv.Atoi(c.Data[0])
-		if err != nil {
-			return false
-		}
-		data2, err := strconv.Atoi(c.Data[1])
-		if err != nil {
-			return false
-		}
-		num, err := strconv.Atoi(param)
-		if err != nil {
-			return false
-		}
-		if num < data || num > data2 {
+		data, _ := strconv.Atoi(c.Data[0])
+		data2, _ := strconv.Atoi(c.Data[1])
+		num, err = strconv.Atoi(param)
+
+		if err != nil || num < data || num > data2 {
 			return false
 		}
 	case datetimeConstraint:
-		if _, err := time.Parse(c.Data[0], param); err != nil {
+		_, err = time.Parse(c.Data[0], param)
+		if err != nil {
 			return false
 		}
 	case regexConstraint:
@@ -814,7 +783,9 @@ func (c *Constraint) CheckConstraint(param string) bool {
 		if match := c.RegexCompiler.MatchString(param); !match {
 			return false
 		}
+	default:
+		return false
 	}
 
-	return true
+	return err == nil
 }
