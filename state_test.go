@@ -130,13 +130,13 @@ func TestState_Delete(t *testing.T) {
 	require.False(t, ok)
 }
 
-func TestState_Clear(t *testing.T) {
+func TestState_Reset(t *testing.T) {
 	t.Parallel()
 	st := newState()
 
 	st.Set("a", 1)
 	st.Set("b", 2)
-	st.Clear()
+	st.Reset()
 	require.Equal(t, 0, st.Len())
 	require.Empty(t, st.Keys())
 }
@@ -435,7 +435,7 @@ func BenchmarkState_Delete(b *testing.B) {
 	}
 }
 
-func BenchmarkState_Clear(b *testing.B) {
+func BenchmarkState_Reset(b *testing.B) {
 	b.ReportAllocs()
 
 	b.ResetTimer()
@@ -445,7 +445,7 @@ func BenchmarkState_Clear(b *testing.B) {
 		for j := 0; j < 100; j++ {
 			st.Set("key"+strconv.Itoa(j), j)
 		}
-		st.Clear()
+		st.Reset()
 	}
 }
 

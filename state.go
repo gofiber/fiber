@@ -27,7 +27,17 @@ func (s *State) Get(key string) (any, bool) {
 	return s.dependencies.Load(key)
 }
 
+// MustGet retrieves a value from the State and panics if the key is not found.
+func (s *State) MustGet(key string) any {
+	if dep, ok := s.Get(key); ok {
+		return dep
+	}
+
+	panic("state: dependency not found!")
+}
+
 // GetString retrieves a string value from the State.
+// It returns the string and a boolean indicating successful type assertion.
 func (s *State) GetString(key string) (string, bool) {
 	dep, ok := s.Get(key)
 	if ok {
@@ -38,7 +48,8 @@ func (s *State) GetString(key string) (string, bool) {
 	return "", false
 }
 
-// GetInt retrieves an int value from the State.
+// GetInt retrieves an integer value from the State.
+// It returns the int and a boolean indicating successful type assertion.
 func (s *State) GetInt(key string) (int, bool) {
 	dep, ok := s.Get(key)
 	if ok {
@@ -49,7 +60,8 @@ func (s *State) GetInt(key string) (int, bool) {
 	return 0, false
 }
 
-// GetBool retrieves a bool value from the State.
+// GetBool retrieves a boolean value from the State.
+// It returns the bool and a boolean indicating successful type assertion.
 func (s *State) GetBool(key string) (value, ok bool) { //nolint:nonamedreturns // Better idea to use named returns here
 	dep, ok := s.Get(key)
 	if ok {
@@ -61,6 +73,7 @@ func (s *State) GetBool(key string) (value, ok bool) { //nolint:nonamedreturns /
 }
 
 // GetFloat64 retrieves a float64 value from the State.
+// It returns the float64 and a boolean indicating successful type assertion.
 func (s *State) GetFloat64(key string) (float64, bool) {
 	dep, ok := s.Get(key)
 	if ok {
@@ -71,26 +84,17 @@ func (s *State) GetFloat64(key string) (float64, bool) {
 	return 0, false
 }
 
-// MustGet retrieves a value from the State and panics if the key is not found.
-func (s *State) MustGet(key string) any {
-	if dep, ok := s.Get(key); ok {
-		return dep
-	}
-
-	panic("state: dependency not found!")
-}
-
-// MustGetString retrieves a string value from the State and panics if the key is not found.
+// Delete removes a key-value pair from the State.
 func (s *State) Delete(key string) {
 	s.dependencies.Delete(key)
 }
 
-// Reset resets the State.
-func (s *State) Clear() {
+// Reset resets the State by removing all keys.
+func (s *State) Reset() {
 	s.dependencies.Clear()
 }
 
-// Keys retrieves all the keys from the State.
+// Keys returns a slice containing all keys present in the State.
 func (s *State) Keys() []string {
 	keys := make([]string, 0)
 	s.dependencies.Range(func(key, _ any) bool {
@@ -106,7 +110,7 @@ func (s *State) Keys() []string {
 	return keys
 }
 
-// Len retrieves the number of dependencies in the State.
+// Len returns the number of keys in the State.
 func (s *State) Len() int {
 	length := 0
 	s.dependencies.Range(func(_, _ any) bool {
@@ -118,6 +122,7 @@ func (s *State) Len() int {
 }
 
 // GetState retrieves a value from the State and casts it to the desired type.
+// It returns the casted value and a boolean indicating if the cast was successful.
 func GetState[T any](s *State, key string) (T, bool) {
 	dep, ok := s.Get(key)
 
@@ -130,7 +135,8 @@ func GetState[T any](s *State, key string) (T, bool) {
 	return zeroVal, false
 }
 
-// MustGetState retrieves a value from the State and casts it to the desired type, panicking if the key is not found.
+// MustGetState retrieves a value from the State and casts it to the desired type.
+// It panics if the key is not found or if the type assertion fails.
 func MustGetState[T any](s *State, key string) T {
 	dep, ok := GetState[T](s, key)
 	if !ok {
@@ -140,7 +146,9 @@ func MustGetState[T any](s *State, key string) T {
 	return dep
 }
 
-// GetStateWithDefault retrieves a value from the State and casts it to the desired type, returning a default value in case the key is not found.
+// GetStateWithDefault retrieves a value from the State,
+// casting it to the desired type. If the key is not present,
+// it returns the provided default value.
 func GetStateWithDefault[T any](s *State, key string, defaultVal T) T {
 	dep, ok := GetState[T](s, key)
 	if !ok {
