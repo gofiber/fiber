@@ -79,7 +79,7 @@ app.Use(logger.New(logger.Config{
     TimeZone:   "Asia/Shanghai",
     Done: func(c fiber.Ctx, logString []byte) {
         if c.Response().StatusCode() != fiber.StatusOK {
-            reporter.SendToSlack(logString) 
+            reporter.SendToSlack(logString)
         }
     },
 }))
@@ -150,46 +150,48 @@ Writing to os.File is goroutine-safe, but if you are using a custom Stream that 
 
 ### Config
 
-| Property         | Type                       | Description                                                                                                                      | Default                                                               |
-|:-----------------|:---------------------------|:---------------------------------------------------------------------------------------------------------------------------------|:----------------------------------------------------------------------|
-| Next             | `func(fiber.Ctx) bool`     | Next defines a function to skip this middleware when returned true.                                                               | `nil`                                                                 |
-| Skip             | `func(fiber.Ctx) bool`     | Skip is a function to determine if logging is skipped or written to Stream.                                                       | `nil`                                                                 |
-| Done             | `func(fiber.Ctx, []byte)`  | Done is a function that is called after the log string for a request is written to Stream, and pass the log string as parameter.  | `nil`                                                                 |
-| CustomTags       | `map[string]LogFunc`       | tagFunctions defines the custom tag action.                                                                                      | `map[string]LogFunc`                                                  |
-| Format           | `string`                   | Format defines the logging tags. Supports predefined formats: `default`,`common`, `combined`, `json`.                                                                                                 | `[${time}] ${ip} ${status} - ${latency} ${method} ${path} ${error}\n` |
-| TimeFormat       | `string`                   | TimeFormat defines the time format for log timestamps.                                                                           | `15:04:05`                                                            |
-| TimeZone         | `string`                   | TimeZone can be specified, such as "UTC" and "America/New_York" and "Asia/Chongqing", etc                                        | `"Local"`                                                             |
-| TimeInterval     | `time.Duration`            | TimeInterval is the delay before the timestamp is updated.                                                                       | `500 * time.Millisecond`                                              |
-| Stream           | `io.Writer`                | Stream is a writer where logs are written.                                                                                       | `os.Stdout`                                                           |
-| LoggerFunc | `func(c fiber.Ctx, data *Data, cfg Config) error` | Custom logger function for integration with logging libraries (Zerolog, Zap, Logrus, etc). Defaults to Fiber's default logger if not defined. | `see default_logger.go defaultLoggerInstance` |
-| DisableColors    | `bool`                     | DisableColors defines if the logs output should be colorized.                                                                    | `false`                                                               |
+| Property      | Type                                              | Description                                                                                                                                   | Default                                                               |
+| :------------ | :------------------------------------------------ | :-------------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------- |
+| Next          | `func(fiber.Ctx) bool`                            | Next defines a function to skip this middleware when returned true.                                                                           | `nil`                                                                 |
+| Skip          | `func(fiber.Ctx) bool`                            | Skip is a function to determine if logging is skipped or written to Stream.                                                                   | `nil`                                                                 |
+| Done          | `func(fiber.Ctx, []byte)`                         | Done is a function that is called after the log string for a request is written to Stream, and pass the log string as parameter.              | `nil`                                                                 |
+| CustomTags    | `map[string]LogFunc`                              | tagFunctions defines the custom tag action.                                                                                                   | `map[string]LogFunc`                                                  |
+| Format        | `string`                                          | Format defines the logging tags. Supports predefined formats: `default`,`common`, `combined`, `json`.                                         | `[${time}] ${ip} ${status} - ${latency} ${method} ${path} ${error}\n` |
+| TimeFormat    | `string`                                          | TimeFormat defines the time format for log timestamps.                                                                                        | `15:04:05`                                                            |
+| TimeZone      | `string`                                          | TimeZone can be specified, such as "UTC" and "America/New_York" and "Asia/Chongqing", etc                                                     | `"Local"`                                                             |
+| TimeInterval  | `time.Duration`                                   | TimeInterval is the delay before the timestamp is updated.                                                                                    | `500 * time.Millisecond`                                              |
+| Stream        | `io.Writer`                                       | Stream is a writer where logs are written.                                                                                                    | `os.Stdout`                                                           |
+| LoggerFunc    | `func(c fiber.Ctx, data *Data, cfg Config) error` | Custom logger function for integration with logging libraries (Zerolog, Zap, Logrus, etc). Defaults to Fiber's default logger if not defined. | `see default_logger.go defaultLoggerInstance`                         |
+| DisableColors | `bool`                                            | DisableColors defines if the logs output should be colorized.                                                                                 | `false`                                                               |
 
 ## Default Config
 
 ```go
 var ConfigDefault = Config{
-	Next:              nil,
-	Skip:              nil,
-	Done:              nil,
-	Format:            FormatDefault,
-	TimeFormat:        "15:04:05",
-	TimeZone:          "Local",
-	TimeInterval:      500 * time.Millisecond,
-	Stream:            os.Stdout,
-	BeforeHandlerFunc: beforeHandlerFunc,
-	LoggerFunc:        defaultLoggerInstance,
-	enableColors:      true,
+    Next:              nil,
+    Skip:              nil,
+    Done:              nil,
+    Format:            FormatDefault,
+    TimeFormat:        "15:04:05",
+    TimeZone:          "Local",
+    TimeInterval:      500 * time.Millisecond,
+    Stream:            os.Stdout,
+    BeforeHandlerFunc: beforeHandlerFunc,
+    LoggerFunc:        defaultLoggerInstance,
+    enableColors:      true,
 }
 ```
 
 ## Predefined Formats
+
 Logger provides predefined formats that you can use by name or directly by specifying the format string.
-| **Format Name**   | **Format Constant** | **Format String**                                                                                                  | **Description**                                                                                     |
+
+| **Format Name** | **Format Constant** | **Format String** | **Description** |
 |-------------------|---------------------|--------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------|
-| default           | `FormatDefault`      | `"[${time}] ${ip} ${status} - ${latency} ${method} ${path} ${error}\n"`                                             | Fiber's default logger format.                                                                       |
-| common            | `FormatCommonLog`    | `"${ip} - - [${time}] "${method} ${url} ${protocol}" ${status} ${bytesSent}\n"`                                     | Common Log Format (CLF) used in web server logs.                                                    |
-| combined          | `FormatCombined`     | `"${ip} - - [${time}] "${method} ${url} ${protocol}" ${status} ${bytesSent} "${referer}" "${ua}"\n"`                 | CLF format plus the `referer` and `user agent` fields.                                               |
-| json              | `FormatJSON`         | `"{time: ${time}, ip: ${ip}, method: ${method}, url: ${url}, status: ${status}, bytesSent: ${bytesSent}}\n"`        | JSON format for structured logging.                                                             
+| default | `FormatDefault` | `"[${time}] ${ip} ${status} - ${latency} ${method} ${path} ${error}\n"` | Fiber's default logger format. |
+| common | `FormatCommonLog` | `"${ip} - - [${time}] "${method} ${url} ${protocol}" ${status} ${bytesSent}\n"` | Common Log Format (CLF) used in web server logs. |
+| combined | `FormatCombined` | `"${ip} - - [${time}] "${method} ${url} ${protocol}" ${status} ${bytesSent} "${referer}" "${ua}"\n"` | CLF format plus the `referer` and `user agent` fields. |
+| json | `FormatJSON` | `"{time: ${time}, ip: ${ip}, method: ${method}, url: ${url}, status: ${status}, bytesSent: ${bytesSent}}\n"` | JSON format for structured logging.
 
 ## Constants
 
