@@ -14,7 +14,7 @@ Below is the detailed description of all public methods and usage examples.
 // State is a key-value store for Fiber's app in order to be used as a global storage for the app's dependencies.
 // It's a thread-safe implementation of a map[string]any, using sync.Map.
 type State struct {
-	dependencies sync.Map
+    dependencies sync.Map
 }
 ```
 
@@ -377,7 +377,7 @@ func main() {
 
     // Check the Redis connection.
     if err := rdb.Ping(ctx).Err(); err != nil {
-	    log.Fatalf("Could not connect to Redis: %v", err)
+        log.Fatalf("Could not connect to Redis: %v", err)
     }
 
     // Inject the Redis client into Fiber's State for dependency injection.

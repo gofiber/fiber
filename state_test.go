@@ -247,15 +247,15 @@ func Test_GetStateWithDefault(t *testing.T) {
 	st := newState()
 
 	st.Set("flag", true)
-	flag := GetStateWithDefault[bool](st, "flag", false)
+	flag := GetStateWithDefault(st, "flag", false)
 	require.True(t, flag)
 
 	// mismatched type should return the default value
-	str := GetStateWithDefault[string](st, "flag", "default")
+	str := GetStateWithDefault(st, "flag", "default")
 	require.Equal(t, "default", str)
 
 	// missing key should return the default value
-	flag = GetStateWithDefault[bool](st, "missing", false)
+	flag = GetStateWithDefault(st, "missing", false)
 	require.False(t, flag)
 }
 
