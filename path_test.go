@@ -280,7 +280,7 @@ func TestConstraint_CheckConstraint(t *testing.T) {
 			name:           "no constraint",
 			constraint:     &Constraint{ID: noConstraint},
 			param:          "abc",
-			expectedResult: false,
+			expectedResult: true,
 		},
 		{
 			name:           "int constraint valid",

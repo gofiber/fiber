@@ -29,6 +29,14 @@ func init() {
 	// smaller list for benchmark cases
 	benchmarkCases = []routeCaseCollection{
 		{
+			pattern: "/api/v1/:param<int;bool((>",
+			testCases: []routeTestCase{
+				{url: "/api/v1/entity", params: nil, match: false},
+				{url: "/api/v1/8728382", params: []string{"8728382"}, match: true},
+				{url: "/api/v1/true", params: nil, match: false},
+			},
+		},
+		{
 			pattern: "/api/v1/const",
 			testCases: []routeTestCase{
 				{url: "/api/v1/const", params: []string{}, match: true},
@@ -606,14 +614,14 @@ func init() {
 					{url: "/api/v1/2022/08-27", params: nil, match: false},
 				},
 			},
-			{
-				pattern: "/api/v1/:param<int;bool((>",
-				testCases: []routeTestCase{
-					{url: "/api/v1/entity", params: nil, match: false},
-					{url: "/api/v1/8728382", params: []string{"8728382"}, match: true},
-					{url: "/api/v1/true", params: nil, match: false},
-				},
-			},
+			// {
+			// 	pattern: "/api/v1/:param<int;bool((>",
+			// 	testCases: []routeTestCase{
+			// 		{url: "/api/v1/entity", params: nil, match: false},
+			// 		{url: "/api/v1/8728382", params: []string{"8728382"}, match: true},
+			// 		{url: "/api/v1/true", params: nil, match: false},
+			// 	},
+			// },
 			{
 				pattern: "/api/v1/:param<int;max(3000)>",
 				testCases: []routeTestCase{
