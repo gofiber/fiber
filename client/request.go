@@ -298,9 +298,8 @@ func (r *Request) Cookie(key string) string {
 // Use maps.Collect() to gather them into a map if needed.
 func (r *Request) Cookies() iter.Seq2[string, string] {
 	return func(yield func(string, string) bool) {
-		var res bool
 		for k, v := range *r.cookies {
-			res = yield(k, v)
+			res := yield(k, v)
 			if !res {
 				return
 			}

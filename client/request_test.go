@@ -1,3 +1,4 @@
+//nolint:goconst // Much easier to just ignore memory leaks in tests
 package client
 
 import (
@@ -1595,7 +1596,7 @@ func Test_SetValWithStruct(t *testing.T) {
 
 		require.True(t, func() bool {
 			for _, v := range p.PeekMulti("TSlice") {
-				if string(v) == "bar" { //nolint:goconst // test
+				if string(v) == "bar" {
 					return true
 				}
 			}
