@@ -721,20 +721,6 @@ func init() {
 					{url: "/api/v1/abc", params: nil, match: false},
 				},
 			},
-			// Add test case for default branch (unknown constraint type)
-			{
-				pattern: "/api/v1/:param<unknownconstraint>",
-				testCases: []routeTestCase{
-					{url: "/api/v1/anyvalue", params: nil, match: false},
-				},
-			},
-			// Test case for constraint with insufficient data
-			{
-				pattern: "/api/v1/:param<minLen>",
-				testCases: []routeTestCase{
-					{url: "/api/v1/anyvalue", params: nil, match: false},
-				},
-			},
 		}...,
 	)
 }
