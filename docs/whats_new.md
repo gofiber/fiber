@@ -957,6 +957,7 @@ app.Use(logger.New(logger.Config{
     Format: "json", // or logger.FormatJSON,
 }))
 ```
+
 </details>
 
 ### Filesystem
