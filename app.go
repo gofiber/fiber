@@ -140,7 +140,7 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// Default: ""
 	ServerHeader string `json:"server_header"`
 
-	// When set to Ftrue, the router treats "/foo" and "/foo/" as different.
+	// When set to true, the router treats "/foo" and "/foo/" as different.
 	// By default this is disabled and both "/foo" and "/foo/" will execute the same handler.
 	//
 	// Default: false
