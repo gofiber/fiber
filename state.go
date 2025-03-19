@@ -139,3 +139,13 @@ func MustGetState[T any](s *State, key string) T {
 
 	return dep
 }
+
+// GetStateWithDefault retrieves a value from the State and casts it to the desired type, returning a default value in case the key is not found.
+func GetStateWithDefault[T any](s *State, key string, defaultVal T) T {
+	dep, ok := GetState[T](s, key)
+	if !ok {
+		return defaultVal
+	}
+
+	return dep
+}

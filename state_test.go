@@ -233,6 +233,23 @@ func Test_MustGetStateGeneric(t *testing.T) {
 	})
 }
 
+func Test_GetStateWithDefault(t *testing.T) {
+	t.Parallel()
+	st := newState()
+
+	st.Set("flag", true)
+	flag := GetStateWithDefault[bool](st, "flag", false)
+	require.True(t, flag)
+
+	// mismatched type should return the default value
+	str := GetStateWithDefault[string](st, "flag", "default")
+	require.Equal(t, "default", str)
+
+	// missing key should return the default value
+	flag = GetStateWithDefault[bool](st, "missing", false)
+	require.False(t, flag)
+}
+
 func BenchmarkState_Set(b *testing.B) {
 	b.ReportAllocs()
 
@@ -386,6 +403,24 @@ func BenchmarkState_MustGetStateGeneric(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		key := "key" + strconv.Itoa(i%n)
 		MustGetState[int](st, key)
+	}
+}
+
+func BenchmarkState_GetStateWithDefault(b *testing.B) {
+	b.ReportAllocs()
+
+	st := newState()
+	n := 1000
+	// pre-populate the state
+	for i := 0; i < n; i++ {
+		key := "key" + strconv.Itoa(i)
+		st.Set(key, i)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		key := "key" + strconv.Itoa(i%n)
+		GetStateWithDefault[int](st, key, 0)
 	}
 }
 
