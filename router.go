@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"html"
-	"slices"
 	"sort"
 	"sync/atomic"
 
@@ -415,25 +414,25 @@ func (app *App) normalizePath(path string) string {
 // RemoveRoute is used to remove a route from the stack by path.
 // This only needs to be called to remove a route, route registration prevents duplicate routes.
 // You should call RebuildTree after using this to ensure consistency of the tree.
-func (app *App) RemoveRoute(path string, methods ...string) {
+func (app *App) RemoveRoute(path string, removeMiddlewares bool, methods ...string) {
 	// Normalize same as register uses
 	norm := app.normalizePath(path)
 
 	pathMatchFunc := func(r *Route) bool {
 		return r.path == norm // compare private normalized path
 	}
-	app.deleteRoute(methods, pathMatchFunc)
+	app.deleteRoute(methods, removeMiddlewares, pathMatchFunc)
 }
 
 // RemoveRouteByName is used to remove a route from the stack by name.
 // This only needs to be called to remove a route, route registration prevents duplicate routes.
 // You should call RebuildTree after using this to ensure consistency of the tree.
-func (app *App) RemoveRouteByName(name string, methods ...string) {
+func (app *App) RemoveRouteByName(name string, removeMiddlewares bool, methods ...string) {
 	matchFunc := func(r *Route) bool { return r.Name == name }
-	app.deleteRoute(methods, matchFunc)
+	app.deleteRoute(methods, removeMiddlewares, matchFunc)
 }
 
-func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
+func (app *App) deleteRoute(methods []string, removeMiddlewares bool, matchFunc func(r *Route) bool) {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 
@@ -447,21 +446,28 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 			continue // Skip invalid HTTP methods
 		}
 
-		// Find the index of the route to remove
-		index := slices.IndexFunc(app.stack[m], matchFunc)
-		if index == -1 {
-			continue // Route not found
+		for i, route := range app.stack[m] {
+			var removedUseHandler bool
+			// only remove middlewares when use is true and method is use, if not middleware just check path
+			if (removeMiddlewares && route.use && matchFunc(route)) || (!route.use && matchFunc(route)) {
+				// Remove route from stack
+				if i+1 < len(app.stack[m]) {
+					app.stack[m] = append(app.stack[m][:i], app.stack[m][i+1:]...)
+				} else {
+					app.stack[m] = app.stack[m][:i]
+				}
+				app.routesRefreshed = true
+
+				// Decrement global handler count. In middleware routes, only decrement once
+				if (route.use && !removedUseHandler) || !route.use {
+					removedUseHandler = true
+					atomic.AddUint32(&app.handlersCount, ^uint32(len(route.Handlers)-1)) //nolint:gosec // Not a concern
+				}
+
+				// Decrement global route count
+				atomic.AddUint32(&app.routesCount, ^uint32(0)) //nolint:gosec // Not a concern
+			}
 		}
-
-		route := app.stack[m][index]
-
-		// Decrement global handler count
-		atomic.AddUint32(&app.handlersCount, ^uint32(len(route.Handlers)-1)) //nolint:gosec // Not a concern
-		// Decrement global route position
-		atomic.AddUint32(&app.routesCount, ^uint32(0))
-
-		// Remove route from tree stack
-		app.stack[m] = slices.Delete(app.stack[m], index, index+1)
 	}
 
 	app.routesRefreshed = true
