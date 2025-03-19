@@ -29,14 +29,6 @@ func init() {
 	// smaller list for benchmark cases
 	benchmarkCases = []routeCaseCollection{
 		{
-			pattern: "/api/v1/:param<int;bool((>",
-			testCases: []routeTestCase{
-				{url: "/api/v1/entity", params: nil, match: false},
-				{url: "/api/v1/8728382", params: []string{"8728382"}, match: true},
-				{url: "/api/v1/true", params: nil, match: false},
-			},
-		},
-		{
 			pattern: "/api/v1/const",
 			testCases: []routeTestCase{
 				{url: "/api/v1/const", params: []string{}, match: true},
@@ -614,14 +606,14 @@ func init() {
 					{url: "/api/v1/2022/08-27", params: nil, match: false},
 				},
 			},
-			// {
-			// 	pattern: "/api/v1/:param<int;bool((>",
-			// 	testCases: []routeTestCase{
-			// 		{url: "/api/v1/entity", params: nil, match: false},
-			// 		{url: "/api/v1/8728382", params: []string{"8728382"}, match: true},
-			// 		{url: "/api/v1/true", params: nil, match: false},
-			// 	},
-			// },
+			{
+				pattern: "/api/v1/:param<int;bool((>",
+				testCases: []routeTestCase{
+					{url: "/api/v1/entity", params: nil, match: false},
+					{url: "/api/v1/8728382", params: []string{"8728382"}, match: true},
+					{url: "/api/v1/true", params: nil, match: false},
+				},
+			},
 			{
 				pattern: "/api/v1/:param<int;max(3000)>",
 				testCases: []routeTestCase{
@@ -719,6 +711,28 @@ func init() {
 					{url: "/api/v1/8728382", params: []string{"8728382"}, match: true},
 					{url: "/api/v1/true", params: nil, match: false},
 					{url: "/api/v1/", params: []string{""}, match: true},
+				},
+			},
+			// Add test case for RegexCompiler == nil
+			{
+				pattern: "/api/v1/:param<regex(\\d+)>",
+				testCases: []routeTestCase{
+					{url: "/api/v1/123", params: []string{"123"}, match: true},
+					{url: "/api/v1/abc", params: nil, match: false},
+				},
+			},
+			// Add test case for default branch (unknown constraint type)
+			{
+				pattern: "/api/v1/:param<unknownconstraint>",
+				testCases: []routeTestCase{
+					{url: "/api/v1/anyvalue", params: nil, match: false},
+				},
+			},
+			// Test case for constraint with insufficient data
+			{
+				pattern: "/api/v1/:param<minLen>",
+				testCases: []routeTestCase{
+					{url: "/api/v1/anyvalue", params: nil, match: false},
 				},
 			},
 		}...,
