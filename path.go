@@ -783,8 +783,6 @@ func (c *Constraint) CheckConstraint(param string) bool {
 		if match := c.RegexCompiler.MatchString(param); !match {
 			return false
 		}
-	default:
-		return false
 	}
 
 	return err == nil
