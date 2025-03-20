@@ -639,6 +639,70 @@ func Test_Logger_Json_Format_With_Const(t *testing.T) {
 	require.Equal(t, expected, logResponse)
 }
 
+func Test_Logger_ECS_Format_With_Name(t *testing.T) {
+	t.Parallel()
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Format: "ecs",
+		Stream: buf,
+	}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/?foo=bar", nil)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+
+	expected := fmt.Sprintf(
+		"{\"@timestamp\":%q,\"ecs\":{\"version\":\"1.6.0\"},\"client\":{\"ip\":%q},\"http\":{\"request\":{\"method\":%q,\"url\":%q,\"protocol\":%q},\"response\":{\"status_code\":%d,\"body\":{\"bytes\":%d}}},\"log\":{\"level\":\"INFO\",\"logger\":\"fiber\"},\"message\":%q}\n",
+		time.Now().Format("15:04:05"),
+		"0.0.0.0",
+		fiber.MethodGet,
+		"/?foo=bar",
+		"HTTP/1.1",
+		fiber.StatusNotFound,
+		0,
+		fmt.Sprintf("%s %s responded with %d", fiber.MethodGet, "/?foo=bar", fiber.StatusNotFound),
+	)
+	logResponse := buf.String()
+	require.Equal(t, expected, logResponse)
+}
+
+func Test_Logger_ECS_Format_With_Const(t *testing.T) {
+	t.Parallel()
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Format: FormatECS,
+		Stream: buf,
+	}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/?foo=bar", nil)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+
+	expected := fmt.Sprintf(
+		"{\"@timestamp\":%q,\"ecs\":{\"version\":\"1.6.0\"},\"client\":{\"ip\":%q},\"http\":{\"request\":{\"method\":%q,\"url\":%q,\"protocol\":%q},\"response\":{\"status_code\":%d,\"body\":{\"bytes\":%d}}},\"log\":{\"level\":\"INFO\",\"logger\":\"fiber\"},\"message\":%q}\n",
+		time.Now().Format("15:04:05"),
+		"0.0.0.0",
+		fiber.MethodGet,
+		"/?foo=bar",
+		"HTTP/1.1",
+		fiber.StatusNotFound,
+		0,
+		fmt.Sprintf("%s %s responded with %d", fiber.MethodGet, "/?foo=bar", fiber.StatusNotFound),
+	)
+	logResponse := buf.String()
+	require.Equal(t, expected, logResponse)
+}
+
 func getLatencyTimeUnits() []struct {
 	unit string
 	div  time.Duration

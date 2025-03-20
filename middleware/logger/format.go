@@ -9,6 +9,8 @@ const (
 	FormatCombined = "${ip} - - [${time}] \"${method} ${url} ${protocol}\" ${status} ${bytesSent} \"${referer}\" \"${ua}\"\n"
 	// JSON log formats
 	FormatJSON = "{\"time\":\"${time}\",\"ip\":\"${ip}\",\"method\":\"${method}\",\"url\":\"${url}\",\"status\":${status},\"bytesSent\":${bytesSent}}\n"
+	// ECS Log format
+	FormatECS = "{\"@timestamp\":\"${time}\",\"ecs\":{\"version\":\"1.6.0\"},\"client\":{\"ip\":\"${ip}\"},\"http\":{\"request\":{\"method\":\"${method}\",\"url\":\"${url}\",\"protocol\":\"${protocol}\"},\"response\":{\"status_code\":${status},\"body\":{\"bytes\":${bytesSent}}}},\"log\":{\"level\":\"INFO\",\"logger\":\"fiber\"},\"message\":\"${method} ${url} responded with ${status}\"}\n"
 )
 
 // LoggerConfig provides a mapping of predefined log format configurations
@@ -19,4 +21,5 @@ var LoggerConfig = map[string]string{
 	"common":   FormatCommonLog,
 	"combined": FormatCombined,
 	"json":     FormatJSON,
+	"ecs":      FormatECS,
 }
