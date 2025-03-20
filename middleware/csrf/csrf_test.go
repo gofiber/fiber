@@ -1365,6 +1365,8 @@ func Test_CSRF_UnsafeHeaderValue(t *testing.T) {
 	getReq := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	getReq.Header.Set(HeaderName, token)
 	resp, err = app.Test(getReq)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 	getReq = httptest.NewRequest(fiber.MethodGet, "/test", nil)
 	getReq.Header.Set("X-Requested-With", "XMLHttpRequest")
@@ -1372,15 +1374,21 @@ func Test_CSRF_UnsafeHeaderValue(t *testing.T) {
 	getReq.Header.Set(HeaderName, token)
 
 	resp, err = app.Test(getReq)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 	getReq.Header.Set(fiber.HeaderAccept, "*/*")
 	getReq.Header.Del(HeaderName)
 	resp, err = app.Test(getReq)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 	postReq := httptest.NewRequest(fiber.MethodPost, "/", nil)
 	postReq.Header.Set("X-Requested-With", "XMLHttpRequest")
 	postReq.Header.Set(HeaderName, token)
 	resp, err = app.Test(postReq)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Middleware_CSRF_Check -benchmem -count=4
