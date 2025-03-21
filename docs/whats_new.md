@@ -946,10 +946,6 @@ Logger provides predefined formats that you can use by name or directly by speci
 
 ```go
 app.Use(logger.New(logger.Config{
-    CustomFormat: "common", 
-}))
-
-app.Use(logger.New(logger.Config{
     Format: logger.FormatCombined, 
 }))
 ```
