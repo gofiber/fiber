@@ -31,7 +31,7 @@ func New(config ...Config) fiber.Handler {
 	// Create correct timeformat
 	timestamp.Store(time.Now().In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
 
-	if logFormat, exists := LoggerConfig[cfg.Format]; exists {
+	if logFormat, exists := LoggerConfig[cfg.CustomFormat]; exists {
 		cfg.Format = logFormat
 	}
 

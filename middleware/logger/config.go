@@ -57,14 +57,18 @@ type Config struct {
 	// The full list of available placeholders can be found in 'tags.go' or at
 	// 'https://docs.gofiber.io/api/middleware/logger/#constants'.
 	//
-	// Alternatively, you can use one of the predefined formats:
+	// If no format is specified, the default format is used: "[${time}] ${ip} ${status} - ${latency} ${method} ${path} ${error}"
+	// If both `Format` and `CustomFormat` are provided, the `CustomFormat` will be used, and the `Format` field will be ignored.
+	Format string
+
+	// You can use one of the predefined formats:
 	//   - "default"    → Uses the default log format: "[${time}] ${ip} ${status} - ${latency} ${method} ${path} ${error}"
 	//   - "common"     → Uses the Common Log Format (CLF): "${ip} - - [${time}] "${method} ${url} ${protocol}" ${status} ${bytesSent}"
 	//   - "combined"   → Uses the Combined Log Format: "${ip} - - [${time}] "${method} ${url} ${protocol}" ${status} ${bytesSent} "${referer}" "${ua}""
 	//   - "json"       → Uses the JSON structured log format: "{"time":"${time}","ip":"${ip}","method":"${method}","url":"${url}","status":${status},"bytesSent":${bytesSent}}"
-	//
-	// If no format is specified, the default format is used: "[${time}] ${ip} ${status} - ${latency} ${method} ${path} ${error}"
-	Format string
+	//   - "ecs"        → Uses the Elastic Common Schema (ECS) log format: "{"@timestamp":"${time}","ecs":{"version":"1.6.0"},"client":{"ip":"${ip}"},"http":{"request":{"method":"${method}","url":"${url}","protocol":"${protocol}"},"response":{"status_code":${status},"body":{"bytes":${bytesSent}}}}, "log":{"level":"INFO","logger":"fiber"},"message":"${method} ${url} responded with ${status}"}"
+	// If both `Format` and `CustomFormat` are provided, the `CustomFormat` will be used, and the `Format` field will be ignored.
+	CustomFormat string
 
 	// TimeFormat https://programming.guide/go/format-parse-string-time-date-example.html
 	//

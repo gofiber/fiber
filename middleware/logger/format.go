@@ -1,15 +1,15 @@
 package logger
 
 const (
-	// Fiber's default logger `
+	// Fiber's default logger
 	FormatDefault = "[${time}] ${ip} ${status} - ${latency} ${method} ${path} ${error}\n"
-	// Common log format
+	// Apache Common Log Format (CLF)
 	FormatCommonLog = "${ip} - - [${time}] \"${method} ${url} ${protocol}\" ${status} ${bytesSent}\n"
-	// Combined log format
+	// Apache Combined Log Format
 	FormatCombined = "${ip} - - [${time}] \"${method} ${url} ${protocol}\" ${status} ${bytesSent} \"${referer}\" \"${ua}\"\n"
 	// JSON log formats
 	FormatJSON = "{\"time\":\"${time}\",\"ip\":\"${ip}\",\"method\":\"${method}\",\"url\":\"${url}\",\"status\":${status},\"bytesSent\":${bytesSent}}\n"
-	// ECS Log format
+	// Elastic Common Schema (ECS) Log Format
 	FormatECS = "{\"@timestamp\":\"${time}\",\"ecs\":{\"version\":\"1.6.0\"},\"client\":{\"ip\":\"${ip}\"},\"http\":{\"request\":{\"method\":\"${method}\",\"url\":\"${url}\",\"protocol\":\"${protocol}\"},\"response\":{\"status_code\":${status},\"body\":{\"bytes\":${bytesSent}}}},\"log\":{\"level\":\"INFO\",\"logger\":\"fiber\"},\"message\":\"${method} ${url} responded with ${status}\"}\n"
 )
 

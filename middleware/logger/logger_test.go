@@ -475,8 +475,8 @@ func Test_Logger_CLF_Format_With_Name(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		Format: "common",
-		Stream: buf,
+		CustomFormat: "common",
+		Stream:       buf,
 	}))
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/?foo=bar", nil))
@@ -525,8 +525,8 @@ func Test_Logger_Combined_CLF_Format_With_Name(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		Format: "combined",
-		Stream: buf,
+		CustomFormat: "combined",
+		Stream:       buf,
 	}))
 	const expectedUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36"
 	const expectedReferer = "http://example.com"
@@ -587,8 +587,8 @@ func Test_Logger_Json_Format_With_Name(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		Format: "json",
-		Stream: buf,
+		CustomFormat: "json",
+		Stream:       buf,
 	}))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/?foo=bar", nil)
@@ -647,8 +647,8 @@ func Test_Logger_ECS_Format_With_Name(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		Format: "ecs",
-		Stream: buf,
+		CustomFormat: "ecs",
+		Stream:       buf,
 	}))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/?foo=bar", nil)
