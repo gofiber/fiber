@@ -66,7 +66,7 @@ type Config struct {
 	//   - "common"     → Uses the Common Log Format (CLF): "${ip} - - [${time}] "${method} ${url} ${protocol}" ${status} ${bytesSent}"
 	//   - "combined"   → Uses the Combined Log Format: "${ip} - - [${time}] "${method} ${url} ${protocol}" ${status} ${bytesSent} "${referer}" "${ua}""
 	//   - "json"       → Uses the JSON structured log format: "{"time":"${time}","ip":"${ip}","method":"${method}","url":"${url}","status":${status},"bytesSent":${bytesSent}}"
-	//   - "ecs"        → Uses the Elastic Common Schema (ECS) log format: "{"@timestamp":"${time}","ecs":{"version":"1.6.0"},"client":{"ip":"${ip}"},"http":{"request":{"method":"${method}","url":"${url}","protocol":"${protocol}"},"response":{"status_code":${status},"body":{"bytes":${bytesSent}}}}, "log":{"level":"INFO","logger":"fiber"},"message":"${method} ${url} responded with ${status}"}"
+	//   - "ecs"        → Uses the Elastic Common Schema (ECS) log format: {\"@timestamp\":\"${time}\",\"ecs\":{\"version\":\"1.6.0\"},\"client\":{\"ip\":\"${ip}\"},\"http\":{\"request\":{\"method\":\"${method}\",\"url\":\"${url}\",\"protocol\":\"${protocol}\"},\"response\":{\"status_code\":${status},\"body\":{\"bytes\":${bytesSent}}}},\"log\":{\"level\":\"INFO\",\"logger\":\"fiber\"},\"message\":\"${method} ${url} responded with ${status}\"}"
 	// If both `Format` and `CustomFormat` are provided, the `CustomFormat` will be used, and the `Format` field will be ignored.
 	CustomFormat string
 

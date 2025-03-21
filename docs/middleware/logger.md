@@ -90,17 +90,39 @@ app.Use(logger.New(logger.Config{
 }))
 
 
-// Using predefined formats: common, combined, json
+// Use predefined formats
 app.Use(logger.New(logger.Config{
-    Format: "common", // or logger.FormatCommon,
+    CustomFormat: "common",
 }))
 
 app.Use(logger.New(logger.Config{
-    Format: "combined", // or logger.FormatCombined,
+    CustomFormat: "combined", 
 }))
 
 app.Use(logger.New(logger.Config{
-    Format: "json", // or logger.FormatJSON,
+    CustomFormat: "json", 
+}))
+
+app.Use(logger.New(logger.Config{
+    CustomFormat: "ecs",
+}))
+
+
+// Use predefined consts 
+app.Use(logger.New(logger.Config{
+    Format: logger.FormatCommon,
+}))
+
+app.Use(logger.New(logger.Config{
+    Format: logger.FormatCombined,
+}))
+
+app.Use(logger.New(logger.Config{
+    Format: logger.FormatJSON, 
+}))
+
+app.Use(logger.New(logger.Config{
+    Format: logger.FormatECS, 
 }))
 ```
 
@@ -156,7 +178,8 @@ Writing to os.File is goroutine-safe, but if you are using a custom Stream that 
 | Skip          | `func(fiber.Ctx) bool`                            | Skip is a function to determine if logging is skipped or written to Stream.                                                                   | `nil`                                                                 |
 | Done          | `func(fiber.Ctx, []byte)`                         | Done is a function that is called after the log string for a request is written to Stream, and pass the log string as parameter.              | `nil`                                                                 |
 | CustomTags    | `map[string]LogFunc`                              | tagFunctions defines the custom tag action.                                                                                                   | `map[string]LogFunc`                                                  |
-| Format        | `string`                                          | Format defines the logging tags. Supports predefined formats: `default`,`common`, `combined`, `json`.                                         | `[${time}] ${ip} ${status} - ${latency} ${method} ${path} ${error}\n` |
+| Format        | `string`                                          | Format defines the logging tags.                                         | `[${time}] ${ip} ${status} - ${latency} ${method} ${path} ${error}\n` |
+| CustomFormat  |  `string`  | Predefined format for log.                                                                                                                    | `default`, `common`, `combined`, `json`, `ecs`                                                                 |
 | TimeFormat    | `string`                                          | TimeFormat defines the time format for log timestamps.                                                                                        | `15:04:05`                                                            |
 | TimeZone      | `string`                                          | TimeZone can be specified, such as "UTC" and "America/New_York" and "Asia/Chongqing", etc                                                     | `"Local"`                                                             |
 | TimeInterval  | `time.Duration`                                   | TimeInterval is the delay before the timestamp is updated.                                                                                    | `500 * time.Millisecond`                                              |
@@ -192,6 +215,7 @@ Logger provides predefined formats that you can use by name or directly by speci
 | common | `FormatCommonLog` | `"${ip} - - [${time}] "${method} ${url} ${protocol}" ${status} ${bytesSent}\n"` | Common Log Format (CLF) used in web server logs. |
 | combined | `FormatCombined` | `"${ip} - - [${time}] "${method} ${url} ${protocol}" ${status} ${bytesSent} "${referer}" "${ua}"\n"` | CLF format plus the `referer` and `user agent` fields. |
 | json | `FormatJSON` | `"{time: ${time}, ip: ${ip}, method: ${method}, url: ${url}, status: ${status}, bytesSent: ${bytesSent}}\n"` | JSON format for structured logging. |
+| ecs | `FormatECS` | `"{\"@timestamp\":\"${time}\",\"ecs\":{\"version\":\"1.6.0\"},\"client\":{\"ip\":\"${ip}\"},\"http\":{\"request\":{\"method\":\"${method}\",\"url\":\"${url}\",\"protocol\":\"${protocol}\"},\"response\":{\"status_code\":${status},\"body\":{\"bytes\":${bytesSent}}}},\"log\":{\"level\":\"INFO\",\"logger\":\"fiber\"},\"message\":\"${method} ${url} responded with ${status}\"}\n"` | Elastic Common Schema (ECS) format for structured logging. |
 
 ## Constants
 
