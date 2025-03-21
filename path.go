@@ -672,12 +672,25 @@ func getParamConstraintType(constraintPart string) TypeConstraint {
 	}
 }
 
-//nolint:errcheck // TODO: Properly check _all_ errors in here, log them & immediately return
+// CheckConstraint validates if a param matches the given constraint
+// Returns true if the param passes the constraint check, false otherwise
+//
+//nolint:errcheck // TODO: Properly check _all_ errors in here, log them or immediately return
 func (c *Constraint) CheckConstraint(param string) bool {
-	var err error
-	var num int
+	// First check if there's a custom constraint with the same name
+	// This allows custom constraints to override built-in constraints
+	for _, cc := range c.customConstraints {
+		if cc.Name() == c.Name {
+			return cc.Execute(param, c.Data...)
+		}
+	}
 
-	// check data exists
+	var (
+		err error
+		num int
+	)
+
+	// Validate constraint has required data
 	needOneData := []TypeConstraint{minLenConstraint, maxLenConstraint, lenConstraint, minConstraint, maxConstraint, datetimeConstraint, regexConstraint}
 	needTwoData := []TypeConstraint{betweenLenConstraint, rangeConstraint}
 
@@ -696,11 +709,7 @@ func (c *Constraint) CheckConstraint(param string) bool {
 	// check constraints
 	switch c.ID {
 	case noConstraint:
-		for _, cc := range c.customConstraints {
-			if cc.Name() == c.Name {
-				return cc.Execute(param, c.Data...)
-			}
-		}
+		return true
 	case intConstraint:
 		_, err = strconv.Atoi(param)
 	case boolConstraint:
@@ -744,14 +753,14 @@ func (c *Constraint) CheckConstraint(param string) bool {
 		data, _ := strconv.Atoi(c.Data[0])
 		num, err = strconv.Atoi(param)
 
-		if num < data {
+		if err != nil || num < data {
 			return false
 		}
 	case maxConstraint:
 		data, _ := strconv.Atoi(c.Data[0])
 		num, err = strconv.Atoi(param)
 
-		if num > data {
+		if err != nil || num > data {
 			return false
 		}
 	case rangeConstraint:
@@ -759,12 +768,18 @@ func (c *Constraint) CheckConstraint(param string) bool {
 		data2, _ := strconv.Atoi(c.Data[1])
 		num, err = strconv.Atoi(param)
 
-		if num < data || num > data2 {
+		if err != nil || num < data || num > data2 {
 			return false
 		}
 	case datetimeConstraint:
 		_, err = time.Parse(c.Data[0], param)
+		if err != nil {
+			return false
+		}
 	case regexConstraint:
+		if c.RegexCompiler == nil {
+			return false
+		}
 		if match := c.RegexCompiler.MatchString(param); !match {
 			return false
 		}
