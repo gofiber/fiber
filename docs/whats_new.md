@@ -946,18 +946,15 @@ Logger provides predefined formats that you can use by name or directly by speci
 
 ```go
 app.Use(logger.New(logger.Config{
-    Format: "common", // or logger.FormatCommon, 
+    CustomFormat: "common", 
 }))
 
 app.Use(logger.New(logger.Config{
-    Format: "combined", // or logger.FormatCombined,
-}))
-
-app.Use(logger.New(logger.Config{
-    Format: "json", // or logger.FormatJSON,
+    Format: logger.FormatCombined, 
 }))
 ```
 
+See more in [Logger](./middleware/logger.md#predefined-formats)
 </details>
 
 ### Filesystem
