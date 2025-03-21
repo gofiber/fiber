@@ -2,7 +2,6 @@
 package keyauth
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"net/url"
@@ -60,10 +59,7 @@ func New(config ...Config) fiber.Handler {
 		valid, err := cfg.Validator(c, key)
 
 		if err == nil && valid {
-			// Store in both Locals and Context
 			c.Locals(tokenKey, key)
-			ctx := context.WithValue(c.Context(), tokenKey, key)
-			c.SetContext(ctx)
 			return cfg.SuccessHandler(c)
 		}
 		return cfg.ErrorHandler(c, err)
@@ -72,20 +68,12 @@ func New(config ...Config) fiber.Handler {
 
 // TokenFromContext returns the bearer token from the request context.
 // returns an empty string if the token does not exist
-func TokenFromContext(c any) string {
-	switch ctx := c.(type) {
-	case context.Context:
-		if token, ok := ctx.Value(tokenKey).(string); ok {
-			return token
-		}
-	case fiber.Ctx:
-		if token, ok := ctx.Locals(tokenKey).(string); ok {
-			return token
-		}
-	default:
-		panic("unsupported context type, expected fiber.Ctx or context.Context")
+func TokenFromContext(c fiber.Ctx) string {
+	token, ok := c.Locals(tokenKey).(string)
+	if !ok {
+		return ""
 	}
-	return ""
+	return token
 }
 
 // MultipleKeySourceLookup creates a CustomKeyLookup function that checks multiple sources until one is found
