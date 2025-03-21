@@ -1890,6 +1890,16 @@ func Test_Route_Naming_Issue_2671_2685(t *testing.T) {
 	require.Equal(t, "/simple-route", sRoute2.Path)
 }
 
+func Test_App_State(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	app.State().Set("key", "value")
+	str, ok := app.State().GetString("key")
+	require.True(t, ok)
+	require.Equal(t, "value", str)
+}
+
 // go test -v -run=^$ -bench=Benchmark_Communication_Flow -benchmem -count=4
 func Benchmark_Communication_Flow(b *testing.B) {
 	app := New()
