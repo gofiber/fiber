@@ -180,7 +180,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 		}
 
 		// Check if it matches the request path
-		match = route.match(c.detectionPath, c.path, &c.values)
+		match = route.match(utils.UnsafeString(c.detectionPath), utils.UnsafeString(c.path), &c.values)
 		if !match {
 			// No match, next route
 			continue
