@@ -937,6 +937,22 @@ app.Use(logger.New(logger.Config{
 
 </details>
 
+#### Predefined Formats
+
+Logger provides predefined formats that you can use by name or directly by specifying the format string.
+<details>
+
+<summary>Example Usage</summary>
+
+```go
+app.Use(logger.New(logger.Config{
+    Format: logger.FormatCombined, 
+}))
+```
+
+See more in [Logger](./middleware/logger.md#predefined-formats)
+</details>
+
 ### Filesystem
 
 We've decided to remove filesystem middleware to clear up the confusion between static and filesystem middleware.

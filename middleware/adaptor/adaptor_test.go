@@ -1,4 +1,4 @@
-//nolint:contextcheck, revive // Much easier to just ignore memory leaks in tests
+//nolint:contextcheck,revive // Much easier to just ignore memory leaks in tests
 package adaptor
 
 import (
@@ -68,7 +68,7 @@ func Test_HTTPHandler(t *testing.T) {
 		w.Header().Set("Header1", "value1")
 		w.Header().Set("Header2", "value2")
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "request body is %q", body) //nolint:errcheck // not needed
+		fmt.Fprintf(w, "request body is %q", body)
 	}
 	fiberH := HTTPHandlerFunc(http.HandlerFunc(nethttpH))
 	fiberH = setFiberContextValueMiddleware(fiberH, expectedContextKey, expectedContextValue)

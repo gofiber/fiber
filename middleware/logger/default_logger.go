@@ -28,7 +28,7 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 	buf := bytebufferpool.Get()
 
 	// Default output when no custom Format or io.Writer is given
-	if cfg.Format == defaultFormat {
+	if cfg.Format == DefaultFormat {
 		// Format error if exist
 		formatErr := ""
 		if cfg.enableColors {
@@ -166,7 +166,7 @@ func writeLog(w io.Writer, msg []byte) {
 		// Write error to output
 		if _, err := w.Write([]byte(err.Error())); err != nil {
 			// There is something wrong with the given io.Writer
-			_, _ = fmt.Fprintf(os.Stderr, "Failed to write to log, %v\n", err) //nolint: errcheck // It is fine to ignore the error
+			_, _ = fmt.Fprintf(os.Stderr, "Failed to write to log, %v\n", err)
 		}
 	}
 }

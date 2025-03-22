@@ -209,7 +209,7 @@ func Benchmark_Memory_Set(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_ = testStore.Set("john", []byte("doe"), 0) //nolint: errcheck // error not needed for benchmark
+		_ = testStore.Set("john", []byte("doe"), 0) //nolint:errcheck // error not needed for benchmark
 	}
 }
 
@@ -220,7 +220,7 @@ func Benchmark_Memory_Set_Parallel(b *testing.B) {
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_ = testStore.Set("john", []byte("doe"), 0) //nolint: errcheck // error not needed for benchmark
+			_ = testStore.Set("john", []byte("doe"), 0) //nolint:errcheck // error not needed for benchmark
 		}
 	})
 }
@@ -259,7 +259,7 @@ func Benchmark_Memory_Get(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_, _ = testStore.Get("john") //nolint: errcheck // error not needed for benchmark
+		_, _ = testStore.Get("john") //nolint:errcheck // error not needed for benchmark
 	}
 }
 
@@ -273,7 +273,7 @@ func Benchmark_Memory_Get_Parallel(b *testing.B) {
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_, _ = testStore.Get("john") //nolint: errcheck // error not needed for benchmark
+			_, _ = testStore.Get("john") //nolint:errcheck // error not needed for benchmark
 		}
 	})
 }
@@ -315,8 +315,8 @@ func Benchmark_Memory_SetAndDelete(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_ = testStore.Set("john", []byte("doe"), 0) //nolint: errcheck // error not needed for benchmark
-		_ = testStore.Delete("john")                //nolint: errcheck // error not needed for benchmark
+		_ = testStore.Set("john", []byte("doe"), 0) //nolint:errcheck // error not needed for benchmark
+		_ = testStore.Delete("john")                //nolint:errcheck // error not needed for benchmark
 	}
 }
 
@@ -327,8 +327,8 @@ func Benchmark_Memory_SetAndDelete_Parallel(b *testing.B) {
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_ = testStore.Set("john", []byte("doe"), 0) //nolint: errcheck // error not needed for benchmark
-			_ = testStore.Delete("john")                //nolint: errcheck // error not needed for benchmark
+			_ = testStore.Set("john", []byte("doe"), 0) //nolint:errcheck // error not needed for benchmark
+			_ = testStore.Delete("john")                //nolint:errcheck // error not needed for benchmark
 		}
 	})
 }
