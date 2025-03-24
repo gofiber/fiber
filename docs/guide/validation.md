@@ -34,7 +34,7 @@ app.Post("/", func(c fiber.Ctx) error {
     user := new(User)
     
     // Works with all bind methods - Body, Query, Form, ...
-    if err := c.Bind().Body(user); err != nil {
+    if err := c.Bind().Body(user); err != nil { // <- here you receive the validation errors
       return err
     }
     
