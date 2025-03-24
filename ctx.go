@@ -33,8 +33,11 @@ const (
 	schemeHTTPS = "https"
 )
 
-// maxParams defines the maximum number of parameters per route.
-const maxParams = 30
+const (
+	// maxParams defines the maximum number of parameters per route.
+	maxParams         = 30
+	maxDetectionPaths = 3
+)
 
 // The contextKey type is unexported to prevent collisions with context keys defined in
 // other packages.
@@ -60,11 +63,11 @@ type DefaultCtx struct {
 	viewBindMap   sync.Map             // Default view map to bind template engine
 	method        string               // HTTP method
 	baseURI       string               // HTTP base uri
-	treePath      string               // Path for the search in the tree
 	pathOriginal  string               // Original HTTP path
 	flashMessages redirectionMsgs      // Flash messages
 	path          []byte               // HTTP path with the modifications by the configuration
 	detectionPath []byte               // Route detection path
+	treePathHash  int                  // Hash of the path for the search in the tree
 	indexRoute    int                  // Index of the current route
 	indexHandler  int                  // Index of the current handler
 	methodINT     int                  // HTTP method INT equivalent
@@ -1851,12 +1854,11 @@ func (c *DefaultCtx) configDependentPaths() {
 
 	// Define the path for dividing routes into areas for fast tree detection, so that fewer routes need to be traversed,
 	// since the first three characters area select a list of routes
-	c.treePath = ""
-	const maxDetectionPaths = 3
+	c.treePathHash = 0
 	if len(c.detectionPath) >= maxDetectionPaths {
-		// c.treePath is only used by Fiber and is not exposed to the user
-		// so we can use utils.UnsafeString instead of c.app.getString
-		c.treePath = utils.UnsafeString(c.detectionPath[:maxDetectionPaths])
+		c.treePathHash = int(c.detectionPath[0])<<16 |
+			int(c.detectionPath[1])<<8 |
+			int(c.detectionPath[2])
 	}
 }
 
@@ -1957,8 +1959,8 @@ func (c *DefaultCtx) getIndexRoute() int {
 	return c.indexRoute
 }
 
-func (c *DefaultCtx) getTreePath() string {
-	return c.treePath
+func (c *DefaultCtx) getTreePathHash() int {
+	return c.treePathHash
 }
 
 func (c *DefaultCtx) getDetectionPath() string {
