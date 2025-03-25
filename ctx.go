@@ -33,8 +33,11 @@ const (
 	schemeHTTPS = "https"
 )
 
-// maxParams defines the maximum number of parameters per route.
-const maxParams = 30
+const (
+	// maxParams defines the maximum number of parameters per route.
+	maxParams         = 30
+	maxDetectionPaths = 3
+)
 
 // The contextKey type is unexported to prevent collisions with context keys defined in
 // other packages.
@@ -49,28 +52,26 @@ const userContextKey contextKey = 0 // __local_user_context__
 //
 //go:generate ifacemaker --file ctx.go --struct DefaultCtx --iface Ctx --pkg fiber --output ctx_interface_gen.go --not-exported true --iface-comment "Ctx represents the Context which hold the HTTP request and response.\nIt has methods for the request query string, parameters, body, HTTP headers and so on."
 type DefaultCtx struct {
-	app                 *App                 // Reference to *App
-	route               *Route               // Reference to *Route
-	fasthttp            *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
-	bind                *Bind                // Default bind reference
-	redirect            *Redirect            // Default redirect reference
-	req                 *DefaultReq          // Default request api reference
-	res                 *DefaultRes          // Default response api reference
-	values              [maxParams]string    // Route parameter values
-	viewBindMap         sync.Map             // Default view map to bind template engine
-	method              string               // HTTP method
-	baseURI             string               // HTTP base uri
-	path                string               // HTTP path with the modifications by the configuration -> string copy from pathBuffer
-	detectionPath       string               // Route detection path                                  -> string copy from detectionPathBuffer
-	treePath            string               // Path for the search in the tree
-	pathOriginal        string               // Original HTTP path
-	pathBuffer          []byte               // HTTP path buffer
-	detectionPathBuffer []byte               // HTTP detectionPath buffer
-	flashMessages       redirectionMsgs      // Flash messages
-	indexRoute          int                  // Index of the current route
-	indexHandler        int                  // Index of the current handler
-	methodINT           int                  // HTTP method INT equivalent
-	matched             bool                 // Non use route matched
+	app           *App                 // Reference to *App
+	route         *Route               // Reference to *Route
+	fasthttp      *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
+	bind          *Bind                // Default bind reference
+	redirect      *Redirect            // Default redirect reference
+	req           *DefaultReq          // Default request api reference
+	res           *DefaultRes          // Default response api reference
+	values        [maxParams]string    // Route parameter values
+	viewBindMap   sync.Map             // Default view map to bind template engine
+	method        string               // HTTP method
+	baseURI       string               // HTTP base uri
+	pathOriginal  string               // Original HTTP path
+	flashMessages redirectionMsgs      // Flash messages
+	path          []byte               // HTTP path with the modifications by the configuration
+	detectionPath []byte               // Route detection path
+	treePathHash  int                  // Hash of the path for the search in the tree
+	indexRoute    int                  // Index of the current route
+	indexHandler  int                  // Index of the current handler
+	methodINT     int                  // HTTP method INT equivalent
+	matched       bool                 // Non use route matched
 }
 
 // SendFile defines configuration options when to transfer file with SendFile.
@@ -1123,8 +1124,9 @@ func Params[V GenericType](c Ctx, key string, defaultValue ...V) V {
 
 // Path returns the path part of the request URL.
 // Optionally, you could override the path.
+// Make copies or use the Immutable setting to use the value outside the Handler.
 func (c *DefaultCtx) Path(override ...string) string {
-	if len(override) != 0 && c.path != override[0] {
+	if len(override) != 0 && string(c.path) != override[0] {
 		// Set new path to context
 		c.pathOriginal = override[0]
 
@@ -1133,7 +1135,7 @@ func (c *DefaultCtx) Path(override ...string) string {
 		// Prettify path
 		c.configDependentPaths()
 	}
-	return c.path
+	return c.app.getString(c.path)
 }
 
 // Scheme contains the request protocol string: http or https for TLS requests.
@@ -1832,32 +1834,31 @@ func (c *DefaultCtx) XHR() bool {
 // configDependentPaths set paths for route recognition and prepared paths for the user,
 // here the features for caseSensitive, decoded paths, strict paths are evaluated
 func (c *DefaultCtx) configDependentPaths() {
-	c.pathBuffer = append(c.pathBuffer[0:0], c.pathOriginal...)
+	c.path = append(c.path[:0], c.pathOriginal...)
 	// If UnescapePath enabled, we decode the path and save it for the framework user
 	if c.app.config.UnescapePath {
-		c.pathBuffer = fasthttp.AppendUnquotedArg(c.pathBuffer[:0], c.pathBuffer)
+		c.path = fasthttp.AppendUnquotedArg(c.path[:0], c.path)
 	}
-	c.path = c.app.getString(c.pathBuffer)
 
 	// another path is specified which is for routing recognition only
 	// use the path that was changed by the previous configuration flags
-	c.detectionPathBuffer = append(c.detectionPathBuffer[0:0], c.pathBuffer...)
+	c.detectionPath = append(c.detectionPath[:0], c.path...)
 	// If CaseSensitive is disabled, we lowercase the original path
 	if !c.app.config.CaseSensitive {
-		c.detectionPathBuffer = utils.ToLowerBytes(c.detectionPathBuffer)
+		c.detectionPath = utils.ToLowerBytes(c.detectionPath)
 	}
 	// If StrictRouting is disabled, we strip all trailing slashes
-	if !c.app.config.StrictRouting && len(c.detectionPathBuffer) > 1 && c.detectionPathBuffer[len(c.detectionPathBuffer)-1] == '/' {
-		c.detectionPathBuffer = utils.TrimRight(c.detectionPathBuffer, '/')
+	if !c.app.config.StrictRouting && len(c.detectionPath) > 1 && c.detectionPath[len(c.detectionPath)-1] == '/' {
+		c.detectionPath = utils.TrimRight(c.detectionPath, '/')
 	}
-	c.detectionPath = c.app.getString(c.detectionPathBuffer)
 
 	// Define the path for dividing routes into areas for fast tree detection, so that fewer routes need to be traversed,
 	// since the first three characters area select a list of routes
-	c.treePath = c.treePath[0:0]
-	const maxDetectionPaths = 3
+	c.treePathHash = 0
 	if len(c.detectionPath) >= maxDetectionPaths {
-		c.treePath = c.detectionPath[:maxDetectionPaths]
+		c.treePathHash = int(c.detectionPath[0])<<16 |
+			int(c.detectionPath[1])<<8 |
+			int(c.detectionPath[2])
 	}
 }
 
@@ -1958,12 +1959,12 @@ func (c *DefaultCtx) getIndexRoute() int {
 	return c.indexRoute
 }
 
-func (c *DefaultCtx) getTreePath() string {
-	return c.treePath
+func (c *DefaultCtx) getTreePathHash() int {
+	return c.treePathHash
 }
 
 func (c *DefaultCtx) getDetectionPath() string {
-	return c.detectionPath
+	return c.app.getString(c.detectionPath)
 }
 
 func (c *DefaultCtx) getPathOriginal() string {
