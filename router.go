@@ -110,9 +110,9 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) boo
 
 func (app *App) nextCustom(c CustomCtx) (bool, error) { //nolint:unparam // bool param might be useful for testing
 	// Get stack length
-	tree, ok := app.treeStack[c.getMethodINT()][c.getTreePath()]
+	tree, ok := app.treeStack[c.getMethodINT()][c.getTreePathHash()]
 	if !ok {
-		tree = app.treeStack[c.getMethodINT()][""]
+		tree = app.treeStack[c.getMethodINT()][0]
 	}
 	lenr := len(tree) - 1
 
@@ -158,9 +158,9 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) { //nolint:unparam // bool
 
 func (app *App) next(c *DefaultCtx) (bool, error) {
 	// Get stack length
-	tree, ok := app.treeStack[c.methodINT][c.treePath]
+	tree, ok := app.treeStack[c.methodINT][c.treePathHash]
 	if !ok {
-		tree = app.treeStack[c.methodINT][""]
+		tree = app.treeStack[c.methodINT][0]
 	}
 	lenTree := len(tree) - 1
 
@@ -454,30 +454,28 @@ func (app *App) buildTree() *App {
 
 	// loop all the methods and stacks and create the prefix tree
 	for m := range app.config.RequestMethods {
-		tsMap := make(map[string][]*Route)
+		tsMap := make(map[int][]*Route)
 		for _, route := range app.stack[m] {
-			treePath := ""
-			if len(route.routeParser.segs) > 0 && len(route.routeParser.segs[0].Const) >= 3 {
-				treePath = route.routeParser.segs[0].Const[:3]
+			treePathHash := 0
+			if len(route.routeParser.segs) > 0 && len(route.routeParser.segs[0].Const) >= maxDetectionPaths {
+				treePathHash = int(route.routeParser.segs[0].Const[0])<<16 |
+					int(route.routeParser.segs[0].Const[1])<<8 |
+					int(route.routeParser.segs[0].Const[2])
 			}
 			// create tree stack
-			tsMap[treePath] = append(tsMap[treePath], route)
+			tsMap[treePathHash] = append(tsMap[treePathHash], route)
 		}
-		app.treeStack[m] = tsMap
-	}
 
-	// loop the methods and tree stacks and add global stack and sort everything
-	for m := range app.config.RequestMethods {
-		tsMap := app.treeStack[m]
 		for treePart := range tsMap {
-			if treePart != "" {
+			if treePart != 0 {
 				// merge global tree routes in current tree stack
-				tsMap[treePart] = uniqueRouteStack(append(tsMap[treePart], tsMap[""]...))
+				tsMap[treePart] = uniqueRouteStack(append(tsMap[treePart], tsMap[0]...))
 			}
 			// sort tree slices with the positions
 			slc := tsMap[treePart]
 			sort.Slice(slc, func(i, j int) bool { return slc[i].pos < slc[j].pos })
 		}
+		app.treeStack[m] = tsMap
 	}
 	app.routesRefreshed = false
 
