@@ -113,9 +113,9 @@ func (app *App) methodExist(c *DefaultCtx) bool {
 		// Reset stack index
 		c.setIndexRoute(-1)
 
-		tree, ok := c.App().treeStack[i][c.getTreePath()]
+		tree, ok := c.App().treeStack[i][c.treePathHash]
 		if !ok {
-			tree = c.App().treeStack[i][""]
+			tree = c.App().treeStack[i][0]
 		}
 		// Get stack length
 		lenr := len(tree) - 1
@@ -157,9 +157,9 @@ func (app *App) methodExistCustom(c CustomCtx) bool {
 		// Reset stack index
 		c.setIndexRoute(-1)
 
-		tree, ok := c.App().treeStack[i][c.getTreePath()]
+		tree, ok := c.App().treeStack[i][c.getTreePathHash()]
 		if !ok {
-			tree = c.App().treeStack[i][""]
+			tree = c.App().treeStack[i][0]
 		}
 		// Get stack length
 		lenr := len(tree) - 1
