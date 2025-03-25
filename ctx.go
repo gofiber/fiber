@@ -61,7 +61,6 @@ type DefaultCtx struct {
 	res           *DefaultRes          // Default response api reference
 	values        [maxParams]string    // Route parameter values
 	viewBindMap   sync.Map             // Default view map to bind template engine
-	method        string               // HTTP method
 	baseURI       string               // HTTP base uri
 	pathOriginal  string               // Original HTTP path
 	flashMessages redirectionMsgs      // Flash messages
@@ -70,7 +69,7 @@ type DefaultCtx struct {
 	treePathHash  int                  // Hash of the path for the search in the tree
 	indexRoute    int                  // Index of the current route
 	indexHandler  int                  // Index of the current handler
-	methodINT     int                  // HTTP method INT equivalent
+	methodInt     int                  // HTTP method INT equivalent
 	matched       bool                 // Non use route matched
 }
 
@@ -1006,19 +1005,17 @@ func (c *DefaultCtx) Location(path string) {
 func (c *DefaultCtx) Method(override ...string) string {
 	if len(override) == 0 {
 		// Nothing to override, just return current method from context
-		return c.method
+		return c.app.method(c.methodInt)
 	}
 
 	method := utils.ToUpper(override[0])
-	mINT := c.app.methodInt(method)
-	if mINT == -1 {
+	methodInt := c.app.methodInt(method)
+	if methodInt == -1 {
 		// Provided override does not valid HTTP method, no override, return current method
-		return c.method
+		return c.app.method(c.methodInt)
 	}
-
-	c.method = method
-	c.methodINT = mINT
-	return c.method
+	c.methodInt = methodInt
+	return method
 }
 
 // MultipartForm parse form entries from binary.
@@ -1486,7 +1483,7 @@ func (c *DefaultCtx) Route() *Route {
 		return &Route{
 			path:     c.pathOriginal,
 			Path:     c.pathOriginal,
-			Method:   c.method,
+			Method:   c.Method(),
 			Handlers: make([]Handler, 0),
 			Params:   make([]string, 0),
 		}
@@ -1919,8 +1916,7 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 	// Set paths
 	c.pathOriginal = c.app.getString(fctx.URI().PathOriginal())
 	// Set method
-	c.method = c.app.getString(fctx.Request.Header.Method())
-	c.methodINT = c.app.methodInt(c.method)
+	c.methodInt = c.app.methodInt(utils.UnsafeString(fctx.Request.Header.Method()))
 	// Attach *fasthttp.RequestCtx to ctx
 	c.fasthttp = fctx
 	// reset base uri
@@ -1952,7 +1948,7 @@ func (c *DefaultCtx) getBody() []byte {
 
 // Methods to use with next stack.
 func (c *DefaultCtx) getMethodINT() int {
-	return c.methodINT
+	return c.methodInt
 }
 
 func (c *DefaultCtx) getIndexRoute() int {
