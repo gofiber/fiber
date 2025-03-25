@@ -111,7 +111,7 @@ type App struct {
 	// Route stack divided by HTTP methods
 	stack [][]*Route
 	// Route stack divided by HTTP methods and route prefixes
-	treeStack []map[string][]*Route
+	treeStack []map[int][]*Route
 	// custom binders
 	customBinders []CustomBinder
 	// customConstraints is a list of external constraints
@@ -586,7 +586,7 @@ func New(config ...Config) *App {
 
 	// Create router stack
 	app.stack = make([][]*Route, len(app.config.RequestMethods))
-	app.treeStack = make([]map[string][]*Route, len(app.config.RequestMethods))
+	app.treeStack = make([]map[int][]*Route, len(app.config.RequestMethods))
 
 	// Override colors
 	app.config.ColorScheme = defaultColors(app.config.ColorScheme)
