@@ -1947,7 +1947,7 @@ func (c *DefaultCtx) getBody() []byte {
 }
 
 // Methods to use with next stack.
-func (c *DefaultCtx) getMethodINT() int {
+func (c *DefaultCtx) getMethodInt() int {
 	return c.methodInt
 }
 

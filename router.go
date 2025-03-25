@@ -110,9 +110,9 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) boo
 
 func (app *App) nextCustom(c CustomCtx) (bool, error) { //nolint:unparam // bool param might be useful for testing
 	// Get stack length
-	tree, ok := app.treeStack[c.getMethodINT()][c.getTreePathHash()]
+	tree, ok := app.treeStack[c.getMethodInt()][c.getTreePathHash()]
 	if !ok {
-		tree = app.treeStack[c.getMethodINT()][0]
+		tree = app.treeStack[c.getMethodInt()][0]
 	}
 	lenr := len(tree) - 1
 

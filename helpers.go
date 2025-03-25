@@ -108,7 +108,7 @@ func (app *App) methodExist(c *DefaultCtx) bool {
 	methods := app.config.RequestMethods
 	for i := 0; i < len(methods); i++ {
 		// Skip original method
-		if c.getMethodINT() == i {
+		if c.getMethodInt() == i {
 			continue
 		}
 		// Reset stack index
@@ -152,7 +152,7 @@ func (app *App) methodExistCustom(c CustomCtx) bool {
 	methods := app.config.RequestMethods
 	for i := 0; i < len(methods); i++ {
 		// Skip original method
-		if c.getMethodINT() == i {
+		if c.getMethodInt() == i {
 			continue
 		}
 		// Reset stack index
