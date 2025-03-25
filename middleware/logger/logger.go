@@ -40,7 +40,6 @@ func New(config ...Config) fiber.Handler {
 			}
 		}()
 	}
-
 	// Set PID once
 	pid := strconv.Itoa(os.Getpid())
 
