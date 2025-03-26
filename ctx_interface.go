@@ -17,7 +17,7 @@ type CustomCtx interface {
 	Reset(fctx *fasthttp.RequestCtx)
 
 	// Methods to use with next stack.
-	getMethodINT() int
+	getMethodInt() int
 	getIndexRoute() int
 	getTreePathHash() int
 	getDetectionPath() string
