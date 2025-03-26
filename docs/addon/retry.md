@@ -1,3 +1,7 @@
+---
+id: retry
+---
+
 # Retry Addon
 
 Retry addon for [Fiber](https://github.com/gofiber/fiber) designed to apply retry mechanism for unsuccessful network

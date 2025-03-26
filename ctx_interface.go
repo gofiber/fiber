@@ -339,9 +339,9 @@ type CtxGeneric[T any] interface {
 	release()
 	getBody() []byte
 	// Methods to use with next stack.
-	getMethodINT() int
+	getMethodInt() int
 	getIndexRoute() int
-	getTreePath() string
+	getTreePathHash() int
 	getDetectionPath() string
 	getPathOriginal() string
 	getValues() *[maxParams]string
@@ -349,11 +349,47 @@ type CtxGeneric[T any] interface {
 	setIndexHandler(handler int)
 	setIndexRoute(route int)
 	setMatched(matched bool)
-	setRoute(route *Route[T])
-	// Drop closes the underlying connection without sending any response headers or body.
-	// This can be useful for silently terminating client connections, such as in DDoS mitigation
-	// or when blocking access to sensitive endpoints.
-	Drop() error
-	// End immediately flushes the current response and closes the underlying connection.
-	End() error
+	setRoute(route *Route)
+}
+
+func NewDefaultCtx(app *App) *DefaultCtx {
+	// return ctx
+	ctx := &DefaultCtx{
+		// Set app reference
+		app: app,
+	}
+	ctx.req = &DefaultReq{ctx: ctx}
+	ctx.res = &DefaultRes{ctx: ctx}
+
+	return ctx
+}
+
+func (app *App) newCtx() Ctx {
+	var c Ctx
+
+	if app.newCtxFunc != nil {
+		c = app.newCtxFunc(app)
+	} else {
+		c = NewDefaultCtx(app)
+	}
+
+	return c
+}
+
+// AcquireCtx retrieves a new Ctx from the pool.
+func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) Ctx {
+	ctx, ok := app.pool.Get().(Ctx)
+
+	if !ok {
+		panic(errors.New("failed to type-assert to Ctx"))
+	}
+	ctx.Reset(fctx)
+
+	return ctx
+}
+
+// ReleaseCtx releases the ctx back into the pool.
+func (app *App) ReleaseCtx(c Ctx) {
+	c.release()
+	app.pool.Put(c)
 }

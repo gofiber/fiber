@@ -600,7 +600,7 @@ func Benchmark_Router_Next(b *testing.B) {
 	var res bool
 	var err error
 
-	c := app.AcquireCtx(request).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(request).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
@@ -636,6 +636,50 @@ func Benchmark_Router_Next_Default(b *testing.B) {
 // go test -benchmem -run=^$ -bench ^Benchmark_Router_Next_Default_Parallel$ github.com/gofiber/fiber/v3 -count=1
 func Benchmark_Router_Next_Default_Parallel(b *testing.B) {
 	app := New()
+	app.Get("/", func(_ Ctx) error {
+		return nil
+	})
+
+	h := app.Handler()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	b.RunParallel(func(pb *testing.PB) {
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Request.Header.SetMethod(MethodGet)
+		fctx.Request.SetRequestURI("/")
+
+		for pb.Next() {
+			h(fctx)
+		}
+	})
+}
+
+// go test -v ./... -run=^$ -bench=Benchmark_Router_Next_Default_Immutable -benchmem -count=4
+func Benchmark_Router_Next_Default_Immutable(b *testing.B) {
+	app := New(Config{Immutable: true})
+	app.Get("/", func(_ Ctx) error {
+		return nil
+	})
+
+	h := app.Handler()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodGet)
+	fctx.Request.SetRequestURI("/")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		h(fctx)
+	}
+}
+
+// go test -benchmem -run=^$ -bench ^Benchmark_Router_Next_Default_Parallel_Immutable$ github.com/gofiber/fiber/v3 -count=1
+func Benchmark_Router_Next_Default_Parallel_Immutable(b *testing.B) {
+	app := New(Config{Immutable: true})
 	app.Get("/", func(_ Ctx) error {
 		return nil
 	})
@@ -825,7 +869,7 @@ func Benchmark_Router_Github_API(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			c.URI().SetPath(routesFixture.TestRoutes[i].Path)
 
-			ctx := app.AcquireCtx(c).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+			ctx := app.AcquireCtx(c).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 			match, err = app.next(ctx)
 			app.ReleaseCtx(ctx)

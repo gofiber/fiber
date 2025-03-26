@@ -199,7 +199,7 @@ func parserRequestBody(c *Client, req *Request) error {
 	case filesBody:
 		return parserRequestBodyFile(req)
 	case rawBody:
-		if body, ok := req.body.([]byte); ok {
+		if body, ok := req.body.([]byte); ok { //nolint:revive // ignore simplicity
 			req.RawRequest.SetBody(body)
 		} else {
 			return ErrBodyType

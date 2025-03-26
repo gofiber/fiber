@@ -10,15 +10,20 @@ import (
 
 // Config defines the config for middleware.
 type Config struct {
-	// Output is a writer where logs are written
+	// Stream is a writer where logs are written
 	//
 	// Default: os.Stdout
-	Output io.Writer
+	Stream io.Writer
 
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
 	Next func(c fiber.Ctx) bool
+
+	// Skip is a function to determine if logging is skipped or written to Stream.
+	//
+	// Optional. Default: nil
+	Skip func(c fiber.Ctx) bool
 
 	// Done is a function that is called after the log string for a request is written to Output,
 	// and pass the log string as parameter.
@@ -45,9 +50,23 @@ type Config struct {
 
 	timeZoneLocation *time.Location
 
-	// Format defines the logging tags
+	// Format defines the logging format for the middleware.
 	//
-	// Optional. Default: [${time}] ${ip} ${status} - ${latency} ${method} ${path} ${error}
+	// You can customize the log output by defining a format string with placeholders
+	// such as: ${time}, ${ip}, ${status}, ${method}, ${path}, ${latency}, ${error}, etc.
+	// The full list of available placeholders can be found in 'tags.go' or at
+	// 'https://docs.gofiber.io/api/middleware/logger/#constants'.
+	//
+	// Fiber provides predefined logging formats that can be used directly:
+	//
+	//   - DefaultFormat    → Uses the default log format: "[${time}] ${ip} ${status} - ${latency} ${method} ${path} ${error}"
+	//   - CommonFormat     → Uses the Apache Common Log Format (CLF): "${ip} - - [${time}] \"${method} ${url} ${protocol}\" ${status} ${bytesSent}\n"
+	//   - CombinedFormat   → Uses the Apache Combined Log Format: "${ip} - - [${time}] \"${method} ${url} ${protocol}\" ${status} ${bytesSent} \"${referer}\" \"${ua}\"\n"
+	//   - JSONFormat      → Uses the JSON log format: "{\"time\":\"${time}\",\"ip\":\"${ip}\",\"method\":\"${method}\",\"url\":\"${url}\",\"status\":${status},\"bytesSent\":${bytesSent}}\n"
+	//   - ECSFormat        → Uses the Elastic Common Schema (ECS) log format: {\"@timestamp\":\"${time}\",\"ecs\":{\"version\":\"1.6.0\"},\"client\":{\"ip\":\"${ip}\"},\"http\":{\"request\":{\"method\":\"${method}\",\"url\":\"${url}\",\"protocol\":\"${protocol}\"},\"response\":{\"status_code\":${status},\"body\":{\"bytes\":${bytesSent}}}},\"log\":{\"level\":\"INFO\",\"logger\":\"fiber\"},\"message\":\"${method} ${url} responded with ${status}\"}"
+	// If both `Format` and `CustomFormat` are provided, the `CustomFormat` will be used, and the `Format` field will be ignored.
+	// If no format is specified, the default format is used:
+	// "[${time}] ${ip} ${status} - ${latency} ${method} ${path} ${error}"
 	Format string
 
 	// TimeFormat https://programming.guide/go/format-parse-string-time-date-example.html
@@ -98,19 +117,17 @@ type LogFunc func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (in
 // ConfigDefault is the default config
 var ConfigDefault = Config{
 	Next:              nil,
+	Skip:              nil,
 	Done:              nil,
-	Format:            defaultFormat,
+	Format:            DefaultFormat,
 	TimeFormat:        "15:04:05",
 	TimeZone:          "Local",
 	TimeInterval:      500 * time.Millisecond,
-	Output:            os.Stdout,
+	Stream:            os.Stdout,
 	BeforeHandlerFunc: beforeHandlerFunc,
 	LoggerFunc:        defaultLoggerInstance,
 	enableColors:      true,
 }
-
-// default logging format for Fiber's default logger
-var defaultFormat = "[${time}] ${ip} ${status} - ${latency} ${method} ${path} ${error}\n"
 
 // Helper function to set default values
 func configDefault(config ...Config) Config {
@@ -125,6 +142,9 @@ func configDefault(config ...Config) Config {
 	// Set default values
 	if cfg.Next == nil {
 		cfg.Next = ConfigDefault.Next
+	}
+	if cfg.Skip == nil {
+		cfg.Skip = ConfigDefault.Skip
 	}
 	if cfg.Done == nil {
 		cfg.Done = ConfigDefault.Done
@@ -141,8 +161,8 @@ func configDefault(config ...Config) Config {
 	if int(cfg.TimeInterval) <= 0 {
 		cfg.TimeInterval = ConfigDefault.TimeInterval
 	}
-	if cfg.Output == nil {
-		cfg.Output = ConfigDefault.Output
+	if cfg.Stream == nil {
+		cfg.Stream = ConfigDefault.Stream
 	}
 
 	if cfg.BeforeHandlerFunc == nil {
@@ -154,7 +174,7 @@ func configDefault(config ...Config) Config {
 	}
 
 	// Enable colors if no custom format or output is given
-	if !cfg.DisableColors && cfg.Output == ConfigDefault.Output {
+	if !cfg.DisableColors && cfg.Stream == ConfigDefault.Stream {
 		cfg.enableColors = true
 	}
 

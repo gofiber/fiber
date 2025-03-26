@@ -87,7 +87,7 @@ func parse(aliasTag string, out any, data map[string][]string, files ...map[stri
 	return parseToStruct(aliasTag, out, data, files...)
 }
 
-// Parse data into the struct with gorilla/schema
+// Parse data into the struct with gofiber/schema
 func parseToStruct(aliasTag string, out any, data map[string][]string, files ...map[string][]*multipart.FileHeader) error {
 	// Get decoder from pool
 	schemaDecoder := decoderPoolMap[aliasTag].Get().(*schema.Decoder) //nolint:errcheck,forcetypeassert // not needed

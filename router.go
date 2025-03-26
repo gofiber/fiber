@@ -106,11 +106,11 @@ func (r *Route[TCtx]) match(detectionPath, path string, params *[maxParams]strin
 	return false
 }
 
-func (app *App[TCtx]) next(c TCtx) (bool, error) { //nolint: unparam // bool param might be useful for testing
+func (app *App[TCtx]) next(c TCtx) (bool, error) { //nolint:unparam // bool param might be useful for testing
 	// Get stack length
-	tree, ok := app.treeStack[c.getMethodINT()][c.getTreePath()]
+	tree, ok := app.treeStack[c.getMethodInt()][c.getTreePathHash()]
 	if !ok {
-		tree = app.treeStack[c.getMethodINT()][""]
+		tree = app.treeStack[c.getMethodInt()][0]
 	}
 	lenr := len(tree) - 1
 
@@ -154,6 +154,61 @@ func (app *App[TCtx]) next(c TCtx) (bool, error) { //nolint: unparam // bool par
 	return false, err
 }
 
+func (app *App) next2222(c *DefaultCtx) (bool, error) {
+	// Get stack length
+	tree, ok := app.treeStack[c.methodInt][c.treePathHash]
+	if !ok {
+		tree = app.treeStack[c.methodInt][0]
+	}
+	lenTree := len(tree) - 1
+
+	// Loop over the route stack starting from previous index
+	for c.indexRoute < lenTree {
+		// Increment route index
+		c.indexRoute++
+
+		// Get *Route
+		route := tree[c.indexRoute]
+
+		var match bool
+		var err error
+		// skip for mounted apps
+		if route.mount {
+			continue
+		}
+
+		// Check if it matches the request path
+		match = route.match(utils.UnsafeString(c.detectionPath), utils.UnsafeString(c.path), &c.values)
+		if !match {
+			// No match, next route
+			continue
+		}
+		// Pass route reference and param values
+		c.route = route
+
+		// Non use handler matched
+		if !c.matched && !route.use {
+			c.matched = true
+		}
+
+		// Execute first handler of route
+		c.indexHandler = 0
+		if len(route.Handlers) > 0 {
+			err = route.Handlers[0](c)
+		}
+		return match, err // Stop scanning the stack
+	}
+
+	// If c.Next() does not match, return 404
+	err := NewError(StatusNotFound, "Cannot "+c.Method()+" "+html.EscapeString(c.pathOriginal))
+	if !c.matched && app.methodExist(c) {
+		// If no match, scan stack again if other methods match the request
+		// Moved from app.handler because middleware may break the route chain
+		err = ErrMethodNotAllowed
+	}
+	return false, err
+}
+
 func (app *App[TCtx]) requestHandler(rctx *fasthttp.RequestCtx) {
 	// Acquire DefaultCtx from the pool
 	ctx := app.AcquireCtx(rctx)
@@ -161,7 +216,7 @@ func (app *App[TCtx]) requestHandler(rctx *fasthttp.RequestCtx) {
 	defer app.ReleaseCtx(ctx)
 
 	// Check if the HTTP method is valid
-	if app.methodInt(ctx.Method()) == -1 {
+	if ctx.methodInt == -1 {
 		_ = ctx.SendStatus(StatusNotImplemented) //nolint:errcheck // Always return nil
 		return
 	}
@@ -363,30 +418,28 @@ func (app *App[TCtx]) buildTree() *App[TCtx] {
 
 	// loop all the methods and stacks and create the prefix tree
 	for m := range app.config.RequestMethods {
-		tsMap := make(map[string][]*Route[TCtx])
+		tsMap := make(map[int][]*Route[TCtx])
 		for _, route := range app.stack[m] {
-			treePath := ""
-			if len(route.routeParser.segs) > 0 && len(route.routeParser.segs[0].Const) >= 3 {
-				treePath = route.routeParser.segs[0].Const[:3]
+			treePathHash := 0
+			if len(route.routeParser.segs) > 0 && len(route.routeParser.segs[0].Const) >= maxDetectionPaths {
+				treePathHash = int(route.routeParser.segs[0].Const[0])<<16 |
+					int(route.routeParser.segs[0].Const[1])<<8 |
+					int(route.routeParser.segs[0].Const[2])
 			}
 			// create tree stack
-			tsMap[treePath] = append(tsMap[treePath], route)
+			tsMap[treePathHash] = append(tsMap[treePathHash], route)
 		}
-		app.treeStack[m] = tsMap
-	}
 
-	// loop the methods and tree stacks and add global stack and sort everything
-	for m := range app.config.RequestMethods {
-		tsMap := app.treeStack[m]
 		for treePart := range tsMap {
-			if treePart != "" {
+			if treePart != 0 {
 				// merge global tree routes in current tree stack
-				tsMap[treePart] = uniqueRouteStack[TCtx](append(tsMap[treePart], tsMap[""]...))
+				tsMap[treePart] = uniqueRouteStack[TCtx](append(tsMap[treePart], tsMap[0]...))
 			}
 			// sort tree slices with the positions
 			slc := tsMap[treePart]
 			sort.Slice(slc, func(i, j int) bool { return slc[i].pos < slc[j].pos })
 		}
+		app.treeStack[m] = tsMap
 	}
 	app.routesRefreshed = false
 

@@ -109,7 +109,7 @@ type App[TCtx CtxGeneric[TCtx]] struct {
 	// Route stack divided by HTTP methods
 	stack [][]*Route[TCtx]
 	// Route stack divided by HTTP methods and route prefixes
-	treeStack []map[string][]*Route[TCtx]
+	treeStack []map[int][]*Route[TCtx]
 	// custom binders
 	customBinders []CustomBinder
 	// customConstraints is a list of external constraints
@@ -456,17 +456,29 @@ const (
 	DefaultWriteBufferSize = 4096
 )
 
+const (
+	methodGet = iota
+	methodHead
+	methodPost
+	methodPut
+	methodDelete
+	methodConnect
+	methodOptions
+	methodTrace
+	methodPatch
+)
+
 // HTTP methods enabled by default
 var DefaultMethods = []string{
-	MethodGet,
-	MethodHead,
-	MethodPost,
-	MethodPut,
-	MethodDelete,
-	MethodConnect,
-	MethodOptions,
-	MethodTrace,
-	MethodPatch,
+	methodGet:     MethodGet,
+	methodHead:    MethodHead,
+	methodPost:    MethodPost,
+	methodPut:     MethodPut,
+	methodDelete:  MethodDelete,
+	methodConnect: MethodConnect,
+	methodOptions: MethodOptions,
+	methodTrace:   MethodTrace,
+	methodPatch:   MethodPatch,
 }
 
 // DefaultErrorHandler that process return errors from handlers
@@ -621,7 +633,7 @@ func newApp[TCtx CtxGeneric[TCtx]](config ...Config[TCtx]) *App[TCtx] {
 
 	// Create router stack
 	app.stack = make([][]*Route[TCtx], len(app.config.RequestMethods))
-	app.treeStack = make([]map[string][]*Route[TCtx], len(app.config.RequestMethods))
+	app.treeStack = make([]map[int][]*Route[TCtx], len(app.config.RequestMethods))
 
 	// Override colors
 	app.config.ColorScheme = defaultColors(app.config.ColorScheme)
@@ -1048,7 +1060,7 @@ func (app *App[TCtx]) Test(req *http.Request, config ...TestConfig) (*http.Respo
 		select {
 		case err = <-channel:
 		case <-time.After(cfg.Timeout):
-			conn.Close() //nolint:errcheck, revive // It is fine to ignore the error here
+			conn.Close() //nolint:errcheck // It is fine to ignore the error here
 			if cfg.FailOnTimeout {
 				return nil, os.ErrDeadlineExceeded
 			}

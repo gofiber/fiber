@@ -131,7 +131,7 @@ func testRequestFail(t *testing.T, handler fiber.Handler, wrapAgent func(agent *
 	}
 }
 
-func testClient(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Client), excepted string, count ...int) { //nolint: unparam // maybe needed
+func testClient(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Client), excepted string, count ...int) { //nolint:unparam // maybe needed
 	t.Helper()
 
 	app, ln, start := createHelperServer(t)

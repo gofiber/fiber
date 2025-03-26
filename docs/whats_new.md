@@ -33,6 +33,7 @@ Here's a quick overview of the changes in Fiber `v3`:
   - [Filesystem](#filesystem)
   - [Monitor](#monitor)
   - [Healthcheck](#healthcheck)
+- [🔌 Addons](#-addons)
 - [📋 Migration guide](#-migration-guide)
 
 ## Drop for old Go versions
@@ -915,6 +916,47 @@ func main() {
 
 </details>
 
+The `Skip` is a function to determine if logging is skipped or written to `Stream`.
+
+<details>
+<summary>Example Usage</summary>
+
+```go
+app.Use(logger.New(logger.Config{
+    Skip: func(c fiber.Ctx) bool {
+        // Skip logging HTTP 200 requests
+        return c.Response().StatusCode() == fiber.StatusOK
+    },
+}))
+```
+
+```go
+app.Use(logger.New(logger.Config{
+    Skip: func(c fiber.Ctx) bool {
+        // Only log errors, similar to an error.log
+        return c.Response().StatusCode() < 400
+    },
+}))
+```
+
+</details>
+
+#### Predefined Formats
+
+Logger provides predefined formats that you can use by name or directly by specifying the format string.
+<details>
+
+<summary>Example Usage</summary>
+
+```go
+app.Use(logger.New(logger.Config{
+    Format: logger.FormatCombined, 
+}))
+```
+
+See more in [Logger](./middleware/logger.md#predefined-formats)
+</details>
+
 ### Filesystem
 
 We've decided to remove filesystem middleware to clear up the confusion between static and filesystem middleware.
@@ -942,6 +984,59 @@ The Healthcheck middleware has been enhanced to support more than two routes, wi
    - The configuration for each health check endpoint has been simplified. Each endpoint can be configured separately, allowing for more flexibility and readability.
 
 Refer to the [healthcheck middleware migration guide](./middleware/healthcheck.md) or the [general migration guide](#-migration-guide) to review the changes.
+
+## 🔌 Addons
+
+In v3, Fiber introduced Addons. Addons are additional useful packages that can be used in Fiber.
+
+### Retry
+
+The Retry addon is a new addon that implements a retry mechanism for unsuccessful network operations. It uses an exponential backoff algorithm with jitter.
+It calls the function multiple times and tries to make it successful. If all calls are failed, then, it returns an error.
+It adds a jitter at each retry step because adding a jitter is a way to break synchronization across the client and avoid collision.
+
+<details>
+<summary>Example</summary>
+
+```go
+package main
+
+import (
+    "fmt"
+
+    "github.com/gofiber/fiber/v3/addon/retry"
+    "github.com/gofiber/fiber/v3/client"
+)
+
+func main() {
+    expBackoff := retry.NewExponentialBackoff(retry.Config{})
+
+    // Local variables that will be used inside of Retry
+    var resp *client.Response
+    var err error
+
+    // Retry a network request and return an error to signify to try again
+    err = expBackoff.Retry(func() error {
+        client := client.New()
+        resp, err = client.Get("https://gofiber.io")
+        if err != nil {
+            return fmt.Errorf("GET gofiber.io failed: %w", err)
+        }
+        if resp.StatusCode() != 200 {
+            return fmt.Errorf("GET gofiber.io did not return OK 200")
+        }
+        return nil
+    })
+
+    // If all retries failed, panic
+    if err != nil {
+        panic(err)
+    }
+    fmt.Printf("GET gofiber.io succeeded with status code %d\n", resp.StatusCode())
+}
+```
+
+</details>
 
 ## 📋 Migration guide
 
