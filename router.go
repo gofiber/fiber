@@ -144,66 +144,11 @@ func (app *App[TCtx]) next(c TCtx) (bool, error) { //nolint:unparam // bool para
 	}
 
 	// If c.Next() does not match, return 404
-	err := NewError(StatusNotFound, "Cannot "+c.Method()+" "+c.getPathOriginal())
+	err := NewError(StatusNotFound, "Cannot "+c.Method()+" "+html.EscapeString(c.getPathOriginal()))
 
 	// If no match, scan stack again if other methods match the request
 	// Moved from app.handler because middleware may break the route chain
 	if !c.getMatched() && app.methodExistCustom(c) {
-		err = ErrMethodNotAllowed
-	}
-	return false, err
-}
-
-func (app *App) next2222(c *DefaultCtx) (bool, error) {
-	// Get stack length
-	tree, ok := app.treeStack[c.methodInt][c.treePathHash]
-	if !ok {
-		tree = app.treeStack[c.methodInt][0]
-	}
-	lenTree := len(tree) - 1
-
-	// Loop over the route stack starting from previous index
-	for c.indexRoute < lenTree {
-		// Increment route index
-		c.indexRoute++
-
-		// Get *Route
-		route := tree[c.indexRoute]
-
-		var match bool
-		var err error
-		// skip for mounted apps
-		if route.mount {
-			continue
-		}
-
-		// Check if it matches the request path
-		match = route.match(utils.UnsafeString(c.detectionPath), utils.UnsafeString(c.path), &c.values)
-		if !match {
-			// No match, next route
-			continue
-		}
-		// Pass route reference and param values
-		c.route = route
-
-		// Non use handler matched
-		if !c.matched && !route.use {
-			c.matched = true
-		}
-
-		// Execute first handler of route
-		c.indexHandler = 0
-		if len(route.Handlers) > 0 {
-			err = route.Handlers[0](c)
-		}
-		return match, err // Stop scanning the stack
-	}
-
-	// If c.Next() does not match, return 404
-	err := NewError(StatusNotFound, "Cannot "+c.Method()+" "+html.EscapeString(c.pathOriginal))
-	if !c.matched && app.methodExist(c) {
-		// If no match, scan stack again if other methods match the request
-		// Moved from app.handler because middleware may break the route chain
 		err = ErrMethodNotAllowed
 	}
 	return false, err
@@ -216,7 +161,7 @@ func (app *App[TCtx]) requestHandler(rctx *fasthttp.RequestCtx) {
 	defer app.ReleaseCtx(ctx)
 
 	// Check if the HTTP method is valid
-	if ctx.methodInt == -1 {
+	if app.methodInt(ctx.Method()) == -1 {
 		_ = ctx.SendStatus(StatusNotImplemented) //nolint:errcheck // Always return nil
 		return
 	}

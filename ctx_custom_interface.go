@@ -32,10 +32,14 @@ type CustomCtx[T any] interface {
 
 func NewDefaultCtx[TCtx *DefaultCtx](app *App[*DefaultCtx]) TCtx {
 	// return ctx
-	return &DefaultCtx{
+	ctx := &DefaultCtx{
 		// Set app reference
 		app: app,
 	}
+	ctx.req = &DefaultReq{ctx: ctx}
+	ctx.res = &DefaultRes{ctx: ctx}
+
+	return ctx
 }
 
 func (app *App[TCtx]) newCtx() CtxGeneric[TCtx] {

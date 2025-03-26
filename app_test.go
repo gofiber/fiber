@@ -31,7 +31,33 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttputil"
+
+	"github.com/go-playground/validator/v10"
 )
+
+type UserStatsCreateDTO struct {
+	FirstName string `json:"first_name" validate:"required"`
+	Age       int    `json:"age" validate:"required,gt=5"`
+	BirthDate string `json:"birth_date" validate:"required,datetime=2006/01/02"`
+}
+
+// test main func
+func Test_NewValidatorError(t *testing.T) {
+	userDTO := UserStatsCreateDTO{
+		FirstName: "John",
+		Age:       10,
+		BirthDate: "2024-01-01 12:00:00",
+	}
+
+	validate := validator.New()
+	err := validate.Struct(userDTO)
+
+	validationErrors := err.(validator.ValidationErrors)
+
+	fmt.Println(validationErrors[0].Field())
+	require.Equal(t, "BirthDate", validationErrors[0].Field())
+	require.Equal(t, "datetime", validationErrors[0].Tag())
+}
 
 func testEmptyHandler(_ Ctx) error {
 	return nil

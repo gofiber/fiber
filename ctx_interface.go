@@ -213,6 +213,7 @@ type CtxGeneric[T any] interface {
 	Params(key string, defaultValue ...string) string
 	// Path returns the path part of the request URL.
 	// Optionally, you could override the path.
+	// Make copies or use the Immutable setting to use the value outside the Handler.
 	Path(override ...string) string
 	// Scheme contains the request protocol string: http or https for TLS requests.
 	// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
@@ -258,15 +259,21 @@ type CtxGeneric[T any] interface {
 	// Variables are read by the Render method and may be overwritten.
 	ViewBind(vars Map) error
 	// getLocationFromRoute get URL location from route using parameters
-	getLocationFromRoute(route Route[T], params Map) (string, error)
+	getLocationFromRoute(route Route, params Map) (string, error)
 	// GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
 	GetRouteURL(routeName string, params Map) (string, error)
 	// Render a template with data and sends a text/html response.
 	// We support the following engines: https://github.com/gofiber/template
 	Render(name string, bind any, layouts ...string) error
 	renderExtensions(bind any)
+	// Req returns a convenience type whose API is limited to operations
+	// on the incoming request.
+	Req() Req
+	// Res returns a convenience type whose API is limited to operations
+	// on the outgoing response.
+	Res() Res
 	// Route returns the matched Route struct.
-	Route() *Route[T]
+	Route() *Route
 	// SaveFile saves any multipart file to disk.
 	SaveFile(fileheader *multipart.FileHeader, path string) error
 	// SaveFileToStorage saves any multipart file to an external storage system.
@@ -349,47 +356,11 @@ type CtxGeneric[T any] interface {
 	setIndexHandler(handler int)
 	setIndexRoute(route int)
 	setMatched(matched bool)
-	setRoute(route *Route)
-}
-
-func NewDefaultCtx(app *App) *DefaultCtx {
-	// return ctx
-	ctx := &DefaultCtx{
-		// Set app reference
-		app: app,
-	}
-	ctx.req = &DefaultReq{ctx: ctx}
-	ctx.res = &DefaultRes{ctx: ctx}
-
-	return ctx
-}
-
-func (app *App) newCtx() Ctx {
-	var c Ctx
-
-	if app.newCtxFunc != nil {
-		c = app.newCtxFunc(app)
-	} else {
-		c = NewDefaultCtx(app)
-	}
-
-	return c
-}
-
-// AcquireCtx retrieves a new Ctx from the pool.
-func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) Ctx {
-	ctx, ok := app.pool.Get().(Ctx)
-
-	if !ok {
-		panic(errors.New("failed to type-assert to Ctx"))
-	}
-	ctx.Reset(fctx)
-
-	return ctx
-}
-
-// ReleaseCtx releases the ctx back into the pool.
-func (app *App) ReleaseCtx(c Ctx) {
-	c.release()
-	app.pool.Put(c)
+	setRoute(route *Route[T])
+	// Drop closes the underlying connection without sending any response headers or body.
+	// This can be useful for silently terminating client connections, such as in DDoS mitigation
+	// or when blocking access to sensitive endpoints.
+	Drop() error
+	// End immediately flushes the current response and closes the underlying connection.
+	End() error
 }
