@@ -1885,3 +1885,52 @@ func Test_Bind_RepeatParserWithSameStruct(t *testing.T) {
 	testDecodeParser(MIMEApplicationForm, "body_param=body_param")
 	testDecodeParser(MIMEMultipartForm+`;boundary="b"`, "--b\r\nContent-Disposition: form-data; name=\"body_param\"\r\n\r\nbody_param\r\n--b--")
 }
+
+func TestBind_All(t *testing.T) {
+	type User struct {
+		ID        int                   `param:"id" query:"id" json:"id" form:"id"`
+		Name      string                `query:"name" json:"name" form:"name"`
+		Email     string                `json:"email" form:"email"`
+		Role      string                `header:"x-user-role"`
+		SessionID string                `json:"SessionID" cookie:"session_id"`
+		Avatar    *multipart.FileHeader `form:"avatar"`
+	}
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	tests := []struct {
+		name    string
+		bind    *Bind
+		out     any
+		wantErr bool
+	}{
+		{
+			name:    "Invalid output type",
+			bind:    &Bind{},
+			out:     123,
+			wantErr: true,
+		},
+		{
+			// Validate this test case
+			name: "Successful binding",
+			bind: &Bind{
+				ctx: c,
+			},
+			out: &User{
+				ID:        10,
+				Name:      "Alice",
+				Email:     "alice@example.com",
+				Role:      "admin",
+				SessionID: "abc123",
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := tt.bind.All(tt.out); (err != nil) != tt.wantErr {
+				t.Errorf("Bind.All() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
