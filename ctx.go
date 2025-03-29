@@ -23,6 +23,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
@@ -450,7 +451,48 @@ func (c *DefaultCtx) Cookie(cookie *Cookie) {
 // The returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (c *DefaultCtx) Cookies(key string, defaultValue ...string) string {
-	return defaultString(c.app.getString(c.fasthttp.Request.Header.Cookie(key)), defaultValue)
+	value := c.app.getString(c.fasthttp.Request.Header.Cookie(key))
+	return defaultString(c.sanitizeCookieValue(value), defaultValue)
+}
+
+// sanitizeCookieValue sanitizes a cookie value according to RFC 6265.
+// It removes invalid characters from the cookie value, similar to how
+// Go's standard library handles cookie values.
+func (c *DefaultCtx) sanitizeCookieValue(v string) string {
+	var result strings.Builder
+	result.Grow(len(v))
+	invalidChars := make(map[byte]struct{})
+
+	for i := 0; i < len(v); i++ {
+		b := v[i]
+		if c.validCookieValueByte(b) {
+			result.WriteByte(b)
+		} else {
+			invalidChars[b] = struct{}{}
+		}
+	}
+
+	if len(invalidChars) > 0 {
+		var chars []string
+		for b := range invalidChars {
+			chars = append(chars, fmt.Sprintf("'%c'", b))
+		}
+		log.Warn("invalid byte(s) %s in Cookie.Value; dropping invalid bytes",
+			strings.Join(chars, ", "))
+		return result.String()
+	}
+
+	return v
+}
+
+// validCookieValueByte reports whether b is a valid byte in a cookie value.
+// Per RFC 6265 section 4.1.1, cookie values must be ASCII
+// and may not contain control characters, whitespace, double quotes,
+// commas, semicolons, or backslashes.
+func (c *DefaultCtx) validCookieValueByte(b byte) bool {
+	return 0x20 <= b && b < 0x7f && b != '"' && b != ';' && b != '\\'
+	// Note: commas are deliberately allowed
+	// See https://golang.org/issue/7243 for the discussion.
 }
 
 // Download transfers the file from path as an attachment.

@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const CorrectKey = "specials: !$%,.#\"!?~`<>@$^*(){}[]|/\\123"
+const CorrectKey = "specials: !$%,.#!?~`<>@$^*(){}[]|/123"
 
 var testConfig = fiber.TestConfig{
 	Timeout: 0,
