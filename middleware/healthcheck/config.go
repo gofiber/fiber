@@ -18,7 +18,7 @@ type Config struct {
 	// the application is in a state where it can handle requests (e.g., the server is up and running).
 	//
 	// Optional. Default: func(c fiber.Ctx) bool { return true }
-	Probe HealthChecker
+	Probe func(fiber.Ctx) bool
 }
 
 const (
@@ -27,9 +27,9 @@ const (
 	DefaultStartupEndpoint   = "/startupz"
 )
 
-func defaultProbe(fiber.Ctx) bool { return true }
+func defaultProbe(c fiber.Ctx) bool { return true }
 
-func defaultConfigV3(config ...Config) Config {
+func defaultConfig(config ...Config) Config {
 	if len(config) < 1 {
 		return Config{
 			Probe: defaultProbe,
