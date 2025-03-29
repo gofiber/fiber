@@ -34,9 +34,9 @@ func Test_HealthCheck_Strict_Routing_Default(t *testing.T) {
 		StrictRouting: true,
 	})
 
-	app.Get(DefaultLivenessEndpoint, New())
-	app.Get(DefaultReadinessEndpoint, New())
-	app.Get(DefaultStartupEndpoint, New())
+	app.Get(LivenessEndpoint, New())
+	app.Get(ReadinessEndpoint, New())
+	app.Get(StartupEndpoint, New())
 
 	shouldGiveOK(t, app, "/readyz")
 	shouldGiveOK(t, app, "/livez")
@@ -53,9 +53,9 @@ func Test_HealthCheck_Default(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	app.Get(DefaultLivenessEndpoint, New())
-	app.Get(DefaultReadinessEndpoint, New())
-	app.Get(DefaultStartupEndpoint, New())
+	app.Get(LivenessEndpoint, New())
+	app.Get(ReadinessEndpoint, New())
+	app.Get(StartupEndpoint, New())
 
 	shouldGiveOK(t, app, "/readyz")
 	shouldGiveOK(t, app, "/livez")
@@ -88,7 +88,7 @@ func Test_HealthCheck_Custom(t *testing.T) {
 			}
 		},
 	}))
-	app.Get(DefaultStartupEndpoint, New(Config{
+	app.Get(StartupEndpoint, New(Config{
 		Probe: func(_ fiber.Ctx) bool {
 			return false
 		},
@@ -170,9 +170,9 @@ func Test_HealthCheck_Next(t *testing.T) {
 		},
 	})
 
-	app.Get(DefaultLivenessEndpoint, checker)
-	app.Get(DefaultReadinessEndpoint, checker)
-	app.Get(DefaultStartupEndpoint, checker)
+	app.Get(LivenessEndpoint, checker)
+	app.Get(ReadinessEndpoint, checker)
+	app.Get(StartupEndpoint, checker)
 
 	// This should give not found since there are no other handlers to execute
 	// so it's like the route isn't defined at all
@@ -184,9 +184,9 @@ func Test_HealthCheck_Next(t *testing.T) {
 func Benchmark_HealthCheck(b *testing.B) {
 	app := fiber.New()
 
-	app.Get(DefaultLivenessEndpoint, New())
-	app.Get(DefaultReadinessEndpoint, New())
-	app.Get(DefaultStartupEndpoint, New())
+	app.Get(LivenessEndpoint, New())
+	app.Get(ReadinessEndpoint, New())
+	app.Get(StartupEndpoint, New())
 
 	h := app.Handler()
 	fctx := &fasthttp.RequestCtx{}
@@ -206,9 +206,9 @@ func Benchmark_HealthCheck(b *testing.B) {
 func Benchmark_HealthCheck_Parallel(b *testing.B) {
 	app := fiber.New()
 
-	app.Get(DefaultLivenessEndpoint, New())
-	app.Get(DefaultReadinessEndpoint, New())
-	app.Get(DefaultStartupEndpoint, New())
+	app.Get(LivenessEndpoint, New())
+	app.Get(ReadinessEndpoint, New())
+	app.Get(StartupEndpoint, New())
 
 	h := app.Handler()
 

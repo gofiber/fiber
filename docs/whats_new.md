@@ -1564,18 +1564,18 @@ With the new version, each health check endpoint is configured separately, allow
 // after
 
 // Default liveness endpoint configuration
-app.Get(healthcheck.DefaultLivenessEndpoint, healthcheck.New(healthcheck.Config{
+app.Get(healthcheck.LivenessEndpoint, healthcheck.New(healthcheck.Config{
     Probe: func(c fiber.Ctx) bool {
         return true
     },
 }))
 
 // Default readiness endpoint configuration
-app.Get(healthcheck.DefaultReadinessEndpoint, healthcheck.New())
+app.Get(healthcheck.ReadinessEndpoint, healthcheck.New())
 
 // New default startup endpoint configuration
 // Default endpoint is /startupz
-app.Get(healthcheck.DefaultStartupEndpoint, healthcheck.New(healthcheck.Config{
+app.Get(healthcheck.StartupEndpoint, healthcheck.New(healthcheck.Config{
     Probe: func(c fiber.Ctx) bool {
         return serviceA.Ready() && serviceB.Ready() && ...
     },

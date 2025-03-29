@@ -22,12 +22,12 @@ type Config struct {
 }
 
 const (
-	DefaultLivenessEndpoint  = "/livez"
-	DefaultReadinessEndpoint = "/readyz"
-	DefaultStartupEndpoint   = "/startupz"
+	LivenessEndpoint  = "/livez"
+	ReadinessEndpoint = "/readyz"
+	StartupEndpoint   = "/startupz"
 )
 
-func defaultProbe(c fiber.Ctx) bool { return true }
+func defaultProbe(_ fiber.Ctx) bool { return true }
 
 func defaultConfig(config ...Config) Config {
 	if len(config) < 1 {

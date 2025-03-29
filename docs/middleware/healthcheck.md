@@ -45,32 +45,38 @@ After you initiate your [Fiber](https://github.com/gofiber/fiber) app, you can u
 
 ```go
 // Provide a minimal config for liveness check
-app.Get(healthcheck.DefaultLivenessEndpoint, healthcheck.New())
+app.Get(healthcheck.LivenessEndpoint, healthcheck.New())
+
 // Provide a minimal config for readiness check
-app.Get(healthcheck.DefaultReadinessEndpoint, healthcheck.New())
+app.Get(healthcheck.ReadinessEndpoint, healthcheck.New())
+
 // Provide a minimal config for startup check
-app.Get(healthcheck.DefaultStartupEndpoint, healthcheck.New())
+app.Get(healthcheck.StartupEndpoint, healthcheck.New())
+
 // Provide a minimal config for check with custom endpoint
 app.Get("/live", healthcheck.New())
 
 // Or extend your config for customization
-app.Get(healthcheck.DefaultLivenessEndpoint, healthcheck.New(healthcheck.Config{
+app.Get(healthcheck.LivenessEndpoint, healthcheck.New(healthcheck.Config{
     Probe: func(c fiber.Ctx) bool {
         return true
     },
 }))
+
 // And it works the same for readiness, just change the route
-app.Get(healthcheck.DefaultReadinessEndpoint, healthcheck.New(healthcheck.Config{
+app.Get(healthcheck.ReadinessEndpoint, healthcheck.New(healthcheck.Config{
     Probe: func(c fiber.Ctx) bool {
         return true
     },
 }))
+
 // And it works the same for startup, just change the route
-app.Get(healthcheck.DefaultStartupEndpoint, healthcheck.New(healthcheck.Config{
+app.Get(healthcheck.StartupEndpoint, healthcheck.New(healthcheck.Config{
     Probe: func(c fiber.Ctx) bool {
         return true
     },
 }))
+
 // With a custom route and custom probe
 app.Get("/live", healthcheck.New(healthcheck.Config{
     Probe: func(c fiber.Ctx) bool {
@@ -81,7 +87,7 @@ app.Get("/live", healthcheck.New(healthcheck.Config{
 // It can also be used with app.All, although it will only respond to requests with the GET method
 // in case of calling the route with any method which isn't GET, the return will be 404 Not Found when app.All is used
 // and 405 Method Not Allowed when app.Get is used
-app.All(healthcheck.DefaultReadinessEndpoint, healthcheck.New(healthcheck.Config{
+app.All(healthcheck.ReadinessEndpoint, healthcheck.New(healthcheck.Config{
     Probe: func(c fiber.Ctx) bool {
         return true
     },
@@ -117,7 +123,7 @@ type Config struct {
 The default configuration used by this middleware is defined as follows:
 
 ```go
-func defaultProbe(c fiber.Ctx) bool { return true }
+func defaultProbe(_ fiber.Ctx) bool { return true }
 
 var ConfigDefault = Config{
     Probe:     defaultProbe,
