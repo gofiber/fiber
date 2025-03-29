@@ -1035,6 +1035,18 @@ func Test_Ctx_Cookies(t *testing.T) {
 	c.Request().Header.Set("Cookie", "john=doe")
 	require.Equal(t, "doe", c.Req().Cookies("john"))
 	require.Equal(t, "default", c.Req().Cookies("unknown", "default"))
+
+	c.Request().Header.Set("Cookie", "special=value,with,commas") // commas are allowed
+	require.Equal(t, "value,with,commas", c.Req().Cookies("special"))
+
+	c.Request().Header.Set("Cookie", "quotes=value\"with\"quotes")
+	require.Equal(t, "valuewithquotes", c.Req().Cookies("quotes"))
+
+	c.Request().Header.Set("Cookie", "semicolons=value;with;semicolons")
+	require.Equal(t, "valuewithsemicolons", c.Req().Cookies("semicolons"))
+
+	c.Request().Header.Set("Cookie", "backslash=value\\with\\backslash")
+	require.Equal(t, "valuewithbackslash", c.Req().Cookies("backslash"))
 }
 
 // go test -run Test_Ctx_Format
