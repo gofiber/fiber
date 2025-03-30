@@ -320,7 +320,7 @@ func TestState_GetComplex64(t *testing.T) {
 	t.Parallel()
 	st := newState()
 
-	var c complex64 = complex(2, 3)
+	var c = complex(2, 3)
 	st.Set("complex64", c)
 	cRes, ok := st.GetComplex64("complex64")
 	require.True(t, ok)
@@ -340,7 +340,7 @@ func TestState_GetComplex128(t *testing.T) {
 	t.Parallel()
 	st := newState()
 
-	var c complex128 = complex(4, 5)
+	var c = complex(4, 5)
 	st.Set("complex128", c)
 	cRes, ok := st.GetComplex128("complex128")
 	require.True(t, ok)
