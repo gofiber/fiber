@@ -62,8 +62,6 @@ func New(config ...Config) fiber.Handler {
 		if err == nil && valid {
 			// Store in both Locals and Context
 			c.Locals(tokenKey, key)
-			ctx := context.WithValue(c.Context(), tokenKey, key)
-			c.SetContext(ctx)
 			return cfg.SuccessHandler(c)
 		}
 		return cfg.ErrorHandler(c, err)

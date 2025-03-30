@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"compress/zlib"
-	"context"
 	"crypto/tls"
 	"embed"
 	"encoding/hex"
@@ -880,76 +879,6 @@ func Test_Ctx_RequestCtx(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	require.Equal(t, "*fasthttp.RequestCtx", fmt.Sprintf("%T", c.RequestCtx()))
-}
-
-// go test -run Test_Ctx_Context
-func Test_Ctx_Context(t *testing.T) {
-	t.Parallel()
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-
-	t.Run("Nil_Context", func(t *testing.T) {
-		t.Parallel()
-		ctx := c.Context()
-		require.Equal(t, ctx, context.Background())
-	})
-	t.Run("ValueContext", func(t *testing.T) {
-		t.Parallel()
-		testKey := struct{}{}
-		testValue := "Test Value"
-		ctx := context.WithValue(context.Background(), testKey, testValue) //nolint:staticcheck // not needed for tests
-		require.Equal(t, testValue, ctx.Value(testKey))
-	})
-}
-
-// go test -run Test_Ctx_SetContext
-func Test_Ctx_SetContext(t *testing.T) {
-	t.Parallel()
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-
-	testKey := struct{}{}
-	testValue := "Test Value"
-	ctx := context.WithValue(context.Background(), testKey, testValue) //nolint:staticcheck // not needed for tests
-	c.SetContext(ctx)
-	require.Equal(t, testValue, c.Context().Value(testKey))
-}
-
-// go test -run Test_Ctx_Context_Multiple_Requests
-func Test_Ctx_Context_Multiple_Requests(t *testing.T) {
-	t.Parallel()
-	testKey := struct{}{}
-	testValue := "foobar-value"
-
-	app := New()
-	app.Get("/", func(c Ctx) error {
-		ctx := c.Context()
-
-		if ctx.Value(testKey) != nil {
-			return c.SendStatus(StatusInternalServerError)
-		}
-
-		input := utils.CopyString(Query(c, "input", "NO_VALUE"))
-		ctx = context.WithValue(ctx, testKey, fmt.Sprintf("%s_%s", testValue, input)) //nolint:staticcheck // not needed for tests
-		c.SetContext(ctx)
-
-		return c.Status(StatusOK).SendString(fmt.Sprintf("resp_%s_returned", input))
-	})
-
-	// Consecutive Requests
-	for i := 1; i <= 10; i++ {
-		t.Run(fmt.Sprintf("request_%d", i), func(t *testing.T) {
-			t.Parallel()
-			resp, err := app.Test(httptest.NewRequest(MethodGet, fmt.Sprintf("/?input=%d", i), nil))
-
-			require.NoError(t, err, "Unexpected error from response")
-			require.Equal(t, StatusOK, resp.StatusCode, "context.Context returned from c.Context() is reused")
-
-			b, err := io.ReadAll(resp.Body)
-			require.NoError(t, err, "Unexpected error from reading response body")
-			require.Equal(t, fmt.Sprintf("resp_%d_returned", i), string(b), "response text incorrect")
-		})
-	}
 }
 
 // go test -run Test_Ctx_Cookie

@@ -444,6 +444,28 @@ func (c *DefaultCtx) Cookie(cookie *Cookie) {
 	fasthttp.ReleaseCookie(fcookie)
 }
 
+// Deadline returns the time when work done on behalf of this context
+// should be canceled. Deadline returns ok==false when no deadline is
+// set. Successive calls to Deadline return the same results.
+//
+// Due to current limitations in how fasthttp works, Deadline operates as a nop.
+// See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
+func (c *DefaultCtx) Deadline() (deadline time.Time, ok bool) {
+	return
+}
+
+// Done returns a channel that's closed when work done on behalf of this
+// context should be canceled. Done may return nil if this context can
+// never be canceled. Successive calls to Done return the same value.
+// The close of the Done channel may happen asynchronously,
+// after the cancel function returns.
+//
+// Due to current limitations in how fasthttp works, Done operates as a nop.
+// See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
+func (c *DefaultCtx) Done() <-chan struct{} {
+	return nil
+}
+
 // Cookies are used for getting a cookie value by key.
 // Defaults to the empty string "" if the cookie doesn't exist.
 // If a default value is given, it will return that value if the cookie doesn't exist.
@@ -466,6 +488,18 @@ func (c *DefaultCtx) Download(file string, filename ...string) error {
 	}
 	c.setCanonical(HeaderContentDisposition, `attachment; filename="`+c.app.quoteString(fname)+`"`)
 	return c.SendFile(file)
+}
+
+// If Done is not yet closed, Err returns nil.
+// If Done is closed, Err returns a non-nil error explaining why:
+// context.DeadlineExceeded if the context's deadline passed,
+// or context.Canceled if the context was canceled for some other reason.
+// After Err returns a non-nil error, successive calls to Err return the same error.
+//
+// Due to current limitations in how fasthttp works, Err operates as a nop.
+// See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
+func (c *DefaultCtx) Err() error {
+	return nil
 }
 
 // Request return the *fasthttp.Request object
@@ -1802,6 +1836,16 @@ func (c *DefaultCtx) Type(extension string, charset ...string) Ctx {
 // This will append the header, if not already listed, otherwise leaves it listed in the current location.
 func (c *DefaultCtx) Vary(fields ...string) {
 	c.Append(HeaderVary, fields...)
+}
+
+// Value makes it possible to pass any values under keys scoped to the request
+// and therefore available to all following routes that match the request.
+//
+// All the values are removed from ctx after returning from the top
+// RequestHandler. Additionally, Close method is called on each value
+// implementing io.Closer before removing the value from ctx.
+func (c *DefaultCtx) Value(key any) any {
+	return c.fasthttp.UserValue(key)
 }
 
 // Write appends p into response body.

@@ -4,10 +4,10 @@ package fiber
 
 import (
 	"bufio"
-	"context"
 	"crypto/tls"
 	"io"
 	"mime/multipart"
+	"time"
 
 	"github.com/valyala/fasthttp"
 )
@@ -49,11 +49,6 @@ type Ctx interface {
 	// RequestCtx returns *fasthttp.RequestCtx that carries a deadline
 	// a cancellation signal, and other values across API boundaries.
 	RequestCtx() *fasthttp.RequestCtx
-	// Context returns a context implementation that was set by
-	// user earlier or returns a non-nil, empty context,if it was not set earlier.
-	Context() context.Context
-	// SetContext sets a context implementation by user.
-	SetContext(ctx context.Context)
 	// Cookie sets a cookie by passing a cookie struct.
 	Cookie(cookie *Cookie)
 	// Cookies are used for getting a cookie value by key.
@@ -62,11 +57,53 @@ type Ctx interface {
 	// The returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting to use the value outside the Handler.
 	Cookies(key string, defaultValue ...string) string
+	// Deadline returns the time when work done on behalf of this context
+	// should be canceled. Deadline returns ok==false when no deadline is
+	// set. Successive calls to Deadline return the same results.
+	Deadline() (deadline time.Time, ok bool)
+	// Done returns a channel that's closed when work done on behalf of this
+	// context should be canceled. Done may return nil if this context can
+	// never be canceled. Successive calls to Done return the same value.
+	// The close of the Done channel may happen asynchronously,
+	// after the cancel function returns.
+	//
+	// WithCancel arranges for Done to be closed when cancel is called;
+	// WithDeadline arranges for Done to be closed when the deadline
+	// expires; WithTimeout arranges for Done to be closed when the timeout
+	// elapses.
+	//
+	// Done is provided for use in select statements:
+	//
+	//  // Stream generates values with DoSomething and sends them to out
+	//  // until DoSomething returns an error or ctx.Done is closed.
+	//  func Stream(ctx context.Context, out chan<- Value) error {
+	//  	for {
+	//  		v, err := DoSomething(ctx)
+	//  		if err != nil {
+	//  			return err
+	//  		}
+	//  		select {
+	//  		case <-ctx.Done():
+	//  			return ctx.Err()
+	//  		case out <- v:
+	//  		}
+	//  	}
+	//  }
+	//
+	// See https://blog.golang.org/pipelines for more examples of how to use
+	// a Done channel for cancellation.
+	Done() <-chan struct{}
 	// Download transfers the file from path as an attachment.
 	// Typically, browsers will prompt the user for download.
 	// By default, the Content-Disposition header filename= parameter is the filepath (this typically appears in the browser dialog).
 	// Override this default with the filename parameter.
 	Download(file string, filename ...string) error
+	// If Done is not yet closed, Err returns nil.
+	// If Done is closed, Err returns a non-nil error explaining why:
+	// DeadlineExceeded if the context's deadline passed,
+	// or Canceled if the context was canceled for some other reason.
+	// After Err returns a non-nil error, successive calls to Err return the same error.
+	Err() error
 	// Request return the *fasthttp.Request object
 	// This allows you to use all fasthttp request methods
 	// https://godoc.org/github.com/valyala/fasthttp#Request
@@ -317,6 +354,13 @@ type Ctx interface {
 	// Vary adds the given header field to the Vary response header.
 	// This will append the header, if not already listed, otherwise leaves it listed in the current location.
 	Vary(fields ...string)
+	// Value makes it possible to pass any values under keys scoped to the request
+	// and therefore available to all following routes that match the request.
+	//
+	// All the values are removed from ctx after returning from the top
+	// RequestHandler. Additionally, Close method is called on each value
+	// implementing io.Closer before removing the value from ctx.
+	Value(key any) any
 	// Write appends p into response body.
 	Write(p []byte) (int, error)
 	// Writef appends f & a into response body writer.
