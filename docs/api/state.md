@@ -67,7 +67,6 @@ appName := app.State().MustGet("appName")
 fmt.Println("App Name:", appName)
 ```
 
-
 ### Has
 
 Has checks if a key exists in the State.

@@ -769,3 +769,213 @@ func BenchmarkState_Len(b *testing.B) {
 		_ = st.Len()
 	}
 }
+
+func BenchmarkState_GetUint(b *testing.B) {
+	b.ReportAllocs()
+	st := newState()
+	n := 1000
+	// Pre-populate the state with uint values.
+	for i := 0; i < n; i++ {
+		key := "key" + strconv.Itoa(i)
+		st.Set(key, uint(i))
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		key := "key" + strconv.Itoa(i%n)
+		st.GetUint(key)
+	}
+}
+
+func BenchmarkState_GetInt8(b *testing.B) {
+	b.ReportAllocs()
+	st := newState()
+	n := 1000
+	// Pre-populate the state with int8 values (using modulo to stay in range).
+	for i := 0; i < n; i++ {
+		key := "key" + strconv.Itoa(i)
+		st.Set(key, int8(i%128))
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		key := "key" + strconv.Itoa(i%n)
+		st.GetInt8(key)
+	}
+}
+
+func BenchmarkState_GetInt16(b *testing.B) {
+	b.ReportAllocs()
+	st := newState()
+	n := 1000
+	// Pre-populate the state with int16 values.
+	for i := 0; i < n; i++ {
+		key := "key" + strconv.Itoa(i)
+		st.Set(key, int16(i))
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		key := "key" + strconv.Itoa(i%n)
+		st.GetInt16(key)
+	}
+}
+
+func BenchmarkState_GetInt32(b *testing.B) {
+	b.ReportAllocs()
+	st := newState()
+	n := 1000
+	// Pre-populate the state with int32 values.
+	for i := 0; i < n; i++ {
+		key := "key" + strconv.Itoa(i)
+		st.Set(key, int32(i))
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		key := "key" + strconv.Itoa(i%n)
+		st.GetInt32(key)
+	}
+}
+
+func BenchmarkState_GetInt64(b *testing.B) {
+	b.ReportAllocs()
+	st := newState()
+	n := 1000
+	// Pre-populate the state with int64 values.
+	for i := 0; i < n; i++ {
+		key := "key" + strconv.Itoa(i)
+		st.Set(key, int64(i))
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		key := "key" + strconv.Itoa(i%n)
+		st.GetInt64(key)
+	}
+}
+
+func BenchmarkState_GetUint8(b *testing.B) {
+	b.ReportAllocs()
+	st := newState()
+	n := 1000
+	// Pre-populate the state with uint8 values.
+	for i := 0; i < n; i++ {
+		key := "key" + strconv.Itoa(i)
+		st.Set(key, uint8(i%256))
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		key := "key" + strconv.Itoa(i%n)
+		st.GetUint8(key)
+	}
+}
+
+func BenchmarkState_GetUint16(b *testing.B) {
+	b.ReportAllocs()
+	st := newState()
+	n := 1000
+	// Pre-populate the state with uint16 values.
+	for i := 0; i < n; i++ {
+		key := "key" + strconv.Itoa(i)
+		st.Set(key, uint16(i))
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		key := "key" + strconv.Itoa(i%n)
+		st.GetUint16(key)
+	}
+}
+
+func BenchmarkState_GetUint32(b *testing.B) {
+	b.ReportAllocs()
+	st := newState()
+	n := 1000
+	// Pre-populate the state with uint32 values.
+	for i := 0; i < n; i++ {
+		key := "key" + strconv.Itoa(i)
+		st.Set(key, uint32(i))
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		key := "key" + strconv.Itoa(i%n)
+		st.GetUint32(key)
+	}
+}
+
+func BenchmarkState_GetUint64(b *testing.B) {
+	b.ReportAllocs()
+	st := newState()
+	n := 1000
+	// Pre-populate the state with uint64 values.
+	for i := 0; i < n; i++ {
+		key := "key" + strconv.Itoa(i)
+		st.Set(key, uint64(i))
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		key := "key" + strconv.Itoa(i%n)
+		st.GetUint64(key)
+	}
+}
+
+func BenchmarkState_GetUintptr(b *testing.B) {
+	b.ReportAllocs()
+	st := newState()
+	n := 1000
+	// Pre-populate the state with uintptr values.
+	for i := 0; i < n; i++ {
+		key := "key" + strconv.Itoa(i)
+		st.Set(key, uintptr(i))
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		key := "key" + strconv.Itoa(i%n)
+		st.GetUintptr(key)
+	}
+}
+
+func BenchmarkState_GetFloat32(b *testing.B) {
+	b.ReportAllocs()
+	st := newState()
+	n := 1000
+	// Pre-populate the state with float32 values.
+	for i := 0; i < n; i++ {
+		key := "key" + strconv.Itoa(i)
+		st.Set(key, float32(i))
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		key := "key" + strconv.Itoa(i%n)
+		st.GetFloat32(key)
+	}
+}
+
+func BenchmarkState_GetComplex64(b *testing.B) {
+	b.ReportAllocs()
+	st := newState()
+	n := 1000
+	// Pre-populate the state with complex64 values.
+	for i := 0; i < n; i++ {
+		key := "key" + strconv.Itoa(i)
+		// Create a complex64 value with both real and imaginary parts.
+		st.Set(key, complex(float32(i), float32(i)))
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		key := "key" + strconv.Itoa(i%n)
+		st.GetComplex64(key)
+	}
+}
+
+func BenchmarkState_GetComplex128(b *testing.B) {
+	b.ReportAllocs()
+	st := newState()
+	n := 1000
+	// Pre-populate the state with complex128 values.
+	for i := 0; i < n; i++ {
+		key := "key" + strconv.Itoa(i)
+		// Create a complex128 value with both real and imaginary parts.
+		st.Set(key, complex(float64(i), float64(i)))
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		key := "key" + strconv.Itoa(i%n)
+		st.GetComplex128(key)
+	}
+}
