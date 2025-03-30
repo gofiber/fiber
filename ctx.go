@@ -450,8 +450,8 @@ func (c *DefaultCtx) Cookie(cookie *Cookie) {
 //
 // Due to current limitations in how fasthttp works, Deadline operates as a nop.
 // See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
-func (c *DefaultCtx) Deadline() (deadline time.Time, ok bool) {
-	return
+func (*DefaultCtx) Deadline() (deadline time.Time, ok bool) {
+	return time.Time{}, false
 }
 
 // Done returns a channel that's closed when work done on behalf of this
@@ -462,7 +462,7 @@ func (c *DefaultCtx) Deadline() (deadline time.Time, ok bool) {
 //
 // Due to current limitations in how fasthttp works, Done operates as a nop.
 // See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
-func (c *DefaultCtx) Done() <-chan struct{} {
+func (*DefaultCtx) Done() <-chan struct{} {
 	return nil
 }
 
@@ -498,7 +498,7 @@ func (c *DefaultCtx) Download(file string, filename ...string) error {
 //
 // Due to current limitations in how fasthttp works, Err operates as a nop.
 // See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
-func (c *DefaultCtx) Err() error {
+func (*DefaultCtx) Err() error {
 	return nil
 }
 

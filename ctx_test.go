@@ -2187,6 +2187,23 @@ func Test_Ctx_Locals(t *testing.T) {
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
+// go test -run Test_Ctx_Value
+func Test_Ctx_Value(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Use(func(c Ctx) error {
+		c.Locals("john", "doe")
+		return c.Next()
+	})
+	app.Get("/test", func(c Ctx) error {
+		require.Equal(t, "doe", c.Value("john"))
+		return nil
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+}
+
 // go test -run Test_Ctx_Locals_Generic
 func Test_Ctx_Locals_Generic(t *testing.T) {
 	t.Parallel()
