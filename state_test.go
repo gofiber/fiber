@@ -356,7 +356,7 @@ func TestState_GetComplex128(t *testing.T) {
 	t.Parallel()
 	st := newState()
 
-	var c = complex(4, 5)
+	c := complex(4, 5)
 	st.Set("complex128", c)
 	cRes, ok := st.GetComplex128("complex128")
 	require.True(t, ok)
@@ -777,7 +777,7 @@ func BenchmarkState_GetUint(b *testing.B) {
 	// Pre-populate the state with uint values.
 	for i := 0; i < n; i++ {
 		key := "key" + strconv.Itoa(i)
-		st.Set(key, uint(i))
+		st.Set(key, uint(i)) //nolint:gosec // This is a test
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -793,7 +793,7 @@ func BenchmarkState_GetInt8(b *testing.B) {
 	// Pre-populate the state with int8 values (using modulo to stay in range).
 	for i := 0; i < n; i++ {
 		key := "key" + strconv.Itoa(i)
-		st.Set(key, int8(i%128))
+		st.Set(key, int8(i%128)) //nolint:gosec // This is a test
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -809,7 +809,7 @@ func BenchmarkState_GetInt16(b *testing.B) {
 	// Pre-populate the state with int16 values.
 	for i := 0; i < n; i++ {
 		key := "key" + strconv.Itoa(i)
-		st.Set(key, int16(i))
+		st.Set(key, int16(i)) //nolint:gosec // This is a test
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -825,7 +825,7 @@ func BenchmarkState_GetInt32(b *testing.B) {
 	// Pre-populate the state with int32 values.
 	for i := 0; i < n; i++ {
 		key := "key" + strconv.Itoa(i)
-		st.Set(key, int32(i))
+		st.Set(key, int32(i)) //nolint:gosec // This is a test
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -857,7 +857,7 @@ func BenchmarkState_GetUint8(b *testing.B) {
 	// Pre-populate the state with uint8 values.
 	for i := 0; i < n; i++ {
 		key := "key" + strconv.Itoa(i)
-		st.Set(key, uint8(i%256))
+		st.Set(key, uint8(i%256)) //nolint:gosec // This is a test
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -873,7 +873,7 @@ func BenchmarkState_GetUint16(b *testing.B) {
 	// Pre-populate the state with uint16 values.
 	for i := 0; i < n; i++ {
 		key := "key" + strconv.Itoa(i)
-		st.Set(key, uint16(i))
+		st.Set(key, uint16(i)) //nolint:gosec // This is a test
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -889,7 +889,7 @@ func BenchmarkState_GetUint32(b *testing.B) {
 	// Pre-populate the state with uint32 values.
 	for i := 0; i < n; i++ {
 		key := "key" + strconv.Itoa(i)
-		st.Set(key, uint32(i))
+		st.Set(key, uint32(i)) //nolint:gosec // This is a test
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -905,7 +905,7 @@ func BenchmarkState_GetUint64(b *testing.B) {
 	// Pre-populate the state with uint64 values.
 	for i := 0; i < n; i++ {
 		key := "key" + strconv.Itoa(i)
-		st.Set(key, uint64(i))
+		st.Set(key, uint64(i)) //nolint:gosec // This is a test
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
