@@ -72,12 +72,12 @@ func New(config ...Config) fiber.Handler {
 // returns an empty string if the token does not exist
 func TokenFromContext(c any) string {
 	switch ctx := c.(type) {
-	case context.Context:
-		if token, ok := ctx.Value(tokenKey).(string); ok {
-			return token
-		}
 	case fiber.Ctx:
 		if token, ok := ctx.Locals(tokenKey).(string); ok {
+			return token
+		}
+	case context.Context:
+		if token, ok := ctx.Value(tokenKey).(string); ok {
 			return token
 		}
 	default:

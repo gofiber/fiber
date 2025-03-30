@@ -451,7 +451,7 @@ func (c *DefaultCtx) Cookie(cookie *Cookie) {
 // Due to current limitations in how fasthttp works, Deadline operates as a nop.
 // See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
 func (*DefaultCtx) Deadline() (deadline time.Time, ok bool) {
-	return time.Time{}, false
+	return deadline, false
 }
 
 // Done returns a channel that's closed when work done on behalf of this
