@@ -7,6 +7,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestState_SetAndGet_WithApp(t *testing.T) {
+	t.Parallel()
+	// Create app
+	app := New()
+
+	// test setting and getting a value
+	app.state.Set("foo", "bar")
+	val, ok := app.state.Get("foo")
+	require.True(t, ok)
+	require.Equal(t, "bar", val)
+
+	// test key not found
+	_, ok = app.state.Get("unknown")
+	require.False(t, ok)
+}
+
 func TestState_SetAndGet(t *testing.T) {
 	t.Parallel()
 	st := newState()
@@ -320,7 +336,7 @@ func TestState_GetComplex64(t *testing.T) {
 	t.Parallel()
 	st := newState()
 
-	var c = complex(2, 3)
+	var c complex64 = complex(2, 3)
 	st.Set("complex64", c)
 	cRes, ok := st.GetComplex64("complex64")
 	require.True(t, ok)
