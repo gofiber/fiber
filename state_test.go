@@ -13,13 +13,13 @@ func TestState_SetAndGet_WithApp(t *testing.T) {
 	app := New()
 
 	// test setting and getting a value
-	app.state.Set("foo", "bar")
-	val, ok := app.state.Get("foo")
+	app.State().Set("foo", "bar")
+	val, ok := app.State().Get("foo")
 	require.True(t, ok)
 	require.Equal(t, "bar", val)
 
 	// test key not found
-	_, ok = app.state.Get("unknown")
+	_, ok = app.State().Get("unknown")
 	require.False(t, ok)
 }
 

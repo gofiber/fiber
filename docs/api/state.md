@@ -478,6 +478,7 @@ package main
 
 import (
     "fmt"
+
     "github.com/gofiber/fiber/v3"
 )
 
@@ -489,7 +490,7 @@ func main() {
 
     // Middleware: Increase counter for every request.
     app.Use(func(c fiber.Ctx) error {
-        count := c.App().GetStateWithDefault(app.State(), "requestCount", 0)
+        count, _ := c.App().State().GetInt("requestCount")
         app.State().Set("requestCount", count+1)
         return c.Next()
     })
@@ -499,7 +500,7 @@ func main() {
     })
 
     app.Get("/stats", func(c fiber.Ctx) error {
-        count := c.App().GetStateWithDefault(c.App().State(), "requestCount", 0)
+        count, _ := c.App().State().Get("requestCount")
         return c.SendString(fmt.Sprintf("Total requests: %d", count))
     })
 
@@ -532,7 +533,7 @@ func main() {
 
     // Set environment-specific configurations.
     if environment == "development" {
-    app.State().Set("apiUrl", "http://localhost:8080/api")
+        app.State().Set("apiUrl", "http://localhost:8080/api")
         app.State().Set("debug", true)
     } else {
         app.State().Set("apiUrl", "https://api.production.com")
@@ -542,8 +543,8 @@ func main() {
     app.Get("/config", func(c fiber.Ctx) error {
         config := map[string]any{
             "environment": environment,
-            "apiUrl":      c.App().GetStateWithDefault(app.State(), "apiUrl", ""),
-            "debug":       c.App().GetStateWithDefault(app.State(), "debug", false),
+            "apiUrl":      fiber.GetStateWithDefault(app.State(), "apiUrl", ""),
+            "debug":       fiber.GetStateWithDefault(app.State(), "debug", false),
         }
         return c.JSON(config)
     })
@@ -600,7 +601,7 @@ func main() {
         }
 
         // Save the user to the database.
-        rdb, ok := c.App().GetState[*redis.Client](app.State(), "redis")
+        rdb, ok := fiber.GetState[*redis.Client](app.State(), "redis")
         if !ok {
             return c.Status(fiber.StatusInternalServerError).SendString("Redis client not found")
         }
@@ -618,7 +619,7 @@ func main() {
     app.Get("/user/:id", func(c fiber.Ctx) error {
         id := c.Params("id")
 
-        rdb, ok := c.App().GetState[*redis.Client](app.State(), "redis")
+        rdb, ok := fiber.GetState[*redis.Client](app.State(), "redis")
         if !ok {
             return c.Status(fiber.StatusInternalServerError).SendString("Redis client not found")
         }
