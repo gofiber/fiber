@@ -543,8 +543,8 @@ func main() {
     app.Get("/config", func(c fiber.Ctx) error {
         config := map[string]any{
             "environment": environment,
-            "apiUrl":      fiber.GetStateWithDefault(app.State(), "apiUrl", ""),
-            "debug":       fiber.GetStateWithDefault(app.State(), "debug", false),
+            "apiUrl":      fiber.GetStateWithDefault(c.App().State(), "apiUrl", ""),
+            "debug":       fiber.GetStateWithDefault(c.App().State(), "debug", false),
         }
         return c.JSON(config)
     })
@@ -601,7 +601,7 @@ func main() {
         }
 
         // Save the user to the database.
-        rdb, ok := fiber.GetState[*redis.Client](app.State(), "redis")
+        rdb, ok := fiber.GetState[*redis.Client](c.App().State(), "redis")
         if !ok {
             return c.Status(fiber.StatusInternalServerError).SendString("Redis client not found")
         }
@@ -619,7 +619,7 @@ func main() {
     app.Get("/user/:id", func(c fiber.Ctx) error {
         id := c.Params("id")
 
-        rdb, ok := fiber.GetState[*redis.Client](app.State(), "redis")
+        rdb, ok := fiber.GetState[*redis.Client](c.App().State(), "redis")
         if !ok {
             return c.Status(fiber.StatusInternalServerError).SendString("Redis client not found")
         }
