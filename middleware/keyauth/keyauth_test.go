@@ -544,8 +544,7 @@ func Test_TokenFromContext(t *testing.T) {
 		}))
 		// Verify that TokenFromContext works with context.Context
 		app.Get("/", func(c fiber.Ctx) error {
-			ctx := c.Context()
-			token := TokenFromContext(ctx)
+			token := TokenFromContext(c)
 			return c.SendString(token)
 		})
 

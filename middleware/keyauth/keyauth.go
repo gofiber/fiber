@@ -62,8 +62,6 @@ func New(config ...Config) fiber.Handler {
 		if err == nil && valid {
 			// Store in both Locals and Context
 			c.Locals(tokenKey, key)
-			ctx := context.WithValue(c.Context(), tokenKey, key)
-			c.SetContext(ctx)
 			return cfg.SuccessHandler(c)
 		}
 		return cfg.ErrorHandler(c, err)
@@ -74,12 +72,12 @@ func New(config ...Config) fiber.Handler {
 // returns an empty string if the token does not exist
 func TokenFromContext(c any) string {
 	switch ctx := c.(type) {
-	case context.Context:
-		if token, ok := ctx.Value(tokenKey).(string); ok {
-			return token
-		}
 	case fiber.Ctx:
 		if token, ok := ctx.Locals(tokenKey).(string); ok {
+			return token
+		}
+	case context.Context:
+		if token, ok := ctx.Value(tokenKey).(string); ok {
 			return token
 		}
 	default:
