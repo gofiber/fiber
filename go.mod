@@ -2,6 +2,8 @@ module github.com/gofiber/fiber/v3
 
 go 1.23.0
 
+toolchain go1.24.1
+
 require (
 	github.com/gofiber/schema v1.3.0
 	github.com/gofiber/utils/v2 v2.0.0-beta.7
@@ -18,7 +20,7 @@ require (
 require (
 	github.com/andybalholm/brotli v1.1.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/fxamacker/cbor/v2 v2.7.0 // direct
+	github.com/fxamacker/cbor/v2 v2.8.0 // direct
 	github.com/klauspost/compress v1.17.11 // indirect
 	github.com/philhofer/fwd v1.1.3-0.20240916144458-20a13a1f6b7c // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
