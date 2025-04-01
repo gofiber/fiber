@@ -1,8 +1,10 @@
-# State Management
+---
+id: state
+title: 🗂️ State Management
+sidebar_position: 8
+---
 
-This document details the state management functionality provided by Fiber, a thread-safe global key–value store used to store application dependencies and runtime data. The implementation is based on Go's `sync.Map`, ensuring concurrency safety.
-
-Below is the detailed description of all public methods and usage examples.
+The State Management provides a global key–value store for managing application dependencies and runtime data. This store is shared across the entire application and remains consistent between requests. It is implemented using Go’s `sync.Map` to ensure safe concurrent access.
 
 ## State Type
 
