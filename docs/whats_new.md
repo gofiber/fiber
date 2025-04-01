@@ -59,6 +59,7 @@ We have made several changes to the Fiber app, including:
 - **RegisterCustomBinder**: Allows for the registration of custom binders.
 - **RegisterCustomConstraint**: Allows for the registration of custom constraints.
 - **NewCtxFunc**: Introduces a new context function.
+- **State**: Provides a global state for the application, which can be used to store and retrieve data across the application. Check out the [State](./api/state) method for further details.
 
 ### Removed Methods
 
@@ -1564,25 +1565,25 @@ With the new version, each health check endpoint is configured separately, allow
 // after
 
 // Default liveness endpoint configuration
-app.Get(healthcheck.DefaultLivenessEndpoint, healthcheck.NewHealthChecker(healthcheck.Config{
+app.Get(healthcheck.LivenessEndpoint, healthcheck.New(healthcheck.Config{
     Probe: func(c fiber.Ctx) bool {
         return true
     },
 }))
 
 // Default readiness endpoint configuration
-app.Get(healthcheck.DefaultReadinessEndpoint, healthcheck.NewHealthChecker())
+app.Get(healthcheck.ReadinessEndpoint, healthcheck.New())
 
 // New default startup endpoint configuration
 // Default endpoint is /startupz
-app.Get(healthcheck.DefaultStartupEndpoint, healthcheck.NewHealthChecker(healthcheck.Config{
+app.Get(healthcheck.StartupEndpoint, healthcheck.New(healthcheck.Config{
     Probe: func(c fiber.Ctx) bool {
         return serviceA.Ready() && serviceB.Ready() && ...
     },
 }))
 
 // Custom liveness endpoint configuration
-app.Get("/live", healthcheck.NewHealthChecker())
+app.Get("/live", healthcheck.New())
 ```
 
 #### Monitor
