@@ -4,7 +4,7 @@ go 1.23.0
 
 require (
 	github.com/gofiber/schema v1.3.0
-	github.com/gofiber/utils/v2 v2.0.0-beta.7
+	github.com/gofiber/utils/v2 v2.0.0-beta.8
 	github.com/google/uuid v1.6.0
 	github.com/mattn/go-colorable v0.1.14
 	github.com/mattn/go-isatty v0.0.20
