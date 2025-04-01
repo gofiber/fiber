@@ -1027,6 +1027,7 @@ func Benchmark_Ctx_Cookie(b *testing.B) {
 }
 
 // go test -run Test_Ctx_Cookies
+// Semicolons cannot be part of cookie values because they're used as cookie delimiters in HTTP spec
 func Test_Ctx_Cookies(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -1041,9 +1042,6 @@ func Test_Ctx_Cookies(t *testing.T) {
 
 	c.Request().Header.Set("Cookie", "quotes=value\"with\"quotes")
 	require.Equal(t, "valuewithquotes", c.Req().Cookies("quotes"))
-
-	c.Request().Header.Set("Cookie", "semicolons=value;with;semicolons")
-	require.Equal(t, "valuewithsemicolons", c.Req().Cookies("semicolons"))
 
 	c.Request().Header.Set("Cookie", "backslash=value\\with\\backslash")
 	require.Equal(t, "valuewithbackslash", c.Req().Cookies("backslash"))
