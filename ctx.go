@@ -22,7 +22,6 @@ import (
 	"sync"
 	"text/template"
 	"time"
-	"unicode/utf8"
 
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
@@ -451,39 +450,28 @@ func (c *DefaultCtx) Cookie(cookie *Cookie) {
 // The returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (c *DefaultCtx) Cookies(key string, defaultValue ...string) string {
-	value := c.app.getString(c.fasthttp.Request.Header.Cookie(key))
-	// If the value looks like binary data, return it as-is
-	if len(value) > 0 && !utf8.ValidString(value) {
-		return value
+	cookieValue := c.app.getString(c.fasthttp.Request.Header.Cookie(key))
+	// Parse the cookie value
+	value, ok := c.parseCookieValue(cookieValue)
+	if !ok {
+		return ""
 	}
-	return defaultString(c.sanitizeCookieValue(value), defaultValue)
+	return value
 }
 
-// sanitizeCookieValue sanitizes a cookie value according to RFC 6265.
-// It removes invalid characters from the cookie value, similar to how
-// Go's standard library handles cookie values.
-func (c *DefaultCtx) sanitizeCookieValue(v string) string {
-	// First, check if all characters are valid.
-	valid := true
-	for i := 0; i < len(v); i++ {
-		if !c.validCookieValueByte(v[i]) {
-			valid = false
-			break
-		}
-	}
-	// If all characters are valid, return the original string.
-	if valid {
-		return v
+// parseCookieValue parses a cookie value according to RFC 6265.
+func (c *DefaultCtx) parseCookieValue(raw string) (value string, ok bool) {
+	// Strip the quotes, if present.
+	if len(raw) > 1 && raw[0] == '"' && raw[len(raw)-1] == '"' {
+		raw = raw[1 : len(raw)-1]
 	}
 
-	// Otherwise, build a sanitized string in a byte slice.
-	buf := make([]byte, 0, len(v))
-	for i := 0; i < len(v); i++ {
-		if c.validCookieValueByte(v[i]) {
-			buf = append(buf, v[i])
+	for i := 0; i < len(raw); i++ {
+		if !c.validCookieValueByte(raw[i]) {
+			return "", false
 		}
 	}
-	return string(buf)
+	return raw, true
 }
 
 // validCookieValueByte reports whether b is a valid byte in a cookie value.
