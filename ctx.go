@@ -22,6 +22,7 @@ import (
 	"sync"
 	"text/template"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
@@ -451,6 +452,11 @@ func (c *DefaultCtx) Cookie(cookie *Cookie) {
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (c *DefaultCtx) Cookies(key string, defaultValue ...string) string {
 	value := c.app.getString(c.fasthttp.Request.Header.Cookie(key))
+	// If the value looks like binary data, return it as-is
+	if len(value) > 0 && !utf8.ValidString(value) {
+		fmt.Println("Detected non-UTF8 cookie value, returning raw bytes")
+		return value
+	}
 	return defaultString(c.sanitizeCookieValue(value), defaultValue)
 }
 
@@ -458,27 +464,27 @@ func (c *DefaultCtx) Cookies(key string, defaultValue ...string) string {
 // It removes invalid characters from the cookie value, similar to how
 // Go's standard library handles cookie values.
 func (c *DefaultCtx) sanitizeCookieValue(v string) string {
-    // First, check if all characters are valid.
-    valid := true
-    for i := 0; i < len(v); i++ {
-        if !c.validCookieValueByte(v[i]) {
-            valid = false
-            break
-        }
-    }
-    // If all characters are valid, return the original string.
-    if valid {
-        return v
-    }
+	// First, check if all characters are valid.
+	valid := true
+	for i := 0; i < len(v); i++ {
+		if !c.validCookieValueByte(v[i]) {
+			valid = false
+			break
+		}
+	}
+	// If all characters are valid, return the original string.
+	if valid {
+		return v
+	}
 
-    // Otherwise, build a sanitized string in a byte slice.
-    buf := make([]byte, 0, len(v))
-    for i := 0; i < len(v); i++ {
-        if c.validCookieValueByte(v[i]) {
-            buf = append(buf, v[i])
-        }
-    }
-    return string(buf)
+	// Otherwise, build a sanitized string in a byte slice.
+	buf := make([]byte, 0, len(v))
+	for i := 0; i < len(v); i++ {
+		if c.validCookieValueByte(v[i]) {
+			buf = append(buf, v[i])
+		}
+	}
+	return string(buf)
 }
 
 // validCookieValueByte reports whether b is a valid byte in a cookie value.
