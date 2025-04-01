@@ -454,7 +454,6 @@ func (c *DefaultCtx) Cookies(key string, defaultValue ...string) string {
 	value := c.app.getString(c.fasthttp.Request.Header.Cookie(key))
 	// If the value looks like binary data, return it as-is
 	if len(value) > 0 && !utf8.ValidString(value) {
-		fmt.Println("Detected non-UTF8 cookie value, returning raw bytes")
 		return value
 	}
 	return defaultString(c.sanitizeCookieValue(value), defaultValue)
