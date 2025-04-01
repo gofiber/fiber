@@ -23,7 +23,6 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
@@ -459,30 +458,27 @@ func (c *DefaultCtx) Cookies(key string, defaultValue ...string) string {
 // It removes invalid characters from the cookie value, similar to how
 // Go's standard library handles cookie values.
 func (c *DefaultCtx) sanitizeCookieValue(v string) string {
-	var result strings.Builder
-	result.Grow(len(v))
-	invalidChars := make(map[byte]struct{})
+    // First, check if all characters are valid.
+    valid := true
+    for i := 0; i < len(v); i++ {
+        if !c.validCookieValueByte(v[i]) {
+            valid = false
+            break
+        }
+    }
+    // If all characters are valid, return the original string.
+    if valid {
+        return v
+    }
 
-	for i := 0; i < len(v); i++ {
-		b := v[i]
-		if c.validCookieValueByte(b) {
-			result.WriteByte(b)
-		} else {
-			invalidChars[b] = struct{}{}
-		}
-	}
-
-	if len(invalidChars) > 0 {
-		var chars []string
-		for b := range invalidChars {
-			chars = append(chars, fmt.Sprintf("'%c'", b))
-		}
-		log.Warn("invalid byte(s) %s in Cookie.Value; dropping invalid bytes",
-			strings.Join(chars, ", "))
-		return result.String()
-	}
-
-	return v
+    // Otherwise, build a sanitized string in a byte slice.
+    buf := make([]byte, 0, len(v))
+    for i := 0; i < len(v); i++ {
+        if c.validCookieValueByte(v[i]) {
+            buf = append(buf, v[i])
+        }
+    }
+    return string(buf)
 }
 
 // validCookieValueByte reports whether b is a valid byte in a cookie value.
