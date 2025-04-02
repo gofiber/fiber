@@ -1574,9 +1574,10 @@ func Test_CSRF_With_Proxy_Middleware(t *testing.T) {
 	t.Parallel()
 
 	// 1. Create a target server that the proxy will forward to
-	targetServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	targetServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("Hello from target"))
+		_, err := w.Write([]byte("Hello from target"))
+		require.NoError(t, err)
 	}))
 	defer targetServer.Close()
 
