@@ -86,6 +86,10 @@ func New(config ...Config) fiber.Handler {
 
 	// Return new handler
 	return func(c fiber.Ctx) error {
+		var (
+			err error
+		)
+
 		// Don't execute middleware if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()
@@ -171,17 +175,28 @@ func New(config ...Config) fiber.Handler {
 		// Create or extend the token in the storage
 		createOrExtendTokenInStorage(c, token, cfg, sessionManager, storageManager)
 
-		// Update the CSRF cookie
-		updateCSRFCookie(c, cfg, token)
-
-		// Tell the browser that a new header value is generated
-		c.Vary(fiber.HeaderCookie)
-
-		// Store the token in the context
+		// Store the token in the context (Keep this BEFORE c.Next())
 		c.Locals(tokenKey, token)
 
+		// Execute the next middleware or handler in the stack.
+		err = c.Next()
+
+		// Retrieve the final token from the context, if it was set.
+		finalToken, ok := c.Locals(tokenKey).(string)
+		// Check if the token exists and is not empty.
+		if ok && finalToken != "" { // Ensure token exists
+			// Update the CSRF cookie in the response with the final token.
+			updateCSRFCookie(c, cfg, finalToken)
+
+			// Add the Vary: Cookie header to indicate that the response may differ
+			// based on the Cookie header, which is important for caching mechanisms.
+			// Tell the browser that a new header value is generated
+			c.Vary(fiber.HeaderCookie)
+		}
+
+		// Return any error that occurred during the execution of the next handlers.
 		// Continue stack
-		return c.Next()
+		return err
 	}
 }
 
