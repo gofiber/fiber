@@ -1627,7 +1627,7 @@ func Test_CSRF_With_Proxy_Middleware(t *testing.T) {
 	}
 	require.True(t, foundCSRFCookie, "CSRF cookie '%s' not found in response headers after proxy", csrfCookieName)
 
-	// Optional: Verify session cookie is also present
+	// Additionally: Verify session cookie is also present
 	foundSessionCookie := false
 	sessionCookieName := "session_id" // Default name for session.NewWithStore() unless configured otherwise
 	for _, cookie := range resp.Cookies() {
