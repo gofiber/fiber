@@ -1577,7 +1577,9 @@ func Test_CSRF_With_Proxy_Middleware(t *testing.T) {
 	targetServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, err := w.Write([]byte("Hello from target"))
-		require.NoError(t, err)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}))
 	defer targetServer.Close()
 
