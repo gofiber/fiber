@@ -3,24 +3,22 @@ package client
 import (
 	"fmt"
 	"io"
-	"math/rand"
+	"math/rand/v2"
 	"mime/multipart"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
 
-var (
-	protocolCheck = regexp.MustCompile(`^https?://.*$`)
+var protocolCheck = regexp.MustCompile(`^https?://.*$`)
 
-	headerAccept = "Accept"
-
+const (
+	headerAccept      = "Accept"
 	applicationJSON   = "application/json"
 	applicationCBOR   = "application/cbor"
 	applicationXML    = "application/xml"
@@ -30,25 +28,26 @@ var (
 	letterBytes   = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	letterIdxBits = 6                    // 6 bits to represent a letter index
 	letterIdxMask = 1<<letterIdxBits - 1 // All 1-bits, as many as letterIdxBits
-	letterIdxMax  = 63 / letterIdxBits   // # of letter indices fitting into 63 bits
+	letterIdxMax  = 64 / letterIdxBits   // # of letter indices fitting into 64 bits
 )
 
-// randString returns a random string of length n.
-func randString(n int) string {
+// unsafeRandString returns a random string of length n.
+func unsafeRandString(n int) string {
 	b := make([]byte, n)
-	length := len(letterBytes)
-	src := rand.NewSource(time.Now().UnixNano())
+	const length = uint64(len(letterBytes))
 
-	for i, cache, remain := n-1, src.Int63(), letterIdxMax; i >= 0; {
+	//nolint:gosec // Not a concern
+	for i, cache, remain := n-1, rand.Uint64(), letterIdxMax; i >= 0; {
 		if remain == 0 {
-			cache, remain = src.Int63(), letterIdxMax
+			//nolint:gosec // Not a concern
+			cache, remain = rand.Uint64(), letterIdxMax
 		}
 
-		if idx := int(cache & int64(letterIdxMask)); idx < length {
+		if idx := cache & letterIdxMask; idx < length {
 			b[i] = letterBytes[idx]
 			i--
 		}
-		cache >>= int64(letterIdxBits)
+		cache >>= letterIdxBits
 		remain--
 	}
 
@@ -134,7 +133,7 @@ func parserRequestHeader(c *Client, req *Request) error {
 		req.RawRequest.Header.SetContentType(multipartFormData)
 		// If boundary is default, append a random string to it.
 		if req.boundary == boundary {
-			req.boundary += randString(16)
+			req.boundary += unsafeRandString(16)
 		}
 		req.RawRequest.Header.SetMultipartFormBoundary(req.boundary)
 	default:
@@ -200,7 +199,7 @@ func parserRequestBody(c *Client, req *Request) error {
 	case filesBody:
 		return parserRequestBodyFile(req)
 	case rawBody:
-		if body, ok := req.body.([]byte); ok {
+		if body, ok := req.body.([]byte); ok { //nolint:revive // ignore simplicity
 			req.RawRequest.SetBody(body)
 		} else {
 			return ErrBodyType

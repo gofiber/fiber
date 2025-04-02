@@ -16,6 +16,8 @@ In this guide, we'll walk you through the most important changes in Fiber `v3` a
 Here's a quick overview of the changes in Fiber `v3`:
 
 - [🚀 App](#-app)
+- [🎣 Hooks](#-hooks)
+- [🚀 Listen](#-listen)
 - [🗺️ Router](#-router)
 - [🧠 Context](#-context)
 - [📎 Binding](#-binding)
@@ -31,6 +33,7 @@ Here's a quick overview of the changes in Fiber `v3`:
   - [Filesystem](#filesystem)
   - [Monitor](#monitor)
   - [Healthcheck](#healthcheck)
+- [🔌 Addons](#-addons)
 - [📋 Migration guide](#-migration-guide)
 
 ## Drop for old Go versions
@@ -56,6 +59,7 @@ We have made several changes to the Fiber app, including:
 - **RegisterCustomBinder**: Allows for the registration of custom binders.
 - **RegisterCustomConstraint**: Allows for the registration of custom constraints.
 - **NewCtxFunc**: Introduces a new context function.
+- **State**: Provides a global state for the application, which can be used to store and retrieve data across the application. Check out the [State](./api/state) method for further details.
 
 ### Removed Methods
 
@@ -157,6 +161,63 @@ app.Listen(":444", fiber.ListenConfig{
     AutoCertManager:    certManager,
 })
 ```
+
+## 🎣 Hooks
+
+We have made several changes to the Fiber hooks, including:
+
+- Added new shutdown hooks to provide better control over the shutdown process:
+  - `OnPreShutdown` - Executes before the server starts shutting down
+  - `OnPostShutdown` - Executes after the server has shut down, receives any shutdown error
+- Deprecated `OnShutdown` in favor of the new pre/post shutdown hooks
+- Improved shutdown hook execution order and reliability
+- Added mutex protection for hook registration and execution
+
+Important: When using shutdown hooks, ensure app.Listen() is called in a separate goroutine:
+
+```go
+// Correct usage
+go app.Listen(":3000")
+// ... register shutdown hooks
+app.Shutdown()
+
+// Incorrect usage - hooks won't work
+app.Listen(":3000") // This blocks
+app.Shutdown()      // Never reached
+```
+
+## 🚀 Listen
+
+We have made several changes to the Fiber listen, including:
+
+- Removed `OnShutdownError` and `OnShutdownSuccess` from `ListenerConfig` in favor of using `OnPostShutdown` hook which receives the shutdown error
+
+```go
+app := fiber.New()
+
+// Before - using ListenerConfig callbacks
+app.Listen(":3000", fiber.ListenerConfig{
+    OnShutdownError: func(err error) {
+        log.Printf("Shutdown error: %v", err)
+    },
+    OnShutdownSuccess: func() {
+        log.Println("Shutdown successful")
+    },
+})
+
+// After - using OnPostShutdown hook
+app.Hooks().OnPostShutdown(func(err error) error {
+    if err != nil {
+        log.Printf("Shutdown error: %v", err)
+    } else {
+        log.Println("Shutdown successful")
+    }
+    return nil
+})
+go app.Listen(":3000")
+```
+
+This change simplifies the shutdown handling by consolidating the shutdown callbacks into a single hook that receives the error status.
 
 ## 🗺 Router
 
@@ -487,6 +548,7 @@ Fiber v3 introduces a new binding mechanism that simplifies the process of bindi
 - Unified binding from URL parameters, query parameters, headers, and request bodies.
 - Support for custom binders and constraints.
 - Improved error handling and validation.
+- Support multipart file binding for `*multipart.FileHeader`, `*[]*multipart.FileHeader`, and `[]*multipart.FileHeader` field types.
 
 <details>
 <summary>Example</summary>
@@ -851,6 +913,47 @@ func main() {
 
 </details>
 
+The `Skip` is a function to determine if logging is skipped or written to `Stream`.
+
+<details>
+<summary>Example Usage</summary>
+
+```go
+app.Use(logger.New(logger.Config{
+    Skip: func(c fiber.Ctx) bool {
+        // Skip logging HTTP 200 requests
+        return c.Response().StatusCode() == fiber.StatusOK
+    },
+}))
+```
+
+```go
+app.Use(logger.New(logger.Config{
+    Skip: func(c fiber.Ctx) bool {
+        // Only log errors, similar to an error.log
+        return c.Response().StatusCode() < 400
+    },
+}))
+```
+
+</details>
+
+#### Predefined Formats
+
+Logger provides predefined formats that you can use by name or directly by specifying the format string.
+<details>
+
+<summary>Example Usage</summary>
+
+```go
+app.Use(logger.New(logger.Config{
+    Format: logger.FormatCombined, 
+}))
+```
+
+See more in [Logger](./middleware/logger.md#predefined-formats)
+</details>
+
 ### Filesystem
 
 We've decided to remove filesystem middleware to clear up the confusion between static and filesystem middleware.
@@ -878,6 +981,59 @@ The Healthcheck middleware has been enhanced to support more than two routes, wi
    - The configuration for each health check endpoint has been simplified. Each endpoint can be configured separately, allowing for more flexibility and readability.
 
 Refer to the [healthcheck middleware migration guide](./middleware/healthcheck.md) or the [general migration guide](#-migration-guide) to review the changes.
+
+## 🔌 Addons
+
+In v3, Fiber introduced Addons. Addons are additional useful packages that can be used in Fiber.
+
+### Retry
+
+The Retry addon is a new addon that implements a retry mechanism for unsuccessful network operations. It uses an exponential backoff algorithm with jitter.
+It calls the function multiple times and tries to make it successful. If all calls are failed, then, it returns an error.
+It adds a jitter at each retry step because adding a jitter is a way to break synchronization across the client and avoid collision.
+
+<details>
+<summary>Example</summary>
+
+```go
+package main
+
+import (
+    "fmt"
+
+    "github.com/gofiber/fiber/v3/addon/retry"
+    "github.com/gofiber/fiber/v3/client"
+)
+
+func main() {
+    expBackoff := retry.NewExponentialBackoff(retry.Config{})
+
+    // Local variables that will be used inside of Retry
+    var resp *client.Response
+    var err error
+
+    // Retry a network request and return an error to signify to try again
+    err = expBackoff.Retry(func() error {
+        client := client.New()
+        resp, err = client.Get("https://gofiber.io")
+        if err != nil {
+            return fmt.Errorf("GET gofiber.io failed: %w", err)
+        }
+        if resp.StatusCode() != 200 {
+            return fmt.Errorf("GET gofiber.io did not return OK 200")
+        }
+        return nil
+    })
+
+    // If all retries failed, panic
+    if err != nil {
+        panic(err)
+    }
+    fmt.Printf("GET gofiber.io succeeded with status code %d\n", resp.StatusCode())
+}
+```
+
+</details>
 
 ## 📋 Migration guide
 
@@ -1409,25 +1565,25 @@ With the new version, each health check endpoint is configured separately, allow
 // after
 
 // Default liveness endpoint configuration
-app.Get(healthcheck.DefaultLivenessEndpoint, healthcheck.NewHealthChecker(healthcheck.Config{
+app.Get(healthcheck.LivenessEndpoint, healthcheck.New(healthcheck.Config{
     Probe: func(c fiber.Ctx) bool {
         return true
     },
 }))
 
 // Default readiness endpoint configuration
-app.Get(healthcheck.DefaultReadinessEndpoint, healthcheck.NewHealthChecker())
+app.Get(healthcheck.ReadinessEndpoint, healthcheck.New())
 
 // New default startup endpoint configuration
 // Default endpoint is /startupz
-app.Get(healthcheck.DefaultStartupEndpoint, healthcheck.NewHealthChecker(healthcheck.Config{
+app.Get(healthcheck.StartupEndpoint, healthcheck.New(healthcheck.Config{
     Probe: func(c fiber.Ctx) bool {
         return serviceA.Ready() && serviceB.Ready() && ...
     },
 }))
 
 // Custom liveness endpoint configuration
-app.Get("/live", healthcheck.NewHealthChecker())
+app.Get("/live", healthcheck.New())
 ```
 
 #### Monitor

@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -51,16 +52,16 @@ func getTLSConfig(ln net.Listener) *tls.Config {
 	}
 
 	// Copy value from pointer
-	if val := reflect.Indirect(pointer); val.Type() != nil {
+	if val := reflect.Indirect(pointer); val.IsValid() {
 		// Get private field from value
-		if field := val.FieldByName("config"); field.Type() != nil {
+		if field := val.FieldByName("config"); field.IsValid() {
 			// Copy value from pointer field (unsafe)
 			newval := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())) //nolint:gosec // Probably the only way to extract the *tls.Config from a net.Listener. TODO: Verify there really is no easier way without using unsafe.
-			if newval.Type() == nil {
+			if !newval.IsValid() {
 				return nil
 			}
 			// Get element from pointer
-			if elem := newval.Elem(); elem.Type() != nil {
+			if elem := newval.Elem(); elem.IsValid() {
 				// Cast value to *tls.Config
 				c, ok := elem.Interface().(*tls.Config)
 				if !ok {
@@ -107,15 +108,15 @@ func (app *App) methodExist(c *DefaultCtx) bool {
 	methods := app.config.RequestMethods
 	for i := 0; i < len(methods); i++ {
 		// Skip original method
-		if c.getMethodINT() == i {
+		if c.getMethodInt() == i {
 			continue
 		}
 		// Reset stack index
 		c.setIndexRoute(-1)
 
-		tree, ok := c.App().treeStack[i][c.getTreePath()]
+		tree, ok := c.App().treeStack[i][c.treePathHash]
 		if !ok {
-			tree = c.App().treeStack[i][""]
+			tree = c.App().treeStack[i][0]
 		}
 		// Get stack length
 		lenr := len(tree) - 1
@@ -151,15 +152,15 @@ func (app *App) methodExistCustom(c CustomCtx) bool {
 	methods := app.config.RequestMethods
 	for i := 0; i < len(methods); i++ {
 		// Skip original method
-		if c.getMethodINT() == i {
+		if c.getMethodInt() == i {
 			continue
 		}
 		// Reset stack index
 		c.setIndexRoute(-1)
 
-		tree, ok := c.App().treeStack[i][c.getTreePath()]
+		tree, ok := c.App().treeStack[i][c.getTreePathHash()]
 		if !ok {
-			tree = c.App().treeStack[i][""]
+			tree = c.App().treeStack[i][0]
 		}
 		// Get stack length
 		lenr := len(tree) - 1
@@ -192,12 +193,10 @@ func (app *App) methodExistCustom(c CustomCtx) bool {
 // uniqueRouteStack drop all not unique routes from the slice
 func uniqueRouteStack(stack []*Route) []*Route {
 	var unique []*Route
-	m := make(map[*Route]int)
+	m := make(map[*Route]struct{})
 	for _, v := range stack {
 		if _, ok := m[v]; !ok {
-			// Unique key found. Record position and collect
-			// in result.
-			m[v] = len(unique)
+			m[v] = struct{}{}
 			unique = append(unique, v)
 		}
 	}
@@ -323,28 +322,23 @@ func getSplicedStrList(headerValue string, dst []string) []string {
 		return nil
 	}
 
-	var (
-		index             int
-		character         rune
-		lastElementEndsAt int
-		insertIndex       int
-	)
-	for index, character = range headerValue + "$" {
-		if character == ',' || index == len(headerValue) {
-			if insertIndex >= len(dst) {
-				oldSlice := dst
-				dst = make([]string, len(dst)+(len(dst)>>1)+2)
-				copy(dst, oldSlice)
-			}
-			dst[insertIndex] = utils.TrimLeft(headerValue[lastElementEndsAt:index], ' ')
-			lastElementEndsAt = index + 1
-			insertIndex++
+	dst = dst[:0]
+	segmentStart := 0
+	isLeadingSpace := true
+	for i, c := range headerValue {
+		switch {
+		case c == ',':
+			dst = append(dst, headerValue[segmentStart:i])
+			segmentStart = i + 1
+			isLeadingSpace = true
+		case c == ' ' && isLeadingSpace:
+			segmentStart = i + 1
+		default:
+			isLeadingSpace = false
 		}
 	}
+	dst = append(dst, headerValue[segmentStart:])
 
-	if len(dst) > insertIndex {
-		dst = dst[:insertIndex]
-	}
 	return dst
 }
 
@@ -490,7 +484,7 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 
 	if len(acceptedTypes) > 1 {
 		// Sort accepted types by quality and specificity, preserving order of equal elements
-		sortAcceptedTypes(&acceptedTypes)
+		sortAcceptedTypes(acceptedTypes)
 	}
 
 	// Find the first offer that matches the accepted types
@@ -518,19 +512,14 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 // A type with parameters has higher priority than an equivalent one without parameters.
 // e.g., text/html;a=1;b=2 comes before text/html;a=1
 // See: https://www.rfc-editor.org/rfc/rfc9110#name-content-negotiation-fields
-func sortAcceptedTypes(acceptedTypes *[]acceptedType) {
-	if acceptedTypes == nil || len(*acceptedTypes) < 2 {
-		return
-	}
-	at := *acceptedTypes
-
+func sortAcceptedTypes(at []acceptedType) {
 	for i := 1; i < len(at); i++ {
 		lo, hi := 0, i-1
 		for lo <= hi {
 			mid := (lo + hi) / 2
 			if at[i].quality < at[mid].quality ||
 				(at[i].quality == at[mid].quality && at[i].specificity < at[mid].specificity) ||
-				(at[i].quality == at[mid].quality && at[i].specificity < at[mid].specificity && len(at[i].params) < len(at[mid].params)) ||
+				(at[i].quality == at[mid].quality && at[i].specificity == at[mid].specificity && len(at[i].params) < len(at[mid].params)) ||
 				(at[i].quality == at[mid].quality && at[i].specificity == at[mid].specificity && len(at[i].params) == len(at[mid].params) && at[i].order > at[mid].order) {
 				lo = mid + 1
 			} else {
@@ -664,39 +653,35 @@ func getBytesImmutable(s string) []byte {
 func (app *App) methodInt(s string) int {
 	// For better performance
 	if len(app.configured.RequestMethods) == 0 {
-		// TODO: Use iota instead
 		switch s {
 		case MethodGet:
-			return 0
+			return methodGet
 		case MethodHead:
-			return 1
+			return methodHead
 		case MethodPost:
-			return 2
+			return methodPost
 		case MethodPut:
-			return 3
+			return methodPut
 		case MethodDelete:
-			return 4
+			return methodDelete
 		case MethodConnect:
-			return 5
+			return methodConnect
 		case MethodOptions:
-			return 6
+			return methodOptions
 		case MethodTrace:
-			return 7
+			return methodTrace
 		case MethodPatch:
-			return 8
+			return methodPatch
 		default:
 			return -1
 		}
 	}
-
 	// For method customization
-	for i, v := range app.config.RequestMethods {
-		if s == v {
-			return i
-		}
-	}
+	return slices.Index(app.config.RequestMethods, s)
+}
 
-	return -1
+func (app *App) method(methodInt int) string {
+	return app.config.RequestMethods[methodInt]
 }
 
 // IsMethodSafe reports whether the HTTP method is considered safe.
@@ -796,7 +781,7 @@ func genericParseType[V GenericType](str string, v V, defaultValue ...V) V {
 	case int64:
 		return genericParseInt[V](str, 64, func(i int64) V { return assertValueType[V, int64](i) }, defaultValue...)
 	case uint:
-		return genericParseUint[V](str, 32, func(i uint64) V { return assertValueType[V, uint](uint(i)) }, defaultValue...)
+		return genericParseUint[V](str, 0, func(i uint64) V { return assertValueType[V, uint](uint(i)) }, defaultValue...)
 	case uint8:
 		return genericParseUint[V](str, 8, func(i uint64) V { return assertValueType[V, uint8](uint8(i)) }, defaultValue...)
 	case uint16:

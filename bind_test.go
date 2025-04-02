@@ -1378,7 +1378,7 @@ func Benchmark_Bind_URI(b *testing.B) {
 	var err error
 
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	c.route = &Route{
 		Params: []string{
@@ -1415,7 +1415,7 @@ func Benchmark_Bind_URI_Map(b *testing.B) {
 	var err error
 
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	c.route = &Route{
 		Params: []string{

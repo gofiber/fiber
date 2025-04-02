@@ -66,6 +66,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 				AcceptByteRange:        config.ByteRange,
 				Compress:               config.Compress,
 				CompressBrotli:         config.Compress, // Brotli compression won't work without this
+				CompressZstd:           config.Compress, // Zstd compression won't work without this
 				CompressedFileSuffixes: c.App().Config().CompressedFileSuffixes,
 				CacheDuration:          config.CacheDuration,
 				SkipCache:              config.CacheDuration < 0,

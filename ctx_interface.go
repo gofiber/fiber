@@ -17,9 +17,9 @@ type CustomCtx interface {
 	Reset(fctx *fasthttp.RequestCtx)
 
 	// Methods to use with next stack.
-	getMethodINT() int
+	getMethodInt() int
 	getIndexRoute() int
-	getTreePath() string
+	getTreePathHash() int
 	getDetectionPath() string
 	getPathOriginal() string
 	getValues() *[maxParams]string
@@ -32,10 +32,14 @@ type CustomCtx interface {
 
 func NewDefaultCtx(app *App) *DefaultCtx {
 	// return ctx
-	return &DefaultCtx{
+	ctx := &DefaultCtx{
 		// Set app reference
 		app: app,
 	}
+	ctx.req = &DefaultReq{ctx: ctx}
+	ctx.res = &DefaultRes{ctx: ctx}
+
+	return ctx
 }
 
 func (app *App) newCtx() Ctx {

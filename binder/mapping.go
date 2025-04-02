@@ -3,6 +3,7 @@ package binder
 import (
 	"errors"
 	"fmt"
+	"mime/multipart"
 	"reflect"
 	"strings"
 	"sync"
@@ -69,7 +70,7 @@ func init() {
 }
 
 // parse data into the map or struct
-func parse(aliasTag string, out any, data map[string][]string) error {
+func parse(aliasTag string, out any, data map[string][]string, files ...map[string][]*multipart.FileHeader) error {
 	ptrVal := reflect.ValueOf(out)
 
 	// Get pointer value
@@ -83,11 +84,11 @@ func parse(aliasTag string, out any, data map[string][]string) error {
 	}
 
 	// Parse into the struct
-	return parseToStruct(aliasTag, out, data)
+	return parseToStruct(aliasTag, out, data, files...)
 }
 
-// Parse data into the struct with gorilla/schema
-func parseToStruct(aliasTag string, out any, data map[string][]string) error {
+// Parse data into the struct with gofiber/schema
+func parseToStruct(aliasTag string, out any, data map[string][]string, files ...map[string][]*multipart.FileHeader) error {
 	// Get decoder from pool
 	schemaDecoder := decoderPoolMap[aliasTag].Get().(*schema.Decoder) //nolint:errcheck,forcetypeassert // not needed
 	defer decoderPoolMap[aliasTag].Put(schemaDecoder)
@@ -95,7 +96,7 @@ func parseToStruct(aliasTag string, out any, data map[string][]string) error {
 	// Set alias tag
 	schemaDecoder.SetAliasTag(aliasTag)
 
-	if err := schemaDecoder.Decode(out, data); err != nil {
+	if err := schemaDecoder.Decode(out, data, files...); err != nil {
 		return fmt.Errorf("bind: %w", err)
 	}
 
@@ -250,7 +251,7 @@ func FilterFlags(content string) string {
 	return content
 }
 
-func formatBindData[T any](out any, data map[string][]string, key string, value T, enableSplitting, supportBracketNotation bool) error { //nolint:revive // it's okay
+func formatBindData[T, K any](out any, data map[string][]T, key string, value K, enableSplitting, supportBracketNotation bool) error { //nolint:revive // it's okay
 	var err error
 	if supportBracketNotation && strings.Contains(key, "[") {
 		key, err = parseParamSquareBrackets(key)
@@ -261,10 +262,28 @@ func formatBindData[T any](out any, data map[string][]string, key string, value 
 
 	switch v := any(value).(type) {
 	case string:
-		assignBindData(out, data, key, v, enableSplitting)
+		dataMap, ok := any(data).(map[string][]string)
+		if !ok {
+			return fmt.Errorf("unsupported value type: %T", value)
+		}
+
+		assignBindData(out, dataMap, key, v, enableSplitting)
 	case []string:
+		dataMap, ok := any(data).(map[string][]string)
+		if !ok {
+			return fmt.Errorf("unsupported value type: %T", value)
+		}
+
 		for _, val := range v {
-			assignBindData(out, data, key, val, enableSplitting)
+			assignBindData(out, dataMap, key, val, enableSplitting)
+		}
+	case []*multipart.FileHeader:
+		for _, val := range v {
+			valT, ok := any(val).(T)
+			if !ok {
+				return fmt.Errorf("unsupported value type: %T", value)
+			}
+			data[key] = append(data[key], valT)
 		}
 	default:
 		return fmt.Errorf("unsupported value type: %T", value)

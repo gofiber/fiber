@@ -46,7 +46,7 @@ func Test_Ctx_Accepts(t *testing.T) {
 
 	c.Request().Header.Set(HeaderAccept, "text/html,application/xhtml+xml,application/xml;q=0.9")
 	require.Equal(t, "", c.Accepts(""))
-	require.Equal(t, "", c.Accepts())
+	require.Equal(t, "", c.Req().Accepts())
 	require.Equal(t, ".xml", c.Accepts(".xml"))
 	require.Equal(t, "", c.Accepts(".john"))
 	require.Equal(t, "application/xhtml+xml", c.Accepts("application/xml", "application/xml+rss", "application/yaml", "application/xhtml+xml"), "must use client-preferred mime type")
@@ -57,13 +57,13 @@ func Test_Ctx_Accepts(t *testing.T) {
 	c.Request().Header.Set(HeaderAccept, "text/*, application/json")
 	require.Equal(t, "html", c.Accepts("html"))
 	require.Equal(t, "text/html", c.Accepts("text/html"))
-	require.Equal(t, "json", c.Accepts("json", "text"))
+	require.Equal(t, "json", c.Req().Accepts("json", "text"))
 	require.Equal(t, "application/json", c.Accepts("application/json"))
 	require.Equal(t, "", c.Accepts("image/png"))
 	require.Equal(t, "", c.Accepts("png"))
 
 	c.Request().Header.Set(HeaderAccept, "text/html, application/json")
-	require.Equal(t, "text/*", c.Accepts("text/*"))
+	require.Equal(t, "text/*", c.Req().Accepts("text/*"))
 
 	c.Request().Header.Set(HeaderAccept, "*/*")
 	require.Equal(t, "html", c.Accepts("html"))
@@ -192,7 +192,7 @@ func Test_Ctx_AcceptsCharsets(t *testing.T) {
 // go test -v -run=^$ -bench=Benchmark_Ctx_AcceptsCharsets -benchmem -count=4
 func Benchmark_Ctx_AcceptsCharsets(b *testing.B) {
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	c.Request().Header.Set("Accept-Charset", "utf-8, iso-8859-1;q=0.5")
 	var res string
@@ -218,7 +218,7 @@ func Test_Ctx_AcceptsEncodings(t *testing.T) {
 // go test -v -run=^$ -bench=Benchmark_Ctx_AcceptsEncodings -benchmem -count=4
 func Benchmark_Ctx_AcceptsEncodings(b *testing.B) {
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	c.Request().Header.Set(HeaderAcceptEncoding, "deflate, gzip;q=1.0, *;q=0.5")
 	var res string
@@ -243,7 +243,7 @@ func Test_Ctx_AcceptsLanguages(t *testing.T) {
 // go test -v -run=^$ -bench=Benchmark_Ctx_AcceptsLanguages -benchmem -count=4
 func Benchmark_Ctx_AcceptsLanguages(b *testing.B) {
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	c.Request().Header.Set(HeaderAcceptLanguage, "fr-CH, fr;q=0.9, en;q=0.8, de;q=0.7, *;q=0.5")
 	var res string
@@ -304,7 +304,7 @@ func Test_Ctx_Append(t *testing.T) {
 // go test -v -run=^$ -bench=Benchmark_Ctx_Append -benchmem -count=4
 func Benchmark_Ctx_Append(b *testing.B) {
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -337,7 +337,7 @@ func Test_Ctx_Attachment(t *testing.T) {
 // go test -v -run=^$ -bench=Benchmark_Ctx_Attachment -benchmem -count=4
 func Benchmark_Ctx_Attachment(b *testing.B) {
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -363,7 +363,7 @@ func Test_Ctx_BaseURL(t *testing.T) {
 // go test -v -run=^$ -bench=Benchmark_Ctx_BaseURL -benchmem
 func Benchmark_Ctx_BaseURL(b *testing.B) {
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	c.Request().SetHost("google.com:1337")
 	c.Request().URI().SetPath("/haha/oke/lol")
@@ -380,7 +380,7 @@ func Benchmark_Ctx_BaseURL(b *testing.B) {
 func Test_Ctx_Body(t *testing.T) {
 	t.Parallel()
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	c.Request().SetBody([]byte("john=doe"))
 	require.Equal(t, []byte("john=doe"), c.Body())
@@ -390,7 +390,7 @@ func Test_Ctx_Body(t *testing.T) {
 func Test_Ctx_BodyRaw(t *testing.T) {
 	t.Parallel()
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	c.Request().SetBodyRaw([]byte("john=doe"))
 	require.Equal(t, []byte("john=doe"), c.BodyRaw())
@@ -400,7 +400,7 @@ func Test_Ctx_BodyRaw(t *testing.T) {
 func Test_Ctx_BodyRaw_Immutable(t *testing.T) {
 	t.Parallel()
 	app := New(Config{Immutable: true})
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	c.Request().SetBodyRaw([]byte("john=doe"))
 	require.Equal(t, []byte("john=doe"), c.BodyRaw())
@@ -411,7 +411,7 @@ func Benchmark_Ctx_Body(b *testing.B) {
 	const input = "john=doe"
 
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	c.Request().SetBody([]byte(input))
 	b.ReportAllocs()
@@ -428,7 +428,7 @@ func Benchmark_Ctx_BodyRaw(b *testing.B) {
 	const input = "john=doe"
 
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	c.Request().SetBodyRaw([]byte(input))
 	b.ReportAllocs()
@@ -445,7 +445,7 @@ func Benchmark_Ctx_BodyRaw_Immutable(b *testing.B) {
 	const input = "john=doe"
 
 	app := New(Config{Immutable: true})
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	c.Request().SetBodyRaw([]byte(input))
 	b.ReportAllocs()
@@ -462,7 +462,7 @@ func Test_Ctx_Body_Immutable(t *testing.T) {
 	t.Parallel()
 	app := New()
 	app.config.Immutable = true
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	c.Request().SetBody([]byte("john=doe"))
 	require.Equal(t, []byte("john=doe"), c.Body())
@@ -474,7 +474,7 @@ func Benchmark_Ctx_Body_Immutable(b *testing.B) {
 
 	app := New()
 	app.config.Immutable = true
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	c.Request().SetBody([]byte(input))
 	b.ReportAllocs()
@@ -527,7 +527,7 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 		t.Run(tCase.name, func(t *testing.T) {
 			t.Parallel()
 			app := New()
-			c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+			c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 			c.Request().Header.Set("Content-Encoding", tCase.contentEncoding)
 
 			if strings.Contains(tCase.contentEncoding, "gzip") {
@@ -720,7 +720,7 @@ func Test_Ctx_Body_With_Compression_Immutable(t *testing.T) {
 			t.Parallel()
 			app := New()
 			app.config.Immutable = true
-			c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+			c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 			c.Request().Header.Set("Content-Encoding", tCase.contentEncoding)
 
 			if strings.Contains(tCase.contentEncoding, "gzip") {
@@ -897,7 +897,7 @@ func Test_Ctx_Context(t *testing.T) {
 		t.Parallel()
 		testKey := struct{}{}
 		testValue := "Test Value"
-		ctx := context.WithValue(context.Background(), testKey, testValue) //nolint: staticcheck // not needed for tests
+		ctx := context.WithValue(context.Background(), testKey, testValue) //nolint:staticcheck // not needed for tests
 		require.Equal(t, testValue, ctx.Value(testKey))
 	})
 }
@@ -910,7 +910,7 @@ func Test_Ctx_SetContext(t *testing.T) {
 
 	testKey := struct{}{}
 	testValue := "Test Value"
-	ctx := context.WithValue(context.Background(), testKey, testValue) //nolint: staticcheck // not needed for tests
+	ctx := context.WithValue(context.Background(), testKey, testValue) //nolint:staticcheck // not needed for tests
 	c.SetContext(ctx)
 	require.Equal(t, testValue, c.Context().Value(testKey))
 }
@@ -930,7 +930,7 @@ func Test_Ctx_Context_Multiple_Requests(t *testing.T) {
 		}
 
 		input := utils.CopyString(Query(c, "input", "NO_VALUE"))
-		ctx = context.WithValue(ctx, testKey, fmt.Sprintf("%s_%s", testValue, input)) //nolint: staticcheck // not needed for tests
+		ctx = context.WithValue(ctx, testKey, fmt.Sprintf("%s_%s", testValue, input)) //nolint:staticcheck // not needed for tests
 		c.SetContext(ctx)
 
 		return c.Status(StatusOK).SendString(fmt.Sprintf("resp_%s_returned", input))
@@ -968,52 +968,52 @@ func Test_Ctx_Cookie(t *testing.T) {
 		Expires: expire,
 		// SameSite: CookieSameSiteStrictMode, // default is "lax"
 	}
-	c.Cookie(cookie)
+	c.Res().Cookie(cookie)
 	expect := "username=john; expires=" + httpdate + "; path=/; SameSite=Lax"
-	require.Equal(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
+	require.Equal(t, expect, c.Res().Get(HeaderSetCookie))
 
 	expect = "username=john; expires=" + httpdate + "; path=/"
 	cookie.SameSite = CookieSameSiteDisabled
-	c.Cookie(cookie)
-	require.Equal(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
+	c.Res().Cookie(cookie)
+	require.Equal(t, expect, c.Res().Get(HeaderSetCookie))
 
 	expect = "username=john; expires=" + httpdate + "; path=/; SameSite=Strict"
 	cookie.SameSite = CookieSameSiteStrictMode
-	c.Cookie(cookie)
-	require.Equal(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
+	c.Res().Cookie(cookie)
+	require.Equal(t, expect, c.Res().Get(HeaderSetCookie))
 
 	expect = "username=john; expires=" + httpdate + "; path=/; secure; SameSite=None"
 	cookie.Secure = true
 	cookie.SameSite = CookieSameSiteNoneMode
-	c.Cookie(cookie)
-	require.Equal(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
+	c.Res().Cookie(cookie)
+	require.Equal(t, expect, c.Res().Get(HeaderSetCookie))
 
 	expect = "username=john; path=/; secure; SameSite=None"
 	// should remove expires and max-age headers
 	cookie.SessionOnly = true
 	cookie.Expires = expire
 	cookie.MaxAge = 10000
-	c.Cookie(cookie)
-	require.Equal(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
+	c.Res().Cookie(cookie)
+	require.Equal(t, expect, c.Res().Get(HeaderSetCookie))
 
 	expect = "username=john; path=/; secure; SameSite=None"
 	// should remove expires and max-age headers when no expire and no MaxAge (default time)
 	cookie.SessionOnly = false
 	cookie.Expires = time.Time{}
 	cookie.MaxAge = 0
-	c.Cookie(cookie)
-	require.Equal(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
+	c.Res().Cookie(cookie)
+	require.Equal(t, expect, c.Res().Get(HeaderSetCookie))
 
 	expect = "username=john; path=/; secure; SameSite=None; Partitioned"
 	cookie.Partitioned = true
-	c.Cookie(cookie)
-	require.Equal(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
+	c.Res().Cookie(cookie)
+	require.Equal(t, expect, c.Res().Get(HeaderSetCookie))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Cookie -benchmem -count=4
 func Benchmark_Ctx_Cookie(b *testing.B) {
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -1033,8 +1033,8 @@ func Test_Ctx_Cookies(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Request().Header.Set("Cookie", "john=doe")
-	require.Equal(t, "doe", c.Cookies("john"))
-	require.Equal(t, "default", c.Cookies("unknown", "default"))
+	require.Equal(t, "doe", c.Req().Cookies("john"))
+	require.Equal(t, "default", c.Req().Cookies("unknown", "default"))
 }
 
 // go test -run Test_Ctx_Format
@@ -1058,13 +1058,13 @@ func Test_Ctx_Format(t *testing.T) {
 	}
 
 	c.Request().Header.Set(HeaderAccept, `text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7`)
-	err := c.Format(formatHandlers("application/xhtml+xml", "application/xml", "foo/bar")...)
+	err := c.Res().Format(formatHandlers("application/xhtml+xml", "application/xml", "foo/bar")...)
 	require.Equal(t, "application/xhtml+xml", accepted)
 	require.Equal(t, "application/xhtml+xml", c.GetRespHeader(HeaderContentType))
 	require.NoError(t, err)
 	require.NotEqual(t, StatusNotAcceptable, c.Response().StatusCode())
 
-	err = c.Format(formatHandlers("foo/bar;a=b")...)
+	err = c.Res().Format(formatHandlers("foo/bar;a=b")...)
 	require.Equal(t, "foo/bar;a=b", accepted)
 	require.Equal(t, "foo/bar;a=b", c.GetRespHeader(HeaderContentType))
 	require.NoError(t, err)
@@ -1165,7 +1165,7 @@ func Test_Ctx_AutoFormat(t *testing.T) {
 	require.Equal(t, "Hello, World!", string(c.Response().Body()))
 
 	c.Request().Header.Set(HeaderAccept, MIMETextHTML)
-	err = c.AutoFormat("Hello, World!")
+	err = c.Res().AutoFormat("Hello, World!")
 	require.NoError(t, err)
 	require.Equal(t, "<p>Hello, World!</p>", string(c.Response().Body()))
 
@@ -1175,7 +1175,7 @@ func Test_Ctx_AutoFormat(t *testing.T) {
 	require.Equal(t, `"Hello, World!"`, string(c.Response().Body()))
 
 	c.Request().Header.Set(HeaderAccept, MIMETextPlain)
-	err = c.AutoFormat(complex(1, 1))
+	err = c.Res().AutoFormat(complex(1, 1))
 	require.NoError(t, err)
 	require.Equal(t, "(1+1i)", string(c.Response().Body()))
 
@@ -1544,12 +1544,12 @@ func Test_Ctx_Binders(t *testing.T) {
 	t.Run("URI", func(t *testing.T) {
 		t.Skip("URI is not ready for v3")
 		//nolint:gocritic // TODO: uncomment
-		//t.Parallel()
-		//withValues(t, func(c Ctx, testStruct *TestStruct) error {
+		// t.Parallel()
+		// withValues(t, func(c Ctx, testStruct *TestStruct) error {
 		//	c.Route().Params = []string{"name", "name2", "class", "class2"}
 		//	c.Params().value = [30]string{"foo", "bar", "111", "222"}
 		//	return c.Bind().URI(testStruct)
-		//})
+		// })
 	})
 	t.Run("ReqHeader", func(t *testing.T) {
 		t.Parallel()
@@ -2566,7 +2566,7 @@ func Test_Ctx_Params_Case_Sensitive(t *testing.T) {
 // go test -v -run=^$ -bench=Benchmark_Ctx_Params -benchmem -count=4
 func Benchmark_Ctx_Params(b *testing.B) {
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	c.route = &Route{
 		Params: []string{
@@ -2939,7 +2939,7 @@ func Test_Ctx_SaveFile(t *testing.T) {
 	app := New()
 
 	app.Post("/test", func(c Ctx) error {
-		fh, err := c.FormFile("file")
+		fh, err := c.Req().FormFile("file")
 		require.NoError(t, err)
 
 		tempFile, err := os.CreateTemp(os.TempDir(), "test-")
@@ -3075,7 +3075,7 @@ func Test_Ctx_ClearCookie(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Request().Header.Set(HeaderCookie, "john=doe")
-	c.ClearCookie("john")
+	c.Res().ClearCookie("john")
 	require.True(t, strings.HasPrefix(string(c.Response().Header.Peek(HeaderSetCookie)), "john=; expires="))
 
 	c.Request().Header.Set(HeaderCookie, "test1=dummy")
@@ -3104,7 +3104,7 @@ func Test_Ctx_Download(t *testing.T) {
 	require.Equal(t, expect, c.Response().Body())
 	require.Equal(t, `attachment; filename="Awesome+File%21"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
 
-	require.NoError(t, c.Download("ctx.go"))
+	require.NoError(t, c.Res().Download("ctx.go"))
 	require.Equal(t, `attachment; filename="ctx.go"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
 }
 
@@ -3136,7 +3136,7 @@ func Test_Ctx_SendFile(t *testing.T) {
 
 	// test with custom error code
 	c = app.AcquireCtx(&fasthttp.RequestCtx{})
-	err = c.Status(StatusInternalServerError).SendFile("ctx.go")
+	err = c.Res().Status(StatusInternalServerError).SendFile("ctx.go")
 	// check expectation
 	require.NoError(t, err)
 	require.Equal(t, expectFileContent, c.Response().Body())
@@ -3161,7 +3161,7 @@ func Test_Ctx_SendFile_ContentType(t *testing.T) {
 
 	// 1) simple case
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	err := c.SendFile("./.github/testdata/fs/img/fiber.png")
+	err := c.Res().SendFile("./.github/testdata/fs/img/fiber.png")
 	// check expectation
 	require.NoError(t, err)
 	require.Equal(t, StatusOK, c.Response().StatusCode())
@@ -3746,7 +3746,7 @@ func Benchmark_Ctx_CBOR(b *testing.B) {
 func Benchmark_Ctx_JSON_Ctype(b *testing.B) {
 	app := New()
 	// TODO: Check extra allocs because of the interface stuff
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 	type SomeStruct struct {
 		Name string
 		Age  uint8
@@ -3782,7 +3782,7 @@ func Test_Ctx_JSONP(t *testing.T) {
 	require.Equal(t, `callback({"Age":20,"Name":"Grame"});`, string(c.Response().Body()))
 	require.Equal(t, "text/javascript; charset=utf-8", string(c.Response().Header.Peek("content-type")))
 
-	err = c.JSONP(Map{
+	err = c.Res().JSONP(Map{
 		"Name": "Grame",
 		"Age":  20,
 	}, "john")
@@ -3813,7 +3813,7 @@ func Test_Ctx_JSONP(t *testing.T) {
 // go test -v  -run=^$ -bench=Benchmark_Ctx_JSONP -benchmem -count=4
 func Benchmark_Ctx_JSONP(b *testing.B) {
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	type SomeStruct struct {
 		Name string
@@ -3838,7 +3838,7 @@ func Benchmark_Ctx_JSONP(b *testing.B) {
 func Test_Ctx_XML(t *testing.T) {
 	t.Parallel()
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	require.Error(t, c.JSON(complex(1, 1)))
 
@@ -3897,7 +3897,7 @@ func Test_Ctx_XML(t *testing.T) {
 // go test -run=^$ -bench=Benchmark_Ctx_XML -benchmem -count=4
 func Benchmark_Ctx_XML(b *testing.B) {
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 	type SomeStruct struct {
 		Name string `xml:"Name"`
 		Age  uint8  `xml:"Age"`
@@ -3936,7 +3936,7 @@ func Test_Ctx_Links(t *testing.T) {
 // go test -v  -run=^$ -bench=Benchmark_Ctx_Links -benchmem -count=4
 func Benchmark_Ctx_Links(b *testing.B) {
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -4006,7 +4006,7 @@ func Test_Ctx_Render(t *testing.T) {
 	err = c.Render("./.github/testdata/template-non-exists.html", nil)
 	require.Error(t, err)
 
-	err = c.Render("./.github/testdata/template-invalid.html", nil)
+	err = c.Res().Render("./.github/testdata/template-invalid.html", nil)
 	require.Error(t, err)
 }
 
@@ -4363,7 +4363,7 @@ func Benchmark_Ctx_Render_Engine(b *testing.B) {
 // go test -v -run=^$ -bench=Benchmark_Ctx_Get_Location_From_Route -benchmem -count=4
 func Benchmark_Ctx_Get_Location_From_Route(b *testing.B) {
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	app.Get("/user/:name", func(c Ctx) error {
 		return c.SendString(c.Params("name"))
@@ -4578,14 +4578,14 @@ func Test_Ctx_SendStreamWriter(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	err := c.SendStreamWriter(func(w *bufio.Writer) {
-		w.WriteString("Don't crash please") //nolint:errcheck, revive // It is fine to ignore the error
+		w.WriteString("Don't crash please") //nolint:errcheck // It is fine to ignore the error
 	})
 	require.NoError(t, err)
 	require.Equal(t, "Don't crash please", string(c.Response().Body()))
 
 	err = c.SendStreamWriter(func(w *bufio.Writer) {
 		for lineNum := 1; lineNum <= 5; lineNum++ {
-			fmt.Fprintf(w, "Line %d\n", lineNum) //nolint:errcheck, revive // It is fine to ignore the error
+			fmt.Fprintf(w, "Line %d\n", lineNum)
 			if err := w.Flush(); err != nil {
 				t.Errorf("unexpected error: %s", err)
 				return
@@ -4607,7 +4607,7 @@ func Test_Ctx_SendStreamWriter_Interrupted(t *testing.T) {
 	app.Get("/", func(c Ctx) error {
 		return c.SendStreamWriter(func(w *bufio.Writer) {
 			for lineNum := 1; lineNum <= 5; lineNum++ {
-				fmt.Fprintf(w, "Line %d\n", lineNum) //nolint:errcheck // It is fine to ignore the error
+				fmt.Fprintf(w, "Line %d\n", lineNum)
 
 				if err := w.Flush(); err != nil {
 					if lineNum < 3 {
@@ -4728,7 +4728,7 @@ func Benchmark_Ctx_Type(b *testing.B) {
 // go test -v  -run=^$ -bench=Benchmark_Ctx_Type_Charset -benchmem -count=4
 func Benchmark_Ctx_Type_Charset(b *testing.B) {
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -4753,7 +4753,7 @@ func Test_Ctx_Vary(t *testing.T) {
 // go test -v  -run=^$ -bench=Benchmark_Ctx_Vary -benchmem -count=4
 func Benchmark_Ctx_Vary(b *testing.B) {
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -4806,7 +4806,7 @@ func Test_Ctx_Writef(t *testing.T) {
 // go test -v -run=^$ -bench=Benchmark_Ctx_Writef -benchmem -count=4
 func Benchmark_Ctx_Writef(b *testing.B) {
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	world := "World!"
 	b.ReportAllocs()
@@ -4907,7 +4907,7 @@ func Test_Ctx_Queries(t *testing.T) {
 
 	c.Request().URI().SetQueryString("tags=apple,orange,banana&filters[tags]=apple,orange,banana&filters[category][name]=fruits&filters.tags=apple,orange,banana&filters.category.name=fruits")
 
-	queries = c.Queries()
+	queries = c.Req().Queries()
 	require.Equal(t, "apple,orange,banana", queries["tags"])
 	require.Equal(t, "apple,orange,banana", queries["filters[tags]"])
 	require.Equal(t, "fruits", queries["filters[category][name]"])
@@ -4951,11 +4951,11 @@ func Test_Ctx_BodyStreamWriter(t *testing.T) {
 	ctx := &fasthttp.RequestCtx{}
 
 	ctx.SetBodyStreamWriter(func(w *bufio.Writer) {
-		fmt.Fprintf(w, "body writer line 1\n") //nolint: errcheck // It is fine to ignore the error
+		fmt.Fprintf(w, "body writer line 1\n")
 		if err := w.Flush(); err != nil {
 			t.Errorf("unexpected error: %s", err)
 		}
-		fmt.Fprintf(w, "body writer line 2\n") //nolint: errcheck // It is fine to ignore the error
+		fmt.Fprintf(w, "body writer line 2\n")
 	})
 
 	require.True(t, ctx.IsBodyStream())
@@ -5055,7 +5055,7 @@ func Test_Ctx_IsFromLocal_X_Forwarded(t *testing.T) {
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		c.Request().Header.Set(HeaderXForwardedFor, "93.46.8.90")
 
-		require.False(t, c.IsFromLocal())
+		require.False(t, c.Req().IsFromLocal())
 	}
 }
 
@@ -5088,8 +5088,8 @@ func Test_Ctx_IsFromLocal_RemoteAddr(t *testing.T) {
 		fastCtx := &fasthttp.RequestCtx{}
 		fastCtx.SetRemoteAddr(localIPv6)
 		c := app.AcquireCtx(fastCtx)
-		require.Equal(t, "::1", c.IP())
-		require.True(t, c.IsFromLocal())
+		require.Equal(t, "::1", c.Req().IP())
+		require.True(t, c.Req().IsFromLocal())
 	}
 	// Test for the case fasthttp remoteAddr is set to "0:0:0:0:0:0:0:1".
 	{
@@ -5521,6 +5521,10 @@ func Test_GenericParseTypeUints(t *testing.T) {
 		{
 			value: uint(4),
 			str:   "4",
+		},
+		{
+			value: ^uint(0),
+			str:   strconv.FormatUint(uint64(^uint(0)), 10),
 		},
 	}
 

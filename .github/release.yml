@@ -12,6 +12,7 @@ changelog:
     - title: '🧹 Updates'
       labels:
         - '🧹 Updates'
+        - '⚡️ Performance'
     - title: '🐛 Bug Fixes'
       labels:
         - '☢️ Bug'

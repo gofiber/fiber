@@ -34,9 +34,9 @@ func Test_HealthCheck_Strict_Routing_Default(t *testing.T) {
 		StrictRouting: true,
 	})
 
-	app.Get(DefaultLivenessEndpoint, NewHealthChecker())
-	app.Get(DefaultReadinessEndpoint, NewHealthChecker())
-	app.Get(DefaultStartupEndpoint, NewHealthChecker())
+	app.Get(LivenessEndpoint, New())
+	app.Get(ReadinessEndpoint, New())
+	app.Get(StartupEndpoint, New())
 
 	shouldGiveOK(t, app, "/readyz")
 	shouldGiveOK(t, app, "/livez")
@@ -53,9 +53,9 @@ func Test_HealthCheck_Default(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
-	app.Get(DefaultLivenessEndpoint, NewHealthChecker())
-	app.Get(DefaultReadinessEndpoint, NewHealthChecker())
-	app.Get(DefaultStartupEndpoint, NewHealthChecker())
+	app.Get(LivenessEndpoint, New())
+	app.Get(ReadinessEndpoint, New())
+	app.Get(StartupEndpoint, New())
 
 	shouldGiveOK(t, app, "/readyz")
 	shouldGiveOK(t, app, "/livez")
@@ -73,12 +73,12 @@ func Test_HealthCheck_Custom(t *testing.T) {
 
 	app := fiber.New()
 	c1 := make(chan struct{}, 1)
-	app.Get("/live", NewHealthChecker(Config{
+	app.Get("/live", New(Config{
 		Probe: func(_ fiber.Ctx) bool {
 			return true
 		},
 	}))
-	app.Get("/ready", NewHealthChecker(Config{
+	app.Get("/ready", New(Config{
 		Probe: func(_ fiber.Ctx) bool {
 			select {
 			case <-c1:
@@ -88,7 +88,7 @@ func Test_HealthCheck_Custom(t *testing.T) {
 			}
 		},
 	}))
-	app.Get(DefaultStartupEndpoint, NewHealthChecker(Config{
+	app.Get(StartupEndpoint, New(Config{
 		Probe: func(_ fiber.Ctx) bool {
 			return false
 		},
@@ -123,12 +123,12 @@ func Test_HealthCheck_Custom_Nested(t *testing.T) {
 	app := fiber.New()
 
 	c1 := make(chan struct{}, 1)
-	app.Get("/probe/live", NewHealthChecker(Config{
+	app.Get("/probe/live", New(Config{
 		Probe: func(_ fiber.Ctx) bool {
 			return true
 		},
 	}))
-	app.Get("/probe/ready", NewHealthChecker(Config{
+	app.Get("/probe/ready", New(Config{
 		Probe: func(_ fiber.Ctx) bool {
 			select {
 			case <-c1:
@@ -164,15 +164,15 @@ func Test_HealthCheck_Next(t *testing.T) {
 
 	app := fiber.New()
 
-	checker := NewHealthChecker(Config{
+	checker := New(Config{
 		Next: func(_ fiber.Ctx) bool {
 			return true
 		},
 	})
 
-	app.Get(DefaultLivenessEndpoint, checker)
-	app.Get(DefaultReadinessEndpoint, checker)
-	app.Get(DefaultStartupEndpoint, checker)
+	app.Get(LivenessEndpoint, checker)
+	app.Get(ReadinessEndpoint, checker)
+	app.Get(StartupEndpoint, checker)
 
 	// This should give not found since there are no other handlers to execute
 	// so it's like the route isn't defined at all
@@ -184,9 +184,9 @@ func Test_HealthCheck_Next(t *testing.T) {
 func Benchmark_HealthCheck(b *testing.B) {
 	app := fiber.New()
 
-	app.Get(DefaultLivenessEndpoint, NewHealthChecker())
-	app.Get(DefaultReadinessEndpoint, NewHealthChecker())
-	app.Get(DefaultStartupEndpoint, NewHealthChecker())
+	app.Get(LivenessEndpoint, New())
+	app.Get(ReadinessEndpoint, New())
+	app.Get(StartupEndpoint, New())
 
 	h := app.Handler()
 	fctx := &fasthttp.RequestCtx{}
@@ -206,9 +206,9 @@ func Benchmark_HealthCheck(b *testing.B) {
 func Benchmark_HealthCheck_Parallel(b *testing.B) {
 	app := fiber.New()
 
-	app.Get(DefaultLivenessEndpoint, NewHealthChecker())
-	app.Get(DefaultReadinessEndpoint, NewHealthChecker())
-	app.Get(DefaultStartupEndpoint, NewHealthChecker())
+	app.Get(LivenessEndpoint, New())
+	app.Get(ReadinessEndpoint, New())
+	app.Get(StartupEndpoint, New())
 
 	h := app.Handler()
 

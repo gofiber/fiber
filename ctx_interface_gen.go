@@ -265,6 +265,12 @@ type Ctx interface {
 	// We support the following engines: https://github.com/gofiber/template
 	Render(name string, bind any, layouts ...string) error
 	renderExtensions(bind any)
+	// Req returns a convenience type whose API is limited to operations
+	// on the incoming request.
+	Req() Req
+	// Res returns a convenience type whose API is limited to operations
+	// on the outgoing response.
+	Res() Res
 	// Route returns the matched Route struct.
 	Route() *Route
 	// SaveFile saves any multipart file to disk.
@@ -339,9 +345,9 @@ type Ctx interface {
 	release()
 	getBody() []byte
 	// Methods to use with next stack.
-	getMethodINT() int
+	getMethodInt() int
 	getIndexRoute() int
-	getTreePath() string
+	getTreePathHash() int
 	getDetectionPath() string
 	getPathOriginal() string
 	getValues() *[maxParams]string

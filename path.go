@@ -7,9 +7,11 @@
 package fiber
 
 import (
+	"bytes"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -23,6 +25,12 @@ type routeParser struct {
 	params        []string        // that parameter names the parsed route
 	wildCardCount int             // number of wildcard parameters, used internally to give the wildcard parameter its number
 	plusCount     int             // number of plus parameters, used internally to give the plus parameter its number
+}
+
+var routerParserPool = &sync.Pool{
+	New: func() any {
+		return &routeParser{}
+	},
 }
 
 // routeSegment holds the segment metadata
@@ -115,18 +123,6 @@ var (
 	parameterDelimiterChars = append([]byte{paramStarterChar, escapeChar}, routeDelimiter...)
 	// list of chars to find the end of a parameter
 	parameterEndChars = append([]byte{optionalParam}, parameterDelimiterChars...)
-	// list of parameter constraint start
-	parameterConstraintStartChars = []byte{paramConstraintStart}
-	// list of parameter constraint end
-	parameterConstraintEndChars = []byte{paramConstraintEnd}
-	// list of parameter separator
-	parameterConstraintSeparatorChars = []byte{paramConstraintSeparator}
-	// list of parameter constraint data start
-	parameterConstraintDataStartChars = []byte{paramConstraintDataStart}
-	// list of parameter constraint data end
-	parameterConstraintDataEndChars = []byte{paramConstraintDataEnd}
-	// list of parameter constraint data separator
-	parameterConstraintDataSeparatorChars = []byte{paramConstraintDataSeparator}
 )
 
 // RoutePatternMatch checks if a given path matches a Fiber route pattern.
@@ -152,11 +148,11 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 		pattern = "/" + pattern
 	}
 
-	patternPretty := pattern
+	patternPretty := []byte(pattern)
 
 	// Case-sensitive routing, all to lowercase
 	if !config.CaseSensitive {
-		patternPretty = utils.ToLower(patternPretty)
+		patternPretty = utils.ToLowerBytes(patternPretty)
 		path = utils.ToLower(path)
 	}
 	// Strict routing, remove trailing slashes
@@ -164,12 +160,15 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 		patternPretty = utils.TrimRight(patternPretty, '/')
 	}
 
-	parser := parseRoute(patternPretty)
+	parser, _ := routerParserPool.Get().(*routeParser) //nolint:errcheck // only contains routeParser
+	parser.reset()
+	parser.parseRoute(string(patternPretty))
+	defer routerParserPool.Put(parser)
 
-	if patternPretty == "/" && path == "/" {
+	if string(patternPretty) == "/" && path == "/" {
 		return true
 		// '*' wildcard matches any path
-	} else if patternPretty == "/*" {
+	} else if string(patternPretty) == "/*" {
 		return true
 	}
 
@@ -180,42 +179,47 @@ func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
 		}
 	}
 	// Check for a simple match
-	patternPretty = RemoveEscapeChar(patternPretty)
-	if len(patternPretty) == len(path) && patternPretty == path {
-		return true
-	}
-	// No match
-	return false
+	patternPretty = RemoveEscapeCharBytes(patternPretty)
+
+	return string(patternPretty) == path
+}
+
+func (parser *routeParser) reset() {
+	parser.segs = parser.segs[:0]
+	parser.params = parser.params[:0]
+	parser.wildCardCount = 0
+	parser.plusCount = 0
 }
 
 // parseRoute analyzes the route and divides it into segments for constant areas and parameters,
 // this information is needed later when assigning the requests to the declared routes
-func parseRoute(pattern string, customConstraints ...CustomConstraint) routeParser {
-	parser := routeParser{}
-	part := ""
+func (parser *routeParser) parseRoute(pattern string, customConstraints ...CustomConstraint) {
+	var n int
+	var seg *routeSegment
 	for len(pattern) > 0 {
 		nextParamPosition := findNextParamPosition(pattern)
 		// handle the parameter part
 		if nextParamPosition == 0 {
-			processedPart, seg := parser.analyseParameterPart(pattern, customConstraints...)
-			parser.params, parser.segs, part = append(parser.params, seg.ParamName), append(parser.segs, seg), processedPart
+			n, seg = parser.analyseParameterPart(pattern, customConstraints...)
+			parser.params, parser.segs = append(parser.params, seg.ParamName), append(parser.segs, seg)
 		} else {
-			processedPart, seg := parser.analyseConstantPart(pattern, nextParamPosition)
-			parser.segs, part = append(parser.segs, seg), processedPart
+			n, seg = parser.analyseConstantPart(pattern, nextParamPosition)
+			parser.segs = append(parser.segs, seg)
 		}
-
-		// reduce the pattern by the processed parts
-		if len(part) == len(pattern) {
-			break
-		}
-		pattern = pattern[len(part):]
+		pattern = pattern[n:]
 	}
 	// mark last segment
 	if len(parser.segs) > 0 {
 		parser.segs[len(parser.segs)-1].IsLast = true
 	}
 	parser.segs = addParameterMetaInfo(parser.segs)
+}
 
+// parseRoute analyzes the route and divides it into segments for constant areas and parameters,
+// this information is needed later when assigning the requests to the declared routes
+func parseRoute(pattern string, customConstraints ...CustomConstraint) routeParser {
+	parser := routeParser{}
+	parser.parseRoute(pattern, customConstraints...)
 	return parser
 }
 
@@ -283,7 +287,7 @@ func findNextParamPosition(pattern string) int {
 }
 
 // analyseConstantPart find the end of the constant part and create the route segment
-func (*routeParser) analyseConstantPart(pattern string, nextParamPosition int) (string, *routeSegment) {
+func (*routeParser) analyseConstantPart(pattern string, nextParamPosition int) (int, *routeSegment) {
 	// handle the constant part
 	processedPart := pattern
 	if nextParamPosition != -1 {
@@ -291,14 +295,14 @@ func (*routeParser) analyseConstantPart(pattern string, nextParamPosition int) (
 		processedPart = pattern[:nextParamPosition]
 	}
 	constPart := RemoveEscapeChar(processedPart)
-	return processedPart, &routeSegment{
+	return len(processedPart), &routeSegment{
 		Const:  constPart,
 		Length: len(constPart),
 	}
 }
 
 // analyseParameterPart find the parameter end and create the route segment
-func (routeParser *routeParser) analyseParameterPart(pattern string, customConstraints ...CustomConstraint) (string, *routeSegment) {
+func (parser *routeParser) analyseParameterPart(pattern string, customConstraints ...CustomConstraint) (int, *routeSegment) {
 	isWildCard := pattern[0] == wildcardParam
 	isPlusParam := pattern[0] == plusParam
 
@@ -317,18 +321,19 @@ func (routeParser *routeParser) analyseParameterPart(pattern string, customConst
 		parameterEndPosition = 0
 	case parameterEndPosition == -1:
 		parameterEndPosition = len(pattern) - 1
-	case !isInCharset(pattern[parameterEndPosition+1], parameterDelimiterChars):
+	case bytes.IndexByte(parameterDelimiterChars, pattern[parameterEndPosition+1]) == -1:
 		parameterEndPosition++
 	}
 
 	// find constraint part if exists in the parameter part and remove it
 	if parameterEndPosition > 0 {
-		parameterConstraintStart = findNextNonEscapedCharsetPosition(pattern[0:parameterEndPosition], parameterConstraintStartChars)
-		parameterConstraintEnd = findLastCharsetPosition(pattern[0:parameterEndPosition+1], parameterConstraintEndChars)
+		parameterConstraintStart = findNextNonEscapedCharPosition(pattern[:parameterEndPosition], paramConstraintStart)
+		parameterConstraintEnd = strings.LastIndexByte(pattern[:parameterEndPosition+1], paramConstraintEnd)
 	}
 
 	// cut params part
 	processedPart := pattern[0 : parameterEndPosition+1]
+	n := parameterEndPosition + 1
 	paramName := RemoveEscapeChar(GetTrimmedParam(processedPart))
 
 	// Check has constraint
@@ -336,12 +341,12 @@ func (routeParser *routeParser) analyseParameterPart(pattern string, customConst
 
 	if hasConstraint := parameterConstraintStart != -1 && parameterConstraintEnd != -1; hasConstraint {
 		constraintString := pattern[parameterConstraintStart+1 : parameterConstraintEnd]
-		userConstraints := splitNonEscaped(constraintString, string(parameterConstraintSeparatorChars))
+		userConstraints := splitNonEscaped(constraintString, paramConstraintSeparator)
 		constraints = make([]*Constraint, 0, len(userConstraints))
 
 		for _, c := range userConstraints {
-			start := findNextNonEscapedCharsetPosition(c, parameterConstraintDataStartChars)
-			end := findLastCharsetPosition(c, parameterConstraintDataEndChars)
+			start := findNextNonEscapedCharPosition(c, paramConstraintDataStart)
+			end := strings.LastIndexByte(c, paramConstraintDataEnd)
 
 			// Assign constraint
 			if start != -1 && end != -1 {
@@ -353,7 +358,7 @@ func (routeParser *routeParser) analyseParameterPart(pattern string, customConst
 
 				// remove escapes from data
 				if constraint.ID != regexConstraint {
-					constraint.Data = splitNonEscaped(c[start+1:end], string(parameterConstraintDataSeparatorChars))
+					constraint.Data = splitNonEscaped(c[start+1:end], paramConstraintDataSeparator)
 					if len(constraint.Data) == 1 {
 						constraint.Data[0] = RemoveEscapeChar(constraint.Data[0])
 					} else if len(constraint.Data) == 2 { // This is fine, we simply expect two parts
@@ -384,11 +389,11 @@ func (routeParser *routeParser) analyseParameterPart(pattern string, customConst
 
 	// add access iterator to wildcard and plus
 	if isWildCard {
-		routeParser.wildCardCount++
-		paramName += strconv.Itoa(routeParser.wildCardCount)
+		parser.wildCardCount++
+		paramName += strconv.Itoa(parser.wildCardCount)
 	} else if isPlusParam {
-		routeParser.plusCount++
-		paramName += strconv.Itoa(routeParser.plusCount)
+		parser.plusCount++
+		paramName += strconv.Itoa(parser.plusCount)
 	}
 
 	segment := &routeSegment{
@@ -402,17 +407,7 @@ func (routeParser *routeParser) analyseParameterPart(pattern string, customConst
 		segment.Constraints = constraints
 	}
 
-	return processedPart, segment
-}
-
-// isInCharset check is the given character in the charset list
-func isInCharset(searchChar byte, charset []byte) bool {
-	for _, char := range charset {
-		if char == searchChar {
-			return true
-		}
-	}
-	return false
+	return n, segment
 }
 
 // findNextCharsetPosition search the next char position from the charset
@@ -427,23 +422,11 @@ func findNextCharsetPosition(search string, charset []byte) int {
 	return nextPosition
 }
 
-// findLastCharsetPosition search the last char position from the charset
-func findLastCharsetPosition(search string, charset []byte) int {
-	lastPosition := -1
-	for _, char := range charset {
-		if pos := strings.LastIndexByte(search, char); pos != -1 && (pos < lastPosition || lastPosition == -1) {
-			lastPosition = pos
-		}
-	}
-
-	return lastPosition
-}
-
-// findNextCharsetPositionConstraint search the next char position from the charset
+// findNextCharsetPositionConstraint searches the next char position from the charset
 // unlike findNextCharsetPosition, it takes care of constraint start-end chars to parse route pattern
 func findNextCharsetPositionConstraint(search string, charset []byte) int {
-	constraintStart := findNextNonEscapedCharsetPosition(search, parameterConstraintStartChars)
-	constraintEnd := findNextNonEscapedCharsetPosition(search, parameterConstraintEndChars)
+	constraintStart := findNextNonEscapedCharPosition(search, paramConstraintStart)
+	constraintEnd := findNextNonEscapedCharPosition(search, paramConstraintEnd)
 	nextPosition := -1
 
 	for _, char := range charset {
@@ -459,7 +442,7 @@ func findNextCharsetPositionConstraint(search string, charset []byte) int {
 	return nextPosition
 }
 
-// findNextNonEscapedCharsetPosition search the next char position from the charset and skip the escaped characters
+// findNextNonEscapedCharsetPosition searches the next char position from the charset and skips the escaped characters
 func findNextNonEscapedCharsetPosition(search string, charset []byte) int {
 	pos := findNextCharsetPosition(search, charset)
 	for pos > 0 && search[pos-1] == escapeChar {
@@ -478,25 +461,35 @@ func findNextNonEscapedCharsetPosition(search string, charset []byte) int {
 	return pos
 }
 
+// findNextNonEscapedCharPosition searches the next char position and skips the escaped characters
+func findNextNonEscapedCharPosition(search string, char byte) int {
+	for i := 0; i < len(search); i++ {
+		if search[i] == char && (i == 0 || search[i-1] != escapeChar) {
+			return i
+		}
+	}
+	return -1
+}
+
 // splitNonEscaped slices s into all substrings separated by sep and returns a slice of the substrings between those separators
 // This function also takes a care of escape char when splitting.
-func splitNonEscaped(s, sep string) []string {
+func splitNonEscaped(s string, sep byte) []string {
 	var result []string
-	i := findNextNonEscapedCharsetPosition(s, []byte(sep))
+	i := findNextNonEscapedCharPosition(s, sep)
 
 	for i > -1 {
 		result = append(result, s[:i])
-		s = s[i+len(sep):]
-		i = findNextNonEscapedCharsetPosition(s, []byte(sep))
+		s = s[i+1:]
+		i = findNextNonEscapedCharPosition(s, sep)
 	}
 
 	return append(result, s)
 }
 
 // getMatch parses the passed url and tries to match it against the route segments and determine the parameter positions
-func (routeParser *routeParser) getMatch(detectionPath, path string, params *[maxParams]string, partialCheck bool) bool { //nolint: revive // Accepting a bool param is fine here
+func (parser *routeParser) getMatch(detectionPath, path string, params *[maxParams]string, partialCheck bool) bool { //nolint:revive // Accepting a bool param is fine here
 	var i, paramsIterator, partLen int
-	for _, segment := range routeParser.segs {
+	for _, segment := range parser.segs {
 		partLen = len(detectionPath)
 		// check const segment
 		if !segment.IsParam {
@@ -618,7 +611,7 @@ func GetTrimmedParam(param string) string {
 	return param[start:end]
 }
 
-// RemoveEscapeChar remove escape characters
+// RemoveEscapeChar removes escape characters
 func RemoveEscapeChar(word string) string {
 	b := []byte(word)
 	dst := 0
@@ -630,6 +623,18 @@ func RemoveEscapeChar(word string) string {
 		dst++
 	}
 	return string(b[:dst])
+}
+
+// RemoveEscapeCharBytes removes escape characters
+func RemoveEscapeCharBytes(word []byte) []byte {
+	dst := 0
+	for src := 0; src < len(word); src++ {
+		if word[src] != '\\' {
+			word[dst] = word[src]
+			dst++
+		}
+	}
+	return word[:dst]
 }
 
 func getParamConstraintType(constraintPart string) TypeConstraint {
@@ -667,12 +672,25 @@ func getParamConstraintType(constraintPart string) TypeConstraint {
 	}
 }
 
-//nolint:errcheck // TODO: Properly check _all_ errors in here, log them & immediately return
+// CheckConstraint validates if a param matches the given constraint
+// Returns true if the param passes the constraint check, false otherwise
+//
+//nolint:errcheck // TODO: Properly check _all_ errors in here, log them or immediately return
 func (c *Constraint) CheckConstraint(param string) bool {
-	var err error
-	var num int
+	// First check if there's a custom constraint with the same name
+	// This allows custom constraints to override built-in constraints
+	for _, cc := range c.customConstraints {
+		if cc.Name() == c.Name {
+			return cc.Execute(param, c.Data...)
+		}
+	}
 
-	// check data exists
+	var (
+		err error
+		num int
+	)
+
+	// Validate constraint has required data
 	needOneData := []TypeConstraint{minLenConstraint, maxLenConstraint, lenConstraint, minConstraint, maxConstraint, datetimeConstraint, regexConstraint}
 	needTwoData := []TypeConstraint{betweenLenConstraint, rangeConstraint}
 
@@ -691,11 +709,7 @@ func (c *Constraint) CheckConstraint(param string) bool {
 	// check constraints
 	switch c.ID {
 	case noConstraint:
-		for _, cc := range c.customConstraints {
-			if cc.Name() == c.Name {
-				return cc.Execute(param, c.Data...)
-			}
-		}
+		return true
 	case intConstraint:
 		_, err = strconv.Atoi(param)
 	case boolConstraint:
@@ -739,14 +753,14 @@ func (c *Constraint) CheckConstraint(param string) bool {
 		data, _ := strconv.Atoi(c.Data[0])
 		num, err = strconv.Atoi(param)
 
-		if num < data {
+		if err != nil || num < data {
 			return false
 		}
 	case maxConstraint:
 		data, _ := strconv.Atoi(c.Data[0])
 		num, err = strconv.Atoi(param)
 
-		if num > data {
+		if err != nil || num > data {
 			return false
 		}
 	case rangeConstraint:
@@ -754,12 +768,18 @@ func (c *Constraint) CheckConstraint(param string) bool {
 		data2, _ := strconv.Atoi(c.Data[1])
 		num, err = strconv.Atoi(param)
 
-		if num < data || num > data2 {
+		if err != nil || num < data || num > data2 {
 			return false
 		}
 	case datetimeConstraint:
 		_, err = time.Parse(c.Data[0], param)
+		if err != nil {
+			return false
+		}
 	case regexConstraint:
+		if c.RegexCompiler == nil {
+			return false
+		}
 		if match := c.RegexCompiler.MatchString(param); !match {
 			return false
 		}
