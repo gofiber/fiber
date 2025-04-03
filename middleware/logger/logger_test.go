@@ -26,6 +26,11 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+const (
+	pathFooBar = "/?foo=bar"
+	httpProto  = "HTTP/1.1"
+)
+
 func benchmarkSetup(b *testing.B, app *fiber.App, uri string) {
 	b.Helper()
 
@@ -460,7 +465,7 @@ func Test_Logger_All(t *testing.T) {
 	// Alias colors
 	colors := app.Config().ColorScheme
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/?foo=bar", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, pathFooBar, nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 
@@ -480,17 +485,15 @@ func Test_Logger_CLF_Format(t *testing.T) {
 	}))
 
 	method := fiber.MethodGet
-	path := "/?foo=bar"
-	proto := "HTTP/1.1"
 	status := fiber.StatusNotFound
 	bytesSent := 0
 
-	resp, err := app.Test(httptest.NewRequest(method, path, nil))
+	resp, err := app.Test(httptest.NewRequest(method, pathFooBar, nil))
 	require.NoError(t, err)
 	require.Equal(t, status, resp.StatusCode)
 
-	pattern := fmt.Sprintf(`0\.0\.0\.0 - - \[\d{2}:\d{2}:\d{2}\] "%s %s %s" %d %d`, method, regexp.QuoteMeta(path), proto, status, bytesSent)
-	require.Regexp(t, regexp.MustCompile(pattern), buf.String())
+	pattern := fmt.Sprintf(`0\.0\.0\.0 - - \[\d{2}:\d{2}:\d{2}\] "%s %s %s" %d %d`, method, regexp.QuoteMeta(pathFooBar), httpProto, status, bytesSent)
+	require.Regexp(t, pattern, buf.String())
 }
 
 func Test_Logger_Combined_CLF_Format(t *testing.T) {
@@ -505,14 +508,12 @@ func Test_Logger_Combined_CLF_Format(t *testing.T) {
 	}))
 
 	method := fiber.MethodGet
-	path := "/?foo=bar"
-	proto := "HTTP/1.1"
 	status := fiber.StatusNotFound
 	bytesSent := 0
 	referer := "http://example.com"
 	ua := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36"
 
-	req := httptest.NewRequest(method, path, nil)
+	req := httptest.NewRequest(method, pathFooBar, nil)
 	req.Header.Set("Referer", referer)
 	req.Header.Set("User-Agent", ua)
 
@@ -520,8 +521,8 @@ func Test_Logger_Combined_CLF_Format(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, status, resp.StatusCode)
 
-	pattern := fmt.Sprintf(`0\.0\.0\.0 - - \[\d{2}:\d{2}:\d{2}\] "%s %s %s" %d %d "%s" "%s"`, method, regexp.QuoteMeta(path), proto, status, bytesSent, regexp.QuoteMeta(referer), regexp.QuoteMeta(ua))
-	require.Regexp(t, regexp.MustCompile(pattern), buf.String())
+	pattern := fmt.Sprintf(`0\.0\.0\.0 - - \[\d{2}:\d{2}:\d{2}\] "%s %s %s" %d %d "%s" "%s"`, method, regexp.QuoteMeta(pathFooBar), httpProto, status, bytesSent, regexp.QuoteMeta(referer), regexp.QuoteMeta(ua)) //nolint:gocritic // double quoting for regex and string is not needed
+	require.Regexp(t, pattern, buf.String())
 }
 
 func Test_Logger_Json_Format(t *testing.T) {
@@ -536,18 +537,17 @@ func Test_Logger_Json_Format(t *testing.T) {
 	}))
 
 	method := fiber.MethodGet
-	path := "/?foo=bar"
 	status := fiber.StatusNotFound
 	ip := "0.0.0.0"
 	bytesSent := 0
 
-	req := httptest.NewRequest(method, path, nil)
+	req := httptest.NewRequest(method, pathFooBar, nil)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, status, resp.StatusCode)
 
-	pattern := fmt.Sprintf(`\{"time":"\d{2}:\d{2}:\d{2}","ip":"%s","method":"%s","url":"%s","status":%d,"bytesSent":%d\}`, regexp.QuoteMeta(ip), method, regexp.QuoteMeta(path), status, bytesSent)
-	require.Regexp(t, regexp.MustCompile(pattern), buf.String())
+	pattern := fmt.Sprintf(`\{"time":"\d{2}:\d{2}:\d{2}","ip":"%s","method":%q,"url":"%s","status":%d,"bytesSent":%d\}`, regexp.QuoteMeta(ip), method, regexp.QuoteMeta(pathFooBar), status, bytesSent) //nolint:gocritic // double quoting for regex and string is not needed
+	require.Regexp(t, pattern, buf.String())
 }
 
 func Test_Logger_ECS_Format(t *testing.T) {
@@ -562,20 +562,18 @@ func Test_Logger_ECS_Format(t *testing.T) {
 	}))
 
 	method := fiber.MethodGet
-	path := "/?foo=bar"
-	proto := "HTTP/1.1"
 	status := fiber.StatusNotFound
 	ip := "0.0.0.0"
 	bytesSent := 0
-	msg := fmt.Sprintf("%s %s responded with %d", method, path, status)
+	msg := fmt.Sprintf("%s %s responded with %d", method, pathFooBar, status)
 
-	req := httptest.NewRequest(method, path, nil)
+	req := httptest.NewRequest(method, pathFooBar, nil)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, status, resp.StatusCode)
 
-	pattern := fmt.Sprintf(`\{"@timestamp":"\d{2}:\d{2}:\d{2}","ecs":\{"version":"1.6.0"\},"client":\{"ip":"%s"\},"http":\{"request":\{"method":"%s","url":"%s","protocol":"%s"\},"response":\{"status_code":%d,"body":\{"bytes":%d\}\}\},"log":\{"level":"INFO","logger":"fiber"\},"message":"%s"\}`, regexp.QuoteMeta(ip), method, regexp.QuoteMeta(path), proto, status, bytesSent, regexp.QuoteMeta(msg))
-	require.Regexp(t, regexp.MustCompile(pattern), buf.String())
+	pattern := fmt.Sprintf(`\{"@timestamp":"\d{2}:\d{2}:\d{2}","ecs":\{"version":"1.6.0"\},"client":\{"ip":"%s"\},"http":\{"request":\{"method":%q,"url":"%s","protocol":%q\},"response":\{"status_code":%d,"body":\{"bytes":%d\}\}\},"log":\{"level":"INFO","logger":"fiber"\},"message":"%s"\}`, regexp.QuoteMeta(ip), method, regexp.QuoteMeta(pathFooBar), httpProto, status, bytesSent, regexp.QuoteMeta(msg)) //nolint:gocritic // double quoting for regex and string is not needed
+	require.Regexp(t, pattern, buf.String())
 }
 
 func getLatencyTimeUnits() []struct {
