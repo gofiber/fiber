@@ -1,6 +1,8 @@
 package fiber
 
 import (
+	"reflect"
+
 	"github.com/gofiber/fiber/v3/binder"
 	"github.com/gofiber/utils/v2"
 )
@@ -272,4 +274,59 @@ func (b *Bind) Body(out any) error {
 
 	// No suitable content type found
 	return ErrUnprocessableEntity
+}
+
+func (b *Bind) All(out any) error {
+	outVal := reflect.ValueOf(out)
+	if outVal.Kind() != reflect.Ptr || outVal.Elem().Kind() != reflect.Struct {
+		return ErrUnprocessableEntity
+	}
+
+	outElem := outVal.Elem()
+
+	// Precedence: URL Params -> Body -> Query -> Headers -> Cookies
+	sources := []func(any) error{
+		b.URI,
+		b.Body,
+		b.Query,
+		b.Header,
+		b.Cookie,
+	}
+
+	tempStruct := reflect.New(outElem.Type()).Interface()
+
+	// TODO: Support custom precedence with an optional binding_source tag
+	// TODO: Create WithOverrideEmptyValues
+	// Bind from each source, but only update unset fields
+	for _, bindFunc := range sources {
+
+		if err := bindFunc(tempStruct); err != nil {
+			return err
+		}
+
+		tempStructVal := reflect.ValueOf(tempStruct).Elem()
+		mergeStruct(outElem, tempStructVal)
+	}
+
+	return nil
+}
+
+func mergeStruct(dst, src reflect.Value) {
+	dstFields := dst.NumField()
+	for i := 0; i < dstFields; i++ {
+		dstField := dst.Field(i)
+		srcField := src.Field(i)
+
+		// Skip if the destination field is already set
+		if isZero(dstField.Interface()) {
+			if dstField.CanSet() && srcField.IsValid() {
+				dstField.Set(srcField)
+			}
+		}
+	}
+}
+
+func isZero(value any) bool {
+	v := reflect.ValueOf(value)
+	return v.IsZero()
 }
