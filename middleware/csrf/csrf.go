@@ -178,6 +178,11 @@ func New(config ...Config) fiber.Handler {
 
 		// Execute the next middleware or handler in the stack.
 		err = c.Next()
+		// If the next handler returned an error, return it immediately.
+		// Do not proceed to update the CSRF cookie if the request failed downstream.
+		if err != nil {
+			return err
+		}
 
 		// Retrieve the final token from the context, if it was set.
 		finalToken, ok := c.Locals(tokenKey).(string)
