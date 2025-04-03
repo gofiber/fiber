@@ -11,6 +11,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"reflect"
+	"runtime"
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/gofiber/utils/v2"
@@ -411,31 +415,452 @@ func Test_Router_NotFound_HTML_Inject(t *testing.T) {
 	require.Equal(t, "Cannot DELETE /does/not/exist&lt;script&gt;alert(&#39;foo&#39;);&lt;/script&gt;", string(c.Response.Body()))
 }
 
-func Test_App_Rebuild_Tree(t *testing.T) {
-	t.Parallel()
-	app := New()
-
+func registerTreeManipulationRoutes(app *App, middleware ...func(Ctx) error) {
 	app.Get("/test", func(c Ctx) error {
 		app.Get("/dynamically-defined", func(c Ctx) error {
-			return c.SendStatus(http.StatusOK)
+			return c.SendStatus(StatusOK)
 		})
 
 		app.RebuildTree()
 
-		return c.SendStatus(http.StatusOK)
+		return c.SendStatus(StatusOK)
+	}, middleware...)
+}
+
+func verifyRequest(tb testing.TB, app *App, path string, expectedStatus int) *http.Response {
+	tb.Helper()
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, path, nil))
+	require.NoError(tb, err, "app.Test(req)")
+	require.Equal(tb, expectedStatus, resp.StatusCode, "Status code")
+
+	return resp
+}
+
+func verifyRouteHandlerCounts(tb testing.TB, app *App, expectedRoutesCount int) {
+	tb.Helper()
+
+	//  this is taken from listen.go's printRoutesMessage app method
+	var routes []RouteMessage
+	for _, routeStack := range app.stack {
+		for _, route := range routeStack {
+			routeMsg := RouteMessage{
+				name:   route.Name,
+				method: route.Method,
+				path:   route.Path,
+			}
+
+			for _, handler := range route.Handlers {
+				routeMsg.handlers += runtime.FuncForPC(reflect.ValueOf(handler).Pointer()).Name() + " "
+			}
+
+			routes = append(routes, routeMsg)
+		}
+	}
+
+	for _, route := range routes {
+		require.Equal(tb, expectedRoutesCount, strings.Count(route.handlers, " "))
+	}
+}
+
+func verifyThereAreNoRoutes(tb testing.TB, app *App) {
+	tb.Helper()
+
+	require.Equal(tb, uint32(0), app.handlersCount)
+	require.Equal(tb, uint32(0), app.routesCount)
+	verifyRouteHandlerCounts(tb, app, 0)
+}
+
+func Test_App_Rebuild_Tree(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	registerTreeManipulationRoutes(app)
+
+	verifyRequest(t, app, "/dynamically-defined", StatusNotFound)
+	verifyRequest(t, app, "/test", StatusOK)
+	verifyRequest(t, app, "/dynamically-defined", StatusOK)
+}
+
+func Test_App_Remove_Route_A_B_Feature_Testing(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	app.Get("/api/feature-a", func(c Ctx) error {
+		app.RemoveRoute("/api/feature", false, MethodGet)
+		app.RebuildTree()
+		// Redefine route
+		app.Get("/api/feature", func(c Ctx) error {
+			return c.SendString("Testing feature-a")
+		})
+
+		app.RebuildTree()
+		return c.SendStatus(StatusOK)
+	})
+	app.Get("/api/feature-b", func(c Ctx) error {
+		app.RemoveRoute("/api/feature", false, MethodGet)
+		app.RebuildTree()
+		// Redefine route
+		app.Get("/api/feature", func(c Ctx) error {
+			return c.SendString("Testing feature-b")
+		})
+
+		app.RebuildTree()
+		return c.SendStatus(StatusOK)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/dynamically-defined", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, http.StatusNotFound, resp.StatusCode, "Status code")
+	verifyRequest(t, app, "/api/feature-a", StatusOK)
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
+	resp := verifyRequest(t, app, "/api/feature", StatusOK)
+	require.Equal(t, "Testing feature-a", resp, "Response Message")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/dynamically-defined", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, http.StatusOK, resp.StatusCode, "Status code")
+	resp = verifyRequest(t, app, "/api/feature-b", StatusOK)
+	require.Equal(t, "Testing feature-b", resp, "Response Message")
+}
+
+func Test_App_Remove_Route_By_Name(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	app.Get("/api/test", func(c Ctx) error {
+		return c.SendStatus(StatusOK)
+	}).Name("test")
+
+	app.RemoveRouteByName("test", false, MethodGet)
+	app.RebuildTree()
+
+	verifyRequest(t, app, "/test", StatusNotFound)
+	verifyThereAreNoRoutes(t, app)
+}
+
+func Test_App_Remove_Route_By_Name_Non_Existing_Route(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	app.RemoveRouteByName("test", false, MethodGet)
+	app.RebuildTree()
+
+	verifyThereAreNoRoutes(t, app)
+}
+
+func Test_App_Remove_Route_Nested(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	api := app.Group("/api")
+
+	v1 := api.Group("/v1")
+	v1.Get("/test", func(c Ctx) error {
+		return c.SendStatus(StatusOK)
+	})
+
+	verifyRequest(t, app, "/api/v1/test", StatusOK)
+	app.RemoveRoute("/api/v1/test", false, MethodGet)
+
+	verifyThereAreNoRoutes(t, app)
+}
+
+func Test_App_Remove_Route_Parameterized(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	app.Get("/test/:id", func(c Ctx) error {
+		return c.SendStatus(StatusOK)
+	})
+	verifyRequest(t, app, "/test/:id", StatusOK)
+	app.RemoveRoute("/test/:id", false, MethodGet)
+
+	verifyThereAreNoRoutes(t, app)
+}
+
+func Test_App_Remove_Route(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	app.Get("/test", func(c Ctx) error {
+		return c.SendStatus(StatusOK)
+	})
+
+	app.RemoveRoute("/test", false, MethodGet)
+	app.RebuildTree()
+
+	verifyRequest(t, app, "/test", StatusNotFound)
+}
+
+func Test_App_Remove_Route_Non_Existing_Route(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	app.RemoveRoute("/test", false, MethodGet, MethodHead)
+	app.RebuildTree()
+
+	verifyThereAreNoRoutes(t, app)
+}
+
+func Test_App_Remove_Route_Concurrent(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	// Add test route
+	app.Get("/test", func(c Ctx) error {
+		return c.SendStatus(StatusOK)
+	})
+
+	// Concurrently remove and add routes
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			app.RemoveRoute("/test", false, MethodGet)
+			app.Get("/test", func(c Ctx) error {
+				return c.SendStatus(StatusOK)
+			})
+		}()
+	}
+	wg.Wait()
+
+	// Verify final state
+	app.RebuildTree()
+	verifyRequest(t, app, "/test", StatusOK)
+}
+
+func Test_App_Route_Registration_Prevent_Duplicate(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	registerTreeManipulationRoutes(app)
+	registerTreeManipulationRoutes(app)
+
+	verifyRequest(t, app, "/dynamically-defined", StatusNotFound)
+	require.Equal(t, uint32(1), app.handlersCount)
+
+	verifyRequest(t, app, "/test", StatusOK)
+	require.Equal(t, uint32(2), app.handlersCount)
+
+	verifyRequest(t, app, "/dynamically-defined", StatusOK)
+	require.Equal(t, uint32(2), app.handlersCount)
+
+	verifyRequest(t, app, "/test", StatusOK)
+	require.Equal(t, uint32(2), app.handlersCount)
+
+	verifyRequest(t, app, "/dynamically-defined", StatusOK)
+	require.Equal(t, uint32(2), app.handlersCount)
+	require.Equal(t, uint32(2), app.routesCount)
+
+	verifyRouteHandlerCounts(t, app, 1)
+}
+
+func Test_Route_Registration_Prevent_Duplicate_With_Middleware(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	middleware := func(c Ctx) error {
+		return c.Next()
+	}
+
+	registerTreeManipulationRoutes(app, middleware)
+	registerTreeManipulationRoutes(app)
+
+	verifyRequest(t, app, "/dynamically-defined", StatusNotFound)
+	require.Equal(t, uint32(2), app.handlersCount)
+
+	verifyRequest(t, app, "/test", StatusOK)
+	require.Equal(t, uint32(3), app.handlersCount)
+
+	verifyRequest(t, app, "/dynamically-defined", StatusOK)
+	require.Equal(t, uint32(3), app.handlersCount)
+
+	verifyRequest(t, app, "/test", StatusOK)
+	require.Equal(t, uint32(3), app.handlersCount)
+
+	verifyRequest(t, app, "/dynamically-defined", StatusOK)
+	require.Equal(t, uint32(3), app.handlersCount)
+	require.Equal(t, uint32(2), app.routesCount)
+
+	verifyRouteHandlerCounts(t, app, 1)
+}
+
+func TestNormalizePath(t *testing.T) {
+	tests := []struct {
+		name          string
+		path          string
+		caseSensitive bool
+		strictRouting bool
+		expected      string
+	}{
+		{
+			name:          "Empty path",
+			path:          "",
+			caseSensitive: true,
+			strictRouting: true,
+			expected:      "/",
+		},
+		{
+			name:          "No leading slash",
+			path:          "users",
+			caseSensitive: true,
+			strictRouting: true,
+			expected:      "/users",
+		},
+		{
+			name:          "With trailing slash and strict routing",
+			path:          "/users/",
+			caseSensitive: true,
+			strictRouting: true,
+			expected:      "/users/",
+		},
+		{
+			name:          "With trailing slash and non-strict routing",
+			path:          "/users/",
+			caseSensitive: true,
+			strictRouting: false,
+			expected:      "/users",
+		},
+		{
+			name:          "Case sensitive",
+			path:          "/Users",
+			caseSensitive: true,
+			strictRouting: true,
+			expected:      "/Users",
+		},
+		{
+			name:          "Case insensitive",
+			path:          "/Users",
+			caseSensitive: false,
+			strictRouting: true,
+			expected:      "/users",
+		},
+		{
+			name:          "With escape characters",
+			path:          "/users\\/profile",
+			caseSensitive: true,
+			strictRouting: true,
+			expected:      "/users/profile",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := &App{
+				config: Config{
+					CaseSensitive: tt.caseSensitive,
+					StrictRouting: tt.strictRouting,
+				},
+			}
+			result := app.normalizePath(tt.path)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestRemoveRoute(t *testing.T) {
+	app := New()
+
+	var buf strings.Builder
+
+	app.Use(func(c Ctx) error {
+		buf.WriteString("1")
+		return c.Next()
+	})
+
+	app.Post("/", func(c Ctx) error {
+		buf.WriteString("2")
+		return c.SendStatus(StatusOK)
+	})
+
+	app.Use("/test", func(c Ctx) error {
+		buf.WriteString("3")
+		return c.Next()
+	})
+
+	app.Get("/test", func(c Ctx) error {
+		buf.WriteString("4")
+		return c.SendStatus(StatusOK)
+	})
+
+	app.Post("/test", func(c Ctx) error {
+		buf.WriteString("5")
+		return c.SendStatus(StatusOK)
+	})
+
+	require.Equal(t, uint32(5), app.handlersCount)
+	require.Equal(t, uint32(21), app.routesCount)
+
+	req, err := http.NewRequest(MethodPost, "/", nil)
+	require.NoError(t, err)
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+
+	require.Equal(t, 200, resp.StatusCode)
+	require.Equal(t, "12", buf.String())
+
+	buf.Reset()
+
+	req, err = http.NewRequest(MethodGet, "/test", nil)
+	require.NoError(t, err)
+
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+
+	require.Equal(t, 200, resp.StatusCode)
+	require.Equal(t, "134", buf.String())
+
+	buf.Reset()
+
+	app.RemoveRoute("/test", false, MethodGet)
+	app.RebuildTree()
+
+	require.Equal(t, uint32(4), app.handlersCount)
+	require.Equal(t, uint32(20), app.routesCount)
+
+	app.RemoveRoute("/test", false, MethodPost)
+	app.RebuildTree()
+
+	require.Equal(t, uint32(3), app.handlersCount)
+	require.Equal(t, uint32(19), app.routesCount)
+
+	req, err = http.NewRequest(MethodPost, "/test", nil)
+	require.NoError(t, err)
+
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+
+	require.Equal(t, 404, resp.StatusCode)
+	require.Equal(t, "13", buf.String())
+
+	buf.Reset()
+
+	req, err = http.NewRequest(MethodGet, "/test", nil)
+	require.NoError(t, err)
+
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+
+	require.Equal(t, 404, resp.StatusCode)
+	require.Equal(t, "13", buf.String())
+
+	buf.Reset()
+
+	app.RemoveRoute("/", false, MethodGet, MethodPost)
+
+	require.Equal(t, uint32(2), app.handlersCount)
+	require.Equal(t, uint32(18), app.routesCount)
+
+	req, err = http.NewRequest(MethodGet, "/", nil)
+	require.NoError(t, err)
+
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+
+	require.Equal(t, 404, resp.StatusCode)
+	require.Equal(t, "1", buf.String())
+
+	app.RemoveRoute("/test", true, MethodGet, MethodPost)
+
+	require.Equal(t, uint32(2), app.handlersCount)
+	require.Equal(t, uint32(16), app.routesCount)
 }
 
 //////////////////////////////////////////////
