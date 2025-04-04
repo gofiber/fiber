@@ -1,12 +1,14 @@
 package csrf
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/proxy"
 	"github.com/gofiber/fiber/v3/middleware/session"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
@@ -1572,4 +1574,159 @@ func Test_CSRF_FromContextMethods_Invalid(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
+// Test_CSRF_With_Proxy_Middleware verifies that the CSRF cookie is set
+// even when the request is handled by the proxy middleware, addressing
+// issue https://github.com/gofiber/fiber/issues/3387
+func Test_CSRF_With_Proxy_Middleware(t *testing.T) {
+	t.Parallel()
+
+	// 1. Create a target server that the proxy will forward to
+	targetServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, err := w.Write([]byte("Hello from target"))
+		if err != nil {
+			t.Fatal(err)
+		}
+	}))
+	defer targetServer.Close()
+
+	// 2. Create the main Fiber app (proxy server)
+	app := fiber.New()
+
+	// 3. Setup Session middleware (required by CSRF config in this test)
+	// sessionMiddleware, sessionStore := session.NewWithStore()
+	// app.Use(sessionMiddleware)
+	_, sessionStore := session.NewWithStore()
+	app.Use(session.New(session.Config{
+		Store: sessionStore,
+	}))
+
+	// 4. Setup CSRF middleware, configured to use the session store
+	// Ensure this runs AFTER the session middleware but BEFORE the proxy handler
+	app.Use(New(Config{
+		Session: sessionStore,
+	}))
+
+	// 5. Define a route that proxies requests to the target server
+	app.Get("/proxy", func(c fiber.Ctx) error {
+		// The proxy middleware will execute, potentially overwriting headers initially.
+		// The CSRF middleware should fix this after c.Next() (which proxy.Do calls internally) returns.
+		return proxy.Do(c, targetServer.URL)
+	})
+
+	// 6. Make a GET request to the proxy route
+	req := httptest.NewRequest(fiber.MethodGet, "/proxy", nil)
+	resp, err := app.Test(req)
+
+	// 7. Assertions
+	require.NoError(t, err, "app.Test failed")
+	require.Equal(t, http.StatusOK, resp.StatusCode, "Expected status OK from target server via proxy")
+
+	// --- CRUCIAL CHECK ---
+	// Verify that the CSRF cookie was set in the *final* response headers
+	// This confirms the CSRF middleware correctly set the cookie *after* the proxy logic.
+	foundCSRFCookie := false
+	csrfCookieName := ConfigDefault.CookieName // Use the default name or the one from config
+	for _, cookie := range resp.Cookies() {
+		if cookie.Name == csrfCookieName {
+			foundCSRFCookie = true
+			require.NotEmpty(t, cookie.Value, "CSRF cookie value should not be empty")
+			t.Logf("Found CSRF cookie: %s=%s", cookie.Name, cookie.Value) // Optional logging
+			break
+		}
+	}
+	require.True(t, foundCSRFCookie, "CSRF cookie '%s' not found in response headers after proxy", csrfCookieName)
+
+	// Additionally: Verify session cookie is also present
+	foundSessionCookie := false
+	sessionCookieName := "session_id" // Default name for session.NewWithStore() unless configured otherwise
+	for _, cookie := range resp.Cookies() {
+		if cookie.Name == sessionCookieName {
+			foundSessionCookie = true
+			require.NotEmpty(t, cookie.Value, "Session cookie value should not be empty")
+			t.Logf("Found Session cookie: %s=%s", cookie.Name, cookie.Value) // Optional logging
+			break
+		}
+	}
+	require.True(t, foundSessionCookie, "Session cookie '%s' not found in response headers after proxy", sessionCookieName)
+}
+
+// Test_CSRF_Custom_CookieName_With_Proxy verifies that a custom CSRF cookie name
+// is correctly set in the response even when the request goes through the proxy middleware.
+func Test_CSRF_Custom_CookieName_With_Proxy(t *testing.T) {
+	t.Parallel()
+
+	// 1. Define the custom cookie name to be tested
+	customCookieName := "my_special_csrf_cookie_for_proxy"
+	sessionCookieName := "session_id"
+
+	// 2. Create a target server that the proxy will forward to
+	targetServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		// Target server simply responds OK
+		w.WriteHeader(http.StatusOK)
+		_, err := w.Write([]byte("Hello from target for custom cookie test"))
+		if err != nil {
+			t.Fatal(err)
+		}
+	}))
+	defer targetServer.Close()
+
+	// 3. Create the main Fiber app (proxy server)
+	app := fiber.New()
+
+	// 4. Setup Session middleware (often used with CSRF, ensures state handling)
+	// Use a specific store for this test to avoid conflicts if run in parallel with others
+	sessionStore := session.NewStore()
+	app.Use(session.New(session.Config{
+		Store: sessionStore,
+	}))
+
+	// 5. Setup CSRF middleware with the custom cookie name and session store
+	// This is the core part: configuring CSRF with the custom name.
+	app.Use(New(Config{
+		CookieName: customCookieName, // Set the custom cookie name here
+		Session:    sessionStore,     // Link CSRF state to the session
+	}))
+
+	// 6. Define a route that proxies requests to the target server
+	app.Get("/proxy-custom-cookie", func(c fiber.Ctx) error {
+		// The request will pass through session and CSRF middleware before hitting the proxy.
+		// The CSRF middleware should set the cookie *after* proxy.Do completes.
+		return proxy.Do(c, targetServer.URL)
+	})
+
+	// 7. Make a GET request to the proxy route
+	req := httptest.NewRequest(fiber.MethodGet, "/proxy-custom-cookie", nil)
+	resp, err := app.Test(req)
+
+	// 8. Assertions
+	require.NoError(t, err, "app.Test failed for proxy with custom cookie name")
+	require.Equal(t, http.StatusOK, resp.StatusCode, "Expected status OK from target server via proxy")
+
+	// --- CRUCIAL CHECK ---
+	// Verify that the CSRF cookie with the *custom name* was set in the final response headers.
+	foundCustomCSRFCookie := false
+	for _, cookie := range resp.Cookies() {
+		if cookie.Name == customCookieName { // Check specifically for the custom name
+			foundCustomCSRFCookie = true
+			require.NotEmpty(t, cookie.Value, "Custom CSRF cookie value should not be empty")
+			t.Logf("Found custom CSRF cookie via proxy: %s=%s", cookie.Name, cookie.Value)
+			break
+		}
+	}
+	require.True(t, foundCustomCSRFCookie, "Custom CSRF cookie '%s' not found in response headers after proxy", customCookieName)
+
+	// Additionally: Verify session cookie is also present
+	foundSessionCookie := false
+	for _, cookie := range resp.Cookies() {
+		if cookie.Name == sessionCookieName {
+			foundSessionCookie = true
+			require.NotEmpty(t, cookie.Value, "Session cookie value should not be empty")
+			t.Logf("Found Session cookie via proxy: %s=%s", cookie.Name, cookie.Value)
+			break
+		}
+	}
+	require.True(t, foundSessionCookie, "Session cookie '%s' not found in response headers after proxy", sessionCookieName)
 }
