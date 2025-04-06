@@ -49,7 +49,7 @@ var (
 type contextKey int //nolint:unused // need for future (nolintlint)
 
 // DefaultCtx is the default implementation of the Ctx interface
-// generation tool `go install github.com/vburenin/ifacemaker@975a95966976eeb2d4365a7fb236e274c54da64c`
+// generation tool `go install github.com/vburenin/ifacemaker@c0371201a75b1c79e69cda79a6f90b8ae5799b37`
 // https://github.com/vburenin/ifacemaker/blob/975a95966976eeb2d4365a7fb236e274c54da64c/ifacemaker.go#L14-L30
 //
 //go:generate ifacemaker --file ctx.go --struct DefaultCtx --iface Ctx --pkg fiber --output ctx_interface_gen.go --not-exported true --iface-comment "Ctx represents the Context which hold the HTTP request and response.\nIt has methods for the request query string, parameters, body, HTTP headers and so on."
