@@ -41,7 +41,7 @@ func TestTimeout_Success(t *testing.T) {
 	// Our middleware wraps a handler that sleeps for 10ms, well under the 50ms limit.
 	app.Get("/fast", New(func(c fiber.Ctx) error {
 		// Simulate some work
-		if err := sleepWithContext(c.Context(), 10*time.Millisecond, context.DeadlineExceeded); err != nil {
+		if err := sleepWithContext(c, 10*time.Millisecond, context.DeadlineExceeded); err != nil {
 			return err
 		}
 		return c.SendString("OK")
@@ -60,7 +60,7 @@ func TestTimeout_Exceeded(t *testing.T) {
 
 	// This handler sleeps 200ms, exceeding the 100ms limit.
 	app.Get("/slow", New(func(c fiber.Ctx) error {
-		if err := sleepWithContext(c.Context(), 200*time.Millisecond, context.DeadlineExceeded); err != nil {
+		if err := sleepWithContext(c, 200*time.Millisecond, context.DeadlineExceeded); err != nil {
 			return err
 		}
 		return c.SendString("Should never get here")
@@ -81,7 +81,7 @@ func TestTimeout_CustomError(t *testing.T) {
 	app.Get("/custom", New(func(c fiber.Ctx) error {
 		// Sleep might time out, or might return early. If the context is canceled,
 		// we treat errCustomTimeout as a 'timeout-like' condition.
-		if err := sleepWithContext(c.Context(), 200*time.Millisecond, errCustomTimeout); err != nil {
+		if err := sleepWithContext(c, 200*time.Millisecond, errCustomTimeout); err != nil {
 			return fmt.Errorf("wrapped: %w", err)
 		}
 		return c.SendString("Should never get here")

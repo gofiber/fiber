@@ -73,14 +73,6 @@ func Test_RequestID_FromContext(t *testing.T) {
 				},
 			},
 		},
-		{
-			name: "From context.Context",
-			args: args{
-				inputFunc: func(c fiber.Ctx) any {
-					return c.Context()
-				},
-			},
-		},
 	}
 
 	for _, tt := range tests {
