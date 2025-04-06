@@ -7,7 +7,6 @@ package fiber
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -41,10 +40,7 @@ const (
 
 // The contextKey type is unexported to prevent collisions with context keys defined in
 // other packages.
-type contextKey int
-
-// userContextKey define the key name for storing context.Context in *fasthttp.RequestCtx
-const userContextKey contextKey = 0 // __local_user_context__
+type contextKey int //nolint:unused // need for future (nolintlint)
 
 // DefaultCtx is the default implementation of the Ctx interface
 // generation tool `go install github.com/vburenin/ifacemaker@975a95966976eeb2d4365a7fb236e274c54da64c`
@@ -389,23 +385,6 @@ func (c *DefaultCtx) ClearCookie(key ...string) {
 // a cancellation signal, and other values across API boundaries.
 func (c *DefaultCtx) RequestCtx() *fasthttp.RequestCtx {
 	return c.fasthttp
-}
-
-// Context returns a context implementation that was set by
-// user earlier or returns a non-nil, empty context,if it was not set earlier.
-func (c *DefaultCtx) Context() context.Context {
-	ctx, ok := c.fasthttp.UserValue(userContextKey).(context.Context)
-	if !ok {
-		ctx = context.Background()
-		c.SetContext(ctx)
-	}
-
-	return ctx
-}
-
-// SetContext sets a context implementation by user.
-func (c *DefaultCtx) SetContext(ctx context.Context) {
-	c.fasthttp.SetUserValue(userContextKey, ctx)
 }
 
 // Cookie sets a cookie by passing a cookie struct.
@@ -1838,12 +1817,8 @@ func (c *DefaultCtx) Vary(fields ...string) {
 	c.Append(HeaderVary, fields...)
 }
 
-// Value makes it possible to pass any values under keys scoped to the request
+// Value makes it possible to retrieve values (Locals) under keys scoped to the request
 // and therefore available to all following routes that match the request.
-//
-// All the values are removed from ctx after returning from the top
-// RequestHandler. Additionally, Close method is called on each value
-// implementing io.Closer before removing the value from ctx.
 func (c *DefaultCtx) Value(key any) any {
 	return c.fasthttp.UserValue(key)
 }

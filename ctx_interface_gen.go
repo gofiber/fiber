@@ -66,32 +66,6 @@ type Ctx interface {
 	// never be canceled. Successive calls to Done return the same value.
 	// The close of the Done channel may happen asynchronously,
 	// after the cancel function returns.
-	//
-	// WithCancel arranges for Done to be closed when cancel is called;
-	// WithDeadline arranges for Done to be closed when the deadline
-	// expires; WithTimeout arranges for Done to be closed when the timeout
-	// elapses.
-	//
-	// Done is provided for use in select statements:
-	//
-	//  // Stream generates values with DoSomething and sends them to out
-	//  // until DoSomething returns an error or ctx.Done is closed.
-	//  func Stream(ctx context.Context, out chan<- Value) error {
-	//  	for {
-	//  		v, err := DoSomething(ctx)
-	//  		if err != nil {
-	//  			return err
-	//  		}
-	//  		select {
-	//  		case <-ctx.Done():
-	//  			return ctx.Err()
-	//  		case out <- v:
-	//  		}
-	//  	}
-	//  }
-	//
-	// See https://blog.golang.org/pipelines for more examples of how to use
-	// a Done channel for cancellation.
 	Done() <-chan struct{}
 	// Download transfers the file from path as an attachment.
 	// Typically, browsers will prompt the user for download.
@@ -354,12 +328,8 @@ type Ctx interface {
 	// Vary adds the given header field to the Vary response header.
 	// This will append the header, if not already listed, otherwise leaves it listed in the current location.
 	Vary(fields ...string)
-	// Value makes it possible to pass any values under keys scoped to the request
+	// Value makes it possible to retrieve values (Locals) under keys scoped to the request
 	// and therefore available to all following routes that match the request.
-	//
-	// All the values are removed from ctx after returning from the top
-	// RequestHandler. Additionally, Close method is called on each value
-	// implementing io.Closer before removing the value from ctx.
 	Value(key any) any
 	// Write appends p into response body.
 	Write(p []byte) (int, error)

@@ -2197,7 +2197,7 @@ func Test_Ctx_Deadline(t *testing.T) {
 	app.Get("/test", func(c Ctx) error {
 		deadline, ok := c.Deadline()
 		require.Equal(t, time.Time{}, deadline)
-		require.Equal(t, require.False, ok)
+		require.False(t, ok)
 		return nil
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
@@ -2229,7 +2229,7 @@ func Test_Ctx_Err(t *testing.T) {
 		return c.Next()
 	})
 	app.Get("/test", func(c Ctx) error {
-		require.Equal(t, require.NoError, c.Err())
+		require.NoError(t, c.Err())
 		return nil
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
