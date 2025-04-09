@@ -8,7 +8,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
-	"github.com/google/uuid"
+	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -1286,7 +1286,7 @@ func Test_Session_StoreGetDecodeSessionDataError(t *testing.T) {
 	app := fiber.New()
 
 	// Generate a fake session ID
-	sessionID := uuid.New().String()
+	sessionID := ulid.Make().String()
 
 	// Store invalid session data to simulate decode error
 	err := store.Storage.Set(sessionID, []byte("invalid data"), 0)

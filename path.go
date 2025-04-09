@@ -16,7 +16,7 @@ import (
 	"unicode"
 
 	"github.com/gofiber/utils/v2"
-	"github.com/google/uuid"
+	"github.com/oklog/ulid"
 )
 
 // routeParser holds the path segments and param names
@@ -723,7 +723,7 @@ func (c *Constraint) CheckConstraint(param string) bool {
 			}
 		}
 	case guidConstraint:
-		_, err = uuid.Parse(param)
+		_, err = ulid.ParseStrict(param)
 	case minLenConstraint:
 		data, _ := strconv.Atoi(c.Data[0])
 
