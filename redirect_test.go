@@ -6,6 +6,7 @@ package fiber
 
 import (
 	"bytes"
+	"encoding/base64"
 	"mime/multipart"
 	"net/url"
 	"testing"
@@ -45,7 +46,13 @@ func Test_Redirect_To_WithFlashMessages(t *testing.T) {
 	c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
 
 	var msgs redirectionMsgs
-	_, err = msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
+	cookieValue := c.Cookies(FlashCookieName)
+	require.NotEmpty(t, cookieValue)
+
+	decodedValue, err := base64.StdEncoding.DecodeString(cookieValue)
+	require.NoError(t, err)
+
+	_, err = msgs.UnmarshalMsg(decodedValue)
 	require.NoError(t, err)
 
 	require.Len(t, msgs, 2)
@@ -188,7 +195,13 @@ func Test_Redirect_Back_WithFlashMessages(t *testing.T) {
 	c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
 
 	var msgs redirectionMsgs
-	_, err = msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
+	cookieValue := c.Cookies(FlashCookieName)
+	require.NotEmpty(t, cookieValue)
+
+	decodedValue, err := base64.StdEncoding.DecodeString(cookieValue)
+	require.NoError(t, err)
+
+	_, err = msgs.UnmarshalMsg(decodedValue)
 	require.NoError(t, err)
 
 	require.Len(t, msgs, 2)
@@ -239,7 +252,13 @@ func Test_Redirect_Route_WithFlashMessages(t *testing.T) {
 	c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
 
 	var msgs redirectionMsgs
-	_, err = msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
+	cookieValue := c.Cookies(FlashCookieName)
+	require.NotEmpty(t, cookieValue)
+
+	decodedValue, err := base64.StdEncoding.DecodeString(cookieValue)
+	require.NoError(t, err)
+
+	_, err = msgs.UnmarshalMsg(decodedValue)
 	require.NoError(t, err)
 
 	require.Len(t, msgs, 2)
@@ -276,7 +295,13 @@ func Test_Redirect_Route_WithOldInput(t *testing.T) {
 		c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
 
 		var msgs redirectionMsgs
-		_, err = msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
+		cookieValue := c.Cookies(FlashCookieName)
+		require.NotEmpty(t, cookieValue)
+
+		decodedValue, err := base64.StdEncoding.DecodeString(cookieValue)
+		require.NoError(t, err)
+
+		_, err = msgs.UnmarshalMsg(decodedValue)
 		require.NoError(t, err)
 
 		require.Len(t, msgs, 4)
@@ -312,7 +337,13 @@ func Test_Redirect_Route_WithOldInput(t *testing.T) {
 		c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
 
 		var msgs redirectionMsgs
-		_, err = msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
+		cookieValue := c.Cookies(FlashCookieName)
+		require.NotEmpty(t, cookieValue)
+
+		decodedValue, err := base64.StdEncoding.DecodeString(cookieValue)
+		require.NoError(t, err)
+
+		_, err = msgs.UnmarshalMsg(decodedValue)
 		require.NoError(t, err)
 
 		require.Len(t, msgs, 4)
@@ -356,7 +387,13 @@ func Test_Redirect_Route_WithOldInput(t *testing.T) {
 		c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
 
 		var msgs redirectionMsgs
-		_, err = msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
+		cookieValue := c.Cookies(FlashCookieName)
+		require.NotEmpty(t, cookieValue)
+
+		decodedValue, err := base64.StdEncoding.DecodeString(cookieValue)
+		require.NoError(t, err)
+
+		_, err = msgs.UnmarshalMsg(decodedValue)
 		require.NoError(t, err)
 
 		require.Len(t, msgs, 4)
@@ -402,7 +439,9 @@ func Test_Redirect_parseAndClearFlashMessages(t *testing.T) {
 	val, err := msgs.MarshalMsg(nil)
 	require.NoError(t, err)
 
-	c.Request().Header.Set(HeaderCookie, "fiber_flash="+string(val))
+	encodedVal := base64.StdEncoding.EncodeToString(val)
+
+	c.Request().Header.Set(HeaderCookie, "fiber_flash="+encodedVal)
 
 	c.Redirect().parseAndClearFlashMessages()
 
@@ -632,7 +671,13 @@ func Benchmark_Redirect_processFlashMessages(b *testing.B) {
 	c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
 
 	var msgs redirectionMsgs
-	_, err := msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
+	cookieValue := c.Cookies(FlashCookieName)
+	require.NotEmpty(b, cookieValue)
+
+	decodedValue, err := base64.StdEncoding.DecodeString(cookieValue)
+	require.NoError(b, err)
+
+	_, err = msgs.UnmarshalMsg(decodedValue)
 	require.NoError(b, err)
 
 	require.Len(b, msgs, 2)

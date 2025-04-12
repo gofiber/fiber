@@ -450,9 +450,9 @@ func (c *DefaultCtx) Cookie(cookie *Cookie) {
 // The returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (c *DefaultCtx) Cookies(key string, defaultValue ...string) string {
-	cookieValue := c.app.getString(c.fasthttp.Request.Header.Cookie(key))
+	cookieValue := defaultString(c.app.getString(c.fasthttp.Request.Header.Cookie(key)), defaultValue)
 	// Parse the cookie value
-	value, ok := c.parseCookieValue(cookieValue)
+	value, ok := parseCookieValue(cookieValue)
 	if !ok {
 		return ""
 	}
@@ -460,14 +460,14 @@ func (c *DefaultCtx) Cookies(key string, defaultValue ...string) string {
 }
 
 // parseCookieValue parses a cookie value according to RFC 6265.
-func (c *DefaultCtx) parseCookieValue(raw string) (value string, ok bool) {
+func parseCookieValue(raw string) (string, bool) {
 	// Strip the quotes, if present.
 	if len(raw) > 1 && raw[0] == '"' && raw[len(raw)-1] == '"' {
 		raw = raw[1 : len(raw)-1]
 	}
 
-	for i := 0; i < len(raw); i++ {
-		if !c.validCookieValueByte(raw[i]) {
+	for _, b := range []byte(raw) {
+		if !validCookieValueByte(b) {
 			return "", false
 		}
 	}
@@ -478,7 +478,7 @@ func (c *DefaultCtx) parseCookieValue(raw string) (value string, ok bool) {
 // Per RFC 6265 section 4.1.1, cookie values must be ASCII
 // and may not contain control characters, whitespace, double quotes,
 // commas, semicolons, or backslashes.
-func (c *DefaultCtx) validCookieValueByte(b byte) bool {
+func validCookieValueByte(b byte) bool {
 	return 0x20 <= b && b < 0x7f && b != '"' && b != ';' && b != '\\'
 	// Note: commas are deliberately allowed
 	// See https://golang.org/issue/7243 for the discussion.
