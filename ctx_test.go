@@ -1040,6 +1040,9 @@ func Test_Ctx_Cookies(t *testing.T) {
 	c.Request().Header.Set("Cookie", "special=value,with,commas") // commas are allowed
 	require.Equal(t, "value,with,commas", c.Req().Cookies("special"))
 
+	c.Request().Header.Set("Cookie", "quoted=\"quoted value\"")
+	require.Equal(t, "quoted value", c.Req().Cookies("quoted"))
+
 	c.Request().Header.Set("Cookie", "quotes=value\"with\"quotes")
 	require.Equal(t, "", c.Req().Cookies("quotes"))
 

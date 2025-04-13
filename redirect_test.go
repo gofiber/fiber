@@ -413,87 +413,118 @@ func Test_Redirect_parseAndClearFlashMessages(t *testing.T) {
 		return c.SendString("user")
 	}).Name("user")
 
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+	t.Run("Valid flash message", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
-	msgs := redirectionMsgs{
-		{
-			key:   "success",
-			value: "1",
-		},
-		{
-			key:   "message",
-			value: "test",
-		},
-		{
-			key:        "name",
-			value:      "tom",
-			isOldInput: true,
-		},
-		{
-			key:        "id",
-			value:      "1",
-			isOldInput: true,
-		},
-	}
+		msgs := redirectionMsgs{
+			{
+				key:   "success",
+				value: "1",
+			},
+			{
+				key:   "message",
+				value: "test",
+			},
+			{
+				key:        "name",
+				value:      "tom",
+				isOldInput: true,
+			},
+			{
+				key:        "id",
+				value:      "1",
+				isOldInput: true,
+			},
+		}
 
-	val, err := msgs.MarshalMsg(nil)
-	require.NoError(t, err)
+		val, err := msgs.MarshalMsg(nil)
+		require.NoError(t, err)
 
-	encodedVal := base64.StdEncoding.EncodeToString(val)
+		encodedVal := base64.StdEncoding.EncodeToString(val)
 
-	c.Request().Header.Set(HeaderCookie, "fiber_flash="+encodedVal)
+		c.Request().Header.Set(HeaderCookie, "fiber_flash="+encodedVal)
 
-	c.Redirect().parseAndClearFlashMessages()
+		c.Redirect().parseAndClearFlashMessages()
 
-	require.Equal(t, FlashMessage{
-		Key:   "success",
-		Value: "1",
-		Level: 0,
-	}, c.Redirect().Message("success"))
-
-	require.Equal(t, FlashMessage{
-		Key:   "message",
-		Value: "test",
-		Level: 0,
-	}, c.Redirect().Message("message"))
-
-	require.Equal(t, FlashMessage{}, c.Redirect().Message("not_message"))
-
-	require.Equal(t, []FlashMessage{
-		{
+		require.Equal(t, FlashMessage{
 			Key:   "success",
 			Value: "1",
 			Level: 0,
-		},
-		{
+		}, c.Redirect().Message("success"))
+
+		require.Equal(t, FlashMessage{
 			Key:   "message",
 			Value: "test",
 			Level: 0,
-		},
-	}, c.Redirect().Messages())
+		}, c.Redirect().Message("message"))
 
-	require.Equal(t, OldInputData{
-		Key:   "id",
-		Value: "1",
-	}, c.Redirect().OldInput("id"))
+		require.Equal(t, FlashMessage{}, c.Redirect().Message("not_message"))
 
-	require.Equal(t, OldInputData{
-		Key:   "name",
-		Value: "tom",
-	}, c.Redirect().OldInput("name"))
+		require.Equal(t, []FlashMessage{
+			{
+				Key:   "success",
+				Value: "1",
+				Level: 0,
+			},
+			{
+				Key:   "message",
+				Value: "test",
+				Level: 0,
+			},
+		}, c.Redirect().Messages())
 
-	require.Equal(t, OldInputData{}, c.Redirect().OldInput("not_name"))
-
-	require.Equal(t, []OldInputData{
-		{
-			Key:   "name",
-			Value: "tom",
-		},
-		{
+		require.Equal(t, OldInputData{
 			Key:   "id",
 			Value: "1",
-		},
-	}, c.Redirect().OldInputs())
+		}, c.Redirect().OldInput("id"))
+
+		require.Equal(t, OldInputData{
+			Key:   "name",
+			Value: "tom",
+		}, c.Redirect().OldInput("name"))
+
+		require.Equal(t, OldInputData{}, c.Redirect().OldInput("not_name"))
+
+		require.Equal(t, []OldInputData{
+			{
+				Key:   "name",
+				Value: "tom",
+			},
+			{
+				Key:   "id",
+				Value: "1",
+			},
+		}, c.Redirect().OldInputs())
+	})
+
+	t.Run("Empty cookie value", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+
+		c.Redirect().parseAndClearFlashMessages()
+
+		require.Empty(t, c.Redirect().Messages())
+	})
+
+	t.Run("Invalid base64 data", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+
+		c.Request().Header.Set(HeaderCookie, "fiber_flash=invalid!base64@data")
+
+		c.Redirect().parseAndClearFlashMessages()
+
+		require.Empty(t, c.Redirect().Messages())
+	})
+
+	t.Run("Invalid MessagePack data", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+
+		invalidData := base64.StdEncoding.EncodeToString([]byte("not-valid-messagepack-data"))
+		c.Request().Header.Set(HeaderCookie, "fiber_flash="+invalidData)
+
+		c.Redirect().parseAndClearFlashMessages()
+
+		require.Empty(t, c.Redirect().Messages())
+	})
 }
 
 // go test -v -run=^$ -bench=Benchmark_Redirect_Route -benchmem -count=4
