@@ -137,8 +137,8 @@ func main() {
 </p>
 
 <p float="left" align="middle">
-  <img src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/benchmark-pipeline.png" width="49%">
-  <img src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/benchmark_alloc.png" width="49%">
+  <img src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/plaintext.png" width="49%">
+  <img src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/json.png" width="49%">
 </p>
 </br>
 
