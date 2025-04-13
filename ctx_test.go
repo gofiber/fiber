@@ -1035,7 +1035,7 @@ func Test_Ctx_Cookies(t *testing.T) {
 
 	c.Request().Header.Set("Cookie", "john=doe")
 	require.Equal(t, "doe", c.Req().Cookies("john"))
-	require.Equal(t, "", c.Req().Cookies("unknown", "default"))
+	require.Equal(t, "default", c.Req().Cookies("unknown", "default"))
 
 	c.Request().Header.Set("Cookie", "special=value,with,commas") // commas are allowed
 	require.Equal(t, "value,with,commas", c.Req().Cookies("special"))
