@@ -611,7 +611,13 @@ func Benchmark_Redirect_Route_WithFlashMessages(b *testing.B) {
 	c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
 
 	var msgs redirectionMsgs
-	_, err = msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
+	cookieValue := c.Cookies(FlashCookieName)
+	require.NotEmpty(b, cookieValue)
+
+	decodedValue, err := base64.StdEncoding.DecodeString(cookieValue)
+	require.NoError(b, err)
+
+	_, err = msgs.UnmarshalMsg(decodedValue)
 	require.NoError(b, err)
 
 	require.Contains(b, msgs, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
@@ -651,7 +657,8 @@ func Benchmark_Redirect_parseAndClearFlashMessages(b *testing.B) {
 	val, err := testredirectionMsgs.MarshalMsg(nil)
 	require.NoError(b, err)
 
-	c.Request().Header.Set(HeaderCookie, "fiber_flash="+string(val))
+	encodedVal := base64.StdEncoding.EncodeToString(val)
+	c.Request().Header.Set(HeaderCookie, "fiber_flash="+encodedVal)
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -728,7 +735,9 @@ func Benchmark_Redirect_Messages(b *testing.B) {
 	val, err := testredirectionMsgs.MarshalMsg(nil)
 	require.NoError(b, err)
 
-	c.Request().Header.Set(HeaderCookie, "fiber_flash="+string(val))
+	encodedVal := base64.StdEncoding.EncodeToString(val)
+
+	c.Request().Header.Set(HeaderCookie, "fiber_flash="+encodedVal)
 	c.Redirect().parseAndClearFlashMessages()
 
 	var msgs []FlashMessage
@@ -765,7 +774,9 @@ func Benchmark_Redirect_OldInputs(b *testing.B) {
 	val, err := testredirectionMsgs.MarshalMsg(nil)
 	require.NoError(b, err)
 
-	c.Request().Header.Set(HeaderCookie, "fiber_flash="+string(val))
+	encodedVal := base64.StdEncoding.EncodeToString(val)
+
+	c.Request().Header.Set(HeaderCookie, "fiber_flash="+encodedVal)
 	c.Redirect().parseAndClearFlashMessages()
 
 	var oldInputs []OldInputData
@@ -800,7 +811,9 @@ func Benchmark_Redirect_Message(b *testing.B) {
 	val, err := testredirectionMsgs.MarshalMsg(nil)
 	require.NoError(b, err)
 
-	c.Request().Header.Set(HeaderCookie, "fiber_flash="+string(val))
+	encodedVal := base64.StdEncoding.EncodeToString(val)
+
+	c.Request().Header.Set(HeaderCookie, "fiber_flash="+encodedVal)
 	c.Redirect().parseAndClearFlashMessages()
 
 	var msg FlashMessage
@@ -831,7 +844,9 @@ func Benchmark_Redirect_OldInput(b *testing.B) {
 	val, err := testredirectionMsgs.MarshalMsg(nil)
 	require.NoError(b, err)
 
-	c.Request().Header.Set(HeaderCookie, "fiber_flash="+string(val))
+	encodedVal := base64.StdEncoding.EncodeToString(val)
+
+	c.Request().Header.Set(HeaderCookie, "fiber_flash="+encodedVal)
 	c.Redirect().parseAndClearFlashMessages()
 
 	var input OldInputData
