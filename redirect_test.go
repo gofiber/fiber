@@ -414,6 +414,7 @@ func Test_Redirect_parseAndClearFlashMessages(t *testing.T) {
 	}).Name("user")
 
 	t.Run("Valid flash message", func(t *testing.T) {
+		t.Parallel()
 		c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 		msgs := redirectionMsgs{
@@ -498,7 +499,8 @@ func Test_Redirect_parseAndClearFlashMessages(t *testing.T) {
 	})
 
 	t.Run("Empty cookie value", func(t *testing.T) {
-		c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+		t.Parallel()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 		c.Redirect().parseAndClearFlashMessages()
 
@@ -506,7 +508,8 @@ func Test_Redirect_parseAndClearFlashMessages(t *testing.T) {
 	})
 
 	t.Run("Invalid base64 data", func(t *testing.T) {
-		c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+		t.Parallel()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 		c.Request().Header.Set(HeaderCookie, "fiber_flash=invalid!base64@data")
 
@@ -516,7 +519,8 @@ func Test_Redirect_parseAndClearFlashMessages(t *testing.T) {
 	})
 
 	t.Run("Invalid MessagePack data", func(t *testing.T) {
-		c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+		t.Parallel()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 		invalidData := base64.StdEncoding.EncodeToString([]byte("not-valid-messagepack-data"))
 		c.Request().Header.Set(HeaderCookie, "fiber_flash="+invalidData)
