@@ -122,8 +122,8 @@ func main() {
 Pengukuran ini dilakukan oleh [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) dan [Go Web](https://github.com/smallnest/go-web-framework-benchmark). Apabila anda ingin melihat hasil lengkapnya, silahkan kunjungi halaman [Wiki](https://docs.gofiber.io/extra/benchmarks) kami.
 
 <p float="left" align="middle">
-  <img src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/benchmark-pipeline.png" width="49%">
-  <img src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/benchmark_alloc.png" width="49%">
+  <img src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/plaintext.png" width="49%">
+  <img src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/json.png" width="49%">
 </p>
 
 ## ⚙️ Instalasi

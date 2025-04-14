@@ -122,8 +122,8 @@ func main() {
 Ces tests sont effectués par [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) et [Go Web](https://github.com/smallnest/go-web-framework-benchmark). Si vous voulez voir tous les résultats, n'hésitez pas à consulter notre [Wiki](https://docs.gofiber.io/extra/benchmarks).
 
 <p float="left" align="middle">
-  <img src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/benchmark-pipeline.png" width="49%">
-  <img src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/benchmark_alloc.png" width="49%">
+  <img src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/plaintext.png" width="49%">
+  <img src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/json.png" width="49%">
 </p>
 
 ## ⚙️ Installation
