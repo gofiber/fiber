@@ -48,25 +48,23 @@ Getting the CSRF token in a handler:
 
 ```go
 func handler(c fiber.Ctx) error {
-    handler := csrf.HandlerFromContext(c)
+    // Get CSRF token from the context
     token := csrf.TokenFromContext(c)
-    if handler == nil {
-        panic("csrf middleware handler not registered")
+    if token == "" {
+        return c.Status(fiber.StatusInternalServerError)
     }
-    cfg := handler.Config
-    if cfg == nil {
-        panic("csrf middleware handler has no config")
-    }
-    if !strings.Contains(cfg.KeyLookup, ":") {
-        panic("invalid KeyLookup format")
-    }
-    formKey := strings.Split(cfg.KeyLookup, ":")[1]
     
+    // Note: Make sure this matches the KeyLookup configured in your middleware
+    // Example: If you configured csrf.Config{KeyLookup: "form:_csrf"}
+    formKey := "_csrf"
+    
+    // Create a form with the CSRF token
     tmpl := fmt.Sprintf(`<form action="/post" method="POST">
         <input type="hidden" name="%s" value="%s">
         <input type="text" name="message">
         <input type="submit" value="Submit">
     </form>`, formKey, token)
+    
     c.Set("Content-Type", "text/html")
     return c.SendString(tmpl)
 }
