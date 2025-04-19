@@ -1,275 +1,9 @@
-# v1.2.0. Created based on golangci-lint v1.57.1
-
+# version 2.1.2 built with go1.24.2 from 00a561d9 on 2025-04-15T13:26:47Z
+# Created with `golangci-lint migrate` based on the previous configuration
+version: "2"
 run:
-  timeout: 5m
   modules-download-mode: readonly
   allow-serial-runners: true
-
-output:
-  sort-results: true
-
-linters-settings:
-  depguard:
-    rules:
-      all:
-        list-mode: lax
-        deny:
-          - pkg: "flag"
-            desc: '`flag` package is only allowed in main.go'
-          - pkg: "log"
-            desc: 'logging is provided by `pkg/log`'
-          - pkg: "io/ioutil"
-            desc: '`io/ioutil` package is deprecated, use the `io` and `os` package instead'
-          # TODO: Prevent using these without a reason
-          # - pkg: "reflect"
-          #   desc: '`reflect` package is dangerous to use'
-          # - pkg: "unsafe"
-          #   desc: '`unsafe` package is dangerous to use'
-
-  errcheck:
-    check-type-assertions: true
-    check-blank: true
-    disable-default-exclusions: true
-    exclude-functions:
-      - '(*bytes.Buffer).Write' # always returns nil error
-      - '(*github.com/valyala/bytebufferpool.ByteBuffer).Write' # always returns nil error
-      - '(*github.com/valyala/bytebufferpool.ByteBuffer).WriteByte' # always returns nil error
-      - '(*github.com/valyala/bytebufferpool.ByteBuffer).WriteString' # always returns nil error
-
-  errchkjson:
-    report-no-exported: true
-
-  exhaustive:
-    check-generated: true
-    default-signifies-exhaustive: true
-
-  forbidigo:
-    forbid:
-      - ^print(ln)?$
-      - ^fmt\.Print(f|ln)?$
-      - ^http\.Default(Client|ServeMux|Transport)$
-      # TODO: Eventually enable these patterns
-      # - ^panic$
-      # - ^time\.Sleep$
-    analyze-types: true
-
-  gci:
-    sections:
-      - standard
-      - prefix(github.com/gofiber/fiber)
-      - default
-      - blank
-      - dot
-      # - alias
-    custom-order: true
-
-  goconst:
-    numbers: true
-
-  gocritic:
-    # TODO: Uncomment the following lines
-    enabled-tags:
-      - diagnostic
-    #   - style
-    #   - performance
-    #   - experimental
-    #   - opinionated
-    settings:
-      captLocal:
-        paramsOnly: false
-      elseif:
-        skipBalanced: false
-      underef:
-        skipRecvDeref: false
-      # NOTE: Set this option to false if other projects rely on this project's code
-      # unnamedResult:
-        # checkExported: false
-
-  gofumpt:
-    module-path: github.com/gofiber/fiber
-    extra-rules: true
-
-  gosec:
-    excludes:
-      - G104 # TODO: Enable this again. Mostly provided by errcheck
-    config:
-      global:
-        # show-ignored: true # TODO: Enable this
-        audit: true
-
-  govet:
-    enable-all: true
-    disable:
-      - shadow
-
-  grouper:
-    # const-require-grouping: true # TODO: Enable this
-    import-require-single-import: true
-    import-require-grouping: true
-    # var-require-grouping: true # TODO: Conflicts with gofumpt
-
-  loggercheck:
-    require-string-key: true
-    no-printf-like: true
-
-  misspell:
-    locale: US
-
-  nolintlint:
-    require-explanation: true
-    require-specific: true
-
-  nonamedreturns:
-    report-error-in-defer: true
-
-  perfsprint:
-    err-error: true
-
-  predeclared:
-    q: true
-
-  promlinter:
-    strict: true
-
-  # TODO: Enable this
-  # reassign:
-    # patterns:
-      # - '.*'
-
-  revive:
-    enable-all-rules: true
-    rules:
-      # Provided by gomnd linter
-      - name: add-constant
-        disabled: true
-      - name: argument-limit
-        disabled: true
-      # Provided by bidichk
-      - name: banned-characters
-        disabled: true
-      - name: cognitive-complexity
-        disabled: true
-      - name: comment-spacings
-        arguments:
-          - nolint
-        disabled: true # TODO: Do not disable
-      - name: cyclomatic
-        disabled: true
-      # TODO: Enable this check. Currently disabled due to upstream bug.
-      # - name: enforce-repeated-arg-type-style
-      #   arguments:
-      #     - short
-      - name: enforce-slice-style
-        arguments:
-          - make
-        disabled: true # TODO: Do not disable
-      - name: exported
-        disabled: true
-      - name: file-header
-        disabled: true
-      - name: function-result-limit
-        arguments: [3]
-      - name: function-length
-        disabled: true
-      - name: line-length-limit
-        disabled: true
-      - name: max-public-structs
-        disabled: true
-      - name: modifies-parameter
-        disabled: true
-      - name: nested-structs
-        disabled: true # TODO: Do not disable
-      - name: package-comments
-        disabled: true
-      - name: optimize-operands-order
-        disabled: true
-      - name: unchecked-type-assertion
-        disabled: true # TODO: Do not disable
-      - name: unhandled-error
-        disabled: true
-
-  stylecheck:
-    checks:
-      - all
-      - -ST1000
-      - -ST1020
-      - -ST1021
-      - -ST1022
-
-  tagalign:
-    strict: true
-
-  tagliatelle:
-    case:
-      rules:
-        json: snake
-
-  tenv:
-    all: true
-
-  testifylint:
-    enable-all: true
-
-  testpackage:
-    skip-regexp: "^$"
-
-  unparam:
-    # NOTE: Set this option to false if other projects rely on this project's code
-    check-exported: false
-
-  unused:
-    # TODO: Uncomment these two lines
-    # parameters-are-used: false
-    # local-variables-are-used: false
-    # NOTE: Set these options to true if other projects rely on this project's code
-    field-writes-are-uses: true
-    # exported-is-used: true # TODO: Fix issues with this option (upstream)
-    exported-fields-are-used: true
-
-  usestdlibvars:
-    http-method: true
-    http-status-code: true
-    time-weekday: false # TODO: Set to true
-    time-month: false # TODO: Set to true
-    time-layout: false # TODO: Set to true
-    crypto-hash: true
-    default-rpc-path: true
-    sql-isolation-level: true
-    tls-signature-scheme: true
-    constant-kind: true
-
-  wrapcheck:
-    ignorePackageGlobs:
-      - github.com/gofiber/fiber/*
-      - github.com/valyala/fasthttp
-
-issues:
-  exclude-use-default: false
-  exclude-case-sensitive: true
-  max-issues-per-linter: 0
-  max-same-issues: 0
-  exclude-dirs:
-    - internal # TODO: Do not ignore internal packages
-  exclude-files:
-    - '_msgp\.go'
-    - '_msgp_test\.go'
-  exclude-rules:
-    - linters:
-        - err113
-      text: 'do not define dynamic errors, use wrapped static errors instead*'
-    - path: log/.*\.go
-      linters:
-        - depguard
-   # Exclude some linters from running on tests files.
-    - path: _test\.go
-      linters:
-        - bodyclose
-        - err113
-    - source: 'fmt.Fprintf?'
-      linters:
-        - errcheck
-        - revive
-
 linters:
   enable:
     - asasalint
@@ -277,30 +11,25 @@ linters:
     - bidichk
     - bodyclose
     - containedctx
-    - contextcheck
     # - cyclop
+    - contextcheck
+    - copyloopvar
     - decorder
     - depguard
     - dogsled
     # - dupl
     - dupword # TODO: Enable
     - durationcheck
-    - errcheck
+    - err113
     - errchkjson
     - errname
     - errorlint
     - exhaustive
-    # - exhaustivestruct
     # - exhaustruct
-    - copyloopvar
     - forbidigo
     - forcetypeassert
     # - funlen
-    # - gci # TODO: Enable
     - ginkgolinter
-    # - gocheckcompilerdirectives # TODO: Enable
-    # - gochecknoglobals # TODO: Enable
-    # - gochecknoinits # TODO: Enable
     - gochecksumtype
     # - gocognit
     - goconst # TODO: Enable
@@ -308,32 +37,19 @@ linters:
     # - gocyclo
     # - godot
     # - godox
-    - err113
-    - gofmt
-    - gofumpt
     # - goheader
-    - goimports
     # - mnd # TODO: Enable
     - gomoddirectives
     # - gomodguard
     - goprintffuncname
     - gosec
-    - gosimple
     # - gosmopolitan # TODO: Enable
-    - govet
     - grouper
-    # - ifshort # TODO: Enable
     # - importas
     # - inamedparam
-    - ineffassign
-    # - interfacebloat
-    # - interfacer
-    # - ireturn
-    # - lll
     - loggercheck
     # - maintidx
     - makezero
-    # - maligned
     - mirror
     - misspell
     - musttag
@@ -355,12 +71,10 @@ linters:
     - reassign
     - revive
     - rowserrcheck
-    # - scopelint # TODO: Enable
     - sloglint
     - spancheck
     - sqlclosecheck
     - staticcheck
-    - stylecheck
     # - tagalign # TODO: Enable
     - tagliatelle
     - testableexamples
@@ -368,14 +82,258 @@ linters:
     # - testpackage # TODO: Enable
     - thelper
     - tparallel
-    - typecheck
     - unconvert
     - unparam
-    - unused
     - usestdlibvars
     # - varnamelen
-    # - wastedassign # TODO: Enable
     - whitespace
     - wrapcheck
     # - wsl
     - zerologlint
+  settings:
+    depguard:
+      rules:
+        all:
+          list-mode: lax
+          deny:
+            - pkg: flag
+              desc: '`flag` package is only allowed in main.go'
+            - pkg: log
+              desc: logging is provided by `pkg/log`
+            - pkg: io/ioutil
+              desc: '`io/ioutil` package is deprecated, use the `io` and `os` package instead'
+          # TODO: Prevent using these without a reason
+          # - pkg: "reflect"
+          #   desc: '`reflect` package is dangerous to use'
+          # - pkg: "unsafe"
+          #   desc: '`unsafe` package is dangerous to use'
+    errcheck:
+      disable-default-exclusions: true
+      check-type-assertions: true
+      check-blank: true
+      exclude-functions:
+        - (*bytes.Buffer).Write # always returns nil error
+        - (*github.com/valyala/bytebufferpool.ByteBuffer).Write # always returns nil error
+        - (*github.com/valyala/bytebufferpool.ByteBuffer).WriteByte # always returns nil error
+        - (*github.com/valyala/bytebufferpool.ByteBuffer).WriteString # always returns nil error
+    errchkjson:
+      report-no-exported: true
+    exhaustive:
+      default-signifies-exhaustive: true
+    forbidigo:
+      forbid:
+        - pattern: ^print(ln)?$
+        - pattern: ^fmt\.Print(f|ln)?$
+        - pattern: ^http\.Default(Client|ServeMux|Transport)$
+        # TODO: Eventually enable these patterns
+        # - ^panic$
+        # - ^time\.Sleep$
+      analyze-types: true
+    goconst:
+      numbers: true
+    gocritic:
+      # TODO: Uncomment the following lines
+      enabled-tags:
+        - diagnostic
+      #   - style
+      #   - performance
+      #   - experimental
+      #   - opinionated
+      settings:
+        captLocal:
+          paramsOnly: false
+        elseif:
+          skipBalanced: false
+        underef:
+          skipRecvDeref: false
+        # NOTE: Set this option to false if other projects rely on this project's code
+        # unnamedResult:
+          # checkExported: false
+    gosec:
+      excludes:
+        - G104 # TODO: Enable this again. Mostly provided by errcheck
+      config:
+        global:
+          # show-ignored: true # TODO: Enable this
+          audit: true
+    govet:
+      disable:
+        - shadow
+      enable-all: true
+    grouper:
+      # const-require-grouping: true # TODO: Enable this
+      import-require-single-import: true
+      # var-require-grouping: true # TODO: Conflicts with gofumpt
+      import-require-grouping: true
+    loggercheck:
+      require-string-key: true
+      no-printf-like: true
+    misspell:
+      locale: US
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    nonamedreturns:
+      report-error-in-defer: true
+    perfsprint:
+      err-error: true
+    predeclared:
+      qualified-name: true
+    promlinter:
+      strict: true
+
+    # TODO: Enable this
+    # reassign:
+      # patterns:
+        # - '.*'
+
+    revive:
+      enable-all-rules: true
+      rules:
+        # Provided by gomnd linter
+        - name: add-constant
+          disabled: true
+        - name: argument-limit
+          disabled: true
+        # Provided by bidichk
+        - name: banned-characters
+          disabled: true
+        - name: cognitive-complexity
+          disabled: true
+        - name: comment-spacings
+          arguments:
+            - nolint
+          disabled: true # TODO: Do not disable
+        - name: cyclomatic
+          disabled: true
+        # TODO: Enable this check. Currently disabled due to upstream bug.
+        # - name: enforce-repeated-arg-type-style
+        #   arguments:
+        #     - short
+        - name: enforce-slice-style
+          arguments:
+            - make
+          disabled: true # TODO: Do not disable
+        - name: exported
+          disabled: true
+        - name: file-header
+          disabled: true
+        - name: function-result-limit
+          arguments:
+            - 3
+        - name: function-length
+          disabled: true
+        - name: line-length-limit
+          disabled: true
+        - name: max-public-structs
+          disabled: true
+        - name: modifies-parameter
+          disabled: true
+        - name: nested-structs
+          disabled: true # TODO: Do not disable
+        - name: package-comments
+          disabled: true
+        - name: optimize-operands-order
+          disabled: true
+        - name: unchecked-type-assertion
+          disabled: true # TODO: Do not disable
+        - name: unhandled-error
+          disabled: true
+    staticcheck:
+      checks:
+        - -ST1000
+        - -ST1020
+        - -ST1021
+        - -ST1022
+        - all
+    tagalign:
+      strict: true
+    tagliatelle:
+      case:
+        rules:
+          json: snake
+    testifylint:
+      enable-all: true
+    testpackage:
+      skip-regexp: ^$
+    unparam:
+      # NOTE: Set this option to false if other projects rely on this project's code
+      check-exported: false
+    unused:
+      # TODO: Uncomment these two lines
+      # parameters-are-used: false
+      # local-variables-are-used: false
+      # NOTE: Set these options to true if other projects rely on this project's code
+      field-writes-are-uses: true
+      # exported-is-used: true # TODO: Fix issues with this option (upstream)
+      exported-fields-are-used: true
+    usestdlibvars:
+      http-method: true
+      http-status-code: true
+      time-weekday: false # TODO: Set to true
+      time-month: false # TODO: Set to true
+      time-layout: false # TODO: Set to true
+      crypto-hash: true
+      default-rpc-path: true
+      sql-isolation-level: true
+      tls-signature-scheme: true
+      constant-kind: true
+    wrapcheck:
+      ignore-package-globs:
+        - github.com/gofiber/fiber/*
+        - github.com/valyala/fasthttp
+  exclusions:
+    generated: lax
+    rules:
+      - linters:
+          - err113
+        text: (?i)do not define dynamic errors, use wrapped static errors instead*
+      - linters:
+          - depguard
+        path: log/.*\.go
+      - linters:
+          - bodyclose
+          - err113
+     # Exclude some linters from running on tests files.
+        path: _test\.go
+      - linters:
+          - errcheck
+          - revive
+        source: (?i)fmt.Fprintf?
+    paths:
+      - _msgp\.go
+      - _msgp_test\.go
+      - internal
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+formatters:
+  enable:
+    - gofmt
+    - gofumpt
+    - goimports
+  settings:
+    gci:
+      sections:
+        - standard
+        - prefix(github.com/gofiber/fiber)
+        - default
+        - blank
+        - dot
+        # - alias
+      custom-order: true
+    gofumpt:
+      module-path: github.com/gofiber/fiber
+      extra-rules: true
+  exclusions:
+    generated: lax
+    paths:
+      - _msgp\.go
+      - _msgp_test\.go
+      - internal # TODO: Do not ignore internal packages
+      - third_party$
+      - builtin$
+      - examples$
