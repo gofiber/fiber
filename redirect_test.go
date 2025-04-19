@@ -22,7 +22,7 @@ func Test_Redirect_To(t *testing.T) {
 
 	err := c.Redirect().To("http://default.com")
 	require.NoError(t, err)
-	require.Equal(t, 302, c.Response().StatusCode())
+	require.Equal(t, 303, c.Response().StatusCode())
 	require.Equal(t, "http://default.com", string(c.Response().Header.Peek(HeaderLocation)))
 
 	err = c.Redirect().Status(301).To("http://example.com")
@@ -39,7 +39,7 @@ func Test_Redirect_To_WithFlashMessages(t *testing.T) {
 
 	err := c.Redirect().With("success", "2").With("success", "1").With("message", "test", 2).To("http://example.com")
 	require.NoError(t, err)
-	require.Equal(t, 302, c.Response().StatusCode())
+	require.Equal(t, 303, c.Response().StatusCode())
 	require.Equal(t, "http://example.com", string(c.Response().Header.Peek(HeaderLocation)))
 
 	c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
@@ -68,7 +68,7 @@ func Test_Redirect_Route_WithParams(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	require.Equal(t, 302, c.Response().StatusCode())
+	require.Equal(t, 303, c.Response().StatusCode())
 	require.Equal(t, "/user/fiber", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
@@ -88,7 +88,7 @@ func Test_Redirect_Route_WithParams_WithQueries(t *testing.T) {
 		Queries: map[string]string{"data[0][name]": "john", "data[0][age]": "10", "test": "doe"},
 	})
 	require.NoError(t, err)
-	require.Equal(t, 302, c.Response().StatusCode())
+	require.Equal(t, 303, c.Response().StatusCode())
 
 	// analysis of query parameters with url parsing, since a map pass is always randomly ordered
 	location, err := url.Parse(string(c.Response().Header.Peek(HeaderLocation)))
@@ -112,7 +112,7 @@ func Test_Redirect_Route_WithOptionalParams(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	require.Equal(t, 302, c.Response().StatusCode())
+	require.Equal(t, 303, c.Response().StatusCode())
 	require.Equal(t, "/user/fiber", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
@@ -127,7 +127,7 @@ func Test_Redirect_Route_WithOptionalParamsWithoutValue(t *testing.T) {
 
 	err := c.Redirect().Route("user")
 	require.NoError(t, err)
-	require.Equal(t, 302, c.Response().StatusCode())
+	require.Equal(t, 303, c.Response().StatusCode())
 	require.Equal(t, "/user/", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
@@ -146,7 +146,7 @@ func Test_Redirect_Route_WithGreedyParameters(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	require.Equal(t, 302, c.Response().StatusCode())
+	require.Equal(t, 303, c.Response().StatusCode())
 	require.Equal(t, "/user/test/routes", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
@@ -161,7 +161,7 @@ func Test_Redirect_Back(t *testing.T) {
 
 	err := c.Redirect().Back("/")
 	require.NoError(t, err)
-	require.Equal(t, 302, c.Response().StatusCode())
+	require.Equal(t, 303, c.Response().StatusCode())
 	require.Equal(t, "/", string(c.Response().Header.Peek(HeaderLocation)))
 
 	err = c.Redirect().Back()
@@ -182,7 +182,7 @@ func Test_Redirect_Back_WithFlashMessages(t *testing.T) {
 
 	err := c.Redirect().With("success", "1").With("message", "test").Back("/")
 	require.NoError(t, err)
-	require.Equal(t, 302, c.Response().StatusCode())
+	require.Equal(t, 303, c.Response().StatusCode())
 	require.Equal(t, "/", string(c.Response().Header.Peek(HeaderLocation)))
 
 	c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
@@ -211,7 +211,7 @@ func Test_Redirect_Back_WithReferer(t *testing.T) {
 	c.Request().Header.Set(HeaderReferer, "/back")
 	err := c.Redirect().Back("/")
 	require.NoError(t, err)
-	require.Equal(t, 302, c.Response().StatusCode())
+	require.Equal(t, 303, c.Response().StatusCode())
 	require.Equal(t, "/back", c.Get(HeaderReferer))
 	require.Equal(t, "/back", string(c.Response().Header.Peek(HeaderLocation)))
 }
@@ -233,7 +233,7 @@ func Test_Redirect_Route_WithFlashMessages(t *testing.T) {
 	require.Contains(t, c.redirect.messages, redirectionMsg{key: "message", value: "test", level: 0, isOldInput: false})
 
 	require.NoError(t, err)
-	require.Equal(t, 302, c.Response().StatusCode())
+	require.Equal(t, 303, c.Response().StatusCode())
 	require.Equal(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
 
 	c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
@@ -270,7 +270,7 @@ func Test_Redirect_Route_WithOldInput(t *testing.T) {
 		require.Contains(t, c.redirect.messages, redirectionMsg{key: "name", value: "tom", isOldInput: true})
 
 		require.NoError(t, err)
-		require.Equal(t, 302, c.Response().StatusCode())
+		require.Equal(t, 303, c.Response().StatusCode())
 		require.Equal(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
 
 		c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
@@ -306,7 +306,7 @@ func Test_Redirect_Route_WithOldInput(t *testing.T) {
 		require.Contains(t, c.redirect.messages, redirectionMsg{key: "name", value: "tom", isOldInput: true})
 
 		require.NoError(t, err)
-		require.Equal(t, 302, c.Response().StatusCode())
+		require.Equal(t, 303, c.Response().StatusCode())
 		require.Equal(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
 
 		c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
@@ -350,7 +350,7 @@ func Test_Redirect_Route_WithOldInput(t *testing.T) {
 		require.Contains(t, c.redirect.messages, redirectionMsg{key: "name", value: "tom", isOldInput: true})
 
 		require.NoError(t, err)
-		require.Equal(t, 302, c.Response().StatusCode())
+		require.Equal(t, 303, c.Response().StatusCode())
 		require.Equal(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
 
 		c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
@@ -480,7 +480,7 @@ func Benchmark_Redirect_Route(b *testing.B) {
 	}
 
 	require.NoError(b, err)
-	require.Equal(b, 302, c.Response().StatusCode())
+	require.Equal(b, 303, c.Response().StatusCode())
 	require.Equal(b, "/user/fiber", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
@@ -508,7 +508,7 @@ func Benchmark_Redirect_Route_WithQueries(b *testing.B) {
 	}
 
 	require.NoError(b, err)
-	require.Equal(b, 302, c.Response().StatusCode())
+	require.Equal(b, 303, c.Response().StatusCode())
 	// analysis of query parameters with url parsing, since a map pass is always randomly ordered
 	location, err := url.Parse(string(c.Response().Header.Peek(HeaderLocation)))
 	require.NoError(b, err, "url.Parse(location)")
@@ -535,7 +535,7 @@ func Benchmark_Redirect_Route_WithFlashMessages(b *testing.B) {
 	}
 
 	require.NoError(b, err)
-	require.Equal(b, 302, c.Response().StatusCode())
+	require.Equal(b, 303, c.Response().StatusCode())
 	require.Equal(b, "/user", string(c.Response().Header.Peek(HeaderLocation)))
 
 	c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
