@@ -15,7 +15,7 @@ The redirect methods are used to redirect the context (request) to a different U
 Redirects to the URL derived from the specified path, with a specified [status](#status), a positive integer that corresponds to an HTTP status code.
 
 :::info
-If **not** specified, status defaults to **302 Found**.
+If **not** specified, status defaults to **303 See Other**.
 :::
 
 ```go title="Signature"
@@ -24,7 +24,7 @@ func (r *Redirect) To(location string) error
 
 ```go title="Example"
 app.Get("/coffee", func(c fiber.Ctx) error {
-  // => HTTP - GET 301 /teapot 
+  // => HTTP - GET 301 /teapot
   return c.Redirect().Status(fiber.StatusMovedPermanently).To("/teapot")
 })
 
@@ -35,11 +35,11 @@ app.Get("/teapot", func(c fiber.Ctx) error {
 
 ```go title="More examples"
 app.Get("/", func(c fiber.Ctx) error {
-  // => HTTP - GET 302 /foo/bar 
+  // => HTTP - GET 303 /foo/bar
   return c.Redirect().To("/foo/bar")
-  // => HTTP - GET 302 ../login
+  // => HTTP - GET 303 ../login
   return c.Redirect().To("../login")
-  // => HTTP - GET 302 http://example.com
+  // => HTTP - GET 303 http://example.com
   return c.Redirect().To("http://example.com")
   // => HTTP - GET 301 https://example.com
   return c.Redirect().Status(301).To("http://example.com")
@@ -92,7 +92,7 @@ app.Get("/user/:name", func(c fiber.Ctx) error {
 Redirects back to the referer URL. It redirects to a fallback URL if the referer header doesn't exist, with a specified status, a positive integer that corresponds to an HTTP status code.
 
 :::info
-If **not** specified, status defaults to **302 Found**.
+If **not** specified, status defaults to **303 See Other**.
 :::
 
 ```go title="Signature"
@@ -134,7 +134,7 @@ func (r *Redirect) Status(status int) *Redirect
 
 ```go title="Example"
 app.Get("/coffee", func(c fiber.Ctx) error {
-  // => HTTP - GET 301 /teapot 
+  // => HTTP - GET 301 /teapot
   return c.Redirect().Status(fiber.StatusMovedPermanently).To("/teapot")
 })
 ```
