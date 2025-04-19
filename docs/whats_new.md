@@ -256,7 +256,7 @@ The route method is now like [`Express`](https://expressjs.com/de/api.html#app.r
 
 ```diff
 -    Route(prefix string, fn func(router Router), name ...string) Router
-+    Route(path string) Register    
++    Route(path string) Register
 ```
 
 <details>
@@ -299,7 +299,7 @@ Registering a subapp is now also possible via the [`Use`](./api/app#use) method 
 // register mulitple prefixes
 app.Use(["/v1", "/v2"], func(c fiber.Ctx) error {
     // Middleware for /v1 and /v2
-    return c.Next() 
+    return c.Next()
 })
 
 // define subapp
@@ -577,6 +577,9 @@ In this example, the `Bind` method is used to bind the request body to the `User
 
 Fiber v3 enhances the redirect functionality by introducing new methods and improving existing ones. The new redirect methods provide more flexibility and control over the redirection process.
 
+The default response status is changes from 302 Found to 303 See Other for more
+predictable behavior across browsers.
+
 ### New Methods
 
 - `Redirect().To()`: Redirects to a specific URL.
@@ -826,7 +829,7 @@ The adaptor middleware has been significantly optimized for performance and effi
 
 ### Cache
 
-We are excited to introduce a new option in our caching middleware: Cache Invalidator. This feature provides greater control over cache management, allowing you to define a custom conditions for invalidating cache entries.  
+We are excited to introduce a new option in our caching middleware: Cache Invalidator. This feature provides greater control over cache management, allowing you to define a custom conditions for invalidating cache entries.
 Additionally, the caching middleware has been optimized to avoid caching non-cacheable status codes, as defined by the [HTTP standards](https://datatracker.ietf.org/doc/html/rfc7231#section-6.1). This improvement enhances cache accuracy and reduces unnecessary cache storage usage.
 
 ### CORS
@@ -947,7 +950,7 @@ Logger provides predefined formats that you can use by name or directly by speci
 
 ```go
 app.Use(logger.New(logger.Config{
-    Format: logger.FormatCombined, 
+    Format: logger.FormatCombined,
 }))
 ```
 

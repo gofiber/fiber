@@ -25,7 +25,7 @@ type Config struct {
 
 	// The status code when redirecting
 	// This is ignored if Redirect is disabled
-	// Optional. Default: 302 Temporary Redirect
+	// Optional. Default: 303 See Other
 	StatusCode int
 }
 
