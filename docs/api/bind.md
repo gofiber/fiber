@@ -441,12 +441,14 @@ app.Get("/user/:id", func(c fiber.Ctx) error {
 })
 ```
 
-### All 
+### All
 
 The `All` function binds data from various sources (URL parameters, request body, query parameters, headers, and cookies) into the provided struct pointer `out`. It processes each source in a predefined order, applying data to the struct fields based on their tags.
 
 #### Precedence Order
+
 The binding sources have the following precedence:
+
 1. **URL Parameters (URI)**
 2. **Request Body (e.g., JSON or form data)**
 3. **Query Parameters**
@@ -459,11 +461,11 @@ func (b *Bind) All(out any) error
 
 ``` go title="Example"
 type User struct {
-	Name      string                `query:"name" json:"name" form:"name"`
-	Email     string                `json:"email" form:"email"`
-	Role      string                `header:"X-User-Role"`
-	SessionID string                `json:"session_id" cookie:"session_id"`
-	ID        int                   `param:"id" query:"id" json:"id" form:"id"`
+    Name      string                `query:"name" json:"name" form:"name"`
+    Email     string                `json:"email" form:"email"`
+    Role      string                `header:"X-User-Role"`
+    SessionID string                `json:"session_id" cookie:"session_id"`
+    ID        int                   `param:"id" query:"id" json:"id" form:"id"`
 }
 
 app.Post("/users", func(c fiber.Ctx) error {
@@ -477,6 +479,7 @@ app.Post("/users", func(c fiber.Ctx) error {
     return c.JSON(user)
 })
 ```
+
 ## Custom
 
 To use custom binders, you have to use this method.
