@@ -281,6 +281,7 @@ func findNextParamPosition(pattern string) int {
 				break
 			}
 			nextParamPosition++
+			// if nextParamPosition is the last index; if so, no further search is needed.
 			if len(pattern) <= nextParamPosition+1 {
 				break
 			}
