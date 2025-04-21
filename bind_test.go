@@ -2002,7 +2002,7 @@ func Test_Bind_All(t *testing.T) {
 				Body:        []byte("id=2&name=formname&email=form@doe.com"),
 			},
 			expected: &User{
-				ID:    1,
+				ID:    2,
 				Name:  "formname",
 				Email: "form@doe.com",
 			},
