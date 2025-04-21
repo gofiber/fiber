@@ -277,7 +277,7 @@ func findNextParamPosition(pattern string) int {
 		// if there are more, move the parameter start to the last parameter char
 		for {
 			found := findNextNonEscapedCharsetPosition(pattern[nextParamPosition+1:], parameterStartChars)
-			if found != 0 {
+			if found > 0 {
 				break
 			}
 			nextParamPosition++
