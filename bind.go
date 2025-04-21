@@ -299,7 +299,6 @@ func (b *Bind) All(out any) error {
 	// TODO: Create WithOverrideEmptyValues
 	// Bind from each source, but only update unset fields
 	for _, bindFunc := range sources {
-
 		if err := bindFunc(tempStruct); err != nil {
 			return err
 		}

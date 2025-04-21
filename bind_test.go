@@ -1889,11 +1889,11 @@ func Test_Bind_RepeatParserWithSameStruct(t *testing.T) {
 }
 
 type RequestConfig struct {
-	ContentType string
-	Body        []byte
 	Headers     map[string]string
 	Cookies     map[string]string
+	ContentType string
 	Query       string
+	Body        []byte
 }
 
 func (rc *RequestConfig) ApplyTo(ctx Ctx) {
@@ -1919,12 +1919,12 @@ func (rc *RequestConfig) ApplyTo(ctx Ctx) {
 func Test_Bind_All(t *testing.T) {
 	t.Parallel()
 	type User struct {
-		ID        int                   `param:"id" query:"id" json:"id" form:"id"`
 		Avatar    *multipart.FileHeader `form:"avatar"`
 		Name      string                `query:"name" json:"name" form:"name"`
 		Email     string                `json:"email" form:"email"`
-		Role      string                `header:"x-user-role"`
+		Role      string                `header:"X-User-Role"`
 		SessionID string                `json:"session_id" cookie:"session_id"`
+		ID        int                   `param:"id" query:"id" json:"id" form:"id"`
 	}
 	newBind := func(app *App) *Bind {
 		return &Bind{
@@ -1937,7 +1937,7 @@ func Test_Bind_All(t *testing.T) {
 			ContentType: MIMEApplicationJSON,
 			Body:        []byte(`{"name":"john", "email": "john@doe.com", "session_id": "abc1234", "id": 1}`),
 			Headers: map[string]string{
-				"x-user-role": "admin",
+				"X-User-Role": "admin",
 			},
 			Cookies: map[string]string{
 				"session_id": "abc123",
@@ -1947,10 +1947,10 @@ func Test_Bind_All(t *testing.T) {
 	}
 
 	tests := []struct {
-		name     string
 		out      any
 		expected *User
 		config   *RequestConfig
+		name     string
 		wantErr  bool
 	}{
 		{
@@ -2013,6 +2013,7 @@ func Test_Bind_All(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			bind := newBind(app)
 
 			if tt.config != nil {
@@ -2024,7 +2025,7 @@ func Test_Bind_All(t *testing.T) {
 				assert.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			if tt.expected != nil {
 				actual, ok := tt.out.(*User)
@@ -2044,9 +2045,9 @@ func Test_Bind_All(t *testing.T) {
 func Test_Bind_All_Uri_Precedence(t *testing.T) {
 	t.Parallel()
 	type User struct {
-		ID    int    `param:"id" json:"id" query:"id" form:"id"`
 		Name  string `json:"name"`
 		Email string `json:"email"`
+		ID    int    `param:"id" json:"id" query:"id" form:"id"`
 	}
 
 	app := New()
@@ -2074,12 +2075,11 @@ func Test_Bind_All_Uri_Precedence(t *testing.T) {
 // go test -v -run=^$ -bench=Benchmark_Bind_All -benchmem -count=4
 func BenchmarkBind_All(b *testing.B) {
 	type User struct {
-		ID        int                   `param:"id" query:"id" json:"id" form:"id"`
-		Avatar    *multipart.FileHeader `form:"avatar"`
-		Name      string                `query:"name" json:"name" form:"name"`
-		Email     string                `json:"email" form:"email"`
-		Role      string                `header:"x-user-role"`
-		SessionID string                `json:"session_id" cookie:"session_id"`
+		SessionID string `json:"session_id" cookie:"session_id"`
+		Name      string `query:"name" json:"name" form:"name"`
+		Email     string `json:"email" form:"email"`
+		Role      string `header:"X-User-Role"`
+		ID        int    `param:"id" query:"id" json:"id" form:"id"`
 	}
 
 	app := New()
@@ -2089,7 +2089,7 @@ func BenchmarkBind_All(b *testing.B) {
 		ContentType: MIMEApplicationJSON,
 		Body:        []byte(`{"name":"john", "email": "john@doe.com", "session_id": "abc1234", "id": 1}`),
 		Headers: map[string]string{
-			"x-user-role": "admin",
+			"X-User-Role": "admin",
 		},
 		Cookies: map[string]string{
 			"session_id": "abc123",
