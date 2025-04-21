@@ -10,11 +10,13 @@ import (
 	"mime/multipart"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/gofiber/fiber/v3/binder"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -1886,51 +1888,225 @@ func Test_Bind_RepeatParserWithSameStruct(t *testing.T) {
 	testDecodeParser(MIMEMultipartForm+`;boundary="b"`, "--b\r\nContent-Disposition: form-data; name=\"body_param\"\r\n\r\nbody_param\r\n--b--")
 }
 
-func TestBind_All(t *testing.T) {
+type RequestConfig struct {
+	ContentType string
+	Body        []byte
+	Headers     map[string]string
+	Cookies     map[string]string
+	Query       string
+}
+
+func (rc *RequestConfig) ApplyTo(ctx Ctx) {
+	if rc.Body != nil {
+		ctx.Request().SetBody(rc.Body)
+		ctx.Request().Header.SetContentLength(len(rc.Body))
+	}
+	if rc.ContentType != "" {
+		ctx.Request().Header.SetContentType(rc.ContentType)
+	}
+	for k, v := range rc.Headers {
+		ctx.Request().Header.Set(k, v)
+	}
+	for k, v := range rc.Cookies {
+		ctx.Request().Header.SetCookie(k, v)
+	}
+	if rc.Query != "" {
+		ctx.Request().URI().SetQueryString(rc.Query)
+	}
+}
+
+// go test -run Test_Bind_All
+func Test_Bind_All(t *testing.T) {
+	t.Parallel()
 	type User struct {
 		ID        int                   `param:"id" query:"id" json:"id" form:"id"`
+		Avatar    *multipart.FileHeader `form:"avatar"`
 		Name      string                `query:"name" json:"name" form:"name"`
 		Email     string                `json:"email" form:"email"`
 		Role      string                `header:"x-user-role"`
-		SessionID string                `json:"SessionID" cookie:"session_id"`
-		Avatar    *multipart.FileHeader `form:"avatar"`
+		SessionID string                `json:"session_id" cookie:"session_id"`
 	}
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	newBind := func(app *App) *Bind {
+		return &Bind{
+			ctx: app.AcquireCtx(&fasthttp.RequestCtx{}),
+		}
+	}
+
+	defaultConfig := func() *RequestConfig {
+		return &RequestConfig{
+			ContentType: MIMEApplicationJSON,
+			Body:        []byte(`{"name":"john", "email": "john@doe.com", "session_id": "abc1234", "id": 1}`),
+			Headers: map[string]string{
+				"x-user-role": "admin",
+			},
+			Cookies: map[string]string{
+				"session_id": "abc123",
+			},
+			Query: "id=1&name=john",
+		}
+	}
+
 	tests := []struct {
-		name    string
-		bind    *Bind
-		out     any
-		wantErr bool
+		name     string
+		out      any
+		expected *User
+		config   *RequestConfig
+		wantErr  bool
 	}{
 		{
 			name:    "Invalid output type",
-			bind:    &Bind{},
 			out:     123,
 			wantErr: true,
 		},
 		{
-			// Validate this test case
-			name: "Successful binding",
-			bind: &Bind{
-				ctx: c,
-			},
-			out: &User{
-				ID:        10,
-				Name:      "Alice",
-				Email:     "alice@example.com",
+			name:   "Successful binding",
+			out:    new(User),
+			config: defaultConfig(),
+			expected: &User{
+				ID:        1,
+				Name:      "john",
+				Email:     "john@doe.com",
 				Role:      "admin",
-				SessionID: "abc123",
+				SessionID: "abc1234",
 			},
-			wantErr: false,
+		},
+		{
+			name: "Missing fields (partial JSON only)",
+			out:  new(User),
+			config: &RequestConfig{
+				ContentType: MIMEApplicationJSON,
+				Body:        []byte(`{"name":"partial"}`),
+			},
+			expected: &User{
+				Name: "partial",
+			},
+		},
+		{
+			name: "Override query with JSON",
+			out:  new(User),
+			config: &RequestConfig{
+				ContentType: MIMEApplicationJSON,
+				Body:        []byte(`{"name":"fromjson", "id": 99}`),
+				Query:       "id=1&name=queryname",
+			},
+			expected: &User{
+				Name: "fromjson",
+				ID:   99,
+			},
+		},
+		{
+			name: "Form binding",
+			out:  new(User),
+			config: &RequestConfig{
+				ContentType: MIMEApplicationForm,
+				Body:        []byte("id=2&name=formname&email=form@doe.com"),
+			},
+			expected: &User{
+				ID:    1,
+				Name:  "formname",
+				Email: "form@doe.com",
+			},
 		},
 	}
 
+	app := New()
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.bind.All(tt.out); (err != nil) != tt.wantErr {
-				t.Errorf("Bind.All() error = %v, wantErr %v", err, tt.wantErr)
+			bind := newBind(app)
+
+			if tt.config != nil {
+				tt.config.ApplyTo(bind.ctx)
+			}
+
+			err := bind.All(tt.out)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+
+			if tt.expected != nil {
+				actual, ok := tt.out.(*User)
+				assert.True(t, ok)
+
+				assert.Equal(t, tt.expected.ID, actual.ID)
+				assert.Equal(t, tt.expected.Name, actual.Name)
+				assert.Equal(t, tt.expected.Email, actual.Email)
+				assert.Equal(t, tt.expected.Role, actual.Role)
+				assert.Equal(t, tt.expected.SessionID, actual.SessionID)
 			}
 		})
+	}
+}
+
+// go test -run Test_Bind_All_Uri_Precedence
+func Test_Bind_All_Uri_Precedence(t *testing.T) {
+	t.Parallel()
+	type User struct {
+		ID    int    `param:"id" json:"id" query:"id" form:"id"`
+		Name  string `json:"name"`
+		Email string `json:"email"`
+	}
+
+	app := New()
+
+	app.Post("/test1/:id", func(c Ctx) error {
+		d := new(User)
+		if err := c.Bind().All(d); err != nil {
+			t.Fatal(err)
+		}
+
+		require.Equal(t, 111, d.ID)
+		require.Equal(t, "john", d.Name)
+		require.Equal(t, "john@doe.com", d.Email)
+		return nil
+	})
+
+	body := strings.NewReader(`{"id": 999, "name": "john", "email": "john@doe.com"}`)
+	req := httptest.NewRequest(MethodPost, "/test1/111?id=888", body)
+	req.Header.Set("Content-Type", "application/json")
+	res, err := app.Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, 200, res.StatusCode)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Bind_All -benchmem -count=4
+func BenchmarkBind_All(b *testing.B) {
+	type User struct {
+		ID        int                   `param:"id" query:"id" json:"id" form:"id"`
+		Avatar    *multipart.FileHeader `form:"avatar"`
+		Name      string                `query:"name" json:"name" form:"name"`
+		Email     string                `json:"email" form:"email"`
+		Role      string                `header:"x-user-role"`
+		SessionID string                `json:"session_id" cookie:"session_id"`
+	}
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	config := &RequestConfig{
+		ContentType: MIMEApplicationJSON,
+		Body:        []byte(`{"name":"john", "email": "john@doe.com", "session_id": "abc1234", "id": 1}`),
+		Headers: map[string]string{
+			"x-user-role": "admin",
+		},
+		Cookies: map[string]string{
+			"session_id": "abc123",
+		},
+		Query: "id=1&name=john",
+	}
+
+	bind := &Bind{
+		ctx: c,
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		user := &User{}
+		config.ApplyTo(c)
+		if err := bind.All(user); err != nil {
+			b.Fatalf("unexpected error: %v", err)
+		}
 	}
 }
