@@ -275,9 +275,13 @@ func findNextParamPosition(pattern string) int {
 	if nextParamPosition != -1 && len(pattern) > nextParamPosition && pattern[nextParamPosition] != wildcardParam {
 		// search for parameter characters for the found parameter start,
 		// if there are more, move the parameter start to the last parameter char
-		for found := findNextNonEscapedCharsetPosition(pattern[nextParamPosition+1:], parameterStartChars); found == 0; {
+		for {
+			found := findNextNonEscapedCharsetPosition(pattern[nextParamPosition+1:], parameterStartChars)
+			if found != 0 {
+				break
+			}
 			nextParamPosition++
-			if len(pattern) > nextParamPosition {
+			if len(pattern) <= nextParamPosition+1 {
 				break
 			}
 		}
