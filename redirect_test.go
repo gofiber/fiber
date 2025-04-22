@@ -19,6 +19,7 @@ func Test_Redirect_To(t *testing.T) {
 	t.Parallel()
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
 
 	err := c.Redirect().To("http://default.com")
 	require.NoError(t, err)
