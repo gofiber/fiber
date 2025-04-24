@@ -123,16 +123,6 @@ var (
 	parameterDelimiterChars = append([]byte{paramStarterChar, escapeChar}, routeDelimiter...)
 	// list of chars to find the end of a parameter
 	parameterEndChars = append([]byte{optionalParam}, parameterDelimiterChars...)
-	// list of parameter constraint start
-	parameterConstraintStartChars = []byte{paramConstraintStart}
-	// list of parameter constraint end
-	parameterConstraintEndChars = []byte{paramConstraintEnd}
-	// list of parameter separator
-	parameterConstraintSeparatorChars = []byte{paramConstraintSeparator}
-	// list of parameter constraint data start
-	parameterConstraintDataStartChars = []byte{paramConstraintDataStart}
-	// list of parameter constraint data separator
-	parameterConstraintDataSeparatorChars = []byte{paramConstraintDataSeparator}
 )
 
 // RoutePatternMatch checks if a given path matches a Fiber route pattern.
@@ -337,8 +327,8 @@ func (parser *routeParser) analyseParameterPart(pattern string, customConstraint
 
 	// find constraint part if exists in the parameter part and remove it
 	if parameterEndPosition > 0 {
-		parameterConstraintStart = findNextNonEscapedCharsetPosition(pattern[0:parameterEndPosition], parameterConstraintStartChars)
-		parameterConstraintEnd = strings.LastIndexByte(pattern[0:parameterEndPosition+1], paramConstraintEnd)
+		parameterConstraintStart = findNextNonEscapedCharPosition(pattern[:parameterEndPosition], paramConstraintStart)
+		parameterConstraintEnd = strings.LastIndexByte(pattern[:parameterEndPosition+1], paramConstraintEnd)
 	}
 
 	// cut params part
@@ -351,11 +341,11 @@ func (parser *routeParser) analyseParameterPart(pattern string, customConstraint
 
 	if hasConstraint := parameterConstraintStart != -1 && parameterConstraintEnd != -1; hasConstraint {
 		constraintString := pattern[parameterConstraintStart+1 : parameterConstraintEnd]
-		userConstraints := splitNonEscaped(constraintString, string(parameterConstraintSeparatorChars))
+		userConstraints := splitNonEscaped(constraintString, paramConstraintSeparator)
 		constraints = make([]*Constraint, 0, len(userConstraints))
 
 		for _, c := range userConstraints {
-			start := findNextNonEscapedCharsetPosition(c, parameterConstraintDataStartChars)
+			start := findNextNonEscapedCharPosition(c, paramConstraintDataStart)
 			end := strings.LastIndexByte(c, paramConstraintDataEnd)
 
 			// Assign constraint
@@ -368,7 +358,7 @@ func (parser *routeParser) analyseParameterPart(pattern string, customConstraint
 
 				// remove escapes from data
 				if constraint.ID != regexConstraint {
-					constraint.Data = splitNonEscaped(c[start+1:end], string(parameterConstraintDataSeparatorChars))
+					constraint.Data = splitNonEscaped(c[start+1:end], paramConstraintDataSeparator)
 					if len(constraint.Data) == 1 {
 						constraint.Data[0] = RemoveEscapeChar(constraint.Data[0])
 					} else if len(constraint.Data) == 2 { // This is fine, we simply expect two parts
@@ -432,11 +422,11 @@ func findNextCharsetPosition(search string, charset []byte) int {
 	return nextPosition
 }
 
-// findNextCharsetPositionConstraint search the next char position from the charset
+// findNextCharsetPositionConstraint searches the next char position from the charset
 // unlike findNextCharsetPosition, it takes care of constraint start-end chars to parse route pattern
 func findNextCharsetPositionConstraint(search string, charset []byte) int {
-	constraintStart := findNextNonEscapedCharsetPosition(search, parameterConstraintStartChars)
-	constraintEnd := findNextNonEscapedCharsetPosition(search, parameterConstraintEndChars)
+	constraintStart := findNextNonEscapedCharPosition(search, paramConstraintStart)
+	constraintEnd := findNextNonEscapedCharPosition(search, paramConstraintEnd)
 	nextPosition := -1
 
 	for _, char := range charset {
@@ -452,7 +442,7 @@ func findNextCharsetPositionConstraint(search string, charset []byte) int {
 	return nextPosition
 }
 
-// findNextNonEscapedCharsetPosition search the next char position from the charset and skip the escaped characters
+// findNextNonEscapedCharsetPosition searches the next char position from the charset and skips the escaped characters
 func findNextNonEscapedCharsetPosition(search string, charset []byte) int {
 	pos := findNextCharsetPosition(search, charset)
 	for pos > 0 && search[pos-1] == escapeChar {
@@ -471,16 +461,26 @@ func findNextNonEscapedCharsetPosition(search string, charset []byte) int {
 	return pos
 }
 
+// findNextNonEscapedCharPosition searches the next char position and skips the escaped characters
+func findNextNonEscapedCharPosition(search string, char byte) int {
+	for i := 0; i < len(search); i++ {
+		if search[i] == char && (i == 0 || search[i-1] != escapeChar) {
+			return i
+		}
+	}
+	return -1
+}
+
 // splitNonEscaped slices s into all substrings separated by sep and returns a slice of the substrings between those separators
 // This function also takes a care of escape char when splitting.
-func splitNonEscaped(s, sep string) []string {
+func splitNonEscaped(s string, sep byte) []string {
 	var result []string
-	i := findNextNonEscapedCharsetPosition(s, []byte(sep))
+	i := findNextNonEscapedCharPosition(s, sep)
 
 	for i > -1 {
 		result = append(result, s[:i])
-		s = s[i+len(sep):]
-		i = findNextNonEscapedCharsetPosition(s, []byte(sep))
+		s = s[i+1:]
+		i = findNextNonEscapedCharPosition(s, sep)
 	}
 
 	return append(result, s)
@@ -672,12 +672,25 @@ func getParamConstraintType(constraintPart string) TypeConstraint {
 	}
 }
 
-//nolint:errcheck // TODO: Properly check _all_ errors in here, log them & immediately return
+// CheckConstraint validates if a param matches the given constraint
+// Returns true if the param passes the constraint check, false otherwise
+//
+//nolint:errcheck // TODO: Properly check _all_ errors in here, log them or immediately return
 func (c *Constraint) CheckConstraint(param string) bool {
-	var err error
-	var num int
+	// First check if there's a custom constraint with the same name
+	// This allows custom constraints to override built-in constraints
+	for _, cc := range c.customConstraints {
+		if cc.Name() == c.Name {
+			return cc.Execute(param, c.Data...)
+		}
+	}
 
-	// check data exists
+	var (
+		err error
+		num int
+	)
+
+	// Validate constraint has required data
 	needOneData := []TypeConstraint{minLenConstraint, maxLenConstraint, lenConstraint, minConstraint, maxConstraint, datetimeConstraint, regexConstraint}
 	needTwoData := []TypeConstraint{betweenLenConstraint, rangeConstraint}
 
@@ -696,11 +709,7 @@ func (c *Constraint) CheckConstraint(param string) bool {
 	// check constraints
 	switch c.ID {
 	case noConstraint:
-		for _, cc := range c.customConstraints {
-			if cc.Name() == c.Name {
-				return cc.Execute(param, c.Data...)
-			}
-		}
+		return true
 	case intConstraint:
 		_, err = strconv.Atoi(param)
 	case boolConstraint:
@@ -744,14 +753,14 @@ func (c *Constraint) CheckConstraint(param string) bool {
 		data, _ := strconv.Atoi(c.Data[0])
 		num, err = strconv.Atoi(param)
 
-		if num < data {
+		if err != nil || num < data {
 			return false
 		}
 	case maxConstraint:
 		data, _ := strconv.Atoi(c.Data[0])
 		num, err = strconv.Atoi(param)
 
-		if num > data {
+		if err != nil || num > data {
 			return false
 		}
 	case rangeConstraint:
@@ -759,12 +768,18 @@ func (c *Constraint) CheckConstraint(param string) bool {
 		data2, _ := strconv.Atoi(c.Data[1])
 		num, err = strconv.Atoi(param)
 
-		if num < data || num > data2 {
+		if err != nil || num < data || num > data2 {
 			return false
 		}
 	case datetimeConstraint:
 		_, err = time.Parse(c.Data[0], param)
+		if err != nil {
+			return false
+		}
 	case regexConstraint:
+		if c.RegexCompiler == nil {
+			return false
+		}
 		if match := c.RegexCompiler.MatchString(param); !match {
 			return false
 		}

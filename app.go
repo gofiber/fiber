@@ -106,6 +106,8 @@ type App[TCtx CtxGeneric[TCtx]] struct {
 	tlsHandler *TLSHandler
 	// Mount fields
 	mountFields *mountFields[TCtx]
+	// state management
+	state *State
 	// Route stack divided by HTTP methods
 	stack [][]*Route[TCtx]
 	// Route stack divided by HTTP methods and route prefixes
@@ -567,6 +569,9 @@ func newApp[TCtx CtxGeneric[TCtx]](config ...Config[TCtx]) *App[TCtx] {
 	// Define mountFields
 	app.mountFields = newMountFields(app)
 
+	// Define state
+	app.state = newState()
+
 	// Override config if provided
 	if len(config) > 0 {
 		app.config = config[0]
@@ -986,6 +991,11 @@ func (app *App[TCtx]) Server() *fasthttp.Server {
 // Hooks returns the hook struct to register hooks.
 func (app *App[TCtx]) Hooks() *Hooks[TCtx] {
 	return app.hooks
+}
+
+// State returns the state struct to store global data in order to share it between handlers.
+func (app *App) State() *State {
+	return app.state
 }
 
 var ErrTestGotEmptyResponse = errors.New("test: got empty response")

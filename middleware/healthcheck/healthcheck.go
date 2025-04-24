@@ -4,11 +4,8 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-// HealthChecker defines a function to check liveness or readiness of the application
-type HealthChecker func(fiber.Ctx) bool
-
-func NewHealthChecker(config ...Config) fiber.Handler {
-	cfg := defaultConfigV3(config...)
+func New(config ...Config) fiber.Handler {
+	cfg := defaultConfig(config...)
 
 	return func(c fiber.Ctx) error {
 		// Don't execute middleware if Next returns true
