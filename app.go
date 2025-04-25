@@ -124,7 +124,7 @@ type App struct {
 	configured Config
 	// sendfilesMutex is a mutex used for sendfile operations
 	sendfilesMutex sync.RWMutex
-	mutex          sync.Mutex
+	mutex          sync.RWMutex
 	// Amount of registered routes
 	routesCount uint32
 	// Amount of registered handlers
@@ -632,6 +632,9 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 // NewCtxFunc allows to customize ctx methods as we want.
 // Note: It doesn't allow adding new methods, only customizing exist methods.
 func (app *App) NewCtxFunc(function func(app *App) CustomCtx) {
+	app.mutex.RLock()
+	defer app.mutex.RUnlock()
+
 	app.newCtxFunc = function
 
 	if app.server != nil {
@@ -686,6 +689,9 @@ func (app *App) Name(name string) Router {
 
 // GetRoute Get route by name
 func (app *App) GetRoute(name string) Route {
+	app.mutex.RLock()
+	defer app.mutex.RUnlock()
+
 	for _, routes := range app.stack {
 		for _, route := range routes {
 			if route.Name == name {
@@ -699,6 +705,9 @@ func (app *App) GetRoute(name string) Route {
 
 // GetRoutes Get all routes. When filterUseOption equal to true, it will filter the routes registered by the middleware.
 func (app *App) GetRoutes(filterUseOption ...bool) []Route {
+	app.mutex.RLock()
+	defer app.mutex.RUnlock()
+
 	var rs []Route
 	var filterUse bool
 	if len(filterUseOption) != 0 {
@@ -880,13 +889,18 @@ func NewError(code int, message ...string) *Error {
 	return err
 }
 
-// Config returns the app config as value ( read-only ).
+// Config returns the app config as value (read-only).
 func (app *App) Config() Config {
+	app.mutex.RLock()
+	defer app.mutex.RUnlock()
 	return app.config
 }
 
 // Handler returns the server handler.
 func (app *App) Handler() fasthttp.RequestHandler { //revive:disable-line:confusing-naming // Having both a Handler() (uppercase) and a handler() (lowercase) is fine. TODO: Use nolint:revive directive instead. See https://github.com/golangci/golangci-lint/issues/3476
+	app.mutex.RLock()
+	defer app.mutex.RUnlock()
+	
 	// prepare the server for the start
 	app.startupProcess()
 
@@ -898,11 +912,15 @@ func (app *App) Handler() fasthttp.RequestHandler { //revive:disable-line:confus
 
 // Stack returns the raw router stack.
 func (app *App) Stack() [][]*Route {
+	app.mutex.RLock()
+	defer app.mutex.RUnlock()
 	return app.stack
 }
 
 // HandlersCount returns the amount of registered handlers.
 func (app *App) HandlersCount() uint32 {
+	app.mutex.RLock()
+	defer app.mutex.RUnlock()
 	return app.handlersCount
 }
 
@@ -968,11 +986,15 @@ func (app *App) Server() *fasthttp.Server {
 
 // Hooks returns the hook struct to register hooks.
 func (app *App) Hooks() *Hooks {
+	app.mutex.RLock()
+	defer app.mutex.RUnlock()
 	return app.hooks
 }
 
 // State returns the state struct to store global data in order to share it between handlers.
 func (app *App) State() *State {
+	app.mutex.RLock()
+	defer app.mutex.RUnlock()
 	return app.state
 }
 
