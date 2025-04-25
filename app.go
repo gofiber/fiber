@@ -961,7 +961,9 @@ func (app *App) ShutdownWithContext(ctx context.Context) error {
 
 // Server returns the underlying fasthttp server
 func (app *App) Server() *fasthttp.Server {
-	return app.server
+    app.mutex.RLock()
+    defer app.mutex.RUnlock()
+    return app.server
 }
 
 // Hooks returns the hook struct to register hooks.
