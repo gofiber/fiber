@@ -1442,13 +1442,10 @@ Redirects to the URL derived from the specified path, with specified status, a p
 
 :::info
 If **not** specified, status defaults to **302 Found**.
-
-In Fiber v3, the default will change to **303 See Fount** for more predictable
-cross-browser behavior.
 :::
 
 :::caution
-When the redirect status code is **302 Found** (the default in v2), web browsers may change the HTTP method
+When the redirect status code is **302 Found**, web browsers may change the HTTP method
 (for example, converting a POST into a GET) depending on the browser implementation. To ensure that the
 original HTTP method is preserved, especially in scenarios where a non-GET method is required, you
 should explicitly use one of the following status codes:
