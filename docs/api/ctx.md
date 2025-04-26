@@ -57,7 +57,7 @@ Media-Type parameters are supported.
 app.Get("/", func(c *fiber.Ctx) error {
   // Extra parameters in the accept are ignored
   c.Accepts("text/plain;format=flowed") // "text/plain;format=flowed"
-  
+
   // An offer must contain all parameters present in the Accept type
   c.Accepts("application/json") // ""
 
@@ -239,7 +239,7 @@ app.Post("/", func(c *fiber.Ctx) error {
 })
 ```
 
-> _Returned value is only valid within the handler. Do not store any references.  
+> _Returned value is only valid within the handler. Do not store any references.
 > Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
 
 ## Body
@@ -259,7 +259,7 @@ app.Post("/", func(c *fiber.Ctx) error {
 })
 ```
 
-> _Returned value is only valid within the handler. Do not store any references.  
+> _Returned value is only valid within the handler. Do not store any references.
 > Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
 
 ## BodyParser
@@ -319,7 +319,7 @@ app.Post("/", func(c *fiber.Ctx) error {
 // curl -X POST "http://localhost:3000/?name=john&pass=doe"
 ```
 
-> _Returned value is only valid within the handler. Do not store any references.  
+> _Returned value is only valid within the handler. Do not store any references.
 > Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
 
 ## ClearCookie
@@ -489,7 +489,7 @@ app.Get("/", func(c *fiber.Ctx) error {
 })
 ```
 
-> _Returned value is only valid within the handler. Do not store any references.  
+> _Returned value is only valid within the handler. Do not store any references.
 > Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
 
 ## Download
@@ -579,7 +579,7 @@ app.Post("/", func(c *fiber.Ctx) error {
 })
 ```
 
-> _Returned value is only valid within the handler. Do not store any references.  
+> _Returned value is only valid within the handler. Do not store any references.
 > Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
 
 ## Fresh
@@ -615,7 +615,7 @@ app.Get("/", func(c *fiber.Ctx) error {
 })
 ```
 
-> _Returned value is only valid within the handler. Do not store any references.  
+> _Returned value is only valid within the handler. Do not store any references.
 > Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
 
 ## GetReqHeaders
@@ -626,7 +626,7 @@ Returns the HTTP request headers as a map. Since a header can be set multiple ti
 func (c *Ctx) GetReqHeaders() map[string][]string
 ```
 
-> _Returned value is only valid within the handler. Do not store any references.  
+> _Returned value is only valid within the handler. Do not store any references.
 > Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
 
 ## GetRespHeader
@@ -650,7 +650,7 @@ app.Get("/", func(c *fiber.Ctx) error {
 })
 ```
 
-> _Returned value is only valid within the handler. Do not store any references.  
+> _Returned value is only valid within the handler. Do not store any references.
 > Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
 
 ## GetRespHeaders
@@ -661,7 +661,7 @@ Returns the HTTP response headers as a map. Since a header can be set multiple t
 func (c *Ctx) GetRespHeaders() map[string][]string
 ```
 
-> _Returned value is only valid within the handler. Do not store any references.  
+> _Returned value is only valid within the handler. Do not store any references.
 > Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
 
 ## GetRouteURL
@@ -707,7 +707,7 @@ app.Get("/", func(c *fiber.Ctx) error {
 })
 ```
 
-> _Returned value is only valid within the handler. Do not store any references.  
+> _Returned value is only valid within the handler. Do not store any references.
 > Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
 
 ## IP
@@ -954,7 +954,7 @@ app.Post("/", func(c *fiber.Ctx) error {
 
 ## Method
 
-Returns a string corresponding to the HTTP method of the request: `GET`, `POST`, `PUT`, and so on.  
+Returns a string corresponding to the HTTP method of the request: `GET`, `POST`, `PUT`, and so on.
 Optionally, you could override the method by passing a string.
 
 ```go title="Signature"
@@ -1054,7 +1054,7 @@ app.Get("/", func(c *fiber.Ctx) error {
 })
 ```
 
-> _Returned value is only valid within the handler. Do not store any references.  
+> _Returned value is only valid within the handler. Do not store any references.
 > Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
 
 ## Params
@@ -1103,7 +1103,7 @@ app.Get("/v1/*/shop/*", func(c *fiber.Ctx) error {
 })
 ```
 
-> _Returned value is only valid within the handler. Do not store any references.  
+> _Returned value is only valid within the handler. Do not store any references.
 > Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
 
 ## ParamsInt
@@ -1280,7 +1280,7 @@ app.Get("/", func(c *fiber.Ctx) error {
 })
 ```
 
-> _Returned value is only valid within the handler. Do not store any references.  
+> _Returned value is only valid within the handler. Do not store any references.
 > Make copies or use the_ [_**`Immutable`**_](ctx.md) _setting instead._ [_Read more..._](../#zero-allocation)
 
 ## QueryBool
@@ -1402,7 +1402,7 @@ app.Get("/", func(c *fiber.Ctx) error {
         log.Println(p.Products)    // ["shoe,hat"]
         // fiber.Config{EnableSplittingOnParsers: true}
         // log.Println(p.Products) // ["shoe", "hat"]
-		
+
 
         // ...
 })
@@ -1442,6 +1442,21 @@ Redirects to the URL derived from the specified path, with specified status, a p
 
 :::info
 If **not** specified, status defaults to **302 Found**.
+:::
+
+:::caution
+When the redirect status code is **302 Found**, web browsers may change the HTTP method
+(for example, converting a POST into a GET) depending on the browser implementation. To ensure that the
+original HTTP method is preserved, especially in scenarios where a non-GET method is required, you
+should explicitly use one of the following status codes:
+
+- 303 See Other
+- 307 Temporary Redirect
+- 308 Permanent Redirect
+
+For example, to preserve the HTTP method, use:
+
+`c.Redirect("/new-path", fiber.StatusSeeOther)`
 :::
 
 ```go title="Signature"
