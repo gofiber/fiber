@@ -274,7 +274,7 @@ func findNextParamPosition(pattern string) int {
 	// Find the first parameter position
 	nextParamPosition := findNextNonEscapedCharsetPosition(pattern, parameterStartChars)
 
-	// If pattern contains a parameter and its not a wildcard
+	// If pattern contains a parameter and it's not a wildcard
 	if nextParamPosition != -1 && len(pattern) > nextParamPosition && pattern[nextParamPosition] != wildcardParam {
 		// checking the found parameterStartChar is a cluster
 		i := nextParamPosition + 1
