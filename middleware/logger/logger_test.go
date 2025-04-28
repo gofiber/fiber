@@ -1090,6 +1090,18 @@ func Benchmark_Logger(b *testing.B) {
 		benchmarkSetup(bb, app, "/")
 	})
 
+	b.Run("DefaultFormatForceColors", func(bb *testing.B) {
+		app := fiber.New()
+		app.Use(New(Config{
+			Stream:      io.Discard,
+			ForceColors: true,
+		}))
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString("Hello, World!")
+		})
+		benchmarkSetup(bb, app, "/")
+	})
+
 	b.Run("DefaultFormatWithFiberLog", func(bb *testing.B) {
 		app := fiber.New()
 		logger := fiberlog.DefaultLogger()
@@ -1264,6 +1276,18 @@ func Benchmark_Logger_Parallel(b *testing.B) {
 		app.Use(New(Config{
 			Stream:        io.Discard,
 			DisableColors: true,
+		}))
+		app.Get("/", func(c fiber.Ctx) error {
+			return c.SendString("Hello, World!")
+		})
+		benchmarkSetupParallel(bb, app, "/")
+	})
+
+	b.Run("DefaultFormatForceColors", func(bb *testing.B) {
+		app := fiber.New()
+		app.Use(New(Config{
+			Stream:      io.Discard,
+			ForceColors: true,
 		}))
 		app.Get("/", func(c fiber.Ctx) error {
 			return c.SendString("Hello, World!")
