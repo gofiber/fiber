@@ -1018,6 +1018,32 @@ func Test_Logger_EnableColors(t *testing.T) {
 	require.EqualValues(t, 1, *o)
 }
 
+// go test -run Test_Logger_ForceColors
+func Test_Logger_ForceColors(t *testing.T) {
+	t.Parallel()
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Format:        "${ip}${status}${method}${path}${error}\n",
+		Stream:        buf,
+		DisableColors: true,
+		ForceColors:   true,
+	}))
+
+	// Alias colors
+	colors := app.Config().ColorScheme
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+
+	expected := fmt.Sprintf("0.0.0.0%s404%s%sGET%s/%sCannot GET /%s\n", colors.Yellow, colors.Reset, colors.Cyan, colors.Reset, colors.Red, colors.Reset)
+	require.Equal(t, expected, buf.String())
+}
+
 // go test -v -run=^$ -bench=Benchmark_Logger$ -benchmem -count=4
 func Benchmark_Logger(b *testing.B) {
 	b.Run("NoMiddleware", func(bb *testing.B) {
