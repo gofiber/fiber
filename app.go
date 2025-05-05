@@ -410,6 +410,11 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	//
 	// Optional. Default: false
 	EnableSplittingOnParsers bool `json:"enable_splitting_on_parsers"`
+
+	// DevTimeDependencies is a list of dependencies that are used by the app (e.g. databases, caches, etc.)
+	//
+	// Optional. Default: a zero value slice
+	DevTimeDependencies []DevTimeDependency
 }
 
 // Default TrustProxyConfig
@@ -602,6 +607,23 @@ func New(config ...Config) *App {
 
 	// Override colors
 	app.config.ColorScheme = defaultColors(app.config.ColorScheme)
+
+	// If the app is configured to use runtime dependencies,
+	// register a post shutdown hook to shutdown them after the server is closed.
+	if app.hasDevTimeDependencies() {
+		// TODO: support for custom context
+		ctx := context.Background()
+		if err := app.startDevTimeDependencies(ctx); err != nil {
+			log.Warnf("failed to start dependencies: %v", err)
+		}
+
+		app.Hooks().OnPostShutdown(func(_ error) error {
+			if err := app.shutdownDevTimeDependencies(ctx); err != nil {
+				log.Warnf("failed to shutdown dependencies: %v", err)
+			}
+			return nil
+		})
+	}
 
 	// Init app
 	app.init()

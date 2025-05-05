@@ -24,6 +24,7 @@ Here's a quick overview of the changes in Fiber `v3`:
 - [🔄️ Redirect](#-redirect)
 - [🌎 Client package](#-client-package)
 - [🧰 Generic functions](#-generic-functions)
+- [🥡 Development-Time Dependencies](#-development-time-dependencies)
 - [📃 Log](#-log)
 - [🧬 Middlewares](#-middlewares)
   - [CORS](#cors)
@@ -784,6 +785,84 @@ curl -H "User-Agent: CustomAgent" "http://localhost:3000/header"
 
 curl "http://localhost:3000/header"
 # Output: "Unknown"
+```
+
+</details>
+
+## 🥡 Development-Time Dependencies
+
+Fiber v3 introduces a new feature called Development-Time Dependencies. This feature allows developers to quickly start "development-time dependencies" for the services that the application depends on, removing the need to manually provision things like database servers, caches, or message brokers, to name a few.
+
+### Example
+
+<details>
+<summary>Adding a development-time dependency</summary>
+
+```go
+package main
+
+import (
+    "strconv"
+    "github.com/gofiber/fiber/v3"
+)
+
+type myDependency struct {
+	img string
+    // ...
+}
+
+// Start initializes and starts the dependency. It implements the fiber.RuntimeDependency interface.
+func (c *myDependency) Start(ctx context.Context) error {
+	// start the dependency
+	return nil
+}
+
+// String returns a human-readable representation of the dependency's state.
+// It implements the fiber.RuntimeDependency interface.
+func (c *myDependency) String() string {
+	return fmt.Sprintf(c.img)
+}
+
+// Terminate stops and removes the dependency. It implements the fiber.RuntimeDependency interface.
+func (c *myDependency) Terminate(ctx context.Context) error {
+	// stop the dependency
+	return nil
+}
+
+func main() {
+    cfg := &fiber.Config{}
+
+	cfg.DevTimeDependencies = append(cfg.DevTimeDependencies, &myDependency{img: "postgres:latest"})
+	cfg.DevTimeDependencies = append(cfg.DevTimeDependencies, &myDependency{img: "redis:latest"})
+
+	app := fiber.New(*cfg)
+
+    // ...
+}
+```
+
+</details>
+
+<details>
+<summary>Output</summary>
+
+```sh
+$ go run . -v
+
+    _______ __             
+   / ____(_) /_  ___  _____
+  / /_  / / __ \/ _ \/ ___/
+ / __/ / / /_/ /  __/ /    
+/_/   /_/_.___/\___/_/          v3.0.0-beta.4
+--------------------------------------------------
+INFO Server started on:         http://127.0.0.1:3000 (bound on host 0.0.0.0 and port 3000)
+INFO Dev-time dependencies:     2
+INFO   🥡 [ OK ] postgres:latest
+INFO   🥡 [ OK ] redis:latest
+INFO Total handlers count:      2
+INFO Prefork:                   Disabled
+INFO PID:                       12279
+INFO Total process count:       1
 ```
 
 </details>
