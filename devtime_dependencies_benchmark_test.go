@@ -13,7 +13,7 @@ type benchmarkDependency struct {
 	terminateDelay time.Duration
 }
 
-func (m *benchmarkDependency) Start(ctx context.Context) error {
+func (m *benchmarkDependency) Start(_ context.Context) error {
 	if m.startDelay > 0 {
 		time.Sleep(m.startDelay)
 	}
@@ -24,7 +24,7 @@ func (m *benchmarkDependency) String() string {
 	return m.name
 }
 
-func (m *benchmarkDependency) Terminate(ctx context.Context) error {
+func (m *benchmarkDependency) Terminate(_ context.Context) error {
 	if m.terminateDelay > 0 {
 		time.Sleep(m.terminateDelay)
 	}

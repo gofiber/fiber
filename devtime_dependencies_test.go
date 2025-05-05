@@ -18,7 +18,7 @@ type mockDependency struct {
 	terminated     bool
 }
 
-func (m *mockDependency) Start(ctx context.Context) error {
+func (m *mockDependency) Start(_ context.Context) error {
 	m.started = true
 	return m.startError
 }
@@ -27,7 +27,7 @@ func (m *mockDependency) String() string {
 	return m.name
 }
 
-func (m *mockDependency) Terminate(ctx context.Context) error {
+func (m *mockDependency) Terminate(_ context.Context) error {
 	m.terminated = true
 	return m.terminateError
 }
