@@ -31,9 +31,9 @@ func (app *App) startDevTimeDependencies(ctx context.Context) error {
 		var errs []error
 		for _, dep := range app.configured.DevTimeDependencies {
 			if err := ctx.Err(); err != nil {
-				// Context is cancelled, return an error the soonest possible, so that
+				// Context is canceled, return an error the soonest possible, so that
 				// the user can see the context cancellation error and act on it.
-				return fmt.Errorf("context cancelled while starting dependencies: %w", err)
+				return fmt.Errorf("context canceled while starting dependencies: %w", err)
 			}
 
 			err := dep.Start(ctx)
@@ -56,8 +56,8 @@ func (app *App) shutdownDevTimeDependencies(ctx context.Context) error {
 		var errs []error
 		for _, dep := range app.configured.DevTimeDependencies {
 			if err := ctx.Err(); err != nil {
-				// Context is cancelled, do a best effort to terminate the dependencies.
-				errs = append(errs, fmt.Errorf("context cancelled: %w", err))
+				// Context is canceled, do a best effort to terminate the dependencies.
+				errs = append(errs, fmt.Errorf("context canceled: %w", err))
 				continue
 			}
 
