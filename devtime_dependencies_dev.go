@@ -61,7 +61,7 @@ func (app *App) shutdownDevTimeDependencies(ctx context.Context) error {
 		for _, dep := range app.configured.DevTimeDependencies {
 			if err := ctx.Err(); err != nil {
 				// Context is canceled, do a best effort to terminate the dependencies.
-				errs = append(errs, fmt.Errorf("context canceled: %w", err))
+				errs = append(errs, fmt.Errorf("dependency %s terminate: %w", dep.String(), err))
 				continue
 			}
 
