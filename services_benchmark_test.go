@@ -40,7 +40,7 @@ func (m *benchmarkService) String() string {
 	return m.name
 }
 
-func (m *benchmarkService) State(ctx context.Context) (string, error) {
+func (m *benchmarkService) State(_ context.Context) (string, error) {
 	return "", nil
 }
 
