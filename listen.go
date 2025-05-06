@@ -383,14 +383,7 @@ func (app *App) startupMessage(addr string, isTLS bool, pids string, cfg ListenC
 		fmt.Fprintf(out, "%sINFO%s Application name: \t\t%s%s%s\n", colors.Green, colors.Reset, colors.Blue, app.config.AppName, colors.Reset)
 	}
 
-	if len(app.configured.DevTimeDependencies) > 0 {
-		fmt.Fprintf(out,
-			"%sINFO%s Dev-time dependencies: \t%s%d%s\n",
-			colors.Green, colors.Reset, colors.Blue, len(app.configured.DevTimeDependencies), colors.Reset)
-		for _, dep := range app.configured.DevTimeDependencies {
-			fmt.Fprintf(out, "%sINFO%s   🥡 %s[ OK ] %s%s\n", colors.Green, colors.Reset, colors.Blue, dep.String(), colors.Reset)
-		}
-	}
+	app.logDevTimeDependencies(out, colors)
 
 	fmt.Fprintf(out,
 		"%sINFO%s Total handlers count: \t%s%s%s\n",

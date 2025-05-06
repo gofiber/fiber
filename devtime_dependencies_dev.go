@@ -1,9 +1,13 @@
+//go:build dev
+// +build dev
+
 package fiber
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 )
 
 // DevTimeDependency is an interface that defines the methods for a development-time dependency.
@@ -72,4 +76,16 @@ func (app *App) shutdownDevTimeDependencies(ctx context.Context) error {
 		return errors.Join(errs...)
 	}
 	return nil
+}
+
+// logDevTimeDependencies logs information about development-time dependencies
+func (app *App) logDevTimeDependencies(out io.Writer, colors Colors) {
+	if app.hasDevTimeDependencies() {
+		fmt.Fprintf(out,
+			"%sINFO%s Dev-time dependencies: \t%s%d%s\n",
+			colors.Green, colors.Reset, colors.Blue, len(app.configured.DevTimeDependencies), colors.Reset)
+		for _, dep := range app.configured.DevTimeDependencies {
+			fmt.Fprintf(out, "%sINFO%s   🥡 %s[ OK ] %s%s\n", colors.Green, colors.Reset, colors.Blue, dep.String(), colors.Reset)
+		}
+	}
 }
