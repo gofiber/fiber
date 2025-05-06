@@ -33,6 +33,8 @@ func (m *benchmarkDependency) Terminate(_ context.Context) error {
 
 func BenchmarkStartDevTimeDependencies(b *testing.B) {
 	benchmarkFn := func(b *testing.B, dependencies []DevTimeDependency) {
+		b.Helper()
+
 		app := &App{
 			configured: Config{
 				DevTimeDependencies: dependencies,
@@ -75,6 +77,8 @@ func BenchmarkStartDevTimeDependencies(b *testing.B) {
 
 func BenchmarkShutdownDevTimeDependencies(b *testing.B) {
 	benchmarkFn := func(b *testing.B, dependencies []DevTimeDependency) {
+		b.Helper()
+
 		app := &App{
 			configured: Config{
 				DevTimeDependencies: dependencies,
@@ -117,6 +121,8 @@ func BenchmarkShutdownDevTimeDependencies(b *testing.B) {
 
 func BenchmarkDevTimeDependenciesWithContextCancellation(b *testing.B) {
 	benchmarkFn := func(b *testing.B, dependencies []DevTimeDependency, timeout time.Duration) {
+		b.Helper()
+
 		app := &App{
 			configured: Config{
 				DevTimeDependencies: dependencies,
@@ -148,6 +154,8 @@ func BenchmarkDevTimeDependenciesWithContextCancellation(b *testing.B) {
 
 func BenchmarkDevTimeDependenciesMemory(b *testing.B) {
 	benchmarkFn := func(b *testing.B, dependencies []DevTimeDependency) {
+		b.Helper()
+
 		app := &App{
 			configured: Config{
 				DevTimeDependencies: dependencies,
