@@ -1,9 +1,11 @@
 package fiber
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,6 +16,7 @@ import (
 type mockService struct {
 	startError     error
 	terminateError error
+	stateError     error
 	name           string
 	started        bool
 	terminated     bool
@@ -55,6 +58,10 @@ func (m *mockService) String() string {
 func (m *mockService) State(ctx context.Context) (string, error) {
 	if ctx.Err() != nil {
 		return "", fmt.Errorf("context canceled: %w", ctx.Err())
+	}
+
+	if m.stateError != nil {
+		return "error", m.stateError
 	}
 
 	if m.started {
@@ -196,6 +203,24 @@ func TestShutdownServices(t *testing.T) {
 	})
 }
 
+func TestStartServicesWithContextAlreadyCanceled(t *testing.T) {
+	app := &App{
+		configured: Config{
+			Services: []Service{
+				&mockService{name: "dep1"},
+			},
+		},
+	}
+
+	// Create a context that is already canceled
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := app.startServices(ctx)
+	require.ErrorIs(t, err, context.Canceled)
+	require.Contains(t, err.Error(), "context canceled while starting services")
+}
+
 func TestServicesStartWithContextCancellation(t *testing.T) {
 	// Create a service that takes some time to start
 	slowDep := &mockService{name: "slow-dep", startDelay: 200 * time.Millisecond}
@@ -236,6 +261,34 @@ func TestServicesTerminateWithContextCancellation(t *testing.T) {
 	// Shutdown services with canceled context
 	err = app.shutdownServices(ctx)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
+}
+
+func TestServicesTerminate_ContextCanceledOrDeadlineExceeded(t *testing.T) {
+	testFn := func(t *testing.T, terminateErr error, wantErr error) {
+		t.Helper()
+
+		app := &App{
+			configured: Config{
+				Services: []Service{
+					&mockService{name: "dep1", terminateError: terminateErr},
+					&mockService{name: "dep2"}, // Should still be called
+				},
+			},
+		}
+
+		err := app.shutdownServices(context.Background())
+		require.Error(t, err)
+		require.ErrorIs(t, err, wantErr)
+		require.Contains(t, err.Error(), "service dep1 terminate")
+	}
+
+	t.Run("context-canceled", func(t *testing.T) {
+		testFn(t, context.Canceled, context.Canceled)
+	})
+
+	t.Run("deadline-exceeded", func(t *testing.T) {
+		testFn(t, context.DeadlineExceeded, context.DeadlineExceeded)
+	})
 }
 
 func TestMultipleDependenciesStartErrorHandling(t *testing.T) {
@@ -281,4 +334,50 @@ func TestMultipleDependenciesTerminateErrorHandling(t *testing.T) {
 	errMsg := err.Error()
 	require.Contains(t, errMsg, "terminate error 1")
 	require.Contains(t, errMsg, "terminate error 2")
+}
+
+func TestLogServices(t *testing.T) {
+	// Service with successful State
+	runningService := &mockService{name: "running", started: true}
+	// Service with State error
+	errorService := &mockService{name: "error", stateError: errors.New("state error")}
+
+	app := &App{
+		configured: Config{
+			Services: []Service{runningService, errorService},
+		},
+	}
+
+	var buf bytes.Buffer
+
+	colors := Colors{
+		Green: "\033[32m",
+		Reset: "\033[0m",
+		Blue:  "\033[34m",
+		Red:   "\033[31m",
+	}
+
+	app.logServices(context.Background(), &buf, colors)
+
+	output := buf.String()
+
+	expecteds := []string{
+		fmt.Sprintf("%sINFO%s Services: \t%s%d%s\n", colors.Green, colors.Reset, colors.Blue, len(app.configured.Services), colors.Reset),
+	}
+
+	for _, dep := range app.configured.Services {
+		stateColor := colors.Blue
+		state := "RUNNING"
+		if _, err := dep.State(context.Background()); err != nil {
+			stateColor = colors.Red
+			state = "ERROR"
+		}
+
+		expected := fmt.Sprintf("%sINFO%s    🥡 %s[ %s ] %s%s\n", colors.Green, colors.Reset, stateColor, strings.ToUpper(state), dep.String(), colors.Reset)
+		expecteds = append(expecteds, expected)
+	}
+
+	for _, expected := range expecteds {
+		require.Contains(t, output, expected)
+	}
 }

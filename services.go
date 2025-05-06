@@ -98,7 +98,7 @@ func (app *App) logServices(ctx context.Context, out io.Writer, colors Colors) {
 				stateColor = colors.Blue
 				state = strings.ToUpper(state)
 			}
-			fmt.Fprintf(out, "%sINFO%s   🥡 %s[ %s ] %s%s\n", colors.Green, colors.Reset, stateColor, strings.ToUpper(state), dep.String(), colors.Reset)
+			fmt.Fprintf(out, "%sINFO%s    🥡 %s[ %s ] %s%s\n", colors.Green, colors.Reset, stateColor, strings.ToUpper(state), dep.String(), colors.Reset)
 		}
 	}
 }
