@@ -28,7 +28,7 @@ jobs:
           go-version: ${{ matrix.go-version }}
 
       - name: Test
-        run: go run gotest.tools/gotestsum@latest -f testname -- ./... -race -count=1 -coverprofile=coverage.txt -covermode=atomic -shuffle=on
+        run: go run gotest.tools/gotestsum@latest -f testname -- -tags=dev ./... -race -count=1 -coverprofile=coverage.txt -covermode=atomic -shuffle=on
 
       - name: Upload coverage reports to Codecov
         if: ${{ matrix.platform == 'ubuntu-latest' && matrix.go-version == '1.23.x' }}

@@ -19,7 +19,7 @@ benchmark:
 ## coverage: ☂️  Generate coverage report
 .PHONY: coverage
 coverage:
-	go run gotest.tools/gotestsum@latest -f testname -- ./... -race -count=1 -coverprofile=/tmp/coverage.out -covermode=atomic
+	go run gotest.tools/gotestsum@latest -f testname -- -tags=dev ./... -race -count=1 -coverprofile=/tmp/coverage.out -covermode=atomic
 	go tool cover -html=/tmp/coverage.out
 
 ## format: 🎨 Fix code format issues
@@ -40,12 +40,12 @@ lint:
 ## test: 🚦 Execute all tests
 .PHONY: test
 test:
-	go run gotest.tools/gotestsum@latest -f testname -- ./... -race -count=1 -shuffle=on
+	go run gotest.tools/gotestsum@latest -f testname -- -tags=dev ./... -race -count=1 -shuffle=on
 
 ## longtest: 🚦 Execute all tests 10x
 .PHONY: longtest
 longtest:
-	go run gotest.tools/gotestsum@latest -f testname -- ./... -race -count=15 -shuffle=on
+	go run gotest.tools/gotestsum@latest -f testname -- -tags=dev ./... -race -count=15 -shuffle=on
 
 ## tidy: 📌 Clean and tidy dependencies
 .PHONY: tidy
