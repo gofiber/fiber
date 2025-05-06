@@ -280,7 +280,7 @@ func main() {
 
     app.Use(sessionMiddleware)
     app.Use(csrf.New(csrf.Config{
-        Store: sessionStore,
+        Session: sessionStore,
     }))
 
     app.Get("/", func(c fiber.Ctx) error {
@@ -323,7 +323,7 @@ func main() {
 
     app.Use(sessionMiddleware)
     app.Use(csrf.New(csrf.Config{
-        Store: sessionStore,
+        Session: sessionStore,
     }))
 
     app.Listen(":3000")
@@ -347,7 +347,7 @@ func main() {
     sessionStore := session.NewStore()
 
     app.Use(csrf.New(csrf.Config{
-        Store: sessionStore,
+        Session: sessionStore,
     }))
 
     app.Get("/", func(c fiber.Ctx) error {
