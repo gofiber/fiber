@@ -68,7 +68,9 @@ func (app *App) shutdownDevTimeDependencies(ctx context.Context) error {
 			err := dep.Terminate(ctx)
 			if err != nil {
 				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-					return fmt.Errorf("dependency %s terminate: %w", dep.String(), err)
+					// Context is canceled, do a best effort to terminate the dependencies.
+					errs = append(errs, fmt.Errorf("dependency %s terminate: %w", dep.String(), err))
+					continue
 				}
 				errs = append(errs, fmt.Errorf("terminate dependency %s: %w", dep.String(), err))
 			}
