@@ -34,7 +34,7 @@ jobs:
           go-version: "1.23.x"
 
       - name: Run Benchmark
-        run: set -o pipefail; go test ./... -benchmem -run=^$ -bench . | tee output.txt
+        run: set -o pipefail; go test -tags=dev ./... -benchmem -run=^$ -bench . | tee output.txt
       ### hack because of the problem with duplicated benchmark names - https://github.com/benchmark-action/github-action-benchmark/issues/264
       - name: Extract Module Name
         id: extract-module

@@ -1,3 +1,6 @@
+//go:build dev
+// +build dev
+
 package fiber
 
 import (

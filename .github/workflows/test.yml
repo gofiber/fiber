@@ -51,4 +51,4 @@ jobs:
           go-version: stable
 
       - name: Test
-        run: go run gotest.tools/gotestsum@latest -f testname -- ./... -race -count=15 -shuffle=on
+        run: go run gotest.tools/gotestsum@latest -f testname -- -tags=dev ./... -race -count=15 -shuffle=on
