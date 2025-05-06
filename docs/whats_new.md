@@ -811,19 +811,19 @@ type myDependency struct {
     // ...
 }
 
-// Start initializes and starts the dependency. It implements the fiber.RuntimeDependency interface.
+// Start initializes and starts the dependency. It implements the fiber.DevTimeDependency interface.
 func (c *myDependency) Start(ctx context.Context) error {
     // start the dependency
     return nil
 }
 
 // String returns a human-readable representation of the dependency's state.
-// It implements the fiber.RuntimeDependency interface.
+// It implements the fiber.DevTimeDependency interface.
 func (c *myDependency) String() string {
     return fmt.Sprintf(c.img)
 }
 
-// Terminate stops and removes the dependency. It implements the fiber.RuntimeDependency interface.
+// Terminate stops and removes the dependency. It implements the fiber.DevTimeDependency interface.
 func (c *myDependency) Terminate(ctx context.Context) error {
     // stop the dependency
     return nil

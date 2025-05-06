@@ -78,7 +78,7 @@ type redisStore struct {
     ctr *tcredis.RedisContainer
 }
 
-// Start initializes and starts the dependency. It implements the fiber.RuntimeDependency interface.
+// Start initializes and starts the dependency. It implements the fiber.DevTimeDependency interface.
 func (s *redisStore) Start(ctx context.Context) error {
     // start the dependency
     c, err := tcredis.Run(ctx, "redis:latest")
@@ -91,12 +91,12 @@ func (s *redisStore) Start(ctx context.Context) error {
 }
 
 // String returns a human-readable representation of the dependency's state.
-// It implements the fiber.RuntimeDependency interface.
+// It implements the fiber.DevTimeDependency interface.
 func (s *redisStore) String() string {
     return "redis-store"
 }
 
-// Terminate stops and removes the dependency. It implements the fiber.RuntimeDependency interface.
+// Terminate stops and removes the dependency. It implements the fiber.DevTimeDependency interface.
 func (s *redisStore) Terminate(ctx context.Context) error {
     // stop the dependency
     return s.ctr.Terminate(ctx)
@@ -167,7 +167,7 @@ type redisStore struct {
     ctr *tcredis.RedisContainer
 }
 
-// Start initializes and starts the dependency. It implements the fiber.RuntimeDependency interface.
+// Start initializes and starts the dependency. It implements the fiber.DevTimeDependency interface.
 func (s *redisStore) Start(ctx context.Context) error {
     // start the dependency
     c, err := tcredis.Run(ctx, "redis:latest")
@@ -180,12 +180,12 @@ func (s *redisStore) Start(ctx context.Context) error {
 }
 
 // String returns a human-readable representation of the dependency's state.
-// It implements the fiber.RuntimeDependency interface.
+// It implements the fiber.DevTimeDependency interface.
 func (s *redisStore) String() string {
     return "redis-store"
 }
 
-// Terminate stops and removes the dependency. It implements the fiber.RuntimeDependency interface.
+// Terminate stops and removes the dependency. It implements the fiber.DevTimeDependency interface.
 func (s *redisStore) Terminate(ctx context.Context) error {
     // stop the dependency
     return s.ctr.Terminate(ctx)
