@@ -11,9 +11,9 @@ import (
 
 // mockDependency implements DevTimeDependency interface for testing
 type mockDependency struct {
-	name           string
 	startError     error
 	terminateError error
+	name           string
 	started        bool
 	terminated     bool
 }

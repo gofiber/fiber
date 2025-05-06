@@ -8,9 +8,9 @@ import (
 
 // benchmarkDependency implements DevTimeDependency interface for benchmarking
 type benchmarkDependency struct {
-	name           string
 	startDelay     time.Duration
 	terminateDelay time.Duration
+	name           string
 }
 
 func (m *benchmarkDependency) Start(_ context.Context) error {
