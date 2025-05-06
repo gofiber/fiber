@@ -171,7 +171,7 @@ func BenchmarkServicesWithContextCancellation(b *testing.B) {
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
 			err := app.startServices(ctx)
 			// We expect an error here due to the short timeout
-			if err == nil && timeout < time.Microsecond {
+			if err == nil && timeout < time.Second {
 				b.Fatal("Expected error due to context cancellation but got none")
 			}
 			cancel()
