@@ -20,10 +20,8 @@ type mockDependency struct {
 }
 
 func (m *mockDependency) Start(ctx context.Context) error {
-	select {
-	case <-ctx.Done():
+	if ctx.Err() != nil {
 		return fmt.Errorf("context canceled: %w", ctx.Err())
-	default:
 	}
 
 	m.started = true
@@ -35,10 +33,8 @@ func (m *mockDependency) String() string {
 }
 
 func (m *mockDependency) Terminate(ctx context.Context) error {
-	select {
-	case <-ctx.Done():
+	if ctx.Err() != nil {
 		return fmt.Errorf("context canceled: %w", ctx.Err())
-	default:
 	}
 
 	m.terminated = true
