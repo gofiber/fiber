@@ -9,7 +9,7 @@ import (
 
 // benchmarkDependency implements DevTimeDependency interface for benchmarking
 //
-//nolint:fieldalignment
+//nolint:fieldalignment // no need to align fields in this mock implementation
 type benchmarkDependency struct {
 	startDelay     time.Duration
 	terminateDelay time.Duration
