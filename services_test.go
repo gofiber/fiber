@@ -17,11 +17,26 @@ type mockService struct {
 	name           string
 	started        bool
 	terminated     bool
+	startDelay     time.Duration
+	terminateDelay time.Duration
 }
 
 func (m *mockService) Start(ctx context.Context) error {
-	if ctx.Err() != nil {
+	select {
+	case <-ctx.Done():
 		return fmt.Errorf("context canceled: %w", ctx.Err())
+	default:
+	}
+
+	if m.startDelay > 0 {
+		timer := time.NewTimer(m.startDelay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return fmt.Errorf("context canceled: %w", ctx.Err())
+		case <-timer.C:
+			// Continue after delay
+		}
 	}
 
 	if m.startError != nil {
@@ -54,8 +69,21 @@ func (m *mockService) State(ctx context.Context) (string, error) {
 }
 
 func (m *mockService) Terminate(ctx context.Context) error {
-	if ctx.Err() != nil {
+	select {
+	case <-ctx.Done():
 		return fmt.Errorf("context canceled: %w", ctx.Err())
+	default:
+	}
+
+	if m.terminateDelay > 0 {
+		timer := time.NewTimer(m.terminateDelay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return fmt.Errorf("context canceled: %w", ctx.Err())
+		case <-timer.C:
+			// Continue after delay
+		}
 	}
 
 	if m.terminateError != nil {
@@ -170,7 +198,7 @@ func TestShutdownServices(t *testing.T) {
 
 func TestServicesStartWithContextCancellation(t *testing.T) {
 	// Create a service that takes some time to start
-	slowDep := &mockService{name: "slow-dep"}
+	slowDep := &mockService{name: "slow-dep", startDelay: 200 * time.Millisecond}
 
 	app := &App{
 		configured: Config{
@@ -189,7 +217,7 @@ func TestServicesStartWithContextCancellation(t *testing.T) {
 
 func TestServicesTerminateWithContextCancellation(t *testing.T) {
 	// Create a service that takes some time to terminate
-	slowDep := &mockService{name: "slow-dep"}
+	slowDep := &mockService{name: "slow-dep", terminateDelay: 200 * time.Millisecond}
 
 	app := &App{
 		configured: Config{
