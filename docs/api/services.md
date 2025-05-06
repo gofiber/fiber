@@ -1,78 +1,78 @@
 ---
-id: devtime_dependencies
-title: 🥡 Development-Time Dependencies
+id: services
+title: 🥡 Services
 sidebar_position: 9
 ---
 
-Development-time services provide external dependencies needed to run the application while developing it. They are only supposed to be used while developing and are disabled when the application is deployed.
+Services provide external services needed to run the application while developing it. They are supposed to be used while developing and testing the application.
 
-## DevTimeDependency Interface
+## Service Interface
 
-`DevTimeDependency` is an interface that defines the methods for a development-time dependency.
+`Service` is an interface that defines the methods for a service.
 
 ### Definition
 
 ```go
-// DevTimeDependency is an interface that defines the methods for a development-time dependency.
-type DevTimeDependency interface {
-    // Start starts the dependency, returning an error if it fails.
+// Service is an interface that defines the methods for a service.
+type Service interface {
+    // Start starts the service, returning an error if it fails.
     Start(ctx context.Context) error
 
-    // String returns a string representation of the dependency.
-    // It is used to print the dependency in the startup message.
+    // String returns a string representation of the service.
+    // It is used to print the service in the startup message.
     String() string
 
-    // State returns the current state of the dependency.
+    // State returns the current state of the service.
     State(ctx context.Context) (string, error)
 
-    // Terminate terminates the dependency, returning an error if it fails.
+    // Terminate terminates the service, returning an error if it fails.
     Terminate(ctx context.Context) error
 }
 ```
 
-## Methods on the DevTimeDependency
+## Methods on the Service
 
 ### Start
 
-Start starts the dependency, returning an error if it fails. This method is automatically called when the application starts.
+Start starts the service, returning an error if it fails. This method is automatically called when the application starts.
 
 ```go
-// Start starts the dependency, returning an error if it fails.
-func (d *DevTimeDependency) Start(ctx context.Context) error
+// Start starts the service, returning an error if it fails.
+func (d *Service) Start(ctx context.Context) error
 ```
 
 ### String
 
-String returns a string representation of the dependency, used to print the dependency in the startup message.
+String returns a string representation of the service, used to print the service in the startup message.
 
 ```go
-// String returns a string representation of the dependency.
-func (d *DevTimeDependency) String() string
+// String returns a string representation of the service.
+func (d *Service) String() string
 ```
 
 ### State
 
-State returns the current state of the dependency, used to print the dependency in the startup message.
+State returns the current state of the service, used to print the service in the startup message.
 
 ```go
-// State returns the current state of the dependency.
-func (d *DevTimeDependency) State(ctx context.Context) (string, error)
+// State returns the current state of the service.
+func (d *Service) State(ctx context.Context) (string, error)
 ```
 
 ### Terminate
 
-Terminate terminates the dependency after the application shuts down using a post shutdown hook, returning an error if it fails.
+Terminate terminates the service after the application shuts down using a post shutdown hook, returning an error if it fails.
 
 ```go
-// Terminate terminates the dependency, returning an error if it fails.
-func (d *DevTimeDependency) Terminate(ctx context.Context) error
+// Terminate terminates the service, returning an error if it fails.
+func (d *Service) Terminate(ctx context.Context) error
 ```
 
 ## Comprehensive Examples
 
-### Example: Adding a development-time dependency
+### Example: Adding a service
 
-This example demonstrates how to add a Redis store as a development-time dependency to the application, backed by the Testcontainers Redis Go module.
+This example demonstrates how to add a Redis store as a service to the application, backed by the Testcontainers Redis Go module.
 
 ```go
 package main
@@ -90,9 +90,9 @@ type redisStore struct {
     ctr *tcredis.RedisContainer
 }
 
-// Start initializes and starts the dependency. It implements the fiber.DevTimeDependency interface.
+// Start initializes and starts the service. It implements the [fiber.Service] interface.
 func (s *redisStore) Start(ctx context.Context) error {
-    // start the dependency
+    // start the service
     c, err := tcredis.Run(ctx, "redis:latest")
     if err != nil {
         return err
@@ -102,14 +102,14 @@ func (s *redisStore) Start(ctx context.Context) error {
     return nil
 }
 
-// String returns a string representation of the dependency.
-// It implements the fiber.DevTimeDependency interface.
+// String returns a string representation of the service.
+// It implements the [fiber.Service] interface.
 func (s *redisStore) String() string {
     return "redis-store"
 }
 
-// State returns the current state of the dependency.
-// It implements the fiber.DevTimeDependency interface.
+// State returns the current state of the service.
+// It implements the [fiber.Service] interface.
 func (s *redisStore) State(ctx context.Context) (string, error) {
     state, err := s.ctr.State(ctx)
     if err != nil {
@@ -119,24 +119,24 @@ func (s *redisStore) State(ctx context.Context) (string, error) {
     return state.Status, nil
 }
 
-// Terminate stops and removes the dependency. It implements the fiber.DevTimeDependency interface.
+// Terminate stops and removes the service. It implements the [fiber.Service] interface.
 func (s *redisStore) Terminate(ctx context.Context) error {
-    // stop the dependency
+    // stop the service
     return s.ctr.Terminate(ctx)
 }
 
 func main() {
     cfg := &fiber.Config{}
 
-    // Initialize development-time dependency.
+    // Initialize service.
     store := &redisStore{}
-    cfg.DevTimeDependencies = append(cfg.DevTimeDependencies, store)
+    cfg.Services = append(cfg.Services, store)
 
     app := fiber.New(*cfg)
 
     ctx := context.Background()
 
-    // Obtain the connection string from the dependency.
+    // Obtain the connection string from the service.
     connString, err := store.ctr.ConnectionString(ctx)
     if err != nil {
         log.Printf("Could not get connection string: %v", err)
@@ -163,9 +163,9 @@ func main() {
 
 ```
 
-### Example: Adding a development-time dependency with State Management
+### Example: Adding a service with State Management
 
-This example demonstrates how to use DevTimeDependencies with the State for dependency injection in a Fiber application.
+This example demonstrates how to use Services with the State for dependency injection in a Fiber application.
 
 ```go
 package main
@@ -190,9 +190,9 @@ type redisStore struct {
     ctr *tcredis.RedisContainer
 }
 
-// Start initializes and starts the dependency. It implements the fiber.DevTimeDependency interface.
+// Start initializes and starts the service. It implements the [fiber.Service] interface.
 func (s *redisStore) Start(ctx context.Context) error {
-    // start the dependency
+    // start the service
     c, err := tcredis.Run(ctx, "redis:latest")
     if err != nil {
         return err
@@ -202,14 +202,14 @@ func (s *redisStore) Start(ctx context.Context) error {
     return nil
 }
 
-// String returns a string representation of the dependency.
-// It implements the fiber.DevTimeDependency interface.
+// String returns a string representation of the service.
+// It implements the [fiber.Service] interface.
 func (s *redisStore) String() string {
     return "redis-store"
 }
 
-// State returns the current state of the dependency.
-// It implements the fiber.DevTimeDependency interface.
+// State returns the current state of the service.
+// It implements the [fiber.Service] interface.
 func (s *redisStore) State(ctx context.Context) (string, error) {
     state, err := s.ctr.State(ctx)
     if err != nil {
@@ -219,24 +219,24 @@ func (s *redisStore) State(ctx context.Context) (string, error) {
     return state.Status, nil
 }
 
-// Terminate stops and removes the dependency. It implements the fiber.DevTimeDependency interface.
+// Terminate stops and removes the service. It implements the [fiber.Service] interface.
 func (s *redisStore) Terminate(ctx context.Context) error {
-    // stop the dependency
+    // stop the service
     return s.ctr.Terminate(ctx)
 }
 
 func main() {
     cfg := &fiber.Config{}
 
-    // Initialize development-time dependency.
+    // Initialize service.
     store := &redisStore{}
-    cfg.DevTimeDependencies = append(cfg.DevTimeDependencies, store)
+    cfg.Services = append(cfg.Services, store)
 
     app := fiber.New(*cfg)
 
     ctx := context.Background()
 
-    // Obtain the connection string from the dependency.
+    // Obtain the connection string from the service.
     connString, err := store.ctr.ConnectionString(ctx)
     if err != nil {
         log.Printf("Could not get connection string: %v", err)

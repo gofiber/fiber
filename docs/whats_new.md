@@ -24,7 +24,7 @@ Here's a quick overview of the changes in Fiber `v3`:
 - [🔄️ Redirect](#-redirect)
 - [🌎 Client package](#-client-package)
 - [🧰 Generic functions](#-generic-functions)
-- [🥡 Development-Time Dependencies](#-development-time-dependencies)
+- [🥡 Services](#-services)
 - [📃 Log](#-log)
 - [🧬 Middlewares](#-middlewares)
   - [CORS](#cors)
@@ -789,14 +789,14 @@ curl "http://localhost:3000/header"
 
 </details>
 
-## 🥡 Development-Time Dependencies
+## 🥡 Services
 
-Fiber v3 introduces a new feature called Development-Time Dependencies. This feature allows developers to quickly start "development-time dependencies" for the services that the application depends on, removing the need to manually provision things like database servers, caches, or message brokers, to name a few.
+Fiber v3 introduces a new feature called Services. This feature allows developers to quickly start services that the application depends on, removing the need to manually provision things like database servers, caches, or message brokers, to name a few.
 
 ### Example
 
 <details>
-<summary>Adding a development-time dependency</summary>
+<summary>Adding a service</summary>
 
 ```go
 package main
@@ -806,40 +806,40 @@ import (
     "github.com/gofiber/fiber/v3"
 )
 
-type myDependency struct {
+type myService struct {
     img string
     // ...
 }
 
-// Start initializes and starts the dependency. It implements the fiber.DevTimeDependency interface.
-func (c *myDependency) Start(ctx context.Context) error {
-    // start the dependency
+// Start initializes and starts the service. It implements the [fiber.Service] interface.
+func (s *myService) Start(ctx context.Context) error {
+    // start the service
     return nil
 }
 
-// String returns a string representation of the dependency.
-// It implements the fiber.DevTimeDependency interface.
-func (c *myDependency) String() string {
-    return c.img
+// String returns a string representation of the service.
+// It implements the [fiber.Service] interface.
+func (s *myService) String() string {
+    return s.img
 }
 
-// State returns the current state of the dependency.
-// It implements the fiber.DevTimeDependency interface.
-func (c *myDependency) State(ctx context.Context) (string, error) {
+// State returns the current state of the service.
+// It implements the [fiber.Service] interface.
+func (s *myService) State(ctx context.Context) (string, error) {
     return "running", nil
 }
 
-// Terminate stops and removes the dependency. It implements the fiber.DevTimeDependency interface.
-func (c *myDependency) Terminate(ctx context.Context) error {
-    // stop the dependency
+// Terminate stops and removes the service. It implements the [fiber.Service] interface.
+func (s *myService) Terminate(ctx context.Context) error {
+    // stop the service
     return nil
 }
 
 func main() {
     cfg := &fiber.Config{}
 
-    cfg.DevTimeDependencies = append(cfg.DevTimeDependencies, &myDependency{img: "postgres:latest"})
-    cfg.DevTimeDependencies = append(cfg.DevTimeDependencies, &myDependency{img: "redis:latest"})
+    cfg.Services = append(cfg.Services, &myService{img: "postgres:latest"})
+    cfg.Services = append(cfg.Services, &myService{img: "redis:latest"})
 
     app := fiber.New(*cfg)
 
@@ -862,7 +862,7 @@ $ go run . -v
 /_/   /_/_.___/\___/_/          v3.0.0-beta.4
 --------------------------------------------------
 INFO Server started on:         http://127.0.0.1:3000 (bound on host 0.0.0.0 and port 3000)
-INFO Dev-time dependencies:     2
+INFO Services:     2
 INFO   🥡 [ RUNNING ] postgres:latest
 INFO   🥡 [ RUNNING ] redis:latest
 INFO Total handlers count:      2

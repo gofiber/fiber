@@ -387,7 +387,7 @@ func (app *App) startupMessage(addr string, isTLS bool, pids string, cfg ListenC
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	app.logDevTimeDependencies(ctx, out, colors)
+	app.logServices(ctx, out, colors)
 
 	fmt.Fprintf(out,
 		"%sINFO%s Total handlers count: \t%s%s%s\n",
