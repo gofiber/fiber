@@ -820,7 +820,7 @@ func (c *myDependency) Start(ctx context.Context) error {
 // String returns a human-readable representation of the dependency's state.
 // It implements the fiber.DevTimeDependency interface.
 func (c *myDependency) String() string {
-    return fmt.Sprintf(c.img)
+    return c.img
 }
 
 // Terminate stops and removes the dependency. It implements the fiber.DevTimeDependency interface.
