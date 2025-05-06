@@ -2,20 +2,36 @@ package fiber
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 )
 
 // benchmarkDependency implements DevTimeDependency interface for benchmarking
+//
+//nolint:fieldalignment
 type benchmarkDependency struct {
 	startDelay     time.Duration
 	terminateDelay time.Duration
 	name           string
 }
 
-func (m *benchmarkDependency) Start(_ context.Context) error {
+func (m *benchmarkDependency) Start(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("context canceled: %w", ctx.Err())
+	default:
+	}
+
 	if m.startDelay > 0 {
-		time.Sleep(m.startDelay)
+		timer := time.NewTimer(m.startDelay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return fmt.Errorf("context canceled: %w", ctx.Err())
+		case <-timer.C:
+			// Continue after delay
+		}
 	}
 	return nil
 }
@@ -24,9 +40,22 @@ func (m *benchmarkDependency) String() string {
 	return m.name
 }
 
-func (m *benchmarkDependency) Terminate(_ context.Context) error {
+func (m *benchmarkDependency) Terminate(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("context canceled: %w", ctx.Err())
+	default:
+	}
+
 	if m.terminateDelay > 0 {
-		time.Sleep(m.terminateDelay)
+		timer := time.NewTimer(m.terminateDelay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return fmt.Errorf("context canceled: %w", ctx.Err())
+		case <-timer.C:
+			// Continue after delay
+		}
 	}
 	return nil
 }
