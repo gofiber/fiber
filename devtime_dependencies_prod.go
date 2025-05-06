@@ -30,4 +30,4 @@ func (*App) shutdownDevTimeDependencies(_ context.Context) error {
 }
 
 // logDevTimeDependencies is a no-op in production builds
-func (*App) logDevTimeDependencies(_ io.Writer, _ Colors) {}
+func (*App) logDevTimeDependencies(_ context.Context, _ io.Writer, _ Colors) {}

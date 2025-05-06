@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 )
 
 // DevTimeDependency is an interface that defines the methods for a development-time dependency.
@@ -18,6 +19,9 @@ type DevTimeDependency interface {
 	// String returns a string representation of the dependency.
 	// It is used to print the dependency in the startup message.
 	String() string
+
+	// State returns the current state of the dependency.
+	State(ctx context.Context) (string, error)
 
 	// Terminate terminates the dependency, returning an error if it fails.
 	Terminate(ctx context.Context) error
@@ -81,13 +85,23 @@ func (app *App) shutdownDevTimeDependencies(ctx context.Context) error {
 }
 
 // logDevTimeDependencies logs information about development-time dependencies
-func (app *App) logDevTimeDependencies(out io.Writer, colors Colors) {
+func (app *App) logDevTimeDependencies(ctx context.Context, out io.Writer, colors Colors) {
 	if app.hasDevTimeDependencies() {
 		fmt.Fprintf(out,
 			"%sINFO%s Dev-time dependencies: \t%s%d%s\n",
 			colors.Green, colors.Reset, colors.Blue, len(app.configured.DevTimeDependencies), colors.Reset)
 		for _, dep := range app.configured.DevTimeDependencies {
-			fmt.Fprintf(out, "%sINFO%s   🥡 %s[ OK ] %s%s\n", colors.Green, colors.Reset, colors.Blue, dep.String(), colors.Reset)
+			var state string
+			var stateColor string
+			state, err := dep.State(ctx)
+			if err != nil {
+				state = "ERROR"
+				stateColor = colors.Red
+			} else {
+				stateColor = colors.Blue
+				state = strings.ToUpper(state)
+			}
+			fmt.Fprintf(out, "%sINFO%s   🥡 %s[ %s ] %s%s\n", colors.Green, colors.Reset, stateColor, strings.ToUpper(state), dep.String(), colors.Reset)
 		}
 	}
 }

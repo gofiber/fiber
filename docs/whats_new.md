@@ -817,10 +817,16 @@ func (c *myDependency) Start(ctx context.Context) error {
     return nil
 }
 
-// String returns a human-readable representation of the dependency's state.
+// String returns a string representation of the dependency.
 // It implements the fiber.DevTimeDependency interface.
 func (c *myDependency) String() string {
     return c.img
+}
+
+// State returns the current state of the dependency.
+// It implements the fiber.DevTimeDependency interface.
+func (c *myDependency) State(ctx context.Context) (string, error) {
+    return "running", nil
 }
 
 // Terminate stops and removes the dependency. It implements the fiber.DevTimeDependency interface.
@@ -857,8 +863,8 @@ $ go run . -v
 --------------------------------------------------
 INFO Server started on:         http://127.0.0.1:3000 (bound on host 0.0.0.0 and port 3000)
 INFO Dev-time dependencies:     2
-INFO   🥡 [ OK ] postgres:latest
-INFO   🥡 [ OK ] redis:latest
+INFO   🥡 [ RUNNING ] postgres:latest
+INFO   🥡 [ RUNNING ] redis:latest
 INFO Total handlers count:      2
 INFO Prefork:                   Disabled
 INFO PID:                       12279

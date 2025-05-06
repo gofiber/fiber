@@ -32,6 +32,22 @@ func (m *mockDependency) String() string {
 	return m.name
 }
 
+func (m *mockDependency) State(ctx context.Context) (string, error) {
+	if ctx.Err() != nil {
+		return "", fmt.Errorf("context canceled: %w", ctx.Err())
+	}
+
+	if m.started {
+		return "running", nil
+	}
+
+	if m.terminated {
+		return "stopped", nil
+	}
+
+	return "unknown", nil
+}
+
 func (m *mockDependency) Terminate(ctx context.Context) error {
 	if ctx.Err() != nil {
 		return fmt.Errorf("context canceled: %w", ctx.Err())

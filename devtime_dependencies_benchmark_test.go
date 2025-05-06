@@ -40,6 +40,10 @@ func (m *benchmarkDependency) String() string {
 	return m.name
 }
 
+func (m *benchmarkDependency) State(ctx context.Context) (string, error) {
+	return "", nil
+}
+
 func (m *benchmarkDependency) Terminate(ctx context.Context) error {
 	select {
 	case <-ctx.Done():

@@ -22,6 +22,9 @@ type DevTimeDependency interface {
     // It is used to print the dependency in the startup message.
     String() string
 
+    // State returns the current state of the dependency.
+    State(ctx context.Context) (string, error)
+
     // Terminate terminates the dependency, returning an error if it fails.
     Terminate(ctx context.Context) error
 }
@@ -45,6 +48,15 @@ String returns a string representation of the dependency, used to print the depe
 ```go
 // String returns a string representation of the dependency.
 func (d *DevTimeDependency) String() string
+```
+
+### State
+
+State returns the current state of the dependency, used to print the dependency in the startup message.
+
+```go
+// State returns the current state of the dependency.
+func (d *DevTimeDependency) State(ctx context.Context) (string, error)
 ```
 
 ### Terminate
@@ -90,10 +102,21 @@ func (s *redisStore) Start(ctx context.Context) error {
     return nil
 }
 
-// String returns a human-readable representation of the dependency's state.
+// String returns a string representation of the dependency.
 // It implements the fiber.DevTimeDependency interface.
 func (s *redisStore) String() string {
     return "redis-store"
+}
+
+// State returns the current state of the dependency.
+// It implements the fiber.DevTimeDependency interface.
+func (s *redisStore) State(ctx context.Context) (string, error) {
+    state, err := s.ctr.State(ctx)
+    if err != nil {
+        return "", fmt.Errorf("container state: %w", err)
+    }
+
+    return state.Status, nil
 }
 
 // Terminate stops and removes the dependency. It implements the fiber.DevTimeDependency interface.
@@ -179,10 +202,21 @@ func (s *redisStore) Start(ctx context.Context) error {
     return nil
 }
 
-// String returns a human-readable representation of the dependency's state.
+// String returns a string representation of the dependency.
 // It implements the fiber.DevTimeDependency interface.
 func (s *redisStore) String() string {
     return "redis-store"
+}
+
+// State returns the current state of the dependency.
+// It implements the fiber.DevTimeDependency interface.
+func (s *redisStore) State(ctx context.Context) (string, error) {
+    state, err := s.ctr.State(ctx)
+    if err != nil {
+        return "", fmt.Errorf("container state: %w", err)
+    }
+
+    return state.Status, nil
 }
 
 // Terminate stops and removes the dependency. It implements the fiber.DevTimeDependency interface.

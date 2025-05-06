@@ -383,7 +383,11 @@ func (app *App) startupMessage(addr string, isTLS bool, pids string, cfg ListenC
 		fmt.Fprintf(out, "%sINFO%s Application name: \t\t%s%s%s\n", colors.Green, colors.Reset, colors.Blue, app.config.AppName, colors.Reset)
 	}
 
-	app.logDevTimeDependencies(out, colors)
+	// TODO: Make this startup timeout log configurable
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	app.logDevTimeDependencies(ctx, out, colors)
 
 	fmt.Fprintf(out,
 		"%sINFO%s Total handlers count: \t%s%s%s\n",
