@@ -16,19 +16,19 @@ type DevTimeDependency interface {
 }
 
 // hasDevTimeDependencies always returns false in production builds
-func (app *App) hasDevTimeDependencies() bool {
+func (*App) hasDevTimeDependencies() bool {
 	return false
 }
 
 // startDevTimeDependencies is a no-op in production builds
-func (app *App) startDevTimeDependencies(_ context.Context) error {
+func (*App) startDevTimeDependencies(_ context.Context) error {
 	return nil
 }
 
 // shutdownDevTimeDependencies is a no-op in production builds
-func (app *App) shutdownDevTimeDependencies(_ context.Context) error {
+func (*App) shutdownDevTimeDependencies(_ context.Context) error {
 	return nil
 }
 
 // logDevTimeDependencies is a no-op in production builds
-func (app *App) logDevTimeDependencies(_ io.Writer, _ Colors) {}
+func (*App) logDevTimeDependencies(_ io.Writer, _ Colors) {}
