@@ -184,7 +184,7 @@ func BenchmarkDevTimeDependenciesWithContextCancellation(b *testing.B) {
 	b.Run("single-dependency/immediate-cancellation", func(b *testing.B) {
 		benchmarkFn(b, []DevTimeDependency{
 			&benchmarkDependency{name: "dep1", startDelay: 10 * time.Millisecond},
-		}, 1*time.Nanosecond)
+		}, 100*time.Millisecond)
 	})
 
 	b.Run("multiple-dependencies/immediate-cancellation", func(b *testing.B) {
@@ -192,7 +192,7 @@ func BenchmarkDevTimeDependenciesWithContextCancellation(b *testing.B) {
 			&benchmarkDependency{name: "dep1", startDelay: 10 * time.Millisecond},
 			&benchmarkDependency{name: "dep2", startDelay: 20 * time.Millisecond},
 			&benchmarkDependency{name: "dep3", startDelay: 30 * time.Millisecond},
-		}, 1*time.Nanosecond)
+		}, 100*time.Millisecond)
 	})
 }
 

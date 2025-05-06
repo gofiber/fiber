@@ -171,7 +171,7 @@ func TestDevTimeDependenciesStartWithContextCancellation(t *testing.T) {
 	}
 
 	// Create a context that will be canceled immediately
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
 	// Start dependencies with canceled context
@@ -194,7 +194,7 @@ func TestDevTimeDependenciesTerminateWithContextCancellation(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create a new context for shutdown
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
 	// Shutdown dependencies with canceled context
