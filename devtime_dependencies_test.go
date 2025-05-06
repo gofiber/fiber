@@ -142,11 +142,11 @@ func TestDevTimeDependenciesStartWithContextCancellation(t *testing.T) {
 		},
 	}
 
-	// Create a context that will be cancelled immediately
+	// Create a context that will be canceled immediately
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
 	defer cancel()
 
-	// Start dependencies with cancelled context
+	// Start dependencies with canceled context
 	err := app.startDevTimeDependencies(ctx)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 }
@@ -161,7 +161,7 @@ func TestDevTimeDependenciesTerminateWithContextCancellation(t *testing.T) {
 		},
 	}
 
-	// Start dependencies with cancelled context
+	// Start dependencies with canceled context
 	err := app.startDevTimeDependencies(context.Background())
 	require.NoError(t, err)
 
@@ -169,7 +169,7 @@ func TestDevTimeDependenciesTerminateWithContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
 	defer cancel()
 
-	// Shutdown dependencies with cancelled context
+	// Shutdown dependencies with canceled context
 	err = app.shutdownDevTimeDependencies(ctx)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 }
