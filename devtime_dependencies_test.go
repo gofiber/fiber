@@ -3,6 +3,7 @@ package fiber
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -21,7 +22,7 @@ type mockDependency struct {
 func (m *mockDependency) Start(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return fmt.Errorf("context canceled: %w", ctx.Err())
 	default:
 	}
 
@@ -36,7 +37,7 @@ func (m *mockDependency) String() string {
 func (m *mockDependency) Terminate(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return fmt.Errorf("context canceled: %w", ctx.Err())
 	default:
 	}
 
