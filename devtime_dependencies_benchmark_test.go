@@ -44,7 +44,9 @@ func BenchmarkStartDevTimeDependencies(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			ctx := context.Background()
-			_ = app.startDevTimeDependencies(ctx)
+			if err := app.startDevTimeDependencies(ctx); err != nil {
+				b.Fatal("Expected no error but got", err)
+			}
 		}
 	}
 
@@ -88,7 +90,9 @@ func BenchmarkShutdownDevTimeDependencies(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			ctx := context.Background()
-			_ = app.shutdownDevTimeDependencies(ctx)
+			if err := app.shutdownDevTimeDependencies(ctx); err != nil {
+				b.Fatal("Expected no error but got", err)
+			}
 		}
 	}
 
@@ -132,7 +136,11 @@ func BenchmarkDevTimeDependenciesWithContextCancellation(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
-			_ = app.startDevTimeDependencies(ctx)
+			err := app.startDevTimeDependencies(ctx)
+			// We expect an error here due to the short timeout
+			if err == nil && timeout < time.Microsecond {
+				b.Fatal("Expected error due to context cancellation but got none")
+			}
 			cancel()
 		}
 	}
@@ -166,8 +174,12 @@ func BenchmarkDevTimeDependenciesMemory(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
 			ctx := context.Background()
-			_ = app.startDevTimeDependencies(ctx)
-			_ = app.shutdownDevTimeDependencies(ctx)
+			if err := app.startDevTimeDependencies(ctx); err != nil {
+				b.Fatal("Expected no error but got", err)
+			}
+			if err := app.shutdownDevTimeDependencies(ctx); err != nil {
+				b.Fatal("Expected no error but got", err)
+			}
 		}
 	}
 
