@@ -24,7 +24,7 @@ type Service interface {
 	Terminate(ctx context.Context) error
 }
 
-// hasServices Checks if there are any service for the current application.
+// hasServices Checks if there are any services for the current application.
 func (app *App) hasServices() bool {
 	return len(app.configured.Services) > 0
 }
