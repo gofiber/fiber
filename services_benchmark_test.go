@@ -133,6 +133,30 @@ func BenchmarkServicesWithContextCancellation(b *testing.B) {
 			&mockService{name: "dep3", startDelay: 300 * time.Millisecond},
 		}, 10*time.Millisecond)
 	})
+
+	b.Run("multiple-services/successful-completion", func(b *testing.B) {
+		app := &App{
+			configured: Config{
+				Services: []Service{
+					&mockService{name: "dep1", startDelay: 10 * time.Millisecond},
+					&mockService{name: "dep2", startDelay: 20 * time.Millisecond},
+					&mockService{name: "dep3", startDelay: 30 * time.Millisecond},
+				},
+			},
+		}
+
+		const timeout = 500 * time.Millisecond
+
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			ctx, cancel := context.WithTimeout(context.Background(), timeout)
+			err := app.startServices(ctx)
+			if err != nil {
+				b.Fatal("Expected no error but got", err)
+			}
+			cancel()
+		}
+	})
 }
 
 func BenchmarkServicesMemory(b *testing.B) {
