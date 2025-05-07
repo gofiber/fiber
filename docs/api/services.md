@@ -4,7 +4,7 @@ title: 🥡 Services
 sidebar_position: 9
 ---
 
-Services provide external services needed to run the application while developing it. They are supposed to be used while developing and testing the application.
+Services provide external services needed to run the application. They are supposed to be used while developing and testing the application.
 
 ## Service Interface
 
