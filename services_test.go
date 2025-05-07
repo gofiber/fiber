@@ -120,7 +120,7 @@ func TestHasServices(t *testing.T) {
 	})
 }
 
-func testServiceOperation(t *testing.T, services []Service, operation string, wantErr bool) {
+func testServiceOperation(t *testing.T, services []Service, operation string) {
 	t.Helper()
 
 	app := &App{
@@ -139,16 +139,12 @@ func testServiceOperation(t *testing.T, services []Service, operation string, wa
 		t.Fatalf("unknown operation: %s", operation)
 	}
 
-	if wantErr {
-		require.Error(t, err)
-	} else {
-		require.NoError(t, err)
-	}
+	require.NoError(t, err)
 }
 
 func TestStartServices(t *testing.T) {
 	t.Run("no-services", func(t *testing.T) {
-		testServiceOperation(t, []Service{}, "start", false)
+		testServiceOperation(t, []Service{}, "start")
 	})
 
 	t.Run("successful-start", func(t *testing.T) {
@@ -159,20 +155,22 @@ func TestStartServices(t *testing.T) {
 				&mockService{name: "dep2"},
 			},
 			"start",
-			false,
 		)
 	})
 
 	t.Run("failed-start", func(t *testing.T) {
-		testServiceOperation(
-			t,
-			[]Service{
-				&mockService{name: "dep1", startError: errors.New("start error")},
-				&mockService{name: "dep2"},
+		app := &App{
+			configured: Config{
+				Services: []Service{
+					&mockService{name: "dep1", startError: errors.New("start error")},
+					&mockService{name: "dep2"},
+				},
 			},
-			"start",
-			true,
-		)
+		}
+
+		err := app.startServices(context.Background())
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "start error")
 	})
 
 	t.Run("context", func(t *testing.T) {
@@ -217,23 +215,26 @@ func TestStartServices(t *testing.T) {
 
 func TestShutdownServices(t *testing.T) {
 	t.Run("no-services", func(t *testing.T) {
-		testServiceOperation(t, []Service{}, "shutdown", false)
+		testServiceOperation(t, []Service{}, "shutdown")
 	})
 
 	t.Run("successful-shutdown", func(t *testing.T) {
-		testServiceOperation(t, []Service{&mockService{name: "dep1"}, &mockService{name: "dep2"}}, "shutdown", false)
+		testServiceOperation(t, []Service{&mockService{name: "dep1"}, &mockService{name: "dep2"}}, "shutdown")
 	})
 
 	t.Run("failed-shutdown", func(t *testing.T) {
-		testServiceOperation(
-			t,
-			[]Service{
-				&mockService{name: "dep1", terminateError: errors.New("terminate error")},
-				&mockService{name: "dep2"},
+		app := &App{
+			configured: Config{
+				Services: []Service{
+					&mockService{name: "dep1", terminateError: errors.New("terminate error")},
+					&mockService{name: "dep2"},
+				},
 			},
-			"shutdown",
-			true,
-		)
+		}
+
+		err := app.shutdownServices(context.Background())
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "terminate error")
 	})
 
 	t.Run("context", func(t *testing.T) {
@@ -284,7 +285,7 @@ func TestShutdownServices(t *testing.T) {
 }
 
 func TestServicesTerminate_ContextCanceledOrDeadlineExceeded(t *testing.T) {
-	testFn := func(t *testing.T, terminateErr error, wantErr error) {
+	testFn := func(t *testing.T, terminateErr, wantErr error) {
 		t.Helper()
 
 		app := &App{
