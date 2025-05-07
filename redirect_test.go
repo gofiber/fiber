@@ -6,6 +6,7 @@ package fiber
 
 import (
 	"bytes"
+	"encoding/hex"
 	"mime/multipart"
 	"net/url"
 	"testing"
@@ -45,7 +46,9 @@ func Test_Redirect_To_WithFlashMessages(t *testing.T) {
 	c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
 
 	var msgs redirectionMsgs
-	_, err = msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
+	decoded, err := hex.DecodeString(c.Cookies(FlashCookieName))
+	require.NoError(t, err)
+	_, err = msgs.UnmarshalMsg(decoded)
 	require.NoError(t, err)
 
 	require.Len(t, msgs, 2)
@@ -188,7 +191,9 @@ func Test_Redirect_Back_WithFlashMessages(t *testing.T) {
 	c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
 
 	var msgs redirectionMsgs
-	_, err = msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
+	decoded, err := hex.DecodeString(c.Cookies(FlashCookieName))
+	require.NoError(t, err)
+	_, err = msgs.UnmarshalMsg(decoded)
 	require.NoError(t, err)
 
 	require.Len(t, msgs, 2)
@@ -239,7 +244,9 @@ func Test_Redirect_Route_WithFlashMessages(t *testing.T) {
 	c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
 
 	var msgs redirectionMsgs
-	_, err = msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
+	decoded, err := hex.DecodeString(c.Cookies(FlashCookieName))
+	require.NoError(t, err)
+	_, err = msgs.UnmarshalMsg(decoded)
 	require.NoError(t, err)
 
 	require.Len(t, msgs, 2)
@@ -276,7 +283,9 @@ func Test_Redirect_Route_WithOldInput(t *testing.T) {
 		c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
 
 		var msgs redirectionMsgs
-		_, err = msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
+		decoded, err := hex.DecodeString(c.Cookies(FlashCookieName))
+		require.NoError(t, err)
+		_, err = msgs.UnmarshalMsg(decoded)
 		require.NoError(t, err)
 
 		require.Len(t, msgs, 4)
@@ -312,7 +321,8 @@ func Test_Redirect_Route_WithOldInput(t *testing.T) {
 		c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
 
 		var msgs redirectionMsgs
-		_, err = msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
+		decoded, err := hex.DecodeString(c.Cookies(FlashCookieName))
+		_, err = msgs.UnmarshalMsg(decoded)
 		require.NoError(t, err)
 
 		require.Len(t, msgs, 4)
@@ -356,7 +366,9 @@ func Test_Redirect_Route_WithOldInput(t *testing.T) {
 		c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
 
 		var msgs redirectionMsgs
-		_, err = msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
+		decoded, err := hex.DecodeString(c.Cookies(FlashCookieName))
+		require.NoError(t, err)
+		_, err = msgs.UnmarshalMsg(decoded)
 		require.NoError(t, err)
 
 		require.Len(t, msgs, 4)
@@ -402,7 +414,7 @@ func Test_Redirect_parseAndClearFlashMessages(t *testing.T) {
 	val, err := msgs.MarshalMsg(nil)
 	require.NoError(t, err)
 
-	c.Request().Header.Set(HeaderCookie, "fiber_flash="+string(val))
+	c.Request().Header.Set(HeaderCookie, "fiber_flash="+hex.EncodeToString(val))
 
 	c.Redirect().parseAndClearFlashMessages()
 
@@ -541,7 +553,9 @@ func Benchmark_Redirect_Route_WithFlashMessages(b *testing.B) {
 	c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
 
 	var msgs redirectionMsgs
-	_, err = msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
+	decoded, err := hex.DecodeString(c.Cookies(FlashCookieName))
+	require.NoError(b, err)
+	_, err = msgs.UnmarshalMsg(decoded)
 	require.NoError(b, err)
 
 	require.Contains(b, msgs, redirectionMsg{key: "success", value: "1", level: 0, isOldInput: false})
@@ -581,7 +595,7 @@ func Benchmark_Redirect_parseAndClearFlashMessages(b *testing.B) {
 	val, err := testredirectionMsgs.MarshalMsg(nil)
 	require.NoError(b, err)
 
-	c.Request().Header.Set(HeaderCookie, "fiber_flash="+string(val))
+	c.Request().Header.Set(HeaderCookie, "fiber_flash="+hex.EncodeToString(val))
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -632,7 +646,9 @@ func Benchmark_Redirect_processFlashMessages(b *testing.B) {
 	c.RequestCtx().Request.Header.Set(HeaderCookie, c.GetRespHeader(HeaderSetCookie)) // necessary for testing
 
 	var msgs redirectionMsgs
-	_, err := msgs.UnmarshalMsg([]byte(c.Cookies(FlashCookieName)))
+	decoded, err := hex.DecodeString(c.Cookies(FlashCookieName))
+	require.NoError(b, err)
+	_, err = msgs.UnmarshalMsg(decoded)
 	require.NoError(b, err)
 
 	require.Len(b, msgs, 2)
@@ -652,7 +668,7 @@ func Benchmark_Redirect_Messages(b *testing.B) {
 	val, err := testredirectionMsgs.MarshalMsg(nil)
 	require.NoError(b, err)
 
-	c.Request().Header.Set(HeaderCookie, "fiber_flash="+string(val))
+	c.Request().Header.Set(HeaderCookie, "fiber_flash="+hex.EncodeToString(val))
 	c.Redirect().parseAndClearFlashMessages()
 
 	var msgs []FlashMessage
@@ -689,7 +705,7 @@ func Benchmark_Redirect_OldInputs(b *testing.B) {
 	val, err := testredirectionMsgs.MarshalMsg(nil)
 	require.NoError(b, err)
 
-	c.Request().Header.Set(HeaderCookie, "fiber_flash="+string(val))
+	c.Request().Header.Set(HeaderCookie, "fiber_flash="+hex.EncodeToString(val))
 	c.Redirect().parseAndClearFlashMessages()
 
 	var oldInputs []OldInputData
@@ -724,7 +740,7 @@ func Benchmark_Redirect_Message(b *testing.B) {
 	val, err := testredirectionMsgs.MarshalMsg(nil)
 	require.NoError(b, err)
 
-	c.Request().Header.Set(HeaderCookie, "fiber_flash="+string(val))
+	c.Request().Header.Set(HeaderCookie, "fiber_flash="+hex.EncodeToString(val))
 	c.Redirect().parseAndClearFlashMessages()
 
 	var msg FlashMessage
@@ -755,7 +771,7 @@ func Benchmark_Redirect_OldInput(b *testing.B) {
 	val, err := testredirectionMsgs.MarshalMsg(nil)
 	require.NoError(b, err)
 
-	c.Request().Header.Set(HeaderCookie, "fiber_flash="+string(val))
+	c.Request().Header.Set(HeaderCookie, "fiber_flash="+hex.EncodeToString(val))
 	c.Redirect().parseAndClearFlashMessages()
 
 	var input OldInputData
