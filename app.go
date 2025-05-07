@@ -619,7 +619,7 @@ func New(config ...Config) *App {
 
 		app.Hooks().OnPostShutdown(func(_ error) error {
 			if err := app.shutdownServices(ctx); err != nil {
-				log.Warnf("failed to shutdown services: %v", err)
+				log.Errorf("failed to shutdown services: %v", err)
 			}
 			return nil
 		})
