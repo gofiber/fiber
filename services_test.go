@@ -317,46 +317,39 @@ func TestMultipleDependenciesErrorHandling(t *testing.T) {
 		terminateErrorMessage = "terminate error"
 		startErrorMessage     = "start error"
 	)
-	multipleFn := func(t *testing.T, deps []Service, start bool) {
-		t.Helper()
 
+	t.Run("start", func(t *testing.T) {
 		app := &App{
 			configured: Config{
-				Services: deps,
+				Services: []Service{
+					&mockService{name: "dep1", startError: errors.New(startErrorMessage + " 1")},
+					&mockService{name: "dep2", startError: errors.New(startErrorMessage + " 2")},
+					&mockService{name: "dep3"},
+				},
 			},
 		}
 
-		fn := app.shutdownServices
-		errorMessage := terminateErrorMessage
-
-		if start {
-			errorMessage = startErrorMessage
-			fn = app.startServices
-		}
-
-		err := fn(context.Background())
+		err := app.startServices(context.Background())
 		require.Error(t, err)
-
-		// Verify error message contains both error messages
-		errMsg := err.Error()
-		require.Contains(t, errMsg, errorMessage+" 1")
-		require.Contains(t, errMsg, errorMessage+" 2")
-	}
-
-	t.Run("start", func(t *testing.T) {
-		multipleFn(t, []Service{
-			&mockService{name: "dep1", startError: errors.New(startErrorMessage + " 1")},
-			&mockService{name: "dep2", startError: errors.New(startErrorMessage + " 2")},
-			&mockService{name: "dep3"},
-		}, true)
+		require.Contains(t, err.Error(), startErrorMessage+" 1")
+		require.Contains(t, err.Error(), startErrorMessage+" 2")
 	})
 
 	t.Run("terminate", func(t *testing.T) {
-		multipleFn(t, []Service{
-			&mockService{name: "dep1", terminateError: errors.New(terminateErrorMessage + " 1")},
-			&mockService{name: "dep2", terminateError: errors.New(terminateErrorMessage + " 2")},
-			&mockService{name: "dep3"},
-		}, false)
+		app := &App{
+			configured: Config{
+				Services: []Service{
+					&mockService{name: "dep1", terminateError: errors.New(terminateErrorMessage + " 1")},
+					&mockService{name: "dep2", terminateError: errors.New(terminateErrorMessage + " 2")},
+					&mockService{name: "dep3"},
+				},
+			},
+		}
+
+		err := app.shutdownServices(context.Background())
+		require.Error(t, err)
+		require.Contains(t, err.Error(), terminateErrorMessage+" 1")
+		require.Contains(t, err.Error(), terminateErrorMessage+" 2")
 	})
 }
 
