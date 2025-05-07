@@ -68,12 +68,8 @@ func (app *App) shutdownServices(ctx context.Context) error {
 
 			err := dep.Terminate(ctx)
 			if err != nil {
-				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-					// Context is canceled, do a best effort to terminate the services.
-					errs = append(errs, fmt.Errorf("service %s terminate: %w", dep.String(), err))
-					continue
-				}
-				errs = append(errs, fmt.Errorf("terminate service %s: %w", dep.String(), err))
+				// Best effort to terminate the services.
+				errs = append(errs, fmt.Errorf("service %s terminate: %w", dep.String(), err))
 			}
 		}
 		return errors.Join(errs...)
