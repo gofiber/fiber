@@ -46,7 +46,7 @@ func (app *App) startServices(ctx context.Context) error {
 				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 					return fmt.Errorf("service %s start: %w", dep.String(), err)
 				}
-				errs = append(errs, fmt.Errorf("start service %s: %w", dep.String(), err))
+				errs = append(errs, fmt.Errorf("service %s start: %w", dep.String(), err))
 			}
 		}
 		return errors.Join(errs...)
