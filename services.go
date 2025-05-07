@@ -29,6 +29,26 @@ func (app *App) hasServices() bool {
 	return len(app.configured.Services) > 0
 }
 
+// servicesStartupCtx Returns the context for the services startup.
+// If the ServicesStartupCtx is not set, it returns a new background context.
+func (app *App) servicesStartupCtx() context.Context {
+	if app.config.ServicesStartupCtx != nil {
+		return app.config.ServicesStartupCtx
+	}
+
+	return context.Background()
+}
+
+// servicesShutdownCtx Returns the context for the services shutdown.
+// If the ServicesShutdownCtx is not set, it returns a new background context.
+func (app *App) servicesShutdownCtx() context.Context {
+	if app.config.ServicesShutdownCtx != nil {
+		return app.config.ServicesShutdownCtx
+	}
+
+	return context.Background()
+}
+
 // startServices Handles the start process of services for the current application.
 // Iterates over all services and tries to start them, returning an error if any error occurs.
 func (app *App) startServices(ctx context.Context) error {
@@ -42,12 +62,17 @@ func (app *App) startServices(ctx context.Context) error {
 			}
 
 			err := dep.Start(ctx)
-			if err != nil {
-				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-					return fmt.Errorf("service %s start: %w", dep.String(), err)
-				}
-				errs = append(errs, fmt.Errorf("service %s start: %w", dep.String(), err))
+			if err == nil {
+				// mark the service as started
+				app.startedServices = append(app.startedServices, dep)
+				continue
 			}
+
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return fmt.Errorf("service %s start: %w", dep.String(), err)
+			}
+
+			errs = append(errs, fmt.Errorf("service %s start: %w", dep.String(), err))
 		}
 		return errors.Join(errs...)
 	}
@@ -57,9 +82,9 @@ func (app *App) startServices(ctx context.Context) error {
 // shutdownServices Handles the shutdown process of services for the current application.
 // Iterates over all services and tries to terminate them, returning an error if any error occurs.
 func (app *App) shutdownServices(ctx context.Context) error {
-	if app.hasServices() {
+	if len(app.startedServices) > 0 {
 		var errs []error
-		for _, dep := range app.configured.Services {
+		for _, dep := range app.startedServices {
 			if err := ctx.Err(); err != nil {
 				// Context is canceled, do a best effort to terminate the services.
 				errs = append(errs, fmt.Errorf("service %s terminate: %w", dep.String(), err))

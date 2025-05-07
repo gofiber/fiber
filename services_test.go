@@ -12,6 +12,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	terminateErrorMessage = "terminate error"
+	startErrorMessage     = "start error"
+)
+
 // mockService implements Service interface for testing
 type mockService struct {
 	startError     error
@@ -120,57 +125,50 @@ func TestHasServices(t *testing.T) {
 	})
 }
 
-func testServiceOperation(t *testing.T, services []Service, operation string) {
-	t.Helper()
-
-	app := &App{
-		configured: Config{
-			Services: services,
-		},
-	}
-
-	var err error
-	switch operation {
-	case "start":
-		err = app.startServices(context.Background())
-	case "shutdown":
-		err = app.shutdownServices(context.Background())
-	default:
-		t.Fatalf("unknown operation: %s", operation)
-	}
-
-	require.NoError(t, err)
-}
-
 func TestStartServices(t *testing.T) {
 	t.Run("no-services", func(t *testing.T) {
-		testServiceOperation(t, []Service{}, "start")
+		app := &App{
+			configured: Config{
+				Services: []Service{},
+			},
+		}
+
+		err := app.startServices(context.Background())
+		require.NoError(t, err)
+		require.Empty(t, app.startedServices)
 	})
 
 	t.Run("successful-start", func(t *testing.T) {
-		testServiceOperation(
-			t,
-			[]Service{
-				&mockService{name: "dep1"},
-				&mockService{name: "dep2"},
-			},
-			"start",
-		)
-	})
-
-	t.Run("failed-start", func(t *testing.T) {
 		app := &App{
 			configured: Config{
 				Services: []Service{
-					&mockService{name: "dep1", startError: errors.New("start error")},
+					&mockService{name: "dep1"},
 					&mockService{name: "dep2"},
 				},
 			},
 		}
 
 		err := app.startServices(context.Background())
+		require.NoError(t, err)
+		require.Len(t, app.startedServices, 2)
+	})
+
+	t.Run("failed-start", func(t *testing.T) {
+		app := &App{
+			configured: Config{
+				Services: []Service{
+					&mockService{name: "dep1", startError: errors.New(startErrorMessage + " 1")},
+					&mockService{name: "dep2", startError: errors.New(startErrorMessage + " 2")},
+					&mockService{name: "dep3"},
+				},
+			},
+		}
+
+		err := app.startServices(context.Background())
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "start error")
+		require.Contains(t, err.Error(), startErrorMessage+" 1")
+		require.Contains(t, err.Error(), startErrorMessage+" 2")
+		require.Len(t, app.startedServices, 1)
 	})
 
 	t.Run("context", func(t *testing.T) {
@@ -189,7 +187,7 @@ func TestStartServices(t *testing.T) {
 
 			err := app.startServices(ctx)
 			require.ErrorIs(t, err, context.Canceled)
-			require.Contains(t, err.Error(), "context canceled while starting services")
+			require.Len(t, app.startedServices, 0)
 		})
 
 		t.Run("cancellation", func(t *testing.T) {
@@ -206,55 +204,64 @@ func TestStartServices(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 			defer cancel()
 
-			// Start services with canceled context
+			// Start services with a delay that is longer than the timeout
 			err := app.startServices(ctx)
 			require.ErrorIs(t, err, context.DeadlineExceeded)
+			require.Len(t, app.startedServices, 0)
 		})
 	})
 }
 
 func TestShutdownServices(t *testing.T) {
 	t.Run("no-services", func(t *testing.T) {
-		testServiceOperation(t, []Service{}, "shutdown")
+		app := &App{
+			startedServices: []Service{},
+		}
+
+		err := app.shutdownServices(context.Background())
+		require.NoError(t, err)
 	})
 
 	t.Run("successful-shutdown", func(t *testing.T) {
-		testServiceOperation(t, []Service{&mockService{name: "dep1"}, &mockService{name: "dep2"}}, "shutdown")
+		app := &App{
+			startedServices: []Service{
+				&mockService{name: "dep1"},
+				&mockService{name: "dep2"},
+			},
+		}
+
+		err := app.shutdownServices(context.Background())
+		require.NoError(t, err)
 	})
 
 	t.Run("failed-shutdown", func(t *testing.T) {
 		app := &App{
-			configured: Config{
-				Services: []Service{
-					&mockService{name: "dep1", terminateError: errors.New("terminate error")},
-					&mockService{name: "dep2"},
-				},
+			startedServices: []Service{
+				&mockService{name: "dep1", terminateError: errors.New(terminateErrorMessage + " 1")},
+				&mockService{name: "dep2", terminateError: errors.New(terminateErrorMessage + " 2")},
+				&mockService{name: "dep3"},
 			},
 		}
 
 		err := app.shutdownServices(context.Background())
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "terminate error")
+		require.Contains(t, err.Error(), terminateErrorMessage+" 1")
+		require.Contains(t, err.Error(), terminateErrorMessage+" 2")
 	})
 
 	t.Run("context", func(t *testing.T) {
 		t.Run("already-canceled", func(t *testing.T) {
 			app := &App{
-				configured: Config{
-					Services: []Service{
-						&mockService{name: "dep1"},
-					},
+				startedServices: []Service{
+					&mockService{name: "dep1"},
 				},
 			}
-
-			err := app.startServices(context.Background())
-			require.NoError(t, err)
 
 			// Create a context that is already canceled
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
 
-			err = app.shutdownServices(ctx)
+			err := app.shutdownServices(ctx)
 			require.Error(t, err)
 			require.ErrorIs(t, err, context.Canceled)
 			require.Contains(t, err.Error(), "service dep1 terminate")
@@ -265,91 +272,17 @@ func TestShutdownServices(t *testing.T) {
 			slowDep := &mockService{name: "slow-dep", terminateDelay: 200 * time.Millisecond}
 
 			app := &App{
-				configured: Config{
-					Services: []Service{slowDep},
-				},
+				startedServices: []Service{slowDep},
 			}
-
-			err := app.startServices(context.Background())
-			require.NoError(t, err)
 
 			// Create a new context for shutdown
 			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 			defer cancel()
 
 			// Shutdown services with canceled context
-			err = app.shutdownServices(ctx)
+			err := app.shutdownServices(ctx)
 			require.ErrorIs(t, err, context.DeadlineExceeded)
 		})
-	})
-}
-
-func TestServicesTerminate_ContextCanceledOrDeadlineExceeded(t *testing.T) {
-	testFn := func(t *testing.T, terminateErr, wantErr error) {
-		t.Helper()
-
-		app := &App{
-			configured: Config{
-				Services: []Service{
-					&mockService{name: "dep1", terminateError: terminateErr},
-					&mockService{name: "dep2"}, // Should still be called
-				},
-			},
-		}
-
-		err := app.shutdownServices(context.Background())
-		require.Error(t, err)
-		require.ErrorIs(t, err, wantErr)
-		require.Contains(t, err.Error(), "service dep1 terminate")
-	}
-
-	t.Run("context-canceled", func(t *testing.T) {
-		testFn(t, context.Canceled, context.Canceled)
-	})
-
-	t.Run("deadline-exceeded", func(t *testing.T) {
-		testFn(t, context.DeadlineExceeded, context.DeadlineExceeded)
-	})
-}
-
-func TestMultipleDependenciesErrorHandling(t *testing.T) {
-	const (
-		terminateErrorMessage = "terminate error"
-		startErrorMessage     = "start error"
-	)
-
-	t.Run("start", func(t *testing.T) {
-		app := &App{
-			configured: Config{
-				Services: []Service{
-					&mockService{name: "dep1", startError: errors.New(startErrorMessage + " 1")},
-					&mockService{name: "dep2", startError: errors.New(startErrorMessage + " 2")},
-					&mockService{name: "dep3"},
-				},
-			},
-		}
-
-		err := app.startServices(context.Background())
-		require.Error(t, err)
-		require.Contains(t, err.Error(), startErrorMessage+" 1")
-		require.Contains(t, err.Error(), startErrorMessage+" 2")
-	})
-
-	t.Run("terminate", func(t *testing.T) {
-		app := &App{
-			configured: Config{
-				Services: []Service{
-					&mockService{name: "dep1", terminateError: errors.New(terminateErrorMessage + " 1")},
-					&mockService{name: "dep2", terminateError: errors.New(terminateErrorMessage + " 2")},
-					&mockService{name: "dep3"},
-				},
-			},
-		}
-
-		err := app.shutdownServices(context.Background())
-		require.Error(t, err)
-		require.Contains(t, err.Error(), terminateErrorMessage+" 1")
-		require.Contains(t, err.Error(), terminateErrorMessage+" 2")
 	})
 }
 

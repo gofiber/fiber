@@ -131,6 +131,8 @@ type App struct {
 	handlersCount uint32
 	// contains the information if the route stack has been changed to build the optimized tree
 	routesRefreshed bool
+	// startedServices is a list of services that have been started
+	startedServices []Service
 }
 
 // Config is a struct holding the server settings.
@@ -415,6 +417,16 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	//
 	// Optional. Default: a zero value slice
 	Services []Service
+
+	// ServicesStartupCtx is a context for the startup of the services.
+	//
+	// Optional. Default: context.Background()
+	ServicesStartupCtx context.Context
+
+	// ServicesShutdownCtx is a context for the shutdown of the services.
+	//
+	// Optional. Default: context.Background()
+	ServicesShutdownCtx context.Context
 }
 
 // Default TrustProxyConfig
@@ -611,14 +623,12 @@ func New(config ...Config) *App {
 	// If the app is configured to use services,
 	// register a post shutdown hook to shutdown them after the server is closed.
 	if app.hasServices() {
-		// TODO: support for custom context
-		ctx := context.Background()
-		if err := app.startServices(ctx); err != nil {
+		if err := app.startServices(app.servicesStartupCtx()); err != nil {
 			panic(err)
 		}
 
 		app.Hooks().OnPostShutdown(func(_ error) error {
-			if err := app.shutdownServices(ctx); err != nil {
+			if err := app.shutdownServices(app.servicesShutdownCtx()); err != nil {
 				log.Errorf("failed to shutdown services: %v", err)
 			}
 			return nil

@@ -129,6 +129,20 @@ func main() {
     store := &redisStore{}
     cfg.Services = append(cfg.Services, store)
 
+    // Define a context for the services startup.
+    // This is useful to cancel the startup of the services if the context is canceled.
+    // Default is context.Background().
+    startupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+    cfg.ServicesStartupCtx = startupCtx
+
+    // Define a context for the services shutdown.
+    // This is useful to cancel the shutdown of the services if the context is canceled.
+    // Default is context.Background().
+    shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+    cfg.ServicesShutdownCtx = shutdownCtx
+
     app := fiber.New(*cfg)
 
     ctx := context.Background()
@@ -229,6 +243,20 @@ func main() {
     // Initialize service.
     store := &redisStore{}
     cfg.Services = append(cfg.Services, store)
+
+    // Define a context for the services startup.
+    // This is useful to cancel the startup of the services if the context is canceled.
+    // Default is context.Background().
+    startupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+    cfg.ServicesStartupCtx = startupCtx
+
+        // Define a context for the services shutdown.
+    // This is useful to cancel the shutdown of the services if the context is canceled.
+    // Default is context.Background().
+    shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+    cfg.ServicesShutdownCtx = shutdownCtx
 
     app := fiber.New(*cfg)
 
