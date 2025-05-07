@@ -7,6 +7,7 @@ package fiber
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -487,7 +488,7 @@ func Test_App_Remove_Route_A_B_Feature_Testing(t *testing.T) {
 	app := New()
 
 	app.Get("/api/feature-a", func(c Ctx) error {
-		app.RemoveRoute("/api/feature", false, MethodGet)
+		app.RemoveRoute("/api/feature", MethodGet)
 		app.RebuildTree()
 		// Redefine route
 		app.Get("/api/feature", func(c Ctx) error {
@@ -498,7 +499,7 @@ func Test_App_Remove_Route_A_B_Feature_Testing(t *testing.T) {
 		return c.SendStatus(StatusOK)
 	})
 	app.Get("/api/feature-b", func(c Ctx) error {
-		app.RemoveRoute("/api/feature", false, MethodGet)
+		app.RemoveRoute("/api/feature", MethodGet)
 		app.RebuildTree()
 		// Redefine route
 		app.Get("/api/feature", func(c Ctx) error {
@@ -526,7 +527,7 @@ func Test_App_Remove_Route_By_Name(t *testing.T) {
 		return c.SendStatus(StatusOK)
 	}).Name("test")
 
-	app.RemoveRouteByName("test", false, MethodGet)
+	app.RemoveRouteByName("test", MethodGet)
 	app.RebuildTree()
 
 	verifyRequest(t, app, "/test", StatusNotFound)
@@ -537,7 +538,7 @@ func Test_App_Remove_Route_By_Name_Non_Existing_Route(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	app.RemoveRouteByName("test", false, MethodGet)
+	app.RemoveRouteByName("test", MethodGet)
 	app.RebuildTree()
 
 	verifyThereAreNoRoutes(t, app)
@@ -555,7 +556,7 @@ func Test_App_Remove_Route_Nested(t *testing.T) {
 	})
 
 	verifyRequest(t, app, "/api/v1/test", StatusOK)
-	app.RemoveRoute("/api/v1/test", false, MethodGet)
+	app.RemoveRoute("/api/v1/test", MethodGet)
 
 	verifyThereAreNoRoutes(t, app)
 }
@@ -568,7 +569,7 @@ func Test_App_Remove_Route_Parameterized(t *testing.T) {
 		return c.SendStatus(StatusOK)
 	})
 	verifyRequest(t, app, "/test/:id", StatusOK)
-	app.RemoveRoute("/test/:id", false, MethodGet)
+	app.RemoveRoute("/test/:id", MethodGet)
 
 	verifyThereAreNoRoutes(t, app)
 }
@@ -581,7 +582,7 @@ func Test_App_Remove_Route(t *testing.T) {
 		return c.SendStatus(StatusOK)
 	})
 
-	app.RemoveRoute("/test", false, MethodGet)
+	app.RemoveRoute("/test", MethodGet)
 	app.RebuildTree()
 
 	verifyRequest(t, app, "/test", StatusNotFound)
@@ -591,7 +592,7 @@ func Test_App_Remove_Route_Non_Existing_Route(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	app.RemoveRoute("/test", false, MethodGet, MethodHead)
+	app.RemoveRoute("/test", MethodGet, MethodHead)
 	app.RebuildTree()
 
 	verifyThereAreNoRoutes(t, app)
@@ -612,7 +613,7 @@ func Test_App_Remove_Route_Concurrent(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			app.RemoveRoute("/test", false, MethodGet)
+			app.RemoveRoute("/test", MethodGet)
 			app.Get("/test", func(c Ctx) error {
 				return c.SendStatus(StatusOK)
 			})
@@ -809,23 +810,31 @@ func TestRemoveRoute(t *testing.T) {
 
 	buf.Reset()
 
-	app.RemoveRoute("/test", false, MethodGet)
+	app.RemoveRoute("/test", MethodGet)
 	app.RebuildTree()
 
-	require.Equal(t, uint32(4), app.handlersCount)
-	require.Equal(t, uint32(20), app.routesCount)
+	routes := app.GetRoutes()
+	for _, route := range routes {
+		fmt.Printf("%s %s\n", route.Method, route.Path)
+	}
 
-	app.RemoveRoute("/test", false, MethodPost)
+	require.Equal(t, uint32(4), app.handlersCount)
+	require.Equal(t, uint32(19), app.routesCount)
+
+	app.RemoveRoute("/test", MethodPost)
 	app.RebuildTree()
 
 	require.Equal(t, uint32(3), app.handlersCount)
-	require.Equal(t, uint32(19), app.routesCount)
+	require.Equal(t, uint32(17), app.routesCount)
 
 	req, err = http.NewRequest(MethodPost, "/test", nil)
 	require.NoError(t, err)
 
 	resp, err = app.Test(req)
 	require.NoError(t, err)
+
+	body, err := io.ReadAll(resp.Body)
+	fmt.Println(string(body))
 
 	require.Equal(t, 404, resp.StatusCode)
 	require.Equal(t, "13", buf.String())
@@ -843,7 +852,7 @@ func TestRemoveRoute(t *testing.T) {
 
 	buf.Reset()
 
-	app.RemoveRoute("/", false, MethodGet, MethodPost)
+	app.RemoveRoute("/", MethodGet, MethodPost)
 
 	require.Equal(t, uint32(2), app.handlersCount)
 	require.Equal(t, uint32(18), app.routesCount)
@@ -857,10 +866,12 @@ func TestRemoveRoute(t *testing.T) {
 	require.Equal(t, 404, resp.StatusCode)
 	require.Equal(t, "1", buf.String())
 
-	app.RemoveRoute("/test", true, MethodGet, MethodPost)
+	app.RemoveRoute("/test", MethodGet, MethodPost)
 
 	require.Equal(t, uint32(2), app.handlersCount)
 	require.Equal(t, uint32(16), app.routesCount)
+
+	app.RemoveRoute("/test", app.config.RequestMethods...)
 }
 
 //////////////////////////////////////////////

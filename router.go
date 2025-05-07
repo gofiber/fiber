@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"slices"
 	"sort"
 	"sync/atomic"
 
@@ -414,27 +415,37 @@ func (app *App) normalizePath(path string) string {
 // RemoveRoute is used to remove a route from the stack by path.
 // This only needs to be called to remove a route, route registration prevents duplicate routes.
 // You should call RebuildTree after using this to ensure consistency of the tree.
-func (app *App) RemoveRoute(path string, removeMiddlewares bool, methods ...string) {
+func (app *App) RemoveRoute(path string, methods ...string) {
 	// Normalize same as register uses
 	norm := app.normalizePath(path)
 
 	pathMatchFunc := func(r *Route) bool {
 		return r.path == norm // compare private normalized path
 	}
-	app.deleteRoute(methods, removeMiddlewares, pathMatchFunc)
+	app.deleteRoute(methods, pathMatchFunc)
 }
 
 // RemoveRouteByName is used to remove a route from the stack by name.
 // This only needs to be called to remove a route, route registration prevents duplicate routes.
 // You should call RebuildTree after using this to ensure consistency of the tree.
-func (app *App) RemoveRouteByName(name string, removeMiddlewares bool, methods ...string) {
+func (app *App) RemoveRouteByName(name string, methods ...string) {
 	matchFunc := func(r *Route) bool { return r.Name == name }
-	app.deleteRoute(methods, removeMiddlewares, matchFunc)
+	app.deleteRoute(methods, matchFunc)
 }
 
-func (app *App) deleteRoute(methods []string, removeMiddlewares bool, matchFunc func(r *Route) bool) {
+// RemoveRouteFunc is used to remove a route from the stack by a custom match function.
+// This only needs to be called to remove a route, route registration prevents duplicate routes.
+// You should call RebuildTree after using this to ensure consistency of the tree.
+// Note: The route.Path is original path, not the normalized path.
+func (app *App) RemoveRouteFunc(matchFunc func(r *Route) bool, methods ...string) {
+	app.deleteRoute(methods, matchFunc)
+}
+
+func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
+
+	removedUseRoutes := make(map[string]struct{})
 
 	for _, method := range methods {
 		// Uppercase HTTP methods
@@ -447,30 +458,31 @@ func (app *App) deleteRoute(methods []string, removeMiddlewares bool, matchFunc 
 		}
 
 		for i, route := range app.stack[m] {
-			var removedUseHandler bool
-			// only remove middlewares when use is true and method is use, if not middleware just check path
-			if (removeMiddlewares && route.use && matchFunc(route)) || (!route.use && matchFunc(route)) {
+			if matchFunc(route) {
 				// Remove route from stack
 				if i+1 < len(app.stack[m]) {
+					fmt.Println("a")
 					app.stack[m] = append(app.stack[m][:i], app.stack[m][i+1:]...)
 				} else {
+					fmt.Println("b")
 					app.stack[m] = app.stack[m][:i]
 				}
 				app.routesRefreshed = true
 
 				// Decrement global handler count. In middleware routes, only decrement once
-				if (route.use && !removedUseHandler) || !route.use {
-					removedUseHandler = true
+				if _, ok := removedUseRoutes[route.path]; (route.use && slices.Equal(methods, app.config.RequestMethods) && !ok) || !route.use {
+					if route.use {
+						removedUseRoutes[route.path] = struct{}{}
+					}
 					atomic.AddUint32(&app.handlersCount, ^uint32(len(route.Handlers)-1)) //nolint:gosec // Not a concern
 				}
 
 				// Decrement global route count
-				atomic.AddUint32(&app.routesCount, ^uint32(0)) //nolint:gosec // Not a concern
+				atomic.AddUint32(&app.routesCount, ^uint32(0)) //nolint:gosec // Not a concern1
 			}
 		}
 	}
 
-	app.routesRefreshed = true
 }
 
 func (app *App) addRoute(method string, route *Route, isMounted ...bool) {
