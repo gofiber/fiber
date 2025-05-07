@@ -818,6 +818,7 @@ func (s *myService) Start(ctx context.Context) error {
 }
 
 // String returns a string representation of the service.
+// It is used to print a human-readable name of the service in the startup message.
 // It implements the [fiber.Service] interface.
 func (s *myService) String() string {
     return s.img
@@ -859,7 +860,7 @@ $ go run . -v
    / ____(_) /_  ___  _____
   / /_  / / __ \/ _ \/ ___/
  / __/ / / /_/ /  __/ /    
-/_/   /_/_.___/\___/_/          v3.0.0-beta.4
+/_/   /_/_.___/\___/_/          v3.0.0
 --------------------------------------------------
 INFO Server started on:         http://127.0.0.1:3000 (bound on host 0.0.0.0 and port 3000)
 INFO Services:     2

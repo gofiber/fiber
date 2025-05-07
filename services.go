@@ -14,7 +14,7 @@ type Service interface {
 	Start(ctx context.Context) error
 
 	// String returns a string representation of the service.
-	// It is used to print the service in the startup message.
+	// It is used to print a human-readable name of the service in the startup message.
 	String() string
 
 	// State returns the current state of the service.

@@ -19,7 +19,7 @@ type Service interface {
     Start(ctx context.Context) error
 
     // String returns a string representation of the service.
-    // It is used to print the service in the startup message.
+    // It is used to print a human-readable name of the service in the startup message.
     String() string
 
     // State returns the current state of the service.
@@ -34,28 +34,25 @@ type Service interface {
 
 ### Start
 
-Start starts the service, returning an error if it fails. This method is automatically called when the application starts.
+Starts the service, returning an error if it fails. This method is automatically called when the application starts.
 
 ```go
-// Start starts the service, returning an error if it fails.
 func (d *Service) Start(ctx context.Context) error
 ```
 
 ### String
 
-String returns a string representation of the service, used to print the service in the startup message.
+Returns a string representation of the service, used to print the service in the startup message.
 
 ```go
-// String returns a string representation of the service.
 func (d *Service) String() string
 ```
 
 ### State
 
-State returns the current state of the service, used to print the service in the startup message.
+Returns the current state of the service, used to print the service in the startup message.
 
 ```go
-// State returns the current state of the service.
 func (d *Service) State(ctx context.Context) (string, error)
 ```
 
@@ -64,7 +61,6 @@ func (d *Service) State(ctx context.Context) (string, error)
 Terminate terminates the service after the application shuts down using a post shutdown hook, returning an error if it fails.
 
 ```go
-// Terminate terminates the service, returning an error if it fails.
 func (d *Service) Terminate(ctx context.Context) error
 ```
 
@@ -103,6 +99,7 @@ func (s *redisStore) Start(ctx context.Context) error {
 }
 
 // String returns a string representation of the service.
+// It is used to print a human-readable name of the service in the startup message.
 // It implements the [fiber.Service] interface.
 func (s *redisStore) String() string {
     return "redis-store"
@@ -203,6 +200,7 @@ func (s *redisStore) Start(ctx context.Context) error {
 }
 
 // String returns a string representation of the service.
+// It is used to print a human-readable name of the service in the startup message.
 // It implements the [fiber.Service] interface.
 func (s *redisStore) String() string {
     return "redis-store"
