@@ -1313,7 +1313,7 @@ func (c *DefaultCtx) Range(size int) (Range, error) {
 
 // Redirect returns the Redirect reference.
 // Use Redirect().Status() to set custom redirection status code.
-// If status is not specified, status defaults to 302 Found.
+// If status is not specified, status defaults to 303 See Other.
 // You can use Redirect().To(), Redirect().Route() and Redirect().Back() for redirection.
 func (c *DefaultCtx) Redirect() *Redirect {
 	if c.redirect == nil {
