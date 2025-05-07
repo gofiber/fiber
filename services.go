@@ -38,7 +38,7 @@ func (app *App) startServices(ctx context.Context) error {
 			if err := ctx.Err(); err != nil {
 				// Context is canceled, return an error the soonest possible, so that
 				// the user can see the context cancellation error and act on it.
-				return fmt.Errorf("context canceled while starting services: %w", err)
+				return fmt.Errorf("context canceled while starting service %s: %w", dep.String(), err)
 			}
 
 			err := dep.Start(ctx)
