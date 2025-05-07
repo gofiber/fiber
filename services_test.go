@@ -331,3 +331,26 @@ func TestLogServices(t *testing.T) {
 		require.Contains(t, output, expected)
 	}
 }
+
+func TestServiceContextProviders(t *testing.T) {
+	t.Run("no-provider", func(t *testing.T) {
+		app := New()
+		require.Equal(t, context.Background(), app.servicesStartupCtx())
+		require.Equal(t, context.Background(), app.servicesShutdownCtx())
+	})
+
+	t.Run("with-provider", func(t *testing.T) {
+		ctx := context.TODO()
+		app := New(Config{
+			ServicesStartupContextProvider: func() context.Context {
+				return ctx
+			},
+			ServicesShutdownContextProvider: func() context.Context {
+				return ctx
+			},
+		})
+
+		require.Equal(t, ctx, app.servicesStartupCtx())
+		require.Equal(t, ctx, app.servicesShutdownCtx())
+	})
+}

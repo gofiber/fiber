@@ -418,15 +418,15 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// Optional. Default: a zero value slice
 	Services []Service
 
-	// ServicesStartupCtx is a context for the startup of the services.
+	// ServicesStartupContextProvider is a context provider for the startup of the services.
 	//
-	// Optional. Default: context.Background()
-	ServicesStartupCtx context.Context
+	// Optional. Default: a provider that returns context.Background()
+	ServicesStartupContextProvider func() context.Context
 
-	// ServicesShutdownCtx is a context for the shutdown of the services.
+	// ServicesShutdownContextProvider is a context provider for the shutdown of the services.
 	//
-	// Optional. Default: context.Background()
-	ServicesShutdownCtx context.Context
+	// Optional. Default: a provider that returns context.Background()
+	ServicesShutdownContextProvider func() context.Context
 }
 
 // Default TrustProxyConfig

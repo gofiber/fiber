@@ -131,19 +131,23 @@ func main() {
     redisSrv := &redisService{}
     cfg.Services = append(cfg.Services, redisSrv)
 
-    // Define a context for the services startup.
-    // This is useful to cancel the startup of the services if the context is canceled.
-    // Default is context.Background().
-    startupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-    defer cancel()
-    cfg.ServicesStartupCtx = startupCtx
+    // Define a context provider for the services startup.
+	// This is useful to cancel the startup of the services if the context is canceled.
+	// Default is context.Background().
+	startupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cfg.ServicesStartupContextProvider = func() context.Context {
+		return startupCtx
+	}
 
-    // Define a context for the services shutdown.
-    // This is useful to cancel the shutdown of the services if the context is canceled.
-    // Default is context.Background().
-    shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-    defer cancel()
-    cfg.ServicesShutdownCtx = shutdownCtx
+	// Define a context provider for the services shutdown.
+	// This is useful to cancel the shutdown of the services if the context is canceled.
+	// Default is context.Background().
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cfg.ServicesShutdownContextProvider = func() context.Context {
+		return shutdownCtx
+	}
 
     app := fiber.New(*cfg)
 
@@ -248,19 +252,23 @@ func main() {
     redisSrv := &redisService{}
     cfg.Services = append(cfg.Services, redisSrv)
 
-    // Define a context for the services startup.
-    // This is useful to cancel the startup of the services if the context is canceled.
-    // Default is context.Background().
-    startupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-    defer cancel()
-    cfg.ServicesStartupCtx = startupCtx
+    // Define a context provider for the services startup.
+	// This is useful to cancel the startup of the services if the context is canceled.
+	// Default is context.Background().
+	startupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cfg.ServicesStartupContextProvider = func() context.Context {
+		return startupCtx
+	}
 
-    // Define a context for the services shutdown.
-    // This is useful to cancel the shutdown of the services if the context is canceled.
-    // Default is context.Background().
-    shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-    defer cancel()
-    cfg.ServicesShutdownCtx = shutdownCtx
+	// Define a context provider for the services shutdown.
+	// This is useful to cancel the shutdown of the services if the context is canceled.
+	// Default is context.Background().
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cfg.ServicesShutdownContextProvider = func() context.Context {
+		return shutdownCtx
+	}
 
     app := fiber.New(*cfg)
 

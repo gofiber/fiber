@@ -30,20 +30,20 @@ func (app *App) hasServices() bool {
 }
 
 // servicesStartupCtx Returns the context for the services startup.
-// If the ServicesStartupCtx is not set, it returns a new background context.
+// If the ServicesStartupContextProvider is not set, it returns a new background context.
 func (app *App) servicesStartupCtx() context.Context {
-	if app.config.ServicesStartupCtx != nil {
-		return app.config.ServicesStartupCtx
+	if app.configured.ServicesStartupContextProvider != nil {
+		return app.config.ServicesStartupContextProvider()
 	}
 
 	return context.Background()
 }
 
 // servicesShutdownCtx Returns the context for the services shutdown.
-// If the ServicesShutdownCtx is not set, it returns a new background context.
+// If the ServicesShutdownContextProvider is not set, it returns a new background context.
 func (app *App) servicesShutdownCtx() context.Context {
-	if app.config.ServicesShutdownCtx != nil {
-		return app.config.ServicesShutdownCtx
+	if app.config.ServicesShutdownContextProvider != nil {
+		return app.config.ServicesShutdownContextProvider()
 	}
 
 	return context.Background()
