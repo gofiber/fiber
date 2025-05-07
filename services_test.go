@@ -250,7 +250,6 @@ func TestServicesTerminateWithContextCancellation(t *testing.T) {
 		},
 	}
 
-	// Start services with canceled context
 	err := app.startServices(context.Background())
 	require.NoError(t, err)
 
@@ -261,6 +260,28 @@ func TestServicesTerminateWithContextCancellation(t *testing.T) {
 	// Shutdown services with canceled context
 	err = app.shutdownServices(ctx)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
+}
+
+func TestShutdownServicesWithContextAlreadyCanceled(t *testing.T) {
+	app := &App{
+		configured: Config{
+			Services: []Service{
+				&mockService{name: "dep1"},
+			},
+		},
+	}
+
+	err := app.startServices(context.Background())
+	require.NoError(t, err)
+
+	// Create a context that is already canceled
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err = app.shutdownServices(ctx)
+	require.Error(t, err)
+	require.ErrorIs(t, err, context.Canceled)
+	require.Contains(t, err.Error(), "service dep1 terminate")
 }
 
 func TestServicesTerminate_ContextCanceledOrDeadlineExceeded(t *testing.T) {
