@@ -614,7 +614,7 @@ func New(config ...Config) *App {
 		// TODO: support for custom context
 		ctx := context.Background()
 		if err := app.startServices(ctx); err != nil {
-			log.Warnf("failed to start services: %v", err)
+			panic(err)
 		}
 
 		app.Hooks().OnPostShutdown(func(_ error) error {
