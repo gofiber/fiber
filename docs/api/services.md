@@ -37,7 +37,7 @@ type Service interface {
 Starts the service, returning an error if it fails. This method is automatically called when the application starts.
 
 ```go
-func (d *Service) Start(ctx context.Context) error
+func (s *SomeService) Start(ctx context.Context) error
 ```
 
 ### String
@@ -45,7 +45,7 @@ func (d *Service) Start(ctx context.Context) error
 Returns a string representation of the service, used to print the service in the startup message.
 
 ```go
-func (d *Service) String() string
+func (s *SomeService) String() string
 ```
 
 ### State
@@ -53,7 +53,7 @@ func (d *Service) String() string
 Returns the current state of the service, used to print the service in the startup message.
 
 ```go
-func (d *Service) State(ctx context.Context) (string, error)
+func (s *SomeService) State(ctx context.Context) (string, error)
 ```
 
 ### Terminate
@@ -61,7 +61,7 @@ func (d *Service) State(ctx context.Context) (string, error)
 Terminate terminates the service after the application shuts down using a post shutdown hook, returning an error if it fails.
 
 ```go
-func (d *Service) Terminate(ctx context.Context) error
+func (s *SomeService) Terminate(ctx context.Context) error
 ```
 
 ## Comprehensive Examples
