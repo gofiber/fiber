@@ -1082,10 +1082,16 @@ func (c *Ctx) AllParams() map[string]string {
 
 // ParamsParser binds the param string to a struct.
 func (c *Ctx) ParamsParser(out interface{}) error {
-	params := make(map[string][]string, len(c.route.Params))
+	// fast return
+	l := len(c.route.Params)
+	if l == 0 {
+		return nil
+	}
+	params := make(map[string][]string, l)
 	for _, param := range c.route.Params {
 		params[param] = append(params[param], c.Params(param))
 	}
+
 	return c.parseToStruct(paramsTag, out, params)
 }
 
@@ -1308,6 +1314,10 @@ func (c *Ctx) ReqHeaderParser(out interface{}) error {
 }
 
 func (*Ctx) parseToStruct(aliasTag string, out interface{}, data map[string][]string) error {
+	// fast return
+	if len(data) == 0 {
+		return nil
+	}
 	// Get decoder from pool
 	schemaDecoder, ok := decoderPoolMap[aliasTag].Get().(*schema.Decoder)
 	if !ok {
