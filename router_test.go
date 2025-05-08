@@ -2,7 +2,7 @@
 // 📃 Github Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
-//nolint:bodyclose // Much easier to just ignore memory leaks in tests
+//nolint:bodyclose,goconst // Much easier to just ignore memory leaks in tests and constant variables in tests
 package fiber
 
 import (
@@ -465,6 +465,53 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 	utils.AssertEqual(t, 404, resp.StatusCode, "Status code")
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/style.css", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err = io.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, true, strings.Contains(app.getString(body), "color"))
+
+	app = New()
+	app.Static("/css", dir)
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/css/style.css", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err = io.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, true, strings.Contains(app.getString(body), "color"))
+}
+
+func Test_Route_Static_SubApp(t *testing.T) {
+	t.Parallel()
+
+	dir := "./.github/testdata/fs/css"
+	app := New()
+
+	// subapp
+	subApp := New()
+	subApp.Static("/css", dir)
+	app.Mount("/sub", subApp)
+
+	// nested subapp
+	nestApp := New()
+	nestApp.Static("/css", dir)
+	subApp.Mount("/nest", nestApp)
+
+	// test subapp
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/sub/css/style.css", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err := io.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, true, strings.Contains(app.getString(body), "color"))
+
+	// test nested subapp
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/sub/nest/css/style.css", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
