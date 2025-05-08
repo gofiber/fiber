@@ -189,20 +189,22 @@ package main
 
 import (
     "context"
+    "encoding/json"
     "fmt"
     "log"
     "time"
 
     "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/logger"
     redisStore "github.com/gofiber/storage/redis/v3"
     "github.com/redis/go-redis/v9"
     tcredis "github.com/testcontainers/testcontainers-go/modules/redis"
 )
 
 type User struct {
-    ID    int    `query:"id"`
-    Name  string `query:"name"`
-    Email string `query:"email"`
+    ID    int    `json:"id"`
+    Name  string `json:"name"`
+    Email string `json:"email"`
 }
 
 type redisService struct {
@@ -272,6 +274,9 @@ func main() {
 
     app := fiber.New(*cfg)
 
+    // Initialize default config
+    app.Use(logger.New())
+
     ctx := context.Background()
 
     // Obtain the connection string from the service.
@@ -288,13 +293,17 @@ func main() {
 
     app.Post("/user/create", func(c fiber.Ctx) error {
         var user User
-        if err := c.Bind().Query(&user); err != nil {
+        if err := c.Bind().JSON(&user); err != nil {
             return c.Status(fiber.StatusBadRequest).SendString(err.Error())
         }
 
+        json, err := json.Marshal(user)
+        if err != nil {
+            return c.Status(fiber.StatusInternalServerError).SendString(err.Error())
+        }
+
         // Save the user to the database.
-        key := fmt.Sprintf("user:%d", user.ID)
-        err := store.Set(key, []byte(key), time.Hour*24)
+        err = store.Set(user.Email, json, time.Hour*24)
         if err != nil {
             return c.Status(fiber.StatusInternalServerError).SendString(err.Error())
         }
