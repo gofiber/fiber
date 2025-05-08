@@ -794,6 +794,10 @@ curl "http://localhost:3000/header"
 
 You can find more details about this feature in [/docs/api/log.md](./api/log.md#logger).
 
+`logger.Config` now supports a new field called `ForceColors`. This field allows you to force the logger to always use colors, even if the output is not a terminal. This is useful when you want to ensure that the logs are always colored, regardless of the output destination.
+
+```go
+
 ## 🧬 Middlewares
 
 ### Adaptor
