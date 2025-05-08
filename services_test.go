@@ -187,7 +187,7 @@ func TestStartServices(t *testing.T) {
 
 			err := app.startServices(ctx)
 			require.ErrorIs(t, err, context.Canceled)
-			require.Len(t, app.startedServices, 0)
+			require.Empty(t, app.startedServices)
 		})
 
 		t.Run("cancellation", func(t *testing.T) {
@@ -207,7 +207,7 @@ func TestStartServices(t *testing.T) {
 			// Start services with a delay that is longer than the timeout
 			err := app.startServices(ctx)
 			require.ErrorIs(t, err, context.DeadlineExceeded)
-			require.Len(t, app.startedServices, 0)
+			require.Empty(t, app.startedServices)
 		})
 	})
 }
