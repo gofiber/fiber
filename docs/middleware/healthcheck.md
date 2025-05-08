@@ -27,7 +27,7 @@ Liveness, readiness and startup probes middleware for [Fiber](https://github.com
 ## Signatures
 
 ```go
-func New(config Config) fiber.Handler
+func NewHealthChecker(config ...Config) fiber.Handler
 ```
 
 ## Examples
@@ -45,40 +45,40 @@ After you initiate your [Fiber](https://github.com/gofiber/fiber) app, you can u
 
 ```go
 // Provide a minimal config for liveness check
-app.Get(healthcheck.LivenessEndpoint, healthcheck.New())
+app.Get(healthcheck.LivenessEndpoint, healthcheck.NewHealthChecker())
 
 // Provide a minimal config for readiness check
-app.Get(healthcheck.ReadinessEndpoint, healthcheck.New())
+app.Get(healthcheck.ReadinessEndpoint, healthcheck.NewHealthChecker())
 
 // Provide a minimal config for startup check
-app.Get(healthcheck.StartupEndpoint, healthcheck.New())
+app.Get(healthcheck.StartupEndpoint, healthcheck.NewHealthChecker())
 
 // Provide a minimal config for check with custom endpoint
-app.Get("/live", healthcheck.New())
+app.Get("/live", healthcheck.NewHealthChecker())
 
 // Or extend your config for customization
-app.Get(healthcheck.LivenessEndpoint, healthcheck.New(healthcheck.Config{
+app.Get(healthcheck.LivenessEndpoint, healthcheck.NewHealthChecker(healthcheck.Config{
     Probe: func(c fiber.Ctx) bool {
         return true
     },
 }))
 
 // And it works the same for readiness, just change the route
-app.Get(healthcheck.ReadinessEndpoint, healthcheck.New(healthcheck.Config{
+app.Get(healthcheck.ReadinessEndpoint, healthcheck.NewHealthChecker(healthcheck.Config{
     Probe: func(c fiber.Ctx) bool {
         return true
     },
 }))
 
 // And it works the same for startup, just change the route
-app.Get(healthcheck.StartupEndpoint, healthcheck.New(healthcheck.Config{
+app.Get(healthcheck.StartupEndpoint, healthcheck.NewHealthChecker(healthcheck.Config{
     Probe: func(c fiber.Ctx) bool {
         return true
     },
 }))
 
 // With a custom route and custom probe
-app.Get("/live", healthcheck.New(healthcheck.Config{
+app.Get("/live", healthcheck.NewHealthChecker(healthcheck.Config{
     Probe: func(c fiber.Ctx) bool {
         return true
     },
@@ -87,7 +87,7 @@ app.Get("/live", healthcheck.New(healthcheck.Config{
 // It can also be used with app.All, although it will only respond to requests with the GET method
 // in case of calling the route with any method which isn't GET, the return will be 404 Not Found when app.All is used
 // and 405 Method Not Allowed when app.Get is used
-app.All(healthcheck.ReadinessEndpoint, healthcheck.New(healthcheck.Config{
+app.All(healthcheck.ReadinessEndpoint, healthcheck.NewHealthChecker(healthcheck.Config{
     Probe: func(c fiber.Ctx) bool {
         return true
     },
