@@ -88,6 +88,10 @@ type Error struct {
 
 // App denotes the Fiber application.
 type App struct {
+	// App config
+	config Config
+	// Indicates if the value was explicitly configured
+	configured Config
 	// Ctx pool
 	pool sync.Pool
 	// Fasthttp server
@@ -110,18 +114,16 @@ type App struct {
 	state *State
 	// Route stack divided by HTTP methods
 	stack [][]*Route
-	// Route stack divided by HTTP methods and route prefixes
-	treeStack []map[int][]*Route
-	// custom binders
-	customBinders []CustomBinder
 	// customConstraints is a list of external constraints
 	customConstraints []CustomConstraint
 	// sendfiles stores configurations for handling ctx.SendFile operations
 	sendfiles []*sendFileStore
-	// App config
-	config Config
-	// Indicates if the value was explicitly configured
-	configured Config
+	// startedServices is a list of services that have been started
+	startedServices []Service
+	// custom binders
+	customBinders []CustomBinder
+	// Route stack divided by HTTP methods and route prefixes
+	treeStack []map[int][]*Route
 	// sendfilesMutex is a mutex used for sendfile operations
 	sendfilesMutex sync.RWMutex
 	mutex          sync.Mutex
@@ -410,6 +412,21 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	//
 	// Optional. Default: false
 	EnableSplittingOnParsers bool `json:"enable_splitting_on_parsers"`
+
+	// Services is a list of services that are used by the app (e.g. databases, caches, etc.)
+	//
+	// Optional. Default: a zero value slice
+	Services []Service
+
+	// ServicesStartupContextProvider is a context provider for the startup of the services.
+	//
+	// Optional. Default: a provider that returns context.Background()
+	ServicesStartupContextProvider func() context.Context
+
+	// ServicesShutdownContextProvider is a context provider for the shutdown of the services.
+	//
+	// Optional. Default: a provider that returns context.Background()
+	ServicesShutdownContextProvider func() context.Context
 }
 
 // Default TrustProxyConfig
@@ -602,6 +619,21 @@ func New(config ...Config) *App {
 
 	// Override colors
 	app.config.ColorScheme = defaultColors(app.config.ColorScheme)
+
+	// If the app is configured to use services,
+	// register a post shutdown hook to shutdown them after the server is closed.
+	if app.hasServices() {
+		if err := app.startServices(app.servicesStartupCtx()); err != nil {
+			panic(err)
+		}
+
+		app.Hooks().OnPostShutdown(func(_ error) error {
+			if err := app.shutdownServices(app.servicesShutdownCtx()); err != nil {
+				log.Errorf("failed to shutdown services: %v", err)
+			}
+			return nil
+		})
+	}
 
 	// Init app
 	app.init()
