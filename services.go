@@ -81,14 +81,16 @@ func (app *App) startServices(ctx context.Context) error {
 }
 
 // shutdownServices Handles the shutdown process of services for the current application.
-// Iterates over all services and tries to terminate them, returning an error if any error occurs.
+// Iterates over all the started services in reverse order and tries to terminate them,
+// returning an error if any error occurs.
 func (app *App) shutdownServices(ctx context.Context) error {
 	if len(app.startedServices) == 0 {
 		return nil
 	}
 
 	var errs []error
-	for _, dep := range app.startedServices {
+	for i := len(app.startedServices) - 1; i >= 0; i-- {
+		dep := app.startedServices[i]
 		if err := ctx.Err(); err != nil {
 			// Context is canceled, do a best effort to terminate the services.
 			errs = append(errs, fmt.Errorf("service %s terminate: %w", dep.String(), err))
