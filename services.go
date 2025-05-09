@@ -42,7 +42,7 @@ func (app *App) servicesStartupCtx() context.Context {
 // servicesShutdownCtx Returns the context for the services shutdown.
 // If the ServicesShutdownContextProvider is not set, it returns a new background context.
 func (app *App) servicesShutdownCtx() context.Context {
-	if app.config.ServicesShutdownContextProvider != nil {
+	if app.configured.ServicesShutdownContextProvider != nil {
 		return app.config.ServicesShutdownContextProvider()
 	}
 

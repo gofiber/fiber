@@ -214,34 +214,34 @@ func TestStartServices(t *testing.T) {
 
 func TestShutdownServices(t *testing.T) {
 	t.Run("no-services", func(t *testing.T) {
-		app := &App{
-			startedServices: []Service{},
-		}
+		app := New(Config{
+			Services: []Service{},
+		})
 
 		err := app.shutdownServices(context.Background())
 		require.NoError(t, err)
 	})
 
 	t.Run("successful-shutdown", func(t *testing.T) {
-		app := &App{
-			startedServices: []Service{
+		app := New(Config{
+			Services: []Service{
 				&mockService{name: "dep1"},
 				&mockService{name: "dep2"},
 			},
-		}
+		})
 
 		err := app.shutdownServices(context.Background())
 		require.NoError(t, err)
 	})
 
 	t.Run("failed-shutdown", func(t *testing.T) {
-		app := &App{
-			startedServices: []Service{
+		app := New(Config{
+			Services: []Service{
 				&mockService{name: "dep1", terminateError: errors.New(terminateErrorMessage + " 1")},
 				&mockService{name: "dep2", terminateError: errors.New(terminateErrorMessage + " 2")},
 				&mockService{name: "dep3"},
 			},
-		}
+		})
 
 		err := app.shutdownServices(context.Background())
 		require.Error(t, err)
@@ -251,11 +251,11 @@ func TestShutdownServices(t *testing.T) {
 
 	t.Run("context", func(t *testing.T) {
 		t.Run("already-canceled", func(t *testing.T) {
-			app := &App{
-				startedServices: []Service{
+			app := New(Config{
+				Services: []Service{
 					&mockService{name: "dep1"},
 				},
-			}
+			})
 
 			// Create a context that is already canceled
 			ctx, cancel := context.WithCancel(context.Background())
@@ -271,9 +271,9 @@ func TestShutdownServices(t *testing.T) {
 			// Create a service that takes some time to terminate
 			slowDep := &mockService{name: "slow-dep", terminateDelay: 200 * time.Millisecond}
 
-			app := &App{
-				startedServices: []Service{slowDep},
-			}
+			app := New(Config{
+				Services: []Service{slowDep},
+			})
 
 			// Create a new context for shutdown
 			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -292,11 +292,9 @@ func TestLogServices(t *testing.T) {
 	// Service with State error
 	errorService := &mockService{name: "error", stateError: errors.New("state error")}
 
-	app := &App{
-		configured: Config{
-			Services: []Service{runningService, errorService},
-		},
-	}
+	app := New(Config{
+		Services: []Service{runningService, errorService},
+	})
 
 	var buf bytes.Buffer
 
