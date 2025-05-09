@@ -52,74 +52,78 @@ func (app *App) servicesShutdownCtx() context.Context {
 // startServices Handles the start process of services for the current application.
 // Iterates over all services and tries to start them, returning an error if any error occurs.
 func (app *App) startServices(ctx context.Context) error {
-	if app.hasServices() {
-		var errs []error
-		for _, dep := range app.configured.Services {
-			if err := ctx.Err(); err != nil {
-				// Context is canceled, return an error the soonest possible, so that
-				// the user can see the context cancellation error and act on it.
-				return fmt.Errorf("context canceled while starting service %s: %w", dep.String(), err)
-			}
-
-			err := dep.Start(ctx)
-			if err == nil {
-				// mark the service as started
-				app.startedServices = append(app.startedServices, dep)
-				continue
-			}
-
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				return fmt.Errorf("service %s start: %w", dep.String(), err)
-			}
-
-			errs = append(errs, fmt.Errorf("service %s start: %w", dep.String(), err))
-		}
-		return errors.Join(errs...)
+	if !app.hasServices() {
+		return nil
 	}
-	return nil
+
+	var errs []error
+	for _, dep := range app.configured.Services {
+		if err := ctx.Err(); err != nil {
+			// Context is canceled, return an error the soonest possible, so that
+			// the user can see the context cancellation error and act on it.
+			return fmt.Errorf("context canceled while starting service %s: %w", dep.String(), err)
+		}
+
+		err := dep.Start(ctx)
+		if err == nil {
+			// mark the service as started
+			app.startedServices = append(app.startedServices, dep)
+			continue
+		}
+
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return fmt.Errorf("service %s start: %w", dep.String(), err)
+		}
+
+		errs = append(errs, fmt.Errorf("service %s start: %w", dep.String(), err))
+	}
+	return errors.Join(errs...)
 }
 
 // shutdownServices Handles the shutdown process of services for the current application.
 // Iterates over all services and tries to terminate them, returning an error if any error occurs.
 func (app *App) shutdownServices(ctx context.Context) error {
-	if len(app.startedServices) > 0 {
-		var errs []error
-		for _, dep := range app.startedServices {
-			if err := ctx.Err(); err != nil {
-				// Context is canceled, do a best effort to terminate the services.
-				errs = append(errs, fmt.Errorf("service %s terminate: %w", dep.String(), err))
-				continue
-			}
-
-			err := dep.Terminate(ctx)
-			if err != nil {
-				// Best effort to terminate the services.
-				errs = append(errs, fmt.Errorf("service %s terminate: %w", dep.String(), err))
-			}
-		}
-		return errors.Join(errs...)
+	if len(app.startedServices) == 0 {
+		return nil
 	}
-	return nil
+
+	var errs []error
+	for _, dep := range app.startedServices {
+		if err := ctx.Err(); err != nil {
+			// Context is canceled, do a best effort to terminate the services.
+			errs = append(errs, fmt.Errorf("service %s terminate: %w", dep.String(), err))
+			continue
+		}
+
+		err := dep.Terminate(ctx)
+		if err != nil {
+			// Best effort to terminate the services.
+			errs = append(errs, fmt.Errorf("service %s terminate: %w", dep.String(), err))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // logServices logs information about services
 func (app *App) logServices(ctx context.Context, out io.Writer, colors Colors) {
-	if app.hasServices() {
-		fmt.Fprintf(out,
-			"%sINFO%s Services: \t%s%d%s\n",
-			colors.Green, colors.Reset, colors.Blue, len(app.configured.Services), colors.Reset)
-		for _, dep := range app.configured.Services {
-			var state string
-			var stateColor string
-			state, err := dep.State(ctx)
-			if err != nil {
-				state = "ERROR"
-				stateColor = colors.Red
-			} else {
-				stateColor = colors.Blue
-				state = strings.ToUpper(state)
-			}
-			fmt.Fprintf(out, "%sINFO%s    🥡 %s[ %s ] %s%s\n", colors.Green, colors.Reset, stateColor, strings.ToUpper(state), dep.String(), colors.Reset)
+	if !app.hasServices() {
+		return
+	}
+
+	fmt.Fprintf(out,
+		"%sINFO%s Services: \t%s%d%s\n",
+		colors.Green, colors.Reset, colors.Blue, len(app.configured.Services), colors.Reset)
+	for _, dep := range app.configured.Services {
+		var state string
+		var stateColor string
+		state, err := dep.State(ctx)
+		if err != nil {
+			state = "ERROR"
+			stateColor = colors.Red
+		} else {
+			stateColor = colors.Blue
+			state = strings.ToUpper(state)
 		}
+		fmt.Fprintf(out, "%sINFO%s    🥡 %s[ %s ] %s%s\n", colors.Green, colors.Reset, stateColor, strings.ToUpper(state), dep.String(), colors.Reset)
 	}
 }
