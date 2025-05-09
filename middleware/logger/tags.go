@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/gofiber/fiber/v3/middleware/requestid"
+
 	"github.com/gofiber/fiber/v3"
 )
 
@@ -167,6 +169,9 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return output.WriteString(c.Cookies(extraParam))
 		},
 		TagLocals: func(output Buffer, c fiber.Ctx, _ *Data, extraParam string) (int, error) {
+			if extraParam == "requestid" {
+				return output.WriteString(requestid.FromContext(c))
+			}
 			switch v := c.Locals(extraParam).(type) {
 			case []byte:
 				return output.Write(v)
