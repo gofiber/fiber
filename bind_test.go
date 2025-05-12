@@ -1924,7 +1924,7 @@ func Test_Bind_All(t *testing.T) {
 		Email     string                `json:"email" form:"email"`
 		Role      string                `header:"X-User-Role"`
 		SessionID string                `json:"session_id" cookie:"session_id"`
-		ID        int                   `param:"id" query:"id" json:"id" form:"id"`
+		ID        int                   `uri:"id" query:"id" json:"id" form:"id"`
 	}
 	newBind := func(app *App) *Bind {
 		return &Bind{
@@ -2047,7 +2047,7 @@ func Test_Bind_All_Uri_Precedence(t *testing.T) {
 	type User struct {
 		Name  string `json:"name"`
 		Email string `json:"email"`
-		ID    int    `param:"id" json:"id" query:"id" form:"id"`
+		ID    int    `uri:"id" json:"id" query:"id" form:"id"`
 	}
 
 	app := New()
@@ -2079,7 +2079,7 @@ func BenchmarkBind_All(b *testing.B) {
 		Name      string `query:"name" json:"name" form:"name"`
 		Email     string `json:"email" form:"email"`
 		Role      string `header:"X-User-Role"`
-		ID        int    `param:"id" query:"id" json:"id" form:"id"`
+		ID        int    `uri:"id" query:"id" json:"id" form:"id"`
 	}
 
 	app := New()
