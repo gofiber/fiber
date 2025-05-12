@@ -50,7 +50,7 @@ If you prefer to skip middleware on all idempotent methods (including `PUT`, `DE
 
 ```go
 app.Use(idempotency.New(idempotency.Config{
-    Next: func(c *fiber.Ctx) bool {
+    Next: func(c fiber.Ctx) bool {
         // Skip middleware for idempotent methods (safe + PUT, DELETE)
         return fiber.IsMethodIdempotent(c.Method())
     },
@@ -70,7 +70,7 @@ app.Use(idempotency.New(idempotency.Config{
 
 | Property            | Type                    | Description                                                                                                                             | Default                                                             |
 |:--------------------|:------------------------|:----------------------------------------------------------------------------------------------------------------------------------------|:--------------------------------------------------------------------|
-| Next                | `func(*fiber.Ctx) bool` | Function to skip this middleware when returning `true`. Choose between `IsMethodSafe` or `IsMethodIdempotent` based on RFC definitions. | `func(c *fiber.Ctx) bool { return fiber.IsMethodSafe(c.Method()) }` |
+| Next                | `func(*fiber.Ctx) bool` | Function to skip this middleware when returning `true`. Choose between `IsMethodSafe` or `IsMethodIdempotent` based on RFC definitions. | `func(c fiber.Ctx) bool { return fiber.IsMethodSafe(c.Method()) }` |
 | Lifetime            | `time.Duration`         | Maximum lifetime of an idempotency key.                                                                                                 | `30 * time.Minute`                                                  |
 | KeyHeader           | `string`                | Header name containing the idempotency key.                                                                                             | `"X-Idempotency-Key"`                                               |
 | KeyHeaderValidate   | `func(string) error`    | Function to validate idempotency header syntax (e.g., UUID).                                                                            | UUID length check (`36` characters)                                 |
@@ -82,7 +82,7 @@ app.Use(idempotency.New(idempotency.Config{
 
 ```go
 var ConfigDefault = Config{
-    Next: func(c *fiber.Ctx) bool {
+    Next: func(c fiber.Ctx) bool {
         // Skip middleware for safe methods per RFC 7231 §4.2.2
         return fiber.IsMethodSafe(c.Method())
     },
