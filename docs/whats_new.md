@@ -577,9 +577,6 @@ In this example, the `Bind` method is used to bind the request body to the `User
 
 Fiber v3 enhances the redirect functionality by introducing new methods and improving existing ones. The new redirect methods provide more flexibility and control over the redirection process.
 
-The default response status is changes from 302 Found to 303 See Other for more
-predictable behavior across browsers.
-
 ### New Methods
 
 - `Redirect().To()`: Redirects to a specific URL.
@@ -600,6 +597,14 @@ app.Get("/new", func(c fiber.Ctx) error {
 ```
 
 </details>
+
+### Changed behavior
+
+:::info
+
+The default redirect status code has been updated from `302 Found` to `303 See Other` to ensure more consistent behavior across different browsers.
+
+:::
 
 ## 🧰 Generic functions
 

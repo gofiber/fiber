@@ -83,7 +83,7 @@ func Test_Expvar_Other_Path(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/vars/303", nil))
 	require.NoError(t, err)
-	require.Equal(t, 303, resp.StatusCode)
+	require.Equal(t, fiber.StatusSeeOther, resp.StatusCode)
 }
 
 // go test -run Test_Expvar_Next
