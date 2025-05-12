@@ -33,7 +33,7 @@ func (app *App) hasServices() bool {
 // If the ServicesStartupContextProvider is not set, it returns a new background context.
 func (app *App) servicesStartupCtx() context.Context {
 	if app.configured.ServicesStartupContextProvider != nil {
-		return app.config.ServicesStartupContextProvider()
+		return app.configured.ServicesStartupContextProvider()
 	}
 
 	return context.Background()
@@ -43,7 +43,7 @@ func (app *App) servicesStartupCtx() context.Context {
 // If the ServicesShutdownContextProvider is not set, it returns a new background context.
 func (app *App) servicesShutdownCtx() context.Context {
 	if app.configured.ServicesShutdownContextProvider != nil {
-		return app.config.ServicesShutdownContextProvider()
+		return app.configured.ServicesShutdownContextProvider()
 	}
 
 	return context.Background()
