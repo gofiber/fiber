@@ -4,9 +4,16 @@ id: idempotency
 
 # Idempotency
 
-Idempotency middleware for [Fiber](https://github.com/gofiber/fiber) allows for fault-tolerant APIs where duplicate requests — for example due to networking issues on the client-side — do not erroneously cause the same action performed multiple times on the server-side.
+Idempotency middleware for [Fiber](https://github.com/gofiber/fiber) allows for fault-tolerant APIs where duplicate requests—for example due to networking issues on the client-side — do not erroneously cause the same action to be performed multiple times on the server-side.
 
-Refer to [datatracker](https://datatracker.ietf.org/doc/html/draft-ietf-httpapi-idempotency-key-header-02) for a better understanding.
+Refer to [IETF RFC 7231 §4.2.2](https://tools.ietf.org/html/rfc7231#section-4.2.2) for definitions of safe and idempotent HTTP methods.
+
+## HTTP Method Categories
+
+* **Safe Methods** (do not modify server state): `GET`, `HEAD`, `OPTIONS`, `TRACE`.
+* **Idempotent Methods** (multiple identical requests have the same effect as a single one): all safe methods **plus** `PUT` and `DELETE`.
+
+> According to the RFC, safe methods are guaranteed not to change server state, while idempotent methods may change state but make identical requests safe to repeat.
 
 ## Signatures
 
@@ -27,12 +34,27 @@ import (
 )
 ```
 
-After you initiate your Fiber app, you can use the following possibilities:
+After you initiate your Fiber app, you can configure the middleware:
 
-### Default Config
+### Default Config (Skip **Safe** Methods)
+
+By default, the `Next` function skips middleware for safe methods only:
 
 ```go
 app.Use(idempotency.New())
+```
+
+### Skip **Idempotent** Methods Instead
+
+If you prefer to skip middleware on all idempotent methods (including `PUT`, `DELETE`), override `Next`:
+
+```go
+app.Use(idempotency.New(idempotency.Config{
+    Next: func(c fiber.Ctx) bool {
+        // Skip middleware for idempotent methods (safe + PUT, DELETE)
+        return fiber.IsMethodIdempotent(c.Method())
+    },
+}))
 ```
 
 ### Custom Config
@@ -44,24 +66,24 @@ app.Use(idempotency.New(idempotency.Config{
 }))
 ```
 
-### Config
+## Config
 
-| Property            | Type                    | Description                                                                              | Default                        |
-|:--------------------|:------------------------|:-----------------------------------------------------------------------------------------|:-------------------------------|
-| Next                | `func(fiber.Ctx) bool` | Next defines a function to skip this middleware when returned true.                      | A function for safe methods    |
-| Lifetime            | `time.Duration`         | Lifetime is the maximum lifetime of an idempotency key.                                  | 30 * time.Minute               |
-| KeyHeader           | `string`                | KeyHeader is the name of the header that contains the idempotency key.                   | "X-Idempotency-Key"            |
-| KeyHeaderValidate   | `func(string) error`    | KeyHeaderValidate defines a function to validate the syntax of the idempotency header.   | A function for UUID validation |
-| KeepResponseHeaders | `[]string`              | KeepResponseHeaders is a list of headers that should be kept from the original response. | nil (keep all headers)         |
-| Lock                | `Locker`                | Lock locks an idempotency key.                                                           | An in-memory locker            |
-| Storage             | `fiber.Storage`         | Storage stores response data by idempotency key.                                         | An in-memory storage           |
+| Property            | Type                   | Description                                                                                                                             | Default                                                            |
+|:--------------------|:-----------------------|:----------------------------------------------------------------------------------------------------------------------------------------|:-------------------------------------------------------------------|
+| Next                | `func(fiber.Ctx) bool` | Function to skip this middleware when returning `true`. Choose between `IsMethodSafe` or `IsMethodIdempotent` based on RFC definitions. | `func(c fiber.Ctx) bool { return fiber.IsMethodSafe(c.Method()) }` |
+| Lifetime            | `time.Duration`        | Maximum lifetime of an idempotency key.                                                                                                 | `30 * time.Minute`                                                 |
+| KeyHeader           | `string`               | Header name containing the idempotency key.                                                                                             | `"X-Idempotency-Key"`                                              |
+| KeyHeaderValidate   | `func(string) error`   | Function to validate idempotency header syntax (e.g., UUID).                                                                            | UUID length check (`36` characters)                                |
+| KeepResponseHeaders | `[]string`             | List of headers to preserve from original response.                                                                                     | `nil` (keep all headers)                                           |
+| Lock                | `Locker`               | Locks an idempotency key to prevent race conditions.                                                                                    | In-memory locker                                                   |
+| Storage             | `fiber.Storage`        | Stores response data by idempotency key.                                                                                                | In-memory storage                                                  |
 
-## Default Config
+## Default Config Values
 
 ```go
 var ConfigDefault = Config{
     Next: func(c fiber.Ctx) bool {
-        // Skip middleware if the request was done using a safe HTTP method
+        // Skip middleware for safe methods per RFC 7231 §4.2.2
         return fiber.IsMethodSafe(c.Method())
     },
 

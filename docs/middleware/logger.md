@@ -89,6 +89,11 @@ app.Use(logger.New(logger.Config{
     DisableColors: true,
 }))
 
+// Force the use of colors
+app.Use(logger.New(logger.Config{
+    ForceColors: true,
+}))
+
 // Use predefined formats 
 app.Use(logger.New(logger.Config{
     Format: logger.FormatCommon,
@@ -166,6 +171,7 @@ Writing to os.File is goroutine-safe, but if you are using a custom Stream that 
 | Stream        | `io.Writer`                                       | Stream is a writer where logs are written.                                                                                                    | `os.Stdout`                                                           |
 | LoggerFunc    | `func(c fiber.Ctx, data *Data, cfg Config) error` | Custom logger function for integration with logging libraries (Zerolog, Zap, Logrus, etc). Defaults to Fiber's default logger if not defined. | `see default_logger.go defaultLoggerInstance`                         |
 | DisableColors | `bool`                                            | DisableColors defines if the logs output should be colorized.                                                                                 | `false`                                                               |
+| ForceColors   | `bool`                                            | ForceColors defines if the logs output should be colorized even when the output is not a terminal.                                             | `false`                                                               |
 
 ## Default Config
 

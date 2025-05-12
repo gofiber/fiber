@@ -148,7 +148,7 @@ func beforeHandlerFunc(cfg Config) {
 	// If colors are enabled, check terminal compatibility
 	if cfg.enableColors {
 		cfg.Stream = colorable.NewColorableStdout()
-		if os.Getenv("TERM") == "dumb" || os.Getenv("NO_COLOR") == "1" || (!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd())) {
+		if !cfg.ForceColors && (os.Getenv("TERM") == "dumb" || os.Getenv("NO_COLOR") == "1" || (!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd()))) {
 			cfg.Stream = colorable.NewNonColorable(os.Stdout)
 		}
 	}

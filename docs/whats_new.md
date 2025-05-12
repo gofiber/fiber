@@ -257,7 +257,7 @@ The route method is now like [`Express`](https://expressjs.com/de/api.html#app.r
 
 ```diff
 -    Route(prefix string, fn func(router Router), name ...string) Router
-+    Route(path string) Register    
++    Route(path string) Register
 ```
 
 <details>
@@ -300,7 +300,7 @@ Registering a subapp is now also possible via the [`Use`](./api/app#use) method 
 // register mulitple prefixes
 app.Use(["/v1", "/v2"], func(c fiber.Ctx) error {
     // Middleware for /v1 and /v2
-    return c.Next() 
+    return c.Next()
 })
 
 // define subapp
@@ -599,6 +599,14 @@ app.Get("/new", func(c fiber.Ctx) error {
 
 </details>
 
+### Changed behavior
+
+:::info
+
+The default redirect status code has been updated from `302 Found` to `303 See Other` to ensure more consistent behavior across different browsers.
+
+:::
+
 ## 🧰 Generic functions
 
 Fiber v3 introduces new generic functions that provide additional utility and flexibility for developers. These functions are designed to simplify common tasks and improve code readability.
@@ -880,6 +888,18 @@ INFO Total process count:       1
 
 You can find more details about this feature in [/docs/api/log.md](./api/log.md#logger).
 
+`logger.Config` now supports a new field called `ForceColors`. This field allows you to force the logger to always use colors, even if the output is not a terminal. This is useful when you want to ensure that the logs are always colored, regardless of the output destination.
+
+```go
+package main
+
+import "github.com/gofiber/fiber/v3/middleware/logger"
+
+app.Use(logger.New(logger.Config{
+    ForceColors: true,
+}))
+```
+
 ## 🧬 Middlewares
 
 ### Adaptor
@@ -912,7 +932,7 @@ The adaptor middleware has been significantly optimized for performance and effi
 
 ### Cache
 
-We are excited to introduce a new option in our caching middleware: Cache Invalidator. This feature provides greater control over cache management, allowing you to define a custom conditions for invalidating cache entries.  
+We are excited to introduce a new option in our caching middleware: Cache Invalidator. This feature provides greater control over cache management, allowing you to define a custom conditions for invalidating cache entries.
 Additionally, the caching middleware has been optimized to avoid caching non-cacheable status codes, as defined by the [HTTP standards](https://datatracker.ietf.org/doc/html/rfc7231#section-6.1). This improvement enhances cache accuracy and reduces unnecessary cache storage usage.
 
 ### CORS
@@ -1033,7 +1053,7 @@ Logger provides predefined formats that you can use by name or directly by speci
 
 ```go
 app.Use(logger.New(logger.Config{
-    Format: logger.FormatCombined, 
+    Format: logger.FormatCombined,
 }))
 ```
 
