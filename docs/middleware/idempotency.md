@@ -68,15 +68,15 @@ app.Use(idempotency.New(idempotency.Config{
 
 ## Config
 
-| Property            | Type                    | Description                                                                                                                             | Default                                                             |
-|:--------------------|:------------------------|:----------------------------------------------------------------------------------------------------------------------------------------|:--------------------------------------------------------------------|
-| Next                | `func(*fiber.Ctx) bool` | Function to skip this middleware when returning `true`. Choose between `IsMethodSafe` or `IsMethodIdempotent` based on RFC definitions. | `func(c fiber.Ctx) bool { return fiber.IsMethodSafe(c.Method()) }` |
-| Lifetime            | `time.Duration`         | Maximum lifetime of an idempotency key.                                                                                                 | `30 * time.Minute`                                                  |
-| KeyHeader           | `string`                | Header name containing the idempotency key.                                                                                             | `"X-Idempotency-Key"`                                               |
-| KeyHeaderValidate   | `func(string) error`    | Function to validate idempotency header syntax (e.g., UUID).                                                                            | UUID length check (`36` characters)                                 |
-| KeepResponseHeaders | `[]string`              | List of headers to preserve from original response.                                                                                     | `nil` (keep all headers)                                            |
-| Lock                | `Locker`                | Locks an idempotency key to prevent race conditions.                                                                                    | In-memory locker                                                    |
-| Storage             | `fiber.Storage`         | Stores response data by idempotency key.                                                                                                | In-memory storage                                                   |
+| Property            | Type                   | Description                                                                                                                             | Default                                                             |
+|:--------------------|:-----------------------|:----------------------------------------------------------------------------------------------------------------------------------------|:--------------------------------------------------------------------|
+| Next                | `func(fiber.Ctx) bool` | Function to skip this middleware when returning `true`. Choose between `IsMethodSafe` or `IsMethodIdempotent` based on RFC definitions. | `func(c fiber.Ctx) bool { return fiber.IsMethodSafe(c.Method()) }` |
+| Lifetime            | `time.Duration`        | Maximum lifetime of an idempotency key.                                                                                                 | `30 * time.Minute`                                                  |
+| KeyHeader           | `string`               | Header name containing the idempotency key.                                                                                             | `"X-Idempotency-Key"`                                               |
+| KeyHeaderValidate   | `func(string) error`   | Function to validate idempotency header syntax (e.g., UUID).                                                                            | UUID length check (`36` characters)                                 |
+| KeepResponseHeaders | `[]string`             | List of headers to preserve from original response.                                                                                     | `nil` (keep all headers)                                            |
+| Lock                | `Locker`               | Locks an idempotency key to prevent race conditions.                                                                                    | In-memory locker                                                    |
+| Storage             | `fiber.Storage`        | Stores response data by idempotency key.                                                                                                | In-memory storage                                                   |
 
 ## Default Config Values
 
