@@ -3641,7 +3641,7 @@ func Test_Ctx_RenderWithBind(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 
 	buf := bytebufferpool.Get()
-	_, _ = buf.WriteString("overwrite") //nolint:errcheck // This will never fail
+	_, _ = buf.WriteString("overwrite")
 	defer bytebufferpool.Put(buf)
 
 	utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
@@ -3663,7 +3663,7 @@ func Test_Ctx_RenderWithOverwrittenBind(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 
 	buf := bytebufferpool.Get()
-	_, _ = buf.WriteString("overwrite") //nolint:errcheck // This will never fail
+	_, _ = buf.WriteString("overwrite")
 	defer bytebufferpool.Put(buf)
 
 	utils.AssertEqual(t, "<h1>Hello from Fiber!</h1>", string(c.Response().Body()))

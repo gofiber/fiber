@@ -138,7 +138,7 @@ func New(config ...Config) fiber.Handler {
 		// Loop over template parts execute dynamic parts and add fixed parts to the buffer
 		for i, logFunc := range logFunChain {
 			if logFunc == nil {
-				_, _ = buf.Write(templateChain[i]) //nolint:errcheck // This will never fail
+				_, _ = buf.Write(templateChain[i])
 			} else if templateChain[i] == nil {
 				_, err = logFunc(buf, c, data, "")
 			} else {
@@ -151,7 +151,7 @@ func New(config ...Config) fiber.Handler {
 
 		// Also write errors to the buffer
 		if err != nil {
-			_, _ = buf.WriteString(err.Error()) //nolint:errcheck // This will never fail
+			_, _ = buf.WriteString(err.Error())
 		}
 		mu.Lock()
 		// Write buffer to output

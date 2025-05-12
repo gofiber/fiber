@@ -44,6 +44,8 @@ linters-settings:
     extra-rules: true
 
   gosec:
+    excludes:
+      - G104 # TODO: Enable this again. Mostly provided by errcheck
     config:
       global:
         audit: true
