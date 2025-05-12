@@ -271,18 +271,22 @@ func addParameterMetaInfo(segs []*routeSegment) []*routeSegment {
 
 // findNextParamPosition search for the next possible parameter start position
 func findNextParamPosition(pattern string) int {
+	// Find the first parameter position
 	nextParamPosition := findNextNonEscapedCharsetPosition(pattern, parameterStartChars)
+
+	// If pattern contains a parameter and it's not a wildcard
 	if nextParamPosition != -1 && len(pattern) > nextParamPosition && pattern[nextParamPosition] != wildcardParam {
-		// search for parameter characters for the found parameter start,
-		// if there are more, move the parameter start to the last parameter char
-		for found := findNextNonEscapedCharsetPosition(pattern[nextParamPosition+1:], parameterStartChars); found == 0; {
-			nextParamPosition++
-			if len(pattern) > nextParamPosition {
+		// checking the found parameterStartChar is a cluster
+		i := nextParamPosition + 1
+		for i < len(pattern) {
+			if findNextNonEscapedCharsetPosition(pattern[i:i+1], parameterStartChars) != 0 {
+				// It was a single parameter start char or end of cluster
 				break
 			}
+			nextParamPosition++
+			i++
 		}
 	}
-
 	return nextParamPosition
 }
 
