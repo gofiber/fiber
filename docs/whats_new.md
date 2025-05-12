@@ -933,6 +933,77 @@ func main() {
 
 </details>
 
+#### Logging Middleware Values (e.g., Request ID)
+
+In Fiber v3, middleware (like `requestid`) now stores values in the request context using unexported keys of custom types. This aligns with Go's context best practices to prevent key collisions between packages.
+
+As a result, directly accessing these values using string keys with `c.Locals("your_key")` or in the logger format string with `${locals:your_key}` (e.g., `${locals:requestid}`) will no longer work for values set by such middleware.
+
+**Recommended Solution: `CustomTags`**
+
+The cleanest and most maintainable way to include these middleware-specific values in your logs is by using the `CustomTags` option in the logger middleware configuration. This allows you to define a custom function to retrieve the value correctly from the context.
+
+<details>
+<summary>Example: Logging Request ID with CustomTags</summary>
+
+```go
+package main
+
+import (
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/logger"
+    "github.com/gofiber/fiber/v3/middleware/requestid"
+)
+
+func main() {
+    app := fiber.New()
+
+    // Ensure requestid middleware is used before the logger
+    app.Use(requestid.New())
+
+    app.Use(logger.New(logger.Config{
+        CustomTags: map[string]logger.LogFunc{
+            "requestid": func(output logger.Buffer, c fiber.Ctx, data *logger.Data, extraParam string) (int, error) {
+                // Retrieve the request ID using the middleware's specific function
+                return output.WriteString(requestid.FromContext(c))
+            },
+        },
+        // Use the custom tag in your format string
+        Format: "[${time}] ${ip} - ${requestid} - ${status} ${method} ${path}\n",
+    }))
+
+    app.Get("/", func(c fiber.Ctx) error {
+        return c.SendString("Hello, World!")
+    })
+
+    app.Listen(":3000")
+}
+```
+</details>
+
+**Alternative: Manually Copying to `Locals`**
+
+If you have existing logging patterns that rely on `c.Locals` or prefer to manage these values in `Locals` for other reasons, you can manually copy the value from the context to `c.Locals` in a preceding middleware:
+
+<details>
+<summary>Example: Manually setting requestid in Locals</summary>
+
+```go
+app.Use(requestid.New()) // Request ID middleware
+app.Use(func(c fiber.Ctx) error {
+    // Manually copy the request ID to Locals
+    c.Locals("requestid", requestid.FromContext(c))
+    return c.Next()
+})
+app.Use(logger.New(logger.Config{
+    // Now ${locals:requestid} can be used, but CustomTags is generally preferred
+    Format: "[${time}] ${ip} - ${locals:requestid} - ${status} ${method} ${path}\n",
+}))
+```
+</details>
+
+Both approaches ensure your logger can access these values while respecting Go's context practices.
+
 The `Skip` is a function to determine if logging is skipped or written to `Stream`.
 
 <details>
