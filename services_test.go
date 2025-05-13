@@ -542,12 +542,10 @@ func Benchmark_ShutdownServices_withContextCancellation(b *testing.B) {
 
 	b.Run("multiple-services/successful-completion", func(b *testing.B) {
 		app := &App{
-			configured: Config{
-				Services: []Service{
-					&mockService{name: "dep1", terminateDelay: 10 * time.Millisecond},
-					&mockService{name: "dep2", terminateDelay: 20 * time.Millisecond},
-					&mockService{name: "dep3", terminateDelay: 30 * time.Millisecond},
-				},
+			startedServices: []Service{
+				&mockService{name: "dep1", terminateDelay: 10 * time.Millisecond},
+				&mockService{name: "dep2", terminateDelay: 20 * time.Millisecond},
+				&mockService{name: "dep3", terminateDelay: 30 * time.Millisecond},
 			},
 		}
 
