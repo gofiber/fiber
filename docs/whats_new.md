@@ -26,8 +26,13 @@ Here's a quick overview of the changes in Fiber `v3`:
 - [🧰 Generic functions](#-generic-functions)
 - [📃 Log](#-log)
 - [🧬 Middlewares](#-middlewares)
+  - [Important Change for Accessing Middleware Data](#important-change-for-accessing-middleware-data)
+  - [Adaptor](#adaptor)
+  - [Cache](#cache)
   - [CORS](#cors)
   - [CSRF](#csrf)
+  - [Compression](#compression)
+  - [EncryptCookie](#encryptcookie)
   - [Session](#session)
   - [Logger](#logger)
   - [Filesystem](#filesystem)
@@ -284,7 +289,7 @@ app.Route("/api").Route("/user/:id?")
 
 </details>
 
-[Here](./api/app#route) you can find more information.
+You can find more information about `app.Route` in the [API documentation](./api/app#route).
 
 ### Middleware registration
 
@@ -816,6 +821,28 @@ app.Use(logger.New(logger.Config{
 
 ## 🧬 Middlewares
 
+### Important Change for Accessing Middleware Data
+
+In Fiber v3, many middlewares that previously set values in `c.Locals()` using string keys (e.g., `c.Locals("requestid")`) have been updated. To align with Go's context best practices and prevent key collisions, these middlewares now store their specific data in the request's context using unexported keys of custom types.
+
+This means that directly accessing these values via `c.Locals("some_string_key")` will no longer work for such middleware-provided data.
+
+**How to Access Middleware Data in v3:**
+
+Each affected middleware now provides dedicated exported functions to retrieve its specific data from the context. You should use these functions instead of relying on string-based lookups in `c.Locals()`.
+
+Examples include:
+
+- `requestid.FromContext(c)`
+- `csrf.TokenFromContext(c)`
+- `csrf.HandlerFromContext(c)`
+- `session.FromContext(c)`
+- `basicauth.UsernameFromContext(c)`
+- `basicauth.PasswordFromContext(c)`
+- `keyauth.TokenFromContext(c)`
+
+When used with the Logger middleware, the recommended approach is to use the `CustomTags` feature of the logger, which allows you to call these specific `FromContext` functions. See the [Logger](#logger) section for more details.
+
 ### Adaptor
 
 The adaptor middleware has been significantly optimized for performance and efficiency. Key improvements include reduced response times, lower memory usage, and fewer memory allocations. These changes make the middleware more reliable and capable of handling higher loads effectively. Enhancements include the introduction of a `sync.Pool` for managing `fasthttp.RequestCtx` instances and better HTTP request and response handling between net/http and fasthttp contexts.
@@ -979,6 +1006,7 @@ func main() {
     app.Listen(":3000")
 }
 ```
+
 </details>
 
 **Alternative: Manually Copying to `Locals`**
@@ -1000,6 +1028,7 @@ app.Use(logger.New(logger.Config{
     Format: "[${time}] ${ip} - ${locals:requestid} - ${status} ${method} ${path}\n",
 }))
 ```
+
 </details>
 
 Both approaches ensure your logger can access these values while respecting Go's context practices.
@@ -1131,10 +1160,16 @@ func main() {
 - [🚀 App](#-app-1)
 - [🗺 Router](#-router-1)
 - [🧠 Context](#-context-1)
-- [📎 Parser](#-parser)
+- [📎 Binding (was Parser)](#-parser)
 - [🔄 Redirect](#-redirect-1)
 - [🌎 Client package](#-client-package-1)
 - [🧬 Middlewares](#-middlewares-1)
+  - [Important Change for Accessing Middleware Data](#important-change-for-accessing-middleware-data)
+  - [CORS](#cors-1)
+  - [CSRF](#csrf)
+  - [Filesystem](#filesystem-1)
+  - [Healthcheck](#healthcheck-1)
+  - [Monitor](#monitor-1)
 
 ### 🚀 App
 
@@ -1559,6 +1594,32 @@ DRAFT section
 :::
 
 ### 🧬 Middlewares
+
+#### Important Change for Accessing Middleware Data
+
+**Change:** In Fiber v2, some middlewares set data in `c.Locals()` using string keys (e.g., `c.Locals("requestid")`). In Fiber v3, to align with Go's context best practices and prevent key collisions, these middlewares now store their specific data in the request's context using unexported keys of custom types.
+
+**Impact:** Directly accessing these middleware-provided values via `c.Locals("some_string_key")` will no longer work.
+
+**Migration Action:**
+You must update your code to use the dedicated exported functions provided by each affected middleware to retrieve its data from the context.
+
+**Examples of new helper functions to use:**
+
+- `requestid.FromContext(c)`
+- `csrf.TokenFromContext(c)`
+- `csrf.HandlerFromContext(c)`
+- `session.FromContext(c)`
+- `basicauth.UsernameFromContext(c)`
+- `basicauth.PasswordFromContext(c)`
+- `keyauth.TokenFromContext(c)`
+
+**For logging these values:**
+The recommended approach is to use the `CustomTags` feature of the Logger middleware, which allows you to call these specific `FromContext` functions. Refer to the [Logger section in "What's New"](#logger) for detailed examples.
+
+:::note
+If you were manually setting and retrieving your own application-specific values in `c.Locals()` using string keys, that functionality remains unchanged. This change specifically pertains to how Fiber's built-in (and some contrib) middlewares expose their data.
+:::
 
 #### CORS
 
