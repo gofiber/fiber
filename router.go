@@ -7,6 +7,7 @@ package fiber
 import (
 	"fmt"
 	"html"
+	iofs "io/fs"
 	"sort"
 	"strconv"
 	"strings"
@@ -428,6 +429,125 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 	// Create route metadata without pointer
 	route := Route{
 		// Router booleans
+		use:  true,
+		root: isRoot,
+		path: prefix,
+		// Public data
+		Method:   MethodGet,
+		Path:     prefix,
+		Handlers: []Handler{handler},
+	}
+	// Increment global handler count
+	atomic.AddUint32(&app.handlersCount, 1)
+	// Add route to stack
+	app.addRoute(MethodGet, &route)
+	// Add HEAD route
+	app.addRoute(MethodHead, &route)
+}
+
+func (app *App) registerStaticFS(prefix string, filesystem iofs.FS, config ...Static) {
+	if prefix == "" {
+		prefix = "/"
+	}
+	if prefix[0] != '/' {
+		prefix = "/" + prefix
+	}
+	// in case-sensitive routing, all to lowercase
+	if !app.config.CaseSensitive {
+		prefix = utils.ToLower(prefix)
+	}
+
+	prefixLen := len(prefix)
+	isStar := strings.Contains(prefix, "*")
+	if isStar {
+		prefix = strings.Split(prefix, "*")[0]
+		prefixLen = len(prefix)
+	}
+	isRoot := prefix == "/"
+
+	// add embed fs support
+	fsHandler := &fasthttp.FS{
+		FS:                   filesystem,
+		Root:                 ".",
+		GenerateIndexPages:   false,
+		AcceptByteRange:      false,
+		Compress:             false,
+		CompressedFileSuffix: app.config.CompressedFileSuffix,
+		CacheDuration:        10 * time.Second,
+		IndexNames:           []string{"index.html"},
+		PathRewrite: func(fctx *fasthttp.RequestCtx) []byte {
+			path := fctx.Path()
+			if len(path) >= prefixLen {
+				if isStar && app.getString(path[0:prefixLen]) == prefix {
+					path = append(path[0:0], '/')
+				} else {
+					path = path[prefixLen:]
+					if len(path) == 0 || path[len(path)-1] != '/' {
+						path = append(path, '/')
+					}
+				}
+			}
+			if len(path) > 0 && path[0] != '/' {
+				path = append([]byte("/"), path...)
+			}
+			return path
+		},
+		PathNotFound: func(fctx *fasthttp.RequestCtx) {
+			fctx.Response.SetStatusCode(StatusNotFound)
+		},
+	}
+
+	// Set config if provided
+	var cacheControlValue string
+	var modifyResponse Handler
+	if len(config) > 0 {
+		maxAge := config[0].MaxAge
+		if maxAge > 0 {
+			cacheControlValue = "public, max-age=" + strconv.Itoa(maxAge)
+		}
+		fsHandler.CacheDuration = config[0].CacheDuration
+		fsHandler.Compress = config[0].Compress
+		fsHandler.AcceptByteRange = config[0].ByteRange
+		fsHandler.GenerateIndexPages = config[0].Browse
+		if config[0].Index != "" {
+			fsHandler.IndexNames = []string{config[0].Index}
+		}
+		modifyResponse = config[0].ModifyResponse
+	}
+
+	fileHandler := fsHandler.NewRequestHandler()
+	handler := func(c *Ctx) error {
+		// Don't execute middleware if Next returns true
+		if len(config) != 0 && config[0].Next != nil && config[0].Next(c) {
+			return c.Next()
+		}
+		// Serve file
+		fileHandler(c.fasthttp)
+		// Sets the response Content-Disposition header to attachment if the Download option is true
+		if len(config) > 0 && config[0].Download {
+			c.Attachment()
+		}
+		// Return request if found and not forbidden
+		status := c.fasthttp.Response.StatusCode()
+		if status != StatusNotFound && status != StatusForbidden {
+			if len(cacheControlValue) > 0 {
+				c.fasthttp.Response.Header.Set(HeaderCacheControl, cacheControlValue)
+			}
+			if modifyResponse != nil {
+				return modifyResponse(c)
+			}
+			return nil
+		}
+		// Reset response to default
+		c.fasthttp.SetContentType("") // Issue #420
+		c.fasthttp.Response.SetStatusCode(StatusOK)
+		c.fasthttp.Response.SetBodyString("")
+		// Next middleware
+		return c.Next()
+	}
+
+	// Create route metadata without pointer
+	route := Route{
 		use:  true,
 		root: isRoot,
 		path: prefix,
