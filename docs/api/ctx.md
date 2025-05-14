@@ -1841,7 +1841,7 @@ app.Get("/cbor", func(c fiber.Ctx) error {
 
 ### Links
 
-Joins the links followed by the property to populate the response’s [Link](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Link) HTTP header field.
+Joins the links followed by the property to populate the response’s [Link HTTP header](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Link) field.
 
 ```go title="Signature"
 func (c fiber.Ctx) Links(link ...string)
@@ -2040,7 +2040,7 @@ For sending multiple files from an embedded file system, [this functionality](..
 Sets the status code and the correct status message in the body if the response body is **empty**.
 
 :::tip
-You can find all used status codes and messages [here](https://github.com/gofiber/fiber/blob/dffab20bcdf4f3597d2c74633a7705a517d2c8c2/utils.go#L183-L244).
+You can find all used status codes and messages [in the Fiber source code](https://github.com/gofiber/fiber/blob/dffab20bcdf4f3597d2c74633a7705a517d2c8c2/utils.go#L183-L244).
 :::
 
 ```go title="Signature"
@@ -2194,7 +2194,7 @@ app.Get("/world", func(c fiber.Ctx) error {
 
 ### Type
 
-Sets the [Content-Type](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type) HTTP header to the MIME type listed [here](https://github.com/nginx/nginx/blob/master/conf/mime.types) specified by the file **extension**.
+Sets the [Content-Type](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type) HTTP header to the MIME type listed [in the Nginx MIME types configuration](https://github.com/nginx/nginx/blob/master/conf/mime.types) specified by the file **extension**.
 
 :::info
 This method is **chainable**.
