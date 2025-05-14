@@ -376,3 +376,20 @@ func (s *State) serviceKeys() []string {
 
 	return keys
 }
+
+// GetService returns a service present in the application's State.
+func GetService[T Service](s *State, key string) (T, bool) {
+	srv, ok := GetState[T](s, serviceKey(key))
+	return srv, ok
+}
+
+// MustGetService returns a service present in the application's State.
+// It panics if the service is not found.
+func MustGetService[T Service](s *State, key string) T {
+	srv, ok := GetService[T](s, key)
+	if !ok {
+		panic("state: service not found!")
+	}
+
+	return srv
+}

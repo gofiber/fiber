@@ -525,6 +525,106 @@ func Test_GetStateWithDefault(t *testing.T) {
 	require.False(t, flag)
 }
 
+func TestState_Service(t *testing.T) {
+	t.Parallel()
+
+	srv1 := &mockService{name: "test1"}
+	// service 2 is using a very subtle name to check it is not picked up
+	srv2 := &mockService{name: "test1 "}
+
+	t.Run("set/get/ok", func(t *testing.T) {
+		t.Parallel()
+
+		st := newState()
+		st.setService(srv1)
+
+		got, ok := st.Get(serviceKey(srv1.String()))
+		require.True(t, ok)
+		require.Equal(t, srv1, got)
+	})
+
+	t.Run("set/get/ko", func(t *testing.T) {
+		t.Parallel()
+
+		st := newState()
+		st.setService(srv1)
+
+		koSrv := &mockService{name: "ko"}
+
+		got, ok := st.Get(serviceKey(koSrv.String()))
+		require.False(t, ok)
+		require.Nil(t, got)
+	})
+
+	t.Run("len", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("empty", func(t *testing.T) {
+			t.Parallel()
+
+			st := newState()
+			require.Equal(t, 0, st.Len())
+			require.Empty(t, st.serviceKeys())
+		})
+
+		t.Run("with-services", func(t *testing.T) {
+			t.Parallel()
+
+			st := newState()
+			st.setService(srv1)
+			st.setService(srv2)
+
+			require.Equal(t, 2, st.Len())
+			require.Len(t, st.serviceKeys(), 2)
+		})
+	})
+
+	t.Run("keys", func(t *testing.T) {
+		t.Parallel()
+
+		st := newState()
+		st.setService(srv1)
+		// adding more keys to check they are not included
+		st.Set("key1", "value1")
+		st.Set("key2", "value2")
+
+		keys := st.serviceKeys()
+		require.Len(t, keys, 1)
+		require.Equal(t, serviceKey(srv1.String()), keys[0])
+	})
+
+	t.Run("delete", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("ok", func(t *testing.T) {
+			t.Parallel()
+
+			st := newState()
+
+			st.setService(srv1)
+			st.deleteService(srv1)
+
+			_, ok := st.Get(serviceKey(srv1.String()))
+			require.False(t, ok)
+		})
+
+		t.Run("missing", func(t *testing.T) {
+			t.Parallel()
+
+			st := newState()
+			st.setService(srv1)
+
+			st.deleteService(srv2)
+
+			_, ok := st.Get(serviceKey(srv1.String()))
+			require.True(t, ok)
+
+			_, ok = st.Get(serviceKey(srv2.String()))
+			require.False(t, ok)
+		})
+	})
+}
+
 func BenchmarkState_Set(b *testing.B) {
 	b.ReportAllocs()
 

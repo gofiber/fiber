@@ -4,7 +4,9 @@ title: 🥡 Services
 sidebar_position: 9
 ---
 
-Services provide external services needed to run the application. They are supposed to be used while developing and testing the application.
+Services provide external services needed to run the application, stored as dependencies in the application's State Management. They are supposed to be used while developing and testing the application, being started and stopped automatically by the application.
+
+Once you add a service to the configuration of the GoFiber application, it is automatically started when the application starts and stopped when the application shuts down. You can retrieve the service from the application's State using the `GetService` or `MustGetService` functions (see [State Management](../api/state)).
 
 ## Service Interface
 
@@ -84,6 +86,8 @@ import (
     tcredis "github.com/testcontainers/testcontainers-go/modules/redis"
 )
 
+const redisServiceName = "redis-store"
+
 type redisService struct {
     ctr *tcredis.RedisContainer
 }
@@ -104,7 +108,7 @@ func (s *redisService) Start(ctx context.Context) error {
 // It is used to print a human-readable name of the service in the startup message.
 // It implements the [fiber.Service] interface.
 func (s *redisService) String() string {
-    return "redis-store"
+    return redisServiceName
 }
 
 // State returns the current state of the service.
@@ -128,8 +132,7 @@ func main() {
     cfg := &fiber.Config{}
 
     // Initialize service.
-    redisSrv := &redisService{}
-    cfg.Services = append(cfg.Services, redisSrv)
+    cfg.Services = append(cfg.Services, &redisService{})
 
     // Define a context provider for the services startup.
     // This is useful to cancel the startup of the services if the context is canceled.
@@ -152,6 +155,13 @@ func main() {
     app := fiber.New(*cfg)
 
     ctx := context.Background()
+
+    // Obtain the Redis service from the application's State.
+    redisSrv, ok := fiber.GetService[*redisService](app.State(), redisServiceName)
+    if !ok || redisSrv == nil {
+        log.Printf("Redis service not found")
+        return
+    }
 
     // Obtain the connection string from the service.
     connString, err := redisSrv.ctr.ConnectionString(ctx)
@@ -182,7 +192,7 @@ func main() {
 
 ### Example: Adding a service with a Store Middleware
 
-This example demonstrates how to use Services with the Store Middleware for dependency injection in a Fiber application.
+This example demonstrates how to use Services with the Store Middleware for dependency injection in a Fiber application. It uses a Redis store, backed by the Testcontainers Redis Go module.
 
 ```go
 package main
@@ -199,6 +209,10 @@ import (
     redisStore "github.com/gofiber/storage/redis/v3"
     "github.com/redis/go-redis/v9"
     tcredis "github.com/testcontainers/testcontainers-go/modules/redis"
+)
+
+const (
+    redisServiceName = "redis-store"
 )
 
 type User struct {
@@ -227,7 +241,7 @@ func (s *redisService) Start(ctx context.Context) error {
 // It is used to print a human-readable name of the service in the startup message.
 // It implements the [fiber.Service] interface.
 func (s *redisService) String() string {
-    return "redis-store"
+    return redisServiceName
 }
 
 // State returns the current state of the service.
@@ -251,8 +265,7 @@ func main() {
     cfg := &fiber.Config{}
 
     // Initialize service.
-    redisSrv := &redisService{}
-    cfg.Services = append(cfg.Services, redisSrv)
+    cfg.Services = append(cfg.Services, &redisService{})
 
     // Define a context provider for the services startup.
     // This is useful to cancel the startup of the services if the context is canceled.
@@ -278,6 +291,13 @@ func main() {
     app.Use(logger.New())
 
     ctx := context.Background()
+
+    // Obtain the Redis service from the application's State.
+    redisSrv, ok := fiber.GetService[*redisService](app.State(), redisServiceName)
+    if !ok || redisSrv == nil {
+        log.Printf("Redis service not found")
+        return
+    }
 
     // Obtain the connection string from the service.
     connString, err := redisSrv.ctr.ConnectionString(ctx)
@@ -314,8 +334,7 @@ func main() {
     app.Get("/user/:id", func(c fiber.Ctx) error {
         id := c.Params("id")
 
-        key := fmt.Sprintf("user:%s", id)
-        user, err := store.Get(key)
+        user, err := store.Get(id)
         if err == redis.Nil {
             return c.Status(fiber.StatusNotFound).SendString("User not found")
         } else if err != nil {
