@@ -2,6 +2,7 @@ package fiber
 
 import (
 	"crypto/sha256"
+	"encoding/hex"
 	"strings"
 	"sync"
 
@@ -16,7 +17,7 @@ func init() {
 
 	// hash the service state prefix
 	hash := sha256.Sum256([]byte(servicesStatePrefix))
-	servicesStatePrefix = string(hash[:])
+	servicesStatePrefix = hex.EncodeToString(hash[:])
 }
 
 // State is a key-value store for Fiber's app in order to be used as a global storage for the app's dependencies.
@@ -343,7 +344,7 @@ func serviceKey(key string) string {
 	// hash the service string to avoid collisions
 	hash := sha256.Sum256([]byte(key))
 
-	return servicesStatePrefix + string(hash[:])
+	return servicesStatePrefix + hex.EncodeToString(hash[:])
 }
 
 // setService sets a service in the State.
