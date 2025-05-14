@@ -360,15 +360,15 @@ func Test_LogServices(t *testing.T) {
 
 	output := buf.String()
 
-	for _, dep := range app.Services() {
+	for _, srv := range app.Services() {
 		stateColor := colors.Blue
 		state := "RUNNING"
-		if _, err := dep.State(context.Background()); err != nil {
+		if _, err := srv.State(context.Background()); err != nil {
 			stateColor = colors.Red
 			state = "ERROR"
 		}
 
-		expected := fmt.Sprintf("%sINFO%s    🥡 %s[ %s ] %s%s\n", colors.Green, colors.Reset, stateColor, strings.ToUpper(state), dep.String(), colors.Reset)
+		expected := fmt.Sprintf("%sINFO%s    🥡 %s[ %s ] %s%s\n", colors.Green, colors.Reset, stateColor, strings.ToUpper(state), srv.String(), colors.Reset)
 		require.Contains(t, output, expected)
 	}
 }

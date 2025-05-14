@@ -57,25 +57,25 @@ func (app *App) startServices(ctx context.Context) error {
 	}
 
 	var errs []error
-	for _, dep := range app.configured.Services {
+	for _, srv := range app.configured.Services {
 		if err := ctx.Err(); err != nil {
 			// Context is canceled, return an error the soonest possible, so that
 			// the user can see the context cancellation error and act on it.
-			return fmt.Errorf("context canceled while starting service %s: %w", dep.String(), err)
+			return fmt.Errorf("context canceled while starting service %s: %w", srv.String(), err)
 		}
 
-		err := dep.Start(ctx)
+		err := srv.Start(ctx)
 		if err == nil {
 			// mark the service as started
-			app.state.setService(dep)
+			app.state.setService(srv)
 			continue
 		}
 
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return fmt.Errorf("service %s start: %w", dep.String(), err)
+			return fmt.Errorf("service %s start: %w", srv.String(), err)
 		}
 
-		errs = append(errs, fmt.Errorf("service %s start: %w", dep.String(), err))
+		errs = append(errs, fmt.Errorf("service %s start: %w", srv.String(), err))
 	}
 	return errors.Join(errs...)
 }
