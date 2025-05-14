@@ -16,7 +16,6 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/gofiber/fiber/v3/binder"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -2022,20 +2021,20 @@ func Test_Bind_All(t *testing.T) {
 
 			err := bind.All(tt.out)
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				return
 			}
 			require.NoError(t, err)
 
 			if tt.expected != nil {
 				actual, ok := tt.out.(*User)
-				assert.True(t, ok)
+				require.True(t, ok)
 
-				assert.Equal(t, tt.expected.ID, actual.ID)
-				assert.Equal(t, tt.expected.Name, actual.Name)
-				assert.Equal(t, tt.expected.Email, actual.Email)
-				assert.Equal(t, tt.expected.Role, actual.Role)
-				assert.Equal(t, tt.expected.SessionID, actual.SessionID)
+				require.Equal(t, tt.expected.ID, actual.ID)
+				require.Equal(t, tt.expected.Name, actual.Name)
+				require.Equal(t, tt.expected.Email, actual.Email)
+				require.Equal(t, tt.expected.Role, actual.Role)
+				require.Equal(t, tt.expected.SessionID, actual.SessionID)
 			}
 		})
 	}
@@ -2069,7 +2068,7 @@ func Test_Bind_All_Uri_Precedence(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	res, err := app.Test(req)
 	require.NoError(t, err)
-	assert.Equal(t, 200, res.StatusCode)
+	require.Equal(t, 200, res.StatusCode)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Bind_All -benchmem -count=4
