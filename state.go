@@ -1,8 +1,23 @@
 package fiber
 
 import (
+	"crypto/sha256"
+	"strings"
 	"sync"
+
+	"github.com/google/uuid"
 )
+
+var servicesStatePrefix = "gofiber-services"
+
+func init() {
+	// Initialize the services state prefix using a random string
+	servicesStatePrefix = servicesStatePrefix + "-" + uuid.New().String()
+
+	// hash the service state prefix
+	hash := sha256.Sum256([]byte(servicesStatePrefix))
+	servicesStatePrefix = string(hash[:])
+}
 
 // State is a key-value store for Fiber's app in order to be used as a global storage for the app's dependencies.
 // It's a thread-safe implementation of a map[string]any, using sync.Map.
@@ -319,4 +334,45 @@ func (s *State) GetComplex128(key string) (complex128, bool) {
 		}
 	}
 	return 0, false
+}
+
+// serviceKey returns a key for a service in the State.
+// A key is composed of the servicesStatePrefix (hashed) and the hash of the service string.
+// This way we can avoid collisions and have a unique key for each service.
+func serviceKey(key string) string {
+	// hash the service string to avoid collisions
+	hash := sha256.Sum256([]byte(key))
+
+	return servicesStatePrefix + string(hash[:])
+}
+
+// setService sets a service in the State.
+func (s *State) setService(srv Service) {
+	// Always prepend the service key with the servicesStateKey to avoid collisions
+	s.Set(serviceKey(srv.String()), srv)
+}
+
+// Delete removes a key-value pair from the State.
+func (s *State) deleteService(srv Service) {
+	s.Delete(serviceKey(srv.String()))
+}
+
+// serviceKeys returns a slice containing all keys present for services in the application's State.
+func (s *State) serviceKeys() []string {
+	keys := make([]string, 0)
+	s.dependencies.Range(func(key, _ any) bool {
+		keyStr, ok := key.(string)
+		if !ok {
+			return false
+		}
+
+		if !strings.HasPrefix(keyStr, servicesStatePrefix) {
+			return false
+		}
+
+		keys = append(keys, keyStr)
+		return true
+	})
+
+	return keys
 }

@@ -118,8 +118,6 @@ type App struct {
 	customConstraints []CustomConstraint
 	// sendfiles stores configurations for handling ctx.SendFile operations
 	sendfiles []*sendFileStore
-	// startedServices is a list of services that have been started
-	startedServices []Service
 	// custom binders
 	customBinders []CustomBinder
 	// Route stack divided by HTTP methods and route prefixes
@@ -622,7 +620,7 @@ func New(config ...Config) *App {
 
 	// If the app is configured to use services,
 	// register a post shutdown hook to shutdown them after the server is closed.
-	if app.hasServices() {
+	if app.hasConfiguredServices() {
 		if err := app.startServices(app.servicesStartupCtx()); err != nil {
 			panic(err)
 		}

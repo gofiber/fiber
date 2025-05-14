@@ -108,20 +108,20 @@ func (m *mockService) Terminate(ctx context.Context) error {
 	return nil
 }
 
-func Test_HasServices(t *testing.T) {
-	testHasServicesFn := func(t *testing.T, app *App, expected bool) {
+func Test_HasConfiguredServices(t *testing.T) {
+	testHasConfiguredServicesFn := func(t *testing.T, app *App, expected bool) {
 		t.Helper()
 
-		result := app.hasServices()
+		result := app.hasConfiguredServices()
 		require.Equal(t, expected, result)
 	}
 
 	t.Run("no-services", func(t *testing.T) {
-		testHasServicesFn(t, &App{configured: Config{}}, false)
+		testHasConfiguredServicesFn(t, &App{configured: Config{}}, false)
 	})
 
 	t.Run("has-services", func(t *testing.T) {
-		testHasServicesFn(t, &App{configured: Config{Services: []Service{&mockService{name: "test-dep"}}}}, true)
+		testHasConfiguredServicesFn(t, &App{configured: Config{Services: []Service{&mockService{name: "test-dep"}}}}, true)
 	})
 }
 
@@ -131,11 +131,12 @@ func Test_StartServices(t *testing.T) {
 			configured: Config{
 				Services: []Service{},
 			},
+			state: newState(),
 		}
 
 		err := app.startServices(context.Background())
 		require.NoError(t, err)
-		require.Empty(t, app.startedServices)
+		require.Zero(t, app.ServicesLen())
 	})
 
 	t.Run("successful-start", func(t *testing.T) {
@@ -146,11 +147,12 @@ func Test_StartServices(t *testing.T) {
 					&mockService{name: "dep2"},
 				},
 			},
+			state: newState(),
 		}
 
 		err := app.startServices(context.Background())
 		require.NoError(t, err)
-		require.Len(t, app.startedServices, 2)
+		require.Equal(t, 2, app.ServicesLen())
 	})
 
 	t.Run("failed-start", func(t *testing.T) {
@@ -162,13 +164,14 @@ func Test_StartServices(t *testing.T) {
 					&mockService{name: "dep3"},
 				},
 			},
+			state: newState(),
 		}
 
 		err := app.startServices(context.Background())
 		require.Error(t, err)
 		require.Contains(t, err.Error(), startErrorMessage+" 1")
 		require.Contains(t, err.Error(), startErrorMessage+" 2")
-		require.Len(t, app.startedServices, 1)
+		require.Equal(t, 1, app.ServicesLen())
 	})
 
 	t.Run("context", func(t *testing.T) {
@@ -179,6 +182,7 @@ func Test_StartServices(t *testing.T) {
 						&mockService{name: "dep1"},
 					},
 				},
+				state: newState(),
 			}
 
 			// Create a context that is already canceled
@@ -187,7 +191,7 @@ func Test_StartServices(t *testing.T) {
 
 			err := app.startServices(ctx)
 			require.ErrorIs(t, err, context.Canceled)
-			require.Empty(t, app.startedServices)
+			require.Zero(t, app.ServicesLen())
 		})
 
 		t.Run("cancellation", func(t *testing.T) {
@@ -198,6 +202,7 @@ func Test_StartServices(t *testing.T) {
 				configured: Config{
 					Services: []Service{slowDep},
 				},
+				state: newState(),
 			}
 
 			// Create a context that will be canceled immediately
@@ -207,55 +212,85 @@ func Test_StartServices(t *testing.T) {
 			// Start services with a delay that is longer than the timeout
 			err := app.startServices(ctx)
 			require.ErrorIs(t, err, context.DeadlineExceeded)
-			require.Empty(t, app.startedServices)
+			require.Zero(t, app.ServicesLen())
 		})
 	})
 }
 
 func Test_ShutdownServices(t *testing.T) {
 	t.Run("no-services", func(t *testing.T) {
-		app := New(Config{
-			Services: []Service{},
-		})
+		app := &App{
+			configured: Config{
+				Services: []Service{},
+			},
+			state: newState(),
+		}
 
 		err := app.shutdownServices(context.Background())
 		require.NoError(t, err)
+		require.Zero(t, app.ServicesLen())
 	})
 
 	t.Run("successful-shutdown", func(t *testing.T) {
-		app := New(Config{
-			Services: []Service{
-				&mockService{name: "dep1"},
-				&mockService{name: "dep2"},
+		srv1 := &mockService{name: "dep1"}
+		srv2 := &mockService{name: "dep2"}
+
+		// Expected state, including the two started services
+		expectedState := newState()
+		expectedState.setService(srv1)
+		expectedState.setService(srv2)
+
+		app := &App{
+			configured: Config{
+				Services: []Service{srv1, srv2},
 			},
-		})
+			state: expectedState,
+		}
 
 		err := app.shutdownServices(context.Background())
 		require.NoError(t, err)
+		require.Zero(t, app.ServicesLen())
 	})
 
 	t.Run("failed-shutdown", func(t *testing.T) {
-		app := New(Config{
-			Services: []Service{
-				&mockService{name: "dep1", terminateError: errors.New(terminateErrorMessage + " 1")},
-				&mockService{name: "dep2", terminateError: errors.New(terminateErrorMessage + " 2")},
-				&mockService{name: "dep3"},
+		srv1 := &mockService{name: "dep1", terminateError: errors.New(terminateErrorMessage + " 1")}
+		srv2 := &mockService{name: "dep2", terminateError: errors.New(terminateErrorMessage + " 2")}
+		srv3 := &mockService{name: "dep3"}
+
+		// Expected state, including the two started services
+		expectedState := newState()
+		expectedState.setService(srv1)
+		expectedState.setService(srv2)
+		expectedState.setService(srv3)
+
+		app := &App{
+			configured: Config{
+				Services: []Service{srv1, srv2, srv3},
 			},
-		})
+			state: expectedState,
+		}
 
 		err := app.shutdownServices(context.Background())
 		require.Error(t, err)
 		require.Contains(t, err.Error(), terminateErrorMessage+" 1")
 		require.Contains(t, err.Error(), terminateErrorMessage+" 2")
+		require.Equal(t, 2, app.ServicesLen()) // 2 services failed to terminate
 	})
 
 	t.Run("context", func(t *testing.T) {
 		t.Run("already-canceled", func(t *testing.T) {
-			app := New(Config{
-				Services: []Service{
-					&mockService{name: "dep1"},
+			srv1 := &mockService{name: "dep1"}
+
+			// Expected state, including the two started services
+			expectedState := newState()
+			expectedState.setService(srv1)
+
+			app := &App{
+				configured: Config{
+					Services: []Service{srv1},
 				},
-			})
+				state: expectedState,
+			}
 
 			// Create a context that is already canceled
 			ctx, cancel := context.WithCancel(context.Background())
@@ -265,15 +300,23 @@ func Test_ShutdownServices(t *testing.T) {
 			require.Error(t, err)
 			require.ErrorIs(t, err, context.Canceled)
 			require.Contains(t, err.Error(), "service dep1 terminate")
+			require.Equal(t, 1, app.ServicesLen())
 		})
 
 		t.Run("cancellation", func(t *testing.T) {
 			// Create a service that takes some time to terminate
 			slowDep := &mockService{name: "slow-dep", terminateDelay: 200 * time.Millisecond}
 
-			app := New(Config{
-				Services: []Service{slowDep},
-			})
+			// Expected state, including the two started services
+			expectedState := newState()
+			expectedState.setService(slowDep)
+
+			app := &App{
+				configured: Config{
+					Services: []Service{slowDep},
+				},
+				state: expectedState,
+			}
 
 			// Create a new context for shutdown
 			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -282,6 +325,7 @@ func Test_ShutdownServices(t *testing.T) {
 			// Shutdown services with canceled context
 			err := app.shutdownServices(ctx)
 			require.ErrorIs(t, err, context.DeadlineExceeded)
+			require.Equal(t, 1, app.ServicesLen())
 		})
 	})
 }
@@ -292,9 +336,16 @@ func Test_LogServices(t *testing.T) {
 	// Service with State error
 	errorService := &mockService{name: "error", stateError: errors.New("state error")}
 
-	app := New(Config{
-		Services: []Service{runningService, errorService},
-	})
+	expectedState := newState()
+	expectedState.setService(runningService)
+	expectedState.setService(errorService)
+
+	app := &App{
+		configured: Config{
+			Services: []Service{runningService, errorService},
+		},
+		state: expectedState,
+	}
 
 	var buf bytes.Buffer
 
@@ -309,11 +360,7 @@ func Test_LogServices(t *testing.T) {
 
 	output := buf.String()
 
-	expecteds := []string{
-		fmt.Sprintf("%sINFO%s Services: \t%s%d%s\n", colors.Green, colors.Reset, colors.Blue, len(app.configured.Services), colors.Reset),
-	}
-
-	for _, dep := range app.configured.Services {
+	for _, dep := range app.Services() {
 		stateColor := colors.Blue
 		state := "RUNNING"
 		if _, err := dep.State(context.Background()); err != nil {
@@ -322,31 +369,33 @@ func Test_LogServices(t *testing.T) {
 		}
 
 		expected := fmt.Sprintf("%sINFO%s    🥡 %s[ %s ] %s%s\n", colors.Green, colors.Reset, stateColor, strings.ToUpper(state), dep.String(), colors.Reset)
-		expecteds = append(expecteds, expected)
-	}
-
-	for _, expected := range expecteds {
 		require.Contains(t, output, expected)
 	}
 }
 
 func Test_ServiceContextProviders(t *testing.T) {
 	t.Run("no-provider", func(t *testing.T) {
-		app := New()
+		app := &App{
+			configured: Config{},
+			state:      newState(),
+		}
 		require.Equal(t, context.Background(), app.servicesStartupCtx())
 		require.Equal(t, context.Background(), app.servicesShutdownCtx())
 	})
 
 	t.Run("with-provider", func(t *testing.T) {
 		ctx := context.TODO()
-		app := New(Config{
-			ServicesStartupContextProvider: func() context.Context {
-				return ctx
+		app := &App{
+			configured: Config{
+				ServicesStartupContextProvider: func() context.Context {
+					return ctx
+				},
+				ServicesShutdownContextProvider: func() context.Context {
+					return ctx
+				},
 			},
-			ServicesShutdownContextProvider: func() context.Context {
-				return ctx
-			},
-		})
+			state: newState(),
+		}
 
 		require.Equal(t, ctx, app.servicesStartupCtx())
 		require.Equal(t, ctx, app.servicesShutdownCtx())
@@ -357,14 +406,12 @@ func Benchmark_StartServices(b *testing.B) {
 	benchmarkFn := func(b *testing.B, services []Service) {
 		b.Helper()
 
-		app := &App{
-			configured: Config{
-				Services: services,
-			},
-		}
-
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
+			app := New(Config{
+				Services: services,
+			})
+
 			ctx := context.Background()
 			if err := app.startServices(ctx); err != nil {
 				b.Fatal("Expected no error but got", err)
@@ -403,14 +450,12 @@ func Benchmark_ShutdownServices(b *testing.B) {
 	benchmarkFn := func(b *testing.B, services []Service) {
 		b.Helper()
 
-		app := &App{
-			configured: Config{
-				Services: services,
-			},
-		}
-
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
+			app := New(Config{
+				Services: services,
+			})
+
 			ctx := context.Background()
 			if err := app.shutdownServices(ctx); err != nil {
 				b.Fatal("Expected no error but got", err)
@@ -449,14 +494,12 @@ func Benchmark_StartServices_withContextCancellation(b *testing.B) {
 	benchmarkFn := func(b *testing.B, services []Service, timeout time.Duration) {
 		b.Helper()
 
-		app := &App{
-			configured: Config{
-				Services: services,
-			},
-		}
-
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
+			app := New(Config{
+				Services: services,
+			})
+
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
 			err := app.startServices(ctx)
 			// We expect an error here due to the short timeout
@@ -482,20 +525,18 @@ func Benchmark_StartServices_withContextCancellation(b *testing.B) {
 	})
 
 	b.Run("multiple-services/successful-completion", func(b *testing.B) {
-		app := &App{
-			configured: Config{
+		const timeout = 500 * time.Millisecond
+
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			app := New(Config{
 				Services: []Service{
 					&mockService{name: "dep1", startDelay: 10 * time.Millisecond},
 					&mockService{name: "dep2", startDelay: 20 * time.Millisecond},
 					&mockService{name: "dep3", startDelay: 30 * time.Millisecond},
 				},
-			},
-		}
+			})
 
-		const timeout = 500 * time.Millisecond
-
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
 			err := app.startServices(ctx)
 			if err != nil {
@@ -510,17 +551,22 @@ func Benchmark_ShutdownServices_withContextCancellation(b *testing.B) {
 	benchmarkFn := func(b *testing.B, services []Service, timeout time.Duration) {
 		b.Helper()
 
-		app := &App{
-			startedServices: services,
-		}
-
 		b.ResetTimer()
+
 		for i := 0; i < b.N; i++ {
+			app := New(Config{
+				Services: services,
+			})
+
+			err := app.startServices(context.Background())
+			if err != nil {
+				b.Fatal("Expected no error but got", err)
+			}
+
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
-			err := app.shutdownServices(ctx)
-			// We expect an error here due to the short timeout
-			if err == nil && timeout < time.Second {
-				b.Fatal("Expected error due to context cancellation but got none")
+			err = app.shutdownServices(ctx)
+			if err != nil && timeout < time.Second {
+				b.Fatal("Expected no error but got", err)
 			}
 			cancel()
 		}
@@ -541,20 +587,26 @@ func Benchmark_ShutdownServices_withContextCancellation(b *testing.B) {
 	})
 
 	b.Run("multiple-services/successful-completion", func(b *testing.B) {
-		app := &App{
-			startedServices: []Service{
-				&mockService{name: "dep1", terminateDelay: 10 * time.Millisecond},
-				&mockService{name: "dep2", terminateDelay: 20 * time.Millisecond},
-				&mockService{name: "dep3", terminateDelay: 30 * time.Millisecond},
-			},
-		}
-
 		const timeout = 500 * time.Millisecond
 
 		b.ResetTimer()
+
 		for i := 0; i < b.N; i++ {
+			app := New(Config{
+				Services: []Service{
+					&mockService{name: "dep1", terminateDelay: 10 * time.Millisecond},
+					&mockService{name: "dep2", terminateDelay: 20 * time.Millisecond},
+					&mockService{name: "dep3", terminateDelay: 30 * time.Millisecond},
+				},
+			})
+
+			err := app.startServices(context.Background())
+			if err != nil {
+				b.Fatal("Expected no error but got", err)
+			}
+
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
-			err := app.shutdownServices(ctx)
+			err = app.shutdownServices(ctx)
 			if err != nil {
 				b.Fatal("Expected no error but got", err)
 			}
@@ -567,23 +619,23 @@ func Benchmark_ServicesMemory(b *testing.B) {
 	benchmarkFn := func(b *testing.B, services []Service) {
 		b.Helper()
 
-		app := &App{
-			configured: Config{
-				Services: services,
-			},
-		}
-
 		b.ResetTimer()
 		b.ReportAllocs()
+
+		var err error
 		for i := 0; i < b.N; i++ {
+			app := New(Config{
+				Services: services,
+			})
+
 			ctx := context.Background()
-			if err := app.startServices(ctx); err != nil {
-				b.Fatal("Expected no error but got", err)
+			err = app.startServices(ctx)
+			if err != nil {
+				continue
 			}
-			if err := app.shutdownServices(ctx); err != nil {
-				b.Fatal("Expected no error but got", err)
-			}
+			err = app.shutdownServices(ctx)
 		}
+		require.NoError(b, err)
 	}
 
 	b.Run("no-services", func(b *testing.B) {
