@@ -560,14 +560,14 @@ func Benchmark_ShutdownServices_withContextCancellation(b *testing.B) {
 
 			err := app.startServices(context.Background())
 			if err != nil {
-				b.Fatal("Expected no error but got", err)
+				b.Fatal("Expected no error during startup but got", err)
 			}
 
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
 			err = app.shutdownServices(ctx)
 			// We expect an error here due to the short timeout
 			if err == nil && timeout < time.Second {
-				b.Fatal("Expected no error but got", err)
+				b.Fatal("Expected error due to context cancellation but got none")
 			}
 			cancel()
 		}
