@@ -474,6 +474,8 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 }
 
 func Test_Router_NotFound(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 	app.Use(func(c *Ctx) error {
 		return c.Next()
@@ -491,6 +493,8 @@ func Test_Router_NotFound(t *testing.T) {
 }
 
 func Test_Router_NotFound_HTML_Inject(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 	app.Use(func(c *Ctx) error {
 		return c.Next()
@@ -505,6 +509,32 @@ func Test_Router_NotFound_HTML_Inject(t *testing.T) {
 
 	utils.AssertEqual(t, 404, c.Response.StatusCode())
 	utils.AssertEqual(t, "Cannot DELETE /does/not/exist&lt;script&gt;alert(&#39;foo&#39;);&lt;/script&gt;", string(c.Response.Body()))
+}
+
+func Test_Router_Mount_n_Static(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	dir := "./.github/testdata/fs/css"
+	app.Static("/static", dir, Static{Browse: true})
+	app.Get("/", func(c *Ctx) error {
+		return c.SendString("Home")
+	})
+
+	subApp := New()
+	app.Mount("/mount", subApp)
+	subApp.Get("/test", func(c *Ctx) error {
+		return c.SendString("Hello from /test")
+	})
+
+	app.Use(func(c *Ctx) error {
+		return c.Status(StatusNotFound).SendString("Not Found")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/static/style.css", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 }
 
 //////////////////////////////////////////////
