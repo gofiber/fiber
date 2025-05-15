@@ -468,6 +468,12 @@ func Test_Redirect_parseAndClearFlashMessages(t *testing.T) {
 			Value: "1",
 		},
 	}, c.Redirect().OldInputs())
+
+	c.Request().Header.Set(HeaderCookie, "fiber_flash=test")
+
+	c.Redirect().parseAndClearFlashMessages()
+
+	require.Empty(t, c.Redirect().messages)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Redirect_Route -benchmem -count=4
