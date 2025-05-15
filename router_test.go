@@ -18,7 +18,10 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-var routesFixture routeJSON
+var (
+	routesFixture routeJSON
+	cssDir        = "./.github/testdata/fs/css"
+)
 
 func init() {
 	dat, err := os.ReadFile("./.github/testdata/testRoutes.json")
