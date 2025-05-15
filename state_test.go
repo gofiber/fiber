@@ -587,9 +587,8 @@ func TestState_Service(t *testing.T) {
 			st.Set("key1", "value1")
 			st.Set("key2", "value2")
 
-			len := st.Len()
 			servicesLen := st.ServicesLen()
-			require.Equal(t, 4, len)
+			require.Equal(t, 4, st.Len())
 			require.Equal(t, 2, servicesLen)
 		})
 	})
