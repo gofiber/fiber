@@ -343,7 +343,7 @@ flowchart LR
 
 ### Explanation
 
-- Redirect Struct: Retrieved from a pool (to minimize allocations), it stores redirection settings such as the HTTP status code (defaulting to 302) and any flash messages.
+- Redirect Struct: Retrieved from a pool (to minimize allocations), it stores redirection settings such as the HTTP status code (defaulting to 303 See Other) and any flash messages.
 - Flash Messages & Old Inputs: These are collected via methods like With() or WithInput() and then serialized and stored in a cookie named fiber_flash.
 - Redirection Methods: The To(), Route(), and Back() methods determine the target URL and set the Location header accordingly.
 

@@ -41,10 +41,16 @@ app.Use(logger.New(logger.Config{
 }))
 
 // Logging Request ID
-app.Use(requestid.New())
+app.Use(requestid.New()) // Ensure requestid middleware is used before the logger
 app.Use(logger.New(logger.Config{
+    CustomTags: map[string]logger.LogFunc{
+        "requestid": func(output logger.Buffer, c fiber.Ctx, data *logger.Data, extraParam string) (int, error) {
+            return output.WriteString(requestid.FromContext(c))
+        },
+    },
     // For more options, see the Config section
-    Format: "${pid} ${locals:requestid} ${status} - ${method} ${path}\n",
+    // Use the custom tag ${requestid} as defined above.
+    Format: "${pid} ${requestid} ${status} - ${method} ${path}\n",
 }))
 
 // Changing TimeZone & TimeFormat
@@ -87,6 +93,11 @@ app.Use(logger.New(logger.Config{
 // Disable colors when outputting to default format
 app.Use(logger.New(logger.Config{
     DisableColors: true,
+}))
+
+// Force the use of colors
+app.Use(logger.New(logger.Config{
+    ForceColors: true,
 }))
 
 // Use predefined formats 
@@ -166,6 +177,7 @@ Writing to os.File is goroutine-safe, but if you are using a custom Stream that 
 | Stream        | `io.Writer`                                       | Stream is a writer where logs are written.                                                                                                    | `os.Stdout`                                                           |
 | LoggerFunc    | `func(c fiber.Ctx, data *Data, cfg Config) error` | Custom logger function for integration with logging libraries (Zerolog, Zap, Logrus, etc). Defaults to Fiber's default logger if not defined. | `see default_logger.go defaultLoggerInstance`                         |
 | DisableColors | `bool`                                            | DisableColors defines if the logs output should be colorized.                                                                                 | `false`                                                               |
+| ForceColors   | `bool`                                            | ForceColors defines if the logs output should be colorized even when the output is not a terminal.                                             | `false`                                                               |
 
 ## Default Config
 

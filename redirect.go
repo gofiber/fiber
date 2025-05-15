@@ -18,7 +18,7 @@ import (
 var redirectPool = sync.Pool{
 	New: func() any {
 		return &Redirect{
-			status:   StatusFound,
+			status:   StatusSeeOther,
 			messages: make(redirectionMsgs, 0),
 		}
 	},
@@ -62,7 +62,7 @@ type FlashMessage struct {
 type Redirect struct {
 	c        *DefaultCtx     // Embed ctx
 	messages redirectionMsgs // Flash messages and old input data
-	status   int             // Status code of redirection. Default: StatusFound
+	status   int             // Status code of redirection. Default: 303 StatusSeeOther
 }
 
 // RedirectConfig A config to use with Redirect().Route()
@@ -93,13 +93,13 @@ func ReleaseRedirect(r *Redirect) {
 }
 
 func (r *Redirect) release() {
-	r.status = 302
+	r.status = StatusSeeOther
 	r.messages = r.messages[:0]
 	r.c = nil
 }
 
 // Status sets the status code of redirection.
-// If status is not specified, status defaults to 302 Found.
+// If status is not specified, status defaults to 303 See Other.
 func (r *Redirect) Status(code int) *Redirect {
 	r.status = code
 
