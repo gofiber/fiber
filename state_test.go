@@ -575,7 +575,7 @@ func TestState_Service(t *testing.T) {
 			st.setService(srv2)
 
 			require.Equal(t, 2, st.Len())
-			require.Len(t, st.serviceKeys(), 2)
+			require.Equal(t, 2, st.ServicesLen())
 		})
 
 		t.Run("with-services/with-keys", func(t *testing.T) {
@@ -595,17 +595,46 @@ func TestState_Service(t *testing.T) {
 	})
 
 	t.Run("keys", func(t *testing.T) {
-		t.Parallel()
+		t.Run("empty", func(t *testing.T) {
+			t.Parallel()
 
-		st := newState()
-		st.setService(srv1)
-		// adding more keys to check they are not included
-		st.Set("key1", "value1")
-		st.Set("key2", "value2")
+			st := newState()
+			// adding more keys to check they are not included
+			st.Set("key1", "value1")
+			st.Set("key2", "value2")
 
-		keys := st.serviceKeys()
-		require.Len(t, keys, 1)
-		require.Equal(t, st.serviceKey(srv1.String()), keys[0])
+			require.Empty(t, st.serviceKeys())
+		})
+
+		t.Run("with-services", func(t *testing.T) {
+			t.Parallel()
+
+			st := newState()
+			st.setService(srv1)
+			st.setService(srv2)
+
+			keys := st.serviceKeys()
+			require.Len(t, keys, 2)
+			require.Contains(t, keys, st.serviceKey(srv1.String()))
+			require.Contains(t, keys, st.serviceKey(srv2.String()))
+		})
+
+		t.Run("with-services/with-keys", func(t *testing.T) {
+			t.Parallel()
+
+			st := newState()
+			st.setService(srv1)
+			st.setService(srv2)
+			st.Set("key1", "value1")
+			st.Set("key2", "value2")
+
+			keys := st.serviceKeys()
+			require.Len(t, keys, 2)
+			require.Contains(t, keys, st.serviceKey(srv1.String()))
+			require.Contains(t, keys, st.serviceKey(srv2.String()))
+			require.NotContains(t, keys, "key1")
+			require.NotContains(t, keys, "key2")
+		})
 	})
 
 	t.Run("delete", func(t *testing.T) {

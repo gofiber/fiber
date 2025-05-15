@@ -364,7 +364,7 @@ func (s *State) serviceKeys() []string {
 		}
 
 		if !strings.HasPrefix(keyStr, s.servicePrefix) {
-			return false
+			return true // Continue iterating if key doesn't have service prefix
 		}
 
 		keys = append(keys, keyStr)
