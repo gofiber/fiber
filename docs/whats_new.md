@@ -554,6 +554,7 @@ Fiber v3 introduces a new binding mechanism that simplifies the process of bindi
 - Support for custom binders and constraints.
 - Improved error handling and validation.
 - Support multipart file binding for `*multipart.FileHeader`, `*[]*multipart.FileHeader`, and `[]*multipart.FileHeader` field types.
+- Support for unified binding (`Bind().All()`) with defined precedence order: (URI -> Body -> Query -> Headers -> Cookies). [Learn more](./api/bind.md#all).
 
 <details>
 <summary>Example</summary>
