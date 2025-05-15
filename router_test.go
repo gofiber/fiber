@@ -21,6 +21,7 @@ import (
 )
 
 var routesFixture routeJSON
+var cssDir = "./.github/testdata/fs/css"
 
 func init() {
 	dat, err := os.ReadFile("./.github/testdata/testRoutes.json")
@@ -354,9 +355,8 @@ func Test_Router_Handler_Catch_Error(t *testing.T) {
 func Test_Route_Static_Root(t *testing.T) {
 	t.Parallel()
 
-	dir := "./.github/testdata/fs/css"
 	app := New()
-	app.Static("/", dir, Static{
+	app.Static("/", cssDir, Static{
 		Browse: true,
 	})
 
@@ -373,7 +373,7 @@ func Test_Route_Static_Root(t *testing.T) {
 	utils.AssertEqual(t, true, strings.Contains(app.getString(body), "color"))
 
 	app = New()
-	app.Static("/", dir)
+	app.Static("/", cssDir)
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
@@ -391,9 +391,8 @@ func Test_Route_Static_Root(t *testing.T) {
 func Test_Route_Static_HasPrefix(t *testing.T) {
 	t.Parallel()
 
-	dir := "./.github/testdata/fs/css"
 	app := New()
-	app.Static("/static", dir, Static{
+	app.Static("/static", cssDir, Static{
 		Browse: true,
 	})
 
@@ -414,7 +413,7 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 	utils.AssertEqual(t, true, strings.Contains(app.getString(body), "color"))
 
 	app = New()
-	app.Static("/static/", dir, Static{
+	app.Static("/static/", cssDir, Static{
 		Browse: true,
 	})
 
@@ -435,7 +434,7 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 	utils.AssertEqual(t, true, strings.Contains(app.getString(body), "color"))
 
 	app = New()
-	app.Static("/static", dir)
+	app.Static("/static", cssDir)
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
@@ -454,7 +453,7 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 	utils.AssertEqual(t, true, strings.Contains(app.getString(body), "color"))
 
 	app = New()
-	app.Static("/static/", dir)
+	app.Static("/static/", cssDir)
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
@@ -516,8 +515,7 @@ func Test_Router_Mount_n_Static(t *testing.T) {
 
 	app := New()
 
-	dir := "./.github/testdata/fs/css"
-	app.Static("/static", dir, Static{Browse: true})
+	app.Static("/static", cssDir, Static{Browse: true})
 	app.Get("/", func(c *Ctx) error {
 		return c.SendString("Home")
 	})
