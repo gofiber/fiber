@@ -84,12 +84,12 @@ func (app *App) startServices(ctx context.Context) error {
 // Iterates over all the started services in reverse order and tries to terminate them,
 // returning an error if any error occurs.
 func (app *App) shutdownServices(ctx context.Context) error {
-	if app.ServicesLen() == 0 {
+	if app.state.ServicesLen() == 0 {
 		return nil
 	}
 
 	var errs []error
-	for _, srv := range app.Services() {
+	for _, srv := range app.state.Services() {
 		if err := ctx.Err(); err != nil {
 			// Context is canceled, do a best effort to terminate the services.
 			errs = append(errs, fmt.Errorf("service %s terminate: %w", srv.String(), err))
@@ -117,8 +117,8 @@ func (app *App) logServices(ctx context.Context, out io.Writer, colors Colors) {
 
 	fmt.Fprintf(out,
 		"%sINFO%s Services: \t%s%d%s\n",
-		colors.Green, colors.Reset, colors.Blue, app.ServicesLen(), colors.Reset)
-	for _, srv := range app.Services() {
+		colors.Green, colors.Reset, colors.Blue, app.state.ServicesLen(), colors.Reset)
+	for _, srv := range app.state.Services() {
 		var state string
 		var stateColor string
 		state, err := srv.State(ctx)
@@ -131,29 +131,4 @@ func (app *App) logServices(ctx context.Context, out io.Writer, colors Colors) {
 		}
 		fmt.Fprintf(out, "%sINFO%s    🥡 %s[ %s ] %s%s\n", colors.Green, colors.Reset, stateColor, strings.ToUpper(state), srv.String(), colors.Reset)
 	}
-}
-
-// ServicesLen returns the number of keys for services in the application's State.
-func (app *App) ServicesLen() int {
-	length := 0
-	app.state.dependencies.Range(func(key, _ any) bool {
-		if str, ok := key.(string); ok && strings.HasPrefix(str, servicesStatePrefix) {
-			length++
-		}
-		return true
-	})
-
-	return length
-}
-
-// Services returns a map containing all services present in the application's State.
-// The key is the hash of the service String() value and the value is the service itself.
-func (app *App) Services() map[string]Service {
-	services := make(map[string]Service)
-
-	for _, key := range app.state.serviceKeys() {
-		services[key] = MustGetState[Service](app.state, key)
-	}
-
-	return services
 }

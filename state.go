@@ -9,27 +9,23 @@ import (
 	"github.com/google/uuid"
 )
 
-var servicesStatePrefix = "gofiber-services"
-
-func init() {
-	// Initialize the services state prefix using a random string
-	servicesStatePrefix = servicesStatePrefix + "-" + uuid.New().String()
-
-	// hash the service state prefix
-	hash := sha256.Sum256([]byte(servicesStatePrefix))
-	servicesStatePrefix = hex.EncodeToString(hash[:])
-}
+const servicesStatePrefix = "gofiber-services-"
 
 // State is a key-value store for Fiber's app in order to be used as a global storage for the app's dependencies.
 // It's a thread-safe implementation of a map[string]any, using sync.Map.
 type State struct {
-	dependencies sync.Map
+	dependencies  sync.Map
+	servicePrefix string
 }
 
 // NewState creates a new instance of State.
 func newState() *State {
+	// Initialize the services state prefix using a hashed random string
+	hash := sha256.Sum256([]byte(servicesStatePrefix + uuid.New().String()))
+
 	return &State{
-		dependencies: sync.Map{},
+		dependencies:  sync.Map{},
+		servicePrefix: hex.EncodeToString(hash[:]),
 	}
 }
 
@@ -338,24 +334,24 @@ func (s *State) GetComplex128(key string) (complex128, bool) {
 }
 
 // serviceKey returns a key for a service in the State.
-// A key is composed of the servicesStatePrefix (hashed) and the hash of the service string.
+// A key is composed of the State's servicePrefix (hashed) and the hash of the service string.
 // This way we can avoid collisions and have a unique key for each service.
-func serviceKey(key string) string {
+func (s *State) serviceKey(key string) string {
 	// hash the service string to avoid collisions
 	hash := sha256.Sum256([]byte(key))
 
-	return servicesStatePrefix + hex.EncodeToString(hash[:])
+	return s.servicePrefix + hex.EncodeToString(hash[:])
 }
 
 // setService sets a service in the State.
 func (s *State) setService(srv Service) {
 	// Always prepend the service key with the servicesStateKey to avoid collisions
-	s.Set(serviceKey(srv.String()), srv)
+	s.Set(s.serviceKey(srv.String()), srv)
 }
 
 // Delete removes a key-value pair from the State.
 func (s *State) deleteService(srv Service) {
-	s.Delete(serviceKey(srv.String()))
+	s.Delete(s.serviceKey(srv.String()))
 }
 
 // serviceKeys returns a slice containing all keys present for services in the application's State.
@@ -367,7 +363,7 @@ func (s *State) serviceKeys() []string {
 			return false
 		}
 
-		if !strings.HasPrefix(keyStr, servicesStatePrefix) {
+		if !strings.HasPrefix(keyStr, s.servicePrefix) {
 			return false
 		}
 
@@ -378,9 +374,34 @@ func (s *State) serviceKeys() []string {
 	return keys
 }
 
+// Services returns a map containing all services present in the State.
+// The key is the hash of the service String() value and the value is the service itself.
+func (s *State) Services() map[string]Service {
+	services := make(map[string]Service)
+
+	for _, key := range s.serviceKeys() {
+		services[key] = MustGetState[Service](s, key)
+	}
+
+	return services
+}
+
+// ServicesLen returns the number of keys for services in the State.
+func (s *State) ServicesLen() int {
+	length := 0
+	s.dependencies.Range(func(key, _ any) bool {
+		if str, ok := key.(string); ok && strings.HasPrefix(str, s.servicePrefix) {
+			length++
+		}
+		return true
+	})
+
+	return length
+}
+
 // GetService returns a service present in the application's State.
 func GetService[T Service](s *State, key string) (T, bool) {
-	srv, ok := GetState[T](s, serviceKey(key))
+	srv, ok := GetState[T](s, s.serviceKey(key))
 	return srv, ok
 }
 

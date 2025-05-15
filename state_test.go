@@ -538,7 +538,7 @@ func TestState_Service(t *testing.T) {
 		st := newState()
 		st.setService(srv1)
 
-		got, ok := st.Get(serviceKey(srv1.String()))
+		got, ok := st.Get(st.serviceKey(srv1.String()))
 		require.True(t, ok)
 		require.Equal(t, srv1, got)
 	})
@@ -551,7 +551,7 @@ func TestState_Service(t *testing.T) {
 
 		koSrv := &mockService{name: "ko"}
 
-		got, ok := st.Get(serviceKey(koSrv.String()))
+		got, ok := st.Get(st.serviceKey(koSrv.String()))
 		require.False(t, ok)
 		require.Nil(t, got)
 	})
@@ -577,6 +577,21 @@ func TestState_Service(t *testing.T) {
 			require.Equal(t, 2, st.Len())
 			require.Len(t, st.serviceKeys(), 2)
 		})
+
+		t.Run("with-services/with-keys", func(t *testing.T) {
+			t.Parallel()
+
+			st := newState()
+			st.setService(srv1)
+			st.setService(srv2)
+			st.Set("key1", "value1")
+			st.Set("key2", "value2")
+
+			len := st.Len()
+			servicesLen := st.ServicesLen()
+			require.Equal(t, 4, len)
+			require.Equal(t, 2, servicesLen)
+		})
 	})
 
 	t.Run("keys", func(t *testing.T) {
@@ -590,7 +605,7 @@ func TestState_Service(t *testing.T) {
 
 		keys := st.serviceKeys()
 		require.Len(t, keys, 1)
-		require.Equal(t, serviceKey(srv1.String()), keys[0])
+		require.Equal(t, st.serviceKey(srv1.String()), keys[0])
 	})
 
 	t.Run("delete", func(t *testing.T) {
@@ -604,7 +619,7 @@ func TestState_Service(t *testing.T) {
 			st.setService(srv1)
 			st.deleteService(srv1)
 
-			_, ok := st.Get(serviceKey(srv1.String()))
+			_, ok := st.Get(st.serviceKey(srv1.String()))
 			require.False(t, ok)
 		})
 
@@ -616,10 +631,10 @@ func TestState_Service(t *testing.T) {
 
 			st.deleteService(srv2)
 
-			_, ok := st.Get(serviceKey(srv1.String()))
+			_, ok := st.Get(st.serviceKey(srv1.String()))
 			require.True(t, ok)
 
-			_, ok = st.Get(serviceKey(srv2.String()))
+			_, ok = st.Get(st.serviceKey(srv2.String()))
 			require.False(t, ok)
 		})
 	})

@@ -136,7 +136,7 @@ func Test_StartServices(t *testing.T) {
 
 		err := app.startServices(context.Background())
 		require.NoError(t, err)
-		require.Zero(t, app.ServicesLen())
+		require.Zero(t, app.state.ServicesLen())
 	})
 
 	t.Run("successful-start", func(t *testing.T) {
@@ -152,7 +152,7 @@ func Test_StartServices(t *testing.T) {
 
 		err := app.startServices(context.Background())
 		require.NoError(t, err)
-		require.Equal(t, 2, app.ServicesLen())
+		require.Equal(t, 2, app.state.ServicesLen())
 	})
 
 	t.Run("failed-start", func(t *testing.T) {
@@ -171,7 +171,7 @@ func Test_StartServices(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), startErrorMessage+" 1")
 		require.Contains(t, err.Error(), startErrorMessage+" 2")
-		require.Equal(t, 1, app.ServicesLen())
+		require.Equal(t, 1, app.state.ServicesLen())
 	})
 
 	t.Run("context", func(t *testing.T) {
@@ -191,7 +191,7 @@ func Test_StartServices(t *testing.T) {
 
 			err := app.startServices(ctx)
 			require.ErrorIs(t, err, context.Canceled)
-			require.Zero(t, app.ServicesLen())
+			require.Zero(t, app.state.ServicesLen())
 		})
 
 		t.Run("cancellation", func(t *testing.T) {
@@ -212,7 +212,7 @@ func Test_StartServices(t *testing.T) {
 			// Start services with a delay that is longer than the timeout
 			err := app.startServices(ctx)
 			require.ErrorIs(t, err, context.DeadlineExceeded)
-			require.Zero(t, app.ServicesLen())
+			require.Zero(t, app.state.ServicesLen())
 		})
 	})
 }
@@ -228,7 +228,7 @@ func Test_ShutdownServices(t *testing.T) {
 
 		err := app.shutdownServices(context.Background())
 		require.NoError(t, err)
-		require.Zero(t, app.ServicesLen())
+		require.Zero(t, app.state.ServicesLen())
 	})
 
 	t.Run("successful-shutdown", func(t *testing.T) {
@@ -249,7 +249,7 @@ func Test_ShutdownServices(t *testing.T) {
 
 		err := app.shutdownServices(context.Background())
 		require.NoError(t, err)
-		require.Zero(t, app.ServicesLen())
+		require.Zero(t, app.state.ServicesLen())
 	})
 
 	t.Run("failed-shutdown", func(t *testing.T) {
@@ -274,7 +274,7 @@ func Test_ShutdownServices(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), terminateErrorMessage+" 1")
 		require.Contains(t, err.Error(), terminateErrorMessage+" 2")
-		require.Equal(t, 2, app.ServicesLen()) // 2 services failed to terminate
+		require.Equal(t, 2, app.state.ServicesLen()) // 2 services failed to terminate
 	})
 
 	t.Run("context", func(t *testing.T) {
@@ -300,7 +300,7 @@ func Test_ShutdownServices(t *testing.T) {
 			require.Error(t, err)
 			require.ErrorIs(t, err, context.Canceled)
 			require.Contains(t, err.Error(), "service dep1 terminate")
-			require.Equal(t, 1, app.ServicesLen())
+			require.Equal(t, 1, app.state.ServicesLen())
 		})
 
 		t.Run("cancellation", func(t *testing.T) {
@@ -325,7 +325,7 @@ func Test_ShutdownServices(t *testing.T) {
 			// Shutdown services with canceled context
 			err := app.shutdownServices(ctx)
 			require.ErrorIs(t, err, context.DeadlineExceeded)
-			require.Equal(t, 1, app.ServicesLen())
+			require.Equal(t, 1, app.state.ServicesLen())
 		})
 	})
 }
@@ -360,7 +360,7 @@ func Test_LogServices(t *testing.T) {
 
 	output := buf.String()
 
-	for _, srv := range app.Services() {
+	for _, srv := range app.state.Services() {
 		stateColor := colors.Blue
 		state := "RUNNING"
 		if _, err := srv.State(context.Background()); err != nil {
