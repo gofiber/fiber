@@ -668,6 +668,63 @@ func TestState_Service(t *testing.T) {
 	})
 }
 
+func TestState_GetService(t *testing.T) {
+	t.Parallel()
+
+	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+
+		srv1 := &mockService{name: "test1"}
+
+		st := newState()
+		st.setService(srv1)
+
+		got, ok := GetService[*mockService](st, srv1.String())
+		require.True(t, ok)
+		require.Equal(t, srv1, got)
+	})
+
+	t.Run("ko", func(t *testing.T) {
+		t.Parallel()
+
+		srv1 := &mockService{name: "test1"}
+
+		st := newState()
+
+		got, ok := GetService[*mockService](st, srv1.String())
+		require.False(t, ok)
+		require.Nil(t, got)
+	})
+}
+
+func TestState_MustGetService(t *testing.T) {
+	t.Parallel()
+
+	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+
+		srv1 := &mockService{name: "test1"}
+
+		st := newState()
+		st.setService(srv1)
+
+		got := MustGetService[*mockService](st, srv1.String())
+		require.Equal(t, srv1, got)
+	})
+
+	t.Run("panics", func(t *testing.T) {
+		t.Parallel()
+
+		srv1 := &mockService{name: "test1"}
+
+		st := newState()
+
+		require.Panics(t, func() {
+			_ = MustGetService[*mockService](st, srv1.String())
+		})
+	})
+}
+
 func BenchmarkState_Set(b *testing.B) {
 	b.ReportAllocs()
 
