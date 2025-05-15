@@ -338,7 +338,6 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 	if pathRaw[0] != '/' {
 		pathRaw = "/" + pathRaw
 	}
-
 	pathPretty := pathRaw
 	if !app.config.CaseSensitive {
 		pathPretty = utils.ToLower(pathPretty)
@@ -346,10 +345,11 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 	if !app.config.StrictRouting && len(pathPretty) > 1 {
 		pathPretty = utils.TrimRight(pathPretty, '/')
 	}
-
 	pathClean := RemoveEscapeChar(pathPretty)
+
 	parsedRaw := parseRoute(pathRaw, app.customConstraints...)
 	parsedPretty := parseRoute(pathPretty, app.customConstraints...)
+
 	isMount := group != nil && group.app != app
 
 	for _, method := range methods {
@@ -457,32 +457,28 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 			continue // Skip invalid HTTP methods
 		}
 
-		for i, route := range app.stack[m] {
-			if matchFunc(route) {
-				// Remove route from stack
-				if i+1 < len(app.stack[m]) {
-					fmt.Println("a")
-					app.stack[m] = append(app.stack[m][:i], app.stack[m][i+1:]...)
-				} else {
-					fmt.Println("b")
-					app.stack[m] = app.stack[m][:i]
-				}
-				app.routesRefreshed = true
-
-				// Decrement global handler count. In middleware routes, only decrement once
-				if _, ok := removedUseRoutes[route.path]; (route.use && slices.Equal(methods, app.config.RequestMethods) && !ok) || !route.use {
-					if route.use {
-						removedUseRoutes[route.path] = struct{}{}
-					}
-					atomic.AddUint32(&app.handlersCount, ^uint32(len(route.Handlers)-1)) //nolint:gosec // Not a concern
-				}
-
-				// Decrement global route count
-				atomic.AddUint32(&app.routesCount, ^uint32(0)) //nolint:gosec // Not a concern1
+		for i := len(app.stack[m]) - 1; i >= 0; i-- {
+			route := app.stack[m][i]
+			if !matchFunc(route) {
+				continue // Skip if route does not match
 			}
+
+			app.stack[m] = append(app.stack[m][:i], app.stack[m][i+1:]...)
+			app.routesRefreshed = true
+
+			// Decrement global handler count. In middleware routes, only decrement once
+			if _, ok := removedUseRoutes[route.path]; (route.use && slices.Equal(methods, app.config.RequestMethods) && !ok) || !route.use {
+				if route.use {
+					removedUseRoutes[route.path] = struct{}{}
+				}
+
+				atomic.AddUint32(&app.handlersCount, ^uint32(len(route.Handlers)-1)) //nolint:gosec // Not a concern
+			}
+
+			// Decrement global route count
+			atomic.AddUint32(&app.routesCount, ^uint32(0)) //nolint:gosec // Not a concern1
 		}
 	}
-
 }
 
 func (app *App) addRoute(method string, route *Route, isMounted ...bool) {

@@ -813,10 +813,15 @@ func TestRemoveRoute(t *testing.T) {
 	app.RemoveRoute("/test", MethodGet)
 	app.RebuildTree()
 
-	routes := app.GetRoutes()
-	for _, route := range routes {
-		fmt.Printf("%s %s\n", route.Method, route.Path)
-	}
+	req, err = http.NewRequest(MethodGet, "/test", nil)
+	require.NoError(t, err)
+
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+
+	buf.Reset()
+
+	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
 
 	require.Equal(t, uint32(4), app.handlersCount)
 	require.Equal(t, uint32(19), app.routesCount)
@@ -837,7 +842,7 @@ func TestRemoveRoute(t *testing.T) {
 	fmt.Println(string(body))
 
 	require.Equal(t, 404, resp.StatusCode)
-	require.Equal(t, "13", buf.String())
+	require.Equal(t, "1", buf.String())
 
 	buf.Reset()
 
@@ -848,14 +853,14 @@ func TestRemoveRoute(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, 404, resp.StatusCode)
-	require.Equal(t, "13", buf.String())
+	require.Equal(t, "1", buf.String())
 
 	buf.Reset()
 
 	app.RemoveRoute("/", MethodGet, MethodPost)
 
 	require.Equal(t, uint32(2), app.handlersCount)
-	require.Equal(t, uint32(18), app.routesCount)
+	require.Equal(t, uint32(14), app.routesCount)
 
 	req, err = http.NewRequest(MethodGet, "/", nil)
 	require.NoError(t, err)
@@ -864,14 +869,19 @@ func TestRemoveRoute(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, 404, resp.StatusCode)
-	require.Equal(t, "1", buf.String())
+	require.Equal(t, "", buf.String())
+
+	buf.Reset()
 
 	app.RemoveRoute("/test", MethodGet, MethodPost)
 
 	require.Equal(t, uint32(2), app.handlersCount)
-	require.Equal(t, uint32(16), app.routesCount)
+	require.Equal(t, uint32(14), app.routesCount)
 
 	app.RemoveRoute("/test", app.config.RequestMethods...)
+
+	require.Equal(t, uint32(1), app.handlersCount)
+	require.Equal(t, uint32(7), app.routesCount)
 }
 
 //////////////////////////////////////////////
