@@ -49,16 +49,6 @@ func handler(c fiber.Ctx) error {
 }
 ```
 
-In version v3, Fiber will inject `requestID` into the built-in `Context` of Go.
-
-```go
-func handler(c fiber.Ctx) error {
-    id := requestid.FromContext(c.Context())
-    log.Printf("Request ID: %s", id)
-    return c.SendString("Hello, World!")
-}
-```
-
 ## Config
 
 | Property   | Type                    | Description                                                                                       | Default        |

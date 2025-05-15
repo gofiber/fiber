@@ -106,6 +106,8 @@ type App struct {
 	tlsHandler *TLSHandler
 	// Mount fields
 	mountFields *mountFields
+	// state management
+	state *State
 	// Route stack divided by HTTP methods
 	stack [][]*Route
 	// Route stack divided by HTTP methods and route prefixes
@@ -456,17 +458,29 @@ const (
 	DefaultWriteBufferSize = 4096
 )
 
+const (
+	methodGet = iota
+	methodHead
+	methodPost
+	methodPut
+	methodDelete
+	methodConnect
+	methodOptions
+	methodTrace
+	methodPatch
+)
+
 // HTTP methods enabled by default
 var DefaultMethods = []string{
-	MethodGet,
-	MethodHead,
-	MethodPost,
-	MethodPut,
-	MethodDelete,
-	MethodConnect,
-	MethodOptions,
-	MethodTrace,
-	MethodPatch,
+	methodGet:     MethodGet,
+	methodHead:    MethodHead,
+	methodPost:    MethodPost,
+	methodPut:     MethodPut,
+	methodDelete:  MethodDelete,
+	methodConnect: MethodConnect,
+	methodOptions: MethodOptions,
+	methodTrace:   MethodTrace,
+	methodPatch:   MethodPatch,
 }
 
 // DefaultErrorHandler that process return errors from handlers
@@ -514,6 +528,9 @@ func New(config ...Config) *App {
 
 	// Define mountFields
 	app.mountFields = newMountFields(app)
+
+	// Define state
+	app.state = newState()
 
 	// Override config if provided
 	if len(config) > 0 {
@@ -950,6 +967,11 @@ func (app *App) Server() *fasthttp.Server {
 // Hooks returns the hook struct to register hooks.
 func (app *App) Hooks() *Hooks {
 	return app.hooks
+}
+
+// State returns the state struct to store global data in order to share it between handlers.
+func (app *App) State() *State {
+	return app.state
 }
 
 var ErrTestGotEmptyResponse = errors.New("test: got empty response")

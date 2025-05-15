@@ -9,15 +9,16 @@ sidebar_position: 2
 
 ## TechEmpower
 
-[TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=composite) provides a performance comparison of many web application frameworks executing fundamental tasks such as JSON serialization, database access, and server-side template composition.
+[TechEmpower](https://www.techempower.com/benchmarks/#section=data-r23) provides a performance comparison of many web application frameworks executing fundamental tasks such as JSON serialization, database access, and server-side template composition.
 
 Each framework is operating in a realistic production configuration. Results are captured on cloud instances and on physical hardware. The test implementations are largely community-contributed and all source is available at the [GitHub repository](https://github.com/TechEmpower/FrameworkBenchmarks).
 
-* Fiber `v1.10.0`
-* 28 HT Cores Intel\(R\) Xeon\(R\) Gold 5120 CPU @ 2.20GHz
-* 32GB RAM
-* Ubuntu 18.04.3 4.15.0-88-generic
-* Dedicated Cisco 10-Gbit Ethernet switch.
+* Fiber `v2.52.5`
+* 56 Cores Intel(R) Xeon(R) Gold 6330 CPU @ 2.00GHz (Three homogeneous ProLiant DL360 Gen10 Plus)
+* 64GB RAM
+* Enterprise SSD
+* Ubuntu
+* Mellanox Technologies MT28908 Family ConnectX-6 40Gbps Ethernet
 
 ### Plaintext
 
@@ -25,8 +26,8 @@ The Plaintext test is an exercise of the request-routing fundamentals only, desi
 
 See [Plaintext requirements](https://github.com/TechEmpower/FrameworkBenchmarks/wiki/Project-Information-Framework-Tests-Overview#single-database-query)
 
-**Fiber** - **6,162,556** responses per second with an average latency of **2.0** ms.  
-**Express** - **367,069** responses per second with an average latency of **354.1** ms.
+**Fiber** - **13,509,592** responses per second with an average latency of **0.9** ms.  
+**Express** - **279,922** responses per second with an average latency of **551.3** ms.
 
 ![](/img/plaintext.png)
 
@@ -34,8 +35,8 @@ See [Plaintext requirements](https://github.com/TechEmpower/FrameworkBenchmarks/
 
 ### Data Updates
 
-**Fiber** handled **11,846** responses per second with an average latency of **42.8** ms.  
-**Express** handled **2,066** responses per second with an average latency of **390.44** ms.
+**Fiber** handled **30,884** responses per second with an average latency of **16.5** ms.  
+**Express** handled **50,818** responses per second with an average latency of **10.1** ms.
 
 ![](/img/data_updates.png)
 
@@ -43,8 +44,8 @@ See [Plaintext requirements](https://github.com/TechEmpower/FrameworkBenchmarks/
 
 ### Multiple Queries
 
-**Fiber** handled **19,664** responses per second with an average latency of **25.7** ms.  
-**Express** handled **4,302** responses per second with an average latency of **117.2** ms.
+**Fiber** handled **55,577** responses per second with an average latency of **9.2** ms.  
+**Express** handled **62,036** responses per second with an average latency of **8.3** ms.
 
 ![](/img/multiple_queries.png)
 
@@ -52,8 +53,8 @@ See [Plaintext requirements](https://github.com/TechEmpower/FrameworkBenchmarks/
 
 ### Single Query
 
-**Fiber** handled **368,647** responses per second with an average latency of **0.7** ms.  
-**Express** handled **57,880** responses per second with an average latency of **4.4** ms.
+**Fiber** handled **1,000,519** responses per second with an average latency of **0.5** ms.  
+**Express** handled **214,177** responses per second with an average latency of **2.5** ms.
 
 ![](/img/single_query.png)
 
@@ -61,52 +62,9 @@ See [Plaintext requirements](https://github.com/TechEmpower/FrameworkBenchmarks/
 
 ### JSON Serialization
 
-**Fiber** handled **1,146,667** responses per second with an average latency of **0.4** ms.  
-**Express** handled **244,847** responses per second with an average latency of **1.1** ms.
+**Fiber** handled **2,479,768** responses per second with an average latency of **0.2** ms.  
+**Express** handled **301,213** responses per second with an average latency of **2.0** ms.
 
 ![](/img/json.png)
 
 ![Fiber vs Express](/img/json_express.png)
-
-## Go web framework benchmark
-
-🔗 [https://github.com/smallnest/go-web-framework-benchmark](https://github.com/smallnest/go-web-framework-benchmark)
-
-* **CPU** Intel\(R\) Xeon\(R\) Gold 6140 CPU @ 2.30GHz
-* **MEM** 4GB
-* **GO** go1.13.6 linux/amd64
-* **OS** Linux
-
-The first test case is to mock **0 ms**, **10 ms**, **100 ms**, **500 ms** processing time in handlers.
-
-![](/img/benchmark.png)
-
-The concurrency clients are **5000**.
-
-![](/img/benchmark_latency.png)
-
-Latency is the time of real processing time by web servers. _The smaller is the better._
-
-![](/img/benchmark_alloc.png)
-
-Allocs is the heap allocations by web servers when test is running. The unit is MB. _The smaller is the better._
-
-If we enable **http pipelining**, test result as below:
-
-![](/img/benchmark-pipeline.png)
-
-Concurrency test in **30 ms** processing time, the test result for **100**, **1000**, **5000** clients is:
-
-![](/img/concurrency.png)
-
-![](/img/concurrency_latency.png)
-
-![](/img/concurrency_alloc.png)
-
-If we enable **http pipelining**, test result as below:
-
-![](/img/concurrency-pipeline.png)
-
-Dependency graph for `v1.9.0`
-
-![](/img/graph.svg)

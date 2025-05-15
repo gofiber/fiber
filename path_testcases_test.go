@@ -713,6 +713,14 @@ func init() {
 					{url: "/api/v1/", params: []string{""}, match: true},
 				},
 			},
+			// Add test case for RegexCompiler == nil
+			{
+				pattern: "/api/v1/:param<regex(\\d+)>",
+				testCases: []routeTestCase{
+					{url: "/api/v1/123", params: []string{"123"}, match: true},
+					{url: "/api/v1/abc", params: nil, match: false},
+				},
+			},
 		}...,
 	)
 }

@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -107,7 +108,7 @@ func (app *App) methodExist(c *DefaultCtx) bool {
 	methods := app.config.RequestMethods
 	for i := 0; i < len(methods); i++ {
 		// Skip original method
-		if c.getMethodINT() == i {
+		if c.getMethodInt() == i {
 			continue
 		}
 		// Reset stack index
@@ -151,7 +152,7 @@ func (app *App) methodExistCustom(c CustomCtx) bool {
 	methods := app.config.RequestMethods
 	for i := 0; i < len(methods); i++ {
 		// Skip original method
-		if c.getMethodINT() == i {
+		if c.getMethodInt() == i {
 			continue
 		}
 		// Reset stack index
@@ -652,39 +653,35 @@ func getBytesImmutable(s string) []byte {
 func (app *App) methodInt(s string) int {
 	// For better performance
 	if len(app.configured.RequestMethods) == 0 {
-		// TODO: Use iota instead
 		switch s {
 		case MethodGet:
-			return 0
+			return methodGet
 		case MethodHead:
-			return 1
+			return methodHead
 		case MethodPost:
-			return 2
+			return methodPost
 		case MethodPut:
-			return 3
+			return methodPut
 		case MethodDelete:
-			return 4
+			return methodDelete
 		case MethodConnect:
-			return 5
+			return methodConnect
 		case MethodOptions:
-			return 6
+			return methodOptions
 		case MethodTrace:
-			return 7
+			return methodTrace
 		case MethodPatch:
-			return 8
+			return methodPatch
 		default:
 			return -1
 		}
 	}
-
 	// For method customization
-	for i, v := range app.config.RequestMethods {
-		if s == v {
-			return i
-		}
-	}
+	return slices.Index(app.config.RequestMethods, s)
+}
 
-	return -1
+func (app *App) method(methodInt int) string {
+	return app.config.RequestMethods[methodInt]
 }
 
 // IsMethodSafe reports whether the HTTP method is considered safe.

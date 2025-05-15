@@ -782,7 +782,6 @@ func Test_App_Order(t *testing.T) {
 	app.Get("/test", func(c Ctx) error {
 		_, err := c.Write([]byte("1"))
 		require.NoError(t, err)
-
 		return c.Next()
 	})
 
@@ -797,7 +796,7 @@ func Test_App_Order(t *testing.T) {
 		_, err := c.Write([]byte("3"))
 		require.NoError(t, err)
 
-		return nil
+		return c.SendStatus(StatusOK)
 	})
 
 	req := httptest.NewRequest(MethodGet, "/test", nil)
@@ -1888,6 +1887,16 @@ func Test_Route_Naming_Issue_2671_2685(t *testing.T) {
 
 	sRoute2 := app.GetRoute("simple-route2")
 	require.Equal(t, "/simple-route", sRoute2.Path)
+}
+
+func Test_App_State(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	app.State().Set("key", "value")
+	str, ok := app.State().GetString("key")
+	require.True(t, ok)
+	require.Equal(t, "value", str)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Communication_Flow -benchmem -count=4

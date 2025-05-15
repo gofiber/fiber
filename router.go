@@ -111,9 +111,9 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) boo
 
 func (app *App) nextCustom(c CustomCtx) (bool, error) { //nolint:unparam // bool param might be useful for testing
 	// Get stack length
-	tree, ok := app.treeStack[c.getMethodINT()][c.getTreePathHash()]
+	tree, ok := app.treeStack[c.getMethodInt()][c.getTreePathHash()]
 	if !ok {
-		tree = app.treeStack[c.getMethodINT()][0]
+		tree = app.treeStack[c.getMethodInt()][0]
 	}
 	lenr := len(tree) - 1
 
@@ -159,9 +159,9 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) { //nolint:unparam // bool
 
 func (app *App) next(c *DefaultCtx) (bool, error) {
 	// Get stack length
-	tree, ok := app.treeStack[c.methodINT][c.treePathHash]
+	tree, ok := app.treeStack[c.methodInt][c.treePathHash]
 	if !ok {
-		tree = app.treeStack[c.methodINT][0]
+		tree = app.treeStack[c.methodInt][0]
 	}
 	lenTree := len(tree) - 1
 
@@ -203,7 +203,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 	}
 
 	// If c.Next() does not match, return 404
-	err := NewError(StatusNotFound, "Cannot "+c.method+" "+html.EscapeString(c.pathOriginal))
+	err := NewError(StatusNotFound, "Cannot "+c.Method()+" "+html.EscapeString(c.pathOriginal))
 	if !c.matched && app.methodExist(c) {
 		// If no match, scan stack again if other methods match the request
 		// Moved from app.handler because middleware may break the route chain
@@ -222,7 +222,7 @@ func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
 	defer app.ReleaseCtx(ctx)
 
 	// Check if the HTTP method is valid
-	if ctx.methodINT == -1 {
+	if ctx.methodInt == -1 {
 		_ = ctx.SendStatus(StatusNotImplemented) //nolint:errcheck // Always return nil
 		return
 	}
