@@ -1179,3 +1179,29 @@ func BenchmarkState_GetComplex128(b *testing.B) {
 		st.GetComplex128(key)
 	}
 }
+
+func BenchmarkState_GetService(b *testing.B) {
+	b.ReportAllocs()
+
+	st := newState()
+	srv := &mockService{name: "benchService"}
+	st.setService(srv)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = GetService[*mockService](st, srv.String())
+	}
+}
+
+func BenchmarkState_MustGetService(b *testing.B) {
+	b.ReportAllocs()
+
+	st := newState()
+	srv := &mockService{name: "benchService"}
+	st.setService(srv)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = MustGetService[*mockService](st, srv.String())
+	}
+}
