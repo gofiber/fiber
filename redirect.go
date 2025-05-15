@@ -297,9 +297,12 @@ func (r *Redirect) Back(fallback ...string) error {
 // parseAndClearFlashMessages is a method to get flash messages before they are getting removed
 func (r *Redirect) parseAndClearFlashMessages() {
 	// parse flash messages
-	cookieValue, _ := hex.DecodeString(r.c.Cookies(FlashCookieName))
+	cookieValue, err := hex.DecodeString(r.c.Cookies(FlashCookieName))
+	if err != nil {
+		return
+	}
 
-	_, err := r.c.flashMessages.UnmarshalMsg(cookieValue)
+	_, err = r.c.flashMessages.UnmarshalMsg(cookieValue)
 	if err != nil {
 		return
 	}

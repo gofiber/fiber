@@ -322,6 +322,7 @@ func Test_Redirect_Route_WithOldInput(t *testing.T) {
 
 		var msgs redirectionMsgs
 		decoded, err := hex.DecodeString(c.Cookies(FlashCookieName))
+		require.NoError(t, err)
 		_, err = msgs.UnmarshalMsg(decoded)
 		require.NoError(t, err)
 
