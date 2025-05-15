@@ -7,7 +7,6 @@ package fiber
 import (
 	"fmt"
 	"html"
-	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -47,7 +46,7 @@ type Router interface {
 
 // Route is a struct that holds all metadata for each registered handler.
 type Route struct {
-	// ### important: always keep in sync with the copy method "app.copyRoute" ###
+	// ### important: always keep in sync with the copy method "app.copyRoute" and all creations of Route struct###
 	// Data for routing
 	pos         uint32      // Position in stack -> important for the sort of the matched routes
 	use         bool        // USE matches path prefixes
@@ -298,11 +297,11 @@ func (app *App) register(method, pathRaw string, group *Group, handlers ...Handl
 		for _, m := range app.config.RequestMethods {
 			// Create a route copy to avoid duplicates during compression
 			r := route
-			app.addRoute(m, &r, isMount)
+			app.addRoute(m, &r)
 		}
 	} else {
 		// Add route to stack
-		app.addRoute(method, &route, isMount)
+		app.addRoute(method, &route)
 	}
 }
 
@@ -428,12 +427,20 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 	// Create route metadata without pointer
 	route := Route{
 		// Router booleans
-		use:  true,
-		root: isRoot,
+		use:   true,
+		mount: false,
+		star:  isStar,
+		root:  isRoot,
+
+		// Path data
 		path: prefix,
+
+		// Group data
+		group: nil,
+
 		// Public data
-		Method:   MethodGet,
 		Path:     prefix,
+		Method:   MethodGet,
 		Handlers: []Handler{handler},
 	}
 	// Increment global handler count
@@ -444,13 +451,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 	app.addRoute(MethodHead, &route)
 }
 
-func (app *App) addRoute(method string, route *Route, isMounted ...bool) {
-	// Check mounted routes
-	var mounted bool
-	if len(isMounted) > 0 {
-		mounted = isMounted[0]
-	}
-
+func (app *App) addRoute(method string, route *Route) {
 	// Get unique HTTP method identifier
 	m := app.methodInt(method)
 
@@ -469,7 +470,7 @@ func (app *App) addRoute(method string, route *Route, isMounted ...bool) {
 	}
 
 	// Execute onRoute hooks & change latestRoute if not adding mounted route
-	if !mounted {
+	if !route.mount {
 		app.mutex.Lock()
 		app.latestRoute = route
 		if err := app.hooks.executeOnRouteHooks(*route); err != nil {
@@ -508,8 +509,8 @@ func (app *App) buildTree() *App {
 				tsMap[treePart] = uniqueRouteStack(append(tsMap[treePart], tsMap[""]...))
 			}
 			// sort tree slices with the positions
-			slc := tsMap[treePart]
-			sort.Slice(slc, func(i, j int) bool { return slc[i].pos < slc[j].pos })
+			//slc := tsMap[treePart]
+			//sort.Slice(slc, func(i, j int) bool { return slc[i].pos < slc[j].pos })
 		}
 	}
 	app.routesRefreshed = false

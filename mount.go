@@ -174,7 +174,7 @@ func (app *App) processSubAppsRoutes() {
 		}
 	}
 	var handlersCount uint32
-	var routePos uint32
+	//var routePos uint32
 	// Iterate over the stack of the parent app
 	for m := range app.stack {
 		// Iterate over each route in the stack
@@ -183,9 +183,9 @@ func (app *App) processSubAppsRoutes() {
 			route := app.stack[m][i]
 			// Check if the route has a mounted app
 			if !route.mount {
-				routePos++
+				//routePos++
 				// If not, update the route's position and continue
-				route.pos = routePos
+				//route.pos = routePos
 				if !route.use || (route.use && m == 0) {
 					handlersCount += uint32(len(route.Handlers))
 				}
