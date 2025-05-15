@@ -174,7 +174,6 @@ func (app *App) processSubAppsRoutes() {
 		}
 	}
 	var handlersCount uint32
-	//var routePos uint32
 	// Iterate over the stack of the parent app
 	for m := range app.stack {
 		// Iterate over each route in the stack

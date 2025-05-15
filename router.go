@@ -46,9 +46,8 @@ type Router interface {
 
 // Route is a struct that holds all metadata for each registered handler.
 type Route struct {
-	// ### important: always keep in sync with the copy method "app.copyRoute" and all creations of Route struct###
+	// ### important: always keep in sync with the copy method "app.copyRoute" and all creations of Route struct ###
 	// Data for routing
-	pos         uint32      // Position in stack -> important for the sort of the matched routes
 	use         bool        // USE matches path prefixes
 	mount       bool        // Indicated a mounted app on a specific route
 	star        bool        // Path equals '*'
