@@ -11,6 +11,13 @@ import (
 
 const servicesStatePrefix = "gofiber-services-"
 
+var servicesStatePrefixHash string
+
+func init() {
+	hash := sha256.Sum256([]byte(servicesStatePrefix + uuid.New().String()))
+	servicesStatePrefixHash = hex.EncodeToString(hash[:])
+}
+
 // State is a key-value store for Fiber's app in order to be used as a global storage for the app's dependencies.
 // It's a thread-safe implementation of a map[string]any, using sync.Map.
 type State struct {
@@ -21,11 +28,9 @@ type State struct {
 // NewState creates a new instance of State.
 func newState() *State {
 	// Initialize the services state prefix using a hashed random string
-	hash := sha256.Sum256([]byte(servicesStatePrefix + uuid.New().String()))
-
 	return &State{
 		dependencies:  sync.Map{},
-		servicePrefix: hex.EncodeToString(hash[:]),
+		servicePrefix: servicesStatePrefixHash,
 	}
 }
 
