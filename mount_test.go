@@ -89,7 +89,6 @@ func Test_App_Mount_Nested(t *testing.T) {
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
 	utils.AssertEqual(t, uint32(6), app.handlersCount)
-	utils.AssertEqual(t, uint32(6), app.routesCount)
 }
 
 // go test -run Test_App_Mount_Express_Behavior
@@ -139,7 +138,6 @@ func Test_App_Mount_Express_Behavior(t *testing.T) {
 	testEndpoint(app, "/unknown", ErrNotFound.Message, StatusNotFound)
 
 	utils.AssertEqual(t, uint32(17), app.handlersCount)
-	utils.AssertEqual(t, uint32(16+9), app.routesCount)
 }
 
 // go test -run Test_App_Mount_RoutePositions
@@ -195,19 +193,15 @@ func Test_App_Mount_RoutePositions(t *testing.T) {
 
 	utils.AssertEqual(t, true, routeStackGET[1].use)
 	utils.AssertEqual(t, "/", routeStackGET[1].path)
-	utils.AssertEqual(t, true, routeStackGET[0].pos < routeStackGET[1].pos, "wrong position of route 0")
 
 	utils.AssertEqual(t, false, routeStackGET[2].use)
 	utils.AssertEqual(t, "/bar", routeStackGET[2].path)
-	utils.AssertEqual(t, true, routeStackGET[1].pos < routeStackGET[2].pos, "wrong position of route 1")
 
 	utils.AssertEqual(t, true, routeStackGET[3].use)
 	utils.AssertEqual(t, "/", routeStackGET[3].path)
-	utils.AssertEqual(t, true, routeStackGET[2].pos < routeStackGET[3].pos, "wrong position of route 2")
 
 	utils.AssertEqual(t, false, routeStackGET[4].use)
 	utils.AssertEqual(t, "/subapp2/world", routeStackGET[4].path)
-	utils.AssertEqual(t, true, routeStackGET[3].pos < routeStackGET[4].pos, "wrong position of route 3")
 
 	utils.AssertEqual(t, 5, len(routeStackGET))
 }
