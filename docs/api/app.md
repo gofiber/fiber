@@ -764,19 +764,22 @@ In this example, a new route is defined and then `RebuildTree()` is called to en
 
 ## RemoveRoute
 
-This method removes a route by path. You must call the `RebuildTree()` method after the remove in to ensure the route is removed.
+This method removes a route by path. You must call the `RebuildTree()` method after the removal to finalize the update and rebuild the routing tree.
+If no methods are specified, the route will be removed for all HTTP methods defined in the app. To limit removal to specific methods, provide them as additional arguments.
 
 ```go title="Signature"
 func (app *App) RemoveRoute(path string, methods ...string)
 ```
 
 This method removes a route by name.
+If no methods are specified, the route will be removed for all HTTP methods defined in the app. To limit removal to specific methods, provide them as additional arguments.
 
 ```go title="Signature"
 func (app *App) RemoveRouteByName(name string, methods ...string)
 ```
 
 This method removes a route by function having `*Route` parameter.
+If no methods are specified, the route will be removed for all HTTP methods defined in the app. To limit removal to specific methods, provide them as additional arguments.
 
 ```go title="Signature"
 func (app *App) RemoveRouteFunc(matchFunc func(r *Route) bool, methods ...string)

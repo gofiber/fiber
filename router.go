@@ -331,7 +331,7 @@ func (app *App) normalizePath(path string) string {
 }
 
 // RemoveRoute is used to remove a route from the stack by path.
-// This only needs to be called to remove a route, route registration prevents duplicate routes.
+// If no methods are specified, it will remove the route for all methods defined in the app.
 // You should call RebuildTree after using this to ensure consistency of the tree.
 func (app *App) RemoveRoute(path string, methods ...string) {
 	// Normalize same as register uses
@@ -344,7 +344,7 @@ func (app *App) RemoveRoute(path string, methods ...string) {
 }
 
 // RemoveRouteByName is used to remove a route from the stack by name.
-// This only needs to be called to remove a route, route registration prevents duplicate routes.
+// If no methods are specified, it will remove the route for all methods defined in the app.
 // You should call RebuildTree after using this to ensure consistency of the tree.
 func (app *App) RemoveRouteByName(name string, methods ...string) {
 	matchFunc := func(r *Route) bool { return r.Name == name }
@@ -352,7 +352,7 @@ func (app *App) RemoveRouteByName(name string, methods ...string) {
 }
 
 // RemoveRouteFunc is used to remove a route from the stack by a custom match function.
-// This only needs to be called to remove a route, route registration prevents duplicate routes.
+// If no methods are specified, it will remove the route for all methods defined in the app.
 // You should call RebuildTree after using this to ensure consistency of the tree.
 // Note: The route.Path is original path, not the normalized path.
 func (app *App) RemoveRouteFunc(matchFunc func(r *Route) bool, methods ...string) {
@@ -361,7 +361,7 @@ func (app *App) RemoveRouteFunc(matchFunc func(r *Route) bool, methods ...string
 
 func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 	if len(methods) == 0 {
-		return // No methods provided, nothing to do
+		methods = app.config.RequestMethods
 	}
 
 	app.mutex.Lock()

@@ -786,9 +786,6 @@ func TestRemoveRoute(t *testing.T) {
 
 	buf.Reset()
 
-	app.RemoveRoute("/test")
-	app.RebuildTree()
-
 	require.Equal(t, uint32(5), app.handlersCount)
 
 	app.RemoveRoute("/test", MethodGet)
@@ -862,6 +859,19 @@ func TestRemoveRoute(t *testing.T) {
 	app.RemoveRoute("/test", app.config.RequestMethods...)
 
 	require.Equal(t, uint32(1), app.handlersCount)
+
+	app.Patch("/test", func(c Ctx) error {
+		buf.WriteString("6") //nolint:errcheck // not needed
+		return c.SendStatus(StatusOK)
+	})
+
+	require.Equal(t, uint32(2), app.handlersCount)
+
+	app.RemoveRoute("/test")
+	app.RemoveRoute("/")
+	app.RebuildTree()
+
+	require.Equal(t, uint32(0), app.handlersCount)
 }
 
 //////////////////////////////////////////////
