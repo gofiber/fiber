@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"encoding/base64"
 	"errors"
 	"sync"
 
@@ -298,7 +299,16 @@ func (r *Redirect) parseAndClearFlashMessages() {
 	// parse flash messages
 	cookieValue := r.c.Cookies(FlashCookieName)
 
-	_, err := r.c.flashMessages.UnmarshalMsg(r.c.app.getBytes(cookieValue))
+	if cookieValue == "" {
+		return
+	}
+
+	decodedValue, err := base64.StdEncoding.DecodeString(cookieValue)
+	if err != nil {
+		return
+	}
+
+	_, err = r.c.flashMessages.UnmarshalMsg(decodedValue)
 	if err != nil {
 		return
 	}
@@ -316,9 +326,11 @@ func (r *Redirect) processFlashMessages() {
 		return
 	}
 
+	encodedVal := base64.StdEncoding.EncodeToString(val)
+
 	r.c.Cookie(&Cookie{
 		Name:        FlashCookieName,
-		Value:       r.c.app.getString(val),
+		Value:       encodedVal,
 		SessionOnly: true,
 	})
 }
