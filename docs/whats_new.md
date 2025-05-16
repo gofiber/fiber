@@ -24,6 +24,7 @@ Here's a quick overview of the changes in Fiber `v3`:
 - [🔄️ Redirect](#-redirect)
 - [🌎 Client package](#-client-package)
 - [🧰 Generic functions](#-generic-functions)
+- [🥡 Services](#-services)
 - [📃 Log](#-log)
 - [🧬 Middlewares](#-middlewares)
   - [Important Change for Accessing Middleware Data](#important-change-for-accessing-middleware-data)
@@ -798,6 +799,91 @@ curl -H "User-Agent: CustomAgent" "http://localhost:3000/header"
 
 curl "http://localhost:3000/header"
 # Output: "Unknown"
+```
+
+</details>
+
+## 🥡 Services
+
+Fiber v3 introduces a new feature called Services. This feature allows developers to quickly start services that the application depends on, removing the need to manually provision things like database servers, caches, or message brokers, to name a few.
+
+### Example
+
+<details>
+<summary>Adding a service</summary>
+
+```go
+package main
+
+import (
+    "strconv"
+    "github.com/gofiber/fiber/v3"
+)
+
+type myService struct {
+    img string
+    // ...
+}
+
+// Start initializes and starts the service. It implements the [fiber.Service] interface.
+func (s *myService) Start(ctx context.Context) error {
+    // start the service
+    return nil
+}
+
+// String returns a string representation of the service.
+// It is used to print a human-readable name of the service in the startup message.
+// It implements the [fiber.Service] interface.
+func (s *myService) String() string {
+    return s.img
+}
+
+// State returns the current state of the service.
+// It implements the [fiber.Service] interface.
+func (s *myService) State(ctx context.Context) (string, error) {
+    return "running", nil
+}
+
+// Terminate stops and removes the service. It implements the [fiber.Service] interface.
+func (s *myService) Terminate(ctx context.Context) error {
+    // stop the service
+    return nil
+}
+
+func main() {
+    cfg := &fiber.Config{}
+
+    cfg.Services = append(cfg.Services, &myService{img: "postgres:latest"})
+    cfg.Services = append(cfg.Services, &myService{img: "redis:latest"})
+
+    app := fiber.New(*cfg)
+
+    // ...
+}
+```
+
+</details>
+
+<details>
+<summary>Output</summary>
+
+```sh
+$ go run . -v
+
+    _______ __             
+   / ____(_) /_  ___  _____
+  / /_  / / __ \/ _ \/ ___/
+ / __/ / / /_/ /  __/ /    
+/_/   /_/_.___/\___/_/          v3.0.0
+--------------------------------------------------
+INFO Server started on:         http://127.0.0.1:3000 (bound on host 0.0.0.0 and port 3000)
+INFO Services:     2
+INFO   🥡 [ RUNNING ] postgres:latest
+INFO   🥡 [ RUNNING ] redis:latest
+INFO Total handlers count:      2
+INFO Prefork:                   Disabled
+INFO PID:                       12279
+INFO Total process count:       1
 ```
 
 </details>

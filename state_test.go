@@ -525,6 +525,206 @@ func Test_GetStateWithDefault(t *testing.T) {
 	require.False(t, flag)
 }
 
+func TestState_Service(t *testing.T) {
+	t.Parallel()
+
+	srv1 := &mockService{name: "test1"}
+	// service 2 is using a very subtle name to check it is not picked up
+	srv2 := &mockService{name: "test1 "}
+
+	t.Run("set/get/ok", func(t *testing.T) {
+		t.Parallel()
+
+		st := newState()
+		st.setService(srv1)
+
+		got, ok := st.Get(st.serviceKey(srv1.String()))
+		require.True(t, ok)
+		require.Equal(t, srv1, got)
+	})
+
+	t.Run("set/get/ko", func(t *testing.T) {
+		t.Parallel()
+
+		st := newState()
+		st.setService(srv1)
+
+		koSrv := &mockService{name: "ko"}
+
+		got, ok := st.Get(st.serviceKey(koSrv.String()))
+		require.False(t, ok)
+		require.Nil(t, got)
+	})
+
+	t.Run("len", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("empty", func(t *testing.T) {
+			t.Parallel()
+
+			st := newState()
+			require.Equal(t, 0, st.Len())
+			require.Empty(t, st.serviceKeys())
+		})
+
+		t.Run("with-services", func(t *testing.T) {
+			t.Parallel()
+
+			st := newState()
+			st.setService(srv1)
+			st.setService(srv2)
+
+			require.Equal(t, 2, st.Len())
+			require.Equal(t, 2, st.ServicesLen())
+		})
+
+		t.Run("with-services/with-keys", func(t *testing.T) {
+			t.Parallel()
+
+			st := newState()
+			st.setService(srv1)
+			st.setService(srv2)
+			st.Set("key1", "value1")
+			st.Set("key2", "value2")
+
+			servicesLen := st.ServicesLen()
+			require.Equal(t, 4, st.Len())
+			require.Equal(t, 2, servicesLen)
+		})
+	})
+
+	t.Run("keys", func(t *testing.T) {
+		t.Run("empty", func(t *testing.T) {
+			t.Parallel()
+
+			st := newState()
+			// adding more keys to check they are not included
+			st.Set("key1", "value1")
+			st.Set("key2", "value2")
+
+			require.Empty(t, st.serviceKeys())
+		})
+
+		t.Run("with-services", func(t *testing.T) {
+			t.Parallel()
+
+			st := newState()
+			st.setService(srv1)
+			st.setService(srv2)
+
+			keys := st.serviceKeys()
+			require.Len(t, keys, 2)
+			require.Contains(t, keys, st.serviceKey(srv1.String()))
+			require.Contains(t, keys, st.serviceKey(srv2.String()))
+		})
+
+		t.Run("with-services/with-keys", func(t *testing.T) {
+			t.Parallel()
+
+			st := newState()
+			st.setService(srv1)
+			st.setService(srv2)
+			st.Set("key1", "value1")
+			st.Set("key2", "value2")
+
+			keys := st.serviceKeys()
+			require.Len(t, keys, 2)
+			require.Contains(t, keys, st.serviceKey(srv1.String()))
+			require.Contains(t, keys, st.serviceKey(srv2.String()))
+			require.NotContains(t, keys, "key1")
+			require.NotContains(t, keys, "key2")
+		})
+	})
+
+	t.Run("delete", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("ok", func(t *testing.T) {
+			t.Parallel()
+
+			st := newState()
+
+			st.setService(srv1)
+			st.deleteService(srv1)
+
+			_, ok := st.Get(st.serviceKey(srv1.String()))
+			require.False(t, ok)
+		})
+
+		t.Run("missing", func(t *testing.T) {
+			t.Parallel()
+
+			st := newState()
+			st.setService(srv1)
+
+			st.deleteService(srv2)
+
+			_, ok := st.Get(st.serviceKey(srv1.String()))
+			require.True(t, ok)
+
+			_, ok = st.Get(st.serviceKey(srv2.String()))
+			require.False(t, ok)
+		})
+	})
+}
+
+func TestState_GetService(t *testing.T) {
+	t.Parallel()
+
+	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+
+		srv1 := &mockService{name: "test1"}
+
+		st := newState()
+		st.setService(srv1)
+
+		got, ok := GetService[*mockService](st, srv1.String())
+		require.True(t, ok)
+		require.Equal(t, srv1, got)
+	})
+
+	t.Run("ko", func(t *testing.T) {
+		t.Parallel()
+
+		srv1 := &mockService{name: "test1"}
+
+		st := newState()
+
+		got, ok := GetService[*mockService](st, srv1.String())
+		require.False(t, ok)
+		require.Nil(t, got)
+	})
+}
+
+func TestState_MustGetService(t *testing.T) {
+	t.Parallel()
+
+	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+
+		srv1 := &mockService{name: "test1"}
+
+		st := newState()
+		st.setService(srv1)
+
+		got := MustGetService[*mockService](st, srv1.String())
+		require.Equal(t, srv1, got)
+	})
+
+	t.Run("panics", func(t *testing.T) {
+		t.Parallel()
+
+		srv1 := &mockService{name: "test1"}
+
+		st := newState()
+
+		require.Panics(t, func() {
+			_ = MustGetService[*mockService](st, srv1.String())
+		})
+	})
+}
+
 func BenchmarkState_Set(b *testing.B) {
 	b.ReportAllocs()
 
@@ -977,5 +1177,31 @@ func BenchmarkState_GetComplex128(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		key := "key" + strconv.Itoa(i%n)
 		st.GetComplex128(key)
+	}
+}
+
+func BenchmarkState_GetService(b *testing.B) {
+	b.ReportAllocs()
+
+	st := newState()
+	srv := &mockService{name: "benchService"}
+	st.setService(srv)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = GetService[*mockService](st, srv.String())
+	}
+}
+
+func BenchmarkState_MustGetService(b *testing.B) {
+	b.ReportAllocs()
+
+	st := newState()
+	srv := &mockService{name: "benchService"}
+	st.setService(srv)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = MustGetService[*mockService](st, srv.String())
 	}
 }
