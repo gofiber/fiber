@@ -360,6 +360,10 @@ func (app *App) RemoveRouteFunc(matchFunc func(r *Route) bool, methods ...string
 }
 
 func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
+	if len(methods) == 0 {
+		return // No methods provided, nothing to do
+	}
+
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 

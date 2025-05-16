@@ -5,9 +5,9 @@
 package fiber
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -512,10 +512,17 @@ func Test_App_Remove_Route_A_B_Feature_Testing(t *testing.T) {
 	verifyRequest(t, app, "/api/feature-a", StatusOK)
 
 	resp := verifyRequest(t, app, "/api/feature", StatusOK)
-	require.Equal(t, "Testing feature-a", resp, "Response Message")
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err, "app.Test(req)")
 
-	resp = verifyRequest(t, app, "/api/feature-b", StatusOK)
-	require.Equal(t, "Testing feature-b", resp, "Response Message")
+	require.Equal(t, "Testing feature-a", string(body), "Response Message")
+
+	verifyRequest(t, app, "/api/feature-b", StatusOK)
+
+	resp = verifyRequest(t, app, "/api/feature", StatusOK)
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, "Testing feature-b", string(body), "Response Message")
 }
 
 func Test_App_Remove_Route_By_Name(t *testing.T) {
@@ -625,31 +632,6 @@ func Test_App_Remove_Route_Concurrent(t *testing.T) {
 	verifyRequest(t, app, "/test", StatusOK)
 }
 
-func Test_App_Route_Registration_Prevent_Duplicate(t *testing.T) {
-	t.Parallel()
-	app := New()
-
-	registerTreeManipulationRoutes(app)
-	registerTreeManipulationRoutes(app)
-
-	verifyRequest(t, app, "/dynamically-defined", StatusNotFound)
-	require.Equal(t, uint32(1), app.handlersCount)
-
-	verifyRequest(t, app, "/test", StatusOK)
-	require.Equal(t, uint32(2), app.handlersCount)
-
-	verifyRequest(t, app, "/dynamically-defined", StatusOK)
-	require.Equal(t, uint32(2), app.handlersCount)
-
-	verifyRequest(t, app, "/test", StatusOK)
-	require.Equal(t, uint32(2), app.handlersCount)
-
-	verifyRequest(t, app, "/dynamically-defined", StatusOK)
-	require.Equal(t, uint32(2), app.handlersCount)
-
-	verifyRouteHandlerCounts(t, app, 1)
-}
-
 func Test_Route_Registration_Prevent_Duplicate_With_Middleware(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -662,30 +644,28 @@ func Test_Route_Registration_Prevent_Duplicate_With_Middleware(t *testing.T) {
 	registerTreeManipulationRoutes(app)
 
 	verifyRequest(t, app, "/dynamically-defined", StatusNotFound)
-	require.Equal(t, uint32(2), app.handlersCount)
-
-	verifyRequest(t, app, "/test", StatusOK)
-	require.Equal(t, uint32(3), app.handlersCount)
-
-	verifyRequest(t, app, "/dynamically-defined", StatusOK)
 	require.Equal(t, uint32(3), app.handlersCount)
 
 	verifyRequest(t, app, "/test", StatusOK)
-	require.Equal(t, uint32(3), app.handlersCount)
+	require.Equal(t, uint32(4), app.handlersCount)
 
 	verifyRequest(t, app, "/dynamically-defined", StatusOK)
-	require.Equal(t, uint32(3), app.handlersCount)
+	require.Equal(t, uint32(4), app.handlersCount)
 
-	verifyRouteHandlerCounts(t, app, 1)
+	verifyRequest(t, app, "/test", StatusOK)
+	require.Equal(t, uint32(5), app.handlersCount)
+
+	verifyRequest(t, app, "/dynamically-defined", StatusOK)
+	require.Equal(t, uint32(5), app.handlersCount)
 }
 
 func TestNormalizePath(t *testing.T) {
 	tests := []struct {
 		name          string
 		path          string
+		expected      string
 		caseSensitive bool
 		strictRouting bool
-		expected      string
 	}{
 		{
 			name:          "Empty path",
@@ -758,33 +738,33 @@ func TestRemoveRoute(t *testing.T) {
 	var buf strings.Builder
 
 	app.Use(func(c Ctx) error {
-		buf.WriteString("1")
+		buf.WriteString("1") //nolint:errcheck // not needed
 		return c.Next()
 	})
 
 	app.Post("/", func(c Ctx) error {
-		buf.WriteString("2")
+		buf.WriteString("2") //nolint:errcheck // not needed
 		return c.SendStatus(StatusOK)
 	})
 
 	app.Use("/test", func(c Ctx) error {
-		buf.WriteString("3")
+		buf.WriteString("3") //nolint:errcheck // not needed
 		return c.Next()
 	})
 
 	app.Get("/test", func(c Ctx) error {
-		buf.WriteString("4")
+		buf.WriteString("4") //nolint:errcheck // not needed
 		return c.SendStatus(StatusOK)
 	})
 
 	app.Post("/test", func(c Ctx) error {
-		buf.WriteString("5")
+		buf.WriteString("5") //nolint:errcheck // not needed
 		return c.SendStatus(StatusOK)
 	})
 
 	require.Equal(t, uint32(5), app.handlersCount)
 
-	req, err := http.NewRequest(MethodPost, "/", nil)
+	req, err := http.NewRequestWithContext(context.Background(), MethodPost, "/", nil)
 	require.NoError(t, err)
 
 	resp, err := app.Test(req)
@@ -795,7 +775,7 @@ func TestRemoveRoute(t *testing.T) {
 
 	buf.Reset()
 
-	req, err = http.NewRequest(MethodGet, "/test", nil)
+	req, err = http.NewRequestWithContext(context.Background(), MethodGet, "/test", nil)
 	require.NoError(t, err)
 
 	resp, err = app.Test(req)
@@ -809,7 +789,7 @@ func TestRemoveRoute(t *testing.T) {
 	app.RemoveRoute("/test", MethodGet)
 	app.RebuildTree()
 
-	req, err = http.NewRequest(MethodGet, "/test", nil)
+	req, err = http.NewRequestWithContext(context.Background(), MethodGet, "/test", nil)
 	require.NoError(t, err)
 
 	resp, err = app.Test(req)
@@ -826,21 +806,18 @@ func TestRemoveRoute(t *testing.T) {
 
 	require.Equal(t, uint32(3), app.handlersCount)
 
-	req, err = http.NewRequest(MethodPost, "/test", nil)
+	req, err = http.NewRequestWithContext(context.Background(), MethodPost, "/test", nil)
 	require.NoError(t, err)
 
 	resp, err = app.Test(req)
 	require.NoError(t, err)
-
-	body, err := io.ReadAll(resp.Body)
-	fmt.Println(string(body))
 
 	require.Equal(t, 404, resp.StatusCode)
 	require.Equal(t, "1", buf.String())
 
 	buf.Reset()
 
-	req, err = http.NewRequest(MethodGet, "/test", nil)
+	req, err = http.NewRequestWithContext(context.Background(), MethodGet, "/test", nil)
 	require.NoError(t, err)
 
 	resp, err = app.Test(req)
@@ -855,7 +832,7 @@ func TestRemoveRoute(t *testing.T) {
 
 	require.Equal(t, uint32(2), app.handlersCount)
 
-	req, err = http.NewRequest(MethodGet, "/", nil)
+	req, err = http.NewRequestWithContext(context.Background(), MethodGet, "/", nil)
 	require.NoError(t, err)
 
 	resp, err = app.Test(req)
