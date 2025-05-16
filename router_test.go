@@ -786,8 +786,22 @@ func TestRemoveRoute(t *testing.T) {
 
 	buf.Reset()
 
+	app.RemoveRoute("/test")
+	app.RebuildTree()
+
+	require.Equal(t, uint32(5), app.handlersCount)
+
 	app.RemoveRoute("/test", MethodGet)
 	app.RebuildTree()
+
+	app.RemoveRoute("/test", "TEST")
+	app.RebuildTree()
+
+	app.RemoveRouteFunc(func(r *Route) bool {
+		return false
+	}, MethodGet)
+
+	require.Equal(t, uint32(5), app.handlersCount)
 
 	req, err = http.NewRequestWithContext(context.Background(), MethodGet, "/test", nil)
 	require.NoError(t, err)

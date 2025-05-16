@@ -1308,6 +1308,8 @@ Note: Use this method with caution. It is **not** thread-safe and can be very pe
 
 - **RemoveRouteByName**: Removes route by name
 
+- **RemoveRouteFunc**: Removes route by a function having `*Route` parameter
+
 For more details, refer to the [app documentation](./api/app.md#removeroute):
 
 ### 🧠 Context

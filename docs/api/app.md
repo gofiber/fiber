@@ -770,10 +770,16 @@ This method removes a route by path.  You must call the `RebuildTree()` method a
 func (app *App) RemoveRoute(path string, methods ...string)
 ```
 
-This method removes a route by name
+This method removes a route by name.
 
 ```go title="Signature"
 func (app *App) RemoveRouteByName(name string, methods ...string)
+```
+
+This method removes a route by function having `*Route` parameter.
+
+```go title="Signature"
+func (app *App) RemoveRouteFunc(matchFunc func(r *Route) bool, methods ...string)
 ```
 
 ```go title="Example"
