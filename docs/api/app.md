@@ -794,22 +794,22 @@ import (
 func main() {
     app := fiber.New()
 
-    app.Get("/api/feature-a", func(c *fiber.Ctx) error {
+    app.Get("/api/feature-a", func(c fiber.Ctx) error {
            app.RemoveRoute("/api/feature", fiber.MethodGet)
            app.RebuildTree()
            // Redefine route
-           app.Get("/api/feature", func(c *fiber.Ctx) error {
+           app.Get("/api/feature", func(c fiber.Ctx) error {
                    return c.SendString("Testing feature-a")
            })
 
            app.RebuildTree()
            return c.SendStatus(fiber.StatusOK)
     })
-    app.Get("/api/feature-b", func(c *fiber.Ctx) error {
+    app.Get("/api/feature-b", func(c fiber.Ctx) error {
            app.RemoveRoute("/api/feature", fiber.MethodGet)
            app.RebuildTree()
            // Redefine route
-           app.Get("/api/feature", func(c *fiber.Ctx) error {
+           app.Get("/api/feature", func(c fiber.Ctx) error {
                    return c.SendString("Testing feature-b")
            })
 
