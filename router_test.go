@@ -20,7 +20,10 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-var routesFixture routeJSON
+var (
+	routesFixture routeJSON
+	cssDir        = "./.github/testdata/fs/css"
+)
 
 func init() {
 	dat, err := os.ReadFile("./.github/testdata/testRoutes.json")
@@ -354,9 +357,8 @@ func Test_Router_Handler_Catch_Error(t *testing.T) {
 func Test_Route_Static_Root(t *testing.T) {
 	t.Parallel()
 
-	dir := "./.github/testdata/fs/css"
 	app := New()
-	app.Static("/", dir, Static{
+	app.Static("/", cssDir, Static{
 		Browse: true,
 	})
 
@@ -373,7 +375,7 @@ func Test_Route_Static_Root(t *testing.T) {
 	utils.AssertEqual(t, true, strings.Contains(app.getString(body), "color"))
 
 	app = New()
-	app.Static("/", dir)
+	app.Static("/", cssDir)
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
@@ -391,9 +393,8 @@ func Test_Route_Static_Root(t *testing.T) {
 func Test_Route_Static_HasPrefix(t *testing.T) {
 	t.Parallel()
 
-	dir := "./.github/testdata/fs/css"
 	app := New()
-	app.Static("/static", dir, Static{
+	app.Static("/static", cssDir, Static{
 		Browse: true,
 	})
 
@@ -414,7 +415,7 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 	utils.AssertEqual(t, true, strings.Contains(app.getString(body), "color"))
 
 	app = New()
-	app.Static("/static/", dir, Static{
+	app.Static("/static/", cssDir, Static{
 		Browse: true,
 	})
 
@@ -435,7 +436,7 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 	utils.AssertEqual(t, true, strings.Contains(app.getString(body), "color"))
 
 	app = New()
-	app.Static("/static", dir)
+	app.Static("/static", cssDir)
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
@@ -454,7 +455,7 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 	utils.AssertEqual(t, true, strings.Contains(app.getString(body), "color"))
 
 	app = New()
-	app.Static("/static/", dir)
+	app.Static("/static/", cssDir)
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
@@ -474,6 +475,8 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 }
 
 func Test_Router_NotFound(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 	app.Use(func(c *Ctx) error {
 		return c.Next()
@@ -491,6 +494,8 @@ func Test_Router_NotFound(t *testing.T) {
 }
 
 func Test_Router_NotFound_HTML_Inject(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 	app.Use(func(c *Ctx) error {
 		return c.Next()
@@ -505,6 +510,31 @@ func Test_Router_NotFound_HTML_Inject(t *testing.T) {
 
 	utils.AssertEqual(t, 404, c.Response.StatusCode())
 	utils.AssertEqual(t, "Cannot DELETE /does/not/exist&lt;script&gt;alert(&#39;foo&#39;);&lt;/script&gt;", string(c.Response.Body()))
+}
+
+func Test_Router_Mount_n_Static(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	app.Static("/static", cssDir, Static{Browse: true})
+	app.Get("/", func(c *Ctx) error {
+		return c.SendString("Home")
+	})
+
+	subApp := New()
+	app.Mount("/mount", subApp)
+	subApp.Get("/test", func(c *Ctx) error {
+		return c.SendString("Hello from /test")
+	})
+
+	app.Use(func(c *Ctx) error {
+		return c.Status(StatusNotFound).SendString("Not Found")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/static/style.css", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 }
 
 //////////////////////////////////////////////

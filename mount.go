@@ -174,7 +174,6 @@ func (app *App) processSubAppsRoutes() {
 		}
 	}
 	var handlersCount uint32
-	var routePos uint32
 	// Iterate over the stack of the parent app
 	for m := range app.stack {
 		// Iterate over each route in the stack
@@ -183,9 +182,6 @@ func (app *App) processSubAppsRoutes() {
 			route := app.stack[m][i]
 			// Check if the route has a mounted app
 			if !route.mount {
-				routePos++
-				// If not, update the route's position and continue
-				route.pos = routePos
 				if !route.use || (route.use && m == 0) {
 					handlersCount += uint32(len(route.Handlers))
 				}
@@ -214,11 +210,7 @@ func (app *App) processSubAppsRoutes() {
 			copy(newStack[i+len(subRoutes):], app.stack[m][i+1:])
 			app.stack[m] = newStack
 
-			// Decrease the parent app's route count to account for the mounted app's original route
-			atomic.AddUint32(&app.routesCount, ^uint32(0))
 			i--
-			// Increase the parent app's route count to account for the sub-app's routes
-			atomic.AddUint32(&app.routesCount, uint32(len(subRoutes)))
 
 			// Mark the parent app's routes as refreshed
 			app.routesRefreshed = true

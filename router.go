@@ -7,7 +7,6 @@ package fiber
 import (
 	"fmt"
 	"html"
-	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -47,9 +46,8 @@ type Router interface {
 
 // Route is a struct that holds all metadata for each registered handler.
 type Route struct {
-	// ### important: always keep in sync with the copy method "app.copyRoute" ###
+	// ### important: always keep in sync with the copy method "app.copyRoute" and all creations of Route struct ###
 	// Data for routing
-	pos         uint32      // Position in stack -> important for the sort of the matched routes
 	use         bool        // USE matches path prefixes
 	mount       bool        // Indicated a mounted app on a specific route
 	star        bool        // Path equals '*'
@@ -215,9 +213,6 @@ func (*App) copyRoute(route *Route) *Route {
 		path:        route.path,
 		routeParser: route.routeParser,
 
-		// misc
-		pos: route.pos,
-
 		// Public data
 		Path:     route.Path,
 		Params:   route.Params,
@@ -298,11 +293,11 @@ func (app *App) register(method, pathRaw string, group *Group, handlers ...Handl
 		for _, m := range app.config.RequestMethods {
 			// Create a route copy to avoid duplicates during compression
 			r := route
-			app.addRoute(m, &r, isMount)
+			app.addRoute(m, &r)
 		}
 	} else {
 		// Add route to stack
-		app.addRoute(method, &route, isMount)
+		app.addRoute(method, &route)
 	}
 }
 
@@ -428,12 +423,20 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 	// Create route metadata without pointer
 	route := Route{
 		// Router booleans
-		use:  true,
-		root: isRoot,
+		use:   true,
+		mount: false,
+		star:  isStar,
+		root:  isRoot,
+
+		// Path data
 		path: prefix,
+
+		// Group data
+		group: nil,
+
 		// Public data
-		Method:   MethodGet,
 		Path:     prefix,
+		Method:   MethodGet,
 		Handlers: []Handler{handler},
 	}
 	// Increment global handler count
@@ -444,13 +447,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 	app.addRoute(MethodHead, &route)
 }
 
-func (app *App) addRoute(method string, route *Route, isMounted ...bool) {
-	// Check mounted routes
-	var mounted bool
-	if len(isMounted) > 0 {
-		mounted = isMounted[0]
-	}
-
+func (app *App) addRoute(method string, route *Route) {
 	// Get unique HTTP method identifier
 	m := app.methodInt(method)
 
@@ -460,8 +457,6 @@ func (app *App) addRoute(method string, route *Route, isMounted ...bool) {
 		preRoute := app.stack[m][l-1]
 		preRoute.Handlers = append(preRoute.Handlers, route.Handlers...)
 	} else {
-		// Increment global route position
-		route.pos = atomic.AddUint32(&app.routesCount, 1)
 		route.Method = method
 		// Add route to the stack
 		app.stack[m] = append(app.stack[m], route)
@@ -469,7 +464,7 @@ func (app *App) addRoute(method string, route *Route, isMounted ...bool) {
 	}
 
 	// Execute onRoute hooks & change latestRoute if not adding mounted route
-	if !mounted {
+	if !route.mount {
 		app.mutex.Lock()
 		app.latestRoute = route
 		if err := app.hooks.executeOnRouteHooks(*route); err != nil {
@@ -481,38 +476,59 @@ func (app *App) addRoute(method string, route *Route, isMounted ...bool) {
 
 // buildTree build the prefix tree from the previously registered routes
 func (app *App) buildTree() *App {
+	// If routes haven't been refreshed, nothing to do
 	if !app.routesRefreshed {
 		return app
 	}
 
-	// loop all the methods and stacks and create the prefix tree
-	for m := range app.config.RequestMethods {
-		tsMap := make(map[string][]*Route)
-		for _, route := range app.stack[m] {
-			treePath := ""
+	// 1) First loop: determine all possible 3-char prefixes ("treePaths") for each method
+	for method := range app.config.RequestMethods {
+		prefixSet := map[string]struct{}{
+			"": {},
+		}
+		for _, route := range app.stack[method] {
 			if len(route.routeParser.segs) > 0 && len(route.routeParser.segs[0].Const) >= 3 {
-				treePath = route.routeParser.segs[0].Const[:3]
+				prefix := route.routeParser.segs[0].Const[:3]
+				prefixSet[prefix] = struct{}{}
 			}
-			// create tree stack
-			tsMap[treePath] = append(tsMap[treePath], route)
 		}
-		app.treeStack[m] = tsMap
+		tsMap := make(map[string][]*Route, len(prefixSet))
+		for prefix := range prefixSet {
+			tsMap[prefix] = nil
+		}
+		app.treeStack[method] = tsMap
 	}
 
-	// loop the methods and tree stacks and add global stack and sort everything
-	for m := range app.config.RequestMethods {
-		tsMap := app.treeStack[m]
-		for treePart := range tsMap {
-			if treePart != "" {
-				// merge global tree routes in current tree stack
-				tsMap[treePart] = uniqueRouteStack(append(tsMap[treePart], tsMap[""]...))
+	// 2) Second loop: for each method and each discovered treePath, assign matching routes
+	for method := range app.config.RequestMethods {
+		// get the map of buckets for this method
+		tsMap := app.treeStack[method]
+
+		// for every treePath key (including the empty one)
+		for treePath := range tsMap {
+			// iterate all routes of this method
+			for _, route := range app.stack[method] {
+				// compute this route's own prefix ("" or first 3 chars)
+				routePath := ""
+				if len(route.routeParser.segs) > 0 && len(route.routeParser.segs[0].Const) >= 3 {
+					routePath = route.routeParser.segs[0].Const[:3]
+				}
+
+				// if it's a global route, assign to every bucket
+				if routePath == "" {
+					tsMap[treePath] = append(tsMap[treePath], route)
+					// otherwise only assign if this route's prefix matches the current bucket's key
+				} else if routePath == treePath {
+					tsMap[treePath] = append(tsMap[treePath], route)
+				}
 			}
-			// sort tree slices with the positions
-			slc := tsMap[treePart]
-			sort.Slice(slc, func(i, j int) bool { return slc[i].pos < slc[j].pos })
+
+			// after collecting, dedupe the bucket if it's not the global one
+			tsMap[treePath] = uniqueRouteStack(tsMap[treePath])
 		}
 	}
+
+	// reset the flag and return
 	app.routesRefreshed = false
-
 	return app
 }
