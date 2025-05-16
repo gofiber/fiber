@@ -468,7 +468,6 @@ func verifyThereAreNoRoutes(tb testing.TB, app *App) {
 	tb.Helper()
 
 	require.Equal(tb, uint32(0), app.handlersCount)
-	require.Equal(tb, uint32(0), app.routesCount)
 	verifyRouteHandlerCounts(tb, app, 0)
 }
 
@@ -647,7 +646,6 @@ func Test_App_Route_Registration_Prevent_Duplicate(t *testing.T) {
 
 	verifyRequest(t, app, "/dynamically-defined", StatusOK)
 	require.Equal(t, uint32(2), app.handlersCount)
-	require.Equal(t, uint32(2), app.routesCount)
 
 	verifyRouteHandlerCounts(t, app, 1)
 }
@@ -677,7 +675,6 @@ func Test_Route_Registration_Prevent_Duplicate_With_Middleware(t *testing.T) {
 
 	verifyRequest(t, app, "/dynamically-defined", StatusOK)
 	require.Equal(t, uint32(3), app.handlersCount)
-	require.Equal(t, uint32(2), app.routesCount)
 
 	verifyRouteHandlerCounts(t, app, 1)
 }
@@ -786,7 +783,6 @@ func TestRemoveRoute(t *testing.T) {
 	})
 
 	require.Equal(t, uint32(5), app.handlersCount)
-	require.Equal(t, uint32(21), app.routesCount)
 
 	req, err := http.NewRequest(MethodPost, "/", nil)
 	require.NoError(t, err)
@@ -824,13 +820,11 @@ func TestRemoveRoute(t *testing.T) {
 	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode)
 
 	require.Equal(t, uint32(4), app.handlersCount)
-	require.Equal(t, uint32(19), app.routesCount)
 
 	app.RemoveRoute("/test", MethodPost)
 	app.RebuildTree()
 
 	require.Equal(t, uint32(3), app.handlersCount)
-	require.Equal(t, uint32(17), app.routesCount)
 
 	req, err = http.NewRequest(MethodPost, "/test", nil)
 	require.NoError(t, err)
@@ -860,7 +854,6 @@ func TestRemoveRoute(t *testing.T) {
 	app.RemoveRoute("/", MethodGet, MethodPost)
 
 	require.Equal(t, uint32(2), app.handlersCount)
-	require.Equal(t, uint32(14), app.routesCount)
 
 	req, err = http.NewRequest(MethodGet, "/", nil)
 	require.NoError(t, err)
@@ -876,12 +869,10 @@ func TestRemoveRoute(t *testing.T) {
 	app.RemoveRoute("/test", MethodGet, MethodPost)
 
 	require.Equal(t, uint32(2), app.handlersCount)
-	require.Equal(t, uint32(14), app.routesCount)
 
 	app.RemoveRoute("/test", app.config.RequestMethods...)
 
 	require.Equal(t, uint32(1), app.handlersCount)
-	require.Equal(t, uint32(7), app.routesCount)
 }
 
 //////////////////////////////////////////////
