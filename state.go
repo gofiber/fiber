@@ -1,7 +1,6 @@
 package fiber
 
 import (
-	"crypto/sha256"
 	"encoding/hex"
 	"strings"
 	"sync"
@@ -14,8 +13,7 @@ const servicesStatePrefix = "gofiber-services-"
 var servicesStatePrefixHash string
 
 func init() {
-	hash := sha256.Sum256([]byte(servicesStatePrefix + uuid.New().String()))
-	servicesStatePrefixHash = hex.EncodeToString(hash[:])
+	servicesStatePrefixHash = hex.EncodeToString([]byte(servicesStatePrefix + uuid.New().String()))
 }
 
 // State is a key-value store for Fiber's app in order to be used as a global storage for the app's dependencies.
@@ -343,9 +341,7 @@ func (s *State) GetComplex128(key string) (complex128, bool) {
 // This way we can avoid collisions and have a unique key for each service.
 func (s *State) serviceKey(key string) string {
 	// hash the service string to avoid collisions
-	hash := sha256.Sum256([]byte(key))
-
-	return s.servicePrefix + hex.EncodeToString(hash[:])
+	return s.servicePrefix + hex.EncodeToString([]byte(key))
 }
 
 // setService sets a service in the State.
