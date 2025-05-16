@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"html"
 	"slices"
-	"sort"
 	"sync/atomic"
 
 	"github.com/gofiber/utils/v2"
@@ -43,7 +42,7 @@ type Router interface {
 
 // Route is a struct that holds all metadata for each registered handler.
 type Route struct {
-	// ### important: always keep in sync with the copy method "app.copyRoute" ###
+	// ### important: always keep in sync with the copy method "app.copyRoute" and all creations of Route struct ###
 	group *Group // Group instance. used for routes in groups
 
 	path string // Prettified path
@@ -57,11 +56,10 @@ type Route struct {
 	Handlers    []Handler   `json:"-"`      // Ctx handlers
 	routeParser routeParser // Parameter parser
 	// Data for routing
-	pos   uint32 // Position in stack -> important for the sort of the matched routes
-	use   bool   // USE matches path prefixes
-	mount bool   // Indicated a mounted app on a specific route
-	star  bool   // Path equals '*'
-	root  bool   // Path equals '/'
+	use   bool // USE matches path prefixes
+	mount bool // Indicated a mounted app on a specific route
+	star  bool // Path equals '*'
+	root  bool // Path equals '/'
 }
 
 func (r *Route) match(detectionPath, path string, params *[maxParams]string) bool {
@@ -307,92 +305,12 @@ func (*App) copyRoute(route *Route) *Route {
 		path:        route.path,
 		routeParser: route.routeParser,
 
-		// misc
-		pos: route.pos,
-
 		// Public data
 		Path:     route.Path,
 		Params:   route.Params,
 		Name:     route.Name,
 		Method:   route.Method,
 		Handlers: route.Handlers,
-	}
-}
-
-func (app *App) register(methods []string, pathRaw string, group *Group, handlers ...Handler) {
-	// A regular route requires at least one ctx handler
-	if len(handlers) == 0 && group == nil {
-		panic(fmt.Sprintf("missing handler/middleware in route: %s\n", pathRaw))
-	}
-	// No nil handlers allowed
-	for _, h := range handlers {
-		if nil == h {
-			panic(fmt.Sprintf("nil handler in route: %s\n", pathRaw))
-		}
-	}
-
-	// Precompute path normalization ONCE
-	if pathRaw == "" {
-		pathRaw = "/"
-	}
-	if pathRaw[0] != '/' {
-		pathRaw = "/" + pathRaw
-	}
-	pathPretty := pathRaw
-	if !app.config.CaseSensitive {
-		pathPretty = utils.ToLower(pathPretty)
-	}
-	if !app.config.StrictRouting && len(pathPretty) > 1 {
-		pathPretty = utils.TrimRight(pathPretty, '/')
-	}
-	pathClean := RemoveEscapeChar(pathPretty)
-
-	parsedRaw := parseRoute(pathRaw, app.customConstraints...)
-	parsedPretty := parseRoute(pathPretty, app.customConstraints...)
-
-	isMount := group != nil && group.app != app
-
-	for _, method := range methods {
-		method = utils.ToUpper(method)
-		if method != methodUse && app.methodInt(method) == -1 {
-			panic(fmt.Sprintf("add: invalid http method %s\n", method))
-		}
-
-		isUse := method == methodUse
-		isStar := pathClean == "/*"
-		isRoot := pathClean == "/"
-
-		route := Route{
-			use:   isUse,
-			mount: isMount,
-			star:  isStar,
-			root:  isRoot,
-
-			path:        pathClean,
-			routeParser: parsedPretty,
-			Params:      parsedRaw.params,
-			group:       group,
-
-			Path:     pathRaw,
-			Method:   method,
-			Handlers: handlers,
-		}
-
-		// Increment global handler count
-		atomic.AddUint32(&app.handlersCount, uint32(len(handlers))) //nolint:gosec // Not a concern
-
-		// Middleware route matches all HTTP methods
-		if isUse {
-			// Add route to all HTTP methods stack
-			for _, m := range app.config.RequestMethods {
-				// Create a route copy to avoid duplicates during compression
-				r := route
-				app.addRoute(m, &r, isMount)
-			}
-		} else {
-			// Add route to stack
-			app.addRoute(method, &route, isMount)
-		}
 	}
 }
 
@@ -474,62 +392,108 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 
 				atomic.AddUint32(&app.handlersCount, ^uint32(len(route.Handlers)-1)) //nolint:gosec // Not a concern
 			}
-
-			// Decrement global route count
-			atomic.AddUint32(&app.routesCount, ^uint32(0)) //nolint:gosec // Not a concern1
 		}
 	}
 }
 
-func (app *App) addRoute(method string, route *Route, isMounted ...bool) {
+func (app *App) register(methods []string, pathRaw string, group *Group, handlers ...Handler) {
+	// A regular route requires at least one ctx handler
+	if len(handlers) == 0 && group == nil {
+		panic(fmt.Sprintf("missing handler/middleware in route: %s\n", pathRaw))
+	}
+	// No nil handlers allowed
+	for _, h := range handlers {
+		if nil == h {
+			panic(fmt.Sprintf("nil handler in route: %s\n", pathRaw))
+		}
+	}
+
+	// Precompute path normalization ONCE
+	if pathRaw == "" {
+		pathRaw = "/"
+	}
+	if pathRaw[0] != '/' {
+		pathRaw = "/" + pathRaw
+	}
+	pathPretty := pathRaw
+	if !app.config.CaseSensitive {
+		pathPretty = utils.ToLower(pathPretty)
+	}
+	if !app.config.StrictRouting && len(pathPretty) > 1 {
+		pathPretty = utils.TrimRight(pathPretty, '/')
+	}
+	pathClean := RemoveEscapeChar(pathPretty)
+
+	parsedRaw := parseRoute(pathRaw, app.customConstraints...)
+	parsedPretty := parseRoute(pathPretty, app.customConstraints...)
+
+	isMount := group != nil && group.app != app
+
+	for _, method := range methods {
+		method = utils.ToUpper(method)
+		if method != methodUse && app.methodInt(method) == -1 {
+			panic(fmt.Sprintf("add: invalid http method %s\n", method))
+		}
+
+		isUse := method == methodUse
+		isStar := pathClean == "/*"
+		isRoot := pathClean == "/"
+
+		route := Route{
+			use:   isUse,
+			mount: isMount,
+			star:  isStar,
+			root:  isRoot,
+
+			path:        pathClean,
+			routeParser: parsedPretty,
+			Params:      parsedRaw.params,
+			group:       group,
+
+			Path:     pathRaw,
+			Method:   method,
+			Handlers: handlers,
+		}
+
+		// Increment global handler count
+		atomic.AddUint32(&app.handlersCount, uint32(len(handlers))) //nolint:gosec // Not a concern
+
+		// Middleware route matches all HTTP methods
+		if isUse {
+			// Add route to all HTTP methods stack
+			for _, m := range app.config.RequestMethods {
+				// Create a route copy to avoid duplicates during compression
+				r := route
+				app.addRoute(m, &r)
+			}
+		} else {
+			// Add route to stack
+			app.addRoute(method, &route)
+		}
+	}
+}
+
+func (app *App) addRoute(method string, route *Route) {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
-
-	var mounted bool
-	if len(isMounted) > 0 {
-		mounted = isMounted[0]
-	}
 
 	// Get unique HTTP method identifier
 	m := app.methodInt(method)
 
-	// Check for an existing route with the same normalized path,
-	// same "use" flag, mount flag, and method.
-	// If found, replace the old route with the new one.
-	for i, existing := range app.stack[m] {
-		if existing.path == route.path &&
-			existing.use == route.use &&
-			existing.mount == route.mount &&
-			existing.Method == route.Method {
-			if route.use { // middleware: merge handlers instead of replacing
-				app.stack[m][i].Handlers = append(existing.Handlers, route.Handlers...) //nolint:gocritic // Not a concern
-			} else {
-				// For non-middleware routes, replace as before
-				atomic.AddUint32(&app.handlersCount, ^uint32(len(existing.Handlers)-1)) //nolint:gosec // Not a concern
-				route.pos = existing.pos
-				app.stack[m][i] = route
-			}
-			app.routesRefreshed = true
-			if !mounted {
-				app.latestRoute = route
-				if err := app.hooks.executeOnRouteHooks(*route); err != nil {
-					panic(err)
-				}
-			}
-			return
-		}
+	// prevent identically route registration
+	l := len(app.stack[m])
+	if l > 0 && app.stack[m][l-1].Path == route.Path && route.use == app.stack[m][l-1].use && !route.mount && !app.stack[m][l-1].mount {
+		preRoute := app.stack[m][l-1]
+		preRoute.Handlers = append(preRoute.Handlers, route.Handlers...)
+	} else {
+		route.Method = method
+		// Add route to the stack
+		app.stack[m] = append(app.stack[m], route)
+		app.routesRefreshed = true
 	}
 
-	// No duplicate route exists; add the new route normally.
-	route.pos = atomic.AddUint32(&app.routesCount, 1)
-	route.Method = method
-
-	// Add route to the stack
-	app.stack[m] = append(app.stack[m], route)
-	app.routesRefreshed = true
-
 	// Execute onRoute hooks & change latestRoute if not adding mounted route
-	if !mounted {
+	if !route.mount {
 		app.latestRoute = route
 		if err := app.hooks.executeOnRouteHooks(*route); err != nil {
 			panic(err)
@@ -541,7 +505,7 @@ func (app *App) addRoute(method string, route *Route, isMounted ...bool) {
 // This method is useful when you want to register routes dynamically after the app has started.
 // It is not recommended to use this method on production environments because rebuilding
 // the tree is performance-intensive and not thread-safe in runtime. Since building the tree
-// is only done in the startupProcess of the app, this method does not make sure that the
+// is only done in the startupProcess of the app, this method does not makes sure that the
 // routeTree is being safely changed, as it would add a great deal of overhead in the request.
 // Latest benchmark results showed a degradation from 82.79 ns/op to 94.48 ns/op and can be found in:
 // https://github.com/gofiber/fiber/issues/2769#issuecomment-2227385283
@@ -554,36 +518,63 @@ func (app *App) RebuildTree() *App {
 
 // buildTree build the prefix tree from the previously registered routes
 func (app *App) buildTree() *App {
+	// If routes haven't been refreshed, nothing to do
 	if !app.routesRefreshed {
 		return app
 	}
 
-	// loop all the methods and stacks and create the prefix tree
-	for m := range app.config.RequestMethods {
-		tsMap := make(map[int][]*Route)
-		for _, route := range app.stack[m] {
-			treePathHash := 0
+	// 1) First loop: determine all possible 3-char prefixes ("treePaths") for each method
+	for method := range app.config.RequestMethods {
+		prefixSet := map[int]struct{}{
+			0: {},
+		}
+		for _, route := range app.stack[method] {
 			if len(route.routeParser.segs) > 0 && len(route.routeParser.segs[0].Const) >= maxDetectionPaths {
-				treePathHash = int(route.routeParser.segs[0].Const[0])<<16 |
+				prefix := int(route.routeParser.segs[0].Const[0])<<16 |
 					int(route.routeParser.segs[0].Const[1])<<8 |
 					int(route.routeParser.segs[0].Const[2])
+				prefixSet[prefix] = struct{}{}
 			}
-			// create tree stack
-			tsMap[treePathHash] = append(tsMap[treePathHash], route)
 		}
-
-		for treePart := range tsMap {
-			if treePart != 0 {
-				// merge global tree routes in current tree stack
-				tsMap[treePart] = uniqueRouteStack(append(tsMap[treePart], tsMap[0]...))
-			}
-			// sort tree slices with the positions
-			slc := tsMap[treePart]
-			sort.Slice(slc, func(i, j int) bool { return slc[i].pos < slc[j].pos })
+		tsMap := make(map[int][]*Route, len(prefixSet))
+		for prefix := range prefixSet {
+			tsMap[prefix] = nil
 		}
-		app.treeStack[m] = tsMap
+		app.treeStack[method] = tsMap
 	}
-	app.routesRefreshed = false
 
+	// 2) Second loop: for each method and each discovered treePath, assign matching routes
+	for method := range app.config.RequestMethods {
+		// get the map of buckets for this method
+		tsMap := app.treeStack[method]
+
+		// for every treePath key (including the empty one)
+		for treePath := range tsMap {
+			// iterate all routes of this method
+			for _, route := range app.stack[method] {
+				// compute this route's own prefix ("" or first 3 chars)
+				routePath := 0
+				if len(route.routeParser.segs) > 0 && len(route.routeParser.segs[0].Const) >= 3 {
+					routePath = int(route.routeParser.segs[0].Const[0])<<16 |
+						int(route.routeParser.segs[0].Const[1])<<8 |
+						int(route.routeParser.segs[0].Const[2])
+				}
+
+				// if it's a global route, assign to every bucket
+				if routePath == 0 {
+					tsMap[treePath] = append(tsMap[treePath], route)
+					// otherwise only assign if this route's prefix matches the current bucket's key
+				} else if routePath == treePath {
+					tsMap[treePath] = append(tsMap[treePath], route)
+				}
+			}
+
+			// after collecting, dedupe the bucket if it's not the global one
+			tsMap[treePath] = uniqueRouteStack(tsMap[treePath])
+		}
+	}
+
+	// reset the flag and return
+	app.routesRefreshed = false
 	return app
 }
