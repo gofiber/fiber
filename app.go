@@ -125,8 +125,6 @@ type App[TCtx CtxGeneric[TCtx]] struct {
 	// sendfilesMutex is a mutex used for sendfile operations
 	sendfilesMutex sync.RWMutex
 	mutex          sync.Mutex
-	// Amount of registered routes
-	routesCount uint32
 	// Amount of registered handlers
 	handlersCount uint32
 	// contains the information if the route stack has been changed to build the optimized tree

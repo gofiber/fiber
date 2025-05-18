@@ -850,3 +850,28 @@ func Test_Static_Compress_WithFileSuffixes(t *testing.T) {
 		require.NoError(t, err, "File should exist")
 	}
 }
+
+func Test_Router_Mount_n_Static(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	app.Use("/static", New("../../.github/testdata/fs/css", Config{Browse: true}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("Home")
+	})
+
+	subApp := fiber.New()
+	app.Use("/mount", subApp)
+	subApp.Get("/test", func(c fiber.Ctx) error {
+		return c.SendString("Hello from /test")
+	})
+
+	app.Use(func(c fiber.Ctx) error {
+		return c.Status(fiber.StatusNotFound).SendString("Not Found")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/static/style.css", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+}

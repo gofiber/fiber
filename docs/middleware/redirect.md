@@ -30,7 +30,7 @@ func main() {
         "/old":   "/new",
         "/old/*": "/new/$1",
       },
-      StatusCode: 301,
+      StatusCode: fiber.StatusMovedPermanently,
     }))
     
     app.Get("/new", func(c fiber.Ctx) error {

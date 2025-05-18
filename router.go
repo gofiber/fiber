@@ -7,7 +7,7 @@ package fiber
 import (
 	"bytes"
 	"fmt"
-	"sort"
+	"html"
 	"sync/atomic"
 
 	"github.com/gofiber/utils/v2"
@@ -40,7 +40,7 @@ type Router[TCtx CtxGeneric[TCtx]] interface {
 
 // Route is a struct that holds all metadata for each registered handler.
 type Route[TCtx CtxGeneric[TCtx]] struct {
-	// ### important: always keep in sync with the copy method "app.copyRoute" ###
+	// ### important: always keep in sync with the copy method "app.copyRoute" and all creations of Route struct ###
 	group *Group[TCtx] // Group instance. used for routes in groups
 
 	path string // Prettified path
@@ -54,11 +54,10 @@ type Route[TCtx CtxGeneric[TCtx]] struct {
 	Handlers    []Handler[TCtx] `json:"-"`      // Ctx handlers
 	routeParser routeParser     // Parameter parser
 	// Data for routing
-	pos   uint32 // Position in stack -> important for the sort of the matched routes
-	use   bool   // USE matches path prefixes
-	mount bool   // Indicated a mounted app on a specific route
-	star  bool   // Path equals '*'
-	root  bool   // Path equals '/'
+	use   bool // USE matches path prefixes
+	mount bool // Indicated a mounted app on a specific route
+	star  bool // Path equals '*'
+	root  bool // Path equals '/'
 }
 
 func (r *Route[TCtx]) match(detectionPath, path string, params *[maxParams]string) bool {
@@ -215,9 +214,6 @@ func (*App[TCtx]) copyRoute(route *Route[TCtx]) *Route[TCtx] {
 		path:        route.path,
 		routeParser: route.routeParser,
 
-		// misc
-		pos: route.pos,
-
 		// Public data
 		Path:     route.Path,
 		Params:   route.Params,
@@ -295,24 +291,18 @@ func (app *App[TCtx]) register(methods []string, pathRaw string, group *Group[TC
 			for _, m := range app.config.RequestMethods {
 				// Create a route copy to avoid duplicates during compression
 				r := route
-				app.addRoute(m, &r, isMount)
+				app.addRoute(m, &r)
 			}
 		} else {
 			// Add route to stack
-			app.addRoute(method, &route, isMount)
+			app.addRoute(method, &route)
 		}
 	}
 }
 
-func (app *App[TCtx]) addRoute(method string, route *Route[TCtx], isMounted ...bool) {
+func (app *App[TCtx]) addRoute(method string, route *Route[TCtx]) {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
-
-	// Check mounted routes
-	var mounted bool
-	if len(isMounted) > 0 {
-		mounted = isMounted[0]
-	}
 
 	// Get unique HTTP method identifier
 	m := app.methodInt(method)
@@ -323,8 +313,6 @@ func (app *App[TCtx]) addRoute(method string, route *Route[TCtx], isMounted ...b
 		preRoute := app.stack[m][l-1]
 		preRoute.Handlers = append(preRoute.Handlers, route.Handlers...)
 	} else {
-		// Increment global route position
-		route.pos = atomic.AddUint32(&app.routesCount, 1)
 		route.Method = method
 		// Add route to the stack
 		app.stack[m] = append(app.stack[m], route)
@@ -332,7 +320,7 @@ func (app *App[TCtx]) addRoute(method string, route *Route[TCtx], isMounted ...b
 	}
 
 	// Execute onRoute hooks & change latestRoute if not adding mounted route
-	if !mounted {
+	if !route.mount {
 		app.latestRoute = route
 		if err := app.hooks.executeOnRouteHooks(*route); err != nil {
 			panic(err)
@@ -357,36 +345,63 @@ func (app *App[TCtx]) RebuildTree() *App[TCtx] {
 
 // buildTree build the prefix tree from the previously registered routes
 func (app *App[TCtx]) buildTree() *App[TCtx] {
+	// If routes haven't been refreshed, nothing to do
 	if !app.routesRefreshed {
 		return app
 	}
 
-	// loop all the methods and stacks and create the prefix tree
-	for m := range app.config.RequestMethods {
-		tsMap := make(map[int][]*Route[TCtx])
-		for _, route := range app.stack[m] {
-			treePathHash := 0
+	// 1) First loop: determine all possible 3-char prefixes ("treePaths") for each method
+	for method := range app.config.RequestMethods {
+		prefixSet := map[int]struct{}{
+			0: {},
+		}
+		for _, route := range app.stack[method] {
 			if len(route.routeParser.segs) > 0 && len(route.routeParser.segs[0].Const) >= maxDetectionPaths {
-				treePathHash = int(route.routeParser.segs[0].Const[0])<<16 |
+				prefix := int(route.routeParser.segs[0].Const[0])<<16 |
 					int(route.routeParser.segs[0].Const[1])<<8 |
 					int(route.routeParser.segs[0].Const[2])
+				prefixSet[prefix] = struct{}{}
 			}
-			// create tree stack
-			tsMap[treePathHash] = append(tsMap[treePathHash], route)
 		}
-
-		for treePart := range tsMap {
-			if treePart != 0 {
-				// merge global tree routes in current tree stack
-				tsMap[treePart] = uniqueRouteStack[TCtx](append(tsMap[treePart], tsMap[0]...))
-			}
-			// sort tree slices with the positions
-			slc := tsMap[treePart]
-			sort.Slice(slc, func(i, j int) bool { return slc[i].pos < slc[j].pos })
+		tsMap := make(map[int][]*Route[TCtx], len(prefixSet))
+		for prefix := range prefixSet {
+			tsMap[prefix] = nil
 		}
-		app.treeStack[m] = tsMap
+		app.treeStack[method] = tsMap
 	}
-	app.routesRefreshed = false
 
+	// 2) Second loop: for each method and each discovered treePath, assign matching routes
+	for method := range app.config.RequestMethods {
+		// get the map of buckets for this method
+		tsMap := app.treeStack[method]
+
+		// for every treePath key (including the empty one)
+		for treePath := range tsMap {
+			// iterate all routes of this method
+			for _, route := range app.stack[method] {
+				// compute this route's own prefix ("" or first 3 chars)
+				routePath := 0
+				if len(route.routeParser.segs) > 0 && len(route.routeParser.segs[0].Const) >= 3 {
+					routePath = int(route.routeParser.segs[0].Const[0])<<16 |
+						int(route.routeParser.segs[0].Const[1])<<8 |
+						int(route.routeParser.segs[0].Const[2])
+				}
+
+				// if it's a global route, assign to every bucket
+				if routePath == 0 {
+					tsMap[treePath] = append(tsMap[treePath], route)
+					// otherwise only assign if this route's prefix matches the current bucket's key
+				} else if routePath == treePath {
+					tsMap[treePath] = append(tsMap[treePath], route)
+				}
+			}
+
+			// after collecting, dedupe the bucket if it's not the global one
+			tsMap[treePath] = uniqueRouteStack(tsMap[treePath])
+		}
+	}
+
+	// reset the flag and return
+	app.routesRefreshed = false
 	return app
 }
