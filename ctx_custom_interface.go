@@ -17,9 +17,9 @@ type CustomCtx[T any] interface {
 	Reset(fctx *fasthttp.RequestCtx)
 
 	// Methods to use with next stack.
-	getMethodINT() int
+	getMethodInt() int
 	getIndexRoute() int
-	getTreePath() string
+	getTreePathHash() int
 	getDetectionPath() string
 	getPathOriginal() string
 	getValues() *[maxParams]string
@@ -42,14 +42,14 @@ func NewDefaultCtx[TCtx *DefaultCtx](app *App[*DefaultCtx]) TCtx {
 	return ctx
 }
 
-func (app *App[TCtx]) newCtx() CtxGeneric[TCtx] {
-	var c CtxGeneric[TCtx]
+func (app *App[TCtx]) newCtx() TCtx {
+	var c TCtx
 
 	// TODO: fix this with generics ?
 	if app.newCtxFunc != nil {
 		c = app.newCtxFunc(app)
 	} else {
-		c = NewDefaultCtx(app)
+		c = any(NewDefaultCtx[*DefaultCtx](app)).(TCtx)
 	}
 
 	return c

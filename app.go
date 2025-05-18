@@ -101,7 +101,7 @@ type App[TCtx CtxGeneric[TCtx]] struct {
 	// Latest route & group
 	latestRoute *Route[TCtx]
 	// newCtxFunc
-	newCtxFunc func(app *App[TCtx]) CustomCtx[TCtx]
+	newCtxFunc func(app *App[TCtx]) TCtx
 	// TLS handler
 	tlsHandler *TLSHandler
 	// Mount fields
@@ -529,7 +529,7 @@ func New(config ...Config[*DefaultCtx]) *App[*DefaultCtx] {
 //	    Prefork: true,
 //	    ServerHeader: "Fiber",
 //	})
-func NewWithCustomCtx[TCtx CtxGeneric[TCtx]](newCtxFunc func(app *App[TCtx]) CustomCtx[TCtx], config ...Config[TCtx]) *App[TCtx] {
+func NewWithCustomCtx[TCtx CtxGeneric[TCtx]](newCtxFunc func(app *App[TCtx]) TCtx, config ...Config[TCtx]) *App[TCtx] {
 	app := newApp[TCtx](config...)
 
 	// Set newCtxFunc
