@@ -1465,7 +1465,7 @@ func (c *DefaultCtx) renderExtensions(bind any) {
 
 // Req returns a convenience type whose API is limited to operations
 // on the incoming request.
-func (c *DefaultCtx) Req() Req {
+func (c *DefaultCtx) Req() Req[*DefaultCtx] {
 	return c.req
 }
 
@@ -1476,10 +1476,10 @@ func (c *DefaultCtx) Res() Res {
 }
 
 // Route returns the matched Route struct.
-func (c *DefaultCtx) Route() *Route {
+func (c *DefaultCtx) Route() *Route[*DefaultCtx] {
 	if c.route == nil {
 		// Fallback for fasthttp error handler
-		return &Route{
+		return &Route[*DefaultCtx]{
 			path:     c.pathOriginal,
 			Path:     c.pathOriginal,
 			Method:   c.Method(),

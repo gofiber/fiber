@@ -130,7 +130,7 @@ func (r *DefaultReq) Range(size int) (Range, error) {
 	return r.ctx.Range(size)
 }
 
-func (r *DefaultReq) Route() *Route {
+func (r *DefaultReq) Route() *Route[*DefaultCtx] {
 	return r.ctx.Route()
 }
 

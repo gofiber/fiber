@@ -259,7 +259,7 @@ type CtxGeneric[T any] interface {
 	// Variables are read by the Render method and may be overwritten.
 	ViewBind(vars Map) error
 	// getLocationFromRoute get URL location from route using parameters
-	getLocationFromRoute(route Route, params Map) (string, error)
+	getLocationFromRoute(route Route[T], params Map) (string, error)
 	// GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
 	GetRouteURL(routeName string, params Map) (string, error)
 	// Render a template with data and sends a text/html response.
@@ -268,12 +268,12 @@ type CtxGeneric[T any] interface {
 	renderExtensions(bind any)
 	// Req returns a convenience type whose API is limited to operations
 	// on the incoming request.
-	Req() Req
+	Req() Req[T]
 	// Res returns a convenience type whose API is limited to operations
 	// on the outgoing response.
 	Res() Res
 	// Route returns the matched Route struct.
-	Route() *Route
+	Route() *Route[T]
 	// SaveFile saves any multipart file to disk.
 	SaveFile(fileheader *multipart.FileHeader, path string) error
 	// SaveFileToStorage saves any multipart file to an external storage system.
