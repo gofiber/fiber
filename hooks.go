@@ -6,15 +6,15 @@ import (
 
 // OnRouteHandler Handlers define a function to create hooks for Fiber.
 type (
-	OnRouteHandler   [TCtx CtxGeneric[TCtx]]     = func(Route[TCtx]) error
-	OnNameHandler   [TCtx CtxGeneric[TCtx]]      = OnRouteHandler[TCtx]
-	OnGroupHandler   [TCtx CtxGeneric[TCtx]]     = func(Group[TCtx]) error
-	OnGroupNameHandler   [TCtx CtxGeneric[TCtx]] = OnGroupHandler[TCtx]
-	OnListenHandler                           = func(ListenData) error
-	OnPreShutdownHandler                         = func() error
-	OnPostShutdownHandler = func(error)error
-	OnForkHandler                             = func(int) error
-	OnMountHandler[TCtx CtxGeneric[TCtx]]     = func(*App[TCtx]) error
+	OnRouteHandler[TCtx CtxGeneric[TCtx]]     func(Route[TCtx]) error
+	OnNameHandler[TCtx CtxGeneric[TCtx]]      func(Route[TCtx]) error
+	OnGroupHandler[TCtx CtxGeneric[TCtx]]     func(Group[TCtx]) error
+	OnGroupNameHandler[TCtx CtxGeneric[TCtx]] func(Group[TCtx]) error
+	OnListenHandler                           func(ListenData) error
+	OnPreShutdownHandler                      func() error
+	OnPostShutdownHandler                     func(error) error
+	OnForkHandler                             func(int) error
+	OnMountHandler[TCtx CtxGeneric[TCtx]]     func(*App[TCtx]) error
 )
 
 // Hooks is a struct to use it with App.

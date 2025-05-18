@@ -74,7 +74,12 @@ type DefaultCtx struct {
 	matched       bool                 // Non use route matched
 }
 
-type Ctx = CtxGeneric[*DefaultCtx]
+// Ctx is the default context interface used by Fiber when no custom context is
+// provided. It exposes the methods defined by CtxGeneric specialized with
+// *DefaultCtx.
+type Ctx interface {
+	CtxGeneric[*DefaultCtx]
+}
 
 // SendFile defines configuration options when to transfer file with SendFile.
 type SendFile struct {

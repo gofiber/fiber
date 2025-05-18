@@ -35,7 +35,8 @@ import (
 const Version = "3.0.0-beta.4"
 
 // Handler defines a function to serve HTTP requests.
-type Handler[TCtx CtxGeneric[TCtx]] = func(ctx TCtx) error
+// Using type definition avoids the generic alias restriction.
+type Handler[TCtx CtxGeneric[TCtx]] func(TCtx) error
 
 // Map is a shortcut for map[string]any, useful for JSON returns
 type Map map[string]any
@@ -78,7 +79,9 @@ type Storage interface {
 //	 return c.Status(code).SendString(err.Error())
 //	}
 //	app := fiber.New(cfg)
-type ErrorHandler[TCtx CtxGeneric[TCtx]] = func(TCtx, error) error
+//
+// ErrorHandler defines a function that will process all errors returned from handlers.
+type ErrorHandler[TCtx CtxGeneric[TCtx]] func(TCtx, error) error
 
 // Error represents an error that occurred while handling a request.
 type Error struct {
