@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"encoding/hex"
 	"errors"
 	"sync"
 
@@ -296,9 +297,12 @@ func (r *Redirect) Back(fallback ...string) error {
 // parseAndClearFlashMessages is a method to get flash messages before they are getting removed
 func (r *Redirect) parseAndClearFlashMessages() {
 	// parse flash messages
-	cookieValue := r.c.Cookies(FlashCookieName)
+	cookieValue, err := hex.DecodeString(r.c.Cookies(FlashCookieName))
+	if err != nil {
+		return
+	}
 
-	_, err := r.c.flashMessages.UnmarshalMsg(r.c.app.getBytes(cookieValue))
+	_, err = r.c.flashMessages.UnmarshalMsg(cookieValue)
 	if err != nil {
 		return
 	}
@@ -316,9 +320,12 @@ func (r *Redirect) processFlashMessages() {
 		return
 	}
 
+	dst := make([]byte, hex.EncodedLen(len(val)))
+	hex.Encode(dst, val)
+
 	r.c.Cookie(&Cookie{
 		Name:        FlashCookieName,
-		Value:       r.c.app.getString(val),
+		Value:       r.c.app.getString(dst),
 		SessionOnly: true,
 	})
 }
