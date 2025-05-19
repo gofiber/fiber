@@ -1142,6 +1142,15 @@ func (app *App) init() *App {
 
 	// unlock application
 	app.mutex.Unlock()
+
+	// Register the Services shutdown handler once the app is initialized and unlocked.
+	app.Hooks().OnPostShutdown(func(_ error) error {
+		if err := app.shutdownServices(app.servicesShutdownCtx()); err != nil {
+			log.Errorf("failed to shutdown services: %v", err)
+		}
+		return nil
+	})
+
 	return app
 }
 

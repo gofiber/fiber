@@ -132,7 +132,9 @@ func Test_InitServices(t *testing.T) {
 		require.NotPanics(t, app.initServices)
 	})
 
-	t.Run("successful-start", func(t *testing.T) {
+	t.Run("start/success", func(t *testing.T) {
+		// Initialize the app using the struct and defining the state and hooks manually,
+		// because we are not checking the shutdown hooks in this test.
 		app := &App{
 			configured: Config{
 				Services: []Service{
@@ -148,7 +150,9 @@ func Test_InitServices(t *testing.T) {
 		require.NotPanics(t, app.initServices)
 	})
 
-	t.Run("failed-start", func(t *testing.T) {
+	t.Run("start/error", func(t *testing.T) {
+		// Initialize the app using the struct and defining the state and hooks manually,
+		// because we are not checking the shutdown hooks in this test.
 		app := &App{
 			configured: Config{
 				Services: []Service{
@@ -166,14 +170,11 @@ func Test_InitServices(t *testing.T) {
 	})
 
 	t.Run("shutdown-hooks/success", func(t *testing.T) {
-		app := &App{
-			configured: Config{
-				Services: []Service{&mockService{name: "dep1"}},
-			},
-			state: newState(),
-		}
-
-		app.hooks = newHooks(app)
+		// Initialize the app using the New function to verify that the shutdown hooks are registered
+		// and the app mutex is not causing a deadlock.
+		app := New(Config{
+			Services: []Service{&mockService{name: "dep1"}},
+		})
 
 		require.NotPanics(t, app.initServices)
 
@@ -190,17 +191,14 @@ func Test_InitServices(t *testing.T) {
 	})
 
 	t.Run("shutdown-hooks/error", func(t *testing.T) {
-		app := &App{
-			configured: Config{
-				Services: []Service{
-					&mockService{name: "dep1"},
-					&mockService{name: "dep2", terminateError: errors.New(terminateErrorMessage + " 2")},
-				},
+		// Initialize the app using the New function to verify that the shutdown hooks are registered
+		// and the app mutex is not causing a deadlock.
+		app := New(Config{
+			Services: []Service{
+				&mockService{name: "dep1"},
+				&mockService{name: "dep2", terminateError: errors.New(terminateErrorMessage + " 2")},
 			},
-			state: newState(),
-		}
-
-		app.hooks = newHooks(app)
+		})
 
 		require.NotPanics(t, app.initServices)
 

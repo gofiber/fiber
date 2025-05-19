@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-
-	"github.com/gofiber/fiber/v3/log"
 )
 
 // Service is an interface that defines the methods for a service.
@@ -42,17 +40,6 @@ func (app *App) initServices() {
 	if err := app.startServices(app.servicesStartupCtx()); err != nil {
 		panic(err)
 	}
-
-	// Create the shutdown handler before registering the hook
-	shutdownHandler := func(_ error) error {
-		if err := app.shutdownServices(app.servicesShutdownCtx()); err != nil {
-			log.Errorf("failed to shutdown services: %v", err)
-		}
-		return nil
-	}
-
-	// Register the pre-created handler
-	app.Hooks().OnPostShutdown(shutdownHandler)
 }
 
 // servicesStartupCtx Returns the context for the services startup.
