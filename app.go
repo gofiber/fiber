@@ -1095,12 +1095,12 @@ func (*disableLogger) Printf(string, ...any) {
 }
 
 func (app *App) init() *App {
+	// lock application
+	app.mutex.Lock()
+
 	// Initialize Services when needed,
 	// panics if there is an error starting them.
 	app.initServices()
-
-	// lock application
-	app.mutex.Lock()
 
 	// Only load templates if a view engine is specified
 	if app.config.Views != nil {
