@@ -35,18 +35,24 @@ func (app *App) hasConfiguredServices() bool {
 // a post shutdown hook to shutdown them after the server is closed.
 // This function panics if there is an error starting the services.
 func (app *App) initServices() {
-	if app.hasConfiguredServices() {
-		if err := app.startServices(app.servicesStartupCtx()); err != nil {
-			panic(err)
-		}
-
-		app.Hooks().OnPostShutdown(func(_ error) error {
-			if err := app.shutdownServices(app.servicesShutdownCtx()); err != nil {
-				log.Errorf("failed to shutdown services: %v", err)
-			}
-			return nil
-		})
+	if !app.hasConfiguredServices() {
+		return
 	}
+
+	if err := app.startServices(app.servicesStartupCtx()); err != nil {
+		panic(err)
+	}
+
+	// Create the shutdown handler before registering the hook
+	shutdownHandler := func(_ error) error {
+		if err := app.shutdownServices(app.servicesShutdownCtx()); err != nil {
+			log.Errorf("failed to shutdown services: %v", err)
+		}
+		return nil
+	}
+
+	// Register the pre-created handler
+	app.Hooks().OnPostShutdown(shutdownHandler)
 }
 
 // servicesStartupCtx Returns the context for the services startup.
