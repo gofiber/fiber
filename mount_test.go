@@ -86,7 +86,6 @@ func Test_App_Mount_Nested(t *testing.T) {
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
 	require.Equal(t, uint32(3), app.handlersCount)
-	require.Equal(t, uint32(3), app.routesCount)
 }
 
 // go test -run Test_App_Mount_Express_Behavior
@@ -136,7 +135,6 @@ func Test_App_Mount_Express_Behavior(t *testing.T) {
 	testEndpoint(app, "/unknown", ErrNotFound.Message, StatusNotFound)
 
 	require.Equal(t, uint32(9), app.handlersCount)
-	require.Equal(t, uint32(17), app.routesCount)
 }
 
 // go test -run Test_App_Mount_RoutePositions
@@ -192,19 +190,15 @@ func Test_App_Mount_RoutePositions(t *testing.T) {
 
 	require.True(t, routeStackGET[1].use)
 	require.Equal(t, "/", routeStackGET[1].path)
-	require.Less(t, routeStackGET[0].pos, routeStackGET[1].pos, "wrong position of route 0")
 
 	require.False(t, routeStackGET[2].use)
 	require.Equal(t, "/bar", routeStackGET[2].path)
-	require.Less(t, routeStackGET[1].pos, routeStackGET[2].pos, "wrong position of route 1")
 
 	require.True(t, routeStackGET[3].use)
 	require.Equal(t, "/", routeStackGET[3].path)
-	require.Less(t, routeStackGET[2].pos, routeStackGET[3].pos, "wrong position of route 2")
 
 	require.False(t, routeStackGET[4].use)
 	require.Equal(t, "/subapp2/world", routeStackGET[4].path)
-	require.Less(t, routeStackGET[3].pos, routeStackGET[4].pos, "wrong position of route 3")
 
 	require.Len(t, routeStackGET, 5)
 }

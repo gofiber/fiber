@@ -39,7 +39,7 @@ app.Post("/api/register", func(c fiber.Ctx) error {
 })
 ```
 
-<Reference id="use">**Use**</Reference>
+<Reference id="use">#Use</Reference>
 
 Can be used for middleware packages and prefix catchers. These routes will only match the beginning of each path i.e. `/john` will match `/john/doe`, `/johnnnnn` etc
 
