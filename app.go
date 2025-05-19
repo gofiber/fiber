@@ -616,10 +616,6 @@ func New(config ...Config) *App {
 	// Override colors
 	app.config.ColorScheme = defaultColors(app.config.ColorScheme)
 
-	// Initialize Services when needed,
-	// panics if there is an error starting them.
-	app.initServices()
-
 	// Init app
 	app.init()
 
@@ -1101,6 +1097,10 @@ func (*disableLogger) Printf(string, ...any) {
 func (app *App) init() *App {
 	// lock application
 	app.mutex.Lock()
+
+	// Initialize Services when needed,
+	// panics if there is an error starting them.
+	app.initServices()
 
 	// Only load templates if a view engine is specified
 	if app.config.Views != nil {
