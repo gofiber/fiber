@@ -2,11 +2,14 @@
 
 ## Startup script
 
-- Fetch dependencies:  
+- Fetch dependencies:
+
   ```bash
   go get ./...
   ```
-- Install CLI tools referenced in Makefile:  
+
+- Install CLI tools referenced in Makefile:
+
   ```bash
   go install gotest.tools/gotestsum@latest                 # test runner
   go install golang.org/x/vuln/cmd/govulncheck@latest      # vulnerability scanner
