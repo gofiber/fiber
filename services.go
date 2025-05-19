@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/gofiber/fiber/v3/log"
 )
 
 // Service is an interface that defines the methods for a service.
@@ -27,6 +29,24 @@ type Service interface {
 // hasConfiguredServices Checks if there are any services for the current application.
 func (app *App) hasConfiguredServices() bool {
 	return len(app.configured.Services) > 0
+}
+
+// initServices If the app is configured to use services, this function registers
+// a post shutdown hook to shutdown them after the server is closed.
+// This function panics if there is an error starting the services.
+func (app *App) initServices() {
+	if app.hasConfiguredServices() {
+		if err := app.startServices(app.servicesStartupCtx()); err != nil {
+			panic(err)
+		}
+
+		app.Hooks().OnPostShutdown(func(_ error) error {
+			if err := app.shutdownServices(app.servicesShutdownCtx()); err != nil {
+				log.Errorf("failed to shutdown services: %v", err)
+			}
+			return nil
+		})
+	}
 }
 
 // servicesStartupCtx Returns the context for the services startup.

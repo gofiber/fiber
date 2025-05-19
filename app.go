@@ -618,20 +618,9 @@ func New(config ...Config) *App {
 	// Override colors
 	app.config.ColorScheme = defaultColors(app.config.ColorScheme)
 
-	// If the app is configured to use services,
-	// register a post shutdown hook to shutdown them after the server is closed.
-	if app.hasConfiguredServices() {
-		if err := app.startServices(app.servicesStartupCtx()); err != nil {
-			panic(err)
-		}
-
-		app.Hooks().OnPostShutdown(func(_ error) error {
-			if err := app.shutdownServices(app.servicesShutdownCtx()); err != nil {
-				log.Errorf("failed to shutdown services: %v", err)
-			}
-			return nil
-		})
-	}
+	// Initialize Services when needed,
+	// panics if there is an error starting them.
+	app.initServices()
 
 	// Init app
 	app.init()

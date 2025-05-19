@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gofiber/fiber/v3/log"
 	"github.com/stretchr/testify/require"
 )
 
@@ -122,6 +123,97 @@ func Test_HasConfiguredServices(t *testing.T) {
 
 	t.Run("has-services", func(t *testing.T) {
 		testHasConfiguredServicesFn(t, &App{configured: Config{Services: []Service{&mockService{name: "test-dep"}}}}, true)
+	})
+}
+
+func Test_InitServices(t *testing.T) {
+	t.Run("no-services", func(t *testing.T) {
+		app := &App{configured: Config{}}
+		require.NotPanics(t, app.initServices)
+	})
+
+	t.Run("successful-start", func(t *testing.T) {
+		app := &App{
+			configured: Config{
+				Services: []Service{
+					&mockService{name: "dep1"},
+					&mockService{name: "dep2"},
+				},
+			},
+			state: newState(),
+		}
+
+		app.hooks = newHooks(app)
+
+		require.NotPanics(t, app.initServices)
+	})
+
+	t.Run("failed-start", func(t *testing.T) {
+		app := &App{
+			configured: Config{
+				Services: []Service{
+					&mockService{name: "dep1", startError: errors.New(startErrorMessage + " 1")},
+					&mockService{name: "dep2", startError: errors.New(startErrorMessage + " 2")},
+					&mockService{name: "dep3"},
+				},
+			},
+			state: newState(),
+		}
+
+		app.hooks = newHooks(app)
+
+		require.Panics(t, app.initServices)
+	})
+
+	t.Run("shutdown-hooks/success", func(t *testing.T) {
+		app := &App{
+			configured: Config{
+				Services: []Service{&mockService{name: "dep1"}},
+			},
+			state: newState(),
+		}
+
+		app.hooks = newHooks(app)
+
+		require.NotPanics(t, app.initServices)
+
+		type stringsLogger struct {
+			strings.Builder
+		}
+
+		var buf stringsLogger
+		log.SetOutput(&buf)
+
+		app.Hooks().executeOnPostShutdownHooks(nil)
+
+		require.NotContains(t, buf.String(), "failed to call post shutdown hook:")
+	})
+
+	t.Run("shutdown-hooks/error", func(t *testing.T) {
+		app := &App{
+			configured: Config{
+				Services: []Service{
+					&mockService{name: "dep1"},
+					&mockService{name: "dep2", terminateError: errors.New(terminateErrorMessage + " 2")},
+				},
+			},
+			state: newState(),
+		}
+
+		app.hooks = newHooks(app)
+
+		require.NotPanics(t, app.initServices)
+
+		type stringsLogger struct {
+			strings.Builder
+		}
+
+		var buf stringsLogger
+		log.SetOutput(&buf)
+
+		app.Hooks().executeOnPostShutdownHooks(nil)
+
+		require.Contains(t, buf.String(), "failed to shutdown services: service dep2 terminate: terminate error 2")
 	})
 }
 
