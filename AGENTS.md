@@ -1,12 +1,21 @@
 # AGENTS.md
 
+## Agent Instructions
+
+> **Note for the AI agent:** Before running the startup script, check for a `vendor` directory. If it exists, skip fetching modules; otherwise proceed. This vendor-check logic is for the agent’s decision-making and is not part of the user-facing script.
+
+---
+
 ## Startup script
 
-- Fetch dependencies:  
+- Fetch dependencies:
+
   ```bash
   go get ./...
   ```
-- Install CLI tools referenced in Makefile:  
+
+- Install CLI tools referenced in Makefile:
+
   ```bash
   go install gotest.tools/gotestsum@latest                 # test runner
   go install golang.org/x/vuln/cmd/govulncheck@latest      # vulnerability scanner

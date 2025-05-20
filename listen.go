@@ -383,6 +383,8 @@ func (app *App[TCtx]) startupMessage(addr string, isTLS bool, pids string, cfg L
 		fmt.Fprintf(out, "%sINFO%s Application name: \t\t%s%s%s\n", colors.Green, colors.Reset, colors.Blue, app.config.AppName, colors.Reset)
 	}
 
+	app.logServices(app.servicesStartupCtx(), out, colors)
+
 	fmt.Fprintf(out,
 		"%sINFO%s Total handlers count: \t%s%s%s\n",
 		colors.Green, colors.Reset, colors.Blue, strconv.Itoa(int(app.handlersCount)), colors.Reset)
