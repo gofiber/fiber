@@ -1315,21 +1315,17 @@ func Test_NewError_Format(t *testing.T) {
 	t.Parallel()
 
 	type args []any
-	def := func(code int) string {
-		return utils.StatusMessage(code)
-	}
-
 	tests := []struct {
-		code int
 		in   args
-		name string
-		want string
+    	name string
+    	want string
+    	code int
 	}{
 		{
 			name: "no-args → default text",
 			code: StatusNotFound,
 			in:   nil,
-			want: def(StatusNotFound),
+			want: utils.StatusMessage(StatusNotFound),
 		},
 		{
 			name: "single-string arg overrides",

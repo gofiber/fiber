@@ -886,24 +886,24 @@ func (e *Error) Error() string {
 func NewError(code int, message ...any) *Error {
 	msg := utils.StatusMessage(code)
 
-    switch len(message) {
-    case 0:
-        // nothing to override
-    case 1:
-        // One argument → treat it like fmt.Sprint(arg)
-        msg = fmt.Sprint(message[0])
-    default:
-        // Two or more → first must be a format string.
-        if format, ok := message[0].(string); ok {
-            msg = fmt.Sprintf(format, message[1:]...)
-        } else {
-            // If the first arg isn’t a string, fall back gracefully
-            // instead of panicking on the type assertion.
-            msg = fmt.Sprint(message[0])
-        }
-    }
+	switch len(message) {
+	case 0:
+		// nothing to override
+	case 1:
+		// One argument → treat it like fmt.Sprint(arg)
+		msg = fmt.Sprint(message[0])
+	default:
+		// Two or more → first must be a format string.
+		if format, ok := message[0].(string); ok {
+			msg = fmt.Sprintf(format, message[1:]...)
+		} else {
+			// If the first arg isn’t a string, fall back gracefully
+			// instead of panicking on the type assertion.
+			msg = fmt.Sprint(message[0])
+		}
+	}
 
-    return &Error{Code: code, Message: msg}
+	return &Error{Code: code, Message: msg}
 }
 
 // Config returns the app config as value ( read-only ).
