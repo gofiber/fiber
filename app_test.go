@@ -1315,11 +1315,12 @@ func Test_NewError_Format(t *testing.T) {
 	t.Parallel()
 
 	type args []any
+
 	tests := []struct {
+		name string
+		want string
+		code int
 		in   args
-    	name string
-    	want string
-    	code int
 	}{
 		{
 			name: "no-args → default text",
