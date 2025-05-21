@@ -1267,7 +1267,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 
 		require.Equal(t, "myBoundary", req.Boundary())
 
-		resp, err := req.Post("http://exmaple.com")
+		resp, err := req.Post("http://example.com")
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode())
 
@@ -1356,7 +1356,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 				SetFileReader(io.NopCloser(strings.NewReader("world"))),
 			))
 
-		resp, err := req.Post("http://exmaple.com")
+		resp, err := req.Post("http://example.com")
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode())
 	})
