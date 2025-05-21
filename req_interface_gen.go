@@ -7,8 +7,9 @@ import (
 	"mime/multipart"
 )
 
-// Req
-type Req interface {
+// Req is a generic request interface bound to the context type T.
+// It exposes a subset of context request related methods.
+type Req[T any] interface {
 	Accepts(offers ...string) string
 	AcceptsCharsets(offers ...string) string
 	AcceptsEncodings(offers ...string) string
@@ -39,7 +40,7 @@ type Req interface {
 	Queries() map[string]string
 	Query(key string, defaultValue ...string) string
 	Range(size int) (Range, error)
-	Route() *Route
+	Route() *Route[T]
 	SaveFile(fileheader *multipart.FileHeader, path string) error
 	SaveFileToStorage(fileheader *multipart.FileHeader, path string, storage Storage) error
 	Secure() bool

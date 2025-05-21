@@ -50,10 +50,11 @@ const userContextKey contextKey = 0 // __local_user_context__
 // generation tool `go install github.com/vburenin/ifacemaker@975a95966976eeb2d4365a7fb236e274c54da64c`
 // https://github.com/vburenin/ifacemaker/blob/975a95966976eeb2d4365a7fb236e274c54da64c/ifacemaker.go#L14-L30
 //
-//go:generate ifacemaker --file ctx.go --struct DefaultCtx --iface Ctx --pkg fiber --output ctx_interface_gen.go --not-exported true --iface-comment "Ctx represents the Context which hold the HTTP request and response.\nIt has methods for the request query string, parameters, body, HTTP headers and so on."
+//go:generate ifacemaker --file ctx.go --struct DefaultCtx --iface CtxGeneric --pkg fiber --output ctx_interface.go --not-exported true --iface-comment "Ctx represents the Context which hold the HTTP request and response.\nIt has methods for the request query string, parameters, body, HTTP headers and so on."
+//go:generate go run ctx_interface_gen.go
 type DefaultCtx struct {
-	app           *App                 // Reference to *App
-	route         *Route               // Reference to *Route
+	app           *App[*DefaultCtx]    // Reference to *App
+	route         *Route[*DefaultCtx]  // Reference to *Route
 	fasthttp      *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	bind          *Bind                // Default bind reference
 	redirect      *Redirect            // Default redirect reference
@@ -71,6 +72,13 @@ type DefaultCtx struct {
 	indexHandler  int                  // Index of the current handler
 	methodInt     int                  // HTTP method INT equivalent
 	matched       bool                 // Non use route matched
+}
+
+// Ctx is the default context interface used by Fiber when no custom context is
+// provided. It exposes the methods defined by CtxGeneric specialized with
+// *DefaultCtx.
+type Ctx interface {
+	CtxGeneric[*DefaultCtx]
 }
 
 // SendFile defines configuration options when to transfer file with SendFile.
@@ -224,7 +232,7 @@ func (c *DefaultCtx) AcceptsLanguages(offers ...string) string {
 }
 
 // App returns the *App reference to the instance of the Fiber application
-func (c *DefaultCtx) App() *App {
+func (c *DefaultCtx) App() *App[*DefaultCtx] {
 	return c.app
 }
 
@@ -1045,11 +1053,6 @@ func (c *DefaultCtx) Next() error {
 	}
 
 	// Continue handler stack
-	if c.app.newCtxFunc != nil {
-		_, err := c.app.nextCustom(c)
-		return err
-	}
-
 	_, err := c.app.next(c)
 	return err
 }
@@ -1060,11 +1063,7 @@ func (c *DefaultCtx) RestartRouting() error {
 	var err error
 
 	c.indexRoute = -1
-	if c.app.newCtxFunc != nil {
-		_, err = c.app.nextCustom(c)
-	} else {
-		_, err = c.app.next(c)
-	}
+	_, err = c.app.next(c)
 	return err
 }
 
@@ -1466,7 +1465,7 @@ func (c *DefaultCtx) renderExtensions(bind any) {
 
 // Req returns a convenience type whose API is limited to operations
 // on the incoming request.
-func (c *DefaultCtx) Req() Req {
+func (c *DefaultCtx) Req() Req[*DefaultCtx] {
 	return c.req
 }
 
@@ -1477,10 +1476,10 @@ func (c *DefaultCtx) Res() Res {
 }
 
 // Route returns the matched Route struct.
-func (c *DefaultCtx) Route() *Route {
+func (c *DefaultCtx) Route() *Route[*DefaultCtx] {
 	if c.route == nil {
 		// Fallback for fasthttp error handler
-		return &Route{
+		return &Route[*DefaultCtx]{
 			path:     c.pathOriginal,
 			Path:     c.pathOriginal,
 			Method:   c.Method(),
@@ -1744,7 +1743,7 @@ func (c *DefaultCtx) Stale() bool {
 
 // Status sets the HTTP status for the response.
 // This method is chainable.
-func (c *DefaultCtx) Status(status int) Ctx {
+func (c *DefaultCtx) Status(status int) *DefaultCtx {
 	c.fasthttp.Response.SetStatusCode(status)
 	return c
 }
@@ -1789,7 +1788,7 @@ func (c *DefaultCtx) String() string {
 }
 
 // Type sets the Content-Type HTTP header to the MIME type specified by the file extension.
-func (c *DefaultCtx) Type(extension string, charset ...string) Ctx {
+func (c *DefaultCtx) Type(extension string, charset ...string) *DefaultCtx {
 	if len(charset) > 0 {
 		c.fasthttp.Response.Header.SetContentType(utils.GetMIME(extension) + "; charset=" + charset[0])
 	} else {
@@ -1987,7 +1986,7 @@ func (c *DefaultCtx) setMatched(matched bool) {
 	c.matched = matched
 }
 
-func (c *DefaultCtx) setRoute(route *Route) {
+func (c *DefaultCtx) setRoute(route *Route[*DefaultCtx]) {
 	c.route = route
 }
 
