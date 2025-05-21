@@ -1320,9 +1320,9 @@ func Test_NewError_Format(t *testing.T) {
 	}
 
 	tests := []struct {
-		name string
 		code int
 		in   args
+		name string
 		want string
 	}{
 		{
@@ -1370,7 +1370,6 @@ func Test_NewError_Format(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			e := NewError(tt.code, tt.in...)
