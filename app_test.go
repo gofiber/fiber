@@ -782,7 +782,6 @@ func Test_App_Order(t *testing.T) {
 	app.Get("/test", func(c Ctx) error {
 		_, err := c.Write([]byte("1"))
 		require.NoError(t, err)
-
 		return c.Next()
 	})
 
@@ -797,7 +796,7 @@ func Test_App_Order(t *testing.T) {
 		_, err := c.Write([]byte("3"))
 		require.NoError(t, err)
 
-		return nil
+		return c.SendStatus(StatusOK)
 	})
 
 	req := httptest.NewRequest(MethodGet, "/test", nil)
