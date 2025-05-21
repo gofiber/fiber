@@ -883,6 +883,8 @@ func (e *Error) Error() string {
 
 // NewError creates a new Error instance with an optional message.
 // Additional arguments are formatted using fmt.Sprintf when provided.
+// If the first argument in the message slice is not a string, the function
+// falls back to using fmt.Sprint on the first element to generate the message.
 func NewError(code int, message ...any) *Error {
 	msg := utils.StatusMessage(code)
 
