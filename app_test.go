@@ -1339,13 +1339,13 @@ func Test_NewError_Format(t *testing.T) {
 		},
 		{
 			name: "single non-string arg stringified",
-			code: StatusInternal,
+			code: StatusInternalServerError,
 			in:   args{errors.New("db down")},
 			want: "db down",
 		},
 		{
 			name: "single nil interface",
-			code: StatusInternal,
+			code: StatusInternalServerError,
 			in:   args{any(nil)},
 			want: "<nil>",
 		},
