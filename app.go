@@ -886,8 +886,6 @@ func (e *Error) Error() string {
 // If the first argument in the message slice is not a string, the function
 // falls back to using fmt.Sprint on the first element to generate the message.
 func NewError(code int, message ...any) *Error {
-	msg := utils.StatusMessage(code)
-
 	switch len(message) {
 	case 0:
 		// nothing to override
@@ -905,7 +903,7 @@ func NewError(code int, message ...any) *Error {
 		}
 	}
 
-	return &Error{Code: code, Message: msg}
+	return &Error{Code: code, Message: utils.StatusMessage(code)}
 }
 
 // Config returns the app config as value ( read-only ).
