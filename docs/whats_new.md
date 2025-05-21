@@ -302,7 +302,7 @@ Registering a subapp is now also possible via the [`Use`](./api/app#use) method 
 <summary>Example</summary>
 
 ```go
-// register mulitple prefixes
+// register multiple prefixes
 app.Use(["/v1", "/v2"], func(c fiber.Ctx) error {
     // Middleware for /v1 and /v2
     return c.Next()
@@ -1387,6 +1387,16 @@ app.Get("/define", func(c Ctx) error {  // Define a new route dynamically
 In this example, a new route is defined, and `RebuildTree()` is called to ensure the new route is registered and available.
 
 Note: Use this method with caution. It is **not** thread-safe and can be very performance-intensive. Therefore, it should be used sparingly and primarily in development mode. It should not be invoke concurrently.
+
+## RemoveRoute
+
+- **RemoveRoute**: Removes route by path
+
+- **RemoveRouteByName**: Removes route by name
+
+- **RemoveRouteFunc**: Removes route by a function having `*Route` parameter
+
+For more details, refer to the [app documentation](./api/app.md#removeroute):
 
 ### 🧠 Context
 

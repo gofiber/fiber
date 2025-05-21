@@ -19,7 +19,7 @@ app := fiber.New(fiber.Config{
     // Pass in Views Template Engine
     Views: engine,
 
-    // Default global path to search for views (can be overriden when calling Render())
+    // Default global path to search for views (can be overridden when calling Render())
     ViewsLayout: "layouts/main",
 
     // Enables/Disables access to `ctx.Locals()` entries in rendered views
