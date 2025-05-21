@@ -1310,6 +1310,13 @@ func Test_NewError(t *testing.T) {
 	require.Equal(t, "permission denied", e.Message)
 }
 
+func Test_NewError_Format(t *testing.T) {
+	t.Parallel()
+	e := NewError(StatusBadRequest, "invalid id %d", 10)
+	require.Equal(t, StatusBadRequest, e.Code)
+	require.Equal(t, "invalid id 10", e.Message)
+}
+
 // go test -run Test_Test_Timeout
 func Test_Test_Timeout(t *testing.T) {
 	t.Parallel()

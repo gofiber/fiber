@@ -881,14 +881,19 @@ func (e *Error) Error() string {
 	return e.Message
 }
 
-// NewError creates a new Error instance with an optional message
-func NewError(code int, message ...string) *Error {
+// NewError creates a new Error instance with an optional message.
+// Additional arguments are formatted using fmt.Sprintf when provided.
+func NewError(code int, message ...interface{}) *Error {
 	err := &Error{
 		Code:    code,
 		Message: utils.StatusMessage(code),
 	}
 	if len(message) > 0 {
-		err.Message = message[0]
+		if format, ok := message[0].(string); ok && len(message) > 1 {
+			err.Message = fmt.Sprintf(format, message[1:]...)
+		} else {
+			err.Message = fmt.Sprint(message[0])
+		}
 	}
 	return err
 }
