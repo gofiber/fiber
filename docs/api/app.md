@@ -524,7 +524,7 @@ func (app *App) NewCtxFunc(function func(app *App) CustomCtx)
 package main
 
 import (
-    "fmt"
+    "log"
 
     "github.com/gofiber/fiber/v3"
 )
@@ -771,20 +771,6 @@ If no methods are specified, the route will be removed for all HTTP methods defi
 func (app *App) RemoveRoute(path string, methods ...string)
 ```
 
-This method removes a route by name.
-If no methods are specified, the route will be removed for all HTTP methods defined in the app. To limit removal to specific methods, provide them as additional arguments.
-
-```go title="Signature"
-func (app *App) RemoveRouteByName(name string, methods ...string)
-```
-
-This method removes a route by function having `*Route` parameter.
-If no methods are specified, the route will be removed for all HTTP methods defined in the app. To limit removal to specific methods, provide them as additional arguments.
-
-```go title="Signature"
-func (app *App) RemoveRouteFunc(matchFunc func(r *Route) bool, methods ...string)
-```
-
 ```go title="Example"
 package main
 
@@ -822,4 +808,22 @@ func main() {
 
     log.Fatal(app.Listen(":3000"))
 }
+```
+
+## RemoveRouteByName
+
+This method removes a route by name.
+If no methods are specified, the route will be removed for all HTTP methods defined in the app. To limit removal to specific methods, provide them as additional arguments.
+
+```go title="Signature"
+func (app *App) RemoveRouteByName(name string, methods ...string)
+```
+
+## RemoveRouteFunc
+
+This method removes a route by function having `*Route` parameter.
+If no methods are specified, the route will be removed for all HTTP methods defined in the app. To limit removal to specific methods, provide them as additional arguments.
+
+```go title="Signature"
+func (app *App) RemoveRouteFunc(matchFunc func(r *Route) bool, methods ...string)
 ```
