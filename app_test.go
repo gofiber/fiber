@@ -1359,7 +1359,7 @@ func Test_NewError_Format(t *testing.T) {
 			name: "format string + excess args",
 			code: StatusBadRequest,
 			in:   args{"odd %d", 1, 2, 3},
-			want: "odd 1",
+			want: "odd 1%!(EXTRA int=2, int=3)",
 		},
 		{
 			name: "≥2 args but first not string",
