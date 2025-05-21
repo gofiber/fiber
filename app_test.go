@@ -1316,7 +1316,7 @@ func Test_NewError_Format(t *testing.T) {
 
 	type args []any
 
-	tests := []struct {
+	tests := []struct { //nolint:govet // fieldalignment: this struct is already optimally ordered
 		name string
 		want string
 		code int
