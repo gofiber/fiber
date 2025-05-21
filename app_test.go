@@ -1310,11 +1310,74 @@ func Test_NewError(t *testing.T) {
 	require.Equal(t, "permission denied", e.Message)
 }
 
+// go test -run Test_NewError_Format
 func Test_NewError_Format(t *testing.T) {
 	t.Parallel()
-	e := NewError(StatusBadRequest, "invalid id %d", 10)
-	require.Equal(t, StatusBadRequest, e.Code)
-	require.Equal(t, "invalid id 10", e.Message)
+
+	type args []any
+	def := func(code int) string {
+		return utils.StatusMessage(code)
+	}
+
+	tests := []struct {
+		name string
+		code int
+		in   args
+		want string
+	}{
+		{
+			name: "no-args → default text",
+			code: StatusNotFound,
+			in:   nil,
+			want: def(StatusNotFound),
+		},
+		{
+			name: "single-string arg overrides",
+			code: StatusBadRequest,
+			in:   args{"custom bad request"},
+			want: "custom bad request",
+		},
+		{
+			name: "single non-string arg stringified",
+			code: StatusInternal,
+			in:   args{errors.New("db down")},
+			want: "db down",
+		},
+		{
+			name: "single nil interface",
+			code: StatusInternal,
+			in:   args{any(nil)},
+			want: "<nil>",
+		},
+		{
+			name: "format string + args",
+			code: StatusBadRequest,
+			in:   args{"invalid id %d", 10},
+			want: "invalid id 10",
+		},
+		{
+			name: "format string + excess args",
+			code: StatusBadRequest,
+			in:   args{"odd %d", 1, 2, 3},
+			want: "odd 1",
+		},
+		{
+			name: "≥2 args but first not string",
+			code: StatusBadRequest,
+			in:   args{errors.New("boom"), 42},
+			want: "boom",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			e := NewError(tt.code, tt.in...)
+			require.Equal(t, tt.code, e.Code)
+			require.Equal(t, tt.want, e.Message)
+		})
+	}
 }
 
 // go test -run Test_Test_Timeout
