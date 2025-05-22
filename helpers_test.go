@@ -515,21 +515,21 @@ func Test_Utils_Parse_Address(t *testing.T) {
 		addr, host, port string
 	}{
 		// ――― existing cases ―――
-		{addr: "[::1]:3000",        host: "[::1]",        port: "3000"},
-		{addr: "127.0.0.1:3000",    host: "127.0.0.1",    port: "3000"},
-		{addr: "[::1]",             host: "[::1]",        port: ""},
-		{addr: "2001:db8::1",       host: "2001:db8::1",  port: ""},
+		{addr: "[::1]:3000", host: "[::1]", port: "3000"},
+		{addr: "127.0.0.1:3000", host: "127.0.0.1", port: "3000"},
+		{addr: "[::1]", host: "[::1]", port: ""},
+		{addr: "2001:db8::1", host: "2001:db8::1", port: ""},
 		{addr: "/path/to/unix/socket", host: "/path/to/unix/socket", port: ""},
 		// ――― new IPv4 / hostname cases ―――
-		{addr: "127.0.0.1",         host: "127.0.0.1",    port: ""},
-		{addr: "localhost:8080",    host: "localhost",    port: "8080"},
-		{addr: "example.com",       host: "example.com",  port: ""},
+		{addr: "127.0.0.1", host: "127.0.0.1", port: ""},
+		{addr: "localhost:8080", host: "localhost", port: "8080"},
+		{addr: "example.com", host: "example.com", port: ""},
 		// ――― new IPv6 ­cases ―――
 		{addr: "[fe80::1%lo0]:1234", host: "[fe80::1%lo0]", port: "1234"}, // link-local with zone & port
-		{addr: "[fe80::1%lo0]",     host: "[fe80::1%lo0]", port: ""},      // link-local with zone, no port
+		{addr: "[fe80::1%lo0]", host: "[fe80::1%lo0]", port: ""}, // link-local with zone, no port
 		// ――― “bare-port” & empty cases ―――
-		{addr: ":9090",             host: "",             port: "9090"},   // useful when only port is supplied
-		{addr: "",                  host: "",             port: ""},       // zero-value / unset address
+		{addr: ":9090", host: "", port: "9090"}, // useful when only port is supplied
+		{addr: "", host: "", port: ""}, // zero-value / unset address
 	}
 
 	for _, c := range testCases {
