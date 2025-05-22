@@ -48,7 +48,7 @@ So please be careful to write routes with variable parameters after the routes t
 
 ## Parameters
 
-Route parameters are dynamic elements in the route, which are **named** or **not named segments**. This segments that are used to capture the values specified at their position in the URL. The obtained values can be retrieved using the [Params](https://fiber.wiki/context#params) function, with the name of the route parameter specified in the path as their respective keys or for unnamed parameters the character\(\*, +\) and the counter of this.
+Route parameters are dynamic elements in the route, which are **named** or **not named segments**. These segments are used to capture the values specified at their position in the URL. The obtained values can be retrieved using the [Params](https://fiber.wiki/context#params) function, with the name of the route parameter specified in the path as their respective keys or, for unnamed parameters, the character\(\*, +\) and the counter of this.
 
 The characters :, +, and \* are characters that introduce a parameter.
 
@@ -56,7 +56,7 @@ Greedy parameters are indicated by wildcard\(\*\) or plus\(+\) signs.
 
 The routing also offers the possibility to use optional parameters, for the named parameters these are marked with a final "?", unlike the plus sign which is not optional, you can use the wildcard character for a parameter range which is optional and greedy.
 
-### Example of define routes with route parameters
+### Example of defining routes with route parameters
 
 ```go
 // Parameters

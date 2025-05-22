@@ -309,7 +309,7 @@ func (app *App) printMessages(cfg ListenConfig, ln net.Listener) {
 	}
 }
 
-// prepareListenData create an slice of ListenData
+// prepareListenData creates a slice of ListenData
 func (*App) prepareListenData(addr string, isTLS bool, cfg ListenConfig) ListenData { //revive:disable-line:flag-parameter // Accepting a bool param named isTLS if fine here
 	host, port := parseAddr(addr)
 	if host == "" {
@@ -382,6 +382,8 @@ func (app *App) startupMessage(addr string, isTLS bool, pids string, cfg ListenC
 	if app.config.AppName != "" {
 		fmt.Fprintf(out, "%sINFO%s Application name: \t\t%s%s%s\n", colors.Green, colors.Reset, colors.Blue, app.config.AppName, colors.Reset)
 	}
+
+	app.logServices(app.servicesStartupCtx(), out, colors)
 
 	fmt.Fprintf(out,
 		"%sINFO%s Total handlers count: \t%s%s%s\n",

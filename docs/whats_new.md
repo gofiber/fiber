@@ -24,6 +24,7 @@ Here's a quick overview of the changes in Fiber `v3`:
 - [🔄️ Redirect](#-redirect)
 - [🌎 Client package](#-client-package)
 - [🧰 Generic functions](#-generic-functions)
+- [🥡 Services](#-services)
 - [📃 Log](#-log)
 - [🧬 Middlewares](#-middlewares)
   - [Important Change for Accessing Middleware Data](#important-change-for-accessing-middleware-data)
@@ -301,7 +302,7 @@ Registering a subapp is now also possible via the [`Use`](./api/app#use) method 
 <summary>Example</summary>
 
 ```go
-// register mulitple prefixes
+// register multiple prefixes
 app.Use(["/v1", "/v2"], func(c fiber.Ctx) error {
     // Middleware for /v1 and /v2
     return c.Next()
@@ -798,6 +799,91 @@ curl -H "User-Agent: CustomAgent" "http://localhost:3000/header"
 
 curl "http://localhost:3000/header"
 # Output: "Unknown"
+```
+
+</details>
+
+## 🥡 Services
+
+Fiber v3 introduces a new feature called Services. This feature allows developers to quickly start services that the application depends on, removing the need to manually provision things like database servers, caches, or message brokers, to name a few.
+
+### Example
+
+<details>
+<summary>Adding a service</summary>
+
+```go
+package main
+
+import (
+    "strconv"
+    "github.com/gofiber/fiber/v3"
+)
+
+type myService struct {
+    img string
+    // ...
+}
+
+// Start initializes and starts the service. It implements the [fiber.Service] interface.
+func (s *myService) Start(ctx context.Context) error {
+    // start the service
+    return nil
+}
+
+// String returns a string representation of the service.
+// It is used to print a human-readable name of the service in the startup message.
+// It implements the [fiber.Service] interface.
+func (s *myService) String() string {
+    return s.img
+}
+
+// State returns the current state of the service.
+// It implements the [fiber.Service] interface.
+func (s *myService) State(ctx context.Context) (string, error) {
+    return "running", nil
+}
+
+// Terminate stops and removes the service. It implements the [fiber.Service] interface.
+func (s *myService) Terminate(ctx context.Context) error {
+    // stop the service
+    return nil
+}
+
+func main() {
+    cfg := &fiber.Config{}
+
+    cfg.Services = append(cfg.Services, &myService{img: "postgres:latest"})
+    cfg.Services = append(cfg.Services, &myService{img: "redis:latest"})
+
+    app := fiber.New(*cfg)
+
+    // ...
+}
+```
+
+</details>
+
+<details>
+<summary>Output</summary>
+
+```sh
+$ go run . -v
+
+    _______ __             
+   / ____(_) /_  ___  _____
+  / /_  / / __ \/ _ \/ ___/
+ / __/ / / /_/ /  __/ /    
+/_/   /_/_.___/\___/_/          v3.0.0
+--------------------------------------------------
+INFO Server started on:         http://127.0.0.1:3000 (bound on host 0.0.0.0 and port 3000)
+INFO Services:     2
+INFO   🥡 [ RUNNING ] postgres:latest
+INFO   🥡 [ RUNNING ] redis:latest
+INFO Total handlers count:      2
+INFO Prefork:                   Disabled
+INFO PID:                       12279
+INFO Total process count:       1
 ```
 
 </details>
@@ -1301,6 +1387,16 @@ app.Get("/define", func(c Ctx) error {  // Define a new route dynamically
 In this example, a new route is defined, and `RebuildTree()` is called to ensure the new route is registered and available.
 
 Note: Use this method with caution. It is **not** thread-safe and can be very performance-intensive. Therefore, it should be used sparingly and primarily in development mode. It should not be invoke concurrently.
+
+## RemoveRoute
+
+- **RemoveRoute**: Removes route by path
+
+- **RemoveRouteByName**: Removes route by name
+
+- **RemoveRouteFunc**: Removes route by a function having `*Route` parameter
+
+For more details, refer to the [app documentation](./api/app.md#removeroute):
 
 ### 🧠 Context
 

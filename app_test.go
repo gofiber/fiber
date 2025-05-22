@@ -529,7 +529,7 @@ func Test_App_Use_CaseSensitive(t *testing.T) {
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
 
-	// right letters in the requrested route -> 200
+	// right letters in the requested route -> 200
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/abc", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
@@ -565,7 +565,7 @@ func Test_App_Not_Use_StrictRouting(t *testing.T) {
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
-	// right path in the requrested route -> 200
+	// right path in the requested route -> 200
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/abc", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
@@ -575,7 +575,7 @@ func Test_App_Not_Use_StrictRouting(t *testing.T) {
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
-	// right path with group in the requrested route -> 200
+	// right path with group in the requested route -> 200
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo/", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
@@ -645,7 +645,7 @@ func Test_App_Use_StrictRouting(t *testing.T) {
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
 
-	// right path in the requrested route -> 200
+	// right path in the requested route -> 200
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/abc", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
@@ -655,7 +655,7 @@ func Test_App_Use_StrictRouting(t *testing.T) {
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
 
-	// right path with group in the requrested route -> 200
+	// right path with group in the requested route -> 200
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo/", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
@@ -782,7 +782,6 @@ func Test_App_Order(t *testing.T) {
 	app.Get("/test", func(c Ctx) error {
 		_, err := c.Write([]byte("1"))
 		require.NoError(t, err)
-
 		return c.Next()
 	})
 
@@ -797,7 +796,7 @@ func Test_App_Order(t *testing.T) {
 		_, err := c.Write([]byte("3"))
 		require.NoError(t, err)
 
-		return nil
+		return c.SendStatus(StatusOK)
 	})
 
 	req := httptest.NewRequest(MethodGet, "/test", nil)

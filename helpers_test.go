@@ -511,18 +511,28 @@ func Benchmark_Utils_Unescape(b *testing.B) {
 
 func Test_Utils_Parse_Address(t *testing.T) {
 	t.Parallel()
+
 	testCases := []struct {
 		addr, host, port string
 	}{
 		{addr: "[::1]:3000", host: "[::1]", port: "3000"},
 		{addr: "127.0.0.1:3000", host: "127.0.0.1", port: "3000"},
+		{addr: "[::1]", host: "[::1]", port: ""},
+		{addr: "2001:db8::1", host: "2001:db8::1", port: ""},
 		{addr: "/path/to/unix/socket", host: "/path/to/unix/socket", port: ""},
+		{addr: "127.0.0.1", host: "127.0.0.1", port: ""},
+		{addr: "localhost:8080", host: "localhost", port: "8080"},
+		{addr: "example.com", host: "example.com", port: ""},
+		{addr: "[fe80::1%lo0]:1234", host: "[fe80::1%lo0]", port: "1234"},
+		{addr: "[fe80::1%lo0]", host: "[fe80::1%lo0]", port: ""},
+		{addr: ":9090", host: "", port: "9090"},
+		{addr: "", host: "", port: ""},
 	}
 
 	for _, c := range testCases {
 		host, port := parseAddr(c.addr)
-		require.Equal(t, c.host, host, "addr host")
-		require.Equal(t, c.port, port, "addr port")
+		require.Equal(t, c.host, host, "addr host: %q", c.addr)
+		require.Equal(t, c.port, port, "addr port: %q", c.addr)
 	}
 }
 

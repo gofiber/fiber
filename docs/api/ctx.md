@@ -1638,7 +1638,7 @@ app.Use(func(c fiber.Ctx) error {
         return c.Writef("(got error %v)", err)
     }
 
-    // No errors occured
+    // No errors occurred
     return nil
 })
 
