@@ -70,6 +70,7 @@ func createRedirectServer(t *testing.T) string {
 
 	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
 	require.NoError(t, err)
+	t.Cleanup(func() { ln.Close() })
 	addr = ln.Addr().String()
 
 	startServer(app, ln)
