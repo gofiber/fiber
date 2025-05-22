@@ -524,6 +524,7 @@ func Test_Utils_Parse_Address(t *testing.T) {
 		{addr: "localhost:8080", host: "localhost", port: "8080"},
 		{addr: "example.com", host: "example.com", port: ""},
 		// IPv6 ­cases
+		// IPv6 cases
 		{addr: "[fe80::1%lo0]:1234", host: "[fe80::1%lo0]", port: "1234"}, // link-local with zone & port
 		{addr: "[fe80::1%lo0]", host: "[fe80::1%lo0]", port: ""}, // link-local with zone, no port
 		// “bare-port” & empty cases
