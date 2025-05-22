@@ -523,10 +523,10 @@ func Test_Utils_Parse_Address(t *testing.T) {
 		{addr: "127.0.0.1", host: "127.0.0.1", port: ""},
 		{addr: "localhost:8080", host: "localhost", port: "8080"},
 		{addr: "example.com", host: "example.com", port: ""},
-		{addr: "[fe80::1%lo0]:1234", host: "[fe80::1%lo0]", port: "1234"}, // link-local with zone & port
-		{addr: "[fe80::1%lo0]", host: "[fe80::1%lo0]", port: ""}, // link-local with zone, no port
-		{addr: ":9090", host: "", port: "9090"}, // useful when only port is supplied
-		{addr: "", host: "", port: ""},          // zero-value / unset address
+		{addr: "[fe80::1%lo0]:1234", host: "[fe80::1%lo0]", port: "1234"},
+		{addr: "[fe80::1%lo0]", host: "[fe80::1%lo0]", port: ""},
+		{addr: ":9090", host: "", port: "9090"},
+		{addr: "", host: "", port: ""},
 	}
 
 	for _, c := range testCases {
