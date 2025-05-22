@@ -55,7 +55,7 @@ func createProxyTestServerIPv6(t *testing.T, handler fiber.Handler) (*fiber.App,
 	return createProxyTestServer(t, handler, fiber.NetworkTCP6, "[::1]:0")
 }
 
-func createRedirectServer(t *testing.T) (*fiber.App, string) {
+func createRedirectServer(t *testing.T) string {
 	t.Helper()
 	app := fiber.New()
 
@@ -74,7 +74,7 @@ func createRedirectServer(t *testing.T) (*fiber.App, string) {
 
 	startServer(app, ln)
 
-	return app, addr
+	return addr
 }
 
 // go test -run Test_Proxy_Empty_Host
@@ -549,8 +549,7 @@ func Test_Proxy_Do_WithRealURL(t *testing.T) {
 func Test_Proxy_Do_WithRedirect(t *testing.T) {
 	t.Parallel()
 
-	_, addr := createRedirectServer(t)
-
+	addr := createRedirectServer(t)
 	app := fiber.New()
 	app.Get("/test", func(c fiber.Ctx) error {
 		return Do(c, "http://"+addr)
@@ -571,8 +570,7 @@ func Test_Proxy_Do_WithRedirect(t *testing.T) {
 func Test_Proxy_DoRedirects_RestoreOriginalURL(t *testing.T) {
 	t.Parallel()
 
-	_, addr := createRedirectServer(t)
-
+	addr := createRedirectServer(t)
 	app := fiber.New()
 	app.Get("/test", func(c fiber.Ctx) error {
 		return DoRedirects(c, "http://"+addr, 1)
@@ -594,8 +592,7 @@ func Test_Proxy_DoRedirects_RestoreOriginalURL(t *testing.T) {
 func Test_Proxy_DoRedirects_TooManyRedirects(t *testing.T) {
 	t.Parallel()
 
-	_, addr := createRedirectServer(t)
-
+	addr := createRedirectServer(t)
 	app := fiber.New()
 	app.Get("/test", func(c fiber.Ctx) error {
 		return DoRedirects(c, "http://"+addr, 0)
