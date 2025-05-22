@@ -567,13 +567,6 @@ func (app *App) isEtagStale(etag string, noneMatchBytes []byte) bool {
 }
 
 func parseAddr(raw string) (string, string) { //nolint:revive // Returns (host, port)
-	if i := strings.LastIndex(raw, ":"); i != -1 {
-		return raw[:i], raw[i+1:]
-	}
-	return raw, ""
-}
-
-func parseAddr(raw string) (string, string) { //nolint:revive // Returns (host, port)
 	if raw == "" {
 		return "", ""
 	}
