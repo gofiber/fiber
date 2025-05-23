@@ -5215,6 +5215,18 @@ func Test_Ctx_GetReqHeaders(t *testing.T) {
 	}, c.GetReqHeaders())
 }
 
+func Test_Ctx_Set_SanitizeHeaderValue(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Set("X-Test", "foo\r\nbar: bad")
+
+	headerVal := string(c.Response().Header.Peek("X-Test"))
+	require.Equal(t, "foo  bar: bad", headerVal)
+}
+
 func Benchmark_Ctx_GetReqHeaders(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
