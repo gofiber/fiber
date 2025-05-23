@@ -11,7 +11,7 @@
 - Fetch dependencies:
 
   ```bash
-  go get ./...
+  go mod tidy && go mod download && go mod vendor
   ```
 
 - Install CLI tools referenced in Makefile:
