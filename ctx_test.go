@@ -5474,11 +5474,11 @@ func Test_GenericParseTypeInt64s(t *testing.T) {
 		},
 		{
 			value: int64(math.MaxInt64),
-			str:   strconv.Itoa(math.MaxInt64),
+			str:   strconv.FormatInt(math.MaxInt64, 10),
 		},
 		{
 			value: int64(math.MinInt64),
-			str:   strconv.Itoa(math.MinInt64),
+			str:   strconv.FormatInt(math.MinInt64, 10),
 		},
 	}
 
@@ -5664,7 +5664,7 @@ func Test_GenericParseTypeUint32s(t *testing.T) {
 		},
 		{
 			value: uint32(math.MaxUint32),
-			str:   strconv.Itoa(math.MaxUint32),
+			str:   strconv.FormatUint(uint64(math.MaxUint32), 10),
 		},
 	}
 
