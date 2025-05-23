@@ -177,7 +177,7 @@ func Test_Proxy_Balancer_WithTlsConfig(t *testing.T) {
 	// disable certificate verification in Balancer
 	app.Use(Balancer(Config{
 		Servers:   []string{addr},
-		TlsConfig: clientTLSConf,
+		TLSConfig: clientTLSConf,
 	}))
 
 	startServer(app, ln)

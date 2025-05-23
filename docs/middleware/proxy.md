@@ -43,15 +43,14 @@ import (
 After you initiate your Fiber app, you can use the following possibilities:
 
 ```go
-// if target https site uses a self-signed certificate, you should
-// call WithTLSConfig before Do and Forward
-proxy.WithTLSConfig(&tls.Config{
-    InsecureSkipVerify: true,
-})
 // if you need to use global self-custom client, you should use proxy.WithClient.
 proxy.WithClient(&fasthttp.Client{
     NoDefaultUserAgentHeader: true, 
     DisablePathNormalizing:   true,
+    // if target https site uses a self-signed certificate, you should
+    TLSConfig:                &tls.Config{
+        InsecureSkipVerify: true,
+    },
 })
 
 // Forward to url
@@ -164,7 +163,7 @@ app.Use(proxy.Balancer(proxy.Config{
 | Timeout         | `time.Duration`                                | Timeout is the request timeout used when calling the proxy client.                                                                                                                                                                 | 1 second        |
 | ReadBufferSize  | `int`                                          | Per-connection buffer size for requests' reading. This also limits the maximum header size. Increase this buffer if your clients send multi-KB RequestURIs and/or multi-KB headers (for example, BIG cookies).                     | (Not specified) |
 | WriteBufferSize | `int`                                          | Per-connection buffer size for responses' writing.                                                                                                                                                                                 | (Not specified) |
-| TlsConfig       | `*tls.Config` (or `*fasthttp.TLSConfig` in v3) | TLS config for the HTTP client.                                                                                                                                                                                                    | `nil`           |
+| TLSConfig       | `*tls.Config` (or `*fasthttp.TLSConfig` in v3) | TLS config for the HTTP client.                                                                                                                                                                                                    | `nil`           |
 | DialDualStack   | `bool`                                         | Client will attempt to connect to both IPv4 and IPv6 host addresses if set to true.                                                                                                                                                | `false`         |
 | Client          | `*fasthttp.LBClient`                           | Client is a custom client when client config is complex.                                                                                                                                                                           | `nil`           |
 
