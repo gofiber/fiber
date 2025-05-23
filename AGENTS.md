@@ -2,7 +2,7 @@
 
 ## Agent Instructions
 
-> **Note for the AI agent:** Before running the startup script, check for a `vendor` directory. If it exists, skip fetching modules; otherwise proceed. This vendor-check logic is for the agent’s decision-making and is not part of the user-facing script.
+> **Note for the AI agent:** Before running the startup script, check with `go list -m -mod=readonly all` whether the dependencies already exist. If it exists, skip fetching modules; otherwise proceed. This dependency-check logic is for the agent’s decision-making and is not part of the user-facing script.
 
 ---
 
