@@ -34,14 +34,16 @@ func Test_CSRF(t *testing.T) {
 		h(ctx)
 
 		// Without CSRF cookie
-		ctx.Request.Reset()
+		ctx.Request.Header.Reset()
+		ctx.Request.ResetBody()
 		ctx.Response.Reset()
 		ctx.Request.Header.SetMethod(fiber.MethodPost)
 		h(ctx)
 		require.Equal(t, 403, ctx.Response.StatusCode())
 
 		// Invalid CSRF token
-		ctx.Request.Reset()
+		ctx.Request.Header.Reset()
+		ctx.Request.ResetBody()
 		ctx.Response.Reset()
 		ctx.Request.Header.SetMethod(fiber.MethodPost)
 		ctx.Request.Header.Set(HeaderName, "johndoe")
@@ -49,7 +51,8 @@ func Test_CSRF(t *testing.T) {
 		require.Equal(t, 403, ctx.Response.StatusCode())
 
 		// Valid CSRF token
-		ctx.Request.Reset()
+		ctx.Request.Header.Reset()
+		ctx.Request.ResetBody()
 		ctx.Response.Reset()
 		ctx.Request.Header.SetMethod(method)
 		h(ctx)
@@ -193,12 +196,20 @@ func Test_CSRF_WithSession_Middleware(t *testing.T) {
 	// Generate CSRF token and session_id
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
 	h(ctx)
-	csrfTokenParts := strings.Split(string(ctx.Response.Header.Peek(fiber.HeaderSetCookie)), ";")
-	require.Greater(t, len(csrfTokenParts), 2)
-	csrfToken := strings.Split(csrfTokenParts[0], "=")[1]
+
+	csrfCookie := fasthttp.AcquireCookie()
+	csrfCookie.SetKey(ConfigDefault.CookieName)
+	require.True(t, ctx.Response.Header.Cookie(csrfCookie))
+	csrfToken := string(csrfCookie.Value())
 	require.NotEmpty(t, csrfToken)
-	sessionID := strings.Split(csrfTokenParts[1], "=")[1]
+	fasthttp.ReleaseCookie(csrfCookie)
+
+	sessionCookie := fasthttp.AcquireCookie()
+	sessionCookie.SetKey("session_id")
+	require.True(t, ctx.Response.Header.Cookie(sessionCookie))
+	sessionID := string(sessionCookie.Value())
 	require.NotEmpty(t, sessionID)
+	fasthttp.ReleaseCookie(sessionCookie)
 
 	// Use the CSRF token and session_id
 	ctx.Request.Reset()
@@ -1087,7 +1098,8 @@ func Test_CSRF_DeleteToken(t *testing.T) {
 	ctx := &fasthttp.RequestCtx{}
 
 	// DeleteToken after token generation and remove the cookie
-	ctx.Request.Reset()
+	ctx.Request.Header.Reset()
+	ctx.Request.ResetBody()
 	ctx.Response.Reset()
 	ctx.Request.Header.Set(HeaderName, "")
 	handler := HandlerFromContext(app.AcquireCtx(ctx))
@@ -1105,7 +1117,8 @@ func Test_CSRF_DeleteToken(t *testing.T) {
 	token = strings.Split(strings.Split(token, ";")[0], "=")[1]
 
 	// Delete the CSRF token
-	ctx.Request.Reset()
+	ctx.Request.Header.Reset()
+	ctx.Request.ResetBody()
 	ctx.Response.Reset()
 	ctx.Request.Header.SetMethod(fiber.MethodPost)
 	ctx.Request.Header.Set(HeaderName, token)
@@ -1118,7 +1131,8 @@ func Test_CSRF_DeleteToken(t *testing.T) {
 	}
 	h(ctx)
 
-	ctx.Request.Reset()
+	ctx.Request.Header.Reset()
+	ctx.Request.ResetBody()
 	ctx.Response.Reset()
 	ctx.Request.Header.SetMethod(fiber.MethodPost)
 	ctx.Request.Header.Set(HeaderName, token)
