@@ -109,9 +109,7 @@ func (c *customCtx) Params(key string, defaultValue ...string) string { //revive
 func Test_Ctx_CustomCtx(t *testing.T) {
 	t.Parallel()
 
-	app := New()
-
-	app.NewCtxFunc(func(app *App) CustomCtx {
+	app := NewWithCustomCtx(func(app *App) CustomCtx {
 		return &customCtx{
 			DefaultCtx: *NewDefaultCtx(app),
 		}
@@ -133,15 +131,12 @@ func Test_Ctx_CustomCtx_and_Method(t *testing.T) {
 
 	// Create app with custom request methods
 	methods := append(DefaultMethods, "JOHN") //nolint:gocritic // We want a new slice here
-	app := New(Config{
-		RequestMethods: methods,
-	})
-
-	// Create custom context
-	app.NewCtxFunc(func(app *App) CustomCtx {
+	app := NewWithCustomCtx(func(app *App) CustomCtx {
 		return &customCtx{
 			DefaultCtx: *NewDefaultCtx(app),
 		}
+	}, Config{
+		RequestMethods: methods,
 	})
 
 	// Add route with custom method
