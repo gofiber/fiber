@@ -89,6 +89,11 @@ type Config struct {
 	// Default: false
 	DisableColors bool
 
+	// ForceColors forces the colors to be enabled even if the output is not a terminal
+	//
+	// Default: false
+	ForceColors bool
+
 	enableColors  bool
 	enableLatency bool
 }
@@ -174,7 +179,7 @@ func configDefault(config ...Config) Config {
 	}
 
 	// Enable colors if no custom format or output is given
-	if !cfg.DisableColors && cfg.Stream == ConfigDefault.Stream {
+	if (!cfg.DisableColors && cfg.Stream == ConfigDefault.Stream) || cfg.ForceColors {
 		cfg.enableColors = true
 	}
 

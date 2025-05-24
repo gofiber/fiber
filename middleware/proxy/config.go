@@ -26,10 +26,10 @@ type Config struct {
 	ModifyResponse fiber.Handler
 
 	// tls config for the http client.
-	TlsConfig *tls.Config //nolint:stylecheck,revive // TODO: Rename to "TLSConfig" in v3
+	TLSConfig *tls.Config
 
 	// Client is custom client when client config is complex.
-	// Note that Servers, Timeout, WriteBufferSize, ReadBufferSize, TlsConfig
+	// Note that Servers, Timeout, WriteBufferSize, ReadBufferSize, TLSConfig
 	// and DialDualStack will not be used if the client are set.
 	Client *fasthttp.LBClient
 

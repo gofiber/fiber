@@ -4,11 +4,11 @@ title: 🗂️ State Management
 sidebar_position: 8
 ---
 
-The State Management provides a global key–value store for managing application dependencies and runtime data. This store is shared across the entire application and remains consistent between requests. It is implemented using Go’s `sync.Map` to ensure safe concurrent access.
+The State Management provides a global key–value store for managing application dependencies and runtime data. This store is shared across the entire application and remains consistent between requests, and it's used to store [Services](../api/services). You can retrieve those Services from the global state using the `GetService` or `MustGetService` functions.
 
 ## State Type
 
-`State` is a key–value store built on top of `sync.Map`. It allows storage and retrieval of dependencies and configurations in a Fiber application as well as thread–safe access to runtime data.
+`State` is a key–value store built on top of `sync.Map` to ensure safe concurrent access. It allows storage and retrieval of dependencies and configurations in a Fiber application as well as thread–safe access to runtime data.
 
 ### Definition
 
@@ -101,7 +101,7 @@ app.State().Delete("obsoleteKey")
 
 ### Reset
 
-Reset removes all keys from the State.
+Reset removes all keys from the State, including those related to Services.
 
 ```go title="Signature"
 func (s *State) Reset()
@@ -467,6 +467,36 @@ func GetStateWithDefault[T any](s *State, key string, defaultVal T) T
 // Retrieve a value with a default fallback.
 requestCount := GetStateWithDefault[int](app.State(), "requestCount", 0)
 fmt.Printf("Request Count: %d\n", requestCount)
+```
+
+### GetService
+
+GetService retrieves a Service from the State and casts it to the desired type. It returns the cast value and a boolean indicating if the cast was successful.
+
+```go title="Signature"
+func GetService[T Service](s *State, key string) (T, bool) {
+```
+
+**Usage Example:**
+
+```go
+if srv, ok := fiber.GetService[*redisService](app.State(), "someService")
+    fmt.Printf("Some Service: %s\n", srv.String())
+}
+```
+
+### MustGetService
+
+MustGetService retrieves a Service from the State and casts it to the desired type. It panics if the key is not found or if the type assertion fails.
+
+```go title="Signature"
+func MustGetService[T Service](s *State, key string) T
+```
+
+**Usage Example:**
+
+```go
+srv := fiber.MustGetService[*SomeService](app.State(), "someService")
 ```
 
 ## Comprehensive Examples

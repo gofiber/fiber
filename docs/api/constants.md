@@ -2,7 +2,7 @@
 id: constants
 title: 📋 Constants
 description: Some constants for Fiber.
-sidebar_position: 9
+sidebar_position: 10
 ---
 
 ### HTTP methods were copied from net/http

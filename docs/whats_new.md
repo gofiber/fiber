@@ -24,15 +24,22 @@ Here's a quick overview of the changes in Fiber `v3`:
 - [🔄️ Redirect](#-redirect)
 - [🌎 Client package](#-client-package)
 - [🧰 Generic functions](#-generic-functions)
+- [🥡 Services](#-services)
 - [📃 Log](#-log)
 - [🧬 Middlewares](#-middlewares)
+  - [Important Change for Accessing Middleware Data](#important-change-for-accessing-middleware-data)
+  - [Adaptor](#adaptor)
+  - [Cache](#cache)
   - [CORS](#cors)
   - [CSRF](#csrf)
-  - [Session](#session)
-  - [Logger](#logger)
+  - [Compression](#compression)
+  - [EncryptCookie](#encryptcookie)
   - [Filesystem](#filesystem)
-  - [Monitor](#monitor)
   - [Healthcheck](#healthcheck)
+  - [Logger](#logger)
+  - [Monitor](#monitor)
+  - [Proxy](#proxy)
+  - [Session](#session)
 - [🔌 Addons](#-addons)
 - [📋 Migration guide](#-migration-guide)
 
@@ -256,7 +263,7 @@ The route method is now like [`Express`](https://expressjs.com/de/api.html#app.r
 
 ```diff
 -    Route(prefix string, fn func(router Router), name ...string) Router
-+    Route(path string) Register    
++    Route(path string) Register
 ```
 
 <details>
@@ -284,7 +291,7 @@ app.Route("/api").Route("/user/:id?")
 
 </details>
 
-[Here](./api/app#route) you can find more information.
+You can find more information about `app.Route` in the [API documentation](./api/app#route).
 
 ### Middleware registration
 
@@ -296,10 +303,10 @@ Registering a subapp is now also possible via the [`Use`](./api/app#use) method 
 <summary>Example</summary>
 
 ```go
-// register mulitple prefixes
+// register multiple prefixes
 app.Use(["/v1", "/v2"], func(c fiber.Ctx) error {
     // Middleware for /v1 and /v2
-    return c.Next() 
+    return c.Next()
 })
 
 // define subapp
@@ -549,6 +556,7 @@ Fiber v3 introduces a new binding mechanism that simplifies the process of bindi
 - Support for custom binders and constraints.
 - Improved error handling and validation.
 - Support multipart file binding for `*multipart.FileHeader`, `*[]*multipart.FileHeader`, and `[]*multipart.FileHeader` field types.
+- Support for unified binding (`Bind().All()`) with defined precedence order: (URI -> Body -> Query -> Headers -> Cookies). [Learn more](./api/bind.md#all).
 
 <details>
 <summary>Example</summary>
@@ -597,6 +605,14 @@ app.Get("/new", func(c fiber.Ctx) error {
 ```
 
 </details>
+
+### Changed behavior
+
+:::info
+
+The default redirect status code has been updated from `302 Found` to `303 See Other` to ensure more consistent behavior across different browsers.
+
+:::
 
 ## 🧰 Generic functions
 
@@ -788,13 +804,132 @@ curl "http://localhost:3000/header"
 
 </details>
 
+## 🥡 Services
+
+Fiber v3 introduces a new feature called Services. This feature allows developers to quickly start services that the application depends on, removing the need to manually provision things like database servers, caches, or message brokers, to name a few.
+
+### Example
+
+<details>
+<summary>Adding a service</summary>
+
+```go
+package main
+
+import (
+    "strconv"
+    "github.com/gofiber/fiber/v3"
+)
+
+type myService struct {
+    img string
+    // ...
+}
+
+// Start initializes and starts the service. It implements the [fiber.Service] interface.
+func (s *myService) Start(ctx context.Context) error {
+    // start the service
+    return nil
+}
+
+// String returns a string representation of the service.
+// It is used to print a human-readable name of the service in the startup message.
+// It implements the [fiber.Service] interface.
+func (s *myService) String() string {
+    return s.img
+}
+
+// State returns the current state of the service.
+// It implements the [fiber.Service] interface.
+func (s *myService) State(ctx context.Context) (string, error) {
+    return "running", nil
+}
+
+// Terminate stops and removes the service. It implements the [fiber.Service] interface.
+func (s *myService) Terminate(ctx context.Context) error {
+    // stop the service
+    return nil
+}
+
+func main() {
+    cfg := &fiber.Config{}
+
+    cfg.Services = append(cfg.Services, &myService{img: "postgres:latest"})
+    cfg.Services = append(cfg.Services, &myService{img: "redis:latest"})
+
+    app := fiber.New(*cfg)
+
+    // ...
+}
+```
+
+</details>
+
+<details>
+<summary>Output</summary>
+
+```sh
+$ go run . -v
+
+    _______ __             
+   / ____(_) /_  ___  _____
+  / /_  / / __ \/ _ \/ ___/
+ / __/ / / /_/ /  __/ /    
+/_/   /_/_.___/\___/_/          v3.0.0
+--------------------------------------------------
+INFO Server started on:         http://127.0.0.1:3000 (bound on host 0.0.0.0 and port 3000)
+INFO Services:     2
+INFO   🥡 [ RUNNING ] postgres:latest
+INFO   🥡 [ RUNNING ] redis:latest
+INFO Total handlers count:      2
+INFO Prefork:                   Disabled
+INFO PID:                       12279
+INFO Total process count:       1
+```
+
+</details>
+
 ## 📃 Log
 
 `fiber.AllLogger` interface now has a new method called `Logger`. This method can be used to get the underlying logger instance from the Fiber logger middleware. This is useful when you want to configure the logger middleware with a custom logger and still want to access the underlying logger instance.
 
 You can find more details about this feature in [/docs/api/log.md](./api/log.md#logger).
 
+`logger.Config` now supports a new field called `ForceColors`. This field allows you to force the logger to always use colors, even if the output is not a terminal. This is useful when you want to ensure that the logs are always colored, regardless of the output destination.
+
+```go
+package main
+
+import "github.com/gofiber/fiber/v3/middleware/logger"
+
+app.Use(logger.New(logger.Config{
+    ForceColors: true,
+}))
+```
+
 ## 🧬 Middlewares
+
+### Important Change for Accessing Middleware Data
+
+In Fiber v3, many middlewares that previously set values in `c.Locals()` using string keys (e.g., `c.Locals("requestid")`) have been updated. To align with Go's context best practices and prevent key collisions, these middlewares now store their specific data in the request's context using unexported keys of custom types.
+
+This means that directly accessing these values via `c.Locals("some_string_key")` will no longer work for such middleware-provided data.
+
+**How to Access Middleware Data in v3:**
+
+Each affected middleware now provides dedicated exported functions to retrieve its specific data from the context. You should use these functions instead of relying on string-based lookups in `c.Locals()`.
+
+Examples include:
+
+- `requestid.FromContext(c)`
+- `csrf.TokenFromContext(c)`
+- `csrf.HandlerFromContext(c)`
+- `session.FromContext(c)`
+- `basicauth.UsernameFromContext(c)`
+- `basicauth.PasswordFromContext(c)`
+- `keyauth.TokenFromContext(c)`
+
+When used with the Logger middleware, the recommended approach is to use the `CustomTags` feature of the logger, which allows you to call these specific `FromContext` functions. See the [Logger](#logger) section for more details.
 
 ### Adaptor
 
@@ -826,7 +961,7 @@ The adaptor middleware has been significantly optimized for performance and effi
 
 ### Cache
 
-We are excited to introduce a new option in our caching middleware: Cache Invalidator. This feature provides greater control over cache management, allowing you to define a custom conditions for invalidating cache entries.  
+We are excited to introduce a new option in our caching middleware: Cache Invalidator. This feature provides greater control over cache management, allowing you to define a custom conditions for invalidating cache entries.
 Additionally, the caching middleware has been optimized to avoid caching non-cacheable status codes, as defined by the [HTTP standards](https://datatracker.ietf.org/doc/html/rfc7231#section-6.1). This improvement enhances cache accuracy and reduces unnecessary cache storage usage.
 
 ### CORS
@@ -854,21 +989,29 @@ We've added support for `zstd` compression on top of `gzip`, `deflate`, and `bro
 
 Added support for specifying Key length when using `encryptcookie.GenerateKey(length)`. This allows the user to generate keys compatible with `AES-128`, `AES-192`, and `AES-256` (Default).
 
-### Session
+### Filesystem
 
-The Session middleware has undergone key changes in v3 to improve functionality and flexibility. While v2 methods remain available for backward compatibility, we now recommend using the new middleware handler for session management.
+We've decided to remove filesystem middleware to clear up the confusion between static and filesystem middleware.
+Now, static middleware can do everything that filesystem middleware and static do. You can check out [static middleware](./middleware/static.md) or [migration guide](#-migration-guide) to see what has been changed.
 
-#### Key Updates
+### Healthcheck
 
-- **New Middleware Handler**: The `New` function now returns a middleware handler instead of a `*Store`. To access the session store, use the `Store` method on the middleware, or opt for `NewStore` or `NewWithStore` for custom store integration.
+The Healthcheck middleware has been enhanced to support more than two routes, with default endpoints for liveliness, readiness, and startup checks. Here's a detailed breakdown of the changes and how to use the new features.
 
-- **Manual Session Release**: Session instances are no longer automatically released after being saved. To ensure proper lifecycle management, you must manually call `sess.Release()`.
+1. **Support for More Than Two Routes**:
+    - The updated middleware now supports multiple routes beyond the default liveliness and readiness endpoints. This allows for more granular health checks, such as startup probes.
 
-- **Idle Timeout**: The `Expiration` field has been replaced with `IdleTimeout`, which handles session inactivity. If the session is idle for the specified duration, it will expire. The idle timeout is updated when the session is saved. If you are using the middleware handler, the idle timeout will be updated automatically.
+2. **Default Endpoints**:
+    - Three default endpoints are now available:
+        - **Liveness**: `/livez`
+        - **Readiness**: `/readyz`
+        - **Startup**: `/startupz`
+    - These endpoints can be customized or replaced with user-defined routes.
 
-- **Absolute Timeout**: The `AbsoluteTimeout` field has been added. If you need to set an absolute session timeout, you can use this field to define the duration. The session will expire after the specified duration, regardless of activity.
+3. **Simplified Configuration**:
+    - The configuration for each health check endpoint has been simplified. Each endpoint can be configured separately, allowing for more flexibility and readability.
 
-For more details on these changes and migration instructions, check the [Session Middleware Migration Guide](./middleware/session.md#migration-guide).
+Refer to the [healthcheck middleware migration guide](./middleware/healthcheck.md) or the [general migration guide](#-migration-guide) to review the changes.
 
 ### Logger
 
@@ -913,6 +1056,79 @@ func main() {
 
 </details>
 
+#### Logging Middleware Values (e.g., Request ID)
+
+In Fiber v3, middleware (like `requestid`) now stores values in the request context using unexported keys of custom types. This aligns with Go's context best practices to prevent key collisions between packages.
+
+As a result, directly accessing these values using string keys with `c.Locals("your_key")` or in the logger format string with `${locals:your_key}` (e.g., `${locals:requestid}`) will no longer work for values set by such middleware.
+
+**Recommended Solution: `CustomTags`**
+
+The cleanest and most maintainable way to include these middleware-specific values in your logs is by using the `CustomTags` option in the logger middleware configuration. This allows you to define a custom function to retrieve the value correctly from the context.
+
+<details>
+<summary>Example: Logging Request ID with CustomTags</summary>
+
+```go
+package main
+
+import (
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/logger"
+    "github.com/gofiber/fiber/v3/middleware/requestid"
+)
+
+func main() {
+    app := fiber.New()
+
+    // Ensure requestid middleware is used before the logger
+    app.Use(requestid.New())
+
+    app.Use(logger.New(logger.Config{
+        CustomTags: map[string]logger.LogFunc{
+            "requestid": func(output logger.Buffer, c fiber.Ctx, data *logger.Data, extraParam string) (int, error) {
+                // Retrieve the request ID using the middleware's specific function
+                return output.WriteString(requestid.FromContext(c))
+            },
+        },
+        // Use the custom tag in your format string
+        Format: "[${time}] ${ip} - ${requestid} - ${status} ${method} ${path}\n",
+    }))
+
+    app.Get("/", func(c fiber.Ctx) error {
+        return c.SendString("Hello, World!")
+    })
+
+    app.Listen(":3000")
+}
+```
+
+</details>
+
+**Alternative: Manually Copying to `Locals`**
+
+If you have existing logging patterns that rely on `c.Locals` or prefer to manage these values in `Locals` for other reasons, you can manually copy the value from the context to `c.Locals` in a preceding middleware:
+
+<details>
+<summary>Example: Manually setting requestid in Locals</summary>
+
+```go
+app.Use(requestid.New()) // Request ID middleware
+app.Use(func(c fiber.Ctx) error {
+    // Manually copy the request ID to Locals
+    c.Locals("requestid", requestid.FromContext(c))
+    return c.Next()
+})
+app.Use(logger.New(logger.Config{
+    // Now ${locals:requestid} can be used, but CustomTags is generally preferred
+    Format: "[${time}] ${ip} - ${locals:requestid} - ${status} ${method} ${path}\n",
+}))
+```
+
+</details>
+
+Both approaches ensure your logger can access these values while respecting Go's context practices.
+
 The `Skip` is a function to determine if logging is skipped or written to `Stream`.
 
 <details>
@@ -947,40 +1163,36 @@ Logger provides predefined formats that you can use by name or directly by speci
 
 ```go
 app.Use(logger.New(logger.Config{
-    Format: logger.FormatCombined, 
+    Format: logger.FormatCombined,
 }))
 ```
 
 See more in [Logger](./middleware/logger.md#predefined-formats)
 </details>
 
-### Filesystem
-
-We've decided to remove filesystem middleware to clear up the confusion between static and filesystem middleware.
-Now, static middleware can do everything that filesystem middleware and static do. You can check out [static middleware](./middleware/static.md) or [migration guide](#-migration-guide) to see what has been changed.
-
 ### Monitor
 
 Monitor middleware is migrated to the [Contrib package](https://github.com/gofiber/contrib/tree/main/monitor) with [PR #1172](https://github.com/gofiber/contrib/pull/1172).
 
-### Healthcheck
+### Proxy
 
-The Healthcheck middleware has been enhanced to support more than two routes, with default endpoints for liveliness, readiness, and startup checks. Here's a detailed breakdown of the changes and how to use the new features.
+The proxy middleware has been updated to improve consistency with Go naming conventions. The `TlsConfig` field in the configuration struct has been renamed to `TLSConfig`. Additionally, the `WithTlsConfig` method has been removed; you should now configure TLS directly via the `TLSConfig` property within the `Config` struct.
 
-1. **Support for More Than Two Routes**:
-   - The updated middleware now supports multiple routes beyond the default liveliness and readiness endpoints. This allows for more granular health checks, such as startup probes.
+### Session
 
-2. **Default Endpoints**:
-   - Three default endpoints are now available:
-     - **Liveness**: `/livez`
-     - **Readiness**: `/readyz`
-     - **Startup**: `/startupz`
-   - These endpoints can be customized or replaced with user-defined routes.
+The Session middleware has undergone key changes in v3 to improve functionality and flexibility. While v2 methods remain available for backward compatibility, we now recommend using the new middleware handler for session management.
 
-3. **Simplified Configuration**:
-   - The configuration for each health check endpoint has been simplified. Each endpoint can be configured separately, allowing for more flexibility and readability.
+#### Key Updates
 
-Refer to the [healthcheck middleware migration guide](./middleware/healthcheck.md) or the [general migration guide](#-migration-guide) to review the changes.
+- **New Middleware Handler**: The `New` function now returns a middleware handler instead of a `*Store`. To access the session store, use the `Store` method on the middleware, or opt for `NewStore` or `NewWithStore` for custom store integration.
+
+- **Manual Session Release**: Session instances are no longer automatically released after being saved. To ensure proper lifecycle management, you must manually call `sess.Release()`.
+
+- **Idle Timeout**: The `Expiration` field has been replaced with `IdleTimeout`, which handles session inactivity. If the session is idle for the specified duration, it will expire. The idle timeout is updated when the session is saved. If you are using the middleware handler, the idle timeout will be updated automatically.
+
+- **Absolute Timeout**: The `AbsoluteTimeout` field has been added. If you need to set an absolute session timeout, you can use this field to define the duration. The session will expire after the specified duration, regardless of activity.
+
+For more details on these changes and migration instructions, check the [Session Middleware Migration Guide](./middleware/session.md#migration-guide).
 
 ## 🔌 Addons
 
@@ -1040,10 +1252,17 @@ func main() {
 - [🚀 App](#-app-1)
 - [🗺 Router](#-router-1)
 - [🧠 Context](#-context-1)
-- [📎 Parser](#-parser)
+- [📎 Binding (was Parser)](#-parser)
 - [🔄 Redirect](#-redirect-1)
 - [🌎 Client package](#-client-package-1)
 - [🧬 Middlewares](#-middlewares-1)
+  - [Important Change for Accessing Middleware Data](#important-change-for-accessing-middleware-data)
+  - [CORS](#cors-1)
+  - [CSRF](#csrf)
+  - [Filesystem](#filesystem-1)
+  - [Healthcheck](#healthcheck-1)
+  - [Monitor](#monitor-1)
+  - [Proxy](#proxy-1)
 
 ### 🚀 App
 
@@ -1174,6 +1393,16 @@ app.Get("/define", func(c Ctx) error {  // Define a new route dynamically
 In this example, a new route is defined, and `RebuildTree()` is called to ensure the new route is registered and available.
 
 Note: Use this method with caution. It is **not** thread-safe and can be very performance-intensive. Therefore, it should be used sparingly and primarily in development mode. It should not be invoke concurrently.
+
+## RemoveRoute
+
+- **RemoveRoute**: Removes route by path
+
+- **RemoveRouteByName**: Removes route by name
+
+- **RemoveRouteFunc**: Removes route by a function having `*Route` parameter
+
+For more details, refer to the [app documentation](./api/app.md#removeroute):
 
 ### 🧠 Context
 
@@ -1469,6 +1698,32 @@ DRAFT section
 
 ### 🧬 Middlewares
 
+#### Important Change for Accessing Middleware Data
+
+**Change:** In Fiber v2, some middlewares set data in `c.Locals()` using string keys (e.g., `c.Locals("requestid")`). In Fiber v3, to align with Go's context best practices and prevent key collisions, these middlewares now store their specific data in the request's context using unexported keys of custom types.
+
+**Impact:** Directly accessing these middleware-provided values via `c.Locals("some_string_key")` will no longer work.
+
+**Migration Action:**
+You must update your code to use the dedicated exported functions provided by each affected middleware to retrieve its data from the context.
+
+**Examples of new helper functions to use:**
+
+- `requestid.FromContext(c)`
+- `csrf.TokenFromContext(c)`
+- `csrf.HandlerFromContext(c)`
+- `session.FromContext(c)`
+- `basicauth.UsernameFromContext(c)`
+- `basicauth.PasswordFromContext(c)`
+- `keyauth.TokenFromContext(c)`
+
+**For logging these values:**
+The recommended approach is to use the `CustomTags` feature of the Logger middleware, which allows you to call these specific `FromContext` functions. Refer to the [Logger section in "What's New"](#logger) for detailed examples.
+
+:::note
+If you were manually setting and retrieving your own application-specific values in `c.Locals()` using string keys, that functionality remains unchanged. This change specifically pertains to how Fiber's built-in (and some contrib) middlewares expose their data.
+:::
+
 #### CORS
 
 The CORS middleware has been updated to use slices instead of strings for the `AllowOrigins`, `AllowMethods`, `AllowHeaders`, and `ExposeHeaders` fields. Here's how you can update your code:
@@ -1604,4 +1859,30 @@ You only need to change the import path to the contrib package.
 import "github.com/gofiber/contrib/monitor"
 
 app.Use("/metrics", monitor.New())
+```
+
+#### Proxy
+
+In previous versions, TLS settings for the proxy middleware were set using the `WithTlsConfig` method. This method has been removed in favor of a more idiomatic configuration via the `TLSConfig` field in the `Config` struct.
+
+#### Before (v2 usage)
+
+```go
+proxy.WithTlsConfig(&tls.Config{
+    InsecureSkipVerify: true,
+})
+
+// Forward to url
+app.Get("/gif", proxy.Forward("https://i.imgur.com/IWaBepg.gif"))
+```
+
+#### After (v3 usage)
+
+```go
+proxy.WithClient(&fasthttp.Client{
+    TLSConfig: &tls.Config{InsecureSkipVerify: true},
+})
+
+// Forward to url
+app.Get("/gif", proxy.Forward("https://i.imgur.com/IWaBepg.gif"))
 ```

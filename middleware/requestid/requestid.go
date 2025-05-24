@@ -1,10 +1,7 @@
 package requestid
 
 import (
-	"context"
-
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/log"
 )
 
 // The contextKey type is unexported to prevent collisions with context keys defined in
@@ -46,21 +43,9 @@ func New(config ...Config) fiber.Handler {
 
 // FromContext returns the request ID from context.
 // If there is no request ID, an empty string is returned.
-// Supported context types:
-// - fiber.Ctx: Retrieves request ID from Locals
-// - context.Context: Retrieves request ID from context values
-func FromContext(c any) string {
-	switch ctx := c.(type) {
-	case fiber.Ctx:
-		if rid, ok := ctx.Locals(requestIDKey).(string); ok {
-			return rid
-		}
-	case context.Context:
-		if rid, ok := ctx.Value(requestIDKey).(string); ok {
-			return rid
-		}
-	default:
-		log.Errorf("Unsupported context type: %T. Expected fiber.Ctx or context.Context", c)
+func FromContext(c fiber.Ctx) string {
+	if rid, ok := c.Locals(requestIDKey).(string); ok {
+		return rid
 	}
 	return ""
 }
