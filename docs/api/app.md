@@ -512,7 +512,6 @@ func (app *App) Handler() fasthttp.RequestHandler
 func (app *App) ErrorHandler(ctx Ctx, err error) error
 ```
 
-
 ## NewWithCustomCtx
 
 `NewWithCustomCtx` creates a new `*App` and sets the custom context factory
