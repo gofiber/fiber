@@ -2,11 +2,11 @@
 
 ## Agent Instructions
 
-> **Note for the AI agent:** Before running the startup script, verify that dependencies are already available. If a `vendor/` directory is present **or** `go list -m -mod=readonly all` succeeds (indicating modules are in the Go cache), skip fetching modules. Otherwise proceed with the startup script. This dependency-check logic is for the agent’s decision-making and is not part of the user-facing script.
+> **Note for the AI agent:** Before running the startup script, verify that all dependencies and CLI tools are already available. If a `vendor/` directory exists **or** `go list -m -mod=readonly all` succeeds (indicating modules are cached), you may skip the entire startup script—including all `go mod` commands and `go install` steps. Otherwise run the script as listed below.
 
 ---
 
-## Startup script
+## Startup script (reference only – do not run)
 
 - Fetch dependencies:
 
