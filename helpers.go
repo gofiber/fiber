@@ -756,6 +756,7 @@ func Convert[T any](value string, convertor func(string) (T, error), defaultValu
 var (
 	errParsedEmptyString = errors.New("parsed result is empty string")
 	errParsedEmptyBytes  = errors.New("parsed result is empty bytes")
+	errParsedType        = errors.New("unsupported generic type")
 )
 
 func genericParseType[V GenericType](str string) (V, error) {
@@ -850,7 +851,7 @@ func genericParseType[V GenericType](str string) (V, error) {
 		}
 		return any([]byte(str)).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	default:
-		return v, nil
+		return v, errParsedType
 	}
 }
 
