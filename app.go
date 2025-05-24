@@ -624,7 +624,7 @@ func New(config ...Config) *App {
 }
 
 // NewWithCustomCtx creates a new Fiber instance and applies the
-// provided function to generate a custom context type. It mirrors the behaviour
+// provided function to generate a custom context type. It mirrors the behavior
 // of calling `New()` followed by `app.setCtxFunc(fn)`.
 func NewWithCustomCtx(newCtxFunc func(app *App) CustomCtx, config ...Config) *App {
 	app := New(config...)
