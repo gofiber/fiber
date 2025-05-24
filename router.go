@@ -107,7 +107,7 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) boo
 	return false
 }
 
-func (app *App) next(c CustomCtx) (bool, error) { //nolint:unparam // bool param might be useful for testing
+func (app *App) next(c CustomCtx) (bool, error) {
 	// Get stack length
 	tree, ok := app.treeStack[c.getMethodInt()][c.getTreePathHash()]
 	if !ok {
