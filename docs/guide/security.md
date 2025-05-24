@@ -59,5 +59,3 @@ digest, err := security.HTTPDigest(c)
 ```
 
 `HTTPBasic` returns `HTTPBasicCredentials` containing the parsed username and password.
-
-
