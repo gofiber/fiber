@@ -898,7 +898,7 @@ func NewError(code int, message ...any) *Error {
 		if s, ok := message[0].(string); ok {
 			msg = s
 		} else {
-			msg = fmt.Sprint(message[0])
+			msg = utils.ToString(message[0])
 		}
 
 	default:
@@ -907,7 +907,7 @@ func NewError(code int, message ...any) *Error {
 			msg = fmt.Sprintf(format, message[1:]...)
 		} else {
 			// If the first arg isn’t a string, fall back.
-			msg = fmt.Sprint(message[0])
+			msg = utils.ToString(message[0])
 		}
 	}
 
