@@ -634,3 +634,34 @@ func Benchmark_FiberHandlerFunc_Parallel(b *testing.B) {
 		})
 	}
 }
+
+func Benchmark_HTTPHandler(b *testing.B) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok")) //nolint:errcheck // not needed
+	})
+
+	var err error
+	app := fiber.New()
+
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer func() {
+		app.ReleaseCtx(ctx)
+	}()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	fiberHandler := HTTPHandler(handler)
+
+	for i := 0; i < b.N; i++ {
+		ctx.Request().Reset()
+		ctx.Response().Reset()
+		ctx.Request().SetRequestURI("/test")
+		ctx.Request().Header.SetMethod("GET")
+
+		err = fiberHandler(ctx)
+	}
+
+	require.NoError(b, err)
+}

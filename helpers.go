@@ -577,28 +577,30 @@ const noCacheValue = "no-cache"
 
 // isNoCache checks if the cacheControl header value is a `no-cache`.
 func isNoCache(cacheControl string) bool {
-	i := strings.Index(cacheControl, noCacheValue)
-	if i == -1 {
-		return false
+	n := len(cacheControl)
+	ncLen := len(noCacheValue)
+	for i := 0; i < n; i++ {
+		if cacheControl[i] != 'n' {
+			continue
+		}
+		if i+ncLen > n {
+			return false
+		}
+		if cacheControl[i:i+ncLen] != noCacheValue {
+			continue
+		}
+		if i > 0 {
+			prev := cacheControl[i-1]
+			if prev != ' ' && prev != ',' {
+				continue
+			}
+		}
+		if i+ncLen == n || cacheControl[i+ncLen] == ',' {
+			return true
+		}
 	}
 
-	// Xno-cache
-	if i > 0 && !(cacheControl[i-1] == ' ' || cacheControl[i-1] == ',') {
-		return false
-	}
-
-	// bla bla, no-cache
-	if i+len(noCacheValue) == len(cacheControl) {
-		return true
-	}
-
-	// bla bla, no-cacheX
-	if cacheControl[i+len(noCacheValue)] != ',' {
-		return false
-	}
-
-	// OK
-	return true
+	return false
 }
 
 var errTestConnClosed = errors.New("testConn is closed")
