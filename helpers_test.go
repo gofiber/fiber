@@ -799,10 +799,6 @@ func Test_GenericParseTypeUints(t *testing.T) {
 			bits:  16,
 		},
 		{
-			value: math.MaxUint16,
-			bits:  16,
-		},
-		{
 			value: math.MaxUint32,
 			bits:  32,
 		},
