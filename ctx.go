@@ -39,8 +39,10 @@ const (
 	maxDetectionPaths = 3
 )
 
-var _ io.Writer = &DefaultCtx{}       // Compile-time check
-var _ context.Context = &DefaultCtx{} // Compile-time check
+var (
+	_ io.Writer       = &DefaultCtx{} // Compile-time check
+	_ context.Context = &DefaultCtx{} // Compile-time check
+)
 
 // The contextKey type is unexported to prevent collisions with context keys defined in
 // other packages.
