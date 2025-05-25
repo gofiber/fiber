@@ -108,23 +108,32 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) boo
 }
 
 func (app *App) next(c CustomCtx) (bool, error) {
+	methodInt := c.getMethodInt()
 	// Get stack length
-	tree, ok := app.treeStack[c.getMethodInt()][c.getTreePathHash()]
+	tree, ok := app.treeStack[methodInt][c.getTreePathHash()]
 	if !ok {
-		tree = app.treeStack[c.getMethodInt()][0]
+		tree = app.treeStack[methodInt][0]
 	}
 	lenr := len(tree) - 1
 
+	indexRoute := c.getIndexRoute()
+	var err error
+	var match bool
+
 	// Loop over the route stack starting from previous index
-	for c.getIndexRoute() < lenr {
+	for indexRoute < lenr {
 		// Increment route index
-		c.setIndexRoute(c.getIndexRoute() + 1)
+		indexRoute++
 
 		// Get *Route
-		route := tree[c.getIndexRoute()]
+		route := tree[indexRoute]
+
+		if route.mount {
+			continue
+		}
 
 		// Check if it matches the request path
-		match := route.match(c.getDetectionPath(), c.Path(), c.getValues())
+		match = route.match(c.getDetectionPath(), c.Path(), c.getValues())
 
 		// No match, next route
 		if !match {
@@ -134,18 +143,21 @@ func (app *App) next(c CustomCtx) (bool, error) {
 		c.setRoute(route)
 
 		// Non use handler matched
-		if !c.getMatched() && !route.use {
+		if !route.use {
 			c.setMatched(true)
 		}
 
 		// Execute first handler of route
-		c.setIndexHandler(0)
-		err := route.Handlers[0](c)
+		if len(route.Handlers) > 0 {
+			c.setIndexHandler(0)
+			c.setIndexRoute(indexRoute)
+			err = route.Handlers[0](c)
+		}
 		return match, err // Stop scanning the stack
 	}
 
 	// If c.Next() does not match, return 404
-	err := NewError(StatusNotFound, "Cannot "+c.Method()+" "+html.EscapeString(c.getPathOriginal()))
+	err = NewError(StatusNotFound, "Cannot "+c.Method()+" "+html.EscapeString(c.getPathOriginal()))
 
 	// If no match, scan stack again if other methods match the request
 	// Moved from app.handler because middleware may break the route chain
