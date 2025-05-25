@@ -657,9 +657,14 @@ func (c *DefaultCtx) Get(key string, defaultValue ...string) string {
 
 // GetReqHeader returns the HTTP request header specified by filed.
 // This function is generic and can handle different headers type values.
+// If the generic type cannot be matched to a supported type, the function
+// returns the default value (if provided) or the zero value of type V.
 func GetReqHeader[V GenericType](c Ctx, key string, defaultValue ...V) V {
-	var v V
-	return genericParseType[V](c.App().getString(c.Request().Header.Peek(key)), v, defaultValue...)
+	v, err := genericParseType[V](c.App().getString(c.Request().Header.Peek(key)))
+	if err != nil && len(defaultValue) > 0 {
+		return defaultValue[0]
+	}
+	return v
 }
 
 // GetRespHeader returns the HTTP response header specified by field.
@@ -1116,6 +1121,8 @@ func (c *DefaultCtx) Params(key string, defaultValue ...string) string {
 
 // Params is used to get the route parameters.
 // This function is generic and can handle different route parameters type values.
+// If the generic type cannot be matched to a supported type, the function
+// returns the default value (if provided) or the zero value of type V.
 //
 // Example:
 //
@@ -1128,8 +1135,11 @@ func (c *DefaultCtx) Params(key string, defaultValue ...string) string {
 // http://example.com/id/:number -> http://example.com/id/john
 // Params[int](c, "number", 0) -> returns 0 because can't parse 'john' as integer.
 func Params[V GenericType](c Ctx, key string, defaultValue ...V) V {
-	var v V
-	return genericParseType(c.Params(key), v, defaultValue...)
+	v, err := genericParseType[V](c.Params(key))
+	if err != nil && len(defaultValue) > 0 {
+		return defaultValue[0]
+	}
+	return v
 }
 
 // Path returns the path part of the request URL.
@@ -1251,10 +1261,12 @@ func (c *DefaultCtx) Queries() map[string]string {
 //	age := Query[int](c, "age") // Returns 8
 //	unknown := Query[string](c, "unknown", "default") // Returns "default" since the query parameter "unknown" is not found
 func Query[V GenericType](c Ctx, key string, defaultValue ...V) V {
-	var v V
 	q := c.App().getString(c.RequestCtx().QueryArgs().Peek(key))
-
-	return genericParseType[V](q, v, defaultValue...)
+	v, err := genericParseType[V](q)
+	if err != nil && len(defaultValue) > 0 {
+		return defaultValue[0]
+	}
+	return v
 }
 
 // Range returns a struct containing the type and a slice of ranges.
