@@ -2495,6 +2495,7 @@ func Test_Ctx_Params(t *testing.T) {
 	})
 	app.Get("/test4/:optional?", func(c Ctx) error {
 		require.Equal(t, "", c.Params("optional"))
+		require.Equal(t, "default", Params(c, "optional", "default"))
 		return nil
 	})
 	app.Get("/test5/:id/:Id", func(c Ctx) error {
