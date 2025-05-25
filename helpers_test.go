@@ -1193,7 +1193,7 @@ func Benchmark_GenericParseTypeFloats(b *testing.B) {
 	}
 
 	for _, test := range floats {
-		b.Run("test_genericParseTypeFloat64s", func(t *testing.B) {
+		b.Run("benchmark_genericParseTypeFloat64s", func(t *testing.B) {
 			var v float64
 			var err error
 			b.ReportAllocs()
