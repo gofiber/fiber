@@ -1326,43 +1326,45 @@ func (*Ctx) parseToStruct(aliasTag string, out interface{}, data map[string][]st
 }
 
 func equalFieldType(out interface{}, kind reflect.Kind, key, tag string) bool {
-	// Get type of interface
 	outTyp := reflect.TypeOf(out).Elem()
 	key = utils.ToLower(key)
-	// Must be a struct to match a field
 	if outTyp.Kind() != reflect.Struct {
 		return false
 	}
-	// Copy interface to an value to be used
-	outVal := reflect.ValueOf(out).Elem()
-	// Loop over each field
+	return checkEqualFieldType(outTyp, reflect.ValueOf(out).Elem(), kind, key, tag)
+}
+
+func checkEqualFieldType(outTyp reflect.Type, outVal reflect.Value, kind reflect.Kind, key, tag string) bool {
 	for i := 0; i < outTyp.NumField(); i++ {
-		// Get field value data
 		structField := outVal.Field(i)
-		// Can this field be changed?
+		typeField := outTyp.Field(i)
+
+		if typeField.Anonymous && structField.Kind() == reflect.Struct {
+			if checkEqualFieldType(structField.Type(), structField, kind, key, tag) {
+				return true
+			}
+		}
+
 		if !structField.CanSet() {
 			continue
 		}
-		// Get field key data
-		typeField := outTyp.Field(i)
-		// Get type of field key
-		structFieldKind := structField.Kind()
-		// Does the field type equals input?
-		if structFieldKind != kind {
+
+		if structField.Kind() != kind {
 			continue
 		}
-		// Get tag from field if exist
+
 		inputFieldName := typeField.Tag.Get(tag)
 		if inputFieldName == "" {
 			inputFieldName = typeField.Name
 		} else {
 			inputFieldName = strings.Split(inputFieldName, ",")[0]
 		}
-		// Compare field/tag with provided key
+
 		if utils.ToLower(inputFieldName) == key {
 			return true
 		}
 	}
+
 	return false
 }
 
