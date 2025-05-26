@@ -4875,6 +4875,28 @@ func Test_Ctx_QueryParser_Schema(t *testing.T) {
 	utils.AssertEqual(t, 12, cq.Data[1].Age)
 }
 
+func Test_Ctx_QueryParser_EmbeddedStruct(t *testing.T) {
+	t.Parallel()
+	app := New(Config{EnableSplittingOnParsers: true})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	type A struct {
+		Products []string `query:"products"`
+	}
+
+	type Person struct {
+		Name string `query:"name"`
+		Pass string `query:"pass"`
+		A
+	}
+
+	c.Request().URI().SetQueryString("name=john&pass=doe&products=shoe,hat")
+	p := new(Person)
+	utils.AssertEqual(t, nil, c.QueryParser(p))
+	utils.AssertEqual(t, []string{"shoe", "hat"}, p.Products)
+}
+
 // go test -run Test_Ctx_ReqHeaderParser -v
 func Test_Ctx_ReqHeaderParser(t *testing.T) {
 	t.Parallel()
@@ -5400,6 +5422,25 @@ func Benchmark_Ctx_ReqHeaderParser(b *testing.B) {
 	}
 	utils.AssertEqual(b, nil, err)
 	utils.AssertEqual(b, nil, c.ReqHeaderParser(q))
+}
+
+// go test -v  -run=^$ -bench=Benchmark_equalFieldType -benchmem -count=4
+func Benchmark_equalFieldType(b *testing.B) {
+	type user struct {
+		Name string `query:"name"`
+		Age  int    `query:"age"`
+	}
+
+	u := new(user)
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	var res bool
+	for n := 0; n < b.N; n++ {
+		res = equalFieldType(u, reflect.String, "name", queryTag)
+	}
+
+	utils.AssertEqual(b, true, res)
 }
 
 // go test -run Test_Ctx_BodyStreamWriter
