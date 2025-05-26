@@ -5424,6 +5424,25 @@ func Benchmark_Ctx_ReqHeaderParser(b *testing.B) {
 	utils.AssertEqual(b, nil, c.ReqHeaderParser(q))
 }
 
+// go test -v  -run=^$ -bench=Benchmark_equalFieldType -benchmem -count=4
+func Benchmark_equalFieldType(b *testing.B) {
+	type user struct {
+		Name string `query:"name"`
+		Age  int    `query:"age"`
+	}
+
+	u := new(user)
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	var res bool
+	for n := 0; n < b.N; n++ {
+		res = equalFieldType(u, reflect.String, "name", queryTag)
+	}
+
+	utils.AssertEqual(b, true, res)
+}
+
 // go test -run Test_Ctx_BodyStreamWriter
 func Test_Ctx_BodyStreamWriter(t *testing.T) {
 	t.Parallel()

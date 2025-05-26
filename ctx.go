@@ -1327,37 +1327,36 @@ func (*Ctx) parseToStruct(aliasTag string, out interface{}, data map[string][]st
 
 func equalFieldType(out interface{}, kind reflect.Kind, key, tag string) bool {
 	outTyp := reflect.TypeOf(out).Elem()
-	key = utils.ToLower(key)
 	if outTyp.Kind() != reflect.Struct {
 		return false
 	}
-	return checkEqualFieldType(outTyp, reflect.ValueOf(out).Elem(), kind, key, tag)
+	key = utils.ToLower(key)
+	return checkEqualFieldType(outTyp, kind, key, tag)
 }
 
-func checkEqualFieldType(outTyp reflect.Type, outVal reflect.Value, kind reflect.Kind, key, tag string) bool {
+func checkEqualFieldType(outTyp reflect.Type, kind reflect.Kind, key, tag string) bool {
 	for i := 0; i < outTyp.NumField(); i++ {
-		structField := outVal.Field(i)
 		typeField := outTyp.Field(i)
 
-		if typeField.Anonymous && structField.Kind() == reflect.Struct {
-			if checkEqualFieldType(structField.Type(), structField, kind, key, tag) {
+		if typeField.Anonymous && typeField.Type.Kind() == reflect.Struct {
+			if checkEqualFieldType(typeField.Type, kind, key, tag) {
 				return true
 			}
 		}
 
-		if !structField.CanSet() {
+		if typeField.PkgPath != "" { // unexported field
 			continue
 		}
 
-		if structField.Kind() != kind {
+		if typeField.Type.Kind() != kind {
 			continue
 		}
 
 		inputFieldName := typeField.Tag.Get(tag)
 		if inputFieldName == "" {
 			inputFieldName = typeField.Name
-		} else {
-			inputFieldName = strings.Split(inputFieldName, ",")[0]
+		} else if idx := strings.IndexByte(inputFieldName, ','); idx > -1 {
+			inputFieldName = inputFieldName[:idx]
 		}
 
 		if utils.ToLower(inputFieldName) == key {
