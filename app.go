@@ -881,11 +881,23 @@ func (e *Error) Error() string {
 	return e.Message
 }
 
-// NewError creates a new Error instance with an optional message.
+// NewError creates a new Error instance with an optional message
+func NewError(code int, message ...string) *Error {
+	err := &Error{
+		Code:    code,
+		Message: utils.StatusMessage(code),
+	}
+	if len(message) > 0 {
+		err.Message = message[0]
+	}
+	return err
+}
+
+// NewErrorf creates a new Error instance with an optional message.
 // Additional arguments are formatted using fmt.Sprintf when provided.
 // If the first argument in the message slice is not a string, the function
 // falls back to using fmt.Sprint on the first element to generate the message.
-func NewError(code int, message ...any) *Error {
+func NewErrorf(code int, message ...any) *Error {
 	var msg string
 
 	switch len(message) {
@@ -898,7 +910,7 @@ func NewError(code int, message ...any) *Error {
 		if s, ok := message[0].(string); ok {
 			msg = s
 		} else {
-			msg = utils.ToString(message[0])
+			msg = fmt.Sprint(message[0])
 		}
 
 	default:
@@ -907,7 +919,7 @@ func NewError(code int, message ...any) *Error {
 			msg = fmt.Sprintf(format, message[1:]...)
 		} else {
 			// If the first arg isn’t a string, fall back.
-			msg = utils.ToString(message[0])
+			msg = fmt.Sprint(message[0])
 		}
 	}
 

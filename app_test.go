@@ -1310,7 +1310,7 @@ func Test_NewError(t *testing.T) {
 }
 
 // go test -run Test_NewError_Format
-func Test_NewError_Format(t *testing.T) {
+func Test_NewErrorf_Format(t *testing.T) {
 	t.Parallel()
 
 	type args []any
@@ -1368,7 +1368,7 @@ func Test_NewError_Format(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			e := NewError(tt.code, tt.in...)
+			e := NewErrorf(tt.code, tt.in...)
 			require.Equal(t, tt.code, e.Code)
 			require.Equal(t, tt.want, e.Message)
 		})
