@@ -1652,7 +1652,7 @@ func (c *DefaultCtx) SendFile(file string, config ...SendFile) error {
 
 	// Check for error
 	if status != StatusNotFound && fsStatus == StatusNotFound {
-		return NewError(StatusNotFound, "sendfile: file %s not found", filename)
+		return NewError(StatusNotFound, fmt.Sprintf("sendfile: file %s not found", filename))
 	}
 
 	// Set the status code set by the user if it is different from the fasthttp status code and 200

@@ -66,6 +66,7 @@ We have made several changes to the Fiber app, including:
 - **RegisterCustomConstraint**: Allows for the registration of custom constraints.
 - **NewCtxFunc**: Introduces a new context function.
 - **State**: Provides a global state for the application, which can be used to store and retrieve data across the application. Check out the [State](./api/state) method for further details.
+- **NewErrorf**: Allows variadic parameters when creating formatted errors.
 
 ### Removed Methods
 

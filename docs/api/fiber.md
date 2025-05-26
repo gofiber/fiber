@@ -243,12 +243,26 @@ func (app *App) ShutdownWithContext(ctx context.Context) error
 NewError creates a new HTTPError instance with an optional message.
 
 ```go title="Signature"
-func NewError(code int, message ...any) *Error
+func NewError(code int, message ...string) *Error
 ```
 
 ```go title="Example"
 app.Get("/", func(c fiber.Ctx) error {
-    return fiber.NewError(782, "Custom error %s", "message")
+    return fiber.NewError(782, "Custom error message")
+})
+```
+
+### NewErrorf
+
+NewErrorf creates a new HTTPError instance with an optional formatted message.
+
+```go title="Signature"
+func NewErrorf(code int, message ...any) *Error
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+    return fiber.NewErrorf(782, "Custom error %s", "message")
 })
 ```
 
