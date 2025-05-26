@@ -1400,10 +1400,10 @@ func Test_Ctx_Binders(t *testing.T) {
 
 	type TestStruct struct {
 		Name            string
-		NameWithDefault string `json:"name2" xml:"Name2" form:"name2" cookie:"name2" query:"name2" params:"name2" header:"Name2"`
+		NameWithDefault string `json:"name2" xml:"Name2" form:"name2" cookie:"name2" query:"name2" uri:"name2" header:"Name2"`
 		TestEmbeddedStruct
 		Class            int
-		ClassWithDefault int `json:"class2" xml:"Class2" form:"class2" cookie:"class2" query:"class2" params:"class2" header:"Class2"`
+		ClassWithDefault int `json:"class2" xml:"Class2" form:"class2" cookie:"class2" query:"class2" uri:"class2" header:"Class2"`
 	}
 
 	withValues := func(t *testing.T, actionFn func(c Ctx, testStruct *TestStruct) error) {
@@ -1469,16 +1469,26 @@ func Test_Ctx_Binders(t *testing.T) {
 			return c.Bind().Query(testStruct)
 		})
 	})
+
 	t.Run("URI", func(t *testing.T) {
-		t.Skip("URI is not ready for v3")
-		//nolint:gocritic // TODO: uncomment
-		// t.Parallel()
-		// withValues(t, func(c Ctx, testStruct *TestStruct) error {
-		//	c.Route().Params = []string{"name", "name2", "class", "class2"}
-		//	c.Params().value = [30]string{"foo", "bar", "111", "222"}
-		//	return c.Bind().URI(testStruct)
-		// })
+		t.Parallel()
+
+		c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+		defer app.ReleaseCtx(c)
+
+		c.route = &Route{Params: []string{"name", "name2", "class", "class2"}}
+		c.values = [maxParams]string{"foo", "bar", "111", "222"}
+
+		testStruct := new(TestStruct)
+
+		require.NoError(t, c.Bind().URI(testStruct))
+		require.Equal(t, "foo", testStruct.Name)
+		require.Equal(t, 111, testStruct.Class)
+		require.Equal(t, "bar", testStruct.NameWithDefault)
+		require.Equal(t, 222, testStruct.ClassWithDefault)
+		require.Nil(t, testStruct.TestEmbeddedStruct.Names)
 	})
+
 	t.Run("ReqHeader", func(t *testing.T) {
 		t.Parallel()
 		withValues(t, func(c Ctx, testStruct *TestStruct) error {
