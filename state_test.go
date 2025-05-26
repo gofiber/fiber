@@ -445,7 +445,7 @@ func TestState_Len(t *testing.T) {
 	require.Equal(t, 1, st.Len())
 }
 
-type testCase[T any] struct { //nolint:govet // It does not really matter for test
+type testCase[T any] struct {
 	value    any
 	expected T
 	name     string
