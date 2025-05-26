@@ -176,68 +176,86 @@ func parseParamSquareBrackets(k string) (string, error) {
 	return bb.String(), nil
 }
 
+func isStringKeyMap(t reflect.Type) bool {
+	return t.Kind() == reflect.Map && t.Key().Kind() == reflect.String
+}
+
+func isExported(f reflect.StructField) bool {
+	return f.PkgPath == ""
+}
+
+func fieldName(f reflect.StructField) string {
+	name := f.Tag.Get("query")
+	if name == "" {
+		name = f.Name
+	} else {
+		name = strings.Split(name, ",")[0]
+	}
+
+	return utils.ToLower(name)
+}
+
+type fieldInfo struct {
+	names       map[string]reflect.Kind
+	nestedKinds map[reflect.Kind]struct{}
+}
+
+var fieldCache sync.Map // map[reflect.Type]fieldInfo
+
+func buildFieldInfo(t reflect.Type) fieldInfo {
+	info := fieldInfo{
+		names:       make(map[string]reflect.Kind),
+		nestedKinds: make(map[reflect.Kind]struct{}),
+	}
+
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		if !isExported(f) {
+			continue
+		}
+		info.names[fieldName(f)] = f.Type.Kind()
+
+		if f.Type.Kind() == reflect.Struct {
+			for j := 0; j < f.Type.NumField(); j++ {
+				sf := f.Type.Field(j)
+				if !isExported(sf) {
+					continue
+				}
+				info.nestedKinds[sf.Type.Kind()] = struct{}{}
+			}
+		}
+	}
+
+	return info
+}
+
 func equalFieldType(out any, kind reflect.Kind, key string) bool {
-	// Get type of interface
-	outTyp := reflect.TypeOf(out).Elem()
+	typ := reflect.TypeOf(out).Elem()
 	key = utils.ToLower(key)
 
-	// Support maps
-	if outTyp.Kind() == reflect.Map && outTyp.Key().Kind() == reflect.String {
+	if isStringKeyMap(typ) {
 		return true
 	}
 
-	// Must be a struct to match a field
-	if outTyp.Kind() != reflect.Struct {
+	if typ.Kind() != reflect.Struct {
 		return false
 	}
-	// Copy interface to an value to be used
-	outVal := reflect.ValueOf(out).Elem()
-	// Loop over each field
-	for i := 0; i < outTyp.NumField(); i++ {
-		// Get field value data
-		structField := outVal.Field(i)
-		// Can this field be changed?
-		if !structField.CanSet() {
-			continue
-		}
-		// Get field key data
-		typeField := outTyp.Field(i)
-		// Get type of field key
-		structFieldKind := structField.Kind()
-		// Does the field type equals input?
-		if structFieldKind != kind {
-			// Is the field an embedded struct?
-			if structFieldKind == reflect.Struct {
-				// Loop over embedded struct fields
-				for j := 0; j < structField.NumField(); j++ {
-					structFieldField := structField.Field(j)
 
-					// Can this embedded field be changed?
-					if !structFieldField.CanSet() {
-						continue
-					}
-
-					// Is the embedded struct field type equal to the input?
-					if structFieldField.Kind() == kind {
-						return true
-					}
-				}
-			}
-
-			continue
-		}
-		// Get tag from field if exist
-		inputFieldName := typeField.Tag.Get("query") // Name of query binder
-		if inputFieldName == "" {
-			inputFieldName = typeField.Name
-		} else {
-			inputFieldName = strings.Split(inputFieldName, ",")[0]
-		}
-		// Compare field/tag with provided key
-		if utils.ToLower(inputFieldName) == key {
-			return true
-		}
+	val, ok := fieldCache.Load(typ)
+	if !ok {
+		info := buildFieldInfo(typ)
+		val, _ = fieldCache.LoadOrStore(typ, info)
 	}
+
+	info := val.(fieldInfo)
+
+	if k, ok := info.names[key]; ok && k == kind {
+		return true
+	}
+	if _, ok := info.nestedKinds[kind]; ok {
+		return true
+	}
+
 	return false
 }
 

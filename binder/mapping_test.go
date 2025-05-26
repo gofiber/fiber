@@ -343,3 +343,22 @@ func Test_formatBindData_ErrorCases(t *testing.T) {
 		require.EqualError(t, err, "unsupported value type: int")
 	})
 }
+
+func Benchmark_equalFieldType(b *testing.B) {
+	type Nested struct {
+		Name string `query:"name"`
+	}
+	type User struct {
+		Name   string `query:"name"`
+		Age    int    `query:"age"`
+		Nested Nested `query:"user"`
+	}
+	var user User
+
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		equalFieldType(&user, reflect.String, "name")
+		equalFieldType(&user, reflect.Int, "age")
+		equalFieldType(&user, reflect.String, "user.name")
+	}
+}
