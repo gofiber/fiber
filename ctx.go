@@ -40,8 +40,8 @@ const (
 )
 
 var (
-	_ io.Writer       = &DefaultCtx{} // Compile-time check
-	_ context.Context = &DefaultCtx{} // Compile-time check
+	_ io.Writer       = (*DefaultCtx)(nil) // Compile-time check
+	_ context.Context = (*DefaultCtx)(nil) // Compile-time check
 )
 
 // The contextKey type is unexported to prevent collisions with context keys defined in
