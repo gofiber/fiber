@@ -446,10 +446,10 @@ func TestState_Len(t *testing.T) {
 }
 
 type testCase[T any] struct { //nolint:govet // It does not really matter for test
-	name     string
-	key      string
 	value    any
 	expected T
+	name     string
+	key      string
 	ok       bool
 }
 
@@ -469,23 +469,23 @@ func TestState_GetGeneric(t *testing.T) {
 	t.Parallel()
 
 	runGenericTest[int](t, GetState[int], []testCase[int]{
-		{"int correct conversion", "num", 42, 42, true},
-		{"int wrong conversion from string", "str", "abc", 0, false},
+		{name: "int correct conversion", key: "num", value: 42, expected: 42, ok: true},
+		{name: "int wrong conversion from string", key: "str", value: "abc", expected: 0, ok: false},
 	})
 
 	runGenericTest[string](t, GetState[string], []testCase[string]{
-		{"string correct conversion", "strVal", "hello", "hello", true},
-		{"string wrong conversion from int", "intVal", 100, "", false},
+		{name: "string correct conversion", key: "strVal", value: "hello", expected: "hello", ok: true},
+		{name: "string wrong conversion from int", key: "intVal", value: 100, expected: "", ok: false},
 	})
 
 	runGenericTest[bool](t, GetState[bool], []testCase[bool]{
-		{"bool correct conversion", "flag", true, true, true},
-		{"bool wrong conversion from int", "intFlag", 1, false, false},
+		{name: "bool correct conversion", key: "flag", value: true, expected: true, ok: true},
+		{name: "bool wrong conversion from int", key: "intFlag", value: 1, expected: false, ok: false},
 	})
 
 	runGenericTest[float64](t, GetState[float64], []testCase[float64]{
-		{"float64 correct conversion", "pi", 3.14, 3.14, true},
-		{"float64 wrong conversion from int", "intVal", 10, 0.0, false},
+		{name: "float64 correct conversion", key: "pi", value: 3.14, expected: 3.14, ok: true},
+		{name: "float64 wrong conversion from int", key: "intVal", value: 10, expected: 0.0, ok: false},
 	})
 }
 

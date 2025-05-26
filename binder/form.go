@@ -36,7 +36,7 @@ func (b *FormBinding) Bind(req *fasthttp.Request, out any) error {
 
 		k := utils.UnsafeString(key)
 		v := utils.UnsafeString(val)
-		err = formatBindData(out, data, k, v, b.EnableSplitting, true)
+		err = formatBindData(b.Name(), out, data, k, v, b.EnableSplitting, true)
 	})
 
 	if err != nil {
@@ -55,7 +55,7 @@ func (b *FormBinding) bindMultipart(req *fasthttp.Request, out any) error {
 
 	data := make(map[string][]string)
 	for key, values := range multipartForm.Value {
-		err = formatBindData(out, data, key, values, b.EnableSplitting, true)
+		err = formatBindData(b.Name(), out, data, key, values, b.EnableSplitting, true)
 		if err != nil {
 			return err
 		}
@@ -63,7 +63,7 @@ func (b *FormBinding) bindMultipart(req *fasthttp.Request, out any) error {
 
 	files := make(map[string][]*multipart.FileHeader)
 	for key, values := range multipartForm.File {
-		err = formatBindData(out, files, key, values, b.EnableSplitting, true)
+		err = formatBindData(b.Name(), out, files, key, values, b.EnableSplitting, true)
 		if err != nil {
 			return err
 		}

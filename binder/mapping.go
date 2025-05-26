@@ -184,8 +184,8 @@ func isExported(f reflect.StructField) bool {
 	return f.PkgPath == ""
 }
 
-func fieldName(f reflect.StructField) string {
-	name := f.Tag.Get("query")
+func fieldName(f reflect.StructField, aliasTag string) string {
+	name := f.Tag.Get(aliasTag)
 	if name == "" {
 		name = f.Name
 	} else {
@@ -200,9 +200,35 @@ type fieldInfo struct {
 	nestedKinds map[reflect.Kind]struct{}
 }
 
-var fieldCache sync.Map // map[reflect.Type]fieldInfo
+var (
+	headerFieldCache     sync.Map
+	respHeaderFieldCache sync.Map
+	cookieFieldCache     sync.Map
+	queryFieldCache      sync.Map
+	formFieldCache       sync.Map
+	uriFieldCache        sync.Map
+)
 
-func buildFieldInfo(t reflect.Type) fieldInfo {
+func getFieldCache(aliasTag string) *sync.Map {
+	switch aliasTag {
+	case "header":
+		return &headerFieldCache
+	case "respHeader":
+		return &respHeaderFieldCache
+	case "cookie":
+		return &cookieFieldCache
+	case "form":
+		return &formFieldCache
+	case "uri":
+		return &uriFieldCache
+	case "query":
+		return &queryFieldCache
+	}
+
+	panic("unknown alias tag: " + aliasTag)
+}
+
+func buildFieldInfo(t reflect.Type, aliasTag string) fieldInfo {
 	info := fieldInfo{
 		names:       make(map[string]reflect.Kind),
 		nestedKinds: make(map[reflect.Kind]struct{}),
@@ -213,7 +239,7 @@ func buildFieldInfo(t reflect.Type) fieldInfo {
 		if !isExported(f) {
 			continue
 		}
-		info.names[fieldName(f)] = f.Type.Kind()
+		info.names[fieldName(f, aliasTag)] = f.Type.Kind()
 
 		if f.Type.Kind() == reflect.Struct {
 			for j := 0; j < f.Type.NumField(); j++ {
@@ -229,7 +255,7 @@ func buildFieldInfo(t reflect.Type) fieldInfo {
 	return info
 }
 
-func equalFieldType(out any, kind reflect.Kind, key string) bool {
+func equalFieldType(out any, kind reflect.Kind, key, aliasTag string) bool {
 	typ := reflect.TypeOf(out).Elem()
 	key = utils.ToLower(key)
 
@@ -241,13 +267,17 @@ func equalFieldType(out any, kind reflect.Kind, key string) bool {
 		return false
 	}
 
-	val, ok := fieldCache.Load(typ)
+	cache := getFieldCache(aliasTag)
+	val, ok := cache.Load(typ)
 	if !ok {
-		info := buildFieldInfo(typ)
-		val, _ = fieldCache.LoadOrStore(typ, info)
+		info := buildFieldInfo(typ, aliasTag)
+		val, _ = cache.LoadOrStore(typ, info)
 	}
 
-	info := val.(fieldInfo)
+	info, ok := val.(fieldInfo)
+	if !ok {
+		return false
+	}
 
 	if k, ok := info.names[key]; ok && k == kind {
 		return true
@@ -269,7 +299,7 @@ func FilterFlags(content string) string {
 	return content
 }
 
-func formatBindData[T, K any](out any, data map[string][]T, key string, value K, enableSplitting, supportBracketNotation bool) error { //nolint:revive // it's okay
+func formatBindData[T, K any](aliasTag string, out any, data map[string][]T, key string, value K, enableSplitting, supportBracketNotation bool) error { //nolint:revive // it's okay
 	var err error
 	if supportBracketNotation && strings.Contains(key, "[") {
 		key, err = parseParamSquareBrackets(key)
@@ -285,7 +315,7 @@ func formatBindData[T, K any](out any, data map[string][]T, key string, value K,
 			return fmt.Errorf("unsupported value type: %T", value)
 		}
 
-		assignBindData(out, dataMap, key, v, enableSplitting)
+		assignBindData(aliasTag, out, dataMap, key, v, enableSplitting)
 	case []string:
 		dataMap, ok := any(data).(map[string][]string)
 		if !ok {
@@ -293,7 +323,7 @@ func formatBindData[T, K any](out any, data map[string][]T, key string, value K,
 		}
 
 		for _, val := range v {
-			assignBindData(out, dataMap, key, val, enableSplitting)
+			assignBindData(aliasTag, out, dataMap, key, val, enableSplitting)
 		}
 	case []*multipart.FileHeader:
 		for _, val := range v {
@@ -310,8 +340,8 @@ func formatBindData[T, K any](out any, data map[string][]T, key string, value K,
 	return err
 }
 
-func assignBindData(out any, data map[string][]string, key, value string, enableSplitting bool) { //nolint:revive // it's okay
-	if enableSplitting && strings.Contains(value, ",") && equalFieldType(out, reflect.Slice, key) {
+func assignBindData(aliasTag string, out any, data map[string][]string, key, value string, enableSplitting bool) { //nolint:revive // it's okay
+	if enableSplitting && strings.Contains(value, ",") && equalFieldType(out, reflect.Slice, key, aliasTag) {
 		values := strings.Split(value, ",")
 		for i := 0; i < len(values); i++ {
 			data[key] = append(data[key], values[i])

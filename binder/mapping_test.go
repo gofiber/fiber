@@ -13,25 +13,25 @@ func Test_EqualFieldType(t *testing.T) {
 	t.Parallel()
 
 	var out int
-	require.False(t, equalFieldType(&out, reflect.Int, "key"))
+	require.False(t, equalFieldType(&out, reflect.Int, "key", "query"))
 
 	var dummy struct{ f string }
-	require.False(t, equalFieldType(&dummy, reflect.String, "key"))
+	require.False(t, equalFieldType(&dummy, reflect.String, "key", "query"))
 
 	var dummy2 struct{ f string }
-	require.False(t, equalFieldType(&dummy2, reflect.String, "f"))
+	require.False(t, equalFieldType(&dummy2, reflect.String, "f", "query"))
 
 	var user struct {
 		Name    string
 		Address string `query:"address"`
 		Age     int    `query:"AGE"`
 	}
-	require.True(t, equalFieldType(&user, reflect.String, "name"))
-	require.True(t, equalFieldType(&user, reflect.String, "Name"))
-	require.True(t, equalFieldType(&user, reflect.String, "address"))
-	require.True(t, equalFieldType(&user, reflect.String, "Address"))
-	require.True(t, equalFieldType(&user, reflect.Int, "AGE"))
-	require.True(t, equalFieldType(&user, reflect.Int, "age"))
+	require.True(t, equalFieldType(&user, reflect.String, "name", "query"))
+	require.True(t, equalFieldType(&user, reflect.String, "Name", "query"))
+	require.True(t, equalFieldType(&user, reflect.String, "address", "query"))
+	require.True(t, equalFieldType(&user, reflect.String, "Address", "query"))
+	require.True(t, equalFieldType(&user, reflect.Int, "AGE", "query"))
+	require.True(t, equalFieldType(&user, reflect.Int, "age", "query"))
 
 	var user2 struct {
 		User struct {
@@ -41,12 +41,12 @@ func Test_EqualFieldType(t *testing.T) {
 		} `query:"user"`
 	}
 
-	require.True(t, equalFieldType(&user2, reflect.String, "user.name"))
-	require.True(t, equalFieldType(&user2, reflect.String, "user.Name"))
-	require.True(t, equalFieldType(&user2, reflect.String, "user.address"))
-	require.True(t, equalFieldType(&user2, reflect.String, "user.Address"))
-	require.True(t, equalFieldType(&user2, reflect.Int, "user.AGE"))
-	require.True(t, equalFieldType(&user2, reflect.Int, "user.age"))
+	require.True(t, equalFieldType(&user2, reflect.String, "user.name", "query"))
+	require.True(t, equalFieldType(&user2, reflect.String, "user.Name", "query"))
+	require.True(t, equalFieldType(&user2, reflect.String, "user.address", "query"))
+	require.True(t, equalFieldType(&user2, reflect.String, "user.Address", "query"))
+	require.True(t, equalFieldType(&user2, reflect.Int, "user.AGE", "query"))
+	require.True(t, equalFieldType(&user2, reflect.Int, "user.age", "query"))
 }
 
 func Test_ParseParamSquareBrackets(t *testing.T) {
@@ -199,7 +199,7 @@ func TestFormatBindData(t *testing.T) {
 
 		out := struct{}{}
 		data := make(map[string][]string)
-		err := formatBindData(out, data, "name", "John", false, false)
+		err := formatBindData("query", out, data, "name", "John", false, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -213,7 +213,7 @@ func TestFormatBindData(t *testing.T) {
 
 		out := struct{}{}
 		data := make(map[string][]string)
-		err := formatBindData(out, data, "age", 30, false, false) // int is unsupported
+		err := formatBindData("query", out, data, "age", 30, false, false) // int is unsupported
 		if err == nil {
 			t.Fatal("expected an error, got nil")
 		}
@@ -224,7 +224,7 @@ func TestFormatBindData(t *testing.T) {
 
 		out := struct{}{}
 		data := make(map[string][]string)
-		err := formatBindData(out, data, "invalid[", "value", false, true) // malformed bracket notation
+		err := formatBindData("query", out, data, "invalid[", "value", false, true) // malformed bracket notation
 		if err == nil {
 			t.Fatal("expected an error, got nil")
 		}
@@ -239,7 +239,7 @@ func TestFormatBindData(t *testing.T) {
 			{Filename: "file1.txt"},
 			{Filename: "file2.txt"},
 		}
-		err := formatBindData(out, data, "files", files, false, false)
+		err := formatBindData("query", out, data, "files", files, false, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -253,7 +253,7 @@ func TestFormatBindData(t *testing.T) {
 
 		out := struct{}{}
 		data := map[string][]int{} // Incorrect type to force a casting error
-		err := formatBindData(out, data, "key", "value", false, false)
+		err := formatBindData("query", out, data, "key", "value", false, false)
 		require.Equal(t, "unsupported value type: string", err.Error())
 	})
 }
@@ -268,7 +268,7 @@ func TestAssignBindData(t *testing.T) {
 			Colors []string `query:"colors"`
 		}{}
 		data := make(map[string][]string)
-		assignBindData(&out, data, "colors", "red,blue,green", true)
+		assignBindData("query", &out, data, "colors", "red,blue,green", true)
 		require.Len(t, data["colors"], 3)
 	})
 
@@ -277,7 +277,7 @@ func TestAssignBindData(t *testing.T) {
 
 		var out []string
 		data := make(map[string][]string)
-		assignBindData(out, data, "color", "red,blue", false)
+		assignBindData("query", out, data, "color", "red,blue", false)
 		require.Len(t, data["color"], 1)
 	})
 }
@@ -308,7 +308,7 @@ func Test_formatBindData_ErrorCases(t *testing.T) {
 
 		out := struct{}{}
 		data := make(map[string][]string)
-		err := formatBindData(out, data, "age", 30, false, false) // int is unsupported
+		err := formatBindData("query", out, data, "age", 30, false, false) // int is unsupported
 		require.Error(t, err)
 		require.EqualError(t, err, "unsupported value type: int")
 	})
@@ -318,7 +318,7 @@ func Test_formatBindData_ErrorCases(t *testing.T) {
 
 		out := struct{}{}
 		data := make(map[string][]string)
-		err := formatBindData(out, data, "map", map[string]string{"key": "value"}, false, false) // map is unsupported
+		err := formatBindData("query", out, data, "map", map[string]string{"key": "value"}, false, false) // map is unsupported
 		require.Error(t, err)
 		require.EqualError(t, err, "unsupported value type: map[string]string")
 	})
@@ -328,7 +328,7 @@ func Test_formatBindData_ErrorCases(t *testing.T) {
 
 		out := struct{}{}
 		data := make(map[string][]string)
-		err := formatBindData(out, data, "invalid[", "value", false, true) // malformed bracket notation
+		err := formatBindData("query", out, data, "invalid[", "value", false, true) // malformed bracket notation
 		require.Error(t, err)
 		require.EqualError(t, err, "unmatched brackets")
 	})
@@ -338,7 +338,7 @@ func Test_formatBindData_ErrorCases(t *testing.T) {
 
 		out := struct{}{}
 		data := make(map[string][]string)
-		err := formatBindData(out, data, "names", 123, false, false) // invalid type for []string
+		err := formatBindData("query", out, data, "names", 123, false, false) // invalid type for []string
 		require.Error(t, err)
 		require.EqualError(t, err, "unsupported value type: int")
 	})
@@ -350,15 +350,15 @@ func Benchmark_equalFieldType(b *testing.B) {
 	}
 	type User struct {
 		Name   string `query:"name"`
-		Age    int    `query:"age"`
 		Nested Nested `query:"user"`
+		Age    int    `query:"age"`
 	}
 	var user User
 
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		equalFieldType(&user, reflect.String, "name")
-		equalFieldType(&user, reflect.Int, "age")
-		equalFieldType(&user, reflect.String, "user.name")
+		equalFieldType(&user, reflect.String, "name", "query")
+		equalFieldType(&user, reflect.Int, "age", "query")
+		equalFieldType(&user, reflect.String, "user.name", "query")
 	}
 }
