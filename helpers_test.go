@@ -1051,9 +1051,11 @@ func benchGenericParseTypeInt[V GenericTypeInteger](b *testing.B, name string, t
 		var err error
 		b.ReportAllocs()
 		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
-			v, err = genericParseType[V](strconv.FormatInt(test.value, 10))
-		}
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				v, err = genericParseType[V](strconv.FormatInt(test.value, 10))
+			}
+		})
 		if test.bits <= int(unsafe.Sizeof(V(0)))*8 {
 			require.NoError(t, err)
 			require.Equal(t, V(test.value), v)
@@ -1127,9 +1129,11 @@ func benchGenericParseTypeUInt[V GenericTypeInteger](b *testing.B, name string, 
 		var err error
 		b.ReportAllocs()
 		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
-			v, err = genericParseType[V](strconv.FormatUint(test.value, 10))
-		}
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				v, err = genericParseType[V](strconv.FormatUint(test.value, 10))
+			}
+		})
 		if test.bits <= int(unsafe.Sizeof(V(0)))*8 {
 			require.NoError(t, err)
 			require.Equal(t, V(test.value), v)
@@ -1169,9 +1173,11 @@ func Benchmark_GenericParseTypeFloats(b *testing.B) {
 			var err error
 			b.ReportAllocs()
 			b.ResetTimer()
-			for n := 0; n < b.N; n++ {
-				v, err = genericParseType[float32](test.str)
-			}
+			b.RunParallel(func(pb *testing.PB) {
+				for pb.Next() {
+					v, err = genericParseType[float32](test.str)
+				}
+			})
 			require.NoError(t, err)
 			require.InEpsilon(t, float32(test.value), v, epsilon)
 		})
@@ -1183,9 +1189,11 @@ func Benchmark_GenericParseTypeFloats(b *testing.B) {
 			var err error
 			b.ReportAllocs()
 			b.ResetTimer()
-			for n := 0; n < b.N; n++ {
-				v, err = genericParseType[float64](test.str)
-			}
+			b.RunParallel(func(pb *testing.PB) {
+				for pb.Next() {
+					v, err = genericParseType[float64](test.str)
+				}
+			})
 			require.NoError(t, err)
 			require.InEpsilon(t, test.value, v, epsilon)
 		})
@@ -1223,9 +1231,12 @@ func Benchmark_GenericParseTypeBytes(b *testing.B) {
 			var v []byte
 			var err error
 			b.ReportAllocs()
-			for b.Loop() {
-				v, err = genericParseType[[]byte](test.str)
-			}
+			b.ResetTimer()
+			b.RunParallel(func(pb *testing.PB) {
+				for pb.Next() {
+					v, err = genericParseType[[]byte](test.str)
+				}
+			})
 			if test.err == nil {
 				require.NoError(b, err)
 			} else {
@@ -1245,9 +1256,12 @@ func Benchmark_GenericParseTypeString(b *testing.B) {
 			var v string
 			var err error
 			b.ReportAllocs()
-			for b.Loop() {
-				v, err = genericParseType[string](test)
-			}
+			b.ResetTimer()
+			b.RunParallel(func(pb *testing.PB) {
+				for pb.Next() {
+					v, err = genericParseType[string](test)
+				}
+			})
 			require.NoError(b, err)
 			require.Equal(b, test, v)
 		})
@@ -1283,9 +1297,12 @@ func Benchmark_GenericParseTypeBoolean(b *testing.B) {
 			var v bool
 			var err error
 			b.ReportAllocs()
-			for b.Loop() {
-				v, err = genericParseType[bool](test.str)
-			}
+			b.ResetTimer()
+			b.RunParallel(func(pb *testing.PB) {
+				for pb.Next() {
+					v, err = genericParseType[bool](test.str)
+				}
+			})
 			require.NoError(b, err)
 			if test.value {
 				require.True(b, v)
