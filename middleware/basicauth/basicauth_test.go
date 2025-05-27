@@ -91,6 +91,57 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 	}
 }
 
+func Test_BasicAuth_WWWAuthenticateHeader(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New(Config{Users: map[string]string{"john": "doe"}}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
+	require.Equal(t, `Basic realm="Restricted"`, resp.Header.Get(fiber.HeaderWWWAuthenticate))
+}
+
+func Test_BasicAuth_InvalidHeader(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New(Config{Users: map[string]string{"john": "doe"}}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req.Header.Set(fiber.HeaderAuthorization, "Basic notbase64")
+	resp, err := app.Test(req)
+
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
+}
+
+func Test_BasicAuth_WhitespaceHandling(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New(Config{Users: map[string]string{"john": "doe"}}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
+
+	creds := base64.StdEncoding.EncodeToString([]byte("john:doe"))
+
+	cases := []string{
+		"Basic " + creds,
+		" Basic \t" + creds,
+		"Basic  " + creds + "   ",
+	}
+
+	for _, h := range cases {
+		req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+		req.Header.Set(fiber.HeaderAuthorization, h)
+		resp, err := app.Test(req)
+
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	}
+}
+
 // go test -v -run=^$ -bench=Benchmark_Middleware_BasicAuth -benchmem -count=4
 func Benchmark_Middleware_BasicAuth(b *testing.B) {
 	app := fiber.New()

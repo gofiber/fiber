@@ -29,6 +29,7 @@ Here's a quick overview of the changes in Fiber `v3`:
 - [🧬 Middlewares](#-middlewares)
   - [Important Change for Accessing Middleware Data](#important-change-for-accessing-middleware-data)
   - [Adaptor](#adaptor)
+  - [BasicAuth](#basicauth)
   - [Cache](#cache)
   - [CORS](#cors)
   - [CSRF](#csrf)
@@ -967,6 +968,10 @@ The adaptor middleware has been significantly optimized for performance and effi
 | 50MB         | Execution Time   | 1137 ns/op| 554.6 ns/op | -51.21%        |
 |              | Memory Usage     | 2734 B/op | 298 B/op    | -89.10%        |
 |              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
+
+### BasicAuth
+
+The BasicAuth middleware was updated for improved robustness in parsing the Authorization header, with enhanced validation and whitespace handling. The default unauthorized response now uses a properly quoted and capitalized `WWW-Authenticate` header.
 
 ### Cache
 
