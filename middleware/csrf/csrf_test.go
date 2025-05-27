@@ -1345,7 +1345,7 @@ func Test_CSRF_Cookie_Injection_Exploit(t *testing.T) {
 	require.Equal(t, 403, ctx.Response.StatusCode(), "CSRF exploit successful")
 }
 
-// make the unsafe header value bug from https://github.com/gofiber/fiber/issues/2045 reproducible and permanently fixed/tested by this testcase
+// Test_CSRF_UnsafeHeaderValue ensures that unsafe header values, such as those described in https://github.com/gofiber/fiber/issues/2045, are rejected and the bug remains fixed.
 // go test -race -run Test_CSRF_UnsafeHeaderValue
 func Test_CSRF_UnsafeHeaderValue(t *testing.T) {
 	t.Parallel()
