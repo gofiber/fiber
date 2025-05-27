@@ -728,3 +728,22 @@ func Test_HeaderSchemeNoToken(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
 	require.Equal(t, ErrMissingOrMalformedAPIKey.Error(), string(body))
 }
+
+func Test_HeaderSchemeNoSeparator(t *testing.T) {
+    app := fiber.New()
+    app.Use(New(Config{Validator: func(_ fiber.Ctx, _ string) (bool, error) {
+        return false, ErrMissingOrMalformedAPIKey
+    }}))
+    app.Get("/", func(c fiber.Ctx) error { return c.SendString("OK") })
+
+    req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+    // No space between "Bearer" and token
+    req.Header.Add("Authorization", "BearerTokenWithoutSpace")
+    res, err := app.Test(req)
+    require.NoError(t, err)
+
+    body, err := io.ReadAll(res.Body)
+    require.NoError(t, err)
+    require.Equal(t, http.StatusUnauthorized, res.StatusCode)
+    require.Equal(t, ErrMissingOrMalformedAPIKey.Error(), string(body))
+}
