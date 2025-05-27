@@ -32,8 +32,8 @@ func HTTPHandlerFunc(h http.HandlerFunc) fiber.Handler {
 
 // HTTPHandler wraps net/http handler to fiber handler
 func HTTPHandler(h http.Handler) fiber.Handler {
+	handler := fasthttpadaptor.NewFastHTTPHandler(h)
 	return func(c fiber.Ctx) error {
-		handler := fasthttpadaptor.NewFastHTTPHandler(h)
 		handler(c.RequestCtx())
 		return nil
 	}

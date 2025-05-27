@@ -603,28 +603,30 @@ const noCacheValue = "no-cache"
 
 // isNoCache checks if the cacheControl header value is a `no-cache`.
 func isNoCache(cacheControl string) bool {
-	i := strings.Index(cacheControl, noCacheValue)
-	if i == -1 {
-		return false
+	n := len(cacheControl)
+	ncLen := len(noCacheValue)
+	for i := 0; i < n; i++ {
+		if cacheControl[i] != 'n' {
+			continue
+		}
+		if i+ncLen > n {
+			return false
+		}
+		if cacheControl[i:i+ncLen] != noCacheValue {
+			continue
+		}
+		if i > 0 {
+			prev := cacheControl[i-1]
+			if prev != ' ' && prev != ',' {
+				continue
+			}
+		}
+		if i+ncLen == n || cacheControl[i+ncLen] == ',' {
+			return true
+		}
 	}
 
-	// Xno-cache
-	if i > 0 && !(cacheControl[i-1] == ' ' || cacheControl[i-1] == ',') {
-		return false
-	}
-
-	// bla bla, no-cache
-	if i+len(noCacheValue) == len(cacheControl) {
-		return true
-	}
-
-	// bla bla, no-cacheX
-	if cacheControl[i+len(noCacheValue)] != ',' {
-		return false
-	}
-
-	// OK
-	return true
+	return false
 }
 
 var errTestConnClosed = errors.New("testConn is closed")
@@ -753,90 +755,105 @@ func Convert[T any](value string, convertor func(string) (T, error), defaultValu
 	return converted, nil
 }
 
-// assertValueType asserts the type of the result to the type of the value
-func assertValueType[V GenericType, T any](result T) V {
-	v, ok := any(result).(V)
-	if !ok {
-		panic(fmt.Errorf("failed to type-assert to %T", v))
-	}
-	return v
-}
+var (
+	errParsedEmptyString = errors.New("parsed result is empty string")
+	errParsedEmptyBytes  = errors.New("parsed result is empty bytes")
+	errParsedType        = errors.New("unsupported generic type")
+)
 
-func genericParseDefault[V GenericType](err error, parser func() V, defaultValue ...V) V {
+func genericParseType[V GenericType](str string) (V, error) {
 	var v V
-	if err != nil {
-		if len(defaultValue) > 0 {
-			return defaultValue[0]
-		}
-		return v
-	}
-	return parser()
-}
-
-func genericParseInt[V GenericType](str string, bitSize int, parser func(int64) V, defaultValue ...V) V {
-	result, err := strconv.ParseInt(str, 10, bitSize)
-	return genericParseDefault[V](err, func() V { return parser(result) }, defaultValue...)
-}
-
-func genericParseUint[V GenericType](str string, bitSize int, parser func(uint64) V, defaultValue ...V) V {
-	result, err := strconv.ParseUint(str, 10, bitSize)
-	return genericParseDefault[V](err, func() V { return parser(result) }, defaultValue...)
-}
-
-func genericParseFloat[V GenericType](str string, bitSize int, parser func(float64) V, defaultValue ...V) V {
-	result, err := strconv.ParseFloat(str, bitSize)
-	return genericParseDefault[V](err, func() V { return parser(result) }, defaultValue...)
-}
-
-func genericParseBool[V GenericType](str string, parser func(bool) V, defaultValue ...V) V {
-	result, err := strconv.ParseBool(str)
-	return genericParseDefault[V](err, func() V { return parser(result) }, defaultValue...)
-}
-
-//nolint:gosec // Casting in this function is not a concern
-func genericParseType[V GenericType](str string, v V, defaultValue ...V) V {
 	switch any(v).(type) {
 	case int:
-		return genericParseInt[V](str, 0, func(i int64) V { return assertValueType[V, int](int(i)) }, defaultValue...)
+		result, err := strconv.ParseInt(str, 10, 0)
+		if err != nil {
+			return v, fmt.Errorf("failed to parse int: %w", err)
+		}
+		return any(int(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case int8:
-		return genericParseInt[V](str, 8, func(i int64) V { return assertValueType[V, int8](int8(i)) }, defaultValue...)
+		result, err := strconv.ParseInt(str, 10, 8)
+		if err != nil {
+			return v, fmt.Errorf("failed to parse int8: %w", err)
+		}
+		return any(int8(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case int16:
-		return genericParseInt[V](str, 16, func(i int64) V { return assertValueType[V, int16](int16(i)) }, defaultValue...)
+		result, err := strconv.ParseInt(str, 10, 16)
+		if err != nil {
+			return v, fmt.Errorf("failed to parse int16: %w", err)
+		}
+		return any(int16(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case int32:
-		return genericParseInt[V](str, 32, func(i int64) V { return assertValueType[V, int32](int32(i)) }, defaultValue...)
+		result, err := strconv.ParseInt(str, 10, 32)
+		if err != nil {
+			return v, fmt.Errorf("failed to parse int32: %w", err)
+		}
+		return any(int32(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case int64:
-		return genericParseInt[V](str, 64, func(i int64) V { return assertValueType[V, int64](i) }, defaultValue...)
+		result, err := strconv.ParseInt(str, 10, 64)
+		if err != nil {
+			return v, fmt.Errorf("failed to parse int64: %w", err)
+		}
+		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case uint:
-		return genericParseUint[V](str, 0, func(i uint64) V { return assertValueType[V, uint](uint(i)) }, defaultValue...)
+		result, err := strconv.ParseUint(str, 10, 0)
+		if err != nil {
+			return v, fmt.Errorf("failed to parse uint: %w", err)
+		}
+		return any(uint(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case uint8:
-		return genericParseUint[V](str, 8, func(i uint64) V { return assertValueType[V, uint8](uint8(i)) }, defaultValue...)
+		result, err := strconv.ParseUint(str, 10, 8)
+		if err != nil {
+			return v, fmt.Errorf("failed to parse uint8: %w", err)
+		}
+		return any(uint8(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case uint16:
-		return genericParseUint[V](str, 16, func(i uint64) V { return assertValueType[V, uint16](uint16(i)) }, defaultValue...)
+		result, err := strconv.ParseUint(str, 10, 16)
+		if err != nil {
+			return v, fmt.Errorf("failed to parse uint16: %w", err)
+		}
+		return any(uint16(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case uint32:
-		return genericParseUint[V](str, 32, func(i uint64) V { return assertValueType[V, uint32](uint32(i)) }, defaultValue...)
+		result, err := strconv.ParseUint(str, 10, 32)
+		if err != nil {
+			return v, fmt.Errorf("failed to parse uint32: %w", err)
+		}
+		return any(uint32(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case uint64:
-		return genericParseUint[V](str, 64, func(i uint64) V { return assertValueType[V, uint64](i) }, defaultValue...)
+		result, err := strconv.ParseUint(str, 10, 64)
+		if err != nil {
+			return v, fmt.Errorf("failed to parse uint64: %w", err)
+		}
+		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case float32:
-		return genericParseFloat[V](str, 32, func(i float64) V { return assertValueType[V, float32](float32(i)) }, defaultValue...)
+		result, err := strconv.ParseFloat(str, 32)
+		if err != nil {
+			return v, fmt.Errorf("failed to parse float32: %w", err)
+		}
+		return any(float32(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case float64:
-		return genericParseFloat[V](str, 64, func(i float64) V { return assertValueType[V, float64](i) }, defaultValue...)
+		result, err := strconv.ParseFloat(str, 64)
+		if err != nil {
+			return v, fmt.Errorf("failed to parse float64: %w", err)
+		}
+		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case bool:
-		return genericParseBool[V](str, func(b bool) V { return assertValueType[V, bool](b) }, defaultValue...)
+		result, err := strconv.ParseBool(str)
+		if err != nil {
+			return v, fmt.Errorf("failed to parse bool: %w", err)
+		}
+		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case string:
-		if str == "" && len(defaultValue) > 0 {
-			return defaultValue[0]
+		if str == "" {
+			return v, errParsedEmptyString
 		}
-		return assertValueType[V, string](str)
+		return any(str).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case []byte:
-		if str == "" && len(defaultValue) > 0 {
-			return defaultValue[0]
+		if str == "" {
+			return v, errParsedEmptyBytes
 		}
-		return assertValueType[V, []byte]([]byte(str))
+		return any([]byte(str)).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	default:
-		if len(defaultValue) > 0 {
-			return defaultValue[0]
-		}
-		return v
+		return v, errParsedType
 	}
 }
 

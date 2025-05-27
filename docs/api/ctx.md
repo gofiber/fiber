@@ -43,18 +43,34 @@ app.Post("/", func(c fiber.Ctx) error {
 
 ### Context
 
-`Context` returns a context implementation that was set by the user earlier or returns a non-nil, empty context if it was not set earlier.
+`Context` implements `context.Context`. However due to [current limitations in how fasthttp](https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945) works, `Deadline()`, `Done()` and `Err()` operate as a nop.
 
 ```go title="Signature"
-func (c fiber.Ctx) Context() context.Context
+func (c fiber.Ctx) Deadline() (deadline time.Time, ok bool)
+func (c fiber.Ctx) Done() <-chan struct{}
+func (c fiber.Ctx) Err() error
+func (c fiber.Ctx) Value(key any) any
 ```
 
 ```go title="Example"
-app.Get("/", func(c fiber.Ctx) error {
-  ctx := c.Context()
-  // ctx is context implementation set by user
 
+func doSomething(ctx context.Context) {
   // ...
+}
+
+app.Get("/", func(c fiber.Ctx) error {
+  doSomething(c)
+})
+```
+
+#### Value
+
+Value can be used to retrieve [**`Locals`**](#locals).
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  c.Locals(userKey, "admin")
+  user := c.Value(userKey) // returns "admin"
 })
 ```
 
@@ -367,24 +383,6 @@ func MyMiddleware() fiber.Handler {
     return err
   }
 }
-```
-
-### SetContext
-
-Sets the user-specified implementation for the `context.Context` interface.
-
-```go title="Signature"
-func (c fiber.Ctx) SetContext(ctx context.Context)
-```
-
-```go title="Example"
-app.Get("/", func(c fiber.Ctx) error {
-  ctx := context.Background()
-  c.SetContext(ctx)
-  // Here ctx could be any context implementation
-
-  // ...
-})
 ```
 
 ### String

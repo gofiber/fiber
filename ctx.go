@@ -39,12 +39,14 @@ const (
 	maxDetectionPaths = 3
 )
 
+var (
+	_ io.Writer       = (*DefaultCtx)(nil) // Compile-time check
+	_ context.Context = (*DefaultCtx)(nil) // Compile-time check
+)
+
 // The contextKey type is unexported to prevent collisions with context keys defined in
 // other packages.
-type contextKey int
-
-// userContextKey define the key name for storing context.Context in *fasthttp.RequestCtx
-const userContextKey contextKey = 0 // __local_user_context__
+type contextKey int //nolint:unused // need for future (nolintlint)
 
 // DefaultCtx is the default implementation of the Ctx interface
 // generation tool `go install github.com/vburenin/ifacemaker@975a95966976eeb2d4365a7fb236e274c54da64c`
@@ -391,23 +393,6 @@ func (c *DefaultCtx) RequestCtx() *fasthttp.RequestCtx {
 	return c.fasthttp
 }
 
-// Context returns a context implementation that was set by
-// user earlier or returns a non-nil, empty context,if it was not set earlier.
-func (c *DefaultCtx) Context() context.Context {
-	ctx, ok := c.fasthttp.UserValue(userContextKey).(context.Context)
-	if !ok {
-		ctx = context.Background()
-		c.SetContext(ctx)
-	}
-
-	return ctx
-}
-
-// SetContext sets a context implementation by user.
-func (c *DefaultCtx) SetContext(ctx context.Context) {
-	c.fasthttp.SetUserValue(userContextKey, ctx)
-}
-
 // Cookie sets a cookie by passing a cookie struct.
 func (c *DefaultCtx) Cookie(cookie *Cookie) {
 	fcookie := fasthttp.AcquireCookie()
@@ -444,6 +429,28 @@ func (c *DefaultCtx) Cookie(cookie *Cookie) {
 	fasthttp.ReleaseCookie(fcookie)
 }
 
+// Deadline returns the time when work done on behalf of this context
+// should be canceled. Deadline returns ok==false when no deadline is
+// set. Successive calls to Deadline return the same results.
+//
+// Due to current limitations in how fasthttp works, Deadline operates as a nop.
+// See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
+func (*DefaultCtx) Deadline() (time.Time, bool) {
+	return time.Time{}, false
+}
+
+// Done returns a channel that's closed when work done on behalf of this
+// context should be canceled. Done may return nil if this context can
+// never be canceled. Successive calls to Done return the same value.
+// The close of the Done channel may happen asynchronously,
+// after the cancel function returns.
+//
+// Due to current limitations in how fasthttp works, Done operates as a nop.
+// See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
+func (*DefaultCtx) Done() <-chan struct{} {
+	return nil
+}
+
 // Cookies are used for getting a cookie value by key.
 // Defaults to the empty string "" if the cookie doesn't exist.
 // If a default value is given, it will return that value if the cookie doesn't exist.
@@ -466,6 +473,18 @@ func (c *DefaultCtx) Download(file string, filename ...string) error {
 	}
 	c.setCanonical(HeaderContentDisposition, `attachment; filename="`+c.app.quoteString(fname)+`"`)
 	return c.SendFile(file)
+}
+
+// If Done is not yet closed, Err returns nil.
+// If Done is closed, Err returns a non-nil error explaining why:
+// context.DeadlineExceeded if the context's deadline passed,
+// or context.Canceled if the context was canceled for some other reason.
+// After Err returns a non-nil error, successive calls to Err return the same error.
+//
+// Due to current limitations in how fasthttp works, Err operates as a nop.
+// See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
+func (*DefaultCtx) Err() error {
+	return nil
 }
 
 // Request return the *fasthttp.Request object
@@ -644,9 +663,14 @@ func (c *DefaultCtx) Get(key string, defaultValue ...string) string {
 
 // GetReqHeader returns the HTTP request header specified by filed.
 // This function is generic and can handle different headers type values.
+// If the generic type cannot be matched to a supported type, the function
+// returns the default value (if provided) or the zero value of type V.
 func GetReqHeader[V GenericType](c Ctx, key string, defaultValue ...V) V {
-	var v V
-	return genericParseType[V](c.App().getString(c.Request().Header.Peek(key)), v, defaultValue...)
+	v, err := genericParseType[V](c.App().getString(c.Request().Header.Peek(key)))
+	if err != nil && len(defaultValue) > 0 {
+		return defaultValue[0]
+	}
+	return v
 }
 
 // GetRespHeader returns the HTTP response header specified by field.
@@ -1103,6 +1127,8 @@ func (c *DefaultCtx) Params(key string, defaultValue ...string) string {
 
 // Params is used to get the route parameters.
 // This function is generic and can handle different route parameters type values.
+// If the generic type cannot be matched to a supported type, the function
+// returns the default value (if provided) or the zero value of type V.
 //
 // Example:
 //
@@ -1115,8 +1141,11 @@ func (c *DefaultCtx) Params(key string, defaultValue ...string) string {
 // http://example.com/id/:number -> http://example.com/id/john
 // Params[int](c, "number", 0) -> returns 0 because can't parse 'john' as integer.
 func Params[V GenericType](c Ctx, key string, defaultValue ...V) V {
-	var v V
-	return genericParseType(c.Params(key), v, defaultValue...)
+	v, err := genericParseType[V](c.Params(key))
+	if err != nil && len(defaultValue) > 0 {
+		return defaultValue[0]
+	}
+	return v
 }
 
 // Path returns the path part of the request URL.
@@ -1238,10 +1267,12 @@ func (c *DefaultCtx) Queries() map[string]string {
 //	age := Query[int](c, "age") // Returns 8
 //	unknown := Query[string](c, "unknown", "default") // Returns "default" since the query parameter "unknown" is not found
 func Query[V GenericType](c Ctx, key string, defaultValue ...V) V {
-	var v V
 	q := c.App().getString(c.RequestCtx().QueryArgs().Peek(key))
-
-	return genericParseType[V](q, v, defaultValue...)
+	v, err := genericParseType[V](q)
+	if err != nil && len(defaultValue) > 0 {
+		return defaultValue[0]
+	}
+	return v
 }
 
 // Range returns a struct containing the type and a slice of ranges.
@@ -1802,6 +1833,12 @@ func (c *DefaultCtx) Type(extension string, charset ...string) Ctx {
 // This will append the header, if not already listed, otherwise leaves it listed in the current location.
 func (c *DefaultCtx) Vary(fields ...string) {
 	c.Append(HeaderVary, fields...)
+}
+
+// Value makes it possible to retrieve values (Locals) under keys scoped to the request
+// and therefore available to all following routes that match the request.
+func (c *DefaultCtx) Value(key any) any {
+	return c.fasthttp.UserValue(key)
 }
 
 // Write appends p into response body.

@@ -75,6 +75,8 @@ We have made several changes to the Fiber app, including:
 - **ListenTLSWithCertificate**: Use `app.Listen()` with `tls.Config`.
 - **ListenMutualTLS**: Use `app.Listen()` with `tls.Config`.
 - **ListenMutualTLSWithCertificate**: Use `app.Listen()` with `tls.Config`.
+- **Context()**: Use `Ctx` instead, it follow the `context.Context` interface
+- **SetContext()**: Use `Ctx` instead, it follow the `context.Context` interface
 
 ### Method Changes
 
@@ -394,10 +396,14 @@ testConfig := fiber.TestConfig{
 ### New Features
 
 - Cookie now allows Partitioned cookies for [CHIPS](https://developers.google.com/privacy-sandbox/3pcd/chips) support. CHIPS (Cookies Having Independent Partitioned State) is a feature that improves privacy by allowing cookies to be partitioned by top-level site, mitigating cross-site tracking.
+- Context now implements [context.Context](https://pkg.go.dev/context#Context).
 
 ### New Methods
 
 - **AutoFormat**: Similar to Express.js, automatically formats the response based on the request's `Accept` header.
+- **Deadline**: For implementing `context.Context`.
+- **Done**: For implementing `context.Context`.
+- **Err**: For implementing `context.Context`.
 - **Host**: Similar to Express.js, returns the host name of the request.
 - **Port**: Similar to Express.js, returns the port number of the request.
 - **IsProxyTrusted**: Checks the trustworthiness of the remote IP.
@@ -407,6 +413,7 @@ testConfig := fiber.TestConfig{
 - **SendStreamWriter**: Sends a stream using a writer function.
 - **SendString**: Similar to Express.js, sends a string as the response.
 - **String**: Similar to Express.js, converts a value to a string.
+- **Value**: For implementing `context.Context`. Returns request-scoped value from Locals.
 - **ViewBind**: Binds data to a view, replacing the old `Bind` method.
 - **CBOR**: Introducing [CBOR](https://cbor.io/) binary encoding format for both request & response body. CBOR is a binary data serialization format which is both compact and efficient, making it ideal for use in web applications.
 - **Drop**: Terminates the client connection silently without sending any HTTP headers or response body. This can be used for scenarios where you want to block certain requests without notifying the client, such as mitigating DDoS attacks or protecting sensitive endpoints from unauthorized access.
