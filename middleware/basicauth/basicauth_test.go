@@ -114,7 +114,7 @@ func Benchmark_Middleware_BasicAuth(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		h(fctx)
 	}
 
@@ -144,7 +144,7 @@ func Benchmark_Middleware_BasicAuth_Upper(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		h(fctx)
 	}
 

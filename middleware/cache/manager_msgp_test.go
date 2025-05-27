@@ -36,7 +36,7 @@ func BenchmarkMarshalMsgitem(b *testing.B) {
 	v := item{}
 	b.ReportAllocs()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		v.MarshalMsg(nil)
 	}
 }
@@ -48,7 +48,7 @@ func BenchmarkAppendMsgitem(b *testing.B) {
 	b.SetBytes(int64(len(bts)))
 	b.ReportAllocs()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		bts, _ = v.MarshalMsg(bts[0:0])
 	}
 }
@@ -59,7 +59,7 @@ func BenchmarkUnmarshalitem(b *testing.B) {
 	b.ReportAllocs()
 	b.SetBytes(int64(len(bts)))
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, err := v.UnmarshalMsg(bts)
 		if err != nil {
 			b.Fatal(err)
@@ -99,7 +99,7 @@ func BenchmarkEncodeitem(b *testing.B) {
 	en := msgp.NewWriter(msgp.Nowhere)
 	b.ReportAllocs()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		v.EncodeMsg(en)
 	}
 	en.Flush()
@@ -114,7 +114,7 @@ func BenchmarkDecodeitem(b *testing.B) {
 	dc := msgp.NewReader(rd)
 	b.ReportAllocs()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err := v.DecodeMsg(dc)
 		if err != nil {
 			b.Fatal(err)

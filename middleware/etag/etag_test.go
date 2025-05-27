@@ -281,7 +281,7 @@ func Benchmark_Etag(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		h(fctx)
 	}
 

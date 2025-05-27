@@ -72,7 +72,9 @@ func Benchmark_MemoryLock(b *testing.B) {
 
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
+		i++
 		key := keys[i]
 		if err := lock.Lock(key); err != nil {
 			b.Fatal(err)

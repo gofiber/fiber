@@ -68,7 +68,7 @@ func Benchmark_RespHeaderBinder_Bind(b *testing.B) {
 	b.ResetTimer()
 
 	var err error
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err = binder.Bind(resp, &user)
 	}
 

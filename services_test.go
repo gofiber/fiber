@@ -497,7 +497,7 @@ func Benchmark_StartServices(b *testing.B) {
 		b.Helper()
 
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			app := New(Config{
 				Services: services,
 			})
@@ -541,7 +541,7 @@ func Benchmark_ShutdownServices(b *testing.B) {
 		b.Helper()
 
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			app := New(Config{
 				Services: services,
 			})
@@ -585,7 +585,7 @@ func Benchmark_StartServices_withContextCancellation(b *testing.B) {
 		b.Helper()
 
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			app := New(Config{
 				Services: services,
 			})
@@ -618,7 +618,7 @@ func Benchmark_StartServices_withContextCancellation(b *testing.B) {
 		const timeout = 500 * time.Millisecond
 
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			app := New(Config{
 				Services: []Service{
 					&mockService{name: "dep1", startDelay: 10 * time.Millisecond},
@@ -643,7 +643,7 @@ func Benchmark_ShutdownServices_withContextCancellation(b *testing.B) {
 
 		b.ResetTimer()
 
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			app := New(Config{
 				Services: services,
 			})
@@ -682,7 +682,7 @@ func Benchmark_ShutdownServices_withContextCancellation(b *testing.B) {
 
 		b.ResetTimer()
 
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			app := New(Config{
 				Services: []Service{
 					&mockService{name: "dep1", terminateDelay: 10 * time.Millisecond},
@@ -714,7 +714,7 @@ func Benchmark_ServicesMemory(b *testing.B) {
 		b.ReportAllocs()
 
 		var err error
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			app := New(Config{
 				Services: services,
 			})

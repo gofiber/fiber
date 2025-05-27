@@ -208,7 +208,7 @@ func Benchmark_Memory_Set(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = testStore.Set("john", []byte("doe"), 0) //nolint:errcheck // error not needed for benchmark
 	}
 }
@@ -230,7 +230,7 @@ func Benchmark_Memory_Set_Asserted(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err := testStore.Set("john", []byte("doe"), 0)
 		require.NoError(b, err)
 	}
@@ -258,7 +258,7 @@ func Benchmark_Memory_Get(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = testStore.Get("john") //nolint:errcheck // error not needed for benchmark
 	}
 }
@@ -286,7 +286,7 @@ func Benchmark_Memory_Get_Asserted(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, err := testStore.Get("john")
 		require.NoError(b, err)
 	}
@@ -314,7 +314,7 @@ func Benchmark_Memory_SetAndDelete(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = testStore.Set("john", []byte("doe"), 0) //nolint:errcheck // error not needed for benchmark
 		_ = testStore.Delete("john")                //nolint:errcheck // error not needed for benchmark
 	}
@@ -338,7 +338,7 @@ func Benchmark_Memory_SetAndDelete_Asserted(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err := testStore.Set("john", []byte("doe"), 0)
 		require.NoError(b, err)
 

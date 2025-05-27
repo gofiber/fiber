@@ -154,7 +154,7 @@ func Benchmark_Idempotency(b *testing.B) {
 
 		b.ReportAllocs()
 		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			h(c)
 		}
 	})
@@ -166,7 +166,7 @@ func Benchmark_Idempotency(b *testing.B) {
 
 		b.ReportAllocs()
 		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			h(c)
 		}
 	})

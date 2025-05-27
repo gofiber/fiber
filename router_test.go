@@ -902,7 +902,7 @@ func Benchmark_App_MethodNotAllowed(b *testing.B) {
 	c.URI().SetPath("/this/is/a/dummy/route/oke")
 
 	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		appHandler(c)
 	}
 	b.StopTimer()
@@ -925,7 +925,7 @@ func Benchmark_Router_NotFound(b *testing.B) {
 	c.URI().SetPath("/this/route/does/not/exist")
 
 	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		appHandler(c)
 	}
 	require.Equal(b, 404, c.Response.StatusCode())
@@ -945,7 +945,7 @@ func Benchmark_Router_Handler(b *testing.B) {
 
 	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		appHandler(c)
 	}
 }
@@ -965,7 +965,7 @@ func Benchmark_Router_Handler_Strict_Case(b *testing.B) {
 
 	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		appHandler(c)
 	}
 }
@@ -985,7 +985,7 @@ func Benchmark_Router_Chain(b *testing.B) {
 	c.Request.Header.SetMethod(MethodGet)
 	c.URI().SetPath("/")
 	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		appHandler(c)
 	}
 }
@@ -1009,14 +1009,14 @@ func Benchmark_Router_WithCompression(b *testing.B) {
 	c.Request.Header.SetMethod(MethodGet)
 	c.URI().SetPath("/")
 	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		appHandler(c)
 	}
 }
 
 // go test -run=^$ -bench=Benchmark_Startup_Process -benchmem -count=9
 func Benchmark_Startup_Process(b *testing.B) {
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		app := New()
 		registerDummyRoutes(app)
 		app.startupProcess()
@@ -1039,7 +1039,7 @@ func Benchmark_Router_Next(b *testing.B) {
 	c := app.AcquireCtx(request).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		c.indexRoute = -1
 		res, err = app.next(c)
 	}
@@ -1064,7 +1064,7 @@ func Benchmark_Router_Next_Default(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		h(fctx)
 	}
 }
@@ -1108,7 +1108,7 @@ func Benchmark_Router_Next_Default_Immutable(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		h(fctx)
 	}
 }
@@ -1157,7 +1157,7 @@ func Benchmark_Route_Match(b *testing.B) {
 		return nil
 	})
 	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		match = route.match("/user/keys/1337", "/user/keys/1337", &params)
 	}
 
@@ -1187,7 +1187,7 @@ func Benchmark_Route_Match_Star(b *testing.B) {
 	})
 	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		match = route.match("/user/keys/bla", "/user/keys/bla", &params)
 	}
 
@@ -1218,7 +1218,7 @@ func Benchmark_Route_Match_Root(b *testing.B) {
 
 	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		match = route.match("/", "/", &params)
 	}
 
@@ -1240,7 +1240,7 @@ func Benchmark_Router_Handler_CaseSensitive(b *testing.B) {
 
 	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		appHandler(c)
 	}
 }
@@ -1263,7 +1263,7 @@ func Benchmark_Router_Handler_Unescape(b *testing.B) {
 
 	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		c.URI().SetPath("/cr%C3%A9er")
 		appHandler(c)
 	}
@@ -1283,7 +1283,7 @@ func Benchmark_Router_Handler_StrictRouting(b *testing.B) {
 
 	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		appHandler(c)
 	}
 }
@@ -1302,7 +1302,7 @@ func Benchmark_Router_Github_API(b *testing.B) {
 
 	for i := range routesFixture.TestRoutes {
 		c.Request.Header.SetMethod(routesFixture.TestRoutes[i].Method)
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			c.URI().SetPath(routesFixture.TestRoutes[i].Path)
 
 			ctx := app.AcquireCtx(c).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed

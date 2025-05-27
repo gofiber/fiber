@@ -1019,7 +1019,7 @@ func Benchmark_Cache(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		h(fctx)
 	}
 
@@ -1049,7 +1049,7 @@ func Benchmark_Cache_Storage(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		h(fctx)
 	}
 
@@ -1077,7 +1077,7 @@ func Benchmark_Cache_AdditionalHeaders(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		h(fctx)
 	}
 
@@ -1108,7 +1108,9 @@ func Benchmark_Cache_MaxSize(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 
-			for n := 0; n < b.N; n++ {
+			n := 0
+			for b.Loop() {
+				n++
 				fctx.Request.SetRequestURI(fmt.Sprintf("/%v", n))
 				h(fctx)
 			}

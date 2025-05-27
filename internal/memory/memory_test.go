@@ -69,7 +69,7 @@ func Benchmark_Memory(b *testing.B) {
 		d := New()
 		b.ReportAllocs()
 		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			for _, key := range keys {
 				d.Set(key, value, ttl)
 			}

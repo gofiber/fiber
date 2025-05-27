@@ -1443,7 +1443,7 @@ func Benchmark_Middleware_CSRF_Check(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		h(ctx)
 	}
 
@@ -1467,7 +1467,7 @@ func Benchmark_Middleware_CSRF_GenerateToken(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		h(ctx)
 	}
 

@@ -195,7 +195,7 @@ func Benchmark_Rewrite(b *testing.B) {
 		reqCtx.Request.SetRequestURI("/old")
 		b.ReportAllocs()
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			app.Handler()(reqCtx)
 		}
 	})
@@ -215,7 +215,7 @@ func Benchmark_Rewrite(b *testing.B) {
 		reqCtx.Request.SetRequestURI("/old")
 		b.ReportAllocs()
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			app.Handler()(reqCtx)
 		}
 	})
@@ -232,7 +232,7 @@ func Benchmark_Rewrite(b *testing.B) {
 		reqCtx.Request.SetRequestURI("/users/123/orders/456")
 		b.ReportAllocs()
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			app.Handler()(reqCtx)
 		}
 	})
@@ -252,7 +252,7 @@ func Benchmark_Rewrite(b *testing.B) {
 		reqCtx.Request.SetRequestURI("/not-matching-any-rule")
 		b.ReportAllocs()
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			app.Handler()(reqCtx)
 		}
 	})
@@ -269,7 +269,7 @@ func Benchmark_Rewrite(b *testing.B) {
 		reqCtx.Request.SetRequestURI("/not-matching-any-rule")
 		b.ReportAllocs()
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			app.Handler()(reqCtx)
 		}
 	})

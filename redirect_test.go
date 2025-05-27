@@ -649,7 +649,7 @@ func Benchmark_Redirect_Route(b *testing.B) {
 
 	var err error
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Redirect().Route("user", RedirectConfig{
 			Params: Map{
 				"name": "fiber",
@@ -676,7 +676,7 @@ func Benchmark_Redirect_Route_WithQueries(b *testing.B) {
 
 	var err error
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Redirect().Route("user", RedirectConfig{
 			Params: Map{
 				"name": "fiber",
@@ -708,7 +708,7 @@ func Benchmark_Redirect_Route_WithFlashMessages(b *testing.B) {
 
 	var err error
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Redirect().With("success", "1").With("message", "test").Route("user")
 	}
 
@@ -766,7 +766,7 @@ func Benchmark_Redirect_parseAndClearFlashMessages(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		c.Redirect().parseAndClearFlashMessages()
 	}
 
@@ -805,7 +805,7 @@ func Benchmark_Redirect_processFlashMessages(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		c.Redirect().processFlashMessages()
 	}
 
@@ -842,7 +842,7 @@ func Benchmark_Redirect_Messages(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		msgs = c.Redirect().Messages()
 	}
 
@@ -879,7 +879,7 @@ func Benchmark_Redirect_OldInputs(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		oldInputs = c.Redirect().OldInputs()
 	}
 
@@ -914,7 +914,7 @@ func Benchmark_Redirect_Message(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		msg = c.Redirect().Message("message")
 	}
 
@@ -945,7 +945,7 @@ func Benchmark_Redirect_OldInput(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		input = c.Redirect().OldInput("name")
 	}
 

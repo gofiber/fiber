@@ -270,7 +270,7 @@ func Benchmark_Headers(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		for k, v := range resp.Headers() {
 			_ = k
 			_ = v

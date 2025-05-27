@@ -167,7 +167,7 @@ func Benchmark_Middleware_Favicon(b *testing.B) {
 
 	b.ReportAllocs()
 	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		handler(c)
 	}
 }

@@ -1296,7 +1296,7 @@ func Test_App_Next_Method(t *testing.T) {
 
 // go test -v -run=^$ -bench=Benchmark_NewError -benchmem -count=4
 func Benchmark_NewError(b *testing.B) {
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		NewError(200, "test") //nolint:errcheck // not needed
 	}
 }
@@ -1916,7 +1916,7 @@ func Benchmark_Communication_Flow(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		h(fctx)
 	}
 
@@ -1934,7 +1934,7 @@ func Benchmark_Ctx_AcquireReleaseFlow(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			c, _ := app.AcquireCtx(fctx).(*DefaultCtx) //nolint:errcheck // not needed
 			app.ReleaseCtx(c)
 		}
@@ -1944,7 +1944,7 @@ func Benchmark_Ctx_AcquireReleaseFlow(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			c, _ := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck // not needed
 			app.ReleaseCtx(c)
 		}

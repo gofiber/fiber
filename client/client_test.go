@@ -1704,7 +1704,7 @@ func Benchmark_Client_Request(b *testing.B) {
 
 	var err error
 	var resp *Response
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		resp, err = client.Get("http://example.com")
 		resp.Close()
 	}
