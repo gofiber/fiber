@@ -119,7 +119,7 @@ func TestTimeout_ZeroDuration(t *testing.T) {
 
 	app.Get("/zero", New(func(c fiber.Ctx) error {
 		// Sleep 50ms, but there's no real 'deadline' since zero-timeout.
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(70 * time.Millisecond)
 		return c.SendString("No timeout used")
 	}, 0))
 

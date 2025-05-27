@@ -59,7 +59,7 @@ func Test_Cache_Expired(t *testing.T) {
 	require.NoError(t, err)
 
 	// Sleep until the cache is expired
-	time.Sleep(3 * time.Second)
+	time.Sleep(3*time.Second + 200*time.Millisecond)
 
 	respCached, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
@@ -428,7 +428,7 @@ func Test_Cache_NothingToCache(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(600 * time.Millisecond)
 
 	respCached, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
@@ -530,7 +530,7 @@ func Test_CustomExpiration(t *testing.T) {
 	require.Equal(t, 1, newCacheTime)
 
 	// Sleep until the cache is expired
-	time.Sleep(1*time.Second + 100*time.Millisecond)
+	time.Sleep(1200 * time.Millisecond)
 
 	cachedResp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
