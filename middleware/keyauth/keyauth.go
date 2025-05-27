@@ -137,11 +137,18 @@ func KeyFromHeader(header, authScheme string) KeyLookupFunc {
 		if len(auth) <= l || !strings.EqualFold(auth[:l], authScheme) {
 			return "", ErrMissingOrMalformedAPIKey
 		}
-		if len(auth) <= l+1 || auth[l] != ' ' {
+
+		rest := auth[l:]
+		if len(rest) == 0 || (rest[0] != ' ' && rest[0] != '\t') {
 			return "", ErrMissingOrMalformedAPIKey
 		}
 
-		return strings.TrimSpace(auth[l+1:]), nil
+		token := strings.TrimLeft(rest, " \t")
+		if token == "" {
+			return "", ErrMissingOrMalformedAPIKey
+		}
+
+		return token, nil
 	}
 }
 
