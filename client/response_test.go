@@ -267,7 +267,6 @@ func Benchmark_Headers(b *testing.B) {
 		server.stop()
 	})
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
 	for b.Loop() {

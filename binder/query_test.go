@@ -52,7 +52,6 @@ func Test_QueryBinder_Bind(t *testing.T) {
 
 func Benchmark_QueryBinder_Bind(b *testing.B) {
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	binder := &QueryBinding{
 		EnableSplitting: true,

@@ -129,7 +129,6 @@ func Benchmark_CSRF_SubdomainMatch(b *testing.B) {
 
 	o := "www.example.com"
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
 	for b.Loop() {

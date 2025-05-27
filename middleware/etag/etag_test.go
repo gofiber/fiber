@@ -279,7 +279,6 @@ func Benchmark_Etag(b *testing.B) {
 	fctx.Request.SetRequestURI("/")
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	for b.Loop() {
 		h(fctx)

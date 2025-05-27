@@ -496,7 +496,6 @@ func Benchmark_StartServices(b *testing.B) {
 	benchmarkFn := func(b *testing.B, services []Service) {
 		b.Helper()
 
-		b.ResetTimer()
 		for b.Loop() {
 			app := New(Config{
 				Services: services,
@@ -540,7 +539,6 @@ func Benchmark_ShutdownServices(b *testing.B) {
 	benchmarkFn := func(b *testing.B, services []Service) {
 		b.Helper()
 
-		b.ResetTimer()
 		for b.Loop() {
 			app := New(Config{
 				Services: services,
@@ -584,7 +582,6 @@ func Benchmark_StartServices_withContextCancellation(b *testing.B) {
 	benchmarkFn := func(b *testing.B, services []Service, timeout time.Duration) {
 		b.Helper()
 
-		b.ResetTimer()
 		for b.Loop() {
 			app := New(Config{
 				Services: services,
@@ -617,7 +614,6 @@ func Benchmark_StartServices_withContextCancellation(b *testing.B) {
 	b.Run("multiple-services/successful-completion", func(b *testing.B) {
 		const timeout = 500 * time.Millisecond
 
-		b.ResetTimer()
 		for b.Loop() {
 			app := New(Config{
 				Services: []Service{
@@ -640,8 +636,6 @@ func Benchmark_StartServices_withContextCancellation(b *testing.B) {
 func Benchmark_ShutdownServices_withContextCancellation(b *testing.B) {
 	benchmarkFn := func(b *testing.B, services []Service, timeout time.Duration) {
 		b.Helper()
-
-		b.ResetTimer()
 
 		for b.Loop() {
 			app := New(Config{
@@ -680,8 +674,6 @@ func Benchmark_ShutdownServices_withContextCancellation(b *testing.B) {
 	b.Run("multiple-services/successful-completion", func(b *testing.B) {
 		const timeout = 500 * time.Millisecond
 
-		b.ResetTimer()
-
 		for b.Loop() {
 			app := New(Config{
 				Services: []Service{
@@ -710,7 +702,6 @@ func Benchmark_ServicesMemory(b *testing.B) {
 	benchmarkFn := func(b *testing.B, services []Service) {
 		b.Helper()
 
-		b.ResetTimer()
 		b.ReportAllocs()
 
 		var err error

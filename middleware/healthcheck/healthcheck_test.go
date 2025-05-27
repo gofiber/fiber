@@ -194,7 +194,6 @@ func Benchmark_HealthCheck(b *testing.B) {
 	fctx.Request.SetRequestURI("/livez")
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	for b.Loop() {
 		h(fctx)

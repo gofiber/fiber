@@ -42,7 +42,6 @@ func Test_URIBinding_Bind(t *testing.T) {
 
 func Benchmark_URIBinding_Bind(b *testing.B) {
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	binder := &URIBinding{}
 

@@ -256,7 +256,6 @@ func Benchmark_Compress(b *testing.B) {
 			}
 
 			b.ReportAllocs()
-			b.ResetTimer()
 
 			for b.Loop() {
 				h(fctx)
@@ -307,7 +306,6 @@ func Benchmark_Compress_Levels(b *testing.B) {
 				}
 
 				b.ReportAllocs()
-				b.ResetTimer()
 
 				for b.Loop() {
 					h(fctx)

@@ -1699,7 +1699,6 @@ func Benchmark_Client_Request(b *testing.B) {
 
 	client := New().SetDial(dial)
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
 	var err error

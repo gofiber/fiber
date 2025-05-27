@@ -35,7 +35,6 @@ func TestMarshalUnmarshalredirectionMsg(t *testing.T) {
 func BenchmarkMarshalMsgredirectionMsg(b *testing.B) {
 	v := redirectionMsg{}
 	b.ReportAllocs()
-	b.ResetTimer()
 	for b.Loop() {
 		v.MarshalMsg(nil)
 	}
@@ -47,7 +46,6 @@ func BenchmarkAppendMsgredirectionMsg(b *testing.B) {
 	bts, _ = v.MarshalMsg(bts[0:0])
 	b.SetBytes(int64(len(bts)))
 	b.ReportAllocs()
-	b.ResetTimer()
 	for b.Loop() {
 		bts, _ = v.MarshalMsg(bts[0:0])
 	}
@@ -58,7 +56,6 @@ func BenchmarkUnmarshalredirectionMsg(b *testing.B) {
 	bts, _ := v.MarshalMsg(nil)
 	b.ReportAllocs()
 	b.SetBytes(int64(len(bts)))
-	b.ResetTimer()
 	for b.Loop() {
 		_, err := v.UnmarshalMsg(bts)
 		if err != nil {
@@ -98,7 +95,6 @@ func BenchmarkEncoderedirectionMsg(b *testing.B) {
 	b.SetBytes(int64(buf.Len()))
 	en := msgp.NewWriter(msgp.Nowhere)
 	b.ReportAllocs()
-	b.ResetTimer()
 	for b.Loop() {
 		v.EncodeMsg(en)
 	}
@@ -113,7 +109,6 @@ func BenchmarkDecoderedirectionMsg(b *testing.B) {
 	rd := msgp.NewEndlessReader(buf.Bytes(), b)
 	dc := msgp.NewReader(rd)
 	b.ReportAllocs()
-	b.ResetTimer()
 	for b.Loop() {
 		err := v.DecodeMsg(dc)
 		if err != nil {
@@ -148,7 +143,6 @@ func TestMarshalUnmarshalredirectionMsgs(t *testing.T) {
 func BenchmarkMarshalMsgredirectionMsgs(b *testing.B) {
 	v := redirectionMsgs{}
 	b.ReportAllocs()
-	b.ResetTimer()
 	for b.Loop() {
 		v.MarshalMsg(nil)
 	}
@@ -160,7 +154,6 @@ func BenchmarkAppendMsgredirectionMsgs(b *testing.B) {
 	bts, _ = v.MarshalMsg(bts[0:0])
 	b.SetBytes(int64(len(bts)))
 	b.ReportAllocs()
-	b.ResetTimer()
 	for b.Loop() {
 		bts, _ = v.MarshalMsg(bts[0:0])
 	}
@@ -171,7 +164,6 @@ func BenchmarkUnmarshalredirectionMsgs(b *testing.B) {
 	bts, _ := v.MarshalMsg(nil)
 	b.ReportAllocs()
 	b.SetBytes(int64(len(bts)))
-	b.ResetTimer()
 	for b.Loop() {
 		_, err := v.UnmarshalMsg(bts)
 		if err != nil {
@@ -211,7 +203,6 @@ func BenchmarkEncoderedirectionMsgs(b *testing.B) {
 	b.SetBytes(int64(buf.Len()))
 	en := msgp.NewWriter(msgp.Nowhere)
 	b.ReportAllocs()
-	b.ResetTimer()
 	for b.Loop() {
 		v.EncodeMsg(en)
 	}
@@ -226,7 +217,6 @@ func BenchmarkDecoderedirectionMsgs(b *testing.B) {
 	rd := msgp.NewEndlessReader(buf.Bytes(), b)
 	dc := msgp.NewReader(rd)
 	b.ReportAllocs()
-	b.ResetTimer()
 	for b.Loop() {
 		err := v.DecodeMsg(dc)
 		if err != nil {

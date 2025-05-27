@@ -68,7 +68,6 @@ func Benchmark_Memory(b *testing.B) {
 	b.Run("fiber_memory", func(b *testing.B) {
 		d := New()
 		b.ReportAllocs()
-		b.ResetTimer()
 		for b.Loop() {
 			for _, key := range keys {
 				d.Set(key, value, ttl)

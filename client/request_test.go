@@ -184,7 +184,6 @@ func Benchmark_Request_Headers(b *testing.B) {
 		"bar": {"foo"},
 	})
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
 	for b.Loop() {
@@ -345,7 +344,6 @@ func Benchmark_Request_Params(b *testing.B) {
 		"bar": {"foo"},
 	})
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
 	for b.Loop() {
@@ -470,7 +468,6 @@ func Benchmark_Request_Cookies(b *testing.B) {
 		"bar": "foo",
 	})
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
 	for b.Loop() {
@@ -590,7 +587,6 @@ func Benchmark_Request_PathParams(b *testing.B) {
 		"bar": "foo",
 	})
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
 	for b.Loop() {
@@ -793,7 +789,6 @@ func Benchmark_Request_Files(b *testing.B) {
 	req.AddFile("../.github/index.html")
 	req.AddFiles(AcquireFile(SetFileName("tmp.txt")))
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
 	for b.Loop() {
@@ -1400,7 +1395,6 @@ func Benchmark_Request_AllFormData(b *testing.B) {
 		"bar": {"foo"},
 	})
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
 	for b.Loop() {
@@ -1717,7 +1711,6 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 		}
 
 		b.ReportAllocs()
-		b.StartTimer()
 
 		for b.Loop() {
 			SetValWithStruct(p, "param", args{
@@ -1792,7 +1785,6 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 		}
 
 		b.ReportAllocs()
-		b.StartTimer()
 
 		for b.Loop() {
 			SetValWithStruct(p, "param", &args{
@@ -1852,7 +1844,6 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 		}
 
 		b.ReportAllocs()
-		b.StartTimer()
 
 		for b.Loop() {
 			SetValWithStruct(p, "param", 5)

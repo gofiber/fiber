@@ -194,7 +194,6 @@ func Benchmark_Rewrite(b *testing.B) {
 		reqCtx := &fasthttp.RequestCtx{}
 		reqCtx.Request.SetRequestURI("/old")
 		b.ReportAllocs()
-		b.ResetTimer()
 		for b.Loop() {
 			app.Handler()(reqCtx)
 		}
@@ -214,7 +213,6 @@ func Benchmark_Rewrite(b *testing.B) {
 		reqCtx := &fasthttp.RequestCtx{}
 		reqCtx.Request.SetRequestURI("/old")
 		b.ReportAllocs()
-		b.ResetTimer()
 		for b.Loop() {
 			app.Handler()(reqCtx)
 		}
@@ -231,7 +229,6 @@ func Benchmark_Rewrite(b *testing.B) {
 		reqCtx := &fasthttp.RequestCtx{}
 		reqCtx.Request.SetRequestURI("/users/123/orders/456")
 		b.ReportAllocs()
-		b.ResetTimer()
 		for b.Loop() {
 			app.Handler()(reqCtx)
 		}
@@ -251,7 +248,6 @@ func Benchmark_Rewrite(b *testing.B) {
 		reqCtx := &fasthttp.RequestCtx{}
 		reqCtx.Request.SetRequestURI("/not-matching-any-rule")
 		b.ReportAllocs()
-		b.ResetTimer()
 		for b.Loop() {
 			app.Handler()(reqCtx)
 		}
@@ -268,7 +264,6 @@ func Benchmark_Rewrite(b *testing.B) {
 		reqCtx := &fasthttp.RequestCtx{}
 		reqCtx.Request.SetRequestURI("/not-matching-any-rule")
 		b.ReportAllocs()
-		b.ResetTimer()
 		for b.Loop() {
 			app.Handler()(reqCtx)
 		}
@@ -293,6 +288,8 @@ func Benchmark_Rewrite_Parallel(b *testing.B) {
 				"/old": "/new",
 			},
 		})
+		b.ReportAllocs()
+		b.ResetTimer()
 
 		b.RunParallel(func(pb *testing.PB) {
 			reqCtx := &fasthttp.RequestCtx{}
@@ -313,6 +310,8 @@ func Benchmark_Rewrite_Parallel(b *testing.B) {
 				"/old": "/new",
 			},
 		})
+		b.ReportAllocs()
+		b.ResetTimer()
 
 		b.RunParallel(func(pb *testing.PB) {
 			reqCtx := &fasthttp.RequestCtx{}
@@ -330,6 +329,8 @@ func Benchmark_Rewrite_Parallel(b *testing.B) {
 				"/users/*/orders/*": "/user/$1/order/$2",
 			},
 		})
+		b.ReportAllocs()
+		b.ResetTimer()
 
 		b.RunParallel(func(pb *testing.PB) {
 			reqCtx := &fasthttp.RequestCtx{}
@@ -350,6 +351,8 @@ func Benchmark_Rewrite_Parallel(b *testing.B) {
 		app.Use(func(c fiber.Ctx) error {
 			return c.SendStatus(fiber.StatusOK)
 		})
+		b.ReportAllocs()
+		b.ResetTimer()
 
 		b.RunParallel(func(pb *testing.PB) {
 			reqCtx := &fasthttp.RequestCtx{}
@@ -367,6 +370,8 @@ func Benchmark_Rewrite_Parallel(b *testing.B) {
 				"/users/*/orders/*": "/user/$1/order/$2",
 			},
 		})
+		b.ReportAllocs()
+		b.ResetTimer()
 
 		b.RunParallel(func(pb *testing.PB) {
 			reqCtx := &fasthttp.RequestCtx{}

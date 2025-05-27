@@ -71,10 +71,7 @@ func Benchmark_MemoryLock(b *testing.B) {
 	lock := idempotency.NewMemoryLock()
 
 	b.ResetTimer()
-
-	i := 0
-	for b.Loop() {
-		i++
+	for i := 0; i < b.N; i++ {
 		key := keys[i]
 		if err := lock.Lock(key); err != nil {
 			b.Fatal(err)
@@ -95,6 +92,8 @@ func Benchmark_MemoryLock_Parallel(b *testing.B) {
 	b.Run("UniqueKeys", func(b *testing.B) {
 		lock := idempotency.NewMemoryLock()
 		var keyI atomic.Int32
+		b.ReportAllocs()
+		b.ResetTimer()
 		b.RunParallel(func(p *testing.PB) {
 			for p.Next() {
 				i := int(keyI.Add(1)) % len(keys)
@@ -112,6 +111,8 @@ func Benchmark_MemoryLock_Parallel(b *testing.B) {
 	b.Run("RepeatedKeys", func(b *testing.B) {
 		lock := idempotency.NewMemoryLock()
 		var keyI atomic.Int32
+		b.ReportAllocs()
+		b.ResetTimer()
 		b.RunParallel(func(p *testing.PB) {
 			for p.Next() {
 				// Division by 3 ensures that index will be repreated exactly 3 times

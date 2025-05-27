@@ -51,7 +51,6 @@ func Test_HeaderBinder_Bind(t *testing.T) {
 
 func Benchmark_HeaderBinder_Bind(b *testing.B) {
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	binder := &HeaderBinding{
 		EnableSplitting: true,

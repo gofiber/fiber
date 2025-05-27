@@ -166,7 +166,6 @@ func Benchmark_Middleware_Favicon(b *testing.B) {
 	c.Request.SetRequestURI("/")
 
 	b.ReportAllocs()
-	b.ResetTimer()
 	for b.Loop() {
 		handler(c)
 	}

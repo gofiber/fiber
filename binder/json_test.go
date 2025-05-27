@@ -41,7 +41,6 @@ func Test_JSON_Binding_Bind(t *testing.T) {
 
 func Benchmark_JSON_Binding_Bind(b *testing.B) {
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	binder := &JSONBinding{
 		JSONDecoder: json.Unmarshal,

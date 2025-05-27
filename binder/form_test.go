@@ -56,7 +56,6 @@ func Test_FormBinder_Bind(t *testing.T) {
 
 func Benchmark_FormBinder_Bind(b *testing.B) {
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	binder := &FormBinding{
 		EnableSplitting: true,
@@ -72,8 +71,6 @@ func Benchmark_FormBinder_Bind(b *testing.B) {
 	req := fasthttp.AcquireRequest()
 	req.SetBodyString("name=john&age=42&posts=post1,post2,post3")
 	req.Header.SetContentType("application/x-www-form-urlencoded")
-
-	b.ResetTimer()
 
 	var err error
 	for b.Loop() {
@@ -196,7 +193,6 @@ func Test_FormBinder_BindMultipart(t *testing.T) {
 
 func Benchmark_FormBinder_BindMultipart(b *testing.B) {
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	binder := &FormBinding{
 		EnableSplitting: true,
@@ -226,8 +222,6 @@ func Benchmark_FormBinder_BindMultipart(b *testing.B) {
 
 	req.Header.SetContentType(mw.FormDataContentType())
 	req.SetBody(buf.Bytes())
-
-	b.ResetTimer()
 
 	var err error
 	for b.Loop() {

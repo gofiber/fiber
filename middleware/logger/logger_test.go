@@ -41,7 +41,6 @@ func benchmarkSetup(b *testing.B, app *fiber.App, uri string) {
 	fctx.Request.SetRequestURI(uri)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	for b.Loop() {
 		h(fctx)

@@ -1441,7 +1441,6 @@ func Benchmark_Middleware_CSRF_Check(b *testing.B) {
 	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	for b.Loop() {
 		h(ctx)
@@ -1465,7 +1464,6 @@ func Benchmark_Middleware_CSRF_GenerateToken(b *testing.B) {
 	// Generate CSRF token
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	for b.Loop() {
 		h(ctx)

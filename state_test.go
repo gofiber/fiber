@@ -730,7 +730,6 @@ func BenchmarkState_Set(b *testing.B) {
 
 	st := newState()
 
-	b.ResetTimer()
 	i := 0
 	for b.Loop() {
 		i++
@@ -750,7 +749,6 @@ func BenchmarkState_Get(b *testing.B) {
 		st.Set(key, i)
 	}
 
-	b.ResetTimer()
 	i := 0
 	for b.Loop() {
 		i++
@@ -770,7 +768,6 @@ func BenchmarkState_GetString(b *testing.B) {
 		st.Set(key, strconv.Itoa(i))
 	}
 
-	b.ResetTimer()
 	i := 0
 	for b.Loop() {
 		i++
@@ -790,7 +787,6 @@ func BenchmarkState_GetInt(b *testing.B) {
 		st.Set(key, i)
 	}
 
-	b.ResetTimer()
 	i := 0
 	for b.Loop() {
 		i++
@@ -810,7 +806,6 @@ func BenchmarkState_GetBool(b *testing.B) {
 		st.Set(key, i%2 == 0)
 	}
 
-	b.ResetTimer()
 	i := 0
 	for b.Loop() {
 		i++
@@ -830,7 +825,6 @@ func BenchmarkState_GetFloat64(b *testing.B) {
 		st.Set(key, float64(i))
 	}
 
-	b.ResetTimer()
 	i := 0
 	for b.Loop() {
 		i++
@@ -850,7 +844,6 @@ func BenchmarkState_MustGet(b *testing.B) {
 		st.Set(key, i)
 	}
 
-	b.ResetTimer()
 	i := 0
 	for b.Loop() {
 		i++
@@ -870,7 +863,6 @@ func BenchmarkState_GetStateGeneric(b *testing.B) {
 		st.Set(key, i)
 	}
 
-	b.ResetTimer()
 	i := 0
 	for b.Loop() {
 		i++
@@ -890,7 +882,6 @@ func BenchmarkState_MustGetStateGeneric(b *testing.B) {
 		st.Set(key, i)
 	}
 
-	b.ResetTimer()
 	i := 0
 	for b.Loop() {
 		i++
@@ -910,7 +901,6 @@ func BenchmarkState_GetStateWithDefault(b *testing.B) {
 		st.Set(key, i)
 	}
 
-	b.ResetTimer()
 	i := 0
 	for b.Loop() {
 		i++
@@ -929,7 +919,6 @@ func BenchmarkState_Has(b *testing.B) {
 		st.Set("key"+strconv.Itoa(i), i)
 	}
 
-	b.ResetTimer()
 	i := 0
 	for b.Loop() {
 		i++
@@ -940,7 +929,6 @@ func BenchmarkState_Has(b *testing.B) {
 func BenchmarkState_Delete(b *testing.B) {
 	b.ReportAllocs()
 
-	b.ResetTimer()
 	for b.Loop() {
 		st := newState()
 		st.Set("a", 1)
@@ -951,7 +939,6 @@ func BenchmarkState_Delete(b *testing.B) {
 func BenchmarkState_Reset(b *testing.B) {
 	b.ReportAllocs()
 
-	b.ResetTimer()
 	for b.Loop() {
 		st := newState()
 		// add a fixed number of keys before clearing
@@ -971,7 +958,6 @@ func BenchmarkState_Keys(b *testing.B) {
 		st.Set("key"+strconv.Itoa(i), i)
 	}
 
-	b.ResetTimer()
 	for b.Loop() {
 		_ = st.Keys()
 	}
@@ -986,7 +972,6 @@ func BenchmarkState_Len(b *testing.B) {
 		st.Set("key"+strconv.Itoa(i), i)
 	}
 
-	b.ResetTimer()
 	for b.Loop() {
 		_ = st.Len()
 	}
@@ -1001,7 +986,6 @@ func BenchmarkState_GetUint(b *testing.B) {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, uint(i)) //nolint:gosec // This is a test
 	}
-	b.ResetTimer()
 	i := 0
 	for b.Loop() {
 		i++
@@ -1019,7 +1003,6 @@ func BenchmarkState_GetInt8(b *testing.B) {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, int8(i%128)) //nolint:gosec // This is a test
 	}
-	b.ResetTimer()
 	i := 0
 	for b.Loop() {
 		i++
@@ -1037,7 +1020,6 @@ func BenchmarkState_GetInt16(b *testing.B) {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, int16(i)) //nolint:gosec // This is a test
 	}
-	b.ResetTimer()
 	i := 0
 	for b.Loop() {
 		i++
@@ -1055,7 +1037,6 @@ func BenchmarkState_GetInt32(b *testing.B) {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, int32(i)) //nolint:gosec // This is a test
 	}
-	b.ResetTimer()
 	i := 0
 	for b.Loop() {
 		i++
@@ -1073,7 +1054,6 @@ func BenchmarkState_GetInt64(b *testing.B) {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, int64(i))
 	}
-	b.ResetTimer()
 	i := 0
 	for b.Loop() {
 		i++
@@ -1091,7 +1071,6 @@ func BenchmarkState_GetUint8(b *testing.B) {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, uint8(i%256)) //nolint:gosec // This is a test
 	}
-	b.ResetTimer()
 	i := 0
 	for b.Loop() {
 		i++
@@ -1109,7 +1088,6 @@ func BenchmarkState_GetUint16(b *testing.B) {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, uint16(i)) //nolint:gosec // This is a test
 	}
-	b.ResetTimer()
 	i := 0
 	for b.Loop() {
 		i++
@@ -1127,7 +1105,6 @@ func BenchmarkState_GetUint32(b *testing.B) {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, uint32(i)) //nolint:gosec // This is a test
 	}
-	b.ResetTimer()
 	i := 0
 	for b.Loop() {
 		i++
@@ -1145,7 +1122,6 @@ func BenchmarkState_GetUint64(b *testing.B) {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, uint64(i)) //nolint:gosec // This is a test
 	}
-	b.ResetTimer()
 	i := 0
 	for b.Loop() {
 		i++
@@ -1163,7 +1139,6 @@ func BenchmarkState_GetUintptr(b *testing.B) {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, uintptr(i))
 	}
-	b.ResetTimer()
 	i := 0
 	for b.Loop() {
 		i++
@@ -1181,7 +1156,6 @@ func BenchmarkState_GetFloat32(b *testing.B) {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, float32(i))
 	}
-	b.ResetTimer()
 	i := 0
 	for b.Loop() {
 		i++
@@ -1200,7 +1174,6 @@ func BenchmarkState_GetComplex64(b *testing.B) {
 		// Create a complex64 value with both real and imaginary parts.
 		st.Set(key, complex(float32(i), float32(i)))
 	}
-	b.ResetTimer()
 	i := 0
 	for b.Loop() {
 		i++
@@ -1219,7 +1192,6 @@ func BenchmarkState_GetComplex128(b *testing.B) {
 		// Create a complex128 value with both real and imaginary parts.
 		st.Set(key, complex(float64(i), float64(i)))
 	}
-	b.ResetTimer()
 	i := 0
 	for b.Loop() {
 		i++
@@ -1235,7 +1207,6 @@ func BenchmarkState_GetService(b *testing.B) {
 	srv := &mockService{name: "benchService"}
 	st.setService(srv)
 
-	b.ResetTimer()
 	for b.Loop() {
 		_, _ = GetService[*mockService](st, srv.String())
 	}
@@ -1248,7 +1219,6 @@ func BenchmarkState_MustGetService(b *testing.B) {
 	srv := &mockService{name: "benchService"}
 	st.setService(srv)
 
-	b.ResetTimer()
 	for b.Loop() {
 		_ = MustGetService[*mockService](st, srv.String())
 	}

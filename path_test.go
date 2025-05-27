@@ -196,7 +196,6 @@ func Test_Utils_RemoveEscapeChar(t *testing.T) {
 
 func Benchmark_Utils_RemoveEscapeChar(b *testing.B) {
 	b.ReportAllocs()
-	b.ResetTimer()
 	var res string
 	for b.Loop() {
 		res = RemoveEscapeChar(":test\\:bla")

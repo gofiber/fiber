@@ -713,8 +713,6 @@ func Benchmark_Limiter_Custom_Store(b *testing.B) {
 	fctx.Request.Header.SetMethod(fiber.MethodGet)
 	fctx.Request.SetRequestURI("/")
 
-	b.ResetTimer()
-
 	for b.Loop() {
 		h(fctx)
 	}
@@ -781,8 +779,6 @@ func Benchmark_Limiter(b *testing.B) {
 	fctx := &fasthttp.RequestCtx{}
 	fctx.Request.Header.SetMethod(fiber.MethodGet)
 	fctx.Request.SetRequestURI("/")
-
-	b.ResetTimer()
 
 	for b.Loop() {
 		h(fctx)

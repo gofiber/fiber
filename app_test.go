@@ -1914,7 +1914,6 @@ func Benchmark_Communication_Flow(b *testing.B) {
 	fctx.Request.SetRequestURI("/")
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	for b.Loop() {
 		h(fctx)
@@ -1932,7 +1931,6 @@ func Benchmark_Ctx_AcquireReleaseFlow(b *testing.B) {
 
 	b.Run("withoutRequestCtx", func(b *testing.B) {
 		b.ReportAllocs()
-		b.ResetTimer()
 
 		for b.Loop() {
 			c, _ := app.AcquireCtx(fctx).(*DefaultCtx) //nolint:errcheck // not needed
@@ -1942,7 +1940,6 @@ func Benchmark_Ctx_AcquireReleaseFlow(b *testing.B) {
 
 	b.Run("withRequestCtx", func(b *testing.B) {
 		b.ReportAllocs()
-		b.ResetTimer()
 
 		for b.Loop() {
 			c, _ := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck // not needed

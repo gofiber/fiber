@@ -62,7 +62,6 @@ func Test_CBORBinder_Bind(t *testing.T) {
 
 func Benchmark_CBORBinder_Bind(b *testing.B) {
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	binder := &CBORBinding{
 		CBORDecoder: cbor.Unmarshal,

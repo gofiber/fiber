@@ -141,7 +141,6 @@ func Benchmark_Utils_GetOffer(b *testing.B) {
 	}
 
 	b.ReportAllocs()
-	b.ResetTimer()
 	for _, tc := range testCases {
 		accept := []byte(tc.accept)
 		b.Run(tc.description, func(b *testing.B) {
@@ -210,7 +209,6 @@ func Benchmark_Utils_ParamsMatch(b *testing.B) {
 		"param": []byte("foo"),
 	}
 	b.ReportAllocs()
-	b.ResetTimer()
 	for b.Loop() {
 		match = paramsMatch(specParams, `;param=foo; apple=orange`)
 	}
@@ -344,7 +342,6 @@ func Benchmark_Utils_GetSplicedStrList(b *testing.B) {
 	result := destination
 	const input = `deflate, gzip,br,brotli,zstd`
 	b.ReportAllocs()
-	b.ResetTimer()
 	for b.Loop() {
 		result = getSplicedStrList(input, destination)
 	}
@@ -388,7 +385,6 @@ func Test_Utils_SortAcceptedTypes(t *testing.T) {
 func Benchmark_Utils_SortAcceptedTypes_Sorted(b *testing.B) {
 	acceptedTypes := make([]acceptedType, 3)
 	b.ReportAllocs()
-	b.ResetTimer()
 	for b.Loop() {
 		acceptedTypes[0] = acceptedType{spec: "text/html", quality: 1, specificity: 1, order: 0}
 		acceptedTypes[1] = acceptedType{spec: "text/*", quality: 0.5, specificity: 1, order: 1}
@@ -404,7 +400,6 @@ func Benchmark_Utils_SortAcceptedTypes_Sorted(b *testing.B) {
 func Benchmark_Utils_SortAcceptedTypes_Unsorted(b *testing.B) {
 	acceptedTypes := make([]acceptedType, 11)
 	b.ReportAllocs()
-	b.ResetTimer()
 	for b.Loop() {
 		acceptedTypes[0] = acceptedType{spec: "text/html", quality: 1, specificity: 3, order: 0}
 		acceptedTypes[1] = acceptedType{spec: "text/*", quality: 0.5, specificity: 2, order: 1}
@@ -487,7 +482,6 @@ func Test_Utils_getGroupPath(t *testing.T) {
 func Benchmark_Utils_getGroupPath(b *testing.B) {
 	var res string
 	b.ReportAllocs()
-	b.ResetTimer()
 	for b.Loop() {
 		_ = getGroupPath("/v1/long/path/john/doe", "/why/this/name/is/so/awesome")
 		_ = getGroupPath("/v1", "/")
@@ -501,7 +495,6 @@ func Benchmark_Utils_Unescape(b *testing.B) {
 	unescaped := ""
 	dst := make([]byte, 0)
 	b.ReportAllocs()
-	b.ResetTimer()
 	for b.Loop() {
 		source := "/cr%C3%A9er"
 		pathBytes := utils.UnsafeBytes(source)
@@ -615,7 +608,6 @@ func Test_Utils_IsNoCache(t *testing.T) {
 func Benchmark_Utils_IsNoCache(b *testing.B) {
 	var ok bool
 	b.ReportAllocs()
-	b.ResetTimer()
 	for b.Loop() {
 		_ = isNoCache("public")
 		_ = isNoCache("no-cache")
@@ -634,7 +626,6 @@ func Benchmark_SlashRecognition(b *testing.B) {
 
 	b.Run("indexBytes", func(b *testing.B) {
 		b.ReportAllocs()
-		b.ResetTimer()
 		result = false
 		for b.Loop() {
 			if strings.IndexByte(search, slashDelimiter) != -1 {
@@ -645,7 +636,6 @@ func Benchmark_SlashRecognition(b *testing.B) {
 	})
 	b.Run("forEach", func(b *testing.B) {
 		b.ReportAllocs()
-		b.ResetTimer()
 		result = false
 		c := int32(slashDelimiter)
 		for b.Loop() {
@@ -660,7 +650,6 @@ func Benchmark_SlashRecognition(b *testing.B) {
 	})
 	b.Run("strings.ContainsRune", func(b *testing.B) {
 		b.ReportAllocs()
-		b.ResetTimer()
 		result = false
 		c := int32(slashDelimiter)
 		for b.Loop() {
@@ -1061,7 +1050,6 @@ func benchGenericParseTypeInt[V GenericTypeInteger](b *testing.B, name string, t
 		var v V
 		var err error
 		b.ReportAllocs()
-		b.ResetTimer()
 		for b.Loop() {
 			v, err = genericParseType[V](strconv.FormatInt(test.value, 10))
 		}
@@ -1137,7 +1125,6 @@ func benchGenericParseTypeUInt[V GenericTypeInteger](b *testing.B, name string, 
 		var v V
 		var err error
 		b.ReportAllocs()
-		b.ResetTimer()
 		for b.Loop() {
 			v, err = genericParseType[V](strconv.FormatUint(test.value, 10))
 		}
@@ -1179,7 +1166,6 @@ func Benchmark_GenericParseTypeFloats(b *testing.B) {
 			var v float32
 			var err error
 			b.ReportAllocs()
-			b.ResetTimer()
 			for b.Loop() {
 				v, err = genericParseType[float32](test.str)
 			}
@@ -1193,7 +1179,6 @@ func Benchmark_GenericParseTypeFloats(b *testing.B) {
 			var v float64
 			var err error
 			b.ReportAllocs()
-			b.ResetTimer()
 			for b.Loop() {
 				v, err = genericParseType[float64](test.str)
 			}
@@ -1234,7 +1219,6 @@ func Benchmark_GenericParseTypeBytes(b *testing.B) {
 			var v []byte
 			var err error
 			b.ReportAllocs()
-			b.ResetTimer()
 			for b.Loop() {
 				v, err = genericParseType[[]byte](test.str)
 			}
@@ -1257,7 +1241,6 @@ func Benchmark_GenericParseTypeString(b *testing.B) {
 			var v string
 			var err error
 			b.ReportAllocs()
-			b.ResetTimer()
 			for b.Loop() {
 				v, err = genericParseType[string](test)
 			}
@@ -1296,7 +1279,6 @@ func Benchmark_GenericParseTypeBoolean(b *testing.B) {
 			var v bool
 			var err error
 			b.ReportAllocs()
-			b.ResetTimer()
 			for b.Loop() {
 				v, err = genericParseType[bool](test.str)
 			}

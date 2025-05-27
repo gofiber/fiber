@@ -65,8 +65,6 @@ func Benchmark_RespHeaderBinder_Bind(b *testing.B) {
 		fasthttp.ReleaseResponse(resp)
 	})
 
-	b.ResetTimer()
-
 	var err error
 	for b.Loop() {
 		err = binder.Bind(resp, &user)

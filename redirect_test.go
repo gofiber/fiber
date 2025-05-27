@@ -645,7 +645,6 @@ func Benchmark_Redirect_Route(b *testing.B) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	var err error
 
@@ -672,7 +671,6 @@ func Benchmark_Redirect_Route_WithQueries(b *testing.B) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	var err error
 
@@ -704,7 +702,6 @@ func Benchmark_Redirect_Route_WithFlashMessages(b *testing.B) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	var err error
 
@@ -764,7 +761,6 @@ func Benchmark_Redirect_parseAndClearFlashMessages(b *testing.B) {
 	c.Request().Header.Set(HeaderCookie, "fiber_flash="+hex.EncodeToString(val))
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	for b.Loop() {
 		c.Redirect().parseAndClearFlashMessages()
@@ -803,7 +799,6 @@ func Benchmark_Redirect_processFlashMessages(b *testing.B) {
 	c.Redirect().With("success", "1").With("message", "test")
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	for b.Loop() {
 		c.Redirect().processFlashMessages()
@@ -840,7 +835,6 @@ func Benchmark_Redirect_Messages(b *testing.B) {
 	var msgs []FlashMessage
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	for b.Loop() {
 		msgs = c.Redirect().Messages()
@@ -877,7 +871,6 @@ func Benchmark_Redirect_OldInputs(b *testing.B) {
 	var oldInputs []OldInputData
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	for b.Loop() {
 		oldInputs = c.Redirect().OldInputs()
@@ -912,7 +905,6 @@ func Benchmark_Redirect_Message(b *testing.B) {
 	var msg FlashMessage
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	for b.Loop() {
 		msg = c.Redirect().Message("message")
@@ -943,7 +935,6 @@ func Benchmark_Redirect_OldInput(b *testing.B) {
 	var input OldInputData
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	for b.Loop() {
 		input = c.Redirect().OldInput("name")

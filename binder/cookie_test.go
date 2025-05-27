@@ -51,7 +51,6 @@ func Test_CookieBinder_Bind(t *testing.T) {
 
 func Benchmark_CookieBinder_Bind(b *testing.B) {
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	binder := &CookieBinding{
 		EnableSplitting: true,
@@ -72,8 +71,6 @@ func Benchmark_CookieBinder_Bind(b *testing.B) {
 	req.Header.SetCookie("name", "john")
 	req.Header.SetCookie("age", "42")
 	req.Header.SetCookie("posts", "post1,post2,post3")
-
-	b.ResetTimer()
 
 	var err error
 	for b.Loop() {
