@@ -549,9 +549,8 @@ func Benchmark_FiberHandlerFunc(b *testing.B) {
 			defer r.Body.Close() //nolint:errcheck // not needed
 
 			b.ReportAllocs()
-			b.ResetTimer()
 
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				handlerFunc.ServeHTTP(w, &r)
 			}
 		})
@@ -650,11 +649,10 @@ func Benchmark_HTTPHandler(b *testing.B) {
 	}()
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	fiberHandler := HTTPHandler(handler)
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		ctx.Request().Reset()
 		ctx.Response().Reset()
 		ctx.Request().SetRequestURI("/test")

@@ -184,10 +184,9 @@ func Benchmark_Request_Headers(b *testing.B) {
 		"bar": {"foo"},
 	})
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		for k, v := range req.Headers() {
 			_ = k
 			_ = v
@@ -345,10 +344,9 @@ func Benchmark_Request_Params(b *testing.B) {
 		"bar": {"foo"},
 	})
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		for k, v := range req.Params() {
 			_ = k
 			_ = v
@@ -470,10 +468,9 @@ func Benchmark_Request_Cookies(b *testing.B) {
 		"bar": "foo",
 	})
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		for k, v := range req.Cookies() {
 			_ = k
 			_ = v
@@ -590,10 +587,9 @@ func Benchmark_Request_PathParams(b *testing.B) {
 		"bar": "foo",
 	})
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		for k, v := range req.PathParams() {
 			_ = k
 			_ = v
@@ -793,10 +789,9 @@ func Benchmark_Request_Files(b *testing.B) {
 	req.AddFile("../.github/index.html")
 	req.AddFiles(AcquireFile(SetFileName("tmp.txt")))
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		for k, v := range req.Files() {
 			_ = k
 			_ = v
@@ -1400,10 +1395,9 @@ func Benchmark_Request_AllFormData(b *testing.B) {
 		"bar": {"foo"},
 	})
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		for k, v := range req.AllFormData() {
 			_ = k
 			_ = v
@@ -1717,9 +1711,8 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 		}
 
 		b.ReportAllocs()
-		b.StartTimer()
 
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			SetValWithStruct(p, "param", args{
 				unexport:  5,
 				TInt:      5,
@@ -1792,9 +1785,8 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 		}
 
 		b.ReportAllocs()
-		b.StartTimer()
 
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			SetValWithStruct(p, "param", &args{
 				TInt:      5,
 				TString:   "string",
@@ -1852,9 +1844,8 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 		}
 
 		b.ReportAllocs()
-		b.StartTimer()
 
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			SetValWithStruct(p, "param", 5)
 		}
 

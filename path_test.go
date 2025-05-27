@@ -196,9 +196,8 @@ func Test_Utils_RemoveEscapeChar(t *testing.T) {
 
 func Benchmark_Utils_RemoveEscapeChar(b *testing.B) {
 	b.ReportAllocs()
-	b.ResetTimer()
 	var res string
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		res = RemoveEscapeChar(":test\\:bla")
 	}
 
@@ -217,7 +216,7 @@ func Benchmark_Path_matchParams(t *testing.B) {
 				state = "not match"
 			}
 			t.Run(testCollection.pattern+" | "+state+" | "+c.url, func(b *testing.B) {
-				for i := 0; i < b.N; i++ {
+				for b.Loop() {
 					if match := parser.getMatch(c.url, c.url, &ctxParams, c.partialCheck); match {
 						// Get testCases from the original path
 						matchRes = true
@@ -250,7 +249,7 @@ func Benchmark_RoutePatternMatch(t *testing.B) {
 				state = "not match"
 			}
 			t.Run(testCollection.pattern+" | "+state+" | "+c.url, func(b *testing.B) {
-				for i := 0; i < b.N; i++ {
+				for b.Loop() {
 					if match := RoutePatternMatch(c.url, testCollection.pattern); match {
 						// Get testCases from the original path
 						matchRes = true

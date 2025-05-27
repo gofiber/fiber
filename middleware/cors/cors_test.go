@@ -1053,9 +1053,8 @@ func Benchmark_CORS_NewHandler(b *testing.B) {
 	ctx.Init(req, nil, nil)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		h(ctx)
 	}
 }
@@ -1126,9 +1125,8 @@ func Benchmark_CORS_NewHandlerSingleOrigin(b *testing.B) {
 	ctx.Init(req, nil, nil)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		h(ctx)
 	}
 }
@@ -1198,9 +1196,8 @@ func Benchmark_CORS_NewHandlerWildcard(b *testing.B) {
 	ctx.Init(req, nil, nil)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		h(ctx)
 	}
 }
@@ -1272,9 +1269,8 @@ func Benchmark_CORS_NewHandlerPreflight(b *testing.B) {
 	ctx.Init(req, nil, nil)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		h(ctx)
 	}
 }
@@ -1347,9 +1343,8 @@ func Benchmark_CORS_NewHandlerPreflightSingleOrigin(b *testing.B) {
 	ctx.Init(req, nil, nil)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		h(ctx)
 	}
 }
@@ -1421,9 +1416,8 @@ func Benchmark_CORS_NewHandlerPreflightWildcard(b *testing.B) {
 	ctx.Init(req, nil, nil)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		h(ctx)
 	}
 }

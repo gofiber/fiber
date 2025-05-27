@@ -35,8 +35,7 @@ func TestMarshalUnmarshalresponse(t *testing.T) {
 func BenchmarkMarshalMsgresponse(b *testing.B) {
 	v := response{}
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		v.MarshalMsg(nil)
 	}
 }
@@ -47,8 +46,7 @@ func BenchmarkAppendMsgresponse(b *testing.B) {
 	bts, _ = v.MarshalMsg(bts[0:0])
 	b.SetBytes(int64(len(bts)))
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		bts, _ = v.MarshalMsg(bts[0:0])
 	}
 }
@@ -58,8 +56,7 @@ func BenchmarkUnmarshalresponse(b *testing.B) {
 	bts, _ := v.MarshalMsg(nil)
 	b.ReportAllocs()
 	b.SetBytes(int64(len(bts)))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, err := v.UnmarshalMsg(bts)
 		if err != nil {
 			b.Fatal(err)
@@ -98,8 +95,7 @@ func BenchmarkEncoderesponse(b *testing.B) {
 	b.SetBytes(int64(buf.Len()))
 	en := msgp.NewWriter(msgp.Nowhere)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		v.EncodeMsg(en)
 	}
 	en.Flush()
@@ -113,8 +109,7 @@ func BenchmarkDecoderesponse(b *testing.B) {
 	rd := msgp.NewEndlessReader(buf.Bytes(), b)
 	dc := msgp.NewReader(rd)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err := v.DecodeMsg(dc)
 		if err != nil {
 			b.Fatal(err)

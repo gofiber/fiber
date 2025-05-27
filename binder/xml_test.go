@@ -114,10 +114,8 @@ func Benchmark_XMLBinding_Bind(b *testing.B) {
 		</user>
 	`)
 
-	b.StartTimer()
-
 	var err error
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err = binder.Bind(data, user)
 	}
 	require.NoError(b, err)
