@@ -36,6 +36,7 @@ Here's a quick overview of the changes in Fiber `v3`:
   - [EncryptCookie](#encryptcookie)
   - [Filesystem](#filesystem)
   - [Healthcheck](#healthcheck)
+  - [KeyAuth](#keyauth)
   - [Logger](#logger)
   - [Monitor](#monitor)
   - [Proxy](#proxy)
@@ -1019,6 +1020,10 @@ The Healthcheck middleware has been enhanced to support more than two routes, wi
     - The configuration for each health check endpoint has been simplified. Each endpoint can be configured separately, allowing for more flexibility and readability.
 
 Refer to the [healthcheck middleware migration guide](./middleware/healthcheck.md) or the [general migration guide](#-migration-guide) to review the changes.
+
+### KeyAuth
+
+The keyauth middleware was updated to introduce a configurable `Realm` field for the `WWW-Authenticate` header.
 
 ### Logger
 
