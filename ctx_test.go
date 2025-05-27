@@ -3104,6 +3104,18 @@ func Test_Ctx_Download(t *testing.T) {
 	require.Equal(t, `attachment; filename="ctx.go"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
 }
 
+// go test -race -run Test_Ctx_SendEarlyHints
+func Test_Ctx_SendEarlyHints(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	err := c.SendEarlyHints([]string{"<https://cdn.com>; rel=preload; as=script"})
+	require.NoError(t, err)
+
+	app.ReleaseCtx(c)
+}
+
 // go test -race -run Test_Ctx_SendFile
 func Test_Ctx_SendFile(t *testing.T) {
 	t.Parallel()

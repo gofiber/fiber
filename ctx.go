@@ -1560,6 +1560,23 @@ func (c *DefaultCtx) Send(body []byte) error {
 	return nil
 }
 
+// SendEarlyHints allows the server to hint to the browser what resources a page would need
+// so the browser can preload them while waiting for the server's full response. Only Link
+// headers already written to the response will be transmitted as Early Hints.
+//
+// This is a HTTP/2+ feature but all browsers will either understand it or safely ignore it.
+//
+// NOTE: Older HTTP/1.1 non-browser clients may face compatibility issues.
+//
+// See: https://developer.chrome.com/docs/web-platform/early-hints and
+// https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Link#syntax
+func (c *DefaultCtx) SendEarlyHints(hints []string) error {
+	for _, h := range hints {
+		c.fasthttp.Response.Header.Add("Link", h)
+	}
+	return c.fasthttp.EarlyHints()
+}
+
 // SendFile transfers the file from the specified path.
 // By default, the file is not compressed. To enable compression, set SendFile.Compress to true.
 // The Content-Type response HTTP header field is set based on the file's extension.
