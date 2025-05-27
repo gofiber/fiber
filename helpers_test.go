@@ -1050,7 +1050,8 @@ func benchGenericParseTypeInt[V GenericTypeInteger](b *testing.B, name string, t
 		var v V
 		var err error
 		b.ReportAllocs()
-		for b.Loop() {
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
 			v, err = genericParseType[V](strconv.FormatInt(test.value, 10))
 		}
 		if test.bits <= int(unsafe.Sizeof(V(0)))*8 {
@@ -1125,7 +1126,8 @@ func benchGenericParseTypeUInt[V GenericTypeInteger](b *testing.B, name string, 
 		var v V
 		var err error
 		b.ReportAllocs()
-		for b.Loop() {
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
 			v, err = genericParseType[V](strconv.FormatUint(test.value, 10))
 		}
 		if test.bits <= int(unsafe.Sizeof(V(0)))*8 {
@@ -1166,7 +1168,8 @@ func Benchmark_GenericParseTypeFloats(b *testing.B) {
 			var v float32
 			var err error
 			b.ReportAllocs()
-			for b.Loop() {
+			b.ResetTimer()
+			for n := 0; n < b.N; n++ {
 				v, err = genericParseType[float32](test.str)
 			}
 			require.NoError(t, err)
@@ -1179,7 +1182,8 @@ func Benchmark_GenericParseTypeFloats(b *testing.B) {
 			var v float64
 			var err error
 			b.ReportAllocs()
-			for b.Loop() {
+			b.ResetTimer()
+			for n := 0; n < b.N; n++ {
 				v, err = genericParseType[float64](test.str)
 			}
 			require.NoError(t, err)
