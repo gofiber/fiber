@@ -977,6 +977,7 @@ func testGenericParseError[V GenericType](t *testing.T) {
 
 // go test -v -run=^$ -bench=Benchmark_GenericParseTypeInts -benchmem -count=4
 func Benchmark_GenericParseTypeInts(b *testing.B) {
+	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
 	ints := []testGenericParseTypeIntCase{
 		{
 			value: 0,
@@ -1067,6 +1068,7 @@ func benchGenericParseTypeInt[V GenericTypeInteger](b *testing.B, name string, t
 
 // go test -v -run=^$ -bench=Benchmark_GenericParseTypeUints -benchmem -count=4
 func Benchmark_GenericParseTypeUints(b *testing.B) {
+	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
 	uints := []struct {
 		value uint64
 		bits  int
@@ -1145,6 +1147,7 @@ func benchGenericParseTypeUInt[V GenericTypeInteger](b *testing.B, name string, 
 
 // go test -v -run=^$ -bench=Benchmark_GenericParseTypeFloats -benchmem -count=4
 func Benchmark_GenericParseTypeFloats(b *testing.B) {
+	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
 	floats := []struct {
 		str   string
 		value float64
