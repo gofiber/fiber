@@ -753,7 +753,6 @@ func Test_HeaderSchemeEmptyTokenAfterTrim(t *testing.T) {
 	app.Use(New(Config{
 		Validator: func(_ fiber.Ctx, _ string) (bool, error) {
 			return false, ErrMissingOrMalformedAPIKey
-		,
 	}))
 	app.Get("/", func(c fiber.Ctx) error { return c.SendString("OK") })
 
