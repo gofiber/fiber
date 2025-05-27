@@ -31,7 +31,7 @@ func New(config Config) fiber.Handler {
 		}
 
 		// Get authorization header
-		auth := strings.TrimSpace(c.Get(fiber.HeaderAuthorization))
+		auth := utils.Trim(c.Get(fiber.HeaderAuthorization), ' ')
 
 		// Expect a scheme token followed by credentials
 		parts := strings.Fields(auth)
