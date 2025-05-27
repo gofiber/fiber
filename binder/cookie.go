@@ -27,7 +27,7 @@ func (b *CookieBinding) Bind(req *fasthttp.Request, out any) error {
 
 		k := utils.UnsafeString(key)
 		v := utils.UnsafeString(val)
-		err = formatBindData(out, data, k, v, b.EnableSplitting, false)
+		err = formatBindData(b.Name(), out, data, k, v, b.EnableSplitting, false)
 	})
 
 	if err != nil {
