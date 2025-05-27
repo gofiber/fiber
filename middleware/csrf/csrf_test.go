@@ -1,6 +1,7 @@
 package csrf
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -1344,9 +1345,9 @@ func Test_CSRF_Cookie_Injection_Exploit(t *testing.T) {
 	require.Equal(t, 403, ctx.Response.StatusCode(), "CSRF exploit successful")
 }
 
-// TODO: use this test case and make the unsafe header value bug from https://github.com/gofiber/fiber/issues/2045 reproducible and permanently fixed/tested by this testcase
+// Test_CSRF_UnsafeHeaderValue ensures that unsafe header values, such as those described in https://github.com/gofiber/fiber/issues/2045, are rejected and the bug remains fixed.
+// go test -race -run Test_CSRF_UnsafeHeaderValue
 func Test_CSRF_UnsafeHeaderValue(t *testing.T) {
-	t.SkipNow()
 	t.Parallel()
 	app := fiber.New()
 
@@ -1386,6 +1387,10 @@ func Test_CSRF_UnsafeHeaderValue(t *testing.T) {
 	getReq.Header.Set("X-Requested-With", "XMLHttpRequest")
 	getReq.Header.Set(fiber.HeaderCacheControl, "no")
 	getReq.Header.Set(HeaderName, token)
+	getReq.AddCookie(&http.Cookie{
+		Name:  ConfigDefault.CookieName,
+		Value: token,
+	})
 
 	resp, err = app.Test(getReq)
 	require.NoError(t, err)
@@ -1400,6 +1405,10 @@ func Test_CSRF_UnsafeHeaderValue(t *testing.T) {
 	postReq := httptest.NewRequest(fiber.MethodPost, "/", nil)
 	postReq.Header.Set("X-Requested-With", "XMLHttpRequest")
 	postReq.Header.Set(HeaderName, token)
+	postReq.AddCookie(&http.Cookie{
+		Name:  ConfigDefault.CookieName,
+		Value: token,
+	})
 	resp, err = app.Test(postReq)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
