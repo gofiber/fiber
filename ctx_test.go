@@ -3110,10 +3110,9 @@ func Test_Ctx_SendEarlyHints(t *testing.T) {
 	app := New()
 
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
 	err := c.SendEarlyHints([]string{"<https://cdn.com>; rel=preload; as=script"})
 	require.NoError(t, err)
-
-	app.ReleaseCtx(c)
 }
 
 // go test -race -run Test_Ctx_SendFile
