@@ -1,6 +1,7 @@
 package cors
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
@@ -114,11 +115,8 @@ func New(config ...Config) fiber.Handler {
 			allowOrigin = "*"
 		} else {
 			// Check if the origin is in the list of allowed origins
-			for _, origin := range allowOrigins {
-				if origin == originHeader {
-					allowOrigin = originHeader
-					break
-				}
+			if slices.Contains(allowOrigins, originHeader) {
+				allowOrigin = originHeader
 			}
 
 			// Check if the origin is in the list of allowed subdomains

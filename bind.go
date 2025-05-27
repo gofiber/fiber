@@ -2,6 +2,7 @@ package fiber
 
 import (
 	"reflect"
+	"slices"
 
 	"github.com/gofiber/fiber/v3/binder"
 	"github.com/gofiber/utils/v2"
@@ -253,10 +254,8 @@ func (b *Bind) Body(out any) error {
 	// Check custom binders
 	binders := b.ctx.App().customBinders
 	for _, customBinder := range binders {
-		for _, mime := range customBinder.MIMETypes() {
-			if mime == ctype {
-				return b.returnErr(customBinder.Parse(b.ctx, out))
-			}
+		if slices.Contains(customBinder.MIMETypes(), ctype) {
+			return b.returnErr(customBinder.Parse(b.ctx, out))
 		}
 	}
 
