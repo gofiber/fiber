@@ -124,15 +124,24 @@ func DefaultKeyLookup(keyLookup, authScheme string) (KeyLookupFunc, error) {
 // keyFromHeader returns a function that extracts api key from the request header.
 func KeyFromHeader(header, authScheme string) KeyLookupFunc {
 	return func(c fiber.Ctx) (string, error) {
-		auth := c.Get(header)
-		l := len(authScheme)
-		if len(auth) > 0 && l == 0 {
+		auth := strings.TrimSpace(c.Get(header))
+		if auth == "" {
+			return "", ErrMissingOrMalformedAPIKey
+		}
+
+		if authScheme == "" {
 			return auth, nil
 		}
-		if len(auth) > l+1 && auth[:l] == authScheme {
-			return auth[l+1:], nil
+
+		l := len(authScheme)
+		if len(auth) <= l || !strings.EqualFold(auth[:l], authScheme) {
+			return "", ErrMissingOrMalformedAPIKey
 		}
-		return "", ErrMissingOrMalformedAPIKey
+		if len(auth) <= l+1 || auth[l] != ' ' {
+			return "", ErrMissingOrMalformedAPIKey
+		}
+
+		return strings.TrimSpace(auth[l+1:]), nil
 	}
 }
 
