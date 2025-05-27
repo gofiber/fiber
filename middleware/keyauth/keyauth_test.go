@@ -651,3 +651,22 @@ func Test_DefaultErrorHandlerChallenge(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
 	require.Equal(t, "Bearer realm=\"Restricted\"", res.Header.Get("WWW-Authenticate"))
 }
+
+func Test_DefaultErrorHandlerGenericError(t *testing.T) {
+    app := fiber.New()
+    app.Use(New(Config{
+        AuthScheme: "Bearer",
+        Validator: func(_ fiber.Ctx, _ string) (bool, error) {
+            return false, errors.New("token expired")
+        },
+    }))
+    app.Get("/", func(c fiber.Ctx) error { return c.SendString("OK") })
+
+    req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+    res, err := app.Test(req)
+    require.NoError(t, err)
+    require.Equal(t, http.StatusUnauthorized, res.StatusCode)
+    body, _ := io.ReadAll(res.Body)
+    require.Equal(t, "Invalid or expired API Key", string(body))
+    require.Equal(t, `Bearer realm="Restricted"`, res.Header.Get("WWW-Authenticate"))
+}
