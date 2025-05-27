@@ -367,7 +367,7 @@ func (app *App) startupMessage(addr string, isTLS bool, pids string, cfg ListenC
 	}
 
 	fmt.Fprintf(out, "%s\n", fmt.Sprintf(figletFiberText, colors.Red+"v"+Version+colors.Reset))
-	fmt.Fprintf(out, strings.Repeat("-", 50)+"\n")
+	fmt.Fprintln(out, strings.Repeat("-", 50))
 
 	if host == "0.0.0.0" {
 		fmt.Fprintf(out,
