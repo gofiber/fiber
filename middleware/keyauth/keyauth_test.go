@@ -767,11 +767,3 @@ func Test_HeaderSchemeEmptyTokenAfterTrim(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
 	require.Equal(t, ErrMissingOrMalformedAPIKey.Error(), string(body))
 }
-
-func TestKeyFromHeader_EmptyTokenAfterScheme(t *testing.T) {
-    // Header: "Bearer " (scheme + space but no token)
-    _, err := KeyFromHeader(&fakeContext{
-        headers: map[string]string{"Authorization": "Bearer "},
-    }, "Authorization", "Bearer")
-    require.Equal(t, ErrMissingOrMalformedAPIKey, err)
-}
