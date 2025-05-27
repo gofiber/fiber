@@ -36,6 +36,7 @@ Here's a quick overview of the changes in Fiber `v3`:
   - [EncryptCookie](#encryptcookie)
   - [Filesystem](#filesystem)
   - [Healthcheck](#healthcheck)
+  - [KeyAuth](#keyauth)
   - [Logger](#logger)
   - [Monitor](#monitor)
   - [Proxy](#proxy)
@@ -45,7 +46,7 @@ Here's a quick overview of the changes in Fiber `v3`:
 
 ## Drop for old Go versions
 
-Fiber `v3` drops support for Go versions below `1.23`. We recommend upgrading to Go `1.23` or higher to use Fiber `v3`.
+Fiber `v3` drops support for Go versions below `1.24`. We recommend upgrading to Go `1.24` or higher to use Fiber `v3`.
 
 ## 🚀 App
 
@@ -67,6 +68,7 @@ We have made several changes to the Fiber app, including:
 - **RegisterCustomConstraint**: Allows for the registration of custom constraints.
 - **NewCtxFunc**: Introduces a new context function.
 - **State**: Provides a global state for the application, which can be used to store and retrieve data across the application. Check out the [State](./api/state) method for further details.
+- **NewErrorf**: Allows variadic parameters when creating formatted errors.
 
 ### Removed Methods
 
@@ -1019,6 +1021,10 @@ The Healthcheck middleware has been enhanced to support more than two routes, wi
     - The configuration for each health check endpoint has been simplified. Each endpoint can be configured separately, allowing for more flexibility and readability.
 
 Refer to the [healthcheck middleware migration guide](./middleware/healthcheck.md) or the [general migration guide](#-migration-guide) to review the changes.
+
+### KeyAuth
+
+The keyauth middleware was updated to introduce a configurable `Realm` field for the `WWW-Authenticate` header.
 
 ### Logger
 

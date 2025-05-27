@@ -252,6 +252,20 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+### NewErrorf
+
+NewErrorf creates a new HTTPError instance with an optional formatted message.
+
+```go title="Signature"
+func NewErrorf(code int, message ...any) *Error
+```
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+    return fiber.NewErrorf(782, "Custom error %s", "message")
+})
+```
+
 ### IsChild
 
 IsChild determines if the current process is a result of Prefork.

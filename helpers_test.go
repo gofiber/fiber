@@ -141,11 +141,10 @@ func Benchmark_Utils_GetOffer(b *testing.B) {
 	}
 
 	b.ReportAllocs()
-	b.ResetTimer()
 	for _, tc := range testCases {
 		accept := []byte(tc.accept)
 		b.Run(tc.description, func(b *testing.B) {
-			for n := 0; n < b.N; n++ {
+			for b.Loop() {
 				getOffer(accept, acceptsOfferType, tc.offers...)
 			}
 		})
@@ -210,8 +209,7 @@ func Benchmark_Utils_ParamsMatch(b *testing.B) {
 		"param": []byte("foo"),
 	}
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		match = paramsMatch(specParams, `;param=foo; apple=orange`)
 	}
 	require.True(b, match)
@@ -344,8 +342,7 @@ func Benchmark_Utils_GetSplicedStrList(b *testing.B) {
 	result := destination
 	const input = `deflate, gzip,br,brotli,zstd`
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		result = getSplicedStrList(input, destination)
 	}
 	require.Equal(b, []string{"deflate", "gzip", "br", "brotli", "zstd"}, result)
@@ -388,8 +385,7 @@ func Test_Utils_SortAcceptedTypes(t *testing.T) {
 func Benchmark_Utils_SortAcceptedTypes_Sorted(b *testing.B) {
 	acceptedTypes := make([]acceptedType, 3)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		acceptedTypes[0] = acceptedType{spec: "text/html", quality: 1, specificity: 1, order: 0}
 		acceptedTypes[1] = acceptedType{spec: "text/*", quality: 0.5, specificity: 1, order: 1}
 		acceptedTypes[2] = acceptedType{spec: "*/*", quality: 0.1, specificity: 1, order: 2}
@@ -404,8 +400,7 @@ func Benchmark_Utils_SortAcceptedTypes_Sorted(b *testing.B) {
 func Benchmark_Utils_SortAcceptedTypes_Unsorted(b *testing.B) {
 	acceptedTypes := make([]acceptedType, 11)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		acceptedTypes[0] = acceptedType{spec: "text/html", quality: 1, specificity: 3, order: 0}
 		acceptedTypes[1] = acceptedType{spec: "text/*", quality: 0.5, specificity: 2, order: 1}
 		acceptedTypes[2] = acceptedType{spec: "*/*", quality: 0.1, specificity: 1, order: 2}
@@ -487,8 +482,7 @@ func Test_Utils_getGroupPath(t *testing.T) {
 func Benchmark_Utils_getGroupPath(b *testing.B) {
 	var res string
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		_ = getGroupPath("/v1/long/path/john/doe", "/why/this/name/is/so/awesome")
 		_ = getGroupPath("/v1", "/")
 		_ = getGroupPath("/v1", "/api")
@@ -501,8 +495,7 @@ func Benchmark_Utils_Unescape(b *testing.B) {
 	unescaped := ""
 	dst := make([]byte, 0)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		source := "/cr%C3%A9er"
 		pathBytes := utils.UnsafeBytes(source)
 		pathBytes = fasthttp.AppendUnquotedArg(dst[:0], pathBytes)
@@ -615,8 +608,7 @@ func Test_Utils_IsNoCache(t *testing.T) {
 func Benchmark_Utils_IsNoCache(b *testing.B) {
 	var ok bool
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = isNoCache("public")
 		_ = isNoCache("no-cache")
 		_ = isNoCache("public, no-cache, max-age=30")
@@ -634,9 +626,8 @@ func Benchmark_SlashRecognition(b *testing.B) {
 
 	b.Run("indexBytes", func(b *testing.B) {
 		b.ReportAllocs()
-		b.ResetTimer()
 		result = false
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			if strings.IndexByte(search, slashDelimiter) != -1 {
 				result = true
 			}
@@ -645,10 +636,9 @@ func Benchmark_SlashRecognition(b *testing.B) {
 	})
 	b.Run("forEach", func(b *testing.B) {
 		b.ReportAllocs()
-		b.ResetTimer()
 		result = false
 		c := int32(slashDelimiter)
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			for _, b := range search {
 				if b == c {
 					result = true
@@ -660,10 +650,9 @@ func Benchmark_SlashRecognition(b *testing.B) {
 	})
 	b.Run("strings.ContainsRune", func(b *testing.B) {
 		b.ReportAllocs()
-		b.ResetTimer()
 		result = false
 		c := int32(slashDelimiter)
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			result = strings.ContainsRune(search, c)
 		}
 		require.True(b, result)
@@ -1062,9 +1051,11 @@ func benchGenericParseTypeInt[V GenericTypeInteger](b *testing.B, name string, t
 		var err error
 		b.ReportAllocs()
 		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
-			v, err = genericParseType[V](strconv.FormatInt(test.value, 10))
-		}
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				v, err = genericParseType[V](strconv.FormatInt(test.value, 10))
+			}
+		})
 		if test.bits <= int(unsafe.Sizeof(V(0)))*8 {
 			require.NoError(t, err)
 			require.Equal(t, V(test.value), v)
@@ -1138,9 +1129,11 @@ func benchGenericParseTypeUInt[V GenericTypeInteger](b *testing.B, name string, 
 		var err error
 		b.ReportAllocs()
 		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
-			v, err = genericParseType[V](strconv.FormatUint(test.value, 10))
-		}
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				v, err = genericParseType[V](strconv.FormatUint(test.value, 10))
+			}
+		})
 		if test.bits <= int(unsafe.Sizeof(V(0)))*8 {
 			require.NoError(t, err)
 			require.Equal(t, V(test.value), v)
@@ -1180,9 +1173,11 @@ func Benchmark_GenericParseTypeFloats(b *testing.B) {
 			var err error
 			b.ReportAllocs()
 			b.ResetTimer()
-			for n := 0; n < b.N; n++ {
-				v, err = genericParseType[float32](test.str)
-			}
+			b.RunParallel(func(pb *testing.PB) {
+				for pb.Next() {
+					v, err = genericParseType[float32](test.str)
+				}
+			})
 			require.NoError(t, err)
 			require.InEpsilon(t, float32(test.value), v, epsilon)
 		})
@@ -1194,9 +1189,11 @@ func Benchmark_GenericParseTypeFloats(b *testing.B) {
 			var err error
 			b.ReportAllocs()
 			b.ResetTimer()
-			for n := 0; n < b.N; n++ {
-				v, err = genericParseType[float64](test.str)
-			}
+			b.RunParallel(func(pb *testing.PB) {
+				for pb.Next() {
+					v, err = genericParseType[float64](test.str)
+				}
+			})
 			require.NoError(t, err)
 			require.InEpsilon(t, test.value, v, epsilon)
 		})
@@ -1235,9 +1232,11 @@ func Benchmark_GenericParseTypeBytes(b *testing.B) {
 			var err error
 			b.ReportAllocs()
 			b.ResetTimer()
-			for n := 0; n < b.N; n++ {
-				v, err = genericParseType[[]byte](test.str)
-			}
+			b.RunParallel(func(pb *testing.PB) {
+				for pb.Next() {
+					v, err = genericParseType[[]byte](test.str)
+				}
+			})
 			if test.err == nil {
 				require.NoError(b, err)
 			} else {
@@ -1258,9 +1257,11 @@ func Benchmark_GenericParseTypeString(b *testing.B) {
 			var err error
 			b.ReportAllocs()
 			b.ResetTimer()
-			for n := 0; n < b.N; n++ {
-				v, err = genericParseType[string](test)
-			}
+			b.RunParallel(func(pb *testing.PB) {
+				for pb.Next() {
+					v, err = genericParseType[string](test)
+				}
+			})
 			require.NoError(b, err)
 			require.Equal(b, test, v)
 		})
@@ -1297,9 +1298,11 @@ func Benchmark_GenericParseTypeBoolean(b *testing.B) {
 			var err error
 			b.ReportAllocs()
 			b.ResetTimer()
-			for n := 0; n < b.N; n++ {
-				v, err = genericParseType[bool](test.str)
-			}
+			b.RunParallel(func(pb *testing.PB) {
+				for pb.Next() {
+					v, err = genericParseType[bool](test.str)
+				}
+			})
 			require.NoError(b, err)
 			if test.value {
 				require.True(b, v)

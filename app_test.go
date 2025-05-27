@@ -1296,7 +1296,7 @@ func Test_App_Next_Method(t *testing.T) {
 
 // go test -v -run=^$ -bench=Benchmark_NewError -benchmem -count=4
 func Benchmark_NewError(b *testing.B) {
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		NewError(200, "test") //nolint:errcheck // not needed
 	}
 }
@@ -1307,6 +1307,72 @@ func Test_NewError(t *testing.T) {
 	e := NewError(StatusForbidden, "permission denied")
 	require.Equal(t, StatusForbidden, e.Code)
 	require.Equal(t, "permission denied", e.Message)
+}
+
+// go test -run Test_NewError_Format
+func Test_NewErrorf_Format(t *testing.T) {
+	t.Parallel()
+
+	type args []any
+
+	tests := []struct { //nolint:govet // fieldalignment: this struct is already optimally ordered
+		name string
+		want string
+		code int
+		in   args
+	}{
+		{
+			name: "no-args → default text",
+			code: StatusNotFound,
+			in:   nil,
+			want: utils.StatusMessage(StatusNotFound),
+		},
+		{
+			name: "single-string arg overrides",
+			code: StatusBadRequest,
+			in:   args{"custom bad request"},
+			want: "custom bad request",
+		},
+		{
+			name: "single non-string arg stringified",
+			code: StatusInternalServerError,
+			in:   args{errors.New("db down")},
+			want: "db down",
+		},
+		{
+			name: "single nil interface",
+			code: StatusInternalServerError,
+			in:   args{any(nil)},
+			want: "<nil>",
+		},
+		{
+			name: "format string + args",
+			code: StatusBadRequest,
+			in:   args{"invalid id %d", 10},
+			want: "invalid id 10",
+		},
+		{
+			name: "format string + excess args",
+			code: StatusBadRequest,
+			in:   args{"odd %d", 1, 2, 3},
+			want: "odd 1%!(EXTRA int=2, int=3)",
+		},
+		{
+			name: "≥2 args but first not string",
+			code: StatusBadRequest,
+			in:   args{errors.New("boom"), 42},
+			want: "boom",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			e := NewErrorf(tt.code, tt.in...)
+			require.Equal(t, tt.code, e.Code)
+			require.Equal(t, tt.want, e.Message)
+		})
+	}
 }
 
 // go test -run Test_Test_Timeout
@@ -1914,9 +1980,8 @@ func Benchmark_Communication_Flow(b *testing.B) {
 	fctx.Request.SetRequestURI("/")
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		h(fctx)
 	}
 
@@ -1932,9 +1997,8 @@ func Benchmark_Ctx_AcquireReleaseFlow(b *testing.B) {
 
 	b.Run("withoutRequestCtx", func(b *testing.B) {
 		b.ReportAllocs()
-		b.ResetTimer()
 
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			c, _ := app.AcquireCtx(fctx).(*DefaultCtx) //nolint:errcheck // not needed
 			app.ReleaseCtx(c)
 		}
@@ -1942,9 +2006,8 @@ func Benchmark_Ctx_AcquireReleaseFlow(b *testing.B) {
 
 	b.Run("withRequestCtx", func(b *testing.B) {
 		b.ReportAllocs()
-		b.ResetTimer()
 
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			c, _ := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck // not needed
 			app.ReleaseCtx(c)
 		}

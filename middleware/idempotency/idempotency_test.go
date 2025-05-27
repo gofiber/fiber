@@ -153,8 +153,7 @@ func Benchmark_Idempotency(b *testing.B) {
 		c.Request.Header.Set("X-Idempotency-Key", "00000000-0000-0000-0000-000000000000")
 
 		b.ReportAllocs()
-		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			h(c)
 		}
 	})
@@ -165,8 +164,7 @@ func Benchmark_Idempotency(b *testing.B) {
 		c.Request.SetRequestURI("/")
 
 		b.ReportAllocs()
-		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			h(c)
 		}
 	})
