@@ -1276,16 +1276,19 @@ func Benchmark_Router_Github_API(b *testing.B) {
 	var match bool
 	var err error
 
+	b.ResetTimer()
 	for i := range routesFixture.TestRoutes {
-		c.Request.Header.SetMethod(routesFixture.TestRoutes[i].Method)
-		for b.Loop() {
-			c.URI().SetPath(routesFixture.TestRoutes[i].Path)
+		b.RunParallel(func(pb *testing.PB) {
+			c.Request.Header.SetMethod(routesFixture.TestRoutes[i].Method)
+			for pb.Next() {
+				c.URI().SetPath(routesFixture.TestRoutes[i].Path)
 
-			ctx := app.AcquireCtx(c).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+				ctx := app.AcquireCtx(c).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
-			match, err = app.next(ctx)
-			app.ReleaseCtx(ctx)
-		}
+				match, err = app.next(ctx)
+				app.ReleaseCtx(ctx)
+			}
+		})
 
 		require.NoError(b, err)
 		require.True(b, match)
