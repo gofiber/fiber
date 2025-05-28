@@ -303,7 +303,7 @@ func hasRequestDirective(c fiber.Ctx, directive string) bool {
 // parseMaxAge extracts the max-age directive from a Cache-Control header.
 func parseMaxAge(cc string) (time.Duration, bool) {
 	for _, part := range strings.Split(cc, ",") {
-		part = strings.TrimSpace(utils.ToLower(part))
+		part = utils.Trim(utils.ToLower(part))
 		if strings.HasPrefix(part, "max-age=") {
 			if sec, err := strconv.Atoi(strings.TrimPrefix(part, "max-age=")); err == nil {
 				return time.Duration(sec) * time.Second, true
