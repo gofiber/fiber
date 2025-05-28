@@ -1016,7 +1016,7 @@ func TestCacheAgeHeader(t *testing.T) {
 	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
 	age, err := strconv.Atoi(resp.Header.Get(fiber.HeaderAge))
 	require.NoError(t, err)
-	require.Positive(t, age
+	require.Positive(t, age)
 }
 
 func Test_CacheNoStoreDirective(t *testing.T) {
