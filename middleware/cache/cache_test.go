@@ -999,6 +999,111 @@ func Test_Cache_UncacheableStatusCodes(t *testing.T) {
 	}
 }
 
+func TestCacheAgeHeader(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New(Config{Expiration: 10 * time.Second}))
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString("ok") })
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, "0", resp.Header.Get(fiber.HeaderAge))
+
+	time.Sleep(4 * time.Second)
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+	age, err := strconv.Atoi(resp.Header.Get(fiber.HeaderAge))
+	require.NoError(t, err)
+	require.Positive(t, age)
+}
+
+func Test_CacheNoStoreDirective(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New())
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderCacheControl, "no-store")
+		return c.SendString("ok")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+}
+
+func Test_CacheControlNotOverwritten(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New(Config{CacheControl: true, Expiration: 10 * time.Second, StoreResponseHeaders: true}))
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderCacheControl, "private")
+		return c.SendString("ok")
+	})
+
+	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, "private", resp.Header.Get(fiber.HeaderCacheControl))
+}
+
+func Test_CacheMaxAgeDirective(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New(Config{Expiration: 10 * time.Second}))
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderCacheControl, "max-age=1")
+		return c.SendString("1")
+	})
+
+	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+
+	time.Sleep(1500 * time.Millisecond)
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+}
+
+func Test_ParseMaxAge(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		header string
+		expect time.Duration
+		ok     bool
+	}{
+		{"max-age=60", 60 * time.Second, true},
+		{"public, max-age=86400", 86400 * time.Second, true},
+		{"no-store", 0, false},
+		{"max-age=invalid", 0, false},
+		{"public, s-maxage=100, max-age=50", 50 * time.Second, true},
+		{"MAX-AGE=20", 20 * time.Second, true},
+		{"public , max-age=0", 0, true},
+		{"public , max-age", 0, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.header, func(t *testing.T) {
+			t.Parallel()
+			d, ok := parseMaxAge(tt.header)
+			if tt.ok != ok {
+				t.Fatalf("expected ok=%v got %v", tt.ok, ok)
+			}
+			if ok && d != tt.expect {
+				t.Fatalf("expected %v got %v", tt.expect, d)
+			}
+		})
+	}
+}
+
 // go test -v -run=^$ -bench=Benchmark_Cache -benchmem -count=4
 func Benchmark_Cache(b *testing.B) {
 	app := fiber.New()
