@@ -3,6 +3,7 @@ package binder
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"mime/multipart"
 	"reflect"
 	"strings"
@@ -115,9 +116,7 @@ func parseToMap(ptr any, data map[string][]string) error {
 			return ErrMapNotConvertable
 		}
 
-		for k, v := range data {
-			newMap[k] = v
-		}
+		maps.Copy(newMap, data)
 	case reflect.String, reflect.Interface:
 		newMap, ok := ptr.(map[string]string)
 		if !ok {

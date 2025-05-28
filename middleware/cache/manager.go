@@ -18,6 +18,7 @@ type item struct {
 	cencoding []byte
 	status    int
 	exp       uint64
+	ttl       uint64
 	// used for finding the item in an indexed heap
 	heapidx int
 }
@@ -55,8 +56,8 @@ func (m *manager) acquire() *item {
 
 // release and reset *entry to sync.Pool
 func (m *manager) release(e *item) {
-	// don't release item if we using memory storage
-	if m.storage != nil {
+	// don't release item if we using in-memory storage
+	if m.storage == nil {
 		return
 	}
 	e.body = nil
@@ -69,24 +70,26 @@ func (m *manager) release(e *item) {
 
 // get data from storage or memory
 func (m *manager) get(key string) *item {
-	var it *item
 	if m.storage != nil {
-		it = m.acquire()
 		raw, err := m.storage.Get(key)
-		if err != nil {
-			return it
+		if err != nil || raw == nil {
+			return nil
 		}
-		if raw != nil {
-			if _, err := it.UnmarshalMsg(raw); err != nil {
-				return it
-			}
+
+		it := m.acquire()
+		if _, err := it.UnmarshalMsg(raw); err != nil {
+			m.release(it)
+			return nil
 		}
+
 		return it
 	}
-	if it, _ = m.memory.Get(key).(*item); it == nil { //nolint:errcheck // We store nothing else in the pool
-		return nil
+
+	if it, _ := m.memory.Get(key).(*item); it != nil { //nolint:errcheck // We store nothing else in the pool
+		return it
 	}
-	return it
+
+	return nil
 }
 
 // get raw data from storage or memory
