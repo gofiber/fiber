@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/url"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 
@@ -296,10 +297,8 @@ func originMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins [
 		return nil
 	}
 
-	for _, trustedOrigin := range trustedOrigins {
-		if origin == trustedOrigin {
-			return nil
-		}
+	if slices.Contains(trustedOrigins, origin) {
+		return nil
 	}
 
 	for _, trustedSubOrigin := range trustedSubOrigins {
@@ -331,10 +330,8 @@ func refererMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins 
 
 	referer = refererURL.String()
 
-	for _, trustedOrigin := range trustedOrigins {
-		if referer == trustedOrigin {
-			return nil
-		}
+	if slices.Contains(trustedOrigins, referer) {
+		return nil
 	}
 
 	for _, trustedSubOrigin := range trustedSubOrigins {

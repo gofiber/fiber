@@ -29,6 +29,7 @@ Here's a quick overview of the changes in Fiber `v3`:
 - [🧬 Middlewares](#-middlewares)
   - [Important Change for Accessing Middleware Data](#important-change-for-accessing-middleware-data)
   - [Adaptor](#adaptor)
+  - [BasicAuth](#basicauth)
   - [Cache](#cache)
   - [CORS](#cors)
   - [CSRF](#csrf)
@@ -36,6 +37,7 @@ Here's a quick overview of the changes in Fiber `v3`:
   - [EncryptCookie](#encryptcookie)
   - [Filesystem](#filesystem)
   - [Healthcheck](#healthcheck)
+  - [KeyAuth](#keyauth)
   - [Logger](#logger)
   - [Monitor](#monitor)
   - [Proxy](#proxy)
@@ -967,6 +969,10 @@ The adaptor middleware has been significantly optimized for performance and effi
 |              | Memory Usage     | 2734 B/op | 298 B/op    | -89.10%        |
 |              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
 
+### BasicAuth
+
+The BasicAuth middleware was updated for improved robustness in parsing the Authorization header, with enhanced validation and whitespace handling. The default unauthorized response now uses a properly quoted and capitalized `WWW-Authenticate` header.
+
 ### Cache
 
 We are excited to introduce a new option in our caching middleware: Cache Invalidator. This feature provides greater control over cache management, allowing you to define a custom conditions for invalidating cache entries.
@@ -1021,6 +1027,10 @@ The Healthcheck middleware has been enhanced to support more than two routes, wi
     - The configuration for each health check endpoint has been simplified. Each endpoint can be configured separately, allowing for more flexibility and readability.
 
 Refer to the [healthcheck middleware migration guide](./middleware/healthcheck.md) or the [general migration guide](#-migration-guide) to review the changes.
+
+### KeyAuth
+
+The keyauth middleware was updated to introduce a configurable `Realm` field for the `WWW-Authenticate` header.
 
 ### Logger
 

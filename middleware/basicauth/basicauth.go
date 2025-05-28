@@ -31,15 +31,16 @@ func New(config Config) fiber.Handler {
 		}
 
 		// Get authorization header
-		auth := c.Get(fiber.HeaderAuthorization)
+		auth := utils.Trim(c.Get(fiber.HeaderAuthorization), ' ')
 
-		// Check if the header contains content besides "basic".
-		if len(auth) <= 6 || !utils.EqualFold(auth[:6], "basic ") {
+		// Expect a scheme token followed by credentials
+		parts := strings.Fields(auth)
+		if len(parts) != 2 || !utils.EqualFold(parts[0], "basic") {
 			return cfg.Unauthorized(c)
 		}
 
 		// Decode the header contents
-		raw, err := base64.StdEncoding.DecodeString(auth[6:])
+		raw, err := base64.StdEncoding.DecodeString(parts[1])
 		if err != nil {
 			return cfg.Unauthorized(c)
 		}

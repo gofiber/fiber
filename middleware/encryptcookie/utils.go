@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 )
 
 var ErrInvalidKeyLength = errors.New("encryption key must be 16, 24, or 32 bytes")
@@ -104,11 +105,5 @@ func GenerateKey(length int) string {
 
 // Check given cookie key is disabled for encryption or not
 func isDisabled(key string, except []string) bool {
-	for _, k := range except {
-		if key == k {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(except, key)
 }
