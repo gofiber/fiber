@@ -38,7 +38,6 @@ func validateKey(key string) error {
 // EncryptCookie Encrypts a cookie value with specific encryption key
 func EncryptCookie(value, key string) (string, error) {
 	keyDecoded, err := decodeKey(key)
-
 	if err != nil {
 		return "", err
 	}
@@ -65,7 +64,6 @@ func EncryptCookie(value, key string) (string, error) {
 // DecryptCookie Decrypts a cookie value with specific encryption key
 func DecryptCookie(value, key string) (string, error) {
 	keyDecoded, err := decodeKey(key)
-
 	if err != nil {
 		return "", err
 	}
