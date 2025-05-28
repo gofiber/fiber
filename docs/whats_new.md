@@ -972,6 +972,11 @@ The adaptor middleware has been significantly optimized for performance and effi
 We are excited to introduce a new option in our caching middleware: Cache Invalidator. This feature provides greater control over cache management, allowing you to define a custom conditions for invalidating cache entries.
 Additionally, the caching middleware has been optimized to avoid caching non-cacheable status codes, as defined by the [HTTP standards](https://datatracker.ietf.org/doc/html/rfc7231#section-6.1). This improvement enhances cache accuracy and reduces unnecessary cache storage usage.
 
+Other highlights:
+
+- Cached responses now include an RFC-compliant `Age` header.
+- Response `Cache-Control` directives such as `max-age` and `no-store` are honored.
+
 ### CORS
 
 We've made some changes to the CORS middleware to improve its functionality and flexibility. Here's what's new:
