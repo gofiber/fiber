@@ -1,6 +1,7 @@
 name: Auto labeler
 
 on:
+  workflow_dispatch:
   issues:
     types: [opened, edited, milestoned]
   pull_request_target:

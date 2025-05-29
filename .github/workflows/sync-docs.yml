@@ -1,6 +1,7 @@
 name: "Sync docs"
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - master

@@ -1,6 +1,7 @@
 name: Release Drafter
 
 on:
+  workflow_dispatch:
   push:
     # branches to consider in the event; optional, defaults to all
     branches:
