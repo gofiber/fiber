@@ -102,74 +102,32 @@ func (app *App) quoteString(raw string) string {
 }
 
 // Scan stack if other methods match the request
-func (app *App) methodExist(c *DefaultCtx) bool {
-	var exists bool
-
-	methods := app.config.RequestMethods
-	for i := 0; i < len(methods); i++ {
-		// Skip original method
-		if c.getMethodInt() == i {
-			continue
-		}
-		// Reset stack index
-		c.setIndexRoute(-1)
-
-		tree, ok := c.App().treeStack[i][c.treePathHash]
-		if !ok {
-			tree = c.App().treeStack[i][0]
-		}
-		// Get stack length
-		lenr := len(tree) - 1
-		// Loop over the route stack starting from previous index
-		for c.getIndexRoute() < lenr {
-			// Increment route index
-			c.setIndexRoute(c.getIndexRoute() + 1)
-			// Get *Route
-			route := tree[c.getIndexRoute()]
-			// Skip use routes
-			if route.use {
-				continue
-			}
-			// Check if it matches the request path
-			match := route.match(c.getDetectionPath(), c.Path(), c.getValues())
-			// No match, next route
-			if match {
-				// We matched
-				exists = true
-				// Add method to Allow header
-				c.Append(HeaderAllow, methods[i])
-				// Break stack loop
-				break
-			}
-		}
-	}
-	return exists
-}
-
 // Scan stack if other methods match the request
-func (app *App) methodExistCustom(c CustomCtx) bool {
+func (app *App) methodExist(c CustomCtx) bool {
 	var exists bool
 	methods := app.config.RequestMethods
+	method := c.getMethodInt()
+	treeHash := c.getTreePathHash()
 	for i := 0; i < len(methods); i++ {
 		// Skip original method
-		if c.getMethodInt() == i {
+		if method == i {
 			continue
 		}
 		// Reset stack index
-		c.setIndexRoute(-1)
+		indexRoute := -1
 
-		tree, ok := c.App().treeStack[i][c.getTreePathHash()]
+		tree, ok := app.treeStack[i][treeHash]
 		if !ok {
-			tree = c.App().treeStack[i][0]
+			tree = app.treeStack[i][0]
 		}
 		// Get stack length
 		lenr := len(tree) - 1
 		// Loop over the route stack starting from previous index
-		for c.getIndexRoute() < lenr {
+		for indexRoute < lenr {
 			// Increment route index
-			c.setIndexRoute(c.getIndexRoute() + 1)
+			indexRoute++
 			// Get *Route
-			route := tree[c.getIndexRoute()]
+			route := tree[indexRoute]
 			// Skip use routes
 			if route.use {
 				continue
@@ -186,6 +144,7 @@ func (app *App) methodExistCustom(c CustomCtx) bool {
 				break
 			}
 		}
+		c.setIndexRoute(indexRoute)
 	}
 	return exists
 }
