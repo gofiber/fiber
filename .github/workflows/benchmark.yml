@@ -68,7 +68,7 @@ jobs:
 
       # NOTE: Benchmarks could change with different CPU types
       - name: Get GitHub Runner System Information
-        uses: kenchan0130/actions-system-info@v1.3.0
+        uses: kenchan0130/actions-system-info@v1.3.1
         id: system-info
 
       - name: Get Main branch SHA
