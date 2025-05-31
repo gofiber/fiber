@@ -617,22 +617,31 @@ func GetTrimmedParam(param string) string {
 
 // RemoveEscapeChar removes escape characters
 func RemoveEscapeChar(word string) string {
+	idx := strings.IndexByte(word, '\\')
+	if idx == -1 {
+		return word
+	}
+
 	b := []byte(word)
-	dst := 0
-	for src := 0; src < len(b); src++ {
-		if b[src] == '\\' {
-			continue
+	dst := idx
+	for src := idx + 1; src < len(b); src++ {
+		if b[src] != '\\' {
+			b[dst] = b[src]
+			dst++
 		}
-		b[dst] = b[src]
-		dst++
 	}
 	return string(b[:dst])
 }
 
 // RemoveEscapeCharBytes removes escape characters
 func RemoveEscapeCharBytes(word []byte) []byte {
-	dst := 0
-	for src := 0; src < len(word); src++ {
+	idx := bytes.IndexByte(word, '\\')
+	if idx == -1 {
+		return word
+	}
+
+	dst := idx
+	for src := idx + 1; src < len(word); src++ {
 		if word[src] != '\\' {
 			word[dst] = word[src]
 			dst++
