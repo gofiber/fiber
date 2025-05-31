@@ -6,7 +6,6 @@ package fiber
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"html"
 	"slices"
@@ -169,10 +168,7 @@ func (app *App) next(c CustomCtx) (bool, error) {
 
 func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 	// Acquire context from the pool
-	ctx, ok := app.AcquireCtx(rctx).(CustomCtx)
-	if !ok {
-		panic(errors.New("requestHandler: failed to type-assert to CustomCtx"))
-	}
+	ctx := app.AcquireCtx(rctx)
 
 	defer app.ReleaseCtx(ctx)
 
