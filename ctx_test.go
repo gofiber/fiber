@@ -3023,7 +3023,17 @@ func Test_Ctx_Subdomains(t *testing.T) {
 	require.Equal(t, []string{"john", "doe"}, c.Subdomains(4))
 
 	c.Request().URI().SetHost("localhost:3000")
-	require.Equal(t, []string{"localhost:3000"}, c.Subdomains())
+	require.Empty(t, c.Subdomains())
+}
+
+// go test -run Test_Ctx_Subdomains_OffsetTooHigh
+func Test_Ctx_Subdomains_OffsetTooHigh(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Request().URI().SetHost("john.doe.is.awesome.google.com")
+	require.Empty(t, c.Subdomains(10))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Subdomains -benchmem -count=4

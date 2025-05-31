@@ -1760,12 +1760,11 @@ func (c *DefaultCtx) Subdomains(offset ...int) []string {
 	}
 	subdomains := strings.Split(c.Host(), ".")
 	l := len(subdomains) - o
-	// Check index to avoid slice bounds out of range panic
-	if l < 0 {
-		l = len(subdomains)
+	// avoid slice bounds out of range and return empty slice
+	if l <= 0 {
+		return []string{}
 	}
-	subdomains = subdomains[:l]
-	return subdomains
+	return subdomains[:l]
 }
 
 // Stale is not implemented yet, pull requests are welcome!
