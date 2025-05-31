@@ -3024,6 +3024,12 @@ func Test_Ctx_Subdomains(t *testing.T) {
 
 	c.Request().URI().SetHost("localhost:3000")
 	require.Empty(t, c.Subdomains())
+
+	c.Request().URI().SetHost("john.doe.google.com")
+	require.Empty(t, c.Subdomains(-1), "negative offset should return empty slice")
+
+	c.Request().URI().SetHost("john.doe.google.com")
+	require.Empty(t, c.Subdomains(0), "negative offset should return empty slice")
 }
 
 // go test -run Test_Ctx_Subdomains_OffsetTooHigh

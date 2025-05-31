@@ -1751,8 +1751,8 @@ func (c *DefaultCtx) setCanonical(key, val string) {
 	c.fasthttp.Response.Header.SetCanonical(utils.UnsafeBytes(key), utils.UnsafeBytes(val))
 }
 
-// Subdomains returns a string slice of subdomains in the domain name of the request.
-// The subdomain offset, which defaults to 2, is used for determining the beginning of the subdomain segments.
+// Subdomains returns a slice of subdomains from the host, excluding the last `offset` components.
+// If the offset is negative or exceeds the number of subdomains, an empty slice is returned.
 func (c *DefaultCtx) Subdomains(offset ...int) []string {
 	o := 2
 	if len(offset) > 0 {
