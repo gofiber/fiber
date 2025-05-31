@@ -1759,6 +1759,10 @@ func (c *DefaultCtx) Subdomains(offset ...int) []string {
 		o = offset[0]
 	}
 	subdomains := strings.Split(c.Host(), ".")
+	if o < 0 {
+		// negative offsets should not cause panics, treat as zero
+		o = 0
+	}
 	l := len(subdomains) - o
 	// avoid slice bounds out of range and return empty slice
 	if l <= 0 {

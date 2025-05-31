@@ -3042,6 +3042,46 @@ func Test_Ctx_Subdomains_OffsetTooHigh(t *testing.T) {
 	require.Empty(t, c.Subdomains(10))
 }
 
+// go test -run Test_Ctx_Subdomains_ZeroOffset
+func Test_Ctx_Subdomains_ZeroOffset(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Request().URI().SetHost("john.doe.google.com")
+	require.Equal(t, []string{"john", "doe", "google", "com"}, c.Subdomains(0))
+}
+
+// go test -run Test_Ctx_Subdomains_NegativeOffset
+func Test_Ctx_Subdomains_NegativeOffset(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Request().URI().SetHost("john.doe.google.com")
+	require.Equal(t, []string{"john", "doe", "google", "com"}, c.Subdomains(-1))
+}
+
+// go test -run Test_Ctx_Subdomains_OffsetEqualLen
+func Test_Ctx_Subdomains_OffsetEqualLen(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Request().URI().SetHost("john.doe.com")
+	require.Empty(t, c.Subdomains(3))
+}
+
+// go test -run Test_Ctx_Subdomains_WithPort
+func Test_Ctx_Subdomains_WithPort(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Request().URI().SetHost("foo.bar.example.com:8080")
+	require.Equal(t, []string{"foo", "bar"}, c.Subdomains(2))
+}
+
 // go test -v -run=^$ -bench=Benchmark_Ctx_Subdomains -benchmem -count=4
 func Benchmark_Ctx_Subdomains(b *testing.B) {
 	app := New()
