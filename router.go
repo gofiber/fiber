@@ -108,8 +108,9 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) boo
 
 func (app *App) next(c CustomCtx) (bool, error) {
 	methodInt := c.getMethodInt()
+	treeHash := c.getTreePathHash()
 	// Get stack length
-	tree, ok := app.treeStack[methodInt][c.getTreePathHash()]
+	tree, ok := app.treeStack[methodInt][treeHash]
 	if !ok {
 		tree = app.treeStack[methodInt][0]
 	}
@@ -117,7 +118,8 @@ func (app *App) next(c CustomCtx) (bool, error) {
 
 	indexRoute := c.getIndexRoute()
 	var err error
-	var match bool
+
+	d, isDefault := c.(*DefaultCtx)
 
 	// Loop over the route stack starting from previous index
 	for indexRoute < lenr {
@@ -131,28 +133,44 @@ func (app *App) next(c CustomCtx) (bool, error) {
 			continue
 		}
 
-		// Check if it matches the request path
-		match = route.match(c.getDetectionPath(), c.Path(), c.getValues())
+		if isDefault {
+			// Check if it matches the request path
+			if !route.match(utils.UnsafeString(d.detectionPath), utils.UnsafeString(d.path), &d.values) {
+				continue
+			}
 
-		// No match, next route
-		if !match {
-			continue
+			// Pass route reference and param values
+			d.route = route
+			// Non use handler matched
+			if !route.use {
+				d.matched = true
+			}
+			// Execute first handler of route
+			if len(route.Handlers) > 0 {
+				d.indexHandler = 0
+				d.indexRoute = indexRoute
+				return true, route.Handlers[0](d)
+			}
+		} else {
+			// Check if it matches the request path
+			if !route.match(c.getDetectionPath(), c.Path(), c.getValues()) {
+				continue
+			}
+			// Pass route reference and param values
+			c.setRoute(route)
+			// Non use handler matched
+			if !route.use {
+				c.setMatched(true)
+			}
+			// Execute first handler of route
+			if len(route.Handlers) > 0 {
+				c.setIndexHandler(0)
+				c.setIndexRoute(indexRoute)
+				return true, route.Handlers[0](c)
+			}
 		}
-		// Pass route reference and param values
-		c.setRoute(route)
 
-		// Non use handler matched
-		if !route.use {
-			c.setMatched(true)
-		}
-
-		// Execute first handler of route
-		if len(route.Handlers) > 0 {
-			c.setIndexHandler(0)
-			c.setIndexRoute(indexRoute)
-			err = route.Handlers[0](c)
-		}
-		return match, err // Stop scanning the stack
+		return true, nil // Stop scanning the stack
 	}
 
 	// If c.Next() does not match, return 404
@@ -160,7 +178,56 @@ func (app *App) next(c CustomCtx) (bool, error) {
 
 	// If no match, scan stack again if other methods match the request
 	// Moved from app.handler because middleware may break the route chain
-	if !c.getMatched() && app.methodExist(c) {
+	if c.getMatched() {
+		return false, err
+	}
+
+	exists := false
+	methods := app.config.RequestMethods
+	for i := 0; i < len(methods); i++ {
+		// Skip original method
+		if methodInt == i {
+			continue
+		}
+		// Reset stack index
+		indexRoute := -1
+
+		tree, ok := app.treeStack[i][treeHash]
+		if !ok {
+			tree = app.treeStack[i][0]
+		}
+		// Get stack length
+		lenr := len(tree) - 1
+		// Loop over the route stack starting from previous index
+		for indexRoute < lenr {
+			// Increment route index
+			indexRoute++
+			// Get *Route
+			route := tree[indexRoute]
+			// Skip use routes
+			if route.use {
+				continue
+			}
+			var match bool
+			// Check if it matches the request path
+			if isDefault {
+				match = route.match(utils.UnsafeString(d.detectionPath), utils.UnsafeString(d.path), &d.values)
+			} else {
+				match = route.match(c.getDetectionPath(), c.Path(), c.getValues())
+			}
+			// No match, next route
+			if match {
+				// We matched
+				exists = true
+				// Add method to Allow header
+				c.Append(HeaderAllow, methods[i])
+				// Break stack loop
+				break
+			}
+		}
+		c.setIndexRoute(indexRoute)
+	}
+	if exists {
 		err = ErrMethodNotAllowed
 	}
 	return false, err
