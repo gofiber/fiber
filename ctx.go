@@ -1753,22 +1753,31 @@ func (c *DefaultCtx) setCanonical(key, val string) {
 
 // Subdomains returns a slice of subdomains from the host, excluding the last `offset` components.
 // If the offset is negative or exceeds the number of subdomains, an empty slice is returned.
+// If the offset is zero every label (no trimming) is retured.
 func (c *DefaultCtx) Subdomains(offset ...int) []string {
 	o := 2
 	if len(offset) > 0 {
 		o = offset[0]
 	}
-	subdomains := strings.Split(c.Host(), ".")
+
+	// Negative offset, return nothing.
 	if o < 0 {
-		// negative offsets should not cause panics, treat as zero
-		o = 0
-	}
-	l := len(subdomains) - o
-	// avoid slice bounds out of range and return empty slice
-	if l <= 0 {
 		return []string{}
 	}
-	return subdomains[:l]
+
+	parts := strings.Split(c.Host(), ".")
+
+	// offset == 0, caller wants everything.
+	if o == 0 {
+		return parts
+	}
+
+	// If we trim away the whole slice (or more), nothing remains.
+	if o >= len(parts) {
+		return []string{}
+	}
+
+	return parts[:len(parts)-o]
 }
 
 // Stale is not implemented yet, pull requests are welcome!
