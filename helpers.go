@@ -101,54 +101,6 @@ func (app *App) quoteString(raw string) string {
 	return quoted
 }
 
-// Scan stack if other methods match the request
-// Scan stack if other methods match the request
-func (app *App) methodExist(c CustomCtx) bool {
-	var exists bool
-	methods := app.config.RequestMethods
-	method := c.getMethodInt()
-	treeHash := c.getTreePathHash()
-	for i := 0; i < len(methods); i++ {
-		// Skip original method
-		if method == i {
-			continue
-		}
-		// Reset stack index
-		indexRoute := -1
-
-		tree, ok := app.treeStack[i][treeHash]
-		if !ok {
-			tree = app.treeStack[i][0]
-		}
-		// Get stack length
-		lenr := len(tree) - 1
-		// Loop over the route stack starting from previous index
-		for indexRoute < lenr {
-			// Increment route index
-			indexRoute++
-			// Get *Route
-			route := tree[indexRoute]
-			// Skip use routes
-			if route.use {
-				continue
-			}
-			// Check if it matches the request path
-			match := route.match(c.getDetectionPath(), c.Path(), c.getValues())
-			// No match, next route
-			if match {
-				// We matched
-				exists = true
-				// Add method to Allow header
-				c.Append(HeaderAllow, methods[i])
-				// Break stack loop
-				break
-			}
-		}
-		c.setIndexRoute(indexRoute)
-	}
-	return exists
-}
-
 // uniqueRouteStack drop all not unique routes from the slice
 func uniqueRouteStack(stack []*Route) []*Route {
 	var unique []*Route

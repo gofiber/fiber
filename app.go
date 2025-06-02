@@ -532,7 +532,10 @@ func New(config ...Config) *App {
 	// Create Ctx pool
 	app.pool = sync.Pool{
 		New: func() any {
-			return app.newCtx()
+			if app.newCtxFunc != nil {
+				return app.newCtxFunc(app)
+			}
+			return NewDefaultCtx(app)
 		},
 	}
 
