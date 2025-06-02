@@ -178,7 +178,6 @@ app.Listen(":444", fiber.ListenConfig{
 
 `MIMEApplicationJavaScript` and `MIMEApplicationJavaScriptCharsetUTF8` are deprecated. Use `MIMETextJavaScript` and `MIMETextJavaScriptCharsetUTF8` instead.
 
-
 ## 🎣 Hooks
 
 We have made several changes to the Fiber hooks, including:
