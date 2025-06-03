@@ -1344,21 +1344,32 @@ func (c fiber.Ctx) Stale() bool
 
 ### Subdomains
 
-Returns a slice of subdomains in the domain name of the request.
+Returns a slice with the host’s **sub-domain labels**—the dot-separated parts that precede the registrable domain (`example`) and the top-level domain (`com`).
 
-The application property `subdomain offset`, which defaults to `2`, is used for determining the beginning of the subdomain segments.
+The *application property* **`subdomain offset`** (default **`2`**) tells Fiber how many labels, counting from the **right-hand side**, are **always** discarded.  
+Passing an `offset` argument lets you override that value for a single call.
 
-```go title="Signature"
+```go
 func (c fiber.Ctx) Subdomains(offset ...int) []string
 ```
 
-```go title="Example"
+| `offset` | Result                                 | Meaning                                               |
+|----------|----------------------------------------|-------------------------------------------------------|
+| *omitted* → **2** | trim 2 right-most labels             | drop the registrable domain **and** the TLD           |
+| `> 0`     | trim exactly `offset` right-most labels | custom trimming                                       |
+| `0`       | **return every label**                | keep the entire host unchanged                        |
+| `< 0`     | **return `[]`**                       | negative offsets are invalid → empty slice            |
+
+#### Example
+
+```go
 // Host: "tobi.ferrets.example.com"
 
 app.Get("/", func(c fiber.Ctx) error {
-  c.Subdomains()    // ["ferrets", "tobi"]
-  c.Subdomains(1)   // ["tobi"]
-
+  c.Subdomains()    // ["tobi", "ferrets"]
+  c.Subdomains(1)   // ["tobi", "ferrets", "example"]
+  c.Subdomains(0)   // ["tobi", "ferrets", "example", "com"]
+  c.Subdomains(-1)  // []
   // ...
 })
 ```

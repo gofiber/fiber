@@ -3017,63 +3017,81 @@ func Test_Ctx_Stale(t *testing.T) {
 func Test_Ctx_Subdomains(t *testing.T) {
 	t.Parallel()
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	c.Request().URI().SetHost("john.doe.is.awesome.google.com")
-	require.Equal(t, []string{"john", "doe"}, c.Subdomains(4))
+	type tc struct {
+		name   string
+		host   string
+		offset []int // nil ⇒ call without argument
+		want   []string
+	}
 
-	c.Request().URI().SetHost("localhost:3000")
-	require.Empty(t, c.Subdomains())
-}
+	cases := []tc{
+		{
+			name:   "default offset (2) drops registrable domain + TLD",
+			host:   "john.doe.is.awesome.google.com",
+			offset: nil, // Subdomains()
+			want:   []string{"john", "doe", "is", "awesome"},
+		},
+		{
+			name:   "custom offset trims N right-hand labels",
+			host:   "john.doe.is.awesome.google.com",
+			offset: []int{4},
+			want:   []string{"john", "doe"},
+		},
+		{
+			name:   "offset too high returns empty",
+			host:   "john.doe.is.awesome.google.com",
+			offset: []int{10},
+			want:   []string{},
+		},
+		{
+			name:   "zero offset returns all labels",
+			host:   "john.doe.google.com",
+			offset: []int{0},
+			want:   []string{"john", "doe", "google", "com"},
+		},
+		{
+			name:   "offset 1 keeps registrable domain",
+			host:   "john.doe.google.com",
+			offset: []int{1},
+			want:   []string{"john", "doe", "google"},
+		},
+		{
+			name:   "negative offset returns empty",
+			host:   "john.doe.google.com",
+			offset: []int{-1},
+			want:   []string{},
+		},
+		{
+			name:   "offset equal len returns empty",
+			host:   "john.doe.com",
+			offset: []int{3},
+			want:   []string{},
+		},
+		{
+			name:   "host with port — default offset gives empty",
+			host:   "localhost:3000",
+			offset: nil,
+			want:   []string{},
+		},
+		{
+			name:   "host with port — custom offset trims 2 labels",
+			host:   "foo.bar.example.com:8080",
+			offset: []int{2},
+			want:   []string{"foo", "bar"},
+		},
+	}
 
-// go test -run Test_Ctx_Subdomains_OffsetTooHigh
-func Test_Ctx_Subdomains_OffsetTooHigh(t *testing.T) {
-	t.Parallel()
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(c)
 
-	c.Request().URI().SetHost("john.doe.is.awesome.google.com")
-	require.Empty(t, c.Subdomains(10))
-}
-
-// go test -run Test_Ctx_Subdomains_ZeroOffset
-func Test_Ctx_Subdomains_ZeroOffset(t *testing.T) {
-	t.Parallel()
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-
-	c.Request().URI().SetHost("john.doe.google.com")
-	require.Equal(t, []string{"john", "doe", "google", "com"}, c.Subdomains(0))
-}
-
-// go test -run Test_Ctx_Subdomains_NegativeOffset
-func Test_Ctx_Subdomains_NegativeOffset(t *testing.T) {
-	t.Parallel()
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-
-	c.Request().URI().SetHost("john.doe.google.com")
-	require.Empty(t, c.Subdomains(-1), "negative offset should return empty slice")
-}
-
-// go test -run Test_Ctx_Subdomains_OffsetEqualLen
-func Test_Ctx_Subdomains_OffsetEqualLen(t *testing.T) {
-	t.Parallel()
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-
-	c.Request().URI().SetHost("john.doe.com")
-	require.Empty(t, c.Subdomains(3))
-}
-
-// go test -run Test_Ctx_Subdomains_WithPort
-func Test_Ctx_Subdomains_WithPort(t *testing.T) {
-	t.Parallel()
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-
-	c.Request().URI().SetHost("foo.bar.example.com:8080")
-	require.Equal(t, []string{"foo", "bar"}, c.Subdomains(2))
+			c.Request().URI().SetHost(tc.host)
+			got := c.Subdomains(tc.offset...)
+			require.Equal(t, tc.want, got)
+		})
+	}
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Subdomains -benchmem -count=4

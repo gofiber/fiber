@@ -1765,6 +1765,8 @@ func (c *DefaultCtx) Subdomains(offset ...int) []string {
 		return []string{}
 	}
 
+	// strip “:port” if present
+	host := c.Hostname()
 	parts := strings.Split(c.Host(), ".")
 
 	// offset == 0, caller wants everything.
