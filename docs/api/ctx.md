@@ -1355,8 +1355,9 @@ func (c fiber.Ctx) Subdomains(offset ...int) []string
 
 | `offset` | Result                                 | Meaning                                               |
 |----------|----------------------------------------|-------------------------------------------------------|
-| *omitted* → **2** | trim 2 right-most labels             | drop the registrable domain **and** the TLD           |
-| `> 0`     | trim exactly `offset` right-most labels | custom trimming                                       |
+| *omitted* → **2** | trim 2 right-most labels             | drop the registrable domain **and** the TLD    |
+| `1` to `len(labels)-1` | trim exactly `offset` right-most labels | custom trimming of available labels    |
+| `>= len(labels)` | **return `[]`**                     | offset exceeds available labels → empty slice    |
 | `0`       | **return every label**                | keep the entire host unchanged                        |
 | `< 0`     | **return `[]`**                       | negative offsets are invalid → empty slice            |
 
