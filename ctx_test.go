@@ -3068,10 +3068,16 @@ func Test_Ctx_Subdomains(t *testing.T) {
 			want:   []string{},
 		},
 		{
-			name:   "host with port — default offset gives empty",
-			host:   "localhost:3000",
-			offset: nil,
+			name:   "offset equal len returns empty",
+			host:   "john.doe.com",
+			offset: []int{3},
 			want:   []string{},
+		},
+		{
+			name:   "zero offset returns all labels with port present",
+			host:   "localhost:3000",
+			offset: []int{0},
+			want:   []string{"localhost"},
 		},
 		{
 			name:   "host with port — custom offset trims 2 labels",
