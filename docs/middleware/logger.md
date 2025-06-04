@@ -236,8 +236,6 @@ const (
     TagBytesReceived     = "bytesReceived"
     TagRoute             = "route"
     TagError             = "error"
-    // DEPRECATED: Use TagReqHeader instead
-    TagHeader            = "header:"        // request header
     TagReqHeader         = "reqHeader:"     // request header
     TagRespHeader        = "respHeader:"    // response header
     TagQuery             = "query:"         // request query

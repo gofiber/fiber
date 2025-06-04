@@ -199,3 +199,21 @@ func Benchmark_Middleware_BasicAuth_Upper(b *testing.B) {
 
 	require.Equal(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
 }
+
+func Test_BasicAuth_Immutable(t *testing.T) {
+	t.Parallel()
+	app := fiber.New(fiber.Config{Immutable: true})
+
+	app.Use(New(Config{Users: map[string]string{"john": "doe"}}))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusTeapot)
+	})
+
+	creds := base64.StdEncoding.EncodeToString([]byte("john:doe"))
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req.Header.Set(fiber.HeaderAuthorization, "Basic "+creds)
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+}

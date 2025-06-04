@@ -174,6 +174,10 @@ app.Listen(":444", fiber.ListenConfig{
 })
 ```
 
+### MIME Constants
+
+`MIMEApplicationJavaScript` and `MIMEApplicationJavaScriptCharsetUTF8` are deprecated. Use `MIMETextJavaScript` and `MIMETextJavaScriptCharsetUTF8` instead.
+
 ## 🎣 Hooks
 
 We have made several changes to the Fiber hooks, including:
@@ -979,6 +983,10 @@ We are excited to introduce a new option in our caching middleware: Cache Invali
 Additionally, the caching middleware has been optimized to avoid caching non-cacheable status codes, as defined by the [HTTP standards](https://datatracker.ietf.org/doc/html/rfc7231#section-6.1). This improvement enhances cache accuracy and reduces unnecessary cache storage usage.
 Cached responses now include an RFC-compliant Age header, providing a standardized indication of how long a response has been stored in cache since it was originally generated. This enhancement improves HTTP compliance and facilitates better client-side caching strategies.
 
+:::note
+The deprecated `Store` and `Key` options have been removed in v3. Use `Storage` and `KeyGenerator` instead.
+:::
+
 ### CORS
 
 We've made some changes to the CORS middleware to improve its functionality and flexibility. Here's what's new:
@@ -1074,6 +1082,10 @@ func main() {
 ```
 
 </details>
+
+:::note
+The deprecated `TagHeader` constant was removed. Use `TagReqHeader` when you need to log request headers.
+:::
 
 #### Logging Middleware Values (e.g., Request ID)
 
@@ -1188,6 +1200,14 @@ app.Use(logger.New(logger.Config{
 
 See more in [Logger](./middleware/logger.md#predefined-formats)
 </details>
+
+### Limiter
+
+The limiter middleware uses a new Fixed Window Rate Limiter implementation.
+
+:::note
+Deprecated fields `Duration`, `Store`, and `Key` have been removed in v3. Use `Expiration`, `Storage`, and `KeyGenerator` instead.
+:::
 
 ### Monitor
 

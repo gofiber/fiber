@@ -46,7 +46,12 @@ func New(config Config) fiber.Handler {
 		}
 
 		// Get the credentials
-		creds := utils.UnsafeString(raw)
+		var creds string
+		if c.App().Config().Immutable {
+			creds = string(raw)
+		} else {
+			creds = utils.UnsafeString(raw)
+		}
 
 		// Check if the credentials are in the correct form
 		// which is "username:password".

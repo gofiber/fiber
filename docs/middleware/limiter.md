@@ -107,9 +107,6 @@ app.Use(limiter.New(limiter.Config{
 | SkipSuccessfulRequests | `bool`                    | When set to true, requests with StatusCode < 400 won't be counted.                          | false                                    |
 | Storage                | `fiber.Storage`           | Store is used to store the state of the middleware.                                         | An in-memory store for this process only |
 | LimiterMiddleware      | `LimiterHandler`          | LimiterMiddleware is the struct that implements a limiter middleware.                       | A new Fixed Window Rate Limiter          |
-| Duration (Deprecated)  | `time.Duration`           | Deprecated: Use Expiration instead                                                          | -                                        |
-| Store (Deprecated)     | `fiber.Storage`           | Deprecated: Use Storage instead                                                             | -                                        |
-| Key (Deprecated)       | `func(fiber.Ctx) string` | Deprecated: Use KeyGenerator instead                                                        | -                                        |
 
 :::note
 A custom store can be used if it implements the `Storage` interface - more details and an example can be found in `store.go`.

@@ -77,7 +77,11 @@ func Balancer(config Config) fiber.Handler {
 			}
 		}
 
-		req.SetRequestURI(utils.UnsafeString(req.RequestURI()))
+		if c.App().Config().Immutable {
+			req.SetRequestURIBytes(req.RequestURI())
+		} else {
+			req.SetRequestURI(utils.UnsafeString(req.RequestURI()))
+		}
 
 		// Forward request
 		if err := lbc.Do(req, res); err != nil {
