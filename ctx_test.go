@@ -3015,7 +3015,6 @@ func Test_Ctx_Stale(t *testing.T) {
 
 // go test -run Test_Ctx_Subdomains
 func Test_Ctx_Subdomains(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	type tc struct {

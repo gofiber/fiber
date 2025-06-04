@@ -1344,9 +1344,9 @@ func (c fiber.Ctx) Stale() bool
 
 ### Subdomains
 
-Returns a slice with the host’s **sub-domain labels**—the dot-separated parts that precede the registrable domain (`example`) and the top-level domain (`com`).
+Returns a slice with the host’s sub-domain labels. The dot-separated parts that precede the registrable domain (`example`) and the top-level domain (ex: `com`).
 
-The *application property* **`subdomain offset`** (default **`2`**) tells Fiber how many labels, counting from the **right-hand side**, are **always** discarded.  
+The `subdomain offset` (default `2`) tells Fiber how many labels, counting from the right-hand side, are always discarded.  
 Passing an `offset` argument lets you override that value for a single call.
 
 ```go
