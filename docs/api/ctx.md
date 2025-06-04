@@ -1597,7 +1597,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 Transfers the file from the given path as an `attachment`.
 
-Typically, browsers will prompt the user to download. By default, the [Content-Disposition](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition) header `filename=` parameter is the file path (_this typically appears in the browser dialog_).
+Typically, browsers will prompt the user to download. By default, the [Content-Disposition](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition) header `filename=` parameter is the file path (this typically appears in the browser dialog).
 Override this default with the `filename` parameter.
 
 ```go title="Signature"
