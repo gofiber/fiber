@@ -62,7 +62,6 @@ func Test_CBORBinder_Bind(t *testing.T) {
 
 func Benchmark_CBORBinder_Bind(b *testing.B) {
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	binder := &CBORBinding{
 		CBORDecoder: cbor.Unmarshal,
@@ -82,7 +81,7 @@ func Benchmark_CBORBinder_Bind(b *testing.B) {
 	body, err := cbor.Marshal(wantedUser)
 	require.NoError(b, err)
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err = binder.Bind(body, &user)
 	}
 

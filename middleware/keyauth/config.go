@@ -2,6 +2,7 @@ package keyauth
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/gofiber/fiber/v3"
 )
@@ -42,6 +43,10 @@ type Config struct {
 	// AuthScheme to be used in the Authorization header.
 	// Optional. Default value "Bearer".
 	AuthScheme string
+
+	// Realm defines the protected area for WWW-Authenticate responses.
+	// Optional. Default value "Restricted".
+	Realm string
 }
 
 // ConfigDefault is the default config
@@ -49,15 +54,11 @@ var ConfigDefault = Config{
 	SuccessHandler: func(c fiber.Ctx) error {
 		return c.Next()
 	},
-	ErrorHandler: func(c fiber.Ctx, err error) error {
-		if errors.Is(err, ErrMissingOrMalformedAPIKey) {
-			return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
-		}
-		return c.Status(fiber.StatusUnauthorized).SendString("Invalid or expired API Key")
-	},
+	ErrorHandler:    nil,
 	KeyLookup:       "header:" + fiber.HeaderAuthorization,
 	CustomKeyLookup: nil,
 	AuthScheme:      "Bearer",
+	Realm:           "Restricted",
 }
 
 // Helper function to set default values
@@ -71,17 +72,28 @@ func configDefault(config ...Config) Config {
 	cfg := config[0]
 
 	// Set default values
+	if cfg.KeyLookup == "" {
+		cfg.KeyLookup = ConfigDefault.KeyLookup
+		if cfg.AuthScheme == "" {
+			cfg.AuthScheme = ConfigDefault.AuthScheme
+		}
+	}
+	if cfg.Realm == "" {
+		cfg.Realm = ConfigDefault.Realm
+	}
 	if cfg.SuccessHandler == nil {
 		cfg.SuccessHandler = ConfigDefault.SuccessHandler
 	}
 	if cfg.ErrorHandler == nil {
-		cfg.ErrorHandler = ConfigDefault.ErrorHandler
-	}
-	if cfg.KeyLookup == "" {
-		cfg.KeyLookup = ConfigDefault.KeyLookup
-		// set AuthScheme as "Bearer" only if KeyLookup is set to default.
-		if cfg.AuthScheme == "" {
-			cfg.AuthScheme = ConfigDefault.AuthScheme
+		localCfg := cfg
+		cfg.ErrorHandler = func(c fiber.Ctx, err error) error {
+			if localCfg.AuthScheme != "" {
+				c.Set(fiber.HeaderWWWAuthenticate, fmt.Sprintf("%s realm=%q", localCfg.AuthScheme, localCfg.Realm))
+			}
+			if errors.Is(err, ErrMissingOrMalformedAPIKey) {
+				return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
+			}
+			return c.Status(fiber.StatusUnauthorized).SendString("Invalid or expired API Key")
 		}
 	}
 	if cfg.Validator == nil {

@@ -2,6 +2,7 @@ package basicauth
 
 import (
 	"crypto/subtle"
+	"strconv"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
@@ -79,7 +80,7 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.Unauthorized == nil {
 		cfg.Unauthorized = func(c fiber.Ctx) error {
-			c.Set(fiber.HeaderWWWAuthenticate, "basic realm="+cfg.Realm)
+			c.Set(fiber.HeaderWWWAuthenticate, "Basic realm="+strconv.Quote(cfg.Realm))
 			return c.SendStatus(fiber.StatusUnauthorized)
 		}
 	}

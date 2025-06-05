@@ -331,7 +331,7 @@ func Benchmark_Middleware_Encrypt_Cookie(b *testing.B) {
 	h := app.Handler()
 
 	b.Run("Empty Cookie", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			ctx := &fasthttp.RequestCtx{}
 			ctx.Request.Header.SetMethod(fiber.MethodGet)
 			h(ctx)
@@ -339,7 +339,7 @@ func Benchmark_Middleware_Encrypt_Cookie(b *testing.B) {
 	})
 
 	b.Run("Invalid Cookie", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			ctx := &fasthttp.RequestCtx{}
 			ctx.Request.Header.SetMethod(fiber.MethodGet)
 			ctx.Request.Header.SetCookie("test", "Invalid")
@@ -348,7 +348,7 @@ func Benchmark_Middleware_Encrypt_Cookie(b *testing.B) {
 	})
 
 	b.Run("Valid Cookie", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			ctx := &fasthttp.RequestCtx{}
 			ctx.Request.Header.SetMethod(fiber.MethodPost)
 			h(ctx)
@@ -378,7 +378,7 @@ func Benchmark_Encrypt_Cookie_Next(b *testing.B) {
 	h := app.Handler()
 
 	b.Run("Encrypt Cookie Next", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			ctx := &fasthttp.RequestCtx{}
 			ctx.Request.Header.SetMethod(fiber.MethodGet)
 			ctx.Request.SetRequestURI("/")
@@ -414,7 +414,7 @@ func Benchmark_Encrypt_Cookie_Except(b *testing.B) {
 	h := app.Handler()
 
 	b.Run("Encrypt Cookie Except", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			ctx := &fasthttp.RequestCtx{}
 			ctx.Request.Header.SetMethod(fiber.MethodGet)
 			h(ctx)
@@ -452,7 +452,7 @@ func Benchmark_Encrypt_Cookie_Custom_Encryptor(b *testing.B) {
 	h := app.Handler()
 
 	b.Run("Custom Encryptor Post", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			ctx := &fasthttp.RequestCtx{}
 			ctx.Request.Header.SetMethod(fiber.MethodPost)
 			h(ctx)
@@ -467,8 +467,7 @@ func Benchmark_Encrypt_Cookie_Custom_Encryptor(b *testing.B) {
 		encryptedCookie.SetKey("test")
 		require.True(b, ctx.Response.Header.Cookie(&encryptedCookie), "Get cookie value")
 
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			ctx := &fasthttp.RequestCtx{}
 			ctx.Request.Header.SetMethod(fiber.MethodGet)
 			ctx.Request.Header.SetCookie("test", string(encryptedCookie.Value()))
@@ -499,6 +498,8 @@ func Benchmark_Middleware_Encrypt_Cookie_Parallel(b *testing.B) {
 	h := app.Handler()
 
 	b.Run("Empty Cookie Parallel", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
 		b.RunParallel(func(pb *testing.PB) {
 			for pb.Next() {
 				ctx := &fasthttp.RequestCtx{}
@@ -509,6 +510,8 @@ func Benchmark_Middleware_Encrypt_Cookie_Parallel(b *testing.B) {
 	})
 
 	b.Run("Invalid Cookie Parallel", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
 		b.RunParallel(func(pb *testing.PB) {
 			for pb.Next() {
 				ctx := &fasthttp.RequestCtx{}
@@ -520,6 +523,8 @@ func Benchmark_Middleware_Encrypt_Cookie_Parallel(b *testing.B) {
 	})
 
 	b.Run("Valid Cookie Parallel", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
 		b.RunParallel(func(pb *testing.PB) {
 			for pb.Next() {
 				ctx := &fasthttp.RequestCtx{}
@@ -550,6 +555,8 @@ func Benchmark_Encrypt_Cookie_Next_Parallel(b *testing.B) {
 	})
 
 	h := app.Handler()
+	b.ReportAllocs()
+	b.ResetTimer()
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
@@ -586,6 +593,8 @@ func Benchmark_Encrypt_Cookie_Except_Parallel(b *testing.B) {
 	})
 
 	h := app.Handler()
+	b.ReportAllocs()
+	b.ResetTimer()
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
@@ -624,6 +633,8 @@ func Benchmark_Encrypt_Cookie_Custom_Encryptor_Parallel(b *testing.B) {
 	})
 
 	h := app.Handler()
+	b.ReportAllocs()
+	b.ResetTimer()
 
 	b.RunParallel(func(pb *testing.PB) {
 		ctx := &fasthttp.RequestCtx{}
@@ -654,7 +665,7 @@ func Benchmark_GenerateKey(b *testing.B) {
 
 	for _, tt := range tests {
 		b.Run(strconv.Itoa(tt.length), func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				GenerateKey(tt.length)
 			}
 		})
@@ -672,6 +683,8 @@ func Benchmark_GenerateKey_Parallel(b *testing.B) {
 
 	for _, tt := range tests {
 		b.Run(strconv.Itoa(tt.length), func(b *testing.B) {
+			b.ReportAllocs()
+			b.ResetTimer()
 			b.RunParallel(func(pb *testing.PB) {
 				for pb.Next() {
 					GenerateKey(tt.length)

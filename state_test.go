@@ -445,11 +445,11 @@ func TestState_Len(t *testing.T) {
 	require.Equal(t, 1, st.Len())
 }
 
-type testCase[T any] struct { //nolint:govet // It does not really matter for test
-	name     string
-	key      string
+type testCase[T any] struct {
 	value    any
 	expected T
+	name     string
+	key      string
 	ok       bool
 }
 
@@ -469,23 +469,23 @@ func TestState_GetGeneric(t *testing.T) {
 	t.Parallel()
 
 	runGenericTest[int](t, GetState[int], []testCase[int]{
-		{"int correct conversion", "num", 42, 42, true},
-		{"int wrong conversion from string", "str", "abc", 0, false},
+		{name: "int correct conversion", key: "num", value: 42, expected: 42, ok: true},
+		{name: "int wrong conversion from string", key: "str", value: "abc", expected: 0, ok: false},
 	})
 
 	runGenericTest[string](t, GetState[string], []testCase[string]{
-		{"string correct conversion", "strVal", "hello", "hello", true},
-		{"string wrong conversion from int", "intVal", 100, "", false},
+		{name: "string correct conversion", key: "strVal", value: "hello", expected: "hello", ok: true},
+		{name: "string wrong conversion from int", key: "intVal", value: 100, expected: "", ok: false},
 	})
 
 	runGenericTest[bool](t, GetState[bool], []testCase[bool]{
-		{"bool correct conversion", "flag", true, true, true},
-		{"bool wrong conversion from int", "intFlag", 1, false, false},
+		{name: "bool correct conversion", key: "flag", value: true, expected: true, ok: true},
+		{name: "bool wrong conversion from int", key: "intFlag", value: 1, expected: false, ok: false},
 	})
 
 	runGenericTest[float64](t, GetState[float64], []testCase[float64]{
-		{"float64 correct conversion", "pi", 3.14, 3.14, true},
-		{"float64 wrong conversion from int", "intVal", 10, 0.0, false},
+		{name: "float64 correct conversion", key: "pi", value: 3.14, expected: 3.14, ok: true},
+		{name: "float64 wrong conversion from int", key: "intVal", value: 10, expected: 0.0, ok: false},
 	})
 }
 
@@ -730,8 +730,9 @@ func BenchmarkState_Set(b *testing.B) {
 
 	st := newState()
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
+		i++
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, i)
 	}
@@ -748,8 +749,9 @@ func BenchmarkState_Get(b *testing.B) {
 		st.Set(key, i)
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
+		i++
 		key := "key" + strconv.Itoa(i%n)
 		st.Get(key)
 	}
@@ -766,8 +768,9 @@ func BenchmarkState_GetString(b *testing.B) {
 		st.Set(key, strconv.Itoa(i))
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
+		i++
 		key := "key" + strconv.Itoa(i%n)
 		st.GetString(key)
 	}
@@ -784,8 +787,9 @@ func BenchmarkState_GetInt(b *testing.B) {
 		st.Set(key, i)
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
+		i++
 		key := "key" + strconv.Itoa(i%n)
 		st.GetInt(key)
 	}
@@ -802,8 +806,9 @@ func BenchmarkState_GetBool(b *testing.B) {
 		st.Set(key, i%2 == 0)
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
+		i++
 		key := "key" + strconv.Itoa(i%n)
 		st.GetBool(key)
 	}
@@ -820,8 +825,9 @@ func BenchmarkState_GetFloat64(b *testing.B) {
 		st.Set(key, float64(i))
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
+		i++
 		key := "key" + strconv.Itoa(i%n)
 		st.GetFloat64(key)
 	}
@@ -838,8 +844,9 @@ func BenchmarkState_MustGet(b *testing.B) {
 		st.Set(key, i)
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
+		i++
 		key := "key" + strconv.Itoa(i%n)
 		st.MustGet(key)
 	}
@@ -856,8 +863,9 @@ func BenchmarkState_GetStateGeneric(b *testing.B) {
 		st.Set(key, i)
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
+		i++
 		key := "key" + strconv.Itoa(i%n)
 		GetState[int](st, key)
 	}
@@ -874,8 +882,9 @@ func BenchmarkState_MustGetStateGeneric(b *testing.B) {
 		st.Set(key, i)
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
+		i++
 		key := "key" + strconv.Itoa(i%n)
 		MustGetState[int](st, key)
 	}
@@ -892,8 +901,9 @@ func BenchmarkState_GetStateWithDefault(b *testing.B) {
 		st.Set(key, i)
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
+		i++
 		key := "key" + strconv.Itoa(i%n)
 		GetStateWithDefault[int](st, key, 0)
 	}
@@ -909,8 +919,9 @@ func BenchmarkState_Has(b *testing.B) {
 		st.Set("key"+strconv.Itoa(i), i)
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
+		i++
 		st.Has("key" + strconv.Itoa(i%n))
 	}
 }
@@ -918,8 +929,7 @@ func BenchmarkState_Has(b *testing.B) {
 func BenchmarkState_Delete(b *testing.B) {
 	b.ReportAllocs()
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		st := newState()
 		st.Set("a", 1)
 		st.Delete("a")
@@ -929,8 +939,7 @@ func BenchmarkState_Delete(b *testing.B) {
 func BenchmarkState_Reset(b *testing.B) {
 	b.ReportAllocs()
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		st := newState()
 		// add a fixed number of keys before clearing
 		for j := 0; j < 100; j++ {
@@ -949,8 +958,7 @@ func BenchmarkState_Keys(b *testing.B) {
 		st.Set("key"+strconv.Itoa(i), i)
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = st.Keys()
 	}
 }
@@ -964,8 +972,7 @@ func BenchmarkState_Len(b *testing.B) {
 		st.Set("key"+strconv.Itoa(i), i)
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = st.Len()
 	}
 }
@@ -979,8 +986,9 @@ func BenchmarkState_GetUint(b *testing.B) {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, uint(i)) //nolint:gosec // This is a test
 	}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
+		i++
 		key := "key" + strconv.Itoa(i%n)
 		st.GetUint(key)
 	}
@@ -995,8 +1003,9 @@ func BenchmarkState_GetInt8(b *testing.B) {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, int8(i%128)) //nolint:gosec // This is a test
 	}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
+		i++
 		key := "key" + strconv.Itoa(i%n)
 		st.GetInt8(key)
 	}
@@ -1011,8 +1020,9 @@ func BenchmarkState_GetInt16(b *testing.B) {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, int16(i)) //nolint:gosec // This is a test
 	}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
+		i++
 		key := "key" + strconv.Itoa(i%n)
 		st.GetInt16(key)
 	}
@@ -1027,8 +1037,9 @@ func BenchmarkState_GetInt32(b *testing.B) {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, int32(i)) //nolint:gosec // This is a test
 	}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
+		i++
 		key := "key" + strconv.Itoa(i%n)
 		st.GetInt32(key)
 	}
@@ -1043,8 +1054,9 @@ func BenchmarkState_GetInt64(b *testing.B) {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, int64(i))
 	}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
+		i++
 		key := "key" + strconv.Itoa(i%n)
 		st.GetInt64(key)
 	}
@@ -1059,8 +1071,9 @@ func BenchmarkState_GetUint8(b *testing.B) {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, uint8(i%256)) //nolint:gosec // This is a test
 	}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
+		i++
 		key := "key" + strconv.Itoa(i%n)
 		st.GetUint8(key)
 	}
@@ -1075,8 +1088,9 @@ func BenchmarkState_GetUint16(b *testing.B) {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, uint16(i)) //nolint:gosec // This is a test
 	}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
+		i++
 		key := "key" + strconv.Itoa(i%n)
 		st.GetUint16(key)
 	}
@@ -1091,8 +1105,9 @@ func BenchmarkState_GetUint32(b *testing.B) {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, uint32(i)) //nolint:gosec // This is a test
 	}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
+		i++
 		key := "key" + strconv.Itoa(i%n)
 		st.GetUint32(key)
 	}
@@ -1107,8 +1122,9 @@ func BenchmarkState_GetUint64(b *testing.B) {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, uint64(i)) //nolint:gosec // This is a test
 	}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
+		i++
 		key := "key" + strconv.Itoa(i%n)
 		st.GetUint64(key)
 	}
@@ -1123,8 +1139,9 @@ func BenchmarkState_GetUintptr(b *testing.B) {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, uintptr(i))
 	}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
+		i++
 		key := "key" + strconv.Itoa(i%n)
 		st.GetUintptr(key)
 	}
@@ -1139,8 +1156,9 @@ func BenchmarkState_GetFloat32(b *testing.B) {
 		key := "key" + strconv.Itoa(i)
 		st.Set(key, float32(i))
 	}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
+		i++
 		key := "key" + strconv.Itoa(i%n)
 		st.GetFloat32(key)
 	}
@@ -1156,8 +1174,9 @@ func BenchmarkState_GetComplex64(b *testing.B) {
 		// Create a complex64 value with both real and imaginary parts.
 		st.Set(key, complex(float32(i), float32(i)))
 	}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
+		i++
 		key := "key" + strconv.Itoa(i%n)
 		st.GetComplex64(key)
 	}
@@ -1173,8 +1192,9 @@ func BenchmarkState_GetComplex128(b *testing.B) {
 		// Create a complex128 value with both real and imaginary parts.
 		st.Set(key, complex(float64(i), float64(i)))
 	}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	i := 0
+	for b.Loop() {
+		i++
 		key := "key" + strconv.Itoa(i%n)
 		st.GetComplex128(key)
 	}
@@ -1187,8 +1207,7 @@ func BenchmarkState_GetService(b *testing.B) {
 	srv := &mockService{name: "benchService"}
 	st.setService(srv)
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = GetService[*mockService](st, srv.String())
 	}
 }
@@ -1200,8 +1219,7 @@ func BenchmarkState_MustGetService(b *testing.B) {
 	srv := &mockService{name: "benchService"}
 	st.setService(srv)
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = MustGetService[*mockService](st, srv.String())
 	}
 }

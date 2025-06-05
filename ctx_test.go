@@ -85,9 +85,8 @@ func Benchmark_Ctx_Accepts(b *testing.B) {
 		b.Run(fmt.Sprintf("run-%#v", acceptValues[i]), func(bb *testing.B) {
 			var res string
 			bb.ReportAllocs()
-			bb.ResetTimer()
 
-			for n := 0; n < bb.N; n++ {
+			for bb.Loop() {
 				res = c.Accepts(acceptValues[i]...)
 			}
 			require.Equal(bb, expectedResults[i], res)
@@ -195,8 +194,7 @@ func Benchmark_Ctx_AcceptsCharsets(b *testing.B) {
 	c.Request().Header.Set("Accept-Charset", "utf-8, iso-8859-1;q=0.5")
 	var res string
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		res = c.AcceptsCharsets("utf-8")
 	}
 	require.Equal(b, "utf-8", res)
@@ -221,8 +219,7 @@ func Benchmark_Ctx_AcceptsEncodings(b *testing.B) {
 	c.Request().Header.Set(HeaderAcceptEncoding, "deflate, gzip;q=1.0, *;q=0.5")
 	var res string
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		res = c.AcceptsEncodings("gzip")
 	}
 	require.Equal(b, "gzip", res)
@@ -246,8 +243,7 @@ func Benchmark_Ctx_AcceptsLanguages(b *testing.B) {
 	c.Request().Header.Set(HeaderAcceptLanguage, "fr-CH, fr;q=0.9, en;q=0.8, de;q=0.7, *;q=0.5")
 	var res string
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		res = c.AcceptsLanguages("fr")
 	}
 	require.Equal(b, "fr", res)
@@ -305,8 +301,7 @@ func Benchmark_Ctx_Append(b *testing.B) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		c.Append("X-Custom-Header", "Hello")
 		c.Append("X-Custom-Header", "World")
 		c.Append("X-Custom-Header", "Hello")
@@ -338,8 +333,7 @@ func Benchmark_Ctx_Attachment(b *testing.B) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		// example with quote params
 		c.Attachment("another document.pdf\"\r\nBla: \"fasel")
 	}
@@ -367,8 +361,7 @@ func Benchmark_Ctx_BaseURL(b *testing.B) {
 	c.Request().URI().SetPath("/haha/oke/lol")
 	var res string
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		res = c.BaseURL()
 	}
 	require.Equal(b, "http://google.com:1337", res)
@@ -413,8 +406,7 @@ func Benchmark_Ctx_Body(b *testing.B) {
 
 	c.Request().SetBody([]byte(input))
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = c.Body()
 	}
 
@@ -430,8 +422,7 @@ func Benchmark_Ctx_BodyRaw(b *testing.B) {
 
 	c.Request().SetBodyRaw([]byte(input))
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = c.BodyRaw()
 	}
 
@@ -447,8 +438,7 @@ func Benchmark_Ctx_BodyRaw_Immutable(b *testing.B) {
 
 	c.Request().SetBodyRaw([]byte(input))
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = c.BodyRaw()
 	}
 
@@ -476,9 +466,8 @@ func Benchmark_Ctx_Body_Immutable(b *testing.B) {
 
 	c.Request().SetBody([]byte(input))
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = c.Body()
 	}
 
@@ -656,7 +645,6 @@ func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
 	}
 
 	b.ReportAllocs()
-	b.ResetTimer()
 	for _, ct := range compressionTests {
 		b.Run(ct.contentEncoding, func(b *testing.B) {
 			app := New()
@@ -668,7 +656,7 @@ func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
 			require.NoError(b, err)
 
 			c.Request().SetBody(compressedBody)
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				_ = c.Body()
 			}
 
@@ -849,7 +837,6 @@ func Benchmark_Ctx_Body_With_Compression_Immutable(b *testing.B) {
 	}
 
 	b.ReportAllocs()
-	b.ResetTimer()
 	for _, ct := range compressionTests {
 		b.Run(ct.contentEncoding, func(b *testing.B) {
 			app := New()
@@ -862,7 +849,7 @@ func Benchmark_Ctx_Body_With_Compression_Immutable(b *testing.B) {
 			require.NoError(b, err)
 
 			c.Request().SetBody(compressedBody)
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				_ = c.Body()
 			}
 
@@ -944,8 +931,7 @@ func Benchmark_Ctx_Cookie(b *testing.B) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		c.Cookie(&Cookie{
 			Name:  "John",
 			Value: "Doe",
@@ -1031,7 +1017,7 @@ func Benchmark_Ctx_Format(b *testing.B) {
 
 	var err error
 	b.Run("with arg allocation", func(b *testing.B) {
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			err = c.Format(
 				ResFmt{MediaType: "application/xml", Handler: fail},
 				ResFmt{MediaType: "text/html", Handler: fail},
@@ -1049,7 +1035,7 @@ func Benchmark_Ctx_Format(b *testing.B) {
 			{MediaType: "text/plain;format=fixed", Handler: fail},
 			{MediaType: "text/plain;format=flowed", Handler: ok},
 		}
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			err = c.Format(offers...)
 		}
 		require.NoError(b, err)
@@ -1061,7 +1047,7 @@ func Benchmark_Ctx_Format(b *testing.B) {
 			{MediaType: "application/xml", Handler: fail},
 			{MediaType: "text/plain", Handler: ok},
 		}
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			err = c.Format(offers...)
 		}
 		require.NoError(b, err)
@@ -1074,7 +1060,7 @@ func Benchmark_Ctx_Format(b *testing.B) {
 			{MediaType: "html", Handler: fail},
 			{MediaType: "json", Handler: ok},
 		}
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			err = c.Format(offers...)
 		}
 		require.NoError(b, err)
@@ -1168,10 +1154,9 @@ func Benchmark_Ctx_AutoFormat(b *testing.B) {
 
 	c.Request().Header.Set("Accept", "text/plain")
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	var err error
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.AutoFormat("Hello, World!")
 	}
 	require.NoError(b, err)
@@ -1185,10 +1170,9 @@ func Benchmark_Ctx_AutoFormat_HTML(b *testing.B) {
 
 	c.Request().Header.Set("Accept", "text/html")
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	var err error
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.AutoFormat("Hello, World!")
 	}
 	require.NoError(b, err)
@@ -1202,10 +1186,9 @@ func Benchmark_Ctx_AutoFormat_JSON(b *testing.B) {
 
 	c.Request().Header.Set("Accept", "application/json")
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	var err error
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.AutoFormat("Hello, World!")
 	}
 	require.NoError(b, err)
@@ -1219,10 +1202,9 @@ func Benchmark_Ctx_AutoFormat_XML(b *testing.B) {
 
 	c.Request().Header.Set("Accept", "application/xml")
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	var err error
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.AutoFormat("Hello, World!")
 	}
 	require.NoError(b, err)
@@ -1301,7 +1283,7 @@ func Benchmark_Ctx_Fresh_StaleEtag(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		c.Request().Header.Set(HeaderIfNoneMatch, "a, b, c, d")
 		c.Request().Header.Set(HeaderCacheControl, "c")
 		c.Fresh()
@@ -1369,7 +1351,7 @@ func Benchmark_Ctx_Fresh_WithNoCache(b *testing.B) {
 
 	c.Request().Header.Set(HeaderIfNoneMatch, "*")
 	c.Request().Header.Set(HeaderCacheControl, "no-cache")
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		c.Fresh()
 	}
 }
@@ -1381,7 +1363,7 @@ func Benchmark_Ctx_Fresh_LastModified(b *testing.B) {
 
 	c.Response().Header.Set(HeaderLastModified, "Wed, 21 Oct 2015 07:28:00 GMT")
 	c.Request().Header.Set(HeaderIfModifiedSince, "Wed, 21 Oct 2015 07:28:00 GMT")
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		c.Fresh()
 	}
 }
@@ -1604,8 +1586,7 @@ func Benchmark_Ctx_Host(b *testing.B) {
 	c.Request().SetRequestURI("http://google.com/test")
 	var host string
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		host = c.Host()
 	}
 	require.Equal(b, "google.com", host)
@@ -1748,8 +1729,7 @@ func Benchmark_Ctx_Hostname(b *testing.B) {
 	c.Request().SetRequestURI("http://google.com:8080/test")
 	var hostname string
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		hostname = c.Hostname()
 	}
 	// Trust to specific proxy list
@@ -2041,8 +2021,7 @@ func Benchmark_Ctx_IPs(b *testing.B) {
 	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1, invalid, 127.0.0.1")
 	var res []string
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		res = c.IPs()
 	}
 	require.Equal(b, []string{"127.0.0.1", "invalid", "127.0.0.1"}, res)
@@ -2055,8 +2034,7 @@ func Benchmark_Ctx_IPs_v6(b *testing.B) {
 	c.Request().Header.Set(HeaderXForwardedFor, "f037:825e:eadb:1b7b:1667:6f0a:5356:f604, invalid, 2345:0425:2CA1::0567:5673:23b5")
 	var res []string
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		res = c.IPs()
 	}
 	require.Equal(b, []string{"f037:825e:eadb:1b7b:1667:6f0a:5356:f604", "invalid", "2345:0425:2CA1::0567:5673:23b5"}, res)
@@ -2068,8 +2046,7 @@ func Benchmark_Ctx_IPs_With_IP_Validation(b *testing.B) {
 	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1, invalid, 127.0.0.1")
 	var res []string
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		res = c.IPs()
 	}
 	require.Equal(b, []string{"127.0.0.1", "127.0.0.1"}, res)
@@ -2082,8 +2059,7 @@ func Benchmark_Ctx_IPs_v6_With_IP_Validation(b *testing.B) {
 	c.Request().Header.Set(HeaderXForwardedFor, "2345:0425:2CA1:0000:0000:0567:5673:23b5, invalid, 2345:0425:2CA1::0567:5673:23b5")
 	var res []string
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		res = c.IPs()
 	}
 	require.Equal(b, []string{"2345:0425:2CA1:0000:0000:0567:5673:23b5", "2345:0425:2CA1::0567:5673:23b5"}, res)
@@ -2095,8 +2071,7 @@ func Benchmark_Ctx_IP_With_ProxyHeader(b *testing.B) {
 	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1")
 	var res string
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		res = c.IP()
 	}
 	require.Equal(b, "127.0.0.1", res)
@@ -2108,8 +2083,7 @@ func Benchmark_Ctx_IP_With_ProxyHeader_and_IP_Validation(b *testing.B) {
 	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1")
 	var res string
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		res = c.IP()
 	}
 	require.Equal(b, "127.0.0.1", res)
@@ -2121,8 +2095,7 @@ func Benchmark_Ctx_IP(b *testing.B) {
 	c.Request()
 	var res string
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		res = c.IP()
 	}
 	require.Equal(b, "0.0.0.0", res)
@@ -2171,8 +2144,7 @@ func Benchmark_Ctx_Is(b *testing.B) {
 	c.Request().Header.Set(HeaderContentType, MIMEApplicationJSON)
 	var res bool
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		_ = c.Is(".json")
 		res = c.Is("json")
 	}
@@ -2459,9 +2431,8 @@ func Benchmark_Ctx_MultipartForm(b *testing.B) {
 	h := app.Handler()
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		h(c)
 	}
 }
@@ -2584,8 +2555,7 @@ func Benchmark_Ctx_Params(b *testing.B) {
 	}
 	var res string
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		_ = c.Params("param1")
 		_ = c.Params("param2")
 		_ = c.Params("param3")
@@ -2639,8 +2609,7 @@ func Benchmark_Ctx_Protocol(b *testing.B) {
 
 	var res string
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		res = c.Protocol()
 	}
 
@@ -2690,8 +2659,7 @@ func Benchmark_Ctx_Scheme(b *testing.B) {
 
 	var res string
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		res = c.Scheme()
 	}
 	require.Equal(b, "http", res)
@@ -2830,8 +2798,7 @@ func Benchmark_Ctx_Query(b *testing.B) {
 	c.Request().URI().SetQueryString("search=john&age=8")
 	var res string
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		res = Query[string](c, "search")
 	}
 	require.Equal(b, "john", res)
@@ -2895,7 +2862,7 @@ func Benchmark_Ctx_Range(b *testing.B) {
 				result Range
 				err    error
 			)
-			for n := 0; n < b.N; n++ {
+			for b.Loop() {
 				result, err = c.Range(1000)
 			}
 			require.NoError(b, err)
@@ -3048,15 +3015,88 @@ func Test_Ctx_Stale(t *testing.T) {
 
 // go test -run Test_Ctx_Subdomains
 func Test_Ctx_Subdomains(t *testing.T) {
-	t.Parallel()
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	c.Request().URI().SetHost("john.doe.is.awesome.google.com")
-	require.Equal(t, []string{"john", "doe"}, c.Subdomains(4))
+	type tc struct {
+		name   string
+		host   string
+		offset []int // nil ⇒ call without argument
+		want   []string
+	}
 
-	c.Request().URI().SetHost("localhost:3000")
-	require.Equal(t, []string{"localhost:3000"}, c.Subdomains())
+	cases := []tc{
+		{
+			name:   "default offset (2) drops registrable domain + TLD",
+			host:   "john.doe.is.awesome.google.com",
+			offset: nil, // Subdomains()
+			want:   []string{"john", "doe", "is", "awesome"},
+		},
+		{
+			name:   "custom offset trims N right-hand labels",
+			host:   "john.doe.is.awesome.google.com",
+			offset: []int{4},
+			want:   []string{"john", "doe"},
+		},
+		{
+			name:   "offset too high returns empty",
+			host:   "john.doe.is.awesome.google.com",
+			offset: []int{10},
+			want:   []string{},
+		},
+		{
+			name:   "zero offset returns all labels",
+			host:   "john.doe.google.com",
+			offset: []int{0},
+			want:   []string{"john", "doe", "google", "com"},
+		},
+		{
+			name:   "offset 1 keeps registrable domain",
+			host:   "john.doe.google.com",
+			offset: []int{1},
+			want:   []string{"john", "doe", "google"},
+		},
+		{
+			name:   "negative offset returns empty",
+			host:   "john.doe.google.com",
+			offset: []int{-1},
+			want:   []string{},
+		},
+		{
+			name:   "offset equal len returns empty",
+			host:   "john.doe.com",
+			offset: []int{3},
+			want:   []string{},
+		},
+		{
+			name:   "offset equal len returns empty",
+			host:   "john.doe.com",
+			offset: []int{3},
+			want:   []string{},
+		},
+		{
+			name:   "zero offset returns all labels with port present",
+			host:   "localhost:3000",
+			offset: []int{0},
+			want:   []string{"localhost"},
+		},
+		{
+			name:   "host with port — custom offset trims 2 labels",
+			host:   "foo.bar.example.com:8080",
+			offset: []int{2},
+			want:   []string{"foo", "bar"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(c)
+
+			c.Request().URI().SetHost(tc.host)
+			got := c.Subdomains(tc.offset...)
+			require.Equal(t, tc.want, got)
+		})
+	}
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Subdomains -benchmem -count=4
@@ -3067,8 +3107,7 @@ func Benchmark_Ctx_Subdomains(b *testing.B) {
 	c.Request().SetRequestURI("http://john.doe.google.com")
 	var res []string
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		res = c.Subdomains()
 	}
 	require.Equal(b, []string{"john", "doe"}, res)
@@ -3565,10 +3604,9 @@ func Benchmark_Ctx_SendFile(b *testing.B) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	var err error
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.SendFile("ctx.go")
 	}
 
@@ -3648,8 +3686,7 @@ func Benchmark_Ctx_JSON(b *testing.B) {
 	}
 	var err error
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.JSON(data)
 	}
 	require.NoError(b, err)
@@ -3740,8 +3777,7 @@ func Benchmark_Ctx_CBOR(b *testing.B) {
 	}
 	var err error
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.CBOR(data)
 	}
 	require.NoError(b, err)
@@ -3763,8 +3799,7 @@ func Benchmark_Ctx_JSON_Ctype(b *testing.B) {
 	}
 	var err error
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.JSON(data, "application/problem+json")
 	}
 	require.NoError(b, err)
@@ -3832,8 +3867,7 @@ func Benchmark_Ctx_JSONP(b *testing.B) {
 	callback := "emit"
 	var err error
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.JSONP(data, callback)
 	}
 	require.NoError(b, err)
@@ -3914,8 +3948,7 @@ func Benchmark_Ctx_XML(b *testing.B) {
 	}
 	var err error
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.XML(data)
 	}
 
@@ -3945,8 +3978,7 @@ func Benchmark_Ctx_Links(b *testing.B) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		c.Links(
 			"http://api.example.com/users?page=2", "next",
 			"http://api.example.com/users?page=5", "last",
@@ -4163,9 +4195,8 @@ func Benchmark_Ctx_RenderWithLocalsAndViewBind(b *testing.B) {
 	c.Locals("Summary", "Test")
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Render("template.tmpl", Map{})
 	}
 
@@ -4186,9 +4217,8 @@ func Benchmark_Ctx_RenderLocals(b *testing.B) {
 	c.Locals("Title", "Hello, World!")
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Render("index.tmpl", Map{})
 	}
 
@@ -4210,9 +4240,8 @@ func Benchmark_Ctx_RenderViewBind(b *testing.B) {
 	require.NoError(b, err)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Render("index.tmpl", Map{})
 	}
 
@@ -4356,8 +4385,7 @@ func Benchmark_Ctx_Render_Engine(b *testing.B) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Render("index.tmpl", Map{
 			"Title": "Hello, World!",
 		})
@@ -4377,7 +4405,7 @@ func Benchmark_Ctx_Get_Location_From_Route(b *testing.B) {
 
 	var err error
 	var location string
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		location, err = c.getLocationFromRoute(app.GetRoute("User"), Map{"name": "fiber"})
 	}
 
@@ -4525,10 +4553,9 @@ func Benchmark_Ctx_Send(b *testing.B) {
 
 	byt := []byte("Hello, World!")
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	var err error
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Send(byt)
 	}
 	require.NoError(b, err)
@@ -4679,8 +4706,7 @@ func Benchmark_Ctx_Set(b *testing.B) {
 
 	val := "1431-15132-3423"
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		c.Set(HeaderXRequestID, val)
 	}
 }
@@ -4724,8 +4750,7 @@ func Benchmark_Ctx_Type(b *testing.B) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		c.Type(".json")
 		c.Type("json")
 	}
@@ -4737,8 +4762,7 @@ func Benchmark_Ctx_Type_Charset(b *testing.B) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		c.Type(".json", "utf-8")
 		c.Type("json", "utf-8")
 	}
@@ -4762,8 +4786,7 @@ func Benchmark_Ctx_Vary(b *testing.B) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		c.Vary("Origin", "User-Agent")
 	}
 }
@@ -4788,10 +4811,9 @@ func Benchmark_Ctx_Write(b *testing.B) {
 
 	byt := []byte("Hello, World!")
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	var err error
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		_, err = c.Write(byt)
 	}
 	require.NoError(b, err)
@@ -4816,10 +4838,9 @@ func Benchmark_Ctx_Writef(b *testing.B) {
 
 	world := "World!"
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	var err error
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		_, err = c.Writef("Hello, %s", world)
 	}
 	require.NoError(b, err)
@@ -4856,8 +4877,7 @@ func Benchmark_Ctx_XHR(b *testing.B) {
 	c.Request().Header.Set(HeaderXRequestedWith, "XMLHttpRequest")
 	var equal bool
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		equal = c.XHR()
 	}
 	require.True(b, equal)
@@ -4870,10 +4890,9 @@ func Benchmark_Ctx_SendString_B(b *testing.B) {
 
 	body := "Hello, world!"
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	var err error
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.SendString(body)
 	}
 	require.NoError(b, err)
@@ -4935,11 +4954,10 @@ func Benchmark_Ctx_Queries(b *testing.B) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	b.ReportAllocs()
-	b.ResetTimer()
 	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football&favouriteDrinks=milo,coke,pepsi&alloc=&no=1")
 
 	var queries map[string]string
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		queries = c.Queries()
 	}
 
@@ -4981,10 +4999,9 @@ func Benchmark_Ctx_BodyStreamWriter(b *testing.B) {
 	ctx := &fasthttp.RequestCtx{}
 	user := []byte(`{"name":"john"}`)
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	var err error
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		ctx.ResetBody()
 		ctx.SetBodyStreamWriter(func(w *bufio.Writer) {
 			for i := 0; i < 10; i++ {
@@ -5012,9 +5029,8 @@ func Benchmark_Ctx_String(b *testing.B) {
 	app := New()
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		str = ctx.String()
 	}
 	require.Equal(b, "#0000000000000000 - 0.0.0.0:0 <-> 0.0.0.0:0 - GET http:///", str)
@@ -5187,10 +5203,9 @@ func Benchmark_Ctx_GetRespHeaders(b *testing.B) {
 	c.Response().Header.Set(HeaderContentType, "application/json")
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	var headers map[string][]string
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		headers = c.GetRespHeaders()
 	}
 
@@ -5242,10 +5257,9 @@ func Benchmark_Ctx_GetReqHeaders(b *testing.B) {
 	c.Request().Header.Set(HeaderContentType, "application/json")
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	var headers map[string][]string
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		headers = c.GetReqHeaders()
 	}
 
@@ -5394,8 +5408,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		c.Request().SetRequestURI("http://google.com:8080/test")
 		b.ReportAllocs()
-		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			c.IsProxyTrusted()
 		}
 		app.ReleaseCtx(c)
@@ -5425,8 +5438,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 		c.Request().SetRequestURI("http://google.com/test")
 		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
 		b.ReportAllocs()
-		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			c.IsProxyTrusted()
 		}
 		app.ReleaseCtx(c)
@@ -5462,8 +5474,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 		c.Request().SetRequestURI("http://google.com/test")
 		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
 		b.ReportAllocs()
-		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			c.IsProxyTrusted()
 		}
 		app.ReleaseCtx(c)
@@ -5502,8 +5513,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 		c.Request().SetRequestURI("http://google.com/test")
 		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
 		b.ReportAllocs()
-		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			c.IsProxyTrusted()
 		}
 		app.ReleaseCtx(c)
@@ -5542,8 +5552,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 		c.Request().SetRequestURI("http://google.com/test")
 		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
 		b.ReportAllocs()
-		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			c.IsProxyTrusted()
 		}
 		app.ReleaseCtx(c)
@@ -5584,8 +5593,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 		c.Request().SetRequestURI("http://google.com/test")
 		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
 		b.ReportAllocs()
-		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			c.IsProxyTrusted()
 		}
 		app.ReleaseCtx(c)
@@ -5639,7 +5647,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
 		b.ReportAllocs()
 		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			c.IsProxyTrusted()
 		}
 		app.ReleaseCtx(c)
@@ -5690,8 +5698,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 		c.Request().SetRequestURI("http://google.com/test")
 		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
 		b.ReportAllocs()
-		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			c.IsProxyTrusted()
 		}
 		app.ReleaseCtx(c)
@@ -5730,8 +5737,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 		c.Request().SetRequestURI("http://google.com/test")
 		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
 		b.ReportAllocs()
-		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			c.IsProxyTrusted()
 		}
 		app.ReleaseCtx(c)
@@ -5780,8 +5786,7 @@ func Benchmark_Ctx_IsProxyTrusted(b *testing.B) {
 		c.Request().SetRequestURI("http://google.com/test")
 		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
 		b.ReportAllocs()
-		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			c.IsProxyTrusted()
 		}
 		app.ReleaseCtx(c)
@@ -5826,8 +5831,7 @@ func Benchmark_Ctx_IsFromLocalhost(b *testing.B) {
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		c.Request().SetRequestURI("http://google.com:8080/test")
 		b.ReportAllocs()
-		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			c.IsFromLocal()
 		}
 		app.ReleaseCtx(c)
@@ -5854,8 +5858,7 @@ func Benchmark_Ctx_IsFromLocalhost(b *testing.B) {
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		c.Request().SetRequestURI("http://localhost:8080/test")
 		b.ReportAllocs()
-		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			c.IsFromLocal()
 		}
 		app.ReleaseCtx(c)

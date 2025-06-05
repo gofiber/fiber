@@ -1,6 +1,7 @@
 package cors
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 

@@ -29,6 +29,7 @@ Here's a quick overview of the changes in Fiber `v3`:
 - [🧬 Middlewares](#-middlewares)
   - [Important Change for Accessing Middleware Data](#important-change-for-accessing-middleware-data)
   - [Adaptor](#adaptor)
+  - [BasicAuth](#basicauth)
   - [Cache](#cache)
   - [CORS](#cors)
   - [CSRF](#csrf)
@@ -36,6 +37,7 @@ Here's a quick overview of the changes in Fiber `v3`:
   - [EncryptCookie](#encryptcookie)
   - [Filesystem](#filesystem)
   - [Healthcheck](#healthcheck)
+  - [KeyAuth](#keyauth)
   - [Logger](#logger)
   - [Monitor](#monitor)
   - [Proxy](#proxy)
@@ -45,7 +47,7 @@ Here's a quick overview of the changes in Fiber `v3`:
 
 ## Drop for old Go versions
 
-Fiber `v3` drops support for Go versions below `1.23`. We recommend upgrading to Go `1.23` or higher to use Fiber `v3`.
+Fiber `v3` drops support for Go versions below `1.24`. We recommend upgrading to Go `1.24` or higher to use Fiber `v3`.
 
 ## 🚀 App
 
@@ -67,6 +69,7 @@ We have made several changes to the Fiber app, including:
 - **RegisterCustomConstraint**: Allows for the registration of custom constraints.
 - **NewCtxFunc**: Introduces a new context function.
 - **State**: Provides a global state for the application, which can be used to store and retrieve data across the application. Check out the [State](./api/state) method for further details.
+- **NewErrorf**: Allows variadic parameters when creating formatted errors.
 
 ### Removed Methods
 
@@ -170,6 +173,10 @@ app.Listen(":444", fiber.ListenConfig{
     AutoCertManager:    certManager,
 })
 ```
+
+### MIME Constants
+
+`MIMEApplicationJavaScript` and `MIMEApplicationJavaScriptCharsetUTF8` are deprecated. Use `MIMETextJavaScript` and `MIMETextJavaScriptCharsetUTF8` instead.
 
 ## 🎣 Hooks
 
@@ -966,10 +973,19 @@ The adaptor middleware has been significantly optimized for performance and effi
 |              | Memory Usage     | 2734 B/op | 298 B/op    | -89.10%        |
 |              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
 
+### BasicAuth
+
+The BasicAuth middleware was updated for improved robustness in parsing the Authorization header, with enhanced validation and whitespace handling. The default unauthorized response now uses a properly quoted and capitalized `WWW-Authenticate` header.
+
 ### Cache
 
 We are excited to introduce a new option in our caching middleware: Cache Invalidator. This feature provides greater control over cache management, allowing you to define a custom conditions for invalidating cache entries.
 Additionally, the caching middleware has been optimized to avoid caching non-cacheable status codes, as defined by the [HTTP standards](https://datatracker.ietf.org/doc/html/rfc7231#section-6.1). This improvement enhances cache accuracy and reduces unnecessary cache storage usage.
+Cached responses now include an RFC-compliant Age header, providing a standardized indication of how long a response has been stored in cache since it was originally generated. This enhancement improves HTTP compliance and facilitates better client-side caching strategies.
+
+:::note
+The deprecated `Store` and `Key` options have been removed in v3. Use `Storage` and `KeyGenerator` instead.
+:::
 
 ### CORS
 
@@ -1020,6 +1036,10 @@ The Healthcheck middleware has been enhanced to support more than two routes, wi
 
 Refer to the [healthcheck middleware migration guide](./middleware/healthcheck.md) or the [general migration guide](#-migration-guide) to review the changes.
 
+### KeyAuth
+
+The keyauth middleware was updated to introduce a configurable `Realm` field for the `WWW-Authenticate` header.
+
 ### Logger
 
 New helper function called `LoggerToWriter` has been added to the logger middleware. This function allows you to use 3rd party loggers such as `logrus` or `zap` with the Fiber logger middleware without any extra afford. For example, you can use `zap` with Fiber logger middleware like this:
@@ -1062,6 +1082,10 @@ func main() {
 ```
 
 </details>
+
+:::note
+The deprecated `TagHeader` constant was removed. Use `TagReqHeader` when you need to log request headers.
+:::
 
 #### Logging Middleware Values (e.g., Request ID)
 
@@ -1176,6 +1200,14 @@ app.Use(logger.New(logger.Config{
 
 See more in [Logger](./middleware/logger.md#predefined-formats)
 </details>
+
+### Limiter
+
+The limiter middleware uses a new Fixed Window Rate Limiter implementation.
+
+:::note
+Deprecated fields `Duration`, `Store`, and `Key` have been removed in v3. Use `Expiration`, `Storage`, and `KeyGenerator` instead.
+:::
 
 ### Monitor
 
