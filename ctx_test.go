@@ -676,7 +676,7 @@ func Test_Ctx_BodyParser_InvalidRequestData(t *testing.T) {
 	err := c.BodyParser(subject)
 
 	utils.AssertEqual(t, true, nil != err)
-	utils.AssertEqual(t, true, errors.Is(err, errInvalidPath))
+	utils.AssertEqual(t, "failed to decode: schema: invalid path", fmt.Sprintf("%v", err))
 
 	c.Request().Reset()
 	c.Request().Header.SetContentType(MIMEApplicationForm)
@@ -687,7 +687,7 @@ func Test_Ctx_BodyParser_InvalidRequestData(t *testing.T) {
 	err = c.BodyParser(subject)
 
 	utils.AssertEqual(t, true, nil != err)
-	utils.AssertEqual(t, true, errors.Is(err, errIndexTooLarge))
+	utils.AssertEqual(t, "failed to decode: schema: index exceeds parser limit", fmt.Sprintf("%v", err))
 }
 
 func Test_Ctx_ParamParser(t *testing.T) {
