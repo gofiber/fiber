@@ -66,6 +66,37 @@ func Test_CORS_Negative_MaxAge(t *testing.T) {
 	require.Equal(t, "0", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlMaxAge)))
 }
 
+func Test_CORS_MaxAge_NotSetOnSimpleRequest(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{MaxAge: 100}))
+
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
+	app.Handler()(ctx)
+
+	require.Equal(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlMaxAge)))
+}
+
+func Test_CORS_Preserve_Origin_Case(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{AllowOrigins: []string{"http://example.com"}}))
+
+	origin := "HTTP://EXAMPLE.COM"
+
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
+	ctx.Request.Header.Set(fiber.HeaderOrigin, origin)
+	app.Handler()(ctx)
+
+	require.Equal(t, origin, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+}
+
 func testDefaultOrEmptyConfig(t *testing.T, app *fiber.App) {
 	t.Helper()
 
