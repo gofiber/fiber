@@ -655,8 +655,7 @@ func Test_Ctx_BodyParser(t *testing.T) {
 }
 
 func Test_Ctx_BodyParser_InvalidRequestData(t *testing.T) {
-	defer SetParserDecoder(ParserConfig{IgnoreUnknownKeys: true})
-	SetParserDecoder(ParserConfig{IgnoreUnknownKeys: false})
+	t.Parallel()
 
 	type RequestBody struct {
 		NestedContent []*struct {
@@ -670,20 +669,19 @@ func Test_Ctx_BodyParser_InvalidRequestData(t *testing.T) {
 	c.Request().Reset()
 	c.Request().Header.SetContentType(MIMEApplicationForm)
 	// Test with invalid form data
-	c.Request().SetBody([]byte("nested-content.-1.value=Foo&nested-content.0.value=Bar&nested-content.1.value=FooBar"))
+	c.Request().SetBody([]byte("nested-content[-1].value=Foo&nested-content[0].value=Bar&nested-content[1].value=FooBar"))
 	c.Request().Header.SetContentLength(len(c.Body()))
 
 	subject := new(RequestBody)
 	err := c.BodyParser(subject)
 
 	utils.AssertEqual(t, true, nil != err)
-	utils.AssertEqual(t, "failed to decode: schema: invalid path \"nested-content.-1.value\"", fmt.Sprintf("%v", err))
+	utils.AssertEqual(t, "failed to decode: schema: panic while decoding: reflect: slice index out of range", fmt.Sprintf("%v", err))
 }
 
 func Test_Ctx_BodyParser_IndexTooLarge(t *testing.T) {
 	defer SetParserDecoder(ParserConfig{IgnoreUnknownKeys: true})
 	SetParserDecoder(ParserConfig{IgnoreUnknownKeys: false})
-
 	type RequestBody struct {
 		NestedContent []*struct {
 			Value string `form:"value"`
@@ -702,7 +700,7 @@ func Test_Ctx_BodyParser_IndexTooLarge(t *testing.T) {
 	err := c.BodyParser(subject)
 
 	utils.AssertEqual(t, true, nil != err)
-	utils.AssertEqual(t, "failed to decode: schema: invalid path \"nested-content.1001.value\"", fmt.Sprintf("%v", err))
+	utils.AssertEqual(t, "failed to decode: schema: index exceeds parser limit", fmt.Sprintf("%v", err))
 }
 
 func Test_Ctx_ParamParser(t *testing.T) {

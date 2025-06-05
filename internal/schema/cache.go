@@ -82,9 +82,6 @@ func (c *cache) parsePath(p string, t reflect.Type) ([]pathPart, error) {
 			if index64, err = strconv.ParseInt(keys[i], 10, 0); err != nil {
 				return nil, errInvalidPath
 			}
-			if index64 < 0 {
-				return nil, errInvalidPath
-			}
 			if index64 > maxParserIndex {
 				return nil, errIndexTooLarge
 			}

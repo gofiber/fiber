@@ -94,7 +94,11 @@ func (d *Decoder) Decode(dst interface{}, src map[string][]string) (err error) {
 				multiError[path] = err
 			}
 		} else if !d.ignoreUnknownKeys {
-			multiError[path] = UnknownKeyError{Key: path}
+			if errors.Is(err, errIndexTooLarge) {
+				multiError[path] = err
+			} else {
+				multiError[path] = UnknownKeyError{Key: path}
+			}
 		}
 	}
 	multiError.merge(d.checkRequired(t, src))
