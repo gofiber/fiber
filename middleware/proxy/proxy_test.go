@@ -17,9 +17,10 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-func startServer(app *fiber.App, ln net.Listener) {
+func startServer(t *testing.T, app *fiber.App, ln net.Listener) {
+	t.Helper()
 	go func() {
-		_ = app.Listener(ln)
+		utils.AssertEqual(t, nil, app.Listener(ln))
 	}()
 	time.Sleep(200 * time.Millisecond)
 }
@@ -35,7 +36,7 @@ func createProxyTestServer(t *testing.T, handler fiber.Handler, network, address
 
 	addr := ln.Addr().String()
 
-	startServer(target, ln)
+	startServer(t, target, ln)
 
 	return target, addr
 }
@@ -45,11 +46,9 @@ func createProxyTestServerIPv4(t *testing.T, handler fiber.Handler) (*fiber.App,
 	return createProxyTestServer(t, handler, fiber.NetworkTCP4, "127.0.0.1:0")
 }
 
-func createProxyTestServerIPv6(t *testing.T, handler fiber.Handler) (*fiber.App, string) {
-	t.Helper()
-	return createProxyTestServer(t, handler, fiber.NetworkTCP6, "[::1]:0")
-}
-
+// createRedirectServer creates a simple redirecting server used in tests.
+//
+//nolint:unparam
 func createRedirectServer(t *testing.T) (*fiber.App, string) {
 	t.Helper()
 	app := fiber.New()
@@ -67,7 +66,7 @@ func createRedirectServer(t *testing.T) (*fiber.App, string) {
 	utils.AssertEqual(t, nil, err)
 	addr = ln.Addr().String()
 
-	startServer(app, ln)
+	startServer(t, app, ln)
 
 	return app, addr
 }
