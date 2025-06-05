@@ -72,7 +72,7 @@ func Test_Idempotency(t *testing.T) {
 	})
 
 	app.Post("/slow", func(c fiber.Ctx) error {
-		time.Sleep(3 * lifetime)
+		time.Sleep(3*lifetime + 100*time.Millisecond)
 
 		return c.SendString(strconv.Itoa(nextCount()))
 	})
@@ -108,7 +108,7 @@ func Test_Idempotency(t *testing.T) {
 	require.Equal(t, "9", doReq(fiber.MethodPost, "/", "11111111-1111-1111-1111-111111111111"))
 
 	require.Equal(t, "7", doReq(fiber.MethodPost, "/", "00000000-0000-0000-0000-000000000000"))
-	time.Sleep(4 * lifetime)
+	time.Sleep(4*lifetime + 100*time.Millisecond)
 	require.Equal(t, "10", doReq(fiber.MethodPost, "/", "00000000-0000-0000-0000-000000000000"))
 	require.Equal(t, "10", doReq(fiber.MethodPost, "/", "00000000-0000-0000-0000-000000000000"))
 
@@ -125,7 +125,7 @@ func Test_Idempotency(t *testing.T) {
 		wg.Wait()
 		require.Equal(t, "11", doReq(fiber.MethodPost, "/slow", "22222222-2222-2222-2222-222222222222"))
 	}
-	time.Sleep(3 * lifetime)
+	time.Sleep(3*lifetime + 100*time.Millisecond)
 	require.Equal(t, "12", doReq(fiber.MethodPost, "/slow", "22222222-2222-2222-2222-222222222222"))
 }
 
