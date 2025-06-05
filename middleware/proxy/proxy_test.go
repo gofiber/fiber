@@ -48,7 +48,7 @@ func createProxyTestServerIPv4(t *testing.T, handler fiber.Handler) (*fiber.App,
 
 // createRedirectServer creates a simple redirecting server used in tests.
 //
-//nolint:unparam
+//nolint:unparam // this is only for testing
 func createRedirectServer(t *testing.T) (*fiber.App, string) {
 	t.Helper()
 	app := fiber.New()
