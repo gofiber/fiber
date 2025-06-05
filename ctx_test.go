@@ -674,16 +674,32 @@ func Test_Ctx_BodyParser_InvalidRequestData(t *testing.T) {
 	c.Request().Header.SetContentLength(len(c.Body()))
 
 	subject := new(RequestBody)
-	var err error
-	_ = c.BodyParser(subject)
+	err := c.BodyParser(subject)
+
+	utils.AssertEqual(t, true, nil != err)
+	utils.AssertEqual(t, "failed to decode: schema: invalid path \"nested-content.-1.value\"", fmt.Sprintf("%v", err))
+}
+
+func Test_Ctx_BodyParser_IndexTooLarge(t *testing.T) {
+	defer SetParserDecoder(ParserConfig{IgnoreUnknownKeys: true})
+	SetParserDecoder(ParserConfig{IgnoreUnknownKeys: false})
+
+	type RequestBody struct {
+		NestedContent []*struct {
+			Value string `form:"value"`
+		} `form:"nested-content"`
+	}
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
 
 	c.Request().Reset()
 	c.Request().Header.SetContentType(MIMEApplicationForm)
 	c.Request().SetBody([]byte("nested-content.1001.value=Foo"))
 	c.Request().Header.SetContentLength(len(c.Body()))
 
-	subject = new(RequestBody)
-	err = c.BodyParser(subject)
+	subject := new(RequestBody)
+	err := c.BodyParser(subject)
 
 	utils.AssertEqual(t, true, nil != err)
 	utils.AssertEqual(t, "failed to decode: schema: invalid path \"nested-content.1001.value\"", fmt.Sprintf("%v", err))

@@ -14,8 +14,6 @@ import (
 	"github.com/gofiber/fiber/v2/internal/tlstest"
 	"github.com/gofiber/fiber/v2/utils"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/valyala/fasthttp"
 )
 
@@ -33,7 +31,7 @@ func createProxyTestServer(t *testing.T, handler fiber.Handler, network, address
 	target.Get("/", handler)
 
 	ln, err := net.Listen(network, address)
-	require.NoError(t, err)
+	utils.AssertEqual(t, nil, err)
 
 	addr := ln.Addr().String()
 
@@ -66,7 +64,7 @@ func createRedirectServer(t *testing.T) (*fiber.App, string) {
 	})
 
 	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-	require.NoError(t, err)
+	utils.AssertEqual(t, nil, err)
 	addr = ln.Addr().String()
 
 	startServer(app, ln)
