@@ -676,7 +676,7 @@ func Test_Ctx_BodyParser_InvalidRequestData(t *testing.T) {
 	err := c.BodyParser(subject)
 
 	utils.AssertEqual(t, true, nil != err)
-	utils.AssertEqual(t, "failed to decode: schema: invalid path", fmt.Sprintf("%v", err))
+	utils.AssertEqual(t, true, errors.Is(err, ErrInvalidPath))
 
 	c.Request().Reset()
 	c.Request().Header.SetContentType(MIMEApplicationForm)
