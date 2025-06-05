@@ -1751,21 +1751,35 @@ func (c *DefaultCtx) setCanonical(key, val string) {
 	c.fasthttp.Response.Header.SetCanonical(utils.UnsafeBytes(key), utils.UnsafeBytes(val))
 }
 
-// Subdomains returns a string slice of subdomains in the domain name of the request.
-// The subdomain offset, which defaults to 2, is used for determining the beginning of the subdomain segments.
+// Subdomains returns a slice of subdomains from the host, excluding the last `offset` components.
+// If the offset is negative or exceeds the number of subdomains, an empty slice is returned.
+// If the offset is zero every label (no trimming) is retured.
 func (c *DefaultCtx) Subdomains(offset ...int) []string {
 	o := 2
 	if len(offset) > 0 {
 		o = offset[0]
 	}
-	subdomains := strings.Split(c.Host(), ".")
-	l := len(subdomains) - o
-	// Check index to avoid slice bounds out of range panic
-	if l < 0 {
-		l = len(subdomains)
+
+	// Negative offset, return nothing.
+	if o < 0 {
+		return []string{}
 	}
-	subdomains = subdomains[:l]
-	return subdomains
+
+	// strip “:port” if present
+	host := c.Hostname()
+	parts := strings.Split(host, ".")
+
+	// offset == 0, caller wants everything.
+	if o == 0 {
+		return parts
+	}
+
+	// If we trim away the whole slice (or more), nothing remains.
+	if o >= len(parts) {
+		return []string{}
+	}
+
+	return parts[:len(parts)-o]
 }
 
 // Stale is not implemented yet, pull requests are welcome!
