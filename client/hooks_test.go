@@ -42,6 +42,14 @@ func Test_Rand_String(t *testing.T) {
 			require.Len(t, got, tt.args)
 		})
 	}
+
+	t.Run("valid characters", func(t *testing.T) {
+		t.Parallel()
+		got := unsafeRandString(32)
+		for i := 0; i < len(got); i++ {
+			require.Contains(t, letterBytes, string(got[i]))
+		}
+	})
 }
 
 func Test_Parser_Request_URL(t *testing.T) {

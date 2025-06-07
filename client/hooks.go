@@ -1,9 +1,9 @@
 package client
 
 import (
+	"crypto/rand"
 	"fmt"
 	"io"
-	"math/rand/v2"
 	"mime/multipart"
 	"os"
 	"path/filepath"
@@ -25,30 +25,18 @@ const (
 	applicationForm   = "application/x-www-form-urlencoded"
 	multipartFormData = "multipart/form-data"
 
-	letterBytes   = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	letterIdxBits = 6                    // 6 bits to represent a letter index
-	letterIdxMask = 1<<letterIdxBits - 1 // All 1-bits, as many as letterIdxBits
-	letterIdxMax  = 64 / letterIdxBits   // # of letter indices fitting into 64 bits
+	letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 )
 
 // unsafeRandString returns a random string of length n.
 func unsafeRandString(n int) string {
 	b := make([]byte, n)
-	const length = uint64(len(letterBytes))
+	if _, err := rand.Read(b); err != nil {
+		panic(fmt.Errorf("failed to read random bytes: %w", err))
+	}
 
-	//nolint:gosec // Not a concern
-	for i, cache, remain := n-1, rand.Uint64(), letterIdxMax; i >= 0; {
-		if remain == 0 {
-			//nolint:gosec // Not a concern
-			cache, remain = rand.Uint64(), letterIdxMax
-		}
-
-		if idx := cache & letterIdxMask; idx < length {
-			b[i] = letterBytes[idx]
-			i--
-		}
-		cache >>= letterIdxBits
-		remain--
+	for i := 0; i < n; i++ {
+		b[i] = letterBytes[int(b[i])%len(letterBytes)]
 	}
 
 	return utils.UnsafeString(b)
