@@ -138,7 +138,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Simple request
-		// Ommit allowMethods and allowHeaders, only used for pre-flight requests
+		// Omit allowMethods and allowHeaders, only used for pre-flight requests
 		if c.Method() != fiber.MethodOptions {
 			if !allowAllOrigins {
 				// See https://fetch.spec.whatwg.org/#cors-protocol-and-http-caches

@@ -260,7 +260,7 @@ func addParameterMetaInfo(segs []*routeSegment) []*routeSegment {
 					segs[i].PartCount += strings.Count(segs[j].Const, segs[i].ComparePart)
 				}
 			}
-			// check if the end of the segment is a optional slash and then if the segement is optional or the last one
+			// check if the end of the segment is an optional slash and then if the segment is optional or the last one
 		} else if segs[i].Const[len(segs[i].Const)-1] == slashDelimiter && (segs[i].IsLast || (segLen > i+1 && segs[i+1].IsOptional)) {
 			segs[i].HasOptionalSlash = true
 		}

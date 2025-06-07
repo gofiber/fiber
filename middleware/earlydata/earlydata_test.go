@@ -49,7 +49,7 @@ func appWithConfig(t *testing.T, c *fiber.Config) *fiber.App {
 				}
 			default:
 				if isEarly {
-					return errors.New("early-data unsuported on unsafe HTTP methods")
+					return errors.New("early-data unsupported on unsafe HTTP methods")
 				}
 			}
 

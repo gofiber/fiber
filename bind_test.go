@@ -149,7 +149,7 @@ func Test_Bind_Query_Map(t *testing.T) {
 
 	em := make(map[string][]int)
 	c.Request().URI().SetQueryString("")
-	require.ErrorIs(t, c.Bind().Query(&em), binder.ErrMapNotConvertable)
+	require.ErrorIs(t, c.Bind().Query(&em), binder.ErrMapNotConvertible)
 }
 
 // go test -run Test_Bind_Query_WithSetParserDecoder -v
