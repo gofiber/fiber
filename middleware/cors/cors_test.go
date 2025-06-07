@@ -857,7 +857,7 @@ func Test_CORS_AllowCredentials(t *testing.T) {
 			},
 			RequestOrigin:  "*",
 			ResponseOrigin: "*",
-			// Middleware will validate that wildcard wont set credentials to true
+			// Middleware will validate that wildcard won't set credentials to true
 			ResponseCredentials: "",
 		},
 		{

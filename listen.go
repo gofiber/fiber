@@ -72,19 +72,19 @@ type ListenConfig struct {
 	// Default: NetworkTCP4
 	ListenerNetwork string `json:"listener_network"`
 
-	// CertFile is a path of certficate file.
+	// CertFile is a path of certificate file.
 	// If you want to use TLS, you have to enter this field.
 	//
 	// Default : ""
 	CertFile string `json:"cert_file"`
 
-	// KeyFile is a path of certficate's private key.
+	// KeyFile is a path of certificate's private key.
 	// If you want to use TLS, you have to enter this field.
 	//
 	// Default : ""
 	CertKeyFile string `json:"cert_key_file"`
 
-	// CertClientFile is a path of client certficate.
+	// CertClientFile is a path of client certificate.
 	// If you want to use mTLS, you have to enter this field.
 	//
 	// Default : ""

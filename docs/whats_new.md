@@ -1,6 +1,6 @@
 ---
 id: whats_new
-title: 🆕 Whats New in v3
+title: 🆕 What's New in v3
 sidebar_position: 2
 toc_max_heading_level: 4
 ---
