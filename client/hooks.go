@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"io"
+	"math/big"
 	"mime/multipart"
 	"os"
 	"path/filepath"
@@ -31,12 +32,12 @@ const (
 // unsafeRandString returns a random string of length n.
 func unsafeRandString(n int) string {
 	b := make([]byte, n)
-	if _, err := rand.Read(b); err != nil {
-		panic(fmt.Errorf("failed to read random bytes: %w", err))
-	}
-
 	for i := 0; i < n; i++ {
-		b[i] = letterBytes[int(b[i])%len(letterBytes)]
+		idx, err := rand.Int(rand.Reader, big.NewInt(int64(len(letterBytes))))
+		if err != nil {
+			panic(fmt.Errorf("failed to read random index: %w", err))
+		}
+		b[i] = letterBytes[idx.Int64()]
 	}
 
 	return utils.UnsafeString(b)
