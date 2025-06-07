@@ -1753,7 +1753,7 @@ func (c *DefaultCtx) setCanonical(key, val string) {
 
 // Subdomains returns a slice of subdomains from the host, excluding the last `offset` components.
 // If the offset is negative or exceeds the number of subdomains, an empty slice is returned.
-// If the offset is zero every label (no trimming) is retured.
+// If the offset is zero every label (no trimming) is returned.
 func (c *DefaultCtx) Subdomains(offset ...int) []string {
 	o := 2
 	if len(offset) > 0 {

@@ -740,7 +740,7 @@ func Test_Static_Compress(t *testing.T) {
 	for _, algo := range algorithms {
 		t.Run(algo+"_compression", func(t *testing.T) {
 			t.Parallel()
-			// request non-compressable file (less than 200 bytes), Content Lengh will remain the same
+			// request non-compressible file (less than 200 bytes), Content Length will remain the same
 			req := httptest.NewRequest(fiber.MethodGet, "/css/style.css", nil)
 			req.Header.Set("Accept-Encoding", algo)
 			resp, err := app.Test(req, testConfig)
@@ -750,7 +750,7 @@ func Test_Static_Compress(t *testing.T) {
 			require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
 			require.Equal(t, "46", resp.Header.Get(fiber.HeaderContentLength))
 
-			// request compressable file, ContentLenght will change
+			// request compressible file, ContentLength will change
 			req = httptest.NewRequest(fiber.MethodGet, "/index.html", nil)
 			req.Header.Set("Accept-Encoding", algo)
 			resp, err = app.Test(req, testConfig)
@@ -772,7 +772,7 @@ func Test_Static_Compress_WithoutEncoding(t *testing.T) {
 		CacheDuration: 1 * time.Second,
 	}))
 
-	// request compressable file without encoding
+	// request compressible file without encoding
 	req := httptest.NewRequest(fiber.MethodGet, "/index.html", nil)
 	resp, err := app.Test(req, testConfig)
 
@@ -781,7 +781,7 @@ func Test_Static_Compress_WithoutEncoding(t *testing.T) {
 	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
 	require.Equal(t, "299", resp.Header.Get(fiber.HeaderContentLength))
 
-	// request compressable file with different encodings
+	// request compressible file with different encodings
 	algorithms := []string{"zstd", "gzip", "br"}
 	fileSuffixes := map[string]string{
 		"gzip": ".fiber.gz",
@@ -827,7 +827,7 @@ func Test_Static_Compress_WithFileSuffixes(t *testing.T) {
 		CacheDuration: 1 * time.Second,
 	}))
 
-	// request compressable file with different encodings
+	// request compressible file with different encodings
 	algorithms := []string{"zstd", "gzip", "br"}
 
 	for _, algo := range algorithms {

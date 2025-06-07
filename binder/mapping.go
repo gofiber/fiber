@@ -113,14 +113,14 @@ func parseToMap(ptr any, data map[string][]string) error {
 	case reflect.Slice:
 		newMap, ok := ptr.(map[string][]string)
 		if !ok {
-			return ErrMapNotConvertable
+			return ErrMapNotConvertible
 		}
 
 		maps.Copy(newMap, data)
 	case reflect.String, reflect.Interface:
 		newMap, ok := ptr.(map[string]string)
 		if !ok {
-			return ErrMapNotConvertable
+			return ErrMapNotConvertible
 		}
 
 		for k, v := range data {
