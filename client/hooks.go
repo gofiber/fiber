@@ -33,8 +33,9 @@ const (
 // An error is returned if the random source fails.
 func unsafeRandString(n int) (string, error) {
 	b := make([]byte, n)
+	bound := big.NewInt(int64(len(letterBytes)))
 	for i := 0; i < n; i++ {
-		idx, err := rand.Int(rand.Reader, big.NewInt(int64(len(letterBytes))))
+		idx, err := rand.Int(rand.Reader, bound)
 		if err != nil {
 			return "", fmt.Errorf("failed to read random index: %w", err)
 		}
