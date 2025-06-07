@@ -30,17 +30,18 @@ const (
 )
 
 // unsafeRandString returns a random string of length n.
-func unsafeRandString(n int) string {
+// An error is returned if the random source fails.
+func unsafeRandString(n int) (string, error) {
 	b := make([]byte, n)
 	for i := 0; i < n; i++ {
 		idx, err := rand.Int(rand.Reader, big.NewInt(int64(len(letterBytes))))
 		if err != nil {
-			panic(fmt.Errorf("failed to read random index: %w", err))
+			return "", fmt.Errorf("failed to read random index: %w", err)
 		}
 		b[i] = letterBytes[idx.Int64()]
 	}
 
-	return utils.UnsafeString(b)
+	return utils.UnsafeString(b), nil
 }
 
 // parserRequestURL sets options for the hostclient and normalizes the URL.
@@ -122,7 +123,11 @@ func parserRequestHeader(c *Client, req *Request) error {
 		req.RawRequest.Header.SetContentType(multipartFormData)
 		// If boundary is default, append a random string to it.
 		if req.boundary == boundary {
-			req.boundary += unsafeRandString(16)
+			randStr, err := unsafeRandString(16)
+			if err != nil {
+				return fmt.Errorf("boundary generation: %w", err)
+			}
+			req.boundary += randStr
 		}
 		req.RawRequest.Header.SetMultipartFormBoundary(req.boundary)
 	default:

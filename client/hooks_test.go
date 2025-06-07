@@ -38,14 +38,16 @@ func Test_Rand_String(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := unsafeRandString(tt.args)
+			got, err := unsafeRandString(tt.args)
+			require.NoError(t, err)
 			require.Len(t, got, tt.args)
 		})
 	}
 
 	t.Run("valid characters", func(t *testing.T) {
 		t.Parallel()
-		got := unsafeRandString(32)
+		got, err := unsafeRandString(32)
+		require.NoError(t, err)
 		for i := 0; i < len(got); i++ {
 			require.Contains(t, letterBytes, string(got[i]))
 		}
