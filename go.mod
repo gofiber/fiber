@@ -3,7 +3,7 @@ module github.com/gofiber/fiber/v3
 go 1.24.0
 
 require (
-	github.com/gofiber/schema v1.4.0
+	github.com/gofiber/schema v1.5.0
 	github.com/gofiber/utils/v2 v2.0.0-beta.8
 	github.com/google/uuid v1.6.0
 	github.com/mattn/go-colorable v0.1.14
@@ -12,7 +12,7 @@ require (
 	github.com/tinylib/msgp v1.3.0
 	github.com/valyala/bytebufferpool v1.0.0
 	github.com/valyala/fasthttp v1.62.0
-	golang.org/x/crypto v0.38.0
+	golang.org/x/crypto v0.39.0
 )
 
 require (
@@ -25,6 +25,6 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	golang.org/x/net v0.40.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
-	golang.org/x/text v0.25.0 // indirect
+	golang.org/x/text v0.26.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

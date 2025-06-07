@@ -13,7 +13,7 @@ Converts a string value to a specified type, handling errors and optional defaul
 This function simplifies the conversion process by encapsulating error handling and the management of default values, making your code cleaner and more consistent.
 
 ```go title="Signature"
-func Convert[T any](value string, convertor func(string) (T, error), defaultValue ...T) (*T, error)
+func Convert[T any](value string, converter func(string) (T, error), defaultValue ...T) (*T, error)
 ```
 
 ```go title="Example"
