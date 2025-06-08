@@ -217,6 +217,7 @@ When deploying Fiber applications behind infrastructure components like CDNs, AP
 - **Built-in Caching**: Infrastructure providers optimize CORS response caching
 
 **Common infrastructure CORS solutions:**
+
 - **CDNs**: CloudFront, CloudFlare, Azure CDN - handle CORS at edge locations
 - **API Gateways**: AWS API Gateway, Google Cloud API Gateway - centralized CORS management
 - **Load Balancers**: Application Load Balancers with CORS rules
@@ -232,6 +233,7 @@ If using infrastructure-level CORS, **disable Fiber's CORS middleware** to avoid
 ### Option 2: Application-Level CORS (Fiber Middleware)
 
 Use Fiber's CORS middleware when you need:
+
 - **Dynamic origin validation** based on application logic
 - **Fine-grained control** over CORS policies per route
 - **Integration with application state** (database-driven origins, etc.)
@@ -257,12 +259,14 @@ If the `Access-Control-Request-Method` header is missing from an OPTIONS request
 The middleware sets these response headers based on your configuration:
 
 **For all CORS requests:**
+
 - `Access-Control-Allow-Origin` - Set to the allowed origin or "*"
 - `Access-Control-Allow-Credentials` - Set to "true" when `AllowCredentials: true`
 - `Access-Control-Expose-Headers` - Lists headers the client can access
 - `Vary` - Set to "Origin" (unless wildcard origins are used)
 
 **For preflight responses only:**
+
 - `Access-Control-Allow-Methods` - Lists allowed HTTP methods
 - `Access-Control-Allow-Headers` - Lists allowed request headers (or echoes the request)
 - `Access-Control-Max-Age` - Cache duration for preflight results (if MaxAge > 0)
@@ -271,21 +275,25 @@ The middleware sets these response headers based on your configuration:
 
 ### Common Infrastructure Issues
 
-**CDNs (CloudFront, CloudFlare, etc.)**: 
+**CDNs (CloudFront, CloudFlare, etc.)**:
+
 - Configure cache policies to forward all CORS headers
 - Ensure OPTIONS requests are not cached inappropriately or cache them correctly with proper Vary headers
 - Don't strip or modify CORS request headers
 
-**API Gateways**: 
+**API Gateways**:
+
 - Choose either gateway-level CORS OR application-level CORS, not both
 - If using gateway CORS, disable Fiber's CORS middleware
 - If forwarding to Fiber, ensure all headers pass through unchanged
 
-**Load Balancers/Reverse Proxies**: 
+**Load Balancers/Reverse Proxies**:
+
 - Preserve all HTTP headers, especially CORS-related ones
 - Don't modify or strip `Origin`, `Access-Control-Request-*` headers
 
-**WAFs/Security Services**: 
+**WAFs/Security Services**:
+
 - Whitelist CORS headers in security rules
 - Ensure OPTIONS requests with CORS headers aren't blocked
 
@@ -294,6 +302,8 @@ The middleware sets these response headers based on your configuration:
 Add this middleware **before** your CORS configuration to debug what headers Fiber receives:
 
 ```go
+// Debug middleware to log CORS preflight requests
+// Only use in development or testing environments
 app.Use(func(c *fiber.Ctx) error {
     if c.Method() == "OPTIONS" {
         fmt.Printf("OPTIONS %s\n", c.Path())
@@ -349,6 +359,7 @@ Ensure your infrastructure respects these `Vary` headers for correct caching beh
 
 :::tip Infrastructure CORS Configuration
 Most cloud providers offer comprehensive CORS documentation:
+
 - [AWS CloudFront CORS](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/header-caching.html#header-caching-web-cors)
 - [Google Cloud CORS](https://cloud.google.com/storage/docs/cross-origin)
 - [Azure CDN CORS](https://docs.microsoft.com/en-us/azure/cdn/cdn-cors)
