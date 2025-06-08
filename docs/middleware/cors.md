@@ -169,6 +169,12 @@ The CORS middleware works by adding the necessary CORS headers to responses from
 
 When a request comes in, the middleware first checks if it's a preflight request, which is a CORS mechanism to determine whether the actual request is safe to send. Preflight requests are HTTP OPTIONS requests with specific CORS headers. If it's a preflight request, the middleware responds with the appropriate CORS headers and ends the request.
 
+:::note
+Preflight requests are typically sent by browsers before making actual cross-origin requests, especially for methods other than GET or POST, or when custom headers are used.
+
+A preflight request is an HTTP OPTIONS request that includes the `Origin`, `Access-Control-Request-Method`, and optionally `Access-Control-Request-Headers` headers. The browser sends this request to check if the server allows the actual request method and headers.
+:::
+
 If it's not a preflight request, the middleware adds the CORS headers to the response and passes the request to the next handler. The actual CORS headers added depend on the configuration of the middleware.
 
 The `AllowOrigins` option controls which origins can make cross-origin requests. The middleware handles different `AllowOrigins` configurations as follows:
@@ -196,6 +202,58 @@ The `ExposeHeaders` option defines an allowlist of headers that clients are allo
 The `MaxAge` option indicates how long the results of a preflight request can be cached. If `MaxAge` is set to `3600`, the middleware adds the header `Access-Control-Max-Age: 3600` to the response.
 
 The `Vary` header is used in this middleware to inform the client that the server's response to a request. For or both preflight and actual requests, the Vary header is set to `Access-Control-Request-Method` and `Access-Control-Request-Headers`. For preflight requests, the Vary header is also set to `Origin`. The `Vary` header is important for caching. It helps caches (like a web browser's cache or a CDN) determine when a cached response can be used in response to a future request, and when the server needs to be queried for a new response.
+
+## Infrastructure Considerations
+
+First you need to decide whether you want to use the CORS middleware in your Fiber application or not. Many infrastructure components like CloudFront, API Gateway, load balancers, or proxies can handle CORS for you. If you choose to use the CORS middleware in your Fiber application, you need to ensure that it is configured correctly and that it works seamlessly with your infrastructure.
+
+When deploying Fiber applications behind infrastructure components like CloudFront, API Gateway, load balancers, or proxies, ensure that **all CORS headers reach your Fiber application unchanged**.
+
+### Required Headers for CORS Preflight
+
+For CORS preflight requests to work correctly, these headers **must not be stripped or cached differently**:
+
+- `Origin`
+- `Access-Control-Request-Method` 
+- `Access-Control-Request-Headers`
+
+### Common Infrastructure Issues
+
+**CloudFront/CDN**: Configure cache behaviors to forward CORS headers and avoid caching OPTIONS requests:
+
+```json
+{
+  "CacheBehavior": {
+    "ForwardedValues": {
+      "Headers": ["Origin", "Access-Control-Request-Method", "Access-Control-Request-Headers"]
+    },
+    "CachePolicyId": "cors-enabled-policy"
+  }
+}
+```
+
+**API Gateway**: Enable CORS at the gateway level or ensure headers are forwarded to your Fiber app.
+
+**Load Balancers/Proxies**: Verify they don't modify or strip CORS-related headers.
+
+### Debugging CORS Issues
+
+Add this custom middleware before your CORS middleware to debug header issues:
+
+```go
+app.Use(func(c fiber.Ctx) error {
+    fmt.Printf("→ %s %s | Origin: %s\n", c.Method(), c.Path(), c.Get("Origin"))
+    fmt.Printf("→ Request Headers: %v\n", c.GetReqHeaders())
+    err := c.Next()
+    fmt.Printf("← Response Headers: %v\n", c.GetRespHeaders())
+    fmt.Printf("← %s %s | Status: %d\n", c.Method(), c.Path(), c.Response().StatusCode())
+    return err
+})
+```
+
+:::warning Infrastructure Header Stripping
+If your infrastructure strips the `Access-Control-Request-Method` header, Fiber will treat OPTIONS requests as regular HTTP requests (not CORS preflights), potentially returning 405 Method Not Allowed if no handler is defined for OPTIONS. This can lead to CORS errors in browsers, as they expect a proper CORS preflight response.
+:::
 
 ## Security Considerations
 
