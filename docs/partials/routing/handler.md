@@ -8,7 +8,7 @@ import Reference from '@site/src/components/reference';
 Registers a route bound to a specific [HTTP method](https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods).
 
 ```go title="Signatures"
-// HTTP methods - handler parameter is required, handlers parameters are optional
+// HTTP methods – the main handler is required; additional handlers are optional
 func (app *App) Get(path string, handler Handler, handlers ...Handler) Router
 func (app *App) Head(path string, handler Handler, handlers ...Handler) Router
 func (app *App) Post(path string, handler Handler, handlers ...Handler) Router

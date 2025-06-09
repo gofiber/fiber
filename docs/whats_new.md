@@ -1312,7 +1312,7 @@ func main() {
 
 - [🚀 App](#-app-1)
 - [🗺 Router](#-router-1)
-  - [HTTP-method-registration](#http-method-registration-1)
+  - [HTTP Method Registration](#http-method-registration-1)
 - [🧠 Context](#-context-1)
 - [📎 Binding (was Parser)](#-parser)
 - [🔄 Redirect](#-redirect-1)
