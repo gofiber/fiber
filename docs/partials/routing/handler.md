@@ -8,7 +8,7 @@ import Reference from '@site/src/components/reference';
 Registers a route bound to a specific [HTTP method](https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods).
 
 ```go title="Signatures"
-// HTTP methods
+// HTTP methods - handler parameter is required, handlers parameters are optional
 func (app *App) Get(path string, handler Handler, handlers ...Handler) Router
 func (app *App) Head(path string, handler Handler, handlers ...Handler) Router
 func (app *App) Post(path string, handler Handler, handlers ...Handler) Router
@@ -19,25 +19,49 @@ func (app *App) Options(path string, handler Handler, handlers ...Handler) Route
 func (app *App) Trace(path string, handler Handler, handlers ...Handler) Router
 func (app *App) Patch(path string, handler Handler, handlers ...Handler) Router
 
-// Add allows you to specify a method as value
-func (app *App) Add(method, path string, handler Handler, handlers ...Handler) Router
+// Add allows you to specify multiple methods as a slice
+func (app *App) Add(methods []string, path string, handler Handler, handlers ...Handler) Router
 
 // All will register the route on all HTTP methods
-// Almost the same as app.Use but not bound to prefixes
 func (app *App) All(path string, handler Handler, handlers ...Handler) Router
 ```
 
+**Handler Execution Order:**
+
+In Fiber v3, route handler methods clearly separate the main handler from additional handlers:
+
+- `handler`: The main route handler (required, executed **last**)
+- `handlers`: Optional additional handlers (executed **before** the main handler in left-to-right order)
+
 ```go title="Examples"
-// Simple GET handler
+// Simple handlers (no additional handlers)
 app.Get("/api/list", func(c fiber.Ctx) error {
     return c.SendString("I'm a GET request!")
 })
 
-// Simple POST handler
 app.Post("/api/register", func(c fiber.Ctx) error {
     return c.SendString("I'm a POST request!")
 })
+
+// Handler with additional handlers - execution order is clearly defined
+app.Get("/api/users",
+    func(c fiber.Ctx) error {           // Main handler (executes 3rd)
+        return c.JSON(users)
+    },
+    authMiddleware,                     // Additional handler (executes 1st)
+    rateLimitMiddleware,                // Additional handler (executes 2nd)
+)
+
+// Multiple methods example
+app.Add([]string{fiber.MethodGet, fiber.MethodPost}, "/api/flexible",
+    func(c fiber.Ctx) error {           // Main handler
+        return c.SendString("Flexible endpoint!")
+    },
+    loggingMiddleware,                  // Additional handler
+)
 ```
+
+This separation improves type safety by ensuring at least one handler is always provided and makes the execution order explicit.
 
 <Reference id="use">#Use</Reference>
 

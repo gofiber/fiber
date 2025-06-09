@@ -241,30 +241,52 @@ We have slightly adapted our router interface
 
 ### HTTP method registration
 
-In `v2` one handler was already mandatory when the route has been registered, but this was checked at runtime and was not correctly reflected in the signature, this has now been changed in `v3` to make it more explicit.
+In `v2` one handler was already mandatory when the route has been registered, but this was checked at runtime and was not correctly reflected in the signature. In `v3`, this has been made explicit in the method signatures to improve clarity and type safety.
+
+**Key Changes:**
+
+- The first parameter `handler` is now explicitly required and represents the **main route handler**
+- The optional `handlers...` parameter contains **additional handlers** that execute before the main handler
+- **Execution order**: additional handlers execute in **left-to-right order**, followed by the main handler
 
 ```diff
 -    Get(path string, handlers ...Handler) Router
-+    Get(path string, handler Handler, middleware ...Handler) Router
++    Get(path string, handler Handler, handlers ...Handler) Router
 -    Head(path string, handlers ...Handler) Router
-+    Head(path string, handler Handler, middleware ...Handler) Router
++    Head(path string, handler Handler, handlers ...Handler) Router
 -    Post(path string, handlers ...Handler) Router
-+    Post(path string, handler Handler, middleware ...Handler) Router
++    Post(path string, handler Handler, handlers ...Handler) Router
 -    Put(path string, handlers ...Handler) Router
-+    Put(path string, handler Handler, middleware ...Handler) Router
++    Put(path string, handler Handler, handlers ...Handler) Router
 -    Delete(path string, handlers ...Handler) Router
-+    Delete(path string, handler Handler, middleware ...Handler) Router
++    Delete(path string, handler Handler, handlers ...Handler) Router
 -    Connect(path string, handlers ...Handler) Router
-+    Connect(path string, handler Handler, middleware ...Handler) Router
++    Connect(path string, handler Handler, handlers ...Handler) Router
 -    Options(path string, handlers ...Handler) Router
-+    Options(path string, handler Handler, middleware ...Handler) Router
++    Options(path string, handler Handler, handlers ...Handler) Router
 -    Trace(path string, handlers ...Handler) Router
-+    Trace(path string, handler Handler, middleware ...Handler) Router
++    Trace(path string, handler Handler, handlers ...Handler) Router
 -    Patch(path string, handlers ...Handler) Router
-+    Patch(path string, handler Handler, middleware ...Handler) Router
++    Patch(path string, handler Handler, handlers ...Handler) Router
 -    All(path string, handlers ...Handler) Router
-+    All(path string, handler Handler, middleware ...Handler) Router
++    All(path string, handler Handler, handlers ...Handler) Router
+-    Add(method, path string, handlers ...Handler) Router
++    Add(methods []string, path string, handler Handler, handlers ...Handler) Router
 ```
+
+**Example Usage:**
+
+```go
+// v3 - clear separation with consistent execution order
+app.Get("/users", 
+    getUsersHandler,     // Main handler (executes last)
+    authMiddleware,      // Additional handler (executes first)
+    rateLimitMiddleware, // Additional handler (executes second)
+)
+// Execution order: authMiddleware -> rateLimitMiddleware -> getUsersHandler
+```
+
+This change ensures that the main route handler is always provided, making it clear that every route must have a handler associated with it.
 
 ### Route chaining
 
@@ -1290,6 +1312,7 @@ func main() {
 
 - [🚀 App](#-app-1)
 - [🗺 Router](#-router-1)
+  - [HTTP-method-registration](#http-method-registration-1)
 - [🧠 Context](#-context-1)
 - [📎 Binding (was Parser)](#-parser)
 - [🔄 Redirect](#-redirect-1)
@@ -1441,7 +1464,40 @@ Note: Use this method with caution. It is **not** thread-safe and can be very pe
 
 - **RemoveRouteFunc**: Removes route by a function having `*Route` parameter
 
-For more details, refer to the [app documentation](./api/app.md#removeroute):
+For more details, refer to the [app documentation](./api/app.md#removeroute).
+
+### HTTP method registration
+
+The HTTP method registration methods have been updated to explicitly require a handler, followed by optional additional handlers. This change improves clarity and consistency in how routes are defined.
+
+**Key Changes:**
+
+- The first parameter `handler` is now explicitly required and represents the **main route handler**
+- The optional `handlers...` parameter represents **additional handlers** that typically serve as middleware
+- **Execution order**: additional handlers execute in **left-to-right order**, followed by the main handler
+
+<details>
+<summary>Example</summary>
+
+**Before**:
+
+```go
+// v2 - all handlers in left-to-right order
+app.Get("/users", middleware1, middleware2, mainHandler)
+// Execution: middleware1 -> middleware2 -> mainHandler
+```
+
+**After**:
+
+```go
+// v3 - main handler first in signature, but still executes last
+app.Get("/users", mainHandler, middleware1, middleware2)
+// Execution: middleware1 -> middleware2 -> mainHandler
+```
+
+**Key Point**: The execution order remains the same (left-to-right for additional handlers, then main handler), but the signature now explicitly separates the main handler from additional handlers.
+
+</details>
 
 ### 🧠 Context
 

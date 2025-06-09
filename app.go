@@ -788,58 +788,148 @@ func (app *App) Use(args ...any) Router {
 
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
+//
+// The first parameter 'handler' is the main route handler (executed last).
+// The optional 'handlers' parameters are additional handlers that execute
+// before the main handler in left-to-right order.
+//
+// Example:
+//
+//	app.Get("/users", mainHandler, handler1, handler2)
+//	// Execution order: handler1 -> handler2 -> mainHandler
 func (app *App) Get(path string, handler Handler, handlers ...Handler) Router {
 	return app.Add([]string{MethodGet}, path, handler, handlers...)
 }
 
 // Head registers a route for HEAD methods that asks for a response identical
 // to that of a GET request, but without the response body.
+//
+// The first parameter 'handler' is the main route handler (executed last).
+// The optional 'handlers' parameters are additional handlers that execute
+// before the main handler in left-to-right order.
+//
+// Example:
+//
+//	app.Head("/users", mainHandler, handler1, handler2)
+//	// Execution order: handler1 -> handler2 -> mainHandler
 func (app *App) Head(path string, handler Handler, handlers ...Handler) Router {
 	return app.Add([]string{MethodHead}, path, handler, handlers...)
 }
 
 // Post registers a route for POST methods that is used to submit an entity to the
 // specified resource, often causing a change in state or side effects on the server.
+//
+// The first parameter 'handler' is the main route handler (executed last).
+// The optional 'handlers' parameters are additional handlers that execute
+// before the main handler in left-to-right order.
+//
+// Example:
+//
+//	app.Post("/users", createUser, auth, validate)
+//	// Execution order: auth -> validate -> createUser
 func (app *App) Post(path string, handler Handler, handlers ...Handler) Router {
 	return app.Add([]string{MethodPost}, path, handler, handlers...)
 }
 
 // Put registers a route for PUT methods that replaces all current representations
 // of the target resource with the request payload.
+//
+// The first parameter 'handler' is the main route handler (executed last).
+// The optional 'handlers' parameters are additional handlers that execute
+// before the main handler in left-to-right order.
+//
+// Example:
+//
+//	app.Put("/users/:id", updateUser, auth, validate)
+//	// Execution order: auth -> validate -> updateUser
 func (app *App) Put(path string, handler Handler, handlers ...Handler) Router {
 	return app.Add([]string{MethodPut}, path, handler, handlers...)
 }
 
 // Delete registers a route for DELETE methods that deletes the specified resource.
+//
+// The first parameter 'handler' is the main route handler (executed last).
+// The optional 'handlers' parameters are additional handlers that execute
+// before the main handler in left-to-right order.
+//
+// Example:
+//
+//	app.Delete("/users/:id", deleteUser, auth, validate)
+//	// Execution order: auth -> validate -> deleteUser
 func (app *App) Delete(path string, handler Handler, handlers ...Handler) Router {
 	return app.Add([]string{MethodDelete}, path, handler, handlers...)
 }
 
 // Connect registers a route for CONNECT methods that establishes a tunnel to the
 // server identified by the target resource.
+//
+// The first parameter 'handler' is the main route handler (executed last).
+// The optional 'handlers' parameters are additional handlers that execute
+// before the main handler in left-to-right order.
+//
+// Example:
+//
+//	app.Connect("/proxy", connectHandler, auth, validate)
+//	// Execution order: auth -> validate -> connectHandler
 func (app *App) Connect(path string, handler Handler, handlers ...Handler) Router {
 	return app.Add([]string{MethodConnect}, path, handler, handlers...)
 }
 
 // Options registers a route for OPTIONS methods that is used to describe the
 // communication options for the target resource.
+//
+// The first parameter 'handler' is the main route handler (executed last).
+// The optional 'handlers' parameters are additional handlers that execute
+// before the main handler in left-to-right order.
+//
+// Example:
+//
+//	app.Options("/users", optionsHandler, auth, validate)
+//	// Execution order: auth -> validate -> optionsHandler
 func (app *App) Options(path string, handler Handler, handlers ...Handler) Router {
 	return app.Add([]string{MethodOptions}, path, handler, handlers...)
 }
 
 // Trace registers a route for TRACE methods that performs a message loop-back
 // test along the path to the target resource.
+//
+// The first parameter 'handler' is the main route handler (executed last).
+// The optional 'handlers' parameters are additional handlers that execute
+// before the main handler in left-to-right order.
+//
+// Example:
+//
+//	 app.Trace("/trace", traceHandler, auth, validate)
+//	// Execution order: auth -> validate -> traceHandler
 func (app *App) Trace(path string, handler Handler, handlers ...Handler) Router {
 	return app.Add([]string{MethodTrace}, path, handler, handlers...)
 }
 
 // Patch registers a route for PATCH methods that is used to apply partial
 // modifications to a resource.
+//
+// The first parameter 'handler' is the main route handler (executed last).
+// The optional 'handlers' parameters are additional handlers that execute
+// before the main handler in left-to-right order.
+//
+// Example:
+//
+//	app.Patch("/users/:id", patchUser, auth, validate)
+//	// Execution order: auth -> validate -> patchUser
 func (app *App) Patch(path string, handler Handler, handlers ...Handler) Router {
 	return app.Add([]string{MethodPatch}, path, handler, handlers...)
 }
 
 // Add allows you to specify multiple HTTP methods to register a route.
+//
+// The handler parameter is the main route handler (executed last).
+// The optional handlers parameters are additional handlers that execute
+// before the main handler in left-to-right order.
+//
+// Example:
+//
+//	app.Add([]string{"GET", "POST"}, "/api", mainHandler, handler1, handler2)
+//	// Execution order: handler1 -> handler2 -> mainHandler
 func (app *App) Add(methods []string, path string, handler Handler, handlers ...Handler) Router {
 	app.register(methods, path, nil, append([]Handler{handler}, handlers...)...)
 
@@ -847,6 +937,15 @@ func (app *App) Add(methods []string, path string, handler Handler, handlers ...
 }
 
 // All will register the handler on all HTTP methods
+//
+// The handler parameter is the main route handler (executed last).
+// The optional handlers parameters are additional handlers that execute
+// before the main handler in left-to-right order.
+//
+// Example:
+//
+//	app.All("/api", mainHandler, handler1, handler2)
+//	// Execution order: handler1 -> handler2 -> mainHandler
 func (app *App) All(path string, handler Handler, handlers ...Handler) Router {
 	return app.Add(app.config.RequestMethods, path, handler, handlers...)
 }
