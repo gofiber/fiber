@@ -93,10 +93,10 @@ func (d *Decoder) Decode(dst interface{}, src map[string][]string) (err error) {
 			if err = d.decode(v, path, parts, values); err != nil {
 				multiError[path] = err
 			}
-		} else if !d.ignoreUnknownKeys {
+		} else {
 			if errors.Is(err, errIndexTooLarge) {
 				multiError[path] = err
-			} else {
+			} else if !d.ignoreUnknownKeys {
 				multiError[path] = UnknownKeyError{Key: path}
 			}
 		}
