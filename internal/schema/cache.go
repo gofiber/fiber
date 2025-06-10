@@ -12,7 +12,12 @@ import (
 	"sync"
 )
 
-var errInvalidPath = errors.New("schema: invalid path")
+const maxParserIndex = 1000
+
+var (
+	errInvalidPath   = errors.New("schema: invalid path")
+	errIndexTooLarge = errors.New("schema: index exceeds parser limit")
+)
 
 // newCache returns a new cache.
 func newCache() *cache {
@@ -76,6 +81,9 @@ func (c *cache) parsePath(p string, t reflect.Type) ([]pathPart, error) {
 			}
 			if index64, err = strconv.ParseInt(keys[i], 10, 0); err != nil {
 				return nil, errInvalidPath
+			}
+			if index64 > maxParserIndex {
+				return nil, errIndexTooLarge
 			}
 			parts = append(parts, pathPart{
 				path:  path,
