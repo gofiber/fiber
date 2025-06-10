@@ -44,17 +44,17 @@ func New(config ...Config) fiber.Handler {
 func newEnvVar(cfg Config) *EnvVar {
 	vars := &EnvVar{Vars: make(map[string]string)}
 
-	if len(cfg.ExportVars) > 0 {
-		for key, defaultVal := range cfg.ExportVars {
-			vars.set(key, defaultVal)
-			if envVal, exists := os.LookupEnv(key); exists {
-				vars.set(key, envVal)
-			}
-		}
-	} else {
+	if len(cfg.ExportVars) == 0 {
 		// do not expose environment variables when no configuration
 		// is supplied to prevent accidental information disclosure
 		return vars
+	}
+
+	for key, defaultVal := range cfg.ExportVars {
+		vars.set(key, defaultVal)
+		if envVal, exists := os.LookupEnv(key); exists {
+			vars.set(key, envVal)
+		}
 	}
 
 	return vars
