@@ -1,6 +1,7 @@
 package session
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -84,6 +85,40 @@ func Test_Session_Middleware(t *testing.T) {
 			return c.SendStatus(fiber.StatusOK)
 		}
 		return c.SendStatus(fiber.StatusInternalServerError)
+	})
+
+	app.Post("/keys", func(c fiber.Ctx) error {
+		sess := FromContext(c)
+		if sess == nil {
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+		// get a value from the body
+		value := c.FormValue("keys")
+		for _, key := range strings.Split(value, ",") {
+			if key == "" {
+				continue
+			}
+			// Set each key in the session
+			sess.Set(key, fmt.Sprintf("value_%s", key))
+		}
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	app.Get("/keys", func(c fiber.Ctx) error {
+		sess := FromContext(c)
+		if sess == nil {
+			return c.SendStatus(fiber.StatusInternalServerError)
+		}
+		keys := sess.Keys()
+		if len(keys) == 0 {
+			return c.SendStatus(fiber.StatusNotFound)
+		}
+		// Keys may be of any type, so convert to string for display
+		strKeys := []string{}
+		for _, key := range keys {
+			strKeys = append(strKeys, fmt.Sprintf("%v", key))
+		}
+		return c.SendString("keys=" + strings.Join(strKeys, ","))
 	})
 
 	// Test GET, SET, DELETE, RESET, DESTROY by sending requests to the respective routes
@@ -207,6 +242,29 @@ func Test_Session_Middleware(t *testing.T) {
 	require.Len(t, newTokenParts, 2, "Expected Set-Cookie header to contain a token")
 	newToken = newTokenParts[1]
 	require.NotEqual(t, token, newToken)
+
+	token = newToken
+
+	// Test POST /keys to set multiple keys
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.SetRequestURI("/keys")
+	ctx.Request.Header.Set("Content-Type", "application/x-www-form-urlencoded") // Set the Content-Type
+	ctx.Request.SetBodyString("keys=key1,key2")
+	ctx.Request.Header.SetCookie("session_id", token)
+	h(ctx)
+	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+
+	// Test GET /keys to check if the session has the keys
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.SetRequestURI("/keys")
+	ctx.Request.Header.SetCookie("session_id", token)
+	h(ctx)
+	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
+	require.Equal(t, "keys=key1,key2", string(ctx.Response.Body()))
 }
 
 func Test_Session_NewWithStore(t *testing.T) {
