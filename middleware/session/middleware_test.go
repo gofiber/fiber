@@ -2,6 +2,7 @@ package session
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -94,12 +95,13 @@ func Test_Session_Middleware(t *testing.T) {
 		}
 		// get a value from the body
 		value := c.FormValue("keys")
-		for _, key := range strings.Split(value, ",") {
+		for _, rawKey := range strings.Split(value, ",") {
+			key := strings.TrimSpace(rawKey)
 			if key == "" {
 				continue
 			}
 			// Set each key in the session
-			sess.Set(key, fmt.Sprintf("value_%s", key))
+			sess.Set(key, "value_"+key)
 		}
 		return c.SendStatus(fiber.StatusOK)
 	})
@@ -264,7 +266,12 @@ func Test_Session_Middleware(t *testing.T) {
 	ctx.Request.Header.SetCookie("session_id", token)
 	h(ctx)
 	require.Equal(t, fiber.StatusOK, ctx.Response.StatusCode())
-	require.Equal(t, "keys=key1,key2", string(ctx.Response.Body()))
+	body := string(ctx.Response.Body())
+	require.True(t, strings.HasPrefix(body, "keys="))
+	parts = strings.Split(strings.TrimPrefix(body, "keys="), ",")
+	require.Len(t, parts, 2, "Expected two keys in the session")
+	sort.Strings(parts)
+	require.Equal(t, []string{"key1", "key2"}, parts)
 }
 
 func Test_Session_NewWithStore(t *testing.T) {
