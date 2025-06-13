@@ -45,7 +45,7 @@ func TestTimeout_Success(t *testing.T) {
 			return err
 		}
 		return c.SendString("OK")
-	}, 50*time.Millisecond))
+	}, Config{Timeout: 50 * time.Millisecond}))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/fast", nil)
 	resp, err := app.Test(req)
@@ -64,7 +64,7 @@ func TestTimeout_Exceeded(t *testing.T) {
 			return err
 		}
 		return c.SendString("Should never get here")
-	}, 100*time.Millisecond))
+	}, Config{Timeout: 100 * time.Millisecond}))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/slow", nil)
 	resp, err := app.Test(req)
@@ -85,7 +85,7 @@ func TestTimeout_CustomError(t *testing.T) {
 			return fmt.Errorf("wrapped: %w", err)
 		}
 		return c.SendString("Should never get here")
-	}, 100*time.Millisecond, errCustomTimeout))
+	}, Config{Timeout: 100 * time.Millisecond, Errors: []error{errCustomTimeout}}))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/custom", nil)
 	resp, err := app.Test(req)
@@ -102,7 +102,7 @@ func TestTimeout_UnmatchedError(t *testing.T) {
 
 	app.Get("/unmatched", New(func(_ fiber.Ctx) error {
 		return errUnrelated // Not in the custom error list
-	}, 100*time.Millisecond, errCustomTimeout))
+	}, Config{Timeout: 100 * time.Millisecond, Errors: []error{errCustomTimeout}}))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/unmatched", nil)
 	resp, err := app.Test(req)
@@ -121,10 +121,70 @@ func TestTimeout_ZeroDuration(t *testing.T) {
 		// Sleep 50ms, but there's no real 'deadline' since zero-timeout.
 		time.Sleep(50 * time.Millisecond)
 		return c.SendString("No timeout used")
-	}, 0))
+	}))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/zero", nil)
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req) should not fail")
 	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Expected 200 OK with zero timeout")
+}
+
+// TestTimeout_SkipPath verifies that requests to specified paths bypass the timeout logic.
+func TestTimeout_SkipPath(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Get("/health", New(func(c fiber.Ctx) error {
+		time.Sleep(50 * time.Millisecond)
+		return c.SendString("ok")
+	}, Config{Timeout: 10 * time.Millisecond, SkipPaths: []string{"/health"}}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/health", nil)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Expected 200 OK for skipped path")
+}
+
+// TestTimeout_PerRoute ensures that per-route timeouts override the default.
+func TestTimeout_PerRoute(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Get("/report", New(func(c fiber.Ctx) error {
+		if err := sleepWithContext(c, 40*time.Millisecond, context.DeadlineExceeded); err != nil {
+			return err
+		}
+		return c.SendString("done")
+	}, Config{
+		Timeout: 10 * time.Millisecond,
+		Routes:  map[string]time.Duration{"/report": 100 * time.Millisecond},
+	}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/report", nil)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Expected 200 OK with route-specific timeout")
+}
+
+// TestTimeout_CustomHandler checks that a custom timeout handler is executed.
+func TestTimeout_CustomHandler(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Get("/custom-handler", New(func(c fiber.Ctx) error {
+		if err := sleepWithContext(c, 100*time.Millisecond, context.DeadlineExceeded); err != nil {
+			return err
+		}
+		return c.SendString("should not reach")
+	}, Config{
+		Timeout: 20 * time.Millisecond,
+		OnTimeout: func(c fiber.Ctx) error {
+			return c.Status(408).JSON(fiber.Map{"error": "timeout"})
+		},
+	}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/custom-handler", nil)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
 }
