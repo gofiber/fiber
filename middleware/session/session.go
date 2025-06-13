@@ -325,7 +325,7 @@ func (s *Session) saveSession() error {
 // Keys retrieves all keys in the current session.
 //
 // Returns:
-//   - []string: A slice of all keys in the session.
+//   - []any: A slice of all keys in the session.
 //
 // Usage:
 //
