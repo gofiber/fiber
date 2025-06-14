@@ -188,3 +188,28 @@ func TestTimeout_CustomHandler(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
 }
+
+// TestTimeout_SkipPathAndRoute ensures that a path listed in SkipPaths ignores
+// any route-specific timeout value.
+func TestTimeout_SkipPathAndRoute(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Get("/mixed", New(func(c fiber.Ctx) error {
+		// Sleep longer than the default timeout. Because the path is in
+		// SkipPaths, the request should still succeed.
+		if err := sleepWithContext(c, 150*time.Millisecond, context.DeadlineExceeded); err != nil {
+			return err
+		}
+		return c.SendString("done")
+	}, Config{
+		Timeout:   20 * time.Millisecond,
+		SkipPaths: []string{"/mixed"},
+		Routes:    map[string]time.Duration{"/mixed": 200 * time.Millisecond},
+	}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/mixed", nil)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Expected 200 OK when path is skipped even with route-specific timeout")
+}

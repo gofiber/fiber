@@ -1239,7 +1239,7 @@ For more details on these changes and migration instructions, check the [Session
 
 ### Timeout
 
-The timeout middleware is now fully configurable. A new `Config` struct allows per-route timeouts, path exclusions, and custom timeout handlers while retaining backward compatibility with the previous API. Existing code will continue to work without modification, but you can now fine-tune timeout behavior as needed.
+The timeout middleware is now fully configurable. A new `Config` struct enables per-route timeouts, path exclusions, and custom timeout handlers. The `New` function now accepts a `Config` value instead of a duration, so existing code must be updated accordingly.
 
 ## 🔌 Addons
 
