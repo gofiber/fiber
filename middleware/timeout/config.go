@@ -52,6 +52,9 @@ func configDefault(config ...Config) Config {
 
 	cfg := config[0]
 
+	if cfg.Timeout < 0 {
+		cfg.Timeout = ConfigDefault.Timeout
+	}
 	if cfg.SkipPaths == nil {
 		cfg.SkipPaths = ConfigDefault.SkipPaths
 	}
