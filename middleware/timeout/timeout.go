@@ -14,7 +14,7 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
 
 	// Pre-build skip path map for faster lookups.
-	skip := map[string]struct{}{}
+	skip := make(map[string]struct{}, len(cfg.SkipPaths))
 	for _, p := range cfg.SkipPaths {
 		skip[p] = struct{}{}
 	}
@@ -55,7 +55,7 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 // runHandler executes the handler and handles timeout-like errors.
 func runHandler(c fiber.Ctx, h fiber.Handler, cfg Config) error {
 	err := h(c)
-	if err != nil && (errors.Is(err, context.DeadlineExceeded) || isCustomError(err, cfg.Errors)) {
+	if err != nil && (errors.Is(err, context.DeadlineExceeded) || (len(cfg.Errors) > 0 && isCustomError(err, cfg.Errors))) {
 		if cfg.OnTimeout != nil {
 			return cfg.OnTimeout(c)
 		}
