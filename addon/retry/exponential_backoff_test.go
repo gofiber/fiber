@@ -107,7 +107,7 @@ func Test_ExponentialBackoff_Next(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			for i := 0; i < tt.expBackoff.MaxRetryCount; i++ {
+			for i := range tt.expBackoff.MaxRetryCount {
 				next := tt.expBackoff.next()
 				if next < tt.expNextTimeIntervals[i] || next > tt.expNextTimeIntervals[i]+1*time.Second {
 					t.Errorf("wrong next time:\n"+
