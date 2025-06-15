@@ -231,9 +231,9 @@ func do(app *fiber.App, req *http.Request) (*http.Response, string) {
 		panic(err)
 	}
 	body, err := io.ReadAll(resp.Body)
-	if err != nil {  
-		panic(err)  
-	} 
+	if err != nil {
+		panic(err)
+	}
 	return resp, string(body)
 }
 
@@ -242,11 +242,11 @@ func Test_New_NextSkip(t *testing.T) {
 	app := fiber.New()
 	var count int
 
-	app.Use(New(Config{Next: func(c fiber.Ctx) bool { return true }}))
+	app.Use(New(Config{Next: func(_ fiber.Ctx) bool { return true }}))
 
 	app.Post("/", func(c fiber.Ctx) error {
 		count++
-		return c.SendString(fmt.Sprintf("%d", count))
+		return c.SendString(strconv.Itoa(count))
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/", nil)

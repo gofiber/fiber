@@ -61,4 +61,4 @@ func (s *stubStorage) Reset() error {
 	return nil
 }
 
-func (s *stubStorage) Close() error { return nil }
+func (_ *stubStorage) Close() error { return nil }
