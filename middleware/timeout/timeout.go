@@ -41,7 +41,7 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 		tCtx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 
-		err := runHandler(tctx, h, cfg)
+		err := runHandler(ctx, h, cfg)
 		if errors.Is(tCtx.Err(), context.DeadlineExceeded) {
 			if cfg.OnTimeout != nil {
 				return cfg.OnTimeout(ctx)
