@@ -129,6 +129,24 @@ func TestTimeout_ZeroDuration(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Expected 200 OK with zero timeout")
 }
 
+// TestTimeout_NegativeDuration tests the edge case where the timeout is set to zero.
+// Usually this means the request can never exceed a 'deadline' – effectively no timeout.
+func TestTimeout_NegativeDuration(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Get("/negative", New(func(c fiber.Ctx) error {
+		// Sleep 50ms, but there's no real 'deadline' since zero-timeout.
+		time.Sleep(50 * time.Millisecond)
+		return c.SendString("No timeout used")
+	}, Config{Timeout: -100 * time.Millisecond))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/negative", nil)
+	resp, err := app.Test(req)
+	require.NoError(t, err, "app.Test(req) should not fail")
+	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Expected 200 OK with zero timeout")
+}
+
 // TestTimeout_SkipPath verifies that requests to specified paths bypass the timeout logic.
 func TestTimeout_SkipPath(t *testing.T) {
 	t.Parallel()
