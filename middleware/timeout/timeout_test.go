@@ -139,7 +139,7 @@ func TestTimeout_NegativeDuration(t *testing.T) {
 		// Sleep 50ms, but there's no real 'deadline' since zero-timeout.
 		time.Sleep(50 * time.Millisecond)
 		return c.SendString("No timeout used")
-	}, Config{Timeout: -100 * time.Millisecond))
+	}, Config{Timeout: -100 * time.Millisecond}))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/negative", nil)
 	resp, err := app.Test(req)
