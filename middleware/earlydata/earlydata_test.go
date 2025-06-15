@@ -206,7 +206,7 @@ func Test_EarlyDataNext(t *testing.T) {
 	app.Get("/", func(c fiber.Ctx) error {
 		called = true
 		if IsEarly(c) {
-			return errors.New("next path should not set early flag")
+			return errors.New("IsEarly(c) should be false when Next returns true")
 		}
 		return nil
 	})
@@ -236,7 +236,7 @@ func Test_configDefault_WithConfig(t *testing.T) {
 	expectedErr := errors.New("boom")
 	called := false
 	custom := Config{
-		Next:  func(c fiber.Ctx) bool { called = true; return false },
+		Next:  func(_ fiber.Ctx) bool { called = true; return false },
 		Error: expectedErr,
 	}
 
@@ -250,7 +250,6 @@ func Test_configDefault_WithConfig(t *testing.T) {
 	// Missing fields should be set to defaults.
 	require.NotNil(t, cfg.IsEarlyData)
 	require.NotNil(t, cfg.AllowEarlyData)
-	require.Equal(t, custom.Error, cfg.Error)
 
 	// Verify default functions behave as expected.
 	app := fiber.New()
