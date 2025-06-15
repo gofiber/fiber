@@ -12,26 +12,26 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c fiber.Ctx) bool
 
-	// Timeout defines the default timeout duration for all routes.
-	// Optional. Default: 0 (no timeout)
-	Timeout time.Duration
-
 	// OnTimeout is called when a timeout occurs.
 	// Optional. Default: nil (return fiber.ErrRequestTimeout)
 	OnTimeout fiber.Handler
-
-	// SkipPaths defines request paths that should ignore the timeout.
-	// Optional. Default: nil
-	SkipPaths []string
 
 	// Routes allows specifying timeouts per path. If a path is present,
 	// its timeout overrides the default Timeout value.
 	// Optional. Default: nil
 	Routes map[string]time.Duration
 
+	// SkipPaths defines request paths that should ignore the timeout.
+	// Optional. Default: nil
+	SkipPaths []string
+
 	// Errors defines custom errors that are treated as timeouts.
 	// Optional. Default: nil
 	Errors []error
+
+	// Timeout defines the default timeout duration for all routes.
+	// Optional. Default: 0 (no timeout)
+	Timeout time.Duration
 }
 
 // ConfigDefault is the default configuration.
@@ -52,6 +52,9 @@ func configDefault(config ...Config) Config {
 
 	cfg := config[0]
 
+	if cfg.Timeout < 0 {
+		cfg.Timeout = ConfigDefault.Timeout
+	}
 	if cfg.SkipPaths == nil {
 		cfg.SkipPaths = ConfigDefault.SkipPaths
 	}
