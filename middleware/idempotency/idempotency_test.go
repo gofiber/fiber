@@ -19,6 +19,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const validKey = "00000000-0000-0000-0000-000000000000"
+
 // go test -run Test_Idempotency
 func Test_Idempotency(t *testing.T) {
 	t.Parallel()
@@ -171,10 +173,6 @@ func Benchmark_Idempotency(b *testing.B) {
 	})
 }
 
-// ---------- additional tests (moved from config_extra_test.go and idempotency_additional_test.go) ----------
-
-const validKey = "00000000-0000-0000-0000-000000000000"
-
 func Test_configDefault_defaults(t *testing.T) {
 	t.Parallel()
 
@@ -190,17 +188,17 @@ func Test_configDefault_defaults(t *testing.T) {
 	fctx := &fasthttp.RequestCtx{}
 	fctx.Request.Header.SetMethod(fiber.MethodGet)
 	ctx := app.AcquireCtx(fctx)
-	assert.True(t, cfg.Next(ctx))
+	require.True(t, cfg.Next(ctx))
 	app.ReleaseCtx(ctx)
 
 	fctx = &fasthttp.RequestCtx{}
 	fctx.Request.Header.SetMethod(fiber.MethodPost)
 	ctx = app.AcquireCtx(fctx)
-	assert.False(t, cfg.Next(ctx))
+	require.False(t, cfg.Next(ctx))
 	app.ReleaseCtx(ctx)
 
-	assert.NoError(t, cfg.KeyHeaderValidate(validKey))
-	assert.Error(t, cfg.KeyHeaderValidate("short"))
+	require.NoError(t, cfg.KeyHeaderValidate(validKey))
+	require.Error(t, cfg.KeyHeaderValidate("short"))
 }
 
 func Test_configDefault_override(t *testing.T) {
@@ -232,7 +230,10 @@ func do(app *fiber.App, req *http.Request) (*http.Response, string) {
 	if err != nil {
 		panic(err)
 	}
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {  
+		panic(err)  
+	} 
 	return resp, string(body)
 }
 
@@ -264,14 +265,14 @@ func Test_New_InvalidKey(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	app.Use(New())
-	app.Post("/", func(c fiber.Ctx) error { return nil })
+	app.Post("/", func(_ fiber.Ctx) error { return nil })
 
 	req := httptest.NewRequest(http.MethodPost, "/", nil)
 	req.Header.Set(ConfigDefault.KeyHeader, "bad")
 	resp, body := do(app, req)
 
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
-	assert.Contains(t, body, "invalid length")
+	require.Contains(t, body, "invalid length")
 }
 
 func Test_New_StorageGetError(t *testing.T) {
@@ -286,7 +287,7 @@ func Test_New_StorageGetError(t *testing.T) {
 	resp, body := do(app, req)
 
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
-	assert.Contains(t, body, "failed to write cached response at fastpath")
+	require.Contains(t, body, "failed to write cached response at fastpath")
 }
 
 func Test_New_UnmarshalError(t *testing.T) {
@@ -301,7 +302,7 @@ func Test_New_UnmarshalError(t *testing.T) {
 	resp, body := do(app, req)
 
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
-	assert.Contains(t, body, "failed to write cached response at fastpath")
+	require.Contains(t, body, "failed to write cached response at fastpath")
 }
 
 func Test_New_StoreRetrieve_FilterHeaders(t *testing.T) {
@@ -344,7 +345,7 @@ func Test_New_HandlerError(t *testing.T) {
 	app := fiber.New()
 	s := &stubStorage{}
 	app.Use(New(Config{Storage: s, Lock: &stubLock{}}))
-	app.Post("/", func(c fiber.Ctx) error { return errors.New("boom") })
+	app.Post("/", func(_ fiber.Ctx) error { return errors.New("boom") })
 
 	req := httptest.NewRequest(http.MethodPost, "/", nil)
 	req.Header.Set(ConfigDefault.KeyHeader, validKey)
@@ -370,7 +371,7 @@ func Test_New_LockError(t *testing.T) {
 	req.Header.Set(ConfigDefault.KeyHeader, validKey)
 	resp, body := do(app, req)
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
-	assert.Contains(t, body, "failed to lock")
+	require.Contains(t, body, "failed to lock")
 }
 
 func Test_New_StorageSetError(t *testing.T) {
@@ -384,7 +385,7 @@ func Test_New_StorageSetError(t *testing.T) {
 	req.Header.Set(ConfigDefault.KeyHeader, validKey)
 	resp, body := do(app, req)
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
-	assert.Contains(t, body, "failed to save response")
+	require.Contains(t, body, "failed to save response")
 }
 
 func Test_New_UnlockError(t *testing.T) {
@@ -413,5 +414,5 @@ func Test_New_SecondPassReadError(t *testing.T) {
 	req.Header.Set(ConfigDefault.KeyHeader, validKey)
 	resp, body := do(app, req)
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
-	assert.Contains(t, body, "failed to write cached response while locked")
+	require.Contains(t, body, "failed to write cached response while locked")
 }

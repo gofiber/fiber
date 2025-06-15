@@ -1,6 +1,8 @@
 package idempotency
 
-import "time"
+import (
+	"time"
+)
 
 // stubLock implements Locker for testing purposes.
 type stubLock struct {
