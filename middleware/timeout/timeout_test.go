@@ -231,3 +231,41 @@ func TestTimeout_SkipPathAndRoute(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Expected 200 OK when path is skipped even with route-specific timeout")
 }
+
+// TestRunHandler_DefaultOnTimeout verifies that when the wrapped handler returns
+// context.DeadlineExceeded and no custom OnTimeout is provided, runHandler
+// returns fiber.ErrRequestTimeout.
+func TestRunHandler_DefaultOnTimeout(t *testing.T) {
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	err := runHandler(ctx, func(c fiber.Ctx) error {
+		return context.DeadlineExceeded
+	}, Config{})
+	require.Equal(t, fiber.ErrRequestTimeout, err)
+}
+
+// TestRunHandler_CustomOnTimeout verifies that if a custom error from cfg.Errors
+// is returned and a custom OnTimeout handler is defined, it is executed.
+func TestRunHandler_CustomOnTimeout(t *testing.T) {
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	called := false
+	cfg := Config{
+		Errors: []error{errCustomTimeout},
+		OnTimeout: func(c fiber.Ctx) error {
+			called = true
+			return errors.New("handled")
+		},
+	}
+
+	err := runHandler(ctx, func(c fiber.Ctx) error {
+		return fmt.Errorf("wrap: %w", errCustomTimeout)
+	}, cfg)
+
+	require.True(t, called, "expected OnTimeout to be called")
+	require.EqualError(t, err, "handled")
+}
