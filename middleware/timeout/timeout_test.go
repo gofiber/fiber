@@ -241,7 +241,7 @@ func TestRunHandler_DefaultOnTimeout(t *testing.T) {
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
 
-	err := runHandler(ctx, func(c fiber.Ctx) error {
+	err := runHandler(ctx, func(_ fiber.Ctx) error {
 		return context.DeadlineExceeded
 	}, Config{})
 	require.Equal(t, fiber.ErrRequestTimeout, err)
@@ -257,13 +257,13 @@ func TestRunHandler_CustomOnTimeout(t *testing.T) {
 	called := false
 	cfg := Config{
 		Errors: []error{errCustomTimeout},
-		OnTimeout: func(c fiber.Ctx) error {
+		OnTimeout: func(_ fiber.Ctx) error {
 			called = true
 			return errors.New("handled")
 		},
 	}
 
-	err := runHandler(ctx, func(c fiber.Ctx) error {
+	err := runHandler(ctx, func(_ fiber.Ctx) error {
 		return fmt.Errorf("wrap: %w", errCustomTimeout)
 	}, cfg)
 
