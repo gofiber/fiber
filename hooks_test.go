@@ -1,10 +1,12 @@
 package fiber
 
 import (
+	"bytes"
 	"errors"
 	"testing"
 	"time"
 
+	"github.com/gofiber/fiber/v3/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/bytebufferpool"
@@ -340,4 +342,123 @@ func Test_Hook_OnMount(t *testing.T) {
 	})
 
 	app.Use("/sub", subApp)
+}
+
+func Test_executeOnRouteHooks_ErrorWithMount(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.mountFields.mountPath = "/api"
+
+	var received string
+	app.Hooks().OnRoute(func(r Route) error {
+		received = r.Path
+		return errors.New("hook error")
+	})
+
+	err := app.hooks.executeOnRouteHooks(Route{Path: "/foo", path: "/foo"})
+	require.Equal(t, "/api/foo", received)
+	require.EqualError(t, err, "hook error")
+}
+
+func Test_executeOnNameHooks_ErrorWithMount(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.mountFields.mountPath = "/api"
+
+	var received string
+	app.Hooks().OnName(func(r Route) error {
+		received = r.Path
+		return errors.New("name error")
+	})
+
+	err := app.hooks.executeOnNameHooks(Route{Path: "/bar", path: "/bar"})
+	require.Equal(t, "/api/bar", received)
+	require.EqualError(t, err, "name error")
+}
+
+func Test_executeOnGroupHooks_ErrorWithMount(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.mountFields.mountPath = "/api"
+
+	var prefix string
+	app.Hooks().OnGroup(func(g Group) error {
+		prefix = g.Prefix
+		return errors.New("group error")
+	})
+
+	err := app.hooks.executeOnGroupHooks(Group{Prefix: "/grp"})
+	require.Equal(t, "/api/grp", prefix)
+	require.EqualError(t, err, "group error")
+}
+
+func Test_executeOnGroupNameHooks_ErrorWithMount(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.mountFields.mountPath = "/api"
+
+	var prefix string
+	app.Hooks().OnGroupName(func(g Group) error {
+		prefix = g.Prefix
+		return errors.New("group name error")
+	})
+
+	err := app.hooks.executeOnGroupNameHooks(Group{Prefix: "/grp"})
+	require.Equal(t, "/api/grp", prefix)
+	require.EqualError(t, err, "group name error")
+}
+
+func Test_executeOnListenHooks_Error(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	app.Hooks().OnListen(func(_ ListenData) error {
+		return errors.New("listen error")
+	})
+
+	err := app.hooks.executeOnListenHooks(ListenData{Host: "127.0.0.1", Port: "80"})
+	require.EqualError(t, err, "listen error")
+}
+
+func Test_executeOnPreShutdownHooks_Error(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	app.Hooks().OnPreShutdown(func() error {
+		return errors.New("pre error")
+	})
+
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	app.hooks.executeOnPreShutdownHooks()
+	require.NotZero(t, buf.Len())
+}
+
+func Test_executeOnForkHooks_Error(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	app.Hooks().OnFork(func(pid int) error {
+		require.Equal(t, 1, pid)
+		return errors.New("fork error")
+	})
+
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	app.hooks.executeOnForkHooks(1)
+	require.NotZero(t, buf.Len())
+}
+
+func Test_executeOnMountHooks_Error(t *testing.T) {
+	t.Parallel()
+	app := New()
+	parent := New()
+
+	app.Hooks().OnMount(func(a *App) error {
+		require.Equal(t, parent, a)
+		return errors.New("mount error")
+	})
+
+	err := app.hooks.executeOnMountHooks(parent)
+	require.EqualError(t, err, "mount error")
 }
