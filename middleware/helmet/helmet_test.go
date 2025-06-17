@@ -222,16 +222,15 @@ func Test_HSTSHeaders(t *testing.T) {
 
 	require.Equal(t, "max-age=60; includeSubDomains", string(ctx.Response.Header.Peek(fiber.HeaderStrictTransportSecurity)))
 
-	// Instead of reusing and resetting `ctx`, use a fresh RequestCtx for the HTTP case
-	ctxHTTP := &fasthttp.RequestCtx{}
-	ctxHTTP.Request.SetRequestURI("http://example.com/")
-	ctxHTTP.Request.Header.SetMethod(fiber.MethodGet)
-
-	handler(ctxHTTP)
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.SetRequestURI("/")
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.Header.SetProtocol("http")
+	handler(ctx)
 
 	require.Equal(t, "", string(ctxHTTP.Response.Header.Peek(fiber.HeaderStrictTransportSecurity)))
 	handler(ctx)
-
 	require.Equal(t, "", string(ctx.Response.Header.Peek(fiber.HeaderStrictTransportSecurity)))
 }
 
