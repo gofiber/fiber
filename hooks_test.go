@@ -12,6 +12,8 @@ import (
 	"github.com/valyala/bytebufferpool"
 )
 
+const testMountPath = "/api"
+
 func testSimpleHandler(c Ctx) error {
 	return c.SendString("simple")
 }
@@ -347,7 +349,7 @@ func Test_Hook_OnMount(t *testing.T) {
 func Test_executeOnRouteHooks_ErrorWithMount(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.mountFields.mountPath = "/api"
+	app.mountFields.mountPath = testMountPath
 
 	var received string
 	app.Hooks().OnRoute(func(r Route) error {
@@ -356,14 +358,14 @@ func Test_executeOnRouteHooks_ErrorWithMount(t *testing.T) {
 	})
 
 	err := app.hooks.executeOnRouteHooks(Route{Path: "/foo", path: "/foo"})
-	require.Equal(t, "/api/foo", received)
+	require.Equal(t, testMountPath+"/foo", received)
 	require.EqualError(t, err, "hook error")
 }
 
 func Test_executeOnNameHooks_ErrorWithMount(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.mountFields.mountPath = "/api"
+	app.mountFields.mountPath = testMountPath
 
 	var received string
 	app.Hooks().OnName(func(r Route) error {
@@ -372,14 +374,14 @@ func Test_executeOnNameHooks_ErrorWithMount(t *testing.T) {
 	})
 
 	err := app.hooks.executeOnNameHooks(Route{Path: "/bar", path: "/bar"})
-	require.Equal(t, "/api/bar", received)
+	require.Equal(t, testMountPath+"/bar", received)
 	require.EqualError(t, err, "name error")
 }
 
 func Test_executeOnGroupHooks_ErrorWithMount(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.mountFields.mountPath = "/api"
+	app.mountFields.mountPath = testMountPath
 
 	var prefix string
 	app.Hooks().OnGroup(func(g Group) error {
@@ -388,14 +390,14 @@ func Test_executeOnGroupHooks_ErrorWithMount(t *testing.T) {
 	})
 
 	err := app.hooks.executeOnGroupHooks(Group{Prefix: "/grp"})
-	require.Equal(t, "/api/grp", prefix)
+	require.Equal(t, testMountPath+"/grp", prefix)
 	require.EqualError(t, err, "group error")
 }
 
 func Test_executeOnGroupNameHooks_ErrorWithMount(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.mountFields.mountPath = "/api"
+	app.mountFields.mountPath = testMountPath
 
 	var prefix string
 	app.Hooks().OnGroupName(func(g Group) error {
@@ -404,7 +406,7 @@ func Test_executeOnGroupNameHooks_ErrorWithMount(t *testing.T) {
 	})
 
 	err := app.hooks.executeOnGroupNameHooks(Group{Prefix: "/grp"})
-	require.Equal(t, "/api/grp", prefix)
+	require.Equal(t, testMountPath+"/grp", prefix)
 	require.EqualError(t, err, "group name error")
 }
 
