@@ -228,9 +228,6 @@ func Test_HSTSHeaders(t *testing.T) {
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
 	ctx.Request.Header.SetProtocol("http")
 	handler(ctx)
-
-	require.Equal(t, "", string(ctxHTTP.Response.Header.Peek(fiber.HeaderStrictTransportSecurity)))
-	handler(ctx)
 	require.Equal(t, "", string(ctx.Response.Header.Peek(fiber.HeaderStrictTransportSecurity)))
 }
 
