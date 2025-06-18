@@ -143,4 +143,4 @@ func Test_ExponentialBackoff_NextRandFailure(t *testing.T) {
 
 type failingReader struct{}
 
-func (failingReader) Read(p []byte) (int, error) { return 0, errors.New("fail") }
+func (failingReader) Read(_ []byte) (int, error) { return 0, errors.New("fail") }
