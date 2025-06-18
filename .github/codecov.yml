@@ -1,0 +1,18 @@
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 0.5%
+        base: auto
+    patch:
+      default:
+        target: auto
+        threshold: 0.5%
+        base: auto
+ignore:
+  - "**/*_msgp.go"
+  - "**/*_msgp_test.go"
+  - "**/*_gen.go"
+  - "internal/**"
+  - "./docs/"
