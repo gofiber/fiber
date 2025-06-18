@@ -122,10 +122,10 @@ func Test_ExponentialBackoff_Next(t *testing.T) {
 }
 
 func Test_ExponentialBackoff_NextRandFailure(t *testing.T) {
-    // Backup original reader and restore at the end
-    original := rand.Reader
-    defer func() { rand.Reader = original }()
-    rand.Reader = failingReader{}
+	// Backup original reader and restore at the end
+	original := rand.Reader
+	defer func() { rand.Reader = original }()
+	rand.Reader = failingReader{}
 
 	expBackoff := &ExponentialBackoff{
 		InitialInterval: 1 * time.Second,
