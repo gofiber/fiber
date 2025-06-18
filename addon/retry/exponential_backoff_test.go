@@ -1,6 +1,7 @@
 package retry
 
 import (
+	"crypto/rand"
 	"errors"
 	"testing"
 	"time"
@@ -119,3 +120,27 @@ func Test_ExponentialBackoff_Next(t *testing.T) {
 		})
 	}
 }
+
+func Test_ExponentialBackoff_NextRandFailure(t *testing.T) {
+	t.Parallel()
+	// Backup original reader and restore at the end
+	original := rand.Reader
+	defer func() { rand.Reader = original }()
+	rand.Reader = failingReader{}
+
+	expBackoff := &ExponentialBackoff{
+		InitialInterval: 1 * time.Second,
+		MaxBackoffTime:  10 * time.Second,
+		Multiplier:      2,
+		MaxRetryCount:   3,
+		currentInterval: 1 * time.Second,
+	}
+	next := expBackoff.next()
+	require.Equal(t, expBackoff.MaxBackoffTime, next)
+	// currentInterval should not change when random fails
+	require.Equal(t, 1*time.Second, expBackoff.currentInterval)
+}
+
+type failingReader struct{}
+
+func (failingReader) Read(p []byte) (int, error) { return 0, errors.New("fail") }
