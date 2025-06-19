@@ -32,8 +32,6 @@ func Test_GetAndPutToThePool(t *testing.T) {
 }
 
 func Test_Binders_ErrorPaths(t *testing.T) {
-	t.Parallel()
-
 	t.Run("query binder invalid key", func(t *testing.T) {
 		b := &QueryBinding{}
 		req := fasthttp.AcquireRequest()
@@ -98,8 +96,8 @@ func Test_parse_function_maps(t *testing.T) {
 }
 
 func Test_SetParserDecoder_UnknownKeys(t *testing.T) {
-	t.Parallel()
 	SetParserDecoder(ParserConfig{IgnoreUnknownKeys: false})
+	defer SetParserDecoder(ParserConfig{IgnoreUnknownKeys: true, ZeroEmpty: true})
 	type user struct {
 		Name string `query:"name"`
 	}
@@ -110,8 +108,6 @@ func Test_SetParserDecoder_UnknownKeys(t *testing.T) {
 }
 
 func Test_SetParserDecoder_CustomConverter(t *testing.T) {
-	t.Parallel()
-
 	type myInt int
 	conv := func(s string) reflect.Value {
 		v, _ := strconv.Atoi(s)
