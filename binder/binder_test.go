@@ -110,7 +110,7 @@ func Test_SetParserDecoder_UnknownKeys(t *testing.T) {
 func Test_SetParserDecoder_CustomConverter(t *testing.T) {
 	type myInt int
 	conv := func(s string) reflect.Value {
-		v, _ := strconv.Atoi(s)
+		v, _ := strconv.Atoi(s) //nolint:errcheck // not needed
 		mi := myInt(v)
 		return reflect.ValueOf(mi)
 	}
