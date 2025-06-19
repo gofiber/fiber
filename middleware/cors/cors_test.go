@@ -267,7 +267,6 @@ func Test_CORS_Wildcard_AllowCredentials_Panic(t *testing.T) {
 // Test that a warning is logged when AllowOrigins allows all origins and
 // AllowOriginsFunc is also provided.
 func Test_CORS_Warn_AllowAllOrigins_WithFunc(t *testing.T) {
-
 	var buf bytes.Buffer
 	log.SetOutput(&buf)
 	t.Cleanup(func() { log.SetOutput(os.Stderr) })
