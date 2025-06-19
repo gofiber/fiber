@@ -11,8 +11,14 @@ coverage:
         threshold: 0.5%
         base: auto
 ignore:
-  - "**/*_msgp.go"
+  # Ignore generated root files
+  - "*_msgp.go"
+  - "*_msgp_test.go"
+  - "*_gen.go"
+  # Ignore generated files below root
+  - '**/*_msgp.go'
   - "**/*_msgp_test.go"
   - "**/*_gen.go"
+  # Ignore internal and docs
   - "internal/**"
-  - "./docs/"
+  - "docs/**"
