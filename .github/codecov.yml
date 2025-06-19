@@ -16,7 +16,7 @@ ignore:
   - "*_msgp_test.go"
   - "*_gen.go"
   # Ignore generated files below root
-  - '**/*_msgp.go'
+  - "**/*_msgp.go"
   - "**/*_msgp_test.go"
   - "**/*_gen.go"
   # Ignore internal and docs
