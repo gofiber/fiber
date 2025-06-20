@@ -1,7 +1,6 @@
 package cors
 
 import (
-	"slices"
 	"strconv"
 	"strings"
 
@@ -83,8 +82,9 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		// Get originHeader header
-		originHeader := strings.ToLower(c.Get(fiber.HeaderOrigin))
+		// Get origin header preserving the original case for the response
+		originHeaderRaw := c.Get(fiber.HeaderOrigin)
+		originHeader := strings.ToLower(originHeaderRaw)
 
 		// If the request does not have Origin header, the request is outside the scope of CORS
 		if originHeader == "" {
@@ -115,15 +115,18 @@ func New(config ...Config) fiber.Handler {
 			allowOrigin = "*"
 		} else {
 			// Check if the origin is in the list of allowed origins
-			if slices.Contains(allowOrigins, originHeader) {
-				allowOrigin = originHeader
+			for _, origin := range allowOrigins {
+				if origin == originHeader {
+					allowOrigin = originHeaderRaw
+					break
+				}
 			}
 
 			// Check if the origin is in the list of allowed subdomains
 			if allowOrigin == "" {
 				for _, sOrigin := range allowSOrigins {
 					if sOrigin.match(originHeader) {
-						allowOrigin = originHeader
+						allowOrigin = originHeaderRaw
 						break
 					}
 				}
@@ -133,8 +136,8 @@ func New(config ...Config) fiber.Handler {
 		// Run AllowOriginsFunc if the logic for
 		// handling the value in 'AllowOrigins' does
 		// not result in allowOrigin being set.
-		if allowOrigin == "" && cfg.AllowOriginsFunc != nil && cfg.AllowOriginsFunc(originHeader) {
-			allowOrigin = originHeader
+		if allowOrigin == "" && cfg.AllowOriginsFunc != nil && cfg.AllowOriginsFunc(originHeaderRaw) {
+			allowOrigin = originHeaderRaw
 		}
 
 		// Simple request
@@ -144,7 +147,7 @@ func New(config ...Config) fiber.Handler {
 				// See https://fetch.spec.whatwg.org/#cors-protocol-and-http-caches
 				c.Vary(fiber.HeaderOrigin)
 			}
-			setSimpleHeaders(c, allowOrigin, maxAge, cfg)
+			setSimpleHeaders(c, allowOrigin, cfg)
 			return c.Next()
 		}
 
@@ -162,7 +165,7 @@ func New(config ...Config) fiber.Handler {
 		}
 		c.Vary(fiber.HeaderOrigin)
 
-		setSimpleHeaders(c, allowOrigin, maxAge, cfg)
+		setPreflightHeaders(c, allowOrigin, maxAge, cfg)
 
 		// Set Preflight headers
 		if len(cfg.AllowMethods) > 0 {
@@ -183,7 +186,7 @@ func New(config ...Config) fiber.Handler {
 }
 
 // Function to set Simple CORS headers
-func setSimpleHeaders(c fiber.Ctx, allowOrigin, maxAge string, cfg Config) {
+func setSimpleHeaders(c fiber.Ctx, allowOrigin string, cfg Config) {
 	if cfg.AllowCredentials {
 		// When AllowCredentials is true, set the Access-Control-Allow-Origin to the specific origin instead of '*'
 		if allowOrigin == "*" {
@@ -198,15 +201,20 @@ func setSimpleHeaders(c fiber.Ctx, allowOrigin, maxAge string, cfg Config) {
 		c.Set(fiber.HeaderAccessControlAllowOrigin, allowOrigin)
 	}
 
+	// Set Expose-Headers if not empty
+	if len(cfg.ExposeHeaders) > 0 {
+		c.Set(fiber.HeaderAccessControlExposeHeaders, strings.Join(cfg.ExposeHeaders, ", "))
+	}
+}
+
+// Function to set Preflight CORS headers
+func setPreflightHeaders(c fiber.Ctx, allowOrigin, maxAge string, cfg Config) {
+	setSimpleHeaders(c, allowOrigin, cfg)
+
 	// Set MaxAge if set
 	if cfg.MaxAge > 0 {
 		c.Set(fiber.HeaderAccessControlMaxAge, maxAge)
 	} else if cfg.MaxAge < 0 {
 		c.Set(fiber.HeaderAccessControlMaxAge, "0")
-	}
-
-	// Set Expose-Headers if not empty
-	if len(cfg.ExposeHeaders) > 0 {
-		c.Set(fiber.HeaderAccessControlExposeHeaders, strings.Join(cfg.ExposeHeaders, ", "))
 	}
 }
