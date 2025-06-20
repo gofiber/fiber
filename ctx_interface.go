@@ -42,21 +42,9 @@ func NewDefaultCtx(app *App) *DefaultCtx {
 	return ctx
 }
 
-func (app *App) newCtx() Ctx {
-	var c Ctx
-
-	if app.newCtxFunc != nil {
-		c = app.newCtxFunc(app)
-	} else {
-		c = NewDefaultCtx(app)
-	}
-
-	return c
-}
-
 // AcquireCtx retrieves a new Ctx from the pool.
-func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) Ctx {
-	ctx, ok := app.pool.Get().(Ctx)
+func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) CustomCtx {
+	ctx, ok := app.pool.Get().(CustomCtx)
 
 	if !ok {
 		panic(errors.New("failed to type-assert to Ctx"))
@@ -67,7 +55,7 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) Ctx {
 }
 
 // ReleaseCtx releases the ctx back into the pool.
-func (app *App) ReleaseCtx(c Ctx) {
+func (app *App) ReleaseCtx(c CustomCtx) {
 	c.release()
 	app.pool.Put(c)
 }

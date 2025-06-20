@@ -532,7 +532,10 @@ func New(config ...Config) *App {
 	// Create Ctx pool
 	app.pool = sync.Pool{
 		New: func() any {
-			return app.newCtx()
+			if app.newCtxFunc != nil {
+				return app.newCtxFunc(app)
+			}
+			return NewDefaultCtx(app)
 		},
 	}
 
@@ -623,6 +626,15 @@ func New(config ...Config) *App {
 	return app
 }
 
+// NewWithCustomCtx creates a new Fiber instance and applies the
+// provided function to generate a custom context type. It mirrors the behavior
+// of calling `New()` followed by `app.setCtxFunc(fn)`.
+func NewWithCustomCtx(newCtxFunc func(app *App) CustomCtx, config ...Config) *App {
+	app := New(config...)
+	app.setCtxFunc(newCtxFunc)
+	return app
+}
+
 // Adds an ip address to TrustProxyConfig.ranges or TrustProxyConfig.ips based on whether it is an IP range or not
 func (app *App) handleTrustedProxy(ipAddress string) {
 	if strings.Contains(ipAddress, "/") {
@@ -642,13 +654,14 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 	}
 }
 
-// NewCtxFunc allows to customize ctx methods as we want.
-// Note: It doesn't allow adding new methods, only customizing exist methods.
-func (app *App) NewCtxFunc(function func(app *App) CustomCtx) {
+// setCtxFunc applies the given context factory to the app.
+// It is used internally by NewWithCustomCtx. It doesn't allow adding new methods,
+// only customizing existing ones.
+func (app *App) setCtxFunc(function func(app *App) CustomCtx) {
 	app.newCtxFunc = function
 
 	if app.server != nil {
-		app.server.Handler = app.customRequestHandler
+		app.server.Handler = app.requestHandler
 	}
 }
 
@@ -935,11 +948,7 @@ func (app *App) Config() Config {
 func (app *App) Handler() fasthttp.RequestHandler { //revive:disable-line:confusing-naming // Having both a Handler() (uppercase) and a handler() (lowercase) is fine. TODO: Use nolint:revive directive instead. See https://github.com/golangci/golangci-lint/issues/3476
 	// prepare the server for the start
 	app.startupProcess()
-
-	if app.newCtxFunc != nil {
-		return app.customRequestHandler
-	}
-	return app.defaultRequestHandler
+	return app.requestHandler
 }
 
 // Stack returns the raw router stack.
@@ -1150,11 +1159,7 @@ func (app *App) init() *App {
 	}
 
 	// fasthttp server settings
-	if app.newCtxFunc != nil {
-		app.server.Handler = app.customRequestHandler
-	} else {
-		app.server.Handler = app.defaultRequestHandler
-	}
+	app.server.Handler = app.requestHandler
 	app.server.Name = app.config.ServerHeader
 	app.server.Concurrency = app.config.Concurrency
 	app.server.NoDefaultDate = app.config.DisableDefaultDate
