@@ -5,9 +5,12 @@
 package fiber
 
 import (
+	"math"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
@@ -138,11 +141,10 @@ func Benchmark_Utils_GetOffer(b *testing.B) {
 	}
 
 	b.ReportAllocs()
-	b.ResetTimer()
 	for _, tc := range testCases {
 		accept := []byte(tc.accept)
 		b.Run(tc.description, func(b *testing.B) {
-			for n := 0; n < b.N; n++ {
+			for b.Loop() {
 				getOffer(accept, acceptsOfferType, tc.offers...)
 			}
 		})
@@ -207,8 +209,7 @@ func Benchmark_Utils_ParamsMatch(b *testing.B) {
 		"param": []byte("foo"),
 	}
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		match = paramsMatch(specParams, `;param=foo; apple=orange`)
 	}
 	require.True(b, match)
@@ -341,8 +342,7 @@ func Benchmark_Utils_GetSplicedStrList(b *testing.B) {
 	result := destination
 	const input = `deflate, gzip,br,brotli,zstd`
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		result = getSplicedStrList(input, destination)
 	}
 	require.Equal(b, []string{"deflate", "gzip", "br", "brotli", "zstd"}, result)
@@ -385,8 +385,7 @@ func Test_Utils_SortAcceptedTypes(t *testing.T) {
 func Benchmark_Utils_SortAcceptedTypes_Sorted(b *testing.B) {
 	acceptedTypes := make([]acceptedType, 3)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		acceptedTypes[0] = acceptedType{spec: "text/html", quality: 1, specificity: 1, order: 0}
 		acceptedTypes[1] = acceptedType{spec: "text/*", quality: 0.5, specificity: 1, order: 1}
 		acceptedTypes[2] = acceptedType{spec: "*/*", quality: 0.1, specificity: 1, order: 2}
@@ -401,8 +400,7 @@ func Benchmark_Utils_SortAcceptedTypes_Sorted(b *testing.B) {
 func Benchmark_Utils_SortAcceptedTypes_Unsorted(b *testing.B) {
 	acceptedTypes := make([]acceptedType, 11)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		acceptedTypes[0] = acceptedType{spec: "text/html", quality: 1, specificity: 3, order: 0}
 		acceptedTypes[1] = acceptedType{spec: "text/*", quality: 0.5, specificity: 2, order: 1}
 		acceptedTypes[2] = acceptedType{spec: "*/*", quality: 0.1, specificity: 1, order: 2}
@@ -484,8 +482,7 @@ func Test_Utils_getGroupPath(t *testing.T) {
 func Benchmark_Utils_getGroupPath(b *testing.B) {
 	var res string
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		_ = getGroupPath("/v1/long/path/john/doe", "/why/this/name/is/so/awesome")
 		_ = getGroupPath("/v1", "/")
 		_ = getGroupPath("/v1", "/api")
@@ -498,8 +495,7 @@ func Benchmark_Utils_Unescape(b *testing.B) {
 	unescaped := ""
 	dst := make([]byte, 0)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		source := "/cr%C3%A9er"
 		pathBytes := utils.UnsafeBytes(source)
 		pathBytes = fasthttp.AppendUnquotedArg(dst[:0], pathBytes)
@@ -612,8 +608,7 @@ func Test_Utils_IsNoCache(t *testing.T) {
 func Benchmark_Utils_IsNoCache(b *testing.B) {
 	var ok bool
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = isNoCache("public")
 		_ = isNoCache("no-cache")
 		_ = isNoCache("public, no-cache, max-age=30")
@@ -631,9 +626,8 @@ func Benchmark_SlashRecognition(b *testing.B) {
 
 	b.Run("indexBytes", func(b *testing.B) {
 		b.ReportAllocs()
-		b.ResetTimer()
 		result = false
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			if strings.IndexByte(search, slashDelimiter) != -1 {
 				result = true
 			}
@@ -642,10 +636,9 @@ func Benchmark_SlashRecognition(b *testing.B) {
 	})
 	b.Run("forEach", func(b *testing.B) {
 		b.ReportAllocs()
-		b.ResetTimer()
 		result = false
 		c := int32(slashDelimiter)
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			for _, b := range search {
 				if b == c {
 					result = true
@@ -657,12 +650,668 @@ func Benchmark_SlashRecognition(b *testing.B) {
 	})
 	b.Run("strings.ContainsRune", func(b *testing.B) {
 		b.ReportAllocs()
-		b.ResetTimer()
 		result = false
 		c := int32(slashDelimiter)
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			result = strings.ContainsRune(search, c)
 		}
 		require.True(b, result)
 	})
+}
+
+type testGenericParseTypeIntCase struct {
+	value int64
+	bits  int
+}
+
+// go test -run Test_GenericParseTypeInts
+func Test_GenericParseTypeInts(t *testing.T) {
+	t.Parallel()
+	ints := []testGenericParseTypeIntCase{
+		{
+			value: 0,
+			bits:  8,
+		},
+		{
+			value: 1,
+			bits:  8,
+		},
+		{
+			value: 2,
+			bits:  8,
+		},
+		{
+			value: 3,
+			bits:  8,
+		},
+		{
+			value: 4,
+			bits:  8,
+		},
+		{
+			value: -1,
+			bits:  8,
+		},
+		{
+			value: math.MaxInt8,
+			bits:  8,
+		},
+		{
+			value: math.MinInt8,
+			bits:  8,
+		},
+		{
+			value: math.MaxInt16,
+			bits:  16,
+		},
+		{
+			value: math.MinInt16,
+			bits:  16,
+		},
+		{
+			value: math.MaxInt32,
+			bits:  32,
+		},
+		{
+			value: math.MinInt32,
+			bits:  32,
+		},
+		{
+			value: math.MaxInt64,
+			bits:  64,
+		},
+		{
+			value: math.MinInt64,
+			bits:  64,
+		},
+	}
+
+	testGenericTypeInt[int8](t, "test_genericParseTypeInt8s", ints)
+	testGenericTypeInt[int16](t, "test_genericParseTypeInt16s", ints)
+	testGenericTypeInt[int32](t, "test_genericParseTypeInt32s", ints)
+	testGenericTypeInt[int64](t, "test_genericParseTypeInt64s", ints)
+	testGenericTypeInt[int](t, "test_genericParseTypeInts", ints)
+}
+
+func testGenericTypeInt[V GenericTypeInteger](t *testing.T, name string, cases []testGenericParseTypeIntCase) {
+	t.Helper()
+	t.Run(name, func(t *testing.T) {
+		t.Parallel()
+		for _, test := range cases {
+			v, err := genericParseType[V](strconv.FormatInt(test.value, 10))
+			if test.bits <= int(unsafe.Sizeof(V(0)))*8 {
+				require.NoError(t, err)
+				require.Equal(t, V(test.value), v)
+			} else {
+				require.ErrorIs(t, err, strconv.ErrRange)
+			}
+		}
+		testGenericParseError[V](t)
+	})
+}
+
+type testGenericParseTypeUintCase struct {
+	value uint64
+	bits  int
+}
+
+// go test -run Test_GenericParseTypeUints
+func Test_GenericParseTypeUints(t *testing.T) {
+	t.Parallel()
+	uints := []testGenericParseTypeUintCase{
+		{
+			value: 0,
+			bits:  8,
+		},
+		{
+			value: 1,
+			bits:  8,
+		},
+		{
+			value: 2,
+			bits:  8,
+		},
+		{
+			value: 3,
+			bits:  8,
+		},
+		{
+			value: 4,
+			bits:  8,
+		},
+		{
+			value: math.MaxUint8,
+			bits:  8,
+		},
+		{
+			value: math.MaxUint16,
+			bits:  16,
+		},
+		{
+			value: math.MaxUint32,
+			bits:  32,
+		},
+		{
+			value: math.MaxUint64,
+			bits:  64,
+		},
+	}
+
+	testGenericTypeUint[uint8](t, "test_genericParseTypeUint8s", uints)
+	testGenericTypeUint[uint16](t, "test_genericParseTypeUint16s", uints)
+	testGenericTypeUint[uint32](t, "test_genericParseTypeUint32s", uints)
+	testGenericTypeUint[uint64](t, "test_genericParseTypeUint64s", uints)
+	testGenericTypeUint[uint](t, "test_genericParseTypeUints", uints)
+}
+
+func testGenericTypeUint[V GenericTypeInteger](t *testing.T, name string, cases []testGenericParseTypeUintCase) {
+	t.Helper()
+	t.Run(name, func(t *testing.T) {
+		t.Parallel()
+		for _, test := range cases {
+			v, err := genericParseType[V](strconv.FormatUint(test.value, 10))
+			if test.bits <= int(unsafe.Sizeof(V(0)))*8 {
+				require.NoError(t, err)
+				require.Equal(t, V(test.value), v)
+			} else {
+				require.ErrorIs(t, err, strconv.ErrRange)
+			}
+		}
+		testGenericParseError[V](t)
+	})
+}
+
+// go test -run Test_GenericParseTypeFloats
+func Test_GenericParseTypeFloats(t *testing.T) {
+	t.Parallel()
+
+	floats := []struct {
+		str   string
+		value float64
+	}{
+		{
+			value: 3.1415,
+			str:   "3.1415",
+		},
+		{
+			value: 1.234,
+			str:   "1.234",
+		},
+		{
+			value: 2,
+			str:   "2",
+		},
+		{
+			value: 3,
+			str:   "3",
+		},
+	}
+
+	t.Run("test_genericParseTypeFloat32s", func(t *testing.T) {
+		t.Parallel()
+		for _, test := range floats {
+			v, err := genericParseType[float32](test.str)
+			require.NoError(t, err)
+			require.InEpsilon(t, float32(test.value), v, epsilon)
+		}
+		testGenericParseError[float32](t)
+	})
+
+	t.Run("test_genericParseTypeFloat64s", func(t *testing.T) {
+		t.Parallel()
+		for _, test := range floats {
+			v, err := genericParseType[float64](test.str)
+			require.NoError(t, err)
+			require.InEpsilon(t, test.value, v, epsilon)
+		}
+		testGenericParseError[float64](t)
+	})
+}
+
+// go test -run Test_GenericParseTypeBytes
+func Test_GenericParseTypeBytes(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		str   string
+		err   error
+		value []byte
+	}{
+		{
+			value: []byte("alex"),
+			str:   "alex",
+		},
+		{
+			value: []byte("32.23"),
+			str:   "32.23",
+		},
+		{
+			value: []byte("john"),
+			str:   "john",
+		},
+		{
+			value: []byte(nil),
+			str:   "",
+			err:   errParsedEmptyBytes,
+		},
+	}
+
+	t.Run("test_genericParseTypeBytes", func(t *testing.T) {
+		t.Parallel()
+		for _, test := range cases {
+			v, err := genericParseType[[]byte](test.str)
+			if test.err == nil {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, test.err)
+			}
+			require.Equal(t, test.value, v)
+		}
+	})
+}
+
+// go test -run Test_GenericParseTypeString
+func Test_GenericParseTypeString(t *testing.T) {
+	t.Parallel()
+
+	tests := []string{"john", "doe", "hello", "fiber"}
+
+	for _, test := range tests {
+		t.Run("test_genericParseTypeString", func(t *testing.T) {
+			t.Parallel()
+			v, err := genericParseType[string](test)
+			require.NoError(t, err)
+			require.Equal(t, test, v)
+		})
+	}
+}
+
+// go test -run Test_GenericParseTypeBoolean
+func Test_GenericParseTypeBoolean(t *testing.T) {
+	t.Parallel()
+
+	bools := []struct {
+		str   string
+		value bool
+	}{
+		{
+			str:   "True",
+			value: true,
+		},
+		{
+			str:   "False",
+			value: false,
+		},
+		{
+			str:   "true",
+			value: true,
+		},
+		{
+			str:   "false",
+			value: false,
+		},
+	}
+
+	t.Run("test_genericParseTypeBoolean", func(t *testing.T) {
+		t.Parallel()
+		for _, test := range bools {
+			v, err := genericParseType[bool](test.str)
+			require.NoError(t, err)
+			if test.value {
+				require.True(t, v)
+			} else {
+				require.False(t, v)
+			}
+		}
+		testGenericParseError[bool](t)
+	})
+}
+
+func testGenericParseError[V GenericType](t *testing.T) {
+	t.Helper()
+	var expected V
+	v, err := genericParseType[V]("invalid-string")
+	require.Error(t, err)
+	require.Equal(t, expected, v)
+}
+
+// go test -v -run=^$ -bench=Benchmark_GenericParseTypeInts -benchmem -count=4
+func Benchmark_GenericParseTypeInts(b *testing.B) {
+	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
+	ints := []testGenericParseTypeIntCase{
+		{
+			value: 0,
+			bits:  8,
+		},
+		{
+			value: 1,
+			bits:  8,
+		},
+		{
+			value: 2,
+			bits:  8,
+		},
+		{
+			value: 3,
+			bits:  8,
+		},
+		{
+			value: 4,
+			bits:  8,
+		},
+		{
+			value: -1,
+			bits:  8,
+		},
+		{
+			value: math.MaxInt8,
+			bits:  8,
+		},
+		{
+			value: math.MinInt8,
+			bits:  8,
+		},
+		{
+			value: math.MaxInt16,
+			bits:  16,
+		},
+		{
+			value: math.MinInt16,
+			bits:  16,
+		},
+		{
+			value: math.MaxInt32,
+			bits:  32,
+		},
+		{
+			value: math.MinInt32,
+			bits:  32,
+		},
+		{
+			value: math.MaxInt64,
+			bits:  64,
+		},
+		{
+			value: math.MinInt64,
+			bits:  64,
+		},
+	}
+	for _, test := range ints {
+		benchGenericParseTypeInt[int8](b, "bench_genericParseTypeInt8s", test)
+		benchGenericParseTypeInt[int16](b, "bench_genericParseTypeInt16s", test)
+		benchGenericParseTypeInt[int32](b, "bench_genericParseTypeInt32s", test)
+		benchGenericParseTypeInt[int64](b, "bench_genericParseTypeInt64s", test)
+		benchGenericParseTypeInt[int](b, "bench_genericParseTypeInts", test)
+	}
+}
+
+func benchGenericParseTypeInt[V GenericTypeInteger](b *testing.B, name string, test testGenericParseTypeIntCase) {
+	b.Helper()
+	b.Run(name, func(t *testing.B) {
+		var v V
+		var err error
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				v, err = genericParseType[V](strconv.FormatInt(test.value, 10))
+			}
+		})
+		if test.bits <= int(unsafe.Sizeof(V(0)))*8 {
+			require.NoError(t, err)
+			require.Equal(t, V(test.value), v)
+		} else {
+			require.ErrorIs(t, err, strconv.ErrRange)
+		}
+	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_GenericParseTypeUints -benchmem -count=4
+func Benchmark_GenericParseTypeUints(b *testing.B) {
+	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
+	uints := []struct {
+		value uint64
+		bits  int
+	}{
+		{
+			value: 0,
+			bits:  8,
+		},
+		{
+			value: 1,
+			bits:  8,
+		},
+		{
+			value: 2,
+			bits:  8,
+		},
+		{
+			value: 3,
+			bits:  8,
+		},
+		{
+			value: 4,
+			bits:  8,
+		},
+		{
+			value: math.MaxUint8,
+			bits:  8,
+		},
+		{
+			value: math.MaxUint16,
+			bits:  16,
+		},
+		{
+			value: math.MaxUint16,
+			bits:  16,
+		},
+		{
+			value: math.MaxUint32,
+			bits:  32,
+		},
+		{
+			value: math.MaxUint64,
+			bits:  64,
+		},
+	}
+
+	for _, test := range uints {
+		benchGenericParseTypeUInt[uint8](b, "benchmark_genericParseTypeUint8s", test)
+		benchGenericParseTypeUInt[uint16](b, "benchmark_genericParseTypeUint16s", test)
+		benchGenericParseTypeUInt[uint32](b, "benchmark_genericParseTypeUint32s", test)
+		benchGenericParseTypeUInt[uint64](b, "benchmark_genericParseTypeUint64s", test)
+		benchGenericParseTypeUInt[uint](b, "benchmark_genericParseTypeUints", test)
+	}
+}
+
+func benchGenericParseTypeUInt[V GenericTypeInteger](b *testing.B, name string, test testGenericParseTypeUintCase) {
+	b.Helper()
+	b.Run(name, func(t *testing.B) {
+		var v V
+		var err error
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				v, err = genericParseType[V](strconv.FormatUint(test.value, 10))
+			}
+		})
+		if test.bits <= int(unsafe.Sizeof(V(0)))*8 {
+			require.NoError(t, err)
+			require.Equal(t, V(test.value), v)
+		} else {
+			require.ErrorIs(t, err, strconv.ErrRange)
+		}
+	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_GenericParseTypeFloats -benchmem -count=4
+func Benchmark_GenericParseTypeFloats(b *testing.B) {
+	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
+	floats := []struct {
+		str   string
+		value float64
+	}{
+		{
+			value: 3.1415,
+			str:   "3.1415",
+		},
+		{
+			value: 1.234,
+			str:   "1.234",
+		},
+		{
+			value: 2,
+			str:   "2",
+		},
+		{
+			value: 3,
+			str:   "3",
+		},
+	}
+
+	for _, test := range floats {
+		b.Run("benchmark_genericParseTypeFloat32s", func(t *testing.B) {
+			var v float32
+			var err error
+			b.ReportAllocs()
+			b.ResetTimer()
+			b.RunParallel(func(pb *testing.PB) {
+				for pb.Next() {
+					v, err = genericParseType[float32](test.str)
+				}
+			})
+			require.NoError(t, err)
+			require.InEpsilon(t, float32(test.value), v, epsilon)
+		})
+	}
+
+	for _, test := range floats {
+		b.Run("benchmark_genericParseTypeFloat64s", func(t *testing.B) {
+			var v float64
+			var err error
+			b.ReportAllocs()
+			b.ResetTimer()
+			b.RunParallel(func(pb *testing.PB) {
+				for pb.Next() {
+					v, err = genericParseType[float64](test.str)
+				}
+			})
+			require.NoError(t, err)
+			require.InEpsilon(t, test.value, v, epsilon)
+		})
+	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_GenericParseTypeBytes -benchmem -count=4
+func Benchmark_GenericParseTypeBytes(b *testing.B) {
+	cases := []struct {
+		str   string
+		err   error
+		value []byte
+	}{
+		{
+			value: []byte("alex"),
+			str:   "alex",
+		},
+		{
+			value: []byte("32.23"),
+			str:   "32.23",
+		},
+		{
+			value: []byte("john"),
+			str:   "john",
+		},
+		{
+			value: []byte(nil),
+			str:   "",
+			err:   errParsedEmptyBytes,
+		},
+	}
+
+	for _, test := range cases {
+		b.Run("benchmark_genericParseTypeBytes", func(b *testing.B) {
+			var v []byte
+			var err error
+			b.ReportAllocs()
+			b.ResetTimer()
+			b.RunParallel(func(pb *testing.PB) {
+				for pb.Next() {
+					v, err = genericParseType[[]byte](test.str)
+				}
+			})
+			if test.err == nil {
+				require.NoError(b, err)
+			} else {
+				require.ErrorIs(b, err, test.err)
+			}
+			require.Equal(b, test.value, v)
+		})
+	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_GenericParseTypeString -benchmem -count=4
+func Benchmark_GenericParseTypeString(b *testing.B) {
+	tests := []string{"john", "doe", "hello", "fiber"}
+
+	for _, test := range tests {
+		b.Run("benchmark_genericParseTypeString", func(b *testing.B) {
+			var v string
+			var err error
+			b.ReportAllocs()
+			b.ResetTimer()
+			b.RunParallel(func(pb *testing.PB) {
+				for pb.Next() {
+					v, err = genericParseType[string](test)
+				}
+			})
+			require.NoError(b, err)
+			require.Equal(b, test, v)
+		})
+	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_GenericParseTypeBoolean -benchmem -count=4
+func Benchmark_GenericParseTypeBoolean(b *testing.B) {
+	bools := []struct {
+		str   string
+		value bool
+	}{
+		{
+			str:   "True",
+			value: true,
+		},
+		{
+			str:   "False",
+			value: false,
+		},
+		{
+			str:   "true",
+			value: true,
+		},
+		{
+			str:   "false",
+			value: false,
+		},
+	}
+
+	for _, test := range bools {
+		b.Run("benchmark_genericParseTypeBoolean", func(b *testing.B) {
+			var v bool
+			var err error
+			b.ReportAllocs()
+			b.ResetTimer()
+			b.RunParallel(func(pb *testing.PB) {
+				for pb.Next() {
+					v, err = genericParseType[bool](test.str)
+				}
+			})
+			require.NoError(b, err)
+			if test.value {
+				require.True(b, v)
+			} else {
+				require.False(b, v)
+			}
+		})
+	}
 }

@@ -906,6 +906,39 @@ func NewError(code int, message ...string) *Error {
 	return err
 }
 
+// NewErrorf creates a new Error instance with an optional message.
+// Additional arguments are formatted using fmt.Sprintf when provided.
+// If the first argument in the message slice is not a string, the function
+// falls back to using fmt.Sprint on the first element to generate the message.
+func NewErrorf(code int, message ...any) *Error {
+	var msg string
+
+	switch len(message) {
+	case 0:
+		// nothing to override
+		msg = utils.StatusMessage(code)
+
+	case 1:
+		// One argument → treat it like fmt.Sprint(arg)
+		if s, ok := message[0].(string); ok {
+			msg = s
+		} else {
+			msg = fmt.Sprint(message[0])
+		}
+
+	default:
+		// Two or more → first must be a format string.
+		if format, ok := message[0].(string); ok {
+			msg = fmt.Sprintf(format, message[1:]...)
+		} else {
+			// If the first arg isn’t a string, fall back.
+			msg = fmt.Sprint(message[0])
+		}
+	}
+
+	return &Error{Code: code, Message: msg}
+}
+
 // Config returns the app config as value ( read-only ).
 func (app *App) Config() Config {
 	return app.config

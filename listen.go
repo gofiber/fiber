@@ -72,19 +72,19 @@ type ListenConfig struct {
 	// Default: NetworkTCP4
 	ListenerNetwork string `json:"listener_network"`
 
-	// CertFile is a path of certficate file.
+	// CertFile is a path of certificate file.
 	// If you want to use TLS, you have to enter this field.
 	//
 	// Default : ""
 	CertFile string `json:"cert_file"`
 
-	// KeyFile is a path of certficate's private key.
+	// KeyFile is a path of certificate's private key.
 	// If you want to use TLS, you have to enter this field.
 	//
 	// Default : ""
 	CertKeyFile string `json:"cert_key_file"`
 
-	// CertClientFile is a path of client certficate.
+	// CertClientFile is a path of client certificate.
 	// If you want to use mTLS, you have to enter this field.
 	//
 	// Default : ""
@@ -367,7 +367,7 @@ func (app *App) startupMessage(addr string, isTLS bool, pids string, cfg ListenC
 	}
 
 	fmt.Fprintf(out, "%s\n", fmt.Sprintf(figletFiberText, colors.Red+"v"+Version+colors.Reset))
-	fmt.Fprintf(out, strings.Repeat("-", 50)+"\n")
+	fmt.Fprintln(out, strings.Repeat("-", 50))
 
 	if host == "0.0.0.0" {
 		fmt.Fprintf(out,

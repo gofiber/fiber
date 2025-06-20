@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"iter"
+	"maps"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -748,9 +749,7 @@ func (c Cookie) SetCookie(key, val string) {
 
 // SetCookies sets multiple cookies from a map.
 func (c Cookie) SetCookies(m map[string]string) {
-	for k, v := range m {
-		c[k] = v
-	}
+	maps.Copy(c, m)
 }
 
 // SetCookiesWithStruct sets cookies from a struct.
@@ -800,9 +799,7 @@ func (p PathParam) SetParam(key, val string) {
 
 // SetParams sets multiple path parameters from a map.
 func (p PathParam) SetParams(m map[string]string) {
-	for k, v := range m {
-		p[k] = v
-	}
+	maps.Copy(p, m)
 }
 
 // SetParamsWithStruct sets multiple path parameters from a struct.

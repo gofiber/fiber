@@ -19,11 +19,8 @@ func New(h fiber.Handler, timeout time.Duration, tErrs ...error) fiber.Handler {
 
 		// Create a context with the specified timeout; any operation exceeding
 		// this deadline will be canceled automatically.
-		timeoutContext, cancel := context.WithTimeout(ctx.Context(), timeout)
+		timeoutContext, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
-
-		// Replace the default Fiber context with our timeout-bound context.
-		ctx.SetContext(timeoutContext)
 
 		// Run the handler and check for relevant errors.
 		err := runHandler(ctx, h, tErrs)

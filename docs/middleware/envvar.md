@@ -26,14 +26,13 @@ import (
 After you initiate your Fiber app, you can use the following possibilities:
 
 ```go
-// Initialize default config
+// Initialize default config (exports no variables)
 app.Use("/expose/envvars", envvar.New())
 
 // Or extend your config for customization
 app.Use("/expose/envvars", envvar.New(
     envvar.Config{
-        ExportVars:  map[string]string{"testKey": "", "testDefaultKey": "testDefaultVal"},
-        ExcludeVars: map[string]string{"excludeKey": ""},
+        ExportVars: map[string]string{"testKey": "", "testDefaultKey": "testDefaultVal"},
     }),
 )
 ```
@@ -60,11 +59,11 @@ Http response contract:
 
 | Property    | Type                | Description                                                                  | Default |
 |:------------|:--------------------|:-----------------------------------------------------------------------------|:--------|
-| ExportVars  | `map[string]string` | ExportVars specifies the environment variables that should be exported.      | `nil`   |
-| ExcludeVars | `map[string]string` | ExcludeVars specifies the environment variables that should not be exported. | `nil`   |
+| ExportVars  | `map[string]string` | ExportVars specifies the environment variables that should be exported. | `nil` |
 
 ## Default Config
 
 ```go
 Config{}
+// Exports no environment variables
 ```

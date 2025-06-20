@@ -877,3 +877,28 @@ func Test_Proxy_Balancer_Forward_Local(t *testing.T) {
 
 	require.Equal(t, "forwarded", string(b))
 }
+
+func Test_Proxy_Immutable(t *testing.T) {
+	t.Parallel()
+
+	target, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusTeapot)
+	})
+
+	resp, err := target.Test(httptest.NewRequest(fiber.MethodGet, "/", nil), fiber.TestConfig{
+		Timeout:       2 * time.Second,
+		FailOnTimeout: true,
+	})
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+
+	app := fiber.New(fiber.Config{Immutable: true})
+
+	app.Use(Balancer(Config{Servers: []string{addr}}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req.Host = addr
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+}

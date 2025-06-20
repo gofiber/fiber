@@ -1006,8 +1006,7 @@ func Benchmark_Session(b *testing.B) {
 		c.Request().Header.SetCookie(store.sessionName, "12356789")
 
 		b.ReportAllocs()
-		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			sess, _ := store.Get(c) //nolint:errcheck // We're inside a benchmark
 			sess.Set("john", "doe")
 			_ = sess.Save() //nolint:errcheck // We're inside a benchmark
@@ -1026,8 +1025,7 @@ func Benchmark_Session(b *testing.B) {
 		c.Request().Header.SetCookie(store.sessionName, "12356789")
 
 		b.ReportAllocs()
-		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			sess, _ := store.Get(c) //nolint:errcheck // We're inside a benchmark
 			sess.Set("john", "doe")
 			_ = sess.Save() //nolint:errcheck // We're inside a benchmark
@@ -1092,8 +1090,7 @@ func Benchmark_Session_Asserted(b *testing.B) {
 		c.Request().Header.SetCookie(store.sessionName, "12356789")
 
 		b.ReportAllocs()
-		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			sess, err := store.Get(c)
 			require.NoError(b, err)
 			sess.Set("john", "doe")
@@ -1113,8 +1110,7 @@ func Benchmark_Session_Asserted(b *testing.B) {
 		c.Request().Header.SetCookie(store.sessionName, "12356789")
 
 		b.ReportAllocs()
-		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			sess, err := store.Get(c)
 			require.NoError(b, err)
 			sess.Set("john", "doe")

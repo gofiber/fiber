@@ -1,11 +1,14 @@
 package cors
 
 import (
+	"bytes"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/log"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -64,6 +67,37 @@ func Test_CORS_Negative_MaxAge(t *testing.T) {
 	app.Handler()(ctx)
 
 	require.Equal(t, "0", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlMaxAge)))
+}
+
+func Test_CORS_MaxAge_NotSetOnSimpleRequest(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{MaxAge: 100}))
+
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://localhost")
+	app.Handler()(ctx)
+
+	require.Equal(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlMaxAge)))
+}
+
+func Test_CORS_Preserve_Origin_Case(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{AllowOrigins: []string{"http://example.com"}}))
+
+	origin := "HTTP://EXAMPLE.COM"
+
+	ctx := &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
+	ctx.Request.Header.Set(fiber.HeaderOrigin, origin)
+	app.Handler()(ctx)
+
+	require.Equal(t, origin, string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
 }
 
 func testDefaultOrEmptyConfig(t *testing.T, app *fiber.App) {
@@ -228,6 +262,21 @@ func Test_CORS_Wildcard_AllowCredentials_Panic(t *testing.T) {
 	if !didPanic {
 		t.Errorf("Expected a panic when AllowOrigins is '*' and AllowCredentials is true")
 	}
+}
+
+// Test that a warning is logged when AllowOrigins allows all origins and
+// AllowOriginsFunc is also provided.
+func Test_CORS_Warn_AllowAllOrigins_WithFunc(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	fiber.New().Use(New(Config{
+		AllowOrigins:     []string{"*"},
+		AllowOriginsFunc: func(string) bool { return true },
+	}))
+
+	require.Contains(t, buf.String(), "AllowOriginsFunc' will not be used")
 }
 
 // go test -run -v Test_CORS_Invalid_Origin_Panic
@@ -857,7 +906,7 @@ func Test_CORS_AllowCredentials(t *testing.T) {
 			},
 			RequestOrigin:  "*",
 			ResponseOrigin: "*",
-			// Middleware will validate that wildcard wont set credentials to true
+			// Middleware will validate that wildcard won't set credentials to true
 			ResponseCredentials: "",
 		},
 		{
@@ -1053,9 +1102,8 @@ func Benchmark_CORS_NewHandler(b *testing.B) {
 	ctx.Init(req, nil, nil)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		h(ctx)
 	}
 }
@@ -1126,9 +1174,8 @@ func Benchmark_CORS_NewHandlerSingleOrigin(b *testing.B) {
 	ctx.Init(req, nil, nil)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		h(ctx)
 	}
 }
@@ -1198,9 +1245,8 @@ func Benchmark_CORS_NewHandlerWildcard(b *testing.B) {
 	ctx.Init(req, nil, nil)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		h(ctx)
 	}
 }
@@ -1272,9 +1318,8 @@ func Benchmark_CORS_NewHandlerPreflight(b *testing.B) {
 	ctx.Init(req, nil, nil)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		h(ctx)
 	}
 }
@@ -1347,9 +1392,8 @@ func Benchmark_CORS_NewHandlerPreflightSingleOrigin(b *testing.B) {
 	ctx.Init(req, nil, nil)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		h(ctx)
 	}
 }
@@ -1421,9 +1465,8 @@ func Benchmark_CORS_NewHandlerPreflightWildcard(b *testing.B) {
 	ctx.Init(req, nil, nil)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		h(ctx)
 	}
 }

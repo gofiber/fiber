@@ -1,6 +1,6 @@
 ---
 id: whats_new
-title: 🆕 Whats New in v3
+title: 🆕 What's New in v3
 sidebar_position: 2
 toc_max_heading_level: 4
 ---
@@ -29,6 +29,7 @@ Here's a quick overview of the changes in Fiber `v3`:
 - [🧬 Middlewares](#-middlewares)
   - [Important Change for Accessing Middleware Data](#important-change-for-accessing-middleware-data)
   - [Adaptor](#adaptor)
+  - [BasicAuth](#basicauth)
   - [Cache](#cache)
   - [CORS](#cors)
   - [CSRF](#csrf)
@@ -36,6 +37,7 @@ Here's a quick overview of the changes in Fiber `v3`:
   - [EncryptCookie](#encryptcookie)
   - [Filesystem](#filesystem)
   - [Healthcheck](#healthcheck)
+  - [KeyAuth](#keyauth)
   - [Logger](#logger)
   - [Monitor](#monitor)
   - [Proxy](#proxy)
@@ -45,7 +47,7 @@ Here's a quick overview of the changes in Fiber `v3`:
 
 ## Drop for old Go versions
 
-Fiber `v3` drops support for Go versions below `1.23`. We recommend upgrading to Go `1.23` or higher to use Fiber `v3`.
+Fiber `v3` drops support for Go versions below `1.24`. We recommend upgrading to Go `1.24` or higher to use Fiber `v3`.
 
 ## 🚀 App
 
@@ -67,6 +69,7 @@ We have made several changes to the Fiber app, including:
 - **RegisterCustomConstraint**: Allows for the registration of custom constraints.
 - **NewWithCustomCtx**: Initialize an app with a custom context in one step.
 - **State**: Provides a global state for the application, which can be used to store and retrieve data across the application. Check out the [State](./api/state) method for further details.
+- **NewErrorf**: Allows variadic parameters when creating formatted errors.
 
 ### Removed Methods
 
@@ -75,6 +78,8 @@ We have made several changes to the Fiber app, including:
 - **ListenTLSWithCertificate**: Use `app.Listen()` with `tls.Config`.
 - **ListenMutualTLS**: Use `app.Listen()` with `tls.Config`.
 - **ListenMutualTLSWithCertificate**: Use `app.Listen()` with `tls.Config`.
+- **Context()**: Use `Ctx` instead, it follow the `context.Context` interface
+- **SetContext()**: Use `Ctx` instead, it follow the `context.Context` interface
 
 ### Method Changes
 
@@ -163,6 +168,10 @@ app.Listen(":444", fiber.ListenConfig{
     AutoCertManager:    certManager,
 })
 ```
+
+### MIME Constants
+
+`MIMEApplicationJavaScript` and `MIMEApplicationJavaScriptCharsetUTF8` are deprecated. Use `MIMETextJavaScript` and `MIMETextJavaScriptCharsetUTF8` instead.
 
 ## 🎣 Hooks
 
@@ -389,10 +398,14 @@ testConfig := fiber.TestConfig{
 ### New Features
 
 - Cookie now allows Partitioned cookies for [CHIPS](https://developers.google.com/privacy-sandbox/3pcd/chips) support. CHIPS (Cookies Having Independent Partitioned State) is a feature that improves privacy by allowing cookies to be partitioned by top-level site, mitigating cross-site tracking.
+- Context now implements [context.Context](https://pkg.go.dev/context#Context).
 
 ### New Methods
 
 - **AutoFormat**: Similar to Express.js, automatically formats the response based on the request's `Accept` header.
+- **Deadline**: For implementing `context.Context`.
+- **Done**: For implementing `context.Context`.
+- **Err**: For implementing `context.Context`.
 - **Host**: Similar to Express.js, returns the host name of the request.
 - **Port**: Similar to Express.js, returns the port number of the request.
 - **IsProxyTrusted**: Checks the trustworthiness of the remote IP.
@@ -402,6 +415,7 @@ testConfig := fiber.TestConfig{
 - **SendStreamWriter**: Sends a stream using a writer function.
 - **SendString**: Similar to Express.js, sends a string as the response.
 - **String**: Similar to Express.js, converts a value to a string.
+- **Value**: For implementing `context.Context`. Returns request-scoped value from Locals.
 - **ViewBind**: Binds data to a view, replacing the old `Bind` method.
 - **CBOR**: Introducing [CBOR](https://cbor.io/) binary encoding format for both request & response body. CBOR is a binary data serialization format which is both compact and efficient, making it ideal for use in web applications.
 - **Drop**: Terminates the client connection silently without sending any HTTP headers or response body. This can be used for scenarios where you want to block certain requests without notifying the client, such as mitigating DDoS attacks or protecting sensitive endpoints from unauthorized access.
@@ -954,10 +968,19 @@ The adaptor middleware has been significantly optimized for performance and effi
 |              | Memory Usage     | 2734 B/op | 298 B/op    | -89.10%        |
 |              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
 
+### BasicAuth
+
+The BasicAuth middleware now validates the `Authorization` header more rigorously and sets security-focused response headers. The default challenge includes the `charset="UTF-8"` parameter and disables caching. Passwords are no longer stored in the request context by default; use the new `StorePassword` option to retain them. A `Charset` option controls the value used in the challenge header.
+
 ### Cache
 
 We are excited to introduce a new option in our caching middleware: Cache Invalidator. This feature provides greater control over cache management, allowing you to define a custom conditions for invalidating cache entries.
 Additionally, the caching middleware has been optimized to avoid caching non-cacheable status codes, as defined by the [HTTP standards](https://datatracker.ietf.org/doc/html/rfc7231#section-6.1). This improvement enhances cache accuracy and reduces unnecessary cache storage usage.
+Cached responses now include an RFC-compliant Age header, providing a standardized indication of how long a response has been stored in cache since it was originally generated. This enhancement improves HTTP compliance and facilitates better client-side caching strategies.
+
+:::note
+The deprecated `Store` and `Key` options have been removed in v3. Use `Storage` and `KeyGenerator` instead.
+:::
 
 ### CORS
 
@@ -984,6 +1007,10 @@ We've added support for `zstd` compression on top of `gzip`, `deflate`, and `bro
 
 Added support for specifying Key length when using `encryptcookie.GenerateKey(length)`. This allows the user to generate keys compatible with `AES-128`, `AES-192`, and `AES-256` (Default).
 
+### EnvVar
+
+The `ExcludeVars` field has been removed from the EnvVar middleware configuration. When upgrading, remove any references to this field and explicitly list the variables you wish to expose using `ExportVars`.
+
 ### Filesystem
 
 We've decided to remove filesystem middleware to clear up the confusion between static and filesystem middleware.
@@ -1007,6 +1034,10 @@ The Healthcheck middleware has been enhanced to support more than two routes, wi
     - The configuration for each health check endpoint has been simplified. Each endpoint can be configured separately, allowing for more flexibility and readability.
 
 Refer to the [healthcheck middleware migration guide](./middleware/healthcheck.md) or the [general migration guide](#-migration-guide) to review the changes.
+
+### KeyAuth
+
+The keyauth middleware was updated to introduce a configurable `Realm` field for the `WWW-Authenticate` header.
 
 ### Logger
 
@@ -1050,6 +1081,10 @@ func main() {
 ```
 
 </details>
+
+:::note
+The deprecated `TagHeader` constant was removed. Use `TagReqHeader` when you need to log request headers.
+:::
 
 #### Logging Middleware Values (e.g., Request ID)
 
@@ -1164,6 +1199,14 @@ app.Use(logger.New(logger.Config{
 
 See more in [Logger](./middleware/logger.md#predefined-formats)
 </details>
+
+### Limiter
+
+The limiter middleware uses a new Fixed Window Rate Limiter implementation.
+
+:::note
+Deprecated fields `Duration`, `Store`, and `Key` have been removed in v3. Use `Expiration`, `Storage`, and `KeyGenerator` instead.
+:::
 
 ### Monitor
 

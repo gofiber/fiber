@@ -27,7 +27,7 @@ func (b *QueryBinding) Bind(reqCtx *fasthttp.Request, out any) error {
 
 		k := utils.UnsafeString(key)
 		v := utils.UnsafeString(val)
-		err = formatBindData(out, data, k, v, b.EnableSplitting, true)
+		err = formatBindData(b.Name(), out, data, k, v, b.EnableSplitting, true)
 	})
 
 	if err != nil {
