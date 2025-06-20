@@ -3,47 +3,171 @@
 package fiber
 
 import (
-	"crypto/tls"
 	"mime/multipart"
+
+	"github.com/valyala/fasthttp"
 )
 
 // Req
 type Req interface {
+	// Accepts checks if the specified extensions or content types are acceptable.
 	Accepts(offers ...string) string
+	// AcceptsCharsets checks if the specified charset is acceptable.
 	AcceptsCharsets(offers ...string) string
+	// AcceptsEncodings checks if the specified encoding is acceptable.
 	AcceptsEncodings(offers ...string) string
+	// AcceptsLanguages checks if the specified language is acceptable.
 	AcceptsLanguages(offers ...string) string
+	// App returns the *App reference to the instance of the Fiber application
+	App() *App
+	// BaseURL returns (protocol + host + base path).
 	BaseURL() string
-	Body() []byte
+	// BodyRaw contains the raw body submitted in a POST request.
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting instead.
 	BodyRaw() []byte
-	ClientHelloInfo() *tls.ClientHelloInfo
+	tryDecodeBodyInOrder(originalBody *[]byte, encodings []string) ([]byte, uint8, error)
+	// Body contains the raw body submitted in a POST request.
+	// This method will decompress the body if the 'Content-Encoding' header is provided.
+	// It returns the original (or decompressed) body data which is valid only within the handler.
+	// Don't store direct references to the returned data.
+	// If you need to keep the body's data later, make a copy or use the Immutable option.
+	Body() []byte
+	// Cookies are used for getting a cookie value by key.
+	// Defaults to the empty string "" if the cookie doesn't exist.
+	// If a default value is given, it will return that value if the cookie doesn't exist.
+	// The returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting to use the value outside the Handler.
 	Cookies(key string, defaultValue ...string) string
+	// RequestCtx returns *fasthttp.RequestCtx that carries a deadline
+	// a cancellation signal, and other values across API boundaries.
+	RequestCtx() *fasthttp.RequestCtx
+	// Request return the *fasthttp.Request object
+	// This allows you to use all fasthttp request methods
+	// https://godoc.org/github.com/valyala/fasthttp#Request
+	Request() *fasthttp.Request
+	// FormFile returns the first file by key from a MultipartForm.
 	FormFile(key string) (*multipart.FileHeader, error)
+	// FormValue returns the first value by key from a MultipartForm.
+	// Search is performed in QueryArgs, PostArgs, MultipartForm and FormFile in this particular order.
+	// Defaults to the empty string "" if the form value doesn't exist.
+	// If a default value is given, it will return that value if the form value does not exist.
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting instead.
 	FormValue(key string, defaultValue ...string) string
-	Fresh() bool
+	// Get returns the HTTP request header specified by field.
+	// Field names are case-insensitive
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting instead.
 	Get(key string, defaultValue ...string) string
+	// GetReqHeaders returns the HTTP request headers.
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting instead.
+	GetReqHeaders() map[string][]string
+	// Host contains the host derived from the X-Forwarded-Host or Host HTTP header.
+	// Returned value is only valid within the handler. Do not store any references.
+	// In a network context, `Host` refers to the combination of a hostname and potentially a port number used for connecting,
+	// while `Hostname` refers specifically to the name assigned to a device on a network, excluding any port information.
+	// Example: URL: https://example.com:8080 -> Host: example.com:8080
+	// Make copies or use the Immutable setting instead.
+	// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
 	Host() string
+	// Hostname contains the hostname derived from the X-Forwarded-Host or Host HTTP header using the c.Host() method.
+	// Returned value is only valid within the handler. Do not store any references.
+	// Example: URL: https://example.com:8080 -> Hostname: example.com
+	// Make copies or use the Immutable setting instead.
+	// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
 	Hostname() string
-	IP() string
-	IPs() []string
-	Is(extension string) bool
-	IsFromLocal() bool
-	IsProxyTrusted() bool
-	Method(override ...string) string
-	MultipartForm() (*multipart.Form, error)
-	OriginalURL() string
-	Params(key string, defaultValue ...string) string
-	Path(override ...string) string
+	// Port returns the remote port of the request.
 	Port() string
+	// IP returns the remote IP address of the request.
+	// If ProxyHeader and IP Validation is configured, it will parse that header and return the first valid IP address.
+	// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
+	IP() string
+	// extractIPsFromHeader will return a slice of IPs it found given a header name in the order they appear.
+	// When IP validation is enabled, any invalid IPs will be omitted.
+	extractIPsFromHeader(header string) []string
+	// extractIPFromHeader will attempt to pull the real client IP from the given header when IP validation is enabled.
+	// currently, it will return the first valid IP address in header.
+	// when IP validation is disabled, it will simply return the value of the header without any inspection.
+	// Implementation is almost the same as in extractIPsFromHeader, but without allocation of []string.
+	extractIPFromHeader(header string) string
+	// IPs returns a string slice of IP addresses specified in the X-Forwarded-For request header.
+	// When IP validation is enabled, only valid IPs are returned.
+	IPs() []string
+	// Is returns the matching content type,
+	// if the incoming request's Content-Type HTTP header field matches the MIME type specified by the type parameter
+	Is(extension string) bool
+	// Locals makes it possible to pass any values under keys scoped to the request
+	// and therefore available to all following routes that match the request.
+	//
+	// All the values are removed from ctx after returning from the top
+	// RequestHandler. Additionally, Close method is called on each value
+	// implementing io.Closer before removing the value from ctx.
+	Locals(key any, value ...any) any
+	// Method returns the HTTP request method for the context, optionally overridden by the provided argument.
+	// If no override is given or if the provided override is not a valid HTTP method, it returns the current method from the context.
+	// Otherwise, it updates the context's method and returns the overridden method as a string.
+	Method(override ...string) string
+	// MultipartForm parse form entries from binary.
+	// This returns a map[string][]string, so given a key the value will be a string slice.
+	MultipartForm() (*multipart.Form, error)
+	// OriginalURL contains the original request URL.
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting to use the value outside the Handler.
+	OriginalURL() string
+	// Params is used to get the route parameters.
+	// Defaults to empty string "" if the param doesn't exist.
+	// If a default value is given, it will return that value if the param doesn't exist.
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting to use the value outside the Handler.
+	Params(key string, defaultValue ...string) string
+	// Protocol returns the HTTP protocol of request: HTTP/1.1 and HTTP/2.
 	Protocol() string
-	Queries() map[string]string
+	// Query returns the query string parameter in the url.
+	// Defaults to empty string "" if the query doesn't exist.
+	// If a default value is given, it will return that value if the query doesn't exist.
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting to use the value outside the Handler.
 	Query(key string, defaultValue ...string) string
+	// Queries returns a map of query parameters and their values.
+	//
+	// GET /?name=alex&wanna_cake=2&id=
+	// Queries()["name"] == "alex"
+	// Queries()["wanna_cake"] == "2"
+	// Queries()["id"] == ""
+	//
+	// GET /?field1=value1&field1=value2&field2=value3
+	// Queries()["field1"] == "value2"
+	// Queries()["field2"] == "value3"
+	//
+	// GET /?list_a=1&list_a=2&list_a=3&list_b[]=1&list_b[]=2&list_b[]=3&list_c=1,2,3
+	// Queries()["list_a"] == "3"
+	// Queries()["list_b[]"] == "3"
+	// Queries()["list_c"] == "1,2,3"
+	//
+	// GET /api/search?filters.author.name=John&filters.category.name=Technology&filters[customer][name]=Alice&filters[status]=pending
+	// Queries()["filters.author.name"] == "John"
+	// Queries()["filters.category.name"] == "Technology"
+	// Queries()["filters[customer][name]"] == "Alice"
+	// Queries()["filters[status]"] == "pending"
+	Queries() map[string]string
+	// Range returns a struct containing the type and a slice of ranges.
 	Range(size int) (Range, error)
+	// Route returns the matched Route struct.
 	Route() *Route
-	SaveFile(fileheader *multipart.FileHeader, path string) error
-	SaveFileToStorage(fileheader *multipart.FileHeader, path string, storage Storage) error
-	Secure() bool
-	Stale() bool
+	// Scheme contains the request protocol string: http or https for TLS requests.
+	// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
+	Scheme() string
+	// Subdomains returns a slice of subdomains from the host, excluding the last `offset` components.
+	// If the offset is negative or exceeds the number of subdomains, an empty slice is returned.
+	// If the offset is zero every label (no trimming) is returned.
 	Subdomains(offset ...int) []string
-	XHR() bool
+	// IsProxyTrusted checks trustworthiness of remote ip.
+	// If Config.TrustProxy false, it returns true
+	// IsProxyTrusted can check remote ip by proxy ranges and ip map.
+	IsProxyTrusted() bool
+	// IsFromLocal will return true if request came from local.
+	IsFromLocal() bool
+	getBody() []byte
 }
