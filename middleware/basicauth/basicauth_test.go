@@ -36,6 +36,7 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 			"john":  "doe",
 			"admin": "123456",
 		},
+		StorePassword: true,
 	}))
 
 	app.Get("/testauth", func(c fiber.Ctx) error {
@@ -91,6 +92,27 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 	}
 }
 
+func Test_BasicAuth_NoStorePassword(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Users: map[string]string{"john": "doe"},
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		require.Empty(t, PasswordFromContext(c))
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	creds := base64.StdEncoding.EncodeToString([]byte("john:doe"))
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req.Header.Set(fiber.HeaderAuthorization, "Basic "+creds)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
 func Test_BasicAuth_WWWAuthenticateHeader(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -100,7 +122,7 @@ func Test_BasicAuth_WWWAuthenticateHeader(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
-	require.Equal(t, `Basic realm="Restricted"`, resp.Header.Get(fiber.HeaderWWWAuthenticate))
+	require.Equal(t, `Basic realm="Restricted", charset="UTF-8"`, resp.Header.Get(fiber.HeaderWWWAuthenticate))
 }
 
 func Test_BasicAuth_InvalidHeader(t *testing.T) {

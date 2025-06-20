@@ -975,7 +975,7 @@ The adaptor middleware has been significantly optimized for performance and effi
 
 ### BasicAuth
 
-The BasicAuth middleware was updated for improved robustness in parsing the Authorization header, with enhanced validation and whitespace handling. The default unauthorized response now uses a properly quoted and capitalized `WWW-Authenticate` header.
+The BasicAuth middleware now validates the `Authorization` header more rigorously and sets security-focused response headers. The default challenge includes the `charset="UTF-8"` parameter and disables caching. Passwords are no longer stored in the request context by default; use the new `StorePassword` option to retain them. A `Charset` option controls the value used in the challenge header.
 
 ### Cache
 
