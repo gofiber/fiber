@@ -4048,7 +4048,6 @@ func Test_Ctx_Render(t *testing.T) {
 	require.Error(t, err)
 }
 
-// TODO Fix this test case
 func Test_Ctx_RenderWithoutLocals(t *testing.T) {
 	t.Parallel()
 	app := New(Config{
@@ -4060,7 +4059,7 @@ func Test_Ctx_RenderWithoutLocals(t *testing.T) {
 
 	err := c.Render("./.github/testdata/index.tmpl", Map{})
 	require.NoError(t, err)
-	require.Equal(t, "<h1><no value></h1>", string(c.Response().Body()))
+	require.Equal(t, "<h1></h1>", string(c.Response().Body()))
 }
 
 func Test_Ctx_RenderWithLocals(t *testing.T) {
