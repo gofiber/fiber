@@ -61,5 +61,5 @@ betteralign:
 .PHONY: generate
 generate:
 	go install github.com/tinylib/msgp@latest
-	go install github.com/vburenin/ifacemaker@975a95966976eeb2d4365a7fb236e274c54da64c
+	go install github.com/vburenin/ifacemaker@c0371201a75b1c79e69cda79a6f90b8ae5799b37
 	go generate ./...
