@@ -125,7 +125,7 @@ type Ctx interface {
 	// Reset is a method to reset context fields by given request when to use server handlers.
 	Reset(fctx *fasthttp.RequestCtx)
 	// Reset is a method to reset context fields by given request when to use server handlers.
-	reset(ctx Ctx)
+	reset(_ Ctx)
 	// ViewBind Add vars to default view var map binding to template engine.
 	// Variables are read by the Render method and may be overwritten.
 	ViewBind(vars Map) error
