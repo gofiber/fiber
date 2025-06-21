@@ -609,20 +609,20 @@ func (c *DefaultCtx) renderExtensions(bind any) {
 		})
 
 		// Check if the PassLocalsToViews option is enabled (by default it is disabled)
-		if c.App().config.PassLocalsToViews {
+		if c.app.config.PassLocalsToViews {
 			// Loop through each local and set it in the map
-			c.RequestCtx().VisitUserValues(func(key []byte, val any) {
+			c.fasthttp.VisitUserValues(func(key []byte, val any) {
 				// check if bindMap doesn't contain the key
-				if _, ok := bindMap[c.App().getString(key)]; !ok {
+				if _, ok := bindMap[c.app.getString(key)]; !ok {
 					// Set the key and value in the bindMap
-					bindMap[c.App().getString(key)] = val
+					bindMap[c.app.getString(key)] = val
 				}
 			})
 		}
 	}
 
-	if len(c.App().mountFields.appListKeys) == 0 {
-		c.App().generateAppListKeys()
+	if len(c.app.mountFields.appListKeys) == 0 {
+		c.app.generateAppListKeys()
 	}
 }
 
