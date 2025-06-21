@@ -35,14 +35,8 @@ func NewDefaultCtx(app *App) *DefaultCtx {
 	ctx := &DefaultCtx{
 		// Set app reference
 		app: app,
-		DefaultReq: &DefaultReq{
-			app: app,
-		},
-		DefaultRes: &DefaultRes{
-			app: app,
-		},
 	}
-	ctx.DefaultRes.c = ctx
+	ctx.DefaultReq.c = ctx
 	ctx.DefaultRes.c = ctx
 
 	return ctx

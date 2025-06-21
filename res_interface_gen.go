@@ -52,10 +52,16 @@ type Res interface {
 	// RequestCtx returns *fasthttp.RequestCtx that carries a deadline
 	// a cancellation signal, and other values across API boundaries.
 	RequestCtx() *fasthttp.RequestCtx
+	// Request return the *fasthttp.Request object
+	// This allows you to use all fasthttp request methods
+	// https://godoc.org/github.com/valyala/fasthttp#Request
+	Request() *fasthttp.Request
 	// Response return the *fasthttp.Response object
 	// This allows you to use all fasthttp response methods
 	// https://godoc.org/github.com/valyala/fasthttp#Response
 	Response() *fasthttp.Response
+	// reset is a method to reset Res fields by given Ctx when to use server handlers.
+	reset(c Ctx)
 	// GetRespHeader returns the HTTP response header specified by field.
 	// Field names are case-insensitive
 	// Returned value is only valid within the handler. Do not store any references.

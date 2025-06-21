@@ -56,8 +56,17 @@ type DefaultCtx struct {
 	indexRoute    int                  // Index of the current route
 	indexHandler  int                  // Index of the current handler
 	matched       bool                 // Non use route matched
-	*DefaultReq                        // Default request api
-	*DefaultRes                        // Default response api
+
+	DefaultReq                   // Default request api
+	baseURI    string            // HTTP base uri
+	methodInt  int               // HTTP method INT equivalent
+	route      *Route            // Reference to *Route
+	values     [maxParams]string // Route parameter values
+
+	DefaultRes                    // Default response api
+	flashMessages redirectionMsgs // Flash messages
+	redirect      *Redirect       // Default redirect reference
+	viewBindMap   sync.Map        // Default view map to bind template engine
 }
 
 // SendFile defines configuration options when to transfer file with SendFile.
@@ -200,6 +209,17 @@ func (c *DefaultCtx) Accepts(offers ...string) string {
 	return c.Req().Accepts(offers...)
 }
 
+// BaseURL returns (protocol + host + base path).
+func (c *DefaultCtx) BaseURL() string {
+	// TODO: Could be improved: 53.8 ns/op  32 B/op  1 allocs/op
+	// Should work like https://codeigniter.com/user_guide/helpers/url_helper.html
+	if c.baseURI != "" {
+		return c.baseURI
+	}
+	c.baseURI = c.Scheme() + "://" + c.Host()
+	return c.baseURI
+}
+
 // Bind You can bind body, cookie, headers etc. into the map, map slice, struct easily by using Binding method.
 // It gives custom binding support, detailed binding options and more.
 // Replacement of: BodyParser, ParamsParser, GetReqHeaders, GetRespHeaders, AllParams, QueryParser, ReqHeaderParser
@@ -273,6 +293,25 @@ func (c *DefaultCtx) Cookies(key string, defaultValue ...string) string {
 	return c.Req().Cookies(key, defaultValue...)
 }
 
+// Method returns the HTTP request method for the context, optionally overridden by the provided argument.
+// If no override is given or if the provided override is not a valid HTTP method, it returns the current method from the context.
+// Otherwise, it updates the context's method and returns the overridden method as a string.
+func (c *DefaultCtx) Method(override ...string) string {
+	if len(override) == 0 {
+		// Nothing to override, just return current method from context
+		return c.App().method(c.methodInt)
+	}
+
+	method := utils.ToUpper(override[0])
+	methodInt := c.App().methodInt(method)
+	if methodInt == -1 {
+		// Provided override does not valid HTTP method, no override, return current method
+		return c.App().method(c.methodInt)
+	}
+	c.methodInt = methodInt
+	return method
+}
+
 // Next executes the next method in the stack that matches the current route.
 func (c *DefaultCtx) Next() error {
 	// Increment handler index
@@ -312,7 +351,7 @@ func (c *DefaultCtx) RestartRouting() error {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (c *DefaultCtx) OriginalURL() string {
-	return c.Req().OriginalURL()
+	return c.App().getString(c.Request().Header.RequestURI())
 }
 
 // Path returns the path part of the request URL.
@@ -322,8 +361,6 @@ func (c *DefaultCtx) Path(override ...string) string {
 	if len(override) != 0 && string(c.path) != override[0] {
 		// Set new path to context
 		c.pathOriginal = override[0]
-		c.DefaultReq.pathOriginal = override[0]
-		c.DefaultRes.pathOriginal = override[0]
 
 		// Set new path to request context
 		c.fasthttp.Request.URI().SetPath(c.pathOriginal)
@@ -336,13 +373,13 @@ func (c *DefaultCtx) Path(override ...string) string {
 // Req returns a convenience type whose API is limited to operations
 // on the incoming request.
 func (c *DefaultCtx) Req() Req {
-	return c.DefaultReq
+	return &c.DefaultReq
 }
 
 // Res returns a convenience type whose API is limited to operations
 // on the outgoing response.
 func (c *DefaultCtx) Res() Res {
-	return c.DefaultRes
+	return &c.DefaultRes
 }
 
 // RequestCtx returns *fasthttp.RequestCtx that carries a deadline
@@ -363,6 +400,34 @@ func (c *DefaultCtx) Request() *fasthttp.Request {
 // https://godoc.org/github.com/valyala/fasthttp#Response
 func (c *DefaultCtx) Response() *fasthttp.Response {
 	return &c.fasthttp.Response
+}
+
+// Redirect returns the Redirect reference.
+// Use Redirect().Status() to set custom redirection status code.
+// If status is not specified, status defaults to 303 See Other.
+// You can use Redirect().To(), Redirect().Route() and Redirect().Back() for redirection.
+func (c *DefaultCtx) Redirect() *Redirect {
+	if c.redirect == nil {
+		c.redirect = AcquireRedirect()
+		c.redirect.c = c
+	}
+
+	return c.redirect
+}
+
+// Route returns the matched Route struct.
+func (c *DefaultCtx) Route() *Route {
+	if c.route == nil {
+		// Fallback for fasthttp error handler
+		return &Route{
+			path:     c.pathOriginal,
+			Path:     c.pathOriginal,
+			Method:   c.Method(),
+			Handlers: make([]Handler, 0),
+			Params:   make([]string, 0),
+		}
+	}
+	return c.route
 }
 
 // SaveFile saves any multipart file to disk.
@@ -493,26 +558,37 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 	c.matched = false
 	// Set paths
 	c.pathOriginal = c.app.getString(fctx.URI().PathOriginal())
-	c.DefaultReq.pathOriginal = c.pathOriginal
-	c.DefaultRes.pathOriginal = c.pathOriginal
 	// Set method
 	c.methodInt = c.app.methodInt(utils.UnsafeString(fctx.Request.Header.Method()))
 	// Attach *fasthttp.RequestCtx to ctx
 	c.fasthttp = fctx
-	c.DefaultReq.fasthttp = fctx
-	c.DefaultRes.fasthttp = fctx
 	// reset base uri
 	c.baseURI = ""
 	// Prettify path
 	c.configDependentPaths()
+	c.reset(c)
+}
+
+// Reset is a method to reset context fields by given request when to use server handlers.
+func (c *DefaultCtx) reset(ctx Ctx) {
+	c.DefaultReq.reset(c)
+	c.DefaultRes.reset(c)
+}
+
+// ViewBind Add vars to default view var map binding to template engine.
+// Variables are read by the Render method and may be overwritten.
+func (c *DefaultCtx) ViewBind(vars Map) error {
+	// init viewBindMap - lazy map
+	for k, v := range vars {
+		c.viewBindMap.Store(k, v)
+	}
+	return nil
 }
 
 // Release is a method to reset context fields when to use ReleaseCtx()
 func (c *DefaultCtx) release() {
 	c.route = nil
 	c.fasthttp = nil
-	c.DefaultReq.fasthttp = nil
-	c.DefaultRes.fasthttp = nil
 	c.bind = nil
 	c.flashMessages = c.flashMessages[:0]
 	c.viewBindMap = sync.Map{}
@@ -520,11 +596,49 @@ func (c *DefaultCtx) release() {
 		ReleaseRedirect(c.redirect)
 		c.redirect = nil
 	}
+	c.DefaultReq.release()
+	c.DefaultRes.release()
+}
+
+func (c *DefaultCtx) renderExtensions(bind any) {
+	if bindMap, ok := bind.(Map); ok {
+		// Bind view map
+		c.viewBindMap.Range(func(key, value any) bool {
+			keyValue, ok := key.(string)
+			if !ok {
+				return true
+			}
+			if _, ok := bindMap[keyValue]; !ok {
+				bindMap[keyValue] = value
+			}
+			return true
+		})
+
+		// Check if the PassLocalsToViews option is enabled (by default it is disabled)
+		if c.App().config.PassLocalsToViews {
+			// Loop through each local and set it in the map
+			c.RequestCtx().VisitUserValues(func(key []byte, val any) {
+				// check if bindMap doesn't contain the key
+				if _, ok := bindMap[c.App().getString(key)]; !ok {
+					// Set the key and value in the bindMap
+					bindMap[c.App().getString(key)] = val
+				}
+			})
+		}
+	}
+
+	if len(c.App().mountFields.appListKeys) == 0 {
+		c.App().generateAppListKeys()
+	}
 }
 
 // Methods to use with next stack.
 func (c *DefaultCtx) getMethodInt() int {
 	return c.methodInt
+}
+
+func (c *DefaultCtx) setMethodInt(methodInt int) {
+	c.methodInt = methodInt
 }
 
 func (c *DefaultCtx) getIndexRoute() int {
@@ -565,4 +679,8 @@ func (c *DefaultCtx) setMatched(matched bool) {
 
 func (c *DefaultCtx) setRoute(route *Route) {
 	c.route = route
+}
+
+func (c *DefaultCtx) keepOriginalPath() {
+	c.pathOriginal = utils.CopyString(c.pathOriginal)
 }

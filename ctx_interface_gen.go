@@ -18,6 +18,8 @@ type Ctx interface {
 	App() *App
 	// Accepts checks if the specified extensions or content types are acceptable.
 	Accepts(offers ...string) string
+	// BaseURL returns (protocol + host + base path).
+	BaseURL() string
 	// Bind You can bind body, cookie, headers etc. into the map, map slice, struct easily by using Binding method.
 	// It gives custom binding support, detailed binding options and more.
 	// Replacement of: BodyParser, ParamsParser, GetReqHeaders, GetRespHeaders, AllParams, QueryParser, ReqHeaderParser
@@ -57,6 +59,10 @@ type Ctx interface {
 	// The returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting to use the value outside the Handler.
 	Cookies(key string, defaultValue ...string) string
+	// Method returns the HTTP request method for the context, optionally overridden by the provided argument.
+	// If no override is given or if the provided override is not a valid HTTP method, it returns the current method from the context.
+	// Otherwise, it updates the context's method and returns the overridden method as a string.
+	Method(override ...string) string
 	// Next executes the next method in the stack that matches the current route.
 	Next() error
 	// RestartRouting instead of going to the next handler. This may be useful after
@@ -87,6 +93,13 @@ type Ctx interface {
 	// This allows you to use all fasthttp response methods
 	// https://godoc.org/github.com/valyala/fasthttp#Response
 	Response() *fasthttp.Response
+	// Redirect returns the Redirect reference.
+	// Use Redirect().Status() to set custom redirection status code.
+	// If status is not specified, status defaults to 303 See Other.
+	// You can use Redirect().To(), Redirect().Route() and Redirect().Back() for redirection.
+	Redirect() *Redirect
+	// Route returns the matched Route struct.
+	Route() *Route
 	// SaveFile saves any multipart file to disk.
 	SaveFile(fileheader *multipart.FileHeader, path string) error
 	// SaveFileToStorage saves any multipart file to an external storage system.
@@ -111,10 +124,17 @@ type Ctx interface {
 	configDependentPaths()
 	// Reset is a method to reset context fields by given request when to use server handlers.
 	Reset(fctx *fasthttp.RequestCtx)
+	// Reset is a method to reset context fields by given request when to use server handlers.
+	reset(ctx Ctx)
+	// ViewBind Add vars to default view var map binding to template engine.
+	// Variables are read by the Render method and may be overwritten.
+	ViewBind(vars Map) error
 	// Release is a method to reset context fields when to use ReleaseCtx()
 	release()
+	renderExtensions(bind any)
 	// Methods to use with next stack.
 	getMethodInt() int
+	setMethodInt(methodInt int)
 	getIndexRoute() int
 	getTreePathHash() int
 	getDetectionPath() string
@@ -125,6 +145,7 @@ type Ctx interface {
 	setIndexRoute(route int)
 	setMatched(matched bool)
 	setRoute(route *Route)
+	keepOriginalPath()
 	// Append the specified value to the HTTP response header field.
 	// If the header is not already set, it creates the header with the specified value.
 	Append(field string, values ...string)
@@ -185,18 +206,9 @@ type Ctx interface {
 	Links(link ...string)
 	// Location sets the response Location HTTP header to the specified path parameter.
 	Location(path string)
-	// Redirect returns the Redirect reference.
-	// Use Redirect().Status() to set custom redirection status code.
-	// If status is not specified, status defaults to 303 See Other.
-	// You can use Redirect().To(), Redirect().Route() and Redirect().Back() for redirection.
-	Redirect() *Redirect
-	// ViewBind Add vars to default view var map binding to template engine.
-	// Variables are read by the Render method and may be overwritten.
-	ViewBind(vars Map) error
 	// Render a template with data and sends a text/html response.
 	// We support the following engines: https://github.com/gofiber/template
 	Render(name string, bind any, layouts ...string) error
-	renderExtensions(bind any)
 	// Send sets the HTTP response body without copying it.
 	// From this point onward the body argument must not be changed.
 	Send(body []byte) error
@@ -250,8 +262,6 @@ type Ctx interface {
 	AcceptsEncodings(offers ...string) string
 	// AcceptsLanguages checks if the specified language is acceptable.
 	AcceptsLanguages(offers ...string) string
-	// BaseURL returns (protocol + host + base path).
-	BaseURL() string
 	// BodyRaw contains the raw body submitted in a POST request.
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
@@ -317,10 +327,6 @@ type Ctx interface {
 	// RequestHandler. Additionally, Close method is called on each value
 	// implementing io.Closer before removing the value from ctx.
 	Locals(key any, value ...any) any
-	// Method returns the HTTP request method for the context, optionally overridden by the provided argument.
-	// If no override is given or if the provided override is not a valid HTTP method, it returns the current method from the context.
-	// Otherwise, it updates the context's method and returns the overridden method as a string.
-	Method(override ...string) string
 	// MultipartForm parse form entries from binary.
 	// This returns a map[string][]string, so given a key the value will be a string slice.
 	MultipartForm() (*multipart.Form, error)
@@ -362,8 +368,6 @@ type Ctx interface {
 	Queries() map[string]string
 	// Range returns a struct containing the type and a slice of ranges.
 	Range(size int) (Range, error)
-	// Route returns the matched Route struct.
-	Route() *Route
 	// Scheme contains the request protocol string: http or https for TLS requests.
 	// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
 	Scheme() string
