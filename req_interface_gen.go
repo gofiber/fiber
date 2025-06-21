@@ -46,8 +46,6 @@ type Req interface {
 	// This allows you to use all fasthttp request methods
 	// https://godoc.org/github.com/valyala/fasthttp#Request
 	Request() *fasthttp.Request
-	// reset is a method to reset Req fields by given Ctx when to use server handlers.
-	reset(c Ctx)
 	// Release is a method to reset Req fields when to use ReleaseCtx()
 	release()
 	// FormFile returns the first file by key from a MultipartForm.

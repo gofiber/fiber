@@ -169,11 +169,6 @@ func (r *DefaultReq) Request() *fasthttp.Request {
 	return r.c.Request()
 }
 
-// reset is a method to reset Req fields by given Ctx when to use server handlers.
-func (r *DefaultReq) reset(c Ctx) {
-	r.c = c
-}
-
 // Release is a method to reset Req fields when to use ReleaseCtx()
 func (r *DefaultReq) release() {
 	r.c = nil

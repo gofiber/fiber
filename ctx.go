@@ -564,13 +564,9 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 	c.baseURI = ""
 	// Prettify path
 	c.configDependentPaths()
-	c.reset(c)
-}
 
-// Reset is a method to reset context fields by given request when to use server handlers.
-func (c *DefaultCtx) reset(_ Ctx) {
-	c.DefaultReq.reset(c)
-	c.DefaultRes.reset(c)
+	c.DefaultReq.c = c
+	c.DefaultRes.c = c
 }
 
 // ViewBind Add vars to default view var map binding to template engine.
@@ -649,10 +645,6 @@ func (c *DefaultCtx) getTreePathHash() int {
 
 func (c *DefaultCtx) getDetectionPath() string {
 	return c.app.getString(c.detectionPath)
-}
-
-func (c *DefaultCtx) getPathOriginal() string {
-	return c.pathOriginal
 }
 
 func (c *DefaultCtx) getValues() *[maxParams]string {

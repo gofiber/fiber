@@ -60,8 +60,6 @@ type Res interface {
 	// This allows you to use all fasthttp response methods
 	// https://godoc.org/github.com/valyala/fasthttp#Response
 	Response() *fasthttp.Response
-	// reset is a method to reset Res fields by given Ctx when to use server handlers.
-	reset(c Ctx)
 	// Release is a method to reset Res fields when to use ReleaseCtx()
 	release()
 	// GetRespHeader returns the HTTP response header specified by field.

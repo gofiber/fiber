@@ -124,8 +124,6 @@ type Ctx interface {
 	configDependentPaths()
 	// Reset is a method to reset context fields by given request when to use server handlers.
 	Reset(fctx *fasthttp.RequestCtx)
-	// Reset is a method to reset context fields by given request when to use server handlers.
-	reset(_ Ctx)
 	// ViewBind Add vars to default view var map binding to template engine.
 	// Variables are read by the Render method and may be overwritten.
 	ViewBind(vars Map) error
@@ -138,7 +136,6 @@ type Ctx interface {
 	getIndexRoute() int
 	getTreePathHash() int
 	getDetectionPath() string
-	getPathOriginal() string
 	getValues() *[maxParams]string
 	getMatched() bool
 	setIndexHandler(handler int)
@@ -247,6 +244,7 @@ type Ctx interface {
 	Drop() error
 	// End immediately flushes the current response and closes the underlying connection.
 	End() error
+	getPathOriginal() string
 	// Fresh returns true when the response is still “fresh” in the client's cache,
 	// otherwise false is returned to indicate that the client cache is now stale
 	// and the full response should be sent.

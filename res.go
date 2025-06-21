@@ -243,11 +243,6 @@ func (r *DefaultRes) Response() *fasthttp.Response {
 	return r.c.Response()
 }
 
-// reset is a method to reset Res fields by given Ctx when to use server handlers.
-func (r *DefaultRes) reset(c Ctx) {
-	r.c = c
-}
-
 // Release is a method to reset Res fields when to use ReleaseCtx()
 func (r *DefaultRes) release() {
 	r.c = nil
