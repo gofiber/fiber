@@ -462,7 +462,7 @@ func Test_Listen_ListenerNetwork(t *testing.T) {
 	require.NoError(t, app.Listen(sock, ListenConfig{
 		DisableStartupMessage: true,
 		ListenerNetwork:       NetworkUnix,
-		UnixSocketFileMode:    0o777,
+		UnixSocketFileMode:    0o666,
 		ListenerAddrFunc: func(addr net.Addr) {
 			network = addr.String()
 			f, err = os.Stat(network)
@@ -471,7 +471,7 @@ func Test_Listen_ListenerNetwork(t *testing.T) {
 
 	require.Equal(t, sock, network)
 	require.NoError(t, err)
-	require.Equal(t, os.FileMode(0o777), f.Mode().Perm())
+	require.Equal(t, os.FileMode(0o666), f.Mode().Perm())
 }
 
 // go test -run Test_Listen_Master_Process_Show_Startup_Message
