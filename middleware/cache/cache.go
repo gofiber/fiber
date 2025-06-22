@@ -310,7 +310,7 @@ func hasRequestDirective(c fiber.Ctx, directive string) bool {
 				continue
 			}
 		}
-		if i+dLen == n || cc[i+dLen] == ',' {
+		if i+dirLen == ccLen || cc[i+dirLen] == ',' {
 			return true
 		}
 	}
