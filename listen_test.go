@@ -455,6 +455,8 @@ func Test_Listen_ListenerNetwork(t *testing.T) {
 	tmp, err := os.MkdirTemp(os.TempDir(), "fiber-test")
 	require.NoError(t, err)
 
+	defer func() { assert.NoError(t, os.RemoveAll(tmp)) }()
+
 	var f os.FileInfo
 	sock := filepath.Join(tmp, "fiber-test.sock")
 	require.NoError(t, app.Listen(sock, ListenConfig{
@@ -470,8 +472,6 @@ func Test_Listen_ListenerNetwork(t *testing.T) {
 	require.Equal(t, sock, network)
 	require.NoError(t, err)
 	require.Equal(t, os.FileMode(0o777), f.Mode().Perm())
-
-	assert.NoError(t, os.RemoveAll(tmp))
 }
 
 // go test -run Test_Listen_Master_Process_Show_Startup_Message
