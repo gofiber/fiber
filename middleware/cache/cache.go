@@ -298,10 +298,10 @@ func New(config ...Config) fiber.Handler {
 // Check if request has directive
 func hasRequestDirective(c fiber.Ctx, directive string) bool {
 	cc := c.Get(fiber.HeaderCacheControl)
-	n := len(cc)
-	dLen := len(directive)
-	for i := 0; i <= n-dLen; i++ {
-		if !utils.EqualFold(cc[i:i+dLen], directive) {
+	ccLen := len(cc)
+	dirLen := len(directive)
+	for i := 0; i <= ccLen-dirLen; i++ {
+		if !utils.EqualFold(cc[i:i+dirLen], directive) {
 			continue
 		}
 		if i > 0 {
