@@ -883,7 +883,7 @@ func (c *DefaultCtx) Is(extension string) bool {
 		return false
 	}
 
-	ct := utils.UnsafeString(c.fasthttp.Request.Header.ContentType())
+	ct := c.app.getString(c.fasthttp.Request.Header.ContentType())
 	if i := strings.IndexByte(ct, ';'); i != -1 {
 		ct = ct[:i]
 	}
