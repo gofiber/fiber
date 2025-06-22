@@ -1,11 +1,14 @@
 package cors
 
 import (
+	"bytes"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/log"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -259,6 +262,21 @@ func Test_CORS_Wildcard_AllowCredentials_Panic(t *testing.T) {
 	if !didPanic {
 		t.Errorf("Expected a panic when AllowOrigins is '*' and AllowCredentials is true")
 	}
+}
+
+// Test that a warning is logged when AllowOrigins allows all origins and
+// AllowOriginsFunc is also provided.
+func Test_CORS_Warn_AllowAllOrigins_WithFunc(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	fiber.New().Use(New(Config{
+		AllowOrigins:     []string{"*"},
+		AllowOriginsFunc: func(string) bool { return true },
+	}))
+
+	require.Contains(t, buf.String(), "AllowOriginsFunc' will not be used")
 }
 
 // go test -run -v Test_CORS_Invalid_Origin_Panic
