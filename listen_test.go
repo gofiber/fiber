@@ -10,6 +10,7 @@ import (
 	"log" //nolint:depguard // TODO: Required to capture output, use internal log package instead
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -445,6 +446,32 @@ func Test_Listen_ListenerNetwork(t *testing.T) {
 	}))
 
 	require.Contains(t, network, "0.0.0.0:")
+
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+		assert.NoError(t, app.Shutdown())
+	}()
+
+	tmp, err := os.MkdirTemp(os.TempDir(), "fiber-test")
+	require.NoError(t, err)
+
+	var f os.FileInfo
+	sock := filepath.Join(tmp, "fiber-test.sock")
+	require.NoError(t, app.Listen(sock, ListenConfig{
+		DisableStartupMessage: true,
+		ListenerNetwork:       NetworkUnix,
+		UnixSocketFileMode:    0o777,
+		ListenerAddrFunc: func(addr net.Addr) {
+			network = addr.String()
+			f, err = os.Stat(network)
+		},
+	}))
+
+	require.Equal(t, sock, network)
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o777), f.Mode().Perm())
+
+	assert.NoError(t, os.RemoveAll(tmp))
 }
 
 // go test -run Test_Listen_Master_Process_Show_Startup_Message
