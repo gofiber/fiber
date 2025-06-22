@@ -289,7 +289,7 @@ func (*App) createListener(addr string, tlsConfig *tls.Config, cfg ListenConfig)
 	var err error
 
 	// Remove previously created socket, to make sure it's possible to listen
-	if cfg.ListenerNetwork == "unix" {
+	if cfg.ListenerNetwork == NetworkUnix {
 		if err = os.Remove(addr); err != nil && !os.IsNotExist(err) {
 			return nil, fmt.Errorf("unexpected error when trying to remove unix socket file %q: %w", addr, err)
 		}
@@ -307,7 +307,7 @@ func (*App) createListener(addr string, tlsConfig *tls.Config, cfg ListenConfig)
 		return nil, fmt.Errorf("failed to listen: %w", err)
 	}
 
-	if cfg.ListenerNetwork == "unix" {
+	if cfg.ListenerNetwork == NetworkUnix {
 		if err = os.Chmod(addr, cfg.UnixSocketFileMode); err != nil {
 			return nil, fmt.Errorf("cannot chmod %#o for %q: %w", cfg.UnixSocketFileMode, addr, err)
 		}
