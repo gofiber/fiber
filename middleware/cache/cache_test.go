@@ -174,6 +174,27 @@ func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
 	require.Equal(t, []byte("3"), noCacheBodyUpper)
 	// Response cached, returns updated response, entry = 3
 
+	// Request id = 4 with Cache-Control: my-no-cache
+	invalidReq := httptest.NewRequest(fiber.MethodGet, "/?id=4", nil)
+	invalidReq.Header.Set(fiber.HeaderCacheControl, "my-no-cache")
+	invalidResp, err := app.Test(invalidReq)
+	require.NoError(t, err)
+	invalidBody, err := io.ReadAll(invalidResp.Body)
+	require.NoError(t, err)
+	require.Equal(t, cacheHit, invalidResp.Header.Get("X-Cache"))
+	require.Equal(t, []byte("3"), invalidBody)
+	// Response served from cache, existing entry = 3
+
+	// Request id = 4 again without Cache-Control: no-cache
+	cachedInvalidReq := httptest.NewRequest(fiber.MethodGet, "/?id=4", nil)
+	cachedInvalidResp, err := app.Test(cachedInvalidReq)
+	require.NoError(t, err)
+	cachedInvalidBody, err := io.ReadAll(cachedInvalidResp.Body)
+	require.NoError(t, err)
+	require.Equal(t, cacheHit, cachedInvalidResp.Header.Get("X-Cache"))
+	require.Equal(t, []byte("3"), cachedInvalidBody)
+	// Response cached, returns cached response, entry id = 3
+
 	// Request id = 1 without Cache-Control: no-cache
 	cachedReq1 := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	cachedResp1, err := app.Test(cachedReq1)
@@ -291,6 +312,27 @@ func Test_Cache_WithNoStoreRequestDirective(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []byte("3"), noStoreBodyUpper)
 	// Response not cached, returns updated response
+
+	// Request id = 4 with Cache-Control: my-no-store
+	invalidReq := httptest.NewRequest(fiber.MethodGet, "/?id=4", nil)
+	invalidReq.Header.Set(fiber.HeaderCacheControl, "my-no-store")
+	invalidResp, err := app.Test(invalidReq)
+	require.NoError(t, err)
+	invalidBody, err := io.ReadAll(invalidResp.Body)
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, invalidResp.Header.Get("X-Cache"))
+	require.Equal(t, []byte("4"), invalidBody)
+	// Response cached, returns updated response, entry = 4
+
+	// Request id = 4 again without Cache-Control
+	cachedInvalidReq := httptest.NewRequest(fiber.MethodGet, "/?id=4", nil)
+	cachedInvalidResp, err := app.Test(cachedInvalidReq)
+	require.NoError(t, err)
+	cachedInvalidBody, err := io.ReadAll(cachedInvalidResp.Body)
+	require.NoError(t, err)
+	require.Equal(t, cacheHit, cachedInvalidResp.Header.Get("X-Cache"))
+	require.Equal(t, []byte("4"), cachedInvalidBody)
+	// Response cached previously, served from cache
 }
 
 func Test_Cache_WithSeveralRequests(t *testing.T) {

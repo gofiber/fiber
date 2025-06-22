@@ -297,10 +297,25 @@ func New(config ...Config) fiber.Handler {
 
 // Check if request has directive
 func hasRequestDirective(c fiber.Ctx, directive string) bool {
-	return strings.Contains(
-		utils.ToLower(c.Get(fiber.HeaderCacheControl)),
-		utils.ToLower(directive),
-	)
+	cc := c.Get(fiber.HeaderCacheControl)
+	n := len(cc)
+	dLen := len(directive)
+	for i := 0; i <= n-dLen; i++ {
+		if !utils.EqualFold(cc[i:i+dLen], directive) {
+			continue
+		}
+		if i > 0 {
+			prev := cc[i-1]
+			if prev != ' ' && prev != ',' {
+				continue
+			}
+		}
+		if i+dLen == n || cc[i+dLen] == ',' {
+			return true
+		}
+	}
+
+	return false
 }
 
 // parseMaxAge extracts the max-age directive from a Cache-Control header.
