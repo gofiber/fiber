@@ -72,11 +72,6 @@ type ListenConfig struct {
 	// Default: NetworkTCP4
 	ListenerNetwork string `json:"listener_network"`
 
-	// FileMode to set for Unix Domain Socket (ListenerNetwork must be "unix")
-	//
-	// Default: 0775
-	UnixSocketFileMode os.FileMode `json:"unix_socket_file_mode"`
-
 	// CertFile is a path of certificate file.
 	// If you want to use TLS, you have to enter this field.
 	//
@@ -101,6 +96,11 @@ type ListenConfig struct {
 	//
 	// Default: 10 * time.Second
 	ShutdownTimeout time.Duration `json:"shutdown_timeout"`
+
+	// FileMode to set for Unix Domain Socket (ListenerNetwork must be "unix")
+	//
+	// Default: 0775
+	UnixSocketFileMode os.FileMode `json:"unix_socket_file_mode"`
 
 	// TLSMinVersion allows to set TLS minimum version.
 	//
