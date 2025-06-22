@@ -2134,6 +2134,16 @@ func Test_Ctx_Is(t *testing.T) {
 	require.False(t, c.Is("html"))
 	require.True(t, c.Is("txt"))
 	require.True(t, c.Is(".txt"))
+
+	// case-insensitive and trimmed
+	c.Request().Header.Set(HeaderContentType, "APPLICATION/JSON; charset=utf-8")
+	require.True(t, c.Is("json"))
+	require.True(t, c.Is(".json"))
+
+	// mismatched subtype should not match
+	c.Request().Header.Set(HeaderContentType, "application/json+xml")
+	require.False(t, c.Is("json"))
+	require.False(t, c.Is(".json"))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Is -benchmem -count=4
