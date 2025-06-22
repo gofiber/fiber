@@ -163,6 +163,17 @@ func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
 	require.Equal(t, []byte("2"), noCacheBody1)
 	// Response cached, returns updated response, entry = 2
 
+	// Request id = 3 with Cache-Control: NO-CACHE
+	noCacheReqUpper := httptest.NewRequest(fiber.MethodGet, "/?id=3", nil)
+	noCacheReqUpper.Header.Set(fiber.HeaderCacheControl, "NO-CACHE")
+	noCacheRespUpper, err := app.Test(noCacheReqUpper)
+	require.NoError(t, err)
+	noCacheBodyUpper, err := io.ReadAll(noCacheRespUpper.Body)
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, noCacheRespUpper.Header.Get("X-Cache"))
+	require.Equal(t, []byte("3"), noCacheBodyUpper)
+	// Response cached, returns updated response, entry = 3
+
 	// Request id = 1 without Cache-Control: no-cache
 	cachedReq1 := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	cachedResp1, err := app.Test(cachedReq1)
@@ -170,8 +181,8 @@ func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
 	cachedBody1, err := io.ReadAll(cachedResp1.Body)
 	require.NoError(t, err)
 	require.Equal(t, cacheHit, cachedResp1.Header.Get("X-Cache"))
-	require.Equal(t, []byte("2"), cachedBody1)
-	// Response not cached, returns cached response, entry id = 2
+	require.Equal(t, []byte("3"), cachedBody1)
+	// Response not cached, returns cached response, entry id = 3
 }
 
 // go test -run Test_Cache_WithETagAndNoCacheRequestDirective
@@ -221,6 +232,16 @@ func Test_Cache_WithETagAndNoCacheRequestDirective(t *testing.T) {
 	// If response status 200
 	etagToken = noCacheResp.Header.Get("Etag")
 
+	// Request id = 3 with ETag and Cache-Control: NO-CACHE
+	noCacheReqUpper := httptest.NewRequest(fiber.MethodGet, "/?id=3", nil)
+	noCacheReqUpper.Header.Set(fiber.HeaderCacheControl, "NO-CACHE")
+	noCacheReqUpper.Header.Set(fiber.HeaderIfNoneMatch, etagToken)
+	noCacheRespUpper, err := app.Test(noCacheReqUpper)
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, noCacheRespUpper.Header.Get("X-Cache"))
+	require.Equal(t, fiber.StatusOK, noCacheRespUpper.StatusCode)
+	// Response cached, returns updated response, entry id = 3
+
 	// Request id = 2 with ETag and Cache-Control: no-cache again
 	noCacheReq1 := httptest.NewRequest(fiber.MethodGet, "/?id=2", nil)
 	noCacheReq1.Header.Set(fiber.HeaderCacheControl, noCache)
@@ -259,6 +280,16 @@ func Test_Cache_WithNoStoreRequestDirective(t *testing.T) {
 	noStoreBody, err := io.ReadAll(noStoreResp.Body)
 	require.NoError(t, err)
 	require.Equal(t, []byte("2"), noStoreBody)
+	// Response not cached, returns updated response
+
+	// Request id = 3 with Cache-Control: NO-STORE
+	noStoreReqUpper := httptest.NewRequest(fiber.MethodGet, "/?id=3", nil)
+	noStoreReqUpper.Header.Set(fiber.HeaderCacheControl, "NO-STORE")
+	noStoreRespUpper, err := app.Test(noStoreReqUpper)
+	require.NoError(t, err)
+	noStoreBodyUpper, err := io.ReadAll(noStoreRespUpper.Body)
+	require.NoError(t, err)
+	require.Equal(t, []byte("3"), noStoreBodyUpper)
 	// Response not cached, returns updated response
 }
 

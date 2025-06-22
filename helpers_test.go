@@ -596,6 +596,8 @@ func Test_Utils_IsNoCache(t *testing.T) {
 		{string: "no-cache, public", bool: true},
 		{string: "Xno-cache, public", bool: false},
 		{string: "max-age=30, no-cache,public", bool: true},
+		{string: "NO-CACHE", bool: true},
+		{string: "public, NO-CACHE", bool: true},
 	}
 
 	for _, c := range testCases {

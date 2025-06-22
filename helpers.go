@@ -605,14 +605,8 @@ const noCacheValue = "no-cache"
 func isNoCache(cacheControl string) bool {
 	n := len(cacheControl)
 	ncLen := len(noCacheValue)
-	for i := 0; i < n; i++ {
-		if cacheControl[i] != 'n' {
-			continue
-		}
-		if i+ncLen > n {
-			return false
-		}
-		if cacheControl[i:i+ncLen] != noCacheValue {
+	for i := 0; i <= n-ncLen; i++ {
+		if !utils.EqualFold(cacheControl[i:i+ncLen], noCacheValue) {
 			continue
 		}
 		if i > 0 {
