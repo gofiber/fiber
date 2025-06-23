@@ -619,7 +619,7 @@ func (c *DefaultCtx) Fresh() bool {
 
 	// Always return stale when Cache-Control: no-cache
 	// to support end-to-end reload requests
-	// https://tools.ietf.org/html/rfc2616#section-14.9.4
+	// https://www.rfc-editor.org/rfc/rfc9111#section-5.2.1.4
 	cacheControl := c.Get(HeaderCacheControl)
 	if cacheControl != "" && isNoCache(cacheControl) {
 		return false
