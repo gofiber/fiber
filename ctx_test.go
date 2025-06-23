@@ -3097,6 +3097,12 @@ func Test_Ctx_Subdomains(t *testing.T) {
 			offset: nil,
 			want:   []string{"bücher"},
 		},
+		{
+			name:   "invalid domain keeps original lowercased",
+			host:   "Foo Bar",
+			offset: []int{0},
+			want:   []string{"foo bar"},
+		},
 	}
 
 	for _, tc := range cases {
