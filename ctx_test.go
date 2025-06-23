@@ -2091,6 +2091,16 @@ func Test_Ctx_Is(t *testing.T) {
 	utils.AssertEqual(t, false, c.Is("html"))
 	utils.AssertEqual(t, true, c.Is("txt"))
 	utils.AssertEqual(t, true, c.Is(".txt"))
+
+	// case-insensitive and trimmed
+	c.Request().Header.Set(HeaderContentType, "APPLICATION/JSON; charset=utf-8")
+	utils.AssertEqual(t, true, c.Is("json"))
+	utils.AssertEqual(t, true, c.Is(".json"))
+
+	// mismatched subtype should not match
+	c.Request().Header.Set(HeaderContentType, "application/json+xml")
+	utils.AssertEqual(t, false, c.Is("json"))
+	utils.AssertEqual(t, false, c.Is(".json"))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Is -benchmem -count=4
