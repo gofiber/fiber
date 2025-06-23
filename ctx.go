@@ -1071,11 +1071,6 @@ func (c *DefaultCtx) Next() error {
 	}
 
 	// Continue handler stack
-	if c.app.newCtxFunc != nil {
-		_, err := c.app.nextCustom(c)
-		return err
-	}
-
 	_, err := c.app.next(c)
 	return err
 }
@@ -1086,11 +1081,7 @@ func (c *DefaultCtx) RestartRouting() error {
 	var err error
 
 	c.indexRoute = -1
-	if c.app.newCtxFunc != nil {
-		_, err = c.app.nextCustom(c)
-	} else {
-		_, err = c.app.next(c)
-	}
+	_, err = c.app.next(c)
 	return err
 }
 
