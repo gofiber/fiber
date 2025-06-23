@@ -877,10 +877,12 @@ func (c *Ctx) Is(extension string) bool {
 		return false
 	}
 
-	return strings.HasPrefix(
-		utils.TrimLeft(c.app.getString(c.fasthttp.Request.Header.ContentType()), ' '),
-		extensionHeader,
-	)
+	ct := c.app.getString(c.fasthttp.Request.Header.ContentType())
+	if i := strings.IndexByte(ct, ';'); i != -1 {
+		ct = ct[:i]
+	}
+	ct = utils.Trim(ct, ' ')
+	return utils.EqualFold(ct, extensionHeader)
 }
 
 // JSON converts any interface or string to JSON.
