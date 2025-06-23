@@ -621,7 +621,7 @@ func (c *DefaultCtx) Fresh() bool {
 
 	// Always return stale when Cache-Control: no-cache
 	// to support end-to-end reload requests
-	// https://tools.ietf.org/html/rfc2616#section-14.9.4
+	// https://www.rfc-editor.org/rfc/rfc9111#section-5.2.1.4
 	cacheControl := c.Get(HeaderCacheControl)
 	if cacheControl != "" && isNoCache(cacheControl) {
 		return false
@@ -885,10 +885,12 @@ func (c *DefaultCtx) Is(extension string) bool {
 		return false
 	}
 
-	return strings.HasPrefix(
-		utils.TrimLeft(utils.UnsafeString(c.fasthttp.Request.Header.ContentType()), ' '),
-		extensionHeader,
-	)
+	ct := c.app.getString(c.fasthttp.Request.Header.ContentType())
+	if i := strings.IndexByte(ct, ';'); i != -1 {
+		ct = ct[:i]
+	}
+	ct = utils.Trim(ct, ' ')
+	return utils.EqualFold(ct, extensionHeader)
 }
 
 // JSON converts any interface or string to JSON.
@@ -1071,11 +1073,6 @@ func (c *DefaultCtx) Next() error {
 	}
 
 	// Continue handler stack
-	if c.app.newCtxFunc != nil {
-		_, err := c.app.nextCustom(c)
-		return err
-	}
-
 	_, err := c.app.next(c)
 	return err
 }
@@ -1086,11 +1083,7 @@ func (c *DefaultCtx) RestartRouting() error {
 	var err error
 
 	c.indexRoute = -1
-	if c.app.newCtxFunc != nil {
-		_, err = c.app.nextCustom(c)
-	} else {
-		_, err = c.app.next(c)
-	}
+	_, err = c.app.next(c)
 	return err
 }
 

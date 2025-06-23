@@ -106,9 +106,7 @@ func (c *customCtx) Params(key string, defaultValue ...string) string { //revive
 func Test_Ctx_CustomCtx(t *testing.T) {
 	t.Parallel()
 
-	app := New()
-
-	app.NewCtxFunc(func(app *App) CustomCtx {
+	app := NewWithCustomCtx(func(app *App) CustomCtx {
 		return &customCtx{
 			DefaultCtx: *NewDefaultCtx(app),
 		}
@@ -130,15 +128,12 @@ func Test_Ctx_CustomCtx_and_Method(t *testing.T) {
 
 	// Create app with custom request methods
 	methods := append(DefaultMethods, "JOHN") //nolint:gocritic // We want a new slice here
-	app := New(Config{
-		RequestMethods: methods,
-	})
-
-	// Create custom context
-	app.NewCtxFunc(func(app *App) CustomCtx {
+	app := NewWithCustomCtx(func(app *App) CustomCtx {
 		return &customCtx{
 			DefaultCtx: *NewDefaultCtx(app),
 		}
+	}, Config{
+		RequestMethods: methods,
 	})
 
 	// Add route with custom method
@@ -2134,6 +2129,16 @@ func Test_Ctx_Is(t *testing.T) {
 	require.False(t, c.Is("html"))
 	require.True(t, c.Is("txt"))
 	require.True(t, c.Is(".txt"))
+
+	// case-insensitive and trimmed
+	c.Request().Header.Set(HeaderContentType, "APPLICATION/JSON; charset=utf-8")
+	require.True(t, c.Is("json"))
+	require.True(t, c.Is(".json"))
+
+	// mismatched subtype should not match
+	c.Request().Header.Set(HeaderContentType, "application/json+xml")
+	require.False(t, c.Is("json"))
+	require.False(t, c.Is(".json"))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Is -benchmem -count=4
