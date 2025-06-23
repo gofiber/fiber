@@ -71,6 +71,37 @@ We have made several changes to the Fiber app, including:
 - **State**: Provides a global state for the application, which can be used to store and retrieve data across the application. Check out the [State](./api/state) method for further details.
 - **NewErrorf**: Allows variadic parameters when creating formatted errors.
 
+#### Custom Route Constraints
+
+Custom route constraints enable you to define your own validation rules for route parameters.
+Use `RegisterCustomConstraint` to add a constraint type that implements the `CustomConstraint` interface.
+
+<details>
+<summary>Example</summary>
+
+```go
+type UlidConstraint struct {
+    fiber.CustomConstraint
+}
+
+func (*UlidConstraint) Name() string {
+    return "ulid"
+}
+
+func (*UlidConstraint) Execute(param string, args ...string) bool {
+    _, err := ulid.Parse(param)
+    return err == nil
+}
+
+app.RegisterCustomConstraint(&UlidConstraint{})
+
+app.Get("/login/:id<ulid>", func(c fiber.Ctx) error {
+    return c.SendString("User " + c.Params("id"))
+})
+```
+
+</details>
+
 ### Removed Methods
 
 - **Mount**: Use `app.Use()` instead.
