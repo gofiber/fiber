@@ -881,7 +881,7 @@ func (c *Ctx) Is(extension string) bool {
 	if i := strings.IndexByte(ct, ';'); i != -1 {
 		ct = ct[:i]
 	}
-	ct = strings.TrimSpace(ct)
+	ct = utils.Trim(ct, ' ')
 	return utils.EqualFold(ct, extensionHeader)
 }
 
