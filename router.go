@@ -6,7 +6,6 @@ package fiber
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"html"
 	"slices"
@@ -107,163 +106,238 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) boo
 	return false
 }
 
-func (app *App) nextCustom(c CustomCtx) (bool, error) { //nolint:unparam // bool param might be useful for testing
+func (app *App) next(c *DefaultCtx) (bool, error) {
+	methodInt := c.methodInt
+	treeHash := c.treePathHash
 	// Get stack length
-	tree, ok := app.treeStack[c.getMethodInt()][c.getTreePathHash()]
+	tree, ok := app.treeStack[methodInt][treeHash]
 	if !ok {
-		tree = app.treeStack[c.getMethodInt()][0]
+		tree = app.treeStack[methodInt][0]
 	}
 	lenr := len(tree) - 1
 
-	// Loop over the route stack starting from previous index
-	for c.getIndexRoute() < lenr {
-		// Increment route index
-		c.setIndexRoute(c.getIndexRoute() + 1)
-
-		// Get *Route
-		route := tree[c.getIndexRoute()]
-
-		// Check if it matches the request path
-		match := route.match(c.getDetectionPath(), c.Path(), c.getValues())
-
-		// No match, next route
-		if !match {
-			continue
-		}
-		// Pass route reference and param values
-		c.setRoute(route)
-
-		// Non use handler matched
-		if !c.getMatched() && !route.use {
-			c.setMatched(true)
-		}
-
-		// Execute first handler of route
-		c.setIndexHandler(0)
-		err := route.Handlers[0](c)
-		return match, err // Stop scanning the stack
-	}
-
-	// If c.Next() does not match, return 404
-	err := NewError(StatusNotFound, "Cannot "+c.Method()+" "+c.getPathOriginal())
-
-	// If no match, scan stack again if other methods match the request
-	// Moved from app.handler because middleware may break the route chain
-	if !c.getMatched() && app.methodExistCustom(c) {
-		err = ErrMethodNotAllowed
-	}
-	return false, err
-}
-
-func (app *App) next(c *DefaultCtx) (bool, error) {
-	// Get stack length
-	tree, ok := app.treeStack[c.methodInt][c.treePathHash]
-	if !ok {
-		tree = app.treeStack[c.methodInt][0]
-	}
-	lenTree := len(tree) - 1
+	indexRoute := c.indexRoute
+	var err error
 
 	// Loop over the route stack starting from previous index
-	for c.indexRoute < lenTree {
+	for indexRoute < lenr {
 		// Increment route index
-		c.indexRoute++
+		indexRoute++
 
 		// Get *Route
-		route := tree[c.indexRoute]
+		route := tree[indexRoute]
 
-		var match bool
-		var err error
-		// skip for mounted apps
 		if route.mount {
 			continue
 		}
 
 		// Check if it matches the request path
-		match = route.match(utils.UnsafeString(c.detectionPath), utils.UnsafeString(c.path), &c.values)
-		if !match {
-			// No match, next route
+		if !route.match(utils.UnsafeString(c.detectionPath), utils.UnsafeString(c.path), &c.values) {
 			continue
 		}
+
 		// Pass route reference and param values
 		c.route = route
-
 		// Non use handler matched
-		if !c.matched && !route.use {
+		if !route.use {
 			c.matched = true
 		}
-
 		// Execute first handler of route
-		c.indexHandler = 0
 		if len(route.Handlers) > 0 {
-			err = route.Handlers[0](c)
+			c.indexHandler = 0
+			c.indexRoute = indexRoute
+			return true, route.Handlers[0](c)
 		}
-		return match, err // Stop scanning the stack
+
+		return true, nil // Stop scanning the stack
 	}
 
 	// If c.Next() does not match, return 404
-	err := NewError(StatusNotFound, "Cannot "+c.Method()+" "+html.EscapeString(c.pathOriginal))
-	if !c.matched && app.methodExist(c) {
-		// If no match, scan stack again if other methods match the request
-		// Moved from app.handler because middleware may break the route chain
+	err = NewError(StatusNotFound, "Cannot "+c.Method()+" "+html.EscapeString(c.getPathOriginal()))
+
+	// If no match, scan stack again if other methods match the request
+	// Moved from app.handler because middleware may break the route chain
+	if c.matched {
+		return false, err
+	}
+
+	exists := false
+	methods := app.config.RequestMethods
+	for i := 0; i < len(methods); i++ {
+		// Skip original method
+		if methodInt == i {
+			continue
+		}
+		// Reset stack index
+		indexRoute := -1
+
+		tree, ok := app.treeStack[i][treeHash]
+		if !ok {
+			tree = app.treeStack[i][0]
+		}
+		// Get stack length
+		lenr := len(tree) - 1
+		// Loop over the route stack starting from previous index
+		for indexRoute < lenr {
+			// Increment route index
+			indexRoute++
+			// Get *Route
+			route := tree[indexRoute]
+			// Skip use routes
+			if route.use {
+				continue
+			}
+			// Check if it matches the request path
+			// No match, next route
+			if route.match(utils.UnsafeString(c.detectionPath), utils.UnsafeString(c.path), &c.values) {
+				// We matched
+				exists = true
+				// Add method to Allow header
+				c.Append(HeaderAllow, methods[i])
+				// Break stack loop
+				break
+			}
+		}
+		c.indexRoute = indexRoute
+	}
+	if exists {
 		err = ErrMethodNotAllowed
 	}
 	return false, err
 }
 
-func (app *App) defaultRequestHandler(rctx *fasthttp.RequestCtx) {
-	// Acquire DefaultCtx from the pool
-	ctx, ok := app.AcquireCtx(rctx).(*DefaultCtx)
+func (app *App) nextCustom(c CustomCtx) (bool, error) {
+	methodInt := c.getMethodInt()
+	treeHash := c.getTreePathHash()
+	// Get stack length
+	tree, ok := app.treeStack[methodInt][treeHash]
 	if !ok {
-		panic(errors.New("requestHandler: failed to type-assert to *DefaultCtx"))
+		tree = app.treeStack[methodInt][0]
 	}
+	lenr := len(tree) - 1
 
-	defer app.ReleaseCtx(ctx)
+	indexRoute := c.getIndexRoute()
+	var err error
 
-	// Check if the HTTP method is valid
-	if ctx.methodInt == -1 {
-		_ = ctx.SendStatus(StatusNotImplemented) //nolint:errcheck // Always return nil
-		return
-	}
+	// Loop over the route stack starting from previous index
+	for indexRoute < lenr {
+		// Increment route index
+		indexRoute++
 
-	// Optional: Check flash messages
-	rawHeaders := ctx.Request().Header.RawHeaders()
-	if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, []byte(FlashCookieName)) {
-		ctx.Redirect().parseAndClearFlashMessages()
-	}
+		// Get *Route
+		route := tree[indexRoute]
 
-	// Attempt to match a route and execute the chain
-	_, err := app.next(ctx)
-	if err != nil {
-		if catch := ctx.App().ErrorHandler(ctx, err); catch != nil {
-			_ = ctx.SendStatus(StatusInternalServerError) //nolint:errcheck // Always return nil
+		if route.mount {
+			continue
 		}
-		// TODO: Do we need to return here?
+
+		// Check if it matches the request path
+		if !route.match(c.getDetectionPath(), c.Path(), c.getValues()) {
+			continue
+		}
+		// Pass route reference and param values
+		c.setRoute(route)
+		// Non use handler matched
+		if !route.use {
+			c.setMatched(true)
+		}
+		// Execute first handler of route
+		if len(route.Handlers) > 0 {
+			c.setIndexHandler(0)
+			c.setIndexRoute(indexRoute)
+			return true, route.Handlers[0](c)
+		}
+		return true, nil // Stop scanning the stack
 	}
+
+	// If c.Next() does not match, return 404
+	err = NewError(StatusNotFound, "Cannot "+c.Method()+" "+html.EscapeString(c.getPathOriginal()))
+
+	// If no match, scan stack again if other methods match the request
+	// Moved from app.handler because middleware may break the route chain
+	if c.getMatched() {
+		return false, err
+	}
+
+	exists := false
+	methods := app.config.RequestMethods
+	for i := 0; i < len(methods); i++ {
+		// Skip original method
+		if methodInt == i {
+			continue
+		}
+		// Reset stack index
+		indexRoute := -1
+
+		tree, ok := app.treeStack[i][treeHash]
+		if !ok {
+			tree = app.treeStack[i][0]
+		}
+		// Get stack length
+		lenr := len(tree) - 1
+		// Loop over the route stack starting from previous index
+		for indexRoute < lenr {
+			// Increment route index
+			indexRoute++
+			// Get *Route
+			route := tree[indexRoute]
+			// Skip use routes
+			if route.use {
+				continue
+			}
+			// Check if it matches the request path
+			// No match, next route
+			if route.match(c.getDetectionPath(), c.Path(), c.getValues()) {
+				// We matched
+				exists = true
+				// Add method to Allow header
+				c.Append(HeaderAllow, methods[i])
+				// Break stack loop
+				break
+			}
+		}
+		c.setIndexRoute(indexRoute)
+	}
+	if exists {
+		err = ErrMethodNotAllowed
+	}
+	return false, err
 }
 
-func (app *App) customRequestHandler(rctx *fasthttp.RequestCtx) {
-	// Acquire CustomCtx from the pool
-	ctx, ok := app.AcquireCtx(rctx).(CustomCtx)
-	if !ok {
-		panic(errors.New("requestHandler: failed to type-assert to CustomCtx"))
-	}
-
+func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
+	// Acquire context from the pool
+	ctx := app.AcquireCtx(rctx)
 	defer app.ReleaseCtx(ctx)
 
-	// Check if the HTTP method is valid
-	if app.methodInt(ctx.Method()) == -1 {
-		_ = ctx.SendStatus(StatusNotImplemented) //nolint:errcheck // Always return nil
-		return
-	}
-
-	// Optional: Check flash messages
-	rawHeaders := ctx.Request().Header.RawHeaders()
-	if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, []byte(FlashCookieName)) {
-		ctx.Redirect().parseAndClearFlashMessages()
-	}
-
+	var err error
 	// Attempt to match a route and execute the chain
-	_, err := app.nextCustom(ctx)
+	if d, isDefault := ctx.(*DefaultCtx); isDefault {
+		// Check if the HTTP method is valid
+		if d.methodInt == -1 {
+			_ = d.SendStatus(StatusNotImplemented) //nolint:errcheck // Always return nil
+			return
+		}
+
+		// Optional: Check flash messages
+		rawHeaders := d.Request().Header.RawHeaders()
+		if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, []byte(FlashCookieName)) {
+			d.Redirect().parseAndClearFlashMessages()
+		}
+		_, err = app.next(d)
+	} else {
+		// Check if the HTTP method is valid
+		if ctx.getMethodInt() == -1 {
+			_ = ctx.SendStatus(StatusNotImplemented) //nolint:errcheck // Always return nil
+			return
+		}
+
+		// Optional: Check flash messages
+		rawHeaders := ctx.Request().Header.RawHeaders()
+		if len(rawHeaders) > 0 && bytes.Contains(rawHeaders, []byte(FlashCookieName)) {
+			ctx.Redirect().parseAndClearFlashMessages()
+		}
+		_, err = app.nextCustom(ctx)
+	}
 	if err != nil {
 		if catch := ctx.App().ErrorHandler(ctx, err); catch != nil {
 			_ = ctx.SendStatus(StatusInternalServerError) //nolint:errcheck // Always return nil
