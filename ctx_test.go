@@ -3098,6 +3098,12 @@ func Test_Ctx_Subdomains(t *testing.T) {
 			want:   []string{"bücher"},
 		},
 		{
+			name:   "punycode fqdn is decoded",
+			host:   "xn--bcher-kva.example.com.",
+			offset: nil,
+			want:   []string{"bücher"},
+		},
+		{
 			name:   "punycode decode failure uses fallback",
 			host:   "xn--bcher--.example.com",
 			offset: nil,
