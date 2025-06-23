@@ -3085,6 +3085,18 @@ func Test_Ctx_Subdomains(t *testing.T) {
 			offset: []int{2},
 			want:   []string{"foo", "bar"},
 		},
+		{
+			name:   "fully qualified domain trims trailing dot",
+			host:   "john.doe.example.com.",
+			offset: nil,
+			want:   []string{"john", "doe"},
+		},
+		{
+			name:   "punycode domain is decoded",
+			host:   "xn--bcher-kva.example.com",
+			offset: nil,
+			want:   []string{"bücher"},
+		},
 	}
 
 	for _, tc := range cases {

@@ -23,6 +23,8 @@ import (
 	"text/template"
 	"time"
 
+	"golang.org/x/net/idna"
+
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
@@ -1765,8 +1767,16 @@ func (c *DefaultCtx) Subdomains(offset ...int) []string {
 		return []string{}
 	}
 
-	// strip “:port” if present
-	host := c.Hostname()
+	// Normalize host according to RFC 3986
+	// Trim any trailing dot from a fully qualified domain name
+	host := strings.TrimSuffix(c.Hostname(), ".")
+	// Decode punycode labels to Unicode form
+	if u, err := idna.Lookup.ToUnicode(host); err == nil {
+		host = utils.ToLower(u)
+	} else {
+		host = utils.ToLower(host)
+	}
+
 	parts := strings.Split(host, ".")
 
 	// offset == 0, caller wants everything.
