@@ -1769,7 +1769,7 @@ func (c *DefaultCtx) Subdomains(offset ...int) []string {
 
 	// Normalize host according to RFC 3986
 	// Trim any trailing dot from a fully qualified domain name
-	host := strings.TrimSuffix(c.Hostname(), ".")
+	host := utils.Trim(c.Hostname(), '.')
 	host = utils.ToLower(host)
 
 	// Decode punycode labels only when necessary
@@ -1780,10 +1780,7 @@ func (c *DefaultCtx) Subdomains(offset ...int) []string {
 	}
 
 	// Return nothing for IP addresses
-	ip := host
-	if strings.HasPrefix(ip, "[") && strings.HasSuffix(ip, "]") {
-		ip = strings.Trim(ip, "[]")
-	}
+	ip := strings.Trim(host, "[]")
 	if utils.IsIPv4(ip) || utils.IsIPv6(ip) {
 		return []string{}
 	}
