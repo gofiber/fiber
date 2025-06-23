@@ -3090,6 +3090,48 @@ func Test_Ctx_Subdomains(t *testing.T) {
 			offset: []int{2},
 			want:   []string{"foo", "bar"},
 		},
+		{
+			name:   "fully qualified domain trims trailing dot",
+			host:   "john.doe.example.com.",
+			offset: nil,
+			want:   []string{"john", "doe"},
+		},
+		{
+			name:   "punycode domain is decoded",
+			host:   "xn--bcher-kva.example.com",
+			offset: nil,
+			want:   []string{"bücher"},
+		},
+		{
+			name:   "punycode fqdn is decoded",
+			host:   "xn--bcher-kva.example.com.",
+			offset: nil,
+			want:   []string{"bücher"},
+		},
+		{
+			name:   "punycode decode failure uses fallback",
+			host:   "xn--bcher--.example.com",
+			offset: nil,
+			want:   []string{"xn--bcher--"},
+		},
+		{
+			name:   "invalid host keeps original lowercased",
+			host:   "Foo Bar",
+			offset: []int{0},
+			want:   []string{"foo bar"},
+		},
+		{
+			name:   "IPv4 host returns empty",
+			host:   "192.168.0.1",
+			offset: nil,
+			want:   []string{},
+		},
+		{
+			name:   "IPv6 host returns empty",
+			host:   "[2001:db8::1]",
+			offset: nil,
+			want:   []string{},
+		},
 	}
 
 	for _, tc := range cases {
