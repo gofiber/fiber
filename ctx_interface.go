@@ -47,7 +47,7 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) CustomCtx {
 	ctx, ok := app.pool.Get().(CustomCtx)
 
 	if !ok {
-		panic(errors.New("failed to type-assert to Ctx"))
+		panic(errors.New("failed to type-assert to CustomCtx"))
 	}
 	ctx.Reset(fctx)
 
