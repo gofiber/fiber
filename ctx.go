@@ -1770,11 +1770,22 @@ func (c *DefaultCtx) Subdomains(offset ...int) []string {
 	// Normalize host according to RFC 3986
 	// Trim any trailing dot from a fully qualified domain name
 	host := strings.TrimSuffix(c.Hostname(), ".")
-	// Decode punycode labels to Unicode form
-	if u, err := idna.Lookup.ToUnicode(host); err == nil {
-		host = utils.ToLower(u)
-	} else {
-		host = utils.ToLower(host)
+	host = utils.ToLower(host)
+
+	// Decode punycode labels only when necessary
+	if strings.Contains(host, "xn--") {
+		if u, err := idna.Lookup.ToUnicode(host); err == nil {
+			host = utils.ToLower(u)
+		}
+	}
+
+	// Return nothing for IP addresses
+	ip := host
+	if strings.HasPrefix(ip, "[") && strings.HasSuffix(ip, "]") {
+		ip = strings.Trim(ip, "[]")
+	}
+	if utils.IsIPv4(ip) || utils.IsIPv6(ip) {
+		return []string{}
 	}
 
 	parts := strings.Split(host, ".")

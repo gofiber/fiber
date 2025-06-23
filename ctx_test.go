@@ -3098,10 +3098,28 @@ func Test_Ctx_Subdomains(t *testing.T) {
 			want:   []string{"bücher"},
 		},
 		{
-			name:   "invalid domain keeps original lowercased",
+			name:   "punycode decode failure uses fallback",
+			host:   "xn--bcher--.example.com",
+			offset: nil,
+			want:   []string{"xn--bcher--"},
+		},
+		{
+			name:   "invalid host keeps original lowercased",
 			host:   "Foo Bar",
 			offset: []int{0},
 			want:   []string{"foo bar"},
+		},
+		{
+			name:   "IPv4 host returns empty",
+			host:   "192.168.0.1",
+			offset: nil,
+			want:   []string{},
+		},
+		{
+			name:   "IPv6 host returns empty",
+			host:   "[2001:db8::1]",
+			offset: nil,
+			want:   []string{},
 		},
 	}
 
