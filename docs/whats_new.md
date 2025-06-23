@@ -235,6 +235,28 @@ go app.Listen(":3000")
 
 This change simplifies the shutdown handling by consolidating the shutdown callbacks into a single hook that receives the error status.
 
+- Added Unix socket support
+
+```go
+// v2 - need to manually remove old file, and change permissions
+app := fiber.New(fiber.Config{
+    Network: "unix",
+})
+
+os.Remove("app.sock")
+app.Hooks().OnListen(func(fiber.ListenData) error {
+    return os.Chmod("app.sock", 0777)
+})
+app.Listen("app.sock")
+
+// v3 - Fiber does it for you
+app := fiber.New()
+app.Listen("app.sock", fiber.ListenerConfig{
+    ListenerNetwork:    fiber.NetworkUnix,
+    UnixSocketFileMode: 0777,
+})
+```
+
 ## 🗺 Router
 
 We have slightly adapted our router interface
