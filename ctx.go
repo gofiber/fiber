@@ -1281,14 +1281,17 @@ func (c *DefaultCtx) Range(size int) (Range, error) {
 		rangeData Range
 		ranges    string
 	)
-	rangeStr := c.Get(HeaderRange)
+	rangeStr := utils.Trim(c.Get(HeaderRange), ' ')
 
 	i := strings.IndexByte(rangeStr, '=')
 	if i == -1 || strings.Contains(rangeStr[i+1:], "=") {
 		return rangeData, ErrRangeMalformed
 	}
-	rangeData.Type = rangeStr[:i]
-	ranges = rangeStr[i+1:]
+	rangeData.Type = utils.ToLower(utils.Trim(rangeStr[:i], ' '))
+	if rangeData.Type != "bytes" {
+		return rangeData, ErrRangeMalformed
+	}
+	ranges = utils.Trim(rangeStr[i+1:], ' ')
 
 	var (
 		singleRange string
@@ -1298,10 +1301,12 @@ func (c *DefaultCtx) Range(size int) (Range, error) {
 		singleRange = moreRanges
 		if i := strings.IndexByte(moreRanges, ','); i >= 0 {
 			singleRange = moreRanges[:i]
-			moreRanges = moreRanges[i+1:]
+			moreRanges = utils.Trim(moreRanges[i+1:], ' ')
 		} else {
 			moreRanges = ""
 		}
+
+		singleRange = utils.Trim(singleRange, ' ')
 
 		var (
 			startStr, endStr string
@@ -1310,8 +1315,8 @@ func (c *DefaultCtx) Range(size int) (Range, error) {
 		if i = strings.IndexByte(singleRange, '-'); i == -1 {
 			return rangeData, ErrRangeMalformed
 		}
-		startStr = singleRange[:i]
-		endStr = singleRange[i+1:]
+		startStr = utils.Trim(singleRange[:i], ' ')
+		endStr = utils.Trim(singleRange[i+1:], ' ')
 
 		start, startErr := fasthttp.ParseUint(utils.UnsafeBytes(startStr))
 		end, endErr := fasthttp.ParseUint(utils.UnsafeBytes(endStr))

@@ -1213,6 +1213,9 @@ The generic `Query` function supports returning the following data types based o
 ### Range
 
 Returns a struct containing the type and a slice of ranges.
+Only the canonical `bytes` unit is recognized and any optional
+whitespace around range specifiers will be ignored, as specified
+in RFC 9110.
 
 ```go title="Signature"
 func (c fiber.Ctx) Range(size int) (Range, error)
