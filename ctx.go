@@ -293,7 +293,9 @@ func (c *DefaultCtx) tryDecodeBodyInOrder(
 		decodesRealized uint8
 	)
 
-	for index, encoding := range encodings {
+	for idx := range encodings {
+		i := len(encodings) - 1 - idx
+		encoding := encodings[i]
 		decodesRealized++
 		switch encoding {
 		case StrGzip:
@@ -304,21 +306,20 @@ func (c *DefaultCtx) tryDecodeBodyInOrder(
 			body, err = c.fasthttp.Request.BodyInflate()
 		case StrZstd:
 			body, err = c.fasthttp.Request.BodyUnzstd()
+		case StrCompress, "x-compress":
+			_ = c.SendStatus(StatusNotImplemented)
+			return c.Response().Body(), decodesRealized - 1, ErrNotImplemented
 		default:
-			decodesRealized--
-			if len(encodings) == 1 {
-				body = c.fasthttp.Request.Body()
-			}
-			return body, decodesRealized, nil
+			_ = c.SendStatus(StatusUnsupportedMediaType)
+			return c.Response().Body(), decodesRealized - 1, ErrUnsupportedMediaType
 		}
 
 		if err != nil {
 			return nil, decodesRealized, err
 		}
 
-		// Only execute body raw update if it has a next iteration to try to decode
-		if index < len(encodings)-1 && decodesRealized > 0 {
-			if index == 0 {
+		if i > 0 && decodesRealized > 0 {
+			if i == len(encodings)-1 {
 				tempBody := c.fasthttp.Request.Body()
 				*originalBody = make([]byte, len(tempBody))
 				copy(*originalBody, tempBody)
@@ -344,7 +345,7 @@ func (c *DefaultCtx) Body() []byte {
 	)
 
 	// Get Content-Encoding header
-	headerEncoding = utils.UnsafeString(c.Request().Header.ContentEncoding())
+	headerEncoding = utils.ToLower(utils.UnsafeString(c.Request().Header.ContentEncoding()))
 
 	// If no encoding is provided, return the original body
 	if len(headerEncoding) == 0 {
@@ -354,6 +355,9 @@ func (c *DefaultCtx) Body() []byte {
 	// Split and get the encodings list, in order to attend the
 	// rule defined at: https://www.rfc-editor.org/rfc/rfc9110#section-8.4-5
 	encodingOrder = getSplicedStrList(headerEncoding, encodingOrder)
+	for i := range encodingOrder {
+		encodingOrder[i] = utils.ToLower(encodingOrder[i])
+	}
 	if len(encodingOrder) == 0 {
 		return c.getBody()
 	}
