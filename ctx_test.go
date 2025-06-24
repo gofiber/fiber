@@ -491,6 +491,12 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 			expectedBody:    []byte("Unsupported Media Type"),
 		},
 		{
+			name:            "compress_not_implemented",
+			contentEncoding: "compress",
+			body:            []byte("foo"),
+			expectedBody:    []byte("Not Implemented"),
+		},
+		{
 			name:            "gzip then unsupported",
 			contentEncoding: "gzip, undefined",
 			body:            []byte("Go, be gzipped"),
@@ -501,6 +507,12 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 			contentEncoding: "gzip,deflate",
 			body:            []byte("I'm not correctly compressed"),
 			expectedBody:    []byte(zlib.ErrHeader.Error()),
+		},
+		{
+			name:            "identity",
+			contentEncoding: "identity",
+			body:            []byte("bar"),
+			expectedBody:    []byte("bar"),
 		},
 	}
 
@@ -531,9 +543,12 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 			body := c.Body()
 			require.Equal(t, tCase.expectedBody, body)
 
-			if strings.Contains(tCase.name, "unsupported") {
+			switch {
+			case strings.Contains(tCase.name, "unsupported"):
 				require.Equal(t, StatusUnsupportedMediaType, c.Response().StatusCode())
-			} else {
+			case strings.Contains(tCase.name, "compress_not_implemented"):
+				require.Equal(t, StatusNotImplemented, c.Response().StatusCode())
+			default:
 				require.Equal(t, StatusOK, c.Response().StatusCode())
 			}
 
@@ -688,6 +703,12 @@ func Test_Ctx_Body_With_Compression_Immutable(t *testing.T) {
 			expectedBody:    []byte("Unsupported Media Type"),
 		},
 		{
+			name:            "compress_not_implemented",
+			contentEncoding: "compress",
+			body:            []byte("foo"),
+			expectedBody:    []byte("Not Implemented"),
+		},
+		{
 			name:            "gzip then unsupported",
 			contentEncoding: "gzip, undefined",
 			body:            []byte("Go, be gzipped"),
@@ -698,6 +719,12 @@ func Test_Ctx_Body_With_Compression_Immutable(t *testing.T) {
 			contentEncoding: "gzip,deflate",
 			body:            []byte("I'm not correctly compressed"),
 			expectedBody:    []byte(zlib.ErrHeader.Error()),
+		},
+		{
+			name:            "identity",
+			contentEncoding: "identity",
+			body:            []byte("bar"),
+			expectedBody:    []byte("bar"),
 		},
 	}
 
@@ -729,9 +756,12 @@ func Test_Ctx_Body_With_Compression_Immutable(t *testing.T) {
 			body := c.Body()
 			require.Equal(t, tCase.expectedBody, body)
 
-			if strings.Contains(tCase.name, "unsupported") {
+			switch {
+			case strings.Contains(tCase.name, "unsupported"):
 				require.Equal(t, StatusUnsupportedMediaType, c.Response().StatusCode())
-			} else {
+			case strings.Contains(tCase.name, "compress_not_implemented"):
+				require.Equal(t, StatusNotImplemented, c.Response().StatusCode())
+			default:
 				require.Equal(t, StatusOK, c.Response().StatusCode())
 			}
 

@@ -298,7 +298,7 @@ func (c *DefaultCtx) tryDecodeBodyInOrder(
 		encoding := encodings[i]
 		decodesRealized++
 		switch encoding {
-		case StrGzip:
+		case StrGzip, "x-gzip":
 			body, err = c.fasthttp.Request.BodyGunzip()
 		case StrBr, StrBrotli:
 			body, err = c.fasthttp.Request.BodyUnbrotli()
@@ -306,6 +306,8 @@ func (c *DefaultCtx) tryDecodeBodyInOrder(
 			body, err = c.fasthttp.Request.BodyInflate()
 		case StrZstd:
 			body, err = c.fasthttp.Request.BodyUnzstd()
+		case StrIdentity:
+			body = c.fasthttp.Request.Body()
 		case StrCompress, "x-compress":
 			_ = c.SendStatus(StatusNotImplemented)
 			return c.Response().Body(), decodesRealized - 1, ErrNotImplemented

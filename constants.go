@@ -295,6 +295,7 @@ const (
 const (
 	StrGzip     = "gzip"
 	StrCompress = "compress"
+	StrIdentity = "identity"
 	StrBr       = "br"
 	StrDeflate  = "deflate"
 	StrBrotli   = "brotli"
