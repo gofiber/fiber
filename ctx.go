@@ -405,7 +405,7 @@ func (c *DefaultCtx) Cookie(cookie *Cookie) {
 		cookie.Expires = time.Time{}
 	}
 
-    var sameSite = http.SameSiteLaxMode
+	var sameSite = http.SameSiteLaxMode
 	switch utils.ToLower(cookie.SameSite) {
 	case CookieSameSiteStrictMode:
 		sameSite = http.SameSiteStrictMode
@@ -417,6 +417,7 @@ func (c *DefaultCtx) Cookie(cookie *Cookie) {
 		// already lax
 	}
 
+	// create/validate cookie using net/http
 	hc := &http.Cookie{
 		Name:        cookie.Name,
 		Value:       cookie.Value,
@@ -433,6 +434,7 @@ func (c *DefaultCtx) Cookie(cookie *Cookie) {
 		return
 	}
 
+	// create fasthttp cookie
 	fcookie := fasthttp.AcquireCookie()
 	fcookie.SetKey(hc.Name)
 	fcookie.SetValue(hc.Value)
