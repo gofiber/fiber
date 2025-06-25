@@ -400,6 +400,7 @@ func (c *DefaultCtx) Cookie(cookie *Cookie) {
 	if cookie.Path == "" {
 		cookie.Path = "/"
 	}
+
 	if cookie.SessionOnly {
 		cookie.MaxAge = 0
 		cookie.Expires = time.Time{}
@@ -431,7 +432,9 @@ func (c *DefaultCtx) Cookie(cookie *Cookie) {
 		SameSite:    sameSite,
 		Partitioned: cookie.Partitioned,
 	}
+
 	if err := hc.Valid(); err != nil {
+		// invalid cookies are ignored, same approach as net/http
 		return
 	}
 
@@ -441,12 +444,15 @@ func (c *DefaultCtx) Cookie(cookie *Cookie) {
 	fcookie.SetValue(hc.Value)
 	fcookie.SetPath(hc.Path)
 	fcookie.SetDomain(hc.Domain)
+
 	if !cookie.SessionOnly {
 		fcookie.SetMaxAge(hc.MaxAge)
 		fcookie.SetExpire(hc.Expires)
 	}
+
 	fcookie.SetSecure(hc.Secure)
 	fcookie.SetHTTPOnly(hc.HttpOnly)
+
 	switch sameSite {
 	case http.SameSiteLaxMode:
 		fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
@@ -459,7 +465,10 @@ func (c *DefaultCtx) Cookie(cookie *Cookie) {
 	default:
 		fcookie.SetSameSite(fasthttp.CookieSameSiteDisabled)
 	}
+
 	fcookie.SetPartitioned(hc.Partitioned)
+
+	// Set resp header
 	c.fasthttp.Response.Header.SetCookie(fcookie)
 	fasthttp.ReleaseCookie(fcookie)
 }

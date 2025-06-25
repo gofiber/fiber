@@ -941,7 +941,6 @@ func Test_Ctx_Cookie_PartitionedSecure(t *testing.T) {
 func Test_Ctx_Cookie_Invalid(t *testing.T) {
 	t.Parallel()
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	cases := []*Cookie{
 		{Name: "", Value: "a"},                                                        // empty name
@@ -956,10 +955,71 @@ func Test_Ctx_Cookie_Invalid(t *testing.T) {
 	}
 
 	for _, invalid := range cases {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		c.Res().Cookie(invalid)
 		require.Empty(t, c.Res().Get(HeaderSetCookie))
 		c.Response().Header.Reset()
+		app.ReleaseCtx(c)
 	}
+}
+
+// go test -run Test_Ctx_Cookie_DefaultPath
+func Test_Ctx_Cookie_DefaultPath(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	ck := &Cookie{
+		Name:  "p",
+		Value: "v",
+		// Path intentionally empty to verify defaulting
+	}
+
+	c.Res().Cookie(ck)
+	require.Equal(t,
+		"p=v; path=/; SameSite=Lax",
+		c.Res().Get(HeaderSetCookie),
+	)
+}
+
+// go test -run Test_Ctx_Cookie_MaxAgeOnly
+func Test_Ctx_Cookie_MaxAgeOnly(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	ck := &Cookie{
+		Name:   "ttl",
+		Value:  "v",
+		MaxAge: 3600,
+	}
+	c.Res().Cookie(ck)
+
+	require.Equal(t,
+		"ttl=v; Max-Age=3600; path=/; SameSite=Lax",
+		c.Res().Get(HeaderSetCookie),
+	)
+}
+
+// go test -run Test_Ctx_Cookie_StrictPartitioned
+func Test_Ctx_Cookie_StrictPartitioned(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	ck := &Cookie{
+		Name:        "sp",
+		Value:       "v",
+		Secure:      true,
+		SameSite:    CookieSameSiteStrictMode,
+		Partitioned: true,
+	}
+	c.Res().Cookie(ck)
+
+	require.Equal(t,
+		"sp=v; path=/; secure; SameSite=Strict; Partitioned",
+		c.Res().Get(HeaderSetCookie),
+	)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Cookie -benchmem -count=4
