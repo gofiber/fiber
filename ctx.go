@@ -417,6 +417,8 @@ func (c *DefaultCtx) Cookie(cookie *Cookie) {
 		sameSite = 0
 	case CookieSameSiteLaxMode:
 		sameSite = http.SameSiteLaxMode
+	default:
+		sameSite = http.SameSiteLaxMode
 	}
 
 	// create/validate cookie using net/http
