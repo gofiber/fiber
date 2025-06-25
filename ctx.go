@@ -405,7 +405,7 @@ func (c *DefaultCtx) Cookie(cookie *Cookie) {
 		cookie.Expires = time.Time{}
 	}
 
-	var sameSite http.SameSite = http.SameSiteLaxMode
+    var sameSite = http.SameSiteLaxMode
 	switch utils.ToLower(cookie.SameSite) {
 	case CookieSameSiteStrictMode:
 		sameSite = http.SameSiteStrictMode
