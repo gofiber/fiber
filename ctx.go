@@ -405,14 +405,14 @@ func (c *DefaultCtx) Cookie(cookie *Cookie) {
 		cookie.Expires = time.Time{}
 	}
 
-	sameSite := http.SameSiteLaxMode
+	var sameSite http.SameSite = http.SameSiteLaxMode
 	switch utils.ToLower(cookie.SameSite) {
 	case CookieSameSiteStrictMode:
 		sameSite = http.SameSiteStrictMode
 	case CookieSameSiteNoneMode:
 		sameSite = http.SameSiteNoneMode
 	case CookieSameSiteDisabled:
-		sameSite = http.SameSiteDefaultMode
+		sameSite = 0
 	case CookieSameSiteLaxMode:
 		// already lax
 	}
@@ -433,12 +433,30 @@ func (c *DefaultCtx) Cookie(cookie *Cookie) {
 		return
 	}
 
-	str := hc.String()
 	fcookie := fasthttp.AcquireCookie()
-	if err := fcookie.Parse(str); err != nil {
-		fasthttp.ReleaseCookie(fcookie)
-		return
+	fcookie.SetKey(hc.Name)
+	fcookie.SetValue(hc.Value)
+	fcookie.SetPath(hc.Path)
+	fcookie.SetDomain(hc.Domain)
+	if !cookie.SessionOnly {
+		fcookie.SetMaxAge(hc.MaxAge)
+		fcookie.SetExpire(hc.Expires)
 	}
+	fcookie.SetSecure(hc.Secure)
+	fcookie.SetHTTPOnly(hc.HttpOnly)
+	switch sameSite {
+	case http.SameSiteLaxMode:
+		fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
+	case http.SameSiteStrictMode:
+		fcookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)
+	case http.SameSiteNoneMode:
+		fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
+	case http.SameSiteDefaultMode:
+		fcookie.SetSameSite(fasthttp.CookieSameSiteDefaultMode)
+	default:
+		fcookie.SetSameSite(fasthttp.CookieSameSiteDisabled)
+	}
+	fcookie.SetPartitioned(hc.Partitioned)
 	c.fasthttp.Response.Header.SetCookie(fcookie)
 	fasthttp.ReleaseCookie(fcookie)
 }
