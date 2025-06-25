@@ -996,7 +996,7 @@ func Test_Ctx_Cookie_MaxAgeOnly(t *testing.T) {
 	c.Res().Cookie(ck)
 
 	require.Equal(t,
-		"ttl=v; Max-Age=3600; path=/; SameSite=Lax",
+		"ttl=v; max-age=3600; path=/; SameSite=Lax",
 		c.Res().Get(HeaderSetCookie),
 	)
 }
