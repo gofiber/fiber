@@ -920,6 +920,23 @@ func Test_Ctx_Cookie(t *testing.T) {
 	require.Equal(t, expect, c.Res().Get(HeaderSetCookie))
 }
 
+// go test -run Test_Ctx_Cookie_PartitionedSecure
+func Test_Ctx_Cookie_PartitionedSecure(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	ck := &Cookie{
+		Name:        "ps",
+		Value:       "v",
+		Secure:      true,
+		SameSite:    CookieSameSiteNoneMode,
+		Partitioned: true,
+	}
+	c.Res().Cookie(ck)
+	require.Equal(t, "ps=v; path=/; secure; SameSite=None; Partitioned", c.Res().Get(HeaderSetCookie))
+}
+
 // go test -run Test_Ctx_Cookie_Invalid
 func Test_Ctx_Cookie_Invalid(t *testing.T) {
 	t.Parallel()
