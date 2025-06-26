@@ -1050,6 +1050,7 @@ func Test_Cache_UncacheableStatusCodes(t *testing.T) {
 		fiber.StatusPreconditionRequired,
 		fiber.StatusTooManyRequests,
 		fiber.StatusRequestHeaderFieldsTooLarge,
+		fiber.StatusTeapot,
 		fiber.StatusUnavailableForLegalReasons,
 
 		// Server error responses

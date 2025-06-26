@@ -59,7 +59,6 @@ var cacheableStatusCodes = map[int]bool{
 	fiber.StatusMethodNotAllowed:            true,
 	fiber.StatusGone:                        true,
 	fiber.StatusRequestURITooLong:           true,
-	fiber.StatusTeapot:                      true,
 	fiber.StatusNotImplemented:              true,
 }
 
@@ -168,8 +167,9 @@ func New(config ...Config) fiber.Handler {
 					c.Set(fiber.HeaderCacheControl, "public, max-age="+maxAge)
 				}
 
-				// RFC-compliant Age header
-				age := strconv.FormatUint(e.ttl-(e.exp-ts), 10)
+				// RFC-compliant Age header (RFC 9111)
+				resident := e.ttl - (e.exp - ts)
+				age := strconv.FormatUint(e.age+resident, 10)
 				c.Response().Header.Set(fiber.HeaderAge, age)
 
 				c.Set(cfg.CacheHeader, cacheHit)
@@ -239,9 +239,15 @@ func New(config ...Config) fiber.Handler {
 		e.ctype = utils.CopyBytes(c.Response().Header.ContentType())
 		e.cencoding = utils.CopyBytes(c.Response().Header.Peek(fiber.HeaderContentEncoding))
 
-		if len(c.Response().Header.Peek(fiber.HeaderAge)) == 0 {
+		ageVal := uint64(0)
+		if b := c.Response().Header.Peek(fiber.HeaderAge); len(b) > 0 {
+			if v, err := strconv.ParseUint(utils.UnsafeString(b), 10, 64); err == nil {
+				ageVal = v
+			}
+		} else {
 			c.Response().Header.Set(fiber.HeaderAge, "0")
 		}
+		e.age = ageVal
 
 		// Store all response headers
 		// (more: https://datatracker.ietf.org/doc/html/rfc2616#section-13.5.1)
