@@ -99,7 +99,7 @@ type ListenConfig struct {
 
 	// FileMode to set for Unix Domain Socket (ListenerNetwork must be "unix")
 	//
-	// Default: 0775
+	// Default: 0770
 	UnixSocketFileMode os.FileMode `json:"unix_socket_file_mode"`
 
 	// TLSMinVersion allows to set TLS minimum version.
@@ -130,7 +130,7 @@ func listenConfigDefault(config ...ListenConfig) ListenConfig {
 		return ListenConfig{
 			TLSMinVersion:      tls.VersionTLS12,
 			ListenerNetwork:    NetworkTCP4,
-			UnixSocketFileMode: 0o775,
+			UnixSocketFileMode: 0o770,
 			ShutdownTimeout:    10 * time.Second,
 		}
 	}
@@ -141,7 +141,7 @@ func listenConfigDefault(config ...ListenConfig) ListenConfig {
 	}
 
 	if cfg.UnixSocketFileMode == 0 {
-		cfg.UnixSocketFileMode = 0o775
+		cfg.UnixSocketFileMode = 0o770
 	}
 
 	if cfg.TLSMinVersion == 0 {
