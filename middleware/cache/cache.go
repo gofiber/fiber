@@ -12,6 +12,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
+	"github.com/valyala/fasthttp"
 )
 
 // timestampUpdatePeriod is the period which is used to check the cache expiration.
@@ -241,7 +242,7 @@ func New(config ...Config) fiber.Handler {
 
 		ageVal := uint64(0)
 		if b := c.Response().Header.Peek(fiber.HeaderAge); len(b) > 0 {
-			if v, err := strconv.ParseUint(utils.UnsafeString(b), 10, 64); err == nil {
+			if v, err := fasthttp.ParseUint(b); err == nil {
 				ageVal = v
 			}
 		} else {
