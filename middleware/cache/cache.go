@@ -243,7 +243,7 @@ func New(config ...Config) fiber.Handler {
 		ageVal := uint64(0)
 		if b := c.Response().Header.Peek(fiber.HeaderAge); len(b) > 0 {
 			if v, err := fasthttp.ParseUint(b); err == nil {
-				ageVal = v
+				ageVal = uint64(v)
 			}
 		} else {
 			c.Response().Header.Set(fiber.HeaderAge, "0")
