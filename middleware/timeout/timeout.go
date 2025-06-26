@@ -13,26 +13,12 @@ import (
 func New(h fiber.Handler, config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
 
-	// Pre-build skip path map for faster lookups.
-	skip := make(map[string]struct{}, len(cfg.SkipPaths))
-	for _, p := range cfg.SkipPaths {
-		skip[p] = struct{}{}
-	}
-
 	return func(ctx fiber.Ctx) error {
 		if cfg.Next != nil && cfg.Next(ctx) {
 			return h(ctx)
 		}
-		if _, ok := skip[ctx.Path()]; ok {
-			return h(ctx)
-		}
 
 		timeout := cfg.Timeout
-		if cfg.Routes != nil {
-			if t, ok := cfg.Routes[ctx.Path()]; ok {
-				timeout = t
-			}
-		}
 
 		if timeout <= 0 {
 			return runHandler(ctx, h, cfg)

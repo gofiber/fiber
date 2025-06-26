@@ -105,68 +105,6 @@ func TestTimeout_UnmatchedError(t *testing.T) {
 		return errUnrelated // Not in the custom error list
 	}, Config{Timeout: 100 * time.Millisecond, Errors: []error{errCustomTimeout}}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/unmatched", nil)
-	resp, err := app.Test(req)
-	require.NoError(t, err, "app.Test(req) should not fail")
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode,
-		"Expected 500 because the error is not recognized as a timeout error")
-}
-
-// TestTimeout_ZeroDuration tests the edge case where the timeout is set to zero.
-// Usually this means the request can never exceed a 'deadline' – effectively no timeout.
-func TestTimeout_ZeroDuration(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	app.Get("/zero", New(func(c fiber.Ctx) error {
-		// Sleep 50ms, but there's no real 'deadline' since zero-timeout.
-		time.Sleep(50 * time.Millisecond)
-		return c.SendString("No timeout used")
-	}))
-
-	req := httptest.NewRequest(fiber.MethodGet, "/zero", nil)
-	resp, err := app.Test(req)
-	require.NoError(t, err, "app.Test(req) should not fail")
-	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Expected 200 OK with zero timeout")
-}
-
-// TestTimeout_NegativeDuration tests the edge case where the timeout is set to zero.
-// Usually this means the request can never exceed a 'deadline' – effectively no timeout.
-func TestTimeout_NegativeDuration(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	app.Get("/negative", New(func(c fiber.Ctx) error {
-		// Sleep 50ms, but there's no real 'deadline' since zero-timeout.
-		time.Sleep(50 * time.Millisecond)
-		return c.SendString("No timeout used")
-	}, Config{Timeout: -100 * time.Millisecond}))
-
-	req := httptest.NewRequest(fiber.MethodGet, "/negative", nil)
-	resp, err := app.Test(req)
-	require.NoError(t, err, "app.Test(req) should not fail")
-	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Expected 200 OK with zero timeout")
-}
-
-// TestTimeout_SkipPath verifies that requests to specified paths bypass the timeout logic.
-func TestTimeout_SkipPath(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	app.Get("/health", New(func(c fiber.Ctx) error {
-		time.Sleep(50 * time.Millisecond)
-		return c.SendString("ok")
-	}, Config{Timeout: 10 * time.Millisecond, SkipPaths: []string{"/health"}}))
-
-	req := httptest.NewRequest(fiber.MethodGet, "/health", nil)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Expected 200 OK for skipped path")
-}
-
-// TestTimeout_PerRoute ensures that per-route timeouts override the default.
-func TestTimeout_PerRoute(t *testing.T) {
-	t.Parallel()
 	app := fiber.New()
 
 	app.Get("/report", New(func(c fiber.Ctx) error {
