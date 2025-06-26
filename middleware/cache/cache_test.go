@@ -1093,6 +1093,29 @@ func TestCacheAgeHeader(t *testing.T) {
 	require.Positive(t, age)
 }
 
+func TestCacheUpstreamAge(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Use(New(Config{Expiration: 3 * time.Second}))
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Set(fiber.HeaderAge, "5")
+		return c.SendString("hi")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, "5", resp.Header.Get(fiber.HeaderAge))
+
+	time.Sleep(1500 * time.Millisecond)
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
+	age, err := strconv.Atoi(resp.Header.Get(fiber.HeaderAge))
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, age, 6)
+}
+
 func Test_CacheNoStoreDirective(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
