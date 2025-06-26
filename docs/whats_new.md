@@ -235,10 +235,10 @@ go app.Listen(":3000")
 
 This change simplifies the shutdown handling by consolidating the shutdown callbacks into a single hook that receives the error status.
 
-- Added Unix socket support
+- Added support for Unix domain sockets via `ListenerNetwork` and `UnixSocketFileMode`
 
 ```go
-// v2 - need to manually remove old file, and change permissions
+// v2 - Requires manual deletion of old file and permissions change
 app := fiber.New(fiber.Config{
     Network: "unix",
 })
