@@ -309,11 +309,9 @@ func (c *DefaultCtx) tryDecodeBodyInOrder(
 		case StrIdentity:
 			body = c.fasthttp.Request.Body()
 		case StrCompress, "x-compress":
-			_ = c.SendStatus(StatusNotImplemented)
-			return c.Response().Body(), decodesRealized - 1, ErrNotImplemented
+			return nil, decodesRealized - 1, ErrNotImplemented
 		default:
-			_ = c.SendStatus(StatusUnsupportedMediaType)
-			return c.Response().Body(), decodesRealized - 1, ErrUnsupportedMediaType
+			return nil, decodesRealized - 1, ErrUnsupportedMediaType
 		}
 
 		if err != nil {
@@ -372,6 +370,12 @@ func (c *DefaultCtx) Body() []byte {
 		c.fasthttp.Request.SetBodyRaw(originalBody)
 	}
 	if err != nil {
+		switch err {
+		case ErrUnsupportedMediaType:
+			_ = c.SendStatus(StatusUnsupportedMediaType)
+		case ErrNotImplemented:
+			_ = c.SendStatus(StatusNotImplemented)
+		}
 		return []byte(err.Error())
 	}
 
