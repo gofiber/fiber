@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"io/fs"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -15,6 +16,105 @@ import (
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 )
+
+// SendFile defines configuration options when to transfer file with SendFile.
+type SendFile struct {
+	// FS is the file system to serve the static files from.
+	// You can use interfaces compatible with fs.FS like embed.FS, os.DirFS etc.
+	//
+	// Optional. Default: nil
+	FS fs.FS
+
+	// When set to true, the server tries minimizing CPU usage by caching compressed files.
+	// This works differently than the github.com/gofiber/compression middleware.
+	// You have to set Content-Encoding header to compress the file.
+	// Available compression methods are gzip, br, and zstd.
+	//
+	// Optional. Default: false
+	Compress bool `json:"compress"`
+
+	// When set to true, enables byte range requests.
+	//
+	// Optional. Default: false
+	ByteRange bool `json:"byte_range"`
+
+	// When set to true, enables direct download.
+	//
+	// Optional. Default: false
+	Download bool `json:"download"`
+
+	// Expiration duration for inactive file handlers.
+	// Use a negative time.Duration to disable it.
+	//
+	// Optional. Default: 10 * time.Second
+	CacheDuration time.Duration `json:"cache_duration"`
+
+	// The value for the Cache-Control HTTP-header
+	// that is set on the file response. MaxAge is defined in seconds.
+	//
+	// Optional. Default: 0
+	MaxAge int `json:"max_age"`
+}
+
+// sendFileStore is used to keep the SendFile configuration and the handler.
+type sendFileStore struct {
+	handler           fasthttp.RequestHandler
+	cacheControlValue string
+	config            SendFile
+}
+
+// compareConfig compares the current SendFile config with the new one
+// and returns true if they are different.
+//
+// Here we don't use reflect.DeepEqual because it is quite slow compared to manual comparison.
+func (sf *sendFileStore) compareConfig(cfg SendFile) bool {
+	if sf.config.FS != cfg.FS {
+		return false
+	}
+
+	if sf.config.Compress != cfg.Compress {
+		return false
+	}
+
+	if sf.config.ByteRange != cfg.ByteRange {
+		return false
+	}
+
+	if sf.config.Download != cfg.Download {
+		return false
+	}
+
+	if sf.config.CacheDuration != cfg.CacheDuration {
+		return false
+	}
+
+	if sf.config.MaxAge != cfg.MaxAge {
+		return false
+	}
+
+	return true
+}
+
+// Cookie data for c.Cookie
+type Cookie struct {
+	Expires     time.Time `json:"expires"`      // The expiration date of the cookie
+	Name        string    `json:"name"`         // The name of the cookie
+	Value       string    `json:"value"`        // The value of the cookie
+	Path        string    `json:"path"`         // Specifies a URL path which is allowed to receive the cookie
+	Domain      string    `json:"domain"`       // Specifies the domain which is allowed to receive the cookie
+	SameSite    string    `json:"same_site"`    // Controls whether or not a cookie is sent with cross-site requests
+	MaxAge      int       `json:"max_age"`      // The maximum age (in seconds) of the cookie
+	Secure      bool      `json:"secure"`       // Indicates that the cookie should only be transmitted over a secure HTTPS connection
+	HTTPOnly    bool      `json:"http_only"`    // Indicates that the cookie is accessible only through the HTTP protocol
+	Partitioned bool      `json:"partitioned"`  // Indicates if the cookie is stored in a partitioned cookie jar
+	SessionOnly bool      `json:"session_only"` // Indicates if the cookie is a session-only cookie
+}
+
+// ResFmt associates a Content Type to a fiber.Handler for c.Format
+type ResFmt struct {
+	Handler   func(Ctx) error
+	MediaType string
+}
 
 //go:generate ifacemaker --file res.go --struct DefaultRes --iface Res --pkg fiber --output res_interface_gen.go --not-exported true --iface-comment "Res"
 type DefaultRes struct {
@@ -73,6 +173,12 @@ func (r *DefaultRes) ClearCookie(key ...string) {
 	})
 }
 
+// RequestCtx returns *fasthttp.RequestCtx that carries a deadline
+// a cancellation signal, and other values across API boundaries.
+func (r *DefaultRes) RequestCtx() *fasthttp.RequestCtx {
+	return r.c.RequestCtx()
+}
+
 // Cookie sets a cookie by passing a cookie struct.
 func (r *DefaultRes) Cookie(cookie *Cookie) {
 	fcookie := fasthttp.AcquireCookie()
@@ -122,6 +228,13 @@ func (r *DefaultRes) Download(file string, filename ...string) error {
 	}
 	r.setCanonical(HeaderContentDisposition, `attachment; filename="`+r.App().quoteString(fname)+`"`)
 	return r.SendFile(file)
+}
+
+// Response return the *fasthttp.Response object
+// This allows you to use all fasthttp response methods
+// https://godoc.org/github.com/valyala/fasthttp#Response
+func (r *DefaultRes) Response() *fasthttp.Response {
+	return r.c.Response()
 }
 
 // Format performs content-negotiation on the Accept HTTP header.
@@ -209,24 +322,6 @@ func (r *DefaultRes) AutoFormat(body any) error {
 	return r.SendString(b)
 }
 
-// RequestCtx returns *fasthttp.RequestCtx that carries a deadline
-// a cancellation signal, and other values across API boundaries.
-func (r *DefaultRes) RequestCtx() *fasthttp.RequestCtx {
-	return r.c.RequestCtx()
-}
-
-// Response return the *fasthttp.Response object
-// This allows you to use all fasthttp response methods
-// https://godoc.org/github.com/valyala/fasthttp#Response
-func (r *DefaultRes) Response() *fasthttp.Response {
-	return r.c.Response()
-}
-
-// Release is a method to reset Res fields when to use ReleaseCtx()
-func (r *DefaultRes) release() {
-	r.c = nil
-}
-
 // Get (a.k.a. GetRespHeader) returns the HTTP response header specified by field.
 // Field names are case-insensitive
 // Returned value is only valid within the handler. Do not store any references.
@@ -235,50 +330,16 @@ func (r *DefaultRes) Get(key string, defaultValue ...string) string {
 	return defaultString(r.App().getString(r.Response().Header.Peek(key)), defaultValue)
 }
 
-// GetRespHeaders returns the HTTP response headers.
+// GetHeaders returns the HTTP response headers.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
-func (r *DefaultRes) GetRespHeaders() map[string][]string {
+func (r *DefaultRes) GetHeaders() map[string][]string {
 	headers := make(map[string][]string)
 	r.Response().Header.VisitAll(func(k, v []byte) {
 		key := r.App().getString(k)
 		headers[key] = append(headers[key], r.App().getString(v))
 	})
 	return headers
-}
-
-// getLocationFromRoute get URL location from route using parameters
-func (r *DefaultRes) getLocationFromRoute(route Route, params Map) (string, error) {
-	buf := bytebufferpool.Get()
-	for _, segment := range route.routeParser.segs {
-		if !segment.IsParam {
-			_, err := buf.WriteString(segment.Const)
-			if err != nil {
-				return "", fmt.Errorf("failed to write string: %w", err)
-			}
-			continue
-		}
-
-		for key, val := range params {
-			isSame := key == segment.ParamName || (!r.App().config.CaseSensitive && utils.EqualFold(key, segment.ParamName))
-			isGreedy := segment.IsGreedy && len(key) == 1 && bytes.IndexByte(greedyParameters, key[0]) != -1
-			if isSame || isGreedy {
-				_, err := buf.WriteString(utils.ToString(val))
-				if err != nil {
-					return "", fmt.Errorf("failed to write string: %w", err)
-				}
-			}
-		}
-	}
-	location := buf.String()
-	// release buffer
-	bytebufferpool.Put(buf)
-	return location, nil
-}
-
-// GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
-func (r *DefaultRes) GetRouteURL(routeName string, params Map) (string, error) {
-	return r.getLocationFromRoute(r.App().GetRoute(routeName), params)
 }
 
 // JSON converts any interface or string to JSON.
@@ -399,6 +460,40 @@ func (r *DefaultRes) Redirect() *Redirect {
 // Variables are read by the Render method and may be overwritten.
 func (r *DefaultRes) ViewBind(vars Map) error {
 	return r.c.ViewBind(vars)
+}
+
+// getLocationFromRoute get URL location from route using parameters
+func (r *DefaultRes) getLocationFromRoute(route Route, params Map) (string, error) {
+	buf := bytebufferpool.Get()
+	for _, segment := range route.routeParser.segs {
+		if !segment.IsParam {
+			_, err := buf.WriteString(segment.Const)
+			if err != nil {
+				return "", fmt.Errorf("failed to write string: %w", err)
+			}
+			continue
+		}
+
+		for key, val := range params {
+			isSame := key == segment.ParamName || (!r.App().config.CaseSensitive && utils.EqualFold(key, segment.ParamName))
+			isGreedy := segment.IsGreedy && len(key) == 1 && bytes.IndexByte(greedyParameters, key[0]) != -1
+			if isSame || isGreedy {
+				_, err := buf.WriteString(utils.ToString(val))
+				if err != nil {
+					return "", fmt.Errorf("failed to write string: %w", err)
+				}
+			}
+		}
+	}
+	location := buf.String()
+	// release buffer
+	bytebufferpool.Put(buf)
+	return location, nil
+}
+
+// GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
+func (r *DefaultRes) GetRouteURL(routeName string, params Map) (string, error) {
+	return r.getLocationFromRoute(r.App().GetRoute(routeName), params)
 }
 
 // Render a template with data and sends a text/html response.
@@ -707,6 +802,11 @@ func (r *DefaultRes) Writef(f string, a ...any) (int, error) {
 func (r *DefaultRes) WriteString(s string) (int, error) {
 	r.Response().AppendBodyString(s)
 	return len(s), nil
+}
+
+// Release is a method to reset Res fields when to use ReleaseCtx()
+func (r *DefaultRes) release() {
+	r.c = nil
 }
 
 // Drop closes the underlying connection without sending any response headers or body.

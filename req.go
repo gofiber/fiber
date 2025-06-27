@@ -13,6 +13,18 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// Range data for c.Range
+type Range struct {
+	Type   string
+	Ranges []RangeSet
+}
+
+// RangeSet represents a single content range from a request.
+type RangeSet struct {
+	Start int
+	End   int
+}
+
 //go:generate ifacemaker --file req.go --struct DefaultReq --iface Req --pkg fiber --output req_interface_gen.go --not-exported true --iface-comment "Req"
 type DefaultReq struct {
 	c Ctx
@@ -147,6 +159,12 @@ func (r *DefaultReq) Body() []byte {
 	return body
 }
 
+// RequestCtx returns *fasthttp.RequestCtx that carries a deadline
+// a cancellation signal, and other values across API boundaries.
+func (r *DefaultReq) RequestCtx() *fasthttp.RequestCtx {
+	return r.c.RequestCtx()
+}
+
 // Cookies are used for getting a cookie value by key.
 // Defaults to the empty string "" if the cookie doesn't exist.
 // If a default value is given, it will return that value if the cookie doesn't exist.
@@ -156,22 +174,11 @@ func (r *DefaultReq) Cookies(key string, defaultValue ...string) string {
 	return defaultString(r.App().getString(r.Request().Header.Cookie(key)), defaultValue)
 }
 
-// RequestCtx returns *fasthttp.RequestCtx that carries a deadline
-// a cancellation signal, and other values across API boundaries.
-func (r *DefaultReq) RequestCtx() *fasthttp.RequestCtx {
-	return r.c.RequestCtx()
-}
-
 // Request return the *fasthttp.Request object
 // This allows you to use all fasthttp request methods
 // https://godoc.org/github.com/valyala/fasthttp#Request
 func (r *DefaultReq) Request() *fasthttp.Request {
 	return r.c.Request()
-}
-
-// Release is a method to reset Req fields when to use ReleaseCtx()
-func (r *DefaultReq) release() {
-	r.c = nil
 }
 
 // FormFile returns the first file by key from a MultipartForm.
@@ -241,11 +248,6 @@ func (r *DefaultReq) Fresh() bool {
 	return true
 }
 
-// Stale is not implemented yet, pull requests are welcome!
-func (r *DefaultReq) Stale() bool {
-	return !r.Fresh()
-}
-
 // Get returns the HTTP request header specified by field.
 // Field names are case-insensitive
 // Returned value is only valid within the handler. Do not store any references.
@@ -266,10 +268,10 @@ func GetReqHeader[V GenericType](r Req, key string, defaultValue ...V) V {
 	return v
 }
 
-// GetReqHeaders returns the HTTP request headers.
+// GetHeaders returns the HTTP request headers.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
-func (r *DefaultReq) GetReqHeaders() map[string][]string {
+func (r *DefaultReq) GetHeaders() map[string][]string {
 	headers := make(map[string][]string)
 	r.Request().Header.VisitAll(func(k, v []byte) {
 		key := r.App().getString(k)
@@ -566,6 +568,44 @@ func Params[V GenericType](c Ctx, key string, defaultValue ...V) V {
 	return v
 }
 
+// Scheme contains the request protocol string: http or https for TLS requests.
+// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
+func (r *DefaultReq) Scheme() string {
+	if r.RequestCtx().IsTLS() {
+		return schemeHTTPS
+	}
+	if !r.IsProxyTrusted() {
+		return schemeHTTP
+	}
+
+	scheme := schemeHTTP
+	const lenXHeaderName = 12
+	r.Request().Header.VisitAll(func(key, val []byte) {
+		if len(key) < lenXHeaderName {
+			return // Neither "X-Forwarded-" nor "X-Url-Scheme"
+		}
+		switch {
+		case bytes.HasPrefix(key, []byte("X-Forwarded-")):
+			if bytes.Equal(key, []byte(HeaderXForwardedProto)) ||
+				bytes.Equal(key, []byte(HeaderXForwardedProtocol)) {
+				v := r.App().getString(val)
+				commaPos := strings.Index(v, ",")
+				if commaPos != -1 {
+					scheme = v[:commaPos]
+				} else {
+					scheme = v
+				}
+			} else if bytes.Equal(key, []byte(HeaderXForwardedSsl)) && bytes.Equal(val, []byte("on")) {
+				scheme = schemeHTTPS
+			}
+
+		case bytes.Equal(key, []byte(HeaderXUrlScheme)):
+			scheme = r.App().getString(val)
+		}
+	})
+	return scheme
+}
+
 // Protocol returns the HTTP protocol of request: HTTP/1.1 and HTTP/2.
 func (r *DefaultReq) Protocol() string {
 	return utils.UnsafeString(r.Request().Header.Protocol())
@@ -711,44 +751,6 @@ func (r *DefaultReq) Route() *Route {
 	return r.c.Route()
 }
 
-// Scheme contains the request protocol string: http or https for TLS requests.
-// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
-func (r *DefaultReq) Scheme() string {
-	if r.RequestCtx().IsTLS() {
-		return schemeHTTPS
-	}
-	if !r.IsProxyTrusted() {
-		return schemeHTTP
-	}
-
-	scheme := schemeHTTP
-	const lenXHeaderName = 12
-	r.Request().Header.VisitAll(func(key, val []byte) {
-		if len(key) < lenXHeaderName {
-			return // Neither "X-Forwarded-" nor "X-Url-Scheme"
-		}
-		switch {
-		case bytes.HasPrefix(key, []byte("X-Forwarded-")):
-			if bytes.Equal(key, []byte(HeaderXForwardedProto)) ||
-				bytes.Equal(key, []byte(HeaderXForwardedProtocol)) {
-				v := r.App().getString(val)
-				commaPos := strings.Index(v, ",")
-				if commaPos != -1 {
-					scheme = v[:commaPos]
-				} else {
-					scheme = v
-				}
-			} else if bytes.Equal(key, []byte(HeaderXForwardedSsl)) && bytes.Equal(val, []byte("on")) {
-				scheme = schemeHTTPS
-			}
-
-		case bytes.Equal(key, []byte(HeaderXUrlScheme)):
-			scheme = r.App().getString(val)
-		}
-	})
-	return scheme
-}
-
 // Subdomains returns a slice of subdomains from the host, excluding the last `offset` components.
 // If the offset is negative or exceeds the number of subdomains, an empty slice is returned.
 // If the offset is zero every label (no trimming) is returned.
@@ -778,6 +780,11 @@ func (r *DefaultReq) Subdomains(offset ...int) []string {
 	}
 
 	return parts[:len(parts)-o]
+}
+
+// Stale is not implemented yet, pull requests are welcome!
+func (r *DefaultReq) Stale() bool {
+	return !r.Fresh()
 }
 
 // IsProxyTrusted checks trustworthiness of remote ip.
@@ -812,6 +819,11 @@ func (r *DefaultReq) IsProxyTrusted() bool {
 // IsFromLocal will return true if request came from local.
 func (r *DefaultReq) IsFromLocal() bool {
 	return r.RequestCtx().RemoteIP().IsLoopback()
+}
+
+// Release is a method to reset Req fields when to use ReleaseCtx()
+func (r *DefaultReq) release() {
+	r.c = nil
 }
 
 func (r *DefaultReq) getBody() []byte {

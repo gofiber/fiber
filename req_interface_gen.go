@@ -33,21 +33,19 @@ type Req interface {
 	// Don't store direct references to the returned data.
 	// If you need to keep the body's data later, make a copy or use the Immutable option.
 	Body() []byte
+	// RequestCtx returns *fasthttp.RequestCtx that carries a deadline
+	// a cancellation signal, and other values across API boundaries.
+	RequestCtx() *fasthttp.RequestCtx
 	// Cookies are used for getting a cookie value by key.
 	// Defaults to the empty string "" if the cookie doesn't exist.
 	// If a default value is given, it will return that value if the cookie doesn't exist.
 	// The returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting to use the value outside the Handler.
 	Cookies(key string, defaultValue ...string) string
-	// RequestCtx returns *fasthttp.RequestCtx that carries a deadline
-	// a cancellation signal, and other values across API boundaries.
-	RequestCtx() *fasthttp.RequestCtx
 	// Request return the *fasthttp.Request object
 	// This allows you to use all fasthttp request methods
 	// https://godoc.org/github.com/valyala/fasthttp#Request
 	Request() *fasthttp.Request
-	// Release is a method to reset Req fields when to use ReleaseCtx()
-	release()
 	// FormFile returns the first file by key from a MultipartForm.
 	FormFile(key string) (*multipart.FileHeader, error)
 	// FormValue returns the first value by key from a MultipartForm.
@@ -64,17 +62,15 @@ type Req interface {
 	// reload request, this module will return false to make handling these requests transparent.
 	// https://github.com/jshttp/fresh/blob/10e0471669dbbfbfd8de65bc6efac2ddd0bfa057/index.js#L33
 	Fresh() bool
-	// Stale is not implemented yet, pull requests are welcome!
-	Stale() bool
 	// Get returns the HTTP request header specified by field.
 	// Field names are case-insensitive
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
 	Get(key string, defaultValue ...string) string
-	// GetReqHeaders returns the HTTP request headers.
+	// GetHeaders returns the HTTP request headers.
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
-	GetReqHeaders() map[string][]string
+	GetHeaders() map[string][]string
 	// Host contains the host derived from the X-Forwarded-Host or Host HTTP header.
 	// Returned value is only valid within the handler. Do not store any references.
 	// In a network context, `Host` refers to the combination of a hostname and potentially a port number used for connecting,
@@ -133,6 +129,9 @@ type Req interface {
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting to use the value outside the Handler.
 	Params(key string, defaultValue ...string) string
+	// Scheme contains the request protocol string: http or https for TLS requests.
+	// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
+	Scheme() string
 	// Protocol returns the HTTP protocol of request: HTTP/1.1 and HTTP/2.
 	Protocol() string
 	// Query returns the query string parameter in the url.
@@ -167,18 +166,19 @@ type Req interface {
 	Range(size int) (Range, error)
 	// Route returns the matched Route struct.
 	Route() *Route
-	// Scheme contains the request protocol string: http or https for TLS requests.
-	// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
-	Scheme() string
 	// Subdomains returns a slice of subdomains from the host, excluding the last `offset` components.
 	// If the offset is negative or exceeds the number of subdomains, an empty slice is returned.
 	// If the offset is zero every label (no trimming) is returned.
 	Subdomains(offset ...int) []string
+	// Stale is not implemented yet, pull requests are welcome!
+	Stale() bool
 	// IsProxyTrusted checks trustworthiness of remote ip.
 	// If Config.TrustProxy false, it returns true
 	// IsProxyTrusted can check remote ip by proxy ranges and ip map.
 	IsProxyTrusted() bool
 	// IsFromLocal will return true if request came from local.
 	IsFromLocal() bool
+	// Release is a method to reset Req fields when to use ReleaseCtx()
+	release()
 	getBody() []byte
 }

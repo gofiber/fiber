@@ -18,10 +18,9 @@ type Ctx interface {
 	App() *App
 	// BaseURL returns (protocol + host + base path).
 	BaseURL() string
-	// Bind You can bind body, cookie, headers etc. into the map, map slice, struct easily by using Binding method.
-	// It gives custom binding support, detailed binding options and more.
-	// Replacement of: BodyParser, ParamsParser, GetReqHeaders, GetRespHeaders, AllParams, QueryParser, ReqHeaderParser
-	Bind() *Bind
+	// RequestCtx returns *fasthttp.RequestCtx that carries a deadline
+	// a cancellation signal, and other values across API boundaries.
+	RequestCtx() *fasthttp.RequestCtx
 	// Deadline returns the time when work done on behalf of this context
 	// should be canceled. Deadline returns ok==false when no deadline is
 	// set. Successive calls to Deadline return the same results.
@@ -47,28 +46,38 @@ type Ctx interface {
 	// Due to current limitations in how fasthttp works, Err operates as a nop.
 	// See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
 	Err() error
+	// Request return the *fasthttp.Request object
+	// This allows you to use all fasthttp request methods
+	// https://godoc.org/github.com/valyala/fasthttp#Request
+	Request() *fasthttp.Request
+	// Response return the *fasthttp.Response object
+	// This allows you to use all fasthttp response methods
+	// https://godoc.org/github.com/valyala/fasthttp#Response
+	Response() *fasthttp.Response
 	// Get returns the HTTP request header specified by field.
 	// Field names are case-insensitive
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
 	Get(key string, defaultValue ...string) string
+	// GetHeaders returns the HTTP request headers.
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting instead.
+	GetHeaders() map[string][]string
+	// GetReqHeaders returns the HTTP request headers.
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting instead.
+	GetReqHeaders() map[string][]string
 	// GetRespHeader returns the HTTP response header specified by field.
 	// Field names are case-insensitive
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
 	GetRespHeader(key string, defaultValue ...string) string
+	// GetHeaders returns the HTTP response headers.
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting instead.
+	GetRespHeaders() map[string][]string
 	// ClientHelloInfo return CHI from context
 	ClientHelloInfo() *tls.ClientHelloInfo
-	// Cookies are used for getting a cookie value by key.
-	// Defaults to the empty string "" if the cookie doesn't exist.
-	// If a default value is given, it will return that value if the cookie doesn't exist.
-	// The returned value is only valid within the handler. Do not store any references.
-	// Make copies or use the Immutable setting to use the value outside the Handler.
-	Cookies(key string, defaultValue ...string) string
-	// Method returns the HTTP request method for the context, optionally overridden by the provided argument.
-	// If no override is given or if the provided override is not a valid HTTP method, it returns the current method from the context.
-	// Otherwise, it updates the context's method and returns the overridden method as a string.
-	Method(override ...string) string
 	// Next executes the next method in the stack that matches the current route.
 	Next() error
 	// RestartRouting instead of going to the next handler. This may be useful after
@@ -88,22 +97,14 @@ type Ctx interface {
 	// Res returns a convenience type whose API is limited to operations
 	// on the outgoing response.
 	Res() Res
-	// RequestCtx returns *fasthttp.RequestCtx that carries a deadline
-	// a cancellation signal, and other values across API boundaries.
-	RequestCtx() *fasthttp.RequestCtx
-	// Request return the *fasthttp.Request object
-	// This allows you to use all fasthttp request methods
-	// https://godoc.org/github.com/valyala/fasthttp#Request
-	Request() *fasthttp.Request
-	// Response return the *fasthttp.Response object
-	// This allows you to use all fasthttp response methods
-	// https://godoc.org/github.com/valyala/fasthttp#Response
-	Response() *fasthttp.Response
 	// Redirect returns the Redirect reference.
 	// Use Redirect().Status() to set custom redirection status code.
 	// If status is not specified, status defaults to 303 See Other.
 	// You can use Redirect().To(), Redirect().Route() and Redirect().Back() for redirection.
 	Redirect() *Redirect
+	// ViewBind Add vars to default view var map binding to template engine.
+	// Variables are read by the Render method and may be overwritten.
+	ViewBind(vars Map) error
 	// Route returns the matched Route struct.
 	Route() *Route
 	// SaveFile saves any multipart file to disk.
@@ -130,12 +131,13 @@ type Ctx interface {
 	configDependentPaths()
 	// Reset is a method to reset context fields by given request when to use server handlers.
 	Reset(fctx *fasthttp.RequestCtx)
-	// ViewBind Add vars to default view var map binding to template engine.
-	// Variables are read by the Render method and may be overwritten.
-	ViewBind(vars Map) error
 	// Release is a method to reset context fields when to use ReleaseCtx()
 	release()
 	renderExtensions(bind any)
+	// Bind You can bind body, cookie, headers etc. into the map, map slice, struct easily by using Binding method.
+	// It gives custom binding support, detailed binding options and more.
+	// Replacement of: BodyParser, ParamsParser, GetReqHeaders, GetRespHeaders, AllParams, QueryParser, ReqHeaderParser
+	Bind() *Bind
 	// Methods to use with next stack.
 	getMethodInt() int
 	setMethodInt(methodInt int)
@@ -178,14 +180,6 @@ type Ctx interface {
 	// For more flexible content negotiation, use Format.
 	// If the header is not specified or there is no proper format, text/plain is used.
 	AutoFormat(body any) error
-	// GetRespHeaders returns the HTTP response headers.
-	// Returned value is only valid within the handler. Do not store any references.
-	// Make copies or use the Immutable setting instead.
-	GetRespHeaders() map[string][]string
-	// getLocationFromRoute get URL location from route using parameters
-	getLocationFromRoute(route Route, params Map) (string, error)
-	// GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
-	GetRouteURL(routeName string, params Map) (string, error)
 	// JSON converts any interface or string to JSON.
 	// Array and slice values encode as JSON arrays,
 	// except that []byte encodes as a base64-encoded string,
@@ -210,6 +204,10 @@ type Ctx interface {
 	Links(link ...string)
 	// Location sets the response Location HTTP header to the specified path parameter.
 	Location(path string)
+	// getLocationFromRoute get URL location from route using parameters
+	getLocationFromRoute(route Route, params Map) (string, error)
+	// GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
+	GetRouteURL(routeName string, params Map) (string, error)
 	// Render a template with data and sends a text/html response.
 	// We support the following engines: https://github.com/gofiber/template
 	Render(name string, bind any, layouts ...string) error
@@ -270,6 +268,12 @@ type Ctx interface {
 	// Don't store direct references to the returned data.
 	// If you need to keep the body's data later, make a copy or use the Immutable option.
 	Body() []byte
+	// Cookies are used for getting a cookie value by key.
+	// Defaults to the empty string "" if the cookie doesn't exist.
+	// If a default value is given, it will return that value if the cookie doesn't exist.
+	// The returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting to use the value outside the Handler.
+	Cookies(key string, defaultValue ...string) string
 	// FormFile returns the first file by key from a MultipartForm.
 	FormFile(key string) (*multipart.FileHeader, error)
 	// FormValue returns the first value by key from a MultipartForm.
@@ -286,12 +290,6 @@ type Ctx interface {
 	// reload request, this module will return false to make handling these requests transparent.
 	// https://github.com/jshttp/fresh/blob/10e0471669dbbfbfd8de65bc6efac2ddd0bfa057/index.js#L33
 	Fresh() bool
-	// Stale is not implemented yet, pull requests are welcome!
-	Stale() bool
-	// GetReqHeaders returns the HTTP request headers.
-	// Returned value is only valid within the handler. Do not store any references.
-	// Make copies or use the Immutable setting instead.
-	GetReqHeaders() map[string][]string
 	// Host contains the host derived from the X-Forwarded-Host or Host HTTP header.
 	// Returned value is only valid within the handler. Do not store any references.
 	// In a network context, `Host` refers to the combination of a hostname and potentially a port number used for connecting,
@@ -333,6 +331,10 @@ type Ctx interface {
 	// RequestHandler. Additionally, Close method is called on each value
 	// implementing io.Closer before removing the value from ctx.
 	Locals(key any, value ...any) any
+	// Method returns the HTTP request method for the context, optionally overridden by the provided argument.
+	// If no override is given or if the provided override is not a valid HTTP method, it returns the current method from the context.
+	// Otherwise, it updates the context's method and returns the overridden method as a string.
+	Method(override ...string) string
 	// MultipartForm parse form entries from binary.
 	// This returns a map[string][]string, so given a key the value will be a string slice.
 	MultipartForm() (*multipart.Form, error)
@@ -342,6 +344,9 @@ type Ctx interface {
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting to use the value outside the Handler.
 	Params(key string, defaultValue ...string) string
+	// Scheme contains the request protocol string: http or https for TLS requests.
+	// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
+	Scheme() string
 	// Protocol returns the HTTP protocol of request: HTTP/1.1 and HTTP/2.
 	Protocol() string
 	// Query returns the query string parameter in the url.
@@ -374,13 +379,12 @@ type Ctx interface {
 	Queries() map[string]string
 	// Range returns a struct containing the type and a slice of ranges.
 	Range(size int) (Range, error)
-	// Scheme contains the request protocol string: http or https for TLS requests.
-	// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
-	Scheme() string
 	// Subdomains returns a slice of subdomains from the host, excluding the last `offset` components.
 	// If the offset is negative or exceeds the number of subdomains, an empty slice is returned.
 	// If the offset is zero every label (no trimming) is returned.
 	Subdomains(offset ...int) []string
+	// Stale is not implemented yet, pull requests are welcome!
+	Stale() bool
 	// IsProxyTrusted checks trustworthiness of remote ip.
 	// If Config.TrustProxy false, it returns true
 	// IsProxyTrusted can check remote ip by proxy ranges and ip map.

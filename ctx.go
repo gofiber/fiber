@@ -9,7 +9,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
-	"io/fs"
 	"mime/multipart"
 	"strconv"
 	"sync"
@@ -67,84 +66,6 @@ type DefaultCtx struct {
 	matched       bool                 // Non use route matched
 }
 
-// SendFile defines configuration options when to transfer file with SendFile.
-type SendFile struct {
-	// FS is the file system to serve the static files from.
-	// You can use interfaces compatible with fs.FS like embed.FS, os.DirFS etc.
-	//
-	// Optional. Default: nil
-	FS fs.FS
-
-	// When set to true, the server tries minimizing CPU usage by caching compressed files.
-	// This works differently than the github.com/gofiber/compression middleware.
-	// You have to set Content-Encoding header to compress the file.
-	// Available compression methods are gzip, br, and zstd.
-	//
-	// Optional. Default: false
-	Compress bool `json:"compress"`
-
-	// When set to true, enables byte range requests.
-	//
-	// Optional. Default: false
-	ByteRange bool `json:"byte_range"`
-
-	// When set to true, enables direct download.
-	//
-	// Optional. Default: false
-	Download bool `json:"download"`
-
-	// Expiration duration for inactive file handlers.
-	// Use a negative time.Duration to disable it.
-	//
-	// Optional. Default: 10 * time.Second
-	CacheDuration time.Duration `json:"cache_duration"`
-
-	// The value for the Cache-Control HTTP-header
-	// that is set on the file response. MaxAge is defined in seconds.
-	//
-	// Optional. Default: 0
-	MaxAge int `json:"max_age"`
-}
-
-// sendFileStore is used to keep the SendFile configuration and the handler.
-type sendFileStore struct {
-	handler           fasthttp.RequestHandler
-	cacheControlValue string
-	config            SendFile
-}
-
-// compareConfig compares the current SendFile config with the new one
-// and returns true if they are different.
-//
-// Here we don't use reflect.DeepEqual because it is quite slow compared to manual comparison.
-func (sf *sendFileStore) compareConfig(cfg SendFile) bool {
-	if sf.config.FS != cfg.FS {
-		return false
-	}
-
-	if sf.config.Compress != cfg.Compress {
-		return false
-	}
-
-	if sf.config.ByteRange != cfg.ByteRange {
-		return false
-	}
-
-	if sf.config.Download != cfg.Download {
-		return false
-	}
-
-	if sf.config.CacheDuration != cfg.CacheDuration {
-		return false
-	}
-
-	if sf.config.MaxAge != cfg.MaxAge {
-		return false
-	}
-
-	return true
-}
-
 // TLSHandler object
 type TLSHandler struct {
 	clientHelloInfo *tls.ClientHelloInfo
@@ -158,43 +79,10 @@ func (t *TLSHandler) GetClientInfo(info *tls.ClientHelloInfo) (*tls.Certificate,
 	return nil, nil //nolint:nilnil // Not returning anything useful here is probably fine
 }
 
-// Range data for c.Range
-type Range struct {
-	Type   string
-	Ranges []RangeSet
-}
-
-// RangeSet represents a single content range from a request.
-type RangeSet struct {
-	Start int
-	End   int
-}
-
-// Cookie data for c.Cookie
-type Cookie struct {
-	Expires     time.Time `json:"expires"`      // The expiration date of the cookie
-	Name        string    `json:"name"`         // The name of the cookie
-	Value       string    `json:"value"`        // The value of the cookie
-	Path        string    `json:"path"`         // Specifies a URL path which is allowed to receive the cookie
-	Domain      string    `json:"domain"`       // Specifies the domain which is allowed to receive the cookie
-	SameSite    string    `json:"same_site"`    // Controls whether or not a cookie is sent with cross-site requests
-	MaxAge      int       `json:"max_age"`      // The maximum age (in seconds) of the cookie
-	Secure      bool      `json:"secure"`       // Indicates that the cookie should only be transmitted over a secure HTTPS connection
-	HTTPOnly    bool      `json:"http_only"`    // Indicates that the cookie is accessible only through the HTTP protocol
-	Partitioned bool      `json:"partitioned"`  // Indicates if the cookie is stored in a partitioned cookie jar
-	SessionOnly bool      `json:"session_only"` // Indicates if the cookie is a session-only cookie
-}
-
 // Views is the interface that wraps the Render function.
 type Views interface {
 	Load() error
 	Render(out io.Writer, name string, binding any, layout ...string) error
-}
-
-// ResFmt associates a Content Type to a fiber.Handler for c.Format
-type ResFmt struct {
-	Handler   func(Ctx) error
-	MediaType string
 }
 
 // App returns the *App reference to the instance of the Fiber application
@@ -213,17 +101,10 @@ func (c *DefaultCtx) BaseURL() string {
 	return c.baseURI
 }
 
-// Bind You can bind body, cookie, headers etc. into the map, map slice, struct easily by using Binding method.
-// It gives custom binding support, detailed binding options and more.
-// Replacement of: BodyParser, ParamsParser, GetReqHeaders, GetRespHeaders, AllParams, QueryParser, ReqHeaderParser
-func (c *DefaultCtx) Bind() *Bind {
-	if c.bind == nil {
-		c.bind = &Bind{
-			ctx:            c,
-			dontHandleErrs: true,
-		}
-	}
-	return c.bind
+// RequestCtx returns *fasthttp.RequestCtx that carries a deadline
+// a cancellation signal, and other values across API boundaries.
+func (c *DefaultCtx) RequestCtx() *fasthttp.RequestCtx {
+	return c.fasthttp
 }
 
 // Deadline returns the time when work done on behalf of this context
@@ -260,12 +141,40 @@ func (*DefaultCtx) Err() error {
 	return nil
 }
 
+// Request return the *fasthttp.Request object
+// This allows you to use all fasthttp request methods
+// https://godoc.org/github.com/valyala/fasthttp#Request
+func (c *DefaultCtx) Request() *fasthttp.Request {
+	return &c.fasthttp.Request
+}
+
+// Response return the *fasthttp.Response object
+// This allows you to use all fasthttp response methods
+// https://godoc.org/github.com/valyala/fasthttp#Response
+func (c *DefaultCtx) Response() *fasthttp.Response {
+	return &c.fasthttp.Response
+}
+
 // Get returns the HTTP request header specified by field.
 // Field names are case-insensitive
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (c *DefaultCtx) Get(key string, defaultValue ...string) string {
 	return c.Req().Get(key, defaultValue...)
+}
+
+// GetHeaders returns the HTTP request headers.
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting instead.
+func (c *DefaultCtx) GetHeaders() map[string][]string {
+	return c.DefaultReq.GetHeaders()
+}
+
+// GetReqHeaders returns the HTTP request headers.
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting instead.
+func (c *DefaultCtx) GetReqHeaders() map[string][]string {
+	return c.DefaultReq.GetHeaders()
 }
 
 // GetRespHeader returns the HTTP response header specified by field.
@@ -276,6 +185,13 @@ func (c *DefaultCtx) GetRespHeader(key string, defaultValue ...string) string {
 	return c.Res().Get(key, defaultValue...)
 }
 
+// GetHeaders returns the HTTP response headers.
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting instead.
+func (c *DefaultCtx) GetRespHeaders() map[string][]string {
+	return c.DefaultRes.GetHeaders()
+}
+
 // ClientHelloInfo return CHI from context
 func (c *DefaultCtx) ClientHelloInfo() *tls.ClientHelloInfo {
 	if c.app.tlsHandler != nil {
@@ -283,34 +199,6 @@ func (c *DefaultCtx) ClientHelloInfo() *tls.ClientHelloInfo {
 	}
 
 	return nil
-}
-
-// Cookies are used for getting a cookie value by key.
-// Defaults to the empty string "" if the cookie doesn't exist.
-// If a default value is given, it will return that value if the cookie doesn't exist.
-// The returned value is only valid within the handler. Do not store any references.
-// Make copies or use the Immutable setting to use the value outside the Handler.
-func (c *DefaultCtx) Cookies(key string, defaultValue ...string) string {
-	return c.Req().Cookies(key, defaultValue...)
-}
-
-// Method returns the HTTP request method for the context, optionally overridden by the provided argument.
-// If no override is given or if the provided override is not a valid HTTP method, it returns the current method from the context.
-// Otherwise, it updates the context's method and returns the overridden method as a string.
-func (c *DefaultCtx) Method(override ...string) string {
-	if len(override) == 0 {
-		// Nothing to override, just return current method from context
-		return c.App().method(c.methodInt)
-	}
-
-	method := utils.ToUpper(override[0])
-	methodInt := c.App().methodInt(method)
-	if methodInt == -1 {
-		// Provided override does not valid HTTP method, no override, return current method
-		return c.App().method(c.methodInt)
-	}
-	c.methodInt = methodInt
-	return method
 }
 
 // Next executes the next method in the stack that matches the current route.
@@ -383,26 +271,6 @@ func (c *DefaultCtx) Res() Res {
 	return &c.DefaultRes
 }
 
-// RequestCtx returns *fasthttp.RequestCtx that carries a deadline
-// a cancellation signal, and other values across API boundaries.
-func (c *DefaultCtx) RequestCtx() *fasthttp.RequestCtx {
-	return c.fasthttp
-}
-
-// Request return the *fasthttp.Request object
-// This allows you to use all fasthttp request methods
-// https://godoc.org/github.com/valyala/fasthttp#Request
-func (c *DefaultCtx) Request() *fasthttp.Request {
-	return &c.fasthttp.Request
-}
-
-// Response return the *fasthttp.Response object
-// This allows you to use all fasthttp response methods
-// https://godoc.org/github.com/valyala/fasthttp#Response
-func (c *DefaultCtx) Response() *fasthttp.Response {
-	return &c.fasthttp.Response
-}
-
 // Redirect returns the Redirect reference.
 // Use Redirect().Status() to set custom redirection status code.
 // If status is not specified, status defaults to 303 See Other.
@@ -414,6 +282,16 @@ func (c *DefaultCtx) Redirect() *Redirect {
 	}
 
 	return c.redirect
+}
+
+// ViewBind Add vars to default view var map binding to template engine.
+// Variables are read by the Render method and may be overwritten.
+func (c *DefaultCtx) ViewBind(vars Map) error {
+	// init viewBindMap - lazy map
+	for k, v := range vars {
+		c.viewBindMap.Store(k, v)
+	}
+	return nil
 }
 
 // Route returns the matched Route struct.
@@ -464,7 +342,7 @@ func (c *DefaultCtx) Secure() bool {
 // Status sets the HTTP status for the response.
 // This method is chainable.
 func (c *DefaultCtx) Status(status int) Ctx {
-	c.fasthttp.Response.SetStatusCode(status)
+	c.Response().SetStatusCode(status)
 	return c
 }
 
@@ -572,16 +450,6 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 	c.DefaultRes.c = c
 }
 
-// ViewBind Add vars to default view var map binding to template engine.
-// Variables are read by the Render method and may be overwritten.
-func (c *DefaultCtx) ViewBind(vars Map) error {
-	// init viewBindMap - lazy map
-	for k, v := range vars {
-		c.viewBindMap.Store(k, v)
-	}
-	return nil
-}
-
 // Release is a method to reset context fields when to use ReleaseCtx()
 func (c *DefaultCtx) release() {
 	c.route = nil
@@ -627,6 +495,19 @@ func (c *DefaultCtx) renderExtensions(bind any) {
 	if len(c.app.mountFields.appListKeys) == 0 {
 		c.app.generateAppListKeys()
 	}
+}
+
+// Bind You can bind body, cookie, headers etc. into the map, map slice, struct easily by using Binding method.
+// It gives custom binding support, detailed binding options and more.
+// Replacement of: BodyParser, ParamsParser, GetReqHeaders, GetRespHeaders, AllParams, QueryParser, ReqHeaderParser
+func (c *DefaultCtx) Bind() *Bind {
+	if c.bind == nil {
+		c.bind = &Bind{
+			ctx:            c,
+			dontHandleErrs: true,
+		}
+	}
+	return c.bind
 }
 
 // Methods to use with next stack.

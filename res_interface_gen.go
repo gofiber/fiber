@@ -21,6 +21,9 @@ type Res interface {
 	// ClearCookie expires a specific cookie by key on the client side.
 	// If no key is provided it expires all cookies that came with the request.
 	ClearCookie(key ...string)
+	// RequestCtx returns *fasthttp.RequestCtx that carries a deadline
+	// a cancellation signal, and other values across API boundaries.
+	RequestCtx() *fasthttp.RequestCtx
 	// Cookie sets a cookie by passing a cookie struct.
 	Cookie(cookie *Cookie)
 	// Download transfers the file from path as an attachment.
@@ -28,6 +31,10 @@ type Res interface {
 	// By default, the Content-Disposition header filename= parameter is the filepath (this typically appears in the browser dialog).
 	// Override this default with the filename parameter.
 	Download(file string, filename ...string) error
+	// Response return the *fasthttp.Response object
+	// This allows you to use all fasthttp response methods
+	// https://godoc.org/github.com/valyala/fasthttp#Response
+	Response() *fasthttp.Response
 	// Format performs content-negotiation on the Accept HTTP header.
 	// It uses Accepts to select a proper format and calls the matching
 	// user-provided handler function.
@@ -41,28 +48,15 @@ type Res interface {
 	// For more flexible content negotiation, use Format.
 	// If the header is not specified or there is no proper format, text/plain is used.
 	AutoFormat(body any) error
-	// RequestCtx returns *fasthttp.RequestCtx that carries a deadline
-	// a cancellation signal, and other values across API boundaries.
-	RequestCtx() *fasthttp.RequestCtx
-	// Response return the *fasthttp.Response object
-	// This allows you to use all fasthttp response methods
-	// https://godoc.org/github.com/valyala/fasthttp#Response
-	Response() *fasthttp.Response
-	// Release is a method to reset Res fields when to use ReleaseCtx()
-	release()
 	// Get (a.k.a. GetRespHeader) returns the HTTP response header specified by field.
 	// Field names are case-insensitive
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
 	Get(key string, defaultValue ...string) string
-	// GetRespHeaders returns the HTTP response headers.
+	// GetHeaders returns the HTTP response headers.
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
-	GetRespHeaders() map[string][]string
-	// getLocationFromRoute get URL location from route using parameters
-	getLocationFromRoute(route Route, params Map) (string, error)
-	// GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
-	GetRouteURL(routeName string, params Map) (string, error)
+	GetHeaders() map[string][]string
 	// JSON converts any interface or string to JSON.
 	// Array and slice values encode as JSON arrays,
 	// except that []byte encodes as a base64-encoded string,
@@ -99,6 +93,10 @@ type Res interface {
 	// ViewBind Add vars to default view var map binding to template engine.
 	// Variables are read by the Render method and may be overwritten.
 	ViewBind(vars Map) error
+	// getLocationFromRoute get URL location from route using parameters
+	getLocationFromRoute(route Route, params Map) (string, error)
+	// GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
+	GetRouteURL(routeName string, params Map) (string, error)
 	// Render a template with data and sends a text/html response.
 	// We support the following engines: https://github.com/gofiber/template
 	Render(name string, bind any, layouts ...string) error
@@ -138,6 +136,8 @@ type Res interface {
 	Writef(f string, a ...any) (int, error)
 	// WriteString appends s to response body.
 	WriteString(s string) (int, error)
+	// Release is a method to reset Res fields when to use ReleaseCtx()
+	release()
 	// Drop closes the underlying connection without sending any response headers or body.
 	// This can be useful for silently terminating client connections, such as in DDoS mitigation
 	// or when blocking access to sensitive endpoints.
