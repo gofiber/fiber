@@ -210,7 +210,12 @@ func paramsMatch(specParamStr headerParams, offerParams string) bool {
 		fasthttp.VisitHeaderParams(utils.UnsafeBytes(offerParams), func(key, value []byte) bool {
 			if utils.EqualFold(specParam, utils.UnsafeString(key)) {
 				foundParam = true
-				allSpecParamsMatch = utils.EqualFold(specVal, unescapeHeaderValue(value))
+				unescaped, err := unescapeHeaderValue(value)
+				if err != nil {
+					allSpecParamsMatch = false
+					return false
+				}
+				allSpecParamsMatch = utils.EqualFold(specVal, unescaped)
 				return false
 			}
 			return true
@@ -264,25 +269,32 @@ func joinHeaderValues(headers [][]byte) []byte {
 	}
 }
 
-func unescapeHeaderValue(v []byte) []byte {
+func unescapeHeaderValue(v []byte) ([]byte, error) {
 	if bytes.IndexByte(v, '\\') == -1 {
-		return v
+		return v, nil
 	}
 	res := make([]byte, 0, len(v))
 	escaping := false
-	for _, c := range v {
+	for i, c := range v {
 		if escaping {
 			res = append(res, c)
 			escaping = false
 			continue
 		}
 		if c == '\\' {
+			// invalid escape at end of string
+			if i == len(v)-1 {
+				return nil, errors.New("invalid escape sequence")
+			}
 			escaping = true
 			continue
 		}
 		res = append(res, c)
 	}
-	return res
+	if escaping {
+		return nil, errors.New("invalid escape sequence")
+	}
+	return res, nil
 }
 
 // forEachMediaRange parses an Accept or Content-Type header, calling functor
@@ -384,7 +396,11 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 						return false
 					}
 					lowerKey := utils.UnsafeString(utils.ToLowerBytes(key))
-					params[lowerKey] = unescapeHeaderValue(value)
+					val, err := unescapeHeaderValue(value)
+					if err != nil {
+						return true
+					}
+					params[lowerKey] = val
 					return true
 				})
 			}
