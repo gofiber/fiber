@@ -210,7 +210,7 @@ func paramsMatch(specParamStr headerParams, offerParams string) bool {
 		fasthttp.VisitHeaderParams(utils.UnsafeBytes(offerParams), func(key, value []byte) bool {
 			if utils.EqualFold(specParam, utils.UnsafeString(key)) {
 				foundParam = true
-				allSpecParamsMatch = utils.EqualFold(specVal, value)
+				allSpecParamsMatch = utils.EqualFold(specVal, unescapeHeaderValue(value))
 				return false
 			}
 			return true
@@ -251,6 +251,50 @@ func getSplicedStrList(headerValue string, dst []string) []string {
 	dst = append(dst, headerValue[segmentStart:])
 
 	return dst
+}
+
+func joinHeaderValues(headers [][]byte) []byte {
+	switch len(headers) {
+	case 0:
+		return nil
+	case 1:
+		return headers[0]
+	}
+
+	n := len(headers) - 1
+	for _, h := range headers {
+		n += len(h)
+	}
+
+	out := make([]byte, 0, n)
+	for i, h := range headers {
+		if i > 0 {
+			out = append(out, ',')
+		}
+		out = append(out, h...)
+	}
+	return out
+}
+
+func unescapeHeaderValue(v []byte) []byte {
+	if bytes.IndexByte(v, '\\') == -1 {
+		return v
+	}
+	res := make([]byte, 0, len(v))
+	escaping := false
+	for _, c := range v {
+		if escaping {
+			res = append(res, c)
+			escaping = false
+			continue
+		}
+		if c == '\\' {
+			escaping = true
+			continue
+		}
+		res = append(res, c)
+	}
+	return res
 }
 
 // forEachMediaRange parses an Accept or Content-Type header, calling functor
@@ -352,7 +396,7 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 						return false
 					}
 					lowerKey := utils.UnsafeString(utils.ToLowerBytes(key))
-					params[lowerKey] = value
+					params[lowerKey] = unescapeHeaderValue(value)
 					return true
 				})
 			}

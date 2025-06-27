@@ -171,6 +171,17 @@ func Test_Ctx_Accepts_Wildcard(t *testing.T) {
 	require.Equal(t, "xml", c.Accepts("xml"))
 }
 
+// go test -run Test_Ctx_Accepts_MultiHeader
+func Test_Ctx_Accepts_MultiHeader(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Request().Header.Add(HeaderAccept, "text/plain;q=0.5")
+	c.Request().Header.Add(HeaderAccept, "application/json")
+	require.Equal(t, "application/json", c.Accepts("text/plain", "application/json"))
+}
+
 // go test -run Test_Ctx_AcceptsCharsets
 func Test_Ctx_AcceptsCharsets(t *testing.T) {
 	t.Parallel()
@@ -179,6 +190,17 @@ func Test_Ctx_AcceptsCharsets(t *testing.T) {
 
 	c.Request().Header.Set(HeaderAcceptCharset, "utf-8, iso-8859-1;q=0.5")
 	require.Equal(t, "utf-8", c.AcceptsCharsets("utf-8"))
+}
+
+// go test -run Test_Ctx_AcceptsCharsets_MultiHeader
+func Test_Ctx_AcceptsCharsets_MultiHeader(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Request().Header.Add(HeaderAcceptCharset, "utf-8;q=0.1")
+	c.Request().Header.Add(HeaderAcceptCharset, "iso-8859-1")
+	require.Equal(t, "iso-8859-1", c.AcceptsCharsets("utf-8", "iso-8859-1"))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_AcceptsCharsets -benchmem -count=4
@@ -206,6 +228,17 @@ func Test_Ctx_AcceptsEncodings(t *testing.T) {
 	require.Equal(t, "abc", c.AcceptsEncodings("abc"))
 }
 
+// go test -run Test_Ctx_AcceptsEncodings_MultiHeader
+func Test_Ctx_AcceptsEncodings_MultiHeader(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Request().Header.Add(HeaderAcceptEncoding, "deflate;q=0.3")
+	c.Request().Header.Add(HeaderAcceptEncoding, "gzip")
+	require.Equal(t, "gzip", c.AcceptsEncodings("deflate", "gzip"))
+}
+
 // go test -v -run=^$ -bench=Benchmark_Ctx_AcceptsEncodings -benchmem -count=4
 func Benchmark_Ctx_AcceptsEncodings(b *testing.B) {
 	app := New()
@@ -228,6 +261,17 @@ func Test_Ctx_AcceptsLanguages(t *testing.T) {
 
 	c.Request().Header.Set(HeaderAcceptLanguage, "fr-CH, fr;q=0.9, en;q=0.8, de;q=0.7, *;q=0.5")
 	require.Equal(t, "fr", c.AcceptsLanguages("fr"))
+}
+
+// go test -run Test_Ctx_AcceptsLanguages_MultiHeader
+func Test_Ctx_AcceptsLanguages_MultiHeader(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Request().Header.Add(HeaderAcceptLanguage, "de;q=0.4")
+	c.Request().Header.Add(HeaderAcceptLanguage, "en")
+	require.Equal(t, "en", c.AcceptsLanguages("de", "en"))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_AcceptsLanguages -benchmem -count=4
