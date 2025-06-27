@@ -16,8 +16,6 @@ import (
 type Ctx interface {
 	// App returns the *App reference to the instance of the Fiber application
 	App() *App
-	// Accepts checks if the specified extensions or content types are acceptable.
-	Accepts(offers ...string) string
 	// BaseURL returns (protocol + host + base path).
 	BaseURL() string
 	// Bind You can bind body, cookie, headers etc. into the map, map slice, struct easily by using Binding method.
@@ -49,7 +47,15 @@ type Ctx interface {
 	// Due to current limitations in how fasthttp works, Err operates as a nop.
 	// See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
 	Err() error
+	// Get returns the HTTP request header specified by field.
+	// Field names are case-insensitive
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting instead.
 	Get(key string, defaultValue ...string) string
+	// GetRespHeader returns the HTTP response header specified by field.
+	// Field names are case-insensitive
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting instead.
 	GetRespHeader(key string, defaultValue ...string) string
 	// ClientHelloInfo return CHI from context
 	ClientHelloInfo() *tls.ClientHelloInfo
@@ -143,6 +149,7 @@ type Ctx interface {
 	setMatched(matched bool)
 	setRoute(route *Route)
 	keepOriginalPath()
+	getPathOriginal() string
 	// Append the specified value to the HTTP response header field.
 	// If the header is not already set, it creates the header with the specified value.
 	Append(field string, values ...string)
@@ -244,16 +251,8 @@ type Ctx interface {
 	Drop() error
 	// End immediately flushes the current response and closes the underlying connection.
 	End() error
-	getPathOriginal() string
-	// Fresh returns true when the response is still “fresh” in the client's cache,
-	// otherwise false is returned to indicate that the client cache is now stale
-	// and the full response should be sent.
-	// When a client sends the Cache-Control: no-cache request header to indicate an end-to-end
-	// reload request, this module will return false to make handling these requests transparent.
-	// https://github.com/jshttp/fresh/blob/10e0471669dbbfbfd8de65bc6efac2ddd0bfa057/index.js#L33
-	Fresh() bool
-	// Stale is not implemented yet, pull requests are welcome!
-	Stale() bool
+	// Accepts checks if the specified extensions or content types are acceptable.
+	Accepts(offers ...string) string
 	// AcceptsCharsets checks if the specified charset is acceptable.
 	AcceptsCharsets(offers ...string) string
 	// AcceptsEncodings checks if the specified encoding is acceptable.
@@ -280,6 +279,15 @@ type Ctx interface {
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
 	FormValue(key string, defaultValue ...string) string
+	// Fresh returns true when the response is still “fresh” in the client's cache,
+	// otherwise false is returned to indicate that the client cache is now stale
+	// and the full response should be sent.
+	// When a client sends the Cache-Control: no-cache request header to indicate an end-to-end
+	// reload request, this module will return false to make handling these requests transparent.
+	// https://github.com/jshttp/fresh/blob/10e0471669dbbfbfd8de65bc6efac2ddd0bfa057/index.js#L33
+	Fresh() bool
+	// Stale is not implemented yet, pull requests are welcome!
+	Stale() bool
 	// GetReqHeaders returns the HTTP request headers.
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.

@@ -57,6 +57,15 @@ type Req interface {
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
 	FormValue(key string, defaultValue ...string) string
+	// Fresh returns true when the response is still “fresh” in the client's cache,
+	// otherwise false is returned to indicate that the client cache is now stale
+	// and the full response should be sent.
+	// When a client sends the Cache-Control: no-cache request header to indicate an end-to-end
+	// reload request, this module will return false to make handling these requests transparent.
+	// https://github.com/jshttp/fresh/blob/10e0471669dbbfbfd8de65bc6efac2ddd0bfa057/index.js#L33
+	Fresh() bool
+	// Stale is not implemented yet, pull requests are welcome!
+	Stale() bool
 	// Get returns the HTTP request header specified by field.
 	// Field names are case-insensitive
 	// Returned value is only valid within the handler. Do not store any references.

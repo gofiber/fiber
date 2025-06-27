@@ -13,8 +13,6 @@ import (
 type Res interface {
 	// App returns the *App reference to the instance of the Fiber application
 	App() *App
-	// Accepts checks if the specified extensions or content types are acceptable.
-	Accepts(offers ...string) string
 	// Append the specified value to the HTTP response header field.
 	// If the header is not already set, it creates the header with the specified value.
 	Append(field string, values ...string)
@@ -25,12 +23,6 @@ type Res interface {
 	ClearCookie(key ...string)
 	// Cookie sets a cookie by passing a cookie struct.
 	Cookie(cookie *Cookie)
-	// Cookies are used for getting a cookie value by key.
-	// Defaults to the empty string "" if the cookie doesn't exist.
-	// If a default value is given, it will return that value if the cookie doesn't exist.
-	// The returned value is only valid within the handler. Do not store any references.
-	// Make copies or use the Immutable setting to use the value outside the Handler.
-	Cookies(key string, defaultValue ...string) string
 	// Download transfers the file from path as an attachment.
 	// Typically, browsers will prompt the user for download.
 	// By default, the Content-Disposition header filename= parameter is the filepath (this typically appears in the browser dialog).
@@ -52,17 +44,13 @@ type Res interface {
 	// RequestCtx returns *fasthttp.RequestCtx that carries a deadline
 	// a cancellation signal, and other values across API boundaries.
 	RequestCtx() *fasthttp.RequestCtx
-	// Request return the *fasthttp.Request object
-	// This allows you to use all fasthttp request methods
-	// https://godoc.org/github.com/valyala/fasthttp#Request
-	Request() *fasthttp.Request
 	// Response return the *fasthttp.Response object
 	// This allows you to use all fasthttp response methods
 	// https://godoc.org/github.com/valyala/fasthttp#Response
 	Response() *fasthttp.Response
 	// Release is a method to reset Res fields when to use ReleaseCtx()
 	release()
-	// GetRespHeader returns the HTTP response header specified by field.
+	// Get (a.k.a. GetRespHeader) returns the HTTP response header specified by field.
 	// Field names are case-insensitive
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.

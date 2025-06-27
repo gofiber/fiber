@@ -195,10 +195,10 @@ func (r *DefaultReq) FormValue(key string, defaultValue ...string) string {
 // When a client sends the Cache-Control: no-cache request header to indicate an end-to-end
 // reload request, this module will return false to make handling these requests transparent.
 // https://github.com/jshttp/fresh/blob/10e0471669dbbfbfd8de65bc6efac2ddd0bfa057/index.js#L33
-func (c *DefaultCtx) Fresh() bool {
+func (r *DefaultReq) Fresh() bool {
 	// fields
-	modifiedSince := c.Get(HeaderIfModifiedSince)
-	noneMatch := c.Get(HeaderIfNoneMatch)
+	modifiedSince := r.Get(HeaderIfModifiedSince)
+	noneMatch := r.Get(HeaderIfNoneMatch)
 
 	// unconditional request
 	if modifiedSince == "" && noneMatch == "" {
@@ -208,23 +208,23 @@ func (c *DefaultCtx) Fresh() bool {
 	// Always return stale when Cache-Control: no-cache
 	// to support end-to-end reload requests
 	// https://tools.ietf.org/html/rfc2616#section-14.9.4
-	cacheControl := c.Get(HeaderCacheControl)
+	cacheControl := r.Get(HeaderCacheControl)
 	if cacheControl != "" && isNoCache(cacheControl) {
 		return false
 	}
 
 	// if-none-match
 	if noneMatch != "" && noneMatch != "*" {
-		etag := c.app.getString(c.fasthttp.Response.Header.Peek(HeaderETag))
+		etag := r.App().getString(r.c.Response().Header.Peek(HeaderETag))
 		if etag == "" {
 			return false
 		}
-		if c.app.isEtagStale(etag, c.app.getBytes(noneMatch)) {
+		if r.App().isEtagStale(etag, r.App().getBytes(noneMatch)) {
 			return false
 		}
 
 		if modifiedSince != "" {
-			lastModified := c.app.getString(c.fasthttp.Response.Header.Peek(HeaderLastModified))
+			lastModified := r.c.App().getString(r.c.Response().Header.Peek(HeaderLastModified))
 			if lastModified != "" {
 				lastModifiedTime, err := http.ParseTime(lastModified)
 				if err != nil {
@@ -242,8 +242,8 @@ func (c *DefaultCtx) Fresh() bool {
 }
 
 // Stale is not implemented yet, pull requests are welcome!
-func (c *DefaultCtx) Stale() bool {
-	return !c.Fresh()
+func (r *DefaultReq) Stale() bool {
+	return !r.Fresh()
 }
 
 // Get returns the HTTP request header specified by field.

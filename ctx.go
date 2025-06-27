@@ -202,11 +202,6 @@ func (c *DefaultCtx) App() *App {
 	return c.app
 }
 
-// Accepts checks if the specified extensions or content types are acceptable.
-func (c *DefaultCtx) Accepts(offers ...string) string {
-	return c.Req().Accepts(offers...)
-}
-
 // BaseURL returns (protocol + host + base path).
 func (c *DefaultCtx) BaseURL() string {
 	// TODO: Could be improved: 53.8 ns/op  32 B/op  1 allocs/op
@@ -265,10 +260,18 @@ func (*DefaultCtx) Err() error {
 	return nil
 }
 
+// Get returns the HTTP request header specified by field.
+// Field names are case-insensitive
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting instead.
 func (c *DefaultCtx) Get(key string, defaultValue ...string) string {
 	return c.Req().Get(key, defaultValue...)
 }
 
+// GetRespHeader returns the HTTP response header specified by field.
+// Field names are case-insensitive
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting instead.
 func (c *DefaultCtx) GetRespHeader(key string, defaultValue ...string) string {
 	return c.Res().Get(key, defaultValue...)
 }
@@ -673,4 +676,8 @@ func (c *DefaultCtx) setRoute(route *Route) {
 
 func (c *DefaultCtx) keepOriginalPath() {
 	c.pathOriginal = utils.CopyString(c.pathOriginal)
+}
+
+func (c *DefaultCtx) getPathOriginal() string {
+	return c.pathOriginal
 }

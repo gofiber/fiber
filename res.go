@@ -26,11 +26,6 @@ func (r *DefaultRes) App() *App {
 	return r.c.App()
 }
 
-// Accepts checks if the specified extensions or content types are acceptable.
-func (r *DefaultRes) Accepts(offers ...string) string {
-	return getOffer(r.Request().Header.Peek(HeaderAccept), acceptsOfferType, offers...)
-}
-
 // Append the specified value to the HTTP response header field.
 // If the header is not already set, it creates the header with the specified value.
 func (r *DefaultRes) Append(field string, values ...string) {
@@ -73,7 +68,7 @@ func (r *DefaultRes) ClearCookie(key ...string) {
 		}
 		return
 	}
-	r.Request().Header.VisitAllCookie(func(k, _ []byte) {
+	r.c.Request().Header.VisitAllCookie(func(k, _ []byte) {
 		r.Response().Header.DelClientCookieBytes(k)
 	})
 }
@@ -112,15 +107,6 @@ func (r *DefaultRes) Cookie(cookie *Cookie) {
 
 	r.Response().Header.SetCookie(fcookie)
 	fasthttp.ReleaseCookie(fcookie)
-}
-
-// Cookies are used for getting a cookie value by key.
-// Defaults to the empty string "" if the cookie doesn't exist.
-// If a default value is given, it will return that value if the cookie doesn't exist.
-// The returned value is only valid within the handler. Do not store any references.
-// Make copies or use the Immutable setting to use the value outside the Handler.
-func (r *DefaultRes) Cookies(key string, defaultValue ...string) string {
-	return defaultString(r.App().getString(r.Request().Header.Cookie(key)), defaultValue)
 }
 
 // Download transfers the file from path as an attachment.
@@ -169,7 +155,7 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 		}
 		types = append(types, h.MediaType)
 	}
-	accept := r.Accepts(types...)
+	accept := r.c.Accepts(types...)
 
 	if accept == "" {
 		if defaultHandler == nil {
@@ -195,7 +181,7 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 // If the header is not specified or there is no proper format, text/plain is used.
 func (r *DefaultRes) AutoFormat(body any) error {
 	// Get accepted content type
-	accept := r.Accepts("html", "json", "txt", "xml")
+	accept := r.c.Accepts("html", "json", "txt", "xml")
 	// Set accepted content type
 	r.Type(accept)
 	// Type convert provided body
@@ -229,13 +215,6 @@ func (r *DefaultRes) RequestCtx() *fasthttp.RequestCtx {
 	return r.c.RequestCtx()
 }
 
-// Request return the *fasthttp.Request object
-// This allows you to use all fasthttp request methods
-// https://godoc.org/github.com/valyala/fasthttp#Request
-func (r *DefaultRes) Request() *fasthttp.Request {
-	return r.c.Request()
-}
-
 // Response return the *fasthttp.Response object
 // This allows you to use all fasthttp response methods
 // https://godoc.org/github.com/valyala/fasthttp#Response
@@ -248,7 +227,7 @@ func (r *DefaultRes) release() {
 	r.c = nil
 }
 
-// GetRespHeader returns the HTTP response header specified by field.
+// Get (a.k.a. GetRespHeader) returns the HTTP response header specified by field.
 // Field names are case-insensitive
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
@@ -576,7 +555,7 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	// Delete the Accept-Encoding header if compression is disabled
 	if !cfg.Compress {
 		// https://github.com/valyala/fasthttp/blob/7cc6f4c513f9e0d3686142e0a1a5aa2f76b3194a/fs.go#L55
-		r.Request().Header.Del(HeaderAcceptEncoding)
+		r.c.Request().Header.Del(HeaderAcceptEncoding)
 	}
 
 	// copy of https://github.com/valyala/fasthttp/blob/7cc6f4c513f9e0d3686142e0a1a5aa2f76b3194a/fs.go#L103-L121 with small adjustments
@@ -600,10 +579,10 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 
 	// Restore the original requested URL
 	originalURL := utils.CopyString(r.OriginalURL())
-	defer r.Request().SetRequestURI(originalURL)
+	defer r.c.Request().SetRequestURI(originalURL)
 
 	// Set new URI for fileHandler
-	r.Request().SetRequestURI(file)
+	r.c.Request().SetRequestURI(file)
 
 	// Save status code
 	status := r.Response().StatusCode()
@@ -753,8 +732,4 @@ func (r *DefaultRes) End() error {
 	}
 
 	return conn.Close() //nolint:wrapcheck // unnecessary to wrap it
-}
-
-func (r *DefaultReq) getPathOriginal() string {
-	return r.c.getPathOriginal()
 }
