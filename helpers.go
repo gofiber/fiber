@@ -259,21 +259,9 @@ func joinHeaderValues(headers [][]byte) []byte {
 		return nil
 	case 1:
 		return headers[0]
+	default:
+		return bytes.Join(headers, []byte{','})
 	}
-
-	n := len(headers) - 1
-	for _, h := range headers {
-		n += len(h)
-	}
-
-	out := make([]byte, 0, n)
-	for i, h := range headers {
-		if i > 0 {
-			out = append(out, ',')
-		}
-		out = append(out, h...)
-	}
-	return out
 }
 
 func unescapeHeaderValue(v []byte) []byte {
