@@ -485,6 +485,12 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 			expectedBody:    []byte("john=doe"),
 		},
 		{
+			name:            "gzip twice",
+			contentEncoding: "gzip, gzip",
+			body:            []byte("double"),
+			expectedBody:    []byte("double"),
+		},
+		{
 			name:            "unsupported_encoding",
 			contentEncoding: "undefined",
 			body:            []byte("keeps_ORIGINAL"),
@@ -524,19 +530,30 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 			c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 			c.Request().Header.Set("Content-Encoding", tCase.contentEncoding)
 
-			if strings.Contains(tCase.contentEncoding, "gzip") {
-				var b bytes.Buffer
-				gz := gzip.NewWriter(&b)
-
-				_, err := gz.Write(tCase.body)
-				require.NoError(t, err)
-
-				err = gz.Flush()
-				require.NoError(t, err)
-
-				err = gz.Close()
-				require.NoError(t, err)
-				tCase.body = b.Bytes()
+			encs := strings.Split(tCase.contentEncoding, ",")
+			for _, enc := range encs {
+				enc = strings.TrimSpace(enc)
+				if strings.Contains(tCase.name, "invalid_deflate") && enc == "deflate" {
+					continue
+				}
+				switch enc {
+				case "gzip":
+					var b bytes.Buffer
+					gz := gzip.NewWriter(&b)
+					_, err := gz.Write(tCase.body)
+					require.NoError(t, err)
+					require.NoError(t, gz.Flush())
+					require.NoError(t, gz.Close())
+					tCase.body = b.Bytes()
+				case "deflate":
+					var b bytes.Buffer
+					fl := zlib.NewWriter(&b)
+					_, err := fl.Write(tCase.body)
+					require.NoError(t, err)
+					require.NoError(t, fl.Flush())
+					require.NoError(t, fl.Close())
+					tCase.body = b.Bytes()
+				}
 			}
 
 			c.Request().SetBody(tCase.body)
@@ -697,6 +714,12 @@ func Test_Ctx_Body_With_Compression_Immutable(t *testing.T) {
 			expectedBody:    []byte("john=doe"),
 		},
 		{
+			name:            "gzip twice",
+			contentEncoding: "gzip, gzip",
+			body:            []byte("double"),
+			expectedBody:    []byte("double"),
+		},
+		{
 			name:            "unsupported_encoding",
 			contentEncoding: "undefined",
 			body:            []byte("keeps_ORIGINAL"),
@@ -737,19 +760,30 @@ func Test_Ctx_Body_With_Compression_Immutable(t *testing.T) {
 			c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 			c.Request().Header.Set("Content-Encoding", tCase.contentEncoding)
 
-			if strings.Contains(tCase.contentEncoding, "gzip") {
-				var b bytes.Buffer
-				gz := gzip.NewWriter(&b)
-
-				_, err := gz.Write(tCase.body)
-				require.NoError(t, err)
-
-				err = gz.Flush()
-				require.NoError(t, err)
-
-				err = gz.Close()
-				require.NoError(t, err)
-				tCase.body = b.Bytes()
+			encs := strings.Split(tCase.contentEncoding, ",")
+			for _, enc := range encs {
+				enc = strings.TrimSpace(enc)
+				if strings.Contains(tCase.name, "invalid_deflate") && enc == "deflate" {
+					continue
+				}
+				switch enc {
+				case "gzip":
+					var b bytes.Buffer
+					gz := gzip.NewWriter(&b)
+					_, err := gz.Write(tCase.body)
+					require.NoError(t, err)
+					require.NoError(t, gz.Flush())
+					require.NoError(t, gz.Close())
+					tCase.body = b.Bytes()
+				case "deflate":
+					var b bytes.Buffer
+					fl := zlib.NewWriter(&b)
+					_, err := fl.Write(tCase.body)
+					require.NoError(t, err)
+					require.NoError(t, fl.Flush())
+					require.NoError(t, fl.Close())
+					tCase.body = b.Bytes()
+				}
 			}
 
 			c.Request().SetBody(tCase.body)

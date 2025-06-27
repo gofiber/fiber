@@ -372,9 +372,9 @@ func (c *DefaultCtx) Body() []byte {
 	if err != nil {
 		switch err {
 		case ErrUnsupportedMediaType:
-			_ = c.SendStatus(StatusUnsupportedMediaType)
+			_ = c.SendStatus(StatusUnsupportedMediaType) //nolint:errcheck // It is fine to ignore the error
 		case ErrNotImplemented:
-			_ = c.SendStatus(StatusNotImplemented)
+			_ = c.SendStatus(StatusNotImplemented) //nolint:errcheck // It is fine to ignore the error
 		}
 		return []byte(err.Error())
 	}
