@@ -1347,3 +1347,9 @@ func Test_JoinHeaderValues(t *testing.T) {
 	require.Equal(t, []byte("a"), joinHeaderValues([][]byte{[]byte("a")}))
 	require.Equal(t, []byte("a,b"), joinHeaderValues([][]byte{[]byte("a"), []byte("b")}))
 }
+
+func Test_ParamsMatch_InvalidEscape(t *testing.T) {
+	t.Parallel()
+	match := paramsMatch(headerParams{"foo": []byte("bar")}, `;foo="bar\\`)
+	require.False(t, match)
+}
