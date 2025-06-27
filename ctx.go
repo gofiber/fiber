@@ -370,10 +370,10 @@ func (c *DefaultCtx) Body() []byte {
 		c.fasthttp.Request.SetBodyRaw(originalBody)
 	}
 	if err != nil {
-		switch err {
-		case ErrUnsupportedMediaType:
+		switch {
+		case errors.Is(err, ErrUnsupportedMediaType):
 			_ = c.SendStatus(StatusUnsupportedMediaType) //nolint:errcheck // It is fine to ignore the error
-		case ErrNotImplemented:
+		case errors.Is(err, ErrNotImplemented):
 			_ = c.SendStatus(StatusNotImplemented) //nolint:errcheck // It is fine to ignore the error
 		}
 		return []byte(err.Error())

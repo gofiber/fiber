@@ -533,7 +533,7 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 			encs := strings.Split(tCase.contentEncoding, ",")
 			for _, enc := range encs {
 				enc = strings.TrimSpace(enc)
-				if strings.Contains(tCase.name, "invalid_deflate") && enc == "deflate" {
+				if strings.Contains(tCase.name, "invalid_deflate") && enc == StrDeflate {
 					continue
 				}
 				switch enc {
@@ -545,7 +545,7 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 					require.NoError(t, gz.Flush())
 					require.NoError(t, gz.Close())
 					tCase.body = b.Bytes()
-				case "deflate":
+				case StrDeflate:
 					var b bytes.Buffer
 					fl := zlib.NewWriter(&b)
 					_, err := fl.Write(tCase.body)
@@ -625,7 +625,7 @@ func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
 			compressWriter:  compressGzip,
 		},
 		{
-			contentEncoding: "deflate",
+			contentEncoding: StrDeflate,
 			compressWriter:  compressDeflate,
 		},
 		{
@@ -763,7 +763,7 @@ func Test_Ctx_Body_With_Compression_Immutable(t *testing.T) {
 			encs := strings.Split(tCase.contentEncoding, ",")
 			for _, enc := range encs {
 				enc = strings.TrimSpace(enc)
-				if strings.Contains(tCase.name, "invalid_deflate") && enc == "deflate" {
+				if strings.Contains(tCase.name, "invalid_deflate") && enc == StrDeflate {
 					continue
 				}
 				switch enc {
@@ -775,7 +775,7 @@ func Test_Ctx_Body_With_Compression_Immutable(t *testing.T) {
 					require.NoError(t, gz.Flush())
 					require.NoError(t, gz.Close())
 					tCase.body = b.Bytes()
-				case "deflate":
+				case StrDeflate:
 					var b bytes.Buffer
 					fl := zlib.NewWriter(&b)
 					_, err := fl.Write(tCase.body)
@@ -855,7 +855,7 @@ func Benchmark_Ctx_Body_With_Compression_Immutable(b *testing.B) {
 			compressWriter:  compressGzip,
 		},
 		{
-			contentEncoding: "deflate",
+			contentEncoding: StrDeflate,
 			compressWriter:  compressDeflate,
 		},
 		{
