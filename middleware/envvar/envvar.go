@@ -2,7 +2,6 @@ package envvar
 
 import (
 	"os"
-	"strings"
 
 	"github.com/gofiber/fiber/v3"
 )
@@ -11,8 +10,6 @@ import (
 type Config struct {
 	// ExportVars specifies the environment variables that should export
 	ExportVars map[string]string
-	// ExcludeVars specifies the environment variables that should not export
-	ExcludeVars map[string]string
 }
 
 type EnvVar struct {
@@ -47,20 +44,16 @@ func New(config ...Config) fiber.Handler {
 func newEnvVar(cfg Config) *EnvVar {
 	vars := &EnvVar{Vars: make(map[string]string)}
 
-	if len(cfg.ExportVars) > 0 {
-		for key, defaultVal := range cfg.ExportVars {
-			vars.set(key, defaultVal)
-			if envVal, exists := os.LookupEnv(key); exists {
-				vars.set(key, envVal)
-			}
-		}
-	} else {
-		const numElems = 2
-		for _, envVal := range os.Environ() {
-			keyVal := strings.SplitN(envVal, "=", numElems)
-			if _, exists := cfg.ExcludeVars[keyVal[0]]; !exists {
-				vars.set(keyVal[0], keyVal[1])
-			}
+	if len(cfg.ExportVars) == 0 {
+		// do not expose environment variables when no configuration
+		// is supplied to prevent accidental information disclosure
+		return vars
+	}
+
+	for key, defaultVal := range cfg.ExportVars {
+		vars.set(key, defaultVal)
+		if envVal, exists := os.LookupEnv(key); exists {
+			vars.set(key, envVal)
 		}
 	}
 

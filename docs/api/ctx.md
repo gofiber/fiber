@@ -1213,6 +1213,9 @@ The generic `Query` function supports returning the following data types based o
 ### Range
 
 Returns a struct containing the type and a slice of ranges.
+Only the canonical `bytes` unit is recognized and any optional
+whitespace around range specifiers will be ignored, as specified
+in RFC 9110.
 
 ```go title="Signature"
 func (c fiber.Ctx) Range(size int) (Range, error)
@@ -1344,21 +1347,33 @@ func (c fiber.Ctx) Stale() bool
 
 ### Subdomains
 
-Returns a slice of subdomains in the domain name of the request.
+Returns a slice with the host’s sub-domain labels. The dot-separated parts that precede the registrable domain (`example`) and the top-level domain (ex: `com`).
 
-The application property `subdomain offset`, which defaults to `2`, is used for determining the beginning of the subdomain segments.
+The `subdomain offset` (default `2`) tells Fiber how many labels, counting from the right-hand side, are always discarded.  
+Passing an `offset` argument lets you override that value for a single call.
 
-```go title="Signature"
+```go
 func (c fiber.Ctx) Subdomains(offset ...int) []string
 ```
 
-```go title="Example"
+| `offset` | Result                                 | Meaning                                               |
+|----------|----------------------------------------|-------------------------------------------------------|
+| *omitted* → **2** | trim 2 right-most labels             | drop the registrable domain **and** the TLD    |
+| `1` to `len(labels)-1` | trim exactly `offset` right-most labels | custom trimming of available labels    |
+| `>= len(labels)` | **return `[]`**                     | offset exceeds available labels → empty slice    |
+| `0`       | **return every label**                | keep the entire host unchanged                        |
+| `< 0`     | **return `[]`**                       | negative offsets are invalid → empty slice            |
+
+#### Example
+
+```go
 // Host: "tobi.ferrets.example.com"
 
 app.Get("/", func(c fiber.Ctx) error {
-  c.Subdomains()    // ["ferrets", "tobi"]
-  c.Subdomains(1)   // ["tobi"]
-
+  c.Subdomains()    // ["tobi", "ferrets"]
+  c.Subdomains(1)   // ["tobi", "ferrets", "example"]
+  c.Subdomains(0)   // ["tobi", "ferrets", "example", "com"]
+  c.Subdomains(-1)  // []
   // ...
 })
 ```
@@ -1598,8 +1613,8 @@ app.Get("/", func(c fiber.Ctx) error {
 
 Transfers the file from the given path as an `attachment`.
 
-Typically, browsers will prompt the user to download. By default, the [Content-Disposition](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition) header `filename=` parameter is the file path (_this typically appears in the browser dialog_).
-Override this default with the **filename** parameter.
+Typically, browsers will prompt the user to download. By default, the [Content-Disposition](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition) header `filename=` parameter is the file path (this typically appears in the browser dialog).
+Override this default with the `filename` parameter.
 
 ```go title="Signature"
 func (c fiber.Ctx) Download(file string, filename ...string) error

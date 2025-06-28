@@ -35,9 +35,9 @@ jobs:
         uses: codecov/codecov-action@v5.4.3
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          file: ./coverage.txt
           flags: unittests
           slug: gofiber/fiber
+          verbose: true
 
   repeated:
     runs-on: ubuntu-latest

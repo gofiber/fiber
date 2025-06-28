@@ -1,13 +1,16 @@
 package csrf
 
 import (
+	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/fiber/v3/middleware/session"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
@@ -1593,4 +1596,44 @@ func Test_CSRF_FromContextMethods_Invalid(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
+func Test_configDefault_WarnCookieSameSite(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	cfg := configDefault(Config{
+		KeyLookup:      "cookie:csrf",
+		CookieSameSite: "None",
+	})
+
+	require.Equal(t, "csrf", cfg.CookieName)
+	require.Contains(t, buf.String(), "Cookie extractor is only recommended for use with SameSite=Lax or SameSite=Strict")
+}
+
+func Test_deleteTokenFromStorage(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	token := "token123"
+	dummy := []byte("dummy")
+
+	store := session.NewStore()
+	sm := newSessionManager(store)
+	stm := newStorageManager(nil)
+
+	sm.setRaw(ctx, token, dummy, time.Minute)
+	deleteTokenFromStorage(ctx, token, Config{Session: store}, sm, stm)
+	require.Nil(t, sm.getRaw(ctx, token, dummy))
+
+	sm2 := newSessionManager(nil)
+	stm2 := newStorageManager(nil)
+
+	stm2.setRaw(token, dummy, time.Minute)
+	deleteTokenFromStorage(ctx, token, Config{}, sm2, stm2)
+	require.Nil(t, stm2.getRaw(token))
 }

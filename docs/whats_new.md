@@ -1,6 +1,6 @@
 ---
 id: whats_new
-title: 🆕 Whats New in v3
+title: 🆕 What's New in v3
 sidebar_position: 2
 toc_max_heading_level: 4
 ---
@@ -67,9 +67,40 @@ We have made several changes to the Fiber app, including:
 
 - **RegisterCustomBinder**: Allows for the registration of custom binders.
 - **RegisterCustomConstraint**: Allows for the registration of custom constraints.
-- **NewCtxFunc**: Introduces a new context function.
+- **NewWithCustomCtx**: Initialize an app with a custom context in one step.
 - **State**: Provides a global state for the application, which can be used to store and retrieve data across the application. Check out the [State](./api/state) method for further details.
 - **NewErrorf**: Allows variadic parameters when creating formatted errors.
+
+#### Custom Route Constraints
+
+Custom route constraints enable you to define your own validation rules for route parameters.
+Use `RegisterCustomConstraint` to add a constraint type that implements the `CustomConstraint` interface.
+
+<details>
+<summary>Example</summary>
+
+```go
+type UlidConstraint struct {
+    fiber.CustomConstraint
+}
+
+func (*UlidConstraint) Name() string {
+    return "ulid"
+}
+
+func (*UlidConstraint) Execute(param string, args ...string) bool {
+    _, err := ulid.Parse(param)
+    return err == nil
+}
+
+app.RegisterCustomConstraint(&UlidConstraint{})
+
+app.Get("/login/:id<ulid>", func(c fiber.Ctx) error {
+    return c.SendString("User " + c.Params("id"))
+})
+```
+
+</details>
 
 ### Removed Methods
 
@@ -95,18 +126,16 @@ Fiber v3 introduces a customizable `Ctx` interface, allowing developers to exten
 
 The idea behind custom `Ctx` classes is to give developers the ability to extend the default context with additional methods and properties tailored to the specific requirements of their application. This allows for better request handling and easier implementation of specific logic.
 
-#### NewCtxFunc
+#### NewWithCustomCtx
 
-The `NewCtxFunc` method allows you to customize the `Ctx` struct as needed.
+`NewWithCustomCtx` creates the application and sets the custom context factory at initialization time.
 
 ```go title="Signature"
-func (app *App) NewCtxFunc(function func(app *App) CustomCtx)
+func NewWithCustomCtx(fn func(app *App) CustomCtx, config ...Config) *App
 ```
 
 <details>
 <summary>Example</summary>
-
-Here’s an example of how to customize the `Ctx` interface:
 
 ```go
 package main
@@ -120,15 +149,12 @@ type CustomCtx struct {
     fiber.Ctx
 }
 
-// Custom method
 func (c *CustomCtx) CustomMethod() string {
     return "custom value"
 }
 
 func main() {
-    app := fiber.New()
-
-    app.NewCtxFunc(func(app *fiber.App) fiber.Ctx {
+    app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.Ctx {
         return &CustomCtx{
             Ctx: *fiber.NewCtx(app),
         }
@@ -143,7 +169,7 @@ func main() {
 }
 ```
 
-In this example, a custom context `CustomCtx` is created with an additional method `CustomMethod`. The `NewCtxFunc` method is used to replace the default context with the custom one.
+This example creates a `CustomCtx` with an extra `CustomMethod` and initializes the app with `NewWithCustomCtx`.
 
 </details>
 
@@ -978,7 +1004,7 @@ The adaptor middleware has been significantly optimized for performance and effi
 
 ### BasicAuth
 
-The BasicAuth middleware was updated for improved robustness in parsing the Authorization header, with enhanced validation and whitespace handling. The default unauthorized response now uses a properly quoted and capitalized `WWW-Authenticate` header.
+The BasicAuth middleware now validates the `Authorization` header more rigorously and sets security-focused response headers. The default challenge includes the `charset="UTF-8"` parameter and disables caching. Passwords are no longer stored in the request context by default; use the new `StorePassword` option to retain them. A `Charset` option controls the value used in the challenge header.
 
 ### Cache
 
@@ -1014,6 +1040,10 @@ We've added support for `zstd` compression on top of `gzip`, `deflate`, and `bro
 ### EncryptCookie
 
 Added support for specifying Key length when using `encryptcookie.GenerateKey(length)`. This allows the user to generate keys compatible with `AES-128`, `AES-192`, and `AES-256` (Default).
+
+### EnvVar
+
+The `ExcludeVars` field has been removed from the EnvVar middleware configuration. When upgrading, remove any references to this field and explicitly list the variables you wish to expose using `ExportVars`.
 
 ### Filesystem
 
