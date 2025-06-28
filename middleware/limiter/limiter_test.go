@@ -46,7 +46,7 @@ func Test_Limiter_With_Max_Func_With_Zero_And_Limiter_Sliding(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
-	time.Sleep(4*time.Second + 500*time.Millisecond)
+	time.Sleep(4*time.Second + 700*time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
 	require.NoError(t, err)
@@ -133,7 +133,7 @@ func Test_Limiter_With_Max_Func(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
-	time.Sleep(3 * time.Second)
+	time.Sleep(3*time.Second + 200*time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
@@ -177,7 +177,7 @@ func Test_Limiter_Concurrency_Store(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
-	time.Sleep(3 * time.Second)
+	time.Sleep(3*time.Second + 200*time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
@@ -220,7 +220,7 @@ func Test_Limiter_Concurrency(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
-	time.Sleep(3 * time.Second)
+	time.Sleep(3*time.Second + 200*time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
@@ -259,7 +259,7 @@ func Test_Limiter_Fixed_Window_No_Skip_Choices(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
-	time.Sleep(3 * time.Second)
+	time.Sleep(3*time.Second + 200*time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
 	require.NoError(t, err)
@@ -299,7 +299,7 @@ func Test_Limiter_Fixed_Window_Custom_Storage_No_Skip_Choices(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
-	time.Sleep(3 * time.Second)
+	time.Sleep(3*time.Second + 200*time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
 	require.NoError(t, err)
@@ -338,7 +338,7 @@ func Test_Limiter_Sliding_Window_No_Skip_Choices(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
-	time.Sleep(4*time.Second + 500*time.Millisecond)
+	time.Sleep(4*time.Second + 700*time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
 	require.NoError(t, err)
@@ -378,7 +378,7 @@ func Test_Limiter_Sliding_Window_Custom_Storage_No_Skip_Choices(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
-	time.Sleep(4*time.Second + 500*time.Millisecond)
+	time.Sleep(4*time.Second + 700*time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
 	require.NoError(t, err)
@@ -416,7 +416,7 @@ func Test_Limiter_Fixed_Window_Skip_Failed_Requests(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
-	time.Sleep(3 * time.Second)
+	time.Sleep(3*time.Second + 200*time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
 	require.NoError(t, err)
@@ -455,7 +455,7 @@ func Test_Limiter_Fixed_Window_Custom_Storage_Skip_Failed_Requests(t *testing.T)
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
-	time.Sleep(3 * time.Second)
+	time.Sleep(3*time.Second + 200*time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
 	require.NoError(t, err)
@@ -493,7 +493,7 @@ func Test_Limiter_Sliding_Window_Skip_Failed_Requests(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
-	time.Sleep(4*time.Second + 500*time.Millisecond)
+	time.Sleep(4*time.Second + 700*time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
 	require.NoError(t, err)
@@ -532,7 +532,7 @@ func Test_Limiter_Sliding_Window_Custom_Storage_Skip_Failed_Requests(t *testing.
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
-	time.Sleep(4*time.Second + 500*time.Millisecond)
+	time.Sleep(4*time.Second + 700*time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
 	require.NoError(t, err)
@@ -570,7 +570,7 @@ func Test_Limiter_Fixed_Window_Skip_Successful_Requests(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
-	time.Sleep(3 * time.Second)
+	time.Sleep(3*time.Second + 200*time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
 	require.NoError(t, err)
@@ -609,7 +609,7 @@ func Test_Limiter_Fixed_Window_Custom_Storage_Skip_Successful_Requests(t *testin
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
-	time.Sleep(3 * time.Second)
+	time.Sleep(3*time.Second + 200*time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
 	require.NoError(t, err)
@@ -647,7 +647,7 @@ func Test_Limiter_Sliding_Window_Skip_Successful_Requests(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
-	time.Sleep(4*time.Second + 500*time.Millisecond)
+	time.Sleep(4*time.Second + 700*time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
 	require.NoError(t, err)
@@ -686,7 +686,7 @@ func Test_Limiter_Sliding_Window_Custom_Storage_Skip_Successful_Requests(t *test
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
-	time.Sleep(4*time.Second + 500*time.Millisecond)
+	time.Sleep(4*time.Second + 700*time.Millisecond)
 
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
 	require.NoError(t, err)
@@ -815,19 +815,19 @@ func Test_Sliding_Window(t *testing.T) {
 		singleRequest(false)
 	}
 
-	time.Sleep(3 * time.Second)
+	time.Sleep(3*time.Second + 200*time.Millisecond)
 
 	for i := 0; i < 5; i++ {
 		singleRequest(false)
 	}
 
-	time.Sleep(3 * time.Second)
+	time.Sleep(3*time.Second + 200*time.Millisecond)
 
 	for i := 0; i < 5; i++ {
 		singleRequest(false)
 	}
 
-	time.Sleep(3 * time.Second)
+	time.Sleep(3*time.Second + 200*time.Millisecond)
 
 	for i := 0; i < 10; i++ {
 		singleRequest(false)
