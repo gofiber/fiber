@@ -209,22 +209,26 @@ type ResFmt struct {
 
 // Accepts checks if the specified extensions or content types are acceptable.
 func (c *DefaultCtx) Accepts(offers ...string) string {
-	return getOffer(c.fasthttp.Request.Header.Peek(HeaderAccept), acceptsOfferType, offers...)
+	header := joinHeaderValues(c.fasthttp.Request.Header.PeekAll(HeaderAccept))
+	return getOffer(header, acceptsOfferType, offers...)
 }
 
 // AcceptsCharsets checks if the specified charset is acceptable.
 func (c *DefaultCtx) AcceptsCharsets(offers ...string) string {
-	return getOffer(c.fasthttp.Request.Header.Peek(HeaderAcceptCharset), acceptsOffer, offers...)
+	header := joinHeaderValues(c.fasthttp.Request.Header.PeekAll(HeaderAcceptCharset))
+	return getOffer(header, acceptsOffer, offers...)
 }
 
 // AcceptsEncodings checks if the specified encoding is acceptable.
 func (c *DefaultCtx) AcceptsEncodings(offers ...string) string {
-	return getOffer(c.fasthttp.Request.Header.Peek(HeaderAcceptEncoding), acceptsOffer, offers...)
+	header := joinHeaderValues(c.fasthttp.Request.Header.PeekAll(HeaderAcceptEncoding))
+	return getOffer(header, acceptsOffer, offers...)
 }
 
 // AcceptsLanguages checks if the specified language is acceptable.
 func (c *DefaultCtx) AcceptsLanguages(offers ...string) string {
-	return getOffer(c.fasthttp.Request.Header.Peek(HeaderAcceptLanguage), acceptsOffer, offers...)
+	header := joinHeaderValues(c.fasthttp.Request.Header.PeekAll(HeaderAcceptLanguage))
+	return getOffer(header, acceptsOffer, offers...)
 }
 
 // App returns the *App reference to the instance of the Fiber application
@@ -407,36 +411,80 @@ func (c *DefaultCtx) RequestCtx() *fasthttp.RequestCtx {
 
 // Cookie sets a cookie by passing a cookie struct.
 func (c *DefaultCtx) Cookie(cookie *Cookie) {
-	fcookie := fasthttp.AcquireCookie()
-	fcookie.SetKey(cookie.Name)
-	fcookie.SetValue(cookie.Value)
-	fcookie.SetPath(cookie.Path)
-	fcookie.SetDomain(cookie.Domain)
-	// only set max age and expiry when SessionOnly is false
-	// i.e. cookie supposed to last beyond browser session
-	// refer: https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#define_the_lifetime_of_a_cookie
-	if !cookie.SessionOnly {
-		fcookie.SetMaxAge(cookie.MaxAge)
-		fcookie.SetExpire(cookie.Expires)
+	if cookie.Path == "" {
+		cookie.Path = "/"
 	}
-	fcookie.SetSecure(cookie.Secure)
-	fcookie.SetHTTPOnly(cookie.HTTPOnly)
+
+	if cookie.SessionOnly {
+		cookie.MaxAge = 0
+		cookie.Expires = time.Time{}
+	}
+
+	var sameSite http.SameSite
 
 	switch utils.ToLower(cookie.SameSite) {
 	case CookieSameSiteStrictMode:
-		fcookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)
+		sameSite = http.SameSiteStrictMode
 	case CookieSameSiteNoneMode:
-		fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
+		sameSite = http.SameSiteNoneMode
 	case CookieSameSiteDisabled:
-		fcookie.SetSameSite(fasthttp.CookieSameSiteDisabled)
+		sameSite = 0
+	case CookieSameSiteLaxMode:
+		sameSite = http.SameSiteLaxMode
 	default:
-		fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
+		sameSite = http.SameSiteLaxMode
 	}
 
-	// CHIPS allows to partition cookie jar by top-level site.
-	// refer: https://developers.google.com/privacy-sandbox/3pcd/chips
-	fcookie.SetPartitioned(cookie.Partitioned)
+	// create/validate cookie using net/http
+	hc := &http.Cookie{
+		Name:        cookie.Name,
+		Value:       cookie.Value,
+		Path:        cookie.Path,
+		Domain:      cookie.Domain,
+		Expires:     cookie.Expires,
+		MaxAge:      cookie.MaxAge,
+		Secure:      cookie.Secure,
+		HttpOnly:    cookie.HTTPOnly,
+		SameSite:    sameSite,
+		Partitioned: cookie.Partitioned,
+	}
 
+	if err := hc.Valid(); err != nil {
+		// invalid cookies are ignored, same approach as net/http
+		return
+	}
+
+	// create fasthttp cookie
+	fcookie := fasthttp.AcquireCookie()
+	fcookie.SetKey(hc.Name)
+	fcookie.SetValue(hc.Value)
+	fcookie.SetPath(hc.Path)
+	fcookie.SetDomain(hc.Domain)
+
+	if !cookie.SessionOnly {
+		fcookie.SetMaxAge(hc.MaxAge)
+		fcookie.SetExpire(hc.Expires)
+	}
+
+	fcookie.SetSecure(hc.Secure)
+	fcookie.SetHTTPOnly(hc.HttpOnly)
+
+	switch sameSite {
+	case http.SameSiteLaxMode:
+		fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
+	case http.SameSiteStrictMode:
+		fcookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)
+	case http.SameSiteNoneMode:
+		fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
+	case http.SameSiteDefaultMode:
+		fcookie.SetSameSite(fasthttp.CookieSameSiteDefaultMode)
+	default:
+		fcookie.SetSameSite(fasthttp.CookieSameSiteDisabled)
+	}
+
+	fcookie.SetPartitioned(hc.Partitioned)
+
+	// Set resp header
 	c.fasthttp.Response.Header.SetCookie(fcookie)
 	fasthttp.ReleaseCookie(fcookie)
 }
@@ -1286,14 +1334,17 @@ func (c *DefaultCtx) Range(size int) (Range, error) {
 		rangeData Range
 		ranges    string
 	)
-	rangeStr := c.Get(HeaderRange)
+	rangeStr := utils.Trim(c.Get(HeaderRange), ' ')
 
 	i := strings.IndexByte(rangeStr, '=')
 	if i == -1 || strings.Contains(rangeStr[i+1:], "=") {
 		return rangeData, ErrRangeMalformed
 	}
-	rangeData.Type = rangeStr[:i]
-	ranges = rangeStr[i+1:]
+	rangeData.Type = utils.ToLower(utils.Trim(rangeStr[:i], ' '))
+	if rangeData.Type != "bytes" {
+		return rangeData, ErrRangeMalformed
+	}
+	ranges = utils.Trim(rangeStr[i+1:], ' ')
 
 	var (
 		singleRange string
@@ -1303,10 +1354,12 @@ func (c *DefaultCtx) Range(size int) (Range, error) {
 		singleRange = moreRanges
 		if i := strings.IndexByte(moreRanges, ','); i >= 0 {
 			singleRange = moreRanges[:i]
-			moreRanges = moreRanges[i+1:]
+			moreRanges = utils.Trim(moreRanges[i+1:], ' ')
 		} else {
 			moreRanges = ""
 		}
+
+		singleRange = utils.Trim(singleRange, ' ')
 
 		var (
 			startStr, endStr string
@@ -1315,8 +1368,8 @@ func (c *DefaultCtx) Range(size int) (Range, error) {
 		if i = strings.IndexByte(singleRange, '-'); i == -1 {
 			return rangeData, ErrRangeMalformed
 		}
-		startStr = singleRange[:i]
-		endStr = singleRange[i+1:]
+		startStr = utils.Trim(singleRange[:i], ' ')
+		endStr = utils.Trim(singleRange[i+1:], ' ')
 
 		start, startErr := fasthttp.ParseUint(utils.UnsafeBytes(startStr))
 		end, endErr := fasthttp.ParseUint(utils.UnsafeBytes(endStr))
