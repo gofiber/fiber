@@ -137,7 +137,7 @@ func (app *App) quoteRawString(raw string) string {
 
 // isASCII reports whether the provided string contains only ASCII characters.
 // See: https://www.rfc-editor.org/rfc/rfc0020
-func (_ *App) isASCII(s string) bool {
+func (*App) isASCII(s string) bool {
 	for i := 0; i < len(s); i++ {
 		if s[i] > 127 {
 			return false
