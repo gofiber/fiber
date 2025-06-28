@@ -1418,5 +1418,5 @@ func Test_AddRoute_MergeHandlers(t *testing.T) {
 	app.Get("/merge", count)
 
 	require.Len(t, app.stack[app.methodInt(MethodGet)], 1)
-	require.Equal(t, 2, len(app.stack[app.methodInt(MethodGet)][0].Handlers))
+	require.Len(t, app.stack[app.methodInt(MethodGet)][0].Handlers, 2)
 }
