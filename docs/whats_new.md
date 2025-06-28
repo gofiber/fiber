@@ -446,6 +446,9 @@ testConfig := fiber.TestConfig{
 - **Format**: Parameter changed from `body interface{}` to `handlers ...ResFmt`.
 - **Redirect**: Use `c.Redirect().To()` instead.
 - **SendFile**: Now supports different configurations using a config parameter.
+- **Attachment and Download**: Non-ASCII filenames now use `filename*` as
+  specified by [RFC 6266](https://www.rfc-editor.org/rfc/rfc6266) and
+  [RFC 8187](https://www.rfc-editor.org/rfc/rfc8187).
 - **Context**: Renamed to `RequestCtx` to correspond with the FastHTTP Request Context.
 - **UserContext**: Renamed to `Context`, which returns a `context.Context` object.
 - **SetUserContext**: Renamed to `SetContext`.

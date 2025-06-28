@@ -16,6 +16,7 @@ import (
 	"mime/multipart"
 	"net"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -256,8 +257,17 @@ func (c *DefaultCtx) Attachment(filename ...string) {
 	if len(filename) > 0 {
 		fname := filepath.Base(filename[0])
 		c.Type(filepath.Ext(fname))
-
-		c.setCanonical(HeaderContentDisposition, `attachment; filename="`+c.app.quoteString(fname)+`"`)
+		var quoted string
+		if isASCII(fname) {
+			quoted = c.app.quoteString(fname)
+		} else {
+			quoted = quoteRawString(fname)
+		}
+		disp := `attachment; filename="` + quoted + `"`
+		if !isASCII(fname) {
+			disp += `; filename*=UTF-8''` + url.PathEscape(fname)
+		}
+		c.setCanonical(HeaderContentDisposition, disp)
 		return
 	}
 	c.setCanonical(HeaderContentDisposition, "attachment")
@@ -471,7 +481,17 @@ func (c *DefaultCtx) Download(file string, filename ...string) error {
 	} else {
 		fname = filepath.Base(file)
 	}
-	c.setCanonical(HeaderContentDisposition, `attachment; filename="`+c.app.quoteString(fname)+`"`)
+	var quoted string
+	if isASCII(fname) {
+		quoted = c.app.quoteString(fname)
+	} else {
+		quoted = quoteRawString(fname)
+	}
+	disp := `attachment; filename="` + quoted + `"`
+	if !isASCII(fname) {
+		disp += `; filename*=UTF-8''` + url.PathEscape(fname)
+	}
+	c.setCanonical(HeaderContentDisposition, disp)
 	return c.SendFile(file)
 }
 

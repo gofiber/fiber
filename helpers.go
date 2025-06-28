@@ -93,12 +93,47 @@ func readContent(rf io.ReaderFrom, name string) (int64, error) {
 	return 0, nil
 }
 
-// quoteString escape special characters in a given string
+// quoteString escapes special characters using percent-encoding.
+// Non-ASCII bytes are encoded as well so the result is always ASCII.
 func (app *App) quoteString(raw string) string {
 	bb := bytebufferpool.Get()
 	quoted := app.getString(fasthttp.AppendQuotedArg(bb.B, app.getBytes(raw)))
 	bytebufferpool.Put(bb)
 	return quoted
+}
+
+// quoteRawString escapes only characters that need quoting according to
+// https://www.rfc-editor.org/rfc/rfc9110#section-5.6.4 so the result may
+// contain non-ASCII bytes.
+func quoteRawString(raw string) string {
+	bb := bytebufferpool.Get()
+	for i := 0; i < len(raw); i++ {
+		c := raw[i]
+		switch c {
+		case '\\', '"':
+			bb.B = append(bb.B, '\\', c)
+		case '\n':
+			bb.B = append(bb.B, '\\', 'n')
+		case '\r':
+			bb.B = append(bb.B, '\\', 'r')
+		default:
+			bb.B = append(bb.B, c)
+		}
+	}
+	quoted := string(bb.B)
+	bytebufferpool.Put(bb)
+	return quoted
+}
+
+// isASCII reports whether the provided string contains only ASCII characters.
+// See: https://www.rfc-editor.org/rfc/rfc0020
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] > 127 {
+			return false
+		}
+	}
+	return true
 }
 
 // Scan stack if other methods match the request
