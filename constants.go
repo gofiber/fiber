@@ -293,11 +293,13 @@ const (
 
 // Compression types
 const (
-	StrGzip    = "gzip"
-	StrBr      = "br"
-	StrDeflate = "deflate"
-	StrBrotli  = "brotli"
-	StrZstd    = "zstd"
+	StrGzip     = "gzip"
+	StrCompress = "compress"
+	StrIdentity = "identity"
+	StrBr       = "br"
+	StrDeflate  = "deflate"
+	StrBrotli   = "brotli"
+	StrZstd     = "zstd"
 )
 
 // Cookie SameSite
