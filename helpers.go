@@ -101,95 +101,6 @@ func (app *App) quoteString(raw string) string {
 	return quoted
 }
 
-// Scan stack if other methods match the request
-func (app *App) methodExist(c *DefaultCtx) bool {
-	var exists bool
-
-	methods := app.config.RequestMethods
-	for i := 0; i < len(methods); i++ {
-		// Skip original method
-		if c.getMethodInt() == i {
-			continue
-		}
-		// Reset stack index
-		c.setIndexRoute(-1)
-
-		tree, ok := c.App().treeStack[i][c.treePathHash]
-		if !ok {
-			tree = c.App().treeStack[i][0]
-		}
-		// Get stack length
-		lenr := len(tree) - 1
-		// Loop over the route stack starting from previous index
-		for c.getIndexRoute() < lenr {
-			// Increment route index
-			c.setIndexRoute(c.getIndexRoute() + 1)
-			// Get *Route
-			route := tree[c.getIndexRoute()]
-			// Skip use routes
-			if route.use {
-				continue
-			}
-			// Check if it matches the request path
-			match := route.match(c.getDetectionPath(), c.Path(), c.getValues())
-			// No match, next route
-			if match {
-				// We matched
-				exists = true
-				// Add method to Allow header
-				c.Append(HeaderAllow, methods[i])
-				// Break stack loop
-				break
-			}
-		}
-	}
-	return exists
-}
-
-// Scan stack if other methods match the request
-func (app *App) methodExistCustom(c CustomCtx) bool {
-	var exists bool
-	methods := app.config.RequestMethods
-	for i := 0; i < len(methods); i++ {
-		// Skip original method
-		if c.getMethodInt() == i {
-			continue
-		}
-		// Reset stack index
-		c.setIndexRoute(-1)
-
-		tree, ok := c.App().treeStack[i][c.getTreePathHash()]
-		if !ok {
-			tree = c.App().treeStack[i][0]
-		}
-		// Get stack length
-		lenr := len(tree) - 1
-		// Loop over the route stack starting from previous index
-		for c.getIndexRoute() < lenr {
-			// Increment route index
-			c.setIndexRoute(c.getIndexRoute() + 1)
-			// Get *Route
-			route := tree[c.getIndexRoute()]
-			// Skip use routes
-			if route.use {
-				continue
-			}
-			// Check if it matches the request path
-			match := route.match(c.getDetectionPath(), c.Path(), c.getValues())
-			// No match, next route
-			if match {
-				// We matched
-				exists = true
-				// Add method to Allow header
-				c.Append(HeaderAllow, methods[i])
-				// Break stack loop
-				break
-			}
-		}
-	}
-	return exists
-}
-
 // uniqueRouteStack drop all not unique routes from the slice
 func uniqueRouteStack(stack []*Route) []*Route {
 	var unique []*Route
@@ -299,7 +210,12 @@ func paramsMatch(specParamStr headerParams, offerParams string) bool {
 		fasthttp.VisitHeaderParams(utils.UnsafeBytes(offerParams), func(key, value []byte) bool {
 			if utils.EqualFold(specParam, utils.UnsafeString(key)) {
 				foundParam = true
-				allSpecParamsMatch = utils.EqualFold(specVal, value)
+				unescaped, err := unescapeHeaderValue(value)
+				if err != nil {
+					allSpecParamsMatch = false
+					return false
+				}
+				allSpecParamsMatch = utils.EqualFold(specVal, unescaped)
 				return false
 			}
 			return true
@@ -340,6 +256,45 @@ func getSplicedStrList(headerValue string, dst []string) []string {
 	dst = append(dst, headerValue[segmentStart:])
 
 	return dst
+}
+
+func joinHeaderValues(headers [][]byte) []byte {
+	switch len(headers) {
+	case 0:
+		return nil
+	case 1:
+		return headers[0]
+	default:
+		return bytes.Join(headers, []byte{','})
+	}
+}
+
+func unescapeHeaderValue(v []byte) ([]byte, error) {
+	if bytes.IndexByte(v, '\\') == -1 {
+		return v, nil
+	}
+	res := make([]byte, 0, len(v))
+	escaping := false
+	for i, c := range v {
+		if escaping {
+			res = append(res, c)
+			escaping = false
+			continue
+		}
+		if c == '\\' {
+			// invalid escape at end of string
+			if i == len(v)-1 {
+				return nil, errors.New("invalid escape sequence")
+			}
+			escaping = true
+			continue
+		}
+		res = append(res, c)
+	}
+	if escaping {
+		return nil, errors.New("invalid escape sequence")
+	}
+	return res, nil
 }
 
 // forEachMediaRange parses an Accept or Content-Type header, calling functor
@@ -441,7 +396,11 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 						return false
 					}
 					lowerKey := utils.UnsafeString(utils.ToLowerBytes(key))
-					params[lowerKey] = value
+					val, err := unescapeHeaderValue(value)
+					if err != nil {
+						return true
+					}
+					params[lowerKey] = val
 					return true
 				})
 			}
@@ -605,14 +564,8 @@ const noCacheValue = "no-cache"
 func isNoCache(cacheControl string) bool {
 	n := len(cacheControl)
 	ncLen := len(noCacheValue)
-	for i := 0; i < n; i++ {
-		if cacheControl[i] != 'n' {
-			continue
-		}
-		if i+ncLen > n {
-			return false
-		}
-		if cacheControl[i:i+ncLen] != noCacheValue {
+	for i := 0; i <= n-ncLen; i++ {
+		if !utils.EqualFold(cacheControl[i:i+ncLen], noCacheValue) {
 			continue
 		}
 		if i > 0 {

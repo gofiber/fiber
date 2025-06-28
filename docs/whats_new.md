@@ -67,9 +67,40 @@ We have made several changes to the Fiber app, including:
 
 - **RegisterCustomBinder**: Allows for the registration of custom binders.
 - **RegisterCustomConstraint**: Allows for the registration of custom constraints.
-- **NewCtxFunc**: Introduces a new context function.
+- **NewWithCustomCtx**: Initialize an app with a custom context in one step.
 - **State**: Provides a global state for the application, which can be used to store and retrieve data across the application. Check out the [State](./api/state) method for further details.
 - **NewErrorf**: Allows variadic parameters when creating formatted errors.
+
+#### Custom Route Constraints
+
+Custom route constraints enable you to define your own validation rules for route parameters.
+Use `RegisterCustomConstraint` to add a constraint type that implements the `CustomConstraint` interface.
+
+<details>
+<summary>Example</summary>
+
+```go
+type UlidConstraint struct {
+    fiber.CustomConstraint
+}
+
+func (*UlidConstraint) Name() string {
+    return "ulid"
+}
+
+func (*UlidConstraint) Execute(param string, args ...string) bool {
+    _, err := ulid.Parse(param)
+    return err == nil
+}
+
+app.RegisterCustomConstraint(&UlidConstraint{})
+
+app.Get("/login/:id<ulid>", func(c fiber.Ctx) error {
+    return c.SendString("User " + c.Params("id"))
+})
+```
+
+</details>
 
 ### Removed Methods
 
@@ -95,18 +126,16 @@ Fiber v3 introduces a customizable `Ctx` interface, allowing developers to exten
 
 The idea behind custom `Ctx` classes is to give developers the ability to extend the default context with additional methods and properties tailored to the specific requirements of their application. This allows for better request handling and easier implementation of specific logic.
 
-#### NewCtxFunc
+#### NewWithCustomCtx
 
-The `NewCtxFunc` method allows you to customize the `Ctx` struct as needed.
+`NewWithCustomCtx` creates the application and sets the custom context factory at initialization time.
 
 ```go title="Signature"
-func (app *App) NewCtxFunc(function func(app *App) CustomCtx)
+func NewWithCustomCtx(fn func(app *App) CustomCtx, config ...Config) *App
 ```
 
 <details>
 <summary>Example</summary>
-
-Here’s an example of how to customize the `Ctx` interface:
 
 ```go
 package main
@@ -120,15 +149,12 @@ type CustomCtx struct {
     fiber.Ctx
 }
 
-// Custom method
 func (c *CustomCtx) CustomMethod() string {
     return "custom value"
 }
 
 func main() {
-    app := fiber.New()
-
-    app.NewCtxFunc(func(app *fiber.App) fiber.Ctx {
+    app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.Ctx {
         return &CustomCtx{
             Ctx: *fiber.NewCtx(app),
         }
@@ -143,7 +169,7 @@ func main() {
 }
 ```
 
-In this example, a custom context `CustomCtx` is created with an additional method `CustomMethod`. The `NewCtxFunc` method is used to replace the default context with the custom one.
+This example creates a `CustomCtx` with an extra `CustomMethod` and initializes the app with `NewWithCustomCtx`.
 
 </details>
 
