@@ -1304,3 +1304,119 @@ type routeJSON struct {
 	TestRoutes []testRoute `json:"test_routes"`
 	GithubAPI  []testRoute `json:"github_api"`
 }
+
+func newCustomApp() *App {
+	return NewWithCustomCtx(func(app *App) CustomCtx {
+		return &customCtx{DefaultCtx: *NewDefaultCtx(app)}
+	})
+}
+
+func Test_NextCustom_MethodNotAllowed(t *testing.T) {
+	t.Parallel()
+	app := newCustomApp()
+	app.Get("/foo", func(c Ctx) error { return c.SendStatus(StatusOK) })
+	useRoute := &Route{use: true, path: "/foo", Path: "/foo", routeParser: parseRoute("/foo")}
+	m := app.methodInt(MethodGet)
+	app.stack[m] = append([]*Route{useRoute}, app.stack[m]...)
+	app.routesRefreshed = true
+	app.RebuildTree()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodPost)
+	fctx.Request.SetRequestURI("/foo")
+
+	ctx := app.AcquireCtx(fctx)
+	defer app.ReleaseCtx(ctx)
+
+	matched, err := app.nextCustom(ctx)
+	require.False(t, matched)
+	require.ErrorIs(t, err, ErrMethodNotAllowed)
+	allow := string(ctx.Response().Header.Peek(HeaderAllow))
+	require.Equal(t, MethodGet, allow)
+}
+
+func Test_NextCustom_NotFound(t *testing.T) {
+	t.Parallel()
+	app := newCustomApp()
+	app.RebuildTree()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodGet)
+	fctx.Request.SetRequestURI("/not-exist")
+
+	ctx := app.AcquireCtx(fctx)
+	defer app.ReleaseCtx(ctx)
+
+	matched, err := app.nextCustom(ctx)
+	require.False(t, matched)
+	var e *Error
+	require.ErrorAs(t, err, &e)
+	require.Equal(t, StatusNotFound, e.Code)
+}
+
+func Test_RequestHandler_CustomCtx_NotImplemented(t *testing.T) {
+	t.Parallel()
+	app := newCustomApp()
+
+	h := app.Handler()
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod("UNKNOWN")
+	fctx.Request.SetRequestURI("/")
+
+	h(fctx)
+	require.Equal(t, StatusNotImplemented, fctx.Response.StatusCode())
+}
+
+func Test_NextCustom_Matched404(t *testing.T) {
+	t.Parallel()
+	app := newCustomApp()
+	app.RebuildTree()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodGet)
+	fctx.Request.SetRequestURI("/none")
+
+	ctx := app.AcquireCtx(fctx)
+	ctx.setMatched(true)
+	defer app.ReleaseCtx(ctx)
+
+	matched, err := app.nextCustom(ctx)
+	require.False(t, matched)
+	var e *Error
+	require.ErrorAs(t, err, &e)
+	require.Equal(t, StatusNotFound, e.Code)
+}
+
+func Test_NextCustom_SkipMountAndNoHandlers(t *testing.T) {
+	t.Parallel()
+	app := newCustomApp()
+	m := app.methodInt(MethodGet)
+	mountR := &Route{path: "/skip", Path: "/skip", routeParser: parseRoute("/skip"), mount: true}
+	empty := &Route{path: "/foo", Path: "/foo", routeParser: parseRoute("/foo")}
+	app.stack[m] = []*Route{mountR, empty}
+	app.routesRefreshed = true
+	app.RebuildTree()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodGet)
+	fctx.Request.SetRequestURI("/foo")
+
+	ctx := app.AcquireCtx(fctx)
+	defer app.ReleaseCtx(ctx)
+
+	matched, err := app.nextCustom(ctx)
+	require.True(t, matched)
+	require.NoError(t, err)
+	require.Equal(t, "/foo", ctx.Route().Path)
+}
+
+func Test_AddRoute_MergeHandlers(t *testing.T) {
+	t.Parallel()
+	app := New()
+	count := func(_ Ctx) error { return nil }
+	app.Get("/merge", count)
+	app.Get("/merge", count)
+
+	require.Len(t, app.stack[app.methodInt(MethodGet)], 1)
+	require.Equal(t, 2, len(app.stack[app.methodInt(MethodGet)][0].Handlers))
+}
