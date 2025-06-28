@@ -218,7 +218,7 @@ func Test_Static_Download_NonASCII(t *testing.T) {
 	dir := t.TempDir()
 	fname := "файл.txt"
 	path := filepath.Join(dir, fname)
-	require.NoError(t, os.WriteFile(path, []byte("x"), 0o644))
+	require.NoError(t, os.WriteFile(path, []byte("x"), 0o600))
 
 	app := fiber.New()
 	app.Get("/file", New(path, Config{Download: true}))
