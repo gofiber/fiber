@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"io"
 	"io/fs"
+	"net/http"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -181,36 +182,80 @@ func (r *DefaultRes) RequestCtx() *fasthttp.RequestCtx {
 
 // Cookie sets a cookie by passing a cookie struct.
 func (r *DefaultRes) Cookie(cookie *Cookie) {
-	fcookie := fasthttp.AcquireCookie()
-	fcookie.SetKey(cookie.Name)
-	fcookie.SetValue(cookie.Value)
-	fcookie.SetPath(cookie.Path)
-	fcookie.SetDomain(cookie.Domain)
-	// only set max age and expiry when SessionOnly is false
-	// i.e. cookie supposed to last beyond browser session
-	// refer: https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#define_the_lifetime_of_a_cookie
-	if !cookie.SessionOnly {
-		fcookie.SetMaxAge(cookie.MaxAge)
-		fcookie.SetExpire(cookie.Expires)
+	if cookie.Path == "" {
+		cookie.Path = "/"
 	}
-	fcookie.SetSecure(cookie.Secure)
-	fcookie.SetHTTPOnly(cookie.HTTPOnly)
+
+	if cookie.SessionOnly {
+		cookie.MaxAge = 0
+		cookie.Expires = time.Time{}
+	}
+
+	var sameSite http.SameSite
 
 	switch utils.ToLower(cookie.SameSite) {
 	case CookieSameSiteStrictMode:
-		fcookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)
+		sameSite = http.SameSiteStrictMode
 	case CookieSameSiteNoneMode:
-		fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
+		sameSite = http.SameSiteNoneMode
 	case CookieSameSiteDisabled:
-		fcookie.SetSameSite(fasthttp.CookieSameSiteDisabled)
+		sameSite = 0
+	case CookieSameSiteLaxMode:
+		sameSite = http.SameSiteLaxMode
 	default:
-		fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
+		sameSite = http.SameSiteLaxMode
 	}
 
-	// CHIPS allows to partition cookie jar by top-level site.
-	// refer: https://developers.google.com/privacy-sandbox/3pcd/chips
-	fcookie.SetPartitioned(cookie.Partitioned)
+	// create/validate cookie using net/http
+	hc := &http.Cookie{
+		Name:        cookie.Name,
+		Value:       cookie.Value,
+		Path:        cookie.Path,
+		Domain:      cookie.Domain,
+		Expires:     cookie.Expires,
+		MaxAge:      cookie.MaxAge,
+		Secure:      cookie.Secure,
+		HttpOnly:    cookie.HTTPOnly,
+		SameSite:    sameSite,
+		Partitioned: cookie.Partitioned,
+	}
 
+	if err := hc.Valid(); err != nil {
+		// invalid cookies are ignored, same approach as net/http
+		return
+	}
+
+	// create fasthttp cookie
+	fcookie := fasthttp.AcquireCookie()
+	fcookie.SetKey(hc.Name)
+	fcookie.SetValue(hc.Value)
+	fcookie.SetPath(hc.Path)
+	fcookie.SetDomain(hc.Domain)
+
+	if !cookie.SessionOnly {
+		fcookie.SetMaxAge(hc.MaxAge)
+		fcookie.SetExpire(hc.Expires)
+	}
+
+	fcookie.SetSecure(hc.Secure)
+	fcookie.SetHTTPOnly(hc.HttpOnly)
+
+	switch sameSite {
+	case http.SameSiteLaxMode:
+		fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
+	case http.SameSiteStrictMode:
+		fcookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)
+	case http.SameSiteNoneMode:
+		fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
+	case http.SameSiteDefaultMode:
+		fcookie.SetSameSite(fasthttp.CookieSameSiteDefaultMode)
+	default:
+		fcookie.SetSameSite(fasthttp.CookieSameSiteDisabled)
+	}
+
+	fcookie.SetPartitioned(hc.Partitioned)
+
+	// Set resp header
 	r.Response().Header.SetCookie(fcookie)
 	fasthttp.ReleaseCookie(fcookie)
 }

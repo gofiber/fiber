@@ -11,6 +11,7 @@ import (
 
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
+	"golang.org/x/net/idna"
 )
 
 // Range data for c.Range
@@ -458,10 +459,12 @@ func (r *DefaultReq) Is(extension string) bool {
 		return false
 	}
 
-	return strings.HasPrefix(
-		utils.TrimLeft(utils.UnsafeString(r.Request().Header.ContentType()), ' '),
-		extensionHeader,
-	)
+	ct := r.App().getString(r.Request().Header.ContentType())
+	if i := strings.IndexByte(ct, ';'); i != -1 {
+		ct = ct[:i]
+	}
+	ct = utils.Trim(ct, ' ')
+	return utils.EqualFold(ct, extensionHeader)
 }
 
 // Locals makes it possible to pass any values under keys scoped to the request
@@ -503,7 +506,19 @@ func Locals[V any](c Ctx, key any, value ...V) V {
 // If no override is given or if the provided override is not a valid HTTP method, it returns the current method from the context.
 // Otherwise, it updates the context's method and returns the overridden method as a string.
 func (r *DefaultReq) Method(override ...string) string {
-	return r.c.Method(override...)
+	if len(override) == 0 {
+		// Nothing to override, just return current method from context
+		return r.App().method(r.c.getMethodInt())
+	}
+
+	method := utils.ToUpper(override[0])
+	methodInt := r.App().methodInt(method)
+	if methodInt == -1 {
+		// Provided override does not valid HTTP method, no override, return current method
+		return r.App().method(r.c.getMethodInt())
+	}
+	r.c.setMethodInt(methodInt)
+	return method
 }
 
 // MultipartForm parse form entries from binary.
@@ -685,14 +700,17 @@ func (r *DefaultReq) Range(size int) (Range, error) {
 		rangeData Range
 		ranges    string
 	)
-	rangeStr := r.Get(HeaderRange)
+	rangeStr := utils.Trim(r.Get(HeaderRange), ' ')
 
 	i := strings.IndexByte(rangeStr, '=')
 	if i == -1 || strings.Contains(rangeStr[i+1:], "=") {
 		return rangeData, ErrRangeMalformed
 	}
-	rangeData.Type = rangeStr[:i]
-	ranges = rangeStr[i+1:]
+	rangeData.Type = utils.ToLower(utils.Trim(rangeStr[:i], ' '))
+	if rangeData.Type != "bytes" {
+		return rangeData, ErrRangeMalformed
+	}
+	ranges = utils.Trim(rangeStr[i+1:], ' ')
 
 	var (
 		singleRange string
@@ -702,10 +720,12 @@ func (r *DefaultReq) Range(size int) (Range, error) {
 		singleRange = moreRanges
 		if i := strings.IndexByte(moreRanges, ','); i >= 0 {
 			singleRange = moreRanges[:i]
-			moreRanges = moreRanges[i+1:]
+			moreRanges = utils.Trim(moreRanges[i+1:], ' ')
 		} else {
 			moreRanges = ""
 		}
+
+		singleRange = utils.Trim(singleRange, ' ')
 
 		var (
 			startStr, endStr string
@@ -714,8 +734,8 @@ func (r *DefaultReq) Range(size int) (Range, error) {
 		if i = strings.IndexByte(singleRange, '-'); i == -1 {
 			return rangeData, ErrRangeMalformed
 		}
-		startStr = singleRange[:i]
-		endStr = singleRange[i+1:]
+		startStr = utils.Trim(singleRange[:i], ' ')
+		endStr = utils.Trim(singleRange[i+1:], ' ')
 
 		start, startErr := fasthttp.ParseUint(utils.UnsafeBytes(startStr))
 		end, endErr := fasthttp.ParseUint(utils.UnsafeBytes(endStr))
@@ -765,8 +785,30 @@ func (r *DefaultReq) Subdomains(offset ...int) []string {
 		return []string{}
 	}
 
-	// strip “:port” if present
+	// Normalize host according to RFC 3986
 	host := r.Hostname()
+	// Trim the trailing dot of a fully-qualified domain
+	if strings.HasSuffix(host, ".") {
+		host = utils.TrimRight(host, '.')
+	}
+	host = utils.ToLower(host)
+
+	// Decode punycode labels only when necessary
+	if strings.Contains(host, "xn--") {
+		if u, err := idna.Lookup.ToUnicode(host); err == nil {
+			host = utils.ToLower(u)
+		}
+	}
+
+	// Return nothing for IP addresses
+	ip := host
+	if strings.HasPrefix(ip, "[") && strings.HasSuffix(ip, "]") {
+		ip = ip[1 : len(ip)-1]
+	}
+	if utils.IsIPv4(ip) || utils.IsIPv6(ip) {
+		return []string{}
+	}
+
 	parts := strings.Split(host, ".")
 
 	// offset == 0, caller wants everything.
