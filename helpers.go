@@ -106,32 +106,43 @@ func (app *App) quoteString(raw string) string {
 // https://www.rfc-editor.org/rfc/rfc9110#section-5.6.4 so the result may
 // contain non-ASCII bytes.
 func (app *App) quoteRawString(raw string) string {
-	bb := bytebufferpool.Get()
-	for i := 0; i < len(raw); i++ {
-		c := raw[i]
-		switch c {
-		case '\\', '"':
-			bb.B = append(bb.B, '\\', c)
-		case '\n':
-			bb.B = append(bb.B, '\\', 'n')
-		case '\r':
-			bb.B = append(bb.B, '\\', 'r')
-		case c < 0x20 || c == 0x7f:
-			// fallback to percent-encode to stay header-safe
-			// escape every byte < 0x20 and 0x7F
-			bb.B = append(bb.B, '%', "0123456789ABCDEF"[c>>4], "0123456789ABCDEF"[c&0x0f])
-		default:
-			bb.B = append(bb.B, c)
-		}
-	}
-	quoted := app.getString(bb.B)
-	bytebufferpool.Put(bb)
-	return quoted
+    const hex = "0123456789ABCDEF"
+    bb := bytebufferpool.Get()
+    defer bytebufferpool.Put(bb)
+
+    // opening quote
+    bb.B = append(bb.B, '"')
+
+    for i := 0; i < len(raw); i++ {
+        c := raw[i]
+        switch {
+        case c == '\\' || c == '"':
+            // escape backslash and quote
+            bb.B = append(bb.B, '\\', c)
+        case c == '\n':
+            bb.B = append(bb.B, '\\', 'n')
+        case c == '\r':
+            bb.B = append(bb.B, '\\', 'r')
+        case c < 0x20 || c == 0x7f:
+            // percent-encode control and DEL
+            bb.B = append(bb.B,
+                '%',
+                hex[c>>4],
+                hex[c&0x0f],
+            )
+        default:
+            bb.B = append(bb.B, c)
+        }
+    }
+
+    // closing quote
+    bb.B = append(bb.B, '"')
+    return app.getString(bb.B)
 }
 
 // isASCII reports whether the provided string contains only ASCII characters.
 // See: https://www.rfc-editor.org/rfc/rfc0020
-func isASCII(s string) bool {
+func (app *App) isASCII(s string) bool {
 	for i := 0; i < len(s); i++ {
 		if s[i] > 127 {
 			return false
