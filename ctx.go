@@ -260,13 +260,13 @@ func (c *DefaultCtx) Attachment(filename ...string) {
 		fname := filepath.Base(filename[0])
 		c.Type(filepath.Ext(fname))
 		var quoted string
-		if isASCII(fname) {
+		if c.app.isASCII(fname) {
 			quoted = c.app.quoteString(fname)
 		} else {
-			quoted = quoteRawString(fname)
+			quoted = c.app.quoteRawString(fname)
 		}
 		disp := `attachment; filename="` + quoted + `"`
-		if !isASCII(fname) {
+		if !c.app.isASCII(fname) {
 			disp += `; filename*=UTF-8''` + url.PathEscape(fname)
 		}
 		c.setCanonical(HeaderContentDisposition, disp)
@@ -528,13 +528,13 @@ func (c *DefaultCtx) Download(file string, filename ...string) error {
 		fname = filepath.Base(file)
 	}
 	var quoted string
-	if isASCII(fname) {
+	if c.app.isASCII(fname) {
 		quoted = c.app.quoteString(fname)
 	} else {
-		quoted = quoteRawString(fname)
+		quoted = c.app.quoteRawString(fname)
 	}
 	disp := `attachment; filename="` + quoted + `"`
-	if !isASCII(fname) {
+	if !c.app.isASCII(fname) {
 		disp += `; filename*=UTF-8''` + url.PathEscape(fname)
 	}
 	c.setCanonical(HeaderContentDisposition, disp)
