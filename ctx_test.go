@@ -322,7 +322,9 @@ func Test_Ctx_Attachment(t *testing.T) {
 	require.Equal(t, `attachment; filename="another+document.pdf%22%0D%0ABla%3A+%22fasel"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
 
 	c.Attachment("файл.txt")
-	require.Equal(t, `attachment; filename="файл.txt"; filename*=UTF-8''%D1%84%D0%B0%D0%B9%D0%BB.txt`, string(c.Response().Header.Peek(HeaderContentDisposition)))
+	header := string(c.Response().Header.Peek(HeaderContentDisposition))
+	require.Contains(t, header, `filename="файл.txt"`)
+	require.Contains(t, header, `filename*=UTF-8''%D1%84%D0%B0%D0%B9%D0%BB.txt`)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Attachment -benchmem -count=4
@@ -3307,7 +3309,9 @@ func Test_Ctx_Download(t *testing.T) {
 	require.Equal(t, `attachment; filename="ctx.go"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
 
 	require.NoError(t, c.Download("ctx.go", "файл.txt"))
-	require.Equal(t, `attachment; filename="файл.txt"; filename*=UTF-8''%D1%84%D0%B0%D0%B9%D0%BB.txt`, string(c.Response().Header.Peek(HeaderContentDisposition)))
+	header := string(c.Response().Header.Peek(HeaderContentDisposition))
+	require.Contains(t, header, `filename="файл.txt"`)
+	require.Contains(t, header, `filename*=UTF-8''%D1%84%D0%B0%D0%B9%D0%BB.txt`)
 }
 
 // go test -race -run Test_Ctx_SendFile

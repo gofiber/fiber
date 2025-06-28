@@ -161,7 +161,6 @@ To define static routes using `Get`, append the wildcard (`*`) operator at the e
 
 When **Download** is enabled, the response includes a `Content-Disposition` header with the requested filename. Non-ASCII names use the `filename*` parameter as defined by [RFC 6266](https://www.rfc-editor.org/rfc/rfc6266) and [RFC 8187](https://www.rfc-editor.org/rfc/rfc8187).
 
-
 :::info
 You can set `CacheDuration` config property to `-1` to disable caching.
 :::
