@@ -105,7 +105,7 @@ func (app *App) quoteString(raw string) string {
 // quoteRawString escapes only characters that need quoting according to
 // https://www.rfc-editor.org/rfc/rfc9110#section-5.6.4 so the result may
 // contain non-ASCII bytes.
-func quoteRawString(raw string) string {
+func (app *App) quoteRawString(raw string) string {
 	bb := bytebufferpool.Get()
 	for i := 0; i < len(raw); i++ {
 		c := raw[i]
@@ -116,6 +116,10 @@ func quoteRawString(raw string) string {
 			bb.B = append(bb.B, '\\', 'n')
 		case '\r':
 			bb.B = append(bb.B, '\\', 'r')
+		case c < 0x20 || c == 0x7f:
+			// fallback to percent-encode to stay header-safe
+			// escape every byte < 0x20 and 0x7F
+			bb.B = append(bb.B, '%', "0123456789ABCDEF"[c>>4], "0123456789ABCDEF"[c&0x0f])
 		default:
 			bb.B = append(bb.B, c)
 		}
