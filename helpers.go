@@ -135,15 +135,23 @@ func getGroupPath(prefix, path string) string {
 	return utils.TrimRight(prefix, '/') + path
 }
 
-// acceptsOffer This function determines if an offer matches a given specification.
-// It checks if the specification ends with a '*' or if the offer has the prefix of the specification.
+// acceptsOffer determines if an offer matches a given specification.
+// It supports a trailing '*' wildcard and applies case-insensitive Basic Filtering
+// so a language range matches if it is a prefix of the offer tag.
 // Returns true if the offer matches the specification, false otherwise.
 func acceptsOffer(spec, offer string, _ headerParams) bool {
 	if len(spec) >= 1 && spec[len(spec)-1] == '*' {
 		return true
-	} else if strings.HasPrefix(spec, offer) {
+	}
+
+	if utils.EqualFold(spec, offer) {
 		return true
 	}
+
+	if len(offer) > len(spec) && utils.EqualFold(offer[:len(spec)], spec) && offer[len(spec)] == '-' {
+		return true
+	}
+
 	return false
 }
 
