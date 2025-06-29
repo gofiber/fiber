@@ -539,7 +539,7 @@ func matchEtagStrong(s, etag string) bool {
 // weak as defined by RFC 9110 §8.8.3.2.
 func (app *App) isEtagStale(etag string, noneMatchBytes []byte) bool {
 	var start, end int
-	header := utils.Trim(noneMatchBytes, ' ')
+	header := utils.Trim(app.getString(noneMatchBytes), ' ')
 
 	// Short-circuit the wildcard case: "*" never counts as stale.
 	if header == "*" {
