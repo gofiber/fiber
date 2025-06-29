@@ -39,6 +39,8 @@ type acceptedType struct {
 	order       int
 }
 
+const noCacheValue = "no-cache"
+
 type headerParams map[string][]byte
 
 // getTLSConfig returns a net listener's tls config
@@ -601,8 +603,6 @@ func parseAddr(raw string) (string, string) { //nolint:revive // Returns (host, 
 	// No colon, nothing to split
 	return raw, ""
 }
-
-const noCacheValue = "no-cache"
 
 // isNoCache checks if the cacheControl header value is a `no-cache`.
 func isNoCache(cacheControl string) bool {
