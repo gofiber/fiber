@@ -504,6 +504,8 @@ app.Get("/", func(c fiber.Ctx) error {
 
 Fiber provides similar functions for the other accept headers.
 
+For `Accept-Language`, Fiber uses the [Basic Filtering](https://www.rfc-editor.org/rfc/rfc4647#section-3.3.1) algorithm. A language range matches an offer only if it exactly equals the tag or is a prefix followed by a hyphen. For example, the range `en` matches `en-US`, but `en-US` does not match `en`.
+
 ```go
 // Accept-Charset: utf-8, iso-8859-1;q=0.2
 // Accept-Encoding: gzip, compress;q=0.2
