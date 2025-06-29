@@ -45,6 +45,12 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+Entity tags in requests must follow RFC 9110 and therefore be quoted, for example:
+
+```text
+If-None-Match: "\x123"
+```
+
 ## Config
 
 | Property | Type                    | Description                                                                                                        | Default |

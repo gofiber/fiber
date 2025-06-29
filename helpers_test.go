@@ -1353,3 +1353,35 @@ func Test_ParamsMatch_InvalidEscape(t *testing.T) {
 	match := paramsMatch(headerParams{"foo": []byte("bar")}, `;foo="bar\\`)
 	require.False(t, match)
 }
+
+func Test_MatchEtag(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, matchEtag("\"a\"", "\"a\""))
+	require.True(t, matchEtag("W/\"a\"", "\"a\""))
+	require.True(t, matchEtag("\"a\"", "W/\"a\""))
+	require.False(t, matchEtag("\"a\"", "\"b\""))
+	require.False(t, matchEtag("a", "\"a\""))
+	require.False(t, matchEtag("\"a\"", "b"))
+}
+
+func Test_MatchEtagStrong(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, matchEtagStrong("\"a\"", "\"a\""))
+	require.False(t, matchEtagStrong("W/\"a\"", "\"a\""))
+	require.False(t, matchEtagStrong("\"a\"", "W/\"a\""))
+	require.False(t, matchEtagStrong("\"a\"", "\"b\""))
+	require.False(t, matchEtagStrong("a", "\"a\""))
+	require.False(t, matchEtagStrong("\"a\"", "b"))
+}
+
+func Test_IsEtagStale_Invalid(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	require.True(t, app.isEtagStale("\"a\"", []byte("b")))
+	require.True(t, app.isEtagStale("\"a\"", []byte("a")))
+	require.False(t, app.isEtagStale("\"a\"", []byte("\"a\"")))
+	require.False(t, app.isEtagStale("W/\"a\"", []byte("\"a\"")))
+}
