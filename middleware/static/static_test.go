@@ -214,7 +214,13 @@ func Test_Static_Download(t *testing.T) {
 }
 
 func Test_Static_Download_NonASCII(t *testing.T) {
+	// Skip on Windows. It's not possible to delete a file that is in use.
+	if runtime.GOOS == "windows" {
+		t.SkipNow()
+	}
+
 	t.Parallel()
+
 	dir := t.TempDir()
 	fname := "файл.txt"
 	path := filepath.Join(dir, fname)
