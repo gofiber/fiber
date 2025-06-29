@@ -1376,12 +1376,26 @@ func Test_MatchEtagStrong(t *testing.T) {
 	require.False(t, matchEtagStrong("\"a\"", "b"))
 }
 
-func Test_IsEtagStale_Invalid(t *testing.T) {
+func Test_IsEtagStale(t *testing.T) {
 	t.Parallel()
 	app := New()
 
+	// Invalid/unquoted tags are considered a mismatch, so it's stale
 	require.True(t, app.isEtagStale("\"a\"", []byte("b")))
 	require.True(t, app.isEtagStale("\"a\"", []byte("a")))
+
+	// Matching tags, not stale
 	require.False(t, app.isEtagStale("\"a\"", []byte("\"a\"")))
 	require.False(t, app.isEtagStale("W/\"a\"", []byte("\"a\"")))
+
+	// List of tags, not stale
+	require.False(t, app.isEtagStale("\"c\"", []byte(`\"a\", \"b\", \"c\"`)))
+	require.False(t, app.isEtagStale("W/\"c\"", []byte(`\"a\", \"b\", \"c\"`)))
+	require.False(t, app.isEtagStale("\"c\"", []byte(`\"a\", \"b\", W/\"c\"`)))
+	require.False(t, app.isEtagStale("\"c\"", []byte(`\"c\", \"b\", \"a\"`)))
+	require.False(t, app.isEtagStale("\"c\"", []byte(`  \"a\",   \"c\"   , \"b\"  `)))
+
+	// List of tags, stale
+	require.True(t, app.isEtagStale("\"d\"", []byte(`\"a\", \"b\", \"c\"`)))
+	require.True(t, app.isEtagStale("W/\"d\"", []byte(`\"a\", \"b\", \"c\"`)))
 }

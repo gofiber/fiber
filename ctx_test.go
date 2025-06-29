@@ -1425,11 +1425,11 @@ func Benchmark_Ctx_Fresh_StaleEtag(b *testing.B) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	for b.Loop() {
-		c.Request().Header.Set(HeaderIfNoneMatch, "\"a\", \"b\", \"c\", \"d\"")
+		c.Request().Header.Set(HeaderIfNoneMatch, `"a", "b", "c", "d"`)
 		c.Request().Header.Set(HeaderCacheControl, "c")
 		c.Fresh()
 
-		c.Request().Header.Set(HeaderIfNoneMatch, "\"a\", \"b\", \"c\", \"d\"")
+		c.Request().Header.Set(HeaderIfNoneMatch, `"a", "b", "c", "d"`)
 		c.Request().Header.Set(HeaderCacheControl, "e")
 		c.Fresh()
 	}
@@ -1459,15 +1459,15 @@ func Test_Ctx_Fresh(t *testing.T) {
 	c.Request().Header.Set(HeaderCacheControl, ",no-cache,bb")
 	require.False(t, c.Fresh())
 
-	c.Request().Header.Set(HeaderIfNoneMatch, "\"675af34563dc-tr34\"")
+	c.Request().Header.Set(HeaderIfNoneMatch, `"675af34563dc-tr34"`)
 	c.Request().Header.Set(HeaderCacheControl, "public")
 	require.False(t, c.Fresh())
 
-	c.Request().Header.Set(HeaderIfNoneMatch, "\"a\", \"b\"")
-	c.Response().Header.Set(HeaderETag, "\"c\"")
+	c.Request().Header.Set(HeaderIfNoneMatch, `"a", "b"`)
+	c.Response().Header.Set(HeaderETag, `"c"`)
 	require.False(t, c.Fresh())
 
-	c.Response().Header.Set(HeaderETag, "\"a\"")
+	c.Response().Header.Set(HeaderETag, `"a"`)
 	require.True(t, c.Fresh())
 
 	c.Request().Header.Set(HeaderIfModifiedSince, "xxWed, 21 Oct 2015 07:28:00 GMT")
