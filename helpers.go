@@ -498,9 +498,11 @@ func normalizeEtag(t string) (inner string, weak bool, ok bool) {
 	if weak {
 		t = t[2:]
 	}
+
 	if len(t) < 2 || t[0] != '"' || t[len(t)-1] != '"' {
 		return "", weak, false
 	}
+
 	// strip the two surrounding quotes
 	inner = t[1 : len(t)-1]
 	return inner, weak, true
@@ -538,8 +540,13 @@ func matchEtagStrong(s, etag string) bool {
 func (app *App) isEtagStale(etag string, noneMatchBytes []byte) bool {
 	var start, end int
 
+	// Short-circuit the wildcard case: "*" never counts as stale.
+	if header == "*" {
+		return false
+	}
+
 	// Adapted from:
-	// https://github.com/jshttp/fresh/blob/10e0471669dbbfbfd8de65bc6efac2ddd0bfa057/index.js#L110
+	// https://github.com/jshttp/fresh/blob/master/index.js#L110
 	for i := range noneMatchBytes {
 		switch noneMatchBytes[i] {
 		case 0x20:
