@@ -1385,7 +1385,7 @@ func (c *DefaultCtx) Range(size int) (Range, error) {
 	}
 	if len(rangeData.Ranges) < 1 {
 		c.Status(StatusRequestedRangeNotSatisfiable)
-c.Set(HeaderContentRange, "bytes */"+strconv.Itoa(size))
+		c.Set(HeaderContentRange, "bytes */"+strconv.Itoa(size))
 		return rangeData, ErrRequestedRangeNotSatisfiable
 	}
 
