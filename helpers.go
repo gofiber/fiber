@@ -493,7 +493,7 @@ func sortAcceptedTypes(at []acceptedType) {
 
 // normalizeEtag validates an entity tag and returns the value without quotes.
 // weak is true if the tag has the "W/" prefix.
-func normalizeEtag(t string) (inner string, weak bool, bool) {
+func normalizeEtag(t string) (inner string, weak bool, ok bool) {
 	weak = strings.HasPrefix(t, "W/")
 	if weak {
 		t = t[2:]
