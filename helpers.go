@@ -136,10 +136,22 @@ func getGroupPath(prefix, path string) string {
 }
 
 // acceptsOffer determines if an offer matches a given specification.
-// It supports a trailing '*' wildcard and applies case-insensitive Basic Filtering
-// so a language range matches if it is a prefix of the offer tag.
+// It supports a trailing '*' wildcard and performs case-insensitive exact matching.
 // Returns true if the offer matches the specification, false otherwise.
 func acceptsOffer(spec, offer string, _ headerParams) bool {
+	if len(spec) >= 1 && spec[len(spec)-1] == '*' {
+		return true
+	}
+
+	return utils.EqualFold(spec, offer)
+}
+
+// acceptsLanguageOffer determines if a language tag offer matches a range
+// according to RFC 4647 Basic Filtering.
+// A match occurs if the range exactly equals the tag or is a prefix of the tag
+// followed by a hyphen. The comparison is case-insensitive. A trailing '*'
+// wildcard in the range matches any tag.
+func acceptsLanguageOffer(spec, offer string, _ headerParams) bool {
 	if len(spec) >= 1 && spec[len(spec)-1] == '*' {
 		return true
 	}
@@ -148,11 +160,7 @@ func acceptsOffer(spec, offer string, _ headerParams) bool {
 		return true
 	}
 
-	if len(offer) > len(spec) && utils.EqualFold(offer[:len(spec)], spec) && offer[len(spec)] == '-' {
-		return true
-	}
-
-	return false
+	return len(offer) > len(spec) && utils.EqualFold(offer[:len(spec)], spec) && offer[len(spec)] == '-'
 }
 
 // acceptsOfferType This function determines if an offer type matches a given specification.
