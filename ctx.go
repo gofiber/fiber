@@ -1384,7 +1384,9 @@ func (c *DefaultCtx) Range(size int) (Range, error) {
 		})
 	}
 	if len(rangeData.Ranges) < 1 {
-		return rangeData, ErrRangeUnsatisfiable
+		c.Status(StatusRequestedRangeNotSatisfiable)
+		c.Set(HeaderContentRange, fmt.Sprintf("bytes */%d", size))
+		return rangeData, ErrRequestedRangeNotSatisfiable
 	}
 
 	return rangeData, nil
