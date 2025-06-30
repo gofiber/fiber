@@ -271,7 +271,7 @@ app := fiber.New(fiber.Config{
 
 os.Remove("app.sock")
 app.Hooks().OnListen(func(fiber.ListenData) error {
-    return os.Chmod("app.sock", 0777)
+    return os.Chmod("app.sock", 0770)
 })
 app.Listen("app.sock")
 
@@ -279,7 +279,7 @@ app.Listen("app.sock")
 app := fiber.New()
 app.Listen("app.sock", fiber.ListenerConfig{
     ListenerNetwork:    fiber.NetworkUnix,
-    UnixSocketFileMode: 0777,
+    UnixSocketFileMode: 0770,
 })
 ```
 
