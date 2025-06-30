@@ -39,6 +39,8 @@ type acceptedType struct {
 	order       int
 }
 
+const noCacheValue = "no-cache"
+
 type headerParams map[string][]byte
 
 // getTLSConfig returns a net listener's tls config
@@ -491,19 +493,60 @@ func sortAcceptedTypes(at []acceptedType) {
 	}
 }
 
-func matchEtag(s, etag string) bool {
-	if s == etag || s == "W/"+etag || "W/"+s == etag {
-		return true
+// normalizeEtag validates an entity tag and returns the
+// value without quotes. weak is true if the tag has the "W/" prefix.
+func normalizeEtag(t string) (string, bool, bool) {
+	weak := strings.HasPrefix(t, "W/")
+	if weak {
+		t = t[2:]
 	}
 
-	return false
+	if len(t) < 2 || t[0] != '"' || t[len(t)-1] != '"' {
+		return "", weak, false
+	}
+	return t[1 : len(t)-1], weak, true
 }
 
+// matchEtag performs a weak comparison of entity tags according to
+// RFC 9110 §8.8.3.2. The weak indicator ("W/") is ignored, but both tags must
+// be properly quoted. Invalid tags result in a mismatch.
+func matchEtag(s, etag string) bool {
+	n1, _, ok1 := normalizeEtag(s)
+	n2, _, ok2 := normalizeEtag(etag)
+	if !ok1 || !ok2 {
+		return false
+	}
+
+	return n1 == n2
+}
+
+// matchEtagStrong performs a strong entity-tag comparison following
+// RFC 9110 §8.8.3.1. A weak tag never matches a strong one, even if the quoted
+// values are identical.
+func matchEtagStrong(s, etag string) bool {
+	n1, w1, ok1 := normalizeEtag(s)
+	n2, w2, ok2 := normalizeEtag(etag)
+	if !ok1 || !ok2 || w1 || w2 {
+		return false
+	}
+
+	return n1 == n2
+}
+
+// isEtagStale reports whether a response with the given ETag would be considered
+// stale when presented with the raw If-None-Match header value. Comparison is
+// weak as defined by RFC 9110 §8.8.3.2.
 func (app *App) isEtagStale(etag string, noneMatchBytes []byte) bool {
 	var start, end int
+	header := utils.Trim(app.getString(noneMatchBytes), ' ')
+
+	// Short-circuit the wildcard case: "*" never counts as stale.
+	if header == "*" {
+		return false
+	}
 
 	// Adapted from:
-	// https://github.com/jshttp/fresh/blob/10e0471669dbbfbfd8de65bc6efac2ddd0bfa057/index.js#L110
+	// https://github.com/jshttp/fresh/blob/master/index.js#L110
 	for i := range noneMatchBytes {
 		switch noneMatchBytes[i] {
 		case 0x20:
@@ -525,7 +568,7 @@ func (app *App) isEtagStale(etag string, noneMatchBytes []byte) bool {
 	return !matchEtag(app.getString(noneMatchBytes[start:end]), etag)
 }
 
-func parseAddr(raw string) (string, string) { //nolint:revive // Returns (host, port)
+func parseAddr(raw string) (string, string) {
 	if raw == "" {
 		return "", ""
 	}
@@ -557,8 +600,6 @@ func parseAddr(raw string) (string, string) { //nolint:revive // Returns (host, 
 	// No colon, nothing to split
 	return raw, ""
 }
-
-const noCacheValue = "no-cache"
 
 // isNoCache checks if the cacheControl header value is a `no-cache`.
 func isNoCache(cacheControl string) bool {
