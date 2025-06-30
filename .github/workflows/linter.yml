@@ -39,5 +39,3 @@ jobs:
           version: v1.64.7
           # NOTE(ldez): temporary workaround
           install-mode: goinstall
-          # enable debug output
-          args: -v

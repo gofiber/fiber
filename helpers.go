@@ -495,8 +495,8 @@ func sortAcceptedTypes(at []acceptedType) {
 
 // normalizeEtag validates an entity tag and returns the
 // value without quotes. weak is true if the tag has the "W/" prefix.
-func normalizeEtag(t string) (inner string, weak bool, ok bool) {
-	weak = strings.HasPrefix(t, "W/")
+func normalizeEtag(t string) (string, bool, bool) {
+	weak := strings.HasPrefix(t, "W/")
 	if weak {
 		t = t[2:]
 	}
@@ -504,10 +504,7 @@ func normalizeEtag(t string) (inner string, weak bool, ok bool) {
 	if len(t) < 2 || t[0] != '"' || t[len(t)-1] != '"' {
 		return "", weak, false
 	}
-
-	// strip the two surrounding quotes
-	inner = t[1 : len(t)-1]
-	return inner, weak, true
+	return t[1 : len(t)-1], weak, true
 }
 
 // matchEtag performs a weak comparison of entity tags according to
@@ -571,7 +568,7 @@ func (app *App) isEtagStale(etag string, noneMatchBytes []byte) bool {
 	return !matchEtag(app.getString(noneMatchBytes[start:end]), etag)
 }
 
-func parseAddr(raw string) (string, string) { //nolint:revive // Returns (host, port)
+func parseAddr(raw string) (string, string) {
 	if raw == "" {
 		return "", ""
 	}
