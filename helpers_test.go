@@ -1353,3 +1353,61 @@ func Test_ParamsMatch_InvalidEscape(t *testing.T) {
 	match := paramsMatch(headerParams{"foo": []byte("bar")}, `;foo="bar\\`)
 	require.False(t, match)
 }
+
+func Test_MatchEtag(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, matchEtag(`"a"`, `"a"`))
+	require.True(t, matchEtag(`W/"a"`, `"a"`))
+	require.True(t, matchEtag(`"a"`, `W/"a"`))
+	require.False(t, matchEtag(`"a"`, `"b"`))
+	require.False(t, matchEtag(`a`, `"a"`))
+	require.False(t, matchEtag(`"a"`, `b`))
+}
+
+func Test_MatchEtagStrong(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, matchEtagStrong(`"a"`, `"a"`))
+	require.False(t, matchEtagStrong(`W/"a"`, `"a"`))
+	require.False(t, matchEtagStrong(`"a"`, `W/"a"`))
+	require.False(t, matchEtagStrong(`"a"`, `"b"`))
+	require.False(t, matchEtagStrong(`a`, `"a"`))
+	require.False(t, matchEtagStrong(`"a"`, `b`))
+}
+
+func Test_IsEtagStale(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	// Invalid/unquoted tags are considered a mismatch, so it's stale
+	require.True(t, app.isEtagStale(`"a"`, []byte("b")))
+	require.True(t, app.isEtagStale(`"a"`, []byte("a")))
+
+	// Matching tags, not stale
+	require.False(t, app.isEtagStale(`"a"`, []byte(`"a"`)))
+	require.False(t, app.isEtagStale(`W/"a"`, []byte(`"a"`)))
+
+	// List of tags, not stale
+	require.False(t, app.isEtagStale(`"c"`, []byte(`"a", "b", "c"`)))
+	require.False(t, app.isEtagStale(`W/"c"`, []byte(`"a", "b", "c"`)))
+	require.False(t, app.isEtagStale(`"c"`, []byte(`"a", "b", W/"c"`)))
+	require.False(t, app.isEtagStale(`"c"`, []byte(`"c", "b", "a"`)))
+	require.False(t, app.isEtagStale(`"c"`, []byte(`  "a",   "c"   , "b"  `)))
+
+	// List of tags, stale
+	require.True(t, app.isEtagStale(`"d"`, []byte(`"a", "b", "c"`)))
+	require.True(t, app.isEtagStale(`W/"d"`, []byte(`"a", "b", "c"`)))
+
+	// Wildcard
+	require.False(t, app.isEtagStale(`"a"`, []byte("*")))
+	require.False(t, app.isEtagStale(`"a"`, []byte(" *   ")))
+	require.False(t, app.isEtagStale(`W/"a"`, []byte("*")))
+
+	// Empty case
+	require.True(t, app.isEtagStale(`"a"`, []byte("")))
+	require.True(t, app.isEtagStale(`"a"`, []byte("   ")))
+
+	// Weak vs. weak
+	require.False(t, app.isEtagStale(`W/"a"`, []byte(`W/"a"`)))
+}

@@ -1,6 +1,5 @@
-# Adapted from https://github.com/golangci/golangci-lint-action/blob/b56f6f529003f1c81d4d759be6bd5f10bf9a0fa0/README.md#how-to-use
-
 name: golangci-lint
+
 on:
   push:
     branches:
@@ -40,4 +39,3 @@ jobs:
           version: v1.64.7
           # NOTE(ldez): temporary workaround
           install-mode: goinstall
-
