@@ -95,12 +95,57 @@ func readContent(rf io.ReaderFrom, name string) (int64, error) {
 	return 0, nil
 }
 
-// quoteString escape special characters in a given string
+// quoteString escapes special characters using percent-encoding.
+// Non-ASCII bytes are encoded as well so the result is always ASCII.
 func (app *App) quoteString(raw string) string {
 	bb := bytebufferpool.Get()
 	quoted := app.getString(fasthttp.AppendQuotedArg(bb.B, app.getBytes(raw)))
 	bytebufferpool.Put(bb)
 	return quoted
+}
+
+// quoteRawString escapes only characters that need quoting according to
+// https://www.rfc-editor.org/rfc/rfc9110#section-5.6.4 so the result may
+// contain non-ASCII bytes.
+func (app *App) quoteRawString(raw string) string {
+	const hex = "0123456789ABCDEF"
+	bb := bytebufferpool.Get()
+	defer bytebufferpool.Put(bb)
+
+	for i := 0; i < len(raw); i++ {
+		c := raw[i]
+		switch {
+		case c == '\\' || c == '"':
+			// escape backslash and quote
+			bb.B = append(bb.B, '\\', c)
+		case c == '\n':
+			bb.B = append(bb.B, '\\', 'n')
+		case c == '\r':
+			bb.B = append(bb.B, '\\', 'r')
+		case c < 0x20 || c == 0x7f:
+			// percent-encode control and DEL
+			bb.B = append(bb.B,
+				'%',
+				hex[c>>4],
+				hex[c&0x0f],
+			)
+		default:
+			bb.B = append(bb.B, c)
+		}
+	}
+
+	return app.getString(bb.B)
+}
+
+// isASCII reports whether the provided string contains only ASCII characters.
+// See: https://www.rfc-editor.org/rfc/rfc0020
+func (*App) isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] > 127 {
+			return false
+		}
+	}
+	return true
 }
 
 // uniqueRouteStack drop all not unique routes from the slice

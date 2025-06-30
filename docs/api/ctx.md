@@ -1454,6 +1454,18 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+Non-ASCII filenames are encoded using the `filename*` parameter as defined in
+[RFC 6266](https://www.rfc-editor.org/rfc/rfc6266) and
+[RFC 8187](https://www.rfc-editor.org/rfc/rfc8187):
+
+```go title="Example"
+app.Get("/non-ascii", func(c fiber.Ctx) error {
+  c.Attachment("./files/文件.txt")
+  // => Content-Disposition: attachment; filename="文件.txt"; filename*=UTF-8''%E6%96%87%E4%BB%B6.txt
+  return nil
+})
+```
+
 ### AutoFormat
 
 Performs content-negotiation on the [Accept](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept) HTTP header. It uses [Accepts](ctx.md#accepts) to select a proper format.
@@ -1620,6 +1632,17 @@ app.Get("/", func(c fiber.Ctx) error {
 
   return c.Download("./files/report-12345.pdf", "report.pdf")
   // => Download report.pdf
+})
+```
+
+For filenames containing non-ASCII characters, a `filename*` parameter is added
+according to [RFC 6266](https://www.rfc-editor.org/rfc/rfc6266) and
+[RFC 8187](https://www.rfc-editor.org/rfc/rfc8187):
+
+```go title="Example"
+app.Get("/non-ascii", func(c fiber.Ctx) error {
+  return c.Download("./files/文件.txt")
+  // => Content-Disposition: attachment; filename="文件.txt"; filename*=UTF-8''%E6%96%87%E4%BB%B6.txt
 })
 ```
 

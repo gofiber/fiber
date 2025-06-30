@@ -391,6 +391,11 @@ func Test_Ctx_Attachment(t *testing.T) {
 	// check quoting
 	c.Attachment("another document.pdf\"\r\nBla: \"fasel")
 	require.Equal(t, `attachment; filename="another+document.pdf%22%0D%0ABla%3A+%22fasel"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
+
+	c.Attachment("файл.txt")
+	header := string(c.Response().Header.Peek(HeaderContentDisposition))
+	require.Contains(t, header, `filename="файл.txt"`)
+	require.Contains(t, header, `filename*=UTF-8''%D1%84%D0%B0%D0%B9%D0%BB.txt`)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Attachment -benchmem -count=4
@@ -3392,6 +3397,11 @@ func Test_Ctx_Download(t *testing.T) {
 
 	require.NoError(t, c.Res().Download("ctx.go"))
 	require.Equal(t, `attachment; filename="ctx.go"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
+
+	require.NoError(t, c.Download("ctx.go", "файл.txt"))
+	header := string(c.Response().Header.Peek(HeaderContentDisposition))
+	require.Contains(t, header, `filename="файл.txt"`)
+	require.Contains(t, header, `filename*=UTF-8''%D1%84%D0%B0%D0%B9%D0%BB.txt`)
 }
 
 // go test -race -run Test_Ctx_SendFile

@@ -5,7 +5,9 @@ import (
 	"io"
 	"io/fs"
 	"net/http/httptest"
+	"net/url"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -208,7 +210,30 @@ func Test_Static_Download(t *testing.T) {
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
 	require.Equal(t, "image/png", resp.Header.Get(fiber.HeaderContentType))
-	require.Equal(t, `attachment`, resp.Header.Get(fiber.HeaderContentDisposition))
+	require.Equal(t, `attachment; filename="fiber.png"`, resp.Header.Get(fiber.HeaderContentDisposition))
+}
+
+func Test_Static_Download_NonASCII(t *testing.T) {
+	// Skip on Windows. It's not possible to delete a file that is in use.
+	if runtime.GOOS == "windows" {
+		t.SkipNow()
+	}
+
+	t.Parallel()
+
+	dir := t.TempDir()
+	fname := "файл.txt"
+	path := filepath.Join(dir, fname)
+	require.NoError(t, os.WriteFile(path, []byte("x"), 0o644)) //nolint:gosec // Not a concern
+
+	app := fiber.New()
+	app.Get("/file", New(path, Config{Download: true}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/file", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+	expect := "attachment; filename=\"" + fname + "\"; filename*=UTF-8''" + url.PathEscape(fname)
+	require.Equal(t, expect, resp.Header.Get(fiber.HeaderContentDisposition))
 }
 
 // go test -run Test_Static_Group
