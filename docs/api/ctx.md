@@ -1216,6 +1216,9 @@ Returns a struct containing the type and a slice of ranges.
 Only the canonical `bytes` unit is recognized and any optional
 whitespace around range specifiers will be ignored, as specified
 in RFC 9110.
+If none of the requested ranges are satisfiable, the method automatically
+sets the HTTP status code to **416 Range Not Satisfiable** and populates the
+`Content-Range` header with the current representation size.
 
 ```go title="Signature"
 func (c fiber.Ctx) Range(size int) (Range, error)
