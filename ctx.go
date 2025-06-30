@@ -228,7 +228,7 @@ func (c *DefaultCtx) AcceptsEncodings(offers ...string) string {
 // AcceptsLanguages checks if the specified language is acceptable.
 func (c *DefaultCtx) AcceptsLanguages(offers ...string) string {
 	header := joinHeaderValues(c.fasthttp.Request.Header.PeekAll(HeaderAcceptLanguage))
-	return getOffer(header, acceptsOffer, offers...)
+	return getOffer(header, acceptsLanguageOffer, offers...)
 }
 
 // App returns the *App reference to the instance of the Fiber application
