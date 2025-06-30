@@ -561,22 +561,40 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 			expectedBody:    []byte("john=doe"),
 		},
 		{
+			name:            "gzip twice",
+			contentEncoding: "gzip, gzip",
+			body:            []byte("double"),
+			expectedBody:    []byte("double"),
+		},
+		{
 			name:            "unsupported_encoding",
 			contentEncoding: "undefined",
 			body:            []byte("keeps_ORIGINAL"),
-			expectedBody:    []byte("keeps_ORIGINAL"),
+			expectedBody:    []byte("Unsupported Media Type"),
+		},
+		{
+			name:            "compress_not_implemented",
+			contentEncoding: "compress",
+			body:            []byte("foo"),
+			expectedBody:    []byte("Not Implemented"),
 		},
 		{
 			name:            "gzip then unsupported",
 			contentEncoding: "gzip, undefined",
 			body:            []byte("Go, be gzipped"),
-			expectedBody:    []byte("Go, be gzipped"),
+			expectedBody:    []byte("Unsupported Media Type"),
 		},
 		{
 			name:            "invalid_deflate",
 			contentEncoding: "gzip,deflate",
 			body:            []byte("I'm not correctly compressed"),
 			expectedBody:    []byte(zlib.ErrHeader.Error()),
+		},
+		{
+			name:            "identity",
+			contentEncoding: "identity",
+			body:            []byte("bar"),
+			expectedBody:    []byte("bar"),
 		},
 	}
 
@@ -588,24 +606,44 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 			c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 			c.Request().Header.Set("Content-Encoding", tCase.contentEncoding)
 
-			if strings.Contains(tCase.contentEncoding, "gzip") {
-				var b bytes.Buffer
-				gz := gzip.NewWriter(&b)
-
-				_, err := gz.Write(tCase.body)
-				require.NoError(t, err)
-
-				err = gz.Flush()
-				require.NoError(t, err)
-
-				err = gz.Close()
-				require.NoError(t, err)
-				tCase.body = b.Bytes()
+			encs := strings.Split(tCase.contentEncoding, ",")
+			for _, enc := range encs {
+				enc = strings.TrimSpace(enc)
+				if strings.Contains(tCase.name, "invalid_deflate") && enc == StrDeflate {
+					continue
+				}
+				switch enc {
+				case "gzip":
+					var b bytes.Buffer
+					gz := gzip.NewWriter(&b)
+					_, err := gz.Write(tCase.body)
+					require.NoError(t, err)
+					require.NoError(t, gz.Flush())
+					require.NoError(t, gz.Close())
+					tCase.body = b.Bytes()
+				case StrDeflate:
+					var b bytes.Buffer
+					fl := zlib.NewWriter(&b)
+					_, err := fl.Write(tCase.body)
+					require.NoError(t, err)
+					require.NoError(t, fl.Flush())
+					require.NoError(t, fl.Close())
+					tCase.body = b.Bytes()
+				}
 			}
 
 			c.Request().SetBody(tCase.body)
 			body := c.Body()
 			require.Equal(t, tCase.expectedBody, body)
+
+			switch {
+			case strings.Contains(tCase.name, "unsupported"):
+				require.Equal(t, StatusUnsupportedMediaType, c.Response().StatusCode())
+			case strings.Contains(tCase.name, "compress_not_implemented"):
+				require.Equal(t, StatusNotImplemented, c.Response().StatusCode())
+			default:
+				require.Equal(t, StatusOK, c.Response().StatusCode())
+			}
 
 			// Check if body raw is the same as previous before decompression
 			require.Equal(
@@ -663,7 +701,7 @@ func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
 			compressWriter:  compressGzip,
 		},
 		{
-			contentEncoding: "deflate",
+			contentEncoding: StrDeflate,
 			compressWriter:  compressDeflate,
 		},
 		{
@@ -752,22 +790,40 @@ func Test_Ctx_Body_With_Compression_Immutable(t *testing.T) {
 			expectedBody:    []byte("john=doe"),
 		},
 		{
+			name:            "gzip twice",
+			contentEncoding: "gzip, gzip",
+			body:            []byte("double"),
+			expectedBody:    []byte("double"),
+		},
+		{
 			name:            "unsupported_encoding",
 			contentEncoding: "undefined",
 			body:            []byte("keeps_ORIGINAL"),
-			expectedBody:    []byte("keeps_ORIGINAL"),
+			expectedBody:    []byte("Unsupported Media Type"),
+		},
+		{
+			name:            "compress_not_implemented",
+			contentEncoding: "compress",
+			body:            []byte("foo"),
+			expectedBody:    []byte("Not Implemented"),
 		},
 		{
 			name:            "gzip then unsupported",
 			contentEncoding: "gzip, undefined",
 			body:            []byte("Go, be gzipped"),
-			expectedBody:    []byte("Go, be gzipped"),
+			expectedBody:    []byte("Unsupported Media Type"),
 		},
 		{
 			name:            "invalid_deflate",
 			contentEncoding: "gzip,deflate",
 			body:            []byte("I'm not correctly compressed"),
 			expectedBody:    []byte(zlib.ErrHeader.Error()),
+		},
+		{
+			name:            "identity",
+			contentEncoding: "identity",
+			body:            []byte("bar"),
+			expectedBody:    []byte("bar"),
 		},
 	}
 
@@ -780,24 +836,44 @@ func Test_Ctx_Body_With_Compression_Immutable(t *testing.T) {
 			c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 			c.Request().Header.Set("Content-Encoding", tCase.contentEncoding)
 
-			if strings.Contains(tCase.contentEncoding, "gzip") {
-				var b bytes.Buffer
-				gz := gzip.NewWriter(&b)
-
-				_, err := gz.Write(tCase.body)
-				require.NoError(t, err)
-
-				err = gz.Flush()
-				require.NoError(t, err)
-
-				err = gz.Close()
-				require.NoError(t, err)
-				tCase.body = b.Bytes()
+			encs := strings.Split(tCase.contentEncoding, ",")
+			for _, enc := range encs {
+				enc = strings.TrimSpace(enc)
+				if strings.Contains(tCase.name, "invalid_deflate") && enc == StrDeflate {
+					continue
+				}
+				switch enc {
+				case "gzip":
+					var b bytes.Buffer
+					gz := gzip.NewWriter(&b)
+					_, err := gz.Write(tCase.body)
+					require.NoError(t, err)
+					require.NoError(t, gz.Flush())
+					require.NoError(t, gz.Close())
+					tCase.body = b.Bytes()
+				case StrDeflate:
+					var b bytes.Buffer
+					fl := zlib.NewWriter(&b)
+					_, err := fl.Write(tCase.body)
+					require.NoError(t, err)
+					require.NoError(t, fl.Flush())
+					require.NoError(t, fl.Close())
+					tCase.body = b.Bytes()
+				}
 			}
 
 			c.Request().SetBody(tCase.body)
 			body := c.Body()
 			require.Equal(t, tCase.expectedBody, body)
+
+			switch {
+			case strings.Contains(tCase.name, "unsupported"):
+				require.Equal(t, StatusUnsupportedMediaType, c.Response().StatusCode())
+			case strings.Contains(tCase.name, "compress_not_implemented"):
+				require.Equal(t, StatusNotImplemented, c.Response().StatusCode())
+			default:
+				require.Equal(t, StatusOK, c.Response().StatusCode())
+			}
 
 			// Check if body raw is the same as previous before decompression
 			require.Equal(
@@ -855,7 +931,7 @@ func Benchmark_Ctx_Body_With_Compression_Immutable(b *testing.B) {
 			compressWriter:  compressGzip,
 		},
 		{
-			contentEncoding: "deflate",
+			contentEncoding: StrDeflate,
 			compressWriter:  compressDeflate,
 		},
 		{
