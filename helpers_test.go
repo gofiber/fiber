@@ -1401,11 +1401,12 @@ func Test_IsEtagStale(t *testing.T) {
 
 	// Wildcard
 	require.False(t, app.isEtagStale(`"a"`, []byte("*")))
-	require.False(t, app.isEtagStale(`"a"`, []byte(" * ")))
+	require.False(t, app.isEtagStale(`"a"`, []byte(" *   ")))
 	require.False(t, app.isEtagStale(`W/"a"`, []byte("*")))
 
 	// Empty case
 	require.True(t, app.isEtagStale(`"a"`, []byte("")))
+	require.True(t, app.isEtagStale(`"a"`, []byte("   ")))
 
 	// Weak vs. weak
 	require.False(t, app.isEtagStale(`W/"a"`, []byte(`W/"a"`)))
