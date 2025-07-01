@@ -20,14 +20,11 @@ func (b *QueryBinding) Bind(reqCtx *fasthttp.Request, out any) error {
 	data := make(map[string][]string)
 	var err error
 
-	reqCtx.URI().QueryArgs().VisitAll(func(key, val []byte) {
-		if err != nil {
-			return
-		}
-
+	reqCtx.URI().QueryArgs().All()(func(key, val []byte) bool {
 		k := utils.UnsafeString(key)
 		v := utils.UnsafeString(val)
 		err = formatBindData(b.Name(), out, data, k, v, b.EnableSplitting, true)
+		return err == nil // Stop iteration on the first error
 	})
 
 	if err != nil {

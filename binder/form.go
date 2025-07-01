@@ -29,14 +29,11 @@ func (b *FormBinding) Bind(req *fasthttp.Request, out any) error {
 		return b.bindMultipart(req, out)
 	}
 
-	req.PostArgs().VisitAll(func(key, val []byte) {
-		if err != nil {
-			return
-		}
-
+	req.PostArgs().All()(func(key, val []byte) bool {
 		k := utils.UnsafeString(key)
 		v := utils.UnsafeString(val)
 		err = formatBindData(b.Name(), out, data, k, v, b.EnableSplitting, true)
+		return err == nil // Stop iteration on the first error
 	})
 
 	if err != nil {
