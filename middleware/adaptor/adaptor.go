@@ -196,8 +196,9 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		}
 
 		// Convert fasthttp Ctx -> net/http
-		fctx.Response.Header.VisitAll(func(k, v []byte) {
+		fctx.Response.Header.All()(func(k, v []byte) bool {
 			w.Header().Add(string(k), string(v))
+			return true
 		})
 		w.WriteHeader(fctx.Response.StatusCode())
 		_, _ = w.Write(fctx.Response.Body()) //nolint:errcheck // not needed

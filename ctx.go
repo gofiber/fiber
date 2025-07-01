@@ -408,8 +408,9 @@ func (c *DefaultCtx) ClearCookie(key ...string) {
 		}
 		return
 	}
-	c.fasthttp.Request.Header.VisitAllCookie(func(k, _ []byte) {
+	c.fasthttp.Request.Header.Cookies()(func(k, _ []byte) bool {
 		c.fasthttp.Response.Header.DelClientCookieBytes(k)
+		return true
 	})
 }
 
@@ -766,9 +767,10 @@ func (c *DefaultCtx) GetRespHeader(key string, defaultValue ...string) string {
 // Make copies or use the Immutable setting instead.
 func (c *DefaultCtx) GetRespHeaders() map[string][]string {
 	headers := make(map[string][]string)
-	c.Response().Header.VisitAll(func(k, v []byte) {
+	c.Response().Header.All()(func(k, v []byte) bool {
 		key := c.app.getString(k)
 		headers[key] = append(headers[key], c.app.getString(v))
+		return true
 	})
 	return headers
 }
@@ -778,9 +780,10 @@ func (c *DefaultCtx) GetRespHeaders() map[string][]string {
 // Make copies or use the Immutable setting instead.
 func (c *DefaultCtx) GetReqHeaders() map[string][]string {
 	headers := make(map[string][]string)
-	c.Request().Header.VisitAll(func(k, v []byte) {
+	c.Request().Header.All()(func(k, v []byte) bool {
 		key := c.app.getString(k)
 		headers[key] = append(headers[key], c.app.getString(v))
+		return true
 	})
 	return headers
 }
@@ -1249,9 +1252,9 @@ func (c *DefaultCtx) Scheme() string {
 
 	scheme := schemeHTTP
 	const lenXHeaderName = 12
-	c.fasthttp.Request.Header.VisitAll(func(key, val []byte) {
+	c.fasthttp.Request.Header.All()(func(key, val []byte) bool {
 		if len(key) < lenXHeaderName {
-			return // Neither "X-Forwarded-" nor "X-Url-Scheme"
+			return true // Neither "X-Forwarded-" nor "X-Url-Scheme"
 		}
 		switch {
 		case bytes.HasPrefix(key, []byte("X-Forwarded-")):
@@ -1271,6 +1274,7 @@ func (c *DefaultCtx) Scheme() string {
 		case bytes.Equal(key, []byte(HeaderXUrlScheme)):
 			scheme = c.app.getString(val)
 		}
+		return true
 	})
 	return scheme
 }
@@ -1312,8 +1316,9 @@ func (c *DefaultCtx) Query(key string, defaultValue ...string) string {
 // Queries()["filters[status]"] == "pending"
 func (c *DefaultCtx) Queries() map[string]string {
 	m := make(map[string]string, c.RequestCtx().QueryArgs().Len())
-	c.RequestCtx().QueryArgs().VisitAll(func(key, value []byte) {
+	c.RequestCtx().QueryArgs().All()(func(key, value []byte) bool {
 		m[c.app.getString(key)] = c.app.getString(value)
+		return true
 	})
 	return m
 }
