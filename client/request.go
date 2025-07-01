@@ -766,10 +766,27 @@ func (c Cookie) DelCookies(key ...string) {
 }
 
 // VisitAll iterates through all cookies, calling f for each.
-func (c Cookie) VisitAll(f func(key, val string)) {
-	for k, v := range c {
-		f(k, v)
+// All returns an iterator over cookie key-value pairs.
+//
+// The returned key and value should not be retained after the iteration loop.
+func (c Cookie) All() iter.Seq2[string, string] {
+	return func(yield func(string, string) bool) {
+		for k, v := range c {
+			if !yield(k, v) {
+				break
+			}
+		}
 	}
+}
+
+// VisitAll iterates through all cookies, calling f for each.
+//
+// Deprecated: Use All instead.
+func (c Cookie) VisitAll(f func(key, val string)) {
+	c.All()(func(k, v string) bool {
+		f(k, v)
+		return true
+	})
 }
 
 // Reset clears the Cookie map.
@@ -816,10 +833,27 @@ func (p PathParam) DelParams(key ...string) {
 }
 
 // VisitAll iterates through all path parameters, calling f for each.
-func (p PathParam) VisitAll(f func(key, val string)) {
-	for k, v := range p {
-		f(k, v)
+// All returns an iterator over path parameter key-value pairs.
+//
+// The returned key and value should not be retained after the iteration loop.
+func (p PathParam) All() iter.Seq2[string, string] {
+	return func(yield func(string, string) bool) {
+		for k, v := range p {
+			if !yield(k, v) {
+				break
+			}
+		}
 	}
+}
+
+// VisitAll iterates through all path parameters, calling f for each.
+//
+// Deprecated: Use All instead.
+func (p PathParam) VisitAll(f func(key, val string)) {
+	p.All()(func(k, v string) bool {
+		f(k, v)
+		return true
+	})
 }
 
 // Reset clears the PathParam map.

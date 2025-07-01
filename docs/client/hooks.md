@@ -159,9 +159,9 @@ func main() {
         fmt.Printf("HTTP protocol: %s\n\n", resp.Protocol())
 
         fmt.Println("Response Headers:")
-        resp.RawResponse.Header.VisitAll(func(key, value []byte) {
-            fmt.Printf("%s: %s\n", key, value)
-        })
+       for key, value := range resp.RawResponse.Header.All() {
+           fmt.Printf("%s: %s\n", key, value)
+       }
 
         return nil
     })

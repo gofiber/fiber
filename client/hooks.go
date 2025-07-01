@@ -71,12 +71,12 @@ func parserRequestURL(c *Client, req *Request) error {
 	}
 
 	// Set path parameters from the request and client.
-	req.path.VisitAll(func(key, val string) {
+	for key, val := range req.path.All() {
 		uri = strings.ReplaceAll(uri, ":"+key, val)
-	})
-	c.path.VisitAll(func(key, val string) {
+	}
+	for key, val := range c.path.All() {
 		uri = strings.ReplaceAll(uri, ":"+key, val)
-	})
+	}
 
 	// Set the URI in the raw request.
 	req.RawRequest.SetRequestURI(uri)
@@ -161,14 +161,14 @@ func parserRequestHeader(c *Client, req *Request) error {
 	}
 
 	// Set cookies from the client.
-	c.cookies.VisitAll(func(key, val string) {
+	for key, val := range c.cookies.All() {
 		req.RawRequest.Header.SetCookie(key, val)
-	})
+	}
 
 	// Set cookies from the request.
-	req.cookies.VisitAll(func(key, val string) {
+	for key, val := range req.cookies.All() {
 		req.RawRequest.Header.SetCookie(key, val)
-	})
+	}
 
 	return nil
 }

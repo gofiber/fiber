@@ -1205,6 +1205,15 @@ func (c Cookie) SetCookiesWithStruct(v any)
 func (c Cookie) DelCookies(key ...string)
 ```
 
+### All
+
+**All** returns an iterator over all cookies. The key and value returned
+should not be retained after the loop ends.
+
+```go title="Signature"
+func (c Cookie) All() iter.Seq2[string, string]
+```
+
 ### VisitAll
 
 **VisitAll** iterates over all cookies and executes a given function.
@@ -1275,6 +1284,15 @@ func (p PathParam) SetParamsWithStruct(v any)
 
 ```go title="Signature"
 func (p PathParam) DelParams(key ...string)
+```
+
+### All
+
+**All** returns an iterator over all path parameters. The key and value returned
+should not be retained after the loop ends.
+
+```go title="Signature"
+func (p PathParam) All() iter.Seq2[string, string]
 ```
 
 ### VisitAll
