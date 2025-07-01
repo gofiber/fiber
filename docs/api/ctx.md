@@ -1344,6 +1344,10 @@ c.Protocol() == "https"
 
 ### Stale
 
+When the client's cached response is **stale**, this method returns **true**. It
+is the logical complement of [`Fresh`](#fresh), which checks whether the cached
+representation is still valid.
+
 [https://expressjs.com/en/4x/api.html#req.stale](https://expressjs.com/en/4x/api.html#req.stale)
 
 ```go title="Signature"
