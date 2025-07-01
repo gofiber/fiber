@@ -11,12 +11,12 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/tinylib/msgp v1.3.0
 	github.com/valyala/bytebufferpool v1.0.0
-	github.com/valyala/fasthttp v1.62.0
+	github.com/valyala/fasthttp v1.63.0
 	golang.org/x/crypto v0.39.0
 )
 
 require (
-	github.com/andybalholm/brotli v1.1.1 // indirect
+	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/fxamacker/cbor/v2 v2.8.0 // direct
 	github.com/klauspost/compress v1.18.0 // indirect
