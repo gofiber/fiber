@@ -125,7 +125,11 @@ We **listen** to our users in [issues](https://github.com/gofiber/fiber/issues),
 ## ⚠️ Limitations
 
 - Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber v3 has been tested with Go version 1.24 or higher.
-- Fiber is not compatible with net/http interfaces. This means you will not be able to use projects like gqlgen, go-swagger, or any others which are part of the net/http ecosystem.
+- Fiber does not natively expose the `net/http` interfaces. When you need to integrate with that ecosystem, use the [adaptor middleware](https://docs.gofiber.io/next/middleware/adaptor/) to bridge handlers and middlewares between Fiber and `net/http`.
+
+### net/http compatibility
+
+Fiber can run side by side with the standard library by using the [adaptor middleware](https://docs.gofiber.io/next/middleware/adaptor/). It converts handlers and middlewares in both directions and even lets you mount a Fiber app in a `net/http` server.
 
 ## 👀 Examples
 
@@ -773,4 +777,4 @@ Fiber is an open-source project that runs on donations to pay the bills, e.g., o
 
 ## 🧾 License
 
-Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Contributors](https://github.com/gofiber/fiber/graphs/contributors). `Fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE). Official logo was created by [Vic Shóstak](https://github.com/koddr) and distributed under [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) license (CC BY-SA 4.0 International).
+Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Contributors](https://github.com/gofiber/fiber/graphs/contributors). `Fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/blob/main/LICENSE). Official logo was created by [Vic Shóstak](https://github.com/koddr) and distributed under [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) license (CC BY-SA 4.0 International).
