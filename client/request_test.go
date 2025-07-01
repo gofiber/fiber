@@ -1046,15 +1046,14 @@ func Test_Request_Patch(t *testing.T) {
 func Test_Request_Header_With_Server(t *testing.T) {
 	t.Parallel()
 	handler := func(c fiber.Ctx) error {
-		c.Request().Header.All()(func(key, value []byte) bool {
+		for key, value := range c.Request().Header.All() {
 			if k := string(key); k == "K1" || k == "K2" {
 				_, err := c.Write(key)
 				require.NoError(t, err)
 				_, err = c.Write(value)
 				require.NoError(t, err)
 			}
-			return true
-		})
+		}
 		return nil
 	}
 
