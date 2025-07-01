@@ -1884,7 +1884,7 @@ func (c *DefaultCtx) Subdomains(offset ...int) []string {
 	return parts[:len(parts)-o]
 }
 
-// Stale returns true when the client's cached response is considered stale.
+// Stale returns the inverse of Fresh, indicating if the client's cached response is considered stale.
 func (c *DefaultCtx) Stale() bool {
 	return !c.Fresh()
 }

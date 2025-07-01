@@ -325,7 +325,7 @@ type Ctx interface {
 	// If the offset is negative or exceeds the number of subdomains, an empty slice is returned.
 	// If the offset is zero every label (no trimming) is returned.
 	Subdomains(offset ...int) []string
-	// Stale returns true when the client's cached response is stale.
+// Stale returns the inverse of Fresh, indicating if the client's cached response is considered stale.
 	Stale() bool
 	// Status sets the HTTP status for the response.
 	// This method is chainable.
