@@ -16,7 +16,7 @@
    <img alt="Codecov" src="https://img.shields.io/codecov/c/github/gofiber/fiber?token=3Cr92CwaPQ&style=flat-square&logo=codecov&label=codecov">
  </a>
   <a href="https://github.com/gofiber/fiber/actions?query=workflow%3ATest">
-    <img src="https://img.shields.io/github/actions/workflow/status/gofiber/fiber/test.yml?branch=master&label=%F0%9F%A7%AA%20tests&style=flat-square&color=75C46B">
+    <img src="https://img.shields.io/github/actions/workflow/status/gofiber/fiber/test.yml?branch=main&label=%F0%9F%A7%AA%20tests&style=flat-square&color=75C46B">
   </a>
     <a href="https://docs.gofiber.io">
     <img src="https://img.shields.io/badge/%F0%9F%92%A1%20fiber-docs-00ACD7.svg?style=flat-square">
