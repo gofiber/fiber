@@ -830,13 +830,12 @@ func Test_Client_Header(t *testing.T) {
 
 func Test_Client_Header_With_Server(t *testing.T) {
 	handler := func(c fiber.Ctx) error {
-		c.Request().Header.All()(func(key, value []byte) bool {
+		for key, value := range c.Request().Header.All() {
 			if k := string(key); k == "K1" || k == "K2" {
 				_, _ = c.Write(key)   //nolint:errcheck // It is fine to ignore the error here
 				_, _ = c.Write(value) //nolint:errcheck // It is fine to ignore the error here
 			}
-			return true
-		})
+		}
 		return nil
 	}
 
@@ -1614,10 +1613,9 @@ func Test_Client_SetProxyURL(t *testing.T) {
 		req.SetRequestURI(c.BaseURL())
 		req.Header.SetMethod(fasthttp.MethodGet)
 
-		c.Request().Header.All()(func(key, value []byte) bool {
+		for key, value := range c.Request().Header.All() {
 			req.Header.AddBytesKV(key, value)
-			return true
-		})
+		}
 
 		req.Header.Set("isProxy", "true")
 

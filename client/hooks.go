@@ -89,14 +89,12 @@ func parserRequestURL(c *Client, req *Request) error {
 
 	args.Parse(hashSplit[0])
 
-	c.params.All()(func(key, value []byte) bool {
+	for key, value := range c.params.All() {
 		args.AddBytesKV(key, value)
-		return true
-	})
-	req.params.All()(func(key, value []byte) bool {
+	}
+	for key, value := range req.params.All() {
 		args.AddBytesKV(key, value)
-		return true
-	})
+	}
 
 	req.RawRequest.URI().SetQueryStringBytes(utils.CopyBytes(args.QueryString()))
 	req.RawRequest.URI().SetHash(hashSplit[1])
@@ -111,16 +109,14 @@ func parserRequestHeader(c *Client, req *Request) error {
 	req.RawRequest.Header.SetMethod(req.Method())
 
 	// Merge headers from the client.
-	c.header.All()(func(key, value []byte) bool {
+	for key, value := range c.header.All() {
 		req.RawRequest.Header.AddBytesKV(key, value)
-		return true
-	})
+	}
 
 	// Merge headers from the request.
-	req.header.All()(func(key, value []byte) bool {
+	for key, value := range req.header.All() {
 		req.RawRequest.Header.AddBytesKV(key, value)
-		return true
-	})
+	}
 
 	// Set Content-Type and Accept headers based on the request body type.
 	switch req.bodyType {
@@ -232,10 +228,12 @@ func parserRequestBodyFile(req *Request) error {
 	}()
 
 	// Add form data.
-	req.formData.All()(func(key, value []byte) bool {
+	for key, value := range req.formData.All() {
 		err = mw.WriteField(utils.UnsafeString(key), utils.UnsafeString(value))
-		return err == nil // Stop iteration on the first error
-	})
+		if err != nil {
+			break
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("write formdata error: %w", err)
 	}
@@ -287,16 +285,15 @@ func parserRequestBodyFile(req *Request) error {
 // parserResponseCookie parses the Set-Cookie headers from the response and stores them.
 func parserResponseCookie(c *Client, resp *Response, req *Request) error {
 	var err error
-	resp.RawResponse.Header.Cookies()(func(key, value []byte) bool {
+	for key, value := range resp.RawResponse.Header.Cookies() {
 		cookie := fasthttp.AcquireCookie()
 		if err = cookie.ParseBytes(value); err != nil {
 			fasthttp.ReleaseCookie(cookie)
-			return false // Stop iteration on first error
+			break
 		}
 		cookie.SetKeyBytes(key)
 		resp.cookie = append(resp.cookie, cookie)
-		return true
-	})
+	}
 
 	if err != nil {
 		return err

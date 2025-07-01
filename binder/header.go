@@ -19,12 +19,14 @@ func (*HeaderBinding) Name() string {
 func (b *HeaderBinding) Bind(req *fasthttp.Request, out any) error {
 	data := make(map[string][]string)
 	var err error
-	req.Header.All()(func(key, val []byte) bool {
+	for key, val := range req.Header.All() {
 		k := utils.UnsafeString(key)
 		v := utils.UnsafeString(val)
 		err = formatBindData(b.Name(), out, data, k, v, b.EnableSplitting, false)
-		return err == nil // Stop iteration on the first error
-	})
+		if err != nil {
+			break
+		}
+	}
 
 	if err != nil {
 		return err
