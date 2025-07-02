@@ -688,21 +688,26 @@ func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
 			return buf.Bytes(), nil
 		}
 	)
+	const input = "john=doe"
 	compressionTests := []struct {
 		compressWriter  func([]byte) ([]byte, error)
 		contentEncoding string
+		expectedBody    []byte
 	}{
 		{
 			contentEncoding: "gzip",
 			compressWriter:  compressGzip,
+			expectedBody:    []byte(input),
 		},
 		{
 			contentEncoding: "gzip,invalid",
 			compressWriter:  compressGzip,
+			expectedBody:    []byte(ErrUnsupportedMediaType.Error()),
 		},
 		{
 			contentEncoding: StrDeflate,
 			compressWriter:  compressDeflate,
+			expectedBody:    []byte(input),
 		},
 		{
 			contentEncoding: "gzip,deflate",
@@ -750,6 +755,7 @@ func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
 
 				return buf.Bytes(), nil
 			},
+			expectedBody: []byte(zlib.ErrHeader.Error()),
 		},
 	}
 
@@ -769,7 +775,7 @@ func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
 				_ = c.Body()
 			}
 
-			require.Equal(b, []byte(input), c.Body())
+			require.Equal(b, ct.expectedBody, c.Body())
 		})
 	}
 }
@@ -918,21 +924,26 @@ func Benchmark_Ctx_Body_With_Compression_Immutable(b *testing.B) {
 			return buf.Bytes(), nil
 		}
 	)
+	const input = "john=doe"
 	compressionTests := []struct {
 		compressWriter  func([]byte) ([]byte, error)
 		contentEncoding string
+		expectedBody    []byte
 	}{
 		{
 			contentEncoding: "gzip",
 			compressWriter:  compressGzip,
+			expectedBody:    []byte(input),
 		},
 		{
 			contentEncoding: "gzip,invalid",
 			compressWriter:  compressGzip,
+			expectedBody:    []byte(ErrUnsupportedMediaType.Error()),
 		},
 		{
 			contentEncoding: StrDeflate,
 			compressWriter:  compressDeflate,
+			expectedBody:    []byte(input),
 		},
 		{
 			contentEncoding: "gzip,deflate",
@@ -980,6 +991,7 @@ func Benchmark_Ctx_Body_With_Compression_Immutable(b *testing.B) {
 
 				return buf.Bytes(), nil
 			},
+			expectedBody: []byte(zlib.ErrHeader.Error()),
 		},
 	}
 
@@ -1000,7 +1012,7 @@ func Benchmark_Ctx_Body_With_Compression_Immutable(b *testing.B) {
 				_ = c.Body()
 			}
 
-			require.Equal(b, []byte(input), c.Body())
+			require.Equal(b, ct.expectedBody, c.Body())
 		})
 	}
 }
