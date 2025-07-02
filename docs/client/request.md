@@ -1214,14 +1214,6 @@ should not be retained after the loop ends.
 func (c Cookie) All() iter.Seq2[string, string]
 ```
 
-### VisitAll
-
-**VisitAll** iterates over all cookies and executes a given function.
-
-```go title="Signature"
-func (c Cookie) VisitAll(f func(key, val string))
-```
-
 ### Reset
 
 **Reset** clears all cookies.
@@ -1293,14 +1285,6 @@ should not be retained after the loop ends.
 
 ```go title="Signature"
 func (p PathParam) All() iter.Seq2[string, string]
-```
-
-### VisitAll
-
-**VisitAll** iterates over all path parameters and executes the provided function.
-
-```go title="Signature"
-func (p PathParam) VisitAll(f func(key, val string))
 ```
 
 ### Reset
