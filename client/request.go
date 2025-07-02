@@ -154,24 +154,19 @@ func (p *pair) Less(i, j int) bool {
 // Do not store references to returned values; make copies instead.
 func (r *Request) Headers() iter.Seq2[string, []string] {
 	return func(yield func(string, []string) bool) {
-		vals := r.header.Len()
-		p := pair{
-			k: make([]string, 0, vals),
-			v: make([]string, 0, vals),
-		}
-		for k, v := range r.header.All() {
-			p.k = append(p.k, utils.UnsafeString(k))
-			p.v = append(p.v, utils.UnsafeString(v))
-		}
-		sort.Sort(&p)
+		peekKeys := r.header.PeekKeys()
+		keys := make([][]byte, len(peekKeys))
+		copy(keys, peekKeys) // It is necessary to have immutable byte slice.
 
-		j := 0
-		for i := 0; i < vals; i++ {
-			if i == vals-1 || p.k[i] != p.k[i+1] {
-				if !yield(p.k[i], p.v[j:i+1]) {
-					break
-				}
-				j = i
+		for _, key := range keys {
+			vals := r.header.PeekAll(utils.UnsafeString(key))
+			valsStr := make([]string, len(vals))
+			for i, v := range vals {
+				valsStr[i] = utils.UnsafeString(v)
+			}
+
+			if !yield(utils.UnsafeString(key), valsStr) {
+				return
 			}
 		}
 	}
@@ -219,12 +214,12 @@ func (r *Request) Param(key string) []string {
 // Do not store references to returned values; make copies instead.
 func (r *Request) Params() iter.Seq2[string, []string] {
 	return func(yield func(string, []string) bool) {
-		vals := r.formData.Len()
+		vals := r.params.Len()
 		p := pair{
 			k: make([]string, 0, vals),
 			v: make([]string, 0, vals),
 		}
-		for k, v := range r.formData.All() {
+		for k, v := range r.params.All() {
 			p.k = append(p.k, utils.UnsafeString(k))
 			p.v = append(p.v, utils.UnsafeString(v))
 		}
@@ -236,7 +231,7 @@ func (r *Request) Params() iter.Seq2[string, []string] {
 				if !yield(p.k[i], p.v[j:i+1]) {
 					break
 				}
-				j = i
+				j = i + 1
 			}
 		}
 	}
@@ -471,7 +466,7 @@ func (r *Request) AllFormData() iter.Seq2[string, []string] {
 				if !yield(p.k[i], p.v[j:i+1]) {
 					break
 				}
-				j = i
+				j = i + 1
 			}
 		}
 	}
