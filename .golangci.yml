@@ -149,6 +149,8 @@ linters-settings:
         disabled: true
       - name: cognitive-complexity
         disabled: true
+      - name: confusing-results
+        disabled: true
       - name: comment-spacings
         arguments:
           - nolint

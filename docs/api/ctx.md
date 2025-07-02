@@ -504,6 +504,8 @@ app.Get("/", func(c fiber.Ctx) error {
 
 Fiber provides similar functions for the other accept headers.
 
+For `Accept-Language`, Fiber uses the [Basic Filtering](https://www.rfc-editor.org/rfc/rfc4647#section-3.3.1) algorithm. A language range matches an offer only if it exactly equals the tag or is a prefix followed by a hyphen. For example, the range `en` matches `en-US`, but `en-US` does not match `en`.
+
 ```go
 // Accept-Charset: utf-8, iso-8859-1;q=0.2
 // Accept-Encoding: gzip, compress;q=0.2
@@ -541,7 +543,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ### Body
 
-As per the header `Content-Encoding`, this method will try to perform a file decompression from the **body** bytes. In case no `Content-Encoding` header is sent, it will perform as [BodyRaw](#bodyraw).
+As per the header `Content-Encoding`, this method will try to perform a file decompression from the **body** bytes. In case no `Content-Encoding` header is sent (or when it is set to `identity`), it will perform as [BodyRaw](#bodyraw). If an unknown or unsupported encoding is encountered, the response status will be `415 Unsupported Media Type` or `501 Not Implemented`.
 
 ```go title="Signature"
 func (c fiber.Ctx) Body() []byte
@@ -1213,6 +1215,12 @@ The generic `Query` function supports returning the following data types based o
 ### Range
 
 Returns a struct containing the type and a slice of ranges.
+Only the canonical `bytes` unit is recognized and any optional
+whitespace around range specifiers will be ignored, as specified
+in RFC 9110.
+If none of the requested ranges are satisfiable, the method automatically
+sets the HTTP status code to **416 Range Not Satisfiable** and populates the
+`Content-Range` header with the current representation size.
 
 ```go title="Signature"
 func (c fiber.Ctx) Range(size int) (Range, error)
@@ -1336,6 +1344,10 @@ c.Protocol() == "https"
 
 ### Stale
 
+When the client's cached response is **stale**, this method returns **true**. It
+is the logical complement of [`Fresh`](#fresh), which checks whether the cached
+representation is still valid.
+
 [https://expressjs.com/en/4x/api.html#req.stale](https://expressjs.com/en/4x/api.html#req.stale)
 
 ```go title="Signature"
@@ -1344,21 +1356,33 @@ func (c fiber.Ctx) Stale() bool
 
 ### Subdomains
 
-Returns a slice of subdomains in the domain name of the request.
+Returns a slice with the host’s sub-domain labels. The dot-separated parts that precede the registrable domain (`example`) and the top-level domain (ex: `com`).
 
-The application property `subdomain offset`, which defaults to `2`, is used for determining the beginning of the subdomain segments.
+The `subdomain offset` (default `2`) tells Fiber how many labels, counting from the right-hand side, are always discarded.  
+Passing an `offset` argument lets you override that value for a single call.
 
-```go title="Signature"
+```go
 func (c fiber.Ctx) Subdomains(offset ...int) []string
 ```
 
-```go title="Example"
+| `offset` | Result                                 | Meaning                                               |
+|----------|----------------------------------------|-------------------------------------------------------|
+| *omitted* → **2** | trim 2 right-most labels             | drop the registrable domain **and** the TLD    |
+| `1` to `len(labels)-1` | trim exactly `offset` right-most labels | custom trimming of available labels    |
+| `>= len(labels)` | **return `[]`**                     | offset exceeds available labels → empty slice    |
+| `0`       | **return every label**                | keep the entire host unchanged                        |
+| `< 0`     | **return `[]`**                       | negative offsets are invalid → empty slice            |
+
+#### Example
+
+```go
 // Host: "tobi.ferrets.example.com"
 
 app.Get("/", func(c fiber.Ctx) error {
-  c.Subdomains()    // ["ferrets", "tobi"]
-  c.Subdomains(1)   // ["tobi"]
-
+  c.Subdomains()    // ["tobi", "ferrets"]
+  c.Subdomains(1)   // ["tobi", "ferrets", "example"]
+  c.Subdomains(0)   // ["tobi", "ferrets", "example", "com"]
+  c.Subdomains(-1)  // []
   // ...
 })
 ```
@@ -1431,6 +1455,18 @@ app.Get("/", func(c fiber.Ctx) error {
   // => Content-Type: image/png
 
   // ...
+})
+```
+
+Non-ASCII filenames are encoded using the `filename*` parameter as defined in
+[RFC 6266](https://www.rfc-editor.org/rfc/rfc6266) and
+[RFC 8187](https://www.rfc-editor.org/rfc/rfc8187):
+
+```go title="Example"
+app.Get("/non-ascii", func(c fiber.Ctx) error {
+  c.Attachment("./files/文件.txt")
+  // => Content-Disposition: attachment; filename="文件.txt"; filename*=UTF-8''%E6%96%87%E4%BB%B6.txt
+  return nil
 })
 ```
 
@@ -1586,8 +1622,8 @@ app.Get("/", func(c fiber.Ctx) error {
 
 Transfers the file from the given path as an `attachment`.
 
-Typically, browsers will prompt the user to download. By default, the [Content-Disposition](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition) header `filename=` parameter is the file path (_this typically appears in the browser dialog_).
-Override this default with the **filename** parameter.
+Typically, browsers will prompt the user to download. By default, the [Content-Disposition](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition) header `filename=` parameter is the file path (this typically appears in the browser dialog).
+Override this default with the `filename` parameter.
 
 ```go title="Signature"
 func (c fiber.Ctx) Download(file string, filename ...string) error
@@ -1600,6 +1636,17 @@ app.Get("/", func(c fiber.Ctx) error {
 
   return c.Download("./files/report-12345.pdf", "report.pdf")
   // => Download report.pdf
+})
+```
+
+For filenames containing non-ASCII characters, a `filename*` parameter is added
+according to [RFC 6266](https://www.rfc-editor.org/rfc/rfc6266) and
+[RFC 8187](https://www.rfc-editor.org/rfc/rfc8187):
+
+```go title="Example"
+app.Get("/non-ascii", func(c fiber.Ctx) error {
+  return c.Download("./files/文件.txt")
+  // => Content-Disposition: attachment; filename="文件.txt"; filename*=UTF-8''%E6%96%87%E4%BB%B6.txt
 })
 ```
 

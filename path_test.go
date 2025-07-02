@@ -58,7 +58,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		params: []string{"name"},
 	}, rp)
 
-	// heavy test with escaped charaters
+	// heavy test with escaped characters
 	rp = parseRoute("/v1/some/resource/name\\\\:customVerb?\\?/:param/*")
 	require.Equal(t, routeParser{
 		segs: []*routeSegment{

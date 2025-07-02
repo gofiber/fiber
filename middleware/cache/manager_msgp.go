@@ -78,10 +78,22 @@ func (z *item) DecodeMsg(dc *msgp.Reader) (err error) {
 				err = msgp.WrapError(err, "status")
 				return
 			}
+		case "age":
+			z.age, err = dc.ReadUint64()
+			if err != nil {
+				err = msgp.WrapError(err, "age")
+				return
+			}
 		case "exp":
 			z.exp, err = dc.ReadUint64()
 			if err != nil {
 				err = msgp.WrapError(err, "exp")
+				return
+			}
+		case "ttl":
+			z.ttl, err = dc.ReadUint64()
+			if err != nil {
+				err = msgp.WrapError(err, "ttl")
 				return
 			}
 		case "heapidx":
@@ -103,9 +115,9 @@ func (z *item) DecodeMsg(dc *msgp.Reader) (err error) {
 
 // EncodeMsg implements msgp.Encodable
 func (z *item) EncodeMsg(en *msgp.Writer) (err error) {
-	// map header, size 7
+	// map header, size 9
 	// write "headers"
-	err = en.Append(0x87, 0xa7, 0x68, 0x65, 0x61, 0x64, 0x65, 0x72, 0x73)
+	err = en.Append(0x89, 0xa7, 0x68, 0x65, 0x61, 0x64, 0x65, 0x72, 0x73)
 	if err != nil {
 		return
 	}
@@ -166,6 +178,16 @@ func (z *item) EncodeMsg(en *msgp.Writer) (err error) {
 		err = msgp.WrapError(err, "status")
 		return
 	}
+	// write "age"
+	err = en.Append(0xa3, 0x61, 0x67, 0x65)
+	if err != nil {
+		return
+	}
+	err = en.WriteUint64(z.age)
+	if err != nil {
+		err = msgp.WrapError(err, "age")
+		return
+	}
 	// write "exp"
 	err = en.Append(0xa3, 0x65, 0x78, 0x70)
 	if err != nil {
@@ -174,6 +196,16 @@ func (z *item) EncodeMsg(en *msgp.Writer) (err error) {
 	err = en.WriteUint64(z.exp)
 	if err != nil {
 		err = msgp.WrapError(err, "exp")
+		return
+	}
+	// write "ttl"
+	err = en.Append(0xa3, 0x74, 0x74, 0x6c)
+	if err != nil {
+		return
+	}
+	err = en.WriteUint64(z.ttl)
+	if err != nil {
+		err = msgp.WrapError(err, "ttl")
 		return
 	}
 	// write "heapidx"
@@ -192,9 +224,9 @@ func (z *item) EncodeMsg(en *msgp.Writer) (err error) {
 // MarshalMsg implements msgp.Marshaler
 func (z *item) MarshalMsg(b []byte) (o []byte, err error) {
 	o = msgp.Require(b, z.Msgsize())
-	// map header, size 7
+	// map header, size 9
 	// string "headers"
-	o = append(o, 0x87, 0xa7, 0x68, 0x65, 0x61, 0x64, 0x65, 0x72, 0x73)
+	o = append(o, 0x89, 0xa7, 0x68, 0x65, 0x61, 0x64, 0x65, 0x72, 0x73)
 	o = msgp.AppendMapHeader(o, uint32(len(z.headers)))
 	for za0001, za0002 := range z.headers {
 		o = msgp.AppendString(o, za0001)
@@ -212,9 +244,15 @@ func (z *item) MarshalMsg(b []byte) (o []byte, err error) {
 	// string "status"
 	o = append(o, 0xa6, 0x73, 0x74, 0x61, 0x74, 0x75, 0x73)
 	o = msgp.AppendInt(o, z.status)
+	// string "age"
+	o = append(o, 0xa3, 0x61, 0x67, 0x65)
+	o = msgp.AppendUint64(o, z.age)
 	// string "exp"
 	o = append(o, 0xa3, 0x65, 0x78, 0x70)
 	o = msgp.AppendUint64(o, z.exp)
+	// string "ttl"
+	o = append(o, 0xa3, 0x74, 0x74, 0x6c)
+	o = msgp.AppendUint64(o, z.ttl)
 	// string "heapidx"
 	o = append(o, 0xa7, 0x68, 0x65, 0x61, 0x70, 0x69, 0x64, 0x78)
 	o = msgp.AppendInt(o, z.heapidx)
@@ -293,10 +331,22 @@ func (z *item) UnmarshalMsg(bts []byte) (o []byte, err error) {
 				err = msgp.WrapError(err, "status")
 				return
 			}
+		case "age":
+			z.age, bts, err = msgp.ReadUint64Bytes(bts)
+			if err != nil {
+				err = msgp.WrapError(err, "age")
+				return
+			}
 		case "exp":
 			z.exp, bts, err = msgp.ReadUint64Bytes(bts)
 			if err != nil {
 				err = msgp.WrapError(err, "exp")
+				return
+			}
+		case "ttl":
+			z.ttl, bts, err = msgp.ReadUint64Bytes(bts)
+			if err != nil {
+				err = msgp.WrapError(err, "ttl")
 				return
 			}
 		case "heapidx":
@@ -326,6 +376,6 @@ func (z *item) Msgsize() (s int) {
 			s += msgp.StringPrefixSize + len(za0001) + msgp.BytesPrefixSize + len(za0002)
 		}
 	}
-	s += 5 + msgp.BytesPrefixSize + len(z.body) + 6 + msgp.BytesPrefixSize + len(z.ctype) + 10 + msgp.BytesPrefixSize + len(z.cencoding) + 7 + msgp.IntSize + 4 + msgp.Uint64Size + 8 + msgp.IntSize
+	s += 5 + msgp.BytesPrefixSize + len(z.body) + 6 + msgp.BytesPrefixSize + len(z.ctype) + 10 + msgp.BytesPrefixSize + len(z.cencoding) + 7 + msgp.IntSize + 4 + msgp.Uint64Size + 4 + msgp.Uint64Size + 4 + msgp.Uint64Size + 8 + msgp.IntSize
 	return
 }

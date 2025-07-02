@@ -20,15 +20,14 @@ func (b *CookieBinding) Bind(req *fasthttp.Request, out any) error {
 	data := make(map[string][]string)
 	var err error
 
-	req.Header.VisitAllCookie(func(key, val []byte) {
-		if err != nil {
-			return
-		}
-
+	for key, val := range req.Header.Cookies() {
 		k := utils.UnsafeString(key)
 		v := utils.UnsafeString(val)
 		err = formatBindData(b.Name(), out, data, k, v, b.EnableSplitting, false)
-	})
+		if err != nil {
+			break
+		}
+	}
 
 	if err != nil {
 		return err

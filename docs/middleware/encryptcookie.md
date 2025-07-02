@@ -13,7 +13,7 @@ This middleware encrypts cookie values and not the cookie names.
 ## Signatures
 
 ```go
-// Intitializes the middleware
+// Initializes the middleware
 func New(config ...Config) fiber.Handler
 
 // GenerateKey returns a random string of 16, 24, or 32 bytes.

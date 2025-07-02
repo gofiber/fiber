@@ -62,6 +62,14 @@ func Test_Utils_GetOffer(t *testing.T) {
 
 	require.Equal(t, "deflate", getOffer([]byte("gzip, deflate"), acceptsOffer, "deflate"))
 	require.Equal(t, "", getOffer([]byte("gzip, deflate;q=0"), acceptsOffer, "deflate"))
+
+	// Accept-Language Basic Filtering
+	require.True(t, acceptsLanguageOffer("en", "en-US", nil))
+	require.False(t, acceptsLanguageOffer("en-US", "en", nil))
+	require.True(t, acceptsLanguageOffer("EN", "en-us", nil))
+	require.False(t, acceptsLanguageOffer("en", "en_US", nil))
+	require.Equal(t, "en-US", getOffer([]byte("fr-CA;q=0.8, en-US"), acceptsLanguageOffer, "en-US", "fr-CA"))
+	require.Equal(t, "", getOffer([]byte("xx"), acceptsLanguageOffer, "en"))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Utils_GetOffer -benchmem -count=4
@@ -596,6 +604,8 @@ func Test_Utils_IsNoCache(t *testing.T) {
 		{string: "no-cache, public", bool: true},
 		{string: "Xno-cache, public", bool: false},
 		{string: "max-age=30, no-cache,public", bool: true},
+		{string: "NO-CACHE", bool: true},
+		{string: "public, NO-CACHE", bool: true},
 	}
 
 	for _, c := range testCases {
@@ -1314,4 +1324,98 @@ func Benchmark_GenericParseTypeBoolean(b *testing.B) {
 			}
 		})
 	}
+}
+
+func Test_UnescapeHeaderValue(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		in  string
+		out []byte
+		ok  bool
+	}{
+		{in: "abc", out: []byte("abc"), ok: true},
+		{in: "a\\\"b", out: []byte("a\"b"), ok: true},
+		{in: "c\\\\d", out: []byte("c\\d"), ok: true},
+		{in: "bad\\", ok: false},
+	}
+	for _, tc := range cases {
+		out, err := unescapeHeaderValue([]byte(tc.in))
+		if tc.ok {
+			require.NoError(t, err, tc.in)
+			require.Equal(t, tc.out, out, tc.in)
+		} else {
+			require.Error(t, err, tc.in)
+		}
+	}
+}
+
+func Test_JoinHeaderValues(t *testing.T) {
+	t.Parallel()
+	require.Nil(t, joinHeaderValues(nil))
+	require.Equal(t, []byte("a"), joinHeaderValues([][]byte{[]byte("a")}))
+	require.Equal(t, []byte("a,b"), joinHeaderValues([][]byte{[]byte("a"), []byte("b")}))
+}
+
+func Test_ParamsMatch_InvalidEscape(t *testing.T) {
+	t.Parallel()
+	match := paramsMatch(headerParams{"foo": []byte("bar")}, `;foo="bar\\`)
+	require.False(t, match)
+}
+
+func Test_MatchEtag(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, matchEtag(`"a"`, `"a"`))
+	require.True(t, matchEtag(`W/"a"`, `"a"`))
+	require.True(t, matchEtag(`"a"`, `W/"a"`))
+	require.False(t, matchEtag(`"a"`, `"b"`))
+	require.False(t, matchEtag(`a`, `"a"`))
+	require.False(t, matchEtag(`"a"`, `b`))
+}
+
+func Test_MatchEtagStrong(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, matchEtagStrong(`"a"`, `"a"`))
+	require.False(t, matchEtagStrong(`W/"a"`, `"a"`))
+	require.False(t, matchEtagStrong(`"a"`, `W/"a"`))
+	require.False(t, matchEtagStrong(`"a"`, `"b"`))
+	require.False(t, matchEtagStrong(`a`, `"a"`))
+	require.False(t, matchEtagStrong(`"a"`, `b`))
+}
+
+func Test_IsEtagStale(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	// Invalid/unquoted tags are considered a mismatch, so it's stale
+	require.True(t, app.isEtagStale(`"a"`, []byte("b")))
+	require.True(t, app.isEtagStale(`"a"`, []byte("a")))
+
+	// Matching tags, not stale
+	require.False(t, app.isEtagStale(`"a"`, []byte(`"a"`)))
+	require.False(t, app.isEtagStale(`W/"a"`, []byte(`"a"`)))
+
+	// List of tags, not stale
+	require.False(t, app.isEtagStale(`"c"`, []byte(`"a", "b", "c"`)))
+	require.False(t, app.isEtagStale(`W/"c"`, []byte(`"a", "b", "c"`)))
+	require.False(t, app.isEtagStale(`"c"`, []byte(`"a", "b", W/"c"`)))
+	require.False(t, app.isEtagStale(`"c"`, []byte(`"c", "b", "a"`)))
+	require.False(t, app.isEtagStale(`"c"`, []byte(`  "a",   "c"   , "b"  `)))
+
+	// List of tags, stale
+	require.True(t, app.isEtagStale(`"d"`, []byte(`"a", "b", "c"`)))
+	require.True(t, app.isEtagStale(`W/"d"`, []byte(`"a", "b", "c"`)))
+
+	// Wildcard
+	require.False(t, app.isEtagStale(`"a"`, []byte("*")))
+	require.False(t, app.isEtagStale(`"a"`, []byte(" *   ")))
+	require.False(t, app.isEtagStale(`W/"a"`, []byte("*")))
+
+	// Empty case
+	require.True(t, app.isEtagStale(`"a"`, []byte("")))
+	require.True(t, app.isEtagStale(`"a"`, []byte("   ")))
+
+	// Weak vs. weak
+	require.False(t, app.isEtagStale(`W/"a"`, []byte(`W/"a"`)))
 }

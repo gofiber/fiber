@@ -198,7 +198,7 @@ func (cj *CookieJar) parseCookiesFromResp(host, path []byte, resp *fasthttp.Resp
 	}
 
 	now := time.Now()
-	resp.Header.VisitAllCookie(func(key, value []byte) {
+	for key, value := range resp.Header.Cookies() {
 		created := false
 		c := searchCookieByKeyAndPath(key, path, cookies)
 		if c == nil {
@@ -211,7 +211,7 @@ func (cj *CookieJar) parseCookiesFromResp(host, path []byte, resp *fasthttp.Resp
 		} else if created {
 			fasthttp.ReleaseCookie(c)
 		}
-	})
+	}
 	cj.hostCookies[hostStr] = cookies
 }
 

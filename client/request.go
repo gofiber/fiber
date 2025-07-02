@@ -668,11 +668,11 @@ type Header struct {
 func (h *Header) PeekMultiple(key string) []string {
 	var res []string
 	byteKey := []byte(key)
-	h.RequestHeader.VisitAll(func(k, value []byte) {
+	for k, value := range h.RequestHeader.All() {
 		if bytes.EqualFold(k, byteKey) {
 			res = append(res, utils.UnsafeString(value))
 		}
-	})
+	}
 	return res
 }
 
@@ -701,9 +701,9 @@ type QueryParam struct {
 // Keys returns all keys from the query parameters.
 func (p *QueryParam) Keys() []string {
 	keys := make([]string, 0, p.Len())
-	p.VisitAll(func(key, _ []byte) {
+	for key := range p.All() {
 		keys = append(keys, utils.UnsafeString(key))
-	})
+	}
 	return slices.Compact(keys)
 }
 
@@ -837,9 +837,9 @@ type FormData struct {
 // Keys returns all keys from the form data.
 func (f *FormData) Keys() []string {
 	keys := make([]string, 0, f.Len())
-	f.VisitAll(func(key, _ []byte) {
+	for key := range f.All() {
 		keys = append(keys, utils.UnsafeString(key))
-	})
+	}
 	return slices.Compact(keys)
 }
 
