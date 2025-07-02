@@ -9,6 +9,7 @@ import (
 	"iter"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 
 	"github.com/gofiber/utils/v2"
@@ -61,16 +62,24 @@ func (r *Response) Header(key string) string {
 // Do not store references to returned values; make copies instead.
 func (r *Response) Headers() iter.Seq2[string, []string] {
 	return func(yield func(string, []string) bool) {
-		keys := r.RawResponse.Header.PeekKeys()
-		for _, key := range keys {
-			vals := r.RawResponse.Header.PeekAll(utils.UnsafeString(key))
-			valsStr := make([]string, len(vals))
-			for i, v := range vals {
-				valsStr[i] = utils.UnsafeString(v)
-			}
+		vals := r.RawResponse.Header.Len()
+		p := pair{
+			k: make([]string, 0, vals),
+			v: make([]string, 0, vals),
+		}
+		for k, v := range r.RawResponse.Header.All() {
+			p.k = append(p.k, utils.UnsafeString(k))
+			p.v = append(p.v, utils.UnsafeString(v))
+		}
+		sort.Sort(&p)
 
-			if !yield(utils.UnsafeString(key), valsStr) {
-				return
+		j := 0
+		for i := 0; i < vals; i++ {
+			if i == vals-1 || p.k[i] != p.k[i+1] {
+				if !yield(p.k[i], p.v[j:i+1]) {
+					break
+				}
+				j = i
 			}
 		}
 	}
