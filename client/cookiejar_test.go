@@ -209,4 +209,87 @@ func Test_CookieJarGetFromResponse(t *testing.T) {
 
 	cookies := cj.Get(uri)
 	require.Len(t, cookies, 3)
+	values := map[string]string{"key": "val", "k": "v", "kk": "vv"}
+	for _, c := range cookies {
+		k := string(c.Key())
+		v, ok := values[k]
+		require.True(t, ok)
+		require.Equal(t, v, string(c.Value()))
+		delete(values, k)
+	}
+	require.Empty(t, values)
+}
+
+func Test_CookieJar_HostPort(t *testing.T) {
+	t.Parallel()
+
+	jar := &CookieJar{}
+	uriSet := fasthttp.AcquireURI()
+	require.NoError(t, uriSet.Parse(nil, []byte("http://fasthttp.com:80/path")))
+
+	c := &fasthttp.Cookie{}
+	c.SetKey("k")
+	c.SetValue("v")
+	jar.Set(uriSet, c)
+
+	// retrieve using a different port to ensure port is ignored
+	uriGet := fasthttp.AcquireURI()
+	require.NoError(t, uriGet.Parse(nil, []byte("http://fasthttp.com:8080/path")))
+
+	cookies := jar.Get(uriGet)
+	require.Len(t, cookies, 1)
+	require.Equal(t, "k", string(cookies[0].Key()))
+	require.Equal(t, "v", string(cookies[0].Value()))
+	require.Equal(t, "fasthttp.com", string(cookies[0].Domain()))
+}
+
+func Test_CookieJar_Domain(t *testing.T) {
+	t.Parallel()
+
+	jar := &CookieJar{}
+
+	uri := fasthttp.AcquireURI()
+	require.NoError(t, uri.Parse(nil, []byte("http://sub.example.com/")))
+
+	c := &fasthttp.Cookie{}
+	c.SetKey("k")
+	c.SetValue("v")
+	c.SetDomain("example.com")
+
+	jar.Set(uri, c)
+
+	uri2 := fasthttp.AcquireURI()
+	require.NoError(t, uri2.Parse(nil, []byte("http://other.example.com/")))
+
+	cookies := jar.Get(uri2)
+	require.Len(t, cookies, 1)
+	require.Equal(t, "k", string(cookies[0].Key()))
+	require.Equal(t, "v", string(cookies[0].Value()))
+}
+
+func Test_CookieJar_Secure(t *testing.T) {
+	t.Parallel()
+
+	jar := &CookieJar{}
+
+	uriHTTP := fasthttp.AcquireURI()
+	require.NoError(t, uriHTTP.Parse(nil, []byte("http://example.com/")))
+
+	c := &fasthttp.Cookie{}
+	c.SetKey("k")
+	c.SetValue("v")
+	c.SetSecure(true)
+
+	jar.Set(uriHTTP, c)
+
+	cookies := jar.Get(uriHTTP)
+	require.Empty(t, cookies)
+
+	uriHTTPS := fasthttp.AcquireURI()
+	require.NoError(t, uriHTTPS.Parse(nil, []byte("https://example.com/")))
+
+	cookies = jar.Get(uriHTTPS)
+	require.Len(t, cookies, 1)
+	require.Equal(t, "k", string(cookies[0].Key()))
+	require.Equal(t, "v", string(cookies[0].Value()))
 }
