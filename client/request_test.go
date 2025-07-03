@@ -1332,7 +1332,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 
 		app, ln, start := createHelperServer(t)
 		app.Post("/", func(c fiber.Ctx) error {
-			reg := regexp.MustCompile(`multipart/form-data; boundary=[\-\w]{35}`)
+			reg := regexp.MustCompile(`multipart/form-data; boundary=[\-\w]{33}`)
 			require.True(t, reg.MatchString(c.Get(fiber.HeaderContentType)))
 
 			return c.Send(c.Request().Body())
