@@ -241,6 +241,24 @@ func (b *Bind) URI(out any) error {
 	return b.validateStruct(out)
 }
 
+// MsgPack binds the body string into the struct.
+func (b *Bind) MsgPack(out any) error {
+	bind := binder.GetFromThePool[*binder.MsgPackBinding](&binder.MsgPackBinderPool)
+	bind.MsgPackDecoder = b.ctx.App().Config().MsgPackDecoder
+
+	// Reset & put binder
+	defer func() {
+		bind.Reset()
+		binder.PutToThePool(&binder.MsgPackBinderPool, bind)
+	}()
+
+	if err := b.returnErr(bind.Bind(b.ctx.Body(), out)); err != nil {
+		return err
+	}
+
+	return b.validateStruct(out)
+}
+
 // Body binds the request body into the struct, map[string]string and map[string][]string.
 // It supports decoding the following content types based on the Content-Type header:
 // application/json, application/xml, application/x-www-form-urlencoded, multipart/form-data
@@ -263,6 +281,8 @@ func (b *Bind) Body(out any) error {
 	switch ctype {
 	case MIMEApplicationJSON:
 		return b.JSON(out)
+	case MIMEApplicationMsgPack:
+		return b.MsgPack(out)
 	case MIMETextXML, MIMEApplicationXML:
 		return b.XML(out)
 	case MIMEApplicationCBOR:

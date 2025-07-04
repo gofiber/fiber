@@ -1365,13 +1365,13 @@ Passing an `offset` argument lets you override that value for a single call.
 func (c fiber.Ctx) Subdomains(offset ...int) []string
 ```
 
-| `offset` | Result                                 | Meaning                                               |
-|----------|----------------------------------------|-------------------------------------------------------|
-| *omitted* → **2** | trim 2 right-most labels             | drop the registrable domain **and** the TLD    |
-| `1` to `len(labels)-1` | trim exactly `offset` right-most labels | custom trimming of available labels    |
-| `>= len(labels)` | **return `[]`**                     | offset exceeds available labels → empty slice    |
-| `0`       | **return every label**                | keep the entire host unchanged                        |
-| `< 0`     | **return `[]`**                       | negative offsets are invalid → empty slice            |
+| `offset`               | Result                                  | Meaning                                       |
+| ---------------------- | --------------------------------------- | --------------------------------------------- |
+| *omitted* → **2**      | trim 2 right-most labels                | drop the registrable domain **and** the TLD   |
+| `1` to `len(labels)-1` | trim exactly `offset` right-most labels | custom trimming of available labels           |
+| `>= len(labels)`       | **return `[]`**                         | offset exceeds available labels → empty slice |
+| `0`                    | **return every label**                  | keep the entire host unchanged                |
+| `< 0`                  | **return `[]`**                         | negative offsets are invalid → empty slice    |
 
 #### Example
 
@@ -1473,7 +1473,7 @@ app.Get("/non-ascii", func(c fiber.Ctx) error {
 ### AutoFormat
 
 Performs content-negotiation on the [Accept](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept) HTTP header. It uses [Accepts](ctx.md#accepts) to select a proper format.
-The supported content types are `text/html`, `text/plain`, `application/json`, and `application/xml`.
+The supported content types are `text/html`, `text/plain`, `application/json`, `application/vnd.msgpack`, and `application/xml`.
 For more flexible content negotiation, use [Format](ctx.md#format).
 
 :::info
@@ -1502,6 +1502,10 @@ app.Get("/", func(c fiber.Ctx) error {
   // Accept: application/json
   c.AutoFormat(user)
   // => {"Name":"John Doe"}
+
+  // Accept: application/vnd.msgpack
+  c.AutoFormat(user)
+  // => 82 a4 6e 61 6d 65 a4 6a 6f 68 6e a4 70 61 73 73 a3 64 6f 65
 
   // Accept: application/xml
   c.AutoFormat(user)
@@ -1834,6 +1838,57 @@ app.Get("/", func(c fiber.Ctx) error {
   return c.JSONP(data, "customFunc")
   // => customFunc({"Name": "Grame", "Age": 20})
 })
+```
+
+### MsgPack
+
+A Replacement for [JSON](#json) to effiently transfer data between microservices or between a client and a server. MsgPack is a binary format that is more compact than JSON, making it faster to serialize and deserialize.
+
+Converts any **interface** or **string** to MsgPack using the [shamaton/msgpack](https://pkg.go.dev/github.com/shamaton/msgpack/v2) package.
+
+:::info
+MsgPack also sets the content header to the `ctype` parameter. If no `ctype` is passed in, the header is set to `application/vnd.msgpack`.
+:::
+
+```go title="Signature"
+func (c fiber.Ctx) MsgPack(data any, ctype ...string) error
+```
+
+```go title="Example"
+type SomeStruct struct {
+  Name string
+  Age  uint8
+}
+
+app.Get("/msgpack", func(c fiber.Ctx) error {
+  // Create data struct:
+  data := SomeStruct{
+    Name: "Grame",
+    Age:  20,
+  }
+
+  return c.MsgPack(data)
+  // => Content-Type: application/vnd.msgpack
+  // => 82 A4 4E 61 6D 65 A5 47 72 61 6D 65 A3 41 67 65 14
+
+  return c.MsgPack(fiber.Map{
+    "name": "Grame",
+    "age":  20,
+  })
+  // => Content-Type: application/vnd.msgpack
+  // => 82 A4 6E 61 6D 65 A5 47 72 61 6D 65 A3 61 67 65 14
+
+  return c.MsgPack(fiber.Map{
+    "type":     "https://example.com/probs/out-of-credit",
+    "title":    "You do not have enough credit.",
+    "status":   403,
+    "detail":   "Your current balance is 30, but that costs 50.",
+    "instance": "/account/12345/msgs/abc",
+  }, "application/problem+msgpack")
+})
+
+// => Content-Type: application/problem+msgpack
+// 85 A4 74 79 70 65 D9 27 68 74 74 70 73 3A 2F 2F 65 78 61 6D 70 6C 65 2E 63 6F 6D 2F 70 72 6F 62 73 2F 6F 75 74 2D 6F 66 2D 63 72 65 64 69 74 A5 74 69 74 6C 65 BE 59 6F 75 20 64 6F 20 6E 6F 74 20 68 61 76 65 20 65 6E 6F 75 67 68 20 63 72 65 64 69 74 2E A6 73 74 61 74 75 73 CD 01 93 A6 64 65 74 61 69 6C D9 2E 59 6F 75 72 20 63 75 72 72 65 6E 74 20 62 61 6C 61 6E 63 65 20 69 73 20 33 30 2C 20 62 75 74 20 74 68 61 74 20 63 6F 73 74 73 20 35 30 2E A8 69 6E 73 74 61 6E 63 65 B7 2F 61 63 63 6F 75 6E 74 2F 31 32 33 34 35 2F 6D 73 67 73 2F 61 62 63
 ```
 
 ### CBOR

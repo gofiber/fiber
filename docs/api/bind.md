@@ -20,6 +20,7 @@ Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more..
   - [JSON](#json)
   - [XML](#xml)
   - [CBOR](#cbor)
+  - [MsgPack](#msgpack)
 - [Cookie](#cookie)
 - [Header](#header)
 - [Query](#query)
@@ -40,6 +41,7 @@ It is important to specify the correct struct tag based on the content type to b
 | `application/json`                  | `json`     |
 | `application/xml`                   | `xml`      |
 | `text/xml`                          | `xml`      |
+| `application/vnd.msgpack`           | `msgpack`  |
 
 ```go title="Signature"
 func (b *Bind) Body(out any) error
@@ -47,8 +49,8 @@ func (b *Bind) Body(out any) error
 
 ```go title="Example"
 type Person struct {
-    Name string `json:"name" xml:"name" form:"name"`
-    Pass string `json:"pass" xml:"pass" form:"pass"`
+    Name string `json:"name" xml:"name" form:"name" msgpack:"name"`
+    Pass string `json:"pass" xml:"pass" form:"pass" msgpack:"pass"`
 }
 
 app.Post("/", func(c fiber.Ctx) error {
@@ -70,6 +72,9 @@ Run tests with the following `curl` commands:
 ```bash
 # JSON
 curl -X POST -H "Content-Type: application/json" --data "{\"name\":\"john\",\"pass\":\"doe\"}" localhost:3000
+
+# MsgPack
+curl -X POST -H "Content-Type: application/vnd.msgpack" --data-binary $'\x82\xa4name\xa4john\xa4pass\xa3doe'  localhost:3000
 
 # XML
 curl -X POST -H "Content-Type: application/xml" --data "<login><name>john</name><pass>doe</pass></login>" localhost:3000
@@ -187,6 +192,44 @@ Run tests with the following `curl` command:
 
 ```bash
 curl -X POST -H "Content-Type: application/json" --data "{\"name\":\"john\",\"pass\":\"doe\"}" localhost:3000
+```
+
+### MsgPack
+
+Binds the request MsgPack body to a struct.
+
+It is important to specify the correct struct tag based on the content type to be parsed. For example, if you want to parse a Msgpack body with a field called `Pass`, you would use a struct field with `msgpack:"pass"`.
+
+> Our library uses [shamaton-msgpack](https://github.com/shamaton/msgpack) which uses `msgpack` struct tags by default. If you want to use other libraries, you may need to update the struct tags accordingly.
+
+```go title="Signature"
+func (b *Bind) MsgPack(out any) error
+```
+
+```go title="Example"
+type Person struct {
+    Name string `msgpack:"name"`
+    Pass string `msgpack:"pass"`
+}
+
+app.Post("/", func(c fiber.Ctx) error {
+    p := new(Person)
+    
+    if err := c.Bind().MsgPack(p); err != nil {
+        return err
+    }
+
+    log.Println(p.Name) // john
+    log.Println(p.Pass) // doe
+    
+    // ...
+})
+```
+
+Run tests with the following `curl` command:
+
+```bash
+curl -X POST -H "Content-Type: application/vnd.msgpack" --data-binary $'\x82\xa4name\xa4john\xa4pass\xa3doe'  localhost:3000
 ```
 
 ### XML

@@ -29,6 +29,7 @@ func Test_GetAndPutToThePool(t *testing.T) {
 	_ = GetFromThePool[*XMLBinding](&XMLBinderPool)
 	_ = GetFromThePool[*JSONBinding](&JSONBinderPool)
 	_ = GetFromThePool[*CBORBinding](&CBORBinderPool)
+	_ = GetFromThePool[*MsgPackBinding](&MsgPackBinderPool)
 }
 
 func Test_Binders_ErrorPaths(t *testing.T) {
