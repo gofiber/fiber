@@ -67,9 +67,7 @@ var CBORBinderPool = sync.Pool{
 
 var MsgPackBinderPool = sync.Pool{
 	New: func() any {
-		return &MsgPackBinding{
-			MsgPackDecoder: nil, // Set to nil initially, should be set before use
-		}
+		return &MsgPackBinding{}
 	},
 }
 
