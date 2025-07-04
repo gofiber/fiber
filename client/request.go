@@ -6,9 +6,11 @@ import (
 	"errors"
 	"io"
 	"iter"
+	"maps"
 	"path/filepath"
 	"reflect"
 	"slices"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -127,6 +129,24 @@ func (r *Request) Header(key string) []string {
 	return r.header.PeekMultiple(key)
 }
 
+type pair struct {
+	k []string
+	v []string
+}
+
+func (p *pair) Len() int {
+	return len(p.k)
+}
+
+func (p *pair) Swap(i, j int) {
+	p.k[i], p.k[j] = p.k[j], p.k[i]
+	p.v[i], p.v[j] = p.v[j], p.v[i]
+}
+
+func (p *pair) Less(i, j int) bool {
+	return p.k[i] < p.k[j]
+}
+
 // Headers returns an iterator over all headers in the Request.
 // Use maps.Collect() to gather them into a map if needed.
 //
@@ -194,21 +214,24 @@ func (r *Request) Param(key string) []string {
 // Do not store references to returned values; make copies instead.
 func (r *Request) Params() iter.Seq2[string, []string] {
 	return func(yield func(string, []string) bool) {
-		keys := r.params.Keys()
+		vals := r.params.Len()
+		p := pair{
+			k: make([]string, 0, vals),
+			v: make([]string, 0, vals),
+		}
+		for k, v := range r.params.All() {
+			p.k = append(p.k, utils.UnsafeString(k))
+			p.v = append(p.v, utils.UnsafeString(v))
+		}
+		sort.Sort(&p)
 
-		for _, key := range keys {
-			if key == "" {
-				continue
-			}
-
-			vals := r.params.PeekMulti(key)
-			valsStr := make([]string, len(vals))
-			for i, v := range vals {
-				valsStr[i] = utils.UnsafeString(v)
-			}
-
-			if !yield(key, valsStr) {
-				return
+		j := 0
+		for i := 0; i < vals; i++ {
+			if i == vals-1 || p.k[i] != p.k[i+1] {
+				if !yield(p.k[i], p.v[j:i+1]) {
+					break
+				}
+				j = i + 1
 			}
 		}
 	}
@@ -297,14 +320,7 @@ func (r *Request) Cookie(key string) string {
 // Cookies returns an iterator over all cookies.
 // Use maps.Collect() to gather them into a map if needed.
 func (r *Request) Cookies() iter.Seq2[string, string] {
-	return func(yield func(string, string) bool) {
-		for k, v := range *r.cookies {
-			res := yield(k, v)
-			if !res {
-				return
-			}
-		}
-	}
+	return r.cookies.All()
 }
 
 // SetCookie sets a single cookie, overriding any previously set value.
@@ -343,13 +359,7 @@ func (r *Request) PathParam(key string) string {
 // PathParams returns an iterator over all path parameters.
 // Use maps.Collect() to gather them into a map if needed.
 func (r *Request) PathParams() iter.Seq2[string, string] {
-	return func(yield func(string, string) bool) {
-		for k, v := range *r.path {
-			if !yield(k, v) {
-				return
-			}
-		}
-	}
+	return r.path.All()
 }
 
 // SetPathParam sets a single path parameter and value, overriding any previously set value.
@@ -439,21 +449,24 @@ func (r *Request) FormData(key string) []string {
 // Do not store references to returned values; make copies instead.
 func (r *Request) AllFormData() iter.Seq2[string, []string] {
 	return func(yield func(string, []string) bool) {
-		keys := r.formData.Keys()
+		vals := r.formData.Len()
+		p := pair{
+			k: make([]string, 0, vals),
+			v: make([]string, 0, vals),
+		}
+		for k, v := range r.formData.All() {
+			p.k = append(p.k, utils.UnsafeString(k))
+			p.v = append(p.v, utils.UnsafeString(v))
+		}
+		sort.Sort(&p)
 
-		for _, key := range keys {
-			if key == "" {
-				continue
-			}
-
-			vals := r.formData.PeekMulti(key)
-			valsStr := make([]string, len(vals))
-			for i, v := range vals {
-				valsStr[i] = utils.UnsafeString(v)
-			}
-
-			if !yield(key, valsStr) {
-				return
+		j := 0
+		for i := 0; i < vals; i++ {
+			if i == vals-1 || p.k[i] != p.k[i+1] {
+				if !yield(p.k[i], p.v[j:i+1]) {
+					break
+				}
+				j = i + 1
 			}
 		}
 	}
@@ -667,11 +680,11 @@ type Header struct {
 func (h *Header) PeekMultiple(key string) []string {
 	var res []string
 	byteKey := []byte(key)
-	h.RequestHeader.VisitAll(func(k, value []byte) {
+	for k, value := range h.RequestHeader.All() {
 		if bytes.EqualFold(k, byteKey) {
 			res = append(res, utils.UnsafeString(value))
 		}
-	})
+	}
 	return res
 }
 
@@ -700,9 +713,9 @@ type QueryParam struct {
 // Keys returns all keys from the query parameters.
 func (p *QueryParam) Keys() []string {
 	keys := make([]string, 0, p.Len())
-	p.VisitAll(func(key, _ []byte) {
+	for key := range p.All() {
 		keys = append(keys, utils.UnsafeString(key))
-	})
+	}
 	return slices.Compact(keys)
 }
 
@@ -748,9 +761,7 @@ func (c Cookie) SetCookie(key, val string) {
 
 // SetCookies sets multiple cookies from a map.
 func (c Cookie) SetCookies(m map[string]string) {
-	for k, v := range m {
-		c[k] = v
-	}
+	maps.Copy(c, m)
 }
 
 // SetCookiesWithStruct sets cookies from a struct.
@@ -766,18 +777,16 @@ func (c Cookie) DelCookies(key ...string) {
 	}
 }
 
-// VisitAll iterates through all cookies, calling f for each.
-func (c Cookie) VisitAll(f func(key, val string)) {
-	for k, v := range c {
-		f(k, v)
-	}
+// All returns an iterator over cookie key-value pairs.
+//
+// The returned key and value should not be retained after the iteration loop.
+func (c Cookie) All() iter.Seq2[string, string] {
+	return maps.All(c)
 }
 
 // Reset clears the Cookie map.
 func (c Cookie) Reset() {
-	for k := range c {
-		delete(c, k)
-	}
+	clear(c)
 }
 
 // PathParam is a map used to store path parameters.
@@ -800,9 +809,7 @@ func (p PathParam) SetParam(key, val string) {
 
 // SetParams sets multiple path parameters from a map.
 func (p PathParam) SetParams(m map[string]string) {
-	for k, v := range m {
-		p[k] = v
-	}
+	maps.Copy(p, m)
 }
 
 // SetParamsWithStruct sets multiple path parameters from a struct.
@@ -818,18 +825,16 @@ func (p PathParam) DelParams(key ...string) {
 	}
 }
 
-// VisitAll iterates through all path parameters, calling f for each.
-func (p PathParam) VisitAll(f func(key, val string)) {
-	for k, v := range p {
-		f(k, v)
-	}
+// All returns an iterator over path parameter key-value pairs.
+//
+// The returned key and value should not be retained after the iteration loop.
+func (p PathParam) All() iter.Seq2[string, string] {
+	return maps.All(p)
 }
 
 // Reset clears the PathParam map.
 func (p PathParam) Reset() {
-	for k := range p {
-		delete(p, k)
-	}
+	clear(p)
 }
 
 // FormData wraps fasthttp.Args for URL-encoded bodies and form data.
@@ -840,9 +845,9 @@ type FormData struct {
 // Keys returns all keys from the form data.
 func (f *FormData) Keys() []string {
 	keys := make([]string, 0, f.Len())
-	f.VisitAll(func(key, _ []byte) {
+	for key := range f.All() {
 		keys = append(keys, utils.UnsafeString(key))
-	})
+	}
 	return slices.Compact(keys)
 }
 
@@ -933,7 +938,7 @@ var requestPool = &sync.Pool{
 			params:     &QueryParam{Args: fasthttp.AcquireArgs()},
 			cookies:    &Cookie{},
 			path:       &PathParam{},
-			boundary:   "--FiberFormBoundary",
+			boundary:   "FiberFormBoundary",
 			formData:   &FormData{Args: fasthttp.AcquireArgs()},
 			files:      make([]*File, 0),
 			RawRequest: fasthttp.AcquireRequest(),

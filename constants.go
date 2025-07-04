@@ -24,11 +24,9 @@ const (
 	MIMEApplicationXML  = "application/xml"
 	MIMEApplicationJSON = "application/json"
 	MIMEApplicationCBOR = "application/cbor"
-	// Deprecated: use MIMETextJavaScript instead
-	MIMEApplicationJavaScript = "application/javascript"
-	MIMEApplicationForm       = "application/x-www-form-urlencoded"
-	MIMEOctetStream           = "application/octet-stream"
-	MIMEMultipartForm         = "multipart/form-data"
+	MIMEApplicationForm = "application/x-www-form-urlencoded"
+	MIMEOctetStream     = "application/octet-stream"
+	MIMEMultipartForm   = "multipart/form-data"
 
 	MIMETextXMLCharsetUTF8         = "text/xml; charset=utf-8"
 	MIMETextHTMLCharsetUTF8        = "text/html; charset=utf-8"
@@ -37,8 +35,6 @@ const (
 	MIMETextCSSCharsetUTF8         = "text/css; charset=utf-8"
 	MIMEApplicationXMLCharsetUTF8  = "application/xml; charset=utf-8"
 	MIMEApplicationJSONCharsetUTF8 = "application/json; charset=utf-8"
-	// Deprecated: use MIMETextJavaScriptCharsetUTF8 instead
-	MIMEApplicationJavaScriptCharsetUTF8 = "application/javascript; charset=utf-8"
 )
 
 // HTTP status codes were copied from net/http with the following updates:
@@ -293,15 +289,18 @@ const (
 	NetworkTCP  = "tcp"
 	NetworkTCP4 = "tcp4"
 	NetworkTCP6 = "tcp6"
+	NetworkUnix = "unix"
 )
 
 // Compression types
 const (
-	StrGzip    = "gzip"
-	StrBr      = "br"
-	StrDeflate = "deflate"
-	StrBrotli  = "brotli"
-	StrZstd    = "zstd"
+	StrGzip     = "gzip"
+	StrCompress = "compress"
+	StrIdentity = "identity"
+	StrBr       = "br"
+	StrDeflate  = "deflate"
+	StrBrotli   = "brotli"
+	StrZstd     = "zstd"
 )
 
 // Cookie SameSite

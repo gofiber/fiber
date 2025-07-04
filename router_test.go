@@ -901,11 +901,9 @@ func Benchmark_App_MethodNotAllowed(b *testing.B) {
 	c.Request.Header.SetMethod("DELETE")
 	c.URI().SetPath("/this/is/a/dummy/route/oke")
 
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		appHandler(c)
 	}
-	b.StopTimer()
 	require.Equal(b, 405, c.Response.StatusCode())
 	require.Equal(b, MethodGet, string(c.Response.Header.Peek("Allow")))
 	require.Equal(b, utils.StatusMessage(StatusMethodNotAllowed), string(c.Response.Body()))
@@ -924,8 +922,7 @@ func Benchmark_Router_NotFound(b *testing.B) {
 	c.Request.Header.SetMethod("DELETE")
 	c.URI().SetPath("/this/route/does/not/exist")
 
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		appHandler(c)
 	}
 	require.Equal(b, 404, c.Response.StatusCode())
@@ -943,9 +940,7 @@ func Benchmark_Router_Handler(b *testing.B) {
 	c.Request.Header.SetMethod("DELETE")
 	c.URI().SetPath("/user/keys/1337")
 
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		appHandler(c)
 	}
 }
@@ -963,9 +958,7 @@ func Benchmark_Router_Handler_Strict_Case(b *testing.B) {
 	c.Request.Header.SetMethod("DELETE")
 	c.URI().SetPath("/user/keys/1337")
 
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		appHandler(c)
 	}
 }
@@ -984,8 +977,7 @@ func Benchmark_Router_Chain(b *testing.B) {
 
 	c.Request.Header.SetMethod(MethodGet)
 	c.URI().SetPath("/")
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		appHandler(c)
 	}
 }
@@ -1008,15 +1000,14 @@ func Benchmark_Router_WithCompression(b *testing.B) {
 
 	c.Request.Header.SetMethod(MethodGet)
 	c.URI().SetPath("/")
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		appHandler(c)
 	}
 }
 
 // go test -run=^$ -bench=Benchmark_Startup_Process -benchmem -count=9
 func Benchmark_Startup_Process(b *testing.B) {
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		app := New()
 		registerDummyRoutes(app)
 		app.startupProcess()
@@ -1038,8 +1029,7 @@ func Benchmark_Router_Next(b *testing.B) {
 
 	c := app.AcquireCtx(request).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		c.indexRoute = -1
 		res, err = app.next(c)
 	}
@@ -1062,9 +1052,8 @@ func Benchmark_Router_Next_Default(b *testing.B) {
 	fctx.Request.SetRequestURI("/")
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		h(fctx)
 	}
 }
@@ -1106,9 +1095,8 @@ func Benchmark_Router_Next_Default_Immutable(b *testing.B) {
 	fctx.Request.SetRequestURI("/")
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		h(fctx)
 	}
 }
@@ -1156,8 +1144,7 @@ func Benchmark_Route_Match(b *testing.B) {
 	route.Handlers = append(route.Handlers, func(_ Ctx) error {
 		return nil
 	})
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		match = route.match("/user/keys/1337", "/user/keys/1337", &params)
 	}
 
@@ -1185,9 +1172,8 @@ func Benchmark_Route_Match_Star(b *testing.B) {
 	route.Handlers = append(route.Handlers, func(_ Ctx) error {
 		return nil
 	})
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		match = route.match("/user/keys/bla", "/user/keys/bla", &params)
 	}
 
@@ -1216,9 +1202,7 @@ func Benchmark_Route_Match_Root(b *testing.B) {
 		return nil
 	})
 
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		match = route.match("/", "/", &params)
 	}
 
@@ -1238,9 +1222,7 @@ func Benchmark_Router_Handler_CaseSensitive(b *testing.B) {
 	c.Request.Header.SetMethod("DELETE")
 	c.URI().SetPath("/user/keys/1337")
 
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		appHandler(c)
 	}
 }
@@ -1261,9 +1243,7 @@ func Benchmark_Router_Handler_Unescape(b *testing.B) {
 	c.Request.Header.SetMethod(MethodDelete)
 	c.URI().SetPath("/cr%C3%A9er")
 
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		c.URI().SetPath("/cr%C3%A9er")
 		appHandler(c)
 	}
@@ -1281,9 +1261,7 @@ func Benchmark_Router_Handler_StrictRouting(b *testing.B) {
 	c.Request.Header.SetMethod("DELETE")
 	c.URI().SetPath("/user/keys/1337")
 
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		appHandler(c)
 	}
 }
@@ -1299,17 +1277,18 @@ func Benchmark_Router_Github_API(b *testing.B) {
 	var err error
 
 	b.ResetTimer()
-
 	for i := range routesFixture.TestRoutes {
-		c.Request.Header.SetMethod(routesFixture.TestRoutes[i].Method)
-		for n := 0; n < b.N; n++ {
-			c.URI().SetPath(routesFixture.TestRoutes[i].Path)
+		b.RunParallel(func(pb *testing.PB) {
+			c.Request.Header.SetMethod(routesFixture.TestRoutes[i].Method)
+			for pb.Next() {
+				c.URI().SetPath(routesFixture.TestRoutes[i].Path)
 
-			ctx := app.AcquireCtx(c).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+				ctx := app.AcquireCtx(c).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
-			match, err = app.next(ctx)
-			app.ReleaseCtx(ctx)
-		}
+				match, err = app.next(ctx)
+				app.ReleaseCtx(ctx)
+			}
+		})
 
 		require.NoError(b, err)
 		require.True(b, match)
@@ -1324,4 +1303,120 @@ type testRoute struct {
 type routeJSON struct {
 	TestRoutes []testRoute `json:"test_routes"`
 	GithubAPI  []testRoute `json:"github_api"`
+}
+
+func newCustomApp() *App {
+	return NewWithCustomCtx(func(app *App) CustomCtx {
+		return &customCtx{DefaultCtx: *NewDefaultCtx(app)}
+	})
+}
+
+func Test_NextCustom_MethodNotAllowed(t *testing.T) {
+	t.Parallel()
+	app := newCustomApp()
+	app.Get("/foo", func(c Ctx) error { return c.SendStatus(StatusOK) })
+	useRoute := &Route{use: true, path: "/foo", Path: "/foo", routeParser: parseRoute("/foo")}
+	m := app.methodInt(MethodGet)
+	app.stack[m] = append([]*Route{useRoute}, app.stack[m]...)
+	app.routesRefreshed = true
+	app.RebuildTree()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodPost)
+	fctx.Request.SetRequestURI("/foo")
+
+	ctx := app.AcquireCtx(fctx)
+	defer app.ReleaseCtx(ctx)
+
+	matched, err := app.nextCustom(ctx)
+	require.False(t, matched)
+	require.ErrorIs(t, err, ErrMethodNotAllowed)
+	allow := string(ctx.Response().Header.Peek(HeaderAllow))
+	require.Equal(t, MethodGet, allow)
+}
+
+func Test_NextCustom_NotFound(t *testing.T) {
+	t.Parallel()
+	app := newCustomApp()
+	app.RebuildTree()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodGet)
+	fctx.Request.SetRequestURI("/not-exist")
+
+	ctx := app.AcquireCtx(fctx)
+	defer app.ReleaseCtx(ctx)
+
+	matched, err := app.nextCustom(ctx)
+	require.False(t, matched)
+	var e *Error
+	require.ErrorAs(t, err, &e)
+	require.Equal(t, StatusNotFound, e.Code)
+}
+
+func Test_RequestHandler_CustomCtx_NotImplemented(t *testing.T) {
+	t.Parallel()
+	app := newCustomApp()
+
+	h := app.Handler()
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod("UNKNOWN")
+	fctx.Request.SetRequestURI("/")
+
+	h(fctx)
+	require.Equal(t, StatusNotImplemented, fctx.Response.StatusCode())
+}
+
+func Test_NextCustom_Matched404(t *testing.T) {
+	t.Parallel()
+	app := newCustomApp()
+	app.RebuildTree()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodGet)
+	fctx.Request.SetRequestURI("/none")
+
+	ctx := app.AcquireCtx(fctx)
+	ctx.setMatched(true)
+	defer app.ReleaseCtx(ctx)
+
+	matched, err := app.nextCustom(ctx)
+	require.False(t, matched)
+	var e *Error
+	require.ErrorAs(t, err, &e)
+	require.Equal(t, StatusNotFound, e.Code)
+}
+
+func Test_NextCustom_SkipMountAndNoHandlers(t *testing.T) {
+	t.Parallel()
+	app := newCustomApp()
+	m := app.methodInt(MethodGet)
+	mountR := &Route{path: "/skip", Path: "/skip", routeParser: parseRoute("/skip"), mount: true}
+	empty := &Route{path: "/foo", Path: "/foo", routeParser: parseRoute("/foo")}
+	app.stack[m] = []*Route{mountR, empty}
+	app.routesRefreshed = true
+	app.RebuildTree()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodGet)
+	fctx.Request.SetRequestURI("/foo")
+
+	ctx := app.AcquireCtx(fctx)
+	defer app.ReleaseCtx(ctx)
+
+	matched, err := app.nextCustom(ctx)
+	require.True(t, matched)
+	require.NoError(t, err)
+	require.Equal(t, "/foo", ctx.Route().Path)
+}
+
+func Test_AddRoute_MergeHandlers(t *testing.T) {
+	t.Parallel()
+	app := New()
+	count := func(_ Ctx) error { return nil }
+	app.Get("/merge", count)
+	app.Get("/merge", count)
+
+	require.Len(t, app.stack[app.methodInt(MethodGet)], 1)
+	require.Len(t, app.stack[app.methodInt(MethodGet)][0].Handlers, 2)
 }

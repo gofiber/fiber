@@ -184,10 +184,9 @@ func Benchmark_Request_Headers(b *testing.B) {
 		"bar": {"foo"},
 	})
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		for k, v := range req.Headers() {
 			_ = k
 			_ = v
@@ -345,10 +344,9 @@ func Benchmark_Request_Params(b *testing.B) {
 		"bar": {"foo"},
 	})
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		for k, v := range req.Params() {
 			_ = k
 			_ = v
@@ -470,10 +468,9 @@ func Benchmark_Request_Cookies(b *testing.B) {
 		"bar": "foo",
 	})
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		for k, v := range req.Cookies() {
 			_ = k
 			_ = v
@@ -590,10 +587,9 @@ func Benchmark_Request_PathParams(b *testing.B) {
 		"bar": "foo",
 	})
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		for k, v := range req.PathParams() {
 			_ = k
 			_ = v
@@ -793,10 +789,9 @@ func Benchmark_Request_Files(b *testing.B) {
 	req.AddFile("../.github/index.html")
 	req.AddFiles(AcquireFile(SetFileName("tmp.txt")))
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		for k, v := range req.Files() {
 			_ = k
 			_ = v
@@ -1051,14 +1046,14 @@ func Test_Request_Patch(t *testing.T) {
 func Test_Request_Header_With_Server(t *testing.T) {
 	t.Parallel()
 	handler := func(c fiber.Ctx) error {
-		c.Request().Header.VisitAll(func(key, value []byte) {
+		for key, value := range c.Request().Header.All() {
 			if k := string(key); k == "K1" || k == "K2" {
 				_, err := c.Write(key)
 				require.NoError(t, err)
 				_, err = c.Write(value)
 				require.NoError(t, err)
 			}
-		})
+		}
 		return nil
 	}
 
@@ -1337,7 +1332,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 
 		app, ln, start := createHelperServer(t)
 		app.Post("/", func(c fiber.Ctx) error {
-			reg := regexp.MustCompile(`multipart/form-data; boundary=[\-\w]{35}`)
+			reg := regexp.MustCompile(`multipart/form-data; boundary=[\-\w]{33}`)
 			require.True(t, reg.MatchString(c.Get(fiber.HeaderContentType)))
 
 			return c.Send(c.Request().Body())
@@ -1400,10 +1395,9 @@ func Benchmark_Request_AllFormData(b *testing.B) {
 		"bar": {"foo"},
 	})
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		for k, v := range req.AllFormData() {
 			_ = k
 			_ = v
@@ -1717,9 +1711,8 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 		}
 
 		b.ReportAllocs()
-		b.StartTimer()
 
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			SetValWithStruct(p, "param", args{
 				unexport:  5,
 				TInt:      5,
@@ -1792,9 +1785,8 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 		}
 
 		b.ReportAllocs()
-		b.StartTimer()
 
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			SetValWithStruct(p, "param", &args{
 				TInt:      5,
 				TString:   "string",
@@ -1852,9 +1844,8 @@ func Benchmark_SetValWithStruct(b *testing.B) {
 		}
 
 		b.ReportAllocs()
-		b.StartTimer()
 
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			SetValWithStruct(p, "param", 5)
 		}
 

@@ -18,6 +18,8 @@ const (
 	passwordKey
 )
 
+const basicScheme = "Basic"
+
 // New creates a new middleware handler
 func New(config Config) fiber.Handler {
 	// Set default config
@@ -30,22 +32,30 @@ func New(config Config) fiber.Handler {
 			return c.Next()
 		}
 
-		// Get authorization header
-		auth := c.Get(fiber.HeaderAuthorization)
+		// Get authorization header and ensure it matches the Basic scheme
+		auth := utils.Trim(c.Get(fiber.HeaderAuthorization), ' ')
+		if auth == "" {
+			return cfg.Unauthorized(c)
+		}
 
-		// Check if the header contains content besides "basic".
-		if len(auth) <= 6 || !utils.EqualFold(auth[:6], "basic ") {
+		parts := strings.Fields(auth)
+		if len(parts) != 2 || !utils.EqualFold(parts[0], basicScheme) {
 			return cfg.Unauthorized(c)
 		}
 
 		// Decode the header contents
-		raw, err := base64.StdEncoding.DecodeString(auth[6:])
+		raw, err := base64.StdEncoding.DecodeString(parts[1])
 		if err != nil {
 			return cfg.Unauthorized(c)
 		}
 
 		// Get the credentials
-		creds := utils.UnsafeString(raw)
+		var creds string
+		if c.App().Config().Immutable {
+			creds = string(raw)
+		} else {
+			creds = utils.UnsafeString(raw)
+		}
 
 		// Check if the credentials are in the correct form
 		// which is "username:password".
@@ -60,7 +70,9 @@ func New(config Config) fiber.Handler {
 
 		if cfg.Authorizer(username, password) {
 			c.Locals(usernameKey, username)
-			c.Locals(passwordKey, password)
+			if cfg.StorePassword {
+				c.Locals(passwordKey, password)
+			}
 			return c.Next()
 		}
 

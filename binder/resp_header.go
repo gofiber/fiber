@@ -20,15 +20,14 @@ func (b *RespHeaderBinding) Bind(resp *fasthttp.Response, out any) error {
 	data := make(map[string][]string)
 	var err error
 
-	resp.Header.VisitAll(func(key, val []byte) {
-		if err != nil {
-			return
-		}
-
+	for key, val := range resp.Header.All() {
 		k := utils.UnsafeString(key)
 		v := utils.UnsafeString(val)
-		err = formatBindData(out, data, k, v, b.EnableSplitting, false)
-	})
+		err = formatBindData(b.Name(), out, data, k, v, b.EnableSplitting, false)
+		if err != nil {
+			break
+		}
+	}
 
 	if err != nil {
 		return err

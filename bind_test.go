@@ -149,7 +149,7 @@ func Test_Bind_Query_Map(t *testing.T) {
 
 	em := make(map[string][]int)
 	c.Request().URI().SetQueryString("")
-	require.ErrorIs(t, c.Bind().Query(&em), binder.ErrMapNotConvertable)
+	require.ErrorIs(t, c.Bind().Query(&em), binder.ErrMapNotConvertible)
 }
 
 // go test -run Test_Bind_Query_WithSetParserDecoder -v
@@ -666,8 +666,7 @@ func Benchmark_Bind_Query(b *testing.B) {
 	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
 	q := new(Query)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Query(q)
 	}
 
@@ -694,8 +693,7 @@ func Benchmark_Bind_Query_Default(b *testing.B) {
 	c.Request().URI().SetQueryString("")
 	q := new(Query)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		*q = Query{}
 		err = c.Bind().Query(q)
 	}
@@ -718,8 +716,7 @@ func Benchmark_Bind_Query_Map(b *testing.B) {
 	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
 	q := make(map[string][]string)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Query(&q)
 	}
 	require.NoError(b, err)
@@ -747,8 +744,7 @@ func Benchmark_Bind_Query_WithParseParam(b *testing.B) {
 	cq := new(CollectionQuery)
 
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Query(cq)
 	}
 
@@ -774,8 +770,7 @@ func Benchmark_Bind_Query_Comma(b *testing.B) {
 	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football")
 	q := new(Query)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Query(q)
 	}
 	require.NoError(b, err)
@@ -802,8 +797,7 @@ func Benchmark_Bind_Header(b *testing.B) {
 
 	q := new(ReqHeader)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Header(q)
 	}
 	require.NoError(b, err)
@@ -824,8 +818,7 @@ func Benchmark_Bind_Header_Map(b *testing.B) {
 
 	q := make(map[string][]string)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Header(&q)
 	}
 	require.NoError(b, err)
@@ -852,8 +845,7 @@ func Benchmark_Bind_RespHeader(b *testing.B) {
 
 	q := new(ReqHeader)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().RespHeader(q)
 	}
 	require.NoError(b, err)
@@ -874,8 +866,7 @@ func Benchmark_Bind_RespHeader_Map(b *testing.B) {
 
 	q := make(map[string][]string)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().RespHeader(&q)
 	}
 	require.NoError(b, err)
@@ -1136,9 +1127,8 @@ func Benchmark_Bind_Body_JSON(b *testing.B) {
 	d := new(Demo)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Body(d)
 	}
 	require.NoError(b, err)
@@ -1162,9 +1152,8 @@ func Benchmark_Bind_Body_XML(b *testing.B) {
 	d := new(Demo)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Body(d)
 	}
 	require.NoError(b, err)
@@ -1191,9 +1180,8 @@ func Benchmark_Bind_Body_CBOR(b *testing.B) {
 	d := new(Demo)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Body(d)
 	}
 	require.NoError(b, err)
@@ -1217,9 +1205,8 @@ func Benchmark_Bind_Body_Form(b *testing.B) {
 	d := new(Demo)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Body(d)
 	}
 	require.NoError(b, err)
@@ -1249,9 +1236,8 @@ func Benchmark_Bind_Body_MultipartForm(b *testing.B) {
 	d := new(Demo)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Body(d)
 	}
 
@@ -1292,9 +1278,8 @@ func Benchmark_Bind_Body_MultipartForm_Nested(b *testing.B) {
 	d := new(Demo)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Body(d)
 	}
 
@@ -1320,9 +1305,8 @@ func Benchmark_Bind_Body_Form_Map(b *testing.B) {
 	d := make(map[string]string)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Body(&d)
 	}
 	require.NoError(b, err)
@@ -1398,9 +1382,8 @@ func Benchmark_Bind_URI(b *testing.B) {
 	}
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().URI(&res)
 	}
 
@@ -1430,9 +1413,8 @@ func Benchmark_Bind_URI_Map(b *testing.B) {
 	res := make(map[string]string)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().URI(&res)
 	}
 
@@ -1711,9 +1693,8 @@ func Benchmark_Bind_Cookie(b *testing.B) {
 
 	q := new(Cookie)
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Cookie(q)
 	}
 	require.NoError(b, err)
@@ -1735,9 +1716,8 @@ func Benchmark_Bind_Cookie_Map(b *testing.B) {
 
 	q := make(map[string][]string)
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Cookie(&q)
 	}
 	require.NoError(b, err)
@@ -2100,8 +2080,7 @@ func BenchmarkBind_All(b *testing.B) {
 		ctx: c,
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		user := &User{}
 		config.ApplyTo(c)
 		if err := bind.All(user); err != nil {

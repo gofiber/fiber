@@ -66,25 +66,25 @@ type ListenConfig struct {
 	// Default: nil
 	AutoCertManager *autocert.Manager `json:"auto_cert_manager"`
 
-	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only)
+	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only), "unix" (Unix Domain Sockets)
 	// WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chosen.
 	//
 	// Default: NetworkTCP4
 	ListenerNetwork string `json:"listener_network"`
 
-	// CertFile is a path of certficate file.
+	// CertFile is a path of certificate file.
 	// If you want to use TLS, you have to enter this field.
 	//
 	// Default : ""
 	CertFile string `json:"cert_file"`
 
-	// KeyFile is a path of certficate's private key.
+	// KeyFile is a path of certificate's private key.
 	// If you want to use TLS, you have to enter this field.
 	//
 	// Default : ""
 	CertKeyFile string `json:"cert_key_file"`
 
-	// CertClientFile is a path of client certficate.
+	// CertClientFile is a path of client certificate.
 	// If you want to use mTLS, you have to enter this field.
 	//
 	// Default : ""
@@ -96,6 +96,11 @@ type ListenConfig struct {
 	//
 	// Default: 10 * time.Second
 	ShutdownTimeout time.Duration `json:"shutdown_timeout"`
+
+	// FileMode to set for Unix Domain Socket (ListenerNetwork must be "unix")
+	//
+	// Default: 0770
+	UnixSocketFileMode os.FileMode `json:"unix_socket_file_mode"`
 
 	// TLSMinVersion allows to set TLS minimum version.
 	//
@@ -123,15 +128,20 @@ type ListenConfig struct {
 func listenConfigDefault(config ...ListenConfig) ListenConfig {
 	if len(config) < 1 {
 		return ListenConfig{
-			TLSMinVersion:   tls.VersionTLS12,
-			ListenerNetwork: NetworkTCP4,
-			ShutdownTimeout: 10 * time.Second,
+			TLSMinVersion:      tls.VersionTLS12,
+			ListenerNetwork:    NetworkTCP4,
+			UnixSocketFileMode: 0o770,
+			ShutdownTimeout:    10 * time.Second,
 		}
 	}
 
 	cfg := config[0]
 	if cfg.ListenerNetwork == "" {
 		cfg.ListenerNetwork = NetworkTCP4
+	}
+
+	if cfg.UnixSocketFileMode == 0 {
+		cfg.UnixSocketFileMode = 0o770
 	}
 
 	if cfg.TLSMinVersion == 0 {
@@ -278,6 +288,13 @@ func (*App) createListener(addr string, tlsConfig *tls.Config, cfg ListenConfig)
 	var listener net.Listener
 	var err error
 
+	// Remove previously created socket, to make sure it's possible to listen
+	if cfg.ListenerNetwork == NetworkUnix {
+		if err = os.Remove(addr); err != nil && !os.IsNotExist(err) {
+			return nil, fmt.Errorf("unexpected error when trying to remove unix socket file %q: %w", addr, err)
+		}
+	}
+
 	if tlsConfig != nil {
 		listener, err = tls.Listen(cfg.ListenerNetwork, addr, tlsConfig)
 	} else {
@@ -288,6 +305,12 @@ func (*App) createListener(addr string, tlsConfig *tls.Config, cfg ListenConfig)
 	if err != nil {
 		// Wrap the error from tls.Listen/net.Listen
 		return nil, fmt.Errorf("failed to listen: %w", err)
+	}
+
+	if cfg.ListenerNetwork == NetworkUnix {
+		if err = os.Chmod(addr, cfg.UnixSocketFileMode); err != nil {
+			return nil, fmt.Errorf("cannot chmod %#o for %q: %w", cfg.UnixSocketFileMode, addr, err)
+		}
 	}
 
 	if cfg.ListenerAddrFunc != nil {
@@ -367,7 +390,7 @@ func (app *App) startupMessage(addr string, isTLS bool, pids string, cfg ListenC
 	}
 
 	fmt.Fprintf(out, "%s\n", fmt.Sprintf(figletFiberText, colors.Red+"v"+Version+colors.Reset))
-	fmt.Fprintf(out, strings.Repeat("-", 50)+"\n")
+	fmt.Fprintln(out, strings.Repeat("-", 50))
 
 	if host == "0.0.0.0" {
 		fmt.Fprintf(out,

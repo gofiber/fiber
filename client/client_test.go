@@ -830,12 +830,12 @@ func Test_Client_Header(t *testing.T) {
 
 func Test_Client_Header_With_Server(t *testing.T) {
 	handler := func(c fiber.Ctx) error {
-		c.Request().Header.VisitAll(func(key, value []byte) {
+		for key, value := range c.Request().Header.All() {
 			if k := string(key); k == "K1" || k == "K2" {
 				_, _ = c.Write(key)   //nolint:errcheck // It is fine to ignore the error here
 				_, _ = c.Write(value) //nolint:errcheck // It is fine to ignore the error here
 			}
-		})
+		}
 		return nil
 	}
 
@@ -1613,9 +1613,9 @@ func Test_Client_SetProxyURL(t *testing.T) {
 		req.SetRequestURI(c.BaseURL())
 		req.Header.SetMethod(fasthttp.MethodGet)
 
-		c.Request().Header.VisitAll(func(key, value []byte) {
+		for key, value := range c.Request().Header.All() {
 			req.Header.AddBytesKV(key, value)
-		})
+		}
 
 		req.Header.Set("isProxy", "true")
 
@@ -1699,12 +1699,11 @@ func Benchmark_Client_Request(b *testing.B) {
 
 	client := New().SetDial(dial)
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
 	var err error
 	var resp *Response
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		resp, err = client.Get("http://example.com")
 		resp.Close()
 	}

@@ -2,6 +2,7 @@ package basicauth
 
 import (
 	"crypto/subtle"
+	"strconv"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
@@ -40,15 +41,30 @@ type Config struct {
 	//
 	// Optional. Default: "Restricted".
 	Realm string
+
+	// Charset defines the value for the charset parameter in the
+	// WWW-Authenticate header. According to RFC 7617 clients can use
+	// this value to interpret credentials correctly.
+	//
+	// Optional. Default: "UTF-8".
+	Charset string
+
+	// StorePassword determines if the plaintext password should be stored
+	// in the context for later retrieval via PasswordFromContext.
+	//
+	// Optional. Default: false.
+	StorePassword bool
 }
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next:         nil,
-	Users:        map[string]string{},
-	Realm:        "Restricted",
-	Authorizer:   nil,
-	Unauthorized: nil,
+	Next:          nil,
+	Users:         map[string]string{},
+	Realm:         "Restricted",
+	Charset:       "UTF-8",
+	StorePassword: false,
+	Authorizer:    nil,
+	Unauthorized:  nil,
 }
 
 // Helper function to set default values
@@ -71,6 +87,9 @@ func configDefault(config ...Config) Config {
 	if cfg.Realm == "" {
 		cfg.Realm = ConfigDefault.Realm
 	}
+	if cfg.Charset == "" {
+		cfg.Charset = ConfigDefault.Charset
+	}
 	if cfg.Authorizer == nil {
 		cfg.Authorizer = func(user, pass string) bool {
 			userPwd, exist := cfg.Users[user]
@@ -79,7 +98,13 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.Unauthorized == nil {
 		cfg.Unauthorized = func(c fiber.Ctx) error {
-			c.Set(fiber.HeaderWWWAuthenticate, "basic realm="+cfg.Realm)
+			header := "Basic realm=" + strconv.Quote(cfg.Realm)
+			if cfg.Charset != "" {
+				header += ", charset=" + strconv.Quote(cfg.Charset)
+			}
+			c.Set(fiber.HeaderWWWAuthenticate, header)
+			c.Set(fiber.HeaderCacheControl, "no-store")
+			c.Set(fiber.HeaderVary, fiber.HeaderAuthorization)
 			return c.SendStatus(fiber.StatusUnauthorized)
 		}
 	}

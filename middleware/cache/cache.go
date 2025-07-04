@@ -12,6 +12,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
+	"github.com/valyala/fasthttp"
 )
 
 // timestampUpdatePeriod is the period which is used to check the cache expiration.
@@ -59,7 +60,6 @@ var cacheableStatusCodes = map[int]bool{
 	fiber.StatusMethodNotAllowed:            true,
 	fiber.StatusGone:                        true,
 	fiber.StatusRequestURITooLong:           true,
-	fiber.StatusTeapot:                      true,
 	fiber.StatusNotImplemented:              true,
 }
 
@@ -162,13 +162,23 @@ func New(config ...Config) fiber.Handler {
 				for k, v := range e.headers {
 					c.Response().Header.SetBytesV(k, v)
 				}
-				// Set Cache-Control header if enabled
-				if cfg.CacheControl {
+				// Set Cache-Control header if enabled and not already set
+				if cfg.CacheControl && len(c.Response().Header.Peek(fiber.HeaderCacheControl)) == 0 {
 					maxAge := strconv.FormatUint(e.exp-ts, 10)
 					c.Set(fiber.HeaderCacheControl, "public, max-age="+maxAge)
 				}
 
+				// RFC-compliant Age header (RFC 9111)
+				resident := e.ttl - (e.exp - ts)
+				age := strconv.FormatUint(e.age+resident, 10)
+				c.Response().Header.Set(fiber.HeaderAge, age)
+
 				c.Set(cfg.CacheHeader, cacheHit)
+
+				// release item allocated from storage
+				if cfg.Storage != nil {
+					manager.release(e)
+				}
 
 				mux.Unlock()
 
@@ -183,6 +193,12 @@ func New(config ...Config) fiber.Handler {
 		// Continue stack, return err to Fiber if exist
 		if err := c.Next(); err != nil {
 			return err
+		}
+
+		// Respect server cache-control: no-store
+		if strings.Contains(utils.ToLower(string(c.Response().Header.Peek(fiber.HeaderCacheControl))), noStore) {
+			c.Set(cfg.CacheHeader, cacheUnreachable)
+			return nil
 		}
 
 		// Don't cache response if status code is not cacheable
@@ -224,28 +240,40 @@ func New(config ...Config) fiber.Handler {
 		e.ctype = utils.CopyBytes(c.Response().Header.ContentType())
 		e.cencoding = utils.CopyBytes(c.Response().Header.Peek(fiber.HeaderContentEncoding))
 
+		ageVal := uint64(0)
+		if b := c.Response().Header.Peek(fiber.HeaderAge); len(b) > 0 {
+			if v, err := fasthttp.ParseUint(b); err == nil {
+				ageVal = uint64(v) //nolint:gosec //Not a concern
+			}
+		} else {
+			c.Response().Header.Set(fiber.HeaderAge, "0")
+		}
+		e.age = ageVal
+
 		// Store all response headers
 		// (more: https://datatracker.ietf.org/doc/html/rfc2616#section-13.5.1)
 		if cfg.StoreResponseHeaders {
 			e.headers = make(map[string][]byte)
-			c.Response().Header.VisitAll(
-				func(key, value []byte) {
-					// create real copy
-					keyS := string(key)
-					if _, ok := ignoreHeaders[keyS]; !ok {
-						e.headers[keyS] = utils.CopyBytes(value)
-					}
-				},
-			)
+			for key, value := range c.Response().Header.All() {
+				// create real copy
+				keyS := string(key)
+				if _, ok := ignoreHeaders[keyS]; !ok {
+					e.headers[keyS] = utils.CopyBytes(value)
+				}
+			}
 		}
 
 		// default cache expiration
 		expiration := cfg.Expiration
+		if v, ok := parseMaxAge(string(c.Response().Header.Peek(fiber.HeaderCacheControl))); ok {
+			expiration = v
+		}
 		// Calculate expiration by response header or other setting
 		if cfg.ExpirationGenerator != nil {
 			expiration = cfg.ExpirationGenerator(c, &cfg)
 		}
 		e.exp = ts + uint64(expiration.Seconds())
+		e.ttl = uint64(expiration.Seconds())
 
 		// Store entry in heap
 		if cfg.MaxBytes > 0 {
@@ -274,5 +302,36 @@ func New(config ...Config) fiber.Handler {
 
 // Check if request has directive
 func hasRequestDirective(c fiber.Ctx, directive string) bool {
-	return strings.Contains(c.Get(fiber.HeaderCacheControl), directive)
+	cc := c.Get(fiber.HeaderCacheControl)
+	ccLen := len(cc)
+	dirLen := len(directive)
+	for i := 0; i <= ccLen-dirLen; i++ {
+		if !utils.EqualFold(cc[i:i+dirLen], directive) {
+			continue
+		}
+		if i > 0 {
+			prev := cc[i-1]
+			if prev != ' ' && prev != ',' {
+				continue
+			}
+		}
+		if i+dirLen == ccLen || cc[i+dirLen] == ',' {
+			return true
+		}
+	}
+
+	return false
+}
+
+// parseMaxAge extracts the max-age directive from a Cache-Control header.
+func parseMaxAge(cc string) (time.Duration, bool) {
+	for _, part := range strings.Split(cc, ",") {
+		part = utils.Trim(utils.ToLower(part), ' ')
+		if strings.HasPrefix(part, "max-age=") {
+			if sec, err := strconv.Atoi(strings.TrimPrefix(part, "max-age=")); err == nil {
+				return time.Duration(sec) * time.Second, true
+			}
+		}
+	}
+	return 0, false
 }

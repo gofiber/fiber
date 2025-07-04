@@ -39,6 +39,8 @@ type acceptedType struct {
 	order       int
 }
 
+const noCacheValue = "no-cache"
+
 type headerParams map[string][]byte
 
 // getTLSConfig returns a net listener's tls config
@@ -93,7 +95,8 @@ func readContent(rf io.ReaderFrom, name string) (int64, error) {
 	return 0, nil
 }
 
-// quoteString escape special characters in a given string
+// quoteString escapes special characters using percent-encoding.
+// Non-ASCII bytes are encoded as well so the result is always ASCII.
 func (app *App) quoteString(raw string) string {
 	bb := bytebufferpool.Get()
 	quoted := app.getString(fasthttp.AppendQuotedArg(bb.B, app.getBytes(raw)))
@@ -101,93 +104,48 @@ func (app *App) quoteString(raw string) string {
 	return quoted
 }
 
-// Scan stack if other methods match the request
-func (app *App) methodExist(c *DefaultCtx) bool {
-	var exists bool
+// quoteRawString escapes only characters that need quoting according to
+// https://www.rfc-editor.org/rfc/rfc9110#section-5.6.4 so the result may
+// contain non-ASCII bytes.
+func (app *App) quoteRawString(raw string) string {
+	const hex = "0123456789ABCDEF"
+	bb := bytebufferpool.Get()
+	defer bytebufferpool.Put(bb)
 
-	methods := app.config.RequestMethods
-	for i := 0; i < len(methods); i++ {
-		// Skip original method
-		if c.getMethodInt() == i {
-			continue
-		}
-		// Reset stack index
-		c.setIndexRoute(-1)
-
-		tree, ok := c.App().treeStack[i][c.treePathHash]
-		if !ok {
-			tree = c.App().treeStack[i][0]
-		}
-		// Get stack length
-		lenr := len(tree) - 1
-		// Loop over the route stack starting from previous index
-		for c.getIndexRoute() < lenr {
-			// Increment route index
-			c.setIndexRoute(c.getIndexRoute() + 1)
-			// Get *Route
-			route := tree[c.getIndexRoute()]
-			// Skip use routes
-			if route.use {
-				continue
-			}
-			// Check if it matches the request path
-			match := route.match(c.getDetectionPath(), c.Path(), c.getValues())
-			// No match, next route
-			if match {
-				// We matched
-				exists = true
-				// Add method to Allow header
-				c.Append(HeaderAllow, methods[i])
-				// Break stack loop
-				break
-			}
+	for i := 0; i < len(raw); i++ {
+		c := raw[i]
+		switch {
+		case c == '\\' || c == '"':
+			// escape backslash and quote
+			bb.B = append(bb.B, '\\', c)
+		case c == '\n':
+			bb.B = append(bb.B, '\\', 'n')
+		case c == '\r':
+			bb.B = append(bb.B, '\\', 'r')
+		case c < 0x20 || c == 0x7f:
+			// percent-encode control and DEL
+			bb.B = append(bb.B,
+				'%',
+				hex[c>>4],
+				hex[c&0x0f],
+			)
+		default:
+			bb.B = append(bb.B, c)
 		}
 	}
-	return exists
+
+	return app.getString(bb.B)
 }
 
-// Scan stack if other methods match the request
-func (app *App) methodExistCustom(c CustomCtx) bool {
-	var exists bool
-	methods := app.config.RequestMethods
-	for i := 0; i < len(methods); i++ {
-		// Skip original method
-		if c.getMethodInt() == i {
-			continue
-		}
-		// Reset stack index
-		c.setIndexRoute(-1)
-
-		tree, ok := c.App().treeStack[i][c.getTreePathHash()]
-		if !ok {
-			tree = c.App().treeStack[i][0]
-		}
-		// Get stack length
-		lenr := len(tree) - 1
-		// Loop over the route stack starting from previous index
-		for c.getIndexRoute() < lenr {
-			// Increment route index
-			c.setIndexRoute(c.getIndexRoute() + 1)
-			// Get *Route
-			route := tree[c.getIndexRoute()]
-			// Skip use routes
-			if route.use {
-				continue
-			}
-			// Check if it matches the request path
-			match := route.match(c.getDetectionPath(), c.Path(), c.getValues())
-			// No match, next route
-			if match {
-				// We matched
-				exists = true
-				// Add method to Allow header
-				c.Append(HeaderAllow, methods[i])
-				// Break stack loop
-				break
-			}
+// isASCII reports whether the provided string contains only ASCII characters.
+// See: https://www.rfc-editor.org/rfc/rfc0020
+func (*App) isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] > 127 {
+			return false
 		}
 	}
-	return exists
+	return true
 }
 
 // uniqueRouteStack drop all not unique routes from the slice
@@ -224,16 +182,32 @@ func getGroupPath(prefix, path string) string {
 	return utils.TrimRight(prefix, '/') + path
 }
 
-// acceptsOffer This function determines if an offer matches a given specification.
-// It checks if the specification ends with a '*' or if the offer has the prefix of the specification.
+// acceptsOffer determines if an offer matches a given specification.
+// It supports a trailing '*' wildcard and performs case-insensitive exact matching.
 // Returns true if the offer matches the specification, false otherwise.
 func acceptsOffer(spec, offer string, _ headerParams) bool {
 	if len(spec) >= 1 && spec[len(spec)-1] == '*' {
 		return true
-	} else if strings.HasPrefix(spec, offer) {
+	}
+
+	return utils.EqualFold(spec, offer)
+}
+
+// acceptsLanguageOffer determines if a language tag offer matches a range
+// according to RFC 4647 Basic Filtering.
+// A match occurs if the range exactly equals the tag or is a prefix of the tag
+// followed by a hyphen. The comparison is case-insensitive. A trailing '*'
+// wildcard in the range matches any tag.
+func acceptsLanguageOffer(spec, offer string, _ headerParams) bool {
+	if len(spec) >= 1 && spec[len(spec)-1] == '*' {
 		return true
 	}
-	return false
+
+	if utils.EqualFold(spec, offer) {
+		return true
+	}
+
+	return len(offer) > len(spec) && utils.EqualFold(offer[:len(spec)], spec) && offer[len(spec)] == '-'
 }
 
 // acceptsOfferType This function determines if an offer type matches a given specification.
@@ -299,7 +273,12 @@ func paramsMatch(specParamStr headerParams, offerParams string) bool {
 		fasthttp.VisitHeaderParams(utils.UnsafeBytes(offerParams), func(key, value []byte) bool {
 			if utils.EqualFold(specParam, utils.UnsafeString(key)) {
 				foundParam = true
-				allSpecParamsMatch = utils.EqualFold(specVal, value)
+				unescaped, err := unescapeHeaderValue(value)
+				if err != nil {
+					allSpecParamsMatch = false
+					return false
+				}
+				allSpecParamsMatch = utils.EqualFold(specVal, unescaped)
 				return false
 			}
 			return true
@@ -340,6 +319,45 @@ func getSplicedStrList(headerValue string, dst []string) []string {
 	dst = append(dst, headerValue[segmentStart:])
 
 	return dst
+}
+
+func joinHeaderValues(headers [][]byte) []byte {
+	switch len(headers) {
+	case 0:
+		return nil
+	case 1:
+		return headers[0]
+	default:
+		return bytes.Join(headers, []byte{','})
+	}
+}
+
+func unescapeHeaderValue(v []byte) ([]byte, error) {
+	if bytes.IndexByte(v, '\\') == -1 {
+		return v, nil
+	}
+	res := make([]byte, 0, len(v))
+	escaping := false
+	for i, c := range v {
+		if escaping {
+			res = append(res, c)
+			escaping = false
+			continue
+		}
+		if c == '\\' {
+			// invalid escape at end of string
+			if i == len(v)-1 {
+				return nil, errors.New("invalid escape sequence")
+			}
+			escaping = true
+			continue
+		}
+		res = append(res, c)
+	}
+	if escaping {
+		return nil, errors.New("invalid escape sequence")
+	}
+	return res, nil
 }
 
 // forEachMediaRange parses an Accept or Content-Type header, calling functor
@@ -441,7 +459,11 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 						return false
 					}
 					lowerKey := utils.UnsafeString(utils.ToLowerBytes(key))
-					params[lowerKey] = value
+					val, err := unescapeHeaderValue(value)
+					if err != nil {
+						return true
+					}
+					params[lowerKey] = val
 					return true
 				})
 			}
@@ -532,19 +554,60 @@ func sortAcceptedTypes(at []acceptedType) {
 	}
 }
 
-func matchEtag(s, etag string) bool {
-	if s == etag || s == "W/"+etag || "W/"+s == etag {
-		return true
+// normalizeEtag validates an entity tag and returns the
+// value without quotes. weak is true if the tag has the "W/" prefix.
+func normalizeEtag(t string) (string, bool, bool) {
+	weak := strings.HasPrefix(t, "W/")
+	if weak {
+		t = t[2:]
 	}
 
-	return false
+	if len(t) < 2 || t[0] != '"' || t[len(t)-1] != '"' {
+		return "", weak, false
+	}
+	return t[1 : len(t)-1], weak, true
 }
 
+// matchEtag performs a weak comparison of entity tags according to
+// RFC 9110 §8.8.3.2. The weak indicator ("W/") is ignored, but both tags must
+// be properly quoted. Invalid tags result in a mismatch.
+func matchEtag(s, etag string) bool {
+	n1, _, ok1 := normalizeEtag(s)
+	n2, _, ok2 := normalizeEtag(etag)
+	if !ok1 || !ok2 {
+		return false
+	}
+
+	return n1 == n2
+}
+
+// matchEtagStrong performs a strong entity-tag comparison following
+// RFC 9110 §8.8.3.1. A weak tag never matches a strong one, even if the quoted
+// values are identical.
+func matchEtagStrong(s, etag string) bool {
+	n1, w1, ok1 := normalizeEtag(s)
+	n2, w2, ok2 := normalizeEtag(etag)
+	if !ok1 || !ok2 || w1 || w2 {
+		return false
+	}
+
+	return n1 == n2
+}
+
+// isEtagStale reports whether a response with the given ETag would be considered
+// stale when presented with the raw If-None-Match header value. Comparison is
+// weak as defined by RFC 9110 §8.8.3.2.
 func (app *App) isEtagStale(etag string, noneMatchBytes []byte) bool {
 	var start, end int
+	header := utils.Trim(app.getString(noneMatchBytes), ' ')
+
+	// Short-circuit the wildcard case: "*" never counts as stale.
+	if header == "*" {
+		return false
+	}
 
 	// Adapted from:
-	// https://github.com/jshttp/fresh/blob/10e0471669dbbfbfd8de65bc6efac2ddd0bfa057/index.js#L110
+	// https://github.com/jshttp/fresh/blob/master/index.js#L110
 	for i := range noneMatchBytes {
 		switch noneMatchBytes[i] {
 		case 0x20:
@@ -566,7 +629,7 @@ func (app *App) isEtagStale(etag string, noneMatchBytes []byte) bool {
 	return !matchEtag(app.getString(noneMatchBytes[start:end]), etag)
 }
 
-func parseAddr(raw string) (string, string) { //nolint:revive // Returns (host, port)
+func parseAddr(raw string) (string, string) {
 	if raw == "" {
 		return "", ""
 	}
@@ -599,20 +662,12 @@ func parseAddr(raw string) (string, string) { //nolint:revive // Returns (host, 
 	return raw, ""
 }
 
-const noCacheValue = "no-cache"
-
 // isNoCache checks if the cacheControl header value is a `no-cache`.
 func isNoCache(cacheControl string) bool {
 	n := len(cacheControl)
 	ncLen := len(noCacheValue)
-	for i := 0; i < n; i++ {
-		if cacheControl[i] != 'n' {
-			continue
-		}
-		if i+ncLen > n {
-			return false
-		}
-		if cacheControl[i:i+ncLen] != noCacheValue {
+	for i := 0; i <= n-ncLen; i++ {
+		if !utils.EqualFold(cacheControl[i:i+ncLen], noCacheValue) {
 			continue
 		}
 		if i > 0 {
@@ -742,8 +797,8 @@ func IsMethodIdempotent(m string) bool {
 }
 
 // Convert a string value to a specified type, handling errors and optional default values.
-func Convert[T any](value string, convertor func(string) (T, error), defaultValue ...T) (T, error) {
-	converted, err := convertor(value)
+func Convert[T any](value string, converter func(string) (T, error), defaultValue ...T) (T, error) {
+	converted, err := converter(value)
 	if err != nil {
 		if len(defaultValue) > 0 {
 			return defaultValue[0], nil
