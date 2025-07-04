@@ -184,6 +184,11 @@ type Ctx interface {
 	// Content-Type header equal to ctype. If ctype is not given,
 	// The Content-Type header will be set to application/json.
 	JSON(data any, ctype ...string) error
+	// MsgPack converts any interface or string to MessagePack encoded bytes.
+	// If the ctype parameter is given, this method will set the
+	// Content-Type header equal to ctype. If ctype is not given,
+	// The Content-Type header will be set to application/vnd.msgpack.
+	MsgPack(data any, ctype ...string) error
 	// CBOR converts any interface or string to CBOR encoded bytes.
 	// If the ctype parameter is given, this method will set the
 	// Content-Type header equal to ctype. If ctype is not given,

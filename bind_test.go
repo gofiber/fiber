@@ -879,8 +879,8 @@ func Test_Bind_Body(t *testing.T) {
 	reqBody := []byte(`{"name":"john"}`)
 
 	type Demo struct {
-		Name  string   `json:"name" xml:"name" form:"name" query:"name"`
-		Names []string `json:"names" xml:"names" form:"names" query:"names"`
+		Name  string   `json:"name" xml:"name" form:"name" query:"name" msgpack:"name"`
+		Names []string `json:"names" xml:"names" form:"names" query:"names" msgpack:"names"`
 	}
 
 	// Helper function to test compressed bodies
@@ -938,6 +938,9 @@ func Test_Bind_Body(t *testing.T) {
 
 	t.Run("JSON", func(t *testing.T) {
 		testDecodeParser(t, MIMEApplicationJSON, []byte(`{"name":"john"}`))
+	})
+	t.Run("MsgPack", func(t *testing.T) {
+		testDecodeParser(t, MIMEApplicationMsgPack, []byte{0x81, 0xa4, 0x6e, 0x61, 0x6d, 0x65, 0xa4, 0x6a, 0x6f, 0x68, 0x6e})
 	})
 	t.Run("CBOR", func(t *testing.T) {
 		enc, err := cbor.Marshal(&Demo{Name: "john"})
@@ -1120,9 +1123,37 @@ func Benchmark_Bind_Body_JSON(b *testing.B) {
 	type Demo struct {
 		Name string `json:"name"`
 	}
-	body := []byte(`{"name":"john"}`)
+	body, err := json.Marshal(&Demo{Name: "john"})
+	if err != nil {
+		b.Error(err)
+	}
 	c.Request().SetBody(body)
 	c.Request().Header.SetContentType(MIMEApplicationJSON)
+	c.Request().Header.SetContentLength(len(body))
+	d := new(Demo)
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		err = c.Bind().Body(d)
+	}
+	require.NoError(b, err)
+	require.Equal(b, "john", d.Name)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Bind_Body_MsgPack -benchmem -count=4
+func Benchmark_Bind_Body_MsgPack(b *testing.B) {
+	var err error
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	type Demo struct {
+		Name string `msgpack:"name"`
+	}
+	body := []byte{0x81, 0xa4, 0x6e, 0x61, 0x6d, 0x65, 0xa4, 0x6a, 0x6f, 0x68, 0x6e} // {"name":"john"}
+	c.Request().SetBody(body)
+	c.Request().Header.SetContentType(MIMEApplicationMsgPack)
 	c.Request().Header.SetContentLength(len(body))
 	d := new(Demo)
 

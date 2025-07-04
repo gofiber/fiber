@@ -34,7 +34,7 @@ var (
 	// decoderPoolMap helps to improve binders
 	decoderPoolMap = map[string]*sync.Pool{}
 	// tags is used to classify parser's pool
-	tags = []string{"header", "respHeader", "cookie", "query", "form", "uri"}
+	tags = []string{"header", "respHeader", "cookie", "query", "form", "uri", "msgpack"}
 )
 
 // SetParserDecoder allow globally change the option of form decoder, update decoderPool
