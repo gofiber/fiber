@@ -115,13 +115,15 @@ func (cj *CookieJar) cookiesForRequest(host string, path []byte, secure bool) []
 				continue
 			}
 			kept = append(kept, c)
-			if len(path) > 1 && len(c.Path()) > 1 && !bytes.HasPrefix(c.Path(), path) {
+			if len(path) > 1 && len(c.Path()) > 1 && !bytes.HasPrefix(path, c.Path()) {
 				continue
 			}
 			if c.Secure() && !secure {
 				continue
 			}
-			matched = append(matched, c)
+			nc := fasthttp.AcquireCookie()
+			nc.CopyTo(c)
+			matched = append(matched, nc)
 		}
 		cj.hostCookies[domain] = kept
 	}
@@ -213,6 +215,7 @@ func (cj *CookieJar) dumpCookiesToReq(req *fasthttp.Request) {
 	cookies := cj.getByHostAndPath(uri.Host(), uri.Path(), secure)
 	for _, cookie := range cookies {
 		req.Header.SetCookieBytesKV(cookie.Key(), cookie.Value())
+		fasthttp.ReleaseCookie(cookie)
 	}
 }
 
@@ -248,6 +251,10 @@ func (cj *CookieJar) parseCookiesFromResp(host, path []byte, resp *fasthttp.Resp
 		} else {
 			key = utils.UnsafeString(domainBytes)
 			tmp.SetDomainBytes(domainBytes)
+		}
+
+		if _, ok := cj.hostCookies[key]; !ok {
+			key = string([]byte(key))
 		}
 
 		cookies := cj.hostCookies[key]
