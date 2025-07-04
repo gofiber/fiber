@@ -200,7 +200,7 @@ Binds the request MsgPack body to a struct.
 
 It is important to specify the correct struct tag based on the content type to be parsed. For example, if you want to parse a Msgpack body with a field called `Pass`, you would use a struct field with `msgpack:"pass"`.
 
-> Our library uses [shamaton-msgpack](https://github.com/shamaton/msgpack) which uses `msgpack` struct tags by default. If you want to use other libraries, you may need to update the struct tags accordingly.
+> Our library uses [shamaton-msgpack](https://github.com/shamaton/msgpack) which uses `msgpack` struct tags by default. When using another MsgPack library, adjust the struct tags if required.
 
 ```go title="Signature"
 func (b *Bind) MsgPack(out any) error
