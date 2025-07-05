@@ -65,6 +65,12 @@ var CBORBinderPool = sync.Pool{
 	},
 }
 
+var MsgPackBinderPool = sync.Pool{
+	New: func() any {
+		return &MsgPackBinding{}
+	},
+}
+
 func GetFromThePool[T any](pool *sync.Pool) T {
 	binder, ok := pool.Get().(T)
 	if !ok {
