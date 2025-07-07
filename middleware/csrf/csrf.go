@@ -212,7 +212,7 @@ func getRawFromStorage(c fiber.Ctx, token string, cfg Config, sessionManager *se
 	if cfg.Session != nil {
 		return sessionManager.getRaw(c, token, dummyValue)
 	}
-	return storageManager.getRaw(token)
+	return storageManager.getRaw(c, token)
 }
 
 // createOrExtendTokenInStorage creates or extends the token in the storage
@@ -220,7 +220,7 @@ func createOrExtendTokenInStorage(c fiber.Ctx, token string, cfg Config, session
 	if cfg.Session != nil {
 		sessionManager.setRaw(c, token, dummyValue, cfg.IdleTimeout)
 	} else {
-		storageManager.setRaw(token, dummyValue, cfg.IdleTimeout)
+		storageManager.setRaw(c, token, dummyValue, cfg.IdleTimeout)
 	}
 }
 
@@ -228,7 +228,7 @@ func deleteTokenFromStorage(c fiber.Ctx, token string, cfg Config, sessionManage
 	if cfg.Session != nil {
 		sessionManager.delRaw(c)
 	} else {
-		storageManager.delRaw(token)
+		storageManager.delRaw(c, token)
 	}
 }
 

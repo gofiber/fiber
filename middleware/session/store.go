@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"encoding/gob"
 	"errors"
 	"fmt"
@@ -131,7 +132,7 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 
 	// Attempt to fetch session data if an ID is provided
 	if id != "" {
-		rawData, err = s.Storage.Get(id)
+		rawData, err = s.Storage.GetWithContext(c, id)
 		if err != nil {
 			return nil, err
 		}
@@ -229,8 +230,8 @@ func (s *Store) getSessionID(c fiber.Ctx) string {
 //	if err != nil {
 //	    // handle error
 //	}
-func (s *Store) Reset() error {
-	return s.Storage.Reset()
+func (s *Store) Reset(ctx context.Context) error {
+	return s.Storage.ResetWithContext(ctx)
 }
 
 // Delete deletes a session by its ID.
@@ -247,11 +248,11 @@ func (s *Store) Reset() error {
 //	if err != nil {
 //	    // handle error
 //	}
-func (s *Store) Delete(id string) error {
+func (s *Store) Delete(ctx context.Context, id string) error {
 	if id == "" {
 		return ErrEmptySessionID
 	}
-	return s.Storage.Delete(id)
+	return s.Storage.DeleteWithContext(ctx, id)
 }
 
 // GetByID retrieves a session by its ID from the storage.
@@ -287,12 +288,12 @@ func (s *Store) Delete(id string) error {
 //	if err != nil {
 //	    // handle error
 //	}
-func (s *Store) GetByID(id string) (*Session, error) {
+func (s *Store) GetByID(ctx context.Context, id string) (*Session, error) {
 	if id == "" {
 		return nil, ErrEmptySessionID
 	}
 
-	rawData, err := s.Storage.Get(id)
+	rawData, err := s.Storage.GetWithContext(ctx, id)
 	if err != nil {
 		return nil, err
 	}

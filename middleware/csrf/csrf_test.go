@@ -2,6 +2,7 @@ package csrf
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1633,7 +1634,7 @@ func Test_deleteTokenFromStorage(t *testing.T) {
 	sm2 := newSessionManager(nil)
 	stm2 := newStorageManager(nil)
 
-	stm2.setRaw(token, dummy, time.Minute)
+	stm2.setRaw(context.Background(), token, dummy, time.Minute)
 	deleteTokenFromStorage(ctx, token, Config{}, sm2, stm2)
-	require.Nil(t, stm2.getRaw(token))
+	require.Nil(t, stm2.getRaw(context.Background(), token))
 }

@@ -1,6 +1,7 @@
 package limiter
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -57,11 +58,11 @@ func (m *manager) release(e *item) {
 }
 
 // get data from storage or memory
-func (m *manager) get(key string) *item {
+func (m *manager) get(ctx context.Context, key string) *item {
 	var it *item
 	if m.storage != nil {
 		it = m.acquire()
-		raw, err := m.storage.Get(key)
+		raw, err := m.storage.GetWithContext(ctx, key)
 		if err != nil {
 			return it
 		}
@@ -80,10 +81,10 @@ func (m *manager) get(key string) *item {
 }
 
 // set data to storage or memory
-func (m *manager) set(key string, it *item, exp time.Duration) {
+func (m *manager) set(ctx context.Context, key string, it *item, exp time.Duration) {
 	if m.storage != nil {
 		if raw, err := it.MarshalMsg(nil); err == nil {
-			_ = m.storage.Set(key, raw, exp) //nolint:errcheck // TODO: Handle error here
+			_ = m.storage.SetWithContext(ctx, key, raw, exp) //nolint:errcheck // TODO: Handle error here
 		}
 		// we can release data because it's serialized to database
 		m.release(it)

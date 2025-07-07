@@ -26,6 +26,7 @@ Here's a quick overview of the changes in Fiber `v3`:
 - [🧰 Generic functions](#-generic-functions)
 - [🥡 Services](#-services)
 - [📃 Log](#-log)
+- [📦 Storage Interface](#-storage-interface)
 - [🧬 Middlewares](#-middlewares)
   - [Important Change for Accessing Middleware Data](#important-change-for-accessing-middleware-data)
   - [Adaptor](#adaptor)
@@ -970,6 +971,29 @@ import "github.com/gofiber/fiber/v3/middleware/logger"
 app.Use(logger.New(logger.Config{
     ForceColors: true,
 }))
+```
+
+## 📦 Storage Interface
+
+The storage interface has been updated to include new subset of methods with `WithContext` suffix. These methods allow you to pass a context to the storage operations, enabling better control over timeouts and cancellation if needed. This is particularly useful when storage implementations used outside of the Fiber core, such as in background jobs or long-running tasks.
+
+**New Methods Signatures:**
+
+```go
+// GetWithContext gets the value for the given key with a context.
+// `nil, nil` is returned when the key does not exist
+GetWithContext(ctx context.Context, key string) ([]byte, error)
+
+// SetWithContext stores the given value for the given key
+// with an expiration value, 0 means no expiration.
+SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error
+
+// DeleteWithContext deletes the value for the given key with a context.
+// It returns no error if the storage does not contain the key,
+DeleteWithContext(ctx context.Context, key string) error
+
+// ResetWithContext resets the storage and deletes all keys with a context.
+ResetWithContext(ctx context.Context) error
 ```
 
 ## 🧬 Middlewares
