@@ -320,7 +320,7 @@ func (s *Store) GetByID(ctx context.Context, id string) (*Session, error) {
 
 	if s.AbsoluteTimeout > 0 {
 		if sess.isAbsExpired() {
-			if err := sess.Destroy(); err != nil {
+			if err := sess.Destroy(); err != nil { //nolint:contextcheck // it is not right
 				sess.Release()
 				log.Errorf("failed to destroy session: %v", err)
 			}
