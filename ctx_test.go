@@ -1254,7 +1254,7 @@ func Test_Ctx_Format(t *testing.T) {
 	require.Equal(t, StatusNotAcceptable, c.Response().StatusCode())
 	require.NoError(t, err)
 
-	c.Request().Header.Set(HeaderAccept, "application/vnd.msgpack")
+	c.Request().Header.Set(HeaderAccept, MIMEApplicationMsgPack)
 	err = c.Format(ResFmt{MediaType: "text/html", Handler: func(c Ctx) error { return c.SendStatus(StatusOK) }})
 	require.Equal(t, StatusNotAcceptable, c.Response().StatusCode())
 	require.NoError(t, err)
@@ -1332,12 +1332,12 @@ func Benchmark_Ctx_Format(b *testing.B) {
 		require.NoError(b, err)
 	})
 
-	c.Request().Header.Set("Accept", "application/vnd.msgpack")
+	c.Request().Header.Set("Accept", MIMEApplicationMsgPack)
 	b.Run("msgpack", func(b *testing.B) {
 		offers := []ResFmt{
 			{MediaType: "xml", Handler: fail},
 			{MediaType: "html", Handler: fail},
-			{MediaType: "application/vnd.msgpack", Handler: ok},
+			{MediaType: MIMEApplicationMsgPack, Handler: ok},
 		}
 		for b.Loop() {
 			err = c.Format(offers...)
@@ -1501,7 +1501,7 @@ func Benchmark_Ctx_AutoFormat_MsgPack(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	c.Request().Header.Set("Accept", "application/vnd.msgpack")
+	c.Request().Header.Set("Accept", MIMEApplicationMsgPack)
 	b.ReportAllocs()
 
 	var err error
@@ -4105,7 +4105,7 @@ func Test_Ctx_MsgPack(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, "\x81\xa4Name\xa5Grame", string(c.Response().Body()))
-	require.Equal(t, "application/vnd.msgpack", string(c.Response().Header.Peek("content-type")))
+	require.Equal(t, MIMEApplicationMsgPack, string(c.Response().Header.Peek("content-type")))
 
 	// Test with ctype
 	err = c.MsgPack(Map{ // map has no order
@@ -4142,7 +4142,7 @@ func Test_Ctx_MsgPack(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.Equal(t, `["custom","msgpack"]`, string(c.Response().Body()))
-		require.Equal(t, "application/vnd.msgpack", string(c.Response().Header.Peek("content-type")))
+		require.Equal(t, MIMEApplicationMsgPack, string(c.Response().Header.Peek("content-type")))
 	})
 }
 
