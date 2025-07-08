@@ -9,7 +9,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// Res
+// Res is an interface for response-related Ctx methods.
 type Res interface {
 	// App returns the *App reference to the instance of the Fiber application
 	App() *App

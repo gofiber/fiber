@@ -118,7 +118,7 @@ type ResFmt struct {
 	MediaType string
 }
 
-//go:generate ifacemaker --file res.go --struct DefaultRes --iface Res --pkg fiber --output res_interface_gen.go --not-exported true --iface-comment "Res"
+//go:generate ifacemaker --file res.go --struct DefaultRes --iface Res --pkg fiber --output res_interface_gen.go --not-exported true --iface-comment "Res is an interface for response-related Ctx methods."
 type DefaultRes struct {
 	c Ctx
 }
