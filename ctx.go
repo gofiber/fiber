@@ -185,7 +185,7 @@ func (c *DefaultCtx) GetRespHeader(key string, defaultValue ...string) string {
 	return c.DefaultRes.Get(key, defaultValue...)
 }
 
-// GetHeaders returns the HTTP response headers.
+// GetRespHeaders returns the HTTP response headers.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (c *DefaultCtx) GetRespHeaders() map[string][]string {
