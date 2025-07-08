@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -153,8 +154,17 @@ func (r *DefaultRes) Attachment(filename ...string) {
 	if len(filename) > 0 {
 		fname := filepath.Base(filename[0])
 		r.Type(filepath.Ext(fname))
-
-		r.setCanonical(HeaderContentDisposition, `attachment; filename="`+r.App().quoteString(fname)+`"`)
+		var quoted string
+		if r.App().isASCII(fname) {
+			quoted = r.App().quoteString(fname)
+		} else {
+			quoted = r.App().quoteRawString(fname)
+		}
+		disp := `attachment; filename="` + quoted + `"`
+		if !r.App().isASCII(fname) {
+			disp += `; filename*=UTF-8''` + url.PathEscape(fname)
+		}
+		r.setCanonical(HeaderContentDisposition, disp)
 		return
 	}
 	r.setCanonical(HeaderContentDisposition, "attachment")
@@ -169,9 +179,9 @@ func (r *DefaultRes) ClearCookie(key ...string) {
 		}
 		return
 	}
-	r.c.Request().Header.VisitAllCookie(func(k, _ []byte) {
+	for k := range r.c.Request().Header.Cookies() {
 		r.Response().Header.DelClientCookieBytes(k)
-	})
+	}
 }
 
 // RequestCtx returns *fasthttp.RequestCtx that carries a deadline
@@ -271,7 +281,17 @@ func (r *DefaultRes) Download(file string, filename ...string) error {
 	} else {
 		fname = filepath.Base(file)
 	}
-	r.setCanonical(HeaderContentDisposition, `attachment; filename="`+r.App().quoteString(fname)+`"`)
+	var quoted string
+	if r.App().isASCII(fname) {
+		quoted = r.App().quoteString(fname)
+	} else {
+		quoted = r.App().quoteRawString(fname)
+	}
+	disp := `attachment; filename="` + quoted + `"`
+	if !r.App().isASCII(fname) {
+		disp += `; filename*=UTF-8''` + url.PathEscape(fname)
+	}
+	r.setCanonical(HeaderContentDisposition, disp)
 	return r.SendFile(file)
 }
 
@@ -380,10 +400,10 @@ func (r *DefaultRes) Get(key string, defaultValue ...string) string {
 // Make copies or use the Immutable setting instead.
 func (r *DefaultRes) GetHeaders() map[string][]string {
 	headers := make(map[string][]string)
-	r.Response().Header.VisitAll(func(k, v []byte) {
+	for k, v := range r.Response().Header.All() {
 		key := r.App().getString(k)
 		headers[key] = append(headers[key], r.App().getString(v))
-	})
+	}
 	return headers
 }
 

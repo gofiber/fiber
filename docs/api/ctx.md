@@ -504,6 +504,8 @@ app.Get("/", func(c fiber.Ctx) error {
 
 Fiber provides similar functions for the other accept headers.
 
+For `Accept-Language`, Fiber uses the [Basic Filtering](https://www.rfc-editor.org/rfc/rfc4647#section-3.3.1) algorithm. A language range matches an offer only if it exactly equals the tag or is a prefix followed by a hyphen. For example, the range `en` matches `en-US`, but `en-US` does not match `en`.
+
 ```go
 // Accept-Charset: utf-8, iso-8859-1;q=0.2
 // Accept-Encoding: gzip, compress;q=0.2
@@ -541,7 +543,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ### Body
 
-As per the header `Content-Encoding`, this method will try to perform a file decompression from the **body** bytes. In case no `Content-Encoding` header is sent, it will perform as [BodyRaw](#bodyraw).
+As per the header `Content-Encoding`, this method will try to perform a file decompression from the **body** bytes. In case no `Content-Encoding` header is sent (or when it is set to `identity`), it will perform as [BodyRaw](#bodyraw). If an unknown or unsupported encoding is encountered, the response status will be `415 Unsupported Media Type` or `501 Not Implemented`.
 
 ```go title="Signature"
 func (c fiber.Ctx) Body() []byte
@@ -1216,6 +1218,9 @@ Returns a struct containing the type and a slice of ranges.
 Only the canonical `bytes` unit is recognized and any optional
 whitespace around range specifiers will be ignored, as specified
 in RFC 9110.
+If none of the requested ranges are satisfiable, the method automatically
+sets the HTTP status code to **416 Range Not Satisfiable** and populates the
+`Content-Range` header with the current representation size.
 
 ```go title="Signature"
 func (c fiber.Ctx) Range(size int) (Range, error)
@@ -1339,6 +1344,10 @@ c.Protocol() == "https"
 
 ### Stale
 
+When the client's cached response is **stale**, this method returns **true**. It
+is the logical complement of [`Fresh`](#fresh), which checks whether the cached
+representation is still valid.
+
 [https://expressjs.com/en/4x/api.html#req.stale](https://expressjs.com/en/4x/api.html#req.stale)
 
 ```go title="Signature"
@@ -1446,6 +1455,18 @@ app.Get("/", func(c fiber.Ctx) error {
   // => Content-Type: image/png
 
   // ...
+})
+```
+
+Non-ASCII filenames are encoded using the `filename*` parameter as defined in
+[RFC 6266](https://www.rfc-editor.org/rfc/rfc6266) and
+[RFC 8187](https://www.rfc-editor.org/rfc/rfc8187):
+
+```go title="Example"
+app.Get("/non-ascii", func(c fiber.Ctx) error {
+  c.Attachment("./files/文件.txt")
+  // => Content-Disposition: attachment; filename="文件.txt"; filename*=UTF-8''%E6%96%87%E4%BB%B6.txt
+  return nil
 })
 ```
 
@@ -1615,6 +1636,17 @@ app.Get("/", func(c fiber.Ctx) error {
 
   return c.Download("./files/report-12345.pdf", "report.pdf")
   // => Download report.pdf
+})
+```
+
+For filenames containing non-ASCII characters, a `filename*` parameter is added
+according to [RFC 6266](https://www.rfc-editor.org/rfc/rfc6266) and
+[RFC 8187](https://www.rfc-editor.org/rfc/rfc8187):
+
+```go title="Example"
+app.Get("/non-ascii", func(c fiber.Ctx) error {
+  return c.Download("./files/文件.txt")
+  // => Content-Disposition: attachment; filename="文件.txt"; filename*=UTF-8''%E6%96%87%E4%BB%B6.txt
 })
 ```
 

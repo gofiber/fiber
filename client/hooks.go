@@ -71,12 +71,12 @@ func parserRequestURL(c *Client, req *Request) error {
 	}
 
 	// Set path parameters from the request and client.
-	req.path.VisitAll(func(key, val string) {
+	for key, val := range req.path.All() {
 		uri = strings.ReplaceAll(uri, ":"+key, val)
-	})
-	c.path.VisitAll(func(key, val string) {
+	}
+	for key, val := range c.path.All() {
 		uri = strings.ReplaceAll(uri, ":"+key, val)
-	})
+	}
 
 	// Set the URI in the raw request.
 	req.RawRequest.SetRequestURI(uri)
@@ -89,12 +89,12 @@ func parserRequestURL(c *Client, req *Request) error {
 
 	args.Parse(hashSplit[0])
 
-	c.params.VisitAll(func(key, value []byte) {
+	for key, value := range c.params.All() {
 		args.AddBytesKV(key, value)
-	})
-	req.params.VisitAll(func(key, value []byte) {
+	}
+	for key, value := range req.params.All() {
 		args.AddBytesKV(key, value)
-	})
+	}
 
 	req.RawRequest.URI().SetQueryStringBytes(utils.CopyBytes(args.QueryString()))
 	req.RawRequest.URI().SetHash(hashSplit[1])
@@ -109,14 +109,14 @@ func parserRequestHeader(c *Client, req *Request) error {
 	req.RawRequest.Header.SetMethod(req.Method())
 
 	// Merge headers from the client.
-	c.header.VisitAll(func(key, value []byte) {
+	for key, value := range c.header.All() {
 		req.RawRequest.Header.AddBytesKV(key, value)
-	})
+	}
 
 	// Merge headers from the request.
-	req.header.VisitAll(func(key, value []byte) {
+	for key, value := range req.header.All() {
 		req.RawRequest.Header.AddBytesKV(key, value)
-	})
+	}
 
 	// Set Content-Type and Accept headers based on the request body type.
 	switch req.bodyType {
@@ -161,14 +161,14 @@ func parserRequestHeader(c *Client, req *Request) error {
 	}
 
 	// Set cookies from the client.
-	c.cookies.VisitAll(func(key, val string) {
+	for key, val := range c.cookies.All() {
 		req.RawRequest.Header.SetCookie(key, val)
-	})
+	}
 
 	// Set cookies from the request.
-	req.cookies.VisitAll(func(key, val string) {
+	for key, val := range req.cookies.All() {
 		req.RawRequest.Header.SetCookie(key, val)
-	})
+	}
 
 	return nil
 }
@@ -228,12 +228,12 @@ func parserRequestBodyFile(req *Request) error {
 	}()
 
 	// Add form data.
-	req.formData.VisitAll(func(key, value []byte) {
-		if err != nil {
-			return
-		}
+	for key, value := range req.formData.All() {
 		err = mw.WriteField(utils.UnsafeString(key), utils.UnsafeString(value))
-	})
+		if err != nil {
+			break
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("write formdata error: %w", err)
 	}
@@ -285,15 +285,15 @@ func parserRequestBodyFile(req *Request) error {
 // parserResponseCookie parses the Set-Cookie headers from the response and stores them.
 func parserResponseCookie(c *Client, resp *Response, req *Request) error {
 	var err error
-	resp.RawResponse.Header.VisitAllCookie(func(key, value []byte) {
+	for key, value := range resp.RawResponse.Header.Cookies() {
 		cookie := fasthttp.AcquireCookie()
-		err = cookie.ParseBytes(value)
-		if err != nil {
-			return
+		if err = cookie.ParseBytes(value); err != nil {
+			fasthttp.ReleaseCookie(cookie)
+			break
 		}
 		cookie.SetKeyBytes(key)
 		resp.cookie = append(resp.cookie, cookie)
-	})
+	}
 
 	if err != nil {
 		return err

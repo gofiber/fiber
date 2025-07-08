@@ -171,6 +171,17 @@ func Test_Ctx_Accepts_Wildcard(t *testing.T) {
 	require.Equal(t, "xml", c.Accepts("xml"))
 }
 
+// go test -run Test_Ctx_Accepts_MultiHeader
+func Test_Ctx_Accepts_MultiHeader(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Request().Header.Add(HeaderAccept, "text/plain;q=0.5")
+	c.Request().Header.Add(HeaderAccept, "application/json")
+	require.Equal(t, "application/json", c.Accepts("text/plain", "application/json"))
+}
+
 // go test -run Test_Ctx_AcceptsCharsets
 func Test_Ctx_AcceptsCharsets(t *testing.T) {
 	t.Parallel()
@@ -179,6 +190,17 @@ func Test_Ctx_AcceptsCharsets(t *testing.T) {
 
 	c.Request().Header.Set(HeaderAcceptCharset, "utf-8, iso-8859-1;q=0.5")
 	require.Equal(t, "utf-8", c.AcceptsCharsets("utf-8"))
+}
+
+// go test -run Test_Ctx_AcceptsCharsets_MultiHeader
+func Test_Ctx_AcceptsCharsets_MultiHeader(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Request().Header.Add(HeaderAcceptCharset, "utf-8;q=0.1")
+	c.Request().Header.Add(HeaderAcceptCharset, "iso-8859-1")
+	require.Equal(t, "iso-8859-1", c.AcceptsCharsets("utf-8", "iso-8859-1"))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_AcceptsCharsets -benchmem -count=4
@@ -206,6 +228,17 @@ func Test_Ctx_AcceptsEncodings(t *testing.T) {
 	require.Equal(t, "abc", c.AcceptsEncodings("abc"))
 }
 
+// go test -run Test_Ctx_AcceptsEncodings_MultiHeader
+func Test_Ctx_AcceptsEncodings_MultiHeader(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Request().Header.Add(HeaderAcceptEncoding, "deflate;q=0.3")
+	c.Request().Header.Add(HeaderAcceptEncoding, "gzip")
+	require.Equal(t, "gzip", c.AcceptsEncodings("deflate", "gzip"))
+}
+
 // go test -v -run=^$ -bench=Benchmark_Ctx_AcceptsEncodings -benchmem -count=4
 func Benchmark_Ctx_AcceptsEncodings(b *testing.B) {
 	app := New()
@@ -228,6 +261,44 @@ func Test_Ctx_AcceptsLanguages(t *testing.T) {
 
 	c.Request().Header.Set(HeaderAcceptLanguage, "fr-CH, fr;q=0.9, en;q=0.8, de;q=0.7, *;q=0.5")
 	require.Equal(t, "fr", c.AcceptsLanguages("fr"))
+}
+
+// go test -run Test_Ctx_AcceptsLanguages_MultiHeader
+func Test_Ctx_AcceptsLanguages_MultiHeader(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Request().Header.Add(HeaderAcceptLanguage, "de;q=0.4")
+	c.Request().Header.Add(HeaderAcceptLanguage, "en")
+	require.Equal(t, "en", c.AcceptsLanguages("de", "en"))
+}
+
+// go test -run Test_Ctx_AcceptsLanguages_BasicFiltering
+func Test_Ctx_AcceptsLanguages_BasicFiltering(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Request().Header.Set(HeaderAcceptLanguage, "en-US")
+	require.Equal(t, "en-US", c.AcceptsLanguages("en", "en-US"))
+	require.Equal(t, "", c.AcceptsLanguages("en"))
+
+	c.Request().Header.Set(HeaderAcceptLanguage, "en-US, fr")
+	require.Equal(t, "en-US", c.AcceptsLanguages("de", "en-US", "fr"))
+
+	c.Request().Header.Set(HeaderAcceptLanguage, "en_US")
+	require.Equal(t, "", c.AcceptsLanguages("en-US"))
+}
+
+// go test -run Test_Ctx_AcceptsLanguages_CaseInsensitive
+func Test_Ctx_AcceptsLanguages_CaseInsensitive(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Request().Header.Set(HeaderAcceptLanguage, "EN-us")
+	require.Equal(t, "en-US", c.AcceptsLanguages("en-US"))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_AcceptsLanguages -benchmem -count=4
@@ -320,6 +391,11 @@ func Test_Ctx_Attachment(t *testing.T) {
 	// check quoting
 	c.Attachment("another document.pdf\"\r\nBla: \"fasel")
 	require.Equal(t, `attachment; filename="another+document.pdf%22%0D%0ABla%3A+%22fasel"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
+
+	c.Attachment("файл.txt")
+	header := string(c.Response().Header.Peek(HeaderContentDisposition))
+	require.Contains(t, header, `filename="файл.txt"`)
+	require.Contains(t, header, `filename*=UTF-8''%D1%84%D0%B0%D0%B9%D0%BB.txt`)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Attachment -benchmem -count=4
@@ -485,22 +561,40 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 			expectedBody:    []byte("john=doe"),
 		},
 		{
+			name:            "gzip twice",
+			contentEncoding: "gzip, gzip",
+			body:            []byte("double"),
+			expectedBody:    []byte("double"),
+		},
+		{
 			name:            "unsupported_encoding",
 			contentEncoding: "undefined",
 			body:            []byte("keeps_ORIGINAL"),
-			expectedBody:    []byte("keeps_ORIGINAL"),
+			expectedBody:    []byte("Unsupported Media Type"),
+		},
+		{
+			name:            "compress_not_implemented",
+			contentEncoding: "compress",
+			body:            []byte("foo"),
+			expectedBody:    []byte("Not Implemented"),
 		},
 		{
 			name:            "gzip then unsupported",
 			contentEncoding: "gzip, undefined",
 			body:            []byte("Go, be gzipped"),
-			expectedBody:    []byte("Go, be gzipped"),
+			expectedBody:    []byte("Unsupported Media Type"),
 		},
 		{
 			name:            "invalid_deflate",
 			contentEncoding: "gzip,deflate",
 			body:            []byte("I'm not correctly compressed"),
 			expectedBody:    []byte(zlib.ErrHeader.Error()),
+		},
+		{
+			name:            "identity",
+			contentEncoding: "identity",
+			body:            []byte("bar"),
+			expectedBody:    []byte("bar"),
 		},
 	}
 
@@ -512,24 +606,44 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 			c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 			c.Request().Header.Set("Content-Encoding", tCase.contentEncoding)
 
-			if strings.Contains(tCase.contentEncoding, "gzip") {
-				var b bytes.Buffer
-				gz := gzip.NewWriter(&b)
-
-				_, err := gz.Write(tCase.body)
-				require.NoError(t, err)
-
-				err = gz.Flush()
-				require.NoError(t, err)
-
-				err = gz.Close()
-				require.NoError(t, err)
-				tCase.body = b.Bytes()
+			encs := strings.Split(tCase.contentEncoding, ",")
+			for _, enc := range encs {
+				enc = strings.TrimSpace(enc)
+				if strings.Contains(tCase.name, "invalid_deflate") && enc == StrDeflate {
+					continue
+				}
+				switch enc {
+				case "gzip":
+					var b bytes.Buffer
+					gz := gzip.NewWriter(&b)
+					_, err := gz.Write(tCase.body)
+					require.NoError(t, err)
+					require.NoError(t, gz.Flush())
+					require.NoError(t, gz.Close())
+					tCase.body = b.Bytes()
+				case StrDeflate:
+					var b bytes.Buffer
+					fl := zlib.NewWriter(&b)
+					_, err := fl.Write(tCase.body)
+					require.NoError(t, err)
+					require.NoError(t, fl.Flush())
+					require.NoError(t, fl.Close())
+					tCase.body = b.Bytes()
+				}
 			}
 
 			c.Request().SetBody(tCase.body)
 			body := c.Body()
 			require.Equal(t, tCase.expectedBody, body)
+
+			switch {
+			case strings.Contains(tCase.name, "unsupported"):
+				require.Equal(t, StatusUnsupportedMediaType, c.Response().StatusCode())
+			case strings.Contains(tCase.name, "compress_not_implemented"):
+				require.Equal(t, StatusNotImplemented, c.Response().StatusCode())
+			default:
+				require.Equal(t, StatusOK, c.Response().StatusCode())
+			}
 
 			// Check if body raw is the same as previous before decompression
 			require.Equal(
@@ -574,21 +688,26 @@ func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
 			return buf.Bytes(), nil
 		}
 	)
+	const input = "john=doe"
 	compressionTests := []struct {
 		compressWriter  func([]byte) ([]byte, error)
 		contentEncoding string
+		expectedBody    []byte
 	}{
 		{
 			contentEncoding: "gzip",
 			compressWriter:  compressGzip,
+			expectedBody:    []byte(input),
 		},
 		{
 			contentEncoding: "gzip,invalid",
 			compressWriter:  compressGzip,
+			expectedBody:    []byte(ErrUnsupportedMediaType.Error()),
 		},
 		{
-			contentEncoding: "deflate",
+			contentEncoding: StrDeflate,
 			compressWriter:  compressDeflate,
+			expectedBody:    []byte(input),
 		},
 		{
 			contentEncoding: "gzip,deflate",
@@ -636,6 +755,7 @@ func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
 
 				return buf.Bytes(), nil
 			},
+			expectedBody: []byte(zlib.ErrHeader.Error()),
 		},
 	}
 
@@ -655,7 +775,7 @@ func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
 				_ = c.Body()
 			}
 
-			require.Equal(b, []byte(input), c.Body())
+			require.Equal(b, ct.expectedBody, c.Body())
 		})
 	}
 }
@@ -676,22 +796,40 @@ func Test_Ctx_Body_With_Compression_Immutable(t *testing.T) {
 			expectedBody:    []byte("john=doe"),
 		},
 		{
+			name:            "gzip twice",
+			contentEncoding: "gzip, gzip",
+			body:            []byte("double"),
+			expectedBody:    []byte("double"),
+		},
+		{
 			name:            "unsupported_encoding",
 			contentEncoding: "undefined",
 			body:            []byte("keeps_ORIGINAL"),
-			expectedBody:    []byte("keeps_ORIGINAL"),
+			expectedBody:    []byte("Unsupported Media Type"),
+		},
+		{
+			name:            "compress_not_implemented",
+			contentEncoding: "compress",
+			body:            []byte("foo"),
+			expectedBody:    []byte("Not Implemented"),
 		},
 		{
 			name:            "gzip then unsupported",
 			contentEncoding: "gzip, undefined",
 			body:            []byte("Go, be gzipped"),
-			expectedBody:    []byte("Go, be gzipped"),
+			expectedBody:    []byte("Unsupported Media Type"),
 		},
 		{
 			name:            "invalid_deflate",
 			contentEncoding: "gzip,deflate",
 			body:            []byte("I'm not correctly compressed"),
 			expectedBody:    []byte(zlib.ErrHeader.Error()),
+		},
+		{
+			name:            "identity",
+			contentEncoding: "identity",
+			body:            []byte("bar"),
+			expectedBody:    []byte("bar"),
 		},
 	}
 
@@ -704,24 +842,44 @@ func Test_Ctx_Body_With_Compression_Immutable(t *testing.T) {
 			c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 			c.Request().Header.Set("Content-Encoding", tCase.contentEncoding)
 
-			if strings.Contains(tCase.contentEncoding, "gzip") {
-				var b bytes.Buffer
-				gz := gzip.NewWriter(&b)
-
-				_, err := gz.Write(tCase.body)
-				require.NoError(t, err)
-
-				err = gz.Flush()
-				require.NoError(t, err)
-
-				err = gz.Close()
-				require.NoError(t, err)
-				tCase.body = b.Bytes()
+			encs := strings.Split(tCase.contentEncoding, ",")
+			for _, enc := range encs {
+				enc = strings.TrimSpace(enc)
+				if strings.Contains(tCase.name, "invalid_deflate") && enc == StrDeflate {
+					continue
+				}
+				switch enc {
+				case "gzip":
+					var b bytes.Buffer
+					gz := gzip.NewWriter(&b)
+					_, err := gz.Write(tCase.body)
+					require.NoError(t, err)
+					require.NoError(t, gz.Flush())
+					require.NoError(t, gz.Close())
+					tCase.body = b.Bytes()
+				case StrDeflate:
+					var b bytes.Buffer
+					fl := zlib.NewWriter(&b)
+					_, err := fl.Write(tCase.body)
+					require.NoError(t, err)
+					require.NoError(t, fl.Flush())
+					require.NoError(t, fl.Close())
+					tCase.body = b.Bytes()
+				}
 			}
 
 			c.Request().SetBody(tCase.body)
 			body := c.Body()
 			require.Equal(t, tCase.expectedBody, body)
+
+			switch {
+			case strings.Contains(tCase.name, "unsupported"):
+				require.Equal(t, StatusUnsupportedMediaType, c.Response().StatusCode())
+			case strings.Contains(tCase.name, "compress_not_implemented"):
+				require.Equal(t, StatusNotImplemented, c.Response().StatusCode())
+			default:
+				require.Equal(t, StatusOK, c.Response().StatusCode())
+			}
 
 			// Check if body raw is the same as previous before decompression
 			require.Equal(
@@ -766,21 +924,26 @@ func Benchmark_Ctx_Body_With_Compression_Immutable(b *testing.B) {
 			return buf.Bytes(), nil
 		}
 	)
+	const input = "john=doe"
 	compressionTests := []struct {
 		compressWriter  func([]byte) ([]byte, error)
 		contentEncoding string
+		expectedBody    []byte
 	}{
 		{
 			contentEncoding: "gzip",
 			compressWriter:  compressGzip,
+			expectedBody:    []byte(input),
 		},
 		{
 			contentEncoding: "gzip,invalid",
 			compressWriter:  compressGzip,
+			expectedBody:    []byte(ErrUnsupportedMediaType.Error()),
 		},
 		{
-			contentEncoding: "deflate",
+			contentEncoding: StrDeflate,
 			compressWriter:  compressDeflate,
+			expectedBody:    []byte(input),
 		},
 		{
 			contentEncoding: "gzip,deflate",
@@ -828,6 +991,7 @@ func Benchmark_Ctx_Body_With_Compression_Immutable(b *testing.B) {
 
 				return buf.Bytes(), nil
 			},
+			expectedBody: []byte(zlib.ErrHeader.Error()),
 		},
 	}
 
@@ -848,7 +1012,7 @@ func Benchmark_Ctx_Body_With_Compression_Immutable(b *testing.B) {
 				_ = c.Body()
 			}
 
-			require.Equal(b, []byte(input), c.Body())
+			require.Equal(b, ct.expectedBody, c.Body())
 		})
 	}
 }
@@ -1381,11 +1545,11 @@ func Benchmark_Ctx_Fresh_StaleEtag(b *testing.B) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	for b.Loop() {
-		c.Request().Header.Set(HeaderIfNoneMatch, "a, b, c, d")
+		c.Request().Header.Set(HeaderIfNoneMatch, `"a", "b", "c", "d"`)
 		c.Request().Header.Set(HeaderCacheControl, "c")
 		c.Fresh()
 
-		c.Request().Header.Set(HeaderIfNoneMatch, "a, b, c, d")
+		c.Request().Header.Set(HeaderIfNoneMatch, `"a", "b", "c", "d"`)
 		c.Request().Header.Set(HeaderCacheControl, "e")
 		c.Fresh()
 	}
@@ -1415,15 +1579,15 @@ func Test_Ctx_Fresh(t *testing.T) {
 	c.Request().Header.Set(HeaderCacheControl, ",no-cache,bb")
 	require.False(t, c.Fresh())
 
-	c.Request().Header.Set(HeaderIfNoneMatch, "675af34563dc-tr34")
+	c.Request().Header.Set(HeaderIfNoneMatch, `"675af34563dc-tr34"`)
 	c.Request().Header.Set(HeaderCacheControl, "public")
 	require.False(t, c.Fresh())
 
-	c.Request().Header.Set(HeaderIfNoneMatch, "a, b")
-	c.Response().Header.Set(HeaderETag, "c")
+	c.Request().Header.Set(HeaderIfNoneMatch, `"a", "b"`)
+	c.Response().Header.Set(HeaderETag, `"c"`)
 	require.False(t, c.Fresh())
 
-	c.Response().Header.Set(HeaderETag, "a")
+	c.Response().Header.Set(HeaderETag, `"a"`)
 	require.True(t, c.Fresh())
 
 	c.Request().Header.Set(HeaderIfModifiedSince, "xxWed, 21 Oct 2015 07:28:00 GMT")
@@ -2947,6 +3111,25 @@ func Test_Ctx_Range(t *testing.T) {
 	testRange("seconds=0-1")
 }
 
+func Test_Ctx_Range_Unsatisfiable(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", func(c Ctx) error {
+		_, err := c.Range(10)
+		if err != nil {
+			return err
+		}
+		return c.SendString("ok")
+	})
+
+	req := httptest.NewRequest(MethodGet, "http://example.com/", nil)
+	req.Header.Set(HeaderRange, "bytes=20-30")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusRequestedRangeNotSatisfiable, resp.StatusCode)
+	require.Equal(t, "bytes */10", resp.Header.Get(HeaderContentRange))
+}
+
 // go test -v -run=^$ -bench=Benchmark_Ctx_Range -benchmem -count=4
 func Benchmark_Ctx_Range(b *testing.B) {
 	app := New()
@@ -3302,6 +3485,11 @@ func Test_Ctx_Download(t *testing.T) {
 
 	require.NoError(t, c.Res().Download("ctx.go"))
 	require.Equal(t, `attachment; filename="ctx.go"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
+
+	require.NoError(t, c.Download("ctx.go", "файл.txt"))
+	header := string(c.Response().Header.Peek(HeaderContentDisposition))
+	require.Contains(t, header, `filename="файл.txt"`)
+	require.Contains(t, header, `filename*=UTF-8''%D1%84%D0%B0%D0%B9%D0%BB.txt`)
 }
 
 // go test -race -run Test_Ctx_SendFile

@@ -60,7 +60,7 @@ type Req interface {
 	// and the full response should be sent.
 	// When a client sends the Cache-Control: no-cache request header to indicate an end-to-end
 	// reload request, this module will return false to make handling these requests transparent.
-	// https://github.com/jshttp/fresh/blob/10e0471669dbbfbfd8de65bc6efac2ddd0bfa057/index.js#L33
+	// https://github.com/jshttp/fresh/blob/master/index.js#L33
 	Fresh() bool
 	// Get returns the HTTP request header specified by field.
 	// Field names are case-insensitive
@@ -170,7 +170,7 @@ type Req interface {
 	// If the offset is negative or exceeds the number of subdomains, an empty slice is returned.
 	// If the offset is zero every label (no trimming) is returned.
 	Subdomains(offset ...int) []string
-	// Stale is not implemented yet, pull requests are welcome!
+	// Stale returns the inverse of Fresh, indicating if the client's cached response is considered stale.
 	Stale() bool
 	// IsProxyTrusted checks trustworthiness of remote ip.
 	// If Config.TrustProxy false, it returns true

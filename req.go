@@ -33,22 +33,26 @@ type DefaultReq struct {
 
 // Accepts checks if the specified extensions or content types are acceptable.
 func (r *DefaultReq) Accepts(offers ...string) string {
-	return getOffer(r.Request().Header.Peek(HeaderAccept), acceptsOfferType, offers...)
+	header := joinHeaderValues(r.Request().Header.PeekAll(HeaderAccept))
+	return getOffer(header, acceptsOfferType, offers...)
 }
 
 // AcceptsCharsets checks if the specified charset is acceptable.
 func (r *DefaultReq) AcceptsCharsets(offers ...string) string {
-	return getOffer(r.Request().Header.Peek(HeaderAcceptCharset), acceptsOffer, offers...)
+	header := joinHeaderValues(r.Request().Header.PeekAll(HeaderAcceptCharset))
+	return getOffer(header, acceptsOffer, offers...)
 }
 
 // AcceptsEncodings checks if the specified encoding is acceptable.
 func (r *DefaultReq) AcceptsEncodings(offers ...string) string {
-	return getOffer(r.Request().Header.Peek(HeaderAcceptEncoding), acceptsOffer, offers...)
+	header := joinHeaderValues(r.Request().Header.PeekAll(HeaderAcceptEncoding))
+	return getOffer(header, acceptsOffer, offers...)
 }
 
 // AcceptsLanguages checks if the specified language is acceptable.
 func (r *DefaultReq) AcceptsLanguages(offers ...string) string {
-	return getOffer(r.Request().Header.Peek(HeaderAcceptLanguage), acceptsOffer, offers...)
+	header := joinHeaderValues(r.Request().Header.PeekAll(HeaderAcceptLanguage))
+	return getOffer(header, acceptsLanguageOffer, offers...)
 }
 
 // App returns the *App reference to the instance of the Fiber application
@@ -78,10 +82,12 @@ func (r *DefaultReq) tryDecodeBodyInOrder(
 		decodesRealized uint8
 	)
 
-	for index, encoding := range encodings {
+	for idx := range encodings {
+		i := len(encodings) - 1 - idx
+		encoding := encodings[i]
 		decodesRealized++
 		switch encoding {
-		case StrGzip:
+		case StrGzip, "x-gzip":
 			body, err = r.Request().BodyGunzip()
 		case StrBr, StrBrotli:
 			body, err = r.Request().BodyUnbrotli()
@@ -89,21 +95,20 @@ func (r *DefaultReq) tryDecodeBodyInOrder(
 			body, err = r.Request().BodyInflate()
 		case StrZstd:
 			body, err = r.Request().BodyUnzstd()
+		case StrIdentity:
+			body = r.Request().Body()
+		case StrCompress, "x-compress":
+			return nil, decodesRealized - 1, ErrNotImplemented
 		default:
-			decodesRealized--
-			if len(encodings) == 1 {
-				body = r.Request().Body()
-			}
-			return body, decodesRealized, nil
+			return nil, decodesRealized - 1, ErrUnsupportedMediaType
 		}
 
 		if err != nil {
 			return nil, decodesRealized, err
 		}
 
-		// Only execute body raw update if it has a next iteration to try to decode
-		if index < len(encodings)-1 && decodesRealized > 0 {
-			if index == 0 {
+		if i > 0 && decodesRealized > 0 {
+			if i == len(encodings)-1 {
 				tempBody := r.Request().Body()
 				*originalBody = make([]byte, len(tempBody))
 				copy(*originalBody, tempBody)
@@ -129,7 +134,7 @@ func (r *DefaultReq) Body() []byte {
 	)
 
 	// Get Content-Encoding header
-	headerEncoding = utils.UnsafeString(r.Request().Header.ContentEncoding())
+	headerEncoding = utils.ToLower(utils.UnsafeString(r.Request().Header.ContentEncoding()))
 
 	// If no encoding is provided, return the original body
 	if len(headerEncoding) == 0 {
@@ -139,6 +144,9 @@ func (r *DefaultReq) Body() []byte {
 	// Split and get the encodings list, in order to attend the
 	// rule defined at: https://www.rfc-editor.org/rfc/rfc9110#section-8.4-5
 	encodingOrder = getSplicedStrList(headerEncoding, encodingOrder)
+	for i := range encodingOrder {
+		encodingOrder[i] = utils.ToLower(encodingOrder[i])
+	}
 	if len(encodingOrder) == 0 {
 		return r.getBody()
 	}
@@ -151,6 +159,12 @@ func (r *DefaultReq) Body() []byte {
 		r.Request().SetBodyRaw(originalBody)
 	}
 	if err != nil {
+		switch {
+		case errors.Is(err, ErrUnsupportedMediaType):
+			_ = r.c.SendStatus(StatusUnsupportedMediaType) //nolint:errcheck // It is fine to ignore the error
+		case errors.Is(err, ErrNotImplemented):
+			_ = r.c.SendStatus(StatusNotImplemented) //nolint:errcheck // It is fine to ignore the error
+		}
 		return []byte(err.Error())
 	}
 
@@ -202,7 +216,7 @@ func (r *DefaultReq) FormValue(key string, defaultValue ...string) string {
 // and the full response should be sent.
 // When a client sends the Cache-Control: no-cache request header to indicate an end-to-end
 // reload request, this module will return false to make handling these requests transparent.
-// https://github.com/jshttp/fresh/blob/10e0471669dbbfbfd8de65bc6efac2ddd0bfa057/index.js#L33
+// https://github.com/jshttp/fresh/blob/master/index.js#L33
 func (r *DefaultReq) Fresh() bool {
 	// fields
 	modifiedSince := r.Get(HeaderIfModifiedSince)
@@ -215,7 +229,7 @@ func (r *DefaultReq) Fresh() bool {
 
 	// Always return stale when Cache-Control: no-cache
 	// to support end-to-end reload requests
-	// https://tools.ietf.org/html/rfc2616#section-14.9.4
+	// https://www.rfc-editor.org/rfc/rfc9111#section-5.2.1.4
 	cacheControl := r.Get(HeaderCacheControl)
 	if cacheControl != "" && isNoCache(cacheControl) {
 		return false
@@ -232,7 +246,7 @@ func (r *DefaultReq) Fresh() bool {
 		}
 
 		if modifiedSince != "" {
-			lastModified := r.c.App().getString(r.c.Response().Header.Peek(HeaderLastModified))
+			lastModified := r.App().getString(r.c.Response().Header.Peek(HeaderLastModified))
 			if lastModified != "" {
 				lastModifiedTime, err := http.ParseTime(lastModified)
 				if err != nil {
@@ -274,10 +288,10 @@ func GetReqHeader[V GenericType](r Req, key string, defaultValue ...V) V {
 // Make copies or use the Immutable setting instead.
 func (r *DefaultReq) GetHeaders() map[string][]string {
 	headers := make(map[string][]string)
-	r.Request().Header.VisitAll(func(k, v []byte) {
+	for k, v := range r.Request().Header.All() {
 		key := r.App().getString(k)
 		headers[key] = append(headers[key], r.App().getString(v))
-	})
+	}
 	return headers
 }
 
@@ -595,9 +609,9 @@ func (r *DefaultReq) Scheme() string {
 
 	scheme := schemeHTTP
 	const lenXHeaderName = 12
-	r.Request().Header.VisitAll(func(key, val []byte) {
+	for key, val := range r.Request().Header.All() {
 		if len(key) < lenXHeaderName {
-			return // Neither "X-Forwarded-" nor "X-Url-Scheme"
+			continue // Neither "X-Forwarded-" nor "X-Url-Scheme"
 		}
 		switch {
 		case bytes.HasPrefix(key, []byte("X-Forwarded-")):
@@ -617,7 +631,7 @@ func (r *DefaultReq) Scheme() string {
 		case bytes.Equal(key, []byte(HeaderXUrlScheme)):
 			scheme = r.App().getString(val)
 		}
-	})
+	}
 	return scheme
 }
 
@@ -632,7 +646,7 @@ func (r *DefaultReq) Protocol() string {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (r *DefaultReq) Query(key string, defaultValue ...string) string {
-	return Query[string](r, key, defaultValue...)
+	return Query[string](r.c, key, defaultValue...)
 }
 
 // Queries returns a map of query parameters and their values.
@@ -658,9 +672,9 @@ func (r *DefaultReq) Query(key string, defaultValue ...string) string {
 // Queries()["filters[status]"] == "pending"
 func (r *DefaultReq) Queries() map[string]string {
 	m := make(map[string]string, r.RequestCtx().QueryArgs().Len())
-	r.RequestCtx().QueryArgs().VisitAll(func(key, value []byte) {
+	for key, value := range r.RequestCtx().QueryArgs().All() {
 		m[r.App().getString(key)] = r.App().getString(value)
-	})
+	}
 	return m
 }
 
@@ -671,7 +685,7 @@ func (r *DefaultReq) Queries() map[string]string {
 // - key: The name of the query parameter.
 // - defaultValue: (Optional) The default value to return in case the query parameter is not found or cannot be parsed.
 // The function performs the following steps:
-//  1. Type-asserts the context object to *DefaultReq.
+//  1. Type-asserts the context object to *DefaultCtx.
 //  2. Retrieves the raw query parameter value from the request's URI.
 //  3. Parses the raw value into the appropriate type based on the generic type parameter V.
 //     If parsing fails, the function checks if a default value is provided. If so, it returns the default value.
@@ -682,11 +696,11 @@ func (r *DefaultReq) Queries() map[string]string {
 // Example usage:
 //
 //	GET /?search=john&age=8
-//	name := Query[string](r, "search") // Returns "john"
-//	age := Query[int](r, "age") // Returns 8
-//	unknown := Query[string](r, "unknown", "default") // Returns "default" since the query parameter "unknown" is not found
-func Query[V GenericType](r Req, key string, defaultValue ...V) V {
-	q := r.App().getString(r.RequestCtx().QueryArgs().Peek(key))
+//	name := Query[string](c, "search") // Returns "john"
+//	age := Query[int](c, "age") // Returns 8
+//	unknown := Query[string](c, "unknown", "default") // Returns "default" since the query parameter "unknown" is not found
+func Query[V GenericType](c Ctx, key string, defaultValue ...V) V {
+	q := c.App().getString(c.RequestCtx().QueryArgs().Peek(key))
 	v, err := genericParseType[V](q)
 	if err != nil && len(defaultValue) > 0 {
 		return defaultValue[0]
@@ -760,7 +774,9 @@ func (r *DefaultReq) Range(size int) (Range, error) {
 		})
 	}
 	if len(rangeData.Ranges) < 1 {
-		return rangeData, ErrRangeUnsatisfiable
+		r.c.Status(StatusRequestedRangeNotSatisfiable)
+		r.c.Set(HeaderContentRange, "bytes */"+strconv.Itoa(size))
+		return rangeData, ErrRequestedRangeNotSatisfiable
 	}
 
 	return rangeData, nil
@@ -824,7 +840,7 @@ func (r *DefaultReq) Subdomains(offset ...int) []string {
 	return parts[:len(parts)-o]
 }
 
-// Stale is not implemented yet, pull requests are welcome!
+// Stale returns the inverse of Fresh, indicating if the client's cached response is considered stale.
 func (r *DefaultReq) Stale() bool {
 	return !r.Fresh()
 }

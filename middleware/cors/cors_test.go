@@ -524,11 +524,11 @@ func Test_CORS_AllowOriginHeader_NoMatch(t *testing.T) {
 	handler(ctx)
 
 	var headerExists bool
-	ctx.Response.Header.VisitAll(func(key, _ []byte) {
+	for key := range ctx.Response.Header.All() {
 		if string(key) == fiber.HeaderAccessControlAllowOrigin {
 			headerExists = true
 		}
-	})
+	}
 	require.False(t, headerExists, "Access-Control-Allow-Origin header should not be set")
 }
 
