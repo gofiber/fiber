@@ -160,7 +160,7 @@ func (c *DefaultCtx) Response() *fasthttp.Response {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (c *DefaultCtx) Get(key string, defaultValue ...string) string {
-	return c.Req().Get(key, defaultValue...)
+	return c.DefaultReq.Get(key, defaultValue...)
 }
 
 // GetHeaders returns the HTTP request headers.
@@ -182,7 +182,7 @@ func (c *DefaultCtx) GetReqHeaders() map[string][]string {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (c *DefaultCtx) GetRespHeader(key string, defaultValue ...string) string {
-	return c.Res().Get(key, defaultValue...)
+	return c.DefaultRes.Get(key, defaultValue...)
 }
 
 // GetHeaders returns the HTTP response headers.
