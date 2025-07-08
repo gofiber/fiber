@@ -26,9 +26,9 @@ import (
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
+	"github.com/gofiber/fiber/v3/binder"
 	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
-	"github.com/shamaton/msgpack/v2"
 	"github.com/valyala/fasthttp"
 )
 
@@ -607,10 +607,10 @@ func New(config ...Config) *App {
 		app.config.JSONDecoder = json.Unmarshal
 	}
 	if app.config.MsgPackEncoder == nil {
-		app.config.MsgPackEncoder = msgpack.Marshal
+		app.config.MsgPackEncoder = binder.UnimplementedMsgpackMarshal
 	}
 	if app.config.MsgPackDecoder == nil {
-		app.config.MsgPackDecoder = msgpack.Unmarshal
+		app.config.MsgPackDecoder = binder.UnimplementedMsgpackUnmarshal
 	}
 	if app.config.CBOREncoder == nil {
 		app.config.CBOREncoder = cbor.Marshal

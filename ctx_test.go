@@ -29,6 +29,7 @@ import (
 
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/utils/v2"
+	"github.com/shamaton/msgpack/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
@@ -1349,7 +1350,10 @@ func Benchmark_Ctx_Format(b *testing.B) {
 // go test -run Test_Ctx_AutoFormat
 func Test_Ctx_AutoFormat(t *testing.T) {
 	t.Parallel()
-	app := New()
+	app := New(Config{
+		MsgPackEncoder: msgpack.Marshal,
+		MsgPackDecoder: msgpack.Unmarshal,
+	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Request().Header.Set(HeaderAccept, MIMETextPlain)
@@ -1403,7 +1407,10 @@ func Test_Ctx_AutoFormat(t *testing.T) {
 
 func Test_Ctx_AutoFormat_Struct(t *testing.T) {
 	t.Parallel()
-	app := New()
+	app := New(Config{
+		MsgPackEncoder: msgpack.Marshal,
+		MsgPackDecoder: msgpack.Unmarshal,
+	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Message struct {
@@ -4091,7 +4098,12 @@ func Benchmark_Ctx_JSON(b *testing.B) {
 // go test -run Test_Ctx_MsgPack
 func Test_Ctx_MsgPack(t *testing.T) {
 	t.Parallel()
-	app := New()
+
+	app := New(Config{
+		MsgPackEncoder: msgpack.Marshal,
+		MsgPackDecoder: msgpack.Unmarshal,
+	})
+
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	err := c.MsgPack(complex(1, 1))

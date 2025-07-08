@@ -16,6 +16,7 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/gofiber/fiber/v3/binder"
+	"github.com/shamaton/msgpack/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -875,7 +876,10 @@ func Benchmark_Bind_RespHeader_Map(b *testing.B) {
 // go test -run Test_Bind_Body_Compression
 func Test_Bind_Body(t *testing.T) {
 	t.Parallel()
-	app := New()
+	app := New(Config{
+		MsgPackEncoder: msgpack.Marshal,
+		MsgPackDecoder: msgpack.Unmarshal,
+	})
 	reqBody := []byte(`{"name":"john"}`)
 
 	type Demo struct {
