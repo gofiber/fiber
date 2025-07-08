@@ -12,7 +12,8 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// Ctx represents the Context which hold the HTTP request and response.\nIt has methods for the request query string, parameters, body, HTTP headers and so on.
+// Ctx represents the Context which hold the HTTP request and response.
+// It has methods for the request query string, parameters, body, HTTP headers and so on.
 type Ctx interface {
 	// App returns the *App reference to the instance of the Fiber application
 	App() *App
@@ -152,103 +153,6 @@ type Ctx interface {
 	setRoute(route *Route)
 	keepOriginalPath()
 	getPathOriginal() string
-	// Append the specified value to the HTTP response header field.
-	// If the header is not already set, it creates the header with the specified value.
-	Append(field string, values ...string)
-	// Attachment sets the HTTP response Content-Disposition header field to attachment.
-	Attachment(filename ...string)
-	// ClearCookie expires a specific cookie by key on the client side.
-	// If no key is provided it expires all cookies that came with the request.
-	ClearCookie(key ...string)
-	// Cookie sets a cookie by passing a cookie struct.
-	Cookie(cookie *Cookie)
-	// Download transfers the file from path as an attachment.
-	// Typically, browsers will prompt the user for download.
-	// By default, the Content-Disposition header filename= parameter is the filepath (this typically appears in the browser dialog).
-	// Override this default with the filename parameter.
-	Download(file string, filename ...string) error
-	// Format performs content-negotiation on the Accept HTTP header.
-	// It uses Accepts to select a proper format and calls the matching
-	// user-provided handler function.
-	// If no accepted format is found, and a format with MediaType "default" is given,
-	// that default handler is called. If no format is found and no default is given,
-	// StatusNotAcceptable is sent.
-	Format(handlers ...ResFmt) error
-	// AutoFormat performs content-negotiation on the Accept HTTP header.
-	// It uses Accepts to select a proper format.
-	// The supported content types are text/html, text/plain, application/json, and application/xml.
-	// For more flexible content negotiation, use Format.
-	// If the header is not specified or there is no proper format, text/plain is used.
-	AutoFormat(body any) error
-	// JSON converts any interface or string to JSON.
-	// Array and slice values encode as JSON arrays,
-	// except that []byte encodes as a base64-encoded string,
-	// and a nil slice encodes as the null JSON value.
-	// If the ctype parameter is given, this method will set the
-	// Content-Type header equal to ctype. If ctype is not given,
-	// The Content-Type header will be set to application/json.
-	JSON(data any, ctype ...string) error
-	// CBOR converts any interface or string to CBOR encoded bytes.
-	// If the ctype parameter is given, this method will set the
-	// Content-Type header equal to ctype. If ctype is not given,
-	// The Content-Type header will be set to application/cbor.
-	CBOR(data any, ctype ...string) error
-	// JSONP sends a JSON response with JSONP support.
-	// This method is identical to JSON, except that it opts-in to JSONP callback support.
-	// By default, the callback name is simply callback.
-	JSONP(data any, callback ...string) error
-	// XML converts any interface or string to XML.
-	// This method also sets the content header to application/xml.
-	XML(data any) error
-	// Links joins the links followed by the property to populate the response's Link HTTP header field.
-	Links(link ...string)
-	// Location sets the response Location HTTP header to the specified path parameter.
-	Location(path string)
-	// getLocationFromRoute get URL location from route using parameters
-	getLocationFromRoute(route Route, params Map) (string, error)
-	// GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
-	GetRouteURL(routeName string, params Map) (string, error)
-	// Render a template with data and sends a text/html response.
-	// We support the following engines: https://github.com/gofiber/template
-	Render(name string, bind any, layouts ...string) error
-	// Send sets the HTTP response body without copying it.
-	// From this point onward the body argument must not be changed.
-	Send(body []byte) error
-	// SendFile transfers the file from the specified path.
-	// By default, the file is not compressed. To enable compression, set SendFile.Compress to true.
-	// The Content-Type response HTTP header field is set based on the file's extension.
-	// If the file extension is missing or invalid, the Content-Type is detected from the file's format.
-	SendFile(file string, config ...SendFile) error
-	// SendStatus sets the HTTP status code and if the response body is empty,
-	// it sets the correct status message in the body.
-	SendStatus(status int) error
-	// SendString sets the HTTP response body for string types.
-	// This means no type assertion, recommended for faster performance
-	SendString(body string) error
-	// SendStream sets response body stream and optional body size.
-	SendStream(stream io.Reader, size ...int) error
-	// SendStreamWriter sets response body stream writer
-	SendStreamWriter(streamWriter func(*bufio.Writer)) error
-	// Set sets the response's HTTP header field to the specified key, value.
-	Set(key, val string)
-	setCanonical(key, val string)
-	// Type sets the Content-Type HTTP header to the MIME type specified by the file extension.
-	Type(extension string, charset ...string) Ctx
-	// Vary adds the given header field to the Vary response header.
-	// This will append the header, if not already listed, otherwise leaves it listed in the current location.
-	Vary(fields ...string)
-	// Write appends p into response body.
-	Write(p []byte) (int, error)
-	// Writef appends f & a into response body writer.
-	Writef(f string, a ...any) (int, error)
-	// WriteString appends s to response body.
-	WriteString(s string) (int, error)
-	// Drop closes the underlying connection without sending any response headers or body.
-	// This can be useful for silently terminating client connections, such as in DDoS mitigation
-	// or when blocking access to sensitive endpoints.
-	Drop() error
-	// End immediately flushes the current response and closes the underlying connection.
-	End() error
 	// Accepts checks if the specified extensions or content types are acceptable.
 	Accepts(offers ...string) string
 	// AcceptsCharsets checks if the specified charset is acceptable.
@@ -392,4 +296,101 @@ type Ctx interface {
 	// IsFromLocal will return true if request came from local.
 	IsFromLocal() bool
 	getBody() []byte
+	// Append the specified value to the HTTP response header field.
+	// If the header is not already set, it creates the header with the specified value.
+	Append(field string, values ...string)
+	// Attachment sets the HTTP response Content-Disposition header field to attachment.
+	Attachment(filename ...string)
+	// ClearCookie expires a specific cookie by key on the client side.
+	// If no key is provided it expires all cookies that came with the request.
+	ClearCookie(key ...string)
+	// Cookie sets a cookie by passing a cookie struct.
+	Cookie(cookie *Cookie)
+	// Download transfers the file from path as an attachment.
+	// Typically, browsers will prompt the user for download.
+	// By default, the Content-Disposition header filename= parameter is the filepath (this typically appears in the browser dialog).
+	// Override this default with the filename parameter.
+	Download(file string, filename ...string) error
+	// Format performs content-negotiation on the Accept HTTP header.
+	// It uses Accepts to select a proper format and calls the matching
+	// user-provided handler function.
+	// If no accepted format is found, and a format with MediaType "default" is given,
+	// that default handler is called. If no format is found and no default is given,
+	// StatusNotAcceptable is sent.
+	Format(handlers ...ResFmt) error
+	// AutoFormat performs content-negotiation on the Accept HTTP header.
+	// It uses Accepts to select a proper format.
+	// The supported content types are text/html, text/plain, application/json, and application/xml.
+	// For more flexible content negotiation, use Format.
+	// If the header is not specified or there is no proper format, text/plain is used.
+	AutoFormat(body any) error
+	// JSON converts any interface or string to JSON.
+	// Array and slice values encode as JSON arrays,
+	// except that []byte encodes as a base64-encoded string,
+	// and a nil slice encodes as the null JSON value.
+	// If the ctype parameter is given, this method will set the
+	// Content-Type header equal to ctype. If ctype is not given,
+	// The Content-Type header will be set to application/json.
+	JSON(data any, ctype ...string) error
+	// CBOR converts any interface or string to CBOR encoded bytes.
+	// If the ctype parameter is given, this method will set the
+	// Content-Type header equal to ctype. If ctype is not given,
+	// The Content-Type header will be set to application/cbor.
+	CBOR(data any, ctype ...string) error
+	// JSONP sends a JSON response with JSONP support.
+	// This method is identical to JSON, except that it opts-in to JSONP callback support.
+	// By default, the callback name is simply callback.
+	JSONP(data any, callback ...string) error
+	// XML converts any interface or string to XML.
+	// This method also sets the content header to application/xml.
+	XML(data any) error
+	// Links joins the links followed by the property to populate the response's Link HTTP header field.
+	Links(link ...string)
+	// Location sets the response Location HTTP header to the specified path parameter.
+	Location(path string)
+	// getLocationFromRoute get URL location from route using parameters
+	getLocationFromRoute(route Route, params Map) (string, error)
+	// GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
+	GetRouteURL(routeName string, params Map) (string, error)
+	// Render a template with data and sends a text/html response.
+	// We support the following engines: https://github.com/gofiber/template
+	Render(name string, bind any, layouts ...string) error
+	// Send sets the HTTP response body without copying it.
+	// From this point onward the body argument must not be changed.
+	Send(body []byte) error
+	// SendFile transfers the file from the specified path.
+	// By default, the file is not compressed. To enable compression, set SendFile.Compress to true.
+	// The Content-Type response HTTP header field is set based on the file's extension.
+	// If the file extension is missing or invalid, the Content-Type is detected from the file's format.
+	SendFile(file string, config ...SendFile) error
+	// SendStatus sets the HTTP status code and if the response body is empty,
+	// it sets the correct status message in the body.
+	SendStatus(status int) error
+	// SendString sets the HTTP response body for string types.
+	// This means no type assertion, recommended for faster performance
+	SendString(body string) error
+	// SendStream sets response body stream and optional body size.
+	SendStream(stream io.Reader, size ...int) error
+	// SendStreamWriter sets response body stream writer
+	SendStreamWriter(streamWriter func(*bufio.Writer)) error
+	// Set sets the response's HTTP header field to the specified key, value.
+	Set(key, val string)
+	setCanonical(key, val string)
+	// Type sets the Content-Type HTTP header to the MIME type specified by the file extension.
+	Type(extension string, charset ...string) Ctx
+	// Vary adds the given header field to the Vary response header.
+	// This will append the header, if not already listed, otherwise leaves it listed in the current location.
+	Vary(fields ...string)
+	// Write appends p into response body.
+	Write(p []byte) (int, error)
+	// Writef appends f & a into response body writer.
+	Writef(f string, a ...any) (int, error)
+	// WriteString appends s to response body.
+	WriteString(s string) (int, error)
+	// Drop closes the underlying connection without sending any response headers or body.
+	// This can be useful for silently terminating client connections, such as in DDoS mitigation
+	// or when blocking access to sensitive endpoints.
+	Drop() error
+	// End immediately flushes the current response and closes the underlying connection.
+	End() error
 }
