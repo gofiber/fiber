@@ -325,14 +325,14 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// MsgPackMarshal
 	//
 	// Allowing for flexibility in using another msgpack library for encoding
-	// Default: nil
+	// Default: binder.UnimplementedMsgpackMarshal
 	MsgPackEncoder utils.MsgPackMarshal `json:"-"`
 
 	// When set by an external client of Fiber it will use the provided implementation of a
 	// MsgPackUnmarshal
 	//
 	// Allowing for flexibility in using another msgpack library for decoding
-	// Default: nil
+	// Default: binder.UnimplementedMsgpackUnmarshal
 	MsgPackDecoder utils.MsgPackUnmarshal `json:"-"`
 
 	// When set by an external client of Fiber it will use the provided implementation of a
