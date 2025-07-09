@@ -30,7 +30,7 @@ go get github.com/vmihailenco/msgpack
 go get github.com/shamaton/msgpack/v2
 ```
 
-> **Note:** Fiber does **not** register MsgPack support by default because it is not part of the Go standard library. You can choose from several popular MsgPack libraries in the Go ecosystem. The two recommended packages below are widely used and compatible with Go.
+> **Note:** Fiber does **not** register MsgPack by default because it is not part of the Go standard library. You can choose from several popular MsgPack libraries in the Go ecosystem. The two recommended packages below are widely used and compatible with Go.
 
 ### Example: Using `shamaton/msgpack/v2`
 
