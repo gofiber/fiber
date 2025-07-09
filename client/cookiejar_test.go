@@ -30,7 +30,6 @@ func Test_CookieJarGet(t *testing.T) {
 	url11 := []byte("http://fasthttp.com/hola")
 	url2 := []byte("http://fasthttp.com/make/fasthttp")
 	url3 := []byte("http://fasthttp.com/make/fasthttp/great")
-	prefix := []byte("/")
 	cj := &CookieJar{}
 
 	c1 := &fasthttp.Cookie{}
@@ -87,10 +86,7 @@ func Test_CookieJarGet(t *testing.T) {
 	}
 
 	cookies = cj.Get(uri)
-	require.Len(t, cookies, 3)
-	for _, cookie := range cookies {
-		require.True(t, bytes.HasPrefix(cookie.Path(), prefix))
-	}
+	require.Empty(t, cookies)
 }
 
 func Test_CookieJarGetExpired(t *testing.T) {
