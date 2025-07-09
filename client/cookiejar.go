@@ -231,7 +231,7 @@ func (cj *CookieJar) dumpCookiesToReq(req *fasthttp.Request) {
 }
 
 // parseCookiesFromResp parses the cookies from the response and stores them for the specified host and path.
-func (cj *CookieJar) parseCookiesFromResp(host, path []byte, resp *fasthttp.Response) {
+func (cj *CookieJar) parseCookiesFromResp(host, _ []byte, resp *fasthttp.Response) {
 	hostStr := utils.UnsafeString(host)
 	if h, _, err := net.SplitHostPort(hostStr); err == nil {
 		hostStr = h
