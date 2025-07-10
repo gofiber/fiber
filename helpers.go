@@ -634,6 +634,8 @@ func parseAddr(raw string) (string, string) {
 		return "", ""
 	}
 
+	raw = utils.Trim(raw, ' ')
+
 	// Handle IPv6 addresses enclosed in brackets as defined by RFC 3986
 	if strings.HasPrefix(raw, "[") {
 		if end := strings.IndexByte(raw, ']'); end != -1 {
