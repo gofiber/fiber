@@ -530,6 +530,7 @@ func Test_Utils_Parse_Address(t *testing.T) {
 		{addr: "[fe80::1%lo0]:1234", host: "[fe80::1%lo0]", port: "1234"},
 		{addr: "[fe80::1%lo0]", host: "[fe80::1%lo0]", port: ""},
 		{addr: ":9090", host: "", port: "9090"},
+		{addr: " 127.0.0.1:8080 ", host: "127.0.0.1", port: "8080"},
 		{addr: "", host: "", port: ""},
 	}
 
