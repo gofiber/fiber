@@ -101,7 +101,7 @@ func Test_EnvVarHandlerMethod(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusMethodNotAllowed, resp.StatusCode)
-	require.Equal(t, fiber.MethodGet, resp.Header.Get(fiber.HeaderAllow))
+	require.Equal(t, hAllow, resp.Header.Get(fiber.HeaderAllow))
 }
 
 func Test_EnvVarHandlerSpecialValue(t *testing.T) {

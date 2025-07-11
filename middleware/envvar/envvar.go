@@ -6,6 +6,8 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
+const hAllow = fiber.MethodGet + ", " + fiber.MethodHead
+
 // Config defines the config for middleware.
 type Config struct {
 	// ExportVars specifies the environment variables that should export
@@ -28,7 +30,7 @@ func New(config ...Config) fiber.Handler {
 
 	return func(c fiber.Ctx) error {
 		if c.Method() != fiber.MethodGet {
-			c.Set(fiber.HeaderAllow, fiber.MethodGet)
+			c.Set(fiber.HeaderAllow, hAllow)
 			return fiber.ErrMethodNotAllowed
 		}
 
