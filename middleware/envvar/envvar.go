@@ -28,6 +28,7 @@ func New(config ...Config) fiber.Handler {
 
 	return func(c fiber.Ctx) error {
 		if c.Method() != fiber.MethodGet {
+			c.Set(fiber.HeaderAllow, fiber.MethodGet)
 			return fiber.ErrMethodNotAllowed
 		}
 
