@@ -10,6 +10,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 )
 
 var (
@@ -45,7 +46,7 @@ func TestTimeout_Success(t *testing.T) {
 			return err
 		}
 		return c.SendString("OK")
-	}, 50*time.Millisecond))
+	}, Config{Timeout: 50 * time.Millisecond}))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/fast", nil)
 	resp, err := app.Test(req)
@@ -64,7 +65,7 @@ func TestTimeout_Exceeded(t *testing.T) {
 			return err
 		}
 		return c.SendString("Should never get here")
-	}, 100*time.Millisecond))
+	}, Config{Timeout: 100 * time.Millisecond}))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/slow", nil)
 	resp, err := app.Test(req)
@@ -85,7 +86,7 @@ func TestTimeout_CustomError(t *testing.T) {
 			return fmt.Errorf("wrapped: %w", err)
 		}
 		return c.SendString("Should never get here")
-	}, 100*time.Millisecond, errCustomTimeout))
+	}, Config{Timeout: 100 * time.Millisecond, Errors: []error{errCustomTimeout}}))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/custom", nil)
 	resp, err := app.Test(req)
@@ -102,29 +103,108 @@ func TestTimeout_UnmatchedError(t *testing.T) {
 
 	app.Get("/unmatched", New(func(_ fiber.Ctx) error {
 		return errUnrelated // Not in the custom error list
-	}, 100*time.Millisecond, errCustomTimeout))
+	}, Config{Timeout: 100 * time.Millisecond, Errors: []error{errCustomTimeout}}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/unmatched", nil)
+	app := fiber.New()
+
+	app.Get("/report", New(func(c fiber.Ctx) error {
+		if err := sleepWithContext(c, 40*time.Millisecond, context.DeadlineExceeded); err != nil {
+			return err
+		}
+		return c.SendString("done")
+	}, Config{
+		Timeout: 10 * time.Millisecond,
+		Routes:  map[string]time.Duration{"/report": 100 * time.Millisecond},
+	}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/report", nil)
 	resp, err := app.Test(req)
-	require.NoError(t, err, "app.Test(req) should not fail")
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode,
-		"Expected 500 because the error is not recognized as a timeout error")
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Expected 200 OK with route-specific timeout")
 }
 
-// TestTimeout_ZeroDuration tests the edge case where the timeout is set to zero.
-// Usually this means the request can never exceed a 'deadline' – effectively no timeout.
-func TestTimeout_ZeroDuration(t *testing.T) {
+// TestTimeout_CustomHandler checks that a custom timeout handler is executed.
+func TestTimeout_CustomHandler(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	app.Get("/zero", New(func(c fiber.Ctx) error {
-		// Sleep 50ms, but there's no real 'deadline' since zero-timeout.
-		time.Sleep(50 * time.Millisecond)
-		return c.SendString("No timeout used")
-	}, 0))
+	app.Get("/custom-handler", New(func(c fiber.Ctx) error {
+		if err := sleepWithContext(c, 100*time.Millisecond, context.DeadlineExceeded); err != nil {
+			return err
+		}
+		return c.SendString("should not reach")
+	}, Config{
+		Timeout: 20 * time.Millisecond,
+		OnTimeout: func(c fiber.Ctx) error {
+			return c.Status(408).JSON(fiber.Map{"error": "timeout"})
+		},
+	}))
 
-	req := httptest.NewRequest(fiber.MethodGet, "/zero", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/custom-handler", nil)
 	resp, err := app.Test(req)
-	require.NoError(t, err, "app.Test(req) should not fail")
-	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Expected 200 OK with zero timeout")
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
+}
+
+// TestTimeout_SkipPathAndRoute ensures that a path listed in SkipPaths ignores
+// any route-specific timeout value.
+func TestTimeout_SkipPathAndRoute(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Get("/mixed", New(func(c fiber.Ctx) error {
+		// Sleep longer than the default timeout. Because the path is in
+		// SkipPaths, the request should still succeed.
+		if err := sleepWithContext(c, 150*time.Millisecond, context.DeadlineExceeded); err != nil {
+			return err
+		}
+		return c.SendString("done")
+	}, Config{
+		Timeout:   20 * time.Millisecond,
+		SkipPaths: []string{"/mixed"},
+		Routes:    map[string]time.Duration{"/mixed": 200 * time.Millisecond},
+	}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/mixed", nil)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Expected 200 OK when path is skipped even with route-specific timeout")
+}
+
+// TestRunHandler_DefaultOnTimeout verifies that when the wrapped handler returns
+// context.DeadlineExceeded and no custom OnTimeout is provided, runHandler
+// returns fiber.ErrRequestTimeout.
+func TestRunHandler_DefaultOnTimeout(t *testing.T) {
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	err := runHandler(ctx, func(_ fiber.Ctx) error {
+		return context.DeadlineExceeded
+	}, Config{})
+	require.Equal(t, fiber.ErrRequestTimeout, err)
+}
+
+// TestRunHandler_CustomOnTimeout verifies that if a custom error from cfg.Errors
+// is returned and a custom OnTimeout handler is defined, it is executed.
+func TestRunHandler_CustomOnTimeout(t *testing.T) {
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	called := false
+	cfg := Config{
+		Errors: []error{errCustomTimeout},
+		OnTimeout: func(_ fiber.Ctx) error {
+			called = true
+			return errors.New("handled")
+		},
+	}
+
+	err := runHandler(ctx, func(_ fiber.Ctx) error {
+		return fmt.Errorf("wrap: %w", errCustomTimeout)
+	}, cfg)
+
+	require.True(t, called, "expected OnTimeout to be called")
+	require.EqualError(t, err, "handled")
 }

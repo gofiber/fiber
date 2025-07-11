@@ -1288,6 +1288,10 @@ The Session middleware has undergone key changes in v3 to improve functionality 
 
 For more details on these changes and migration instructions, check the [Session Middleware Migration Guide](./middleware/session.md#migration-guide).
 
+### Timeout
+
+The timeout middleware is now configurable. A new `Config` struct allows customizing the timeout duration, defining a handler that runs when a timeout occurs, and specifying errors to treat as timeouts. The `New` function now accepts a `Config` value instead of a duration, so existing code must be updated accordingly.
+
 ## 🔌 Addons
 
 In v3, Fiber introduced Addons. Addons are additional useful packages that can be used in Fiber.
