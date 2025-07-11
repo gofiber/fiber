@@ -24,10 +24,10 @@ func (b *MsgPackBinding) Reset() {
 	b.MsgPackDecoder = nil
 }
 
-func UnimplementedMsgpackMarshal(data any) ([]byte, error) {
+func UnimplementedMsgpackMarshal(_ any) ([]byte, error) {
 	panic("Must explicits setup Msgpack, please check docs: https://docs.gofiber.io/next/guide/advance-format#msgpack")
 }
 
-func UnimplementedMsgpackUnmarshal(data []byte, v any) error {
+func UnimplementedMsgpackUnmarshal(_ []byte, _ any) error {
 	panic("Must explicits setup Msgpack, please check docs: https://docs.gofiber.io/next/guide/advance-format#msgpack")
 }

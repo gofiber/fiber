@@ -6,8 +6,6 @@ description: >-
 sidebar_position: 9
 ---
 
-# 🐛 Advance Format
-
 ## Msgpack
 
 Fiber enables efficient binary serialization using MessagePack (MsgPack). You can leverage popular Go libraries to encode and decode MsgPack data within your route handlers.
