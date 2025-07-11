@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -101,6 +102,21 @@ func Test_EnvVarHandlerMethod(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusMethodNotAllowed, resp.StatusCode)
+	require.Equal(t, hAllow, resp.Header.Get(fiber.HeaderAllow))
+}
+
+func Test_EnvVarHandlerHead(t *testing.T) {
+	app := fiber.New()
+	app.Use("/envvars", New())
+
+	req := httptest.NewRequest(fiber.MethodHead, "http://localhost/envvars", nil)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "", string(body))
 }
 
 func Test_EnvVarHandlerSpecialValue(t *testing.T) {
