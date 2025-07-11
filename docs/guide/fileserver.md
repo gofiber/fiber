@@ -27,9 +27,9 @@ go build -o fileserver ./cmd/fileserver
 - `-dir` – directory to serve (default `.`)
 - `-addr` – address to listen on (default `:3000`)
 - `-path` – URL path to mount the directory (default `/`)
-- `-logger` – enable request logging
+- `-logger` – enable request logging (default `true`)
 - `-cors` – enable CORS middleware
-- `-health` – expose `/livez`, `/readyz` and `/startupz` endpoints
+- `-health` – expose `/livez`, `/readyz` and `/startupz` endpoints (default `true`)
 - `-cert` – path to TLS certificate file
 - `-key` – path to TLS private key file
 - `-browse` – enable directory listing

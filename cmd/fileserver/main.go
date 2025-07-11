@@ -2,11 +2,11 @@ package main
 
 import (
 	"flag"
-	"log"
 	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	fiberlog "github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/fiber/v3/middleware/cors"
 	"github.com/gofiber/fiber/v3/middleware/healthcheck"
 	"github.com/gofiber/fiber/v3/middleware/logger"
@@ -32,13 +32,15 @@ type options struct {
 func newApp(o options) *fiber.App {
 	app := fiber.New()
 
+	// Recover should be registered first to handle panics from later middleware
+	app.Use(recover.New())
+
 	if o.Logger {
 		app.Use(logger.New())
 	}
 	if o.Cors {
 		app.Use(cors.New())
 	}
-	app.Use(recover.New())
 
 	if o.Health {
 		app.Get(healthcheck.LivenessEndpoint, healthcheck.New())
@@ -66,9 +68,9 @@ func main() {
 	dir := flag.String("dir", ".", "directory to serve")
 	addr := flag.String("addr", ":3000", "address to listen on")
 	path := flag.String("path", "/", "request path to serve")
-	enableLogger := flag.Bool("logger", false, "enable logger middleware")
+	enableLogger := flag.Bool("logger", true, "enable logger middleware")
 	enableCors := flag.Bool("cors", false, "enable CORS middleware")
-	enableHealth := flag.Bool("health", false, "enable health check endpoints")
+	enableHealth := flag.Bool("health", true, "enable health check endpoints")
 	cert := flag.String("cert", "", "TLS certificate file")
 	key := flag.String("key", "", "TLS private key file")
 	browse := flag.Bool("browse", false, "enable directory browsing")
@@ -104,6 +106,6 @@ func main() {
 	}
 
 	if err := app.Listen(*addr, cfg); err != nil {
-		log.Fatalf("failed to start server: %v", err)
+		fiberlog.Fatalf("failed to start server: %v", err)
 	}
 }

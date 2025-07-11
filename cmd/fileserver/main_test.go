@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -20,14 +21,19 @@ func TestNewAppHealthEndpoints(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, healthcheck.LivenessEndpoint, nil))
 	require.NoError(t, err)
+	defer resp.Body.Close()
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
 
 func TestNewAppServeIndex(t *testing.T) {
 	t.Parallel()
 
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping on windows")
+	}
+
 	dir := t.TempDir()
-	err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("hello"), 0o644)
+	err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("hello"), 0o600)
 	require.NoError(t, err)
 
 	opts := options{Dir: dir, Path: "/", Index: "index.html", Cache: time.Second}
@@ -35,6 +41,7 @@ func TestNewAppServeIndex(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
+	defer resp.Body.Close()
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 	body, err := io.ReadAll(resp.Body)
