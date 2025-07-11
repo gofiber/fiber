@@ -4398,7 +4398,7 @@ func Test_Ctx_RenderWithoutLocals(t *testing.T) {
 
 	err := c.Render("./.github/testdata/index.tmpl", Map{})
 	require.NoError(t, err)
-	require.Equal(t, "<h1><no value></h1>", string(c.Response().Body()))
+	require.Equal(t, "<h1></h1>", string(c.Response().Body()))
 }
 
 func Test_Ctx_RenderWithLocals(t *testing.T) {
