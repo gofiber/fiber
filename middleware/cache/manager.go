@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -72,9 +73,9 @@ func (m *manager) release(e *item) {
 }
 
 // get data from storage or memory
-func (m *manager) get(key string) *item {
+func (m *manager) get(ctx context.Context, key string) *item {
 	if m.storage != nil {
-		raw, err := m.storage.Get(key)
+		raw, err := m.storage.GetWithContext(ctx, key)
 		if err != nil || raw == nil {
 			return nil
 		}
@@ -96,10 +97,10 @@ func (m *manager) get(key string) *item {
 }
 
 // get raw data from storage or memory
-func (m *manager) getRaw(key string) []byte {
+func (m *manager) getRaw(ctx context.Context, key string) []byte {
 	var raw []byte
 	if m.storage != nil {
-		raw, _ = m.storage.Get(key) //nolint:errcheck // TODO: Handle error here
+		raw, _ = m.storage.GetWithContext(ctx, key) //nolint:errcheck // TODO: Handle error here
 	} else {
 		raw, _ = m.memory.Get(key).([]byte) //nolint:errcheck // TODO: Handle error here
 	}
@@ -107,10 +108,10 @@ func (m *manager) getRaw(key string) []byte {
 }
 
 // set data to storage or memory
-func (m *manager) set(key string, it *item, exp time.Duration) {
+func (m *manager) set(ctx context.Context, key string, it *item, exp time.Duration) {
 	if m.storage != nil {
 		if raw, err := it.MarshalMsg(nil); err == nil {
-			_ = m.storage.Set(key, raw, exp) //nolint:errcheck // TODO: Handle error here
+			_ = m.storage.SetWithContext(ctx, key, raw, exp) //nolint:errcheck // TODO: Handle error here
 		}
 		// we can release data because it's serialized to database
 		m.release(it)
@@ -120,18 +121,18 @@ func (m *manager) set(key string, it *item, exp time.Duration) {
 }
 
 // set data to storage or memory
-func (m *manager) setRaw(key string, raw []byte, exp time.Duration) {
+func (m *manager) setRaw(ctx context.Context, key string, raw []byte, exp time.Duration) {
 	if m.storage != nil {
-		_ = m.storage.Set(key, raw, exp) //nolint:errcheck // TODO: Handle error here
+		_ = m.storage.SetWithContext(ctx, key, raw, exp) //nolint:errcheck // TODO: Handle error here
 	} else {
 		m.memory.Set(key, raw, exp)
 	}
 }
 
 // delete data from storage or memory
-func (m *manager) del(key string) {
+func (m *manager) del(ctx context.Context, key string) {
 	if m.storage != nil {
-		_ = m.storage.Delete(key) //nolint:errcheck // TODO: Handle error here
+		_ = m.storage.DeleteWithContext(ctx, key) //nolint:errcheck // TODO: Handle error here
 	} else {
 		m.memory.Delete(key)
 	}

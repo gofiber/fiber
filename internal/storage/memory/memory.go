@@ -3,6 +3,7 @@
 package memory
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -57,6 +58,11 @@ func (s *Storage) Get(key string) ([]byte, error) {
 	return v.data, nil
 }
 
+func (s *Storage) GetWithContext(_ context.Context, key string) ([]byte, error) {
+	// Call Get method to avoid code duplication
+	return s.Get(key)
+}
+
 // Set key with value
 func (s *Storage) Set(key string, val []byte, exp time.Duration) error {
 	// Ain't Nobody Got Time For That
@@ -76,6 +82,12 @@ func (s *Storage) Set(key string, val []byte, exp time.Duration) error {
 	return nil
 }
 
+// SetWithContext sets key with value
+func (s *Storage) SetWithContext(_ context.Context, key string, val []byte, exp time.Duration) error {
+	// Call Set method to avoid code duplication
+	return s.Set(key, val, exp)
+}
+
 // Delete key by key
 func (s *Storage) Delete(key string) error {
 	// Ain't Nobody Got Time For That
@@ -88,6 +100,11 @@ func (s *Storage) Delete(key string) error {
 	return nil
 }
 
+func (s *Storage) DeleteWithContext(_ context.Context, key string) error {
+	// Call Delete method to avoid code duplication
+	return s.Delete(key)
+}
+
 // Reset all keys
 func (s *Storage) Reset() error {
 	ndb := make(map[string]entry)
@@ -95,6 +112,12 @@ func (s *Storage) Reset() error {
 	s.db = ndb
 	s.mux.Unlock()
 	return nil
+}
+
+// ResetWithContext resets all keys with a context
+func (s *Storage) ResetWithContext(_ context.Context) error {
+	// Call Reset method to avoid code duplication
+	return s.Reset()
 }
 
 // Close the memory storage

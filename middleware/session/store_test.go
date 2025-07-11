@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -111,7 +112,7 @@ func Test_Store_DeleteSession(t *testing.T) {
 	sessionID := session.ID()
 
 	// Delete the session
-	err = store.Delete(sessionID)
+	err = store.Delete(ctx, sessionID)
 	require.NoError(t, err)
 
 	// Try to get the session again
@@ -150,13 +151,13 @@ func TestStore_Delete(t *testing.T) {
 	store := NewStore()
 
 	t.Run("delete with empty session ID", func(t *testing.T) {
-		err := store.Delete("")
+		err := store.Delete(context.Background(), "")
 		require.Error(t, err)
 		require.Equal(t, ErrEmptySessionID, err)
 	})
 
 	t.Run("delete non-existing session", func(t *testing.T) {
-		err := store.Delete("non-existing-session-id")
+		err := store.Delete(context.Background(), "non-existing-session-id")
 		require.NoError(t, err)
 	})
 }
@@ -168,7 +169,7 @@ func Test_Store_GetByID(t *testing.T) {
 
 	t.Run("empty session ID", func(t *testing.T) {
 		t.Parallel()
-		sess, err := store.GetByID("")
+		sess, err := store.GetByID(context.Background(), "")
 		require.Error(t, err)
 		require.Nil(t, sess)
 		require.Equal(t, ErrEmptySessionID, err)
@@ -176,7 +177,7 @@ func Test_Store_GetByID(t *testing.T) {
 
 	t.Run("non-existent session ID", func(t *testing.T) {
 		t.Parallel()
-		sess, err := store.GetByID("non-existent-session-id")
+		sess, err := store.GetByID(context.Background(), "non-existent-session-id")
 		require.Error(t, err)
 		require.Nil(t, sess)
 		require.Equal(t, ErrSessionIDNotFoundInStore, err)
@@ -200,7 +201,7 @@ func Test_Store_GetByID(t *testing.T) {
 		require.NoError(t, err)
 
 		// Retrieve the session by ID
-		retrievedSession, err := store.GetByID(sessionID)
+		retrievedSession, err := store.GetByID(context.Background(), sessionID)
 		require.NoError(t, err)
 		require.NotNil(t, retrievedSession)
 		require.Equal(t, sessionID, retrievedSession.ID())

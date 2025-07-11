@@ -39,7 +39,7 @@ func New(config ...Config) fiber.Handler {
 	}
 
 	maybeWriteCachedResponse := func(c fiber.Ctx, key string) (bool, error) {
-		if val, err := cfg.Storage.Get(key); err != nil {
+		if val, err := cfg.Storage.GetWithContext(c, key); err != nil {
 			return false, fmt.Errorf("failed to read response: %w", err)
 		} else if val != nil {
 			var res response
@@ -148,7 +148,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Store response
-		if err := cfg.Storage.Set(key, bs, cfg.Lifetime); err != nil {
+		if err := cfg.Storage.SetWithContext(c, key, bs, cfg.Lifetime); err != nil {
 			return fmt.Errorf("failed to save response: %w", err)
 		}
 
