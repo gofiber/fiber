@@ -708,7 +708,7 @@ func main() {
     app := fiber.New()
 
     app.Get("/convert", func(c fiber.Ctx) error {
-        value, err := fiber.Convert[string](c.Query("value"), strconv.Atoi, 0)
+        value, err := fiber.Convert[int](c.Query("value"), strconv.Atoi, 0)
         if err != nil {
             return c.Status(fiber.StatusBadRequest).SendString(err.Error())
         }
