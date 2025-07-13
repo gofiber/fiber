@@ -58,8 +58,14 @@ func (s *Storage) Get(key string) ([]byte, error) {
 	return v.data, nil
 }
 
-func (s *Storage) GetWithContext(_ context.Context, key string) ([]byte, error) {
-	// Call Get method to avoid code duplication
+func (s *Storage) GetWithContext(ctx context.Context, key string) ([]byte, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+		// Continue execution if context is not done
+	}
+
 	return s.Get(key)
 }
 
@@ -83,8 +89,14 @@ func (s *Storage) Set(key string, val []byte, exp time.Duration) error {
 }
 
 // SetWithContext sets key with value
-func (s *Storage) SetWithContext(_ context.Context, key string, val []byte, exp time.Duration) error {
-	// Call Set method to avoid code duplication
+func (s *Storage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+		// Continue execution if context is not done
+	}
+
 	return s.Set(key, val, exp)
 }
 
@@ -100,8 +112,14 @@ func (s *Storage) Delete(key string) error {
 	return nil
 }
 
-func (s *Storage) DeleteWithContext(_ context.Context, key string) error {
-	// Call Delete method to avoid code duplication
+func (s *Storage) DeleteWithContext(ctx context.Context, key string) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+		// Continue execution if context is not done
+	}
+
 	return s.Delete(key)
 }
 
@@ -115,8 +133,14 @@ func (s *Storage) Reset() error {
 }
 
 // ResetWithContext resets all keys with a context
-func (s *Storage) ResetWithContext(_ context.Context) error {
-	// Call Reset method to avoid code duplication
+func (s *Storage) ResetWithContext(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+		// Continue execution if context is not done
+	}
+
 	return s.Reset()
 }
 
