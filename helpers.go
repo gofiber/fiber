@@ -839,7 +839,7 @@ func genericParseType[V GenericType](str string) (V, error) {
 		if err != nil {
 			return v, fmt.Errorf("failed to parse int16: %w", err)
 		}
-		return any(int16(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
+		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case int32:
 		result, err := utils.ParseInt32(str)
 		if err != nil {
@@ -869,7 +869,7 @@ func genericParseType[V GenericType](str string) (V, error) {
 		if err != nil {
 			return v, fmt.Errorf("failed to parse uint16: %w", err)
 		}
-		return any(uint16(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
+		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case uint32:
 		result, err := utils.ParseUint32(str)
 		if err != nil {
