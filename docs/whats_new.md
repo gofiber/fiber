@@ -986,6 +986,7 @@ GetWithContext(ctx context.Context, key string) ([]byte, error)
 
 // SetWithContext stores the given value for the given key
 // with an expiration value, 0 means no expiration.
+// Empty key or value will be ignored without an error.
 SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error
 
 // DeleteWithContext deletes the value for the given key with a context.
