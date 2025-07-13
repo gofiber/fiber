@@ -822,17 +822,17 @@ func genericParseType[V GenericType](str string) (V, error) {
 	var v V
 	switch any(v).(type) {
 	case int:
-		result, err := strconv.ParseInt(str, 10, 0)
-		if err != nil {
-			return v, fmt.Errorf("failed to parse int: %w", err)
+		result, ok := utils.ParseInt(str)
+		if !ok {
+			return v, fmt.Errorf("failed to parse int")
 		}
 		return any(int(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case int8:
-		result, err := strconv.ParseInt(str, 10, 8)
-		if err != nil {
-			return v, fmt.Errorf("failed to parse int8: %w", err)
+		result, ok := utils.ParseInt8(str)
+		if !ok {
+			return v, fmt.Errorf("failed to parse int8")
 		}
-		return any(int8(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
+		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case int16:
 		result, err := strconv.ParseInt(str, 10, 16)
 		if err != nil {
@@ -840,29 +840,29 @@ func genericParseType[V GenericType](str string) (V, error) {
 		}
 		return any(int16(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case int32:
-		result, err := strconv.ParseInt(str, 10, 32)
-		if err != nil {
-			return v, fmt.Errorf("failed to parse int32: %w", err)
+		result, ok := utils.ParseInt32(str)
+		if !ok {
+			return v, fmt.Errorf("failed to parse int32")
 		}
-		return any(int32(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
+		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case int64:
-		result, err := strconv.ParseInt(str, 10, 64)
-		if err != nil {
-			return v, fmt.Errorf("failed to parse int64: %w", err)
+		result, ok := utils.ParseInt(str)
+		if !ok {
+			return v, fmt.Errorf("failed to parse int64")
 		}
 		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case uint:
-		result, err := strconv.ParseUint(str, 10, 0)
-		if err != nil {
-			return v, fmt.Errorf("failed to parse uint: %w", err)
+		result, ok := utils.ParseUint(str)
+		if !ok {
+			return v, fmt.Errorf("failed to parse uint")
 		}
 		return any(uint(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case uint8:
-		result, err := strconv.ParseUint(str, 10, 8)
-		if err != nil {
-			return v, fmt.Errorf("failed to parse uint8: %w", err)
+		result, ok := utils.ParseUint8(str)
+		if !ok {
+			return v, fmt.Errorf("failed to parse uint8")
 		}
-		return any(uint8(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
+		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case uint16:
 		result, err := strconv.ParseUint(str, 10, 16)
 		if err != nil {
@@ -870,27 +870,27 @@ func genericParseType[V GenericType](str string) (V, error) {
 		}
 		return any(uint16(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case uint32:
-		result, err := strconv.ParseUint(str, 10, 32)
-		if err != nil {
-			return v, fmt.Errorf("failed to parse uint32: %w", err)
+		result, ok := utils.ParseUint32(str)
+		if !ok {
+			return v, fmt.Errorf("failed to parse uint32")
 		}
-		return any(uint32(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
+		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case uint64:
-		result, err := strconv.ParseUint(str, 10, 64)
-		if err != nil {
-			return v, fmt.Errorf("failed to parse uint64: %w", err)
+		result, ok := utils.ParseUint(str)
+		if !ok {
+			return v, fmt.Errorf("failed to parse uint64")
 		}
 		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case float32:
-		result, err := strconv.ParseFloat(str, 32)
-		if err != nil {
-			return v, fmt.Errorf("failed to parse float32: %w", err)
+		result, ok := utils.ParseFloat32(str)
+		if !ok {
+			return v, fmt.Errorf("failed to parse float32")
 		}
-		return any(float32(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
+		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case float64:
-		result, err := strconv.ParseFloat(str, 64)
-		if err != nil {
-			return v, fmt.Errorf("failed to parse float64: %w", err)
+		result, ok := utils.ParseFloat64(str)
+		if !ok {
+			return v, fmt.Errorf("failed to parse float64")
 		}
 		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case bool:
