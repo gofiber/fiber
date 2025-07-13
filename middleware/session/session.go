@@ -2,6 +2,7 @@ package session
 
 import (
 	"bytes"
+	"context"
 	"encoding/gob"
 	"fmt"
 	"sync"
@@ -194,7 +195,11 @@ func (s *Session) Destroy() error {
 	defer s.mu.RUnlock()
 
 	// Use external Storage if exist
-	if err := s.config.Storage.DeleteWithContext(s.ctx, s.id); err != nil {
+	var ctx context.Context = s.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := s.config.Storage.DeleteWithContext(ctx, s.id); err != nil {
 		return err
 	}
 
@@ -216,7 +221,11 @@ func (s *Session) Regenerate() error {
 	defer s.mu.Unlock()
 
 	// Delete old id from storage
-	if err := s.config.Storage.DeleteWithContext(s.ctx, s.id); err != nil {
+	var ctx context.Context = s.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := s.config.Storage.DeleteWithContext(ctx, s.id); err != nil {
 		return err
 	}
 
@@ -247,7 +256,11 @@ func (s *Session) Reset() error {
 	s.idleTimeout = 0
 
 	// Delete old id from storage
-	if err := s.config.Storage.DeleteWithContext(s.ctx, s.id); err != nil {
+	var ctx context.Context = s.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := s.config.Storage.DeleteWithContext(ctx, s.id); err != nil {
 		return err
 	}
 
@@ -319,7 +332,11 @@ func (s *Session) saveSession() error {
 	}
 
 	// Pass copied bytes with session id to provider
-	return s.config.Storage.SetWithContext(s.ctx, s.id, encodedBytes, s.idleTimeout)
+	var ctx context.Context = s.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return s.config.Storage.SetWithContext(ctx, s.id, encodedBytes, s.idleTimeout)
 }
 
 // Keys retrieves all keys in the current session.
