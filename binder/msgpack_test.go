@@ -85,3 +85,49 @@ func Benchmark_Msgpack_Binding_Bind(b *testing.B) {
 	require.Equal(b, "post2", user.Posts[1])
 	require.Equal(b, "post3", user.Posts[2])
 }
+
+func Test_UnimplementedMsgpackMarshal_Panics(t *testing.T) {
+	t.Parallel()
+
+	require.Panics(t, func() {
+		_, err := UnimplementedMsgpackMarshal(struct{ Name string }{Name: "test"})
+		require.NoError(t, err)
+	})
+}
+
+func Test_UnimplementedMsgpackUnmarshal_Panics(t *testing.T) {
+	t.Parallel()
+
+	require.Panics(t, func() {
+		var out any
+		err := UnimplementedMsgpackUnmarshal([]byte{0x80}, &out)
+		require.NoError(t, err)
+	})
+}
+
+func Test_UnimplementedMsgpackMarshal_PanicMessage(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		if r := recover(); r != nil {
+			require.Contains(t, r, "Must explicits setup Msgpack")
+		}
+	}()
+	_, err := UnimplementedMsgpackMarshal(struct{ Name string }{Name: "test"})
+
+	require.NoError(t, err)
+}
+
+func Test_UnimplementedMsgpackUnmarshal_PanicMessage(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		if r := recover(); r != nil {
+			require.Contains(t, r, "Must explicits setup Msgpack")
+		}
+	}()
+	var out any
+	err := UnimplementedMsgpackUnmarshal([]byte{0x80}, &out)
+
+	require.NoError(t, err)
+}

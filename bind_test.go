@@ -1149,7 +1149,12 @@ func Benchmark_Bind_Body_JSON(b *testing.B) {
 func Benchmark_Bind_Body_MsgPack(b *testing.B) {
 	var err error
 
-	app := New()
+	app := New(
+		Config{
+			MsgPackEncoder: msgpack.Marshal,
+			MsgPackDecoder: msgpack.Unmarshal,
+		},
+	)
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Demo struct {
