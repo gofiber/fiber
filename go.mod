@@ -15,6 +15,8 @@ require (
 	golang.org/x/crypto v0.40.0
 )
 
+replace github.com/gofiber/utils/v2 => github.com/gofiber/utils/v2 v2.0.0-beta.12.0.20250713195015-bc5052684293
+
 require (
 	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
