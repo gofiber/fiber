@@ -39,7 +39,7 @@ GetReqHeader function utilizing Go's generics feature.
 This function allows for retrieving HTTP request headers with a more specific data type.
 
 ```go title="Signature"
-func GetReqHeader[V any](c Ctx, key string, defaultValue ...V) V
+func GetReqHeader[V GenericType](c Ctx, key string, defaultValue ...V) V
 ```
 
 ```go title="Example"
@@ -91,7 +91,7 @@ Params function utilizing Go's generics feature.
 This function allows for retrieving route parameters with a more specific data type.
 
 ```go title="Signature"
-func Params[V any](c Ctx, key string, defaultValue ...V) V
+func Params[V GenericType](c Ctx, key string, defaultValue ...V) V
 ```
 
 ```go title="Example"
@@ -110,7 +110,7 @@ Query function utilizing Go's generics feature.
 This function allows for retrieving query parameters with a more specific data type.
 
 ```go title="Signature"
-func Query[V any](c Ctx, key string, defaultValue ...V) V
+func Query[V GenericType](c Ctx, key string, defaultValue ...V) V
 ```
 
 ```go title="Example"
