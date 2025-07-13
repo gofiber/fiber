@@ -272,11 +272,14 @@ curl -X POST -H "Content-Type: application/json" --data "{\"name\":\"john\",\"pa
 
 ### MsgPack
 
+> **Note:** Before using any MsgPack-related features, make sure to follow the [MsgPack setup instructions](../guide/advance-format.md#msgpack).
+
 Binds the request MsgPack body to a struct.
 
 It is important to specify the correct struct tag based on the content type to be parsed. For example, if you want to parse a Msgpack body with a field called `Pass`, you would use a struct field with `msgpack:"pass"`.
 
 > Our library uses [shamaton-msgpack](https://github.com/shamaton/msgpack) which uses `msgpack` struct tags by default. If you want to use other libraries, you may need to update the struct tags accordingly.
+
 
 ```go title="Signature"
 func (b *Bind) MsgPack(out any) error
