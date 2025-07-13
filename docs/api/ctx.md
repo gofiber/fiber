@@ -229,7 +229,7 @@ app.Get("/test", func(c fiber.Ctx) error {
   fiber.Locals[bool](c, "isHuman")   // true
   return nil
 })
-````
+```
 
 Make sure to understand and correctly implement the `Locals` method in both its standard and generic form for better control over route-specific data within your application.
 
