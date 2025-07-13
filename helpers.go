@@ -21,8 +21,9 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
+
+	"github.com/gofiber/fiber/v3/log"
 
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
@@ -824,7 +825,7 @@ func genericParseType[V GenericType](str string) (V, error) {
 	case int:
 		result, ok := utils.ParseInt(str)
 		if !ok {
-			return v, fmt.Errorf("failed to parse int")
+			return v, fmt.Errorf("failed to parse %q as int", str)
 		}
 		return any(int(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case int8:
