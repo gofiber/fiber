@@ -693,8 +693,8 @@ func (app *App) RegisterCustomConstraint(constraint CustomConstraint) {
 
 // RegisterCustomBinder Allows to register custom binders to use as Bind().Custom("name").
 // They should be compatible with CustomBinder interface.
-func (app *App) RegisterCustomBinder(binder CustomBinder) {
-	app.customBinders = append(app.customBinders, binder)
+func (app *App) RegisterCustomBinder(customBinder CustomBinder) {
+	app.customBinders = append(app.customBinders, customBinder)
 }
 
 // SetTLSHandler Can be used to set ClientHelloInfo when using TLS with Listener.
