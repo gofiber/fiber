@@ -2511,9 +2511,9 @@ func Test_Ctx_Locals_Generic(t *testing.T) {
 	t.Parallel()
 	app := New()
 	app.Use(func(c Ctx) error {
-		Locals[string](c, "john", "doe")
-		Locals[int](c, "age", 18)
-		Locals[bool](c, "isHuman", true)
+		Locals(c, "john", "doe")
+		Locals(c, "age", 18)
+		Locals(c, "isHuman", true)
 		return c.Next()
 	})
 	app.Get("/test", func(c Ctx) error {
@@ -2539,7 +2539,7 @@ func Test_Ctx_Locals_GenericCustomStruct(t *testing.T) {
 
 	app := New()
 	app.Use(func(c Ctx) error {
-		Locals[User](c, "user", User{name: "john", age: 18})
+		Locals(c, "user", User{name: "john", age: 18})
 		return c.Next()
 	})
 	app.Use("/test", func(c Ctx) error {
@@ -3059,7 +3059,7 @@ func Test_Ctx_Query(t *testing.T) {
 	// test with generic
 	require.Equal(t, "john", Query[string](c, "search"))
 	require.Equal(t, "20", Query[string](c, "age"))
-	require.Equal(t, "default", Query[string](c, "unknown", "default"))
+	require.Equal(t, "default", Query(c, "unknown", "default"))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Query -benchmem -count=4

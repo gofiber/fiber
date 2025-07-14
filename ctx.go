@@ -868,9 +868,10 @@ iploop:
 		}
 
 		for j < len(headerValue) && headerValue[j] != ',' {
-			if headerValue[j] == ':' {
+			switch headerValue[j] {
+			case ':':
 				v6 = true
-			} else if headerValue[j] == '.' {
+			case '.':
 				v4 = true
 			}
 			j++
@@ -918,9 +919,10 @@ func (c *DefaultCtx) extractIPFromHeader(header string) string {
 			}
 
 			for j < len(headerValue) && headerValue[j] != ',' {
-				if headerValue[j] == ':' {
+				switch headerValue[j] {
+				case ':':
 					v6 = true
-				} else if headerValue[j] == '.' {
+				case '.':
 					v4 = true
 				}
 				j++
@@ -1286,7 +1288,7 @@ func (c *DefaultCtx) Protocol() string {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (c *DefaultCtx) Query(key string, defaultValue ...string) string {
-	return Query[string](c, key, defaultValue...)
+	return Query(c, key, defaultValue...)
 }
 
 // Queries returns a map of query parameters and their values.
