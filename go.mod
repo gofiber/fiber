@@ -4,7 +4,7 @@ go 1.24.0
 
 require (
 	github.com/gofiber/schema v1.6.0
-	github.com/gofiber/utils/v2 v2.0.0-beta.12
+	github.com/gofiber/utils/v2 v2.0.0-beta.13
 	github.com/google/uuid v1.6.0
 	github.com/mattn/go-colorable v0.1.14
 	github.com/mattn/go-isatty v0.0.20
@@ -14,8 +14,6 @@ require (
 	github.com/valyala/fasthttp v1.63.0
 	golang.org/x/crypto v0.40.0
 )
-
-replace github.com/gofiber/utils/v2 => github.com/gofiber/utils/v2 v2.0.0-beta.12.0.20250713195015-bc5052684293
 
 require (
 	github.com/andybalholm/brotli v1.2.0 // indirect
