@@ -1505,7 +1505,12 @@ func Benchmark_Ctx_AutoFormat_JSON(b *testing.B) {
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_AutoFormat_MsgPack -benchmem -count=4
 func Benchmark_Ctx_AutoFormat_MsgPack(b *testing.B) {
-	app := New()
+	app := New(
+		Config{
+			MsgPackEncoder: msgpack.Marshal,
+			MsgPackDecoder: msgpack.Unmarshal,
+		},
+	)
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Request().Header.Set("Accept", MIMEApplicationMsgPack)
@@ -1516,7 +1521,7 @@ func Benchmark_Ctx_AutoFormat_MsgPack(b *testing.B) {
 		err = c.AutoFormat("Hello, World!")
 	}
 	require.NoError(b, err)
-	require.Equal(b, `"Hello, World!"`, string(c.Response().Body()))
+	require.Equal(b, "\xadHello, World!", string(c.Response().Body()))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_AutoFormat_XML -benchmem -count=4
@@ -4177,7 +4182,12 @@ func Test_Ctx_MsgPack(t *testing.T) {
 
 // go test -run=^$ -bench=Benchmark_Ctx_MsgPack -benchmem -count=4
 func Benchmark_Ctx_MsgPack(b *testing.B) {
-	app := New()
+	app := New(
+		Config{
+			MsgPackEncoder: msgpack.Marshal,
+			MsgPackDecoder: msgpack.Unmarshal,
+		},
+	)
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type SomeStruct struct {
