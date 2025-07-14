@@ -3501,18 +3501,18 @@ func Test_Ctx_SendEarlyHints(t *testing.T) {
 	app.Get("/earlyhints", func(c Ctx) error {
 		c.SendEarlyHints(hints)
 		c.Status(StatusBadRequest)
-		return nil
+		return c.SendString("fail")
 	})
 
 	req := httptest.NewRequest(MethodGet, "/earlyhints", nil)
 	resp, err := app.Test(req)
 
-	fmt.Println(resp.StatusCode)
-	fmt.Println(resp.Header)
-
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusEarlyHints, resp.StatusCode, "Status code")
+	require.Equal(t, StatusBadRequest, resp.StatusCode, "Status code")
 	require.Equal(t, hints, resp.Header["Link"], "Link header")
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "fail", string(body))
 }
 
 // go test -race -run Test_Ctx_SendFile

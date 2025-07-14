@@ -1116,16 +1116,30 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 		return nil, err
 	}
 
-	// Read response
+	// Read response(s)
 	buffer := bufio.NewReader(&conn.w)
 
-	// Convert raw http response to *http.Response
-	res, err := http.ReadResponse(buffer, req)
-	if err != nil {
-		if errors.Is(err, io.ErrUnexpectedEOF) {
-			return nil, ErrTestGotEmptyResponse
+	var res *http.Response
+	for {
+		// Convert raw http response to *http.Response
+		res, err = http.ReadResponse(buffer, req)
+		if err != nil {
+			if errors.Is(err, io.ErrUnexpectedEOF) {
+				return nil, ErrTestGotEmptyResponse
+			}
+			return nil, fmt.Errorf("failed to read response: %w", err)
 		}
-		return nil, fmt.Errorf("failed to read response: %w", err)
+
+		// Break if this response is non-1xx or there are no more responses
+		if res.StatusCode >= http.StatusOK || buffer.Buffered() == 0 {
+			break
+		}
+
+		// Discard interim response body before reading the next one
+		if res.Body != nil {
+			_, _ = io.Copy(io.Discard, res.Body)
+			res.Body.Close()
+		}
 	}
 
 	return res, nil
