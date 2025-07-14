@@ -639,11 +639,9 @@ func (app *App) buildTree() *App {
 				}
 
 				// if it's a global route, assign to every bucket
-				switch routePath {
-				case 0:
-					tsMap[treePath] = append(tsMap[treePath], route)
-					// otherwise only assign if this route's prefix matches the current bucket's key
-				case treePath:
+				// If the route path is 0 (global route) or matches the current tree path,
+				// append this route to the current bucket
+				if routePath == 0 || routePath == treePath {
 					tsMap[treePath] = append(tsMap[treePath], route)
 				}
 			}
