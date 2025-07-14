@@ -1759,6 +1759,28 @@ func Test_App_Test_drop_empty_response(t *testing.T) {
 	require.ErrorIs(t, err, ErrTestGotEmptyResponse)
 }
 
+func Test_App_Test_EarlyHints(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	hints := []string{"<https://cdn.com>; rel=preload; as=script"}
+	app.Get("/early", func(c Ctx) error {
+		err := c.SendEarlyHints(hints)
+		require.NoError(t, err)
+		return c.Status(StatusOK).SendString("done")
+	})
+
+	req := httptest.NewRequest(MethodGet, "/early", nil)
+	resp, err := app.Test(req)
+
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+	require.Equal(t, hints, resp.Header["Link"])
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "done", string(body))
+}
+
 func Test_App_SetTLSHandler(t *testing.T) {
 	t.Parallel()
 	tlsHandler := &TLSHandler{clientHelloInfo: &tls.ClientHelloInfo{

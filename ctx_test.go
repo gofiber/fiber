@@ -27,11 +27,12 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
+
+	"github.com/gofiber/fiber/v3/internal/storage/memory"
 )
 
 const epsilon = 0.001
@@ -3490,6 +3491,30 @@ func Test_Ctx_Download(t *testing.T) {
 	header := string(c.Response().Header.Peek(HeaderContentDisposition))
 	require.Contains(t, header, `filename="файл.txt"`)
 	require.Contains(t, header, `filename*=UTF-8''%D1%84%D0%B0%D0%B9%D0%BB.txt`)
+}
+
+// go test -race -run Test_Ctx_SendEarlyHints
+func Test_Ctx_SendEarlyHints(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	hints := []string{"<https://cdn.com>; rel=preload; as=script"}
+	app.Get("/earlyhints", func(c Ctx) error {
+		err := c.SendEarlyHints(hints)
+		require.NoError(t, err, "SendEarlyHints")
+		c.Status(StatusBadRequest)
+		return c.SendString("fail")
+	})
+
+	req := httptest.NewRequest(MethodGet, "/earlyhints", nil)
+	resp, err := app.Test(req)
+
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusBadRequest, resp.StatusCode, "Status code")
+	require.Equal(t, hints, resp.Header["Link"], "Link header")
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "fail", string(body))
 }
 
 // go test -race -run Test_Ctx_SendFile
