@@ -1765,7 +1765,8 @@ func Test_App_Test_EarlyHints(t *testing.T) {
 	app := New()
 	hints := []string{"<https://cdn.com>; rel=preload; as=script"}
 	app.Get("/early", func(c Ctx) error {
-		c.SendEarlyHints(hints)
+		err := c.SendEarlyHints(hints)
+		require.NoError(t, err)
 		return c.Status(StatusOK).SendString("done")
 	})
 

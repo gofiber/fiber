@@ -26,9 +26,10 @@ import (
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
-	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
+
+	"github.com/gofiber/fiber/v3/log"
 )
 
 // Version of current fiber package
@@ -1137,8 +1138,12 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 
 		// Discard interim response body before reading the next one
 		if res.Body != nil {
-			_, _ = io.Copy(io.Discard, res.Body)
-			res.Body.Close()
+			if _, errCopy := io.Copy(io.Discard, res.Body); errCopy != nil {
+				return nil, fmt.Errorf("failed to discard interim response body: %w", errCopy)
+			}
+			if errClose := res.Body.Close(); errClose != nil {
+				return nil, fmt.Errorf("failed to close interim response body: %w", errClose)
+			}
 		}
 	}
 
