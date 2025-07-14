@@ -1218,12 +1218,12 @@ func Benchmark_Bind_Body_XML(b *testing.B) {
 
 // go test -v -run=^$ -bench=Benchmark_Bind_Body_CBOR -benchmem -count=4
 func Benchmark_Bind_Body_CBOR(b *testing.B) {
-        var err error
+	var err error
 
-        app := New(Config{
-                CBOREncoder: cbor.Marshal,
-                CBORDecoder: cbor.Unmarshal,
-        })
+	app := New(Config{
+		CBOREncoder: cbor.Marshal,
+		CBORDecoder: cbor.Unmarshal,
+	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Demo struct {
