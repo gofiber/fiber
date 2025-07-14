@@ -101,6 +101,9 @@ func New(config ...Config) fiber.Handler {
 			if err != nil {
 				panic(err)
 			}
+			defer func() {
+				_ = f.Close() //nolint:errcheck // not needed
+			}()
 			if iconData, err = io.ReadAll(f); err != nil {
 				panic(err)
 			}
