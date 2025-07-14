@@ -940,11 +940,23 @@ func Test_Bind_Body(t *testing.T) {
 		require.Equal(t, "john", d.Name)
 	}
 
+	testErrorParser := func(t *testing.T, contentType string, body []byte) {
+		t.Helper()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().Header.SetContentType(contentType)
+		c.Request().SetBody(body)
+		c.Request().Header.SetContentLength(len(body))
+		d := new(Demo)
+		err := c.Bind().Body(d)
+		require.Error(t, err)
+	}
+
 	t.Run("JSON", func(t *testing.T) {
 		testDecodeParser(t, MIMEApplicationJSON, []byte(`{"name":"john"}`))
 	})
 	t.Run("MsgPack", func(t *testing.T) {
 		testDecodeParser(t, MIMEApplicationMsgPack, []byte{0x81, 0xa4, 0x6e, 0x61, 0x6d, 0x65, 0xa4, 0x6a, 0x6f, 0x68, 0x6e})
+		testErrorParser(t, MIMEApplicationMsgPack, []byte{0xFF, 0xFF})
 	})
 	t.Run("CBOR", func(t *testing.T) {
 		enc, err := cbor.Marshal(&Demo{Name: "john"})

@@ -4156,6 +4156,23 @@ func Test_Ctx_MsgPack(t *testing.T) {
 		require.Equal(t, `["custom","msgpack"]`, string(c.Response().Body()))
 		require.Equal(t, MIMEApplicationMsgPack, string(c.Response().Header.Peek("content-type")))
 	})
+
+	t.Run("error msgpack", func(t *testing.T) {
+		t.Parallel()
+
+		app := New(Config{
+			MsgPackEncoder: func(_ any) ([]byte, error) {
+				return []byte("error"), errors.New("msgpack error")
+			},
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+		err := c.MsgPack(Map{ // map has no order
+			"Name": "Grame",
+			"Age":  20,
+		})
+		require.Error(t, err)
+	})
 }
 
 // go test -run=^$ -bench=Benchmark_Ctx_MsgPack -benchmem -count=4

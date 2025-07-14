@@ -280,7 +280,6 @@ It is important to specify the correct struct tag based on the content type to b
 
 > Our library uses [shamaton-msgpack](https://github.com/shamaton/msgpack) which uses `msgpack` struct tags by default. If you want to use other libraries, you may need to update the struct tags accordingly.
 
-
 ```go title="Signature"
 func (b *Bind) MsgPack(out any) error
 ```
