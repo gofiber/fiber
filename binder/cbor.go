@@ -23,3 +23,11 @@ func (b *CBORBinding) Bind(body []byte, out any) error {
 func (b *CBORBinding) Reset() {
 	b.CBORDecoder = nil
 }
+
+func UnimplementedCborMarshal(_ any) ([]byte, error) {
+	panic("Must explicits setup Cbor, please check docs: https://docs.gofiber.io/next/guide/advance-format#cbor")
+}
+
+func UnimplementedCborUnmarshal(_ []byte, _ any) error {
+	panic("Must explicits setup Cbor, please check docs: https://docs.gofiber.io/next/guide/advance-format#cbor")
+}
