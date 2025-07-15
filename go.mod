@@ -19,7 +19,7 @@ require (
 require (
 	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/fxamacker/cbor/v2 v2.8.0 // direct
+	github.com/fxamacker/cbor/v2 v2.9.0 // direct
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
