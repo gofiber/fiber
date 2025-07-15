@@ -21,8 +21,9 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
+
+	"github.com/gofiber/fiber/v3/log"
 
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
@@ -822,73 +823,73 @@ func genericParseType[V GenericType](str string) (V, error) {
 	var v V
 	switch any(v).(type) {
 	case int:
-		result, err := strconv.ParseInt(str, 10, 0)
+		result, err := utils.ParseInt(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse int: %w", err)
 		}
 		return any(int(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case int8:
-		result, err := strconv.ParseInt(str, 10, 8)
+		result, err := utils.ParseInt8(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse int8: %w", err)
 		}
-		return any(int8(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
+		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case int16:
-		result, err := strconv.ParseInt(str, 10, 16)
+		result, err := utils.ParseInt16(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse int16: %w", err)
 		}
-		return any(int16(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
+		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case int32:
-		result, err := strconv.ParseInt(str, 10, 32)
+		result, err := utils.ParseInt32(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse int32: %w", err)
 		}
-		return any(int32(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
+		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case int64:
-		result, err := strconv.ParseInt(str, 10, 64)
+		result, err := utils.ParseInt(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse int64: %w", err)
 		}
 		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case uint:
-		result, err := strconv.ParseUint(str, 10, 0)
+		result, err := utils.ParseUint(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse uint: %w", err)
 		}
 		return any(uint(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case uint8:
-		result, err := strconv.ParseUint(str, 10, 8)
+		result, err := utils.ParseUint8(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse uint8: %w", err)
 		}
-		return any(uint8(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
+		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case uint16:
-		result, err := strconv.ParseUint(str, 10, 16)
+		result, err := utils.ParseUint16(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse uint16: %w", err)
 		}
-		return any(uint16(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
+		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case uint32:
-		result, err := strconv.ParseUint(str, 10, 32)
+		result, err := utils.ParseUint32(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse uint32: %w", err)
 		}
-		return any(uint32(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
+		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case uint64:
-		result, err := strconv.ParseUint(str, 10, 64)
+		result, err := utils.ParseUint(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse uint64: %w", err)
 		}
 		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case float32:
-		result, err := strconv.ParseFloat(str, 32)
+		result, err := utils.ParseFloat32(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse float32: %w", err)
 		}
-		return any(float32(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
+		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case float64:
-		result, err := strconv.ParseFloat(str, 64)
+		result, err := utils.ParseFloat64(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse float64: %w", err)
 		}

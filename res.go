@@ -359,7 +359,7 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 // If the header is not specified or there is no proper format, text/plain is used.
 func (r *DefaultRes) AutoFormat(body any) error {
 	// Get accepted content type
-	accept := r.c.Accepts("html", "json", "txt", "xml")
+	accept := r.c.Accepts("html", "json", "txt", "xml", "msgpack")
 	// Set accepted content type
 	r.Type(accept)
 	// Type convert provided body
@@ -379,6 +379,8 @@ func (r *DefaultRes) AutoFormat(body any) error {
 		return r.SendString("<p>" + b + "</p>")
 	case "json":
 		return r.JSON(body)
+	case "msgpack":
+		return r.MsgPack(body)
 	case "txt":
 		return r.SendString(b)
 	case "xml":
@@ -395,7 +397,7 @@ func (r *DefaultRes) Get(key string, defaultValue ...string) string {
 	return defaultString(r.App().getString(r.Response().Header.Peek(key)), defaultValue)
 }
 
-// GetHeaders returns the HTTP response headers.
+// GetHeaders (a.k.a GetRespHeaders) returns the HTTP response headers.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (r *DefaultRes) GetHeaders() map[string][]string {
@@ -424,6 +426,24 @@ func (r *DefaultRes) JSON(data any, ctype ...string) error {
 		r.Response().Header.SetContentType(ctype[0])
 	} else {
 		r.Response().Header.SetContentType(MIMEApplicationJSON)
+	}
+	return nil
+}
+
+// MsgPack converts any interface or string to MessagePack encoded bytes.
+// If the ctype parameter is given, this method will set the
+// Content-Type header equal to ctype. If ctype is not given,
+// The Content-Type header will be set to application/vnd.msgpack.
+func (r *DefaultRes) MsgPack(data any, ctype ...string) error {
+	raw, err := r.App().config.MsgPackEncoder(data)
+	if err != nil {
+		return err
+	}
+	r.Response().SetBodyRaw(raw)
+	if len(ctype) > 0 {
+		r.Response().Header.SetContentType(ctype[0])
+	} else {
+		r.Response().Header.SetContentType(MIMEApplicationMsgPack)
 	}
 	return nil
 }

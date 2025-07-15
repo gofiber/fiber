@@ -268,22 +268,22 @@ func (r *DefaultReq) Fresh() bool {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (r *DefaultReq) Get(key string, defaultValue ...string) string {
-	return GetReqHeader(r, key, defaultValue...)
+	return GetReqHeader(r.c, key, defaultValue...)
 }
 
 // GetReqHeader returns the HTTP request header specified by filed.
 // This function is generic and can handle different headers type values.
 // If the generic type cannot be matched to a supported type, the function
 // returns the default value (if provided) or the zero value of type V.
-func GetReqHeader[V GenericType](r Req, key string, defaultValue ...V) V {
-	v, err := genericParseType[V](r.App().getString(r.Request().Header.Peek(key)))
+func GetReqHeader[V GenericType](c Ctx, key string, defaultValue ...V) V {
+	v, err := genericParseType[V](c.App().getString(c.Request().Header.Peek(key)))
 	if err != nil && len(defaultValue) > 0 {
 		return defaultValue[0]
 	}
 	return v
 }
 
-// GetHeaders returns the HTTP request headers.
+// GetHeaders (a.k.a GetReqHeaders) returns the HTTP request headers.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (r *DefaultReq) GetHeaders() map[string][]string {

@@ -53,7 +53,7 @@ type Res interface {
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
 	Get(key string, defaultValue ...string) string
-	// GetHeaders returns the HTTP response headers.
+	// GetHeaders (a.k.a GetRespHeaders) returns the HTTP response headers.
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
 	GetHeaders() map[string][]string
@@ -65,6 +65,11 @@ type Res interface {
 	// Content-Type header equal to ctype. If ctype is not given,
 	// The Content-Type header will be set to application/json.
 	JSON(data any, ctype ...string) error
+	// MsgPack converts any interface or string to MessagePack encoded bytes.
+	// If the ctype parameter is given, this method will set the
+	// Content-Type header equal to ctype. If ctype is not given,
+	// The Content-Type header will be set to application/vnd.msgpack.
+	MsgPack(data any, ctype ...string) error
 	// CBOR converts any interface or string to CBOR encoded bytes.
 	// If the ctype parameter is given, this method will set the
 	// Content-Type header equal to ctype. If ctype is not given,

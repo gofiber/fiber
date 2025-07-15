@@ -67,7 +67,7 @@ type Req interface {
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
 	Get(key string, defaultValue ...string) string
-	// GetHeaders returns the HTTP request headers.
+	// GetHeaders (a.k.a GetReqHeaders) returns the HTTP request headers.
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
 	GetHeaders() map[string][]string
