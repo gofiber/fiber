@@ -1237,12 +1237,14 @@ func Test_Ctx_Format(t *testing.T) {
 	err := c.Res().Format(formatHandlers("application/xhtml+xml", "application/xml", "foo/bar")...)
 	require.Equal(t, "application/xhtml+xml", accepted)
 	require.Equal(t, "application/xhtml+xml", c.GetRespHeader(HeaderContentType))
+	require.Equal(t, "application/xhtml+xml", c.Res().Get(HeaderContentType))
 	require.NoError(t, err)
 	require.NotEqual(t, StatusNotAcceptable, c.Response().StatusCode())
 
 	err = c.Res().Format(formatHandlers("foo/bar;a=b")...)
 	require.Equal(t, "foo/bar;a=b", accepted)
 	require.Equal(t, "foo/bar;a=b", c.GetRespHeader(HeaderContentType))
+	require.Equal(t, "foo/bar;a=b", c.Res().Get(HeaderContentType))
 	require.NoError(t, err)
 	require.NotEqual(t, StatusNotAcceptable, c.Response().StatusCode())
 
@@ -1263,6 +1265,7 @@ func Test_Ctx_Format(t *testing.T) {
 	err = c.Format(formatHandlers("text/html", "default")...)
 	require.Equal(t, "default", accepted)
 	require.Equal(t, "text/html", c.GetRespHeader(HeaderContentType))
+	require.Equal(t, "text/html", c.Res().Get(HeaderContentType))
 	require.NoError(t, err)
 
 	err = c.Format()
@@ -2909,9 +2912,12 @@ func Test_Ctx_Path(t *testing.T) {
 	app := New(Config{UnescapePath: true})
 	app.Get("/test/:user", func(c Ctx) error {
 		require.Equal(t, "/Test/John", c.Path())
+		require.Equal(t, "/Test/John", c.Request().URI().Path())
 		// not strict && case insensitive
 		require.Equal(t, "/ABC/", c.Path("/ABC/"))
+		require.Equal(t, "/ABC/", c.Request().URI().Path())
 		require.Equal(t, "/test/john/", c.Path("/test/john/"))
+		require.Equal(t, "/test/john/", c.Request().URI().Path())
 		return nil
 	})
 
@@ -2920,6 +2926,7 @@ func Test_Ctx_Path(t *testing.T) {
 		require.Equal(t, "/specialChars/créer", c.Path())
 		// unescape is also working if you set the path afterwards
 		require.Equal(t, "/اختبار/", c.Path("/%D8%A7%D8%AE%D8%AA%D8%A8%D8%A7%D8%B1/"))
+		require.Equal(t, "/اختبار/", c.Request().URI().Path())
 		return nil
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/specialChars/cr%C3%A9er", nil))
@@ -5706,6 +5713,12 @@ func Test_Ctx_GetRespHeaders(t *testing.T) {
 		"Multi":        {"one", "two"},
 		"Test":         {"Hello, World 👋!"},
 	}, c.GetRespHeaders())
+	require.Equal(t, map[string][]string{
+		"Content-Type": {"application/json"},
+		"Foo":          {"bar"},
+		"Multi":        {"one", "two"},
+		"Test":         {"Hello, World 👋!"},
+	}, c.Res().GetHeaders())
 }
 
 func Benchmark_Ctx_GetRespHeaders(b *testing.B) {
@@ -5748,6 +5761,12 @@ func Test_Ctx_GetReqHeaders(t *testing.T) {
 		"Test":         {"Hello, World 👋!"},
 		"Multi":        {"one", "two"},
 	}, c.GetReqHeaders())
+	require.Equal(t, map[string][]string{
+		"Content-Type": {"application/json"},
+		"Foo":          {"bar"},
+		"Test":         {"Hello, World 👋!"},
+		"Multi":        {"one", "two"},
+	}, c.GetHeaders())
 }
 
 func Test_Ctx_Set_SanitizeHeaderValue(t *testing.T) {
