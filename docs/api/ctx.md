@@ -2250,6 +2250,72 @@ app.Get("/wait", func(c fiber.Ctx) error {
 })
 ```
 
+:::info
+`SendStreamWriter` is perfect for implementing **Server-Sent Events (SSE)** in Fiber v3.
+:::
+
+```go title="Server-Sent Events Example"
+// Basic SSE endpoint
+app.Get("/events", func(c fiber.Ctx) error {
+  // Set required SSE headers
+  c.Set("Content-Type", "text/event-stream")
+  c.Set("Cache-Control", "no-cache")
+  c.Set("Connection", "keep-alive")
+  c.Set("Access-Control-Allow-Origin", "*")
+
+  return c.SendStreamWriter(func(w *bufio.Writer) {
+    // Send periodic updates
+    ticker := time.NewTicker(1 * time.Second)
+    defer ticker.Stop()
+
+    for i := 0; i < 5; i++ {
+      select {
+      case t := <-ticker.C:
+        fmt.Fprintf(w, "data: Current time: %s\n\n", t.Format(time.RFC3339))
+        if err := w.Flush(); err != nil {
+          // Client disconnected
+          return
+        }
+      }
+    }
+  })
+})
+
+// SSE with different event types
+app.Get("/typed-events", func(c fiber.Ctx) error {
+  c.Set("Content-Type", "text/event-stream")
+  c.Set("Cache-Control", "no-cache")
+  c.Set("Connection", "keep-alive")
+
+  return c.SendStreamWriter(func(w *bufio.Writer) {
+    // Welcome message
+    fmt.Fprintf(w, "event: welcome\ndata: Connected to server\n\n")
+    if err := w.Flush(); err != nil {
+      return
+    }
+
+    // Send periodic notifications
+    for i := 1; i <= 3; i++ {
+      fmt.Fprintf(w, "id: %d\nevent: notification\ndata: {\"count\": %d, \"message\": \"Update %d\"}\n\n", i, i, i)
+      if err := w.Flush(); err != nil {
+        return
+      }
+      time.Sleep(500 * time.Millisecond)
+    }
+
+    // Goodbye message
+    fmt.Fprintf(w, "event: goodbye\ndata: Connection closing\n\n")
+    w.Flush()
+  })
+})
+```
+
+The SSE format includes:
+- `data:` lines contain the event data
+- `event:` lines specify the event type (optional)
+- `id:` lines provide an event ID for client reconnection (optional)
+- Each event ends with a blank line (`\n\n`)
+
 ### Set
 
 Sets the response’s HTTP header field to the specified `key`, `value`.
