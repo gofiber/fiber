@@ -16,7 +16,9 @@ func main() {
 	})
 
 	// Serve the demo HTML file
-	app.Get("/", static.New("./"))
+	app.Use("/", static.New("./", static.Config{
+		Browse: true,
+	}))
 
 	// Basic SSE endpoint - demonstrates simple event streaming
 	app.Get("/events", func(c fiber.Ctx) error {
