@@ -25,9 +25,9 @@ func (b *CBORBinding) Reset() {
 }
 
 func UnimplementedCborMarshal(_ any) ([]byte, error) {
-	panic("Must explicits setup Cbor, please check docs: https://docs.gofiber.io/next/guide/advance-format#cbor")
+	panic("Must explicitly setup CBOR, please check docs: https://docs.gofiber.io/next/guide/advance-format#cbor")
 }
 
 func UnimplementedCborUnmarshal(_ []byte, _ any) error {
-	panic("Must explicits setup Cbor, please check docs: https://docs.gofiber.io/next/guide/advance-format#cbor")
+	panic("Must explicitly setup CBOR, please check docs: https://docs.gofiber.io/next/guide/advance-format#cbor")
 }
