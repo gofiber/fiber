@@ -2912,12 +2912,12 @@ func Test_Ctx_Path(t *testing.T) {
 	app := New(Config{UnescapePath: true})
 	app.Get("/test/:user", func(c Ctx) error {
 		require.Equal(t, "/Test/John", c.Path())
-		require.Equal(t, "/Test/John", c.Request().URI().Path())
+		require.Equal(t, "/Test/John", string(c.Request().URI().Path()))
 		// not strict && case insensitive
 		require.Equal(t, "/ABC/", c.Path("/ABC/"))
-		require.Equal(t, "/ABC/", c.Request().URI().Path())
+		require.Equal(t, "/ABC/", string(c.Request().URI().Path()))
 		require.Equal(t, "/test/john/", c.Path("/test/john/"))
-		require.Equal(t, "/test/john/", c.Request().URI().Path())
+		require.Equal(t, "/test/john/", string(c.Request().URI().Path()))
 		return nil
 	})
 
@@ -2926,7 +2926,7 @@ func Test_Ctx_Path(t *testing.T) {
 		require.Equal(t, "/specialChars/créer", c.Path())
 		// unescape is also working if you set the path afterwards
 		require.Equal(t, "/اختبار/", c.Path("/%D8%A7%D8%AE%D8%AA%D8%A8%D8%A7%D8%B1/"))
-		require.Equal(t, "/اختبار/", c.Request().URI().Path())
+		require.Equal(t, "/اختبار/", string(c.Request().URI().Path()))
 		return nil
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/specialChars/cr%C3%A9er", nil))
