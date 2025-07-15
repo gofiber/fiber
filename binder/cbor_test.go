@@ -123,7 +123,7 @@ func Test_UnimplementedCborUnmarshal_PanicMessage(t *testing.T) {
 
 	defer func() {
 		if r := recover(); r != nil {
-			require.Contains(t, r, "Must explicits setup Cbor")
+			require.Contains(t, r, "Must explicitly setup CBOR")
 		}
 	}()
 	var out any
