@@ -979,7 +979,8 @@ func (c *DefaultCtx) Is(extension string) bool {
 // and a nil slice encodes as the null JSON value.
 // If the ctype parameter is given, this method will set the
 // Content-Type header equal to ctype. If ctype is not given,
-// The Content-Type header will be set to application/json.
+// The Content-Type header will be set to application/json or 
+// application/json; charset=utf-8 if a charset is configured.
 func (c *DefaultCtx) JSON(data any, ctype ...string) error {
 	raw, err := c.app.config.JSONEncoder(data)
 	if err != nil {
@@ -989,7 +990,12 @@ func (c *DefaultCtx) JSON(data any, ctype ...string) error {
 	if len(ctype) > 0 {
 		c.fasthttp.Response.Header.SetContentType(ctype[0])
 	} else {
-		c.fasthttp.Response.Header.SetContentType(MIMEApplicationJSON)
+		// Use charset if configured (unless disabled)
+		if c.app.config.Charset != "" && c.app.config.Charset != "disabled" {
+			c.fasthttp.Response.Header.SetContentType(MIMEApplicationJSONCharsetUTF8)
+		} else {
+			c.fasthttp.Response.Header.SetContentType(MIMEApplicationJSON)
+		}
 	}
 	return nil
 }

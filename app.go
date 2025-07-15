@@ -424,6 +424,14 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	// Optional. Default: false
 	EnableSplittingOnParsers bool `json:"enable_splitting_on_parsers"`
 
+	// Charset specifies the character encoding for responses.
+	// When set, this charset will be appended to Content-Type headers
+	// for JSON and other text-based responses (e.g., "application/json; charset=utf-8").
+	// Set to "disabled" to disable charset inclusion.
+	//
+	// Optional. Default: "utf-8"
+	Charset string `json:"charset"`
+
 	// Services is a list of services that are used by the app (e.g. databases, caches, etc.)
 	//
 	// Optional. Default: a zero value slice
@@ -623,6 +631,10 @@ func New(config ...Config) *App {
 	}
 	if app.config.XMLDecoder == nil {
 		app.config.XMLDecoder = xml.Unmarshal
+	}
+	// Set default charset to utf-8 unless explicitly configured otherwise
+	if app.config.Charset == "" {
+		app.config.Charset = "utf-8"
 	}
 	if len(app.config.RequestMethods) == 0 {
 		app.config.RequestMethods = DefaultMethods
