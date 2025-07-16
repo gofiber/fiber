@@ -638,7 +638,7 @@ func (c *DefaultCtx) Format(handlers ...ResFmt) error {
 // If the header is not specified or there is no proper format, text/plain is used.
 func (c *DefaultCtx) AutoFormat(body any) error {
 	// Get accepted content type
-	accept := c.Accepts("html", "json", "txt", "xml")
+	accept := c.Accepts("html", "json", "txt", "xml", "msgpack")
 	// Set accepted content type
 	c.Type(accept)
 	// Type convert provided body
@@ -658,6 +658,8 @@ func (c *DefaultCtx) AutoFormat(body any) error {
 		return c.SendString("<p>" + b + "</p>")
 	case "json":
 		return c.JSON(body)
+	case "msgpack":
+		return c.MsgPack(body)
 	case "txt":
 		return c.SendString(b)
 	case "xml":
@@ -868,9 +870,10 @@ iploop:
 		}
 
 		for j < len(headerValue) && headerValue[j] != ',' {
-			if headerValue[j] == ':' {
+			switch headerValue[j] {
+			case ':':
 				v6 = true
-			} else if headerValue[j] == '.' {
+			case '.':
 				v4 = true
 			}
 			j++
@@ -918,9 +921,10 @@ func (c *DefaultCtx) extractIPFromHeader(header string) string {
 			}
 
 			for j < len(headerValue) && headerValue[j] != ',' {
-				if headerValue[j] == ':' {
+				switch headerValue[j] {
+				case ':':
 					v6 = true
-				} else if headerValue[j] == '.' {
+				case '.':
 					v4 = true
 				}
 				j++
@@ -988,6 +992,24 @@ func (c *DefaultCtx) JSON(data any, ctype ...string) error {
 		c.fasthttp.Response.Header.SetContentType(ctype[0])
 	} else {
 		c.fasthttp.Response.Header.SetContentType(MIMEApplicationJSON)
+	}
+	return nil
+}
+
+// MsgPack converts any interface or string to MessagePack encoded bytes.
+// If the ctype parameter is given, this method will set the
+// Content-Type header equal to ctype. If ctype is not given,
+// The Content-Type header will be set to application/vnd.msgpack.
+func (c *DefaultCtx) MsgPack(data any, ctype ...string) error {
+	raw, err := c.app.config.MsgPackEncoder(data)
+	if err != nil {
+		return err
+	}
+	c.fasthttp.Response.SetBodyRaw(raw)
+	if len(ctype) > 0 {
+		c.fasthttp.Response.Header.SetContentType(ctype[0])
+	} else {
+		c.fasthttp.Response.Header.SetContentType(MIMEApplicationMsgPack)
 	}
 	return nil
 }
@@ -1286,7 +1308,7 @@ func (c *DefaultCtx) Protocol() string {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (c *DefaultCtx) Query(key string, defaultValue ...string) string {
-	return Query[string](c, key, defaultValue...)
+	return Query(c, key, defaultValue...)
 }
 
 // Queries returns a map of query parameters and their values.

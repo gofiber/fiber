@@ -7,7 +7,6 @@ package fiber
 import (
 	"math"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 	"unsafe"
@@ -530,6 +529,7 @@ func Test_Utils_Parse_Address(t *testing.T) {
 		{addr: "[fe80::1%lo0]:1234", host: "[fe80::1%lo0]", port: "1234"},
 		{addr: "[fe80::1%lo0]", host: "[fe80::1%lo0]", port: ""},
 		{addr: ":9090", host: "", port: "9090"},
+		{addr: " 127.0.0.1:8080 ", host: "127.0.0.1", port: "8080"},
 		{addr: "", host: "", port: ""},
 	}
 
@@ -627,46 +627,6 @@ func Benchmark_Utils_IsNoCache(b *testing.B) {
 		ok = isNoCache("max-age=30, no-cache,public")
 	}
 	require.True(b, ok)
-}
-
-// go test -v -run=^$ -bench=Benchmark_SlashRecognition -benchmem -count=4
-func Benchmark_SlashRecognition(b *testing.B) {
-	search := "wtf/1234"
-	var result bool
-
-	b.Run("indexBytes", func(b *testing.B) {
-		b.ReportAllocs()
-		result = false
-		for b.Loop() {
-			if strings.IndexByte(search, slashDelimiter) != -1 {
-				result = true
-			}
-		}
-		require.True(b, result)
-	})
-	b.Run("forEach", func(b *testing.B) {
-		b.ReportAllocs()
-		result = false
-		c := int32(slashDelimiter)
-		for b.Loop() {
-			for _, b := range search {
-				if b == c {
-					result = true
-					break
-				}
-			}
-		}
-		require.True(b, result)
-	})
-	b.Run("strings.ContainsRune", func(b *testing.B) {
-		b.ReportAllocs()
-		result = false
-		c := int32(slashDelimiter)
-		for b.Loop() {
-			result = strings.ContainsRune(search, c)
-		}
-		require.True(b, result)
-	})
 }
 
 type testGenericParseTypeIntCase struct {
