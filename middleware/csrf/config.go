@@ -125,7 +125,7 @@ var ConfigDefault = Config{
 	IdleTimeout:    30 * time.Minute,
 	KeyGenerator:   utils.UUIDv4,
 	ErrorHandler:   defaultErrorHandler,
-	Extractor:      FromHeader(HeaderName),
+	Extractor:      nil,
 }
 
 // default ErrorHandler that process return error from fiber.Handler
