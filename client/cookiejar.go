@@ -119,15 +119,7 @@ func (cj *CookieJar) cookiesForRequest(host string, path []byte, secure bool) []
 			}
 			kept = append(kept, c)
 
-			reqPath := path
-			if len(reqPath) == 0 {
-				reqPath = []byte("/")
-			}
-			cookiePath := c.Path()
-			if len(cookiePath) == 0 {
-				cookiePath = []byte("/")
-			}
-			if !bytes.HasPrefix(reqPath, cookiePath) {
+			if !pathMatch(path, c.Path()) {
 				continue
 			}
 			if c.Secure() && !secure {
@@ -301,20 +293,33 @@ func (cj *CookieJar) Release() {
 func searchCookieByKeyAndPath(key, path []byte, cookies []*fasthttp.Cookie) *fasthttp.Cookie {
 	for _, c := range cookies {
 		if bytes.Equal(key, c.Key()) {
-			reqPath := path
-			if len(reqPath) == 0 {
-				reqPath = []byte("/")
-			}
-			cookiePath := c.Path()
-			if len(cookiePath) == 0 {
-				cookiePath = []byte("/")
-			}
-			if bytes.HasPrefix(reqPath, cookiePath) {
+			if pathMatch(path, c.Path()) {
 				return c
 			}
 		}
 	}
 	return nil
+}
+
+// pathMatch determines whether the request path matches the cookie path
+// according to RFC 6265 section 5.1.4.
+func pathMatch(reqPath, cookiePath []byte) bool {
+	if len(reqPath) == 0 {
+		reqPath = []byte("/")
+	}
+	if len(cookiePath) == 0 {
+		cookiePath = []byte("/")
+	}
+	if bytes.Equal(reqPath, cookiePath) {
+		return true
+	}
+	if !bytes.HasPrefix(reqPath, cookiePath) {
+		return false
+	}
+	if cookiePath[len(cookiePath)-1] == '/' {
+		return true
+	}
+	return len(reqPath) > len(cookiePath) && reqPath[len(cookiePath)] == '/'
 }
 
 // domainMatch reports whether host domain-matches the given cookie domain.
