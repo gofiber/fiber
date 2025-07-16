@@ -325,8 +325,7 @@ func pathMatch(reqPath, cookiePath []byte) bool {
 // domainMatch reports whether host domain-matches the given cookie domain.
 func domainMatch(host, domain string) bool {
 	host = utils.ToLower(host)
-	domain = utils.UnsafeString(utils.TrimLeft(utils.UnsafeBytes(domain), '.'))
-	domain = utils.ToLower(domain)
+
 	if host == domain {
 		return true
 	}
