@@ -25,7 +25,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fxamacker/cbor/v2"
+	"github.com/gofiber/fiber/v3/binder"
 	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
@@ -297,17 +297,31 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	JSONDecoder utils.JSONUnmarshal `json:"-"`
 
 	// When set by an external client of Fiber it will use the provided implementation of a
+	// MsgPackMarshal
+	//
+	// Allowing for flexibility in using another msgpack library for encoding
+	// Default: binder.UnimplementedMsgpackMarshal
+	MsgPackEncoder utils.MsgPackMarshal `json:"-"`
+
+	// When set by an external client of Fiber it will use the provided implementation of a
+	// MsgPackUnmarshal
+	//
+	// Allowing for flexibility in using another msgpack library for decoding
+	// Default: binder.UnimplementedMsgpackUnmarshal
+	MsgPackDecoder utils.MsgPackUnmarshal `json:"-"`
+
+	// When set by an external client of Fiber it will use the provided implementation of a
 	// CBORMarshal
 	//
 	// Allowing for flexibility in using another cbor library for encoding
-	// Default: cbor.Marshal
+	// Default: binder.UnimplementedCborMarshal
 	CBOREncoder utils.CBORMarshal `json:"-"`
 
 	// When set by an external client of Fiber it will use the provided implementation of a
 	// CBORUnmarshal
 	//
 	// Allowing for flexibility in using another cbor library for decoding
-	// Default: cbor.Unmarshal
+	// Default: binder.UnimplementedCborUnmarshal
 	CBORDecoder utils.CBORUnmarshal `json:"-"`
 
 	// XMLEncoder set by an external client of Fiber it will use the provided implementation of a
@@ -567,11 +581,17 @@ func New(config ...Config) *App {
 	if app.config.JSONDecoder == nil {
 		app.config.JSONDecoder = json.Unmarshal
 	}
+	if app.config.MsgPackEncoder == nil {
+		app.config.MsgPackEncoder = binder.UnimplementedMsgpackMarshal
+	}
+	if app.config.MsgPackDecoder == nil {
+		app.config.MsgPackDecoder = binder.UnimplementedMsgpackUnmarshal
+	}
 	if app.config.CBOREncoder == nil {
-		app.config.CBOREncoder = cbor.Marshal
+		app.config.CBOREncoder = binder.UnimplementedCborMarshal
 	}
 	if app.config.CBORDecoder == nil {
-		app.config.CBORDecoder = cbor.Unmarshal
+		app.config.CBORDecoder = binder.UnimplementedCborUnmarshal
 	}
 	if app.config.XMLEncoder == nil {
 		app.config.XMLEncoder = xml.Marshal
@@ -648,8 +668,8 @@ func (app *App) RegisterCustomConstraint(constraint CustomConstraint) {
 
 // RegisterCustomBinder Allows to register custom binders to use as Bind().Custom("name").
 // They should be compatible with CustomBinder interface.
-func (app *App) RegisterCustomBinder(binder CustomBinder) {
-	app.customBinders = append(app.customBinders, binder)
+func (app *App) RegisterCustomBinder(customBinder CustomBinder) {
+	app.customBinders = append(app.customBinders, customBinder)
 }
 
 // SetTLSHandler Can be used to set ClientHelloInfo when using TLS with Listener.

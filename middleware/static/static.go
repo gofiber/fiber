@@ -171,11 +171,17 @@ func isFile(root string, filesystem fs.FS) (bool, error) {
 		if err != nil {
 			return false, fmt.Errorf("static: %w", err)
 		}
+		defer func() {
+			_ = file.Close() //nolint:errcheck // not needed
+		}()
 	} else {
 		file, err = os.Open(filepath.Clean(root))
 		if err != nil {
 			return false, fmt.Errorf("static: %w", err)
 		}
+		defer func() {
+			_ = file.Close() //nolint:errcheck // not needed
+		}()
 	}
 
 	stat, err := file.Stat()
