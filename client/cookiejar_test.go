@@ -285,3 +285,31 @@ func Test_CookieJar_Secure(t *testing.T) {
 	require.Equal(t, "k", string(cookies[0].Key()))
 	require.Equal(t, "v", string(cookies[0].Value()))
 }
+
+func Test_CookieJar_PathMatch(t *testing.T) {
+	t.Parallel()
+
+	jar := &CookieJar{}
+
+	setURI := fasthttp.AcquireURI()
+	require.NoError(t, setURI.Parse(nil, []byte("http://example.com/api")))
+
+	c := &fasthttp.Cookie{}
+	c.SetKey("k")
+	c.SetValue("v")
+	c.SetPath("/api")
+
+	jar.Set(setURI, c)
+
+	uriExact := fasthttp.AcquireURI()
+	require.NoError(t, uriExact.Parse(nil, []byte("http://example.com/api")))
+	require.Len(t, jar.Get(uriExact), 1)
+
+	uriChild := fasthttp.AcquireURI()
+	require.NoError(t, uriChild.Parse(nil, []byte("http://example.com/api/v1")))
+	require.Len(t, jar.Get(uriChild), 1)
+
+	uriNoMatch := fasthttp.AcquireURI()
+	require.NoError(t, uriNoMatch.Parse(nil, []byte("http://example.com/apiv1")))
+	require.Empty(t, jar.Get(uriNoMatch))
+}
