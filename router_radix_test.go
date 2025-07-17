@@ -129,7 +129,9 @@ require.Equal(t, "2022-08-27", app.getString(body))
 	// escaped colon
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/v1/some/resource/name:customVerb", nil))
 	require.NoError(t, err)
-	body, _ = io.ReadAll(resp.Body)
+body, err = io.ReadAll(resp.Body)
+require.NoError(t, err)
+require.Equal(t, "ok", app.getString(body))
 	require.Equal(t, "ok", app.getString(body))
 
 	// multi wildcard
