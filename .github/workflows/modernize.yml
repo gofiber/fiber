@@ -7,9 +7,13 @@ on:
       - main
     paths:
       - "**.go"
+    paths-ignore:
+      - "**/*_msgp*.go"
   pull_request:
     paths:
       - "**.go"
+    paths-ignore:
+      - "**/*_msgp*.go"
 
 permissions:
   contents: read
