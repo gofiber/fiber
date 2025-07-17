@@ -102,7 +102,9 @@ require.Equal(t, "john", app.getString(body))
 	// plus parameter
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/user/1/2", nil))
 	require.NoError(t, err)
-	body, _ = io.ReadAll(resp.Body)
+body, err = io.ReadAll(resp.Body)
+require.NoError(t, err)
+require.Equal(t, "1/2", app.getString(body))
 	require.Equal(t, "1/2", app.getString(body))
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/user/", nil))
