@@ -102,7 +102,7 @@ func Test_App_Test_Goroutine_Leak_Compare(t *testing.T) {
 
 			// Send 10 requests
 			numRequests := 10
-			for i := 0; i < numRequests; i++ {
+			for range numRequests {
 				req := httptest.NewRequest(MethodGet, "/", nil)
 
 				if tc.timeout > 0 {

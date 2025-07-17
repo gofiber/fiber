@@ -848,10 +848,9 @@ func (c *DefaultCtx) extractIPsFromHeader(header string) []string {
 	// We can't know how many IPs we will return, but we will try to guess with this constant division.
 	// Counting ',' makes function slower for about 50ns in general case.
 	const maxEstimatedCount = 8
-	estimatedCount := len(headerValue) / maxEstimatedCount
-	if estimatedCount > maxEstimatedCount {
-		estimatedCount = maxEstimatedCount // Avoid big allocation on big header
-	}
+	estimatedCount := min(len(headerValue)/maxEstimatedCount,
+		// Avoid big allocation on big header
+		maxEstimatedCount)
 
 	ipsFound := make([]string, 0, estimatedCount)
 

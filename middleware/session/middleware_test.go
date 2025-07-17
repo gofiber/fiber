@@ -95,7 +95,7 @@ func Test_Session_Middleware(t *testing.T) {
 		}
 		// get a value from the body
 		value := c.FormValue("keys")
-		for _, rawKey := range strings.Split(value, ",") {
+		for rawKey := range strings.SplitSeq(value, ",") {
 			key := strings.TrimSpace(rawKey)
 			if key == "" {
 				continue

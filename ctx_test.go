@@ -89,7 +89,7 @@ func Benchmark_Ctx_Accepts(b *testing.B) {
 	}
 	expectedResults := []string{".xml", "xml", "application/xml"}
 
-	for i := 0; i < len(acceptValues); i++ {
+	for i := range acceptValues {
 		b.Run(fmt.Sprintf("run-%#v", acceptValues[i]), func(bb *testing.B) {
 			var res string
 			bb.ReportAllocs()
@@ -617,8 +617,8 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 			c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 			c.Request().Header.Set("Content-Encoding", tCase.contentEncoding)
 
-			encs := strings.Split(tCase.contentEncoding, ",")
-			for _, enc := range encs {
+			encs := strings.SplitSeq(tCase.contentEncoding, ",")
+			for enc := range encs {
 				enc = strings.TrimSpace(enc)
 				if strings.Contains(tCase.name, "invalid_deflate") && enc == StrDeflate {
 					continue
@@ -853,8 +853,8 @@ func Test_Ctx_Body_With_Compression_Immutable(t *testing.T) {
 			c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 			c.Request().Header.Set("Content-Encoding", tCase.contentEncoding)
 
-			encs := strings.Split(tCase.contentEncoding, ",")
-			for _, enc := range encs {
+			encs := strings.SplitSeq(tCase.contentEncoding, ",")
+			for enc := range encs {
 				enc = strings.TrimSpace(enc)
 				if strings.Contains(tCase.name, "invalid_deflate") && enc == StrDeflate {
 					continue
@@ -5534,7 +5534,7 @@ func Benchmark_Ctx_BodyStreamWriter(b *testing.B) {
 	for b.Loop() {
 		ctx.ResetBody()
 		ctx.SetBodyStreamWriter(func(w *bufio.Writer) {
-			for i := 0; i < 10; i++ {
+			for range 10 {
 				_, err = w.Write(user)
 				if err := w.Flush(); err != nil {
 					return
