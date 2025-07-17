@@ -122,15 +122,33 @@ func routeConstPrefix(rp routeParser) string {
 		return "/"
 	}
 	var b strings.Builder
-	for _, seg := range rp.segs {
+	idx := 0
+	for i, seg := range rp.segs {
 		if seg.IsParam {
+			// trim trailing slash if the param is optional
+			if seg.IsOptional && strings.HasSuffix(b.String(), "/") {
+				prefix := strings.TrimSuffix(b.String(), "/")
+				if prefix == "" {
+					return "/"
+				}
+				return prefix
+			}
 			break
 		}
 		b.WriteString(seg.Const)
+		idx = i
 	}
 	prefix := b.String()
 	if prefix == "" {
 		return "/"
+	}
+	// special case when first param is optional and no constant prefix
+	if idx+1 < len(rp.segs) && rp.segs[idx+1].IsOptional && strings.HasSuffix(prefix, "/") {
+		trimmed := strings.TrimSuffix(prefix, "/")
+		if trimmed == "" {
+			return "/"
+		}
+		return trimmed
 	}
 	return prefix
 }
