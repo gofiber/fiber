@@ -27,6 +27,7 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/gofiber/fiber/v3/log"
+	"github.com/gofiber/fiber/v3/radix"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -122,6 +123,8 @@ type App struct {
 	customBinders []CustomBinder
 	// Route stack divided by HTTP methods and route prefixes
 	treeStack []map[int][]*Route
+	// Radix trees for faster route lookup
+	radixTrees []*radix.Tree
 	// sendfilesMutex is a mutex used for sendfile operations
 	sendfilesMutex sync.RWMutex
 	mutex          sync.Mutex
@@ -150,6 +153,11 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	//
 	// Default: false
 	CaseSensitive bool `json:"case_sensitive"`
+
+	// When enabled, Fiber will build a radix tree for routing which may
+	// improve performance in highly concurrent scenarios.
+	// Default: false
+	UseRadix bool `json:"use_radix"`
 
 	// When set to true, this relinquishes the 0-allocation promise in certain
 	// cases in order to access the handler values (e.g. request bodies) in an
@@ -615,6 +623,7 @@ func New(config ...Config) *App {
 	// Create router stack
 	app.stack = make([][]*Route, len(app.config.RequestMethods))
 	app.treeStack = make([]map[int][]*Route, len(app.config.RequestMethods))
+	app.radixTrees = make([]*radix.Tree, len(app.config.RequestMethods))
 
 	// Override colors
 	app.config.ColorScheme = defaultColors(app.config.ColorScheme)

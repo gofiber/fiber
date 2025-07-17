@@ -115,6 +115,26 @@ func uniqueRouteStack(stack []*Route) []*Route {
 	return unique
 }
 
+// routeConstPrefix returns the constant prefix of a route until the first
+// parameter segment. It is used for building the radix tree.
+func routeConstPrefix(rp routeParser) string {
+	if len(rp.segs) == 0 {
+		return "/"
+	}
+	var b strings.Builder
+	for _, seg := range rp.segs {
+		if seg.IsParam {
+			break
+		}
+		b.WriteString(seg.Const)
+	}
+	prefix := b.String()
+	if prefix == "" {
+		return "/"
+	}
+	return prefix
+}
+
 // defaultString returns the value or a default value if it is set
 func defaultString(value string, defaultValue []string) string {
 	if len(value) == 0 && len(defaultValue) > 0 {

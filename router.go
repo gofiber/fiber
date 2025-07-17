@@ -11,6 +11,7 @@ import (
 	"slices"
 	"sync/atomic"
 
+	"github.com/gofiber/fiber/v3/radix"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
@@ -109,10 +110,21 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) boo
 func (app *App) next(c *DefaultCtx) (bool, error) {
 	methodInt := c.methodInt
 	treeHash := c.treePathHash
-	// Get stack length
-	tree, ok := app.treeStack[methodInt][treeHash]
-	if !ok {
-		tree = app.treeStack[methodInt][0]
+	var tree []*Route
+	if app.config.UseRadix {
+		if rt := app.radixTrees[methodInt]; rt != nil {
+			_, val, ok := rt.LongestPrefix(utils.UnsafeString(c.detectionPath))
+			if ok {
+				tree = val.([]*Route)
+			}
+		}
+	}
+	if tree == nil {
+		var ok bool
+		tree, ok = app.treeStack[methodInt][treeHash]
+		if !ok {
+			tree = app.treeStack[methodInt][0]
+		}
 	}
 	lenr := len(tree) - 1
 
@@ -171,9 +183,21 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 		// Reset stack index
 		indexRoute := -1
 
-		tree, ok := app.treeStack[i][treeHash]
-		if !ok {
-			tree = app.treeStack[i][0]
+		var tree []*Route
+		if app.config.UseRadix {
+			if rt := app.radixTrees[i]; rt != nil {
+				_, val, ok := rt.LongestPrefix(utils.UnsafeString(c.detectionPath))
+				if ok {
+					tree = val.([]*Route)
+				}
+			}
+		}
+		if tree == nil {
+			var ok bool
+			tree, ok = app.treeStack[i][treeHash]
+			if !ok {
+				tree = app.treeStack[i][0]
+			}
 		}
 		// Get stack length
 		lenr := len(tree) - 1
@@ -209,10 +233,21 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 func (app *App) nextCustom(c CustomCtx) (bool, error) {
 	methodInt := c.getMethodInt()
 	treeHash := c.getTreePathHash()
-	// Get stack length
-	tree, ok := app.treeStack[methodInt][treeHash]
-	if !ok {
-		tree = app.treeStack[methodInt][0]
+	var tree []*Route
+	if app.config.UseRadix {
+		if rt := app.radixTrees[methodInt]; rt != nil {
+			_, val, ok := rt.LongestPrefix(c.getDetectionPath())
+			if ok {
+				tree = val.([]*Route)
+			}
+		}
+	}
+	if tree == nil {
+		var ok bool
+		tree, ok = app.treeStack[methodInt][treeHash]
+		if !ok {
+			tree = app.treeStack[methodInt][0]
+		}
 	}
 	lenr := len(tree) - 1
 
@@ -269,9 +304,21 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 		// Reset stack index
 		indexRoute := -1
 
-		tree, ok := app.treeStack[i][treeHash]
-		if !ok {
-			tree = app.treeStack[i][0]
+		var tree []*Route
+		if app.config.UseRadix {
+			if rt := app.radixTrees[i]; rt != nil {
+				_, val, ok := rt.LongestPrefix(c.getDetectionPath())
+				if ok {
+					tree = val.([]*Route)
+				}
+			}
+		}
+		if tree == nil {
+			var ok bool
+			tree, ok = app.treeStack[i][treeHash]
+			if !ok {
+				tree = app.treeStack[i][0]
+			}
 		}
 		// Get stack length
 		lenr := len(tree) - 1
@@ -649,6 +696,21 @@ func (app *App) buildTree() *App {
 
 			// after collecting, dedupe the bucket if it's not the global one
 			tsMap[treePath] = uniqueRouteStack(tsMap[treePath])
+		}
+	}
+
+	if app.config.UseRadix {
+		for method := range app.config.RequestMethods {
+			t := radix.New()
+			buckets := make(map[string][]*Route)
+			for _, route := range app.stack[method] {
+				p := routeConstPrefix(route.routeParser)
+				buckets[p] = append(buckets[p], route)
+			}
+			for p, rs := range buckets {
+				t.Insert(p, uniqueRouteStack(rs))
+			}
+			app.radixTrees[method] = t
 		}
 	}
 
