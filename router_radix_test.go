@@ -90,9 +90,9 @@ func Test_Router_Radix_OptionalPlusRegexEscaped(t *testing.T) {
 
 	// optional parameter
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/user", nil))
-	require.NoError(t, err)
-	body, _ := io.ReadAll(resp.Body)
-	require.Equal(t, "", app.getString(body))
+body, err := io.ReadAll(resp.Body)
+require.NoError(t, err)
+require.Equal(t, "", app.getString(body))
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/user/john", nil))
 	require.NoError(t, err)
