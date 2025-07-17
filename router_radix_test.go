@@ -90,36 +90,35 @@ func Test_Router_Radix_OptionalPlusRegexEscaped(t *testing.T) {
 
 	// optional parameter
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/user", nil))
-body, err := io.ReadAll(resp.Body)
-require.NoError(t, err)
-require.Equal(t, "", app.getString(body))
+	require.NoError(t, err)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "", app.getString(body))
 
-body, err = io.ReadAll(resp.Body)
-require.NoError(t, err)
-require.Equal(t, "john", app.getString(body))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/user/john", nil))
+	require.NoError(t, err)
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
 	require.Equal(t, "john", app.getString(body))
 
 	// plus parameter
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/user/1/2", nil))
 	require.NoError(t, err)
-body, err = io.ReadAll(resp.Body)
-require.NoError(t, err)
-require.Equal(t, "1/2", app.getString(body))
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
 	require.Equal(t, "1/2", app.getString(body))
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/user/", nil))
 	require.NoError(t, err)
-body, err = io.ReadAll(resp.Body)
-require.NoError(t, err)
-require.Equal(t, "", app.getString(body))
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
 	require.Equal(t, "", app.getString(body))
 
 	// regex constraint
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/2022-08-27", nil))
 	require.NoError(t, err)
-body, err = io.ReadAll(resp.Body)
-require.NoError(t, err)
-require.Equal(t, "2022-08-27", app.getString(body))
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
 	require.Equal(t, "2022-08-27", app.getString(body))
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/125", nil))
@@ -129,14 +128,14 @@ require.Equal(t, "2022-08-27", app.getString(body))
 	// escaped colon
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/v1/some/resource/name:customVerb", nil))
 	require.NoError(t, err)
-body, err = io.ReadAll(resp.Body)
-require.NoError(t, err)
-require.Equal(t, "ok", app.getString(body))
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
 	require.Equal(t, "ok", app.getString(body))
 
 	// multi wildcard
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/v1/brand/4/shop/blue/xs", nil))
 	require.NoError(t, err)
-	body, _ = io.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
 	require.Equal(t, "brand/4,blue/xs", app.getString(body))
 }
