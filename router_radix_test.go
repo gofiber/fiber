@@ -117,7 +117,9 @@ require.Equal(t, "", app.getString(body))
 	// regex constraint
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/2022-08-27", nil))
 	require.NoError(t, err)
-	body, _ = io.ReadAll(resp.Body)
+body, err = io.ReadAll(resp.Body)
+require.NoError(t, err)
+require.Equal(t, "2022-08-27", app.getString(body))
 	require.Equal(t, "2022-08-27", app.getString(body))
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/125", nil))
