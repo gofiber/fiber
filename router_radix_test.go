@@ -109,7 +109,9 @@ require.Equal(t, "1/2", app.getString(body))
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/user/", nil))
 	require.NoError(t, err)
-	body, _ = io.ReadAll(resp.Body)
+body, err = io.ReadAll(resp.Body)
+require.NoError(t, err)
+require.Equal(t, "", app.getString(body))
 	require.Equal(t, "", app.getString(body))
 
 	// regex constraint
