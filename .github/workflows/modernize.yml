@@ -1,4 +1,4 @@
-name: modernize
+name: Modernize Lint
 
 on:
   push:
@@ -7,13 +7,11 @@ on:
       - main
     paths:
       - "**.go"
-    paths-ignore:
-      - "**/*_msgp*.go"
+      - "!**/*_msgp*.go"
   pull_request:
     paths:
       - "**.go"
-    paths-ignore:
-      - "**/*_msgp*.go"
+      - "!**/*_msgp*.go"
 
 permissions:
   contents: read
