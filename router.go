@@ -163,7 +163,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 
 	exists := false
 	methods := app.config.RequestMethods
-	for i := 0; i < len(methods); i++ {
+	for i := range methods {
 		// Skip original method
 		if methodInt == i {
 			continue
@@ -261,7 +261,7 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 
 	exists := false
 	methods := app.config.RequestMethods
-	for i := 0; i < len(methods); i++ {
+	for i := range methods {
 		// Skip original method
 		if methodInt == i {
 			continue

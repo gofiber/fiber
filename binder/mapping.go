@@ -342,7 +342,7 @@ func formatBindData[T, K any](aliasTag string, out any, data map[string][]T, key
 func assignBindData(aliasTag string, out any, data map[string][]string, key, value string, enableSplitting bool) { //nolint:revive // it's okay
 	if enableSplitting && strings.Contains(value, ",") && equalFieldType(out, reflect.Slice, key, aliasTag) {
 		values := strings.Split(value, ",")
-		for i := 0; i < len(values); i++ {
+		for i := range values {
 			data[key] = append(data[key], values[i])
 		}
 	} else {
