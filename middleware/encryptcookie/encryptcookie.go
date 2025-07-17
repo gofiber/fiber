@@ -18,7 +18,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Decrypt request cookies
-		c.Request().Header.VisitAllCookie(func(key, value []byte) {
+		for key, value := range c.Request().Header.Cookies() {
 			keyString := string(key)
 			if !isDisabled(keyString, cfg.Except) {
 				decryptedValue, err := cfg.Decryptor(string(value), cfg.Key)
@@ -28,13 +28,13 @@ func New(config ...Config) fiber.Handler {
 					c.Request().Header.SetCookie(string(key), decryptedValue)
 				}
 			}
-		})
+		}
 
 		// Continue stack
 		err := c.Next()
 
 		// Encrypt response cookies
-		c.Response().Header.VisitAllCookie(func(key, _ []byte) {
+		for key := range c.Response().Header.Cookies() {
 			keyString := string(key)
 			if !isDisabled(keyString, cfg.Except) {
 				cookieValue := fasthttp.Cookie{}
@@ -49,7 +49,7 @@ func New(config ...Config) fiber.Handler {
 					c.Response().Header.SetCookie(&cookieValue)
 				}
 			}
-		})
+		}
 
 		return err
 	}

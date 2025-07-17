@@ -261,6 +261,28 @@ go app.Listen(":3000")
 
 This change simplifies the shutdown handling by consolidating the shutdown callbacks into a single hook that receives the error status.
 
+- Added support for Unix domain sockets via `ListenerNetwork` and `UnixSocketFileMode`
+
+```go
+// v2 - Requires manual deletion of old file and permissions change
+app := fiber.New(fiber.Config{
+    Network: "unix",
+})
+
+os.Remove("app.sock")
+app.Hooks().OnListen(func(fiber.ListenData) error {
+    return os.Chmod("app.sock", 0770)
+})
+app.Listen("app.sock")
+
+// v3 - Fiber does it for you
+app := fiber.New()
+app.Listen("app.sock", fiber.ListenerConfig{
+    ListenerNetwork:    fiber.NetworkUnix,
+    UnixSocketFileMode: 0770,
+})
+```
+
 ## 🗺 Router
 
 We have slightly adapted our router interface
@@ -449,6 +471,7 @@ testConfig := fiber.TestConfig{
 - **Value**: For implementing `context.Context`. Returns request-scoped value from Locals.
 - **ViewBind**: Binds data to a view, replacing the old `Bind` method.
 - **CBOR**: Introducing [CBOR](https://cbor.io/) binary encoding format for both request & response body. CBOR is a binary data serialization format which is both compact and efficient, making it ideal for use in web applications.
+- **MsgPack**: Introducing [MsgPack](https://msgpack.org/) binary encoding format for both request & response body. MsgPack is a binary serialization format that is more efficient than JSON, making it ideal for high-performance applications.
 - **Drop**: Terminates the client connection silently without sending any HTTP headers or response body. This can be used for scenarios where you want to block certain requests without notifying the client, such as mitigating DDoS attacks or protecting sensitive endpoints from unauthorized access.
 - **End**: Similar to Express.js, immediately flushes the current response and closes the underlying connection.
 
@@ -472,6 +495,9 @@ testConfig := fiber.TestConfig{
 - **Format**: Parameter changed from `body interface{}` to `handlers ...ResFmt`.
 - **Redirect**: Use `c.Redirect().To()` instead.
 - **SendFile**: Now supports different configurations using a config parameter.
+- **Attachment and Download**: Non-ASCII filenames now use `filename*` as
+  specified by [RFC 6266](https://www.rfc-editor.org/rfc/rfc6266) and
+  [RFC 8187](https://www.rfc-editor.org/rfc/rfc8187).
 - **Context**: Renamed to `RequestCtx` to correspond with the FastHTTP Request Context.
 - **UserContext**: Renamed to `Context`, which returns a `context.Context` object.
 - **SetUserContext**: Renamed to `SetContext`.
@@ -597,6 +623,7 @@ Fiber v3 introduces a new binding mechanism that simplifies the process of bindi
 - Improved error handling and validation.
 - Support multipart file binding for `*multipart.FileHeader`, `*[]*multipart.FileHeader`, and `[]*multipart.FileHeader` field types.
 - Support for unified binding (`Bind().All()`) with defined precedence order: (URI -> Body -> Query -> Headers -> Cookies). [Learn more](./api/bind.md#all).
+- Support MsgPack binding for request body.
 
 <details>
 <summary>Example</summary>
@@ -683,7 +710,7 @@ func main() {
     app := fiber.New()
 
     app.Get("/convert", func(c fiber.Ctx) error {
-        value, err := fiber.Convert[string](c.Query("value"), strconv.Atoi, 0)
+        value, err := fiber.Convert[int](c.Query("value"), strconv.Atoi, 0)
         if err != nil {
             return c.Status(fiber.StatusBadRequest).SendString(err.Error())
         }
@@ -975,29 +1002,29 @@ When used with the Logger middleware, the recommended approach is to use the `Cu
 
 The adaptor middleware has been significantly optimized for performance and efficiency. Key improvements include reduced response times, lower memory usage, and fewer memory allocations. These changes make the middleware more reliable and capable of handling higher loads effectively. Enhancements include the introduction of a `sync.Pool` for managing `fasthttp.RequestCtx` instances and better HTTP request and response handling between net/http and fasthttp contexts.
 
-| Payload Size | Metric           |     V2    |    V3    |    Percent Change |
-|--------------|------------------|-----------|----------|-------------------|
-| 100KB        | Execution Time   | 1056 ns/op| 588.6 ns/op | -44.25%        |
-|              | Memory Usage     | 2644 B/op | 254 B/op    | -90.39%        |
-|              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
-| 500KB        | Execution Time   | 1061 ns/op| 562.9 ns/op | -46.94%        |
-|              | Memory Usage     | 2644 B/op | 248 B/op    | -90.62%        |
-|              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
-| 1MB          | Execution Time   | 1080 ns/op| 629.7 ns/op | -41.68%        |
-|              | Memory Usage     | 2646 B/op | 267 B/op    | -89.91%        |
-|              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
-| 5MB          | Execution Time   | 1093 ns/op| 540.3 ns/op | -50.58%        |
-|              | Memory Usage     | 2654 B/op | 254 B/op    | -90.43%        |
-|              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
-| 10MB         | Execution Time   | 1044 ns/op| 533.1 ns/op | -48.94%        |
-|              | Memory Usage     | 2665 B/op | 258 B/op    | -90.32%        |
-|              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
-| 25MB         | Execution Time   | 1069 ns/op| 540.7 ns/op | -49.42%        |
-|              | Memory Usage     | 2706 B/op | 289 B/op    | -89.32%        |
-|              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
-| 50MB         | Execution Time   | 1137 ns/op| 554.6 ns/op | -51.21%        |
-|              | Memory Usage     | 2734 B/op | 298 B/op    | -89.10%        |
-|              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
+| Payload Size | Metric         | V2           | V3          | Percent Change |
+| ------------ | -------------- | ------------ | ----------- | -------------- |
+| 100KB        | Execution Time | 1056 ns/op   | 588.6 ns/op | -44.25%        |
+|              | Memory Usage   | 2644 B/op    | 254 B/op    | -90.39%        |
+|              | Allocations    | 16 allocs/op | 5 allocs/op | -68.75%        |
+| 500KB        | Execution Time | 1061 ns/op   | 562.9 ns/op | -46.94%        |
+|              | Memory Usage   | 2644 B/op    | 248 B/op    | -90.62%        |
+|              | Allocations    | 16 allocs/op | 5 allocs/op | -68.75%        |
+| 1MB          | Execution Time | 1080 ns/op   | 629.7 ns/op | -41.68%        |
+|              | Memory Usage   | 2646 B/op    | 267 B/op    | -89.91%        |
+|              | Allocations    | 16 allocs/op | 5 allocs/op | -68.75%        |
+| 5MB          | Execution Time | 1093 ns/op   | 540.3 ns/op | -50.58%        |
+|              | Memory Usage   | 2654 B/op    | 254 B/op    | -90.43%        |
+|              | Allocations    | 16 allocs/op | 5 allocs/op | -68.75%        |
+| 10MB         | Execution Time | 1044 ns/op   | 533.1 ns/op | -48.94%        |
+|              | Memory Usage   | 2665 B/op    | 258 B/op    | -90.32%        |
+|              | Allocations    | 16 allocs/op | 5 allocs/op | -68.75%        |
+| 25MB         | Execution Time | 1069 ns/op   | 540.7 ns/op | -49.42%        |
+|              | Memory Usage   | 2706 B/op    | 289 B/op    | -89.32%        |
+|              | Allocations    | 16 allocs/op | 5 allocs/op | -68.75%        |
+| 50MB         | Execution Time | 1137 ns/op   | 554.6 ns/op | -51.21%        |
+|              | Memory Usage   | 2734 B/op    | 298 B/op    | -89.10%        |
+|              | Allocations    | 16 allocs/op | 5 allocs/op | -68.75%        |
 
 ### BasicAuth
 

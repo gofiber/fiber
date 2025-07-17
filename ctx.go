@@ -16,6 +16,7 @@ import (
 	"mime/multipart"
 	"net"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -228,7 +229,7 @@ func (c *DefaultCtx) AcceptsEncodings(offers ...string) string {
 // AcceptsLanguages checks if the specified language is acceptable.
 func (c *DefaultCtx) AcceptsLanguages(offers ...string) string {
 	header := joinHeaderValues(c.fasthttp.Request.Header.PeekAll(HeaderAcceptLanguage))
-	return getOffer(header, acceptsOffer, offers...)
+	return getOffer(header, acceptsLanguageOffer, offers...)
 }
 
 // App returns the *App reference to the instance of the Fiber application
@@ -262,8 +263,17 @@ func (c *DefaultCtx) Attachment(filename ...string) {
 	if len(filename) > 0 {
 		fname := filepath.Base(filename[0])
 		c.Type(filepath.Ext(fname))
-
-		c.setCanonical(HeaderContentDisposition, `attachment; filename="`+c.app.quoteString(fname)+`"`)
+		var quoted string
+		if c.app.isASCII(fname) {
+			quoted = c.app.quoteString(fname)
+		} else {
+			quoted = c.app.quoteRawString(fname)
+		}
+		disp := `attachment; filename="` + quoted + `"`
+		if !c.app.isASCII(fname) {
+			disp += `; filename*=UTF-8''` + url.PathEscape(fname)
+		}
+		c.setCanonical(HeaderContentDisposition, disp)
 		return
 	}
 	c.setCanonical(HeaderContentDisposition, "attachment")
@@ -297,10 +307,12 @@ func (c *DefaultCtx) tryDecodeBodyInOrder(
 		decodesRealized uint8
 	)
 
-	for index, encoding := range encodings {
+	for idx := range encodings {
+		i := len(encodings) - 1 - idx
+		encoding := encodings[i]
 		decodesRealized++
 		switch encoding {
-		case StrGzip:
+		case StrGzip, "x-gzip":
 			body, err = c.fasthttp.Request.BodyGunzip()
 		case StrBr, StrBrotli:
 			body, err = c.fasthttp.Request.BodyUnbrotli()
@@ -308,21 +320,20 @@ func (c *DefaultCtx) tryDecodeBodyInOrder(
 			body, err = c.fasthttp.Request.BodyInflate()
 		case StrZstd:
 			body, err = c.fasthttp.Request.BodyUnzstd()
+		case StrIdentity:
+			body = c.fasthttp.Request.Body()
+		case StrCompress, "x-compress":
+			return nil, decodesRealized - 1, ErrNotImplemented
 		default:
-			decodesRealized--
-			if len(encodings) == 1 {
-				body = c.fasthttp.Request.Body()
-			}
-			return body, decodesRealized, nil
+			return nil, decodesRealized - 1, ErrUnsupportedMediaType
 		}
 
 		if err != nil {
 			return nil, decodesRealized, err
 		}
 
-		// Only execute body raw update if it has a next iteration to try to decode
-		if index < len(encodings)-1 && decodesRealized > 0 {
-			if index == 0 {
+		if i > 0 && decodesRealized > 0 {
+			if i == len(encodings)-1 {
 				tempBody := c.fasthttp.Request.Body()
 				*originalBody = make([]byte, len(tempBody))
 				copy(*originalBody, tempBody)
@@ -348,7 +359,7 @@ func (c *DefaultCtx) Body() []byte {
 	)
 
 	// Get Content-Encoding header
-	headerEncoding = utils.UnsafeString(c.Request().Header.ContentEncoding())
+	headerEncoding = utils.ToLower(utils.UnsafeString(c.Request().Header.ContentEncoding()))
 
 	// If no encoding is provided, return the original body
 	if len(headerEncoding) == 0 {
@@ -358,6 +369,9 @@ func (c *DefaultCtx) Body() []byte {
 	// Split and get the encodings list, in order to attend the
 	// rule defined at: https://www.rfc-editor.org/rfc/rfc9110#section-8.4-5
 	encodingOrder = getSplicedStrList(headerEncoding, encodingOrder)
+	for i := range encodingOrder {
+		encodingOrder[i] = utils.ToLower(encodingOrder[i])
+	}
 	if len(encodingOrder) == 0 {
 		return c.getBody()
 	}
@@ -370,6 +384,12 @@ func (c *DefaultCtx) Body() []byte {
 		c.fasthttp.Request.SetBodyRaw(originalBody)
 	}
 	if err != nil {
+		switch {
+		case errors.Is(err, ErrUnsupportedMediaType):
+			_ = c.SendStatus(StatusUnsupportedMediaType) //nolint:errcheck // It is fine to ignore the error
+		case errors.Is(err, ErrNotImplemented):
+			_ = c.SendStatus(StatusNotImplemented) //nolint:errcheck // It is fine to ignore the error
+		}
 		return []byte(err.Error())
 	}
 
@@ -388,9 +408,9 @@ func (c *DefaultCtx) ClearCookie(key ...string) {
 		}
 		return
 	}
-	c.fasthttp.Request.Header.VisitAllCookie(func(k, _ []byte) {
+	for k := range c.fasthttp.Request.Header.Cookies() {
 		c.fasthttp.Response.Header.DelClientCookieBytes(k)
-	})
+	}
 }
 
 // RequestCtx returns *fasthttp.RequestCtx that carries a deadline
@@ -521,7 +541,17 @@ func (c *DefaultCtx) Download(file string, filename ...string) error {
 	} else {
 		fname = filepath.Base(file)
 	}
-	c.setCanonical(HeaderContentDisposition, `attachment; filename="`+c.app.quoteString(fname)+`"`)
+	var quoted string
+	if c.app.isASCII(fname) {
+		quoted = c.app.quoteString(fname)
+	} else {
+		quoted = c.app.quoteRawString(fname)
+	}
+	disp := `attachment; filename="` + quoted + `"`
+	if !c.app.isASCII(fname) {
+		disp += `; filename*=UTF-8''` + url.PathEscape(fname)
+	}
+	c.setCanonical(HeaderContentDisposition, disp)
 	return c.SendFile(file)
 }
 
@@ -608,7 +638,7 @@ func (c *DefaultCtx) Format(handlers ...ResFmt) error {
 // If the header is not specified or there is no proper format, text/plain is used.
 func (c *DefaultCtx) AutoFormat(body any) error {
 	// Get accepted content type
-	accept := c.Accepts("html", "json", "txt", "xml")
+	accept := c.Accepts("html", "json", "txt", "xml", "msgpack")
 	// Set accepted content type
 	c.Type(accept)
 	// Type convert provided body
@@ -628,6 +658,8 @@ func (c *DefaultCtx) AutoFormat(body any) error {
 		return c.SendString("<p>" + b + "</p>")
 	case "json":
 		return c.JSON(body)
+	case "msgpack":
+		return c.MsgPack(body)
 	case "txt":
 		return c.SendString(b)
 	case "xml":
@@ -656,7 +688,7 @@ func (c *DefaultCtx) FormValue(key string, defaultValue ...string) string {
 // and the full response should be sent.
 // When a client sends the Cache-Control: no-cache request header to indicate an end-to-end
 // reload request, this module will return false to make handling these requests transparent.
-// https://github.com/jshttp/fresh/blob/10e0471669dbbfbfd8de65bc6efac2ddd0bfa057/index.js#L33
+// https://github.com/jshttp/fresh/blob/master/index.js#L33
 func (c *DefaultCtx) Fresh() bool {
 	// fields
 	modifiedSince := c.Get(HeaderIfModifiedSince)
@@ -736,10 +768,10 @@ func (c *DefaultCtx) GetRespHeader(key string, defaultValue ...string) string {
 // Make copies or use the Immutable setting instead.
 func (c *DefaultCtx) GetRespHeaders() map[string][]string {
 	headers := make(map[string][]string)
-	c.Response().Header.VisitAll(func(k, v []byte) {
+	for k, v := range c.Response().Header.All() {
 		key := c.app.getString(k)
 		headers[key] = append(headers[key], c.app.getString(v))
-	})
+	}
 	return headers
 }
 
@@ -748,10 +780,10 @@ func (c *DefaultCtx) GetRespHeaders() map[string][]string {
 // Make copies or use the Immutable setting instead.
 func (c *DefaultCtx) GetReqHeaders() map[string][]string {
 	headers := make(map[string][]string)
-	c.Request().Header.VisitAll(func(k, v []byte) {
+	for k, v := range c.Request().Header.All() {
 		key := c.app.getString(k)
 		headers[key] = append(headers[key], c.app.getString(v))
-	})
+	}
 	return headers
 }
 
@@ -816,10 +848,9 @@ func (c *DefaultCtx) extractIPsFromHeader(header string) []string {
 	// We can't know how many IPs we will return, but we will try to guess with this constant division.
 	// Counting ',' makes function slower for about 50ns in general case.
 	const maxEstimatedCount = 8
-	estimatedCount := len(headerValue) / maxEstimatedCount
-	if estimatedCount > maxEstimatedCount {
-		estimatedCount = maxEstimatedCount // Avoid big allocation on big header
-	}
+	estimatedCount := min(len(headerValue)/maxEstimatedCount,
+		// Avoid big allocation on big header
+		maxEstimatedCount)
 
 	ipsFound := make([]string, 0, estimatedCount)
 
@@ -838,9 +869,10 @@ iploop:
 		}
 
 		for j < len(headerValue) && headerValue[j] != ',' {
-			if headerValue[j] == ':' {
+			switch headerValue[j] {
+			case ':':
 				v6 = true
-			} else if headerValue[j] == '.' {
+			case '.':
 				v4 = true
 			}
 			j++
@@ -888,9 +920,10 @@ func (c *DefaultCtx) extractIPFromHeader(header string) string {
 			}
 
 			for j < len(headerValue) && headerValue[j] != ',' {
-				if headerValue[j] == ':' {
+				switch headerValue[j] {
+				case ':':
 					v6 = true
-				} else if headerValue[j] == '.' {
+				case '.':
 					v4 = true
 				}
 				j++
@@ -958,6 +991,24 @@ func (c *DefaultCtx) JSON(data any, ctype ...string) error {
 		c.fasthttp.Response.Header.SetContentType(ctype[0])
 	} else {
 		c.fasthttp.Response.Header.SetContentType(MIMEApplicationJSON)
+	}
+	return nil
+}
+
+// MsgPack converts any interface or string to MessagePack encoded bytes.
+// If the ctype parameter is given, this method will set the
+// Content-Type header equal to ctype. If ctype is not given,
+// The Content-Type header will be set to application/vnd.msgpack.
+func (c *DefaultCtx) MsgPack(data any, ctype ...string) error {
+	raw, err := c.app.config.MsgPackEncoder(data)
+	if err != nil {
+		return err
+	}
+	c.fasthttp.Response.SetBodyRaw(raw)
+	if len(ctype) > 0 {
+		c.fasthttp.Response.Header.SetContentType(ctype[0])
+	} else {
+		c.fasthttp.Response.Header.SetContentType(MIMEApplicationMsgPack)
 	}
 	return nil
 }
@@ -1219,9 +1270,9 @@ func (c *DefaultCtx) Scheme() string {
 
 	scheme := schemeHTTP
 	const lenXHeaderName = 12
-	c.fasthttp.Request.Header.VisitAll(func(key, val []byte) {
+	for key, val := range c.fasthttp.Request.Header.All() {
 		if len(key) < lenXHeaderName {
-			return // Neither "X-Forwarded-" nor "X-Url-Scheme"
+			continue // Neither "X-Forwarded-" nor "X-Url-Scheme"
 		}
 		switch {
 		case bytes.HasPrefix(key, []byte("X-Forwarded-")):
@@ -1241,7 +1292,7 @@ func (c *DefaultCtx) Scheme() string {
 		case bytes.Equal(key, []byte(HeaderXUrlScheme)):
 			scheme = c.app.getString(val)
 		}
-	})
+	}
 	return scheme
 }
 
@@ -1256,7 +1307,7 @@ func (c *DefaultCtx) Protocol() string {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (c *DefaultCtx) Query(key string, defaultValue ...string) string {
-	return Query[string](c, key, defaultValue...)
+	return Query(c, key, defaultValue...)
 }
 
 // Queries returns a map of query parameters and their values.
@@ -1282,9 +1333,9 @@ func (c *DefaultCtx) Query(key string, defaultValue ...string) string {
 // Queries()["filters[status]"] == "pending"
 func (c *DefaultCtx) Queries() map[string]string {
 	m := make(map[string]string, c.RequestCtx().QueryArgs().Len())
-	c.RequestCtx().QueryArgs().VisitAll(func(key, value []byte) {
+	for key, value := range c.RequestCtx().QueryArgs().All() {
 		m[c.app.getString(key)] = c.app.getString(value)
-	})
+	}
 	return m
 }
 
@@ -1384,7 +1435,9 @@ func (c *DefaultCtx) Range(size int) (Range, error) {
 		})
 	}
 	if len(rangeData.Ranges) < 1 {
-		return rangeData, ErrRangeUnsatisfiable
+		c.Status(StatusRequestedRangeNotSatisfiable)
+		c.Set(HeaderContentRange, "bytes */"+strconv.Itoa(size))
+		return rangeData, ErrRequestedRangeNotSatisfiable
 	}
 
 	return rangeData, nil
@@ -1852,7 +1905,7 @@ func (c *DefaultCtx) Subdomains(offset ...int) []string {
 	return parts[:len(parts)-o]
 }
 
-// Stale is not implemented yet, pull requests are welcome!
+// Stale returns the inverse of Fresh, indicating if the client's cached response is considered stale.
 func (c *DefaultCtx) Stale() bool {
 	return !c.Fresh()
 }

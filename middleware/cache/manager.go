@@ -17,6 +17,7 @@ type item struct {
 	ctype     []byte
 	cencoding []byte
 	status    int
+	age       uint64
 	exp       uint64
 	ttl       uint64
 	// used for finding the item in an indexed heap
@@ -63,7 +64,9 @@ func (m *manager) release(e *item) {
 	e.body = nil
 	e.ctype = nil
 	e.status = 0
+	e.age = 0
 	e.exp = 0
+	e.ttl = 0
 	e.headers = nil
 	m.pool.Put(e)
 }

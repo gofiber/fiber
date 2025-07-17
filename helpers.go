@@ -21,8 +21,9 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
+
+	"github.com/gofiber/fiber/v3/log"
 
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
@@ -38,6 +39,8 @@ type acceptedType struct {
 	specificity int
 	order       int
 }
+
+const noCacheValue = "no-cache"
 
 type headerParams map[string][]byte
 
@@ -93,12 +96,57 @@ func readContent(rf io.ReaderFrom, name string) (int64, error) {
 	return 0, nil
 }
 
-// quoteString escape special characters in a given string
+// quoteString escapes special characters using percent-encoding.
+// Non-ASCII bytes are encoded as well so the result is always ASCII.
 func (app *App) quoteString(raw string) string {
 	bb := bytebufferpool.Get()
 	quoted := app.getString(fasthttp.AppendQuotedArg(bb.B, app.getBytes(raw)))
 	bytebufferpool.Put(bb)
 	return quoted
+}
+
+// quoteRawString escapes only characters that need quoting according to
+// https://www.rfc-editor.org/rfc/rfc9110#section-5.6.4 so the result may
+// contain non-ASCII bytes.
+func (app *App) quoteRawString(raw string) string {
+	const hex = "0123456789ABCDEF"
+	bb := bytebufferpool.Get()
+	defer bytebufferpool.Put(bb)
+
+	for i := 0; i < len(raw); i++ {
+		c := raw[i]
+		switch {
+		case c == '\\' || c == '"':
+			// escape backslash and quote
+			bb.B = append(bb.B, '\\', c)
+		case c == '\n':
+			bb.B = append(bb.B, '\\', 'n')
+		case c == '\r':
+			bb.B = append(bb.B, '\\', 'r')
+		case c < 0x20 || c == 0x7f:
+			// percent-encode control and DEL
+			bb.B = append(bb.B,
+				'%',
+				hex[c>>4],
+				hex[c&0x0f],
+			)
+		default:
+			bb.B = append(bb.B, c)
+		}
+	}
+
+	return app.getString(bb.B)
+}
+
+// isASCII reports whether the provided string contains only ASCII characters.
+// See: https://www.rfc-editor.org/rfc/rfc0020
+func (*App) isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] > 127 {
+			return false
+		}
+	}
+	return true
 }
 
 // uniqueRouteStack drop all not unique routes from the slice
@@ -173,16 +221,32 @@ func getGroupPath(prefix, path string) string {
 	return utils.TrimRight(prefix, '/') + path
 }
 
-// acceptsOffer This function determines if an offer matches a given specification.
-// It checks if the specification ends with a '*' or if the offer has the prefix of the specification.
+// acceptsOffer determines if an offer matches a given specification.
+// It supports a trailing '*' wildcard and performs case-insensitive exact matching.
 // Returns true if the offer matches the specification, false otherwise.
 func acceptsOffer(spec, offer string, _ headerParams) bool {
 	if len(spec) >= 1 && spec[len(spec)-1] == '*' {
 		return true
-	} else if strings.HasPrefix(spec, offer) {
+	}
+
+	return utils.EqualFold(spec, offer)
+}
+
+// acceptsLanguageOffer determines if a language tag offer matches a range
+// according to RFC 4647 Basic Filtering.
+// A match occurs if the range exactly equals the tag or is a prefix of the tag
+// followed by a hyphen. The comparison is case-insensitive. A trailing '*'
+// wildcard in the range matches any tag.
+func acceptsLanguageOffer(spec, offer string, _ headerParams) bool {
+	if len(spec) >= 1 && spec[len(spec)-1] == '*' {
 		return true
 	}
-	return false
+
+	if utils.EqualFold(spec, offer) {
+		return true
+	}
+
+	return len(offer) > len(spec) && utils.EqualFold(offer[:len(spec)], spec) && offer[len(spec)] == '-'
 }
 
 // acceptsOfferType This function determines if an offer type matches a given specification.
@@ -529,19 +593,60 @@ func sortAcceptedTypes(at []acceptedType) {
 	}
 }
 
-func matchEtag(s, etag string) bool {
-	if s == etag || s == "W/"+etag || "W/"+s == etag {
-		return true
+// normalizeEtag validates an entity tag and returns the
+// value without quotes. weak is true if the tag has the "W/" prefix.
+func normalizeEtag(t string) (string, bool, bool) {
+	weak := strings.HasPrefix(t, "W/")
+	if weak {
+		t = t[2:]
 	}
 
-	return false
+	if len(t) < 2 || t[0] != '"' || t[len(t)-1] != '"' {
+		return "", weak, false
+	}
+	return t[1 : len(t)-1], weak, true
 }
 
+// matchEtag performs a weak comparison of entity tags according to
+// RFC 9110 §8.8.3.2. The weak indicator ("W/") is ignored, but both tags must
+// be properly quoted. Invalid tags result in a mismatch.
+func matchEtag(s, etag string) bool {
+	n1, _, ok1 := normalizeEtag(s)
+	n2, _, ok2 := normalizeEtag(etag)
+	if !ok1 || !ok2 {
+		return false
+	}
+
+	return n1 == n2
+}
+
+// matchEtagStrong performs a strong entity-tag comparison following
+// RFC 9110 §8.8.3.1. A weak tag never matches a strong one, even if the quoted
+// values are identical.
+func matchEtagStrong(s, etag string) bool {
+	n1, w1, ok1 := normalizeEtag(s)
+	n2, w2, ok2 := normalizeEtag(etag)
+	if !ok1 || !ok2 || w1 || w2 {
+		return false
+	}
+
+	return n1 == n2
+}
+
+// isEtagStale reports whether a response with the given ETag would be considered
+// stale when presented with the raw If-None-Match header value. Comparison is
+// weak as defined by RFC 9110 §8.8.3.2.
 func (app *App) isEtagStale(etag string, noneMatchBytes []byte) bool {
 	var start, end int
+	header := utils.Trim(app.getString(noneMatchBytes), ' ')
+
+	// Short-circuit the wildcard case: "*" never counts as stale.
+	if header == "*" {
+		return false
+	}
 
 	// Adapted from:
-	// https://github.com/jshttp/fresh/blob/10e0471669dbbfbfd8de65bc6efac2ddd0bfa057/index.js#L110
+	// https://github.com/jshttp/fresh/blob/master/index.js#L110
 	for i := range noneMatchBytes {
 		switch noneMatchBytes[i] {
 		case 0x20:
@@ -563,10 +668,12 @@ func (app *App) isEtagStale(etag string, noneMatchBytes []byte) bool {
 	return !matchEtag(app.getString(noneMatchBytes[start:end]), etag)
 }
 
-func parseAddr(raw string) (string, string) { //nolint:revive // Returns (host, port)
+func parseAddr(raw string) (string, string) {
 	if raw == "" {
 		return "", ""
 	}
+
+	raw = utils.Trim(raw, ' ')
 
 	// Handle IPv6 addresses enclosed in brackets as defined by RFC 3986
 	if strings.HasPrefix(raw, "[") {
@@ -595,8 +702,6 @@ func parseAddr(raw string) (string, string) { //nolint:revive // Returns (host, 
 	// No colon, nothing to split
 	return raw, ""
 }
-
-const noCacheValue = "no-cache"
 
 // isNoCache checks if the cacheControl header value is a `no-cache`.
 func isNoCache(cacheControl string) bool {
@@ -756,73 +861,73 @@ func genericParseType[V GenericType](str string) (V, error) {
 	var v V
 	switch any(v).(type) {
 	case int:
-		result, err := strconv.ParseInt(str, 10, 0)
+		result, err := utils.ParseInt(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse int: %w", err)
 		}
 		return any(int(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case int8:
-		result, err := strconv.ParseInt(str, 10, 8)
+		result, err := utils.ParseInt8(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse int8: %w", err)
 		}
-		return any(int8(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
+		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case int16:
-		result, err := strconv.ParseInt(str, 10, 16)
+		result, err := utils.ParseInt16(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse int16: %w", err)
 		}
-		return any(int16(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
+		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case int32:
-		result, err := strconv.ParseInt(str, 10, 32)
+		result, err := utils.ParseInt32(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse int32: %w", err)
 		}
-		return any(int32(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
+		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case int64:
-		result, err := strconv.ParseInt(str, 10, 64)
+		result, err := utils.ParseInt(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse int64: %w", err)
 		}
 		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case uint:
-		result, err := strconv.ParseUint(str, 10, 0)
+		result, err := utils.ParseUint(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse uint: %w", err)
 		}
 		return any(uint(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case uint8:
-		result, err := strconv.ParseUint(str, 10, 8)
+		result, err := utils.ParseUint8(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse uint8: %w", err)
 		}
-		return any(uint8(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
+		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case uint16:
-		result, err := strconv.ParseUint(str, 10, 16)
+		result, err := utils.ParseUint16(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse uint16: %w", err)
 		}
-		return any(uint16(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
+		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case uint32:
-		result, err := strconv.ParseUint(str, 10, 32)
+		result, err := utils.ParseUint32(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse uint32: %w", err)
 		}
-		return any(uint32(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
+		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case uint64:
-		result, err := strconv.ParseUint(str, 10, 64)
+		result, err := utils.ParseUint(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse uint64: %w", err)
 		}
 		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case float32:
-		result, err := strconv.ParseFloat(str, 32)
+		result, err := utils.ParseFloat32(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse float32: %w", err)
 		}
-		return any(float32(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
+		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case float64:
-		result, err := strconv.ParseFloat(str, 64)
+		result, err := utils.ParseFloat64(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse float64: %w", err)
 		}

@@ -14,7 +14,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-var boundary = "--FiberFormBoundary"
+var boundary = "FiberFormBoundary"
 
 // RequestHook is a function invoked before the request is sent.
 // It receives a Client and a Request, allowing you to modify the Request or Client data.
