@@ -764,7 +764,7 @@ func (app *App) Use(args ...any) Router {
 	var prefixes []string
 	var handlers []Handler
 
-	for i := 0; i < len(args); i++ {
+	for i := range args {
 		switch arg := args[i].(type) {
 		case string:
 			prefix = arg

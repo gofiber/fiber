@@ -95,7 +95,7 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg ListenConfig) er
 	var pids []string
 
 	// launch child procs
-	for i := 0; i < maxProcs; i++ {
+	for range maxProcs {
 		cmd := exec.Command(os.Args[0], os.Args[1:]...) //nolint:gosec // It's fine to launch the same process again
 		if testPreforkMaster {
 			// When test prefork master,

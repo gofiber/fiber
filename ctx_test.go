@@ -89,7 +89,7 @@ func Benchmark_Ctx_Accepts(b *testing.B) {
 	}
 	expectedResults := []string{".xml", "xml", "application/xml"}
 
-	for i := 0; i < len(acceptValues); i++ {
+	for i := range acceptValues {
 		b.Run(fmt.Sprintf("run-%#v", acceptValues[i]), func(bb *testing.B) {
 			var res string
 			bb.ReportAllocs()
@@ -617,8 +617,8 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 			c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 			c.Request().Header.Set("Content-Encoding", tCase.contentEncoding)
 
-			encs := strings.Split(tCase.contentEncoding, ",")
-			for _, enc := range encs {
+			encs := strings.SplitSeq(tCase.contentEncoding, ",")
+			for enc := range encs {
 				enc = strings.TrimSpace(enc)
 				if strings.Contains(tCase.name, "invalid_deflate") && enc == StrDeflate {
 					continue
@@ -853,8 +853,8 @@ func Test_Ctx_Body_With_Compression_Immutable(t *testing.T) {
 			c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 			c.Request().Header.Set("Content-Encoding", tCase.contentEncoding)
 
-			encs := strings.Split(tCase.contentEncoding, ",")
-			for _, enc := range encs {
+			encs := strings.SplitSeq(tCase.contentEncoding, ",")
+			for enc := range encs {
 				enc = strings.TrimSpace(enc)
 				if strings.Contains(tCase.name, "invalid_deflate") && enc == StrDeflate {
 					continue
@@ -2589,9 +2589,9 @@ func Test_Ctx_Locals_Generic(t *testing.T) {
 	t.Parallel()
 	app := New()
 	app.Use(func(c Ctx) error {
-		Locals[string](c, "john", "doe")
-		Locals[int](c, "age", 18)
-		Locals[bool](c, "isHuman", true)
+		Locals(c, "john", "doe")
+		Locals(c, "age", 18)
+		Locals(c, "isHuman", true)
 		return c.Next()
 	})
 	app.Get("/test", func(c Ctx) error {
@@ -2617,7 +2617,7 @@ func Test_Ctx_Locals_GenericCustomStruct(t *testing.T) {
 
 	app := New()
 	app.Use(func(c Ctx) error {
-		Locals[User](c, "user", User{name: "john", age: 18})
+		Locals(c, "user", User{name: "john", age: 18})
 		return c.Next()
 	})
 	app.Use("/test", func(c Ctx) error {
@@ -3137,7 +3137,7 @@ func Test_Ctx_Query(t *testing.T) {
 	// test with generic
 	require.Equal(t, "john", Query[string](c, "search"))
 	require.Equal(t, "20", Query[string](c, "age"))
-	require.Equal(t, "default", Query[string](c, "unknown", "default"))
+	require.Equal(t, "default", Query(c, "unknown", "default"))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Query -benchmem -count=4
@@ -5534,7 +5534,7 @@ func Benchmark_Ctx_BodyStreamWriter(b *testing.B) {
 	for b.Loop() {
 		ctx.ResetBody()
 		ctx.SetBodyStreamWriter(func(w *bufio.Writer) {
-			for i := 0; i < 10; i++ {
+			for range 10 {
 				_, err = w.Write(user)
 				if err := w.Flush(); err != nil {
 					return

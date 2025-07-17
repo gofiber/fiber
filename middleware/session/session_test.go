@@ -1176,7 +1176,7 @@ func Test_Session_Concurrency(t *testing.T) {
 	const numGoroutines = 10        // Number of concurrent goroutines to test
 
 	// Start numGoroutines goroutines
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

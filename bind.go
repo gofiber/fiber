@@ -331,7 +331,7 @@ func (b *Bind) All(out any) error {
 
 func mergeStruct(dst, src reflect.Value) {
 	dstFields := dst.NumField()
-	for i := 0; i < dstFields; i++ {
+	for i := range dstFields {
 		dstField := dst.Field(i)
 		srcField := src.Field(i)
 
