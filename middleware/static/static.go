@@ -3,7 +3,9 @@ package static
 import (
 	"fmt"
 	"io/fs"
+	"net/url"
 	"os"
+	pathpkg "path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -13,6 +15,57 @@ import (
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
+
+// sanitizePath validates and cleans the requested path.
+// It returns an error if the path attempts to traverse directories.
+func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
+	// convert backslashes to slashes for consistency
+	s := strings.ReplaceAll(string(p), "\\", "/")
+
+	// repeatedly unescape until it no longer changes, catching errors
+	for {
+		if !strings.Contains(s, "%") {
+			break
+		}
+		us, err := url.PathUnescape(s)
+		if err != nil {
+			return nil, fmt.Errorf("invalid path")
+		}
+		if us == s {
+			break
+		}
+		s = us
+	}
+
+	// reject any null bytes or traversal attempts
+	if strings.Contains(s, "\x00") || strings.Contains(s, "..") || strings.Contains(s, ":") {
+		return nil, fmt.Errorf("invalid path")
+	}
+
+	raw := s
+	s = pathpkg.Clean("/" + s)
+
+	if filesystem != nil {
+		s = strings.TrimPrefix(s, "/")
+		if s == "" {
+			return []byte("/"), nil
+		}
+		if !fs.ValidPath(s) {
+			return nil, fmt.Errorf("invalid path")
+		}
+		s = "/" + s
+	} else {
+		// verify no traversal after cleaning
+		if strings.Contains(raw, "..") || strings.Contains(s, "..") {
+			return nil, fmt.Errorf("invalid path")
+		}
+		if !strings.HasPrefix(s, "/") {
+			s = "/" + s
+		}
+	}
+
+	return utils.UnsafeBytes(s), nil
+}
 
 // New creates a new middleware handler.
 // The root argument specifies the root directory from which to serve static assets.
@@ -103,7 +156,12 @@ func New(root string, cfg ...Config) fiber.Handler {
 					path = append([]byte("/"), path...)
 				}
 
-				return path
+				sanitized, err := sanitizePath(path, fs.FS)
+				if err != nil {
+					// return a guaranteed-missing path so fs responds with 404
+					return []byte("/__fiber_invalid__")
+				}
+				return sanitized
 			}
 
 			maxAge := config.MaxAge
