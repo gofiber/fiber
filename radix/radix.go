@@ -30,7 +30,6 @@ type node[V any] struct {
 
 // cacheEntry stores a cached lookup result.
 type cacheEntry[V any] struct {
-	key    string
 	prefix string
 	value  V
 }
@@ -39,10 +38,10 @@ type cacheEntry[V any] struct {
 // small lookup cache for repeated prefix queries. The cache is implemented
 // using sync.Map for lock-free reads once populated.
 type Tree[V any] struct {
-	root       *node[V]
-	cacheSize  int
-	cacheCount atomic.Int64
-	cache      sync.Map // map[string]cacheEntry[V]
+	root      *node[V]
+	cacheSize int
+	cache     atomic.Value // map[string]cacheEntry[V]
+	mu        sync.Mutex
 }
 
 // New creates a new radix tree. When cacheSize is 0, the lookup cache is
@@ -52,10 +51,14 @@ func New[V any](cacheSize ...int) *Tree[V] {
 	if len(cacheSize) > 0 {
 		size = cacheSize[0]
 	}
-	return &Tree[V]{
+	t := &Tree[V]{
 		root:      &node[V]{},
 		cacheSize: size,
 	}
+	if size > 0 {
+		t.cache.Store(make(map[string]cacheEntry[V]))
+	}
+	return t
 }
 
 // getEdge returns the child edge for the given label.
@@ -200,17 +203,28 @@ func (t *Tree[V]) LongestPrefix(s string) (string, V, bool) {
 		return t.longestPrefixNoCache(s)
 	}
 
-	if v, ok := t.cache.Load(s); ok {
-		ce := v.(cacheEntry[V])
-		return ce.prefix, ce.value, true
+	if v := t.cache.Load(); v != nil {
+		m := v.(map[string]cacheEntry[V])
+		if ce, ok := m[s]; ok {
+			return ce.prefix, ce.value, true
+		}
 	}
 
 	prefix, val, ok := t.longestPrefixNoCache(s)
 	if ok {
-		if t.cacheCount.Load() < int64(t.cacheSize) {
-			if _, loaded := t.cache.LoadOrStore(s, cacheEntry[V]{key: s, prefix: prefix, value: val}); !loaded {
-				t.cacheCount.Add(1)
+		t.mu.Lock()
+		defer t.mu.Unlock()
+		m, _ := t.cache.Load().(map[string]cacheEntry[V])
+		if m == nil {
+			m = make(map[string]cacheEntry[V])
+		}
+		if len(m) < t.cacheSize {
+			newM := make(map[string]cacheEntry[V], len(m)+1)
+			for k, v := range m {
+				newM[k] = v
 			}
+			newM[s] = cacheEntry[V]{prefix: prefix, value: val}
+			t.cache.Store(newM)
 		}
 	}
 	return prefix, val, ok
