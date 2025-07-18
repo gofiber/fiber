@@ -1,8 +1,6 @@
 package csrf
 
 import (
-	"net/textproto"
-	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -42,28 +40,12 @@ type Config struct {
 
 	// Extractor returns the csrf token
 	//
-	// If set this will be used in place of an Extractor based on KeyLookup.
-	//
-	// Optional. Default will create an Extractor based on KeyLookup.
+	// Required. Default: FromHeader("X-Csrf-Token")
+	// Available extractors: FromHeader, FromQuery, FromParam, FromForm, FromCookie
 	Extractor func(c fiber.Ctx) (string, error)
-
-	// KeyLookup is a string in the form of "<source>:<key>" that is used
-	// to create an Extractor that extracts the token from the request.
-	// Possible values:
-	// - "header:<name>"
-	// - "query:<name>"
-	// - "param:<name>"
-	// - "form:<name>"
-	// - "cookie:<name>"
-	//
-	// Ignored if an Extractor is explicitly set.
-	//
-	// Optional. Default: "header:X-Csrf-Token"
-	KeyLookup string
 
 	// Name of the session cookie. This cookie will store session key.
 	// Optional. Default value "csrf_".
-	// Overridden if KeyLookup == "cookie:<name>"
 	CookieName string
 
 	// Domain of the CSRF cookie.
@@ -119,7 +101,6 @@ const HeaderName = "X-Csrf-Token"
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	KeyLookup:      "header:" + HeaderName,
 	CookieName:     "csrf_",
 	CookieSameSite: "Lax",
 	IdleTimeout:    30 * time.Minute,
@@ -144,9 +125,6 @@ func configDefault(config ...Config) Config {
 	cfg := config[0]
 
 	// Set default values
-	if cfg.KeyLookup == "" {
-		cfg.KeyLookup = ConfigDefault.KeyLookup
-	}
 	if cfg.IdleTimeout <= 0 {
 		cfg.IdleTimeout = ConfigDefault.IdleTimeout
 	}
@@ -162,35 +140,17 @@ func configDefault(config ...Config) Config {
 	if cfg.ErrorHandler == nil {
 		cfg.ErrorHandler = ConfigDefault.ErrorHandler
 	}
-
-	// Generate the correct extractor to get the token from the correct location
-	selectors := strings.Split(cfg.KeyLookup, ":")
-
-	const numParts = 2
-	if len(selectors) != numParts {
-		panic("[CSRF] KeyLookup must in the form of <source>:<key>")
+	if cfg.Extractor == nil {
+		cfg.Extractor = ConfigDefault.Extractor
 	}
 
-	if cfg.Extractor == nil {
-		// By default we extract from a header
-		cfg.Extractor = FromHeader(textproto.CanonicalMIMEHeaderKey(selectors[1]))
-
-		switch selectors[0] {
-		case "form":
-			cfg.Extractor = FromForm(selectors[1])
-		case "query":
-			cfg.Extractor = FromQuery(selectors[1])
-		case "param":
-			cfg.Extractor = FromParam(selectors[1])
-		case "cookie":
-			if cfg.Session == nil {
-				log.Warn("[CSRF] Cookie extractor is not recommended without a session store")
-			}
-			if cfg.CookieSameSite == "None" || cfg.CookieSameSite != "Lax" && cfg.CookieSameSite != "Strict" {
-				log.Warn("[CSRF] Cookie extractor is only recommended for use with SameSite=Lax or SameSite=Strict")
-			}
-			cfg.Extractor = FromCookie(selectors[1])
-			cfg.CookieName = selectors[1] // Cookie name is the same as the key
+	// Validate extractor usage with sessions
+	if isFromCookie(cfg.Extractor) {
+		if cfg.Session == nil {
+			log.Warn("[CSRF] Cookie extractor is not recommended without a session store")
+		}
+		if cfg.CookieSameSite == "None" || cfg.CookieSameSite != "Lax" && cfg.CookieSameSite != "Strict" {
+			log.Warn("[CSRF] Cookie extractor is only recommended for use with SameSite=Lax or SameSite=Strict")
 		}
 	}
 

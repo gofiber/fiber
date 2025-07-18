@@ -355,7 +355,7 @@ func Test_CSRF_MultiUseToken(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		KeyLookup: "header:X-Csrf-Token",
+		Extractor: FromHeader("X-Csrf-Token"),
 	}))
 
 	app.Post("/", func(c fiber.Ctx) error {
@@ -454,30 +454,11 @@ func Test_CSRF_Next(t *testing.T) {
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
 
-func Test_CSRF_Invalid_KeyLookup(t *testing.T) {
-	t.Parallel()
-	defer func() {
-		require.Equal(t, "[CSRF] KeyLookup must in the form of <source>:<key>", recover())
-	}()
-	app := fiber.New()
-
-	app.Use(New(Config{KeyLookup: "I:am:invalid"}))
-
-	app.Post("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
-
-	h := app.Handler()
-	ctx := &fasthttp.RequestCtx{}
-	ctx.Request.Header.SetMethod(fiber.MethodGet)
-	h(ctx)
-}
-
 func Test_CSRF_From_Form(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	app.Use(New(Config{KeyLookup: "form:_csrf"}))
+	app.Use(New(Config{Extractor: FromForm("_csrf")}))
 
 	app.Post("/", func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
@@ -514,7 +495,7 @@ func Test_CSRF_From_Query(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	app.Use(New(Config{KeyLookup: "query:_csrf"}))
+	app.Use(New(Config{Extractor: FromQuery("_csrf")}))
 
 	app.Post("/", func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
@@ -552,7 +533,7 @@ func Test_CSRF_From_Param(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	csrfGroup := app.Group("/:csrf", New(Config{KeyLookup: "param:csrf"}))
+	csrfGroup := app.Group("/:csrf", New(Config{Extractor: FromParam("csrf")}))
 
 	csrfGroup.Post("/", func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
@@ -590,7 +571,9 @@ func Test_CSRF_From_Cookie(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	csrfGroup := app.Group("/", New(Config{KeyLookup: "cookie:csrf"}))
+	csrfGroup := app.Group("/", New(Config{
+		Extractor: FromCookie("csrf"),
+	}))
 
 	csrfGroup.Post("/", func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
@@ -1605,7 +1588,7 @@ func Test_configDefault_WarnCookieSameSite(t *testing.T) {
 	t.Cleanup(func() { log.SetOutput(os.Stderr) })
 
 	cfg := configDefault(Config{
-		KeyLookup:      "cookie:csrf",
+		Extractor:      FromCookie("csrf"),
 		CookieSameSite: "None",
 	})
 
