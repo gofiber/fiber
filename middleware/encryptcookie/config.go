@@ -74,5 +74,9 @@ func configDefault(config ...Config) Config {
 		panic("fiber: encrypt cookie middleware requires key")
 	}
 
+	if err := validateKey(cfg.Key); err != nil {
+		panic(err)
+	}
+
 	return cfg
 }

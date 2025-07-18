@@ -1,12 +1,17 @@
 package csrf
 
 import (
+	"bytes"
+	"context"
+	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/fiber/v3/middleware/session"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
@@ -34,14 +39,16 @@ func Test_CSRF(t *testing.T) {
 		h(ctx)
 
 		// Without CSRF cookie
-		ctx.Request.Reset()
+		ctx.Request.Header.Reset()
+		ctx.Request.ResetBody()
 		ctx.Response.Reset()
 		ctx.Request.Header.SetMethod(fiber.MethodPost)
 		h(ctx)
 		require.Equal(t, 403, ctx.Response.StatusCode())
 
 		// Invalid CSRF token
-		ctx.Request.Reset()
+		ctx.Request.Header.Reset()
+		ctx.Request.ResetBody()
 		ctx.Response.Reset()
 		ctx.Request.Header.SetMethod(fiber.MethodPost)
 		ctx.Request.Header.Set(HeaderName, "johndoe")
@@ -49,7 +56,8 @@ func Test_CSRF(t *testing.T) {
 		require.Equal(t, 403, ctx.Response.StatusCode())
 
 		// Valid CSRF token
-		ctx.Request.Reset()
+		ctx.Request.Header.Reset()
+		ctx.Request.ResetBody()
 		ctx.Response.Reset()
 		ctx.Request.Header.SetMethod(method)
 		h(ctx)
@@ -138,7 +146,7 @@ func Test_CSRF_WithSession(t *testing.T) {
 		ctx.Request.Header.SetCookie("_session", newSessionIDString)
 		h(ctx)
 		token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
-		for _, header := range strings.Split(token, ";") {
+		for header := range strings.SplitSeq(token, ";") {
 			if strings.Split(utils.Trim(header, ' '), "=")[0] == ConfigDefault.CookieName {
 				token = strings.Split(header, "=")[1]
 				break
@@ -193,12 +201,20 @@ func Test_CSRF_WithSession_Middleware(t *testing.T) {
 	// Generate CSRF token and session_id
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
 	h(ctx)
-	csrfTokenParts := strings.Split(string(ctx.Response.Header.Peek(fiber.HeaderSetCookie)), ";")
-	require.Greater(t, len(csrfTokenParts), 2)
-	csrfToken := strings.Split(csrfTokenParts[0], "=")[1]
+
+	csrfCookie := fasthttp.AcquireCookie()
+	csrfCookie.SetKey(ConfigDefault.CookieName)
+	require.True(t, ctx.Response.Header.Cookie(csrfCookie))
+	csrfToken := string(csrfCookie.Value())
 	require.NotEmpty(t, csrfToken)
-	sessionID := strings.Split(csrfTokenParts[1], "=")[1]
+	fasthttp.ReleaseCookie(csrfCookie)
+
+	sessionCookie := fasthttp.AcquireCookie()
+	sessionCookie.SetKey("session_id")
+	require.True(t, ctx.Response.Header.Cookie(sessionCookie))
+	sessionID := string(sessionCookie.Value())
 	require.NotEmpty(t, sessionID)
+	fasthttp.ReleaseCookie(sessionCookie)
 
 	// Use the CSRF token and session_id
 	ctx.Request.Reset()
@@ -302,7 +318,7 @@ func Test_CSRF_ExpiredToken_WithSession(t *testing.T) {
 	ctx.Request.Header.SetCookie("_session", newSessionIDString)
 	h(ctx)
 	token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
-	for _, header := range strings.Split(token, ";") {
+	for header := range strings.SplitSeq(token, ";") {
 		if strings.Split(utils.Trim(header, ' '), "=")[0] == ConfigDefault.CookieName {
 			token = strings.Split(header, "=")[1]
 			break
@@ -1087,7 +1103,8 @@ func Test_CSRF_DeleteToken(t *testing.T) {
 	ctx := &fasthttp.RequestCtx{}
 
 	// DeleteToken after token generation and remove the cookie
-	ctx.Request.Reset()
+	ctx.Request.Header.Reset()
+	ctx.Request.ResetBody()
 	ctx.Response.Reset()
 	ctx.Request.Header.Set(HeaderName, "")
 	handler := HandlerFromContext(app.AcquireCtx(ctx))
@@ -1105,7 +1122,8 @@ func Test_CSRF_DeleteToken(t *testing.T) {
 	token = strings.Split(strings.Split(token, ";")[0], "=")[1]
 
 	// Delete the CSRF token
-	ctx.Request.Reset()
+	ctx.Request.Header.Reset()
+	ctx.Request.ResetBody()
 	ctx.Response.Reset()
 	ctx.Request.Header.SetMethod(fiber.MethodPost)
 	ctx.Request.Header.Set(HeaderName, token)
@@ -1118,7 +1136,8 @@ func Test_CSRF_DeleteToken(t *testing.T) {
 	}
 	h(ctx)
 
-	ctx.Request.Reset()
+	ctx.Request.Header.Reset()
+	ctx.Request.ResetBody()
 	ctx.Response.Reset()
 	ctx.Request.Header.SetMethod(fiber.MethodPost)
 	ctx.Request.Header.Set(HeaderName, token)
@@ -1330,9 +1349,9 @@ func Test_CSRF_Cookie_Injection_Exploit(t *testing.T) {
 	require.Equal(t, 403, ctx.Response.StatusCode(), "CSRF exploit successful")
 }
 
-// TODO: use this test case and make the unsafe header value bug from https://github.com/gofiber/fiber/issues/2045 reproducible and permanently fixed/tested by this testcase
+// Test_CSRF_UnsafeHeaderValue ensures that unsafe header values, such as those described in https://github.com/gofiber/fiber/issues/2045, are rejected and the bug remains fixed.
+// go test -race -run Test_CSRF_UnsafeHeaderValue
 func Test_CSRF_UnsafeHeaderValue(t *testing.T) {
-	t.SkipNow()
 	t.Parallel()
 	app := fiber.New()
 
@@ -1372,6 +1391,10 @@ func Test_CSRF_UnsafeHeaderValue(t *testing.T) {
 	getReq.Header.Set("X-Requested-With", "XMLHttpRequest")
 	getReq.Header.Set(fiber.HeaderCacheControl, "no")
 	getReq.Header.Set(HeaderName, token)
+	getReq.AddCookie(&http.Cookie{
+		Name:  ConfigDefault.CookieName,
+		Value: token,
+	})
 
 	resp, err = app.Test(getReq)
 	require.NoError(t, err)
@@ -1386,6 +1409,10 @@ func Test_CSRF_UnsafeHeaderValue(t *testing.T) {
 	postReq := httptest.NewRequest(fiber.MethodPost, "/", nil)
 	postReq.Header.Set("X-Requested-With", "XMLHttpRequest")
 	postReq.Header.Set(HeaderName, token)
+	postReq.AddCookie(&http.Cookie{
+		Name:  ConfigDefault.CookieName,
+		Value: token,
+	})
 	resp, err = app.Test(postReq)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
@@ -1427,9 +1454,8 @@ func Benchmark_Middleware_CSRF_Check(b *testing.B) {
 	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		h(ctx)
 	}
 
@@ -1451,9 +1477,8 @@ func Benchmark_Middleware_CSRF_GenerateToken(b *testing.B) {
 	// Generate CSRF token
 	ctx.Request.Header.SetMethod(fiber.MethodGet)
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		h(ctx)
 	}
 
@@ -1572,4 +1597,44 @@ func Test_CSRF_FromContextMethods_Invalid(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
+func Test_configDefault_WarnCookieSameSite(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	cfg := configDefault(Config{
+		KeyLookup:      "cookie:csrf",
+		CookieSameSite: "None",
+	})
+
+	require.Equal(t, "csrf", cfg.CookieName)
+	require.Contains(t, buf.String(), "Cookie extractor is only recommended for use with SameSite=Lax or SameSite=Strict")
+}
+
+func Test_deleteTokenFromStorage(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	token := "token123"
+	dummy := []byte("dummy")
+
+	store := session.NewStore()
+	sm := newSessionManager(store)
+	stm := newStorageManager(nil)
+
+	sm.setRaw(ctx, token, dummy, time.Minute)
+	deleteTokenFromStorage(ctx, token, Config{Session: store}, sm, stm)
+	require.Nil(t, sm.getRaw(ctx, token, dummy))
+
+	sm2 := newSessionManager(nil)
+	stm2 := newStorageManager(nil)
+
+	stm2.setRaw(context.Background(), token, dummy, time.Minute)
+	deleteTokenFromStorage(ctx, token, Config{}, sm2, stm2)
+	require.Nil(t, stm2.getRaw(context.Background(), token))
 }

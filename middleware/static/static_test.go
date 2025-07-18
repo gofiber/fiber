@@ -5,7 +5,9 @@ import (
 	"io"
 	"io/fs"
 	"net/http/httptest"
+	"net/url"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -208,7 +210,30 @@ func Test_Static_Download(t *testing.T) {
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
 	require.Equal(t, "image/png", resp.Header.Get(fiber.HeaderContentType))
-	require.Equal(t, `attachment`, resp.Header.Get(fiber.HeaderContentDisposition))
+	require.Equal(t, `attachment; filename="fiber.png"`, resp.Header.Get(fiber.HeaderContentDisposition))
+}
+
+func Test_Static_Download_NonASCII(t *testing.T) {
+	// Skip on Windows. It's not possible to delete a file that is in use.
+	if runtime.GOOS == "windows" {
+		t.SkipNow()
+	}
+
+	t.Parallel()
+
+	dir := t.TempDir()
+	fname := "файл.txt"
+	path := filepath.Join(dir, fname)
+	require.NoError(t, os.WriteFile(path, []byte("x"), 0o644)) //nolint:gosec // Not a concern
+
+	app := fiber.New()
+	app.Get("/file", New(path, Config{Download: true}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/file", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+	expect := "attachment; filename=\"" + fname + "\"; filename*=UTF-8''" + url.PathEscape(fname)
+	require.Equal(t, expect, resp.Header.Get(fiber.HeaderContentDisposition))
 }
 
 // go test -run Test_Static_Group
@@ -740,7 +765,7 @@ func Test_Static_Compress(t *testing.T) {
 	for _, algo := range algorithms {
 		t.Run(algo+"_compression", func(t *testing.T) {
 			t.Parallel()
-			// request non-compressable file (less than 200 bytes), Content Lengh will remain the same
+			// request non-compressible file (less than 200 bytes), Content Length will remain the same
 			req := httptest.NewRequest(fiber.MethodGet, "/css/style.css", nil)
 			req.Header.Set("Accept-Encoding", algo)
 			resp, err := app.Test(req, testConfig)
@@ -750,7 +775,7 @@ func Test_Static_Compress(t *testing.T) {
 			require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
 			require.Equal(t, "46", resp.Header.Get(fiber.HeaderContentLength))
 
-			// request compressable file, ContentLenght will change
+			// request compressible file, ContentLength will change
 			req = httptest.NewRequest(fiber.MethodGet, "/index.html", nil)
 			req.Header.Set("Accept-Encoding", algo)
 			resp, err = app.Test(req, testConfig)
@@ -772,7 +797,7 @@ func Test_Static_Compress_WithoutEncoding(t *testing.T) {
 		CacheDuration: 1 * time.Second,
 	}))
 
-	// request compressable file without encoding
+	// request compressible file without encoding
 	req := httptest.NewRequest(fiber.MethodGet, "/index.html", nil)
 	resp, err := app.Test(req, testConfig)
 
@@ -781,7 +806,7 @@ func Test_Static_Compress_WithoutEncoding(t *testing.T) {
 	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
 	require.Equal(t, "299", resp.Header.Get(fiber.HeaderContentLength))
 
-	// request compressable file with different encodings
+	// request compressible file with different encodings
 	algorithms := []string{"zstd", "gzip", "br"}
 	fileSuffixes := map[string]string{
 		"gzip": ".fiber.gz",
@@ -827,7 +852,7 @@ func Test_Static_Compress_WithFileSuffixes(t *testing.T) {
 		CacheDuration: 1 * time.Second,
 	}))
 
-	// request compressable file with different encodings
+	// request compressible file with different encodings
 	algorithms := []string{"zstd", "gzip", "br"}
 
 	for _, algo := range algorithms {

@@ -43,18 +43,34 @@ app.Post("/", func(c fiber.Ctx) error {
 
 ### Context
 
-`Context` returns a context implementation that was set by the user earlier or returns a non-nil, empty context if it was not set earlier.
+`Context` implements `context.Context`. However due to [current limitations in how fasthttp](https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945) works, `Deadline()`, `Done()` and `Err()` operate as a nop.
 
 ```go title="Signature"
-func (c fiber.Ctx) Context() context.Context
+func (c fiber.Ctx) Deadline() (deadline time.Time, ok bool)
+func (c fiber.Ctx) Done() <-chan struct{}
+func (c fiber.Ctx) Err() error
+func (c fiber.Ctx) Value(key any) any
 ```
 
 ```go title="Example"
-app.Get("/", func(c fiber.Ctx) error {
-  ctx := c.Context()
-  // ctx is context implementation set by user
 
+func doSomething(ctx context.Context) {
   // ...
+}
+
+app.Get("/", func(c fiber.Ctx) error {
+  doSomething(c)
+})
+```
+
+#### Value
+
+Value can be used to retrieve [**`Locals`**](#locals).
+
+```go title="Example"
+app.Get("/", func(c fiber.Ctx) error {
+  c.Locals(userKey, "admin")
+  user := c.Value(userKey) // returns "admin"
 })
 ```
 
@@ -213,7 +229,7 @@ app.Get("/test", func(c fiber.Ctx) error {
   fiber.Locals[bool](c, "isHuman")   // true
   return nil
 })
-````
+```
 
 Make sure to understand and correctly implement the `Locals` method in both its standard and generic form for better control over route-specific data within your application.
 
@@ -369,24 +385,6 @@ func MyMiddleware() fiber.Handler {
 }
 ```
 
-### SetContext
-
-Sets the user-specified implementation for the `context.Context` interface.
-
-```go title="Signature"
-func (c fiber.Ctx) SetContext(ctx context.Context)
-```
-
-```go title="Example"
-app.Get("/", func(c fiber.Ctx) error {
-  ctx := context.Background()
-  c.SetContext(ctx)
-  // Here ctx could be any context implementation
-
-  // ...
-})
-```
-
 ### String
 
 Returns a unique string representation of the context.
@@ -506,6 +504,8 @@ app.Get("/", func(c fiber.Ctx) error {
 
 Fiber provides similar functions for the other accept headers.
 
+For `Accept-Language`, Fiber uses the [Basic Filtering](https://www.rfc-editor.org/rfc/rfc4647#section-3.3.1) algorithm. A language range matches an offer only if it exactly equals the tag or is a prefix followed by a hyphen. For example, the range `en` matches `en-US`, but `en-US` does not match `en`.
+
 ```go
 // Accept-Charset: utf-8, iso-8859-1;q=0.2
 // Accept-Encoding: gzip, compress;q=0.2
@@ -543,7 +543,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ### Body
 
-As per the header `Content-Encoding`, this method will try to perform a file decompression from the **body** bytes. In case no `Content-Encoding` header is sent, it will perform as [BodyRaw](#bodyraw).
+As per the header `Content-Encoding`, this method will try to perform a file decompression from the **body** bytes. In case no `Content-Encoding` header is sent (or when it is set to `identity`), it will perform as [BodyRaw](#bodyraw). If an unknown or unsupported encoding is encountered, the response status will be `415 Unsupported Media Type` or `501 Not Implemented`.
 
 ```go title="Signature"
 func (c fiber.Ctx) Body() []byte
@@ -1215,6 +1215,12 @@ The generic `Query` function supports returning the following data types based o
 ### Range
 
 Returns a struct containing the type and a slice of ranges.
+Only the canonical `bytes` unit is recognized and any optional
+whitespace around range specifiers will be ignored, as specified
+in RFC 9110.
+If none of the requested ranges are satisfiable, the method automatically
+sets the HTTP status code to **416 Range Not Satisfiable** and populates the
+`Content-Range` header with the current representation size.
 
 ```go title="Signature"
 func (c fiber.Ctx) Range(size int) (Range, error)
@@ -1338,6 +1344,10 @@ c.Protocol() == "https"
 
 ### Stale
 
+When the client's cached response is **stale**, this method returns **true**. It
+is the logical complement of [`Fresh`](#fresh), which checks whether the cached
+representation is still valid.
+
 [https://expressjs.com/en/4x/api.html#req.stale](https://expressjs.com/en/4x/api.html#req.stale)
 
 ```go title="Signature"
@@ -1346,21 +1356,33 @@ func (c fiber.Ctx) Stale() bool
 
 ### Subdomains
 
-Returns a slice of subdomains in the domain name of the request.
+Returns a slice with the host’s sub-domain labels. The dot-separated parts that precede the registrable domain (`example`) and the top-level domain (ex: `com`).
 
-The application property `subdomain offset`, which defaults to `2`, is used for determining the beginning of the subdomain segments.
+The `subdomain offset` (default `2`) tells Fiber how many labels, counting from the right-hand side, are always discarded.  
+Passing an `offset` argument lets you override that value for a single call.
 
-```go title="Signature"
+```go
 func (c fiber.Ctx) Subdomains(offset ...int) []string
 ```
 
-```go title="Example"
+| `offset`               | Result                                  | Meaning                                       |
+| ---------------------- | --------------------------------------- | --------------------------------------------- |
+| *omitted* → **2**      | trim 2 right-most labels                | drop the registrable domain **and** the TLD   |
+| `1` to `len(labels)-1` | trim exactly `offset` right-most labels | custom trimming of available labels           |
+| `>= len(labels)`       | **return `[]`**                         | offset exceeds available labels → empty slice |
+| `0`                    | **return every label**                  | keep the entire host unchanged                |
+| `< 0`                  | **return `[]`**                         | negative offsets are invalid → empty slice    |
+
+#### Example
+
+```go
 // Host: "tobi.ferrets.example.com"
 
 app.Get("/", func(c fiber.Ctx) error {
-  c.Subdomains()    // ["ferrets", "tobi"]
-  c.Subdomains(1)   // ["tobi"]
-
+  c.Subdomains()    // ["tobi", "ferrets"]
+  c.Subdomains(1)   // ["tobi", "ferrets", "example"]
+  c.Subdomains(0)   // ["tobi", "ferrets", "example", "com"]
+  c.Subdomains(-1)  // []
   // ...
 })
 ```
@@ -1436,10 +1458,22 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+Non-ASCII filenames are encoded using the `filename*` parameter as defined in
+[RFC 6266](https://www.rfc-editor.org/rfc/rfc6266) and
+[RFC 8187](https://www.rfc-editor.org/rfc/rfc8187):
+
+```go title="Example"
+app.Get("/non-ascii", func(c fiber.Ctx) error {
+  c.Attachment("./files/文件.txt")
+  // => Content-Disposition: attachment; filename="文件.txt"; filename*=UTF-8''%E6%96%87%E4%BB%B6.txt
+  return nil
+})
+```
+
 ### AutoFormat
 
 Performs content-negotiation on the [Accept](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept) HTTP header. It uses [Accepts](ctx.md#accepts) to select a proper format.
-The supported content types are `text/html`, `text/plain`, `application/json`, and `application/xml`.
+The supported content types are `text/html`, `text/plain`, `application/json`, `application/vnd.msgpack`, and `application/xml`.
 For more flexible content negotiation, use [Format](ctx.md#format).
 
 :::info
@@ -1468,6 +1502,10 @@ app.Get("/", func(c fiber.Ctx) error {
   // Accept: application/json
   c.AutoFormat(user)
   // => {"Name":"John Doe"}
+
+  // Accept: application/vnd.msgpack
+  c.AutoFormat(user)
+  // => 82 a4 6e 61 6d 65 a4 6a 6f 68 6e a4 70 61 73 73 a3 64 6f 65
 
   // Accept: application/xml
   c.AutoFormat(user)
@@ -1588,8 +1626,8 @@ app.Get("/", func(c fiber.Ctx) error {
 
 Transfers the file from the given path as an `attachment`.
 
-Typically, browsers will prompt the user to download. By default, the [Content-Disposition](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition) header `filename=` parameter is the file path (_this typically appears in the browser dialog_).
-Override this default with the **filename** parameter.
+Typically, browsers will prompt the user to download. By default, the [Content-Disposition](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition) header `filename=` parameter is the file path (this typically appears in the browser dialog).
+Override this default with the `filename` parameter.
 
 ```go title="Signature"
 func (c fiber.Ctx) Download(file string, filename ...string) error
@@ -1602,6 +1640,17 @@ app.Get("/", func(c fiber.Ctx) error {
 
   return c.Download("./files/report-12345.pdf", "report.pdf")
   // => Download report.pdf
+})
+```
+
+For filenames containing non-ASCII characters, a `filename*` parameter is added
+according to [RFC 6266](https://www.rfc-editor.org/rfc/rfc6266) and
+[RFC 8187](https://www.rfc-editor.org/rfc/rfc8187):
+
+```go title="Example"
+app.Get("/non-ascii", func(c fiber.Ctx) error {
+  return c.Download("./files/文件.txt")
+  // => Content-Disposition: attachment; filename="文件.txt"; filename*=UTF-8''%E6%96%87%E4%BB%B6.txt
 })
 ```
 
@@ -1791,9 +1840,64 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+### MsgPack
+
+> **Note:** Before using any MsgPack-related features, make sure to follow the [MsgPack setup instructions](../guide/advance-format.md#msgpack).
+
+A compact binary alternative to [JSON](#json) for efficient data transfer between micro-services or from server to client. MessagePack serializes faster and yields smaller payloads than plain JSON.
+
+Converts any **interface** or **string** to MsgPack using the [shamaton/msgpack](https://pkg.go.dev/github.com/shamaton/msgpack/v2) package.
+
+:::info
+MsgPack also sets the content header to the `ctype` parameter. If no `ctype` is passed in, the header is set to `application/vnd.msgpack`.
+:::
+
+```go title="Signature"
+func (c fiber.Ctx) MsgPack(data any, ctype ...string) error
+```
+
+```go title="Example"
+type SomeStruct struct {
+  Name string
+  Age  uint8
+}
+
+app.Get("/msgpack", func(c fiber.Ctx) error {
+  // Create data struct:
+  data := SomeStruct{
+    Name: "Grame",
+    Age:  20,
+  }
+
+  return c.MsgPack(data)
+  // => Content-Type: application/vnd.msgpack
+  // => 82 A4 4E 61 6D 65 A5 47 72 61 6D 65 A3 41 67 65 14
+
+  return c.MsgPack(fiber.Map{
+    "name": "Grame",
+    "age":  20,
+  })
+  // => Content-Type: application/vnd.msgpack
+  // => 82 A4 6E 61 6D 65 A5 47 72 61 6D 65 A3 61 67 65 14
+
+  return c.MsgPack(fiber.Map{
+    "type":     "https://example.com/probs/out-of-credit",
+    "title":    "You do not have enough credit.",
+    "status":   403,
+    "detail":   "Your current balance is 30, but that costs 50.",
+    "instance": "/account/12345/msgs/abc",
+  }, "application/problem+msgpack")
+})
+
+// => Content-Type: application/problem+msgpack
+// 85 A4 74 79 70 65 D9 27 68 74 74 70 73 3A 2F 2F 65 78 61 6D 70 6C 65 2E 63 6F 6D 2F 70 72 6F 62 73 2F 6F 75 74 2D 6F 66 2D 63 72 65 64 69 74 A5 74 69 74 6C 65 BE 59 6F 75 20 64 6F 20 6E 6F 74 20 68 61 76 65 20 65 6E 6F 75 67 68 20 63 72 65 64 69 74 2E A6 73 74 61 74 75 73 CD 01 93 A6 64 65 74 61 69 6C D9 2E 59 6F 75 72 20 63 75 72 72 65 6E 74 20 62 61 6C 61 6E 63 65 20 69 73 20 33 30 2C 20 62 75 74 20 74 68 61 74 20 63 6F 73 74 73 20 35 30 2E A8 69 6E 73 74 61 6E 63 65 B7 2F 61 63 63 6F 75 6E 74 2F 31 32 33 34 35 2F 6D 73 67 73 2F 61 62 63
+```
+
 ### CBOR
 
 CBOR converts any interface or string to CBOR encoded bytes.
+
+> **Note:** Before using any CBOR-related features, make sure to follow the [CBOR setup instructions](../guide/advance-format.md#cbor).
 
 :::info
 CBOR also sets the content header to the `ctype` parameter. If no `ctype` is passed in, the header is set to `application/cbor`.

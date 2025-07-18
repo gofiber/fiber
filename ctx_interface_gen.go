@@ -4,10 +4,10 @@ package fiber
 
 import (
 	"bufio"
-	"context"
 	"crypto/tls"
 	"io"
 	"mime/multipart"
+	"time"
 
 	"github.com/valyala/fasthttp"
 )
@@ -49,13 +49,24 @@ type Ctx interface {
 	// RequestCtx returns *fasthttp.RequestCtx that carries a deadline
 	// a cancellation signal, and other values across API boundaries.
 	RequestCtx() *fasthttp.RequestCtx
-	// Context returns a context implementation that was set by
-	// user earlier or returns a non-nil, empty context,if it was not set earlier.
-	Context() context.Context
-	// SetContext sets a context implementation by user.
-	SetContext(ctx context.Context)
 	// Cookie sets a cookie by passing a cookie struct.
 	Cookie(cookie *Cookie)
+	// Deadline returns the time when work done on behalf of this context
+	// should be canceled. Deadline returns ok==false when no deadline is
+	// set. Successive calls to Deadline return the same results.
+	//
+	// Due to current limitations in how fasthttp works, Deadline operates as a nop.
+	// See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
+	Deadline() (time.Time, bool)
+	// Done returns a channel that's closed when work done on behalf of this
+	// context should be canceled. Done may return nil if this context can
+	// never be canceled. Successive calls to Done return the same value.
+	// The close of the Done channel may happen asynchronously,
+	// after the cancel function returns.
+	//
+	// Due to current limitations in how fasthttp works, Done operates as a nop.
+	// See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
+	Done() <-chan struct{}
 	// Cookies are used for getting a cookie value by key.
 	// Defaults to the empty string "" if the cookie doesn't exist.
 	// If a default value is given, it will return that value if the cookie doesn't exist.
@@ -67,6 +78,15 @@ type Ctx interface {
 	// By default, the Content-Disposition header filename= parameter is the filepath (this typically appears in the browser dialog).
 	// Override this default with the filename parameter.
 	Download(file string, filename ...string) error
+	// If Done is not yet closed, Err returns nil.
+	// If Done is closed, Err returns a non-nil error explaining why:
+	// context.DeadlineExceeded if the context's deadline passed,
+	// or context.Canceled if the context was canceled for some other reason.
+	// After Err returns a non-nil error, successive calls to Err return the same error.
+	//
+	// Due to current limitations in how fasthttp works, Err operates as a nop.
+	// See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
+	Err() error
 	// Request return the *fasthttp.Request object
 	// This allows you to use all fasthttp request methods
 	// https://godoc.org/github.com/valyala/fasthttp#Request
@@ -164,6 +184,11 @@ type Ctx interface {
 	// Content-Type header equal to ctype. If ctype is not given,
 	// The Content-Type header will be set to application/json.
 	JSON(data any, ctype ...string) error
+	// MsgPack converts any interface or string to MessagePack encoded bytes.
+	// If the ctype parameter is given, this method will set the
+	// Content-Type header equal to ctype. If ctype is not given,
+	// The Content-Type header will be set to application/vnd.msgpack.
+	MsgPack(data any, ctype ...string) error
 	// CBOR converts any interface or string to CBOR encoded bytes.
 	// If the ctype parameter is given, this method will set the
 	// Content-Type header equal to ctype. If ctype is not given,
@@ -213,6 +238,7 @@ type Ctx interface {
 	Params(key string, defaultValue ...string) string
 	// Path returns the path part of the request URL.
 	// Optionally, you could override the path.
+	// Make copies or use the Immutable setting to use the value outside the Handler.
 	Path(override ...string) string
 	// Scheme contains the request protocol string: http or https for TLS requests.
 	// Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
@@ -300,10 +326,11 @@ type Ctx interface {
 	// Set sets the response's HTTP header field to the specified key, value.
 	Set(key, val string)
 	setCanonical(key, val string)
-	// Subdomains returns a string slice of subdomains in the domain name of the request.
-	// The subdomain offset, which defaults to 2, is used for determining the beginning of the subdomain segments.
+	// Subdomains returns a slice of subdomains from the host, excluding the last `offset` components.
+	// If the offset is negative or exceeds the number of subdomains, an empty slice is returned.
+	// If the offset is zero every label (no trimming) is returned.
 	Subdomains(offset ...int) []string
-	// Stale is not implemented yet, pull requests are welcome!
+	// Stale returns the inverse of Fresh, indicating if the client's cached response is considered stale.
 	Stale() bool
 	// Status sets the HTTP status for the response.
 	// This method is chainable.
@@ -317,6 +344,9 @@ type Ctx interface {
 	// Vary adds the given header field to the Vary response header.
 	// This will append the header, if not already listed, otherwise leaves it listed in the current location.
 	Vary(fields ...string)
+	// Value makes it possible to retrieve values (Locals) under keys scoped to the request
+	// and therefore available to all following routes that match the request.
+	Value(key any) any
 	// Write appends p into response body.
 	Write(p []byte) (int, error)
 	// Writef appends f & a into response body writer.

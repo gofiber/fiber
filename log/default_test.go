@@ -372,9 +372,8 @@ func Benchmark_LogfKeyAndValues(b *testing.B) {
 			}
 
 			bb.ReportAllocs()
-			bb.ResetTimer()
 
-			for i := 0; i < bb.N; i++ {
+			for bb.Loop() {
 				l.privateLogw(tt.level, tt.format, tt.keysAndValues)
 			}
 		})

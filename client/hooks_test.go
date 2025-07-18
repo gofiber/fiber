@@ -298,7 +298,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 
 		err := parserRequestHeader(client, req)
 		require.NoError(t, err)
-		require.Contains(t, string(req.RawRequest.Header.MultipartFormBoundary()), "--FiberFormBoundary")
+		require.Contains(t, string(req.RawRequest.Header.MultipartFormBoundary()), "FiberFormBoundary")
 		require.Contains(t, string(req.RawRequest.Header.ContentType()), multipartFormData)
 	})
 
@@ -514,7 +514,7 @@ func Test_Parser_Request_Body(t *testing.T) {
 
 		err := parserRequestBody(client, req)
 		require.NoError(t, err)
-		require.Contains(t, string(req.RawRequest.Body()), "----FiberFormBoundary")
+		require.Contains(t, string(req.RawRequest.Body()), "--FiberFormBoundary")
 		require.Contains(t, string(req.RawRequest.Body()), "world")
 	})
 
@@ -527,7 +527,7 @@ func Test_Parser_Request_Body(t *testing.T) {
 
 		err := parserRequestBody(client, req)
 		require.NoError(t, err)
-		require.Contains(t, string(req.RawRequest.Body()), "----FiberFormBoundary")
+		require.Contains(t, string(req.RawRequest.Body()), "--FiberFormBoundary")
 		require.Contains(t, string(req.RawRequest.Body()), "world")
 		require.Contains(t, string(req.RawRequest.Body()), "bar")
 	})

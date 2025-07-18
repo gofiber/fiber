@@ -8,20 +8,38 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 )
 
 var ErrInvalidKeyLength = errors.New("encryption key must be 16, 24, or 32 bytes")
 
-// EncryptCookie Encrypts a cookie value with specific encryption key
-func EncryptCookie(value, key string) (string, error) {
+// decodeKey decodes the provided base64-encoded key and validates its length.
+// It returns the decoded key bytes or an error when invalid.
+func decodeKey(key string) ([]byte, error) {
 	keyDecoded, err := base64.StdEncoding.DecodeString(key)
 	if err != nil {
-		return "", fmt.Errorf("failed to base64-decode key: %w", err)
+		return nil, fmt.Errorf("failed to base64-decode key: %w", err)
 	}
 
 	keyLen := len(keyDecoded)
 	if keyLen != 16 && keyLen != 24 && keyLen != 32 {
-		return "", ErrInvalidKeyLength
+		return nil, ErrInvalidKeyLength
+	}
+
+	return keyDecoded, nil
+}
+
+// validateKey checks if the provided base64-encoded key is of valid length.
+func validateKey(key string) error {
+	_, err := decodeKey(key)
+	return err
+}
+
+// EncryptCookie Encrypts a cookie value with specific encryption key
+func EncryptCookie(value, key string) (string, error) {
+	keyDecoded, err := decodeKey(key)
+	if err != nil {
+		return "", err
 	}
 
 	block, err := aes.NewCipher(keyDecoded)
@@ -45,14 +63,9 @@ func EncryptCookie(value, key string) (string, error) {
 
 // DecryptCookie Decrypts a cookie value with specific encryption key
 func DecryptCookie(value, key string) (string, error) {
-	keyDecoded, err := base64.StdEncoding.DecodeString(key)
+	keyDecoded, err := decodeKey(key)
 	if err != nil {
-		return "", fmt.Errorf("failed to base64-decode key: %w", err)
-	}
-
-	keyLen := len(keyDecoded)
-	if keyLen != 16 && keyLen != 24 && keyLen != 32 {
-		return "", ErrInvalidKeyLength
+		return "", err
 	}
 
 	enc, err := base64.StdEncoding.DecodeString(value)
@@ -104,11 +117,5 @@ func GenerateKey(length int) string {
 
 // Check given cookie key is disabled for encryption or not
 func isDisabled(key string, except []string) bool {
-	for _, k := range except {
-		if key == k {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(except, key)
 }

@@ -1,6 +1,6 @@
 ---
 id: whats_new
-title: 🆕 Whats New in v3
+title: 🆕 What's New in v3
 sidebar_position: 2
 toc_max_heading_level: 4
 ---
@@ -26,25 +26,29 @@ Here's a quick overview of the changes in Fiber `v3`:
 - [🧰 Generic functions](#-generic-functions)
 - [🥡 Services](#-services)
 - [📃 Log](#-log)
+- [📦 Storage Interface](#-storage-interface)
 - [🧬 Middlewares](#-middlewares)
   - [Important Change for Accessing Middleware Data](#important-change-for-accessing-middleware-data)
   - [Adaptor](#adaptor)
+  - [BasicAuth](#basicauth)
   - [Cache](#cache)
   - [CORS](#cors)
   - [CSRF](#csrf)
   - [Compression](#compression)
   - [EncryptCookie](#encryptcookie)
-  - [Session](#session)
-  - [Logger](#logger)
   - [Filesystem](#filesystem)
-  - [Monitor](#monitor)
   - [Healthcheck](#healthcheck)
+  - [KeyAuth](#keyauth)
+  - [Logger](#logger)
+  - [Monitor](#monitor)
+  - [Proxy](#proxy)
+  - [Session](#session)
 - [🔌 Addons](#-addons)
 - [📋 Migration guide](#-migration-guide)
 
 ## Drop for old Go versions
 
-Fiber `v3` drops support for Go versions below `1.23`. We recommend upgrading to Go `1.23` or higher to use Fiber `v3`.
+Fiber `v3` drops support for Go versions below `1.24`. We recommend upgrading to Go `1.24` or higher to use Fiber `v3`.
 
 ## 🚀 App
 
@@ -64,8 +68,40 @@ We have made several changes to the Fiber app, including:
 
 - **RegisterCustomBinder**: Allows for the registration of custom binders.
 - **RegisterCustomConstraint**: Allows for the registration of custom constraints.
-- **NewCtxFunc**: Introduces a new context function.
+- **NewWithCustomCtx**: Initialize an app with a custom context in one step.
 - **State**: Provides a global state for the application, which can be used to store and retrieve data across the application. Check out the [State](./api/state) method for further details.
+- **NewErrorf**: Allows variadic parameters when creating formatted errors.
+
+#### Custom Route Constraints
+
+Custom route constraints enable you to define your own validation rules for route parameters.
+Use `RegisterCustomConstraint` to add a constraint type that implements the `CustomConstraint` interface.
+
+<details>
+<summary>Example</summary>
+
+```go
+type UlidConstraint struct {
+    fiber.CustomConstraint
+}
+
+func (*UlidConstraint) Name() string {
+    return "ulid"
+}
+
+func (*UlidConstraint) Execute(param string, args ...string) bool {
+    _, err := ulid.Parse(param)
+    return err == nil
+}
+
+app.RegisterCustomConstraint(&UlidConstraint{})
+
+app.Get("/login/:id<ulid>", func(c fiber.Ctx) error {
+    return c.SendString("User " + c.Params("id"))
+})
+```
+
+</details>
 
 ### Removed Methods
 
@@ -74,6 +110,8 @@ We have made several changes to the Fiber app, including:
 - **ListenTLSWithCertificate**: Use `app.Listen()` with `tls.Config`.
 - **ListenMutualTLS**: Use `app.Listen()` with `tls.Config`.
 - **ListenMutualTLSWithCertificate**: Use `app.Listen()` with `tls.Config`.
+- **Context()**: Use `Ctx` instead, it follow the `context.Context` interface
+- **SetContext()**: Use `Ctx` instead, it follow the `context.Context` interface
 
 ### Method Changes
 
@@ -89,18 +127,16 @@ Fiber v3 introduces a customizable `Ctx` interface, allowing developers to exten
 
 The idea behind custom `Ctx` classes is to give developers the ability to extend the default context with additional methods and properties tailored to the specific requirements of their application. This allows for better request handling and easier implementation of specific logic.
 
-#### NewCtxFunc
+#### NewWithCustomCtx
 
-The `NewCtxFunc` method allows you to customize the `Ctx` struct as needed.
+`NewWithCustomCtx` creates the application and sets the custom context factory at initialization time.
 
 ```go title="Signature"
-func (app *App) NewCtxFunc(function func(app *App) CustomCtx)
+func NewWithCustomCtx(fn func(app *App) CustomCtx, config ...Config) *App
 ```
 
 <details>
 <summary>Example</summary>
-
-Here’s an example of how to customize the `Ctx` interface:
 
 ```go
 package main
@@ -114,15 +150,12 @@ type CustomCtx struct {
     fiber.Ctx
 }
 
-// Custom method
 func (c *CustomCtx) CustomMethod() string {
     return "custom value"
 }
 
 func main() {
-    app := fiber.New()
-
-    app.NewCtxFunc(func(app *fiber.App) fiber.Ctx {
+    app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.Ctx {
         return &CustomCtx{
             Ctx: *fiber.NewCtx(app),
         }
@@ -137,7 +170,7 @@ func main() {
 }
 ```
 
-In this example, a custom context `CustomCtx` is created with an additional method `CustomMethod`. The `NewCtxFunc` method is used to replace the default context with the custom one.
+This example creates a `CustomCtx` with an extra `CustomMethod` and initializes the app with `NewWithCustomCtx`.
 
 </details>
 
@@ -167,6 +200,10 @@ app.Listen(":444", fiber.ListenConfig{
     AutoCertManager:    certManager,
 })
 ```
+
+### MIME Constants
+
+`MIMEApplicationJavaScript` and `MIMEApplicationJavaScriptCharsetUTF8` are deprecated. Use `MIMETextJavaScript` and `MIMETextJavaScriptCharsetUTF8` instead.
 
 ## 🎣 Hooks
 
@@ -224,6 +261,28 @@ go app.Listen(":3000")
 ```
 
 This change simplifies the shutdown handling by consolidating the shutdown callbacks into a single hook that receives the error status.
+
+- Added support for Unix domain sockets via `ListenerNetwork` and `UnixSocketFileMode`
+
+```go
+// v2 - Requires manual deletion of old file and permissions change
+app := fiber.New(fiber.Config{
+    Network: "unix",
+})
+
+os.Remove("app.sock")
+app.Hooks().OnListen(func(fiber.ListenData) error {
+    return os.Chmod("app.sock", 0770)
+})
+app.Listen("app.sock")
+
+// v3 - Fiber does it for you
+app := fiber.New()
+app.Listen("app.sock", fiber.ListenerConfig{
+    ListenerNetwork:    fiber.NetworkUnix,
+    UnixSocketFileMode: 0770,
+})
+```
 
 ## 🗺 Router
 
@@ -393,10 +452,14 @@ testConfig := fiber.TestConfig{
 ### New Features
 
 - Cookie now allows Partitioned cookies for [CHIPS](https://developers.google.com/privacy-sandbox/3pcd/chips) support. CHIPS (Cookies Having Independent Partitioned State) is a feature that improves privacy by allowing cookies to be partitioned by top-level site, mitigating cross-site tracking.
+- Context now implements [context.Context](https://pkg.go.dev/context#Context).
 
 ### New Methods
 
 - **AutoFormat**: Similar to Express.js, automatically formats the response based on the request's `Accept` header.
+- **Deadline**: For implementing `context.Context`.
+- **Done**: For implementing `context.Context`.
+- **Err**: For implementing `context.Context`.
 - **Host**: Similar to Express.js, returns the host name of the request.
 - **Port**: Similar to Express.js, returns the port number of the request.
 - **IsProxyTrusted**: Checks the trustworthiness of the remote IP.
@@ -406,8 +469,10 @@ testConfig := fiber.TestConfig{
 - **SendStreamWriter**: Sends a stream using a writer function.
 - **SendString**: Similar to Express.js, sends a string as the response.
 - **String**: Similar to Express.js, converts a value to a string.
+- **Value**: For implementing `context.Context`. Returns request-scoped value from Locals.
 - **ViewBind**: Binds data to a view, replacing the old `Bind` method.
 - **CBOR**: Introducing [CBOR](https://cbor.io/) binary encoding format for both request & response body. CBOR is a binary data serialization format which is both compact and efficient, making it ideal for use in web applications.
+- **MsgPack**: Introducing [MsgPack](https://msgpack.org/) binary encoding format for both request & response body. MsgPack is a binary serialization format that is more efficient than JSON, making it ideal for high-performance applications.
 - **Drop**: Terminates the client connection silently without sending any HTTP headers or response body. This can be used for scenarios where you want to block certain requests without notifying the client, such as mitigating DDoS attacks or protecting sensitive endpoints from unauthorized access.
 - **End**: Similar to Express.js, immediately flushes the current response and closes the underlying connection.
 
@@ -431,6 +496,9 @@ testConfig := fiber.TestConfig{
 - **Format**: Parameter changed from `body interface{}` to `handlers ...ResFmt`.
 - **Redirect**: Use `c.Redirect().To()` instead.
 - **SendFile**: Now supports different configurations using a config parameter.
+- **Attachment and Download**: Non-ASCII filenames now use `filename*` as
+  specified by [RFC 6266](https://www.rfc-editor.org/rfc/rfc6266) and
+  [RFC 8187](https://www.rfc-editor.org/rfc/rfc8187).
 - **Context**: Renamed to `RequestCtx` to correspond with the FastHTTP Request Context.
 - **UserContext**: Renamed to `Context`, which returns a `context.Context` object.
 - **SetUserContext**: Renamed to `SetContext`.
@@ -556,6 +624,7 @@ Fiber v3 introduces a new binding mechanism that simplifies the process of bindi
 - Improved error handling and validation.
 - Support multipart file binding for `*multipart.FileHeader`, `*[]*multipart.FileHeader`, and `[]*multipart.FileHeader` field types.
 - Support for unified binding (`Bind().All()`) with defined precedence order: (URI -> Body -> Query -> Headers -> Cookies). [Learn more](./api/bind.md#all).
+- Support MsgPack binding for request body.
 
 <details>
 <summary>Example</summary>
@@ -642,7 +711,7 @@ func main() {
     app := fiber.New()
 
     app.Get("/convert", func(c fiber.Ctx) error {
-        value, err := fiber.Convert[string](c.Query("value"), strconv.Atoi, 0)
+        value, err := fiber.Convert[int](c.Query("value"), strconv.Atoi, 0)
         if err != nil {
             return c.Status(fiber.StatusBadRequest).SendString(err.Error())
         }
@@ -906,6 +975,30 @@ app.Use(logger.New(logger.Config{
 }))
 ```
 
+## 📦 Storage Interface
+
+The storage interface has been updated to include new subset of methods with `WithContext` suffix. These methods allow you to pass a context to the storage operations, enabling better control over timeouts and cancellation if needed. This is particularly useful when storage implementations used outside of the Fiber core, such as in background jobs or long-running tasks.
+
+**New Methods Signatures:**
+
+```go
+// GetWithContext gets the value for the given key with a context.
+// `nil, nil` is returned when the key does not exist
+GetWithContext(ctx context.Context, key string) ([]byte, error)
+
+// SetWithContext stores the given value for the given key
+// with an expiration value, 0 means no expiration.
+// Empty key or value will be ignored without an error.
+SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error
+
+// DeleteWithContext deletes the value for the given key with a context.
+// It returns no error if the storage does not contain the key,
+DeleteWithContext(ctx context.Context, key string) error
+
+// ResetWithContext resets the storage and deletes all keys with a context.
+ResetWithContext(ctx context.Context) error
+```
+
 ## 🧬 Middlewares
 
 ### Important Change for Accessing Middleware Data
@@ -934,34 +1027,43 @@ When used with the Logger middleware, the recommended approach is to use the `Cu
 
 The adaptor middleware has been significantly optimized for performance and efficiency. Key improvements include reduced response times, lower memory usage, and fewer memory allocations. These changes make the middleware more reliable and capable of handling higher loads effectively. Enhancements include the introduction of a `sync.Pool` for managing `fasthttp.RequestCtx` instances and better HTTP request and response handling between net/http and fasthttp contexts.
 
-| Payload Size | Metric           |     V2    |    V3    |    Percent Change |
-|--------------|------------------|-----------|----------|-------------------|
-| 100KB        | Execution Time   | 1056 ns/op| 588.6 ns/op | -44.25%        |
-|              | Memory Usage     | 2644 B/op | 254 B/op    | -90.39%        |
-|              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
-| 500KB        | Execution Time   | 1061 ns/op| 562.9 ns/op | -46.94%        |
-|              | Memory Usage     | 2644 B/op | 248 B/op    | -90.62%        |
-|              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
-| 1MB          | Execution Time   | 1080 ns/op| 629.7 ns/op | -41.68%        |
-|              | Memory Usage     | 2646 B/op | 267 B/op    | -89.91%        |
-|              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
-| 5MB          | Execution Time   | 1093 ns/op| 540.3 ns/op | -50.58%        |
-|              | Memory Usage     | 2654 B/op | 254 B/op    | -90.43%        |
-|              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
-| 10MB         | Execution Time   | 1044 ns/op| 533.1 ns/op | -48.94%        |
-|              | Memory Usage     | 2665 B/op | 258 B/op    | -90.32%        |
-|              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
-| 25MB         | Execution Time   | 1069 ns/op| 540.7 ns/op | -49.42%        |
-|              | Memory Usage     | 2706 B/op | 289 B/op    | -89.32%        |
-|              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
-| 50MB         | Execution Time   | 1137 ns/op| 554.6 ns/op | -51.21%        |
-|              | Memory Usage     | 2734 B/op | 298 B/op    | -89.10%        |
-|              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
+| Payload Size | Metric         | V2           | V3          | Percent Change |
+| ------------ | -------------- | ------------ | ----------- | -------------- |
+| 100KB        | Execution Time | 1056 ns/op   | 588.6 ns/op | -44.25%        |
+|              | Memory Usage   | 2644 B/op    | 254 B/op    | -90.39%        |
+|              | Allocations    | 16 allocs/op | 5 allocs/op | -68.75%        |
+| 500KB        | Execution Time | 1061 ns/op   | 562.9 ns/op | -46.94%        |
+|              | Memory Usage   | 2644 B/op    | 248 B/op    | -90.62%        |
+|              | Allocations    | 16 allocs/op | 5 allocs/op | -68.75%        |
+| 1MB          | Execution Time | 1080 ns/op   | 629.7 ns/op | -41.68%        |
+|              | Memory Usage   | 2646 B/op    | 267 B/op    | -89.91%        |
+|              | Allocations    | 16 allocs/op | 5 allocs/op | -68.75%        |
+| 5MB          | Execution Time | 1093 ns/op   | 540.3 ns/op | -50.58%        |
+|              | Memory Usage   | 2654 B/op    | 254 B/op    | -90.43%        |
+|              | Allocations    | 16 allocs/op | 5 allocs/op | -68.75%        |
+| 10MB         | Execution Time | 1044 ns/op   | 533.1 ns/op | -48.94%        |
+|              | Memory Usage   | 2665 B/op    | 258 B/op    | -90.32%        |
+|              | Allocations    | 16 allocs/op | 5 allocs/op | -68.75%        |
+| 25MB         | Execution Time | 1069 ns/op   | 540.7 ns/op | -49.42%        |
+|              | Memory Usage   | 2706 B/op    | 289 B/op    | -89.32%        |
+|              | Allocations    | 16 allocs/op | 5 allocs/op | -68.75%        |
+| 50MB         | Execution Time | 1137 ns/op   | 554.6 ns/op | -51.21%        |
+|              | Memory Usage   | 2734 B/op    | 298 B/op    | -89.10%        |
+|              | Allocations    | 16 allocs/op | 5 allocs/op | -68.75%        |
+
+### BasicAuth
+
+The BasicAuth middleware now validates the `Authorization` header more rigorously and sets security-focused response headers. The default challenge includes the `charset="UTF-8"` parameter and disables caching. Passwords are no longer stored in the request context by default; use the new `StorePassword` option to retain them. A `Charset` option controls the value used in the challenge header.
 
 ### Cache
 
 We are excited to introduce a new option in our caching middleware: Cache Invalidator. This feature provides greater control over cache management, allowing you to define a custom conditions for invalidating cache entries.
 Additionally, the caching middleware has been optimized to avoid caching non-cacheable status codes, as defined by the [HTTP standards](https://datatracker.ietf.org/doc/html/rfc7231#section-6.1). This improvement enhances cache accuracy and reduces unnecessary cache storage usage.
+Cached responses now include an RFC-compliant Age header, providing a standardized indication of how long a response has been stored in cache since it was originally generated. This enhancement improves HTTP compliance and facilitates better client-side caching strategies.
+
+:::note
+The deprecated `Store` and `Key` options have been removed in v3. Use `Storage` and `KeyGenerator` instead.
+:::
 
 ### CORS
 
@@ -988,21 +1090,37 @@ We've added support for `zstd` compression on top of `gzip`, `deflate`, and `bro
 
 Added support for specifying Key length when using `encryptcookie.GenerateKey(length)`. This allows the user to generate keys compatible with `AES-128`, `AES-192`, and `AES-256` (Default).
 
-### Session
+### EnvVar
 
-The Session middleware has undergone key changes in v3 to improve functionality and flexibility. While v2 methods remain available for backward compatibility, we now recommend using the new middleware handler for session management.
+The `ExcludeVars` field has been removed from the EnvVar middleware configuration. When upgrading, remove any references to this field and explicitly list the variables you wish to expose using `ExportVars`.
 
-#### Key Updates
+### Filesystem
 
-- **New Middleware Handler**: The `New` function now returns a middleware handler instead of a `*Store`. To access the session store, use the `Store` method on the middleware, or opt for `NewStore` or `NewWithStore` for custom store integration.
+We've decided to remove filesystem middleware to clear up the confusion between static and filesystem middleware.
+Now, static middleware can do everything that filesystem middleware and static do. You can check out [static middleware](./middleware/static.md) or [migration guide](#-migration-guide) to see what has been changed.
 
-- **Manual Session Release**: Session instances are no longer automatically released after being saved. To ensure proper lifecycle management, you must manually call `sess.Release()`.
+### Healthcheck
 
-- **Idle Timeout**: The `Expiration` field has been replaced with `IdleTimeout`, which handles session inactivity. If the session is idle for the specified duration, it will expire. The idle timeout is updated when the session is saved. If you are using the middleware handler, the idle timeout will be updated automatically.
+The Healthcheck middleware has been enhanced to support more than two routes, with default endpoints for liveliness, readiness, and startup checks. Here's a detailed breakdown of the changes and how to use the new features.
 
-- **Absolute Timeout**: The `AbsoluteTimeout` field has been added. If you need to set an absolute session timeout, you can use this field to define the duration. The session will expire after the specified duration, regardless of activity.
+1. **Support for More Than Two Routes**:
+    - The updated middleware now supports multiple routes beyond the default liveliness and readiness endpoints. This allows for more granular health checks, such as startup probes.
 
-For more details on these changes and migration instructions, check the [Session Middleware Migration Guide](./middleware/session.md#migration-guide).
+2. **Default Endpoints**:
+    - Three default endpoints are now available:
+        - **Liveness**: `/livez`
+        - **Readiness**: `/readyz`
+        - **Startup**: `/startupz`
+    - These endpoints can be customized or replaced with user-defined routes.
+
+3. **Simplified Configuration**:
+    - The configuration for each health check endpoint has been simplified. Each endpoint can be configured separately, allowing for more flexibility and readability.
+
+Refer to the [healthcheck middleware migration guide](./middleware/healthcheck.md) or the [general migration guide](#-migration-guide) to review the changes.
+
+### KeyAuth
+
+The keyauth middleware was updated to introduce a configurable `Realm` field for the `WWW-Authenticate` header.
 
 ### Logger
 
@@ -1046,6 +1164,10 @@ func main() {
 ```
 
 </details>
+
+:::note
+The deprecated `TagHeader` constant was removed. Use `TagReqHeader` when you need to log request headers.
+:::
 
 #### Logging Middleware Values (e.g., Request ID)
 
@@ -1161,33 +1283,37 @@ app.Use(logger.New(logger.Config{
 See more in [Logger](./middleware/logger.md#predefined-formats)
 </details>
 
-### Filesystem
+### Limiter
 
-We've decided to remove filesystem middleware to clear up the confusion between static and filesystem middleware.
-Now, static middleware can do everything that filesystem middleware and static do. You can check out [static middleware](./middleware/static.md) or [migration guide](#-migration-guide) to see what has been changed.
+The limiter middleware uses a new Fixed Window Rate Limiter implementation.
+
+:::note
+Deprecated fields `Duration`, `Store`, and `Key` have been removed in v3. Use `Expiration`, `Storage`, and `KeyGenerator` instead.
+:::
 
 ### Monitor
 
 Monitor middleware is migrated to the [Contrib package](https://github.com/gofiber/contrib/tree/main/monitor) with [PR #1172](https://github.com/gofiber/contrib/pull/1172).
 
-### Healthcheck
+### Proxy
 
-The Healthcheck middleware has been enhanced to support more than two routes, with default endpoints for liveliness, readiness, and startup checks. Here's a detailed breakdown of the changes and how to use the new features.
+The proxy middleware has been updated to improve consistency with Go naming conventions. The `TlsConfig` field in the configuration struct has been renamed to `TLSConfig`. Additionally, the `WithTlsConfig` method has been removed; you should now configure TLS directly via the `TLSConfig` property within the `Config` struct.
 
-1. **Support for More Than Two Routes**:
-   - The updated middleware now supports multiple routes beyond the default liveliness and readiness endpoints. This allows for more granular health checks, such as startup probes.
+### Session
 
-2. **Default Endpoints**:
-   - Three default endpoints are now available:
-     - **Liveness**: `/livez`
-     - **Readiness**: `/readyz`
-     - **Startup**: `/startupz`
-   - These endpoints can be customized or replaced with user-defined routes.
+The Session middleware has undergone key changes in v3 to improve functionality and flexibility. While v2 methods remain available for backward compatibility, we now recommend using the new middleware handler for session management.
 
-3. **Simplified Configuration**:
-   - The configuration for each health check endpoint has been simplified. Each endpoint can be configured separately, allowing for more flexibility and readability.
+#### Key Updates
 
-Refer to the [healthcheck middleware migration guide](./middleware/healthcheck.md) or the [general migration guide](#-migration-guide) to review the changes.
+- **New Middleware Handler**: The `New` function now returns a middleware handler instead of a `*Store`. To access the session store, use the `Store` method on the middleware, or opt for `NewStore` or `NewWithStore` for custom store integration.
+
+- **Manual Session Release**: Session instances are no longer automatically released after being saved. To ensure proper lifecycle management, you must manually call `sess.Release()`.
+
+- **Idle Timeout**: The `Expiration` field has been replaced with `IdleTimeout`, which handles session inactivity. If the session is idle for the specified duration, it will expire. The idle timeout is updated when the session is saved. If you are using the middleware handler, the idle timeout will be updated automatically.
+
+- **Absolute Timeout**: The `AbsoluteTimeout` field has been added. If you need to set an absolute session timeout, you can use this field to define the duration. The session will expire after the specified duration, regardless of activity.
+
+For more details on these changes and migration instructions, check the [Session Middleware Migration Guide](./middleware/session.md#migration-guide).
 
 ## 🔌 Addons
 
@@ -1257,6 +1383,7 @@ func main() {
   - [Filesystem](#filesystem-1)
   - [Healthcheck](#healthcheck-1)
   - [Monitor](#monitor-1)
+  - [Proxy](#proxy-1)
 
 ### 🚀 App
 
@@ -1853,4 +1980,30 @@ You only need to change the import path to the contrib package.
 import "github.com/gofiber/contrib/monitor"
 
 app.Use("/metrics", monitor.New())
+```
+
+#### Proxy
+
+In previous versions, TLS settings for the proxy middleware were set using the `WithTlsConfig` method. This method has been removed in favor of a more idiomatic configuration via the `TLSConfig` field in the `Config` struct.
+
+#### Before (v2 usage)
+
+```go
+proxy.WithTlsConfig(&tls.Config{
+    InsecureSkipVerify: true,
+})
+
+// Forward to url
+app.Get("/gif", proxy.Forward("https://i.imgur.com/IWaBepg.gif"))
+```
+
+#### After (v3 usage)
+
+```go
+proxy.WithClient(&fasthttp.Client{
+    TLSConfig: &tls.Config{InsecureSkipVerify: true},
+})
+
+// Forward to url
+app.Get("/gif", proxy.Forward("https://i.imgur.com/IWaBepg.gif"))
 ```

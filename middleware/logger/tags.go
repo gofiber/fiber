@@ -2,6 +2,7 @@ package logger
 
 import (
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
@@ -204,9 +205,7 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 		},
 	}
 	// merge with custom tags from user
-	for k, v := range cfg.CustomTags {
-		tagFunctions[k] = v
-	}
+	maps.Copy(tagFunctions, cfg.CustomTags)
 
 	return tagFunctions
 }

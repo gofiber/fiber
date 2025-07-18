@@ -1,0 +1,34 @@
+name: Modernize Lint
+
+on:
+  push:
+    branches:
+      - master
+      - main
+    paths:
+      - "**.go"
+      - "!**/*_msgp*.go"
+  pull_request:
+    paths:
+      - "**.go"
+      - "!**/*_msgp*.go"
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+jobs:
+  modernize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          # NOTE: Keep this in sync with the version from go.mod
+          go-version: "1.24.x"
+          cache: false
+
+      - name: modernize
+        run: go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -test=false ./...

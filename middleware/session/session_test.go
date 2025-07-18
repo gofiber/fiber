@@ -311,7 +311,7 @@ func Test_Session_Store_Reset(t *testing.T) {
 	require.NoError(t, sess.Save())
 
 	// reset store
-	require.NoError(t, store.Reset())
+	require.NoError(t, store.Reset(ctx))
 	id := sess.ID()
 
 	sess.Release()
@@ -692,7 +692,7 @@ func Test_Session_Save_AbsoluteTimeout(t *testing.T) {
 		time.Sleep(absoluteTimeout + (100 * time.Millisecond))
 
 		// try to get expired session by id
-		sess, err = store.GetByID(token)
+		sess, err = store.GetByID(ctx, token)
 		require.Error(t, err)
 		require.ErrorIs(t, err, ErrSessionIDNotFoundInStore)
 		require.Nil(t, sess)
@@ -1006,8 +1006,7 @@ func Benchmark_Session(b *testing.B) {
 		c.Request().Header.SetCookie(store.sessionName, "12356789")
 
 		b.ReportAllocs()
-		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			sess, _ := store.Get(c) //nolint:errcheck // We're inside a benchmark
 			sess.Set("john", "doe")
 			_ = sess.Save() //nolint:errcheck // We're inside a benchmark
@@ -1026,8 +1025,7 @@ func Benchmark_Session(b *testing.B) {
 		c.Request().Header.SetCookie(store.sessionName, "12356789")
 
 		b.ReportAllocs()
-		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			sess, _ := store.Get(c) //nolint:errcheck // We're inside a benchmark
 			sess.Set("john", "doe")
 			_ = sess.Save() //nolint:errcheck // We're inside a benchmark
@@ -1092,8 +1090,7 @@ func Benchmark_Session_Asserted(b *testing.B) {
 		c.Request().Header.SetCookie(store.sessionName, "12356789")
 
 		b.ReportAllocs()
-		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			sess, err := store.Get(c)
 			require.NoError(b, err)
 			sess.Set("john", "doe")
@@ -1113,8 +1110,7 @@ func Benchmark_Session_Asserted(b *testing.B) {
 		c.Request().Header.SetCookie(store.sessionName, "12356789")
 
 		b.ReportAllocs()
-		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			sess, err := store.Get(c)
 			require.NoError(b, err)
 			sess.Set("john", "doe")
@@ -1180,7 +1176,7 @@ func Test_Session_Concurrency(t *testing.T) {
 	const numGoroutines = 10        // Number of concurrent goroutines to test
 
 	// Start numGoroutines goroutines
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -1310,7 +1306,7 @@ func Test_Session_StoreGetDecodeSessionDataError(t *testing.T) {
 	require.ErrorContains(t, err, "failed to decode session data", "Unexpected error")
 
 	// Attempt to get the session by ID
-	_, err = store.GetByID(sessionID)
+	_, err = store.GetByID(c, sessionID)
 	require.Error(t, err, "Expected error due to invalid session data, but got nil")
 
 	// Check that the error message is as expected
