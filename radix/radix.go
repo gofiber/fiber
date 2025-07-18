@@ -144,6 +144,8 @@ func (t *Tree[V]) Insert(key string, val V) {
 		}
 		child.prefix = child.prefix[:l]
 		child.edges = []edge[V]{{label: split.prefix[0], node: split}}
+		var zero V
+		child.value = zero
 		child.leaf = false
 		if l == len(key) {
 			child.value = val
