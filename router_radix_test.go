@@ -596,7 +596,7 @@ func Test_App_Radix_Remove_Route_By_Name(t *testing.T) {
 	app.RemoveRouteByName("test", MethodGet)
 	app.RebuildTree()
 
-	verifyRequest(t, app, "/test", StatusNotFound)
+	verifyRequest(t, app, "/api/test", StatusNotFound)
 	verifyThereAreNoRoutes(t, app)
 }
 
