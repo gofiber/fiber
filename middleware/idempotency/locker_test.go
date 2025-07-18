@@ -70,8 +70,7 @@ func Benchmark_MemoryLock(b *testing.B) {
 
 	lock := idempotency.NewMemoryLock()
 
-	i := 0
-	for b.Loop() {
+	for i := 0; b.Loop(); i++ {
 		key := keys[i]
 		if err := lock.Lock(key); err != nil {
 			b.Fatal(err)
@@ -79,7 +78,6 @@ func Benchmark_MemoryLock(b *testing.B) {
 		if err := lock.Unlock(key); err != nil {
 			b.Fatal(err)
 		}
-		i++
 	}
 }
 
