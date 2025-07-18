@@ -35,7 +35,7 @@ markdown:
 ## lint: 🚨 Run lint checks
 .PHONY: lint
 lint:
-        golangci-lint run
+	golangci-lint run
 
 ## modernize: 🛠 Run gopls modernize
 .PHONY: modernize

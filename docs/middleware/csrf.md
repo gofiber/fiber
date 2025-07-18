@@ -192,17 +192,21 @@ var (
 ### Built-in Extractors
 
 **Secure (Recommended):**
+
 - `csrf.FromHeader("X-Csrf-Token")` - Most secure, preferred for APIs
 - `csrf.FromForm("_csrf")` - Secure for form submissions
 
 **Acceptable:**
+
 - `csrf.FromQuery("csrf_token")` - URL parameters
 - `csrf.FromParam("csrf")` - Route parameters
 
 **Avoid:**
+
 - `csrf.FromCookie("csrf_token")` - Vulnerable to subdomain attacks
 
 #### Using Route-Specific Extractors
+
 There are cases where you might want to use different extractors for different routes:
 
 ```go
@@ -220,6 +224,7 @@ forms.Use(csrf.New(csrf.Config{
 ```
 
 ### Custom Extractor
+
 You can create a custom extractor to handle specific cases:
 
 #### Bearer Token Embedding
@@ -264,11 +269,13 @@ Chaining extractors increases attack surface and complexity. Most applications s
 ## Security Patterns
 
 ### Double Submit Cookie (Default)
+
 - Stores tokens in memory/database
 - Compares cookie value with submitted token
 - No session required
 
 ### Synchronizer Token (with Session)
+
 - Stores tokens in user session
 - More secure, prevents login CSRF
 - Requires session middleware
@@ -312,6 +319,7 @@ app.Use(csrf.New(csrf.Config{
     },
 }))
 ```
+
 ### Custom Storage/Database
 
 You can use any storage from our [storage](https://github.com/gofiber/storage/) package.
@@ -339,7 +347,7 @@ session.Destroy()  // Also deletes CSRF token
 ## Security Features
 
 - **Referer checking** for HTTPS requests
-- **Origin validation** for cross-origin requests  
+- **Origin validation** for cross-origin requests
 - **Token expiration** with configurable timeout
 - **Single-use tokens** for maximum security
 - **BREACH attack protection** recommendations (see note below)
@@ -358,6 +366,7 @@ To mitigate BREACH attacks, ensure your pages are served over HTTPS, disable HTT
 6. **Use `__Host-` cookie prefix** when possible
 
 :::danger Production Requirements
+
 - `CookieSecure: true` (HTTPS only)
 - `CookieSameSite: "Lax"` or `"Strict"`
 - Use `Session` store for better security
