@@ -68,3 +68,15 @@ func FromQuery(param string) func(c fiber.Ctx) (string, error) {
 		return token, nil
 	}
 }
+
+// Chain tries multiple extractors in order until one succeeds
+func Chain(extractors ...func(fiber.Ctx) (string, error)) func(fiber.Ctx) (string, error) {
+	return func(c fiber.Ctx) (string, error) {
+		for _, extractor := range extractors {
+			if token, err := extractor(c); err == nil && token != "" {
+				return token, nil
+			}
+		}
+		return "", ErrTokenNotFound
+	}
+}

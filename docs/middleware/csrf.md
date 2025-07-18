@@ -202,34 +202,31 @@ var (
 **Avoid:**
 - `csrf.FromCookie("csrf_token")` - Vulnerable to subdomain attacks
 
-### Custom Extractor
-You can create a custom extractor to handle specific cases:
-
-#### Smart Content-Type Extractor
+#### Using Route-Specific Extractors
+There are cases where you might want to use different extractors for different routes:
 
 ```go
-func SmartExtractor(c fiber.Ctx) (string, error) {
-    contentType := c.Get("Content-Type")
-    
-    // JSON/API requests use header
-    if strings.Contains(contentType, "application/json") {
-        return csrf.FromHeader("X-Csrf-Token")(c)
-    }
-    
-    // Form requests use form field
-    if strings.Contains(contentType, "application/x-www-form-urlencoded") ||
-       strings.Contains(contentType, "multipart/form-data") {
-        return csrf.FromForm("_csrf")(c)
-    }
-    
-    // Default to header
-    return csrf.FromHeader("X-Csrf-Token")(c)
-}
+// API routes - header only
+api := app.Group("/api")
+api.Use(csrf.New(csrf.Config{
+    Extractor: csrf.FromHeader("X-Csrf-Token"),
+}))
+
+// Form routes - form only  
+forms := app.Group("/forms")
+forms.Use(csrf.New(csrf.Config{
+    Extractor: csrf.FromForm("_csrf"),
+}))
 ```
+
+### Custom Extractor
+You can create a custom extractor to handle specific cases:
 
 #### Bearer Token Embedding
 
 ```go
+// Extract CSRF token embedded in JWT Authorization header
+// Useful for APIs that combine JWT auth with CSRF protection
 func BearerTokenExtractor(c fiber.Ctx) (string, error) {
     // Extract from "Authorization: Bearer <jwt>:<csrf>"
     auth := c.Get("Authorization")
@@ -245,6 +242,24 @@ func BearerTokenExtractor(c fiber.Ctx) (string, error) {
     return parts[1], nil
 }
 ```
+
+#### Chain Extractor (Advanced)
+
+For edge cases requiring multiple token sources, use the `Chain` extractor:
+
+```go
+// Only if you absolutely need multiple sources
+app.Use(csrf.New(csrf.Config{
+    Extractor: csrf.Chain(
+        csrf.FromHeader("X-Csrf-Token"),   // Try header first
+        csrf.FromForm("_csrf"),            // Fallback to form
+    ),
+}))
+```
+
+:::danger Security Risk
+Chaining extractors increases attack surface and complexity. Most applications should use a single, appropriate extractor for their use case.
+:::
 
 ## Security Patterns
 
