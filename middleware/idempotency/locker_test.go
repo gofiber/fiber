@@ -63,7 +63,7 @@ func Test_MemoryLock(t *testing.T) {
 }
 
 func Benchmark_MemoryLock(b *testing.B) {
-	keys := make([]string, b.N)
+	keys := make([]string, 50_000_000)
 	for i := range keys {
 		keys[i] = strconv.Itoa(i)
 	}
