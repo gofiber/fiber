@@ -572,7 +572,8 @@ func Test_CSRF_From_Cookie(t *testing.T) {
 	app := fiber.New()
 
 	csrfGroup := app.Group("/", New(Config{
-		Extractor: FromCookie("csrf"),
+		Extractor:  FromCookie("csrf"),
+		CookieName: "csrf",
 	}))
 
 	csrfGroup.Post("/", func(c fiber.Ctx) error {
@@ -1589,6 +1590,7 @@ func Test_configDefault_WarnCookieSameSite(t *testing.T) {
 
 	cfg := configDefault(Config{
 		Extractor:      FromCookie("csrf"),
+		CookieName:     "csrf",
 		CookieSameSite: "None",
 	})
 

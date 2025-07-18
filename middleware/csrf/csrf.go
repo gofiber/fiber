@@ -3,7 +3,6 @@ package csrf
 import (
 	"errors"
 	"net/url"
-	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -274,9 +273,9 @@ func (handler *Handler) DeleteToken(c fiber.Ctx) error {
 	return nil
 }
 
-// isFromCookie checks if the extractor is set to ExtractFromCookie
+// isFromCookie checks if the extractor is created by FromCookie
 func isFromCookie(extractor any) bool {
-	return reflect.ValueOf(extractor).Pointer() == reflect.ValueOf(FromCookie).Pointer()
+	return isCookieExtractor(extractor)
 }
 
 // originMatchesHost checks that the origin header matches the host header

@@ -2,6 +2,8 @@ package csrf
 
 import (
 	"errors"
+	"reflect"
+	"sync"
 
 	"github.com/gofiber/fiber/v3"
 )
@@ -12,6 +14,7 @@ var (
 	ErrMissingParam  = errors.New("missing csrf token in param")
 	ErrMissingForm   = errors.New("missing csrf token in form")
 	ErrMissingCookie = errors.New("missing csrf token in cookie")
+	cookieExtractors sync.Map
 )
 
 // FromParam returns a function that extracts token from the url param string.
@@ -38,13 +41,18 @@ func FromForm(param string) func(c fiber.Ctx) (string, error) {
 
 // FromCookie returns a function that extracts token from the cookie header.
 func FromCookie(param string) func(c fiber.Ctx) (string, error) {
-	return func(c fiber.Ctx) (string, error) {
+	extractor := func(c fiber.Ctx) (string, error) {
 		token := c.Cookies(param)
 		if token == "" {
 			return "", ErrMissingCookie
 		}
 		return token, nil
 	}
+
+	// Register this extractor as a cookie extractor
+	cookieExtractors.Store(reflect.ValueOf(extractor).Pointer(), true)
+
+	return extractor
 }
 
 // FromHeader returns a function that extracts token from the request header.
@@ -79,4 +87,14 @@ func Chain(extractors ...func(fiber.Ctx) (string, error)) func(fiber.Ctx) (strin
 		}
 		return "", ErrTokenNotFound
 	}
+}
+
+// IsCookieExtractor checks if the extractor was created by FromCookie
+func isCookieExtractor(extractor any) bool {
+	if extractor == nil {
+		return false
+	}
+
+	_, exists := cookieExtractors.Load(reflect.ValueOf(extractor).Pointer())
+	return exists
 }

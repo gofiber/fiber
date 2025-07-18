@@ -149,7 +149,7 @@ func configDefault(config ...Config) Config {
 		if cfg.Session == nil {
 			log.Warn("[CSRF] Cookie extractor is not recommended without a session store")
 		}
-		if cfg.CookieSameSite == "None" || cfg.CookieSameSite != "Lax" && cfg.CookieSameSite != "Strict" {
+		if cfg.CookieSameSite == "None" || (cfg.CookieSameSite != "Lax" && cfg.CookieSameSite != "Strict") {
 			log.Warn("[CSRF] Cookie extractor is only recommended for use with SameSite=Lax or SameSite=Strict")
 		}
 	}
