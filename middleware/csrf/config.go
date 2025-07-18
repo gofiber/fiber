@@ -40,7 +40,7 @@ type Config struct {
 
 	// Extractor returns the csrf token
 	//
-	// Required. Default: FromHeader("X-Csrf-Token")
+	// Optional. Default: FromHeader("X-Csrf-Token")
 	// Available extractors: FromHeader, FromQuery, FromParam, FromForm, FromCookie
 	Extractor func(c fiber.Ctx) (string, error)
 
