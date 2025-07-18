@@ -17,15 +17,15 @@ type edge[V any] struct {
 }
 
 // node represents a single node in the radix tree. For small fan-out a slice
-// of edges is used. Once the number of edges grows above a threshold the edges
-// are stored in a map which provides O(1) lookups similar to the larger node
-// types described in the ART paper.
+// of edges is used. Once the number of edges grows above a threshold the node
+// switches to an array-based representation similar to the larger node types in
+// an adaptive radix tree.
 type node[V any] struct {
-	prefix  string
-	edges   []edge[V]
-	edgeMap map[byte]*node[V]
-	value   V
-	leaf    bool
+	prefix string
+	edges  []edge[V]
+	large  *[256]*node[V]
+	value  V
+	leaf   bool
 }
 
 // cacheEntry stores a cached lookup result.
@@ -63,8 +63,8 @@ func New[V any](cacheSize ...int) *Tree[V] {
 
 // getEdge returns the child edge for the given label.
 func (n *node[V]) getEdge(b byte) *node[V] {
-	if n.edgeMap != nil {
-		return n.edgeMap[b]
+	if n.large != nil {
+		return n.large[b]
 	}
 	for i := range n.edges {
 		if n.edges[i].label == b {
@@ -76,8 +76,8 @@ func (n *node[V]) getEdge(b byte) *node[V] {
 
 // setEdge sets or replaces the child edge for the given label.
 func (n *node[V]) setEdge(b byte, child *node[V]) {
-	if n.edgeMap != nil {
-		n.edgeMap[b] = child
+	if n.large != nil {
+		n.large[b] = child
 		return
 	}
 	for i := range n.edges {
@@ -87,11 +87,11 @@ func (n *node[V]) setEdge(b byte, child *node[V]) {
 		}
 	}
 	n.edges = append(n.edges, edge[V]{label: b, node: child})
-	// Promote to map once node becomes dense.
+	// Promote to array once node becomes dense.
 	if len(n.edges) > 16 {
-		n.edgeMap = make(map[byte]*node[V], len(n.edges))
+		n.large = new([256]*node[V])
 		for i := range n.edges {
-			n.edgeMap[n.edges[i].label] = n.edges[i].node
+			n.large[n.edges[i].label] = n.edges[i].node
 		}
 		n.edges = nil
 	}
