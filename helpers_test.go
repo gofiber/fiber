@@ -7,7 +7,6 @@ package fiber
 import (
 	"math"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 	"unsafe"
@@ -628,46 +627,6 @@ func Benchmark_Utils_IsNoCache(b *testing.B) {
 		ok = isNoCache("max-age=30, no-cache,public")
 	}
 	require.True(b, ok)
-}
-
-// go test -v -run=^$ -bench=Benchmark_SlashRecognition -benchmem -count=4
-func Benchmark_SlashRecognition(b *testing.B) {
-	search := "wtf/1234"
-	var result bool
-
-	b.Run("indexBytes", func(b *testing.B) {
-		b.ReportAllocs()
-		result = false
-		for b.Loop() {
-			if strings.IndexByte(search, slashDelimiter) != -1 {
-				result = true
-			}
-		}
-		require.True(b, result)
-	})
-	b.Run("forEach", func(b *testing.B) {
-		b.ReportAllocs()
-		result = false
-		c := int32(slashDelimiter)
-		for b.Loop() {
-			for _, b := range search {
-				if b == c {
-					result = true
-					break
-				}
-			}
-		}
-		require.True(b, result)
-	})
-	b.Run("strings.ContainsRune", func(b *testing.B) {
-		b.ReportAllocs()
-		result = false
-		c := int32(slashDelimiter)
-		for b.Loop() {
-			result = strings.ContainsRune(search, c)
-		}
-		require.True(b, result)
-	})
 }
 
 type testGenericParseTypeIntCase struct {

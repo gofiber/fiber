@@ -424,7 +424,7 @@ func (app *App) startupMessage(addr string, isTLS bool, pids string, cfg ListenC
 	if cfg.EnablePrefork {
 		// Turn the `pids` variable (in the form ",a,b,c,d,e,f,etc") into a slice of PIDs
 		pidSlice := make([]string, 0)
-		for _, v := range strings.Split(pids, ",") {
+		for v := range strings.SplitSeq(pids, ",") {
 			if v != "" {
 				pidSlice = append(pidSlice, v)
 			}
@@ -436,11 +436,7 @@ func (app *App) startupMessage(addr string, isTLS bool, pids string, cfg ListenC
 
 		for i := 0; i < totalPids; i += rowTotalPidCount {
 			start := i
-			end := i + rowTotalPidCount
-
-			if end > totalPids {
-				end = totalPids
-			}
+			end := min(i+rowTotalPidCount, totalPids)
 
 			for n, pid := range pidSlice[start:end] {
 				fmt.Fprintf(out, "%s", pid)

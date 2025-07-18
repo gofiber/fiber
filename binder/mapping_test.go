@@ -356,7 +356,7 @@ func Benchmark_equalFieldType(b *testing.B) {
 	var user User
 
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		equalFieldType(&user, reflect.String, "name", "query")
 		equalFieldType(&user, reflect.Int, "age", "query")
 		equalFieldType(&user, reflect.String, "user.name", "query")

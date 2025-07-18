@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -72,9 +73,9 @@ func (m *manager) release(e *item) {
 }
 
 // get data from storage or memory
-func (m *manager) get(key string) *item {
+func (m *manager) get(ctx context.Context, key string) *item {
 	if m.storage != nil {
-		raw, err := m.storage.Get(key)
+		raw, err := m.storage.GetWithContext(ctx, key)
 		if err != nil || raw == nil {
 			return nil
 		}
@@ -96,11 +97,11 @@ func (m *manager) get(key string) *item {
 }
 
 // get raw data from storage or memory
-func (m *manager) getRaw(key string) []byte {
+func (m *manager) getRaw(ctx context.Context, key string) []byte {
 	var raw []byte
 	if m.storage != nil {
 		var err error
-		raw, err = m.storage.Get(key)
+		raw, err = m.storage.GetWithContext(ctx, key)
 		if err != nil {
 			// Return nil on storage error (cache miss)
 			return nil
@@ -114,10 +115,10 @@ func (m *manager) getRaw(key string) []byte {
 }
 
 // set data to storage or memory
-func (m *manager) set(key string, it *item, exp time.Duration) {
+func (m *manager) set(ctx context.Context, key string, it *item, exp time.Duration) {
 	if m.storage != nil {
 		if raw, err := it.MarshalMsg(nil); err == nil {
-			if setErr := m.storage.Set(key, raw, exp); setErr != nil {
+			if setErr := m.storage.SetWithContext(ctx, key, raw, exp); setErr != nil {
 				// Log or handle storage set error gracefully
 				// For now, we'll just ignore it as the original code did
 				// but without the linter suppression
@@ -131,9 +132,9 @@ func (m *manager) set(key string, it *item, exp time.Duration) {
 }
 
 // set data to storage or memory
-func (m *manager) setRaw(key string, raw []byte, exp time.Duration) {
+func (m *manager) setRaw(ctx context.Context, key string, raw []byte, exp time.Duration) {
 	if m.storage != nil {
-		if err := m.storage.Set(key, raw, exp); err != nil {
+		if err := m.storage.SetWithContext(ctx, key, raw, exp); err != nil {
 			// Log or handle storage set error gracefully
 			// For now, we'll just ignore it as the original code did
 			// but without the linter suppression
@@ -144,9 +145,9 @@ func (m *manager) setRaw(key string, raw []byte, exp time.Duration) {
 }
 
 // delete data from storage or memory
-func (m *manager) del(key string) {
+func (m *manager) del(ctx context.Context, key string) {
 	if m.storage != nil {
-		if err := m.storage.Delete(key); err != nil {
+		if err := m.storage.DeleteWithContext(ctx, key); err != nil {
 			// Log or handle storage delete error gracefully
 			// For now, we'll just ignore it as the original code did
 			// but without the linter suppression

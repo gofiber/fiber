@@ -2,6 +2,7 @@ package csrf
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -145,7 +146,7 @@ func Test_CSRF_WithSession(t *testing.T) {
 		ctx.Request.Header.SetCookie("_session", newSessionIDString)
 		h(ctx)
 		token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
-		for _, header := range strings.Split(token, ";") {
+		for header := range strings.SplitSeq(token, ";") {
 			if strings.Split(utils.Trim(header, ' '), "=")[0] == ConfigDefault.CookieName {
 				token = strings.Split(header, "=")[1]
 				break
@@ -317,7 +318,7 @@ func Test_CSRF_ExpiredToken_WithSession(t *testing.T) {
 	ctx.Request.Header.SetCookie("_session", newSessionIDString)
 	h(ctx)
 	token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
-	for _, header := range strings.Split(token, ";") {
+	for header := range strings.SplitSeq(token, ";") {
 		if strings.Split(utils.Trim(header, ' '), "=")[0] == ConfigDefault.CookieName {
 			token = strings.Split(header, "=")[1]
 			break
@@ -1633,7 +1634,7 @@ func Test_deleteTokenFromStorage(t *testing.T) {
 	sm2 := newSessionManager(nil)
 	stm2 := newStorageManager(nil)
 
-	stm2.setRaw(token, dummy, time.Minute)
+	stm2.setRaw(context.Background(), token, dummy, time.Minute)
 	deleteTokenFromStorage(ctx, token, Config{}, sm2, stm2)
-	require.Nil(t, stm2.getRaw(token))
+	require.Nil(t, stm2.getRaw(context.Background(), token))
 }
