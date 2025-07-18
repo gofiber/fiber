@@ -115,7 +115,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 		if rt := app.radixTrees[methodInt]; rt != nil {
 			_, val, ok := rt.LongestPrefix(utils.UnsafeString(c.detectionPath))
 			if ok {
-				tree = val.([]*Route)
+				tree = val
 			}
 		}
 	}
@@ -188,7 +188,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 			if rt := app.radixTrees[i]; rt != nil {
 				_, val, ok := rt.LongestPrefix(utils.UnsafeString(c.detectionPath))
 				if ok {
-					tree = val.([]*Route)
+					tree = val
 				}
 			}
 		}
@@ -238,7 +238,7 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 		if rt := app.radixTrees[methodInt]; rt != nil {
 			_, val, ok := rt.LongestPrefix(c.getDetectionPath())
 			if ok {
-				tree = val.([]*Route)
+				tree = val
 			}
 		}
 	}
@@ -309,7 +309,7 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 			if rt := app.radixTrees[i]; rt != nil {
 				_, val, ok := rt.LongestPrefix(c.getDetectionPath())
 				if ok {
-					tree = val.([]*Route)
+					tree = val
 				}
 			}
 		}
@@ -700,7 +700,7 @@ func (app *App) buildTree() *App {
 
 	if app.config.UseRadix {
 		for method := range app.config.RequestMethods {
-			t := radix.New()
+			t := radix.New[[]*Route]()
 			buckets := make(map[string][]*Route)
 			for _, route := range app.stack[method] {
 				p := routeConstPrefix(route.routeParser)
