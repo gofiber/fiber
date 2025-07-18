@@ -706,7 +706,7 @@ func (app *App) buildTree() *App {
 
 	if app.config.UseRadix {
 		for method := range app.config.RequestMethods {
-			t := radix.New[[]*Route]()
+			t := radix.New[[]*Route](1024)
 			buckets := make(map[string][]*Route)
 			for _, route := range app.stack[method] {
 				p := routeConstPrefix(route.routeParser)

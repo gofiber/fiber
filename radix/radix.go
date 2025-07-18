@@ -1,8 +1,8 @@
 package radix
 
 import (
-	"container/list"
 	"sync"
+	"sync/atomic"
 )
 
 // Tree implements a simple radix tree optimized for prefix lookups.
@@ -35,26 +35,26 @@ type cacheEntry[V any] struct {
 	value  V
 }
 
-// Tree is the exported radix tree structure. It contains an optional
-// LRU cache to speed up repeated lookups of the same path.
-// Tree is the exported radix tree structure. It contains an optional
-// LRU cache to speed up repeated lookups of the same path.
+// Tree is the exported radix tree structure. It optionally maintains a
+// small lookup cache for repeated prefix queries. The cache is implemented
+// using sync.Map for lock-free reads once populated.
 type Tree[V any] struct {
 	root       *node[V]
 	cacheSize  int
-	cache      map[string]*list.Element
-	order      *list.List
-	cacheMutex sync.RWMutex
+	cacheCount atomic.Int64
+	cache      sync.Map // map[string]cacheEntry[V]
 }
 
-// New creates a new empty radix tree.
-// New creates a new empty radix tree.
-func New[V any]() *Tree[V] {
+// New creates a new radix tree. When cacheSize is 0, the lookup cache is
+// disabled to avoid any synchronization overhead.
+func New[V any](cacheSize ...int) *Tree[V] {
+	size := 0
+	if len(cacheSize) > 0 {
+		size = cacheSize[0]
+	}
 	return &Tree[V]{
 		root:      &node[V]{},
-		cacheSize: 1024,
-		cache:     make(map[string]*list.Element),
-		order:     list.New(),
+		cacheSize: size,
 	}
 }
 
@@ -109,13 +109,6 @@ func longestPrefixLen(a, b string) int {
 
 // Insert adds the key with its value to the tree, replacing existing values.
 func (t *Tree[V]) Insert(key string, val V) {
-	t.cacheMutex.Lock()
-	// clear cache on modifications
-	if len(t.cache) > 0 {
-		t.cache = make(map[string]*list.Element)
-		t.order.Init()
-	}
-	t.cacheMutex.Unlock()
 
 	n := t.root
 	for {
@@ -203,30 +196,22 @@ func (t *Tree[V]) longestPrefixNoCache(s string) (string, V, bool) {
 // first checks the internal LRU cache and falls back to walking the tree on a
 // miss. Cached entries are promoted to the front on access.
 func (t *Tree[V]) LongestPrefix(s string) (string, V, bool) {
-	t.cacheMutex.RLock()
-	if elem, ok := t.cache[s]; ok {
-		ce := elem.Value.(*cacheEntry[V])
-		t.order.MoveToFront(elem)
-		t.cacheMutex.RUnlock()
+	if t.cacheSize == 0 {
+		return t.longestPrefixNoCache(s)
+	}
+
+	if v, ok := t.cache.Load(s); ok {
+		ce := v.(cacheEntry[V])
 		return ce.prefix, ce.value, true
 	}
-	t.cacheMutex.RUnlock()
 
 	prefix, val, ok := t.longestPrefixNoCache(s)
 	if ok {
-		t.cacheMutex.Lock()
-		if len(t.cache) >= t.cacheSize {
-			back := t.order.Back()
-			if back != nil {
-				be := back.Value.(*cacheEntry[V])
-				delete(t.cache, be.key)
-				t.order.Remove(back)
+		if t.cacheCount.Load() < int64(t.cacheSize) {
+			if _, loaded := t.cache.LoadOrStore(s, cacheEntry[V]{key: s, prefix: prefix, value: val}); !loaded {
+				t.cacheCount.Add(1)
 			}
 		}
-		ce := &cacheEntry[V]{key: s, prefix: prefix, value: val}
-		elem := t.order.PushFront(ce)
-		t.cache[s] = elem
-		t.cacheMutex.Unlock()
 	}
 	return prefix, val, ok
 }
