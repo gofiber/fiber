@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/utils/v2"
 )
 
 // The contextKey type is unexported to prevent collisions with context keys defined in
@@ -124,15 +125,31 @@ func DefaultKeyLookup(keyLookup, authScheme string) (KeyLookupFunc, error) {
 // keyFromHeader returns a function that extracts api key from the request header.
 func KeyFromHeader(header, authScheme string) KeyLookupFunc {
 	return func(c fiber.Ctx) (string, error) {
-		auth := c.Get(header)
-		l := len(authScheme)
-		if len(auth) > 0 && l == 0 {
+		auth := utils.Trim(c.Get(header), ' ')
+		if auth == "" {
+			return "", ErrMissingOrMalformedAPIKey
+		}
+
+		if authScheme == "" {
 			return auth, nil
 		}
-		if len(auth) > l+1 && auth[:l] == authScheme {
-			return auth[l+1:], nil
+
+		l := len(authScheme)
+		if len(auth) <= l || !utils.EqualFold(auth[:l], authScheme) {
+			return "", ErrMissingOrMalformedAPIKey
 		}
-		return "", ErrMissingOrMalformedAPIKey
+
+		rest := auth[l:]
+		if len(rest) == 0 || (rest[0] != ' ' && rest[0] != '\t') {
+			return "", ErrMissingOrMalformedAPIKey
+		}
+
+		token := strings.TrimLeft(rest, " \t")
+		if token == "" {
+			return "", ErrMissingOrMalformedAPIKey
+		}
+
+		return token, nil
 	}
 }
 

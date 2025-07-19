@@ -78,6 +78,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 	var createFS sync.Once
 	var fileHandler fasthttp.RequestHandler
 	var cacheControlValue string
+	var rootIsFile bool
 
 	// adjustments for io/fs compatibility
 	if config.FS != nil && root == "" {
@@ -99,6 +100,10 @@ func New(root string, cfg ...Config) fiber.Handler {
 		// Initialize FS
 		createFS.Do(func() {
 			prefix := c.Route().Path
+
+			if check, err := isFile(root, config.FS); err == nil {
+				rootIsFile = check
+			}
 
 			// Is prefix a partial wildcard?
 			if strings.Contains(prefix, "*") {
@@ -178,7 +183,11 @@ func New(root string, cfg ...Config) fiber.Handler {
 
 		// Sets the response Content-Disposition header to attachment if the Download option is true
 		if config.Download {
-			c.Attachment()
+			name := filepath.Base(c.Path())
+			if rootIsFile {
+				name = filepath.Base(root)
+			}
+			c.Attachment(name)
 		}
 
 		// Return request if found and not forbidden
@@ -221,11 +230,17 @@ func isFile(root string, filesystem fs.FS) (bool, error) {
 		if err != nil {
 			return false, fmt.Errorf("static: %w", err)
 		}
+		defer func() {
+			_ = file.Close() //nolint:errcheck // not needed
+		}()
 	} else {
 		file, err = os.Open(filepath.Clean(root))
 		if err != nil {
 			return false, fmt.Errorf("static: %w", err)
 		}
+		defer func() {
+			_ = file.Close() //nolint:errcheck // not needed
+		}()
 	}
 
 	stat, err := file.Stat()

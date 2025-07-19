@@ -1,0 +1,15 @@
+steps:
+  - run: |
+      if [ -d vendor ] || go list -m -mod=readonly all; then
+        echo "Dependencies already present"
+      else
+        go mod tidy && go mod download && go mod vendor
+      fi
+  - run: |
+      go install gotest.tools/gotestsum@latest
+      go install golang.org/x/vuln/cmd/govulncheck@latest
+      go install mvdan.cc/gofumpt@latest
+      go install github.com/tinylib/msgp@latest
+      go install github.com/vburenin/ifacemaker@975a95966976eeb2d4365a7fb236e274c54da64c
+      go install github.com/dkorunic/betteralign/cmd/betteralign@latest
+  - run: go mod tidy

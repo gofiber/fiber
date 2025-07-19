@@ -52,7 +52,6 @@ func Test_QueryBinder_Bind(t *testing.T) {
 
 func Benchmark_QueryBinder_Bind(b *testing.B) {
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	binder := &QueryBinding{
 		EnableSplitting: true,
@@ -73,7 +72,7 @@ func Benchmark_QueryBinder_Bind(b *testing.B) {
 	req.URI().SetQueryString("name=john&age=42&posts=post1,post2,post3")
 
 	var err error
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err = binder.Bind(req, &user)
 	}
 

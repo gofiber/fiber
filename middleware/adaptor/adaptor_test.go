@@ -335,7 +335,7 @@ func testFiberToHandlerFunc(t *testing.T, checkDefaultPort bool, app ...*fiber.A
 		c.Set("Header1", "value1")
 		c.Set("Header2", "value2")
 		c.Status(fiber.StatusBadRequest)
-		_, err := c.Write([]byte(fmt.Sprintf("request body is %q", body)))
+		_, err := c.Write(fmt.Appendf(nil, "request body is %q", body))
 		return err
 	}
 
@@ -549,9 +549,8 @@ func Benchmark_FiberHandlerFunc(b *testing.B) {
 			defer r.Body.Close() //nolint:errcheck // not needed
 
 			b.ReportAllocs()
-			b.ResetTimer()
 
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				handlerFunc.ServeHTTP(w, &r)
 			}
 		})
@@ -633,4 +632,34 @@ func Benchmark_FiberHandlerFunc_Parallel(b *testing.B) {
 			})
 		})
 	}
+}
+
+func Benchmark_HTTPHandler(b *testing.B) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok")) //nolint:errcheck // not needed
+	})
+
+	var err error
+	app := fiber.New()
+
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer func() {
+		app.ReleaseCtx(ctx)
+	}()
+
+	b.ReportAllocs()
+
+	fiberHandler := HTTPHandler(handler)
+
+	for b.Loop() {
+		ctx.Request().Reset()
+		ctx.Response().Reset()
+		ctx.Request().SetRequestURI("/test")
+		ctx.Request().Header.SetMethod("GET")
+
+		err = fiberHandler(ctx)
+	}
+
+	require.NoError(b, err)
 }

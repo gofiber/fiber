@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/url"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 
@@ -211,7 +212,7 @@ func getRawFromStorage(c fiber.Ctx, token string, cfg Config, sessionManager *se
 	if cfg.Session != nil {
 		return sessionManager.getRaw(c, token, dummyValue)
 	}
-	return storageManager.getRaw(token)
+	return storageManager.getRaw(c, token)
 }
 
 // createOrExtendTokenInStorage creates or extends the token in the storage
@@ -219,7 +220,7 @@ func createOrExtendTokenInStorage(c fiber.Ctx, token string, cfg Config, session
 	if cfg.Session != nil {
 		sessionManager.setRaw(c, token, dummyValue, cfg.IdleTimeout)
 	} else {
-		storageManager.setRaw(token, dummyValue, cfg.IdleTimeout)
+		storageManager.setRaw(c, token, dummyValue, cfg.IdleTimeout)
 	}
 }
 
@@ -227,7 +228,7 @@ func deleteTokenFromStorage(c fiber.Ctx, token string, cfg Config, sessionManage
 	if cfg.Session != nil {
 		sessionManager.delRaw(c)
 	} else {
-		storageManager.delRaw(token)
+		storageManager.delRaw(c, token)
 	}
 }
 
@@ -296,10 +297,8 @@ func originMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins [
 		return nil
 	}
 
-	for _, trustedOrigin := range trustedOrigins {
-		if origin == trustedOrigin {
-			return nil
-		}
+	if slices.Contains(trustedOrigins, origin) {
+		return nil
 	}
 
 	for _, trustedSubOrigin := range trustedSubOrigins {
@@ -331,10 +330,8 @@ func refererMatchesHost(c fiber.Ctx, trustedOrigins []string, trustedSubOrigins 
 
 	referer = refererURL.String()
 
-	for _, trustedOrigin := range trustedOrigins {
-		if referer == trustedOrigin {
-			return nil
-		}
+	if slices.Contains(trustedOrigins, referer) {
+		return nil
 	}
 
 	for _, trustedSubOrigin := range trustedSubOrigins {

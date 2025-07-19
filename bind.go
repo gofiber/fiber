@@ -2,6 +2,7 @@ package fiber
 
 import (
 	"reflect"
+	"slices"
 
 	"github.com/gofiber/fiber/v3/binder"
 	"github.com/gofiber/utils/v2"
@@ -240,6 +241,24 @@ func (b *Bind) URI(out any) error {
 	return b.validateStruct(out)
 }
 
+// MsgPack binds the body string into the struct.
+func (b *Bind) MsgPack(out any) error {
+	bind := binder.GetFromThePool[*binder.MsgPackBinding](&binder.MsgPackBinderPool)
+	bind.MsgPackDecoder = b.ctx.App().Config().MsgPackDecoder
+
+	// Reset & put binder
+	defer func() {
+		bind.Reset()
+		binder.PutToThePool(&binder.MsgPackBinderPool, bind)
+	}()
+
+	if err := b.returnErr(bind.Bind(b.ctx.Body(), out)); err != nil {
+		return err
+	}
+
+	return b.validateStruct(out)
+}
+
 // Body binds the request body into the struct, map[string]string and map[string][]string.
 // It supports decoding the following content types based on the Content-Type header:
 // application/json, application/xml, application/x-www-form-urlencoded, multipart/form-data
@@ -253,10 +272,8 @@ func (b *Bind) Body(out any) error {
 	// Check custom binders
 	binders := b.ctx.App().customBinders
 	for _, customBinder := range binders {
-		for _, mime := range customBinder.MIMETypes() {
-			if mime == ctype {
-				return b.returnErr(customBinder.Parse(b.ctx, out))
-			}
+		if slices.Contains(customBinder.MIMETypes(), ctype) {
+			return b.returnErr(customBinder.Parse(b.ctx, out))
 		}
 	}
 
@@ -264,6 +281,8 @@ func (b *Bind) Body(out any) error {
 	switch ctype {
 	case MIMEApplicationJSON:
 		return b.JSON(out)
+	case MIMEApplicationMsgPack:
+		return b.MsgPack(out)
 	case MIMETextXML, MIMEApplicationXML:
 		return b.XML(out)
 	case MIMEApplicationCBOR:
@@ -312,7 +331,7 @@ func (b *Bind) All(out any) error {
 
 func mergeStruct(dst, src reflect.Value) {
 	dstFields := dst.NumField()
-	for i := 0; i < dstFields; i++ {
+	for i := range dstFields {
 		dstField := dst.Field(i)
 		srcField := src.Field(i)
 

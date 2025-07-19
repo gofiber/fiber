@@ -10,6 +10,7 @@ import (
 	"log" //nolint:depguard // TODO: Required to capture output, use internal log package instead
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -445,6 +446,69 @@ func Test_Listen_ListenerNetwork(t *testing.T) {
 	}))
 
 	require.Contains(t, network, "0.0.0.0:")
+}
+
+// go test -run Test_Listen_ListenerNetwork_Unix
+func Test_Listen_ListenerNetwork_Unix(t *testing.T) {
+	app := New()
+
+	app.Get("/test", func(c Ctx) error {
+		return c.SendString("all good")
+	})
+
+	var (
+		f       os.FileInfo
+		network string
+
+		reqErr error
+		resp   = &fasthttp.Response{}
+	)
+
+	// Create temporary directory for storing socket in
+	tmp, err := os.MkdirTemp(os.TempDir(), "fiber-test")
+	require.NoError(t, err)
+	sock := filepath.Join(tmp, "fiber-test.sock")
+
+	// Make sure temporary directory is cleaned up
+	defer func() { assert.NoError(t, os.RemoveAll(tmp)) }()
+
+	// Send request through socket
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+
+		client := &fasthttp.HostClient{
+			Addr: sock,
+			Dial: func(addr string) (net.Conn, error) {
+				return net.Dial("unix", addr)
+			},
+		}
+
+		req := &fasthttp.Request{}
+		req.SetRequestURI("http://host/test")
+
+		reqErr = client.Do(req, resp)
+		assert.NoError(t, app.Shutdown())
+	}()
+
+	require.NoError(t, app.Listen(sock, ListenConfig{
+		DisableStartupMessage: true,
+		ListenerNetwork:       NetworkUnix,
+		UnixSocketFileMode:    0o666,
+		ListenerAddrFunc: func(addr net.Addr) {
+			network = addr.String()
+			f, err = os.Stat(network)
+		},
+	}))
+
+	// Verify that listening and setting permissions works correctly
+	require.Equal(t, sock, network)
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o666), f.Mode().Perm())
+
+	// Verify that request was successful
+	require.NoError(t, reqErr)
+	require.Equal(t, 200, resp.StatusCode())
+	require.Equal(t, "all good", string(resp.Body()))
 }
 
 // go test -run Test_Listen_Master_Process_Show_Startup_Message

@@ -34,7 +34,6 @@ const (
     MIMEApplicationXML                   = "application/xml"
     MIMEApplicationJSON                  = "application/json"
     MIMEApplicationCBOR                  = "application/cbor"
-    MIMEApplicationJavaScript            = "application/javascript"
     MIMEApplicationForm                  = "application/x-www-form-urlencoded"
     MIMEOctetStream                      = "application/octet-stream"
     MIMEMultipartForm                    = "multipart/form-data"
@@ -46,7 +45,6 @@ const (
     MIMETextCSSCharsetUTF8               = "text/css; charset=utf-8"
     MIMEApplicationXMLCharsetUTF8        = "application/xml; charset=utf-8"
     MIMEApplicationJSONCharsetUTF8       = "application/json; charset=utf-8"
-    MIMEApplicationJavaScriptCharsetUTF8 = "application/javascript; charset=utf-8"
 )
 ```
 

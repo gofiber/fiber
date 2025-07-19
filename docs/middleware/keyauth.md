@@ -217,10 +217,11 @@ curl --header "Authorization: Bearer my-super-secret-key"  http://localhost:3000
 |:----------------|:-----------------------------------------|:-------------------------------------------------------------------------------------------------------|:------------------------------|
 | Next            | `func(fiber.Ctx) bool`                   | Next defines a function to skip this middleware when returned true.                                    | `nil`                         |
 | SuccessHandler  | `fiber.Handler`                          | SuccessHandler defines a function which is executed for a valid key.                                   | `nil`                         |
-| ErrorHandler    | `fiber.ErrorHandler`                     | ErrorHandler defines a function which is executed for an invalid key.                                  | `401 Invalid or expired key`  |
+| ErrorHandler    | `fiber.ErrorHandler`                     | ErrorHandler defines a function which is executed for an invalid key. By default a 401 response with a `WWW-Authenticate` challenge is sent. | `nil`  |
 | KeyLookup       | `string`                                 | KeyLookup is a string in the form of "`<source>:<name>`" that is used to extract the key from the request. | "header:Authorization"        |
 | CustomKeyLookup | `KeyLookupFunc` aka `func(c fiber.Ctx) (string, error)` | If more complex logic is required to extract the key from the request, an arbitrary function to extract it can be specified here. Utility helper functions are described below. |  `nil` |
 | AuthScheme      | `string`                                 | AuthScheme to be used in the Authorization header.                                                     | "Bearer"                      |
+| Realm           | `string`                                 | Realm specifies the protected area name used in the `WWW-Authenticate` header. | `"Restricted"` |
 | Validator       | `func(fiber.Ctx, string) (bool, error)`  | Validator is a function to validate the key.                                                           | A function for key validation |
 
 ## Default Config
@@ -230,15 +231,11 @@ var ConfigDefault = Config{
     SuccessHandler: func(c fiber.Ctx) error {
         return c.Next()
     },
-    ErrorHandler: func(c fiber.Ctx, err error) error {
-        if err == ErrMissingOrMalformedAPIKey {
-            return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
-        }
-        return c.Status(fiber.StatusUnauthorized).SendString("Invalid or expired API Key")
-    },
-    KeyLookup:  "header:" + fiber.HeaderAuthorization,
+    ErrorHandler:    nil,
+    KeyLookup:       "header:" + fiber.HeaderAuthorization,
     CustomKeyLookup: nil,
-    AuthScheme: "Bearer",
+    AuthScheme:      "Bearer",
+    Realm:           "Restricted",
 }
 ```
 

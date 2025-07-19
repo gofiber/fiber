@@ -6,6 +6,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 )
 
 func Test_Default(t *testing.T) {
@@ -198,4 +199,62 @@ func Test_PermissionsPolicy(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, "microphone=()", resp.Header.Get(fiber.HeaderPermissionsPolicy))
+}
+
+func Test_HSTSHeaders(t *testing.T) {
+	hstsAge := 60
+	app := fiber.New()
+
+	app.Use(New(Config{HSTSMaxAge: hstsAge}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("Hello, World!")
+	})
+
+	handler := app.Handler()
+	ctx := &fasthttp.RequestCtx{}
+
+	ctx.Request.SetRequestURI("/")
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.Header.SetProtocol("https")
+
+	handler(ctx)
+
+	require.Equal(t, "max-age=60; includeSubDomains", string(ctx.Response.Header.Peek(fiber.HeaderStrictTransportSecurity)))
+
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.SetRequestURI("/")
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.Header.SetProtocol("http")
+
+	handler(ctx)
+
+	require.Equal(t, "", string(ctx.Response.Header.Peek(fiber.HeaderStrictTransportSecurity)))
+}
+
+func Test_HSTSExcludeSubdomainsAndPreload(t *testing.T) {
+	hstsAge := 31536000
+	app := fiber.New()
+
+	app.Use(New(Config{
+		HSTSMaxAge:            hstsAge,
+		HSTSExcludeSubdomains: true,
+		HSTSPreloadEnabled:    true,
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("Hello, World!")
+	})
+
+	handler := app.Handler()
+	ctx := &fasthttp.RequestCtx{}
+
+	ctx.Request.SetRequestURI("/")
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.Header.SetProtocol("https")
+
+	handler(ctx)
+
+	require.Equal(t, "max-age=31536000; preload", string(ctx.Response.Header.Peek(fiber.HeaderStrictTransportSecurity)))
 }

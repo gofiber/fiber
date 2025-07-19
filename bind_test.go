@@ -16,6 +16,7 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/gofiber/fiber/v3/binder"
+	"github.com/shamaton/msgpack/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -149,7 +150,7 @@ func Test_Bind_Query_Map(t *testing.T) {
 
 	em := make(map[string][]int)
 	c.Request().URI().SetQueryString("")
-	require.ErrorIs(t, c.Bind().Query(&em), binder.ErrMapNotConvertable)
+	require.ErrorIs(t, c.Bind().Query(&em), binder.ErrMapNotConvertible)
 }
 
 // go test -run Test_Bind_Query_WithSetParserDecoder -v
@@ -666,8 +667,7 @@ func Benchmark_Bind_Query(b *testing.B) {
 	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
 	q := new(Query)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Query(q)
 	}
 
@@ -694,8 +694,7 @@ func Benchmark_Bind_Query_Default(b *testing.B) {
 	c.Request().URI().SetQueryString("")
 	q := new(Query)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		*q = Query{}
 		err = c.Bind().Query(q)
 	}
@@ -718,8 +717,7 @@ func Benchmark_Bind_Query_Map(b *testing.B) {
 	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
 	q := make(map[string][]string)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Query(&q)
 	}
 	require.NoError(b, err)
@@ -747,8 +745,7 @@ func Benchmark_Bind_Query_WithParseParam(b *testing.B) {
 	cq := new(CollectionQuery)
 
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Query(cq)
 	}
 
@@ -774,8 +771,7 @@ func Benchmark_Bind_Query_Comma(b *testing.B) {
 	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football")
 	q := new(Query)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Query(q)
 	}
 	require.NoError(b, err)
@@ -802,8 +798,7 @@ func Benchmark_Bind_Header(b *testing.B) {
 
 	q := new(ReqHeader)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Header(q)
 	}
 	require.NoError(b, err)
@@ -824,8 +819,7 @@ func Benchmark_Bind_Header_Map(b *testing.B) {
 
 	q := make(map[string][]string)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Header(&q)
 	}
 	require.NoError(b, err)
@@ -852,8 +846,7 @@ func Benchmark_Bind_RespHeader(b *testing.B) {
 
 	q := new(ReqHeader)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().RespHeader(q)
 	}
 	require.NoError(b, err)
@@ -874,8 +867,7 @@ func Benchmark_Bind_RespHeader_Map(b *testing.B) {
 
 	q := make(map[string][]string)
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().RespHeader(&q)
 	}
 	require.NoError(b, err)
@@ -884,12 +876,17 @@ func Benchmark_Bind_RespHeader_Map(b *testing.B) {
 // go test -run Test_Bind_Body_Compression
 func Test_Bind_Body(t *testing.T) {
 	t.Parallel()
-	app := New()
+	app := New(Config{
+		MsgPackEncoder: msgpack.Marshal,
+		MsgPackDecoder: msgpack.Unmarshal,
+		CBOREncoder:    cbor.Marshal,
+		CBORDecoder:    cbor.Unmarshal,
+	})
 	reqBody := []byte(`{"name":"john"}`)
 
 	type Demo struct {
-		Name  string   `json:"name" xml:"name" form:"name" query:"name"`
-		Names []string `json:"names" xml:"names" form:"names" query:"names"`
+		Name  string   `json:"name" xml:"name" form:"name" query:"name" msgpack:"name"`
+		Names []string `json:"names" xml:"names" form:"names" query:"names" msgpack:"names"`
 	}
 
 	// Helper function to test compressed bodies
@@ -945,8 +942,23 @@ func Test_Bind_Body(t *testing.T) {
 		require.Equal(t, "john", d.Name)
 	}
 
+	testErrorParser := func(t *testing.T, contentType string, body []byte) {
+		t.Helper()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().Header.SetContentType(contentType)
+		c.Request().SetBody(body)
+		c.Request().Header.SetContentLength(len(body))
+		d := new(Demo)
+		err := c.Bind().Body(d)
+		require.Error(t, err)
+	}
+
 	t.Run("JSON", func(t *testing.T) {
 		testDecodeParser(t, MIMEApplicationJSON, []byte(`{"name":"john"}`))
+	})
+	t.Run("MsgPack", func(t *testing.T) {
+		testDecodeParser(t, MIMEApplicationMsgPack, []byte{0x81, 0xa4, 0x6e, 0x61, 0x6d, 0x65, 0xa4, 0x6a, 0x6f, 0x68, 0x6e})
+		testErrorParser(t, MIMEApplicationMsgPack, []byte{0xFF, 0xFF})
 	})
 	t.Run("CBOR", func(t *testing.T) {
 		enc, err := cbor.Marshal(&Demo{Name: "john"})
@@ -1129,16 +1141,50 @@ func Benchmark_Bind_Body_JSON(b *testing.B) {
 	type Demo struct {
 		Name string `json:"name"`
 	}
-	body := []byte(`{"name":"john"}`)
+	body, err := json.Marshal(&Demo{Name: "john"})
+	if err != nil {
+		b.Error(err)
+	}
 	c.Request().SetBody(body)
 	c.Request().Header.SetContentType(MIMEApplicationJSON)
 	c.Request().Header.SetContentLength(len(body))
 	d := new(Demo)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
+		err = c.Bind().Body(d)
+	}
+	require.NoError(b, err)
+	require.Equal(b, "john", d.Name)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Bind_Body_MsgPack -benchmem -count=4
+func Benchmark_Bind_Body_MsgPack(b *testing.B) {
+	var err error
+
+	app := New(
+		Config{
+			MsgPackEncoder: msgpack.Marshal,
+			MsgPackDecoder: msgpack.Unmarshal,
+			CBOREncoder:    cbor.Marshal,
+			CBORDecoder:    cbor.Unmarshal,
+		},
+	)
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	type Demo struct {
+		Name string `msgpack:"name"`
+	}
+	body := []byte{0x81, 0xa4, 0x6e, 0x61, 0x6d, 0x65, 0xa4, 0x6a, 0x6f, 0x68, 0x6e} // {"name":"john"}
+	c.Request().SetBody(body)
+	c.Request().Header.SetContentType(MIMEApplicationMsgPack)
+	c.Request().Header.SetContentLength(len(body))
+	d := new(Demo)
+
+	b.ReportAllocs()
+
+	for b.Loop() {
 		err = c.Bind().Body(d)
 	}
 	require.NoError(b, err)
@@ -1162,9 +1208,8 @@ func Benchmark_Bind_Body_XML(b *testing.B) {
 	d := new(Demo)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Body(d)
 	}
 	require.NoError(b, err)
@@ -1175,7 +1220,10 @@ func Benchmark_Bind_Body_XML(b *testing.B) {
 func Benchmark_Bind_Body_CBOR(b *testing.B) {
 	var err error
 
-	app := New()
+	app := New(Config{
+		CBOREncoder: cbor.Marshal,
+		CBORDecoder: cbor.Unmarshal,
+	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Demo struct {
@@ -1191,9 +1239,8 @@ func Benchmark_Bind_Body_CBOR(b *testing.B) {
 	d := new(Demo)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Body(d)
 	}
 	require.NoError(b, err)
@@ -1217,9 +1264,8 @@ func Benchmark_Bind_Body_Form(b *testing.B) {
 	d := new(Demo)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Body(d)
 	}
 	require.NoError(b, err)
@@ -1249,9 +1295,8 @@ func Benchmark_Bind_Body_MultipartForm(b *testing.B) {
 	d := new(Demo)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Body(d)
 	}
 
@@ -1292,9 +1337,8 @@ func Benchmark_Bind_Body_MultipartForm_Nested(b *testing.B) {
 	d := new(Demo)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Body(d)
 	}
 
@@ -1320,9 +1364,8 @@ func Benchmark_Bind_Body_Form_Map(b *testing.B) {
 	d := make(map[string]string)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Body(&d)
 	}
 	require.NoError(b, err)
@@ -1398,9 +1441,8 @@ func Benchmark_Bind_URI(b *testing.B) {
 	}
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().URI(&res)
 	}
 
@@ -1430,9 +1472,8 @@ func Benchmark_Bind_URI_Map(b *testing.B) {
 	res := make(map[string]string)
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().URI(&res)
 	}
 
@@ -1711,9 +1752,8 @@ func Benchmark_Bind_Cookie(b *testing.B) {
 
 	q := new(Cookie)
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Cookie(q)
 	}
 	require.NoError(b, err)
@@ -1735,9 +1775,8 @@ func Benchmark_Bind_Cookie_Map(b *testing.B) {
 
 	q := make(map[string][]string)
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		err = c.Bind().Cookie(&q)
 	}
 	require.NoError(b, err)
@@ -1835,7 +1874,10 @@ func Test_Bind_StructValidator(t *testing.T) {
 // go test -run Test_Bind_RepeatParserWithSameStruct -v
 func Test_Bind_RepeatParserWithSameStruct(t *testing.T) {
 	t.Parallel()
-	app := New()
+	app := New(Config{
+		CBOREncoder: cbor.Marshal,
+		CBORDecoder: cbor.Unmarshal,
+	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 
@@ -2100,8 +2142,7 @@ func BenchmarkBind_All(b *testing.B) {
 		ctx: c,
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		user := &User{}
 		config.ApplyTo(c)
 		if err := bind.All(user); err != nil {

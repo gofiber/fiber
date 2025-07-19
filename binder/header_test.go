@@ -51,7 +51,6 @@ func Test_HeaderBinder_Bind(t *testing.T) {
 
 func Benchmark_HeaderBinder_Bind(b *testing.B) {
 	b.ReportAllocs()
-	b.ResetTimer()
 
 	binder := &HeaderBinding{
 		EnableSplitting: true,
@@ -74,7 +73,7 @@ func Benchmark_HeaderBinder_Bind(b *testing.B) {
 	req.Header.Set("posts", "post1,post2,post3")
 
 	var err error
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err = binder.Bind(req, &user)
 	}
 

@@ -1,9 +1,24 @@
-# ignore files or directories to be scanned by codecov
-ignore:
-  - "./docs/"
-
 coverage:
   status:
     project:
       default:
+        target: auto
         threshold: 0.5%
+        base: auto
+    patch:
+      default:
+        target: auto
+        threshold: 0.5%
+        base: auto
+ignore:
+  # Ignore generated root files
+  - "*_msgp.go"
+  - "*_msgp_test.go"
+  - "*_gen.go"
+  # Ignore generated files below root
+  - "**/*_msgp.go"
+  - "**/*_msgp_test.go"
+  - "**/*_gen.go"
+  # Ignore internal and docs
+  - "internal/**"
+  - "docs/**"

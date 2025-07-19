@@ -32,8 +32,8 @@ func HTTPHandlerFunc(h http.HandlerFunc) fiber.Handler {
 
 // HTTPHandler wraps net/http handler to fiber handler
 func HTTPHandler(h http.Handler) fiber.Handler {
+	handler := fasthttpadaptor.NewFastHTTPHandler(h)
 	return func(c fiber.Ctx) error {
-		handler := fasthttpadaptor.NewFastHTTPHandler(h)
 		handler(c.RequestCtx())
 		return nil
 	}
@@ -196,9 +196,9 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		}
 
 		// Convert fasthttp Ctx -> net/http
-		fctx.Response.Header.VisitAll(func(k, v []byte) {
+		for k, v := range fctx.Response.Header.All() {
 			w.Header().Add(string(k), string(v))
-		})
+		}
 		w.WriteHeader(fctx.Response.StatusCode())
 		_, _ = w.Write(fctx.Response.Body()) //nolint:errcheck // not needed
 	}

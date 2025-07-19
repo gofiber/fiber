@@ -512,12 +512,13 @@ func (app *App) Handler() fasthttp.RequestHandler
 func (app *App) ErrorHandler(ctx Ctx, err error) error
 ```
 
-## NewCtxFunc
+## NewWithCustomCtx
 
-`NewCtxFunc` allows you to customize the `ctx` struct as needed.
+`NewWithCustomCtx` creates a new `*App` and sets the custom context factory
+function at construction time.
 
 ```go title="Signature"
-func (app *App) NewCtxFunc(function func(app *App) CustomCtx)
+func NewWithCustomCtx(fn func(app *App) CustomCtx, config ...Config) *App
 ```
 
 ```go title="Example"
@@ -533,22 +534,18 @@ type CustomCtx struct {
     fiber.DefaultCtx
 }
 
-// Custom method
 func (c *CustomCtx) Params(key string, defaultValue ...string) string {
     return "prefix_" + c.DefaultCtx.Params(key)
 }
 
 func main() {
-    app := fiber.New()
-
-    app.NewCtxFunc(func(app *fiber.App) fiber.CustomCtx {
+    app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.CustomCtx {
         return &CustomCtx{
             DefaultCtx: *fiber.NewDefaultCtx(app),
         }
     })
 
     app.Get("/:id", func(c fiber.Ctx) error {
-        // Use custom method - output: prefix_123
         return c.SendString(c.Params("id"))
     })
 
