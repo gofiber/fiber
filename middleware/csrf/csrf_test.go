@@ -1812,6 +1812,7 @@ func Test_CSRF_All_Extractors(t *testing.T) {
 		})
 	}
 }
+
 func Test_CSRF_Param_Extractor(t *testing.T) {
 	t.Parallel()
 
