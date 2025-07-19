@@ -7,6 +7,7 @@ id: csrf
 The CSRF middleware provides protection against [Cross-Site Request Forgery](https://en.wikipedia.org/wiki/Cross-site_request_forgery) attacks. It validates tokens on unsafe HTTP methods (POST, PUT, DELETE, etc.) and returns 403 Forbidden if an attack is detected.
 
 ## Table of Contents
+
 - [Quick Start](#quick-start)
 - [Best Practices & Production Requirements](#best-practices--production-requirements)
 - [Configuration by Application Type](#configuration-by-application-type)
@@ -46,9 +47,11 @@ app.Use(csrf.New(csrf.Config{
 ## Best Practices & Production Requirements
 
 :::danger Production Requirements
+
 - `CookieSecure: true` (HTTPS only)
 - `CookieSameSite: "Lax"` or `"Strict"`
 - Use `Session` store for better security
+
 :::
 
 1. **Always use HTTPS** in production
