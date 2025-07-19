@@ -47,7 +47,7 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 	s = pathpkg.Clean("/" + s)
 
 	if filesystem != nil {
-		s = strings.TrimPrefix(s, "/")
+		s = utils.TrimLeft(s, "/")
 		if s == "" {
 			return []byte("/"), nil
 		}
