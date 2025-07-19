@@ -369,16 +369,16 @@ session.Destroy()  // Also deletes CSRF token
 
 ```go
 // Create middleware
-func New(config ...Config) fiber.Handler
+func New(config ...csrf.Config) fiber.Handler
 
 // Get token from context
 func TokenFromContext(c fiber.Ctx) string
 
 // Get handler from context
-func HandlerFromContext(c fiber.Ctx) *Handler
+func HandlerFromContext(c fiber.Ctx) *csrf.Handler
 
 // Delete token
-func (h *Handler) DeleteToken(c fiber.Ctx) error
+func (h *csrf.Handler) DeleteToken(c fiber.Ctx) error
 ```
 
 ## Config Properties
