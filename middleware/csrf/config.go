@@ -8,9 +8,9 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
-// Config defines the config for middleware.
+// Config defines the config for CSRF middleware.
 type Config struct {
-	// Store is used to store the state of the middleware
+	// Storage is used to store the state of the middleware.
 	//
 	// Optional. Default: memory.New()
 	// Ignored if Session is set.
@@ -21,53 +21,61 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c fiber.Ctx) bool
 
-	// Session is used to store the state of the middleware
+	// Session is used to store the state of the middleware.
 	//
 	// Optional. Default: nil
-	// If set, the middleware will use the session store instead of the storage
+	// If set, the middleware will use the session store instead of the storage.
 	Session *session.Store
 
-	// KeyGenerator creates a new CSRF token
+	// KeyGenerator creates a new CSRF token.
 	//
-	// Optional. Default: utils.UUID
+	// Optional. Default: utils.UUIDv4
 	KeyGenerator func() string
 
 	// ErrorHandler is executed when an error is returned from fiber.Handler.
 	//
-	// Optional. Default: DefaultErrorHandler
+	// Optional. Default: defaultErrorHandler
 	ErrorHandler fiber.ErrorHandler
 
-	// Extractor returns the csrf token
+	// Extractor returns the CSRF token from the request.
 	//
 	// Optional. Default: FromHeader("X-Csrf-Token")
+	//
 	// Available extractors: FromHeader, FromQuery, FromParam, FromForm
+	//
+	// WARNING: Never create custom extractors that read from cookies with the same
+	// CookieName as this defeats CSRF protection entirely.
 	Extractor func(c fiber.Ctx) (string, error)
 
-	// Name of the session cookie. This cookie will store session key.
-	// Optional. Default value "csrf_".
+	// CookieName is the name of the CSRF cookie.
+	//
+	// Optional. Default: "csrf_"
 	CookieName string
 
-	// Domain of the CSRF cookie.
-	// Optional. Default value "".
+	// CookieDomain is the domain of the CSRF cookie.
+	//
+	// Optional. Default: ""
 	CookieDomain string
 
-	// Path of the CSRF cookie.
-	// Optional. Default value "".
+	// CookiePath is the path of the CSRF cookie.
+	//
+	// Optional. Default: ""
 	CookiePath string
 
-	// Value of SameSite cookie.
-	// Optional. Default value "Lax".
+	// CookieSameSite is the SameSite attribute of the CSRF cookie.
+	//
+	// Optional. Default: "Lax"
 	CookieSameSite string
 
 	// TrustedOrigins is a list of trusted origins for unsafe requests.
 	// For requests that use the Origin header, the origin must match the
 	// Host header or one of the TrustedOrigins.
-	// For secure requests, that do not include the Origin header, the Referer
+	// For secure requests that do not include the Origin header, the Referer
 	// header must match the Host header or one of the TrustedOrigins.
 	//
 	// This supports matching subdomains at any level. This means you can use a value like
-	// `"https://*.example.com"` to allow any subdomain of `example.com` to submit requests,
-	// including multiple subdomain levels such as `"https://sub.sub.example.com"`.
+	// "https://*.example.com" to allow any subdomain of example.com to submit requests,
+	// including multiple subdomain levels such as "https://sub.sub.example.com".
 	//
 	// Optional. Default: []
 	TrustedOrigins []string
@@ -77,28 +85,33 @@ type Config struct {
 	// Optional. Default: 30 * time.Minute
 	IdleTimeout time.Duration
 
-	// Indicates if CSRF cookie is secure.
-	// Optional. Default value false.
+	// CookieSecure indicates if CSRF cookie is secure.
+	//
+	// Optional. Default: false
 	CookieSecure bool
 
-	// Indicates if CSRF cookie is HTTP only.
-	// Optional. Default value false.
+	// CookieHTTPOnly indicates if CSRF cookie is HTTP only.
+	//
+	// Optional. Default: false
 	CookieHTTPOnly bool
 
-	// Decides whether cookie should last for only the browser sesison.
-	// Ignores Expiration if set to true
+	// CookieSessionOnly decides whether cookie should last for only the browser session.
+	// Ignores Expiration if set to true.
+	//
+	// Optional. Default: false
 	CookieSessionOnly bool
 
-	// SingleUseToken indicates if the CSRF token be destroyed
+	// SingleUseToken indicates if the CSRF token should be destroyed
 	// and a new one generated on each use.
 	//
 	// Optional. Default: false
 	SingleUseToken bool
 }
 
+// HeaderName is the default header name for CSRF tokens.
 const HeaderName = "X-Csrf-Token"
 
-// ConfigDefault is the default config
+// ConfigDefault is the default config for CSRF middleware.
 var ConfigDefault = Config{
 	CookieName:     "csrf_",
 	CookieSameSite: "Lax",
@@ -108,12 +121,12 @@ var ConfigDefault = Config{
 	Extractor:      FromHeader(HeaderName),
 }
 
-// default ErrorHandler that process return error from fiber.Handler
+// defaultErrorHandler is the default error handler that processes errors from fiber.Handler.
 func defaultErrorHandler(_ fiber.Ctx, _ error) error {
 	return fiber.ErrForbidden
 }
 
-// Helper function to set default values
+// configDefault is a helper function to set default values.
 func configDefault(config ...Config) Config {
 	// Return default config if nothing provided
 	if len(config) < 1 {

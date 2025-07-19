@@ -139,8 +139,10 @@ func New(config ...Config) fiber.Handler {
 				return cfg.ErrorHandler(c, ErrTokenNotFound)
 			}
 
-			// Always check that the extracted token matches the cookie using Double Submit Cookie method
-			// This prevents CSRF attacks by ensuring the token comes from a different source than the cookie
+			// Double Submit Cookie validation: ensure the extracted token matches the cookie value
+			// This prevents CSRF attacks by requiring attackers to know both the cookie AND submit
+			// the same token through a different channel (header, form, etc.)
+			// WARNING: If using a custom extractor that reads from the same cookie, this provides no protection
 			if !compareStrings(extractedToken, c.Cookies(cfg.CookieName)) {
 				return cfg.ErrorHandler(c, ErrTokenInvalid)
 			}
