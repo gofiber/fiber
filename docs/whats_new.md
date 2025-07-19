@@ -1885,6 +1885,42 @@ app.Use(csrf.New(csrf.Config{
 
 - **Session Key Removal**: The `SessionKey` field has been removed from the CSRF middleware configuration. The session key is now an unexported constant within the middleware to avoid potential key collisions in the session store.
 
+- **KeyLookup Field Removal**: The `KeyLookup` field has been removed from the CSRF middleware configuration. This field was deprecated and is no longer needed as the middleware now uses a more secure approach for token management.
+
+```go
+// Before
+app.Use(csrf.New(csrf.Config{
+    KeyLookup: "header:X-CSRF-Token",
+    // other config...
+}))
+
+// After - use Extractor instead
+app.Use(csrf.New(csrf.Config{
+    Extractor: csrf.FromHeader("X-CSRF-Token"),
+    // other config...
+}))
+```
+
+- **FromCookie Extractor Removal**: The `csrf.FromCookie` extractor has been intentionally removed for security reasons. Using cookie-based extraction defeats the purpose of CSRF protection by making the extracted token always match the cookie value.
+
+```go
+// Before - This was a security vulnerability
+app.Use(csrf.New(csrf.Config{
+    Extractor: csrf.FromCookie("csrf_token"), // ❌ Insecure!
+}))
+
+// After - Use secure extractors instead
+app.Use(csrf.New(csrf.Config{
+    Extractor: csrf.FromHeader("X-Csrf-Token"), // ✅ Secure
+    // or
+    Extractor: csrf.FromForm("_csrf"),          // ✅ Secure
+    // or
+    Extractor: csrf.FromQuery("csrf_token"),    // ✅ Acceptable
+}))
+```
+
+**Security Note**: The removal of `FromCookie` prevents a common misconfiguration that would completely bypass CSRF protection. The middleware uses the Double Submit Cookie pattern, which requires the token to be submitted through a different channel than the cookie to provide meaningful protection.
+
 #### Filesystem
 
 You need to move filesystem middleware to static middleware due to it has been removed from the core.
