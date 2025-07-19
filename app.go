@@ -547,7 +547,7 @@ func New(config ...Config) *App {
 	app.configured = app.config
 
 	// Override default values
-	if app.config.BodyLimit == 0 {
+	if app.config.BodyLimit <= 0 {
 		app.config.BodyLimit = DefaultBodyLimit
 	}
 	if app.config.Concurrency <= 0 {
