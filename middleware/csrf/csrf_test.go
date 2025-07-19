@@ -1717,8 +1717,8 @@ func Test_CSRF_All_Extractors(t *testing.T) {
 	testCases := []struct {
 		extractor    func(c fiber.Ctx) (string, error)
 		setupRequest func(ctx *fasthttp.RequestCtx, token string)
-		expectStatus int
 		name         string
+		expectStatus int
 	}{
 		{
 			name:      "FromHeader",
@@ -1817,8 +1817,8 @@ func Test_CSRF_Param_Extractor(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
-		name         string
 		setupRequest func(ctx *fasthttp.RequestCtx, token string)
+		name         string
 		expectStatus int
 	}{
 		{
@@ -1910,10 +1910,10 @@ func Test_CSRF_Extractors_ErrorTypes(t *testing.T) {
 
 	// Test all extractor error types
 	testCases := []struct {
-		name      string
-		extractor func(c fiber.Ctx) (string, error)
 		expected  error
+		extractor func(c fiber.Ctx) (string, error)
 		setupCtx  func(ctx *fasthttp.RequestCtx) // Add setup function
+		name      string
 	}{
 		{
 			name:      "Missing header",
