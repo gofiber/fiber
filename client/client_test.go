@@ -1588,6 +1588,29 @@ func Test_Set_Config_To_Request(t *testing.T) {
 }
 
 func Test_Client_SetProxyURL(t *testing.T) {
+	httpProxy := os.Getenv("HTTP_PROXY")
+	httpProxyLower := os.Getenv("http_proxy")
+	httpsProxy := os.Getenv("HTTPS_PROXY")
+	httpsProxyLower := os.Getenv("https_proxy")
+	noProxy := os.Getenv("NO_PROXY")
+	noProxyLower := os.Getenv("no_proxy")
+
+	require.NoError(t, os.Unsetenv("HTTP_PROXY"))
+	require.NoError(t, os.Unsetenv("http_proxy"))
+	require.NoError(t, os.Unsetenv("HTTPS_PROXY"))
+	require.NoError(t, os.Unsetenv("https_proxy"))
+	require.NoError(t, os.Unsetenv("NO_PROXY"))
+	require.NoError(t, os.Unsetenv("no_proxy"))
+
+	t.Cleanup(func() {
+		require.NoError(t, os.Setenv("HTTP_PROXY", httpProxy))
+		require.NoError(t, os.Setenv("http_proxy", httpProxyLower))
+		require.NoError(t, os.Setenv("HTTPS_PROXY", httpsProxy))
+		require.NoError(t, os.Setenv("https_proxy", httpsProxyLower))
+		require.NoError(t, os.Setenv("NO_PROXY", noProxy))
+		require.NoError(t, os.Setenv("no_proxy", noProxyLower))
+	})
+
 	t.Parallel()
 
 	app, dial, start := createHelperServer(t)
@@ -1603,7 +1626,7 @@ func Test_Client_SetProxyURL(t *testing.T) {
 		DisablePathNormalizing:   true,
 	}
 
-	// Create a simple proxy sever
+	// Create a simple proxy server
 	proxyServer := fiber.New()
 
 	proxyServer.Use("*", func(c fiber.Ctx) error {
@@ -1664,7 +1687,7 @@ func Test_Client_SetProxyURL(t *testing.T) {
 		t.Parallel()
 		client := New()
 
-		err := client.SetProxyURL(":this is not a proxy")
+		err := client.SetProxyURL("http://127.0.0.1:1")
 		require.NoError(t, err)
 
 		_, err = client.Get("http://localhost:3000")
