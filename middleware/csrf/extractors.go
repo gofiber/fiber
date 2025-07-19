@@ -14,9 +14,8 @@ var (
 	ErrMissingCookie = errors.New("missing csrf token in cookie")
 )
 
-// cookieExtractorRegistry keeps track of cookie extractors and their parameters
-// This approach limits memory usage to only the extractors actually created
-var cookieExtractorRegistry = make(map[uintptr]string)
+// Note: FromCookie is intentionally omitted as it would defeat CSRF protection.
+// See documentation for security implications of cookie-based extraction.
 
 // FromParam returns a function that extracts token from the url param string.
 func FromParam(param string) func(c fiber.Ctx) (string, error) {
@@ -62,13 +61,35 @@ func FromQuery(param string) func(c fiber.Ctx) (string, error) {
 	}
 }
 
-// Chain tries multiple extractors in order until one succeeds
+// Chain tries multiple extractors in order until one succeeds.
+// Returns the first successful extraction or the last error encountered.
 func Chain(extractors ...func(fiber.Ctx) (string, error)) func(fiber.Ctx) (string, error) {
+	if len(extractors) == 0 {
+		return func(fiber.Ctx) (string, error) {
+			return "", ErrTokenNotFound
+		}
+	}
+
 	return func(c fiber.Ctx) (string, error) {
+		var lastErr error
+		var hasAttempted bool
+
 		for _, extractor := range extractors {
-			if token, err := extractor(c); err == nil && token != "" {
+			hasAttempted = true
+			token, err := extractor(c)
+
+			if err == nil && token != "" {
 				return token, nil
 			}
+
+			// Only update lastErr if we got an actual error
+			if err != nil {
+				lastErr = err
+			}
+		}
+
+		if hasAttempted && lastErr != nil {
+			return "", lastErr
 		}
 		return "", ErrTokenNotFound
 	}

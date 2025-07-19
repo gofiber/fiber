@@ -177,13 +177,13 @@ const (
 
 ```go
 var (
-    ErrTokenNotFound   = errors.New("csrf token not found")
-    ErrTokenInvalid    = errors.New("csrf token invalid")
-    ErrRefererNotFound = errors.New("referer not supplied")
-    ErrRefererInvalid  = errors.New("referer invalid")
-    ErrRefererNoMatch  = errors.New("referer does not match host")
-    ErrOriginInvalid   = errors.New("origin invalid")
-    ErrOriginNoMatch   = errors.New("origin does not match host")
+    ErrTokenNotFound   = errors.New("csrf: token not found")
+    ErrTokenInvalid    = errors.New("csrf: token invalid")
+    ErrRefererNotFound = errors.New("csrf: referer header missing")
+    ErrRefererInvalid  = errors.New("csrf: referer header invalid")
+    ErrRefererNoMatch  = errors.New("csrf: referer does not match host or trusted origins")
+    ErrOriginInvalid   = errors.New("csrf: origin header invalid")
+    ErrOriginNoMatch   = errors.New("csrf: origin does not match host or trusted origins")
 )
 ```
 

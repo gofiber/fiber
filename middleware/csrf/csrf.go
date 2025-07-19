@@ -20,7 +20,8 @@ var (
 	ErrOriginInvalid   = errors.New("origin invalid")
 	ErrOriginNoMatch   = errors.New("origin does not match host and is not a trusted origin")
 	errOriginNotFound  = errors.New("origin not supplied or is null") // internal error, will not be returned to the user
-	dummyValue         = []byte{'+'}
+	dummyValue         = []byte{'+'}                                  // dummyValue is a placeholder value stored in token storage. The actual token validation relies on the key, not this value.
+
 )
 
 // Handler for CSRF middleware
