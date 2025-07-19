@@ -102,7 +102,7 @@ func Test_App_Test_Goroutine_Leak_Compare(t *testing.T) {
 
 			// Send 10 requests
 			numRequests := 10
-			for i := 0; i < numRequests; i++ {
+			for range numRequests {
 				req := httptest.NewRequest(MethodGet, "/", nil)
 
 				if tc.timeout > 0 {
@@ -264,6 +264,75 @@ func Test_App_Errors(t *testing.T) {
 	if err != nil {
 		require.Equal(t, "body size exceeds the given limit", err.Error(), "app.Test(req)")
 	}
+}
+
+func Test_App_BodyLimit_Negative(t *testing.T) {
+	t.Parallel()
+
+	limits := []int{-1, -512}
+	for _, limit := range limits {
+		app := New(Config{BodyLimit: limit})
+
+		app.Post("/", func(c Ctx) error {
+			return c.SendStatus(StatusOK)
+		})
+
+		largeBody := bytes.Repeat([]byte{'a'}, DefaultBodyLimit+1)
+		req := httptest.NewRequest(MethodPost, "/", bytes.NewReader(largeBody))
+		_, err := app.Test(req)
+		require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
+
+		smallBody := bytes.Repeat([]byte{'a'}, DefaultBodyLimit-1)
+		req = httptest.NewRequest(MethodPost, "/", bytes.NewReader(smallBody))
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+	}
+}
+
+func Test_App_BodyLimit_Zero(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{BodyLimit: 0})
+
+	app.Post("/", func(c Ctx) error {
+		return c.SendStatus(StatusOK)
+	})
+
+	largeBody := bytes.Repeat([]byte{'a'}, DefaultBodyLimit+1)
+	req := httptest.NewRequest(MethodPost, "/", bytes.NewReader(largeBody))
+	_, err := app.Test(req)
+	require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
+
+	smallBody := bytes.Repeat([]byte{'a'}, DefaultBodyLimit-1)
+	req = httptest.NewRequest(MethodPost, "/", bytes.NewReader(smallBody))
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+}
+
+func Test_App_BodyLimit_LargerThanDefault(t *testing.T) {
+	t.Parallel()
+
+	limit := DefaultBodyLimit*2 + 1024 // slightly above double the default
+	app := New(Config{BodyLimit: limit})
+
+	app.Post("/", func(c Ctx) error {
+		return c.SendStatus(StatusOK)
+	})
+
+	// Body larger than the default but within our custom limit should succeed
+	midBody := bytes.Repeat([]byte{'a'}, DefaultBodyLimit+512)
+	req := httptest.NewRequest(MethodPost, "/", bytes.NewReader(midBody))
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+
+	// Body above the custom limit should fail
+	largeBody := bytes.Repeat([]byte{'a'}, limit+1)
+	req = httptest.NewRequest(MethodPost, "/", bytes.NewReader(largeBody))
+	_, err = app.Test(req)
+	require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
 }
 
 type customConstraint struct{}

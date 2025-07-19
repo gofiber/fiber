@@ -127,6 +127,8 @@ curl -X POST -F name=john -F pass=doe http://localhost:3000
 
 ### CBOR
 
+> **Note:** Before using any CBOR-related features, make sure to follow the [CBOR setup instructions](../guide/advance-format.md#cbor).
+
 Binds the request CBOR body to a struct.
 
 It is important to specify the correct struct tag based on the content type to be parsed. For example, if you want to parse a CBOR body with a field called `Pass`, you would use a struct field with `cbor:"pass"`.

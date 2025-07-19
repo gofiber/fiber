@@ -63,15 +63,14 @@ func Test_MemoryLock(t *testing.T) {
 }
 
 func Benchmark_MemoryLock(b *testing.B) {
-	keys := make([]string, b.N)
+	keys := make([]string, 50_000_000)
 	for i := range keys {
 		keys[i] = strconv.Itoa(i)
 	}
 
 	lock := idempotency.NewMemoryLock()
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		key := keys[i]
 		if err := lock.Lock(key); err != nil {
 			b.Fatal(err)

@@ -37,6 +37,11 @@ markdown:
 lint:
 	golangci-lint run
 
+## modernize: 🛠 Run gopls modernize
+.PHONY: modernize
+modernize:
+	go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -fix -test=false ./...
+
 ## test: 🚦 Execute all tests
 .PHONY: test
 test:

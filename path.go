@@ -243,7 +243,7 @@ func addParameterMetaInfo(segs []*routeSegment) []*routeSegment {
 	}
 
 	// loop from begin to end
-	for i := 0; i < segLen; i++ {
+	for i := range segLen {
 		// check how often the compare part is in the following const parts
 		if segs[i].IsParam {
 			// check if parameter segments are directly after each other and if one of them is greedy
@@ -619,7 +619,7 @@ func GetTrimmedParam(param string) string {
 func RemoveEscapeChar(word string) string {
 	b := []byte(word)
 	dst := 0
-	for src := 0; src < len(b); src++ {
+	for src := range b {
 		if b[src] == '\\' {
 			continue
 		}
@@ -632,7 +632,7 @@ func RemoveEscapeChar(word string) string {
 // RemoveEscapeCharBytes removes escape characters
 func RemoveEscapeCharBytes(word []byte) []byte {
 	dst := 0
-	for src := 0; src < len(word); src++ {
+	for src := range word {
 		if word[src] != '\\' {
 			word[dst] = word[src]
 			dst++

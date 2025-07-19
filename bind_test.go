@@ -879,6 +879,8 @@ func Test_Bind_Body(t *testing.T) {
 	app := New(Config{
 		MsgPackEncoder: msgpack.Marshal,
 		MsgPackDecoder: msgpack.Unmarshal,
+		CBOREncoder:    cbor.Marshal,
+		CBORDecoder:    cbor.Unmarshal,
 	})
 	reqBody := []byte(`{"name":"john"}`)
 
@@ -1165,6 +1167,8 @@ func Benchmark_Bind_Body_MsgPack(b *testing.B) {
 		Config{
 			MsgPackEncoder: msgpack.Marshal,
 			MsgPackDecoder: msgpack.Unmarshal,
+			CBOREncoder:    cbor.Marshal,
+			CBORDecoder:    cbor.Unmarshal,
 		},
 	)
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -1216,7 +1220,10 @@ func Benchmark_Bind_Body_XML(b *testing.B) {
 func Benchmark_Bind_Body_CBOR(b *testing.B) {
 	var err error
 
-	app := New()
+	app := New(Config{
+		CBOREncoder: cbor.Marshal,
+		CBORDecoder: cbor.Unmarshal,
+	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	type Demo struct {
@@ -1867,7 +1874,10 @@ func Test_Bind_StructValidator(t *testing.T) {
 // go test -run Test_Bind_RepeatParserWithSameStruct -v
 func Test_Bind_RepeatParserWithSameStruct(t *testing.T) {
 	t.Parallel()
-	app := New()
+	app := New(Config{
+		CBOREncoder: cbor.Marshal,
+		CBORDecoder: cbor.Unmarshal,
+	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 
