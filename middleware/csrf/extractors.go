@@ -72,10 +72,8 @@ func Chain(extractors ...func(fiber.Ctx) (string, error)) func(fiber.Ctx) (strin
 
 	return func(c fiber.Ctx) (string, error) {
 		var lastErr error
-		var hasAttempted bool
 
 		for _, extractor := range extractors {
-			hasAttempted = true
 			token, err := extractor(c)
 
 			if err == nil && token != "" {
@@ -88,7 +86,7 @@ func Chain(extractors ...func(fiber.Ctx) (string, error)) func(fiber.Ctx) (strin
 			}
 		}
 
-		if hasAttempted && lastErr != nil {
+		if lastErr != nil {
 			return "", lastErr
 		}
 		return "", ErrTokenNotFound
