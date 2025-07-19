@@ -17,6 +17,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	winOS      = "windows"
+	testCSSDir = "../../.github/testdata/fs/css"
+)
+
 var testConfig = fiber.TestConfig{
 	Timeout:       10 * time.Second,
 	FailOnTimeout: true,
@@ -133,7 +138,7 @@ func Test_Static_Custom_CacheControl(t *testing.T) {
 
 func Test_Static_Disable_Cache(t *testing.T) {
 	// Skip on Windows. It's not possible to delete a file that is in use.
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == winOS {
 		t.SkipNow()
 	}
 
@@ -354,7 +359,7 @@ func Test_Static_Trailing_Slash(t *testing.T) {
 	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
 	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
 
-	app.Get("/john_without_index*", New("../../.github/testdata/fs/css"))
+	app.Get("/john_without_index*", New(testCSSDir))
 
 	req = httptest.NewRequest(fiber.MethodGet, "/john_without_index/", nil)
 	resp, err = app.Test(req)
@@ -379,7 +384,7 @@ func Test_Static_Trailing_Slash(t *testing.T) {
 	require.NotEmpty(t, resp.Header.Get(fiber.HeaderContentLength))
 	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
 
-	app.Use("/john_without_index/", New("../../.github/testdata/fs/css"))
+	app.Use("/john_without_index/", New(testCSSDir))
 
 	req = httptest.NewRequest(fiber.MethodGet, "/john_without_index/", nil)
 	resp, err = app.Test(req)
@@ -437,7 +442,7 @@ func Test_Static_Next(t *testing.T) {
 func Test_Route_Static_Root(t *testing.T) {
 	t.Parallel()
 
-	dir := "../../.github/testdata/fs/css"
+	dir := testCSSDir
 	app := fiber.New()
 	app.Get("/*", New(dir, Config{
 		Browse: true,
@@ -474,7 +479,7 @@ func Test_Route_Static_Root(t *testing.T) {
 func Test_Route_Static_HasPrefix(t *testing.T) {
 	t.Parallel()
 
-	dir := "../../.github/testdata/fs/css"
+	dir := testCSSDir
 	app := fiber.New()
 	app.Get("/static*", New(dir, Config{
 		Browse: true,
@@ -623,7 +628,7 @@ func Test_Static_FS_Browse(t *testing.T) {
 	}))
 
 	app.Get("/dirfs*", New("", Config{
-		FS:     os.DirFS("../../.github/testdata/fs/css"),
+		FS:     os.DirFS(testCSSDir),
 		Browse: true,
 	}))
 
@@ -715,25 +720,25 @@ func Test_isFile(t *testing.T) {
 		{
 			name:       "directory",
 			path:       ".",
-			filesystem: os.DirFS("../../.github/testdata/fs/css"),
+			filesystem: os.DirFS(testCSSDir),
 			expected:   false,
 		},
 		{
 			name:       "file",
-			path:       "../../.github/testdata/fs/css/style.css",
+			path:       testCSSDir + "/style.css",
 			filesystem: nil,
 			expected:   true,
 		},
 		{
 			name:       "file",
-			path:       "../../.github/testdata/fs/css/style2.css",
+			path:       testCSSDir + "/style2.css",
 			filesystem: nil,
 			expected:   false,
 			gotError:   fs.ErrNotExist,
 		},
 		{
 			name:       "directory",
-			path:       "../../.github/testdata/fs/css",
+			path:       testCSSDir,
 			filesystem: nil,
 			expected:   false,
 		},
@@ -881,7 +886,7 @@ func Test_Router_Mount_n_Static(t *testing.T) {
 
 	app := fiber.New()
 
-	app.Use("/static", New("../../.github/testdata/fs/css", Config{Browse: true}))
+	app.Use("/static", New(testCSSDir, Config{Browse: true}))
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Home")
 	})
@@ -903,16 +908,16 @@ func Test_Router_Mount_n_Static(t *testing.T) {
 
 func Test_Static_PathTraversal(t *testing.T) {
 	// Skip this test if running on Windows
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == winOS {
 		t.Skip("Skipping Windows-specific tests")
 	}
 
 	t.Parallel()
 	app := fiber.New()
 
-	// Serve only from "../../.github/testdata/fs/css"
+	// Serve only from testCSSDir
 	// This directory should contain `style.css` but not `index.html` or anything above it.
-	rootDir := "../../.github/testdata/fs/css"
+	rootDir := testCSSDir
 	app.Get("/*", New(rootDir))
 
 	// A valid request: should succeed
@@ -1015,15 +1020,15 @@ func Test_Static_PathTraversal(t *testing.T) {
 
 func Test_Static_PathTraversal_WindowsOnly(t *testing.T) {
 	// Skip this test if not running on Windows
-	if runtime.GOOS != "windows" {
+	if runtime.GOOS != winOS {
 		t.Skip("Skipping Windows-specific tests")
 	}
 
 	t.Parallel()
 	app := fiber.New()
 
-	// Serve only from "../../.github/testdata/fs/css"
-	rootDir := "../../.github/testdata/fs/css"
+	// Serve only from testCSSDir
+	rootDir := testCSSDir
 	app.Get("/*", New(rootDir))
 
 	// A valid request (relative path without backslash):

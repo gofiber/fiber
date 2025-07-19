@@ -1,6 +1,7 @@
 package static
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/url"
@@ -29,7 +30,7 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 		}
 		us, err := url.PathUnescape(s)
 		if err != nil {
-			return nil, fmt.Errorf("invalid path")
+			return nil, errors.New("invalid path")
 		}
 		if us == s {
 			break
@@ -39,7 +40,7 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 
 	// reject any null bytes or traversal attempts
 	if strings.Contains(s, "\x00") || strings.Contains(s, "..") || strings.Contains(s, ":") {
-		return nil, fmt.Errorf("invalid path")
+		return nil, errors.New("invalid path")
 	}
 
 	raw := s
@@ -51,13 +52,13 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 			return []byte("/"), nil
 		}
 		if !fs.ValidPath(s) {
-			return nil, fmt.Errorf("invalid path")
+			return nil, errors.New("invalid path")
 		}
 		s = "/" + s
 	} else {
 		// verify no traversal after cleaning
 		if strings.Contains(raw, "..") || strings.Contains(s, "..") {
-			return nil, fmt.Errorf("invalid path")
+			return nil, errors.New("invalid path")
 		}
 		if !strings.HasPrefix(s, "/") {
 			s = "/" + s
