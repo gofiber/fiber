@@ -1,17 +1,14 @@
 package csrf
 
 import (
-	"bytes"
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/fiber/v3/middleware/session"
 	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
@@ -562,48 +559,6 @@ func Test_CSRF_From_Param(t *testing.T) {
 	ctx.Request.SetRequestURI("/" + token)
 	ctx.Request.Header.SetMethod(fiber.MethodPost)
 	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
-	h(ctx)
-	require.Equal(t, 200, ctx.Response.StatusCode())
-	require.Equal(t, "OK", string(ctx.Response.Body()))
-}
-
-func Test_CSRF_From_Cookie(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	csrfGroup := app.Group("/", New(Config{
-		Extractor:  FromCookie("csrf"),
-		CookieName: "csrf",
-	}))
-
-	csrfGroup.Post("/", func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusOK)
-	})
-
-	h := app.Handler()
-	ctx := &fasthttp.RequestCtx{}
-
-	// Invalid CSRF token
-	ctx.Request.Header.SetMethod(fiber.MethodPost)
-	ctx.Request.SetRequestURI("/")
-	ctx.Request.Header.Set(fiber.HeaderCookie, "csrf="+utils.UUIDv4()+";")
-	h(ctx)
-	require.Equal(t, 403, ctx.Response.StatusCode())
-
-	// Generate CSRF token
-	ctx.Request.Reset()
-	ctx.Response.Reset()
-	ctx.Request.Header.SetMethod(fiber.MethodGet)
-	ctx.Request.SetRequestURI("/")
-	h(ctx)
-	token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
-	token = strings.Split(strings.Split(token, ";")[0], "=")[1]
-
-	ctx.Request.Reset()
-	ctx.Response.Reset()
-	ctx.Request.Header.SetMethod(fiber.MethodPost)
-	ctx.Request.Header.Set(fiber.HeaderCookie, "csrf="+token+";")
-	ctx.Request.SetRequestURI("/")
 	h(ctx)
 	require.Equal(t, 200, ctx.Response.StatusCode())
 	require.Equal(t, "OK", string(ctx.Response.Body()))
@@ -1581,21 +1536,6 @@ func Test_CSRF_FromContextMethods_Invalid(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
-}
-
-func Test_configDefault_WarnCookieSameSite(t *testing.T) {
-	var buf bytes.Buffer
-	log.SetOutput(&buf)
-	t.Cleanup(func() { log.SetOutput(os.Stderr) })
-
-	cfg := configDefault(Config{
-		Extractor:      FromCookie("csrf"),
-		CookieName:     "csrf",
-		CookieSameSite: "None",
-	})
-
-	require.Equal(t, "csrf", cfg.CookieName)
-	require.Contains(t, buf.String(), "Cookie extractor is only recommended for use with SameSite=Lax or SameSite=Strict")
 }
 
 func Test_deleteTokenFromStorage(t *testing.T) {

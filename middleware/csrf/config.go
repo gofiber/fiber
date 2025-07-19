@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/fiber/v3/middleware/session"
 	"github.com/gofiber/utils/v2"
 )
@@ -41,7 +40,7 @@ type Config struct {
 	// Extractor returns the csrf token
 	//
 	// Optional. Default: FromHeader("X-Csrf-Token")
-	// Available extractors: FromHeader, FromQuery, FromParam, FromForm, FromCookie
+	// Available extractors: FromHeader, FromQuery, FromParam, FromForm
 	Extractor func(c fiber.Ctx) (string, error)
 
 	// Name of the session cookie. This cookie will store session key.
@@ -142,16 +141,6 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.Extractor == nil {
 		cfg.Extractor = ConfigDefault.Extractor
-	}
-
-	// Validate extractor usage with sessions
-	if isFromCookie(cfg.Extractor) {
-		if cfg.Session == nil {
-			log.Warn("[CSRF] Cookie extractor is not recommended without a session store")
-		}
-		if cfg.CookieSameSite == "None" || (cfg.CookieSameSite != "Lax" && cfg.CookieSameSite != "Strict") {
-			log.Warn("[CSRF] Cookie extractor is only recommended for use with SameSite=Lax or SameSite=Strict")
-		}
 	}
 
 	return cfg

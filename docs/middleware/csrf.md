@@ -201,10 +201,6 @@ var (
 - `csrf.FromQuery("csrf_token")` - URL parameters
 - `csrf.FromParam("csrf")` - Route parameters
 
-**Avoid:**
-
-- `csrf.FromCookie("csrf_token")` - Vulnerable to subdomain attacks
-
 #### Using Route-Specific Extractors
 
 There are cases where you might want to use different extractors for different routes:
@@ -226,6 +222,25 @@ forms.Use(csrf.New(csrf.Config{
 ### Custom Extractor
 
 You can create a custom extractor to handle specific cases:
+
+:::danger Never Extract from Cookies
+**NEVER create custom extractors that read from cookies using the same `CookieName` as your CSRF configuration.** This completely defeats CSRF protection by making the extracted token always match the cookie value, allowing any CSRF attack to succeed.
+
+```go
+// ❌ NEVER DO THIS - completely defeats CSRF protection
+func BadExtractor(c fiber.Ctx) (string, error) {
+    return c.Cookies("csrf_"), nil  // Always passes validation!
+}
+
+// ✅ DO THIS - extract from different source than cookie
+app.Use(csrf.New(csrf.Config{
+    CookieName: "csrf_",
+    Extractor: csrf.FromHeader("X-Csrf-Token"), // Header vs cookie comparison
+}))
+```
+
+The middleware uses the **Double Submit Cookie** pattern - it compares the extracted token against the cookie value. If your extractor reads from the same cookie, they will always match and provide zero CSRF protection.
+:::
 
 #### Bearer Token Embedding
 
@@ -337,7 +352,9 @@ app.Use(csrf.New(csrf.Config{
 // Delete token (e.g., on logout)
 handler := csrf.HandlerFromContext(c)
 if handler != nil {
-    handler.DeleteToken(c)
+    if err := handler.DeleteToken(c); err != nil {
+        // handle error, e.g. log it
+    }
 }
 
 // With session middleware

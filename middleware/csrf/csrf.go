@@ -129,7 +129,7 @@ func New(config ...Config) fiber.Handler {
 				return cfg.ErrorHandler(c, err)
 			}
 
-			// Extract token from client request i.e. header, query, param, form or cookie
+			// Extract token from client request i.e. header, query, param, form
 			extractedToken, err := cfg.Extractor(c)
 			if err != nil {
 				return cfg.ErrorHandler(c, err)
@@ -139,10 +139,9 @@ func New(config ...Config) fiber.Handler {
 				return cfg.ErrorHandler(c, ErrTokenNotFound)
 			}
 
-			// If not using FromCookie extractor, check that the token matches the cookie
-			// This is to prevent CSRF attacks by using a Double Submit Cookie method
-			// Useful when we do not have access to the users Session
-			if !isFromCookie(cfg.Extractor) && !compareStrings(extractedToken, c.Cookies(cfg.CookieName)) {
+			// Always check that the extracted token matches the cookie using Double Submit Cookie method
+			// This prevents CSRF attacks by ensuring the token comes from a different source than the cookie
+			if !compareStrings(extractedToken, c.Cookies(cfg.CookieName)) {
 				return cfg.ErrorHandler(c, ErrTokenInvalid)
 			}
 
@@ -271,11 +270,6 @@ func (handler *Handler) DeleteToken(c fiber.Ctx) error {
 	// Expire the cookie
 	expireCSRFCookie(c, handler.config)
 	return nil
-}
-
-// isFromCookie checks if the extractor is created by FromCookie
-func isFromCookie(extractor any) bool {
-	return isCookieExtractor(extractor)
 }
 
 // originMatchesHost checks that the origin header matches the host header

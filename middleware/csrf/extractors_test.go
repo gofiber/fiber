@@ -21,11 +21,6 @@ func Test_Extractors_Missing(t *testing.T) {
 	require.Empty(t, token)
 	require.Equal(t, ErrMissingParam, err)
 
-	// Missing cookie
-	token, err = FromCookie("csrf")(ctx)
-	require.Empty(t, token)
-	require.Equal(t, ErrMissingCookie, err)
-
 	// Missing form
 	token, err = FromForm("csrf")(ctx)
 	require.Empty(t, token)
