@@ -4046,7 +4046,7 @@ func Test_Ctx_JSON(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.JSONEq(t, `{"Age":20,"Name":"Grame"}`, string(c.Response().Body()))
-	require.Equal(t, "application/json", string(c.Response().Header.Peek("content-type")))
+	require.Equal(t, "application/json; charset=utf-8", string(c.Response().Header.Peek("content-type")))
 
 	// Test with ctype
 	err = c.JSON(Map{ // map has no order
@@ -4084,7 +4084,7 @@ func Test_Ctx_JSON(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.Equal(t, `["custom","json"]`, string(c.Response().Body()))
-		require.Equal(t, "application/json", string(c.Response().Header.Peek("content-type")))
+		require.Equal(t, "application/json; charset=utf-8", string(c.Response().Header.Peek("content-type")))
 	})
 }
 
