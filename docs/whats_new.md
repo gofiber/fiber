@@ -1813,10 +1813,6 @@ import "github.com/gofiber/fiber/v3/client"
 
 </details>
 
-:::caution
-DRAFT section
-:::
-
 ### 🧬 Middlewares
 
 #### Important Change for Accessing Middleware Data
