@@ -7,7 +7,7 @@ import (
 )
 
 func TestTreeInsertAndLookup(t *testing.T) {
-	tree := New()
+	tree := New[int]()
 	tree.Insert("/", 0)
 	tree.Insert("/foo", 1)
 	tree.Insert("/foobar", 2)
@@ -16,7 +16,7 @@ func TestTreeInsertAndLookup(t *testing.T) {
 	cases := []struct {
 		path   string
 		prefix string
-		val    any
+		val    int
 		ok     bool
 	}{
 		{"/foo", "/foo", 1, true},
@@ -40,7 +40,7 @@ func TestTreeInsertAndLookup(t *testing.T) {
 }
 
 func TestTreeOverwrite(t *testing.T) {
-	tree := New()
+	tree := New[int]()
 	tree.Insert("/foo", 1)
 	tree.Insert("/foo", 2)
 	_, v, ok := tree.LongestPrefix("/foo")
@@ -58,12 +58,12 @@ func TestLongestPrefixLen(t *testing.T) {
 
 func TestNodeGetSetEdge(t *testing.T) {
 	t.Parallel()
-	n := &node{}
-	child1 := &node{prefix: "a"}
+	n := &node[int]{}
+	child1 := &node[int]{prefix: "a"}
 	n.setEdge('a', child1)
 	require.Equal(t, child1, n.getEdge('a'))
 
-	child2 := &node{prefix: "b"}
+	child2 := &node[int]{prefix: "b"}
 	n.setEdge('a', child2)
 	require.Equal(t, child2, n.getEdge('a'))
 	require.Nil(t, n.getEdge('b'))
@@ -71,7 +71,7 @@ func TestNodeGetSetEdge(t *testing.T) {
 
 func TestTreeInsertSplitAndSearch(t *testing.T) {
 	t.Parallel()
-	tree := New()
+	tree := New[int]()
 	tree.Insert("", 0) // value on root node
 	tree.Insert("/foo", 1)
 	tree.Insert("/fo", 2) // causes split
@@ -111,27 +111,27 @@ func TestTreeInsertSplitAndSearch(t *testing.T) {
 
 func TestTreeLongestPrefixNoMatch(t *testing.T) {
 	t.Parallel()
-	tree := New()
+	tree := New[int]()
 	tree.Insert("/foo", 1)
 	p, v, ok := tree.LongestPrefix("/bar")
 	require.False(t, ok)
 	require.Equal(t, "", p)
-	require.Nil(t, v)
+	require.Equal(t, 0, v)
 }
 
 func TestTreeLongestPrefixNilTree(t *testing.T) {
 	t.Parallel()
-	tree := New()
+	tree := New[int]()
 	tree.root = nil
 	p, v, ok := tree.LongestPrefix("/foo")
 	require.False(t, ok)
 	require.Equal(t, "", p)
-	require.Nil(t, v)
+	require.Equal(t, 0, v)
 }
 
 func TestTreeLongestPrefixEmpty(t *testing.T) {
 	t.Parallel()
-	tree := New()
+	tree := New[int]()
 	tree.Insert("", 42)
 	p, v, ok := tree.LongestPrefix("")
 	require.True(t, ok)
