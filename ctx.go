@@ -1056,14 +1056,14 @@ func (c *DefaultCtx) JSONP(data any, callback ...string) error {
 }
 
 // XML converts any interface or string to XML.
-// This method also sets the content header to application/xml.
+// This method also sets the content header to application/xml; charset=utf-8.
 func (c *DefaultCtx) XML(data any) error {
 	raw, err := c.app.config.XMLEncoder(data)
 	if err != nil {
 		return err
 	}
 	c.fasthttp.Response.SetBodyRaw(raw)
-	c.fasthttp.Response.Header.SetContentType(MIMEApplicationXML)
+	c.fasthttp.Response.Header.SetContentType(MIMEApplicationXMLCharsetUTF8)
 	return nil
 }
 
@@ -1958,12 +1958,27 @@ func (c *DefaultCtx) String() string {
 
 // Type sets the Content-Type HTTP header to the MIME type specified by the file extension.
 func (c *DefaultCtx) Type(extension string, charset ...string) Ctx {
+	mimeType := utils.GetMIME(extension)
+
 	if len(charset) > 0 {
-		c.fasthttp.Response.Header.SetContentType(utils.GetMIME(extension) + "; charset=" + charset[0])
+		c.fasthttp.Response.Header.SetContentType(mimeType + "; charset=" + charset[0])
 	} else {
-		c.fasthttp.Response.Header.SetContentType(utils.GetMIME(extension))
+		// Automatically add UTF-8 charset for text-based MIME types
+		if shouldIncludeCharset(mimeType) {
+			c.fasthttp.Response.Header.SetContentType(mimeType + "; charset=utf-8")
+		} else {
+			c.fasthttp.Response.Header.SetContentType(mimeType)
+		}
 	}
 	return c
+}
+
+// shouldIncludeCharset determines if a MIME type should include UTF-8 charset by default
+func shouldIncludeCharset(mimeType string) bool {
+	// Include charset for text-based MIME types
+	return strings.HasPrefix(mimeType, "text/") ||
+		mimeType == "application/json" ||
+		mimeType == "application/xml"
 }
 
 // Vary adds the given header field to the Vary response header.

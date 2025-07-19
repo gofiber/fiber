@@ -4424,7 +4424,7 @@ func Test_Ctx_XML(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, `<Users><Names>Grame</Names><Names>John</Names><Ages>1</Ages><Ages>12</Ages><Ages>20</Ages></Users>`, string(c.Response().Body()))
-	require.Equal(t, "application/xml", string(c.Response().Header.Peek("content-type")))
+	require.Equal(t, "application/xml; charset=utf-8", string(c.Response().Header.Peek("content-type")))
 
 	testEmpty := func(v any, r string) {
 		err := c.XML(v)
@@ -4460,7 +4460,7 @@ func Test_Ctx_XML(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Equal(t, `<custom>xml</custom>`, string(c.Response().Body()))
-		require.Equal(t, "application/xml", string(c.Response().Header.Peek("content-type")))
+		require.Equal(t, "application/xml; charset=utf-8", string(c.Response().Header.Peek("content-type")))
 	})
 }
 
@@ -5262,16 +5262,40 @@ func Test_Ctx_Type(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Type(".json")
-	require.Equal(t, "application/json", string(c.Response().Header.Peek("Content-Type")))
+	require.Equal(t, "application/json; charset=utf-8", string(c.Response().Header.Peek("Content-Type")))
 
 	c.Type("json", "utf-8")
 	require.Equal(t, "application/json; charset=utf-8", string(c.Response().Header.Peek("Content-Type")))
 
 	c.Type(".html")
-	require.Equal(t, "text/html", string(c.Response().Header.Peek("Content-Type")))
+	require.Equal(t, "text/html; charset=utf-8", string(c.Response().Header.Peek("Content-Type")))
 
 	c.Type("html", "utf-8")
 	require.Equal(t, "text/html; charset=utf-8", string(c.Response().Header.Peek("Content-Type")))
+
+	// Test other text types get UTF-8 by default
+	c.Type("txt")
+	require.Equal(t, "text/plain; charset=utf-8", string(c.Response().Header.Peek("Content-Type")))
+
+	c.Type("css")
+	require.Equal(t, "text/css; charset=utf-8", string(c.Response().Header.Peek("Content-Type")))
+
+	c.Type("js")
+	require.Equal(t, "text/javascript; charset=utf-8", string(c.Response().Header.Peek("Content-Type")))
+
+	c.Type("xml")
+	require.Equal(t, "application/xml; charset=utf-8", string(c.Response().Header.Peek("Content-Type")))
+
+	// Test binary types don't get charset
+	c.Type("png")
+	require.Equal(t, "image/png", string(c.Response().Header.Peek("Content-Type")))
+
+	c.Type("pdf")
+	require.Equal(t, "application/pdf", string(c.Response().Header.Peek("Content-Type")))
+
+	// Test custom charset override
+	c.Type("html", "iso-8859-1")
+	require.Equal(t, "text/html; charset=iso-8859-1", string(c.Response().Header.Peek("Content-Type")))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_Type -benchmem -count=4
