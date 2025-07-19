@@ -144,7 +144,7 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	UnescapePath bool `json:"unescape_path"`
 
 	// Max body size that the server accepts.
-	// -1 will decline any body size
+	// Zero or negative values fall back to the default limit.
 	//
 	// Default: 4 * 1024 * 1024
 	BodyLimit int `json:"body_limit"`
