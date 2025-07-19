@@ -1907,41 +1907,57 @@ func Test_CSRF_Param_Extractor_Missing(t *testing.T) {
 func Test_CSRF_Extractors_ErrorTypes(t *testing.T) {
 	t.Parallel()
 
-	app := fiber.New()
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
-
 	// Test all extractor error types
 	testCases := []struct {
 		name      string
 		extractor func(c fiber.Ctx) (string, error)
 		expected  error
+		setupCtx  func(ctx *fasthttp.RequestCtx) // Add setup function
 	}{
 		{
 			name:      "Missing header",
 			extractor: FromHeader("X-Missing-Header"),
 			expected:  ErrMissingHeader,
+			setupCtx:  func(_ *fasthttp.RequestCtx) {}, // No setup needed for headers
 		},
 		{
 			name:      "Missing query",
 			extractor: FromQuery("missing_param"),
 			expected:  ErrMissingQuery,
+			setupCtx: func(ctx *fasthttp.RequestCtx) {
+				ctx.Request.SetRequestURI("/") // Set URI for query parsing
+			},
 		},
 		{
 			name:      "Missing param",
 			extractor: FromParam("missing_param"),
 			expected:  ErrMissingParam,
+			setupCtx:  func(_ *fasthttp.RequestCtx) {}, // Params are handled by router
 		},
 		{
 			name:      "Missing form",
 			extractor: FromForm("missing_field"),
 			expected:  ErrMissingForm,
+			setupCtx: func(ctx *fasthttp.RequestCtx) {
+				// Properly initialize request for form parsing
+				ctx.Request.Header.SetMethod(fiber.MethodPost)
+				ctx.Request.Header.SetContentType(fiber.MIMEApplicationForm)
+				ctx.Request.SetBodyString("") // Empty form body
+			},
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+
+			app := fiber.New()
+			requestCtx := &fasthttp.RequestCtx{}
+			tc.setupCtx(requestCtx) // Setup the context properly
+
+			ctx := app.AcquireCtx(requestCtx)
+			defer app.ReleaseCtx(ctx)
+
 			token, err := tc.extractor(ctx)
 			require.Empty(t, token)
 			require.Equal(t, tc.expected, err)
