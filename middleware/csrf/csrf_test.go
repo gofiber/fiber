@@ -1543,7 +1543,7 @@ func Test_deleteTokenFromStorage(t *testing.T) {
 
 	app := fiber.New()
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
+	t.Cleanup(func() { app.ReleaseCtx(ctx) })
 
 	token := "token123"
 	dummy := []byte("dummy")
@@ -1715,10 +1715,10 @@ func Test_CSRF_All_Extractors(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
-		name         string
 		extractor    func(c fiber.Ctx) (string, error)
 		setupRequest func(ctx *fasthttp.RequestCtx, token string)
 		expectStatus int
+		name         string
 	}{
 		{
 			name:      "FromHeader",
@@ -1784,6 +1784,7 @@ func Test_CSRF_All_Extractors(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			app := fiber.New()
 
 			app.Use(New(Config{Extractor: tc.extractor}))
@@ -1841,6 +1842,7 @@ func Test_CSRF_Param_Extractor(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			app := fiber.New()
 
 			// Only use param-based routing for param extractor tests
@@ -1939,6 +1941,7 @@ func Test_CSRF_Extractors_ErrorTypes(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			token, err := tc.extractor(ctx)
 			require.Empty(t, token)
 			require.Equal(t, tc.expected, err)
