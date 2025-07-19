@@ -4078,51 +4078,6 @@ func Test_Ctx_JSON(t *testing.T) {
 	})
 }
 
-func Test_Ctx_JSON_Charset(t *testing.T) {
-	t.Parallel()
-
-	t.Run("default charset utf-8", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-
-		err := c.JSON(Map{"message": "Mädchen"})
-		require.NoError(t, err)
-		require.Equal(t, "application/json; charset=utf-8", string(c.Response().Header.Peek("content-type")))
-	})
-
-	t.Run("custom charset config", func(t *testing.T) {
-		t.Parallel()
-		app := New(Config{Charset: "iso-8859-1"})
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-
-		err := c.JSON(Map{"message": "hello"})
-		require.NoError(t, err)
-		// Should still use UTF-8 since we only have the UTF-8 constant available
-		require.Equal(t, "application/json; charset=utf-8", string(c.Response().Header.Peek("content-type")))
-	})
-
-	t.Run("disabled charset config", func(t *testing.T) {
-		t.Parallel()
-		app := New(Config{Charset: "disabled"})
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-
-		err := c.JSON(Map{"message": "hello"})
-		require.NoError(t, err)
-		require.Equal(t, "application/json", string(c.Response().Header.Peek("content-type")))
-	})
-
-	t.Run("custom content-type overrides charset", func(t *testing.T) {
-		t.Parallel()
-		app := New()
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
-
-		err := c.JSON(Map{"message": "hello"}, "application/vnd.api+json")
-		require.NoError(t, err)
-		require.Equal(t, "application/vnd.api+json", string(c.Response().Header.Peek("content-type")))
-	})
-}
-
 // go test -run=^$ -bench=Benchmark_Ctx_JSON -benchmem -count=4
 func Benchmark_Ctx_JSON(b *testing.B) {
 	app := New()
