@@ -6,6 +6,20 @@ id: csrf
 
 The CSRF middleware provides protection against [Cross-Site Request Forgery](https://en.wikipedia.org/wiki/Cross-site_request_forgery) attacks. It validates tokens on unsafe HTTP methods (POST, PUT, DELETE, etc.) and returns 403 Forbidden if an attack is detected.
 
+## Table of Contents
+- [Quick Start](#quick-start)
+- [Best Practices & Production Requirements](#best-practices--production-requirements)
+- [Configuration by Application Type](#configuration-by-application-type)
+- [Recipes for Common Use Cases](#recipes-for-common-use-cases)
+- [Using CSRF Tokens](#using-csrf-tokens)
+- [Security Model](#security-model)
+- [Token Extractors](#token-extractors)
+- [Advanced Configuration](#advanced-configuration)
+- [API Reference](#api-reference)
+- [Config Properties](#config-properties)
+- [Error Types](#error-types)
+- [Constants](#constants)
+
 ## Quick Start
 
 ```go
@@ -28,6 +42,25 @@ app.Use(csrf.New(csrf.Config{
     Session:           sessionStore,
 }))
 ```
+
+## Best Practices & Production Requirements
+
+:::danger Production Requirements
+- `CookieSecure: true` (HTTPS only)
+- `CookieSameSite: "Lax"` or `"Strict"`
+- Use `Session` store for better security
+:::
+
+1. **Always use HTTPS** in production
+2. **Use sessions** for authenticated applications
+3. **Set `CookieSecure: true`** and appropriate SameSite values
+4. **Implement XSS protection** alongside CSRF
+5. **Regenerate tokens** after auth changes
+6. **Use `__Host-` cookie prefix** when possible
+
+:::warning BREACH Protection
+To mitigate BREACH attacks, ensure your pages are served over HTTPS, disable HTTP compression, and implement rate limiting for requests. The CSRF token is sent as a header on every request, so if you include the token in a page that is vulnerable to BREACH, an attacker may be able to extract the token.
+:::
 
 ## Configuration by Application Type
 
@@ -128,64 +161,53 @@ async function makeRequest(url, data) {
 }
 ```
 
-## Config Properties
+## Security Model
 
-| Property          | Type                               | Description                                                                                                                   | Default                      |
-|:------------------|:-----------------------------------|:------------------------------------------------------------------------------------------------------------------------------|:-----------------------------|
-| Next              | `func(fiber.Ctx) bool`             | Skip middleware when returns true                                                                                             | `nil`                        |
-| CookieName        | `string`                           | CSRF cookie name                                                                                                              | `"csrf_"`                    |
-| CookieDomain      | `string`                           | CSRF cookie domain                                                                                                            | `""`                         |
-| CookiePath        | `string`                           | CSRF cookie path                                                                                                              | `""`                         |
-| CookieSecure      | `bool`                             | HTTPS only cookie (**required for production**)                                                                               | `false`                      |
-| CookieHTTPOnly    | `bool`                             | Prevent JavaScript access (**use `false` for SPAs**)                                                                          | `false`                      |
-| CookieSameSite    | `string`                           | SameSite attribute (**use "Lax" or "Strict"**)                                                                                | `"Lax"`                      |
-| CookieSessionOnly | `bool`                             | Session-only cookie (expires on browser close)                                                                                | `false`                      |
-| IdleTimeout       | `time.Duration`                    | Token expiration time                                                                                                         | `30 * time.Minute`           |
-| KeyGenerator      | `func() string`                    | Token generation function                                                                                                     | `utils.UUIDv4`               |
-| ErrorHandler      | `fiber.ErrorHandler`               | Custom error handler                                                                                                          | `defaultErrorHandler`        |
-| Extractor         | `func(fiber.Ctx) (string, error)`  | Token extraction method                                                                                                       | `FromHeader("X-Csrf-Token")` |
-| Session           | `*session.Store`                   | Session store (**recommended for production**)                                                                                | `nil`                        |
-| Storage           | `fiber.Storage`                    | Token storage (overridden by Session)                                                                                         | `nil`                        |
-| TrustedOrigins    | `[]string`                         | Trusted origins for cross-origin requests                                                                                     | `[]`                         |
-| SingleUseToken    | `bool`                             | Generate new token after each use                                                                                             | `false`                      |
+The middleware employs a robust, defense-in-depth strategy to protect against CSRF attacks. The primary defense is token-based validation, which operates in one of two modes depending on your configuration. This is supplemented by a mandatory secondary check on the request's origin.
 
-## API Reference
+### 1. Token Validation Patterns
 
-```go
-// Create middleware
-func New(config ...Config) fiber.Handler
+#### Double Submit Cookie (Default Mode)
 
-// Get token from context
-func TokenFromContext(c fiber.Ctx) string
+This is the default pattern, used when a `Session` store is **not** configured. It is a "semi-stateless" approach; while it doesn't tie tokens to a specific user session, the server still maintains a record of all validly issued tokens.
 
-// Get handler from context
-func HandlerFromContext(c fiber.Ctx) *Handler
+- **How it Works:**
+  1. On a user's first visit (or a safe request like `GET`), the middleware generates a unique token.
+  2. This token is sent to the client in a `Set-Cookie` header.
+  3. A record of this token is also kept on the server (in-memory by default, or in your configured `Storage`). This proves the token was generated by the server and is not expired, but does not link it to a specific user.
+  4. For any subsequent unsafe request (e.g., `POST`, `PUT`), the client application must read the token from the cookie and send it back in a different location, such as the `X-CSRF-Token` header.
 
-// Delete token
-func (h *Handler) DeleteToken(c fiber.Ctx) error
-```
+- **Validation:** The middleware validates three things: that the token from the header/form **exactly matches** the token from the cookie, that the token **exists** in the server-side storage, and that it **has not expired**.
+- **Why it's Secure:** An attacker on a malicious domain cannot read the victim's cookie to forge a matching header. Furthermore, they cannot invent a token, because it wouldn't exist in the server's storage registry.
 
-## Constants
+#### Synchronizer Token (Session-Based Mode)
+
+This is a more secure, stateful pattern that is **automatically enabled** when you provide a `Session` store in the configuration.
+
+- **How it Works:**
+  1. A unique token is generated and stored directly within the user's session data on the server.
+  2. The token is also sent to the client as a cookie.
+  3. For unsafe requests, the client sends the token back in a header or form field.
+
+- **Validation:** The middleware performs a multi-step validation:
+  1. It first performs the standard **Double Submit Cookie check**: the token from the header/form must exactly match the token from the cookie. This is a fast and efficient first line of defense, and there is little benefit of skipping it.
+  2. It then validates that this token exists and is valid within the user's **server-side session**. This is the authoritative check that ties the token to the authenticated user.
+
+- **Why it's More Secure:** Tying the token to the server-side session provides the strongest CSRF protection, as the token is then guaranteed to have been generated for the specific user. While browsers handle sending the required cookie automatically, it's important to note that custom API clients must also remember to send the cookie with their requests for validation to succeed.
 
 ```go
-const (
-    HeaderName = "X-Csrf-Token"
-)
+// Enable the more secure Synchronizer Token pattern
+app.Use(csrf.New(csrf.Config{
+    Session: sessionStore, // Providing a session store activates this mode
+}))
 ```
 
-## Error Types
+### 2. Origin & Referer Validation
 
-```go
-var (
-    ErrTokenNotFound   = errors.New("csrf: token not found")
-    ErrTokenInvalid    = errors.New("csrf: token invalid")
-    ErrRefererNotFound = errors.New("csrf: referer header missing")
-    ErrRefererInvalid  = errors.New("csrf: referer header invalid")
-    ErrRefererNoMatch  = errors.New("csrf: referer does not match host or trusted origins")
-    ErrOriginInvalid   = errors.New("csrf: origin header invalid")
-    ErrOriginNoMatch   = errors.New("csrf: origin does not match host or trusted origins")
-)
-```
+As a crucial second layer of defense, the middleware **always** performs `Origin` and `Referer` header checks for unsafe requests (when the connection is HTTPS).
+
+- The request's `Origin` (for cross-origin requests) or `Referer` (for same-origin requests) header **must** match the application's `Host` header or be explicitly allowed in the `TrustedOrigins` list.
+- This check is performed *in addition* to token validation and provides strong protection because these headers are reliably set by browsers and cannot be programmatically controlled by an attacker from a malicious site.
 
 ## Token Extractors
 
@@ -281,27 +303,6 @@ app.Use(csrf.New(csrf.Config{
 Chaining extractors increases attack surface and complexity. Most applications should use a single, appropriate extractor for their use case.
 :::
 
-## Security Patterns
-
-### Double Submit Cookie (Default)
-
-- Stores tokens in memory/database
-- Compares cookie value with submitted token
-- No session required
-
-### Synchronizer Token (with Session)
-
-- Stores tokens in user session
-- More secure, prevents login CSRF
-- Requires session middleware
-
-```go
-// Enable synchronizer pattern
-app.Use(csrf.New(csrf.Config{
-    Session: sessionStore,
-}))
-```
-
 ## Advanced Configuration
 
 ### Trusted Origins
@@ -361,30 +362,61 @@ if handler != nil {
 session.Destroy()  // Also deletes CSRF token
 ```
 
-## Security Features
+## API Reference
 
-- **Referer checking** for HTTPS requests
-- **Origin validation** for cross-origin requests
-- **Token expiration** with configurable timeout
-- **Single-use tokens** for maximum security
-- **BREACH attack protection** recommendations (see note below)
+```go
+// Create middleware
+func New(config ...Config) fiber.Handler
 
-:::note BREACH Protection
-To mitigate BREACH attacks, ensure your pages are served over HTTPS, disable HTTP compression, and implement rate limiting for requests. The CSRF token is sent as a header on every request, so if you include the token in a page that is vulnerable to BREACH, an attacker may be able to extract the token.
-:::
+// Get token from context
+func TokenFromContext(c fiber.Ctx) string
 
-## Best Practices
+// Get handler from context
+func HandlerFromContext(c fiber.Ctx) *Handler
 
-1. **Always use HTTPS** in production
-2. **Use sessions** for authenticated applications
-3. **Set `CookieSecure: true`** and appropriate SameSite values
-4. **Implement XSS protection** alongside CSRF
-5. **Regenerate tokens** after auth changes
-6. **Use `__Host-` cookie prefix** when possible
+// Delete token
+func (h *Handler) DeleteToken(c fiber.Ctx) error
+```
 
-:::danger Production Requirements
+## Config Properties
 
-- `CookieSecure: true` (HTTPS only)
-- `CookieSameSite: "Lax"` or `"Strict"`
-- Use `Session` store for better security
-:::
+| Property          | Type                               | Description                                                                                                                   | Default                      |
+|:------------------|:-----------------------------------|:------------------------------------------------------------------------------------------------------------------------------|:-----------------------------|
+| Next              | `func(fiber.Ctx) bool`             | Skip middleware when returns true                                                                                             | `nil`                        |
+| CookieName        | `string`                           | CSRF cookie name                                                                                                              | `"csrf_"`                    |
+| CookieDomain      | `string`                           | CSRF cookie domain                                                                                                            | `""`                         |
+| CookiePath        | `string`                           | CSRF cookie path                                                                                                              | `""`                         |
+| CookieSecure      | `bool`                             | HTTPS only cookie (**required for production**)                                                                               | `false`                      |
+| CookieHTTPOnly    | `bool`                             | Prevent JavaScript access (**use `false` for SPAs**)                                                                          | `false`                      |
+| CookieSameSite    | `string`                           | SameSite attribute (**use "Lax" or "Strict"**)                                                                                | `"Lax"`                      |
+| CookieSessionOnly | `bool`                             | Session-only cookie (expires on browser close)                                                                                | `false`                      |
+| IdleTimeout       | `time.Duration`                    | Token expiration time                                                                                                         | `30 * time.Minute`           |
+| KeyGenerator      | `func() string`                    | Token generation function                                                                                                     | `utils.UUIDv4`               |
+| ErrorHandler      | `fiber.ErrorHandler`               | Custom error handler                                                                                                          | `defaultErrorHandler`        |
+| Extractor         | `func(fiber.Ctx) (string, error)`  | Token extraction method                                                                                                       | `FromHeader("X-Csrf-Token")` |
+| Session           | `*session.Store`                   | Session store (**recommended for production**)                                                                                | `nil`                        |
+| Storage           | `fiber.Storage`                    | Token storage (overridden by Session)                                                                                         | `nil`                        |
+| TrustedOrigins    | `[]string`                         | Trusted origins for cross-origin requests                                                                                     | `[]`                         |
+| SingleUseToken    | `bool`                             | Generate new token after each use                                                                                             | `false`                      |
+
+## Error Types
+
+```go
+var (
+    ErrTokenNotFound   = errors.New("csrf: token not found")
+    ErrTokenInvalid    = errors.New("csrf: token invalid")
+    ErrRefererNotFound = errors.New("csrf: referer header missing")
+    ErrRefererInvalid  = errors.New("csrf: referer header invalid")
+    ErrRefererNoMatch  = errors.New("csrf: referer does not match host or trusted origins")
+    ErrOriginInvalid   = errors.New("csrf: origin header invalid")
+    ErrOriginNoMatch   = errors.New("csrf: origin does not match host or trusted origins")
+)
+```
+
+## Constants
+
+```go
+const (
+    HeaderName = "X-Csrf-Token"
+)
+```
