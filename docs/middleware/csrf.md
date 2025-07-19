@@ -249,12 +249,12 @@ You can create a custom extractor to handle specific cases:
 **NEVER create custom extractors that read from cookies using the same `CookieName` as your CSRF configuration.** This completely defeats CSRF protection by making the extracted token always match the cookie value, allowing any CSRF attack to succeed.
 
 ```go
-// ❌ NEVER DO THIS - completely defeats CSRF protection
+// ❌ NEVER DO THIS - Completely defeats CSRF protection
 func BadExtractor(c fiber.Ctx) (string, error) {
     return c.Cookies("csrf_"), nil  // Always passes validation!
 }
 
-// ✅ DO THIS - extract from different source than cookie
+// ✅ DO THIS - Extract from different source than cookie
 app.Use(csrf.New(csrf.Config{
     CookieName: "csrf_",
     Extractor: csrf.FromHeader("X-Csrf-Token"), // Header vs cookie comparison
