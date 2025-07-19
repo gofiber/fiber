@@ -699,7 +699,7 @@ func (app *App) buildTree() *App {
 
 	if app.config.UseRadix {
 		for method := range app.config.RequestMethods {
-			t := radix.New[[]*Route](1024)
+			t := radix.New[[]*Route]()
 			buckets := make(map[string][]*Route)
 			for _, route := range app.stack[method] {
 				p := routeConstPrefix(route.routeParser)
@@ -711,7 +711,6 @@ func (app *App) buildTree() *App {
 				t.Insert(p, uniqueRouteStack(rs))
 			}
 			if len(buckets) > 0 {
-				t.Freeze()
 				app.radixTrees[method] = t
 			} else {
 				app.radixTrees[method] = nil
