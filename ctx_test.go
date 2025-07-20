@@ -1120,31 +1120,32 @@ func Test_Ctx_Cookie_SameSiteNoneAutoSecure(t *testing.T) {
 	defer app.ReleaseCtx(c)
 
 	testCases := []struct {
-		description string
+		description	string
 		sameSite	string
 	}{
 		{
 			description: "samesite is 'none'",
-			sameSite:	CookieSameSiteNoneMode,
+			sameSite:    CookieSameSiteNoneMode,
 		},
 		{
 			description: "samesite is 'None'",
-			sameSite:	"None",
+			sameSite:    "None",
 		},
 		{
 			description: "samesite is 'NONE'",
-			sameSite:	"NONE",
+			sameSite:    "NONE",
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
+			t.Parallel()
 			// Reset response header for each sub-test to ensure a clean state
 			c.Response().Header.Reset()
 
 			ck := &Cookie{
-				Name:	 "auto",
-				Value:	"v",
+				Name:     "auto",
+				Value:    "v",
 				SameSite: tc.sameSite,
 			}
 			c.Res().Cookie(ck)
