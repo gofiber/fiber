@@ -1117,8 +1117,8 @@ func Test_Ctx_Cookie_SameSiteNoneAutoSecure(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	t.Cleanup(func() {
-+		app.ReleaseCtx(c)
-+	})
+		app.ReleaseCtx(c)
+	})
 
 	testCases := []struct {
 		description string
