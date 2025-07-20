@@ -1,6 +1,7 @@
 package static
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -12,22 +13,31 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
+
+	"github.com/gofiber/fiber/v3"
 )
 
 // sanitizePath validates and cleans the requested path.
 // It returns an error if the path attempts to traverse directories.
 func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
-	// convert backslashes to slashes for consistency
-	s := strings.ReplaceAll(string(p), "\\", "/")
+	var s string
+	if bytes.IndexByte(p, '\\') >= 0 {
+		b := make([]byte, len(p))
+		copy(b, p)
+		for i := range b {
+			if b[i] == '\\' {
+				b[i] = '/'
+			}
+		}
+		s = utils.UnsafeString(b)
+	} else {
+		s = utils.UnsafeString(p)
+	}
 
 	// repeatedly unescape until it no longer changes, catching errors
-	for {
-		if !strings.Contains(s, "%") {
-			break
-		}
+	for strings.IndexByte(s, '%') >= 0 {
 		us, err := url.PathUnescape(s)
 		if err != nil {
 			return nil, errors.New("invalid path")
@@ -39,7 +49,7 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 	}
 
 	// reject any null bytes
-	if strings.Contains(s, "\x00") {
+	if strings.IndexByte(s, 0) >= 0 {
 		return nil, errors.New("invalid path")
 	}
 

@@ -13,8 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
+
+	"github.com/gofiber/fiber/v3"
 )
 
 const (
@@ -1088,4 +1089,78 @@ func Test_Static_PathTraversal_WindowsOnly(t *testing.T) {
 	// Attempts involving relative traversal and current directory reference
 	assertTraversalBlocked("/.\\../index.html")
 	assertTraversalBlocked("/./..\\index.html")
+}
+
+func Benchmark_SanitizePath(b *testing.B) {
+	bench := func(name string, filesystem fs.FS, path []byte) {
+		b.Run(name, func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				if _, err := sanitizePath(path, filesystem); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+
+	bench("nilFS - urlencoded chars", nil, []byte("/foo%2Fbar/../baz%20qux/index.html"))
+	bench("dirFS - urlencoded chars", os.DirFS("."), []byte("/foo%2Fbar/../baz%20qux/index.html"))
+	bench("nilFS - slashes", nil, []byte("\\foo%2Fbar\\baz%20qux\\index.html"))
+}
+
+func Test_SanitizePath(t *testing.T) {
+	t.Parallel()
+
+	type testCase struct {
+		filesystem fs.FS
+		name       string
+		expectPath string
+		input      []byte
+	}
+
+	testCases := []testCase{
+		{name: "simple path", input: []byte("/foo/bar.txt"), expectPath: "/foo/bar.txt"},
+		{name: "traversal attempt", input: []byte("/foo/../../bar.txt"), expectPath: "/bar.txt"},
+		{name: "encoded traversal", input: []byte("/foo/%2e%2e/bar.txt"), expectPath: "/bar.txt"},
+		{name: "double encoded traversal", input: []byte("/%252e%252e/bar.txt"), expectPath: "/bar.txt"},
+		{name: "current dir reference", input: []byte("/foo/./bar.txt"), expectPath: "/foo/bar.txt"},
+		{name: "encoded slash", input: []byte("/foo%2Fbar.txt"), expectPath: "/foo/bar.txt"},
+		{name: "empty path", input: []byte(""), expectPath: "/"},
+		// windows-specific paths
+		{name: "backslash path", input: []byte("\\foo\\bar.txt"), expectPath: "/foo/bar.txt"},
+		{name: "backslash traversal", input: []byte("\\foo\\..\\..\\bar.txt"), expectPath: "/bar.txt"},
+		{name: "mixed slashes", input: []byte("/foo\\bar.txt"), expectPath: "/foo/bar.txt"},
+		{name: "encoded backslash traversal", input: []byte("/foo%5C..%5Cbar.txt"), expectPath: "/foo\\..\\bar.txt"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := sanitizePath(tc.input, tc.filesystem)
+			require.NoError(t, err)
+			require.Equal(t, tc.expectPath, string(got))
+		})
+	}
+}
+
+func Test_SanitizePath_Error(t *testing.T) {
+	t.Parallel()
+
+	type testCase struct {
+		filesystem fs.FS
+		name       string
+		input      []byte
+	}
+
+	testCases := []testCase{
+		{name: "null byte", input: []byte("/foo/bar.txt%00")},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := sanitizePath(tc.input, tc.filesystem)
+			require.Error(t, err, "Expected error for input: %s", tc.input)
+		})
+	}
 }
