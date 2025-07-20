@@ -1315,6 +1315,12 @@ The Session middleware has undergone key changes in v3 to improve functionality 
 
 For more details on these changes and migration instructions, check the [Session Middleware Migration Guide](./middleware/session.md#migration-guide).
 
+### Timeout
+
+The timeout middleware is now configurable. A new `Config` struct allows customizing the timeout duration, defining a handler that runs when a timeout occurs, and specifying errors to treat as timeouts. The `New` function now accepts a `Config` value instead of a duration.
+
+**Migration:** Replace calls like `timeout.New(handler, 2*time.Second)` with `timeout.New(handler, timeout.Config{Timeout: 2 * time.Second})`.
+
 ## 🔌 Addons
 
 In v3, Fiber introduced Addons. Addons are additional useful packages that can be used in Fiber.
@@ -1916,6 +1922,19 @@ app.Use(csrf.New(csrf.Config{
 ```
 
 **Security Note**: The removal of `FromCookie` prevents a common misconfiguration that would completely bypass CSRF protection. The middleware uses the Double Submit Cookie pattern, which requires the token to be submitted through a different channel than the cookie to provide meaningful protection.
+
+#### Timeout
+
+The timeout middleware now accepts a configuration struct instead of a duration.
+Update your code as follows:
+
+```go
+// Before
+app.Use(timeout.New(handler, 2*time.Second))
+
+// After
+app.Use(timeout.New(handler, timeout.Config{Timeout: 2 * time.Second}))
+```
 
 #### Filesystem
 
