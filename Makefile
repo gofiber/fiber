@@ -30,12 +30,14 @@ format:
 ## markdown: 🎨 Find markdown format issues (Requires markdownlint-cli2)
 .PHONY: markdown
 markdown:
+	@which markdownlint-cli2 > /dev/null || npm install -g markdownlint-cli2
 	markdownlint-cli2 "**/*.md" "#vendor"
 
 ## lint: 🚨 Run lint checks
 .PHONY: lint
 lint:
-	golangci-lint run
+	@which golangci-lint > /dev/null || (go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest)
+	@export PATH="$(shell go env GOPATH)/bin:$$PATH"; golangci-lint run
 
 ## modernize: 🛠 Run gopls modernize
 .PHONY: modernize
