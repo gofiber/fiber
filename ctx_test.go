@@ -1239,6 +1239,7 @@ func Test_Ctx_Cookie_SameSite_CaseInsensitive(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			// Reset response
 			c.Response().Reset()
 
