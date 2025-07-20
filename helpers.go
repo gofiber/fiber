@@ -218,9 +218,8 @@ func acceptsLanguageOffer(spec, offer string, _ headerParams) bool {
 // It checks if the offer contains every parameter present in the specification.
 // Returns true if the offer type matches the specification, false otherwise.
 func acceptsOfferType(spec, offerType string, specParams headerParams) bool {
+	// Split off any parameters on the offer
 	var offerMime, offerParams string
-
-	// Split off any parameters
 	if i := strings.IndexByte(offerType, ';'); i == -1 {
 		offerMime = strings.TrimSpace(offerType)
 	} else {
@@ -228,17 +227,12 @@ func acceptsOfferType(spec, offerType string, specParams headerParams) bool {
 		offerParams = offerType[i:]
 	}
 
-	// If the OFFER itself is a wildcard, never match
-	if strings.HasSuffix(offerMime, "/*") {
-		return false
-	}
-
 	// Accept: */*
 	if spec == "*/*" {
 		return paramsMatch(specParams, offerParams)
 	}
 
-	// Normalize offerMime (resolve file‑extension → mime)
+	// Normalize the offer into a full MIME (resolve extensions if needed)
 	var mimetype string
 	if strings.Contains(offerMime, "/") {
 		mimetype = offerMime
@@ -246,17 +240,26 @@ func acceptsOfferType(spec, offerType string, specParams headerParams) bool {
 		mimetype = utils.GetMIME(offerMime)
 	}
 
-	// Exact concrete match (neither side has a wildcard subtype)
+	// EARLY REJECT: if the offer is a wildcard subtype but it's not the *same*
+	// wildcard that the spec asked for, we must not match it.
+	// This prevents e.g. spec="application/*" matching offer="image/*".
+	if strings.HasSuffix(mimetype, "/*") && mimetype != spec {
+		return false
+	}
+
+	// EXACT match (only when spec itself is concrete, e.g. "application/json")
 	if spec == mimetype && !strings.HasSuffix(spec, "/*") {
 		return paramsMatch(specParams, offerParams)
 	}
 
-	// Handle spec wildcard on subtype: <type>/*
-	if s := strings.IndexByte(mimetype, '/'); s != -1 {
-		if slash := strings.IndexByte(spec, '/'); slash != -1 {
-			// same major type
-			if utils.EqualFold(spec[:slash], mimetype[:s]) && spec[slash:] == "/*" {
-				// offer must be concrete (we already ruled out offerMime ending in /*)
+	// WILDCARD match on spec side: "<type>/*"
+	if specMajorEnd := strings.IndexByte(spec, '/'); specMajorEnd != -1 {
+		if offerMajorEnd := strings.IndexByte(mimetype, '/'); offerMajorEnd != -1 {
+			if utils.EqualFold(spec[:specMajorEnd], mimetype[:offerMajorEnd]) &&
+			   spec[specMajorEnd:] == "/*" {
+				// Here, offer may be either concrete ("text/html") *or* the
+				// *identical* wildcard ("text/*"), but anything else was
+				// already screened out above.
 				return paramsMatch(specParams, offerParams)
 			}
 		}
