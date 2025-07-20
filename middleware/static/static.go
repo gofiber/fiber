@@ -55,14 +55,6 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 			return nil, errors.New("invalid path")
 		}
 		s = "/" + s
-	} else {
-		// verify no traversal after cleaning
-		if strings.Contains(raw, "..") || strings.Contains(s, "..") {
-			return nil, errors.New("invalid path")
-		}
-		if !strings.HasPrefix(s, "/") {
-			s = "/" + s
-		}
 	}
 
 	return utils.UnsafeBytes(s), nil
