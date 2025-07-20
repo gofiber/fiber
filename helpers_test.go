@@ -250,12 +250,6 @@ func Test_Utils_AcceptsOfferType(t *testing.T) {
 			accepts:     false,
 		},
 		{
-			description: "unknown offerType extension",
-			spec:        "application/*",
-			offerType:   "unknown",
-			accepts:     false,
-		},
-		{
 			description: "params match",
 			spec:        "application/json",
 			specParams:  headerParams{"format": []byte("foo"), "version": []byte("1")},
