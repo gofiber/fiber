@@ -31,3 +31,12 @@ func TestConfigDefault_PartialAndNegative(t *testing.T) {
 	cfg := configDefault(Config{Multiplier: -1, MaxRetryCount: 0})
 	require.Equal(t, DefaultConfig, cfg)
 }
+
+func TestConfigDefault_CustomInitialInterval(t *testing.T) {
+	t.Parallel()
+
+	cfg := configDefault(Config{InitialInterval: 5 * time.Second})
+
+	require.Equal(t, 5*time.Second, cfg.currentInterval)
+	require.Equal(t, 5*time.Second, cfg.InitialInterval)
+}

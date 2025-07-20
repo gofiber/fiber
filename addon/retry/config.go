@@ -61,8 +61,8 @@ func configDefault(config ...Config) Config {
 	if cfg.MaxRetryCount <= 0 {
 		cfg.MaxRetryCount = DefaultConfig.MaxRetryCount
 	}
-	if cfg.currentInterval != cfg.InitialInterval {
-		cfg.currentInterval = DefaultConfig.currentInterval
+	if cfg.currentInterval == 0 {
+		cfg.currentInterval = cfg.InitialInterval
 	}
 	return cfg
 }
