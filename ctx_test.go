@@ -1176,6 +1176,22 @@ func Test_Ctx_Cookie_MaxAgeOnly(t *testing.T) {
 	)
 }
 
+// go test -run Test_Ctx_Cookie_SameSiteNoneAutoSecure
+func Test_Ctx_Cookie_SameSiteNoneAutoSecure(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	ck := &Cookie{
+		Name:     "auto",
+		Value:    "v",
+		SameSite: CookieSameSiteNoneMode,
+	}
+	c.Res().Cookie(ck)
+
+	require.Equal(t, "auto=v; path=/; secure; SameSite=None", c.Res().Get(HeaderSetCookie))
+}
+
 // go test -run Test_Ctx_Cookie_StrictPartitioned
 func Test_Ctx_Cookie_StrictPartitioned(t *testing.T) {
 	t.Parallel()

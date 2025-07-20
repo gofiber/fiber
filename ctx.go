@@ -425,6 +425,10 @@ func (c *DefaultCtx) Cookie(cookie *Cookie) {
 		cookie.Path = "/"
 	}
 
+	if utils.ToLower(cookie.SameSite) == CookieSameSiteNoneMode && !cookie.Secure {
+		cookie.Secure = true
+	}
+
 	if cookie.SessionOnly {
 		cookie.MaxAge = 0
 		cookie.Expires = time.Time{}
