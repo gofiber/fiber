@@ -1265,36 +1265,37 @@ func Test_Ctx_Cookie_SameSite_CaseInsensitive(t *testing.T) {
 // go test -run Test_Ctx_Cookie_SameSite_None_Secure
 func Test_Ctx_Cookie_SameSite_None_Secure(t *testing.T) {
 	t.Parallel()
+	app := New()
 
 	tests := []struct {
 		name            string
 		sameSite        string
+		expectedContain string
 		initialSecure   bool
 		expectedSecure  bool
-		expectedContain string
 	}{
-		// Test that SameSite=None automatically sets Secure=true
-		{"None lowercase - initially false", "none", false, true, "secure"},
-		{"None uppercase - initially false", "NONE", false, true, "secure"},
-		{"None mixed case - initially false", "NoNe", false, true, "secure"},
-		{"None proper case - initially false", "None", false, true, "secure"},
-
-		// Test that SameSite=None respects existing Secure=true
-		{"None with existing secure", "None", true, true, "secure"},
-
-		// Test that other SameSite values don't force Secure=true
-		{"Strict doesn't force secure", "Strict", false, false, "SameSite=Strict"},
-		{"Lax doesn't force secure", "Lax", false, false, "SameSite=Lax"},
-		{"Disabled doesn't force secure", "disabled", false, false, ""},
+		// Strict
+		{name: "Strict lowercase", sameSite: "strict", expectedContain: "SameSite=Strict", initialSecure: false, expectedSecure: false},
+		{name: "Strict uppercase", sameSite: "STRICT", expectedContain: "SameSite=Strict", initialSecure: true, expectedSecure: true},
+		// Lax
+		{name: "Lax mixed case", sameSite: "lAx", expectedContain: "SameSite=Lax", initialSecure: false, expectedSecure: false},
+		{name: "Lax proper case", sameSite: "Lax", expectedContain: "SameSite=Lax", initialSecure: true, expectedSecure: true},
+		// None - should always be secure
+		{name: "None lowercase", sameSite: "none", expectedContain: "SameSite=None", initialSecure: false, expectedSecure: true},
+		{name: "None uppercase", sameSite: "NONE", expectedContain: "SameSite=None", initialSecure: true, expectedSecure: true},
+		// Disabled
+		{name: "Disabled", sameSite: "disabled", expectedContain: "", initialSecure: false, expectedSecure: false},
+		{name: "Disabled Secure", sameSite: "disabled", expectedContain: "", initialSecure: true, expectedSecure: true},
+		// Invalid values default to Lax
+		{name: "Invalid value", sameSite: "invalid", expectedContain: "SameSite=Lax", initialSecure: false, expectedSecure: false},
+		{name: "Empty value", sameSite: "", expectedContain: "SameSite=Lax", initialSecure: true, expectedSecure: true},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
-			// Create a fresh context for each test case
-			app := New()
 			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(c)
 
 			cookie := &Cookie{
 				Name:     "test",
@@ -1302,20 +1303,19 @@ func Test_Ctx_Cookie_SameSite_None_Secure(t *testing.T) {
 				SameSite: tc.sameSite,
 				Secure:   tc.initialSecure,
 			}
-			c.Res().Cookie(cookie)
+			c.Cookie(cookie)
+			header := c.Res().Get(HeaderSetCookie)
 
-			// Check that the cookie's Secure field was updated as expected
-			require.Equal(t, tc.expectedSecure, cookie.Secure, "Cookie.Secure should be %v", tc.expectedSecure)
-
-			setCookieHeader := c.Res().Get(HeaderSetCookie)
-			if tc.expectedContain != "" {
-				require.Contains(t, setCookieHeader, tc.expectedContain)
+			if tc.expectedContain == "" {
+				require.NotContains(t, header, "SameSite")
+			} else {
+				require.Contains(t, header, tc.expectedContain)
 			}
 
-			// Verify that SameSite=None always includes secure in the header
-			if tc.sameSite == "none" || tc.sameSite == "NONE" || tc.sameSite == "NoNe" || tc.sameSite == "None" {
-				require.Contains(t, setCookieHeader, "secure")
-				require.Contains(t, setCookieHeader, "SameSite=None")
+			if tc.expectedSecure {
+				require.Contains(t, header, "Secure")
+			} else {
+				require.NotContains(t, header, "Secure")
 			}
 		})
 	}

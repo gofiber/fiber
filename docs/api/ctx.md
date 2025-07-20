@@ -1547,7 +1547,7 @@ app.Get("/set", func(c fiber.Ctx) error {
         Value:    "randomvalue",
         Expires:  time.Now().Add(24 * time.Hour),
         HTTPOnly: true,
-        SameSite: "lax",
+        SameSite: "Lax",
     })
 
     // ...
@@ -1559,7 +1559,7 @@ app.Get("/delete", func(c fiber.Ctx) error {
         // Set expiry date to the past
         Expires:  time.Now().Add(-(time.Hour * 2)),
         HTTPOnly: true,
-        SameSite: "lax",
+        SameSite: "Lax",
     })
 
     // ...
