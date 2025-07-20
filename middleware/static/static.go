@@ -38,8 +38,8 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 		s = us
 	}
 
-	// reject any null bytes or traversal attempts
-	if strings.Contains(s, "\x00") || strings.Contains(s, "..") || strings.Contains(s, ":") {
+	// reject any null bytes
+	if strings.Contains(s, "\x00") {
 		return nil, errors.New("invalid path")
 	}
 
