@@ -68,8 +68,8 @@ func sleepWithContext(ctx context.Context, d time.Duration) error {
 | Property  | Type               | Description                                                          | Default |
 |:----------|:-------------------|:---------------------------------------------------------------------|:-------|
 | Next      | `func(fiber.Ctx) bool` | Function to skip the middleware.                                   | `nil`  |
-| Timeout   | `time.Duration`    | Timeout duration for requests.                                      | `0`    |
-| OnTimeout | `fiber.Handler`    | Handler executed when a timeout occurs.                             | `nil`  |
+| Timeout   | `time.Duration`    | Timeout duration for requests. `0` or a negative value disables the timeout. | `0`    |
+| OnTimeout | `fiber.Handler`    | Handler executed when a timeout occurs. Defaults to returning `fiber.ErrRequestTimeout`. | `nil`  |
 | Errors    | `[]error`          | Custom errors treated as timeout errors.                            | `nil`  |
 
 Test http 200 with curl:
