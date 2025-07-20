@@ -394,7 +394,7 @@ func (c *Ctx) BodyParser(out interface{}) error {
 	if strings.HasSuffix(ctype, "json") {
 		return c.app.config.JSONDecoder(c.Body(), out)
 	}
-	if strings.HasPrefix(ctype, MIMEApplicationForm) {
+	if ctype == MIMEApplicationForm {
 		data := make(map[string][]string)
 		var err error
 
@@ -415,7 +415,7 @@ func (c *Ctx) BodyParser(out interface{}) error {
 
 		return c.parseToStruct(bodyTag, out, data)
 	}
-	if strings.HasPrefix(ctype, MIMEMultipartForm) {
+	if ctype == MIMEMultipartForm {
 		multipartForm, err := c.fasthttp.MultipartForm()
 		if err != nil {
 			return err
@@ -431,7 +431,7 @@ func (c *Ctx) BodyParser(out interface{}) error {
 
 		return c.parseToStruct(bodyTag, out, data)
 	}
-	if strings.HasPrefix(ctype, MIMETextXML) || strings.HasPrefix(ctype, MIMEApplicationXML) {
+	if ctype == MIMETextXML || ctype == MIMEApplicationXML {
 		if err := xml.Unmarshal(c.Body(), out); err != nil {
 			return fmt.Errorf("failed to unmarshal: %w", err)
 		}
