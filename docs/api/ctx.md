@@ -1606,6 +1606,12 @@ app.Get("/", func(c fiber.Ctx) error {
 
 :::info
 When setting a cookie with `SameSite=None`, Fiber automatically sets `Secure=true` as required by RFC 6265bis and modern browsers. This ensures compliance with the "None" SameSite policy which mandates that cookies must be sent over secure connections.
+
+For more information, see:
+
+- [Mozilla Documentation](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie#none)
+- [Chrome Documentation](https://developers.google.com/search/blog/2020/01/get-ready-for-new-samesitenone-secure)
+
 :::
 
 :::info
