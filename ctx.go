@@ -432,7 +432,7 @@ func (c *DefaultCtx) Cookie(cookie *Cookie) {
 
 	var sameSite http.SameSite
 
-	switch utils.ToLower(cookie.SameSite) {
+	switch cookie.SameSite {
 	case CookieSameSiteStrictMode:
 		sameSite = http.SameSiteStrictMode
 	case CookieSameSiteNoneMode:

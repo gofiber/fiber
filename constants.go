@@ -308,9 +308,9 @@ const (
 // https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis-03#section-4.1.2.7
 const (
 	CookieSameSiteDisabled   = "disabled" // not in RFC, just control "SameSite" attribute will not be set.
-	CookieSameSiteLaxMode    = "lax"
-	CookieSameSiteStrictMode = "strict"
-	CookieSameSiteNoneMode   = "none"
+	CookieSameSiteLaxMode    = "Lax"
+	CookieSameSiteStrictMode = "Strict"
+	CookieSameSiteNoneMode   = "None"
 )
 
 // Route Constraints
