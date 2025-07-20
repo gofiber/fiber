@@ -13,8 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
+
+	"github.com/gofiber/fiber/v3"
 )
 
 const (
@@ -1088,4 +1089,21 @@ func Test_Static_PathTraversal_WindowsOnly(t *testing.T) {
 	// Attempts involving relative traversal and current directory reference
 	assertTraversalBlocked("/.\\../index.html")
 	assertTraversalBlocked("/./..\\index.html")
+}
+
+func Benchmark_SanitizePath(b *testing.B) {
+	bench := func(name string, filesystem fs.FS, path []byte) {
+		b.Run(name, func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				if _, err := sanitizePath(path, filesystem); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+
+	bench("nilFS - urlencoded chars", nil, []byte("/foo%2Fbar/../baz%20qux/index.html"))
+	bench("dirFS - urlencoded chars", os.DirFS("."), []byte("/foo%2Fbar/../baz%20qux/index.html"))
+	bench("nilFS - slashes", nil, []byte("\\foo%2Fbar\\baz%20qux\\index.html"))
 }
