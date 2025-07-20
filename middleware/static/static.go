@@ -43,7 +43,6 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 		return nil, errors.New("invalid path")
 	}
 
-	raw := s
 	s = pathpkg.Clean("/" + s)
 
 	if filesystem != nil {
