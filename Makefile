@@ -36,7 +36,7 @@ markdown:
 ## lint: 🚨 Run lint checks
 .PHONY: lint
 lint:
-	@which golangci-lint > /dev/null || (go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest)
+	@which golangci-lint > /dev/null || (go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.7)
 	@export PATH="$(shell go env GOPATH)/bin:$$PATH"; golangci-lint run
 
 ## modernize: 🛠 Run gopls modernize
