@@ -220,11 +220,17 @@ func acceptsLanguageOffer(spec, offer string, _ headerParams) bool {
 func acceptsOfferType(spec, offerType string, specParams headerParams) bool {
 	var offerMime, offerParams string
 
+	// Split off any parameters
 	if i := strings.IndexByte(offerType, ';'); i == -1 {
-		offerMime = offerType
+		offerMime = strings.TrimSpace(offerType)
 	} else {
-		offerMime = offerType[:i]
+		offerMime = strings.TrimSpace(offerType[:i])
 		offerParams = offerType[i:]
+	}
+
+	// If the OFFER itself is a wildcard, never match
+	if strings.HasSuffix(offerMime, "/*") {
+		return false
 	}
 
 	// Accept: */*
@@ -232,24 +238,27 @@ func acceptsOfferType(spec, offerType string, specParams headerParams) bool {
 		return paramsMatch(specParams, offerParams)
 	}
 
+	// Normalize offerMime (resolve file‑extension → mime)
 	var mimetype string
-	if strings.IndexByte(offerMime, '/') != -1 {
-		mimetype = offerMime // MIME type
+	if strings.Contains(offerMime, "/") {
+		mimetype = offerMime
 	} else {
-		mimetype = utils.GetMIME(offerMime) // extension
+		mimetype = utils.GetMIME(offerMime)
 	}
 
-	if spec == mimetype {
-		// Accept: <MIME_type>/<MIME_subtype>
+	// Exact concrete match (neither side has a wildcard subtype)
+	if spec == mimetype && !strings.HasSuffix(spec, "/*") {
 		return paramsMatch(specParams, offerParams)
 	}
 
-	s := strings.IndexByte(mimetype, '/')
-	specSlash := strings.IndexByte(spec, '/')
-	// Accept: <MIME_type>/*
-	if s != -1 && specSlash != -1 {
-		if utils.EqualFold(spec[:specSlash], mimetype[:s]) && (spec[specSlash:] == "/*" || mimetype[s:] == "/*") {
-			return paramsMatch(specParams, offerParams)
+	// Handle spec wildcard on subtype: <type>/*
+	if s := strings.IndexByte(mimetype, '/'); s != -1 {
+		if slash := strings.IndexByte(spec, '/'); slash != -1 {
+			// same major type
+			if utils.EqualFold(spec[:slash], mimetype[:s]) && spec[slash:] == "/*" {
+				// offer must be concrete (we already ruled out offerMime ending in /*)
+				return paramsMatch(specParams, offerParams)
+			}
 		}
 	}
 
