@@ -31,21 +31,6 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// equalASCIIFold reports whether s and t are equal, ASCII-case-insensitively.
-// This function avoids allocations by performing case-insensitive comparison
-// using bitwise operations instead of string conversion.
-func equalASCIIFold(s, t string) bool {
-	if len(s) != len(t) {
-		return false
-	}
-	for i := 0; i < len(s); i++ {
-		if s[i]|0x20 != t[i]|0x20 {
-			return false
-		}
-	}
-	return true
-}
-
 const (
 	schemeHTTP  = "http"
 	schemeHTTPS = "https"
@@ -448,13 +433,13 @@ func (c *DefaultCtx) Cookie(cookie *Cookie) {
 	var sameSite http.SameSite
 
 	switch {
-	case equalASCIIFold(cookie.SameSite, CookieSameSiteStrictMode):
+	case utils.EqualFold(cookie.SameSite, CookieSameSiteStrictMode):
 		sameSite = http.SameSiteStrictMode
-	case equalASCIIFold(cookie.SameSite, CookieSameSiteNoneMode):
+	case utils.EqualFold(cookie.SameSite, CookieSameSiteNoneMode):
 		sameSite = http.SameSiteNoneMode
-	case equalASCIIFold(cookie.SameSite, CookieSameSiteDisabled):
+	case utils.EqualFold(cookie.SameSite, CookieSameSiteDisabled):
 		sameSite = 0
-	case equalASCIIFold(cookie.SameSite, CookieSameSiteLaxMode):
+	case utils.EqualFold(cookie.SameSite, CookieSameSiteLaxMode):
 		sameSite = http.SameSiteLaxMode
 	default:
 		sameSite = http.SameSiteLaxMode
