@@ -1114,13 +1114,14 @@ func Test_Ctx_Cookie_PartitionedSecure(t *testing.T) {
 
 // go test -run Test_Ctx_Cookie_SameSiteNoneAutoSecure
 func Test_Ctx_Cookie_SameSiteNoneAutoSecure(t *testing.T) {
-	t.Parallel()
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	t.Cleanup(func() {
++		app.ReleaseCtx(c)
++	})
 
 	testCases := []struct {
-		description	string
+		description string
 		sameSite	string
 	}{
 		{
@@ -1139,7 +1140,6 @@ func Test_Ctx_Cookie_SameSiteNoneAutoSecure(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
-			t.Parallel()
 			// Reset response header for each sub-test to ensure a clean state
 			c.Response().Header.Reset()
 
