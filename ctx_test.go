@@ -1262,6 +1262,65 @@ func Test_Ctx_Cookie_SameSite_CaseInsensitive(t *testing.T) {
 	}
 }
 
+// go test -run Test_Ctx_Cookie_SameSite_None_Secure
+func Test_Ctx_Cookie_SameSite_None_Secure(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name            string
+		sameSite        string
+		initialSecure   bool
+		expectedSecure  bool
+		expectedContain string
+	}{
+		// Test that SameSite=None automatically sets Secure=true
+		{"None lowercase - initially false", "none", false, true, "secure"},
+		{"None uppercase - initially false", "NONE", false, true, "secure"},
+		{"None mixed case - initially false", "NoNe", false, true, "secure"},
+		{"None proper case - initially false", "None", false, true, "secure"},
+
+		// Test that SameSite=None respects existing Secure=true
+		{"None with existing secure", "None", true, true, "secure"},
+
+		// Test that other SameSite values don't force Secure=true
+		{"Strict doesn't force secure", "Strict", false, false, "SameSite=Strict"},
+		{"Lax doesn't force secure", "Lax", false, false, "SameSite=Lax"},
+		{"Disabled doesn't force secure", "disabled", false, false, ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Create a fresh context for each test case
+			app := New()
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+			cookie := &Cookie{
+				Name:     "test",
+				Value:    "value",
+				SameSite: tc.sameSite,
+				Secure:   tc.initialSecure,
+			}
+			c.Res().Cookie(cookie)
+
+			// Check that the cookie's Secure field was updated as expected
+			require.Equal(t, tc.expectedSecure, cookie.Secure, "Cookie.Secure should be %v", tc.expectedSecure)
+
+			setCookieHeader := c.Res().Get(HeaderSetCookie)
+			if tc.expectedContain != "" {
+				require.Contains(t, setCookieHeader, tc.expectedContain)
+			}
+
+			// Verify that SameSite=None always includes secure in the header
+			if tc.sameSite == "none" || tc.sameSite == "NONE" || tc.sameSite == "NoNe" || tc.sameSite == "None" {
+				require.Contains(t, setCookieHeader, "secure")
+				require.Contains(t, setCookieHeader, "SameSite=None")
+			}
+		})
+	}
+}
+
 // go test -v -run=^$ -bench=Benchmark_Ctx_Cookie -benchmem -count=4
 func Benchmark_Ctx_Cookie(b *testing.B) {
 	app := New()

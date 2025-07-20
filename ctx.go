@@ -437,6 +437,8 @@ func (c *DefaultCtx) Cookie(cookie *Cookie) {
 		sameSite = http.SameSiteStrictMode
 	case utils.EqualFold(cookie.SameSite, CookieSameSiteNoneMode):
 		sameSite = http.SameSiteNoneMode
+		// SameSite=None requires Secure=true per RFC and browser requirements
+		cookie.Secure = true
 	case utils.EqualFold(cookie.SameSite, CookieSameSiteDisabled):
 		sameSite = 0
 	case utils.EqualFold(cookie.SameSite, CookieSameSiteLaxMode):
