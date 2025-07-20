@@ -432,14 +432,14 @@ func (c *DefaultCtx) Cookie(cookie *Cookie) {
 
 	var sameSite http.SameSite
 
-	switch cookie.SameSite {
-	case CookieSameSiteStrictMode:
+	switch utils.ToLower(cookie.SameSite) {
+	case utils.ToLower(CookieSameSiteStrictMode):
 		sameSite = http.SameSiteStrictMode
-	case CookieSameSiteNoneMode:
+	case utils.ToLower(CookieSameSiteNoneMode):
 		sameSite = http.SameSiteNoneMode
-	case CookieSameSiteDisabled:
+	case CookieSameSiteDisabled: // "disabled" is already lowercase
 		sameSite = 0
-	case CookieSameSiteLaxMode:
+	case utils.ToLower(CookieSameSiteLaxMode):
 		sameSite = http.SameSiteLaxMode
 	default:
 		sameSite = http.SameSiteLaxMode
