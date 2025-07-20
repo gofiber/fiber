@@ -244,6 +244,12 @@ func Test_Utils_AcceptsOfferType(t *testing.T) {
 			accepts:     false,
 		},
 		{
+			description: "mismatch with subtype prefix",
+			spec:        "application/json",
+			offerType:   "application/json+xml",
+			accepts:     false,
+		},
+		{
 			description: "params match",
 			spec:        "application/json",
 			specParams:  headerParams{"format": []byte("foo"), "version": []byte("1")},
