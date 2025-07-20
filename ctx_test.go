@@ -1096,20 +1096,45 @@ func Test_Ctx_Cookie(t *testing.T) {
 }
 
 // go test -run Test_Ctx_Cookie_PartitionedSecure
-func Test_Ctx_Cookie_PartitionedSecure(t *testing.T) {
+func Test_Ctx_Cookie_SameSiteNoneAutoSecure(t *testing.T) {
 	t.Parallel()
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
 
-	ck := &Cookie{
-		Name:        "ps",
-		Value:       "v",
-		Secure:      true,
-		SameSite:    CookieSameSiteNoneMode,
-		Partitioned: true,
+	testCases := []struct {
+		description string
+		sameSite	string
+	}{
+		{
+			description: "samesite is 'none'",
+			sameSite:	CookieSameSiteNoneMode,
+		},
+		{
+			description: "samesite is 'None'",
+			sameSite:	"None",
+		},
+		{
+			description: "samesite is 'NONE'",
+			sameSite:	"NONE",
+		},
 	}
-	c.Res().Cookie(ck)
-	require.Equal(t, "ps=v; path=/; secure; SameSite=None; Partitioned", c.Res().Get(HeaderSetCookie))
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			// Reset response header for each sub-test to ensure a clean state
+			c.Response().Header.Reset()
+
+			ck := &Cookie{
+				Name:	 "auto",
+				Value:	"v",
+				SameSite: tc.sameSite,
+			}
+			c.Res().Cookie(ck)
+
+			require.Equal(t, "auto=v; path=/; secure; SameSite=None", c.Res().Get(HeaderSetCookie))
+		})
+	}
 }
 
 // go test -run Test_Ctx_Cookie_Invalid
