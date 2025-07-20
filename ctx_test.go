@@ -1197,6 +1197,70 @@ func Test_Ctx_Cookie_StrictPartitioned(t *testing.T) {
 	)
 }
 
+// go test -run Test_Ctx_Cookie_SameSite_CaseInsensitive
+func Test_Ctx_Cookie_SameSite_CaseInsensitive(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		// Test case-insensitive Strict
+		{"Strict lowercase", "strict", "SameSite=Strict"},
+		{"Strict uppercase", "STRICT", "SameSite=Strict"},
+		{"Strict mixed case", "StRiCt", "SameSite=Strict"},
+		{"Strict proper case", "Strict", "SameSite=Strict"},
+
+		// Test case-insensitive Lax
+		{"Lax lowercase", "lax", "SameSite=Lax"},
+		{"Lax uppercase", "LAX", "SameSite=Lax"},
+		{"Lax mixed case", "LaX", "SameSite=Lax"},
+		{"Lax proper case", "Lax", "SameSite=Lax"},
+
+		// Test case-insensitive None
+		{"None lowercase", "none", "SameSite=None"},
+		{"None uppercase", "NONE", "SameSite=None"},
+		{"None mixed case", "NoNe", "SameSite=None"},
+		{"None proper case", "None", "SameSite=None"},
+
+		// Test case-insensitive disabled
+		{"Disabled lowercase", "disabled", ""},
+		{"Disabled uppercase", "DISABLED", ""},
+		{"Disabled mixed case", "DiSaBlEd", ""},
+		{"Disabled proper case", "disabled", ""},
+
+		// Test invalid values default to Lax
+		{"Invalid value", "invalid", "SameSite=Lax"},
+		{"Empty value", "", "SameSite=Lax"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Reset response
+			c.Response().Reset()
+
+			cookie := &Cookie{
+				Name:     "test",
+				Value:    "value",
+				SameSite: tc.input,
+			}
+			c.Res().Cookie(cookie)
+
+			setCookieHeader := c.Res().Get(HeaderSetCookie)
+			if tc.expected == "" {
+				// For disabled, SameSite should not appear in the header
+				require.NotContains(t, setCookieHeader, "SameSite")
+			} else {
+				// For all other cases, the expected SameSite should appear
+				require.Contains(t, setCookieHeader, tc.expected)
+			}
+		})
+	}
+}
+
 // go test -v -run=^$ -bench=Benchmark_Ctx_Cookie -benchmem -count=4
 func Benchmark_Ctx_Cookie(b *testing.B) {
 	app := New()
