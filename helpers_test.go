@@ -1385,3 +1385,30 @@ func Test_IsEtagStale(t *testing.T) {
 	// Weak vs. weak
 	require.False(t, app.isEtagStale(`W/"a"`, []byte(`W/"a"`)))
 }
+
+func Test_App_quoteRawString(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		in   string
+		out  string
+	}{
+		{"empty", "", ""},
+		{"simple", "simple", "simple"},
+		{"backslash", "A\\B", "A\\\\B"},
+		{"quote", `He said "Yo"`, `He said \"Yo\"`},
+		{"newline", "Hello\n", "Hello\\n"},
+		{"carriage", "Hello\r", "Hello\\r"},
+		{"controls", string([]byte{0, 31, 127}), "%00%1F%7F"},
+		{"mixed", "test \"A\n\r" + string([]byte{1}) + "\\", `test \"A\n\r%01\\`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New()
+			require.Equal(t, tc.out, app.quoteRawString(tc.in))
+		})
+	}
+}
