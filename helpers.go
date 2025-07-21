@@ -690,6 +690,38 @@ func isNoCache(cacheControl string) bool {
 	return false
 }
 
+func parseForwarded(header string) (ip, host, proto string) {
+	if header == "" {
+		return "", "", ""
+	}
+
+	if i := strings.IndexByte(header, ','); i != -1 {
+		header = header[:i]
+	}
+
+	parts := strings.Split(header, ";")
+	for _, p := range parts {
+		p = utils.Trim(p, ' ')
+		if eq := strings.IndexByte(p, '='); eq != -1 {
+			key := utils.ToLower(utils.Trim(p[:eq], ' '))
+			val := utils.Trim(utils.Trim(p[eq+1:], ' '), '"')
+			switch key {
+			case "for":
+				if len(val) > 1 && val[0] == '[' && val[len(val)-1] == ']' {
+					val = val[1 : len(val)-1]
+				}
+				ip = val
+			case "host":
+				host = val
+			case "proto":
+				proto = utils.ToLower(val)
+			}
+		}
+	}
+
+	return
+}
+
 var errTestConnClosed = errors.New("testConn is closed")
 
 type testConn struct {
