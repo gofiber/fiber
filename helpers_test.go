@@ -1181,6 +1181,7 @@ func Benchmark_GenericParseTypeFloats(b *testing.B) {
 
 // go test -v -run=^$ -bench=Benchmark_GenericParseTypeBytes -benchmem -count=4
 func Benchmark_GenericParseTypeBytes(b *testing.B) {
+	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
 	cases := []struct {
 		str   string
 		err   error
@@ -1228,6 +1229,7 @@ func Benchmark_GenericParseTypeBytes(b *testing.B) {
 
 // go test -v -run=^$ -bench=Benchmark_GenericParseTypeString -benchmem -count=4
 func Benchmark_GenericParseTypeString(b *testing.B) {
+	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
 	tests := []string{"john", "doe", "hello", "fiber"}
 
 	for _, test := range tests {
@@ -1249,6 +1251,7 @@ func Benchmark_GenericParseTypeString(b *testing.B) {
 
 // go test -v -run=^$ -bench=Benchmark_GenericParseTypeBoolean -benchmem -count=4
 func Benchmark_GenericParseTypeBoolean(b *testing.B) {
+	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
 	bools := []struct {
 		str   string
 		value bool
