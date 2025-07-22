@@ -283,9 +283,12 @@ func acceptsOfferType(spec, offerType string, specParams headerParams) bool {
 	}
 
 	s := strings.IndexByte(mimetype, '/')
+	specSlash := strings.IndexByte(spec, '/')
 	// Accept: <MIME_type>/*
-	if strings.HasPrefix(spec, mimetype[:s]) && (spec[s:] == "/*" || mimetype[s:] == "/*") {
-		return paramsMatch(specParams, offerParams)
+	if s != -1 && specSlash != -1 {
+		if utils.EqualFold(spec[:specSlash], mimetype[:s]) && (spec[specSlash:] == "/*" || mimetype[s:] == "/*") {
+			return paramsMatch(specParams, offerParams)
+		}
 	}
 
 	return false
