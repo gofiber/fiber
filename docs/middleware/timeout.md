@@ -17,7 +17,7 @@ It does not cancel long running executions. Underlying executions must handle ti
 ## Signatures
 
 ```go
-func New(handler fiber.Handler, timeout time.Duration, timeoutErrors ...error) fiber.Handler
+func New(handler fiber.Handler, config ...timeout.Config) fiber.Handler
 ```
 
 ## Examples
@@ -44,7 +44,7 @@ func main() {
         return nil
     }
 
-    app.Get("/foo/:sleepTime", timeout.New(h, 2*time.Second))
+    app.Get("/foo/:sleepTime", timeout.New(h, timeout.Config{Timeout: 2 * time.Second}))
     log.Fatal(app.Listen(":3000"))
 }
 
@@ -62,6 +62,15 @@ func sleepWithContext(ctx context.Context, d time.Duration) error {
     return nil
 }
 ```
+
+## Config
+
+| Property  | Type               | Description                                                          | Default |
+|:----------|:-------------------|:---------------------------------------------------------------------|:-------|
+| Next      | `func(fiber.Ctx) bool` | Function to skip the middleware.                                   | `nil`  |
+| Timeout   | `time.Duration`    | Timeout duration for requests. `0` or a negative value disables the timeout. | `0`    |
+| OnTimeout | `fiber.Handler`    | Handler executed when a timeout occurs. Defaults to returning `fiber.ErrRequestTimeout`. | `nil`  |
+| Errors    | `[]error`          | Custom errors treated as timeout errors.                            | `nil`  |
 
 Test http 200 with curl:
 
@@ -90,7 +99,7 @@ func main() {
         return nil
     }
 
-    app.Get("/foo/:sleepTime", timeout.New(h, 2*time.Second, ErrFooTimeOut))
+    app.Get("/foo/:sleepTime", timeout.New(h, timeout.Config{Timeout: 2 * time.Second, Errors: []error{ErrFooTimeOut}}))
     log.Fatal(app.Listen(":3000"))
 }
 
@@ -129,7 +138,7 @@ func main() {
         return nil
     }
 
-    app.Get("/foo", timeout.New(handler, 10*time.Second))
+    app.Get("/foo", timeout.New(handler, timeout.Config{Timeout: 10 * time.Second}))
     log.Fatal(app.Listen(":3000"))
 }
 ```

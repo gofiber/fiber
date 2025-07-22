@@ -1,8 +1,8 @@
 ---
 id: advance-format
-title: 🐛 Advance Format (Msgpack)
+title: 🐛 Advance Format
 description: >-
-  Learn how to use MessagePack (MsgPack) for efficient binary serialization in Fiber applications.
+  Learn how to use MessagePack (MsgPack) and CBOR for efficient binary serialization in Fiber applications.
 sidebar_position: 9
 ---
 
@@ -57,6 +57,47 @@ func main() {
         }
         // Content type will be set automatically to application/vnd.msgpack
         return c.MsgPack(data)
+    })
+
+    app.Listen(":3000")
+}
+```
+
+## CBOR
+
+Fiber doesn't include a CBOR implementation by default. To enable CBOR encoding and decoding you need to choose a library, for example [fxamacker/cbor](https://github.com/fxamacker/cbor).
+
+```bash
+go get github.com/fxamacker/cbor/v2
+```
+
+Configure Fiber with the chosen library:
+
+```go
+import (
+    "github.com/gofiber/fiber/v3"
+    "github.com/fxamacker/cbor/v2"
+)
+
+func main() {
+    app := fiber.New(fiber.Config{
+        CBOREncoder: cbor.Marshal,
+        CBORDecoder: cbor.Unmarshal,
+    })
+
+    type User struct {
+        Name string `cbor:"name"`
+        Age  int    `cbor:"age"`
+    }
+
+    app.Post("/cbor", func(c fiber.Ctx) error {
+        var user User
+        if err := c.Bind().CBOR(&user); err != nil {
+            return err
+        }
+
+        // Content type will be set automatically to application/cbor
+        return c.CBOR(user)
     })
 
     app.Listen(":3000")

@@ -226,7 +226,7 @@ func (r *Request) Params() iter.Seq2[string, []string] {
 		sort.Sort(&p)
 
 		j := 0
-		for i := 0; i < vals; i++ {
+		for i := range vals {
 			if i == vals-1 || p.k[i] != p.k[i+1] {
 				if !yield(p.k[i], p.v[j:i+1]) {
 					break
@@ -461,7 +461,7 @@ func (r *Request) AllFormData() iter.Seq2[string, []string] {
 		sort.Sort(&p)
 
 		j := 0
-		for i := 0; i < vals; i++ {
+		for i := range vals {
 			if i == vals-1 || p.k[i] != p.k[i+1] {
 				if !yield(p.k[i], p.v[j:i+1]) {
 					break

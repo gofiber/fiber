@@ -1897,6 +1897,8 @@ app.Get("/msgpack", func(c fiber.Ctx) error {
 
 CBOR converts any interface or string to CBOR encoded bytes.
 
+> **Note:** Before using any CBOR-related features, make sure to follow the [CBOR setup instructions](../guide/advance-format.md#cbor).
+
 :::info
 CBOR also sets the content header to the `ctype` parameter. If no `ctype` is passed in, the header is set to `application/cbor`.
 :::

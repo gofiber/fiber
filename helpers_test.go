@@ -7,7 +7,6 @@ package fiber
 import (
 	"math"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 	"unsafe"
@@ -242,6 +241,12 @@ func Test_Utils_AcceptsOfferType(t *testing.T) {
 			description: "no params, mismatch",
 			spec:        "application/json",
 			offerType:   "application/xml",
+			accepts:     false,
+		},
+		{
+			description: "mismatch with subtype prefix",
+			spec:        "application/json",
+			offerType:   "application/json+xml",
 			accepts:     false,
 		},
 		{
@@ -628,46 +633,6 @@ func Benchmark_Utils_IsNoCache(b *testing.B) {
 		ok = isNoCache("max-age=30, no-cache,public")
 	}
 	require.True(b, ok)
-}
-
-// go test -v -run=^$ -bench=Benchmark_SlashRecognition -benchmem -count=4
-func Benchmark_SlashRecognition(b *testing.B) {
-	search := "wtf/1234"
-	var result bool
-
-	b.Run("indexBytes", func(b *testing.B) {
-		b.ReportAllocs()
-		result = false
-		for b.Loop() {
-			if strings.IndexByte(search, slashDelimiter) != -1 {
-				result = true
-			}
-		}
-		require.True(b, result)
-	})
-	b.Run("forEach", func(b *testing.B) {
-		b.ReportAllocs()
-		result = false
-		c := int32(slashDelimiter)
-		for b.Loop() {
-			for _, b := range search {
-				if b == c {
-					result = true
-					break
-				}
-			}
-		}
-		require.True(b, result)
-	})
-	b.Run("strings.ContainsRune", func(b *testing.B) {
-		b.ReportAllocs()
-		result = false
-		c := int32(slashDelimiter)
-		for b.Loop() {
-			result = strings.ContainsRune(search, c)
-		}
-		require.True(b, result)
-	})
 }
 
 type testGenericParseTypeIntCase struct {
@@ -1216,6 +1181,7 @@ func Benchmark_GenericParseTypeFloats(b *testing.B) {
 
 // go test -v -run=^$ -bench=Benchmark_GenericParseTypeBytes -benchmem -count=4
 func Benchmark_GenericParseTypeBytes(b *testing.B) {
+	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
 	cases := []struct {
 		str   string
 		err   error
@@ -1263,6 +1229,7 @@ func Benchmark_GenericParseTypeBytes(b *testing.B) {
 
 // go test -v -run=^$ -bench=Benchmark_GenericParseTypeString -benchmem -count=4
 func Benchmark_GenericParseTypeString(b *testing.B) {
+	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
 	tests := []string{"john", "doe", "hello", "fiber"}
 
 	for _, test := range tests {
@@ -1284,6 +1251,7 @@ func Benchmark_GenericParseTypeString(b *testing.B) {
 
 // go test -v -run=^$ -bench=Benchmark_GenericParseTypeBoolean -benchmem -count=4
 func Benchmark_GenericParseTypeBoolean(b *testing.B) {
+	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
 	bools := []struct {
 		str   string
 		value bool
@@ -1419,4 +1387,31 @@ func Test_IsEtagStale(t *testing.T) {
 
 	// Weak vs. weak
 	require.False(t, app.isEtagStale(`W/"a"`, []byte(`W/"a"`)))
+}
+
+func Test_App_quoteRawString(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		in   string
+		out  string
+	}{
+		{"empty", "", ""},
+		{"simple", "simple", "simple"},
+		{"backslash", "A\\B", "A\\\\B"},
+		{"quote", `He said "Yo"`, `He said \"Yo\"`},
+		{"newline", "Hello\n", "Hello\\n"},
+		{"carriage", "Hello\r", "Hello\\r"},
+		{"controls", string([]byte{0, 31, 127}), "%00%1F%7F"},
+		{"mixed", "test \"A\n\r" + string([]byte{1}) + "\\", `test \"A\n\r%01\\`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New()
+			require.Equal(t, tc.out, app.quoteRawString(tc.in))
+		})
+	}
 }

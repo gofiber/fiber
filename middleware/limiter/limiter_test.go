@@ -811,30 +811,30 @@ func Test_Sliding_Window(t *testing.T) {
 		}
 	}
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		singleRequest(false)
 	}
 
 	time.Sleep(3 * time.Second)
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		singleRequest(false)
 	}
 
 	time.Sleep(3 * time.Second)
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		singleRequest(false)
 	}
 
 	time.Sleep(3 * time.Second)
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		singleRequest(false)
 	}
 
 	// requests should fail now
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		singleRequest(true)
 	}
 }

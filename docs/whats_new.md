@@ -26,6 +26,7 @@ Here's a quick overview of the changes in Fiber `v3`:
 - [🧰 Generic functions](#-generic-functions)
 - [🥡 Services](#-services)
 - [📃 Log](#-log)
+- [📦 Storage Interface](#-storage-interface)
 - [🧬 Middlewares](#-middlewares)
   - [Important Change for Accessing Middleware Data](#important-change-for-accessing-middleware-data)
   - [Adaptor](#adaptor)
@@ -974,6 +975,30 @@ app.Use(logger.New(logger.Config{
 }))
 ```
 
+## 📦 Storage Interface
+
+The storage interface has been updated to include new subset of methods with `WithContext` suffix. These methods allow you to pass a context to the storage operations, enabling better control over timeouts and cancellation if needed. This is particularly useful when storage implementations used outside of the Fiber core, such as in background jobs or long-running tasks.
+
+**New Methods Signatures:**
+
+```go
+// GetWithContext gets the value for the given key with a context.
+// `nil, nil` is returned when the key does not exist
+GetWithContext(ctx context.Context, key string) ([]byte, error)
+
+// SetWithContext stores the given value for the given key
+// with an expiration value, 0 means no expiration.
+// Empty key or value will be ignored without an error.
+SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error
+
+// DeleteWithContext deletes the value for the given key with a context.
+// It returns no error if the storage does not contain the key,
+DeleteWithContext(ctx context.Context, key string) error
+
+// ResetWithContext resets the storage and deletes all keys with a context.
+ResetWithContext(ctx context.Context) error
+```
+
 ## 🧬 Middlewares
 
 ### Important Change for Accessing Middleware Data
@@ -1289,6 +1314,12 @@ The Session middleware has undergone key changes in v3 to improve functionality 
 - **Absolute Timeout**: The `AbsoluteTimeout` field has been added. If you need to set an absolute session timeout, you can use this field to define the duration. The session will expire after the specified duration, regardless of activity.
 
 For more details on these changes and migration instructions, check the [Session Middleware Migration Guide](./middleware/session.md#migration-guide).
+
+### Timeout
+
+The timeout middleware is now configurable. A new `Config` struct allows customizing the timeout duration, defining a handler that runs when a timeout occurs, and specifying errors to treat as timeouts. The `New` function now accepts a `Config` value instead of a duration.
+
+**Migration:** Replace calls like `timeout.New(handler, 2*time.Second)` with `timeout.New(handler, timeout.Config{Timeout: 2 * time.Second})`.
 
 ## 🔌 Addons
 
@@ -1788,10 +1819,6 @@ import "github.com/gofiber/fiber/v3/client"
 
 </details>
 
-:::caution
-DRAFT section
-:::
-
 ### 🧬 Middlewares
 
 #### Important Change for Accessing Middleware Data
@@ -1859,6 +1886,55 @@ app.Use(csrf.New(csrf.Config{
 ```
 
 - **Session Key Removal**: The `SessionKey` field has been removed from the CSRF middleware configuration. The session key is now an unexported constant within the middleware to avoid potential key collisions in the session store.
+
+- **KeyLookup Field Removal**: The `KeyLookup` field has been removed from the CSRF middleware configuration. This field was deprecated and is no longer needed as the middleware now uses a more secure approach for token management.
+
+```go
+// Before
+app.Use(csrf.New(csrf.Config{
+    KeyLookup: "header:X-CSRF-Token",
+    // other config...
+}))
+
+// After - use Extractor instead
+app.Use(csrf.New(csrf.Config{
+    Extractor: csrf.FromHeader("X-CSRF-Token"),
+    // other config...
+}))
+```
+
+- **FromCookie Extractor Removal**: The `csrf.FromCookie` extractor has been intentionally removed for security reasons. Using cookie-based extraction defeats the purpose of CSRF protection by making the extracted token always match the cookie value.
+
+```go
+// Before - This was a security vulnerability
+app.Use(csrf.New(csrf.Config{
+    Extractor: csrf.FromCookie("csrf_token"), // ❌ Insecure!
+}))
+
+// After - Use secure extractors instead
+app.Use(csrf.New(csrf.Config{
+    Extractor: csrf.FromHeader("X-Csrf-Token"), // ✅ Secure
+    // or
+    Extractor: csrf.FromForm("_csrf"),          // ✅ Secure
+    // or
+    Extractor: csrf.FromQuery("csrf_token"),    // ✅ Acceptable
+}))
+```
+
+**Security Note**: The removal of `FromCookie` prevents a common misconfiguration that would completely bypass CSRF protection. The middleware uses the Double Submit Cookie pattern, which requires the token to be submitted through a different channel than the cookie to provide meaningful protection.
+
+#### Timeout
+
+The timeout middleware now accepts a configuration struct instead of a duration.
+Update your code as follows:
+
+```go
+// Before
+app.Use(timeout.New(handler, 2*time.Second))
+
+// After
+app.Use(timeout.New(handler, timeout.Config{Timeout: 2 * time.Second}))
+```
 
 #### Filesystem
 

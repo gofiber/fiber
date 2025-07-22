@@ -74,7 +74,7 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 
 	for _, tt := range tests {
 		// Base64 encode credentials for http auth header
-		creds := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", tt.username, tt.password)))
+		creds := base64.StdEncoding.EncodeToString(fmt.Appendf(nil, "%s:%s", tt.username, tt.password))
 
 		req := httptest.NewRequest(fiber.MethodGet, "/testauth", nil)
 		req.Header.Add("Authorization", "Basic "+creds)
