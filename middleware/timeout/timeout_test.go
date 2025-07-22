@@ -10,6 +10,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 )
 
 var (
@@ -45,7 +46,7 @@ func TestTimeout_Success(t *testing.T) {
 			return err
 		}
 		return c.SendString("OK")
-	}, 50*time.Millisecond))
+	}, Config{Timeout: 50 * time.Millisecond}))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/fast", nil)
 	resp, err := app.Test(req)
@@ -64,7 +65,7 @@ func TestTimeout_Exceeded(t *testing.T) {
 			return err
 		}
 		return c.SendString("Should never get here")
-	}, 100*time.Millisecond))
+	}, Config{Timeout: 100 * time.Millisecond}))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/slow", nil)
 	resp, err := app.Test(req)
@@ -85,7 +86,7 @@ func TestTimeout_CustomError(t *testing.T) {
 			return fmt.Errorf("wrapped: %w", err)
 		}
 		return c.SendString("Should never get here")
-	}, 100*time.Millisecond, errCustomTimeout))
+	}, Config{Timeout: 100 * time.Millisecond, Errors: []error{errCustomTimeout}}))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/custom", nil)
 	resp, err := app.Test(req)
@@ -102,7 +103,7 @@ func TestTimeout_UnmatchedError(t *testing.T) {
 
 	app.Get("/unmatched", New(func(_ fiber.Ctx) error {
 		return errUnrelated // Not in the custom error list
-	}, 100*time.Millisecond, errCustomTimeout))
+	}, Config{Timeout: 100 * time.Millisecond, Errors: []error{errCustomTimeout}}))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/unmatched", nil)
 	resp, err := app.Test(req)
@@ -121,10 +122,85 @@ func TestTimeout_ZeroDuration(t *testing.T) {
 		// Sleep 50ms, but there's no real 'deadline' since zero-timeout.
 		time.Sleep(50 * time.Millisecond)
 		return c.SendString("No timeout used")
-	}, 0))
+	}))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/zero", nil)
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req) should not fail")
 	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Expected 200 OK with zero timeout")
+}
+
+// TestTimeout_NegativeDuration ensures negative timeout values fall back to zero.
+func TestTimeout_NegativeDuration(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Get("/negative", New(func(c fiber.Ctx) error {
+		time.Sleep(50 * time.Millisecond)
+		return c.SendString("No timeout used")
+	}, Config{Timeout: -100 * time.Millisecond}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/negative", nil)
+	resp, err := app.Test(req)
+	require.NoError(t, err, "app.Test(req) should not fail")
+	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Expected 200 OK with zero timeout")
+}
+
+// TestTimeout_CustomHandler ensures that a custom handler runs on timeout.
+func TestTimeout_CustomHandler(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Get("/custom-handler", New(func(c fiber.Ctx) error {
+		if err := sleepWithContext(c, 100*time.Millisecond, context.DeadlineExceeded); err != nil {
+			return err
+		}
+		return c.SendString("should not reach")
+	}, Config{
+		Timeout: 20 * time.Millisecond,
+		OnTimeout: func(c fiber.Ctx) error {
+			return c.Status(408).JSON(fiber.Map{"error": "timeout"})
+		},
+	}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/custom-handler", nil)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode)
+}
+
+// TestRunHandler_DefaultOnTimeout ensures context.DeadlineExceeded triggers ErrRequestTimeout.
+func TestRunHandler_DefaultOnTimeout(t *testing.T) {
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	err := runHandler(ctx, func(_ fiber.Ctx) error {
+		return context.DeadlineExceeded
+	}, Config{})
+
+	require.Equal(t, fiber.ErrRequestTimeout, err)
+}
+
+// TestRunHandler_CustomOnTimeout verifies that a custom error and OnTimeout handler are used.
+func TestRunHandler_CustomOnTimeout(t *testing.T) {
+	app := fiber.New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	called := false
+	cfg := Config{
+		Errors: []error{errCustomTimeout},
+		OnTimeout: func(_ fiber.Ctx) error {
+			called = true
+			return errors.New("handled")
+		},
+	}
+
+	err := runHandler(ctx, func(_ fiber.Ctx) error {
+		return fmt.Errorf("wrap: %w", errCustomTimeout)
+	}, cfg)
+
+	require.True(t, called)
+	require.EqualError(t, err, "handled")
 }

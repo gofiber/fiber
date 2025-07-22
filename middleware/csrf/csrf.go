@@ -3,7 +3,6 @@ package csrf
 import (
 	"errors"
 	"net/url"
-	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -21,7 +20,8 @@ var (
 	ErrOriginInvalid   = errors.New("origin invalid")
 	ErrOriginNoMatch   = errors.New("origin does not match host and is not a trusted origin")
 	errOriginNotFound  = errors.New("origin not supplied or is null") // internal error, will not be returned to the user
-	dummyValue         = []byte{'+'}
+	dummyValue         = []byte{'+'}                                  // dummyValue is a placeholder value stored in token storage. The actual token validation relies on the key, not this value.
+
 )
 
 // Handler for CSRF middleware
@@ -130,7 +130,7 @@ func New(config ...Config) fiber.Handler {
 				return cfg.ErrorHandler(c, err)
 			}
 
-			// Extract token from client request i.e. header, query, param, form or cookie
+			// Extract token from client request i.e. header, query, param, form
 			extractedToken, err := cfg.Extractor(c)
 			if err != nil {
 				return cfg.ErrorHandler(c, err)
@@ -140,10 +140,11 @@ func New(config ...Config) fiber.Handler {
 				return cfg.ErrorHandler(c, ErrTokenNotFound)
 			}
 
-			// If not using FromCookie extractor, check that the token matches the cookie
-			// This is to prevent CSRF attacks by using a Double Submit Cookie method
-			// Useful when we do not have access to the users Session
-			if !isFromCookie(cfg.Extractor) && !compareStrings(extractedToken, c.Cookies(cfg.CookieName)) {
+			// Double Submit Cookie validation: ensure the extracted token matches the cookie value
+			// This prevents CSRF attacks by requiring attackers to know both the cookie AND submit
+			// the same token through a different channel (header, form, etc.)
+			// WARNING: If using a custom extractor that reads from the same cookie, this provides no protection
+			if !compareStrings(extractedToken, c.Cookies(cfg.CookieName)) {
 				return cfg.ErrorHandler(c, ErrTokenInvalid)
 			}
 
@@ -212,7 +213,7 @@ func getRawFromStorage(c fiber.Ctx, token string, cfg Config, sessionManager *se
 	if cfg.Session != nil {
 		return sessionManager.getRaw(c, token, dummyValue)
 	}
-	return storageManager.getRaw(token)
+	return storageManager.getRaw(c, token)
 }
 
 // createOrExtendTokenInStorage creates or extends the token in the storage
@@ -220,7 +221,7 @@ func createOrExtendTokenInStorage(c fiber.Ctx, token string, cfg Config, session
 	if cfg.Session != nil {
 		sessionManager.setRaw(c, token, dummyValue, cfg.IdleTimeout)
 	} else {
-		storageManager.setRaw(token, dummyValue, cfg.IdleTimeout)
+		storageManager.setRaw(c, token, dummyValue, cfg.IdleTimeout)
 	}
 }
 
@@ -228,7 +229,7 @@ func deleteTokenFromStorage(c fiber.Ctx, token string, cfg Config, sessionManage
 	if cfg.Session != nil {
 		sessionManager.delRaw(c)
 	} else {
-		storageManager.delRaw(token)
+		storageManager.delRaw(c, token)
 	}
 }
 
@@ -272,11 +273,6 @@ func (handler *Handler) DeleteToken(c fiber.Ctx) error {
 	// Expire the cookie
 	expireCSRFCookie(c, handler.config)
 	return nil
-}
-
-// isFromCookie checks if the extractor is set to ExtractFromCookie
-func isFromCookie(extractor any) bool {
-	return reflect.ValueOf(extractor).Pointer() == reflect.ValueOf(FromCookie).Pointer()
 }
 
 // originMatchesHost checks that the origin header matches the host header

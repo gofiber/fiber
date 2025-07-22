@@ -152,7 +152,7 @@ func Test_parseToMap(t *testing.T) {
 	// Test map[string]any
 	m3 := make(map[string]any)
 	err = parseToMap(m3, inputMap)
-	require.ErrorIs(t, err, ErrMapNotConvertable)
+	require.ErrorIs(t, err, ErrMapNotConvertible)
 }
 
 func Test_FilterFlags(t *testing.T) {
@@ -356,7 +356,7 @@ func Benchmark_equalFieldType(b *testing.B) {
 	var user User
 
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		equalFieldType(&user, reflect.String, "name", "query")
 		equalFieldType(&user, reflect.Int, "age", "query")
 		equalFieldType(&user, reflect.String, "user.name", "query")

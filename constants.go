@@ -16,17 +16,18 @@ const (
 
 // MIME types that are commonly used
 const (
-	MIMETextXML         = "text/xml"
-	MIMETextHTML        = "text/html"
-	MIMETextPlain       = "text/plain"
-	MIMETextJavaScript  = "text/javascript"
-	MIMETextCSS         = "text/css"
-	MIMEApplicationXML  = "application/xml"
-	MIMEApplicationJSON = "application/json"
-	MIMEApplicationCBOR = "application/cbor"
-	MIMEApplicationForm = "application/x-www-form-urlencoded"
-	MIMEOctetStream     = "application/octet-stream"
-	MIMEMultipartForm   = "multipart/form-data"
+	MIMETextXML            = "text/xml"
+	MIMETextHTML           = "text/html"
+	MIMETextPlain          = "text/plain"
+	MIMETextJavaScript     = "text/javascript"
+	MIMETextCSS            = "text/css"
+	MIMEApplicationXML     = "application/xml"
+	MIMEApplicationJSON    = "application/json"
+	MIMEApplicationCBOR    = "application/cbor"
+	MIMEApplicationForm    = "application/x-www-form-urlencoded"
+	MIMEOctetStream        = "application/octet-stream"
+	MIMEMultipartForm      = "multipart/form-data"
+	MIMEApplicationMsgPack = "application/vnd.msgpack"
 
 	MIMETextXMLCharsetUTF8         = "text/xml; charset=utf-8"
 	MIMETextHTMLCharsetUTF8        = "text/html; charset=utf-8"
@@ -289,15 +290,18 @@ const (
 	NetworkTCP  = "tcp"
 	NetworkTCP4 = "tcp4"
 	NetworkTCP6 = "tcp6"
+	NetworkUnix = "unix"
 )
 
 // Compression types
 const (
-	StrGzip    = "gzip"
-	StrBr      = "br"
-	StrDeflate = "deflate"
-	StrBrotli  = "brotli"
-	StrZstd    = "zstd"
+	StrGzip     = "gzip"
+	StrCompress = "compress"
+	StrIdentity = "identity"
+	StrBr       = "br"
+	StrDeflate  = "deflate"
+	StrBrotli   = "brotli"
+	StrZstd     = "zstd"
 )
 
 // Cookie SameSite

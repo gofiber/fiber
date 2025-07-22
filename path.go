@@ -243,7 +243,7 @@ func addParameterMetaInfo(segs []*routeSegment) []*routeSegment {
 	}
 
 	// loop from begin to end
-	for i := 0; i < segLen; i++ {
+	for i := range segLen {
 		// check how often the compare part is in the following const parts
 		if segs[i].IsParam {
 			// check if parameter segments are directly after each other and if one of them is greedy
@@ -260,7 +260,7 @@ func addParameterMetaInfo(segs []*routeSegment) []*routeSegment {
 					segs[i].PartCount += strings.Count(segs[j].Const, segs[i].ComparePart)
 				}
 			}
-			// check if the end of the segment is a optional slash and then if the segement is optional or the last one
+			// check if the end of the segment is an optional slash and then if the segment is optional or the last one
 		} else if segs[i].Const[len(segs[i].Const)-1] == slashDelimiter && (segs[i].IsLast || (segLen > i+1 && segs[i+1].IsOptional)) {
 			segs[i].HasOptionalSlash = true
 		}
@@ -619,7 +619,7 @@ func GetTrimmedParam(param string) string {
 func RemoveEscapeChar(word string) string {
 	b := []byte(word)
 	dst := 0
-	for src := 0; src < len(b); src++ {
+	for src := range b {
 		if b[src] == '\\' {
 			continue
 		}
@@ -632,7 +632,7 @@ func RemoveEscapeChar(word string) string {
 // RemoveEscapeCharBytes removes escape characters
 func RemoveEscapeCharBytes(word []byte) []byte {
 	dst := 0
-	for src := 0; src < len(word); src++ {
+	for src := range word {
 		if word[src] != '\\' {
 			word[dst] = word[src]
 			dst++

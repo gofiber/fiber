@@ -25,44 +25,20 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fxamacker/cbor/v2"
+	"github.com/gofiber/fiber/v3/binder"
 	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
 
 // Version of current fiber package
-const Version = "3.0.0-beta.4"
+const Version = "3.0.0-beta.5"
 
 // Handler defines a function to serve HTTP requests.
 type Handler = func(Ctx) error
 
 // Map is a shortcut for map[string]any, useful for JSON returns
 type Map map[string]any
-
-// Storage interface for communicating with different database/key-value
-// providers
-type Storage interface {
-	// Get gets the value for the given key.
-	// `nil, nil` is returned when the key does not exist
-	Get(key string) ([]byte, error)
-
-	// Set stores the given value for the given key along
-	// with an expiration value, 0 means no expiration.
-	// Empty key or value will be ignored without an error.
-	Set(key string, val []byte, exp time.Duration) error
-
-	// Delete deletes the value for the given key.
-	// It returns no error if the storage does not contain the key,
-	Delete(key string) error
-
-	// Reset resets the storage and delete all keys.
-	Reset() error
-
-	// Close closes the storage and will stop any running garbage
-	// collectors and open connections.
-	Close() error
-}
 
 // ErrorHandler defines a function that will process all errors
 // returned from any handlers in the stack
@@ -168,7 +144,7 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	UnescapePath bool `json:"unescape_path"`
 
 	// Max body size that the server accepts.
-	// -1 will decline any body size
+	// Zero or negative values fall back to the default limit.
 	//
 	// Default: 4 * 1024 * 1024
 	BodyLimit int `json:"body_limit"`
@@ -321,17 +297,31 @@ type Config struct { //nolint:govet // Aligning the struct fields is not necessa
 	JSONDecoder utils.JSONUnmarshal `json:"-"`
 
 	// When set by an external client of Fiber it will use the provided implementation of a
+	// MsgPackMarshal
+	//
+	// Allowing for flexibility in using another msgpack library for encoding
+	// Default: binder.UnimplementedMsgpackMarshal
+	MsgPackEncoder utils.MsgPackMarshal `json:"-"`
+
+	// When set by an external client of Fiber it will use the provided implementation of a
+	// MsgPackUnmarshal
+	//
+	// Allowing for flexibility in using another msgpack library for decoding
+	// Default: binder.UnimplementedMsgpackUnmarshal
+	MsgPackDecoder utils.MsgPackUnmarshal `json:"-"`
+
+	// When set by an external client of Fiber it will use the provided implementation of a
 	// CBORMarshal
 	//
 	// Allowing for flexibility in using another cbor library for encoding
-	// Default: cbor.Marshal
+	// Default: binder.UnimplementedCborMarshal
 	CBOREncoder utils.CBORMarshal `json:"-"`
 
 	// When set by an external client of Fiber it will use the provided implementation of a
 	// CBORUnmarshal
 	//
 	// Allowing for flexibility in using another cbor library for decoding
-	// Default: cbor.Unmarshal
+	// Default: binder.UnimplementedCborUnmarshal
 	CBORDecoder utils.CBORUnmarshal `json:"-"`
 
 	// XMLEncoder set by an external client of Fiber it will use the provided implementation of a
@@ -532,7 +522,10 @@ func New(config ...Config) *App {
 	// Create Ctx pool
 	app.pool = sync.Pool{
 		New: func() any {
-			return app.newCtx()
+			if app.newCtxFunc != nil {
+				return app.newCtxFunc(app)
+			}
+			return NewDefaultCtx(app)
 		},
 	}
 
@@ -554,7 +547,7 @@ func New(config ...Config) *App {
 	app.configured = app.config
 
 	// Override default values
-	if app.config.BodyLimit == 0 {
+	if app.config.BodyLimit <= 0 {
 		app.config.BodyLimit = DefaultBodyLimit
 	}
 	if app.config.Concurrency <= 0 {
@@ -588,11 +581,17 @@ func New(config ...Config) *App {
 	if app.config.JSONDecoder == nil {
 		app.config.JSONDecoder = json.Unmarshal
 	}
+	if app.config.MsgPackEncoder == nil {
+		app.config.MsgPackEncoder = binder.UnimplementedMsgpackMarshal
+	}
+	if app.config.MsgPackDecoder == nil {
+		app.config.MsgPackDecoder = binder.UnimplementedMsgpackUnmarshal
+	}
 	if app.config.CBOREncoder == nil {
-		app.config.CBOREncoder = cbor.Marshal
+		app.config.CBOREncoder = binder.UnimplementedCborMarshal
 	}
 	if app.config.CBORDecoder == nil {
-		app.config.CBORDecoder = cbor.Unmarshal
+		app.config.CBORDecoder = binder.UnimplementedCborUnmarshal
 	}
 	if app.config.XMLEncoder == nil {
 		app.config.XMLEncoder = xml.Marshal
@@ -623,6 +622,15 @@ func New(config ...Config) *App {
 	return app
 }
 
+// NewWithCustomCtx creates a new Fiber instance and applies the
+// provided function to generate a custom context type. It mirrors the behavior
+// of calling `New()` followed by `app.setCtxFunc(fn)`.
+func NewWithCustomCtx(newCtxFunc func(app *App) CustomCtx, config ...Config) *App {
+	app := New(config...)
+	app.setCtxFunc(newCtxFunc)
+	return app
+}
+
 // Adds an ip address to TrustProxyConfig.ranges or TrustProxyConfig.ips based on whether it is an IP range or not
 func (app *App) handleTrustedProxy(ipAddress string) {
 	if strings.Contains(ipAddress, "/") {
@@ -642,13 +650,14 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 	}
 }
 
-// NewCtxFunc allows to customize ctx methods as we want.
-// Note: It doesn't allow adding new methods, only customizing exist methods.
-func (app *App) NewCtxFunc(function func(app *App) CustomCtx) {
+// setCtxFunc applies the given context factory to the app.
+// It is used internally by NewWithCustomCtx. It doesn't allow adding new methods,
+// only customizing existing ones.
+func (app *App) setCtxFunc(function func(app *App) CustomCtx) {
 	app.newCtxFunc = function
 
 	if app.server != nil {
-		app.server.Handler = app.customRequestHandler
+		app.server.Handler = app.requestHandler
 	}
 }
 
@@ -659,8 +668,8 @@ func (app *App) RegisterCustomConstraint(constraint CustomConstraint) {
 
 // RegisterCustomBinder Allows to register custom binders to use as Bind().Custom("name").
 // They should be compatible with CustomBinder interface.
-func (app *App) RegisterCustomBinder(binder CustomBinder) {
-	app.customBinders = append(app.customBinders, binder)
+func (app *App) RegisterCustomBinder(customBinder CustomBinder) {
+	app.customBinders = append(app.customBinders, customBinder)
 }
 
 // SetTLSHandler Can be used to set ClientHelloInfo when using TLS with Listener.
@@ -755,7 +764,7 @@ func (app *App) Use(args ...any) Router {
 	var prefixes []string
 	var handlers []Handler
 
-	for i := 0; i < len(args); i++ {
+	for i := range args {
 		switch arg := args[i].(type) {
 		case string:
 			prefix = arg
@@ -935,11 +944,7 @@ func (app *App) Config() Config {
 func (app *App) Handler() fasthttp.RequestHandler { //revive:disable-line:confusing-naming // Having both a Handler() (uppercase) and a handler() (lowercase) is fine. TODO: Use nolint:revive directive instead. See https://github.com/golangci/golangci-lint/issues/3476
 	// prepare the server for the start
 	app.startupProcess()
-
-	if app.newCtxFunc != nil {
-		return app.customRequestHandler
-	}
-	return app.defaultRequestHandler
+	return app.requestHandler
 }
 
 // Stack returns the raw router stack.
@@ -1150,11 +1155,7 @@ func (app *App) init() *App {
 	}
 
 	// fasthttp server settings
-	if app.newCtxFunc != nil {
-		app.server.Handler = app.customRequestHandler
-	} else {
-		app.server.Handler = app.defaultRequestHandler
-	}
+	app.server.Handler = app.requestHandler
 	app.server.Name = app.config.ServerHeader
 	app.server.Concurrency = app.config.Concurrency
 	app.server.NoDefaultDate = app.config.DisableDefaultDate

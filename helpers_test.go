@@ -7,7 +7,6 @@ package fiber
 import (
 	"math"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 	"unsafe"
@@ -62,6 +61,14 @@ func Test_Utils_GetOffer(t *testing.T) {
 
 	require.Equal(t, "deflate", getOffer([]byte("gzip, deflate"), acceptsOffer, "deflate"))
 	require.Equal(t, "", getOffer([]byte("gzip, deflate;q=0"), acceptsOffer, "deflate"))
+
+	// Accept-Language Basic Filtering
+	require.True(t, acceptsLanguageOffer("en", "en-US", nil))
+	require.False(t, acceptsLanguageOffer("en-US", "en", nil))
+	require.True(t, acceptsLanguageOffer("EN", "en-us", nil))
+	require.False(t, acceptsLanguageOffer("en", "en_US", nil))
+	require.Equal(t, "en-US", getOffer([]byte("fr-CA;q=0.8, en-US"), acceptsLanguageOffer, "en-US", "fr-CA"))
+	require.Equal(t, "", getOffer([]byte("xx"), acceptsLanguageOffer, "en"))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Utils_GetOffer -benchmem -count=4
@@ -234,6 +241,12 @@ func Test_Utils_AcceptsOfferType(t *testing.T) {
 			description: "no params, mismatch",
 			spec:        "application/json",
 			offerType:   "application/xml",
+			accepts:     false,
+		},
+		{
+			description: "mismatch with subtype prefix",
+			spec:        "application/json",
+			offerType:   "application/json+xml",
 			accepts:     false,
 		},
 		{
@@ -522,6 +535,7 @@ func Test_Utils_Parse_Address(t *testing.T) {
 		{addr: "[fe80::1%lo0]:1234", host: "[fe80::1%lo0]", port: "1234"},
 		{addr: "[fe80::1%lo0]", host: "[fe80::1%lo0]", port: ""},
 		{addr: ":9090", host: "", port: "9090"},
+		{addr: " 127.0.0.1:8080 ", host: "127.0.0.1", port: "8080"},
 		{addr: "", host: "", port: ""},
 	}
 
@@ -596,6 +610,8 @@ func Test_Utils_IsNoCache(t *testing.T) {
 		{string: "no-cache, public", bool: true},
 		{string: "Xno-cache, public", bool: false},
 		{string: "max-age=30, no-cache,public", bool: true},
+		{string: "NO-CACHE", bool: true},
+		{string: "public, NO-CACHE", bool: true},
 	}
 
 	for _, c := range testCases {
@@ -617,46 +633,6 @@ func Benchmark_Utils_IsNoCache(b *testing.B) {
 		ok = isNoCache("max-age=30, no-cache,public")
 	}
 	require.True(b, ok)
-}
-
-// go test -v -run=^$ -bench=Benchmark_SlashRecognition -benchmem -count=4
-func Benchmark_SlashRecognition(b *testing.B) {
-	search := "wtf/1234"
-	var result bool
-
-	b.Run("indexBytes", func(b *testing.B) {
-		b.ReportAllocs()
-		result = false
-		for b.Loop() {
-			if strings.IndexByte(search, slashDelimiter) != -1 {
-				result = true
-			}
-		}
-		require.True(b, result)
-	})
-	b.Run("forEach", func(b *testing.B) {
-		b.ReportAllocs()
-		result = false
-		c := int32(slashDelimiter)
-		for b.Loop() {
-			for _, b := range search {
-				if b == c {
-					result = true
-					break
-				}
-			}
-		}
-		require.True(b, result)
-	})
-	b.Run("strings.ContainsRune", func(b *testing.B) {
-		b.ReportAllocs()
-		result = false
-		c := int32(slashDelimiter)
-		for b.Loop() {
-			result = strings.ContainsRune(search, c)
-		}
-		require.True(b, result)
-	})
 }
 
 type testGenericParseTypeIntCase struct {
@@ -1205,6 +1181,7 @@ func Benchmark_GenericParseTypeFloats(b *testing.B) {
 
 // go test -v -run=^$ -bench=Benchmark_GenericParseTypeBytes -benchmem -count=4
 func Benchmark_GenericParseTypeBytes(b *testing.B) {
+	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
 	cases := []struct {
 		str   string
 		err   error
@@ -1252,6 +1229,7 @@ func Benchmark_GenericParseTypeBytes(b *testing.B) {
 
 // go test -v -run=^$ -bench=Benchmark_GenericParseTypeString -benchmem -count=4
 func Benchmark_GenericParseTypeString(b *testing.B) {
+	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
 	tests := []string{"john", "doe", "hello", "fiber"}
 
 	for _, test := range tests {
@@ -1273,6 +1251,7 @@ func Benchmark_GenericParseTypeString(b *testing.B) {
 
 // go test -v -run=^$ -bench=Benchmark_GenericParseTypeBoolean -benchmem -count=4
 func Benchmark_GenericParseTypeBoolean(b *testing.B) {
+	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
 	bools := []struct {
 		str   string
 		value bool
@@ -1312,6 +1291,127 @@ func Benchmark_GenericParseTypeBoolean(b *testing.B) {
 			} else {
 				require.False(b, v)
 			}
+		})
+	}
+}
+
+func Test_UnescapeHeaderValue(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		in  string
+		out []byte
+		ok  bool
+	}{
+		{in: "abc", out: []byte("abc"), ok: true},
+		{in: "a\\\"b", out: []byte("a\"b"), ok: true},
+		{in: "c\\\\d", out: []byte("c\\d"), ok: true},
+		{in: "bad\\", ok: false},
+	}
+	for _, tc := range cases {
+		out, err := unescapeHeaderValue([]byte(tc.in))
+		if tc.ok {
+			require.NoError(t, err, tc.in)
+			require.Equal(t, tc.out, out, tc.in)
+		} else {
+			require.Error(t, err, tc.in)
+		}
+	}
+}
+
+func Test_JoinHeaderValues(t *testing.T) {
+	t.Parallel()
+	require.Nil(t, joinHeaderValues(nil))
+	require.Equal(t, []byte("a"), joinHeaderValues([][]byte{[]byte("a")}))
+	require.Equal(t, []byte("a,b"), joinHeaderValues([][]byte{[]byte("a"), []byte("b")}))
+}
+
+func Test_ParamsMatch_InvalidEscape(t *testing.T) {
+	t.Parallel()
+	match := paramsMatch(headerParams{"foo": []byte("bar")}, `;foo="bar\\`)
+	require.False(t, match)
+}
+
+func Test_MatchEtag(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, matchEtag(`"a"`, `"a"`))
+	require.True(t, matchEtag(`W/"a"`, `"a"`))
+	require.True(t, matchEtag(`"a"`, `W/"a"`))
+	require.False(t, matchEtag(`"a"`, `"b"`))
+	require.False(t, matchEtag(`a`, `"a"`))
+	require.False(t, matchEtag(`"a"`, `b`))
+}
+
+func Test_MatchEtagStrong(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, matchEtagStrong(`"a"`, `"a"`))
+	require.False(t, matchEtagStrong(`W/"a"`, `"a"`))
+	require.False(t, matchEtagStrong(`"a"`, `W/"a"`))
+	require.False(t, matchEtagStrong(`"a"`, `"b"`))
+	require.False(t, matchEtagStrong(`a`, `"a"`))
+	require.False(t, matchEtagStrong(`"a"`, `b`))
+}
+
+func Test_IsEtagStale(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	// Invalid/unquoted tags are considered a mismatch, so it's stale
+	require.True(t, app.isEtagStale(`"a"`, []byte("b")))
+	require.True(t, app.isEtagStale(`"a"`, []byte("a")))
+
+	// Matching tags, not stale
+	require.False(t, app.isEtagStale(`"a"`, []byte(`"a"`)))
+	require.False(t, app.isEtagStale(`W/"a"`, []byte(`"a"`)))
+
+	// List of tags, not stale
+	require.False(t, app.isEtagStale(`"c"`, []byte(`"a", "b", "c"`)))
+	require.False(t, app.isEtagStale(`W/"c"`, []byte(`"a", "b", "c"`)))
+	require.False(t, app.isEtagStale(`"c"`, []byte(`"a", "b", W/"c"`)))
+	require.False(t, app.isEtagStale(`"c"`, []byte(`"c", "b", "a"`)))
+	require.False(t, app.isEtagStale(`"c"`, []byte(`  "a",   "c"   , "b"  `)))
+
+	// List of tags, stale
+	require.True(t, app.isEtagStale(`"d"`, []byte(`"a", "b", "c"`)))
+	require.True(t, app.isEtagStale(`W/"d"`, []byte(`"a", "b", "c"`)))
+
+	// Wildcard
+	require.False(t, app.isEtagStale(`"a"`, []byte("*")))
+	require.False(t, app.isEtagStale(`"a"`, []byte(" *   ")))
+	require.False(t, app.isEtagStale(`W/"a"`, []byte("*")))
+
+	// Empty case
+	require.True(t, app.isEtagStale(`"a"`, []byte("")))
+	require.True(t, app.isEtagStale(`"a"`, []byte("   ")))
+
+	// Weak vs. weak
+	require.False(t, app.isEtagStale(`W/"a"`, []byte(`W/"a"`)))
+}
+
+func Test_App_quoteRawString(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		in   string
+		out  string
+	}{
+		{"empty", "", ""},
+		{"simple", "simple", "simple"},
+		{"backslash", "A\\B", "A\\\\B"},
+		{"quote", `He said "Yo"`, `He said \"Yo\"`},
+		{"newline", "Hello\n", "Hello\\n"},
+		{"carriage", "Hello\r", "Hello\\r"},
+		{"controls", string([]byte{0, 31, 127}), "%00%1F%7F"},
+		{"mixed", "test \"A\n\r" + string([]byte{1}) + "\\", `test \"A\n\r%01\\`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New()
+			require.Equal(t, tc.out, app.quoteRawString(tc.in))
 		})
 	}
 }

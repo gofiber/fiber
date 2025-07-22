@@ -839,7 +839,7 @@ func Test_Request_Get(t *testing.T) {
 
 	client := New().SetDial(ln)
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		req := AcquireRequest().SetClient(client)
 
 		resp, err := req.Get("http://example.com")
@@ -864,7 +864,7 @@ func Test_Request_Post(t *testing.T) {
 
 	client := New().SetDial(ln)
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		resp, err := AcquireRequest().
 			SetClient(client).
 			SetFormData("foo", "bar").
@@ -890,7 +890,7 @@ func Test_Request_Head(t *testing.T) {
 
 	client := New().SetDial(ln)
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		resp, err := AcquireRequest().
 			SetClient(client).
 			Head("http://example.com")
@@ -915,7 +915,7 @@ func Test_Request_Put(t *testing.T) {
 
 	client := New().SetDial(ln)
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		resp, err := AcquireRequest().
 			SetClient(client).
 			SetFormData("foo", "bar").
@@ -944,7 +944,7 @@ func Test_Request_Delete(t *testing.T) {
 
 	client := New().SetDial(ln)
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		resp, err := AcquireRequest().
 			SetClient(client).
 			Delete("http://example.com")
@@ -972,7 +972,7 @@ func Test_Request_Options(t *testing.T) {
 
 	client := New().SetDial(ln)
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		resp, err := AcquireRequest().
 			SetClient(client).
 			Options("http://example.com")
@@ -1000,7 +1000,7 @@ func Test_Request_Send(t *testing.T) {
 
 	client := New().SetDial(ln)
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		resp, err := AcquireRequest().
 			SetClient(client).
 			SetURL("http://example.com").
@@ -1029,7 +1029,7 @@ func Test_Request_Patch(t *testing.T) {
 
 	client := New().SetDial(ln)
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		resp, err := AcquireRequest().
 			SetClient(client).
 			SetFormData("foo", "bar").
@@ -1046,14 +1046,14 @@ func Test_Request_Patch(t *testing.T) {
 func Test_Request_Header_With_Server(t *testing.T) {
 	t.Parallel()
 	handler := func(c fiber.Ctx) error {
-		c.Request().Header.VisitAll(func(key, value []byte) {
+		for key, value := range c.Request().Header.All() {
 			if k := string(key); k == "K1" || k == "K2" {
 				_, err := c.Write(key)
 				require.NoError(t, err)
 				_, err = c.Write(value)
 				require.NoError(t, err)
 			}
-		})
+		}
 		return nil
 	}
 
@@ -1305,7 +1305,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 
 		client := New().SetDial(ln)
 
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			req := AcquireRequest().
 				SetClient(client).
 				AddFiles(
@@ -1332,7 +1332,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 
 		app, ln, start := createHelperServer(t)
 		app.Post("/", func(c fiber.Ctx) error {
-			reg := regexp.MustCompile(`multipart/form-data; boundary=[\-\w]{35}`)
+			reg := regexp.MustCompile(`multipart/form-data; boundary=[\-\w]{33}`)
 			require.True(t, reg.MatchString(c.Get(fiber.HeaderContentType)))
 
 			return c.Send(c.Request().Body())

@@ -113,14 +113,14 @@ func parseToMap(ptr any, data map[string][]string) error {
 	case reflect.Slice:
 		newMap, ok := ptr.(map[string][]string)
 		if !ok {
-			return ErrMapNotConvertable
+			return ErrMapNotConvertible
 		}
 
 		maps.Copy(newMap, data)
 	case reflect.String, reflect.Interface:
 		newMap, ok := ptr.(map[string]string)
 		if !ok {
-			return ErrMapNotConvertable
+			return ErrMapNotConvertible
 		}
 
 		for k, v := range data {
@@ -342,9 +342,7 @@ func formatBindData[T, K any](aliasTag string, out any, data map[string][]T, key
 func assignBindData(aliasTag string, out any, data map[string][]string, key, value string, enableSplitting bool) { //nolint:revive // it's okay
 	if enableSplitting && strings.Contains(value, ",") && equalFieldType(out, reflect.Slice, key, aliasTag) {
 		values := strings.Split(value, ",")
-		for i := 0; i < len(values); i++ {
-			data[key] = append(data[key], values[i])
-		}
+		data[key] = append(data[key], values...)
 	} else {
 		data[key] = append(data[key], value)
 	}

@@ -194,9 +194,10 @@ func DefaultErrorHandler(fiber.Ctx, err error)
 ### Middleware Methods
 
 ```go
-func (m *Middleware) Set(key string, value any)
-func (m *Middleware) Get(key string) any
-func (m *Middleware) Delete(key string)
+func (m *Middleware) Set(key any, value any)
+func (m *Middleware) Get(key any) any
+func (m *Middleware) Delete(key any)
+func (m *Middleware) Keys() []any
 func (m *Middleware) Destroy() error
 func (m *Middleware) Reset() error
 func (m *Middleware) Store() *Store
@@ -207,14 +208,15 @@ func (m *Middleware) Store() *Store
 ```go
 func (s *Session) Fresh() bool
 func (s *Session) ID() string
-func (s *Session) Get(key string) any
-func (s *Session) Set(key string, val any)
+func (s *Session) Get(key any) any
+func (s *Session) Set(key any, val any)
+func (s *Session) Delete(key any)
+func (s *Session) Keys() []any
 func (s *Session) Destroy() error
 func (s *Session) Regenerate() error
 func (s *Session) Release()
 func (s *Session) Reset() error
 func (s *Session) Save() error
-func (s *Session) Keys() []string
 func (s *Session) SetIdleTimeout(idleTimeout time.Duration)
 ```
 

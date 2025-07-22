@@ -89,3 +89,43 @@ func Benchmark_CBORBinder_Bind(b *testing.B) {
 	require.Equal(b, "john", user.Name)
 	require.Equal(b, 42, user.Age)
 }
+
+func Test_UnimplementedCborMarshal_Panics(t *testing.T) {
+	t.Parallel()
+
+	require.Panics(t, func() {
+		_, _ = UnimplementedCborMarshal(struct{ Name string }{Name: "test"}) //nolint:errcheck // this is just a test to trigger the panic
+	})
+}
+
+func Test_UnimplementedCborUnmarshal_Panics(t *testing.T) {
+	t.Parallel()
+
+	require.Panics(t, func() {
+		var out any
+		_ = UnimplementedCborUnmarshal([]byte{0xa0}, &out) //nolint:errcheck // this is just a test to trigger the panic
+	})
+}
+
+func Test_UnimplementedCborMarshal_PanicMessage(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		if r := recover(); r != nil {
+			require.Contains(t, r, "Must explicitly setup CBOR")
+		}
+	}()
+	_, _ = UnimplementedCborMarshal(struct{ Name string }{Name: "test"}) //nolint:errcheck // this is just a test to trigger the panic
+}
+
+func Test_UnimplementedCborUnmarshal_PanicMessage(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		if r := recover(); r != nil {
+			require.Contains(t, r, "Must explicitly setup CBOR")
+		}
+	}()
+	var out any
+	_ = UnimplementedCborUnmarshal([]byte{0xa0}, &out) //nolint:errcheck // this is just a test to trigger the panic
+}

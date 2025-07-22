@@ -1,6 +1,6 @@
 ---
 id: whats_new
-title: 🆕 Whats New in v3
+title: 🆕 What's New in v3
 sidebar_position: 2
 toc_max_heading_level: 4
 ---
@@ -26,6 +26,7 @@ Here's a quick overview of the changes in Fiber `v3`:
 - [🧰 Generic functions](#-generic-functions)
 - [🥡 Services](#-services)
 - [📃 Log](#-log)
+- [📦 Storage Interface](#-storage-interface)
 - [🧬 Middlewares](#-middlewares)
   - [Important Change for Accessing Middleware Data](#important-change-for-accessing-middleware-data)
   - [Adaptor](#adaptor)
@@ -67,9 +68,40 @@ We have made several changes to the Fiber app, including:
 
 - **RegisterCustomBinder**: Allows for the registration of custom binders.
 - **RegisterCustomConstraint**: Allows for the registration of custom constraints.
-- **NewCtxFunc**: Introduces a new context function.
+- **NewWithCustomCtx**: Initialize an app with a custom context in one step.
 - **State**: Provides a global state for the application, which can be used to store and retrieve data across the application. Check out the [State](./api/state) method for further details.
 - **NewErrorf**: Allows variadic parameters when creating formatted errors.
+
+#### Custom Route Constraints
+
+Custom route constraints enable you to define your own validation rules for route parameters.
+Use `RegisterCustomConstraint` to add a constraint type that implements the `CustomConstraint` interface.
+
+<details>
+<summary>Example</summary>
+
+```go
+type UlidConstraint struct {
+    fiber.CustomConstraint
+}
+
+func (*UlidConstraint) Name() string {
+    return "ulid"
+}
+
+func (*UlidConstraint) Execute(param string, args ...string) bool {
+    _, err := ulid.Parse(param)
+    return err == nil
+}
+
+app.RegisterCustomConstraint(&UlidConstraint{})
+
+app.Get("/login/:id<ulid>", func(c fiber.Ctx) error {
+    return c.SendString("User " + c.Params("id"))
+})
+```
+
+</details>
 
 ### Removed Methods
 
@@ -95,18 +127,16 @@ Fiber v3 introduces a customizable `Ctx` interface, allowing developers to exten
 
 The idea behind custom `Ctx` classes is to give developers the ability to extend the default context with additional methods and properties tailored to the specific requirements of their application. This allows for better request handling and easier implementation of specific logic.
 
-#### NewCtxFunc
+#### NewWithCustomCtx
 
-The `NewCtxFunc` method allows you to customize the `Ctx` struct as needed.
+`NewWithCustomCtx` creates the application and sets the custom context factory at initialization time.
 
 ```go title="Signature"
-func (app *App) NewCtxFunc(function func(app *App) CustomCtx)
+func NewWithCustomCtx(fn func(app *App) CustomCtx, config ...Config) *App
 ```
 
 <details>
 <summary>Example</summary>
-
-Here’s an example of how to customize the `Ctx` interface:
 
 ```go
 package main
@@ -120,15 +150,12 @@ type CustomCtx struct {
     fiber.Ctx
 }
 
-// Custom method
 func (c *CustomCtx) CustomMethod() string {
     return "custom value"
 }
 
 func main() {
-    app := fiber.New()
-
-    app.NewCtxFunc(func(app *fiber.App) fiber.Ctx {
+    app := fiber.NewWithCustomCtx(func(app *fiber.App) fiber.Ctx {
         return &CustomCtx{
             Ctx: *fiber.NewCtx(app),
         }
@@ -143,7 +170,7 @@ func main() {
 }
 ```
 
-In this example, a custom context `CustomCtx` is created with an additional method `CustomMethod`. The `NewCtxFunc` method is used to replace the default context with the custom one.
+This example creates a `CustomCtx` with an extra `CustomMethod` and initializes the app with `NewWithCustomCtx`.
 
 </details>
 
@@ -234,6 +261,28 @@ go app.Listen(":3000")
 ```
 
 This change simplifies the shutdown handling by consolidating the shutdown callbacks into a single hook that receives the error status.
+
+- Added support for Unix domain sockets via `ListenerNetwork` and `UnixSocketFileMode`
+
+```go
+// v2 - Requires manual deletion of old file and permissions change
+app := fiber.New(fiber.Config{
+    Network: "unix",
+})
+
+os.Remove("app.sock")
+app.Hooks().OnListen(func(fiber.ListenData) error {
+    return os.Chmod("app.sock", 0770)
+})
+app.Listen("app.sock")
+
+// v3 - Fiber does it for you
+app := fiber.New()
+app.Listen("app.sock", fiber.ListenerConfig{
+    ListenerNetwork:    fiber.NetworkUnix,
+    UnixSocketFileMode: 0770,
+})
+```
 
 ## 🗺 Router
 
@@ -423,6 +472,7 @@ testConfig := fiber.TestConfig{
 - **Value**: For implementing `context.Context`. Returns request-scoped value from Locals.
 - **ViewBind**: Binds data to a view, replacing the old `Bind` method.
 - **CBOR**: Introducing [CBOR](https://cbor.io/) binary encoding format for both request & response body. CBOR is a binary data serialization format which is both compact and efficient, making it ideal for use in web applications.
+- **MsgPack**: Introducing [MsgPack](https://msgpack.org/) binary encoding format for both request & response body. MsgPack is a binary serialization format that is more efficient than JSON, making it ideal for high-performance applications.
 - **Drop**: Terminates the client connection silently without sending any HTTP headers or response body. This can be used for scenarios where you want to block certain requests without notifying the client, such as mitigating DDoS attacks or protecting sensitive endpoints from unauthorized access.
 - **End**: Similar to Express.js, immediately flushes the current response and closes the underlying connection.
 
@@ -446,6 +496,9 @@ testConfig := fiber.TestConfig{
 - **Format**: Parameter changed from `body interface{}` to `handlers ...ResFmt`.
 - **Redirect**: Use `c.Redirect().To()` instead.
 - **SendFile**: Now supports different configurations using a config parameter.
+- **Attachment and Download**: Non-ASCII filenames now use `filename*` as
+  specified by [RFC 6266](https://www.rfc-editor.org/rfc/rfc6266) and
+  [RFC 8187](https://www.rfc-editor.org/rfc/rfc8187).
 - **Context**: Renamed to `RequestCtx` to correspond with the FastHTTP Request Context.
 - **UserContext**: Renamed to `Context`, which returns a `context.Context` object.
 - **SetUserContext**: Renamed to `SetContext`.
@@ -571,6 +624,7 @@ Fiber v3 introduces a new binding mechanism that simplifies the process of bindi
 - Improved error handling and validation.
 - Support multipart file binding for `*multipart.FileHeader`, `*[]*multipart.FileHeader`, and `[]*multipart.FileHeader` field types.
 - Support for unified binding (`Bind().All()`) with defined precedence order: (URI -> Body -> Query -> Headers -> Cookies). [Learn more](./api/bind.md#all).
+- Support MsgPack binding for request body.
 
 <details>
 <summary>Example</summary>
@@ -657,7 +711,7 @@ func main() {
     app := fiber.New()
 
     app.Get("/convert", func(c fiber.Ctx) error {
-        value, err := fiber.Convert[string](c.Query("value"), strconv.Atoi, 0)
+        value, err := fiber.Convert[int](c.Query("value"), strconv.Atoi, 0)
         if err != nil {
             return c.Status(fiber.StatusBadRequest).SendString(err.Error())
         }
@@ -921,6 +975,30 @@ app.Use(logger.New(logger.Config{
 }))
 ```
 
+## 📦 Storage Interface
+
+The storage interface has been updated to include new subset of methods with `WithContext` suffix. These methods allow you to pass a context to the storage operations, enabling better control over timeouts and cancellation if needed. This is particularly useful when storage implementations used outside of the Fiber core, such as in background jobs or long-running tasks.
+
+**New Methods Signatures:**
+
+```go
+// GetWithContext gets the value for the given key with a context.
+// `nil, nil` is returned when the key does not exist
+GetWithContext(ctx context.Context, key string) ([]byte, error)
+
+// SetWithContext stores the given value for the given key
+// with an expiration value, 0 means no expiration.
+// Empty key or value will be ignored without an error.
+SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error
+
+// DeleteWithContext deletes the value for the given key with a context.
+// It returns no error if the storage does not contain the key,
+DeleteWithContext(ctx context.Context, key string) error
+
+// ResetWithContext resets the storage and deletes all keys with a context.
+ResetWithContext(ctx context.Context) error
+```
+
 ## 🧬 Middlewares
 
 ### Important Change for Accessing Middleware Data
@@ -949,33 +1027,33 @@ When used with the Logger middleware, the recommended approach is to use the `Cu
 
 The adaptor middleware has been significantly optimized for performance and efficiency. Key improvements include reduced response times, lower memory usage, and fewer memory allocations. These changes make the middleware more reliable and capable of handling higher loads effectively. Enhancements include the introduction of a `sync.Pool` for managing `fasthttp.RequestCtx` instances and better HTTP request and response handling between net/http and fasthttp contexts.
 
-| Payload Size | Metric           |     V2    |    V3    |    Percent Change |
-|--------------|------------------|-----------|----------|-------------------|
-| 100KB        | Execution Time   | 1056 ns/op| 588.6 ns/op | -44.25%        |
-|              | Memory Usage     | 2644 B/op | 254 B/op    | -90.39%        |
-|              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
-| 500KB        | Execution Time   | 1061 ns/op| 562.9 ns/op | -46.94%        |
-|              | Memory Usage     | 2644 B/op | 248 B/op    | -90.62%        |
-|              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
-| 1MB          | Execution Time   | 1080 ns/op| 629.7 ns/op | -41.68%        |
-|              | Memory Usage     | 2646 B/op | 267 B/op    | -89.91%        |
-|              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
-| 5MB          | Execution Time   | 1093 ns/op| 540.3 ns/op | -50.58%        |
-|              | Memory Usage     | 2654 B/op | 254 B/op    | -90.43%        |
-|              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
-| 10MB         | Execution Time   | 1044 ns/op| 533.1 ns/op | -48.94%        |
-|              | Memory Usage     | 2665 B/op | 258 B/op    | -90.32%        |
-|              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
-| 25MB         | Execution Time   | 1069 ns/op| 540.7 ns/op | -49.42%        |
-|              | Memory Usage     | 2706 B/op | 289 B/op    | -89.32%        |
-|              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
-| 50MB         | Execution Time   | 1137 ns/op| 554.6 ns/op | -51.21%        |
-|              | Memory Usage     | 2734 B/op | 298 B/op    | -89.10%        |
-|              | Allocations      | 16 allocs/op | 5 allocs/op | -68.75%     |
+| Payload Size | Metric         | V2           | V3          | Percent Change |
+| ------------ | -------------- | ------------ | ----------- | -------------- |
+| 100KB        | Execution Time | 1056 ns/op   | 588.6 ns/op | -44.25%        |
+|              | Memory Usage   | 2644 B/op    | 254 B/op    | -90.39%        |
+|              | Allocations    | 16 allocs/op | 5 allocs/op | -68.75%        |
+| 500KB        | Execution Time | 1061 ns/op   | 562.9 ns/op | -46.94%        |
+|              | Memory Usage   | 2644 B/op    | 248 B/op    | -90.62%        |
+|              | Allocations    | 16 allocs/op | 5 allocs/op | -68.75%        |
+| 1MB          | Execution Time | 1080 ns/op   | 629.7 ns/op | -41.68%        |
+|              | Memory Usage   | 2646 B/op    | 267 B/op    | -89.91%        |
+|              | Allocations    | 16 allocs/op | 5 allocs/op | -68.75%        |
+| 5MB          | Execution Time | 1093 ns/op   | 540.3 ns/op | -50.58%        |
+|              | Memory Usage   | 2654 B/op    | 254 B/op    | -90.43%        |
+|              | Allocations    | 16 allocs/op | 5 allocs/op | -68.75%        |
+| 10MB         | Execution Time | 1044 ns/op   | 533.1 ns/op | -48.94%        |
+|              | Memory Usage   | 2665 B/op    | 258 B/op    | -90.32%        |
+|              | Allocations    | 16 allocs/op | 5 allocs/op | -68.75%        |
+| 25MB         | Execution Time | 1069 ns/op   | 540.7 ns/op | -49.42%        |
+|              | Memory Usage   | 2706 B/op    | 289 B/op    | -89.32%        |
+|              | Allocations    | 16 allocs/op | 5 allocs/op | -68.75%        |
+| 50MB         | Execution Time | 1137 ns/op   | 554.6 ns/op | -51.21%        |
+|              | Memory Usage   | 2734 B/op    | 298 B/op    | -89.10%        |
+|              | Allocations    | 16 allocs/op | 5 allocs/op | -68.75%        |
 
 ### BasicAuth
 
-The BasicAuth middleware was updated for improved robustness in parsing the Authorization header, with enhanced validation and whitespace handling. The default unauthorized response now uses a properly quoted and capitalized `WWW-Authenticate` header.
+The BasicAuth middleware now validates the `Authorization` header more rigorously and sets security-focused response headers. The default challenge includes the `charset="UTF-8"` parameter and disables caching. Passwords are no longer stored in the request context by default; use the new `StorePassword` option to retain them. A `Charset` option controls the value used in the challenge header.
 
 ### Cache
 
@@ -1011,6 +1089,10 @@ We've added support for `zstd` compression on top of `gzip`, `deflate`, and `bro
 ### EncryptCookie
 
 Added support for specifying Key length when using `encryptcookie.GenerateKey(length)`. This allows the user to generate keys compatible with `AES-128`, `AES-192`, and `AES-256` (Default).
+
+### EnvVar
+
+The `ExcludeVars` field has been removed from the EnvVar middleware configuration. When upgrading, remove any references to this field and explicitly list the variables you wish to expose using `ExportVars`.
 
 ### Filesystem
 
@@ -1232,6 +1314,12 @@ The Session middleware has undergone key changes in v3 to improve functionality 
 - **Absolute Timeout**: The `AbsoluteTimeout` field has been added. If you need to set an absolute session timeout, you can use this field to define the duration. The session will expire after the specified duration, regardless of activity.
 
 For more details on these changes and migration instructions, check the [Session Middleware Migration Guide](./middleware/session.md#migration-guide).
+
+### Timeout
+
+The timeout middleware is now configurable. A new `Config` struct allows customizing the timeout duration, defining a handler that runs when a timeout occurs, and specifying errors to treat as timeouts. The `New` function now accepts a `Config` value instead of a duration.
+
+**Migration:** Replace calls like `timeout.New(handler, 2*time.Second)` with `timeout.New(handler, timeout.Config{Timeout: 2 * time.Second})`.
 
 ## 🔌 Addons
 
@@ -1731,10 +1819,6 @@ import "github.com/gofiber/fiber/v3/client"
 
 </details>
 
-:::caution
-DRAFT section
-:::
-
 ### 🧬 Middlewares
 
 #### Important Change for Accessing Middleware Data
@@ -1802,6 +1886,55 @@ app.Use(csrf.New(csrf.Config{
 ```
 
 - **Session Key Removal**: The `SessionKey` field has been removed from the CSRF middleware configuration. The session key is now an unexported constant within the middleware to avoid potential key collisions in the session store.
+
+- **KeyLookup Field Removal**: The `KeyLookup` field has been removed from the CSRF middleware configuration. This field was deprecated and is no longer needed as the middleware now uses a more secure approach for token management.
+
+```go
+// Before
+app.Use(csrf.New(csrf.Config{
+    KeyLookup: "header:X-CSRF-Token",
+    // other config...
+}))
+
+// After - use Extractor instead
+app.Use(csrf.New(csrf.Config{
+    Extractor: csrf.FromHeader("X-CSRF-Token"),
+    // other config...
+}))
+```
+
+- **FromCookie Extractor Removal**: The `csrf.FromCookie` extractor has been intentionally removed for security reasons. Using cookie-based extraction defeats the purpose of CSRF protection by making the extracted token always match the cookie value.
+
+```go
+// Before - This was a security vulnerability
+app.Use(csrf.New(csrf.Config{
+    Extractor: csrf.FromCookie("csrf_token"), // ❌ Insecure!
+}))
+
+// After - Use secure extractors instead
+app.Use(csrf.New(csrf.Config{
+    Extractor: csrf.FromHeader("X-Csrf-Token"), // ✅ Secure
+    // or
+    Extractor: csrf.FromForm("_csrf"),          // ✅ Secure
+    // or
+    Extractor: csrf.FromQuery("csrf_token"),    // ✅ Acceptable
+}))
+```
+
+**Security Note**: The removal of `FromCookie` prevents a common misconfiguration that would completely bypass CSRF protection. The middleware uses the Double Submit Cookie pattern, which requires the token to be submitted through a different channel than the cookie to provide meaningful protection.
+
+#### Timeout
+
+The timeout middleware now accepts a configuration struct instead of a duration.
+Update your code as follows:
+
+```go
+// Before
+app.Use(timeout.New(handler, 2*time.Second))
+
+// After
+app.Use(timeout.New(handler, timeout.Config{Timeout: 2 * time.Second}))
+```
 
 #### Filesystem
 

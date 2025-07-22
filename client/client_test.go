@@ -324,7 +324,7 @@ func Test_Client_ConcurrencyRequests(t *testing.T) {
 	client := New().SetDial(dial)
 
 	wg := sync.WaitGroup{}
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		for _, method := range []string{"GET", "POST", "PUT", "DELETE", "PATCH"} {
 			wg.Add(1)
 			go func(m string) {
@@ -443,7 +443,7 @@ func Test_Post(t *testing.T) {
 			require.NoError(t, app.Shutdown())
 		}()
 
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			resp, err := Post("http://"+addr, Config{
 				FormData: map[string]string{
 					"foo": "bar",
@@ -464,7 +464,7 @@ func Test_Post(t *testing.T) {
 			require.NoError(t, app.Shutdown())
 		}()
 
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			resp, err := New().Post("http://"+addr, Config{
 				FormData: map[string]string{
 					"foo": "bar",
@@ -499,7 +499,7 @@ func Test_Put(t *testing.T) {
 			require.NoError(t, app.Shutdown())
 		}()
 
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			resp, err := Put("http://"+addr, Config{
 				FormData: map[string]string{
 					"foo": "bar",
@@ -520,7 +520,7 @@ func Test_Put(t *testing.T) {
 			require.NoError(t, app.Shutdown())
 		}()
 
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			resp, err := New().Put("http://"+addr, Config{
 				FormData: map[string]string{
 					"foo": "bar",
@@ -558,7 +558,7 @@ func Test_Delete(t *testing.T) {
 
 		time.Sleep(1 * time.Second)
 
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			resp, err := Delete("http://"+addr, Config{
 				FormData: map[string]string{
 					"foo": "bar",
@@ -579,7 +579,7 @@ func Test_Delete(t *testing.T) {
 			require.NoError(t, app.Shutdown())
 		}()
 
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			resp, err := New().Delete("http://"+addr, Config{
 				FormData: map[string]string{
 					"foo": "bar",
@@ -615,7 +615,7 @@ func Test_Options(t *testing.T) {
 			require.NoError(t, app.Shutdown())
 		}()
 
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			resp, err := Options("http://" + addr)
 
 			require.NoError(t, err)
@@ -633,7 +633,7 @@ func Test_Options(t *testing.T) {
 			require.NoError(t, app.Shutdown())
 		}()
 
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			resp, err := New().Options("http://" + addr)
 
 			require.NoError(t, err)
@@ -667,7 +667,7 @@ func Test_Patch(t *testing.T) {
 
 		time.Sleep(1 * time.Second)
 
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			resp, err := Patch("http://"+addr, Config{
 				FormData: map[string]string{
 					"foo": "bar",
@@ -688,7 +688,7 @@ func Test_Patch(t *testing.T) {
 			require.NoError(t, app.Shutdown())
 		}()
 
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			resp, err := New().Patch("http://"+addr, Config{
 				FormData: map[string]string{
 					"foo": "bar",
@@ -723,7 +723,7 @@ func Test_Client_UserAgent(t *testing.T) {
 			require.NoError(t, app.Shutdown())
 		}()
 
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			resp, err := Get("http://" + addr)
 
 			require.NoError(t, err)
@@ -740,7 +740,7 @@ func Test_Client_UserAgent(t *testing.T) {
 			require.NoError(t, app.Shutdown())
 		}()
 
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			c := New().
 				SetUserAgent("ua")
 
@@ -830,12 +830,12 @@ func Test_Client_Header(t *testing.T) {
 
 func Test_Client_Header_With_Server(t *testing.T) {
 	handler := func(c fiber.Ctx) error {
-		c.Request().Header.VisitAll(func(key, value []byte) {
+		for key, value := range c.Request().Header.All() {
 			if k := string(key); k == "K1" || k == "K2" {
 				_, _ = c.Write(key)   //nolint:errcheck // It is fine to ignore the error here
 				_, _ = c.Write(value) //nolint:errcheck // It is fine to ignore the error here
 			}
-		})
+		}
 		return nil
 	}
 
@@ -1603,7 +1603,7 @@ func Test_Client_SetProxyURL(t *testing.T) {
 		DisablePathNormalizing:   true,
 	}
 
-	// Create a simple proxy sever
+	// Create a simple proxy server
 	proxyServer := fiber.New()
 
 	proxyServer.Use("*", func(c fiber.Ctx) error {
@@ -1613,9 +1613,9 @@ func Test_Client_SetProxyURL(t *testing.T) {
 		req.SetRequestURI(c.BaseURL())
 		req.Header.SetMethod(fasthttp.MethodGet)
 
-		c.Request().Header.VisitAll(func(key, value []byte) {
+		for key, value := range c.Request().Header.All() {
 			req.Header.AddBytesKV(key, value)
-		})
+		}
 
 		req.Header.Set("isProxy", "true")
 

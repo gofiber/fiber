@@ -3,6 +3,7 @@
 package cache
 
 import (
+	"context"
 	"slices"
 	"strconv"
 	"strings"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
+	"github.com/valyala/fasthttp"
 )
 
 // timestampUpdatePeriod is the period which is used to check the cache expiration.
@@ -59,7 +61,6 @@ var cacheableStatusCodes = map[int]bool{
 	fiber.StatusMethodNotAllowed:            true,
 	fiber.StatusGone:                        true,
 	fiber.StatusRequestURITooLong:           true,
-	fiber.StatusTeapot:                      true,
 	fiber.StatusNotImplemented:              true,
 }
 
@@ -97,10 +98,10 @@ func New(config ...Config) fiber.Handler {
 
 	// Delete key from both manager and storage
 	deleteKey := func(dkey string) {
-		manager.del(dkey)
+		manager.del(context.Background(), dkey)
 		// External storage saves body data with different key
 		if cfg.Storage != nil {
-			manager.del(dkey + "_body")
+			manager.del(context.Background(), dkey+"_body")
 		}
 	}
 
@@ -124,7 +125,7 @@ func New(config ...Config) fiber.Handler {
 		key := cfg.KeyGenerator(c) + "_" + requestMethod
 
 		// Get entry from pool
-		e := manager.get(key)
+		e := manager.get(c, key)
 
 		// Lock entry
 		mux.Lock()
@@ -150,7 +151,7 @@ func New(config ...Config) fiber.Handler {
 				// Separate body value to avoid msgp serialization
 				// We can store raw bytes with Storage 👍
 				if cfg.Storage != nil {
-					e.body = manager.getRaw(key + "_body")
+					e.body = manager.getRaw(c, key+"_body")
 				}
 				// Set response headers from cache
 				c.Response().SetBodyRaw(e.body)
@@ -168,8 +169,9 @@ func New(config ...Config) fiber.Handler {
 					c.Set(fiber.HeaderCacheControl, "public, max-age="+maxAge)
 				}
 
-				// RFC-compliant Age header
-				age := strconv.FormatUint(e.ttl-(e.exp-ts), 10)
+				// RFC-compliant Age header (RFC 9111)
+				resident := e.ttl - (e.exp - ts)
+				age := strconv.FormatUint(e.age+resident, 10)
 				c.Response().Header.Set(fiber.HeaderAge, age)
 
 				c.Set(cfg.CacheHeader, cacheHit)
@@ -239,23 +241,27 @@ func New(config ...Config) fiber.Handler {
 		e.ctype = utils.CopyBytes(c.Response().Header.ContentType())
 		e.cencoding = utils.CopyBytes(c.Response().Header.Peek(fiber.HeaderContentEncoding))
 
-		if len(c.Response().Header.Peek(fiber.HeaderAge)) == 0 {
+		ageVal := uint64(0)
+		if b := c.Response().Header.Peek(fiber.HeaderAge); len(b) > 0 {
+			if v, err := fasthttp.ParseUint(b); err == nil {
+				ageVal = uint64(v) //nolint:gosec //Not a concern
+			}
+		} else {
 			c.Response().Header.Set(fiber.HeaderAge, "0")
 		}
+		e.age = ageVal
 
 		// Store all response headers
 		// (more: https://datatracker.ietf.org/doc/html/rfc2616#section-13.5.1)
 		if cfg.StoreResponseHeaders {
 			e.headers = make(map[string][]byte)
-			c.Response().Header.VisitAll(
-				func(key, value []byte) {
-					// create real copy
-					keyS := string(key)
-					if _, ok := ignoreHeaders[keyS]; !ok {
-						e.headers[keyS] = utils.CopyBytes(value)
-					}
-				},
-			)
+			for key, value := range c.Response().Header.All() {
+				// create real copy
+				keyS := string(key)
+				if _, ok := ignoreHeaders[keyS]; !ok {
+					e.headers[keyS] = utils.CopyBytes(value)
+				}
+			}
 		}
 
 		// default cache expiration
@@ -278,14 +284,14 @@ func New(config ...Config) fiber.Handler {
 
 		// For external Storage we store raw body separated
 		if cfg.Storage != nil {
-			manager.setRaw(key+"_body", e.body, expiration)
+			manager.setRaw(c, key+"_body", e.body, expiration)
 			// avoid body msgp encoding
 			e.body = nil
-			manager.set(key, e, expiration)
+			manager.set(c, key, e, expiration)
 			manager.release(e)
 		} else {
 			// Store entry in memory
-			manager.set(key, e, expiration)
+			manager.set(c, key, e, expiration)
 		}
 
 		c.Set(cfg.CacheHeader, cacheMiss)
@@ -297,15 +303,33 @@ func New(config ...Config) fiber.Handler {
 
 // Check if request has directive
 func hasRequestDirective(c fiber.Ctx, directive string) bool {
-	return strings.Contains(c.Get(fiber.HeaderCacheControl), directive)
+	cc := c.Get(fiber.HeaderCacheControl)
+	ccLen := len(cc)
+	dirLen := len(directive)
+	for i := 0; i <= ccLen-dirLen; i++ {
+		if !utils.EqualFold(cc[i:i+dirLen], directive) {
+			continue
+		}
+		if i > 0 {
+			prev := cc[i-1]
+			if prev != ' ' && prev != ',' {
+				continue
+			}
+		}
+		if i+dirLen == ccLen || cc[i+dirLen] == ',' {
+			return true
+		}
+	}
+
+	return false
 }
 
 // parseMaxAge extracts the max-age directive from a Cache-Control header.
 func parseMaxAge(cc string) (time.Duration, bool) {
-	for _, part := range strings.Split(cc, ",") {
+	for part := range strings.SplitSeq(cc, ",") {
 		part = utils.Trim(utils.ToLower(part), ' ')
-		if strings.HasPrefix(part, "max-age=") {
-			if sec, err := strconv.Atoi(strings.TrimPrefix(part, "max-age=")); err == nil {
+		if after, ok := strings.CutPrefix(part, "max-age="); ok {
+			if sec, err := strconv.Atoi(after); err == nil {
 				return time.Duration(sec) * time.Second, true
 			}
 		}
