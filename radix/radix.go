@@ -60,7 +60,30 @@ func (n *node[V]) set(b byte, child *node[V]) {
 // Tree implements a simple radix tree optimized for prefix lookups.
 type Tree[V any] struct {
 	root *node[V]
+
+	rootVal     V
+	catchAllVal V
+	hasRoot     bool
+	catchAll    bool
 }
+
+// SetRoot stores the value for the root path "/" without inserting it.
+func (t *Tree[V]) SetRoot(val V) {
+	t.rootVal = val
+	t.hasRoot = true
+}
+
+// SetCatchAll stores the value for the catch-all path "/*".
+func (t *Tree[V]) SetCatchAll(val V) {
+	t.catchAllVal = val
+	t.catchAll = true
+}
+
+// HasRoot reports whether a root route is stored.
+func (t *Tree[V]) HasRoot() bool { return t.hasRoot }
+
+// HasCatchAll reports whether a catch-all route is stored.
+func (t *Tree[V]) HasCatchAll() bool { return t.catchAll }
 
 // New returns an empty tree.
 func New[V any]() *Tree[V] {
@@ -82,6 +105,16 @@ func longestPrefixLen(a, b string) int {
 
 // Insert adds the key with its value to the tree.
 func (t *Tree[V]) Insert(key string, val V) {
+	if key == "/" {
+		t.rootVal = val
+		t.hasRoot = true
+		return
+	}
+	if key == "/*" {
+		t.catchAllVal = val
+		t.catchAll = true
+		return
+	}
 	n := t.root
 	for {
 		if len(key) == 0 {
@@ -162,11 +195,25 @@ func (t *Tree[V]) longestPrefixNoCache(s string) (string, V, bool) {
 
 // LongestPrefix returns the longest prefix match for s.
 func (t *Tree[V]) LongestPrefix(s string) (string, V, bool) {
-	return t.longestPrefixNoCache(s)
+	if t.hasRoot && s == "/" {
+		return "/", t.rootVal, true
+	}
+	p, v, ok := t.longestPrefixNoCache(s)
+	if ok {
+		return p, v, true
+	}
+	if t.hasRoot {
+		return "/", t.rootVal, true
+	}
+	if t.catchAll {
+		return "/*", t.catchAllVal, true
+	}
+	var zero V
+	return "", zero, false
 }
 
 // Lookup returns the value associated with the longest prefix of s.
 func (t *Tree[V]) Lookup(s string) (V, bool) {
-	_, v, ok := t.longestPrefixNoCache(s)
+	_, v, ok := t.LongestPrefix(s)
 	return v, ok
 }

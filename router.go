@@ -119,9 +119,11 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 		}
 		if app.config.UseRadix && len(c.detectionPath) > maxDetectionPaths {
 			if rt := app.radixTrees[methodInt]; rt != nil {
-				_, val, ok := rt.LongestPrefix(utils.UnsafeString(c.detectionPath))
-				if ok {
-					tree = val
+				if !rt.HasCatchAll() {
+					_, val, ok := rt.LongestPrefix(utils.UnsafeString(c.detectionPath))
+					if ok {
+						tree = val
+					}
 				}
 			}
 		}
@@ -193,9 +195,11 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 		}
 		if app.config.UseRadix && len(c.detectionPath) > maxDetectionPaths {
 			if rt := app.radixTrees[i]; rt != nil {
-				_, val, ok := rt.LongestPrefix(utils.UnsafeString(c.detectionPath))
-				if ok {
-					tree = val
+				if !rt.HasCatchAll() {
+					_, val, ok := rt.LongestPrefix(utils.UnsafeString(c.detectionPath))
+					if ok {
+						tree = val
+					}
 				}
 			}
 		}
@@ -242,9 +246,11 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 		}
 		if app.config.UseRadix && len(c.getDetectionPath()) > maxDetectionPaths {
 			if rt := app.radixTrees[methodInt]; rt != nil {
-				_, val, ok := rt.LongestPrefix(c.getDetectionPath())
-				if ok {
-					tree = val
+				if !rt.HasCatchAll() {
+					_, val, ok := rt.LongestPrefix(c.getDetectionPath())
+					if ok {
+						tree = val
+					}
 				}
 			}
 		}
@@ -314,9 +320,11 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 		}
 		if app.config.UseRadix && len(c.getDetectionPath()) > maxDetectionPaths {
 			if rt := app.radixTrees[i]; rt != nil {
-				_, val, ok := rt.LongestPrefix(c.getDetectionPath())
-				if ok {
-					tree = val
+				if !rt.HasCatchAll() {
+					_, val, ok := rt.LongestPrefix(c.getDetectionPath())
+					if ok {
+						tree = val
+					}
 				}
 			}
 		}
@@ -700,9 +708,17 @@ func (app *App) buildTree() *App {
 	if app.config.UseRadix {
 		for method := range app.config.RequestMethods {
 			t := radix.New[[]*Route]()
+			var rootRoutes []*Route
+			var catchAllRoutes []*Route
 			buckets := make(map[string][]*Route)
 			for _, route := range app.stack[method] {
 				p := routeConstPrefix(route.routeParser)
+				if route.root {
+					rootRoutes = append(rootRoutes, route)
+				}
+				if route.star {
+					catchAllRoutes = append(catchAllRoutes, route)
+				}
 				if len(p) > maxDetectionPaths {
 					buckets[p] = append(buckets[p], route)
 				}
@@ -710,7 +726,13 @@ func (app *App) buildTree() *App {
 			for p, rs := range buckets {
 				t.Insert(p, uniqueRouteStack(rs))
 			}
-			if len(buckets) > 0 {
+			if len(rootRoutes) > 0 {
+				t.SetRoot(uniqueRouteStack(rootRoutes))
+			}
+			if len(catchAllRoutes) > 0 {
+				t.SetCatchAll(uniqueRouteStack(catchAllRoutes))
+			}
+			if len(buckets) > 0 || len(rootRoutes) > 0 || len(catchAllRoutes) > 0 {
 				app.radixTrees[method] = t
 			} else {
 				app.radixTrees[method] = nil
