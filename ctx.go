@@ -796,11 +796,13 @@ func (c *DefaultCtx) GetReqHeaders() map[string][]string {
 // Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
 func (c *DefaultCtx) Host() string {
 	if c.IsProxyTrusted() {
-		if _, host, _ := parseForwarded(c.Get(HeaderForwarded)); len(host) > 0 {
-			if commaPos := strings.Index(host, ","); commaPos != -1 {
-				return host[:commaPos]
+		if h := c.Get(HeaderForwarded); len(h) > 0 {
+			if _, host, _ := parseForwarded(h); len(host) > 0 {
+				if commaPos := strings.Index(host, ","); commaPos != -1 {
+					return host[:commaPos]
+				}
+				return host
 			}
-			return host
 		}
 		if host := c.Get(HeaderXForwardedHost); len(host) > 0 {
 			commaPos := strings.Index(host, ",")
@@ -838,9 +840,11 @@ func (c *DefaultCtx) Port() string {
 // Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
 func (c *DefaultCtx) IP() string {
 	if c.IsProxyTrusted() {
-		if ip, _, _ := parseForwarded(c.Get(HeaderForwarded)); ip != "" {
-			if !c.app.config.EnableIPValidation || utils.IsIPv4(ip) || utils.IsIPv6(ip) {
-				return ip
+		if h := c.Get(HeaderForwarded); len(h) > 0 {
+			if ip, _, _ := parseForwarded(h); ip != "" {
+				if !c.app.config.EnableIPValidation || utils.IsIPv4(ip) || utils.IsIPv6(ip) {
+					return ip
+				}
 			}
 		}
 		if len(c.app.config.ProxyHeader) > 0 {
@@ -1280,14 +1284,16 @@ func (c *DefaultCtx) Scheme() string {
 	if !c.IsProxyTrusted() {
 		return schemeHTTP
 	}
-	if _, _, proto := parseForwarded(c.Get(HeaderForwarded)); proto != "" {
-		if strings.EqualFold(proto, schemeHTTPS) {
-			return schemeHTTPS
+	if h := c.Get(HeaderForwarded); len(h) > 0 {
+		if _, _, proto := parseForwarded(h); proto != "" {
+			if strings.EqualFold(proto, schemeHTTPS) {
+				return schemeHTTPS
+			}
+			if strings.EqualFold(proto, schemeHTTP) {
+				return schemeHTTP
+			}
+			return proto
 		}
-		if strings.EqualFold(proto, schemeHTTP) {
-			return schemeHTTP
-		}
-		return proto
 	}
 
 	scheme := schemeHTTP
