@@ -1384,11 +1384,11 @@ func Test_NewErrorf_Format(t *testing.T) {
 
 	type args []any
 
-	tests := []struct { //nolint:govet // fieldalignment: this struct is already optimally ordered
+	tests := []struct {
 		name string
 		want string
-		code int
 		in   args
+		code int
 	}{
 		{
 			name: "no-args → default text",

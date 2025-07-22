@@ -1603,7 +1603,7 @@ func Test_Client_SetProxyURL(t *testing.T) {
 		DisablePathNormalizing:   true,
 	}
 
-	// Create a simple proxy sever
+	// Create a simple proxy server
 	proxyServer := fiber.New()
 
 	proxyServer.Use("*", func(c fiber.Ctx) error {
