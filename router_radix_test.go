@@ -860,7 +860,6 @@ func Benchmark_Router_Next_Radix(b *testing.B) {
 	}
 	require.NoError(b, err)
 	require.True(b, res)
-	// Why is this 0 for radix???
 	require.Equal(b, 0, c.indexRoute)
 }
 

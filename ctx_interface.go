@@ -28,6 +28,8 @@ type CustomCtx interface {
 	setIndexRoute(route int)
 	setMatched(matched bool)
 	setRoute(route *Route)
+	getRouteStack() []*Route
+	setRouteStack(rs []*Route)
 }
 
 func NewDefaultCtx(app *App) *DefaultCtx {
