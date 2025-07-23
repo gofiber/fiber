@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"fmt"
 	"io"
-	"math/big"
 	"mime/multipart"
 	"os"
 	"path/filepath"
