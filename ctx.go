@@ -1975,18 +1975,24 @@ func (c *DefaultCtx) Type(extension string, charset ...string) Ctx {
 
 // shouldIncludeCharset determines if a MIME type should include UTF-8 charset by default
 func shouldIncludeCharset(mimeType string) bool {
-	// Include charset for all text-based MIME types
+	// Everything under text/ gets UTF-8 by default.
 	if strings.HasPrefix(mimeType, "text/") {
 		return true
 	}
 
-	// Include charset for structured text formats that benefit from explicit charset declaration
+	// Explicit application types that should default to UTF-8.
 	switch mimeType {
-	case MIMEApplicationJSON,
-		MIMEApplicationXML:
+	case "application/json",
+		"application/javascript",
+		"application/xml":
 		return true
 	}
-	
+
+	// Any application/*+json or application/*+xml.
+	if strings.HasSuffix(mimeType, "+json") || strings.HasSuffix(mimeType, "+xml") {
+		return true
+	}
+
 	return false
 }
 
