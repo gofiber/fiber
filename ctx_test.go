@@ -1234,9 +1234,9 @@ func Test_Ctx_Format(t *testing.T) {
 	formatHandlers := func(types ...string) []ResFmt {
 		fmts := []ResFmt{}
 		for _, t := range types {
-			t := utils.CopyString(t)
-			fmts = append(fmts, ResFmt{MediaType: t, Handler: func(_ Ctx) error {
-				accepted = t
+			typ := utils.CopyString(t)
+			fmts = append(fmts, ResFmt{MediaType: typ, Handler: func(_ Ctx) error {
+				accepted = typ
 				return nil
 			}})
 		}
@@ -3289,10 +3289,10 @@ func Test_Ctx_SaveFile(t *testing.T) {
 		require.NoError(t, err)
 
 		defer func(file *os.File) {
-			err := file.Close()
-			require.NoError(t, err)
-			err = os.Remove(file.Name())
-			require.NoError(t, err)
+			closeErr := file.Close()
+			require.NoError(t, closeErr)
+			closeErr = os.Remove(file.Name())
+			require.NoError(t, closeErr)
 		}(tempFile)
 		err = c.SaveFile(fh, tempFile.Name())
 		require.NoError(t, err)
@@ -4252,8 +4252,8 @@ func Test_Ctx_CBOR(t *testing.T) {
 	require.Equal(t, "application/problem+cbor", string(c.Response().Header.Peek("content-type")))
 
 	testEmpty := func(v any, r string) {
-		err := c.CBOR(v)
-		require.NoError(t, err)
+		cbErr := c.CBOR(v)
+		require.NoError(t, cbErr)
 		require.Equal(t, r, hex.EncodeToString(c.Response().Body()))
 	}
 
@@ -5045,8 +5045,8 @@ func Test_Ctx_Render_Go_Template(t *testing.T) {
 	file, err := os.CreateTemp(os.TempDir(), "fiber")
 	require.NoError(t, err)
 	defer func() {
-		err := os.Remove(file.Name())
-		require.NoError(t, err)
+		removeErr := os.Remove(file.Name())
+		require.NoError(t, removeErr)
 	}()
 
 	_, err = file.WriteString("template")
@@ -5149,8 +5149,8 @@ func Test_Ctx_SendStreamWriter(t *testing.T) {
 	err = c.SendStreamWriter(func(w *bufio.Writer) {
 		for lineNum := 1; lineNum <= 5; lineNum++ {
 			fmt.Fprintf(w, "Line %d\n", lineNum)
-			if err := w.Flush(); err != nil {
-				t.Errorf("unexpected error: %s", err)
+			if flushErr := w.Flush(); flushErr != nil {
+				t.Errorf("unexpected error: %s", flushErr)
 				return
 			}
 		}
@@ -5602,7 +5602,7 @@ func Benchmark_Ctx_BodyStreamWriter(b *testing.B) {
 		ctx.SetBodyStreamWriter(func(w *bufio.Writer) {
 			for range 10 {
 				_, err = w.Write(user)
-				if err := w.Flush(); err != nil {
+				if flushErr := w.Flush(); flushErr != nil {
 					return
 				}
 			}

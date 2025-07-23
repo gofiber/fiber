@@ -83,7 +83,7 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg ListenConfig) er
 	// kill child procs when master exits
 	defer func() {
 		for _, proc := range children {
-			if err := proc.Process.Kill(); err != nil {
+			if err = proc.Process.Kill(); err != nil {
 				if !errors.Is(err, os.ErrProcessDone) {
 					log.Errorf("prefork: failed to kill child: %v", err)
 				}

@@ -35,7 +35,12 @@ markdown:
 ## lint: 🚨 Run lint checks
 .PHONY: lint
 lint:
-	golangci-lint run
+       golangci-lint run
+
+## install-lint: 🛠 Install golangci-lint
+.PHONY: install-lint
+install-lint:
+	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s v1.64.7
 
 ## modernize: 🛠 Run gopls modernize
 .PHONY: modernize
