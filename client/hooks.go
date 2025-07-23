@@ -34,7 +34,7 @@ const (
 func unsafeRandString(n int) (string, error) {
 	b := make([]byte, n)
 	bound := big.NewInt(int64(len(letterBytes)))
-	
+
 	// iterate by index over the slice
 	for i := range b {
 		idx, err := rand.Int(rand.Reader, bound)
