@@ -1982,9 +1982,9 @@ func shouldIncludeCharset(mimeType string) bool {
 
 	// Explicit application types that should default to UTF-8.
 	switch mimeType {
-	case "application/json",
-		"application/javascript",
-		"application/xml":
+	case MIMEApplicationJSON,
+		MIMEApplicationJavaScript,
+		MIMEApplicationXML:
 		return true
 	}
 
