@@ -32,19 +32,32 @@ const (
 // unsafeRandString returns a random string of length n.
 // An error is returned if the random source fails.
 func unsafeRandString(n int) (string, error) {
-	b := make([]byte, n)
-	bound := big.NewInt(int64(len(letterBytes)))
+	L := byte(len(letterBytes))
 
-	// iterate by index over the slice
-	for i := range b {
-		idx, err := rand.Int(rand.Reader, bound)
-		if err != nil {
-			return "", fmt.Errorf("failed to read random index: %w", err)
-		}
-		b[i] = letterBytes[idx.Int64()]
+	// Compute the largest multiple of L ≤ 256 to avoid modulo bias.
+	// Any byte ≥ max will be rejected and re‑read.
+	max := byte(256 - (256 % int(L)))
+
+	out := make([]byte, n)
+	buf := make([]byte, n)
+
+	// Read n raw bytes in one shot
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("rand.Read failed: %w", err)
 	}
 
-	return utils.UnsafeString(b), nil
+	for i, b := range buf {
+		// Reject values ≥ max
+		for b >= max {
+			if _, err := rand.Read(buf[i : i+1]); err != nil {
+				return "", fmt.Errorf("rand.Read failed: %w", err)
+			}
+			b = buf[i]
+		}
+		out[i] = letterBytes[b%L]
+	}
+
+	return utils.UnsafeString(out), nil
 }
 
 // parserRequestURL sets options for the hostclient and normalizes the URL.
