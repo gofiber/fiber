@@ -31,11 +31,11 @@ const (
 // unsafeRandString returns a random string of length n.
 // An error is returned if the random source fails.
 func unsafeRandString(n int) (string, error) {
-	L := byte(len(letterBytes))
+	inputLength := byte(len(letterBytes))
 
-	// Compute the largest multiple of L ≤ 256 to avoid modulo bias.
+	// Compute the largest multiple of inputLength ≤ 256 to avoid modulo bias.
 	// Any byte ≥ max will be rejected and re‑read.
-	max := byte(256 - (256 % int(L)))
+	maxLength := byte(256 - (256 % int(inputLength)))
 
 	out := make([]byte, n)
 	buf := make([]byte, n)
@@ -46,14 +46,14 @@ func unsafeRandString(n int) (string, error) {
 	}
 
 	for i, b := range buf {
-		// Reject values ≥ max
-		for b >= max {
+		// Reject values ≥ maxLength
+		for b >= maxLength {
 			if _, err := rand.Read(buf[i : i+1]); err != nil {
 				return "", fmt.Errorf("rand.Read failed: %w", err)
 			}
 			b = buf[i]
 		}
-		out[i] = letterBytes[b%L]
+		out[i] = letterBytes[b%inputLength]
 	}
 
 	return utils.UnsafeString(out), nil
