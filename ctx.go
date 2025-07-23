@@ -1975,19 +1975,19 @@ func (c *DefaultCtx) Type(extension string, charset ...string) Ctx {
 
 // shouldIncludeCharset determines if a MIME type should include UTF-8 charset by default
 func shouldIncludeCharset(mimeType string) bool {
-	// Include charset for text-based MIME types
+	// Include charset for all text-based MIME types
 	if strings.HasPrefix(mimeType, "text/") {
 		return true
 	}
 
-	// Include charset for structured text formats
+	// Include charset for structured text formats that benefit from explicit charset declaration
 	switch mimeType {
 	case MIMEApplicationJSON,
 		MIMEApplicationXML:
 		return true
-	default:
-		return false
 	}
+	
+	return false
 }
 
 // Vary adds the given header field to the Vary response header.
