@@ -1191,7 +1191,7 @@ func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.NotEmpty(t, resp.Header.Get(HeaderContentLength))
 	require.Equal(t, "TestValue", resp.Header.Get("TestHeader"))
-	require.Equal(t, "text/html", resp.Header.Get(HeaderContentType))
+	require.Equal(t, "text/html; charset=utf-8", resp.Header.Get(HeaderContentType))
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -1204,7 +1204,7 @@ func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.NotEmpty(t, resp.Header.Get(HeaderContentLength))
 	require.Equal(t, "TestValue", resp.Header.Get("TestHeader"))
-	require.Equal(t, "text/html", resp.Header.Get(HeaderContentType))
+	require.Equal(t, "text/html; charset=utf-8", resp.Header.Get(HeaderContentType))
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)

@@ -330,7 +330,7 @@ type Ctx interface {
 	// and a nil slice encodes as the null JSON value.
 	// If the ctype parameter is given, this method will set the
 	// Content-Type header equal to ctype. If ctype is not given,
-	// The Content-Type header will be set to application/json.
+	// The Content-Type header will be set to application/json; charset=utf-8.
 	JSON(data any, ctype ...string) error
 	// MsgPack converts any interface or string to MessagePack encoded bytes.
 	// If the ctype parameter is given, this method will set the
@@ -347,7 +347,7 @@ type Ctx interface {
 	// By default, the callback name is simply callback.
 	JSONP(data any, callback ...string) error
 	// XML converts any interface or string to XML.
-	// This method also sets the content header to application/xml.
+	// This method also sets the content header to application/xml; charset=utf-8.
 	XML(data any) error
 	// Links joins the links followed by the property to populate the response's Link HTTP header field.
 	Links(link ...string)

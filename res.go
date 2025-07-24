@@ -415,7 +415,7 @@ func (r *DefaultRes) GetHeaders() map[string][]string {
 // and a nil slice encodes as the null JSON value.
 // If the ctype parameter is given, this method will set the
 // Content-Type header equal to ctype. If ctype is not given,
-// The Content-Type header will be set to application/json.
+// The Content-Type header will be set to application/json; charset=utf-8.
 func (r *DefaultRes) JSON(data any, ctype ...string) error {
 	raw, err := r.App().config.JSONEncoder(data)
 	if err != nil {
@@ -425,7 +425,7 @@ func (r *DefaultRes) JSON(data any, ctype ...string) error {
 	if len(ctype) > 0 {
 		r.Response().Header.SetContentType(ctype[0])
 	} else {
-		r.Response().Header.SetContentType(MIMEApplicationJSON)
+		r.Response().Header.SetContentType(MIMEApplicationJSONCharsetUTF8)
 	}
 	return nil
 }
@@ -491,14 +491,14 @@ func (r *DefaultRes) JSONP(data any, callback ...string) error {
 }
 
 // XML converts any interface or string to XML.
-// This method also sets the content header to application/xml.
+// This method also sets the content header to application/xml; charset=utf-8.
 func (r *DefaultRes) XML(data any) error {
 	raw, err := r.App().config.XMLEncoder(data)
 	if err != nil {
 		return err
 	}
 	r.Response().SetBodyRaw(raw)
-	r.Response().Header.SetContentType(MIMEApplicationXML)
+	r.Response().Header.SetContentType(MIMEApplicationXMLCharsetUTF8)
 	return nil
 }
 
@@ -857,12 +857,42 @@ func (r *DefaultRes) Status(status int) Ctx {
 
 // Type sets the Content-Type HTTP header to the MIME type specified by the file extension.
 func (r *DefaultRes) Type(extension string, charset ...string) Ctx {
+	mimeType := utils.GetMIME(extension)
+
 	if len(charset) > 0 {
-		r.Response().Header.SetContentType(utils.GetMIME(extension) + "; charset=" + charset[0])
+		r.Response().Header.SetContentType(mimeType + "; charset=" + charset[0])
 	} else {
-		r.Response().Header.SetContentType(utils.GetMIME(extension))
+		// Automatically add UTF-8 charset for text-based MIME types
+		if shouldIncludeCharset(mimeType) {
+			r.Response().Header.SetContentType(mimeType + "; charset=utf-8")
+		} else {
+			r.Response().Header.SetContentType(mimeType)
+		}
 	}
 	return r.c
+}
+
+// shouldIncludeCharset determines if a MIME type should include UTF-8 charset by default
+func shouldIncludeCharset(mimeType string) bool {
+	// Everything under text/ gets UTF-8 by default.
+	if strings.HasPrefix(mimeType, "text/") {
+		return true
+	}
+
+	// Explicit application types that should default to UTF-8.
+	switch mimeType {
+	case MIMEApplicationJSON,
+		MIMEApplicationJavaScript,
+		MIMEApplicationXML:
+		return true
+	}
+
+	// Any application/*+json or application/*+xml.
+	if strings.HasSuffix(mimeType, "+json") || strings.HasSuffix(mimeType, "+xml") {
+		return true
+	}
+
+	return false
 }
 
 // Vary adds the given header field to the Vary response header.
