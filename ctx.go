@@ -796,8 +796,8 @@ func (c *DefaultCtx) GetReqHeaders() map[string][]string {
 // Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
 func (c *DefaultCtx) Host() string {
 	if c.IsProxyTrusted() {
-		if h := c.Get(HeaderForwarded); len(h) > 0 {
-			if _, host, _ := parseForwarded(h); len(host) > 0 {
+		if h := c.Request().Header.Peek(HeaderForwarded); len(h) > 0 {
+			if _, host, _ := parseForwarded(c.app.getString(h)); len(host) > 0 {
 				if commaPos := strings.Index(host, ","); commaPos != -1 {
 					return host[:commaPos]
 				}
@@ -840,8 +840,8 @@ func (c *DefaultCtx) Port() string {
 // Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
 func (c *DefaultCtx) IP() string {
 	if c.IsProxyTrusted() {
-		if h := c.Get(HeaderForwarded); len(h) > 0 {
-			if ip, _, _ := parseForwarded(h); ip != "" {
+		if h := c.Request().Header.Peek(HeaderForwarded); len(h) > 0 {
+			if ip, _, _ := parseForwarded(c.app.getString(h)); ip != "" {
 				if !c.app.config.EnableIPValidation || utils.IsIPv4(ip) || utils.IsIPv6(ip) {
 					return ip
 				}
@@ -1284,8 +1284,8 @@ func (c *DefaultCtx) Scheme() string {
 	if !c.IsProxyTrusted() {
 		return schemeHTTP
 	}
-	if h := c.Get(HeaderForwarded); len(h) > 0 {
-		if _, _, proto := parseForwarded(h); proto != "" {
+	if h := c.Request().Header.Peek(HeaderForwarded); len(h) > 0 {
+		if _, _, proto := parseForwarded(c.app.getString(h)); proto != "" {
 			if strings.EqualFold(proto, schemeHTTPS) {
 				return schemeHTTPS
 			}
