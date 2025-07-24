@@ -35,7 +35,7 @@ markdown:
 ## lint: 🚨 Run lint checks
 .PHONY: lint
 lint:
-       golangci-lint run
+	golangci-lint run
 
 ## install-lint: 🛠 Install golangci-lint
 .PHONY: install-lint
