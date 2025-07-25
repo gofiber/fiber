@@ -10,6 +10,9 @@ import (
 
 // Config defines the config for middleware.
 type Config struct {
+	// Transport defines a transport-like mechanism that wraps every request/response.
+	Transport fasthttp.RoundTripper
+
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
@@ -33,6 +36,20 @@ type Config struct {
 	// and DialDualStack will not be used if the client are set.
 	Client *fasthttp.LBClient
 
+	// Callback for establishing new connections to hosts with timeout.
+	DialTimeout fasthttp.DialFuncWithTimeout
+
+	// Callback for establishing new connections to hosts.
+	Dial fasthttp.DialFunc
+
+	// When the client encounters an error during a request, the behavior
+	// whether to retry and whether to reset the request timeout should be
+	// determined based on the return value of this field.
+	RetryIfErr fasthttp.RetryIfErrFunc
+
+	// Client name. Used in User-Agent request header.
+	Name string
+
 	// Servers defines a list of <scheme>://<host> HTTP servers,
 	//
 	// which are used in a round-robin manner.
@@ -54,31 +71,6 @@ type Config struct {
 
 	// Per-connection buffer size for responses' writing.
 	WriteBufferSize int
-
-	// Attempt to connect to both ipv4 and ipv6 host addresses if set to true.
-	//
-	// By default client connects only to ipv4 addresses, since unfortunately ipv6
-	// remains broken in many networks worldwide :)
-	//
-	// Optional. Default: false
-	DialDualStack bool
-
-	// Transport defines a transport-like mechanism that wraps every request/response.
-	Transport fasthttp.RoundTripper
-
-	// Callback for establishing new connections to hosts with timeout.
-	DialTimeout fasthttp.DialFuncWithTimeout
-
-	// Callback for establishing new connections to hosts.
-	Dial fasthttp.DialFunc
-
-	// When the client encounters an error during a request, the behavior
-	// whether to retry and whether to reset the request timeout should be
-	// determined based on the return value of this field.
-	RetryIfErr fasthttp.RetryIfErrFunc
-
-	// Client name. Used in User-Agent request header.
-	Name string
 
 	// Maximum number of connections which may be established to the host.
 	MaxConns int
@@ -106,6 +98,14 @@ type Config struct {
 
 	// Connection pool strategy. Can be either LIFO or FIFO (default).
 	ConnPoolStrategy fasthttp.ConnPoolStrategyType
+
+	// Attempt to connect to both ipv4 and ipv6 host addresses if set to true.
+	//
+	// By default client connects only to ipv4 addresses, since unfortunately ipv6
+	// remains broken in many networks worldwide :)
+	//
+	// Optional. Default: false
+	DialDualStack bool
 
 	// NoDefaultUserAgentHeader when set to true, causes the default
 	// User-Agent header to be excluded from the Request.
