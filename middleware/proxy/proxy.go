@@ -20,8 +20,8 @@ func Balancer(config Config) fiber.Handler {
 
 	// Load balanced client
 	lbc := &fasthttp.LBClient{}
-	// Note that Servers, Timeout, WriteBufferSize, ReadBufferSize, TLSConfig and DialDualStack
-	// will not be used if the client are set.
+	// Note that Servers, Timeout, WriteBufferSize, ReadBufferSize, TLSConfig, DialDualStack,
+	// MaxConnsPerHost, MaxIdleConnDuration, and ReadTimeout will not be used if the client is set.
 	if cfg.Client == nil {
 		// Set timeout
 		lbc.Timeout = cfg.Timeout
