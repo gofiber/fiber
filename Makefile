@@ -39,6 +39,11 @@ lint:
 	@which golangci-lint > /dev/null || (go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.7)
 	@export PATH="$(shell go env GOPATH)/bin:$$PATH"; golangci-lint run
 
+## install-lint: 🛠 Install golangci-lint
+.PHONY: install-lint
+install-lint:
+	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s v1.64.7
+
 ## modernize: 🛠 Run gopls modernize
 .PHONY: modernize
 modernize:

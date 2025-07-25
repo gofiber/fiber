@@ -356,8 +356,8 @@ func Test_Cache_WithSeveralRequests(t *testing.T) {
 				require.NoError(t, err)
 
 				defer func(body io.ReadCloser) {
-					err := body.Close()
-					require.NoError(t, err)
+					closeErr := body.Close()
+					require.NoError(t, closeErr)
 				}(rsp.Body)
 
 				idFromServ, err := io.ReadAll(rsp.Body)

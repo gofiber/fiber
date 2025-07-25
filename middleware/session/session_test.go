@@ -1202,8 +1202,8 @@ func Test_Session_Concurrency(t *testing.T) {
 			}
 
 			// Save the session
-			if err := sess.Save(); err != nil {
-				errChan <- err
+			if saveErr := sess.Save(); saveErr != nil {
+				errChan <- saveErr
 				return
 			}
 

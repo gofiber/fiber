@@ -1,9 +1,9 @@
 package client
 
 import (
+	"crypto/rand"
 	"fmt"
 	"io"
-	"math/rand/v2"
 	"mime/multipart"
 	"os"
 	"path/filepath"
@@ -25,33 +25,38 @@ const (
 	applicationForm   = "application/x-www-form-urlencoded"
 	multipartFormData = "multipart/form-data"
 
-	letterBytes   = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	letterIdxBits = 6                    // 6 bits to represent a letter index
-	letterIdxMask = 1<<letterIdxBits - 1 // All 1-bits, as many as letterIdxBits
-	letterIdxMax  = 64 / letterIdxBits   // # of letter indices fitting into 64 bits
+	letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 )
 
 // unsafeRandString returns a random string of length n.
-func unsafeRandString(n int) string {
-	b := make([]byte, n)
-	const length = uint64(len(letterBytes))
+// An error is returned if the random source fails.
+func unsafeRandString(n int) (string, error) {
+	inputLength := byte(len(letterBytes))
 
-	//nolint:gosec // Not a concern
-	for i, cache, remain := n-1, rand.Uint64(), letterIdxMax; i >= 0; {
-		if remain == 0 {
-			//nolint:gosec // Not a concern
-			cache, remain = rand.Uint64(), letterIdxMax
-		}
+	// Compute the largest multiple of inputLength ≤ 256 to avoid modulo bias.
+	// Any byte ≥ max will be rejected and re‑read.
+	maxLength := byte(256 - (256 % int(inputLength)))
 
-		if idx := cache & letterIdxMask; idx < length {
-			b[i] = letterBytes[idx]
-			i--
-		}
-		cache >>= letterIdxBits
-		remain--
+	out := make([]byte, n)
+	buf := make([]byte, n)
+
+	// Read n raw bytes in one shot
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("rand.Read failed: %w", err)
 	}
 
-	return utils.UnsafeString(b)
+	for i, b := range buf {
+		// Reject values ≥ maxLength
+		for b >= maxLength {
+			if _, err := rand.Read(buf[i : i+1]); err != nil {
+				return "", fmt.Errorf("rand.Read failed: %w", err)
+			}
+			b = buf[i]
+		}
+		out[i] = letterBytes[b%inputLength]
+	}
+
+	return utils.UnsafeString(out), nil
 }
 
 // parserRequestURL sets options for the hostclient and normalizes the URL.
@@ -133,7 +138,11 @@ func parserRequestHeader(c *Client, req *Request) error {
 		req.RawRequest.Header.SetContentType(multipartFormData)
 		// If boundary is default, append a random string to it.
 		if req.boundary == boundary {
-			req.boundary += unsafeRandString(16)
+			randStr, err := unsafeRandString(16)
+			if err != nil {
+				return fmt.Errorf("boundary generation: %w", err)
+			}
+			req.boundary += randStr
 		}
 		req.RawRequest.Header.SetMultipartFormBoundary(req.boundary)
 	default:

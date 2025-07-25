@@ -1191,7 +1191,7 @@ func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.NotEmpty(t, resp.Header.Get(HeaderContentLength))
 	require.Equal(t, "TestValue", resp.Header.Get("TestHeader"))
-	require.Equal(t, "text/html", resp.Header.Get(HeaderContentType))
+	require.Equal(t, "text/html; charset=utf-8", resp.Header.Get(HeaderContentType))
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -1204,7 +1204,7 @@ func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.NotEmpty(t, resp.Header.Get(HeaderContentLength))
 	require.Equal(t, "TestValue", resp.Header.Get("TestHeader"))
-	require.Equal(t, "text/html", resp.Header.Get(HeaderContentType))
+	require.Equal(t, "text/html; charset=utf-8", resp.Header.Get(HeaderContentType))
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -1569,8 +1569,8 @@ func Test_App_ReadTimeout(t *testing.T) {
 		conn, err := net.Dial(NetworkTCP4, "127.0.0.1:4004")
 		assert.NoError(t, err)
 		defer func(conn net.Conn) {
-			err := conn.Close()
-			assert.NoError(t, err)
+			closeErr := conn.Close()
+			assert.NoError(t, closeErr)
 		}(conn)
 
 		_, err = conn.Write([]byte("HEAD /read-timeout HTTP/1.1\r\n"))
@@ -1603,8 +1603,8 @@ func Test_App_BadRequest(t *testing.T) {
 		conn, err := net.Dial(NetworkTCP4, "127.0.0.1:4005")
 		assert.NoError(t, err)
 		defer func(conn net.Conn) {
-			err := conn.Close()
-			assert.NoError(t, err)
+			closeErr := conn.Close()
+			assert.NoError(t, closeErr)
 		}(conn)
 
 		_, err = conn.Write([]byte("BadRequest\r\n"))
