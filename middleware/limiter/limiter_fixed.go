@@ -98,9 +98,11 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 		}
 
 		// We can continue, update RateLimit headers
-		c.Set(xRateLimitLimit, strconv.Itoa(maxRequests))
-		c.Set(xRateLimitRemaining, strconv.Itoa(remaining))
-		c.Set(xRateLimitReset, strconv.FormatUint(resetInSec, 10))
+		if !cfg.DisableHeaders {
+			c.Set(xRateLimitLimit, strconv.Itoa(maxRequests))
+			c.Set(xRateLimitRemaining, strconv.Itoa(remaining))
+			c.Set(xRateLimitReset, strconv.FormatUint(resetInSec, 10))
+		}
 
 		return err
 	}

@@ -761,6 +761,31 @@ func Test_Limiter_Headers(t *testing.T) {
 	}
 }
 
+func Test_Limiter_Disable_Headers(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Max:            50,
+		Expiration:     2 * time.Second,
+		DisableHeaders: true,
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("Hello tester!")
+	})
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
+	fctx.Request.SetRequestURI("/")
+
+	app.Handler()(fctx)
+
+	require.Equal(t, "", string(fctx.Response.Header.Peek("X-RateLimit-Limit")))
+	require.Equal(t, "", string(fctx.Response.Header.Peek("X-RateLimit-Remaining")))
+	require.Equal(t, "", string(fctx.Response.Header.Peek("X-RateLimit-Reset")))
+}
+
 // go test -v -run=^$ -bench=Benchmark_Limiter -benchmem -count=4
 func Benchmark_Limiter(b *testing.B) {
 	app := fiber.New()
