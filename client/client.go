@@ -192,8 +192,8 @@ func (c *Client) SetRootCertificate(path string) *Client {
 		c.logger.Panicf("client: %v", err)
 	}
 	defer func() {
-		if err := file.Close(); err != nil {
-			c.logger.Panicf("client: failed to close file: %v", err)
+		if closeErr := file.Close(); closeErr != nil {
+			c.logger.Panicf("client: failed to close file: %v", closeErr)
 		}
 	}()
 
