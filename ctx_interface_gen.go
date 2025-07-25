@@ -386,6 +386,8 @@ type Ctx interface {
 	setIndexRoute(route int)
 	setMatched(matched bool)
 	setRoute(route *Route)
+	getRouteStack() []*Route
+	setRouteStack(rs []*Route)
 	// Drop closes the underlying connection without sending any response headers or body.
 	// This can be useful for silently terminating client connections, such as in DDoS mitigation
 	// or when blocking access to sensitive endpoints.
