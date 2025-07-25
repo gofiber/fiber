@@ -105,7 +105,7 @@ app.Use(limiter.New(limiter.Config{
 | LimitReached           | `fiber.Handler`           | LimitReached is called when a request hits the limit.                                       | A function sending 429 response          |
 | SkipFailedRequests     | `bool`                    | When set to true, requests with StatusCode >= 400 won't be counted.                         | false                                    |
 | SkipSuccessfulRequests | `bool`                    | When set to true, requests with StatusCode < 400 won't be counted.                          | false                                    |
-| DisableHeaders         | `bool`                    | When set to true, the middleware will not include the `X-RateLimit-*` headers in the response. | false                                    |
+| DisableHeaders         | `bool`                    | When set to true, the middleware will not include the rate limit headers (`X-RateLimit-*` and `Retry-After`) in the response. | false                                    |
 | Storage                | `fiber.Storage`           | Store is used to store the state of the middleware.                                         | An in-memory store for this process only |
 | LimiterMiddleware      | `LimiterHandler`          | LimiterMiddleware is the struct that implements a limiter middleware.                       | A new Fixed Window Rate Limiter          |
 

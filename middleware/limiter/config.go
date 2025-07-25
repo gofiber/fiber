@@ -63,7 +63,7 @@ type Config struct {
 	// Default: false
 	SkipSuccessfulRequests bool
 
-	// When set to true, the middleware will not include the X-RateLimit-* headers in the response.
+	// When set to true, the middleware will not include the rate limit headers (X-RateLimit-* and Retry-After) in the response.
 	//
 	// Default: false
 	DisableHeaders bool

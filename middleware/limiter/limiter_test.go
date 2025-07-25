@@ -766,7 +766,7 @@ func Test_Limiter_Disable_Headers(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		Max:            50,
+		Max:            1,
 		Expiration:     2 * time.Second,
 		DisableHeaders: true,
 	}))
@@ -775,6 +775,7 @@ func Test_Limiter_Disable_Headers(t *testing.T) {
 		return c.SendString("Hello tester!")
 	})
 
+	// first request should pass
 	fctx := &fasthttp.RequestCtx{}
 	fctx.Request.Header.SetMethod(fiber.MethodGet)
 	fctx.Request.SetRequestURI("/")
@@ -786,6 +787,19 @@ func Test_Limiter_Disable_Headers(t *testing.T) {
 	require.Equal(t, "", string(fctx.Response.Header.Peek("X-RateLimit-Limit")))
 	require.Equal(t, "", string(fctx.Response.Header.Peek("X-RateLimit-Remaining")))
 	require.Equal(t, "", string(fctx.Response.Header.Peek("X-RateLimit-Reset")))
+
+	// second request should hit the limit and return 429 without headers
+	fctx2 := &fasthttp.RequestCtx{}
+	fctx2.Request.Header.SetMethod(fiber.MethodGet)
+	fctx2.Request.SetRequestURI("/")
+
+	app.Handler()(fctx2)
+
+	require.Equal(t, fiber.StatusTooManyRequests, fctx2.Response.StatusCode())
+	require.Equal(t, "", string(fctx2.Response.Header.Peek(fiber.HeaderRetryAfter)))
+	require.Equal(t, "", string(fctx2.Response.Header.Peek("X-RateLimit-Limit")))
+	require.Equal(t, "", string(fctx2.Response.Header.Peek("X-RateLimit-Remaining")))
+	require.Equal(t, "", string(fctx2.Response.Header.Peek("X-RateLimit-Reset")))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Limiter -benchmem -count=4
