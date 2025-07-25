@@ -1894,6 +1894,18 @@ func Test_Ctx_Host_TrustedProxy(t *testing.T) {
 	}
 }
 
+// go test -run Test_Ctx_Host_Forwarded
+func Test_Ctx_Host_Forwarded(t *testing.T) {
+	t.Parallel()
+	app := New(Config{TrustProxy: true, TrustProxyConfig: TrustProxyConfig{Proxies: []string{"0.0.0.0"}}})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().SetRequestURI("http://google.com/test")
+	c.Request().Header.Set(HeaderForwarded, "host=example.com")
+	c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+	require.Equal(t, "example.com", c.Host())
+	app.ReleaseCtx(c)
+}
+
 // go test -run Test_Ctx_Host_TrustedProxyRange
 func Test_Ctx_Host_TrustedProxyRange(t *testing.T) {
 	t.Parallel()
@@ -2278,6 +2290,20 @@ func Test_Ctx_IP_TrustedProxy(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	c.Request().Header.Set(HeaderXForwardedFor, "0.0.0.1")
 	require.Equal(t, "0.0.0.1", c.IP())
+}
+
+// go test -run Test_Ctx_IP_Forwarded
+func Test_Ctx_IP_Forwarded(t *testing.T) {
+	t.Parallel()
+	app := New(Config{
+		TrustProxy:       true,
+		TrustProxyConfig: TrustProxyConfig{Proxies: []string{"0.0.0.0"}},
+		ProxyHeader:      HeaderXForwardedFor,
+	})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.Set(HeaderForwarded, "for=1.1.1.1")
+	c.Request().Header.Set(HeaderXForwardedFor, "2.2.2.2")
+	require.Equal(t, "1.1.1.1", c.IP())
 }
 
 // go test -run Test_Ctx_IPs  -parallel
@@ -3036,6 +3062,19 @@ func Test_Ctx_Scheme_TrustedProxy(t *testing.T) {
 	require.Equal(t, schemeHTTPS, c.Scheme())
 	c.Request().Header.Reset()
 
+	require.Equal(t, schemeHTTP, c.Scheme())
+}
+
+// go test -run Test_Ctx_Scheme_Forwarded
+func Test_Ctx_Scheme_Forwarded(t *testing.T) {
+	t.Parallel()
+	app := New(Config{TrustProxy: true, TrustProxyConfig: TrustProxyConfig{Proxies: []string{"0.0.0.0"}}})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Request().Header.Set(HeaderForwarded, "proto=https")
+	c.Request().Header.Set(HeaderXForwardedProto, schemeHTTP)
+	require.Equal(t, schemeHTTPS, c.Scheme())
+	c.Request().Header.Reset()
 	require.Equal(t, schemeHTTP, c.Scheme())
 }
 

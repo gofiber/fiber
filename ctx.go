@@ -796,6 +796,14 @@ func (c *DefaultCtx) GetReqHeaders() map[string][]string {
 // Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
 func (c *DefaultCtx) Host() string {
 	if c.IsProxyTrusted() {
+		if h := c.Request().Header.Peek(HeaderForwarded); len(h) > 0 {
+			if _, host, _ := parseForwarded(c.app.getString(h)); len(host) > 0 {
+				if commaPos := strings.Index(host, ","); commaPos != -1 {
+					return host[:commaPos]
+				}
+				return host
+			}
+		}
 		if host := c.Get(HeaderXForwardedHost); len(host) > 0 {
 			commaPos := strings.Index(host, ",")
 			if commaPos != -1 {
@@ -831,8 +839,17 @@ func (c *DefaultCtx) Port() string {
 // If ProxyHeader and IP Validation is configured, it will parse that header and return the first valid IP address.
 // Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
 func (c *DefaultCtx) IP() string {
-	if c.IsProxyTrusted() && len(c.app.config.ProxyHeader) > 0 {
-		return c.extractIPFromHeader(c.app.config.ProxyHeader)
+	if c.IsProxyTrusted() {
+		if h := c.Request().Header.Peek(HeaderForwarded); len(h) > 0 {
+			if ip, _, _ := parseForwarded(c.app.getString(h)); ip != "" {
+				if !c.app.config.EnableIPValidation || utils.IsIPv4(ip) || utils.IsIPv6(ip) {
+					return ip
+				}
+			}
+		}
+		if len(c.app.config.ProxyHeader) > 0 {
+			return c.extractIPFromHeader(c.app.config.ProxyHeader)
+		}
 	}
 
 	return c.fasthttp.RemoteIP().String()
@@ -1266,6 +1283,17 @@ func (c *DefaultCtx) Scheme() string {
 	}
 	if !c.IsProxyTrusted() {
 		return schemeHTTP
+	}
+	if h := c.Request().Header.Peek(HeaderForwarded); len(h) > 0 {
+		if _, _, proto := parseForwarded(c.app.getString(h)); proto != "" {
+			if strings.EqualFold(proto, schemeHTTPS) {
+				return schemeHTTPS
+			}
+			if strings.EqualFold(proto, schemeHTTP) {
+				return schemeHTTP
+			}
+			return proto
+		}
 	}
 
 	scheme := schemeHTTP
