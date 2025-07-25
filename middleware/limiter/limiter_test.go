@@ -781,6 +781,8 @@ func Test_Limiter_Disable_Headers(t *testing.T) {
 
 	app.Handler()(fctx)
 
+	require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode())
+	require.Equal(t, "Hello tester!", string(fctx.Response.Body()))
 	require.Equal(t, "", string(fctx.Response.Header.Peek("X-RateLimit-Limit")))
 	require.Equal(t, "", string(fctx.Response.Header.Peek("X-RateLimit-Remaining")))
 	require.Equal(t, "", string(fctx.Response.Header.Peek("X-RateLimit-Reset")))
