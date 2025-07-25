@@ -36,8 +36,8 @@ markdown:
 ## lint: 🚨 Run lint checks
 .PHONY: lint
 lint:
-	@which golangci-lint > /dev/null || (go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.7)
-	@export PATH="$(shell go env GOPATH)/bin:$$PATH"; golangci-lint run
+	@which golangci-lint > /dev/null || test -f ./bin/golangci-lint || $(MAKE) install-lint
+	@export PATH="$(shell pwd)/bin:$(shell go env GOPATH)/bin:$$PATH"; golangci-lint run
 
 ## install-lint: 🛠 Install golangci-lint
 .PHONY: install-lint
