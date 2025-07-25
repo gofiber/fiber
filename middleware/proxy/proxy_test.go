@@ -902,3 +902,84 @@ func Test_Proxy_Immutable(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
 }
+
+func Test_Proxy_HostClient_Name(t *testing.T) {
+	t.Parallel()
+
+	var userAgent string
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		userAgent = string(c.Request().Header.UserAgent())
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	app := fiber.New()
+	app.Use(Balancer(Config{
+		Servers:                  []string{addr},
+		Name:                     "FiberProxy",
+		NoDefaultUserAgentHeader: false,
+	}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "FiberProxy", userAgent)
+}
+
+func Test_Proxy_HostClient_Dial(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	dialCalled := false
+	customDial := func(a string) (net.Conn, error) {
+		dialCalled = true
+		return net.Dial("tcp", a)
+	}
+
+	app := fiber.New()
+	app.Use(Balancer(Config{
+		Servers: []string{addr},
+		Dial:    customDial,
+	}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.True(t, dialCalled)
+}
+
+func Test_Proxy_KeepConnectionHeader(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		conn := string(c.Request().Header.Peek("Connection"))
+		c.Set("Connection", conn)
+		return c.SendString(conn)
+	})
+
+	app := fiber.New()
+	app.Use(Balancer(Config{Servers: []string{addr}}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req.Header.Set("Connection", "keep-alive")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, "", resp.Header.Get("Connection"))
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "", string(body))
+
+	app = fiber.New()
+	app.Use(Balancer(Config{Servers: []string{addr}, KeepConnectionHeader: true}))
+
+	req2 := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req2.Header.Set("Connection", "keep-alive")
+	resp2, err := app.Test(req2)
+	require.NoError(t, err)
+	require.Equal(t, "keep-alive", resp2.Header.Get("Connection"))
+	body2, err := io.ReadAll(resp2.Body)
+	require.NoError(t, err)
+	require.Equal(t, "keep-alive", string(body2))
+}

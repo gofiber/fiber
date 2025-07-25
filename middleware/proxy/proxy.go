@@ -20,9 +20,9 @@ func Balancer(config Config) fiber.Handler {
 
 	// Load balanced client
 	lbc := &fasthttp.LBClient{}
-	// Note that Servers, Timeout, WriteBufferSize, ReadBufferSize and TLSConfig
+	// Note that Servers, Timeout, WriteBufferSize, ReadBufferSize, TLSConfig and DialDualStack
 	// will not be used if the client are set.
-	if config.Client == nil {
+	if cfg.Client == nil {
 		// Set timeout
 		lbc.Timeout = cfg.Timeout
 		// Scheme must be provided, falls back to http
@@ -37,23 +37,45 @@ func Balancer(config Config) fiber.Handler {
 			}
 
 			client := &fasthttp.HostClient{
-				NoDefaultUserAgentHeader: true,
-				DisablePathNormalizing:   true,
-				Addr:                     u.Host,
+				Addr: u.Host,
 
-				ReadBufferSize:  config.ReadBufferSize,
-				WriteBufferSize: config.WriteBufferSize,
+				Transport:   cfg.Transport,
+				DialTimeout: cfg.DialTimeout,
+				Dial:        cfg.Dial,
 
-				TLSConfig: config.TLSConfig,
+				RetryIfErr: cfg.RetryIfErr,
 
-				DialDualStack: config.DialDualStack,
+				TLSConfig: cfg.TLSConfig,
+
+				Name:                      cfg.Name,
+				MaxConns:                  cfg.MaxConns,
+				MaxConnDuration:           cfg.MaxConnDuration,
+				MaxIdleConnDuration:       cfg.MaxIdleConnDuration,
+				MaxIdemponentCallAttempts: cfg.MaxIdemponentCallAttempts,
+
+				ReadBufferSize:  cfg.ReadBufferSize,
+				WriteBufferSize: cfg.WriteBufferSize,
+
+				ReadTimeout:         cfg.ReadTimeout,
+				WriteTimeout:        cfg.WriteTimeout,
+				MaxResponseBodySize: cfg.MaxResponseBodySize,
+				MaxConnWaitTimeout:  cfg.MaxConnWaitTimeout,
+				ConnPoolStrategy:    cfg.ConnPoolStrategy,
+
+				NoDefaultUserAgentHeader:      cfg.NoDefaultUserAgentHeader,
+				DialDualStack:                 cfg.DialDualStack,
+				IsTLS:                         cfg.IsTLS,
+				DisableHeaderNamesNormalizing: cfg.DisableHeaderNamesNormalizing,
+				DisablePathNormalizing:        cfg.DisablePathNormalizing,
+				SecureErrorLogMessage:         cfg.SecureErrorLogMessage,
+				StreamResponseBody:            cfg.StreamResponseBody,
 			}
 
 			lbc.Clients = append(lbc.Clients, client)
 		}
 	} else {
 		// Set custom client
-		lbc = config.Client
+		lbc = cfg.Client
 	}
 
 	// Return new handler
@@ -67,8 +89,10 @@ func Balancer(config Config) fiber.Handler {
 		req := c.Request()
 		res := c.Response()
 
-		// Don't proxy "Connection" header
-		req.Header.Del(fiber.HeaderConnection)
+		if !cfg.KeepConnectionHeader {
+			// Don't proxy "Connection" header
+			req.Header.Del(fiber.HeaderConnection)
+		}
 
 		// Modify request
 		if cfg.ModifyRequest != nil {
@@ -88,8 +112,10 @@ func Balancer(config Config) fiber.Handler {
 			return err
 		}
 
-		// Don't proxy "Connection" header
-		res.Header.Del(fiber.HeaderConnection)
+		if !cfg.KeepConnectionHeader {
+			// Don't proxy "Connection" header
+			res.Header.Del(fiber.HeaderConnection)
+		}
 
 		// Modify response
 		if cfg.ModifyResponse != nil {

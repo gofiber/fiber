@@ -166,6 +166,27 @@ app.Use(proxy.Balancer(proxy.Config{
 | TLSConfig       | `*tls.Config` (or `*fasthttp.TLSConfig` in v3) | TLS config for the HTTP client.                                                                                                                                                                                                    | `nil`           |
 | DialDualStack   | `bool`                                         | Client will attempt to connect to both IPv4 and IPv6 host addresses if set to true.                                                                                                                                                | `false`         |
 | Client          | `*fasthttp.LBClient`                           | Client is a custom client when client config is complex.                                                                                                                                                                           | `nil`           |
+| Transport       | `fasthttp.RoundTripper`                        | Transport-like wrapper executed for every request and response. | `nil` |
+| DialTimeout     | `fasthttp.DialFuncWithTimeout`                 | Custom dial function with timeout. | `nil` |
+| Dial            | `fasthttp.DialFunc`                            | Custom dial function. | `nil` |
+| RetryIfErr      | `fasthttp.RetryIfErrFunc`                      | Determines retry behavior when errors occur. | `nil` |
+| KeepConnectionHeader | `bool`                                    | Forward the `Connection` header instead of removing it. | `false` |
+| Name            | `string`                                       | Client name used in the `User-Agent` request header. | `""` |
+| MaxConns        | `int`                                          | Maximum number of connections which may be established to the host. | `0` |
+| MaxConnDuration | `time.Duration`                                | Keep-alive connections are closed after this duration. | `0` |
+| MaxIdleConnDuration | `time.Duration`                            | Idle keep-alive connections are closed after this duration. | `0` |
+| MaxIdemponentCallAttempts | `int`                                | Maximum number of attempts for idempotent calls. | `0` |
+| ReadTimeout     | `time.Duration`                                | Maximum duration for full response reading. | `0` |
+| WriteTimeout    | `time.Duration`                                | Maximum duration for full request writing. | `0` |
+| MaxResponseBodySize | `int`                                      | Maximum response body size. | `0` |
+| MaxConnWaitTimeout | `time.Duration`                             | Maximum duration for waiting for a free connection. | `0` |
+| ConnPoolStrategy | `fasthttp.ConnPoolStrategyType`               | Connection pool strategy (LIFO or FIFO). | `0` |
+| NoDefaultUserAgentHeader | `bool`                                | Exclude the default User-Agent header from requests. | `true` |
+| IsTLS           | `bool`                                         | Whether to use TLS for host connections. | `false` |
+| DisableHeaderNamesNormalizing | `bool`                           | Send header names without normalization. | `false` |
+| DisablePathNormalizing | `bool`                                   | Send path values without normalization. | `true` |
+| SecureErrorLogMessage | `bool`                                   | Do not log potentially sensitive content in error logs. | `false` |
+| StreamResponseBody | `bool`                                      | Enable response body streaming. | `false` |
 
 ## Default Config
 
@@ -175,5 +196,8 @@ var ConfigDefault = Config{
     ModifyRequest:  nil,
     ModifyResponse: nil,
     Timeout:        fasthttp.DefaultLBClientTimeout,
+    NoDefaultUserAgentHeader: true,
+    DisablePathNormalizing:   true,
+    KeepConnectionHeader:     false,
 }
 ```
