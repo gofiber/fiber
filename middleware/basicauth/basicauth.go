@@ -34,7 +34,7 @@ func New(config Config) fiber.Handler {
 
 		// Get authorization header and ensure it matches the Basic scheme
 		auth := utils.Trim(c.Get(fiber.HeaderAuthorization), ' ')
-		if auth == "" {
+		if auth == "" || len(auth) > cfg.HeaderLimit {
 			return cfg.Unauthorized(c)
 		}
 
