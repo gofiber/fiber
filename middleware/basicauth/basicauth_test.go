@@ -165,6 +165,22 @@ func Test_BasicAuth_InvalidHeader(t *testing.T) {
 	require.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
 }
 
+func Test_BasicAuth_EmptyAuthorization(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New(Config{Users: map[string]string{"john": "doe"}}))
+
+	cases := []string{"", "   "}
+	for _, h := range cases {
+		req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+		req.Header.Set(fiber.HeaderAuthorization, h)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
+	}
+}
+
 func Test_BasicAuth_WhitespaceHandling(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
@@ -188,6 +204,34 @@ func Test_BasicAuth_WhitespaceHandling(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
 	}
+}
+
+func Test_BasicAuth_HeaderLimit(t *testing.T) {
+	t.Parallel()
+	creds := base64.StdEncoding.EncodeToString([]byte("john:doe"))
+
+	t.Run("too large", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Users: map[string]string{"john": "doe"}, HeaderLimit: 10}))
+		req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+		req.Header.Set(fiber.HeaderAuthorization, "Basic "+creds)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
+	})
+
+	t.Run("allowed", func(t *testing.T) {
+		t.Parallel()
+		app := fiber.New()
+		app.Use(New(Config{Users: map[string]string{"john": "doe"}, HeaderLimit: 100}))
+		app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
+		req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+		req.Header.Set(fiber.HeaderAuthorization, "Basic "+creds)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+	})
 }
 
 // go test -v -run=^$ -bench=Benchmark_Middleware_BasicAuth -benchmem -count=4
