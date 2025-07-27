@@ -367,10 +367,10 @@ session.Chain(
 You can create custom extractors by returning a `session.Extractor` struct that defines how to extract the session ID from the request and how the middleware should handle responses.
 
 The `Source` field is crucial as it controls whether the middleware sets response values:
-- `SourceCookie`: Sets cookies in the response
-- `SourceHeader`: Sets headers in the response  
-- `SourceOther`: Read-only, no response values set
 
+- `SourceCookie`: Sets cookies in the response
+- `SourceHeader`: Sets headers in the response
+- `SourceOther`: Read-only, no response values set
 
 ```go
 // Custom extractor for Authorization Bearer tokens
