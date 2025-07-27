@@ -783,66 +783,6 @@ func Test_Limiter_Bug_NewErrorf_SkipSuccessfulRequests_FixedWindow(t *testing.T)
 	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode, "Second request should be rate limited")
 }
 
-// Test to reproduce the bug where fiber.NewErrorf responses are not counted as failed requests
-func Test_Limiter_Bug_NewErrorf_SkipSuccessfulRequests_SlidingWindow(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-
-	app.Use(New(Config{
-		Max:                    1,
-		Expiration:             60 * time.Second,
-		LimiterMiddleware:      SlidingWindow{},
-		SkipSuccessfulRequests: true,
-		SkipFailedRequests:     false,
-		DisableHeaders:         true,
-	}))
-
-	app.Get("/", func(_ fiber.Ctx) error {
-		return fiber.NewErrorf(fiber.StatusInternalServerError, "Error")
-	})
-
-	// First request should succeed (and be counted because it's a failed request)
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
-
-	// Second request should be rate limited because the first failed request was counted
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode, "Second request should be rate limited")
-}
-
-// Test to reproduce the bug where fiber.NewErrorf responses are not counted as failed requests (FixedWindow)
-func Test_Limiter_Bug_NewErrorf_SkipSuccessfulRequests_FixedWindow(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-
-	app.Use(New(Config{
-		Max:                    1,
-		Expiration:             60 * time.Second,
-		LimiterMiddleware:      FixedWindow{},
-		SkipSuccessfulRequests: true,
-		SkipFailedRequests:     false,
-		DisableHeaders:         true,
-	}))
-
-	app.Get("/", func(_ fiber.Ctx) error {
-		return fiber.NewErrorf(fiber.StatusInternalServerError, "Error")
-	})
-
-	// First request should succeed (and be counted because it's a failed request)
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
-
-	// Second request should be rate limited because the first failed request was counted
-	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode, "Second request should be rate limited")
-}
-
 // go test -run Test_Limiter_Next
 func Test_Limiter_Next(t *testing.T) {
 	t.Parallel()
