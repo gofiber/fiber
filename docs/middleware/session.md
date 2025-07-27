@@ -373,13 +373,10 @@ The `Source` field is crucial as it controls whether the middleware sets respons
 
 
 ```go
-import "strings"
-
-// Custom extractor using the Extractor struct directly
+// Custom extractor for Authorization Bearer tokens
 func FromAuthorization() session.Extractor {
     return session.Extractor{
         Extract: func(c fiber.Ctx) (string, error) {
-            // Try Authorization header
             auth := c.Get("Authorization")
             if strings.HasPrefix(auth, "Bearer ") {
                 sessionID := strings.TrimPrefix(auth, "Bearer ")
@@ -387,17 +384,36 @@ func FromAuthorization() session.Extractor {
                     return sessionID, nil
                 }
             }
-            
-            // Return error if no session ID found
             return "", session.ErrMissingSessionIDInHeader
         },
-        Source: session.SourceHeader,
+        Source: session.SourceHeader, // This will set response headers
         Key:    "Authorization",
     }
 }
 
 app.Use(session.New(session.Config{
-    Extractor: FromAuthorization(),
+    Extractor: FromAuthorization(), // Will set Authorization header in response
+}))
+```
+
+```go
+// Custom read-only extractor (no response setting)
+func FromCustomParam() session.Extractor {
+    return session.Extractor{
+        Extract: func(c fiber.Ctx) (string, error) {
+            sessionID := c.Get("X-Custom-Session")
+            if sessionID == "" {
+                return "", session.ErrMissingSessionIDInHeader
+            }
+            return sessionID, nil
+        },
+        Source: session.SourceOther, // Read-only, won't set responses
+        Key:    "X-Custom-Session",
+    }
+}
+
+app.Use(session.New(session.Config{
+    Extractor: FromCustomParam(), // Will not set any response values
 }))
 ```
 
