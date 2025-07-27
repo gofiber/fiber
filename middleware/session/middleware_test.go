@@ -393,7 +393,6 @@ func Test_Session_WithConfig(t *testing.T) {
 		KeyGenerator: func() string {
 			return "test"
 		},
-		sessionName: "session_id_test",
 	}))
 
 	app.Get("/", func(c fiber.Ctx) error {

@@ -10,19 +10,20 @@ import (
 
 // Config defines the configuration for the session middleware.
 type Config struct {
+
 	// Storage interface for storing session data.
 	//
 	// Optional. Default: memory.New()
 	Storage fiber.Storage
 
-	// Next defines a function to skip this middleware when it returns true.
-	// Optional. Default: nil
-	Next func(c fiber.Ctx) bool
-
 	// Store defines the session store.
 	//
 	// Required.
 	Store *Store
+
+	// Next defines a function to skip this middleware when it returns true.
+	// Optional. Default: nil
+	Next func(c fiber.Ctx) bool
 
 	// ErrorHandler defines a function to handle errors.
 	//
@@ -33,11 +34,6 @@ type Config struct {
 	//
 	// Optional. Default: utils.UUIDv4
 	KeyGenerator func() string
-
-	// Extractor is a function that extracts the session ID from the request.
-	//
-	// Optional. Default: FromCookie("session_id")
-	Extractor func(c fiber.Ctx) (string, error)
 
 	// CookieDomain defines the domain of the session cookie.
 	//
@@ -54,9 +50,10 @@ type Config struct {
 	// Optional. Default: "Lax"
 	CookieSameSite string
 
-	// sessionName is the name of the session for cookie/header setting.
-	// This is used when setting the session cookie and should match the extractor's key if it's cookie-based.
-	sessionName string
+	// Extractor is used to extract the session ID from the request.
+	//
+	// Optional. Default: FromCookie("session_id")
+	Extractor Extractor
 
 	// IdleTimeout defines the maximum duration of inactivity before the session expires.
 	//
@@ -96,7 +93,6 @@ var ConfigDefault = Config{
 	IdleTimeout:    30 * time.Minute,
 	KeyGenerator:   utils.UUIDv4,
 	Extractor:      FromCookie("session_id"),
-	sessionName:    "session_id",
 	CookieSameSite: "Lax",
 }
 
@@ -110,50 +106,55 @@ var ConfigDefault = Config{
 //
 //	DefaultErrorHandler(c, err)
 func DefaultErrorHandler(c fiber.Ctx, err error) {
-	log.Errorf("session: %v", err)
-	if sendErr := c.SendStatus(fiber.StatusInternalServerError); sendErr != nil {
-		log.Errorf("session: %v", sendErr)
+	log.Errorf("session error: %v", err)
+	if sendErr := c.Status(fiber.StatusInternalServerError).SendString("Internal Server Error"); sendErr != nil {
+		log.Errorf("failed to send error response: %v", sendErr)
 	}
 }
 
 // configDefault sets default values for the Config struct.
 //
+// This function ensures that all necessary fields have sensible defaults
+// if they are not explicitly set by the user.
+//
 // Parameters:
-//   - config: Variadic parameter to override the default config.
+//   - config: Variadic parameter to override default config.
 //
 // Returns:
-//   - Config: The configuration with default values set.
+//   - Config: The configuration with defaults applied.
 //
 // Usage:
 //
 //	cfg := configDefault()
 //	cfg := configDefault(customConfig)
 func configDefault(config ...Config) Config {
-	// Return default config if none provided.
+	// Return default config if nothing provided
 	if len(config) < 1 {
 		return ConfigDefault
 	}
 
-	// Override default config with provided config.
+	// Override default config
 	cfg := config[0]
 
-	// Set default values where necessary.
+	// Set default values
 	if cfg.IdleTimeout <= 0 {
 		cfg.IdleTimeout = ConfigDefault.IdleTimeout
 	}
+
 	// Ensure AbsoluteTimeout is greater than or equal to IdleTimeout.
 	if cfg.AbsoluteTimeout > 0 && cfg.AbsoluteTimeout < cfg.IdleTimeout {
 		panic("[session] AbsoluteTimeout must be greater than or equal to IdleTimeout")
 	}
+
+	// Check if we have a zero-value Extractor
+	if cfg.Extractor.Extract == nil {
+		cfg.Extractor = ConfigDefault.Extractor
+	}
+
 	if cfg.KeyGenerator == nil {
 		cfg.KeyGenerator = ConfigDefault.KeyGenerator
 	}
-	if cfg.Extractor == nil {
-		cfg.Extractor = ConfigDefault.Extractor
-	}
-	if cfg.sessionName == "" {
-		cfg.sessionName = ConfigDefault.sessionName
-	}
+
 	if cfg.CookieSameSite == "" {
 		cfg.CookieSameSite = ConfigDefault.CookieSameSite
 	}

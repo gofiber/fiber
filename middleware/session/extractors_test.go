@@ -31,7 +31,7 @@ func TestFromCookie(t *testing.T) {
 
 		ctx.Request().Header.SetCookie("session_id", "test-session-id")
 
-		sessionID, err := extractor(ctx)
+		sessionID, err := extractor.Extract(ctx)
 		require.NoError(t, err)
 		require.Equal(t, "test-session-id", sessionID)
 	})
@@ -41,7 +41,7 @@ func TestFromCookie(t *testing.T) {
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(ctx)
 
-		sessionID, err := extractor(ctx)
+		sessionID, err := extractor.Extract(ctx)
 		require.Error(t, err)
 		require.Equal(t, ErrMissingSessionIDInCookie, err)
 		require.Empty(t, sessionID)
@@ -60,7 +60,7 @@ func TestFromHeader(t *testing.T) {
 
 		ctx.Request().Header.Set("X-Session-ID", "test-session-id")
 
-		sessionID, err := extractor(ctx)
+		sessionID, err := extractor.Extract(ctx)
 		require.NoError(t, err)
 		require.Equal(t, "test-session-id", sessionID)
 	})
@@ -70,7 +70,7 @@ func TestFromHeader(t *testing.T) {
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(ctx)
 
-		sessionID, err := extractor(ctx)
+		sessionID, err := extractor.Extract(ctx)
 		require.Error(t, err)
 		require.Equal(t, ErrMissingSessionIDInHeader, err)
 		require.Empty(t, sessionID)
@@ -89,7 +89,7 @@ func TestFromQuery(t *testing.T) {
 
 		ctx.Request().SetRequestURI("/test?session_id=test-session-id")
 
-		sessionID, err := extractor(ctx)
+		sessionID, err := extractor.Extract(ctx)
 		require.NoError(t, err)
 		require.Equal(t, "test-session-id", sessionID)
 	})
@@ -101,7 +101,7 @@ func TestFromQuery(t *testing.T) {
 
 		ctx.Request().SetRequestURI("/test")
 
-		sessionID, err := extractor(ctx)
+		sessionID, err := extractor.Extract(ctx)
 		require.Error(t, err)
 		require.Equal(t, ErrMissingSessionIDInQuery, err)
 		require.Empty(t, sessionID)
@@ -122,7 +122,7 @@ func TestFromForm(t *testing.T) {
 		ctx.Request().Header.SetContentType("application/x-www-form-urlencoded")
 		ctx.Request().SetBodyString("session_id=test-session-id")
 
-		sessionID, err := extractor(ctx)
+		sessionID, err := extractor.Extract(ctx)
 		require.NoError(t, err)
 		require.Equal(t, "test-session-id", sessionID)
 	})
@@ -136,7 +136,7 @@ func TestFromForm(t *testing.T) {
 		ctx.Request().Header.SetContentType("application/x-www-form-urlencoded")
 		ctx.Request().SetBodyString("other_field=value")
 
-		sessionID, err := extractor(ctx)
+		sessionID, err := extractor.Extract(ctx)
 		require.Error(t, err)
 		require.Equal(t, ErrMissingSessionIDInForm, err)
 		require.Empty(t, sessionID)
@@ -149,7 +149,7 @@ func TestFromParam(t *testing.T) {
 
 	// FromParam
 	app.Get("/test/:csrf", func(c fiber.Ctx) error {
-		token, err := FromParam("csrf")(c)
+		token, err := FromParam("csrf").Extract(c)
 		require.NoError(t, err)
 		require.Equal(t, "token_from_param", token)
 		return nil
@@ -181,7 +181,7 @@ func TestChain(t *testing.T) {
 			FromHeader("X-Session-ID"),
 		)
 
-		sessionID, err := extractor(ctx)
+		sessionID, err := extractor.Extract(ctx)
 		require.NoError(t, err)
 		require.Equal(t, "cookie-session-id", sessionID) // First extractor wins
 	})
@@ -198,7 +198,7 @@ func TestChain(t *testing.T) {
 			FromHeader("X-Session-ID"),
 		)
 
-		sessionID, err := extractor(ctx)
+		sessionID, err := extractor.Extract(ctx)
 		require.NoError(t, err)
 		require.Equal(t, "header-session-id", sessionID)
 	})
@@ -213,7 +213,7 @@ func TestChain(t *testing.T) {
 			FromHeader("X-Session-ID"),
 		)
 
-		sessionID, err := extractor(ctx)
+		sessionID, err := extractor.Extract(ctx)
 		require.Error(t, err)
 		require.Empty(t, sessionID)
 	})
@@ -225,7 +225,7 @@ func TestChain(t *testing.T) {
 
 		extractor := Chain()
 
-		sessionID, err := extractor(ctx)
+		sessionID, err := extractor.Extract(ctx)
 		require.Error(t, err)
 		require.Equal(t, ErrMissingSessionID, err)
 		require.Empty(t, sessionID)

@@ -368,34 +368,70 @@ func (s *Session) SetIdleTimeout(idleTimeout time.Duration) {
 	s.idleTimeout = idleTimeout
 }
 
+// getExtractorInfo returns all cookie and header extractors from the chain
+func (s *Session) getExtractorInfo() []Extractor {
+	if s.config == nil {
+		return []Extractor{{Source: SourceCookie, Key: "session_id"}} // Safe default
+	}
+
+	extractor := s.config.Extractor
+	var relevantExtractors []Extractor
+
+	// If it's a chained extractor, collect all cookie/header extractors
+	if len(extractor.Chain) > 0 {
+		for _, chainExtractor := range extractor.Chain {
+			if chainExtractor.Source == SourceCookie || chainExtractor.Source == SourceHeader {
+				relevantExtractors = append(relevantExtractors, chainExtractor)
+			}
+		}
+	} else {
+		// Single extractor - only include if it's cookie or header
+		if extractor.Source == SourceCookie || extractor.Source == SourceHeader {
+			relevantExtractors = append(relevantExtractors, extractor)
+		}
+	}
+
+	// If no cookie/header extractors found and the config has a store but no explicit cookie/header extractors,
+	// we should not default to cookie. This allows for SourceOther-only configurations.
+	// Only add default cookie extractor if we have no extractors at all (nil config case is handled above)
+
+	return relevantExtractors
+}
+
 func (s *Session) setSession() {
 	if s.ctx == nil {
 		return
 	}
 
-	if s.config.source == SourceHeader {
-		s.ctx.Request().Header.SetBytesV(s.config.sessionName, []byte(s.id))
-		s.ctx.Response().Header.SetBytesV(s.config.sessionName, []byte(s.id))
-	} else {
-		fcookie := fasthttp.AcquireCookie()
-		defer fasthttp.ReleaseCookie(fcookie)
+	// Get all relevant extractors
+	extractors := s.getExtractorInfo()
 
-		fcookie.SetKey(s.config.sessionName)
-		fcookie.SetValue(s.id)
-		fcookie.SetPath(s.config.CookiePath)
-		fcookie.SetDomain(s.config.CookieDomain)
-		// Cookies are also session cookies if they do not specify the Expires or Max-Age attribute.
-		// refer: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie
-		if !s.config.CookieSessionOnly {
-			fcookie.SetMaxAge(int(s.idleTimeout.Seconds()))
-			fcookie.SetExpire(time.Now().Add(s.idleTimeout))
+	// Set session ID for each extractor type
+	for _, ext := range extractors {
+		switch ext.Source {
+		case SourceHeader:
+			s.ctx.Response().Header.SetBytesV(ext.Key, []byte(s.id))
+		case SourceCookie:
+			fcookie := fasthttp.AcquireCookie()
+
+			fcookie.SetKey(ext.Key)
+			fcookie.SetValue(s.id)
+			fcookie.SetPath(s.config.CookiePath)
+			fcookie.SetDomain(s.config.CookieDomain)
+			// Cookies are also session cookies if they do not specify the Expires or Max-Age attribute.
+			// refer: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie
+			if !s.config.CookieSessionOnly {
+				fcookie.SetMaxAge(int(s.idleTimeout.Seconds()))
+				fcookie.SetExpire(time.Now().Add(s.idleTimeout))
+			}
+
+			s.setCookieAttributes(fcookie)
+			s.ctx.Response().Header.SetCookie(fcookie)
+			fasthttp.ReleaseCookie(fcookie)
+		case SourceOther:
+			// No action required for SourceOther
 		}
-
-		s.setCookieAttributes(fcookie)
-		s.ctx.Response().Header.SetCookie(fcookie)
 	}
-	s.ctx.Response().Header.SetCookie(fcookie)
-	fasthttp.ReleaseCookie(fcookie)
 }
 
 func (s *Session) delSession() {
@@ -403,28 +439,34 @@ func (s *Session) delSession() {
 		return
 	}
 
-	if s.config.source == SourceHeader {
-		s.ctx.Request().Header.Del(s.config.sessionName)
-		s.ctx.Response().Header.Del(s.config.sessionName)
-	} else {
-		s.ctx.Request().Header.DelCookie(s.config.sessionName)
-		s.ctx.Response().Header.DelCookie(s.config.sessionName)
+	// Get all relevant extractors
+	extractors := s.getExtractorInfo()
 
-		fcookie := fasthttp.AcquireCookie()
-		defer fasthttp.ReleaseCookie(fcookie)
+	// Delete session ID for each extractor type
+	for _, ext := range extractors {
+		switch ext.Source {
+		case SourceHeader:
+			s.ctx.Request().Header.Del(ext.Key)
+			s.ctx.Response().Header.Del(ext.Key)
+		case SourceCookie:
+			s.ctx.Request().Header.DelCookie(ext.Key)
+			s.ctx.Response().Header.DelCookie(ext.Key)
 
-		fcookie.SetKey(s.config.sessionName)
-		fcookie.SetPath(s.config.CookiePath)
-		fcookie.SetDomain(s.config.CookieDomain)
-		fcookie.SetMaxAge(-1)
-		fcookie.SetExpire(time.Now().Add(-1 * time.Minute))
+			fcookie := fasthttp.AcquireCookie()
+			defer fasthttp.ReleaseCookie(fcookie)
 
-		s.setCookieAttributes(fcookie)
-		s.ctx.Response().Header.SetCookie(fcookie)
+			fcookie.SetKey(ext.Key)
+			fcookie.SetPath(s.config.CookiePath)
+			fcookie.SetDomain(s.config.CookieDomain)
+			fcookie.SetMaxAge(-1)
+			fcookie.SetExpire(time.Now().Add(-1 * time.Minute))
+
+			s.setCookieAttributes(fcookie)
+			s.ctx.Response().Header.SetCookie(fcookie)
+		case SourceOther:
+			// No action required for SourceOther
+		}
 	}
-
-	s.ctx.Response().Header.SetCookie(fcookie)
-	fasthttp.ReleaseCookie(fcookie)
 }
 
 // setCookieAttributes sets the cookie attributes based on the session config.

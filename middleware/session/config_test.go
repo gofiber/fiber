@@ -15,7 +15,7 @@ func TestConfigDefault(t *testing.T) {
 	require.Equal(t, 30*time.Minute, cfg.IdleTimeout)
 	require.NotNil(t, cfg.KeyGenerator)
 	require.NotNil(t, cfg.Extractor)
-	require.Equal(t, "session_id", cfg.sessionName)
+	require.Equal(t, "session_id", cfg.Extractor.Key)
 	require.Equal(t, "Lax", cfg.CookieSameSite)
 }
 
@@ -25,13 +25,12 @@ func TestConfigDefaultWithCustomConfig(t *testing.T) {
 		IdleTimeout:  48 * time.Hour,
 		Extractor:    FromHeader("X-Custom-Session"),
 		KeyGenerator: func() string { return "custom_key" },
-		sessionName:  "custom_session",
 	}
 	cfg := configDefault(customConfig)
 	require.Equal(t, 48*time.Hour, cfg.IdleTimeout)
 	require.NotNil(t, cfg.KeyGenerator)
 	require.NotNil(t, cfg.Extractor)
-	require.Equal(t, "custom_session", cfg.sessionName)
+	require.Equal(t, "X-Custom-Session", cfg.Extractor.Key)
 }
 
 func TestDefaultErrorHandler(t *testing.T) {

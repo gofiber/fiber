@@ -196,7 +196,7 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 //
 //	id := store.getSessionID(c)
 func (s *Store) getSessionID(c fiber.Ctx) string {
-	sessionID, err := s.Extractor(c)
+	sessionID, err := s.Extractor.Extract(c)
 	if err != nil {
 		// If extraction fails, return empty string to generate a new session
 		return ""
