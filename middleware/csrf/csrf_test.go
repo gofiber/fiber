@@ -76,7 +76,7 @@ func Test_CSRF_WithSession(t *testing.T) {
 
 	// session store
 	store := session.NewStore(session.Config{
-		KeyLookup: "cookie:_session",
+		Extractor: session.FromCookie("_session"),
 	})
 
 	// fiber instance
@@ -274,7 +274,7 @@ func Test_CSRF_ExpiredToken_WithSession(t *testing.T) {
 
 	// session store
 	store := session.NewStore(session.Config{
-		KeyLookup: "cookie:_session",
+		Extractor: session.FromCookie("_session"),
 	})
 
 	// fiber instance
@@ -1090,7 +1090,7 @@ func Test_CSRF_DeleteToken_WithSession(t *testing.T) {
 
 	// session store
 	store := session.NewStore(session.Config{
-		KeyLookup: "cookie:_session",
+		Extractor: session.FromCookie("_session"),
 	})
 
 	// fiber instance

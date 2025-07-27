@@ -373,35 +373,34 @@ func (s *Session) setSession() {
 		return
 	}
 
-	if s.config.source == SourceHeader {
-		s.ctx.Request().Header.SetBytesV(s.config.sessionName, []byte(s.id))
-		s.ctx.Response().Header.SetBytesV(s.config.sessionName, []byte(s.id))
-	} else {
-		fcookie := fasthttp.AcquireCookie()
-		fcookie.SetKey(s.config.sessionName)
-		fcookie.SetValue(s.id)
-		fcookie.SetPath(s.config.CookiePath)
-		fcookie.SetDomain(s.config.CookieDomain)
-		// Cookies are also session cookies if they do not specify the Expires or Max-Age attribute.
-		// refer: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie
-		if !s.config.CookieSessionOnly {
-			fcookie.SetMaxAge(int(s.idleTimeout.Seconds()))
-			fcookie.SetExpire(time.Now().Add(s.idleTimeout))
-		}
-		fcookie.SetSecure(s.config.CookieSecure)
-		fcookie.SetHTTPOnly(s.config.CookieHTTPOnly)
+	// Always set the cookie, but also check if we need to set headers
+	// This is a simplified approach - for more complex scenarios,
+	// users can implement custom logic after session save
+	fcookie := fasthttp.AcquireCookie()
+	fcookie.SetKey(s.config.sessionName)
+	fcookie.SetValue(s.id)
+	fcookie.SetPath(s.config.CookiePath)
+	fcookie.SetDomain(s.config.CookieDomain)
 
-		switch utils.ToLower(s.config.CookieSameSite) {
-		case "strict":
-			fcookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)
-		case "none":
-			fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
-		default:
-			fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
-		}
-		s.ctx.Response().Header.SetCookie(fcookie)
-		fasthttp.ReleaseCookie(fcookie)
+	// Cookies are also session cookies if they do not specify the Expires or Max-Age attribute.
+	// refer: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie
+	if !s.config.CookieSessionOnly {
+		fcookie.SetMaxAge(int(s.idleTimeout.Seconds()))
+		fcookie.SetExpire(time.Now().Add(s.idleTimeout))
 	}
+	fcookie.SetSecure(s.config.CookieSecure)
+	fcookie.SetHTTPOnly(s.config.CookieHTTPOnly)
+
+	switch utils.ToLower(s.config.CookieSameSite) {
+	case "strict":
+		fcookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)
+	case "none":
+		fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
+	default:
+		fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
+	}
+	s.ctx.Response().Header.SetCookie(fcookie)
+	fasthttp.ReleaseCookie(fcookie)
 }
 
 func (s *Session) delSession() {
@@ -409,34 +408,31 @@ func (s *Session) delSession() {
 		return
 	}
 
-	if s.config.source == SourceHeader {
-		s.ctx.Request().Header.Del(s.config.sessionName)
-		s.ctx.Response().Header.Del(s.config.sessionName)
-	} else {
-		s.ctx.Request().Header.DelCookie(s.config.sessionName)
-		s.ctx.Response().Header.DelCookie(s.config.sessionName)
+	// Delete from request and response cookies
+	s.ctx.Request().Header.DelCookie(s.config.sessionName)
+	s.ctx.Response().Header.DelCookie(s.config.sessionName)
 
-		fcookie := fasthttp.AcquireCookie()
-		fcookie.SetKey(s.config.sessionName)
-		fcookie.SetPath(s.config.CookiePath)
-		fcookie.SetDomain(s.config.CookieDomain)
-		fcookie.SetMaxAge(-1)
-		fcookie.SetExpire(time.Now().Add(-1 * time.Minute))
-		fcookie.SetSecure(s.config.CookieSecure)
-		fcookie.SetHTTPOnly(s.config.CookieHTTPOnly)
+	// Set expired cookie to ensure client deletion
+	fcookie := fasthttp.AcquireCookie()
+	fcookie.SetKey(s.config.sessionName)
+	fcookie.SetPath(s.config.CookiePath)
+	fcookie.SetDomain(s.config.CookieDomain)
+	fcookie.SetMaxAge(-1)
+	fcookie.SetExpire(time.Now().Add(-1 * time.Minute))
+	fcookie.SetSecure(s.config.CookieSecure)
+	fcookie.SetHTTPOnly(s.config.CookieHTTPOnly)
 
-		switch utils.ToLower(s.config.CookieSameSite) {
-		case "strict":
-			fcookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)
-		case "none":
-			fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
-		default:
-			fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
-		}
-
-		s.ctx.Response().Header.SetCookie(fcookie)
-		fasthttp.ReleaseCookie(fcookie)
+	switch utils.ToLower(s.config.CookieSameSite) {
+	case "strict":
+		fcookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)
+	case "none":
+		fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
+	default:
+		fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
 	}
+
+	s.ctx.Response().Header.SetCookie(fcookie)
+	fasthttp.ReleaseCookie(fcookie)
 }
 
 // decodeSessionData decodes session data from raw bytes

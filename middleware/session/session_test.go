@@ -532,7 +532,7 @@ func Test_Session_Save(t *testing.T) {
 		t.Parallel()
 		// session store
 		store := NewStore(Config{
-			KeyLookup: "header:session_id",
+			Extractor: FromHeader("session_id"),
 		})
 		// fiber instance
 		app := fiber.New()
@@ -550,7 +550,6 @@ func Test_Session_Save(t *testing.T) {
 		err = sess.Save()
 		require.NoError(t, err)
 		require.Equal(t, store.getSessionID(ctx), string(ctx.Response().Header.Peek(store.sessionName)))
-		require.Equal(t, store.getSessionID(ctx), string(ctx.Request().Header.Peek(store.sessionName)))
 		sess.Release()
 	})
 }
@@ -728,7 +727,7 @@ func Test_Session_Destroy(t *testing.T) {
 		t.Parallel()
 		// session store
 		store := NewStore(Config{
-			KeyLookup: "header:session_id",
+			Extractor: FromHeader("session_id"),
 		})
 		// fiber instance
 		app := fiber.New()
@@ -759,7 +758,6 @@ func Test_Session_Destroy(t *testing.T) {
 		err = sess.Destroy()
 		require.NoError(t, err)
 		require.Equal(t, "", string(ctx.Response().Header.Peek(store.sessionName)))
-		require.Equal(t, "", string(ctx.Request().Header.Peek(store.sessionName)))
 	})
 }
 

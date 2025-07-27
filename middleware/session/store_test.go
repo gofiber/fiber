@@ -36,7 +36,7 @@ func Test_Store_getSessionID(t *testing.T) {
 		t.Parallel()
 		// session store
 		store := NewStore(Config{
-			KeyLookup: "header:session_id",
+			Extractor: FromHeader("session_id"),
 		})
 		// fiber context
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -52,7 +52,7 @@ func Test_Store_getSessionID(t *testing.T) {
 		t.Parallel()
 		// session store
 		store := NewStore(Config{
-			KeyLookup: "query:session_id",
+			Extractor: FromQuery("session_id"),
 		})
 		// fiber context
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
