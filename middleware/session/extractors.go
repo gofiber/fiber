@@ -7,6 +7,7 @@ import (
 )
 
 var (
+	ErrMissingSessionID         = errors.New("missing session id")
 	ErrMissingSessionIDInHeader = errors.New("missing session id in header")
 	ErrMissingSessionIDInQuery  = errors.New("missing session id in query")
 	ErrMissingSessionIDInParam  = errors.New("missing session id in param")
@@ -74,7 +75,7 @@ func FromQuery(param string) func(c fiber.Ctx) (string, error) {
 func Chain(extractors ...func(fiber.Ctx) (string, error)) func(fiber.Ctx) (string, error) {
 	if len(extractors) == 0 {
 		return func(fiber.Ctx) (string, error) {
-			return "", ErrMissingSessionIDInCookie // Default fallback error
+			return "", ErrMissingSessionID // Default fallback error
 		}
 	}
 
@@ -93,10 +94,10 @@ func Chain(extractors ...func(fiber.Ctx) (string, error)) func(fiber.Ctx) (strin
 				lastErr = err
 			}
 		}
-
 		if lastErr != nil {
 			return "", lastErr
 		}
-		return "", ErrMissingSessionIDInCookie
+		return "", ErrMissingSessionID
 	}
+}
 }

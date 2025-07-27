@@ -212,7 +212,7 @@ func TestChain(t *testing.T) {
 
 		sessionID, err := extractor(ctx)
 		require.Error(t, err)
-		require.Equal(t, ErrMissingSessionIDInCookie, err)
+		require.Equal(t, ErrMissingSessionID, err)
 		require.Empty(t, sessionID)
 	})
 }

@@ -373,7 +373,7 @@ func (s *Session) setSession() {
 		return
 	}
 
-	// Always set the cookie, but also check if we need to set headers
+	// Always set the cookie.
 	// This is a simplified approach - for more complex scenarios,
 	// users can implement custom logic after session save
 	fcookie := fasthttp.AcquireCookie()
