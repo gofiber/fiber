@@ -2743,6 +2743,52 @@ func Test_Ctx_Value(t *testing.T) {
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
+// go test -run Test_Ctx_Context
+func Test_Ctx_Context(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	// Test that Context() returns the ctx itself since it implements context.Context
+	ctx := c.Context()
+	require.NotNil(t, ctx)
+	require.Same(t, c, ctx)
+
+	// Test that the returned context implements context.Context methods
+	_, ok := ctx.Deadline()
+	require.False(t, ok)
+	require.Nil(t, ctx.Done())
+	require.NoError(t, ctx.Err())
+	require.Nil(t, ctx.Value("nonexistent"))
+
+	// Test context with value
+	c.SetContext("key", "value")
+	require.Equal(t, "value", ctx.Value("key"))
+}
+
+// go test -run Test_Ctx_SetContext
+func Test_Ctx_SetContext(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	// Test setting and getting context values
+	c.SetContext("string", "test")
+	c.SetContext("number", 42)
+	c.SetContext("bool", true)
+
+	require.Equal(t, "test", c.Value("string"))
+	require.Equal(t, 42, c.Value("number"))
+	require.Equal(t, true, c.Value("bool"))
+
+	// Test that SetContext and Locals are equivalent
+	c.Locals("localKey", "localValue")
+	c.SetContext("contextKey", "contextValue")
+
+	require.Equal(t, "localValue", c.Value("localKey"))
+	require.Equal(t, "contextValue", c.Value("contextKey"))
+}
+
 // go test -run Test_Ctx_Locals_Generic
 func Test_Ctx_Locals_Generic(t *testing.T) {
 	t.Parallel()

@@ -569,6 +569,18 @@ func (*DefaultCtx) Err() error {
 	return nil
 }
 
+// Context returns the context.Context associated with the current request.
+// In Fiber v3, this simply returns the DefaultCtx itself since it implements context.Context.
+func (c *DefaultCtx) Context() context.Context {
+	return c
+}
+
+// SetContext sets a context value for the given key.
+// This is equivalent to using Locals() in Fiber, but provides context.Context compatibility.
+func (c *DefaultCtx) SetContext(key, value any) {
+	c.fasthttp.SetUserValue(key, value)
+}
+
 // Request return the *fasthttp.Request object
 // This allows you to use all fasthttp request methods
 // https://godoc.org/github.com/valyala/fasthttp#Request

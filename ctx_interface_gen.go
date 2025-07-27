@@ -4,6 +4,7 @@ package fiber
 
 import (
 	"bufio"
+	"context"
 	"crypto/tls"
 	"io"
 	"mime/multipart"
@@ -87,6 +88,12 @@ type Ctx interface {
 	// Due to current limitations in how fasthttp works, Err operates as a nop.
 	// See: https://github.com/valyala/fasthttp/issues/965#issuecomment-777268945
 	Err() error
+	// Context returns the context.Context associated with the current request.
+	// In Fiber v3, this simply returns the DefaultCtx itself since it implements context.Context.
+	Context() context.Context
+	// SetContext sets a context value for the given key.
+	// This is equivalent to using Locals() in Fiber, but provides context.Context compatibility.
+	SetContext(key, value any)
 	// Request return the *fasthttp.Request object
 	// This allows you to use all fasthttp request methods
 	// https://godoc.org/github.com/valyala/fasthttp#Request
@@ -122,7 +129,7 @@ type Ctx interface {
 	// and the full response should be sent.
 	// When a client sends the Cache-Control: no-cache request header to indicate an end-to-end
 	// reload request, this module will return false to make handling these requests transparent.
-	// https://github.com/jshttp/fresh/blob/10e0471669dbbfbfd8de65bc6efac2ddd0bfa057/index.js#L33
+	// https://github.com/jshttp/fresh/blob/master/index.js#L33
 	Fresh() bool
 	// Get returns the HTTP request header specified by field.
 	// Field names are case-insensitive
@@ -182,7 +189,7 @@ type Ctx interface {
 	// and a nil slice encodes as the null JSON value.
 	// If the ctype parameter is given, this method will set the
 	// Content-Type header equal to ctype. If ctype is not given,
-	// The Content-Type header will be set to application/json.
+	// The Content-Type header will be set to application/json; charset=utf-8.
 	JSON(data any, ctype ...string) error
 	// MsgPack converts any interface or string to MessagePack encoded bytes.
 	// If the ctype parameter is given, this method will set the
