@@ -373,9 +373,10 @@ func (s *Session) setSession() {
 		return
 	}
 
-	// Always set the cookie.
-	// This is a simplified approach - for more complex scenarios,
-	// users can implement custom logic after session save
+	// Always set the cookie, even for sessions extracted from headers or other sources.
+	// This means a session will result in cookie creation regardless of how it was obtained,
+	// which may be unexpected for some use cases. For more complex scenarios,
+	// users can implement custom logic after session save.
 	fcookie := fasthttp.AcquireCookie()
 	fcookie.SetKey(s.config.sessionName)
 	fcookie.SetValue(s.id)

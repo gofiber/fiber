@@ -72,6 +72,8 @@ func FromQuery(param string) func(c fiber.Ctx) (string, error) {
 
 // Chain tries multiple extractors in order until one succeeds.
 // Returns the first successful extraction or the last error encountered.
+// If no extractors are provided, the returned function always fails with ErrMissingSessionID.
+// otherwise, returns ErrMissingSessionID if all extractors returned empty strings without errors.
 func Chain(extractors ...func(fiber.Ctx) (string, error)) func(fiber.Ctx) (string, error) {
 	if len(extractors) == 0 {
 		return func(fiber.Ctx) (string, error) {
