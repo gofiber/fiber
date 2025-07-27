@@ -717,6 +717,7 @@ func Benchmark_Limiter_Custom_Store(b *testing.B) {
 		h(fctx)
 	}
 }
+
 // Test to reproduce the bug where fiber.NewErrorf responses are not counted as failed requests
 func Test_Limiter_Bug_NewErrorf_SkipSuccessfulRequests_SlidingWindow(t *testing.T) {
 	t.Parallel()
@@ -732,7 +733,7 @@ func Test_Limiter_Bug_NewErrorf_SkipSuccessfulRequests_SlidingWindow(t *testing.
 		DisableHeaders:         true,
 	}))
 
-	app.Get("/", func(c fiber.Ctx) error {
+	app.Get("/", func(_ fiber.Ctx) error {
 		return fiber.NewErrorf(fiber.StatusInternalServerError, "Error")
 	})
 
@@ -745,7 +746,7 @@ func Test_Limiter_Bug_NewErrorf_SkipSuccessfulRequests_SlidingWindow(t *testing.
 	// But currently this is not happening due to the bug
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
-	
+
 	// This should be 429 (rate limited) but currently returns 500 due to the bug
 	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode, "Second request should be rate limited")
 }
@@ -765,7 +766,7 @@ func Test_Limiter_Bug_NewErrorf_SkipSuccessfulRequests_FixedWindow(t *testing.T)
 		DisableHeaders:         true,
 	}))
 
-	app.Get("/", func(c fiber.Ctx) error {
+	app.Get("/", func(_ fiber.Ctx) error {
 		return fiber.NewErrorf(fiber.StatusInternalServerError, "Error")
 	})
 
@@ -778,7 +779,7 @@ func Test_Limiter_Bug_NewErrorf_SkipSuccessfulRequests_FixedWindow(t *testing.T)
 	// But currently this is not happening due to the bug
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
-	
+
 	// This should be 429 (rate limited) but currently returns 500 due to the bug
 	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode, "Second request should be rate limited")
 }
