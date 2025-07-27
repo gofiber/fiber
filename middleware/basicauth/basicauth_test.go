@@ -113,6 +113,32 @@ func Test_BasicAuth_NoStorePassword(t *testing.T) {
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
 
+func Test_BasicAuth_AuthorizerCtx(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	called := false
+	app.Use(New(Config{
+		Authorizer: func(user, pass string, c fiber.Ctx) bool {
+			called = true
+			require.Equal(t, "john", user)
+			require.Equal(t, "doe", pass)
+			require.Equal(t, "/ctx", c.Path())
+			return true
+		},
+	}))
+
+	app.Get("/ctx", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+
+	creds := base64.StdEncoding.EncodeToString([]byte("john:doe"))
+	req := httptest.NewRequest(fiber.MethodGet, "/ctx", nil)
+	req.Header.Set(fiber.HeaderAuthorization, "Basic "+creds)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.True(t, called)
+}
+
 func Test_BasicAuth_WWWAuthenticateHeader(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()

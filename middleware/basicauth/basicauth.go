@@ -68,7 +68,7 @@ func New(config Config) fiber.Handler {
 		username := creds[:index]
 		password := creds[index+1:]
 
-		if cfg.Authorizer(username, password) {
+		if cfg.Authorizer(username, password, c) {
 			c.Locals(usernameKey, username)
 			if cfg.StorePassword {
 				c.Locals(passwordKey, password)
