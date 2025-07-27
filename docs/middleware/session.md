@@ -32,20 +32,17 @@ app.Use(session.New())
 app.Get("/", func(c fiber.Ctx) error {
     sess := session.FromContext(c)
     
-    // Get session data
-    visits := sess.Get("visits")
-    if visits == nil {
-        visits = 0
+    // Get and update visits count
+    var visits int
+    if v := sess.Get("visits"); v != nil {
+        // Use type assertion with an ok check to prevent a panic
+        if vInt, ok := v.(int); ok {
+            visits = vInt
+        }
     }
-    
-    // Set session data  
-    newVisits := 1
-    if visits != nil {
-        newVisits = visits.(int) + 1
-    }
-    sess.Set("visits", newVisits)
-    
-    return c.SendString(fmt.Sprintf("Visits: %d", newVisits))
+    visits++
+    sess.Set("visits", visits)
+    return c.SendString(fmt.Sprintf("Visits: %d", visits))
 })
 ```
 
