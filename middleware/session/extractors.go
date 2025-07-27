@@ -6,12 +6,31 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
+// Source represents the type of source from which a session ID is extracted.
+// The source type determines how the session middleware handles response values:
+//   - SourceCookie: Sets cookies in the response when saving sessions
+//   - SourceHeader: Sets headers in the response when saving sessions
+//   - SourceOther: Read-only extraction; does not set any response values
 type Source int
 
 const (
+	// SourceCookie indicates the session ID is extracted from a cookie.
+	// When using this source type, the session middleware will automatically
+	// set the session ID as a cookie in the response when saving sessions.
 	SourceCookie Source = iota
+
+	// SourceHeader indicates the session ID is extracted from an HTTP header.
+	// When using this source type, the session middleware will automatically
+	// set the session ID as a header in the response when saving sessions.
 	SourceHeader
-	SourceOther // For query, form, param, or custom extractors
+
+	// SourceOther indicates the session ID is extracted from other sources
+	// such as query parameters, form fields, URL parameters, or custom extractors.
+	// When using this source type, the session middleware operates in read-only mode
+	// and will NOT set any response values (cookies or headers) when saving sessions.
+	// This is useful for extracting session IDs from sources that should not be
+	// automatically written back to the response.
+	SourceOther
 )
 
 type Extractor struct {
@@ -30,7 +49,15 @@ var (
 	ErrMissingSessionIDInCookie = errors.New("missing session id in cookie")
 )
 
-// FromCookie returns an extractor that extracts session ID from the request cookie.
+// FromCookie creates an Extractor that retrieves a session ID from a specified cookie in the request.
+//
+// Parameters:
+//   - key: The name of the cookie from which to extract the session ID.
+//
+// Returns:
+//
+//	An Extractor that attempts to retrieve the session ID from the specified cookie. If the cookie
+//	is not present or does not contain a session ID, it returns an error (ErrMissingSessionIDInCookie).
 func FromCookie(key string) Extractor {
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
@@ -45,7 +72,16 @@ func FromCookie(key string) Extractor {
 	}
 }
 
-// FromParam returns an extractor that extracts session ID from the url param string.
+// FromParam creates an Extractor that retrieves a session ID from a specified URL parameter in the request.
+//
+// Parameters:
+//   - param: The name of the URL parameter from which to extract the session ID.
+//
+// Returns:
+//
+//	An Extractor that attempts to retrieve the session ID from the specified URL parameter. If the
+//	parameter is not present or does not contain a session ID, it returns an error (ErrMissingSessionIDInParam).
+//	This extractor has SourceOther type, meaning it will not set response values.
 func FromParam(param string) Extractor {
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
@@ -60,7 +96,16 @@ func FromParam(param string) Extractor {
 	}
 }
 
-// FromForm returns an extractor that extracts session ID from a multipart-form.
+// FromForm creates an Extractor that retrieves a session ID from a specified form field in the request.
+//
+// Parameters:
+//   - param: The name of the form field from which to extract the session ID.
+//
+// Returns:
+//
+//	An Extractor that attempts to retrieve the session ID from the specified form field. If the
+//	field is not present or does not contain a session ID, it returns an error (ErrMissingSessionIDInForm).
+//	This extractor has SourceOther type, meaning it will not set response values.
 func FromForm(param string) Extractor {
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
@@ -75,7 +120,16 @@ func FromForm(param string) Extractor {
 	}
 }
 
-// FromHeader returns an extractor that extracts session ID from the request header.
+// FromHeader creates an Extractor that retrieves a session ID from a specified HTTP header in the request.
+//
+// Parameters:
+//   - param: The name of the HTTP header from which to extract the session ID.
+//
+// Returns:
+//
+//	An Extractor that attempts to retrieve the session ID from the specified HTTP header. If the
+//	header is not present or does not contain a session ID, it returns an error (ErrMissingSessionIDInHeader).
+//	This extractor has SourceHeader type, meaning it will set response headers when saving sessions.
 func FromHeader(param string) Extractor {
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
@@ -90,7 +144,16 @@ func FromHeader(param string) Extractor {
 	}
 }
 
-// FromQuery returns an extractor that extracts session ID from the query string.
+// FromQuery creates an Extractor that retrieves a session ID from a specified query parameter in the request.
+//
+// Parameters:
+//   - param: The name of the query parameter from which to extract the session ID.
+//
+// Returns:
+//
+//	An Extractor that attempts to retrieve the session ID from the specified query parameter. If the
+//	parameter is not present or does not contain a session ID, it returns an error (ErrMissingSessionIDInQuery).
+//	This extractor has SourceOther type, meaning it will not set response values.
 func FromQuery(param string) Extractor {
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
@@ -105,9 +168,18 @@ func FromQuery(param string) Extractor {
 	}
 }
 
-// Chain tries multiple extractors in order until one succeeds.
-// Returns the first successful extraction or the last error encountered.
-// If no extractors are provided, the returned extractor always fails with ErrMissingSessionID.
+// Chain creates an Extractor that tries multiple extractors in order until one succeeds.
+//
+// Parameters:
+//   - extractors: A variadic list of Extractor instances to try in sequence.
+//
+// Returns:
+//
+//	An Extractor that attempts each provided extractor in order and returns the first successful
+//	extraction. If all extractors fail, it returns the last error encountered, or ErrMissingSessionID
+//	if no errors were returned. If no extractors are provided, it always fails with ErrMissingSessionID.
+//	The returned extractor uses the Source and Key from the first extractor in the chain, and stores
+//	all extractors in the Chain field for response handling logic.
 func Chain(extractors ...Extractor) Extractor {
 	if len(extractors) == 0 {
 		return Extractor{
