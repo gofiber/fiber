@@ -38,9 +38,13 @@ app.Get("/", func(c fiber.Ctx) error {
     }
     
     // Set session data  
-    sess.Set("visits", visits.(int)+1)
+    newVisits := 1
+    if visits != nil {
+        newVisits = visits.(int) + 1
+    }
+    sess.Set("visits", newVisits)
     
-    return c.SendString(fmt.Sprintf("Visits: %d", visits))
+    return c.SendString(fmt.Sprintf("Visits: %d", newVisits))
 })
 ```
 
