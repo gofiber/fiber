@@ -55,7 +55,7 @@ type Config struct {
 	CookieSameSite string
 
 	// sessionName is the name of the session for cookie/header setting.
-	// This is extracted from the Extractor configuration or defaults to "session_id".
+	// This is used when setting the session cookie and should match the extractor's key if it's cookie-based.
 	sessionName string
 
 	// IdleTimeout defines the maximum duration of inactivity before the session expires.
