@@ -15,7 +15,7 @@ The Session middleware provides robust session management for Fiber applications
 - [Configuration](#configuration)
 - [Migration Guide](#migration-guide)
 - [API Reference](#api-reference)
-- [Complete Examples](#complete-examples)
+- [Examples](#examples)
 
 ## Quick Start
 
@@ -676,22 +676,22 @@ session.Chain(extractors ...session.Extractor) session.Extractor
 
 ### Config Properties
 
-| Property | Type | Description | Default |
-|----------|------|-------------|---------|
-| `Storage` | `fiber.Storage` | Session storage backend | `memory.New()` |
-| `Extractor` | `session.Extractor` | Session ID extraction | `FromCookie("session_id")` |
-| `KeyGenerator` | `func() string` | Session ID generator | `utils.UUIDv4` |
-| `IdleTimeout` | `time.Duration` | Inactivity timeout | `30 * time.Minute` |
-| `AbsoluteTimeout` | `time.Duration` | Maximum session duration | `0` (unlimited) |
-| `CookieSecure` | `bool` | HTTPS only | `false` |
-| `CookieHTTPOnly` | `bool` | No JavaScript access | `false` |
-| `CookieSameSite` | `string` | SameSite attribute | `"Lax"` |
-| `CookiePath` | `string` | Cookie path | `""` |
-| `CookieDomain` | `string` | Cookie domain | `""` |
-| `CookieSessionOnly` | `bool` | Session cookie | `false` |
-| `ErrorHandler` | `func(fiber.Ctx, error)` | Error callback | `DefaultErrorHandler` |
+| Property            | Type                        | Description                 | Default                   |
+|---------------------|-----------------------------|-----------------------------|---------------------------|
+| `Storage`           | `fiber.Storage`             | Session storage backend     | `memory.New()`            |
+| `Extractor`         | `session.Extractor`         | Session ID extraction       | `FromCookie("session_id")`|
+| `KeyGenerator`      | `func() string`             | Session ID generator        | `utils.UUIDv4`            |
+| `IdleTimeout`       | `time.Duration`             | Inactivity timeout          | `30 * time.Minute`        |
+| `AbsoluteTimeout`   | `time.Duration`             | Maximum session duration    | `0` (unlimited)           |
+| `CookieSecure`      | `bool`                      | HTTPS only                  | `false`                   |
+| `CookieHTTPOnly`    | `bool`                      | No JavaScript access        | `false`                   |
+| `CookieSameSite`    | `string`                    | SameSite attribute          | `"Lax"`                   |
+| `CookiePath`        | `string`                    | Cookie path                 | `""`                      |
+| `CookieDomain`      | `string`                    | Cookie domain               | `""`                      |
+| `CookieSessionOnly` | `bool`                      | Session cookie              | `false`                   |
+| `ErrorHandler`      | `func(fiber.Ctx, error)`    | Error callback              | `DefaultErrorHandler`     |
 
-## Complete Examples
+## Examples
 
 ### E-commerce with Cart Persistence
 
