@@ -364,29 +364,35 @@ session.Chain(
 
 ### Custom Extractor
 
+You can create custom extractors by returning a `session.Extractor` struct that defines how to extract the session ID from the request and how the middleware should handle responses.
+
+The `Source` field is crucial as it controls whether the middleware sets response values:
+- `SourceCookie`: Sets cookies in the response
+- `SourceHeader`: Sets headers in the response  
+- `SourceOther`: Read-only, no response values set
+
+
 ```go
 import "strings"
 
-func CustomExtractor(c fiber.Ctx) (string, error) {
-    // Try Authorization header
-    auth := c.Get("Authorization")
-    if strings.HasPrefix(auth, "Bearer ") {
-        sessionID := strings.TrimPrefix(auth, "Bearer ")
-        if sessionID != "" {
-            return sessionID, nil
-        }
-    }
-    
-    // Return empty string to generate new session
-    return "", nil
-}
-
-// Custom extractors need to be wrapped to specify their source type
+// Custom extractor using the Extractor struct directly
 func FromAuthorization() session.Extractor {
     return session.Extractor{
-        Extract: CustomExtractor,
-        Source:  session.SourceHeader, // or SourceCookie, SourceOther
-        Key:     "Authorization",
+        Extract: func(c fiber.Ctx) (string, error) {
+            // Try Authorization header
+            auth := c.Get("Authorization")
+            if strings.HasPrefix(auth, "Bearer ") {
+                sessionID := strings.TrimPrefix(auth, "Bearer ")
+                if sessionID != "" {
+                    return sessionID, nil
+                }
+            }
+            
+            // Return error if no session ID found
+            return "", session.ErrMissingSessionIDInHeader
+        },
+        Source: session.SourceHeader,
+        Key:    "Authorization",
     }
 }
 
@@ -601,13 +607,13 @@ app.Get("/", func(c fiber.Ctx) error {
 
 ### KeyLookup to Extractor Migration
 
-| v2 KeyLookup | v3 Extractor |
-|-------------|-------------|
-| `"cookie:session_id"` | `session.FromCookie("session_id")` |
-| `"header:X-Session-ID"` | `session.FromHeader("X-Session-ID")` |
-| `"query:session_id"` | `session.FromQuery("session_id")` |
-| `"form:session_id"` | `session.FromForm("session_id")` |
-| `"cookie:sid,header:X-Sid"` | `session.Chain(session.FromCookie("sid"), session.FromHeader("X-Sid"))` |
+| v2 KeyLookup                    | v3 Extractor                                                            |
+|---------------------------------|-------------------------------------------------------------------------|
+| `"cookie:session_id"`           | `session.FromCookie("session_id")`                                      |
+| `"header:X-Session-ID"`         | `session.FromHeader("X-Session-ID")`                                    |
+| `"query:session_id"`            | `session.FromQuery("session_id")`                                       |
+| `"form:session_id"`             | `session.FromForm("session_id")`                                        |
+| `"cookie:sid,header:X-Sid"`     | `session.Chain(session.FromCookie("sid"), session.FromHeader("X-Sid"))` |
 
 ## API Reference
 
