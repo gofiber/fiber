@@ -126,7 +126,7 @@ func backgroundTask(sessionID string) {
     
     // Manual save required
     if err := sess.Save(); err != nil {
-        log.Error("Failed to save session:", err)
+        log.Printf("Failed to save session: %v", err)
     }
 }
 ```
