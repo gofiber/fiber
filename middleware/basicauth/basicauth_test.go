@@ -185,6 +185,7 @@ func Test_BasicAuth_HeaderLimit(t *testing.T) {
 	creds := base64.StdEncoding.EncodeToString([]byte("john:doe"))
 
 	t.Run("too large", func(t *testing.T) {
+		t.Parallel()
 		app := fiber.New()
 		app.Use(New(Config{Users: map[string]string{"john": "doe"}, HeaderLimit: 10}))
 		req := httptest.NewRequest(fiber.MethodGet, "/", nil)
@@ -195,6 +196,7 @@ func Test_BasicAuth_HeaderLimit(t *testing.T) {
 	})
 
 	t.Run("allowed", func(t *testing.T) {
+		t.Parallel()
 		app := fiber.New()
 		app.Use(New(Config{Users: map[string]string{"john": "doe"}, HeaderLimit: 100}))
 		app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
