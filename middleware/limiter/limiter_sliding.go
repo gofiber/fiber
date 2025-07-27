@@ -105,7 +105,9 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 		if remaining < 0 {
 			// Return response with Retry-After header
 			// https://tools.ietf.org/html/rfc6584
-			c.Set(fiber.HeaderRetryAfter, strconv.FormatUint(resetInSec, 10))
+			if !cfg.DisableHeaders {
+				c.Set(fiber.HeaderRetryAfter, strconv.FormatUint(resetInSec, 10))
+			}
 
 			// Call LimitReached handler
 			return cfg.LimitReached(c)
@@ -129,9 +131,11 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 		}
 
 		// We can continue, update RateLimit headers
-		c.Set(xRateLimitLimit, strconv.Itoa(maxRequests))
-		c.Set(xRateLimitRemaining, strconv.Itoa(remaining))
-		c.Set(xRateLimitReset, strconv.FormatUint(resetInSec, 10))
+		if !cfg.DisableHeaders {
+			c.Set(xRateLimitLimit, strconv.Itoa(maxRequests))
+			c.Set(xRateLimitRemaining, strconv.Itoa(remaining))
+			c.Set(xRateLimitReset, strconv.FormatUint(resetInSec, 10))
+		}
 
 		return err
 	}

@@ -40,9 +40,9 @@ func New(config ...Config) fiber.Handler {
 				cookieValue := fasthttp.Cookie{}
 				cookieValue.SetKeyBytes(key)
 				if c.Response().Header.Cookie(&cookieValue) {
-					encryptedValue, err := cfg.Encryptor(string(cookieValue.Value()), cfg.Key)
-					if err != nil {
-						panic(err)
+					encryptedValue, encErr := cfg.Encryptor(string(cookieValue.Value()), cfg.Key)
+					if encErr != nil {
+						panic(encErr)
 					}
 
 					cookieValue.SetValue(encryptedValue)

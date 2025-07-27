@@ -1071,7 +1071,7 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 	conn := new(testConn)
 
 	// Write raw http request
-	if _, err := conn.r.Write(dump); err != nil {
+	if _, err = conn.r.Write(dump); err != nil {
 		return nil, fmt.Errorf("failed to write: %w", err)
 	}
 	// prepare the server for the start

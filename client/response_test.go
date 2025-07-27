@@ -479,18 +479,18 @@ func Test_Response_Save(t *testing.T) {
 		err = resp.Save("./test/tmp.json")
 		require.NoError(t, err)
 		defer func() {
-			_, err := os.Stat("./test/tmp.json")
-			require.NoError(t, err)
+			_, statErr := os.Stat("./test/tmp.json")
+			require.NoError(t, statErr)
 
-			err = os.RemoveAll("./test")
-			require.NoError(t, err)
+			statErr = os.RemoveAll("./test")
+			require.NoError(t, statErr)
 		}()
 
 		file, err := os.Open("./test/tmp.json")
 		require.NoError(t, err)
 		defer func(file *os.File) {
-			err := file.Close()
-			require.NoError(t, err)
+			closeErr := file.Close()
+			require.NoError(t, closeErr)
 		}(file)
 
 		data, err := io.ReadAll(file)

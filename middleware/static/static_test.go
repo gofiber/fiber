@@ -1054,9 +1054,9 @@ func Test_Static_PathTraversal_WindowsOnly(t *testing.T) {
 
 		// If it's a 404, we expect a "Cannot GET" message
 		if status == 404 {
-			body, err := io.ReadAll(resp.Body)
+			respBody, err := io.ReadAll(resp.Body)
 			require.NoError(t, err)
-			require.Contains(t, string(body), "Cannot GET",
+			require.Contains(t, string(respBody), "Cannot GET",
 				"Blocked traversal should have a 'Cannot GET' message for %s", path)
 		} else {
 			require.Contains(t, string(body), "Are you a hacker?",
