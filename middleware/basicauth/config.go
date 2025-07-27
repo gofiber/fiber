@@ -50,6 +50,13 @@ type Config struct {
 	// Optional. Default: "UTF-8".
 	Charset string
 
+	// HeaderLimit specifies the maximum allowed length of the
+	// Authorization header. Requests exceeding this limit will
+	// be rejected.
+	//
+	// Optional. Default: 8192.
+	HeaderLimit int
+
 	// StorePassword determines if the plaintext password should be stored
 	// in the context for later retrieval via PasswordFromContext.
 	//
@@ -63,6 +70,7 @@ var ConfigDefault = Config{
 	Users:         map[string]string{},
 	Realm:         "Restricted",
 	Charset:       "UTF-8",
+	HeaderLimit:   8192,
 	StorePassword: false,
 	Authorizer:    nil,
 	Unauthorized:  nil,
@@ -90,6 +98,9 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.Charset == "" {
 		cfg.Charset = ConfigDefault.Charset
+	}
+	if cfg.HeaderLimit <= 0 {
+		cfg.HeaderLimit = ConfigDefault.HeaderLimit
 	}
 	if cfg.Authorizer == nil {
 		cfg.Authorizer = func(user, pass string, _ fiber.Ctx) bool {
