@@ -10,7 +10,6 @@ import (
 
 // Config defines the configuration for the session middleware.
 type Config struct {
-
 	// Storage interface for storing session data.
 	//
 	// Optional. Default: memory.New()

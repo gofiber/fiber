@@ -96,6 +96,7 @@ app.Post("/login", func(c fiber.Ctx) error {
 ```
 
 **Benefits:**
+
 - Automatic session saving
 - Automatic resource cleanup
 - No manual lifecycle management
@@ -133,6 +134,7 @@ func backgroundTask(sessionID string) {
 ```
 
 **Requirements:**
+
 - Must call `sess.Release()` when done
 - Must call `sess.Save()` to persist changes
 - Handle errors manually
@@ -221,6 +223,7 @@ app.Post("/login", func(c fiber.Ctx) error {
 ### Common Security Mistakes
 
 ❌ **Session Fixation Vulnerability:**
+
 ```go
 // DANGEROUS: Keeping same session ID after login
 app.Post("/login", func(c fiber.Ctx) error {
@@ -232,6 +235,7 @@ app.Post("/login", func(c fiber.Ctx) error {
 ```
 
 ✅ **Secure Implementation:**
+
 ```go
 // SECURE: Always regenerate session ID after authentication
 app.Post("/login", func(c fiber.Ctx) error {
@@ -282,6 +286,7 @@ app.Use(session.New(session.Config{
 ```
 
 **How it works:**
+
 - `IdleTimeout`: Storage automatically removes sessions after inactivity period
   - Any route that uses the middleware will reset the idle timer
   - Calling `sess.Save()` will also reset the idle timer
@@ -332,7 +337,7 @@ app.Use(session.New(session.Config{
 The session middleware intelligently sets response values based on the extractors in your chain:
 
 - **Cookie + Header extractors**: Both cookie and header are set in the response
-- **Only Cookie extractors**: Only cookie is set in the response  
+- **Only Cookie extractors**: Only cookie is set in the response
 - **Only Header extractors**: Only header is set in the response
 - **Only Query/Form/Param extractors**: No response values are set (read-only)
 - **Mixed extractors**: Only cookie and header extractors set response values
@@ -525,6 +530,7 @@ if ok {
 ```
 
 **Important Notes:**
+
 - Custom types must be registered before using them in sessions
 - Registration must happen during application startup
 - All instances of the application must register the same types
@@ -535,13 +541,14 @@ if ok {
 ### v2 to v3 Breaking Changes
 
 1. **Function Signature**: `session.New()` now returns middleware handler, not store
-2. **Session ID Extraction**: `KeyLookup` replaced with `Extractor` functions  
+2. **Session ID Extraction**: `KeyLookup` replaced with `Extractor` functions
 3. **Lifecycle Management**: Manual `Release()` required for store pattern
 4. **Timeout Handling**: `Expiration` split into `IdleTimeout` and `AbsoluteTimeout`
 
 ### Migration Examples
 
 **v2 Code:**
+
 ```go
 store := session.New(session.Config{
     KeyLookup: "cookie:session_id",
@@ -559,6 +566,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ```
 
 **v3 Middleware Pattern (Recommended):**
+
 ```go
 app.Use(session.New(session.Config{
     Extractor: session.FromCookie("session_id"),
@@ -573,6 +581,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ```
 
 **v3 Store Pattern (Advanced):**
+
 ```go
 store := session.NewStore(session.Config{
     Extractor: session.FromCookie("session_id"),

@@ -384,11 +384,9 @@ func (s *Session) getExtractorInfo() []Extractor {
 				relevantExtractors = append(relevantExtractors, chainExtractor)
 			}
 		}
-	} else {
+	} else if extractor.Source == SourceCookie || extractor.Source == SourceHeader {
 		// Single extractor - only include if it's cookie or header
-		if extractor.Source == SourceCookie || extractor.Source == SourceHeader {
-			relevantExtractors = append(relevantExtractors, extractor)
-		}
+		relevantExtractors = append(relevantExtractors, extractor)
 	}
 
 	// If no cookie/header extractors found and the config has a store but no explicit cookie/header extractors,
@@ -453,7 +451,6 @@ func (s *Session) delSession() {
 			s.ctx.Response().Header.DelCookie(ext.Key)
 
 			fcookie := fasthttp.AcquireCookie()
-			defer fasthttp.ReleaseCookie(fcookie)
 
 			fcookie.SetKey(ext.Key)
 			fcookie.SetPath(s.config.CookiePath)
@@ -463,6 +460,7 @@ func (s *Session) delSession() {
 
 			s.setCookieAttributes(fcookie)
 			s.ctx.Response().Header.SetCookie(fcookie)
+			fasthttp.ReleaseCookie(fcookie)
 		case SourceOther:
 			// No action required for SourceOther
 		}
