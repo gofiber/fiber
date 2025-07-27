@@ -100,4 +100,3 @@ func Chain(extractors ...func(fiber.Ctx) (string, error)) func(fiber.Ctx) (strin
 		return "", ErrMissingSessionID
 	}
 }
-}
