@@ -109,38 +109,38 @@ func TestFromQuery(t *testing.T) {
 }
 
 func TestFromForm(t *testing.T) {
-    t.Parallel()
-    app := fiber.New()
-    extractor := FromForm("session_id")
+	t.Parallel()
+	app := fiber.New()
+	extractor := FromForm("session_id")
 
-    t.Run("success", func(t *testing.T) {
-        t.Parallel()
-        ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-        defer app.ReleaseCtx(ctx)
+	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
 
-        ctx.Request().Header.SetMethod("POST")
-        ctx.Request().Header.SetContentType("application/x-www-form-urlencoded")
-        ctx.Request().SetBodyString("session_id=test-session-id")
+		ctx.Request().Header.SetMethod("POST")
+		ctx.Request().Header.SetContentType("application/x-www-form-urlencoded")
+		ctx.Request().SetBodyString("session_id=test-session-id")
 
-        sessionID, err := extractor(ctx)
-        require.NoError(t, err)
-        require.Equal(t, "test-session-id", sessionID)
-    })
+		sessionID, err := extractor(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "test-session-id", sessionID)
+	})
 
-    t.Run("missing form field", func(t *testing.T) {
-        t.Parallel()
-        ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-        defer app.ReleaseCtx(ctx)
+	t.Run("missing form field", func(t *testing.T) {
+		t.Parallel()
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
 
-        ctx.Request().Header.SetMethod("POST")
-        ctx.Request().Header.SetContentType("application/x-www-form-urlencoded")
-        ctx.Request().SetBodyString("other_field=value")
+		ctx.Request().Header.SetMethod("POST")
+		ctx.Request().Header.SetContentType("application/x-www-form-urlencoded")
+		ctx.Request().SetBodyString("other_field=value")
 
-        sessionID, err := extractor(ctx)
-        require.Error(t, err)
-        require.Equal(t, ErrMissingSessionIDInForm, err)
-        require.Empty(t, sessionID)
-    })
+		sessionID, err := extractor(ctx)
+		require.Error(t, err)
+		require.Equal(t, ErrMissingSessionIDInForm, err)
+		require.Empty(t, sessionID)
+	})
 }
 
 func TestFromParam(t *testing.T) {
