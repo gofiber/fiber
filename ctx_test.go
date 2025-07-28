@@ -5338,7 +5338,7 @@ func Test_Ctx_SendStreamWriter_Interrupted(t *testing.T) {
 					return
 				}
 
-				time.Sleep(400 * time.Millisecond)
+				time.Sleep(300 * time.Millisecond)
 			}
 		})
 	})
@@ -5348,7 +5348,7 @@ func Test_Ctx_SendStreamWriter_Interrupted(t *testing.T) {
 		// allow enough time for three lines to flush before
 		// the test connection is closed but stop before the
 		// fourth line is sent
-		Timeout:       1150 * time.Millisecond,
+		Timeout:       1050 * time.Millisecond,
 		FailOnTimeout: false,
 	}
 	resp, err := app.Test(req, testConfig)
