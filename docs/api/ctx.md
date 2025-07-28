@@ -1547,7 +1547,7 @@ app.Get("/set", func(c fiber.Ctx) error {
         Value:    "randomvalue",
         Expires:  time.Now().Add(24 * time.Hour),
         HTTPOnly: true,
-        SameSite: "lax",
+        SameSite: "Lax",
     })
 
     // ...
@@ -1559,7 +1559,7 @@ app.Get("/delete", func(c fiber.Ctx) error {
         // Set expiry date to the past
         Expires:  time.Now().Add(-(time.Hour * 2)),
         HTTPOnly: true,
-        SameSite: "lax",
+        SameSite: "Lax",
     })
 
     // ...
@@ -1603,6 +1603,16 @@ app.Get("/", func(c fiber.Ctx) error {
   // ...
 })
 ```
+
+:::info
+When setting a cookie with `SameSite=None`, Fiber automatically sets `Secure=true` as required by RFC 6265bis and modern browsers. This ensures compliance with the "None" SameSite policy which mandates that cookies must be sent over secure connections.
+
+For more information, see:
+
+- [Mozilla Documentation](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie#none)
+- [Chrome Documentation](https://developers.google.com/search/blog/2020/01/get-ready-for-new-samesitenone-secure)
+
+:::
 
 :::info
 Partitioned cookies allow partitioning the cookie jar by top-level site, enhancing user privacy by preventing cookies from being shared across different sites. This feature is particularly useful in scenarios where a user interacts with embedded third-party services that should not have access to the main site's cookies. You can check out [CHIPS](https://developers.google.com/privacy-sandbox/3pcd/chips) for more information.
@@ -1760,7 +1770,7 @@ app.Get("/default", func(c fiber.Ctx) error {
 Converts any **interface** or **string** to JSON using the [encoding/json](https://pkg.go.dev/encoding/json) package.
 
 :::info
-JSON also sets the content header to the `ctype` parameter. If no `ctype` is passed in, the header is set to `application/json`.
+JSON also sets the content header to the `ctype` parameter. If no `ctype` is passed in, the header is set to `application/json; charset=utf-8` by default.
 :::
 
 ```go title="Signature"
@@ -1781,14 +1791,14 @@ app.Get("/json", func(c fiber.Ctx) error {
   }
 
   return c.JSON(data)
-  // => Content-Type: application/json
+  // => Content-Type: application/json; charset=utf-8
   // => {"Name": "Grame", "Age": 20}
 
   return c.JSON(fiber.Map{
     "name": "Grame",
     "age":  20,
   })
-  // => Content-Type: application/json
+  // => Content-Type: application/json; charset=utf-8
   // => {"name": "Grame", "age": 20}
 
   return c.JSON(fiber.Map{
@@ -2400,7 +2410,7 @@ app.Get("/", func(c fiber.Ctx) error {
 Converts any **interface** or **string** to XML using the standard `encoding/xml` package.
 
 :::info
-XML also sets the content header to `application/xml`.
+XML also sets the content header to `application/xml; charset=utf-8`.
 :::
 
 ```go title="Signature"

@@ -211,8 +211,8 @@ func (h *Hooks) executeOnPreShutdownHooks() {
 
 func (h *Hooks) executeOnPostShutdownHooks(err error) {
 	for _, v := range h.onPostShutdown {
-		if err := v(err); err != nil {
-			log.Errorf("failed to call post shutdown hook: %v", err)
+		if hookErr := v(err); hookErr != nil {
+			log.Errorf("failed to call post shutdown hook: %v", hookErr)
 		}
 	}
 }

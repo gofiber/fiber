@@ -228,8 +228,8 @@ func New(config ...Config) fiber.Handler {
 		// Remove oldest to make room for new
 		if cfg.MaxBytes > 0 {
 			for storedBytes+bodySize > cfg.MaxBytes {
-				key, size := heap.removeFirst()
-				deleteKey(key)
+				keyToRemove, size := heap.removeFirst()
+				deleteKey(keyToRemove)
 				storedBytes -= size
 			}
 		}

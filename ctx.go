@@ -433,14 +433,16 @@ func (c *DefaultCtx) Cookie(cookie *Cookie) {
 
 	var sameSite http.SameSite
 
-	switch utils.ToLower(cookie.SameSite) {
-	case CookieSameSiteStrictMode:
+	switch {
+	case utils.EqualFold(cookie.SameSite, CookieSameSiteStrictMode):
 		sameSite = http.SameSiteStrictMode
-	case CookieSameSiteNoneMode:
+	case utils.EqualFold(cookie.SameSite, CookieSameSiteNoneMode):
 		sameSite = http.SameSiteNoneMode
-	case CookieSameSiteDisabled:
+		// SameSite=None requires Secure=true per RFC and browser requirements
+		cookie.Secure = true
+	case utils.EqualFold(cookie.SameSite, CookieSameSiteDisabled):
 		sameSite = 0
-	case CookieSameSiteLaxMode:
+	case utils.EqualFold(cookie.SameSite, CookieSameSiteLaxMode):
 		sameSite = http.SameSiteLaxMode
 	default:
 		sameSite = http.SameSiteLaxMode
@@ -981,7 +983,7 @@ func (c *DefaultCtx) Is(extension string) bool {
 // and a nil slice encodes as the null JSON value.
 // If the ctype parameter is given, this method will set the
 // Content-Type header equal to ctype. If ctype is not given,
-// The Content-Type header will be set to application/json.
+// The Content-Type header will be set to application/json; charset=utf-8.
 func (c *DefaultCtx) JSON(data any, ctype ...string) error {
 	raw, err := c.app.config.JSONEncoder(data)
 	if err != nil {
@@ -991,7 +993,7 @@ func (c *DefaultCtx) JSON(data any, ctype ...string) error {
 	if len(ctype) > 0 {
 		c.fasthttp.Response.Header.SetContentType(ctype[0])
 	} else {
-		c.fasthttp.Response.Header.SetContentType(MIMEApplicationJSON)
+		c.fasthttp.Response.Header.SetContentType(MIMEApplicationJSONCharsetUTF8)
 	}
 	return nil
 }
@@ -1057,14 +1059,14 @@ func (c *DefaultCtx) JSONP(data any, callback ...string) error {
 }
 
 // XML converts any interface or string to XML.
-// This method also sets the content header to application/xml.
+// This method also sets the content header to application/xml; charset=utf-8.
 func (c *DefaultCtx) XML(data any) error {
 	raw, err := c.app.config.XMLEncoder(data)
 	if err != nil {
 		return err
 	}
 	c.fasthttp.Response.SetBodyRaw(raw)
-	c.fasthttp.Response.Header.SetContentType(MIMEApplicationXML)
+	c.fasthttp.Response.Header.SetContentType(MIMEApplicationXMLCharsetUTF8)
 	return nil
 }
 
@@ -1959,12 +1961,42 @@ func (c *DefaultCtx) String() string {
 
 // Type sets the Content-Type HTTP header to the MIME type specified by the file extension.
 func (c *DefaultCtx) Type(extension string, charset ...string) Ctx {
+	mimeType := utils.GetMIME(extension)
+
 	if len(charset) > 0 {
-		c.fasthttp.Response.Header.SetContentType(utils.GetMIME(extension) + "; charset=" + charset[0])
+		c.fasthttp.Response.Header.SetContentType(mimeType + "; charset=" + charset[0])
 	} else {
-		c.fasthttp.Response.Header.SetContentType(utils.GetMIME(extension))
+		// Automatically add UTF-8 charset for text-based MIME types
+		if shouldIncludeCharset(mimeType) {
+			c.fasthttp.Response.Header.SetContentType(mimeType + "; charset=utf-8")
+		} else {
+			c.fasthttp.Response.Header.SetContentType(mimeType)
+		}
 	}
 	return c
+}
+
+// shouldIncludeCharset determines if a MIME type should include UTF-8 charset by default
+func shouldIncludeCharset(mimeType string) bool {
+	// Everything under text/ gets UTF-8 by default.
+	if strings.HasPrefix(mimeType, "text/") {
+		return true
+	}
+
+	// Explicit application types that should default to UTF-8.
+	switch mimeType {
+	case MIMEApplicationJSON,
+		MIMEApplicationJavaScript,
+		MIMEApplicationXML:
+		return true
+	}
+
+	// Any application/*+json or application/*+xml.
+	if strings.HasSuffix(mimeType, "+json") || strings.HasSuffix(mimeType, "+xml") {
+		return true
+	}
+
+	return false
 }
 
 // Vary adds the given header field to the Vary response header.

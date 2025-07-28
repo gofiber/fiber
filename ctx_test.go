@@ -1197,6 +1197,165 @@ func Test_Ctx_Cookie_StrictPartitioned(t *testing.T) {
 	)
 }
 
+// go test -run Test_Ctx_Cookie_SameSite_CaseInsensitive
+func Test_Ctx_Cookie_SameSite_CaseInsensitive(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		// Test case-insensitive Strict
+		{"Strict lowercase", "strict", "SameSite=Strict"},
+		{"Strict uppercase", "STRICT", "SameSite=Strict"},
+		{"Strict mixed case", "StRiCt", "SameSite=Strict"},
+		{"Strict proper case", "Strict", "SameSite=Strict"},
+
+		// Test case-insensitive Lax
+		{"Lax lowercase", "lax", "SameSite=Lax"},
+		{"Lax uppercase", "LAX", "SameSite=Lax"},
+		{"Lax mixed case", "LaX", "SameSite=Lax"},
+		{"Lax proper case", "Lax", "SameSite=Lax"},
+
+		// Test case-insensitive None
+		{"None lowercase", "none", "SameSite=None"},
+		{"None uppercase", "NONE", "SameSite=None"},
+		{"None mixed case", "NoNe", "SameSite=None"},
+		{"None proper case", "None", "SameSite=None"},
+
+		// Test case-insensitive disabled
+		{"Disabled lowercase", "disabled", ""},
+		{"Disabled uppercase", "DISABLED", ""},
+		{"Disabled mixed case", "DiSaBlEd", ""},
+		{"Disabled proper case", "disabled", ""},
+
+		// Test invalid values default to Lax
+		{"Invalid value", "invalid", "SameSite=Lax"},
+		{"Empty value", "", "SameSite=Lax"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			// Reset response
+			c.Response().Reset()
+
+			cookie := &Cookie{
+				Name:     "test",
+				Value:    "value",
+				SameSite: tc.input,
+			}
+			c.Res().Cookie(cookie)
+
+			setCookieHeader := c.Res().Get(HeaderSetCookie)
+			if tc.expected == "" {
+				// For disabled, SameSite should not appear in the header
+				require.NotContains(t, setCookieHeader, "SameSite")
+			} else {
+				// For all other cases, the expected SameSite should appear
+				require.Contains(t, setCookieHeader, tc.expected)
+			}
+		})
+	}
+}
+
+// go test -run Test_Ctx_Cookie_SameSite_None_Secure
+func Test_Ctx_Cookie_SameSite_None_Secure(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name             string
+		cookie           *Cookie
+		expectedInHeader string
+		shouldBeSecure   bool
+	}{
+		{
+			name: "Empty value",
+			cookie: &Cookie{
+				Name:     "test",
+				Value:    "value",
+				SameSite: "",
+			},
+			expectedInHeader: "SameSite=Lax",
+			shouldBeSecure:   false,
+		},
+		{
+			name: "None uppercase",
+			cookie: &Cookie{
+				Name:     "test",
+				Value:    "value",
+				SameSite: "None",
+			},
+			expectedInHeader: "SameSite=None",
+			shouldBeSecure:   true,
+		},
+		{
+			name: "None lowercase",
+			cookie: &Cookie{
+				Name:     "test",
+				Value:    "value",
+				SameSite: "none",
+			},
+			expectedInHeader: "SameSite=None",
+			shouldBeSecure:   true,
+		},
+		{
+			name: "Lax proper case",
+			cookie: &Cookie{
+				Name:     "test",
+				Value:    "value",
+				SameSite: "Lax",
+			},
+			expectedInHeader: "SameSite=Lax",
+			shouldBeSecure:   false,
+		},
+		{
+			name: "Strict uppercase",
+			cookie: &Cookie{
+				Name:     "test",
+				Value:    "value",
+				SameSite: "STRICT",
+			},
+			expectedInHeader: "SameSite=Strict",
+			shouldBeSecure:   false,
+		},
+		{
+			name: "Disabled Secure",
+			cookie: &Cookie{
+				Name:     "test",
+				Value:    "value",
+				SameSite: "none",
+				Secure:   false,
+			},
+			expectedInHeader: "SameSite=None",
+			shouldBeSecure:   true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New()
+			ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(ctx)
+
+			ctx.Cookie(tc.cookie)
+
+			cookie := string(ctx.Response().Header.PeekCookie(tc.cookie.Name))
+			require.Contains(t, cookie, tc.expectedInHeader)
+
+			if tc.shouldBeSecure {
+				require.Contains(t, cookie, "secure")
+			} else {
+				require.NotContains(t, cookie, "secure")
+			}
+		})
+	}
+}
+
 // go test -v -run=^$ -bench=Benchmark_Ctx_Cookie -benchmem -count=4
 func Benchmark_Ctx_Cookie(b *testing.B) {
 	app := New()
@@ -1234,9 +1393,9 @@ func Test_Ctx_Format(t *testing.T) {
 	formatHandlers := func(types ...string) []ResFmt {
 		fmts := []ResFmt{}
 		for _, t := range types {
-			t := utils.CopyString(t)
-			fmts = append(fmts, ResFmt{MediaType: t, Handler: func(_ Ctx) error {
-				accepted = t
+			typ := utils.CopyString(t)
+			fmts = append(fmts, ResFmt{MediaType: typ, Handler: func(_ Ctx) error {
+				accepted = typ
 				return nil
 			}})
 		}
@@ -3289,10 +3448,10 @@ func Test_Ctx_SaveFile(t *testing.T) {
 		require.NoError(t, err)
 
 		defer func(file *os.File) {
-			err := file.Close()
-			require.NoError(t, err)
-			err = os.Remove(file.Name())
-			require.NoError(t, err)
+			closeErr := file.Close()
+			require.NoError(t, closeErr)
+			closeErr = os.Remove(file.Name())
+			require.NoError(t, closeErr)
 		}(tempFile)
 		err = c.SaveFile(fh, tempFile.Name())
 		require.NoError(t, err)
@@ -4046,7 +4205,7 @@ func Test_Ctx_JSON(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.JSONEq(t, `{"Age":20,"Name":"Grame"}`, string(c.Response().Body()))
-	require.Equal(t, "application/json", string(c.Response().Header.Peek("content-type")))
+	require.Equal(t, "application/json; charset=utf-8", string(c.Response().Header.Peek("content-type")))
 
 	// Test with ctype
 	err = c.JSON(Map{ // map has no order
@@ -4084,7 +4243,7 @@ func Test_Ctx_JSON(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.Equal(t, `["custom","json"]`, string(c.Response().Body()))
-		require.Equal(t, "application/json", string(c.Response().Header.Peek("content-type")))
+		require.Equal(t, "application/json; charset=utf-8", string(c.Response().Header.Peek("content-type")))
 	})
 }
 
@@ -4252,8 +4411,8 @@ func Test_Ctx_CBOR(t *testing.T) {
 	require.Equal(t, "application/problem+cbor", string(c.Response().Header.Peek("content-type")))
 
 	testEmpty := func(v any, r string) {
-		err := c.CBOR(v)
-		require.NoError(t, err)
+		cbErr := c.CBOR(v)
+		require.NoError(t, cbErr)
 		require.Equal(t, r, hex.EncodeToString(c.Response().Body()))
 	}
 
@@ -4424,7 +4583,7 @@ func Test_Ctx_XML(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, `<Users><Names>Grame</Names><Names>John</Names><Ages>1</Ages><Ages>12</Ages><Ages>20</Ages></Users>`, string(c.Response().Body()))
-	require.Equal(t, "application/xml", string(c.Response().Header.Peek("content-type")))
+	require.Equal(t, "application/xml; charset=utf-8", string(c.Response().Header.Peek("content-type")))
 
 	testEmpty := func(v any, r string) {
 		err := c.XML(v)
@@ -4460,7 +4619,7 @@ func Test_Ctx_XML(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Equal(t, `<custom>xml</custom>`, string(c.Response().Body()))
-		require.Equal(t, "application/xml", string(c.Response().Header.Peek("content-type")))
+		require.Equal(t, "application/xml; charset=utf-8", string(c.Response().Header.Peek("content-type")))
 	})
 }
 
@@ -5045,8 +5204,8 @@ func Test_Ctx_Render_Go_Template(t *testing.T) {
 	file, err := os.CreateTemp(os.TempDir(), "fiber")
 	require.NoError(t, err)
 	defer func() {
-		err := os.Remove(file.Name())
-		require.NoError(t, err)
+		removeErr := os.Remove(file.Name())
+		require.NoError(t, removeErr)
 	}()
 
 	_, err = file.WriteString("template")
@@ -5149,8 +5308,8 @@ func Test_Ctx_SendStreamWriter(t *testing.T) {
 	err = c.SendStreamWriter(func(w *bufio.Writer) {
 		for lineNum := 1; lineNum <= 5; lineNum++ {
 			fmt.Fprintf(w, "Line %d\n", lineNum)
-			if err := w.Flush(); err != nil {
-				t.Errorf("unexpected error: %s", err)
+			if flushErr := w.Flush(); flushErr != nil {
+				t.Errorf("unexpected error: %s", flushErr)
 				return
 			}
 		}
@@ -5262,16 +5421,82 @@ func Test_Ctx_Type(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Type(".json")
-	require.Equal(t, "application/json", string(c.Response().Header.Peek("Content-Type")))
+	require.Equal(t, "application/json; charset=utf-8", string(c.Response().Header.Peek("Content-Type")))
 
 	c.Type("json", "utf-8")
 	require.Equal(t, "application/json; charset=utf-8", string(c.Response().Header.Peek("Content-Type")))
 
 	c.Type(".html")
-	require.Equal(t, "text/html", string(c.Response().Header.Peek("Content-Type")))
+	require.Equal(t, "text/html; charset=utf-8", string(c.Response().Header.Peek("Content-Type")))
 
 	c.Type("html", "utf-8")
 	require.Equal(t, "text/html; charset=utf-8", string(c.Response().Header.Peek("Content-Type")))
+
+	// Test other text types get UTF-8 by default
+	c.Type("txt")
+	require.Equal(t, "text/plain; charset=utf-8", string(c.Response().Header.Peek("Content-Type")))
+
+	c.Type("css")
+	require.Equal(t, "text/css; charset=utf-8", string(c.Response().Header.Peek("Content-Type")))
+
+	c.Type("js")
+	require.Equal(t, "text/javascript; charset=utf-8", string(c.Response().Header.Peek("Content-Type")))
+
+	c.Type("xml")
+	require.Equal(t, "application/xml; charset=utf-8", string(c.Response().Header.Peek("Content-Type")))
+
+	// Test binary types don't get charset
+	c.Type("png")
+	require.Equal(t, "image/png", string(c.Response().Header.Peek("Content-Type")))
+
+	c.Type("pdf")
+	require.Equal(t, "application/pdf", string(c.Response().Header.Peek("Content-Type")))
+
+	// Test custom charset override
+	c.Type("html", "iso-8859-1")
+	require.Equal(t, "text/html; charset=iso-8859-1", string(c.Response().Header.Peek("Content-Type")))
+}
+
+// go test -run Test_shouldIncludeCharset
+func Test_shouldIncludeCharset(t *testing.T) {
+	t.Parallel()
+
+	// Test text/* types - should include charset
+	require.True(t, shouldIncludeCharset("text/html"))
+	require.True(t, shouldIncludeCharset("text/plain"))
+	require.True(t, shouldIncludeCharset("text/css"))
+	require.True(t, shouldIncludeCharset("text/javascript"))
+	require.True(t, shouldIncludeCharset("text/xml"))
+
+	// Test explicit application types - should include charset
+	require.True(t, shouldIncludeCharset("application/json"))
+	require.True(t, shouldIncludeCharset("application/javascript"))
+	require.True(t, shouldIncludeCharset("application/xml"))
+
+	// Test +json suffixes - should include charset
+	require.True(t, shouldIncludeCharset("application/problem+json"))
+	require.True(t, shouldIncludeCharset("application/vnd.api+json"))
+	require.True(t, shouldIncludeCharset("application/hal+json"))
+	require.True(t, shouldIncludeCharset("application/merge-patch+json"))
+
+	// Test +xml suffixes - should include charset
+	require.True(t, shouldIncludeCharset("application/soap+xml"))
+	require.True(t, shouldIncludeCharset("application/xhtml+xml"))
+	require.True(t, shouldIncludeCharset("application/atom+xml"))
+	require.True(t, shouldIncludeCharset("application/rss+xml"))
+
+	// Test binary types - should NOT include charset
+	require.False(t, shouldIncludeCharset("image/png"))
+	require.False(t, shouldIncludeCharset("image/jpeg"))
+	require.False(t, shouldIncludeCharset("application/pdf"))
+	require.False(t, shouldIncludeCharset("application/octet-stream"))
+	require.False(t, shouldIncludeCharset("video/mp4"))
+	require.False(t, shouldIncludeCharset("audio/mpeg"))
+
+	// Test other application types - should NOT include charset
+	require.False(t, shouldIncludeCharset("application/cbor"))
+	require.False(t, shouldIncludeCharset("application/x-www-form-urlencoded"))
+	require.False(t, shouldIncludeCharset("application/vnd.msgpack"))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_Type -benchmem -count=4
@@ -5536,7 +5761,7 @@ func Benchmark_Ctx_BodyStreamWriter(b *testing.B) {
 		ctx.SetBodyStreamWriter(func(w *bufio.Writer) {
 			for range 10 {
 				_, err = w.Write(user)
-				if err := w.Flush(); err != nil {
+				if flushErr := w.Flush(); flushErr != nil {
 					return
 				}
 			}

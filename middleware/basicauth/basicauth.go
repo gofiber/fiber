@@ -34,7 +34,7 @@ func New(config Config) fiber.Handler {
 
 		// Get authorization header and ensure it matches the Basic scheme
 		auth := utils.Trim(c.Get(fiber.HeaderAuthorization), ' ')
-		if auth == "" {
+		if auth == "" || len(auth) > cfg.HeaderLimit {
 			return cfg.Unauthorized(c)
 		}
 
@@ -68,7 +68,7 @@ func New(config Config) fiber.Handler {
 		username := creds[:index]
 		password := creds[index+1:]
 
-		if cfg.Authorizer(username, password) {
+		if cfg.Authorizer(username, password, c) {
 			c.Locals(usernameKey, username)
 			if cfg.StorePassword {
 				c.Locals(passwordKey, password)
