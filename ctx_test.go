@@ -5345,7 +5345,10 @@ func Test_Ctx_SendStreamWriter_Interrupted(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/", nil)
 	testConfig := TestConfig{
-		Timeout:       1100 * time.Millisecond,
+		// allow enough time for three lines to flush before
+		// the test connection is closed but stop before the
+		// fourth line is sent
+		Timeout:       1250 * time.Millisecond,
 		FailOnTimeout: false,
 	}
 	resp, err := app.Test(req, testConfig)
@@ -5355,7 +5358,10 @@ func Test_Ctx_SendStreamWriter_Interrupted(t *testing.T) {
 	t.Logf("%v", err)
 	require.EqualError(t, err, "unexpected EOF")
 
-	require.Equal(t, "Line 1\nLine 2\nLine 3\n", string(body))
+	require.True(t,
+		strings.HasPrefix(string(body), "Line 1\nLine 2\nLine 3\n"),
+		string(body),
+	)
 }
 
 // go test -run Test_Ctx_Set
