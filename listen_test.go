@@ -634,9 +634,9 @@ func captureOutput(f func()) string {
 	go func() {
 		var buf bytes.Buffer
 		wg.Done()
-		_, err := io.Copy(&buf, reader)
-		if err != nil {
-			panic(err)
+		_, copyErr := io.Copy(&buf, reader)
+		if copyErr != nil {
+			panic(copyErr)
 		}
 		out <- buf.String()
 	}()

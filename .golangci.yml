@@ -99,8 +99,6 @@ linters-settings:
 
   govet:
     enable-all: true
-    disable:
-      - shadow
 
   grouper:
     # const-require-grouping: true # TODO: Enable this

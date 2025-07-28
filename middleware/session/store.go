@@ -10,7 +10,6 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/log"
-	"github.com/gofiber/utils/v2"
 )
 
 // ErrEmptySessionID is an error that occurs when the session ID is empty.
@@ -185,7 +184,7 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 	return sess, nil
 }
 
-// getSessionID returns the session ID from cookies, headers, or query string.
+// getSessionID returns the session ID using the configured extractor.
 //
 // Parameters:
 //   - c: The Fiber context.
@@ -197,26 +196,12 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 //
 //	id := store.getSessionID(c)
 func (s *Store) getSessionID(c fiber.Ctx) string {
-	id := c.Cookies(s.sessionName)
-	if len(id) > 0 {
-		return utils.CopyString(id)
+	sessionID, err := s.Extractor.Extract(c)
+	if err != nil {
+		// If extraction fails, return empty string to generate a new session
+		return ""
 	}
-
-	if s.source == SourceHeader {
-		id = string(c.Request().Header.Peek(s.sessionName))
-		if len(id) > 0 {
-			return id
-		}
-	}
-
-	if s.source == SourceURLQuery {
-		id = fiber.Query[string](c, s.sessionName)
-		if len(id) > 0 {
-			return utils.CopyString(id)
-		}
-	}
-
-	return ""
+	return sessionID
 }
 
 // Reset deletes all sessions from the storage.

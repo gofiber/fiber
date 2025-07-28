@@ -164,9 +164,9 @@ func appendInt(output Buffer, v int) (int, error) {
 func writeLog(w io.Writer, msg []byte) {
 	if _, err := w.Write(msg); err != nil {
 		// Write error to output
-		if _, err := w.Write([]byte(err.Error())); err != nil {
+		if _, writeErr := w.Write([]byte(err.Error())); writeErr != nil {
 			// There is something wrong with the given io.Writer
-			_, _ = fmt.Fprintf(os.Stderr, "Failed to write to log, %v\n", err)
+			_, _ = fmt.Fprintf(os.Stderr, "Failed to write to log, %v\n", writeErr)
 		}
 	}
 }

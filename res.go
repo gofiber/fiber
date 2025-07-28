@@ -203,14 +203,16 @@ func (r *DefaultRes) Cookie(cookie *Cookie) {
 
 	var sameSite http.SameSite
 
-	switch utils.ToLower(cookie.SameSite) {
-	case CookieSameSiteStrictMode:
+	switch {
+	case utils.EqualFold(cookie.SameSite, CookieSameSiteStrictMode):
 		sameSite = http.SameSiteStrictMode
-	case CookieSameSiteNoneMode:
+	case utils.EqualFold(cookie.SameSite, CookieSameSiteNoneMode):
 		sameSite = http.SameSiteNoneMode
-	case CookieSameSiteDisabled:
+		// SameSite=None requires Secure=true per RFC and browser requirements
+		cookie.Secure = true
+	case utils.EqualFold(cookie.SameSite, CookieSameSiteDisabled):
 		sameSite = 0
-	case CookieSameSiteLaxMode:
+	case utils.EqualFold(cookie.SameSite, CookieSameSiteLaxMode):
 		sameSite = http.SameSiteLaxMode
 	default:
 		sameSite = http.SameSiteLaxMode

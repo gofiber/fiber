@@ -452,6 +452,7 @@ testConfig := fiber.TestConfig{
 ### New Features
 
 - Cookie now allows Partitioned cookies for [CHIPS](https://developers.google.com/privacy-sandbox/3pcd/chips) support. CHIPS (Cookies Having Independent Partitioned State) is a feature that improves privacy by allowing cookies to be partitioned by top-level site, mitigating cross-site tracking.
+- Cookie automatic security enforcement: When setting a cookie with `SameSite=None`, Fiber automatically sets `Secure=true` as required by RFC 6265bis and modern browsers (Chrome, Firefox, Safari). This ensures compliance with the "None" SameSite policy. See [Mozilla docs](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie#none) and [Chrome docs](https://developers.google.com/search/blog/2020/01/get-ready-for-new-samesitenone-secure) for details.
 - Context now implements [context.Context](https://pkg.go.dev/context#Context).
 
 ### New Methods
@@ -1054,6 +1055,8 @@ The adaptor middleware has been significantly optimized for performance and effi
 ### BasicAuth
 
 The BasicAuth middleware now validates the `Authorization` header more rigorously and sets security-focused response headers. The default challenge includes the `charset="UTF-8"` parameter and disables caching. Passwords are no longer stored in the request context by default; use the new `StorePassword` option to retain them. A `Charset` option controls the value used in the challenge header.
+A new `HeaderLimit` option restricts the maximum length of the `Authorization` header (default: `8192` bytes).
+The `Authorizer` function now receives the current `fiber.Ctx` as a third argument, allowing credential checks to incorporate request context.
 
 ### Cache
 
@@ -1085,6 +1088,10 @@ We've updated several fields from a single string (containing comma-separated va
 ### Compression
 
 We've added support for `zstd` compression on top of `gzip`, `deflate`, and `brotli`.
+
+### CSRF
+
+The `Expiration` field in the CSRF middleware configuration has been renamed to `IdleTimeout` to better describe its functionality. Additionally, the default value has been reduced from 1 hour to 30 minutes.
 
 ### EncryptCookie
 
@@ -1305,6 +1312,14 @@ The Session middleware has undergone key changes in v3 to improve functionality 
 
 #### Key Updates
 
+### Session
+
+The session middleware has undergone significant improvements in v3, focusing on type safety, flexibility, and better developer experience.
+
+#### Key Changes
+
+- **Extractor Pattern**: The string-based `KeyLookup` configuration has been replaced with a more flexible and type-safe `Extractor` function pattern.
+
 - **New Middleware Handler**: The `New` function now returns a middleware handler instead of a `*Store`. To access the session store, use the `Store` method on the middleware, or opt for `NewStore` or `NewWithStore` for custom store integration.
 
 - **Manual Session Release**: Session instances are no longer automatically released after being saved. To ensure proper lifecycle management, you must manually call `sess.Release()`.
@@ -1377,6 +1392,8 @@ func main() {
 ## 📋 Migration guide
 
 - [🚀 App](#-app-1)
+- [🎣 Hooks](#-hooks-1)
+- [🚀 Listen](#-listen-1)
 - [🗺 Router](#-router-1)
 - [🧠 Context](#-context-1)
 - [📎 Binding (was Parser)](#-parser)
@@ -1384,12 +1401,16 @@ func main() {
 - [🌎 Client package](#-client-package-1)
 - [🧬 Middlewares](#-middlewares-1)
   - [Important Change for Accessing Middleware Data](#important-change-for-accessing-middleware-data)
+  - [BasicAuth](#basicauth-1)
+  - [Cache](#cache-1)
   - [CORS](#cors-1)
-  - [CSRF](#csrf)
+  - [CSRF](#csrf-1)
   - [Filesystem](#filesystem-1)
+  - [EnvVar](#envvar-1)
   - [Healthcheck](#healthcheck-1)
   - [Monitor](#monitor-1)
   - [Proxy](#proxy-1)
+  - [Session](#session-1)
 
 ### 🚀 App
 
@@ -1450,7 +1471,49 @@ app := fiber.New(fiber.Config{
 })
 ```
 
+### 🎣 Hooks
+
+`OnShutdown` has been replaced by two hooks: `OnPreShutdown` and `OnPostShutdown`.
+Use them to run cleanup code before and after the server shuts down. When handling
+shutdown errors, register an `OnPostShutdown` hook and call `app.Listen()` in a goroutine.
+
+```go
+// Before
+app.OnShutdown(func() {
+    // Code to run before shutdown
+})
+```
+
+```go
+// After
+app.OnPreShutdown(func() {
+    // Code to run before shutdown
+})
+```
+
+### 🚀 Listen
+
+The `Listen` helpers (`ListenTLS`, `ListenMutualTLS`, etc.) were removed. Use
+`app.Listen()` with `fiber.ListenConfig` and a `tls.Config` when TLS is required.
+Options such as `ListenerNetwork` and `UnixSocketFileMode` are now configured via
+this struct.
+
+```go
+// Before
+app.ListenTLS(":3000", "cert.pem", "key.pem")
+```
+
+```go
+// After
+app.Listen(":3000", fiber.ListenConfig{
+    CertFile: "./cert.pem",
+    CertKeyFile: "./cert.key",
+})
+```
+
 ### 🗺 Router
+
+#### Middleware Registration
 
 The signatures for [`Add`](#middleware-registration) and [`Route`](#route-chaining) have been changed.
 
@@ -1466,7 +1529,23 @@ app.Add(fiber.MethodPost, "/api", myHandler)
 app.Add([]string{fiber.MethodPost}, "/api", myHandler)
 ```
 
-To migrate [`Route`](#route-chaining) you need to read [this](#route-chaining).
+#### Mounting
+
+In Fiber v3, the `Mount` method has been removed. Instead, you can use the `Use` method to achieve similar functionality.
+
+```go
+// Before
+app.Mount("/api", apiApp)
+```
+
+```go
+// After
+app.Use("/api", apiApp)
+```
+
+#### Route Chaining
+
+Refer to the [route chaining](#route-chaining) section for details on migrating `Route`.
 
 ```go
 // Before
@@ -1847,6 +1926,35 @@ The recommended approach is to use the `CustomTags` feature of the Logger middle
 If you were manually setting and retrieving your own application-specific values in `c.Locals()` using string keys, that functionality remains unchanged. This change specifically pertains to how Fiber's built-in (and some contrib) middlewares expose their data.
 :::
 
+#### BasicAuth
+
+The `Authorizer` callback now receives the current request context. Update custom
+functions from:
+
+```go
+Authorizer: func(user, pass string) bool {
+    // v2 style
+    return user == "admin" && pass == "secret"
+}
+```
+
+to:
+
+```go
+Authorizer: func(user, pass string, _ fiber.Ctx) bool {
+    // v3 style with access to the Fiber context
+    return user == "admin" && pass == "secret"
+}
+```
+
+You can also set the optional `HeaderLimit`, `StorePassword`, and `Charset`
+options to further control authentication behavior.
+
+#### Cache
+
+The deprecated `Store` and `Key` fields were removed. Use `Storage` and
+`KeyGenerator` instead to configure caching backends and cache keys.
+
 #### CORS
 
 The CORS middleware has been updated to use slices instead of strings for the `AllowOrigins`, `AllowMethods`, `AllowHeaders`, and `ExposeHeaders` fields. Here's how you can update your code:
@@ -1968,6 +2076,11 @@ app.Use(static.New("", static.Config{
 }))
 ```
 
+#### EnvVar
+
+The `ExcludeVars` option has been removed. Remove any references to it and use
+`ExportVars` to explicitly list environment variables that should be exposed.
+
 #### Healthcheck
 
 Previously, the Healthcheck middleware was configured with a combined setup for liveliness and readiness probes:
@@ -2058,3 +2171,31 @@ proxy.WithClient(&fasthttp.Client{
 // Forward to url
 app.Get("/gif", proxy.Forward("https://i.imgur.com/IWaBepg.gif"))
 ```
+
+#### Session
+
+`session.New()` now returns a middleware handler. When using the store pattern,
+create a store with `session.NewStore()` or call `Store()` on the middleware.
+Sessions obtained from a store must be released manually via `sess.Release()`.
+Additionally, replace the deprecated `KeyLookup` option with extractor
+functions such as `session.FromCookie()` or `session.FromHeader()`. Multiple
+extractors can be combined with `session.Chain()`.
+
+```go
+// Before
+app.Use(session.New(session.Config{
+    KeyLookup: "cookie:session_id",
+    Store:     session.NewStore(),
+}))
+```
+
+```go
+// After
+app.Use(session.New(session.Config{
+    Extractor: session.FromCookie("session_id"),
+    Store:     session.NewStore(),
+}))
+```
+
+See the [Session Middleware Migration Guide](./middleware/session.md#migration-guide)
+for complete details.
