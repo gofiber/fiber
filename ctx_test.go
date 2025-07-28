@@ -1201,7 +1201,6 @@ func Test_Ctx_Cookie_StrictPartitioned(t *testing.T) {
 func Test_Ctx_Cookie_SameSite_CaseInsensitive(t *testing.T) {
 	t.Parallel()
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	tests := []struct {
 		name     string
@@ -1238,8 +1237,12 @@ func Test_Ctx_Cookie_SameSite_CaseInsensitive(t *testing.T) {
 	}
 
 	for _, tc := range tests {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+			c := app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer app.ReleaseCtx(c)
+
 			// Reset response
 			c.Response().Reset()
 
@@ -1336,6 +1339,7 @@ func Test_Ctx_Cookie_SameSite_None_Secure(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := New()
