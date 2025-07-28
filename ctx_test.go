@@ -5345,7 +5345,7 @@ func Test_Ctx_SendStreamWriter_Interrupted(t *testing.T) {
 
 	req := httptest.NewRequest(MethodGet, "/", nil)
 	testConfig := TestConfig{
-		Timeout:       1 * time.Second,
+		Timeout:       1100 * time.Millisecond,
 		FailOnTimeout: false,
 	}
 	resp, err := app.Test(req, testConfig)
