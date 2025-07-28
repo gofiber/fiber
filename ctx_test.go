@@ -1237,7 +1237,6 @@ func Test_Ctx_Cookie_SameSite_CaseInsensitive(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -1339,7 +1338,6 @@ func Test_Ctx_Cookie_SameSite_None_Secure(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			app := New()
