@@ -22,12 +22,13 @@ type Config struct {
 
 	// Authorizer defines a function you can pass
 	// to check the credentials however you want.
-	// It will be called with a username and password
-	// and is expected to return true or false to indicate
-	// that the credentials were approved or not.
+	// It will be called with a username, password and
+	// the current fiber context and is expected to return
+	// true or false to indicate that the credentials were
+	// approved or not.
 	//
 	// Optional. Default: nil.
-	Authorizer func(string, string) bool
+	Authorizer func(string, string, fiber.Ctx) bool
 
 	// Unauthorized defines the response body for unauthorized responses.
 	// By default it will return with a 401 Unauthorized and the correct WWW-Auth header
@@ -49,6 +50,13 @@ type Config struct {
 	// Optional. Default: "UTF-8".
 	Charset string
 
+	// HeaderLimit specifies the maximum allowed length of the
+	// Authorization header. Requests exceeding this limit will
+	// be rejected.
+	//
+	// Optional. Default: 8192.
+	HeaderLimit int
+
 	// StorePassword determines if the plaintext password should be stored
 	// in the context for later retrieval via PasswordFromContext.
 	//
@@ -62,6 +70,7 @@ var ConfigDefault = Config{
 	Users:         map[string]string{},
 	Realm:         "Restricted",
 	Charset:       "UTF-8",
+	HeaderLimit:   8192,
 	StorePassword: false,
 	Authorizer:    nil,
 	Unauthorized:  nil,
@@ -90,8 +99,11 @@ func configDefault(config ...Config) Config {
 	if cfg.Charset == "" {
 		cfg.Charset = ConfigDefault.Charset
 	}
+	if cfg.HeaderLimit <= 0 {
+		cfg.HeaderLimit = ConfigDefault.HeaderLimit
+	}
 	if cfg.Authorizer == nil {
-		cfg.Authorizer = func(user, pass string) bool {
+		cfg.Authorizer = func(user, pass string, _ fiber.Ctx) bool {
 			userPwd, exist := cfg.Users[user]
 			return exist && subtle.ConstantTimeCompare(utils.UnsafeBytes(userPwd), utils.UnsafeBytes(pass)) == 1
 		}

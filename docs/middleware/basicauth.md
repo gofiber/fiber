@@ -45,7 +45,7 @@ app.Use(basicauth.New(basicauth.Config{
         "admin": "123456",
     },
     Realm: "Forbidden",
-    Authorizer: func(user, pass string) bool {
+    Authorizer: func(user, pass string, c fiber.Ctx) bool {
         if user == "john" && pass == "doe" {
             return true
         }
@@ -79,8 +79,9 @@ func handler(c fiber.Ctx) error {
 | Users           | `map[string]string`         | Users defines the allowed credentials.                                                                                                                                | `map[string]string{}` |
 | Realm           | `string`                    | Realm is a string to define the realm attribute of BasicAuth. The realm identifies the system to authenticate against and can be used by clients to save credentials. | `"Restricted"`        |
 | Charset         | `string`                    | Charset sent in the `WWW-Authenticate` header, so clients know how credentials are encoded. | `"UTF-8"` |
+| HeaderLimit     | `int`                       | Maximum allowed length of the `Authorization` header. Requests exceeding this limit are rejected. | `8192` |
 | StorePassword   | `bool`                      | Store the plaintext password in the context and retrieve it via `PasswordFromContext`. | `false` |
-| Authorizer      | `func(string, string) bool` | Authorizer defines a function to check the credentials. It will be called with a username and password and is expected to return true or false to indicate approval.  | `nil`                 |
+| Authorizer      | `func(string, string, fiber.Ctx) bool` | Authorizer defines a function to check the credentials. It will be called with a username, password, and the current context and is expected to return true or false to indicate approval.  | `nil`                 |
 | Unauthorized    | `fiber.Handler`             | Unauthorized defines the response body for unauthorized responses.                                                                                                    | `nil`                 |
 
 ## Default Config
@@ -91,6 +92,7 @@ var ConfigDefault = Config{
     Users:           map[string]string{},
     Realm:           "Restricted",
     Charset:         "UTF-8",
+    HeaderLimit:     8192,
     StorePassword:   false,
     Authorizer:      nil,
     Unauthorized:    nil,
