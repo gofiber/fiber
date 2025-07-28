@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"text/template"
 	"time"
@@ -5328,26 +5329,34 @@ func Test_Ctx_SendStreamWriter(t *testing.T) {
 func Test_Ctx_SendStreamWriter_Interrupted(t *testing.T) {
 	t.Parallel()
 	app := New()
+	var flushed atomic.Int32
 	app.Get("/", func(c Ctx) error {
 		return c.SendStreamWriter(func(w *bufio.Writer) {
 			for lineNum := 1; lineNum <= 5; lineNum++ {
 				fmt.Fprintf(w, "Line %d\n", lineNum)
 
 				if err := w.Flush(); err != nil {
-					if lineNum < 3 {
+					if lineNum <= 3 {
 						t.Errorf("unexpected error: %s", err)
 					}
 					return
 				}
 
-				time.Sleep(400 * time.Millisecond)
+				if lineNum <= 3 {
+					flushed.Add(1)
+				}
+
+				time.Sleep(500 * time.Millisecond)
 			}
 		})
 	})
 
 	req := httptest.NewRequest(MethodGet, "/", nil)
 	testConfig := TestConfig{
-		Timeout:       1 * time.Second,
+		// allow enough time for three lines to flush before
+		// the test connection is closed but stop before the
+		// fourth line is sent
+		Timeout:       1400 * time.Millisecond,
 		FailOnTimeout: false,
 	}
 	resp, err := app.Test(req, testConfig)
@@ -5358,6 +5367,9 @@ func Test_Ctx_SendStreamWriter_Interrupted(t *testing.T) {
 	require.EqualError(t, err, "unexpected EOF")
 
 	require.Equal(t, "Line 1\nLine 2\nLine 3\n", string(body))
+
+	// ensure the first three lines were successfully flushed
+	require.Equal(t, int32(3), flushed.Load())
 }
 
 // go test -run Test_Ctx_Set
