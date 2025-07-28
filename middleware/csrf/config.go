@@ -188,7 +188,7 @@ func validateExtractorSecurity(cfg Config) {
 
 	// Additional security warnings (non-fatal)
 	if cfg.Extractor.Source == SourceQuery || cfg.Extractor.Source == SourceParam {
-		log.Warn("[CSRF WARNING] Using %v extractor - URLs may be logged", cfg.Extractor.Source)
+		log.Warnf("[CSRF WARNING] Using %v extractor - URLs may be logged", cfg.Extractor.Source)
 	}
 }
 
@@ -202,7 +202,7 @@ func isInsecureCookieExtractor(extractor Extractor, cookieName string) bool {
 
 		// Case-insensitive match - potentially confusing, warn but don't panic
 		if strings.EqualFold(extractor.Key, cookieName) && extractor.Key != cookieName {
-			log.Warn("[CSRF WARNING] Extractor cookie name '%s' is similar to CSRF cookie '%s' - this may be confusing",
+			log.Warnf("[CSRF WARNING] Extractor cookie name '%s' is similar to CSRF cookie '%s' - this may be confusing",
 				extractor.Key, cookieName)
 		}
 	}
