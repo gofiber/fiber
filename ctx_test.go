@@ -5358,9 +5358,14 @@ func Test_Ctx_SendStreamWriter_Interrupted(t *testing.T) {
 	t.Logf("%v", err)
 	require.EqualError(t, err, "unexpected EOF")
 
+	text := string(body)
 	require.True(t,
-		strings.HasPrefix(string(body), "Line 1\nLine 2\nLine 3\n"),
-		string(body),
+		strings.HasPrefix(text, "Line 1\nLine 2\n"),
+		text,
+	)
+	require.False(t,
+		strings.Contains(text, "Line 5"),
+		text,
 	)
 }
 
