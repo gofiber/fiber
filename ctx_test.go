@@ -23,11 +23,10 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"text/template"
 	"time"
-
-	"sync/atomic"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
