@@ -27,7 +27,7 @@ func Test_Store_getSessionID(t *testing.T) {
 		defer app.ReleaseCtx(ctx)
 
 		// set cookie
-		ctx.Request().Header.SetCookie(store.sessionName, expectedID)
+		ctx.Request().Header.SetCookie(store.Config.Extractor.Key, expectedID)
 
 		require.Equal(t, expectedID, store.getSessionID(ctx))
 	})
@@ -36,14 +36,14 @@ func Test_Store_getSessionID(t *testing.T) {
 		t.Parallel()
 		// session store
 		store := NewStore(Config{
-			KeyLookup: "header:session_id",
+			Extractor: FromHeader("session_id"),
 		})
 		// fiber context
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(ctx)
 
 		// set header
-		ctx.Request().Header.Set(store.sessionName, expectedID)
+		ctx.Request().Header.Set(store.Config.Extractor.Key, expectedID)
 
 		require.Equal(t, expectedID, store.getSessionID(ctx))
 	})
@@ -52,14 +52,14 @@ func Test_Store_getSessionID(t *testing.T) {
 		t.Parallel()
 		// session store
 		store := NewStore(Config{
-			KeyLookup: "query:session_id",
+			Extractor: FromQuery("session_id"),
 		})
 		// fiber context
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(ctx)
 
 		// set url parameter
-		ctx.Request().SetRequestURI(fmt.Sprintf("/path?%s=%s", store.sessionName, expectedID))
+		ctx.Request().SetRequestURI(fmt.Sprintf("/path?%s=%s", store.Config.Extractor.Key, expectedID))
 
 		require.Equal(t, expectedID, store.getSessionID(ctx))
 	})
@@ -83,7 +83,7 @@ func Test_Store_Get(t *testing.T) {
 		defer app.ReleaseCtx(ctx)
 
 		// set cookie
-		ctx.Request().Header.SetCookie(store.sessionName, unexpectedID)
+		ctx.Request().Header.SetCookie(store.Config.Extractor.Key, unexpectedID)
 
 		acquiredSession, err := store.Get(ctx)
 		require.NoError(t, err)

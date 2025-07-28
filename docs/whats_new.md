@@ -1308,6 +1308,14 @@ The Session middleware has undergone key changes in v3 to improve functionality 
 
 #### Key Updates
 
+### Session
+
+The session middleware has undergone significant improvements in v3, focusing on type safety, flexibility, and better developer experience.
+
+#### Key Changes
+
+**Extractor Pattern**: The string-based `KeyLookup` configuration has been replaced with a more flexible and type-safe `Extractor` function pattern.
+
 - **New Middleware Handler**: The `New` function now returns a middleware handler instead of a `*Store`. To access the session store, use the `Store` method on the middleware, or opt for `NewStore` or `NewWithStore` for custom store integration.
 
 - **Manual Session Release**: Session instances are no longer automatically released after being saved. To ensure proper lifecycle management, you must manually call `sess.Release()`.

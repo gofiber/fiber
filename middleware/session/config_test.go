@@ -13,25 +13,24 @@ func TestConfigDefault(t *testing.T) {
 	// Test default config
 	cfg := configDefault()
 	require.Equal(t, 30*time.Minute, cfg.IdleTimeout)
-	require.Equal(t, "cookie:session_id", cfg.KeyLookup)
 	require.NotNil(t, cfg.KeyGenerator)
-	require.Equal(t, SourceCookie, cfg.source)
-	require.Equal(t, "session_id", cfg.sessionName)
+	require.NotNil(t, cfg.Extractor)
+	require.Equal(t, "session_id", cfg.Extractor.Key)
+	require.Equal(t, "Lax", cfg.CookieSameSite)
 }
 
 func TestConfigDefaultWithCustomConfig(t *testing.T) {
 	// Test custom config
 	customConfig := Config{
 		IdleTimeout:  48 * time.Hour,
-		KeyLookup:    "header:custom_session_id",
+		Extractor:    FromHeader("X-Custom-Session"),
 		KeyGenerator: func() string { return "custom_key" },
 	}
 	cfg := configDefault(customConfig)
 	require.Equal(t, 48*time.Hour, cfg.IdleTimeout)
-	require.Equal(t, "header:custom_session_id", cfg.KeyLookup)
 	require.NotNil(t, cfg.KeyGenerator)
-	require.Equal(t, SourceHeader, cfg.source)
-	require.Equal(t, "custom_session_id", cfg.sessionName)
+	require.NotNil(t, cfg.Extractor)
+	require.Equal(t, "X-Custom-Session", cfg.Extractor.Key)
 }
 
 func TestDefaultErrorHandler(t *testing.T) {
@@ -46,14 +45,11 @@ func TestDefaultErrorHandler(t *testing.T) {
 	require.Equal(t, fiber.StatusInternalServerError, ctx.Response().StatusCode())
 }
 
-func TestInvalidKeyLookupFormat(t *testing.T) {
-	require.PanicsWithValue(t, "[session] KeyLookup must be in the format '<source>:<name>'", func() {
-		configDefault(Config{KeyLookup: "invalid_format"})
-	})
-}
-
-func TestUnsupportedSource(t *testing.T) {
-	require.PanicsWithValue(t, "[session] unsupported source in KeyLookup", func() {
-		configDefault(Config{KeyLookup: "unsupported:session_id"})
+func TestAbsoluteTimeoutValidation(t *testing.T) {
+	require.PanicsWithValue(t, "[session] AbsoluteTimeout must be greater than or equal to IdleTimeout", func() {
+		configDefault(Config{
+			IdleTimeout:     30 * time.Minute,
+			AbsoluteTimeout: 15 * time.Minute, // Less than IdleTimeout
+		})
 	})
 }
