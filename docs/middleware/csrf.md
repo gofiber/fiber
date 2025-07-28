@@ -235,6 +235,7 @@ As a crucial second layer of defense, the middleware **always** performs `Origin
 
 **Advanced usage:**  
 In rare cases, you may securely extract a CSRF token from a cookie if:
+
 - You read from a different cookie (not the CSRF cookie itself)
 - You use multiple cookies for custom validation
 - You implement custom logic across different cookie sources
