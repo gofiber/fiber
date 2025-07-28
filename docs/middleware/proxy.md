@@ -175,7 +175,6 @@ app.Use(proxy.Balancer(proxy.Config{
 | MaxConns        | `int`                                          | Maximum number of connections which may be established to the host. | `0` |
 | MaxConnDuration | `time.Duration`                                | Keep-alive connections are closed after this duration. | `0` |
 | MaxIdleConnDuration | `time.Duration`                            | Idle keep-alive connections are closed after this duration. | `0` |
-| MaxIdemponentCallAttempts | `int`                                | Maximum number of attempts for idempotent calls. | `0` |
 | ReadTimeout     | `time.Duration`                                | Maximum duration for full response reading. | `0` |
 | WriteTimeout    | `time.Duration`                                | Maximum duration for full request writing. | `0` |
 | MaxResponseBodySize | `int`                                      | Maximum response body size. | `0` |
@@ -185,7 +184,6 @@ app.Use(proxy.Balancer(proxy.Config{
 | IsTLS           | `bool`                                         | Whether to use TLS for host connections. | `false` |
 | DisableHeaderNamesNormalizing | `bool`                           | Send header names without normalization. | `false` |
 | DisablePathNormalizing | `bool`                                   | Send path values without normalization. | `true` |
-| SecureErrorLogMessage | `bool`                                   | Do not log potentially sensitive content in error logs. | `false` |
 | StreamResponseBody | `bool`                                      | Enable response body streaming. | `false` |
 
 ## Default Config

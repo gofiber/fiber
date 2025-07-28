@@ -51,7 +51,6 @@ func Balancer(config Config) fiber.Handler {
 				MaxConns:                  cfg.MaxConns,
 				MaxConnDuration:           cfg.MaxConnDuration,
 				MaxIdleConnDuration:       cfg.MaxIdleConnDuration,
-				MaxIdemponentCallAttempts: cfg.MaxIdemponentCallAttempts,
 
 				ReadBufferSize:  cfg.ReadBufferSize,
 				WriteBufferSize: cfg.WriteBufferSize,
@@ -67,7 +66,6 @@ func Balancer(config Config) fiber.Handler {
 				IsTLS:                         cfg.IsTLS,
 				DisableHeaderNamesNormalizing: cfg.DisableHeaderNamesNormalizing,
 				DisablePathNormalizing:        cfg.DisablePathNormalizing,
-				SecureErrorLogMessage:         cfg.SecureErrorLogMessage,
 				StreamResponseBody:            cfg.StreamResponseBody,
 			}
 

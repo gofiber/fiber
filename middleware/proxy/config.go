@@ -81,9 +81,6 @@ type Config struct {
 	// Idle keep-alive connections are closed after this duration.
 	MaxIdleConnDuration time.Duration
 
-	// Maximum number of attempts for idempotent calls.
-	MaxIdemponentCallAttempts int
-
 	// Maximum duration for full response reading (including body).
 	ReadTimeout time.Duration
 
@@ -119,9 +116,6 @@ type Config struct {
 
 	// Path values are sent as-is without normalization.
 	DisablePathNormalizing bool
-
-	// Will not log potentially sensitive content in error logs.
-	SecureErrorLogMessage bool
 
 	// StreamResponseBody enables response body streaming.
 	StreamResponseBody bool
@@ -204,9 +198,6 @@ func configDefault(config ...Config) Config {
 	if c.MaxIdleConnDuration != 0 {
 		cfg.MaxIdleConnDuration = c.MaxIdleConnDuration
 	}
-	if c.MaxIdemponentCallAttempts != 0 {
-		cfg.MaxIdemponentCallAttempts = c.MaxIdemponentCallAttempts
-	}
 	if c.ReadTimeout != 0 {
 		cfg.ReadTimeout = c.ReadTimeout
 	}
@@ -226,7 +217,6 @@ func configDefault(config ...Config) Config {
 	cfg.IsTLS = c.IsTLS
 	cfg.DisableHeaderNamesNormalizing = c.DisableHeaderNamesNormalizing
 	cfg.DisablePathNormalizing = c.DisablePathNormalizing
-	cfg.SecureErrorLogMessage = c.SecureErrorLogMessage
 	cfg.StreamResponseBody = c.StreamResponseBody
 	cfg.KeepConnectionHeader = c.KeepConnectionHeader
 
