@@ -216,15 +216,57 @@ As a crucial second layer of defense, the middleware **always** performs `Origin
 
 ### Built-in Extractors
 
-**Secure (Recommended):**
+**Most Secure (Recommended):**
 
-- `csrf.FromHeader("X-Csrf-Token")` - Most secure, preferred for APIs
-- `csrf.FromForm("_csrf")` - Secure for form submissions
+- `csrf.FromHeader("X-Csrf-Token")` - Headers are not logged and cannot be manipulated via URL
+- `csrf.FromForm("_csrf")` - Form data is secure and not typically logged
 
-**Acceptable:**
+**Less Secure (Use with caution):**
 
-- `csrf.FromQuery("csrf_token")` - URL parameters
-- `csrf.FromParam("csrf")` - Route parameters
+- `csrf.FromQuery("csrf_token")` - URLs may be logged by servers, proxies, browsers
+- `csrf.FromParam("csrf")` - URLs may be logged by servers, proxies, browsers
+
+**Advanced:**
+
+- `csrf.Chain(...)` - Try multiple extractors in sequence
+
+:::note What about cookies?
+**Cookies are generally not a secure source for CSRF tokens.** The middleware does not provide a built-in cookie extractor because reading the CSRF token from a cookie with the same name as the CSRF cookie defeats CSRF protection.
+
+**Advanced usage:**  
+In rare cases, you may securely extract a CSRF token from a cookie if:
+- You read from a different cookie (not the CSRF cookie itself)
+- You use multiple cookies for custom validation
+- You implement custom logic across different cookie sources
+
+If you do this, set the extractor’s `Source` to `SourceCookie` and allow the middleware to check that the cookie name is different from your CSRF cookie. It will panic if this is the case.
+
+**Warning:**  
+We strongly discourage cookie-based extraction, as it is easy to misconfigure and creates security risks. Prefer extracting tokens from headers or form fields for robust CSRF protection.
+:::
+
+### Extractor Metadata
+
+Each extractor returns an `Extractor` struct with metadata about its behavior:
+
+```go
+extractor := csrf.FromHeader("X-Csrf-Token")
+fmt.Printf("Source: %v, Key: %s", extractor.Source, extractor.Key)
+// Output: Source: 0, Key: X-Csrf-Token
+
+// Available source types:
+// - csrf.SourceHeader (0): Most secure, not logged
+// - csrf.SourceForm (1): Secure, not typically logged  
+// - csrf.SourceQuery (2): Less secure, URLs may be logged
+// - csrf.SourceParam (3): Less secure, URLs may be logged
+// - csrf.SourceCookie (4): Not recommended for CSRF, no built-in extractor for this source
+// - csrf.SourceCustom (5): Security depends on implementation
+
+// Check source type
+if extractor.Source == csrf.SourceHeader {
+    fmt.Println("Using secure header extraction")
+}
+```
 
 #### Using Route-Specific Extractors
 
@@ -246,15 +288,19 @@ forms.Use(csrf.New(csrf.Config{
 
 ### Custom Extractor
 
-You can create a custom extractor to handle specific cases:
+You can create a custom extractor to handle specific cases by creating an `Extractor` struct:
 
 :::danger Never Extract from Cookies
 **NEVER create custom extractors that read from cookies using the same `CookieName` as your CSRF configuration.** This completely defeats CSRF protection by making the extracted token always match the cookie value, allowing any CSRF attack to succeed.
 
 ```go
 // ❌ NEVER DO THIS - Completely defeats CSRF protection
-func BadExtractor(c fiber.Ctx) (string, error) {
-    return c.Cookies("csrf_"), nil  // Always passes validation!
+badExtractor := csrf.Extractor{
+    Extract: func(c fiber.Ctx) (string, error) {
+        return c.Cookies("csrf_"), nil  // Always passes validation!
+    },
+    Source: csrf.SourceCustom,
+    Key:    "csrf_",
 }
 
 // ✅ DO THIS - Extract from different source than cookie
@@ -272,34 +318,84 @@ The middleware uses the **Double Submit Cookie** pattern - it compares the extra
 ```go
 // Extract CSRF token embedded in JWT Authorization header
 // Useful for APIs that combine JWT auth with CSRF protection
-func BearerTokenExtractor(c fiber.Ctx) (string, error) {
-    // Extract from "Authorization: Bearer <jwt>:<csrf>"
-    auth := c.Get("Authorization")
-    if !strings.HasPrefix(auth, "Bearer ") {
-        return "", csrf.ErrTokenNotFound
+func BearerTokenExtractor() csrf.Extractor {
+    return csrf.Extractor{
+        Extract: func(c fiber.Ctx) (string, error) {
+            // Extract from "Authorization: Bearer <jwt>:<csrf>"
+            auth := c.Get("Authorization")
+            if !strings.HasPrefix(auth, "Bearer ") {
+                return "", csrf.ErrTokenNotFound
+            }
+            
+            parts := strings.SplitN(strings.TrimPrefix(auth, "Bearer "), ":", 2)
+            if len(parts) != 2 || parts[1] == "" {
+                return "", csrf.ErrTokenNotFound
+            }
+            
+            return parts[1], nil
+        },
+        Source: csrf.SourceCustom,
+        Key:    "Authorization",
     }
-    
-    parts := strings.SplitN(strings.TrimPrefix(auth, "Bearer "), ":", 2)
-    if len(parts) != 2 || parts[1] == "" {
-        return "", csrf.ErrTokenNotFound
-    }
-    
-    return parts[1], nil
 }
+
+// Usage
+app.Use(csrf.New(csrf.Config{
+    Extractor: BearerTokenExtractor(),
+}))
 ```
 
-#### Chain Extractor (Advanced)
-
-For edge cases requiring multiple token sources, use the `Chain` extractor:
+#### Custom JSON Body Extractor
 
 ```go
-// Only if you absolutely need multiple sources
+// Extract CSRF token from JSON request body
+// Useful for APIs that need token in request payload
+func JSONBodyExtractor(field string) csrf.Extractor {
+    return csrf.Extractor{
+        Extract: func(c fiber.Ctx) (string, error) {
+            var body map[string]interface{}
+            if err := c.BodyParser(&body); err != nil {
+                return "", csrf.ErrTokenNotFound
+            }
+            
+            token, ok := body[field].(string)
+            if !ok || token == "" {
+                return "", csrf.ErrTokenNotFound
+            }
+            
+            return token, nil
+        },
+        Source: csrf.SourceCustom,
+        Key:    field,
+    }
+}
+
+// Usage
+app.Use(csrf.New(csrf.Config{
+    Extractor: JSONBodyExtractor("csrf_token"),
+}))
+```
+
+### Chain Extractor (Advanced)
+
+For specific cases requiring fallback behavior:
+
+```go
+// Try header first, fallback to form
 app.Use(csrf.New(csrf.Config{
     Extractor: csrf.Chain(
-        csrf.FromHeader("X-Csrf-Token"),   // Try header first
-        csrf.FromForm("_csrf"),            // Fallback to form
+        csrf.FromHeader("X-Csrf-Token"),
+        csrf.FromForm("_csrf"),
     ),
 }))
+
+// Check chain metadata
+chained := csrf.Chain(
+    csrf.FromHeader("X-Csrf-Token"),
+    csrf.FromForm("_csrf"),
+)
+fmt.Printf("Primary source: %v, Chain length: %d", chained.Source, len(chained.Chain))
+// Output: Primary source: 0, Chain length: 2
 ```
 
 :::danger Security Risk
@@ -396,7 +492,7 @@ func (h *csrf.Handler) DeleteToken(c fiber.Ctx) error
 | IdleTimeout       | `time.Duration`                    | Token expiration time                                                                                                         | `30 * time.Minute`           |
 | KeyGenerator      | `func() string`                    | Token generation function                                                                                                     | `utils.UUIDv4`               |
 | ErrorHandler      | `fiber.ErrorHandler`               | Custom error handler                                                                                                          | `defaultErrorHandler`        |
-| Extractor         | `func(fiber.Ctx) (string, error)`  | Token extraction method                                                                                                       | `FromHeader("X-Csrf-Token")` |
+| Extractor         | `csrf.Extractor`                   | Token extraction method with metadata                                                                                         | `FromHeader("X-Csrf-Token")` |
 | Session           | `*session.Store`                   | Session store (**recommended for production**)                                                                                | `nil`                        |
 | Storage           | `fiber.Storage`                    | Token storage (overridden by Session)                                                                                         | `nil`                        |
 | TrustedOrigins    | `[]string`                         | Trusted origins for cross-origin requests                                                                                     | `[]`                         |
@@ -421,5 +517,15 @@ var (
 ```go
 const (
     HeaderName = "X-Csrf-Token"
+)
+
+// Source types for extractor metadata
+const (
+    SourceHeader Source = iota  // 0 - Most secure
+    SourceForm                  // 1 - Secure
+    SourceQuery                 // 2 - Less secure
+    SourceParam                 // 3 - Less secure  
+    SourceCookie                // 4 - Not recommended for CSRF, no built-in extractor for this source
+    SourceCustom                // 5 - Security depends on implementation
 )
 ```

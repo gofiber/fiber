@@ -1,9 +1,12 @@
 package csrf
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/fiber/v3/middleware/session"
 	"github.com/gofiber/utils/v2"
 )
@@ -37,16 +40,6 @@ type Config struct {
 	// Optional. Default: defaultErrorHandler
 	ErrorHandler fiber.ErrorHandler
 
-	// Extractor returns the CSRF token from the request.
-	//
-	// Optional. Default: FromHeader("X-Csrf-Token")
-	//
-	// Available extractors: FromHeader, FromQuery, FromParam, FromForm
-	//
-	// WARNING: Never create custom extractors that read from cookies with the same
-	// CookieName as this defeats CSRF protection entirely.
-	Extractor func(c fiber.Ctx) (string, error)
-
 	// CookieName is the name of the CSRF cookie.
 	//
 	// Optional. Default: "csrf_"
@@ -79,6 +72,21 @@ type Config struct {
 	//
 	// Optional. Default: []
 	TrustedOrigins []string
+
+	// Extractor returns the CSRF token from the request.
+	//
+	// Optional. Default: FromHeader("X-Csrf-Token")
+	//
+	// Available extractors:
+	//   - FromHeader: Most secure, recommended for APIs
+	//   - FromForm: Secure, recommended for form submissions
+	//   - FromQuery: Less secure, URLs may be logged
+	//   - FromParam: Less secure, URLs may be logged
+	//   - Chain: Advanced chaining of multiple extractors
+	//
+	// WARNING: Never create custom extractors that read from cookies with the same
+	// CookieName as this defeats CSRF protection entirely.
+	Extractor Extractor
 
 	// IdleTimeout is the duration of time the CSRF token is valid.
 	//
@@ -152,9 +160,52 @@ func configDefault(config ...Config) Config {
 	if cfg.ErrorHandler == nil {
 		cfg.ErrorHandler = ConfigDefault.ErrorHandler
 	}
-	if cfg.Extractor == nil {
+	// Check if Extractor is zero value (since it's a struct)
+	if cfg.Extractor.Extract == nil {
 		cfg.Extractor = ConfigDefault.Extractor
 	}
+	// Validate extractor security configurations
+	validateExtractorSecurity(cfg)
 
 	return cfg
+}
+
+// validateExtractorSecurity checks for insecure extractor configurations
+func validateExtractorSecurity(cfg Config) {
+	// Check primary extractor
+	if isInsecureCookieExtractor(cfg.Extractor, cfg.CookieName) {
+		panic("CSRF: Extractor reads from the same cookie '" + cfg.CookieName +
+			"' used for token storage. This completely defeats CSRF protection.")
+	}
+
+	// Check chained extractors
+	for i, extractor := range cfg.Extractor.Chain {
+		if isInsecureCookieExtractor(extractor, cfg.CookieName) {
+			panic(fmt.Sprintf("CSRF: Chained extractor #%d reads from the same cookie '%s' "+
+				"used for token storage. This completely defeats CSRF protection.", i+1, cfg.CookieName))
+		}
+	}
+
+	// Additional security warnings (non-fatal)
+	if cfg.Extractor.Source == SourceQuery || cfg.Extractor.Source == SourceParam {
+		log.Warn("[CSRF WARNING] Using %v extractor - URLs may be logged", cfg.Extractor.Source)
+	}
+}
+
+// isInsecureCookieExtractor checks if an extractor unsafely reads from the CSRF cookie
+func isInsecureCookieExtractor(extractor Extractor, cookieName string) bool {
+	if extractor.Source == SourceCookie {
+		// Exact match - definitely insecure
+		if extractor.Key == cookieName {
+			return true
+		}
+
+		// Case-insensitive match - potentially confusing, warn but don't panic
+		if strings.EqualFold(extractor.Key, cookieName) && extractor.Key != cookieName {
+			log.Warn("[CSRF WARNING] Extractor cookie name '%s' is similar to CSRF cookie '%s' - this may be confusing",
+				extractor.Key, cookieName)
+		}
+	}
+
+	return false
 }
