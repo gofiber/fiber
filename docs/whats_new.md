@@ -501,8 +501,8 @@ testConfig := fiber.TestConfig{
   specified by [RFC 6266](https://www.rfc-editor.org/rfc/rfc6266) and
   [RFC 8187](https://www.rfc-editor.org/rfc/rfc8187).
 - **Context**: Renamed to `RequestCtx` to correspond with the FastHTTP Request Context.
-- **UserContext**: Renamed to `Context`, which returns a `context.Context` object.
-- **SetUserContext**: Renamed to `SetContext`.
+- **UserContext**: Removed. Use `Ctx` directly as it implements `context.Context`.
+- **SetUserContext**: Removed. Use `Locals()` for storing values or pass `Ctx` directly as `context.Context`.
 
 ### SendStreamWriter
 
