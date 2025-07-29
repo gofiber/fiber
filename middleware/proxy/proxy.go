@@ -47,10 +47,10 @@ func Balancer(config Config) fiber.Handler {
 
 				TLSConfig: cfg.TLSConfig,
 
-				Name:                      cfg.Name,
-				MaxConns:                  cfg.MaxConns,
-				MaxConnDuration:           cfg.MaxConnDuration,
-				MaxIdleConnDuration:       cfg.MaxIdleConnDuration,
+				Name:                cfg.Name,
+				MaxConns:            cfg.MaxConns,
+				MaxConnDuration:     cfg.MaxConnDuration,
+				MaxIdleConnDuration: cfg.MaxIdleConnDuration,
 
 				ReadBufferSize:  cfg.ReadBufferSize,
 				WriteBufferSize: cfg.WriteBufferSize,
