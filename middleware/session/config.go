@@ -1,7 +1,6 @@
 package session
 
 import (
-	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -16,14 +15,14 @@ type Config struct {
 	// Optional. Default: memory.New()
 	Storage fiber.Storage
 
-	// Next defines a function to skip this middleware when it returns true.
-	// Optional. Default: nil
-	Next func(c fiber.Ctx) bool
-
 	// Store defines the session store.
 	//
 	// Required.
 	Store *Store
+
+	// Next defines a function to skip this middleware when it returns true.
+	// Optional. Default: nil
+	Next func(c fiber.Ctx) bool
 
 	// ErrorHandler defines a function to handle errors.
 	//
@@ -34,13 +33,6 @@ type Config struct {
 	//
 	// Optional. Default: utils.UUIDv4
 	KeyGenerator func() string
-
-	// KeyLookup is a string in the format "<source>:<name>" used to extract the session ID from the request.
-	//
-	// Possible values: "header:<name>", "query:<name>", "cookie:<name>"
-	//
-	// Optional. Default: "cookie:session_id"
-	KeyLookup string
 
 	// CookieDomain defines the domain of the session cookie.
 	//
@@ -57,11 +49,10 @@ type Config struct {
 	// Optional. Default: "Lax"
 	CookieSameSite string
 
-	// Source defines where to obtain the session ID.
-	source Source
-
-	// sessionName is the name of the session.
-	sessionName string
+	// Extractor is used to extract the session ID from the request.
+	//
+	// Optional. Default: FromCookie("session_id")
+	Extractor Extractor
 
 	// IdleTimeout defines the maximum duration of inactivity before the session expires.
 	//
@@ -96,22 +87,12 @@ type Config struct {
 	CookieSessionOnly bool
 }
 
-// Source represents the type of session ID source.
-type Source string
-
-const (
-	SourceCookie   Source = "cookie"
-	SourceHeader   Source = "header"
-	SourceURLQuery Source = "query"
-)
-
 // ConfigDefault provides the default configuration.
 var ConfigDefault = Config{
-	IdleTimeout:  30 * time.Minute,
-	KeyLookup:    "cookie:session_id",
-	KeyGenerator: utils.UUIDv4,
-	source:       SourceCookie,
-	sessionName:  "session_id",
+	IdleTimeout:    30 * time.Minute,
+	KeyGenerator:   utils.UUIDv4,
+	Extractor:      FromCookie("session_id"),
+	CookieSameSite: "Lax",
 }
 
 // DefaultErrorHandler logs the error and sends a 500 status code.
@@ -124,65 +105,58 @@ var ConfigDefault = Config{
 //
 //	DefaultErrorHandler(c, err)
 func DefaultErrorHandler(c fiber.Ctx, err error) {
-	log.Errorf("session: %v", err)
-	if sendErr := c.SendStatus(fiber.StatusInternalServerError); sendErr != nil {
-		log.Errorf("session: %v", sendErr)
+	log.Errorf("session error: %v", err)
+	if sendErr := c.Status(fiber.StatusInternalServerError).SendString("Internal Server Error"); sendErr != nil {
+		log.Errorf("failed to send error response: %v", sendErr)
 	}
 }
 
 // configDefault sets default values for the Config struct.
 //
+// This function ensures that all necessary fields have sensible defaults
+// if they are not explicitly set by the user.
+//
 // Parameters:
-//   - config: Variadic parameter to override the default config.
+//   - config: Variadic parameter to override default config.
 //
 // Returns:
-//   - Config: The configuration with default values set.
+//   - Config: The configuration with defaults applied.
 //
 // Usage:
 //
 //	cfg := configDefault()
 //	cfg := configDefault(customConfig)
 func configDefault(config ...Config) Config {
-	// Return default config if none provided.
+	// Return default config if nothing provided
 	if len(config) < 1 {
 		return ConfigDefault
 	}
 
-	// Override default config with provided config.
+	// Override default config
 	cfg := config[0]
 
-	// Set default values where necessary.
+	// Set default values
 	if cfg.IdleTimeout <= 0 {
 		cfg.IdleTimeout = ConfigDefault.IdleTimeout
 	}
+
 	// Ensure AbsoluteTimeout is greater than or equal to IdleTimeout.
 	if cfg.AbsoluteTimeout > 0 && cfg.AbsoluteTimeout < cfg.IdleTimeout {
 		panic("[session] AbsoluteTimeout must be greater than or equal to IdleTimeout")
 	}
-	if cfg.KeyLookup == "" {
-		cfg.KeyLookup = ConfigDefault.KeyLookup
+
+	// Check if we have a zero-value Extractor
+	if cfg.Extractor.Extract == nil {
+		cfg.Extractor = ConfigDefault.Extractor
 	}
+
 	if cfg.KeyGenerator == nil {
 		cfg.KeyGenerator = ConfigDefault.KeyGenerator
 	}
 
-	// Parse KeyLookup into source and session name.
-	selectors := strings.Split(cfg.KeyLookup, ":")
-	const numSelectors = 2
-	if len(selectors) != numSelectors {
-		panic("[session] KeyLookup must be in the format '<source>:<name>'")
+	if cfg.CookieSameSite == "" {
+		cfg.CookieSameSite = ConfigDefault.CookieSameSite
 	}
-	switch Source(selectors[0]) {
-	case SourceCookie:
-		cfg.source = SourceCookie
-	case SourceHeader:
-		cfg.source = SourceHeader
-	case SourceURLQuery:
-		cfg.source = SourceURLQuery
-	default:
-		panic("[session] unsupported source in KeyLookup")
-	}
-	cfg.sessionName = selectors[1]
 
 	return cfg
 }
