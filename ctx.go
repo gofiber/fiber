@@ -231,7 +231,7 @@ func (c *DefaultCtx) RestartRouting() error {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (c *DefaultCtx) OriginalURL() string {
-	return c.App().getString(c.Request().Header.RequestURI())
+	return c.app.getString(c.fasthttp.Request.Header.RequestURI())
 }
 
 // Path returns the path part of the request URL.
@@ -333,7 +333,7 @@ func (c *DefaultCtx) Secure() bool {
 // Status sets the HTTP status for the response.
 // This method is chainable.
 func (c *DefaultCtx) Status(status int) Ctx {
-	c.Response().SetStatusCode(status)
+	c.fasthttp.Response.SetStatusCode(status)
 	return c
 }
 

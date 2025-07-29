@@ -82,21 +82,22 @@ func (r *DefaultReq) tryDecodeBodyInOrder(
 		decodesRealized uint8
 	)
 
+	request := r.Request()
 	for idx := range encodings {
 		i := len(encodings) - 1 - idx
 		encoding := encodings[i]
 		decodesRealized++
 		switch encoding {
 		case StrGzip, "x-gzip":
-			body, err = r.Request().BodyGunzip()
+			body, err = request.BodyGunzip()
 		case StrBr, StrBrotli:
-			body, err = r.Request().BodyUnbrotli()
+			body, err = request.BodyUnbrotli()
 		case StrDeflate:
-			body, err = r.Request().BodyInflate()
+			body, err = request.BodyInflate()
 		case StrZstd:
-			body, err = r.Request().BodyUnzstd()
+			body, err = request.BodyUnzstd()
 		case StrIdentity:
-			body = r.Request().Body()
+			body = request.Body()
 		case StrCompress, "x-compress":
 			return nil, decodesRealized - 1, ErrNotImplemented
 		default:
@@ -109,11 +110,11 @@ func (r *DefaultReq) tryDecodeBodyInOrder(
 
 		if i > 0 && decodesRealized > 0 {
 			if i == len(encodings)-1 {
-				tempBody := r.Request().Body()
+				tempBody := request.Body()
 				*originalBody = make([]byte, len(tempBody))
 				copy(*originalBody, tempBody)
 			}
-			r.Request().SetBodyRaw(body)
+			request.SetBodyRaw(body)
 		}
 	}
 
@@ -133,8 +134,10 @@ func (r *DefaultReq) Body() []byte {
 		encodingOrder      = []string{"", "", ""}
 	)
 
+	request := r.Request()
+
 	// Get Content-Encoding header
-	headerEncoding = utils.ToLower(utils.UnsafeString(r.Request().Header.ContentEncoding()))
+	headerEncoding = utils.ToLower(utils.UnsafeString(request.Header.ContentEncoding()))
 
 	// If no encoding is provided, return the original body
 	if len(headerEncoding) == 0 {
@@ -156,7 +159,7 @@ func (r *DefaultReq) Body() []byte {
 
 	// Ensure that the body will be the original
 	if originalBody != nil && decodesRealized > 0 {
-		r.Request().SetBodyRaw(originalBody)
+		request.SetBodyRaw(originalBody)
 	}
 	if err != nil {
 		switch {
@@ -235,18 +238,20 @@ func (r *DefaultReq) Fresh() bool {
 		return false
 	}
 
+	app := r.App()
 	// if-none-match
 	if noneMatch != "" && noneMatch != "*" {
-		etag := r.App().getString(r.c.Response().Header.Peek(HeaderETag))
+		response := r.c.Response()
+		etag := app.getString(response.Header.Peek(HeaderETag))
 		if etag == "" {
 			return false
 		}
-		if r.App().isEtagStale(etag, r.App().getBytes(noneMatch)) {
+		if app.isEtagStale(etag, app.getBytes(noneMatch)) {
 			return false
 		}
 
 		if modifiedSince != "" {
-			lastModified := r.App().getString(r.c.Response().Header.Peek(HeaderLastModified))
+			lastModified := app.getString(response.Header.Peek(HeaderLastModified))
 			if lastModified != "" {
 				lastModifiedTime, err := http.ParseTime(lastModified)
 				if err != nil {
@@ -287,10 +292,11 @@ func GetReqHeader[V GenericType](c Ctx, key string, defaultValue ...V) V {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (r *DefaultReq) GetHeaders() map[string][]string {
+	app := r.App()
 	headers := make(map[string][]string)
 	for k, v := range r.Request().Header.All() {
-		key := r.App().getString(k)
-		headers[key] = append(headers[key], r.App().getString(v))
+		key := app.getString(k)
+		headers[key] = append(headers[key], app.getString(v))
 	}
 	return headers
 }
@@ -339,8 +345,9 @@ func (r *DefaultReq) Port() string {
 // If ProxyHeader and IP Validation is configured, it will parse that header and return the first valid IP address.
 // Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
 func (r *DefaultReq) IP() string {
-	if r.IsProxyTrusted() && len(r.App().config.ProxyHeader) > 0 {
-		return r.extractIPFromHeader(r.App().config.ProxyHeader)
+	app := r.App()
+	if r.IsProxyTrusted() && len(app.config.ProxyHeader) > 0 {
+		return r.extractIPFromHeader(app.config.ProxyHeader)
 	}
 
 	return r.RequestCtx().RemoteIP().String()
@@ -410,7 +417,8 @@ iploop:
 // when IP validation is disabled, it will simply return the value of the header without any inspection.
 // Implementation is almost the same as in extractIPsFromHeader, but without allocation of []string.
 func (r *DefaultReq) extractIPFromHeader(header string) string {
-	if r.App().config.EnableIPValidation {
+	app := r.App()
+	if app.config.EnableIPValidation {
 		headerValue := r.Get(header)
 
 		i := 0
@@ -443,7 +451,7 @@ func (r *DefaultReq) extractIPFromHeader(header string) string {
 
 			s := utils.TrimRight(headerValue[i:j], ' ')
 
-			if r.App().config.EnableIPValidation {
+			if app.config.EnableIPValidation {
 				if (!v6 && !v4) || (v6 && !utils.IsIPv6(s)) || (v4 && !utils.IsIPv4(s)) {
 					continue iploop
 				}
@@ -457,7 +465,7 @@ func (r *DefaultReq) extractIPFromHeader(header string) string {
 
 	// default behavior if IP validation is not enabled is just to return whatever value is
 	// in the proxy header. Even if it is empty or invalid
-	return r.Get(r.App().config.ProxyHeader)
+	return r.Get(app.config.ProxyHeader)
 }
 
 // IPs returns a string slice of IP addresses specified in the X-Forwarded-For request header.
@@ -521,16 +529,17 @@ func Locals[V any](c Ctx, key any, value ...V) V {
 // If no override is given or if the provided override is not a valid HTTP method, it returns the current method from the context.
 // Otherwise, it updates the context's method and returns the overridden method as a string.
 func (r *DefaultReq) Method(override ...string) string {
+	app := r.App()
 	if len(override) == 0 {
 		// Nothing to override, just return current method from context
-		return r.App().method(r.c.getMethodInt())
+		return app.method(r.c.getMethodInt())
 	}
 
 	method := utils.ToUpper(override[0])
-	methodInt := r.App().methodInt(method)
+	methodInt := app.methodInt(method)
 	if methodInt == -1 {
 		// Provided override does not valid HTTP method, no override, return current method
-		return r.App().method(r.c.getMethodInt())
+		return app.method(r.c.getMethodInt())
 	}
 	r.c.setMethodInt(methodInt)
 	return method
@@ -559,17 +568,19 @@ func (r *DefaultReq) Params(key string, defaultValue ...string) string {
 		key += "1"
 	}
 
+	app := r.App()
 	route := r.Route()
+	values := r.c.getValues()
 	for i := range route.Params {
-		if len(key) != len(r.c.Route().Params[i]) {
+		if len(key) != len(route.Params[i]) {
 			continue
 		}
-		if route.Params[i] == key || (!r.App().config.CaseSensitive && utils.EqualFold(route.Params[i], key)) {
+		if route.Params[i] == key || (!app.config.CaseSensitive && utils.EqualFold(route.Params[i], key)) {
 			// in case values are not here
-			if len(r.c.getValues()) <= i || len(r.c.getValues()[i]) == 0 {
+			if len(values) <= i || len(values[i]) == 0 {
 				break
 			}
-			return r.c.getValues()[i]
+			return values[i]
 		}
 	}
 	return defaultString("", defaultValue)
@@ -601,16 +612,18 @@ func Params[V GenericType](c Ctx, key string, defaultValue ...V) V {
 // Scheme contains the request protocol string: http or https for TLS requests.
 // Please use Config.TrustProxy to prevent header spoofing, in case when your app is behind the proxy.
 func (r *DefaultReq) Scheme() string {
-	if r.RequestCtx().IsTLS() {
+	ctx := r.RequestCtx()
+	if ctx.IsTLS() {
 		return schemeHTTPS
 	}
 	if !r.IsProxyTrusted() {
 		return schemeHTTP
 	}
 
+	app := r.App()
 	scheme := schemeHTTP
 	const lenXHeaderName = 12
-	for key, val := range r.Request().Header.All() {
+	for key, val := range ctx.Request.Header.All() {
 		if len(key) < lenXHeaderName {
 			continue // Neither "X-Forwarded-" nor "X-Url-Scheme"
 		}
@@ -618,7 +631,7 @@ func (r *DefaultReq) Scheme() string {
 		case bytes.HasPrefix(key, []byte("X-Forwarded-")):
 			if bytes.Equal(key, []byte(HeaderXForwardedProto)) ||
 				bytes.Equal(key, []byte(HeaderXForwardedProtocol)) {
-				v := r.App().getString(val)
+				v := app.getString(val)
 				commaPos := strings.Index(v, ",")
 				if commaPos != -1 {
 					scheme = v[:commaPos]
@@ -630,7 +643,7 @@ func (r *DefaultReq) Scheme() string {
 			}
 
 		case bytes.Equal(key, []byte(HeaderXUrlScheme)):
-			scheme = r.App().getString(val)
+			scheme = app.getString(val)
 		}
 	}
 	return scheme
@@ -672,9 +685,12 @@ func (r *DefaultReq) Query(key string, defaultValue ...string) string {
 // Queries()["filters[customer][name]"] == "Alice"
 // Queries()["filters[status]"] == "pending"
 func (r *DefaultReq) Queries() map[string]string {
-	m := make(map[string]string, r.RequestCtx().QueryArgs().Len())
-	for key, value := range r.RequestCtx().QueryArgs().All() {
-		m[r.App().getString(key)] = r.App().getString(value)
+	app := r.App()
+	queryArgs := r.RequestCtx().QueryArgs()
+
+	m := make(map[string]string, queryArgs.Len())
+	for key, value := range queryArgs.All() {
+		m[app.getString(key)] = app.getString(value)
 	}
 	return m
 }
@@ -850,23 +866,24 @@ func (r *DefaultReq) Stale() bool {
 // If Config.TrustProxy false, it returns true
 // IsProxyTrusted can check remote ip by proxy ranges and ip map.
 func (r *DefaultReq) IsProxyTrusted() bool {
-	if !r.App().config.TrustProxy {
+	config := r.App().config
+	if !config.TrustProxy {
 		return true
 	}
 
 	ip := r.RequestCtx().RemoteIP()
 
-	if (r.App().config.TrustProxyConfig.Loopback && ip.IsLoopback()) ||
-		(r.App().config.TrustProxyConfig.Private && ip.IsPrivate()) ||
-		(r.App().config.TrustProxyConfig.LinkLocal && ip.IsLinkLocalUnicast()) {
+	if (config.TrustProxyConfig.Loopback && ip.IsLoopback()) ||
+		(config.TrustProxyConfig.Private && ip.IsPrivate()) ||
+		(config.TrustProxyConfig.LinkLocal && ip.IsLinkLocalUnicast()) {
 		return true
 	}
 
-	if _, trusted := r.App().config.TrustProxyConfig.ips[ip.String()]; trusted {
+	if _, trusted := config.TrustProxyConfig.ips[ip.String()]; trusted {
 		return true
 	}
 
-	for _, ipNet := range r.App().config.TrustProxyConfig.ranges {
+	for _, ipNet := range config.TrustProxyConfig.ranges {
 		if ipNet.Contains(ip) {
 			return true
 		}

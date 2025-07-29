@@ -154,14 +154,15 @@ func (r *DefaultRes) Attachment(filename ...string) {
 	if len(filename) > 0 {
 		fname := filepath.Base(filename[0])
 		r.Type(filepath.Ext(fname))
+		app := r.App()
 		var quoted string
-		if r.App().isASCII(fname) {
-			quoted = r.App().quoteString(fname)
+		if app.isASCII(fname) {
+			quoted = app.quoteString(fname)
 		} else {
-			quoted = r.App().quoteRawString(fname)
+			quoted = app.quoteRawString(fname)
 		}
 		disp := `attachment; filename="` + quoted + `"`
-		if !r.App().isASCII(fname) {
+		if !app.isASCII(fname) {
 			disp += `; filename*=UTF-8''` + url.PathEscape(fname)
 		}
 		r.setCanonical(HeaderContentDisposition, disp)
@@ -173,14 +174,16 @@ func (r *DefaultRes) Attachment(filename ...string) {
 // ClearCookie expires a specific cookie by key on the client side.
 // If no key is provided it expires all cookies that came with the request.
 func (r *DefaultRes) ClearCookie(key ...string) {
+	request := r.c.Request()
+	response := r.Response()
 	if len(key) > 0 {
 		for i := range key {
-			r.Response().Header.DelClientCookie(key[i])
+			response.Header.DelClientCookie(key[i])
 		}
 		return
 	}
-	for k := range r.c.Request().Header.Cookies() {
-		r.Response().Header.DelClientCookieBytes(k)
+	for k := range request.Header.Cookies() {
+		response.Header.DelClientCookieBytes(k)
 	}
 }
 
@@ -283,14 +286,15 @@ func (r *DefaultRes) Download(file string, filename ...string) error {
 	} else {
 		fname = filepath.Base(file)
 	}
+	app := r.App()
 	var quoted string
-	if r.App().isASCII(fname) {
-		quoted = r.App().quoteString(fname)
+	if app.isASCII(fname) {
+		quoted = app.quoteString(fname)
 	} else {
-		quoted = r.App().quoteRawString(fname)
+		quoted = app.quoteRawString(fname)
 	}
 	disp := `attachment; filename="` + quoted + `"`
-	if !r.App().isASCII(fname) {
+	if !app.isASCII(fname) {
 		disp += `; filename*=UTF-8''` + url.PathEscape(fname)
 	}
 	r.setCanonical(HeaderContentDisposition, disp)
@@ -403,10 +407,11 @@ func (r *DefaultRes) Get(key string, defaultValue ...string) string {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (r *DefaultRes) GetHeaders() map[string][]string {
+	app := r.App()
 	headers := make(map[string][]string)
 	for k, v := range r.Response().Header.All() {
-		key := r.App().getString(k)
-		headers[key] = append(headers[key], r.App().getString(v))
+		key := app.getString(k)
+		headers[key] = append(headers[key], app.getString(v))
 	}
 	return headers
 }
@@ -423,11 +428,13 @@ func (r *DefaultRes) JSON(data any, ctype ...string) error {
 	if err != nil {
 		return err
 	}
-	r.Response().SetBodyRaw(raw)
+
+	response := r.Response()
+	response.SetBodyRaw(raw)
 	if len(ctype) > 0 {
-		r.Response().Header.SetContentType(ctype[0])
+		response.Header.SetContentType(ctype[0])
 	} else {
-		r.Response().Header.SetContentType(MIMEApplicationJSONCharsetUTF8)
+		response.Header.SetContentType(MIMEApplicationJSONCharsetUTF8)
 	}
 	return nil
 }
@@ -441,11 +448,13 @@ func (r *DefaultRes) MsgPack(data any, ctype ...string) error {
 	if err != nil {
 		return err
 	}
-	r.Response().SetBodyRaw(raw)
+
+	response := r.Response()
+	response.SetBodyRaw(raw)
 	if len(ctype) > 0 {
-		r.Response().Header.SetContentType(ctype[0])
+		response.Header.SetContentType(ctype[0])
 	} else {
-		r.Response().Header.SetContentType(MIMEApplicationMsgPack)
+		response.Header.SetContentType(MIMEApplicationMsgPack)
 	}
 	return nil
 }
@@ -459,11 +468,13 @@ func (r *DefaultRes) CBOR(data any, ctype ...string) error {
 	if err != nil {
 		return err
 	}
+
+	response := r.Response()
 	r.Response().SetBodyRaw(raw)
 	if len(ctype) > 0 {
-		r.Response().Header.SetContentType(ctype[0])
+		response.Header.SetContentType(ctype[0])
 	} else {
-		r.Response().Header.SetContentType(MIMEApplicationCBOR)
+		response.Header.SetContentType(MIMEApplicationCBOR)
 	}
 	return nil
 }
@@ -499,8 +510,10 @@ func (r *DefaultRes) XML(data any) error {
 	if err != nil {
 		return err
 	}
-	r.Response().SetBodyRaw(raw)
-	r.Response().Header.SetContentType(MIMEApplicationXMLCharsetUTF8)
+
+	response := r.Response()
+	response.SetBodyRaw(raw)
+	response.Header.SetContentType(MIMEApplicationXMLCharsetUTF8)
 	return nil
 }
 
@@ -551,6 +564,7 @@ func (r *DefaultRes) ViewBind(vars Map) error {
 
 // getLocationFromRoute get URL location from route using parameters
 func (r *DefaultRes) getLocationFromRoute(route Route, params Map) (string, error) {
+	app := r.App()
 	buf := bytebufferpool.Get()
 	for _, segment := range route.routeParser.segs {
 		if !segment.IsParam {
@@ -562,7 +576,7 @@ func (r *DefaultRes) getLocationFromRoute(route Route, params Map) (string, erro
 		}
 
 		for key, val := range params {
-			isSame := key == segment.ParamName || (!r.App().config.CaseSensitive && utils.EqualFold(key, segment.ParamName))
+			isSame := key == segment.ParamName || (!app.config.CaseSensitive && utils.EqualFold(key, segment.ParamName))
 			isGreedy := segment.IsGreedy && len(key) == 1 && bytes.IndexByte(greedyParameters, key[0]) != -1
 			if isSame || isGreedy {
 				_, err := buf.WriteString(utils.ToString(val))
@@ -598,10 +612,11 @@ func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 	// Pass-locals-to-views, bind, appListKeys
 	r.renderExtensions(bind)
 
+	rootApp := r.App()
 	var rendered bool
-	for i := len(r.App().mountFields.appListKeys) - 1; i >= 0; i-- {
-		prefix := r.App().mountFields.appListKeys[i]
-		app := r.App().mountFields.appList[prefix]
+	for i := len(rootApp.mountFields.appListKeys) - 1; i >= 0; i-- {
+		prefix := rootApp.mountFields.appListKeys[i]
+		app := rootApp.mountFields.appList[prefix]
 		if prefix == "" || strings.Contains(r.OriginalURL(), prefix) {
 			if len(layouts) == 0 && app.config.ViewsLayout != "" {
 				layouts = []string{
@@ -628,7 +643,7 @@ func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 			return err
 		}
 		// Parse template
-		tmpl, err := template.New("").Parse(r.App().getString(buf.Bytes()))
+		tmpl, err := template.New("").Parse(rootApp.getString(buf.Bytes()))
 		if err != nil {
 			return fmt.Errorf("failed to parse: %w", err)
 		}
@@ -639,10 +654,12 @@ func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 		}
 	}
 
+	response := r.Response()
+
 	// Set Content-Type to text/html
-	r.Response().Header.SetContentType(MIMETextHTMLCharsetUTF8)
+	response.Header.SetContentType(MIMETextHTMLCharsetUTF8)
 	// Set rendered template to body
-	r.Response().SetBody(buf.Bytes())
+	response.SetBody(buf.Bytes())
 
 	return nil
 }
@@ -679,15 +696,16 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	var fsHandler fasthttp.RequestHandler
 	var cacheControlValue string
 
-	r.App().sendfilesMutex.RLock()
-	for _, sf := range r.App().sendfiles {
+	app := r.App()
+	app.sendfilesMutex.RLock()
+	for _, sf := range app.sendfiles {
 		if sf.compareConfig(cfg) {
 			fsHandler = sf.handler
 			cacheControlValue = sf.cacheControlValue
 			break
 		}
 	}
-	r.App().sendfilesMutex.RUnlock()
+	app.sendfilesMutex.RUnlock()
 
 	if fsHandler == nil {
 		fasthttpFS := &fasthttp.FS{
@@ -699,7 +717,7 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 			Compress:               cfg.Compress,
 			CompressBrotli:         cfg.Compress,
 			CompressZstd:           cfg.Compress,
-			CompressedFileSuffixes: r.App().config.CompressedFileSuffixes,
+			CompressedFileSuffixes: app.config.CompressedFileSuffixes,
 			CacheDuration:          cfg.CacheDuration,
 			SkipCache:              cfg.CacheDuration < 0,
 			IndexNames:             []string{"index.html"},
@@ -726,18 +744,20 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 		fsHandler = sf.handler
 		cacheControlValue = sf.cacheControlValue
 
-		r.App().sendfilesMutex.Lock()
-		r.App().sendfiles = append(r.App().sendfiles, sf)
-		r.App().sendfilesMutex.Unlock()
+		app.sendfilesMutex.Lock()
+		app.sendfiles = append(app.sendfiles, sf)
+		app.sendfilesMutex.Unlock()
 	}
 
 	// Keep original path for mutable params
 	r.c.keepOriginalPath()
 
+	request := r.c.Request()
+
 	// Delete the Accept-Encoding header if compression is disabled
 	if !cfg.Compress {
 		// https://github.com/valyala/fasthttp/blob/7cc6f4c513f9e0d3686142e0a1a5aa2f76b3194a/fs.go#L55
-		r.c.Request().Header.Del(HeaderAcceptEncoding)
+		request.Header.Del(HeaderAcceptEncoding)
 	}
 
 	// copy of https://github.com/valyala/fasthttp/blob/7cc6f4c513f9e0d3686142e0a1a5aa2f76b3194a/fs.go#L103-L121 with small adjustments
@@ -761,13 +781,14 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 
 	// Restore the original requested URL
 	originalURL := utils.CopyString(r.OriginalURL())
-	defer r.c.Request().SetRequestURI(originalURL)
+	defer request.SetRequestURI(originalURL)
 
 	// Set new URI for fileHandler
-	r.c.Request().SetRequestURI(file)
+	request.SetRequestURI(file)
 
 	// Save status code
-	status := r.Response().StatusCode()
+	response := r.Response()
+	status := response.StatusCode()
 
 	// Serve file
 	fsHandler(r.RequestCtx())
@@ -778,7 +799,7 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	}
 
 	// Get the status code which is set by fasthttp
-	fsStatus := r.Response().StatusCode()
+	fsStatus := response.StatusCode()
 
 	// Check for error
 	if status != StatusNotFound && fsStatus == StatusNotFound {
@@ -793,7 +814,7 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	// Apply cache control header
 	if status != StatusNotFound && status != StatusForbidden {
 		if len(cacheControlValue) > 0 {
-			r.RequestCtx().Response.Header.Set(HeaderCacheControl, cacheControlValue)
+			response.Header.Set(HeaderCacheControl, cacheControlValue)
 		}
 
 		return nil
