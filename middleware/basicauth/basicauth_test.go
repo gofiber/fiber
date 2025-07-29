@@ -1,6 +1,7 @@
 package basicauth
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // go test -run Test_BasicAuth_Next
@@ -31,10 +33,14 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
+	sha := sha256.Sum256([]byte("doe"))
+	hashedJohn := "{SHA256}" + base64.StdEncoding.EncodeToString(sha[:])
+	hashedAdmin, _ := bcrypt.GenerateFromPassword([]byte("123456"), bcrypt.MinCost)
+
 	app.Use(New(Config{
 		Users: map[string]string{
-			"john":  "doe",
-			"admin": "123456",
+			"john":  hashedJohn,
+			"admin": string(hashedAdmin),
 		},
 		StorePassword: true,
 	}))
@@ -96,8 +102,11 @@ func Test_BasicAuth_NoStorePassword(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
+	sha := sha256.Sum256([]byte("doe"))
+	hashedJohn := "{SHA256}" + base64.StdEncoding.EncodeToString(sha[:])
+
 	app.Use(New(Config{
-		Users: map[string]string{"john": "doe"},
+		Users: map[string]string{"john": hashedJohn},
 	}))
 
 	app.Get("/", func(c fiber.Ctx) error {
@@ -143,7 +152,9 @@ func Test_BasicAuth_WWWAuthenticateHeader(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	app.Use(New(Config{Users: map[string]string{"john": "doe"}}))
+	sha := sha256.Sum256([]byte("doe"))
+	hashedJohn := "{SHA256}" + base64.StdEncoding.EncodeToString(sha[:])
+	app.Use(New(Config{Users: map[string]string{"john": hashedJohn}}))
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
@@ -155,7 +166,9 @@ func Test_BasicAuth_InvalidHeader(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	app.Use(New(Config{Users: map[string]string{"john": "doe"}}))
+	sha := sha256.Sum256([]byte("doe"))
+	hashedJohn := "{SHA256}" + base64.StdEncoding.EncodeToString(sha[:])
+	app.Use(New(Config{Users: map[string]string{"john": hashedJohn}}))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	req.Header.Set(fiber.HeaderAuthorization, "Basic notbase64")
@@ -169,7 +182,9 @@ func Test_BasicAuth_EmptyAuthorization(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	app.Use(New(Config{Users: map[string]string{"john": "doe"}}))
+	sha := sha256.Sum256([]byte("doe"))
+	hashedJohn := "{SHA256}" + base64.StdEncoding.EncodeToString(sha[:])
+	app.Use(New(Config{Users: map[string]string{"john": hashedJohn}}))
 
 	cases := []string{"", "   "}
 	for _, h := range cases {
@@ -185,7 +200,9 @@ func Test_BasicAuth_WhitespaceHandling(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	app.Use(New(Config{Users: map[string]string{"john": "doe"}}))
+	sha := sha256.Sum256([]byte("doe"))
+	hashedJohn := "{SHA256}" + base64.StdEncoding.EncodeToString(sha[:])
+	app.Use(New(Config{Users: map[string]string{"john": hashedJohn}}))
 	app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
 
 	creds := base64.StdEncoding.EncodeToString([]byte("john:doe"))
@@ -209,11 +226,13 @@ func Test_BasicAuth_WhitespaceHandling(t *testing.T) {
 func Test_BasicAuth_HeaderLimit(t *testing.T) {
 	t.Parallel()
 	creds := base64.StdEncoding.EncodeToString([]byte("john:doe"))
+	sha := sha256.Sum256([]byte("doe"))
+	hashedJohn := "{SHA256}" + base64.StdEncoding.EncodeToString(sha[:])
 
 	t.Run("too large", func(t *testing.T) {
 		t.Parallel()
 		app := fiber.New()
-		app.Use(New(Config{Users: map[string]string{"john": "doe"}, HeaderLimit: 10}))
+		app.Use(New(Config{Users: map[string]string{"john": hashedJohn}, HeaderLimit: 10}))
 		req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 		req.Header.Set(fiber.HeaderAuthorization, "Basic "+creds)
 		resp, err := app.Test(req)
@@ -224,7 +243,7 @@ func Test_BasicAuth_HeaderLimit(t *testing.T) {
 	t.Run("allowed", func(t *testing.T) {
 		t.Parallel()
 		app := fiber.New()
-		app.Use(New(Config{Users: map[string]string{"john": "doe"}, HeaderLimit: 100}))
+		app.Use(New(Config{Users: map[string]string{"john": hashedJohn}, HeaderLimit: 100}))
 		app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
 		req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 		req.Header.Set(fiber.HeaderAuthorization, "Basic "+creds)
@@ -238,9 +257,12 @@ func Test_BasicAuth_HeaderLimit(t *testing.T) {
 func Benchmark_Middleware_BasicAuth(b *testing.B) {
 	app := fiber.New()
 
+	sha := sha256.Sum256([]byte("doe"))
+	hashedJohn := "{SHA256}" + base64.StdEncoding.EncodeToString(sha[:])
+
 	app.Use(New(Config{
 		Users: map[string]string{
-			"john": "doe",
+			"john": hashedJohn,
 		},
 	}))
 	app.Get("/", func(c fiber.Ctx) error {
@@ -267,9 +289,12 @@ func Benchmark_Middleware_BasicAuth(b *testing.B) {
 func Benchmark_Middleware_BasicAuth_Upper(b *testing.B) {
 	app := fiber.New()
 
+	sha := sha256.Sum256([]byte("doe"))
+	hashedJohn := "{SHA256}" + base64.StdEncoding.EncodeToString(sha[:])
+
 	app.Use(New(Config{
 		Users: map[string]string{
-			"john": "doe",
+			"john": hashedJohn,
 		},
 	}))
 	app.Get("/", func(c fiber.Ctx) error {
@@ -296,7 +321,9 @@ func Test_BasicAuth_Immutable(t *testing.T) {
 	t.Parallel()
 	app := fiber.New(fiber.Config{Immutable: true})
 
-	app.Use(New(Config{Users: map[string]string{"john": "doe"}}))
+	sha := sha256.Sum256([]byte("doe"))
+	hashedJohn := "{SHA256}" + base64.StdEncoding.EncodeToString(sha[:])
+	app.Use(New(Config{Users: map[string]string{"john": hashedJohn}}))
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusTeapot)
 	})

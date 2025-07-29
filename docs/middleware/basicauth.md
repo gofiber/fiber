@@ -33,26 +33,25 @@ After you initiate your Fiber app, you can use the following possibilities:
 // Provide a minimal config
 app.Use(basicauth.New(basicauth.Config{
     Users: map[string]string{
-        "john":  "doe",
-        "admin": "123456",
+        // "doe" hashed using SHA-256
+        "john":  "{SHA256}eZ75KhGvkY4/t0HfQpNPO1aO0tk6wd908bjUGieTKm8=",
+        // "123456" hashed using bcrypt
+        "admin": "$2a$10$gTYwCN66/tBRoCr3.TXa1.v1iyvwIF7GRBqxzv7G.AHLMt/owXrp.",
     },
 }))
 
 // Or extend your config for customization
 app.Use(basicauth.New(basicauth.Config{
     Users: map[string]string{
-        "john":  "doe",
-        "admin": "123456",
+        // "doe" hashed using SHA-256
+        "john":  "{SHA256}eZ75KhGvkY4/t0HfQpNPO1aO0tk6wd908bjUGieTKm8=",
+        // "123456" hashed using bcrypt
+        "admin": "$2a$10$gTYwCN66/tBRoCr3.TXa1.v1iyvwIF7GRBqxzv7G.AHLMt/owXrp.",
     },
     Realm: "Forbidden",
     Authorizer: func(user, pass string, c fiber.Ctx) bool {
-        if user == "john" && pass == "doe" {
-            return true
-        }
-        if user == "admin" && pass == "123456" {
-            return true
-        }
-        return false
+        // custom validation logic
+        return (user == "john" || user == "admin")
     },
     Unauthorized: func(c fiber.Ctx) error {
         return c.SendFile("./unauthorized.html")
@@ -76,7 +75,7 @@ func handler(c fiber.Ctx) error {
 | Property        | Type                        | Description                                                                                                                                                           | Default               |
 |:----------------|:----------------------------|:----------------------------------------------------------------------------------------------------------------------------------------------------------------------|:----------------------|
 | Next            | `func(fiber.Ctx) bool`     | Next defines a function to skip this middleware when returned true.                                                                                                   | `nil`                 |
-| Users           | `map[string]string`         | Users defines the allowed credentials.                                                                                                                                | `map[string]string{}` |
+| Users           | `map[string]string`         | Users maps usernames to **hashed** passwords (e.g. bcrypt, `{SHA256}`). | `map[string]string{}` |
 | Realm           | `string`                    | Realm is a string to define the realm attribute of BasicAuth. The realm identifies the system to authenticate against and can be used by clients to save credentials. | `"Restricted"`        |
 | Charset         | `string`                    | Charset sent in the `WWW-Authenticate` header, so clients know how credentials are encoded. | `"UTF-8"` |
 | HeaderLimit     | `int`                       | Maximum allowed length of the `Authorization` header. Requests exceeding this limit are rejected. | `8192` |
