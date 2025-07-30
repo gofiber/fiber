@@ -29,7 +29,7 @@ type Config struct {
 
 	// Authorizer defines a function you can pass
 	// to check the credentials however you want.
-	// It will be called with a username, hashed password and
+	// It will be called with a username, password and
 	// the current fiber context and is expected to return
 	// true or false to indicate that the credentials were
 	// approved or not.
