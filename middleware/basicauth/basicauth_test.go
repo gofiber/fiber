@@ -376,6 +376,7 @@ func Test_parseHashedPassword(t *testing.T) {
 
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			verify, err := parseHashedPassword(tt.hashed)
 			require.NoError(t, err)
 			require.True(t, verify(pass))
