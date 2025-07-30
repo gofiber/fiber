@@ -1,13 +1,15 @@
 package basicauth
 
 import (
-	"crypto/md5"
-	"crypto/sha1"
+	"crypto/md5"  // #nosec G501 - compatibility with existing hashed passwords
+	"crypto/sha1" // #nosec G505 - compatibility with existing hashed passwords
 	"crypto/sha256"
 	"crypto/sha512"
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -148,7 +150,7 @@ func parseHashedPassword(h string) (func(string) bool, error) {
 	case strings.HasPrefix(h, "{SHA512}"):
 		b, err := base64.StdEncoding.DecodeString(h[len("{SHA512}"):])
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("decode SHA512 password: %w", err)
 		}
 		return func(p string) bool {
 			sum := sha512.Sum512([]byte(p))
@@ -157,7 +159,7 @@ func parseHashedPassword(h string) (func(string) bool, error) {
 	case strings.HasPrefix(h, "{SHA256}"):
 		b, err := base64.StdEncoding.DecodeString(h[len("{SHA256}"):])
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("decode SHA256 password: %w", err)
 		}
 		return func(p string) bool {
 			sum := sha256.Sum256([]byte(p))
@@ -166,26 +168,29 @@ func parseHashedPassword(h string) (func(string) bool, error) {
 	case strings.HasPrefix(h, "{SHA}"):
 		b, err := base64.StdEncoding.DecodeString(h[len("{SHA}"):])
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("decode SHA1 password: %w", err)
 		}
 		return func(p string) bool {
-			sum := sha1.Sum([]byte(p))
+			sum := sha1.Sum([]byte(p)) // #nosec G401 - compatibility with existing hashed passwords
 			return subtle.ConstantTimeCompare(sum[:], b) == 1
 		}, nil
 	case strings.HasPrefix(h, "{MD5}"):
 		b, err := base64.StdEncoding.DecodeString(h[len("{MD5}"):])
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("decode MD5 password: %w", err)
 		}
 		return func(p string) bool {
-			sum := md5.Sum([]byte(p))
+			sum := md5.Sum([]byte(p)) // #nosec G401 - compatibility with existing hashed passwords
 			return subtle.ConstantTimeCompare(sum[:], b) == 1
 		}, nil
 	default:
 		b, err := hex.DecodeString(h)
 		if err != nil || len(b) != sha256.Size {
-			if b, err = base64.StdEncoding.DecodeString(h); err != nil || len(b) != sha256.Size {
-				return nil, err
+			if b, err = base64.StdEncoding.DecodeString(h); err != nil {
+				return nil, fmt.Errorf("decode SHA256 password: %w", err)
+			}
+			if len(b) != sha256.Size {
+				return nil, errors.New("decode SHA256 password: invalid length")
 			}
 		}
 		return func(p string) bool {

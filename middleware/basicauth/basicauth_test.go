@@ -35,7 +35,8 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 
 	sha := sha256.Sum256([]byte("doe"))
 	hashedJohn := "{SHA256}" + base64.StdEncoding.EncodeToString(sha[:])
-	hashedAdmin, _ := bcrypt.GenerateFromPassword([]byte("123456"), bcrypt.MinCost)
+	hashedAdmin, err := bcrypt.GenerateFromPassword([]byte("123456"), bcrypt.MinCost)
+	require.NoError(t, err)
 
 	app.Use(New(Config{
 		Users: map[string]string{
