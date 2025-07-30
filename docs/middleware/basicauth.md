@@ -61,7 +61,6 @@ app.Use(basicauth.New(basicauth.Config{
 
 Getting the username and password
 
-
 ### Password hashes
 
 Passwords must be supplied in pre-hashed form. The middleware detects the
