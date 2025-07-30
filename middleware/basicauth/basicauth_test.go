@@ -1,8 +1,6 @@
 package basicauth
 
 import (
-	"crypto/md5"  // #nosec G501 - test compatibility
-	"crypto/sha1" // #nosec G505 - test compatibility
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/base64"
@@ -26,16 +24,6 @@ func sha256Hash(p string) string {
 func sha512Hash(p string) string {
 	sum := sha512.Sum512([]byte(p))
 	return "{SHA512}" + base64.StdEncoding.EncodeToString(sum[:])
-}
-
-func sha1Hash(p string) string {
-	sum := sha1.Sum([]byte(p)) // #nosec G401 - test compatibility
-	return "{SHA}" + base64.StdEncoding.EncodeToString(sum[:])
-}
-
-func md5Hash(p string) string {
-	sum := md5.Sum([]byte(p)) // #nosec G401 - test compatibility
-	return "{MD5}" + base64.StdEncoding.EncodeToString(sum[:])
 }
 
 // go test -run Test_BasicAuth_Next
@@ -370,8 +358,6 @@ func Test_parseHashedPassword(t *testing.T) {
 		{"sha256", sha256Hash(pass)},
 		{"sha256-hex", hexDigest},
 		{"sha256-b64", b64},
-		{"sha1", sha1Hash(pass)},
-		{"md5", md5Hash(pass)},
 	}
 
 	for _, tt := range cases {
@@ -398,8 +384,6 @@ func Test_BasicAuth_HashVariants(t *testing.T) {
 		{"sha512", sha512Hash(pass)},
 		{"sha256", sha256Hash(pass)},
 		{"sha256-hex", func() string { h := sha256.Sum256([]byte(pass)); return hex.EncodeToString(h[:]) }()},
-		{"sha1", sha1Hash(pass)},
-		{"md5", md5Hash(pass)},
 	}
 
 	for _, tt := range cases {
@@ -430,8 +414,6 @@ func Test_BasicAuth_HashVariants_Invalid(t *testing.T) {
 		{"sha512", sha512Hash(pass)},
 		{"sha256", sha256Hash(pass)},
 		{"sha256-hex", func() string { h := sha256.Sum256([]byte(pass)); return hex.EncodeToString(h[:]) }()},
-		{"sha1", sha1Hash(pass)},
-		{"md5", md5Hash(pass)},
 	}
 
 	for _, tt := range cases {

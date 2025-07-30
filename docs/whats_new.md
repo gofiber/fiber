@@ -1947,7 +1947,7 @@ Authorizer: func(user, pass string, _ fiber.Ctx) bool {
 }
 ```
 
-Passwords configured for BasicAuth must now be pre-hashed. If no prefix is supplied the middleware expects a SHA-256 digest encoded in hex. Common prefixes like `{SHA256}`, `{SHA}`, `{SHA512}`, `{MD5}` and bcrypt strings are also supported. Plaintext passwords are no longer accepted.
+Passwords configured for BasicAuth must now be pre-hashed. If no prefix is supplied the middleware expects a SHA-256 digest encoded in hex. Common prefixes like `{SHA256}` and `{SHA512}` and bcrypt strings are also supported. Plaintext passwords are no longer accepted.
 
 You can also set the optional `HeaderLimit`, `StorePassword`, and `Charset`
 options to further control authentication behavior.

@@ -1,8 +1,6 @@
 package basicauth
 
 import (
-	"crypto/md5"  // #nosec G501 - compatibility with existing hashed passwords
-	"crypto/sha1" // #nosec G505 - compatibility with existing hashed passwords
 	"crypto/sha256"
 	"crypto/sha512"
 	"crypto/subtle"
@@ -31,7 +29,7 @@ type Config struct {
 
 	// Authorizer defines a function you can pass
 	// to check the credentials however you want.
-	// It will be called with a username, password and
+	// It will be called with a username, hashed password and
 	// the current fiber context and is expected to return
 	// true or false to indicate that the credentials were
 	// approved or not.
@@ -163,24 +161,6 @@ func parseHashedPassword(h string) (func(string) bool, error) {
 		}
 		return func(p string) bool {
 			sum := sha256.Sum256([]byte(p))
-			return subtle.ConstantTimeCompare(sum[:], b) == 1
-		}, nil
-	case strings.HasPrefix(h, "{SHA}"):
-		b, err := base64.StdEncoding.DecodeString(h[len("{SHA}"):])
-		if err != nil {
-			return nil, fmt.Errorf("decode SHA1 password: %w", err)
-		}
-		return func(p string) bool {
-			sum := sha1.Sum([]byte(p)) // #nosec G401 - compatibility with existing hashed passwords
-			return subtle.ConstantTimeCompare(sum[:], b) == 1
-		}, nil
-	case strings.HasPrefix(h, "{MD5}"):
-		b, err := base64.StdEncoding.DecodeString(h[len("{MD5}"):])
-		if err != nil {
-			return nil, fmt.Errorf("decode MD5 password: %w", err)
-		}
-		return func(p string) bool {
-			sum := md5.Sum([]byte(p)) // #nosec G401 - compatibility with existing hashed passwords
 			return subtle.ConstantTimeCompare(sum[:], b) == 1
 		}, nil
 	default:
