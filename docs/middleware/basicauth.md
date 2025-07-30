@@ -66,8 +66,7 @@ Getting the username and password
 Passwords must be supplied in pre-hashed form. The middleware detects the
 hashing algorithm from a prefix:
 
-- `"{SHA512}"`, `"{SHA256}"`, or `"{SHA}"` followed by a base64 encoded digest
-- `"{MD5}"` followed by a base64 encoded digest
+- `"{SHA512}"` or `"{SHA256}"` followed by a base64 encoded digest
 - standard bcrypt strings beginning with `$2`
 
 If no prefix is present the value is interpreted as a SHA-256 digest encoded in
