@@ -415,3 +415,35 @@ func Test_BasicAuth_HashVariants(t *testing.T) {
 		require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
 	}
 }
+
+func Test_BasicAuth_HashVariants_Invalid(t *testing.T) {
+	t.Parallel()
+	pass := "doe"
+	wrong := "wrong"
+	bcryptHash, err := bcrypt.GenerateFromPassword([]byte(pass), bcrypt.MinCost)
+	require.NoError(t, err)
+	cases := []struct {
+		name   string
+		hashed string
+	}{
+		{"bcrypt", string(bcryptHash)},
+		{"sha512", sha512Hash(pass)},
+		{"sha256", sha256Hash(pass)},
+		{"sha256-hex", func() string { h := sha256.Sum256([]byte(pass)); return hex.EncodeToString(h[:]) }()},
+		{"sha1", sha1Hash(pass)},
+		{"md5", md5Hash(pass)},
+	}
+
+	for _, tt := range cases {
+		app := fiber.New()
+		app.Use(New(Config{Users: map[string]string{"john": tt.hashed}}))
+		app.Get("/", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) })
+
+		creds := base64.StdEncoding.EncodeToString([]byte("john:" + wrong))
+		req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+		req.Header.Set(fiber.HeaderAuthorization, "Basic "+creds)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusUnauthorized, resp.StatusCode)
+	}
+}
