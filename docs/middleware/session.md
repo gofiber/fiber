@@ -4,481 +4,867 @@ id: session
 
 # Session
 
-The `session` middleware provides session management for Fiber applications, utilizing the [Storage](https://github.com/gofiber/storage) package for multi-database support via a unified interface. By default, session data is stored in memory, but custom storage options are easily configurable (see examples below).
-
-As of v3, we recommend using the middleware handler for session management. However, for backward compatibility, v2's session methods are still available, allowing you to continue using the session management techniques from earlier versions of Fiber. Both methods are demonstrated in the examples.
+The Session middleware provides robust session management for Fiber applications, utilizing the [Storage](https://github.com/gofiber/storage) package for multi-database support via a unified interface. By default, session data is stored in memory, but custom storage options are easily configurable.
 
 ## Table of Contents
 
+- [Quick Start](#quick-start)
+- [Usage Patterns](#usage-patterns)
+- [Session Security](#session-security)
+- [Session ID Extractors](#session-id-extractors)
+- [Configuration](#configuration)
 - [Migration Guide](#migration-guide)
-  - [v2 to v3](#v2-to-v3)
-- [Types](#types)
-  - [Config](#config)
-  - [Middleware](#middleware)
-  - [Session](#session)
-  - [Store](#store)
-- [Signatures](#signatures)
-  - [Session Package Functions](#session-package-functions)
-  - [Config Methods](#config-methods)
-  - [Middleware Methods](#middleware-methods)
-  - [Session Methods](#session-methods)
-  - [Store Methods](#store-methods)
+- [API Reference](#api-reference)
 - [Examples](#examples)
-  - [Middleware Handler (Recommended)](#middleware-handler-recommended)
-  - [Custom Storage Example](#custom-storage-example)
-  - [Session Without Middleware Handler](#session-without-middleware-handler)
-  - [Custom Types in Session Data](#custom-types-in-session-data)
-- [Config](#config)
-- [Default Config](#default-config)
 
-## Migration Guide
-
-### v2 to v3
-
-- **Function Signature Change**: In v3, the `New` function now returns a middleware handler instead of a `*Store`. To access the store, use the `Store` method on `*Middleware` (obtained from `session.FromContext(c)` in a handler) or use `NewStore` or `NewWithStore`.
-
-- **Session Lifecycle Management**: The `*Store.Save` method no longer releases the instance automatically. You must manually call `sess.Release()` after using the session to manage its lifecycle properly.
-
-- **Expiration Handling**: Previously, the `Expiration` field represented the maximum session duration before expiration. However, it would extend every time the session was saved, making its behavior a mix between session duration and session idle timeout. The `Expiration` field has been removed and replaced with `IdleTimeout` and `AbsoluteTimeout` fields, which explicitly defines the session's idle and absolute timeout periods.
-
-  - **Idle Timeout**: The new `IdleTimeout`, handles session inactivity. If the session is idle for the specified duration, it will expire. The idle timeout is updated when the session is saved. If you are using the middleware handler, the idle timeout will be updated automatically.
-
-  - **Absolute Timeout**: The `AbsoluteTimeout` field has been added. If you need to set an absolute session timeout, you can use this field to define the duration. The session will expire after the specified duration, regardless of activity.
-
-For more details about Fiber v3, see [What’s New](https://github.com/gofiber/fiber/blob/main/docs/whats_new.md).
-
-### Migrating v2 to v3 Example (Legacy Approach)
-
-To convert a v2 example to use the v3 legacy approach, follow these steps:
-
-1. **Initialize with Store**: Use `session.NewStore()` to obtain a store.
-2. **Retrieve Session**: Access the session store using the `store.Get(c)` method.
-3. **Release Session**: Ensure that you call `sess.Release()` after you are done with the session to manage its lifecycle.
-
-:::note
-When using the legacy approach, the IdleTimeout will be updated when the session is saved.
-:::
-
-#### Example Conversion
-
-**v2 Example:**
+## Quick Start
 
 ```go
-store := session.New()
+import (
+    "fmt"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/session"
+)
 
-app.Get("/", func(c *fiber.Ctx) error {
-    sess, err := store.Get(c)
-    if err != nil {
-        return err
+// Basic usage
+app.Use(session.New())
+
+app.Get("/", func(c fiber.Ctx) error {
+    sess := session.FromContext(c)
+    
+    // Get and update visits count
+    var visits int
+    if v := sess.Get("visits"); v != nil {
+        // Use type assertion with an ok check to prevent a panic
+        if vInt, ok := v.(int); ok {
+            visits = vInt
+        }
     }
-
-    key, ok := sess.Get("key").(string)
-    if !ok {
-        return c.SendStatus(fiber.StatusInternalServerError)
-    }
-
-    sess.Set("key", "value")
-
-    err = sess.Save()
-    if err != nil {
-        return c.SendStatus(fiber.StatusInternalServerError)
-    }
-
-    return nil
+    visits++
+    sess.Set("visits", visits)
+    return c.SendString(fmt.Sprintf("Visits: %d", visits))
 })
 ```
 
-**v3 Legacy Approach:**
+### Production Configuration
 
 ```go
+import (
+    "time"
+    "github.com/gofiber/storage/redis"
+)
+
+storage := redis.New(redis.Config{
+    Host: "localhost",
+    Port: 6379,
+})
+
+app.Use(session.New(session.Config{
+    Storage:           storage,
+    CookieSecure:      true,              // HTTPS only
+    CookieHTTPOnly:    true,              // Prevent XSS
+    CookieSameSite:    "Lax",             // CSRF protection
+    IdleTimeout:       30 * time.Minute,  // Session timeout
+    AbsoluteTimeout:   24 * time.Hour,    // Maximum session life
+    Extractor:         session.FromCookie("__Host-session_id"),
+}))
+```
+
+## Usage Patterns
+
+### Middleware Pattern (Recommended)
+
+The middleware pattern automatically manages session lifecycle and is the recommended approach for most applications.
+
+```go
+// Setup middleware
+app.Use(session.New())
+
+// Use in handlers
+app.Post("/login", func(c fiber.Ctx) error {
+    sess := session.FromContext(c)
+    
+    // Session is automatically saved when handler returns
+    sess.Set("user_id", 123)
+    sess.Set("authenticated", true)
+    
+    return c.Redirect("/dashboard")
+})
+```
+
+**Benefits:**
+
+- Automatic session saving
+- Automatic resource cleanup
+- No manual lifecycle management
+- Thread-safe operations
+
+### Store Pattern (Advanced)
+
+Use the store pattern for background tasks or when you need direct session access.
+
+```go
+import (
+    "context"
+    "log"
+    "time"
+)
+
 store := session.NewStore()
+
+// In background tasks
+func backgroundTask(sessionID string) {
+    sess, err := store.GetByID(context.Background(), sessionID)
+    if err != nil {
+        return
+    }
+    defer sess.Release() // Important: Manual cleanup required
+    
+    // Modify session
+    sess.Set("last_task", time.Now())
+    
+    // Manual save required
+    if err := sess.Save(); err != nil {
+        log.Printf("Failed to save session: %v", err)
+    }
+}
+```
+
+**Requirements:**
+
+- Must call `sess.Release()` when done
+- Must call `sess.Save()` to persist changes
+- Handle errors manually
+
+## Session Security
+
+### Authentication Flow
+
+Understanding session lifecycle during authentication is crucial for security.
+
+#### Basic Login/Logout
+
+```go
+app.Post("/login", func(c fiber.Ctx) error {
+    sess := session.FromContext(c)
+    
+    email := c.FormValue("email")
+    password := c.FormValue("password")
+    
+    // Simple credential validation (use proper authentication in production)
+    if email == "admin@example.com" && password == "secret" {
+        // CRITICAL: Regenerate session ID to prevent session fixation
+        // This changes the session ID while preserving existing data
+        if err := sess.Regenerate(); err != nil {
+            return c.Status(500).SendString("Session error")
+        }
+        
+        // Add authentication data to existing session
+        sess.Set("user_id", 1)
+        sess.Set("authenticated", true)
+        
+        return c.Redirect("/dashboard")
+    }
+    
+    return c.Status(401).SendString("Invalid credentials")
+})
+
+app.Post("/logout", func(c fiber.Ctx) error {
+    sess := session.FromContext(c)
+    
+    // Complete session reset (clears all data + new session ID)
+    if err := sess.Reset(); err != nil {
+        return c.Status(500).SendString("Session error")
+    }
+    
+    return c.Redirect("/")
+})
+```
+
+#### Cart Preservation During Login
+
+```go
+app.Post("/login", func(c fiber.Ctx) error {
+    sess := session.FromContext(c)
+    
+    // Validate credentials (implement your own validation)
+    email := c.FormValue("email")
+    password := c.FormValue("password")
+    if !isValidUser(email, password) {
+        return c.Status(401).JSON(fiber.Map{"error": "Invalid credentials"})
+    }
+    
+    // CRITICAL: Regenerate session ID to prevent session fixation
+    // This changes the session ID while preserving existing data
+    if err := sess.Regenerate(); err != nil {
+        return c.Status(500).JSON(fiber.Map{"error": "Session error"})
+    }
+    
+    // Add authentication data to existing session
+    sess.Set("user_id", getUserID(email))
+    sess.Set("authenticated", true)
+    sess.Set("login_time", time.Now())
+    
+    return c.JSON(fiber.Map{"status": "logged in"})
+})
+```
+
+### Security Methods Comparison
+
+| Method | Session ID | Session Data | Use Case |
+|--------|------------|--------------|----------|
+| `Regenerate()` | ✅ Changes | ✅ Preserved | Login, privilege escalation |
+| `Reset()` | ✅ Changes | ❌ Cleared | Logout, security breach |
+| `Destroy()` | ⚪ Unchanged | ❌ Cleared | Clear data only |
+
+### Common Security Mistakes
+
+❌ **Session Fixation Vulnerability:**
+
+```go
+// DANGEROUS: Keeping same session ID after login
+app.Post("/login", func(c fiber.Ctx) error {
+    sess := session.FromContext(c)
+    // Validate user...
+    sess.Set("user_id", userID) // Attacker can hijack this session!
+    return c.Redirect("/dashboard")
+})
+```
+
+✅ **Secure Implementation:**
+
+```go
+// SECURE: Always regenerate session ID after authentication
+app.Post("/login", func(c fiber.Ctx) error {
+    sess := session.FromContext(c)
+    // Validate user...
+    if err := sess.Regenerate(); err != nil { // Prevents session fixation
+        return err
+    }
+    sess.Set("user_id", userID)
+    return c.Redirect("/dashboard")
+})
+```
+
+### Authentication Middleware
+
+This is a basic example of an authentication middleware that checks if a user is logged in before accessing protected routes.
+
+```go
+// Authentication check middleware
+func RequireAuth(c fiber.Ctx) error {
+    sess := session.FromContext(c)
+    if sess == nil {
+        return c.Redirect("/login")
+    }
+    
+    // Check if user is authenticated
+    if sess.Get("authenticated") != true {
+        return c.Redirect("/login")
+    }
+    
+    return c.Next()
+}
+
+// Usage
+app.Use("/dashboard", RequireAuth)
+app.Use("/admin", RequireAuth)
+```
+
+### Automatic Session Expiration
+
+Sessions automatically expire based on your configuration:
+
+```go
+app.Use(session.New(session.Config{
+    IdleTimeout:     30 * time.Minute, // Auto-expire after 30 min of inactivity
+    AbsoluteTimeout: 24 * time.Hour,   // Force expire after 24 hours regardless of activity
+}))
+```
+
+**How it works:**
+
+- `IdleTimeout`: Storage automatically removes sessions after inactivity period
+  - Any route that uses the middleware will reset the idle timer
+  - Calling `sess.Save()` will also reset the idle timer
+- `AbsoluteTimeout`: Sessions are forcibly expired after maximum duration
+- No manual cleanup required - the storage layer handles this
+
+## Session ID Extractors
+
+### Built-in Extractors
+
+```go
+// Cookie-based (recommended for web apps)
+session.FromCookie("session_id")
+
+// Header-based (recommended for APIs)  
+session.FromHeader("X-Session-ID")
+
+// Form data
+session.FromForm("session_id")
+
+// URL query parameter
+session.FromQuery("session_id")
+
+// URL path parameter
+session.FromParam("id")
+```
+
+**Response Behavior with Extractors:**
+
+- **Cookie extractors**: Set cookie in response
+- **Header extractors**: Set header in response
+- **Query/Form/Param extractors**: Read-only, do not set response values
+
+### Multiple Sources with Fallback
+
+```go
+app.Use(session.New(session.Config{
+    Extractor: session.Chain(
+        session.FromCookie("session_id"),    // Try cookie first
+        session.FromHeader("X-Session-ID"),  // Then header
+        session.FromQuery("session_id"),     // Finally query
+    ),
+}))
+```
+
+**Response Behavior with Chained Extractors:**
+
+The session middleware intelligently sets response values based on the extractors in your chain:
+
+- **Cookie + Header extractors**: Both cookie and header are set in the response
+- **Only Cookie extractors**: Only cookie is set in the response
+- **Only Header extractors**: Only header is set in the response
+- **Only Query/Form/Param extractors**: No response values are set (read-only)
+- **Mixed extractors**: Only cookie and header extractors set response values
+
+```go
+// This will set both cookie and header in response
+session.Chain(
+    session.FromCookie("session_id"), 
+    session.FromHeader("X-Session-ID")
+)
+
+// This will set only cookie in response
+session.Chain(
+    session.FromCookie("session_id"), 
+    session.FromQuery("session_id")   // Ignored for response
+)
+
+// This will set nothing in response (read-only mode)
+session.Chain(
+    session.FromQuery("session_id"), 
+    session.FromForm("session_id")
+)
+```
+
+### Custom Extractor
+
+You can create custom extractors by returning a `session.Extractor` struct that defines how to extract the session ID from the request and how the middleware should handle responses.
+
+The `Source` field is crucial as it controls whether the middleware sets response values:
+
+- `SourceCookie`: Sets cookies in the response
+- `SourceHeader`: Sets headers in the response
+- `SourceOther`: Read-only, no response values set
+
+```go
+// Custom extractor for Authorization Bearer tokens
+func FromAuthorization() session.Extractor {
+    return session.Extractor{
+        Extract: func(c fiber.Ctx) (string, error) {
+            auth := c.Get("Authorization")
+            if strings.HasPrefix(auth, "Bearer ") {
+                sessionID := strings.TrimPrefix(auth, "Bearer ")
+                if sessionID != "" {
+                    return sessionID, nil
+                }
+            }
+            return "", session.ErrMissingSessionIDInHeader
+        },
+        Source: session.SourceHeader, // This will set response headers
+        Key:    "Authorization",
+    }
+}
+
+app.Use(session.New(session.Config{
+    Extractor: FromAuthorization(), // Will set Authorization header in response
+}))
+```
+
+```go
+// Custom read-only extractor (no response setting)
+func FromCustomParam() session.Extractor {
+    return session.Extractor{
+        Extract: func(c fiber.Ctx) (string, error) {
+            sessionID := c.Get("X-Custom-Session")
+            if sessionID == "" {
+                return "", session.ErrMissingSessionIDInHeader
+            }
+            return sessionID, nil
+        },
+        Source: session.SourceOther, // Read-only, won't set responses
+        Key:    "X-Custom-Session",
+    }
+}
+
+app.Use(session.New(session.Config{
+    Extractor: FromCustomParam(), // Will not set any response values
+}))
+```
+
+## Configuration
+
+### Storage Options
+
+```go
+import (
+    "github.com/gofiber/storage/redis"
+    "github.com/gofiber/storage/postgres"
+)
+
+// Redis (recommended for production)
+redisStorage := redis.New(redis.Config{
+    Host:     "localhost",
+    Port:     6379,
+    Password: "",
+    Database: 0,
+})
+
+// PostgreSQL
+pgStorage := postgres.New(postgres.Config{
+    Host:     "localhost",
+    Port:     5432,
+    Database: "sessions",
+    Username: "user",
+    Password: "pass",
+})
+
+app.Use(session.New(session.Config{
+    Storage: redisStorage,
+}))
+```
+
+### Production Security Settings
+
+```go
+import (
+    "log"
+    "time"
+    "github.com/gofiber/utils/v2"
+)
+
+app.Use(session.New(session.Config{
+    // Storage
+    Storage: redisStorage,
+    
+    // Security
+    CookieSecure:      true,    // HTTPS only (required in production)
+    CookieHTTPOnly:    true,    // No JavaScript access (prevents XSS)
+    CookieSameSite:    "Lax",   // CSRF protection
+    
+    // Session Management
+    IdleTimeout:       30 * time.Minute,  // Inactivity timeout
+    AbsoluteTimeout:   24 * time.Hour,    // Maximum session duration
+    
+    // Cookie Settings
+    CookiePath:        "/",
+    CookieDomain:      "example.com",
+    CookieSessionOnly: false,   // Persist across browser restarts
+    
+    // Session ID
+    Extractor:         session.FromCookie("__Host-session_id"),
+    KeyGenerator:      utils.UUIDv4,
+    
+    // Error Handling
+    ErrorHandler: func(c fiber.Ctx, err error) {
+        log.Printf("Session error: %v", err)
+    },
+}))
+```
+
+### Custom Types
+
+Session data supports basic Go types by default:
+
+- `string`, `int`, `int8`, `int16`, `int32`, `int64`
+- `uint`, `uint8`, `uint16`, `uint32`, `uint64`
+- `bool`, `float32`, `float64`
+- `[]byte`, `complex64`, `complex128`
+- `interface{}`
+
+For custom types (structs, maps, slices), you must register them for encoding/decoding:
+
+```go
+import "fmt"
+
+type User struct {
+    ID   int    `json:"id"`
+    Name string `json:"name"`
+    Role string `json:"role"`
+}
+
+// Method 1: Using NewWithStore
+func main() {
+    app := fiber.New()
+    
+    sessionMiddleware, store := session.NewWithStore()
+    store.RegisterType(User{}) // Register custom type
+    
+    app.Use(sessionMiddleware)
+    
+    app.Get("/", func(c fiber.Ctx) error {
+        sess := session.FromContext(c)
+        
+        // Use custom type
+        sess.Set("user", User{ID: 123, Name: "John", Role: "admin"})
+        
+        user, ok := sess.Get("user").(User)
+        if ok {
+            return c.JSON(fiber.Map{"user": user.Name, "role": user.Role})
+        }
+        return c.SendString("No user found")
+    })
+    
+    app.Listen(":3000")
+}
+```
+
+```go
+// Method 2: Using separate store
+store := session.NewStore()
+store.RegisterType(User{})
+
+app.Use(session.New(session.Config{
+    Store: store,
+}))
+
+// Usage in handlers
+sess.Set("user", User{ID: 123, Name: "John", Role: "admin"})
+user, ok := sess.Get("user").(User)
+if ok {
+    fmt.Printf("User: %s (Role: %s)", user.Name, user.Role)
+}
+```
+
+**Important Notes:**
+
+- Custom types must be registered before using them in sessions
+- Registration must happen during application startup
+- All instances of the application must register the same types
+- Types are encoded using Go's `gob` package
+
+## Migration Guide
+
+### v2 to v3 Breaking Changes
+
+1. **Function Signature**: `session.New()` now returns middleware handler, not store
+2. **Session ID Extraction**: `KeyLookup` replaced with `Extractor` functions
+3. **Lifecycle Management**: Manual `Release()` required for store pattern
+4. **Timeout Handling**: `Expiration` split into `IdleTimeout` and `AbsoluteTimeout`
+
+### Migration Examples
+
+**v2 Code:**
+
+```go
+store := session.New(session.Config{
+    KeyLookup: "cookie:session_id",
+})
 
 app.Get("/", func(c fiber.Ctx) error {
     sess, err := store.Get(c)
     if err != nil {
         return err
     }
-    defer sess.Release() // Important: Release the session
-
-    key, ok := sess.Get("key").(string)
-    if !ok {
-        return c.SendStatus(fiber.StatusInternalServerError)
-    }
-
+    // Session automatically saved and released
     sess.Set("key", "value")
-
-    err = sess.Save()
-    if err != nil {
-        return c.SendStatus(fiber.StatusInternalServerError)
-    }
-
     return nil
 })
 ```
 
-### v3 Example (Recommended Middleware Handler)
-
-Do not call `sess.Release()` when using the middleware handler. `sess.Save()` is also not required, as the middleware automatically saves the session data.
-
-For the recommended approach, use the middleware handler. See the [Middleware Handler (Recommended)](#middleware-handler-recommended) section for details.
-
-## Types
-
-### Config
-
-Defines the configuration options for the session middleware.
+**v3 Middleware Pattern (Recommended):**
 
 ```go
-type Config struct {
-    Storage           fiber.Storage
-    Next              func(fiber.Ctx) bool
-    Store             *Store
-    ErrorHandler      func(fiber.Ctx, error)
-    KeyGenerator      func() string
-    KeyLookup         string
-    CookieDomain      string
-    CookiePath        string
-    CookieSameSite    string
-    IdleTimeout       time.Duration
-    AbsoluteTimeout   time.Duration
-    CookieSecure      bool
-    CookieHTTPOnly    bool
-    CookieSessionOnly bool
-}
+app.Use(session.New(session.Config{
+    Extractor: session.FromCookie("session_id"),
+}))
+
+app.Get("/", func(c fiber.Ctx) error {
+    sess := session.FromContext(c)
+    // Session automatically saved and released
+    sess.Set("key", "value")
+    return nil
+})
 ```
 
-### Middleware
-
-The `Middleware` struct encapsulates the session middleware configuration and storage, created via `New` or `NewWithStore`.
+**v3 Store Pattern (Advanced):**
 
 ```go
-type Middleware struct {
-    Session *Session
-}
+store := session.NewStore(session.Config{
+    Extractor: session.FromCookie("session_id"),
+})
+
+app.Get("/", func(c fiber.Ctx) error {
+    sess, err := store.Get(c)
+    if err != nil {
+        return err
+    }
+    defer sess.Release() // Manual cleanup required
+    
+    sess.Set("key", "value")
+    return sess.Save() // Manual save required
+})
 ```
 
-### Session
+### KeyLookup to Extractor Migration
 
-Represents a user session, accessible through `FromContext` or `Store.Get`.
+| v2 KeyLookup                    | v3 Extractor                                                            |
+|---------------------------------|-------------------------------------------------------------------------|
+| `"cookie:session_id"`           | `session.FromCookie("session_id")`                                      |
+| `"header:X-Session-ID"`         | `session.FromHeader("X-Session-ID")`                                    |
+| `"query:session_id"`            | `session.FromQuery("session_id")`                                       |
+| `"form:session_id"`             | `session.FromForm("session_id")`                                        |
+| `"cookie:sid,header:X-Sid"`     | `session.Chain(session.FromCookie("sid"), session.FromHeader("X-Sid"))` |
 
-```go
-type Session struct {}
-```
+## API Reference
 
-### Store
-
-Handles session data management and is created using `NewStore`, `NewWithStore` or by accessing the `Store` method of a middleware instance.
-
-```go
-type Store struct {
-    Config
-}
-```
-
-## Signatures
-
-### Session Package Functions
+### Middleware Methods (Recommended)
 
 ```go
-func New(config ...Config) *Middleware
-func NewWithStore(config ...Config) (fiber.Handler, *Store)
-func FromContext(c fiber.Ctx) *Middleware
-```
+sess := session.FromContext(c)
 
-### Config Methods
+// Data operations
+sess.Get(key any) any
+sess.Set(key, value any)
+sess.Delete(key any)
+sess.Keys() []any
 
-```go
-func DefaultErrorHandler(fiber.Ctx, err error)
-```
+// Session management
+sess.ID() string
+sess.Fresh() bool
+sess.Regenerate() error  // Change ID, keep data
+sess.Reset() error       // Change ID, clear data
+sess.Destroy() error     // Keep ID, clear data
 
-### Middleware Methods
-
-```go
-func (m *Middleware) Set(key any, value any)
-func (m *Middleware) Get(key any) any
-func (m *Middleware) Delete(key any)
-func (m *Middleware) Keys() []any
-func (m *Middleware) Destroy() error
-func (m *Middleware) Reset() error
-func (m *Middleware) Store() *Store
-```
-
-### Session Methods
-
-```go
-func (s *Session) Fresh() bool
-func (s *Session) ID() string
-func (s *Session) Get(key any) any
-func (s *Session) Set(key any, val any)
-func (s *Session) Delete(key any)
-func (s *Session) Keys() []any
-func (s *Session) Destroy() error
-func (s *Session) Regenerate() error
-func (s *Session) Release()
-func (s *Session) Reset() error
-func (s *Session) Save() error
-func (s *Session) SetIdleTimeout(idleTimeout time.Duration)
+// Store access
+sess.Store() *session.Store
 ```
 
 ### Store Methods
 
 ```go
-func (*Store) RegisterType(i any)
-func (s *Store) Get(c fiber.Ctx) (*Session, error)
-func (s *Store) GetByID(id string) (*Session, error)
-func (s *Store) Reset() error
-func (s *Store) Delete(id string) error
+store := session.NewStore()
+
+// Store operations
+store.Get(c fiber.Ctx) (*session.Session, error)
+store.GetByID(ctx context.Context, sessionID string) (*session.Session, error)
+store.Reset(c fiber.Ctx) error
+store.Delete(sessionID string) error
+
+// Type registration
+store.RegisterType(interface{})
 ```
 
-:::note
+### Session Methods (Store Pattern)
 
-#### `GetByID` Method
+```go
+sess, err := store.Get(c)
+defer sess.Release() // Required!
 
-The `GetByID` method retrieves a session from storage using its session ID. Unlike `Get`, which ties the session to a `fiber.Ctx` (request-response cycle), `GetByID` operates independently of any HTTP context. This makes it ideal for scenarios such as background processing, scheduled tasks, or non-HTTP-related session management.
+// Same methods as middleware, plus:
+sess.Save() error              // Manual save required
+sess.SetIdleTimeout(duration)  // Per-session timeout
+sess.Release()                 // Manual cleanup required
+```
 
-##### Key Features
+### Extractor Functions
 
-- **Context Independence**: Sessions retrieved via `GetByID` are not bound to `fiber.Ctx`. This means the session can be manipulated in contexts that aren't tied to an active HTTP request-response cycle.
-- **Background Task Suitability**: Use this method when you need to manage sessions outside of the standard HTTP workflow, such as in scheduled jobs, background tasks, or any non-HTTP context where session data needs to be accessed or modified.
+```go
+// Built-in extractors
+session.FromCookie(key string) session.Extractor
+session.FromHeader(key string) session.Extractor
+session.FromQuery(key string) session.Extractor
+session.FromForm(key string) session.Extractor
+session.FromParam(key string) session.Extractor
 
-##### Usage Considerations
+// Chaining
+session.Chain(extractors ...session.Extractor) session.Extractor
+```
 
-- **Manual Persistence**: Since there is no associated `fiber.Ctx`, changes made to the session (e.g., modifying data) will **not** automatically be saved to storage. You **must** call `session.Save()` explicitly to persist any updates to storage.
-- **No Automatic Cookie Handling**: Any updates made to the session will **not** affect the client-side cookies. If the session changes need to be reflected in the client (e.g., in a future HTTP response), you will need to handle this manually by setting the cookies via other methods.
-- **Resource Management**: After using a session retrieved by `GetByID`, you should call `session.Release()` to properly release the session back to the pool and free up resources.
+### Config Properties
 
-##### Example Use Cases
-
-- **Scheduled Jobs**: Retrieve and update session data periodically without triggering an HTTP request.
-- **Background Processing**: Manage sessions for tasks running in the background, such as user inactivity checks or batch processing.
-
-:::
+| Property            | Type                        | Description                 | Default                   |
+|---------------------|-----------------------------|-----------------------------|---------------------------|
+| `Storage`           | `fiber.Storage`             | Session storage backend     | `memory.New()`            |
+| `Extractor`         | `session.Extractor`         | Session ID extraction       | `FromCookie("session_id")`|
+| `KeyGenerator`      | `func() string`             | Session ID generator        | `utils.UUIDv4`            |
+| `IdleTimeout`       | `time.Duration`             | Inactivity timeout          | `30 * time.Minute`        |
+| `AbsoluteTimeout`   | `time.Duration`             | Maximum session duration    | `0` (unlimited)           |
+| `CookieSecure`      | `bool`                      | HTTPS only                  | `false`                   |
+| `CookieHTTPOnly`    | `bool`                      | No JavaScript access        | `false`                   |
+| `CookieSameSite`    | `string`                    | SameSite attribute          | `"Lax"`                   |
+| `CookiePath`        | `string`                    | Cookie path                 | `""`                      |
+| `CookieDomain`      | `string`                    | Cookie domain               | `""`                      |
+| `CookieSessionOnly` | `bool`                      | Session cookie              | `false`                   |
+| `ErrorHandler`      | `func(fiber.Ctx, error)`    | Error callback              | `DefaultErrorHandler`     |
 
 ## Examples
 
-:::note
-**Security Notice**: For robust security, especially during sensitive operations like account changes or transactions, consider using CSRF protection. Fiber provides a [CSRF Middleware](https://docs.gofiber.io/api/middleware/csrf) that can be used with sessions to prevent CSRF attacks.
-:::
-
-:::note
-**Middleware Order**: The order of middleware matters. The session middleware should come before any handler or middleware that uses the session (for example, the CSRF middleware).
-:::
-
-### Middleware Handler (Recommended)
+### E-commerce with Cart Persistence
 
 ```go
-package main
+import (
+    "time"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/session"
+    "github.com/gofiber/storage/redis"
+)
 
+func main() {
+    app := fiber.New()
+    
+    // Session middleware
+    app.Use(session.New(session.Config{
+        Storage:           redis.New(),
+        CookieSecure:      true,
+        CookieHTTPOnly:    true,
+        CookieSameSite:    "Lax",
+        IdleTimeout:       30 * time.Minute,
+        AbsoluteTimeout:   24 * time.Hour,
+        Extractor:         session.FromCookie("__Host-cart_session"),
+    }))
+    
+    // Add to cart (anonymous user)
+    app.Post("/cart/add", func(c fiber.Ctx) error {
+        sess := session.FromContext(c)
+        
+        cart, _ := sess.Get("cart").([]string)
+        cart = append(cart, c.FormValue("item_id"))
+        sess.Set("cart", cart)
+        
+        return c.JSON(fiber.Map{"items": len(cart)})
+    })
+    
+    // Login (preserve session data)
+    app.Post("/login", func(c fiber.Ctx) error {
+        sess := session.FromContext(c)
+        
+        // Simple validation (implement proper authentication)
+        email := c.FormValue("email")
+        password := c.FormValue("password")
+        if email != "user@example.com" || password != "password" {
+            return c.Status(401).JSON(fiber.Map{"error": "Invalid credentials"})
+        }
+        
+        // Regenerate session ID for security
+        // This changes the session ID while preserving existing data
+        if err := sess.Regenerate(); err != nil {
+            return c.Status(500).JSON(fiber.Map{"error": "Session error"})
+        }
+        
+        sess.Set("user_id", 1)
+        sess.Set("authenticated", true)
+        
+        return c.JSON(fiber.Map{"status": "logged in"})
+    })
+    
+    // Logout (clear everything)
+    app.Post("/logout", func(c fiber.Ctx) error {
+        sess := session.FromContext(c)
+        
+        // Reset clears all data and generates new session ID
+        if err := sess.Reset(); err != nil {
+            return c.Status(500).JSON(fiber.Map{"error": "Session error"})
+        }
+        
+        return c.JSON(fiber.Map{"status": "logged out"})
+    })
+    
+    app.Listen(":3000")
+}
+
+// Helper functions (implement these properly in production)
+func isValidUser(email, password string) bool {
+    return email == "user@example.com" && password == "password"
+}
+
+func getUserID(email string) int {
+    return 1 // Return actual user ID from database
+}
+```
+
+### API with Header-based Sessions
+
+```go
+import (
+    "time"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/session"
+    "github.com/gofiber/storage/redis"
+)
+
+func main() {
+    app := fiber.New()
+    
+    // API session middleware with header extraction
+    app.Use(session.New(session.Config{
+        Storage:   redis.New(),
+        Extractor: session.FromHeader("X-Session-Token"),
+        IdleTimeout: time.Hour,
+    }))
+    
+    // API endpoint
+    app.Post("/api/data", func(c fiber.Ctx) error {
+        sess := session.FromContext(c)
+        
+        // Track API usage
+        count, _ := sess.Get("api_calls").(int)
+        count++
+        sess.Set("api_calls", count)
+        sess.Set("last_call", time.Now())
+        
+        return c.JSON(fiber.Map{
+            "data": "some data",
+            "calls": count,
+        })
+    })
+    
+    app.Listen(":3000")
+}
+```
+
+### Multi-source Session ID Support
+
+```go
 import (
     "github.com/gofiber/fiber/v3"
-    "github.com/gofiber/fiber/v3/middleware/csrf"
     "github.com/gofiber/fiber/v3/middleware/session"
 )
 
 func main() {
     app := fiber.New()
-
-    sessionMiddleware, sessionStore := session.NewWithStore()
-
-    app.Use(sessionMiddleware)
-    app.Use(csrf.New(csrf.Config{
-        Session: sessionStore,
+    
+    // Support multiple sources with priority
+    app.Use(session.New(session.Config{
+        Extractor: session.Chain(
+            session.FromCookie("session_id"),    // 1st: Cookie (web)
+            session.FromHeader("X-Session-ID"),  // 2nd: Header (API)
+            session.FromQuery("session_id"),     // 3rd: Query (fallback)
+        ),
     }))
-
+    
     app.Get("/", func(c fiber.Ctx) error {
         sess := session.FromContext(c)
-        if sess == nil {
-            return c.SendStatus(fiber.StatusInternalServerError)
-        }
-
-        name, ok := sess.Get("name").(string)
-        if !ok {
-            return c.SendString("Welcome anonymous user!")
-        }
-
-        return c.SendString("Welcome " + name)
+        
+        // Works with any of the above methods
+        return c.JSON(fiber.Map{
+            "session_id": sess.ID(),
+            "source": "multi-source",
+        })
     })
-
+    
     app.Listen(":3000")
-}
-```
-
-### Custom Storage Example
-
-```go
-package main
-
-import (
-    "github.com/gofiber/fiber/v3"
-    "github.com/gofiber/storage/sqlite3"
-    "github.com/gofiber/fiber/v3/middleware/csrf"
-    "github.com/gofiber/fiber/v3/middleware/session"
-)
-
-func main() {
-    app := fiber.New()
-
-    storage := sqlite3.New()
-    sessionMiddleware, sessionStore := session.NewWithStore(session.Config{
-        Storage: storage,
-    })
-
-    app.Use(sessionMiddleware)
-    app.Use(csrf.New(csrf.Config{
-        Session: sessionStore,
-    }))
-
-    app.Listen(":3000")
-}
-```
-
-### Session Without Middleware Handler
-
-```go
-package main
-
-import (
-    "github.com/gofiber/fiber/v3"
-    "github.com/gofiber/fiber/v3/middleware/csrf"
-    "github.com/gofiber/fiber/v3/middleware/session"
-)
-
-func main() {
-    app := fiber.New()
-
-    sessionStore := session.NewStore()
-
-    app.Use(csrf.New(csrf.Config{
-        Session: sessionStore,
-    }))
-
-    app.Get("/", func(c fiber.Ctx) error {
-        sess, err := sessionStore.Get(c)
-        if err != nil {
-            return c.SendStatus(fiber.StatusInternalServerError)
-        }
-        defer sess.Release()
-
-        name, ok := sess.Get("name").(string)
-        if !ok {
-            return c.SendString("Welcome anonymous user!")
-        }
-
-        return c.SendString("Welcome " + name)
-    })
-
-    app.Post("/login", func(c fiber.Ctx) error {
-        sess, err := sessionStore.Get(c)
-        if err != nil {
-            return c.SendStatus(fiber.StatusInternalServerError)
-        }
-        defer sess.Release()
-
-        if !sess.Fresh() {
-            if err := sess.Regenerate(); err != nil {
-                return c.SendStatus(fiber.StatusInternalServerError)
-            }
-        }
-
-        sess.Set("name", "John Doe")
-
-        err = sess.Save()
-        if err != nil {
-            return c.SendStatus(fiber.StatusInternalServerError)
-        }
-
-        return c.SendString("Logged in!")
-    })
-
-    app.Listen(":3000")
-}
-```
-
-### Custom Types in Session Data
-
-Session data can only be of the following types by default:
-
-- `string`
-- `int`
-- `int8`
-- `int16`
-- `int32`
-- `int64`
-- `uint`
-- `uint8`
-- `uint16`
-- `uint32`
-- `uint64`
-- `bool`
-- `float32`
-- `float64`
-- `[]byte`
-- `complex64`
-- `complex128`
-- `interface{}`
-
-To support other types in session data, you can register custom types. Here is an example of how to register a custom type:
-
-```go
-package main
-
-import (
-    "github.com/gofiber/fiber/v3"
-    "github.com/gofiber/fiber/v3/middleware/session"
-)
-
-type User struct {
-    Name string
-    Age  int
-}
-
-func main() {
-    app := fiber.New()
-
-    sessionMiddleware, sessionStore := session.NewWithStore()
-    sessionStore.RegisterType(User{})
-
-    app.Use(sessionMiddleware)
-
-    app.Listen(":3000")
-}
-```
-
-## Config
-
-| Property              | Type                           | Description                                                                                | Default                   |
-|-----------------------|--------------------------------|--------------------------------------------------------------------------------------------|---------------------------|
-| **Storage**           | `fiber.Storage`                | Defines where session data is stored.                                                      | `nil` (in-memory storage) |
-| **Next**              | `func(c fiber.Ctx) bool`       | Function to skip this middleware under certain conditions.                                 | `nil`                     |
-| **ErrorHandler**      | `func(c fiber.Ctx, err error)` | Custom error handler for session middleware errors.                                        | `nil`                     |
-| **KeyGenerator**      | `func() string`                | Function to generate session IDs.                                                          | `UUID()`                  |
-| **KeyLookup**         | `string`                       | Key used to store session ID in cookie or header.                                          | `"cookie:session_id"`     |
-| **CookieDomain**      | `string`                       | The domain scope of the session cookie.                                                    | `""`                      |
-| **CookiePath**        | `string`                       | The path scope of the session cookie.                                                      | `"/"`                     |
-| **CookieSameSite**    | `string`                       | The SameSite attribute of the session cookie.                                              | `"Lax"`                   |
-| **IdleTimeout**       | `time.Duration`                | Maximum duration of inactivity before session expires.                                     | `30 * time.Minute`        |
-| **AbsoluteTimeout**   | `time.Duration`                | Maximum duration before session expires.                                                   | `0` (no expiration)       |
-| **CookieSecure**      | `bool`                         | Ensures session cookie is only sent over HTTPS.                                            | `false`                   |
-| **CookieHTTPOnly**    | `bool`                         | Ensures session cookie is not accessible to JavaScript (HTTP only).                        | `true`                    |
-| **CookieSessionOnly** | `bool`                         | Prevents session cookie from being saved after the session ends (cookie expires on close). | `false`                   |
-
-## Default Config
-
-```go
-session.Config{
-    Storage:           memory.New(),
-    Next:              nil,
-    Store:             nil,
-    ErrorHandler:      nil,
-    KeyGenerator:      utils.UUIDv4,
-    KeyLookup:         "cookie:session_id",
-    CookieDomain:      "",
-    CookiePath:        "",
-    CookieSameSite:    "Lax",
-    IdleTimeout:       30 * time.Minute,
-    AbsoluteTimeout:   0,
-    CookieSecure:      false,
-    CookieHTTPOnly:    false,
-    CookieSessionOnly: false,
 }
 ```

@@ -17,7 +17,7 @@ func Test_Extractors_Missing(t *testing.T) {
 	app := fiber.New()
 	// Add a route to test the missing param
 	app.Get("/test", func(c fiber.Ctx) error {
-		token, err := FromParam("csrf")(c)
+		token, err := FromParam("csrf").Extract(c)
 		require.Empty(t, token)
 		require.Equal(t, ErrMissingParam, err)
 		return nil
@@ -29,17 +29,17 @@ func Test_Extractors_Missing(t *testing.T) {
 	defer app.ReleaseCtx(ctx)
 
 	// Missing form
-	token, err := FromForm("csrf")(ctx)
+	token, err := FromForm("csrf").Extract(ctx)
 	require.Empty(t, token)
 	require.Equal(t, ErrMissingForm, err)
 
 	// Missing query
-	token, err = FromQuery("csrf")(ctx)
+	token, err = FromQuery("csrf").Extract(ctx)
 	require.Empty(t, token)
 	require.Equal(t, ErrMissingQuery, err)
 
 	// Missing header
-	token, err = FromHeader("X-CSRF-Token")(ctx)
+	token, err = FromHeader("X-CSRF-Token").Extract(ctx)
 	require.Empty(t, token)
 	require.Equal(t, ErrMissingHeader, err)
 }
@@ -61,7 +61,7 @@ func Test_Extractors(t *testing.T) {
 
 	// FromParam
 	app.Get("/test/:csrf", func(c fiber.Ctx) error {
-		token, err := FromParam("csrf")(c)
+		token, err := FromParam("csrf").Extract(c)
 		require.NoError(t, err)
 		require.Equal(t, "token_from_param", token)
 		return nil
@@ -74,7 +74,7 @@ func Test_Extractors(t *testing.T) {
 	defer app.ReleaseCtx(ctx)
 	ctx.Request().Header.SetContentType(fiber.MIMEApplicationForm)
 	ctx.Request().SetBodyString("csrf=token_from_form")
-	token, err := FromForm("csrf")(ctx)
+	token, err := FromForm("csrf").Extract(ctx)
 	require.NoError(t, err)
 	require.Equal(t, "token_from_form", token)
 
@@ -82,7 +82,7 @@ func Test_Extractors(t *testing.T) {
 	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
 	ctx.Request().SetRequestURI("/?csrf=token_from_query")
-	token, err = FromQuery("csrf")(ctx)
+	token, err = FromQuery("csrf").Extract(ctx)
 	require.NoError(t, err)
 	require.Equal(t, "token_from_query", token)
 
@@ -90,7 +90,7 @@ func Test_Extractors(t *testing.T) {
 	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
 	ctx.Request().Header.Set("X-CSRF-Token", "token_from_header")
-	token, err = FromHeader("X-CSRF-Token")(ctx)
+	token, err = FromHeader("X-CSRF-Token").Extract(ctx)
 	require.NoError(t, err)
 	require.Equal(t, "token_from_header", token)
 }
@@ -104,7 +104,7 @@ func Test_Extractor_Chain(t *testing.T) {
 	// No extractors
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
-	token, err := Chain()(ctx)
+	token, err := Chain().Extract(ctx)
 	require.Empty(t, token)
 	require.Equal(t, ErrTokenNotFound, err)
 
@@ -113,7 +113,7 @@ func Test_Extractor_Chain(t *testing.T) {
 	defer app.ReleaseCtx(ctx)
 	ctx.Request().Header.Set("X-CSRF-Token", "token_from_header")
 	ctx.Request().SetRequestURI("/?csrf=token_from_query")
-	token, err = Chain(FromHeader("X-CSRF-Token"), FromQuery("csrf"))(ctx)
+	token, err = Chain(FromHeader("X-CSRF-Token"), FromQuery("csrf")).Extract(ctx)
 	require.NoError(t, err)
 	require.Equal(t, "token_from_header", token)
 
@@ -121,14 +121,14 @@ func Test_Extractor_Chain(t *testing.T) {
 	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
 	ctx.Request().SetRequestURI("/?csrf=token_from_query")
-	token, err = Chain(FromHeader("X-CSRF-Token"), FromQuery("csrf"))(ctx)
+	token, err = Chain(FromHeader("X-CSRF-Token"), FromQuery("csrf")).Extract(ctx)
 	require.NoError(t, err)
 	require.Equal(t, "token_from_query", token)
 
 	// All extractors fail, should return the last error
 	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
-	token, err = Chain(FromHeader("X-CSRF-Token"), FromQuery("csrf"))(ctx)
+	token, err = Chain(FromHeader("X-CSRF-Token"), FromQuery("csrf")).Extract(ctx)
 	require.Empty(t, token)
 	require.Equal(t, ErrMissingQuery, err)
 
@@ -136,10 +136,14 @@ func Test_Extractor_Chain(t *testing.T) {
 	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
 	// This extractor will return "", nil
-	dummyExtractor := func(_ fiber.Ctx) (string, error) {
-		return "", nil
+	dummyExtractor := Extractor{
+		Extract: func(_ fiber.Ctx) (string, error) {
+			return "", nil
+		},
+		Source: SourceCustom,
+		Key:    "_csrf",
 	}
-	token, err = Chain(dummyExtractor)(ctx)
+	token, err = Chain(dummyExtractor).Extract(ctx)
 	require.Empty(t, token)
 	require.Equal(t, ErrTokenNotFound, err)
 }

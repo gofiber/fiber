@@ -131,7 +131,7 @@ func New(config ...Config) fiber.Handler {
 			}
 
 			// Extract token from client request i.e. header, query, param, form
-			extractedToken, err := cfg.Extractor(c)
+			extractedToken, err := cfg.Extractor.Extract(c)
 			if err != nil {
 				return cfg.ErrorHandler(c, err)
 			}
