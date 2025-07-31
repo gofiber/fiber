@@ -352,7 +352,7 @@ func Test_CSRF_MultiUseToken(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		Extractor: FromHeader("X-CSRF-Token"),
+		Extractor: FromHeader("X-Csrf-Token"),
 	}))
 
 	app.Post("/", func(c fiber.Ctx) error {
@@ -364,7 +364,7 @@ func Test_CSRF_MultiUseToken(t *testing.T) {
 
 	// Invalid CSRF token
 	ctx.Request.Header.SetMethod(fiber.MethodPost)
-	ctx.Request.Header.Set("X-CSRF-Token", "johndoe")
+	ctx.Request.Header.Set("X-Csrf-Token", "johndoe")
 	h(ctx)
 	require.Equal(t, 403, ctx.Response.StatusCode())
 
@@ -379,7 +379,7 @@ func Test_CSRF_MultiUseToken(t *testing.T) {
 	ctx.Request.Reset()
 	ctx.Response.Reset()
 	ctx.Request.Header.SetMethod(fiber.MethodPost)
-	ctx.Request.Header.Set("X-CSRF-Token", token)
+	ctx.Request.Header.Set("X-Csrf-Token", token)
 	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
 	h(ctx)
 	newToken := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
@@ -1578,7 +1578,7 @@ func Test_CSRF_Chain_Extractor(t *testing.T) {
 
 	// Chain extractor: try header first, fallback to form
 	chainExtractor := Chain(
-		FromHeader("X-CSRF-Token"),
+		FromHeader("X-Csrf-Token"),
 		FromForm("_csrf"),
 	)
 
@@ -1601,7 +1601,7 @@ func Test_CSRF_Chain_Extractor(t *testing.T) {
 	ctx.Request.Reset()
 	ctx.Response.Reset()
 	ctx.Request.Header.SetMethod(fiber.MethodPost)
-	ctx.Request.Header.Set("X-CSRF-Token", token)
+	ctx.Request.Header.Set("X-Csrf-Token", token)
 	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
 	h(ctx)
 	require.Equal(t, 200, ctx.Response.StatusCode())
@@ -1621,7 +1621,7 @@ func Test_CSRF_Chain_Extractor(t *testing.T) {
 	ctx.Response.Reset()
 	ctx.Request.Header.SetMethod(fiber.MethodPost)
 	ctx.Request.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationForm)
-	ctx.Request.Header.Set("X-CSRF-Token", token)
+	ctx.Request.Header.Set("X-Csrf-Token", token)
 	ctx.Request.SetBodyString("_csrf=wrong_token")
 	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
 	h(ctx)
@@ -1640,7 +1640,7 @@ func Test_CSRF_Chain_Extractor(t *testing.T) {
 	ctx.Response.Reset()
 	ctx.Request.Header.SetMethod(fiber.MethodPost)
 	ctx.Request.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationForm)
-	ctx.Request.Header.Set("X-CSRF-Token", "wrong_token")
+	ctx.Request.Header.Set("X-Csrf-Token", "wrong_token")
 	ctx.Request.SetBodyString("_csrf=also_wrong")
 	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
 	h(ctx)
@@ -1673,7 +1673,7 @@ func Test_CSRF_Chain_Extractor_Empty(t *testing.T) {
 	ctx.Request.Reset()
 	ctx.Response.Reset()
 	ctx.Request.Header.SetMethod(fiber.MethodPost)
-	ctx.Request.Header.Set("X-CSRF-Token", token)
+	ctx.Request.Header.Set("X-Csrf-Token", token)
 	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
 	h(ctx)
 	require.Equal(t, 403, ctx.Response.StatusCode())
@@ -1684,7 +1684,7 @@ func Test_CSRF_Chain_Extractor_SingleExtractor(t *testing.T) {
 	app := fiber.New()
 
 	// Chain with single extractor (should behave like the single extractor)
-	singleChain := Chain(FromHeader("X-CSRF-Token"))
+	singleChain := Chain(FromHeader("X-Csrf-Token"))
 
 	app.Use(New(Config{Extractor: singleChain}))
 
@@ -1705,7 +1705,7 @@ func Test_CSRF_Chain_Extractor_SingleExtractor(t *testing.T) {
 	ctx.Request.Reset()
 	ctx.Response.Reset()
 	ctx.Request.Header.SetMethod(fiber.MethodPost)
-	ctx.Request.Header.Set("X-CSRF-Token", token)
+	ctx.Request.Header.Set("X-Csrf-Token", token)
 	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
 	h(ctx)
 	require.Equal(t, 200, ctx.Response.StatusCode())
@@ -1730,17 +1730,17 @@ func Test_CSRF_All_Extractors(t *testing.T) {
 	}{
 		{
 			name:      "FromHeader",
-			extractor: FromHeader("X-CSRF-Token"),
+			extractor: FromHeader("X-Csrf-Token"),
 			setupRequest: func(ctx *fasthttp.RequestCtx, token string) {
 				ctx.Request.Header.SetMethod(fiber.MethodPost)
-				ctx.Request.Header.Set("X-CSRF-Token", token)
+				ctx.Request.Header.Set("X-Csrf-Token", token)
 				ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
 			},
 			expectStatus: 200,
 		},
 		{
 			name:      "FromHeader_Missing",
-			extractor: FromHeader("X-CSRF-Token"),
+			extractor: FromHeader("X-Csrf-Token"),
 			setupRequest: func(ctx *fasthttp.RequestCtx, token string) {
 				ctx.Request.Header.SetMethod(fiber.MethodPost)
 				ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
