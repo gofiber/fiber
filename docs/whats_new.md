@@ -115,7 +115,7 @@ app.Get("/login/:id<ulid>", func(c fiber.Ctx) error {
 
 ### Method Changes
 
-- **Test**: The `Test` method has replaced the timeout parameter with a configuration parameter. `-1` represents no timeout, and `0` represents no timeout.
+- **Test**: The `Test` method has replaced the timeout parameter with a configuration parameter. `0` or lower represents no timeout.
 - **Listen**: Now has a configuration parameter.
 - **Listener**: Now has a configuration parameter.
 
