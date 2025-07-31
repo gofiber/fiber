@@ -2002,13 +2002,13 @@ app.Use(csrf.New(csrf.Config{
 ```go
 // Before
 app.Use(csrf.New(csrf.Config{
-    KeyLookup: "header:X-Csrf-Token",
+    KeyLookup: "header:X-CSRF-Token",
     // other config...
 }))
 
 // After - use Extractor instead
 app.Use(csrf.New(csrf.Config{
-    Extractor: csrf.FromHeader("X-Csrf-Token"),
+    Extractor: csrf.FromHeader("X-CSRF-Token"),
     // other config...
 }))
 ```
@@ -2023,7 +2023,7 @@ app.Use(csrf.New(csrf.Config{
 
 // After - Use secure extractors instead
 app.Use(csrf.New(csrf.Config{
-    Extractor: csrf.FromHeader("X-Csrf-Token"), // ✅ Secure
+    Extractor: csrf.FromHeader("X-CSRF-Token"), // ✅ Secure
     // or
     Extractor: csrf.FromForm("_csrf"),          // ✅ Secure
     // or

@@ -75,7 +75,7 @@ type Config struct {
 
 	// Extractor returns the CSRF token from the request.
 	//
-	// Optional. Default: FromHeader("X-Csrf-Token")
+       // Optional. Default: FromHeader("X-CSRF-Token")
 	//
 	// Available extractors:
 	//   - FromHeader: Most secure, recommended for APIs
@@ -117,7 +117,7 @@ type Config struct {
 }
 
 // HeaderName is the default header name for CSRF tokens.
-const HeaderName = "X-Csrf-Token"
+const HeaderName = "X-CSRF-Token"
 
 // ConfigDefault is the default config for CSRF middleware.
 var ConfigDefault = Config{
