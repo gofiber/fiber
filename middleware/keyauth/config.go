@@ -41,7 +41,7 @@ type Config struct {
 	KeyLookup string
 
 	// AuthScheme to be used in the Authorization header.
-	// If KeyLookup is left empty (i.e. the default Authorization header),
+	// If KeyLookup is an empty string (i.e. the default Authorization header),
 	// this value defaults to "Bearer".
 	AuthScheme string
 
