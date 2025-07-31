@@ -9,7 +9,7 @@ Pprof middleware for [Fiber](https://github.com/gofiber/fiber) that serves via i
 ## Signatures
 
 ```go
-func New() fiber.Handler
+func New(config ...Config) fiber.Handler
 ```
 
 ## Examples
@@ -39,10 +39,10 @@ app.Use(pprof.New(pprof.Config{Prefix: "/endpoint-prefix"}))
 
 ## Config
 
-| Property | Type                    | Description                                                                                                                                     | Default |
-|:---------|:------------------------|:------------------------------------------------------------------------------------------------------------------------------------------------|:--------|
-| Next     | `func(fiber.Ctx) bool` | Next defines a function to skip this middleware when returned true.                                                                             | `nil`   |
-| Prefix   | `string`                | Prefix defines a URL prefix added before "/debug/pprof". Note that it should start with (but not end with) a slash. Example: "/federated-fiber" | ""      |
+| Property | Type                    | Description                                                                                                                                                                          | Default |
+|:---------|:------------------------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:-------:|
+| Next     | `func(fiber.Ctx) bool` | Next defines a function to skip this middleware when returned true.                                                                                                                  | `nil`   |
+| Prefix   | `string`                | Prefix defines a URL prefix added before "/debug/pprof". Note that it should start with (but not end with) a slash. Example: "/federated-fiber"                                   | `""`   |
 
 ## Default Config
 
