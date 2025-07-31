@@ -54,14 +54,11 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 			"john":  hashedJohn,
 			"admin": string(hashedAdmin),
 		},
-		StorePassword: true,
 	}))
 
 	app.Get("/testauth", func(c fiber.Ctx) error {
 		username := UsernameFromContext(c)
-		password := PasswordFromContext(c)
-
-		return c.SendString(username + password)
+		return c.SendString(username)
 	})
 
 	tests := []struct {
@@ -105,32 +102,9 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 		require.Equal(t, tt.statusCode, resp.StatusCode)
 
 		if tt.statusCode == 200 {
-			require.Equal(t, fmt.Sprintf("%s%s", tt.username, tt.password), string(body))
+			require.Equal(t, tt.username, string(body))
 		}
 	}
-}
-
-func Test_BasicAuth_NoStorePassword(t *testing.T) {
-	t.Parallel()
-	app := fiber.New()
-
-	hashedJohn := sha256Hash("doe")
-
-	app.Use(New(Config{
-		Users: map[string]string{"john": hashedJohn},
-	}))
-
-	app.Get("/", func(c fiber.Ctx) error {
-		require.Empty(t, PasswordFromContext(c))
-		return c.SendStatus(fiber.StatusOK)
-	})
-
-	creds := base64.StdEncoding.EncodeToString([]byte("john:doe"))
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
-	req.Header.Set(fiber.HeaderAuthorization, "Basic "+creds)
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
 
 func Test_BasicAuth_AuthorizerCtx(t *testing.T) {

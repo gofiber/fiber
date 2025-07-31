@@ -1019,7 +1019,6 @@ Examples include:
 - `csrf.HandlerFromContext(c)`
 - `session.FromContext(c)`
 - `basicauth.UsernameFromContext(c)`
-- `basicauth.PasswordFromContext(c)`
 - `keyauth.TokenFromContext(c)`
 
 When used with the Logger middleware, the recommended approach is to use the `CustomTags` feature of the logger, which allows you to call these specific `FromContext` functions. See the [Logger](#logger) section for more details.
@@ -1054,7 +1053,7 @@ The adaptor middleware has been significantly optimized for performance and effi
 
 ### BasicAuth
 
-The BasicAuth middleware now validates the `Authorization` header more rigorously and sets security-focused response headers. Passwords must be provided in **hashed** form (e.g. SHA-256 or bcrypt) rather than plaintext. The default challenge includes the `charset="UTF-8"` parameter and disables caching. Passwords are no longer stored in the request context by default; use the new `StorePassword` option to retain them. A `Charset` option controls the value used in the challenge header.
+The BasicAuth middleware now validates the `Authorization` header more rigorously and sets security-focused response headers. Passwords must be provided in **hashed** form (e.g. SHA-256 or bcrypt) rather than plaintext. The default challenge includes the `charset="UTF-8"` parameter and disables caching. Responses also set a `Vary: Authorization` header to prevent caching based on credentials. Passwords are no longer stored in the request context. A `Charset` option controls the value used in the challenge header.
 A new `HeaderLimit` option restricts the maximum length of the `Authorization` header (default: `8192` bytes).
 The `Authorizer` function now receives the current `fiber.Ctx` as a third argument, allowing credential checks to incorporate request context.
 
@@ -1916,7 +1915,6 @@ You must update your code to use the dedicated exported functions provided by ea
 - `csrf.HandlerFromContext(c)`
 - `session.FromContext(c)`
 - `basicauth.UsernameFromContext(c)`
-- `basicauth.PasswordFromContext(c)`
 - `keyauth.TokenFromContext(c)`
 
 **For logging these values:**
@@ -1947,9 +1945,9 @@ Authorizer: func(user, pass string, _ fiber.Ctx) bool {
 }
 ```
 
-Passwords configured for BasicAuth must now be pre-hashed. If no prefix is supplied the middleware expects a SHA-256 digest encoded in hex. Common prefixes like `{SHA256}` and `{SHA512}` and bcrypt strings are also supported. Plaintext passwords are no longer accepted.
+Passwords configured for BasicAuth must now be pre-hashed. If no prefix is supplied the middleware expects a SHA-256 digest encoded in hex. Common prefixes like `{SHA256}` and `{SHA512}` and bcrypt strings are also supported. Plaintext passwords are no longer accepted. Unauthorized responses also include a `Vary: Authorization` header for correct caching behavior.
 
-You can also set the optional `HeaderLimit`, `StorePassword`, and `Charset`
+You can also set the optional `HeaderLimit` and `Charset`
 options to further control authentication behavior.
 
 #### Cache
