@@ -201,7 +201,7 @@ The `ExposeHeaders` option defines an allowlist of headers that clients are allo
 
 The `MaxAge` option indicates how long the results of a preflight request can be cached. If `MaxAge` is set to `3600`, the middleware adds the header `Access-Control-Max-Age: 3600` to the response.
 
-The `Vary` header helps caches store the correct response. For simple requests the middleware sets `Vary: Origin` unless all origins are allowed. Preflight responses add `Vary: Origin, Access-Control-Request-Method, Access-Control-Request-Headers` (and `Access-Control-Request-Private-Network` when enabled). This ensures caches know when to reuse a response and when to revalidate with the server.
+The `Vary` header helps caches store the correct response. For simple requests the middleware sets `Vary: Origin` unless all origins are allowed. Preflight responses add `Vary: Origin, Access-Control-Request-Method, Access-Control-Request-Headers` (and `Access-Control-Request-Private-Network` when enabled and requested). This ensures caches know when to reuse a response and when to revalidate with the server.
 
 ## Infrastructure Considerations
 
