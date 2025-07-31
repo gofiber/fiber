@@ -392,41 +392,6 @@ type Ctx interface {
 	Writef(f string, a ...any) (int, error)
 	// WriteString appends s to response body.
 	WriteString(s string) (int, error)
-	// XHR returns a Boolean property, that is true, if the request's X-Requested-With header field is XMLHttpRequest,
-	// indicating that the request was issued by a client library (such as jQuery).
-	XHR() bool
-	// configDependentPaths set paths for route recognition and prepared paths for the user,
-	// here the features for caseSensitive, decoded paths, strict paths are evaluated
-	configDependentPaths()
-	// IsProxyTrusted checks trustworthiness of remote ip.
-	// If Config.TrustProxy false, it returns true
-	// IsProxyTrusted can check remote ip by proxy ranges and ip map.
-	IsProxyTrusted() bool
-	// IsFromLocal will return true if request came from local.
-	IsFromLocal() bool
-	// Bind You can bind body, cookie, headers etc. into the map, map slice, struct easily by using Binding method.
-	// It gives custom binding support, detailed binding options and more.
-	// Replacement of: BodyParser, ParamsParser, GetReqHeaders, GetRespHeaders, AllParams, QueryParser, ReqHeaderParser
-	Bind() *Bind
-	// Reset is a method to reset context fields by given request when to use server handlers.
-	Reset(fctx *fasthttp.RequestCtx)
-	// Release is a method to reset context fields when to use ReleaseCtx()
-	release()
-	getBody() []byte
-	// Methods to use with next stack.
-	getMethodInt() int
-	getIndexRoute() int
-	getTreePathHash() int
-	getDetectionPath() string
-	getPathOriginal() string
-	getValues() *[maxParams]string
-	getMatched() bool
-	setIndexHandler(handler int)
-	setIndexRoute(route int)
-	setMatched(matched bool)
-	setRoute(route *Route)
-	getRouteStack() []*Route
-	setRouteStack(rs []*Route)
 	// Drop closes the underlying connection without sending any response headers or body.
 	// This can be useful for silently terminating client connections, such as in DDoS mitigation
 	// or when blocking access to sensitive endpoints.
