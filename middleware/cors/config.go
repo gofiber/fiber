@@ -60,7 +60,7 @@ type Config struct {
 	// can be exposed when the credentials flag is true. When used as part of
 	// a response to a preflight request, this indicates whether or not the
 	// actual request can be made using credentials. Note: if true, the
-	// AllowOrigins setting cannot contain the wildcard origin "*" to prevent
+	// AllowOrigins setting cannot contain the wildcard "*" to prevent
 	// security vulnerabilities.
 	//
 	// Optional. Default value false.
