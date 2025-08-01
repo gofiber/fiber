@@ -59,8 +59,9 @@ type Config struct {
 	// AllowCredentials indicates whether or not the response to the request
 	// can be exposed when the credentials flag is true. When used as part of
 	// a response to a preflight request, this indicates whether or not the
-	// actual request can be made using credentials. Note: If true, AllowOrigins
-	// cannot be set to true to prevent security vulnerabilities.
+	// actual request can be made using credentials. Note: if true, the
+	// AllowOrigins setting cannot contain the wildcard "*" to prevent
+	// security vulnerabilities.
 	//
 	// Optional. Default value false.
 	AllowCredentials bool
