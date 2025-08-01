@@ -1132,6 +1132,7 @@ The old string-based `KeyLookup` configuration has been replaced with an `Extrac
 ### Extractor Utilities
 
 A new `extractor` package provides reusable helpers such as `extractor.FromHeader`, `extractor.FromCookie`, and `extractor.Chain`. Middleware packages use these helpers internally, and you can use them directly in your own applications.
+The helpers now include improved documentation and examples to make it easier to compose custom extraction logic across middlewares.
 
 ### Logger
 
