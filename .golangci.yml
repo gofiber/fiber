@@ -1,5 +1,4 @@
 # v1.2.0. Created based on golangci-lint v1.57.1
-version: 2
 
 run:
   timeout: 5m
@@ -276,6 +275,7 @@ linters:
     - asasalint
     - asciicheck
     - bidichk
+    - bodyclose
     - containedctx
     - contextcheck
     # - cyclop
@@ -309,12 +309,16 @@ linters:
     # - godot
     # - godox
     - err113
+    - gofmt
+    - gofumpt
     # - goheader
+    - goimports
     # - mnd # TODO: Enable
     - gomoddirectives
     # - gomodguard
     - goprintffuncname
     - gosec
+    - gosimple
     # - gosmopolitan # TODO: Enable
     - govet
     - grouper
@@ -356,6 +360,7 @@ linters:
     - spancheck
     - sqlclosecheck
     - staticcheck
+    - stylecheck
     # - tagalign # TODO: Enable
     - tagliatelle
     - testableexamples
@@ -363,6 +368,7 @@ linters:
     # - testpackage # TODO: Enable
     - thelper
     - tparallel
+    - typecheck
     - unconvert
     - unparam
     - unused

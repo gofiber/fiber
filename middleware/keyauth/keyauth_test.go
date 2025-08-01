@@ -179,7 +179,7 @@ func TestPanicOnInvalidConfiguration(t *testing.T) {
 			require.NoError(t, err)
 		}()
 		app.Use(authMiddleware)
-	}, "should panic if CustomKeyLookup is not set AND KeyLookup has an invalid value")
+	}, "should panic if no extractor is configured")
 }
 
 func TestMultipleKeyLookup(t *testing.T) {
