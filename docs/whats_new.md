@@ -110,7 +110,7 @@ app.Get("/login/:id<ulid>", func(c fiber.Ctx) error {
 - **ListenTLSWithCertificate**: Use `app.Listen()` with `tls.Config`.
 - **ListenMutualTLS**: Use `app.Listen()` with `tls.Config`.
 - **ListenMutualTLSWithCertificate**: Use `app.Listen()` with `tls.Config`.
-- **Context()**: Removed. `Ctx` now directly implements `context.Context`, so pass `c` anywhere a `context.Context` is required.
+- **Context()**: Removed. `Ctx` now directly implements `context.Context`, so you can pass `c` anywhere a `context.Context` is required.
 - **SetContext()**: Removed. Attach additional context information using `Locals` or middleware if needed.
 
 ### Method Changes
