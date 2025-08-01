@@ -8,7 +8,6 @@ Proxy middleware for [Fiber](https://github.com/gofiber/fiber) that allows you t
 
 ## Signatures
 
-
 ```go
 // Balancer creates a load balancer among multiple upstream servers.
 func Balancer(config Config) fiber.Handler
