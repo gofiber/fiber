@@ -4,11 +4,13 @@ id: cache
 
 # Cache
 
-Cache middleware for [Fiber](https://github.com/gofiber/fiber) designed to intercept responses and cache them. This middleware will cache the `Body`, `Content-Type` and `StatusCode` using the `c.Path()` as unique identifier. Special thanks to [@codemicro](https://github.com/codemicro/fiber-cache) for creating this middleware for Fiber core!
+Cache middleware for [Fiber](https://github.com/gofiber/fiber) designed to intercept responses and cache them. This middleware caches the `Body`, `Content-Type`, and `StatusCode` using a key built from the request path and method. Special thanks to [@codemicro](https://github.com/codemicro/fiber-cache) for creating this middleware for Fiber core!
 
 Request Directives<br />
 `Cache-Control: no-cache` will return the up-to-date response but still caches it. You will always get a `miss` cache status.<br />
 `Cache-Control: no-store` will refrain from caching. You will always get the up-to-date response.
+
+If the server response contains a `Cache-Control: max-age` directive, its value is used as the expiration time for the cache entry.
 
 Cacheable Status Codes<br />
 
@@ -67,7 +69,7 @@ app.Use(cache.New(cache.Config{
 }))
 ```
 
-Or you can custom key and expire time like this:
+Or you can customize the key and expiration time like this (the HTTP method is automatically appended to the key):
 
 ```go
 app.Use(cache.New(cache.Config{
@@ -107,9 +109,9 @@ The `CacheInvalidator` function allows you to define custom conditions for cache
 | CacheHeader          | `string`                                       | CacheHeader is the header on the response header that indicates the cache status, with the possible return values "hit," "miss," or "unreachable."                                                                                                                                                             | `X-Cache`                                                        |
 | CacheControl         | `bool`                                         | CacheControl enables client-side caching if set to true.                                                                                                                                                                                                                                                       | `false`                                                          |
 | CacheInvalidator     | `func(fiber.Ctx) bool`                         | CacheInvalidator defines a function that is executed before checking the cache entry. It can be used to invalidate the existing cache manually by returning true.                                                                                                                                              | `nil`                                                            |
-| KeyGenerator         | `func(fiber.Ctx) string`                       | Key allows you to generate custom keys.                                                                                                                                                                                                                                                                        | `func(c fiber.Ctx) string { return utils.CopyString(c.Path()) }` |
+| KeyGenerator         | `func(fiber.Ctx) string`                       | Key allows you to generate custom keys. The HTTP method is appended automatically.                                                                                                                                                                                                                                                                        | `func(c fiber.Ctx) string { return utils.CopyString(c.Path()) }` |
 | ExpirationGenerator  | `func(fiber.Ctx, *cache.Config) time.Duration` | ExpirationGenerator allows you to generate custom expiration keys based on the request.                                                                                                                                                                                                                        | `nil`                                                            |
-| Storage              | `fiber.Storage`                                | Store is used to store the state of the middleware.                                                                                                                                                                                                                                                            | In-memory store                                                  |
+| Storage              | `fiber.Storage`                                | Storage is used to store the state of the middleware.                                                                                                                                                                                                                                                            | In-memory store                                                  |
 | StoreResponseHeaders | `bool`                                         | StoreResponseHeaders allows you to store additional headers generated by next middlewares & handler.                                                                                                                                                                                                           | `false`                                                          |
 | MaxBytes             | `uint`                                         | MaxBytes is the maximum number of bytes of response bodies simultaneously stored in cache.                                                                                                                                                                                                                     | `0` (No limit)                                                   |
 | Methods              | `[]string`                                     | Methods specifies the HTTP methods to cache.                                                                                                                                                                                                                                                                   | `[]string{fiber.MethodGet, fiber.MethodHead}`                    |
