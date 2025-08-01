@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/gofiber/fiber/v3"
+	intextractor "github.com/gofiber/fiber/v3/extractor"
 )
 
 // Source represents the type of source from which a CSRF token is extracted.
@@ -74,16 +75,11 @@ var (
 // Security: URLs may be logged by servers, proxies, and browsers, so this method should be used
 // carefully in production environments.
 func FromParam(param string) Extractor {
+	base := intextractor.FromParam(param)
 	return Extractor{
-		Extract: func(c fiber.Ctx) (string, error) {
-			token := c.Params(param)
-			if token == "" {
-				return "", ErrMissingParam
-			}
-			return token, nil
-		},
-		Key:    param,
-		Source: SourceParam,
+		Extract: base.Extract,
+		Key:     base.Key,
+		Source:  SourceParam,
 	}
 }
 
@@ -101,16 +97,11 @@ func FromParam(param string) Extractor {
 // Security: This is a secure method for CSRF protection as form data is not typically logged
 // and cannot be manipulated via URL manipulation.
 func FromForm(param string) Extractor {
+	base := intextractor.FromForm(param)
 	return Extractor{
-		Extract: func(c fiber.Ctx) (string, error) {
-			token := c.FormValue(param)
-			if token == "" {
-				return "", ErrMissingForm
-			}
-			return token, nil
-		},
-		Key:    param,
-		Source: SourceForm,
+		Extract: base.Extract,
+		Key:     base.Key,
+		Source:  SourceForm,
 	}
 }
 
@@ -128,16 +119,11 @@ func FromForm(param string) Extractor {
 // Security: This is the most secure method for CSRF protection, especially for APIs, as headers
 // are not logged in standard web server logs and cannot be manipulated via simple URL manipulation.
 func FromHeader(param string) Extractor {
+	base := intextractor.FromHeader(param)
 	return Extractor{
-		Extract: func(c fiber.Ctx) (string, error) {
-			token := c.Get(param)
-			if token == "" {
-				return "", ErrMissingHeader
-			}
-			return token, nil
-		},
-		Key:    param,
-		Source: SourceHeader,
+		Extract: base.Extract,
+		Key:     base.Key,
+		Source:  SourceHeader,
 	}
 }
 
@@ -155,16 +141,11 @@ func FromHeader(param string) Extractor {
 // Security: URLs may be logged by servers, proxies, and browsers, so this method should be used
 // carefully in production environments.
 func FromQuery(param string) Extractor {
+	base := intextractor.FromQuery(param)
 	return Extractor{
-		Extract: func(c fiber.Ctx) (string, error) {
-			token := fiber.Query[string](c, param)
-			if token == "" {
-				return "", ErrMissingQuery
-			}
-			return token, nil
-		},
-		Key:    param,
-		Source: SourceQuery,
+		Extract: base.Extract,
+		Key:     base.Key,
+		Source:  SourceQuery,
 	}
 }
 
@@ -186,8 +167,10 @@ func FromQuery(param string) Extractor {
 // when absolutely necessary for specific requirements.
 func Chain(extractors ...Extractor) Extractor {
 	if len(extractors) == 0 {
+		base := intextractor.Chain()
 		return Extractor{
-			Extract: func(fiber.Ctx) (string, error) {
+			Extract: func(c fiber.Ctx) (string, error) {
+				_, _ = base.Extract(c)
 				return "", ErrTokenNotFound
 			},
 			Source: SourceCustom,
@@ -196,33 +179,25 @@ func Chain(extractors ...Extractor) Extractor {
 		}
 	}
 
-	// Use the source and key from the first extractor as the primary
-	primarySource := extractors[0].Source
-	primaryKey := extractors[0].Key
+	baseExtractors := make([]intextractor.Extractor, len(extractors))
+	for i, e := range extractors {
+		baseExtractors[i] = intextractor.Extractor{Extract: e.Extract, Key: e.Key}
+	}
+	base := intextractor.Chain(baseExtractors...)
 
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
-			var lastErr error
-
-			for _, extractor := range extractors {
-				token, err := extractor.Extract(c)
-
-				if err == nil && token != "" {
-					return token, nil
-				}
-
-				// Only update lastErr if we got an actual error
-				if err != nil {
-					lastErr = err
-				}
+			val, err := base.Extract(c)
+			if err != nil {
+				return "", err
 			}
-			if lastErr != nil {
-				return "", lastErr
+			if val == "" {
+				return "", ErrTokenNotFound
 			}
-			return "", ErrTokenNotFound
+			return val, nil
 		},
-		Source: primarySource,
-		Key:    primaryKey,
+		Source: extractors[0].Source,
+		Key:    extractors[0].Key,
 		Chain:  extractors,
 	}
 }

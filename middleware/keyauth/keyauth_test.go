@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	intextractor "github.com/gofiber/fiber/v3/extractor"
 	"github.com/stretchr/testify/require"
 )
 
@@ -66,7 +67,22 @@ func Test_AuthSources(t *testing.T) {
 				app := fiber.New(fiber.Config{UnescapePath: true})
 
 				authMiddleware := New(Config{
-					KeyLookup: authSource + ":" + test.authTokenName,
+					Extractor: func() intextractor.Extractor {
+						switch authSource {
+						case "header":
+							return FromHeader(test.authTokenName, "Bearer")
+						case "cookie":
+							return FromCookie(test.authTokenName)
+						case "query":
+							return FromQuery(test.authTokenName)
+						case "param":
+							return FromParam(test.authTokenName)
+						case "form":
+							return FromForm(test.authTokenName)
+						default:
+							panic("unknown source")
+						}
+					}(),
 					Validator: func(_ fiber.Ctx, key string) (bool, error) {
 						if key == CorrectKey {
 							return true, nil
@@ -76,7 +92,7 @@ func Test_AuthSources(t *testing.T) {
 				})
 
 				var route string
-				if authSource == param {
+				if authSource == "param" {
 					route = test.route + ":" + test.authTokenName
 					app.Use(route, authMiddleware)
 				} else {
@@ -138,7 +154,7 @@ func Test_AuthSources(t *testing.T) {
 func TestPanicOnInvalidConfiguration(t *testing.T) {
 	require.Panics(t, func() {
 		authMiddleware := New(Config{
-			KeyLookup: "invalid",
+			Extractor: intextractor.Extractor{},
 		})
 		// We shouldn't even make it this far, but these next two lines prevent authMiddleware from being an unused variable.
 		app := fiber.New()
@@ -151,7 +167,7 @@ func TestPanicOnInvalidConfiguration(t *testing.T) {
 
 	require.Panics(t, func() {
 		authMiddleware := New(Config{
-			KeyLookup: "invalid",
+			Extractor: intextractor.Extractor{},
 			Validator: func(_ fiber.Ctx, _ string) (bool, error) {
 				return true, nil
 			},
@@ -163,20 +179,7 @@ func TestPanicOnInvalidConfiguration(t *testing.T) {
 			require.NoError(t, err)
 		}()
 		app.Use(authMiddleware)
-	}, "should panic if CustomKeyLookup is not set AND KeyLookup has an invalid value")
-}
-
-func TestCustomKeyUtilityFunctionErrors(t *testing.T) {
-	const (
-		scheme = "Bearer"
-	)
-
-	// Invalid element while parsing
-	_, err := DefaultKeyLookup("invalid", scheme)
-	require.Error(t, err, "DefaultKeyLookup should fail for 'invalid' keyLookup")
-
-	_, err = MultipleKeySourceLookup([]string{"header:key", "invalid"}, scheme)
-	require.Error(t, err, "MultipleKeySourceLookup should fail for 'invalid' keyLookup")
+	}, "should panic if no extractor is configured")
 }
 
 func TestMultipleKeyLookup(t *testing.T) {
@@ -189,11 +192,14 @@ func TestMultipleKeyLookup(t *testing.T) {
 	// setup the fiber endpoint
 	app := fiber.New()
 
-	customKeyLookup, err := MultipleKeySourceLookup([]string{"header:key", "cookie:key", "query:key"}, scheme)
-	require.NoError(t, err)
+	customExtractor := Chain(
+		FromHeader("key", scheme),
+		FromCookie("key"),
+		FromQuery("key"),
+	)
 
 	authMiddleware := New(Config{
-		CustomKeyLookup: customKeyLookup,
+		Extractor: customExtractor,
 		Validator: func(_ fiber.Ctx, key string) (bool, error) {
 			if key == CorrectKey {
 				return true, nil
@@ -207,7 +213,10 @@ func TestMultipleKeyLookup(t *testing.T) {
 	})
 
 	// construct the test HTTP request
-	var req *http.Request
+	var (
+		req *http.Request
+		err error
+	)
 	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/foo", nil)
 	require.NoError(t, err)
 	q := req.URL.Query()
@@ -247,7 +256,7 @@ func Test_MultipleKeyAuth(t *testing.T) {
 		Next: func(c fiber.Ctx) bool {
 			return c.OriginalURL() != "/auth1"
 		},
-		KeyLookup: "header:key",
+		Extractor: FromHeader("key", "Bearer"),
 		Validator: func(_ fiber.Ctx, key string) (bool, error) {
 			if key == "password1" {
 				return true, nil
@@ -261,7 +270,7 @@ func Test_MultipleKeyAuth(t *testing.T) {
 		Next: func(c fiber.Ctx) bool {
 			return c.OriginalURL() != "/auth2"
 		},
-		KeyLookup: "header:key",
+		Extractor: FromHeader("key", "Bearer"),
 		Validator: func(_ fiber.Ctx, key string) (bool, error) {
 			if key == "password2" {
 				return true, nil
@@ -507,7 +516,7 @@ func Test_TokenFromContext(t *testing.T) {
 	app := fiber.New()
 	// Wire up keyauth middleware to set TokenFromContext now
 	app.Use(New(Config{
-		KeyLookup:  "header:Authorization",
+		Extractor:  FromHeader(fiber.HeaderAuthorization, "Basic"),
 		AuthScheme: "Basic",
 		Validator: func(_ fiber.Ctx, key string) (bool, error) {
 			if key == CorrectKey {
@@ -572,7 +581,7 @@ func Test_AuthSchemeBasic(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		KeyLookup:  "header:Authorization",
+		Extractor:  FromHeader(fiber.HeaderAuthorization, "Basic"),
 		AuthScheme: "Basic",
 		Validator: func(_ fiber.Ctx, key string) (bool, error) {
 			if key == CorrectKey {
