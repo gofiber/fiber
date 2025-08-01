@@ -39,7 +39,7 @@ func Test_Extractors_Missing(t *testing.T) {
 	require.Equal(t, ErrMissingQuery, err)
 
 	// Missing header
-	token, err = FromHeader("X-CSRF-Token").Extract(ctx)
+	token, err = FromHeader("X-Csrf-Token").Extract(ctx)
 	require.Empty(t, token)
 	require.Equal(t, ErrMissingHeader, err)
 }
@@ -89,8 +89,8 @@ func Test_Extractors(t *testing.T) {
 	// FromHeader
 	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
-	ctx.Request().Header.Set("X-CSRF-Token", "token_from_header")
-	token, err = FromHeader("X-CSRF-Token").Extract(ctx)
+	ctx.Request().Header.Set("X-Csrf-Token", "token_from_header")
+	token, err = FromHeader("X-Csrf-Token").Extract(ctx)
 	require.NoError(t, err)
 	require.Equal(t, "token_from_header", token)
 }
@@ -111,9 +111,9 @@ func Test_Extractor_Chain(t *testing.T) {
 	// First extractor succeeds
 	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
-	ctx.Request().Header.Set("X-CSRF-Token", "token_from_header")
+	ctx.Request().Header.Set("X-Csrf-Token", "token_from_header")
 	ctx.Request().SetRequestURI("/?csrf=token_from_query")
-	token, err = Chain(FromHeader("X-CSRF-Token"), FromQuery("csrf")).Extract(ctx)
+	token, err = Chain(FromHeader("X-Csrf-Token"), FromQuery("csrf")).Extract(ctx)
 	require.NoError(t, err)
 	require.Equal(t, "token_from_header", token)
 
@@ -121,14 +121,14 @@ func Test_Extractor_Chain(t *testing.T) {
 	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
 	ctx.Request().SetRequestURI("/?csrf=token_from_query")
-	token, err = Chain(FromHeader("X-CSRF-Token"), FromQuery("csrf")).Extract(ctx)
+	token, err = Chain(FromHeader("X-Csrf-Token"), FromQuery("csrf")).Extract(ctx)
 	require.NoError(t, err)
 	require.Equal(t, "token_from_query", token)
 
 	// All extractors fail, should return the last error
 	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
-	token, err = Chain(FromHeader("X-CSRF-Token"), FromQuery("csrf")).Extract(ctx)
+	token, err = Chain(FromHeader("X-Csrf-Token"), FromQuery("csrf")).Extract(ctx)
 	require.Empty(t, token)
 	require.Equal(t, ErrMissingQuery, err)
 

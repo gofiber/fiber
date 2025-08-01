@@ -50,11 +50,11 @@ type Extractor struct {
 }
 
 var (
-	ErrMissingHeader = errors.New("missing csrf token in header")
-	ErrMissingQuery  = errors.New("missing csrf token in query")
-	ErrMissingParam  = errors.New("missing csrf token in param")
-	ErrMissingForm   = errors.New("missing csrf token in form")
-	ErrMissingCookie = errors.New("missing csrf token in cookie")
+	ErrMissingHeader = errors.New("csrf: token missing from header")
+	ErrMissingQuery  = errors.New("csrf: token missing from query")
+	ErrMissingParam  = errors.New("csrf: token missing from param")
+	ErrMissingForm   = errors.New("csrf: token missing from form")
+	ErrMissingCookie = errors.New("csrf: token missing from cookie")
 )
 
 // Note: FromCookie is intentionally omitted as it would defeat CSRF protection.
