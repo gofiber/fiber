@@ -1094,7 +1094,7 @@ The `Expiration` field in the CSRF middleware configuration has been renamed to 
 
 ### EncryptCookie
 
-Added support for specifying Key length when using `encryptcookie.GenerateKey(length)`. This allows the user to generate keys compatible with `AES-128`, `AES-192`, and `AES-256` (Default).
+Added support for specifying key length when using `encryptcookie.GenerateKey(length)`. Keys must be base64-encoded and may be 16, 24, or 32 bytes when decoded, supporting AES-128, AES-192, and AES-256 (default).
 
 ### EnvVar
 
@@ -1127,6 +1127,11 @@ Refer to the [healthcheck middleware migration guide](./middleware/healthcheck.m
 ### KeyAuth
 
 The keyauth middleware was updated to introduce a configurable `Realm` field for the `WWW-Authenticate` header.
+The old string-based `KeyLookup` configuration has been replaced with an `Extractor` field. Use helper functions like `keyauth.FromHeader` or `keyauth.FromCookie` to define where the key should be retrieved from. Multiple sources can be combined with `keyauth.Chain`. See the migration guide below.
+
+### Extractor Utilities
+
+A new `extractor` package provides reusable helpers such as `extractor.FromHeader`, `extractor.FromCookie`, and `extractor.Chain`. Middleware packages use these helpers internally, and you can use them directly in your own applications.
 
 ### Logger
 
@@ -1949,6 +1954,25 @@ Passwords configured for BasicAuth must now be pre-hashed. If no prefix is suppl
 
 You can also set the optional `HeaderLimit` and `Charset`
 options to further control authentication behavior.
+
+
+#### KeyAuth
+
+The `Realm` field in the configuration is now customizable. Replace the deprecated `KeyLookup` string with an `Extractor` function.
+
+```go
+// Before
+app.Use(keyauth.New(keyauth.Config{
+    KeyLookup: "header:Authorization",
+}))
+
+// After
+app.Use(keyauth.New(keyauth.Config{
+    Extractor: keyauth.FromHeader(fiber.HeaderAuthorization, "Bearer"),
+}))
+```
+
+Combine multiple sources with `keyauth.Chain()` when needed.
 
 #### Cache
 

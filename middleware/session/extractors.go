@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/gofiber/fiber/v3"
+	intextractor "github.com/gofiber/fiber/v3/extractor"
 )
 
 // Source represents the type of source from which a session ID is extracted.
@@ -59,16 +60,11 @@ var (
 //	An Extractor that attempts to retrieve the session ID from the specified cookie. If the cookie
 //	is not present or does not contain a session ID, it returns an error (ErrMissingSessionIDInCookie).
 func FromCookie(key string) Extractor {
+	base := intextractor.FromCookie(key)
 	return Extractor{
-		Extract: func(c fiber.Ctx) (string, error) {
-			sessionID := c.Cookies(key)
-			if sessionID == "" {
-				return "", ErrMissingSessionIDInCookie
-			}
-			return sessionID, nil
-		},
-		Source: SourceCookie,
-		Key:    key,
+		Extract: base.Extract,
+		Source:  SourceCookie,
+		Key:     base.Key,
 	}
 }
 
@@ -83,16 +79,11 @@ func FromCookie(key string) Extractor {
 //	parameter is not present or does not contain a session ID, it returns an error (ErrMissingSessionIDInParam).
 //	This extractor has SourceOther type, meaning it will not set response values.
 func FromParam(param string) Extractor {
+	base := intextractor.FromParam(param)
 	return Extractor{
-		Extract: func(c fiber.Ctx) (string, error) {
-			sessionID := c.Params(param)
-			if sessionID == "" {
-				return "", ErrMissingSessionIDInParam
-			}
-			return sessionID, nil
-		},
-		Source: SourceOther,
-		Key:    param,
+		Extract: base.Extract,
+		Source:  SourceOther,
+		Key:     base.Key,
 	}
 }
 
@@ -107,16 +98,11 @@ func FromParam(param string) Extractor {
 //	field is not present or does not contain a session ID, it returns an error (ErrMissingSessionIDInForm).
 //	This extractor has SourceOther type, meaning it will not set response values.
 func FromForm(param string) Extractor {
+	base := intextractor.FromForm(param)
 	return Extractor{
-		Extract: func(c fiber.Ctx) (string, error) {
-			sessionID := c.FormValue(param)
-			if sessionID == "" {
-				return "", ErrMissingSessionIDInForm
-			}
-			return sessionID, nil
-		},
-		Source: SourceOther,
-		Key:    param,
+		Extract: base.Extract,
+		Source:  SourceOther,
+		Key:     base.Key,
 	}
 }
 
@@ -131,16 +117,11 @@ func FromForm(param string) Extractor {
 //	header is not present or does not contain a session ID, it returns an error (ErrMissingSessionIDInHeader).
 //	This extractor has SourceHeader type, meaning it will set response headers when saving sessions.
 func FromHeader(param string) Extractor {
+	base := intextractor.FromHeader(param)
 	return Extractor{
-		Extract: func(c fiber.Ctx) (string, error) {
-			sessionID := c.Get(param)
-			if sessionID == "" {
-				return "", ErrMissingSessionIDInHeader
-			}
-			return sessionID, nil
-		},
-		Source: SourceHeader,
-		Key:    param,
+		Extract: base.Extract,
+		Source:  SourceHeader,
+		Key:     base.Key,
 	}
 }
 
@@ -155,16 +136,11 @@ func FromHeader(param string) Extractor {
 //	parameter is not present or does not contain a session ID, it returns an error (ErrMissingSessionIDInQuery).
 //	This extractor has SourceOther type, meaning it will not set response values.
 func FromQuery(param string) Extractor {
+	base := intextractor.FromQuery(param)
 	return Extractor{
-		Extract: func(c fiber.Ctx) (string, error) {
-			sessionID := fiber.Query[string](c, param)
-			if sessionID == "" {
-				return "", ErrMissingSessionIDInQuery
-			}
-			return sessionID, nil
-		},
-		Source: SourceOther,
-		Key:    param,
+		Extract: base.Extract,
+		Source:  SourceOther,
+		Key:     base.Key,
 	}
 }
 
@@ -183,7 +159,7 @@ func FromQuery(param string) Extractor {
 func Chain(extractors ...Extractor) Extractor {
 	if len(extractors) == 0 {
 		return Extractor{
-			Extract: func(fiber.Ctx) (string, error) {
+			Extract: func(c fiber.Ctx) (string, error) {
 				return "", ErrMissingSessionID
 			},
 			Source: SourceOther,
@@ -192,33 +168,25 @@ func Chain(extractors ...Extractor) Extractor {
 		}
 	}
 
-	// Use the source and key from the first extractor as the primary
-	primarySource := extractors[0].Source
-	primaryKey := extractors[0].Key
+	baseExtractors := make([]intextractor.Extractor, len(extractors))
+	for i, e := range extractors {
+		baseExtractors[i] = intextractor.Extractor{Extract: e.Extract, Key: e.Key}
+	}
+	base := intextractor.Chain(baseExtractors...)
 
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
-			var lastErr error
-
-			for _, extractor := range extractors {
-				sessionID, err := extractor.Extract(c)
-
-				if err == nil && sessionID != "" {
-					return sessionID, nil
-				}
-
-				// Only update lastErr if we got an actual error
-				if err != nil {
-					lastErr = err
-				}
+			val, err := base.Extract(c)
+			if err != nil {
+				return "", err
 			}
-			if lastErr != nil {
-				return "", lastErr
+			if val == "" {
+				return "", ErrMissingSessionID
 			}
-			return "", ErrMissingSessionID
+			return val, nil
 		},
-		Source: primarySource,
-		Key:    primaryKey,
+		Source: extractors[0].Source,
+		Key:    extractors[0].Key,
 		Chain:  extractors,
 	}
 }

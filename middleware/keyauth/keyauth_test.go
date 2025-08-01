@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	intextractor "github.com/gofiber/fiber/v3/extractor"
 	"github.com/stretchr/testify/require"
 )
 
@@ -66,7 +67,11 @@ func Test_AuthSources(t *testing.T) {
 				app := fiber.New(fiber.Config{UnescapePath: true})
 
 				authMiddleware := New(Config{
-					KeyLookup: authSource + ":" + test.authTokenName,
+					Extractor: func() intextractor.Extractor {
+						ext, err := DefaultExtractor(authSource+":"+test.authTokenName, "Bearer")
+						require.NoError(t, err)
+						return ext
+					}(),
 					Validator: func(_ fiber.Ctx, key string) (bool, error) {
 						if key == CorrectKey {
 							return true, nil
@@ -138,7 +143,7 @@ func Test_AuthSources(t *testing.T) {
 func TestPanicOnInvalidConfiguration(t *testing.T) {
 	require.Panics(t, func() {
 		authMiddleware := New(Config{
-			KeyLookup: "invalid",
+			Extractor: intextractor.Extractor{},
 		})
 		// We shouldn't even make it this far, but these next two lines prevent authMiddleware from being an unused variable.
 		app := fiber.New()
@@ -151,7 +156,7 @@ func TestPanicOnInvalidConfiguration(t *testing.T) {
 
 	require.Panics(t, func() {
 		authMiddleware := New(Config{
-			KeyLookup: "invalid",
+			Extractor: intextractor.Extractor{},
 			Validator: func(_ fiber.Ctx, _ string) (bool, error) {
 				return true, nil
 			},
@@ -172,8 +177,8 @@ func TestCustomKeyUtilityFunctionErrors(t *testing.T) {
 	)
 
 	// Invalid element while parsing
-	_, err := DefaultKeyLookup("invalid", scheme)
-	require.Error(t, err, "DefaultKeyLookup should fail for 'invalid' keyLookup")
+	_, err := DefaultExtractor("invalid", scheme)
+	require.Error(t, err, "DefaultExtractor should fail for 'invalid' keyLookup")
 
 	_, err = MultipleKeySourceLookup([]string{"header:key", "invalid"}, scheme)
 	require.Error(t, err, "MultipleKeySourceLookup should fail for 'invalid' keyLookup")
@@ -189,11 +194,11 @@ func TestMultipleKeyLookup(t *testing.T) {
 	// setup the fiber endpoint
 	app := fiber.New()
 
-	customKeyLookup, err := MultipleKeySourceLookup([]string{"header:key", "cookie:key", "query:key"}, scheme)
+	customExtractor, err := MultipleKeySourceLookup([]string{"header:key", "cookie:key", "query:key"}, scheme)
 	require.NoError(t, err)
 
 	authMiddleware := New(Config{
-		CustomKeyLookup: customKeyLookup,
+		Extractor: customExtractor,
 		Validator: func(_ fiber.Ctx, key string) (bool, error) {
 			if key == CorrectKey {
 				return true, nil
@@ -247,7 +252,10 @@ func Test_MultipleKeyAuth(t *testing.T) {
 		Next: func(c fiber.Ctx) bool {
 			return c.OriginalURL() != "/auth1"
 		},
-		KeyLookup: "header:key",
+		Extractor: func() intextractor.Extractor {
+			ext, _ := DefaultExtractor("header:key", "Bearer")
+			return ext
+		}(),
 		Validator: func(_ fiber.Ctx, key string) (bool, error) {
 			if key == "password1" {
 				return true, nil
@@ -261,7 +269,10 @@ func Test_MultipleKeyAuth(t *testing.T) {
 		Next: func(c fiber.Ctx) bool {
 			return c.OriginalURL() != "/auth2"
 		},
-		KeyLookup: "header:key",
+		Extractor: func() intextractor.Extractor {
+			ext, _ := DefaultExtractor("header:key", "Bearer")
+			return ext
+		}(),
 		Validator: func(_ fiber.Ctx, key string) (bool, error) {
 			if key == "password2" {
 				return true, nil
@@ -506,8 +517,9 @@ func Test_TokenFromContext_None(t *testing.T) {
 func Test_TokenFromContext(t *testing.T) {
 	app := fiber.New()
 	// Wire up keyauth middleware to set TokenFromContext now
+	authHeader, _ := DefaultExtractor("header:Authorization", "Basic")
 	app.Use(New(Config{
-		KeyLookup:  "header:Authorization",
+		Extractor:  authHeader,
 		AuthScheme: "Basic",
 		Validator: func(_ fiber.Ctx, key string) (bool, error) {
 			if key == CorrectKey {
@@ -571,8 +583,9 @@ func Test_AuthSchemeToken(t *testing.T) {
 func Test_AuthSchemeBasic(t *testing.T) {
 	app := fiber.New()
 
+	authHeader, _ := DefaultExtractor("header:Authorization", "Basic")
 	app.Use(New(Config{
-		KeyLookup:  "header:Authorization",
+		Extractor:  authHeader,
 		AuthScheme: "Basic",
 		Validator: func(_ fiber.Ctx, key string) (bool, error) {
 			if key == CorrectKey {

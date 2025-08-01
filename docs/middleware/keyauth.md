@@ -44,7 +44,7 @@ func main() {
 
     // note that the keyauth middleware needs to be defined before the routes are defined!
     app.Use(keyauth.New(keyauth.Config{
-        KeyLookup:  "cookie:access_token",
+        Extractor:  keyauth.FromCookie("access_token"),
         Validator:  validateAPIKey,
     }))
 
@@ -121,8 +121,8 @@ func main() {
     app := fiber.New()
 
     app.Use(keyauth.New(keyauth.Config{
-        Next:    authFilter,
-        KeyLookup: "cookie:access_token",
+        Next:      authFilter,
+        Extractor: keyauth.FromCookie("access_token"),
         Validator: validateAPIKey,
     }))
 
@@ -218,8 +218,7 @@ curl --header "Authorization: Bearer my-super-secret-key"  http://localhost:3000
 | Next            | `func(fiber.Ctx) bool`                   | Next defines a function to skip this middleware when returned true.                                    | `nil`                         |
 | SuccessHandler  | `fiber.Handler`                          | SuccessHandler defines a function which is executed for a valid key.                                   | `nil`                         |
 | ErrorHandler    | `fiber.ErrorHandler`                     | ErrorHandler defines a function which is executed for an invalid key. By default a 401 response with a `WWW-Authenticate` challenge is sent. | `nil`  |
-| KeyLookup       | `string`                                 | KeyLookup is a string in the form of "`<source>:<name>`" that is used to extract the key from the request. | "header:Authorization"        |
-| CustomKeyLookup | `KeyLookupFunc` aka `func(c fiber.Ctx) (string, error)` | If more complex logic is required to extract the key from the request, an arbitrary function to extract it can be specified here. Utility helper functions are described below. |  `nil` |
+| Extractor       | `extractor.Extractor`                    | Extractor defines how to retrieve the key from the request. Use helper functions like `keyauth.FromHeader` or `keyauth.FromCookie`. | `keyauth.FromHeader("Authorization", "Bearer")` |
 | AuthScheme      | `string`                                 | AuthScheme to be used in the Authorization header.                                                     | "Bearer"                      |
 | Realm           | `string`                                 | Realm specifies the protected area name used in the `WWW-Authenticate` header. | `"Restricted"` |
 | Validator       | `func(fiber.Ctx, string) (bool, error)`  | Validator is a function to validate the key.                                                           | A function for key validation |
@@ -232,16 +231,15 @@ var ConfigDefault = Config{
         return c.Next()
     },
     ErrorHandler:    nil,
-    KeyLookup:       "header:" + fiber.HeaderAuthorization,
-    CustomKeyLookup: nil,
+    Extractor:      keyauth.FromHeader(fiber.HeaderAuthorization, "Bearer"),
     AuthScheme:      "Bearer",
     Realm:           "Restricted",
 }
 ```
 
-## CustomKeyLookup
+## Extractor Helpers
 
 Two public utility functions are provided that may be useful when creating custom extraction:
 
-* `DefaultKeyLookup(keyLookup string, authScheme string)`: This is the function that implements the default `KeyLookup` behavior, exposed to be used as a component of custom parsing logic
-* `MultipleKeySourceLookup(keyLookups []string, authScheme string)`: Creates a CustomKeyLookup function that checks each listed source using the above function until a key is found or the options are all exhausted. For example, `MultipleKeySourceLookup([]string{"header:Authorization", "header:x-api-key", "cookie:apikey"}, "Bearer")` would first check the standard Authorization header, checks the `x-api-key` header next, and finally checks for a cookie named `apikey`. If any of these contain a valid API key, the request continues. Otherwise, an error is returned.
+* `DefaultExtractor(keyLookup string, authScheme string)`: Parses the string-based syntax and returns an `Extractor`.
+* `MultipleKeySourceLookup(keyLookups []string, authScheme string)`: Creates a chained `Extractor` that checks each listed source until a key is found. For example, `MultipleKeySourceLookup([]string{"header:Authorization", "header:x-api-key", "cookie:apikey"}, "Bearer")` would check the standard Authorization header, the `x-api-key` header, and finally a cookie named `apikey`.

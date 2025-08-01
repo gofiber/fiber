@@ -5,9 +5,8 @@ import (
 	"fmt"
 
 	"github.com/gofiber/fiber/v3"
+	intextractor "github.com/gofiber/fiber/v3/extractor"
 )
-
-type KeyLookupFunc func(c fiber.Ctx) (string, error)
 
 // Config defines the config for middleware.
 type Config struct {
@@ -24,21 +23,12 @@ type Config struct {
 	// Optional. Default: 401 Invalid or expired key
 	ErrorHandler fiber.ErrorHandler
 
-	CustomKeyLookup KeyLookupFunc
-
 	// Validator is a function to validate key.
 	Validator func(fiber.Ctx, string) (bool, error)
 
-	// KeyLookup is a string in the form of "<source>:<name>" that is used
-	// to extract key from the request.
-	// Optional. Default value "header:Authorization".
-	// Possible values:
-	// - "header:<name>"
-	// - "query:<name>"
-	// - "form:<name>"
-	// - "param:<name>"
-	// - "cookie:<name>"
-	KeyLookup string
+	// Extractor is used to extract the key from the request.
+	// Optional. Default: FromHeader("Authorization")
+	Extractor intextractor.Extractor
 
 	// AuthScheme to be used in the Authorization header.
 	// Optional. Default value "Bearer".
@@ -54,11 +44,10 @@ var ConfigDefault = Config{
 	SuccessHandler: func(c fiber.Ctx) error {
 		return c.Next()
 	},
-	ErrorHandler:    nil,
-	KeyLookup:       "header:" + fiber.HeaderAuthorization,
-	CustomKeyLookup: nil,
-	AuthScheme:      "Bearer",
-	Realm:           "Restricted",
+	ErrorHandler: nil,
+	Extractor:    FromHeader(fiber.HeaderAuthorization, "Bearer"),
+	AuthScheme:   "Bearer",
+	Realm:        "Restricted",
 }
 
 // Helper function to set default values
@@ -72,11 +61,11 @@ func configDefault(config ...Config) Config {
 	cfg := config[0]
 
 	// Set default values
-	if cfg.KeyLookup == "" {
-		cfg.KeyLookup = ConfigDefault.KeyLookup
-		if cfg.AuthScheme == "" {
-			cfg.AuthScheme = ConfigDefault.AuthScheme
-		}
+	if cfg.AuthScheme == "" {
+		cfg.AuthScheme = ConfigDefault.AuthScheme
+	}
+	if cfg.Extractor.Extract == nil {
+		cfg.Extractor = FromHeader(fiber.HeaderAuthorization, cfg.AuthScheme)
 	}
 	if cfg.Realm == "" {
 		cfg.Realm = ConfigDefault.Realm
