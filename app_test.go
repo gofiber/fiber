@@ -45,7 +45,6 @@ func testStatus200(t *testing.T, app *App, url, method string) {
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.NoError(t, resp.Body.Close())
 }
 
 func testErrorResponse(t *testing.T, err error, resp *http.Response, expectedBodyError string) {
@@ -107,20 +106,16 @@ func Test_App_Test_Goroutine_Leak_Compare(t *testing.T) {
 				req := httptest.NewRequest(MethodGet, "/", nil)
 
 				if tc.timeout > 0 {
-					resp, err := app.Test(req, TestConfig{
+					_, err := app.Test(req, TestConfig{
 						Timeout:       tc.timeout,
 						FailOnTimeout: true,
 					})
-					if resp != nil {
-						_ = resp.Body.Close()
-					}
 					require.Error(t, err)
 					require.ErrorIs(t, err, os.ErrDeadlineExceeded)
 				} else if resp, err := app.Test(req); err != nil {
 					t.Errorf("unexpected error: %v", err)
 				} else {
 					require.Equal(t, 200, resp.StatusCode)
-					_ = resp.Body.Close()
 				}
 			}
 
@@ -164,25 +159,21 @@ func Test_App_MethodNotAllowed(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 	require.Equal(t, "", resp.Header.Get(HeaderAllow))
-	_ = resp.Body.Close()
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, 405, resp.StatusCode)
 	require.Equal(t, "POST, OPTIONS", resp.Header.Get(HeaderAllow))
-	_ = resp.Body.Close()
 
 	resp, err = app.Test(httptest.NewRequest(MethodPatch, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, 405, resp.StatusCode)
 	require.Equal(t, "POST, OPTIONS", resp.Header.Get(HeaderAllow))
-	_ = resp.Body.Close()
 
 	resp, err = app.Test(httptest.NewRequest(MethodPut, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, 405, resp.StatusCode)
 	require.Equal(t, "POST, OPTIONS", resp.Header.Get(HeaderAllow))
-	_ = resp.Body.Close()
 
 	app.Get("/", testEmptyHandler)
 
@@ -190,13 +181,11 @@ func Test_App_MethodNotAllowed(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 405, resp.StatusCode)
 	require.Equal(t, "GET, POST, OPTIONS", resp.Header.Get(HeaderAllow))
-	_ = resp.Body.Close()
 
 	resp, err = app.Test(httptest.NewRequest(MethodPatch, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, 405, resp.StatusCode)
 	require.Equal(t, "GET, POST, OPTIONS", resp.Header.Get(HeaderAllow))
-	_ = resp.Body.Close()
 
 	app.Head("/", testEmptyHandler)
 
@@ -204,7 +193,6 @@ func Test_App_MethodNotAllowed(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 405, resp.StatusCode)
 	require.Equal(t, "GET, HEAD, POST, OPTIONS", resp.Header.Get(HeaderAllow))
-	_ = resp.Body.Close()
 }
 
 func Test_App_Custom_Middleware_404_Should_Not_SetMethodNotAllowed(t *testing.T) {
