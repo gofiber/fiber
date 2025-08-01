@@ -50,7 +50,7 @@ app.Use(favicon.New(favicon.Config{
 | Data         | `[]byte`                | Raw data of the favicon file. This can be used instead of `File`.                | `nil`                      |
 | File         | `string`                | File holds the path to an actual favicon that will be cached.                    | ""                         |
 | URL          | `string`                | URL for favicon handler.                                                         | "/favicon.ico"             |
-| FileSystem   | `fs.FS`                 | FileSystem is an optional alternate filesystem to search for the favicon in (e.g. `os.DirFS` or `embed.FS`).     | `nil`                      |
+| FileSystem   | `fs.FS`                 | FileSystem is an optional alternate filesystem from which to load the favicon file (e.g. using `os.DirFS` or an `embed.FS`). | `nil`                      |
 | CacheControl | `string`                | CacheControl defines how the Cache-Control header in the response should be set. | "public, max-age=31536000" |
 
 ## Default Config
