@@ -7,7 +7,7 @@ id: static
 Static middleware for Fiber that serves static files such as **images**, **CSS,** and **JavaScript**.
 
 :::info
-By default, **Static** will serve `index.html` files in response to a request on a directory. You can change it from [Config](#config)`
+By default, **Static** will serve `index.html` files in response to a request on a directory. You can change this using [Config](#config).
 :::
 
 ## Signatures
@@ -169,7 +169,7 @@ You can set `CacheDuration` config property to `-1` to disable caching.
 
 ```go
 var ConfigDefault = Config{
-    Index:         []string{"index.html"},
+    IndexNames:    []string{"index.html"},
     CacheDuration: 10 * time.Second,
 }
 ```
