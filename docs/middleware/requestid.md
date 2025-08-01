@@ -4,7 +4,7 @@ id: requestid
 
 # RequestID
 
-RequestID middleware for [Fiber](https://github.com/gofiber/fiber) that adds an identifier to the response.
+RequestID middleware for [Fiber](https://github.com/gofiber/fiber) that generates or propagates a request identifier. The ID is added to the response headers and stored in the request context.
 
 ## Signatures
 
@@ -24,7 +24,7 @@ import (
 )
 ```
 
-After you initiate your Fiber app, you can use the following possibilities:
+After initializing your Fiber app, you can use the middleware in the following ways:
 
 ```go
 // Initialize default config
@@ -38,6 +38,8 @@ app.Use(requestid.New(requestid.Config{
     },
 }))
 ```
+
+If the incoming request already contains the configured header, its value is reused instead of generating a new one.
 
 Getting the request ID
 

@@ -12,13 +12,13 @@ import (
 )
 
 var (
-	ErrTokenNotFound   = errors.New("csrf token not found")
-	ErrTokenInvalid    = errors.New("csrf token invalid")
-	ErrRefererNotFound = errors.New("referer not supplied")
-	ErrRefererInvalid  = errors.New("referer invalid")
-	ErrRefererNoMatch  = errors.New("referer does not match host and is not a trusted origin")
-	ErrOriginInvalid   = errors.New("origin invalid")
-	ErrOriginNoMatch   = errors.New("origin does not match host and is not a trusted origin")
+	ErrTokenNotFound   = errors.New("csrf: token not found")
+	ErrTokenInvalid    = errors.New("csrf: token invalid")
+	ErrRefererNotFound = errors.New("csrf: referer header missing")
+	ErrRefererInvalid  = errors.New("csrf: referer header invalid")
+	ErrRefererNoMatch  = errors.New("csrf: referer does not match host or trusted origins")
+	ErrOriginInvalid   = errors.New("csrf: origin header invalid")
+	ErrOriginNoMatch   = errors.New("csrf: origin does not match host or trusted origins")
 	errOriginNotFound  = errors.New("origin not supplied or is null") // internal error, will not be returned to the user
 	dummyValue         = []byte{'+'}                                  // dummyValue is a placeholder value stored in token storage. The actual token validation relies on the key, not this value.
 
@@ -131,7 +131,7 @@ func New(config ...Config) fiber.Handler {
 			}
 
 			// Extract token from client request i.e. header, query, param, form
-			extractedToken, err := cfg.Extractor(c)
+			extractedToken, err := cfg.Extractor.Extract(c)
 			if err != nil {
 				return cfg.ErrorHandler(c, err)
 			}

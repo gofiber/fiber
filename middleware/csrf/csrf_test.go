@@ -568,15 +568,19 @@ func Test_CSRF_From_Custom(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	extractor := func(c fiber.Ctx) (string, error) {
-		body := string(c.Body())
-		// Generate the correct extractor to get the token from the correct location
-		selectors := strings.Split(body, "=")
+	extractor := Extractor{
+		Extract: func(c fiber.Ctx) (string, error) {
+			body := string(c.Body())
+			// Generate the correct extractor to get the token from the correct location
+			selectors := strings.Split(body, "=")
 
-		if len(selectors) != 2 || selectors[1] == "" {
-			return "", ErrMissingParam
-		}
-		return selectors[1], nil
+			if len(selectors) != 2 || selectors[1] == "" {
+				return "", ErrMissingParam
+			}
+			return selectors[1], nil
+		},
+		Source: SourceCustom,
+		Key:    "_csrf",
 	}
 
 	app.Use(New(Config{Extractor: extractor}))
@@ -616,8 +620,12 @@ func Test_CSRF_Extractor_EmptyString(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 
-	extractor := func(_ fiber.Ctx) (string, error) {
-		return "", nil
+	extractor := Extractor{
+		Extract: func(_ fiber.Ctx) (string, error) {
+			return "", nil
+		},
+		Source: SourceCustom,
+		Key:    "_csrf",
 	}
 
 	errorHandler := func(c fiber.Ctx, err error) error {
@@ -1715,9 +1723,9 @@ func Test_CSRF_All_Extractors(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
-		extractor    func(c fiber.Ctx) (string, error)
 		setupRequest func(ctx *fasthttp.RequestCtx, token string)
 		name         string
+		extractor    Extractor
 		expectStatus int
 	}{
 		{
@@ -1911,9 +1919,9 @@ func Test_CSRF_Extractors_ErrorTypes(t *testing.T) {
 	// Test all extractor error types
 	testCases := []struct {
 		expected  error
-		extractor func(c fiber.Ctx) (string, error)
 		setupCtx  func(ctx *fasthttp.RequestCtx) // Add setup function
 		name      string
+		extractor Extractor
 	}{
 		{
 			name:      "Missing header",
@@ -1959,7 +1967,7 @@ func Test_CSRF_Extractors_ErrorTypes(t *testing.T) {
 			ctx := app.AcquireCtx(requestCtx)
 			defer app.ReleaseCtx(ctx)
 
-			token, err := tc.extractor(ctx)
+			token, err := tc.extractor.Extract(ctx)
 			require.Empty(t, token)
 			require.Equal(t, tc.expected, err)
 		})

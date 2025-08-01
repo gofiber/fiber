@@ -21,8 +21,10 @@ Safe HTTP methods — `GET`, `HEAD`, `OPTIONS` and `TRACE` — should not modify
 
 ```go
 func New(config ...Config) fiber.Handler
-func IsEarlyData(c fiber.Ctx) bool
+func IsEarly(c fiber.Ctx) bool
 ```
+
+`IsEarly` returns `true` when a request used early data and the middleware allowed it to proceed.
 
 ## Examples
 
