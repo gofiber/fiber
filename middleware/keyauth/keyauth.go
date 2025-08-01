@@ -3,7 +3,6 @@ package keyauth
 
 import (
 	"errors"
-	"fmt"
 	"net/url"
 	"strings"
 
@@ -23,13 +22,6 @@ const (
 
 // When there is no request of the key thrown ErrMissingOrMalformedAPIKey
 var ErrMissingOrMalformedAPIKey = errors.New("missing or malformed API Key")
-
-const (
-	query  = "query"
-	form   = "form"
-	param  = "param"
-	cookie = "cookie"
-)
 
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
@@ -73,20 +65,6 @@ func TokenFromContext(c fiber.Ctx) string {
 	return token
 }
 
-// MultipleKeySourceLookup creates an Extractor that checks multiple sources until one is found.
-// Each element should be specified according to the format used in DefaultExtractor.
-func MultipleKeySourceLookup(keyLookups []string, authScheme string) (intextractor.Extractor, error) {
-	subExtractors := make([]intextractor.Extractor, len(keyLookups))
-	for i, keyLookup := range keyLookups {
-		ext, err := DefaultExtractor(keyLookup, authScheme)
-		if err != nil {
-			return intextractor.Extractor{}, err
-		}
-		subExtractors[i] = ext
-	}
-	return intextractor.Chain(subExtractors...), nil
-}
-
 // Chain creates an Extractor that tries the provided extractors in order until one succeeds.
 func Chain(extractors ...intextractor.Extractor) intextractor.Extractor {
 	if len(extractors) == 0 {
@@ -115,25 +93,6 @@ func Chain(extractors ...intextractor.Extractor) intextractor.Extractor {
 		Key:   extractors[0].Key,
 		Chain: extractors,
 	}
-}
-
-func DefaultExtractor(keyLookup, authScheme string) (intextractor.Extractor, error) {
-	parts := strings.Split(keyLookup, ":")
-	if len(parts) <= 1 {
-		return intextractor.Extractor{}, fmt.Errorf("invalid keyLookup: %q, expected format 'source:name'", keyLookup)
-	}
-	extractor := FromHeader(parts[1], authScheme) // in the event of an invalid prefix, it is interpreted as header:
-	switch parts[0] {
-	case query:
-		extractor = FromQuery(parts[1])
-	case form:
-		extractor = FromForm(parts[1])
-	case param:
-		extractor = FromParam(parts[1])
-	case cookie:
-		extractor = FromCookie(parts[1])
-	}
-	return extractor, nil
 }
 
 // FromHeader extracts the API key from the specified header and optional scheme.

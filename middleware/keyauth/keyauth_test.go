@@ -68,9 +68,20 @@ func Test_AuthSources(t *testing.T) {
 
 				authMiddleware := New(Config{
 					Extractor: func() intextractor.Extractor {
-						ext, err := DefaultExtractor(authSource+":"+test.authTokenName, "Bearer")
-						require.NoError(t, err)
-						return ext
+						switch authSource {
+						case "header":
+							return FromHeader(test.authTokenName, "Bearer")
+						case "cookie":
+							return FromCookie(test.authTokenName)
+						case "query":
+							return FromQuery(test.authTokenName)
+						case "param":
+							return FromParam(test.authTokenName)
+						case "form":
+							return FromForm(test.authTokenName)
+						default:
+							panic("unknown source")
+						}
 					}(),
 					Validator: func(_ fiber.Ctx, key string) (bool, error) {
 						if key == CorrectKey {
@@ -171,19 +182,6 @@ func TestPanicOnInvalidConfiguration(t *testing.T) {
 	}, "should panic if CustomKeyLookup is not set AND KeyLookup has an invalid value")
 }
 
-func TestCustomKeyUtilityFunctionErrors(t *testing.T) {
-	const (
-		scheme = "Bearer"
-	)
-
-	// Invalid element while parsing
-	_, err := DefaultExtractor("invalid", scheme)
-	require.Error(t, err, "DefaultExtractor should fail for 'invalid' keyLookup")
-
-	_, err = MultipleKeySourceLookup([]string{"header:key", "invalid"}, scheme)
-	require.Error(t, err, "MultipleKeySourceLookup should fail for 'invalid' keyLookup")
-}
-
 func TestMultipleKeyLookup(t *testing.T) {
 	const (
 		desc    = "auth with correct key"
@@ -194,8 +192,11 @@ func TestMultipleKeyLookup(t *testing.T) {
 	// setup the fiber endpoint
 	app := fiber.New()
 
-	customExtractor, err := MultipleKeySourceLookup([]string{"header:key", "cookie:key", "query:key"}, scheme)
-	require.NoError(t, err)
+	customExtractor := Chain(
+		FromHeader("key", scheme),
+		FromCookie("key"),
+		FromQuery("key"),
+	)
 
 	authMiddleware := New(Config{
 		Extractor: customExtractor,
@@ -212,7 +213,10 @@ func TestMultipleKeyLookup(t *testing.T) {
 	})
 
 	// construct the test HTTP request
-	var req *http.Request
+	var (
+		req *http.Request
+		err error
+	)
 	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "/foo", nil)
 	require.NoError(t, err)
 	q := req.URL.Query()
@@ -252,10 +256,7 @@ func Test_MultipleKeyAuth(t *testing.T) {
 		Next: func(c fiber.Ctx) bool {
 			return c.OriginalURL() != "/auth1"
 		},
-		Extractor: func() intextractor.Extractor {
-			ext, _ := DefaultExtractor("header:key", "Bearer")
-			return ext
-		}(),
+		Extractor: FromHeader("key", "Bearer"),
 		Validator: func(_ fiber.Ctx, key string) (bool, error) {
 			if key == "password1" {
 				return true, nil
@@ -269,10 +270,7 @@ func Test_MultipleKeyAuth(t *testing.T) {
 		Next: func(c fiber.Ctx) bool {
 			return c.OriginalURL() != "/auth2"
 		},
-		Extractor: func() intextractor.Extractor {
-			ext, _ := DefaultExtractor("header:key", "Bearer")
-			return ext
-		}(),
+		Extractor: FromHeader("key", "Bearer"),
 		Validator: func(_ fiber.Ctx, key string) (bool, error) {
 			if key == "password2" {
 				return true, nil
@@ -517,9 +515,8 @@ func Test_TokenFromContext_None(t *testing.T) {
 func Test_TokenFromContext(t *testing.T) {
 	app := fiber.New()
 	// Wire up keyauth middleware to set TokenFromContext now
-	authHeader, _ := DefaultExtractor("header:Authorization", "Basic")
 	app.Use(New(Config{
-		Extractor:  authHeader,
+		Extractor:  FromHeader(fiber.HeaderAuthorization, "Basic"),
 		AuthScheme: "Basic",
 		Validator: func(_ fiber.Ctx, key string) (bool, error) {
 			if key == CorrectKey {
@@ -583,9 +580,8 @@ func Test_AuthSchemeToken(t *testing.T) {
 func Test_AuthSchemeBasic(t *testing.T) {
 	app := fiber.New()
 
-	authHeader, _ := DefaultExtractor("header:Authorization", "Basic")
 	app.Use(New(Config{
-		Extractor:  authHeader,
+		Extractor:  FromHeader(fiber.HeaderAuthorization, "Basic"),
 		AuthScheme: "Basic",
 		Validator: func(_ fiber.Ctx, key string) (bool, error) {
 			if key == CorrectKey {
