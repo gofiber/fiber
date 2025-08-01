@@ -243,3 +243,4 @@ Two public utility functions are provided that may be useful when creating custo
 
 * `DefaultExtractor(keyLookup string, authScheme string)`: Parses the string-based syntax and returns an `Extractor`.
 * `MultipleKeySourceLookup(keyLookups []string, authScheme string)`: Creates a chained `Extractor` that checks each listed source until a key is found. For example, `MultipleKeySourceLookup([]string{"header:Authorization", "header:x-api-key", "cookie:apikey"}, "Bearer")` would check the standard Authorization header, the `x-api-key` header, and finally a cookie named `apikey`.
+* `Chain(extractors ...extractor.Extractor)`: Tries the provided extractors in order and returns the first successful value.

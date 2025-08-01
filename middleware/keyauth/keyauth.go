@@ -89,7 +89,32 @@ func MultipleKeySourceLookup(keyLookups []string, authScheme string) (intextract
 
 // Chain creates an Extractor that tries the provided extractors in order until one succeeds.
 func Chain(extractors ...intextractor.Extractor) intextractor.Extractor {
-	return intextractor.Chain(extractors...)
+	if len(extractors) == 0 {
+		base := intextractor.Chain()
+		return intextractor.Extractor{
+			Extract: func(c fiber.Ctx) (string, error) {
+				_, _ = base.Extract(c)
+				return "", ErrMissingOrMalformedAPIKey
+			},
+			Chain: []intextractor.Extractor{},
+		}
+	}
+
+	base := intextractor.Chain(extractors...)
+	return intextractor.Extractor{
+		Extract: func(c fiber.Ctx) (string, error) {
+			val, err := base.Extract(c)
+			if err != nil {
+				return "", err
+			}
+			if val == "" {
+				return "", ErrMissingOrMalformedAPIKey
+			}
+			return val, nil
+		},
+		Key:   extractors[0].Key,
+		Chain: extractors,
+	}
 }
 
 func DefaultExtractor(keyLookup, authScheme string) (intextractor.Extractor, error) {
