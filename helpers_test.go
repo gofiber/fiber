@@ -1331,6 +1331,22 @@ func Test_ParamsMatch_InvalidEscape(t *testing.T) {
 	require.False(t, match)
 }
 
+func TestRouteConstPrefix(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]string{
+		"/foo/bar":     "/foo/bar",
+		"/foo/:id/bar": "/foo/",
+		"/foo/:id?":    "/foo",
+		"/:id":         "/",
+		"":             "/",
+	}
+	for path, expect := range cases {
+		rp := parseRoute(path)
+		require.Equal(t, expect, routeConstPrefix(rp), path)
+	}
+}
+
 func Test_MatchEtag(t *testing.T) {
 	t.Parallel()
 
