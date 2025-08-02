@@ -238,7 +238,22 @@ func buildFieldInfo(t reflect.Type, aliasTag string) fieldInfo {
 		if !isExported(f) {
 			continue
 		}
-		info.names[fieldName(f, aliasTag)] = f.Type.Kind()
+
+		// Handle embedded/anonymous struct fields
+		if f.Anonymous && f.Type.Kind() == reflect.Struct {
+			// Recursively process embedded struct fields
+			embeddedInfo := buildFieldInfo(f.Type, aliasTag)
+			// Merge embedded field names into current struct
+			for name, kind := range embeddedInfo.names {
+				info.names[name] = kind
+			}
+			// Merge embedded nested kinds
+			for kind := range embeddedInfo.nestedKinds {
+				info.nestedKinds[kind] = struct{}{}
+			}
+		} else {
+			info.names[fieldName(f, aliasTag)] = f.Type.Kind()
+		}
 
 		if f.Type.Kind() == reflect.Struct {
 			for j := 0; j < f.Type.NumField(); j++ {
