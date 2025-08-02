@@ -6,14 +6,13 @@ id: basicauth
 
 Basic Authentication middleware for [Fiber](https://github.com/gofiber/fiber) that provides an HTTP basic authentication. It calls the next handler for valid credentials and [401 Unauthorized](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401) or a custom response for missing or invalid credentials.
 
-The default unauthorized response includes the header `WWW-Authenticate: Basic realm="Restricted", charset="UTF-8"` and sets `Cache-Control: no-store`.
+The default unauthorized response includes the header `WWW-Authenticate: Basic realm="Restricted", charset="UTF-8"`, sets `Cache-Control: no-store`, and adds a `Vary: Authorization` header.
 
 ## Signatures
 
 ```go
 func New(config Config) fiber.Handler
 func UsernameFromContext(c fiber.Ctx) string
-func PasswordFromContext(c fiber.Ctx) string
 ```
 
 ## Examples
@@ -72,15 +71,6 @@ hashing algorithm from a prefix:
 If no prefix is present the value is interpreted as a SHA-256 digest encoded in
 hex or base64. Plaintext passwords are rejected.
 
-```go
-func handler(c fiber.Ctx) error {
-    username := basicauth.UsernameFromContext(c)
-    password := basicauth.PasswordFromContext(c)
-    log.Printf("Username: %s Password: %s", username, password)
-    return c.SendString("Hello, " + username)
-}
-```
-
 ## Config
 
 | Property        | Type                        | Description                                                                                                                                                           | Default               |
@@ -90,7 +80,6 @@ func handler(c fiber.Ctx) error {
 | Realm           | `string`                    | Realm is a string to define the realm attribute of BasicAuth. The realm identifies the system to authenticate against and can be used by clients to save credentials. | `"Restricted"`        |
 | Charset         | `string`                    | Charset sent in the `WWW-Authenticate` header, so clients know how credentials are encoded. | `"UTF-8"` |
 | HeaderLimit     | `int`                       | Maximum allowed length of the `Authorization` header. Requests exceeding this limit are rejected. | `8192` |
-| StorePassword   | `bool`                      | Store the plaintext password in the context and retrieve it via `PasswordFromContext`. | `false` |
 | Authorizer      | `func(string, string, fiber.Ctx) bool` | Authorizer defines a function to check the credentials. It will be called with a username, password, and the current context and is expected to return true or false to indicate approval.  | `nil`                 |
 | Unauthorized    | `fiber.Handler`             | Unauthorized defines the response body for unauthorized responses.                                                                                                    | `nil`                 |
 
@@ -103,7 +92,6 @@ var ConfigDefault = Config{
     Realm:           "Restricted",
     Charset:         "UTF-8",
     HeaderLimit:     8192,
-    StorePassword:   false,
     Authorizer:      nil,
     Unauthorized:    nil,
 }

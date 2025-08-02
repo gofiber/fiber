@@ -18,11 +18,11 @@ func Test_CSRF_ExtractorSecurity_Validation(t *testing.T) {
 	t.Run("SecureConfigurations", func(t *testing.T) {
 		t.Parallel()
 		secureConfigs := []Config{
-			{Extractor: FromHeader("X-CSRF-Token")},
+			{Extractor: FromHeader("X-Csrf-Token")},
 			{Extractor: FromForm("_csrf")},
 			{Extractor: FromQuery("csrf_token")},
 			{Extractor: FromParam("csrf")},
-			{Extractor: Chain(FromHeader("X-CSRF-Token"), FromForm("_csrf"))},
+			{Extractor: Chain(FromHeader("X-Csrf-Token"), FromForm("_csrf"))},
 		}
 
 		for i, cfg := range secureConfigs {
@@ -68,7 +68,7 @@ func Test_CSRF_ExtractorSecurity_Validation(t *testing.T) {
 		}
 
 		chainedExtractor := Chain(
-			FromHeader("X-CSRF-Token"),
+			FromHeader("X-Csrf-Token"),
 			insecureCookieExtractor, // This should trigger panic
 		)
 
@@ -340,7 +340,7 @@ func Test_isInsecureCookieExtractor(t *testing.T) {
 			name: "SecureHeaderExtractor",
 			extractor: Extractor{
 				Source: SourceHeader,
-				Key:    "X-CSRF-Token",
+				Key:    "X-Csrf-Token",
 			},
 			cookieName: "csrf_",
 			expected:   false,

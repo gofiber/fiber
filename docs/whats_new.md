@@ -110,12 +110,12 @@ app.Get("/login/:id<ulid>", func(c fiber.Ctx) error {
 - **ListenTLSWithCertificate**: Use `app.Listen()` with `tls.Config`.
 - **ListenMutualTLS**: Use `app.Listen()` with `tls.Config`.
 - **ListenMutualTLSWithCertificate**: Use `app.Listen()` with `tls.Config`.
-- **Context()**: Use `Ctx` instead, it follow the `context.Context` interface
-- **SetContext()**: Use `Ctx` instead, it follow the `context.Context` interface
+- **Context()**: Removed. `Ctx` now directly implements `context.Context`, so you can pass `c` anywhere a `context.Context` is required.
+- **SetContext()**: Removed. Attach additional context information using `Locals` or middleware if needed.
 
 ### Method Changes
 
-- **Test**: The `Test` method has replaced the timeout parameter with a configuration parameter. `-1` represents no timeout, and `0` represents no timeout.
+- **Test**: The `Test` method has replaced the timeout parameter with a configuration parameter. `0` or lower represents no timeout.
 - **Listen**: Now has a configuration parameter.
 - **Listener**: Now has a configuration parameter.
 
@@ -1019,7 +1019,6 @@ Examples include:
 - `csrf.HandlerFromContext(c)`
 - `session.FromContext(c)`
 - `basicauth.UsernameFromContext(c)`
-- `basicauth.PasswordFromContext(c)`
 - `keyauth.TokenFromContext(c)`
 
 When used with the Logger middleware, the recommended approach is to use the `CustomTags` feature of the logger, which allows you to call these specific `FromContext` functions. See the [Logger](#logger) section for more details.
@@ -1054,7 +1053,7 @@ The adaptor middleware has been significantly optimized for performance and effi
 
 ### BasicAuth
 
-The BasicAuth middleware now validates the `Authorization` header more rigorously and sets security-focused response headers. Passwords must be provided in **hashed** form (e.g. SHA-256 or bcrypt) rather than plaintext. The default challenge includes the `charset="UTF-8"` parameter and disables caching. Passwords are no longer stored in the request context by default; use the new `StorePassword` option to retain them. A `Charset` option controls the value used in the challenge header.
+The BasicAuth middleware now validates the `Authorization` header more rigorously and sets security-focused response headers. Passwords must be provided in **hashed** form (e.g. SHA-256 or bcrypt) rather than plaintext. The default challenge includes the `charset="UTF-8"` parameter and disables caching. Responses also set a `Vary: Authorization` header to prevent caching based on credentials. Passwords are no longer stored in the request context. A `Charset` option controls the value used in the challenge header.
 A new `HeaderLimit` option restricts the maximum length of the `Authorization` header (default: `8192` bytes).
 The `Authorizer` function now receives the current `fiber.Ctx` as a third argument, allowing credential checks to incorporate request context.
 
@@ -1916,7 +1915,6 @@ You must update your code to use the dedicated exported functions provided by ea
 - `csrf.HandlerFromContext(c)`
 - `session.FromContext(c)`
 - `basicauth.UsernameFromContext(c)`
-- `basicauth.PasswordFromContext(c)`
 - `keyauth.TokenFromContext(c)`
 
 **For logging these values:**
@@ -1947,9 +1945,9 @@ Authorizer: func(user, pass string, _ fiber.Ctx) bool {
 }
 ```
 
-Passwords configured for BasicAuth must now be pre-hashed. If no prefix is supplied the middleware expects a SHA-256 digest encoded in hex. Common prefixes like `{SHA256}` and `{SHA512}` and bcrypt strings are also supported. Plaintext passwords are no longer accepted.
+Passwords configured for BasicAuth must now be pre-hashed. If no prefix is supplied the middleware expects a SHA-256 digest encoded in hex. Common prefixes like `{SHA256}` and `{SHA512}` and bcrypt strings are also supported. Plaintext passwords are no longer accepted. Unauthorized responses also include a `Vary: Authorization` header for correct caching behavior.
 
-You can also set the optional `HeaderLimit`, `StorePassword`, and `Charset`
+You can also set the optional `HeaderLimit` and `Charset`
 options to further control authentication behavior.
 
 #### Cache
@@ -2002,13 +2000,13 @@ app.Use(csrf.New(csrf.Config{
 ```go
 // Before
 app.Use(csrf.New(csrf.Config{
-    KeyLookup: "header:X-CSRF-Token",
+    KeyLookup: "header:X-Csrf-Token",
     // other config...
 }))
 
 // After - use Extractor instead
 app.Use(csrf.New(csrf.Config{
-    Extractor: csrf.FromHeader("X-CSRF-Token"),
+    Extractor: csrf.FromHeader("X-Csrf-Token"),
     // other config...
 }))
 ```
