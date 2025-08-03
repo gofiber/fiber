@@ -63,24 +63,17 @@ type Config struct {
 	//
 	// Optional. Default: 8192.
 	HeaderLimit int
-
-	// StorePassword determines if the plaintext password should be stored
-	// in the context for later retrieval via PasswordFromContext.
-	//
-	// Optional. Default: false.
-	StorePassword bool
 }
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next:          nil,
-	Users:         map[string]string{},
-	Realm:         "Restricted",
-	Charset:       "UTF-8",
-	HeaderLimit:   8192,
-	StorePassword: false,
-	Authorizer:    nil,
-	Unauthorized:  nil,
+	Next:         nil,
+	Users:        map[string]string{},
+	Realm:        "Restricted",
+	Charset:      "UTF-8",
+	HeaderLimit:  8192,
+	Authorizer:   nil,
+	Unauthorized: nil,
 }
 
 // Helper function to set default values

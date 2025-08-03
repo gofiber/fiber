@@ -28,7 +28,7 @@ type RangeSet struct {
 
 //go:generate ifacemaker --file req.go --struct DefaultReq --iface Req --pkg fiber --output req_interface_gen.go --not-exported true --iface-comment "Req is an interface for request-related Ctx methods."
 type DefaultReq struct {
-	c Ctx
+	c *DefaultCtx
 }
 
 // Accepts checks if the specified extensions or content types are acceptable.
