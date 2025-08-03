@@ -49,9 +49,6 @@ func configDefault(config ...Config) Config {
 
 	cfg := config[0]
 
-	if cfg.Next == nil {
-		cfg.Next = ConfigDefault.Next
-	}
 	if cfg.Probe == nil {
 		cfg.Probe = ConfigDefault.Probe
 	}
