@@ -1107,20 +1107,7 @@ Now, static middleware can do everything that filesystem middleware and static d
 
 ### Healthcheck
 
-The Healthcheck middleware has been enhanced to support more than two routes, with default endpoints for liveliness, readiness, and startup checks. Here's a detailed breakdown of the changes and how to use the new features.
-
-1. **Support for More Than Two Routes**:
-    - The updated middleware now supports multiple routes beyond the default liveliness and readiness endpoints. This allows for more granular health checks, such as startup probes.
-
-2. **Default Endpoints**:
-    - Three default endpoints are now available:
-        - **Liveness**: `/livez`
-        - **Readiness**: `/readyz`
-        - **Startup**: `/startupz`
-    - These endpoints can be customized or replaced with user-defined routes.
-
-3. **Simplified Configuration**:
-    - The configuration for each health check endpoint has been simplified. Each endpoint can be configured separately, allowing for more flexibility and readability.
+The healthcheck middleware has been simplified into a single generic probe handler. No endpoints are registered automatically. Register the middleware on each route you need—using helpers like `healthcheck.LivenessEndpoint`, `healthcheck.ReadinessEndpoint`, or `healthcheck.StartupEndpoint`—and optionally supply a `Probe` function to determine the service's health. This approach lets you expose any number of health check routes.
 
 Refer to the [healthcheck middleware migration guide](./middleware/healthcheck.md) or the [general migration guide](#-migration-guide) to review the changes.
 
@@ -2083,7 +2070,7 @@ The `ExcludeVars` option has been removed. Remove any references to it and use
 
 #### Healthcheck
 
-Previously, the Healthcheck middleware was configured with a combined setup for liveliness and readiness probes:
+Previously, the Healthcheck middleware was configured with a combined setup for liveness and readiness probes:
 
 ```go
 //before

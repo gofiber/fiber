@@ -5,7 +5,7 @@ import (
 )
 
 func New(config ...Config) fiber.Handler {
-	cfg := defaultConfig(config...)
+	cfg := configDefault(config...)
 
 	return func(c fiber.Ctx) error {
 		// Don't execute middleware if Next returns true
