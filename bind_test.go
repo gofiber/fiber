@@ -2059,6 +2059,18 @@ func Test_Bind_All(t *testing.T) {
 				Name: "queryname",
 			},
 		},
+		{
+			name: "Skip empty body despite content-type",
+			out:  new(User),
+			config: &RequestConfig{
+				ContentType: MIMEApplicationJSON,
+				Body:        []byte{},
+				Query:       "name=queryname",
+			},
+			expected: &User{
+				Name: "queryname",
+			},
+		},
 	}
 
 	app := New()

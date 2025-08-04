@@ -310,8 +310,8 @@ func (b *Bind) All(out any) error {
 	// Precedence: URL Params -> Body -> Query -> Headers -> Cookies
 	sources := []func(any) error{b.URI}
 
-	// Check if both Content-Length and Content-Type are set
-	if b.ctx.RequestCtx().Request.Header.ContentLength() != 0 && len(b.ctx.RequestCtx().Request.Header.ContentType()) > 0 {
+	// Check if both Body and Content-Type are set
+	if len(b.ctx.Request().Body()) > 0 && len(b.ctx.RequestCtx().Request.Header.ContentType()) > 0 {
 		sources = append(sources, b.Body)
 	}
 	sources = append(sources, b.Query, b.Header, b.Cookie)
