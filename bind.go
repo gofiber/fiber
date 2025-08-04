@@ -309,7 +309,7 @@ func (b *Bind) All(out any) error {
 
 	// Precedence: URL Params -> Body -> Query -> Headers -> Cookies
 	sources := []func(any) error{b.URI}
-if b.ctx.RequestCtx().Request.Header.ContentLength() != 0 && len(b.ctx.RequestCtx().Request.Header.ContentType()) > 0 {
+	if b.ctx.RequestCtx().Request.Header.ContentLength() != 0 {
 		sources = append(sources, b.Body)
 	}
 	sources = append(sources, b.Query, b.Header, b.Cookie)
