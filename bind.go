@@ -1,8 +1,10 @@
 package fiber
 
 import (
+	"errors"
 	"reflect"
 	"slices"
+	"sync"
 
 	"github.com/gofiber/fiber/v3/binder"
 	"github.com/gofiber/utils/v2"
@@ -20,11 +22,41 @@ type StructValidator interface {
 	Validate(out any) error
 }
 
+var bindPool = sync.Pool{
+	New: func() any {
+		return &Bind{
+			dontHandleErrs: true,
+		}
+	},
+}
+
 // Bind struct
 type Bind struct {
 	ctx            Ctx
 	dontHandleErrs bool
 	skipValidation bool
+}
+
+// AcquireBind returns Bind reference from bind pool.
+func AcquireBind() *Bind {
+	b, ok := bindPool.Get().(*Bind)
+	if !ok {
+		panic(errors.New("failed to type-assert to *Bind"))
+	}
+
+	return b
+}
+
+// ReleaseBind returns b acquired via Bind to bind pool.
+func ReleaseBind(b *Bind) {
+	b.release()
+	bindPool.Put(b)
+}
+
+func (b *Bind) release() {
+	b.ctx = nil
+	b.dontHandleErrs = true
+	b.skipValidation = false
 }
 
 // WithoutAutoHandling If you want to handle binder errors manually, you can use `WithoutAutoHandling`.
