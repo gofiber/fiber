@@ -24,6 +24,7 @@ type StructValidator interface {
 type Bind struct {
 	ctx            Ctx
 	dontHandleErrs bool
+	skipValidation bool
 }
 
 // WithoutAutoHandling If you want to handle binder errors manually, you can use `WithoutAutoHandling`.
@@ -55,6 +56,9 @@ func (b *Bind) returnErr(err error) error {
 
 // Struct validation.
 func (b *Bind) validateStruct(out any) error {
+	if b.skipValidation {
+		return nil
+	}
 	validator := b.ctx.App().config.StructValidator
 	if validator != nil {
 		return validator.Validate(out)
@@ -304,21 +308,23 @@ func (b *Bind) All(out any) error {
 	outElem := outVal.Elem()
 
 	// Precedence: URL Params -> Body -> Query -> Headers -> Cookies
-	sources := []func(any) error{
-		b.URI,
-		b.Body,
-		b.Query,
-		b.Header,
-		b.Cookie,
-	}
+	sources := []func(any) error{b.URI}
 
-	tempStruct := reflect.New(outElem.Type()).Interface()
+	// Check if both Body and Content-Type are set
+	if len(b.ctx.Request().Body()) > 0 && len(b.ctx.RequestCtx().Request.Header.ContentType()) > 0 {
+		sources = append(sources, b.Body)
+	}
+	sources = append(sources, b.Query, b.Header, b.Cookie)
+	prevSkip := b.skipValidation
+	b.skipValidation = true
 
 	// TODO: Support custom precedence with an optional binding_source tag
 	// TODO: Create WithOverrideEmptyValues
 	// Bind from each source, but only update unset fields
 	for _, bindFunc := range sources {
+		tempStruct := reflect.New(outElem.Type()).Interface()
 		if err := bindFunc(tempStruct); err != nil {
+			b.skipValidation = prevSkip
 			return err
 		}
 
@@ -326,7 +332,8 @@ func (b *Bind) All(out any) error {
 		mergeStruct(outElem, tempStructVal)
 	}
 
-	return nil
+	b.skipValidation = prevSkip
+	return b.returnErr(b.validateStruct(out))
 }
 
 func mergeStruct(dst, src reflect.Value) {

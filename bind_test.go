@@ -1854,7 +1854,7 @@ func (*structValidator) Validate(out any) error {
 }
 
 type simpleQuery struct {
-	Name string `query:"name"`
+	Name string `query:"name" json:"name"`
 }
 
 // go test -run Test_Bind_StructValidator
@@ -2048,6 +2048,29 @@ func Test_Bind_All(t *testing.T) {
 				Email: "form@doe.com",
 			},
 		},
+		{
+			name: "Skip body when content-type missing",
+			out:  new(User),
+			config: &RequestConfig{
+				Body:  []byte(`{"name":"bodyname"}`),
+				Query: "name=queryname",
+			},
+			expected: &User{
+				Name: "queryname",
+			},
+		},
+		{
+			name: "Skip empty body despite content-type",
+			out:  new(User),
+			config: &RequestConfig{
+				ContentType: MIMEApplicationJSON,
+				Body:        []byte{},
+				Query:       "name=queryname",
+			},
+			expected: &User{
+				Name: "queryname",
+			},
+		},
 	}
 
 	app := New()
@@ -2111,6 +2134,46 @@ func Test_Bind_All_Uri_Precedence(t *testing.T) {
 	res, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
+}
+
+// go test -run Test_Bind_All_Query_Precedence
+func Test_Bind_All_Query_Precedence(t *testing.T) {
+	t.Parallel()
+	type Data struct {
+		ID int `query:"id" header:"id" cookie:"id"`
+	}
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().URI().SetQueryString("id=5")
+	c.Request().Header.Set("id", "3")
+	c.Request().Header.SetCookie("id", "2")
+
+	d := new(Data)
+	require.NoError(t, (&Bind{ctx: c}).All(d))
+	require.Equal(t, 5, d.ID)
+}
+
+// go test -run Test_Bind_All_StructValidator
+func Test_Bind_All_StructValidator(t *testing.T) {
+	t.Parallel()
+	app := New(Config{StructValidator: &structValidator{}})
+
+	// Success case: name comes from body only
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx.Request().Header.SetContentType(MIMEApplicationJSON)
+	ctx.Request().SetBody([]byte(`{"name":"john"}`))
+	sq := new(simpleQuery)
+	require.NoError(t, (&Bind{ctx: ctx}).All(sq))
+	require.Equal(t, "john", sq.Name)
+
+	// Failure: missing name everywhere
+	ctxFail := app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctxFail.Request().Header.SetContentType(MIMEApplicationJSON)
+	ctxFail.Request().SetBody([]byte(`{}`))
+	sqFail := new(simpleQuery)
+	err := (&Bind{ctx: ctxFail}).WithoutAutoHandling().All(sqFail)
+	require.EqualError(t, err, "you should have entered right name")
 }
 
 // go test -v -run=^$ -bench=Benchmark_Bind_All -benchmem -count=4
