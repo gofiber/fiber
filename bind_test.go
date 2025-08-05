@@ -32,6 +32,21 @@ func Test_returnErr(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// go test -run Test_AcquireReleaseBind -v
+func Test_AcquireReleaseBind(t *testing.T) {
+	b := AcquireBind()
+	b.dontHandleErrs = false
+	b.skipValidation = true
+	b.ctx = &DefaultCtx{}
+	ReleaseBind(b)
+
+	b2 := AcquireBind()
+	require.Nil(t, b2.ctx)
+	require.True(t, b2.dontHandleErrs)
+	require.False(t, b2.skipValidation)
+	ReleaseBind(b2)
+}
+
 // go test -run Test_Bind_Query -v
 func Test_Bind_Query(t *testing.T) {
 	t.Parallel()
