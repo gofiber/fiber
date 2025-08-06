@@ -960,11 +960,8 @@ func Test_Proxy_Do_KeepConnectionHeader(t *testing.T) {
 		return c.SendString(conn)
 	})
 
-	WithKeepConnectionHeader(true)
-	t.Cleanup(func() { WithKeepConnectionHeader(false) })
-
 	app := fiber.New()
-	app.Get("/", func(c fiber.Ctx) error {
+	app.Get("/", WithKeepConnectionHeader(true), func(c fiber.Ctx) error {
 		c.Request().Header.Set(fiber.HeaderConnection, "keep-me")
 		return Do(c, "http://"+addr+"/")
 	})
@@ -988,10 +985,8 @@ func Test_Proxy_Do_DropConnectionHeader(t *testing.T) {
 		return c.SendString(conn)
 	})
 
-	WithKeepConnectionHeader(false)
-
 	app := fiber.New()
-	app.Get("/", func(c fiber.Ctx) error {
+	app.Get("/", WithKeepConnectionHeader(false), func(c fiber.Ctx) error {
 		c.Request().Header.Set(fiber.HeaderConnection, "keep-me")
 		return Do(c, "http://"+addr+"/")
 	})

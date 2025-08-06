@@ -11,6 +11,8 @@ Proxy middleware for [Fiber](https://github.com/gofiber/fiber) that allows you t
 ```go
 // Balancer creates a load balancer among multiple upstream servers.
 func Balancer(config Config) fiber.Handler
+// WithKeepConnectionHeader returns a middleware to keep or drop the Connection header.
+func WithKeepConnectionHeader(keep bool) fiber.Handler
 // Forward performs the given http request and fills the given http response.
 func Forward(addr string, clients ...*fasthttp.Client) fiber.Handler
 // Do performs the given http request and fills the given http response.
@@ -51,11 +53,8 @@ proxy.WithClient(&fasthttp.Client{
     },
 })
 
-// Keep the Connection header when using Forward/Do helpers
-proxy.WithKeepConnectionHeader(true)
-
-// Forward to url
-app.Get("/gif", proxy.Forward("https://i.imgur.com/IWaBepg.gif"))
+// Forward to url while keeping the Connection header
+app.Get("/gif", proxy.WithKeepConnectionHeader(true), proxy.Forward("https://i.imgur.com/IWaBepg.gif"))
 
 // If you want to forward with a specific domain. You have to use proxy.DomainForward.
 app.Get("/payments", proxy.DomainForward("docs.gofiber.io", "http://localhost:8000"))
@@ -66,8 +65,8 @@ app.Get("/gif", proxy.Forward("https://i.imgur.com/IWaBepg.gif", &fasthttp.Clien
     DisablePathNormalizing:   true,
 }))
 
-// Make request within handler
-app.Get("/:id", func(c fiber.Ctx) error {
+// Make request within handler while keeping the Connection header
+app.Get("/:id", proxy.WithKeepConnectionHeader(true), func(c fiber.Ctx) error {
     url := "https://i.imgur.com/"+c.Params("id")+".gif"
     if err := proxy.Do(c, url); err != nil {
         return err

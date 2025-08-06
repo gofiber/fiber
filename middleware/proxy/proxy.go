@@ -114,14 +114,15 @@ var client = &fasthttp.Client{
 
 var lock sync.RWMutex
 
-var keepConnectionHeader = ConfigDefault.KeepConnectionHeader
+const keepConnectionHeaderLocalKey = "__proxy_keep_conn__"
 
-// WithKeepConnectionHeader sets the global keep connection header option.
-// This function should be called before Do and Forward.
-func WithKeepConnectionHeader(keep bool) {
-	lock.Lock()
-	defer lock.Unlock()
-	keepConnectionHeader = keep
+// WithKeepConnectionHeader returns a middleware that sets whether the
+// "Connection" header should be kept when using Forward or Do helpers.
+func WithKeepConnectionHeader(keep bool) fiber.Handler {
+	return func(c fiber.Ctx) error {
+		c.Locals(keepConnectionHeaderLocalKey, keep)
+		return c.Next()
+	}
 }
 
 // WithClient sets the global proxy client.
@@ -180,14 +181,14 @@ func doAction(
 	clients ...*fasthttp.Client,
 ) error {
 	var (
-		cli      *fasthttp.Client
-		keepConn bool
+		cli *fasthttp.Client
 	)
 
 	lock.RLock()
-	keepConn = keepConnectionHeader
 	defaultClient := client
 	lock.RUnlock()
+
+	keepConn, _ := c.Locals(keepConnectionHeaderLocalKey).(bool)
 
 	// set local or global client
 	if len(clients) != 0 {
