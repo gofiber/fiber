@@ -11,8 +11,6 @@ Proxy middleware for [Fiber](https://github.com/gofiber/fiber) that allows you t
 ```go
 // Balancer creates a load balancer among multiple upstream servers.
 func Balancer(config Config) fiber.Handler
-// WithKeepConnectionHeader returns a middleware to keep or drop the Connection header.
-func WithKeepConnectionHeader(keep bool) fiber.Handler
 // Forward performs the given http request and fills the given http response.
 func Forward(addr string, clients ...*fasthttp.Client) fiber.Handler
 // Do performs the given http request and fills the given http response.
@@ -53,9 +51,6 @@ proxy.WithClient(&fasthttp.Client{
     },
 })
 
-// Forward to url while keeping the Connection header
-app.Get("/gif", proxy.WithKeepConnectionHeader(true), proxy.Forward("https://i.imgur.com/IWaBepg.gif"))
-
 // If you want to forward with a specific domain. You have to use proxy.DomainForward.
 app.Get("/payments", proxy.DomainForward("docs.gofiber.io", "http://localhost:8000"))
 
@@ -65,8 +60,8 @@ app.Get("/gif", proxy.Forward("https://i.imgur.com/IWaBepg.gif", &fasthttp.Clien
     DisablePathNormalizing:   true,
 }))
 
-// Make request within handler while keeping the Connection header
-app.Get("/:id", proxy.WithKeepConnectionHeader(true), func(c fiber.Ctx) error {
+// Make request within handler
+app.Get("/:id", func(c fiber.Ctx) error {
     url := "https://i.imgur.com/"+c.Params("id")+".gif"
     if err := proxy.Do(c, url); err != nil {
         return err
@@ -113,6 +108,14 @@ app.Use(proxy.Balancer(proxy.Config{
         "http://localhost:3002",
         "http://localhost:3003",
     },
+}))
+
+// Drop the Connection header when proxying
+app.Use(proxy.Balancer(proxy.Config{
+    Servers: []string{
+        "http://localhost:3001",
+    },
+    KeepConnectionHeader: false,
 }))
 
 // Or extend your balancer for customization
@@ -163,7 +166,7 @@ app.Use(proxy.Balancer(proxy.Config{
 | Timeout         | `time.Duration`                                | Timeout is the request timeout used when calling the proxy client.                                                                                                                                                                 | 1 second        |
 | ReadBufferSize  | `int`                                          | Per-connection buffer size for requests' reading. This also limits the maximum header size. Increase this buffer if your clients send multi-KB RequestURIs and/or multi-KB headers (for example, BIG cookies).                     | (Not specified) |
 | WriteBufferSize | `int`                                          | Per-connection buffer size for responses' writing.                                                                                                                                                                                 | (Not specified) |
-| KeepConnectionHeader | `bool`                                    | Keeps the `Connection` header when set to `true`.                                             | `false`        |
+| KeepConnectionHeader | `bool`                                    | Keeps the `Connection` header when set to `true`.                                             | `true`        |
 | TLSConfig       | `*tls.Config` | TLS config for the HTTP client. | `nil`           |
 | DialDualStack   | `bool`                                         | Client will attempt to connect to both IPv4 and IPv6 host addresses if set to true.                                                                                                                                                | `false`         |
 | Client          | `*fasthttp.LBClient`                           | Client is a custom client when client config is complex.                                                                                                                                                                           | `nil`           |
@@ -176,6 +179,6 @@ var ConfigDefault = Config{
     ModifyRequest:  nil,
     ModifyResponse: nil,
     Timeout:        fasthttp.DefaultLBClientTimeout,
-    KeepConnectionHeader: false,
+    KeepConnectionHeader: true,
 }
 ```

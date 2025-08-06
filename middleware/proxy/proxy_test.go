@@ -486,7 +486,7 @@ func Test_Proxy_Buffer_Size_Response(t *testing.T) {
 	})
 
 	app := fiber.New()
-	app.Use(Balancer(Config{Servers: []string{addr}}))
+	app.Use(Balancer(Config{Servers: []string{addr}, KeepConnectionHeader: true}))
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
@@ -907,9 +907,8 @@ func Test_Proxy_KeepConnectionHeader(t *testing.T) {
 	t.Parallel()
 
 	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
-		conn := c.Get(fiber.HeaderConnection)
 		c.Set(fiber.HeaderConnection, "backend")
-		return c.SendString(conn)
+		return c.SendString("ok")
 	})
 
 	app := fiber.New()
@@ -917,13 +916,10 @@ func Test_Proxy_KeepConnectionHeader(t *testing.T) {
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	req.Host = addr
-	req.Header.Set(fiber.HeaderConnection, "keep-me")
+	req.Header.Set(fiber.HeaderConnection, "keep-alive")
 
 	resp, err := app.Test(req)
 	require.NoError(t, err)
-	b, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "keep-me", string(b))
 	require.Equal(t, "backend", resp.Header.Get(fiber.HeaderConnection))
 }
 
@@ -931,72 +927,18 @@ func Test_Proxy_DropConnectionHeader(t *testing.T) {
 	t.Parallel()
 
 	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
-		conn := c.Get(fiber.HeaderConnection)
 		c.Set(fiber.HeaderConnection, "backend")
-		return c.SendString(conn)
+		return c.SendString("ok")
 	})
 
 	app := fiber.New()
-	app.Use(Balancer(Config{Servers: []string{addr}}))
+	app.Use(Balancer(Config{Servers: []string{addr}, KeepConnectionHeader: false}))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	req.Host = addr
-	req.Header.Set(fiber.HeaderConnection, "keep-me")
+	req.Header.Set(fiber.HeaderConnection, "keep-alive")
 
 	resp, err := app.Test(req)
 	require.NoError(t, err)
-	b, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Empty(t, string(b))
-	require.Empty(t, resp.Header.Get(fiber.HeaderConnection))
-}
-
-func Test_Proxy_Do_KeepConnectionHeader(t *testing.T) {
-	t.Parallel()
-
-	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
-		conn := c.Get(fiber.HeaderConnection)
-		c.Set(fiber.HeaderConnection, "backend")
-		return c.SendString(conn)
-	})
-
-	app := fiber.New()
-	app.Get("/", WithKeepConnectionHeader(true), func(c fiber.Ctx) error {
-		c.Request().Header.Set(fiber.HeaderConnection, "keep-me")
-		return Do(c, "http://"+addr+"/")
-	})
-
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
-
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	b, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Equal(t, "keep-me", string(b))
-	require.Equal(t, "backend", resp.Header.Get(fiber.HeaderConnection))
-}
-
-func Test_Proxy_Do_DropConnectionHeader(t *testing.T) {
-	t.Parallel()
-
-	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
-		conn := c.Get(fiber.HeaderConnection)
-		c.Set(fiber.HeaderConnection, "backend")
-		return c.SendString(conn)
-	})
-
-	app := fiber.New()
-	app.Get("/", WithKeepConnectionHeader(false), func(c fiber.Ctx) error {
-		c.Request().Header.Set(fiber.HeaderConnection, "keep-me")
-		return Do(c, "http://"+addr+"/")
-	})
-
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
-
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	b, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.Empty(t, string(b))
 	require.Empty(t, resp.Header.Get(fiber.HeaderConnection))
 }

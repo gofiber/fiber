@@ -114,17 +114,6 @@ var client = &fasthttp.Client{
 
 var lock sync.RWMutex
 
-const keepConnectionHeaderLocalKey = "__proxy_keep_conn__"
-
-// WithKeepConnectionHeader returns a middleware that sets whether the
-// "Connection" header should be kept when using Forward or Do helpers.
-func WithKeepConnectionHeader(keep bool) fiber.Handler {
-	return func(c fiber.Ctx) error {
-		c.Locals(keepConnectionHeaderLocalKey, keep)
-		return c.Next()
-	}
-}
-
 // WithClient sets the global proxy client.
 // This function should be called before Do and Forward.
 func WithClient(cli *fasthttp.Client) {
@@ -180,21 +169,15 @@ func doAction(
 	action func(cli *fasthttp.Client, req *fasthttp.Request, resp *fasthttp.Response) error,
 	clients ...*fasthttp.Client,
 ) error {
-	var (
-		cli *fasthttp.Client
-	)
-
-	lock.RLock()
-	defaultClient := client
-	lock.RUnlock()
-
-	keepConn, _ := c.Locals(keepConnectionHeaderLocalKey).(bool)
+	var cli *fasthttp.Client
 
 	// set local or global client
 	if len(clients) != 0 {
 		cli = clients[0]
 	} else {
-		cli = defaultClient
+		lock.RLock()
+		cli = client
+		lock.RUnlock()
 	}
 
 	req := c.Request()
@@ -210,15 +193,11 @@ func doAction(
 		req.URI().SetSchemeBytes(scheme)
 	}
 
-	if !keepConn {
-		req.Header.Del(fiber.HeaderConnection)
-	}
+	req.Header.Del(fiber.HeaderConnection)
 	if err := action(cli, req, res); err != nil {
 		return err
 	}
-	if !keepConn {
-		res.Header.Del(fiber.HeaderConnection)
-	}
+	res.Header.Del(fiber.HeaderConnection)
 	return nil
 }
 
