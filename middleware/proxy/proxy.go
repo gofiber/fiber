@@ -67,8 +67,10 @@ func Balancer(config Config) fiber.Handler {
 		req := c.Request()
 		res := c.Response()
 
-		// Don't proxy "Connection" header
-		req.Header.Del(fiber.HeaderConnection)
+		if !cfg.KeepConnectionHeader {
+			// Don't proxy "Connection" header
+			req.Header.Del(fiber.HeaderConnection)
+		}
 
 		// Modify request
 		if cfg.ModifyRequest != nil {
@@ -88,8 +90,10 @@ func Balancer(config Config) fiber.Handler {
 			return err
 		}
 
-		// Don't proxy "Connection" header
-		res.Header.Del(fiber.HeaderConnection)
+		if !cfg.KeepConnectionHeader {
+			// Don't proxy "Connection" header
+			res.Header.Del(fiber.HeaderConnection)
+		}
 
 		// Modify response
 		if cfg.ModifyResponse != nil {
