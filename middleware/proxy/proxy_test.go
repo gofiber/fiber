@@ -950,3 +950,58 @@ func Test_Proxy_DropConnectionHeader(t *testing.T) {
 	require.Empty(t, string(b))
 	require.Empty(t, resp.Header.Get(fiber.HeaderConnection))
 }
+
+func Test_Proxy_Do_KeepConnectionHeader(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		conn := c.Get(fiber.HeaderConnection)
+		c.Set(fiber.HeaderConnection, "backend")
+		return c.SendString(conn)
+	})
+
+	WithKeepConnectionHeader(true)
+	t.Cleanup(func() { WithKeepConnectionHeader(false) })
+
+	app := fiber.New()
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Request().Header.Set(fiber.HeaderConnection, "keep-me")
+		return Do(c, "http://"+addr+"/")
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	b, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "keep-me", string(b))
+	require.Equal(t, "backend", resp.Header.Get(fiber.HeaderConnection))
+}
+
+func Test_Proxy_Do_DropConnectionHeader(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		conn := c.Get(fiber.HeaderConnection)
+		c.Set(fiber.HeaderConnection, "backend")
+		return c.SendString(conn)
+	})
+
+	WithKeepConnectionHeader(false)
+
+	app := fiber.New()
+	app.Get("/", func(c fiber.Ctx) error {
+		c.Request().Header.Set(fiber.HeaderConnection, "keep-me")
+		return Do(c, "http://"+addr+"/")
+	})
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	b, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Empty(t, string(b))
+	require.Empty(t, resp.Header.Get(fiber.HeaderConnection))
+}

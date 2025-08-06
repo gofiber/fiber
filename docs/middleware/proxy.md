@@ -43,13 +43,16 @@ After you initiate your Fiber app, you can use the following possibilities:
 ```go
 // if you need to use global self-custom client, you should use proxy.WithClient.
 proxy.WithClient(&fasthttp.Client{
-    NoDefaultUserAgentHeader: true, 
+    NoDefaultUserAgentHeader: true,
     DisablePathNormalizing:   true,
     // if target https site uses a self-signed certificate, you should
     TLSConfig:                &tls.Config{
         InsecureSkipVerify: true,
     },
 })
+
+// Keep the Connection header when using Forward/Do helpers
+proxy.WithKeepConnectionHeader(true)
 
 // Forward to url
 app.Get("/gif", proxy.Forward("https://i.imgur.com/IWaBepg.gif"))
