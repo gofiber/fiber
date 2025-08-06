@@ -55,6 +55,11 @@ type Config struct {
 	// Per-connection buffer size for responses' writing.
 	WriteBufferSize int
 
+	// KeepConnectionHeader keeps the "Connection" header when set to true.
+	//
+	// Optional. Default: false
+	KeepConnectionHeader bool
+
 	// Attempt to connect to both ipv4 and ipv6 host addresses if set to true.
 	//
 	// By default client connects only to ipv4 addresses, since unfortunately ipv6
@@ -66,10 +71,11 @@ type Config struct {
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next:           nil,
-	ModifyRequest:  nil,
-	ModifyResponse: nil,
-	Timeout:        fasthttp.DefaultLBClientTimeout,
+	Next:                 nil,
+	ModifyRequest:        nil,
+	ModifyResponse:       nil,
+	Timeout:              fasthttp.DefaultLBClientTimeout,
+	KeepConnectionHeader: false,
 }
 
 // configDefault function to set default values

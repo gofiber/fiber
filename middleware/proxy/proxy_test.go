@@ -902,3 +902,51 @@ func Test_Proxy_Immutable(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
 }
+
+func Test_Proxy_KeepConnectionHeader(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		conn := c.Get(fiber.HeaderConnection)
+		c.Set(fiber.HeaderConnection, "backend")
+		return c.SendString(conn)
+	})
+
+	app := fiber.New()
+	app.Use(Balancer(Config{Servers: []string{addr}, KeepConnectionHeader: true}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req.Host = addr
+	req.Header.Set(fiber.HeaderConnection, "keep-me")
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	b, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "keep-me", string(b))
+	require.Equal(t, "backend", resp.Header.Get(fiber.HeaderConnection))
+}
+
+func Test_Proxy_DropConnectionHeader(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServerIPv4(t, func(c fiber.Ctx) error {
+		conn := c.Get(fiber.HeaderConnection)
+		c.Set(fiber.HeaderConnection, "backend")
+		return c.SendString(conn)
+	})
+
+	app := fiber.New()
+	app.Use(Balancer(Config{Servers: []string{addr}}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req.Host = addr
+	req.Header.Set(fiber.HeaderConnection, "keep-me")
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	b, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Empty(t, string(b))
+	require.Empty(t, resp.Header.Get(fiber.HeaderConnection))
+}
