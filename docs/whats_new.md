@@ -1292,7 +1292,7 @@ Monitor middleware is migrated to the [Contrib package](https://github.com/gofib
 
 The proxy middleware has been updated to improve consistency with Go naming conventions. The `TlsConfig` field in the configuration struct has been renamed to `TLSConfig`. Additionally, the `WithTlsConfig` method has been removed; you should now configure TLS directly via the `TLSConfig` property within the `Config` struct.
 
-The new `KeepConnectionHeader` option (default `true`) allows retaining the `Connection` header and can be disabled to drop it.
+The new `KeepConnectionHeader` option (default `false`) drops the `Connection` header unless explicitly enabled to retain it.
 
 ### Session
 

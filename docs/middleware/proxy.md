@@ -110,12 +110,12 @@ app.Use(proxy.Balancer(proxy.Config{
     },
 }))
 
-// Drop the Connection header when proxying
+// Keep the Connection header when proxying
 app.Use(proxy.Balancer(proxy.Config{
     Servers: []string{
         "http://localhost:3001",
     },
-    KeepConnectionHeader: false,
+    KeepConnectionHeader: true,
 }))
 
 // Or extend your balancer for customization
@@ -166,7 +166,8 @@ app.Use(proxy.Balancer(proxy.Config{
 | Timeout         | `time.Duration`                                | Timeout is the request timeout used when calling the proxy client.                                                                                                                                                                 | 1 second        |
 | ReadBufferSize  | `int`                                          | Per-connection buffer size for requests' reading. This also limits the maximum header size. Increase this buffer if your clients send multi-KB RequestURIs and/or multi-KB headers (for example, BIG cookies).                     | (Not specified) |
 | WriteBufferSize | `int`                                          | Per-connection buffer size for responses' writing.                                                                                                                                                                                 | (Not specified) |
-| KeepConnectionHeader | `bool`                                    | Keeps the `Connection` header when set to `true`.                                             | `true`        |
+| KeepConnectionHeader | `bool`                                    | Keeps the `Connection` header when set to `true`.
+                                   | `false`       |
 | TLSConfig       | `*tls.Config` | TLS config for the HTTP client. | `nil`           |
 | DialDualStack   | `bool`                                         | Client will attempt to connect to both IPv4 and IPv6 host addresses if set to true.                                                                                                                                                | `false`         |
 | Client          | `*fasthttp.LBClient`                           | Client is a custom client when client config is complex.                                                                                                                                                                           | `nil`           |
@@ -179,6 +180,6 @@ var ConfigDefault = Config{
     ModifyRequest:  nil,
     ModifyResponse: nil,
     Timeout:        fasthttp.DefaultLBClientTimeout,
-    KeepConnectionHeader: true,
+    KeepConnectionHeader: false,
 }
 ```

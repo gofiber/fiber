@@ -57,7 +57,7 @@ type Config struct {
 
 	// KeepConnectionHeader keeps the "Connection" header when set to true.
 	//
-	// Optional. Default: true
+	// Optional. Default: false
 	KeepConnectionHeader bool
 
 	// Attempt to connect to both ipv4 and ipv6 host addresses if set to true.
@@ -75,7 +75,7 @@ var ConfigDefault = Config{
 	ModifyRequest:        nil,
 	ModifyResponse:       nil,
 	Timeout:              fasthttp.DefaultLBClientTimeout,
-	KeepConnectionHeader: true,
+	KeepConnectionHeader: false,
 }
 
 // configDefault function to set default values

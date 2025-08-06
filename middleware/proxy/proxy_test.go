@@ -932,7 +932,7 @@ func Test_Proxy_DropConnectionHeader(t *testing.T) {
 	})
 
 	app := fiber.New()
-	app.Use(Balancer(Config{Servers: []string{addr}, KeepConnectionHeader: false}))
+	app.Use(Balancer(Config{Servers: []string{addr}}))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	req.Host = addr
