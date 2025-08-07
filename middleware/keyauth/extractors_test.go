@@ -47,6 +47,11 @@ func Test_Extractors_Missing(t *testing.T) {
 	token, err = FromAuthHeader(fiber.HeaderAuthorization, "Bearer").Extract(ctx)
 	require.Empty(t, token)
 	require.Equal(t, ErrMissingAPIKeyInHeader, err)
+
+	// Missing cookie
+	token, err = FromCookie("api_key").Extract(ctx)
+	require.Empty(t, token)
+	require.Equal(t, ErrMissingAPIKeyInCookie, err)
 }
 
 // newRequest creates a new *http.Request for Fiber's app.Test
@@ -98,6 +103,22 @@ func Test_Extractors(t *testing.T) {
 	token, err = FromHeader("X-Api-Key").Extract(ctx)
 	require.NoError(t, err)
 	require.Equal(t, "token_from_header", token)
+
+	// FromAuthHeader
+	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	ctx.Request().Header.Set(fiber.HeaderAuthorization, "Bearer token_from_auth_header")
+	token, err = FromAuthHeader(fiber.HeaderAuthorization, "Bearer").Extract(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "token_from_auth_header", token)
+
+	// FromCookie
+	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	ctx.Request().Header.SetCookie("api_key", "token_from_cookie")
+	token, err = FromCookie("api_key").Extract(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "token_from_cookie", token)
 }
 
 // go test -run Test_Extractor_Chain

@@ -1,4 +1,3 @@
-// Special thanks to Echo: https://github.com/labstack/echo/blob/master/middleware/key_auth.go
 package keyauth
 
 import (
@@ -13,7 +12,7 @@ type contextKey int
 
 // The keys for the values in context
 const (
-	tokenKey contextKey = 0
+	tokenKey contextKey = iota
 )
 
 // When there is no request of the key thrown ErrMissingOrMalformedAPIKey
@@ -24,8 +23,9 @@ func New(config ...Config) fiber.Handler {
 	// Init config
 	cfg := configDefault(config...)
 
+	// If no extractor is provided, use a default one
 	if cfg.Extractor.Extract == nil {
-		cfg.Extractor = FromAuthHeader(fiber.HeaderAuthorization, cfg.AuthScheme)
+		cfg.Extractor = FromAuthHeader(fiber.HeaderAuthorization, "Bearer")
 	}
 
 	// Return middleware handler

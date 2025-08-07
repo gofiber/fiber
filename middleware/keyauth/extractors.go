@@ -66,12 +66,15 @@ func FromAuthHeader(header, authScheme string) Extractor {
 			}
 
 			// Check if the header starts with the specified auth scheme
-			if len(authScheme) > 0 && !strings.HasPrefix(authHeader, authScheme+" ") {
+			if len(authScheme) > 0 {
+				schemeLen := len(authScheme)
+				if len(authHeader) > schemeLen+1 && strings.EqualFold(authHeader[:schemeLen], authScheme) && authHeader[schemeLen] == ' ' {
+					return strings.TrimSpace(authHeader[schemeLen+1:]), nil
+				}
 				return "", ErrMissingAPIKeyInHeader
 			}
 
-			// Return the part after the auth scheme
-			return strings.TrimSpace(strings.TrimPrefix(authHeader, authScheme+" ")), nil
+			return strings.TrimSpace(authHeader), nil
 		},
 		Key:    header,
 		Source: SourceAuthHeader,
