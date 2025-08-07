@@ -79,7 +79,7 @@ func Test_KeyAuth_ConfigDefault_CustomConfig(t *testing.T) {
 // Test_KeyAuth_ConfigDefault_DefaultErrorHandler tests the default error handler.
 func Test_KeyAuth_ConfigDefault_DefaultErrorHandler(t *testing.T) {
 	t.Parallel()
-	validator := func(_ fiber.Ctx, s string) (bool, error) { return true, nil }
+	validator := func(_ fiber.Ctx, _ string) (bool, error) { return true, nil }
 
 	t.Run("with default realm", func(t *testing.T) {
 		t.Parallel()
