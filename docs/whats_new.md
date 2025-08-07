@@ -940,10 +940,10 @@ func main() {
 ```sh
 $ go run . -v
 
-    _______ __             
+    _______ __
    / ____(_) /_  ___  _____
   / /_  / / __ \/ _ \/ ___/
- / __/ / / /_/ /  __/ /    
+ / __/ / / /_/ /  __/ /
 /_/   /_/_.___/\___/_/          v3.0.0
 --------------------------------------------------
 INFO Server started on:         http://127.0.0.1:3000 (bound on host 0.0.0.0 and port 3000)
@@ -1958,7 +1958,7 @@ app.Use(keyauth.New(keyauth.Config{
 
 // After
 app.Use(keyauth.New(keyauth.Config{
-    Extractor: keyauth.FromHeader(fiber.HeaderAuthorization, "Bearer"),
+    Extractor: keyauth.FromAuthHeader(fiber.HeaderAuthorization, "Bearer"),
 }))
 ```
 
