@@ -1116,11 +1116,6 @@ Refer to the [healthcheck middleware migration guide](./middleware/healthcheck.m
 The keyauth middleware was updated to introduce a configurable `Realm` field for the `WWW-Authenticate` header.
 The old string-based `KeyLookup` configuration has been replaced with an `Extractor` field. Use helper functions like `keyauth.FromHeader` or `keyauth.FromCookie` to define where the key should be retrieved from. Multiple sources can be combined with `keyauth.Chain`. See the migration guide below.
 
-### Extractor Utilities
-
-A new `extractor` package provides reusable helpers such as `extractor.FromHeader`, `extractor.FromCookie`, and `extractor.Chain`. Middleware packages use these helpers internally, and you can use them directly in your own applications.
-The helpers now include improved documentation and examples to make it easier to compose custom extraction logic across middlewares.
-
 ### Logger
 
 New helper function called `LoggerToWriter` has been added to the logger middleware. This function allows you to use 3rd party loggers such as `logrus` or `zap` with the Fiber logger middleware without any extra afford. For example, you can use `zap` with Fiber logger middleware like this:
@@ -1944,7 +1939,6 @@ Passwords configured for BasicAuth must now be pre-hashed. If no prefix is suppl
 
 You can also set the optional `HeaderLimit` and `Charset`
 options to further control authentication behavior.
-
 
 #### KeyAuth
 
