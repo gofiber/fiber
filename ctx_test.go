@@ -1528,6 +1528,8 @@ func Test_Ctx_AutoFormat(t *testing.T) {
 	app := New(Config{
 		MsgPackEncoder: msgpack.Marshal,
 		MsgPackDecoder: msgpack.Unmarshal,
+		CBOREncoder:    cbor.Marshal,
+		CBORDecoder:    cbor.Unmarshal,
 	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
@@ -1551,6 +1553,14 @@ func Test_Ctx_AutoFormat(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []byte{
 		0xad, 0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x2c,
+		0x20, 0x57, 0x6f, 0x72, 0x6c, 0x64, 0x21,
+	}, c.Response().Body())
+
+	c.Request().Header.Set(HeaderAccept, MIMEApplicationCBOR)
+	err = c.AutoFormat("Hello, World!")
+	require.NoError(t, err)
+	require.Equal(t, []byte{
+		0x6d, 0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x2c,
 		0x20, 0x57, 0x6f, 0x72, 0x6c, 0x64, 0x21,
 	}, c.Response().Body())
 
@@ -1585,6 +1595,8 @@ func Test_Ctx_AutoFormat_Struct(t *testing.T) {
 	app := New(Config{
 		MsgPackEncoder: msgpack.Marshal,
 		MsgPackDecoder: msgpack.Unmarshal,
+		CBOREncoder:    cbor.Marshal,
+		CBORDecoder:    cbor.Unmarshal,
 	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
@@ -1620,6 +1632,12 @@ func Test_Ctx_AutoFormat_Struct(t *testing.T) {
 		0x3,
 	},
 		c.Response().Body())
+
+	c.Request().Header.Set(HeaderAccept, MIMEApplicationCBOR)
+	err = c.AutoFormat(data)
+	require.NoError(t, err)
+	require.Equal(t, "a36653656e646572654361726f6c6a526563697069656e74738265416c69636563426f6267557267656e637903",
+		hex.EncodeToString(c.Response().Body()))
 
 	c.Request().Header.Set(HeaderAccept, MIMEApplicationXML)
 	err = c.AutoFormat(data)

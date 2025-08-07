@@ -360,12 +360,12 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 
 // AutoFormat performs content-negotiation on the Accept HTTP header.
 // It uses Accepts to select a proper format.
-// The supported content types are text/html, text/plain, application/json, and application/xml.
+// The supported content types are text/html, text/plain, application/json, application/xml, application/vnd.msgpack, and application/cbor.
 // For more flexible content negotiation, use Format.
 // If the header is not specified or there is no proper format, text/plain is used.
 func (r *DefaultRes) AutoFormat(body any) error {
 	// Get accepted content type
-	accept := r.c.Accepts("html", "json", "txt", "xml", "msgpack")
+	accept := r.c.Accepts("html", "json", "txt", "xml", "msgpack", "cbor")
 	// Set accepted content type
 	r.Type(accept)
 	// Type convert provided body
@@ -387,6 +387,8 @@ func (r *DefaultRes) AutoFormat(body any) error {
 		return r.JSON(body)
 	case "msgpack":
 		return r.MsgPack(body)
+	case "cbor":
+		return r.CBOR(body)
 	case "txt":
 		return r.SendString(b)
 	case "xml":
