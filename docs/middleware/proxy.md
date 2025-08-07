@@ -43,16 +43,13 @@ After you initiate your Fiber app, you can use the following possibilities:
 ```go
 // if you need to use global self-custom client, you should use proxy.WithClient.
 proxy.WithClient(&fasthttp.Client{
-    NoDefaultUserAgentHeader: true, 
+    NoDefaultUserAgentHeader: true,
     DisablePathNormalizing:   true,
     // if target https site uses a self-signed certificate, you should
     TLSConfig:                &tls.Config{
         InsecureSkipVerify: true,
     },
 })
-
-// Forward to url
-app.Get("/gif", proxy.Forward("https://i.imgur.com/IWaBepg.gif"))
 
 // If you want to forward with a specific domain. You have to use proxy.DomainForward.
 app.Get("/payments", proxy.DomainForward("docs.gofiber.io", "http://localhost:8000"))
@@ -113,6 +110,14 @@ app.Use(proxy.Balancer(proxy.Config{
     },
 }))
 
+// Keep the Connection header when proxying
+app.Use(proxy.Balancer(proxy.Config{
+    Servers: []string{
+        "http://localhost:3001",
+    },
+    KeepConnectionHeader: true,
+}))
+
 // Or extend your balancer for customization
 app.Use(proxy.Balancer(proxy.Config{
     Servers: []string{
@@ -161,6 +166,7 @@ app.Use(proxy.Balancer(proxy.Config{
 | Timeout         | `time.Duration`                                | Timeout is the request timeout used when calling the proxy client.                                                                                                                                                                 | 1 second        |
 | ReadBufferSize  | `int`                                          | Per-connection buffer size for requests' reading. This also limits the maximum header size. Increase this buffer if your clients send multi-KB RequestURIs and/or multi-KB headers (for example, BIG cookies).                     | (Not specified) |
 | WriteBufferSize | `int`                                          | Per-connection buffer size for responses' writing.                                                                                                                                                                                 | (Not specified) |
+| KeepConnectionHeader | `bool` | Keeps the `Connection` header when set to `true`. By default the header is removed to comply with RFC 7230 §6.1 and avoid proxy loops. | `false` |
 | TLSConfig       | `*tls.Config` | TLS config for the HTTP client. | `nil`           |
 | DialDualStack   | `bool`                                         | Client will attempt to connect to both IPv4 and IPv6 host addresses if set to true.                                                                                                                                                | `false`         |
 | Client          | `*fasthttp.LBClient`                           | Client is a custom client when client config is complex.                                                                                                                                                                           | `nil`           |
@@ -173,5 +179,6 @@ var ConfigDefault = Config{
     ModifyRequest:  nil,
     ModifyResponse: nil,
     Timeout:        fasthttp.DefaultLBClientTimeout,
+    KeepConnectionHeader: false,
 }
 ```

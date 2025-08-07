@@ -118,7 +118,7 @@ panic: [CORS] Configuration error: When 'AllowCredentials' is set to true, 'Allo
 | AllowOrigins         | `[]string`                  | AllowOrigins defines a list of origins that may access the resource. This supports subdomain matching, so you can use a value like "https://*.example.com" to allow any subdomain of example.com to submit requests. If the special wildcard `"*"` is present in the list, all origins will be allowed.                                                              | `["*"]`                                 |
 | AllowOriginsFunc     | `func(origin string) bool`  | `AllowOriginsFunc` is a function that dynamically determines whether to allow a request based on its origin. If this function returns `true`, the 'Access-Control-Allow-Origin' response header will be set to the request's 'origin' header. This function is only used if the request's origin doesn't match any origin in `AllowOrigins`.                         | `nil`                                   |
 | AllowPrivateNetwork  | `bool`                      | Indicates whether the `Access-Control-Allow-Private-Network` response header should be set to `true`, allowing requests from private networks. This aligns with modern security practices for web applications interacting with private networks.                                                                                                                    | `false`                                 |
-| ExposeHeaders        | `string`                    | ExposeHeaders defines an allowlist of headers that clients are allowed to access.                                                                                                                                                                                                                                                                                    | `[]`                                    |
+| ExposeHeaders        | `[]string`                    | ExposeHeaders defines an allowlist of headers that clients are allowed to access.                                                                                                                                                                                                                                                                                    | `[]`                                    |
 | MaxAge               | `int`                       | MaxAge indicates how long (in seconds) the results of a preflight request can be cached. If you pass MaxAge 0, the Access-Control-Max-Age header will not be added and the browser will use 5 seconds by default. To disable caching completely, pass MaxAge value negative. It will set the Access-Control-Max-Age header to 0.                                     | `0`                                     |
 | Next                 | `func(fiber.Ctx) bool`      | Next defines a function to skip this middleware when returned true.                                                                                                                                                                                                                                                                                                  | `nil`                                   |
 
@@ -159,7 +159,7 @@ If you want to allow CORS requests from any subdomain of `example.com`, includin
 
 ```go
 app.Use(cors.New(cors.Config{
-    AllowOrigins: "https://*.example.com",
+    AllowOrigins: []string{"https://*.example.com"},
 }))
 ```
 
@@ -201,7 +201,7 @@ The `ExposeHeaders` option defines an allowlist of headers that clients are allo
 
 The `MaxAge` option indicates how long the results of a preflight request can be cached. If `MaxAge` is set to `3600`, the middleware adds the header `Access-Control-Max-Age: 3600` to the response.
 
-The `Vary` header is used in this middleware to inform the client that the server's response to a request. For or both preflight and actual requests, the Vary header is set to `Access-Control-Request-Method` and `Access-Control-Request-Headers`. For preflight requests, the Vary header is also set to `Origin`. The `Vary` header is important for caching. It helps caches (like a web browser's cache or a CDN) determine when a cached response can be used in response to a future request, and when the server needs to be queried for a new response.
+The `Vary` header helps caches store the correct response. For simple requests the middleware sets `Vary: Origin` unless all origins are allowed. Preflight responses add `Vary: Origin, Access-Control-Request-Method, Access-Control-Request-Headers` (and `Access-Control-Request-Private-Network` when enabled and requested). This ensures caches know when to reuse a response and when to revalidate with the server.
 
 ## Infrastructure Considerations
 
