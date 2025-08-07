@@ -85,10 +85,10 @@ func defaultErrorHandler(realm string) fiber.ErrorHandler {
 		// Since the default extractor is FromAuthHeader, we can set the WWW-Authenticate header.
 		// This is a reasonable default, but users can override ErrorHandler for custom behavior.
 		if errors.Is(err, ErrMissingOrMalformedAPIKey) {
-			c.Set(fiber.HeaderWWWAuthenticate, fmt.Sprintf(`Bearer realm="%s"`, realm))
+			c.Set(fiber.HeaderWWWAuthenticate, fmt.Sprintf(`Bearer realm=%q`, realm))
 			return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
 		}
-		c.Set(fiber.HeaderWWWAuthenticate, fmt.Sprintf(`Bearer realm="%s"`, realm))
+		c.Set(fiber.HeaderWWWAuthenticate, fmt.Sprintf(`Bearer realm=%q`, realm))
 		return c.Status(fiber.StatusUnauthorized).SendString("Invalid or expired API Key")
 	}
 }

@@ -115,12 +115,13 @@ func Test_AuthSources(t *testing.T) {
 				}
 
 				method := fiber.MethodGet
-				if authSource == paramExtractorName {
+				switch authSource {
+				case paramExtractorName:
 					app.Get("/:"+test.authTokenName, authMiddleware, handler)
-				} else if authSource == formExtractorName {
+				case formExtractorName:
 					method = fiber.MethodPost
 					app.Post("/", authMiddleware, handler)
-				} else {
+				default:
 					app.Get("/", authMiddleware, handler)
 				}
 
@@ -162,7 +163,8 @@ func Test_AuthSources(t *testing.T) {
 
 				body, err := io.ReadAll(res.Body)
 				require.NoError(t, err)
-				defer res.Body.Close()
+				errClose := res.Body.Close()
+				require.NoError(t, errClose)
 
 				expectedCode := test.expectedCode
 				expectedBody := test.expectedBody
