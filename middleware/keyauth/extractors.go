@@ -2,11 +2,9 @@ package keyauth
 
 import (
 	"errors"
-	"strings"
 
 	"github.com/gofiber/fiber/v3"
 	intextractor "github.com/gofiber/fiber/v3/extractor"
-	"github.com/gofiber/utils/v2"
 )
 
 // withKeyauthError wraps an existing extractor to return ErrMissingOrMalformedAPIKey on failure.
@@ -23,38 +21,15 @@ func withKeyauthError(e intextractor.Extractor) intextractor.Extractor {
 	}
 }
 
-// FromHeader extracts the API key from the specified header and optional scheme.
-func FromHeader(header, authScheme string) intextractor.Extractor {
-	return intextractor.Extractor{
-		Extract: func(c fiber.Ctx) (string, error) {
-			auth := utils.Trim(c.Get(header), ' ')
-			if auth == "" {
-				return "", ErrMissingOrMalformedAPIKey
-			}
+// FromHeader returns a function that extracts an API key from the specified header.
+func FromHeader(header string) intextractor.Extractor {
+	return withKeyauthError(intextractor.FromHeader(header))
+}
 
-			if authScheme == "" {
-				return auth, nil
-			}
-
-			l := len(authScheme)
-			if len(auth) <= l || !utils.EqualFold(auth[:l], authScheme) {
-				return "", ErrMissingOrMalformedAPIKey
-			}
-
-			rest := auth[l:]
-			if len(rest) == 0 || (rest[0] != ' ' && rest[0] != '\t') {
-				return "", ErrMissingOrMalformedAPIKey
-			}
-
-			token := strings.TrimLeft(rest, " \t")
-			if token == "" {
-				return "", ErrMissingOrMalformedAPIKey
-			}
-
-			return token, nil
-		},
-		Key: header,
-	}
+// FromAuthHeader extracts an API key from the specified header and authentication scheme.
+// It's commonly used for the "Authorization" header with a "Bearer" scheme.
+func FromAuthHeader(header, authScheme string) intextractor.Extractor {
+	return withKeyauthError(intextractor.FromAuthHeader(header, authScheme))
 }
 
 // keyFromQuery returns a function that extracts api key from the query string.

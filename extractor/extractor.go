@@ -2,6 +2,7 @@ package extractor
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/gofiber/fiber/v3"
 )
@@ -14,13 +15,32 @@ type Extractor struct {
 }
 
 var (
-	ErrValueNotFound = errors.New("value not found")
-	ErrMissingHeader = errors.New("missing value in header")
-	ErrMissingQuery  = errors.New("missing value in query")
-	ErrMissingParam  = errors.New("missing value in param")
-	ErrMissingForm   = errors.New("missing value in form")
-	ErrMissingCookie = errors.New("missing value in cookie")
+	ErrValueNotFound     = errors.New("value not found")
+	ErrMissingHeader     = errors.New("missing value in header")
+	ErrMissingQuery      = errors.New("missing value in query")
+	ErrMissingParam      = errors.New("missing value in param")
+	ErrMissingForm       = errors.New("missing value in form")
+	ErrMissingCookie     = errors.New("missing value in cookie")
+	ErrInvalidAuthHeader = errors.New("invalid authentication header format")
 )
+
+// FromAuthHeader creates an Extractor that retrieves a value from the specified HTTP header
+// and authentication scheme. This is commonly used for the "Authorization" header with a "Bearer" scheme.
+func FromAuthHeader(header string, scheme string) Extractor {
+	return Extractor{
+		Extract: func(c fiber.Ctx) (string, error) {
+			v := c.Get(header)
+			if v == "" {
+				return "", ErrMissingHeader
+			}
+			if !strings.HasPrefix(v, scheme+" ") {
+				return "", ErrInvalidAuthHeader
+			}
+			return strings.TrimPrefix(v, scheme+" "), nil
+		},
+		Key: header,
+	}
+}
 
 // FromCookie returns an Extractor that gets a value from the given cookie.
 func FromCookie(key string) Extractor {

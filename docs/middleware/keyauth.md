@@ -218,7 +218,7 @@ curl --header "Authorization: Bearer my-super-secret-key"  http://localhost:3000
 | Next            | `func(fiber.Ctx) bool`                   | Next defines a function to skip this middleware when returned true.                                    | `nil`                         |
 | SuccessHandler  | `fiber.Handler`                          | SuccessHandler defines a function which is executed for a valid key.                                   | `nil`                         |
 | ErrorHandler    | `fiber.ErrorHandler`                     | ErrorHandler defines a function which is executed for an invalid key. By default a 401 response with a `WWW-Authenticate` challenge is sent. | `nil`  |
-| Extractor       | `extractor.Extractor`                    | Extractor defines how to retrieve the key from the request. Use helper functions like `keyauth.FromHeader` or `keyauth.FromCookie`. | `keyauth.FromHeader("Authorization", "Bearer")` |
+| Extractor       | `extractor.Extractor`                    | Extractor defines how to retrieve the key from the request. Use helper functions like `keyauth.FromAuthHeader` or `keyauth.FromCookie`. | `keyauth.FromAuthHeader("Authorization", "Bearer")` |
 | AuthScheme      | `string`                                 | AuthScheme to be used in the Authorization header.                                                     | "Bearer"                      |
 | Realm           | `string`                                 | Realm specifies the protected area name used in the `WWW-Authenticate` header. | `"Restricted"` |
 | Validator       | `func(fiber.Ctx, string) (bool, error)`  | Validator is a function to validate the key.                                                           | A function for key validation |
@@ -231,7 +231,7 @@ var ConfigDefault = Config{
         return c.Next()
     },
     ErrorHandler:    nil,
-    Extractor:      keyauth.FromHeader(fiber.HeaderAuthorization, "Bearer"),
+    Extractor:      keyauth.FromAuthHeader(fiber.HeaderAuthorization, "Bearer"),
     AuthScheme:      "Bearer",
     Realm:           "Restricted",
 }

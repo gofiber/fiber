@@ -22,7 +22,7 @@ var testConfig = fiber.TestConfig{
 
 func Test_AuthSources(t *testing.T) {
 	// define test cases
-	testSources := []string{"header", "cookie", "query", "param", "form"}
+	testSources := []string{"header", "authHeader", "cookie", "query", "param", "form"}
 
 	tests := []struct {
 		route         string
@@ -70,7 +70,9 @@ func Test_AuthSources(t *testing.T) {
 					Extractor: func() intextractor.Extractor {
 						switch authSource {
 						case "header":
-							return FromHeader(test.authTokenName, "Bearer")
+							return FromHeader(test.authTokenName)
+						case "authHeader":
+							return FromAuthHeader(test.authTokenName, "Bearer")
 						case "cookie":
 							return FromCookie(test.authTokenName)
 						case "query":
@@ -193,7 +195,8 @@ func TestMultipleKeyLookup(t *testing.T) {
 	app := fiber.New()
 
 	customExtractor := Chain(
-		FromHeader("key", scheme),
+		FromAuthHeader("key", scheme),
+		FromHeader("key"),
 		FromCookie("key"),
 		FromQuery("key"),
 	)
@@ -256,7 +259,7 @@ func Test_MultipleKeyAuth(t *testing.T) {
 		Next: func(c fiber.Ctx) bool {
 			return c.OriginalURL() != "/auth1"
 		},
-		Extractor: FromHeader("key", "Bearer"),
+		Extractor: FromAuthHeader("key", "Bearer"),
 		Validator: func(_ fiber.Ctx, key string) (bool, error) {
 			if key == "password1" {
 				return true, nil
@@ -270,7 +273,7 @@ func Test_MultipleKeyAuth(t *testing.T) {
 		Next: func(c fiber.Ctx) bool {
 			return c.OriginalURL() != "/auth2"
 		},
-		Extractor: FromHeader("key", "Bearer"),
+		Extractor: FromAuthHeader("key", "Bearer"),
 		Validator: func(_ fiber.Ctx, key string) (bool, error) {
 			if key == "password2" {
 				return true, nil
@@ -516,7 +519,7 @@ func Test_TokenFromContext(t *testing.T) {
 	app := fiber.New()
 	// Wire up keyauth middleware to set TokenFromContext now
 	app.Use(New(Config{
-		Extractor:  FromHeader(fiber.HeaderAuthorization, "Basic"),
+		Extractor:  FromAuthHeader(fiber.HeaderAuthorization, "Basic"),
 		AuthScheme: "Basic",
 		Validator: func(_ fiber.Ctx, key string) (bool, error) {
 			if key == CorrectKey {
@@ -581,7 +584,7 @@ func Test_AuthSchemeBasic(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		Extractor:  FromHeader(fiber.HeaderAuthorization, "Basic"),
+		Extractor:  FromAuthHeader(fiber.HeaderAuthorization, "Basic"),
 		AuthScheme: "Basic",
 		Validator: func(_ fiber.Ctx, key string) (bool, error) {
 			if key == CorrectKey {

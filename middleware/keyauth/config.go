@@ -26,10 +26,6 @@ type Config struct {
 	// Validator is a function to validate key.
 	Validator func(fiber.Ctx, string) (bool, error)
 
-	// Extractor is used to extract the key from the request.
-	// Optional. Default: FromHeader("Authorization")
-	Extractor intextractor.Extractor
-
 	// AuthScheme to be used in the Authorization header.
 	// If KeyLookup is an empty string (i.e. the default Authorization header),
 	// this value defaults to "Bearer".
@@ -38,6 +34,10 @@ type Config struct {
 	// Realm defines the protected area for WWW-Authenticate responses.
 	// Optional. Default value "Restricted".
 	Realm string
+
+	// Extractor is used to extract the key from the request.
+	// Optional. Default: FromHeader("Authorization")
+	Extractor intextractor.Extractor
 }
 
 // ConfigDefault is the default config
@@ -46,7 +46,7 @@ var ConfigDefault = Config{
 		return c.Next()
 	},
 	ErrorHandler: nil,
-	Extractor:    FromHeader(fiber.HeaderAuthorization, "Bearer"),
+	Extractor:    FromAuthHeader(fiber.HeaderAuthorization, "Bearer"),
 	AuthScheme:   "Bearer",
 	Realm:        "Restricted",
 }
@@ -66,7 +66,7 @@ func configDefault(config ...Config) Config {
 		cfg.AuthScheme = ConfigDefault.AuthScheme
 	}
 	if cfg.Extractor.Extract == nil {
-		cfg.Extractor = FromHeader(fiber.HeaderAuthorization, cfg.AuthScheme)
+		cfg.Extractor = FromAuthHeader(fiber.HeaderAuthorization, cfg.AuthScheme)
 	}
 	if cfg.Realm == "" {
 		cfg.Realm = ConfigDefault.Realm

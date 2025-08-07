@@ -25,7 +25,7 @@ func New(config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
 
 	if cfg.Extractor.Extract == nil {
-		cfg.Extractor = FromHeader(fiber.HeaderAuthorization, cfg.AuthScheme)
+		cfg.Extractor = FromAuthHeader(fiber.HeaderAuthorization, cfg.AuthScheme)
 	}
 
 	// Return middleware handler
