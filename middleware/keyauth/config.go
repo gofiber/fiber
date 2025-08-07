@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/gofiber/fiber/v3"
-	intextractor "github.com/gofiber/fiber/v3/extractor"
 )
 
 // Config defines the config for middleware.
@@ -37,7 +36,7 @@ type Config struct {
 
 	// Extractor is used to extract the key from the request.
 	// Optional. Default: FromHeader("Authorization")
-	Extractor intextractor.Extractor
+	Extractor Extractor
 }
 
 // ConfigDefault is the default config

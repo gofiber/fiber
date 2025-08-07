@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
-	intextractor "github.com/gofiber/fiber/v3/extractor"
 	"github.com/stretchr/testify/require"
 )
 
@@ -67,7 +66,7 @@ func Test_AuthSources(t *testing.T) {
 				app := fiber.New(fiber.Config{UnescapePath: true})
 
 				authMiddleware := New(Config{
-					Extractor: func() intextractor.Extractor {
+					Extractor: func() Extractor {
 						switch authSource {
 						case "header":
 							return FromHeader(test.authTokenName)
@@ -156,7 +155,7 @@ func Test_AuthSources(t *testing.T) {
 func TestPanicOnInvalidConfiguration(t *testing.T) {
 	require.Panics(t, func() {
 		authMiddleware := New(Config{
-			Extractor: intextractor.Extractor{},
+			Extractor: Extractor{},
 		})
 		// We shouldn't even make it this far, but these next two lines prevent authMiddleware from being an unused variable.
 		app := fiber.New()
@@ -169,7 +168,7 @@ func TestPanicOnInvalidConfiguration(t *testing.T) {
 
 	require.Panics(t, func() {
 		authMiddleware := New(Config{
-			Extractor: intextractor.Extractor{},
+			Extractor: Extractor{},
 			Validator: func(_ fiber.Ctx, _ string) (bool, error) {
 				return true, nil
 			},
