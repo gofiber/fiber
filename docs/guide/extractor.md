@@ -21,6 +21,7 @@ type Extractor struct {
 
 ### Built-in Helpers
 
+- `FromAuthHeader(name, scheme string)` – extracts a value from the `Authorization` header, typically used for API keys or tokens.
 - `FromCookie(name string)`
 - `FromHeader(name string)`
 - `FromQuery(name string)`
