@@ -1559,10 +1559,7 @@ func Test_Ctx_AutoFormat(t *testing.T) {
 	c.Request().Header.Set(HeaderAccept, MIMEApplicationCBOR)
 	err = c.AutoFormat("Hello, World!")
 	require.NoError(t, err)
-	require.Equal(t, []byte{
-		0x6d, 0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x2c,
-		0x20, 0x57, 0x6f, 0x72, 0x6c, 0x64, 0x21,
-	}, c.Response().Body())
+	require.Equal(t, "6d48656c6c6f2c20576f726c6421", hex.EncodeToString(c.Response().Body()))
 
 	c.Request().Header.Set(HeaderAccept, MIMETextPlain)
 	err = c.Res().AutoFormat(complex(1, 1))
