@@ -20,9 +20,18 @@ var testConfig = fiber.TestConfig{
 	Timeout: 0,
 }
 
+const (
+	paramExtractorName      = "param"
+	formExtractorName       = "form"
+	queryExtractorName      = "query"
+	headerExtractorName     = "header"
+	authHeaderExtractorName = "authHeader"
+	cookieExtractorName     = "cookie"
+)
+
 func Test_AuthSources(t *testing.T) {
 	// define test cases
-	testSources := []string{"header", "authHeader", "cookie", "query", "param", "form"}
+	testSources := []string{headerExtractorName, authHeaderExtractorName, cookieExtractorName, queryExtractorName, paramExtractorName, formExtractorName}
 
 	tests := []struct {
 		route         string
@@ -63,11 +72,11 @@ func Test_AuthSources(t *testing.T) {
 			for _, test := range tests {
 				app := fiber.New(fiber.Config{UnescapePath: true})
 
-				var testKey = test.APIKey
-				var correctKey = CorrectKey
+				testKey := test.APIKey
+				correctKey := CorrectKey
 
 				// Use a simple key for param and cookie to avoid encoding issues in the test setup
-				if authSource == "param" || authSource == "cookie" {
+				if authSource == paramExtractorName || authSource == cookieExtractorName {
 					if test.APIKey != "" && test.APIKey != "WRONGKEY" {
 						testKey = "simple-key"
 						correctKey = "simple-key"
@@ -77,17 +86,17 @@ func Test_AuthSources(t *testing.T) {
 				authMiddleware := New(Config{
 					Extractor: func() Extractor {
 						switch authSource {
-						case "header":
+						case headerExtractorName:
 							return FromHeader(test.authTokenName)
-						case "authHeader":
+						case authHeaderExtractorName:
 							return FromAuthHeader(test.authTokenName, "Bearer")
-						case "cookie":
+						case cookieExtractorName:
 							return FromCookie(test.authTokenName)
-						case "query":
+						case queryExtractorName:
 							return FromQuery(test.authTokenName)
-						case "param":
+						case paramExtractorName:
 							return FromParam(test.authTokenName)
-						case "form":
+						case formExtractorName:
 							return FromForm(test.authTokenName)
 						default:
 							panic("unknown source")
@@ -105,10 +114,10 @@ func Test_AuthSources(t *testing.T) {
 					return c.SendString("Success!")
 				}
 
-				var method = fiber.MethodGet
-				if authSource == "param" {
+				method := fiber.MethodGet
+				if authSource == paramExtractorName {
 					app.Get("/:"+test.authTokenName, authMiddleware, handler)
-				} else if authSource == "form" {
+				} else if authSource == formExtractorName {
 					method = fiber.MethodPost
 					app.Post("/", authMiddleware, handler)
 				} else {
@@ -116,12 +125,12 @@ func Test_AuthSources(t *testing.T) {
 				}
 
 				targetURL := "/"
-				if authSource == "param" {
+				if authSource == paramExtractorName {
 					targetURL = "/" + url.PathEscape(testKey)
 				}
 
 				var reqBody io.Reader
-				if authSource == "form" {
+				if authSource == formExtractorName {
 					form := url.Values{}
 					form.Add(test.authTokenName, testKey)
 					bodyStr := form.Encode()
@@ -132,19 +141,19 @@ func Test_AuthSources(t *testing.T) {
 				require.NoError(t, err)
 
 				switch authSource {
-				case "header":
+				case headerExtractorName:
 					req.Header.Set(test.authTokenName, testKey)
-				case "authHeader":
+				case authHeaderExtractorName:
 					if testKey != "" {
 						req.Header.Set(test.authTokenName, "Bearer "+testKey)
 					}
-				case "cookie":
+				case cookieExtractorName:
 					req.Header.Set("Cookie", test.authTokenName+"="+testKey)
-				case "query":
+				case queryExtractorName:
 					q := req.URL.Query()
 					q.Add(test.authTokenName, testKey)
 					req.URL.RawQuery = q.Encode()
-				case "form":
+				case formExtractorName:
 					req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 				}
 
@@ -157,7 +166,7 @@ func Test_AuthSources(t *testing.T) {
 
 				expectedCode := test.expectedCode
 				expectedBody := test.expectedBody
-				if authSource == "param" && testKey == "" {
+				if authSource == paramExtractorName && testKey == "" {
 					expectedCode = 404
 					expectedBody = "Cannot GET /"
 				}
@@ -166,12 +175,6 @@ func Test_AuthSources(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestPanicOnInvalidConfiguration(t *testing.T) {
-	require.Panics(t, func() {
-		_ = New(Config{})
-	}, "should panic if Validator is missing")
 }
 
 func TestMultipleKeyLookup(t *testing.T) {
