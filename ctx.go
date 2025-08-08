@@ -59,8 +59,8 @@ type DefaultCtx struct {
 	flashMessages redirectionMsgs      // Flash messages
 	path          []byte               // HTTP path with the modifications by the configuration
 	detectionPath []byte               // Route detection path
-	treePathHash  int                  // Hash of the path for the search in the tree
 	routeStack    []*Route             // Cached route stack for repeated Next calls
+	treePathHash  int                  // Hash of the path for the search in the tree
 	indexRoute    int                  // Index of the current route
 	indexHandler  int                  // Index of the current handler
 	methodInt     int                  // HTTP method INT equivalent

@@ -3,15 +3,16 @@ package radix
 // node represents a path-compressed radix tree node. It stores up to 16
 // children inline before promoting to a dense 256-entry table.
 type node[V any] struct {
-	prefix string
-	value  V
-	leaf   bool
-
-	smallKeys     [16]byte
 	smallChildren [16]*node[V]
-	smallCount    uint8
+	value         V
 
-	big *[256]*node[V]
+	big    *[256]*node[V]
+	prefix string
+
+	smallKeys [16]byte
+	leaf      bool
+
+	smallCount uint8
 }
 
 func (n *node[V]) getEdge(b byte) *node[V]        { return n.get(b) }
@@ -92,12 +93,9 @@ func New[V any]() *Tree[V] {
 
 // longestPrefixLen returns the length of the common prefix of a and b.
 func longestPrefixLen(a, b string) int {
-	max := len(a)
-	if len(b) < max {
-		max = len(b)
-	}
+	maxLength := min(len(b), len(a))
 	i := 0
-	for i < max && a[i] == b[i] {
+	for i < maxLength && a[i] == b[i] {
 		i++
 	}
 	return i

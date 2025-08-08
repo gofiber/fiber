@@ -150,6 +150,7 @@ func Test_Router_Radix_OptionalPlusRegexEscaped(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "brand/4,blue/xs", app.getString(body))
 }
+
 func Test_Route_Radix_Handler_Order(t *testing.T) {
 	t.Parallel()
 
@@ -775,7 +776,8 @@ func Benchmark_Router_Handler_Radix(b *testing.B) {
 }
 
 func Benchmark_Router_Handler_Strict_Case_Radix(b *testing.B) {
-	app := New(Config{UseRadix: true,
+	app := New(Config{
+		UseRadix:      true,
 		StrictRouting: true,
 		CaseSensitive: true,
 	})
