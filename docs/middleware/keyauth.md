@@ -281,4 +281,3 @@ var ConfigDefault = Config{
     Extractor: FromAuthHeader(fiber.HeaderAuthorization, "Bearer"),
 }
 ```
-
