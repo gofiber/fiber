@@ -183,7 +183,7 @@ func routeConstPrefix(rp routeParser) string {
 			}
 			break
 		}
-		b.WriteString(seg.Const)
+		b.WriteString(seg.Const) //nolint:errcheck // not needed here
 		idx = i
 	}
 	prefix := b.String()
