@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Fiber v3 SSE Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .container {
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .events {
+            background: #f5f5f5;
+            border-left: 4px solid #007acc;
+            padding: 10px;
+            margin: 10px 0;
+            min-height: 200px;
+            overflow-y: auto;
+            max-height: 300px;
+        }
+        .event {
+            margin: 5px 0;
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+        }
+        .event.welcome { background: #e8f5e8; }
+        .event.notification { background: #fff3cd; }
+        .event.goodbye { background: #f8d7da; }
+        button {
+            background: #007acc;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 3px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #005a9e;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 3px;
+        }
+        .connected { background: #d4edda; color: #155724; }
+        .disconnected { background: #f8d7da; color: #721c24; }
+        .connecting { background: #fff3cd; color: #856404; }
+    </style>
+</head>
+<body>
+    <h1>Fiber v3 Server-Sent Events Demo</h1>
+    
+    <div class="container">
+        <h2>Basic SSE Events</h2>
+        <div id="status1" class="status disconnected">Disconnected</div>
+        <button id="connect1" onclick="connectBasic()">Connect to /events</button>
+        <button id="disconnect1" onclick="disconnectBasic()" disabled>Disconnect</button>
+        <div id="events1" class="events"></div>
+    </div>
+
+    <div class="container">
+        <h2>Typed SSE Events</h2>
+        <div id="status2" class="status disconnected">Disconnected</div>
+        <button id="connect2" onclick="connectTyped()">Connect to /typed-events</button>
+        <button id="disconnect2" onclick="disconnectTyped()" disabled>Disconnect</button>
+        <div id="events2" class="events"></div>
+    </div>
+
+    <div class="container">
+        <h2>Instructions</h2>
+        <p>To test this demo:</p>
+        <ol>
+            <li>Start your Fiber v3 server with the SSE examples</li>
+            <li>Open this HTML file in your browser</li>
+            <li>Click the "Connect" buttons to start receiving events</li>
+            <li>Watch the events appear in real-time</li>
+        </ol>
+        
+        <h3>Example Fiber v3 Server Code:</h3>
+        <pre><code>package main
+
+import (
+    "bufio"
+    "fmt"
+    "time"
+    "github.com/gofiber/fiber/v3"
+)
+
+func main() {
+    app := fiber.New()
+
+    // Serve this HTML file
+    app.Static("/", "./")
+
+    // Basic SSE endpoint
+    app.Get("/events", func(c fiber.Ctx) error {
+        c.Set("Content-Type", "text/event-stream")
+        c.Set("Cache-Control", "no-cache")
+        c.Set("Connection", "keep-alive")
+        c.Set("Access-Control-Allow-Origin", "*")
+
+        return c.SendStreamWriter(func(w *bufio.Writer) {
+            ticker := time.NewTicker(1 * time.Second)
+            defer ticker.Stop()
+
+            for i := 0; i < 10; i++ {
+                select {
+                case t := <-ticker.C:
+                    fmt.Fprintf(w, "data: Event %d at %s\n\n", i+1, t.Format(time.RFC3339))
+                    if err := w.Flush(); err != nil {
+                        return
+                    }
+                }
+            }
+        })
+    })
+
+    // Typed SSE endpoint
+    app.Get("/typed-events", func(c fiber.Ctx) error {
+        c.Set("Content-Type", "text/event-stream")
+        c.Set("Cache-Control", "no-cache")
+        c.Set("Connection", "keep-alive")
+        c.Set("Access-Control-Allow-Origin", "*")
+
+        return c.SendStreamWriter(func(w *bufio.Writer) {
+            fmt.Fprintf(w, "event: welcome\ndata: Connected to server\n\n")
+            if err := w.Flush(); err != nil {
+                return
+            }
+
+            for i := 1; i <= 5; i++ {
+                fmt.Fprintf(w, "id: %d\nevent: notification\ndata: {\"count\": %d, \"message\": \"Update %d\"}\n\n", i, i, i)
+                if err := w.Flush(); err != nil {
+                    return
+                }
+                time.Sleep(1 * time.Second)
+            }
+
+            fmt.Fprintf(w, "event: goodbye\ndata: Connection closing\n\n")
+            w.Flush()
+        })
+    })
+
+    app.Listen(":3000")
+}</code></pre>
+    </div>
+
+    <script>
+        let eventSource1 = null;
+        let eventSource2 = null;
+
+        function updateStatus(statusId, message, className) {
+            const statusEl = document.getElementById(statusId);
+            statusEl.textContent = message;
+            statusEl.className = `status ${className}`;
+        }
+
+        function addEvent(containerId, message, eventType = '') {
+            const container = document.getElementById(containerId);
+            const eventEl = document.createElement('div');
+            eventEl.className = `event ${eventType}`;
+            eventEl.innerHTML = `<strong>${new Date().toLocaleTimeString()}</strong>: ${message}`;
+            container.appendChild(eventEl);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function connectBasic() {
+            if (eventSource1) return;
+
+            updateStatus('status1', 'Connecting...', 'connecting');
+            eventSource1 = new EventSource('/events');
+
+            eventSource1.onopen = function(event) {
+                updateStatus('status1', 'Connected', 'connected');
+                document.getElementById('connect1').disabled = true;
+                document.getElementById('disconnect1').disabled = false;
+                addEvent('events1', 'Connected to /events');
+            };
+
+            eventSource1.onmessage = function(event) {
+                addEvent('events1', event.data);
+            };
+
+            eventSource1.onerror = function(event) {
+                updateStatus('status1', 'Connection error', 'disconnected');
+                addEvent('events1', 'Connection error or closed', 'error');
+                disconnectBasic();
+            };
+        }
+
+        function disconnectBasic() {
+            if (eventSource1) {
+                eventSource1.close();
+                eventSource1 = null;
+            }
+            updateStatus('status1', 'Disconnected', 'disconnected');
+            document.getElementById('connect1').disabled = false;
+            document.getElementById('disconnect1').disabled = true;
+            addEvent('events1', 'Disconnected');
+        }
+
+        function connectTyped() {
+            if (eventSource2) return;
+
+            updateStatus('status2', 'Connecting...', 'connecting');
+            eventSource2 = new EventSource('/typed-events');
+
+            eventSource2.onopen = function(event) {
+                updateStatus('status2', 'Connected', 'connected');
+                document.getElementById('connect2').disabled = true;
+                document.getElementById('disconnect2').disabled = false;
+                addEvent('events2', 'Connected to /typed-events');
+            };
+
+            eventSource2.addEventListener('welcome', function(event) {
+                addEvent('events2', `Welcome: ${event.data}`, 'welcome');
+            });
+
+            eventSource2.addEventListener('notification', function(event) {
+                addEvent('events2', `Notification: ${event.data}`, 'notification');
+            });
+
+            eventSource2.addEventListener('goodbye', function(event) {
+                addEvent('events2', `Goodbye: ${event.data}`, 'goodbye');
+            });
+
+            eventSource2.onmessage = function(event) {
+                addEvent('events2', `Default: ${event.data}`);
+            };
+
+            eventSource2.onerror = function(event) {
+                updateStatus('status2', 'Connection error', 'disconnected');
+                addEvent('events2', 'Connection error or closed', 'error');
+                disconnectTyped();
+            };
+        }
+
+        function disconnectTyped() {
+            if (eventSource2) {
+                eventSource2.close();
+                eventSource2 = null;
+            }
+            updateStatus('status2', 'Disconnected', 'disconnected');
+            document.getElementById('connect2').disabled = false;
+            document.getElementById('disconnect2').disabled = true;
+            addEvent('events2', 'Disconnected');
+        }
+
+        // Clean up on page unload
+        window.addEventListener('beforeunload', function() {
+            disconnectBasic();
+            disconnectTyped();
+        });
+    </script>
+</body>
+</html>
