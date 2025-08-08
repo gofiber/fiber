@@ -153,9 +153,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 						path = utils.UnsafeBytes(root)
 					default:
 						path = path[prefixLen:]
-						if len(path) == 0 || path[len(path)-1] != '/' {
-							path = append(path, '/')
-						}
+						// Don't force add trailing slash here - let fasthttp.FS handle it
 					}
 				}
 
@@ -182,6 +180,78 @@ func New(root string, cfg ...Config) fiber.Handler {
 		// Serve file
 		fileHandler(c.RequestCtx())
 
+		// Check for redirects and fix the location header to maintain the prefix
+		status := c.RequestCtx().Response.StatusCode()
+		if (status == fiber.StatusMovedPermanently || status == fiber.StatusFound) && config.Browse {
+			location := string(c.RequestCtx().Response.Header.Peek(fiber.HeaderLocation))
+			if location != "" {
+				// Get the original request path and the prefix
+				originalPath := c.Path()
+				
+				// Find the prefix length
+				prefix := c.Route().Path
+				if strings.Contains(prefix, "*") {
+					prefix = strings.Split(prefix, "*")[0]
+				}
+				prefixLen := len(prefix)
+				if prefixLen > 1 && prefix[prefixLen-1:] == "/" {
+					prefixLen--
+				}
+				
+				// Only fix the specific case: redirect location lacks the prefix that the original request had
+				// Parse location to get just the path part
+				var locationPath string
+				var locationBase string
+				if strings.HasPrefix(location, "http://") || strings.HasPrefix(location, "https://") {
+					// Parse the URL to extract just the path
+					if idx := strings.Index(location[8:], "/"); idx != -1 {
+						locationBase = location[:8+idx]
+						locationPath = location[8+idx:]
+					}
+				} else if strings.HasPrefix(location, "/") {
+					locationPath = location
+				}
+				
+				// Check for the specific problematic pattern:
+				// - Original request has the prefix (e.g., /static/js or /static/js/)
+				// - Redirect location is missing the prefix (e.g., /js/ instead of /static/js/)
+				if locationPath != "" && 
+				   len(originalPath) >= prefixLen && 
+				   strings.HasPrefix(originalPath, prefix) &&
+				   !strings.HasPrefix(locationPath, prefix) {
+					
+					relativePath := originalPath[prefixLen:]
+					
+					// Handle both cases:
+					// 1. /static/js -> /js/ (directory without trailing slash)
+					// 2. /static/js/ -> /js/ (directory with trailing slash)
+					var expectedRedirectPath string
+					if strings.HasSuffix(originalPath, "/") {
+						// Request already had trailing slash
+						expectedRedirectPath = relativePath
+					} else {
+						// Request didn't have trailing slash, redirect should add it
+						expectedRedirectPath = relativePath + "/"
+					}
+					
+					// Only fix if the location matches the problematic pattern
+					if locationPath == "/"+expectedRedirectPath || locationPath == expectedRedirectPath {
+						newPath := prefix + expectedRedirectPath
+						
+						// Reconstruct the full location
+						var newLocation string
+						if locationBase != "" {
+							newLocation = locationBase + newPath
+						} else {
+							newLocation = newPath
+						}
+						
+						c.RequestCtx().Response.Header.Set(fiber.HeaderLocation, newLocation)
+					}
+				}
+			}
+		}
+
 		// Sets the response Content-Disposition header to attachment if the Download option is true
 		if config.Download {
 			name := filepath.Base(c.Path())
@@ -192,7 +262,8 @@ func New(root string, cfg ...Config) fiber.Handler {
 		}
 
 		// Return request if found and not forbidden
-		status := c.RequestCtx().Response.StatusCode()
+		// Re-check status after potential redirect fix
+		status = c.RequestCtx().Response.StatusCode()
 
 		if status != fiber.StatusNotFound && status != fiber.StatusForbidden {
 			if len(cacheControlValue) > 0 {
