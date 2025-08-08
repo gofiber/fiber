@@ -71,6 +71,10 @@ func Test_Ctx_Accepts(t *testing.T) {
 
 	c.Request().Header.Set(HeaderAccept, "*/*")
 	require.Equal(t, "html", c.Accepts("html"))
+
+	c.Request().Header.Del(HeaderAccept)
+	require.Equal(t, "json", c.Accepts("json", "html"))
+	require.Equal(t, "application/json", c.Accepts("application/json", "text/html"))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Accepts -benchmem -count=4
@@ -126,9 +130,14 @@ func Test_Ctx_CustomCtx(t *testing.T) {
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v3", &bytes.Buffer{}))
 	require.NoError(t, err, "app.Test(req)")
+	defer func() { require.NoError(t, resp.Body.Close()) }()
+
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "io.ReadAll(resp.Body)")
+	require.Len(t, body, len("prefix_v3"))
 	require.Equal(t, "prefix_v3", string(body))
+	require.Equal(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
+	require.Equal(t, int64(len(body)), resp.ContentLength)
 }
 
 // go test -run Test_Ctx_CustomCtx
@@ -149,7 +158,14 @@ func Test_Ctx_CustomCtx_and_Method(t *testing.T) {
 	app.Add([]string{"JOHN"}, "/doe", testEmptyHandler)
 	resp, err := app.Test(httptest.NewRequest("JOHN", "/doe", nil))
 	require.NoError(t, err, "app.Test(req)")
+	defer func() { require.NoError(t, resp.Body.Close()) }()
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err, "io.ReadAll(resp.Body)")
+	require.Empty(t, body)
+	require.Equal(t, "", resp.Header.Get(HeaderContentType))
+	require.Equal(t, int64(0), resp.ContentLength)
 
 	// Add a new method
 	require.Panics(t, func() {
@@ -1783,7 +1799,14 @@ func Test_Ctx_FormFile(t *testing.T) {
 
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
+	defer func() { require.NoError(t, resp.Body.Close()) }()
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	respBody, err := io.ReadAll(resp.Body)
+	require.NoError(t, err, "io.ReadAll(resp.Body)")
+	require.Empty(t, respBody)
+	require.Equal(t, "", resp.Header.Get(HeaderContentType))
+	require.Equal(t, int64(0), resp.ContentLength)
 }
 
 // go test -run Test_Ctx_FormValue
@@ -1807,7 +1830,14 @@ func Test_Ctx_FormValue(t *testing.T) {
 
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
+	defer func() { require.NoError(t, resp.Body.Close()) }()
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	respBody, err := io.ReadAll(resp.Body)
+	require.NoError(t, err, "io.ReadAll(resp.Body)")
+	require.Empty(t, respBody)
+	require.Equal(t, "", resp.Header.Get(HeaderContentType))
+	require.Equal(t, int64(0), resp.ContentLength)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Fresh_StaleEtag -benchmem -count=4
