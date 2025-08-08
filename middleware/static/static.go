@@ -153,7 +153,9 @@ func New(root string, cfg ...Config) fiber.Handler {
 						path = utils.UnsafeBytes(root)
 					default:
 						path = path[prefixLen:]
-						// Don't force add trailing slash here - let fasthttp.FS handle it
+						if len(path) == 0 || path[len(path)-1] != '/' {
+							path = append(path, '/')
+						}
 					}
 				}
 
@@ -187,7 +189,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 			if location != "" {
 				// Get the original request path and the prefix
 				originalPath := c.Path()
-				
+
 				// Find the prefix length
 				prefix := c.Route().Path
 				if strings.Contains(prefix, "*") {
@@ -197,7 +199,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 				if prefixLen > 1 && prefix[prefixLen-1:] == "/" {
 					prefixLen--
 				}
-				
+
 				// Only fix the specific case: redirect location lacks the prefix that the original request had
 				// Parse location to get just the path part
 				var locationPath string
@@ -211,17 +213,16 @@ func New(root string, cfg ...Config) fiber.Handler {
 				} else if strings.HasPrefix(location, "/") {
 					locationPath = location
 				}
-				
+
 				// Check for the specific problematic pattern:
 				// - Original request has the prefix (e.g., /static/js or /static/js/)
 				// - Redirect location is missing the prefix (e.g., /js/ instead of /static/js/)
-				if locationPath != "" && 
-				   len(originalPath) >= prefixLen && 
-				   strings.HasPrefix(originalPath, prefix) &&
-				   !strings.HasPrefix(locationPath, prefix) {
-					
+				if locationPath != "" &&
+					len(originalPath) >= prefixLen &&
+					strings.HasPrefix(originalPath, prefix) &&
+					!strings.HasPrefix(locationPath, prefix) {
 					relativePath := originalPath[prefixLen:]
-					
+
 					// Handle both cases:
 					// 1. /static/js -> /js/ (directory without trailing slash)
 					// 2. /static/js/ -> /js/ (directory with trailing slash)
@@ -233,11 +234,11 @@ func New(root string, cfg ...Config) fiber.Handler {
 						// Request didn't have trailing slash, redirect should add it
 						expectedRedirectPath = relativePath + "/"
 					}
-					
+
 					// Only fix if the location matches the problematic pattern
 					if locationPath == "/"+expectedRedirectPath || locationPath == expectedRedirectPath {
 						newPath := prefix + expectedRedirectPath
-						
+
 						// Reconstruct the full location
 						var newLocation string
 						if locationBase != "" {
@@ -245,7 +246,7 @@ func New(root string, cfg ...Config) fiber.Handler {
 						} else {
 							newLocation = newPath
 						}
-						
+
 						c.RequestCtx().Response.Header.Set(fiber.HeaderLocation, newLocation)
 					}
 				}

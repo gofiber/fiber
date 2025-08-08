@@ -1116,14 +1116,14 @@ func Test_Static_Browse_Subdirectory_Issue(t *testing.T) {
 	staticDir := filepath.Join(tempDir, "static")
 	jsDir := filepath.Join(staticDir, "js")
 
-	err := os.MkdirAll(jsDir, 0755)
+	err := os.MkdirAll(jsDir, 0o750)
 	require.NoError(t, err)
-	
-	err = os.WriteFile(filepath.Join(jsDir, "index.js"), []byte(`console.log("test");`), 0644)
+
+	err = os.WriteFile(filepath.Join(jsDir, "index.js"), []byte(`console.log("test");`), 0o600)
 	require.NoError(t, err)
 
 	app := fiber.New()
-	
+
 	// Serve static files with browse enabled - this reproduces the issue scenario
 	app.Get("/static*", New(staticDir, Config{Browse: true}))
 
@@ -1141,49 +1141,53 @@ func Test_Static_Browse_Subdirectory_Issue(t *testing.T) {
 	// Test 2: Access subdirectory without trailing slash - this is where the bug manifests
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static/js", nil))
 	require.NoError(t, err, "app.Test(req)")
-	
+
 	// Check if this is a redirect
-	if resp.StatusCode == 301 || resp.StatusCode == 302 {
+	switch resp.StatusCode {
+	case fiber.StatusMovedPermanently, fiber.StatusFound:
 		location := resp.Header.Get("Location")
 		t.Logf("Redirect detected: %d -> %s", resp.StatusCode, location)
-		
+
 		// This is the bug: if location ends with "/js/" but doesn't contain "/static", that's the issue
-		if strings.HasSuffix(location, "/js/") && !strings.Contains(location, "/static") {
+		switch {
+		case strings.HasSuffix(location, "/js/") && !strings.Contains(location, "/static"):
 			t.Errorf("Bug confirmed: redirect goes to '%s' instead of containing '/static/js/'", location)
-		} else if strings.Contains(location, "/static/js/") {
+		case strings.Contains(location, "/static/js/"):
 			t.Log("Redirect is correct: goes to '/static/js/'")
-		} else {
+		default:
 			t.Logf("Unexpected redirect location: %s", location)
 		}
-	} else if resp.StatusCode == 200 {
+	case fiber.StatusOK:
 		// If no redirect, check the content directly
 		body, err = io.ReadAll(resp.Body)
 		require.NoError(t, err, "app.Test(req)")
 		bodyStr = string(body)
 		require.Contains(t, bodyStr, "index.js", "Subdirectory should show index.js file")
-	} else {
+	default:
 		t.Errorf("Unexpected status code: %d", resp.StatusCode)
 	}
 
 	// Test 3: Access subdirectory with trailing slash
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/static/js/", nil))
 	require.NoError(t, err, "app.Test(req)")
-	
+
 	// This might also redirect, let's handle that case
-	if resp.StatusCode == 301 || resp.StatusCode == 302 {
+	switch resp.StatusCode {
+	case fiber.StatusMovedPermanently, fiber.StatusFound:
 		location := resp.Header.Get("Location")
 		t.Logf("Trailing slash redirects: %d -> %s", resp.StatusCode, location)
 		// This should NOT redirect to a broken location
-		if strings.HasSuffix(location, "/js/") && !strings.Contains(location, "/static") {
+		switch {
+		case strings.HasSuffix(location, "/js/") && !strings.Contains(location, "/static"):
 			t.Errorf("Bug in trailing slash: redirect goes to '%s' instead of containing '/static/js/'", location)
-		} else if strings.Contains(location, "/static/js/") {
+		case strings.Contains(location, "/static/js/"):
 			t.Log("Trailing slash redirect preserves prefix correctly")
-		} else {
+		default:
 			t.Logf("Unexpected trailing slash redirect location: %s", location)
 		}
-	} else {
-		require.Equal(t, 200, resp.StatusCode, "Subdirectory with trailing slash should work")
-		
+	default:
+		require.Equal(t, fiber.StatusOK, resp.StatusCode, "Subdirectory with trailing slash should work")
+
 		body, err = io.ReadAll(resp.Body)
 		require.NoError(t, err, "app.Test(req)")
 		bodyStr = string(body)
