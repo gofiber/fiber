@@ -67,6 +67,8 @@ func main() {
 
 Fiber doesn't include a CBOR implementation by default. To enable CBOR encoding and decoding you need to choose a library, for example [fxamacker/cbor](https://github.com/fxamacker/cbor).
 
+- Use `Ctx.CBOR()` to bind CBOR data directly to structs, similar to how you would use JSON binding. Alternatively, use `Ctx.AutoFormat()` to send response as CBOR when the Accept HTTP header is `application/cbor`. For more details, see the [AutoFormat documentation](../api/ctx.md#autoformat).
+
 ```bash
 go get github.com/fxamacker/cbor/v2
 ```
