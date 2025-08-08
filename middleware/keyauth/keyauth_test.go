@@ -831,7 +831,7 @@ func Test_WWWAuthenticateHeader(t *testing.T) {
 		{
 			name: "chained extractor with auth header",
 			config: Config{
-				Validator: func(_ fiber.Ctx, key string) (bool, error) {
+				Validator: func(_ fiber.Ctx, _ string) (bool, error) {
 					return false, errors.New("validation failed")
 				},
 				Extractor: Chain(FromQuery("q"), FromAuthHeader(fiber.HeaderAuthorization, "MyScheme")),
