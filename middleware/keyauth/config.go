@@ -2,7 +2,6 @@ package keyauth
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/gofiber/fiber/v3"
 )
@@ -31,6 +30,8 @@ type Config struct {
 	Validator func(c fiber.Ctx, key string) (bool, error)
 
 	// Realm defines the protected area for WWW-Authenticate responses.
+	// This is used to set the `WWW-Authenticate` header when authentication fails.
+	//
 	// Optional. Default value "Restricted".
 	Realm string
 
@@ -45,9 +46,14 @@ var ConfigDefault = Config{
 	SuccessHandler: func(c fiber.Ctx) error {
 		return c.Next()
 	},
-	Realm:        "Restricted",
-	ErrorHandler: defaultErrorHandler("Restricted"),
-	Extractor:    FromAuthHeader(fiber.HeaderAuthorization, "Bearer"),
+	ErrorHandler: func(c fiber.Ctx, err error) error {
+		if errors.Is(err, ErrMissingOrMalformedAPIKey) {
+			return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
+		}
+		return c.Status(fiber.StatusUnauthorized).SendString("Invalid or expired API Key")
+	},
+	Realm:     "Restricted",
+	Extractor: FromAuthHeader(fiber.HeaderAuthorization, "Bearer"),
 }
 
 // configDefault is a helper function to set default values
@@ -74,21 +80,8 @@ func configDefault(config ...Config) Config {
 		cfg.SuccessHandler = ConfigDefault.SuccessHandler
 	}
 	if cfg.ErrorHandler == nil {
-		cfg.ErrorHandler = defaultErrorHandler(cfg.Realm)
+		cfg.ErrorHandler = ConfigDefault.ErrorHandler
 	}
 
 	return cfg
-}
-
-func defaultErrorHandler(realm string) fiber.ErrorHandler {
-	return func(c fiber.Ctx, err error) error {
-		// Since the default extractor is FromAuthHeader, we can set the WWW-Authenticate header.
-		// This is a reasonable default, but users can override ErrorHandler for custom behavior.
-		if errors.Is(err, ErrMissingOrMalformedAPIKey) {
-			c.Set(fiber.HeaderWWWAuthenticate, fmt.Sprintf(`Bearer realm=%q`, realm))
-			return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
-		}
-		c.Set(fiber.HeaderWWWAuthenticate, fmt.Sprintf(`Bearer realm=%q`, realm))
-		return c.Status(fiber.StatusUnauthorized).SendString("Invalid or expired API Key")
-	}
 }

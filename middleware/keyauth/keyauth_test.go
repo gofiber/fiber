@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -774,4 +775,103 @@ func Test_HeaderSchemeEmptyTokenAfterTrim(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
 	require.Equal(t, "Invalid or expired API Key", string(body))
+}
+
+func Test_WWWAuthenticateHeader(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name               string
+		expectedHeader     string
+		config             Config
+		expectedStatusCode int
+	}{
+		{
+			name: "default config on failure",
+			config: Config{
+				Validator: func(_ fiber.Ctx, _ string) (bool, error) {
+					return false, errors.New("validation failed")
+				},
+			},
+			expectedHeader:     `Bearer realm="Restricted"`,
+			expectedStatusCode: fiber.StatusUnauthorized,
+		},
+		{
+			name: "custom realm on failure",
+			config: Config{
+				Validator: func(_ fiber.Ctx, _ string) (bool, error) {
+					return false, errors.New("validation failed")
+				},
+				Realm: "My Custom Realm",
+			},
+			expectedHeader:     `Bearer realm="My Custom Realm"`,
+			expectedStatusCode: fiber.StatusUnauthorized,
+		},
+		{
+			name: "no header for non-auth-header extractor",
+			config: Config{
+				Validator: func(_ fiber.Ctx, _ string) (bool, error) {
+					return false, errors.New("validation failed")
+				},
+				Extractor: FromQuery("api_key"),
+			},
+			expectedHeader:     "",
+			expectedStatusCode: fiber.StatusUnauthorized,
+		},
+		{
+			name: "no header on success",
+			config: Config{
+				Validator: func(_ fiber.Ctx, _ string) (bool, error) {
+					return true, nil
+				},
+			},
+			expectedHeader:     "",
+			expectedStatusCode: fiber.StatusOK,
+		},
+		{
+			name: "chained extractor with auth header",
+			config: Config{
+				Validator: func(_ fiber.Ctx, key string) (bool, error) {
+					return false, errors.New("validation failed")
+				},
+				Extractor: Chain(FromQuery("q"), FromAuthHeader(fiber.HeaderAuthorization, "MyScheme")),
+			},
+			expectedHeader:     `MyScheme realm="Restricted"`,
+			expectedStatusCode: fiber.StatusUnauthorized,
+		},
+		{
+			name: "chained extractor without auth header",
+			config: Config{
+				Validator: func(_ fiber.Ctx, _ string) (bool, error) {
+					return false, errors.New("validation failed")
+				},
+				Extractor: Chain(FromQuery("q"), FromCookie("c")),
+			},
+			expectedHeader:     "",
+			expectedStatusCode: fiber.StatusUnauthorized,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			app := fiber.New()
+			app.Use(New(tt.config))
+			app.Get("/", func(c fiber.Ctx) error {
+				return c.SendString("OK")
+			})
+
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			// Provide a key for the default extractor to find
+			if tt.config.Extractor.Extract == nil {
+				req.Header.Set(fiber.HeaderAuthorization, "Bearer somekey")
+			}
+
+			resp, err := app.Test(req)
+			require.NoError(t, err)
+
+			assert.Equal(t, tt.expectedStatusCode, resp.StatusCode)
+			assert.Equal(t, tt.expectedHeader, resp.Header.Get(fiber.HeaderWWWAuthenticate))
+		})
+	}
 }

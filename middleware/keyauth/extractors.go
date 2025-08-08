@@ -40,10 +40,11 @@ const (
 
 // Extractor defines an API key extraction method with metadata.
 type Extractor struct {
-	Extract func(fiber.Ctx) (string, error)
-	Key     string      // The parameter/header name used for extraction
-	Chain   []Extractor // For chaining multiple extractors
-	Source  Source      // The type of source being extracted from
+	Extract    func(fiber.Ctx) (string, error)
+	Key        string      // The parameter/header name used for extraction
+	AuthScheme string      // The auth scheme, e.g., "Bearer" for AuthHeader
+	Chain      []Extractor // For chaining multiple extractors
+	Source     Source      // The type of source being extracted from
 }
 
 var (
@@ -76,8 +77,9 @@ func FromAuthHeader(header, authScheme string) Extractor {
 
 			return strings.TrimSpace(authHeader), nil
 		},
-		Key:    header,
-		Source: SourceAuthHeader,
+		Key:        header,
+		Source:     SourceAuthHeader,
+		AuthScheme: authScheme,
 	}
 }
 

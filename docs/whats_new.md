@@ -1114,7 +1114,7 @@ Refer to the [healthcheck middleware migration guide](./middleware/healthcheck.m
 ### KeyAuth
 
 The keyauth middleware was updated to introduce a configurable `Realm` field for the `WWW-Authenticate` header.
-The old string-based `KeyLookup` configuration has been replaced with an `Extractor` field. Use helper functions like `keyauth.FromHeader` or `keyauth.FromCookie` to define where the key should be retrieved from. Multiple sources can be combined with `keyauth.Chain`. See the migration guide below.
+The old string-based `KeyLookup` configuration has been replaced with an `Extractor` field. Use helper functions like `keyauth.FromHeader`, `keyauth.FromAuthHeader`, or `keyauth.FromCookie` to define where the key should be retrieved from. Multiple sources can be combined with `keyauth.Chain`. See the migration guide below.
 
 ### Logger
 
@@ -1942,17 +1942,21 @@ options to further control authentication behavior.
 
 #### KeyAuth
 
-The `Realm` field in the configuration is now customizable. Replace the deprecated `KeyLookup` string with an `Extractor` function.
+The keyauth middleware was updated to introduce a configurable `Realm` field for the `WWW-Authenticate` header.
+The old string-based `KeyLookup` configuration has been replaced with an `Extractor` field, and the `AuthScheme` field has been removed. The auth scheme is now inferred from the extractor used (e.g., `keyauth.FromAuthHeader`). Use helper functions like `keyauth.FromHeader`, `keyauth.FromAuthHeader`, or `keyauth.FromCookie` to define where the key should be retrieved from. Multiple sources can be combined with `keyauth.Chain`.
 
 ```go
 // Before
 app.Use(keyauth.New(keyauth.Config{
     KeyLookup: "header:Authorization",
+    AuthScheme: "Bearer",
+    Validator: validateAPIKey,
 }))
 
 // After
 app.Use(keyauth.New(keyauth.Config{
     Extractor: keyauth.FromAuthHeader(fiber.HeaderAuthorization, "Bearer"),
+    Validator: validateAPIKey,
 }))
 ```
 

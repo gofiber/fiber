@@ -262,7 +262,6 @@ app.Use(keyauth.New(keyauth.Config{
 | ErrorHandler    | `fiber.ErrorHandler`                     | ErrorHandler defines a function which is executed for an invalid key. By default a 401 response with a `WWW-Authenticate` challenge is sent. | Default error handler  |
 | Validator       | `func(fiber.Ctx, string) (bool, error)`  | **Required.** Validator is a function to validate the key.                                                           | `nil` (panic) |
 | Extractor       | `keyauth.Extractor`                    | Extractor defines how to retrieve the key from the request. Use helper functions like `keyauth.FromAuthHeader` or `keyauth.FromCookie`. | `keyauth.FromAuthHeader("Authorization", "Bearer")` |
-| AuthScheme      | `string`                                 | AuthScheme to be used in the `WWW-Authenticate` header.                                                     | "Bearer"                      |
 | Realm           | `string`                                 | Realm specifies the protected area name used in the `WWW-Authenticate` header. | `"Restricted"` |
 
 ## Default Config
@@ -272,9 +271,14 @@ var ConfigDefault = Config{
     SuccessHandler: func(c fiber.Ctx) error {
         return c.Next()
     },
-    ErrorHandler: nil, // A default error handler is set in the configDefault function
-    Extractor:    keyauth.FromAuthHeader(fiber.HeaderAuthorization, "Bearer"),
-    AuthScheme:   "Bearer",
-    Realm:        "Restricted",
+    ErrorHandler: func(c fiber.Ctx, err error) error {
+        if errors.Is(err, ErrMissingOrMalformedAPIKey) {
+            return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
+        }
+        return c.Status(fiber.StatusUnauthorized).SendString("Invalid or expired API Key")
+    },
+    Realm:     "Restricted",
+    Extractor: FromAuthHeader(fiber.HeaderAuthorization, "Bearer"),
 }
 ```
+
