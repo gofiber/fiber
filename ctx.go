@@ -450,7 +450,10 @@ func (c *DefaultCtx) release() {
 	c.route = nil
 	c.routeStack = nil
 	c.fasthttp = nil
-	c.bind = nil
+	if c.bind != nil {
+		ReleaseBind(c.bind)
+		c.bind = nil
+	}
 	c.flashMessages = c.flashMessages[:0]
 	c.viewBindMap = sync.Map{}
 	if c.redirect != nil {
@@ -498,11 +501,9 @@ func (c *DefaultCtx) renderExtensions(bind any) {
 // Replacement of: BodyParser, ParamsParser, GetReqHeaders, GetRespHeaders, AllParams, QueryParser, ReqHeaderParser
 func (c *DefaultCtx) Bind() *Bind {
 	if c.bind == nil {
-		c.bind = &Bind{
-			ctx:            c,
-			dontHandleErrs: true,
-		}
+		c.bind = AcquireBind()
 	}
+	c.bind.ctx = c
 	return c.bind
 }
 

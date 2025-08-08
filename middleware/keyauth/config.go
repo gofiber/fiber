@@ -41,7 +41,8 @@ type Config struct {
 	KeyLookup string
 
 	// AuthScheme to be used in the Authorization header.
-	// Optional. Default value "Bearer".
+	// If KeyLookup is an empty string (i.e. the default Authorization header),
+	// this value defaults to "Bearer".
 	AuthScheme string
 
 	// Realm defines the protected area for WWW-Authenticate responses.

@@ -4,30 +4,28 @@ id: healthcheck
 
 # Health Check
 
-Liveness, readiness and startup probes middleware for [Fiber](https://github.com/gofiber/fiber) that provides three endpoints for checking the liveness, readiness, and startup state of HTTP applications.
+Middleware to implement liveness, readiness, and startup probes for [Fiber](https://github.com/gofiber/fiber) applications. It exposes a generic probe handler; you decide which endpoints to register. Convenience constants are available for the conventional endpoints (`/livez`, `/readyz`, and `/startupz`).
 
 ## Overview
 
-- **Liveness Probe**: Checks if the server is up and running.
-  - **Default Endpoint**: `/livez`
-  - **Behavior**: By default returns `true` immediately when the server is operational.
+Register the middleware on any endpoint you want to expose a probe on. The package exports constants for the conventional liveness, readiness, and startup endpoints:
 
-- **Readiness Probe**: Assesses if the application is ready to handle requests.
-  - **Default Endpoint**: `/readyz`
-  - **Behavior**: By default returns `true` immediately when the server is operational.
+```go
+app.Get(healthcheck.LivenessEndpoint, healthcheck.New())
+app.Get(healthcheck.ReadinessEndpoint, healthcheck.New())
+app.Get(healthcheck.StartupEndpoint, healthcheck.New())
+```
 
-- **Startup Probe**: Checks if the application has completed its startup sequence and is ready to proceed with initialization and readiness checks.
-  - **Default Endpoint**: `/startupz`
-  - **Behavior**: By default returns `true` immediately when the server is operational.
+By default, the probe returns `true`, so each registered endpoint responds with `200 OK`. When the probe returns `false`, the middleware responds with `503 Service Unavailable`.
 
-- **HTTP Status Codes**:
-  - `200 OK`: Returned when the checker function evaluates to `true`.
-  - `503 Service Unavailable`: Returned when the checker function evaluates to `false`.
+- **Liveness**: Checks if the server is running.
+- **Readiness**: Checks if the application is ready to handle requests.
+- **Startup**: Checks if the application has completed its startup sequence.
 
 ## Signatures
 
 ```go
-func New(config Config) fiber.Handler
+func New(config ...Config) fiber.Handler
 ```
 
 ## Examples
@@ -41,57 +39,26 @@ import(
 )
 ```
 
-After you initiate your [Fiber](https://github.com/gofiber/fiber) app, you can use the following options:
+After you initiate your [Fiber](https://github.com/gofiber/fiber) app, register the middleware on the endpoints you need:
 
 ```go
-// Provide a minimal config for liveness check
+// Use the default probe on the conventional endpoints
 app.Get(healthcheck.LivenessEndpoint, healthcheck.New())
-
-// Provide a minimal config for readiness check
-app.Get(healthcheck.ReadinessEndpoint, healthcheck.New())
-
-// Provide a minimal config for startup check
-app.Get(healthcheck.StartupEndpoint, healthcheck.New())
-
-// Provide a minimal config for check with custom endpoint
-app.Get("/live", healthcheck.New())
-
-// Or extend your config for customization
-app.Get(healthcheck.LivenessEndpoint, healthcheck.New(healthcheck.Config{
-    Probe: func(c fiber.Ctx) bool {
-        return true
-    },
-}))
-
-// And it works the same for readiness, just change the route
 app.Get(healthcheck.ReadinessEndpoint, healthcheck.New(healthcheck.Config{
     Probe: func(c fiber.Ctx) bool {
-        return true
+        return serviceA.Ready() && serviceB.Ready()
     },
 }))
+app.Get(healthcheck.StartupEndpoint, healthcheck.New())
 
-// And it works the same for startup, just change the route
-app.Get(healthcheck.StartupEndpoint, healthcheck.New(healthcheck.Config{
-    Probe: func(c fiber.Ctx) bool {
-        return true
-    },
-}))
+// Register a custom endpoint
+app.Get("/healthz", healthcheck.New())
+```
 
-// With a custom route and custom probe
-app.Get("/live", healthcheck.New(healthcheck.Config{
-    Probe: func(c fiber.Ctx) bool {
-        return true
-    },
-}))
+The middleware only responds to GET requests. To register a probe on all methods, use `app.All`. Non-GET methods fall through to the next handler:
 
-// It can also be used with app.All, although it will only respond to requests with the GET method
-// in case of calling the route with any method which isn't GET, the return will be 404 Not Found when app.All is used
-// and 405 Method Not Allowed when app.Get is used
-app.All(healthcheck.ReadinessEndpoint, healthcheck.New(healthcheck.Config{
-    Probe: func(c fiber.Ctx) bool {
-        return true
-    },
-}))
+```go
+app.All("/healthz", healthcheck.New())
 ```
 
 ## Config
@@ -105,13 +72,9 @@ type Config struct {
     // Optional. Default: nil
     Next func(fiber.Ctx) bool
 
-    // Function used for checking the liveness of the application. Returns true if the application
-    // is running and false if it is not. The liveness probe is typically used to indicate if 
-    // the application is in a state where it can handle requests (e.g., the server is up and running).
-    // The readiness probe is typically used to indicate if the application is ready to start accepting traffic (e.g., all necessary components 
-    // are initialized and dependent services are available) and the startup probe typically used to 
-    // indicate if the application has completed its startup sequence and is ready to proceed with
-    // initialization and readiness checks
+    // Probe is executed to determine the current health state. It can be used for
+    // liveness, readiness or startup checks. Returning true indicates the application
+    // is healthy.
     //
     // Optional. Default: func(c fiber.Ctx) bool { return true }
     Probe func(fiber.Ctx) bool
@@ -126,6 +89,7 @@ The default configuration used by this middleware is defined as follows:
 func defaultProbe(_ fiber.Ctx) bool { return true }
 
 var ConfigDefault = Config{
-    Probe:     defaultProbe,
+    Next:  nil,
+    Probe: defaultProbe,
 }
 ```

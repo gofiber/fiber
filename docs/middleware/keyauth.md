@@ -220,7 +220,7 @@ curl --header "Authorization: Bearer my-super-secret-key"  http://localhost:3000
 | ErrorHandler    | `fiber.ErrorHandler`                     | ErrorHandler defines a function which is executed for an invalid key. By default a 401 response with a `WWW-Authenticate` challenge is sent. | `nil`  |
 | KeyLookup       | `string`                                 | KeyLookup is a string in the form of "`<source>:<name>`" that is used to extract the key from the request. | "header:Authorization"        |
 | CustomKeyLookup | `KeyLookupFunc` aka `func(c fiber.Ctx) (string, error)` | If more complex logic is required to extract the key from the request, an arbitrary function to extract it can be specified here. Utility helper functions are described below. |  `nil` |
-| AuthScheme      | `string`                                 | AuthScheme to be used in the Authorization header.                                                     | "Bearer"                      |
+| AuthScheme      | `string`                                 | AuthScheme to be used with the `Authorization` header. When `KeyLookup` is not set, this defaults to `"Bearer"`. | "Bearer"                      |
 | Realm           | `string`                                 | Realm specifies the protected area name used in the `WWW-Authenticate` header. | `"Restricted"` |
 | Validator       | `func(fiber.Ctx, string) (bool, error)`  | Validator is a function to validate the key.                                                           | A function for key validation |
 

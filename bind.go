@@ -1,8 +1,10 @@
 package fiber
 
 import (
+	"errors"
 	"reflect"
 	"slices"
+	"sync"
 
 	"github.com/gofiber/fiber/v3/binder"
 	"github.com/gofiber/utils/v2"
@@ -20,10 +22,41 @@ type StructValidator interface {
 	Validate(out any) error
 }
 
+var bindPool = sync.Pool{
+	New: func() any {
+		return &Bind{
+			dontHandleErrs: true,
+		}
+	},
+}
+
 // Bind struct
 type Bind struct {
 	ctx            Ctx
 	dontHandleErrs bool
+	skipValidation bool
+}
+
+// AcquireBind returns Bind reference from bind pool.
+func AcquireBind() *Bind {
+	b, ok := bindPool.Get().(*Bind)
+	if !ok {
+		panic(errors.New("failed to type-assert to *Bind"))
+	}
+
+	return b
+}
+
+// ReleaseBind returns b acquired via Bind to bind pool.
+func ReleaseBind(b *Bind) {
+	b.release()
+	bindPool.Put(b)
+}
+
+func (b *Bind) release() {
+	b.ctx = nil
+	b.dontHandleErrs = true
+	b.skipValidation = false
 }
 
 // WithoutAutoHandling If you want to handle binder errors manually, you can use `WithoutAutoHandling`.
@@ -55,6 +88,9 @@ func (b *Bind) returnErr(err error) error {
 
 // Struct validation.
 func (b *Bind) validateStruct(out any) error {
+	if b.skipValidation {
+		return nil
+	}
 	validator := b.ctx.App().config.StructValidator
 	if validator != nil {
 		return validator.Validate(out)
@@ -304,21 +340,23 @@ func (b *Bind) All(out any) error {
 	outElem := outVal.Elem()
 
 	// Precedence: URL Params -> Body -> Query -> Headers -> Cookies
-	sources := []func(any) error{
-		b.URI,
-		b.Body,
-		b.Query,
-		b.Header,
-		b.Cookie,
-	}
+	sources := []func(any) error{b.URI}
 
-	tempStruct := reflect.New(outElem.Type()).Interface()
+	// Check if both Body and Content-Type are set
+	if len(b.ctx.Request().Body()) > 0 && len(b.ctx.RequestCtx().Request.Header.ContentType()) > 0 {
+		sources = append(sources, b.Body)
+	}
+	sources = append(sources, b.Query, b.Header, b.Cookie)
+	prevSkip := b.skipValidation
+	b.skipValidation = true
 
 	// TODO: Support custom precedence with an optional binding_source tag
 	// TODO: Create WithOverrideEmptyValues
 	// Bind from each source, but only update unset fields
 	for _, bindFunc := range sources {
+		tempStruct := reflect.New(outElem.Type()).Interface()
 		if err := bindFunc(tempStruct); err != nil {
+			b.skipValidation = prevSkip
 			return err
 		}
 
@@ -326,7 +364,8 @@ func (b *Bind) All(out any) error {
 		mergeStruct(outElem, tempStructVal)
 	}
 
-	return nil
+	b.skipValidation = prevSkip
+	return b.returnErr(b.validateStruct(out))
 }
 
 func mergeStruct(dst, src reflect.Value) {
