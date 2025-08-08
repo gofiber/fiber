@@ -1528,40 +1528,54 @@ func Test_Ctx_AutoFormat(t *testing.T) {
 	app := New(Config{
 		MsgPackEncoder: msgpack.Marshal,
 		MsgPackDecoder: msgpack.Unmarshal,
+		CBOREncoder:    cbor.Marshal,
+		CBORDecoder:    cbor.Unmarshal,
 	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Request().Header.Set(HeaderAccept, MIMETextPlain)
 	err := c.AutoFormat([]byte("Hello, World!"))
 	require.NoError(t, err)
+	require.Equal(t, MIMETextPlainCharsetUTF8, c.GetRespHeader(HeaderContentType))
 	require.Equal(t, "Hello, World!", string(c.Response().Body()))
 
 	c.Request().Header.Set(HeaderAccept, MIMETextHTML)
 	err = c.Res().AutoFormat("Hello, World!")
 	require.NoError(t, err)
+	require.Equal(t, MIMETextHTMLCharsetUTF8, c.GetRespHeader(HeaderContentType))
 	require.Equal(t, "<p>Hello, World!</p>", string(c.Response().Body()))
 
 	c.Request().Header.Set(HeaderAccept, MIMEApplicationJSON)
 	err = c.AutoFormat("Hello, World!")
 	require.NoError(t, err)
+	require.Equal(t, MIMEApplicationJSONCharsetUTF8, c.GetRespHeader(HeaderContentType)) //nolint:testifylint // this is comparing content-type headers, not JSON content
 	require.Equal(t, `"Hello, World!"`, string(c.Response().Body()))
 
 	c.Request().Header.Set(HeaderAccept, MIMEApplicationMsgPack)
 	err = c.AutoFormat("Hello, World!")
 	require.NoError(t, err)
+	require.Equal(t, MIMEApplicationMsgPack, c.GetRespHeader(HeaderContentType))
 	require.Equal(t, []byte{
 		0xad, 0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x2c,
 		0x20, 0x57, 0x6f, 0x72, 0x6c, 0x64, 0x21,
 	}, c.Response().Body())
 
+	c.Request().Header.Set(HeaderAccept, MIMEApplicationCBOR)
+	err = c.AutoFormat("Hello, World!")
+	require.NoError(t, err)
+	require.Equal(t, MIMEApplicationCBOR, c.GetRespHeader(HeaderContentType))
+	require.Equal(t, `6d48656c6c6f2c20576f726c6421`, hex.EncodeToString(c.Response().Body()))
+
 	c.Request().Header.Set(HeaderAccept, MIMETextPlain)
 	err = c.Res().AutoFormat(complex(1, 1))
 	require.NoError(t, err)
+	require.Equal(t, MIMETextPlainCharsetUTF8, c.GetRespHeader(HeaderContentType))
 	require.Equal(t, "(1+1i)", string(c.Response().Body()))
 
 	c.Request().Header.Set(HeaderAccept, MIMEApplicationXML)
 	err = c.AutoFormat("Hello, World!")
 	require.NoError(t, err)
+	require.Equal(t, MIMEApplicationXMLCharsetUTF8, c.GetRespHeader(HeaderContentType))
 	require.Equal(t, `<string>Hello, World!</string>`, string(c.Response().Body()))
 
 	err = c.AutoFormat(complex(1, 1))
@@ -1570,6 +1584,7 @@ func Test_Ctx_AutoFormat(t *testing.T) {
 	c.Request().Header.Set(HeaderAccept, MIMETextPlain)
 	err = c.AutoFormat(Map{})
 	require.NoError(t, err)
+	require.Equal(t, MIMETextPlainCharsetUTF8, c.GetRespHeader(HeaderContentType))
 	require.Equal(t, "map[]", string(c.Response().Body()))
 
 	type broken string
@@ -1577,6 +1592,7 @@ func Test_Ctx_AutoFormat(t *testing.T) {
 	require.NoError(t, err)
 	err = c.AutoFormat(broken("Hello, World!"))
 	require.NoError(t, err)
+	require.Equal(t, MIMETextPlainCharsetUTF8, c.GetRespHeader(HeaderContentType))
 	require.Equal(t, `Hello, World!`, string(c.Response().Body()))
 }
 
@@ -1585,6 +1601,8 @@ func Test_Ctx_AutoFormat_Struct(t *testing.T) {
 	app := New(Config{
 		MsgPackEncoder: msgpack.Marshal,
 		MsgPackDecoder: msgpack.Unmarshal,
+		CBOREncoder:    cbor.Marshal,
+		CBORDecoder:    cbor.Unmarshal,
 	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
@@ -1602,6 +1620,7 @@ func Test_Ctx_AutoFormat_Struct(t *testing.T) {
 	c.Request().Header.Set(HeaderAccept, MIMEApplicationJSON)
 	err := c.AutoFormat(data)
 	require.NoError(t, err)
+	require.Equal(t, MIMEApplicationJSONCharsetUTF8, c.GetRespHeader(HeaderContentType)) //nolint:testifylint // this is comparing content-type headers, not JSON content
 	require.JSONEq(t,
 		`{"Sender":"Carol","Recipients":["Alice","Bob"],"Urgency":3}`,
 		string(c.Response().Body()),
@@ -1611,6 +1630,7 @@ func Test_Ctx_AutoFormat_Struct(t *testing.T) {
 	err = c.AutoFormat(data)
 	require.NoError(t, err)
 
+	require.Equal(t, MIMEApplicationMsgPack, c.GetRespHeader(HeaderContentType))
 	require.Equal(t, []byte{
 		// {"Sender":"Carol","Recipients":["Alice","Bob"],"Urgency":3}
 		0x83, 0xa6, 0x53, 0x65, 0x6e, 0x64, 0x65, 0x72, 0xa5, 0x43, 0x61,
@@ -1621,9 +1641,17 @@ func Test_Ctx_AutoFormat_Struct(t *testing.T) {
 	},
 		c.Response().Body())
 
+	c.Request().Header.Set(HeaderAccept, MIMEApplicationCBOR)
+	err = c.AutoFormat(data)
+	require.NoError(t, err)
+	require.Equal(t, MIMEApplicationCBOR, c.GetRespHeader(HeaderContentType))
+	require.Equal(t, "a36653656e646572654361726f6c6a526563697069656e74738265416c69636563426f6267557267656e637903",
+		hex.EncodeToString(c.Response().Body()))
+
 	c.Request().Header.Set(HeaderAccept, MIMEApplicationXML)
 	err = c.AutoFormat(data)
 	require.NoError(t, err)
+	require.Equal(t, MIMEApplicationXMLCharsetUTF8, c.GetRespHeader(HeaderContentType))
 	require.Equal(t,
 		`<Message sender="Carol" urgency="3"><Recipients>Alice</Recipients><Recipients>Bob</Recipients></Message>`,
 		string(c.Response().Body()),
