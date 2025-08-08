@@ -366,6 +366,7 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 func (r *DefaultRes) AutoFormat(body any) error {
 	// Get accepted content type
 	accept := r.c.Accepts("html", "json", "txt", "xml", "msgpack", "cbor")
+
 	// Set accepted content type
 	r.Type(accept)
 	// Type convert provided body
@@ -381,19 +382,21 @@ func (r *DefaultRes) AutoFormat(body any) error {
 
 	// Format based on the accept content type
 	switch accept {
-	case "html":
-		return r.SendString("<p>" + b + "</p>")
+	case "txt":
+		return r.SendString(b)
 	case "json":
 		return r.JSON(body)
+	case "xml":
+		return r.XML(body)
+	case "html":
+		return r.SendString("<p>" + b + "</p>")
 	case "msgpack":
 		return r.MsgPack(body)
 	case "cbor":
 		return r.CBOR(body)
-	case "txt":
-		return r.SendString(b)
-	case "xml":
-		return r.XML(body)
 	}
+
+	// Default case
 	return r.SendString(b)
 }
 
