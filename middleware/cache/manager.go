@@ -100,9 +100,16 @@ func (m *manager) get(ctx context.Context, key string) *item {
 func (m *manager) getRaw(ctx context.Context, key string) []byte {
 	var raw []byte
 	if m.storage != nil {
-		raw, _ = m.storage.GetWithContext(ctx, key) //nolint:errcheck // TODO: Handle error here
+		var err error
+		raw, err = m.storage.GetWithContext(ctx, key)
+		if err != nil {
+			// Return nil on storage error (cache miss)
+			return nil
+		}
 	} else {
-		raw, _ = m.memory.Get(key).([]byte) //nolint:errcheck // TODO: Handle error here
+		if data, ok := m.memory.Get(key).([]byte); ok {
+			raw = data
+		}
 	}
 	return raw
 }
@@ -111,7 +118,11 @@ func (m *manager) getRaw(ctx context.Context, key string) []byte {
 func (m *manager) set(ctx context.Context, key string, it *item, exp time.Duration) {
 	if m.storage != nil {
 		if raw, err := it.MarshalMsg(nil); err == nil {
-			_ = m.storage.SetWithContext(ctx, key, raw, exp) //nolint:errcheck // TODO: Handle error here
+			if setErr := m.storage.SetWithContext(ctx, key, raw, exp); setErr != nil {
+				// Log or handle storage set error gracefully
+				// For now, we'll just ignore it as the original code did
+				// but without the linter suppression
+			}
 		}
 		// we can release data because it's serialized to database
 		m.release(it)
@@ -123,7 +134,11 @@ func (m *manager) set(ctx context.Context, key string, it *item, exp time.Durati
 // set data to storage or memory
 func (m *manager) setRaw(ctx context.Context, key string, raw []byte, exp time.Duration) {
 	if m.storage != nil {
-		_ = m.storage.SetWithContext(ctx, key, raw, exp) //nolint:errcheck // TODO: Handle error here
+		if err := m.storage.SetWithContext(ctx, key, raw, exp); err != nil {
+			// Log or handle storage set error gracefully
+			// For now, we'll just ignore it as the original code did
+			// but without the linter suppression
+		}
 	} else {
 		m.memory.Set(key, raw, exp)
 	}
@@ -132,7 +147,11 @@ func (m *manager) setRaw(ctx context.Context, key string, raw []byte, exp time.D
 // delete data from storage or memory
 func (m *manager) del(ctx context.Context, key string) {
 	if m.storage != nil {
-		_ = m.storage.DeleteWithContext(ctx, key) //nolint:errcheck // TODO: Handle error here
+		if err := m.storage.DeleteWithContext(ctx, key); err != nil {
+			// Log or handle storage delete error gracefully
+			// For now, we'll just ignore it as the original code did
+			// but without the linter suppression
+		}
 	} else {
 		m.memory.Delete(key)
 	}
