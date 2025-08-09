@@ -69,6 +69,70 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 	return utils.UnsafeBytes(s), nil
 }
 
+// calculatePrefix extracts and normalizes the route prefix
+func calculatePrefix(routePath string) string {
+	prefix := routePath
+	// Is prefix a partial wildcard?
+	if strings.Contains(prefix, "*") {
+		// /john* -> /john
+		prefix = strings.Split(prefix, "*")[0]
+	}
+
+	prefixLen := len(prefix)
+	if prefixLen > 1 && prefix[prefixLen-1:] == "/" {
+		// /john/ -> /john
+		prefix = prefix[:prefixLen-1]
+	}
+
+	return prefix
+}
+
+// fixRedirectLocation corrects redirect locations to preserve URL prefixes
+func fixRedirectLocation(c fiber.Ctx, location, prefix string) string {
+	if location == "" || prefix == "" {
+		return location
+	}
+
+	originalPath := c.Path()
+
+	// Extract the path component from the location
+	locationPath := location
+	locationBase := ""
+
+	// Handle absolute URLs
+	if strings.HasPrefix(location, "http://") || strings.HasPrefix(location, "https://") {
+		if idx := strings.Index(location[8:], "/"); idx != -1 {
+			locationBase = location[:8+idx]
+			locationPath = location[8+idx:]
+		}
+	}
+
+	// Only fix if:
+	// 1. Original request has the prefix
+	// 2. Location path doesn't have the prefix
+	// 3. Location looks like it should have the prefix
+	if strings.HasPrefix(originalPath, prefix) && !strings.HasPrefix(locationPath, prefix) {
+		relativePath := originalPath[len(prefix):]
+
+		// Expected redirect path based on whether original had trailing slash
+		expectedSuffix := relativePath
+		if !strings.HasSuffix(originalPath, "/") {
+			expectedSuffix += "/"
+		}
+
+		// Check if location matches the expected pattern (with or without leading slash)
+		if locationPath == "/"+expectedSuffix || locationPath == expectedSuffix {
+			newPath := prefix + expectedSuffix
+			if locationBase != "" {
+				return locationBase + newPath
+			}
+			return newPath
+		}
+	}
+
+	return location
+}
+
 // New creates a new middleware handler.
 // The root argument specifies the root directory from which to serve static assets.
 //
@@ -100,23 +164,13 @@ func New(root string, cfg ...Config) fiber.Handler {
 
 		// Initialize FS
 		createFS.Do(func() {
-			prefix := c.Route().Path
+			prefix := calculatePrefix(c.Route().Path)
 
 			if check, err := isFile(root, config.FS); err == nil {
 				rootIsFile = check
 			}
 
-			// Is prefix a partial wildcard?
-			if strings.Contains(prefix, "*") {
-				// /john* -> /john
-				prefix = strings.Split(prefix, "*")[0]
-			}
-
 			prefixLen := len(prefix)
-			if prefixLen > 1 && prefix[prefixLen-1:] == "/" {
-				// /john/ -> /john
-				prefixLen--
-			}
 
 			fs := &fasthttp.FS{
 				Root:                   root,
@@ -182,6 +236,15 @@ func New(root string, cfg ...Config) fiber.Handler {
 		// Serve file
 		fileHandler(c.RequestCtx())
 
+		// Fix redirects to preserve URL prefix when browsing is enabled
+		status := c.RequestCtx().Response.StatusCode()
+		if (status == fiber.StatusMovedPermanently || status == fiber.StatusFound) && config.Browse {
+			location := string(c.RequestCtx().Response.Header.Peek(fiber.HeaderLocation))
+			if newLocation := fixRedirectLocation(c, location, calculatePrefix(c.Route().Path)); newLocation != location {
+				c.RequestCtx().Response.Header.Set(fiber.HeaderLocation, newLocation)
+			}
+		}
+
 		// Sets the response Content-Disposition header to attachment if the Download option is true
 		if config.Download {
 			name := filepath.Base(c.Path())
@@ -192,7 +255,8 @@ func New(root string, cfg ...Config) fiber.Handler {
 		}
 
 		// Return request if found and not forbidden
-		status := c.RequestCtx().Response.StatusCode()
+		// Re-check status after potential redirect fix
+		status = c.RequestCtx().Response.StatusCode()
 
 		if status != fiber.StatusNotFound && status != fiber.StatusForbidden {
 			if len(cacheControlValue) > 0 {
