@@ -67,7 +67,7 @@ To generate a 32 char key, use `openssl rand -base64 32` or `encryptcookie.Gener
 |:----------|:----------------------------------------------------|:------------------------------------------------------------------------------------------------------|:-----------------------------|
 | Next      | `func(fiber.Ctx) bool`                             | A function to skip this middleware when returned true.                                                | `nil`                        |
 | Except    | `[]string`                                          | Array of cookie keys that should not be encrypted.                                                    | `[]`                         |
-| Key       | `string`                                            | A base64-encoded unique key to encode & decode cookies. Required. Key length should be 32 characters. | (No default, required field) |
+| Key       | `string`                                            | A base64-encoded unique key to encode & decode cookies. Required. Key length should be 16, 24, or 32 bytes. | (No default, required field) |
 | Encryptor | `func(decryptedString, key string) (string, error)` | A custom function to encrypt cookies.                                                                 | `EncryptCookie`              |
 | Decryptor | `func(encryptedString, key string) (string, error)` | A custom function to decrypt cookies.                                                                 | `DecryptCookie`              |
 
@@ -95,7 +95,7 @@ app.Use(encryptcookie.New(encryptcookie.Config{
     Except: []string{csrf.ConfigDefault.CookieName}, // exclude CSRF cookie
 }))
 app.Use(csrf.New(csrf.Config{
-    KeyLookup:      "header:" + csrf.HeaderName,
+    Extractor:      csrf.FromHeader(csrf.HeaderName),
     CookieSameSite: "Lax",
     CookieSecure:   true,
     CookieHTTPOnly: false,
