@@ -119,7 +119,7 @@ func sleepWithContextWithCustomError(ctx context.Context, d time.Duration) error
 }
 ```
 
-### Sample usage with a Database call
+### Sample usage with a database call
 
 ```go
 func main() {
