@@ -86,7 +86,7 @@ curl -i http://localhost:3000/sleep/3000   # returns 408 Request Timeout
 | OnTimeout | `fiber.Handler`    | Handler executed when a timeout occurs. Defaults to returning `fiber.ErrRequestTimeout`. | `nil`  |
 | Errors    | `[]error`          | Custom errors treated as timeout errors.                            | `nil`  |
 
-### Use with custom error:
+### Use with custom error
 
 ```go
 var ErrFooTimeOut = errors.New("foo context canceled")
@@ -119,7 +119,7 @@ func sleepWithContextWithCustomError(ctx context.Context, d time.Duration) error
 }
 ```
 
-### Sample usage with a DB call:
+### Sample usage with a Database call
 
 ```go
 func main() {
