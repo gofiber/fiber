@@ -216,31 +216,49 @@ func acceptsLanguageOfferBasic(spec, offer string, _ headerParams) bool {
 }
 
 // acceptsLanguageOfferExtended determines if a language tag offer matches a
-// range according to RFC 4647 Extended Filtering.
-// Wildcards in the range match exactly one subtag.
+// range according to RFC 4647 Extended Filtering (§3.3.2).
+// - Case-insensitive comparisons
+// - '*' matches zero or more subtags (can “slide”)
+// - Unspecified subtags are treated like '*' (so trailing/extraneous tag subtags are fine)
+// - Matching fails if sliding encounters a singleton (incl. 'x')
 func acceptsLanguageOfferExtended(spec, offer string, _ headerParams) bool {
 	if spec == "*" {
 		return true
 	}
+	if spec == "" || offer == "" {
+		return false
+	}
+
 	rs := strings.Split(spec, "-")
 	ts := strings.Split(offer, "-")
 
-	if len(ts) < len(rs) {
+	// Step 2: first subtag must match (or be '*')
+	if !(rs[0] == "*" || utils.EqualFold(rs[0], ts[0])) {
 		return false
 	}
-	hasWildcard := false
-	for i := range rs {
-		if rs[i] == "*" {
-			hasWildcard = true
-			continue // wildcard matches exactly one subtag
+
+	i, j := 1, 1 // i = range index, j = tag index
+	for i < len(rs) {
+		if rs[i] == "*" { // 3.A: '*' matches zero or more subtags
+			i++
+			continue
 		}
-		if !utils.EqualFold(rs[i], ts[i]) {
+		if j >= len(ts) { // 3.B: ran out of tag subtags
 			return false
 		}
+		if utils.EqualFold(rs[i], ts[j]) { // 3.C: exact subtag match
+			i++
+			j++
+			continue
+		}
+		// 3.D: singleton barrier (one letter or digit, incl. 'x')
+		if len(ts[j]) == 1 {
+			return false
+		}
+		// 3.E: slide forward in the tag and try again
+		j++
 	}
-	if !hasWildcard && len(rs) != len(ts) {
-		return false
-	}
+	// 4: matched all range subtags
 	return true
 }
 

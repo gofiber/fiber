@@ -351,16 +351,16 @@ func Test_Ctx_AcceptsLanguagesExtended(t *testing.T) {
 	require.Equal(t, "en-US", c.AcceptsLanguagesExtended("en-US", "fr-CA"))
 
 	c.Request().Header.Set(HeaderAcceptLanguage, "en-US-*")
-	require.Equal(t, "", c.AcceptsLanguagesExtended("en-US"))
+	require.Equal(t, "en-US", c.AcceptsLanguagesExtended("en-US"))
 
 	c.Request().Header.Set(HeaderAcceptLanguage, "en")
-	require.Equal(t, "", c.AcceptsLanguagesExtended("en-US"))
+	require.Equal(t, "en-US", c.AcceptsLanguagesExtended("en-US"))
 
 	c.Request().Header.Set(HeaderAcceptLanguage, "*")
 	require.Equal(t, "en-US", c.AcceptsLanguagesExtended("en-US", "fr-CA"))
 
 	c.Request().Header.Set(HeaderAcceptLanguage, "en-US")
-	require.Equal(t, "", c.AcceptsLanguagesExtended("en-US-CA"))
+	require.Equal(t, "en-US-CA", c.AcceptsLanguagesExtended("en-US-CA"))
 
 	c.Request().Header.Set(HeaderAcceptLanguage, "en-*")
 	require.Equal(t, "en-US-CA", c.AcceptsLanguagesExtended("en-US-CA"))
