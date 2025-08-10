@@ -315,6 +315,12 @@ func Test_Ctx_AcceptsLanguages_BasicFiltering(t *testing.T) {
 	c.Request().Header.Set(HeaderAcceptLanguage, "en-US, fr")
 	require.Equal(t, "en-US", c.AcceptsLanguages("de", "en-US", "fr"))
 
+	c.Request().Header.Set(HeaderAcceptLanguage, "en")
+	require.Equal(t, "en-US", c.AcceptsLanguages("en-US"))
+
+	c.Request().Header.Set(HeaderAcceptLanguage, "*")
+	require.Equal(t, "en", c.AcceptsLanguages("en", "fr"))
+
 	c.Request().Header.Set(HeaderAcceptLanguage, "en_US")
 	require.Equal(t, "", c.AcceptsLanguages("en-US"))
 
@@ -346,6 +352,18 @@ func Test_Ctx_AcceptsLanguagesExtended(t *testing.T) {
 
 	c.Request().Header.Set(HeaderAcceptLanguage, "en-US-*")
 	require.Equal(t, "", c.AcceptsLanguagesExtended("en-US"))
+
+	c.Request().Header.Set(HeaderAcceptLanguage, "en")
+	require.Equal(t, "", c.AcceptsLanguagesExtended("en-US"))
+
+	c.Request().Header.Set(HeaderAcceptLanguage, "*")
+	require.Equal(t, "en-US", c.AcceptsLanguagesExtended("en-US", "fr-CA"))
+
+	c.Request().Header.Set(HeaderAcceptLanguage, "en-US")
+	require.Equal(t, "", c.AcceptsLanguagesExtended("en-US-CA"))
+
+	c.Request().Header.Set(HeaderAcceptLanguage, "en-*")
+	require.Equal(t, "en-US-CA", c.AcceptsLanguagesExtended("en-US-CA"))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_AcceptsLanguages -benchmem -count=4

@@ -204,7 +204,7 @@ func acceptsLanguageOfferBasic(spec, offer string, _ headerParams) bool {
 	if spec == "*" {
 		return true
 	}
-	if strings.Contains(spec, "*") { // only "*" is allowed in Basic
+	if i := strings.IndexByte(spec, '*'); i != -1 {
 		return false
 	}
 	if utils.EqualFold(spec, offer) {
@@ -225,16 +225,21 @@ func acceptsLanguageOfferExtended(spec, offer string, _ headerParams) bool {
 	rs := strings.Split(spec, "-")
 	ts := strings.Split(offer, "-")
 
-	if len(rs) > len(ts) { // can't match more required subtags than present
+	if len(ts) < len(rs) {
 		return false
 	}
+	hasWildcard := false
 	for i := range rs {
 		if rs[i] == "*" {
+			hasWildcard = true
 			continue // wildcard matches exactly one subtag
 		}
 		if !utils.EqualFold(rs[i], ts[i]) {
 			return false
 		}
+	}
+	if !hasWildcard && len(rs) != len(ts) {
+		return false
 	}
 	return true
 }

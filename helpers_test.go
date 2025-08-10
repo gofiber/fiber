@@ -70,11 +70,17 @@ func Test_Utils_GetOffer(t *testing.T) {
 	require.Equal(t, "en-US", getOffer([]byte("fr-CA;q=0.8, en-US"), acceptsLanguageOfferBasic, "en-US", "fr-CA"))
 	require.Equal(t, "", getOffer([]byte("xx"), acceptsLanguageOfferBasic, "en"))
 	require.False(t, acceptsLanguageOfferBasic("en-*", "en-US", nil))
+	require.True(t, acceptsLanguageOfferBasic("*", "en-US", nil))
 
 	// Accept-Language Extended Filtering
 	require.True(t, acceptsLanguageOfferExtended("en-*", "en-US", nil))
 	require.True(t, acceptsLanguageOfferExtended("*-US", "en-US", nil))
 	require.False(t, acceptsLanguageOfferExtended("en-US-*", "en-US", nil))
+	require.True(t, acceptsLanguageOfferExtended("en-*", "en-US-CA", nil))
+	require.False(t, acceptsLanguageOfferExtended("en", "en-US", nil))
+	require.False(t, acceptsLanguageOfferExtended("en-US", "en-GB", nil))
+	require.True(t, acceptsLanguageOfferExtended("*", "en-US", nil))
+	require.False(t, acceptsLanguageOfferExtended("en-*", "en", nil))
 	require.Equal(t, "en-US", getOffer([]byte("fr-CA;q=0.8, en-*"), acceptsLanguageOfferExtended, "en-US", "fr-CA"))
 }
 
