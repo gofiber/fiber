@@ -49,10 +49,18 @@ func (r *DefaultReq) AcceptsEncodings(offers ...string) string {
 	return getOffer(header, acceptsOffer, offers...)
 }
 
-// AcceptsLanguages checks if the specified language is acceptable.
+// AcceptsLanguages checks if the specified language is acceptable using
+// RFC 4647 Basic Filtering.
 func (r *DefaultReq) AcceptsLanguages(offers ...string) string {
 	header := joinHeaderValues(r.Request().Header.PeekAll(HeaderAcceptLanguage))
-	return getOffer(header, acceptsLanguageOffer, offers...)
+	return getOffer(header, acceptsLanguageOfferBasic, offers...)
+}
+
+// AcceptsLanguagesExtended checks if the specified language is acceptable using
+// RFC 4647 Extended Filtering.
+func (r *DefaultReq) AcceptsLanguagesExtended(offers ...string) string {
+	header := joinHeaderValues(r.Request().Header.PeekAll(HeaderAcceptLanguage))
+	return getOffer(header, acceptsLanguageOfferExtended, offers...)
 }
 
 // App returns the *App reference to the instance of the Fiber application

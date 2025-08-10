@@ -317,6 +317,9 @@ func Test_Ctx_AcceptsLanguages_BasicFiltering(t *testing.T) {
 
 	c.Request().Header.Set(HeaderAcceptLanguage, "en_US")
 	require.Equal(t, "", c.AcceptsLanguages("en-US"))
+
+	c.Request().Header.Set(HeaderAcceptLanguage, "en-*")
+	require.Equal(t, "", c.AcceptsLanguages("en-US"))
 }
 
 // go test -run Test_Ctx_AcceptsLanguages_CaseInsensitive
@@ -327,6 +330,22 @@ func Test_Ctx_AcceptsLanguages_CaseInsensitive(t *testing.T) {
 
 	c.Request().Header.Set(HeaderAcceptLanguage, "EN-us")
 	require.Equal(t, "en-US", c.AcceptsLanguages("en-US"))
+}
+
+// go test -run Test_Ctx_AcceptsLanguagesExtended
+func Test_Ctx_AcceptsLanguagesExtended(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Request().Header.Set(HeaderAcceptLanguage, "en-*")
+	require.Equal(t, "en-US", c.AcceptsLanguagesExtended("en-US"))
+
+	c.Request().Header.Set(HeaderAcceptLanguage, "*-US")
+	require.Equal(t, "en-US", c.AcceptsLanguagesExtended("en-US", "fr-CA"))
+
+	c.Request().Header.Set(HeaderAcceptLanguage, "en-US-*")
+	require.Equal(t, "", c.AcceptsLanguagesExtended("en-US"))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_AcceptsLanguages -benchmem -count=4

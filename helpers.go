@@ -194,21 +194,49 @@ func acceptsOffer(spec, offer string, _ headerParams) bool {
 	return utils.EqualFold(spec, offer)
 }
 
-// acceptsLanguageOffer determines if a language tag offer matches a range
+// acceptsLanguageOfferBasic determines if a language tag offer matches a range
 // according to RFC 4647 Basic Filtering.
 // A match occurs if the range exactly equals the tag or is a prefix of the tag
-// followed by a hyphen. The comparison is case-insensitive. A trailing '*'
-// wildcard in the range matches any tag.
-func acceptsLanguageOffer(spec, offer string, _ headerParams) bool {
-	if len(spec) >= 1 && spec[len(spec)-1] == '*' {
+// followed by a hyphen. The comparison is case-insensitive. Only a single "*"
+// as the entire range is allowed. Any "*" appearing after a hyphen renders the
+// range invalid and will not match.
+func acceptsLanguageOfferBasic(spec, offer string, _ headerParams) bool {
+	if spec == "*" {
 		return true
 	}
-
+	if strings.Contains(spec, "*") { // only "*" is allowed in Basic
+		return false
+	}
 	if utils.EqualFold(spec, offer) {
 		return true
 	}
+	return len(offer) > len(spec) &&
+		utils.EqualFold(offer[:len(spec)], spec) &&
+		offer[len(spec)] == '-'
+}
 
-	return len(offer) > len(spec) && utils.EqualFold(offer[:len(spec)], spec) && offer[len(spec)] == '-'
+// acceptsLanguageOfferExtended determines if a language tag offer matches a
+// range according to RFC 4647 Extended Filtering.
+// Wildcards in the range match exactly one subtag.
+func acceptsLanguageOfferExtended(spec, offer string, _ headerParams) bool {
+	if spec == "*" {
+		return true
+	}
+	rs := strings.Split(spec, "-")
+	ts := strings.Split(offer, "-")
+
+	if len(rs) > len(ts) { // can't match more required subtags than present
+		return false
+	}
+	for i := range rs {
+		if rs[i] == "*" {
+			continue // wildcard matches exactly one subtag
+		}
+		if !utils.EqualFold(rs[i], ts[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 // acceptsOfferType This function determines if an offer type matches a given specification.

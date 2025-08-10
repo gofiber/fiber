@@ -63,12 +63,19 @@ func Test_Utils_GetOffer(t *testing.T) {
 	require.Equal(t, "", getOffer([]byte("gzip, deflate;q=0"), acceptsOffer, "deflate"))
 
 	// Accept-Language Basic Filtering
-	require.True(t, acceptsLanguageOffer("en", "en-US", nil))
-	require.False(t, acceptsLanguageOffer("en-US", "en", nil))
-	require.True(t, acceptsLanguageOffer("EN", "en-us", nil))
-	require.False(t, acceptsLanguageOffer("en", "en_US", nil))
-	require.Equal(t, "en-US", getOffer([]byte("fr-CA;q=0.8, en-US"), acceptsLanguageOffer, "en-US", "fr-CA"))
-	require.Equal(t, "", getOffer([]byte("xx"), acceptsLanguageOffer, "en"))
+	require.True(t, acceptsLanguageOfferBasic("en", "en-US", nil))
+	require.False(t, acceptsLanguageOfferBasic("en-US", "en", nil))
+	require.True(t, acceptsLanguageOfferBasic("EN", "en-us", nil))
+	require.False(t, acceptsLanguageOfferBasic("en", "en_US", nil))
+	require.Equal(t, "en-US", getOffer([]byte("fr-CA;q=0.8, en-US"), acceptsLanguageOfferBasic, "en-US", "fr-CA"))
+	require.Equal(t, "", getOffer([]byte("xx"), acceptsLanguageOfferBasic, "en"))
+	require.False(t, acceptsLanguageOfferBasic("en-*", "en-US", nil))
+
+	// Accept-Language Extended Filtering
+	require.True(t, acceptsLanguageOfferExtended("en-*", "en-US", nil))
+	require.True(t, acceptsLanguageOfferExtended("*-US", "en-US", nil))
+	require.False(t, acceptsLanguageOfferExtended("en-US-*", "en-US", nil))
+	require.Equal(t, "en-US", getOffer([]byte("fr-CA;q=0.8, en-*"), acceptsLanguageOfferExtended, "en-US", "fr-CA"))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Utils_GetOffer -benchmem -count=4

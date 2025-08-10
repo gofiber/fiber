@@ -444,6 +444,7 @@ func (c fiber.Ctx) Accepts(offers ...string) string
 func (c fiber.Ctx) AcceptsCharsets(offers ...string) string
 func (c fiber.Ctx) AcceptsEncodings(offers ...string) string
 func (c fiber.Ctx) AcceptsLanguages(offers ...string) string
+func (c fiber.Ctx) AcceptsLanguagesExtended(offers ...string) string
 ```
 
 ```go title="Example"
@@ -520,6 +521,9 @@ app.Get("/", func(c fiber.Ctx) error {
 
   c.AcceptsLanguages("pt", "nl", "ru")
   // "nl"
+
+  c.AcceptsLanguagesExtended("en-US", "fr-CA")
+  // depends on extended ranges in the request header
   // ...
 })
 ```

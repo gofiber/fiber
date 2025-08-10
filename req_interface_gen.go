@@ -16,8 +16,12 @@ type Req interface {
 	AcceptsCharsets(offers ...string) string
 	// AcceptsEncodings checks if the specified encoding is acceptable.
 	AcceptsEncodings(offers ...string) string
-	// AcceptsLanguages checks if the specified language is acceptable.
+	// AcceptsLanguages checks if the specified language is acceptable using
+	// RFC 4647 Basic Filtering.
 	AcceptsLanguages(offers ...string) string
+	// AcceptsLanguagesExtended checks if the specified language is acceptable using
+	// RFC 4647 Extended Filtering.
+	AcceptsLanguagesExtended(offers ...string) string
 	// App returns the *App reference to the instance of the Fiber application
 	App() *App
 	// BaseURL returns (protocol + host + base path).
