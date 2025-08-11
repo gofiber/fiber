@@ -651,6 +651,20 @@ func Test_Static_FS_Browse(t *testing.T) {
 	require.NoError(t, err, "app.Test(req)")
 	require.Contains(t, string(body), "color")
 
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/dirfs/test", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
+
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/dirfs/test/style2.css", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+	require.Equal(t, fiber.MIMETextCSSCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
+
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err, "app.Test(req)")
+	require.Contains(t, string(body), "color")
+
 	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/embed", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")

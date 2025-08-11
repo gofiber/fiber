@@ -110,8 +110,6 @@ app.Get("/login/:id<ulid>", func(c fiber.Ctx) error {
 - **ListenTLSWithCertificate**: Use `app.Listen()` with `tls.Config`.
 - **ListenMutualTLS**: Use `app.Listen()` with `tls.Config`.
 - **ListenMutualTLSWithCertificate**: Use `app.Listen()` with `tls.Config`.
-- **Context()**: Removed. `Ctx` now directly implements `context.Context`, so you can pass `c` anywhere a `context.Context` is required.
-- **SetContext()**: Removed. Attach additional context information using `Locals` or middleware if needed.
 
 ### Method Changes
 
@@ -453,7 +451,7 @@ testConfig := fiber.TestConfig{
 
 - Cookie now allows Partitioned cookies for [CHIPS](https://developers.google.com/privacy-sandbox/3pcd/chips) support. CHIPS (Cookies Having Independent Partitioned State) is a feature that improves privacy by allowing cookies to be partitioned by top-level site, mitigating cross-site tracking.
 - Cookie automatic security enforcement: When setting a cookie with `SameSite=None`, Fiber automatically sets `Secure=true` as required by RFC 6265bis and modern browsers (Chrome, Firefox, Safari). This ensures compliance with the "None" SameSite policy. See [Mozilla docs](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie#none) and [Chrome docs](https://developers.google.com/search/blog/2020/01/get-ready-for-new-samesitenone-secure) for details.
-- Context now implements [context.Context](https://pkg.go.dev/context#Context).
+- `Ctx` now implements the [context.Context](https://pkg.go.dev/context#Context) interface, replacing the former `UserContext` helpers.
 
 ### New Methods
 
@@ -491,6 +489,8 @@ testConfig := fiber.TestConfig{
 - **RedirectToRoute**: Use `c.Redirect().Route()` instead.
 - **RedirectBack**: Use `c.Redirect().Back()` instead.
 - **ReqHeaderParser**: Use `c.Bind().Header()` instead.
+- **UserContext**: Removed. `Ctx` itself now satisfies `context.Context`; pass `c` directly where a `context.Context` is required.
+- **SetUserContext**: Removed. Use `context.WithValue` on `c` or `c.Locals` to store additional request-scoped values.
 
 ### Changed Methods
 
@@ -501,9 +501,7 @@ testConfig := fiber.TestConfig{
 - **Attachment and Download**: Non-ASCII filenames now use `filename*` as
   specified by [RFC 6266](https://www.rfc-editor.org/rfc/rfc6266) and
   [RFC 8187](https://www.rfc-editor.org/rfc/rfc8187).
-- **Context**: Renamed to `RequestCtx` to correspond with the FastHTTP Request Context.
-- **UserContext**: Renamed to `Context`, which returns a `context.Context` object.
-- **SetUserContext**: Renamed to `SetContext`.
+- **Context()**: Renamed to `RequestCtx()` to access the underlying `fasthttp.RequestCtx`.
 
 ### SendStreamWriter
 
@@ -941,10 +939,10 @@ func main() {
 ```sh
 $ go run . -v
 
-    _______ __             
+    _______ __
    / ____(_) /_  ___  _____
   / /_  / / __ \/ _ \/ ___/
- / __/ / / /_/ /  __/ /    
+ / __/ / / /_/ /  __/ /
 /_/   /_/_.___/\___/_/          v3.0.0
 --------------------------------------------------
 INFO Server started on:         http://127.0.0.1:3000 (bound on host 0.0.0.0 and port 3000)
