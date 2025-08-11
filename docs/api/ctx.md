@@ -444,6 +444,7 @@ func (c fiber.Ctx) Accepts(offers ...string) string
 func (c fiber.Ctx) AcceptsCharsets(offers ...string) string
 func (c fiber.Ctx) AcceptsEncodings(offers ...string) string
 func (c fiber.Ctx) AcceptsLanguages(offers ...string) string
+func (c fiber.Ctx) AcceptsLanguagesExtended(offers ...string) string
 ```
 
 ```go title="Example"
@@ -506,6 +507,8 @@ Fiber provides similar functions for the other accept headers.
 
 For `Accept-Language`, Fiber uses the [Basic Filtering](https://www.rfc-editor.org/rfc/rfc4647#section-3.3.1) algorithm. A language range matches an offer only if it exactly equals the tag or is a prefix followed by a hyphen. For example, the range `en` matches `en-US`, but `en-US` does not match `en`.
 
+`AcceptsLanguagesExtended` applies [Extended Filtering](https://www.rfc-editor.org/rfc/rfc4647#section-3.3.2) where `*` may match zero or more subtags and wildcard matches can slide across subtags unless blocked by a singleton like `x`.
+
 ```go
 // Accept-Charset: utf-8, iso-8859-1;q=0.2
 // Accept-Encoding: gzip, compress;q=0.2
@@ -520,6 +523,9 @@ app.Get("/", func(c fiber.Ctx) error {
 
   c.AcceptsLanguages("pt", "nl", "ru")
   // "nl"
+
+  c.AcceptsLanguagesExtended("en-US", "fr-CA")
+  // depends on extended ranges in the request header
   // ...
 })
 ```

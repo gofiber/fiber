@@ -63,12 +63,38 @@ func Test_Utils_GetOffer(t *testing.T) {
 	require.Equal(t, "", getOffer([]byte("gzip, deflate;q=0"), acceptsOffer, "deflate"))
 
 	// Accept-Language Basic Filtering
-	require.True(t, acceptsLanguageOffer("en", "en-US", nil))
-	require.False(t, acceptsLanguageOffer("en-US", "en", nil))
-	require.True(t, acceptsLanguageOffer("EN", "en-us", nil))
-	require.False(t, acceptsLanguageOffer("en", "en_US", nil))
-	require.Equal(t, "en-US", getOffer([]byte("fr-CA;q=0.8, en-US"), acceptsLanguageOffer, "en-US", "fr-CA"))
-	require.Equal(t, "", getOffer([]byte("xx"), acceptsLanguageOffer, "en"))
+	require.True(t, acceptsLanguageOfferBasic("en", "en-US", nil))
+	require.False(t, acceptsLanguageOfferBasic("en-US", "en", nil))
+	require.True(t, acceptsLanguageOfferBasic("EN", "en-us", nil))
+	require.False(t, acceptsLanguageOfferBasic("en", "en_US", nil))
+	require.Equal(t, "en-US", getOffer([]byte("fr-CA;q=0.8, en-US"), acceptsLanguageOfferBasic, "en-US", "fr-CA"))
+	require.Equal(t, "", getOffer([]byte("xx"), acceptsLanguageOfferBasic, "en"))
+	require.False(t, acceptsLanguageOfferBasic("en-*", "en-US", nil))
+	require.True(t, acceptsLanguageOfferBasic("*", "en-US", nil))
+
+	// Accept-Language Extended Filtering
+	require.True(t, acceptsLanguageOfferExtended("en", "en-US", nil))
+	require.True(t, acceptsLanguageOfferExtended("en", "en-Latn-US", nil))
+	require.True(t, acceptsLanguageOfferExtended("en-*", "en-US", nil))
+	require.True(t, acceptsLanguageOfferExtended("*-US", "en-US", nil))
+	require.True(t, acceptsLanguageOfferExtended("en-US-*", "en-US", nil))
+	require.True(t, acceptsLanguageOfferExtended("en-*", "en-US-CA", nil))
+	require.False(t, acceptsLanguageOfferExtended("en-US", "en-GB", nil))
+	require.False(t, acceptsLanguageOfferExtended("fr", "en-US", nil))
+	require.False(t, acceptsLanguageOfferExtended("", "en-US", nil))
+	require.False(t, acceptsLanguageOfferExtended("en", "", nil))
+	require.True(t, acceptsLanguageOfferExtended("*", "en-US", nil))
+	require.True(t, acceptsLanguageOfferExtended("en-*", "en", nil))
+	require.Equal(t, "en-US", getOffer([]byte("fr-CA;q=0.8, en-*"), acceptsLanguageOfferExtended, "en-US", "fr-CA"))
+
+	// Sliding and singleton barriers
+	require.True(t, acceptsLanguageOfferExtended("de-*-DE", "de-DE", nil))
+	require.True(t, acceptsLanguageOfferExtended("de-*-DE", "de-DE-x-goethe", nil))
+	require.True(t, acceptsLanguageOfferExtended("de-*-DE", "de-Latn-DE-1996", nil))
+	require.False(t, acceptsLanguageOfferExtended("de-*-DE", "de", nil))
+	require.False(t, acceptsLanguageOfferExtended("de-*-DE", "de-x-DE", nil))
+	require.True(t, acceptsLanguageOfferExtended("*-CH", "de-CH", nil))
+	require.True(t, acceptsLanguageOfferExtended("*-CH", "de-Latn-CH", nil))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Utils_GetOffer -benchmem -count=4

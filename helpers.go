@@ -194,21 +194,72 @@ func acceptsOffer(spec, offer string, _ headerParams) bool {
 	return utils.EqualFold(spec, offer)
 }
 
-// acceptsLanguageOffer determines if a language tag offer matches a range
+// acceptsLanguageOfferBasic determines if a language tag offer matches a range
 // according to RFC 4647 Basic Filtering.
 // A match occurs if the range exactly equals the tag or is a prefix of the tag
-// followed by a hyphen. The comparison is case-insensitive. A trailing '*'
-// wildcard in the range matches any tag.
-func acceptsLanguageOffer(spec, offer string, _ headerParams) bool {
-	if len(spec) >= 1 && spec[len(spec)-1] == '*' {
+// followed by a hyphen. The comparison is case-insensitive. Only a single "*"
+// as the entire range is allowed. Any "*" appearing after a hyphen renders the
+// range invalid and will not match.
+func acceptsLanguageOfferBasic(spec, offer string, _ headerParams) bool {
+	if spec == "*" {
 		return true
 	}
-
+	if i := strings.IndexByte(spec, '*'); i != -1 {
+		return false
+	}
 	if utils.EqualFold(spec, offer) {
 		return true
 	}
+	return len(offer) > len(spec) &&
+		utils.EqualFold(offer[:len(spec)], spec) &&
+		offer[len(spec)] == '-'
+}
 
-	return len(offer) > len(spec) && utils.EqualFold(offer[:len(spec)], spec) && offer[len(spec)] == '-'
+// acceptsLanguageOfferExtended determines if a language tag offer matches a
+// range according to RFC 4647 Extended Filtering (§3.3.2).
+// - Case-insensitive comparisons
+// - '*' matches zero or more subtags (can “slide”)
+// - Unspecified subtags are treated like '*' (so trailing/extraneous tag subtags are fine)
+// - Matching fails if sliding encounters a singleton (incl. 'x')
+func acceptsLanguageOfferExtended(spec, offer string, _ headerParams) bool {
+	if spec == "*" {
+		return true
+	}
+	if spec == "" || offer == "" {
+		return false
+	}
+
+	rs := strings.Split(spec, "-")
+	ts := strings.Split(offer, "-")
+
+	// Step 2: first subtag must match (or be '*')
+	if !(rs[0] == "*" || utils.EqualFold(rs[0], ts[0])) {
+		return false
+	}
+
+	i, j := 1, 1 // i = range index, j = tag index
+	for i < len(rs) {
+		if rs[i] == "*" { // 3.A: '*' matches zero or more subtags
+			i++
+			continue
+		}
+		if j >= len(ts) { // 3.B: ran out of tag subtags
+			return false
+		}
+		if utils.EqualFold(rs[i], ts[j]) { // 3.C: exact subtag match
+			i++
+			j++
+			continue
+		}
+		// 3.D: singleton barrier (one letter or digit, incl. 'x')
+		if len(ts[j]) == 1 {
+			return false
+		}
+		// 3.E: slide forward in the tag and try again
+		j++
+	}
+	// 4: matched all range subtags
+	return true
 }
 
 // acceptsOfferType This function determines if an offer type matches a given specification.
