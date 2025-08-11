@@ -29,12 +29,13 @@ import (
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
-	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/utils/v2"
 	"github.com/shamaton/msgpack/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
+
+	"github.com/gofiber/fiber/v3/internal/storage/memory"
 )
 
 const epsilon = 0.001
@@ -5402,7 +5403,7 @@ func Test_Ctx_SendStreamWriter_Interrupted(t *testing.T) {
 				fmt.Fprintf(w, "Line %d\n", lineNum)
 
 				if err := w.Flush(); err != nil {
-					flushErrLine.Store(int32(lineNum))
+					flushErrLine.Store(int32(lineNum)) //nolint:gosec // this is a test
 					return
 				}
 
@@ -5439,7 +5440,7 @@ func Test_Ctx_SendStreamWriter_Interrupted(t *testing.T) {
 
 	// verify no flush errors occurred before the fourth line
 	v := flushErrLine.Load()
-	require.True(t, v == 0 || v >= 4, fmt.Sprintf("unexpected flush error on line %d", v))
+	require.True(t, v == 0 || v >= 4, "unexpected flush error on line %d", v)
 }
 
 // go test -run Test_Ctx_Set
