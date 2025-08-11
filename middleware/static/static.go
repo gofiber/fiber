@@ -23,6 +23,9 @@ import (
 // It returns an error if the path attempts to traverse directories.
 func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 	var s string
+
+	hasTrailingSlash := len(p) > 0 && p[len(p)-1] == '/'
+
 	if bytes.IndexByte(p, '\\') >= 0 {
 		b := make([]byte, len(p))
 		copy(b, p)
@@ -64,6 +67,10 @@ func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
 			return nil, errors.New("invalid path")
 		}
 		s = "/" + s
+	}
+
+	if hasTrailingSlash && len(s) > 1 && s[len(s)-1] != '/' {
+		s += "/"
 	}
 
 	return utils.UnsafeBytes(s), nil
