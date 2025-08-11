@@ -137,7 +137,7 @@ func (r *DefaultReq) Body() []byte {
 	request := r.Request()
 
 	// Get Content-Encoding header
-	headerEncoding = utils.ToLower(r.App().getString(request.Header.ContentEncoding()))
+	headerEncoding = utils.ToLower(utils.UnsafeString(request.Header.ContentEncoding()))
 
 	// If no encoding is provided, return the original body
 	if len(headerEncoding) == 0 {
