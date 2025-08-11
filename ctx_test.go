@@ -3112,6 +3112,24 @@ func Test_Ctx_Params_Case_Sensitive(t *testing.T) {
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
+func Test_Ctx_Params_Immutable(t *testing.T) {
+	t.Parallel()
+	app := New(Config{Immutable: true})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+
+	c.route = &Route{Params: []string{"user"}}
+	c.path = []byte("/test/john")
+	c.values[0] = utils.UnsafeString(c.path[6:])
+
+	param := c.Params("user")
+	c.path[6] = 'p'
+	c.path[7] = 'a'
+	c.path[8] = 'u'
+	c.path[9] = 'l'
+
+	require.Equal(t, "john", param)
+}
+
 // go test -v -run=^$ -bench=Benchmark_Ctx_Params -benchmem -count=4
 func Benchmark_Ctx_Params(b *testing.B) {
 	app := New()

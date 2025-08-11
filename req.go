@@ -137,7 +137,7 @@ func (r *DefaultReq) Body() []byte {
 	request := r.Request()
 
 	// Get Content-Encoding header
-	headerEncoding = utils.ToLower(utils.UnsafeString(request.Header.ContentEncoding()))
+	headerEncoding = utils.ToLower(r.App().getString(request.Header.ContentEncoding()))
 
 	// If no encoding is provided, return the original body
 	if len(headerEncoding) == 0 {
@@ -580,7 +580,11 @@ func (r *DefaultReq) Params(key string, defaultValue ...string) string {
 			if len(values) <= i || len(values[i]) == 0 {
 				break
 			}
-			return values[i]
+			val := values[i]
+			if r.App().config.Immutable {
+				return utils.CopyString(val)
+			}
+			return val
 		}
 	}
 	return defaultString("", defaultValue)
@@ -651,7 +655,7 @@ func (r *DefaultReq) Scheme() string {
 
 // Protocol returns the HTTP protocol of request: HTTP/1.1 and HTTP/2.
 func (r *DefaultReq) Protocol() string {
-	return utils.UnsafeString(r.Request().Header.Protocol())
+	return r.App().getString(r.Request().Header.Protocol())
 }
 
 // Query returns the query string parameter in the url.
