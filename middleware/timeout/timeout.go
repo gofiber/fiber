@@ -51,7 +51,7 @@ func runHandler(c fiber.Ctx, h fiber.Handler, cfg Config) error {
 	err := h(c)
 	if err != nil && (errors.Is(err, context.DeadlineExceeded) || (len(cfg.Errors) > 0 && isCustomError(err, cfg.Errors))) {
 		if cfg.OnTimeout != nil {
-			return cfg.OnTimeout(c)
+			return callOnTimeoutSafe(c, cfg)
 		}
 		return fiber.ErrRequestTimeout
 	}
