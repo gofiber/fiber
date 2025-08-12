@@ -63,11 +63,10 @@ app.Get("/raw", func(c fiber.Ctx) error {
 ```
 
 `fasthttpctx` enables `fasthttp` to satisfy the `context.Context` interface.
-Its `Deadline`, `Done`, and `Err` behave similarly to Fiber's own methods—
-`Deadline` always reports no deadline, `Done` closes only on server shutdown,
-and `Err` returns `context.Canceled` when that happens【F:ctx.go†L110-L142】.
-While these are no-ops for per-request cancellation, they allow you to pass
-`c.RequestCtx()` into APIs that require a `context.Context`.
+`Deadline` always reports no deadline, `Done` is closed when the client
+connection ends, and once it fires `Err` reports `context.Canceled`. This
+means handlers can detect client disconnects while still passing
+`c.RequestCtx()` into APIs that expect a `context.Context`.
 
 ## Context Helpers
 
@@ -166,18 +165,22 @@ app.Get("/job", func(c fiber.Ctx) error {
 })
 ```
 
-Although deadlines and cancellation signals are limited by the underlying
-`fasthttp` implementation, using these helpers enables a consistent API and
-future-proofing for when full support becomes available.
+Even though the base `fiber.Ctx` never cancels on its own, wrapping it with
+helpers like `context.WithTimeout` creates a derived context that honors
+deadlines and cancellation for any operations you launch from the handler. This
+common pattern lets you coordinate work with external APIs or databases while
+keeping a familiar API.
 
 ## Summary
 
-- `fiber.Ctx` directly satisfies `context.Context`.
-- `RequestCtx` exposes the raw `fasthttp` context for advanced use cases.
+- `fiber.Ctx` satisfies `context.Context` but its `Deadline`, `Done`, and `Err`
+  methods are currently no-ops.
+- `RequestCtx` exposes the raw `fasthttp` context, whose `Done` channel closes
+  when the client connection ends.
 - Middleware helpers like `requestid.FromContext` or `session.FromContext`
   make it easy to retrieve request-scoped data.
-- `fasthttpctx` powers the context integration; be aware that deadline and
-  cancellation features are currently no-ops.
+- Standard helpers such as `context.WithTimeout` can wrap `fiber.Ctx` to create
+  fully featured derived contexts inside handlers.
 
 With these tools, you can seamlessly integrate Fiber applications with
 Go's context-based APIs and manage request-scoped data effectively.
