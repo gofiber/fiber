@@ -36,6 +36,15 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 	}
 }
 
+func callOnTimeoutSafe(ctx fiber.Ctx, cfg Config) (err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			err = fiber.ErrRequestTimeout
+		}
+	}()
+	return cfg.OnTimeout(ctx)
+}
+
 // runHandler executes the handler and returns fiber.ErrRequestTimeout if it
 // sees a deadline exceeded error or one of the custom "timeout-like" errors.
 func runHandler(c fiber.Ctx, h fiber.Handler, cfg Config) error {
