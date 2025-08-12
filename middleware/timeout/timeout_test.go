@@ -204,3 +204,85 @@ func TestRunHandler_CustomOnTimeout(t *testing.T) {
 	require.True(t, called)
 	require.EqualError(t, err, "handled")
 }
+
+// TestTimeout_Issue_3671 tests various edge cases for the timeout middleware.
+func TestTimeout_Issue_3671(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	testCases := []struct {
+		name       string
+		path       string
+		handler    fiber.Handler
+		config     Config
+		expectCode int
+	}{
+		{
+			name: "Handler panics after timeout",
+			path: "/panic-after-timeout",
+			handler: func(c fiber.Ctx) error {
+				time.Sleep(50 * time.Millisecond)
+				panic("panic after timeout")
+			},
+			config:     Config{Timeout: 10 * time.Millisecond},
+			expectCode: fiber.StatusRequestTimeout,
+		},
+		{
+			name: "Handler blocks forever",
+			path: "/block-forever",
+			handler: func(c fiber.Ctx) error {
+				select {} // Block forever
+			},
+			config:     Config{Timeout: 10 * time.Millisecond},
+			expectCode: fiber.StatusRequestTimeout,
+		},
+		{
+			name: "Timeout set to 1 nanosecond",
+			path: "/nano",
+			handler: func(c fiber.Ctx) error {
+				time.Sleep(1 * time.Millisecond)
+				return c.SendString("late")
+			},
+			config:     Config{Timeout: 1 * time.Nanosecond},
+			expectCode: fiber.StatusRequestTimeout,
+		},
+		{
+			name: "Timeout set to a very large value",
+			path: "/maxint",
+			handler: func(c fiber.Ctx) error {
+				return c.SendString("ok")
+			},
+			config:     Config{Timeout: 1<<63 - 1},
+			expectCode: fiber.StatusOK,
+		},
+		{
+			name: "Custom OnTimeout handler panics",
+			path: "/panic-ontimeout",
+			handler: func(c fiber.Ctx) error {
+				time.Sleep(50 * time.Millisecond)
+				return nil
+			},
+			config: Config{
+				Timeout: 10 * time.Millisecond,
+				OnTimeout: func(c fiber.Ctx) error {
+					panic("custom panic on timeout")
+				},
+			},
+			expectCode: fiber.StatusRequestTimeout,
+		},
+	}
+
+	for _, tc := range testCases {
+		app.Get(tc.path, New(tc.handler, tc.config))
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(fiber.MethodGet, tc.path, nil)
+			resp, err := app.Test(req)
+
+			require.NoError(t, err)
+			require.Equal(t, tc.expectCode, resp.StatusCode)
+		})
+	}
+}
