@@ -20,19 +20,31 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 		if timeout <= 0 {
 			return runHandler(ctx, h, cfg)
 		}
-
 		tCtx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
+		done := make(chan error, 1)
+		panicChan := make(chan any, 1)
 
-		err := runHandler(ctx, h, cfg)
+		go func() {
+			defer func() {
+				if p := recover(); p != nil {
+					panicChan <- p
+				}
+			}()
+			done <- runHandler(ctx, h, cfg)
+		}()
 
-		if errors.Is(tCtx.Err(), context.DeadlineExceeded) {
+		select {
+		case err := <-done:
+			return err
+		case _ = <-panicChan:
+			return fiber.ErrRequestTimeout
+		case <-tCtx.Done():
 			if cfg.OnTimeout != nil {
-				return cfg.OnTimeout(ctx)
+				return callOnTimeoutSafe(ctx, cfg)
 			}
 			return fiber.ErrRequestTimeout
 		}
-		return err
 	}
 }
 
