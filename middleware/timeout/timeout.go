@@ -3,7 +3,6 @@ package timeout
 import (
 	"context"
 	"errors"
-
 	"github.com/gofiber/fiber/v3"
 )
 
