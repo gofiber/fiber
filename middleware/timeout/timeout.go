@@ -11,7 +11,7 @@ import (
 func New(h fiber.Handler, config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
 
-	return func(ctx fiber.Ctx) error {
+	return func(ctx fiber.Ctx) (err error) {
 		if cfg.Next != nil && cfg.Next(ctx) {
 			return h(ctx)
 		}
