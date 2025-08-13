@@ -773,7 +773,11 @@ Fiber is an open-source project that runs on donations to pay the bills, e.g., o
 
 ## ⭐️ Stargazers
 
-<img src="https://starchart.cc/gofiber/fiber.svg" alt="Stargazers over time" style="max-width: 100%">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=gofiber/fiber&type=Date&theme=dark" />
+  <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=gofiber/fiber&type=Date" />
+  <img src="https://api.star-history.com/svg?repos=gofiber/fiber&type=Date" />
+</picture>
 
 ## 🧾 License
 

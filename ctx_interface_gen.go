@@ -159,8 +159,12 @@ type Ctx interface {
 	AcceptsCharsets(offers ...string) string
 	// AcceptsEncodings checks if the specified encoding is acceptable.
 	AcceptsEncodings(offers ...string) string
-	// AcceptsLanguages checks if the specified language is acceptable.
+	// AcceptsLanguages checks if the specified language is acceptable using
+	// RFC 4647 Basic Filtering.
 	AcceptsLanguages(offers ...string) string
+	// AcceptsLanguagesExtended checks if the specified language is acceptable using
+	// RFC 4647 Extended Filtering.
+	AcceptsLanguagesExtended(offers ...string) string
 	// BodyRaw contains the raw body submitted in a POST request.
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
@@ -320,7 +324,7 @@ type Ctx interface {
 	Format(handlers ...ResFmt) error
 	// AutoFormat performs content-negotiation on the Accept HTTP header.
 	// It uses Accepts to select a proper format.
-	// The supported content types are text/html, text/plain, application/json, and application/xml.
+	// The supported content types are text/html, text/plain, application/json, application/xml, application/vnd.msgpack, and application/cbor.
 	// For more flexible content negotiation, use Format.
 	// If the header is not specified or there is no proper format, text/plain is used.
 	AutoFormat(body any) error

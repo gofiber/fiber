@@ -29,12 +29,13 @@ import (
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
-	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/utils/v2"
 	"github.com/shamaton/msgpack/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
+
+	"github.com/gofiber/fiber/v3/internal/storage/memory"
 )
 
 const epsilon = 0.001
@@ -315,7 +316,16 @@ func Test_Ctx_AcceptsLanguages_BasicFiltering(t *testing.T) {
 	c.Request().Header.Set(HeaderAcceptLanguage, "en-US, fr")
 	require.Equal(t, "en-US", c.AcceptsLanguages("de", "en-US", "fr"))
 
+	c.Request().Header.Set(HeaderAcceptLanguage, "en")
+	require.Equal(t, "en-US", c.AcceptsLanguages("en-US"))
+
+	c.Request().Header.Set(HeaderAcceptLanguage, "*")
+	require.Equal(t, "en", c.AcceptsLanguages("en", "fr"))
+
 	c.Request().Header.Set(HeaderAcceptLanguage, "en_US")
+	require.Equal(t, "", c.AcceptsLanguages("en-US"))
+
+	c.Request().Header.Set(HeaderAcceptLanguage, "en-*")
 	require.Equal(t, "", c.AcceptsLanguages("en-US"))
 }
 
@@ -327,6 +337,34 @@ func Test_Ctx_AcceptsLanguages_CaseInsensitive(t *testing.T) {
 
 	c.Request().Header.Set(HeaderAcceptLanguage, "EN-us")
 	require.Equal(t, "en-US", c.AcceptsLanguages("en-US"))
+}
+
+// go test -run Test_Ctx_AcceptsLanguagesExtended
+func Test_Ctx_AcceptsLanguagesExtended(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Request().Header.Set(HeaderAcceptLanguage, "en-*")
+	require.Equal(t, "en-US", c.AcceptsLanguagesExtended("en-US"))
+
+	c.Request().Header.Set(HeaderAcceptLanguage, "*-US")
+	require.Equal(t, "en-US", c.AcceptsLanguagesExtended("en-US", "fr-CA"))
+
+	c.Request().Header.Set(HeaderAcceptLanguage, "en-US-*")
+	require.Equal(t, "en-US", c.AcceptsLanguagesExtended("en-US"))
+
+	c.Request().Header.Set(HeaderAcceptLanguage, "en")
+	require.Equal(t, "en-US", c.AcceptsLanguagesExtended("en-US"))
+
+	c.Request().Header.Set(HeaderAcceptLanguage, "*")
+	require.Equal(t, "en-US", c.AcceptsLanguagesExtended("en-US", "fr-CA"))
+
+	c.Request().Header.Set(HeaderAcceptLanguage, "en-US")
+	require.Equal(t, "en-US-CA", c.AcceptsLanguagesExtended("en-US-CA"))
+
+	c.Request().Header.Set(HeaderAcceptLanguage, "en-*")
+	require.Equal(t, "en-US-CA", c.AcceptsLanguagesExtended("en-US-CA"))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_AcceptsLanguages -benchmem -count=4
@@ -3112,6 +3150,24 @@ func Test_Ctx_Params_Case_Sensitive(t *testing.T) {
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
+func Test_Ctx_Params_Immutable(t *testing.T) {
+	t.Parallel()
+	app := New(Config{Immutable: true})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+
+	c.route = &Route{Params: []string{"user"}}
+	c.path = []byte("/test/john")
+	c.values[0] = utils.UnsafeString(c.path[6:])
+
+	param := c.Params("user")
+	c.path[6] = 'p'
+	c.path[7] = 'a'
+	c.path[8] = 'u'
+	c.path[9] = 'l'
+
+	require.Equal(t, "john", param)
+}
+
 // go test -v -run=^$ -bench=Benchmark_Ctx_Params -benchmem -count=4
 func Benchmark_Ctx_Params(b *testing.B) {
 	app := New()
@@ -5395,15 +5451,14 @@ func Test_Ctx_SendStreamWriter_Interrupted(t *testing.T) {
 	t.Parallel()
 	app := New()
 	var flushed atomic.Int32
+	var flushErrLine atomic.Int32
 	app.Get("/", func(c Ctx) error {
 		return c.SendStreamWriter(func(w *bufio.Writer) {
 			for lineNum := 1; lineNum <= 5; lineNum++ {
 				fmt.Fprintf(w, "Line %d\n", lineNum)
 
 				if err := w.Flush(); err != nil {
-					if lineNum <= 3 {
-						t.Errorf("unexpected error: %s", err)
-					}
+					flushErrLine.Store(int32(lineNum)) //nolint:gosec // this is a test
 					return
 				}
 
@@ -5411,7 +5466,9 @@ func Test_Ctx_SendStreamWriter_Interrupted(t *testing.T) {
 					flushed.Add(1)
 				}
 
-				time.Sleep(500 * time.Millisecond)
+				if lineNum == 3 {
+					time.Sleep(500 * time.Millisecond)
+				}
 			}
 		})
 	})
@@ -5421,7 +5478,7 @@ func Test_Ctx_SendStreamWriter_Interrupted(t *testing.T) {
 		// allow enough time for three lines to flush before
 		// the test connection is closed but stop before the
 		// fourth line is sent
-		Timeout:       1400 * time.Millisecond,
+		Timeout:       200 * time.Millisecond,
 		FailOnTimeout: false,
 	}
 	resp, err := app.Test(req, testConfig)
@@ -5435,6 +5492,10 @@ func Test_Ctx_SendStreamWriter_Interrupted(t *testing.T) {
 
 	// ensure the first three lines were successfully flushed
 	require.Equal(t, int32(3), flushed.Load())
+
+	// verify no flush errors occurred before the fourth line
+	v := flushErrLine.Load()
+	require.True(t, v == 0 || v >= 4, "unexpected flush error on line %d", v)
 }
 
 // go test -run Test_Ctx_Set
