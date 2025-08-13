@@ -1473,7 +1473,7 @@ app.Get("/non-ascii", func(c fiber.Ctx) error {
 ### AutoFormat
 
 Performs content-negotiation on the [Accept](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept) HTTP header. It uses [Accepts](ctx.md#accepts) to select a proper format.
-The supported content types are `text/html`, `text/plain`, `application/json`, `application/vnd.msgpack`, and `application/xml`.
+The supported content types are `text/html`, `text/plain`, `application/json`, `application/vnd.msgpack`, `application/xml`, and `application/cbor`.
 For more flexible content negotiation, use [Format](ctx.md#format).
 
 :::info
@@ -1506,6 +1506,10 @@ app.Get("/", func(c fiber.Ctx) error {
   // Accept: application/vnd.msgpack
   c.AutoFormat(user)
   // => 82 a4 6e 61 6d 65 a4 6a 6f 68 6e a4 70 61 73 73 a3 64 6f 65
+
+  // Accept: application/cbor
+  c.AutoFormat(user)
+  // => a1 64 4e 61 6d 65 68 4a 6f 68 6e 20 44 6f 65
 
   // Accept: application/xml
   c.AutoFormat(user)
