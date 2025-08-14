@@ -48,7 +48,7 @@ Here's a quick overview of the changes in Fiber `v3`:
 
 ## Drop for old Go versions
 
-Fiber `v3` drops support for Go versions below `1.24`. We recommend upgrading to Go `1.24` or higher to use Fiber `v3`.
+Fiber `v3` drops support for Go versions below `1.25`. We recommend upgrading to Go `1.25` or higher to use Fiber `v3`.
 
 ## 🚀 App
 
