@@ -67,7 +67,7 @@ func FromAuthHeader(header, authScheme string) Extractor {
 			}
 
 			// Check if the header starts with the specified auth scheme
-			if len(authScheme) > 0 {
+			if authScheme != "" {
 				schemeLen := len(authScheme)
 				if len(authHeader) > schemeLen+1 && strings.EqualFold(authHeader[:schemeLen], authScheme) && authHeader[schemeLen] == ' ' {
 					return strings.TrimSpace(authHeader[schemeLen+1:]), nil
