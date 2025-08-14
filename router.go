@@ -7,7 +7,6 @@ package fiber
 import (
 	"bytes"
 	"fmt"
-	"html"
 	"slices"
 	"sync/atomic"
 
@@ -106,8 +105,23 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) boo
 	return false
 }
 
+func escapePath(path string) string {
+	b := utils.UnsafeBytes(path)
+	buf := make([]byte, 0, len(b))
+	start := 0
+	for i, c := range b {
+		if c == '/' {
+			buf = fasthttp.AppendQuotedArg(buf, b[start:i])
+			buf = append(buf, '/')
+			start = i + 1
+		}
+	}
+	buf = fasthttp.AppendQuotedArg(buf, b[start:])
+	return utils.UnsafeString(buf)
+}
+
 func cannotRouteError(method, path string) error {
-	return NewError(StatusNotFound, "Cannot "+method+" "+html.EscapeString(path))
+	return NewError(StatusNotFound, "Cannot "+method+" "+escapePath(path))
 }
 
 func (app *App) next(c *DefaultCtx) (bool, error) {
@@ -158,11 +172,10 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 	// If c.Next() does not match, return 404
 	// If no match, scan stack again if other methods match the request
 	// Moved from app.handler because middleware may break the route chain
-	notFound := func() error {
-		return cannotRouteError(c.Method(), c.getPathOriginal())
-	}
+	method := c.Method()
+	pathOriginal := c.getPathOriginal()
 	if c.matched {
-		return false, notFound()
+		return false, cannotRouteError(method, pathOriginal)
 	}
 
 	exists := false
@@ -207,7 +220,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 	if exists {
 		return false, ErrMethodNotAllowed
 	}
-	return false, notFound()
+	return false, cannotRouteError(method, pathOriginal)
 }
 
 func (app *App) nextCustom(c CustomCtx) (bool, error) {
@@ -256,11 +269,10 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 	// If c.Next() does not match, return 404
 	// If no match, scan stack again if other methods match the request
 	// Moved from app.handler because middleware may break the route chain
-	notFound := func() error {
-		return cannotRouteError(c.Method(), c.getPathOriginal())
-	}
+	method := c.Method()
+	pathOriginal := c.getPathOriginal()
 	if c.getMatched() {
-		return false, notFound()
+		return false, cannotRouteError(method, pathOriginal)
 	}
 
 	exists := false
@@ -305,7 +317,7 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 	if exists {
 		return false, ErrMethodNotAllowed
 	}
-	return false, notFound()
+	return false, cannotRouteError(method, pathOriginal)
 }
 
 func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
