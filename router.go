@@ -7,6 +7,7 @@ package fiber
 import (
 	"bytes"
 	"fmt"
+	"html"
 	"slices"
 	"sync/atomic"
 
@@ -106,7 +107,7 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) boo
 }
 
 func cannotRouteError(method, path string) error {
-	return NewError(StatusNotFound, "Cannot "+method+" "+escapePath(path))
+	return NewError(StatusNotFound, "Cannot "+method+" "+html.EscapeString(path))
 }
 
 func (app *App) next(c *DefaultCtx) (bool, error) {

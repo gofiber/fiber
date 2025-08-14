@@ -468,34 +468,6 @@ func Benchmark_Utils_SortAcceptedTypes_Unsorted(b *testing.B) {
 	}, acceptedTypes)
 }
 
-func Test_escapePath(t *testing.T) {
-	t.Parallel()
-	cases := map[string]string{
-		"/":        "/",
-		"/foo/bar": "/foo/bar",
-		"/foo bar": "/foo+bar",
-		"/does/not/exist<script>alert('foo');</script>": "/does/not/exist%3Cscript%3Ealert%28%27foo%27%29%3B%3C/script%3E",
-	}
-	for input, expected := range cases {
-		require.Equal(t, expected, escapePath(input), input)
-	}
-}
-
-func Benchmark_EscapePath(b *testing.B) {
-	samples := []string{
-		"/foo/bar",
-		"/does/not/exist<script>alert('foo');</script>",
-	}
-	for _, sample := range samples {
-		b.Run(sample, func(b *testing.B) {
-			b.ReportAllocs()
-			for b.Loop() {
-				_ = escapePath(sample)
-			}
-		})
-	}
-}
-
 func Test_Utils_UniqueRouteStack(t *testing.T) {
 	t.Parallel()
 	route1 := &Route{}

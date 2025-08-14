@@ -413,13 +413,7 @@ func Test_Router_NotFound_HTML_Inject(t *testing.T) {
 	appHandler(c)
 
 	require.Equal(t, 404, c.Response.StatusCode())
-	require.Equal(t, "Cannot DELETE /does/not/exist%3Cscript%3Ealert%28%27foo%27%29%3B%3C/script%3E", string(c.Response.Body()))
-}
-
-func Test_cannotRouteError_EscapesPath(t *testing.T) {
-	t.Parallel()
-	err := cannotRouteError("DELETE", "/does/not/exist<script>alert('foo');</script>")
-	require.Equal(t, "Cannot DELETE /does/not/exist%3Cscript%3Ealert%28%27foo%27%29%3B%3C/script%3E", err.Error())
+	require.Equal(t, "Cannot DELETE /does/not/exist&lt;script&gt;alert(&#39;foo&#39;);&lt;/script&gt;", string(c.Response.Body()))
 }
 
 func registerTreeManipulationRoutes(app *App, middleware ...func(Ctx) error) {
@@ -917,6 +911,7 @@ func Benchmark_App_MethodNotAllowed(b *testing.B) {
 
 // go test -v ./... -run=^$ -bench=Benchmark_Router_NotFound -benchmem -count=4
 func Benchmark_Router_NotFound(b *testing.B) {
+	b.ReportAllocs()
 	app := New()
 	app.Use(func(c Ctx) error {
 		return c.Next()
