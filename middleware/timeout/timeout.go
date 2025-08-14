@@ -11,7 +11,7 @@ import (
 func New(h fiber.Handler, config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
 
-	return func(ctx fiber.Ctx) (err error) {
+	return func(ctx fiber.Ctx) error {
 		if cfg.Next != nil && cfg.Next(ctx) {
 			return h(ctx)
 		}
@@ -37,8 +37,8 @@ func New(h fiber.Handler, config ...Config) fiber.Handler {
 		select {
 		case err := <-done:
 			return err
-		case _ = <-panicChan:
-			return fiber.ErrRequestTimeout
+		case p := <-panicChan:
+			panic(p)
 		case <-tCtx.Done():
 			if cfg.OnTimeout != nil {
 				return callOnTimeoutSafe(ctx, cfg)
