@@ -2,52 +2,43 @@ package keyauth
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/gofiber/fiber/v3"
 )
 
-type KeyLookupFunc func(c fiber.Ctx) (string, error)
-
 // Config defines the config for middleware.
 type Config struct {
-	// Next defines a function to skip middleware.
+	// Next defines a function to skip this middleware when returned true.
+	//
 	// Optional. Default: nil
-	Next func(fiber.Ctx) bool
+	Next func(c fiber.Ctx) bool
 
 	// SuccessHandler defines a function which is executed for a valid key.
-	// Optional. Default: nil
+	//
+	// Optional. Default: c.Next()
 	SuccessHandler fiber.Handler
 
 	// ErrorHandler defines a function which is executed for an invalid key.
 	// It may be used to define a custom error.
-	// Optional. Default: 401 Invalid or expired key
+	//
+	// Optional. Default: 401 Invalid or expired API Key
 	ErrorHandler fiber.ErrorHandler
 
-	CustomKeyLookup KeyLookupFunc
-
-	// Validator is a function to validate key.
-	Validator func(fiber.Ctx, string) (bool, error)
-
-	// KeyLookup is a string in the form of "<source>:<name>" that is used
-	// to extract key from the request.
-	// Optional. Default value "header:Authorization".
-	// Possible values:
-	// - "header:<name>"
-	// - "query:<name>"
-	// - "form:<name>"
-	// - "param:<name>"
-	// - "cookie:<name>"
-	KeyLookup string
-
-	// AuthScheme to be used in the Authorization header.
-	// If KeyLookup is an empty string (i.e. the default Authorization header),
-	// this value defaults to "Bearer".
-	AuthScheme string
+	// Validator is a function to validate the key.
+	//
+	// Required.
+	Validator func(c fiber.Ctx, key string) (bool, error)
 
 	// Realm defines the protected area for WWW-Authenticate responses.
+	// This is used to set the `WWW-Authenticate` header when authentication fails.
+	//
 	// Optional. Default value "Restricted".
 	Realm string
+
+	// Extractor is a function to extract the key from the request.
+	//
+	// Optional. Default: FromAuthHeader("Authorization", "Bearer")
+	Extractor Extractor
 }
 
 // ConfigDefault is the default config
@@ -55,29 +46,39 @@ var ConfigDefault = Config{
 	SuccessHandler: func(c fiber.Ctx) error {
 		return c.Next()
 	},
-	ErrorHandler:    nil,
-	KeyLookup:       "header:" + fiber.HeaderAuthorization,
-	CustomKeyLookup: nil,
-	AuthScheme:      "Bearer",
-	Realm:           "Restricted",
+	ErrorHandler: func(c fiber.Ctx, err error) error {
+		switch {
+		case errors.Is(err, ErrMissingOrMalformedAPIKey),
+			errors.Is(err, ErrMissingAPIKey),
+			errors.Is(err, ErrMissingAPIKeyInHeader),
+			errors.Is(err, ErrMissingAPIKeyInQuery),
+			errors.Is(err, ErrMissingAPIKeyInParam),
+			errors.Is(err, ErrMissingAPIKeyInForm),
+			errors.Is(err, ErrMissingAPIKeyInCookie):
+			return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
+		}
+		return c.Status(fiber.StatusUnauthorized).SendString("Invalid or expired API Key")
+	},
+	Realm:     "Restricted",
+	Extractor: FromAuthHeader(fiber.HeaderAuthorization, "Bearer"),
 }
 
-// Helper function to set default values
+// configDefault is a helper function to set default values
 func configDefault(config ...Config) Config {
 	// Return default config if nothing provided
 	if len(config) < 1 {
-		return ConfigDefault
+		panic("fiber: keyauth middleware requires a validator function")
 	}
-
-	// Override default config
 	cfg := config[0]
 
+	// Require a validator function
+	if cfg.Validator == nil {
+		panic("fiber: keyauth middleware requires a validator function")
+	}
+
 	// Set default values
-	if cfg.KeyLookup == "" {
-		cfg.KeyLookup = ConfigDefault.KeyLookup
-		if cfg.AuthScheme == "" {
-			cfg.AuthScheme = ConfigDefault.AuthScheme
-		}
+	if cfg.Extractor.Extract == nil {
+		cfg.Extractor = ConfigDefault.Extractor
 	}
 	if cfg.Realm == "" {
 		cfg.Realm = ConfigDefault.Realm
@@ -86,19 +87,7 @@ func configDefault(config ...Config) Config {
 		cfg.SuccessHandler = ConfigDefault.SuccessHandler
 	}
 	if cfg.ErrorHandler == nil {
-		localCfg := cfg
-		cfg.ErrorHandler = func(c fiber.Ctx, err error) error {
-			if localCfg.AuthScheme != "" {
-				c.Set(fiber.HeaderWWWAuthenticate, fmt.Sprintf("%s realm=%q", localCfg.AuthScheme, localCfg.Realm))
-			}
-			if errors.Is(err, ErrMissingOrMalformedAPIKey) {
-				return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
-			}
-			return c.Status(fiber.StatusUnauthorized).SendString("Invalid or expired API Key")
-		}
-	}
-	if cfg.Validator == nil {
-		panic("fiber: keyauth middleware requires a validator function")
+		cfg.ErrorHandler = ConfigDefault.ErrorHandler
 	}
 
 	return cfg
