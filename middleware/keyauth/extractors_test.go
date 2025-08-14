@@ -158,7 +158,7 @@ func Test_Extractor_Chain(t *testing.T) {
 	require.Empty(t, token)
 	require.Equal(t, ErrMissingAPIKeyInQuery, err)
 
-	// All extractors find nothing (return empty string and nil error), should return ErrTokenNotFound
+// All extractors find nothing (return empty string and nil error), should return ErrMissingAPIKey
 	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
 	// This extractor will return "", nil
