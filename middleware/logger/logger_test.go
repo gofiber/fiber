@@ -18,12 +18,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v3"
-	fiberlog "github.com/gofiber/fiber/v3/log"
-	"github.com/gofiber/fiber/v3/middleware/requestid"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
+
+	"github.com/gofiber/fiber/v3"
+	fiberlog "github.com/gofiber/fiber/v3/log"
+	"github.com/gofiber/fiber/v3/middleware/requestid"
 )
 
 const (
@@ -468,7 +469,7 @@ func Test_Logger_All(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 
-	expected := fmt.Sprintf("%dHost=example.comhttpHTTP/1.10.0.0.0example.com/?foo=bar/%s%s%s%s%s%s%s%s%sCannot GET /", os.Getpid(), colors.Black, colors.Red, colors.Green, colors.Yellow, colors.Blue, colors.Magenta, colors.Cyan, colors.White, colors.Reset)
+	expected := fmt.Sprintf("%dHost=example.comhttpHTTP/1.10.0.0.0example.com/?foo=bar/%s%s%s%s%s%s%s%s%sNot Found", os.Getpid(), colors.Black, colors.Red, colors.Green, colors.Yellow, colors.Blue, colors.Magenta, colors.Cyan, colors.White, colors.Reset)
 	require.Equal(t, expected, buf.String())
 }
 
@@ -1039,7 +1040,7 @@ func Test_Logger_ForceColors(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 
-	expected := fmt.Sprintf("0.0.0.0%s404%s%sGET%s/%sCannot GET /%s\n", colors.Yellow, colors.Reset, colors.Cyan, colors.Reset, colors.Red, colors.Reset)
+	expected := fmt.Sprintf("0.0.0.0%s404%s%sGET%s/%sNot Found%s\n", colors.Yellow, colors.Reset, colors.Cyan, colors.Reset, colors.Red, colors.Reset)
 	require.Equal(t, expected, buf.String())
 }
 

@@ -395,7 +395,7 @@ func Test_Router_NotFound(t *testing.T) {
 	appHandler(c)
 
 	require.Equal(t, 404, c.Response.StatusCode())
-	require.Equal(t, "Cannot DELETE /this/route/does/not/exist", string(c.Response.Body()))
+	require.Equal(t, "Not Found", string(c.Response.Body()))
 }
 
 func Test_Router_NotFound_HTML_Inject(t *testing.T) {
@@ -927,7 +927,7 @@ func Benchmark_Router_NotFound(b *testing.B) {
 		appHandler(c)
 	}
 	require.Equal(b, 404, c.Response.StatusCode())
-	require.Equal(b, "Cannot DELETE /this/route/does/not/exist", string(c.Response.Body()))
+	require.Equal(b, "Not Found", string(c.Response.Body()))
 }
 
 // go test -v ./... -run=^$ -bench=Benchmark_Router_Handler -benchmem -count=4

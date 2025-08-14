@@ -9,8 +9,9 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
+
+	"github.com/gofiber/fiber/v3"
 )
 
 const CorrectKey = "specials: !$%,.#\"!?~`<>@$^*(){}[]|/\\123"
@@ -120,7 +121,7 @@ func Test_AuthSources(t *testing.T) {
 				// not a 401 (auth error)
 				if authSource == "param" && test.APIKey == "" {
 					test.expectedCode = 404
-					test.expectedBody = "Cannot GET /"
+					test.expectedBody = "Not Found"
 				}
 				require.Equal(t, test.expectedCode, res.StatusCode, test.description)
 
