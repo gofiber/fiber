@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/gofiber/fiber/v3"
@@ -192,7 +193,7 @@ func Test_AuthSources(t *testing.T) {
 
 				if authSource == paramExtractorName && testKey == "" {
 					expectedCode = 404
-					expectedBody = "Cannot GET /"
+					expectedBody = "Not Found"
 				}
 				require.Equal(t, expectedCode, res.StatusCode, test.description)
 				require.Equal(t, expectedBody, string(body), test.description)

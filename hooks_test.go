@@ -6,10 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v3/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/bytebufferpool"
+
+	"github.com/gofiber/fiber/v3/log"
 )
 
 const testMountPath = "/api"
@@ -281,7 +282,7 @@ func Test_Hook_OnListen(t *testing.T) {
 		time.Sleep(1000 * time.Millisecond)
 		assert.NoError(t, app.Shutdown())
 	}()
-	require.NoError(t, app.Listen(":9000"))
+	require.NoError(t, app.Listen(":9100"))
 
 	require.Equal(t, "ready", buf.String())
 }
