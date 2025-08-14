@@ -61,7 +61,7 @@ func Test_App_Prefork_Master_Process(t *testing.T) {
 		assert.NoError(t, app.Shutdown())
 	}()
 
-	require.NoError(t, app.prefork(":3000", nil, listenConfigDefault()))
+	require.NoError(t, app.prefork(":0", nil, listenConfigDefault()))
 
 	dummyChildCmd.Store("invalid")
 
@@ -83,7 +83,7 @@ func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
 
 	os.Stdout = w
 
-	New().startupProcess().startupMessage(":3000", false, "", listenConfigDefault())
+	New().startupProcess().startupMessage(":0", false, "", listenConfigDefault())
 
 	require.NoError(t, w.Close())
 
