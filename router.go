@@ -7,7 +7,6 @@ package fiber
 import (
 	"bytes"
 	"fmt"
-	"html"
 	"slices"
 	"sync/atomic"
 
@@ -106,10 +105,6 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) boo
 	return false
 }
 
-func cannotRouteError(method, path string) error {
-	return NewError(StatusNotFound, "Cannot "+method+" "+html.EscapeString(path))
-}
-
 func (app *App) next(c *DefaultCtx) (bool, error) {
 	methodInt := c.methodInt
 	treeHash := c.treePathHash
@@ -159,7 +154,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 	// If no match, scan stack again if other methods match the request
 	// Moved from app.handler because middleware may break the route chain
 	if c.matched {
-		return false, cannotRouteError(c.Method(), c.getPathOriginal())
+		return false, ErrNotFound
 	}
 
 	exists := false
@@ -204,7 +199,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 	if exists {
 		return false, ErrMethodNotAllowed
 	}
-	return false, cannotRouteError(c.Method(), c.getPathOriginal())
+	return false, ErrNotFound
 }
 
 func (app *App) nextCustom(c CustomCtx) (bool, error) {
@@ -254,7 +249,7 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 	// If no match, scan stack again if other methods match the request
 	// Moved from app.handler because middleware may break the route chain
 	if c.getMatched() {
-		return false, cannotRouteError(c.Method(), c.getPathOriginal())
+		return false, ErrNotFound
 	}
 
 	exists := false
@@ -299,7 +294,7 @@ func (app *App) nextCustom(c CustomCtx) (bool, error) {
 	if exists {
 		return false, ErrMethodNotAllowed
 	}
-	return false, cannotRouteError(c.Method(), c.getPathOriginal())
+	return false, ErrNotFound
 }
 
 func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {

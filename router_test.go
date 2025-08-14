@@ -413,7 +413,7 @@ func Test_Router_NotFound_HTML_Inject(t *testing.T) {
 	appHandler(c)
 
 	require.Equal(t, 404, c.Response.StatusCode())
-	require.Equal(t, "Cannot DELETE /does/not/exist&lt;script&gt;alert(&#39;foo&#39;);&lt;/script&gt;", string(c.Response.Body()))
+	require.Equal(t, "Not Found", string(c.Response.Body()))
 }
 
 func registerTreeManipulationRoutes(app *App, middleware ...func(Ctx) error) {
