@@ -48,7 +48,7 @@ Here's a quick overview of the changes in Fiber `v3`:
 
 ## Drop for old Go versions
 
-Fiber `v3` drops support for Go versions below `1.24`. We recommend upgrading to Go `1.24` or higher to use Fiber `v3`.
+Fiber `v3` drops support for Go versions below `1.25`. We recommend upgrading to Go `1.25` or higher to use Fiber `v3`.
 
 ## 🚀 App
 
@@ -1093,7 +1093,7 @@ The `Expiration` field in the CSRF middleware configuration has been renamed to 
 
 ### EncryptCookie
 
-Added support for specifying Key length when using `encryptcookie.GenerateKey(length)`. This allows the user to generate keys compatible with `AES-128`, `AES-192`, and `AES-256` (Default).
+Added support for specifying key length when using `encryptcookie.GenerateKey(length)`. Keys must be base64-encoded and may be 16, 24, or 32 bytes when decoded, supporting AES-128, AES-192, and AES-256 (default).
 
 ### EnvVar
 
@@ -1113,6 +1113,7 @@ Refer to the [healthcheck middleware migration guide](./middleware/healthcheck.m
 ### KeyAuth
 
 The keyauth middleware was updated to introduce a configurable `Realm` field for the `WWW-Authenticate` header.
+The old string-based `KeyLookup` configuration has been replaced with an `Extractor` field. Use helper functions like `keyauth.FromHeader`, `keyauth.FromAuthHeader`, or `keyauth.FromCookie` to define where the key should be retrieved from. Multiple sources can be combined with `keyauth.Chain`. See the migration guide below.
 
 ### Logger
 
@@ -1937,6 +1938,28 @@ Passwords configured for BasicAuth must now be pre-hashed. If no prefix is suppl
 
 You can also set the optional `HeaderLimit` and `Charset`
 options to further control authentication behavior.
+
+#### KeyAuth
+
+The keyauth middleware was updated to introduce a configurable `Realm` field for the `WWW-Authenticate` header.
+The old string-based `KeyLookup` configuration has been replaced with an `Extractor` field, and the `AuthScheme` field has been removed. The auth scheme is now inferred from the extractor used (e.g., `keyauth.FromAuthHeader`). Use helper functions like `keyauth.FromHeader`, `keyauth.FromAuthHeader`, or `keyauth.FromCookie` to define where the key should be retrieved from. Multiple sources can be combined with `keyauth.Chain`.
+
+```go
+// Before
+app.Use(keyauth.New(keyauth.Config{
+    KeyLookup: "header:Authorization",
+    AuthScheme: "Bearer",
+    Validator: validateAPIKey,
+}))
+
+// After
+app.Use(keyauth.New(keyauth.Config{
+    Extractor: keyauth.FromAuthHeader(fiber.HeaderAuthorization, "Bearer"),
+    Validator: validateAPIKey,
+}))
+```
+
+Combine multiple sources with `keyauth.Chain()` when needed.
 
 #### Cache
 
