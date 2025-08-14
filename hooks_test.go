@@ -282,7 +282,7 @@ func Test_Hook_OnListen(t *testing.T) {
 		time.Sleep(1000 * time.Millisecond)
 		assert.NoError(t, app.Shutdown())
 	}()
-	require.NoError(t, app.Listen(":9100"))
+	require.NoError(t, app.Listen(":0"))
 
 	require.Equal(t, "ready", buf.String())
 }
@@ -306,7 +306,7 @@ func Test_Hook_OnListenPrefork(t *testing.T) {
 		assert.NoError(t, app.Shutdown())
 	}()
 
-	require.NoError(t, app.Listen(":9000", ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
+	require.NoError(t, app.Listen(":0", ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
 	require.Equal(t, "ready", buf.String())
 }
 
@@ -327,7 +327,7 @@ func Test_Hook_OnHook(t *testing.T) {
 		return nil
 	})
 
-	require.NoError(t, app.prefork(":3000", nil, ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
+	require.NoError(t, app.prefork(":0", nil, ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
 }
 
 func Test_Hook_OnMount(t *testing.T) {
@@ -419,7 +419,7 @@ func Test_executeOnListenHooks_Error(t *testing.T) {
 		return errors.New("listen error")
 	})
 
-	err := app.hooks.executeOnListenHooks(ListenData{Host: "127.0.0.1", Port: "80"})
+	err := app.hooks.executeOnListenHooks(ListenData{Host: "127.0.0.1", Port: "0"})
 	require.EqualError(t, err, "listen error")
 }
 
