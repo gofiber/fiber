@@ -519,7 +519,9 @@ func Test_Listen_Master_Process_Show_Startup_Message(t *testing.T) {
 
 	ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
 	require.NoError(t, err)
-	port := ln.Addr().(*net.TCPAddr).Port
+	addr, ok := ln.Addr().(*net.TCPAddr)
+	require.True(t, ok)
+	port := addr.Port
 	require.NoError(t, ln.Close())
 
 	startupMessage := captureOutput(func() {
@@ -543,7 +545,9 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
 	app := New(Config{AppName: "Test App v3.0.0"})
 	ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
 	require.NoError(t, err)
-	port := ln.Addr().(*net.TCPAddr).Port
+	addr, ok := ln.Addr().(*net.TCPAddr)
+	require.True(t, ok)
+	port := addr.Port
 	require.NoError(t, ln.Close())
 
 	startupMessage := captureOutput(func() {
@@ -564,7 +568,9 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithAppNameNonAscii(t *testi
 
 	ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
 	require.NoError(t, err)
-	port := ln.Addr().(*net.TCPAddr).Port
+	addr, ok := ln.Addr().(*net.TCPAddr)
+	require.True(t, ok)
+	port := addr.Port
 	require.NoError(t, ln.Close())
 
 	startupMessage := captureOutput(func() {
@@ -583,7 +589,9 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithDisabledPreforkAndCustom
 	app := New(Config{AppName: appName})
 	ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
 	require.NoError(t, err)
-	port := ln.Addr().(*net.TCPAddr).Port
+	addr, ok := ln.Addr().(*net.TCPAddr)
+	require.True(t, ok)
+	port := addr.Port
 	require.NoError(t, ln.Close())
 
 	startupMessage := captureOutput(func() {
