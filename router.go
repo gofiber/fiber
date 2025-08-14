@@ -10,8 +10,7 @@ import (
 	"slices"
 	"sync/atomic"
 
-	"github.com/gofiber/fiber/v3/utils"
-	gutils "github.com/gofiber/utils/v2"
+	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
 
@@ -107,7 +106,7 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) boo
 }
 
 func cannotRouteError(method, path string) error {
-	return NewError(StatusNotFound, "Cannot "+method+" "+utils.EscapePath(path))
+	return NewError(StatusNotFound, "Cannot "+method+" "+escapePath(path))
 }
 
 func (app *App) next(c *DefaultCtx) (bool, error) {
@@ -135,7 +134,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 		}
 
 		// Check if it matches the request path
-		if !route.match(gutils.UnsafeString(c.detectionPath), gutils.UnsafeString(c.path), &c.values) {
+		if !route.match(utils.UnsafeString(c.detectionPath), utils.UnsafeString(c.path), &c.values) {
 			continue
 		}
 
@@ -190,7 +189,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 			}
 			// Check if it matches the request path
 			// No match, next route
-			if route.match(gutils.UnsafeString(c.detectionPath), gutils.UnsafeString(c.path), &c.values) {
+			if route.match(utils.UnsafeString(c.detectionPath), utils.UnsafeString(c.path), &c.values) {
 				// We matched
 				exists = true
 				// Add method to Allow header
@@ -349,11 +348,11 @@ func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
 	prettyPath := prefixedPath
 	// Case-sensitive routing, all to lowercase
 	if !app.config.CaseSensitive {
-		prettyPath = gutils.ToLower(prettyPath)
+		prettyPath = utils.ToLower(prettyPath)
 	}
 	// Strict routing, remove trailing slashes
 	if !app.config.StrictRouting && len(prettyPath) > 1 {
-		prettyPath = gutils.TrimRight(prettyPath, '/')
+		prettyPath = utils.TrimRight(prettyPath, '/')
 	}
 
 	route.Path = prefixedPath
@@ -394,10 +393,10 @@ func (app *App) normalizePath(path string) string {
 		path = "/" + path
 	}
 	if !app.config.CaseSensitive {
-		path = gutils.ToLower(path)
+		path = utils.ToLower(path)
 	}
 	if !app.config.StrictRouting && len(path) > 1 {
-		path = gutils.TrimRight(path, '/')
+		path = utils.TrimRight(path, '/')
 	}
 	return RemoveEscapeChar(path)
 }
@@ -443,7 +442,7 @@ func (app *App) deleteRoute(methods []string, matchFunc func(r *Route) bool) {
 
 	for _, method := range methods {
 		// Uppercase HTTP methods
-		method = gutils.ToUpper(method)
+		method = utils.ToUpper(method)
 
 		// Get unique HTTP method identifier
 		m := app.methodInt(method)
@@ -493,10 +492,10 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 	}
 	pathPretty := pathRaw
 	if !app.config.CaseSensitive {
-		pathPretty = gutils.ToLower(pathPretty)
+		pathPretty = utils.ToLower(pathPretty)
 	}
 	if !app.config.StrictRouting && len(pathPretty) > 1 {
-		pathPretty = gutils.TrimRight(pathPretty, '/')
+		pathPretty = utils.TrimRight(pathPretty, '/')
 	}
 	pathClean := RemoveEscapeChar(pathPretty)
 
@@ -506,7 +505,7 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 	isMount := group != nil && group.app != app
 
 	for _, method := range methods {
-		method = gutils.ToUpper(method)
+		method = utils.ToUpper(method)
 		if method != methodUse && app.methodInt(method) == -1 {
 			panic(fmt.Sprintf("add: invalid http method %s\n", method))
 		}

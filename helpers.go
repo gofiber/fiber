@@ -138,6 +138,23 @@ func (app *App) quoteRawString(raw string) string {
 	return app.getString(bb.B)
 }
 
+// escapePath returns a URL-escaped path while preserving slashes.
+// It pre-allocates extra capacity to minimize allocations.
+func escapePath(path string) string {
+	b := utils.UnsafeBytes(path)
+	buf := make([]byte, 0, len(b)+len(b)/2)
+	start := 0
+	for i, c := range b {
+		if c == '/' {
+			buf = fasthttp.AppendQuotedArg(buf, b[start:i])
+			buf = append(buf, '/')
+			start = i + 1
+		}
+	}
+	buf = fasthttp.AppendQuotedArg(buf, b[start:])
+	return utils.UnsafeString(buf)
+}
+
 // isASCII reports whether the provided string contains only ASCII characters.
 // See: https://www.rfc-editor.org/rfc/rfc0020
 func (*App) isASCII(s string) bool {
