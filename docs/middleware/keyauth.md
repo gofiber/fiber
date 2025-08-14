@@ -15,6 +15,10 @@ func TokenFromContext(c fiber.Ctx) string
 
 ## Examples
 
+### Basic Example
+
+This example shows how to use the KeyAuth middleware with an API key passed in a cookie.
+
 ```go
 package main
 
@@ -44,7 +48,7 @@ func main() {
 
     // note that the keyauth middleware needs to be defined before the routes are defined!
     app.Use(keyauth.New(keyauth.Config{
-        KeyLookup:  "cookie:access_token",
+        Extractor:  keyauth.FromCookie("access_token"),
         Validator:  validateAPIKey,
     }))
 
@@ -56,25 +60,27 @@ func main() {
 }
 ```
 
-## Test
+**Test:**
 
 ```bash
-# No api-key specified -> 400 missing 
+# No api-key specified -> 401 missing api key in cookie
 curl http://localhost:3000
-#> missing or malformed API Key
+#> missing api key in cookie
 
+# Correct API key -> 200 OK
 curl --cookie "access_token=correct horse battery staple" http://localhost:3000
 #> Successfully authenticated!
 
+# Incorrect API key -> 401 Invalid or expired API Key
 curl --cookie "access_token=Clearly A Wrong Key" http://localhost:3000
-#>  missing or malformed API Key
+#> Invalid or expired API Key
 ```
 
 For a more detailed example, see also the [`github.com/gofiber/recipes`](https://github.com/gofiber/recipes) repository and specifically the `fiber-envoy-extauthz` repository and the [`keyauth example`](https://github.com/gofiber/recipes/blob/master/fiber-envoy-extauthz/authz/main.go) code.
 
 ### Authenticate only certain endpoints
 
-If you want to authenticate only certain endpoints, you can use the `Config` of keyauth and apply a filter function (eg. `authFilter`) like so
+If you want to authenticate only certain endpoints, you can use the `Next` function in the config to skip the middleware for specific routes.
 
 ```go
 package main
@@ -111,9 +117,11 @@ func authFilter(c fiber.Ctx) bool {
 
     for _, pattern := range protectedURLs {
         if pattern.MatchString(originalURL) {
+            // Run middleware for protected routes
             return false
         }
     }
+    // Skip middleware for non-protected routes
     return true
 }
 
@@ -121,8 +129,8 @@ func main() {
     app := fiber.New()
 
     app.Use(keyauth.New(keyauth.Config{
-        Next:    authFilter,
-        KeyLookup: "cookie:access_token",
+        Next:      authFilter,
+        Extractor: keyauth.FromCookie("access_token"),
         Validator: validateAPIKey,
     }))
 
@@ -140,7 +148,7 @@ func main() {
 }
 ```
 
-Which results in this
+**Test:**
 
 ```bash
 # / does not need to be authenticated
@@ -157,6 +165,8 @@ curl --cookie "access_token=correct horse battery staple" http://localhost:3000/
 ```
 
 ### Specifying middleware in the handler
+
+You can apply the middleware to specific routes or groups instead of globally. This example uses the default extractor (`FromAuthHeader`).
 
 ```go
 package main
@@ -199,16 +209,48 @@ func main() {
 }
 ```
 
-Which results in this
+**Test:**
 
 ```bash
 # / does not need to be authenticated
 curl http://localhost:3000
 #> Welcome
 
-# /allowed needs to be authenticated too
+# /allowed needs to be authenticated
 curl --header "Authorization: Bearer my-super-secret-key"  http://localhost:3000/allowed
 #> Successfully authenticated!
+```
+
+## Key Extractors
+
+The middleware extracts the API key from the request using an `Extractor`. You can specify one or more extractors in the configuration.
+
+### Built-in Extractors
+
+The following extractors are available:
+
+- `keyauth.FromHeader(header string)`: Extracts the key from the specified header.
+- `keyauth.FromAuthHeader(header, authScheme string)`: Extracts the key from an authorization header (e.g., `Authorization: Bearer <key>`).
+- `keyauth.FromQuery(param string)`: Extracts the key from a URL query parameter.
+- `keyauth.FromParam(param string)`: Extracts the key from a URL path parameter.
+- `keyauth.FromCookie(name string)`: Extracts the key from a cookie.
+- `keyauth.FromForm(name string)`: Extracts the key from a form field.
+
+### Chaining Extractors
+
+You can use `keyauth.Chain` to try multiple extractors in order until one succeeds. The first successful extraction will be used.
+
+```go
+// This will try to extract the key from:
+// 1. The "X-API-Key" header
+// 2. The "api_key" query parameter
+app.Use(keyauth.New(keyauth.Config{
+    Extractor: keyauth.Chain(
+        keyauth.FromHeader("X-API-Key"),
+        keyauth.FromQuery("api_key"),
+    ),
+    Validator: validateAPIKey,
+}))
 ```
 
 ## Config
@@ -216,13 +258,11 @@ curl --header "Authorization: Bearer my-super-secret-key"  http://localhost:3000
 | Property        | Type                                     | Description                                                                                            | Default                       |
 |:----------------|:-----------------------------------------|:-------------------------------------------------------------------------------------------------------|:------------------------------|
 | Next            | `func(fiber.Ctx) bool`                   | Next defines a function to skip this middleware when returned true.                                    | `nil`                         |
-| SuccessHandler  | `fiber.Handler`                          | SuccessHandler defines a function which is executed for a valid key.                                   | `nil`                         |
-| ErrorHandler    | `fiber.ErrorHandler`                     | ErrorHandler defines a function which is executed for an invalid key. By default a 401 response with a `WWW-Authenticate` challenge is sent. | `nil`  |
-| KeyLookup       | `string`                                 | KeyLookup is a string in the form of "`<source>:<name>`" that is used to extract the key from the request. | "header:Authorization"        |
-| CustomKeyLookup | `KeyLookupFunc` aka `func(c fiber.Ctx) (string, error)` | If more complex logic is required to extract the key from the request, an arbitrary function to extract it can be specified here. Utility helper functions are described below. |  `nil` |
-| AuthScheme      | `string`                                 | AuthScheme to be used with the `Authorization` header. When `KeyLookup` is not set, this defaults to `"Bearer"`. | "Bearer"                      |
+| SuccessHandler  | `fiber.Handler`                          | SuccessHandler defines a function which is executed for a valid key.                                   | `c.Next()`                         |
+| ErrorHandler    | `fiber.ErrorHandler`                     | ErrorHandler defines a function which is executed for an invalid key. By default a 401 response with a `WWW-Authenticate` challenge is sent. | Default error handler  |
+| Validator       | `func(fiber.Ctx, string) (bool, error)`  | **Required.** Validator is a function to validate the key.                                                           | `nil` (panic) |
+| Extractor       | `keyauth.Extractor`                    | Extractor defines how to retrieve the key from the request. Use helper functions like `keyauth.FromAuthHeader` or `keyauth.FromCookie`. | `keyauth.FromAuthHeader("Authorization", "Bearer")` |
 | Realm           | `string`                                 | Realm specifies the protected area name used in the `WWW-Authenticate` header. | `"Restricted"` |
-| Validator       | `func(fiber.Ctx, string) (bool, error)`  | Validator is a function to validate the key.                                                           | A function for key validation |
 
 ## Default Config
 
@@ -231,17 +271,20 @@ var ConfigDefault = Config{
     SuccessHandler: func(c fiber.Ctx) error {
         return c.Next()
     },
-    ErrorHandler:    nil,
-    KeyLookup:       "header:" + fiber.HeaderAuthorization,
-    CustomKeyLookup: nil,
-    AuthScheme:      "Bearer",
-    Realm:           "Restricted",
+    ErrorHandler: func(c fiber.Ctx, err error) error {
+        switch {
+        case errors.Is(err, ErrMissingOrMalformedAPIKey),
+            errors.Is(err, ErrMissingAPIKey),
+            errors.Is(err, ErrMissingAPIKeyInHeader),
+            errors.Is(err, ErrMissingAPIKeyInQuery),
+            errors.Is(err, ErrMissingAPIKeyInParam),
+            errors.Is(err, ErrMissingAPIKeyInForm),
+            errors.Is(err, ErrMissingAPIKeyInCookie):
+            return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
+        }
+        return c.Status(fiber.StatusUnauthorized).SendString("Invalid or expired API Key")
+    },
+    Realm:     "Restricted",
+    Extractor: FromAuthHeader(fiber.HeaderAuthorization, "Bearer"),
 }
 ```
-
-## CustomKeyLookup
-
-Two public utility functions are provided that may be useful when creating custom extraction:
-
-* `DefaultKeyLookup(keyLookup string, authScheme string)`: This is the function that implements the default `KeyLookup` behavior, exposed to be used as a component of custom parsing logic
-* `MultipleKeySourceLookup(keyLookups []string, authScheme string)`: Creates a CustomKeyLookup function that checks each listed source using the above function until a key is found or the options are all exhausted. For example, `MultipleKeySourceLookup([]string{"header:Authorization", "header:x-api-key", "cookie:apikey"}, "Bearer")` would first check the standard Authorization header, checks the `x-api-key` header next, and finally checks for a cookie named `apikey`. If any of these contain a valid API key, the request continues. Otherwise, an error is returned.
