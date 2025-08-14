@@ -5,7 +5,6 @@ import (
 	"errors"
 	"mime/multipart"
 	"net"
-	"net/http"
 	"strconv"
 	"strings"
 
@@ -229,43 +228,45 @@ func (r *DefaultReq) FormValue(key string, defaultValue ...string) string {
 // reload request, this module will return false to make handling these requests transparent.
 // https://github.com/jshttp/fresh/blob/master/index.js#L33
 func (r *DefaultReq) Fresh() bool {
+	header := &r.c.Request().Header
+
 	// fields
-	modifiedSince := r.Get(HeaderIfModifiedSince)
-	noneMatch := r.Get(HeaderIfNoneMatch)
+	modifiedSince := header.Peek(HeaderIfModifiedSince)
+	noneMatch := header.Peek(HeaderIfNoneMatch)
 
 	// unconditional request
-	if modifiedSince == "" && noneMatch == "" {
+	if len(modifiedSince) == 0 && len(noneMatch) == 0 {
 		return false
 	}
 
 	// Always return stale when Cache-Control: no-cache
 	// to support end-to-end reload requests
 	// https://www.rfc-editor.org/rfc/rfc9111#section-5.2.1.4
-	cacheControl := r.Get(HeaderCacheControl)
-	if cacheControl != "" && isNoCache(cacheControl) {
+	cacheControl := header.Peek(HeaderCacheControl)
+	if len(cacheControl) > 0 && isNoCache(utils.UnsafeString(cacheControl)) {
 		return false
 	}
 
-	app := r.App()
 	// if-none-match
-	if noneMatch != "" && noneMatch != "*" {
+	if len(noneMatch) > 0 && (len(noneMatch) != 1 || noneMatch[0] != '*') {
+		app := r.App()
 		response := r.c.Response()
 		etag := app.getString(response.Header.Peek(HeaderETag))
 		if etag == "" {
 			return false
 		}
-		if app.isEtagStale(etag, app.getBytes(noneMatch)) {
+		if app.isEtagStale(etag, noneMatch) {
 			return false
 		}
 
-		if modifiedSince != "" {
-			lastModified := app.getString(response.Header.Peek(HeaderLastModified))
-			if lastModified != "" {
-				lastModifiedTime, err := http.ParseTime(lastModified)
+		if len(modifiedSince) > 0 {
+			lastModified := response.Header.Peek(HeaderLastModified)
+			if len(lastModified) > 0 {
+				lastModifiedTime, err := fasthttp.ParseHTTPDate(lastModified)
 				if err != nil {
 					return false
 				}
-				modifiedSinceTime, err := http.ParseTime(modifiedSince)
+				modifiedSinceTime, err := fasthttp.ParseHTTPDate(modifiedSince)
 				if err != nil {
 					return false
 				}
