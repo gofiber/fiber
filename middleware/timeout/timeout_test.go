@@ -220,7 +220,7 @@ func TestTimeout_Issue_3671(t *testing.T) {
 		{
 			name: "Handler panics after timeout",
 			path: "/panic-after-timeout",
-			handler: func(c fiber.Ctx) error {
+			handler: func(_ fiber.Ctx) error {
 				time.Sleep(50 * time.Millisecond)
 				panic("panic after timeout")
 			},
@@ -230,7 +230,7 @@ func TestTimeout_Issue_3671(t *testing.T) {
 		{
 			name: "Handler blocks forever",
 			path: "/block-forever",
-			handler: func(c fiber.Ctx) error {
+			handler: func(_ fiber.Ctx) error {
 				select {} // Block forever
 			},
 			config:     Config{Timeout: 10 * time.Millisecond},
@@ -258,13 +258,13 @@ func TestTimeout_Issue_3671(t *testing.T) {
 		{
 			name: "Custom OnTimeout handler panics",
 			path: "/panic-ontimeout",
-			handler: func(c fiber.Ctx) error {
+			handler: func(_ fiber.Ctx) error {
 				time.Sleep(50 * time.Millisecond)
 				return nil
 			},
 			config: Config{
 				Timeout: 10 * time.Millisecond,
-				OnTimeout: func(c fiber.Ctx) error {
+				OnTimeout: func(_ fiber.Ctx) error {
 					panic("custom panic on timeout")
 				},
 			},
