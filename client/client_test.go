@@ -1653,7 +1653,7 @@ func Test_Client_SetProxyURL(t *testing.T) {
 
 		require.NoError(t, err)
 
-		resp, err := client.Get("http://example.com")
+		resp, err := client.Get("http://localhost:3000")
 		require.NoError(t, err)
 
 		require.Equal(t, 200, resp.StatusCode())
@@ -1667,7 +1667,7 @@ func Test_Client_SetProxyURL(t *testing.T) {
 		err := client.SetProxyURL(":this is not a proxy")
 		require.NoError(t, err)
 
-		_, err = client.Get("http://example.com")
+		_, err = client.Get("http://localhost:3000")
 		require.Error(t, err)
 	})
 }
