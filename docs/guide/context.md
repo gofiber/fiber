@@ -100,10 +100,15 @@ app.Get("/form", func(c fiber.Ctx) error {
 ```
 
 ```go title="Deleting a token"
-handler := csrf.HandlerFromContext(c)
-if handler != nil {
-    _ = handler.DeleteToken(c)
-}
+app.Post("/logout", func(c fiber.Ctx) error {
+    handler := csrf.HandlerFromContext(c)
+    if handler != nil {
+        // Invalidate the token on logout
+        _ = handler.DeleteToken(c)
+    }
+    // ... other logout logic
+    return c.SendString("Logged out")
+})
 ```
 
 ### Session
