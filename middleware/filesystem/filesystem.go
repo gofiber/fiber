@@ -144,11 +144,11 @@ func New(config ...Config) fiber.Handler {
 			path = utils.TrimRight(path, '/')
 		}
 		file, err := cfg.Root.Open(path)
-		if err != nil && errors.Is(err, fs.ErrNotExist) && cfg.NotFoundFile != "" {
+		if err != nil && (errors.Is(err, fs.ErrNotExist) || errors.Is(err, fs.ErrInvalid)) && cfg.NotFoundFile != "" {
 			file, err = cfg.Root.Open(cfg.NotFoundFile)
 		}
 		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
+			if errors.Is(err, fs.ErrNotExist) || errors.Is(err, fs.ErrInvalid) {
 				return c.Status(fiber.StatusNotFound).Next()
 			}
 			return fmt.Errorf("failed to open: %w", err)

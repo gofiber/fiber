@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
@@ -38,6 +39,10 @@ func Test_FileSystem(t *testing.T) {
 	app.Use("/prefix", New(Config{
 		Root:       http.Dir("../../.github/testdata/fs"),
 		PathPrefix: "img",
+	}))
+
+	app.Use("/errinvalid", New(Config{
+		Root: http.FS(os.DirFS("../../.github/testdata/fs")),
 	}))
 
 	tests := []struct {
@@ -115,6 +120,11 @@ func Test_FileSystem(t *testing.T) {
 			url:         "/prefix/fiber.png",
 			statusCode:  200,
 			contentType: "image/png",
+		},
+		{
+			name:       "Should return status 404 for invalid path",
+			url:        "/errinvalid/](//invalid",
+			statusCode: 404,
 		},
 	}
 
