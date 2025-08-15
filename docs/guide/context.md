@@ -19,7 +19,7 @@ Fiber's [`Ctx`](../api/ctx.md) now implements Go's
 This means you can pass the context directly to functions that expect
 `context.Context` without any adapters.
 However, due to current limitations in `fasthttp`, the
-`Deadline`, `Done`, and `Err` methods are implemented as no-ops【F:docs/api/ctx.md†L44-L53】.
+`Deadline`, `Done`, and `Err` methods are implemented as no-ops.
 
 ```go title="Example"
 func doSomething(ctx context.Context) {
@@ -36,7 +36,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 `Ctx.Value` is backed by [Locals](../api/ctx.md#locals). Values stored
 with `c.Locals` can be read back via the `Value` method or through
-`context.WithValue` helpers【F:docs/api/ctx.md†L66-L74】.
+`context.WithValue` helpers.
 
 ```go title="Locals and Value"
 app.Get("/", func(c fiber.Ctx) error {
@@ -49,7 +49,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ## Working with `RequestCtx` and `fasthttpctx`
 
 The underlying [`fasthttp.RequestCtx`](https://pkg.go.dev/github.com/valyala/fasthttp#RequestCtx)
-can be accessed via `c.RequestCtx()`【F:ctx.go†L104-L108】.
+can be accessed via `c.RequestCtx()`.
 This exposes low level APIs and the context support provided by the
 `fasthttpctx` layer.
 
@@ -76,7 +76,7 @@ retrieve request-scoped values from the context.
 ### Request ID
 
 The RequestID middleware stores the generated identifier in the context.
-Use `requestid.FromContext` to read it later【F:docs/middleware/requestid.md†L11-L14】【F:docs/middleware/requestid.md†L44-L51】.
+Use `requestid.FromContext` to read it later.
 
 ```go
 app.Use(requestid.New())
@@ -89,7 +89,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ### CSRF
 
 The CSRF middleware provides helpers to fetch the token or the handler
-attached to the current context【F:docs/middleware/csrf.md†L111-L133】【F:docs/middleware/csrf.md†L452-L475】.
+attached to the current context.
 
 ```go
 app.Use(csrf.New())
@@ -109,7 +109,7 @@ if handler != nil {
 ### Session
 
 Sessions are stored on the context and can be retrieved via
-`session.FromContext`【F:docs/middleware/session.md†L22-L46】.
+`session.FromContext`.
 
 ```go
 app.Use(session.New())
@@ -123,7 +123,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ### Basic Authentication
 
 After successful authentication, the username is available with
-`basicauth.UsernameFromContext`【F:docs/middleware/basicauth.md†L14-L18】.
+`basicauth.UsernameFromContext`.
 
 ```go
 app.Use(basicauth.New(basicauth.Config{Users: map[string]string{"admin": "secret"}}))
@@ -136,7 +136,7 @@ app.Get("/", func(c fiber.Ctx) error {
 ### Key Authentication
 
 For API key authentication, the extracted token is stored in the
-context and accessible via `keyauth.TokenFromContext`【F:docs/middleware/keyauth.md†L9-L14】.
+context and accessible via `keyauth.TokenFromContext`.
 
 ```go
 app.Use(keyauth.New())
