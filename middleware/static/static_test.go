@@ -59,7 +59,7 @@ func Test_Static_Index_Default(t *testing.T) {
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.Equal(t, "Cannot GET /not-found", string(body))
+	require.Equal(t, "Not Found", string(body))
 }
 
 // go test -run Test_Static_Index
@@ -178,7 +178,7 @@ func Test_Static_Disable_Cache(t *testing.T) {
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.Equal(t, "Cannot GET /test.txt", string(body))
+	require.Equal(t, "Not Found", string(body))
 }
 
 func Test_Static_NotFoundHandler(t *testing.T) {
@@ -962,13 +962,13 @@ func Test_Static_PathTraversal(t *testing.T) {
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
 
-		// If we got a 404, we expect the "Cannot GET" message because that's how fiber handles NotFound by default.
+		// If we got a 404, we expect the "Not Found" message because that's how fiber handles NotFound by default.
 		if status == 404 {
-			require.Contains(t, string(body), "Cannot GET",
-				"Blocked traversal should have a Cannot GET message for %s", path)
+			require.Contains(t, string(body), "Not Found",
+				"Blocked traversal should have a \"Not Found\" message for %s", path)
 		} else {
 			require.Contains(t, string(body), "Are you a hacker?",
-				"Blocked traversal should have a Cannot GET message for %s", path)
+				"Blocked traversal should have a \"Not Found\" message for %s", path)
 		}
 	}
 
@@ -1066,15 +1066,15 @@ func Test_Static_PathTraversal_WindowsOnly(t *testing.T) {
 		require.Containsf(t, []int{400, 404}, status,
 			"Status code for path traversal %s should be 400 or 404, got %d", path, status)
 
-		// If it's a 404, we expect a "Cannot GET" message
+		// If it's a 404, we expect a "Not Found" message
 		if status == 404 {
 			respBody, err := io.ReadAll(resp.Body)
 			require.NoError(t, err)
-			require.Contains(t, string(respBody), "Cannot GET",
-				"Blocked traversal should have a 'Cannot GET' message for %s", path)
+			require.Contains(t, string(respBody), "Not Found",
+				"Blocked traversal should have a \"Not Found\" message for %s", path)
 		} else {
 			require.Contains(t, string(body), "Are you a hacker?",
-				"Blocked traversal should have a Cannot GET message for %s", path)
+				"Blocked traversal should have a \"Not Found\" message for %s", path)
 		}
 	}
 

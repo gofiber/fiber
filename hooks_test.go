@@ -6,10 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v3/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/bytebufferpool"
+
+	"github.com/gofiber/fiber/v3/log"
 )
 
 const testMountPath = "/api"
@@ -418,7 +419,7 @@ func Test_executeOnListenHooks_Error(t *testing.T) {
 		return errors.New("listen error")
 	})
 
-	err := app.hooks.executeOnListenHooks(ListenData{Host: "127.0.0.1", Port: "80"})
+	err := app.hooks.executeOnListenHooks(ListenData{Host: "127.0.0.1", Port: "0"})
 	require.EqualError(t, err, "listen error")
 }
 
