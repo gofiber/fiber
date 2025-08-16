@@ -59,6 +59,7 @@ type DefaultCtx struct {
 	flashMessages redirectionMsgs      // Flash messages
 	path          []byte               // HTTP path with the modifications by the configuration
 	detectionPath []byte               // Route detection path
+	routeStack    []*Route             // Cached route stack for repeated Next calls
 	treePathHash  int                  // Hash of the path for the search in the tree
 	indexRoute    int                  // Index of the current route
 	indexHandler  int                  // Index of the current handler
@@ -417,6 +418,7 @@ func (c *DefaultCtx) configDependentPaths() {
 			int(c.detectionPath[1])<<8 |
 			int(c.detectionPath[2])
 	}
+	c.routeStack = nil
 }
 
 // Reset is a method to reset context fields by given request when to use server handlers.
@@ -437,6 +439,8 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 	// Prettify path
 	c.configDependentPaths()
 
+	c.routeStack = nil
+
 	c.DefaultReq.c = c
 	c.DefaultRes.c = c
 }
@@ -444,6 +448,7 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 // Release is a method to reset context fields when to use ReleaseCtx()
 func (c *DefaultCtx) release() {
 	c.route = nil
+	c.routeStack = nil
 	c.fasthttp = nil
 	if c.bind != nil {
 		ReleaseBind(c.bind)
@@ -545,6 +550,14 @@ func (c *DefaultCtx) setMatched(matched bool) {
 
 func (c *DefaultCtx) setRoute(route *Route) {
 	c.route = route
+}
+
+func (c *DefaultCtx) getRouteStack() []*Route {
+	return c.routeStack
+}
+
+func (c *DefaultCtx) setRouteStack(rs []*Route) {
+	c.routeStack = rs
 }
 
 func (c *DefaultCtx) keepOriginalPath() {
