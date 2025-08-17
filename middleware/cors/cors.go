@@ -46,7 +46,7 @@ func New(config ...Config) fiber.Handler {
 			break
 		}
 		if i := strings.Index(origin, "://*."); i != -1 {
-			trimmedOrigin := utils.Trim(origin[:i+3]+origin[i+4:], ' ')
+			trimmedOrigin := utils.Trim(origin[:i+3]+origin[i+5:], ' ')
 			isValid, normalizedOrigin := normalizeOrigin(trimmedOrigin)
 			if !isValid {
 				panic("[CORS] Invalid origin format in configuration: " + trimmedOrigin)
