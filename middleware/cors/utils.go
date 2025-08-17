@@ -62,5 +62,20 @@ type subdomain struct {
 }
 
 func (s subdomain) match(o string) bool {
-	return len(o) >= len(s.prefix)+len(s.suffix) && strings.HasPrefix(o, s.prefix) && strings.HasSuffix(o, s.suffix)
+	if len(o) < len(s.prefix)+len(s.suffix) {
+		return false
+	}
+
+	if !strings.HasPrefix(o, s.prefix) || !strings.HasSuffix(o, s.suffix) {
+		return false
+	}
+
+	domain := normalizeDomain(o[len(s.prefix):])
+
+	suffix := normalizeDomain(s.suffix)
+	if strings.HasPrefix(suffix, ".") {
+		suffix = suffix[1:]
+	}
+
+	return strings.HasSuffix(domain, "."+suffix)
 }

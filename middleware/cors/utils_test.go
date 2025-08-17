@@ -179,6 +179,12 @@ func Test_CORS_SubdomainMatch(t *testing.T) {
 			expected: false,
 		},
 		{
+			name:     "no match with malformed subdomain",
+			sub:      subdomain{prefix: "https://", suffix: ".example.com"},
+			origin:   "https://evil.comexample.com",
+			expected: false,
+		},
+		{
 			name:     "partial match not considered a match",
 			sub:      subdomain{prefix: "https://service.", suffix: ".example.com"},
 			origin:   "https://api.example.com",

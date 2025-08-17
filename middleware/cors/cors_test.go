@@ -361,6 +361,19 @@ func Test_CORS_Subdomain(t *testing.T) {
 	ctx.Request.Reset()
 	ctx.Response.Reset()
 
+	// Make request with malformed subdomain (disallowed)
+	ctx.Request.SetRequestURI("/")
+	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
+	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://evil.comexample.com")
+
+	handler(ctx)
+
+	require.Equal(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+
 	// Make request with allowed origin
 	ctx.Request.SetRequestURI("/")
 	ctx.Request.Header.SetMethod(fiber.MethodOptions)
