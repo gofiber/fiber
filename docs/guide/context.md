@@ -1,6 +1,6 @@
 ---
-id: context
-title: "\U0001F9E0 Context"
+id: go-context
+title: "\U0001F9E0 Go Context"
 description: >-
   Learn how Fiber's Ctx integrates with Go's context.Context,
   how to interact with the underlying fasthttp RequestCtx,
