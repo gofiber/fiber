@@ -17,7 +17,7 @@ Looking to practice Fiber concepts through hands-on exercises? Here are some com
 
 A comprehensive platform offering progressive Fiber challenges that complement the official documentation. Master Go's fastest web framework through hands-on challenges and build lightning-fast APIs with Express.js-inspired syntax.
 
-![Learning Path Overview](https://raw.githubusercontent.com/RezaSi/go-interview-practice/main/assets/fiber-learning-path.png)
+ ![Learning Path Overview](/static/img/learning-resources/fiber-learning-path.png)
 
 **What You'll Learn:**
 - **High-Performance APIs** - Build ultra-fast RESTful APIs with zero-allocation routing
