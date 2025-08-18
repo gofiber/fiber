@@ -62,12 +62,12 @@ type subdomain struct {
 }
 
 func (s subdomain) match(o string) bool {
-	if !strings.HasPrefix(o, s.prefix) || !strings.HasSuffix(o, s.suffix) {
+	// Not a subdomain if not long enough for a dot separator.
+	if len(o) <= len(s.prefix)+len(s.suffix) {
 		return false
 	}
 
-	// Not a subdomain if not long enough for a dot separator.
-	if len(o) <= len(s.prefix)+len(s.suffix) {
+	if !strings.HasPrefix(o, s.prefix) || !strings.HasSuffix(o, s.suffix) {
 		return false
 	}
 
