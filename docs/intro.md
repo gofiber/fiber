@@ -10,6 +10,8 @@ Welcome to the online API documentation for Fiber, complete with examples to hel
 
 These docs are for **Fiber v3**, which was released on **Month xx, 202x**.
 
+Looking to practice Fiber concepts hands-on? Check out our [Learning Resources](./extra/learning-resources/) for interactive challenges and tutorials.
+
 ### Installation
 
 First, [download](https://go.dev/dl/) and install Go. Version `1.25` or higher is required.
