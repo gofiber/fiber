@@ -10,7 +10,7 @@ Welcome to the online API documentation for Fiber, complete with examples to hel
 
 These docs are for **Fiber v3**, which was released on **Month xx, 202x**.
 
-Looking to practice Fiber concepts hands-on? Check out our [Learning Resources](./extra/learning-resources/) for interactive challenges and tutorials.
+Looking to practice Fiber concepts hands-on? Check out our [Learning Resources](./extra/learning-resources) for interactive challenges and tutorials.
 
 ### Installation
 
