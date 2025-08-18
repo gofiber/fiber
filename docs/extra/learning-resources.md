@@ -25,7 +25,7 @@ A comprehensive platform offering progressive Fiber challenges that complement t
 - **Request Validation** - Master input validation, error handling, and data transformation
 - **Authentication & JWT** - Secure authentication systems with JWT tokens and API key validation
 
-![Challenge Interface](https://raw.githubusercontent.com/RezaSi/go-interview-practice/main/assets/fiber-challenge-interface.png)
+![Challenge Interface](/static/img/learning-resources/fiber-challenge-interface.png)
 
 **Challenge Roadmap:**
 1. **Basic Routing** - Setup Fiber, routes, and handlers (Beginner)
@@ -33,8 +33,8 @@ A comprehensive platform offering progressive Fiber challenges that complement t
 3. **Validation & Errors** - Input validation and error handling (Intermediate)
 4. **Authentication** - JWT tokens and API key validation (Advanced)
 
-![Fiber Framework Overview](https://raw.githubusercontent.com/RezaSi/go-interview-practice/main/assets/fiber-framework-overview.png)
+![Fiber Framework Overview](/static/img/learning-resources/fiber-framework-overview.png)
 
-![Interactive Learning Experience](https://raw.githubusercontent.com/RezaSi/go-interview-practice/main/assets/fiber-learning-experience.png)
+![Interactive Learning Experience](/static/img/learning-resources/fiber-learning-experience.png)
 
 [Explore Fiber Challenges →](https://rezasi.github.io/go-interview-practice/fiber) | [GitHub Repository →](https://github.com/RezaSi/go-interview-practice)
