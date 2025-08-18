@@ -29,7 +29,7 @@ A comprehensive platform offering progressive Fiber challenges that complement t
 
 **Challenge Roadmap:**
 1. **Basic Routing** - Setup Fiber, routes, and handlers (Beginner)
-2. **Middleware & CORS** - Custom middleware and rate limiting (Intermediate)  
+2. **Middleware & CORS** - Custom middleware and rate limiting (Intermediate)
 3. **Validation & Errors** - Input validation and error handling (Intermediate)
 4. **Authentication** - JWT tokens and API key validation (Advanced)
 
