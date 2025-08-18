@@ -20,6 +20,7 @@ import (
 	"reflect"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -102,7 +103,7 @@ func Test_App_Test_Goroutine_Leak_Compare(t *testing.T) {
 
 			// Send 10 requests
 			numRequests := 10
-			for i := 0; i < numRequests; i++ {
+			for range numRequests {
 				req := httptest.NewRequest(MethodGet, "/", nil)
 
 				if tc.timeout > 0 {
@@ -208,6 +209,11 @@ func Test_App_Custom_Middleware_404_Should_Not_SetMethodNotAllowed(t *testing.T)
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, 404, resp.StatusCode)
+	require.Equal(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "Not Found", string(body))
+	require.Equal(t, strconv.Itoa(len("Not Found")), resp.Header.Get(HeaderContentLength))
 
 	g := app.Group("/with-next", func(c Ctx) error {
 		return c.Status(404).Next()
@@ -218,6 +224,11 @@ func Test_App_Custom_Middleware_404_Should_Not_SetMethodNotAllowed(t *testing.T)
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/with-next", nil))
 	require.NoError(t, err)
 	require.Equal(t, 404, resp.StatusCode)
+	require.Equal(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "Not Found", string(body))
+	require.Equal(t, strconv.Itoa(len("Not Found")), resp.Header.Get(HeaderContentLength))
 }
 
 func Test_App_ServerErrorHandler_SmallReadBuffer(t *testing.T) {
@@ -264,6 +275,75 @@ func Test_App_Errors(t *testing.T) {
 	if err != nil {
 		require.Equal(t, "body size exceeds the given limit", err.Error(), "app.Test(req)")
 	}
+}
+
+func Test_App_BodyLimit_Negative(t *testing.T) {
+	t.Parallel()
+
+	limits := []int{-1, -512}
+	for _, limit := range limits {
+		app := New(Config{BodyLimit: limit})
+
+		app.Post("/", func(c Ctx) error {
+			return c.SendStatus(StatusOK)
+		})
+
+		largeBody := bytes.Repeat([]byte{'a'}, DefaultBodyLimit+1)
+		req := httptest.NewRequest(MethodPost, "/", bytes.NewReader(largeBody))
+		_, err := app.Test(req)
+		require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
+
+		smallBody := bytes.Repeat([]byte{'a'}, DefaultBodyLimit-1)
+		req = httptest.NewRequest(MethodPost, "/", bytes.NewReader(smallBody))
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		require.Equal(t, StatusOK, resp.StatusCode)
+	}
+}
+
+func Test_App_BodyLimit_Zero(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{BodyLimit: 0})
+
+	app.Post("/", func(c Ctx) error {
+		return c.SendStatus(StatusOK)
+	})
+
+	largeBody := bytes.Repeat([]byte{'a'}, DefaultBodyLimit+1)
+	req := httptest.NewRequest(MethodPost, "/", bytes.NewReader(largeBody))
+	_, err := app.Test(req)
+	require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
+
+	smallBody := bytes.Repeat([]byte{'a'}, DefaultBodyLimit-1)
+	req = httptest.NewRequest(MethodPost, "/", bytes.NewReader(smallBody))
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+}
+
+func Test_App_BodyLimit_LargerThanDefault(t *testing.T) {
+	t.Parallel()
+
+	limit := DefaultBodyLimit*2 + 1024 // slightly above double the default
+	app := New(Config{BodyLimit: limit})
+
+	app.Post("/", func(c Ctx) error {
+		return c.SendStatus(StatusOK)
+	})
+
+	// Body larger than the default but within our custom limit should succeed
+	midBody := bytes.Repeat([]byte{'a'}, DefaultBodyLimit+512)
+	req := httptest.NewRequest(MethodPost, "/", bytes.NewReader(midBody))
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, StatusOK, resp.StatusCode)
+
+	// Body above the custom limit should fail
+	largeBody := bytes.Repeat([]byte{'a'}, limit+1)
+	req = httptest.NewRequest(MethodPost, "/", bytes.NewReader(largeBody))
+	_, err = app.Test(req)
+	require.ErrorIs(t, err, fasthttp.ErrBodyTooLarge)
 }
 
 type customConstraint struct{}
@@ -1122,7 +1202,7 @@ func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.NotEmpty(t, resp.Header.Get(HeaderContentLength))
 	require.Equal(t, "TestValue", resp.Header.Get("TestHeader"))
-	require.Equal(t, "text/html", resp.Header.Get(HeaderContentType))
+	require.Equal(t, "text/html; charset=utf-8", resp.Header.Get(HeaderContentType))
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -1135,7 +1215,7 @@ func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.NotEmpty(t, resp.Header.Get(HeaderContentLength))
 	require.Equal(t, "TestValue", resp.Header.Get("TestHeader"))
-	require.Equal(t, "text/html", resp.Header.Get(HeaderContentType))
+	require.Equal(t, "text/html; charset=utf-8", resp.Header.Get(HeaderContentType))
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -1315,11 +1395,11 @@ func Test_NewErrorf_Format(t *testing.T) {
 
 	type args []any
 
-	tests := []struct { //nolint:govet // fieldalignment: this struct is already optimally ordered
+	tests := []struct {
 		name string
 		want string
-		code int
 		in   args
+		code int
 	}{
 		{
 			name: "no-args → default text",
@@ -1500,8 +1580,8 @@ func Test_App_ReadTimeout(t *testing.T) {
 		conn, err := net.Dial(NetworkTCP4, "127.0.0.1:4004")
 		assert.NoError(t, err)
 		defer func(conn net.Conn) {
-			err := conn.Close()
-			assert.NoError(t, err)
+			closeErr := conn.Close()
+			assert.NoError(t, closeErr)
 		}(conn)
 
 		_, err = conn.Write([]byte("HEAD /read-timeout HTTP/1.1\r\n"))
@@ -1534,8 +1614,8 @@ func Test_App_BadRequest(t *testing.T) {
 		conn, err := net.Dial(NetworkTCP4, "127.0.0.1:4005")
 		assert.NoError(t, err)
 		defer func(conn net.Conn) {
-			err := conn.Close()
-			assert.NoError(t, err)
+			closeErr := conn.Close()
+			assert.NoError(t, closeErr)
 		}(conn)
 
 		_, err = conn.Write([]byte("BadRequest\r\n"))

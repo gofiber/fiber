@@ -1,7 +1,7 @@
 package csrf
 
 import (
-	"net/textproto"
+	"fmt"
 	"strings"
 	"time"
 
@@ -11,9 +11,9 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
-// Config defines the config for middleware.
+// Config defines the config for CSRF middleware.
 type Config struct {
-	// Store is used to store the state of the middleware
+	// Storage is used to store the state of the middleware.
 	//
 	// Optional. Default: memory.New()
 	// Ignored if Session is set.
@@ -24,102 +24,103 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c fiber.Ctx) bool
 
-	// Session is used to store the state of the middleware
+	// Session is used to store the state of the middleware.
 	//
 	// Optional. Default: nil
-	// If set, the middleware will use the session store instead of the storage
+	// If set, the middleware will use the session store instead of the storage.
 	Session *session.Store
 
-	// KeyGenerator creates a new CSRF token
+	// KeyGenerator creates a new CSRF token.
 	//
-	// Optional. Default: utils.UUID
+	// Optional. Default: utils.UUIDv4
 	KeyGenerator func() string
 
 	// ErrorHandler is executed when an error is returned from fiber.Handler.
 	//
-	// Optional. Default: DefaultErrorHandler
+	// Optional. Default: defaultErrorHandler
 	ErrorHandler fiber.ErrorHandler
 
-	// Extractor returns the csrf token
+	// CookieName is the name of the CSRF cookie.
 	//
-	// If set this will be used in place of an Extractor based on KeyLookup.
-	//
-	// Optional. Default will create an Extractor based on KeyLookup.
-	Extractor func(c fiber.Ctx) (string, error)
-
-	// KeyLookup is a string in the form of "<source>:<key>" that is used
-	// to create an Extractor that extracts the token from the request.
-	// Possible values:
-	// - "header:<name>"
-	// - "query:<name>"
-	// - "param:<name>"
-	// - "form:<name>"
-	// - "cookie:<name>"
-	//
-	// Ignored if an Extractor is explicitly set.
-	//
-	// Optional. Default: "header:X-Csrf-Token"
-	KeyLookup string
-
-	// Name of the session cookie. This cookie will store session key.
-	// Optional. Default value "csrf_".
-	// Overridden if KeyLookup == "cookie:<name>"
+	// Optional. Default: "csrf_"
 	CookieName string
 
-	// Domain of the CSRF cookie.
-	// Optional. Default value "".
+	// CookieDomain is the domain of the CSRF cookie.
+	//
+	// Optional. Default: ""
 	CookieDomain string
 
-	// Path of the CSRF cookie.
-	// Optional. Default value "".
+	// CookiePath is the path of the CSRF cookie.
+	//
+	// Optional. Default: ""
 	CookiePath string
 
-	// Value of SameSite cookie.
-	// Optional. Default value "Lax".
+	// CookieSameSite is the SameSite attribute of the CSRF cookie.
+	//
+	// Optional. Default: "Lax"
 	CookieSameSite string
 
 	// TrustedOrigins is a list of trusted origins for unsafe requests.
 	// For requests that use the Origin header, the origin must match the
 	// Host header or one of the TrustedOrigins.
-	// For secure requests, that do not include the Origin header, the Referer
+	// For secure requests that do not include the Origin header, the Referer
 	// header must match the Host header or one of the TrustedOrigins.
 	//
 	// This supports matching subdomains at any level. This means you can use a value like
-	// `"https://*.example.com"` to allow any subdomain of `example.com` to submit requests,
-	// including multiple subdomain levels such as `"https://sub.sub.example.com"`.
+	// "https://*.example.com" to allow any subdomain of example.com to submit requests,
+	// including multiple subdomain levels such as "https://sub.sub.example.com".
 	//
 	// Optional. Default: []
 	TrustedOrigins []string
+
+	// Extractor returns the CSRF token from the request.
+	//
+	// Optional. Default: FromHeader("X-Csrf-Token")
+	//
+	// Available extractors:
+	//   - FromHeader: Most secure, recommended for APIs
+	//   - FromForm: Secure, recommended for form submissions
+	//   - FromQuery: Less secure, URLs may be logged
+	//   - FromParam: Less secure, URLs may be logged
+	//   - Chain: Advanced chaining of multiple extractors
+	//
+	// WARNING: Never create custom extractors that read from cookies with the same
+	// CookieName as this defeats CSRF protection entirely.
+	Extractor Extractor
 
 	// IdleTimeout is the duration of time the CSRF token is valid.
 	//
 	// Optional. Default: 30 * time.Minute
 	IdleTimeout time.Duration
 
-	// Indicates if CSRF cookie is secure.
-	// Optional. Default value false.
+	// CookieSecure indicates if CSRF cookie is secure.
+	//
+	// Optional. Default: false
 	CookieSecure bool
 
-	// Indicates if CSRF cookie is HTTP only.
-	// Optional. Default value false.
+	// CookieHTTPOnly indicates if CSRF cookie is HTTP only.
+	//
+	// Optional. Default: false
 	CookieHTTPOnly bool
 
-	// Decides whether cookie should last for only the browser sesison.
-	// Ignores Expiration if set to true
+	// CookieSessionOnly decides whether cookie should last for only the browser session.
+	// Ignores Expiration if set to true.
+	//
+	// Optional. Default: false
 	CookieSessionOnly bool
 
-	// SingleUseToken indicates if the CSRF token be destroyed
+	// SingleUseToken indicates if the CSRF token should be destroyed
 	// and a new one generated on each use.
 	//
 	// Optional. Default: false
 	SingleUseToken bool
 }
 
+// HeaderName is the default header name for CSRF tokens.
 const HeaderName = "X-Csrf-Token"
 
-// ConfigDefault is the default config
+// ConfigDefault is the default config for CSRF middleware.
 var ConfigDefault = Config{
-	KeyLookup:      "header:" + HeaderName,
 	CookieName:     "csrf_",
 	CookieSameSite: "Lax",
 	IdleTimeout:    30 * time.Minute,
@@ -128,12 +129,12 @@ var ConfigDefault = Config{
 	Extractor:      FromHeader(HeaderName),
 }
 
-// default ErrorHandler that process return error from fiber.Handler
+// defaultErrorHandler is the default error handler that processes errors from fiber.Handler.
 func defaultErrorHandler(_ fiber.Ctx, _ error) error {
 	return fiber.ErrForbidden
 }
 
-// Helper function to set default values
+// configDefault is a helper function to set default values.
 func configDefault(config ...Config) Config {
 	// Return default config if nothing provided
 	if len(config) < 1 {
@@ -144,9 +145,6 @@ func configDefault(config ...Config) Config {
 	cfg := config[0]
 
 	// Set default values
-	if cfg.KeyLookup == "" {
-		cfg.KeyLookup = ConfigDefault.KeyLookup
-	}
 	if cfg.IdleTimeout <= 0 {
 		cfg.IdleTimeout = ConfigDefault.IdleTimeout
 	}
@@ -162,37 +160,52 @@ func configDefault(config ...Config) Config {
 	if cfg.ErrorHandler == nil {
 		cfg.ErrorHandler = ConfigDefault.ErrorHandler
 	}
+	// Check if Extractor is zero value (since it's a struct)
+	if cfg.Extractor.Extract == nil {
+		cfg.Extractor = ConfigDefault.Extractor
+	}
+	// Validate extractor security configurations
+	validateExtractorSecurity(cfg)
 
-	// Generate the correct extractor to get the token from the correct location
-	selectors := strings.Split(cfg.KeyLookup, ":")
+	return cfg
+}
 
-	const numParts = 2
-	if len(selectors) != numParts {
-		panic("[CSRF] KeyLookup must in the form of <source>:<key>")
+// validateExtractorSecurity checks for insecure extractor configurations
+func validateExtractorSecurity(cfg Config) {
+	// Check primary extractor
+	if isInsecureCookieExtractor(cfg.Extractor, cfg.CookieName) {
+		panic("CSRF: Extractor reads from the same cookie '" + cfg.CookieName +
+			"' used for token storage. This completely defeats CSRF protection.")
 	}
 
-	if cfg.Extractor == nil {
-		// By default we extract from a header
-		cfg.Extractor = FromHeader(textproto.CanonicalMIMEHeaderKey(selectors[1]))
-
-		switch selectors[0] {
-		case "form":
-			cfg.Extractor = FromForm(selectors[1])
-		case "query":
-			cfg.Extractor = FromQuery(selectors[1])
-		case "param":
-			cfg.Extractor = FromParam(selectors[1])
-		case "cookie":
-			if cfg.Session == nil {
-				log.Warn("[CSRF] Cookie extractor is not recommended without a session store")
-			}
-			if cfg.CookieSameSite == "None" || cfg.CookieSameSite != "Lax" && cfg.CookieSameSite != "Strict" {
-				log.Warn("[CSRF] Cookie extractor is only recommended for use with SameSite=Lax or SameSite=Strict")
-			}
-			cfg.Extractor = FromCookie(selectors[1])
-			cfg.CookieName = selectors[1] // Cookie name is the same as the key
+	// Check chained extractors
+	for i, extractor := range cfg.Extractor.Chain {
+		if isInsecureCookieExtractor(extractor, cfg.CookieName) {
+			panic(fmt.Sprintf("CSRF: Chained extractor #%d reads from the same cookie '%s' "+
+				"used for token storage. This completely defeats CSRF protection.", i+1, cfg.CookieName))
 		}
 	}
 
-	return cfg
+	// Additional security warnings (non-fatal)
+	if cfg.Extractor.Source == SourceQuery || cfg.Extractor.Source == SourceParam {
+		log.Warnf("[CSRF WARNING] Using %v extractor - URLs may be logged", cfg.Extractor.Source)
+	}
+}
+
+// isInsecureCookieExtractor checks if an extractor unsafely reads from the CSRF cookie
+func isInsecureCookieExtractor(extractor Extractor, cookieName string) bool {
+	if extractor.Source == SourceCookie {
+		// Exact match - definitely insecure
+		if extractor.Key == cookieName {
+			return true
+		}
+
+		// Case-insensitive match - potentially confusing, warn but don't panic
+		if strings.EqualFold(extractor.Key, cookieName) && extractor.Key != cookieName {
+			log.Warnf("[CSRF WARNING] Extractor cookie name '%s' is similar to CSRF cookie '%s' - this may be confusing",
+				extractor.Key, cookieName)
+		}
+	}
+
+	return false
 }

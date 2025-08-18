@@ -718,6 +718,72 @@ func Benchmark_Limiter_Custom_Store(b *testing.B) {
 	}
 }
 
+// Test to reproduce the bug where fiber.NewErrorf responses are not counted as failed requests
+func Test_Limiter_Bug_NewErrorf_SkipSuccessfulRequests_SlidingWindow(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Max:                    1,
+		Expiration:             60 * time.Second,
+		LimiterMiddleware:      SlidingWindow{},
+		SkipSuccessfulRequests: true,
+		SkipFailedRequests:     false,
+		DisableHeaders:         true,
+	}))
+
+	app.Get("/", func(_ fiber.Ctx) error {
+		return fiber.NewErrorf(fiber.StatusInternalServerError, "Error")
+	})
+
+	// First request should succeed (and be counted because it's a failed request)
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+
+	// Second request should be rate limited because the first failed request was counted
+	// But currently this is not happening due to the bug
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+
+	// This should be 429 (rate limited) but currently returns 500 due to the bug
+	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode, "Second request should be rate limited")
+}
+
+// Test to reproduce the bug where fiber.NewErrorf responses are not counted as failed requests (FixedWindow)
+func Test_Limiter_Bug_NewErrorf_SkipSuccessfulRequests_FixedWindow(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Max:                    1,
+		Expiration:             60 * time.Second,
+		LimiterMiddleware:      FixedWindow{},
+		SkipSuccessfulRequests: true,
+		SkipFailedRequests:     false,
+		DisableHeaders:         true,
+	}))
+
+	app.Get("/", func(_ fiber.Ctx) error {
+		return fiber.NewErrorf(fiber.StatusInternalServerError, "Error")
+	})
+
+	// First request should succeed (and be counted because it's a failed request)
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+
+	// Second request should be rate limited because the first failed request was counted
+	// But currently this is not happening due to the bug
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
+
+	// This should be 429 (rate limited) but currently returns 500 due to the bug
+	require.Equal(t, fiber.StatusTooManyRequests, resp.StatusCode, "Second request should be rate limited")
+}
+
 // go test -run Test_Limiter_Next
 func Test_Limiter_Next(t *testing.T) {
 	t.Parallel()
@@ -759,6 +825,47 @@ func Test_Limiter_Headers(t *testing.T) {
 	if v := string(fctx.Response.Header.Peek("X-RateLimit-Reset")); !(v == "1" || v == "2") {
 		t.Errorf("The X-RateLimit-Reset header is not set correctly - value is out of bounds.")
 	}
+}
+
+func Test_Limiter_Disable_Headers(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Max:            1,
+		Expiration:     2 * time.Second,
+		DisableHeaders: true,
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("Hello tester!")
+	})
+
+	// first request should pass
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
+	fctx.Request.SetRequestURI("/")
+
+	app.Handler()(fctx)
+
+	require.Equal(t, fiber.StatusOK, fctx.Response.StatusCode())
+	require.Equal(t, "Hello tester!", string(fctx.Response.Body()))
+	require.Equal(t, "", string(fctx.Response.Header.Peek("X-RateLimit-Limit")))
+	require.Equal(t, "", string(fctx.Response.Header.Peek("X-RateLimit-Remaining")))
+	require.Equal(t, "", string(fctx.Response.Header.Peek("X-RateLimit-Reset")))
+
+	// second request should hit the limit and return 429 without headers
+	fctx2 := &fasthttp.RequestCtx{}
+	fctx2.Request.Header.SetMethod(fiber.MethodGet)
+	fctx2.Request.SetRequestURI("/")
+
+	app.Handler()(fctx2)
+
+	require.Equal(t, fiber.StatusTooManyRequests, fctx2.Response.StatusCode())
+	require.Equal(t, "", string(fctx2.Response.Header.Peek(fiber.HeaderRetryAfter)))
+	require.Equal(t, "", string(fctx2.Response.Header.Peek("X-RateLimit-Limit")))
+	require.Equal(t, "", string(fctx2.Response.Header.Peek("X-RateLimit-Remaining")))
+	require.Equal(t, "", string(fctx2.Response.Header.Peek("X-RateLimit-Reset")))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Limiter -benchmem -count=4
@@ -811,30 +918,30 @@ func Test_Sliding_Window(t *testing.T) {
 		}
 	}
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		singleRequest(false)
 	}
 
 	time.Sleep(3 * time.Second)
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		singleRequest(false)
 	}
 
 	time.Sleep(3 * time.Second)
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		singleRequest(false)
 	}
 
 	time.Sleep(3 * time.Second)
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		singleRequest(false)
 	}
 
 	// requests should fail now
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		singleRequest(true)
 	}
 }

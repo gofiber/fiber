@@ -349,15 +349,15 @@ func Test_Cache_WithSeveralRequests(t *testing.T) {
 		return c.SendString(c.Params("id"))
 	})
 
-	for runs := 0; runs < 10; runs++ {
-		for i := 0; i < 10; i++ {
+	for range 10 {
+		for i := range 10 {
 			func(id int) {
 				rsp, err := app.Test(httptest.NewRequest(fiber.MethodGet, fmt.Sprintf("/%d", id), nil))
 				require.NoError(t, err)
 
 				defer func(body io.ReadCloser) {
-					err := body.Close()
-					require.NoError(t, err)
+					closeErr := body.Close()
+					require.NoError(t, closeErr)
 				}(rsp.Body)
 
 				idFromServ, err := io.ReadAll(rsp.Body)

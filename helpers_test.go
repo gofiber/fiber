@@ -7,7 +7,6 @@ package fiber
 import (
 	"math"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 	"unsafe"
@@ -64,12 +63,38 @@ func Test_Utils_GetOffer(t *testing.T) {
 	require.Equal(t, "", getOffer([]byte("gzip, deflate;q=0"), acceptsOffer, "deflate"))
 
 	// Accept-Language Basic Filtering
-	require.True(t, acceptsLanguageOffer("en", "en-US", nil))
-	require.False(t, acceptsLanguageOffer("en-US", "en", nil))
-	require.True(t, acceptsLanguageOffer("EN", "en-us", nil))
-	require.False(t, acceptsLanguageOffer("en", "en_US", nil))
-	require.Equal(t, "en-US", getOffer([]byte("fr-CA;q=0.8, en-US"), acceptsLanguageOffer, "en-US", "fr-CA"))
-	require.Equal(t, "", getOffer([]byte("xx"), acceptsLanguageOffer, "en"))
+	require.True(t, acceptsLanguageOfferBasic("en", "en-US", nil))
+	require.False(t, acceptsLanguageOfferBasic("en-US", "en", nil))
+	require.True(t, acceptsLanguageOfferBasic("EN", "en-us", nil))
+	require.False(t, acceptsLanguageOfferBasic("en", "en_US", nil))
+	require.Equal(t, "en-US", getOffer([]byte("fr-CA;q=0.8, en-US"), acceptsLanguageOfferBasic, "en-US", "fr-CA"))
+	require.Equal(t, "", getOffer([]byte("xx"), acceptsLanguageOfferBasic, "en"))
+	require.False(t, acceptsLanguageOfferBasic("en-*", "en-US", nil))
+	require.True(t, acceptsLanguageOfferBasic("*", "en-US", nil))
+
+	// Accept-Language Extended Filtering
+	require.True(t, acceptsLanguageOfferExtended("en", "en-US", nil))
+	require.True(t, acceptsLanguageOfferExtended("en", "en-Latn-US", nil))
+	require.True(t, acceptsLanguageOfferExtended("en-*", "en-US", nil))
+	require.True(t, acceptsLanguageOfferExtended("*-US", "en-US", nil))
+	require.True(t, acceptsLanguageOfferExtended("en-US-*", "en-US", nil))
+	require.True(t, acceptsLanguageOfferExtended("en-*", "en-US-CA", nil))
+	require.False(t, acceptsLanguageOfferExtended("en-US", "en-GB", nil))
+	require.False(t, acceptsLanguageOfferExtended("fr", "en-US", nil))
+	require.False(t, acceptsLanguageOfferExtended("", "en-US", nil))
+	require.False(t, acceptsLanguageOfferExtended("en", "", nil))
+	require.True(t, acceptsLanguageOfferExtended("*", "en-US", nil))
+	require.True(t, acceptsLanguageOfferExtended("en-*", "en", nil))
+	require.Equal(t, "en-US", getOffer([]byte("fr-CA;q=0.8, en-*"), acceptsLanguageOfferExtended, "en-US", "fr-CA"))
+
+	// Sliding and singleton barriers
+	require.True(t, acceptsLanguageOfferExtended("de-*-DE", "de-DE", nil))
+	require.True(t, acceptsLanguageOfferExtended("de-*-DE", "de-DE-x-goethe", nil))
+	require.True(t, acceptsLanguageOfferExtended("de-*-DE", "de-Latn-DE-1996", nil))
+	require.False(t, acceptsLanguageOfferExtended("de-*-DE", "de", nil))
+	require.False(t, acceptsLanguageOfferExtended("de-*-DE", "de-x-DE", nil))
+	require.True(t, acceptsLanguageOfferExtended("*-CH", "de-CH", nil))
+	require.True(t, acceptsLanguageOfferExtended("*-CH", "de-Latn-CH", nil))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Utils_GetOffer -benchmem -count=4
@@ -242,6 +267,12 @@ func Test_Utils_AcceptsOfferType(t *testing.T) {
 			description: "no params, mismatch",
 			spec:        "application/json",
 			offerType:   "application/xml",
+			accepts:     false,
+		},
+		{
+			description: "mismatch with subtype prefix",
+			spec:        "application/json",
+			offerType:   "application/json+xml",
 			accepts:     false,
 		},
 		{
@@ -530,6 +561,7 @@ func Test_Utils_Parse_Address(t *testing.T) {
 		{addr: "[fe80::1%lo0]:1234", host: "[fe80::1%lo0]", port: "1234"},
 		{addr: "[fe80::1%lo0]", host: "[fe80::1%lo0]", port: ""},
 		{addr: ":9090", host: "", port: "9090"},
+		{addr: " 127.0.0.1:8080 ", host: "127.0.0.1", port: "8080"},
 		{addr: "", host: "", port: ""},
 	}
 
@@ -627,46 +659,6 @@ func Benchmark_Utils_IsNoCache(b *testing.B) {
 		ok = isNoCache("max-age=30, no-cache,public")
 	}
 	require.True(b, ok)
-}
-
-// go test -v -run=^$ -bench=Benchmark_SlashRecognition -benchmem -count=4
-func Benchmark_SlashRecognition(b *testing.B) {
-	search := "wtf/1234"
-	var result bool
-
-	b.Run("indexBytes", func(b *testing.B) {
-		b.ReportAllocs()
-		result = false
-		for b.Loop() {
-			if strings.IndexByte(search, slashDelimiter) != -1 {
-				result = true
-			}
-		}
-		require.True(b, result)
-	})
-	b.Run("forEach", func(b *testing.B) {
-		b.ReportAllocs()
-		result = false
-		c := int32(slashDelimiter)
-		for b.Loop() {
-			for _, b := range search {
-				if b == c {
-					result = true
-					break
-				}
-			}
-		}
-		require.True(b, result)
-	})
-	b.Run("strings.ContainsRune", func(b *testing.B) {
-		b.ReportAllocs()
-		result = false
-		c := int32(slashDelimiter)
-		for b.Loop() {
-			result = strings.ContainsRune(search, c)
-		}
-		require.True(b, result)
-	})
 }
 
 type testGenericParseTypeIntCase struct {
@@ -1215,6 +1207,7 @@ func Benchmark_GenericParseTypeFloats(b *testing.B) {
 
 // go test -v -run=^$ -bench=Benchmark_GenericParseTypeBytes -benchmem -count=4
 func Benchmark_GenericParseTypeBytes(b *testing.B) {
+	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
 	cases := []struct {
 		str   string
 		err   error
@@ -1262,6 +1255,7 @@ func Benchmark_GenericParseTypeBytes(b *testing.B) {
 
 // go test -v -run=^$ -bench=Benchmark_GenericParseTypeString -benchmem -count=4
 func Benchmark_GenericParseTypeString(b *testing.B) {
+	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
 	tests := []string{"john", "doe", "hello", "fiber"}
 
 	for _, test := range tests {
@@ -1283,6 +1277,7 @@ func Benchmark_GenericParseTypeString(b *testing.B) {
 
 // go test -v -run=^$ -bench=Benchmark_GenericParseTypeBoolean -benchmem -count=4
 func Benchmark_GenericParseTypeBoolean(b *testing.B) {
+	b.Skip("Skipped: too fast to compare reliably (results in sub-ns range are unstable)")
 	bools := []struct {
 		str   string
 		value bool
@@ -1418,4 +1413,31 @@ func Test_IsEtagStale(t *testing.T) {
 
 	// Weak vs. weak
 	require.False(t, app.isEtagStale(`W/"a"`, []byte(`W/"a"`)))
+}
+
+func Test_App_quoteRawString(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		in   string
+		out  string
+	}{
+		{"empty", "", ""},
+		{"simple", "simple", "simple"},
+		{"backslash", "A\\B", "A\\\\B"},
+		{"quote", `He said "Yo"`, `He said \"Yo\"`},
+		{"newline", "Hello\n", "Hello\\n"},
+		{"carriage", "Hello\r", "Hello\\r"},
+		{"controls", string([]byte{0, 31, 127}), "%00%1F%7F"},
+		{"mixed", "test \"A\n\r" + string([]byte{1}) + "\\", `test \"A\n\r%01\\`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			app := New()
+			require.Equal(t, tc.out, app.quoteRawString(tc.in))
+		})
+	}
 }

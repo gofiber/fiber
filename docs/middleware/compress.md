@@ -54,7 +54,7 @@ app.Use(compress.New(compress.Config{
 | Property | Type                    | Description                                                         | Default            |
 |:---------|:------------------------|:--------------------------------------------------------------------|:-------------------|
 | Next     | `func(fiber.Ctx) bool` | Next defines a function to skip this middleware when returned true. | `nil`              |
-| Level    | `Level`                 | Level determines the compression algorithm.                         | `LevelDefault (0)` |
+| Level    | `Level`                 | Level sets the compression level used.                         | `LevelDefault (0)` |
 
 Possible values for the "Level" field are:
 

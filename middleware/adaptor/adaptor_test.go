@@ -54,8 +54,8 @@ func Test_HTTPHandler(t *testing.T) {
 		assert.Equal(t, expectedHost, r.Host, "Host")
 		assert.Equal(t, expectedRemoteAddr, r.RemoteAddr, "RemoteAddr")
 
-		body, err := io.ReadAll(r.Body)
-		assert.NoError(t, err)
+		body, readErr := io.ReadAll(r.Body)
+		assert.NoError(t, readErr)
 		assert.Equal(t, expectedBody, string(body), "Body")
 		assert.Equal(t, expectedURL, r.URL, "URL")
 		assert.Equal(t, expectedContextValue, r.Context().Value(expectedContextKey), "Context")
@@ -335,7 +335,7 @@ func testFiberToHandlerFunc(t *testing.T, checkDefaultPort bool, app ...*fiber.A
 		c.Set("Header1", "value1")
 		c.Set("Header2", "value2")
 		c.Status(fiber.StatusBadRequest)
-		_, err := c.Write([]byte(fmt.Sprintf("request body is %q", body)))
+		_, err := c.Write(fmt.Appendf(nil, "request body is %q", body))
 		return err
 	}
 

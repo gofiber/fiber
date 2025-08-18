@@ -21,8 +21,9 @@
   go install golang.org/x/vuln/cmd/govulncheck@latest      # vulnerability scanner
   go install mvdan.cc/gofumpt@latest                       # code formatter
   go install github.com/tinylib/msgp@latest                # msgp codegen
-  go install github.com/vburenin/ifacemaker@975a95966976eeb2d4365a7fb236e274c54da64c  # interface impls
+  go install github.com/vburenin/ifacemaker@f30b6f9bdbed4b5c4804ec9ba4a04a999525c202  # interface impls
   go install github.com/dkorunic/betteralign/cmd/betteralign@latest  # struct alignment
+  go install golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest
   go mod tidy                                              # clean up go.mod & go.sum
   ```
 
@@ -40,5 +41,21 @@ Use `make help` to list all available commands. Common targets include:
 - **tidy**: clean and tidy dependencies.
 - **betteralign**: optimize struct field alignment.
 - **generate**: run `go generate` after installing msgp and ifacemaker.
+- **modernize**: run golps modernize
 
 These targets can be invoked via `make <target>` as needed during development and testing.
+
+## Programmatic checks
+
+Before submitting generated changes for a pull request, run:
+
+```bash
+make audit
+make generate
+make betteralign
+make modernize
+make format
+make test
+```
+
+All checks must pass before the generated code can be merged.

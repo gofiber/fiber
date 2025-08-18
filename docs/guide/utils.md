@@ -13,24 +13,24 @@ Converts a string value to a specified type, handling errors and optional defaul
 This function simplifies the conversion process by encapsulating error handling and the management of default values, making your code cleaner and more consistent.
 
 ```go title="Signature"
-func Convert[T any](value string, converter func(string) (T, error), defaultValue ...T) (*T, error)
+func Convert[T any](value string, converter func(string) (T, error), defaultValue ...T) (T, error)
 ```
 
 ```go title="Example"
 // GET http://example.com/id/bb70ab33-d455-4a03-8d78-d3c1dacae9ff
 app.Get("/id/:id", func(c fiber.Ctx) error {
-   fiber.Convert(c.Params("id"), uuid.Parse)                   // UUID(bb70ab33-d455-4a03-8d78-d3c1dacae9ff), nil
-
+    fiber.Convert(c.Params("id"), uuid.Parse)                   // UUID(bb70ab33-d455-4a03-8d78-d3c1dacae9ff), nil
+})
 
 // GET http://example.com/search?id=65f6f54221fb90e6a6b76db7
-app.Get("/search", func(c fiber.Ctx) error) {
+app.Get("/search", func(c fiber.Ctx) error {
     fiber.Convert(c.Query("id"), mongo.ParseObjectID)           // objectid(65f6f54221fb90e6a6b76db7), nil
     fiber.Convert(c.Query("id"), uuid.Parse)                    // uuid.Nil, error(cannot parse given uuid)
     fiber.Convert(c.Query("id"), uuid.Parse, mongo.NewObjectID) // new object id generated and return nil as error.
-}
-
-  // ...
+    return nil
 })
+
+// ...
 ```
 
 ### GetReqHeader
@@ -39,7 +39,7 @@ GetReqHeader function utilizing Go's generics feature.
 This function allows for retrieving HTTP request headers with a more specific data type.
 
 ```go title="Signature"
-func GetReqHeader[V any](c Ctx, key string, defaultValue ...V) V
+func GetReqHeader[V GenericType](c Ctx, key string, defaultValue ...V) V
 ```
 
 ```go title="Example"
@@ -91,7 +91,7 @@ Params function utilizing Go's generics feature.
 This function allows for retrieving route parameters with a more specific data type.
 
 ```go title="Signature"
-func Params[V any](c Ctx, key string, defaultValue ...V) V
+func Params[V GenericType](c Ctx, key string, defaultValue ...V) V
 ```
 
 ```go title="Example"
@@ -110,7 +110,7 @@ Query function utilizing Go's generics feature.
 This function allows for retrieving query parameters with a more specific data type.
 
 ```go title="Signature"
-func Query[V any](c Ctx, key string, defaultValue ...V) V
+func Query[V GenericType](c Ctx, key string, defaultValue ...V) V
 ```
 
 ```go title="Example"

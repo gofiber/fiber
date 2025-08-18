@@ -21,8 +21,9 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/gofiber/fiber/v3/log"
 	"github.com/gofiber/utils/v2"
+
+	"github.com/gofiber/fiber/v3/log"
 
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
@@ -193,21 +194,72 @@ func acceptsOffer(spec, offer string, _ headerParams) bool {
 	return utils.EqualFold(spec, offer)
 }
 
-// acceptsLanguageOffer determines if a language tag offer matches a range
+// acceptsLanguageOfferBasic determines if a language tag offer matches a range
 // according to RFC 4647 Basic Filtering.
 // A match occurs if the range exactly equals the tag or is a prefix of the tag
-// followed by a hyphen. The comparison is case-insensitive. A trailing '*'
-// wildcard in the range matches any tag.
-func acceptsLanguageOffer(spec, offer string, _ headerParams) bool {
-	if len(spec) >= 1 && spec[len(spec)-1] == '*' {
+// followed by a hyphen. The comparison is case-insensitive. Only a single "*"
+// as the entire range is allowed. Any "*" appearing after a hyphen renders the
+// range invalid and will not match.
+func acceptsLanguageOfferBasic(spec, offer string, _ headerParams) bool {
+	if spec == "*" {
 		return true
 	}
-
+	if i := strings.IndexByte(spec, '*'); i != -1 {
+		return false
+	}
 	if utils.EqualFold(spec, offer) {
 		return true
 	}
+	return len(offer) > len(spec) &&
+		utils.EqualFold(offer[:len(spec)], spec) &&
+		offer[len(spec)] == '-'
+}
 
-	return len(offer) > len(spec) && utils.EqualFold(offer[:len(spec)], spec) && offer[len(spec)] == '-'
+// acceptsLanguageOfferExtended determines if a language tag offer matches a
+// range according to RFC 4647 Extended Filtering (§3.3.2).
+// - Case-insensitive comparisons
+// - '*' matches zero or more subtags (can “slide”)
+// - Unspecified subtags are treated like '*' (so trailing/extraneous tag subtags are fine)
+// - Matching fails if sliding encounters a singleton (incl. 'x')
+func acceptsLanguageOfferExtended(spec, offer string, _ headerParams) bool {
+	if spec == "*" {
+		return true
+	}
+	if spec == "" || offer == "" {
+		return false
+	}
+
+	rs := strings.Split(spec, "-")
+	ts := strings.Split(offer, "-")
+
+	// Step 2: first subtag must match (or be '*')
+	if !(rs[0] == "*" || utils.EqualFold(rs[0], ts[0])) {
+		return false
+	}
+
+	i, j := 1, 1 // i = range index, j = tag index
+	for i < len(rs) {
+		if rs[i] == "*" { // 3.A: '*' matches zero or more subtags
+			i++
+			continue
+		}
+		if j >= len(ts) { // 3.B: ran out of tag subtags
+			return false
+		}
+		if utils.EqualFold(rs[i], ts[j]) { // 3.C: exact subtag match
+			i++
+			j++
+			continue
+		}
+		// 3.D: singleton barrier (one letter or digit, incl. 'x')
+		if len(ts[j]) == 1 {
+			return false
+		}
+		// 3.E: slide forward in the tag and try again
+		j++
+	}
+	// 4: matched all range subtags
+	return true
 }
 
 // acceptsOfferType This function determines if an offer type matches a given specification.
@@ -244,9 +296,12 @@ func acceptsOfferType(spec, offerType string, specParams headerParams) bool {
 	}
 
 	s := strings.IndexByte(mimetype, '/')
+	specSlash := strings.IndexByte(spec, '/')
 	// Accept: <MIME_type>/*
-	if strings.HasPrefix(spec, mimetype[:s]) && (spec[s:] == "/*" || mimetype[s:] == "/*") {
-		return paramsMatch(specParams, offerParams)
+	if s != -1 && specSlash != -1 {
+		if utils.EqualFold(spec[:specSlash], mimetype[:s]) && (spec[specSlash:] == "/*" || mimetype[s:] == "/*") {
+			return paramsMatch(specParams, offerParams)
+		}
 	}
 
 	return false
@@ -634,6 +689,8 @@ func parseAddr(raw string) (string, string) {
 		return "", ""
 	}
 
+	raw = utils.Trim(raw, ' ')
+
 	// Handle IPv6 addresses enclosed in brackets as defined by RFC 3986
 	if strings.HasPrefix(raw, "[") {
 		if end := strings.IndexByte(raw, ']'); end != -1 {
@@ -820,73 +877,73 @@ func genericParseType[V GenericType](str string) (V, error) {
 	var v V
 	switch any(v).(type) {
 	case int:
-		result, err := strconv.ParseInt(str, 10, 0)
+		result, err := utils.ParseInt(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse int: %w", err)
 		}
 		return any(int(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case int8:
-		result, err := strconv.ParseInt(str, 10, 8)
+		result, err := utils.ParseInt8(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse int8: %w", err)
 		}
-		return any(int8(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
+		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case int16:
-		result, err := strconv.ParseInt(str, 10, 16)
+		result, err := utils.ParseInt16(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse int16: %w", err)
 		}
-		return any(int16(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
+		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case int32:
-		result, err := strconv.ParseInt(str, 10, 32)
+		result, err := utils.ParseInt32(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse int32: %w", err)
 		}
-		return any(int32(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
+		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case int64:
-		result, err := strconv.ParseInt(str, 10, 64)
+		result, err := utils.ParseInt(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse int64: %w", err)
 		}
 		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case uint:
-		result, err := strconv.ParseUint(str, 10, 0)
+		result, err := utils.ParseUint(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse uint: %w", err)
 		}
 		return any(uint(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case uint8:
-		result, err := strconv.ParseUint(str, 10, 8)
+		result, err := utils.ParseUint8(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse uint8: %w", err)
 		}
-		return any(uint8(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
+		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case uint16:
-		result, err := strconv.ParseUint(str, 10, 16)
+		result, err := utils.ParseUint16(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse uint16: %w", err)
 		}
-		return any(uint16(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
+		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case uint32:
-		result, err := strconv.ParseUint(str, 10, 32)
+		result, err := utils.ParseUint32(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse uint32: %w", err)
 		}
-		return any(uint32(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
+		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case uint64:
-		result, err := strconv.ParseUint(str, 10, 64)
+		result, err := utils.ParseUint(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse uint64: %w", err)
 		}
 		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case float32:
-		result, err := strconv.ParseFloat(str, 32)
+		result, err := utils.ParseFloat32(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse float32: %w", err)
 		}
-		return any(float32(result)).(V), nil //nolint:errcheck,forcetypeassert // not needed
+		return any(result).(V), nil //nolint:errcheck,forcetypeassert // not needed
 	case float64:
-		result, err := strconv.ParseFloat(str, 64)
+		result, err := utils.ParseFloat64(str)
 		if err != nil {
 			return v, fmt.Errorf("failed to parse float64: %w", err)
 		}

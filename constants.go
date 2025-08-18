@@ -16,17 +16,19 @@ const (
 
 // MIME types that are commonly used
 const (
-	MIMETextXML         = "text/xml"
-	MIMETextHTML        = "text/html"
-	MIMETextPlain       = "text/plain"
-	MIMETextJavaScript  = "text/javascript"
-	MIMETextCSS         = "text/css"
-	MIMEApplicationXML  = "application/xml"
-	MIMEApplicationJSON = "application/json"
-	MIMEApplicationCBOR = "application/cbor"
-	MIMEApplicationForm = "application/x-www-form-urlencoded"
-	MIMEOctetStream     = "application/octet-stream"
-	MIMEMultipartForm   = "multipart/form-data"
+	MIMETextXML               = "text/xml"
+	MIMETextHTML              = "text/html"
+	MIMETextPlain             = "text/plain"
+	MIMETextJavaScript        = "text/javascript"
+	MIMETextCSS               = "text/css"
+	MIMEApplicationXML        = "application/xml"
+	MIMEApplicationJSON       = "application/json"
+	MIMEApplicationJavaScript = "application/javascript"
+	MIMEApplicationCBOR       = "application/cbor"
+	MIMEApplicationForm       = "application/x-www-form-urlencoded"
+	MIMEOctetStream           = "application/octet-stream"
+	MIMEMultipartForm         = "multipart/form-data"
+	MIMEApplicationMsgPack    = "application/vnd.msgpack"
 
 	MIMETextXMLCharsetUTF8         = "text/xml; charset=utf-8"
 	MIMETextHTMLCharsetUTF8        = "text/html; charset=utf-8"
@@ -307,9 +309,9 @@ const (
 // https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis-03#section-4.1.2.7
 const (
 	CookieSameSiteDisabled   = "disabled" // not in RFC, just control "SameSite" attribute will not be set.
-	CookieSameSiteLaxMode    = "lax"
-	CookieSameSiteStrictMode = "strict"
-	CookieSameSiteNoneMode   = "none"
+	CookieSameSiteLaxMode    = "Lax"
+	CookieSameSiteStrictMode = "Strict"
+	CookieSameSiteNoneMode   = "None"
 )
 
 // Route Constraints

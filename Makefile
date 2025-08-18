@@ -30,12 +30,24 @@ format:
 ## markdown: 🎨 Find markdown format issues (Requires markdownlint-cli2)
 .PHONY: markdown
 markdown:
+	@which markdownlint-cli2 > /dev/null || npm install -g markdownlint-cli2
 	markdownlint-cli2 "**/*.md" "#vendor"
 
 ## lint: 🚨 Run lint checks
 .PHONY: lint
 lint:
+	@which golangci-lint > /dev/null || $(MAKE) install-lint
 	golangci-lint run
+
+## install-lint: 🛠 Install golangci-lint
+.PHONY: install-lint
+install-lint:
+	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b /usr/local/bin v1.64.7
+
+## modernize: 🛠 Run gopls modernize
+.PHONY: modernize
+modernize:
+	go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -fix -test=false ./...
 
 ## test: 🚦 Execute all tests
 .PHONY: test
@@ -61,5 +73,5 @@ betteralign:
 .PHONY: generate
 generate:
 	go install github.com/tinylib/msgp@latest
-	go install github.com/vburenin/ifacemaker@975a95966976eeb2d4365a7fb236e274c54da64c
+	go install github.com/vburenin/ifacemaker@f30b6f9bdbed4b5c4804ec9ba4a04a999525c202
 	go generate ./...

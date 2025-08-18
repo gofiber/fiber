@@ -12,7 +12,7 @@ const (
 	localsKeyAllowed contextKey = 0 // earlydata_allowed
 )
 
-// IsEarly returns true if the request is an early-data request
+// IsEarly returns true if the request used early data and was accepted by the middleware.
 func IsEarly(c fiber.Ctx) bool {
 	return c.Locals(localsKeyAllowed) != nil
 }

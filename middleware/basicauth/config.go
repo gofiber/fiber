@@ -1,11 +1,18 @@
 package basicauth
 
 import (
+	"crypto/sha256"
+	"crypto/sha512"
 	"crypto/subtle"
+	"encoding/base64"
+	"encoding/hex"
+	"errors"
+	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/utils/v2"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // Config defines the config for middleware.
@@ -22,12 +29,13 @@ type Config struct {
 
 	// Authorizer defines a function you can pass
 	// to check the credentials however you want.
-	// It will be called with a username and password
-	// and is expected to return true or false to indicate
-	// that the credentials were approved or not.
+	// It will be called with a username, password and
+	// the current fiber context and is expected to return
+	// true or false to indicate that the credentials were
+	// approved or not.
 	//
 	// Optional. Default: nil.
-	Authorizer func(string, string) bool
+	Authorizer func(string, string, fiber.Ctx) bool
 
 	// Unauthorized defines the response body for unauthorized responses.
 	// By default it will return with a 401 Unauthorized and the correct WWW-Auth header
@@ -49,22 +57,23 @@ type Config struct {
 	// Optional. Default: "UTF-8".
 	Charset string
 
-	// StorePassword determines if the plaintext password should be stored
-	// in the context for later retrieval via PasswordFromContext.
+	// HeaderLimit specifies the maximum allowed length of the
+	// Authorization header. Requests exceeding this limit will
+	// be rejected.
 	//
-	// Optional. Default: false.
-	StorePassword bool
+	// Optional. Default: 8192.
+	HeaderLimit int
 }
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next:          nil,
-	Users:         map[string]string{},
-	Realm:         "Restricted",
-	Charset:       "UTF-8",
-	StorePassword: false,
-	Authorizer:    nil,
-	Unauthorized:  nil,
+	Next:         nil,
+	Users:        map[string]string{},
+	Realm:        "Restricted",
+	Charset:      "UTF-8",
+	HeaderLimit:  8192,
+	Authorizer:   nil,
+	Unauthorized: nil,
 }
 
 // Helper function to set default values
@@ -90,10 +99,21 @@ func configDefault(config ...Config) Config {
 	if cfg.Charset == "" {
 		cfg.Charset = ConfigDefault.Charset
 	}
+	if cfg.HeaderLimit <= 0 {
+		cfg.HeaderLimit = ConfigDefault.HeaderLimit
+	}
 	if cfg.Authorizer == nil {
-		cfg.Authorizer = func(user, pass string) bool {
-			userPwd, exist := cfg.Users[user]
-			return exist && subtle.ConstantTimeCompare(utils.UnsafeBytes(userPwd), utils.UnsafeBytes(pass)) == 1
+		verifiers := make(map[string]func(string) bool, len(cfg.Users))
+		for u, hpw := range cfg.Users {
+			v, err := parseHashedPassword(hpw)
+			if err != nil {
+				panic(err)
+			}
+			verifiers[u] = v
+		}
+		cfg.Authorizer = func(user, pass string, _ fiber.Ctx) bool {
+			verify, ok := verifiers[user]
+			return ok && verify(pass)
 		}
 	}
 	if cfg.Unauthorized == nil {
@@ -109,4 +129,46 @@ func configDefault(config ...Config) Config {
 		}
 	}
 	return cfg
+}
+
+func parseHashedPassword(h string) (func(string) bool, error) {
+	switch {
+	case strings.HasPrefix(h, "$2"):
+		hash := []byte(h)
+		return func(p string) bool {
+			return bcrypt.CompareHashAndPassword(hash, []byte(p)) == nil
+		}, nil
+	case strings.HasPrefix(h, "{SHA512}"):
+		b, err := base64.StdEncoding.DecodeString(h[len("{SHA512}"):])
+		if err != nil {
+			return nil, fmt.Errorf("decode SHA512 password: %w", err)
+		}
+		return func(p string) bool {
+			sum := sha512.Sum512([]byte(p))
+			return subtle.ConstantTimeCompare(sum[:], b) == 1
+		}, nil
+	case strings.HasPrefix(h, "{SHA256}"):
+		b, err := base64.StdEncoding.DecodeString(h[len("{SHA256}"):])
+		if err != nil {
+			return nil, fmt.Errorf("decode SHA256 password: %w", err)
+		}
+		return func(p string) bool {
+			sum := sha256.Sum256([]byte(p))
+			return subtle.ConstantTimeCompare(sum[:], b) == 1
+		}, nil
+	default:
+		b, err := hex.DecodeString(h)
+		if err != nil || len(b) != sha256.Size {
+			if b, err = base64.StdEncoding.DecodeString(h); err != nil {
+				return nil, fmt.Errorf("decode SHA256 password: %w", err)
+			}
+			if len(b) != sha256.Size {
+				return nil, errors.New("decode SHA256 password: invalid length")
+			}
+		}
+		return func(p string) bool {
+			sum := sha256.Sum256([]byte(p))
+			return subtle.ConstantTimeCompare(sum[:], b) == 1
+		}, nil
+	}
 }

@@ -11,7 +11,7 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c fiber.Ctx) bool
 
-	// Level determines the compression algorithm
+	// Level sets the compression level used for the response
 	//
 	// Optional. Default: LevelDefault
 	// LevelDisabled:         -1

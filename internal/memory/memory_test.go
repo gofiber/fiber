@@ -59,7 +59,7 @@ func Test_Memory(t *testing.T) {
 func Benchmark_Memory(b *testing.B) {
 	keyLength := 1000
 	keys := make([]string, keyLength)
-	for i := 0; i < keyLength; i++ {
+	for i := range keyLength {
 		keys[i] = utils.UUID()
 	}
 	value := []byte("joe")

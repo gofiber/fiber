@@ -6,6 +6,8 @@ id: favicon
 
 Favicon middleware for [Fiber](https://github.com/gofiber/fiber) that ignores favicon requests or caches a provided icon in memory to improve performance by skipping disk access. User agents request favicon.ico frequently and indiscriminately, so you may wish to exclude these requests from your logs by using this middleware before your logger middleware.
 
+It only handles `GET`, `HEAD`, and `OPTIONS` requests to the configured URL. Other methods receive a `405 Method Not Allowed` response.
+
 :::note
 This middleware is exclusively for serving the default, implicit favicon, which is GET /favicon.ico or [custom favicon URL](#config).
 :::
@@ -48,7 +50,7 @@ app.Use(favicon.New(favicon.Config{
 | Data         | `[]byte`                | Raw data of the favicon file. This can be used instead of `File`.                | `nil`                      |
 | File         | `string`                | File holds the path to an actual favicon that will be cached.                    | ""                         |
 | URL          | `string`                | URL for favicon handler.                                                         | "/favicon.ico"             |
-| FileSystem   | `http.FileSystem`       | FileSystem is an optional alternate filesystem to search for the favicon in.     | `nil`                      |
+| FileSystem   | `fs.FS`                 | FileSystem is an optional alternate filesystem from which to load the favicon file (e.g. using `os.DirFS` or an `embed.FS`). | `nil`                      |
 | CacheControl | `string`                | CacheControl defines how the Cache-Control header in the response should be set. | "public, max-age=31536000" |
 
 ## Default Config

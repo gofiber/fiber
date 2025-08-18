@@ -2,6 +2,7 @@ package session
 
 import (
 	"bytes"
+	"context"
 	"encoding/gob"
 	"fmt"
 	"sync"
@@ -194,7 +195,11 @@ func (s *Session) Destroy() error {
 	defer s.mu.RUnlock()
 
 	// Use external Storage if exist
-	if err := s.config.Storage.Delete(s.id); err != nil {
+	var ctx context.Context = s.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := s.config.Storage.DeleteWithContext(ctx, s.id); err != nil {
 		return err
 	}
 
@@ -216,7 +221,11 @@ func (s *Session) Regenerate() error {
 	defer s.mu.Unlock()
 
 	// Delete old id from storage
-	if err := s.config.Storage.Delete(s.id); err != nil {
+	var ctx context.Context = s.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := s.config.Storage.DeleteWithContext(ctx, s.id); err != nil {
 		return err
 	}
 
@@ -247,7 +256,11 @@ func (s *Session) Reset() error {
 	s.idleTimeout = 0
 
 	// Delete old id from storage
-	if err := s.config.Storage.Delete(s.id); err != nil {
+	var ctx context.Context = s.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := s.config.Storage.DeleteWithContext(ctx, s.id); err != nil {
 		return err
 	}
 
@@ -319,7 +332,11 @@ func (s *Session) saveSession() error {
 	}
 
 	// Pass copied bytes with session id to provider
-	return s.config.Storage.Set(s.id, encodedBytes, s.idleTimeout)
+	var ctx context.Context = s.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return s.config.Storage.SetWithContext(ctx, s.id, encodedBytes, s.idleTimeout)
 }
 
 // Keys retrieves all keys in the current session.
@@ -351,39 +368,67 @@ func (s *Session) SetIdleTimeout(idleTimeout time.Duration) {
 	s.idleTimeout = idleTimeout
 }
 
+// getExtractorInfo returns all cookie and header extractors from the chain
+func (s *Session) getExtractorInfo() []Extractor {
+	if s.config == nil {
+		return []Extractor{{Source: SourceCookie, Key: "session_id"}} // Safe default
+	}
+
+	extractor := s.config.Extractor
+	var relevantExtractors []Extractor
+
+	// If it's a chained extractor, collect all cookie/header extractors
+	if len(extractor.Chain) > 0 {
+		for _, chainExtractor := range extractor.Chain {
+			if chainExtractor.Source == SourceCookie || chainExtractor.Source == SourceHeader {
+				relevantExtractors = append(relevantExtractors, chainExtractor)
+			}
+		}
+	} else if extractor.Source == SourceCookie || extractor.Source == SourceHeader {
+		// Single extractor - only include if it's cookie or header
+		relevantExtractors = append(relevantExtractors, extractor)
+	}
+
+	// If no cookie/header extractors found and the config has a store but no explicit cookie/header extractors,
+	// we should not default to cookie. This allows for SourceOther-only configurations.
+	// Only add default cookie extractor if we have no extractors at all (nil config case is handled above)
+
+	return relevantExtractors
+}
+
 func (s *Session) setSession() {
 	if s.ctx == nil {
 		return
 	}
 
-	if s.config.source == SourceHeader {
-		s.ctx.Request().Header.SetBytesV(s.config.sessionName, []byte(s.id))
-		s.ctx.Response().Header.SetBytesV(s.config.sessionName, []byte(s.id))
-	} else {
-		fcookie := fasthttp.AcquireCookie()
-		fcookie.SetKey(s.config.sessionName)
-		fcookie.SetValue(s.id)
-		fcookie.SetPath(s.config.CookiePath)
-		fcookie.SetDomain(s.config.CookieDomain)
-		// Cookies are also session cookies if they do not specify the Expires or Max-Age attribute.
-		// refer: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie
-		if !s.config.CookieSessionOnly {
-			fcookie.SetMaxAge(int(s.idleTimeout.Seconds()))
-			fcookie.SetExpire(time.Now().Add(s.idleTimeout))
-		}
-		fcookie.SetSecure(s.config.CookieSecure)
-		fcookie.SetHTTPOnly(s.config.CookieHTTPOnly)
+	// Get all relevant extractors
+	extractors := s.getExtractorInfo()
 
-		switch utils.ToLower(s.config.CookieSameSite) {
-		case "strict":
-			fcookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)
-		case "none":
-			fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
-		default:
-			fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
+	// Set session ID for each extractor type
+	for _, ext := range extractors {
+		switch ext.Source {
+		case SourceHeader:
+			s.ctx.Response().Header.SetBytesV(ext.Key, []byte(s.id))
+		case SourceCookie:
+			fcookie := fasthttp.AcquireCookie()
+
+			fcookie.SetKey(ext.Key)
+			fcookie.SetValue(s.id)
+			fcookie.SetPath(s.config.CookiePath)
+			fcookie.SetDomain(s.config.CookieDomain)
+			// Cookies are also session cookies if they do not specify the Expires or Max-Age attribute.
+			// refer: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie
+			if !s.config.CookieSessionOnly {
+				fcookie.SetMaxAge(int(s.idleTimeout.Seconds()))
+				fcookie.SetExpire(time.Now().Add(s.idleTimeout))
+			}
+
+			s.setCookieAttributes(fcookie)
+			s.ctx.Response().Header.SetCookie(fcookie)
+			fasthttp.ReleaseCookie(fcookie)
+		case SourceOther:
+			// No action required for SourceOther
 		}
-		s.ctx.Response().Header.SetCookie(fcookie)
-		fasthttp.ReleaseCookie(fcookie)
 	}
 }
 
@@ -392,34 +437,56 @@ func (s *Session) delSession() {
 		return
 	}
 
-	if s.config.source == SourceHeader {
-		s.ctx.Request().Header.Del(s.config.sessionName)
-		s.ctx.Response().Header.Del(s.config.sessionName)
-	} else {
-		s.ctx.Request().Header.DelCookie(s.config.sessionName)
-		s.ctx.Response().Header.DelCookie(s.config.sessionName)
+	// Get all relevant extractors
+	extractors := s.getExtractorInfo()
 
-		fcookie := fasthttp.AcquireCookie()
-		fcookie.SetKey(s.config.sessionName)
-		fcookie.SetPath(s.config.CookiePath)
-		fcookie.SetDomain(s.config.CookieDomain)
-		fcookie.SetMaxAge(-1)
-		fcookie.SetExpire(time.Now().Add(-1 * time.Minute))
-		fcookie.SetSecure(s.config.CookieSecure)
-		fcookie.SetHTTPOnly(s.config.CookieHTTPOnly)
+	// Delete session ID for each extractor type
+	for _, ext := range extractors {
+		switch ext.Source {
+		case SourceHeader:
+			s.ctx.Request().Header.Del(ext.Key)
+			s.ctx.Response().Header.Del(ext.Key)
+		case SourceCookie:
+			s.ctx.Request().Header.DelCookie(ext.Key)
+			s.ctx.Response().Header.DelCookie(ext.Key)
 
-		switch utils.ToLower(s.config.CookieSameSite) {
-		case "strict":
-			fcookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)
-		case "none":
-			fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
-		default:
-			fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
+			fcookie := fasthttp.AcquireCookie()
+
+			fcookie.SetKey(ext.Key)
+			fcookie.SetPath(s.config.CookiePath)
+			fcookie.SetDomain(s.config.CookieDomain)
+			fcookie.SetMaxAge(-1)
+			fcookie.SetExpire(time.Now().Add(-1 * time.Minute))
+
+			s.setCookieAttributes(fcookie)
+			s.ctx.Response().Header.SetCookie(fcookie)
+			fasthttp.ReleaseCookie(fcookie)
+		case SourceOther:
+			// No action required for SourceOther
 		}
-
-		s.ctx.Response().Header.SetCookie(fcookie)
-		fasthttp.ReleaseCookie(fcookie)
 	}
+}
+
+// setCookieAttributes sets the cookie attributes based on the session config.
+func (s *Session) setCookieAttributes(fcookie *fasthttp.Cookie) {
+	// Set SameSite attribute
+	switch {
+	case utils.EqualFold(s.config.CookieSameSite, fiber.CookieSameSiteStrictMode):
+		fcookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)
+	case utils.EqualFold(s.config.CookieSameSite, fiber.CookieSameSiteNoneMode):
+		fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
+	default:
+		fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
+	}
+
+	// The Secure attribute is required for SameSite=None
+	if fcookie.SameSite() == fasthttp.CookieSameSiteNoneMode {
+		fcookie.SetSecure(true)
+	} else {
+		fcookie.SetSecure(s.config.CookieSecure)
+	}
+
+	fcookie.SetHTTPOnly(s.config.CookieHTTPOnly)
 }
 
 // decodeSessionData decodes session data from raw bytes

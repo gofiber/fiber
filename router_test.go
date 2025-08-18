@@ -615,7 +615,7 @@ func Test_App_Remove_Route_Concurrent(t *testing.T) {
 
 	// Concurrently remove and add routes
 	var wg sync.WaitGroup
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

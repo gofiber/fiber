@@ -303,6 +303,24 @@ func (m *Middleware) Reset() error {
 	return m.Session.Reset()
 }
 
+// Regenerate generates a new session ID while preserving session data.
+//
+// This method is commonly used after authentication to prevent session fixation attacks.
+// Unlike Reset(), this method preserves all existing session data.
+//
+// Returns:
+//   - error: An error if the regeneration fails.
+//
+// Usage:
+//
+//	err := m.Regenerate()
+func (m *Middleware) Regenerate() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return m.Session.Regenerate()
+}
+
 // Store returns the session store.
 //
 // Returns:

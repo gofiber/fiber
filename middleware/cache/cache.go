@@ -3,6 +3,7 @@
 package cache
 
 import (
+	"context"
 	"slices"
 	"strconv"
 	"strings"
@@ -97,10 +98,10 @@ func New(config ...Config) fiber.Handler {
 
 	// Delete key from both manager and storage
 	deleteKey := func(dkey string) {
-		manager.del(dkey)
+		manager.del(context.Background(), dkey)
 		// External storage saves body data with different key
 		if cfg.Storage != nil {
-			manager.del(dkey + "_body")
+			manager.del(context.Background(), dkey+"_body")
 		}
 	}
 
@@ -124,7 +125,7 @@ func New(config ...Config) fiber.Handler {
 		key := cfg.KeyGenerator(c) + "_" + requestMethod
 
 		// Get entry from pool
-		e := manager.get(key)
+		e := manager.get(c, key)
 
 		// Lock entry
 		mux.Lock()
@@ -150,7 +151,7 @@ func New(config ...Config) fiber.Handler {
 				// Separate body value to avoid msgp serialization
 				// We can store raw bytes with Storage 👍
 				if cfg.Storage != nil {
-					e.body = manager.getRaw(key + "_body")
+					e.body = manager.getRaw(c, key+"_body")
 				}
 				// Set response headers from cache
 				c.Response().SetBodyRaw(e.body)
@@ -227,8 +228,8 @@ func New(config ...Config) fiber.Handler {
 		// Remove oldest to make room for new
 		if cfg.MaxBytes > 0 {
 			for storedBytes+bodySize > cfg.MaxBytes {
-				key, size := heap.removeFirst()
-				deleteKey(key)
+				keyToRemove, size := heap.removeFirst()
+				deleteKey(keyToRemove)
 				storedBytes -= size
 			}
 		}
@@ -283,14 +284,14 @@ func New(config ...Config) fiber.Handler {
 
 		// For external Storage we store raw body separated
 		if cfg.Storage != nil {
-			manager.setRaw(key+"_body", e.body, expiration)
+			manager.setRaw(c, key+"_body", e.body, expiration)
 			// avoid body msgp encoding
 			e.body = nil
-			manager.set(key, e, expiration)
+			manager.set(c, key, e, expiration)
 			manager.release(e)
 		} else {
 			// Store entry in memory
-			manager.set(key, e, expiration)
+			manager.set(c, key, e, expiration)
 		}
 
 		c.Set(cfg.CacheHeader, cacheMiss)
@@ -325,10 +326,10 @@ func hasRequestDirective(c fiber.Ctx, directive string) bool {
 
 // parseMaxAge extracts the max-age directive from a Cache-Control header.
 func parseMaxAge(cc string) (time.Duration, bool) {
-	for _, part := range strings.Split(cc, ",") {
+	for part := range strings.SplitSeq(cc, ",") {
 		part = utils.Trim(utils.ToLower(part), ' ')
-		if strings.HasPrefix(part, "max-age=") {
-			if sec, err := strconv.Atoi(strings.TrimPrefix(part, "max-age=")); err == nil {
+		if after, ok := strings.CutPrefix(part, "max-age="); ok {
+			if sec, err := strconv.Atoi(after); err == nil {
 				return time.Duration(sec) * time.Second, true
 			}
 		}

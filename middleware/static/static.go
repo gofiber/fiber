@@ -1,18 +1,80 @@
 package static
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"os"
+	pathpkg "path"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 
-	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
+
+	"github.com/gofiber/fiber/v3"
 )
+
+// sanitizePath validates and cleans the requested path.
+// It returns an error if the path attempts to traverse directories.
+func sanitizePath(p []byte, filesystem fs.FS) ([]byte, error) {
+	var s string
+
+	hasTrailingSlash := len(p) > 0 && p[len(p)-1] == '/'
+
+	if bytes.IndexByte(p, '\\') >= 0 {
+		b := make([]byte, len(p))
+		copy(b, p)
+		for i := range b {
+			if b[i] == '\\' {
+				b[i] = '/'
+			}
+		}
+		s = utils.UnsafeString(b)
+	} else {
+		s = utils.UnsafeString(p)
+	}
+
+	// repeatedly unescape until it no longer changes, catching errors
+	for strings.IndexByte(s, '%') >= 0 {
+		us, err := url.PathUnescape(s)
+		if err != nil {
+			return nil, errors.New("invalid path")
+		}
+		if us == s {
+			break
+		}
+		s = us
+	}
+
+	// reject any null bytes
+	if strings.IndexByte(s, 0) >= 0 {
+		return nil, errors.New("invalid path")
+	}
+
+	s = pathpkg.Clean("/" + s)
+
+	if filesystem != nil {
+		s = utils.TrimLeft(s, '/')
+		if s == "" {
+			return []byte("/"), nil
+		}
+		if !fs.ValidPath(s) {
+			return nil, errors.New("invalid path")
+		}
+		s = "/" + s
+	}
+
+	if hasTrailingSlash && len(s) > 1 && s[len(s)-1] != '/' {
+		s += "/"
+	}
+
+	return utils.UnsafeBytes(s), nil
+}
 
 // New creates a new middleware handler.
 // The root argument specifies the root directory from which to serve static assets.
@@ -108,7 +170,12 @@ func New(root string, cfg ...Config) fiber.Handler {
 					path = append([]byte("/"), path...)
 				}
 
-				return path
+				sanitized, err := sanitizePath(path, fs.FS)
+				if err != nil {
+					// return a guaranteed-missing path so fs responds with 404
+					return []byte("/__fiber_invalid__")
+				}
+				return sanitized
 			}
 
 			maxAge := config.MaxAge
@@ -171,11 +238,17 @@ func isFile(root string, filesystem fs.FS) (bool, error) {
 		if err != nil {
 			return false, fmt.Errorf("static: %w", err)
 		}
+		defer func() {
+			_ = file.Close() //nolint:errcheck // not needed
+		}()
 	} else {
 		file, err = os.Open(filepath.Clean(root))
 		if err != nil {
 			return false, fmt.Errorf("static: %w", err)
 		}
+		defer func() {
+			_ = file.Close() //nolint:errcheck // not needed
+		}()
 	}
 
 	stat, err := file.Stat()

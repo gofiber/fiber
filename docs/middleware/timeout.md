@@ -4,78 +4,89 @@ id: timeout
 
 # Timeout
 
-There exist two distinct implementations of timeout middleware [Fiber](https://github.com/gofiber/fiber).
+The timeout middleware limits how long a handler can take to complete. When the
+deadline is exceeded, Fiber responds with `408 Request Timeout`. The middleware
+uses `context.WithTimeout` and makes the context available through
+`c.Context()` so that your code can listen for cancellation.
 
-## New
-
-As a `fiber.Handler` wrapper, it creates a context with `context.WithTimeout` which is then used with `c.Context()`.
-
-If the context passed executions (eg. DB ops, Http calls) takes longer than the given duration to return, the timeout error is set and forwarded to the centralized `ErrorHandler`.
-
-It does not cancel long running executions. Underlying executions must handle timeout by using `context.Context` parameter.
+:::caution
+`timeout.New` wraps your final handler and can't be added with `app.Use` or
+used in a middleware chain. Register it per route and avoid calling
+`c.Next()` inside the wrapped handler—doing so will panic.
+:::
 
 ## Signatures
 
 ```go
-func New(handler fiber.Handler, timeout time.Duration, timeoutErrors ...error) fiber.Handler
+func New(handler fiber.Handler, config ...timeout.Config) fiber.Handler
 ```
 
 ## Examples
 
-Import the middleware package that is part of the Fiber web framework
+### Basic example
+
+The following program times out any request that takes longer than two seconds.
+The handler simulates work with `sleepWithContext`, which stops when the
+request's context is canceled:
 
 ```go
+package main
+
 import (
+    "context"
+    "fmt"
+    "log"
+    "time"
+
     "github.com/gofiber/fiber/v3"
     "github.com/gofiber/fiber/v3/middleware/timeout"
 )
-```
-
-After you initiate your Fiber app, you can use the following possibilities:
-
-```go
-func main() {
-    app := fiber.New()
-    h := func(c fiber.Ctx) error {
-        sleepTime, _ := time.ParseDuration(c.Params("sleepTime") + "ms")
-        if err := sleepWithContext(c.Context(), sleepTime); err != nil {
-            return fmt.Errorf("%w: execution error", err)
-        }
-        return nil
-    }
-
-    app.Get("/foo/:sleepTime", timeout.New(h, 2*time.Second))
-    log.Fatal(app.Listen(":3000"))
-}
 
 func sleepWithContext(ctx context.Context, d time.Duration) error {
-    timer := time.NewTimer(d)
-
     select {
+    case <-time.After(d):
+        return nil
     case <-ctx.Done():
-        if !timer.Stop() {
-            <-timer.C
-        }
-        return context.DeadlineExceeded
-    case <-timer.C:
+        return ctx.Err()
     }
-    return nil
+}
+
+func main() {
+    app := fiber.New()
+
+    handler := func(c fiber.Ctx) error {
+        delay, _ := time.ParseDuration(c.Params("delay") + "ms")
+        if err := sleepWithContext(c.Context(), delay); err != nil {
+            return fmt.Errorf("%w: execution error", err)
+        }
+        return c.SendString("finished")
+    }
+
+    app.Get("/sleep/:delay", timeout.New(handler, timeout.Config{
+        Timeout: 2 * time.Second,
+    }))
+
+    log.Fatal(app.Listen(":3000"))
 }
 ```
 
-Test http 200 with curl:
+Test it with curl:
 
 ```bash
-curl --location -I --request GET 'http://localhost:3000/foo/1000' 
+curl -i http://localhost:3000/sleep/1000   # finishes within the timeout
+curl -i http://localhost:3000/sleep/3000   # returns 408 Request Timeout
 ```
 
-Test http 408 with curl:
+## Config
 
-```bash
-curl --location -I --request GET 'http://localhost:3000/foo/3000' 
-```
+| Property  | Type               | Description                                                          | Default |
+|:----------|:-------------------|:---------------------------------------------------------------------|:-------|
+| Next      | `func(fiber.Ctx) bool` | Function to skip the middleware.                                   | `nil`  |
+| Timeout   | `time.Duration`    | Timeout duration for requests. `0` or a negative value disables the timeout. | `0`    |
+| OnTimeout | `fiber.Handler`    | Handler executed when a timeout occurs. Defaults to returning `fiber.ErrRequestTimeout`. | `nil`  |
+| Errors    | `[]error`          | Custom errors treated as timeout errors.                            | `nil`  |
 
-Use with custom error:
+### Use with custom error
 
 ```go
 var ErrFooTimeOut = errors.New("foo context canceled")
@@ -90,7 +101,7 @@ func main() {
         return nil
     }
 
-    app.Get("/foo/:sleepTime", timeout.New(h, 2*time.Second, ErrFooTimeOut))
+    app.Get("/foo/:sleepTime", timeout.New(h, timeout.Config{Timeout: 2 * time.Second, Errors: []error{ErrFooTimeOut}}))
     log.Fatal(app.Listen(":3000"))
 }
 
@@ -108,7 +119,7 @@ func sleepWithContextWithCustomError(ctx context.Context, d time.Duration) error
 }
 ```
 
-Sample usage with a DB call:
+### Sample usage with a database call
 
 ```go
 func main() {
@@ -129,7 +140,7 @@ func main() {
         return nil
     }
 
-    app.Get("/foo", timeout.New(handler, 10*time.Second))
+    app.Get("/foo", timeout.New(handler, timeout.Config{Timeout: 10 * time.Second}))
     log.Fatal(app.Listen(":3000"))
 }
 ```

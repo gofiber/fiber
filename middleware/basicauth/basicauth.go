@@ -12,10 +12,9 @@ import (
 // other packages.
 type contextKey int
 
-// The keys for the values in context
+// The key for the username value stored in the context
 const (
 	usernameKey contextKey = iota
-	passwordKey
 )
 
 const basicScheme = "Basic"
@@ -34,7 +33,7 @@ func New(config Config) fiber.Handler {
 
 		// Get authorization header and ensure it matches the Basic scheme
 		auth := utils.Trim(c.Get(fiber.HeaderAuthorization), ' ')
-		if auth == "" {
+		if auth == "" || len(auth) > cfg.HeaderLimit {
 			return cfg.Unauthorized(c)
 		}
 
@@ -68,11 +67,8 @@ func New(config Config) fiber.Handler {
 		username := creds[:index]
 		password := creds[index+1:]
 
-		if cfg.Authorizer(username, password) {
+		if cfg.Authorizer(username, password, c) {
 			c.Locals(usernameKey, username)
-			if cfg.StorePassword {
-				c.Locals(passwordKey, password)
-			}
 			return c.Next()
 		}
 
@@ -89,14 +85,4 @@ func UsernameFromContext(c fiber.Ctx) string {
 		return ""
 	}
 	return username
-}
-
-// PasswordFromContext returns the password found in the context
-// returns an empty string if the password does not exist
-func PasswordFromContext(c fiber.Ctx) string {
-	password, ok := c.Locals(passwordKey).(string)
-	if !ok {
-		return ""
-	}
-	return password
 }
