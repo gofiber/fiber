@@ -326,7 +326,7 @@ func Test_CORS_Subdomain(t *testing.T) {
 	app := fiber.New()
 	// OPTIONS (preflight) response headers when AllowOrigins is set to a subdomain
 	app.Use("/", New(Config{
-		AllowOrigins: []string{"http://*.example.com"},
+		AllowOrigins: []string{"  http://*.example.com  "},
 	}))
 
 	// Get handler pointer
