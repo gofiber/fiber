@@ -48,12 +48,12 @@ func New(config ...Config) fiber.Handler {
 
 		trimmedOrigin := utils.Trim(origin, ' ')
 		if i := strings.Index(trimmedOrigin, "://*."); i != -1 {
-			withoutWildcard := trimmedOrigin[:i+3] + trimmedOrigin[i+5:]
+			withoutWildcard := trimmedOrigin[:i+len("://")] + trimmedOrigin[i+len("://*."):]
 			isValid, normalizedOrigin := normalizeOrigin(withoutWildcard)
 			if !isValid {
 				panic("[CORS] Invalid origin format in configuration: " + trimmedOrigin)
 			}
-			schemeSep := strings.Index(normalizedOrigin, "://") + 3
+			schemeSep := strings.Index(normalizedOrigin, "://") + len("://")
 			sd := subdomain{prefix: normalizedOrigin[:schemeSep], suffix: normalizedOrigin[schemeSep:]}
 			allowSOrigins = append(allowSOrigins, sd)
 		} else {
