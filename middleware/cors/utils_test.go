@@ -190,6 +190,18 @@ func Test_CORS_SubdomainMatch(t *testing.T) {
 			origin:   "https://api.example.com",
 			expected: false,
 		},
+		{
+			name:     "no match with empty host label",
+			sub:      subdomain{prefix: "https://", suffix: "example.com"},
+			origin:   "https://.example.com",
+			expected: false,
+		},
+		{
+			name:     "no match with malformed host label",
+			sub:      subdomain{prefix: "https://", suffix: "example.com"},
+			origin:   "https://..example.com",
+			expected: false,
+		},
 	}
 
 	for _, tt := range tests {
