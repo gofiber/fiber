@@ -73,5 +73,5 @@ func (s subdomain) match(o string) bool {
 
 	// Check for the dot separator.
 	suffixStartIndex := len(o) - len(s.suffix)
-	return o[suffixStartIndex-1] == '.'
+	return suffixStartIndex > 0 && o[suffixStartIndex-1] == '.'
 }
