@@ -7,8 +7,6 @@ description: >-
 sidebar_position: 3
 ---
 
-# Learning Resources
-
 ## Interactive Learning Platforms
 
 Looking to practice Fiber concepts through hands-on exercises? Here are some community-driven learning resources:
@@ -20,6 +18,7 @@ A comprehensive platform offering progressive Fiber challenges that complement t
  ![Learning Path Overview](/static/img/learning-resources/fiber-learning-path.png)
 
 **What You'll Learn:**
+
 - **High-Performance APIs** - Build ultra-fast RESTful APIs with zero-allocation routing
 - **Middleware & Security** - Implement custom middleware, rate limiting, CORS, and authentication
 - **Request Validation** - Master input validation, error handling, and data transformation
@@ -28,6 +27,7 @@ A comprehensive platform offering progressive Fiber challenges that complement t
 ![Challenge Interface](/static/img/learning-resources/fiber-challenge-interface.png)
 
 **Challenge Roadmap:**
+
 1. **Basic Routing** - Setup Fiber, routes, and handlers (Beginner)
 2. **Middleware & CORS** - Custom middleware and rate limiting (Intermediate)
 3. **Validation & Errors** - Input validation and error handling (Intermediate)
