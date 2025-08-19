@@ -487,6 +487,9 @@ var DefaultMethods = []string{
 	methodPatch:   MethodPatch,
 }
 
+// httpReadResponse - Used for test mocking http.ReadResponse
+var httpReadResponse = http.ReadResponse
+
 // DefaultErrorHandler that process return errors from handlers
 func DefaultErrorHandler(c Ctx, err error) error {
 	code := StatusInternalServerError
@@ -1119,7 +1122,7 @@ func (app *App) Test(req *http.Request, config ...TestConfig) (*http.Response, e
 	var res *http.Response
 	for {
 		// Convert raw http response to *http.Response
-		res, err = http.ReadResponse(buffer, req)
+		res, err = httpReadResponse(buffer, req)
 		if err != nil {
 			if errors.Is(err, io.ErrUnexpectedEOF) {
 				return nil, ErrTestGotEmptyResponse
