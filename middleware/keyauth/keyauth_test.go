@@ -86,9 +86,6 @@ func Test_AuthSources(t *testing.T) {
 				}
 
 				authMiddleware := New(Config{
-					ErrorHandler: func(c fiber.Ctx, err error) error {
-						return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
-					},
 					Extractor: func() Extractor {
 						switch authSource {
 						case headerExtractorName:
@@ -174,21 +171,8 @@ func Test_AuthSources(t *testing.T) {
 
 				expectedCode := test.expectedCode
 				expectedBody := test.expectedBody
-				if test.APIKey == "" {
-					switch authSource {
-					case headerExtractorName, authHeaderExtractorName:
-						expectedBody = ErrMissingAPIKeyInHeader.Error()
-					case cookieExtractorName:
-						expectedBody = ErrMissingAPIKeyInCookie.Error()
-					case queryExtractorName:
-						expectedBody = ErrMissingAPIKeyInQuery.Error()
-					case paramExtractorName:
-						expectedBody = ErrMissingAPIKeyInParam.Error()
-					case formExtractorName:
-						expectedBody = ErrMissingAPIKeyInForm.Error()
-					}
-				} else if test.APIKey == "WRONGKEY" {
-					expectedBody = "invalid key"
+				if test.APIKey == "" || test.APIKey == "WRONGKEY" {
+					expectedBody = "Invalid or expired API Key"
 				}
 
 				if authSource == paramExtractorName && testKey == "" {
@@ -265,7 +249,7 @@ func TestMultipleKeyLookup(t *testing.T) {
 	require.NoError(t, err)
 	errBody, err := io.ReadAll(res.Body)
 	require.NoError(t, err)
-	require.Equal(t, ErrMissingAPIKeyInQuery.Error(), string(errBody))
+	require.Equal(t, "Invalid or expired API Key", string(errBody))
 }
 
 func Test_MultipleKeyAuth(t *testing.T) {
@@ -349,7 +333,7 @@ func Test_MultipleKeyAuth(t *testing.T) {
 			description:  "Wrong API Key",
 			APIKey:       "", // NO KEY
 			expectedCode: 401,
-			expectedBody: ErrMissingAPIKeyInHeader.Error(),
+			expectedBody: "Invalid or expired API Key",
 		},
 
 		// Auth 2 has a different password
@@ -372,7 +356,7 @@ func Test_MultipleKeyAuth(t *testing.T) {
 			description:  "Wrong API Key",
 			APIKey:       "", // NO KEY
 			expectedCode: 401,
-			expectedBody: ErrMissingAPIKeyInHeader.Error(),
+			expectedBody: "Invalid or expired API Key",
 		},
 	}
 
@@ -499,7 +483,7 @@ func Test_CustomNextFunc(t *testing.T) {
 
 	// Check that the response has the expected status code and body
 	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
-	require.Equal(t, ErrMissingAPIKeyInHeader.Error(), string(body))
+	require.Equal(t, "Invalid or expired API Key", string(body))
 
 	// Create a request with a different path and send it to the app with correct key
 	req = httptest.NewRequest(fiber.MethodGet, "/not-allowed", nil)
@@ -628,7 +612,7 @@ func Test_AuthSchemeBasic(t *testing.T) {
 
 	// Check that the response has the expected status code and body
 	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
-	require.Equal(t, ErrMissingAPIKeyInHeader.Error(), string(body))
+	require.Equal(t, "Invalid or expired API Key", string(body))
 
 	// Create a request with a valid API key in the "Authorization" header using the "Basic" scheme
 	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
@@ -740,7 +724,7 @@ func Test_HeaderSchemeMissingSpace(t *testing.T) {
 	body, err := io.ReadAll(res.Body)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
-	require.Equal(t, ErrMissingAPIKeyInHeader.Error(), string(body))
+	require.Equal(t, "Invalid or expired API Key", string(body))
 }
 
 func Test_HeaderSchemeNoToken(t *testing.T) {
@@ -757,7 +741,7 @@ func Test_HeaderSchemeNoToken(t *testing.T) {
 	body, err := io.ReadAll(res.Body)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
-	require.Equal(t, ErrMissingAPIKeyInHeader.Error(), string(body))
+	require.Equal(t, "Invalid or expired API Key", string(body))
 }
 
 func Test_HeaderSchemeNoSeparator(t *testing.T) {
@@ -776,7 +760,7 @@ func Test_HeaderSchemeNoSeparator(t *testing.T) {
 	body, err := io.ReadAll(res.Body)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
-	require.Equal(t, ErrMissingAPIKeyInHeader.Error(), string(body))
+	require.Equal(t, "Invalid or expired API Key", string(body))
 }
 
 func Test_HeaderSchemeEmptyTokenAfterTrim(t *testing.T) {
@@ -796,7 +780,7 @@ func Test_HeaderSchemeEmptyTokenAfterTrim(t *testing.T) {
 	body, err := io.ReadAll(res.Body)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusUnauthorized, res.StatusCode)
-	require.Equal(t, ErrMissingAPIKeyInHeader.Error(), string(body))
+	require.Equal(t, "Invalid or expired API Key", string(body))
 }
 
 func Test_WWWAuthenticateHeader(t *testing.T) {

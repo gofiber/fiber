@@ -1,8 +1,6 @@
 package keyauth
 
 import (
-	"errors"
-
 	"github.com/gofiber/fiber/v3"
 )
 
@@ -46,17 +44,7 @@ var ConfigDefault = Config{
 	SuccessHandler: func(c fiber.Ctx) error {
 		return c.Next()
 	},
-	ErrorHandler: func(c fiber.Ctx, err error) error {
-		switch {
-		case errors.Is(err, ErrMissingOrMalformedAPIKey),
-			errors.Is(err, ErrMissingAPIKey),
-			errors.Is(err, ErrMissingAPIKeyInHeader),
-			errors.Is(err, ErrMissingAPIKeyInQuery),
-			errors.Is(err, ErrMissingAPIKeyInParam),
-			errors.Is(err, ErrMissingAPIKeyInForm),
-			errors.Is(err, ErrMissingAPIKeyInCookie):
-			return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
-		}
+	ErrorHandler: func(c fiber.Ctx, _ error) error {
 		return c.Status(fiber.StatusUnauthorized).SendString("Invalid or expired API Key")
 	},
 	Realm:     "Restricted",

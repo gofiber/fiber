@@ -63,9 +63,9 @@ func main() {
 **Test:**
 
 ```bash
-# No api-key specified -> 401 missing api key in cookie
+# No api-key specified -> 401 Invalid or expired API Key
 curl http://localhost:3000
-#> missing api key in cookie
+#> Invalid or expired API Key
 
 # Correct API key -> 200 OK
 curl --cookie "access_token=correct horse battery staple" http://localhost:3000
