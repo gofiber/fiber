@@ -34,7 +34,7 @@ func Test_Listen(t *testing.T) {
 		assert.NoError(t, app.Shutdown())
 	}()
 
-	require.NoError(t, app.Listen(":4003", ListenConfig{DisableStartupMessage: true}))
+	require.NoError(t, app.Listen(":0", ListenConfig{DisableStartupMessage: true}))
 }
 
 // go test -run Test_Listen_Graceful_Shutdown
@@ -169,7 +169,7 @@ func Test_Listen_Prefork(t *testing.T) {
 
 	app := New()
 
-	require.NoError(t, app.Listen(":99999", ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
+	require.NoError(t, app.Listen(":0", ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
 }
 
 // go test -run Test_Listen_TLSMinVersion
@@ -180,18 +180,18 @@ func Test_Listen_TLSMinVersion(t *testing.T) {
 
 	// Invalid TLSMinVersion
 	require.Panics(t, func() {
-		_ = app.Listen(":443", ListenConfig{TLSMinVersion: tls.VersionTLS10}) //nolint:errcheck // ignore error
+		_ = app.Listen(":0", ListenConfig{TLSMinVersion: tls.VersionTLS10}) //nolint:errcheck // ignore error
 	})
 	require.Panics(t, func() {
-		_ = app.Listen(":443", ListenConfig{TLSMinVersion: tls.VersionTLS11}) //nolint:errcheck // ignore error
+		_ = app.Listen(":0", ListenConfig{TLSMinVersion: tls.VersionTLS11}) //nolint:errcheck // ignore error
 	})
 
 	// Prefork
 	require.Panics(t, func() {
-		_ = app.Listen(":443", ListenConfig{DisableStartupMessage: true, EnablePrefork: true, TLSMinVersion: tls.VersionTLS10}) //nolint:errcheck // ignore error
+		_ = app.Listen(":0", ListenConfig{DisableStartupMessage: true, EnablePrefork: true, TLSMinVersion: tls.VersionTLS10}) //nolint:errcheck // ignore error
 	})
 	require.Panics(t, func() {
-		_ = app.Listen(":443", ListenConfig{DisableStartupMessage: true, EnablePrefork: true, TLSMinVersion: tls.VersionTLS11}) //nolint:errcheck // ignore error
+		_ = app.Listen(":0", ListenConfig{DisableStartupMessage: true, EnablePrefork: true, TLSMinVersion: tls.VersionTLS11}) //nolint:errcheck // ignore error
 	})
 
 	// Valid TLSMinVersion
@@ -206,7 +206,7 @@ func Test_Listen_TLSMinVersion(t *testing.T) {
 		time.Sleep(1000 * time.Millisecond)
 		assert.NoError(t, app.Shutdown())
 	}()
-	require.NoError(t, app.Listen(":99999", ListenConfig{DisableStartupMessage: true, EnablePrefork: true, TLSMinVersion: tls.VersionTLS13}))
+	require.NoError(t, app.Listen(":0", ListenConfig{DisableStartupMessage: true, EnablePrefork: true, TLSMinVersion: tls.VersionTLS13}))
 }
 
 // go test -run Test_Listen_TLS
@@ -249,7 +249,7 @@ func Test_Listen_TLS_Prefork(t *testing.T) {
 		assert.NoError(t, app.Shutdown())
 	}()
 
-	require.NoError(t, app.Listen(":99999", ListenConfig{
+	require.NoError(t, app.Listen(":0", ListenConfig{
 		DisableStartupMessage: true,
 		EnablePrefork:         true,
 		CertFile:              "./.github/testdata/ssl.pem",
@@ -300,7 +300,7 @@ func Test_Listen_MutualTLS_Prefork(t *testing.T) {
 		assert.NoError(t, app.Shutdown())
 	}()
 
-	require.NoError(t, app.Listen(":99999", ListenConfig{
+	require.NoError(t, app.Listen(":0", ListenConfig{
 		DisableStartupMessage: true,
 		EnablePrefork:         true,
 		CertFile:              "./.github/testdata/ssl.pem",
@@ -517,13 +517,20 @@ func Test_Listen_Master_Process_Show_Startup_Message(t *testing.T) {
 		EnablePrefork: true,
 	}
 
+	ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	addr, ok := ln.Addr().(*net.TCPAddr)
+	require.True(t, ok)
+	port := addr.Port
+	require.NoError(t, ln.Close())
+
 	startupMessage := captureOutput(func() {
 		New().
-			startupMessage(":3000", true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10), cfg)
+			startupMessage(fmt.Sprintf(":%d", port), true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10), cfg)
 	})
 	colors := Colors{}
-	require.Contains(t, startupMessage, "https://127.0.0.1:3000")
-	require.Contains(t, startupMessage, "(bound on host 0.0.0.0 and port 3000)")
+	require.Contains(t, startupMessage, fmt.Sprintf("https://127.0.0.1:%d", port))
+	require.Contains(t, startupMessage, fmt.Sprintf("(bound on host 0.0.0.0 and port %d)", port))
 	require.Contains(t, startupMessage, "Child PIDs")
 	require.Contains(t, startupMessage, "11111, 22222, 33333, 44444, 55555, 60000")
 	require.Contains(t, startupMessage, fmt.Sprintf("Prefork: \t\t\t%sEnabled%s", colors.Blue, colors.Reset))
@@ -536,8 +543,15 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
 	}
 
 	app := New(Config{AppName: "Test App v3.0.0"})
+	ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	addr, ok := ln.Addr().(*net.TCPAddr)
+	require.True(t, ok)
+	port := addr.Port
+	require.NoError(t, ln.Close())
+
 	startupMessage := captureOutput(func() {
-		app.startupMessage(":3000", true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10), cfg)
+		app.startupMessage(fmt.Sprintf(":%d", port), true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10), cfg)
 	})
 	require.Equal(t, "Test App v3.0.0", app.Config().AppName)
 	require.Contains(t, startupMessage, app.Config().AppName)
@@ -552,8 +566,15 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithAppNameNonAscii(t *testi
 	appName := "Serveur de vérification des données"
 	app := New(Config{AppName: appName})
 
+	ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	addr, ok := ln.Addr().(*net.TCPAddr)
+	require.True(t, ok)
+	port := addr.Port
+	require.NoError(t, ln.Close())
+
 	startupMessage := captureOutput(func() {
-		app.startupMessage(":3000", false, "", cfg)
+		app.startupMessage(fmt.Sprintf(":%d", port), false, "", cfg)
 	})
 	require.Contains(t, startupMessage, "Serveur de vérification des données")
 }
@@ -566,13 +587,21 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithDisabledPreforkAndCustom
 
 	appName := "Fiber Example Application"
 	app := New(Config{AppName: appName})
+	ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	addr, ok := ln.Addr().(*net.TCPAddr)
+	require.True(t, ok)
+	port := addr.Port
+	require.NoError(t, ln.Close())
+
 	startupMessage := captureOutput(func() {
-		app.startupMessage("server.com:8081", true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 5), cfg)
+		app.startupMessage(fmt.Sprintf("server.com:%d", port), true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 5), cfg)
 	})
 	colors := Colors{}
 	require.Contains(t, startupMessage, fmt.Sprintf("%sINFO%s", colors.Green, colors.Reset))
 	require.Contains(t, startupMessage, fmt.Sprintf("%s%s%s", colors.Blue, appName, colors.Reset))
-	require.Contains(t, startupMessage, fmt.Sprintf("%s%s%s", colors.Blue, "https://server.com:8081", colors.Reset))
+	expectedURL := fmt.Sprintf("https://server.com:%d", port)
+	require.Contains(t, startupMessage, fmt.Sprintf("%s%s%s", colors.Blue, expectedURL, colors.Reset))
 	require.Contains(t, startupMessage, fmt.Sprintf("Prefork: \t\t\t%sDisabled%s", colors.Red, colors.Reset))
 }
 

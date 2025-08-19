@@ -128,7 +128,7 @@ In addition, several parameters in a row and several unnamed parameter character
 app.Get("/:sign:param", handler)
 
 // GET /api-v1
-// Params: "name" -> "v1" 
+// Params: "name" -> "v1"
 app.Get("/api-:name", handler)
 
 // GET /customer/v1/cart/proxy
@@ -180,7 +180,7 @@ app.Get("/:test<min(5)>", func(c fiber.Ctx) error {
 // 12
 
 // curl -X GET http://localhost:3000/1
-// Cannot GET /1
+// Not Found
 ```
 
 </TabItem>
@@ -194,10 +194,10 @@ app.Get("/:test<min(100);maxLen(5)>", func(c fiber.Ctx) error {
 })
 
 // curl -X GET http://localhost:3000/120000
-// Cannot GET /120000
+// Not Found
 
 // curl -X GET http://localhost:3000/1
-// Cannot GET /1
+// Not Found
 
 // curl -X GET http://localhost:3000/250
 // 250
@@ -214,10 +214,10 @@ app.Get(`/:date<regex(\d{4}-\d{2}-\d{2})>`, func(c fiber.Ctx) error {
 })
 
 // curl -X GET http://localhost:3000/125
-// Cannot GET /125
+// Not Found
 
 // curl -X GET http://localhost:3000/test
-// Cannot GET /test
+// Not Found
 
 // curl -X GET http://localhost:3000/2022-08-27
 // 2022-08-27
@@ -243,7 +243,7 @@ app.Get("/:test<int>?", func(c fiber.Ctx) error {
 // curl -X GET http://localhost:3000/
 //
 // curl -X GET http://localhost:3000/7.0
-// Cannot GET /7.0
+// Not Found
 ```
 
 #### Custom Constraint

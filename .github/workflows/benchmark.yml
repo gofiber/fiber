@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Fetch Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0 # to be able to retrieve the last commit in main
 
@@ -31,7 +31,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           # NOTE: Keep this in sync with the version from go.mod
-          go-version: "1.24.x"
+          go-version: "1.25.x"
 
       - name: Run Benchmark
         run: set -o pipefail; go test ./... -benchmem -run=^$ -bench . | tee output.txt

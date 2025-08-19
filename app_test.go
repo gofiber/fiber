@@ -1570,6 +1570,10 @@ func Test_App_ReadTimeout(t *testing.T) {
 		DisableKeepalive: true,
 	})
 
+	ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := ln.Addr().String()
+
 	app.Get("/read-timeout", func(c Ctx) error {
 		return c.SendString("I should not be sent")
 	})
@@ -1577,7 +1581,7 @@ func Test_App_ReadTimeout(t *testing.T) {
 	go func() {
 		time.Sleep(500 * time.Millisecond)
 
-		conn, err := net.Dial(NetworkTCP4, "127.0.0.1:4004")
+		conn, err := net.Dial(NetworkTCP4, addr)
 		assert.NoError(t, err)
 		defer func(conn net.Conn) {
 			closeErr := conn.Close()
@@ -1597,7 +1601,7 @@ func Test_App_ReadTimeout(t *testing.T) {
 		assert.NoError(t, app.Shutdown())
 	}()
 
-	require.NoError(t, app.Listen(":4004", ListenConfig{DisableStartupMessage: true}))
+	require.NoError(t, app.Listener(ln, ListenConfig{DisableStartupMessage: true}))
 }
 
 // go test -run Test_App_BadRequest
@@ -1609,9 +1613,13 @@ func Test_App_BadRequest(t *testing.T) {
 		return c.SendString("I should not be sent")
 	})
 
+	ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := ln.Addr().String()
+
 	go func() {
 		time.Sleep(500 * time.Millisecond)
-		conn, err := net.Dial(NetworkTCP4, "127.0.0.1:4005")
+		conn, err := net.Dial(NetworkTCP4, addr)
 		assert.NoError(t, err)
 		defer func(conn net.Conn) {
 			closeErr := conn.Close()
@@ -1630,7 +1638,7 @@ func Test_App_BadRequest(t *testing.T) {
 		assert.NoError(t, app.Shutdown())
 	}()
 
-	require.NoError(t, app.Listen(":4005", ListenConfig{DisableStartupMessage: true}))
+	require.NoError(t, app.Listener(ln, ListenConfig{DisableStartupMessage: true}))
 }
 
 // go test -run Test_App_SmallReadBuffer
@@ -1644,9 +1652,13 @@ func Test_App_SmallReadBuffer(t *testing.T) {
 		return c.SendString("I should not be sent")
 	})
 
+	ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := ln.Addr().String()
+
 	go func() {
 		time.Sleep(500 * time.Millisecond)
-		req, err := http.NewRequestWithContext(context.Background(), MethodGet, "http://127.0.0.1:4006/small-read-buffer", nil)
+		req, err := http.NewRequestWithContext(context.Background(), MethodGet, fmt.Sprintf("http://%s/small-read-buffer", addr), nil)
 		assert.NoError(t, err)
 		var client http.Client
 		resp, err := client.Do(req)
@@ -1655,7 +1667,7 @@ func Test_App_SmallReadBuffer(t *testing.T) {
 		assert.NoError(t, app.Shutdown())
 	}()
 
-	require.NoError(t, app.Listen(":4006", ListenConfig{DisableStartupMessage: true}))
+	require.NoError(t, app.Listener(ln, ListenConfig{DisableStartupMessage: true}))
 }
 
 func Test_App_Server(t *testing.T) {

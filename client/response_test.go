@@ -11,9 +11,10 @@ import (
 
 	"github.com/gofiber/fiber/v3/internal/tlstest"
 
-	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/gofiber/fiber/v3"
 )
 
 func Test_Response_Status(t *testing.T) {
@@ -232,7 +233,7 @@ func Test_Response_Headers(t *testing.T) {
 	require.Contains(t, headers["Foo"], "bar2")
 	require.Contains(t, headers["Foo2"], "bar")
 
-	require.Len(t, headers, 3) // Foo + Foo2 + Date
+	require.Len(t, headers, 5) // Foo + Foo2 + Date + Content-Length + Content-Type
 
 	resp.Close()
 }
