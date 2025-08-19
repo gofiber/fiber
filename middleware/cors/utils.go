@@ -75,20 +75,19 @@ func (s subdomain) match(o string) bool {
 	// non-empty label between prefix and suffix. Empty labels like
 	// "https://.example.com" or "https://..example.com" should not match.
 	suffixStartIndex := len(o) - len(s.suffix)
-if suffixStartIndex <= len(s.prefix) || o[suffixStartIndex-1] != '.' {
+	if suffixStartIndex <= len(s.prefix) {
+		return false
+	}
+	if o[suffixStartIndex-1] != '.' {
 		return false
 	}
 
-	// Extract the subdomain part (without the trailing dot) and ensure that
-	// it doesn't contain empty labels.
+	// Extract the subdomain part (without the trailing dot) and ensure it
+	// doesn't contain empty labels.
 	sub := o[len(s.prefix) : suffixStartIndex-1]
-	if sub == "" {
+	if sub == "" || strings.HasPrefix(sub, ".") || strings.Contains(sub, "..") {
 		return false
 	}
-	for _, label := range strings.Split(sub, ".") {
-		if label == "" {
-			return false
-		}
-	}
+
 	return true
 }
