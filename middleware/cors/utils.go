@@ -63,7 +63,7 @@ type subdomain struct {
 
 func (s subdomain) match(o string) bool {
 	// Not a subdomain if not long enough for a dot separator.
-	if len(o) <= len(s.prefix)+len(s.suffix) {
+	if len(o) < len(s.prefix)+len(s.suffix)+1 {
 		return false
 	}
 
