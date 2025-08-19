@@ -15,7 +15,18 @@ Looking to practice Fiber concepts through hands-on exercises? Here are some com
 
 A comprehensive platform offering progressive Fiber challenges that complement the official documentation. Master Go's fastest web framework through hands-on challenges and build lightning-fast APIs with Express.js-inspired syntax.
 
- ![Learning Path Overview](/static/img/learning-resources/fiber-learning-path.png)
+--- docs/extra/learning-resources.md
+@@ -18,7 +18,7
+ ![Learning Path Overview](/img/learning-resources/fiber-learning-path.png)
+
+@@ -27,7 +27,7
+ ![Challenge Interface](/img/learning-resources/fiber-challenge-interface.png)
+
+@@ -36,7 +36,7
+ ![Fiber Framework Overview](/img/learning-resources/fiber-framework-overview.png)
+
+@@ -38,7 +38,7
+ ![Interactive Learning Experience](/img/learning-resources/fiber-learning-experience.png)
 
 **What You'll Learn:**
 
