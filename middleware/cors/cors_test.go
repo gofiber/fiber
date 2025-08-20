@@ -326,7 +326,7 @@ func Test_CORS_Subdomain(t *testing.T) {
 	app := fiber.New()
 	// OPTIONS (preflight) response headers when AllowOrigins is set to a subdomain
 	app.Use("/", New(Config{
-		AllowOrigins: []string{"http://*.example.com"},
+		AllowOrigins: []string{"  http://*.example.com  "},
 	}))
 
 	// Get handler pointer
@@ -353,6 +353,19 @@ func Test_CORS_Subdomain(t *testing.T) {
 	ctx.Request.Header.SetMethod(fiber.MethodOptions)
 	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
 	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://example.com")
+
+	handler(ctx)
+
+	require.Equal(t, "", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+
+	// Make request with malformed subdomain (disallowed)
+	ctx.Request.SetRequestURI("/")
+	ctx.Request.Header.SetMethod(fiber.MethodOptions)
+	ctx.Request.Header.Set(fiber.HeaderAccessControlRequestMethod, fiber.MethodGet)
+	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://evil.comexample.com")
 
 	handler(ctx)
 
