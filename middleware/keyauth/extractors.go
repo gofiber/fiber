@@ -1,7 +1,6 @@
 package keyauth
 
 import (
-	"errors"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
@@ -47,15 +46,6 @@ type Extractor struct {
 	Source     Source      // The type of source being extracted from
 }
 
-var (
-	ErrMissingAPIKey         = errors.New("missing api key")
-	ErrMissingAPIKeyInHeader = errors.New("missing api key in header")
-	ErrMissingAPIKeyInQuery  = errors.New("missing api key in query")
-	ErrMissingAPIKeyInParam  = errors.New("missing api key in param")
-	ErrMissingAPIKeyInForm   = errors.New("missing api key in form")
-	ErrMissingAPIKeyInCookie = errors.New("missing api key in cookie")
-)
-
 // FromAuthHeader extracts an API key from the specified header and authentication scheme.
 // It's commonly used for the "Authorization" header with a "Bearer" scheme.
 func FromAuthHeader(header, authScheme string) Extractor {
@@ -63,7 +53,7 @@ func FromAuthHeader(header, authScheme string) Extractor {
 		Extract: func(c fiber.Ctx) (string, error) {
 			authHeader := c.Get(header)
 			if authHeader == "" {
-				return "", ErrMissingAPIKeyInHeader
+				return "", ErrMissingOrMalformedAPIKey
 			}
 
 			// Check if the header starts with the specified auth scheme
@@ -72,7 +62,7 @@ func FromAuthHeader(header, authScheme string) Extractor {
 				if len(authHeader) > schemeLen+1 && strings.EqualFold(authHeader[:schemeLen], authScheme) && authHeader[schemeLen] == ' ' {
 					return strings.TrimSpace(authHeader[schemeLen+1:]), nil
 				}
-				return "", ErrMissingAPIKeyInHeader
+				return "", ErrMissingOrMalformedAPIKey
 			}
 
 			return strings.TrimSpace(authHeader), nil
@@ -91,13 +81,13 @@ func FromAuthHeader(header, authScheme string) Extractor {
 // Returns:
 //
 //	An Extractor that attempts to retrieve the API key from the specified cookie. If the cookie
-//	is not present or does not contain an API key, it returns an error (ErrMissingAPIKeyInCookie).
+//	is not present or does not contain an API key, it returns ErrMissingOrMalformedAPIKey.
 func FromCookie(key string) Extractor {
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
 			apiKey := c.Cookies(key)
 			if apiKey == "" {
-				return "", ErrMissingAPIKeyInCookie
+				return "", ErrMissingOrMalformedAPIKey
 			}
 			return apiKey, nil
 		},
@@ -114,13 +104,13 @@ func FromCookie(key string) Extractor {
 // Returns:
 //
 //	An Extractor that attempts to retrieve the API key from the specified URL parameter. If the
-//	parameter is not present or does not contain an API key, it returns an error (ErrMissingAPIKeyInParam).
+//	parameter is not present or does not contain an API key, it returns ErrMissingOrMalformedAPIKey.
 func FromParam(param string) Extractor {
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
 			apiKey := c.Params(param)
 			if apiKey == "" {
-				return "", ErrMissingAPIKeyInParam
+				return "", ErrMissingOrMalformedAPIKey
 			}
 			return apiKey, nil
 		},
@@ -137,13 +127,13 @@ func FromParam(param string) Extractor {
 // Returns:
 //
 //	An Extractor that attempts to retrieve the API key from the specified form field. If the
-//	field is not present or does not contain an API key, it returns an error (ErrMissingAPIKeyInForm).
+//	field is not present or does not contain an API key, it returns ErrMissingOrMalformedAPIKey.
 func FromForm(param string) Extractor {
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
 			apiKey := c.FormValue(param)
 			if apiKey == "" {
-				return "", ErrMissingAPIKeyInForm
+				return "", ErrMissingOrMalformedAPIKey
 			}
 			return apiKey, nil
 		},
@@ -160,13 +150,13 @@ func FromForm(param string) Extractor {
 // Returns:
 //
 //	An Extractor that attempts to retrieve the API key from the specified HTTP header. If the
-//	header is not present or does not contain an API key, it returns an error (ErrMissingAPIKeyInHeader).
+//	header is not present or does not contain an API key, it returns ErrMissingOrMalformedAPIKey.
 func FromHeader(param string) Extractor {
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
 			apiKey := c.Get(param)
 			if apiKey == "" {
-				return "", ErrMissingAPIKeyInHeader
+				return "", ErrMissingOrMalformedAPIKey
 			}
 			return apiKey, nil
 		},
@@ -183,13 +173,13 @@ func FromHeader(param string) Extractor {
 // Returns:
 //
 //	An Extractor that attempts to retrieve the API key from the specified query parameter. If the
-//	parameter is not present or does not contain an API key, it returns an error (ErrMissingAPIKeyInQuery).
+//	parameter is not present or does not contain an API key, it returns ErrMissingOrMalformedAPIKey.
 func FromQuery(param string) Extractor {
 	return Extractor{
 		Extract: func(c fiber.Ctx) (string, error) {
 			apiKey := fiber.Query[string](c, param)
 			if apiKey == "" {
-				return "", ErrMissingAPIKeyInQuery
+				return "", ErrMissingOrMalformedAPIKey
 			}
 			return apiKey, nil
 		},
@@ -206,13 +196,13 @@ func FromQuery(param string) Extractor {
 // Returns:
 //
 //	An Extractor that attempts each provided extractor in order and returns the first successful
-//	extraction. If all extractors fail, it returns the last error encountered, or ErrMissingAPIKey
-//	if no errors were returned. If no extractors are provided, it always fails with ErrMissingAPIKey.
+//	extraction. If all extractors fail, it returns the last error encountered, or ErrMissingOrMalformedAPIKey
+//	if no errors were returned. If no extractors are provided, it always fails with ErrMissingOrMalformedAPIKey.
 func Chain(extractors ...Extractor) Extractor {
 	if len(extractors) == 0 {
 		return Extractor{
 			Extract: func(fiber.Ctx) (string, error) {
-				return "", ErrMissingAPIKey
+				return "", ErrMissingOrMalformedAPIKey
 			},
 			Source: SourceCustom,
 			Key:    "",
@@ -243,7 +233,7 @@ func Chain(extractors ...Extractor) Extractor {
 			if lastErr != nil {
 				return "", lastErr
 			}
-			return "", ErrMissingAPIKey
+			return "", ErrMissingOrMalformedAPIKey
 		},
 		Source: primarySource,
 		Key:    primaryKey,

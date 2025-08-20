@@ -507,10 +507,6 @@ func (c *DefaultCtx) getMethodInt() int {
 	return c.methodInt
 }
 
-func (c *DefaultCtx) setMethodInt(methodInt int) {
-	c.methodInt = methodInt
-}
-
 func (c *DefaultCtx) getIndexRoute() int {
 	return c.indexRoute
 }
@@ -545,10 +541,6 @@ func (c *DefaultCtx) setMatched(matched bool) {
 
 func (c *DefaultCtx) setRoute(route *Route) {
 	c.route = route
-}
-
-func (c *DefaultCtx) keepOriginalPath() {
-	c.pathOriginal = utils.CopyString(c.pathOriginal)
 }
 
 func (c *DefaultCtx) getPathOriginal() string {

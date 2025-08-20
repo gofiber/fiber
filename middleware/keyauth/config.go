@@ -1,8 +1,6 @@
 package keyauth
 
 import (
-	"errors"
-
 	"github.com/gofiber/fiber/v3"
 )
 
@@ -21,7 +19,7 @@ type Config struct {
 	// ErrorHandler defines a function which is executed for an invalid key.
 	// It may be used to define a custom error.
 	//
-	// Optional. Default: 401 Invalid or expired API Key
+	// Optional. Default: 401 Missing or invalid API Key
 	ErrorHandler fiber.ErrorHandler
 
 	// Validator is a function to validate the key.
@@ -46,18 +44,8 @@ var ConfigDefault = Config{
 	SuccessHandler: func(c fiber.Ctx) error {
 		return c.Next()
 	},
-	ErrorHandler: func(c fiber.Ctx, err error) error {
-		switch {
-		case errors.Is(err, ErrMissingOrMalformedAPIKey),
-			errors.Is(err, ErrMissingAPIKey),
-			errors.Is(err, ErrMissingAPIKeyInHeader),
-			errors.Is(err, ErrMissingAPIKeyInQuery),
-			errors.Is(err, ErrMissingAPIKeyInParam),
-			errors.Is(err, ErrMissingAPIKeyInForm),
-			errors.Is(err, ErrMissingAPIKeyInCookie):
-			return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
-		}
-		return c.Status(fiber.StatusUnauthorized).SendString("Invalid or expired API Key")
+	ErrorHandler: func(c fiber.Ctx, _ error) error {
+		return c.Status(fiber.StatusUnauthorized).SendString(ErrMissingOrMalformedAPIKey.Error())
 	},
 	Realm:     "Restricted",
 	Extractor: FromAuthHeader(fiber.HeaderAuthorization, "Bearer"),

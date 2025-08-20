@@ -16,8 +16,8 @@ const (
 	tokenKey contextKey = iota
 )
 
-// When there is no request of the key thrown ErrMissingOrMalformedAPIKey
-var ErrMissingOrMalformedAPIKey = errors.New("missing or malformed API Key")
+// ErrMissingOrMalformedAPIKey is returned when the API key is missing or invalid.
+var ErrMissingOrMalformedAPIKey = errors.New("missing or invalid API Key")
 
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
