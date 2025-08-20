@@ -125,7 +125,7 @@ type DefaultRes struct {
 
 // App returns the *App reference to the instance of the Fiber application
 func (r *DefaultRes) App() *App {
-	return r.c.App()
+	return r.c.app
 }
 
 // Append the specified value to the HTTP response header field.
@@ -134,7 +134,7 @@ func (r *DefaultRes) Append(field string, values ...string) {
 	if len(values) == 0 {
 		return
 	}
-	h := r.App().getString(r.Response().Header.Peek(field))
+	h := r.c.app.getString(r.c.fasthttp.Response.Header.Peek(field))
 	originalH := h
 	for _, value := range values {
 		if len(h) == 0 {
@@ -154,7 +154,7 @@ func (r *DefaultRes) Attachment(filename ...string) {
 	if len(filename) > 0 {
 		fname := filepath.Base(filename[0])
 		r.Type(filepath.Ext(fname))
-		app := r.App()
+		app := r.c.app
 		var quoted string
 		if app.isASCII(fname) {
 			quoted = app.quoteString(fname)
@@ -174,8 +174,8 @@ func (r *DefaultRes) Attachment(filename ...string) {
 // ClearCookie expires a specific cookie by key on the client side.
 // If no key is provided it expires all cookies that came with the request.
 func (r *DefaultRes) ClearCookie(key ...string) {
-	request := r.c.Request()
-	response := r.Response()
+	request := &r.c.fasthttp.Request
+	response := &r.c.fasthttp.Response
 	if len(key) > 0 {
 		for i := range key {
 			response.Header.DelClientCookie(key[i])
@@ -190,7 +190,7 @@ func (r *DefaultRes) ClearCookie(key ...string) {
 // RequestCtx returns *fasthttp.RequestCtx that carries a deadline
 // a cancellation signal, and other values across API boundaries.
 func (r *DefaultRes) RequestCtx() *fasthttp.RequestCtx {
-	return r.c.RequestCtx()
+	return r.c.fasthttp
 }
 
 // Cookie sets a cookie by passing a cookie struct.
@@ -271,7 +271,7 @@ func (r *DefaultRes) Cookie(cookie *Cookie) {
 	fcookie.SetPartitioned(hc.Partitioned)
 
 	// Set resp header
-	r.Response().Header.SetCookie(fcookie)
+	r.c.fasthttp.Response.Header.SetCookie(fcookie)
 	fasthttp.ReleaseCookie(fcookie)
 }
 
@@ -286,7 +286,7 @@ func (r *DefaultRes) Download(file string, filename ...string) error {
 	} else {
 		fname = filepath.Base(file)
 	}
-	app := r.App()
+	app := r.c.app
 	var quoted string
 	if app.isASCII(fname) {
 		quoted = app.quoteString(fname)
@@ -305,7 +305,7 @@ func (r *DefaultRes) Download(file string, filename ...string) error {
 // This allows you to use all fasthttp response methods
 // https://godoc.org/github.com/valyala/fasthttp#Response
 func (r *DefaultRes) Response() *fasthttp.Response {
-	return r.c.Response()
+	return &r.c.fasthttp.Response
 }
 
 // Format performs content-negotiation on the Accept HTTP header.
@@ -321,8 +321,8 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 
 	r.Vary(HeaderAccept)
 
-	if r.c.Get(HeaderAccept) == "" {
-		r.Response().Header.SetContentType(handlers[0].MediaType)
+	if r.c.DefaultReq.Get(HeaderAccept) == "" {
+		r.c.fasthttp.Response.Header.SetContentType(handlers[0].MediaType)
 		return handlers[0].Handler(r.c)
 	}
 
@@ -339,7 +339,7 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 		}
 		types = append(types, h.MediaType)
 	}
-	accept := r.c.Accepts(types...)
+	accept := r.c.DefaultReq.Accepts(types...)
 
 	if accept == "" {
 		if defaultHandler == nil {
@@ -350,7 +350,7 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 
 	for _, h := range handlers {
 		if h.MediaType == accept {
-			r.Response().Header.SetContentType(h.MediaType)
+			r.c.fasthttp.Response.Header.SetContentType(h.MediaType)
 			return h.Handler(r.c)
 		}
 	}
@@ -365,7 +365,7 @@ func (r *DefaultRes) Format(handlers ...ResFmt) error {
 // If the header is not specified or there is no proper format, text/plain is used.
 func (r *DefaultRes) AutoFormat(body any) error {
 	// Get accepted content type
-	accept := r.c.Accepts("html", "json", "txt", "xml", "msgpack", "cbor")
+	accept := r.c.DefaultReq.Accepts("html", "json", "txt", "xml", "msgpack", "cbor")
 
 	// Set accepted content type
 	r.Type(accept)
@@ -375,7 +375,7 @@ func (r *DefaultRes) AutoFormat(body any) error {
 	case string:
 		b = val
 	case []byte:
-		b = r.App().getString(val)
+		b = r.c.app.getString(val)
 	default:
 		b = fmt.Sprintf("%v", val)
 	}
@@ -405,16 +405,16 @@ func (r *DefaultRes) AutoFormat(body any) error {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (r *DefaultRes) Get(key string, defaultValue ...string) string {
-	return defaultString(r.App().getString(r.Response().Header.Peek(key)), defaultValue)
+	return defaultString(r.c.app.getString(r.c.fasthttp.Response.Header.Peek(key)), defaultValue)
 }
 
 // GetHeaders (a.k.a GetRespHeaders) returns the HTTP response headers.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (r *DefaultRes) GetHeaders() map[string][]string {
-	app := r.App()
+	app := r.c.app
 	headers := make(map[string][]string)
-	for k, v := range r.Response().Header.All() {
+	for k, v := range r.c.fasthttp.Response.Header.All() {
 		key := app.getString(k)
 		headers[key] = append(headers[key], app.getString(v))
 	}
@@ -429,12 +429,12 @@ func (r *DefaultRes) GetHeaders() map[string][]string {
 // Content-Type header equal to ctype. If ctype is not given,
 // The Content-Type header will be set to application/json; charset=utf-8.
 func (r *DefaultRes) JSON(data any, ctype ...string) error {
-	raw, err := r.App().config.JSONEncoder(data)
+	raw, err := r.c.app.config.JSONEncoder(data)
 	if err != nil {
 		return err
 	}
 
-	response := r.Response()
+	response := &r.c.fasthttp.Response
 	response.SetBodyRaw(raw)
 	if len(ctype) > 0 {
 		response.Header.SetContentType(ctype[0])
@@ -449,12 +449,12 @@ func (r *DefaultRes) JSON(data any, ctype ...string) error {
 // Content-Type header equal to ctype. If ctype is not given,
 // The Content-Type header will be set to application/vnd.msgpack.
 func (r *DefaultRes) MsgPack(data any, ctype ...string) error {
-	raw, err := r.App().config.MsgPackEncoder(data)
+	raw, err := r.c.app.config.MsgPackEncoder(data)
 	if err != nil {
 		return err
 	}
 
-	response := r.Response()
+	response := &r.c.fasthttp.Response
 	response.SetBodyRaw(raw)
 	if len(ctype) > 0 {
 		response.Header.SetContentType(ctype[0])
@@ -469,13 +469,13 @@ func (r *DefaultRes) MsgPack(data any, ctype ...string) error {
 // Content-Type header equal to ctype. If ctype is not given,
 // The Content-Type header will be set to application/cbor.
 func (r *DefaultRes) CBOR(data any, ctype ...string) error {
-	raw, err := r.App().config.CBOREncoder(data)
+	raw, err := r.c.app.config.CBOREncoder(data)
 	if err != nil {
 		return err
 	}
 
-	response := r.Response()
-	r.Response().SetBodyRaw(raw)
+	response := &r.c.fasthttp.Response
+	response.SetBodyRaw(raw)
 	if len(ctype) > 0 {
 		response.Header.SetContentType(ctype[0])
 	} else {
@@ -488,7 +488,7 @@ func (r *DefaultRes) CBOR(data any, ctype ...string) error {
 // This method is identical to JSON, except that it opts-in to JSONP callback support.
 // By default, the callback name is simply callback.
 func (r *DefaultRes) JSONP(data any, callback ...string) error {
-	raw, err := r.App().config.JSONEncoder(data)
+	raw, err := r.c.app.config.JSONEncoder(data)
 	if err != nil {
 		return err
 	}
@@ -501,22 +501,22 @@ func (r *DefaultRes) JSONP(data any, callback ...string) error {
 		cb = "callback"
 	}
 
-	result = cb + "(" + r.App().getString(raw) + ");"
+	result = cb + "(" + r.c.app.getString(raw) + ");"
 
 	r.setCanonical(HeaderXContentTypeOptions, "nosniff")
-	r.Response().Header.SetContentType(MIMETextJavaScriptCharsetUTF8)
+	r.c.fasthttp.Response.Header.SetContentType(MIMETextJavaScriptCharsetUTF8)
 	return r.SendString(result)
 }
 
 // XML converts any interface or string to XML.
 // This method also sets the content header to application/xml; charset=utf-8.
 func (r *DefaultRes) XML(data any) error {
-	raw, err := r.App().config.XMLEncoder(data)
+	raw, err := r.c.app.config.XMLEncoder(data)
 	if err != nil {
 		return err
 	}
 
-	response := r.Response()
+	response := &r.c.fasthttp.Response
 	response.SetBodyRaw(raw)
 	response.Header.SetContentType(MIMEApplicationXMLCharsetUTF8)
 	return nil
@@ -537,7 +537,7 @@ func (r *DefaultRes) Links(link ...string) {
 			bb.WriteString(`; rel="` + link[i] + `",`)
 		}
 	}
-	r.setCanonical(HeaderLink, utils.TrimRight(r.App().getString(bb.Bytes()), ','))
+	r.setCanonical(HeaderLink, utils.TrimRight(r.c.app.getString(bb.Bytes()), ','))
 	bytebufferpool.Put(bb)
 }
 
@@ -569,7 +569,7 @@ func (r *DefaultRes) ViewBind(vars Map) error {
 
 // getLocationFromRoute get URL location from route using parameters
 func (r *DefaultRes) getLocationFromRoute(route Route, params Map) (string, error) {
-	app := r.App()
+	app := r.c.app
 	buf := bytebufferpool.Get()
 	for _, segment := range route.routeParser.segs {
 		if !segment.IsParam {
@@ -599,7 +599,7 @@ func (r *DefaultRes) getLocationFromRoute(route Route, params Map) (string, erro
 
 // GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
 func (r *DefaultRes) GetRouteURL(routeName string, params Map) (string, error) {
-	return r.getLocationFromRoute(r.App().GetRoute(routeName), params)
+	return r.getLocationFromRoute(r.c.app.GetRoute(routeName), params)
 }
 
 // Render a template with data and sends a text/html response.
@@ -615,14 +615,14 @@ func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 	}
 
 	// Pass-locals-to-views, bind, appListKeys
-	r.renderExtensions(bind)
+	r.c.renderExtensions(bind)
 
-	rootApp := r.App()
+	rootApp := r.c.app
 	var rendered bool
 	for i := len(rootApp.mountFields.appListKeys) - 1; i >= 0; i-- {
 		prefix := rootApp.mountFields.appListKeys[i]
 		app := rootApp.mountFields.appList[prefix]
-		if prefix == "" || strings.Contains(r.OriginalURL(), prefix) {
+		if prefix == "" || strings.Contains(r.c.OriginalURL(), prefix) {
 			if len(layouts) == 0 && app.config.ViewsLayout != "" {
 				layouts = []string{
 					app.config.ViewsLayout,
@@ -659,7 +659,7 @@ func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 		}
 	}
 
-	response := r.Response()
+	response := &r.c.fasthttp.Response
 
 	// Set Content-Type to text/html
 	response.Header.SetContentType(MIMETextHTMLCharsetUTF8)
@@ -677,7 +677,7 @@ func (r *DefaultRes) renderExtensions(bind any) {
 // From this point onward the body argument must not be changed.
 func (r *DefaultRes) Send(body []byte) error {
 	// Write response body
-	r.Response().SetBodyRaw(body)
+	r.c.fasthttp.Response.SetBodyRaw(body)
 	return nil
 }
 
@@ -718,7 +718,7 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	var fsHandler fasthttp.RequestHandler
 	var cacheControlValue string
 
-	app := r.App()
+	app := r.c.app
 	app.sendfilesMutex.RLock()
 	for _, sf := range app.sendfiles {
 		if sf.compareConfig(cfg) {
@@ -772,9 +772,9 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	}
 
 	// Keep original path for mutable params
-	r.c.keepOriginalPath()
+	r.c.pathOriginal = utils.CopyString(r.c.pathOriginal)
 
-	request := r.c.Request()
+	request := &r.c.fasthttp.Request
 
 	// Delete the Accept-Encoding header if compression is disabled
 	if !cfg.Compress {
@@ -802,18 +802,18 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	file = filepath.ToSlash(file)
 
 	// Restore the original requested URL
-	originalURL := utils.CopyString(r.OriginalURL())
+	originalURL := utils.CopyString(r.c.OriginalURL())
 	defer request.SetRequestURI(originalURL)
 
 	// Set new URI for fileHandler
 	request.SetRequestURI(file)
 
 	// Save status code
-	response := r.Response()
+	response := &r.c.fasthttp.Response
 	status := response.StatusCode()
 
 	// Serve file
-	fsHandler(r.RequestCtx())
+	fsHandler(r.c.fasthttp)
 
 	// Sets the response Content-Disposition header to attachment if the Download option is true
 	if cfg.Download {
@@ -851,7 +851,7 @@ func (r *DefaultRes) SendStatus(status int) error {
 	r.Status(status)
 
 	// Only set status body when there is no response body
-	if len(r.Response().Body()) == 0 {
+	if len(r.c.fasthttp.Response.Body()) == 0 {
 		return r.SendString(utils.StatusMessage(status))
 	}
 
@@ -861,7 +861,7 @@ func (r *DefaultRes) SendStatus(status int) error {
 // SendString sets the HTTP response body for string types.
 // This means no type assertion, recommended for faster performance
 func (r *DefaultRes) SendString(body string) error {
-	r.Response().SetBodyString(body)
+	r.c.fasthttp.Response.SetBodyString(body)
 
 	return nil
 }
@@ -869,9 +869,9 @@ func (r *DefaultRes) SendString(body string) error {
 // SendStream sets response body stream and optional body size.
 func (r *DefaultRes) SendStream(stream io.Reader, size ...int) error {
 	if len(size) > 0 && size[0] >= 0 {
-		r.Response().SetBodyStream(stream, size[0])
+		r.c.fasthttp.Response.SetBodyStream(stream, size[0])
 	} else {
-		r.Response().SetBodyStream(stream, -1)
+		r.c.fasthttp.Response.SetBodyStream(stream, -1)
 	}
 
 	return nil
@@ -879,24 +879,24 @@ func (r *DefaultRes) SendStream(stream io.Reader, size ...int) error {
 
 // SendStreamWriter sets response body stream writer
 func (r *DefaultRes) SendStreamWriter(streamWriter func(*bufio.Writer)) error {
-	r.Response().SetBodyStreamWriter(fasthttp.StreamWriter(streamWriter))
+	r.c.fasthttp.Response.SetBodyStreamWriter(fasthttp.StreamWriter(streamWriter))
 
 	return nil
 }
 
 // Set sets the response's HTTP header field to the specified key, value.
 func (r *DefaultRes) Set(key, val string) {
-	r.Response().Header.Set(key, val)
+	r.c.fasthttp.Response.Header.Set(key, val)
 }
 
 func (r *DefaultRes) setCanonical(key, val string) {
-	r.Response().Header.SetCanonical(utils.UnsafeBytes(key), utils.UnsafeBytes(val))
+	r.c.fasthttp.Response.Header.SetCanonical(utils.UnsafeBytes(key), utils.UnsafeBytes(val))
 }
 
 // Status sets the HTTP status for the response.
 // This method is chainable.
 func (r *DefaultRes) Status(status int) Ctx {
-	r.Response().SetStatusCode(status)
+	r.c.fasthttp.Response.SetStatusCode(status)
 	return r.c
 }
 
@@ -905,13 +905,13 @@ func (r *DefaultRes) Type(extension string, charset ...string) Ctx {
 	mimeType := utils.GetMIME(extension)
 
 	if len(charset) > 0 {
-		r.Response().Header.SetContentType(mimeType + "; charset=" + charset[0])
+		r.c.fasthttp.Response.Header.SetContentType(mimeType + "; charset=" + charset[0])
 	} else {
 		// Automatically add UTF-8 charset for text-based MIME types
 		if shouldIncludeCharset(mimeType) {
-			r.Response().Header.SetContentType(mimeType + "; charset=utf-8")
+			r.c.fasthttp.Response.Header.SetContentType(mimeType + "; charset=utf-8")
 		} else {
-			r.Response().Header.SetContentType(mimeType)
+			r.c.fasthttp.Response.Header.SetContentType(mimeType)
 		}
 	}
 	return r.c
@@ -948,19 +948,19 @@ func (r *DefaultRes) Vary(fields ...string) {
 
 // Write appends p into response body.
 func (r *DefaultRes) Write(p []byte) (int, error) {
-	r.Response().AppendBody(p)
+	r.c.fasthttp.Response.AppendBody(p)
 	return len(p), nil
 }
 
 // Writef appends f & a into response body writer.
 func (r *DefaultRes) Writef(f string, a ...any) (int, error) {
 	//nolint:wrapcheck // This must not be wrapped
-	return fmt.Fprintf(r.Response().BodyWriter(), f, a...)
+	return fmt.Fprintf(r.c.fasthttp.Response.BodyWriter(), f, a...)
 }
 
 // WriteString appends s to response body.
 func (r *DefaultRes) WriteString(s string) (int, error) {
-	r.Response().AppendBodyString(s)
+	r.c.fasthttp.Response.AppendBodyString(s)
 	return len(s), nil
 }
 
@@ -974,12 +974,12 @@ func (r *DefaultRes) release() {
 // or when blocking access to sensitive endpoints.
 func (r *DefaultRes) Drop() error {
 	//nolint:wrapcheck // error wrapping is avoided to keep the operation lightweight and focused on connection closure.
-	return r.RequestCtx().Conn().Close()
+	return r.c.fasthttp.Conn().Close()
 }
 
 // End immediately flushes the current response and closes the underlying connection.
 func (r *DefaultRes) End() error {
-	ctx := r.RequestCtx()
+	ctx := r.c.fasthttp
 	conn := ctx.Conn()
 
 	bw := bufio.NewWriter(conn)

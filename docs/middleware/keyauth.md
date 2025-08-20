@@ -63,17 +63,17 @@ func main() {
 **Test:**
 
 ```bash
-# No api-key specified -> 401 missing api key in cookie
+# No api-key specified -> 401 Missing or invalid API Key
 curl http://localhost:3000
-#> missing api key in cookie
+#> Missing or invalid API Key
 
 # Correct API key -> 200 OK
 curl --cookie "access_token=correct horse battery staple" http://localhost:3000
 #> Successfully authenticated!
 
-# Incorrect API key -> 401 Invalid or expired API Key
+# Incorrect API key -> 401 Missing or invalid API Key
 curl --cookie "access_token=Clearly A Wrong Key" http://localhost:3000
-#> Invalid or expired API Key
+#> Missing or invalid API Key
 ```
 
 For a more detailed example, see also the [`github.com/gofiber/recipes`](https://github.com/gofiber/recipes) repository and specifically the `fiber-envoy-extauthz` repository and the [`keyauth example`](https://github.com/gofiber/recipes/blob/master/fiber-envoy-extauthz/authz/main.go) code.
@@ -271,18 +271,8 @@ var ConfigDefault = Config{
     SuccessHandler: func(c fiber.Ctx) error {
         return c.Next()
     },
-    ErrorHandler: func(c fiber.Ctx, err error) error {
-        switch {
-        case errors.Is(err, ErrMissingOrMalformedAPIKey),
-            errors.Is(err, ErrMissingAPIKey),
-            errors.Is(err, ErrMissingAPIKeyInHeader),
-            errors.Is(err, ErrMissingAPIKeyInQuery),
-            errors.Is(err, ErrMissingAPIKeyInParam),
-            errors.Is(err, ErrMissingAPIKeyInForm),
-            errors.Is(err, ErrMissingAPIKeyInCookie):
-            return c.Status(fiber.StatusUnauthorized).SendString(err.Error())
-        }
-        return c.Status(fiber.StatusUnauthorized).SendString("Invalid or expired API Key")
+    ErrorHandler: func(c fiber.Ctx, _ error) error {
+        return c.Status(fiber.StatusUnauthorized).SendString(ErrMissingOrMalformedAPIKey.Error())
     },
     Realm:     "Restricted",
     Extractor: FromAuthHeader(fiber.HeaderAuthorization, "Bearer"),
