@@ -19,7 +19,7 @@ type Config struct {
 	// ErrorHandler defines a function which is executed for an invalid key.
 	// It may be used to define a custom error.
 	//
-	// Optional. Default: 401 Invalid or expired API Key
+	// Optional. Default: 401 Missing or invalid API Key
 	ErrorHandler fiber.ErrorHandler
 
 	// Validator is a function to validate the key.
@@ -45,7 +45,7 @@ var ConfigDefault = Config{
 		return c.Next()
 	},
 	ErrorHandler: func(c fiber.Ctx, _ error) error {
-		return c.Status(fiber.StatusUnauthorized).SendString("Invalid or expired API Key")
+		return c.Status(fiber.StatusUnauthorized).SendString(ErrMissingOrMalformedAPIKey.Error())
 	},
 	Realm:     "Restricted",
 	Extractor: FromAuthHeader(fiber.HeaderAuthorization, "Bearer"),
