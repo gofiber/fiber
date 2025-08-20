@@ -141,7 +141,6 @@ type Ctx interface {
 	Bind() *Bind
 	// Methods to use with next stack.
 	getMethodInt() int
-	setMethodInt(methodInt int)
 	getIndexRoute() int
 	getTreePathHash() int
 	getDetectionPath() string
@@ -151,7 +150,6 @@ type Ctx interface {
 	setIndexRoute(route int)
 	setMatched(matched bool)
 	setRoute(route *Route)
-	keepOriginalPath()
 	getPathOriginal() string
 	// Accepts checks if the specified extensions or content types are acceptable.
 	Accepts(offers ...string) string
