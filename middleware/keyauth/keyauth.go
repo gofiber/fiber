@@ -17,7 +17,7 @@ const (
 )
 
 // ErrMissingOrMalformedAPIKey is returned when the API key is missing or invalid.
-var ErrMissingOrMalformedAPIKey = errors.New("Missing or invalid API Key")
+var ErrMissingOrMalformedAPIKey = errors.New("missing or invalid API Key")
 
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
