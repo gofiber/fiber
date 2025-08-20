@@ -63,51 +63,69 @@ func TestSubdomainMatch(t *testing.T) {
 	}{
 		{
 			name:     "match with different scheme",
-			sub:      subdomain{prefix: "http://api.", suffix: ".example.com"},
+			sub:      subdomain{prefix: "http://api.", suffix: "example.com"},
 			origin:   "https://api.service.example.com",
 			expected: false,
 		},
 		{
 			name:     "match with different scheme",
-			sub:      subdomain{prefix: "https://", suffix: ".example.com"},
+			sub:      subdomain{prefix: "https://", suffix: "example.com"},
 			origin:   "http://api.service.example.com",
 			expected: false,
 		},
 		{
 			name:     "match with valid subdomain",
-			sub:      subdomain{prefix: "https://", suffix: ".example.com"},
+			sub:      subdomain{prefix: "https://", suffix: "example.com"},
 			origin:   "https://api.service.example.com",
 			expected: true,
 		},
 		{
 			name:     "match with valid nested subdomain",
-			sub:      subdomain{prefix: "https://", suffix: ".example.com"},
+			sub:      subdomain{prefix: "https://", suffix: "example.com"},
 			origin:   "https://1.2.api.service.example.com",
 			expected: true,
 		},
 
 		{
 			name:     "no match with invalid prefix",
-			sub:      subdomain{prefix: "https://abc.", suffix: ".example.com"},
+			sub:      subdomain{prefix: "https://abc.", suffix: "example.com"},
 			origin:   "https://service.example.com",
 			expected: false,
 		},
 		{
 			name:     "no match with invalid suffix",
-			sub:      subdomain{prefix: "https://", suffix: ".example.com"},
+			sub:      subdomain{prefix: "https://", suffix: "example.com"},
 			origin:   "https://api.example.org",
 			expected: false,
 		},
 		{
 			name:     "no match with empty origin",
-			sub:      subdomain{prefix: "https://", suffix: ".example.com"},
+			sub:      subdomain{prefix: "https://", suffix: "example.com"},
 			origin:   "",
 			expected: false,
 		},
 		{
+			name:     "no match with malformed subdomain",
+			sub:      subdomain{prefix: "https://", suffix: "example.com"},
+			origin:   "https://evil.comexample.com",
+			expected: false,
+		},
+		{
 			name:     "partial match not considered a match",
-			sub:      subdomain{prefix: "https://service.", suffix: ".example.com"},
+			sub:      subdomain{prefix: "https://service.", suffix: "example.com"},
 			origin:   "https://api.example.com",
+			expected: false,
+		},
+		{
+			name:     "no match with empty host label",
+			sub:      subdomain{prefix: "https://", suffix: "example.com"},
+			origin:   "https://.example.com",
+			expected: false,
+		},
+		{
+			name:     "no match with malformed host label",
+			sub:      subdomain{prefix: "https://", suffix: "example.com"},
+			origin:   "https://..example.com",
 			expected: false,
 		},
 	}
@@ -124,7 +142,7 @@ func TestSubdomainMatch(t *testing.T) {
 func Benchmark_CSRF_SubdomainMatch(b *testing.B) {
 	s := subdomain{
 		prefix: "www",
-		suffix: ".example.com",
+		suffix: "example.com",
 	}
 
 	o := "www.example.com"
