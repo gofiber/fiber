@@ -65,7 +65,7 @@ func Test_AuthSources(t *testing.T) {
 			description:   "auth with wrong key",
 			APIKey:        "WRONGKEY",
 			expectedCode:  401,
-			expectedBody:  "Missing or invalid API Key",
+			expectedBody:  ErrMissingOrMalformedAPIKey.Error(),
 		},
 	}
 
@@ -172,7 +172,7 @@ func Test_AuthSources(t *testing.T) {
 				expectedCode := test.expectedCode
 				expectedBody := test.expectedBody
 				if test.APIKey == "" || test.APIKey == "WRONGKEY" {
-					expectedBody = "Missing or invalid API Key"
+					expectedBody = ErrMissingOrMalformedAPIKey.Error()
 				}
 
 				if authSource == paramExtractorName && testKey == "" {
