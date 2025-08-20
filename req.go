@@ -378,7 +378,6 @@ func (r *DefaultReq) extractIPsFromHeader(header string) []string {
 
 	ipsFound := make([]string, 0, estimatedCount)
 
-	app := r.c.app
 	i := 0
 	j := -1
 
@@ -409,7 +408,7 @@ iploop:
 
 		s := utils.TrimRight(headerValue[i:j], ' ')
 
-		if app.config.EnableIPValidation {
+		if r.c.app.config.EnableIPValidation {
 			// Skip validation if IP is clearly not IPv4/IPv6, otherwise validate without allocations
 			if (!v6 && !v4) || (v6 && !utils.IsIPv6(s)) || (v4 && !utils.IsIPv4(s)) {
 				continue iploop
