@@ -25,9 +25,9 @@ func (b *MsgPackBinding) Reset() {
 }
 
 func UnimplementedMsgpackMarshal(_ any) ([]byte, error) {
-	panic("Must explicits setup Msgpack, please check docs: https://docs.gofiber.io/next/guide/advance-format#msgpack")
+	panic("Must explicit setup Msgpack, please check docs: https://docs.gofiber.io/next/guide/advance-format#msgpack")
 }
 
 func UnimplementedMsgpackUnmarshal(_ []byte, _ any) error {
-	panic("Must explicits setup Msgpack, please check docs: https://docs.gofiber.io/next/guide/advance-format#msgpack")
+	panic("Must explicit setup Msgpack, please check docs: https://docs.gofiber.io/next/guide/advance-format#msgpack")
 }

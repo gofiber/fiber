@@ -817,7 +817,7 @@ func Test_Request_Invalid_URL(t *testing.T) {
 	require.Equal(t, (*Response)(nil), resp)
 }
 
-func Test_Request_Unsupport_Protocol(t *testing.T) {
+func Test_Request_Unsupported_Protocol(t *testing.T) {
 	t.Parallel()
 
 	resp, err := AcquireRequest().

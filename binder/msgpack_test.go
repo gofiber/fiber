@@ -110,7 +110,7 @@ func Test_UnimplementedMsgpackMarshal_PanicMessage(t *testing.T) {
 
 	defer func() {
 		if r := recover(); r != nil {
-			require.Contains(t, r, "Must explicits setup Msgpack")
+			require.Contains(t, r, "Must explicit setup Msgpack")
 		}
 	}()
 	_, err := UnimplementedMsgpackMarshal(struct{ Name string }{Name: "test"})
@@ -123,7 +123,7 @@ func Test_UnimplementedMsgpackUnmarshal_PanicMessage(t *testing.T) {
 
 	defer func() {
 		if r := recover(); r != nil {
-			require.Contains(t, r, "Must explicits setup Msgpack")
+			require.Contains(t, r, "Must explicit setup Msgpack")
 		}
 	}()
 	var out any
