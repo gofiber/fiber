@@ -692,6 +692,9 @@ func (r *DefaultRes) Send(body []byte) error {
 // See: https://developer.chrome.com/docs/web-platform/early-hints and
 // https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Link#syntax
 func (r *DefaultRes) SendEarlyHints(hints []string) error {
+	if len(hints) == 0 {
+		return nil
+	}
 	for _, h := range hints {
 		r.c.fasthttp.Response.Header.Add("Link", h)
 	}
