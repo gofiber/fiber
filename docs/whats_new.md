@@ -464,7 +464,7 @@ testConfig := fiber.TestConfig{
 - **IsProxyTrusted**: Checks the trustworthiness of the remote IP.
 - **Reset**: Resets context fields for server handlers.
 - **Schema**: Similar to Express.js, returns the schema (HTTP or HTTPS) of the request.
-- **SendEarlyHints**: Sends `103 Early Hints` with `Link` headers so browsers can preload resources while the final response is being prepared.
+- **SendEarlyHints**: Sends `HTTP 103 Early Hints` status code with `Link` headers so browsers can preload resources while the final response is being prepared.
 - **SendStream**: Similar to Express.js, sends a stream as the response.
 - **SendStreamWriter**: Sends a stream using a writer function.
 - **SendString**: Similar to Express.js, sends a string as the response.
