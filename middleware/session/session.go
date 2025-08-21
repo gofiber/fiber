@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/gob"
 	"fmt"
+	"reflect"
 	"sync"
 	"time"
 
@@ -53,7 +54,14 @@ var sessionPool = sync.Pool{
 //
 //	s := acquireSession()
 func acquireSession() *Session {
-	s := sessionPool.Get().(*Session) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
+	obj := sessionPool.Get()
+	if obj == nil {
+		panic("unexpected type in session pool")
+	}
+	s, ok := reflect.TypeAssert[*Session](reflect.ValueOf(obj))
+	if !ok {
+		panic("unexpected type in session pool")
+	}
 	if s.data == nil {
 		s.data = acquireData()
 	}
@@ -296,10 +304,12 @@ func (s *Session) Save() error {
 	}
 
 	// If the session is being used in the handler, it should not be saved
-	if m, ok := s.ctx.Locals(middlewareContextKey).(*Middleware); ok {
-		if m.Session == s {
-			// Session is in use, so we do nothing and return
-			return nil
+	if v := s.ctx.Locals(middlewareContextKey); v != nil {
+		if m, ok := reflect.TypeAssert[*Middleware](reflect.ValueOf(v)); ok {
+			if m.Session == s {
+				// Session is in use, so we do nothing and return
+				return nil
+			}
 		}
 	}
 

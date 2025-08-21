@@ -1,6 +1,7 @@
 package session
 
 import (
+	"reflect"
 	"sync"
 )
 
@@ -30,7 +31,10 @@ var dataPool = sync.Pool{
 //	d := acquireData()
 func acquireData() *data {
 	obj := dataPool.Get()
-	if d, ok := obj.(*data); ok {
+	if obj == nil {
+		panic("unexpected type in data pool")
+	}
+	if d, ok := reflect.TypeAssert[*data](reflect.ValueOf(obj)); ok {
 		return d
 	}
 	// Handle unexpected type in the pool

@@ -4,6 +4,7 @@ package session
 
 import (
 	"errors"
+	"reflect"
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
@@ -139,7 +140,11 @@ func (m *Middleware) saveSession() {
 
 // acquireMiddleware retrieves a middleware instance from the pool.
 func acquireMiddleware() *Middleware {
-	m, ok := middlewarePool.Get().(*Middleware)
+	v := middlewarePool.Get()
+	if v == nil {
+		panic(ErrTypeAssertionFailed.Error())
+	}
+	m, ok := reflect.TypeAssert[*Middleware](reflect.ValueOf(v))
 	if !ok {
 		panic(ErrTypeAssertionFailed.Error())
 	}
@@ -176,7 +181,11 @@ func releaseMiddleware(m *Middleware) {
 //
 //	m := session.FromContext(c)
 func FromContext(c fiber.Ctx) *Middleware {
-	m, ok := c.Locals(middlewareContextKey).(*Middleware)
+	v := c.Locals(middlewareContextKey)
+	if v == nil {
+		return nil
+	}
+	m, ok := reflect.TypeAssert[*Middleware](reflect.ValueOf(v))
 	if !ok {
 		return nil
 	}

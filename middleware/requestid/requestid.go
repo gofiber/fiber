@@ -1,6 +1,8 @@
 package requestid
 
 import (
+	"reflect"
+
 	"github.com/gofiber/fiber/v3"
 )
 
@@ -44,7 +46,11 @@ func New(config ...Config) fiber.Handler {
 // FromContext returns the request ID from context.
 // If there is no request ID, an empty string is returned.
 func FromContext(c fiber.Ctx) string {
-	if rid, ok := c.Locals(requestIDKey).(string); ok {
+	v := c.Locals(requestIDKey)
+	if v == nil {
+		return ""
+	}
+	if rid, ok := reflect.TypeAssert[string](reflect.ValueOf(v)); ok {
 		return rid
 	}
 	return ""

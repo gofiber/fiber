@@ -2,6 +2,7 @@ package basicauth
 
 import (
 	"encoding/base64"
+	"reflect"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
@@ -80,9 +81,12 @@ func New(config Config) fiber.Handler {
 // UsernameFromContext returns the username found in the context
 // returns an empty string if the username does not exist
 func UsernameFromContext(c fiber.Ctx) string {
-	username, ok := c.Locals(usernameKey).(string)
-	if !ok {
+	v := c.Locals(usernameKey)
+	if v == nil {
 		return ""
 	}
-	return username
+	if username, ok := reflect.TypeAssert[string](reflect.ValueOf(v)); ok {
+		return username
+	}
+	return ""
 }

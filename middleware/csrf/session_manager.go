@@ -1,6 +1,7 @@
 package csrf
 
 import (
+	"reflect"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -39,7 +40,9 @@ func (m *sessionManager) getRaw(c fiber.Ctx, key string, raw []byte) []byte {
 	var ok bool
 
 	if sess != nil {
-		token, ok = sess.Get(sessionKey).(Token)
+		if v := sess.Get(sessionKey); v != nil {
+			token, ok = reflect.TypeAssert[Token](reflect.ValueOf(v))
+		}
 	} else {
 		// Try to get the session from the store
 		storeSess, err := m.session.Get(c)
@@ -47,7 +50,9 @@ func (m *sessionManager) getRaw(c fiber.Ctx, key string, raw []byte) []byte {
 			// Handle error
 			return nil
 		}
-		token, ok = storeSess.Get(sessionKey).(Token)
+		if v := storeSess.Get(sessionKey); v != nil {
+			token, ok = reflect.TypeAssert[Token](reflect.ValueOf(v))
+		}
 	}
 
 	if ok {

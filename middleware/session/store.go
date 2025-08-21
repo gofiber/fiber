@@ -5,6 +5,7 @@ import (
 	"encoding/gob"
 	"errors"
 	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -95,9 +96,10 @@ func (*Store) RegisterType(i any) {
 func (s *Store) Get(c fiber.Ctx) (*Session, error) {
 	// If session is already loaded in the context,
 	// it should not be loaded again
-	_, ok := c.Locals(middlewareContextKey).(*Middleware)
-	if ok {
-		return nil, ErrSessionAlreadyLoadedByMiddleware
+	if v := c.Locals(middlewareContextKey); v != nil {
+		if _, ok := reflect.TypeAssert[*Middleware](reflect.ValueOf(v)); ok {
+			return nil, ErrSessionAlreadyLoadedByMiddleware
+		}
 	}
 
 	return s.getSession(c)
@@ -122,7 +124,11 @@ func (s *Store) getSession(c fiber.Ctx) (*Session, error) {
 	var rawData []byte
 	var err error
 
-	id, ok := c.Locals(sessionIDContextKey).(string)
+	var id string
+	var ok bool
+	if v := c.Locals(sessionIDContextKey); v != nil {
+		id, ok = reflect.TypeAssert[string](reflect.ValueOf(v))
+	}
 	if !ok {
 		id = s.getSessionID(c)
 	}

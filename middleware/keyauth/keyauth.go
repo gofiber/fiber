@@ -3,6 +3,7 @@ package keyauth
 import (
 	"errors"
 	"fmt"
+	"reflect"
 
 	"github.com/gofiber/fiber/v3"
 )
@@ -57,11 +58,14 @@ func New(config ...Config) fiber.Handler {
 // TokenFromContext returns the bearer token from the request context.
 // returns an empty string if the token does not exist
 func TokenFromContext(c fiber.Ctx) string {
-	token, ok := c.Locals(tokenKey).(string)
-	if !ok {
+	v := c.Locals(tokenKey)
+	if v == nil {
 		return ""
 	}
-	return token
+	if token, ok := reflect.TypeAssert[string](reflect.ValueOf(v)); ok {
+		return token
+	}
+	return ""
 }
 
 // getAuthScheme inspects an extractor and its chain to find the auth scheme

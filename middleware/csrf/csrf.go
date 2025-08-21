@@ -3,6 +3,7 @@ package csrf
 import (
 	"errors"
 	"net/url"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -191,17 +192,24 @@ func New(config ...Config) fiber.Handler {
 // TokenFromContext returns the token found in the context
 // returns an empty string if the token does not exist
 func TokenFromContext(c fiber.Ctx) string {
-	token, ok := c.Locals(tokenKey).(string)
-	if !ok {
+	v := c.Locals(tokenKey)
+	if v == nil {
 		return ""
 	}
-	return token
+	if token, ok := reflect.TypeAssert[string](reflect.ValueOf(v)); ok {
+		return token
+	}
+	return ""
 }
 
 // HandlerFromContext returns the Handler found in the context
 // returns nil if the handler does not exist
 func HandlerFromContext(c fiber.Ctx) *Handler {
-	handler, ok := c.Locals(handlerKey).(*Handler)
+	v := c.Locals(handlerKey)
+	if v == nil {
+		return nil
+	}
+	handler, ok := reflect.TypeAssert[*Handler](reflect.ValueOf(v))
 	if !ok {
 		return nil
 	}

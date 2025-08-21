@@ -2,6 +2,7 @@ package cache
 
 import (
 	"container/heap"
+	"reflect"
 )
 
 type heapEntry struct {
@@ -41,7 +42,8 @@ func (h indexedHeap) Swap(i, j int) {
 }
 
 func (h *indexedHeap) Push(x any) {
-	h.pushInternal(x.(heapEntry)) //nolint:forcetypeassert,errcheck // Forced type assertion required to implement the heap.Interface interface
+	entry, _ := reflect.TypeAssert[heapEntry](reflect.ValueOf(x)) //nolint:errcheck // Forced type assertion
+	h.pushInternal(entry)
 }
 
 func (h *indexedHeap) Pop() any {
@@ -77,7 +79,7 @@ func (h *indexedHeap) put(key string, exp uint64, bytes uint) int {
 }
 
 func (h *indexedHeap) removeInternal(realIdx int) (string, uint) {
-	x := heap.Remove(h, realIdx).(heapEntry) //nolint:forcetypeassert,errcheck // Forced type assertion required to implement the heap.Interface interface
+	x, _ := reflect.TypeAssert[heapEntry](reflect.ValueOf(heap.Remove(h, realIdx))) //nolint:errcheck // Forced type assertion required to implement the heap.Interface interface
 	return x.key, x.bytes
 }
 
