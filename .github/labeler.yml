@@ -11,7 +11,7 @@ labels:
             title: '\b(improve|update|refactor|deprecated|remove|unused|test)\b'
     -   label: '🤖 Dependencies'
         matcher:
-            title: '\b(bumb|bdependencies)\b'
+            title: '\b(bump|bdependencies)\b'
     -   label: '✏️ Feature'
         matcher:
             title: '\b(feature|feat|create|implement|add)\b'
