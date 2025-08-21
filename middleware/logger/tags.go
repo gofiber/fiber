@@ -3,6 +3,7 @@ package logger
 import (
 	"fmt"
 	"maps"
+	"reflect"
 	"strings"
 
 	"github.com/gofiber/fiber/v3"
@@ -168,16 +169,17 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return output.WriteString(c.Cookies(extraParam))
 		},
 		TagLocals: func(output Buffer, c fiber.Ctx, _ *Data, extraParam string) (int, error) {
-			switch v := c.Locals(extraParam).(type) {
-			case []byte:
-				return output.Write(v)
-			case string:
-				return output.WriteString(v)
-			case nil:
+			v := c.Locals(extraParam)
+			if v == nil {
 				return 0, nil
-			default:
-				return output.WriteString(fmt.Sprintf("%v", v))
 			}
+			if b, ok := reflect.TypeAssert[[]byte](reflect.ValueOf(v)); ok {
+				return output.Write(b)
+			}
+			if s, ok := reflect.TypeAssert[string](reflect.ValueOf(v)); ok {
+				return output.WriteString(s)
+			}
+			return output.WriteString(fmt.Sprintf("%v", v))
 		},
 		TagStatus: func(output Buffer, c fiber.Ctx, _ *Data, _ string) (int, error) {
 			if cfg.enableColors {
@@ -201,7 +203,10 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return output.WriteString(fmt.Sprintf("%13v", latency))
 		},
 		TagTime: func(output Buffer, _ fiber.Ctx, data *Data, _ string) (int, error) {
-			return output.WriteString(data.Timestamp.Load().(string)) //nolint:forcetypeassert,errcheck // We always store a string in here
+			if ts, ok := reflect.TypeAssert[string](reflect.ValueOf(data.Timestamp.Load())); ok {
+				return output.WriteString(ts)
+			}
+			return output.WriteString("")
 		},
 	}
 	// merge with custom tags from user

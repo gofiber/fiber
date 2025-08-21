@@ -5,6 +5,7 @@ import (
 	"errors"
 	"mime/multipart"
 	"net"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -523,10 +524,14 @@ func (r *DefaultReq) Locals(key any, value ...any) any {
 func Locals[V any](c Ctx, key any, value ...V) V {
 	var v V
 	var ok bool
+	var raw any
 	if len(value) == 0 {
-		v, ok = c.Locals(key).(V)
+		raw = c.Locals(key)
 	} else {
-		v, ok = c.Locals(key, value[0]).(V)
+		raw = c.Locals(key, value[0])
+	}
+	if raw != nil {
+		v, ok = reflect.TypeAssert[V](reflect.ValueOf(raw))
 	}
 	if !ok {
 		return v // return zero of type V

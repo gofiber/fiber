@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"reflect"
 	"sync"
 	"time"
 
@@ -53,7 +54,9 @@ func newManager(storage fiber.Storage) *manager {
 
 // acquire returns an *entry from the sync.Pool
 func (m *manager) acquire() *item {
-	return m.pool.Get().(*item) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
+	obj := m.pool.Get()
+	it, _ := reflect.TypeAssert[*item](reflect.ValueOf(obj)) //nolint:errcheck // We store nothing else in the pool
+	return it
 }
 
 // release and reset *entry to sync.Pool
@@ -89,8 +92,10 @@ func (m *manager) get(ctx context.Context, key string) *item {
 		return it
 	}
 
-	if it, _ := m.memory.Get(key).(*item); it != nil { //nolint:errcheck // We store nothing else in the pool
-		return it
+	if v := m.memory.Get(key); v != nil {
+		if it, ok := reflect.TypeAssert[*item](reflect.ValueOf(v)); ok && it != nil { //nolint:errcheck // We store nothing else in the pool
+			return it
+		}
 	}
 
 	return nil
@@ -102,7 +107,9 @@ func (m *manager) getRaw(ctx context.Context, key string) []byte {
 	if m.storage != nil {
 		raw, _ = m.storage.GetWithContext(ctx, key) //nolint:errcheck // TODO: Handle error here
 	} else {
-		raw, _ = m.memory.Get(key).([]byte) //nolint:errcheck // TODO: Handle error here
+		if v := m.memory.Get(key); v != nil {
+			raw, _ = reflect.TypeAssert[[]byte](reflect.ValueOf(v)) //nolint:errcheck // TODO: Handle error here
+		}
 	}
 	return raw
 }

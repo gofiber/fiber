@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"strconv"
 
 	"github.com/gofiber/fiber/v3"
@@ -35,9 +36,10 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 			if data.ChainErr != nil {
 				formatErr = colors.Red + " | " + data.ChainErr.Error() + colors.Reset
 			}
+			ts, _ := reflect.TypeAssert[string](reflect.ValueOf(data.Timestamp.Load()))
 			buf.WriteString(
 				fmt.Sprintf("%s |%s %3d %s| %13v | %15s |%s %-7s %s| %-"+data.ErrPaddingStr+"s %s\n",
-					data.Timestamp.Load().(string), //nolint:forcetypeassert,errcheck // Timestamp is always a string
+					ts,
 					statusColor(c.Response().StatusCode(), colors), c.Response().StatusCode(), colors.Reset,
 					data.Stop.Sub(data.Start),
 					c.IP(),
@@ -67,7 +69,9 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 			}
 
 			// Timestamp
-			buf.WriteString(data.Timestamp.Load().(string)) //nolint:forcetypeassert,errcheck // Timestamp is always a string
+			if ts, ok := reflect.TypeAssert[string](reflect.ValueOf(data.Timestamp.Load())); ok {
+				buf.WriteString(ts)
+			}
 			buf.WriteString(" | ")
 
 			// Status Code with 3 fixed width, right aligned
