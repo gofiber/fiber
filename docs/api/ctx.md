@@ -2054,7 +2054,7 @@ resources while the server prepares the full response.
 
 :::caution
 This feature requires HTTP/2 or newer. Some legacy HTTP/1.1 clients may not
-understand or may misbehave when receiving early hints.
+Early Hints (`103` responses) are supported in HTTP/2 and newer. Older HTTP/1.1 clients may ignore these interim responses or misbehave when receiving them.
 :::
 
 ```go title="Signature"
