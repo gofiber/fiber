@@ -179,7 +179,7 @@ func (r *DefaultReq) Body() []byte {
 	}
 
 	if r.c.app.config.Immutable {
-		return utils.CopyBytes(body)
+		return r.c.CopyBytes(body)
 	}
 	return body
 }
@@ -591,7 +591,7 @@ func (r *DefaultReq) Params(key string, defaultValue ...string) string {
 			}
 			val := values[i]
 			if r.c.app.config.Immutable {
-				return utils.CopyString(val)
+				return r.c.CopyString(val)
 			}
 			return val
 		}
@@ -917,7 +917,7 @@ func (r *DefaultReq) release() {
 
 func (r *DefaultReq) getBody() []byte {
 	if r.c.app.config.Immutable {
-		return utils.CopyBytes(r.c.fasthttp.Request.Body())
+		return r.c.CopyBytes(r.c.fasthttp.Request.Body())
 	}
 
 	return r.c.fasthttp.Request.Body()

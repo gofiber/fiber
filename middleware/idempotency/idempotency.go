@@ -76,7 +76,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Don't execute middleware if the idempotency key is empty
-		key := utils.CopyString(c.Get(cfg.KeyHeader))
+		key := c.CopyString(c.Get(cfg.KeyHeader))
 		if key == "" {
 			return c.Next()
 		}
@@ -119,7 +119,7 @@ func New(config ...Config) fiber.Handler {
 		res := &response{
 			StatusCode: c.Response().StatusCode(),
 
-			Body: utils.CopyBytes(c.Response().Body()),
+			Body: c.CopyBytes(c.Response().Body()),
 		}
 		{
 			headers := make(map[string][]string)
