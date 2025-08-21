@@ -66,7 +66,7 @@ func getTLSConfig(ln net.Listener) *tls.Config {
 			// Get element from pointer
 			if elem := newval.Elem(); elem.IsValid() {
 				// Cast value to *tls.Config
-				c, ok := elem.Interface().(*tls.Config)
+				c, ok := reflect.TypeAssert[*tls.Config](elem)
 				if !ok {
 					panic(errors.New("failed to type-assert to *tls.Config"))
 				}
