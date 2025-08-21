@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/utils/v2"
 )
 
 // Config defines the config for middleware.
@@ -26,7 +27,7 @@ type Config struct {
 	// Key allows you to generate custom keys, by default c.Path() is used
 	//
 	// Default: func(c fiber.Ctx) string {
-	//   return c.CopyString(c.Path())
+	//   return utils.CopyString(c.Path())
 	// }
 	KeyGenerator func(fiber.Ctx) string
 
@@ -81,7 +82,7 @@ var ConfigDefault = Config{
 	CacheControl:     false,
 	CacheInvalidator: nil,
 	KeyGenerator: func(c fiber.Ctx) string {
-		return c.CopyString(c.Path())
+		return utils.CopyString(c.Path())
 	},
 	ExpirationGenerator:  nil,
 	StoreResponseHeaders: false,

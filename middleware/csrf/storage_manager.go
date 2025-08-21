@@ -58,13 +58,7 @@ func (m *storageManager) setRaw(ctx context.Context, key string, raw []byte, exp
 		_ = m.storage.SetWithContext(ctx, key, raw, exp) //nolint:errcheck // TODO: Do not ignore error
 	} else {
 		// the key is crucial in crsf and sometimes a reference to another value which can be reused later(pool/unsafe values concept), so a copy is made here
-		var copiedKey string
-		if fiberCtx, ok := ctx.(fiber.Ctx); ok {
-			copiedKey = fiberCtx.CopyString(key)
-		} else {
-			copiedKey = utils.CopyString(key)
-		}
-		m.memory.Set(copiedKey, raw, exp)
+		m.memory.Set(utils.CopyString(key), raw, exp)
 	}
 }
 
