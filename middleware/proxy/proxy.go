@@ -182,10 +182,10 @@ func doAction(
 
 	req := c.Request()
 	res := c.Response()
-	originalURL := utils.CopyString(c.OriginalURL())
+	originalURL := c.CopyString(c.OriginalURL())
 	defer req.SetRequestURI(originalURL)
 
-	copiedURL := utils.CopyString(addr)
+	copiedURL := c.CopyString(addr)
 	req.SetRequestURI(copiedURL)
 	// NOTE: if req.isTLS is true, SetRequestURI keeps the scheme as https.
 	// Reference: https://github.com/gofiber/fiber/issues/1762

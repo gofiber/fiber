@@ -6939,3 +6939,59 @@ func Test_App_CopyBytes_Immutable_True(t *testing.T) {
 	original[0] = 'X'
 	require.Equal(t, original, copied)
 }
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_CopyString -benchmem -count=4
+func Benchmark_Ctx_CopyString_Immutable_False(b *testing.B) {
+	app := New(Config{Immutable: false})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	testString := "This is a test string for benchmarking copy performance"
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for b.Loop() {
+		_ = c.CopyString(testString)
+	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_CopyString -benchmem -count=4
+func Benchmark_Ctx_CopyString_Immutable_True(b *testing.B) {
+	app := New(Config{Immutable: true})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	testString := "This is a test string for benchmarking copy performance"
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for b.Loop() {
+		_ = c.CopyString(testString)
+	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_CopyBytes -benchmem -count=4
+func Benchmark_Ctx_CopyBytes_Immutable_False(b *testing.B) {
+	app := New(Config{Immutable: false})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	testBytes := []byte("This is a test byte slice for benchmarking copy performance")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for b.Loop() {
+		_ = c.CopyBytes(testBytes)
+	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_CopyBytes -benchmem -count=4
+func Benchmark_Ctx_CopyBytes_Immutable_True(b *testing.B) {
+	app := New(Config{Immutable: true})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	testBytes := []byte("This is a test byte slice for benchmarking copy performance")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for b.Loop() {
+		_ = c.CopyBytes(testBytes)
+	}
+}
