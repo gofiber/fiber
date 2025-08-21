@@ -850,6 +850,20 @@ func Test_CSRF_TrustedOrigins(t *testing.T) {
 	h(ctx)
 	require.Equal(t, 403, ctx.Response.StatusCode())
 
+	// Test Trusted Origin malformed subdomain
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.URI().SetScheme("http")
+	ctx.Request.URI().SetHost("domain-1.com")
+	ctx.Request.Header.SetProtocol("http")
+	ctx.Request.Header.SetHost("domain-1.com")
+	ctx.Request.Header.Set(fiber.HeaderOrigin, "http://evil.comdomain-1.com")
+	ctx.Request.Header.Set(HeaderName, token)
+	ctx.Request.Header.SetCookie(ConfigDefault.CookieName, token)
+	h(ctx)
+	require.Equal(t, 403, ctx.Response.StatusCode())
+
 	// Test Trusted Referer
 	ctx.Request.Reset()
 	ctx.Response.Reset()
