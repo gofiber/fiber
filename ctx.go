@@ -546,3 +546,17 @@ func (c *DefaultCtx) setRoute(route *Route) {
 func (c *DefaultCtx) getPathOriginal() string {
 	return c.pathOriginal
 }
+
+// CopyString returns a copy of the string if app.config.Immutable is false,
+// otherwise returns the string as-is since it's already safe to use.
+// This method should be used instead of utils.CopyString when you have access to the context.
+func (c *DefaultCtx) CopyString(s string) string {
+	return c.app.CopyString(s)
+}
+
+// CopyBytes returns a copy of the byte slice if app.config.Immutable is false,
+// otherwise returns the byte slice as-is since it's already safe to use.
+// This method should be used instead of utils.CopyBytes when you have access to the context.
+func (c *DefaultCtx) CopyBytes(b []byte) []byte {
+	return c.app.CopyBytes(b)
+}

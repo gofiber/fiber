@@ -684,6 +684,28 @@ func (app *App) SetTLSHandler(tlsHandler *TLSHandler) {
 	app.mutex.Unlock()
 }
 
+// CopyString returns a copy of the string if app.config.Immutable is false,
+// otherwise returns the string as-is since it's already safe to use.
+// This method should be used instead of utils.CopyString when you have access to the app config.
+func (app *App) CopyString(s string) string {
+	if app.config.Immutable {
+		// When immutable is true, all strings from the context are already safe copies
+		return s
+	}
+	return utils.CopyString(s)
+}
+
+// CopyBytes returns a copy of the byte slice if app.config.Immutable is false,
+// otherwise returns the byte slice as-is since it's already safe to use.
+// This method should be used instead of utils.CopyBytes when you have access to the app config.
+func (app *App) CopyBytes(b []byte) []byte {
+	if app.config.Immutable {
+		// When immutable is true, all byte slices from the context are already safe copies
+		return b
+	}
+	return utils.CopyBytes(b)
+}
+
 // Name Assign name to specific route.
 func (app *App) Name(name string) Router {
 	app.mutex.Lock()
