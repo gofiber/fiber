@@ -6852,25 +6852,7 @@ func Test_Ctx_CopyBytes_Immutable_False(t *testing.T) {
 	app := New(Config{Immutable: false})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
-	// Test that CopyBytes makes a copy when Immutable is false
-	original := []byte("test bytes")
-	copied := c.CopyBytes(original)
-
-	// The result should be equal but different memory addresses
-	require.Equal(t, original, copied)
-
-	// Check different memory addresses by modifying one
-	original[0] = 'X'
-	require.NotEqual(t, original, copied)
-}
-
-// go test -run Test_Ctx_CopyBytes_Immutable_True
-func Test_Ctx_CopyBytes_Immutable_True(t *testing.T) {
-	t.Parallel()
-	app := New(Config{Immutable: true})
-	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
-
-	// Test that CopyBytes returns the same bytes when Immutable is true
+	// Test that CopyBytes returns the same bytes when Immutable is false (no copy)
 	original := []byte("test bytes")
 	copied := c.CopyBytes(original)
 
@@ -6879,6 +6861,23 @@ func Test_Ctx_CopyBytes_Immutable_True(t *testing.T) {
 	// Modifying one should affect the other since it's the same slice
 	original[0] = 'X'
 	require.Equal(t, original, copied)
+}
+
+// go test -run Test_Ctx_CopyBytes_Immutable_True
+func Test_Ctx_CopyBytes_Immutable_True(t *testing.T) {
+	t.Parallel()
+	app := New(Config{Immutable: true})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
+
+	// Test that CopyBytes makes a copy when Immutable is true
+	original := []byte("test bytes")
+	copied := c.CopyBytes(original)
+
+	// The result should be equal but different memory addresses
+	require.Equal(t, original, copied)
+	// Modifying one should not affect the other since it's a copy
+	original[0] = 'X'
+	require.NotEqual(t, original, copied)
 }
 
 // go test -run Test_App_CopyString_Immutable_False
@@ -6912,24 +6911,7 @@ func Test_App_CopyBytes_Immutable_False(t *testing.T) {
 	t.Parallel()
 	app := New(Config{Immutable: false})
 
-	// Test that CopyBytes makes a copy when Immutable is false
-	original := []byte("test bytes")
-	copied := app.CopyBytes(original)
-
-	// The result should be equal but different memory addresses
-	require.Equal(t, original, copied)
-
-	// Check different memory addresses by modifying one
-	original[0] = 'X'
-	require.NotEqual(t, original, copied)
-}
-
-// go test -run Test_App_CopyBytes_Immutable_True
-func Test_App_CopyBytes_Immutable_True(t *testing.T) {
-	t.Parallel()
-	app := New(Config{Immutable: true})
-
-	// Test that CopyBytes returns the same bytes when Immutable is true
+	// Test that CopyBytes returns the same bytes when Immutable is false (no copy)
 	original := []byte("test bytes")
 	copied := app.CopyBytes(original)
 
@@ -6938,6 +6920,22 @@ func Test_App_CopyBytes_Immutable_True(t *testing.T) {
 	// Modifying one should affect the other since it's the same slice
 	original[0] = 'X'
 	require.Equal(t, original, copied)
+}
+
+// go test -run Test_App_CopyBytes_Immutable_True
+func Test_App_CopyBytes_Immutable_True(t *testing.T) {
+	t.Parallel()
+	app := New(Config{Immutable: true})
+
+	// Test that CopyBytes makes a copy when Immutable is true
+	original := []byte("test bytes")
+	copied := app.CopyBytes(original)
+
+	// The result should be equal but different memory addresses
+	require.Equal(t, original, copied)
+	// Modifying one should not affect the other since it's a copy
+	original[0] = 'X'
+	require.NotEqual(t, original, copied)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_CopyString -benchmem -count=4
