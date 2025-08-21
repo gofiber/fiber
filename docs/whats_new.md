@@ -464,6 +464,7 @@ testConfig := fiber.TestConfig{
 - **IsProxyTrusted**: Checks the trustworthiness of the remote IP.
 - **Reset**: Resets context fields for server handlers.
 - **Schema**: Similar to Express.js, returns the schema (HTTP or HTTPS) of the request.
+- **SendEarlyHints**: Sends `103 Early Hints` with `Link` headers so browsers can preload resources while the final response is being prepared.
 - **SendStream**: Similar to Express.js, sends a stream as the response.
 - **SendStreamWriter**: Sends a stream using a writer function.
 - **SendString**: Similar to Express.js, sends a string as the response.
@@ -502,6 +503,24 @@ testConfig := fiber.TestConfig{
   specified by [RFC 6266](https://www.rfc-editor.org/rfc/rfc6266) and
   [RFC 8187](https://www.rfc-editor.org/rfc/rfc8187).
 - **Context()**: Renamed to `RequestCtx()` to access the underlying `fasthttp.RequestCtx`.
+
+### SendEarlyHints
+
+`SendEarlyHints` enables servers to emit [`103 Early Hints`](https://developer.chrome.com/docs/web-platform/early-hints) so
+ browsers can start preloading assets declared in `Link` headers while the final response is still being prepared. Only `Link`
+ headers written before calling `SendEarlyHints` are forwarded to the client.
+
+```go
+hints := []string{"<https://cdn.com/app.js>; rel=preload; as=script"}
+app.Get("/early", func(c fiber.Ctx) error {
+    if err := c.SendEarlyHints(hints); err != nil {
+        return err
+    }
+    return c.SendString("done")
+})
+```
+
+Older HTTP/1.1 clients may ignore these interim responses or handle them inconsistently.
 
 ### SendStreamWriter
 
