@@ -2045,6 +2045,32 @@ app.Get("/", func(c fiber.Ctx) error {
 })
 ```
 
+### SendEarlyHints
+
+Sends an informational `103 Early Hints` response with one or more
+[`Link` headers](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Link)
+before the final response. This allows the browser to start preloading
+resources while the server prepares the full response.
+
+:::caution
+This feature requires HTTP/2 or newer. Some legacy HTTP/1.1 clients may not
+Early Hints (`103` responses) are supported in HTTP/2 and newer. Older HTTP/1.1 clients may ignore these interim responses or misbehave when receiving them.
+:::
+
+```go title="Signature"
+func (c fiber.Ctx) SendEarlyHints(hints []string) error
+```
+
+```go title="Example"
+hints := []string{"<https://cdn.com/app.js>; rel=preload; as=script"}
+app.Get("/early", func(c fiber.Ctx) error {
+  if err := c.SendEarlyHints(hints); err != nil {
+    return err
+  }
+  return c.SendString("done")
+})
+```
+
 ### SendFile
 
 Transfers the file from the given path. Sets the [Content-Type](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Type) response HTTP header field based on the **file** extension or format.
