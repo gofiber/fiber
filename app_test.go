@@ -6,6 +6,7 @@
 package fiber
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/tls"
@@ -1849,6 +1850,133 @@ func Test_App_Test_drop_empty_response(t *testing.T) {
 		FailOnTimeout: false,
 	})
 	require.ErrorIs(t, err, ErrTestGotEmptyResponse)
+}
+
+func Test_App_Test_response_error(t *testing.T) {
+	// Note: Test cannot run in parallel due to
+	// overriding the httpReadResponse global variable.
+	// t.Parallel()
+
+	// Override httpReadResponse temporarily
+	oldHTTPReadResponse := httpReadResponse
+	defer func() {
+		httpReadResponse = oldHTTPReadResponse
+	}()
+	httpReadResponse = func(_ *bufio.Reader, _ *http.Request) (*http.Response, error) {
+		return nil, errErrorReader
+	}
+
+	app := New()
+	app.Get("/", func(c Ctx) error {
+		return c.SendStatus(StatusOK)
+	})
+
+	_, err := app.Test(httptest.NewRequest(MethodGet, "/", nil), TestConfig{
+		Timeout:       0,
+		FailOnTimeout: false,
+	})
+	require.ErrorIs(t, err, errErrorReader)
+}
+
+type errorReadCloser int
+
+var errInvalidReadOnBody = errors.New("test: invalid Read on body")
+
+func (errorReadCloser) Read(_ []byte) (int, error) {
+	return 0, errInvalidReadOnBody
+}
+
+func (errorReadCloser) Close() error {
+	return nil
+}
+
+func Test_App_Test_ReadFail(t *testing.T) {
+	// Note: Test cannot run in parallel due to
+	// overriding the httpReadResponse global variable.
+	// t.Parallel()
+
+	// Override httpReadResponse temporarily
+	oldHTTPReadResponse := httpReadResponse
+	defer func() {
+		httpReadResponse = oldHTTPReadResponse
+	}()
+
+	httpReadResponse = func(r *bufio.Reader, req *http.Request) (*http.Response, error) {
+		resp, err := http.ReadResponse(r, req)
+		require.NoError(t, resp.Body.Close())
+		resp.Body = errorReadCloser(0)
+		return resp, err //nolint:wrapcheck // unnecessary to wrap it
+	}
+
+	app := New()
+	hints := []string{"<https://cdn.com>; rel=preload; as=script"}
+	app.Get("/early", func(c Ctx) error {
+		err := c.SendEarlyHints(hints)
+		require.NoError(t, err)
+		return c.SendStatus(StatusOK)
+	})
+
+	req := httptest.NewRequest(MethodGet, "/early", nil)
+	_, err := app.Test(req)
+
+	require.ErrorIs(t, err, errInvalidReadOnBody)
+}
+
+var errDoubleClose = errors.New("test: double close")
+
+type doubleCloseBody struct {
+	isClosed bool
+}
+
+func (b *doubleCloseBody) Read(_ []byte) (int, error) {
+	if b.isClosed {
+		return 0, errInvalidReadOnBody
+	}
+
+	// Close after reading EOF
+	_ = b.Close() //nolint:errcheck // It is fine to ignore the error here
+	return 0, io.EOF
+}
+
+func (b *doubleCloseBody) Close() error {
+	if b.isClosed {
+		return errDoubleClose
+	}
+
+	b.isClosed = true
+	return nil
+}
+
+func Test_App_Test_CloseFail(t *testing.T) {
+	// Note: Test cannot run in parallel due to
+	// overriding the httpReadResponse global variable.
+	// t.Parallel()
+
+	// Override httpReadResponse temporarily
+	oldHTTPReadResponse := httpReadResponse
+	defer func() {
+		httpReadResponse = oldHTTPReadResponse
+	}()
+
+	httpReadResponse = func(r *bufio.Reader, req *http.Request) (*http.Response, error) {
+		resp, err := http.ReadResponse(r, req)
+		_ = resp.Body.Close() //nolint:errcheck // It is fine to ignore the error here
+		resp.Body = &doubleCloseBody{}
+		return resp, err //nolint:wrapcheck // unnecessary to wrap it
+	}
+
+	app := New()
+	hints := []string{"<https://cdn.com>; rel=preload; as=script"}
+	app.Get("/early", func(c Ctx) error {
+		err := c.SendEarlyHints(hints)
+		require.NoError(t, err)
+		return c.Status(StatusOK).SendString("done")
+	})
+
+	req := httptest.NewRequest(MethodGet, "/early", nil)
+	_, err := app.Test(req)
+
+	require.ErrorIs(t, err, errDoubleClose)
 }
 
 func Test_App_SetTLSHandler(t *testing.T) {

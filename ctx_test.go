@@ -3853,6 +3853,30 @@ func Test_Ctx_Download(t *testing.T) {
 	require.Contains(t, header, `filename*=UTF-8''%D1%84%D0%B0%D0%B9%D0%BB.txt`)
 }
 
+// go test -race -run Test_Ctx_SendEarlyHints
+func Test_Ctx_SendEarlyHints(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	hints := []string{"<https://cdn.com>; rel=preload; as=script"}
+	app.Get("/earlyhints", func(c Ctx) error {
+		err := c.SendEarlyHints(hints)
+		require.NoError(t, err, "SendEarlyHints")
+		c.Status(StatusBadRequest)
+		return c.SendString("fail")
+	})
+
+	req := httptest.NewRequest(MethodGet, "/earlyhints", nil)
+	resp, err := app.Test(req)
+
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusBadRequest, resp.StatusCode, "Status code")
+	require.Equal(t, hints, resp.Header["Link"], "Link header")
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "fail", string(body))
+}
+
 // go test -race -run Test_Ctx_SendFile
 func Test_Ctx_SendFile(t *testing.T) {
 	t.Parallel()
