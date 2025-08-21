@@ -502,7 +502,7 @@ func getOffer(header []byte, isAccepted func(spec, offer string, specParams head
 					quality = q
 				}
 			} else {
-				params, _ = reflect.TypeAssert[headerParams](reflect.ValueOf(headerParamPool.Get())) //nolint:errcheck // only contains headerParams
+				params, _ = reflect.TypeAssert[headerParams](reflect.ValueOf(headerParamPool.Get())) // headerParamPool only contains headerParams
 				for k := range params {
 					delete(params, k)
 				}

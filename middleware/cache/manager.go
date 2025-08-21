@@ -55,7 +55,7 @@ func newManager(storage fiber.Storage) *manager {
 // acquire returns an *entry from the sync.Pool
 func (m *manager) acquire() *item {
 	obj := m.pool.Get()
-	it, _ := reflect.TypeAssert[*item](reflect.ValueOf(obj)) //nolint:errcheck // We store nothing else in the pool
+	it, _ := reflect.TypeAssert[*item](reflect.ValueOf(obj)) // we store nothing else in the pool
 	return it
 }
 
@@ -93,7 +93,7 @@ func (m *manager) get(ctx context.Context, key string) *item {
 	}
 
 	if v := m.memory.Get(key); v != nil {
-		if it, ok := reflect.TypeAssert[*item](reflect.ValueOf(v)); ok && it != nil { //nolint:errcheck // We store nothing else in the pool
+		if it, ok := reflect.TypeAssert[*item](reflect.ValueOf(v)); ok && it != nil { // we store nothing else in the pool
 			return it
 		}
 	}
@@ -108,7 +108,7 @@ func (m *manager) getRaw(ctx context.Context, key string) []byte {
 		raw, _ = m.storage.GetWithContext(ctx, key) //nolint:errcheck // TODO: Handle error here
 	} else {
 		if v := m.memory.Get(key); v != nil {
-			raw, _ = reflect.TypeAssert[[]byte](reflect.ValueOf(v)) //nolint:errcheck // TODO: Handle error here
+			raw, _ = reflect.TypeAssert[[]byte](reflect.ValueOf(v)) // TODO: Handle error here
 		}
 	}
 	return raw
