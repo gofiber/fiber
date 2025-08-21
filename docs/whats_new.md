@@ -506,9 +506,7 @@ testConfig := fiber.TestConfig{
 
 ### SendEarlyHints
 
-`SendEarlyHints` enables servers to emit [`103 Early Hints`](https://developer.chrome.com/docs/web-platform/early-hints) so
- browsers can start preloading assets declared in `Link` headers while the final response is still being prepared. Only `Link`
- headers written before calling `SendEarlyHints` are forwarded to the client.
+`SendEarlyHints` sends an informational [`103 Early Hints`](https://developer.chrome.com/docs/web-platform/early-hints) response with `Link` headers based on the provided `hints` argument. This allows a browser to start preloading assets while the server is still preparing the final response.
 
 ```go
 hints := []string{"<https://cdn.com/app.js>; rel=preload; as=script"}
