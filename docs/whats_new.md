@@ -1288,6 +1288,10 @@ Deprecated fields `Duration`, `Store`, and `Key` have been removed in v3. Use `E
 
 Monitor middleware is migrated to the [Contrib package](https://github.com/gofiber/contrib/tree/main/monitor) with [PR #1172](https://github.com/gofiber/contrib/pull/1172).
 
+### OpenAPI
+
+Introduces an `openapi` middleware that inspects registered routes and serves a generated OpenAPI 3.0 specification. Each operation includes a summary and default `200` response. Routes may attach descriptions and return media types directly or configure them globally.
+
 ### Proxy
 
 The proxy middleware has been updated to improve consistency with Go naming conventions. The `TlsConfig` field in the configuration struct has been renamed to `TLSConfig`. Additionally, the `WithTlsConfig` method has been removed; you should now configure TLS directly via the `TLSConfig` property within the `Config` struct.

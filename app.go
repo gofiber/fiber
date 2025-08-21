@@ -706,6 +706,30 @@ func (app *App) Name(name string) Router {
 	return app
 }
 
+// Summary assigns a short summary to the most recently added route.
+func (app *App) Summary(sum string) Router {
+	app.mutex.Lock()
+	app.latestRoute.Summary = sum
+	app.mutex.Unlock()
+	return app
+}
+
+// Description assigns a description to the most recently added route.
+func (app *App) Description(desc string) Router {
+	app.mutex.Lock()
+	app.latestRoute.Description = desc
+	app.mutex.Unlock()
+	return app
+}
+
+// MediaType assigns a response media type to the most recently added route.
+func (app *App) MediaType(typ string) Router {
+	app.mutex.Lock()
+	app.latestRoute.MediaType = typ
+	app.mutex.Unlock()
+	return app
+}
+
 // GetRoute Get route by name
 func (app *App) GetRoute(name string) Route {
 	for _, routes := range app.stack {
