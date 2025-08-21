@@ -4275,7 +4275,7 @@ func Test_Ctx_SendFile_RestoreOriginalURL(t *testing.T) {
 	t.Parallel()
 	app := New()
 	app.Get("/", func(c Ctx) error {
-		originalURL := utils.CopyString(c.OriginalURL())
+		originalURL := c.CopyString(c.OriginalURL())
 		err := c.SendFile("ctx.go")
 		require.Equal(t, originalURL, c.OriginalURL())
 		return err
