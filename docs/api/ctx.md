@@ -629,6 +629,7 @@ app.Get("/", func(c fiber.Ctx) error {
 Returned value is only valid within the handler. Do not store any references.
 Use [`App.ImmutableString`](./app.md#immutablestring) or [`App.ImmutableBytes`](./app.md#immutablebytes) to create copies when needed, or enable the [**`Immutable`**](./fiber.md#immutable) setting. [Read more...](../#zero-allocation)
 :::
+
 ### FormFile
 
 MultipartForm files can be retrieved by name, the **first** file from the given key is returned.

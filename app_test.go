@@ -988,13 +988,13 @@ func Test_App_ImmutableString(t *testing.T) {
 	s := "fiber"
 	app := New()
 	same := app.ImmutableString(s)
-	if unsafe.StringData(same) != unsafe.StringData(s) {
+	if unsafe.StringData(same) != unsafe.StringData(s) { //nolint:gosec // compare pointer addresses
 		t.Errorf("expected original string when immutable is disabled")
 	}
 
 	appImmutable := New(Config{Immutable: true})
 	copied := appImmutable.ImmutableString(s)
-	if unsafe.StringData(copied) == unsafe.StringData(s) {
+	if unsafe.StringData(copied) == unsafe.StringData(s) { //nolint:gosec // compare pointer addresses
 		t.Errorf("expected a copy when immutable is enabled")
 	}
 }

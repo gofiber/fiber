@@ -644,7 +644,7 @@ func (app *App) ImmutableString(s string) string {
 		return s
 	}
 	b := utils.UnsafeBytes(s)
-	if len(b) > 0 && unsafe.StringData(s) == &b[0] {
+	if len(b) > 0 && unsafe.StringData(s) == &b[0] { //nolint:gosec // pointer comparison avoids unnecessary copy
 		return utils.CopyString(s)
 	}
 	return s
@@ -658,7 +658,7 @@ func (app *App) ImmutableBytes(b []byte) []byte {
 		return b
 	}
 	s := utils.UnsafeString(b)
-	if unsafe.StringData(s) == &b[0] {
+	if unsafe.StringData(s) == &b[0] { //nolint:gosec // pointer comparison avoids unnecessary copy
 		return utils.CopyBytes(b)
 	}
 	return b
