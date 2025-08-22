@@ -635,6 +635,22 @@ func NewWithCustomCtx(newCtxFunc func(app *App) CustomCtx, config ...Config) *Ap
 	return app
 }
 
+// CopyString returns s if the app is configured with Immutable, otherwise a copied string is returned.
+func (app *App) CopyString(s string) string {
+	if app.config.Immutable {
+		return s
+	}
+	return utils.CopyString(s)
+}
+
+// CopyBytes returns b if the app is configured with Immutable, otherwise a copied byte slice is returned.
+func (app *App) CopyBytes(b []byte) []byte {
+	if app.config.Immutable {
+		return b
+	}
+	return utils.CopyBytes(b)
+}
+
 // Adds an ip address to TrustProxyConfig.ranges or TrustProxyConfig.ips based on whether it is an IP range or not
 func (app *App) handleTrustedProxy(ipAddress string) {
 	if strings.Contains(ipAddress, "/") {

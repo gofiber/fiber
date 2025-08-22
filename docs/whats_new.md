@@ -476,8 +476,7 @@ testConfig := fiber.TestConfig{
 - **Drop**: Terminates the client connection silently without sending any HTTP headers or response body. This can be used for scenarios where you want to block certain requests without notifying the client, such as mitigating DDoS attacks or protecting sensitive endpoints from unauthorized access.
 - **End**: Similar to Express.js, immediately flushes the current response and closes the underlying connection.
 - **AcceptsLanguagesExtended**: Matches language ranges using RFC 4647 Extended Filtering with wildcard subtags.
-- **CopyBytes**: Returns the byte slice directly when `Immutable` is enabled, or allocates a copy otherwise.
-- **CopyString**: Returns the string directly when `Immutable` is enabled, or allocates a copy otherwise.
+- **CopyBytes / CopyString**: Conditional copy helpers on the app and context returning the value directly when `Immutable` is enabled, or allocating a copy otherwise.
 
 ### Removed Methods
 

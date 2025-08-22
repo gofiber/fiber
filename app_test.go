@@ -26,6 +26,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/gofiber/utils/v2"
 
@@ -979,6 +980,40 @@ func Test_App_Config(t *testing.T) {
 		StrictRouting: true,
 	})
 	require.True(t, app.Config().StrictRouting)
+}
+
+func Test_App_CopyString(t *testing.T) {
+	t.Parallel()
+
+	s := "fiber"
+	app := New()
+	copied := app.CopyString(s)
+	if unsafe.StringData(copied) == unsafe.StringData(s) {
+		t.Errorf("expected a copy when immutable is disabled")
+	}
+
+	appImmutable := New(Config{Immutable: true})
+	same := appImmutable.CopyString(s)
+	if unsafe.StringData(same) != unsafe.StringData(s) {
+		t.Errorf("expected original string when immutable is enabled")
+	}
+}
+
+func Test_App_CopyBytes(t *testing.T) {
+	t.Parallel()
+
+	b := []byte("fiber")
+	app := New()
+	copied := app.CopyBytes(b)
+	if &copied[0] == &b[0] {
+		t.Errorf("expected a copy when immutable is disabled")
+	}
+
+	appImmutable := New(Config{Immutable: true})
+	same := appImmutable.CopyBytes(b)
+	if &same[0] != &b[0] {
+		t.Errorf("expected original slice when immutable is enabled")
+	}
 }
 
 func Test_App_Shutdown(t *testing.T) {

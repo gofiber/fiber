@@ -7,6 +7,24 @@ sidebar_position: 2
 
 import Reference from '@site/src/components/reference';
 
+## Helpers
+
+### CopyString
+
+Conditionally returns a safe copy of `s`. When [`Immutable`](../ctx.md) is enabled, the string is returned as-is; otherwise a new copy is made.
+
+```go title="Signature"
+func (app *App) CopyString(s string) string
+```
+
+### CopyBytes
+
+Conditionally returns a safe copy of `b`. When [`Immutable`](../ctx.md) is enabled, the byte slice is returned as-is; otherwise a new copy is made.
+
+```go title="Signature"
+func (app *App) CopyBytes(b []byte) []byte
+```
+
 ## Routing
 
 import RoutingHandler from './../partials/routing/handler.md';

@@ -52,7 +52,7 @@ func handler(c fiber.Ctx) error {
 }
 ```
 
-Fiber provides a `CopyString` method on the context that performs the above when needed.
+Fiber provides `CopyString` and `CopyBytes` methods on both the app and context that perform the above when needed.
 
 ```go
 app.Get("/:foo", func(c fiber.Ctx) error {
