@@ -636,26 +636,28 @@ func NewWithCustomCtx(newCtxFunc func(app *App) CustomCtx, config ...Config) *Ap
 	return app
 }
 
-// SafeString returns s when it already owns its memory or `Immutable` is enabled.
-// Otherwise, a copy is allocated to ensure the caller can safely reuse the value.
-func (app *App) SafeString(s string) string {
-	if len(s) == 0 || app.config.Immutable {
+// ImmutableString ensures the returned string doesn't reference request or response
+// memory when `Immutable` is enabled. If immutability is disabled, the input is
+// returned without modification.
+func (app *App) ImmutableString(s string) string {
+	if !app.config.Immutable || len(s) == 0 {
 		return s
 	}
-	b := app.getBytes(s)
+	b := utils.UnsafeBytes(s)
 	if len(b) > 0 && unsafe.StringData(s) == &b[0] {
 		return utils.CopyString(s)
 	}
 	return s
 }
 
-// SafeBytes returns b when it already owns its memory or `Immutable` is enabled.
-// Otherwise, a copy is allocated to ensure the caller can safely reuse the value.
-func (app *App) SafeBytes(b []byte) []byte {
-	if len(b) == 0 || app.config.Immutable {
+// ImmutableBytes ensures the returned slice doesn't reference request or response
+// memory when `Immutable` is enabled. If immutability is disabled, the input is
+// returned without modification.
+func (app *App) ImmutableBytes(b []byte) []byte {
+	if !app.config.Immutable || len(b) == 0 {
 		return b
 	}
-	s := app.getString(b)
+	s := utils.UnsafeString(b)
 	if unsafe.StringData(s) == &b[0] {
 		return utils.CopyBytes(b)
 	}

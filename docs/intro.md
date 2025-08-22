@@ -52,12 +52,12 @@ func handler(c fiber.Ctx) error {
 }
 ```
 
-Fiber provides `SafeString` and `SafeBytes` methods on the app that perform the above when needed.
+Fiber provides `ImmutableString` and `ImmutableBytes` methods on the app that perform the above when `Immutable` is enabled.
 
 ```go
 app.Get("/:foo", func(c fiber.Ctx) error {
     // Variable is now immutable
-    result := c.App().SafeString(c.Params("foo"))
+    result := c.App().ImmutableString(c.Params("foo"))
 
     // ...
 })

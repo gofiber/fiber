@@ -9,20 +9,20 @@ import Reference from '@site/src/components/reference';
 
 ## Helpers
 
-### SafeString
+### ImmutableString
 
-Returns `s` unless it still references request or response memory, in which case a safe copy is allocated. Within handlers, call via `c.App().SafeString(...)`. When [`Immutable`](./fiber.md#immutable) is enabled, context helpers already return owned values so this usually yields the original string.
+When [`Immutable`](./fiber.md#immutable) is enabled, returns a detached copy of `s` if it still references request or response memory. If immutability is disabled, `s` is returned unchanged.
 
 ```go title="Signature"
-func (app *App) SafeString(s string) string
+func (app *App) ImmutableString(s string) string
 ```
 
-### SafeBytes
+### ImmutableBytes
 
-Returns `b` unless it shares underlying memory with the current request or response, in which case a safe copy is allocated. Within handlers, call via `c.App().SafeBytes(...)`. With [`Immutable`](./fiber.md#immutable) enabled, values are already copied and this method simply returns the input.
+When [`Immutable`](./fiber.md#immutable) is enabled, returns a detached copy of `b` if it still references request or response memory. If immutability is disabled, `b` is returned unchanged.
 
 ```go title="Signature"
-func (app *App) SafeBytes(b []byte) []byte
+func (app *App) ImmutableBytes(b []byte) []byte
 ```
 
 ## Routing

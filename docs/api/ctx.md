@@ -627,7 +627,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 :::info
 Returned value is only valid within the handler. Do not store any references.
-Use [`App.SafeString`](./app.md#safestring) or [`App.SafeBytes`](./app.md#safebytes) to create copies when needed, or enable the [**`Immutable`**](./fiber.md#immutable) setting. [Read more...](../#zero-allocation)
+Use [`App.ImmutableString`](./app.md#immutablestring) or [`App.ImmutableBytes`](./app.md#immutablebytes) to create copies when needed, or enable the [**`Immutable`**](./fiber.md#immutable) setting. [Read more...](../#zero-allocation)
 :::
 ### FormFile
 
