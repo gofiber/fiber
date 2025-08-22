@@ -1919,7 +1919,7 @@ Fiber v3 removes the in-repo `utils` package in favor of the external [`github.c
 
 ```go
 - import "github.com/gofiber/fiber/v2/utils"
-+ import "github.com/gofiber/utils"
++ import "github.com/gofiber/utils/v2"
 ```
 
 1. Review function changes:
