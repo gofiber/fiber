@@ -39,6 +39,7 @@ import (
 )
 
 const epsilon = 0.001
+const testCopyString = "test string"
 
 // go test -run Test_Ctx_Accepts
 func Test_Ctx_Accepts(t *testing.T) {
@@ -6818,7 +6819,7 @@ func Test_Ctx_CopyString_Immutable_False(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	// Test that CopyString makes a copy when Immutable is false
-	original := "test string"
+	original := testCopyString
 	copied := c.CopyString(original)
 
 	// The result should be equal
@@ -6836,7 +6837,7 @@ func Test_Ctx_CopyString_Immutable_True(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck,forcetypeassert // not needed
 
 	// Test that CopyString returns the same string when Immutable is true
-	original := "test string"
+	original := testCopyString
 	copied := c.CopyString(original)
 
 	// The result should be the same string (no copy made)
@@ -6886,7 +6887,7 @@ func Test_App_CopyString_Immutable_False(t *testing.T) {
 	app := New(Config{Immutable: false})
 
 	// Test that CopyString makes a copy when Immutable is false
-	original := "test string"
+	original := testCopyString
 	copied := app.CopyString(original)
 
 	// The result should be equal
@@ -6899,7 +6900,7 @@ func Test_App_CopyString_Immutable_True(t *testing.T) {
 	app := New(Config{Immutable: true})
 
 	// Test that CopyString returns the same string when Immutable is true
-	original := "test string"
+	original := testCopyString
 	copied := app.CopyString(original)
 
 	// The result should be the same string (no copy made)
