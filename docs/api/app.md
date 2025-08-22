@@ -24,7 +24,7 @@ When [`Immutable`](./fiber.md#immutable) is enabled, returns a detached copy of 
 ```go title="Signature"
 func (app *App) ImmutableBytes(b []byte) []byte
 ```
- 
+
 ## Routing
 
 import RoutingHandler from './../partials/routing/handler.md';
@@ -49,14 +49,14 @@ import (
 func main() {
     app := fiber.New()
     micro := fiber.New()
-    
+
     // Mount the micro app on the "/john" route
     app.Use("/john", micro) // GET /john/doe -> 200 OK
-    
+
     micro.Get("/doe", func(c fiber.Ctx) error {
         return c.SendStatus(fiber.StatusOK)
     })
-    
+
     log.Fatal(app.Listen(":3000"))
 }
 ```
@@ -87,7 +87,7 @@ func main() {
     two.Use("/three", three)
     one.Use("/two", two)
     app.Use("/one", one)
-    
+
     fmt.Println("Mount paths:")
     fmt.Println("one.MountPath():", one.MountPath())       // "/one"
     fmt.Println("two.MountPath():", two.MountPath())       // "/one/two"
@@ -429,7 +429,7 @@ func main() {
     app := fiber.New()
 
     app.Get("/", handler).Name("index")
-    
+
     route := app.GetRoute("index")
 
     data, _ := json.MarshalIndent(route, "", "  ")
@@ -677,7 +677,7 @@ import (
 
 func main() {
     app := fiber.New()
-    
+
     // Create route with GET method for test:
     app.Get("/", func(c fiber.Ctx) error {
         fmt.Println(c.BaseURL())              // => http://google.com
