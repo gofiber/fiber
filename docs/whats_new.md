@@ -1922,7 +1922,7 @@ Fiber v3 removes the in-repo `utils` package in favor of the external [`github.c
 + import "github.com/gofiber/utils/v2"
 ```
 
-2. Review function changes:
+1. Review function changes:
 
 | v2 function | v3 replacement |
 | --- | --- |
@@ -1961,7 +1961,7 @@ Fiber v3 removes the in-repo `utils` package in favor of the external [`github.c
 | `EqualFold` | `strings.EqualFold` |
 | `StartTimeStampUpdater` | `utils.StartTimeStampUpdater` (new `utils.Timestamp` provides the current value) |
 
-3. Update your code. For example:
+1. Update your code. For example:
 
 ```go
 // v2
