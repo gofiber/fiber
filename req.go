@@ -590,10 +590,7 @@ func (r *DefaultReq) Params(key string, defaultValue ...string) string {
 				break
 			}
 			val := values[i]
-			if r.c.app.config.Immutable {
-				return utils.CopyString(val)
-			}
-			return val
+			return r.c.CopyString(val)
 		}
 	}
 	return defaultString("", defaultValue)

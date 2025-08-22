@@ -262,6 +262,22 @@ func (c *DefaultCtx) Res() Res {
 	return &c.DefaultRes
 }
 
+// CopyString returns s if the app is configured with Immutable, otherwise a copied string is returned.
+func (c *DefaultCtx) CopyString(s string) string {
+	if c.app.config.Immutable {
+		return s
+	}
+	return utils.CopyString(s)
+}
+
+// CopyBytes returns b if the app is configured with Immutable, otherwise a copied byte slice is returned.
+func (c *DefaultCtx) CopyBytes(b []byte) []byte {
+	if c.app.config.Immutable {
+		return b
+	}
+	return utils.CopyBytes(b)
+}
+
 // Redirect returns the Redirect reference.
 // Use Redirect().Status() to set custom redirection status code.
 // If status is not specified, status defaults to 303 See Other.

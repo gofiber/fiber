@@ -52,12 +52,12 @@ func handler(c fiber.Ctx) error {
 }
 ```
 
-We created a custom `CopyString` function that performs the above and is available under [gofiber/utils](https://github.com/gofiber/utils).
+Fiber provides a `CopyString` method on the context that performs the above when needed.
 
 ```go
 app.Get("/:foo", func(c fiber.Ctx) error {
     // Variable is now immutable
-    result := utils.CopyString(c.Params("foo")) 
+    result := c.CopyString(c.Params("foo"))
 
     // ...
 })

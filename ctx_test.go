@@ -3157,7 +3157,7 @@ func Test_Ctx_Params_Immutable(t *testing.T) {
 
 	c.route = &Route{Params: []string{"user"}}
 	c.path = []byte("/test/john")
-	c.values[0] = utils.UnsafeString(c.path[6:])
+	c.values[0] = c.app.getString(c.path[6:])
 
 	param := c.Params("user")
 	c.path[6] = 'p'
