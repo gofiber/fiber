@@ -48,14 +48,18 @@ app.Use(openapi.New(openapi.Config{
     },
 }))
 
-// Routes may optionally document themselves using Summary, Description, Produces and Consumes
+// Routes may optionally document themselves using Summary, Description,
+// Tags, Deprecated, Produces and Consumes
 app.Get("/users", listUsers).
     Summary("List users").
     Description("List all users").
+    Tags("users", "admin").
+    Deprecated().
     Produces(fiber.MIMEApplicationJSON)
 
-// If not specified, routes default to an empty summary and description and a
-// "text/plain" request and response media type.
+// If not specified, routes default to an empty summary and description, no tags,
+// not deprecated, and a "text/plain" request and response media type.
+// Consumes and Produces will panic if provided an invalid media type.
 ```
 
 Each documented route automatically includes a `200` response with the description `OK` to satisfy the minimum OpenAPI requirements.

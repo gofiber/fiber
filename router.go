@@ -47,6 +47,10 @@ type Router interface {
 	// Produces sets the response media type for the most recently
 	// registered route.
 	Produces(typ string) Router
+	// Tags sets the tags for the most recently registered route.
+	Tags(tags ...string) Router
+	// Deprecated marks the most recently registered route as deprecated.
+	Deprecated() Router
 }
 
 // Route is a struct that holds all metadata for each registered handler.
@@ -67,6 +71,8 @@ type Route struct {
 	Description string      `json:"description"`
 	Consumes    string      `json:"consumes"`
 	Produces    string      `json:"produces"`
+	Tags        []string    `json:"tags"`
+	Deprecated  bool        `json:"deprecated"`
 	routeParser routeParser // Parameter parser
 	// Data for routing
 	use   bool // USE matches path prefixes
@@ -397,6 +403,8 @@ func (*App) copyRoute(route *Route) *Route {
 		Description: route.Description,
 		Consumes:    route.Consumes,
 		Produces:    route.Produces,
+		Tags:        route.Tags,
+		Deprecated:  route.Deprecated,
 	}
 }
 

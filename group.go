@@ -69,6 +69,18 @@ func (grp *Group) Produces(typ string) Router {
 	return grp
 }
 
+// Tags assigns tags to the most recently added route in the group.
+func (grp *Group) Tags(tags ...string) Router {
+	grp.app.Tags(tags...)
+	return grp
+}
+
+// Deprecated marks the most recently added route in the group as deprecated.
+func (grp *Group) Deprecated() Router {
+	grp.app.Deprecated()
+	return grp
+}
+
 // Use registers a middleware route that will match requests
 // with the provided prefix (which is optional and defaults to "/").
 // Also, you can pass another app instance as a sub-router along a routing path.

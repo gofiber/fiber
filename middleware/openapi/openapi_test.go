@@ -219,7 +219,8 @@ func Test_OpenAPI_OperationConfig(t *testing.T) {
 func Test_OpenAPI_RouteMetadata(t *testing.T) {
 	app := fiber.New()
 	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
-		Summary("List users").Description("User list").Produces(fiber.MIMEApplicationJSON)
+		Summary("List users").Description("User list").Produces(fiber.MIMEApplicationJSON).
+		Tags("users", "read").Deprecated()
 
 	app.Use(New())
 
@@ -235,6 +236,8 @@ func Test_OpenAPI_RouteMetadata(t *testing.T) {
 	require.Equal(t, "List users", op.Summary)
 	require.Equal(t, "User list", op.Description)
 	require.Contains(t, op.Responses["200"].Content, fiber.MIMEApplicationJSON)
+	require.ElementsMatch(t, []string{"users", "read"}, op.Tags)
+	require.True(t, op.Deprecated)
 }
 
 // getPaths is a helper that mounts the middleware, performs the request and
@@ -336,7 +339,8 @@ func Test_OpenAPI_Groups_Metadata(t *testing.T) {
 
 	api := app.Group("/api")
 	api.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
-		Summary("List users").Description("Group users").Produces(fiber.MIMEApplicationJSON)
+		Summary("List users").Description("Group users").Produces(fiber.MIMEApplicationJSON).
+		Tags("users").Deprecated()
 
 	paths := getPaths(t, app)
 
@@ -344,6 +348,8 @@ func Test_OpenAPI_Groups_Metadata(t *testing.T) {
 	op := paths["/api/users"]["get"].(map[string]any)
 	require.Equal(t, "List users", op["summary"])
 	require.Equal(t, "Group users", op["description"])
+	require.ElementsMatch(t, []any{"users"}, op["tags"].([]any))
+	require.Equal(t, true, op["deprecated"])
 	resp := op["responses"].(map[string]any)
 	cont := resp["200"].(map[string]any)["content"].(map[string]any)
 	require.Contains(t, cont, fiber.MIMEApplicationJSON)

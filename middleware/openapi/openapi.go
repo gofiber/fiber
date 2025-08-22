@@ -158,12 +158,20 @@ func generateSpec(app *fiber.App, cfg Config) openAPISpec {
 			if opID == "" {
 				opID = r.Name
 			}
+
+			tags := meta.Tags
+			if len(tags) == 0 {
+				tags = r.Tags
+			}
+
+			deprecated := meta.Deprecated || r.Deprecated
+
 			paths[path][methodLower] = operation{
 				OperationID: opID,
 				Summary:     summary,
 				Description: description,
-				Tags:        meta.Tags,
-				Deprecated:  meta.Deprecated,
+				Tags:        tags,
+				Deprecated:  deprecated,
 				Parameters:  params,
 				RequestBody: reqBody,
 				Responses: map[string]response{
