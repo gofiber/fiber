@@ -627,46 +627,8 @@ app.Get("/", func(c fiber.Ctx) error {
 
 :::info
 Returned value is only valid within the handler. Do not store any references.
-Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+Use [`App.CopyString`](./app.md#copystring) or [`App.CopyBytes`](./app.md#copybytes) to create copies when needed, or enable the [**`Immutable`**](./ctx.md) setting. [Read more...](../#zero-allocation)
 :::
-
-### CopyBytes
-
-Conditionally returns a safe copy of `b`. When the application is configured
-with [`Immutable`](./ctx.md), the original slice is already safe to use and is
-returned unchanged. Otherwise, a new copy is allocated.
-
-```go title="Signature"
-func (c fiber.Ctx) CopyBytes(b []byte) []byte
-```
-
-```go title="Example"
-app.Get("/", func(c fiber.Ctx) error {
-  body := c.Body()
-  safe := c.CopyBytes(body)
-  // ...
-  return c.Send(safe)
-})
-```
-
-### CopyString
-
-Conditionally returns a safe copy of `s`. When [`Immutable`](./ctx.md) is
-enabled, the string is returned as-is; otherwise a new copy is made.
-
-```go title="Signature"
-func (c fiber.Ctx) CopyString(s string) string
-```
-
-```go title="Example"
-app.Get("/", func(c fiber.Ctx) error {
-  name := c.Cookies("name")
-  safe := c.CopyString(name)
-  // ...
-  return c.SendString(safe)
-})
-```
-
 ### FormFile
 
 MultipartForm files can be retrieved by name, the **first** file from the given key is returned.

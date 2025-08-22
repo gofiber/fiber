@@ -52,12 +52,12 @@ func handler(c fiber.Ctx) error {
 }
 ```
 
-Fiber provides `CopyString` and `CopyBytes` methods on both the app and context that perform the above when needed.
+Fiber provides `CopyString` and `CopyBytes` methods on the app that perform the above when needed.
 
 ```go
 app.Get("/:foo", func(c fiber.Ctx) error {
     // Variable is now immutable
-    result := c.CopyString(c.Params("foo"))
+    result := c.App().CopyString(c.Params("foo"))
 
     // ...
 })

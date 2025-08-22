@@ -98,10 +98,6 @@ type Ctx interface {
 	// Res returns a convenience type whose API is limited to operations
 	// on the outgoing response.
 	Res() Res
-	// CopyString returns s if the app is configured with Immutable, otherwise a copied string is returned.
-	CopyString(s string) string
-	// CopyBytes returns b if the app is configured with Immutable, otherwise a copied byte slice is returned.
-	CopyBytes(b []byte) []byte
 	// Redirect returns the Redirect reference.
 	// Use Redirect().Status() to set custom redirection status code.
 	// If status is not specified, status defaults to 303 See Other.
