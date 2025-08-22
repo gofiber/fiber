@@ -25,6 +25,22 @@ When [`Immutable`](./fiber.md#immutable) is enabled, returns a detached copy of 
 func (app *App) ImmutableBytes(b []byte) []byte
 ```
 
+### CopyString
+
+Returns `s` unchanged when [`Immutable`](./fiber.md#immutable) is enabled. When immutability is disabled, a copy is made only if `s` still references request or response memory.
+
+```go title="Signature"
+func (app *App) CopyString(s string) string
+```
+
+### CopyBytes
+
+Returns `b` unchanged when [`Immutable`](./fiber.md#immutable) is enabled. When immutability is disabled, a copy is made only if `b` still references request or response memory.
+
+```go title="Signature"
+func (app *App) CopyBytes(b []byte) []byte
+```
+
 ## Routing
 
 import RoutingHandler from './../partials/routing/handler.md';

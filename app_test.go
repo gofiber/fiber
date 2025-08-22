@@ -1016,6 +1016,40 @@ func Test_App_ImmutableBytes(t *testing.T) {
 	}
 }
 
+func Test_App_CopyString(t *testing.T) {
+	t.Parallel()
+
+	s := string([]byte("fiber"))
+	app := New()
+	copied := app.CopyString(s)
+	if unsafe.StringData(copied) == unsafe.StringData(s) { //nolint:gosec // compare pointer addresses
+		t.Errorf("expected a copy when immutable is disabled")
+	}
+
+	appImmutable := New(Config{Immutable: true})
+	same := appImmutable.CopyString(s)
+	if unsafe.StringData(same) != unsafe.StringData(s) { //nolint:gosec // compare pointer addresses
+		t.Errorf("expected original string when immutable is enabled")
+	}
+}
+
+func Test_App_CopyBytes(t *testing.T) {
+	t.Parallel()
+
+	b := []byte("fiber")
+	app := New()
+	copied := app.CopyBytes(b)
+	if &copied[0] == &b[0] {
+		t.Errorf("expected a copy when immutable is disabled")
+	}
+
+	appImmutable := New(Config{Immutable: true})
+	same := appImmutable.CopyBytes(b)
+	if &same[0] != &b[0] {
+		t.Errorf("expected original slice when immutable is enabled")
+	}
+}
+
 func Test_App_Shutdown(t *testing.T) {
 	t.Parallel()
 	t.Run("success", func(t *testing.T) {

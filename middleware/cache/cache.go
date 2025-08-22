@@ -3,17 +3,17 @@
 package cache
 
 import (
-	"context"
-	"slices"
-	"strconv"
-	"strings"
-	"sync"
-	"sync/atomic"
-	"time"
+        "context"
+        "slices"
+        "strconv"
+        "strings"
+        "sync"
+        "sync/atomic"
+        "time"
 
-	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/utils/v2"
-	"github.com/valyala/fasthttp"
+        "github.com/gofiber/fiber/v3"
+       "github.com/gofiber/utils/v2"
+        "github.com/valyala/fasthttp"
 )
 
 // timestampUpdatePeriod is the period which is used to check the cache expiration.
@@ -236,10 +236,10 @@ func New(config ...Config) fiber.Handler {
 
 		e = manager.acquire()
 		// Cache response
-		e.body = utils.CopyBytes(c.Response().Body())
+		e.body = c.App().CopyBytes(c.Response().Body())
 		e.status = c.Response().StatusCode()
-		e.ctype = utils.CopyBytes(c.Response().Header.ContentType())
-		e.cencoding = utils.CopyBytes(c.Response().Header.Peek(fiber.HeaderContentEncoding))
+		e.ctype = c.App().CopyBytes(c.Response().Header.ContentType())
+		e.cencoding = c.App().CopyBytes(c.Response().Header.Peek(fiber.HeaderContentEncoding))
 
 		ageVal := uint64(0)
 		if b := c.Response().Header.Peek(fiber.HeaderAge); len(b) > 0 {
@@ -259,7 +259,7 @@ func New(config ...Config) fiber.Handler {
 				// create real copy
 				keyS := string(key)
 				if _, ok := ignoreHeaders[keyS]; !ok {
-					e.headers[keyS] = utils.CopyBytes(value)
+					e.headers[keyS] = c.App().CopyBytes(value)
 				}
 			}
 		}

@@ -775,7 +775,7 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	}
 
 	// Keep original path for mutable params
-	r.c.pathOriginal = utils.CopyString(r.c.pathOriginal)
+	r.c.pathOriginal = r.c.app.CopyString(r.c.pathOriginal)
 
 	request := &r.c.fasthttp.Request
 
@@ -805,7 +805,7 @@ func (r *DefaultRes) SendFile(file string, config ...SendFile) error {
 	file = filepath.ToSlash(file)
 
 	// Restore the original requested URL
-	originalURL := utils.CopyString(r.c.OriginalURL())
+	originalURL := r.c.app.CopyString(r.c.OriginalURL())
 	defer request.SetRequestURI(originalURL)
 
 	// Set new URI for fileHandler

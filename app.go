@@ -664,6 +664,34 @@ func (app *App) ImmutableBytes(b []byte) []byte {
 	return b
 }
 
+// CopyString returns a safe copy of s only when the application is not in
+// immutable mode and the string still references request or response memory.
+// Otherwise, the original string is returned to avoid unnecessary allocation.
+func (app *App) CopyString(s string) string {
+	if app.config.Immutable || len(s) == 0 {
+		return s
+	}
+	b := utils.UnsafeBytes(s)
+	if unsafe.StringData(s) == &b[0] { //nolint:gosec // pointer comparison avoids unnecessary copy
+		return utils.CopyString(s)
+	}
+	return s
+}
+
+// CopyBytes returns a safe copy of b only when the application is not in
+// immutable mode and the slice still references request or response memory.
+// Otherwise, the original slice is returned to avoid unnecessary allocation.
+func (app *App) CopyBytes(b []byte) []byte {
+	if app.config.Immutable || len(b) == 0 {
+		return b
+	}
+	s := utils.UnsafeString(b)
+	if unsafe.StringData(s) == &b[0] { //nolint:gosec // pointer comparison avoids unnecessary copy
+		return utils.CopyBytes(b)
+	}
+	return b
+}
+
 // Adds an ip address to TrustProxyConfig.ranges or TrustProxyConfig.ips based on whether it is an IP range or not
 func (app *App) handleTrustedProxy(ipAddress string) {
 	if strings.Contains(ipAddress, "/") {

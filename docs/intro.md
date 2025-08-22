@@ -52,7 +52,7 @@ func handler(c fiber.Ctx) error {
 }
 ```
 
-Fiber provides `ImmutableString` and `ImmutableBytes` methods on the app that perform the above when `Immutable` is enabled.
+Fiber provides `ImmutableString` and `ImmutableBytes` methods on the app that perform the above when `Immutable` is enabled. When it's disabled, use `CopyString` and `CopyBytes` to allocate only when needed.
 
 ```go
 app.Get("/:foo", func(c fiber.Ctx) error {

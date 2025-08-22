@@ -72,6 +72,7 @@ We have made several changes to the Fiber app, including:
 - **State**: Provides a global state for the application, which can be used to store and retrieve data across the application. Check out the [State](./api/state) method for further details.
 - **NewErrorf**: Allows variadic parameters when creating formatted errors.
 - **ImmutableBytes / ImmutableString**: Helpers that copy values only when `Immutable` is enabled and data still references request or response buffers. Access via `c.App().ImmutableString` and `c.App().ImmutableBytes`.
+- **CopyString / CopyBytes**: Helpers that allocate only when `Immutable` is disabled and a value still references request or response memory. Access via `c.App().CopyString` and `c.App().CopyBytes`.
 
 #### Custom Route Constraints
 
