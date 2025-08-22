@@ -1913,7 +1913,7 @@ import "github.com/gofiber/fiber/v3/client"
 
 ### 🛠️ Utils {#utils-migration}
 
-Fiber v3 removes the in-repo `utils` package in favor of the external [`github.com/gofiber/utils`](https://github.com/gofiber/utils) module.
+Fiber v3 removes the in-repo `utils` package in favor of the external [`github.com/gofiber/utils/v2`](https://github.com/gofiber/utils) module.
 
 1. Replace imports:
 
