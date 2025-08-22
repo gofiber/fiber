@@ -24,8 +24,7 @@ When [`Immutable`](./fiber.md#immutable) is enabled, returns a detached copy of 
 ```go title="Signature"
 func (app *App) ImmutableBytes(b []byte) []byte
 ```
-
-
+ 
 ## Routing
 
 import RoutingHandler from './../partials/routing/handler.md';
