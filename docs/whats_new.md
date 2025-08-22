@@ -1975,7 +1975,7 @@ func demo() {
 
 // v3
 import (
-    "github.com/gofiber/utils"
+    "github.com/gofiber/utils/v2"
     "strings"
 )
 
