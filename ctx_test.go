@@ -38,8 +38,10 @@ import (
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 )
 
-const epsilon = 0.001
-const testCopyString = "test string"
+const (
+	epsilon        = 0.001
+	testCopyString = "test string"
+)
 
 // go test -run Test_Ctx_Accepts
 func Test_Ctx_Accepts(t *testing.T) {
