@@ -636,10 +636,10 @@ func NewWithCustomCtx(newCtxFunc func(app *App) CustomCtx, config ...Config) *Ap
 	return app
 }
 
-// CopyString returns s if the app is configured with Immutable, otherwise a copied string is returned.
-// CopyString returns s unless it still references request or response memory, in which case a copy is made.
-func (app *App) CopyString(s string) string {
-	if len(s) == 0 {
+// SafeString returns s when it already owns its memory or `Immutable` is enabled.
+// Otherwise, a copy is allocated to ensure the caller can safely reuse the value.
+func (app *App) SafeString(s string) string {
+	if len(s) == 0 || app.config.Immutable {
 		return s
 	}
 	b := app.getBytes(s)
@@ -649,9 +649,10 @@ func (app *App) CopyString(s string) string {
 	return s
 }
 
-// CopyBytes returns b unless it still references request or response memory, in which case a copy is made.
-func (app *App) CopyBytes(b []byte) []byte {
-	if len(b) == 0 {
+// SafeBytes returns b when it already owns its memory or `Immutable` is enabled.
+// Otherwise, a copy is allocated to ensure the caller can safely reuse the value.
+func (app *App) SafeBytes(b []byte) []byte {
+	if len(b) == 0 || app.config.Immutable {
 		return b
 	}
 	s := app.getString(b)

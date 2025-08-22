@@ -26,7 +26,7 @@ type Config struct {
 	// Key allows you to generate custom keys, by default c.Path() is used
 	//
 	// Default: func(c fiber.Ctx) string {
-	//   return c.App().CopyString(c.Path())
+	//   return c.App().SafeString(c.Path())
 	// }
 	KeyGenerator func(fiber.Ctx) string
 
@@ -81,7 +81,7 @@ var ConfigDefault = Config{
 	CacheControl:     false,
 	CacheInvalidator: nil,
 	KeyGenerator: func(c fiber.Ctx) string {
-		return c.App().CopyString(c.Path())
+		return c.App().SafeString(c.Path())
 	},
 	ExpirationGenerator:  nil,
 	StoreResponseHeaders: false,

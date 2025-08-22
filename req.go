@@ -590,7 +590,7 @@ func (r *DefaultReq) Params(key string, defaultValue ...string) string {
 				break
 			}
 			val := values[i]
-			return r.c.app.CopyString(val)
+			return r.c.app.SafeString(val)
 		}
 	}
 	return defaultString("", defaultValue)

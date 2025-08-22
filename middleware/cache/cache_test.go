@@ -563,7 +563,7 @@ func Test_CustomKey(t *testing.T) {
 	var called bool
 	app.Use(New(Config{KeyGenerator: func(c fiber.Ctx) string {
 		called = true
-		return c.App().CopyString(c.Path())
+		return c.App().SafeString(c.Path())
 	}}))
 
 	app.Get("/", func(c fiber.Ctx) error {

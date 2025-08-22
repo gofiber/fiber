@@ -982,35 +982,35 @@ func Test_App_Config(t *testing.T) {
 	require.True(t, app.Config().StrictRouting)
 }
 
-func Test_App_CopyString(t *testing.T) {
+func Test_App_SafeString(t *testing.T) {
 	t.Parallel()
 
 	s := "fiber"
 	app := New()
-	copied := app.CopyString(s)
+	copied := app.SafeString(s)
 	if unsafe.StringData(copied) == unsafe.StringData(s) {
 		t.Errorf("expected a copy when immutable is disabled")
 	}
 
 	appImmutable := New(Config{Immutable: true})
-	same := appImmutable.CopyString(s)
+	same := appImmutable.SafeString(s)
 	if unsafe.StringData(same) != unsafe.StringData(s) {
 		t.Errorf("expected original string when immutable is enabled")
 	}
 }
 
-func Test_App_CopyBytes(t *testing.T) {
+func Test_App_SafeBytes(t *testing.T) {
 	t.Parallel()
 
 	b := []byte("fiber")
 	app := New()
-	copied := app.CopyBytes(b)
+	copied := app.SafeBytes(b)
 	if &copied[0] == &b[0] {
 		t.Errorf("expected a copy when immutable is disabled")
 	}
 
 	appImmutable := New(Config{Immutable: true})
-	same := appImmutable.CopyBytes(b)
+	same := appImmutable.SafeBytes(b)
 	if &same[0] != &b[0] {
 		t.Errorf("expected original slice when immutable is enabled")
 	}

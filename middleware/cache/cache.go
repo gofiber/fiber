@@ -236,10 +236,10 @@ func New(config ...Config) fiber.Handler {
 
 		e = manager.acquire()
 		// Cache response
-		e.body = c.App().CopyBytes(c.Response().Body())
+		e.body = c.App().SafeBytes(c.Response().Body())
 		e.status = c.Response().StatusCode()
-		e.ctype = c.App().CopyBytes(c.Response().Header.ContentType())
-		e.cencoding = c.App().CopyBytes(c.Response().Header.Peek(fiber.HeaderContentEncoding))
+		e.ctype = c.App().SafeBytes(c.Response().Header.ContentType())
+		e.cencoding = c.App().SafeBytes(c.Response().Header.Peek(fiber.HeaderContentEncoding))
 
 		ageVal := uint64(0)
 		if b := c.Response().Header.Peek(fiber.HeaderAge); len(b) > 0 {
@@ -259,7 +259,7 @@ func New(config ...Config) fiber.Handler {
 				// create real copy
 				keyS := string(key)
 				if _, ok := ignoreHeaders[keyS]; !ok {
-					e.headers[keyS] = c.App().CopyBytes(value)
+					e.headers[keyS] = c.App().SafeBytes(value)
 				}
 			}
 		}
