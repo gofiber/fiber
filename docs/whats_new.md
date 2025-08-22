@@ -71,6 +71,7 @@ We have made several changes to the Fiber app, including:
 - **NewWithCustomCtx**: Initialize an app with a custom context in one step.
 - **State**: Provides a global state for the application, which can be used to store and retrieve data across the application. Check out the [State](./api/state) method for further details.
 - **NewErrorf**: Allows variadic parameters when creating formatted errors.
+- **CopyBytes / CopyString**: Conditional copy helpers returning the value directly when `Immutable` is enabled, or allocating a copy otherwise. Access via `c.App().CopyString` and `c.App().CopyBytes`.
 
 #### Custom Route Constraints
 
@@ -476,7 +477,6 @@ testConfig := fiber.TestConfig{
 - **Drop**: Terminates the client connection silently without sending any HTTP headers or response body. This can be used for scenarios where you want to block certain requests without notifying the client, such as mitigating DDoS attacks or protecting sensitive endpoints from unauthorized access.
 - **End**: Similar to Express.js, immediately flushes the current response and closes the underlying connection.
 - **AcceptsLanguagesExtended**: Matches language ranges using RFC 4647 Extended Filtering with wildcard subtags.
-- **CopyBytes / CopyString**: Conditional copy helpers on the app returning the value directly when `Immutable` is enabled, or allocating a copy otherwise. Access them via `c.App().CopyString` and `c.App().CopyBytes`.
 
 ### Removed Methods
 
