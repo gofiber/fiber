@@ -71,7 +71,7 @@ We have made several changes to the Fiber app, including:
 - **NewWithCustomCtx**: Initialize an app with a custom context in one step.
 - **State**: Provides a global state for the application, which can be used to store and retrieve data across the application. Check out the [State](./api/state) method for further details.
 - **NewErrorf**: Allows variadic parameters when creating formatted errors.
-- **CopyBytes / CopyString**: Conditional copy helpers returning the value directly when `Immutable` is enabled, or allocating a copy otherwise. Access via `c.App().CopyString` and `c.App().CopyBytes`.
+- **CopyBytes / CopyString**: Conditional copy helpers that allocate only when a value still references request or response memory. If it already owns its data (e.g. with `Immutable` enabled), the value is returned as-is. Access via `c.App().CopyString` and `c.App().CopyBytes`.
 
 #### Custom Route Constraints
 

@@ -11,7 +11,7 @@ import Reference from '@site/src/components/reference';
 
 ### CopyString
 
-Conditionally returns a safe copy of `s`. When [`Immutable`](./fiber.md#immutable) is enabled, the string is returned as-is; otherwise a new copy is made. Within handlers, call via `c.App().CopyString(...)`.
+Returns `s` unless it still references request or response memory, in which case a safe copy is allocated. Within handlers, call via `c.App().CopyString(...)`. When [`Immutable`](./fiber.md#immutable) is enabled, context helpers already return owned values so this usually yields the original string.
 
 ```go title="Signature"
 func (app *App) CopyString(s string) string
@@ -19,7 +19,7 @@ func (app *App) CopyString(s string) string
 
 ### CopyBytes
 
-Conditionally returns a safe copy of `b`. When [`Immutable`](./fiber.md#immutable) is enabled, the byte slice is returned as-is; otherwise a new copy is made. Within handlers, call via `c.App().CopyBytes(...)`.
+Returns `b` unless it shares underlying memory with the current request or response, in which case a safe copy is allocated. Within handlers, call via `c.App().CopyBytes(...)`. With [`Immutable`](./fiber.md#immutable) enabled, values are already copied and this method simply returns the input.
 
 ```go title="Signature"
 func (app *App) CopyBytes(b []byte) []byte

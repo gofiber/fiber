@@ -24,6 +24,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
@@ -636,19 +637,28 @@ func NewWithCustomCtx(newCtxFunc func(app *App) CustomCtx, config ...Config) *Ap
 }
 
 // CopyString returns s if the app is configured with Immutable, otherwise a copied string is returned.
+// CopyString returns s unless it still references request or response memory, in which case a copy is made.
 func (app *App) CopyString(s string) string {
-	if app.config.Immutable {
+	if len(s) == 0 {
 		return s
 	}
-	return utils.CopyString(s)
+	b := app.getBytes(s)
+	if len(b) > 0 && unsafe.StringData(s) == &b[0] {
+		return utils.CopyString(s)
+	}
+	return s
 }
 
-// CopyBytes returns b if the app is configured with Immutable, otherwise a copied byte slice is returned.
+// CopyBytes returns b unless it still references request or response memory, in which case a copy is made.
 func (app *App) CopyBytes(b []byte) []byte {
-	if app.config.Immutable {
+	if len(b) == 0 {
 		return b
 	}
-	return utils.CopyBytes(b)
+	s := app.getString(b)
+	if unsafe.StringData(s) == &b[0] {
+		return utils.CopyBytes(b)
+	}
+	return b
 }
 
 // Adds an ip address to TrustProxyConfig.ranges or TrustProxyConfig.ips based on whether it is an IP range or not
