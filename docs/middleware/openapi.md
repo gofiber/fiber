@@ -43,19 +43,19 @@ app.Use(openapi.New(openapi.Config{
         "GET /users": {
             Summary:     "List users",
             Description: "Returns all users",
-            MediaType:   fiber.MIMEApplicationJSON,
+            Produces:    fiber.MIMEApplicationJSON,
         },
     },
 }))
 
-// Routes may optionally document themselves using Summary, Description and MediaType
+// Routes may optionally document themselves using Summary, Description, Produces and Consumes
 app.Get("/users", listUsers).
     Summary("List users").
     Description("List all users").
-    MediaType(fiber.MIMEApplicationJSON)
+    Produces(fiber.MIMEApplicationJSON)
 
 // If not specified, routes default to an empty summary and description and a
-// "text/plain" response media type.
+// "text/plain" request and response media type.
 ```
 
 Each documented route automatically includes a `200` response with the description `OK` to satisfy the minimum OpenAPI requirements.
@@ -92,12 +92,13 @@ var ConfigDefault = Config{
 
 ```go
 type Operation struct {
-    OperationID string
+    Id          string
     Summary     string
     Description string
     Tags        []string
     Deprecated  bool
-    MediaType   string
+    Consumes    string
+    Produces    string
 }
 ```
 

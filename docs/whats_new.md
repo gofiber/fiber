@@ -1290,7 +1290,7 @@ Monitor middleware is migrated to the [Contrib package](https://github.com/gofib
 
 ### OpenAPI
 
-Introduces an `openapi` middleware that inspects registered routes and serves a generated OpenAPI 3.0 specification. Each operation includes a summary and default `200` response. Routes may attach descriptions and return media types directly or configure them globally.
+Introduces an `openapi` middleware that inspects registered routes and serves a generated OpenAPI 3.0 specification. Each operation includes a summary and default `200` response. Routes may attach descriptions and request/response media types directly or configure them globally.
 
 ### Proxy
 

@@ -43,7 +43,7 @@ func Test_OpenAPI_JSONEquality(t *testing.T) {
 	app := fiber.New()
 
 	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
-		Name("listUsers").MediaType(fiber.MIMEApplicationJSON)
+		Name("listUsers").Produces(fiber.MIMEApplicationJSON)
 
 	app.Use(New())
 
@@ -62,13 +62,19 @@ func Test_OpenAPI_JSONEquality(t *testing.T) {
 		}
 		lower := strings.ToLower(m)
 		upper := strings.ToUpper(m)
-		rootOps[lower] = operation{
+		op := operation{
 			Summary:     upper + " /",
 			Description: "",
 			Responses: map[string]response{
 				"200": {Description: "OK", Content: map[string]map[string]any{fiber.MIMETextPlain: {}}},
 			},
 		}
+		switch m {
+		case fiber.MethodGet, fiber.MethodHead, fiber.MethodOptions, fiber.MethodTrace:
+		default:
+			op.RequestBody = &requestBody{Content: map[string]map[string]any{fiber.MIMETextPlain: {}}}
+		}
+		rootOps[lower] = op
 	}
 	expected := openAPISpec{
 		OpenAPI: "3.0.0",
@@ -96,7 +102,7 @@ func Test_OpenAPI_RawJSON(t *testing.T) {
 	app := fiber.New()
 
 	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
-		Name("listUsers").MediaType(fiber.MIMEApplicationJSON)
+		Name("listUsers").Produces(fiber.MIMEApplicationJSON)
 
 	app.Use(New())
 
@@ -115,13 +121,19 @@ func Test_OpenAPI_RawJSON(t *testing.T) {
 		}
 		lower := strings.ToLower(m)
 		upper := strings.ToUpper(m)
-		rootOps[lower] = operation{
+		op := operation{
 			Summary:     upper + " /",
 			Description: "",
 			Responses: map[string]response{
 				"200": {Description: "OK", Content: map[string]map[string]any{fiber.MIMETextPlain: {}}},
 			},
 		}
+		switch m {
+		case fiber.MethodGet, fiber.MethodHead, fiber.MethodOptions, fiber.MethodTrace:
+		default:
+			op.RequestBody = &requestBody{Content: map[string]map[string]any{fiber.MIMETextPlain: {}}}
+		}
+		rootOps[lower] = op
 	}
 	expected := openAPISpec{
 		OpenAPI: "3.0.0",
@@ -149,7 +161,7 @@ func Test_OpenAPI_RawJSONFile(t *testing.T) {
 	app := fiber.New()
 
 	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
-		Name("listUsers").MediaType(fiber.MIMEApplicationJSON)
+		Name("listUsers").Produces(fiber.MIMEApplicationJSON)
 
 	app.Use(New())
 
@@ -174,12 +186,13 @@ func Test_OpenAPI_OperationConfig(t *testing.T) {
 	app.Use(New(Config{
 		Operations: map[string]Operation{
 			"GET /users": {
-				OperationID: "listUsersCustom",
+				Id:          "listUsersCustom",
 				Summary:     "List users",
 				Description: "Returns all users",
 				Tags:        []string{"users"},
 				Deprecated:  true,
-				MediaType:   fiber.MIMEApplicationJSON,
+				Consumes:    fiber.MIMEApplicationJSON,
+				Produces:    fiber.MIMEApplicationJSON,
 			},
 		},
 	}))
@@ -199,12 +212,14 @@ func Test_OpenAPI_OperationConfig(t *testing.T) {
 	require.ElementsMatch(t, []string{"users"}, op.Tags)
 	require.True(t, op.Deprecated)
 	require.Contains(t, op.Responses["200"].Content, fiber.MIMEApplicationJSON)
+	require.NotNil(t, op.RequestBody)
+	require.Contains(t, op.RequestBody.Content, fiber.MIMEApplicationJSON)
 }
 
 func Test_OpenAPI_RouteMetadata(t *testing.T) {
 	app := fiber.New()
 	app.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
-		Summary("List users").Description("User list").MediaType(fiber.MIMEApplicationJSON)
+		Summary("List users").Description("User list").Produces(fiber.MIMEApplicationJSON)
 
 	app.Use(New())
 
@@ -321,7 +336,7 @@ func Test_OpenAPI_Groups_Metadata(t *testing.T) {
 
 	api := app.Group("/api")
 	api.Get("/users", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) }).
-		Summary("List users").Description("Group users").MediaType(fiber.MIMEApplicationJSON)
+		Summary("List users").Description("Group users").Produces(fiber.MIMEApplicationJSON)
 
 	paths := getPaths(t, app)
 

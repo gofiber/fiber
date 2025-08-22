@@ -57,9 +57,15 @@ func (grp *Group) Description(desc string) Router {
 	return grp
 }
 
-// MediaType assigns a response media type to the most recently added route in the group.
-func (grp *Group) MediaType(typ string) Router {
-	grp.app.MediaType(typ)
+// Consumes assigns a request media type to the most recently added route in the group.
+func (grp *Group) Consumes(typ string) Router {
+	grp.app.Consumes(typ)
+	return grp
+}
+
+// Produces assigns a response media type to the most recently added route in the group.
+func (grp *Group) Produces(typ string) Router {
+	grp.app.Produces(typ)
 	return grp
 }
 

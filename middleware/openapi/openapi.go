@@ -64,6 +64,7 @@ type operation struct {
 	Tags        []string            `json:"tags,omitempty"`
 	Deprecated  bool                `json:"deprecated,omitempty"`
 	Parameters  []parameter         `json:"parameters,omitempty"`
+	RequestBody *requestBody        `json:"requestBody,omitempty"`
 	Responses   map[string]response `json:"responses"`
 }
 
@@ -77,6 +78,10 @@ type parameter struct {
 	In       string            `json:"in"`
 	Required bool              `json:"required"`
 	Schema   map[string]string `json:"schema"`
+}
+
+type requestBody struct {
+	Content map[string]map[string]any `json:"content"`
 }
 
 func generateSpec(app *fiber.App, cfg Config) openAPISpec {
@@ -103,7 +108,7 @@ func generateSpec(app *fiber.App, cfg Config) openAPISpec {
 				}
 			}
 
-			method := utils.ToLower(r.Method)
+			methodLower := utils.ToLower(r.Method)
 			if paths[path] == nil {
 				paths[path] = make(map[string]operation)
 			}
@@ -123,9 +128,9 @@ func generateSpec(app *fiber.App, cfg Config) openAPISpec {
 				description = r.Description
 			}
 
-			respType := meta.MediaType
+			respType := meta.Produces
 			if respType == "" {
-				respType = r.MediaType
+				respType = r.Produces
 			}
 			resp := response{Description: "OK"}
 			if respType != "" {
@@ -134,17 +139,33 @@ func generateSpec(app *fiber.App, cfg Config) openAPISpec {
 				}
 			}
 
-			opID := meta.OperationID
+			reqType := meta.Consumes
+			if reqType == "" {
+				reqType = r.Consumes
+			}
+			var reqBody *requestBody
+			includeBody := false
+			if reqType != "" {
+				if meta.Consumes != "" || r.Consumes != fiber.MIMETextPlain || (r.Method != fiber.MethodGet && r.Method != fiber.MethodHead && r.Method != fiber.MethodOptions && r.Method != fiber.MethodTrace) {
+					includeBody = true
+				}
+			}
+			if includeBody {
+				reqBody = &requestBody{Content: map[string]map[string]any{reqType: {}}}
+			}
+
+			opID := meta.Id
 			if opID == "" {
 				opID = r.Name
 			}
-			paths[path][method] = operation{
+			paths[path][methodLower] = operation{
 				OperationID: opID,
 				Summary:     summary,
 				Description: description,
 				Tags:        meta.Tags,
 				Deprecated:  meta.Deprecated,
 				Parameters:  params,
+				RequestBody: reqBody,
 				Responses: map[string]response{
 					"200": resp,
 				},

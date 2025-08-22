@@ -88,11 +88,13 @@ func configDefault(config ...Config) Config {
 
 // Operation configures metadata for a single route in the generated spec.
 type Operation struct {
-	OperationID string
+	Id          string
 	Summary     string
 	Description string
 	Tags        []string
 	Deprecated  bool
-	// MediaType defines the media type for the 200 response.
-	MediaType string
+	// Consumes defines the request media type.
+	Consumes string
+	// Produces defines the response media type.
+	Produces string
 }

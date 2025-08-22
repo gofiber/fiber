@@ -722,10 +722,18 @@ func (app *App) Description(desc string) Router {
 	return app
 }
 
-// MediaType assigns a response media type to the most recently added route.
-func (app *App) MediaType(typ string) Router {
+// Consumes assigns a request media type to the most recently added route.
+func (app *App) Consumes(typ string) Router {
 	app.mutex.Lock()
-	app.latestRoute.MediaType = typ
+	app.latestRoute.Consumes = typ
+	app.mutex.Unlock()
+	return app
+}
+
+// Produces assigns a response media type to the most recently added route.
+func (app *App) Produces(typ string) Router {
+	app.mutex.Lock()
+	app.latestRoute.Produces = typ
 	app.mutex.Unlock()
 	return app
 }
