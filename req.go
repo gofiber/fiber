@@ -178,10 +178,7 @@ func (r *DefaultReq) Body() []byte {
 		return []byte(err.Error())
 	}
 
-	if r.c.app.config.Immutable {
-		return utils.CopyBytes(body)
-	}
-	return body
+	return r.c.app.ImmutableBytes(body)
 }
 
 // RequestCtx returns *fasthttp.RequestCtx that carries a deadline
@@ -913,9 +910,5 @@ func (r *DefaultReq) release() {
 }
 
 func (r *DefaultReq) getBody() []byte {
-	if r.c.app.config.Immutable {
-		return utils.CopyBytes(r.c.fasthttp.Request.Body())
-	}
-
-	return r.c.fasthttp.Request.Body()
+	return r.c.app.ImmutableBytes(r.c.fasthttp.Request.Body())
 }
