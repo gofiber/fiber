@@ -892,7 +892,7 @@ curl "http://localhost:3000/header"
 
 ## 🛠️ Utils {#utils}
 
-Fiber v3 removes the built-in `utils` directory and now imports utility helpers from the separate [`github.com/gofiber/utils`](https://github.com/gofiber/utils) module. See the [migration guide](#utils-migration) for detailed replacement steps and examples.
+Fiber v3 removes the built-in `utils` directory and now imports utility helpers from the separate [`github.com/gofiber/utils/v2`](https://github.com/gofiber/utils) module. See the [migration guide](#utils-migration) for detailed replacement steps and examples.
 
 The `github.com/gofiber/utils` module also introduces new helpers like `ParseInt`, `ParseUint`, `Walk`, `ReadFile`, and `Timestamp`.
 
