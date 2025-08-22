@@ -1961,7 +1961,7 @@ Fiber v3 removes the in-repo `utils` package in favor of the external [`github.c
 | `EqualFold` | `strings.EqualFold` |
 | `StartTimeStampUpdater` | `utils.StartTimeStampUpdater` (new `utils.Timestamp` provides the current value) |
 
-1. Update your code. For example:
+3. Update your code. For example:
 
 ```go
 // v2
