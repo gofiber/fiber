@@ -24,6 +24,7 @@ Here's a quick overview of the changes in Fiber `v3`:
 - [🔄️ Redirect](#-redirect)
 - [🌎 Client package](#-client-package)
 - [🧰 Generic functions](#-generic-functions)
+- [🛠️ Utils](#utils)
 - [🥡 Services](#-services)
 - [📃 Log](#-log)
 - [📦 Storage Interface](#-storage-interface)
@@ -889,6 +890,12 @@ curl "http://localhost:3000/header"
 
 </details>
 
+## 🛠️ Utils {#utils}
+
+Fiber v3 removes the built-in `utils` directory and now imports utility helpers from the separate [`github.com/gofiber/utils/v2`](https://github.com/gofiber/utils) module. See the [migration guide](#utils-migration) for detailed replacement steps and examples.
+
+The `github.com/gofiber/utils` module also introduces new helpers like `ParseInt`, `ParseUint`, `Walk`, `ReadFile`, and `Timestamp`.
+
 ## 🥡 Services
 
 Fiber v3 introduces a new feature called Services. This feature allows developers to quickly start services that the application depends on, removing the need to manually provision things like database servers, caches, or message brokers, to name a few.
@@ -1404,6 +1411,7 @@ func main() {
 - [📎 Binding (was Parser)](#-parser)
 - [🔄 Redirect](#-redirect-1)
 - [🌎 Client package](#-client-package-1)
+- [🛠️ Utils](#utils-migration)
 - [🧬 Middlewares](#-middlewares-1)
   - [Important Change for Accessing Middleware Data](#important-change-for-accessing-middleware-data)
   - [BasicAuth](#basicauth-1)
@@ -1902,6 +1910,84 @@ import "github.com/gofiber/fiber/v3/client"
 ```
 
 </details>
+
+### 🛠️ Utils {#utils-migration}
+
+Fiber v3 removes the in-repo `utils` package in favor of the external [`github.com/gofiber/utils/v2`](https://github.com/gofiber/utils) module.
+
+1. Replace imports:
+
+```go
+- import "github.com/gofiber/fiber/v2/utils"
++ import "github.com/gofiber/utils/v2"
+```
+
+1. Review function changes:
+
+| v2 function | v3 replacement |
+| --- | --- |
+| `AssertEqual` | removed; use testing libraries like [`github.com/stretchr/testify/assert`](https://pkg.go.dev/github.com/stretchr/testify/assert) |
+| `ToLowerBytes` | `utils.ToLowerBytes` |
+| `ToUpperBytes` | `utils.ToUpperBytes` |
+| `TrimRightBytes` | `utils.TrimRight` |
+| `TrimLeftBytes` | `utils.TrimLeft` |
+| `TrimBytes` | `utils.Trim` |
+| `EqualFoldBytes` | `utils.EqualFold` |
+| `UUID` | `utils.UUID` |
+| `UUIDv4` | `utils.UUIDv4` |
+| `FunctionName` | `utils.FunctionName` |
+| `GetArgument` | `utils.GetArgument` |
+| `IncrementIPRange` | `utils.IncrementIPRange` |
+| `ConvertToBytes` | `utils.ConvertToBytes` |
+| `CopyString` | `utils.CopyString` |
+| `CopyBytes` | `utils.CopyBytes` |
+| `ByteSize` | `utils.ByteSize` |
+| `ToString` | `utils.ToString` |
+| `UnsafeString` | `utils.UnsafeString` |
+| `UnsafeBytes` | `utils.UnsafeBytes` |
+| `GetString` | removed; use `utils.ToString` or the standard library |
+| `GetBytes` | removed; use `utils.CopyBytes` or `[]byte(s)` |
+| `ImmutableString` | removed; strings are already immutable |
+| `GetMIME` | `utils.GetMIME` |
+| `ParseVendorSpecificContentType` | `utils.ParseVendorSpecificContentType` |
+| `StatusMessage` | `utils.StatusMessage` |
+| `IsIPv4` | `utils.IsIPv4` |
+| `IsIPv6` | `utils.IsIPv6` |
+| `ToLower` | `utils.ToLower` |
+| `ToUpper` | `utils.ToUpper` |
+| `TrimLeft` | `strings.TrimLeft` |
+| `Trim` | `strings.Trim` |
+| `TrimRight` | `strings.TrimRight` |
+| `EqualFold` | `strings.EqualFold` |
+| `StartTimeStampUpdater` | `utils.StartTimeStampUpdater` (new `utils.Timestamp` provides the current value) |
+
+1. Update your code. For example:
+
+```go
+// v2
+import oldutils "github.com/gofiber/fiber/v2/utils"
+
+func demo() {
+    b := oldutils.TrimBytes([]byte(" fiber "))
+    id := oldutils.UUIDv4()
+    s := oldutils.GetString([]byte("foo"))
+}
+
+// v3
+import (
+    "github.com/gofiber/utils/v2"
+    "strings"
+)
+
+func demo() {
+    b := utils.Trim([]byte(" fiber "))
+    id := utils.UUIDv4()
+    s := utils.ToString([]byte("foo"))
+    t := strings.TrimRight("bar  ", " ")
+}
+```
+
+The `github.com/gofiber/utils/v2` module also introduces new helpers like `ParseInt`, `ParseUint`, `Walk`, `ReadFile`, and `Timestamp`.
 
 ### 🧬 Middlewares
 
