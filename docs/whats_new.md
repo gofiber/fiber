@@ -1926,7 +1926,7 @@ Fiber v3 removes the in-repo `utils` package in favor of the external [`github.c
 
 | v2 function | v3 replacement |
 | --- | --- |
-| `AssertEqual` | removed; use testing libraries like `stretchr/testify` |
+| `AssertEqual` | removed; use testing libraries like [`github.com/stretchr/testify/assert`](https://pkg.go.dev/github.com/stretchr/testify/assert) |
 | `ToLowerBytes` | `utils.ToLowerBytes` |
 | `ToUpperBytes` | `utils.ToUpperBytes` |
 | `TrimRightBytes` | `utils.TrimRight` |
