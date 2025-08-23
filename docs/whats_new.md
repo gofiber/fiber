@@ -1998,9 +1998,7 @@ The `github.com/gofiber/utils/v2` module also introduces new helpers like `Parse
 **Impact:** Directly accessing these middleware-provided values via `c.Locals("some_string_key")` will no longer work.
 
 **Migration Action:**
-You must update your code to use the dedicated exported functions provided by each affected middleware to retrieve its data from the context.
-
-All middlewares have also dropped their `ContextKey` configuration option. Values are no longer stored under user-defined keys; instead, retrieve them with the helper functions described below.
+The `ContextKey` configuration option has been removed from all middlewares. Values are no longer stored under user-defined keys. You must update your code to use the dedicated exported functions provided by each affected middleware to retrieve its data from the context.
 
 **Examples of new helper functions to use:**
 
