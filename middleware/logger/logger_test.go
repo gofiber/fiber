@@ -1102,7 +1102,7 @@ func Benchmark_Logger(b *testing.B) {
 
 	b.Run("DefaultFormatWithFiberLog", func(bb *testing.B) {
 		app := fiber.New()
-        logger := fiberlog.DefaultLogger[*log.Logger]()
+		logger := fiberlog.DefaultLogger[*log.Logger]()
 		logger.SetOutput(io.Discard)
 		app.Use(New(Config{
 			Stream: LoggerToWriter(logger, fiberlog.LevelDebug),
@@ -1258,7 +1258,7 @@ func Benchmark_Logger_Parallel(b *testing.B) {
 
 	b.Run("DefaultFormatWithFiberLog", func(bb *testing.B) {
 		app := fiber.New()
-        logger := fiberlog.DefaultLogger[*log.Logger]()
+		logger := fiberlog.DefaultLogger[*log.Logger]()
 		logger.SetOutput(io.Discard)
 		app.Use(New(Config{
 			Stream: LoggerToWriter(logger, fiberlog.LevelDebug),

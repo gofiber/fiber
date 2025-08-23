@@ -662,7 +662,7 @@ func NewWithClient(c *fasthttp.Client) *Client {
 		cborMarshal:          cbor.Marshal,
 		cborUnmarshal:        cbor.Unmarshal,
 		xmlUnmarshal:         xml.Unmarshal,
-        logger:               log.DefaultLogger[*log.Logger](),
+		logger:               log.DefaultLogger[*log.Logger](),
 	}
 }
 
