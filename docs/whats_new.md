@@ -1115,6 +1115,8 @@ We've added support for `zstd` compression on top of `gzip`, `deflate`, and `bro
 
 The `Expiration` field in the CSRF middleware configuration has been renamed to `IdleTimeout` to better describe its functionality. Additionally, the default value has been reduced from 1 hour to 30 minutes.
 
+The `ContextKey` field has been removed. Tokens and handlers are now stored using unexported keys; retrieve them with `csrf.TokenFromContext(c)` or `csrf.HandlerFromContext(c)`.
+
 ### EncryptCookie
 
 Added support for specifying key length when using `encryptcookie.GenerateKey(length)`. Keys must be base64-encoded and may be 16, 24, or 32 bytes when decoded, supporting AES-128, AES-192, and AES-256 (default).
@@ -2105,6 +2107,13 @@ app.Use(csrf.New(csrf.Config{
 app.Use(csrf.New(csrf.Config{
     IdleTimeout: 10 * time.Minute,
 }))
+```
+
+- **ContextKey Removal**: The `ContextKey` field has been removed from the CSRF middleware configuration. Access the token and handler using helper functions instead:
+
+```go
+token := csrf.TokenFromContext(c)
+handler := csrf.HandlerFromContext(c)
 ```
 
 - **Session Key Removal**: The `SessionKey` field has been removed from the CSRF middleware configuration. The session key is now an unexported constant within the middleware to avoid potential key collisions in the session store.
