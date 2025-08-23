@@ -983,7 +983,7 @@ INFO Total process count:       1
 
 ## 📃 Log
 
-`fiber.AllLogger` interface now has a new method called `Logger`. This method can be used to get the underlying logger instance from the Fiber logger middleware. This is useful when you want to configure the logger middleware with a custom logger and still want to access the underlying logger instance.
+`fiber.AllLogger[T]` interface now has a new generic type parameter `T` and a method called `Logger`. This method can be used to get the underlying logger instance from the Fiber logger middleware. This is useful when you want to configure the logger middleware with a custom logger and still want to access the underlying logger instance with the appropriate type.
 
 You can find more details about this feature in [/docs/api/log.md](./api/log.md#logger).
 
@@ -1410,6 +1410,7 @@ func main() {
 - [🧠 Context](#-context-1)
 - [📎 Binding (was Parser)](#-parser)
 - [🔄 Redirect](#-redirect-1)
+- [🧾 Log](#-log-1)
 - [🌎 Client package](#-client-package-1)
 - [🛠️ Utils](#utils-migration)
 - [🧬 Middlewares](#-middlewares-1)
@@ -1876,6 +1877,10 @@ Fiber v3 enhances the redirect functionality by introducing new methods and impr
     ```
 
     </details>
+
+#### 🧾 Log
+
+The `ConfigurableLogger` and `AllLogger` interfaces now use generics. You can specify the underlying logger type when implementing these interfaces or use `any` for maximum flexibility. `log.SetLogger` and `log.DefaultLogger` also accept a type parameter, so the concrete logger can be retrieved and used directly, for example `log.DefaultLogger[*MyLogger]().Logger()`.
 
 ### 🌎 Client package
 

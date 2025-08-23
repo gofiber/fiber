@@ -11,7 +11,7 @@ import (
 	"github.com/valyala/bytebufferpool"
 )
 
-var _ AllLogger = (*defaultLogger)(nil)
+var _ AllLogger[*log.Logger] = (*defaultLogger)(nil)
 
 type defaultLogger struct {
 	stdlog *log.Logger
@@ -211,11 +211,12 @@ func (l *defaultLogger) SetOutput(writer io.Writer) {
 }
 
 // Logger returns the logger instance. It can be used to adjust the logger configurations in case of need.
-func (l *defaultLogger) Logger() any {
+func (l *defaultLogger) Logger() *log.Logger {
 	return l.stdlog
 }
 
 // DefaultLogger returns the default logger.
-func DefaultLogger() AllLogger {
-	return logger
+func DefaultLogger[T any]() AllLogger[T] {
+	l, _ := logger.(AllLogger[T])
+	return l
 }
