@@ -217,6 +217,9 @@ func (l *defaultLogger) Logger() *log.Logger {
 
 // DefaultLogger returns the default logger.
 func DefaultLogger[T any]() AllLogger[T] {
-	l, _ := logger.(AllLogger[T])
-	return l
+	if l, ok := logger.(AllLogger[T]); ok {
+		return l
+	}
+
+	return nil
 }
