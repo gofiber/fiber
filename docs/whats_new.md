@@ -1880,7 +1880,7 @@ Fiber v3 enhances the redirect functionality by introducing new methods and impr
 
 #### 🧾 Log
 
-The `ConfigurableLogger` and `AllLogger` interfaces now use generics. You can specify the underlying logger type when implementing these interfaces or use `any` for maximum flexibility. `log.SetLogger` and `log.DefaultLogger` also accept a type parameter, so the concrete logger can be retrieved and used directly, for example `log.DefaultLogger[*MyLogger]().Logger()`.
+The `ConfigurableLogger` and `AllLogger` interfaces now use generics. You can specify the underlying logger type when implementing these interfaces. While `any` can be used for maximum flexibility in some contexts, when retrieving the concrete logger via `log.DefaultLogger`, you must specify the exact underlying logger type, for example `log.DefaultLogger[*MyLogger]().Logger()`.
 
 ### 🌎 Client package
 
