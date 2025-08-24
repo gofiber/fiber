@@ -40,10 +40,10 @@ jobs:
           verbose: true
 
   repeated:
-    name: repeated (${{ matrix.suite }})
+    name: repeated (group ${{ matrix.group }})
     runs-on: ubuntu-latest
     strategy:
-      matrix: ${{ fromJSON(github.event_name == 'pull_request' && '{"suite":["fast","slow"]}' || '{"suite":["all"]}') }}
+      matrix: ${{ fromJSON(github.event_name == 'pull_request' && '{"group":[0,1,2,3,4]}' || '{"group":[0]}') }}
     steps:
       - name: Fetch Repository
         uses: actions/checkout@v5
@@ -55,11 +55,9 @@ jobs:
 
       - name: Test
         run: |
-          if [ "${{ matrix.suite }}" = "slow" ]; then
-            SLOW_PKGS=$(rg --files-with-matches '^//go:build slow' -t go | xargs -n1 dirname | sort -u | tr '\n' ' ')
-            go run gotest.tools/gotestsum@latest -f testname -- -tags slow $SLOW_PKGS -race -count=15 -shuffle=on
-          elif [ "${{ matrix.suite }}" = "fast" ]; then
-            go run gotest.tools/gotestsum@latest -f testname -- ./... -race -count=15 -shuffle=on
-          else
-            go run gotest.tools/gotestsum@latest -f testname -- -tags slow ./... -race -count=15 -shuffle=on
+          PKGS=$(go list ./... | sort)
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            PKGS=$(echo "$PKGS" | awk '((NR-1)%5)==${{ matrix.group }}')
           fi
+          PKGS=$(echo "$PKGS" | tr '\n' ' ')
+          go run gotest.tools/gotestsum@latest -f testname -- $PKGS -race -count=15 -shuffle=on

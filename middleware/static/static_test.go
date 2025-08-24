@@ -1,6 +1,3 @@
-//go:build slow
-// +build slow
-
 package static
 
 import (
