@@ -1,3 +1,6 @@
+//go:build slow
+// +build slow
+
 package session
 
 import (

@@ -1,3 +1,6 @@
+//go:build slow
+// +build slow
+
 package memory
 
 import (
