@@ -1423,7 +1423,7 @@ go install github.com/gofiber/cli/fiber@latest
 fiber migrate --to 3.0.0
 ```
 
-**Options**
+### Options
 
 - `-t, --to string` migrate to a specific version, e.g. `3.0.0`
 - `-f, --force` force migration even if already on that version
