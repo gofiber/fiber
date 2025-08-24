@@ -25,7 +25,7 @@ const (
 
 ## Custom Log
 
-Fiber provides the `AllLogger` interface for adapting various log libraries.
+Fiber provides the generic `AllLogger[T]` interface for adapting various log libraries.
 
 ```go
 type CommonLogger interface {
@@ -34,9 +34,20 @@ type CommonLogger interface {
     WithLogger
 }
 
-type AllLogger interface {
+type ConfigurableLogger[T any] interface {
+    // SetLevel sets logging level.
+    SetLevel(level Level)
+
+    // SetOutput sets the logger output.
+    SetOutput(w io.Writer)
+
+    // Logger returns the logger instance.
+    Logger() T
+}
+
+type AllLogger[T any] interface {
     CommonLogger
-    ConfigurableLogger
+    ConfigurableLogger[T]
     WithLogger
 }
 ```
@@ -106,7 +117,7 @@ import (
     fiberlog "github.com/gofiber/fiber/v3/log"
 )
 
-var _ fiberlog.AllLogger = (*customLogger)(nil)
+var _ fiberlog.AllLogger[*log.Logger] = (*customLogger)(nil)
 
 type customLogger struct {
     stdlog *log.Logger
@@ -115,9 +126,13 @@ type customLogger struct {
 // Implement required methods for the AllLogger interface...
 
 // Inject your custom logger
-fiberlog.SetLogger(&customLogger{
+fiberlog.SetLogger[*log.Logger](&customLogger{
     stdlog: log.New(os.Stdout, "CUSTOM ", log.LstdFlags),
 })
+
+// Retrieve the underlying *log.Logger for direct use
+std := fiberlog.DefaultLogger[*log.Logger]().Logger()
+std.Println("custom logging")
 ```
 
 ## Set Level
@@ -141,7 +156,7 @@ Setting the log level allows you to control the verbosity of the logs, filtering
 ### Writing Logs to Stderr
 
 ```go
-var logger fiberlog.AllLogger = &defaultLogger{
+var logger fiberlog.AllLogger[*log.Logger] = &defaultLogger{
     stdlog: log.New(os.Stderr, "", log.LstdFlags|log.Lshortfile|log.Lmicroseconds),
     depth:  4,
 }
@@ -193,12 +208,8 @@ You can use Logger to retrieve the logger instance. It is useful when you need t
 To retrieve the Logger instance, use the following method:
 
 ```go
-logger := fiberlog.DefaultLogger() // Call DefaultLogger to get the default logger instance
+logger := fiberlog.DefaultLogger[*log.Logger]() // Get the default logger instance
 
-stdlogger, ok := logger.Logger().(*log.Logger) // Get the logger instance and assert it to *log.Logger
-if !ok {
-    panic("logger is not *log.Logger")
-}
-
+stdlogger := logger.Logger() // stdlogger is *log.Logger
 stdlogger.SetFlags(0) // Hide timestamp by setting flags to 0
 ```

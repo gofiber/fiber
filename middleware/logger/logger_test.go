@@ -341,10 +341,8 @@ func Test_Logger_LoggerToWriter(t *testing.T) {
 		bytebufferpool.Put(buf)
 	})
 
-	logger := fiberlog.DefaultLogger()
-	stdlogger, ok := logger.Logger().(*log.Logger)
-	require.True(t, ok)
-
+	logger := fiberlog.DefaultLogger[*log.Logger]()
+	stdlogger := logger.Logger()
 	stdlogger.SetFlags(0)
 	logger.SetOutput(buf)
 
@@ -404,7 +402,7 @@ func Test_Logger_LoggerToWriter(t *testing.T) {
 		})
 
 		require.Panics(t, func() {
-			LoggerToWriter(nil, fiberlog.LevelFatal)
+			LoggerToWriter[any](nil, fiberlog.LevelFatal)
 		})
 	}
 }
@@ -1104,7 +1102,7 @@ func Benchmark_Logger(b *testing.B) {
 
 	b.Run("DefaultFormatWithFiberLog", func(bb *testing.B) {
 		app := fiber.New()
-		logger := fiberlog.DefaultLogger()
+		logger := fiberlog.DefaultLogger[*log.Logger]()
 		logger.SetOutput(io.Discard)
 		app.Use(New(Config{
 			Stream: LoggerToWriter(logger, fiberlog.LevelDebug),
@@ -1260,7 +1258,7 @@ func Benchmark_Logger_Parallel(b *testing.B) {
 
 	b.Run("DefaultFormatWithFiberLog", func(bb *testing.B) {
 		app := fiber.New()
-		logger := fiberlog.DefaultLogger()
+		logger := fiberlog.DefaultLogger[*log.Logger]()
 		logger.SetOutput(io.Discard)
 		app.Use(New(Config{
 			Stream: LoggerToWriter(logger, fiberlog.LevelDebug),
