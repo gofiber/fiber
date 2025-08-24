@@ -36,6 +36,21 @@ type Router interface {
 	Route(path string) Register
 
 	Name(name string) Router
+	// Summary sets a short summary for the most recently registered route.
+	Summary(sum string) Router
+	// Description sets a human-readable description for the most recently
+	// registered route.
+	Description(desc string) Router
+	// Consumes sets the request media type for the most recently
+	// registered route.
+	Consumes(typ string) Router
+	// Produces sets the response media type for the most recently
+	// registered route.
+	Produces(typ string) Router
+	// Tags sets the tags for the most recently registered route.
+	Tags(tags ...string) Router
+	// Deprecated marks the most recently registered route as deprecated.
+	Deprecated() Router
 }
 
 // Route is a struct that holds all metadata for each registered handler.
@@ -52,6 +67,12 @@ type Route struct {
 	Path        string      `json:"path"`   // Original registered route path
 	Params      []string    `json:"params"` // Case-sensitive param keys
 	Handlers    []Handler   `json:"-"`      // Ctx handlers
+	Summary     string      `json:"summary"`
+	Description string      `json:"description"`
+	Consumes    string      `json:"consumes"`
+	Produces    string      `json:"produces"`
+	Tags        []string    `json:"tags"`
+	Deprecated  bool        `json:"deprecated"`
 	routeParser routeParser // Parameter parser
 	// Data for routing
 	use   bool // USE matches path prefixes
@@ -373,11 +394,17 @@ func (*App) copyRoute(route *Route) *Route {
 		routeParser: route.routeParser,
 
 		// Public data
-		Path:     route.Path,
-		Params:   route.Params,
-		Name:     route.Name,
-		Method:   route.Method,
-		Handlers: route.Handlers,
+		Path:        route.Path,
+		Params:      route.Params,
+		Name:        route.Name,
+		Method:      route.Method,
+		Handlers:    route.Handlers,
+		Summary:     route.Summary,
+		Description: route.Description,
+		Consumes:    route.Consumes,
+		Produces:    route.Produces,
+		Tags:        route.Tags,
+		Deprecated:  route.Deprecated,
 	}
 }
 
@@ -521,9 +548,13 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 			Params:      parsedRaw.params,
 			group:       group,
 
-			Path:     pathRaw,
-			Method:   method,
-			Handlers: handlers,
+			Path:        pathRaw,
+			Method:      method,
+			Handlers:    handlers,
+			Summary:     "",
+			Description: "",
+			Consumes:    MIMETextPlain,
+			Produces:    MIMETextPlain,
 		}
 
 		// Increment global handler count

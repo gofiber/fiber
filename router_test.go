@@ -1421,3 +1421,18 @@ func Test_AddRoute_MergeHandlers(t *testing.T) {
 	require.Len(t, app.stack[app.methodInt(MethodGet)], 1)
 	require.Len(t, app.stack[app.methodInt(MethodGet)][0].Handlers, 2)
 }
+
+func Test_Route_InvalidMediaType(t *testing.T) {
+	t.Run("produces", func(t *testing.T) {
+		app := New()
+		require.Panics(t, func() {
+			app.Get("/", testEmptyHandler).Produces("invalid")
+		})
+	})
+	t.Run("consumes", func(t *testing.T) {
+		app := New()
+		require.Panics(t, func() {
+			app.Get("/", testEmptyHandler).Consumes("invalid")
+		})
+	})
+}

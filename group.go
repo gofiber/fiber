@@ -45,6 +45,42 @@ func (grp *Group) Name(name string) Router {
 	return grp
 }
 
+// Summary assigns a short summary to the most recently added route in the group.
+func (grp *Group) Summary(sum string) Router {
+	grp.app.Summary(sum)
+	return grp
+}
+
+// Description assigns a description to the most recently added route in the group.
+func (grp *Group) Description(desc string) Router {
+	grp.app.Description(desc)
+	return grp
+}
+
+// Consumes assigns a request media type to the most recently added route in the group.
+func (grp *Group) Consumes(typ string) Router {
+	grp.app.Consumes(typ)
+	return grp
+}
+
+// Produces assigns a response media type to the most recently added route in the group.
+func (grp *Group) Produces(typ string) Router {
+	grp.app.Produces(typ)
+	return grp
+}
+
+// Tags assigns tags to the most recently added route in the group.
+func (grp *Group) Tags(tags ...string) Router {
+	grp.app.Tags(tags...)
+	return grp
+}
+
+// Deprecated marks the most recently added route in the group as deprecated.
+func (grp *Group) Deprecated() Router {
+	grp.app.Deprecated()
+	return grp
+}
+
 // Use registers a middleware route that will match requests
 // with the provided prefix (which is optional and defaults to "/").
 // Also, you can pass another app instance as a sub-router along a routing path.
