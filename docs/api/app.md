@@ -9,20 +9,20 @@ import Reference from '@site/src/components/reference';
 
 ## Helpers
 
-### ImmutableString
+### SafeString
 
 When [`Immutable`](./fiber.md#immutable) is enabled, returns a detached copy of `s` if it still references request or response memory. If immutability is disabled, `s` is returned unchanged.
 
 ```go title="Signature"
-func (app *App) ImmutableString(s string) string
+func (app *App) SafeString(s string) string
 ```
 
-### ImmutableBytes
+### SafeBytes
 
 When [`Immutable`](./fiber.md#immutable) is enabled, returns a detached copy of `b` if it still references request or response memory. If immutability is disabled, `b` is returned unchanged.
 
 ```go title="Signature"
-func (app *App) ImmutableBytes(b []byte) []byte
+func (app *App) SafeBytes(b []byte) []byte
 ```
 
 ## Routing

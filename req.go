@@ -178,7 +178,7 @@ func (r *DefaultReq) Body() []byte {
 		return []byte(err.Error())
 	}
 
-	return r.c.app.ImmutableBytes(body)
+	return r.c.app.SafeBytes(body)
 }
 
 // RequestCtx returns *fasthttp.RequestCtx that carries a deadline
@@ -587,7 +587,7 @@ func (r *DefaultReq) Params(key string, defaultValue ...string) string {
 				break
 			}
 			val := values[i]
-			return r.c.app.ImmutableString(val)
+			return r.c.app.SafeString(val)
 		}
 	}
 	return defaultString("", defaultValue)
@@ -910,5 +910,5 @@ func (r *DefaultReq) release() {
 }
 
 func (r *DefaultReq) getBody() []byte {
-	return r.c.app.ImmutableBytes(r.c.fasthttp.Request.Body())
+	return r.c.app.SafeBytes(r.c.fasthttp.Request.Body())
 }

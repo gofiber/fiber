@@ -636,10 +636,10 @@ func NewWithCustomCtx(newCtxFunc func(app *App) CustomCtx, config ...Config) *Ap
 	return app
 }
 
-// ImmutableString ensures the returned string doesn't reference request or response
-// memory when `Immutable` is enabled. If immutability is disabled, the input is
-// returned without modification.
-func (app *App) ImmutableString(s string) string {
+// SafeString returns a copy of `s` when the app is configured as `Immutable`
+// and the string still references request or response memory. Otherwise it
+// returns `s` unchanged.
+func (app *App) SafeString(s string) string {
 	if !app.config.Immutable || len(s) == 0 {
 		return s
 	}
@@ -650,10 +650,10 @@ func (app *App) ImmutableString(s string) string {
 	return s
 }
 
-// ImmutableBytes ensures the returned slice doesn't reference request or response
-// memory when `Immutable` is enabled. If immutability is disabled, the input is
-// returned without modification.
-func (app *App) ImmutableBytes(b []byte) []byte {
+// SafeBytes returns a copy of `b` when the app is configured as `Immutable`
+// and the slice still references request or response memory. Otherwise it
+// returns `b` unchanged.
+func (app *App) SafeBytes(b []byte) []byte {
 	if !app.config.Immutable || len(b) == 0 {
 		return b
 	}

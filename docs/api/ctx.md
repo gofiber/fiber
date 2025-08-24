@@ -627,7 +627,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 :::info
 Returned value is only valid within the handler. Do not store any references.
-Use [`App.ImmutableString`](./app.md#immutablestring) or [`App.ImmutableBytes`](./app.md#immutablebytes) when immutability is enabled, or manually copy values (for example with [`utils.CopyString`](https://github.com/gofiber/utils) / `utils.CopyBytes`) when it's disabled. [Read more...](../#zero-allocation)
+Use [`App.SafeString`](./app.md#safestring) or [`App.SafeBytes`](./app.md#safebytes) when immutability is enabled, or manually copy values (for example with [`utils.CopyString`](https://github.com/gofiber/utils) / `utils.CopyBytes`) when it's disabled. [Read more...](../#zero-allocation)
 :::
 
 ### FormFile
