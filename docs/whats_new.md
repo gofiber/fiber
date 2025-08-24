@@ -13,6 +13,18 @@ We are excited to announce the release of Fiber v3! 🚀
 
 In this guide, we'll walk you through the most important changes in Fiber `v3` and show you how to migrate your existing Fiber `v2` applications to Fiber `v3`.
 
+### 🛠️ Migration tool
+
+Fiber v3 introduces a CLI-powered migration helper. Install the CLI and let
+it update your project automatically:
+
+```bash
+go install github.com/gofiber/cli/fiber@latest
+fiber migrate --to 3.0.0
+```
+
+See the [migration guide](#-migration-guide) for more details and options.
+
 Here's a quick overview of the changes in Fiber `v3`:
 
 - [🚀 App](#-app)
@@ -1402,6 +1414,20 @@ func main() {
 </details>
 
 ## 📋 Migration guide
+
+To streamline upgrades between Fiber versions, the Fiber CLI ships with a
+`migrate` command:
+
+```bash
+go install github.com/gofiber/cli/fiber@latest
+fiber migrate --to 3.0.0
+```
+
+**Options**
+
+- `-t, --to string` migrate to a specific version, e.g. `3.0.0`
+- `-f, --force` force migration even if already on that version
+- `-s, --skip_go_mod` skip running `go mod tidy`, `go mod download`, and `go mod vendor`
 
 - [🚀 App](#-app-1)
 - [🎣 Hooks](#-hooks-1)
