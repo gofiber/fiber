@@ -89,6 +89,17 @@ func (r *Response) Body() []byte {
 	return r.RawResponse.Body()
 }
 
+// BodyStream returns the response body as a stream reader.
+// Note: When using BodyStream(), the response body is not copied to memory,
+// so calling Body() afterwards may return an empty slice.
+func (r *Response) BodyStream() io.Reader {
+	if stream := r.RawResponse.BodyStream(); stream != nil {
+		return stream
+	}
+	// If streaming is not enabled, return a bytes.Reader from the regular body
+	return bytes.NewReader(r.RawResponse.Body())
+}
+
 // String returns the response body as a trimmed string.
 func (r *Response) String() string {
 	return utils.Trim(string(r.Body()), ' ')

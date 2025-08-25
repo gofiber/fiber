@@ -538,3 +538,92 @@ func Test_Response_Save(t *testing.T) {
 		require.Error(t, err)
 	})
 }
+
+func Test_Response_BodyStream(t *testing.T) {
+	t.Parallel()
+
+	t.Run("basic streaming", func(t *testing.T) {
+		t.Parallel()
+
+		server := startTestServer(t, func(app *fiber.App) {
+			app.Get("/stream", func(c fiber.Ctx) error {
+				return c.SendString("streaming data")
+			})
+		})
+		defer server.stop()
+
+		client := New().SetDial(server.dial()).SetStreamResponseBody(true)
+
+		resp, err := client.Get("http://example.com/stream")
+		require.NoError(t, err)
+		defer resp.Close()
+		bodyStream := resp.BodyStream()
+		require.NotNil(t, bodyStream)
+		data, err := io.ReadAll(bodyStream)
+		require.NoError(t, err)
+		require.Equal(t, "streaming data", string(data))
+	})
+
+	t.Run("large response streaming", func(t *testing.T) {
+		t.Parallel()
+
+		server := startTestServer(t, func(app *fiber.App) {
+			app.Get("/large", func(c fiber.Ctx) error {
+				data := make([]byte, 1024)
+				for i := range data {
+					data[i] = byte('A' + i%26)
+				}
+				return c.Send(data)
+			})
+		})
+		defer server.stop()
+
+		client := New().SetDial(server.dial()).SetStreamResponseBody(true)
+		resp, err := client.Get("http://example.com/large")
+		require.NoError(t, err)
+		defer resp.Close()
+		bodyStream := resp.BodyStream()
+		require.NotNil(t, bodyStream)
+		buffer := make([]byte, 256)
+		var totalRead []byte
+		for {
+			n, err := bodyStream.Read(buffer)
+			if n > 0 {
+				totalRead = append(totalRead, buffer[:n]...)
+			}
+			if err == io.EOF {
+				break
+			}
+			require.NoError(t, err)
+		}
+		require.Len(t, totalRead, 1024)
+		for i := 0; i < 1024; i++ {
+			expected := byte('A' + i%26)
+			require.Equal(t, expected, totalRead[i])
+		}
+	})
+
+	t.Run("compare with regular body", func(t *testing.T) {
+		t.Parallel()
+
+		server := startTestServer(t, func(app *fiber.App) {
+			app.Get("/stream", func(c fiber.Ctx) error {
+				return c.SendString("streaming data")
+			})
+		})
+		defer server.stop()
+
+		client1 := New().SetDial(server.dial())
+		resp1, err := client1.Get("http://example.com/stream")
+		require.NoError(t, err)
+		defer resp1.Close()
+		normalBody := resp1.Body()
+		client2 := New().SetDial(server.dial()).SetStreamResponseBody(true)
+		resp2, err := client2.Get("http://example.com/stream")
+		require.NoError(t, err)
+		defer resp2.Close()
+		streamedBody, err := io.ReadAll(resp2.BodyStream())
+		require.NoError(t, err)
+		require.Equal(t, normalBody, streamedBody)
+	})
+}
