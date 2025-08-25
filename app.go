@@ -648,8 +648,8 @@ func (app *App) GetString(s string) string {
 	return strings.Clone(s) // heap-backed / aliased → detach
 }
 
-// GetBytes returns b unchanged when Immutable is off, b is read-only (rodata),
-// or b has no extra capacity (cap==len). Otherwise it returns a detached copy.
+// GetBytes returns b unchanged when Immutable is off or b is read-only (rodata).
+// Otherwise it returns a detached copy.
 func (app *App) GetBytes(b []byte) []byte {
 	if !app.config.Immutable || len(b) == 0 {
 		return b
@@ -657,10 +657,7 @@ func (app *App) GetBytes(b []byte) []byte {
 	if isReadOnly(unsafe.Pointer(unsafe.SliceData(b))) { //nolint:gosec // pointer check avoids unnecessary copy
 		return b // rodata → safe to return as-is
 	}
-	if cap(b) == len(b) {
-		return b // full backing array → treat as already detached
-	}
-	return utils.CopyBytes(b) // aliased / sub-slice → detach
+	return utils.CopyBytes(b) // detach when backed by request/response memory
 }
 
 // Adds an ip address to TrustProxyConfig.ranges or TrustProxyConfig.ips based on whether it is an IP range or not

@@ -19,7 +19,7 @@ func (app *App) GetString(s string) string
 
 ### GetBytes
 
-Returns `b` unchanged when [`Immutable`](./fiber.md#immutable) is disabled, `b` resides in read-only memory, or `cap(b) == len(b)`. Otherwise it returns a detached copy.
+Returns `b` unchanged when [`Immutable`](./fiber.md#immutable) is disabled or `b` resides in read-only memory. Otherwise it returns a detached copy.
 
 ```go title="Signature"
 func (app *App) GetBytes(b []byte) []byte

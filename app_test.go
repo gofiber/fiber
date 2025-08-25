@@ -1026,9 +1026,9 @@ func Test_App_GetBytes(t *testing.T) {
 
 	full := make([]byte, 5)
 	copy(full, b)
-	sameFull := appImmutable.GetBytes(full)
-	if &sameFull[0] != &full[0] {
-		t.Errorf("expected original slice when cap==len")
+	detached := appImmutable.GetBytes(full)
+	if &detached[0] == &full[0] {
+		t.Errorf("expected a copy even when cap==len")
 	}
 }
 
