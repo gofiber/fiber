@@ -89,6 +89,22 @@ func (r *Response) Body() []byte {
 	return r.RawResponse.Body()
 }
 
+// BodyStream returns the response body as a stream reader.
+// Note: When using BodyStream(), the response body is not copied to memory,
+// so calling Body() afterwards may return an empty slice.
+func (r *Response) BodyStream() io.Reader {
+	if stream := r.RawResponse.BodyStream(); stream != nil {
+		return stream
+	}
+	// If streaming is not enabled, return a bytes.Reader from the regular body
+	return bytes.NewReader(r.RawResponse.Body())
+}
+
+// IsStreaming returns true if the response body is being streamed.
+func (r *Response) IsStreaming() bool {
+	return r.RawResponse.BodyStream() != nil
+}
+
 // String returns the response body as a trimmed string.
 func (r *Response) String() string {
 	return utils.Trim(string(r.Body()), ' ')
@@ -136,21 +152,30 @@ func (r *Response) Save(v any) error {
 		}
 		defer func() { _ = outFile.Close() }() //nolint:errcheck // not needed
 
-		if _, err = io.Copy(outFile, bytes.NewReader(r.Body())); err != nil {
+		if r.IsStreaming() {
+			_, err = io.CopyBuffer(outFile, r.BodyStream(), nil)
+		} else {
+			_, err = io.Copy(outFile, bytes.NewReader(r.Body()))
+		}
+
+		if err != nil {
 			return fmt.Errorf("failed to write response body to file: %w", err)
 		}
 
 		return nil
 
 	case io.Writer:
-		if _, err := io.Copy(p, bytes.NewReader(r.Body())); err != nil {
-			return fmt.Errorf("failed to write response body to io.Writer: %w", err)
+		var err error
+		if r.IsStreaming() {
+			_, err = io.CopyBuffer(p, r.BodyStream(), nil)
+		} else {
+			_, err = io.Copy(p, bytes.NewReader(r.Body()))
 		}
-		defer func() {
-			if pc, ok := p.(io.WriteCloser); ok {
-				_ = pc.Close() //nolint:errcheck // not needed
-			}
-		}()
+
+		if err != nil {
+			return fmt.Errorf("failed to write response body to writer: %w", err)
+		}
+
 		return nil
 
 	default:
