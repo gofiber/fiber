@@ -81,6 +81,42 @@ func (c *core) execFunc() (*Response, error) {
 	c.req.RawRequest.CopyTo(reqv)
 	cfg := c.getRetryConfig()
 
+	// Determine which client to use - create a new one if StreamResponseBody differs
+	var fastHTTPClient *fasthttp.Client
+	requestStreamResponseBody := c.req.StreamResponseBody()
+
+	if requestStreamResponseBody != c.client.streamResponseBody {
+		// Request setting differs from client setting, create a temporary client
+		c.client.mu.RLock()
+		original := c.client.fasthttp
+		fastHTTPClient = &fasthttp.Client{
+			Dial:                          original.Dial,
+			DialDualStack:                 original.DialDualStack,
+			TLSConfig:                     original.TLSConfig,
+			MaxConnsPerHost:               original.MaxConnsPerHost,
+			MaxIdleConnDuration:           original.MaxIdleConnDuration,
+			MaxConnDuration:               original.MaxConnDuration,
+			ReadTimeout:                   original.ReadTimeout,
+			WriteTimeout:                  original.WriteTimeout,
+			ReadBufferSize:                original.ReadBufferSize,
+			WriteBufferSize:               original.WriteBufferSize,
+			MaxResponseBodySize:           original.MaxResponseBodySize,
+			NoDefaultUserAgentHeader:      original.NoDefaultUserAgentHeader,
+			DisableHeaderNamesNormalizing: original.DisableHeaderNamesNormalizing,
+			DisablePathNormalizing:        original.DisablePathNormalizing,
+			MaxIdemponentCallAttempts:     original.MaxIdemponentCallAttempts,
+			Name:                          original.Name,
+			ConfigureClient:               original.ConfigureClient,
+
+			// Request-specific override
+			StreamResponseBody: requestStreamResponseBody,
+		}
+		c.client.mu.RUnlock()
+	} else {
+		// Use the client's fasthttp client directly
+		fastHTTPClient = c.client.fasthttp
+	}
+
 	var err error
 	go func() {
 		respv := fasthttp.AcquireResponse()
@@ -93,15 +129,15 @@ func (c *core) execFunc() (*Response, error) {
 			// Use an exponential backoff retry strategy.
 			err = retry.NewExponentialBackoff(*cfg).Retry(func() error {
 				if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
-					return c.client.fasthttp.DoRedirects(reqv, respv, c.req.maxRedirects)
+					return fastHTTPClient.DoRedirects(reqv, respv, c.req.maxRedirects)
 				}
-				return c.client.fasthttp.Do(reqv, respv)
+				return fastHTTPClient.Do(reqv, respv)
 			})
 		} else {
 			if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
-				err = c.client.fasthttp.DoRedirects(reqv, respv, c.req.maxRedirects)
+				err = fastHTTPClient.DoRedirects(reqv, respv, c.req.maxRedirects)
 			} else {
-				err = c.client.fasthttp.Do(reqv, respv)
+				err = fastHTTPClient.Do(reqv, respv)
 			}
 		}
 

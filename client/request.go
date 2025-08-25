@@ -44,30 +44,25 @@ var ErrClientNil = errors.New("client cannot be nil")
 
 // Request contains all data related to an HTTP request.
 type Request struct {
-	ctx context.Context //nolint:containedctx // Context is needed to be stored in the request.
-
-	body    any
-	header  *Header
-	params  *QueryParam
-	cookies *Cookie
-	path    *PathParam
-
-	client *Client
-
-	formData *FormData
-
-	RawRequest *fasthttp.Request
-	url        string
-	method     string
-	userAgent  string
-	boundary   string
-	referer    string
-	files      []*File
-
-	timeout      time.Duration
-	maxRedirects int
-
-	bodyType bodyType
+	files              []*File
+	ctx                context.Context //nolint:containedctx // Context is needed to be stored in the request.
+	body               any
+	url                string
+	method             string
+	userAgent          string
+	boundary           string
+	referer            string
+	header             *Header
+	params             *QueryParam
+	cookies            *Cookie
+	path               *PathParam
+	client             *Client
+	formData           *FormData
+	RawRequest         *fasthttp.Request
+	streamResponseBody *bool // nil means use client setting
+	timeout            time.Duration
+	maxRedirects       int
+	bodyType           bodyType
 }
 
 // Method returns the HTTP method set in the Request.
@@ -590,6 +585,25 @@ func (r *Request) SetMaxRedirects(count int) *Request {
 	return r
 }
 
+// StreamResponseBody returns the StreamResponseBody setting for this request.
+// Returns the client's setting if not explicitly set at the request level.
+func (r *Request) StreamResponseBody() bool {
+	if r.streamResponseBody != nil {
+		return *r.streamResponseBody
+	}
+	if r.client != nil {
+		return r.client.streamResponseBody
+	}
+	return false
+}
+
+// SetStreamResponseBody sets the StreamResponseBody option for this specific request,
+// overriding the client-level setting.
+func (r *Request) SetStreamResponseBody(enable bool) *Request {
+	r.streamResponseBody = &enable
+	return r
+}
+
 // checkClient ensures that a Client is set. If none is set, it defaults to the global defaultClient.
 func (r *Request) checkClient() {
 	if r.client == nil {
@@ -656,6 +670,7 @@ func (r *Request) Reset() {
 	r.maxRedirects = 0
 	r.bodyType = noBody
 	r.boundary = boundary
+	r.streamResponseBody = nil
 
 	for len(r.files) != 0 {
 		t := r.files[0]
