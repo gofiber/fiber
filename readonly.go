@@ -1,16 +1,18 @@
 package fiber
 
-import "unsafe"
+import (
+	"unsafe"
+)
 
-//go:linkname runtime_rodata runtime.rodata
-var runtime_rodata byte
+//go:linkname runtimeRodata runtime.rodata
+var runtimeRodata byte
 
-//go:linkname runtime_erodata runtime.erodata
-var runtime_erodata byte
+//go:linkname runtimeErodata runtime.erodata
+var runtimeErodata byte
 
 func isReadOnly(p unsafe.Pointer) bool {
-	start := uintptr(unsafe.Pointer(&runtime_rodata)) //nolint:gosec // converting runtime symbols
-	end := uintptr(unsafe.Pointer(&runtime_erodata))  //nolint:gosec // converting runtime symbols
-	addr := uintptr(p)                                //nolint:gosec // pointer arithmetic for rodata check
+	start := uintptr(unsafe.Pointer(&runtimeRodata)) //nolint:gosec // converting runtime symbols
+	end := uintptr(unsafe.Pointer(&runtimeErodata))  //nolint:gosec // converting runtime symbols
+	addr := uintptr(p)
 	return addr >= start && addr < end
 }
