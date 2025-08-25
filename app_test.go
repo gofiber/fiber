@@ -1011,7 +1011,7 @@ func Test_App_GetBytes(t *testing.T) {
 	b := []byte("fiber")
 	appMutable := New()
 	same := appMutable.GetBytes(b)
-	if &same[0] != &b[0] {
+if unsafe.SliceData(same) != unsafe.SliceData(b) {
 		t.Errorf("expected original slice when immutable is disabled")
 	}
 
@@ -1020,14 +1020,14 @@ func Test_App_GetBytes(t *testing.T) {
 	sub := alias[:5]
 	appImmutable := New(Config{Immutable: true})
 	copied := appImmutable.GetBytes(sub)
-	if &copied[0] == &sub[0] {
+	if unsafe.SliceData(copied) == unsafe.SliceData(sub) {
 		t.Errorf("expected a copy for aliased slice when immutable is enabled")
 	}
 
 	full := make([]byte, 5)
 	copy(full, b)
 	detached := appImmutable.GetBytes(full)
-	if &detached[0] == &full[0] {
+	if unsafe.SliceData(detached) == unsafe.SliceData(full) {
 		t.Errorf("expected a copy even when cap==len")
 	}
 }
