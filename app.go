@@ -24,8 +24,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unsafe"
 
-	"github.com/gofiber/utils/v2"
+	utils "github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3/binder"
@@ -74,9 +75,9 @@ type App struct {
 	// Fasthttp server
 	server *fasthttp.Server
 	// Converts string to a byte slice
-	getBytes func(s string) (b []byte)
+	toBytes func(s string) (b []byte)
 	// Converts byte slice to a string
-	getString func(b []byte) string
+	toString func(b []byte) string
 	// Hooks
 	hooks *Hooks
 	// Latest route & group
@@ -516,8 +517,8 @@ func New(config ...Config) *App {
 	app := &App{
 		// Create config
 		config:        Config{},
-		getBytes:      utils.UnsafeBytes,
-		getString:     utils.UnsafeString,
+		toBytes:       utils.UnsafeBytes,
+		toString:      utils.UnsafeString,
 		latestRoute:   &Route{},
 		customBinders: []CustomBinder{},
 		sendfiles:     []*sendFileStore{},
@@ -572,7 +573,7 @@ func New(config ...Config) *App {
 	}
 
 	if app.config.Immutable {
-		app.getBytes, app.getString = getBytesImmutable, getStringImmutable
+		app.toBytes, app.toString = toBytesImmutable, toStringImmutable
 	}
 
 	if app.config.ErrorHandler == nil {
@@ -633,6 +634,30 @@ func NewWithCustomCtx(newCtxFunc func(app *App) CustomCtx, config ...Config) *Ap
 	app := New(config...)
 	app.setCtxFunc(newCtxFunc)
 	return app
+}
+
+// GetString returns s unchanged when Immutable is off or s is read-only (rodata).
+// Otherwise it returns a detached copy (strings.Clone).
+func (app *App) GetString(s string) string {
+	if !app.config.Immutable || len(s) == 0 {
+		return s
+	}
+	if isReadOnly(unsafe.Pointer(unsafe.StringData(s))) { //nolint:gosec // pointer check avoids unnecessary copy
+		return s // literal / rodata → safe to return as-is
+	}
+	return strings.Clone(s) // heap-backed / aliased → detach
+}
+
+// GetBytes returns b unchanged when Immutable is off or b is read-only (rodata).
+// Otherwise it returns a detached copy.
+func (app *App) GetBytes(b []byte) []byte {
+	if !app.config.Immutable || len(b) == 0 {
+		return b
+	}
+	if isReadOnly(unsafe.Pointer(unsafe.SliceData(b))) { //nolint:gosec // pointer check avoids unnecessary copy
+		return b // rodata → safe to return as-is
+	}
+	return utils.CopyBytes(b) // detach when backed by request/response memory
 }
 
 // Adds an ip address to TrustProxyConfig.ranges or TrustProxyConfig.ips based on whether it is an IP range or not

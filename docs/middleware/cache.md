@@ -50,6 +50,7 @@ Import the middleware package that is part of the Fiber web framework
 import (
     "github.com/gofiber/fiber/v3"
     "github.com/gofiber/fiber/v3/middleware/cache"
+    "github.com/gofiber/utils/v2"
 )
 ```
 

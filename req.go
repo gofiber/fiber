@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/gofiber/utils/v2"
+	utils "github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 	"golang.org/x/net/idna"
 )
@@ -178,10 +178,7 @@ func (r *DefaultReq) Body() []byte {
 		return []byte(err.Error())
 	}
 
-	if r.c.app.config.Immutable {
-		return utils.CopyBytes(body)
-	}
-	return body
+	return r.c.app.GetBytes(body)
 }
 
 // RequestCtx returns *fasthttp.RequestCtx that carries a deadline
@@ -196,7 +193,7 @@ func (r *DefaultReq) RequestCtx() *fasthttp.RequestCtx {
 // The returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (r *DefaultReq) Cookies(key string, defaultValue ...string) string {
-	return defaultString(r.c.app.getString(r.c.fasthttp.Request.Header.Cookie(key)), defaultValue)
+	return defaultString(r.c.app.toString(r.c.fasthttp.Request.Header.Cookie(key)), defaultValue)
 }
 
 // Request return the *fasthttp.Request object
@@ -218,7 +215,7 @@ func (r *DefaultReq) FormFile(key string) (*multipart.FileHeader, error) {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (r *DefaultReq) FormValue(key string, defaultValue ...string) string {
-	return defaultString(r.c.app.getString(r.c.fasthttp.FormValue(key)), defaultValue)
+	return defaultString(r.c.app.toString(r.c.fasthttp.FormValue(key)), defaultValue)
 }
 
 // Fresh returns true when the response is still “fresh” in the client's cache,
@@ -251,7 +248,7 @@ func (r *DefaultReq) Fresh() bool {
 	if len(noneMatch) > 0 && (len(noneMatch) != 1 || noneMatch[0] != '*') {
 		app := r.c.app
 		response := &r.c.fasthttp.Response
-		etag := app.getString(response.Header.Peek(HeaderETag))
+		etag := app.toString(response.Header.Peek(HeaderETag))
 		if etag == "" {
 			return false
 		}
@@ -290,7 +287,7 @@ func (r *DefaultReq) Get(key string, defaultValue ...string) string {
 // If the generic type cannot be matched to a supported type, the function
 // returns the default value (if provided) or the zero value of type V.
 func GetReqHeader[V GenericType](c Ctx, key string, defaultValue ...V) V {
-	v, err := genericParseType[V](c.App().getString(c.Request().Header.Peek(key)))
+	v, err := genericParseType[V](c.App().toString(c.Request().Header.Peek(key)))
 	if err != nil && len(defaultValue) > 0 {
 		return defaultValue[0]
 	}
@@ -304,8 +301,8 @@ func (r *DefaultReq) GetHeaders() map[string][]string {
 	app := r.c.app
 	headers := make(map[string][]string)
 	for k, v := range r.c.fasthttp.Request.Header.All() {
-		key := app.getString(k)
-		headers[key] = append(headers[key], app.getString(v))
+		key := app.toString(k)
+		headers[key] = append(headers[key], app.toString(v))
 	}
 	return headers
 }
@@ -327,7 +324,7 @@ func (r *DefaultReq) Host() string {
 			return host
 		}
 	}
-	return r.c.app.getString(r.c.fasthttp.Request.URI().Host())
+	return r.c.app.toString(r.c.fasthttp.Request.URI().Host())
 }
 
 // Hostname contains the hostname derived from the X-Forwarded-Host or Host HTTP header using the c.Host() method.
@@ -491,7 +488,7 @@ func (r *DefaultReq) Is(extension string) bool {
 		return false
 	}
 
-	ct := r.c.app.getString(r.c.fasthttp.Request.Header.ContentType())
+	ct := r.c.app.toString(r.c.fasthttp.Request.Header.ContentType())
 	if i := strings.IndexByte(ct, ';'); i != -1 {
 		ct = ct[:i]
 	}
@@ -564,7 +561,7 @@ func (r *DefaultReq) MultipartForm() (*multipart.Form, error) {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (r *DefaultReq) OriginalURL() string {
-	return r.c.app.getString(r.c.fasthttp.Request.Header.RequestURI())
+	return r.c.app.toString(r.c.fasthttp.Request.Header.RequestURI())
 }
 
 // Params is used to get the route parameters.
@@ -590,10 +587,7 @@ func (r *DefaultReq) Params(key string, defaultValue ...string) string {
 				break
 			}
 			val := values[i]
-			if r.c.app.config.Immutable {
-				return utils.CopyString(val)
-			}
-			return val
+			return r.c.app.GetString(val)
 		}
 	}
 	return defaultString("", defaultValue)
@@ -644,7 +638,7 @@ func (r *DefaultReq) Scheme() string {
 		case bytes.HasPrefix(key, []byte("X-Forwarded-")):
 			if bytes.Equal(key, []byte(HeaderXForwardedProto)) ||
 				bytes.Equal(key, []byte(HeaderXForwardedProtocol)) {
-				v := app.getString(val)
+				v := app.toString(val)
 				commaPos := strings.Index(v, ",")
 				if commaPos != -1 {
 					scheme = v[:commaPos]
@@ -656,7 +650,7 @@ func (r *DefaultReq) Scheme() string {
 			}
 
 		case bytes.Equal(key, []byte(HeaderXUrlScheme)):
-			scheme = app.getString(val)
+			scheme = app.toString(val)
 		}
 	}
 	return scheme
@@ -664,7 +658,7 @@ func (r *DefaultReq) Scheme() string {
 
 // Protocol returns the HTTP protocol of request: HTTP/1.1 and HTTP/2.
 func (r *DefaultReq) Protocol() string {
-	return r.c.app.getString(r.c.fasthttp.Request.Header.Protocol())
+	return r.c.app.toString(r.c.fasthttp.Request.Header.Protocol())
 }
 
 // Query returns the query string parameter in the url.
@@ -703,7 +697,7 @@ func (r *DefaultReq) Queries() map[string]string {
 
 	m := make(map[string]string, queryArgs.Len())
 	for key, value := range queryArgs.All() {
-		m[app.getString(key)] = app.getString(value)
+		m[app.toString(key)] = app.toString(value)
 	}
 	return m
 }
@@ -730,7 +724,7 @@ func (r *DefaultReq) Queries() map[string]string {
 //	age := Query[int](c, "age") // Returns 8
 //	unknown := Query[string](c, "unknown", "default") // Returns "default" since the query parameter "unknown" is not found
 func Query[V GenericType](c Ctx, key string, defaultValue ...V) V {
-	q := c.App().getString(c.RequestCtx().QueryArgs().Peek(key))
+	q := c.App().toString(c.RequestCtx().QueryArgs().Peek(key))
 	v, err := genericParseType[V](q)
 	if err != nil && len(defaultValue) > 0 {
 		return defaultValue[0]
@@ -916,9 +910,5 @@ func (r *DefaultReq) release() {
 }
 
 func (r *DefaultReq) getBody() []byte {
-	if r.c.app.config.Immutable {
-		return utils.CopyBytes(r.c.fasthttp.Request.Body())
-	}
-
-	return r.c.fasthttp.Request.Body()
+	return r.c.app.GetBytes(r.c.fasthttp.Request.Body())
 }

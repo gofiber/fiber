@@ -105,7 +105,7 @@ func (c fiber.Ctx) GetReqHeaders() map[string][]string
 
 :::info
 Returned value is only valid within the handler. Do not store any references.  
-Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
 ### GetRespHeader
@@ -131,7 +131,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 :::info
 Returned value is only valid within the handler. Do not store any references.  
-Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
 ### GetRespHeaders
@@ -144,7 +144,7 @@ func (c fiber.Ctx) GetRespHeaders() map[string][]string
 
 :::info
 Returned value is only valid within the handler. Do not store any references.  
-Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
 ### GetRouteURL
@@ -566,7 +566,7 @@ app.Post("/", func(c fiber.Ctx) error {
 
 :::info
 Returned value is only valid within the handler. Do not store any references.  
-Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
 ### BodyRaw
@@ -588,7 +588,7 @@ app.Post("/", func(c fiber.Ctx) error {
 
 :::info
 Returned value is only valid within the handler. Do not store any references.  
-Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
 ### ClientHelloInfo
@@ -626,8 +626,8 @@ app.Get("/", func(c fiber.Ctx) error {
 ```
 
 :::info
-Returned value is only valid within the handler. Do not store any references.  
-Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+Returned value is only valid within the handler. Do not store any references.
+Use [`App.GetString`](./app.md#getstring) or [`App.GetBytes`](./app.md#getbytes) when immutability is enabled, or manually copy values (for example with [`utils.CopyString`](https://github.com/gofiber/utils) / `utils.CopyBytes`) when it's disabled. [Read more...](../#zero-allocation)
 :::
 
 ### FormFile
@@ -669,7 +669,7 @@ app.Post("/", func(c fiber.Ctx) error {
 :::info
 
 Returned value is only valid within the handler. Do not store any references.  
-Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 
 :::
 
@@ -708,7 +708,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 :::info
 Returned value is only valid within the handler. Do not store any references.  
-Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
 ### Host
@@ -734,7 +734,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 :::info
 Returned value is only valid within the handler. Do not store any references.  
-Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
 ### Hostname
@@ -757,7 +757,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 :::info
 Returned value is only valid within the handler. Do not store any references.  
-Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
 ### IP
@@ -955,7 +955,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 :::info
 Returned value is only valid within the handler. Do not store any references.  
-Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
 ### Params
@@ -1006,7 +1006,7 @@ app.Get("/v1/*/shop/*", func(c fiber.Ctx) error {
 
 :::info
 Returned value is only valid within the handler. Do not store any references.  
-Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
 In certain scenarios, it can be useful to have an alternative approach to handle different types of parameters, not
@@ -1183,7 +1183,7 @@ app.Get("/", func(c fiber.Ctx) error {
 
 :::info
 Returned value is only valid within the handler. Do not store any references.  
-Make copies or use the [**`Immutable`**](./ctx.md) setting instead. [Read more...](../#zero-allocation)
+Make copies or use the [**`Immutable`**](./fiber.md#immutable) setting instead. [Read more...](../#zero-allocation)
 :::
 
 In certain scenarios, it can be useful to have an alternative approach to handle different types of query parameters, not
