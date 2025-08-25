@@ -1,8 +1,9 @@
 # v1.2.0. Created based on golangci-lint v1.57.1
+version:
+  format: 1
 
 run:
   timeout: 5m
-  modules-download-mode: vendor
   allow-serial-runners: true
 
 output:
@@ -255,7 +256,7 @@ issues:
     - '_msgp_test\.go'
   exclude-rules:
     - linters:
-        - err113
+        - goerr113
       text: 'do not define dynamic errors, use wrapped static errors instead*'
     - path: log/.*\.go
       linters:
@@ -264,7 +265,7 @@ issues:
     - path: _test\.go
       linters:
         - bodyclose
-        - err113
+        - goerr113
     - source: 'fmt.Fprintf?'
       linters:
         - errcheck
@@ -292,7 +293,6 @@ linters:
     - exhaustive
     # - exhaustivestruct
     # - exhaustruct
-    - copyloopvar
     - forbidigo
     - forcetypeassert
     # - funlen
@@ -308,7 +308,7 @@ linters:
     # - gocyclo
     # - godot
     # - godox
-    - err113
+    - goerr113
     - gofmt
     - gofumpt
     # - goheader

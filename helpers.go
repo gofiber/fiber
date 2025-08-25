@@ -21,7 +21,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/gofiber/utils/v2"
+	utils "github.com/gofiber/utils/v2"
 
 	"github.com/gofiber/fiber/v3/log"
 
