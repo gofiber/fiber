@@ -100,7 +100,7 @@ func readContent(rf io.ReaderFrom, name string) (int64, error) {
 // Non-ASCII bytes are encoded as well so the result is always ASCII.
 func (app *App) quoteString(raw string) string {
 	bb := bytebufferpool.Get()
-	quoted := app.getString(fasthttp.AppendQuotedArg(bb.B, app.getBytes(raw)))
+	quoted := app.toString(fasthttp.AppendQuotedArg(bb.B, app.toBytes(raw)))
 	bytebufferpool.Put(bb)
 	return quoted
 }
@@ -135,7 +135,7 @@ func (app *App) quoteRawString(raw string) string {
 		}
 	}
 
-	return app.getString(bb.B)
+	return app.toString(bb.B)
 }
 
 // isASCII reports whether the provided string contains only ASCII characters.
@@ -654,7 +654,7 @@ func matchEtagStrong(s, etag string) bool {
 // weak as defined by RFC 9110 §8.8.3.2.
 func (app *App) isEtagStale(etag string, noneMatchBytes []byte) bool {
 	var start, end int
-	header := utils.Trim(app.getString(noneMatchBytes), ' ')
+	header := utils.Trim(app.toString(noneMatchBytes), ' ')
 
 	// Short-circuit the wildcard case: "*" never counts as stale.
 	if header == "*" {
@@ -671,7 +671,7 @@ func (app *App) isEtagStale(etag string, noneMatchBytes []byte) bool {
 				end = i + 1
 			}
 		case 0x2c:
-			if matchEtag(app.getString(noneMatchBytes[start:end]), etag) {
+			if matchEtag(app.toString(noneMatchBytes[start:end]), etag) {
 				return false
 			}
 			start = i + 1
@@ -681,7 +681,7 @@ func (app *App) isEtagStale(etag string, noneMatchBytes []byte) bool {
 		}
 	}
 
-	return !matchEtag(app.getString(noneMatchBytes[start:end]), etag)
+	return !matchEtag(app.toString(noneMatchBytes[start:end]), etag)
 }
 
 func parseAddr(raw string) (string, string) {
@@ -781,11 +781,11 @@ func (*testConn) SetDeadline(_ time.Time) error      { return nil }
 func (*testConn) SetReadDeadline(_ time.Time) error  { return nil }
 func (*testConn) SetWriteDeadline(_ time.Time) error { return nil }
 
-func getStringImmutable(b []byte) string {
+func toStringImmutable(b []byte) string {
 	return string(b)
 }
 
-func getBytesImmutable(s string) []byte {
+func toBytesImmutable(s string) []byte {
 	return []byte(s)
 }
 

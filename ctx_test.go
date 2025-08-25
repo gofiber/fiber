@@ -438,7 +438,7 @@ func Benchmark_Ctx_Append(b *testing.B) {
 		c.Append("X-Custom-Header", "World")
 		c.Append("X-Custom-Header", "Hello")
 	}
-	require.Equal(b, "Hello, World", app.getString(c.Response().Header.Peek("X-Custom-Header")))
+	require.Equal(b, "Hello, World", app.toString(c.Response().Header.Peek("X-Custom-Header")))
 }
 
 // go test -run Test_Ctx_Attachment
@@ -1425,7 +1425,7 @@ func Benchmark_Ctx_Cookie(b *testing.B) {
 			Value: "Doe",
 		})
 	}
-	require.Equal(b, "John=Doe; path=/; SameSite=Lax", app.getString(c.Response().Header.Peek("Set-Cookie")))
+	require.Equal(b, "John=Doe; path=/; SameSite=Lax", app.toString(c.Response().Header.Peek("Set-Cookie")))
 }
 
 // go test -run Test_Ctx_Cookies
@@ -3157,7 +3157,7 @@ func Test_Ctx_Params_Immutable(t *testing.T) {
 
 	c.route = &Route{Params: []string{"user"}}
 	c.path = []byte("/test/john")
-	c.values[0] = c.app.getString(c.path[6:])
+	c.values[0] = c.app.toString(c.path[6:])
 
 	param := c.Params("user")
 	c.path[6] = 'p'

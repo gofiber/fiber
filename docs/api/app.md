@@ -9,20 +9,20 @@ import Reference from '@site/src/components/reference';
 
 ## Helpers
 
-### SafeString
+### GetString
 
-When [`Immutable`](./fiber.md#immutable) is enabled, returns a detached copy of `s` if it still references request or response memory. If immutability is disabled, `s` is returned unchanged.
+Returns `s` unchanged when [`Immutable`](./fiber.md#immutable) is disabled or `s` resides in read-only memory. Otherwise it returns a detached copy using `strings.Clone`.
 
 ```go title="Signature"
-func (app *App) SafeString(s string) string
+func (app *App) GetString(s string) string
 ```
 
-### SafeBytes
+### GetBytes
 
-When [`Immutable`](./fiber.md#immutable) is enabled, returns a detached copy of `b` if it still references request or response memory. If immutability is disabled, `b` is returned unchanged.
+Returns `b` unchanged when [`Immutable`](./fiber.md#immutable) is disabled, `b` resides in read-only memory, or `cap(b) == len(b)`. Otherwise it returns a detached copy.
 
 ```go title="Signature"
-func (app *App) SafeBytes(b []byte) []byte
+func (app *App) GetBytes(b []byte) []byte
 ```
 
 ## Routing

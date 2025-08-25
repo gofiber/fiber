@@ -271,7 +271,7 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 			i++
 		}
 
-		return r.To(location + "?" + r.c.app.getString(queryText.Bytes()))
+		return r.To(location + "?" + r.c.app.toString(queryText.Bytes()))
 	}
 
 	return r.To(location)
@@ -325,7 +325,7 @@ func (r *Redirect) processFlashMessages() {
 
 	r.c.Cookie(&Cookie{
 		Name:        FlashCookieName,
-		Value:       r.c.app.getString(dst),
+		Value:       r.c.app.toString(dst),
 		SessionOnly: true,
 	})
 }

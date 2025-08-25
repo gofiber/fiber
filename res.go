@@ -134,7 +134,7 @@ func (r *DefaultRes) Append(field string, values ...string) {
 	if len(values) == 0 {
 		return
 	}
-	h := r.c.app.getString(r.c.fasthttp.Response.Header.Peek(field))
+	h := r.c.app.toString(r.c.fasthttp.Response.Header.Peek(field))
 	originalH := h
 	for _, value := range values {
 		if len(h) == 0 {
@@ -375,7 +375,7 @@ func (r *DefaultRes) AutoFormat(body any) error {
 	case string:
 		b = val
 	case []byte:
-		b = r.c.app.getString(val)
+		b = r.c.app.toString(val)
 	default:
 		b = fmt.Sprintf("%v", val)
 	}
@@ -405,7 +405,7 @@ func (r *DefaultRes) AutoFormat(body any) error {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (r *DefaultRes) Get(key string, defaultValue ...string) string {
-	return defaultString(r.c.app.getString(r.c.fasthttp.Response.Header.Peek(key)), defaultValue)
+	return defaultString(r.c.app.toString(r.c.fasthttp.Response.Header.Peek(key)), defaultValue)
 }
 
 // GetHeaders (a.k.a GetRespHeaders) returns the HTTP response headers.
@@ -415,8 +415,8 @@ func (r *DefaultRes) GetHeaders() map[string][]string {
 	app := r.c.app
 	headers := make(map[string][]string)
 	for k, v := range r.c.fasthttp.Response.Header.All() {
-		key := app.getString(k)
-		headers[key] = append(headers[key], app.getString(v))
+		key := app.toString(k)
+		headers[key] = append(headers[key], app.toString(v))
 	}
 	return headers
 }
@@ -501,7 +501,7 @@ func (r *DefaultRes) JSONP(data any, callback ...string) error {
 		cb = "callback"
 	}
 
-	result = cb + "(" + r.c.app.getString(raw) + ");"
+	result = cb + "(" + r.c.app.toString(raw) + ");"
 
 	r.setCanonical(HeaderXContentTypeOptions, "nosniff")
 	r.c.fasthttp.Response.Header.SetContentType(MIMETextJavaScriptCharsetUTF8)
@@ -537,7 +537,7 @@ func (r *DefaultRes) Links(link ...string) {
 			bb.WriteString(`; rel="` + link[i] + `",`)
 		}
 	}
-	r.setCanonical(HeaderLink, utils.TrimRight(r.c.app.getString(bb.Bytes()), ','))
+	r.setCanonical(HeaderLink, utils.TrimRight(r.c.app.toString(bb.Bytes()), ','))
 	bytebufferpool.Put(bb)
 }
 
@@ -648,7 +648,7 @@ func (r *DefaultRes) Render(name string, bind any, layouts ...string) error {
 			return err
 		}
 		// Parse template
-		tmpl, err := template.New("").Parse(rootApp.getString(buf.Bytes()))
+		tmpl, err := template.New("").Parse(rootApp.toString(buf.Bytes()))
 		if err != nil {
 			return fmt.Errorf("failed to parse: %w", err)
 		}

@@ -52,12 +52,12 @@ func handler(c fiber.Ctx) error {
 }
 ```
 
-Fiber provides `SafeString` and `SafeBytes` methods on the app that perform the above when `Immutable` is enabled. When it's disabled, use `utils.CopyString` and `utils.CopyBytes` to allocate only when needed.
+Fiber provides `GetString` and `GetBytes` methods on the app that detach values when `Immutable` is enabled and the data isn't already read-only. When it's disabled, use `utils.CopyString` and `utils.CopyBytes` to allocate only when needed.
 
 ```go
 app.Get("/:foo", func(c fiber.Ctx) error {
-    // Variable is now immutable
-    result := c.App().SafeString(c.Params("foo"))
+    // Detach if necessary when Immutable is enabled
+    result := c.App().GetString(c.Params("foo"))
 
     // ...
 })
