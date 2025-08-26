@@ -38,13 +38,7 @@ markdown:
 ## lint: 🚨 Run lint checks
 .PHONY: lint
 lint:
-	@which golangci-lint > /dev/null || $(MAKE) install-lint
-	golangci-lint run
-
-## install-lint: 🛠 Install golangci-lint
-.PHONY: install-lint
-install-lint:
-	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b /usr/local/bin v1.64.7
+	GOTOOLCHAIN=$(TOOLCHAIN) go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.7 run ./...
 
 ## modernize: 🛠 Run gopls modernize
 .PHONY: modernize
