@@ -34,7 +34,7 @@ Here's a quick overview of the changes in Fiber `v3`:
 - [🔄️ Redirect](#-redirect)
 - [🌎 Client package](#-client-package)
 - [🧰 Generic functions](#-generic-functions)
-- [🛠️ Utils](#utils)
+- [🛠️ Utils](#-utils)
 - [🥡 Services](#-services)
 - [📃 Log](#-log)
 - [📦 Storage Interface](#-storage-interface)
@@ -901,7 +901,7 @@ curl "http://localhost:3000/header"
 
 </details>
 
-## 🛠️ Utils {#utils}
+## 🛠️ Utils
 
 Fiber v3 removes the built-in `utils` directory and now imports utility helpers from the separate [`github.com/gofiber/utils/v2`](https://github.com/gofiber/utils) module. See the [migration guide](#utils-migration) for detailed replacement steps and examples.
 
@@ -1439,7 +1439,7 @@ fiber migrate --to v3.0.0-rc.1
 - [🔄 Redirect](#-redirect-1)
 - [🧾 Log](#-log-1)
 - [🌎 Client package](#-client-package-1)
-- [🛠️ Utils](#utils-migration)
+- [🛠️ Utils](#-utils-1)
 - [🧬 Middlewares](#-middlewares-1)
   - [Important Change for Accessing Middleware Data](#important-change-for-accessing-middleware-data)
   - [BasicAuth](#basicauth-1)
@@ -1943,7 +1943,7 @@ import "github.com/gofiber/fiber/v3/client"
 
 </details>
 
-### 🛠️ Utils {#utils-migration}
+### 🛠️ Utils
 
 Fiber v3 removes the in-repo `utils` package in favor of the external [`github.com/gofiber/utils/v2`](https://github.com/gofiber/utils) module.
 
