@@ -5,8 +5,6 @@ sidebar_position: 2
 toc_max_heading_level: 4
 ---
 
-[//]: # (https://github.com/gofiber/fiber/releases/tag/v3.0.0-beta.2)
-
 ## 🎉 Welcome
 
 We are excited to announce the release of Fiber v3! 🚀
@@ -20,7 +18,7 @@ it update your project automatically:
 
 ```bash
 go install github.com/gofiber/cli/fiber@latest
-fiber migrate --to 3.0.0
+fiber migrate --to v3.0.0-rc.1
 ```
 
 See the [migration guide](#-migration-guide) for more details and options.
@@ -1421,12 +1419,12 @@ To streamline upgrades between Fiber versions, the Fiber CLI ships with a
 
 ```bash
 go install github.com/gofiber/cli/fiber@latest
-fiber migrate --to 3.0.0
+fiber migrate --to v3.0.0-rc.1
 ```
 
 ### Options
 
-- `-t, --to string` migrate to a specific version, e.g. `3.0.0`
+- `-t, --to string` migrate to a specific version, e.g. `v3.0.0`
 - `-f, --force` force migration even if already on that version
 - `-s, --skip_go_mod` skip running `go mod tidy`, `go mod download`, and `go mod vendor`
 
