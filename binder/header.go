@@ -21,7 +21,9 @@ func (b *HeaderBinding) Bind(req *fasthttp.Request, out any) error {
 	for key, val := range req.Header.All() {
 		k := utils.UnsafeString(key)
 		v := utils.UnsafeString(val)
-		_ = formatBindData(b.Name(), out, data, k, v, b.EnableSplitting, false) //nolint:errcheck // always returns nil
+		if err := formatBindData(b.Name(), out, data, k, v, b.EnableSplitting, false); err != nil {
+			return err
+		}
 	}
 
 	return parse(b.Name(), out, data)
