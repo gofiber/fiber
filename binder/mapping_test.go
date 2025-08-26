@@ -350,7 +350,10 @@ func Test_decoderBuilder(t *testing.T) {
 	t.Parallel()
 	type customInt int
 	conv := func(s string) reflect.Value {
-		i, _ := strconv.Atoi(s)
+		i, err := strconv.Atoi(s)
+		if err != nil {
+			panic(err)
+		}
 		return reflect.ValueOf(customInt(i))
 	}
 	parserConfig := ParserConfig{
@@ -362,7 +365,9 @@ func Test_decoderBuilder(t *testing.T) {
 		IgnoreUnknownKeys: false,
 		ZeroEmpty:         false,
 	}
-	dec := decoderBuilder(parserConfig).(*schema.Decoder)
+	decAny := decoderBuilder(parserConfig)
+	dec, ok := decAny.(*schema.Decoder)
+	require.True(t, ok)
 	var out struct {
 		X customInt `custom:"x"`
 	}
@@ -394,7 +399,9 @@ func Test_parseToMap_Extended(t *testing.T) {
 
 func Test_decoderPoolMapInit(t *testing.T) {
 	for _, tag := range tags {
-		dec := decoderPoolMap[tag].Get().(*schema.Decoder)
+		decAny := decoderPoolMap[tag].Get()
+		dec, ok := decAny.(*schema.Decoder)
+		require.True(t, ok)
 		require.NotNil(t, dec)
 	}
 }
@@ -434,6 +441,7 @@ func Test_buildFieldInfo_Unexported(t *testing.T) {
 		export   int
 		Exported int
 	}
+	_ = nested{export: 0}
 	type outer struct {
 		Name   string
 		Nested nested
