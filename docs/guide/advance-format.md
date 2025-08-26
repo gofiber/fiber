@@ -1,17 +1,17 @@
 ---
 id: advance-format
-title: 🐛 Advance Format
+title: 🐛 Advanced Format
 description: >-
   Learn how to use MessagePack (MsgPack) and CBOR for efficient binary serialization in Fiber applications.
 sidebar_position: 9
 ---
 
-## Msgpack
+## MsgPack
 
 Fiber enables efficient binary serialization using MessagePack (MsgPack). You can leverage popular Go libraries to encode and decode MsgPack data within your route handlers.
 
 - Fiber supports binding requests with the `application/vnd.msgpack` content type by default. For more details, see the [Binding documentation](../api/bind.md#msgpack).
-- Use `Ctx.MsgPack()` to bind MsgPack data directly to structs, similar to how you would use JSON binding. Alternatively, use `Ctx.AutoFormat()` to send response as MsgPack when the Accept HTTP header is `application/vnd.msgpack`, For more details, see the [AutoFormat documentation](../api/ctx.md#autoformat).
+- Use `Ctx.MsgPack()` to bind MsgPack data directly to structs, similar to how you would use JSON binding. Alternatively, use `Ctx.AutoFormat()` to send the response as MsgPack when the `Accept` HTTP header is `application/vnd.msgpack`. For more details, see the [AutoFormat documentation](../api/ctx.md#autoformat).
 
 ### Recommended Libraries
 
@@ -56,7 +56,7 @@ func main() {
             return err
         }
         // Content type will be set automatically to application/vnd.msgpack
-        return c.MsgPack(data)
+        return c.MsgPack(user)
     })
 
     app.Listen(":3000")
@@ -65,9 +65,9 @@ func main() {
 
 ## CBOR
 
-Fiber doesn't include a CBOR implementation by default. To enable CBOR encoding and decoding you need to choose a library, for example [fxamacker/cbor](https://github.com/fxamacker/cbor).
+Fiber doesn't include a CBOR implementation by default. To enable CBOR encoding and decoding, choose a library such as [fxamacker/cbor](https://github.com/fxamacker/cbor).
 
-- Use `Ctx.CBOR()` to bind CBOR data directly to structs, similar to how you would use JSON binding. Alternatively, use `Ctx.AutoFormat()` to send response as CBOR when the Accept HTTP header is `application/cbor`. For more details, see the [AutoFormat documentation](../api/ctx.md#autoformat).
+- Use `Ctx.CBOR()` to bind CBOR data directly to structs, similar to how you would use JSON binding. Alternatively, use `Ctx.AutoFormat()` to send the response as CBOR when the `Accept` HTTP header is `application/cbor`. For more details, see the [AutoFormat documentation](../api/ctx.md#autoformat).
 
 ```bash
 go get github.com/fxamacker/cbor/v2
