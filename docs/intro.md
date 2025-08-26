@@ -4,7 +4,7 @@ id: welcome
 title: 👋 Welcome
 sidebar_position: 1
 ---
-Welcome to the online API documentation for Fiber, complete with examples to help you start building web applications with Fiber right away!
+Welcome to Fiber's online API documentation, complete with examples to help you start building web applications right away!
 
 **Fiber** is an [Express](https://github.com/expressjs/express)-inspired **web framework** built on top of [Fasthttp](https://github.com/valyala/fasthttp), the **fastest** HTTP engine for [Go](https://go.dev/doc/). It is designed to facilitate rapid development with **zero memory allocations** and a strong focus on **performance**.
 
@@ -16,7 +16,7 @@ Looking to practice Fiber concepts hands-on? Check out our [Learning Resources](
 
 First, [download](https://go.dev/dl/) and install Go. Version `1.25` or higher is required.
 
-Installation is done using the [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
+Install Fiber using the [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
 
 ```bash
 go get github.com/gofiber/fiber/v3
@@ -24,7 +24,7 @@ go get github.com/gofiber/fiber/v3
 
 ### Zero Allocation
 
-Fiber is optimized for **high performance**, meaning values returned from **fiber.Ctx** are **not** immutable by default and **will** be reused across requests. As a rule of thumb, you **must** only use context values within the handler and **must not** keep any references. Once you return from the handler, any values obtained from the context will be reused in future requests. Here is an example:
+Fiber is optimized for **high performance**, meaning values returned from **fiber.Ctx** are **not** immutable by default and **will** be reused across requests. As a rule of thumb, you should use context values only within the handler and **must not** keep any references. Once you return from the handler, any values obtained from the context will be reused in future requests. Here is an example:
 
 ```go
 func handler(c fiber.Ctx) error {
@@ -75,7 +75,7 @@ For more information, please refer to [#426](https://github.com/gofiber/fiber/is
 
 ### Hello, World
 
-Below is the most straightforward **Fiber** application you can create:
+Here is the simplest **Fiber** application you can create:
 
 ```go
 package main
@@ -101,7 +101,7 @@ Browse to `http://localhost:3000` and you should see `Hello, World!` displayed o
 
 ### Basic Routing
 
-Routing determines how an application responds to a client request to a particular endpoint, which is a URI (or path) and a specific HTTP request method (`GET`, `PUT`, `POST`, etc.).
+Routing determines how an application responds to a client request at a particular endpoint—a combination of path and HTTP request method (`GET`, `PUT`, `POST`, etc.).
 
 Each route can have **multiple handler functions** that are executed when the route is matched.
 

@@ -52,18 +52,18 @@ type Views interface {
     Load() error
 
     // Outputs a template to the provided buffer using the provided template,
-    // template name, and binded data
+    // template name, and bound data
     Render(io.Writer, string, interface{}, ...string) error
 }
 ```
 
 :::note
-The `Render` method is linked to the [**ctx.Render\(\)**](../api/ctx.md#render) function that accepts a template name and binding data.
+The `Render` method powers the [**ctx.Render\(\)**](../api/ctx.md#render) function, which accepts a template name and data to bind.
 :::
 
 ## Rendering Templates
 
-Once an engine is set up, a route handler can call the [**ctx.Render\(\)**](../api/ctx.md#render) function with a template name and binded data to send the rendered template.
+Once an engine is set up, a route handler can call the [**ctx.Render\(\)**](../api/ctx.md#render) function with a template name and bound data to send the rendered template.
 
 ```go title="Signature"
 func (c Ctx) Render(name string, bind Map, layouts ...string) error

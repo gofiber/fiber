@@ -13,7 +13,7 @@ import TabItem from '@theme/TabItem';
 
 ## Catching Errors
 
-It’s essential to ensure that Fiber catches all errors that occur while running route handlers and middleware. You must return them to the handler function, where Fiber will catch and process them.
+Ensure that Fiber catches all errors from route handlers and middleware by returning them to the handler function for processing.
 
 <Tabs>
 <TabItem value="example" label="Example">
@@ -53,7 +53,7 @@ func main() {
 }
 ```
 
-You could use Fiber's custom error struct to pass an additional `status code` using `fiber.NewError()`. It's optional to pass a message; if this is left empty, it will default to the status code message \(`404` equals `Not Found`\).
+Use Fiber's custom error struct to pass a status code with `fiber.NewError()`. The message parameter is optional; if omitted, it defaults to the standard status text (for example, `404` becomes `Not Found`).
 
 ```go title="Example"
 app.Get("/", func(c fiber.Ctx) error {
@@ -93,7 +93,7 @@ var DefaultErrorHandler = func(c fiber.Ctx, err error) error {
 
 A custom error handler can be set using a [Config](../api/fiber.md#errorhandler) when initializing a [Fiber instance](../api/fiber.md#new).
 
-In most cases, the default error handler should be sufficient. However, a custom error handler can come in handy if you want to capture different types of errors and take action accordingly e.g., send a notification email or log an error to the centralized system. You can also send customized responses to the client e.g., error page or just a JSON response.
+In most cases, the default error handler is sufficient. However, a custom handler is useful when you need to capture different error types and respond accordingly—for example, sending notification emails or logging to a centralized system. You can also send custom responses to the client, such as an error page or a JSON message.
 
 The following example shows how to display error pages for different types of errors.
 

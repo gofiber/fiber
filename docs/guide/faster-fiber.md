@@ -6,7 +6,7 @@ sidebar_position: 7
 
 ## Custom JSON Encoder/Decoder
 
-Since Fiber v2.32.0, we have adopted `encoding/json` as the default JSON library for its stability and reliability. However, the standard library can be slower than some third-party alternatives. If you find the performance of `encoding/json` unsatisfactory, we suggest considering these libraries:
+Since Fiber v2.32.0, we have adopted `encoding/json` as the default JSON library for its stability and reliability. However, the standard library can be slower than some third-party alternatives. If its performance is unsatisfactory, consider the following libraries:
 
 - [goccy/go-json](https://github.com/goccy/go-json)
 - [bytedance/sonic](https://github.com/bytedance/sonic)
@@ -25,7 +25,7 @@ func main() {
         JSONDecoder: json.Unmarshal,
     })
 
-    # ...
+    // ...
 }
 ```
 
