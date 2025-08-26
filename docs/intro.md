@@ -52,12 +52,12 @@ func handler(c fiber.Ctx) error {
 }
 ```
 
-We created a custom `CopyString` function that performs the above and is available under [gofiber/utils](https://github.com/gofiber/utils).
+Fiber provides `GetString` and `GetBytes` methods on the app that detach values when `Immutable` is enabled and the data isn't already read-only. When it's disabled, use `utils.CopyString` and `utils.CopyBytes` to allocate only when needed.
 
 ```go
 app.Get("/:foo", func(c fiber.Ctx) error {
-    // Variable is now immutable
-    result := utils.CopyString(c.Params("foo")) 
+    // Detach if necessary when Immutable is enabled
+    result := c.App().GetString(c.Params("foo"))
 
     // ...
 })

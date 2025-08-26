@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gofiber/utils/v2"
+	utils "github.com/gofiber/utils/v2"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 )
@@ -231,7 +231,7 @@ func (c *DefaultCtx) RestartRouting() error {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (c *DefaultCtx) OriginalURL() string {
-	return c.app.getString(c.fasthttp.Request.Header.RequestURI())
+	return c.app.toString(c.fasthttp.Request.Header.RequestURI())
 }
 
 // Path returns the path part of the request URL.
@@ -247,7 +247,7 @@ func (c *DefaultCtx) Path(override ...string) string {
 		// Prettify path
 		c.configDependentPaths()
 	}
-	return c.app.getString(c.path)
+	return c.app.toString(c.path)
 }
 
 // Req returns a convenience type whose API is limited to operations
@@ -385,7 +385,7 @@ func (c *DefaultCtx) Value(key any) any {
 // XHR returns a Boolean property, that is true, if the request's X-Requested-With header field is XMLHttpRequest,
 // indicating that the request was issued by a client library (such as jQuery).
 func (c *DefaultCtx) XHR() bool {
-	return utils.EqualFold(c.app.getBytes(c.Get(HeaderXRequestedWith)), []byte("xmlhttprequest"))
+	return utils.EqualFold(c.app.toBytes(c.Get(HeaderXRequestedWith)), []byte("xmlhttprequest"))
 }
 
 // configDependentPaths set paths for route recognition and prepared paths for the user,
@@ -427,7 +427,7 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 	// Reset matched flag
 	c.matched = false
 	// Set paths
-	c.pathOriginal = c.app.getString(fctx.URI().PathOriginal())
+	c.pathOriginal = c.app.toString(fctx.URI().PathOriginal())
 	// Set method
 	c.methodInt = c.app.methodInt(utils.UnsafeString(fctx.Request.Header.Method()))
 	// Attach *fasthttp.RequestCtx to ctx
@@ -478,9 +478,9 @@ func (c *DefaultCtx) renderExtensions(bind any) {
 			// Loop through each local and set it in the map
 			c.fasthttp.VisitUserValues(func(key []byte, val any) {
 				// check if bindMap doesn't contain the key
-				if _, ok := bindMap[c.app.getString(key)]; !ok {
+				if _, ok := bindMap[c.app.toString(key)]; !ok {
 					// Set the key and value in the bindMap
-					bindMap[c.app.getString(key)] = val
+					bindMap[c.app.toString(key)] = val
 				}
 			})
 		}
@@ -516,7 +516,7 @@ func (c *DefaultCtx) getTreePathHash() int {
 }
 
 func (c *DefaultCtx) getDetectionPath() string {
-	return c.app.getString(c.detectionPath)
+	return c.app.toString(c.detectionPath)
 }
 
 func (c *DefaultCtx) getValues() *[maxParams]string {

@@ -26,8 +26,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unsafe"
 
-	"github.com/gofiber/utils/v2"
+	utils "github.com/gofiber/utils/v2"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -589,7 +590,7 @@ func Test_App_Use_UnescapedPath(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
 	// check the param result
-	require.Equal(t, "اختبار", app.getString(body))
+	require.Equal(t, "اختبار", app.toString(body))
 
 	// with lowercase letters
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er/%D8%A7%D8%AE%D8%AA%D8%A8%D8%A7%D8%B1", nil))
@@ -625,7 +626,7 @@ func Test_App_Use_CaseSensitive(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
 	// check the detected path result
-	require.Equal(t, "/AbC", app.getString(body))
+	require.Equal(t, "/AbC", app.toString(body))
 }
 
 func Test_App_Not_Use_StrictRouting(t *testing.T) {
@@ -979,6 +980,56 @@ func Test_App_Config(t *testing.T) {
 		StrictRouting: true,
 	})
 	require.True(t, app.Config().StrictRouting)
+}
+
+func Test_App_GetString(t *testing.T) {
+	t.Parallel()
+
+	heap := string([]byte("fiber"))
+	appMutable := New()
+	same := appMutable.GetString(heap)
+	if unsafe.StringData(same) != unsafe.StringData(heap) { //nolint:gosec // compare pointer addresses
+		t.Errorf("expected original string when immutable is disabled")
+	}
+
+	appImmutable := New(Config{Immutable: true})
+	copied := appImmutable.GetString(heap)
+	if unsafe.StringData(copied) == unsafe.StringData(heap) { //nolint:gosec // compare pointer addresses
+		t.Errorf("expected a copy for heap-backed string when immutable is enabled")
+	}
+
+	literal := "fiber"
+	sameLit := appImmutable.GetString(literal)
+	if unsafe.StringData(sameLit) != unsafe.StringData(literal) { //nolint:gosec // compare pointer addresses
+		t.Errorf("expected original literal when immutable is enabled")
+	}
+}
+
+func Test_App_GetBytes(t *testing.T) {
+	t.Parallel()
+
+	b := []byte("fiber")
+	appMutable := New()
+	same := appMutable.GetBytes(b)
+if unsafe.SliceData(same) != unsafe.SliceData(b) {
+		t.Errorf("expected original slice when immutable is disabled")
+	}
+
+	alias := make([]byte, 10)
+	copy(alias, b)
+	sub := alias[:5]
+	appImmutable := New(Config{Immutable: true})
+	copied := appImmutable.GetBytes(sub)
+	if unsafe.SliceData(copied) == unsafe.SliceData(sub) {
+		t.Errorf("expected a copy for aliased slice when immutable is enabled")
+	}
+
+	full := make([]byte, 5)
+	copy(full, b)
+	detached := appImmutable.GetBytes(full)
+	if unsafe.SliceData(detached) == unsafe.SliceData(full) {
+		t.Errorf("expected a copy even when cap==len")
+	}
 }
 
 func Test_App_Shutdown(t *testing.T) {
